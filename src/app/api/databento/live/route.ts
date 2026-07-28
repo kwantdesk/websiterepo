@@ -27,30 +27,48 @@ export async function GET(request: Request) {
   const encoder = new TextEncoder();
   let socket: ReturnType<typeof createConnection> | null = null;
   let closed = false;
+  let closeStream: (() => void) | null = null;
 
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
       const instrumentSymbols = new Map<number, string>();
       const instrumentContracts = new Map<number, string>();
-      const lastEmit = new Map<string, number>();
       let buffer = "";
       let authenticated = false;
+      let lastUpstreamMessageAt = Date.now();
+      let downstreamHeartbeat: ReturnType<typeof setInterval> | null = null;
+      let upstreamHealthCheck: ReturnType<typeof setInterval> | null = null;
 
       const send = (value: string) => {
-        if (!closed) controller.enqueue(encoder.encode(value));
+        if (closed) return;
+        try {
+          controller.enqueue(encoder.encode(value));
+        } catch {
+          close();
+        }
       };
       const close = () => {
         if (closed) return;
         closed = true;
+        if (downstreamHeartbeat) clearInterval(downstreamHeartbeat);
+        if (upstreamHealthCheck) clearInterval(upstreamHealthCheck);
         socket?.destroy();
         try { controller.close(); } catch {}
       };
+      closeStream = close;
 
       send("retry: 1500\n\n");
+      downstreamHeartbeat = setInterval(() => send(": heartbeat\n\n"), 8_000);
+      upstreamHealthCheck = setInterval(() => {
+        if (authenticated && Date.now() - lastUpstreamMessageAt > 22_000) {
+          close();
+        }
+      }, 4_000);
       socket = createConnection({ host: "glbx-mdp3.lsg.databento.com", port: 13000 });
       socket.setKeepAlive(true, 10_000);
 
       socket.on("data", (chunk) => {
+        lastUpstreamMessageAt = Date.now();
         buffer += chunk.toString("utf8");
         const lines = buffer.split("\n");
         buffer = lines.pop() ?? "";
@@ -129,10 +147,6 @@ export async function GET(request: Request) {
             const mid = bid && ask ? (bid + ask) / 2 : trade || bid || ask;
             if (!symbol || !mid) continue;
             const now = Date.now();
-            if (!isTrade) {
-              if (now - (lastEmit.get(symbol) ?? 0) < 250) continue;
-              lastEmit.set(symbol, now);
-            }
             send(`data: ${JSON.stringify({
               instrument: symbol,
               contractSymbol: instrumentContracts.get(instrumentId),
@@ -160,8 +174,7 @@ export async function GET(request: Request) {
       request.signal.addEventListener("abort", close, { once: true });
     },
     cancel() {
-      closed = true;
-      socket?.destroy();
+      closeStream?.();
     },
   });
 

@@ -92,6 +92,11 @@ import {
   type ChartIntervalKind,
 } from "@/lib/chartIntervals";
 import { applyMarketTradesToEventBars } from "@/lib/eventBars";
+import {
+  mergeChartHistory,
+  readChartHistoryCache,
+  writeChartHistoryCache,
+} from "@/lib/chartHistoryCache";
 import AppSidebar from "@/components/AppSidebar";
 import ChartCreateAlertModal from "@/components/alerts/ChartCreateAlertModal";
 import {
@@ -134,6 +139,20 @@ type WatchlistItem = {
   change: number;
   changePercent: number;
   flash: "up" | "down" | null;
+};
+type LiveFeedPrice = {
+  error?: string;
+  instrument: string;
+  bid: number;
+  ask: number;
+  mid: number;
+  broker?: string;
+  isTrade?: boolean;
+  size?: number;
+  trades?: number;
+  delta?: number;
+  contractSymbol?: string;
+  timestamp?: string | number;
 };
 type WatchlistSection = { id: string; name: string; symbols: string[] };
 type InstrumentPickerItem = { key: string; symbol: string; fullName: string; category: string; broker: string };
@@ -254,10 +273,10 @@ const OANDA_GRANULARITY_MAP: Record<string, string> = {
   "1h": "H1", "2h": "H2", "4h": "H4", "1D": "D", "1W": "W", "1M": "M",
 };
 const DEFAULT_WORKSPACE_PANES: WorkspacePane[] = [
-  { id: "pane-1", symbol: "ES.v.0", broker: "Databento", timeframe: "5m", period: "1W", watchlistKey: makeWatchlistKey("ES.v.0", "Databento") },
-  { id: "pane-2", symbol: "NQ.v.0", broker: "Databento", timeframe: "5m", period: "1W", watchlistKey: makeWatchlistKey("NQ.v.0", "Databento") },
-  { id: "pane-3", symbol: "CL.v.0", broker: "Databento", timeframe: "5m", period: "1W", watchlistKey: makeWatchlistKey("CL.v.0", "Databento") },
-  { id: "pane-4", symbol: "GC.v.0", broker: "Databento", timeframe: "5m", period: "1W", watchlistKey: makeWatchlistKey("GC.v.0", "Databento") },
+  { id: "pane-1", symbol: "ES.v.0", broker: "Databento", timeframe: "5m", period: "5D", watchlistKey: makeWatchlistKey("ES.v.0", "Databento") },
+  { id: "pane-2", symbol: "NQ.v.0", broker: "Databento", timeframe: "5m", period: "5D", watchlistKey: makeWatchlistKey("NQ.v.0", "Databento") },
+  { id: "pane-3", symbol: "CL.v.0", broker: "Databento", timeframe: "5m", period: "5D", watchlistKey: makeWatchlistKey("CL.v.0", "Databento") },
+  { id: "pane-4", symbol: "GC.v.0", broker: "Databento", timeframe: "5m", period: "5D", watchlistKey: makeWatchlistKey("GC.v.0", "Databento") },
 ];
 
 function displayCmeSymbol(symbol: string) {
@@ -510,7 +529,7 @@ function normalizeWorkspacePane(pane: Partial<WorkspacePane>, fallback: Workspac
     symbol: pane.symbol ?? fallback.symbol,
     broker: pane.broker ?? fallback.broker,
     timeframe: pane.timeframe ?? fallback.timeframe,
-    period: pane.period ?? "1Y",
+    period: pane.period ?? "5D",
     watchlistKey: pane.watchlistKey ?? makeWatchlistKey(pane.symbol ?? fallback.symbol, pane.broker ?? fallback.broker),
   };
 }
@@ -769,7 +788,17 @@ function mergeLiveMidIntoCandles(
   timeframe: string,
   tickTimestamp = Date.now(),
 ) {
-  if (!isPositiveFinite(mid) || candles.length === 0) return candles;
+  if (!isPositiveFinite(mid)) return candles;
+  if (candles.length === 0) {
+    return [{
+      timestamp: getTimeframeBucketStart(tickTimestamp, timeframe),
+      open: mid,
+      high: mid,
+      low: mid,
+      close: mid,
+      volume: 0,
+    }];
+  }
 
   const updated = [...candles];
   const lastIndex = updated.length - 1;
@@ -869,11 +898,14 @@ async function fetchWorkspaceCandles(symbol: string, timeframe: string, broker: 
   if (broker === "Databento") {
     const response = await fetch(
       `/api/databento/market?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}&start=${encodeURIComponent(periodConfig.from)}`,
-      { cache: "no-store" },
+      { cache: "no-store", signal: AbortSignal.timeout(30_000) },
     );
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.error ?? `CME did not return candles for ${displayCmeSymbol(symbol)}.`);
-    return sanitizeCandles((payload.candles ?? []) as Candle[], symbol);
+    const downloaded = sanitizeCandles((payload.candles ?? []) as Candle[], symbol);
+    if (downloaded.length) void writeChartHistoryCache(symbol, timeframe, downloaded);
+    const requestedFrom = Date.parse(periodConfig.from);
+    return downloaded.filter((candle) => candle.timestamp >= requestedFrom);
   }
 
   try {
@@ -1107,30 +1139,76 @@ function WorkspaceChartPane({
   const [intervalCommandDraft, setIntervalCommandDraft] = useState("");
   const [intervalCommandError, setIntervalCommandError] = useState("");
   const intervalCommandInputRef = useRef<HTMLInputElement>(null);
+  const latestCandlesRef = useRef<Candle[]>([]);
+  const pendingLiveTicksRef = useRef<Array<{
+    mid: number;
+    timestamp: number;
+    isTrade?: boolean;
+    size?: number;
+    trades?: number;
+    delta?: number;
+  }>>([]);
+  const liveFrameRef = useRef<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setError(null);
 
-    fetchWorkspaceCandles(pane.symbol, pane.timeframe, pane.broker, period)
-      .then((nextCandles) => {
-        if (cancelled) return;
-        setCandles(sanitizeCandles(nextCandles, pane.symbol));
-        setLastMarketUpdateAt(Date.now());
+    const loadHistory = async () => {
+      const cached = pane.broker === "Databento"
+        ? await readChartHistoryCache(pane.symbol, pane.timeframe)
+        : null;
+      if (cancelled) return;
+      const requestedFrom = Date.parse(getPeriodConfig(period).from);
+      const cachedCandles = cached?.candles.filter((candle) => candle.timestamp >= requestedFrom) ?? [];
+      if (cachedCandles.length) {
+        setCandles(sanitizeCandles(cachedCandles, pane.symbol));
         setLoading(false);
-      })
-      .catch(() => {
+      }
+
+      try {
+        const nextCandles = await fetchWorkspaceCandles(pane.symbol, pane.timeframe, pane.broker, period);
         if (cancelled) return;
-        setCandles([]);
-        setError("Unable to load chart");
+        const clean = sanitizeCandles(nextCandles, pane.symbol);
+        if (!clean.length && !cachedCandles.length) throw new Error("No candles returned.");
+        setCandles((current) => pane.broker === "Databento"
+          ? mergeChartHistory(current, clean)
+          : clean);
+        setError(null);
         setLoading(false);
-      });
+      } catch {
+        if (cancelled) return;
+        if (!cachedCandles.length) setError("Unable to load CME history");
+        setLoading(false);
+      }
+    };
+
+    void loadHistory();
 
     return () => {
       cancelled = true;
     };
   }, [pane.broker, pane.symbol, pane.timeframe, period]);
+
+  useEffect(() => {
+    if (pane.broker !== "Databento") return;
+    const interval = window.setInterval(() => {
+      if (latestCandlesRef.current.length) {
+        void writeChartHistoryCache(pane.symbol, pane.timeframe, latestCandlesRef.current);
+      }
+    }, 5_000);
+    return () => {
+      window.clearInterval(interval);
+      if (latestCandlesRef.current.length) {
+        void writeChartHistoryCache(pane.symbol, pane.timeframe, latestCandlesRef.current);
+      }
+    };
+  }, [pane.broker, pane.symbol, pane.timeframe]);
+
+  useEffect(() => {
+    latestCandlesRef.current = candles;
+  }, [candles]);
 
   useEffect(() => {
     setResolvedContractSymbol(
@@ -1193,31 +1271,53 @@ function WorkspaceChartPane({
         const displayName = usingDatabentoPaneFeed || usingCTraderFeed ? price.instrument : (nameMap[price.instrument] || price.instrument);
         if (displayName !== pane.symbol) return;
 
-        setLastMarketUpdateAt(Date.now());
-        setLiveFeedError(null);
         if (usingDatabentoPaneFeed && price.contractSymbol) {
           setResolvedContractSymbol(price.contractSymbol);
         }
-        setCandles((prev) => {
-          if (usingDatabentoPaneFeed && isEventBasedChartInterval(pane.timeframe)) {
-            if (!price.isTrade) return prev;
-            return applyMarketTradesToEventBars(prev, [{
-              timestamp: marketTimestamp(price.timestamp),
-              price: price.mid,
-              size: Number(price.size ?? 0),
-              trades: Number(price.trades ?? 1),
-              delta: Number(price.delta ?? 0),
-            }], pane.timeframe, pane.symbol);
-          }
-          const merged = mergeLiveMidIntoCandles(
-            prev,
-            price.mid,
-            pane.symbol,
-            pane.timeframe,
-            marketTimestamp(price.timestamp),
-          );
-          return merged === prev ? reanchorLiveMidIntoCandles(prev, price.mid, pane.symbol) : merged;
+        pendingLiveTicksRef.current.push({
+          mid: price.mid,
+          timestamp: marketTimestamp(price.timestamp),
+          isTrade: price.isTrade,
+          size: price.size,
+          trades: price.trades,
+          delta: price.delta,
         });
+        if (liveFrameRef.current === null) {
+          liveFrameRef.current = window.requestAnimationFrame(() => {
+            const ticks = pendingLiveTicksRef.current.splice(0);
+            liveFrameRef.current = null;
+            setLastMarketUpdateAt(Date.now());
+            setLiveFeedError(null);
+            setCandles((previous) => {
+              if (usingDatabentoPaneFeed && isEventBasedChartInterval(pane.timeframe)) {
+                const trades = ticks
+                  .filter((tick) => tick.isTrade)
+                  .map((tick) => ({
+                    timestamp: tick.timestamp,
+                    price: tick.mid,
+                    size: Number(tick.size ?? 0),
+                    trades: Number(tick.trades ?? 1),
+                    delta: Number(tick.delta ?? 0),
+                  }));
+                return trades.length
+                  ? applyMarketTradesToEventBars(previous, trades, pane.timeframe, pane.symbol)
+                  : previous;
+              }
+              return ticks.reduce((current, tick) => {
+                const merged = mergeLiveMidIntoCandles(
+                  current,
+                  tick.mid,
+                  pane.symbol,
+                  pane.timeframe,
+                  tick.timestamp,
+                );
+                return merged === current
+                  ? reanchorLiveMidIntoCandles(current, tick.mid, pane.symbol)
+                  : merged;
+              }, previous);
+            });
+          });
+        }
       } catch {
         // ignore malformed stream payloads
       }
@@ -1225,11 +1325,18 @@ function WorkspaceChartPane({
 
     stream.onerror = () => {
       stream.close();
-      setLiveFeedError(`${displayMarketSource(pane.broker)} live feed is unavailable right now.`);
+      setLiveFeedError(`${displayMarketSource(pane.broker)} reconnecting`);
       window.setTimeout(() => setStreamReconnectNonce((value) => value + 1), 1200);
     };
 
-    return () => stream.close();
+    return () => {
+      stream.close();
+      pendingLiveTicksRef.current = [];
+      if (liveFrameRef.current !== null) {
+        window.cancelAnimationFrame(liveFrameRef.current);
+        liveFrameRef.current = null;
+      }
+    };
   }, [pane.broker, pane.symbol, pane.timeframe, streamReconnectNonce]);
 
   useEffect(() => {
@@ -1316,14 +1423,22 @@ function WorkspaceChartPane({
   };
 
   const marketIsActive = lastMarketUpdateAt ? statusNow - lastMarketUpdateAt <= 15_000 : false;
-  const marketStatusLabel = loading ? "Loading" : liveFeedError ? "Feed Unavailable" : marketIsActive ? "Active" : "Market Closed";
+  const marketStatusLabel = loading
+    ? "Loading"
+    : marketIsActive
+      ? "Live"
+      : liveFeedError && candles.length
+        ? "History · reconnecting"
+        : liveFeedError
+          ? "Connecting"
+          : candles.length
+            ? "CME history"
+            : "Market closed";
   const marketStatusClasses = loading
     ? "bg-surface text-muted"
-    : liveFeedError
-      ? "bg-danger/15 text-danger"
-      : marketIsActive
+    : marketIsActive
       ? "bg-primary/15 text-primary"
-      : "bg-danger/15 text-danger";
+      : "bg-surface text-muted";
 
   return (
     <div
@@ -1809,6 +1924,10 @@ export default function Home() {
   const updateToastTimeoutRef = useRef<number | null>(null);
   const chartLaunchAppliedRef = useRef(false);
   const chartLaunchRunRef = useRef(false);
+  const pendingWatchlistPricesRef = useRef<Map<string, LiveFeedPrice>>(new Map());
+  const pendingSelectedTicksRef = useRef<LiveFeedPrice[]>([]);
+  const watchlistLiveFrameRef = useRef<number | null>(null);
+  const watchlistFlashTimerRef = useRef<number | null>(null);
 
   const linkedCTraderBrokerNames = useMemo(
     () => Array.from(new Set(linkedCTraderAccounts.map(resolveCTraderBrokerName))),
@@ -2477,7 +2596,7 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    if (!showInstrumentSearch || databentoOptions.length > 0 || optionsLoading) return;
+    if (!authChecked || databentoOptions.length > 0) return;
     let active = true;
     setOptionsLoading(true);
     fetch("/api/databento/options", { cache: "no-store" })
@@ -2495,7 +2614,45 @@ export default function Home() {
     return () => {
       active = false;
     };
-  }, [databentoOptions.length, optionsLoading, showInstrumentSearch]);
+  }, [authChecked, databentoOptions.length]);
+
+  useEffect(() => {
+    if (!authChecked) return;
+    const abortController = new AbortController();
+    let cancelled = false;
+    const instruments = [...DATABENTO_FUTURES, ...databentoOptions];
+    const symbols = Array.from(new Set(instruments.map((instrument) => instrument.symbol)));
+    let cursor = 0;
+
+    const warmNext = async () => {
+      while (!cancelled && cursor < symbols.length) {
+        const symbol = symbols[cursor++];
+        const cached = await readChartHistoryCache(symbol, "5m");
+        if (cached && Date.now() - cached.updatedAt < 5 * 60_000) continue;
+
+        try {
+          const response = await fetch(
+            `/api/databento/market?symbol=${encodeURIComponent(symbol)}&timeframe=5m&start=${encodeURIComponent(getPeriodConfig("5D").from)}`,
+            { cache: "no-store", signal: abortController.signal },
+          );
+          if (!response.ok) continue;
+          const payload = await response.json();
+          const candles = sanitizeCandles((payload.candles ?? []) as Candle[], symbol);
+          if (!cancelled && candles.length) {
+            await writeChartHistoryCache(symbol, "5m", candles);
+          }
+        } catch {
+          if (abortController.signal.aborted) return;
+        }
+      }
+    };
+
+    void Promise.all([warmNext(), warmNext()]);
+    return () => {
+      cancelled = true;
+      abortController.abort();
+    };
+  }, [authChecked, databentoOptions]);
 
   useEffect(() => {
     savePaperTradingAccounts(paperTradingAccounts);
@@ -2690,83 +2847,95 @@ export default function Home() {
 
     eventSource.onmessage = (event) => {
       try {
-        const price = JSON.parse(event.data) as {
-          error?: string;
-          instrument: string;
-          bid: number;
-          ask: number;
-          mid: number;
-          broker?: string;
-          isTrade?: boolean;
-          size?: number;
-          trades?: number;
-          delta?: number;
-          contractSymbol?: string;
-          timestamp?: string | number;
-        };
+        const price = JSON.parse(event.data) as LiveFeedPrice;
         if (price.error) {
           setFeedErrorByBroker((current) => ({ ...current, [activeChartBrokerLabel]: price.error as string }));
           return;
         }
 
-        setFeedErrorByBroker((current) => {
-          if (!current[activeChartBrokerLabel]) return current;
-          const next = { ...current };
-          delete next[activeChartBrokerLabel];
-          return next;
-        });
-        setStreamHealthyByBroker((current) => ({ ...current, [activeChartBrokerLabel]: true }));
-        setLastStreamTickAtByBroker((current) => ({ ...current, [activeChartBrokerLabel]: Date.now() }));
-
         const displayName = usingDatabentoFeed || usingCTraderFeed ? price.instrument : (nameMap[price.instrument] || price.instrument);
-
-        setWatchlist((current) => current.map((item) => {
-          if (item.symbol !== displayName || item.broker !== activeChartBrokerLabel) return item;
-          const prevMid = item.lastPrice || price.mid;
-          const moveRatio = prevMid > 0 ? Math.abs(price.mid - prevMid) / prevMid : 0;
-          if (moveRatio > 0.2) return item;
-          const openPrice = item.openPrice || price.mid;
-          const flash = price.mid > prevMid ? "up" : price.mid < prevMid ? "down" : null;
-          return {
-            ...item,
-            broker: price.broker || activeChartBrokerLabel,
-            contractSymbol: price.contractSymbol || item.contractSymbol,
-            lastPrice: price.mid,
-            openPrice,
-            bid: price.bid,
-            ask: price.ask,
-            mid: price.mid,
-            change: price.mid - openPrice,
-            changePercent: openPrice ? ((price.mid - openPrice) / openPrice) * 100 : 0,
-            flash,
-          };
-        }));
-
-        window.setTimeout(() => {
-          setWatchlist((current) => current.map((item) => item.symbol === displayName && item.broker === activeChartBrokerLabel ? { ...item, flash: null } : item));
-        }, 300);
-
+        pendingWatchlistPricesRef.current.set(displayName, price);
         if (displayName === selectedInstrument && chartTrades.length === 0) {
-          setChartCandles((prev) => {
-            if (usingDatabentoFeed && isEventBasedChartInterval(selectedTimeframe)) {
-              if (!price.isTrade) return prev;
-              return applyMarketTradesToEventBars(prev, [{
-                timestamp: marketTimestamp(price.timestamp),
-                price: price.mid,
-                size: Number(price.size ?? 0),
-                trades: Number(price.trades ?? 1),
-                delta: Number(price.delta ?? 0),
-              }], selectedTimeframe, selectedInstrument);
-            }
-            return mergeLiveMidIntoCandles(
-              prev,
-              price.mid,
-              selectedInstrument,
-              selectedTimeframe,
-              marketTimestamp(price.timestamp),
-            );
-          });
+          pendingSelectedTicksRef.current.push(price);
         }
+        if (watchlistLiveFrameRef.current !== null) return;
+
+        watchlistLiveFrameRef.current = window.requestAnimationFrame(() => {
+          const updates = new Map(pendingWatchlistPricesRef.current);
+          const selectedTicks = pendingSelectedTicksRef.current.splice(0);
+          pendingWatchlistPricesRef.current.clear();
+          watchlistLiveFrameRef.current = null;
+
+          setFeedErrorByBroker((current) => {
+            if (!current[activeChartBrokerLabel]) return current;
+            const next = { ...current };
+            delete next[activeChartBrokerLabel];
+            return next;
+          });
+          setStreamHealthyByBroker((current) => current[activeChartBrokerLabel]
+            ? current
+            : { ...current, [activeChartBrokerLabel]: true });
+          setLastStreamTickAtByBroker((current) => ({ ...current, [activeChartBrokerLabel]: Date.now() }));
+
+          setWatchlist((current) => current.map((item) => {
+            if (item.broker !== activeChartBrokerLabel) return item;
+            const nextPrice = updates.get(item.symbol);
+            if (!nextPrice) return item;
+            const prevMid = item.lastPrice || nextPrice.mid;
+            const moveRatio = prevMid > 0 ? Math.abs(nextPrice.mid - prevMid) / prevMid : 0;
+            if (moveRatio > 0.2) return item;
+            const openPrice = item.openPrice || nextPrice.mid;
+            return {
+              ...item,
+              broker: nextPrice.broker || activeChartBrokerLabel,
+              contractSymbol: nextPrice.contractSymbol || item.contractSymbol,
+              lastPrice: nextPrice.mid,
+              openPrice,
+              bid: nextPrice.bid,
+              ask: nextPrice.ask,
+              mid: nextPrice.mid,
+              change: nextPrice.mid - openPrice,
+              changePercent: openPrice ? ((nextPrice.mid - openPrice) / openPrice) * 100 : 0,
+              flash: nextPrice.mid > prevMid ? "up" : nextPrice.mid < prevMid ? "down" : null,
+            };
+          }));
+
+          if (watchlistFlashTimerRef.current === null) {
+            watchlistFlashTimerRef.current = window.setTimeout(() => {
+              watchlistFlashTimerRef.current = null;
+              setWatchlist((current) => current.map((item) => item.flash ? { ...item, flash: null } : item));
+            }, 300);
+          }
+
+          if (selectedTicks.length) {
+            setChartCandles((previous) => {
+              if (usingDatabentoFeed && isEventBasedChartInterval(selectedTimeframe)) {
+                const trades = selectedTicks
+                  .filter((tick) => tick.isTrade)
+                  .map((tick) => ({
+                    timestamp: marketTimestamp(tick.timestamp),
+                    price: tick.mid,
+                    size: Number(tick.size ?? 0),
+                    trades: Number(tick.trades ?? 1),
+                    delta: Number(tick.delta ?? 0),
+                  }));
+                return trades.length
+                  ? applyMarketTradesToEventBars(previous, trades, selectedTimeframe, selectedInstrument)
+                  : previous;
+              }
+              return selectedTicks.reduce(
+                (candles, tick) => mergeLiveMidIntoCandles(
+                  candles,
+                  tick.mid,
+                  selectedInstrument,
+                  selectedTimeframe,
+                  marketTimestamp(tick.timestamp),
+                ),
+                previous,
+              );
+            });
+          }
+        });
       } catch {}
     };
 
@@ -2775,13 +2944,25 @@ export default function Home() {
       setStreamHealthyByBroker((current) => ({ ...current, [activeChartBrokerLabel]: false }));
       setFeedErrorByBroker((current) => ({
         ...current,
-        [activeChartBrokerLabel]: `${activeChartBrokerLabel} live feed is unavailable right now.`,
+        [activeChartBrokerLabel]: `${displayMarketSource(activeChartBrokerLabel)} live feed is reconnecting.`,
       }));
       window.setTimeout(() => setStreamReconnectNonce((value) => value + 1), 1200);
       console.log(`${activeChartBrokerLabel} stream disconnected, reconnecting...`);
     };
 
-    return () => eventSource.close();
+    return () => {
+      eventSource.close();
+      pendingWatchlistPricesRef.current.clear();
+      pendingSelectedTicksRef.current = [];
+      if (watchlistLiveFrameRef.current !== null) {
+        window.cancelAnimationFrame(watchlistLiveFrameRef.current);
+        watchlistLiveFrameRef.current = null;
+      }
+      if (watchlistFlashTimerRef.current !== null) {
+        window.clearTimeout(watchlistFlashTimerRef.current);
+        watchlistFlashTimerRef.current = null;
+      }
+    };
   }, [activeChartBrokerLabel, chartTrades.length, selectedInstrument, selectedTimeframe, streamReconnectNonce, usingCTraderFeed, usingDatabentoFeed, watchlistSymbolsCsv]);
 
   useEffect(() => {
@@ -2979,13 +3160,23 @@ export default function Home() {
     const historicalLimit = getHistoricalCandleLimit(period, selectedTimeframe, outputsize);
 
     if (activeChartBrokerLabel === "Databento") {
-      const response = await fetch(
-        `/api/databento/market?symbol=${encodeURIComponent(selectedInstrument)}&timeframe=${encodeURIComponent(selectedTimeframe)}&start=${encodeURIComponent(periodConfig.from)}`,
-        { cache: "no-store" },
-      );
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error ?? `CME did not return candles for ${displayCmeSymbol(selectedInstrument)}.`);
-      return sanitizeCandles((payload.candles ?? []) as Candle[], selectedInstrument);
+      const cached = await readChartHistoryCache(selectedInstrument, selectedTimeframe);
+      try {
+        const response = await fetch(
+          `/api/databento/market?symbol=${encodeURIComponent(selectedInstrument)}&timeframe=${encodeURIComponent(selectedTimeframe)}&start=${encodeURIComponent(periodConfig.from)}`,
+          { cache: "no-store", signal: AbortSignal.timeout(30_000) },
+        );
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error ?? `CME did not return candles for ${displayCmeSymbol(selectedInstrument)}.`);
+        const downloaded = sanitizeCandles((payload.candles ?? []) as Candle[], selectedInstrument);
+        if (downloaded.length) await writeChartHistoryCache(selectedInstrument, selectedTimeframe, downloaded);
+        const merged = mergeChartHistory(cached?.candles ?? [], downloaded);
+        return merged.filter((candle) => candle.timestamp >= from);
+      } catch (error) {
+        const fallback = (cached?.candles ?? []).filter((candle) => candle.timestamp >= from);
+        if (fallback.length) return sanitizeCandles(fallback, selectedInstrument);
+        throw error;
+      }
     }
 
     try {
@@ -3125,8 +3316,8 @@ export default function Home() {
           showReportToast("success", `Report updated — ${displayCmeSymbol(selectedInstrument)} ${selectedTimeframe}`, 2000);
           setChartLoadingMessage(`Loaded ${candles.length.toLocaleString()} candles`);
         } else {
-          const fallback = generateSampleData(60);
-          setChartCandles(fallback);
+          const fallback = activeChartBrokerLabel === "Databento" ? [] : generateSampleData(60);
+          if (fallback.length) setChartCandles(fallback);
           if (backtestResult && !backtestResult.error) {
             const config: BacktestConfig = {
               initialBalance: 10000,
@@ -3140,11 +3331,12 @@ export default function Home() {
           showReportToast("success", `Report updated — ${displayCmeSymbol(selectedInstrument)} ${selectedTimeframe}`, 2000);
         }
       } catch {
-        if (!usingCTraderFeed) {
+        if (!usingCTraderFeed && activeChartBrokerLabel !== "Databento") {
           const fallback = generateSampleData(60);
           setChartCandles(fallback);
         }
-        showReportToast("error", "Failed to update report", 3000);
+        setChartLoadingMessage(activeChartBrokerLabel === "Databento" ? "Connecting to CME history…" : "");
+        showReportToast("error", activeChartBrokerLabel === "Databento" ? "CME history is reconnecting" : "Failed to update report", 3000);
       } finally {
         window.setTimeout(() => setChartLoadingMessage(""), 3500);
       }

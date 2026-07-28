@@ -19,6 +19,7 @@ Set these for Production, Preview, and Development:
 - `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (or rename the provided variable to
   `NEXT_PUBLIC_SUPABASE_ANON_KEY` if that is the key your Supabase project uses)
 - `ALLOWED_EMAILS` — comma-separated Google accounts permitted to enter
+- `DATABENTO_API_KEY` — server-only key for CME futures and options market data
 - `NEXT_PUBLIC_SITE_URL=https://www.kwantdesk.com`
 
 ## Supabase Google login checklist

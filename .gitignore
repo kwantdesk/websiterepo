@@ -5,3 +5,4 @@ data-cache/
 .env*.local
 !.env.example
 npm-debug.log*
+*.tsbuildinfo
