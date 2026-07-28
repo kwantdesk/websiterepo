@@ -222,11 +222,19 @@ type WorkspaceBackupFile = {
   exportedAt: string;
   presets: WorkspacePreset[];
 };
+type BottomWorkspaceSection = "gamma" | "gameplan" | "kwantbot" | "news";
 
 const WORKSPACE_PRESETS_STORAGE_KEY = "kwantdesk-chart-workspace-presets";
 const ACTIVE_WORKSPACE_PRESET_STORAGE_KEY = "kwantdesk-chart-workspace-active-preset";
 const WORKSPACE_BACKUP_FORMAT = "kwantdesk-chart-workspaces";
 const MAX_WORKSPACE_BACKUP_BYTES = 2_000_000;
+const BOTTOM_WORKSPACE_SECTION_STORAGE_KEY = "kwantdesk-bottom-workspace-section";
+const BOTTOM_WORKSPACE_SECTIONS = [
+  { id: "gamma" as const, label: "Gamma", icon: BarChart3 },
+  { id: "gameplan" as const, label: "Gameplan", icon: CalendarDays },
+  { id: "kwantbot" as const, label: "KwantBot", icon: Bot },
+  { id: "news" as const, label: "News", icon: BookOpen },
+];
 
 type CTraderStatusAccount = {
   accountId: number;
@@ -1849,6 +1857,13 @@ export default function Home() {
       : BOTTOM_PANEL_DEFAULT_HEIGHT;
   });
   const [bottomMinimized, setBottomMinimized] = useState(true);
+  const [bottomWorkspaceSection, setBottomWorkspaceSection] = useState<BottomWorkspaceSection>(() => {
+    if (typeof window === "undefined") return "gamma";
+    const saved = window.localStorage.getItem(BOTTOM_WORKSPACE_SECTION_STORAGE_KEY);
+    return saved === "gameplan" || saved === "kwantbot" || saved === "news" || saved === "gamma"
+      ? saved
+      : "gamma";
+  });
   const [equityPeriod, setEquityPeriod] = useState("365d");
   const [favTFs, setFavTFs] = useState(["1m", "5m", "15m", "1h", "4h", "1D"]);
   const [showAllTF, setShowAllTF] = useState(false);
@@ -2798,6 +2813,10 @@ export default function Home() {
   useEffect(() => {
     window.localStorage.setItem("olisa-watchlist-sections", JSON.stringify(watchlistSections));
   }, [watchlistSections]);
+
+  useEffect(() => {
+    window.localStorage.setItem(BOTTOM_WORKSPACE_SECTION_STORAGE_KEY, bottomWorkspaceSection);
+  }, [bottomWorkspaceSection]);
 
   useEffect(() => {
     setChartAlerts(loadChartAlerts());
@@ -5641,18 +5660,46 @@ export default function Home() {
           >
             <div className="absolute inset-x-0 top-0 h-px bg-border transition-colors group-hover:bg-primary/50" />
           </div>
-          <div className="flex h-10 shrink-0 items-center border-b border-border bg-panel px-5">
+          <div className="flex h-10 shrink-0 items-center gap-1 border-b border-border bg-panel px-3">
+            {BOTTOM_WORKSPACE_SECTIONS.map((section) => {
+              const Icon = section.icon;
+              const active = bottomWorkspaceSection === section.id;
+              return (
+                <button
+                  key={section.id}
+                  type="button"
+                  onClick={() => {
+                    setBottomWorkspaceSection(section.id);
+                    setBottomMinimized(false);
+                  }}
+                  aria-current={active ? "page" : undefined}
+                  className={`relative flex h-8 items-center gap-2 rounded-xl border px-3 text-[12px] font-semibold transition-all ${
+                    active
+                      ? "border-primary/30 bg-primary/10 text-primary shadow-[0_0_18px_rgba(132,204,22,0.08)]"
+                      : "border-transparent text-muted hover:border-border hover:bg-surface hover:text-foreground"
+                  }`}
+                >
+                  <Icon className={`h-3.5 w-3.5 ${active ? "text-primary" : "text-muted"}`} />
+                  <span>{section.label}</span>
+                  {active && <span className="absolute inset-x-3 -bottom-[5px] h-0.5 rounded-full bg-primary shadow-[0_0_8px_var(--primary)]" />}
+                </button>
+              );
+            })}
+            <div className="flex-1" />
             <button
               type="button"
               onClick={() => setBottomMinimized((value) => !value)}
-              className="flex items-center gap-2 text-[13px] font-semibold text-foreground transition-colors hover:text-primary"
+              aria-label={bottomMinimized ? "Open selected workspace" : "Collapse workspace"}
+              className="flex h-7 w-7 items-center justify-center rounded-lg text-muted transition-colors hover:bg-surface hover:text-primary"
             >
-              <BarChart3 className="h-3.5 w-3.5 text-primary" />
-              Gamma
-              {bottomMinimized ? <ChevronUp className="h-3.5 w-3.5 text-muted" /> : <ChevronDown className="h-3.5 w-3.5 text-muted" />}
+              {bottomMinimized ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
             </button>
           </div>
-          <div className="min-h-0 flex-1 bg-panel" aria-label="Gamma workspace" />
+          <div
+            key={bottomWorkspaceSection}
+            className="min-h-0 flex-1 bg-panel"
+            aria-label={`${BOTTOM_WORKSPACE_SECTIONS.find((section) => section.id === bottomWorkspaceSection)?.label ?? "Gamma"} workspace`}
+          />
         </div>
 
         {false && !bottomMinimized && (
