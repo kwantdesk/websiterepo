@@ -491,7 +491,7 @@ function Ladder({
                 type="button"
                 onClick={() => setExpanded(open ? null : index)}
                 aria-expanded={open}
-                className={`relative z-[1] grid w-full grid-cols-[76px_18px_minmax(0,1fr)_auto] items-center gap-2 rounded-xl border px-2 py-3 text-left transition-all lg:grid-cols-[98px_20px_minmax(0,1fr)_auto] lg:px-3 ${open ? "border-primary/30 bg-primary/[0.055]" : approaching ? "border-primary/20 bg-primary/[0.025] shadow-[0_0_22px_color-mix(in_srgb,var(--primary)_8%,transparent)]" : "border-transparent hover:border-border hover:bg-surface/40"}`}
+                className={`relative z-[1] grid w-full grid-cols-[76px_18px_minmax(0,1fr)_auto] items-center gap-2 rounded-xl border px-2 py-3 text-left transition-all lg:grid-cols-[98px_20px_minmax(0,1fr)_auto] lg:px-3 ${open ? "border-primary/30 bg-primary/[0.055]" : approaching ? "border-primary/20 bg-primary/[0.025]" : "border-transparent hover:border-border hover:bg-surface/40"} ${approaching ? "gameplan-current-level" : ""}`}
               >
                 <span className="text-right font-mono text-[11px] font-semibold text-foreground lg:text-[12px]">{formatZone(level.zone)}</span>
                 <span className={`mx-auto h-2.5 w-2.5 rounded-full border-2 border-background ${open || approaching ? "bg-primary shadow-[0_0_9px_var(--primary)]" : "bg-muted"}`} />
