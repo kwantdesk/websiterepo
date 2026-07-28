@@ -1,48 +1,27 @@
 "use client";
 
-import { useEffect, useState, type ComponentType } from "react";
+import { useEffect, useState } from "react";
+import KwantifySidebar, { type DeskView } from "@/components/KwantifySidebar";
 import {
   BarChart3,
   Bell,
   BookOpen,
   BrainCircuit,
-  CandlestickChart,
   ChevronDown,
   CircleHelp,
   Filter,
   FlaskConical,
-  LayoutDashboard,
   ListFilter,
-  LogOut,
   PanelLeftClose,
   Plus,
   Search,
   Settings,
   SlidersHorizontal,
   Sparkles,
-  User,
-  WalletCards,
   X,
 } from "lucide-react";
 
 type Theme = "midnight" | "graphite" | "obsidian";
-
-type NavItem = {
-  label: string;
-  icon: ComponentType<{ className?: string }>;
-};
-
-const navItems: NavItem[] = [
-  { label: "Overview", icon: LayoutDashboard },
-  { label: "Options Flow", icon: CandlestickChart },
-  { label: "Watchlists", icon: BarChart3 },
-  { label: "Research", icon: BrainCircuit },
-  { label: "Signals", icon: Sparkles },
-  { label: "Journal", icon: BookOpen },
-  { label: "Strategy Lab", icon: FlaskConical },
-  { label: "Alerts", icon: Bell },
-  { label: "Accounts", icon: WalletCards },
-];
 
 const flowRows = [
   { time: "10:42:17", symbol: "NVDA", contract: "NVDA 185C · 16 AUG", premium: "$1.28M", size: "4,210", side: "ASK", sentiment: "Bullish" },
@@ -61,7 +40,7 @@ const watchlist = [
 ];
 
 export default function DashboardShell({ email }: { email: string }) {
-  const [activeItem, setActiveItem] = useState("Options Flow");
+  const [activeItem, setActiveItem] = useState<DeskView>("flow");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [theme, setTheme] = useState<Theme>("midnight");
 
@@ -77,49 +56,14 @@ export default function DashboardShell({ email }: { email: string }) {
 
   return (
     <main className="desk-app">
-      <div className="kd-sidebar-wrap">
-        <aside className="kd-sidebar">
-          <button className="kd-nav-item kd-account" title={email} type="button" onClick={() => setSettingsOpen(true)}>
-            <span className="kd-avatar"><User className="h-[18px] w-[18px]" /></span>
-            <span className="kd-nav-label">{email}</span>
-          </button>
-
-          <div className="kd-nav-stack">
-            {navItems.map(({ label, icon: Icon }) => (
-              <button
-                className={`kd-nav-item ${activeItem === label ? "is-active" : ""}`}
-                key={label}
-                title={label}
-                type="button"
-                onClick={() => setActiveItem(label)}
-              >
-                <Icon className="h-[18px] w-[18px] shrink-0" />
-                <span className="kd-nav-label">{label}</span>
-              </button>
-            ))}
-          </div>
-
-          <div className="kd-nav-bottom">
-            <button className="kd-nav-item" title="Settings" type="button" onClick={() => setSettingsOpen(true)}>
-              <Settings className="h-[18px] w-[18px] shrink-0" />
-              <span className="kd-nav-label">Settings</span>
-            </button>
-            <form action="/auth/signout" method="post">
-              <button className="kd-nav-item" title="Sign out" type="submit">
-                <LogOut className="h-[18px] w-[18px] shrink-0" />
-                <span className="kd-nav-label">Sign out</span>
-              </button>
-            </form>
-          </div>
-        </aside>
-      </div>
+      <KwantifySidebar activeItem={activeItem} email={email} onSelect={setActiveItem} onSettings={() => { setActiveItem("settings"); setSettingsOpen(true); }} />
 
       <section className="kd-workspace">
         <header className="kd-topbar">
           <div className="kd-title-row">
             <span className="kd-wordmark">KWANT DESK</span>
             <span className="kd-separator" />
-            <strong>{activeItem}</strong>
+            <strong>{activeItem === "flow" ? "Options Flow" : activeItem[0].toUpperCase() + activeItem.slice(1)}</strong>
           </div>
           <div className="kd-top-actions">
             <button className="kd-icon-button" title="Help" type="button"><CircleHelp className="h-4 w-4" /></button>
