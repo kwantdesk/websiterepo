@@ -35,6 +35,26 @@ type RootRecord<T> = Record<KwantBotMarketRoot, T>;
 const emptyMessages = (): RootRecord<KwantBotInterpreterMessage[]> => ({ NQ: [], ES: [] });
 const emptyMemory = (): RootRecord<KwantBotMemoryEvent[]> => ({ NQ: [], ES: [] });
 
+function mergeById<T extends { id: string; createdAt: string }>(
+  local: T[],
+  remote: T[],
+  limit: number,
+) {
+  const merged = new Map<string, T>();
+  [...remote, ...local].forEach((item) => merged.set(item.id, item));
+  return [...merged.values()]
+    .sort((left, right) => Date.parse(left.createdAt) - Date.parse(right.createdAt))
+    .slice(-limit);
+}
+
+function contextSnapshotKey(context: KwantBotMarketContext) {
+  const generatedAt = Date.parse(context.generatedAt);
+  const fiveMinuteBucket = Number.isFinite(generatedAt)
+    ? Math.floor(generatedAt / (5 * 60_000))
+    : Math.floor(Date.now() / (5 * 60_000));
+  return `${context.root}:${fiveMinuteBucket}`;
+}
+
 export type UseKwantBotInterpreterResult = {
   selectedRoot: KwantBotMarketRoot;
   selectRoot: (root: KwantBotMarketRoot) => void;
@@ -42,6 +62,7 @@ export type UseKwantBotInterpreterResult = {
   memory: RootRecord<KwantBotMemoryEvent[]>;
   learningReviews: KwantBotLearningReview[];
   learningSyncState: KwantBotLearningSyncState;
+  archiveSyncState: KwantBotLearningSyncState;
   contexts: RootRecord<KwantBotMarketContext | null>;
   contextStates: RootRecord<KwantBotContextState>;
   contextErrors: RootRecord<string | null>;
@@ -62,6 +83,8 @@ export function useKwantBotInterpreter(args: {
   const [memory, setMemory] = useState<RootRecord<KwantBotMemoryEvent[]>>(emptyMemory);
   const [learningReviews, setLearningReviews] = useState<KwantBotLearningReview[]>([]);
   const [learningSyncState, setLearningSyncState] = useState<KwantBotLearningSyncState>("local");
+  const [archiveSyncState, setArchiveSyncState] = useState<KwantBotLearningSyncState>("local");
+  const [archiveSyncPulse, setArchiveSyncPulse] = useState(0);
   const [contexts, setContexts] = useState<RootRecord<KwantBotMarketContext | null>>({
     NQ: null,
     ES: null,
@@ -97,6 +120,11 @@ export function useKwantBotInterpreter(args: {
   const contextInFlightRef = useRef<RootRecord<boolean>>({ NQ: false, ES: false });
   const contextFetchedAtRef = useRef<RootRecord<number>>({ NQ: 0, ES: 0 });
   const cloudLearningReadyRef = useRef(false);
+  const cloudArchiveReadyRef = useRef(false);
+  const archiveSyncInFlightRef = useRef(false);
+  const archivedMessageIdsRef = useRef(new Set<string>());
+  const archivedMemoryIdsRef = useRef(new Set<string>());
+  const archivedContextKeysRef = useRef(new Set<string>());
 
   useEffect(() => {
     selectedRootRef.current = selectedRoot;
@@ -241,6 +269,148 @@ export function useKwantBotInterpreter(args: {
     }, 800);
     return () => window.clearTimeout(timer);
   }, [learningReviews, memory, messages, selectedRoot, storeReady]);
+
+  useEffect(() => {
+    if (!storeReady) return;
+    let cancelled = false;
+    fetch("/api/kwantbot/archive", {
+      cache: "no-store",
+      credentials: "same-origin",
+    })
+      .then(async (response) => {
+        const body = await response.json() as {
+          configured?: boolean;
+          messages?: KwantBotInterpreterMessage[];
+          memory?: KwantBotMemoryEvent[];
+          contexts?: KwantBotMarketContext[];
+        };
+        if (!response.ok || !body.configured) throw new Error("Cloud archive unavailable.");
+        if (cancelled) return;
+
+        const remoteMessages = Array.isArray(body.messages) ? body.messages : [];
+        const remoteMemory = Array.isArray(body.memory) ? body.memory : [];
+        const remoteContexts = Array.isArray(body.contexts) ? body.contexts : [];
+        remoteMessages.forEach((item) => archivedMessageIdsRef.current.add(item.id));
+        remoteMemory.forEach((item) => archivedMemoryIdsRef.current.add(item.id));
+        remoteContexts.forEach((item) => archivedContextKeysRef.current.add(contextSnapshotKey(item)));
+
+        const nextMessages: RootRecord<KwantBotInterpreterMessage[]> = {
+          NQ: mergeById(
+            messagesRef.current.NQ,
+            remoteMessages.filter((item) => item.root === "NQ"),
+            MESSAGE_LIMIT,
+          ),
+          ES: mergeById(
+            messagesRef.current.ES,
+            remoteMessages.filter((item) => item.root === "ES"),
+            MESSAGE_LIMIT,
+          ),
+        };
+        const nextMemory: RootRecord<KwantBotMemoryEvent[]> = {
+          NQ: pruneKwantBotMemory(mergeById(
+            memoryRef.current.NQ,
+            remoteMemory.filter((item) => item.root === "NQ"),
+            50_000,
+          )),
+          ES: pruneKwantBotMemory(mergeById(
+            memoryRef.current.ES,
+            remoteMemory.filter((item) => item.root === "ES"),
+            50_000,
+          )),
+        };
+        messagesRef.current = nextMessages;
+        memoryRef.current = nextMemory;
+        setMessages(nextMessages);
+        setMemory(nextMemory);
+        cloudArchiveReadyRef.current = true;
+        setArchiveSyncState("synced");
+        setArchiveSyncPulse((value) => value + 1);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        cloudArchiveReadyRef.current = false;
+        setArchiveSyncState("local");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [storeReady]);
+
+  useEffect(() => {
+    if (!storeReady || !cloudArchiveReadyRef.current || archiveSyncInFlightRef.current) return;
+
+    const pendingMessages = ROOTS
+      .flatMap((root) => messages[root])
+      .filter((item) => !archivedMessageIdsRef.current.has(item.id));
+    const pendingMemory = ROOTS
+      .flatMap((root) => memory[root])
+      .filter((item) => !archivedMemoryIdsRef.current.has(item.id));
+    const pendingContexts = ROOTS
+      .map((root) => contexts[root])
+      .filter((context): context is KwantBotMarketContext => context !== null)
+      .map((context) => ({
+        snapshotKey: contextSnapshotKey(context),
+        context,
+      }))
+      .filter((item) => !archivedContextKeysRef.current.has(item.snapshotKey));
+
+    if (!pendingMessages.length && !pendingMemory.length && !pendingContexts.length) {
+      setArchiveSyncState("synced");
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      archiveSyncInFlightRef.current = true;
+      setArchiveSyncState("syncing");
+
+      const sync = async () => {
+        const messageQueue = [...pendingMessages];
+        const memoryQueue = [...pendingMemory];
+        const contextQueue = [...pendingContexts];
+
+        while (messageQueue.length || memoryQueue.length || contextQueue.length) {
+          const messageBatch = messageQueue.splice(0, 500);
+          const memoryBatch = memoryQueue.splice(0, 1_000);
+          const contextBatch = contextQueue.splice(0, 24);
+          const response = await fetch("/api/kwantbot/archive", {
+            method: "POST",
+            credentials: "same-origin",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              messages: messageBatch,
+              memory: memoryBatch,
+              contexts: contextBatch,
+            }),
+          });
+          const body = await response.json() as {
+            configured?: boolean;
+            ids?: {
+              messages?: string[];
+              memory?: string[];
+              contexts?: string[];
+            };
+          };
+          if (!response.ok || !body.configured) throw new Error("Cloud archive unavailable.");
+          (body.ids?.messages ?? messageBatch.map((item) => item.id))
+            .forEach((id) => archivedMessageIdsRef.current.add(id));
+          (body.ids?.memory ?? memoryBatch.map((item) => item.id))
+            .forEach((id) => archivedMemoryIdsRef.current.add(id));
+          (body.ids?.contexts ?? contextBatch.map((item) => item.snapshotKey))
+            .forEach((id) => archivedContextKeysRef.current.add(id));
+        }
+      };
+
+      void sync()
+        .then(() => setArchiveSyncState("synced"))
+        .catch(() => setArchiveSyncState("error"))
+        .finally(() => {
+          archiveSyncInFlightRef.current = false;
+          setArchiveSyncPulse((value) => value + 1);
+        });
+    }, 1_200);
+
+    return () => window.clearTimeout(timer);
+  }, [archiveSyncPulse, contexts, memory, messages, storeReady]);
 
   useEffect(() => {
     if (!storeReady) return;
@@ -508,6 +678,7 @@ export function useKwantBotInterpreter(args: {
     memory,
     learningReviews,
     learningSyncState,
+    archiveSyncState,
     contexts,
     contextStates,
     contextErrors,

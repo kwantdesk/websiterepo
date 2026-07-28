@@ -301,6 +301,7 @@ export default function KwantBotIntelligenceWorkspace({
     memory,
     learningReviews,
     learningSyncState,
+    archiveSyncState,
     contexts,
     contextStates,
     contextErrors,
@@ -313,6 +314,7 @@ export default function KwantBotIntelligenceWorkspace({
   const [journalFilter, setJournalFilter] = useState<JournalFilter>("all");
   const [journalSearch, setJournalSearch] = useState("");
   const [now, setNow] = useState(Date.now());
+  const [archiveExporting, setArchiveExporting] = useState(false);
 
   const context = contexts[selectedRoot];
   const rootMessages = messages[selectedRoot];
@@ -418,23 +420,43 @@ export default function KwantBotIntelligenceWorkspace({
     [rootMemory],
   );
 
-  const exportJournal = () => {
-    const payload = {
-      format: "kwantdesk-kwantbot-intelligence-v1",
-      instrument: selectedRoot,
-      exportedAt: new Date().toISOString(),
-      currentPrice: price,
-      context,
-      analysisNotes: [...rootMessages],
-      evidenceJournal: [...rootMemory],
-    };
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+  const downloadArchive = (blob: Blob, filename: string) => {
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = `kwantbot-${selectedRoot.toLowerCase()}-intelligence-${new Date().toISOString().slice(0, 10)}.json`;
+    anchor.download = filename;
     anchor.click();
     URL.revokeObjectURL(url);
+  };
+
+  const exportJournal = async () => {
+    setArchiveExporting(true);
+    const filename = `kwantbot-${selectedRoot.toLowerCase()}-archive-${new Date().toISOString().slice(0, 10)}.json`;
+    try {
+      const response = await fetch(`/api/kwantbot/archive?root=${selectedRoot}&download=1`, {
+        cache: "no-store",
+        credentials: "same-origin",
+      });
+      if (!response.ok) throw new Error("Cloud archive unavailable.");
+      downloadArchive(await response.blob(), filename);
+    } catch {
+      const payload = {
+        format: "kwantdesk-kwantbot-intelligence-v1",
+        storage: "local-fallback",
+        instrument: selectedRoot,
+        exportedAt: new Date().toISOString(),
+        currentPrice: price,
+        context,
+        analysisNotes: [...rootMessages],
+        evidenceJournal: [...rootMemory],
+      };
+      downloadArchive(
+        new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }),
+        filename,
+      );
+    } finally {
+      setArchiveExporting(false);
+    }
   };
 
   const visibleLevels = useMemo(() => levels.slice(0, 8), [levels]);
@@ -492,7 +514,7 @@ export default function KwantBotIntelligenceWorkspace({
               </div>
               <div className="mt-1 flex items-center gap-2 text-[9px] text-muted">
                 <span className={`h-1.5 w-1.5 rounded-full ${feedState === "live" ? "animate-pulse bg-primary shadow-[0_0_8px_var(--primary)]" : "bg-amber-400"}`} />
-                Watching {ROOT_DETAILS[selectedRoot].name} · tick {relativeTime(lastTickAt[selectedRoot], now)}
+                Watching {ROOT_DETAILS[selectedRoot].name} · tick {relativeTime(lastTickAt[selectedRoot], now)} · {archiveSyncState === "synced" ? "archive synced" : archiveSyncState === "syncing" ? "archiving" : "local safety copy"}
               </div>
             </div>
           </div>
@@ -841,10 +863,11 @@ export default function KwantBotIntelligenceWorkspace({
                   <button
                     type="button"
                     onClick={exportJournal}
+                    disabled={archiveExporting}
                     className="flex h-8 items-center gap-1.5 rounded-lg border border-border bg-surface px-2.5 text-[8px] font-semibold uppercase tracking-[0.09em] text-muted transition-colors hover:border-primary/30 hover:text-primary"
                   >
-                    <Download className="h-3 w-3" />
-                    Export
+                    <Download className={`h-3 w-3 ${archiveExporting ? "animate-pulse" : ""}`} />
+                    {archiveExporting ? "Preparing" : "Export"}
                   </button>
                 )}
               />

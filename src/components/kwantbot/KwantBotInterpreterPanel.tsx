@@ -135,6 +135,7 @@ export default function KwantBotInterpreterPanel({
     selectRoot,
     messages,
     memory,
+    archiveSyncState,
     contexts,
     contextStates,
     contextErrors,
@@ -146,6 +147,7 @@ export default function KwantBotInterpreterPanel({
   } = interpreter;
   const [now, setNow] = useState(Date.now());
   const [view, setView] = useState<"feed" | "journal">("feed");
+  const [archiveExporting, setArchiveExporting] = useState(false);
   const feedScrollRef = useRef<HTMLDivElement | null>(null);
   const endRef = useRef<HTMLDivElement | null>(null);
   const rootMessages = messages[selectedRoot];
@@ -183,23 +185,43 @@ export default function KwantBotInterpreterPanel({
     return () => window.cancelAnimationFrame(frame);
   }, [latestMessageId, selectedRoot, view]);
 
-  const exportJournal = () => {
-    const payload = {
-      format: "kwantdesk-kwantbot-journal-v1",
-      root: selectedRoot,
-      exportedAt: new Date().toISOString(),
-      livePrice: price,
-      context,
-      journal: journalEvents.slice().reverse(),
-      messages: rootMessages,
-    };
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+  const downloadArchive = (blob: Blob, filename: string) => {
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = `kwantbot-${selectedRoot.toLowerCase()}-journal-${new Date().toISOString().slice(0, 10)}.json`;
+    anchor.download = filename;
     anchor.click();
     URL.revokeObjectURL(url);
+  };
+
+  const exportJournal = async () => {
+    setArchiveExporting(true);
+    const filename = `kwantbot-${selectedRoot.toLowerCase()}-archive-${new Date().toISOString().slice(0, 10)}.json`;
+    try {
+      const response = await fetch(`/api/kwantbot/archive?root=${selectedRoot}&download=1`, {
+        cache: "no-store",
+        credentials: "same-origin",
+      });
+      if (!response.ok) throw new Error("Cloud archive unavailable.");
+      downloadArchive(await response.blob(), filename);
+    } catch {
+      const payload = {
+        format: "kwantdesk-kwantbot-journal-v1",
+        storage: "local-fallback",
+        root: selectedRoot,
+        exportedAt: new Date().toISOString(),
+        livePrice: price,
+        context,
+        journal: journalEvents.slice().reverse(),
+        messages: rootMessages,
+      };
+      downloadArchive(
+        new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }),
+        filename,
+      );
+    } finally {
+      setArchiveExporting(false);
+    }
   };
 
   return (
@@ -381,17 +403,17 @@ export default function KwantBotInterpreterPanel({
             <div className="mb-3 flex items-center justify-between gap-3">
               <div>
                 <div className="text-[10px] font-semibold uppercase tracking-[0.1em] text-foreground">{selectedRoot} memory journal</div>
-                <div className="mt-0.5 text-[8px] text-muted">Level decisions and outcomes are retained until this browser storage is cleared.</div>
+                <div className="mt-0.5 text-[8px] text-muted">Messages, reasoning, level decisions, and outcomes are retained in your private cloud archive.</div>
               </div>
               <button
                 type="button"
                 onClick={exportJournal}
-                disabled={!journalEvents.length && !rootMessages.length}
+                disabled={archiveExporting || (!journalEvents.length && !rootMessages.length)}
                 className="flex h-7 shrink-0 items-center gap-1.5 rounded-lg border border-border bg-surface px-2 text-[8px] font-semibold uppercase tracking-[0.08em] text-muted transition-colors hover:border-primary/30 hover:text-primary disabled:opacity-35"
-                title={`Export the ${selectedRoot} journal`}
+                title={`Download the ${selectedRoot} cloud archive`}
               >
-                <Download className="h-3 w-3" />
-                Export
+                <Download className={`h-3 w-3 ${archiveExporting ? "animate-pulse" : ""}`} />
+                {archiveExporting ? "Preparing" : "Export"}
               </button>
             </div>
 
@@ -451,7 +473,7 @@ export default function KwantBotInterpreterPanel({
             <div className="min-w-0">
               <div className="truncate text-[9px] font-semibold uppercase tracking-[0.1em] text-foreground">15-minute reads active</div>
               <div className="truncate text-[8px] text-muted">
-                Options {relativeAge(context?.options.asOf ?? null, now)} · journal recording
+                Options {relativeAge(context?.options.asOf ?? null, now)} · {archiveSyncState === "synced" ? "cloud archived" : archiveSyncState === "syncing" ? "archiving" : "local safety copy"}
               </div>
             </div>
           </div>
