@@ -1915,6 +1915,21 @@ export default function Chart({
 
   return (
     <div ref={chartContainerRef} className="relative h-full w-full overflow-hidden">
+      {gammaLevelsEnabled && gammaLevelsLoading ? (
+        <div className="pointer-events-none absolute inset-0 z-[19] flex items-center justify-center">
+          <div
+            role="status"
+            aria-live="polite"
+            className="flex items-center gap-3 rounded-xl border border-primary/25 bg-panel/92 px-4 py-3 text-left shadow-2xl shadow-black/35 backdrop-blur-md"
+          >
+            <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary/25 border-t-primary" />
+            <span>
+              <span className="block text-[12px] font-semibold text-foreground">Loading {instrument} gamma levels…</span>
+              <span className="mt-0.5 block text-[9px] uppercase tracking-[0.14em] text-muted">Syncing current levels</span>
+            </span>
+          </div>
+        </div>
+      ) : null}
       <div
         ref={horzLineRef}
         style={{

@@ -1151,6 +1151,7 @@ function EquityChart({
 }
 
 type GammaChartOverlay = {
+  instrument: string;
   levels: ChartLevel[];
   label: string;
   regime: "POSITIVE" | "NEGATIVE" | "NEUTRAL";
@@ -1162,15 +1163,24 @@ type GammaChartOverlay = {
 type GammaPayloadCacheEntry = {
   expiresAt: number;
   promise: Promise<ChartGammaLevelsPayload>;
+  payload?: ChartGammaLevelsPayload;
 };
 
 const gammaPayloadCache = new Map<string, GammaPayloadCacheEntry>();
 
-function fetchGammaPayload(conversion: GammaConversionDefinition) {
+function fetchGammaPayload(
+  conversion: GammaConversionDefinition,
+  options: { allowStale?: boolean } = {},
+) {
   const cacheKey = `${conversion.futuresRoot}:${conversion.source}`;
   const cached = gammaPayloadCache.get(cacheKey);
-  if (cached && cached.expiresAt > Date.now()) return cached.promise;
+  const now = Date.now();
+  if (options.allowStale && cached?.payload && cached.expiresAt > now) {
+    return Promise.resolve(cached.payload);
+  }
+  if (cached && cached.expiresAt > now) return cached.promise;
 
+  const previous = cached;
   const promise = fetch(
     `/api/chart-gamma-levels?root=${encodeURIComponent(conversion.futuresRoot)}&source=${encodeURIComponent(conversion.source)}`,
     { cache: "no-store" },
@@ -1181,16 +1191,44 @@ function fetchGammaPayload(conversion: GammaConversionDefinition) {
       const current = gammaPayloadCache.get(cacheKey);
       if (current?.promise === promise) {
         current.expiresAt = Date.now() + Math.min(60_000, Math.max(5_000, payload.refreshAfterMs));
+        current.payload = payload;
       }
       return payload;
     })
     .catch((error) => {
-      if (gammaPayloadCache.get(cacheKey)?.promise === promise) gammaPayloadCache.delete(cacheKey);
+      if (gammaPayloadCache.get(cacheKey)?.promise === promise) {
+        if (previous?.payload) {
+          gammaPayloadCache.set(cacheKey, {
+            ...previous,
+            expiresAt: Date.now() + 5_000,
+          });
+        } else {
+          gammaPayloadCache.delete(cacheKey);
+        }
+      }
       throw error;
     });
 
-  gammaPayloadCache.set(cacheKey, { expiresAt: Date.now() + 5_000, promise });
+  gammaPayloadCache.set(cacheKey, {
+    expiresAt: Date.now() + 5_000,
+    promise,
+    payload: previous?.payload,
+  });
+  if (options.allowStale && previous?.payload) {
+    void promise.catch(() => undefined);
+    return Promise.resolve(previous.payload);
+  }
   return promise;
+}
+
+function warmGammaPayloadCache() {
+  const conversions = (["NQ", "ES"] as const)
+    .flatMap((instrument) => [
+      cashFallbackGammaConversion(instrument),
+      resolveGammaConversion(undefined, instrument),
+    ])
+    .filter((conversion): conversion is GammaConversionDefinition => Boolean(conversion));
+  return Promise.allSettled(conversions.map((conversion) => fetchGammaPayload(conversion)));
 }
 
 function gammaLevelColor(kind: string, settings: ChartSettings) {
@@ -1297,6 +1335,7 @@ function buildGammaChartOverlay(args: {
 
   if (!levels.length) return null;
   return {
+    instrument: conversion.target,
     levels,
     label: payload.environment.gammaStateLabel,
     regime: payload.environment.gammaRegime,
@@ -1393,11 +1432,22 @@ function WorkspaceChartPane({
   const fallbackGammaConversion = gammaLevelsAvailable
     ? cashFallbackGammaConversion(gammaInstrument)
     : null;
+  const expectedGammaContract =
+    pane.broker === "Databento" ? currentCmeContract(pane.symbol) : null;
+  const gammaDataReady = Boolean(
+    expectedGammaContract
+    && resolvedContractSymbol === expectedGammaContract
+    && candles.length,
+  );
+  const currentGammaOverlay =
+    gammaOverlay?.instrument === gammaInstrument ? gammaOverlay : null;
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setError(null);
+    setCandles([]);
+    latestCandlesRef.current = [];
 
     const loadHistory = async () => {
       const cached = pane.broker === "Databento"
@@ -1469,10 +1519,14 @@ function WorkspaceChartPane({
     const contractSymbol = pane.broker === "Databento" ? currentCmeContract(pane.symbol) : null;
     setResolvedContractSymbol(contractSymbol);
     latestFuturesRef.current = {
-      ...latestFuturesRef.current,
+      price: null,
+      asOfMs: null,
       contractSymbol,
       tickSize: futuresTickSize(pane.symbol),
     };
+    setGammaOverlay(null);
+    setGammaLevelsError(null);
+    setGammaLevelsLoading(gammaLevelsEnabled && gammaLevelsAvailable);
   }, [pane.broker, pane.symbol]);
 
   useEffect(() => {
@@ -1496,14 +1550,19 @@ function WorkspaceChartPane({
       if (!gammaLevelsAvailable) setGammaOverlay(null);
       return;
     }
+    if (!gammaDataReady) {
+      setGammaLevelsLoading(true);
+      setGammaLevelsError(null);
+      return;
+    }
 
     let cancelled = false;
     let timer: number | null = null;
     let nativeApplied = false;
-    let retainedOverlay = gammaOverlay;
+    let retainedOverlay = currentGammaOverlay;
 
     const applyConversion = async (conversion: GammaConversionDefinition) => {
-      const payload = await fetchGammaPayload(conversion);
+      const payload = await fetchGammaPayload(conversion, { allowStale: true });
       if (cancelled) return null;
       const future = latestFuturesRef.current;
       const overlay = buildGammaChartOverlay({
@@ -1566,6 +1625,7 @@ function WorkspaceChartPane({
     };
   }, [
     fallbackGammaConversion?.id,
+    gammaDataReady,
     gammaLevelsAvailable,
     gammaLevelsEnabled,
     nativeGammaConversion?.id,
@@ -1847,7 +1907,7 @@ function WorkspaceChartPane({
         <Chart
           candles={candles}
           trades={trades}
-          levels={gammaLevelsEnabled ? gammaOverlay?.levels ?? [] : []}
+          levels={gammaLevelsEnabled ? currentGammaOverlay?.levels ?? [] : []}
           instrument={displayCmeSymbol(pane.symbol)}
           timeframe={pane.timeframe}
           marketIsActive={marketIsActive}
@@ -3571,6 +3631,11 @@ export default function Home() {
       gammaLevelsEnabled ? "true" : "false",
     );
   }, [gammaLevelsEnabled]);
+
+  useEffect(() => {
+    if (!authChecked || !currentUsername || !gammaLevelsEnabled) return;
+    void warmGammaPayloadCache();
+  }, [authChecked, currentUsername, gammaLevelsEnabled]);
 
   useEffect(() => {
     setChartAlerts(loadChartAlerts());
