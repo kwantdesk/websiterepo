@@ -34,6 +34,7 @@ import {
   type OptionsFlowPayload,
   type OptionsKeyLevel,
   type OptionsMarketData,
+  type OptionsMarketPulsePayload,
   type OptionsPriceMode,
   type PremiumDriftPoint,
 } from "@/lib/optionsFlow";
@@ -703,15 +704,18 @@ export default function GammaWorkspace() {
   const [activeGreek, setActiveGreek] = useState<GreekMode>("GAMMA");
   const [gexScope, setGexScope] = useState<"FULL_CHAIN" | "ZERO_DTE">("FULL_CHAIN");
   const [data, setData] = useState<OptionsFlowPayload | null>(null);
+  const [chartMarketPreview, setChartMarketPreview] = useState<ChartMarketPreview | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pricePulseMs, setPricePulseMs] = useState(2_000);
   const [priceTick, setPriceTick] = useState<"UP" | "DOWN" | "FLAT">("FLAT");
   const [instrumentMenuOpen, setInstrumentMenuOpen] = useState(false);
   const instrumentMenuRef = useRef<HTMLDivElement>(null);
   const livePriceRef = useRef<HTMLSpanElement>(null);
   const previousPriceRef = useRef<number | null>(null);
   const requestIdRef = useRef(0);
+  const dataRef = useRef<OptionsFlowPayload | null>(null);
 
   useEffect(() => {
     if (!instrumentMenuOpen) return;
@@ -746,6 +750,7 @@ export default function GammaWorkspace() {
       const payload = await response.json() as OptionsFlowPayload & { error?: string };
       if (requestId !== requestIdRef.current) return;
       if (!response.ok) throw new Error(payload.error || "Options Flow could not be loaded.");
+      dataRef.current = payload;
       setData(payload);
       setError(null);
     } catch (loadError) {
@@ -771,10 +776,64 @@ export default function GammaWorkspace() {
     return () => window.clearInterval(interval);
   }, [data?.refreshAfterMs, loadData, priceMode, symbol]);
 
+  useEffect(() => {
+    let cancelled = false;
+    let timer: number | null = null;
+    const marketKey = `${symbol}:${priceMode}`;
+    setChartMarketPreview(null);
+
+    const pollMarket = async () => {
+      let nextDelay = 2_000;
+      try {
+        const response = await fetch(
+          `/api/options-flow/market-data?symbol=${encodeURIComponent(symbol)}&priceMode=${priceMode}`,
+          { cache: "no-store" },
+        );
+        const payload = await response.json() as OptionsMarketPulsePayload & { error?: string };
+        if (!response.ok) throw new Error(payload.error || "Live options price pulse failed.");
+        if (cancelled || payload.symbol !== symbol) return;
+
+        const current = dataRef.current;
+        const marketData: OptionsMarketData = {
+          ...payload.marketData,
+          candles: mergeCandles(current?.marketData.candles ?? [], payload.marketData.candles),
+        };
+        setChartMarketPreview({ key: marketKey, marketData });
+        nextDelay = Math.max(250, payload.refreshAfterMs);
+        setPricePulseMs(nextDelay);
+
+        setData((active) => {
+          if (!active || active.symbol !== symbol || active.marketData.requestedMode !== priceMode) return active;
+          const next: OptionsFlowPayload = {
+            ...active,
+            stockPrice: priceMode === "CASH" ? marketData.lastPrice ?? active.stockPrice : active.stockPrice,
+            candles: mergeCandles(active.candles, marketData.candles),
+            marketData,
+            rateLimitRemaining: payload.rateLimitRemaining ?? active.rateLimitRemaining,
+          };
+          dataRef.current = next;
+          return next;
+        });
+      } catch {
+        nextDelay = 2_000;
+      } finally {
+        if (!cancelled) timer = window.setTimeout(() => void pollMarket(), nextDelay);
+      }
+    };
+
+    timer = window.setTimeout(() => void pollMarket(), 0);
+    return () => {
+      cancelled = true;
+      if (timer !== null) window.clearTimeout(timer);
+    };
+  }, [priceMode, symbol]);
+
   const selectedInstrument = OPTIONS_FLOW_INSTRUMENTS.find((item) => item.symbol === symbol)
     ?? OPTIONS_FLOW_INSTRUMENTS[0];
-  const headerMarketData = data?.marketData ?? null;
-  const pricePulseMs = data?.refreshAfterMs ?? LEVEL_REFRESH_MS;
+  const activeMarketKey = `${symbol}:${priceMode}`;
+  const headerMarketData = chartMarketPreview?.key === activeMarketKey
+    ? chartMarketPreview.marketData
+    : data?.marketData ?? null;
 
   useEffect(() => {
     const nextPrice = headerMarketData?.lastPrice;
@@ -808,6 +867,8 @@ export default function GammaWorkspace() {
   const changeSymbol = (nextSymbol: string) => {
     setInstrumentMenuOpen(false);
     setData(null);
+    dataRef.current = null;
+    setChartMarketPreview(null);
     setError(null);
     setSymbol(nextSymbol);
     setPriceMode("CASH");
@@ -817,6 +878,8 @@ export default function GammaWorkspace() {
 
   const changePriceMode = (nextPriceMode: OptionsPriceMode) => {
     setData(null);
+    dataRef.current = null;
+    setChartMarketPreview(null);
     setError(null);
     setPriceMode(nextPriceMode);
   };
