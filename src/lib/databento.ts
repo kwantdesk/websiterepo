@@ -104,8 +104,25 @@ function time(value: unknown) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-async function historicalRequest(params: Record<string, string>) {
-  const key = process.env.DATABENTO_API_KEY;
+function availableEndFromError(detail: string) {
+  try {
+    const payload = JSON.parse(detail) as {
+      detail?: {
+        case?: string;
+        payload?: { available_end?: unknown };
+      };
+    };
+    if (payload.detail?.case !== "data_end_after_available_end") return null;
+    const value = String(payload.detail.payload?.available_end ?? "");
+    const timestamp = Date.parse(value);
+    return Number.isFinite(timestamp) ? timestamp : null;
+  } catch {
+    return null;
+  }
+}
+
+async function historicalRequest(params: Record<string, string>, canRetryAvailableEnd = true) {
+  const key = process.env.DATABENTO_API_KEY?.trim();
   if (!key) throw new Error("Databento is not configured.");
 
   const form = new URLSearchParams({
@@ -127,6 +144,25 @@ async function historicalRequest(params: Record<string, string>) {
   });
   if (!response.ok) {
     const detail = await response.text();
+    const availableEnd = response.status === 422 && canRetryAvailableEnd
+      ? availableEndFromError(detail)
+      : null;
+    const requestedStart = Date.parse(params.start ?? "");
+    const requestedEnd = Date.parse(params.end ?? "");
+    if (
+      availableEnd
+      && Number.isFinite(requestedStart)
+      && availableEnd > requestedStart
+      && (!Number.isFinite(requestedEnd) || availableEnd < requestedEnd)
+    ) {
+      return historicalRequest(
+        {
+          ...params,
+          end: new Date(availableEnd - 1).toISOString(),
+        },
+        false,
+      );
+    }
     throw new Error(`Databento request failed (${response.status}): ${detail.slice(0, 180)}`);
   }
   return parseRows(await response.text());
