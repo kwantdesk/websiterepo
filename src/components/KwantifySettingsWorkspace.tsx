@@ -53,19 +53,27 @@ const navSections: { title: string; items: SettingsTab[] }[] = [
 
 const presetColors = ["#00F5A0", "#22C55E", "#3B82F6", "#8B5CF6", "#EC4899", "#EF4444", "#F97316", "#EAB308", "#06B6D4", "#FFFFFF", "#71717A", "#000000"];
 
+const makeTheme = (colors: Partial<ThemeColors>): ThemeColors => ({
+  ...defaultTheme,
+  ...colors,
+  accent: colors.primary ?? defaultTheme.primary,
+  chartBackground: colors.chartBackground ?? colors.background ?? defaultTheme.background,
+  gridColor: colors.gridColor ?? colors.card ?? defaultTheme.card,
+});
+
 const themePresets: { name: string; colors: ThemeColors }[] = [
-  { name: "Default Dark", colors: defaultTheme },
-  { name: "Midnight Blue", colors: { ...defaultTheme, background: "#0A0F1A", primary: "#3B82F6", panel: "#0F1729", surface: "#1A2332", chartBackground: "#0A0F1A", candleUp: "#3B82F6" } },
-  { name: "Emerald", colors: defaultTheme },
-  { name: "Purple Haze", colors: { ...defaultTheme, background: "#0D0A12", primary: "#A855F7", panel: "#110E18", surface: "#1A1525", chartBackground: "#0D0A12", candleUp: "#A855F7" } },
-  { name: "Crimson", colors: { ...defaultTheme, background: "#0F0A0A", primary: "#EF4444", panel: "#140E0E", surface: "#1F1818", chartBackground: "#0F0A0A", candleUp: "#EF4444" } },
-  { name: "Ocean", colors: { ...defaultTheme, background: "#0A0F14", primary: "#06B6D4", panel: "#0E151C", surface: "#182028", chartBackground: "#0A0F14", candleUp: "#06B6D4" } },
-  { name: "Monochrome", colors: { ...defaultTheme, background: "#0A0A0A", foreground: "#FFFFFF", primary: "#FFFFFF", panel: "#111111", surface: "#1A1A1A", chartBackground: "#0A0A0A", candleUp: "#FFFFFF", candleDown: "#71717A" } },
-  { name: "Sunset", colors: { background: "#0F0A07", foreground: "#FAFAFA", primary: "#F59E0B", secondary: "#F97316", accent: "#EF4444", muted: "#78716C", border: "#2C2520", card: "#151008", danger: "#EF4444", panel: "#0D0905", surface: "#1F1810", chartBackground: "#0E0906", gridColor: "#2A2318", crosshairColor: "rgba(245, 158, 11, 0.3)", candleUp: "#F59E0B", candleDown: "#EF4444" } },
-  { name: "Matrix", colors: { background: "#000000", foreground: "#00FF41", primary: "#00FF41", secondary: "#00CC33", accent: "#00FF41", muted: "#005500", border: "#003300", card: "#001100", danger: "#FF0000", panel: "#000800", surface: "#001A00", chartBackground: "#000000", gridColor: "#002200", crosshairColor: "rgba(0, 255, 65, 0.2)", candleUp: "#00FF41", candleDown: "#FF0000" } },
-  { name: "Arctic", colors: { background: "#0B1120", foreground: "#E2E8F0", primary: "#38BDF8", secondary: "#818CF8", accent: "#A78BFA", muted: "#64748B", border: "#1E293B", card: "#0F172A", danger: "#FB7185", panel: "#0D1424", surface: "#1E293B", chartBackground: "#0B1120", gridColor: "#1E293B", crosshairColor: "rgba(56, 189, 248, 0.3)", candleUp: "#38BDF8", candleDown: "#FB7185" } },
-  { name: "Rose Gold", colors: { background: "#0F0A0C", foreground: "#FAFAFA", primary: "#F472B6", secondary: "#E879F9", accent: "#C084FC", muted: "#78716C", border: "#2D2226", card: "#150D10", danger: "#FB7185", panel: "#0D090B", surface: "#1F1518", chartBackground: "#0E090B", gridColor: "#2A1F23", crosshairColor: "rgba(244, 114, 182, 0.3)", candleUp: "#F472B6", candleDown: "#FB7185" } },
-  { name: "Stealth", colors: { background: "#050505", foreground: "#A3A3A3", primary: "#737373", secondary: "#525252", accent: "#737373", muted: "#404040", border: "#1A1A1A", card: "#0A0A0A", danger: "#8B0000", panel: "#080808", surface: "#141414", chartBackground: "#050505", gridColor: "#141414", crosshairColor: "rgba(115, 115, 115, 0.2)", candleUp: "#A3A3A3", candleDown: "#525252" } },
+  { name: "Obsidian Gold", colors: makeTheme({ background: "#0C0D0F", panel: "#111110", surface: "#22211F", card: "#161615", foreground: "#F3F0E8", primary: "#C9A45C", secondary: "#E2C985", muted: "#958F84", border: "#292824", danger: "#D96C5F", crosshairColor: "rgba(201,164,92,.38)", candleUp: "#46B99A", candleDown: "#D96C5F" }) },
+  { name: "Midnight Ledger", colors: makeTheme({ background: "#09111E", panel: "#0D1826", surface: "#1A2A3D", card: "#111D2C", foreground: "#E8EEF7", primary: "#7A9BCB", secondary: "#A8C4E8", muted: "#8290A3", border: "#1E3047", danger: "#E07070", crosshairColor: "rgba(122,155,203,.38)", candleUp: "#56B99B", candleDown: "#E07070" }) },
+  { name: "Verdant Reserve", colors: makeTheme({ background: "#0B1511", panel: "#0E1A13", surface: "#203026", card: "#132019", foreground: "#E8F0E9", primary: "#81A98B", secondary: "#B8CFB8", muted: "#8B9B8E", border: "#24362B", danger: "#D9786D", crosshairColor: "rgba(129,169,139,.38)", candleUp: "#6EBA8A", candleDown: "#D9786D" }) },
+  { name: "Graphite", colors: makeTheme({ background: "#121212", panel: "#151513", surface: "#292825", card: "#1A1A18", foreground: "#F0F0EE", primary: "#B5B2AA", secondary: "#D7D4CC", muted: "#908E88", border: "#302F2C", danger: "#D87B72", crosshairColor: "rgba(181,178,170,.36)", candleUp: "#77B79C", candleDown: "#D87B72" }) },
+  { name: "Ivory Ledger", colors: makeTheme({ background: "#F5F2EA", panel: "#ECE7DC", surface: "#E4DDD0", card: "#FFFDF8", foreground: "#24231F", primary: "#876B3F", secondary: "#A88B5C", muted: "#777168", border: "#D8D1C4", danger: "#B95C55", crosshairColor: "rgba(135,107,63,.30)", candleUp: "#37876C", candleDown: "#B95C55" }) },
+  { name: "Silverline", colors: makeTheme({ background: "#EEF1F4", panel: "#E3E8ED", surface: "#D9E1E8", card: "#FAFBFC", foreground: "#1C2630", primary: "#456D92", secondary: "#6E91B1", muted: "#6E7B87", border: "#CCD4DC", danger: "#B75A62", crosshairColor: "rgba(69,109,146,.28)", candleUp: "#2F8B72", candleDown: "#B75A62" }) },
+  { name: "Stone & Ink", colors: makeTheme({ background: "#E9E6E0", panel: "#DED9D1", surface: "#D3CEC5", card: "#F7F5F0", foreground: "#272521", primary: "#5B6470", secondary: "#7A8592", muted: "#74706A", border: "#CDC8BF", danger: "#B76159", crosshairColor: "rgba(91,100,112,.28)", candleUp: "#39806B", candleDown: "#B76159" }) },
+  { name: "Alpine Mist", colors: makeTheme({ background: "#EAF0F0", panel: "#DDE8E7", surface: "#D1E0DE", card: "#F8FBFA", foreground: "#203033", primary: "#3E7274", secondary: "#62999A", muted: "#687B7D", border: "#C7D4D4", danger: "#B75E66", crosshairColor: "rgba(62,114,116,.28)", candleUp: "#348273", candleDown: "#B75E66" }) },
+  { name: "Violet Noir", colors: makeTheme({ background: "#100D18", panel: "#130F1D", surface: "#282035", card: "#191323", foreground: "#EEEAF7", primary: "#9A7CC6", secondary: "#C0A9E8", muted: "#91859F", border: "#302842", danger: "#DD7587", crosshairColor: "rgba(154,124,198,.38)", candleUp: "#63B99E", candleDown: "#DD7587" }) },
+  { name: "Bordeaux", colors: makeTheme({ background: "#170B10", panel: "#1B0D13", surface: "#311B23", card: "#211016", foreground: "#F4E9EB", primary: "#A86A78", secondary: "#D09AA6", muted: "#A0888D", border: "#39212A", danger: "#E07C70", crosshairColor: "rgba(168,106,120,.38)", candleUp: "#66B69A", candleDown: "#E07C70" }) },
+  { name: "Aurora", colors: makeTheme({ background: "#081518", panel: "#0A1B1E", surface: "#173135", card: "#0E2124", foreground: "#E4F2EF", primary: "#58B5B1", secondary: "#9BD8D0", muted: "#7F9B98", border: "#1B383A", danger: "#E27D72", crosshairColor: "rgba(88,181,177,.38)", candleUp: "#69C49E", candleDown: "#E27D72" }) },
+  { name: "Amber Studio", colors: makeTheme({ background: "#191209", panel: "#1C140A", surface: "#332516", card: "#241A0D", foreground: "#F5EEE2", primary: "#D49A4A", secondary: "#EDC27E", muted: "#A9987E", border: "#3A2D1D", danger: "#DA7665", crosshairColor: "rgba(212,154,74,.38)", candleUp: "#61B993", candleDown: "#DA7665" }) },
 ];
 
 const appColorFields: { key: keyof ThemeColors; label: string }[] = [
