@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="en" data-ui-theme="kwantify" data-embed="true">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#171b26">
+  <title>Kwantify — Liquidity Heatmap</title>
+  <script>
+    (() => {
+      const defaults = {
+        background: '#09090b',
+        foreground: '#fafafa',
+        primary: '#00f5a0',
+        secondary: '#6366f1',
+        muted: '#71717a',
+        border: '#27272a',
+        card: '#0f0f12',
+        danger: '#ef4444',
+        panel: '#0c0c0e',
+        surface: '#18181b',
+      };
+
+      try {
+        const saved = JSON.parse(localStorage.getItem('olisa-theme') || 'null');
+        const theme = saved && typeof saved === 'object' ? { ...defaults, ...saved } : defaults;
+        const root = document.documentElement;
+        const color = (value, fallback) => (
+          typeof value === 'string' && value.trim() ? value.trim() : fallback
+        );
+        const primary = color(theme.primary, defaults.primary);
+        const danger = color(theme.danger, defaults.danger);
+        const hexRgb = (value, fallback) => {
+          const match = String(value).match(/^#([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i);
+          return match
+            ? match.slice(1).map(part => parseInt(part, 16)).join(', ')
+            : fallback;
+        };
+        const properties = {
+          '--ui-bg': color(theme.background, defaults.background),
+          '--ui-chrome': color(theme.panel, defaults.panel),
+          '--ui-panel': color(theme.panel, defaults.panel),
+          '--ui-panel-alt': color(theme.card, defaults.card),
+          '--ui-surface': color(theme.surface, defaults.surface),
+          '--ui-line': color(theme.border, defaults.border),
+          '--ui-line-strong': `color-mix(in srgb, ${color(theme.border, defaults.border)}, ${color(theme.foreground, defaults.foreground)} 14%)`,
+          '--ui-text': color(theme.foreground, defaults.foreground),
+          '--ui-muted': color(theme.muted, defaults.muted),
+          '--ui-accent': primary,
+          '--ui-accent-alt': color(theme.secondary, defaults.secondary),
+          '--ui-danger': danger,
+          '--ui-accent-rgb': hexRgb(primary, '0, 245, 160'),
+          '--ui-danger-rgb': hexRgb(danger, '239, 68, 68'),
+          '--font-ui': '"Inter", system-ui, -apple-system, sans-serif',
+          '--font-mono': '"JetBrains Mono", monospace',
+        };
+
+        for (const [property, value] of Object.entries(properties)) {
+          root.style.setProperty(property, value);
+        }
+      } catch {
+        // The stylesheet's KWANTIFY defaults remain usable if saved settings are malformed.
+      }
+    })();
+  </script>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="embed.css">
+</head>
+<body>
+  <div class="terminal-shell" id="terminalShell">
+    <header class="app-bar">
+      <nav class="instrument-tabs" aria-label="Instrument tabs">
+        <button class="instrument-tab active" data-symbol="MNQ"><strong id="mnqTabLabel">MNQU6.CME@SIM</strong><span>×</span></button>
+        <button class="instrument-tab" data-symbol="ES"><strong>ESU6.CME@SIM</strong><span>×</span></button>
+        <button class="instrument-tab" data-symbol="BTC"><strong>BTCUSD@SIM</strong><span>×</span></button>
+        <button class="new-tab" id="newTab" title="Cycle research symbol" aria-label="Add research symbol">＋</button>
+      </nav>
+      <div class="header-context"><span>Workspace</span><strong>MNQ liquidity map</strong></div>
+      <div class="theme-switcher" role="group" aria-label="Website appearance">
+        <span class="theme-label">Site theme</span>
+        <button class="theme-step" id="themePrev" title="Previous appearance" aria-label="Previous appearance">‹</button>
+        <button class="theme-current" id="themeCurrent" title="Linked to Kwantify Settings" aria-label="Website appearance linked" disabled>
+          <i aria-hidden="true"></i><span><small id="themeCode">SYNC</small><b id="themeName">Website theme</b></span>
+        </button>
+        <button class="theme-step" id="themeNext" title="Next appearance" aria-label="Next appearance">›</button>
+      </div>
+      <div class="app-actions">
+        <span class="simulation-badge" id="modeStatus"><i></i> CONNECTING</span>
+        <span id="utcClock">00:00:00 <small>UTC</small></span>
+        <button class="window-button" id="fullscreenButton" aria-label="Toggle fullscreen">□</button>
+      </div>
+    </header>
+
+    <section class="top-deck" aria-label="Chart toolbar">
+      <div class="command-label"><small>Live research</small><strong>Order flow</strong></div>
+      <div class="tool-rail" aria-label="Chart tools">
+        <button class="rail-button active" data-tool="crosshair" title="Crosshair" aria-label="Crosshair tool"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M12 2v4M12 18v4M2 12h4M18 12h4"></path></svg></button>
+        <button class="rail-button" data-tool="pan" title="Pan chart" aria-label="Pan tool"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 2 3 3-3 3M12 2v6M22 12l-3-3-3 3M22 12h-6M12 22l-3-3 3-3M12 22v-6M2 12l3 3 3-3M2 12h6"></path></svg></button>
+        <button class="rail-button" data-tool="measure" title="Measure" aria-label="Measure tool"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 17 14-14 4 4L7 21H3zM14 6l4 4M11 9l2 2M8 12l2 2M5 15l2 2"></path></svg></button>
+        <span class="toolbar-separator"></span>
+        <button class="rail-button active-toggle" id="toggleHeatmap" title="Toggle heatmap" aria-label="Toggle heatmap"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16M4 9h16M4 13h16M4 17h16"></path><path d="M7 3v16M17 3v16" opacity=".45"></path></svg></button>
+        <button class="rail-button active-toggle" id="toggleTrades" title="Toggle volume dots" aria-label="Toggle trade bubbles"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="5"></circle><circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none"></circle></svg></button>
+        <button class="rail-button active-toggle" id="toggleProfile" title="Toggle volume profile" aria-label="Toggle volume profile"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5v14M5 7h6M5 11h11M5 15h8M5 19h4"></path></svg></button>
+        <button class="rail-button active-toggle" id="toggleCvd" title="Toggle CVD subchart" aria-label="Toggle cumulative volume delta"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 15c3-8 5 4 8-3s5-1 10-7"></path><path d="M3 20h18" opacity=".45"></path></svg></button>
+        <button class="rail-button" id="zoomIn" title="Zoom in price and time" aria-label="Zoom in"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"></circle><path d="M15.5 15.5 21 21M10.5 7.5v6M7.5 10.5h6"></path></svg></button>
+        <button class="rail-button" id="zoomOut" title="Zoom out price and time" aria-label="Zoom out"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"></circle><path d="M15.5 15.5 21 21M7.5 10.5h6"></path></svg></button>
+        <button class="rail-button" id="resetView" title="Reset view" aria-label="Reset view"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"></path><path d="M3 3v5h5"></path></svg></button>
+        <button class="rail-button" id="settingsButton" title="Display settings" aria-label="Display settings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h7M15 6h5M4 12h3M11 12h9M4 18h9M17 18h3"></path><circle cx="13" cy="6" r="2"></circle><circle cx="9" cy="12" r="2"></circle><circle cx="15" cy="18" r="2"></circle></svg></button>
+        <button class="rail-button" id="helpButton" title="Keyboard shortcuts" aria-label="Keyboard shortcuts"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M9.8 9a2.4 2.4 0 1 1 3.4 2.2c-.8.4-1.2.9-1.2 1.8M12 17h.01"></path></svg></button>
+        <span class="toolbar-separator"></span>
+        <label class="heat-control" title="Heat sensitivity">
+          <span>☀</span><input id="quickHeatRange" type="range" min="0.4" max="2.5" step="0.05" value="1" aria-label="Quick heat sensitivity">
+        </label>
+        <div class="heat-palette" aria-label="Liquidity color scale"><span id="heatPalettePreview"></span></div>
+      </div>
+    </section>
+
+    <div class="workspace">
+      <aside class="trading-panel" aria-label="Read-only market panel">
+        <div class="tcp-heading"><span>Market</span> Details</div>
+        <div class="account-row"><span>Account ⓘ</span><select disabled><option>None</option></select></div>
+        <button class="trading-off" disabled>TRADING: OFF</button>
+        <p class="execution-note">Research mode · Orders unavailable</p>
+
+        <div class="strategy-block">
+          <select disabled><option>&lt;NONE&gt;</option></select>
+          <button disabled>START</button>
+          <label>Session <select disabled><option>T0</option></select></label>
+        </div>
+
+        <dl class="position-stats">
+          <div><dt>LAST</dt><dd id="lastPrice">—</dd></div>
+          <div><dt>SPREAD</dt><dd id="spreadValue">—</dd></div>
+          <div><dt>CHANGE</dt><dd id="priceChange">—</dd></div>
+          <div><dt>FLOW</dt><dd id="tradeRate">—</dd></div>
+          <div><dt>VOLUME</dt><dd id="volumeValue">—</dd></div>
+        </dl>
+
+        <div class="size-control"><span>Size:</span><input value="0" disabled><button disabled>Reset</button></div>
+        <div class="size-grid"><button disabled>1</button><button disabled>5</button><button disabled>10</button><button disabled>20</button><button disabled>50</button><button disabled>100</button></div>
+
+        <div class="inactive-orders"><button disabled>× Unknown</button><button disabled>CANCEL ALL</button><button disabled>× Unknown</button></div>
+        <button class="flatten" disabled>FLATTEN</button>
+        <div class="order-grid">
+          <button disabled class="bid">MKT</button><button disabled class="ask">MKT</button>
+          <button disabled class="bid">ASK</button><button disabled class="ask">ASK</button>
+          <button disabled class="bid">BID</button><button disabled class="ask">BID</button>
+        </div>
+        <button class="reverse" disabled>REVERSE</button>
+
+        <div class="bracket-block">
+          <label><input type="checkbox" disabled> OCO</label>
+          <label><input type="checkbox" disabled> Brackets</label>
+          <label>TP: <input value="6" disabled></label>
+          <label>SL: <input value="4" disabled></label>
+          <label>TS: <input value="1" disabled></label>
+        </div>
+
+        <div class="symbol-card">
+          <span class="symbol-icon" id="symbolIcon">M</span>
+          <div><strong id="symbolLabel">MNQU6</strong><small id="symbolDescription">Micro E-mini Nasdaq-100</small></div>
+          <button id="symbolMenu" aria-label="Open symbol menu">⌄</button>
+        </div>
+      </aside>
+
+      <main class="market-workspace">
+        <section class="chart-module cvd-open" id="chartModule">
+          <div class="chart-area" id="chartArea">
+            <canvas id="heatmapCanvas" title="Drag the right price and order-book rail vertically to browse higher or lower prices" aria-label="Historical order book heatmap; drag the right price rail vertically to browse price levels"></canvas>
+            <div class="loading-strip"><span class="spinner"></span><span id="sourceBanner">Connecting to live Databento MBO depth</span><button aria-label="Dismiss status">×</button></div>
+            <div class="chart-corner-label"><strong><span></span> Liquidity</strong><small id="latencyLabel">12 ms</small></div>
+            <div class="current-price-tag" id="currentPriceTag">—</div>
+            <div class="chart-tooltip hidden" id="chartTooltip">
+              <strong id="tooltipTime">—</strong>
+              <dl><dt>Price</dt><dd id="tooltipPrice">—</dd><dt>Liquidity</dt><dd id="tooltipLiquidity">—</dd><dt>Volume</dt><dd id="tooltipVolume">—</dd><dt>Side</dt><dd id="tooltipSide">—</dd></dl>
+            </div>
+            <div class="measurement-label hidden" id="measurementLabel">—</div>
+          </div>
+          <section class="cvd-panel" id="cvdPanel" aria-label="Cumulative volume delta panel">
+            <header><strong><b></b> Volume delta <small>Scroll or drag to explore history</small></strong><span><button class="active" id="cvdGoLive" aria-label="Return CVD and chart to live">Live</button><i id="cvdLegend">NET 0 · LOADED</i></span></header>
+            <canvas id="cvdCanvas" title="Wheel to browse history, drag horizontally to pan, Ctrl+wheel to zoom time" aria-label="Cumulative volume delta chart; wheel or drag to browse history"></canvas>
+          </section>
+        </section>
+      </main>
+    </div>
+
+    <aside class="inspector" id="inspector">
+      <button class="panel-collapse" id="panelCollapse" aria-label="Close side panel">×</button>
+      <div class="inspector-tabs" role="tablist"><button class="active" data-panel="depth" role="tab">DEPTH</button><button data-panel="signals" role="tab">SIGNALS</button><button data-panel="settings" role="tab">DISPLAY</button></div>
+      <div class="inspector-panel active" id="depthPanel">
+        <header><span>MARKET DEPTH</span><strong id="depthSymbol">MNQU6</strong></header>
+        <div class="depth-ladder" id="depthLadder" aria-label="Depth of market ladder"></div>
+        <div class="metric-grid"><span>Imbalance <strong id="imbalanceValue">50%</strong></span><span>Microprice <strong id="microPrice">—</strong></span><span>Top depth <strong id="topDepth">—</strong></span><span>Walls <strong id="wallCount">—</strong></span></div>
+        <div class="metric-compat"><i id="bidImbalance"></i><i id="askImbalance"></i><span id="bidPercent"></span><span id="askPercent"></span></div>
+        <section class="tape-section"><header><span>TIME &amp; SALES</span><button id="clearTape">CLEAR</button></header><div class="tape-list" id="tapeList"></div></section>
+      </div>
+      <div class="inspector-panel" id="signalsPanel">
+        <div class="signal-grid">
+          <article id="cvdSignal"><span>CUMULATIVE VOLUME DELTA</span><strong>0 contracts</strong><small>Loaded history</small><b>FLAT</b></article>
+          <article id="volumeImbalanceSignal"><span>VOLUME IMBALANCE</span><strong>0.0%</strong><small>Visible executions</small><b>FLAT</b></article>
+          <article id="orderbookImbalanceSignal"><span>ORDERBOOK IMBALANCE</span><strong>0.0%</strong><small>Top 10 weighted levels</small><b>FLAT</b></article>
+          <article id="absorptionSignal"><span>ABSORPTION</span><strong>Monitoring exact price levels</strong><small id="absorptionDetail">1.0s window · auto threshold</small><b>NEUTRAL</b></article>
+          <article id="sweepSignal"><span>LIQUIDITY SWEEP</span><strong>No active sweep</strong><small id="sweepDetail">0.5s window · 3 levels</small><b>QUIET</b></article>
+        </div>
+        <section class="indicator-settings" aria-label="Order-flow indicator settings">
+          <header><strong>INDICATOR SETTINGS</strong><small>Trade-driven, read-only analysis</small></header>
+          <fieldset>
+            <legend>CVD</legend>
+            <label class="toggle-row"><input id="cvdEnabled" type="checkbox" checked> Enabled</label>
+            <label>Range<select id="cvdRangeSelect"><option value="loaded">Loaded history</option><option value="visible">Visible chart</option></select></label>
+            <label>Scale<select id="cvdScaleSelect"><option value="compact">Compact</option><option value="include-zero">Include zero</option><option value="symmetric">Symmetric</option></select></label>
+            <label class="toggle-row"><input id="cvdSplit" type="checkbox"> Split buyers / sellers</label>
+            <div class="number-pair"><label>Min trade<input id="cvdMinimumTradeSize" type="number" min="0" step="1" value="1"></label><label>Max (0 = all)<input id="cvdMaximumTradeSize" type="number" min="0" step="1" value="0"></label></div>
+          </fieldset>
+          <fieldset>
+            <legend>Absorption</legend>
+            <div class="toggle-pair"><label><input id="absorptionEnabled" type="checkbox" checked> Enabled</label><label><input id="absorptionAutomatic" type="checkbox" checked> Auto σ</label></div>
+            <div class="number-pair"><label>Window ms<input id="absorptionWindowMs" type="number" min="50" step="50" value="1000"></label><label>Min volume<input id="absorptionMinimumVolume" type="number" min="1" step="1" value="24"></label></div>
+            <label>SD multiplier<input id="absorptionSdMultiplier" type="number" min="0" max="10" step="0.1" value="2.5"></label>
+          </fieldset>
+          <fieldset>
+            <legend>Sweeps</legend>
+            <div class="toggle-pair"><label><input id="sweepsEnabled" type="checkbox" checked> Enabled</label><label><input id="sweepsAutomatic" type="checkbox" checked> Auto σ</label></div>
+            <div class="number-pair"><label>Window ms<input id="sweepWindowMs" type="number" min="50" step="50" value="500"></label><label>Min volume<input id="sweepMinimumVolume" type="number" min="1" step="1" value="36"></label></div>
+            <div class="number-pair"><label>Min levels<input id="sweepMinimumLevels" type="number" min="2" max="20" step="1" value="3"></label><label>SD multiplier<input id="sweepSdMultiplier" type="number" min="0" max="10" step="0.1" value="2.8"></label></div>
+          </fieldset>
+          <fieldset>
+            <legend>Imbalance</legend>
+            <label>Weighted depth levels<input id="imbalanceDepthLevels" type="number" min="1" max="100" step="1" value="10"></label>
+          </fieldset>
+        </section>
+      </div>
+      <div class="inspector-panel" id="settingsPanel">
+        <label>Appearance<select id="uiThemeSelect" disabled>
+          <option value="kwantify">Linked to Website Settings</option>
+        </select></label>
+        <label>Heat palette<select id="paletteSelect">
+          <optgroup label="Kwantify">
+            <option value="auto">Automatic — Website Colours</option>
+            <option value="kwantify">Signal Green</option><option value="liquid">Liquid Blue</option>
+          </optgroup>
+          <optgroup label="Reference">
+            <option value="thermal">Thermal</option><option value="bookmap2">Spectrum</option>
+          </optgroup>
+          <optgroup label="Classic">
+            <option value="ember">Ember</option><option value="ocean">Ocean</option><option value="mono">Mono</option>
+          </optgroup>
+          <optgroup label="Additional palettes">
+            <option value="aurora">Aurora</option><option value="magma">Magma</option>
+            <option value="viridis">Viridis</option><option value="plasma">Plasma</option>
+            <option value="arctic">Arctic</option><option value="limefire">Lime Fire</option>
+            <option value="purplegold">Purple Gold</option><option value="copper">Copper</option>
+            <option value="icefire">Ice Fire</option><option value="neon">Neon</option>
+          </optgroup>
+        </select></label>
+        <label>Heat sensitivity <output id="sensitivityOutput">1.00</output><input id="sensitivityRange" type="range" min="0.4" max="2.5" step="0.05" value="1"></label>
+        <label>Heatmap dimming <output id="dimmingOutput">40</output><input id="dimmingRange" type="range" min="0" max="100" step="1" value="40"></label>
+        <label>Heatmap filter<select id="heatmapFilterSelect"><option value="auto">Auto</option><option value="gaussian">Gaussian</option><option value="none">None</option></select></label>
+        <label>Gaussian sigma <output id="sigmaOutput">5</output><input id="sigmaRange" type="range" min="0" max="20" step="1" value="5"></label>
+        <label>3D bubble size <output id="bubbleOutput">40</output><input id="bubbleRange" type="range" min="0" max="100" step="1" value="40"></label>
+        <label>Bubble transparency <output id="transparencyOutput">41</output><input id="transparencyRange" type="range" min="0" max="80" step="1" value="41"></label>
+        <label>Smart clustering <output id="clusteringOutput">52</output><input id="clusteringRange" type="range" min="0" max="100" step="1" value="52"></label>
+        <label title="Reject an individual execution before clustering when its size is below this value">Minimum trade size <output id="minimumTradeSizeOutput">1</output><input id="minimumTradeSizeRange" type="range" min="1" max="100" step="1" value="1"></label>
+        <label title="Render a clustered dot only when its completed net volume reaches this value">Minimum bubble volume <output id="minimumVolumeOutput">1</output><input id="minimumVolumeRange" type="range" min="1" max="250" step="1" value="1"></label>
+        <label title="Cancel equal buy and sell volume inside each clustered dot"><input id="bubbleDifferential" type="checkbox" checked> Differential bubbles</label>
+        <label><input id="autoCenter" type="checkbox" checked> Auto-center price</label>
+        <label><input id="showTrails" type="checkbox" checked> Best bid / ask</label>
+        <label><input id="showGrid" type="checkbox" checked> Grid lines</label>
+        <label><input id="showDom" type="checkbox" checked> Depth-of-market columns</label>
+        <label><input id="aggregateDepth" type="checkbox"> Aggregate market depth</label>
+        <button id="resetSettings">RESET DISPLAY DEFAULTS</button>
+      </div>
+    </aside>
+
+    <footer class="status-bar">
+      <div><span class="status-led"></span><strong>DATA</strong><span id="feedStatus">CONNECTING · DATABENTO</span></div>
+      <div><strong>RENDER</strong><span id="fpsValue">— FPS</span></div>
+      <div><strong>EVENTS</strong><span id="eventCount">0</span></div>
+      <div class="status-right"><span id="replayTime">—</span><span id="footerModeStatus">CONNECTING TO DATABENTO</span><strong>TRADING: OFF</strong></div>
+    </footer>
+  </div>
+
+  <div class="compat-controls" aria-hidden="true">
+    <span id="cvdValue">0</span><span id="rangeStart">—</span>
+    <button id="playPause"><svg class="pause-icon"></svg><svg class="play-icon hidden"></svg></button>
+    <button id="stepBack">−1</button><input id="timeline" type="range" min="0" max="1000" value="1000"><button id="stepForward">+1</button><button id="speedButton">1×</button><button id="goLive">LIVE</button>
+  </div>
+
+  <dialog class="modal" id="helpModal"><div class="modal-header"><strong>Kwantify heatmap shortcuts</strong><button id="closeHelp" aria-label="Close shortcuts">×</button></div><div class="shortcut-grid"><kbd>Wheel</kbd><span>Zoom price and time</span><kbd>Shift + wheel</kbd><span>Zoom time only</span><kbd>Ctrl + wheel</kbd><span>Zoom price only</span><kbd>Space</kbd><span>Play or pause</span><kbd>L</kbd><span>Return to live edge</span><kbd>H</kbd><span>Toggle heatmap</span><kbd>T</kbd><span>Toggle volume dots</span><kbd>R</kbd><span>Reset chart</span></div></dialog>
+
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>

@@ -60,6 +60,7 @@ import {
   Upload,
   User,
   Wallet,
+  Waves,
   X,
   Zap,
 } from "lucide-react";
@@ -116,6 +117,7 @@ import {
 
 const Chart = dynamic(() => import("@/components/Chart"), { ssr: false });
 const GammaWorkspace = dynamic(() => import("@/components/options-flow/GammaWorkspace"), { ssr: false });
+const HeatmapWorkspace = dynamic(() => import("@/components/heatmap/HeatmapWorkspace"), { ssr: false });
 
 const BOTTOM_PANEL_MIN_HEIGHT = 150;
 const BOTTOM_PANEL_DEFAULT_HEIGHT = 300;
@@ -244,7 +246,7 @@ type WorkspaceBackupFile = {
   exportedAt: string;
   presets: WorkspacePreset[];
 };
-type BottomWorkspaceSection = "charts" | "gamma" | "gameplan" | "kwantbot" | "news";
+type BottomWorkspaceSection = "charts" | "gamma" | "heatmap" | "gameplan" | "kwantbot" | "news";
 
 const WORKSPACE_PRESETS_STORAGE_KEY = "kwantdesk-chart-workspace-presets";
 const ACTIVE_WORKSPACE_PRESET_STORAGE_KEY = "kwantdesk-chart-workspace-active-preset";
@@ -255,6 +257,7 @@ const KWANTBOT_MESSAGES_STORAGE_KEY = "kwantdesk-kwantbot-messages";
 const BOTTOM_WORKSPACE_SECTIONS = [
   { id: "charts" as const, label: "Charts", icon: LineChart },
   { id: "gamma" as const, label: "Gamma", icon: BarChart3 },
+  { id: "heatmap" as const, label: "Heatmap", icon: Waves },
   { id: "gameplan" as const, label: "Gameplan", icon: CalendarDays },
   { id: "kwantbot" as const, label: "KwantBot", icon: Bot },
   { id: "news" as const, label: "News", icon: BookOpen },
@@ -2100,7 +2103,7 @@ export default function Home() {
   const [bottomWorkspaceSection, setBottomWorkspaceSection] = useState<BottomWorkspaceSection>(() => {
     if (typeof window === "undefined") return "charts";
     const saved = window.localStorage.getItem(BOTTOM_WORKSPACE_SECTION_STORAGE_KEY);
-    return saved === "charts" || saved === "gameplan" || saved === "kwantbot" || saved === "news" || saved === "gamma"
+    return saved === "charts" || saved === "gameplan" || saved === "kwantbot" || saved === "news" || saved === "gamma" || saved === "heatmap"
       ? saved
       : "charts";
   });
@@ -6084,6 +6087,7 @@ export default function Home() {
             aria-label={`${BOTTOM_WORKSPACE_SECTIONS.find((section) => section.id === bottomWorkspaceSection)?.label ?? "Workspace"} workspace`}
           >
             {bottomWorkspaceSection === "gamma" ? <GammaWorkspace /> : null}
+            {bottomWorkspaceSection === "heatmap" ? <HeatmapWorkspace /> : null}
           </section>
         )}
 
