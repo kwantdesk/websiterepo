@@ -11,6 +11,8 @@ function allowed(email?: string | null) {
 
 export async function middleware(request: NextRequest) {
   const response = NextResponse.next({ request });
+  if (request.nextUrl.pathname === "/api/databento/health") return response;
+
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
