@@ -1545,11 +1545,8 @@ function WorkspaceChartPane({
     [gameplanOverlay, settings],
   );
   const chartLevels = useMemo(
-    () => [
-      ...(gammaLevelsEnabled ? currentGammaOverlay?.levels ?? [] : []),
-      ...gameplanDecorations.levels,
-    ],
-    [currentGammaOverlay, gammaLevelsEnabled, gameplanDecorations.levels],
+    () => gammaLevelsEnabled ? currentGammaOverlay?.levels ?? [] : [],
+    [currentGammaOverlay, gammaLevelsEnabled],
   );
 
   useEffect(() => {
@@ -2018,7 +2015,8 @@ function WorkspaceChartPane({
           candles={candles}
           trades={trades}
           levels={chartLevels}
-          zones={gameplanDecorations.zones}
+          backgroundLevels={gameplanDecorations.levels}
+          backgroundZones={gameplanDecorations.zones}
           instrument={displayCmeSymbol(pane.symbol)}
           timeframe={pane.timeframe}
           marketIsActive={marketIsActive}

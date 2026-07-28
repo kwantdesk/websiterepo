@@ -1,7 +1,16 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type ComponentType, type CSSProperties, type DragEvent as ReactDragEvent } from "react";
-import { createChart, IChartApi, LineStyle, Time } from "lightweight-charts";
+import {
+  createChart,
+  LineStyle,
+  type IChartApi,
+  type ISeriesPrimitive,
+  type ISeriesPrimitivePaneRenderer,
+  type ISeriesPrimitivePaneView,
+  type SeriesAttachedParameter,
+  type Time,
+} from "lightweight-charts";
 import {
   ArrowBigDown,
   ArrowBigUp,
@@ -67,6 +76,8 @@ interface ChartProps {
   trades?: (Trade & { markerVisible?: boolean })[];
   levels?: ChartLevel[];
   zones?: ChartZone[];
+  backgroundLevels?: ChartLevel[];
+  backgroundZones?: ChartZone[];
   instrument?: string;
   timeframe?: string;
   marketIsActive?: boolean;
@@ -103,6 +114,132 @@ export interface ChartZone {
   color: string;
   fillColor: string;
   label: string;
+}
+
+type CandleSeriesApi = ReturnType<IChartApi["addCandlestickSeries"]>;
+
+class GameplanUnderlayRenderer implements ISeriesPrimitivePaneRenderer {
+  constructor(private readonly primitive: GameplanUnderlayPrimitive) {}
+
+  draw(target: Parameters<ISeriesPrimitivePaneRenderer["draw"]>[0]) {
+    const series = this.primitive.series();
+    if (!series) return;
+
+    target.useMediaCoordinateSpace(({ context, mediaSize }) => {
+      context.save();
+
+      for (const zone of this.primitive.zones()) {
+        const highY = series.priceToCoordinate(zone.high);
+        const lowY = series.priceToCoordinate(zone.low);
+        if (highY === null || lowY === null) continue;
+        const top = Math.min(highY, lowY);
+        const height = Math.max(3, Math.abs(lowY - highY));
+        context.fillStyle = zone.fillColor;
+        context.fillRect(0, top, mediaSize.width, height);
+        context.strokeStyle = zone.color;
+        context.lineWidth = 1;
+        context.setLineDash([6, 4]);
+        context.strokeRect(0.5, top + 0.5, Math.max(0, mediaSize.width - 1), Math.max(2, height - 1));
+      }
+
+      for (const level of this.primitive.levels()) {
+        const y = series.priceToCoordinate(level.price);
+        if (y === null) continue;
+        context.strokeStyle = level.color;
+        context.lineWidth = level.lineWidth ?? 1;
+        context.setLineDash(
+          level.lineStyle === "dashed"
+            ? [7, 5]
+            : level.lineStyle === "dotted"
+              ? [2, 4]
+              : [],
+        );
+        context.beginPath();
+        context.moveTo(0, y + 0.5);
+        context.lineTo(mediaSize.width, y + 0.5);
+        context.stroke();
+
+        const label = level.label;
+        context.font = "700 9px 'JetBrains Mono', monospace";
+        const labelWidth = Math.min(240, Math.max(82, context.measureText(label).width + 18));
+        const labelTop = Math.max(2, Math.min(mediaSize.height - 22, y - 11));
+        context.setLineDash([]);
+        context.fillStyle = this.primitive.backgroundColor();
+        context.strokeStyle = level.color;
+        context.lineWidth = 0.8;
+        context.beginPath();
+        context.roundRect(10, labelTop, labelWidth, 20, 7);
+        context.fill();
+        context.stroke();
+        context.fillStyle = level.color;
+        context.fillText(label, 19, labelTop + 13.5, labelWidth - 18);
+      }
+
+      context.restore();
+    });
+  }
+}
+
+class GameplanUnderlayView implements ISeriesPrimitivePaneView {
+  private readonly underlayRenderer: GameplanUnderlayRenderer;
+
+  constructor(primitive: GameplanUnderlayPrimitive) {
+    this.underlayRenderer = new GameplanUnderlayRenderer(primitive);
+  }
+
+  zOrder() {
+    return "bottom" as const;
+  }
+
+  renderer() {
+    return this.underlayRenderer;
+  }
+}
+
+class GameplanUnderlayPrimitive implements ISeriesPrimitive<Time> {
+  private candleSeries: CandleSeriesApi | null = null;
+  private requestRedraw: (() => void) | null = null;
+  private priceLevels: ChartLevel[] = [];
+  private priceZones: ChartZone[] = [];
+  private chartBackground = "rgba(8, 10, 12, 0.88)";
+  private readonly underlayView = new GameplanUnderlayView(this);
+
+  attached(param: SeriesAttachedParameter<Time, "Candlestick">) {
+    this.candleSeries = param.series as CandleSeriesApi;
+    this.requestRedraw = param.requestUpdate;
+  }
+
+  detached() {
+    this.candleSeries = null;
+    this.requestRedraw = null;
+  }
+
+  update(levels: ChartLevel[], zones: ChartZone[], backgroundColor: string) {
+    this.priceLevels = levels;
+    this.priceZones = zones;
+    this.chartBackground = backgroundColor;
+    this.requestRedraw?.();
+  }
+
+  series() {
+    return this.candleSeries;
+  }
+
+  levels() {
+    return this.priceLevels;
+  }
+
+  zones() {
+    return this.priceZones;
+  }
+
+  backgroundColor() {
+    return this.chartBackground;
+  }
+
+  paneViews() {
+    return [this.underlayView];
+  }
 }
 
 type DrawingToolId =
@@ -647,6 +784,8 @@ export default function Chart({
   trades,
   levels,
   zones = [],
+  backgroundLevels = [],
+  backgroundZones = [],
   instrument = "Instrument",
   timeframe,
   marketIsActive,
@@ -675,6 +814,9 @@ export default function Chart({
   const tradesRef = useRef<(Trade & { markerVisible?: boolean })[]>([]);
   const levelsRef = useRef<ChartLevel[]>([]);
   const priceLinesRef = useRef<any[]>([]);
+  const backgroundLevelsRef = useRef<ChartLevel[]>([]);
+  const backgroundZonesRef = useRef<ChartZone[]>([]);
+  const gameplanUnderlayRef = useRef<GameplanUnderlayPrimitive | null>(null);
   const horzLineRef = useRef<HTMLDivElement>(null);
   const priceLabelRef = useRef<HTMLDivElement>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; price: string } | null>(null);
@@ -1669,6 +1811,16 @@ export default function Chart({
   }, [levels]);
 
   useEffect(() => {
+    backgroundLevelsRef.current = backgroundLevels;
+    backgroundZonesRef.current = backgroundZones;
+    gameplanUnderlayRef.current?.update(
+      backgroundLevelsRef.current,
+      backgroundZonesRef.current,
+      settings.backgroundColor,
+    );
+  }, [backgroundLevels, backgroundZones, settings.backgroundColor]);
+
+  useEffect(() => {
     if (!chartContainerRef.current || candles.length === 0) return;
 
     if (chartRef.current) {
@@ -1740,6 +1892,14 @@ export default function Chart({
       crosshairMarkerVisible: false,
     } as Parameters<typeof chart.addCandlestickSeries>[0] & { crosshairMarkerVisible: boolean });
     candleSeriesRef.current = candleSeries;
+    const gameplanUnderlay = new GameplanUnderlayPrimitive();
+    gameplanUnderlay.update(
+      backgroundLevelsRef.current,
+      backgroundZonesRef.current,
+      settings.backgroundColor,
+    );
+    candleSeries.attachPrimitive(gameplanUnderlay);
+    gameplanUnderlayRef.current = gameplanUnderlay;
 
     const chartData = candles.map((c) => ({
       time: (c.timestamp / 1000) as Time,
@@ -1855,10 +2015,18 @@ export default function Chart({
         viewportFrameRef.current = null;
       }
       if (chartRef.current) {
+        if (candleSeriesRef.current && gameplanUnderlayRef.current) {
+          try {
+            candleSeriesRef.current.detachPrimitive(gameplanUnderlayRef.current);
+          } catch {
+            // Chart teardown can detach primitives before React cleanup runs.
+          }
+        }
         chartRef.current.remove();
         chartRef.current = null;
       }
       candleSeriesRef.current = null;
+      gameplanUnderlayRef.current = null;
       priceLinesRef.current = [];
       prevCandlesLengthRef.current = 0;
       prevFirstTimestampRef.current = null;
@@ -2464,7 +2632,7 @@ export default function Chart({
             <Trash2 className="h-4 w-4 text-muted" />
             <span className="flex-1 text-left">Remove all indicators from chart</span>
           </button>
-          {zones.length > 0 && onRemoveGameplanOverlay ? (
+          {(zones.length > 0 || backgroundZones.length > 0) && onRemoveGameplanOverlay ? (
             <button
               type="button"
               onClick={(e) => {
