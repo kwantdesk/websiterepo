@@ -112,6 +112,8 @@ export type KwantBotMemoryEvent = {
   price?: number;
   levelId?: string;
   levelName?: string;
+  zone?: [number, number];
+  reasoning?: string;
   detail?: string;
 };
 
@@ -428,6 +430,7 @@ export function interpretKwantBotTick(args: {
         price,
         levelId: pending.levelId,
         levelName: pending.levelName,
+        zone: pending.zone,
         detail: `${pending.type} follow-through ${pending.direction}`,
       }));
       runtime.pendingOutcome = null;
@@ -444,6 +447,7 @@ export function interpretKwantBotTick(args: {
         price,
         levelId: pending.levelId,
         levelName: pending.levelName,
+        zone: pending.zone,
         detail: `${pending.type} returned to zone`,
       }));
       runtime.pendingOutcome = null;
@@ -483,6 +487,8 @@ export function interpretKwantBotTick(args: {
       price,
       levelId: nearest.id,
       levelName: nearest.name,
+      zone: nearest.zone,
+      reasoning: nearest.why,
       detail: `${distance.toFixed(2)} points away`,
     }));
     levelRuntime.phase = "approach";
@@ -509,6 +515,8 @@ export function interpretKwantBotTick(args: {
       price,
       levelId: nearest.id,
       levelName: nearest.name,
+      zone: nearest.zone,
+      reasoning: nearest.ifVisit,
       detail: `entered from ${entrySide}`,
     }));
   } else if (
@@ -539,6 +547,8 @@ export function interpretKwantBotTick(args: {
       price,
       levelId: nearest.id,
       levelName: nearest.name,
+      zone: nearest.zone,
+      reasoning: rejected ? nearest.ifHold : nearest.ifBreak,
       detail: `${direction} after ${now - levelRuntime.touchedAt}ms`,
     }));
     runtime.pendingOutcome = {
@@ -573,6 +583,6 @@ export function interpretKwantBotTick(args: {
 export function pruneKwantBotMemory(memory: KwantBotMemoryEvent[], now = Date.now()) {
   return memory.filter((event) => {
     const age = now - Date.parse(event.createdAt);
-    return event.type === "price" ? age <= DAY_MS : age <= WEEK_MS;
-  }).slice(-4_000);
+    return event.type === "price" ? age <= DAY_MS : true;
+  }).slice(-50_000);
 }
