@@ -1,0 +1,300 @@
+"use client";
+
+import Image from "next/image";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  Activity,
+  Bot,
+  Clock3,
+  Radio,
+  RefreshCw,
+  Sparkles,
+} from "lucide-react";
+import type { UseKwantBotInterpreterResult } from "@/hooks/useKwantBotInterpreter";
+import {
+  formatKwantBotPrice,
+  type KwantBotInterpreterMessage,
+  type KwantBotMarketRoot,
+} from "@/lib/kwantBotInterpreter";
+
+function messageLabel(message: KwantBotInterpreterMessage) {
+  switch (message.kind) {
+    case "briefing": return "Market read";
+    case "approach": return "Level approaching";
+    case "touch": return "At level";
+    case "rejection": return "Rejection";
+    case "acceptance": return "Acceptance";
+    case "outcome": return "Outcome";
+    case "options": return "Options shift";
+    default: return "System";
+  }
+}
+
+function formatMessageTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Now";
+  return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+}
+
+function relativeAge(value: number | string | null, now: number) {
+  if (!value) return "waiting";
+  const parsed = typeof value === "number" ? value : Date.parse(value);
+  if (!Number.isFinite(parsed)) return "waiting";
+  const seconds = Math.max(0, Math.floor((now - parsed) / 1_000));
+  if (seconds < 5) return "now";
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m`;
+  return `${Math.floor(minutes / 60)}h`;
+}
+
+function messageTone(message: KwantBotInterpreterMessage) {
+  if (message.kind === "touch") return "border-primary/35 bg-primary/10";
+  if (message.kind === "rejection") return "border-emerald-400/25 bg-emerald-400/[0.07]";
+  if (message.kind === "acceptance") return "border-amber-400/25 bg-amber-400/[0.07]";
+  if (message.kind === "options") return "border-violet-400/25 bg-violet-400/[0.07]";
+  return "border-border/80 bg-surface";
+}
+
+function KwantBotAvatar({ speaking = false }: { speaking?: boolean }) {
+  return (
+    <div className="relative h-9 w-9 shrink-0 overflow-hidden rounded-full border border-primary/30 bg-background shadow-[0_0_18px_color-mix(in_srgb,var(--primary)_20%,transparent)]">
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_40%,color-mix(in_srgb,var(--primary)_24%,transparent),transparent_68%)]" />
+      <div className={speaking ? "kwantbot-avatar-speaking" : ""}>
+        <Image
+          src="/images/kwantbot-avatar.png"
+          alt=""
+          width={82}
+          height={82}
+          className="absolute -top-px left-1/2 h-[82px] w-[82px] max-w-none -translate-x-1/2 object-contain grayscale"
+        />
+      </div>
+      <span
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 opacity-20"
+        style={{
+          background: "var(--primary)",
+          WebkitMaskImage: "url('/images/kwantbot-avatar.png')",
+          WebkitMaskPosition: "center",
+          WebkitMaskRepeat: "no-repeat",
+          WebkitMaskSize: "205%",
+          maskImage: "url('/images/kwantbot-avatar.png')",
+          maskPosition: "center",
+          maskRepeat: "no-repeat",
+          maskSize: "205%",
+        }}
+      />
+      <span className="absolute bottom-0.5 right-0.5 h-2 w-2 rounded-full border-2 border-panel bg-primary shadow-[0_0_8px_var(--primary)]" />
+    </div>
+  );
+}
+
+export default function KwantBotInterpreterPanel({
+  interpreter,
+}: {
+  interpreter: UseKwantBotInterpreterResult;
+}) {
+  const {
+    selectedRoot,
+    selectRoot,
+    messages,
+    memory,
+    contexts,
+    contextStates,
+    contextErrors,
+    livePrices,
+    lastTickAt,
+    feedState,
+    unread,
+    requestBrief,
+  } = interpreter;
+  const [now, setNow] = useState(Date.now());
+  const endRef = useRef<HTMLDivElement | null>(null);
+  const rootMessages = messages[selectedRoot];
+  const context = contexts[selectedRoot];
+  const price = livePrices[selectedRoot] ?? context?.currentPrice ?? null;
+  const priceSamples = useMemo(
+    () => memory[selectedRoot].filter((event) => event.type === "price").length,
+    [memory, selectedRoot],
+  );
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [rootMessages.length, selectedRoot]);
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <div className="shrink-0 border-b border-border bg-background/55">
+        <div className="flex items-center justify-between gap-2 px-3 pb-2 pt-3">
+          <div className="flex min-w-0 items-center gap-2">
+            <KwantBotAvatar speaking={feedState === "live"} />
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5">
+                <h3 className="truncate text-[13px] font-semibold text-foreground">Kwant Bot</h3>
+                <span className="rounded-full border border-primary/20 bg-primary/10 px-1.5 py-0.5 text-[8px] font-semibold uppercase tracking-[0.12em] text-primary">
+                  Interpreter
+                </span>
+              </div>
+              <div className="mt-0.5 flex items-center gap-1 text-[9px] text-muted">
+                <span className={`h-1.5 w-1.5 rounded-full ${feedState === "live" ? "animate-pulse bg-primary shadow-[0_0_7px_var(--primary)]" : "bg-amber-400"}`} />
+                CME {feedState === "live" ? "connected" : feedState}
+              </div>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => requestBrief()}
+            disabled={!context || price === null}
+            className="flex h-8 items-center gap-1.5 rounded-lg border border-primary/25 bg-primary/10 px-2 text-[9px] font-semibold uppercase tracking-[0.08em] text-primary transition-colors hover:bg-primary/15 disabled:cursor-not-allowed disabled:opacity-40"
+            title="Generate an immediate deterministic market read"
+          >
+            <RefreshCw className="h-3 w-3" />
+            Brief
+          </button>
+        </div>
+
+        <div className="grid grid-cols-2 gap-1.5 px-3 pb-2">
+          {(["NQ", "ES"] as KwantBotMarketRoot[]).map((root) => {
+            const active = selectedRoot === root;
+            const rootPrice = livePrices[root] ?? contexts[root]?.currentPrice ?? null;
+            return (
+              <button
+                key={root}
+                type="button"
+                onClick={() => selectRoot(root)}
+                className={`relative rounded-xl border px-2.5 py-2 text-left transition-all ${active ? "border-primary/40 bg-primary/12 shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--primary)_12%,transparent)]" : "border-border bg-surface/55 hover:border-primary/20"}`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className={`text-[11px] font-semibold ${active ? "text-primary" : "text-foreground"}`}>{root}</span>
+                  {unread[root] > 0 ? (
+                    <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[8px] font-semibold text-background">
+                      {unread[root]}
+                    </span>
+                  ) : (
+                    <span className={`h-1.5 w-1.5 rounded-full ${lastTickAt[root] ? "bg-primary" : "bg-muted/50"}`} />
+                  )}
+                </div>
+                <div className="mt-1 font-mono text-[11px] text-foreground">
+                  {rootPrice === null ? "—" : formatKwantBotPrice(root, rootPrice)}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="grid grid-cols-3 border-t border-border/70">
+          <div className="border-r border-border/70 px-3 py-2">
+            <div className="flex items-center gap-1 text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">
+              <Radio className="h-2.5 w-2.5" />
+              Price
+            </div>
+            <div className="mt-1 truncate font-mono text-[11px] text-foreground">
+              {price === null ? "Waiting" : formatKwantBotPrice(selectedRoot, price)}
+            </div>
+          </div>
+          <div className="border-r border-border/70 px-3 py-2">
+            <div className="flex items-center gap-1 text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">
+              <Activity className="h-2.5 w-2.5" />
+              Context
+            </div>
+            <div className={`mt-1 truncate text-[9px] font-semibold uppercase ${contextStates[selectedRoot] === "live" ? "text-primary" : contextStates[selectedRoot] === "error" ? "text-danger" : "text-amber-400"}`}>
+              {contextStates[selectedRoot]}
+            </div>
+          </div>
+          <div className="px-3 py-2">
+            <div className="flex items-center gap-1 text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">
+              <Clock3 className="h-2.5 w-2.5" />
+              Memory
+            </div>
+            <div className="mt-1 truncate text-[9px] font-semibold text-foreground">{priceSamples} mins</div>
+          </div>
+        </div>
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-y-auto bg-[linear-gradient(180deg,color-mix(in_srgb,var(--background)_68%,transparent),var(--panel))] px-3 py-4">
+        {contextErrors[selectedRoot] ? (
+          <div className="mb-3 rounded-xl border border-danger/20 bg-danger/[0.06] px-3 py-2 text-[10px] leading-4 text-danger">
+            {contextErrors[selectedRoot]} Existing levels and memory remain active while the context reconnects.
+          </div>
+        ) : null}
+
+        <div className="mb-4 flex items-center gap-2 text-[8px] font-semibold uppercase tracking-[0.12em] text-muted/70">
+          <span className="h-px flex-1 bg-border" />
+          {selectedRoot} live tape · tick {relativeAge(lastTickAt[selectedRoot], now)}
+          <span className="h-px flex-1 bg-border" />
+        </div>
+
+        <div className="space-y-4">
+          {!rootMessages.length ? (
+            <div className="flex min-h-52 flex-col items-center justify-center px-4 text-center">
+              <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl border border-primary/20 bg-primary/10 text-primary">
+                <Bot className="h-5 w-5" />
+              </div>
+              <div className="text-[12px] font-semibold text-foreground">
+                Building the {selectedRoot} market read
+              </div>
+              <p className="mt-1 text-[10px] leading-4 text-muted">
+                Loading live CME price, Gameplan levels, options positioning, and the first memory samples.
+              </p>
+            </div>
+          ) : rootMessages.map((item, index) => (
+            <div key={item.id} className="kwantbot-message-in flex items-end gap-2">
+              <KwantBotAvatar speaking={index === rootMessages.length - 1} />
+              <div className="min-w-0 max-w-[calc(100%-44px)]">
+                <div className="mb-1 flex items-center gap-2 px-1">
+                  <span className="text-[10px] font-semibold text-foreground">Kwant Bot · {selectedRoot}</span>
+                  <span className="text-[9px] text-muted">{formatMessageTime(item.createdAt)}</span>
+                </div>
+                <div className={`relative rounded-[18px] rounded-bl-[6px] border px-3.5 py-2.5 shadow-[0_8px_24px_rgba(0,0,0,0.16)] ${messageTone(item)}`}>
+                  <span
+                    aria-hidden="true"
+                    className="absolute -left-[5px] bottom-0 h-3 w-3 bg-inherit [clip-path:polygon(100%_0,100%_100%,0_100%)]"
+                  />
+                  <div className="mb-1.5 flex items-center gap-1.5">
+                    <Sparkles className="h-2.5 w-2.5 text-primary" />
+                    <span className="text-[8px] font-semibold uppercase tracking-[0.12em] text-primary">
+                      {messageLabel(item)}
+                    </span>
+                    {typeof item.price === "number" ? (
+                      <span className="ml-auto font-mono text-[8px] text-muted">
+                        {formatKwantBotPrice(selectedRoot, item.price)}
+                      </span>
+                    ) : null}
+                  </div>
+                  <p className="relative whitespace-pre-wrap text-[11px] leading-[1.6] text-foreground">
+                    {item.text}
+                  </p>
+                </div>
+              </div>
+            </div>
+          ))}
+          <div ref={endRef} />
+        </div>
+      </div>
+
+      <div className="shrink-0 border-t border-border bg-panel px-3 py-2.5">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-primary/20 bg-primary/10 text-primary">
+              <Activity className="h-3.5 w-3.5" />
+            </span>
+            <div className="min-w-0">
+              <div className="truncate text-[9px] font-semibold uppercase tracking-[0.1em] text-foreground">15-minute reads active</div>
+              <div className="truncate text-[8px] text-muted">
+                Options {relativeAge(context?.options.asOf ?? null, now)} · significant events retained 7d
+              </div>
+            </div>
+          </div>
+          <span className="shrink-0 rounded-full border border-border bg-background/50 px-2 py-1 text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">
+            AI chat next
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}

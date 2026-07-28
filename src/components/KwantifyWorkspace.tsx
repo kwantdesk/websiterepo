@@ -1,6 +1,8 @@
 "use client";
 
 import KwantSelect from "@/components/ui/KwantSelect";
+import KwantBotInterpreterPanel from "@/components/kwantbot/KwantBotInterpreterPanel";
+import { useKwantBotInterpreter } from "@/hooks/useKwantBotInterpreter";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent as ReactDragEvent } from "react";
 import { createPortal } from "react-dom";
@@ -2563,6 +2565,10 @@ export default function Home() {
     if (typeof window === "undefined") return RIGHT_PANEL_DEFAULT_WIDTH;
     const saved = Number(window.localStorage.getItem("olisa-right-panel-width"));
     return Number.isFinite(saved) ? Math.min(RIGHT_PANEL_MAX_WIDTH, Math.max(RIGHT_PANEL_MIN_WIDTH, saved)) : RIGHT_PANEL_DEFAULT_WIDTH;
+  });
+  const kwantBotInterpreter = useKwantBotInterpreter({
+    initialRoot: gameplanChartRootForInstrument(selectedInstrument) ?? "NQ",
+    panelOpen: rightPanel === "kwantbot",
   });
   const [alertLogCount, setAlertLogCount] = useState(5);
   const [showBrokerModal, setShowBrokerModal] = useState(false);
@@ -7092,6 +7098,9 @@ export default function Home() {
             </div>
           )}
           {rightPanel === "kwantbot" && (
+            <KwantBotInterpreterPanel interpreter={kwantBotInterpreter} />
+          )}
+          {false && rightPanel === "kwantbot" && (
             <div className="flex flex-1 flex-col overflow-hidden">
               <div className="relative h-[138px] shrink-0 overflow-hidden border-b border-border bg-background/45 px-4 py-4">
                 <div className="pointer-events-none absolute -right-8 -top-14 h-44 w-44 rounded-full bg-primary/10 blur-3xl" />
@@ -7381,7 +7390,7 @@ export default function Home() {
           return (
             <button key={item.id} title={item.title} onClick={() => toggleRightPanel(item.id)} className={`relative flex h-9 w-9 items-center justify-center rounded-lg transition-colors ${active ? "bg-surface text-foreground" : "text-muted hover:bg-surface hover:text-foreground"}`}>
               <Icon className="h-[18px] w-[18px]" />
-              {item.id === "kwantbot" && kwantBotUnreadCount > 0 && <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-semibold text-background">{kwantBotUnreadCount}</span>}
+              {item.id === "kwantbot" && kwantBotInterpreter.unreadTotal > 0 && <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-semibold text-background">{Math.min(99, kwantBotInterpreter.unreadTotal)}</span>}
               {item.id === "alertslog" && alertLogCount > 0 && <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-danger text-[9px] font-semibold text-white">{alertLogCount}</span>}
             </button>
           );
