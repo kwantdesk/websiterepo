@@ -3,7 +3,13 @@
 import Link from "next/link";
 import { type ComponentType } from "react";
 import {
+  BarChart3,
+  BookOpen,
+  Bot,
+  CalendarDays,
   Home,
+  LineChart,
+  ScanLine,
   Settings,
   User,
 } from "lucide-react";
@@ -11,7 +17,12 @@ import {
 type SidebarKey =
   | "ai"
   | "agent"
+  | "home"
   | "charts"
+  | "gamma"
+  | "gexmap"
+  | "gameplan"
+  | "kwantbot"
   | "automation"
   | "connector"
   | "tradeSyncer"
@@ -34,9 +45,9 @@ type AppSidebarProps = {
 };
 
 const horizontalItemBase =
-  "flex h-8 shrink-0 items-center justify-center gap-2 rounded-lg px-3 text-[12px] font-medium transition-colors";
-const horizontalItemInactive = `${horizontalItemBase} text-muted hover:bg-surface hover:text-foreground`;
-const horizontalItemActive = `${horizontalItemBase} bg-primary/10 text-primary`;
+  "relative flex h-8 shrink-0 items-center justify-center gap-2 rounded-xl border px-3 text-[12px] font-semibold transition-all";
+const horizontalItemInactive = `${horizontalItemBase} border-transparent text-muted hover:border-border hover:bg-surface hover:text-foreground`;
+const horizontalItemActive = `${horizontalItemBase} border-primary/30 bg-primary/10 text-primary shadow-[0_0_18px_color-mix(in_srgb,var(--primary)_10%,transparent)]`;
 const verticalItemBase =
   "mx-auto flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg transition-all duration-300 group-hover:w-[184px] group-hover:justify-start group-hover:gap-3 group-hover:px-[9px]";
 const verticalItemInactive = `${verticalItemBase} text-muted hover:bg-surface hover:text-foreground`;
@@ -51,8 +62,23 @@ const navItems: Array<{
   title: string;
   icon: ComponentType<{ className?: string }>;
 }> = [
-  { key: "charts", href: "/", label: "Home", title: "Home", icon: Home },
+  { key: "home", href: "/", label: "Home", title: "Home", icon: Home },
+  { key: "charts", href: "/charts", label: "Charts", title: "Charts", icon: LineChart },
+  { key: "gamma", href: "/gamma", label: "Gamma", title: "Gamma", icon: BarChart3 },
+  { key: "gexmap", href: "/gexmap", label: "GEXMAP", title: "GEX Map", icon: ScanLine },
+  { key: "gameplan", href: "/gameplan", label: "Gameplan", title: "Gameplan", icon: CalendarDays },
+  { key: "kwantbot", href: "/kwantbot", label: "KwantBot", title: "KwantBot", icon: Bot },
+  { key: "news", href: "/news", label: "News", title: "News", icon: BookOpen },
 ];
+
+function ActiveUnderline() {
+  return (
+    <span
+      aria-hidden="true"
+      className="absolute inset-x-3 -bottom-[7px] h-0.5 rounded-full bg-primary shadow-[0_0_8px_var(--primary)]"
+    />
+  );
+}
 
 export default function AppSidebar({
   activeItem,
@@ -99,6 +125,25 @@ export default function AppSidebar({
 
   return (
     <header className="relative z-[70] flex h-11 w-full shrink-0 items-center gap-1 border-b border-border bg-panel px-3">
+      <nav className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto overflow-y-hidden" aria-label="Primary workspace">
+        {navItems.map(({ key, href, label, title, icon: Icon }) => {
+          const active = activeItem === key;
+          return (
+            <Link
+              key={key}
+              href={href}
+              aria-current={active ? "page" : undefined}
+              className={active ? horizontalItemActive : horizontalItemInactive}
+              title={title}
+            >
+              <Icon className={`h-4 w-4 shrink-0 ${active ? "text-primary" : "text-muted"}`} />
+              <span>{label}</span>
+              {active ? <ActiveUnderline /> : null}
+            </Link>
+          );
+        })}
+      </nav>
+
       <button
         type="button"
         onClick={onAccountClick}
@@ -108,16 +153,6 @@ export default function AppSidebar({
         <User className="h-4 w-4 shrink-0" />
         <span>{accountLabel}</span>
       </button>
-
-      {navItems.map(({ key, href, label, title, icon: Icon }) => (
-        <Link key={key} href={href} className={activeItem === key ? horizontalItemActive : horizontalItemInactive} title={title}>
-          <Icon className="h-4 w-4 shrink-0" />
-          <span>{label}</span>
-        </Link>
-      ))}
-
-      <div className="flex-1" />
-
       <Link
         href="/settings"
         className={activeItem === "settings" ? horizontalItemActive : horizontalItemInactive}
@@ -125,6 +160,7 @@ export default function AppSidebar({
       >
         <Settings className="h-4 w-4 shrink-0" />
         <span>Settings</span>
+        {activeItem === "settings" ? <ActiveUnderline /> : null}
       </Link>
     </header>
   );

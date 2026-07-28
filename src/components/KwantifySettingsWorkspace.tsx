@@ -115,10 +115,6 @@ const chartColorFields: { key: keyof ChartSettings; label: string }[] = [
   { key: "wickDownColor", label: "Wick Down" },
 ];
 
-function Sidebar() {
-  return <AppSidebar activeItem="settings" />;
-}
-
 function Toggle({ checked, onChange }: { checked: boolean; onChange: () => void }) {
   return <button onClick={onChange} className={`h-5 w-10 rounded-full transition-all ${checked ? "bg-primary" : "border border-border bg-surface"}`}><span className={`block h-4 w-4 rounded-full bg-background transition-transform ${checked ? "translate-x-5" : "translate-x-0.5"}`} /></button>;
 }
@@ -367,9 +363,10 @@ export default function SettingsPage() {
   const sectionTitle = "mb-4 text-[11px] font-semibold uppercase tracking-wider text-muted";
 
   return (
-    <main className="flex h-screen overflow-hidden bg-background font-sans text-foreground">
-      <Sidebar />
-      <aside className="w-[220px] shrink-0 overflow-y-auto border-r border-border bg-panel p-4">
+    <main className="flex h-screen flex-col overflow-hidden bg-background font-sans text-foreground">
+      <AppSidebar activeItem="settings" orientation="horizontal" />
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+        <aside className="w-[220px] shrink-0 overflow-y-auto border-r border-border bg-panel p-4">
         {navSections.map((section) => (
           <div key={section.title} className="mb-6">
             <div className="mb-2 text-[11px] uppercase tracking-wider text-muted">{section.title}</div>
@@ -494,7 +491,8 @@ export default function SettingsPage() {
           {activeTab === "Alerts delivery" && <div className="mt-8 rounded-2xl border border-border bg-panel p-6"><div className="space-y-4"><div className="flex items-center justify-between"><span>In-app notifications</span><Toggle checked={toggles.inApp} onChange={() => toggle("inApp")} /></div><div className="flex items-center justify-between"><span>Email notifications</span><Toggle checked={toggles.email} onChange={() => toggle("email")} /></div><div className="flex items-center justify-between"><span>Telegram</span><Link href="/alerts" className={secondaryButton}>Setup AI Briefings</Link></div><input className={input} placeholder="Webhook URL" /></div></div>}
           {activeTab === "Email subscriptions" && <div className="mt-8 rounded-2xl border border-border bg-panel p-6"><div className="space-y-4">{[["Weekly market digest", "weekly"], ["Strategy performance updates", "performance"], ["New features and updates", "features"], ["Community activity", "community"], ["Promotional offers", "promo"]].map(([label, key]) => <div key={key} className="flex items-center justify-between"><span>{label}</span><Toggle checked={toggles[key]} onChange={() => toggle(key)} /></div>)}<button className="pt-3 text-[13px] font-semibold text-danger">Unsubscribe from all</button></div></div>}
         </div>
-      </section>
+        </section>
+      </div>
     </main>
   );
 }

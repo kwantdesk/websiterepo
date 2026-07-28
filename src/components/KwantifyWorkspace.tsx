@@ -19,10 +19,8 @@ import {
   BarChart3,
   Bell,
   BellRing,
-  BookOpen,
   Bot,
   BrainCircuit,
-  CalendarDays,
   Check,
   CheckCircle,
   ChevronDown,
@@ -39,7 +37,6 @@ import {
   FolderPlus,
   Grid3X3,
   Info,
-  LineChart,
   List,
   Loader2,
   Lock,
@@ -53,7 +50,6 @@ import {
   Plus,
   Repeat,
   Save,
-  ScanLine,
   Search,
   Send,
   Settings,
@@ -277,22 +273,21 @@ type WorkspaceBackupFile = {
   exportedAt: string;
   presets: WorkspacePreset[];
 };
-type BottomWorkspaceSection = "charts" | "gamma" | "gexmap" | "gameplan" | "kwantbot" | "news";
+export type PrimaryWorkspaceSection = "charts" | "gamma" | "gexmap" | "gameplan" | "kwantbot" | "news";
 
 const WORKSPACE_PRESETS_STORAGE_KEY = "kwantdesk-chart-workspace-presets";
 const ACTIVE_WORKSPACE_PRESET_STORAGE_KEY = "kwantdesk-chart-workspace-active-preset";
 const WORKSPACE_BACKUP_FORMAT = "kwantdesk-chart-workspaces";
 const MAX_WORKSPACE_BACKUP_BYTES = 2_000_000;
-const BOTTOM_WORKSPACE_SECTION_STORAGE_KEY = "kwantdesk-primary-workspace-section";
 const GAMMA_LEVELS_ENABLED_STORAGE_KEY = "kwantdesk:chart-gamma-levels-enabled:v1";
 const KWANTBOT_MESSAGES_STORAGE_KEY = "kwantdesk-kwantbot-messages";
 const BOTTOM_WORKSPACE_SECTIONS = [
-  { id: "charts" as const, label: "Charts", icon: LineChart },
-  { id: "gamma" as const, label: "Gamma", icon: BarChart3 },
-  { id: "gexmap" as const, label: "GEXMAP", icon: ScanLine },
-  { id: "gameplan" as const, label: "Gameplan", icon: CalendarDays },
-  { id: "kwantbot" as const, label: "KwantBot", icon: Bot },
-  { id: "news" as const, label: "News", icon: BookOpen },
+  { id: "charts" as const, label: "Charts" },
+  { id: "gamma" as const, label: "Gamma" },
+  { id: "gexmap" as const, label: "GEXMAP" },
+  { id: "gameplan" as const, label: "Gameplan" },
+  { id: "kwantbot" as const, label: "KwantBot" },
+  { id: "news" as const, label: "News" },
 ];
 const DEFAULT_KWANTBOT_MESSAGES: KwantBotMessage[] = [
   {
@@ -2387,7 +2382,11 @@ function KwantBotAttachments({
   );
 }
 
-export default function Home() {
+export default function KwantifyWorkspace({
+  section = "charts",
+}: {
+  section?: PrimaryWorkspaceSection;
+}) {
   const router = useRouter();
   const supabase = createClient();
   const [authChecked, setAuthChecked] = useState(false);
@@ -2603,14 +2602,7 @@ export default function Home() {
       : BOTTOM_PANEL_DEFAULT_HEIGHT;
   });
   const [bottomMinimized, setBottomMinimized] = useState(true);
-  const [bottomWorkspaceSection, setBottomWorkspaceSection] = useState<BottomWorkspaceSection>(() => {
-    if (typeof window === "undefined") return "charts";
-    const saved = window.localStorage.getItem(BOTTOM_WORKSPACE_SECTION_STORAGE_KEY);
-    if (saved === "heatmap") return "gexmap";
-    return saved === "charts" || saved === "gameplan" || saved === "kwantbot" || saved === "news" || saved === "gamma" || saved === "gexmap"
-      ? saved
-      : "charts";
-  });
+  const bottomWorkspaceSection = section;
   const [equityPeriod, setEquityPeriod] = useState("365d");
   const [favTFs, setFavTFs] = useState(["1m", "5m", "15m", "1h", "4h", "1D"]);
   const [showAllTF, setShowAllTF] = useState(false);
@@ -3736,10 +3728,6 @@ export default function Home() {
   useEffect(() => {
     window.localStorage.setItem("olisa-watchlist-sections", JSON.stringify(watchlistSections));
   }, [watchlistSections]);
-
-  useEffect(() => {
-    window.localStorage.setItem(BOTTOM_WORKSPACE_SECTION_STORAGE_KEY, bottomWorkspaceSection);
-  }, [bottomWorkspaceSection]);
 
   useEffect(() => {
     window.localStorage.setItem(
@@ -6021,39 +6009,12 @@ export default function Home() {
 
       <div className="relative flex min-w-0 flex-1 flex-col" ref={mainRef}>
         <AppSidebar
-          activeItem="charts"
+          activeItem={bottomWorkspaceSection}
           accountLabel="Account"
           accountTitle={currentUsername ? `Sign out @${currentUsername}` : "Account"}
           onAccountClick={signOut}
           orientation="horizontal"
         />
-
-        <nav className="flex h-11 shrink-0 items-center gap-1 border-b border-border bg-panel px-3" aria-label="Primary workspace">
-          {BOTTOM_WORKSPACE_SECTIONS.map((section) => {
-            const Icon = section.icon;
-            const active = bottomWorkspaceSection === section.id;
-            return (
-              <button
-                key={section.id}
-                type="button"
-                onClick={() => {
-                  setBottomWorkspaceSection(section.id);
-                  setShowAllTF(false);
-                }}
-                aria-current={active ? "page" : undefined}
-                className={`relative flex h-8 items-center gap-2 rounded-xl border px-3 text-[12px] font-semibold transition-all ${
-                  active
-                    ? "border-primary/30 bg-primary/10 text-primary shadow-[0_0_18px_rgba(132,204,22,0.08)]"
-                    : "border-transparent text-muted hover:border-border hover:bg-surface hover:text-foreground"
-                }`}
-              >
-                <Icon className={`h-3.5 w-3.5 ${active ? "text-primary" : "text-muted"}`} />
-                <span>{section.label}</span>
-                {active && <span className="absolute inset-x-3 -bottom-[7px] h-0.5 rounded-full bg-primary shadow-[0_0_8px_var(--primary)]" />}
-              </button>
-            );
-          })}
-        </nav>
 
         {bottomWorkspaceSection === "charts" && (
         <header className="relative flex h-[52px] shrink-0 items-center gap-3 border-b border-border bg-panel px-5">

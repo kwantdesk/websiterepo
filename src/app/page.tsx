@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import KwantifyWorkspace from "@/components/KwantifyWorkspace";
+import WorkspaceHome from "@/components/WorkspaceHome";
 import { isAllowedEmail } from "@/lib/access";
 import { createClient } from "@/lib/supabase/server";
 
@@ -19,5 +19,10 @@ export default async function HomePage() {
   if (!user) redirect("/login");
   if (!isAllowedEmail(user.email)) redirect("/login?error=restricted");
 
-  return <KwantifyWorkspace />;
+  const username =
+    typeof user.user_metadata?.username === "string"
+      ? user.user_metadata.username
+      : user.email ?? "";
+
+  return <WorkspaceHome username={username} />;
 }
