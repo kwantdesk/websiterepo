@@ -455,55 +455,80 @@ export default function GexMapWorkspace() {
 
   useEffect(() => {
     let cancelled = false;
-    let interval: number | null = null;
+    let timer: number | null = null;
+    let requestInFlight = false;
 
     const load = async () => {
+      if (requestInFlight || cancelled) return;
+      requestInFlight = true;
       setLoading(Object.fromEntries(panels.map((panel) => [panel.id, true])));
-      const results = await Promise.allSettled(panels.map(async (panel) => {
-        const query = new URLSearchParams({
-          symbol: panel.symbol,
-          greekMode: panel.greekMode,
-          ...(requestedReplayDate ? { sessionDate: requestedReplayDate } : {}),
-        });
-        const response = await fetch(`/api/gex-map?${query}`, { cache: "no-store" });
-        const payload = await response.json() as GexMapPanelPayload & { error?: string };
-        if (!response.ok) throw new Error(payload.error || `${panel.symbol} ${panel.greekMode} could not be loaded.`);
-        return { id: panel.id, payload };
-      }));
-      if (cancelled) return;
+      try {
+        const results = await Promise.allSettled(panels.map(async (panel) => {
+          const query = new URLSearchParams({
+            symbol: panel.symbol,
+            greekMode: panel.greekMode,
+            ...(requestedReplayDate ? { sessionDate: requestedReplayDate } : {}),
+          });
+          const response = await fetch(`/api/gex-map?${query}`, { cache: "no-store" });
+          const payload = await response.json() as GexMapPanelPayload & { error?: string };
+          if (!response.ok) throw new Error(payload.error || `${panel.symbol} ${panel.greekMode} could not be loaded.`);
+          return { id: panel.id, payload };
+        }));
+        if (cancelled) return;
 
-      const nextErrors: Record<string, string | null> = {};
-      setPanelData((current) => {
-        const next = { ...current };
-        results.forEach((result, index) => {
-          const id = panels[index].id;
-          if (result.status === "fulfilled") {
-            next[id] = result.value.payload;
-            nextErrors[id] = null;
-          } else {
-            nextErrors[id] = result.reason instanceof Error ? result.reason.message : "Panel data is unavailable.";
-          }
+        const nextErrors: Record<string, string | null> = {};
+        setPanelData((current) => {
+          const next = { ...current };
+          results.forEach((result, index) => {
+            const id = panels[index].id;
+            if (result.status === "fulfilled") {
+              next[id] = result.value.payload;
+              nextErrors[id] = null;
+            } else {
+              nextErrors[id] = result.reason instanceof Error ? result.reason.message : "Panel data is unavailable.";
+            }
+          });
+          return next;
         });
-        return next;
-      });
-      setPanelErrors((current) => ({ ...current, ...nextErrors }));
-      setLoading(Object.fromEntries(panels.map((panel) => [panel.id, false])));
-      setLastSync(Date.now());
+        setPanelErrors((current) => ({ ...current, ...nextErrors }));
+        setLoading(Object.fromEntries(panels.map((panel) => [panel.id, false])));
+        setLastSync(Date.now());
 
-      const firstSuccess = results.find((result) => result.status === "fulfilled");
-      if (!replayDate && firstSuccess?.status === "fulfilled") {
-        setReplayDate(firstSuccess.value.payload.sessionDate);
-      }
-      if (!replayMode && firstSuccess?.status === "fulfilled") {
-        setLatestSessionDate(firstSuccess.value.payload.sessionDate);
+        const firstSuccess = results.find((result) => result.status === "fulfilled");
+        if (!replayDate && firstSuccess?.status === "fulfilled") {
+          setReplayDate(firstSuccess.value.payload.sessionDate);
+        }
+        if (!replayMode && firstSuccess?.status === "fulfilled") {
+          setLatestSessionDate(firstSuccess.value.payload.sessionDate);
+        }
+      } finally {
+        requestInFlight = false;
+        if (!cancelled && !replayMode) {
+          timer = window.setTimeout(() => void load(), 5_000);
+        }
       }
     };
 
+    const syncWhenVisible = () => {
+      if (document.visibilityState !== "visible" || replayMode) return;
+      if (timer !== null) {
+        window.clearTimeout(timer);
+        timer = null;
+      }
+      void load();
+    };
+
     void load();
-    if (!replayMode) interval = window.setInterval(() => void load(), 15_000);
+    document.addEventListener("visibilitychange", syncWhenVisible);
+    window.addEventListener("focus", syncWhenVisible);
     return () => {
       cancelled = true;
-      if (interval !== null) window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", syncWhenVisible);
+      window.removeEventListener("focus", syncWhenVisible);
+      if (timer !== null) {
+        window.clearTimeout(timer);
+        timer = null;
+      }
     };
   }, [panels, refreshToken, replayDate, replayMode, requestedReplayDate]);
 
@@ -536,6 +561,11 @@ export default function GexMapWorkspace() {
 
   const selectedTimestamp = replayMode ? timeline[Math.min(cursor, Math.max(0, timeline.length - 1))] ?? null : null;
   const live = !replayMode && panels.every((panel) => panelData[panel.id]?.status === "LIVE");
+  const dataAsOf = panels.reduce<number | null>((oldest, panel) => {
+    const timestamp = Date.parse(panelData[panel.id]?.asOf ?? "");
+    if (!Number.isFinite(timestamp)) return oldest;
+    return oldest === null ? timestamp : Math.min(oldest, timestamp);
+  }, null);
   const currentSessionDate = latestSessionDate
     || panels.map((panel) => panelData[panel.id]?.sessionDate).find(Boolean)
     || "";
@@ -595,8 +625,8 @@ export default function GexMapWorkspace() {
               {replayMode ? "REPLAY" : live ? "LIVE" : "LAST SESSION"}
             </div>
             <div className="hidden text-right text-[8px] text-muted xl:block">
-              <div>Last synced</div>
-              <div className="font-mono text-foreground">{lastSync ? easternTime.format(lastSync) : "—"} ET</div>
+              <div>Provider data</div>
+              <div className="font-mono text-foreground">{dataAsOf ? easternTime.format(dataAsOf) : lastSync ? easternTime.format(lastSync) : "—"} ET</div>
             </div>
             <button
               type="button"

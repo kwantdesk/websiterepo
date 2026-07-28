@@ -1601,7 +1601,7 @@ export async function getGexMapPanel(
   const currentSession = getUsOptionsSession();
   const sessionDate = requestedSessionDate || currentSession.sessionDate;
   const historical = sessionDate !== currentSession.sessionDate;
-  const endpointTtl = historical ? 300_000 : greekModeInput === "GAMMA" ? 15_000 : 30_000;
+  const endpointTtl = historical ? 300_000 : 5_000;
 
   const [exposureResult, candleResult] = await Promise.all([
     quantDataPost("/options/tool/exposure-by-strike", {
@@ -1664,7 +1664,7 @@ export async function getGexMapPanel(
     sourceTimeZone: "America/New_York",
     asOf: new Date(frameAsOf).toISOString(),
     status: historical || !currentSession.marketOpen ? "LAST_SESSION" : stale ? "DELAYED" : "LIVE",
-    refreshAfterMs: marketIsLive ? 15_000 : 60_000,
+    refreshAfterMs: marketIsLive ? 5_000 : 60_000,
     stockPrice,
     sessionChangePercent,
     latestStrikes,
