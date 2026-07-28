@@ -1522,7 +1522,7 @@ function WorkspaceChartPane({
           onChartDragEnd={onChartDragEnd}
         />
       )}
-      <div className="pointer-events-none absolute bottom-8 left-1/2 z-20 inline-flex -translate-x-1/2 items-center gap-1.5 whitespace-nowrap rounded-full border border-border bg-panel/90 px-2.5 py-1 text-[10px] uppercase tracking-[0.12em] text-muted shadow-lg shadow-black/25 backdrop-blur">
+      <div className="pointer-events-none absolute bottom-14 left-1/2 z-20 inline-flex -translate-x-1/2 items-center gap-1.5 whitespace-nowrap rounded-full border border-border bg-panel/90 px-2.5 py-1 text-[10px] uppercase tracking-[0.12em] text-muted shadow-lg shadow-black/25 backdrop-blur">
         <span className="font-semibold text-foreground">{displayCmeSymbol(pane.symbol)}</span>
         {pane.broker === "Databento" && resolvedContractSymbol ? (
           <span className="font-mono text-[9px] text-foreground">{resolvedContractSymbol}</span>
@@ -1532,7 +1532,7 @@ function WorkspaceChartPane({
         <span>{formatChartInterval(pane.timeframe)}</span>
         <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-semibold ${marketStatusClasses}`}>{marketStatusLabel}</span>
       </div>
-      <div className="absolute bottom-8 left-3 z-20 flex items-center gap-0.5 rounded-lg border border-border bg-panel/80 px-1 py-0.5 backdrop-blur">
+      <div className="absolute bottom-14 left-3 z-20 flex items-center gap-0.5 rounded-lg border border-border bg-panel/80 px-1 py-0.5 backdrop-blur">
         {["1D", "5D", "1W", "1M", "3M", "6M", "1Y", "All"].map((range) => (
           <button
             key={range}
