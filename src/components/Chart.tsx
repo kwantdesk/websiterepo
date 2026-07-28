@@ -1937,7 +1937,7 @@ export default function Chart({
 
       {candleCountdown ? (
         <div
-          className="pointer-events-none absolute bottom-8 right-[68px] z-10 flex h-5 w-[54px] items-center justify-center rounded-[3px] bg-primary px-1.5 font-mono text-[10px] font-semibold leading-none text-background shadow-lg shadow-black/25"
+          className="pointer-events-none absolute bottom-14 right-[68px] z-10 flex h-5 w-[54px] items-center justify-center rounded-[3px] bg-primary px-1.5 font-mono text-[10px] font-semibold leading-none text-background shadow-lg shadow-black/25"
           title="Time until next candle opens"
         >
           {candleCountdown.label}
