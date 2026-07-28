@@ -9,12 +9,17 @@ import {
   BrainCircuit,
   CheckCircle2,
   Clock3,
+  Cloud,
+  CloudOff,
   Database,
   Download,
   Eye,
   FileClock,
+  Gauge,
+  GraduationCap,
   History,
   Layers3,
+  ListChecks,
   NotebookTabs,
   Radio,
   RefreshCw,
@@ -36,8 +41,9 @@ import {
   type KwantBotMemoryEvent,
   type KwantBotMessageKind,
 } from "@/lib/kwantBotInterpreter";
+import type { KwantBotLearningReview } from "@/lib/kwantBotLearning";
 
-type WorkspaceView = "command" | "journal" | "levels";
+type WorkspaceView = "command" | "journal" | "levels" | "learning";
 type JournalFilter = "all" | "briefing" | "level" | "options" | "outcome";
 
 const ROOT_DETAILS: Record<KwantBotMarketRoot, { name: string; contract: string }> = {
@@ -53,6 +59,7 @@ const VIEW_ITEMS: Array<{
   { id: "command", label: "Command Centre", icon: BrainCircuit },
   { id: "journal", label: "Running Journal", icon: NotebookTabs },
   { id: "levels", label: "Level Memory", icon: Waypoints },
+  { id: "learning", label: "Machine Learning", icon: GraduationCap },
 ];
 
 const JOURNAL_FILTERS: Array<{ id: JournalFilter; label: string }> = [
@@ -181,6 +188,20 @@ function lifecycleIndex(events: KwantBotMemoryEvent[]) {
   return 0;
 }
 
+function reviewTone(review: KwantBotLearningReview) {
+  if (review.score >= 72) return "border-primary/30 bg-primary/[0.07] text-primary";
+  if (review.score >= 52) return "border-amber-400/30 bg-amber-400/[0.06] text-amber-400";
+  return "border-danger/30 bg-danger/[0.06] text-danger";
+}
+
+function formatReviewDuration(milliseconds: number | null) {
+  if (milliseconds === null) return "not measured";
+  const seconds = Math.max(0, Math.round(milliseconds / 1_000));
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  return `${minutes}m ${seconds % 60}s`;
+}
+
 function BotAvatar() {
   return (
     <div className="relative h-14 w-14 shrink-0">
@@ -278,6 +299,8 @@ export default function KwantBotIntelligenceWorkspace({
     selectRoot,
     messages,
     memory,
+    learningReviews,
+    learningSyncState,
     contexts,
     contextStates,
     contextErrors,
@@ -420,6 +443,38 @@ export default function KwantBotIntelligenceWorkspace({
   const bullishFlow = liveFlow.filter((row) => row.sentiment === "BULLISH").length;
   const bearishFlow = liveFlow.filter((row) => row.sentiment === "BEARISH").length;
   const latestGammaChange = context?.options.gammaChange[0] ?? null;
+  const rootLearningReviews = useMemo(
+    () => learningReviews
+      .filter((review) => review.root === selectedRoot)
+      .sort((left, right) => Date.parse(right.reviewedAt) - Date.parse(left.reviewedAt)),
+    [learningReviews, selectedRoot],
+  );
+  const latestLearningReview = rootLearningReviews[0] ?? null;
+  const averageLearningScore = rootLearningReviews.length
+    ? Math.round(rootLearningReviews.reduce((total, review) => total + review.score, 0) / rootLearningReviews.length)
+    : null;
+  const confirmedLearningReviews = rootLearningReviews.filter((review) => review.verdict === "CONFIRMED").length;
+  const failedLearningReviews = rootLearningReviews.filter((review) => review.verdict === "FAILED").length;
+  const recentLearningAverage = rootLearningReviews.length
+    ? rootLearningReviews.slice(0, 10).reduce((total, review) => total + review.score, 0)
+      / Math.min(10, rootLearningReviews.length)
+    : null;
+  const previousLearningWindow = rootLearningReviews.slice(10, 20);
+  const previousLearningAverage = previousLearningWindow.length
+    ? previousLearningWindow.reduce((total, review) => total + review.score, 0) / previousLearningWindow.length
+    : null;
+  const learningTrend = recentLearningAverage !== null && previousLearningAverage !== null
+    ? Math.round(recentLearningAverage - previousLearningAverage)
+    : null;
+  const blindSpots = useMemo(() => {
+    const counts = new Map<string, number>();
+    rootLearningReviews.forEach((review) => {
+      review.blindSpotTags.forEach((tag) => counts.set(tag, (counts.get(tag) ?? 0) + 1));
+    });
+    return [...counts.entries()]
+      .sort((left, right) => right[1] - left[1])
+      .slice(0, 6);
+  }, [rootLearningReviews]);
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background">
@@ -905,6 +960,292 @@ export default function KwantBotIntelligenceWorkspace({
                 </div>
               </section>
             </aside>
+          </div>
+        ) : null}
+
+        {view === "learning" ? (
+          <div className="mx-auto max-w-[1680px] space-y-4">
+            <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+              <StatCard
+                label="Reasoning quality"
+                value={averageLearningScore === null ? "Awaiting review" : `${averageLearningScore}%`}
+                detail="Average across completed, evidence-scored cycles"
+                icon={Gauge}
+                active={averageLearningScore !== null && averageLearningScore >= 72}
+              />
+              <StatCard
+                label="Reviewed outcomes"
+                value={`${rootLearningReviews.length}`}
+                detail={`${confirmedLearningReviews} confirmed · ${failedLearningReviews} failed`}
+                icon={ListChecks}
+              />
+              <StatCard
+                label="Calibration trend"
+                value={learningTrend === null ? "Building sample" : `${learningTrend >= 0 ? "+" : ""}${learningTrend} pts`}
+                detail="Latest 10 reviews versus the previous 10"
+                icon={learningTrend !== null && learningTrend < 0 ? TrendingDown : TrendingUp}
+                active={learningTrend !== null && learningTrend > 0}
+              />
+              <StatCard
+                label="Learning memory"
+                value={learningSyncState === "synced" ? "Cloud synced" : learningSyncState === "syncing" ? "Syncing" : "Local retained"}
+                detail={learningSyncState === "synced" ? "Authenticated Supabase journal" : "Safe on this device; cloud table pending"}
+                icon={learningSyncState === "synced" ? Cloud : CloudOff}
+                active={learningSyncState === "synced"}
+              />
+            </div>
+
+            {!latestLearningReview ? (
+              <section className="overflow-hidden rounded-2xl border border-border bg-panel">
+                <SectionTitle
+                  icon={GraduationCap}
+                  eyebrow="Post-outcome reviewer"
+                  title={`Machine Learning is watching ${selectedRoot}`}
+                  detail="The first review appears after a mapped level completes preparation, contact, reaction, and outcome."
+                />
+                <div className="flex min-h-[420px] flex-col items-center justify-center px-6 text-center">
+                  <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-primary/25 bg-primary/10 text-primary">
+                    <BrainCircuit className="h-7 w-7" />
+                  </div>
+                  <h3 className="mt-5 text-[15px] font-semibold text-foreground">Waiting for a completed evidence chain</h3>
+                  <p className="mt-2 max-w-lg text-[9px] leading-5 text-muted">
+                    KwantBot will not invent a score from an unfinished call. Once an outcome is measured, this page preserves the original wording, compares it with what happened, scores the reasoning, and writes a reusable improvement rule.
+                  </p>
+                  <div className="mt-5 flex flex-wrap items-center justify-center gap-2 text-[8px] uppercase tracking-[0.1em] text-muted">
+                    {["Prepare", "Touch", "React", "Measure", "Review", "Remember"].map((label, index) => (
+                      <div key={label} className="flex items-center gap-2">
+                        <span className="rounded-lg border border-border bg-surface px-2.5 py-1.5">{label}</span>
+                        {index < 5 ? <ArrowRight className="h-3 w-3 text-primary/60" /> : null}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </section>
+            ) : (
+              <>
+                <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
+                  <section className="overflow-hidden rounded-2xl border border-primary/25 bg-[linear-gradient(145deg,color-mix(in_srgb,var(--primary)_6%,var(--panel)),var(--panel))] xl:col-span-8">
+                    <SectionTitle
+                      icon={GraduationCap}
+                      eyebrow="Latest self-review"
+                      title={`${latestLearningReview.levelName} · ${latestLearningReview.verdict.toLowerCase()}`}
+                      detail={`Reviewed ${formatDateTime(latestLearningReview.reviewedAt)} after a ${formatReviewDuration(latestLearningReview.evidence.timeToOutcomeMs)} measured cycle.`}
+                      trailing={(
+                        <span className={`rounded-full border px-2.5 py-1 text-[8px] font-semibold uppercase tracking-[0.1em] ${reviewTone(latestLearningReview)}`}>
+                          {latestLearningReview.grade}
+                        </span>
+                      )}
+                    />
+                    <div className="space-y-4 p-4">
+                      <div className="rounded-2xl border border-border bg-background/45 p-4">
+                        <div className="flex items-end justify-between gap-4">
+                          <div>
+                            <div className="text-[8px] font-semibold uppercase tracking-[0.14em] text-muted">Reasoning quality</div>
+                            <div className="mt-1 font-mono text-[28px] font-semibold leading-none text-foreground">{latestLearningReview.score}%</div>
+                          </div>
+                          <div className="text-right text-[8px] leading-4 text-muted">
+                            Evidence completeness + reaction classification + measured follow-through
+                            <div className="font-semibold text-primary">Not a win probability</div>
+                          </div>
+                        </div>
+                        <div className="mt-4 h-2 overflow-hidden rounded-full bg-surface">
+                          <div
+                            className="h-full rounded-full bg-primary shadow-[0_0_12px_color-mix(in_srgb,var(--primary)_35%,transparent)] transition-[width] duration-700"
+                            style={{ width: `${latestLearningReview.score}%` }}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                        <div className="rounded-2xl border border-border bg-surface/55 p-4">
+                          <div className="mb-2 flex items-center gap-2 text-[8px] font-semibold uppercase tracking-[0.12em] text-primary">
+                            <Eye className="h-3 w-3" />
+                            What KwantBot said
+                          </div>
+                          <p className="text-[9px] leading-[1.7] text-foreground">{latestLearningReview.originalExpectation}</p>
+                        </div>
+                        <div className="rounded-2xl border border-border bg-surface/55 p-4">
+                          <div className="mb-2 flex items-center gap-2 text-[8px] font-semibold uppercase tracking-[0.12em] text-primary">
+                            <CheckCircle2 className="h-3 w-3" />
+                            What actually happened
+                          </div>
+                          <p className="text-[9px] leading-[1.7] text-foreground">{latestLearningReview.actualOutcome}</p>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                        <div className="rounded-2xl border border-emerald-400/20 bg-emerald-400/[0.04] p-4">
+                          <div className="mb-2 text-[8px] font-semibold uppercase tracking-[0.12em] text-emerald-400">Reasoning that held up</div>
+                          <div className="space-y-2">
+                            {latestLearningReview.whatWorked.map((item) => (
+                              <div key={item} className="flex gap-2 text-[8px] leading-4 text-muted">
+                                <CheckCircle2 className="mt-0.5 h-3 w-3 shrink-0 text-emerald-400" />
+                                <span>{item}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="rounded-2xl border border-amber-400/20 bg-amber-400/[0.04] p-4">
+                          <div className="mb-2 text-[8px] font-semibold uppercase tracking-[0.12em] text-amber-400">What was missed</div>
+                          <div className="space-y-2">
+                            {latestLearningReview.whatMissed.length ? latestLearningReview.whatMissed.map((item) => (
+                              <div key={item} className="flex gap-2 text-[8px] leading-4 text-muted">
+                                <Eye className="mt-0.5 h-3 w-3 shrink-0 text-amber-400" />
+                                <span>{item}</span>
+                              </div>
+                            )) : <p className="text-[8px] leading-4 text-muted">No material reasoning gap was found in the retained evidence chain.</p>}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                        <div className="rounded-2xl border border-primary/20 bg-primary/[0.04] p-4">
+                          <div className="mb-2 text-[8px] font-semibold uppercase tracking-[0.12em] text-primary">Improvement rules written to memory</div>
+                          <div className="space-y-2">
+                            {latestLearningReview.improvements.map((item) => (
+                              <div key={item} className="flex gap-2 text-[8px] leading-4 text-muted">
+                                <Sparkles className="mt-0.5 h-3 w-3 shrink-0 text-primary" />
+                                <span>{item}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="rounded-2xl border border-border bg-surface/55 p-4">
+                          <div className="mb-2 text-[8px] font-semibold uppercase tracking-[0.12em] text-foreground">Checks for the next encounter</div>
+                          <div className="space-y-2">
+                            {latestLearningReview.nextChecks.map((item) => (
+                              <div key={item} className="flex gap-2 text-[8px] leading-4 text-muted">
+                                <ListChecks className="mt-0.5 h-3 w-3 shrink-0 text-primary" />
+                                <span>{item}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </section>
+
+                  <aside className="space-y-4 xl:col-span-4">
+                    <section className="overflow-hidden rounded-2xl border border-border bg-panel">
+                      <SectionTitle
+                        icon={Gauge}
+                        eyebrow="Calibration"
+                        title="Is the reasoning improving?"
+                        detail="Scores compare review quality across completed cycles, not market direction accuracy alone."
+                      />
+                      <div className="space-y-2 p-4">
+                        {rootLearningReviews.slice(0, 12).reverse().map((review) => (
+                          <div key={review.id} className="grid grid-cols-[64px_1fr_34px] items-center gap-2">
+                            <div className="truncate text-[7px] font-semibold text-muted">{review.levelName}</div>
+                            <div className="h-1.5 overflow-hidden rounded-full bg-background">
+                              <div className="h-full rounded-full bg-primary" style={{ width: `${review.score}%` }} />
+                            </div>
+                            <div className="text-right font-mono text-[8px] text-foreground">{review.score}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </section>
+
+                    <section className="overflow-hidden rounded-2xl border border-border bg-panel">
+                      <SectionTitle
+                        icon={BrainCircuit}
+                        eyebrow="Recurring blind spots"
+                        title="What deserves more attention"
+                        detail="Repeated weaknesses are counted across the retained review journal."
+                      />
+                      <div className="space-y-2 p-4">
+                        {blindSpots.length ? blindSpots.map(([tag, count]) => (
+                          <div key={tag} className="flex items-center justify-between rounded-xl border border-border bg-surface/50 p-3">
+                            <div className="text-[8px] font-semibold uppercase tracking-[0.08em] text-muted">{tag.replaceAll("-", " ")}</div>
+                            <span className="rounded-full border border-primary/20 bg-primary/10 px-2 py-0.5 font-mono text-[8px] text-primary">{count}</span>
+                          </div>
+                        )) : (
+                          <p className="rounded-xl border border-border bg-surface/50 p-3 text-[8px] leading-4 text-muted">
+                            No recurring blind spot has enough evidence yet. The reviewer will count repeated failures without turning a single event into a rule.
+                          </p>
+                        )}
+                      </div>
+                    </section>
+
+                    <section className={`rounded-2xl border p-4 ${learningSyncState === "synced" ? "border-primary/20 bg-primary/[0.05]" : "border-border bg-panel"}`}>
+                      <div className="flex items-start gap-3">
+                        {learningSyncState === "synced"
+                          ? <Cloud className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                          : <CloudOff className="mt-0.5 h-4 w-4 shrink-0 text-muted" />}
+                        <div>
+                          <div className="text-[9px] font-semibold text-foreground">
+                            {learningSyncState === "synced" ? "Learning journal cloud synced" : "Learning journal retained locally"}
+                          </div>
+                          <p className="mt-1 text-[8px] leading-4 text-muted">
+                            {learningSyncState === "synced"
+                              ? "Authenticated reviews are stored per user in Supabase and merged with this device journal."
+                              : "Reviews remain available on this device. Cloud sync activates when the KwantBot learning table is available."}
+                          </p>
+                        </div>
+                      </div>
+                    </section>
+                  </aside>
+                </div>
+
+                <section className="overflow-hidden rounded-2xl border border-border bg-panel">
+                  <SectionTitle
+                    icon={NotebookTabs}
+                    eyebrow="Learning journal"
+                    title={`${selectedRoot} post-outcome review history`}
+                    detail="The original call is immutable; later reviews add measured evidence and reusable correction rules."
+                  />
+                  <div className="max-h-[560px] overflow-y-auto p-4">
+                    <div className="relative space-y-3 pl-6 before:absolute before:bottom-4 before:left-[7px] before:top-4 before:w-px before:bg-border">
+                      {rootLearningReviews.map((review) => (
+                        <article key={review.id} className="relative rounded-2xl border border-border bg-surface/55 p-4">
+                          <span className="absolute -left-[23px] top-5 h-3 w-3 rounded-full border-[3px] border-panel bg-primary" />
+                          <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <h3 className="text-[11px] font-semibold text-foreground">{review.levelName}</h3>
+                                <span className={`rounded-full border px-2 py-0.5 text-[7px] font-semibold uppercase tracking-[0.1em] ${reviewTone(review)}`}>
+                                  {review.verdict}
+                                </span>
+                              </div>
+                              <div className="mt-1 flex flex-wrap items-center gap-2 font-mono text-[7px] text-muted">
+                                <time>{formatDateTime(review.reviewedAt)}</time>
+                                <span>{review.reactionType} {review.direction}</span>
+                                <span>{formatReviewDuration(review.evidence.timeToOutcomeMs)}</span>
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <div className="font-mono text-[18px] font-semibold text-foreground">{review.score}%</div>
+                              <div className="text-[7px] uppercase tracking-[0.1em] text-muted">reasoning quality</div>
+                            </div>
+                          </div>
+                          <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-2">
+                            <div className="rounded-xl border border-border bg-background/45 p-3">
+                              <div className="text-[7px] font-semibold uppercase tracking-[0.11em] text-primary">Original reasoning</div>
+                              <p className="mt-1 line-clamp-3 text-[8px] leading-4 text-muted">{review.originalExpectation}</p>
+                            </div>
+                            <div className="rounded-xl border border-border bg-background/45 p-3">
+                              <div className="text-[7px] font-semibold uppercase tracking-[0.11em] text-primary">Review conclusion</div>
+                              <p className="mt-1 line-clamp-3 text-[8px] leading-4 text-muted">{review.actualOutcome}</p>
+                            </div>
+                          </div>
+                          <div className="mt-3 flex flex-wrap items-center gap-2">
+                            {review.blindSpotTags.map((tag) => (
+                              <span key={tag} className="rounded-full border border-border bg-background px-2 py-1 text-[7px] uppercase tracking-[0.08em] text-muted">
+                                {tag.replaceAll("-", " ")}
+                              </span>
+                            ))}
+                            <span className="ml-auto flex items-center gap-1 text-[7px] uppercase tracking-[0.09em] text-primary">
+                              <Database className="h-2.5 w-2.5" />
+                              {review.syncState === "synced" ? "cloud retained" : "device retained"}
+                            </span>
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                  </div>
+                </section>
+              </>
+            )}
           </div>
         ) : null}
 

@@ -5,6 +5,7 @@ import type {
   KwantBotMarketRoot,
   KwantBotMemoryEvent,
 } from "@/lib/kwantBotInterpreter";
+import type { KwantBotLearningReview } from "@/lib/kwantBotLearning";
 
 const DB_NAME = "kwantdesk-market-intelligence";
 const DB_VERSION = 1;
@@ -16,6 +17,7 @@ export type KwantBotPersistedState = {
   selectedRoot: KwantBotMarketRoot;
   messages: Record<KwantBotMarketRoot, KwantBotInterpreterMessage[]>;
   memory: Record<KwantBotMarketRoot, KwantBotMemoryEvent[]>;
+  learningReviews?: KwantBotLearningReview[];
 };
 
 function openDatabase() {

@@ -20,6 +20,12 @@ import {
   loadKwantBotMarketState,
   saveKwantBotMarketState,
 } from "@/lib/kwantBotMarketStore";
+import {
+  buildKwantBotLearningReview,
+  mergeKwantBotLearningReviews,
+  type KwantBotLearningReview,
+  type KwantBotLearningSyncState,
+} from "@/lib/kwantBotLearning";
 
 const ROOTS: KwantBotMarketRoot[] = ["NQ", "ES"];
 const MESSAGE_LIMIT = 500;
@@ -34,6 +40,8 @@ export type UseKwantBotInterpreterResult = {
   selectRoot: (root: KwantBotMarketRoot) => void;
   messages: RootRecord<KwantBotInterpreterMessage[]>;
   memory: RootRecord<KwantBotMemoryEvent[]>;
+  learningReviews: KwantBotLearningReview[];
+  learningSyncState: KwantBotLearningSyncState;
   contexts: RootRecord<KwantBotMarketContext | null>;
   contextStates: RootRecord<KwantBotContextState>;
   contextErrors: RootRecord<string | null>;
@@ -52,6 +60,8 @@ export function useKwantBotInterpreter(args: {
   const [selectedRoot, setSelectedRoot] = useState<KwantBotMarketRoot>(args.initialRoot ?? "NQ");
   const [messages, setMessages] = useState<RootRecord<KwantBotInterpreterMessage[]>>(emptyMessages);
   const [memory, setMemory] = useState<RootRecord<KwantBotMemoryEvent[]>>(emptyMemory);
+  const [learningReviews, setLearningReviews] = useState<KwantBotLearningReview[]>([]);
+  const [learningSyncState, setLearningSyncState] = useState<KwantBotLearningSyncState>("local");
   const [contexts, setContexts] = useState<RootRecord<KwantBotMarketContext | null>>({
     NQ: null,
     ES: null,
@@ -74,6 +84,7 @@ export function useKwantBotInterpreter(args: {
   const panelOpenRef = useRef(args.panelOpen);
   const messagesRef = useRef(messages);
   const memoryRef = useRef(memory);
+  const learningReviewsRef = useRef(learningReviews);
   const contextsRef = useRef(contexts);
   const runtimeRef = useRef<RootRecord<KwantBotRuntimeState>>({
     NQ: createKwantBotRuntime(),
@@ -85,6 +96,7 @@ export function useKwantBotInterpreter(args: {
   const animationFrameRef = useRef<number | null>(null);
   const contextInFlightRef = useRef<RootRecord<boolean>>({ NQ: false, ES: false });
   const contextFetchedAtRef = useRef<RootRecord<number>>({ NQ: 0, ES: 0 });
+  const cloudLearningReadyRef = useRef(false);
 
   useEffect(() => {
     selectedRootRef.current = selectedRoot;
@@ -101,6 +113,10 @@ export function useKwantBotInterpreter(args: {
   useEffect(() => {
     memoryRef.current = memory;
   }, [memory]);
+
+  useEffect(() => {
+    learningReviewsRef.current = learningReviews;
+  }, [learningReviews]);
 
   useEffect(() => {
     contextsRef.current = contexts;
@@ -145,6 +161,23 @@ export function useKwantBotInterpreter(args: {
     const nextState = { ...memoryRef.current, [root]: nextRootMemory };
     memoryRef.current = nextState;
     setMemory(nextState);
+
+    const knownReviewIds = new Set(learningReviewsRef.current.map((review) => review.id));
+    const generated = candidates
+      .filter((event) => event.type === "outcome" && !knownReviewIds.has(`review-${event.id}`))
+      .map((outcome) => buildKwantBotLearningReview({
+        outcome,
+        memory: nextRootMemory,
+        messages: messagesRef.current[root],
+        context: contextsRef.current[root],
+      }))
+      .filter((review): review is KwantBotLearningReview => review !== null);
+    if (generated.length) {
+      const nextReviews = mergeKwantBotLearningReviews(learningReviewsRef.current, generated);
+      learningReviewsRef.current = nextReviews;
+      setLearningReviews(nextReviews);
+      setLearningSyncState(cloudLearningReadyRef.current ? "syncing" : "local");
+    }
   }, []);
 
   useEffect(() => {
@@ -164,6 +197,23 @@ export function useKwantBotInterpreter(args: {
         memoryRef.current = restoredMemory;
         setMessages(restoredMessages);
         setMemory(restoredMemory);
+        const restoredReviews = Array.isArray(stored.learningReviews)
+          ? stored.learningReviews
+          : [];
+        const knownReviewIds = new Set(restoredReviews.map((review) => review.id));
+        const backfilled = ROOTS.flatMap((root) =>
+          restoredMemory[root]
+            .filter((event) => event.type === "outcome" && !knownReviewIds.has(`review-${event.id}`))
+            .map((outcome) => buildKwantBotLearningReview({
+              outcome,
+              memory: restoredMemory[root],
+              messages: restoredMessages[root],
+              context: null,
+            }))
+            .filter((review): review is KwantBotLearningReview => review !== null));
+        const nextReviews = mergeKwantBotLearningReviews(restoredReviews, backfilled);
+        learningReviewsRef.current = nextReviews;
+        setLearningReviews(nextReviews);
         if (stored.selectedRoot === "NQ" || stored.selectedRoot === "ES") {
           selectedRootRef.current = stored.selectedRoot;
           setSelectedRoot(stored.selectedRoot);
@@ -186,10 +236,79 @@ export function useKwantBotInterpreter(args: {
         selectedRoot,
         messages,
         memory,
+        learningReviews,
       }).catch(() => undefined);
     }, 800);
     return () => window.clearTimeout(timer);
-  }, [memory, messages, selectedRoot, storeReady]);
+  }, [learningReviews, memory, messages, selectedRoot, storeReady]);
+
+  useEffect(() => {
+    if (!storeReady) return;
+    let cancelled = false;
+    fetch("/api/kwantbot/learning-reviews", {
+      cache: "no-store",
+      credentials: "same-origin",
+    })
+      .then(async (response) => {
+        const body = await response.json() as {
+          configured?: boolean;
+          reviews?: KwantBotLearningReview[];
+        };
+        if (!response.ok || !body.configured) throw new Error("Cloud learning journal unavailable.");
+        if (cancelled) return;
+        cloudLearningReadyRef.current = true;
+        const nextReviews = mergeKwantBotLearningReviews(
+          learningReviewsRef.current,
+          Array.isArray(body.reviews) ? body.reviews : [],
+        );
+        learningReviewsRef.current = nextReviews;
+        setLearningReviews(nextReviews);
+        setLearningSyncState("synced");
+      })
+      .catch(() => {
+        if (cancelled) return;
+        cloudLearningReadyRef.current = false;
+        setLearningSyncState("local");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [storeReady]);
+
+  useEffect(() => {
+    if (!storeReady || !cloudLearningReadyRef.current) return;
+    const pending = learningReviews.filter((review) => review.syncState === "local").slice(-500);
+    if (!pending.length) return;
+    setLearningSyncState("syncing");
+    const timer = window.setTimeout(() => {
+      fetch("/api/kwantbot/learning-reviews", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reviews: pending }),
+      })
+        .then(async (response) => {
+          const body = await response.json() as { configured?: boolean; ids?: string[] };
+          if (!response.ok || !body.configured) throw new Error("Cloud learning journal unavailable.");
+          const savedIds = new Set(body.ids ?? pending.map((review) => review.id));
+          const nextReviews = learningReviewsRef.current.map((review) =>
+            savedIds.has(review.id) ? { ...review, syncState: "synced" as const } : review);
+          learningReviewsRef.current = nextReviews;
+          setLearningReviews(nextReviews);
+          setLearningSyncState("synced");
+        })
+        .catch(() => {
+          cloudLearningReadyRef.current = false;
+          const pendingIds = new Set(pending.map((review) => review.id));
+          const nextReviews = learningReviewsRef.current.map((review) =>
+            pendingIds.has(review.id) ? { ...review, syncState: "error" as const } : review);
+          learningReviewsRef.current = nextReviews;
+          setLearningReviews(nextReviews);
+          setLearningSyncState("error");
+        });
+    }, 1_200);
+    return () => window.clearTimeout(timer);
+  }, [learningReviews, storeReady]);
 
   const fetchContext = useCallback(async (root: KwantBotMarketRoot) => {
     if (contextInFlightRef.current[root]) return;
@@ -387,6 +506,8 @@ export function useKwantBotInterpreter(args: {
     selectRoot,
     messages,
     memory,
+    learningReviews,
+    learningSyncState,
     contexts,
     contextStates,
     contextErrors,
