@@ -33,7 +33,7 @@ import {
   Zap,
   type LucideIcon,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   GameplanEdition,
   GameplanPayload,
@@ -332,6 +332,8 @@ function LevelCard({
 function Ladder({
   plan,
   currentPrice,
+  priceTick,
+  feedState,
   mode,
   whatIf,
   setWhatIf,
@@ -339,12 +341,17 @@ function Ladder({
 }: {
   plan: GameplanEdition;
   currentPrice: number | null;
+  priceTick: "up" | "down" | "flat";
+  feedState: "connecting" | "live" | "fallback";
   mode: DetailMode;
   whatIf: boolean;
   setWhatIf: (value: boolean) => void;
   onGlossary: (term: string) => void;
 }) {
   const [expanded, setExpanded] = useState<number | null>(0);
+  const ladderBodyRef = useRef<HTMLDivElement>(null);
+  const levelRowRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const [markerTop, setMarkerTop] = useState<number | null>(null);
   const nearestIndex = useMemo(() => {
     if (currentPrice === null || !plan.ladder.length) return -1;
     return plan.ladder.reduce((best, level, index) => {
@@ -353,6 +360,68 @@ function Ladder({
       return Math.abs(price - currentPrice) < Math.abs(bestPrice - currentPrice) ? index : best;
     }, 0);
   }, [currentPrice, plan.ladder]);
+
+  useEffect(() => {
+    const ladderBody = ladderBodyRef.current;
+    if (!ladderBody || currentPrice === null || !plan.ladder.length) {
+      setMarkerTop(null);
+      return;
+    }
+
+    const positionMarker = () => {
+      const bodyRect = ladderBody.getBoundingClientRect();
+      const points = plan.ladder.flatMap((level, index) => {
+        const row = levelRowRefs.current[index];
+        if (!row) return [];
+        const rect = row.getBoundingClientRect();
+        return [{
+          price: (level.zone[0] + level.zone[1]) / 2,
+          y: rect.top - bodyRect.top + rect.height / 2,
+        }];
+      });
+      if (!points.length) return;
+
+      let nextTop = points[0].y;
+      if (currentPrice >= points[0].price) {
+        const second = points[1];
+        const pixelsPerPoint = second
+          ? Math.abs((second.y - points[0].y) / Math.max(1, points[0].price - second.price))
+          : 0;
+        nextTop = points[0].y - Math.min(34, (currentPrice - points[0].price) * pixelsPerPoint);
+      } else if (currentPrice <= points[points.length - 1].price) {
+        const last = points[points.length - 1];
+        const previous = points[points.length - 2];
+        const pixelsPerPoint = previous
+          ? Math.abs((last.y - previous.y) / Math.max(1, previous.price - last.price))
+          : 0;
+        nextTop = last.y + Math.min(34, (last.price - currentPrice) * pixelsPerPoint);
+      } else {
+        for (let index = 0; index < points.length - 1; index += 1) {
+          const upper = points[index];
+          const lower = points[index + 1];
+          if (currentPrice <= upper.price && currentPrice >= lower.price) {
+            const progress = (upper.price - currentPrice) / Math.max(0.0001, upper.price - lower.price);
+            nextTop = upper.y + (lower.y - upper.y) * progress;
+            break;
+          }
+        }
+      }
+      setMarkerTop(Math.max(14, Math.min(ladderBody.clientHeight - 14, nextTop)));
+    };
+
+    const frame = window.requestAnimationFrame(positionMarker);
+    const observer = new ResizeObserver(positionMarker);
+    observer.observe(ladderBody);
+    levelRowRefs.current.forEach((row) => {
+      if (row) observer.observe(row);
+    });
+    window.addEventListener("resize", positionMarker);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      observer.disconnect();
+      window.removeEventListener("resize", positionMarker);
+    };
+  }, [currentPrice, expanded, plan.ladder]);
 
   return (
     <Panel className="overflow-hidden">
@@ -370,22 +439,49 @@ function Ladder({
           </button>
         )}
       />
-      <div className="relative px-3 py-3 lg:px-5">
+      <div ref={ladderBodyRef} className="relative px-3 py-3 lg:px-5">
         <div className="pointer-events-none absolute bottom-4 left-[91px] top-4 w-px bg-gradient-to-b from-transparent via-border to-transparent lg:left-[113px]" />
+        {currentPrice !== null && markerTop !== null ? (
+          <div
+            className="pointer-events-none absolute inset-x-3 z-20 flex -translate-y-1/2 items-center transition-[top] duration-200 ease-out lg:inset-x-5"
+            style={{ top: markerTop }}
+            aria-live="polite"
+          >
+            <span className={`w-[76px] shrink-0 rounded-md border bg-panel/95 px-1.5 py-1 text-right font-mono text-[10px] font-semibold shadow-lg backdrop-blur transition-colors lg:w-[98px] ${
+              priceTick === "up"
+                ? "border-primary/50 text-primary"
+                : priceTick === "down"
+                  ? "border-danger/50 text-danger"
+                  : "border-primary/25 text-primary"
+            }`}>
+              {formatPrice(currentPrice)}
+            </span>
+            <span className={`ml-2 h-2.5 w-2.5 shrink-0 rounded-full border-2 border-background transition-all ${
+              priceTick === "up"
+                ? "scale-125 bg-primary shadow-[0_0_15px_var(--primary)]"
+                : priceTick === "down"
+                  ? "scale-125 bg-danger shadow-[0_0_15px_var(--danger)]"
+                  : "bg-primary shadow-[0_0_10px_var(--primary)]"
+            }`} />
+            <span className={`h-px min-w-3 flex-1 ${priceTick === "down" ? "bg-danger/45" : "bg-primary/45"}`} />
+            <span className={`flex shrink-0 items-center gap-1.5 rounded-md border bg-panel/95 px-2 py-1 text-[8px] font-bold uppercase tracking-[0.15em] shadow-lg backdrop-blur ${
+              priceTick === "down" ? "border-danger/30 text-danger" : "border-primary/30 text-primary"
+            }`}>
+              <span className={`h-1.5 w-1.5 rounded-full ${feedState === "live" ? "animate-pulse bg-primary" : "bg-muted"}`} />
+              You are here
+            </span>
+          </div>
+        ) : null}
         {plan.ladder.map((level, index) => {
           const open = expanded === index;
           const approaching = nearestIndex === index;
           const belly = plan.belly_zones.find(([low, high]) => high <= level.zone[0] && index < plan.ladder.length - 1);
           return (
             <div key={`${level.name}-${level.zone[0]}`} className={`relative ${expanded !== null && !open ? "opacity-65" : "opacity-100"} transition-opacity`}>
-              {currentPrice !== null && index === nearestIndex ? (
-                <div className="relative z-10 mb-1 flex items-center gap-2 py-1.5">
-                  <span className="w-[76px] text-right font-mono text-[10px] font-semibold text-primary lg:w-[98px]">{formatPrice(currentPrice)}</span>
-                  <span className="h-2.5 w-2.5 rounded-full border-2 border-background bg-primary shadow-[0_0_12px_var(--primary)]" />
-                  <span className="rounded-md border border-primary/20 bg-primary/10 px-2 py-1 text-[8px] font-bold uppercase tracking-[0.15em] text-primary">You are here</span>
-                </div>
-              ) : null}
               <button
+                ref={(node) => {
+                  levelRowRefs.current[index] = node;
+                }}
                 type="button"
                 onClick={() => setExpanded(open ? null : index)}
                 aria-expanded={open}
@@ -722,6 +818,8 @@ export default function GameplanWorkspace({ initialInstrument = "NQ" }: { initia
   const [session, setSession] = useState<GameplanSession>("newyork");
   const [payload, setPayload] = useState<GameplanPayload | null>(null);
   const [currentPrice, setCurrentPrice] = useState<number | null>(null);
+  const [priceTick, setPriceTick] = useState<"up" | "down" | "flat">("flat");
+  const [liveFeedState, setLiveFeedState] = useState<"connecting" | "live" | "fallback">("connecting");
   const [mode, setMode] = useState<DetailMode>("standard");
   const [whatIf, setWhatIf] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -730,7 +828,26 @@ export default function GameplanWorkspace({ initialInstrument = "NQ" }: { initia
   const [glossaryTerm, setGlossaryTerm] = useState<string | null>(null);
   const [showDiff, setShowDiff] = useState(false);
   const [copied, setCopied] = useState(false);
+  const previousPriceRef = useRef<number | null>(null);
+  const lastNativeTickAtRef = useRef(0);
+  const priceTickTimerRef = useRef<number | null>(null);
   const countdown = useCountdown(session);
+
+  const updateLivePrice = useCallback((nextPrice: number) => {
+    if (!Number.isFinite(nextPrice) || nextPrice <= 0) return;
+    const previous = previousPriceRef.current;
+    previousPriceRef.current = nextPrice;
+    if (previous !== null && nextPrice !== previous) {
+      setPriceTick(nextPrice > previous ? "up" : "down");
+      if (priceTickTimerRef.current !== null) window.clearTimeout(priceTickTimerRef.current);
+      priceTickTimerRef.current = window.setTimeout(() => setPriceTick("flat"), 420);
+    }
+    setCurrentPrice(nextPrice);
+  }, []);
+
+  useEffect(() => () => {
+    if (priceTickTimerRef.current !== null) window.clearTimeout(priceTickTimerRef.current);
+  }, []);
 
   const loadPlan = useCallback(async (manual = false) => {
     if (manual) setRefreshing(true);
@@ -740,7 +857,7 @@ export default function GameplanWorkspace({ initialInstrument = "NQ" }: { initia
       const next = await response.json() as GameplanPayload & { error?: string };
       if (!response.ok) throw new Error(next.error || "Gameplan could not be loaded.");
       setPayload(next);
-      setCurrentPrice(next.current_price);
+      if (next.current_price !== null) updateLivePrice(next.current_price);
       setError(null);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Gameplan could not be loaded.");
@@ -748,12 +865,34 @@ export default function GameplanWorkspace({ initialInstrument = "NQ" }: { initia
       setLoading(false);
       setRefreshing(false);
     }
-  }, [root, session]);
+  }, [root, session, updateLivePrice]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => void loadPlan(), 0);
     return () => window.clearTimeout(timer);
   }, [loadPlan]);
+
+  useEffect(() => {
+    if (!payload) return;
+    setLiveFeedState("connecting");
+    lastNativeTickAtRef.current = 0;
+    const live = new EventSource(`/api/databento/live?symbols=${encodeURIComponent(`${root}.v.0`)}`);
+    live.addEventListener("status", () => setLiveFeedState("live"));
+    live.onmessage = (event) => {
+      try {
+        const tick = JSON.parse(event.data) as { instrument?: string; mid?: number };
+        if (tick.instrument !== `${root}.v.0`) return;
+        const nextPrice = Number(tick.mid);
+        if (!Number.isFinite(nextPrice) || nextPrice <= 0) return;
+        lastNativeTickAtRef.current = Date.now();
+        setLiveFeedState("live");
+        updateLivePrice(nextPrice);
+      } catch {}
+    };
+    live.addEventListener("feed-error", () => setLiveFeedState("fallback"));
+    live.onerror = () => setLiveFeedState("fallback");
+    return () => live.close();
+  }, [payload, root, updateLivePrice]);
 
   useEffect(() => {
     if (!payload) return;
@@ -763,8 +902,15 @@ export default function GameplanWorkspace({ initialInstrument = "NQ" }: { initia
       try {
         const response = await fetch(`/api/options-flow/market-data?symbol=${source}&priceMode=FUTURES`, { cache: "no-store" });
         const market = await response.json() as { marketData?: { lastPrice?: number | null }; refreshAfterMs?: number };
-        if (!cancelled && response.ok && market.marketData?.lastPrice !== null && market.marketData?.lastPrice !== undefined) {
-          setCurrentPrice(market.marketData.lastPrice);
+        if (
+          !cancelled
+          && response.ok
+          && market.marketData?.lastPrice !== null
+          && market.marketData?.lastPrice !== undefined
+          && Date.now() - lastNativeTickAtRef.current > 3_000
+        ) {
+          setLiveFeedState("fallback");
+          updateLivePrice(market.marketData.lastPrice);
         }
       } catch {}
     };
@@ -774,7 +920,7 @@ export default function GameplanWorkspace({ initialInstrument = "NQ" }: { initia
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [payload, root]);
+  }, [payload, root, updateLivePrice]);
 
   if (loading && !payload) return <LoadingState />;
   if (!payload) {
@@ -873,7 +1019,13 @@ export default function GameplanWorkspace({ initialInstrument = "NQ" }: { initia
             <div className="relative px-5 py-6 sm:px-7 sm:py-8 lg:px-9">
               <div className="flex items-center gap-2">
                 <span className="rounded-lg border border-primary/20 bg-primary/10 px-2 py-1 text-[9px] font-bold uppercase tracking-[0.15em] text-primary">The one-liner</span>
-                <span className="font-mono text-[9px] text-muted">{root} · {formatPrice(currentPrice)}</span>
+                <span className={`rounded-md px-1.5 py-0.5 font-mono text-[9px] transition-colors ${
+                  priceTick === "up"
+                    ? "bg-primary/10 text-primary"
+                    : priceTick === "down"
+                      ? "bg-danger/10 text-danger"
+                      : "text-muted"
+                }`}>{root} · {formatPrice(currentPrice)}</span>
               </div>
               <h1 className="mt-4 max-w-5xl text-[23px] font-semibold leading-[1.22] tracking-[-0.035em] text-foreground sm:text-[29px] lg:text-[35px]">{plan.one_liner}</h1>
               <div className="mt-5 flex flex-wrap items-center gap-3">
@@ -887,7 +1039,16 @@ export default function GameplanWorkspace({ initialInstrument = "NQ" }: { initia
           </Panel>
 
           <div className="mb-3 grid min-h-0 gap-3 xl:grid-cols-[minmax(0,1.65fr)_minmax(300px,.55fr)]">
-            <Ladder plan={plan} currentPrice={currentPrice} mode={mode} whatIf={whatIf} setWhatIf={setWhatIf} onGlossary={setGlossaryTerm} />
+            <Ladder
+              plan={plan}
+              currentPrice={currentPrice}
+              priceTick={priceTick}
+              feedState={liveFeedState}
+              mode={mode}
+              whatIf={whatIf}
+              setWhatIf={setWhatIf}
+              onGlossary={setGlossaryTerm}
+            />
             <Environment plan={plan} />
           </div>
 
