@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import FuturesWorkspace from "@/components/FuturesWorkspace";
+import KwantifyWorkspace from "@/components/KwantifyWorkspace";
 import { isAllowedEmail } from "@/lib/access";
 import { createClient } from "@/lib/supabase/server";
 
@@ -19,5 +19,5 @@ export default async function HomePage() {
   if (!user) redirect("/login");
   if (!isAllowedEmail(user.email)) redirect("/login?error=restricted");
 
-  return <FuturesWorkspace email={user.email ?? "Profile"} />;
+  return <KwantifyWorkspace />;
 }
