@@ -5627,21 +5627,6 @@ export default function Home() {
           <div ref={workspaceAreaRef} className="relative h-full min-w-0">
             {renderWorkspaceNode(workspaceTree)}
             {chartLoadingMessage && <div className="absolute left-1/2 top-3 z-20 -translate-x-1/2 rounded-lg border border-border bg-panel/90 px-3 py-1.5 text-[12px] text-muted shadow-lg backdrop-blur">{chartLoadingMessage}</div>}
-            {/* Strategy labels overlay */}
-            <div className="absolute top-3 left-3 z-10 flex flex-col gap-1">
-              {strategies.filter(s => !chartIndicatorsSuppressed && s.addedToChart).map(s => (
-                <div key={s.id} className={"flex items-center gap-2 bg-panel/80 backdrop-blur border border-border rounded-lg px-2.5 py-1.5 transition-all duration-200 " + (s.visible ? "" : "opacity-40")}>
-                  <div className={"w-2 h-2 rounded-full " + (s.visible ? ((s.totalPnl ?? 0) >= 0 ? "bg-primary" : "bg-danger") : "bg-muted")} />
-                  <span className={"text-[11px] font-medium " + (s.visible ? "text-foreground" : "text-muted")}>{s.name}</span>
-                  <button onClick={() => {
-                    const updated = strategies.map(st => st.id === s.id ? { ...st, visible: !st.visible } : st);
-                    setStrategies(updated);
-                  }} className="text-muted hover:text-foreground transition-colors">
-                    {s.visible ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
-                  </button>
-                </div>
-              ))}
-            </div>
           </div>
           {false && rightPanel && (
             <div style={{ width: rightPanelWidth }} className="relative flex shrink-0 flex-col border-l border-border bg-panel">
