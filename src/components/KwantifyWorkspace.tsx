@@ -1381,7 +1381,7 @@ export default function Home() {
       ? Math.min(initialMaxHeight, Math.max(BOTTOM_PANEL_MIN_HEIGHT, saved))
       : BOTTOM_PANEL_DEFAULT_HEIGHT;
   });
-  const [bottomMinimized, setBottomMinimized] = useState(false);
+  const [bottomMinimized, setBottomMinimized] = useState(true);
   const [equityPeriod, setEquityPeriod] = useState("365d");
   const [favTFs, setFavTFs] = useState(["1m", "5m", "15m", "1h", "4h", "1D"]);
   const [showAllTF, setShowAllTF] = useState(false);
@@ -2109,7 +2109,7 @@ export default function Home() {
       window.dispatchEvent(new Event("resize"));
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [bottomPanelHeight, rightPanel, rightPanelWidth]);
+  }, [rightPanel, rightPanelWidth]);
 
   useEffect(() => {
     try {
@@ -4043,7 +4043,7 @@ export default function Home() {
         </div>
       )}
 
-      <div className="flex min-w-0 flex-1 flex-col" ref={mainRef}>
+      <div className="relative flex min-w-0 flex-1 flex-col" ref={mainRef}>
         <header className="relative flex h-[52px] shrink-0 items-center gap-3 border-b border-border bg-panel px-5">
           {chartTrades.length > 0 && (
             <>
@@ -4605,7 +4605,32 @@ export default function Home() {
           </div>
         </div>
 
-        {!bottomMinimized && (
+        <div
+          style={{ height: bottomMinimized ? BOTTOM_PANEL_COLLAPSED_HEIGHT : bottomPanelHeight }}
+          className="absolute inset-x-0 bottom-0 z-40 flex flex-col overflow-hidden border-t border-border bg-panel shadow-[0_-18px_50px_rgba(0,0,0,0.42)]"
+        >
+          <div
+            onMouseDown={startBottomResize}
+            className="group absolute inset-x-0 top-0 z-10 h-2 cursor-row-resize"
+            aria-label="Resize Gamma panel"
+          >
+            <div className="absolute inset-x-0 top-0 h-px bg-border transition-colors group-hover:bg-primary/50" />
+          </div>
+          <div className="flex h-10 shrink-0 items-center border-b border-border bg-panel px-5">
+            <button
+              type="button"
+              onClick={() => setBottomMinimized((value) => !value)}
+              className="flex items-center gap-2 text-[13px] font-semibold text-foreground transition-colors hover:text-primary"
+            >
+              <BarChart3 className="h-3.5 w-3.5 text-primary" />
+              Gamma
+              {bottomMinimized ? <ChevronUp className="h-3.5 w-3.5 text-muted" /> : <ChevronDown className="h-3.5 w-3.5 text-muted" />}
+            </button>
+          </div>
+          <div className="min-h-0 flex-1 bg-panel" aria-label="Gamma workspace" />
+        </div>
+
+        {false && !bottomMinimized && (
           <div onMouseDown={startBottomResize} className="relative h-4 flex-shrink-0 cursor-row-resize bg-transparent">
             <div className="pointer-events-none absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-border transition-colors group-hover:bg-primary/30" />
             <div className="flex h-full items-center justify-center">
@@ -4613,7 +4638,7 @@ export default function Home() {
             </div>
           </div>
         )}
-        <div style={{ height: bottomMinimized ? BOTTOM_PANEL_COLLAPSED_HEIGHT : bottomPanelHeight }} className="flex flex-shrink-0 flex-col overflow-hidden border-t border-border bg-panel">
+        <div style={{ height: bottomMinimized ? BOTTOM_PANEL_COLLAPSED_HEIGHT : bottomPanelHeight }} className="hidden flex-shrink-0 flex-col overflow-hidden border-t border-border bg-panel">
         <div className="flex h-10 shrink-0 items-center gap-3 border-b border-border bg-panel px-5">
           <button onClick={() => setBottomMinimized((value) => !value)} className="flex items-center gap-2 text-[13px] font-semibold text-foreground hover:text-primary">
             <BarChart3 className="h-3.5 w-3.5 text-primary" />
