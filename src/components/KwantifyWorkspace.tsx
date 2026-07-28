@@ -135,6 +135,7 @@ import {
 const Chart = dynamic(() => import("@/components/Chart"), { ssr: false });
 const GammaWorkspace = dynamic(() => import("@/components/options-flow/GammaWorkspace"), { ssr: false });
 const GexMapWorkspace = dynamic(() => import("@/components/gex-map/GexMapWorkspace"), { ssr: false });
+const GameplanWorkspace = dynamic(() => import("@/components/gameplan/GameplanWorkspace"), { ssr: false });
 
 const BOTTOM_PANEL_MIN_HEIGHT = 150;
 const BOTTOM_PANEL_DEFAULT_HEIGHT = 300;
@@ -6498,6 +6499,7 @@ export default function Home() {
           >
             {bottomWorkspaceSection === "gamma" ? <GammaWorkspace /> : null}
             {bottomWorkspaceSection === "gexmap" ? <GexMapWorkspace /> : null}
+            {bottomWorkspaceSection === "gameplan" ? <GameplanWorkspace initialInstrument={displayCmeSymbol(selectedInstrument)} /> : null}
           </section>
         )}
 
