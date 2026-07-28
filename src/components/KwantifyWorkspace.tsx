@@ -71,8 +71,17 @@ import { generateSampleData } from "@/lib/sampleData";
 import { createClient } from "@/lib/supabase";
 import { clearSavedStrategiesRaw, loadSavedStrategiesRaw, saveSavedStrategiesRaw } from "@/lib/automation";
 import { defaultChartSettings, extractUserChartSettings, loadStoredChartSettings, saveStoredChartSettings, type ChartSettings } from "@/lib/chartSettings";
-import type { ChartLevel } from "@/components/Chart";
+import type { ChartLevel, ChartZone } from "@/components/Chart";
 import type { ChartGammaLevelsPayload } from "@/lib/chartGammaLevels";
+import {
+  GAMEPLAN_CHART_OVERLAYS_EVENT,
+  GAMEPLAN_CHART_OVERLAYS_STORAGE_KEY,
+  gameplanChartRootForInstrument,
+  loadGameplanChartOverlays,
+  removeGameplanChartOverlay,
+  type GameplanChartOverlay,
+  type GameplanChartOverlayStore,
+} from "@/lib/gameplanChartOverlay";
 import {
   buildChartGammaCalibration,
   cashFallbackGammaConversion,
@@ -1170,6 +1179,85 @@ type GammaPayloadCacheEntry = {
   payload?: ChartGammaLevelsPayload;
 };
 
+type GameplanChartDecorations = {
+  levels: ChartLevel[];
+  zones: ChartZone[];
+};
+
+function parseHexColor(value: string) {
+  const normalized = value.trim().replace(/^#/, "");
+  const expanded = normalized.length === 3
+    ? normalized.split("").map((character) => `${character}${character}`).join("")
+    : normalized;
+  if (!/^[0-9a-f]{6}$/i.test(expanded)) return null;
+  return {
+    r: Number.parseInt(expanded.slice(0, 2), 16),
+    g: Number.parseInt(expanded.slice(2, 4), 16),
+    b: Number.parseInt(expanded.slice(4, 6), 16),
+  };
+}
+
+function mixChartColor(base: string, accent: string, accentWeight: number) {
+  const baseRgb = parseHexColor(base);
+  const accentRgb = parseHexColor(accent);
+  if (!baseRgb || !accentRgb) return accent;
+  const weight = Math.max(0, Math.min(1, accentWeight));
+  const toHex = (channel: number) => Math.round(channel).toString(16).padStart(2, "0");
+  return `#${toHex(baseRgb.r * (1 - weight) + accentRgb.r * weight)}${toHex(baseRgb.g * (1 - weight) + accentRgb.g * weight)}${toHex(baseRgb.b * (1 - weight) + accentRgb.b * weight)}`;
+}
+
+function colorWithAlpha(color: string, alpha: number) {
+  const rgb = parseHexColor(color);
+  return rgb ? `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${alpha})` : `color-mix(in srgb, ${color} ${Math.round(alpha * 100)}%, transparent)`;
+}
+
+function formatGameplanZone(low: number, high: number) {
+  const format = (value: number) => value.toLocaleString("en-US", {
+    minimumFractionDigits: value % 1 ? 2 : 0,
+    maximumFractionDigits: 2,
+  });
+  return low === high ? format(low) : `${format(low)}–${format(high)}`;
+}
+
+function buildGameplanChartDecorations(
+  overlay: GameplanChartOverlay | null,
+  settings: ChartSettings,
+): GameplanChartDecorations {
+  if (!overlay) return { levels: [], zones: [] };
+  const colors = {
+    magnet: settings.upColor,
+    wall: settings.downColor,
+    accelerant: mixChartColor(settings.upColor, "#F59E0B", 0.62),
+    decision: mixChartColor(settings.upColor, "#38BDF8", 0.62),
+  } satisfies Record<GameplanChartOverlay["levels"][number]["role"], string>;
+
+  return {
+    levels: overlay.levels.map((level): ChartLevel => {
+      const color = colors[level.role];
+      return {
+        id: `gameplan-line-${level.id}`,
+        price: (level.zone[0] + level.zone[1]) / 2,
+        color,
+        label: `${level.name} · ${level.role.toUpperCase()}`,
+        lineStyle: level.role === "decision" ? "solid" : level.role === "accelerant" ? "dotted" : "dashed",
+        lineWidth: level.strength >= 4 || level.role === "decision" ? 2 : 1,
+        axisLabelVisible: true,
+      };
+    }),
+    zones: overlay.levels.map((level): ChartZone => {
+      const color = colors[level.role];
+      return {
+        id: `gameplan-zone-${level.id}`,
+        low: level.zone[0],
+        high: level.zone[1],
+        color,
+        fillColor: colorWithAlpha(color, level.role === "decision" ? 0.14 : 0.09),
+        label: `${level.name} · ${formatGameplanZone(level.zone[0], level.zone[1])}`,
+      };
+    }),
+  };
+}
+
 const gammaPayloadCache = new Map<string, GammaPayloadCacheEntry>();
 
 function fetchGammaPayload(
@@ -1370,6 +1458,8 @@ function WorkspaceChartPane({
   onChartDragEnd,
   gammaLevelsEnabled,
   onToggleGammaLevels,
+  gameplanOverlay,
+  onRemoveGameplanOverlay,
 }: {
   pane: WorkspacePane;
   active: boolean;
@@ -1389,6 +1479,8 @@ function WorkspaceChartPane({
   onChartDragEnd?: () => void;
   gammaLevelsEnabled: boolean;
   onToggleGammaLevels: () => void;
+  gameplanOverlay: GameplanChartOverlay | null;
+  onRemoveGameplanOverlay: () => void;
 }) {
   const [candles, setCandles] = useState<Candle[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1445,6 +1537,17 @@ function WorkspaceChartPane({
   );
   const currentGammaOverlay =
     gammaOverlay?.instrument === gammaInstrument ? gammaOverlay : null;
+  const gameplanDecorations = useMemo(
+    () => buildGameplanChartDecorations(gameplanOverlay, settings),
+    [gameplanOverlay, settings],
+  );
+  const chartLevels = useMemo(
+    () => [
+      ...(gammaLevelsEnabled ? currentGammaOverlay?.levels ?? [] : []),
+      ...gameplanDecorations.levels,
+    ],
+    [currentGammaOverlay, gammaLevelsEnabled, gameplanDecorations.levels],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -1911,7 +2014,8 @@ function WorkspaceChartPane({
         <Chart
           candles={candles}
           trades={trades}
-          levels={gammaLevelsEnabled ? currentGammaOverlay?.levels ?? [] : []}
+          levels={chartLevels}
+          zones={gameplanDecorations.zones}
           instrument={displayCmeSymbol(pane.symbol)}
           timeframe={pane.timeframe}
           marketIsActive={marketIsActive}
@@ -1928,6 +2032,7 @@ function WorkspaceChartPane({
           gammaLevelsLoading={gammaLevelsLoading}
           gammaLevelsError={gammaLevelsError}
           onToggleGammaLevels={onToggleGammaLevels}
+          onRemoveGameplanOverlay={gameplanOverlay ? onRemoveGameplanOverlay : undefined}
         />
       )}
       <div className="pointer-events-none absolute bottom-14 left-1/2 z-20 inline-flex -translate-x-1/2 items-center gap-1.5 whitespace-nowrap rounded-full border border-border bg-panel/90 px-2.5 py-1 text-[10px] uppercase tracking-[0.12em] text-muted shadow-lg shadow-black/25 backdrop-blur">
@@ -2527,6 +2632,8 @@ export default function Home() {
     if (typeof window === "undefined") return false;
     return window.localStorage.getItem(GAMMA_LEVELS_ENABLED_STORAGE_KEY) === "true";
   });
+  const [gameplanChartOverlays, setGameplanChartOverlays] = useState<GameplanChartOverlayStore>(() =>
+    loadGameplanChartOverlays());
   const [selectedStrategy, setSelectedStrategy] = useState<string | null>(demoStrategies[0].id);
   const [activeStrategyId, setActiveStrategyId] = useState(demoStrategies[0].id);
   const [selectedVersion, setSelectedVersion] = useState<number | null>(null);
@@ -3635,6 +3742,19 @@ export default function Home() {
       gammaLevelsEnabled ? "true" : "false",
     );
   }, [gammaLevelsEnabled]);
+
+  useEffect(() => {
+    const syncOverlays = () => setGameplanChartOverlays(loadGameplanChartOverlays());
+    const syncStorage = (event: StorageEvent) => {
+      if (event.key === GAMEPLAN_CHART_OVERLAYS_STORAGE_KEY) syncOverlays();
+    };
+    window.addEventListener(GAMEPLAN_CHART_OVERLAYS_EVENT, syncOverlays);
+    window.addEventListener("storage", syncStorage);
+    return () => {
+      window.removeEventListener(GAMEPLAN_CHART_OVERLAYS_EVENT, syncOverlays);
+      window.removeEventListener("storage", syncStorage);
+    };
+  }, []);
 
   useEffect(() => {
     if (!authChecked || !currentUsername || !gammaLevelsEnabled) return;
@@ -5757,6 +5877,7 @@ export default function Home() {
   function renderWorkspacePane(paneId: string) {
     const pane = workspacePanes.find((candidate) => candidate.id === paneId)
       ?? activeWorkspacePane;
+    const gameplanRoot = gameplanChartRootForInstrument(pane.symbol);
     return (
       <WorkspaceChartPane
         pane={pane}
@@ -5775,6 +5896,11 @@ export default function Home() {
         chartDragEnabled={!workspaceLocked && visibleWorkspacePaneIds.length > 1}
         gammaLevelsEnabled={gammaLevelsEnabled}
         onToggleGammaLevels={() => setGammaLevelsEnabled((current) => !current)}
+        gameplanOverlay={gameplanRoot ? gameplanChartOverlays[gameplanRoot] ?? null : null}
+        onRemoveGameplanOverlay={() => {
+          if (!gameplanRoot) return;
+          setGameplanChartOverlays(removeGameplanChartOverlay(gameplanRoot));
+        }}
         onChartDragStart={(event) => {
           event.dataTransfer.effectAllowed = "move";
           event.dataTransfer.setData("text/plain", pane.id);

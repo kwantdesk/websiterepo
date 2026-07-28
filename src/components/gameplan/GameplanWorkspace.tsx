@@ -41,6 +41,12 @@ import type {
   GameplanSession,
   GameplanTapeState,
 } from "@/lib/gameplan";
+import {
+  GAMEPLAN_CHART_OVERLAYS_EVENT,
+  createGameplanChartOverlay,
+  loadGameplanChartOverlays,
+  saveGameplanChartOverlay,
+} from "@/lib/gameplanChartOverlay";
 
 type DetailMode = "beginner" | "standard" | "pro";
 type Level = GameplanEdition["ladder"][number];
@@ -828,6 +834,7 @@ export default function GameplanWorkspace({ initialInstrument = "NQ" }: { initia
   const [glossaryTerm, setGlossaryTerm] = useState<string | null>(null);
   const [showDiff, setShowDiff] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [addedToChartKey, setAddedToChartKey] = useState<string | null>(null);
   const previousPriceRef = useRef<number | null>(null);
   const lastNativeTickAtRef = useRef(0);
   const priceTickTimerRef = useRef<number | null>(null);
@@ -871,6 +878,33 @@ export default function GameplanWorkspace({ initialInstrument = "NQ" }: { initia
     const timer = window.setTimeout(() => void loadPlan(), 0);
     return () => window.clearTimeout(timer);
   }, [loadPlan]);
+
+  useEffect(() => {
+    const syncAddedState = () => {
+      if (!payload) {
+        setAddedToChartKey(null);
+        return;
+      }
+      const plan = payload.plan;
+      if (payload.instrument !== root || plan.edition.session !== session) {
+        setAddedToChartKey(null);
+        return;
+      }
+      const existing = loadGameplanChartOverlays()[root];
+      const planKey = `${root}:${plan.edition.date}:${plan.edition.session}:${plan.edition.published_at}`;
+      setAddedToChartKey(
+        existing
+        && existing.editionDate === plan.edition.date
+        && existing.session === plan.edition.session
+        && existing.publishedAt === plan.edition.published_at
+          ? planKey
+          : null,
+      );
+    };
+    syncAddedState();
+    window.addEventListener(GAMEPLAN_CHART_OVERLAYS_EVENT, syncAddedState);
+    return () => window.removeEventListener(GAMEPLAN_CHART_OVERLAYS_EVENT, syncAddedState);
+  }, [payload, root, session]);
 
   useEffect(() => {
     if (!payload) return;
@@ -937,6 +971,8 @@ export default function GameplanWorkspace({ initialInstrument = "NQ" }: { initia
   }
 
   const plan = payload.plan;
+  const currentPlanKey = `${root}:${plan.edition.date}:${plan.edition.session}:${plan.edition.published_at}`;
+  const planMatchesSelection = payload.instrument === root && plan.edition.session === session;
   const copyOneLiner = async () => {
     await navigator.clipboard.writeText(plan.one_liner);
     setCopied(true);
@@ -967,6 +1003,24 @@ export default function GameplanWorkspace({ initialInstrument = "NQ" }: { initia
           ))}
         </div>
         <div className="ml-auto flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              if (!planMatchesSelection) return;
+              saveGameplanChartOverlay(createGameplanChartOverlay(root, plan));
+              setAddedToChartKey(currentPlanKey);
+            }}
+            disabled={!planMatchesSelection}
+            className={`flex h-9 items-center gap-2 rounded-xl border px-3 text-[10px] font-bold tracking-[0.08em] transition-colors ${
+              addedToChartKey === currentPlanKey
+                ? "border-primary/35 bg-primary/15 text-primary"
+                : "border-primary/25 bg-primary/10 text-primary hover:border-primary/45 hover:bg-primary/15 disabled:cursor-wait disabled:opacity-45"
+            }`}
+            title={`Add this ${root} Gameplan to every matching chart`}
+          >
+            {addedToChartKey === currentPlanKey ? <Check className="h-3.5 w-3.5" /> : <Layers3 className="h-3.5 w-3.5" />}
+            {!planMatchesSelection ? "SYNCING PLAN" : addedToChartKey === currentPlanKey ? "ADDED TO CHART" : "ADD TO CHART"}
+          </button>
           <div className="hidden items-center gap-2 rounded-xl border border-border bg-surface px-3 py-2 md:flex">
             <AlarmClock className="h-3.5 w-3.5 text-primary" />
             <span className="text-[9px] text-muted">Open in</span>

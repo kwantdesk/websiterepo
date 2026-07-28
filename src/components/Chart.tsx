@@ -23,6 +23,7 @@ import {
   Image as ImageIcon,
   Info,
   KanbanSquare,
+  Layers3,
   Link2,
   Lock,
   Magnet,
@@ -65,6 +66,7 @@ interface ChartProps {
   candles: Candle[];
   trades?: (Trade & { markerVisible?: boolean })[];
   levels?: ChartLevel[];
+  zones?: ChartZone[];
   instrument?: string;
   timeframe?: string;
   marketIsActive?: boolean;
@@ -81,6 +83,7 @@ interface ChartProps {
   gammaLevelsLoading?: boolean;
   gammaLevelsError?: string | null;
   onToggleGammaLevels?: () => void;
+  onRemoveGameplanOverlay?: () => void;
 }
 
 export interface ChartLevel {
@@ -91,6 +94,15 @@ export interface ChartLevel {
   lineStyle?: "solid" | "dashed" | "dotted";
   lineWidth?: 1 | 2 | 3 | 4;
   axisLabelVisible?: boolean;
+}
+
+export interface ChartZone {
+  id: string;
+  low: number;
+  high: number;
+  color: string;
+  fillColor: string;
+  label: string;
 }
 
 type DrawingToolId =
@@ -634,6 +646,7 @@ export default function Chart({
   candles,
   trades,
   levels,
+  zones = [],
   instrument = "Instrument",
   timeframe,
   marketIsActive,
@@ -650,6 +663,7 @@ export default function Chart({
   gammaLevelsLoading = false,
   gammaLevelsError = null,
   onToggleGammaLevels,
+  onRemoveGameplanOverlay,
 }: ChartProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
@@ -1231,6 +1245,51 @@ export default function Chart({
   }
 
   const renderableDrawings = useMemo(() => (hideDrawings ? [] : drawings), [drawings, hideDrawings]);
+
+  function renderChartZone(zone: ChartZone) {
+    const highY = priceToY(zone.high);
+    const lowY = priceToY(zone.low);
+    if (highY == null || lowY == null) return null;
+    const top = Math.min(highY, lowY);
+    const height = Math.max(4, Math.abs(lowY - highY));
+    const plotWidth = Math.max(0, overlaySize.width - 64);
+    const labelY = Math.max(13, Math.min(overlaySize.height - 8, top + Math.min(height / 2, 14)));
+
+    return (
+      <g key={`chart-zone-${zone.id}`} aria-label={zone.label}>
+        <rect
+          x={0}
+          y={top}
+          width={plotWidth}
+          height={height}
+          fill={zone.fillColor}
+          stroke={zone.color}
+          strokeWidth={1}
+          strokeDasharray="6 4"
+        />
+        <rect
+          x={10}
+          y={labelY - 11}
+          width={Math.min(210, Math.max(82, zone.label.length * 6.4 + 18))}
+          height={20}
+          rx={7}
+          fill="var(--panel)"
+          stroke={zone.color}
+          strokeWidth={0.8}
+        />
+        <text
+          x={19}
+          y={labelY + 3}
+          fill={zone.color}
+          fontSize="9"
+          fontFamily="'JetBrains Mono', monospace"
+          fontWeight="700"
+        >
+          {zone.label}
+        </text>
+      </g>
+    );
+  }
 
   function renderDrawing(drawing: ChartDrawing, keyPrefix = "drawing") {
     const [a, b] = drawing.points;
@@ -2334,6 +2393,7 @@ export default function Chart({
           fill="transparent"
           pointerEvents={selectedTool === "cursor" ? "none" : "all"}
         />
+        {zones.map((zone) => renderChartZone(zone))}
         {renderableDrawings.map((drawing) => renderDrawing(drawing))}
         {draftDrawing && renderDrawing(draftDrawing, "draft")}
       </svg>
@@ -2404,6 +2464,21 @@ export default function Chart({
             <Trash2 className="h-4 w-4 text-muted" />
             <span className="flex-1 text-left">Remove all indicators from chart</span>
           </button>
+          {zones.length > 0 && onRemoveGameplanOverlay ? (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                onRemoveGameplanOverlay();
+                setContextMenu(null);
+              }}
+              className="flex w-full cursor-pointer items-center gap-3 px-4 py-2.5 text-[13px] text-foreground transition-colors hover:bg-surface"
+            >
+              <Layers3 className="h-4 w-4 text-primary" />
+              <span className="flex-1 text-left">Remove all Gameplan levels</span>
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={(e) => {
