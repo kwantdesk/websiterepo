@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type ComponentType, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState, type ComponentType, type CSSProperties, type DragEvent as ReactDragEvent } from "react";
 import { createChart, IChartApi, LineStyle, Time } from "lightweight-charts";
 import {
   ArrowBigDown,
@@ -73,6 +73,9 @@ interface ChartProps {
   onRemoveAllIndicators?: () => void;
   settings?: ChartSettings;
   toolbarEnabled?: boolean;
+  chartDragEnabled?: boolean;
+  onChartDragStart?: (event: ReactDragEvent<HTMLButtonElement>) => void;
+  onChartDragEnd?: () => void;
 }
 
 export interface ChartLevel {
@@ -632,6 +635,9 @@ export default function Chart({
   onRemoveAllIndicators,
   settings = defaultChartSettings,
   toolbarEnabled = true,
+  chartDragEnabled = false,
+  onChartDragStart,
+  onChartDragEnd,
 }: ChartProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
@@ -1977,6 +1983,28 @@ export default function Chart({
                 className="rounded-full bg-current/85"
                 style={{ width: toolbarMetrics.iconSize <= 15 ? 5 : 6, height: toolbarMetrics.iconSize <= 15 ? 5 : 6 }}
               />
+            ))}
+          </span>
+        </button>
+        <button
+          type="button"
+          draggable={chartDragEnabled}
+          onDragStart={onChartDragStart}
+          onDragEnd={onChartDragEnd}
+          onMouseDown={(event) => event.stopPropagation()}
+          onClick={(event) => event.stopPropagation()}
+          className={`flex items-center justify-center border backdrop-blur transition-all ${
+            chartDragEnabled
+              ? "cursor-grab border-border bg-panel/80 text-muted hover:border-primary/40 hover:bg-surface hover:text-primary active:cursor-grabbing"
+              : "cursor-not-allowed border-transparent bg-panel/45 text-muted/30"
+          }`}
+          style={{ width: toolbarMetrics.buttonSize, height: toolbarMetrics.buttonSize, borderRadius: toolbarMetrics.radius }}
+          title={chartDragEnabled ? "Drag this chart onto another chart to swap positions" : "Unlock the workspace and add another chart to reorder"}
+          aria-label="Reorder chart"
+        >
+          <span className="grid grid-cols-2 gap-[3px]" aria-hidden="true">
+            {Array.from({ length: 6 }).map((_, index) => (
+              <span key={index} className="h-[3px] w-[3px] rounded-full bg-current" />
             ))}
           </span>
         </button>

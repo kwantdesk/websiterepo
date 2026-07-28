@@ -1,6 +1,7 @@
 ﻿"use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent as ReactDragEvent } from "react";
+import { createPortal } from "react-dom";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -24,6 +25,7 @@ import {
   ChevronUp,
   Code2,
   Copy,
+  Download,
   Eye,
   EyeOff,
   FileText,
@@ -43,6 +45,7 @@ import {
   Play,
   Plus,
   Repeat,
+  Save,
   Search,
   Settings,
   Settings2,
@@ -51,6 +54,7 @@ import {
   Store,
   Trash2,
   Trophy,
+  Upload,
   User,
   Wallet,
   X,
@@ -165,7 +169,7 @@ type StrategyItem = {
   totalPnl?: number;
 };
 
-type WorkspaceLayout = "single" | "split-vertical" | "split-horizontal" | "quad";
+type WorkspaceLayout = "single" | "split-vertical" | "split-horizontal" | "quad" | "custom";
 type WorkspacePane = {
   id: string;
   symbol: string;
@@ -174,6 +178,35 @@ type WorkspacePane = {
   period: string;
   watchlistKey: string;
 };
+type WorkspaceLayoutNode =
+  | { type: "pane"; paneId: string }
+  | {
+      type: "split";
+      id: string;
+      axis: "x" | "y";
+      ratio: number;
+      first: WorkspaceLayoutNode;
+      second: WorkspaceLayoutNode;
+    };
+type WorkspacePreset = {
+  id: string;
+  name: string;
+  layout: WorkspaceLayoutNode;
+  panes: WorkspacePane[];
+  chartSettings: ChartSettings;
+  updatedAt: string;
+};
+type WorkspaceBackupFile = {
+  format: "kwantdesk-chart-workspaces";
+  version: 1;
+  exportedAt: string;
+  presets: WorkspacePreset[];
+};
+
+const WORKSPACE_PRESETS_STORAGE_KEY = "kwantdesk-chart-workspace-presets";
+const ACTIVE_WORKSPACE_PRESET_STORAGE_KEY = "kwantdesk-chart-workspace-active-preset";
+const WORKSPACE_BACKUP_FORMAT = "kwantdesk-chart-workspaces";
+const MAX_WORKSPACE_BACKUP_BYTES = 2_000_000;
 
 type CTraderStatusAccount = {
   accountId: number;
@@ -225,6 +258,203 @@ const DEFAULT_WORKSPACE_PANES: WorkspacePane[] = [
   { id: "pane-3", symbol: "CL.v.0", broker: "Databento", timeframe: "5m", period: "1W", watchlistKey: makeWatchlistKey("CL.v.0", "Databento") },
   { id: "pane-4", symbol: "GC.v.0", broker: "Databento", timeframe: "5m", period: "1W", watchlistKey: makeWatchlistKey("GC.v.0", "Databento") },
 ];
+
+function createWorkspaceLayoutTree(
+  layout: Exclude<WorkspaceLayout, "custom">,
+  panes: WorkspacePane[],
+): WorkspaceLayoutNode {
+  const pane = (index: number): WorkspaceLayoutNode => ({
+    type: "pane",
+    paneId: (panes[index] ?? DEFAULT_WORKSPACE_PANES[index] ?? panes[0] ?? DEFAULT_WORKSPACE_PANES[0]).id,
+  });
+  if (layout === "split-vertical") {
+    return { type: "split", id: "root-x", axis: "x", ratio: 50, first: pane(0), second: pane(1) };
+  }
+  if (layout === "split-horizontal") {
+    return { type: "split", id: "root-y", axis: "y", ratio: 50, first: pane(0), second: pane(1) };
+  }
+  if (layout === "quad") {
+    return {
+      type: "split",
+      id: "root-x",
+      axis: "x",
+      ratio: 50,
+      first: {
+        type: "split",
+        id: "left-y",
+        axis: "y",
+        ratio: 50,
+        first: pane(0),
+        second: pane(2),
+      },
+      second: {
+        type: "split",
+        id: "right-y",
+        axis: "y",
+        ratio: 50,
+        first: pane(1),
+        second: pane(3),
+      },
+    };
+  }
+  return pane(0);
+}
+
+function collectWorkspacePaneIds(node: WorkspaceLayoutNode): string[] {
+  return node.type === "pane"
+    ? [node.paneId]
+    : [...collectWorkspacePaneIds(node.first), ...collectWorkspacePaneIds(node.second)];
+}
+
+function swapWorkspacePaneIds(
+  node: WorkspaceLayoutNode,
+  firstPaneId: string,
+  secondPaneId: string,
+): WorkspaceLayoutNode {
+  if (node.type === "pane") {
+    if (node.paneId === firstPaneId) return { ...node, paneId: secondPaneId };
+    if (node.paneId === secondPaneId) return { ...node, paneId: firstPaneId };
+    return node;
+  }
+  return {
+    ...node,
+    first: swapWorkspacePaneIds(node.first, firstPaneId, secondPaneId),
+    second: swapWorkspacePaneIds(node.second, firstPaneId, secondPaneId),
+  };
+}
+
+function updateWorkspaceSplitRatio(
+  node: WorkspaceLayoutNode,
+  splitId: string,
+  ratio: number,
+): WorkspaceLayoutNode {
+  if (node.type === "pane") return node;
+  if (node.id === splitId) return { ...node, ratio };
+  return {
+    ...node,
+    first: updateWorkspaceSplitRatio(node.first, splitId, ratio),
+    second: updateWorkspaceSplitRatio(node.second, splitId, ratio),
+  };
+}
+
+function insertWorkspacePane(
+  node: WorkspaceLayoutNode,
+  targetPaneId: string,
+  nextPaneId: string,
+  axis: "x" | "y",
+  splitId: string,
+): WorkspaceLayoutNode {
+  if (node.type === "pane") {
+    if (node.paneId !== targetPaneId) return node;
+    return {
+      type: "split",
+      id: splitId,
+      axis,
+      ratio: 50,
+      first: node,
+      second: { type: "pane", paneId: nextPaneId },
+    };
+  }
+  return {
+    ...node,
+    first: insertWorkspacePane(node.first, targetPaneId, nextPaneId, axis, splitId),
+    second: insertWorkspacePane(node.second, targetPaneId, nextPaneId, axis, splitId),
+  };
+}
+
+function collapseWorkspaceSplit(
+  node: WorkspaceLayoutNode,
+  splitId: string,
+  remove: "first" | "second",
+): WorkspaceLayoutNode {
+  if (node.type === "pane") return node;
+  if (node.id === splitId) return remove === "first" ? node.second : node.first;
+  return {
+    ...node,
+    first: collapseWorkspaceSplit(node.first, splitId, remove),
+    second: collapseWorkspaceSplit(node.second, splitId, remove),
+  };
+}
+
+function removeWorkspacePane(node: WorkspaceLayoutNode, paneId: string): WorkspaceLayoutNode | null {
+  if (node.type === "pane") return node.paneId === paneId ? null : node;
+  const first = removeWorkspacePane(node.first, paneId);
+  const second = removeWorkspacePane(node.second, paneId);
+  if (!first) return second;
+  if (!second) return first;
+  return { ...node, first, second };
+}
+
+function normalizeWorkspaceLayoutNode(
+  value: unknown,
+  validPaneIds: Set<string>,
+): WorkspaceLayoutNode | null {
+  if (!value || typeof value !== "object") return null;
+  const node = value as Partial<WorkspaceLayoutNode> & Record<string, unknown>;
+  if (node.type === "pane" && typeof node.paneId === "string" && validPaneIds.has(node.paneId)) {
+    return { type: "pane", paneId: node.paneId };
+  }
+  if (
+    node.type === "split"
+    && typeof node.id === "string"
+    && (node.axis === "x" || node.axis === "y")
+  ) {
+    const first = normalizeWorkspaceLayoutNode(node.first, validPaneIds);
+    const second = normalizeWorkspaceLayoutNode(node.second, validPaneIds);
+    if (!first || !second) return null;
+    const ratio = Number(node.ratio);
+    return {
+      type: "split",
+      id: node.id,
+      axis: node.axis,
+      ratio: Number.isFinite(ratio) ? Math.min(96, Math.max(4, ratio)) : 50,
+      first,
+      second,
+    };
+  }
+  return null;
+}
+
+function isWorkspacePreset(value: unknown): value is WorkspacePreset {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const preset = value as Partial<WorkspacePreset>;
+  return Boolean(
+    typeof preset.id === "string"
+    && preset.id
+    && typeof preset.name === "string"
+    && preset.name.trim()
+    && typeof preset.updatedAt === "string"
+    && Array.isArray(preset.panes)
+    && preset.layout
+    && preset.chartSettings,
+  );
+}
+
+function normalizeWorkspacePresets(value: unknown): WorkspacePreset[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter(isWorkspacePreset)
+    .map((preset) => {
+      const panes = preset.panes.map((pane, index) =>
+        normalizeWorkspacePane(pane, DEFAULT_WORKSPACE_PANES[index] ?? DEFAULT_WORKSPACE_PANES[0]));
+      const layout = normalizeWorkspaceLayoutNode(preset.layout, new Set(panes.map((pane) => pane.id)))
+        ?? createWorkspaceLayoutTree("single", panes);
+      return { ...preset, panes, layout };
+    })
+    .slice(0, 100)
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function loadLocalWorkspacePresets(): WorkspacePreset[] {
+  if (typeof window === "undefined") return [];
+  try {
+    return normalizeWorkspacePresets(
+      JSON.parse(window.localStorage.getItem(WORKSPACE_PRESETS_STORAGE_KEY) ?? "[]"),
+    );
+  } catch {
+    return [];
+  }
+}
 
 function normalizeWorkspacePane(pane: Partial<WorkspacePane>, fallback: WorkspacePane): WorkspacePane {
   if (pane.broker !== "Databento") return fallback;
@@ -793,6 +1023,11 @@ function WorkspaceChartPane({
   onRemoveAllIndicators,
   onSelectPeriod,
   onSelectTimeframe,
+  onClose,
+  closeDisabled,
+  chartDragEnabled,
+  onChartDragStart,
+  onChartDragEnd,
 }: {
   pane: WorkspacePane;
   active: boolean;
@@ -805,6 +1040,11 @@ function WorkspaceChartPane({
   onRemoveAllIndicators: () => void;
   onSelectPeriod: (period: string) => void;
   onSelectTimeframe: (timeframe: string) => boolean;
+  onClose?: () => void;
+  closeDisabled?: boolean;
+  chartDragEnabled?: boolean;
+  onChartDragStart?: (event: ReactDragEvent<HTMLButtonElement>) => void;
+  onChartDragEnd?: () => void;
 }) {
   const [candles, setCandles] = useState<Candle[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1030,6 +1270,24 @@ function WorkspaceChartPane({
       onMouseDown={onActivate}
       className={`relative h-full overflow-hidden rounded-2xl border bg-panel ${active ? "border-primary/50 shadow-[0_0_0_1px_rgba(236,72,153,0.28)]" : "border-border"}`}
     >
+      {onClose && (
+        <div className="absolute right-2 top-2 z-[70] flex items-center gap-1">
+          <button
+            type="button"
+            disabled={closeDisabled}
+            onMouseDown={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.stopPropagation();
+              onClose();
+            }}
+            className="flex h-7 w-7 items-center justify-center rounded-lg border border-border bg-panel/90 text-muted shadow-lg backdrop-blur transition-colors hover:border-danger/40 hover:text-danger disabled:cursor-not-allowed disabled:opacity-35"
+            title={closeDisabled ? "A workspace must keep one chart" : "Remove chart"}
+            aria-label="Remove chart"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
       {loading ? (
         <div className="flex h-full items-center justify-center text-[13px] text-muted">Loading chart data...</div>
       ) : error ? (
@@ -1046,6 +1304,9 @@ function WorkspaceChartPane({
           onCreateAlertAtPrice={onCreateAlertAtPrice}
           onRemoveAllIndicators={onRemoveAllIndicators}
           toolbarEnabled
+          chartDragEnabled={chartDragEnabled}
+          onChartDragStart={onChartDragStart}
+          onChartDragEnd={onChartDragEnd}
         />
       )}
       <div className="pointer-events-none absolute bottom-8 left-1/2 z-20 inline-flex -translate-x-1/2 items-center gap-1.5 whitespace-nowrap rounded-full border border-border bg-panel/90 px-2.5 py-1 text-[10px] uppercase tracking-[0.12em] text-muted shadow-lg shadow-black/25 backdrop-blur">
@@ -1245,7 +1506,7 @@ export default function Home() {
     if (typeof window === "undefined") return "single";
     try {
       const saved = window.localStorage.getItem("olisa-chart-workspace-layout") as WorkspaceLayout | null;
-      return saved === "split-vertical" || saved === "split-horizontal" || saved === "quad" || saved === "single" ? saved : "single";
+      return saved === "split-vertical" || saved === "split-horizontal" || saved === "quad" || saved === "single" || saved === "custom" ? saved : "single";
     } catch {
       return "single";
     }
@@ -1281,10 +1542,38 @@ export default function Home() {
       return DEFAULT_WORKSPACE_PANES;
     }
   });
+  const [workspaceTree, setWorkspaceTree] = useState<WorkspaceLayoutNode>(() => {
+    const fallbackLayout = workspaceLayout === "custom" ? "single" : workspaceLayout;
+    if (typeof window === "undefined") return createWorkspaceLayoutTree(fallbackLayout, workspacePanes);
+    try {
+      const parsed = JSON.parse(window.localStorage.getItem("olisa-chart-workspace-tree") ?? "null");
+      return normalizeWorkspaceLayoutNode(parsed, new Set(workspacePanes.map((pane) => pane.id)))
+        ?? createWorkspaceLayoutTree(fallbackLayout, workspacePanes);
+    } catch {
+      return createWorkspaceLayoutTree(fallbackLayout, workspacePanes);
+    }
+  });
+  const [workspacePresets, setWorkspacePresets] = useState<WorkspacePreset[]>(loadLocalWorkspacePresets);
+  const [activeWorkspacePresetId, setActiveWorkspacePresetId] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    return window.localStorage.getItem(ACTIVE_WORKSPACE_PRESET_STORAGE_KEY);
+  });
+  const [workspaceImportDragging, setWorkspaceImportDragging] = useState(false);
+  const [workspaceDeleteCandidate, setWorkspaceDeleteCandidate] = useState<WorkspacePreset | null>(null);
+  const [showWorkspacePresetMenu, setShowWorkspacePresetMenu] = useState(false);
+  const [showSaveWorkspacePreset, setShowSaveWorkspacePreset] = useState(false);
+  const [workspacePresetName, setWorkspacePresetName] = useState("");
+  const [workspacePresetMenuPosition, setWorkspacePresetMenuPosition] = useState({ top: 48, left: 12 });
+  const workspacePresetButtonRef = useRef<HTMLButtonElement>(null);
+  const workspacePresetMenuRef = useRef<HTMLDivElement>(null);
+  const workspaceImportInputRef = useRef<HTMLInputElement>(null);
+  const workspaceAreaRef = useRef<HTMLDivElement>(null);
   const [activePaneId, setActivePaneId] = useState<string>(() => {
     if (typeof window === "undefined") return DEFAULT_WORKSPACE_PANES[0].id;
     return window.localStorage.getItem("olisa-chart-workspace-active-pane") ?? DEFAULT_WORKSPACE_PANES[0].id;
   });
+  const [draggedWorkspacePaneId, setDraggedWorkspacePaneId] = useState<string | null>(null);
+  const [workspaceDropTargetPaneId, setWorkspaceDropTargetPaneId] = useState<string | null>(null);
   const [watchlist, setWatchlist] = useState<WatchlistItem[]>([
     ...DATABENTO_DEFAULT_SYMBOLS.map((symbol) => createWatchlistItem(symbol, "Databento")),
   ]);
@@ -1560,11 +1849,10 @@ export default function Home() {
     () => workspacePanes.find((pane) => pane.id === activePaneId) ?? workspacePanes[0] ?? DEFAULT_WORKSPACE_PANES[0],
     [activePaneId, workspacePanes],
   );
-  const visibleWorkspacePaneIds = useMemo(() => {
-    if (workspaceLayout === "single") return [activeWorkspacePane.id];
-    if (workspaceLayout === "quad") return workspacePanes.slice(0, 4).map((pane) => pane.id);
-    return workspacePanes.slice(0, 2).map((pane) => pane.id);
-  }, [activeWorkspacePane.id, workspaceLayout, workspacePanes]);
+  const visibleWorkspacePaneIds = useMemo(
+    () => collectWorkspacePaneIds(workspaceTree),
+    [workspaceTree],
+  );
   const chartStrategyOptions = useMemo(
     () =>
       (chartIndicatorsSuppressed ? [] : strategies)
@@ -2240,6 +2528,26 @@ export default function Home() {
   useEffect(() => {
     window.localStorage.setItem("olisa-chart-workspace-panes", JSON.stringify(workspacePanes));
   }, [workspacePanes]);
+
+  useEffect(() => {
+    window.localStorage.setItem("olisa-chart-workspace-tree", JSON.stringify(workspaceTree));
+  }, [workspaceTree]);
+
+  useEffect(() => {
+    window.localStorage.setItem(WORKSPACE_PRESETS_STORAGE_KEY, JSON.stringify(workspacePresets));
+  }, [workspacePresets]);
+
+  useEffect(() => {
+    if (
+      activeWorkspacePresetId
+      && workspacePresets.some((preset) => preset.id === activeWorkspacePresetId)
+    ) {
+      window.localStorage.setItem(ACTIVE_WORKSPACE_PRESET_STORAGE_KEY, activeWorkspacePresetId);
+      return;
+    }
+    window.localStorage.removeItem(ACTIVE_WORKSPACE_PRESET_STORAGE_KEY);
+    if (activeWorkspacePresetId) setActiveWorkspacePresetId(null);
+  }, [activeWorkspacePresetId, workspacePresets]);
 
   useEffect(() => {
     window.localStorage.setItem("olisa-chart-workspace-active-pane", activePaneId);
@@ -3681,41 +3989,369 @@ export default function Home() {
     window.sessionStorage.setItem("olisa-broker-session", JSON.stringify({ broker: nextPane.broker, mode: brokerMode, connectedAt: new Date().toISOString() }));
   }, [brokerMode, workspacePanes]);
 
-  const startWorkspaceResize = (axis: "split-x" | "split-y" | "quad-x" | "quad-y", event: React.MouseEvent<HTMLDivElement>) => {
+  const applyWorkspaceLayoutTemplate = (layout: Exclude<WorkspaceLayout, "custom">) => {
+    const requiredPaneCount = layout === "quad" ? 4 : layout === "single" ? 1 : 2;
+    const nextPanes = [...workspacePanes];
+    for (const defaultPane of DEFAULT_WORKSPACE_PANES) {
+      if (nextPanes.length >= requiredPaneCount) break;
+      if (!nextPanes.some((pane) => pane.id === defaultPane.id)) {
+        nextPanes.push({ ...defaultPane });
+      }
+    }
+    while (nextPanes.length < requiredPaneCount) {
+      const source = DEFAULT_WORKSPACE_PANES[nextPanes.length] ?? DEFAULT_WORKSPACE_PANES[0];
+      nextPanes.push({
+        ...source,
+        id: `pane-${Date.now()}-${nextPanes.length + 1}`,
+      });
+    }
+    const orderedPanes = [
+      activeWorkspacePane,
+      ...nextPanes.filter((pane) => pane.id !== activeWorkspacePane.id),
+    ];
+    setWorkspacePanes(nextPanes);
+    setWorkspaceLayout(layout);
+    setWorkspaceTree(createWorkspaceLayoutTree(layout, orderedPanes));
+  };
+
+  const addChartToWorkspace = () => {
+    if (workspaceLocked) {
+      showReportToast("error", "Unlock the workspace before adding a chart", 2200);
+      return;
+    }
+    if (visibleWorkspacePaneIds.length >= 12) {
+      showReportToast("error", "This workspace already has the maximum of 12 charts", 2200);
+      return;
+    }
+    const paneElement = workspaceAreaRef.current?.querySelector<HTMLElement>(
+      `[data-workspace-pane-id="${activePaneId}"]`,
+    );
+    const paneRect = paneElement?.getBoundingClientRect();
+    const splitAxis: "x" | "y" = !paneRect || paneRect.width >= paneRect.height ? "x" : "y";
+    const nextPaneId = `pane-${crypto.randomUUID()}`;
+    const nextPane: WorkspacePane = {
+      ...activeWorkspacePane,
+      id: nextPaneId,
+      period: "1W",
+    };
+    setWorkspacePanes((current) => [...current, nextPane]);
+    setWorkspaceTree((current) =>
+      insertWorkspacePane(current, activePaneId, nextPaneId, splitAxis, `split-${crypto.randomUUID()}`));
+    setWorkspaceLayout("custom");
+    setActivePaneId(nextPaneId);
+    setShowWorkspacePresetMenu(false);
+    showReportToast("success", "Chart added to this workspace", 1600);
+  };
+
+  const closeWorkspacePane = (paneId: string) => {
+    const visibleIds = collectWorkspacePaneIds(workspaceTree);
+    if (visibleIds.length <= 1) {
+      showReportToast("error", "A workspace must keep at least one chart", 2000);
+      return;
+    }
+    const nextTree = removeWorkspacePane(workspaceTree, paneId);
+    if (!nextTree) return;
+    const remainingIds = collectWorkspacePaneIds(nextTree);
+    const nextActiveId = activePaneId === paneId ? remainingIds[0] : activePaneId;
+    const nextActivePane = workspacePanes.find((pane) => pane.id === nextActiveId)
+      ?? workspacePanes.find((pane) => remainingIds.includes(pane.id));
+
+    setWorkspaceTree(nextTree);
+    setWorkspaceLayout(remainingIds.length === 1 ? "single" : "custom");
+    setWorkspacePanes((current) => current.filter((pane) => pane.id !== paneId));
+    setDraggedWorkspacePaneId((current) => current === paneId ? null : current);
+    setWorkspaceDropTargetPaneId((current) => current === paneId ? null : current);
+    if (nextActivePane && activePaneId === paneId) {
+      setActivePaneId(nextActivePane.id);
+      setSelectedInstrument(nextActivePane.symbol);
+      setSelectedTimeframe(nextActivePane.timeframe);
+      setSelectedPeriod(nextActivePane.period);
+      setConnectedBroker(nextActivePane.broker);
+      setSelectedWatchlistKey(nextActivePane.watchlistKey);
+    }
+    showReportToast("success", "Workspace chart removed", 1400);
+  };
+
+  const startWorkspaceResize = (
+    splitId: string,
+    axis: "x" | "y",
+    event: React.PointerEvent<HTMLDivElement>,
+  ) => {
     if (workspaceLocked) return;
     event.preventDefault();
-    const container = mainRef.current;
-    if (!container) return;
-    const rect = container.getBoundingClientRect();
+    event.stopPropagation();
+    const divider = event.currentTarget;
+    const pointerId = event.pointerId;
+    divider.setPointerCapture(pointerId);
+    const splitContainer = divider.parentElement;
+    if (!splitContainer) return;
+    const rect = splitContainer.getBoundingClientRect();
+    let rawRatio = 50;
+    const previousCursor = document.body.style.cursor;
+    const previousUserSelect = document.body.style.userSelect;
+    document.body.style.cursor = axis === "x" ? "col-resize" : "row-resize";
+    document.body.style.userSelect = "none";
 
-    const handleMouseMove = (moveEvent: MouseEvent) => {
-      if (axis === "split-x") {
-        const next = ((moveEvent.clientX - rect.left) / rect.width) * 100;
-        setWorkspaceSplitRatio(Math.min(80, Math.max(20, next)));
-        return;
-      }
-      if (axis === "split-y") {
-        const next = ((moveEvent.clientY - rect.top - CHART_TOP_BAR_HEIGHT) / Math.max(rect.height - CHART_TOP_BAR_HEIGHT, 1)) * 100;
-        setWorkspaceSplitRatio(Math.min(80, Math.max(20, next)));
-        return;
-      }
-      if (axis === "quad-x") {
-        const next = ((moveEvent.clientX - rect.left) / rect.width) * 100;
-        setWorkspaceQuadSplit((current) => ({ ...current, x: Math.min(75, Math.max(25, next)) }));
-        return;
-      }
-      const next = ((moveEvent.clientY - rect.top - CHART_TOP_BAR_HEIGHT) / Math.max(rect.height - CHART_TOP_BAR_HEIGHT, 1)) * 100;
-      setWorkspaceQuadSplit((current) => ({ ...current, y: Math.min(75, Math.max(25, next)) }));
+    const handlePointerMove = (moveEvent: PointerEvent) => {
+      rawRatio = axis === "x"
+        ? ((moveEvent.clientX - rect.left) / Math.max(rect.width, 1)) * 100
+        : ((moveEvent.clientY - rect.top) / Math.max(rect.height, 1)) * 100;
+      const ratio = Math.min(96, Math.max(4, rawRatio));
+      setWorkspaceTree((current) => updateWorkspaceSplitRatio(current, splitId, ratio));
+      setWorkspaceLayout("custom");
     };
 
-    const handleMouseUp = () => {
-      window.removeEventListener("mousemove", handleMouseMove);
-      window.removeEventListener("mouseup", handleMouseUp);
+    const finishResize = () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", finishResize);
+      window.removeEventListener("pointercancel", finishResize);
+      if (divider.hasPointerCapture(pointerId)) divider.releasePointerCapture(pointerId);
+      document.body.style.cursor = previousCursor;
+      document.body.style.userSelect = previousUserSelect;
+      if (rawRatio <= 3) {
+        setWorkspaceTree((current) => collapseWorkspaceSplit(current, splitId, "first"));
+      } else if (rawRatio >= 97) {
+        setWorkspaceTree((current) => collapseWorkspaceSplit(current, splitId, "second"));
+      }
     };
 
-    window.addEventListener("mousemove", handleMouseMove);
-    window.addEventListener("mouseup", handleMouseUp);
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", finishResize);
+    window.addEventListener("pointercancel", finishResize);
   };
+
+  const persistWorkspacePresets = (nextPresets: WorkspacePreset[]) => {
+    const normalizedPresets = normalizeWorkspacePresets(nextPresets);
+    setWorkspacePresets(normalizedPresets);
+    window.localStorage.setItem(WORKSPACE_PRESETS_STORAGE_KEY, JSON.stringify(normalizedPresets));
+    return normalizedPresets;
+  };
+
+  const createCurrentWorkspaceSnapshot = (
+    name: string,
+    id = crypto.randomUUID(),
+  ): WorkspacePreset => ({
+    id,
+    name,
+    layout: workspaceTree,
+    panes: workspacePanes,
+    chartSettings,
+    updatedAt: new Date().toISOString(),
+  });
+
+  const saveCurrentWorkspacePreset = () => {
+    const name = workspacePresetName.trim();
+    if (!name) return;
+    const duplicate = workspacePresets.find(
+      (preset) => preset.name.toLowerCase() === name.toLowerCase(),
+    );
+    if (duplicate) {
+      showReportToast("error", "That workspace name already exists. Use Quick Save to update it.", 3200);
+      return;
+    }
+    const nextPreset = createCurrentWorkspaceSnapshot(name);
+    persistWorkspacePresets([...workspacePresets, nextPreset]);
+    setActiveWorkspacePresetId(nextPreset.id);
+    setWorkspacePresetName("");
+    setShowSaveWorkspacePreset(false);
+    setShowWorkspacePresetMenu(false);
+    showReportToast("success", `Workspace "${name}" saved`, 2200);
+  };
+
+  const quickSaveWorkspacePreset = () => {
+    const activePreset = workspacePresets.find(
+      (preset) => preset.id === activeWorkspacePresetId,
+    );
+    if (!activePreset) {
+      setShowSaveWorkspacePreset(true);
+      showReportToast("error", "Choose Save As first to name this workspace", 2600);
+      return;
+    }
+    const nextPreset = createCurrentWorkspaceSnapshot(activePreset.name, activePreset.id);
+    persistWorkspacePresets(
+      workspacePresets.map((preset) => preset.id === nextPreset.id ? nextPreset : preset),
+    );
+    showReportToast("success", `Workspace "${activePreset.name}" updated`, 2000);
+  };
+
+  const applyWorkspacePreset = (preset: WorkspacePreset) => {
+    const panes = preset.panes.length ? preset.panes : DEFAULT_WORKSPACE_PANES;
+    const normalizedTree = normalizeWorkspaceLayoutNode(
+      preset.layout,
+      new Set(panes.map((pane) => pane.id)),
+    ) ?? createWorkspaceLayoutTree("single", panes);
+    setWorkspacePanes(panes);
+    setWorkspaceTree(normalizedTree);
+    setWorkspaceLayout("custom");
+    if (preset.chartSettings) {
+      setChartSettings(preset.chartSettings);
+      setDraftChartSettings(preset.chartSettings);
+      setChartSettingsSnapshot(preset.chartSettings);
+      saveStoredChartSettings(preset.chartSettings);
+    }
+    const firstPaneId = collectWorkspacePaneIds(normalizedTree)[0];
+    if (firstPaneId) setActivePaneId(firstPaneId);
+    setActiveWorkspacePresetId(preset.id);
+    setShowWorkspacePresetMenu(false);
+  };
+
+  const deleteWorkspacePreset = (presetId: string) => {
+    const preset = workspacePresets.find((candidate) => candidate.id === presetId);
+    persistWorkspacePresets(workspacePresets.filter((candidate) => candidate.id !== presetId));
+    if (activeWorkspacePresetId === presetId) setActiveWorkspacePresetId(null);
+    setWorkspaceDeleteCandidate(null);
+    showReportToast("success", `Workspace "${preset?.name ?? "preset"}" deleted`, 1800);
+  };
+
+  const downloadWorkspaceBackup = (
+    presets: WorkspacePreset[],
+    fileName: string,
+    successMessage: string,
+  ) => {
+    const backup: WorkspaceBackupFile = {
+      format: WORKSPACE_BACKUP_FORMAT,
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      presets,
+    };
+    const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = fileName;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+    showReportToast("success", successMessage, 2000);
+  };
+
+  const exportCurrentWorkspace = () => {
+    const activePreset = workspacePresets.find((preset) => preset.id === activeWorkspacePresetId);
+    const snapshot = createCurrentWorkspaceSnapshot(
+      activePreset?.name ?? "Shared workspace",
+      activePreset?.id,
+    );
+    const safeName = snapshot.name.replace(/[^a-z0-9_-]+/gi, "-").replace(/^-|-$/g, "").toLowerCase()
+      || "workspace";
+    downloadWorkspaceBackup([snapshot], `kwantdesk-${safeName}.json`, `Workspace "${snapshot.name}" exported`);
+  };
+
+  const exportAllWorkspaceBackups = () => {
+    const date = new Date().toISOString().slice(0, 10);
+    downloadWorkspaceBackup(
+      workspacePresets,
+      `kwantdesk-workspaces-${date}.json`,
+      `${workspacePresets.length} workspace${workspacePresets.length === 1 ? "" : "s"} exported`,
+    );
+  };
+
+  const exportSavedWorkspace = (preset: WorkspacePreset) => {
+    const safeName = preset.name.replace(/[^a-z0-9_-]+/gi, "-").replace(/^-|-$/g, "").toLowerCase()
+      || "workspace";
+    downloadWorkspaceBackup([preset], `kwantdesk-${safeName}.json`, `Workspace "${preset.name}" exported`);
+  };
+
+  const importWorkspaceBackup = async (file: File | undefined) => {
+    if (!file) return;
+    if (file.size > MAX_WORKSPACE_BACKUP_BYTES) {
+      showReportToast("error", "Workspace backup is larger than 2 MB", 3000);
+      return;
+    }
+    try {
+      const parsed = JSON.parse(await file.text()) as Partial<WorkspaceBackupFile>;
+      if (
+        parsed.format !== WORKSPACE_BACKUP_FORMAT
+        || parsed.version !== 1
+        || !Array.isArray(parsed.presets)
+      ) {
+        throw new Error("This is not a valid Kwant Desk workspace backup.");
+      }
+      const importedPresets = normalizeWorkspacePresets(parsed.presets);
+      if (importedPresets.length !== parsed.presets.length) {
+        throw new Error("The backup contains an invalid workspace.");
+      }
+      const merged = new Map(workspacePresets.map((preset) => [preset.id, preset]));
+      importedPresets.forEach((preset) => merged.set(preset.id, preset));
+      persistWorkspacePresets([...merged.values()]);
+      const importedWorkspace = importedPresets[0];
+      if (importedWorkspace) applyWorkspacePreset(importedWorkspace);
+      showReportToast(
+        "success",
+        importedPresets.length === 1
+          ? `Workspace "${importedWorkspace.name}" loaded`
+          : `${importedPresets.length} workspaces restored`,
+        2600,
+      );
+    } catch (error) {
+      showReportToast(
+        "error",
+        error instanceof Error ? error.message : "Workspace backup could not be imported.",
+        3600,
+      );
+    } finally {
+      if (workspaceImportInputRef.current) workspaceImportInputRef.current.value = "";
+    }
+  };
+
+  const dropWorkspacePane = (targetPaneId: string, event: ReactDragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (
+      workspaceLocked
+      || !draggedWorkspacePaneId
+      || draggedWorkspacePaneId === targetPaneId
+    ) {
+      setWorkspaceDropTargetPaneId(null);
+      return;
+    }
+    setWorkspaceTree((current) =>
+      swapWorkspacePaneIds(current, draggedWorkspacePaneId, targetPaneId));
+    setWorkspaceLayout("custom");
+    setActivePaneId(draggedWorkspacePaneId);
+    setDraggedWorkspacePaneId(null);
+    setWorkspaceDropTargetPaneId(null);
+  };
+
+  const positionWorkspacePresetMenu = useCallback(() => {
+    const trigger = workspacePresetButtonRef.current;
+    if (!trigger) return;
+    const rect = trigger.getBoundingClientRect();
+    const width = 340;
+    setWorkspacePresetMenuPosition({
+      top: Math.min(window.innerHeight - 24, rect.bottom + 8),
+      left: Math.min(window.innerWidth - width - 12, Math.max(12, rect.left + rect.width / 2 - width / 2)),
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!showWorkspacePresetMenu) return;
+    positionWorkspacePresetMenu();
+    const closeOnOutsideClick = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (
+        workspacePresetButtonRef.current?.contains(target)
+        || workspacePresetMenuRef.current?.contains(target)
+      ) return;
+      setShowWorkspacePresetMenu(false);
+      setShowSaveWorkspacePreset(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setShowWorkspacePresetMenu(false);
+      setShowSaveWorkspacePreset(false);
+    };
+    window.addEventListener("resize", positionWorkspacePresetMenu);
+    window.addEventListener("scroll", positionWorkspacePresetMenu, true);
+    document.addEventListener("mousedown", closeOnOutsideClick);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      window.removeEventListener("resize", positionWorkspacePresetMenu);
+      window.removeEventListener("scroll", positionWorkspacePresetMenu, true);
+      document.removeEventListener("mousedown", closeOnOutsideClick);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [positionWorkspacePresetMenu, showWorkspacePresetMenu]);
 
   const startRightPanelResize = (event: React.MouseEvent<HTMLDivElement>) => {
     event.preventDefault();
@@ -4016,6 +4652,118 @@ export default function Home() {
     }
   };
 
+  function renderWorkspacePane(paneId: string) {
+    const pane = workspacePanes.find((candidate) => candidate.id === paneId)
+      ?? activeWorkspacePane;
+    return (
+      <WorkspaceChartPane
+        pane={pane}
+        active={activePaneId === pane.id}
+        period={pane.period}
+        settings={chartSettings}
+        trades={activePaneId === pane.id ? chartTrades : []}
+        onActivate={() => activateWorkspacePane(pane.id)}
+        onOpenSettings={openChartSettings}
+        onCreateAlertAtPrice={openCreateAlert}
+        onRemoveAllIndicators={handleRemoveAllIndicatorsFromChart}
+        onSelectPeriod={(period) => handleChartPeriod(pane.id, period)}
+        onSelectTimeframe={(timeframe) => selectWorkspacePaneTimeframe(pane.id, timeframe)}
+        onClose={() => closeWorkspacePane(pane.id)}
+        closeDisabled={workspaceLocked || visibleWorkspacePaneIds.length <= 1}
+        chartDragEnabled={!workspaceLocked && visibleWorkspacePaneIds.length > 1}
+        onChartDragStart={(event) => {
+          event.dataTransfer.effectAllowed = "move";
+          event.dataTransfer.setData("text/plain", pane.id);
+          setDraggedWorkspacePaneId(pane.id);
+          setActivePaneId(pane.id);
+        }}
+        onChartDragEnd={() => {
+          setDraggedWorkspacePaneId(null);
+          setWorkspaceDropTargetPaneId(null);
+        }}
+      />
+    );
+  }
+
+  function renderWorkspaceNode(node: WorkspaceLayoutNode): React.ReactNode {
+    if (node.type === "pane") {
+      return (
+        <div
+          key={node.paneId}
+          data-workspace-pane-id={node.paneId}
+          onDragEnter={(event) => {
+            if (!workspaceLocked && draggedWorkspacePaneId && draggedWorkspacePaneId !== node.paneId) {
+              event.preventDefault();
+              setWorkspaceDropTargetPaneId(node.paneId);
+            }
+          }}
+          onDragOver={(event) => {
+            if (!workspaceLocked && draggedWorkspacePaneId && draggedWorkspacePaneId !== node.paneId) {
+              event.preventDefault();
+              event.dataTransfer.dropEffect = "move";
+            }
+          }}
+          onDragLeave={(event) => {
+            const relatedTarget = event.relatedTarget;
+            if (
+              workspaceDropTargetPaneId === node.paneId
+              && (!(relatedTarget instanceof Node) || !event.currentTarget.contains(relatedTarget))
+            ) {
+              setWorkspaceDropTargetPaneId(null);
+            }
+          }}
+          onDrop={(event) => dropWorkspacePane(node.paneId, event)}
+          className={`relative h-full min-h-0 min-w-0 overflow-hidden transition-[box-shadow,opacity] duration-150 ${
+            draggedWorkspacePaneId === node.paneId
+              ? "opacity-[0.55]"
+              : workspaceDropTargetPaneId === node.paneId
+                ? "z-20 rounded-2xl shadow-[inset_0_0_0_2px_var(--primary)]"
+                : ""
+          }`}
+        >
+          {renderWorkspacePane(node.paneId)}
+          {workspaceDropTargetPaneId === node.paneId && (
+            <div className="pointer-events-none absolute inset-0 z-[80] flex items-center justify-center rounded-2xl bg-primary/10 backdrop-blur-[1px]">
+              <div className="rounded-full border border-primary/40 bg-panel/95 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-primary shadow-xl">
+                Drop to swap charts
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    const firstStyle: CSSProperties = node.axis === "x"
+      ? { width: `calc(${node.ratio}% - 3px)`, left: 0, top: 0, bottom: 0 }
+      : { height: `calc(${node.ratio}% - 3px)`, left: 0, right: 0, top: 0 };
+    const secondStyle: CSSProperties = node.axis === "x"
+      ? { width: `calc(${100 - node.ratio}% - 3px)`, right: 0, top: 0, bottom: 0 }
+      : { height: `calc(${100 - node.ratio}% - 3px)`, left: 0, right: 0, bottom: 0 };
+
+    return (
+      <div key={node.id} className="relative h-full min-h-0 w-full min-w-0 overflow-hidden">
+        <div className="absolute min-h-0 min-w-0 overflow-hidden" style={firstStyle}>
+          {renderWorkspaceNode(node.first)}
+        </div>
+        <div
+          onPointerDown={(event) => startWorkspaceResize(node.id, node.axis, event)}
+          className={`group absolute z-30 flex touch-none select-none items-center justify-center ${
+            node.axis === "x"
+              ? `inset-y-0 w-2 -translate-x-1/2 ${workspaceLocked ? "cursor-default" : "cursor-col-resize"}`
+              : `inset-x-0 h-2 -translate-y-1/2 ${workspaceLocked ? "cursor-default" : "cursor-row-resize"}`
+          }`}
+          style={node.axis === "x" ? { left: `${node.ratio}%` } : { top: `${node.ratio}%` }}
+          aria-label={node.axis === "x" ? "Resize chart columns" : "Resize chart rows"}
+        >
+          <div className={`${node.axis === "x" ? "h-12 w-1" : "h-1 w-12"} rounded-full bg-border/80 shadow-sm transition-all group-hover:bg-primary/70`} />
+        </div>
+        <div className="absolute min-h-0 min-w-0 overflow-hidden" style={secondStyle}>
+          {renderWorkspaceNode(node.second)}
+        </div>
+      </div>
+    );
+  }
+
   if (!authChecked) {
     return <div className="h-screen w-screen bg-background" />;
   }
@@ -4190,7 +4938,7 @@ export default function Home() {
           <div className="absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-1/2 items-center gap-1 rounded-xl border border-border bg-surface/70 p-1">
             {[
               {
-                layout: "single" as WorkspaceLayout,
+                layout: "single" as Exclude<WorkspaceLayout, "custom">,
                 title: "Single chart",
                 icon: (
                   <span className="grid h-4 w-4 grid-cols-1 gap-0.5">
@@ -4199,7 +4947,7 @@ export default function Home() {
                 ),
               },
               {
-                layout: "split-vertical" as WorkspaceLayout,
+                layout: "split-vertical" as Exclude<WorkspaceLayout, "custom">,
                 title: "Two charts side by side",
                 icon: (
                   <span className="grid h-4 w-4 grid-cols-2 gap-0.5">
@@ -4209,7 +4957,7 @@ export default function Home() {
                 ),
               },
               {
-                layout: "split-horizontal" as WorkspaceLayout,
+                layout: "split-horizontal" as Exclude<WorkspaceLayout, "custom">,
                 title: "Two charts stacked",
                 icon: (
                   <span className="grid h-4 w-4 grid-rows-2 gap-0.5">
@@ -4219,7 +4967,7 @@ export default function Home() {
                 ),
               },
               {
-                layout: "quad" as WorkspaceLayout,
+                layout: "quad" as Exclude<WorkspaceLayout, "custom">,
                 title: "Four-chart grid",
                 icon: (
                   <span className="grid h-4 w-4 grid-cols-2 grid-rows-2 gap-0.5">
@@ -4233,7 +4981,7 @@ export default function Home() {
             ].map(({ layout, title, icon }) => (
               <button
                 key={layout}
-                onClick={() => setWorkspaceLayout(layout)}
+                onClick={() => applyWorkspaceLayoutTemplate(layout)}
                 title={title}
                 aria-label={title}
                 className={`flex h-7 w-7 items-center justify-center rounded-lg transition-all ${workspaceLayout === layout ? "bg-primary text-background" : "text-muted hover:text-foreground"}`}
@@ -4241,6 +4989,22 @@ export default function Home() {
                 {icon}
               </button>
             ))}
+            <div className="mx-0.5 h-4 w-px bg-border" />
+            <button
+              type="button"
+              onClick={addChartToWorkspace}
+              disabled={workspaceLocked}
+              title={workspaceLocked ? "Unlock the workspace to add a chart" : "Add a new chart"}
+              aria-label="Add chart to workspace"
+              className={`flex h-7 shrink-0 items-center justify-center gap-1.5 rounded-lg border px-2 transition-all ${
+                workspaceLocked
+                  ? "cursor-not-allowed border-border text-muted/40"
+                  : "border-primary/30 bg-primary/10 text-primary hover:bg-primary hover:text-background"
+              }`}
+            >
+              <Plus className="h-3.5 w-3.5" />
+              <span className="text-[10px] font-semibold">Chart</span>
+            </button>
             <button
               onClick={() => setWorkspaceLocked((current) => !current)}
               className={`ml-1 flex h-7 w-7 items-center justify-center rounded-lg transition-colors ${workspaceLocked ? "bg-primary/15 text-primary" : "text-muted hover:text-foreground"}`}
@@ -4248,6 +5012,192 @@ export default function Home() {
             >
               <Lock className="h-3.5 w-3.5" />
             </button>
+            <div className="mx-1 h-4 w-px bg-border" />
+            <div className="relative">
+              <button
+                ref={workspacePresetButtonRef}
+                type="button"
+                onClick={() => {
+                  positionWorkspacePresetMenu();
+                  setShowWorkspacePresetMenu((current) => !current);
+                  setShowSaveWorkspacePreset(false);
+                }}
+                className={`flex h-7 items-center gap-1.5 rounded-lg px-2 text-[10px] font-medium transition-colors ${
+                  showWorkspacePresetMenu ? "bg-primary/15 text-primary" : "text-muted hover:text-foreground"
+                }`}
+                title="Saved workspaces"
+              >
+                <Save className="h-3.5 w-3.5" />
+                <span>Workspaces</span>
+                <ChevronDown className="h-3 w-3" />
+              </button>
+              {showWorkspacePresetMenu && typeof document !== "undefined" ? createPortal(
+                <div
+                  ref={workspacePresetMenuRef}
+                  className="fixed z-[1000] w-[340px] rounded-2xl border border-border bg-panel p-2 shadow-2xl shadow-black/50"
+                  style={workspacePresetMenuPosition}
+                >
+                  <div className="flex items-center justify-between gap-3 px-2 pb-2 pt-1">
+                    <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">
+                      Saved workspaces
+                    </span>
+                    <span className="flex items-center gap-1.5 text-[9px] font-medium text-emerald-400">
+                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                      Saved locally
+                    </span>
+                  </div>
+                  <div className="mb-2 grid grid-cols-2 gap-1.5">
+                    <button
+                      type="button"
+                      onClick={quickSaveWorkspacePreset}
+                      className="flex h-9 items-center justify-center gap-1.5 rounded-xl bg-primary text-[10px] font-semibold text-background transition-opacity hover:opacity-90"
+                    >
+                      <Save className="h-3.5 w-3.5" />
+                      Quick Save
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowSaveWorkspacePreset(true)}
+                      className="flex h-9 items-center justify-center gap-1.5 rounded-xl border border-border bg-surface text-[10px] font-semibold text-foreground hover:border-primary/40"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      Save As
+                    </button>
+                  </div>
+                  <div className="max-h-64 space-y-1 overflow-y-auto">
+                    {workspacePresets.length ? workspacePresets.map((preset) => (
+                      <div
+                        key={preset.id}
+                        className={`group flex items-center gap-1 rounded-xl ${
+                          activeWorkspacePresetId === preset.id
+                            ? "bg-primary/10 ring-1 ring-inset ring-primary/25"
+                            : "hover:bg-surface"
+                        }`}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => applyWorkspacePreset(preset)}
+                          className="min-w-0 flex-1 px-3 py-2 text-left"
+                        >
+                          <div className="truncate text-[12px] font-medium text-foreground">{preset.name}</div>
+                          <div className="mt-0.5 text-[9px] text-muted">
+                            {activeWorkspacePresetId === preset.id ? "Active · " : ""}
+                            {collectWorkspacePaneIds(preset.layout).length} charts · {new Date(preset.updatedAt).toLocaleDateString()}
+                          </div>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => exportSavedWorkspace(preset)}
+                          className="flex h-7 w-7 items-center justify-center rounded-lg text-muted opacity-0 transition-opacity hover:bg-primary/10 hover:text-primary group-hover:opacity-100"
+                          aria-label={`Export ${preset.name}`}
+                          title="Export this workspace"
+                        >
+                          <Download className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setWorkspaceDeleteCandidate(preset);
+                            if (window.confirm(`Delete workspace "${preset.name}"?`)) {
+                              deleteWorkspacePreset(preset.id);
+                            } else {
+                              setWorkspaceDeleteCandidate(null);
+                            }
+                          }}
+                          className="mr-1 flex h-7 w-7 items-center justify-center rounded-lg text-muted opacity-0 transition-opacity hover:bg-danger/10 hover:text-danger group-hover:opacity-100"
+                          aria-label={`Delete ${preset.name}`}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    )) : (
+                      <div className="rounded-xl border border-dashed border-border px-3 py-4 text-center text-[10px] text-muted">
+                        No saved workspaces yet
+                      </div>
+                    )}
+                  </div>
+                  <div className="mt-2 border-t border-border pt-2">
+                    {showSaveWorkspacePreset && (
+                      <div className="mb-2 flex items-center gap-2">
+                        <input
+                          autoFocus
+                          value={workspacePresetName}
+                          onChange={(event) => setWorkspacePresetName(event.target.value)}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter") saveCurrentWorkspacePreset();
+                            if (event.key === "Escape") setShowSaveWorkspacePreset(false);
+                          }}
+                          placeholder="Name this workspace"
+                          className="h-8 min-w-0 flex-1 rounded-lg border border-border bg-background px-2.5 text-[11px] text-foreground outline-none focus:border-primary/60"
+                        />
+                        <button
+                          type="button"
+                          onClick={saveCurrentWorkspacePreset}
+                          disabled={!workspacePresetName.trim()}
+                          className="h-8 rounded-lg bg-primary px-3 text-[10px] font-semibold text-background disabled:opacity-40"
+                        >
+                          Save As
+                        </button>
+                      </div>
+                    )}
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <button
+                        type="button"
+                        onClick={exportCurrentWorkspace}
+                        className="flex h-8 items-center justify-center gap-1.5 rounded-lg text-[10px] font-medium text-muted transition-colors hover:bg-surface hover:text-foreground"
+                      >
+                        <Download className="h-3.5 w-3.5" />
+                        Export Current
+                      </button>
+                      <button
+                        type="button"
+                        onClick={exportAllWorkspaceBackups}
+                        disabled={!workspacePresets.length}
+                        className="flex h-8 items-center justify-center gap-1.5 rounded-lg text-[10px] font-medium text-muted transition-colors hover:bg-surface hover:text-foreground disabled:cursor-not-allowed disabled:opacity-35"
+                      >
+                        <Download className="h-3.5 w-3.5" />
+                        Export All
+                      </button>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => workspaceImportInputRef.current?.click()}
+                      onDragEnter={(event) => {
+                        event.preventDefault();
+                        setWorkspaceImportDragging(true);
+                      }}
+                      onDragOver={(event) => {
+                        event.preventDefault();
+                        event.dataTransfer.dropEffect = "copy";
+                        setWorkspaceImportDragging(true);
+                      }}
+                      onDragLeave={() => setWorkspaceImportDragging(false)}
+                      onDrop={(event) => {
+                        event.preventDefault();
+                        setWorkspaceImportDragging(false);
+                        void importWorkspaceBackup(event.dataTransfer.files?.[0]);
+                      }}
+                      className={`mt-1 flex h-9 w-full items-center justify-center gap-1.5 rounded-xl border border-dashed text-[10px] font-medium transition-colors ${
+                        workspaceImportDragging
+                          ? "border-primary bg-primary/10 text-primary"
+                          : "border-border text-muted hover:border-primary/40 hover:text-foreground"
+                      }`}
+                    >
+                      <Upload className="h-3.5 w-3.5" />
+                      Import workspace JSON
+                    </button>
+                    <input
+                      ref={workspaceImportInputRef}
+                      type="file"
+                      accept="application/json,.json"
+                      className="hidden"
+                      onChange={(event) => void importWorkspaceBackup(event.target.files?.[0])}
+                    />
+                  </div>
+                </div>,
+                document.body,
+              ) : null}
+            </div>
           </div>
           <div className="flex-1" />
           <div className="mr-3 flex items-center gap-2"><span className={`text-[12px] font-medium ${selectedChangePercent >= 0 ? "text-primary" : "text-danger"}`}>{selectedChangePercent >= 0 ? "+" : ""}{selectedChangePercent.toFixed(2)}%</span></div>
@@ -4255,182 +5205,8 @@ export default function Home() {
         </header>
 
         <div className="min-h-0 flex-1 overflow-hidden">
-          <div className="relative h-full min-w-0">
-            {workspaceLayout === "single" && (
-              <WorkspaceChartPane
-                pane={activeWorkspacePane}
-                active
-                period={activeWorkspacePane.period}
-                settings={chartSettings}
-                trades={chartTrades}
-                onActivate={() => activateWorkspacePane(activeWorkspacePane.id)}
-                onOpenSettings={openChartSettings}
-                onCreateAlertAtPrice={openCreateAlert}
-                onRemoveAllIndicators={handleRemoveAllIndicatorsFromChart}
-                onSelectPeriod={(period) => handleChartPeriod(activeWorkspacePane.id, period)}
-                onSelectTimeframe={(timeframe) => selectWorkspacePaneTimeframe(activeWorkspacePane.id, timeframe)}
-              />
-            )}
-            {workspaceLayout === "split-vertical" && (
-              <>
-                <div className="absolute inset-y-0 left-0" style={{ width: `calc(${workspaceSplitRatio}% - 3px)` }}>
-                  <WorkspaceChartPane
-                    pane={workspacePanes[0] ?? activeWorkspacePane}
-                    active={activePaneId === (workspacePanes[0] ?? activeWorkspacePane).id}
-                    period={(workspacePanes[0] ?? activeWorkspacePane).period}
-                    settings={chartSettings}
-                    trades={activePaneId === (workspacePanes[0] ?? activeWorkspacePane).id ? chartTrades : []}
-                    onActivate={() => activateWorkspacePane((workspacePanes[0] ?? activeWorkspacePane).id)}
-                    onOpenSettings={openChartSettings}
-                    onCreateAlertAtPrice={openCreateAlert}
-                    onRemoveAllIndicators={handleRemoveAllIndicatorsFromChart}
-                    onSelectPeriod={(period) => handleChartPeriod((workspacePanes[0] ?? activeWorkspacePane).id, period)}
-                    onSelectTimeframe={(timeframe) => selectWorkspacePaneTimeframe((workspacePanes[0] ?? activeWorkspacePane).id, timeframe)}
-                  />
-                </div>
-                <div
-                  onMouseDown={(event) => startWorkspaceResize("split-x", event)}
-                  className={`absolute inset-y-0 z-20 w-1.5 -translate-x-1/2 ${workspaceLocked ? "cursor-default" : "cursor-col-resize"}`}
-                  style={{ left: `${workspaceSplitRatio}%` }}
-                >
-                  <div className="h-full w-full bg-border/70 hover:bg-primary/50" />
-                </div>
-                <div className="absolute inset-y-0 right-0" style={{ width: `calc(${100 - workspaceSplitRatio}% - 3px)` }}>
-                  <WorkspaceChartPane
-                    pane={workspacePanes[1] ?? workspacePanes[0] ?? activeWorkspacePane}
-                    active={activePaneId === (workspacePanes[1] ?? workspacePanes[0] ?? activeWorkspacePane).id}
-                    period={(workspacePanes[1] ?? workspacePanes[0] ?? activeWorkspacePane).period}
-                    settings={chartSettings}
-                    trades={activePaneId === (workspacePanes[1] ?? workspacePanes[0] ?? activeWorkspacePane).id ? chartTrades : []}
-                    onActivate={() => activateWorkspacePane((workspacePanes[1] ?? workspacePanes[0] ?? activeWorkspacePane).id)}
-                    onOpenSettings={openChartSettings}
-                    onCreateAlertAtPrice={openCreateAlert}
-                    onRemoveAllIndicators={handleRemoveAllIndicatorsFromChart}
-                    onSelectPeriod={(period) => handleChartPeriod((workspacePanes[1] ?? workspacePanes[0] ?? activeWorkspacePane).id, period)}
-                    onSelectTimeframe={(timeframe) => selectWorkspacePaneTimeframe((workspacePanes[1] ?? workspacePanes[0] ?? activeWorkspacePane).id, timeframe)}
-                  />
-                </div>
-              </>
-            )}
-            {workspaceLayout === "split-horizontal" && (
-              <>
-                <div className="absolute inset-x-0 top-0" style={{ height: `calc(${workspaceSplitRatio}% - 3px)` }}>
-                  <WorkspaceChartPane
-                    pane={workspacePanes[0] ?? activeWorkspacePane}
-                    active={activePaneId === (workspacePanes[0] ?? activeWorkspacePane).id}
-                    period={(workspacePanes[0] ?? activeWorkspacePane).period}
-                    settings={chartSettings}
-                    trades={activePaneId === (workspacePanes[0] ?? activeWorkspacePane).id ? chartTrades : []}
-                    onActivate={() => activateWorkspacePane((workspacePanes[0] ?? activeWorkspacePane).id)}
-                    onOpenSettings={openChartSettings}
-                    onCreateAlertAtPrice={openCreateAlert}
-                    onRemoveAllIndicators={handleRemoveAllIndicatorsFromChart}
-                    onSelectPeriod={(period) => handleChartPeriod((workspacePanes[0] ?? activeWorkspacePane).id, period)}
-                    onSelectTimeframe={(timeframe) => selectWorkspacePaneTimeframe((workspacePanes[0] ?? activeWorkspacePane).id, timeframe)}
-                  />
-                </div>
-                <div
-                  onMouseDown={(event) => startWorkspaceResize("split-y", event)}
-                  className={`absolute inset-x-0 z-20 h-1.5 -translate-y-1/2 ${workspaceLocked ? "cursor-default" : "cursor-row-resize"}`}
-                  style={{ top: `${workspaceSplitRatio}%` }}
-                >
-                  <div className="h-full w-full bg-border/70 hover:bg-primary/50" />
-                </div>
-                <div className="absolute inset-x-0 bottom-0" style={{ height: `calc(${100 - workspaceSplitRatio}% - 3px)` }}>
-                  <WorkspaceChartPane
-                    pane={workspacePanes[1] ?? workspacePanes[0] ?? activeWorkspacePane}
-                    active={activePaneId === (workspacePanes[1] ?? workspacePanes[0] ?? activeWorkspacePane).id}
-                    period={(workspacePanes[1] ?? workspacePanes[0] ?? activeWorkspacePane).period}
-                    settings={chartSettings}
-                    trades={activePaneId === (workspacePanes[1] ?? workspacePanes[0] ?? activeWorkspacePane).id ? chartTrades : []}
-                    onActivate={() => activateWorkspacePane((workspacePanes[1] ?? workspacePanes[0] ?? activeWorkspacePane).id)}
-                    onOpenSettings={openChartSettings}
-                    onCreateAlertAtPrice={openCreateAlert}
-                    onRemoveAllIndicators={handleRemoveAllIndicatorsFromChart}
-                    onSelectPeriod={(period) => handleChartPeriod((workspacePanes[1] ?? workspacePanes[0] ?? activeWorkspacePane).id, period)}
-                    onSelectTimeframe={(timeframe) => selectWorkspacePaneTimeframe((workspacePanes[1] ?? workspacePanes[0] ?? activeWorkspacePane).id, timeframe)}
-                  />
-                </div>
-              </>
-            )}
-            {workspaceLayout === "quad" && (
-              <>
-                <div className="absolute left-0 top-0" style={{ width: `calc(${workspaceQuadSplit.x}% - 3px)`, height: `calc(${workspaceQuadSplit.y}% - 3px)` }}>
-                  <WorkspaceChartPane
-                    pane={workspacePanes[0] ?? activeWorkspacePane}
-                    active={activePaneId === (workspacePanes[0] ?? activeWorkspacePane).id}
-                    period={(workspacePanes[0] ?? activeWorkspacePane).period}
-                    settings={chartSettings}
-                    trades={activePaneId === (workspacePanes[0] ?? activeWorkspacePane).id ? chartTrades : []}
-                    onActivate={() => activateWorkspacePane((workspacePanes[0] ?? activeWorkspacePane).id)}
-                    onOpenSettings={openChartSettings}
-                    onCreateAlertAtPrice={openCreateAlert}
-                    onRemoveAllIndicators={handleRemoveAllIndicatorsFromChart}
-                    onSelectPeriod={(period) => handleChartPeriod((workspacePanes[0] ?? activeWorkspacePane).id, period)}
-                    onSelectTimeframe={(timeframe) => selectWorkspacePaneTimeframe((workspacePanes[0] ?? activeWorkspacePane).id, timeframe)}
-                  />
-                </div>
-                <div className="absolute right-0 top-0" style={{ width: `calc(${100 - workspaceQuadSplit.x}% - 3px)`, height: `calc(${workspaceQuadSplit.y}% - 3px)` }}>
-                  <WorkspaceChartPane
-                    pane={workspacePanes[1] ?? workspacePanes[0] ?? activeWorkspacePane}
-                    active={activePaneId === (workspacePanes[1] ?? workspacePanes[0] ?? activeWorkspacePane).id}
-                    period={(workspacePanes[1] ?? workspacePanes[0] ?? activeWorkspacePane).period}
-                    settings={chartSettings}
-                    trades={activePaneId === (workspacePanes[1] ?? workspacePanes[0] ?? activeWorkspacePane).id ? chartTrades : []}
-                    onActivate={() => activateWorkspacePane((workspacePanes[1] ?? workspacePanes[0] ?? activeWorkspacePane).id)}
-                    onOpenSettings={openChartSettings}
-                    onCreateAlertAtPrice={openCreateAlert}
-                    onRemoveAllIndicators={handleRemoveAllIndicatorsFromChart}
-                    onSelectPeriod={(period) => handleChartPeriod((workspacePanes[1] ?? workspacePanes[0] ?? activeWorkspacePane).id, period)}
-                    onSelectTimeframe={(timeframe) => selectWorkspacePaneTimeframe((workspacePanes[1] ?? workspacePanes[0] ?? activeWorkspacePane).id, timeframe)}
-                  />
-                </div>
-                <div className="absolute bottom-0 left-0" style={{ width: `calc(${workspaceQuadSplit.x}% - 3px)`, height: `calc(${100 - workspaceQuadSplit.y}% - 3px)` }}>
-                  <WorkspaceChartPane
-                    pane={workspacePanes[2] ?? workspacePanes[0] ?? activeWorkspacePane}
-                    active={activePaneId === (workspacePanes[2] ?? workspacePanes[0] ?? activeWorkspacePane).id}
-                    period={(workspacePanes[2] ?? workspacePanes[0] ?? activeWorkspacePane).period}
-                    settings={chartSettings}
-                    trades={activePaneId === (workspacePanes[2] ?? workspacePanes[0] ?? activeWorkspacePane).id ? chartTrades : []}
-                    onActivate={() => activateWorkspacePane((workspacePanes[2] ?? workspacePanes[0] ?? activeWorkspacePane).id)}
-                    onOpenSettings={openChartSettings}
-                    onCreateAlertAtPrice={openCreateAlert}
-                    onRemoveAllIndicators={handleRemoveAllIndicatorsFromChart}
-                    onSelectPeriod={(period) => handleChartPeriod((workspacePanes[2] ?? workspacePanes[0] ?? activeWorkspacePane).id, period)}
-                    onSelectTimeframe={(timeframe) => selectWorkspacePaneTimeframe((workspacePanes[2] ?? workspacePanes[0] ?? activeWorkspacePane).id, timeframe)}
-                  />
-                </div>
-                <div className="absolute bottom-0 right-0" style={{ width: `calc(${100 - workspaceQuadSplit.x}% - 3px)`, height: `calc(${100 - workspaceQuadSplit.y}% - 3px)` }}>
-                  <WorkspaceChartPane
-                    pane={workspacePanes[3] ?? workspacePanes[0] ?? activeWorkspacePane}
-                    active={activePaneId === (workspacePanes[3] ?? workspacePanes[0] ?? activeWorkspacePane).id}
-                    period={(workspacePanes[3] ?? workspacePanes[0] ?? activeWorkspacePane).period}
-                    settings={chartSettings}
-                    trades={activePaneId === (workspacePanes[3] ?? workspacePanes[0] ?? activeWorkspacePane).id ? chartTrades : []}
-                    onActivate={() => activateWorkspacePane((workspacePanes[3] ?? workspacePanes[0] ?? activeWorkspacePane).id)}
-                    onOpenSettings={openChartSettings}
-                    onCreateAlertAtPrice={openCreateAlert}
-                    onRemoveAllIndicators={handleRemoveAllIndicatorsFromChart}
-                    onSelectPeriod={(period) => handleChartPeriod((workspacePanes[3] ?? workspacePanes[0] ?? activeWorkspacePane).id, period)}
-                    onSelectTimeframe={(timeframe) => selectWorkspacePaneTimeframe((workspacePanes[3] ?? workspacePanes[0] ?? activeWorkspacePane).id, timeframe)}
-                  />
-                </div>
-                <div
-                  onMouseDown={(event) => startWorkspaceResize("quad-x", event)}
-                  className={`absolute inset-y-0 z-20 w-1.5 -translate-x-1/2 ${workspaceLocked ? "cursor-default" : "cursor-col-resize"}`}
-                  style={{ left: `${workspaceQuadSplit.x}%` }}
-                >
-                  <div className="h-full w-full bg-border/70 hover:bg-primary/50" />
-                </div>
-                <div
-                  onMouseDown={(event) => startWorkspaceResize("quad-y", event)}
-                  className={`absolute inset-x-0 z-20 h-1.5 -translate-y-1/2 ${workspaceLocked ? "cursor-default" : "cursor-row-resize"}`}
-                  style={{ top: `${workspaceQuadSplit.y}%` }}
-                >
-                  <div className="h-full w-full bg-border/70 hover:bg-primary/50" />
-                </div>
-              </>
-            )}
+          <div ref={workspaceAreaRef} className="relative h-full min-w-0">
+            {renderWorkspaceNode(workspaceTree)}
             {chartLoadingMessage && <div className="absolute left-1/2 top-3 z-20 -translate-x-1/2 rounded-lg border border-border bg-panel/90 px-3 py-1.5 text-[12px] text-muted shadow-lg backdrop-blur">{chartLoadingMessage}</div>}
             {/* Strategy labels overlay */}
             <div className="absolute top-3 left-3 z-10 flex flex-col gap-1">
