@@ -1,0 +1,577 @@
+"use client";
+
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  CalendarDays,
+  ChevronLeft,
+  ChevronRight,
+  CircleStop,
+  Gauge,
+  Loader2,
+  Pause,
+  Play,
+  Radio,
+  RefreshCw,
+  RotateCcw,
+  ScanLine,
+  SkipBack,
+  SkipForward,
+} from "lucide-react";
+import {
+  GEX_MAP_GREEKS,
+  type GexMapPanelPayload,
+} from "@/lib/gexMap";
+import {
+  OPTIONS_FLOW_INSTRUMENTS,
+  type ExposureStrike,
+  type GreekMode,
+} from "@/lib/optionsFlow";
+
+type PanelConfig = {
+  id: "left" | "centre" | "right";
+  symbol: string;
+  greekMode: GreekMode;
+};
+
+const DEFAULT_PANELS: PanelConfig[] = [
+  { id: "left", symbol: "SPX", greekMode: "GAMMA" },
+  { id: "centre", symbol: "SPY", greekMode: "DELTA" },
+  { id: "right", symbol: "QQQ", greekMode: "VANNA" },
+];
+const SPEEDS = [1, 2, 5, 10] as const;
+const FRAME_STEPS = [1, 2, 5, 10] as const;
+
+const easternTime = new Intl.DateTimeFormat("en-US", {
+  timeZone: "America/New_York",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hourCycle: "h23",
+});
+
+function formatCompact(value: number) {
+  const absolute = Math.abs(value);
+  const sign = value < 0 ? "−" : "";
+  if (absolute >= 1_000_000_000) return `${sign}$${(absolute / 1_000_000_000).toFixed(2)}B`;
+  if (absolute >= 1_000_000) return `${sign}$${(absolute / 1_000_000).toFixed(2)}M`;
+  if (absolute >= 1_000) return `${sign}$${(absolute / 1_000).toFixed(1)}K`;
+  return `${sign}$${absolute.toFixed(0)}`;
+}
+
+function formatPrice(value: number | null) {
+  if (value === null) return "—";
+  return value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function formatSessionDate(value: string) {
+  return new Date(`${value}T12:00:00Z`).toLocaleDateString("en-US", {
+    month: "short",
+    day: "2-digit",
+    year: "numeric",
+  });
+}
+
+function buildSnapshots(payload: GexMapPanelPayload, timestamp: number | null, stepMinutes: number) {
+  if (timestamp === null) {
+    const current = new Map(payload.latestStrikes.map((row) => [row.strike, row]));
+    const previousTarget = Date.parse(payload.asOf) - stepMinutes * 60_000;
+    const previous = new Map<number, ExposureStrike>();
+    for (const frame of payload.frames) {
+      if (frame.timestamp > previousTarget) break;
+      for (const update of frame.updates) previous.set(update.strike, update);
+    }
+    return { current, previous };
+  }
+
+  const previousTarget = timestamp - stepMinutes * 60_000;
+  const current = new Map<number, ExposureStrike>();
+  const previous = new Map<number, ExposureStrike>();
+  for (const frame of payload.frames) {
+    if (frame.timestamp > timestamp) break;
+    for (const update of frame.updates) {
+      current.set(update.strike, update);
+      if (frame.timestamp <= previousTarget) previous.set(update.strike, update);
+    }
+  }
+  return { current, previous };
+}
+
+function priceAt(payload: GexMapPanelPayload, timestamp: number | null) {
+  if (timestamp === null) return payload.stockPrice;
+  let value: number | null = null;
+  for (const candle of payload.candles) {
+    if (candle.timestamp > timestamp) break;
+    value = candle.close;
+  }
+  return value ?? payload.stockPrice;
+}
+
+function heatColor(value: number, strength: number) {
+  if (Math.abs(value) < Number.EPSILON) return "var(--surface)";
+  const tone = value > 0 ? "var(--primary)" : "var(--danger)";
+  const intensity = Math.round(14 + Math.min(1, strength) * 78);
+  return `color-mix(in srgb, ${tone} ${intensity}%, var(--chart-background))`;
+}
+
+function ExposurePanel({
+  config,
+  payload,
+  loading,
+  error,
+  selectedTimestamp,
+  stepMinutes,
+  onChange,
+}: {
+  config: PanelConfig;
+  payload: GexMapPanelPayload | null;
+  loading: boolean;
+  error: string | null;
+  selectedTimestamp: number | null;
+  stepMinutes: number;
+  onChange: (patch: Partial<Pick<PanelConfig, "symbol" | "greekMode">>) => void;
+}) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const { current, previous } = useMemo(
+    () => payload ? buildSnapshots(payload, selectedTimestamp, stepMinutes) : { current: new Map(), previous: new Map() },
+    [payload, selectedTimestamp, stepMinutes],
+  );
+  const spot = payload ? priceAt(payload, selectedTimestamp) : null;
+  const rows = useMemo(
+    () => [...current.values()].sort((a, b) => b.strike - a.strike),
+    [current],
+  );
+  const spotStrike = spot === null || !rows.length
+    ? null
+    : rows.reduce((best, row) => Math.abs(row.strike - spot) < Math.abs(best.strike - spot) ? row : best).strike;
+  const magnitudeCap = useMemo(() => {
+    const magnitudes = rows.map((row) => Math.abs(row.net)).sort((a, b) => a - b);
+    return Math.max(1, magnitudes[Math.floor((magnitudes.length - 1) * 0.95)] ?? 1);
+  }, [rows]);
+  const net = rows.reduce((sum, row) => sum + row.net, 0);
+  const greek = GEX_MAP_GREEKS.find((item) => item.mode === config.greekMode) ?? GEX_MAP_GREEKS[0];
+
+  useEffect(() => {
+    const container = scrollRef.current;
+    const target = container?.querySelector<HTMLElement>("[data-near-spot='true']");
+    if (!container || !target) return;
+    container.scrollTop = Math.max(
+      0,
+      target.offsetTop - container.offsetTop - container.clientHeight / 2 + target.clientHeight / 2,
+    );
+  }, [config.symbol, config.greekMode, payload?.sessionDate, selectedTimestamp, spotStrike]);
+
+  return (
+    <section className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-border bg-panel">
+      <div className="border-b border-border bg-panel px-3 py-2.5">
+        <div className="flex items-center gap-2">
+          <select
+            aria-label={`${config.id} panel instrument`}
+            value={config.symbol}
+            onChange={(event) => onChange({ symbol: event.target.value })}
+            className="h-8 min-w-[88px] rounded-lg border border-border bg-surface px-2.5 text-[11px] font-semibold text-foreground outline-none transition focus:border-primary/50"
+          >
+            {OPTIONS_FLOW_INSTRUMENTS.map((instrument) => (
+              <option key={instrument.symbol} value={instrument.symbol}>{instrument.symbol}</option>
+            ))}
+          </select>
+          <select
+            aria-label={`${config.id} panel exposure metric`}
+            value={config.greekMode}
+            onChange={(event) => onChange({ greekMode: event.target.value as GreekMode })}
+            className="h-8 rounded-lg border border-border bg-surface px-2.5 text-[11px] font-semibold text-foreground outline-none transition focus:border-primary/50"
+          >
+            {GEX_MAP_GREEKS.map((item) => (
+              <option key={item.mode} value={item.mode}>{item.short}</option>
+            ))}
+          </select>
+          <div className="ml-auto text-right">
+            <div className="font-mono text-[11px] font-semibold text-foreground">{formatPrice(spot)}</div>
+            <div className={`font-mono text-[9px] ${payload && (payload.sessionChangePercent ?? 0) >= 0 ? "text-primary" : "text-danger"}`}>
+              {payload?.sessionChangePercent === null || payload?.sessionChangePercent === undefined
+                ? "—"
+                : `${payload.sessionChangePercent >= 0 ? "+" : ""}${(payload.sessionChangePercent * 100).toFixed(2)}%`}
+            </div>
+          </div>
+        </div>
+        <div className="mt-2 flex items-center gap-2 text-[9px] text-muted">
+          <span className={`h-1.5 w-1.5 rounded-full ${payload?.status === "LIVE" ? "animate-pulse bg-primary" : "bg-muted"}`} />
+          <span>{greek.label}</span>
+          <span className="text-border">•</span>
+          <span>{payload ? `Exp ${payload.expiration}` : "Loading expiry"}</span>
+          <span className={`ml-auto font-mono ${net >= 0 ? "text-primary" : "text-danger"}`}>Net {formatCompact(net)}</span>
+        </div>
+      </div>
+
+      <div className="grid h-7 grid-cols-[64px_1fr_86px] items-center border-b border-border bg-surface/60 px-2 text-[8px] font-semibold uppercase tracking-[0.14em] text-muted">
+        <span>Strike</span>
+        <span>Signed exposure</span>
+        <span className="text-right">{stepMinutes}m change</span>
+      </div>
+
+      <div ref={scrollRef} className="relative min-h-0 flex-1 overflow-y-auto bg-chart-background">
+        {loading && !payload ? (
+          <div className="flex h-full items-center justify-center gap-2 text-[11px] text-muted">
+            <Loader2 className="h-4 w-4 animate-spin text-primary" /> Loading {greek.short}
+          </div>
+        ) : error && !payload ? (
+          <div className="flex h-full flex-col items-center justify-center px-8 text-center">
+            <CircleStop className="mb-3 h-5 w-5 text-danger" />
+            <div className="text-[11px] font-semibold text-foreground">Panel unavailable</div>
+            <div className="mt-1 text-[10px] leading-4 text-muted">{error}</div>
+          </div>
+        ) : !rows.length ? (
+          <div className="flex h-full items-center justify-center px-6 text-center text-[11px] text-muted">
+            No recorded strike frames for this session.
+          </div>
+        ) : (
+          <div className="py-1">
+            {rows.map((row) => {
+              const prior = previous.get(row.strike);
+              const change = prior ? row.net - prior.net : null;
+              const changeRatio = prior && Math.abs(prior.net) > 0
+                ? (row.net - prior.net) / Math.abs(prior.net)
+                : null;
+              const nearSpot = row.strike === spotStrike;
+              const strength = Math.min(1, Math.abs(row.net) / magnitudeCap);
+              return (
+                <div
+                  key={row.strike}
+                  data-near-spot={nearSpot ? "true" : undefined}
+                  className={`relative grid h-[25px] grid-cols-[64px_1fr_86px] items-center border-b border-black/10 px-2 font-mono text-[9px] transition-colors ${nearSpot ? "z-[1] outline outline-1 outline-offset-[-1px] outline-foreground/80" : ""}`}
+                  style={{ backgroundColor: heatColor(row.net, strength) }}
+                  title={`${greek.short} ${formatCompact(row.net)} · Call ${formatCompact(row.call)} · Put ${formatCompact(row.put)}`}
+                >
+                  <span className={`relative flex items-center font-semibold ${nearSpot ? "text-foreground" : "text-foreground/90"}`}>
+                    {nearSpot ? <span className="absolute -left-2 h-4 w-1 rounded-r bg-accent" /> : null}
+                    {row.strike.toLocaleString("en-US", { maximumFractionDigits: 2 })}
+                  </span>
+                  <span className="truncate text-right font-semibold text-foreground drop-shadow-sm">{formatCompact(row.net)}</span>
+                  <span className="flex items-center justify-end gap-1">
+                    {changeRatio !== null ? (
+                      <span className={`rounded px-1 py-0.5 text-[8px] font-semibold ${changeRatio >= 0 ? "bg-primary/15 text-primary" : "bg-danger/15 text-danger"}`}>
+                        {changeRatio >= 0 ? "+" : ""}{Math.round(changeRatio * 100)}%
+                      </span>
+                    ) : null}
+                    <span className={change === null ? "text-muted" : change >= 0 ? "text-primary" : "text-danger"}>
+                      {change === null ? "—" : formatCompact(change)}
+                    </span>
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+        {loading && payload ? (
+          <div className="pointer-events-none absolute right-2 top-2 flex items-center gap-1 rounded-md border border-border bg-panel/90 px-2 py-1 text-[8px] text-muted">
+            <Loader2 className="h-3 w-3 animate-spin text-primary" /> Syncing
+          </div>
+        ) : null}
+      </div>
+
+      <div className="border-t border-border bg-panel px-3 py-2">
+        <div className="h-1.5 rounded-full" style={{ background: "linear-gradient(90deg, var(--danger), var(--surface), var(--primary))" }} />
+        <div className="mt-1 flex justify-between font-mono text-[8px] text-muted">
+          <span>Negative</span><span>Neutral</span><span>Positive</span>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+export default function GexMapWorkspace() {
+  const [panels, setPanels] = useState<PanelConfig[]>(DEFAULT_PANELS);
+  const [panelData, setPanelData] = useState<Record<string, GexMapPanelPayload | null>>({
+    left: null,
+    centre: null,
+    right: null,
+  });
+  const [panelErrors, setPanelErrors] = useState<Record<string, string | null>>({
+    left: null,
+    centre: null,
+    right: null,
+  });
+  const [loading, setLoading] = useState<Record<string, boolean>>({
+    left: true,
+    centre: true,
+    right: true,
+  });
+  const [replayMode, setReplayMode] = useState(false);
+  const [replayDate, setReplayDate] = useState("");
+  const [cursor, setCursor] = useState(0);
+  const [playing, setPlaying] = useState(false);
+  const [speed, setSpeed] = useState<(typeof SPEEDS)[number]>(1);
+  const [stepMinutes, setStepMinutes] = useState<(typeof FRAME_STEPS)[number]>(1);
+  const [lastSync, setLastSync] = useState<number | null>(null);
+  const [latestSessionDate, setLatestSessionDate] = useState("");
+  const [refreshToken, setRefreshToken] = useState(0);
+  const requestedReplayDate = replayMode ? replayDate : "";
+
+  useEffect(() => {
+    let cancelled = false;
+    let interval: number | null = null;
+
+    const load = async () => {
+      setLoading(Object.fromEntries(panels.map((panel) => [panel.id, true])));
+      const results = await Promise.allSettled(panels.map(async (panel) => {
+        const query = new URLSearchParams({
+          symbol: panel.symbol,
+          greekMode: panel.greekMode,
+          ...(requestedReplayDate ? { sessionDate: requestedReplayDate } : {}),
+        });
+        const response = await fetch(`/api/gex-map?${query}`, { cache: "no-store" });
+        const payload = await response.json() as GexMapPanelPayload & { error?: string };
+        if (!response.ok) throw new Error(payload.error || `${panel.symbol} ${panel.greekMode} could not be loaded.`);
+        return { id: panel.id, payload };
+      }));
+      if (cancelled) return;
+
+      const nextErrors: Record<string, string | null> = {};
+      setPanelData((current) => {
+        const next = { ...current };
+        results.forEach((result, index) => {
+          const id = panels[index].id;
+          if (result.status === "fulfilled") {
+            next[id] = result.value.payload;
+            nextErrors[id] = null;
+          } else {
+            nextErrors[id] = result.reason instanceof Error ? result.reason.message : "Panel data is unavailable.";
+          }
+        });
+        return next;
+      });
+      setPanelErrors((current) => ({ ...current, ...nextErrors }));
+      setLoading(Object.fromEntries(panels.map((panel) => [panel.id, false])));
+      setLastSync(Date.now());
+
+      const firstSuccess = results.find((result) => result.status === "fulfilled");
+      if (!replayDate && firstSuccess?.status === "fulfilled") {
+        setReplayDate(firstSuccess.value.payload.sessionDate);
+      }
+      if (!replayMode && firstSuccess?.status === "fulfilled") {
+        setLatestSessionDate(firstSuccess.value.payload.sessionDate);
+      }
+    };
+
+    void load();
+    if (!replayMode) interval = window.setInterval(() => void load(), 15_000);
+    return () => {
+      cancelled = true;
+      if (interval !== null) window.clearInterval(interval);
+    };
+  }, [panels, refreshToken, replayDate, replayMode, requestedReplayDate]);
+
+  const timeline = useMemo(() => {
+    const timestamps = new Set<number>();
+    for (const panel of panels) {
+      const payload = panelData[panel.id];
+      if (!payload || (replayMode && replayDate && payload.sessionDate !== replayDate)) continue;
+      for (const frame of payload.frames) timestamps.add(frame.timestamp);
+    }
+    const ordered = [...timestamps].sort((a, b) => a - b);
+    if (stepMinutes === 1 || !ordered.length) return ordered;
+    const anchor = ordered[0];
+    return ordered.filter((timestamp) => Math.round((timestamp - anchor) / 60_000) % stepMinutes === 0);
+  }, [panelData, panels, replayDate, replayMode, stepMinutes]);
+
+  useEffect(() => {
+    if (!replayMode || !playing || timeline.length < 2) return;
+    const timer = window.setInterval(() => {
+      setCursor((current) => {
+        if (current >= timeline.length - 1) {
+          setPlaying(false);
+          return current;
+        }
+        return current + 1;
+      });
+    }, Math.max(80, 1_000 / speed));
+    return () => window.clearInterval(timer);
+  }, [playing, replayMode, speed, timeline.length]);
+
+  const selectedTimestamp = replayMode ? timeline[Math.min(cursor, Math.max(0, timeline.length - 1))] ?? null : null;
+  const live = !replayMode && panels.every((panel) => panelData[panel.id]?.status === "LIVE");
+  const currentSessionDate = latestSessionDate
+    || panels.map((panel) => panelData[panel.id]?.sessionDate).find(Boolean)
+    || "";
+
+  function updatePanel(id: PanelConfig["id"], patch: Partial<Pick<PanelConfig, "symbol" | "greekMode">>) {
+    setPanels((current) => current.map((panel) => panel.id === id ? { ...panel, ...patch } : panel));
+  }
+
+  function enterReplay() {
+    setReplayDate(currentSessionDate || replayDate);
+    setReplayMode(true);
+    setPlaying(false);
+    setCursor(0);
+  }
+
+  function exitReplay() {
+    setReplayMode(false);
+    setPlaying(false);
+    setCursor(0);
+  }
+
+  return (
+    <div className="flex h-full min-h-0 overflow-hidden bg-background text-foreground">
+      <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
+        <header className="flex h-[54px] shrink-0 items-center gap-3 border-b border-border bg-panel px-4">
+          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
+            <ScanLine className="h-4 w-4" />
+          </span>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <h1 className="text-[13px] font-semibold tracking-tight">GEXMAP</h1>
+              <span className="rounded-md border border-border bg-surface px-1.5 py-0.5 text-[8px] font-semibold uppercase tracking-[0.14em] text-muted">3 panels</span>
+            </div>
+            <p className="text-[9px] text-muted">Signed front-expiry exposure by strike</p>
+          </div>
+
+          <div className="ml-4 flex items-center gap-1 rounded-lg border border-border bg-surface p-1">
+            {FRAME_STEPS.map((value) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => {
+                  setStepMinutes(value);
+                  setCursor(0);
+                  setPlaying(false);
+                }}
+                className={`h-6 rounded-md px-2 text-[9px] font-semibold ${stepMinutes === value ? "bg-panel text-primary shadow-sm" : "text-muted hover:text-foreground"}`}
+              >
+                {value}m
+              </button>
+            ))}
+          </div>
+
+          <div className="ml-auto flex items-center gap-2">
+            <div className={`flex h-8 items-center gap-2 rounded-lg border px-2.5 text-[9px] font-semibold ${replayMode ? "border-accent/25 bg-accent/10 text-accent" : live ? "border-primary/20 bg-primary/10 text-primary" : "border-border bg-surface text-muted"}`}>
+              <span className={`h-1.5 w-1.5 rounded-full ${replayMode ? "bg-accent" : live ? "animate-pulse bg-primary" : "bg-muted"}`} />
+              {replayMode ? "REPLAY" : live ? "LIVE" : "LAST SESSION"}
+            </div>
+            <div className="hidden text-right text-[8px] text-muted xl:block">
+              <div>Last synced</div>
+              <div className="font-mono text-foreground">{lastSync ? easternTime.format(lastSync) : "—"} ET</div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setRefreshToken((value) => value + 1)}
+              className="flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-surface text-muted transition hover:text-foreground"
+              title="Sync now"
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={replayMode ? exitReplay : enterReplay}
+              className={`flex h-8 items-center gap-2 rounded-lg border px-3 text-[9px] font-semibold transition ${replayMode ? "border-primary/25 bg-primary/10 text-primary" : "border-border bg-surface text-foreground hover:border-primary/30"}`}
+            >
+              {replayMode ? <Radio className="h-3.5 w-3.5" /> : <RotateCcw className="h-3.5 w-3.5" />}
+              {replayMode ? "Exit Replay" : "Replay"}
+            </button>
+          </div>
+        </header>
+
+        <div className="flex min-h-0 flex-1 overflow-x-auto p-3 pb-2">
+          <div className="grid min-h-0 min-w-[1030px] flex-1 grid-cols-3 gap-3">
+            {panels.map((panel) => {
+              const payload = panelData[panel.id];
+              const validPayload = payload
+                && payload.symbol === panel.symbol
+                && payload.greekMode === panel.greekMode
+                && (!replayMode || !replayDate || payload.sessionDate === replayDate)
+                ? payload
+                : null;
+              return (
+                <ExposurePanel
+                  key={panel.id}
+                  config={panel}
+                  payload={validPayload}
+                  loading={loading[panel.id]}
+                  error={panelErrors[panel.id]}
+                  selectedTimestamp={selectedTimestamp}
+                  stepMinutes={stepMinutes}
+                  onChange={(patch) => updatePanel(panel.id, patch)}
+                />
+              );
+            })}
+          </div>
+        </div>
+
+        {replayMode ? (
+          <footer className="shrink-0 border-t border-border bg-panel px-4 py-2.5">
+            <div className="flex items-center gap-3">
+              <label className="flex h-9 items-center gap-2 rounded-lg border border-border bg-surface px-3 text-[9px] text-muted">
+                <CalendarDays className="h-3.5 w-3.5 text-primary" />
+                <input
+                  aria-label="Replay date"
+                  type="date"
+                  value={replayDate}
+                  max={currentSessionDate || undefined}
+                  onChange={(event) => {
+                    setReplayDate(event.target.value);
+                    setCursor(0);
+                    setPlaying(false);
+                  }}
+                  className="bg-transparent font-mono text-[10px] text-foreground outline-none"
+                />
+              </label>
+
+              <div className="flex items-center gap-1 rounded-lg border border-border bg-surface p-1">
+                <button type="button" onClick={() => setCursor(0)} className="flex h-7 w-7 items-center justify-center rounded-md text-muted hover:bg-panel hover:text-foreground" title="Session open"><SkipBack className="h-3.5 w-3.5" /></button>
+                <button type="button" onClick={() => setCursor((value) => Math.max(0, value - 1))} className="flex h-7 w-7 items-center justify-center rounded-md text-muted hover:bg-panel hover:text-foreground" title="Previous frame"><ChevronLeft className="h-3.5 w-3.5" /></button>
+                <button type="button" onClick={() => setPlaying((value) => !value)} disabled={timeline.length < 2} className="flex h-7 w-8 items-center justify-center rounded-md bg-primary text-background disabled:opacity-40" title={playing ? "Pause" : "Play"}>
+                  {playing ? <Pause className="h-3.5 w-3.5 fill-current" /> : <Play className="h-3.5 w-3.5 fill-current" />}
+                </button>
+                <button type="button" onClick={() => setCursor((value) => Math.min(timeline.length - 1, value + 1))} className="flex h-7 w-7 items-center justify-center rounded-md text-muted hover:bg-panel hover:text-foreground" title="Next frame"><ChevronRight className="h-3.5 w-3.5" /></button>
+                <button type="button" onClick={() => setCursor(Math.max(0, timeline.length - 1))} className="flex h-7 w-7 items-center justify-center rounded-md text-muted hover:bg-panel hover:text-foreground" title="Latest frame"><SkipForward className="h-3.5 w-3.5" /></button>
+              </div>
+
+              <div className="min-w-[110px]">
+                <div className="font-mono text-[11px] font-semibold text-foreground">
+                  {selectedTimestamp ? `${easternTime.format(selectedTimestamp)} ET` : "No replay frames"}
+                </div>
+                <div className="text-[8px] text-muted">{replayDate ? formatSessionDate(replayDate) : "Select a session"}</div>
+              </div>
+
+              <input
+                aria-label="Replay timeline"
+                type="range"
+                min={0}
+                max={Math.max(0, timeline.length - 1)}
+                value={Math.min(cursor, Math.max(0, timeline.length - 1))}
+                onChange={(event) => {
+                  setCursor(Number(event.target.value));
+                  setPlaying(false);
+                }}
+                className="min-w-[180px] flex-1 accent-[var(--primary)]"
+              />
+
+              <div className="flex items-center gap-1 rounded-lg border border-border bg-surface p-1">
+                {SPEEDS.map((value) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setSpeed(value)}
+                    className={`h-7 rounded-md px-2 text-[9px] font-semibold ${speed === value ? "bg-panel text-primary" : "text-muted hover:text-foreground"}`}
+                  >
+                    {value}×
+                  </button>
+                ))}
+              </div>
+
+              <div className="hidden items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-[8px] text-muted 2xl:flex">
+                <Gauge className="h-3.5 w-3.5 text-accent" />
+                <span>{timeline.length} provider frames</span>
+              </div>
+            </div>
+          </footer>
+        ) : (
+          <footer className="flex h-7 shrink-0 items-center gap-2 border-t border-border bg-panel px-4 text-[8px] text-muted">
+            <Radio className={`h-3 w-3 ${live ? "text-primary" : "text-muted"}`} />
+            <span>QuantData Interval Map · front expiry · per 1% underlying move</span>
+            <span className="ml-auto">Positive and negative colours follow the active Kwantify theme. Intensity is normalized to each panel’s 95th-percentile absolute exposure.</span>
+          </footer>
+        )}
+      </main>
+    </div>
+  );
+}
