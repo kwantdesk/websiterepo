@@ -70,9 +70,14 @@ import {
 } from "@/lib/paperAccounts";
 import {
   getMassiveFuturesSymbolDefinition,
-  getMassiveFuturesSymbols,
   isMassiveFuturesSymbol,
 } from "@/lib/massiveFutures";
+import {
+  DATABENTO_DEFAULT_SYMBOLS,
+  DATABENTO_FUTURES,
+  isContinuousFuture,
+  type DatabentoInstrument,
+} from "@/lib/databento";
 import AppSidebar from "@/components/AppSidebar";
 import ChartCreateAlertModal from "@/components/alerts/ChartCreateAlertModal";
 import {
@@ -105,7 +110,7 @@ type WatchlistItem = {
   displayName?: string;
   exchange?: string;
   delayed?: boolean;
-  marketType?: "spot" | "futures";
+  marketType?: "spot" | "futures" | "options";
   lastPrice: number;
   openPrice: number;
   bid: number;
@@ -205,13 +210,14 @@ const OANDA_GRANULARITY_MAP: Record<string, string> = {
   "1h": "H1", "2h": "H2", "4h": "H4", "1D": "D", "1W": "W", "1M": "M",
 };
 const DEFAULT_WORKSPACE_PANES: WorkspacePane[] = [
-  { id: "pane-1", symbol: "NAS100", broker: "OANDA", timeframe: "5m", period: "1Y", watchlistKey: makeWatchlistKey("NAS100", "OANDA") },
-  { id: "pane-2", symbol: "XAUUSD", broker: "OANDA", timeframe: "5m", period: "1Y", watchlistKey: makeWatchlistKey("XAUUSD", "OANDA") },
-  { id: "pane-3", symbol: "EURUSD", broker: "OANDA", timeframe: "5m", period: "1Y", watchlistKey: makeWatchlistKey("EURUSD", "OANDA") },
-  { id: "pane-4", symbol: "GER40", broker: "OANDA", timeframe: "5m", period: "1Y", watchlistKey: makeWatchlistKey("GER40", "OANDA") },
+  { id: "pane-1", symbol: "ES.v.0", broker: "Databento", timeframe: "5m", period: "1W", watchlistKey: makeWatchlistKey("ES.v.0", "Databento") },
+  { id: "pane-2", symbol: "NQ.v.0", broker: "Databento", timeframe: "5m", period: "1W", watchlistKey: makeWatchlistKey("NQ.v.0", "Databento") },
+  { id: "pane-3", symbol: "CL.v.0", broker: "Databento", timeframe: "5m", period: "1W", watchlistKey: makeWatchlistKey("CL.v.0", "Databento") },
+  { id: "pane-4", symbol: "GC.v.0", broker: "Databento", timeframe: "5m", period: "1W", watchlistKey: makeWatchlistKey("GC.v.0", "Databento") },
 ];
 
 function normalizeWorkspacePane(pane: Partial<WorkspacePane>, fallback: WorkspacePane): WorkspacePane {
+  if (pane.broker !== "Databento") return fallback;
   return {
     id: pane.id ?? fallback.id,
     symbol: pane.symbol ?? fallback.symbol,
@@ -230,14 +236,15 @@ function createWatchlistItem(symbol: string, broker: string, detail?: { price: s
   const mid = detail ? Number(detail.price.replace(/,/g, "")) : 0;
   const changePercent = detail ? Number(detail.change.replace("%", "")) : 0;
   const massiveDefinition = broker === "Massive" ? getMassiveFuturesSymbolDefinition(symbol) : null;
+  const databentoDefinition = broker === "Databento" ? DATABENTO_FUTURES.find((item) => item.symbol === symbol) : null;
   return {
     key: makeWatchlistKey(symbol, broker),
     symbol,
     broker,
-    displayName: massiveDefinition?.displayName,
-    exchange: massiveDefinition?.exchange,
-    delayed: massiveDefinition?.delayed,
-    marketType: massiveDefinition ? ("futures" as const) : ("spot" as const),
+    displayName: massiveDefinition?.displayName ?? databentoDefinition?.label,
+    exchange: massiveDefinition?.exchange ?? databentoDefinition?.venue,
+    delayed: massiveDefinition?.delayed ?? false,
+    marketType: broker === "Databento" ? (isContinuousFuture(symbol) ? ("futures" as const) : ("options" as const)) : massiveDefinition ? ("futures" as const) : ("spot" as const),
     lastPrice: mid,
     openPrice: mid,
     bid: mid ? mid - 0.1 : 0,
@@ -288,15 +295,7 @@ const defaultWatchlistSections: WatchlistSection[] = [
   {
     id: "default",
     name: "Main",
-    symbols: [
-      makeWatchlistKey("NAS100", "OANDA"),
-      makeWatchlistKey("XAUUSD", "OANDA"),
-      makeWatchlistKey("EURUSD", "OANDA"),
-      makeWatchlistKey("GBPUSD", "OANDA"),
-      makeWatchlistKey("GER40", "OANDA"),
-      makeWatchlistKey("S&P500", "OANDA"),
-      makeWatchlistKey("UK100", "OANDA"),
-    ],
+    symbols: DATABENTO_DEFAULT_SYMBOLS.map((symbol) => makeWatchlistKey(symbol, "Databento")),
   },
 ];
 
@@ -325,6 +324,7 @@ function getPeriodConfig(period: string): { from: string; label: string } {
   return {
     "1D": { from: new Date(now - 1 * day).toISOString(), label: "1D" },
     "5D": { from: new Date(now - 5 * day).toISOString(), label: "5D" },
+    "1W": { from: new Date(now - 7 * day).toISOString(), label: "1W" },
     "1M": { from: new Date(now - 30 * day).toISOString(), label: "1M" },
     "3M": { from: new Date(now - 90 * day).toISOString(), label: "3M" },
     "6M": { from: new Date(now - 180 * day).toISOString(), label: "6M" },
@@ -572,6 +572,16 @@ async function fetchWorkspaceCandles(symbol: string, timeframe: string, broker: 
   const to = Date.now();
   const historicalLimit = getHistoricalCandleLimit(period, timeframe, outputsize);
 
+  if (broker === "Databento") {
+    const response = await fetch(
+      `/api/databento/market?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}&start=${encodeURIComponent(periodConfig.from)}`,
+      { cache: "no-store" },
+    );
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.error ?? `Databento did not return candles for ${symbol}.`);
+    return sanitizeCandles((payload.candles ?? []) as Candle[], symbol);
+  }
+
   try {
     const storedUrl = `/api/market-data/history?broker=${encodeURIComponent(broker)}&symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}&from=${from}&to=${to}&limit=${historicalLimit}`;
     const storedRes = await fetch(storedUrl, { cache: "no-store" });
@@ -813,6 +823,7 @@ function WorkspaceChartPane({
   useEffect(() => {
     const usingCTraderFeed = FALLBACK_CTRADER_BROKER_NAMES.includes(pane.broker as (typeof FALLBACK_CTRADER_BROKER_NAMES)[number]);
     const usingMassivePaneFeed = pane.broker === "Massive" || isMassiveFuturesSymbol(pane.symbol);
+    const usingDatabentoPaneFeed = pane.broker === "Databento";
     const nameMap: Record<string, string> = {
       EUR_USD: "EURUSD",
       GBP_USD: "GBPUSD",
@@ -836,7 +847,9 @@ function WorkspaceChartPane({
     }
 
     const stream = new EventSource(
-      usingCTraderFeed
+      usingDatabentoPaneFeed
+        ? `/api/databento/live?symbols=${encodeURIComponent(pane.symbol)}`
+        : usingCTraderFeed
         ? `/api/ctrader/stream?broker=${encodeURIComponent(pane.broker)}&symbols=${encodeURIComponent(pane.symbol)}`
         : "/api/oanda/stream",
     );
@@ -849,7 +862,7 @@ function WorkspaceChartPane({
           return;
         }
 
-        const displayName = usingCTraderFeed ? price.instrument : (nameMap[price.instrument] || price.instrument);
+        const displayName = usingDatabentoPaneFeed || usingCTraderFeed ? price.instrument : (nameMap[price.instrument] || price.instrument);
         if (displayName !== pane.symbol) return;
 
         setLastMarketUpdateAt(Date.now());
@@ -949,7 +962,7 @@ function WorkspaceChartPane({
         <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-semibold ${marketStatusClasses}`}>{marketStatusLabel}</span>
       </div>
       <div className="absolute bottom-8 left-3 z-20 flex items-center gap-0.5 rounded-lg border border-border bg-panel/80 px-1 py-0.5 backdrop-blur">
-        {["1D", "5D", "1M", "3M", "6M", "1Y", "All"].map((range) => (
+        {["1D", "5D", "1W", "1M", "3M", "6M", "1Y", "All"].map((range) => (
           <button
             key={range}
             onClick={(event) => {
@@ -1097,7 +1110,7 @@ export default function Home() {
   const [aiWidth, setAiWidth] = useState(360);
   const [isResizingAI, setIsResizingAI] = useState(false);
   const [bottomTab, setBottomTab] = useState<"strategies" | "metrics" | "trades">("metrics");
-  const [selectedInstrument, setSelectedInstrument] = useState("NAS100");
+  const [selectedInstrument, setSelectedInstrument] = useState("ES.v.0");
   const [workspaceLayout, setWorkspaceLayout] = useState<WorkspaceLayout>(() => {
     if (typeof window === "undefined") return "single";
     try {
@@ -1143,13 +1156,7 @@ export default function Home() {
     return window.localStorage.getItem("olisa-chart-workspace-active-pane") ?? DEFAULT_WORKSPACE_PANES[0].id;
   });
   const [watchlist, setWatchlist] = useState<WatchlistItem[]>([
-    createWatchlistItem("NAS100", "OANDA"),
-    createWatchlistItem("XAUUSD", "OANDA"),
-    createWatchlistItem("EURUSD", "OANDA"),
-    createWatchlistItem("GBPUSD", "OANDA"),
-    createWatchlistItem("GER40", "OANDA"),
-    createWatchlistItem("S&P500", "OANDA"),
-    createWatchlistItem("UK100", "OANDA"),
+    ...DATABENTO_DEFAULT_SYMBOLS.map((symbol) => createWatchlistItem(symbol, "Databento")),
   ]);
   const [watchlistContextMenu, setWatchlistContextMenu] = useState<{ x: number; y: number; key: string; symbol: string } | null>(null);
   const [watchlistFavorites, setWatchlistFavorites] = useState<string[]>(() => {
@@ -1172,7 +1179,10 @@ export default function Home() {
     if (typeof window === "undefined") return defaultWatchlistSections;
     try {
       const saved = JSON.parse(window.localStorage.getItem("olisa-watchlist-sections") ?? "null");
-      return Array.isArray(saved) && saved.length > 0 ? saved : defaultWatchlistSections;
+      const containsLegacyMarket = Array.isArray(saved) && saved.some((section) =>
+        Array.isArray(section?.symbols) && section.symbols.some((key: unknown) => typeof key !== "string" || !key.startsWith("Databento::")),
+      );
+      return Array.isArray(saved) && saved.length > 0 && !containsLegacyMarket ? saved : defaultWatchlistSections;
     } catch {
       return defaultWatchlistSections;
     }
@@ -1184,7 +1194,9 @@ export default function Home() {
   const [watchlistDropTarget, setWatchlistDropTarget] = useState<{ sectionId: string; symbol?: string } | null>(null);
   const [showInstrumentSearch, setShowInstrumentSearch] = useState(false);
   const [instrumentSearch, setInstrumentSearch] = useState("");
-  const [selectedWatchlistKey, setSelectedWatchlistKey] = useState<string>(makeWatchlistKey("NAS100", "OANDA"));
+  const [databentoOptions, setDatabentoOptions] = useState<DatabentoInstrument[]>([]);
+  const [optionsLoading, setOptionsLoading] = useState(false);
+  const [selectedWatchlistKey, setSelectedWatchlistKey] = useState<string>(makeWatchlistKey("ES.v.0", "Databento"));
   const [selectedTimeframe, setSelectedTimeframe] = useState("5m");
   const [selectedPeriod, setSelectedPeriod] = useState(DEFAULT_WORKSPACE_PANES[0].period);
   const [chartLoadingMessage, setChartLoadingMessage] = useState("");
@@ -1210,7 +1222,7 @@ export default function Home() {
   const [showBrokerModal, setShowBrokerModal] = useState(false);
   const [brokerSearch, setBrokerSearch] = useState("");
   const [brokerFavourites, setBrokerFavourites] = useState<string[]>([]);
-  const [connectedBroker, setConnectedBroker] = useState<string | null>(null);
+  const [connectedBroker, setConnectedBroker] = useState<string | null>("Databento");
   const [brokerConnections, setBrokerConnections] = useState<Record<string, BrokerConnectionState>>({});
   const [linkedCTraderAccounts, setLinkedCTraderAccounts] = useState<CTraderStatusAccount[]>([]);
   const [paperTradingAccounts, setPaperTradingAccounts] = useState<PaperTradingAccountRecord[]>([]);
@@ -1319,7 +1331,8 @@ export default function Home() {
   const cTraderBrokerNameSet = useMemo(() => new Set(cTraderBrokerNames), [cTraderBrokerNames]);
   const usingCTraderFeed = connectedBroker ? cTraderBrokerNameSet.has(connectedBroker) : false;
   const usingMassiveFeed = connectedBroker === "Massive" || isMassiveFuturesSymbol(selectedInstrument);
-  const activeChartBrokerLabel = usingCTraderFeed && connectedBroker ? connectedBroker : usingMassiveFeed ? "Massive" : "OANDA";
+  const usingDatabentoFeed = connectedBroker === "Databento";
+  const activeChartBrokerLabel = usingDatabentoFeed ? "Databento" : usingCTraderFeed && connectedBroker ? connectedBroker : usingMassiveFeed ? "Massive" : "OANDA";
   const watchlistSymbolsCsv = useMemo(() => {
     const unique = new Set<string>();
     watchlist
@@ -1329,16 +1342,13 @@ export default function Home() {
     return Array.from(unique).join(",");
   }, [activeChartBrokerLabel, selectedInstrument, watchlist]);
   const instrumentCategories = [
-    { category: "Indices", items: [["NAS100", "Nasdaq 100"], ["S&P500", "S&P 500"], ["GER40", "Germany 40"], ["UK100", "FTSE 100"], ["NIKKEI", "Nikkei 225"], ["DOW30", "Dow Jones 30"]] },
-    { category: "Forex", items: [["EURUSD", "Euro / US Dollar"], ["GBPUSD", "British Pound / US Dollar"], ["USDJPY", "US Dollar / Japanese Yen"], ["AUDUSD", "Australian Dollar / US Dollar"], ["NZDUSD", "New Zealand Dollar / US Dollar"], ["USDCAD", "US Dollar / Canadian Dollar"], ["USDCHF", "US Dollar / Swiss Franc"]] },
-    { category: "Commodities", items: [["XAUUSD", "Gold Spot"], ["XAGUSD", "Silver Spot"], ["OIL", "Crude Oil"], ["NATGAS", "Natural Gas"]] },
-    { category: "Crypto", items: [["BTCUSD", "Bitcoin / US Dollar"], ["ETHUSD", "Ethereum / US Dollar"], ["SOLUSD", "Solana / US Dollar"], ["XRPUSD", "XRP / US Dollar"]] },
     {
-      category: "Futures",
-      items: getMassiveFuturesSymbols().map((symbol) => {
-        const definition = getMassiveFuturesSymbolDefinition(symbol);
-        return [symbol, definition?.displayName ?? symbol];
-      }),
+      category: "CME Futures",
+      items: DATABENTO_FUTURES.map((instrument) => [instrument.symbol, `${instrument.label} · ${instrument.venue}`]),
+    },
+    {
+      category: "CME Options",
+      items: databentoOptions.map((instrument) => [instrument.symbol, `${instrument.label} · ${instrument.group}`]),
     },
   ];
   const watchlistDetails: Record<string, { price: string; change: string; up: boolean }> = {
@@ -1589,19 +1599,14 @@ export default function Home() {
               : "Connect a broker account and choose the account you want to route orders through.",
         };
   const pickerEnabledBrokers = useMemo(
-    () => {
-      const names = new Set<string>(["OANDA", "Massive"]);
-      cTraderBrokerNames.forEach((name) => names.add(name));
-      return Array.from(names);
-    },
-    [cTraderBrokerNames],
+    () => ["Databento"],
+    [],
   );
   const instrumentPickerItems = useMemo<InstrumentPickerItem[]>(
     () =>
       pickerEnabledBrokers.flatMap((brokerName) =>
         instrumentCategories.flatMap((group) =>
           group.items
-            .filter(() => (group.category === "Futures" ? brokerName === "Massive" : brokerName !== "Massive"))
             .map(([symbol, fullName]) => ({
               key: `${brokerName}::${symbol}`,
               symbol,
@@ -1954,7 +1959,8 @@ export default function Home() {
   useEffect(() => {
     try {
       setBrokerFavourites(JSON.parse(window.localStorage.getItem("olisa-broker-favourites") ?? "[]"));
-      setConnectedBroker(window.localStorage.getItem("olisa-connected-broker"));
+      setConnectedBroker("Databento");
+      window.localStorage.setItem("olisa-connected-broker", "Databento");
       setBrokerConnections(JSON.parse(window.localStorage.getItem("olisa-broker-connections") ?? "{}"));
       setPaperTradingAccounts(loadPaperTradingAccounts());
     } catch {
@@ -1963,6 +1969,27 @@ export default function Home() {
       setPaperTradingAccounts([]);
     }
   }, []);
+
+  useEffect(() => {
+    if (!showInstrumentSearch || databentoOptions.length > 0 || optionsLoading) return;
+    let active = true;
+    setOptionsLoading(true);
+    fetch("/api/databento/options", { cache: "no-store" })
+      .then(async (response) => {
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error ?? "Unable to load options.");
+        if (active && Array.isArray(payload.instruments)) setDatabentoOptions(payload.instruments);
+      })
+      .catch(() => {
+        if (active) setDatabentoOptions([]);
+      })
+      .finally(() => {
+        if (active) setOptionsLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [databentoOptions.length, optionsLoading, showInstrumentSearch]);
 
   useEffect(() => {
     savePaperTradingAccounts(paperTradingAccounts);
@@ -2128,7 +2155,9 @@ export default function Home() {
     };
 
     const eventSource = new EventSource(
-      usingCTraderFeed
+      usingDatabentoFeed
+        ? `/api/databento/live?symbols=${encodeURIComponent(watchlistSymbolsCsv)}`
+        : usingCTraderFeed
         ? `/api/ctrader/stream?broker=${encodeURIComponent(activeChartBrokerLabel)}&symbols=${encodeURIComponent(watchlistSymbolsCsv)}`
         : "/api/oanda/stream",
     );
@@ -2150,7 +2179,7 @@ export default function Home() {
         setStreamHealthyByBroker((current) => ({ ...current, [activeChartBrokerLabel]: true }));
         setLastStreamTickAtByBroker((current) => ({ ...current, [activeChartBrokerLabel]: Date.now() }));
 
-        const displayName = usingCTraderFeed ? price.instrument : (nameMap[price.instrument] || price.instrument);
+        const displayName = usingDatabentoFeed || usingCTraderFeed ? price.instrument : (nameMap[price.instrument] || price.instrument);
 
         setWatchlist((current) => current.map((item) => {
           if (item.symbol !== displayName || item.broker !== activeChartBrokerLabel) return item;
@@ -2195,10 +2224,10 @@ export default function Home() {
     };
 
     return () => eventSource.close();
-  }, [activeChartBrokerLabel, chartTrades.length, selectedInstrument, selectedTimeframe, streamReconnectNonce, usingCTraderFeed, watchlistSymbolsCsv]);
+  }, [activeChartBrokerLabel, chartTrades.length, selectedInstrument, selectedTimeframe, streamReconnectNonce, usingCTraderFeed, usingDatabentoFeed, watchlistSymbolsCsv]);
 
   useEffect(() => {
-    if (activeChartBrokerLabel === "Massive") {
+    if (activeChartBrokerLabel === "Massive" || activeChartBrokerLabel === "Databento") {
       return;
     }
 
@@ -2391,6 +2420,16 @@ export default function Home() {
     const to = Date.now();
     const historicalLimit = getHistoricalCandleLimit(period, selectedTimeframe, outputsize);
 
+    if (activeChartBrokerLabel === "Databento") {
+      const response = await fetch(
+        `/api/databento/market?symbol=${encodeURIComponent(selectedInstrument)}&timeframe=${encodeURIComponent(selectedTimeframe)}&start=${encodeURIComponent(periodConfig.from)}`,
+        { cache: "no-store" },
+      );
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error ?? `Databento did not return candles for ${selectedInstrument}.`);
+      return sanitizeCandles((payload.candles ?? []) as Candle[], selectedInstrument);
+    }
+
     try {
       const storedUrl = `/api/market-data/history?broker=${encodeURIComponent(activeChartBrokerLabel)}&symbol=${encodeURIComponent(selectedInstrument)}&timeframe=${encodeURIComponent(selectedTimeframe)}&from=${from}&to=${to}&limit=${historicalLimit}`;
       const storedRes = await fetch(storedUrl, { cache: "no-store" });
@@ -2455,6 +2494,8 @@ export default function Home() {
         const oandaGran = OANDA_GRANULARITY_MAP[selectedTimeframe] || "M5";
         const url = usingCTraderFeed
           ? `/api/ctrader?action=candles&broker=${encodeURIComponent(activeChartBrokerLabel)}&symbol=${encodeURIComponent(selectedInstrument)}&interval=${encodeURIComponent(selectedTimeframe)}&count=3`
+          : activeChartBrokerLabel === "Databento"
+            ? null
           : activeChartBrokerLabel === "Massive"
             ? `/api/massive-futures/snapshot?symbols=${encodeURIComponent(selectedInstrument)}`
           : oandaInst
