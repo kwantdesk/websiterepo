@@ -6,14 +6,14 @@ export const runtime = "nodejs";
 
 export async function GET(request: Request) {
   if (!process.env.DATABENTO_API_KEY) {
-    return NextResponse.json({ error: "Databento is not configured." }, { status: 503 });
+    return NextResponse.json({ error: "CME market data is not configured." }, { status: 503 });
   }
 
   const url = new URL(request.url);
   const symbol = url.searchParams.get("symbol")?.trim();
   const timeframe = url.searchParams.get("timeframe")?.trim() || "5m";
   if (!symbol || symbol.length > 90) {
-    return NextResponse.json({ error: "A valid Databento instrument is required." }, { status: 400 });
+    return NextResponse.json({ error: "A valid CME instrument is required." }, { status: 400 });
   }
 
   const now = Date.now();
@@ -24,12 +24,12 @@ export async function GET(request: Request) {
   try {
     const candles = await getDatabentoBars(symbol, timeframe, start, new Date(now).toISOString());
     return NextResponse.json(
-      { candles, source: "Databento", dataset: "GLBX.MDP3", range: "1W" },
+      { candles, source: "CME", dataset: "GLBX.MDP3", range: "1W" },
       { headers: { "Cache-Control": "private, no-store" } },
     );
   } catch (error) {
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Databento history failed." },
+      { error: error instanceof Error ? error.message.replaceAll("Databento", "CME") : "CME history failed." },
       { status: 502 },
     );
   }

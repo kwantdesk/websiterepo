@@ -14,7 +14,7 @@ function numericPrice(value: unknown) {
 
 export async function GET(request: Request) {
   const apiKey = process.env.DATABENTO_API_KEY;
-  if (!apiKey) return new Response("Databento is not configured.", { status: 503 });
+  if (!apiKey) return new Response("CME market data is not configured.", { status: 503 });
 
   const url = new URL(request.url);
   const symbols = (url.searchParams.get("symbols") ?? "")
@@ -31,6 +31,7 @@ export async function GET(request: Request) {
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
       const instrumentSymbols = new Map<number, string>();
+      const instrumentContracts = new Map<number, string>();
       const lastEmit = new Map<string, number>();
       let buffer = "";
       let authenticated = false;
@@ -79,7 +80,7 @@ export async function GET(request: Request) {
                 socket?.write(`schema=trades|stype_in=raw_symbol|symbols=${raw.join(",")}\n`);
               }
               socket?.write("start_session=1\n");
-              send(`event: status\ndata: ${JSON.stringify({ connected: true, source: "Databento", dataset: "GLBX.MDP3" })}\n\n`);
+              send(`event: status\ndata: ${JSON.stringify({ connected: true, source: "CME", dataset: "GLBX.MDP3" })}\n\n`);
               continue;
             }
             if (line.startsWith("success=0") || line.startsWith("error=")) {
@@ -108,6 +109,9 @@ export async function GET(request: Request) {
             const instrumentId = Number(record.hd?.instrument_id ?? record.instrument_id ?? 0);
             if (record.stype_in_symbol && instrumentId) {
               instrumentSymbols.set(instrumentId, record.stype_in_symbol.trim());
+              if (record.stype_out_symbol) {
+                instrumentContracts.set(instrumentId, record.stype_out_symbol.trim());
+              }
               continue;
             }
             if (record.err) {
@@ -131,6 +135,7 @@ export async function GET(request: Request) {
             }
             send(`data: ${JSON.stringify({
               instrument: symbol,
+              contractSymbol: instrumentContracts.get(instrumentId),
               bid: bid || mid,
               ask: ask || mid,
               mid,

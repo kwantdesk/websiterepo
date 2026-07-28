@@ -29,6 +29,7 @@ import {
 type Props = {
   isOpen: boolean;
   instrument: string;
+  displayInstrument?: string;
   timeframe: string;
   strategies: ChartAlertStrategyOption[];
   defaultPrice?: string;
@@ -300,6 +301,7 @@ function NotificationRow({
 export default function ChartCreateAlertModal({
   isOpen,
   instrument,
+  displayInstrument,
   timeframe,
   strategies,
   defaultPrice,
@@ -307,6 +309,7 @@ export default function ChartCreateAlertModal({
   onClose,
   onCreate,
 }: Props) {
+  const instrumentLabel = displayInstrument ?? instrument;
   const wasOpenRef = useRef(false);
   const [detailView, setDetailView] = useState<DetailView>("main");
   const [openMenu, setOpenMenu] = useState<OpenMenu>(null);
@@ -348,26 +351,26 @@ export default function ChartCreateAlertModal({
   const generatedName = useMemo(
     () =>
       buildAlertName({
-        instrument,
+        instrument: instrumentLabel,
         conditionKey,
         strategyName: selectedStrategy?.name,
         priceOperator,
         targetValue,
       }),
-    [conditionKey, instrument, priceOperator, selectedStrategy?.name, targetValue],
+    [conditionKey, instrumentLabel, priceOperator, selectedStrategy?.name, targetValue],
   );
 
   const generatedMessage = useMemo(
     () =>
       buildDefaultMessage({
-        instrument,
+        instrument: instrumentLabel,
         conditionKey,
         priceOperator,
         targetValue,
         strategyName: selectedStrategy?.name,
         strategyEvent,
       }),
-    [conditionKey, instrument, priceOperator, selectedStrategy?.name, strategyEvent, targetValue],
+    [conditionKey, instrumentLabel, priceOperator, selectedStrategy?.name, strategyEvent, targetValue],
   );
 
   useEffect(() => {
@@ -452,7 +455,7 @@ export default function ChartCreateAlertModal({
     const now = new Date().toISOString();
     const conditionLabel = usingStrategy
       ? `${selectedStrategy?.name} · ${getStrategyModeLabel(strategyEvent)}`
-      : `${instrument} ${getPriceOperatorLabel(priceOperator)} ${targetValue}`;
+      : `${instrumentLabel} ${getPriceOperatorLabel(priceOperator)} ${targetValue}`;
 
     onCreate({
       id: initialAlert?.id ?? (typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `alert_${Date.now()}`),
@@ -813,10 +816,10 @@ export default function ChartCreateAlertModal({
               {detailView === "main" ? (
                 <>
                   <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-primary/20 text-[12px] font-semibold text-primary">
-                    {instrument.slice(0, 3)}
+                    {instrumentLabel.slice(0, 3)}
                   </span>
                   <div className="flex min-w-0 items-center gap-1 text-[18px] font-medium text-foreground">
-                    <span className="truncate">{instrument}</span>
+                    <span className="truncate">{instrumentLabel}</span>
                     <ChevronDown className="h-4 w-4 shrink-0 text-muted" />
                   </div>
                 </>

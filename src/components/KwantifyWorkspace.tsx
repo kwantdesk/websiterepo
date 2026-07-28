@@ -122,6 +122,7 @@ type WatchlistItem = {
   symbol: string;
   broker: string;
   displayName?: string;
+  contractSymbol?: string;
   exchange?: string;
   delayed?: boolean;
   marketType?: "spot" | "futures" | "options";
@@ -258,6 +259,52 @@ const DEFAULT_WORKSPACE_PANES: WorkspacePane[] = [
   { id: "pane-3", symbol: "CL.v.0", broker: "Databento", timeframe: "5m", period: "1W", watchlistKey: makeWatchlistKey("CL.v.0", "Databento") },
   { id: "pane-4", symbol: "GC.v.0", broker: "Databento", timeframe: "5m", period: "1W", watchlistKey: makeWatchlistKey("GC.v.0", "Databento") },
 ];
+
+function displayCmeSymbol(symbol: string) {
+  return symbol.replace(/\.[vnc]\.\d+$/i, "");
+}
+
+function displayCmeText(value: string) {
+  return value.replace(/\b([A-Z0-9]+)\.[vnc]\.\d+\b/gi, "$1");
+}
+
+function displayMarketSource(broker: string) {
+  return broker === "Databento" ? "CME" : broker;
+}
+
+function fallbackFuturesContract(root: string, now = new Date()) {
+  const quarterly = new Set([
+    "MNQ", "NQ", "MES", "ES", "MYM", "YM", "M2K", "RTY",
+    "ZN", "ZB", "ZF", "ZT", "SR3", "6E", "6J", "6B", "6A", "6C",
+  ]);
+  const evenMonths = new Set(["GC", "MGC", "SI", "SIL", "HG"]);
+  const eligibleMonths = quarterly.has(root)
+    ? [3, 6, 9, 12]
+    : evenMonths.has(root)
+      ? [2, 4, 6, 8, 10, 12]
+      : [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+  const currentMonth = now.getUTCMonth() + 1;
+  let year = now.getUTCFullYear();
+  let month = eligibleMonths.find((candidate) => candidate >= currentMonth);
+  if (!month) {
+    month = eligibleMonths[0];
+    year += 1;
+  }
+  const monthCode = "FGHJKMNQUVXZ"[month - 1];
+  return {
+    contractSymbol: `${root}${monthCode}${String(year).slice(-1)}`,
+    contractLabel: new Date(Date.UTC(year, month - 1, 1)).toLocaleDateString("en-US", {
+      month: "short",
+      year: "numeric",
+      timeZone: "UTC",
+    }),
+  };
+}
+
+function currentCmeContract(symbol: string) {
+  if (!isContinuousFuture(symbol)) return null;
+  return fallbackFuturesContract(displayCmeSymbol(symbol)).contractSymbol;
+}
 
 function createWorkspaceLayoutTree(
   layout: Exclude<WorkspaceLayout, "custom">,
@@ -482,6 +529,7 @@ function createWatchlistItem(symbol: string, broker: string, detail?: { price: s
     symbol,
     broker,
     displayName: massiveDefinition?.displayName ?? databentoDefinition?.label,
+    contractSymbol: broker === "Databento" ? currentCmeContract(symbol) ?? undefined : undefined,
     exchange: massiveDefinition?.exchange ?? databentoDefinition?.venue,
     delayed: massiveDefinition?.delayed ?? false,
     marketType: broker === "Databento" ? (isContinuousFuture(symbol) ? ("futures" as const) : ("options" as const)) : massiveDefinition ? ("futures" as const) : ("spot" as const),
@@ -824,7 +872,7 @@ async function fetchWorkspaceCandles(symbol: string, timeframe: string, broker: 
       { cache: "no-store" },
     );
     const payload = await response.json();
-    if (!response.ok) throw new Error(payload.error ?? `Databento did not return candles for ${symbol}.`);
+    if (!response.ok) throw new Error(payload.error ?? `CME did not return candles for ${displayCmeSymbol(symbol)}.`);
     return sanitizeCandles((payload.candles ?? []) as Candle[], symbol);
   }
 
@@ -1050,6 +1098,8 @@ function WorkspaceChartPane({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [liveFeedError, setLiveFeedError] = useState<string | null>(null);
+  const [resolvedContractSymbol, setResolvedContractSymbol] = useState<string | null>(() =>
+    pane.broker === "Databento" ? currentCmeContract(pane.symbol) : null);
   const [lastMarketUpdateAt, setLastMarketUpdateAt] = useState<number | null>(null);
   const [statusNow, setStatusNow] = useState(() => Date.now());
   const [streamReconnectNonce, setStreamReconnectNonce] = useState(0);
@@ -1081,6 +1131,12 @@ function WorkspaceChartPane({
       cancelled = true;
     };
   }, [pane.broker, pane.symbol, pane.timeframe, period]);
+
+  useEffect(() => {
+    setResolvedContractSymbol(
+      pane.broker === "Databento" ? currentCmeContract(pane.symbol) : null,
+    );
+  }, [pane.broker, pane.symbol]);
 
   useEffect(() => {
     const usingCTraderFeed = FALLBACK_CTRADER_BROKER_NAMES.includes(pane.broker as (typeof FALLBACK_CTRADER_BROKER_NAMES)[number]);
@@ -1126,6 +1182,7 @@ function WorkspaceChartPane({
           size?: number;
           trades?: number;
           delta?: number;
+          contractSymbol?: string;
           timestamp?: string | number;
         };
         if (price.error) {
@@ -1138,6 +1195,9 @@ function WorkspaceChartPane({
 
         setLastMarketUpdateAt(Date.now());
         setLiveFeedError(null);
+        if (usingDatabentoPaneFeed && price.contractSymbol) {
+          setResolvedContractSymbol(price.contractSymbol);
+        }
         setCandles((prev) => {
           if (usingDatabentoPaneFeed && isEventBasedChartInterval(pane.timeframe)) {
             if (!price.isTrade) return prev;
@@ -1165,7 +1225,7 @@ function WorkspaceChartPane({
 
     stream.onerror = () => {
       stream.close();
-      setLiveFeedError(`${pane.broker} live feed is unavailable right now.`);
+      setLiveFeedError(`${displayMarketSource(pane.broker)} live feed is unavailable right now.`);
       window.setTimeout(() => setStreamReconnectNonce((value) => value + 1), 1200);
     };
 
@@ -1296,7 +1356,7 @@ function WorkspaceChartPane({
         <Chart
           candles={candles}
           trades={trades}
-          instrument={pane.symbol}
+          instrument={displayCmeSymbol(pane.symbol)}
           timeframe={pane.timeframe}
           marketIsActive={marketIsActive}
           settings={settings}
@@ -1310,8 +1370,11 @@ function WorkspaceChartPane({
         />
       )}
       <div className="pointer-events-none absolute bottom-8 left-1/2 z-20 inline-flex -translate-x-1/2 items-center gap-1.5 whitespace-nowrap rounded-full border border-border bg-panel/90 px-2.5 py-1 text-[10px] uppercase tracking-[0.12em] text-muted shadow-lg shadow-black/25 backdrop-blur">
-        <span className="font-semibold text-foreground">{pane.symbol}</span>
-        <span>{pane.broker}</span>
+        <span className="font-semibold text-foreground">{displayCmeSymbol(pane.symbol)}</span>
+        {pane.broker === "Databento" && resolvedContractSymbol ? (
+          <span className="font-mono text-[9px] text-foreground">{resolvedContractSymbol}</span>
+        ) : null}
+        <span>{displayMarketSource(pane.broker)}</span>
         {pane.broker === "Massive" && <AlertTriangle className="h-3 w-3 text-orange-300/90" />}
         <span>{formatChartInterval(pane.timeframe)}</span>
         <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-semibold ${marketStatusClasses}`}>{marketStatusLabel}</span>
@@ -2065,7 +2128,7 @@ export default function Home() {
     const query = instrumentSearch.trim().toLowerCase();
     if (!query) return instrumentPickerItems;
     return instrumentPickerItems.filter((item) =>
-      `${item.symbol} ${item.fullName} ${item.broker} ${item.category}`.toLowerCase().includes(query),
+      `${displayCmeSymbol(item.symbol)} ${currentCmeContract(item.symbol) ?? ""} ${item.fullName} ${displayMarketSource(item.broker)} ${item.category}`.toLowerCase().includes(query),
     );
   }, [instrumentPickerItems, instrumentSearch]);
   const watchlistBrokerSymbols = useMemo(
@@ -2638,6 +2701,7 @@ export default function Home() {
           size?: number;
           trades?: number;
           delta?: number;
+          contractSymbol?: string;
           timestamp?: string | number;
         };
         if (price.error) {
@@ -2666,6 +2730,7 @@ export default function Home() {
           return {
             ...item,
             broker: price.broker || activeChartBrokerLabel,
+            contractSymbol: price.contractSymbol || item.contractSymbol,
             lastPrice: price.mid,
             openPrice,
             bid: price.bid,
@@ -2919,7 +2984,7 @@ export default function Home() {
         { cache: "no-store" },
       );
       const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error ?? `Databento did not return candles for ${selectedInstrument}.`);
+      if (!response.ok) throw new Error(payload.error ?? `CME did not return candles for ${displayCmeSymbol(selectedInstrument)}.`);
       return sanitizeCandles((payload.candles ?? []) as Candle[], selectedInstrument);
     }
 
@@ -3057,7 +3122,7 @@ export default function Home() {
             setBacktestResult(result);
             setChartTrades(result.trades);
           }
-          showReportToast("success", `Report updated — ${selectedInstrument} ${selectedTimeframe}`, 2000);
+          showReportToast("success", `Report updated — ${displayCmeSymbol(selectedInstrument)} ${selectedTimeframe}`, 2000);
           setChartLoadingMessage(`Loaded ${candles.length.toLocaleString()} candles`);
         } else {
           const fallback = generateSampleData(60);
@@ -3072,7 +3137,7 @@ export default function Home() {
             setBacktestResult(result);
             setChartTrades(result.trades);
           }
-          showReportToast("success", `Report updated — ${selectedInstrument} ${selectedTimeframe}`, 2000);
+          showReportToast("success", `Report updated — ${displayCmeSymbol(selectedInstrument)} ${selectedTimeframe}`, 2000);
         }
       } catch {
         if (!usingCTraderFeed) {
@@ -3090,7 +3155,7 @@ export default function Home() {
   useEffect(() => {
     if (!backtestResult || backtestResult.error) {
       showReportToast("loading", "Updating report...");
-      window.setTimeout(() => showReportToast("success", `Report updated — ${selectedInstrument} ${selectedTimeframe}`, 2000), 300);
+      window.setTimeout(() => showReportToast("success", `Report updated — ${displayCmeSymbol(selectedInstrument)} ${selectedTimeframe}`, 2000), 300);
       return;
     }
 
@@ -3113,7 +3178,7 @@ export default function Home() {
           setChartCandles(cleanCandles);
           setBacktestResult(result);
           setChartTrades(result.trades);
-          showReportToast("success", `Report updated — ${selectedInstrument} ${selectedTimeframe}`, 2000);
+          showReportToast("success", `Report updated — ${displayCmeSymbol(selectedInstrument)} ${selectedTimeframe}`, 2000);
         }
       } catch {
         showReportToast("error", "Failed to update report", 3000);
@@ -3913,18 +3978,19 @@ export default function Home() {
         <span className="min-w-0">
           <span className="flex items-center gap-1.5">
             {watchlistFlags[row.key] && <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: watchlistFlags[row.key] }} />}
-            <span className="block truncate text-[9px] uppercase tracking-wider text-muted">{row.broker}</span>
+            <span className="block truncate text-[9px] uppercase tracking-wider text-muted">{displayMarketSource(row.broker)}</span>
             {row.delayed && (
               <AlertTriangle className="h-3 w-3 shrink-0 text-orange-300/90" aria-label="Delayed market data" />
             )}
           </span>
           <span className="flex min-w-0 items-center gap-1.5">
-            <span className="block truncate text-[13px] font-medium text-foreground">{row.symbol}</span>
+            <span className="block truncate text-[13px] font-medium text-foreground">{displayCmeSymbol(row.symbol)}</span>
+            {row.contractSymbol ? <span className="shrink-0 font-mono text-[9px] text-muted">{row.contractSymbol}</span> : null}
             {isFavorite && (
               <span
                 role="button"
                 tabIndex={0}
-                aria-label={`Remove ${row.symbol} from favorites`}
+                aria-label={`Remove ${displayCmeSymbol(row.symbol)} from favorites`}
                 onClick={(event) => {
                   event.stopPropagation();
                   toggleWatchlistFavorite(row.key);
@@ -4839,8 +4905,8 @@ export default function Home() {
                     <div className="text-[12px] font-semibold text-foreground">Chart intervals</div>
                     <div className="mt-0.5 text-[10px] text-muted">
                       {activeChartBrokerLabel === "Databento"
-                        ? "Time, volume and order-flow bars from Databento CME market data"
-                        : `Time intervals supported by ${activeChartBrokerLabel}; futures-only modes are hidden`}
+                        ? "Time, volume and order-flow bars from CME market data"
+                        : `Time intervals supported by ${displayMarketSource(activeChartBrokerLabel)}; futures-only modes are hidden`}
                     </div>
                   </div>
                   <button type="button" onClick={() => setShowAllTF(false)} className="rounded-lg p-1.5 text-muted hover:bg-surface hover:text-foreground" aria-label="Close chart intervals">
@@ -4929,7 +4995,7 @@ export default function Home() {
                 </div>
                 {activeChartBrokerLabel === "Databento" && (
                   <div className="border-t border-border px-4 py-2.5 text-[10px] leading-4 text-muted">
-                    Range and Renko use the contract&apos;s tick size. Volume, trade and delta bars use Databento CME executions.
+                    Range and Renko use the contract&apos;s tick size. Volume, trade and delta bars use native CME executions.
                   </div>
                 )}
               </div>
@@ -5230,7 +5296,7 @@ export default function Home() {
               {rightPanel === "order" && (
                 <div className="flex-1 overflow-y-auto p-4">
                   <div className="mb-4 flex items-center justify-between">
-                    <div className="flex items-center gap-2"><div className="flex h-7 w-7 items-center justify-center rounded-lg bg-surface text-primary"><Zap className="h-3.5 w-3.5" /></div><div><div className="text-[13px] font-semibold text-foreground">{selectedInstrument}</div><div className="text-[11px] text-muted">Order ticket</div></div></div>
+                    <div className="flex items-center gap-2"><div className="flex h-7 w-7 items-center justify-center rounded-lg bg-surface text-primary"><Zap className="h-3.5 w-3.5" /></div><div><div className="text-[13px] font-semibold text-foreground">{displayCmeSymbol(selectedInstrument)}</div><div className="text-[11px] text-muted">Order ticket</div></div></div>
                     <button onClick={() => setRightPanel(null)} className="flex h-7 w-7 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground"><X className="h-3.5 w-3.5" /></button>
                   </div>
                   <div className="relative mb-4 grid grid-cols-2 gap-2">
@@ -5249,14 +5315,14 @@ export default function Home() {
                     {showExits && <div className="space-y-4 border-t border-border p-3"><div className="space-y-2"><div className="flex items-center justify-between"><div className="flex items-center gap-2"><span className="text-[13px] text-muted">Take profit</span><select value={tpType} onChange={(e) => setTpType(e.target.value as typeof tpType)} className="rounded-lg border border-border bg-surface px-2 py-1 text-[11px] text-muted outline-none"><option value="price">price</option><option value="ticks">ticks</option><option value="pctPrice">% of price</option><option value="rewardUsd">reward USD</option><option value="rewardPct">reward % balance</option></select></div><button onClick={() => setTpEnabled((value) => !value)} className={`h-5 w-10 rounded-full transition-all ${tpEnabled ? "bg-primary" : "border border-border bg-surface"}`}><span className={`block h-4 w-4 rounded-full bg-background transition-transform ${tpEnabled ? "translate-x-5" : "translate-x-0.5"}`} /></button></div><div className="flex items-center gap-2"><input disabled={!tpEnabled} value={orderTP} onChange={(e) => setOrderTP(e.target.value)} className="min-w-0 flex-1 rounded-lg border border-border bg-surface px-3 py-2 text-right font-mono text-[13px] outline-none disabled:opacity-50" /><button className="flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-surface text-muted hover:text-foreground"><ArrowLeftRight className="h-4 w-4" /></button><span className="w-14 text-right font-mono text-[11px] text-muted">75 ticks</span></div></div><div className="space-y-2"><div className="flex items-center justify-between"><div className="flex items-center gap-2"><span className="text-[13px] text-muted">Stop loss</span><select value={slType} onChange={(e) => setSlType(e.target.value as typeof slType)} className="rounded-lg border border-border bg-surface px-2 py-1 text-[11px] text-muted outline-none"><option value="price">price</option><option value="ticks">ticks</option><option value="pctPrice">% of price</option><option value="riskUsd">risk USD</option><option value="riskPct">risk % balance</option></select></div><button onClick={() => setSlEnabled((value) => !value)} className={`h-5 w-10 rounded-full transition-all ${slEnabled ? "bg-primary" : "border border-border bg-surface"}`}><span className={`block h-4 w-4 rounded-full bg-background transition-transform ${slEnabled ? "translate-x-5" : "translate-x-0.5"}`} /></button></div><div className="flex items-center gap-2"><input disabled={!slEnabled} value={orderSL} onChange={(e) => setOrderSL(e.target.value)} className="min-w-0 flex-1 rounded-lg border border-border bg-surface px-3 py-2 text-right font-mono text-[13px] outline-none disabled:opacity-50" /><button className="flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-surface text-muted hover:text-foreground"><ArrowLeftRight className="h-4 w-4" /></button><span className="w-14 text-right font-mono text-[11px] text-muted">75 ticks</span></div></div></div>}
                   </div>
                   <div className="mb-4 space-y-2 text-[13px]"><h3 className="font-semibold text-primary">Order info</h3><div className="flex justify-between"><span className="text-muted">Margin</span><span className="font-mono">581.92 / 81,682.73</span></div><div className="h-1.5 overflow-hidden rounded-full bg-surface"><div className="h-full w-[18%] rounded-full bg-primary" /></div><div className="flex justify-between"><span className="text-muted">Leverage</span><span className="font-mono">50:1</span></div><div className="flex justify-between"><span className="text-muted">Tick value</span><span className="font-mono">0.1 USD</span></div><div className="flex justify-between"><span className="text-muted">Trade value</span><span className="font-mono">29,096.20 USD</span></div></div>
-                  <button className={`w-full rounded-xl py-3 font-semibold text-background ${orderSide === "buy" ? "bg-primary" : "bg-danger"}`}>{orderSide === "buy" ? "Buy" : "Sell"} {orderUnits || "1"} {selectedInstrument} {orderType.toUpperCase()}</button>
+                  <button className={`w-full rounded-xl py-3 font-semibold text-background ${orderSide === "buy" ? "bg-primary" : "bg-danger"}`}>{orderSide === "buy" ? "Buy" : "Sell"} {orderUnits || "1"} {displayCmeSymbol(selectedInstrument)} {orderType.toUpperCase()}</button>
                 </div>
               )}
               {rightPanel === "watchlist" && (
                 <div className="flex flex-1 flex-col overflow-hidden">
                   <div className="flex h-12 items-center justify-between border-b border-border px-4"><button className="flex items-center gap-1 text-[14px] font-semibold">Watchlist <ChevronDown className="h-3.5 w-3.5 text-muted" /></button><div className="flex items-center gap-1"><button onClick={() => setShowInstrumentSearch(true)} className="flex h-7 w-7 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground"><Plus className="h-3.5 w-3.5" /></button><button className="flex h-7 w-7 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground"><Grid3X3 className="h-3.5 w-3.5" /></button><button className="flex h-7 w-7 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground"><MoreHorizontal className="h-3.5 w-3.5" /></button></div></div>
                   <div className="grid grid-cols-[minmax(92px,1fr)_74px_54px_54px] gap-2 border-b border-border px-3 py-2 text-[10px] uppercase tracking-wider text-muted"><span>Symbol</span><span className="text-right">Last</span><span className="text-right">Chg</span><span className="text-right">Chg%</span></div>
-                  <div className="flex-1 overflow-y-auto">{watchlist.map((row) => { const item = getStaticWatchlistDetail(row.symbol, row.broker, watchlistDetails); const displayPrice = item?.price ?? (row.mid ? row.mid.toLocaleString(undefined, { maximumFractionDigits: 5 }) : "--"); const change = item ? Number(item.change.replace("%", "")) : row.change; const changePercent = item ? Number(item.change.replace("%", "")) : row.changePercent; const up = changePercent >= 0; return <button key={row.key} onClick={() => selectInstrument(row.symbol, row.broker, row.key)} className={`grid w-full grid-cols-[minmax(92px,1fr)_74px_54px_54px] items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-surface/60 ${selectedWatchlistKey === row.key ? "bg-surface" : ""}`}><span className="min-w-0"><span className="block truncate text-[9px] uppercase tracking-wider text-muted">{row.broker}</span><span className="block truncate text-[13px] font-medium text-foreground">{row.symbol}</span></span><span className="text-right font-mono text-[12px] text-foreground">{displayPrice}</span><span className={`text-right font-mono text-[11px] ${up ? "text-primary" : "text-danger"}`}>{up ? "+" : "-"}{Math.abs(change).toFixed(2)}</span><span className={`text-right font-mono text-[11px] ${up ? "text-primary" : "text-danger"}`}>{up ? "+" : ""}{changePercent.toFixed(2)}%</span></button>; })}</div>
+                  <div className="flex-1 overflow-y-auto">{watchlist.map((row) => { const item = getStaticWatchlistDetail(row.symbol, row.broker, watchlistDetails); const displayPrice = item?.price ?? (row.mid ? row.mid.toLocaleString(undefined, { maximumFractionDigits: 5 }) : "--"); const change = item ? Number(item.change.replace("%", "")) : row.change; const changePercent = item ? Number(item.change.replace("%", "")) : row.changePercent; const up = changePercent >= 0; return <button key={row.key} onClick={() => selectInstrument(row.symbol, row.broker, row.key)} className={`grid w-full grid-cols-[minmax(92px,1fr)_74px_54px_54px] items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-surface/60 ${selectedWatchlistKey === row.key ? "bg-surface" : ""}`}><span className="min-w-0"><span className="block truncate text-[9px] uppercase tracking-wider text-muted">{displayMarketSource(row.broker)}</span><span className="flex min-w-0 items-center gap-1.5"><span className="block truncate text-[13px] font-medium text-foreground">{displayCmeSymbol(row.symbol)}</span>{row.contractSymbol ? <span className="shrink-0 font-mono text-[9px] text-muted">{row.contractSymbol}</span> : null}</span></span><span className="text-right font-mono text-[12px] text-foreground">{displayPrice}</span><span className={`text-right font-mono text-[11px] ${up ? "text-primary" : "text-danger"}`}>{up ? "+" : "-"}{Math.abs(change).toFixed(2)}</span><span className={`text-right font-mono text-[11px] ${up ? "text-primary" : "text-danger"}`}>{up ? "+" : ""}{changePercent.toFixed(2)}%</span></button>; })}</div>
                 </div>
               )}
               {rightPanel === "alerts" && (
@@ -5277,7 +5343,7 @@ export default function Home() {
                                       onClick={() => openEditAlert(alert)}
                                       className="min-w-0 flex-1 text-left"
                                     >
-                                      <div className="text-[13px] text-foreground">{alert.conditionLabel}</div>
+                                      <div className="text-[13px] text-foreground">{displayCmeText(alert.conditionLabel)}</div>
                                     </button>
                                     <div className="flex items-center gap-1">
                                       <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${alert.state === "active" ? "bg-primary/15 text-primary" : alert.state === "paused" ? "bg-danger/15 text-danger" : "bg-yellow-400/15 text-yellow-300"}`}>
@@ -5315,7 +5381,7 @@ export default function Home() {
                           ))}
                         </div>
 
-                      ) : <div className="rounded-xl border border-dashed border-border p-5 text-center text-[13px] text-muted">No alerts for {selectedInstrument}. Create one from the chart or press +.</div>
+                      ) : <div className="rounded-xl border border-dashed border-border p-5 text-center text-[13px] text-muted">No alerts for {displayCmeSymbol(selectedInstrument)}. Create one from the chart or press +.</div>
                     ) : <div className="rounded-xl border border-dashed border-border p-5 text-center text-[13px] text-muted">Choose a market to create an alert.</div>}
                   </div>
                   <div className="border-t border-border p-4"><button onClick={() => { window.location.href = "/alerts"; }} className="w-full rounded-xl border border-border bg-surface px-4 py-2.5 text-[13px] text-muted hover:text-foreground">Manage All Alerts</button></div>
@@ -5663,7 +5729,7 @@ export default function Home() {
                 <div className="flex items-center gap-2">
                   <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-surface text-primary"><Zap className="h-3.5 w-3.5" /></div>
                   <div>
-                    <div className="text-[13px] font-semibold text-foreground">{selectedInstrument}</div>
+                    <div className="text-[13px] font-semibold text-foreground">{displayCmeSymbol(selectedInstrument)}</div>
                     <div className="text-[11px] text-muted">{activeTradingBrokerLabel} order ticket</div>
                   </div>
                 </div>
@@ -5767,7 +5833,7 @@ export default function Home() {
                   <div className="flex justify-between"><span className="text-muted">Trade value</span><span className="font-mono">{formatDollar(orderPanelTradeValueUsd)}</span></div>
                 </div>
               </div>
-              <button disabled={!tradingUnlocked} className={`w-full rounded-xl py-3 font-semibold text-background ${tradingUnlocked ? orderSide === "buy" ? "bg-primary" : "bg-danger" : "cursor-not-allowed bg-muted/30 text-muted"}`}>{tradingUnlocked ? `${orderSide === "buy" ? "Buy" : "Sell"} ${orderUnits || "1"} ${selectedInstrument} ${orderType.toUpperCase()}` : "Connect Your Broker To Trade"}</button>
+              <button disabled={!tradingUnlocked} className={`w-full rounded-xl py-3 font-semibold text-background ${tradingUnlocked ? orderSide === "buy" ? "bg-primary" : "bg-danger" : "cursor-not-allowed bg-muted/30 text-muted"}`}>{tradingUnlocked ? `${orderSide === "buy" ? "Buy" : "Sell"} ${orderUnits || "1"} ${displayCmeSymbol(selectedInstrument)} ${orderType.toUpperCase()}` : "Connect Your Broker To Trade"}</button>
               {!tradingUnlocked && (
                 <button onClick={() => setShowBrokerModal(true)} className="mt-2 w-full rounded-xl border border-border bg-surface px-4 py-2.5 text-[13px] text-muted transition-colors hover:text-foreground">
                   Link Your Own Broker
@@ -5877,7 +5943,7 @@ export default function Home() {
                                       onClick={() => openEditAlert(alert)}
                                       className="min-w-0 flex-1 text-left"
                                     >
-                                      <div className="text-[13px] text-foreground">{alert.conditionLabel}</div>
+                                      <div className="text-[13px] text-foreground">{displayCmeText(alert.conditionLabel)}</div>
                                     </button>
                                     <div className="flex items-center gap-1">
                                       <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${alert.state === "active" ? "bg-primary/15 text-primary" : alert.state === "paused" ? "bg-danger/15 text-danger" : "bg-yellow-400/15 text-yellow-300"}`}>
@@ -5914,7 +5980,7 @@ export default function Home() {
                             </div>
                           ))}
                         </div>
-                  ) : <div className="rounded-xl border border-dashed border-border p-5 text-center text-[13px] text-muted">No alerts for {selectedInstrument}. Create one from the chart or press +.</div>
+                  ) : <div className="rounded-xl border border-dashed border-border p-5 text-center text-[13px] text-muted">No alerts for {displayCmeSymbol(selectedInstrument)}. Create one from the chart or press +.</div>
                 ) : <div className="rounded-xl border border-dashed border-border p-5 text-center text-[13px] text-muted">Choose a market to create an alert.</div>}
               </div>
               <div className="border-t border-border p-4"><button onClick={() => { window.location.href = "/alerts"; }} className="w-full rounded-xl border border-border bg-surface px-4 py-2.5 text-[13px] text-muted hover:text-foreground">Manage All Alerts</button></div>
@@ -6388,6 +6454,7 @@ export default function Home() {
       <ChartCreateAlertModal
         isOpen={showChartAlertModal}
         instrument={selectedInstrument}
+        displayInstrument={displayCmeSymbol(selectedInstrument)}
         timeframe={selectedTimeframe}
         strategies={chartStrategyOptions}
         defaultPrice={chartAlertPriceDraft}
@@ -6408,7 +6475,7 @@ export default function Home() {
               <div className="min-w-0">
                 <h3 className="text-[18px] font-semibold text-foreground">Delete alert?</h3>
                 <p className="mt-2 text-[13px] leading-6 text-muted">
-                  Are you sure you want to delete <span className="font-medium text-foreground">{pendingAlertDelete.conditionLabel}</span>? This will remove the alert from your chart.
+                  Are you sure you want to delete <span className="font-medium text-foreground">{displayCmeText(pendingAlertDelete.conditionLabel)}</span>? This will remove the alert from your chart.
                 </p>
               </div>
             </div>
@@ -6552,11 +6619,16 @@ export default function Home() {
                     <div key={entry.key} className="grid grid-cols-[minmax(120px,1fr)_minmax(180px,1.1fr)_minmax(220px,1.4fr)_92px] items-center gap-3 border-b border-border/60 px-5 py-3">
                       <div className="min-w-0">
                         <span className="inline-flex rounded-full bg-surface px-2 py-1 text-[10px] font-medium uppercase tracking-wider text-muted">
-                          {entry.broker}
+                          {displayMarketSource(entry.broker)}
                         </span>
                       </div>
                       <div className="min-w-0">
-                        <div className="truncate text-[14px] font-medium text-foreground">{entry.symbol}</div>
+                        <div className="flex min-w-0 items-center gap-1.5">
+                          <span className="truncate text-[14px] font-medium text-foreground">{displayCmeSymbol(entry.symbol)}</span>
+                          {currentCmeContract(entry.symbol) ? (
+                            <span className="shrink-0 font-mono text-[9px] text-muted">{currentCmeContract(entry.symbol)}</span>
+                          ) : null}
+                        </div>
                         <div className="truncate text-[11px] uppercase tracking-wider text-muted">{entry.category}</div>
                       </div>
                       <div className="min-w-0 truncate text-[13px] text-muted">{entry.fullName}</div>
