@@ -1,5 +1,7 @@
 "use client";
 
+import KwantSelect from "@/components/ui/KwantSelect";
+
 import { useMemo, useState } from "react";
 import Chart, { type ChartLevel } from "@/components/Chart";
 import { defaultChartSettings } from "@/lib/chartSettings";
@@ -112,7 +114,7 @@ export default function AutomationChartWorkspace({
       title={title}
       action={
         <div className="flex items-center gap-2">
-          <select
+          <KwantSelect
             value={instrument}
             onChange={(event) => handleInstrumentChange(event.target.value)}
             className="rounded-xl border border-border bg-surface px-3 py-2 text-[12px] text-foreground outline-none"
@@ -122,7 +124,7 @@ export default function AutomationChartWorkspace({
                 {item}
               </option>
             ))}
-          </select>
+          </KwantSelect>
           <div className="flex items-center gap-1">
             {timeframes.map((item) => (
               <button

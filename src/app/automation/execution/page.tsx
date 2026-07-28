@@ -1,5 +1,7 @@
 "use client";
 
+import KwantSelect from "@/components/ui/KwantSelect";
+
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { ArrowRightLeft, BarChart3, CheckCircle2, Crosshair, Layers3, Loader2, Play, ShieldAlert } from "lucide-react";
@@ -352,7 +354,7 @@ export default function AutomationExecutionPage() {
 
             <label className="block rounded-xl border border-border bg-surface/60 px-4 py-3">
               <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted">Account</div>
-              <select
+              <KwantSelect
                 value={selectedAccount}
                 onChange={(event) => setSelectedAccount(event.target.value)}
                 className="mt-2 w-full bg-transparent text-[13px] text-foreground outline-none"
@@ -362,12 +364,12 @@ export default function AutomationExecutionPage() {
                     {account.label}
                   </option>
                 ))}
-              </select>
+              </KwantSelect>
             </label>
 
             <label className="block rounded-xl border border-border bg-surface/60 px-4 py-3">
               <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted">Instrument</div>
-              <select
+              <KwantSelect
                 value={selectedInstrument}
                 onChange={(event) => setSelectedInstrument(event.target.value)}
                 className="mt-2 w-full bg-transparent text-[13px] text-foreground outline-none"
@@ -377,7 +379,7 @@ export default function AutomationExecutionPage() {
                     {instrument}
                   </option>
                 ))}
-              </select>
+              </KwantSelect>
             </label>
 
             <div className="grid grid-cols-2 gap-3">
@@ -596,7 +598,7 @@ export default function AutomationExecutionPage() {
           <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr_0.8fr_0.8fr]">
             <label className="block rounded-xl border border-border bg-surface/60 px-4 py-3">
               <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted">Strategy</div>
-              <select
+              <KwantSelect
                 value={selectedBacktestStrategyId}
                 onChange={(event) => setSelectedBacktestStrategyId(event.target.value)}
                 className="mt-2 w-full bg-transparent text-[13px] text-foreground outline-none"
@@ -607,12 +609,12 @@ export default function AutomationExecutionPage() {
                     {strategy.name} • {strategy.currentVersionLabel}
                   </option>
                 ))}
-              </select>
+              </KwantSelect>
             </label>
 
             <label className="block rounded-xl border border-border bg-surface/60 px-4 py-3">
               <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted">Range</div>
-              <select
+              <KwantSelect
                 value={backtestDays}
                 onChange={(event) => setBacktestDays(event.target.value)}
                 className="mt-2 w-full bg-transparent text-[13px] text-foreground outline-none"
@@ -621,7 +623,7 @@ export default function AutomationExecutionPage() {
                 <option value="60">60 day desk test</option>
                 <option value="90">90 day confidence run</option>
                 <option value="180">180 day deep run</option>
-              </select>
+              </KwantSelect>
             </label>
 
             <div className="rounded-xl border border-border bg-surface/60 px-4 py-3">

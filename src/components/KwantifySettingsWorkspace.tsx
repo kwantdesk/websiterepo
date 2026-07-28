@@ -1,5 +1,7 @@
 "use client";
 
+import KwantSelect from "@/components/ui/KwantSelect";
+
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import AppSidebar from "@/components/AppSidebar";
@@ -468,7 +470,7 @@ export default function SettingsPage() {
           )}
 
           {activeTab === "Chart defaults" && (
-            <div className="mt-8 rounded-2xl border border-border bg-panel p-6"><div className="grid gap-4 md:grid-cols-2">{[["Default chart type", "type", ["Candles", "Bars", "Line", "Area", "Heikin Ashi"]], ["Default timeframe", "timeframe", ["1m", "5m", "15m", "1h", "4h", "1D"]], ["Default instrument", "instrument", ["NAS100", "XAUUSD", "BTCUSD", "EURUSD"]], ["Crosshair style", "crosshair", ["Normal", "Magnet"]]].map(([label, key, options]) => <label key={String(key)} className="space-y-2 text-[13px] text-muted">{label}<select value={chartDefaults[key as keyof typeof chartDefaults]} onChange={(event) => setChartDefaults((current) => ({ ...current, [key as string]: event.target.value }))} className={input}>{(options as string[]).map((option) => <option key={option}>{option}</option>)}</select></label>)}</div><div className="mt-5 space-y-4"><div className="flex items-center justify-between"><span>Show volume</span><Toggle checked={toggles.volume} onChange={() => toggle("volume")} /></div><div className="flex items-center justify-between"><span>Show grid</span><Toggle checked={toggles.grid} onChange={() => toggle("grid")} /></div></div><button onClick={saveChartDefaults} className="mt-6 rounded-xl bg-primary px-6 py-3 text-[13px] font-semibold text-background">Save defaults</button></div>
+            <div className="mt-8 rounded-2xl border border-border bg-panel p-6"><div className="grid gap-4 md:grid-cols-2">{[["Default chart type", "type", ["Candles", "Bars", "Line", "Area", "Heikin Ashi"]], ["Default timeframe", "timeframe", ["1m", "5m", "15m", "1h", "4h", "1D"]], ["Default instrument", "instrument", ["NAS100", "XAUUSD", "BTCUSD", "EURUSD"]], ["Crosshair style", "crosshair", ["Normal", "Magnet"]]].map(([label, key, options]) => <label key={String(key)} className="space-y-2 text-[13px] text-muted">{label}<KwantSelect value={chartDefaults[key as keyof typeof chartDefaults]} onChange={(event) => setChartDefaults((current) => ({ ...current, [key as string]: event.target.value }))} className={input}>{(options as string[]).map((option) => <option key={option}>{option}</option>)}</KwantSelect></label>)}</div><div className="mt-5 space-y-4"><div className="flex items-center justify-between"><span>Show volume</span><Toggle checked={toggles.volume} onChange={() => toggle("volume")} /></div><div className="flex items-center justify-between"><span>Show grid</span><Toggle checked={toggles.grid} onChange={() => toggle("grid")} /></div></div><button onClick={saveChartDefaults} className="mt-6 rounded-xl bg-primary px-6 py-3 text-[13px] font-semibold text-background">Save defaults</button></div>
           )}
 
           {activeTab === "Subscriptions" && (

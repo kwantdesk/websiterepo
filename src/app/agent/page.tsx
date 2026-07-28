@@ -1,5 +1,7 @@
 "use client";
 
+import KwantSelect from "@/components/ui/KwantSelect";
+
 import { KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import AppSidebar from "@/components/AppSidebar";
@@ -439,18 +441,18 @@ export default function AgentPage() {
             <section className="rounded-2xl border border-border bg-panel p-5">
               <h2 className="text-[15px] font-semibold">Log a Trade</h2>
               <div className="mt-4 grid grid-cols-2 gap-3">
-                <select value={tradeForm.instrument} onChange={(event) => setTradeForm({ ...tradeForm, instrument: event.target.value })} className="rounded-xl border border-border bg-background px-3 py-2 text-[13px] outline-none">
+                <KwantSelect value={tradeForm.instrument} onChange={(event) => setTradeForm({ ...tradeForm, instrument: event.target.value })} className="rounded-xl border border-border bg-background px-3 py-2 text-[13px] outline-none">
                   {["NAS100", "XAUUSD", "EURUSD", "GBPUSD", "BTCUSD", "GER40"].map((item) => <option key={item}>{item}</option>)}
-                </select>
+                </KwantSelect>
                 <div className="flex rounded-xl border border-border bg-background p-1">
                   {(["Long", "Short"] as const).map((direction) => <button key={direction} onClick={() => setTradeForm({ ...tradeForm, direction })} className={`flex-1 rounded-lg py-1.5 text-[12px] font-semibold ${tradeForm.direction === direction ? "bg-primary/10 text-primary" : "text-muted"}`}>{direction}</button>)}
                 </div>
                 <input value={tradeForm.entry} onChange={(event) => setTradeForm({ ...tradeForm, entry: event.target.value })} placeholder="Entry price" className="rounded-xl border border-border bg-background px-3 py-2 text-[13px] outline-none placeholder:text-muted" />
                 <input value={tradeForm.stopLoss} onChange={(event) => setTradeForm({ ...tradeForm, stopLoss: event.target.value })} placeholder="Stop Loss" className="rounded-xl border border-border bg-background px-3 py-2 text-[13px] outline-none placeholder:text-muted" />
                 <input value={tradeForm.takeProfit} onChange={(event) => setTradeForm({ ...tradeForm, takeProfit: event.target.value })} placeholder="Take Profit" className="rounded-xl border border-border bg-background px-3 py-2 text-[13px] outline-none placeholder:text-muted" />
-                <select value={tradeForm.result} onChange={(event) => setTradeForm({ ...tradeForm, result: event.target.value as "Open" | "Win" | "Loss" })} className="rounded-xl border border-border bg-background px-3 py-2 text-[13px] outline-none">
+                <KwantSelect value={tradeForm.result} onChange={(event) => setTradeForm({ ...tradeForm, result: event.target.value as "Open" | "Win" | "Loss" })} className="rounded-xl border border-border bg-background px-3 py-2 text-[13px] outline-none">
                   {["Open", "Win", "Loss"].map((item) => <option key={item}>{item}</option>)}
-                </select>
+                </KwantSelect>
                 <input value={tradeForm.pnl} onChange={(event) => setTradeForm({ ...tradeForm, pnl: event.target.value })} placeholder="P&L $" className="col-span-2 rounded-xl border border-border bg-background px-3 py-2 text-[13px] outline-none placeholder:text-muted" />
                 <textarea value={tradeForm.notes} onChange={(event) => setTradeForm({ ...tradeForm, notes: event.target.value })} placeholder="Notes" rows={3} className="col-span-2 resize-none rounded-xl border border-border bg-background px-3 py-2 text-[13px] outline-none placeholder:text-muted" />
               </div>

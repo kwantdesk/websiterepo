@@ -1,5 +1,7 @@
 "use client";
 
+import KwantSelect from "@/components/ui/KwantSelect";
+
 import { KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
@@ -267,12 +269,12 @@ export default function EditorPage() {
 
         <footer className="flex h-9 shrink-0 items-center justify-between border-t border-border bg-panel px-4 text-[12px] text-muted">
           <div className="flex items-center gap-4">
-            <select value={strategy.language} onChange={(e) => setStrategy((current) => ({ ...current, language: e.target.value }))} className="rounded-lg border border-border bg-surface px-2 py-1 text-[12px] text-muted outline-none">
+            <KwantSelect value={strategy.language} onChange={(e) => setStrategy((current) => ({ ...current, language: e.target.value }))} className="rounded-lg border border-border bg-surface px-2 py-1 text-[12px] text-muted outline-none">
               <option>Python</option>
               <option>Pine Script</option>
               <option>Kwantify</option>
               <option>MQL5</option>
-            </select>
+            </KwantSelect>
             <span>Ln {cursor.line}, Col {cursor.col}</span>
           </div>
           <div className="flex items-center gap-4">

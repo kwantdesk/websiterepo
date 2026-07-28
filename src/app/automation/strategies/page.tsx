@@ -1,5 +1,7 @@
 "use client";
 
+import KwantSelect from "@/components/ui/KwantSelect";
+
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { ArrowUpRight, BarChart3, Bot, CheckCircle2, Clock3, PlayCircle, SlidersHorizontal } from "lucide-react";
@@ -397,7 +399,7 @@ export default function AutomationStrategiesPage() {
                 {activeDraftSource.hasSavedVersions ? (
                   <label className="mt-4 block">
                     <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted">Version</div>
-                    <select
+                    <KwantSelect
                       value={selectedVersion}
                       onChange={(event) => setSelectedVersion(event.target.value)}
                       className="mt-3 w-full rounded-xl border border-border bg-panel px-3 py-2 text-[13px] text-foreground outline-none"
@@ -407,7 +409,7 @@ export default function AutomationStrategiesPage() {
                           {version.versionLabel} | saved {version.timestampLabel}
                         </option>
                       ))}
-                    </select>
+                    </KwantSelect>
                   </label>
                 ) : (
                   <div className="mt-4 rounded-xl border border-dashed border-border bg-panel px-4 py-3 text-[12px] text-muted">
@@ -566,7 +568,7 @@ export default function AutomationStrategiesPage() {
               <div className="grid gap-3 md:grid-cols-2">
                 <label className="rounded-2xl border border-border bg-surface/60 p-4">
                   <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted">Account</div>
-                  <select
+                  <KwantSelect
                     value={botDraft.accountId}
                     onChange={(event) => setBotDraft((current) => ({ ...current, accountId: event.target.value }))}
                     className="mt-3 w-full rounded-xl border border-border bg-panel px-3 py-2 text-[13px] text-foreground outline-none"
@@ -574,12 +576,12 @@ export default function AutomationStrategiesPage() {
                     <option value="tradovate-sim">Tradovate Sim</option>
                     <option value="oanda-demo">OANDA Demo</option>
                     <option value="paper-router">Paper Router</option>
-                  </select>
+                  </KwantSelect>
                 </label>
 
                 <label className="rounded-2xl border border-border bg-surface/60 p-4">
                   <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted">Instrument</div>
-                  <select
+                  <KwantSelect
                     value={botDraft.instrument}
                     onChange={(event) => setBotDraft((current) => ({ ...current, instrument: event.target.value }))}
                     className="mt-3 w-full rounded-xl border border-border bg-panel px-3 py-2 text-[13px] text-foreground outline-none"
@@ -589,12 +591,12 @@ export default function AutomationStrategiesPage() {
                         {instrument}
                       </option>
                     ))}
-                  </select>
+                  </KwantSelect>
                 </label>
 
                 <label className="rounded-2xl border border-border bg-surface/60 p-4">
                   <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted">Timeframe</div>
-                  <select
+                  <KwantSelect
                     value={botDraft.timeframe}
                     onChange={(event) => setBotDraft((current) => ({ ...current, timeframe: event.target.value }))}
                     className="mt-3 w-full rounded-xl border border-border bg-panel px-3 py-2 text-[13px] text-foreground outline-none"
@@ -603,7 +605,7 @@ export default function AutomationStrategiesPage() {
                     <option value="5m">5m</option>
                     <option value="15m">15m</option>
                     <option value="1h">1h</option>
-                  </select>
+                  </KwantSelect>
                 </label>
 
                 <div className="rounded-2xl border border-border bg-surface/60 p-4">

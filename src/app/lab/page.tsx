@@ -1,5 +1,7 @@
 "use client";
 
+import KwantSelect from "@/components/ui/KwantSelect";
+
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import AppSidebar from "@/components/AppSidebar";
@@ -278,9 +280,9 @@ export default function LabPage() {
             <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/10 text-primary"><FlaskConical className="h-5 w-5" /></div>
             <div><h1 className="text-[20px] font-semibold">The Strategy Lab</h1><p className="text-[13px] text-muted">Validate your strategy before risking real capital</p></div>
           </div>
-          <select value={selectedStrategy} onChange={(event) => setSelectedStrategy(event.target.value)} disabled={strategies.length === 0} className="rounded-xl border border-border bg-panel px-3 py-2 text-[13px] text-muted outline-none hover:text-foreground disabled:opacity-50">
+          <KwantSelect value={selectedStrategy} onChange={(event) => setSelectedStrategy(event.target.value)} disabled={strategies.length === 0} className="rounded-xl border border-border bg-panel px-3 py-2 text-[13px] text-muted outline-none hover:text-foreground disabled:opacity-50">
             {strategies.length === 0 ? <option value="">No strategies</option> : strategies.map((strategy) => <option key={strategy}>{strategy}</option>)}
-          </select>
+          </KwantSelect>
           <button className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-[13px] font-semibold text-background"><Play className="h-4 w-4" />Run Full Validation</button>
         </header>
 
@@ -331,7 +333,7 @@ export default function LabPage() {
           {activeStage === "monte-carlo" && (
             <>
               <section className="flex flex-wrap items-center gap-3 rounded-2xl border border-border bg-panel p-4">
-                <label className="text-[13px] text-muted">Simulations <select value={simulations} onChange={(event) => setSimulations(event.target.value)} className="ml-2 rounded-lg border border-border bg-surface px-3 py-2 font-mono text-foreground"><option>1000</option><option>5000</option><option>10000</option></select></label>
+                <label className="text-[13px] text-muted">Simulations <KwantSelect value={simulations} onChange={(event) => setSimulations(event.target.value)} className="ml-2 rounded-lg border border-border bg-surface px-3 py-2 font-mono text-foreground"><option>1000</option><option>5000</option><option>10000</option></KwantSelect></label>
                 <label className="flex items-center gap-3 text-[13px] text-muted">Skip rate <input type="range" min="0" max="20" value={skipRate} onChange={(event) => setSkipRate(Number(event.target.value))} /><span className="font-mono text-foreground">{skipRate}%</span></label>
                 <div className="flex rounded-xl border border-border bg-surface p-0.5">{["Shuffle Trades", "Resample with Replacement", "Add Noise"].map((method, index) => <button key={method} className={`rounded-lg px-3 py-1.5 text-[12px] ${index === 0 ? "bg-panel text-foreground" : "text-muted"}`}>{method}</button>)}</div>
                 <button className="ml-auto rounded-xl bg-primary px-4 py-2 text-[13px] font-semibold text-background">Run Simulation</button>
@@ -347,7 +349,7 @@ export default function LabPage() {
 
           {activeStage === "walk-forward" && (
             <>
-              <section className="flex flex-wrap items-center gap-3 rounded-2xl border border-border bg-panel p-4"><select className="rounded-xl border border-border bg-surface px-3 py-2 text-[13px] text-muted"><option>In-sample: 6 months</option><option>3 months</option><option>1 year</option></select><select className="rounded-xl border border-border bg-surface px-3 py-2 text-[13px] text-muted"><option>Out-of-sample: 1 month</option><option>3 months</option><option>6 months</option></select><input className="w-32 rounded-xl border border-border bg-surface px-3 py-2 text-[13px]" defaultValue="6 folds" /><button className="ml-auto rounded-xl bg-primary px-4 py-2 text-[13px] font-semibold text-background">Run Walk Forward</button></section>
+              <section className="flex flex-wrap items-center gap-3 rounded-2xl border border-border bg-panel p-4"><KwantSelect className="rounded-xl border border-border bg-surface px-3 py-2 text-[13px] text-muted"><option>In-sample: 6 months</option><option>3 months</option><option>1 year</option></KwantSelect><KwantSelect className="rounded-xl border border-border bg-surface px-3 py-2 text-[13px] text-muted"><option>Out-of-sample: 1 month</option><option>3 months</option><option>6 months</option></KwantSelect><input className="w-32 rounded-xl border border-border bg-surface px-3 py-2 text-[13px]" defaultValue="6 folds" /><button className="ml-auto rounded-xl bg-primary px-4 py-2 text-[13px] font-semibold text-background">Run Walk Forward</button></section>
               <section className="rounded-2xl border border-border bg-panel p-5"><h2 className="mb-4 font-semibold">Fold Results</h2><div className="overflow-hidden rounded-xl border border-border"><table className="w-full text-[13px]"><thead className="border-b border-border text-[11px] uppercase tracking-wider text-muted"><tr>{["Fold #", "In-Sample Period", "Out-of-Sample Period", "IS Profit Factor", "OOS Profit Factor", "OOS Return", "Degradation"].map((head) => <th key={head} className="px-4 py-3 text-left font-medium">{head}</th>)}</tr></thead><tbody>{folds.map((fold) => { const degradation = Number(fold[6]); const cls = Math.abs(degradation) < 30 ? "text-primary" : Math.abs(degradation) <= 50 ? "text-orange-400" : "text-red-400"; return <tr key={fold[0] as string} className="border-b border-border/60 last:border-0">{fold.map((cell, index) => <td key={`${fold[0]}-${index}`} className={`px-4 py-3 ${index > 2 ? "font-mono" : ""} ${index === 6 ? cls : ""}`}>{index === 6 ? `${cell}%` : cell}</td>)}</tr>; })}</tbody></table></div></section>
               <section className="grid gap-6 xl:grid-cols-2"><div className="rounded-2xl border border-border bg-panel p-5"><div className="mb-4 flex justify-between"><h2 className="font-semibold">Degradation Chart</h2><span className="text-[13px] text-primary">Average Performance Degradation: 29.5%</span></div><DegradationChart /></div><div className="rounded-2xl border border-border bg-panel p-5"><h2 className="mb-4 font-semibold">Combined OOS Equity Curve</h2><EquityCurve dashed /><p className="mt-3 text-[12px] text-muted">Out-of-sample results stitched together and compared against in-sample performance.</p></div></section>
             </>

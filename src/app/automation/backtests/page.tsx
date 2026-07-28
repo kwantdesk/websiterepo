@@ -1,5 +1,7 @@
 "use client";
 
+import KwantSelect from "@/components/ui/KwantSelect";
+
 import { useEffect, useMemo, useState } from "react";
 import {
   BarChart3,
@@ -888,7 +890,7 @@ export default function AutomationBacktestsPage() {
                 <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                   <label className="rounded-2xl border border-border bg-surface/60 p-4">
                     <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted">Strategy</div>
-                    <select
+                    <KwantSelect
                       value={selectedStrategyId}
                       onChange={(event) => setSelectedStrategyId(event.target.value)}
                       className="mt-3 w-full rounded-xl border border-border bg-panel px-3 py-2 text-[13px] text-foreground outline-none"
@@ -898,12 +900,12 @@ export default function AutomationBacktestsPage() {
                           {strategy.name}
                         </option>
                       ))}
-                    </select>
+                    </KwantSelect>
                   </label>
 
                   <label className="rounded-2xl border border-border bg-surface/60 p-4">
                     <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted">Version</div>
-                    <select
+                    <KwantSelect
                       value={selectedVersion}
                       onChange={(event) => setSelectedVersion(event.target.value)}
                       className="mt-3 w-full rounded-xl border border-border bg-panel px-3 py-2 text-[13px] text-foreground outline-none"
@@ -913,12 +915,12 @@ export default function AutomationBacktestsPage() {
                           {option.versionLabel} | {option.timestampLabel}
                         </option>
                       ))}
-                    </select>
+                    </KwantSelect>
                   </label>
 
                   <label className="rounded-2xl border border-border bg-surface/60 p-4">
                     <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted">Date Preset</div>
-                    <select
+                    <KwantSelect
                       value={settings.datePreset}
                       onChange={(event) => setSettings((current) => ({ ...current, datePreset: event.target.value }))}
                       className="mt-3 w-full rounded-xl border border-border bg-panel px-3 py-2 text-[13px] text-foreground outline-none"
@@ -929,7 +931,7 @@ export default function AutomationBacktestsPage() {
                       <option value="180">180 day validation run</option>
                       <option value="365">365 day operator review</option>
                       <option value="all">All available</option>
-                    </select>
+                    </KwantSelect>
                   </label>
 
                   <div className="rounded-2xl border border-border bg-surface/60 p-4">
@@ -956,7 +958,7 @@ export default function AutomationBacktestsPage() {
 
                   <label className="rounded-2xl border border-border bg-surface/60 p-4">
                     <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted">Order Size Type</div>
-                    <select
+                    <KwantSelect
                       value={settings.orderSizeType}
                       onChange={(event) => setSettings((current) => ({ ...current, orderSizeType: event.target.value }))}
                       className="mt-3 w-full rounded-xl border border-border bg-panel px-3 py-2 text-[13px] text-foreground outline-none"
@@ -964,7 +966,7 @@ export default function AutomationBacktestsPage() {
                       <option value="fixed_quantity">Fixed quantity</option>
                       <option value="percent_equity">% of equity</option>
                       <option value="fixed_usd">Fixed USD</option>
-                    </select>
+                    </KwantSelect>
                   </label>
 
                   <label className="rounded-2xl border border-border bg-surface/60 p-4">
@@ -979,14 +981,14 @@ export default function AutomationBacktestsPage() {
 
                   <label className="rounded-2xl border border-border bg-surface/60 p-4">
                     <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted">Fill Model</div>
-                    <select
+                    <KwantSelect
                       value={settings.fillOrders}
                       onChange={(event) => setSettings((current) => ({ ...current, fillOrders: event.target.value }))}
                       className="mt-3 w-full rounded-xl border border-border bg-panel px-3 py-2 text-[13px] text-foreground outline-none"
                     >
                       <option value="next_bar_open">Next bar open</option>
                       <option value="bar_close">Bar close</option>
-                    </select>
+                    </KwantSelect>
                   </label>
                 </div>
 
@@ -1004,7 +1006,7 @@ export default function AutomationBacktestsPage() {
 
                   <label className="rounded-2xl border border-border bg-surface/60 p-4">
                     <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted">Commission Type</div>
-                    <select
+                    <KwantSelect
                       value={settings.commissionType}
                       onChange={(event) => setSettings((current) => ({ ...current, commissionType: event.target.value }))}
                       className="mt-3 w-full rounded-xl border border-border bg-panel px-3 py-2 text-[13px] text-foreground outline-none"
@@ -1012,7 +1014,7 @@ export default function AutomationBacktestsPage() {
                       <option value="fixed_contract">Fixed per contract</option>
                       <option value="percent">Percent of position</option>
                       <option value="fixed_order">Fixed per order</option>
-                    </select>
+                    </KwantSelect>
                   </label>
 
                   <label className="rounded-2xl border border-border bg-surface/60 p-4">

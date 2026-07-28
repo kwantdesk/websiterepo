@@ -1,5 +1,7 @@
 "use client";
 
+import KwantSelect from "@/components/ui/KwantSelect";
+
 import { MouseEvent, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import AppSidebar from "@/components/AppSidebar";
@@ -147,9 +149,9 @@ export default function ConverterPage() {
           <div className="flex min-w-[280px] flex-col border-r border-border" style={{ width: `${leftWidth}%` }}>
             <div className="flex h-12 shrink-0 items-center justify-between border-b border-border bg-panel px-4">
               <span className="text-[13px] font-semibold">Input</span>
-              <select value={inputLanguage} onChange={(event) => setInputLanguage(event.target.value as Language)} className="rounded-lg border border-border bg-surface px-3 py-1 text-[12px] text-muted outline-none">
+              <KwantSelect value={inputLanguage} onChange={(event) => setInputLanguage(event.target.value as Language)} className="rounded-lg border border-border bg-surface px-3 py-1 text-[12px] text-muted outline-none">
                 {languages.map((language) => <option key={language}>{language}</option>)}
-              </select>
+              </KwantSelect>
             </div>
             <div className="flex min-h-0 flex-1 overflow-hidden bg-background font-mono text-[14px] leading-7">
               <div className="select-none border-r border-border bg-panel px-3 py-4 text-right text-muted">
@@ -178,9 +180,9 @@ export default function ConverterPage() {
             <div className="flex h-12 shrink-0 items-center justify-between border-b border-border bg-panel px-4">
               <div className="flex items-center gap-3">
                 <span className="text-[13px] font-semibold">Output</span>
-                <select value={outputLanguage} onChange={(event) => setOutputLanguage(event.target.value as Language)} className="rounded-lg border border-border bg-surface px-3 py-1 text-[12px] text-muted outline-none">
+                <KwantSelect value={outputLanguage} onChange={(event) => setOutputLanguage(event.target.value as Language)} className="rounded-lg border border-border bg-surface px-3 py-1 text-[12px] text-muted outline-none">
                   {languages.map((language) => <option key={language}>{language}</option>)}
-                </select>
+                </KwantSelect>
               </div>
               <button onClick={copyOutput} disabled={!outputCode} className="flex h-8 w-8 items-center justify-center rounded-lg text-muted transition-colors hover:bg-surface hover:text-foreground disabled:opacity-30" title="Copy output">
                 {copied ? <Check className="h-4 w-4 text-primary" /> : <Copy className="h-4 w-4" />}

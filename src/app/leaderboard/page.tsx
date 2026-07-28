@@ -1,5 +1,7 @@
 "use client";
 
+import KwantSelect from "@/components/ui/KwantSelect";
+
 import { useState } from "react";
 import Link from "next/link";
 import AppSidebar from "@/components/AppSidebar";
@@ -319,7 +321,7 @@ export default function LeaderboardPage() {
               </section>
 
               <section className="rounded-2xl border border-border bg-panel p-5">
-                <div className="mb-4 flex flex-wrap gap-3"><select className="rounded-xl border border-border bg-surface px-3 py-2 text-[13px] text-muted"><option>By Kwantify Score</option><option>By Profit Factor</option><option>By Vault Clones</option><option>By Win Rate Consistency</option><option>By Streak</option></select><select className="rounded-xl border border-border bg-surface px-3 py-2 text-[13px] text-muted"><option>All</option><option>NAS100 specialists</option><option>Gold specialists</option><option>Crypto</option><option>Forex</option></select></div>
+                <div className="mb-4 flex flex-wrap gap-3"><KwantSelect className="rounded-xl border border-border bg-surface px-3 py-2 text-[13px] text-muted"><option>By Kwantify Score</option><option>By Profit Factor</option><option>By Vault Clones</option><option>By Win Rate Consistency</option><option>By Streak</option></KwantSelect><KwantSelect className="rounded-xl border border-border bg-surface px-3 py-2 text-[13px] text-muted"><option>All</option><option>NAS100 specialists</option><option>Gold specialists</option><option>Crypto</option><option>Forex</option></KwantSelect></div>
                 <div className="overflow-hidden rounded-xl border border-border"><table className="w-full text-[13px]"><thead className="border-b border-border text-[11px] uppercase tracking-wider text-muted"><tr>{["Rank", "Trader", "Kwantify Score", "Profit Factor", "Best Strategy", "Vault Strategies", "Clones Received", "Total XP"].map((h) => <th key={h} className="px-4 py-3 text-left font-medium">{h}</th>)}</tr></thead><tbody>{leaderboard.map((trader) => <RankRow key={trader.rank} trader={trader} />)}<RankRow trader={myTrader} /></tbody></table></div>
                 <button className="mt-4 rounded-xl border border-border bg-surface px-4 py-2 text-[13px] text-muted hover:text-foreground">Load more</button>
               </section>

@@ -1,5 +1,7 @@
 "use client";
 
+import KwantSelect from "@/components/ui/KwantSelect";
+
 import { useState } from "react";
 import Link from "next/link";
 import AppSidebar from "@/components/AppSidebar";
@@ -237,7 +239,7 @@ export default function JournalPage() {
                   </div>
                 )}
               </div>
-              <select className="rounded-xl border border-border bg-surface px-4 py-2 text-[13px] text-muted outline-none"><option>30d</option><option>7d</option><option>90d</option><option>month</option><option>all</option></select>
+              <KwantSelect className="rounded-xl border border-border bg-surface px-4 py-2 text-[13px] text-muted outline-none"><option>30d</option><option>7d</option><option>90d</option><option>month</option><option>all</option></KwantSelect>
               <button className="flex items-center gap-2 rounded-xl border border-border bg-surface px-4 py-2 text-[13px] text-muted"><Filter className="h-4 w-4" />Filter</button>
               <button className="flex items-center gap-2 rounded-xl border border-border bg-surface px-4 py-2 text-[13px] text-muted"><Download className="h-4 w-4" />Export</button>
               <button onClick={() => setShowImportModal(true)} className="flex items-center gap-2 rounded-xl border border-border bg-surface px-4 py-2 text-[13px] text-muted"><Upload className="h-4 w-4" />Import</button>

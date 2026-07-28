@@ -1,5 +1,7 @@
 "use client";
 
+import KwantSelect from "@/components/ui/KwantSelect";
+
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { ChevronDown, X } from "lucide-react";
@@ -126,7 +128,7 @@ export function TradeSyncerSelect({
     <label className="block space-y-2">
       <span className="text-[12px] font-medium text-muted">{label}</span>
       <div className="relative">
-        <select
+        <KwantSelect
           name={name}
           value={value}
           onChange={onChange ? (event) => onChange(event.target.value) : undefined}
@@ -135,7 +137,7 @@ export function TradeSyncerSelect({
           {options.map((option) => (
             <option key={option}>{option}</option>
           ))}
-        </select>
+        </KwantSelect>
         <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
       </div>
     </label>

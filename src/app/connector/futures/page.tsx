@@ -1,4 +1,6 @@
-﻿"use client";
+"use client";
+
+import KwantSelect from "@/components/ui/KwantSelect";
 
 import { useEffect, useState } from "react";
 import {
@@ -1691,7 +1693,7 @@ export default function ConnectorFuturesPage() {
               </div>
               <div className="mt-3 grid gap-2">
                 <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted">Default route for imported accounts</div>
-                <select
+                <KwantSelect
                   value={tradovateSyncRouteId}
                   onChange={(event) => setTradovateSyncRouteId(event.target.value)}
                   className="h-10 rounded-xl border border-border bg-panel px-3 text-[12px] text-foreground outline-none"
@@ -1703,9 +1705,9 @@ export default function ConnectorFuturesPage() {
                       {route.label}
                     </option>
                   ))}
-                </select>
+                </KwantSelect>
                 <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted">Default risk profile</div>
-                <select
+                <KwantSelect
                   value={tradovateSyncRiskId}
                   onChange={(event) => setTradovateSyncRiskId(event.target.value)}
                   className="h-10 rounded-xl border border-border bg-panel px-3 text-[12px] text-foreground outline-none"
@@ -1715,7 +1717,7 @@ export default function ConnectorFuturesPage() {
                       {risk.label}
                     </option>
                   ))}
-                </select>
+                </KwantSelect>
                 <button
                   type="button"
                   onClick={() => void syncTradovateDiscoveredAccounts()}
@@ -1730,7 +1732,7 @@ export default function ConnectorFuturesPage() {
             <div className="rounded-2xl border border-border bg-surface/60 p-4">
               <div className="text-[12px] font-semibold uppercase tracking-[0.18em] text-muted">Add Rithmic Accounts</div>
               <div className="mt-3 grid gap-2">
-                <select
+                <KwantSelect
                   value={rithmicSyncRouteId}
                   onChange={(event) => setRithmicSyncRouteId(event.target.value)}
                   className="h-10 rounded-xl border border-border bg-panel px-3 text-[12px] text-foreground outline-none"
@@ -1742,8 +1744,8 @@ export default function ConnectorFuturesPage() {
                         {route.label}
                       </option>
                     ))}
-                </select>
-                <select
+                </KwantSelect>
+                <KwantSelect
                   value={rithmicSyncRiskId}
                   onChange={(event) => setRithmicSyncRiskId(event.target.value)}
                   className="h-10 rounded-xl border border-border bg-panel px-3 text-[12px] text-foreground outline-none"
@@ -1755,7 +1757,7 @@ export default function ConnectorFuturesPage() {
                         {risk.label}
                       </option>
                     ))}
-                </select>
+                </KwantSelect>
                 <button
                   type="button"
                   onClick={() => void syncRithmicDiscoveredAccounts()}
@@ -1790,7 +1792,7 @@ export default function ConnectorFuturesPage() {
             <div className="rounded-2xl border border-border bg-surface/60 p-4">
               <div className="text-[12px] font-semibold uppercase tracking-[0.18em] text-muted">Recent Activity</div>
               <div className="mt-3 grid gap-2 md:grid-cols-3">
-                <select
+                <KwantSelect
                   value={journalCategoryFilter}
                   onChange={(event) => setJournalCategoryFilter(event.target.value as "all" | FuturesJournalEntry["category"])}
                   className="h-10 rounded-xl border border-border bg-panel px-3 text-[12px] text-foreground outline-none"
@@ -1801,8 +1803,8 @@ export default function ConnectorFuturesPage() {
                   <option value="signal">Signal</option>
                   <option value="execution">Execution</option>
                   <option value="control">Control</option>
-                </select>
-                <select
+                </KwantSelect>
+                <KwantSelect
                   value={journalVenueFilter}
                   onChange={(event) => setJournalVenueFilter(event.target.value as "all" | FuturesJournalEntry["venue"])}
                   className="h-10 rounded-xl border border-border bg-panel px-3 text-[12px] text-foreground outline-none"
@@ -1812,8 +1814,8 @@ export default function ConnectorFuturesPage() {
                   <option value="tradovate">Tradovate</option>
                   <option value="rithmic">Rithmic</option>
                   <option value="cqg">CQG</option>
-                </select>
-                <select
+                </KwantSelect>
+                <KwantSelect
                   value={journalStatusFilter}
                   onChange={(event) => setJournalStatusFilter(event.target.value as "all" | FuturesJournalEntry["status"])}
                   className="h-10 rounded-xl border border-border bg-panel px-3 text-[12px] text-foreground outline-none"
@@ -1823,7 +1825,7 @@ export default function ConnectorFuturesPage() {
                   <option value="ready">Ready</option>
                   <option value="warning">Warning</option>
                   <option value="error">Error</option>
-                </select>
+                </KwantSelect>
               </div>
               <div className="mt-3 grid gap-3 xl:grid-cols-[0.95fr_1.05fr]">
                 <div className="space-y-2">
@@ -1987,7 +1989,7 @@ export default function ConnectorFuturesPage() {
                   {account.venue} · {account.environment} · {account.platformAccess}
                 </div>
                 <div className="mt-3">
-                  <select
+                  <KwantSelect
                     value={accountRouteSelections[account.id] ?? ""}
                     onChange={(event) =>
                       setAccountRouteSelections((current) => ({
@@ -2003,10 +2005,10 @@ export default function ConnectorFuturesPage() {
                         {route.label}
                       </option>
                     ))}
-                  </select>
+                  </KwantSelect>
                 </div>
                 <div className="mt-3">
-                  <select
+                  <KwantSelect
                     value={accountRiskSelections[account.id] ?? account.riskProfileId}
                     onChange={(event) =>
                       setAccountRiskSelections((current) => ({
@@ -2021,7 +2023,7 @@ export default function ConnectorFuturesPage() {
                         {risk.label}
                       </option>
                     ))}
-                  </select>
+                  </KwantSelect>
                 </div>
                 <div className="mt-3 flex items-center justify-between gap-3">
                   <div className="text-[11px] text-muted">Current risk: {account.riskProfileId}</div>
@@ -2252,7 +2254,7 @@ export default function ConnectorFuturesPage() {
               <div className="mt-4 grid gap-3 md:grid-cols-2">
                 <div>
                   <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted">Environment</div>
-                  <select
+                  <KwantSelect
                     value={tradovateConnectionForm.environment}
                     onChange={(event) =>
                       setTradovateConnectionForm((current) => ({
@@ -2265,7 +2267,7 @@ export default function ConnectorFuturesPage() {
                     <option value="demo">Demo</option>
                     <option value="live">Live</option>
                     <option value="staging">Staging</option>
-                  </select>
+                  </KwantSelect>
                 </div>
 
                 <div>
@@ -3519,7 +3521,7 @@ export default function ConnectorFuturesPage() {
 
             <div className="rounded-2xl border border-border bg-surface/60 p-4">
               <div className="text-[12px] font-semibold uppercase tracking-[0.18em] text-muted">Gateway Scenario</div>
-              <select
+              <KwantSelect
                 value={rithmicProtocolScenario}
                 onChange={(event) => setRithmicProtocolScenario(event.target.value as RithmicGatewayScenario)}
                 className="mt-3 h-10 w-full rounded-xl border border-border bg-panel px-3 text-[12px] text-foreground outline-none"
@@ -3533,7 +3535,7 @@ export default function ConnectorFuturesPage() {
                 <option value="transport_failed">Transport Failed</option>
                 <option value="uncertain_recovered">Uncertain Recovered</option>
                 <option value="transport_recovered">Transport Recovered</option>
-              </select>
+              </KwantSelect>
               <div className="mt-2 text-[12px] text-muted">
                 Pick the local-gateway outcome you want the protocol runner to simulate, so we can test the operator console against real lifecycle shapes.
               </div>
