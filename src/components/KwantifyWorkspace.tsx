@@ -2016,7 +2016,6 @@ export default function Home() {
     low: currentCandle.low,
     close: currentLivePrice.mid,
   } : null;
-  const selectedChangePercent = selectedWatchlistItem?.changePercent ?? (fallbackDetail ? Number(fallbackDetail.change.replace("%", "")) || 0 : 0);
   const activeBrokerFeedError = feedErrorByBroker[activeChartBrokerLabel] ?? null;
 
   useEffect(() => {
@@ -5458,7 +5457,6 @@ export default function Home() {
             </div>
           </div>
           <div className="flex-1" />
-          <div className="mr-3 flex items-center gap-2"><span className={`text-[12px] font-medium ${selectedChangePercent >= 0 ? "text-primary" : "text-danger"}`}>{selectedChangePercent >= 0 ? "+" : ""}{selectedChangePercent.toFixed(2)}%</span></div>
           <button onClick={signOut} title={currentUsername ? `@${currentUsername}` : "Account"} className="flex h-8 w-8 items-center justify-center rounded-full border border-border bg-surface transition-colors hover:bg-card"><User className="h-4 w-4 text-muted" /></button>
         </header>
 
