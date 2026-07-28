@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
   Bot,
@@ -146,8 +146,10 @@ export default function KwantBotInterpreterPanel({
   } = interpreter;
   const [now, setNow] = useState(Date.now());
   const [view, setView] = useState<"feed" | "journal">("feed");
+  const feedScrollRef = useRef<HTMLDivElement | null>(null);
   const endRef = useRef<HTMLDivElement | null>(null);
   const rootMessages = messages[selectedRoot];
+  const latestMessageId = rootMessages.at(-1)?.id ?? "";
   const context = contexts[selectedRoot];
   const price = livePrices[selectedRoot] ?? context?.currentPrice ?? null;
   const priceSamples = useMemo(
@@ -167,11 +169,19 @@ export default function KwantBotInterpreterPanel({
     return () => window.clearInterval(timer);
   }, []);
 
-  useEffect(() => {
-    if (view === "feed") {
-      endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-    }
-  }, [rootMessages.length, selectedRoot, view]);
+  useLayoutEffect(() => {
+    if (view !== "feed") return;
+
+    const scrollToLatest = () => {
+      const container = feedScrollRef.current;
+      if (!container) return;
+      container.scrollTop = container.scrollHeight;
+    };
+
+    scrollToLatest();
+    const frame = window.requestAnimationFrame(scrollToLatest);
+    return () => window.cancelAnimationFrame(frame);
+  }, [latestMessageId, selectedRoot, view]);
 
   const exportJournal = () => {
     const payload = {
@@ -301,9 +311,12 @@ export default function KwantBotInterpreterPanel({
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto bg-[linear-gradient(180deg,color-mix(in_srgb,var(--background)_68%,transparent),var(--panel))] px-3 py-4">
+      <div
+        ref={feedScrollRef}
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain bg-[linear-gradient(180deg,color-mix(in_srgb,var(--background)_68%,transparent),var(--panel))] px-3 py-4"
+      >
         {view === "feed" ? (
-          <>
+          <div className="flex min-h-full flex-col justify-end">
             {contextErrors[selectedRoot] ? (
               <div className="mb-3 rounded-xl border border-danger/20 bg-danger/[0.06] px-3 py-2 text-[10px] leading-4 text-danger">
                 {contextErrors[selectedRoot]} Existing levels and memory remain active while the context reconnects.
@@ -362,7 +375,7 @@ export default function KwantBotInterpreterPanel({
               ))}
               <div ref={endRef} />
             </div>
-          </>
+          </div>
         ) : (
           <>
             <div className="mb-3 flex items-center justify-between gap-3">
