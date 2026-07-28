@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent as ReactDragEvent } from "react";
 import { createPortal } from "react-dom";
 import dynamic from "next/dynamic";
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -154,6 +155,11 @@ type LiveFeedPrice = {
   contractSymbol?: string;
   timestamp?: string | number;
 };
+type KwantBotMessage = {
+  id: string;
+  text: string;
+  receivedAt: string;
+};
 type WatchlistSection = { id: string; name: string; symbols: string[] };
 type InstrumentPickerItem = { key: string; symbol: string; fullName: string; category: string; broker: string };
 type Broker = {
@@ -229,11 +235,19 @@ const ACTIVE_WORKSPACE_PRESET_STORAGE_KEY = "kwantdesk-chart-workspace-active-pr
 const WORKSPACE_BACKUP_FORMAT = "kwantdesk-chart-workspaces";
 const MAX_WORKSPACE_BACKUP_BYTES = 2_000_000;
 const BOTTOM_WORKSPACE_SECTION_STORAGE_KEY = "kwantdesk-bottom-workspace-section";
+const KWANTBOT_MESSAGES_STORAGE_KEY = "kwantdesk-kwantbot-messages";
 const BOTTOM_WORKSPACE_SECTIONS = [
   { id: "gamma" as const, label: "Gamma", icon: BarChart3 },
   { id: "gameplan" as const, label: "Gameplan", icon: CalendarDays },
   { id: "kwantbot" as const, label: "KwantBot", icon: Bot },
   { id: "news" as const, label: "News", icon: BookOpen },
+];
+const DEFAULT_KWANTBOT_MESSAGES: KwantBotMessage[] = [
+  {
+    id: "kwantbot-welcome",
+    text: "I’m online. Incoming research messages and market notes will appear here.",
+    receivedAt: "",
+  },
 ];
 
 type CTraderStatusAccount = {
@@ -1664,6 +1678,68 @@ function AssistantContent({
   );
 }
 
+function KwantBotAvatar({
+  compact = false,
+  speaking = false,
+}: {
+  compact?: boolean;
+  speaking?: boolean;
+}) {
+  if (compact) {
+    return (
+      <div className="relative h-9 w-9 shrink-0 overflow-hidden rounded-full border border-primary/30 bg-background shadow-[0_0_18px_color-mix(in_srgb,var(--primary)_20%,transparent)]">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_40%,color-mix(in_srgb,var(--primary)_24%,transparent),transparent_68%)]" />
+        <div className={speaking ? "kwantbot-avatar-speaking" : ""}>
+          <Image
+            src="/images/kwantbot-avatar.png"
+            alt=""
+            width={82}
+            height={82}
+            className="absolute -top-px left-1/2 h-[82px] w-[82px] max-w-none -translate-x-1/2 object-contain grayscale"
+          />
+        </div>
+        <span className="absolute bottom-0.5 right-0.5 h-2 w-2 rounded-full border-2 border-panel bg-primary shadow-[0_0_8px_var(--primary)]" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="kwantbot-avatar-float relative h-[108px] w-[108px] shrink-0">
+      <div className="absolute inset-3 rounded-full bg-primary/15 blur-2xl" />
+      <Image
+        src="/images/kwantbot-avatar.png"
+        alt="Kwant Bot"
+        width={108}
+        height={108}
+        priority
+        className="relative h-full w-full object-contain grayscale contrast-[1.1] drop-shadow-[0_14px_18px_rgba(0,0,0,0.45)]"
+      />
+      <span
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 opacity-25"
+        style={{
+          background: "var(--primary)",
+          WebkitMaskImage: "url('/images/kwantbot-avatar.png')",
+          WebkitMaskPosition: "center",
+          WebkitMaskRepeat: "no-repeat",
+          WebkitMaskSize: "contain",
+          maskImage: "url('/images/kwantbot-avatar.png')",
+          maskPosition: "center",
+          maskRepeat: "no-repeat",
+          maskSize: "contain",
+        }}
+      />
+    </div>
+  );
+}
+
+function formatKwantBotMessageTime(value: string) {
+  if (!value) return "Now";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "Now";
+  return parsed.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+}
+
 export default function Home() {
   const router = useRouter();
   const supabase = createClient();
@@ -1811,8 +1887,21 @@ export default function Home() {
   const [streamReconnectNonce, setStreamReconnectNonce] = useState(0);
   const [orderSide, setOrderSide] = useState<"buy" | "sell">("buy");
   const [orderType, setOrderType] = useState<"market" | "limit" | "stop">("market");
-  const [rightPanel, setRightPanel] = useState<"order" | "watchlist" | "alerts" | "alertslog" | null>("watchlist");
-  const [lastOpenRightPanel, setLastOpenRightPanel] = useState<"order" | "watchlist" | "alerts" | "alertslog">("watchlist");
+  const [rightPanel, setRightPanel] = useState<"order" | "watchlist" | "kwantbot" | "alerts" | "alertslog" | null>("watchlist");
+  const [lastOpenRightPanel, setLastOpenRightPanel] = useState<"order" | "watchlist" | "kwantbot" | "alerts" | "alertslog">("watchlist");
+  const [kwantBotMessages, setKwantBotMessages] = useState<KwantBotMessage[]>(() => {
+    if (typeof window === "undefined") return DEFAULT_KWANTBOT_MESSAGES;
+    try {
+      const saved = JSON.parse(window.localStorage.getItem(KWANTBOT_MESSAGES_STORAGE_KEY) ?? "[]") as KwantBotMessage[];
+      const clean = Array.isArray(saved)
+        ? saved.filter((message) => typeof message?.id === "string" && typeof message?.text === "string").slice(-100)
+        : [];
+      return clean.length ? clean : DEFAULT_KWANTBOT_MESSAGES;
+    } catch {
+      return DEFAULT_KWANTBOT_MESSAGES;
+    }
+  });
+  const [kwantBotUnreadCount, setKwantBotUnreadCount] = useState(0);
   const [showChartAlertModal, setShowChartAlertModal] = useState(false);
   const [chartAlertPriceDraft, setChartAlertPriceDraft] = useState<string>("");
   const [chartAlerts, setChartAlerts] = useState<ChartAlertRecord[]>([]);
@@ -1939,6 +2028,7 @@ export default function Home() {
   const updateToastTimeoutRef = useRef<number | null>(null);
   const chartLaunchAppliedRef = useRef(false);
   const chartLaunchRunRef = useRef(false);
+  const kwantBotMessagesEndRef = useRef<HTMLDivElement>(null);
   const pendingWatchlistPricesRef = useRef<Map<string, LiveFeedPrice>>(new Map());
   const pendingSelectedTicksRef = useRef<LiveFeedPrice[]>([]);
   const watchlistLiveFrameRef = useRef<number | null>(null);
@@ -2549,6 +2639,60 @@ export default function Home() {
   useEffect(() => {
     if (rightPanel === "alertslog") setAlertLogCount(0);
   }, [rightPanel]);
+
+  useEffect(() => {
+    window.localStorage.setItem(KWANTBOT_MESSAGES_STORAGE_KEY, JSON.stringify(kwantBotMessages.slice(-100)));
+  }, [kwantBotMessages]);
+
+  useEffect(() => {
+    const receiveKwantBotMessage = (event: Event) => {
+      const detail = (event as CustomEvent<{ text?: unknown }>).detail;
+      const text = typeof detail?.text === "string" ? detail.text.trim().slice(0, 1_200) : "";
+      if (!text) return;
+      const message: KwantBotMessage = {
+        id: typeof crypto !== "undefined" && "randomUUID" in crypto
+          ? crypto.randomUUID()
+          : `kwantbot-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        text,
+        receivedAt: new Date().toISOString(),
+      };
+      setKwantBotMessages((current) => [...current.slice(-99), message]);
+      if (rightPanel !== "kwantbot") {
+        setKwantBotUnreadCount((current) => Math.min(99, current + 1));
+      }
+    };
+
+    window.addEventListener("kwantbot:message", receiveKwantBotMessage);
+    return () => window.removeEventListener("kwantbot:message", receiveKwantBotMessage);
+  }, [rightPanel]);
+
+  useEffect(() => {
+    if (rightPanel !== "kwantbot") return;
+    setKwantBotUnreadCount(0);
+    const frame = window.requestAnimationFrame(() => {
+      kwantBotMessagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [kwantBotMessages.length, rightPanel]);
+
+  useEffect(() => {
+    if (
+      rightPanel !== "kwantbot"
+      || kwantBotMessages.some((message) => message.id === "kwantbot-incoming-only")
+    ) {
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      setKwantBotMessages((current) => current.some((message) => message.id === "kwantbot-incoming-only")
+        ? current
+        : [...current, {
+            id: "kwantbot-incoming-only",
+            text: "This is your receive-only channel. I’ll place every new update at the bottom as soon as it arrives.",
+            receivedAt: new Date().toISOString(),
+          }]);
+    }, 700);
+    return () => window.clearTimeout(timer);
+  }, [kwantBotMessages, rightPanel]);
 
   useEffect(() => {
     if (rightPanel) {
@@ -4649,7 +4793,7 @@ export default function Home() {
     document.addEventListener("mouseup", handleMouseUp);
   };
 
-  const toggleRightPanel = (panel: "order" | "watchlist" | "alerts" | "alertslog") => {
+  const toggleRightPanel = (panel: "order" | "watchlist" | "kwantbot" | "alerts" | "alertslog") => {
     setRightPanel((current) => current === panel ? null : panel);
   };
 
@@ -6162,6 +6306,63 @@ export default function Home() {
               </div>
             </div>
           )}
+          {rightPanel === "kwantbot" && (
+            <div className="flex flex-1 flex-col overflow-hidden">
+              <div className="relative h-[138px] shrink-0 overflow-hidden border-b border-border bg-background/45 px-4 py-4">
+                <div className="pointer-events-none absolute -right-8 -top-14 h-44 w-44 rounded-full bg-primary/10 blur-3xl" />
+                <div className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-primary/50 to-transparent" />
+                <div className="relative z-10 flex h-full items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="mb-2 inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/10 px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.13em] text-primary">
+                      <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary shadow-[0_0_8px_var(--primary)]" />
+                      Incoming
+                    </div>
+                    <h3 className="text-[17px] font-semibold tracking-[-0.02em] text-foreground">Kwant Bot</h3>
+                    <p className="mt-1 max-w-[145px] text-[10px] leading-4 text-muted">Live research messages, delivered as they happen.</p>
+                  </div>
+                  <KwantBotAvatar />
+                </div>
+              </div>
+
+              <div className="min-h-0 flex-1 overflow-y-auto bg-[linear-gradient(180deg,color-mix(in_srgb,var(--background)_68%,transparent),var(--panel))] px-3 py-4">
+                <div className="mb-4 flex items-center gap-3 text-[9px] font-medium uppercase tracking-[0.12em] text-muted/70">
+                  <span className="h-px flex-1 bg-border" />
+                  Today
+                  <span className="h-px flex-1 bg-border" />
+                </div>
+                <div className="space-y-4">
+                  {kwantBotMessages.map((message, index) => {
+                    const newest = index === kwantBotMessages.length - 1;
+                    return (
+                      <div key={message.id} className="kwantbot-message-in flex items-end gap-2">
+                        <KwantBotAvatar compact speaking={newest} />
+                        <div className="min-w-0 max-w-[calc(100%-44px)]">
+                          <div className="mb-1 flex items-center gap-2 px-1">
+                            <span className="text-[10px] font-semibold text-foreground">Kwant Bot</span>
+                            <span className="text-[9px] text-muted">{formatKwantBotMessageTime(message.receivedAt)}</span>
+                          </div>
+                          <div className="relative rounded-[18px] rounded-bl-[6px] border border-border/80 bg-surface px-3.5 py-2.5 shadow-[0_8px_24px_rgba(0,0,0,0.16)]">
+                            <span
+                              aria-hidden="true"
+                              className="absolute -left-[5px] bottom-0 h-3 w-3 bg-surface [clip-path:polygon(100%_0,100%_100%,0_100%)]"
+                            />
+                            <p className="relative whitespace-pre-wrap text-[12px] leading-[1.55] text-foreground">{message.text}</p>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  <div ref={kwantBotMessagesEndRef} />
+                </div>
+              </div>
+
+              <div className="flex h-11 shrink-0 items-center gap-2 border-t border-border bg-panel px-3 text-[10px] text-muted">
+                <Bot className="h-3.5 w-3.5 text-primary" />
+                <span>Incoming messages only</span>
+                <span className="ml-auto h-1.5 w-1.5 rounded-full bg-primary shadow-[0_0_8px_var(--primary)]" />
+              </div>
+            </div>
+          )}
           {rightPanel === "alerts" && (
             <div className="flex flex-1 flex-col overflow-hidden">
               <div className="flex h-12 items-center justify-between border-b border-border px-4"><h3 className="text-[14px] font-semibold">Alerts</h3><button onClick={() => openCreateAlert()} className="flex h-7 w-7 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground"><Plus className="h-3.5 w-3.5" /></button></div>
@@ -6261,7 +6462,13 @@ export default function Home() {
       <div className="relative flex w-[44px] shrink-0 flex-col items-center gap-2 border-l border-border bg-panel py-3">
         {!rightPanel && (
           <button
-            title={`Reopen ${lastOpenRightPanel === "alertslog" ? "Alerts Log" : lastOpenRightPanel.charAt(0).toUpperCase() + lastOpenRightPanel.slice(1)}`}
+            title={`Reopen ${
+              lastOpenRightPanel === "alertslog"
+                ? "Alerts Log"
+                : lastOpenRightPanel === "kwantbot"
+                  ? "Kwant Bot"
+                  : lastOpenRightPanel.charAt(0).toUpperCase() + lastOpenRightPanel.slice(1)
+            }`}
             onClick={reopenRightPanel}
             className="absolute -left-3 top-1/2 z-20 flex h-12 w-3 -translate-y-1/2 items-center justify-center rounded-l-full border border-r-0 border-border bg-panel text-muted shadow-lg transition-colors hover:bg-surface hover:text-foreground"
           >
@@ -6270,6 +6477,7 @@ export default function Home() {
         )}
         {[
           { id: "watchlist" as const, title: "Watchlist", icon: List },
+          { id: "kwantbot" as const, title: "Kwant Bot", icon: Bot },
           { id: "alerts" as const, title: "Alerts", icon: Bell },
           { id: "alertslog" as const, title: "Alerts Log", icon: BellRing },
         ].map((item) => {
@@ -6278,6 +6486,7 @@ export default function Home() {
           return (
             <button key={item.id} title={item.title} onClick={() => toggleRightPanel(item.id)} className={`relative flex h-9 w-9 items-center justify-center rounded-lg transition-colors ${active ? "bg-surface text-foreground" : "text-muted hover:bg-surface hover:text-foreground"}`}>
               <Icon className="h-[18px] w-[18px]" />
+              {item.id === "kwantbot" && kwantBotUnreadCount > 0 && <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-semibold text-background">{kwantBotUnreadCount}</span>}
               {item.id === "alertslog" && alertLogCount > 0 && <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-danger text-[9px] font-semibold text-white">{alertLogCount}</span>}
             </button>
           );
