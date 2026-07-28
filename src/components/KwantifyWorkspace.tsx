@@ -1280,84 +1280,98 @@ function WorkspaceChartPane({
       return;
     }
 
+    const clearPendingFrame = () => {
+      pendingLiveTicksRef.current = [];
+      if (liveFrameRef.current !== null) {
+        window.cancelAnimationFrame(liveFrameRef.current);
+        liveFrameRef.current = null;
+      }
+    };
+
+    const consumeLivePrice = (price: LiveFeedPrice) => {
+      if (price.error) {
+        setLiveFeedError(price.error);
+        return;
+      }
+
+      const displayName = usingDatabentoPaneFeed || usingCTraderFeed
+        ? price.instrument
+        : (nameMap[price.instrument] || price.instrument);
+      if (displayName !== pane.symbol) return;
+
+      if (usingDatabentoPaneFeed && price.contractSymbol) {
+        setResolvedContractSymbol(price.contractSymbol);
+      }
+      pendingLiveTicksRef.current.push({
+        mid: price.mid,
+        timestamp: marketTimestamp(price.timestamp),
+        isTrade: price.isTrade,
+        size: price.size,
+        trades: price.trades,
+        delta: price.delta,
+      });
+      if (liveFrameRef.current !== null) return;
+
+      liveFrameRef.current = window.requestAnimationFrame(() => {
+        const ticks = pendingLiveTicksRef.current.splice(0);
+        liveFrameRef.current = null;
+        if (!ticks.length) return;
+        setLastMarketUpdateAt(Date.now());
+        setLiveFeedError(null);
+        setCandles((previous) => {
+          if (usingDatabentoPaneFeed && isEventBasedChartInterval(pane.timeframe)) {
+            const trades = ticks
+              .filter((tick) => tick.isTrade)
+              .map((tick) => ({
+                timestamp: tick.timestamp,
+                price: tick.mid,
+                size: Number(tick.size ?? 0),
+                trades: Number(tick.trades ?? 1),
+                delta: Number(tick.delta ?? 0),
+              }));
+            return trades.length
+              ? applyMarketTradesToEventBars(previous, trades, pane.timeframe, pane.symbol)
+              : previous;
+          }
+          return ticks.reduce((current, tick) => {
+            const merged = mergeLiveMidIntoCandles(
+              current,
+              tick.mid,
+              pane.symbol,
+              pane.timeframe,
+              tick.timestamp,
+            );
+            return merged === current
+              ? reanchorLiveMidIntoCandles(current, tick.mid, pane.symbol)
+              : merged;
+          }, previous);
+        });
+      });
+    };
+
+    if (usingDatabentoPaneFeed) {
+      const receiveSharedDatabentoTick = (event: Event) => {
+        const price = (event as CustomEvent<LiveFeedPrice>).detail;
+        if (price) consumeLivePrice(price);
+      };
+      window.addEventListener("kwantdesk:databento-tick", receiveSharedDatabentoTick);
+      return () => {
+        window.removeEventListener("kwantdesk:databento-tick", receiveSharedDatabentoTick);
+        clearPendingFrame();
+      };
+    }
+
     const stream = new EventSource(
-      usingDatabentoPaneFeed
-        ? `/api/databento/live?symbols=${encodeURIComponent(pane.symbol)}`
-        : usingCTraderFeed
+      usingCTraderFeed
         ? `/api/ctrader/stream?broker=${encodeURIComponent(pane.broker)}&symbols=${encodeURIComponent(pane.symbol)}`
         : "/api/oanda/stream",
     );
 
     stream.onmessage = (event) => {
       try {
-        const price = JSON.parse(event.data) as {
-          error?: string;
-          instrument: string;
-          mid: number;
-          isTrade?: boolean;
-          size?: number;
-          trades?: number;
-          delta?: number;
-          contractSymbol?: string;
-          timestamp?: string | number;
-        };
-        if (price.error) {
-          setLiveFeedError(price.error);
-          return;
-        }
-
-        const displayName = usingDatabentoPaneFeed || usingCTraderFeed ? price.instrument : (nameMap[price.instrument] || price.instrument);
-        if (displayName !== pane.symbol) return;
-
-        if (usingDatabentoPaneFeed && price.contractSymbol) {
-          setResolvedContractSymbol(price.contractSymbol);
-        }
-        pendingLiveTicksRef.current.push({
-          mid: price.mid,
-          timestamp: marketTimestamp(price.timestamp),
-          isTrade: price.isTrade,
-          size: price.size,
-          trades: price.trades,
-          delta: price.delta,
-        });
-        if (liveFrameRef.current === null) {
-          liveFrameRef.current = window.requestAnimationFrame(() => {
-            const ticks = pendingLiveTicksRef.current.splice(0);
-            liveFrameRef.current = null;
-            setLastMarketUpdateAt(Date.now());
-            setLiveFeedError(null);
-            setCandles((previous) => {
-              if (usingDatabentoPaneFeed && isEventBasedChartInterval(pane.timeframe)) {
-                const trades = ticks
-                  .filter((tick) => tick.isTrade)
-                  .map((tick) => ({
-                    timestamp: tick.timestamp,
-                    price: tick.mid,
-                    size: Number(tick.size ?? 0),
-                    trades: Number(tick.trades ?? 1),
-                    delta: Number(tick.delta ?? 0),
-                  }));
-                return trades.length
-                  ? applyMarketTradesToEventBars(previous, trades, pane.timeframe, pane.symbol)
-                  : previous;
-              }
-              return ticks.reduce((current, tick) => {
-                const merged = mergeLiveMidIntoCandles(
-                  current,
-                  tick.mid,
-                  pane.symbol,
-                  pane.timeframe,
-                  tick.timestamp,
-                );
-                return merged === current
-                  ? reanchorLiveMidIntoCandles(current, tick.mid, pane.symbol)
-                  : merged;
-              }, previous);
-            });
-          });
-        }
+        consumeLivePrice(JSON.parse(event.data) as LiveFeedPrice);
       } catch {
-        // ignore malformed stream payloads
+        // Ignore malformed stream payloads.
       }
     };
 
@@ -1369,11 +1383,7 @@ function WorkspaceChartPane({
 
     return () => {
       stream.close();
-      pendingLiveTicksRef.current = [];
-      if (liveFrameRef.current !== null) {
-        window.cancelAnimationFrame(liveFrameRef.current);
-        liveFrameRef.current = null;
-      }
+      clearPendingFrame();
     };
   }, [pane.broker, pane.symbol, pane.timeframe, streamReconnectNonce]);
 
@@ -2209,9 +2219,12 @@ export default function Home() {
     watchlist
       .filter((item) => item.broker === activeChartBrokerLabel)
       .forEach((item) => unique.add(item.symbol));
+    workspacePanes
+      .filter((pane) => pane.broker === activeChartBrokerLabel)
+      .forEach((pane) => unique.add(pane.symbol));
     if (selectedInstrument) unique.add(selectedInstrument);
     return Array.from(unique).join(",");
-  }, [activeChartBrokerLabel, selectedInstrument, watchlist]);
+  }, [activeChartBrokerLabel, selectedInstrument, watchlist, workspacePanes]);
   const instrumentCategories = [
     {
       category: "CME Futures",
@@ -3267,6 +3280,9 @@ export default function Home() {
         }
 
         const displayName = usingDatabentoFeed || usingCTraderFeed ? price.instrument : (nameMap[price.instrument] || price.instrument);
+        if (usingDatabentoFeed) {
+          window.dispatchEvent(new CustomEvent("kwantdesk:databento-tick", { detail: price }));
+        }
         pendingWatchlistPricesRef.current.set(displayName, price);
         if (displayName === selectedInstrument && chartTrades.length === 0) {
           pendingSelectedTicksRef.current.push(price);
