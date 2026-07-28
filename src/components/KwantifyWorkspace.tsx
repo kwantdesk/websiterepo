@@ -6310,34 +6310,36 @@ export default function Home() {
               </div>
 
               <div className="min-h-0 flex-1 overflow-y-auto bg-[linear-gradient(180deg,color-mix(in_srgb,var(--background)_68%,transparent),var(--panel))] px-3 py-4">
-                <div className="mb-4 flex items-center gap-3 text-[9px] font-medium uppercase tracking-[0.12em] text-muted/70">
-                  <span className="h-px flex-1 bg-border" />
-                  Today
-                  <span className="h-px flex-1 bg-border" />
-                </div>
-                <div className="space-y-4">
-                  {kwantBotMessages.map((message, index) => {
-                    const newest = index === kwantBotMessages.length - 1;
-                    return (
-                      <div key={message.id} className="kwantbot-message-in flex items-end gap-2">
-                        <KwantBotAvatar compact speaking={newest} />
-                        <div className="min-w-0 max-w-[calc(100%-44px)]">
-                          <div className="mb-1 flex items-center gap-2 px-1">
-                            <span className="text-[10px] font-semibold text-foreground">Kwant Bot</span>
-                            <span className="text-[9px] text-muted">{formatKwantBotMessageTime(message.receivedAt)}</span>
-                          </div>
-                          <div className="relative rounded-[18px] rounded-bl-[6px] border border-border/80 bg-surface px-3.5 py-2.5 shadow-[0_8px_24px_rgba(0,0,0,0.16)]">
-                            <span
-                              aria-hidden="true"
-                              className="absolute -left-[5px] bottom-0 h-3 w-3 bg-surface [clip-path:polygon(100%_0,100%_100%,0_100%)]"
-                            />
-                            <p className="relative whitespace-pre-wrap text-[12px] leading-[1.55] text-foreground">{message.text}</p>
+                <div className="flex min-h-full flex-col justify-end">
+                  <div className="mb-4 flex items-center gap-3 text-[9px] font-medium uppercase tracking-[0.12em] text-muted/70">
+                    <span className="h-px flex-1 bg-border" />
+                    Today
+                    <span className="h-px flex-1 bg-border" />
+                  </div>
+                  <div className="space-y-4">
+                    {kwantBotMessages.map((message, index) => {
+                      const newest = index === kwantBotMessages.length - 1;
+                      return (
+                        <div key={message.id} className="kwantbot-message-in flex items-end gap-2">
+                          <KwantBotAvatar compact speaking={newest} />
+                          <div className="min-w-0 max-w-[calc(100%-44px)]">
+                            <div className="mb-1 flex items-center gap-2 px-1">
+                              <span className="text-[10px] font-semibold text-foreground">Kwant Bot</span>
+                              <span className="text-[9px] text-muted">{formatKwantBotMessageTime(message.receivedAt)}</span>
+                            </div>
+                            <div className="relative rounded-[18px] rounded-bl-[6px] border border-border/80 bg-surface px-3.5 py-2.5 shadow-[0_8px_24px_rgba(0,0,0,0.16)]">
+                              <span
+                                aria-hidden="true"
+                                className="absolute -left-[5px] bottom-0 h-3 w-3 bg-surface [clip-path:polygon(100%_0,100%_100%,0_100%)]"
+                              />
+                              <p className="relative whitespace-pre-wrap text-[12px] leading-[1.55] text-foreground">{message.text}</p>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    );
-                  })}
-                  <div ref={kwantBotMessagesEndRef} />
+                      );
+                    })}
+                    <div ref={kwantBotMessagesEndRef} />
+                  </div>
                 </div>
               </div>
 
