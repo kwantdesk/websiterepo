@@ -115,6 +115,7 @@ import {
 } from "@/lib/chartAlerts";
 
 const Chart = dynamic(() => import("@/components/Chart"), { ssr: false });
+const GammaWorkspace = dynamic(() => import("@/components/options-flow/GammaWorkspace"), { ssr: false });
 
 const BOTTOM_PANEL_MIN_HEIGHT = 150;
 const BOTTOM_PANEL_DEFAULT_HEIGHT = 300;
@@ -6095,7 +6096,9 @@ export default function Home() {
             key={bottomWorkspaceSection}
             className="min-h-0 flex-1 bg-panel"
             aria-label={`${BOTTOM_WORKSPACE_SECTIONS.find((section) => section.id === bottomWorkspaceSection)?.label ?? "Gamma"} workspace`}
-          />
+          >
+            {!bottomMinimized && bottomWorkspaceSection === "gamma" ? <GammaWorkspace /> : null}
+          </div>
         </div>
 
         {false && !bottomMinimized && (
