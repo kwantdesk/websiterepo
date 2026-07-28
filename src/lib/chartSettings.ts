@@ -22,11 +22,11 @@ export const CHART_SETTINGS_METADATA_KEY = "chartSettings";
 
 export const defaultChartSettings: ChartSettings = {
   colorBarsPreviousClose: true,
-  upColor: "#46B99A",
+  upColor: "#D6B45F",
   downColor: "#D96C5F",
-  borderUpColor: "#46B99A",
+  borderUpColor: "#D6B45F",
   borderDownColor: "#D96C5F",
-  wickUpColor: "#46B99A99",
+  wickUpColor: "#D6B45F",
   wickDownColor: "#D96C5F99",
   backgroundColor: "#0C0D0F",
   gridLines: true,

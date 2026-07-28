@@ -670,6 +670,7 @@ export default function Chart({
   const [clearConfirm, setClearConfirm] = useState(false);
   const [overlaySize, setOverlaySize] = useState({ width: 0, height: 0 });
   const [viewportVersion, setViewportVersion] = useState(0);
+  const [themeVersion, setThemeVersion] = useState(0);
   const [candleCountdown, setCandleCountdown] = useState<{ label: string; top: number | null } | null>(null);
   const overlayRef = useRef<SVGSVGElement>(null);
   const toolbarRef = useRef<HTMLDivElement>(null);
@@ -677,6 +678,12 @@ export default function Chart({
   const viewportFrameRef = useRef<number | null>(null);
   const toolbarDragStateRef = useRef<{ offsetX: number; offsetY: number; startClientX: number; startClientY: number; hasMoved: boolean } | null>(null);
   const toolbarToggleSuppressedRef = useRef(false);
+
+  useEffect(() => {
+    const handleThemeChange = () => setThemeVersion((version) => version + 1);
+    window.addEventListener("kwantdesk:theme-change", handleThemeChange);
+    return () => window.removeEventListener("kwantdesk:theme-change", handleThemeChange);
+  }, []);
 
   const priceFormat = useMemo(() => getPriceFormat(instrument), [instrument]);
   const candleIntervalMs = useMemo(() => timeframeToMs(timeframe) ?? inferCandleIntervalMs(candles), [candles, timeframe]);
@@ -1598,6 +1605,14 @@ export default function Chart({
       chartRef.current = null;
     }
 
+    const themeStyles = window.getComputedStyle(document.documentElement);
+    const crosshairColor =
+      themeStyles.getPropertyValue("--crosshair-color").trim()
+      || "rgba(214,180,95,.42)";
+    const crosshairLabelColor =
+      themeStyles.getPropertyValue("--surface").trim()
+      || "#18181B";
+
     const chart = createChart(chartContainerRef.current, {
       layout: {
         background: { color: settings.backgroundColor },
@@ -1623,10 +1638,10 @@ export default function Chart({
         vertLine: {
           visible: true,
           width: 1,
-          color: "rgba(0, 245, 160, 0.3)",
+          color: crosshairColor,
           style: 0,
           labelVisible: true,
-          labelBackgroundColor: "#18181B",
+          labelBackgroundColor: crosshairLabelColor,
         },
         horzLine: {
           visible: false,
@@ -1778,7 +1793,7 @@ export default function Chart({
       prevFirstTimestampRef.current = null;
       prevDataRef.current = "";
     };
-  }, [instrument, priceFormat, settings]);
+  }, [instrument, priceFormat, settings, themeVersion]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -1896,7 +1911,7 @@ export default function Chart({
           left: 0,
           right: 60,
           height: "1px",
-          backgroundColor: "rgba(0, 245, 160, 0.3)",
+          backgroundColor: "var(--crosshair-color)",
           pointerEvents: "none",
           zIndex: 5,
         }}
@@ -1909,8 +1924,8 @@ export default function Chart({
           right: 0,
           width: 60,
           height: 20,
-          backgroundColor: "#18181B",
-          color: "#71717A",
+          backgroundColor: "var(--surface)",
+          color: "var(--muted)",
           fontSize: "11px",
           fontFamily: "monospace",
           textAlign: "center",

@@ -13,7 +13,7 @@ export const defaultTheme = {
   chartBackground: "#030304",
   gridColor: "#0B0B0D",
   crosshairColor: "rgba(214,180,95,.42)",
-  candleUp: "#31D0A0",
+  candleUp: "#D6B45F",
   candleDown: "#FF626C",
 };
 
@@ -31,6 +31,7 @@ export function applyTheme(theme?: Partial<ThemeColors>) {
   Object.entries(saved).forEach(([key, value]) => {
     root.style.setProperty(cssVarName(key), value as string);
   });
+  window.dispatchEvent(new CustomEvent("kwantdesk:theme-change"));
 }
 
 export function saveTheme(theme: ThemeColors) {

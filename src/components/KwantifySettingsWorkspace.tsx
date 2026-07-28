@@ -62,18 +62,18 @@ const makeTheme = (colors: Partial<ThemeColors>): ThemeColors => ({
 });
 
 const themePresets: { name: string; colors: ThemeColors }[] = [
-  { name: "Onyx Gold", colors: makeTheme({ background: "#030304", panel: "#070708", surface: "#111113", card: "#0B0B0D", foreground: "#F4F1E8", primary: "#D6B45F", secondary: "#F0D58A", muted: "#79776F", border: "#1D1D20", danger: "#FF626C", crosshairColor: "rgba(214,180,95,.42)", candleUp: "#31D0A0", candleDown: "#FF626C" }) },
-  { name: "Carbon Blue", colors: makeTheme({ background: "#02050A", panel: "#050A12", surface: "#0D1624", card: "#080E18", foreground: "#EEF4FF", primary: "#5791FF", secondary: "#91B7FF", muted: "#6F7C91", border: "#152238", danger: "#FF5F6D", crosshairColor: "rgba(87,145,255,.42)", candleUp: "#2FD3A2", candleDown: "#FF5F6D" }) },
+  { name: "Onyx Gold", colors: makeTheme({ background: "#030304", panel: "#070708", surface: "#111113", card: "#0B0B0D", foreground: "#F4F1E8", primary: "#D6B45F", secondary: "#F0D58A", muted: "#79776F", border: "#1D1D20", danger: "#FF626C", crosshairColor: "rgba(214,180,95,.42)", candleUp: "#D6B45F", candleDown: "#FF626C" }) },
+  { name: "Carbon Blue", colors: makeTheme({ background: "#02050A", panel: "#050A12", surface: "#0D1624", card: "#080E18", foreground: "#EEF4FF", primary: "#5791FF", secondary: "#91B7FF", muted: "#6F7C91", border: "#152238", danger: "#FF5F6D", crosshairColor: "rgba(87,145,255,.42)", candleUp: "#5791FF", candleDown: "#FF5F6D" }) },
   { name: "Black Emerald", colors: makeTheme({ background: "#020604", panel: "#050B08", surface: "#0C1711", card: "#07100B", foreground: "#EDF8F1", primary: "#39D98A", secondary: "#7CEFB0", muted: "#6D8175", border: "#14271C", danger: "#FF626C", crosshairColor: "rgba(57,217,138,.40)", candleUp: "#39D98A", candleDown: "#FF626C" }) },
-  { name: "Noir Chrome", colors: makeTheme({ background: "#030303", panel: "#070707", surface: "#121214", card: "#0B0B0C", foreground: "#F4F5F7", primary: "#D9DEE7", secondary: "#FFFFFF", muted: "#767A82", border: "#202126", danger: "#FF606B", crosshairColor: "rgba(217,222,231,.35)", candleUp: "#42D6A4", candleDown: "#FF606B" }) },
-  { name: "Electric Violet", colors: makeTheme({ background: "#040207", panel: "#08050D", surface: "#150E20", card: "#0D0813", foreground: "#F6F0FF", primary: "#A578FF", secondary: "#C5A7FF", muted: "#7D718E", border: "#241735", danger: "#FF5F75", crosshairColor: "rgba(165,120,255,.42)", candleUp: "#37D3A1", candleDown: "#FF5F75" }) },
-  { name: "Black Cherry", colors: makeTheme({ background: "#050203", panel: "#0A0506", surface: "#190C10", card: "#100709", foreground: "#FFF1F3", primary: "#FF5274", secondary: "#FF8CA3", muted: "#8B7178", border: "#2A141A", danger: "#FF5B50", crosshairColor: "rgba(255,82,116,.42)", candleUp: "#35D2A0", candleDown: "#FF5B50" }) },
-  { name: "Abyss Cyan", colors: makeTheme({ background: "#010507", panel: "#040A0D", surface: "#0B171C", card: "#071015", foreground: "#ECFAFF", primary: "#27C9E8", secondary: "#75E6FA", muted: "#6C8188", border: "#14282F", danger: "#FF626C", crosshairColor: "rgba(39,201,232,.42)", candleUp: "#32D1A1", candleDown: "#FF626C" }) },
-  { name: "Signal Lime", colors: makeTheme({ background: "#030502", panel: "#070A05", surface: "#12180C", card: "#0B0F08", foreground: "#F5FBEF", primary: "#A8E84C", secondary: "#CEF78D", muted: "#78836D", border: "#202A17", danger: "#FF636B", crosshairColor: "rgba(168,232,76,.38)", candleUp: "#5BE08D", candleDown: "#FF636B" }) },
-  { name: "Royal Cobalt", colors: makeTheme({ background: "#020309", panel: "#050711", surface: "#0E1224", card: "#080B18", foreground: "#F0F2FF", primary: "#6678FF", secondary: "#9AA5FF", muted: "#70758C", border: "#1B2140", danger: "#FF6070", crosshairColor: "rgba(102,120,255,.42)", candleUp: "#35D2A1", candleDown: "#FF6070" }) },
-  { name: "Burnished Amber", colors: makeTheme({ background: "#050301", panel: "#0A0703", surface: "#191108", card: "#100B05", foreground: "#FFF6E9", primary: "#F5A43B", secondary: "#FFD07C", muted: "#897968", border: "#2B1D0F", danger: "#FF625D", crosshairColor: "rgba(245,164,59,.42)", candleUp: "#38D09B", candleDown: "#FF625D" }) },
-  { name: "Polar Night", colors: makeTheme({ background: "#020508", panel: "#050A0F", surface: "#0D1821", card: "#081119", foreground: "#F0F9FF", primary: "#74D7FF", secondary: "#AFE9FF", muted: "#70818C", border: "#172A36", danger: "#FF6371", crosshairColor: "rgba(116,215,255,.40)", candleUp: "#38D3A4", candleDown: "#FF6371" }) },
-  { name: "Neon Rose", colors: makeTheme({ background: "#050205", panel: "#0A050A", surface: "#190E18", card: "#100910", foreground: "#FFF2FC", primary: "#FF70BE", secondary: "#FFA5D5", muted: "#887382", border: "#2B1728", danger: "#FF5B62", crosshairColor: "rgba(255,112,190,.42)", candleUp: "#38D3A3", candleDown: "#FF5B62" }) },
+  { name: "Noir Chrome", colors: makeTheme({ background: "#030303", panel: "#070707", surface: "#121214", card: "#0B0B0C", foreground: "#F4F5F7", primary: "#D9DEE7", secondary: "#FFFFFF", muted: "#767A82", border: "#202126", danger: "#FF606B", crosshairColor: "rgba(217,222,231,.35)", candleUp: "#D9DEE7", candleDown: "#FF606B" }) },
+  { name: "Electric Violet", colors: makeTheme({ background: "#040207", panel: "#08050D", surface: "#150E20", card: "#0D0813", foreground: "#F6F0FF", primary: "#A578FF", secondary: "#C5A7FF", muted: "#7D718E", border: "#241735", danger: "#FF5F75", crosshairColor: "rgba(165,120,255,.42)", candleUp: "#A578FF", candleDown: "#FF5F75" }) },
+  { name: "Black Cherry", colors: makeTheme({ background: "#050203", panel: "#0A0506", surface: "#190C10", card: "#100709", foreground: "#FFF1F3", primary: "#FF5274", secondary: "#FF8CA3", muted: "#8B7178", border: "#2A141A", danger: "#FF5B50", crosshairColor: "rgba(255,82,116,.42)", candleUp: "#FF5274", candleDown: "#FF5B50" }) },
+  { name: "Abyss Cyan", colors: makeTheme({ background: "#010507", panel: "#040A0D", surface: "#0B171C", card: "#071015", foreground: "#ECFAFF", primary: "#27C9E8", secondary: "#75E6FA", muted: "#6C8188", border: "#14282F", danger: "#FF626C", crosshairColor: "rgba(39,201,232,.42)", candleUp: "#27C9E8", candleDown: "#FF626C" }) },
+  { name: "Signal Lime", colors: makeTheme({ background: "#030502", panel: "#070A05", surface: "#12180C", card: "#0B0F08", foreground: "#F5FBEF", primary: "#A8E84C", secondary: "#CEF78D", muted: "#78836D", border: "#202A17", danger: "#FF636B", crosshairColor: "rgba(168,232,76,.38)", candleUp: "#A8E84C", candleDown: "#FF636B" }) },
+  { name: "Royal Cobalt", colors: makeTheme({ background: "#020309", panel: "#050711", surface: "#0E1224", card: "#080B18", foreground: "#F0F2FF", primary: "#6678FF", secondary: "#9AA5FF", muted: "#70758C", border: "#1B2140", danger: "#FF6070", crosshairColor: "rgba(102,120,255,.42)", candleUp: "#6678FF", candleDown: "#FF6070" }) },
+  { name: "Burnished Amber", colors: makeTheme({ background: "#050301", panel: "#0A0703", surface: "#191108", card: "#100B05", foreground: "#FFF6E9", primary: "#F5A43B", secondary: "#FFD07C", muted: "#897968", border: "#2B1D0F", danger: "#FF625D", crosshairColor: "rgba(245,164,59,.42)", candleUp: "#F5A43B", candleDown: "#FF625D" }) },
+  { name: "Polar Night", colors: makeTheme({ background: "#020508", panel: "#050A0F", surface: "#0D1821", card: "#081119", foreground: "#F0F9FF", primary: "#74D7FF", secondary: "#AFE9FF", muted: "#70818C", border: "#172A36", danger: "#FF6371", crosshairColor: "rgba(116,215,255,.40)", candleUp: "#74D7FF", candleDown: "#FF6371" }) },
+  { name: "Neon Rose", colors: makeTheme({ background: "#050205", panel: "#0A050A", surface: "#190E18", card: "#100910", foreground: "#FFF2FC", primary: "#FF70BE", secondary: "#FFA5D5", muted: "#887382", border: "#2B1728", danger: "#FF5B62", crosshairColor: "rgba(255,112,190,.42)", candleUp: "#FF70BE", candleDown: "#FF5B62" }) },
 ];
 
 const appColorFields: { key: keyof ThemeColors; label: string }[] = [
@@ -300,9 +300,8 @@ export default function SettingsPage() {
   }
 
   function applyThemePreset(theme: ThemeColors) {
-    setThemeSettings(theme);
-    setChartSettings((current) => ({
-      ...current,
+    const nextChartSettings: ChartSettings = {
+      ...chartSettings,
       backgroundColor: theme.chartBackground,
       gridColor: theme.gridColor,
       upColor: theme.candleUp,
@@ -311,8 +310,12 @@ export default function SettingsPage() {
       borderDownColor: theme.candleDown,
       wickUpColor: theme.candleUp,
       wickDownColor: theme.candleDown,
-    }));
+    };
+    setThemeSettings(theme);
+    setChartSettings(nextChartSettings);
     saveAppTheme(theme);
+    saveStoredChartSettings(nextChartSettings);
+    void persistChartSettings(nextChartSettings);
   }
 
   async function persistChartSettings(settings: ChartSettings) {
