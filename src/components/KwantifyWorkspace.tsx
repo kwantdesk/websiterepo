@@ -42,12 +42,14 @@ import {
   Minus,
   MoreHorizontal,
   Pause,
+  Paperclip,
   Pencil,
   Play,
   Plus,
   Repeat,
   Save,
   Search,
+  Send,
   Settings,
   Settings2,
   Sparkles,
@@ -98,6 +100,10 @@ import {
   readChartHistoryCache,
   writeChartHistoryCache,
 } from "@/lib/chartHistoryCache";
+import {
+  loadKwantBotConversation,
+  saveKwantBotConversation,
+} from "@/lib/kwantBotChatStore";
 import AppSidebar from "@/components/AppSidebar";
 import ChartCreateAlertModal from "@/components/alerts/ChartCreateAlertModal";
 import {
@@ -159,6 +165,15 @@ type KwantBotMessage = {
   id: string;
   text: string;
   receivedAt: string;
+  sender: "bot" | "user";
+  attachments?: KwantBotAttachment[];
+};
+type KwantBotAttachment = {
+  id: string;
+  name: string;
+  type: string;
+  size: number;
+  dataUrl: string;
 };
 type WatchlistSection = { id: string; name: string; symbols: string[] };
 type InstrumentPickerItem = { key: string; symbol: string; fullName: string; category: string; broker: string };
@@ -245,8 +260,9 @@ const BOTTOM_WORKSPACE_SECTIONS = [
 const DEFAULT_KWANTBOT_MESSAGES: KwantBotMessage[] = [
   {
     id: "kwantbot-welcome",
-    text: "I’m online. Incoming research messages and market notes will appear here.",
+    text: "I’m online. Send me a message, chart screenshot, photo, or research file whenever you’re ready.",
     receivedAt: "",
+    sender: "bot",
   },
 ];
 
@@ -1740,6 +1756,123 @@ function formatKwantBotMessageTime(value: string) {
   return parsed.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 }
 
+function kwantBotId(prefix: string) {
+  return typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function normalizeKwantBotMessages(value: unknown): KwantBotMessage[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .flatMap((entry) => {
+      if (!entry || typeof entry !== "object") return [];
+      const message = entry as Partial<KwantBotMessage>;
+      if (
+        typeof message.id !== "string"
+        || message.id === "kwantbot-incoming-only"
+        || typeof message.text !== "string"
+      ) {
+        return [];
+      }
+      const attachments = Array.isArray(message.attachments)
+        ? message.attachments.filter((attachment): attachment is KwantBotAttachment => Boolean(
+            attachment
+            && typeof attachment.id === "string"
+            && typeof attachment.name === "string"
+            && typeof attachment.type === "string"
+            && typeof attachment.size === "number"
+            && typeof attachment.dataUrl === "string"
+            && attachment.dataUrl,
+          ))
+        : [];
+      return [{
+        id: message.id,
+        text: message.text.slice(0, 4_000),
+        receivedAt: typeof message.receivedAt === "string" ? message.receivedAt : "",
+        sender: message.sender === "user" ? "user" as const : "bot" as const,
+        attachments: attachments.length ? attachments.slice(0, 4) : undefined,
+      }];
+    })
+    .filter((message) => message.text.trim() || message.attachments?.length)
+    .slice(-100);
+}
+
+function readAttachment(file: File) {
+  return new Promise<KwantBotAttachment>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve({
+      id: kwantBotId("attachment"),
+      name: file.name,
+      type: file.type || "application/octet-stream",
+      size: file.size,
+      dataUrl: String(reader.result ?? ""),
+    });
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
+function isImageAttachment(attachment: KwantBotAttachment) {
+  return attachment.type.startsWith("image/");
+}
+
+function KwantBotAttachments({
+  attachments,
+  compact = false,
+  onRemove,
+}: {
+  attachments: KwantBotAttachment[];
+  compact?: boolean;
+  onRemove?: (id: string) => void;
+}) {
+  if (!attachments.length) return null;
+  return (
+    <div className={`grid gap-1.5 ${attachments.length > 1 ? "grid-cols-2" : "grid-cols-1"}`}>
+      {attachments.map((attachment) => (
+        <div
+          key={attachment.id}
+          className={`group relative min-w-0 overflow-hidden rounded-xl border border-border/80 bg-background/35 ${compact ? "h-14" : ""}`}
+        >
+          {isImageAttachment(attachment) ? (
+            <a href={attachment.dataUrl} download={attachment.name} className="block h-full">
+              <Image
+                src={attachment.dataUrl}
+                alt={attachment.name}
+                width={240}
+                height={160}
+                unoptimized
+                className={`${compact ? "h-14" : "max-h-48 min-h-24"} w-full object-cover`}
+              />
+            </a>
+          ) : (
+            <a href={attachment.dataUrl} download={attachment.name} className={`flex items-center gap-2 px-2.5 ${compact ? "h-14" : "min-h-14 py-2.5"}`}>
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/12 text-primary">
+                <FileText className="h-4 w-4" />
+              </span>
+              <span className="min-w-0">
+                <span className="block truncate text-[10px] font-medium text-foreground">{attachment.name}</span>
+                <span className="block text-[9px] text-muted">{Math.max(1, Math.round(attachment.size / 1024))} KB</span>
+              </span>
+            </a>
+          )}
+          {onRemove ? (
+            <button
+              type="button"
+              onClick={() => onRemove(attachment.id)}
+              className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-background/85 text-muted shadow-md backdrop-blur transition-colors hover:text-foreground"
+              title={`Remove ${attachment.name}`}
+              aria-label={`Remove ${attachment.name}`}
+            >
+              <X className="h-3 w-3" />
+            </button>
+          ) : null}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function Home() {
   const router = useRouter();
   const supabase = createClient();
@@ -1892,15 +2025,19 @@ export default function Home() {
   const [kwantBotMessages, setKwantBotMessages] = useState<KwantBotMessage[]>(() => {
     if (typeof window === "undefined") return DEFAULT_KWANTBOT_MESSAGES;
     try {
-      const saved = JSON.parse(window.localStorage.getItem(KWANTBOT_MESSAGES_STORAGE_KEY) ?? "[]") as KwantBotMessage[];
-      const clean = Array.isArray(saved)
-        ? saved.filter((message) => typeof message?.id === "string" && typeof message?.text === "string").slice(-100)
-        : [];
+      const clean = normalizeKwantBotMessages(
+        JSON.parse(window.localStorage.getItem(KWANTBOT_MESSAGES_STORAGE_KEY) ?? "[]"),
+      );
       return clean.length ? clean : DEFAULT_KWANTBOT_MESSAGES;
     } catch {
       return DEFAULT_KWANTBOT_MESSAGES;
     }
   });
+  const [kwantBotStoreReady, setKwantBotStoreReady] = useState(false);
+  const [kwantBotDraft, setKwantBotDraft] = useState("");
+  const [kwantBotDraftAttachments, setKwantBotDraftAttachments] = useState<KwantBotAttachment[]>([]);
+  const [kwantBotAttachmentError, setKwantBotAttachmentError] = useState("");
+  const [kwantBotAttaching, setKwantBotAttaching] = useState(false);
   const [kwantBotUnreadCount, setKwantBotUnreadCount] = useState(0);
   const [showChartAlertModal, setShowChartAlertModal] = useState(false);
   const [chartAlertPriceDraft, setChartAlertPriceDraft] = useState<string>("");
@@ -2029,6 +2166,8 @@ export default function Home() {
   const chartLaunchAppliedRef = useRef(false);
   const chartLaunchRunRef = useRef(false);
   const kwantBotMessagesEndRef = useRef<HTMLDivElement>(null);
+  const kwantBotAttachmentInputRef = useRef<HTMLInputElement>(null);
+  const kwantBotComposerRef = useRef<HTMLTextAreaElement>(null);
   const pendingWatchlistPricesRef = useRef<Map<string, LiveFeedPrice>>(new Map());
   const pendingSelectedTicksRef = useRef<LiveFeedPrice[]>([]);
   const watchlistLiveFrameRef = useRef<number | null>(null);
@@ -2641,8 +2780,37 @@ export default function Home() {
   }, [rightPanel]);
 
   useEffect(() => {
-    window.localStorage.setItem(KWANTBOT_MESSAGES_STORAGE_KEY, JSON.stringify(kwantBotMessages.slice(-100)));
-  }, [kwantBotMessages]);
+    let active = true;
+    loadKwantBotConversation<unknown>()
+      .then((saved) => {
+        if (!active) return;
+        const clean = normalizeKwantBotMessages(saved);
+        if (clean.length) setKwantBotMessages(clean);
+      })
+      .catch(() => {
+        // Local storage remains available as the lightweight fallback.
+      })
+      .finally(() => {
+        if (active) setKwantBotStoreReady(true);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!kwantBotStoreReady) return;
+    const messages = kwantBotMessages.slice(-100);
+    void saveKwantBotConversation(messages).catch(() => {
+      // Keep the active chat usable even if browser storage is unavailable.
+    });
+    try {
+      const lightweight = messages.map(({ attachments: _attachments, ...message }) => message);
+      window.localStorage.setItem(KWANTBOT_MESSAGES_STORAGE_KEY, JSON.stringify(lightweight));
+    } catch {
+      // IndexedDB remains the full attachment store.
+    }
+  }, [kwantBotMessages, kwantBotStoreReady]);
 
   useEffect(() => {
     const receiveKwantBotMessage = (event: Event) => {
@@ -2650,11 +2818,10 @@ export default function Home() {
       const text = typeof detail?.text === "string" ? detail.text.trim().slice(0, 1_200) : "";
       if (!text) return;
       const message: KwantBotMessage = {
-        id: typeof crypto !== "undefined" && "randomUUID" in crypto
-          ? crypto.randomUUID()
-          : `kwantbot-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        id: kwantBotId("kwantbot"),
         text,
         receivedAt: new Date().toISOString(),
+        sender: "bot",
       };
       setKwantBotMessages((current) => [...current.slice(-99), message]);
       if (rightPanel !== "kwantbot") {
@@ -2666,6 +2833,60 @@ export default function Home() {
     return () => window.removeEventListener("kwantbot:message", receiveKwantBotMessage);
   }, [rightPanel]);
 
+  const handleKwantBotAttachments = async (files: FileList | null) => {
+    if (!files?.length) return;
+    setKwantBotAttachmentError("");
+    const remainingSlots = Math.max(0, 4 - kwantBotDraftAttachments.length);
+    const selected = Array.from(files).slice(0, remainingSlots);
+    if (!remainingSlots) {
+      setKwantBotAttachmentError("Remove an attachment before adding another.");
+      return;
+    }
+    const oversized = selected.find((file) => file.size > 10 * 1024 * 1024);
+    if (oversized) {
+      setKwantBotAttachmentError(`${oversized.name} is larger than 10 MB.`);
+      return;
+    }
+    setKwantBotAttaching(true);
+    try {
+      const attachments = await Promise.all(selected.map(readAttachment));
+      setKwantBotDraftAttachments((current) => [...current, ...attachments].slice(0, 4));
+      if (files.length > remainingSlots) {
+        setKwantBotAttachmentError("You can attach up to four files to one message.");
+      }
+    } catch {
+      setKwantBotAttachmentError("One of those files could not be attached.");
+    } finally {
+      setKwantBotAttaching(false);
+      if (kwantBotAttachmentInputRef.current) kwantBotAttachmentInputRef.current.value = "";
+    }
+  };
+
+  const handleSendKwantBotMessage = () => {
+    const text = kwantBotDraft.trim().slice(0, 4_000);
+    if ((!text && !kwantBotDraftAttachments.length) || kwantBotAttaching) return;
+    const message: KwantBotMessage = {
+      id: kwantBotId("message"),
+      text,
+      receivedAt: new Date().toISOString(),
+      sender: "user",
+      attachments: kwantBotDraftAttachments.length ? kwantBotDraftAttachments : undefined,
+    };
+    setKwantBotMessages((current) => [...current.slice(-99), message]);
+    setKwantBotDraft("");
+    setKwantBotDraftAttachments([]);
+    setKwantBotAttachmentError("");
+    window.dispatchEvent(new CustomEvent("kwantbot:send", {
+      detail: {
+        id: message.id,
+        text: message.text,
+        attachments: message.attachments?.map(({ id, name, type, size }) => ({ id, name, type, size })) ?? [],
+        sentAt: message.receivedAt,
+      },
+    }));
+    window.requestAnimationFrame(() => kwantBotComposerRef.current?.focus());
+  };
+
   useEffect(() => {
     if (rightPanel !== "kwantbot") return;
     setKwantBotUnreadCount(0);
@@ -2674,25 +2895,6 @@ export default function Home() {
     });
     return () => window.cancelAnimationFrame(frame);
   }, [kwantBotMessages.length, rightPanel]);
-
-  useEffect(() => {
-    if (
-      rightPanel !== "kwantbot"
-      || kwantBotMessages.some((message) => message.id === "kwantbot-incoming-only")
-    ) {
-      return;
-    }
-    const timer = window.setTimeout(() => {
-      setKwantBotMessages((current) => current.some((message) => message.id === "kwantbot-incoming-only")
-        ? current
-        : [...current, {
-            id: "kwantbot-incoming-only",
-            text: "This is your receive-only channel. I’ll place every new update at the bottom as soon as it arrives.",
-            receivedAt: new Date().toISOString(),
-          }]);
-    }, 700);
-    return () => window.clearTimeout(timer);
-  }, [kwantBotMessages, rightPanel]);
 
   useEffect(() => {
     if (rightPanel) {
@@ -6300,10 +6502,10 @@ export default function Home() {
                   <div className="min-w-0">
                     <div className="mb-2 inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/10 px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.13em] text-primary">
                       <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary shadow-[0_0_8px_var(--primary)]" />
-                      Incoming
+                      Chat
                     </div>
                     <h3 className="text-[17px] font-semibold tracking-[-0.02em] text-foreground">Kwant Bot</h3>
-                    <p className="mt-1 max-w-[145px] text-[10px] leading-4 text-muted">Live research messages, delivered as they happen.</p>
+                    <p className="mt-1 max-w-[145px] text-[10px] leading-4 text-muted">Messages, screenshots, photos, and research files.</p>
                   </div>
                   <KwantBotAvatar />
                 </div>
@@ -6319,6 +6521,30 @@ export default function Home() {
                   <div className="space-y-4">
                     {kwantBotMessages.map((message, index) => {
                       const newest = index === kwantBotMessages.length - 1;
+                      if (message.sender === "user") {
+                        return (
+                          <div key={message.id} className="kwantbot-message-out flex justify-end">
+                            <div className="min-w-0 max-w-[84%]">
+                              <div className="mb-1 flex items-center justify-end gap-2 px-1">
+                                <span className="text-[9px] text-muted">{formatKwantBotMessageTime(message.receivedAt)}</span>
+                                <span className="text-[10px] font-semibold text-foreground">You</span>
+                              </div>
+                              <div className="relative rounded-[18px] rounded-br-[6px] border border-primary/30 bg-primary px-3.5 py-2.5 text-background shadow-[0_8px_24px_rgba(0,0,0,0.16)]">
+                                <span
+                                  aria-hidden="true"
+                                  className="absolute -right-[5px] bottom-0 h-3 w-3 bg-primary [clip-path:polygon(0_0,100%_100%,0_100%)]"
+                                />
+                                {message.attachments?.length ? (
+                                  <div className={message.text ? "mb-2" : ""}>
+                                    <KwantBotAttachments attachments={message.attachments} />
+                                  </div>
+                                ) : null}
+                                {message.text ? <p className="relative whitespace-pre-wrap text-[12px] leading-[1.55]">{message.text}</p> : null}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      }
                       return (
                         <div key={message.id} className="kwantbot-message-in flex items-end gap-2">
                           <KwantBotAvatar compact speaking={newest} />
@@ -6332,7 +6558,12 @@ export default function Home() {
                                 aria-hidden="true"
                                 className="absolute -left-[5px] bottom-0 h-3 w-3 bg-surface [clip-path:polygon(100%_0,100%_100%,0_100%)]"
                               />
-                              <p className="relative whitespace-pre-wrap text-[12px] leading-[1.55] text-foreground">{message.text}</p>
+                              {message.attachments?.length ? (
+                                <div className={message.text ? "mb-2" : ""}>
+                                  <KwantBotAttachments attachments={message.attachments} />
+                                </div>
+                              ) : null}
+                              {message.text ? <p className="relative whitespace-pre-wrap text-[12px] leading-[1.55] text-foreground">{message.text}</p> : null}
                             </div>
                           </div>
                         </div>
@@ -6343,10 +6574,66 @@ export default function Home() {
                 </div>
               </div>
 
-              <div className="flex h-11 shrink-0 items-center gap-2 border-t border-border bg-panel px-3 text-[10px] text-muted">
-                <Bot className="h-3.5 w-3.5 text-primary" />
-                <span>Incoming messages only</span>
-                <span className="ml-auto h-1.5 w-1.5 rounded-full bg-primary shadow-[0_0_8px_var(--primary)]" />
+              <div className="shrink-0 border-t border-border bg-panel p-2">
+                {kwantBotDraftAttachments.length ? (
+                  <div className="mb-2">
+                    <KwantBotAttachments
+                      attachments={kwantBotDraftAttachments}
+                      compact
+                      onRemove={(id) => setKwantBotDraftAttachments((current) => current.filter((attachment) => attachment.id !== id))}
+                    />
+                  </div>
+                ) : null}
+                {kwantBotAttachmentError ? <div className="mb-1.5 px-2 text-[9px] text-danger">{kwantBotAttachmentError}</div> : null}
+                <div className="flex items-end gap-1.5 rounded-[18px] border border-border bg-surface p-1.5 transition-colors focus-within:border-primary/50">
+                  <input
+                    ref={kwantBotAttachmentInputRef}
+                    type="file"
+                    multiple
+                    accept="image/*,.pdf,.txt,.csv,.json,.doc,.docx,.xls,.xlsx"
+                    className="hidden"
+                    onChange={(event) => void handleKwantBotAttachments(event.target.files)}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => kwantBotAttachmentInputRef.current?.click()}
+                    disabled={kwantBotAttaching}
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted transition-colors hover:bg-background/60 hover:text-primary disabled:opacity-45"
+                    title="Attach photos or files"
+                    aria-label="Attach photos or files"
+                  >
+                    {kwantBotAttaching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Paperclip className="h-4 w-4" />}
+                  </button>
+                  <textarea
+                    ref={kwantBotComposerRef}
+                    value={kwantBotDraft}
+                    onChange={(event) => setKwantBotDraft(event.target.value.slice(0, 4_000))}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+                        event.preventDefault();
+                        handleSendKwantBotMessage();
+                      }
+                    }}
+                    rows={1}
+                    placeholder="Message Kwant Bot"
+                    aria-label="Message Kwant Bot"
+                    className="max-h-24 min-h-8 min-w-0 flex-1 resize-none bg-transparent px-1 py-1.5 text-[12px] leading-5 text-foreground outline-none placeholder:text-muted/65"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleSendKwantBotMessage}
+                    disabled={kwantBotAttaching || (!kwantBotDraft.trim() && !kwantBotDraftAttachments.length)}
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-background shadow-[0_0_16px_color-mix(in_srgb,var(--primary)_24%,transparent)] transition-transform hover:scale-105 disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:scale-100"
+                    title="Send message"
+                    aria-label="Send message"
+                  >
+                    <Send className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+                <div className="mt-1.5 flex items-center gap-1.5 px-2 text-[9px] text-muted/75">
+                  <span className="h-1.5 w-1.5 rounded-full bg-primary shadow-[0_0_7px_var(--primary)]" />
+                  Enter to send · Shift+Enter for a new line
+                </div>
               </div>
             </div>
           )}
