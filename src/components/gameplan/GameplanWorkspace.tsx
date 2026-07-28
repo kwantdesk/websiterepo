@@ -83,6 +83,70 @@ function formatTime(value: string) {
   return date.toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit", timeZone: "Australia/Brisbane" });
 }
 
+function formatLiveTimestamp(value: string | null) {
+  if (!value) return "Waiting for live price";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Waiting for live price";
+  return date.toLocaleTimeString("en-US", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+    timeZone: "America/New_York",
+    timeZoneName: "short",
+  });
+}
+
+function formatUpdateAge(value: string | null, now: number) {
+  if (!value) return "";
+  const updatedAt = new Date(value).getTime();
+  if (!Number.isFinite(updatedAt)) return "";
+  const seconds = Math.max(0, Math.floor((now - updatedAt) / 1_000));
+  if (seconds < 2) return "live";
+  if (seconds < 60) return `${seconds}s ago`;
+  return `${Math.floor(seconds / 60)}m ago`;
+}
+
+function distanceFromZone(price: number, zone: [number, number]) {
+  if (price < zone[0]) return zone[0] - price;
+  if (price > zone[1]) return price - zone[1];
+  return 0;
+}
+
+function buildLiveOneLiner(plan: GameplanEdition, root: "NQ" | "ES", currentPrice: number | null) {
+  if (currentPrice === null || !Number.isFinite(currentPrice) || !plan.ladder.length) return plan.one_liner;
+
+  const levels = [...plan.ladder].sort((a, b) => a.zone[0] - b.zone[0]);
+  const inside = levels.find((level) => currentPrice >= level.zone[0] && currentPrice <= level.zone[1]);
+  const closest = levels.reduce((best, level) => (
+    distanceFromZone(currentPrice, level.zone) < distanceFromZone(currentPrice, best.zone) ? level : best
+  ), levels[0]);
+  const closestDistance = distanceFromZone(currentPrice, closest.zone);
+  const approachDistance = root === "NQ" ? 35 : 10;
+  const tapeCopy = plan.environment.tape.state === "snowball"
+    ? "An accepted break can accelerate, so do not fade it until price proves failure."
+    : plan.environment.tape.state === "calm"
+      ? "The first clean defence favours rotation; repeated tests weaken it."
+      : "Wait for a clean hold or accepted break before choosing the next path.";
+
+  if (inside) {
+    return `${root} at ${formatPrice(currentPrice)} is trading inside ${inside.name} ${formatZone(inside.zone)}; this is the live decision point. ${tapeCopy}`;
+  }
+
+  const side = currentPrice < closest.zone[0] ? "below" : "above";
+  if (closestDistance <= approachDistance) {
+    return `${root} at ${formatPrice(currentPrice)} is ${formatPrice(closestDistance)} points ${side} ${closest.name} ${formatZone(closest.zone)}; prepare for the first reaction. ${tapeCopy}`;
+  }
+
+  const below = [...levels].reverse().find((level) => level.zone[1] < currentPrice);
+  const above = levels.find((level) => level.zone[0] > currentPrice);
+  if (below && above) {
+    return `${root} at ${formatPrice(currentPrice)} is rotating between ${below.name} ${formatZone(below.zone)} and ${above.name} ${formatZone(above.zone)}; ${closest.name} is closest, ${formatPrice(closestDistance)} points away, so avoid chasing the middle.`;
+  }
+
+  return `${root} at ${formatPrice(currentPrice)} is outside the mapped ladder and ${formatPrice(closestDistance)} points ${side} ${closest.name} ${formatZone(closest.zone)}; wait for acceptance or a decisive return into the map.`;
+}
+
 function formatDate(value: string) {
   const date = new Date(`${value}T12:00:00`);
   if (Number.isNaN(date.getTime())) return value;
@@ -824,6 +888,8 @@ export default function GameplanWorkspace({ initialInstrument = "NQ" }: { initia
   const [session, setSession] = useState<GameplanSession>("newyork");
   const [payload, setPayload] = useState<GameplanPayload | null>(null);
   const [currentPrice, setCurrentPrice] = useState<number | null>(null);
+  const [oneLinerUpdatedAt, setOneLinerUpdatedAt] = useState<string | null>(null);
+  const [clockNow, setClockNow] = useState(() => Date.now());
   const [priceTick, setPriceTick] = useState<"up" | "down" | "flat">("flat");
   const [liveFeedState, setLiveFeedState] = useState<"connecting" | "live" | "fallback">("connecting");
   const [mode, setMode] = useState<DetailMode>("standard");
@@ -838,6 +904,8 @@ export default function GameplanWorkspace({ initialInstrument = "NQ" }: { initia
   const previousPriceRef = useRef<number | null>(null);
   const lastNativeTickAtRef = useRef(0);
   const priceTickTimerRef = useRef<number | null>(null);
+  const planRequestRef = useRef(0);
+  const planRefreshDelayRef = useRef(5_000);
   const countdown = useCountdown(session);
 
   const updateLivePrice = useCallback((nextPrice: number) => {
@@ -850,33 +918,58 @@ export default function GameplanWorkspace({ initialInstrument = "NQ" }: { initia
       priceTickTimerRef.current = window.setTimeout(() => setPriceTick("flat"), 420);
     }
     setCurrentPrice(nextPrice);
+    setOneLinerUpdatedAt(new Date().toISOString());
   }, []);
 
   useEffect(() => () => {
     if (priceTickTimerRef.current !== null) window.clearTimeout(priceTickTimerRef.current);
   }, []);
 
-  const loadPlan = useCallback(async (manual = false) => {
+  useEffect(() => {
+    const timer = window.setInterval(() => setClockNow(Date.now()), 1_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const loadPlan = useCallback(async (manual = false, background = false) => {
+    const requestId = ++planRequestRef.current;
     if (manual) setRefreshing(true);
-    else setLoading(true);
+    else if (!background) setLoading(true);
     try {
       const response = await fetch(`/api/gameplan?root=${root}&session=${session}`, { cache: "no-store" });
       const next = await response.json() as GameplanPayload & { error?: string };
       if (!response.ok) throw new Error(next.error || "Gameplan could not be loaded.");
+      if (requestId !== planRequestRef.current) return;
       setPayload(next);
-      if (next.current_price !== null) updateLivePrice(next.current_price);
+      planRefreshDelayRef.current = Math.max(5_000, Math.min(60_000, next.refresh_after_ms));
+      setOneLinerUpdatedAt(next.generated_at);
+      if (
+        next.current_price !== null
+        && (previousPriceRef.current === null || Date.now() - lastNativeTickAtRef.current > 3_000)
+      ) updateLivePrice(next.current_price);
       setError(null);
     } catch (loadError) {
+      if (requestId !== planRequestRef.current) return;
       setError(loadError instanceof Error ? loadError.message : "Gameplan could not be loaded.");
     } finally {
+      if (requestId !== planRequestRef.current) return;
       setLoading(false);
       setRefreshing(false);
     }
   }, [root, session, updateLivePrice]);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => void loadPlan(), 0);
-    return () => window.clearTimeout(timer);
+    let disposed = false;
+    let timer: number | null = null;
+    const run = async (background: boolean) => {
+      await loadPlan(false, background);
+      if (!disposed) timer = window.setTimeout(() => void run(true), planRefreshDelayRef.current);
+    };
+    timer = window.setTimeout(() => void run(false), 0);
+    return () => {
+      disposed = true;
+      planRequestRef.current += 1;
+      if (timer !== null) window.clearTimeout(timer);
+    };
   }, [loadPlan]);
 
   useEffect(() => {
@@ -926,7 +1019,7 @@ export default function GameplanWorkspace({ initialInstrument = "NQ" }: { initia
     live.addEventListener("feed-error", () => setLiveFeedState("fallback"));
     live.onerror = () => setLiveFeedState("fallback");
     return () => live.close();
-  }, [payload, root, updateLivePrice]);
+  }, [payload?.instrument, root, updateLivePrice]);
 
   useEffect(() => {
     if (!payload) return;
@@ -954,7 +1047,7 @@ export default function GameplanWorkspace({ initialInstrument = "NQ" }: { initia
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [payload, root, updateLivePrice]);
+  }, [payload?.instrument, root, updateLivePrice]);
 
   if (loading && !payload) return <LoadingState />;
   if (!payload) {
@@ -971,10 +1064,11 @@ export default function GameplanWorkspace({ initialInstrument = "NQ" }: { initia
   }
 
   const plan = payload.plan;
+  const liveOneLiner = buildLiveOneLiner(plan, root, currentPrice);
   const currentPlanKey = `${root}:${plan.edition.date}:${plan.edition.session}:${plan.edition.published_at}`;
   const planMatchesSelection = payload.instrument === root && plan.edition.session === session;
   const copyOneLiner = async () => {
-    await navigator.clipboard.writeText(plan.one_liner);
+    await navigator.clipboard.writeText(liveOneLiner);
     setCopied(true);
     window.setTimeout(() => setCopied(false), 1_600);
   };
@@ -1080,8 +1174,13 @@ export default function GameplanWorkspace({ initialInstrument = "NQ" }: { initia
                       ? "bg-danger/10 text-danger"
                       : "text-muted"
                 }`}>{root} · {formatPrice(currentPrice)}</span>
+                <span className="ml-auto flex items-center gap-1.5 font-mono text-[9px] text-muted">
+                  <Clock3 className="h-3 w-3 text-primary" />
+                  Last updated {formatLiveTimestamp(oneLinerUpdatedAt)}
+                  <span className="text-primary">{formatUpdateAge(oneLinerUpdatedAt, clockNow)}</span>
+                </span>
               </div>
-              <h1 className="mt-4 max-w-5xl text-[23px] font-semibold leading-[1.22] tracking-[-0.035em] text-foreground sm:text-[29px] lg:text-[35px]">{plan.one_liner}</h1>
+              <h1 className="mt-4 max-w-5xl text-[23px] font-semibold leading-[1.22] tracking-[-0.035em] text-foreground sm:text-[29px] lg:text-[35px]">{liveOneLiner}</h1>
               <div className="mt-5 flex flex-wrap items-center gap-3">
                 <p className="max-w-3xl text-[10px] leading-5 text-muted">The plan earns nothing until a level prints its reaction — the map is the map, the print is the permission.</p>
                 <div className="ml-auto flex gap-2">

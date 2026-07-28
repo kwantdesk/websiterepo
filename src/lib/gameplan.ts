@@ -329,7 +329,7 @@ export function buildGameplanPayload(
     current_price: current,
     status: data.errors.length || data.marketData.stale || data.marketData.fallback || data.marketData.status !== "LIVE" ? "PARTIAL" : "LIVE",
     generated_at: new Date().toISOString(),
-    refresh_after_ms: Math.max(15_000, data.refreshAfterMs),
+    refresh_after_ms: Math.max(5_000, data.refreshAfterMs),
     plan,
   };
 }
