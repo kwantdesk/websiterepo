@@ -4250,12 +4250,6 @@ export default function Home() {
             </button>
           </div>
           <div className="flex-1" />
-          <button
-            onClick={() => setShowBrokerModal(true)}
-            className="cursor-pointer rounded-lg border border-border bg-surface px-3.5 py-1.5 text-[13px] font-medium text-foreground transition-all hover:bg-card"
-          >
-            Trade
-          </button>
           <div className="mr-3 flex items-center gap-2"><span className={`text-[12px] font-medium ${selectedChangePercent >= 0 ? "text-primary" : "text-danger"}`}>{selectedChangePercent >= 0 ? "+" : ""}{selectedChangePercent.toFixed(2)}%</span></div>
           <button onClick={signOut} title={currentUsername ? `@${currentUsername}` : "Account"} className="flex h-8 w-8 items-center justify-center rounded-full border border-border bg-surface transition-colors hover:bg-card"><User className="h-4 w-4 text-muted" /></button>
         </header>
@@ -4588,7 +4582,6 @@ export default function Home() {
           )}
           <div className="hidden w-[44px] shrink-0 flex-col items-center gap-2 border-l border-border bg-panel py-3">
             {[
-              { id: "order" as const, title: "Order Panel", icon: FileText },
               { id: "watchlist" as const, title: "Watchlist", icon: List },
               { id: "alerts" as const, title: "Alerts", icon: Bell },
               { id: "alertslog" as const, title: "Alerts Log", icon: BellRing },
@@ -5197,7 +5190,6 @@ export default function Home() {
           </button>
         )}
         {[
-          { id: "order" as const, title: "Order Panel", icon: FileText },
           { id: "watchlist" as const, title: "Watchlist", icon: List },
           { id: "alerts" as const, title: "Alerts", icon: Bell },
           { id: "alertslog" as const, title: "Alerts Log", icon: BellRing },
