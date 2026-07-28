@@ -1,3 +1,6 @@
+import { getChartInterval, isEventBasedChartInterval } from "@/lib/chartIntervals";
+import { applyMarketTradesToEventBars, type MarketTrade } from "@/lib/eventBars";
+
 export type DatabentoInstrument = {
   symbol: string;
   label: string;
@@ -130,45 +133,25 @@ async function historicalRequest(params: Record<string, string>) {
 }
 
 function sourceSchema(timeframe: string) {
-  if (["1s", "5s", "10s", "15s", "30s"].includes(timeframe)) return "ohlcv-1s";
-  if (["1D", "2D", "3D", "1W", "1M", "3M", "6M", "1Y"].includes(timeframe)) return "ohlcv-1d";
+  const match = timeframe.match(/^(\d+)(s|m|h|D|W|M)$/);
+  if (match?.[2] === "s") return "ohlcv-1s";
+  if (match && ["D", "W", "M"].includes(match[2])) return "ohlcv-1d";
   return "ohlcv-1m";
 }
 
 function timeframeMs(timeframe: string) {
-  const second = 1_000;
-  const minute = 60_000;
-  const day = 86_400_000;
-  const values: Record<string, number> = {
-    "1s": second,
-    "5s": 5 * second,
-    "10s": 10 * second,
-    "15s": 15 * second,
-    "30s": 30 * second,
-    "1m": minute,
-    "3m": 3 * minute,
-    "5m": 5 * minute,
-    "10m": 10 * minute,
-    "15m": 15 * minute,
-    "30m": 30 * minute,
-    "45m": 45 * minute,
-    "1h": 60 * minute,
-    "2h": 120 * minute,
-    "3h": 180 * minute,
-    "4h": 240 * minute,
-    "6h": 360 * minute,
-    "8h": 480 * minute,
-    "12h": 720 * minute,
-    "1D": day,
-    "2D": 2 * day,
-    "3D": 3 * day,
-    "1W": 7 * day,
-    "1M": 30 * day,
-    "3M": 90 * day,
-    "6M": 180 * day,
-    "1Y": 365 * day,
+  const match = timeframe.match(/^(\d+)(s|m|h|D|W|M)$/);
+  if (!match) return 5 * 60_000;
+  const value = Math.max(1, Number(match[1]));
+  const units: Record<string, number> = {
+    s: 1_000,
+    m: 60_000,
+    h: 60 * 60_000,
+    D: 86_400_000,
+    W: 7 * 86_400_000,
+    M: 30 * 86_400_000,
   };
-  return values[timeframe] ?? 5 * minute;
+  return value * (units[match[2]] ?? 5 * 60_000);
 }
 
 function resample(rows: DatabentoBar[], timeframe: string) {
@@ -196,6 +179,49 @@ export function isContinuousFuture(symbol: string) {
 }
 
 export async function getDatabentoBars(symbol: string, timeframe: string, start: string, end: string) {
+  if (!getChartInterval(timeframe)) throw new Error(`Unsupported chart interval: ${timeframe}`);
+  if (isEventBasedChartInterval(timeframe)) {
+    const requestedStart = Date.parse(start);
+    const requestedEnd = Date.parse(end);
+    const recentStart = new Date(Math.max(
+      Number.isFinite(requestedStart) ? requestedStart : 0,
+      (Number.isFinite(requestedEnd) ? requestedEnd : Date.now()) - 6 * 60 * 60_000,
+    )).toISOString();
+    let tradeRows = await historicalRequest({
+      symbols: symbol,
+      stype_in: isContinuousFuture(symbol) ? "continuous" : "raw_symbol",
+      schema: "trades",
+      start: recentStart,
+      end,
+      limit: "200000",
+    });
+    if (tradeRows.length === 0 && recentStart !== start) {
+      tradeRows = await historicalRequest({
+        symbols: symbol,
+        stype_in: isContinuousFuture(symbol) ? "continuous" : "raw_symbol",
+        schema: "trades",
+        start,
+        end,
+        limit: "200000",
+      });
+    }
+    const trades: MarketTrade[] = tradeRows
+      .map((row) => {
+        const size = Math.max(0, Number(row.size ?? 0));
+        const side = String(row.side ?? "").toUpperCase();
+        return {
+          timestamp: time(row.ts_event ?? row.ts_recv ?? (row.hd as Record<string, unknown> | undefined)?.ts_event),
+          price: price(row.price),
+          size,
+          trades: 1,
+          delta: side === "A" || side === "ASK" ? size : side === "B" || side === "BID" ? -size : 0,
+        };
+      })
+      .filter((row) => row.timestamp > 0 && row.price > 0)
+      .sort((a, b) => a.timestamp - b.timestamp);
+    return applyMarketTradesToEventBars([], trades, timeframe, symbol, 3_000);
+  }
+
   const rows = await historicalRequest({
     symbols: symbol,
     stype_in: isContinuousFuture(symbol) ? "continuous" : "raw_symbol",

@@ -70,8 +70,14 @@ export async function GET(request: Request) {
               authenticated = true;
               const continuous = symbols.filter(isContinuousFuture);
               const raw = symbols.filter((symbol) => !isContinuousFuture(symbol));
-              if (continuous.length) socket?.write(`schema=mbp-1|stype_in=continuous|symbols=${continuous.join(",")}\n`);
-              if (raw.length) socket?.write(`schema=mbp-1|stype_in=raw_symbol|symbols=${raw.join(",")}\n`);
+              if (continuous.length) {
+                socket?.write(`schema=mbp-1|stype_in=continuous|symbols=${continuous.join(",")}\n`);
+                socket?.write(`schema=trades|stype_in=continuous|symbols=${continuous.join(",")}\n`);
+              }
+              if (raw.length) {
+                socket?.write(`schema=mbp-1|stype_in=raw_symbol|symbols=${raw.join(",")}\n`);
+                socket?.write(`schema=trades|stype_in=raw_symbol|symbols=${raw.join(",")}\n`);
+              }
               socket?.write("start_session=1\n");
               send(`event: status\ndata: ${JSON.stringify({ connected: true, source: "Databento", dataset: "GLBX.MDP3" })}\n\n`);
               continue;
@@ -90,6 +96,8 @@ export async function GET(request: Request) {
               stype_in_symbol?: string;
               stype_out_symbol?: string;
               price?: string | number;
+              size?: string | number;
+              side?: string;
               bid_px_00?: string | number;
               ask_px_00?: string | number;
               levels?: Array<{ bid_px?: string | number; ask_px?: string | number }>;
@@ -111,16 +119,25 @@ export async function GET(request: Request) {
             const bid = numericPrice(record.levels?.[0]?.bid_px ?? record.bid_px_00);
             const ask = numericPrice(record.levels?.[0]?.ask_px ?? record.ask_px_00);
             const trade = numericPrice(record.price);
+            const size = Math.max(0, Number(record.size ?? 0));
+            const side = String(record.side ?? "").toUpperCase();
+            const isTrade = Boolean(trade && size);
             const mid = bid && ask ? (bid + ask) / 2 : trade || bid || ask;
             if (!symbol || !mid) continue;
             const now = Date.now();
-            if (now - (lastEmit.get(symbol) ?? 0) < 250) continue;
-            lastEmit.set(symbol, now);
+            if (!isTrade) {
+              if (now - (lastEmit.get(symbol) ?? 0) < 250) continue;
+              lastEmit.set(symbol, now);
+            }
             send(`data: ${JSON.stringify({
               instrument: symbol,
               bid: bid || mid,
               ask: ask || mid,
               mid,
+              isTrade,
+              size: isTrade ? size : undefined,
+              trades: isTrade ? 1 : undefined,
+              delta: isTrade ? (side === "A" || side === "ASK" ? size : side === "B" || side === "BID" ? -size : 0) : undefined,
               timestamp: record.hd?.ts_event ?? record.ts_recv ?? record.ts_out ?? now,
               broker: "Databento",
             })}\n\n`);

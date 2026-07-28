@@ -78,6 +78,16 @@ import {
   isContinuousFuture,
   type DatabentoInstrument,
 } from "@/lib/databento";
+import {
+  CHART_INTERVAL_GROUPS,
+  formatChartInterval,
+  isEventBasedChartInterval,
+  makeCustomChartInterval,
+  parseChartIntervalInput,
+  supportsChartInterval,
+  type ChartIntervalKind,
+} from "@/lib/chartIntervals";
+import { applyMarketTradesToEventBars } from "@/lib/eventBars";
 import AppSidebar from "@/components/AppSidebar";
 import ChartCreateAlertModal from "@/components/alerts/ChartCreateAlertModal";
 import {
@@ -340,22 +350,18 @@ function isTooManyCandles(period: string, timeframe: string) {
 }
 
 function getTimeframeMs(timeframe: string) {
-  const minute = 60 * 1000;
-  const hour = 60 * minute;
-  const day = 24 * hour;
-  const map: Record<string, number> = {
-    "1m": minute,
-    "5m": 5 * minute,
-    "15m": 15 * minute,
-    "30m": 30 * minute,
-    "1h": hour,
-    "2h": 2 * hour,
-    "4h": 4 * hour,
-    "1D": day,
-    "1W": 7 * day,
-    "1M": 30 * day,
+  const match = timeframe.match(/^(\d+)(s|m|h|D|W|M)$/);
+  if (!match) return 5 * 60_000;
+  const value = Math.max(1, Number(match[1]));
+  const units: Record<string, number> = {
+    s: 1_000,
+    m: 60_000,
+    h: 60 * 60_000,
+    D: 24 * 60 * 60_000,
+    W: 7 * 24 * 60 * 60_000,
+    M: 30 * 24 * 60 * 60_000,
   };
-  return map[timeframe] ?? 5 * minute;
+  return value * (units[match[2]] ?? 5 * 60_000);
 }
 
 function getHistoricalCandleLimit(period: string, timeframe: string, fallback = 500) {
@@ -371,6 +377,16 @@ function getTimeframeBucketStart(timestampMs: number, timeframe: string) {
   const timeframeMs = getTimeframeMs(timeframe);
   if (!Number.isFinite(timestampMs) || timeframeMs <= 0) return timestampMs;
   return Math.floor(timestampMs / timeframeMs) * timeframeMs;
+}
+
+function marketTimestamp(value: unknown) {
+  if (typeof value === "number") {
+    if (value > 10_000_000_000_000_000) return Math.floor(value / 1_000_000);
+    if (value > 10_000_000_000_000) return Math.floor(value / 1_000);
+    return value;
+  }
+  const parsed = Date.parse(String(value ?? ""));
+  return Number.isFinite(parsed) ? parsed : Date.now();
 }
 
 function formatPrice(price: number, symbol: string): string {
@@ -776,6 +792,7 @@ function WorkspaceChartPane({
   onCreateAlertAtPrice,
   onRemoveAllIndicators,
   onSelectPeriod,
+  onSelectTimeframe,
 }: {
   pane: WorkspacePane;
   active: boolean;
@@ -787,6 +804,7 @@ function WorkspaceChartPane({
   onCreateAlertAtPrice: (price: string) => void;
   onRemoveAllIndicators: () => void;
   onSelectPeriod: (period: string) => void;
+  onSelectTimeframe: (timeframe: string) => boolean;
 }) {
   const [candles, setCandles] = useState<Candle[]>([]);
   const [loading, setLoading] = useState(true);
@@ -795,6 +813,10 @@ function WorkspaceChartPane({
   const [lastMarketUpdateAt, setLastMarketUpdateAt] = useState<number | null>(null);
   const [statusNow, setStatusNow] = useState(() => Date.now());
   const [streamReconnectNonce, setStreamReconnectNonce] = useState(0);
+  const [intervalCommandOpen, setIntervalCommandOpen] = useState(false);
+  const [intervalCommandDraft, setIntervalCommandDraft] = useState("");
+  const [intervalCommandError, setIntervalCommandError] = useState("");
+  const intervalCommandInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -856,7 +878,16 @@ function WorkspaceChartPane({
 
     stream.onmessage = (event) => {
       try {
-        const price = JSON.parse(event.data) as { error?: string; instrument: string; mid: number };
+        const price = JSON.parse(event.data) as {
+          error?: string;
+          instrument: string;
+          mid: number;
+          isTrade?: boolean;
+          size?: number;
+          trades?: number;
+          delta?: number;
+          timestamp?: string | number;
+        };
         if (price.error) {
           setLiveFeedError(price.error);
           return;
@@ -868,7 +899,23 @@ function WorkspaceChartPane({
         setLastMarketUpdateAt(Date.now());
         setLiveFeedError(null);
         setCandles((prev) => {
-          const merged = mergeLiveMidIntoCandles(prev, price.mid, pane.symbol, pane.timeframe);
+          if (usingDatabentoPaneFeed && isEventBasedChartInterval(pane.timeframe)) {
+            if (!price.isTrade) return prev;
+            return applyMarketTradesToEventBars(prev, [{
+              timestamp: marketTimestamp(price.timestamp),
+              price: price.mid,
+              size: Number(price.size ?? 0),
+              trades: Number(price.trades ?? 1),
+              delta: Number(price.delta ?? 0),
+            }], pane.timeframe, pane.symbol);
+          }
+          const merged = mergeLiveMidIntoCandles(
+            prev,
+            price.mid,
+            pane.symbol,
+            pane.timeframe,
+            marketTimestamp(price.timestamp),
+          );
           return merged === prev ? reanchorLiveMidIntoCandles(prev, price.mid, pane.symbol) : merged;
         });
       } catch {
@@ -921,6 +968,53 @@ function WorkspaceChartPane({
     return () => window.clearInterval(interval);
   }, []);
 
+  useEffect(() => {
+    if (!active) {
+      setIntervalCommandOpen(false);
+      return;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && intervalCommandOpen) {
+        event.preventDefault();
+        setIntervalCommandOpen(false);
+        setIntervalCommandDraft("");
+        setIntervalCommandError("");
+        return;
+      }
+      const target = event.target as HTMLElement | null;
+      const editingText = target instanceof HTMLInputElement
+        || target instanceof HTMLTextAreaElement
+        || target instanceof HTMLSelectElement
+        || target?.isContentEditable;
+      if (editingText || event.code !== "Space" || event.repeat) return;
+
+      event.preventDefault();
+      setIntervalCommandOpen(true);
+      setIntervalCommandDraft("");
+      setIntervalCommandError("");
+      window.requestAnimationFrame(() => intervalCommandInputRef.current?.focus());
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [active, intervalCommandOpen]);
+
+  const submitIntervalCommand = () => {
+    const interval = parseChartIntervalInput(intervalCommandDraft);
+    if (!interval) {
+      setIntervalCommandError("Try 5m, 5 min, 30s, 2h, 1D, 500v or 40r");
+      return;
+    }
+    if (!onSelectTimeframe(interval)) {
+      setIntervalCommandError(`${formatChartInterval(interval)} is unavailable for this feed`);
+      return;
+    }
+    setIntervalCommandOpen(false);
+    setIntervalCommandDraft("");
+    setIntervalCommandError("");
+  };
+
   const marketIsActive = lastMarketUpdateAt ? statusNow - lastMarketUpdateAt <= 15_000 : false;
   const marketStatusLabel = loading ? "Loading" : liveFeedError ? "Feed Unavailable" : marketIsActive ? "Active" : "Market Closed";
   const marketStatusClasses = loading
@@ -958,7 +1052,7 @@ function WorkspaceChartPane({
         <span className="font-semibold text-foreground">{pane.symbol}</span>
         <span>{pane.broker}</span>
         {pane.broker === "Massive" && <AlertTriangle className="h-3 w-3 text-orange-300/90" />}
-        <span>{pane.timeframe}</span>
+        <span>{formatChartInterval(pane.timeframe)}</span>
         <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-semibold ${marketStatusClasses}`}>{marketStatusLabel}</span>
       </div>
       <div className="absolute bottom-8 left-3 z-20 flex items-center gap-0.5 rounded-lg border border-border bg-panel/80 px-1 py-0.5 backdrop-blur">
@@ -975,6 +1069,42 @@ function WorkspaceChartPane({
           </button>
         ))}
       </div>
+      {intervalCommandOpen && (
+        <div className="pointer-events-none absolute inset-0 z-50 flex items-center justify-center">
+          <div
+            className="pointer-events-auto w-[300px] max-w-[calc(100%-32px)] rounded-2xl border border-border bg-panel/95 p-3 shadow-2xl shadow-black/40 backdrop-blur-xl"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <div className="mb-2 flex items-center gap-2 px-1">
+              <Search className="h-3.5 w-3.5 text-primary" />
+              <span className="text-[11px] font-medium text-foreground">Change interval</span>
+              <span className="ml-auto rounded-md border border-border bg-surface px-1.5 py-0.5 text-[9px] text-muted">ESC</span>
+            </div>
+            <input
+              ref={intervalCommandInputRef}
+              value={intervalCommandDraft}
+              onChange={(event) => {
+                setIntervalCommandDraft(event.target.value);
+                setIntervalCommandError("");
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  submitIntervalCommand();
+                }
+              }}
+              autoFocus
+              spellCheck={false}
+              placeholder="Type 5m, 40 range or 500 volume"
+              aria-label="Chart interval"
+              className="h-11 w-full rounded-xl border border-border bg-surface px-3 font-mono text-[15px] text-foreground outline-none transition-colors placeholder:text-muted/55 focus:border-primary/60"
+            />
+            <div className={`mt-2 px-1 text-[10px] ${intervalCommandError ? "text-danger" : "text-muted"}`}>
+              {intervalCommandError || "Seconds · minutes · hours · days · weeks · event bars"}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1255,6 +1385,18 @@ export default function Home() {
   const [equityPeriod, setEquityPeriod] = useState("365d");
   const [favTFs, setFavTFs] = useState(["1m", "5m", "15m", "1h", "4h", "1D"]);
   const [showAllTF, setShowAllTF] = useState(false);
+  const [intervalDrafts, setIntervalDrafts] = useState<Record<ChartIntervalKind, { primary: number; secondary: number }>>({
+    second: { primary: 1, secondary: 1 },
+    minute: { primary: 1, secondary: 1 },
+    time: { primary: 1, secondary: 1 },
+    "volume-bars": { primary: 4, secondary: 2 },
+    range: { primary: 40, secondary: 1 },
+    volume: { primary: 500, secondary: 1 },
+    trade: { primary: 100, secondary: 1 },
+    renko: { primary: 8, secondary: 1 },
+    "point-figure": { primary: 1, secondary: 27 },
+    delta: { primary: 100, secondary: 1 },
+  });
   const [showMiniAI, setShowMiniAI] = useState(false);
   const [miniExpanded, setMiniExpanded] = useState(false);
   const [miniMessages, setMiniMessages] = useState<Message[]>([]);
@@ -1316,7 +1458,6 @@ export default function Home() {
   const chartLaunchAppliedRef = useRef(false);
   const chartLaunchRunRef = useRef(false);
 
-  const allTimeframes = ["1s", "5s", "10s", "15s", "30s", "1m", "3m", "5m", "10m", "15m", "30m", "45m", "1h", "2h", "3h", "4h", "6h", "8h", "12h", "1D", "2D", "3D", "1W", "1M", "3M", "6M", "1Y"];
   const linkedCTraderBrokerNames = useMemo(
     () => Array.from(new Set(linkedCTraderAccounts.map(resolveCTraderBrokerName))),
     [linkedCTraderAccounts],
@@ -1333,6 +1474,19 @@ export default function Home() {
   const usingMassiveFeed = connectedBroker === "Massive" || isMassiveFuturesSymbol(selectedInstrument);
   const usingDatabentoFeed = connectedBroker === "Databento";
   const activeChartBrokerLabel = usingDatabentoFeed ? "Databento" : usingCTraderFeed && connectedBroker ? connectedBroker : usingMassiveFeed ? "Massive" : "OANDA";
+  const availableChartIntervalGroups = useMemo(
+    () => CHART_INTERVAL_GROUPS
+      .map((group) => ({
+        ...group,
+        options: group.options.filter((option) => supportsChartInterval(option.id, activeChartBrokerLabel)),
+      }))
+      .filter((group) => group.options.length > 0),
+    [activeChartBrokerLabel],
+  );
+  const visibleFavouriteIntervals = useMemo(
+    () => favTFs.filter((interval) => supportsChartInterval(interval, activeChartBrokerLabel)),
+    [activeChartBrokerLabel, favTFs],
+  );
   const watchlistSymbolsCsv = useMemo(() => {
     const unique = new Set<string>();
     watchlist
@@ -1396,11 +1550,12 @@ export default function Home() {
 
   useEffect(() => {
     if (chartTrades.length > 0) return;
+    if (usingDatabentoFeed && isEventBasedChartInterval(selectedTimeframe)) return;
     const selectedMid = selectedWatchlistItem?.mid;
     if (!selectedMid || selectedMid <= 0) return;
 
     setChartCandles((prev) => mergeLiveMidIntoCandles(prev, selectedMid, selectedInstrument, selectedTimeframe));
-  }, [chartTrades.length, selectedTimeframe, selectedWatchlistItem?.mid]);
+  }, [chartTrades.length, selectedInstrument, selectedTimeframe, selectedWatchlistItem?.mid, usingDatabentoFeed]);
   const activeWorkspacePane = useMemo(
     () => workspacePanes.find((pane) => pane.id === activePaneId) ?? workspacePanes[0] ?? DEFAULT_WORKSPACE_PANES[0],
     [activePaneId, workspacePanes],
@@ -2164,7 +2319,19 @@ export default function Home() {
 
     eventSource.onmessage = (event) => {
       try {
-        const price = JSON.parse(event.data) as { error?: string; instrument: string; bid: number; ask: number; mid: number; broker?: string };
+        const price = JSON.parse(event.data) as {
+          error?: string;
+          instrument: string;
+          bid: number;
+          ask: number;
+          mid: number;
+          broker?: string;
+          isTrade?: boolean;
+          size?: number;
+          trades?: number;
+          delta?: number;
+          timestamp?: string | number;
+        };
         if (price.error) {
           setFeedErrorByBroker((current) => ({ ...current, [activeChartBrokerLabel]: price.error as string }));
           return;
@@ -2207,7 +2374,25 @@ export default function Home() {
         }, 300);
 
         if (displayName === selectedInstrument && chartTrades.length === 0) {
-          setChartCandles((prev) => mergeLiveMidIntoCandles(prev, price.mid, selectedInstrument, selectedTimeframe));
+          setChartCandles((prev) => {
+            if (usingDatabentoFeed && isEventBasedChartInterval(selectedTimeframe)) {
+              if (!price.isTrade) return prev;
+              return applyMarketTradesToEventBars(prev, [{
+                timestamp: marketTimestamp(price.timestamp),
+                price: price.mid,
+                size: Number(price.size ?? 0),
+                trades: Number(price.trades ?? 1),
+                delta: Number(price.delta ?? 0),
+              }], selectedTimeframe, selectedInstrument);
+            }
+            return mergeLiveMidIntoCandles(
+              prev,
+              price.mid,
+              selectedInstrument,
+              selectedTimeframe,
+              marketTimestamp(price.timestamp),
+            );
+          });
         }
       } catch {}
     };
@@ -3767,6 +3952,23 @@ export default function Home() {
     setSelectedTimeframe(timeframe);
   };
 
+  const selectWorkspacePaneTimeframe = (paneId: string, timeframe: string) => {
+    const pane = workspacePanes.find((candidate) => candidate.id === paneId);
+    if (!pane || !supportsChartInterval(timeframe, pane.broker)) return false;
+    clearBacktest();
+    updateWorkspacePane(paneId, { timeframe });
+    if (paneId === activePaneId) setSelectedTimeframe(timeframe);
+    return true;
+  };
+
+  const applyCustomInterval = (kind: ChartIntervalKind) => {
+    const draft = intervalDrafts[kind];
+    const interval = makeCustomChartInterval(kind, draft.primary, draft.secondary);
+    if (!supportsChartInterval(interval, activeChartBrokerLabel)) return;
+    selectTimeframe(interval);
+    setShowAllTF(false);
+  };
+
   const chooseBroker = (broker: Broker) => {
     setSelectedBroker(broker);
     setBrokerMode("Demo");
@@ -3854,9 +4056,136 @@ export default function Home() {
             </>
           )}
           <div className="relative flex items-center gap-0.5">
-            {favTFs.map((tf) => <button key={tf} onClick={() => selectTimeframe(tf)} className={`rounded-lg px-2.5 py-1.5 text-[13px] transition-all ${selectedTimeframe === tf ? "bg-surface text-foreground" : "text-muted hover:text-foreground"}`}>{tf}</button>)}
-            <button onClick={() => setShowAllTF(!showAllTF)} className="rounded-lg px-2 py-1.5 text-muted hover:text-foreground"><ChevronDown className="h-4 w-4" /></button>
-            {showAllTF && <div className="absolute left-0 top-[34px] z-50 grid w-[360px] grid-cols-4 gap-1 rounded-2xl border border-border bg-panel p-3 shadow-2xl shadow-black/40">{allTimeframes.map((tf) => <div key={tf} className="flex items-center rounded-lg hover:bg-surface"><button onClick={() => { selectTimeframe(tf); setShowAllTF(false); }} className="flex-1 px-2 py-1.5 text-left text-[12px]">{tf}</button><button onClick={() => toggleFavTF(tf)} className="px-2 text-muted hover:text-primary"><Star className={`h-3.5 w-3.5 ${favTFs.includes(tf) ? "fill-primary text-primary" : ""}`} /></button></div>)}</div>}
+            {visibleFavouriteIntervals.map((tf) => (
+              <button
+                key={tf}
+                onClick={() => selectTimeframe(tf)}
+                className={`rounded-lg px-2.5 py-1.5 text-[13px] transition-all ${selectedTimeframe === tf ? "bg-surface text-foreground" : "text-muted hover:text-foreground"}`}
+              >
+                {formatChartInterval(tf)}
+              </button>
+            ))}
+            <button
+              type="button"
+              aria-label="Chart intervals"
+              aria-expanded={showAllTF}
+              onClick={() => setShowAllTF(!showAllTF)}
+              className={`ml-1 flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-[12px] transition-colors ${showAllTF ? "border-primary/30 bg-primary/10 text-primary" : "border-border bg-surface/50 text-muted hover:text-foreground"}`}
+            >
+              <span>{formatChartInterval(selectedTimeframe)}</span>
+              <ChevronDown className={`h-3.5 w-3.5 transition-transform ${showAllTF ? "rotate-180" : ""}`} />
+            </button>
+            <button
+              type="button"
+              onClick={() => toggleFavTF(selectedTimeframe)}
+              className="flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-primary"
+              aria-label={`${favTFs.includes(selectedTimeframe) ? "Remove" : "Add"} ${formatChartInterval(selectedTimeframe)} ${favTFs.includes(selectedTimeframe) ? "from" : "to"} favourites`}
+              title={favTFs.includes(selectedTimeframe) ? "Remove interval from top bar" : "Pin interval to top bar"}
+            >
+              <Star className={`h-3.5 w-3.5 ${favTFs.includes(selectedTimeframe) ? "fill-primary text-primary" : ""}`} />
+            </button>
+            {showAllTF && (
+              <div className="absolute left-0 top-[38px] z-50 w-[720px] max-w-[calc(100vw-120px)] overflow-hidden rounded-2xl border border-border bg-panel shadow-2xl shadow-black/50">
+                <div className="flex items-center justify-between border-b border-border px-4 py-3">
+                  <div>
+                    <div className="text-[12px] font-semibold text-foreground">Chart intervals</div>
+                    <div className="mt-0.5 text-[10px] text-muted">
+                      {activeChartBrokerLabel === "Databento"
+                        ? "Time, volume and order-flow bars from Databento CME market data"
+                        : `Time intervals supported by ${activeChartBrokerLabel}; futures-only modes are hidden`}
+                    </div>
+                  </div>
+                  <button type="button" onClick={() => setShowAllTF(false)} className="rounded-lg p-1.5 text-muted hover:bg-surface hover:text-foreground" aria-label="Close chart intervals">
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+                <div className="max-h-[560px] overflow-y-auto p-2">
+                  {availableChartIntervalGroups.map((group) => {
+                    const draft = intervalDrafts[group.kind];
+                    return (
+                      <div key={group.kind} className="grid grid-cols-[128px_138px_minmax(0,1fr)] items-center gap-3 rounded-xl px-2 py-2.5 hover:bg-surface/40">
+                        <div className="flex items-center gap-2 text-[12px] font-medium text-foreground">
+                          <Settings2 className="h-4 w-4 text-muted" />
+                          <span>{group.label}</span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          {activeChartBrokerLabel === "Databento" ? (
+                            <>
+                              <input
+                                aria-label={`${group.label} interval value`}
+                                type="number"
+                                min={1}
+                                step={1}
+                                value={draft.primary}
+                                onChange={(event) => setIntervalDrafts((current) => ({
+                                  ...current,
+                                  [group.kind]: { ...current[group.kind], primary: Math.max(1, Number(event.target.value) || 1) },
+                                }))}
+                                className="h-8 min-w-0 flex-1 rounded-lg border border-border bg-background px-2 font-mono text-[12px] text-foreground outline-none focus:border-primary/40"
+                              />
+                              {group.secondaryDefault !== undefined && (
+                                <input
+                                  aria-label={`${group.label} secondary interval value`}
+                                  type="number"
+                                  min={1}
+                                  step={1}
+                                  value={draft.secondary}
+                                  onChange={(event) => setIntervalDrafts((current) => ({
+                                    ...current,
+                                    [group.kind]: { ...current[group.kind], secondary: Math.max(1, Number(event.target.value) || 1) },
+                                  }))}
+                                  className="h-8 min-w-0 flex-1 rounded-lg border border-border bg-background px-2 font-mono text-[12px] text-foreground outline-none focus:border-primary/40"
+                                />
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => applyCustomInterval(group.kind)}
+                                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border bg-surface text-muted hover:border-primary/30 hover:text-primary"
+                                aria-label={`Apply custom ${group.label} interval`}
+                                title="Apply custom interval"
+                              >
+                                <Check className="h-3.5 w-3.5" />
+                              </button>
+                            </>
+                          ) : (
+                            <span className="rounded-lg border border-border bg-background px-2.5 py-1.5 text-[10px] text-muted">Standard intervals</span>
+                          )}
+                        </div>
+                        <div className="flex min-w-0 flex-wrap items-center gap-1">
+                          {group.options.map((option) => (
+                            <div key={option.id} className={`flex items-center rounded-lg border transition-colors ${selectedTimeframe === option.id ? "border-primary/30 bg-primary/10" : "border-transparent hover:border-border hover:bg-surface"}`}>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  selectTimeframe(option.id);
+                                  setShowAllTF(false);
+                                }}
+                                className={`px-2 py-1.5 font-mono text-[11px] ${selectedTimeframe === option.id ? "text-primary" : "text-foreground"}`}
+                              >
+                                {option.label}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => toggleFavTF(option.id)}
+                                className="pr-1.5 text-muted hover:text-primary"
+                                aria-label={`${favTFs.includes(option.id) ? "Remove" : "Add"} ${option.label} ${favTFs.includes(option.id) ? "from" : "to"} favourites`}
+                              >
+                                <Star className={`h-3 w-3 ${favTFs.includes(option.id) ? "fill-primary text-primary" : ""}`} />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                {activeChartBrokerLabel === "Databento" && (
+                  <div className="border-t border-border px-4 py-2.5 text-[10px] leading-4 text-muted">
+                    Range and Renko use the contract&apos;s tick size. Volume, trade and delta bars use Databento CME executions.
+                  </div>
+                )}
+              </div>
+            )}
           </div>
           <div className="absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-1/2 items-center gap-1 rounded-xl border border-border bg-surface/70 p-1">
             {[
@@ -3945,6 +4274,7 @@ export default function Home() {
                 onCreateAlertAtPrice={openCreateAlert}
                 onRemoveAllIndicators={handleRemoveAllIndicatorsFromChart}
                 onSelectPeriod={(period) => handleChartPeriod(activeWorkspacePane.id, period)}
+                onSelectTimeframe={(timeframe) => selectWorkspacePaneTimeframe(activeWorkspacePane.id, timeframe)}
               />
             )}
             {workspaceLayout === "split-vertical" && (
@@ -3961,6 +4291,7 @@ export default function Home() {
                     onCreateAlertAtPrice={openCreateAlert}
                     onRemoveAllIndicators={handleRemoveAllIndicatorsFromChart}
                     onSelectPeriod={(period) => handleChartPeriod((workspacePanes[0] ?? activeWorkspacePane).id, period)}
+                    onSelectTimeframe={(timeframe) => selectWorkspacePaneTimeframe((workspacePanes[0] ?? activeWorkspacePane).id, timeframe)}
                   />
                 </div>
                 <div
@@ -3982,6 +4313,7 @@ export default function Home() {
                     onCreateAlertAtPrice={openCreateAlert}
                     onRemoveAllIndicators={handleRemoveAllIndicatorsFromChart}
                     onSelectPeriod={(period) => handleChartPeriod((workspacePanes[1] ?? workspacePanes[0] ?? activeWorkspacePane).id, period)}
+                    onSelectTimeframe={(timeframe) => selectWorkspacePaneTimeframe((workspacePanes[1] ?? workspacePanes[0] ?? activeWorkspacePane).id, timeframe)}
                   />
                 </div>
               </>
@@ -4000,6 +4332,7 @@ export default function Home() {
                     onCreateAlertAtPrice={openCreateAlert}
                     onRemoveAllIndicators={handleRemoveAllIndicatorsFromChart}
                     onSelectPeriod={(period) => handleChartPeriod((workspacePanes[0] ?? activeWorkspacePane).id, period)}
+                    onSelectTimeframe={(timeframe) => selectWorkspacePaneTimeframe((workspacePanes[0] ?? activeWorkspacePane).id, timeframe)}
                   />
                 </div>
                 <div
@@ -4021,6 +4354,7 @@ export default function Home() {
                     onCreateAlertAtPrice={openCreateAlert}
                     onRemoveAllIndicators={handleRemoveAllIndicatorsFromChart}
                     onSelectPeriod={(period) => handleChartPeriod((workspacePanes[1] ?? workspacePanes[0] ?? activeWorkspacePane).id, period)}
+                    onSelectTimeframe={(timeframe) => selectWorkspacePaneTimeframe((workspacePanes[1] ?? workspacePanes[0] ?? activeWorkspacePane).id, timeframe)}
                   />
                 </div>
               </>
@@ -4039,6 +4373,7 @@ export default function Home() {
                     onCreateAlertAtPrice={openCreateAlert}
                     onRemoveAllIndicators={handleRemoveAllIndicatorsFromChart}
                     onSelectPeriod={(period) => handleChartPeriod((workspacePanes[0] ?? activeWorkspacePane).id, period)}
+                    onSelectTimeframe={(timeframe) => selectWorkspacePaneTimeframe((workspacePanes[0] ?? activeWorkspacePane).id, timeframe)}
                   />
                 </div>
                 <div className="absolute right-0 top-0" style={{ width: `calc(${100 - workspaceQuadSplit.x}% - 3px)`, height: `calc(${workspaceQuadSplit.y}% - 3px)` }}>
@@ -4053,6 +4388,7 @@ export default function Home() {
                     onCreateAlertAtPrice={openCreateAlert}
                     onRemoveAllIndicators={handleRemoveAllIndicatorsFromChart}
                     onSelectPeriod={(period) => handleChartPeriod((workspacePanes[1] ?? workspacePanes[0] ?? activeWorkspacePane).id, period)}
+                    onSelectTimeframe={(timeframe) => selectWorkspacePaneTimeframe((workspacePanes[1] ?? workspacePanes[0] ?? activeWorkspacePane).id, timeframe)}
                   />
                 </div>
                 <div className="absolute bottom-0 left-0" style={{ width: `calc(${workspaceQuadSplit.x}% - 3px)`, height: `calc(${100 - workspaceQuadSplit.y}% - 3px)` }}>
@@ -4067,6 +4403,7 @@ export default function Home() {
                     onCreateAlertAtPrice={openCreateAlert}
                     onRemoveAllIndicators={handleRemoveAllIndicatorsFromChart}
                     onSelectPeriod={(period) => handleChartPeriod((workspacePanes[2] ?? workspacePanes[0] ?? activeWorkspacePane).id, period)}
+                    onSelectTimeframe={(timeframe) => selectWorkspacePaneTimeframe((workspacePanes[2] ?? workspacePanes[0] ?? activeWorkspacePane).id, timeframe)}
                   />
                 </div>
                 <div className="absolute bottom-0 right-0" style={{ width: `calc(${100 - workspaceQuadSplit.x}% - 3px)`, height: `calc(${100 - workspaceQuadSplit.y}% - 3px)` }}>
@@ -4081,6 +4418,7 @@ export default function Home() {
                     onCreateAlertAtPrice={openCreateAlert}
                     onRemoveAllIndicators={handleRemoveAllIndicatorsFromChart}
                     onSelectPeriod={(period) => handleChartPeriod((workspacePanes[3] ?? workspacePanes[0] ?? activeWorkspacePane).id, period)}
+                    onSelectTimeframe={(timeframe) => selectWorkspacePaneTimeframe((workspacePanes[3] ?? workspacePanes[0] ?? activeWorkspacePane).id, timeframe)}
                   />
                 </div>
                 <div
