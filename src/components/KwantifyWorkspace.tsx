@@ -2038,6 +2038,8 @@ export default function Home() {
   const [kwantBotDraftAttachments, setKwantBotDraftAttachments] = useState<KwantBotAttachment[]>([]);
   const [kwantBotAttachmentError, setKwantBotAttachmentError] = useState("");
   const [kwantBotAttaching, setKwantBotAttaching] = useState(false);
+  const [kwantBotReplying, setKwantBotReplying] = useState(false);
+  const [kwantBotSendError, setKwantBotSendError] = useState("");
   const [kwantBotUnreadCount, setKwantBotUnreadCount] = useState(0);
   const [showChartAlertModal, setShowChartAlertModal] = useState(false);
   const [chartAlertPriceDraft, setChartAlertPriceDraft] = useState<string>("");
@@ -2862,9 +2864,13 @@ export default function Home() {
     }
   };
 
-  const handleSendKwantBotMessage = () => {
+  const handleSendKwantBotMessage = async () => {
     const text = kwantBotDraft.trim().slice(0, 4_000);
-    if ((!text && !kwantBotDraftAttachments.length) || kwantBotAttaching) return;
+    if (
+      (!text && !kwantBotDraftAttachments.length)
+      || kwantBotAttaching
+      || kwantBotReplying
+    ) return;
     const message: KwantBotMessage = {
       id: kwantBotId("message"),
       text,
@@ -2872,10 +2878,13 @@ export default function Home() {
       sender: "user",
       attachments: kwantBotDraftAttachments.length ? kwantBotDraftAttachments : undefined,
     };
+    const conversation = [...kwantBotMessages.slice(-23), message];
     setKwantBotMessages((current) => [...current.slice(-99), message]);
     setKwantBotDraft("");
     setKwantBotDraftAttachments([]);
     setKwantBotAttachmentError("");
+    setKwantBotSendError("");
+    setKwantBotReplying(true);
     window.dispatchEvent(new CustomEvent("kwantbot:send", {
       detail: {
         id: message.id,
@@ -2884,7 +2893,47 @@ export default function Home() {
         sentAt: message.receivedAt,
       },
     }));
-    window.requestAnimationFrame(() => kwantBotComposerRef.current?.focus());
+    try {
+      const response = await fetch("/api/kwantbot", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messages: conversation.map((entry) => ({
+            role: entry.sender === "bot" ? "assistant" : "user",
+            content: entry.text,
+            attachments: entry.id === message.id
+              ? entry.attachments?.map(({ name, type, size, dataUrl }) => ({ name, type, size, dataUrl }))
+              : undefined,
+          })),
+        }),
+      });
+      const payload = await response.json().catch(() => null) as { text?: unknown; error?: unknown } | null;
+      if (!response.ok) {
+        throw new Error(
+          typeof payload?.error === "string" && payload.error.trim()
+            ? payload.error
+            : "Kwant Bot could not reply.",
+        );
+      }
+      const replyText = typeof payload?.text === "string" ? payload.text.trim().slice(0, 8_000) : "";
+      if (!replyText) throw new Error("Kwant Bot returned an empty reply.");
+      const reply: KwantBotMessage = {
+        id: kwantBotId("kwantbot"),
+        text: replyText,
+        receivedAt: new Date().toISOString(),
+        sender: "bot",
+      };
+      setKwantBotMessages((current) => [...current.slice(-99), reply]);
+    } catch (error) {
+      setKwantBotSendError(
+        error instanceof Error && error.message
+          ? error.message
+          : "Kwant Bot could not reply.",
+      );
+    } finally {
+      setKwantBotReplying(false);
+      window.requestAnimationFrame(() => kwantBotComposerRef.current?.focus());
+    }
   };
 
   useEffect(() => {
@@ -2894,7 +2943,7 @@ export default function Home() {
       kwantBotMessagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [kwantBotMessages.length, rightPanel]);
+  }, [kwantBotMessages.length, kwantBotReplying, rightPanel]);
 
   useEffect(() => {
     if (rightPanel) {
@@ -6569,6 +6618,24 @@ export default function Home() {
                         </div>
                       );
                     })}
+                    {kwantBotReplying ? (
+                      <div className="kwantbot-message-in flex items-end gap-2" aria-live="polite">
+                        <KwantBotAvatar compact speaking />
+                        <div className="min-w-0">
+                          <div className="mb-1 px-1 text-[10px] font-semibold text-foreground">Kwant Bot</div>
+                          <div className="relative flex h-10 items-center gap-1 rounded-[18px] rounded-bl-[6px] border border-border/80 bg-surface px-4 shadow-[0_8px_24px_rgba(0,0,0,0.16)]">
+                            <span
+                              aria-hidden="true"
+                              className="absolute -left-[5px] bottom-0 h-3 w-3 bg-surface [clip-path:polygon(100%_0,100%_100%,0_100%)]"
+                            />
+                            <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-primary [animation-delay:-240ms]" />
+                            <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-primary [animation-delay:-120ms]" />
+                            <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-primary" />
+                            <span className="sr-only">Kwant Bot is typing</span>
+                          </div>
+                        </div>
+                      </div>
+                    ) : null}
                     <div ref={kwantBotMessagesEndRef} />
                   </div>
                 </div>
@@ -6585,6 +6652,11 @@ export default function Home() {
                   </div>
                 ) : null}
                 {kwantBotAttachmentError ? <div className="mb-1.5 px-2 text-[9px] text-danger">{kwantBotAttachmentError}</div> : null}
+                {kwantBotSendError ? (
+                  <div className="mb-1.5 rounded-lg border border-danger/20 bg-danger/8 px-2.5 py-2 text-[10px] leading-4 text-danger" role="alert">
+                    {kwantBotSendError}
+                  </div>
+                ) : null}
                 <div className="flex items-end gap-1.5 rounded-[18px] border border-border bg-surface p-1.5 transition-colors focus-within:border-primary/50">
                   <input
                     ref={kwantBotAttachmentInputRef}
@@ -6611,7 +6683,7 @@ export default function Home() {
                     onKeyDown={(event) => {
                       if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
                         event.preventDefault();
-                        handleSendKwantBotMessage();
+                        void handleSendKwantBotMessage();
                       }
                     }}
                     rows={1}
@@ -6621,13 +6693,13 @@ export default function Home() {
                   />
                   <button
                     type="button"
-                    onClick={handleSendKwantBotMessage}
-                    disabled={kwantBotAttaching || (!kwantBotDraft.trim() && !kwantBotDraftAttachments.length)}
+                    onClick={() => void handleSendKwantBotMessage()}
+                    disabled={kwantBotAttaching || kwantBotReplying || (!kwantBotDraft.trim() && !kwantBotDraftAttachments.length)}
                     className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-background shadow-[0_0_16px_color-mix(in_srgb,var(--primary)_24%,transparent)] transition-transform hover:scale-105 disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:scale-100"
-                    title="Send message"
-                    aria-label="Send message"
+                    title={kwantBotReplying ? "Kwant Bot is replying" : "Send message"}
+                    aria-label={kwantBotReplying ? "Kwant Bot is replying" : "Send message"}
                   >
-                    <Send className="h-3.5 w-3.5" />
+                    {kwantBotReplying ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
                   </button>
                 </div>
                 <div className="mt-1.5 flex items-center gap-1.5 px-2 text-[9px] text-muted/75">

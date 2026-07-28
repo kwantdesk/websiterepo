@@ -20,6 +20,8 @@ Set these for Production, Preview, and Development:
   `NEXT_PUBLIC_SUPABASE_ANON_KEY` if that is the key your Supabase project uses)
 - `ALLOWED_EMAILS` — comma-separated Google accounts permitted to enter
 - `DATABENTO_API_KEY` — server-only key for CME futures and options market data
+- `ANTHROPIC_API_KEY` — server-only key for intelligent Kwant Bot replies
+- `ANTHROPIC_MODEL=claude-sonnet-4-6` — optional model override
 - `NEXT_PUBLIC_SITE_URL=https://www.kwantdesk.com`
 
 ## Supabase Google login checklist
