@@ -50,6 +50,15 @@ import {
 
 type DetailMode = "beginner" | "standard" | "pro";
 type Level = GameplanEdition["ladder"][number];
+type OneLinerSnapshot = {
+  instrument: "NQ" | "ES";
+  session: GameplanSession;
+  text: string;
+  price: number | null;
+  updatedAt: string;
+};
+
+const ONE_LINER_REFRESH_MS = 5 * 60_000;
 
 const ROLE_COPY: Record<GameplanRole, string> = {
   magnet: "Price is pulled here and can stick. Consolidation is more likely than immediate travel.",
@@ -888,7 +897,7 @@ export default function GameplanWorkspace({ initialInstrument = "NQ" }: { initia
   const [session, setSession] = useState<GameplanSession>("newyork");
   const [payload, setPayload] = useState<GameplanPayload | null>(null);
   const [currentPrice, setCurrentPrice] = useState<number | null>(null);
-  const [oneLinerUpdatedAt, setOneLinerUpdatedAt] = useState<string | null>(null);
+  const [oneLinerSnapshot, setOneLinerSnapshot] = useState<OneLinerSnapshot | null>(null);
   const [clockNow, setClockNow] = useState(() => Date.now());
   const [priceTick, setPriceTick] = useState<"up" | "down" | "flat">("flat");
   const [liveFeedState, setLiveFeedState] = useState<"connecting" | "live" | "fallback">("connecting");
@@ -906,6 +915,7 @@ export default function GameplanWorkspace({ initialInstrument = "NQ" }: { initia
   const priceTickTimerRef = useRef<number | null>(null);
   const planRequestRef = useRef(0);
   const planRefreshDelayRef = useRef(5_000);
+  const latestPayloadRef = useRef<GameplanPayload | null>(null);
   const countdown = useCountdown(session);
 
   const updateLivePrice = useCallback((nextPrice: number) => {
@@ -918,7 +928,6 @@ export default function GameplanWorkspace({ initialInstrument = "NQ" }: { initia
       priceTickTimerRef.current = window.setTimeout(() => setPriceTick("flat"), 420);
     }
     setCurrentPrice(nextPrice);
-    setOneLinerUpdatedAt(new Date().toISOString());
   }, []);
 
   useEffect(() => () => {
@@ -940,8 +949,22 @@ export default function GameplanWorkspace({ initialInstrument = "NQ" }: { initia
       if (!response.ok) throw new Error(next.error || "Gameplan could not be loaded.");
       if (requestId !== planRequestRef.current) return;
       setPayload(next);
+      latestPayloadRef.current = next;
       planRefreshDelayRef.current = Math.max(5_000, Math.min(60_000, next.refresh_after_ms));
-      setOneLinerUpdatedAt(next.generated_at);
+      setOneLinerSnapshot((current) => {
+        if (
+          !manual
+          && current?.instrument === next.instrument
+          && current.session === next.plan.edition.session
+        ) return current;
+        return {
+          instrument: next.instrument,
+          session: next.plan.edition.session,
+          text: buildLiveOneLiner(next.plan, next.instrument, next.current_price),
+          price: next.current_price,
+          updatedAt: next.generated_at,
+        };
+      });
       if (
         next.current_price !== null
         && (previousPriceRef.current === null || Date.now() - lastNativeTickAtRef.current > 3_000)
@@ -971,6 +994,27 @@ export default function GameplanWorkspace({ initialInstrument = "NQ" }: { initia
       if (timer !== null) window.clearTimeout(timer);
     };
   }, [loadPlan]);
+
+  useEffect(() => {
+    const refreshOneLiner = () => {
+      const latest = latestPayloadRef.current;
+      if (
+        !latest
+        || latest.instrument !== root
+        || latest.plan.edition.session !== session
+      ) return;
+      const price = previousPriceRef.current ?? latest.current_price;
+      setOneLinerSnapshot({
+        instrument: root,
+        session,
+        text: buildLiveOneLiner(latest.plan, root, price),
+        price,
+        updatedAt: new Date().toISOString(),
+      });
+    };
+    const timer = window.setInterval(refreshOneLiner, ONE_LINER_REFRESH_MS);
+    return () => window.clearInterval(timer);
+  }, [root, session]);
 
   useEffect(() => {
     const syncAddedState = () => {
@@ -1064,11 +1108,22 @@ export default function GameplanWorkspace({ initialInstrument = "NQ" }: { initia
   }
 
   const plan = payload.plan;
-  const liveOneLiner = buildLiveOneLiner(plan, root, currentPrice);
+  const snapshotMatchesSelection =
+    oneLinerSnapshot?.instrument === root
+    && oneLinerSnapshot.session === session;
+  const displayedOneLiner = snapshotMatchesSelection
+    ? oneLinerSnapshot.text
+    : buildLiveOneLiner(plan, root, payload.current_price);
+  const displayedOneLinerPrice = snapshotMatchesSelection
+    ? oneLinerSnapshot.price
+    : payload.current_price;
+  const displayedOneLinerUpdatedAt = snapshotMatchesSelection
+    ? oneLinerSnapshot.updatedAt
+    : payload.generated_at;
   const currentPlanKey = `${root}:${plan.edition.date}:${plan.edition.session}:${plan.edition.published_at}`;
   const planMatchesSelection = payload.instrument === root && plan.edition.session === session;
   const copyOneLiner = async () => {
-    await navigator.clipboard.writeText(liveOneLiner);
+    await navigator.clipboard.writeText(displayedOneLiner);
     setCopied(true);
     window.setTimeout(() => setCopied(false), 1_600);
   };
@@ -1167,20 +1222,16 @@ export default function GameplanWorkspace({ initialInstrument = "NQ" }: { initia
             <div className="relative px-5 py-6 sm:px-7 sm:py-8 lg:px-9">
               <div className="flex items-center gap-2">
                 <span className="rounded-lg border border-primary/20 bg-primary/10 px-2 py-1 text-[9px] font-bold uppercase tracking-[0.15em] text-primary">The one-liner</span>
-                <span className={`rounded-md px-1.5 py-0.5 font-mono text-[9px] transition-colors ${
-                  priceTick === "up"
-                    ? "bg-primary/10 text-primary"
-                    : priceTick === "down"
-                      ? "bg-danger/10 text-danger"
-                      : "text-muted"
-                }`}>{root} · {formatPrice(currentPrice)}</span>
+                <span className="rounded-md px-1.5 py-0.5 font-mono text-[9px] text-muted">
+                  {root} · {formatPrice(displayedOneLinerPrice)}
+                </span>
                 <span className="ml-auto flex items-center gap-1.5 font-mono text-[9px] text-muted">
                   <Clock3 className="h-3 w-3 text-primary" />
-                  Last updated {formatLiveTimestamp(oneLinerUpdatedAt)}
-                  <span className="text-primary">{formatUpdateAge(oneLinerUpdatedAt, clockNow)}</span>
+                  Last updated {formatLiveTimestamp(displayedOneLinerUpdatedAt)}
+                  <span className="text-primary">{formatUpdateAge(displayedOneLinerUpdatedAt, clockNow)}</span>
                 </span>
               </div>
-              <h1 className="mt-4 max-w-5xl text-[23px] font-semibold leading-[1.22] tracking-[-0.035em] text-foreground sm:text-[29px] lg:text-[35px]">{liveOneLiner}</h1>
+              <h1 className="mt-4 max-w-5xl text-[23px] font-semibold leading-[1.22] tracking-[-0.035em] text-foreground sm:text-[29px] lg:text-[35px]">{displayedOneLiner}</h1>
               <div className="mt-5 flex flex-wrap items-center gap-3">
                 <p className="max-w-3xl text-[10px] leading-5 text-muted">The plan earns nothing until a level prints its reaction — the map is the map, the print is the permission.</p>
                 <div className="ml-auto flex gap-2">
