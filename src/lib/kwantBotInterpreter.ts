@@ -267,6 +267,42 @@ function topVisitedArea(
   return typeof price === "number" ? { price, count, total: samples.length } : null;
 }
 
+function matchingLevelMemory(
+  root: KwantBotMarketRoot,
+  level: KwantBotLevel,
+  memory: KwantBotMemoryEvent[],
+) {
+  const levelMid = (level.zone[0] + level.zone[1]) / 2;
+  const tolerance = root === "NQ" ? 40 : 10;
+  return memory.filter((event) => {
+    if (event.root !== root || event.type === "price" || event.type === "context") return false;
+    if (event.levelId === level.id) return true;
+    if (event.levelName !== level.name || !event.zone) return false;
+    const eventMid = (event.zone[0] + event.zone[1]) / 2;
+    return Math.abs(eventMid - levelMid) <= tolerance;
+  });
+}
+
+function levelMemoryCheck(
+  root: KwantBotMarketRoot,
+  level: KwantBotLevel,
+  memory: KwantBotMemoryEvent[],
+) {
+  const matches = matchingLevelMemory(root, level, memory);
+  const touches = matches.filter((event) => event.type === "touch");
+  const outcomes = matches.filter((event) => event.type === "outcome");
+  const confirmed = outcomes.filter((event) => event.detail?.includes("follow-through"));
+  const unresolved = outcomes.length - confirmed.length;
+  const latestOutcome = outcomes[outcomes.length - 1];
+  if (!touches.length && !outcomes.length) {
+    return "Memory check: this exact area has no stored response yet, so the first reaction carries more weight than any forecast.";
+  }
+  const latestText = latestOutcome
+    ? ` Last recorded outcome: ${latestOutcome.detail ?? "completed read"} at ${formatKwantBotPrice(root, latestOutcome.price ?? level.zone[0])}.`
+    : "";
+  return `Memory check: ${touches.length} prior touch${touches.length === 1 ? "" : "es"}, ${confirmed.length} confirmed follow-through${confirmed.length === 1 ? "" : "s"}${unresolved ? `, ${unresolved} unresolved or failed response${unresolved === 1 ? "" : "s"}` : ""}.${latestText}`;
+}
+
 export function buildKwantBotBriefing(args: {
   root: KwantBotMarketRoot;
   context: KwantBotMarketContext;
@@ -475,10 +511,11 @@ export function interpretKwantBotTick(args: {
     && (!levelRuntime.lastApproachAt || now - levelRuntime.lastApproachAt >= 10 * 60_000)
   ) {
     const target = nextLevel(context.levels, nearest.zone, currentSide === "below" ? "up" : "down");
+    const priorMemory = levelMemoryCheck(root, nearest, memory);
     messages.push(message(
       root,
       "approach",
-      `${root} is approaching ${nearest.name} at ${formatZone(root, nearest.zone)}—${distance.toFixed(2)} points away. Why it matters: ${nearest.why} Prepare for the first response. ${nearest.ifVisit}${target ? ` The next mapped area on rejection is ${target.name} at ${formatZone(root, target.zone)}.` : ""}`,
+      `${root} is approaching ${nearest.name} at ${formatZone(root, nearest.zone)}—${distance.toFixed(2)} points away. Why it matters: ${nearest.why} ${priorMemory} Prepare for the first response. ${nearest.ifVisit}${target ? ` The next mapped area on rejection is ${target.name} at ${formatZone(root, target.zone)}.` : ""}`,
       `approach:${nearest.id}:${Math.floor(now / (10 * 60_000))}`,
       now,
       { price, levelId: nearest.id },
@@ -496,6 +533,13 @@ export function interpretKwantBotTick(args: {
   }
 
   if (currentSide === "inside" && levelRuntime.phase !== "inside") {
+    const priorApproach = [...memory].reverse().find((event) =>
+      event.root === root
+      && event.type === "approach"
+      && event.levelId === nearest.id);
+    const approachReference = priorApproach
+      ? ` This is the area flagged at ${new Date(priorApproach.createdAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}; that preparation note remains valid until the response is confirmed or invalidated.`
+      : "";
     const entrySide = priorSide === "inside"
       ? priorPrice !== null && priorPrice >= (nearest.zone[0] + nearest.zone[1]) / 2 ? "above" : "below"
       : priorSide;
@@ -506,7 +550,7 @@ export function interpretKwantBotTick(args: {
     messages.push(message(
       root,
       "touch",
-      `${root} has hit ${nearest.name} and is trading inside ${formatZone(root, nearest.zone)}. No directional call yet. ${nearest.ifHold} ${nearest.ifBreak}`,
+      `${root} has hit ${nearest.name} and is trading inside ${formatZone(root, nearest.zone)}.${approachReference} No directional call yet. ${nearest.ifHold} ${nearest.ifBreak}`,
       `touch:${nearest.id}:${now}`,
       now,
       { price, levelId: nearest.id },

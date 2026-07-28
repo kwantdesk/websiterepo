@@ -1,6 +1,7 @@
 "use client";
 
 import KwantSelect from "@/components/ui/KwantSelect";
+import KwantBotIntelligenceWorkspace from "@/components/kwantbot/KwantBotIntelligenceWorkspace";
 import KwantBotInterpreterPanel from "@/components/kwantbot/KwantBotInterpreterPanel";
 import { useKwantBotInterpreter } from "@/hooks/useKwantBotInterpreter";
 
@@ -6633,6 +6634,7 @@ export default function Home() {
             {bottomWorkspaceSection === "gamma" ? <GammaWorkspace /> : null}
             {bottomWorkspaceSection === "gexmap" ? <GexMapWorkspace /> : null}
             {bottomWorkspaceSection === "gameplan" ? <GameplanWorkspace initialInstrument={displayCmeSymbol(selectedInstrument)} /> : null}
+            {bottomWorkspaceSection === "kwantbot" ? <KwantBotIntelligenceWorkspace interpreter={kwantBotInterpreter} /> : null}
             {bottomWorkspaceSection === "news" ? <NewsWorkspace /> : null}
           </section>
         )}
