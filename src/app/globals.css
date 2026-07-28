@@ -66,6 +66,31 @@ body {
   70% { transform: translateY(1px) scale(0.985); }
 }
 
+@keyframes kwantbot-home-float {
+  0%, 100% { transform: translate3d(0, 10px, 0) rotate(-0.35deg); }
+  50% { transform: translate3d(0, -18px, 0) rotate(0.35deg); }
+}
+
+@keyframes kwantbot-home-shadow {
+  0%, 100% { opacity: .5; transform: scaleX(.86); filter: blur(13px); }
+  50% { opacity: .25; transform: scaleX(.66); filter: blur(18px); }
+}
+
+@keyframes kwantbot-home-energy {
+  0%, 100% { opacity: .35; transform: scale(.92); }
+  50% { opacity: .7; transform: scale(1.08); }
+}
+
+@keyframes kwantbot-home-orbit {
+  from { transform: rotateX(70deg) rotateZ(0deg); }
+  to { transform: rotateX(70deg) rotateZ(360deg); }
+}
+
+@keyframes kwantbot-home-particle {
+  0%, 100% { opacity: .15; transform: translate3d(0, 10px, 0) scale(.75); }
+  50% { opacity: .65; transform: translate3d(0, -16px, 0) scale(1); }
+}
+
 @keyframes kwantbot-message-in {
   from { opacity: 0; transform: translate3d(-10px, 8px, 0) scale(0.97); }
   to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
@@ -107,6 +132,125 @@ body {
   transform-origin: 50% 58%;
 }
 
+.kwantbot-home-stage {
+  background:
+    radial-gradient(circle at 50% 48%, color-mix(in srgb, var(--primary) 9%, transparent) 0%, transparent 31%),
+    radial-gradient(circle at 50% 110%, color-mix(in srgb, var(--primary) 5%, transparent) 0%, transparent 43%),
+    var(--background);
+  perspective: 1200px;
+}
+
+.kwantbot-home-grid {
+  opacity: .19;
+  background-image:
+    linear-gradient(color-mix(in srgb, var(--primary) 10%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--primary) 10%, transparent) 1px, transparent 1px);
+  background-size: 68px 68px;
+  mask-image: radial-gradient(circle at center, black, transparent 67%);
+}
+
+.kwantbot-home-aura {
+  background: color-mix(in srgb, var(--primary) 9%, transparent);
+  box-shadow:
+    0 0 90px color-mix(in srgb, var(--primary) 11%, transparent),
+    inset 0 0 80px color-mix(in srgb, var(--primary) 5%, transparent);
+  filter: blur(28px);
+  animation: kwantbot-home-energy 5.5s ease-in-out infinite;
+}
+
+.kwantbot-home-orbit {
+  border: 1px solid color-mix(in srgb, var(--primary) 16%, transparent);
+  box-shadow: 0 0 28px color-mix(in srgb, var(--primary) 6%, transparent);
+  transform-style: preserve-3d;
+  animation: kwantbot-home-orbit 24s linear infinite;
+}
+
+.kwantbot-home-orbit::after {
+  content: "";
+  position: absolute;
+  left: 12%;
+  top: 12%;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--primary);
+  box-shadow: 0 0 18px var(--primary);
+}
+
+.kwantbot-home-float {
+  animation: kwantbot-home-float 5.8s ease-in-out infinite;
+  transform-origin: 50% 82%;
+  will-change: transform;
+}
+
+.kwantbot-home-model {
+  --robot-rotate-x: 0deg;
+  --robot-rotate-y: 0deg;
+  --robot-shift-x: 0px;
+  transform: translateX(var(--robot-shift-x)) rotateX(var(--robot-rotate-x)) rotateY(var(--robot-rotate-y));
+  transform-style: preserve-3d;
+  transition: transform 280ms cubic-bezier(.2,.8,.2,1);
+  will-change: transform;
+}
+
+.kwantbot-home-image {
+  transform: translateZ(34px);
+  filter:
+    drop-shadow(0 34px 30px rgba(0, 0, 0, .52))
+    drop-shadow(0 0 26px color-mix(in srgb, var(--primary) 8%, transparent));
+}
+
+.kwantbot-home-tint {
+  transform: translateZ(35px);
+  filter: saturate(1.35);
+}
+
+.kwantbot-home-visor-glow {
+  left: 35%;
+  top: 25.5%;
+  width: 34%;
+  height: 15%;
+  border-radius: 45%;
+  background: color-mix(in srgb, var(--primary) 30%, transparent);
+  box-shadow: 0 0 38px color-mix(in srgb, var(--primary) 32%, transparent);
+  filter: blur(12px);
+  transform: translateZ(50px);
+  animation: kwantbot-home-energy 3.4s ease-in-out infinite;
+}
+
+.kwantbot-home-shadow {
+  background: color-mix(in srgb, var(--primary) 25%, rgba(0, 0, 0, .9));
+  box-shadow: 0 0 34px color-mix(in srgb, var(--primary) 12%, transparent);
+  animation: kwantbot-home-shadow 5.8s ease-in-out infinite;
+}
+
+.kwantbot-home-particle {
+  position: absolute;
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--primary);
+  box-shadow: 0 0 14px var(--primary);
+  animation: kwantbot-home-particle 4.2s ease-in-out infinite;
+}
+
+.kwantbot-home-particle-one {
+  left: 22%;
+  top: 30%;
+}
+
+.kwantbot-home-particle-two {
+  right: 21%;
+  top: 24%;
+  animation-delay: -1.6s;
+}
+
+.kwantbot-home-particle-three {
+  right: 28%;
+  bottom: 24%;
+  animation-delay: -2.8s;
+}
+
 .kwantbot-message-in {
   animation: kwantbot-message-in 360ms cubic-bezier(.2,.8,.2,1) both;
 }
@@ -118,6 +262,12 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .kwantbot-avatar-float,
   .kwantbot-avatar-speaking,
+  .kwantbot-home-float,
+  .kwantbot-home-shadow,
+  .kwantbot-home-aura,
+  .kwantbot-home-orbit,
+  .kwantbot-home-visor-glow,
+  .kwantbot-home-particle,
   .kwantbot-message-in,
   .kwantbot-message-out,
   .gameplan-current-level {
