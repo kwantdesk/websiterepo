@@ -76,6 +76,11 @@ interface ChartProps {
   chartDragEnabled?: boolean;
   onChartDragStart?: (event: ReactDragEvent<HTMLButtonElement>) => void;
   onChartDragEnd?: () => void;
+  gammaLevelsEnabled?: boolean;
+  gammaLevelsAvailable?: boolean;
+  gammaLevelsLoading?: boolean;
+  gammaLevelsError?: string | null;
+  onToggleGammaLevels?: () => void;
 }
 
 export interface ChartLevel {
@@ -84,6 +89,8 @@ export interface ChartLevel {
   color: string;
   label: string;
   lineStyle?: "solid" | "dashed" | "dotted";
+  lineWidth?: 1 | 2 | 3 | 4;
+  axisLabelVisible?: boolean;
 }
 
 type DrawingToolId =
@@ -638,6 +645,11 @@ export default function Chart({
   chartDragEnabled = false,
   onChartDragStart,
   onChartDragEnd,
+  gammaLevelsEnabled = false,
+  gammaLevelsAvailable = false,
+  gammaLevelsLoading = false,
+  gammaLevelsError = null,
+  onToggleGammaLevels,
 }: ChartProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
@@ -864,14 +876,14 @@ export default function Chart({
       const line = candleSeriesRef.current?.createPriceLine({
         price: level.price,
         color: level.color,
-        lineWidth: 1,
+        lineWidth: level.lineWidth ?? 1,
         lineStyle:
           level.lineStyle === "dashed"
             ? LineStyle.Dashed
             : level.lineStyle === "dotted"
               ? LineStyle.Dotted
               : LineStyle.Solid,
-        axisLabelVisible: true,
+        axisLabelVisible: level.axisLabelVisible ?? true,
         title: level.label,
       });
 
@@ -2106,6 +2118,35 @@ export default function Chart({
 
         {!toolbarCollapsed && (
           <>
+            <button
+              type="button"
+              disabled={!gammaLevelsAvailable || !onToggleGammaLevels}
+              onClick={(event) => {
+                event.stopPropagation();
+                onToggleGammaLevels?.();
+              }}
+              className={`flex items-center justify-center border backdrop-blur ${
+                gammaLevelsAvailable
+                  ? getToolbarButtonTone(gammaLevelsEnabled)
+                  : "cursor-not-allowed border-transparent bg-panel/45 text-muted/30"
+              }`}
+              style={{ width: toolbarMetrics.buttonSize, height: toolbarMetrics.buttonSize, borderRadius: toolbarMetrics.radius }}
+              title={
+                gammaLevelsAvailable
+                  ? gammaLevelsError
+                    ? `Gamma levels: ${gammaLevelsError}`
+                    : gammaLevelsLoading
+                      ? "Loading current gamma levels"
+                      : gammaLevelsEnabled
+                        ? "Hide gamma levels"
+                        : "Show gamma levels"
+                  : "Gamma levels are available on NQ, MNQ, ES and MES"
+              }
+              aria-label={gammaLevelsEnabled ? "Hide gamma levels" : "Show gamma levels"}
+              aria-pressed={gammaLevelsEnabled}
+            >
+              <ScanLine className={`${toolbarIconClassName} ${gammaLevelsLoading ? "animate-pulse" : ""}`} />
+            </button>
             <button
               type="button"
               onClick={() => setMagnetMode((current) => (current === "off" ? "weak" : current === "weak" ? "strong" : "off"))}

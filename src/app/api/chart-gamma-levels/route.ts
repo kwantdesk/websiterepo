@@ -33,7 +33,10 @@ async function isAuthenticated(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
-  if (!getConfiguredQuantDataApiKey()) {
+  const root = (request.nextUrl.searchParams.get("root") || "").trim().toUpperCase();
+  const source = (request.nextUrl.searchParams.get("source") || "").trim().toUpperCase();
+  const nativeFuturesRequest = (root === "NQ" || root === "ES") && source === root;
+  if (!nativeFuturesRequest && !getConfiguredQuantDataApiKey()) {
     return NextResponse.json({ error: "QuantData is not configured." }, { status: 503 });
   }
   if (!(await isAuthenticated(request))) {
@@ -41,8 +44,8 @@ export async function GET(request: NextRequest) {
   }
   try {
     const payload = await getChartGammaLevels(
-      request.nextUrl.searchParams.get("root") || "",
-      request.nextUrl.searchParams.get("source") || "",
+      root,
+      source,
     );
     return NextResponse.json(payload, {
       headers: { "Cache-Control": "private, no-store, max-age=0" },
@@ -58,4 +61,3 @@ export async function GET(request: NextRequest) {
     );
   }
 }
-

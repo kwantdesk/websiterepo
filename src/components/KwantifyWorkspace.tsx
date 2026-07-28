@@ -69,6 +69,21 @@ import { generateSampleData } from "@/lib/sampleData";
 import { createClient } from "@/lib/supabase";
 import { clearSavedStrategiesRaw, loadSavedStrategiesRaw, saveSavedStrategiesRaw } from "@/lib/automation";
 import { defaultChartSettings, extractUserChartSettings, loadStoredChartSettings, saveStoredChartSettings, type ChartSettings } from "@/lib/chartSettings";
+import type { ChartLevel } from "@/components/Chart";
+import type { ChartGammaLevelsPayload } from "@/lib/chartGammaLevels";
+import {
+  buildChartGammaCalibration,
+  cashFallbackGammaConversion,
+  findCashCloseFuturesCandle,
+  identityGammaCalibration,
+  isGammaChartInstrument,
+  isNativeGammaConversion,
+  loadChartGammaCalibration,
+  resolveGammaConversion,
+  roundedGammaPrice,
+  saveChartGammaCalibration,
+  type GammaConversionDefinition,
+} from "@/lib/chartGammaConversion";
 import {
   createPaperTradingAccount,
   loadPaperTradingAccounts,
@@ -95,7 +110,7 @@ import {
   supportsChartInterval,
   type ChartIntervalKind,
 } from "@/lib/chartIntervals";
-import { applyMarketTradesToEventBars } from "@/lib/eventBars";
+import { applyMarketTradesToEventBars, futuresTickSize } from "@/lib/eventBars";
 import {
   mergeChartHistory,
   readChartHistoryCache,
@@ -253,6 +268,7 @@ const ACTIVE_WORKSPACE_PRESET_STORAGE_KEY = "kwantdesk-chart-workspace-active-pr
 const WORKSPACE_BACKUP_FORMAT = "kwantdesk-chart-workspaces";
 const MAX_WORKSPACE_BACKUP_BYTES = 2_000_000;
 const BOTTOM_WORKSPACE_SECTION_STORAGE_KEY = "kwantdesk-primary-workspace-section";
+const GAMMA_LEVELS_ENABLED_STORAGE_KEY = "kwantdesk:chart-gamma-levels-enabled:v1";
 const KWANTBOT_MESSAGES_STORAGE_KEY = "kwantdesk-kwantbot-messages";
 const BOTTOM_WORKSPACE_SECTIONS = [
   { id: "charts" as const, label: "Charts", icon: LineChart },
@@ -1134,6 +1150,164 @@ function EquityChart({
   );
 }
 
+type GammaChartOverlay = {
+  levels: ChartLevel[];
+  label: string;
+  regime: "POSITIVE" | "NEGATIVE" | "NEUTRAL";
+  checkedAt: string;
+  sourceLabel: string;
+  stale: boolean;
+};
+
+type GammaPayloadCacheEntry = {
+  expiresAt: number;
+  promise: Promise<ChartGammaLevelsPayload>;
+};
+
+const gammaPayloadCache = new Map<string, GammaPayloadCacheEntry>();
+
+function fetchGammaPayload(conversion: GammaConversionDefinition) {
+  const cacheKey = `${conversion.futuresRoot}:${conversion.source}`;
+  const cached = gammaPayloadCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) return cached.promise;
+
+  const promise = fetch(
+    `/api/chart-gamma-levels?root=${encodeURIComponent(conversion.futuresRoot)}&source=${encodeURIComponent(conversion.source)}`,
+    { cache: "no-store" },
+  )
+    .then(async (response) => {
+      const payload = await response.json() as ChartGammaLevelsPayload & { error?: string };
+      if (!response.ok) throw new Error(payload.error || "Gamma levels are unavailable.");
+      const current = gammaPayloadCache.get(cacheKey);
+      if (current?.promise === promise) {
+        current.expiresAt = Date.now() + Math.min(60_000, Math.max(5_000, payload.refreshAfterMs));
+      }
+      return payload;
+    })
+    .catch((error) => {
+      if (gammaPayloadCache.get(cacheKey)?.promise === promise) gammaPayloadCache.delete(cacheKey);
+      throw error;
+    });
+
+  gammaPayloadCache.set(cacheKey, { expiresAt: Date.now() + 5_000, promise });
+  return promise;
+}
+
+function gammaLevelColor(kind: string, settings: ChartSettings) {
+  if (kind === "CALL_WALL" || kind === "POSITIVE_GEX") return settings.upColor;
+  if (kind === "PUT_WALL" || kind === "NEGATIVE_GEX") return settings.downColor;
+  if (kind === "GAMMA_CENTRE") return "#06B6D4";
+  if (kind === "EXPECTED_MOVE_MAX" || kind === "EXPECTED_MOVE_MIN") return "#F59E0B";
+  return "#8B5CF6";
+}
+
+function buildGammaChartOverlay(args: {
+  payload: ChartGammaLevelsPayload;
+  conversion: GammaConversionDefinition;
+  candles: Candle[];
+  futuresPrice: number | null;
+  futuresAsOfMs: number | null;
+  futuresContract: string;
+  tickSize: number;
+  settings: ChartSettings;
+}): GammaChartOverlay | null {
+  const { payload, conversion } = args;
+  if (payload.root !== conversion.futuresRoot || payload.requestedSource !== conversion.source) return null;
+  const source = payload.sources.find((candidate) => candidate.symbol === conversion.source);
+  if (!source) return null;
+
+  let calibration = loadChartGammaCalibration(conversion);
+  if (isNativeGammaConversion(conversion)) {
+    calibration = identityGammaCalibration(
+      conversion,
+      payload.sessionDate,
+      args.futuresContract,
+      Date.now(),
+    );
+  } else {
+    const contractRolled = Boolean(
+      calibration
+      && args.futuresContract
+      && calibration.futuresContract !== args.futuresContract,
+    );
+    if (contractRolled) calibration = null;
+
+    const quoteIsFresh = args.futuresAsOfMs !== null && Date.now() - args.futuresAsOfMs <= 60_000;
+    const cashCloseCandle = payload.marketOpen
+      ? null
+      : findCashCloseFuturesCandle(args.candles, payload.sessionDate);
+    const calibrationDue = !calibration
+      || calibration.sessionDate !== payload.sessionDate
+      || Date.now() - calibration.calibratedAtMs >= 10 * 60_000;
+    const calibrationFuturePrice = payload.marketOpen && quoteIsFresh
+      ? args.futuresPrice
+      : cashCloseCandle?.close ?? null;
+    const calibrationFutureAsOfMs = payload.marketOpen && quoteIsFresh
+      ? args.futuresAsOfMs
+      : cashCloseCandle?.timestamp ?? null;
+    const liveFuturesPrice = args.futuresPrice ?? args.candles.at(-1)?.close ?? null;
+
+    if (
+      calibrationDue
+      && args.futuresContract
+      && calibrationFuturePrice !== null
+      && calibrationFutureAsOfMs !== null
+      && liveFuturesPrice !== null
+    ) {
+      const candidate = buildChartGammaCalibration({
+        conversion,
+        futuresContract: args.futuresContract,
+        sessionDate: payload.sessionDate,
+        futuresPrice: calibrationFuturePrice,
+        futuresAsOfMs: calibrationFutureAsOfMs,
+        cashPrice: source.stockPrice,
+        cashAsOfMs: payload.marketOpen ? Date.parse(payload.checkedAt) : calibrationFutureAsOfMs,
+        sourceLevels: source.validationStrikes,
+        liveFuturesPrice,
+      });
+      if (candidate) {
+        calibration = candidate;
+        saveChartGammaCalibration(candidate);
+      }
+    }
+  }
+
+  if (!calibration) return null;
+
+  const levels = source.levels
+    .map((level) => ({
+      ...level,
+      price: roundedGammaPrice(level.price, calibration.scale, args.tickSize),
+    }))
+    .sort((left, right) => {
+      const leftPrimary = ["CALL_WALL", "PUT_WALL", "GAMMA_MAGNET", "GAMMA_CENTRE"].includes(left.kind) ? 0 : 1;
+      const rightPrimary = ["CALL_WALL", "PUT_WALL", "GAMMA_MAGNET", "GAMMA_CENTRE"].includes(right.kind) ? 0 : 1;
+      return leftPrimary - rightPrimary || left.rank - right.rank;
+    })
+    .slice(0, 24)
+    .map((level): ChartLevel => ({
+      id: `gamma-${conversion.id}-${level.id}`,
+      price: level.price,
+      color: gammaLevelColor(level.kind, args.settings),
+      label: `${level.label} · ${conversion.source}→${conversion.target}`,
+      lineStyle: level.kind === "POSITIVE_GEX" || level.kind === "NEGATIVE_GEX" ? "dotted" : "dashed",
+      lineWidth: level.kind === "CALL_WALL" || level.kind === "PUT_WALL" ? 2 : 1,
+      axisLabelVisible: true,
+    }));
+
+  if (!levels.length) return null;
+  return {
+    levels,
+    label: payload.environment.gammaStateLabel,
+    regime: payload.environment.gammaRegime,
+    checkedAt: payload.checkedAt,
+    sourceLabel: isNativeGammaConversion(conversion)
+      ? `${conversion.label} · Databento futures options`
+      : `${conversion.label} · ${calibration.scale.toFixed(6)}×`,
+    stale: false,
+  };
+}
+
 function WorkspaceChartPane({
   pane,
   active,
@@ -1151,6 +1325,8 @@ function WorkspaceChartPane({
   chartDragEnabled,
   onChartDragStart,
   onChartDragEnd,
+  gammaLevelsEnabled,
+  onToggleGammaLevels,
 }: {
   pane: WorkspacePane;
   active: boolean;
@@ -1168,6 +1344,8 @@ function WorkspaceChartPane({
   chartDragEnabled?: boolean;
   onChartDragStart?: (event: ReactDragEvent<HTMLButtonElement>) => void;
   onChartDragEnd?: () => void;
+  gammaLevelsEnabled: boolean;
+  onToggleGammaLevels: () => void;
 }) {
   const [candles, setCandles] = useState<Candle[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1181,8 +1359,22 @@ function WorkspaceChartPane({
   const [intervalCommandOpen, setIntervalCommandOpen] = useState(false);
   const [intervalCommandDraft, setIntervalCommandDraft] = useState("");
   const [intervalCommandError, setIntervalCommandError] = useState("");
+  const [gammaOverlay, setGammaOverlay] = useState<GammaChartOverlay | null>(null);
+  const [gammaLevelsLoading, setGammaLevelsLoading] = useState(false);
+  const [gammaLevelsError, setGammaLevelsError] = useState<string | null>(null);
   const intervalCommandInputRef = useRef<HTMLInputElement>(null);
   const latestCandlesRef = useRef<Candle[]>([]);
+  const latestFuturesRef = useRef<{
+    price: number | null;
+    asOfMs: number | null;
+    contractSymbol: string | null;
+    tickSize: number;
+  }>({
+    price: null,
+    asOfMs: null,
+    contractSymbol: currentCmeContract(pane.symbol),
+    tickSize: futuresTickSize(pane.symbol),
+  });
   const pendingLiveTicksRef = useRef<Array<{
     mid: number;
     timestamp: number;
@@ -1192,6 +1384,15 @@ function WorkspaceChartPane({
     delta?: number;
   }>>([]);
   const liveFrameRef = useRef<number | null>(null);
+  const gammaInstrument = displayCmeSymbol(pane.symbol);
+  const gammaLevelsAvailable =
+    pane.broker === "Databento" && isGammaChartInstrument(gammaInstrument);
+  const nativeGammaConversion = gammaLevelsAvailable
+    ? resolveGammaConversion(undefined, gammaInstrument)
+    : null;
+  const fallbackGammaConversion = gammaLevelsAvailable
+    ? cashFallbackGammaConversion(gammaInstrument)
+    : null;
 
   useEffect(() => {
     let cancelled = false;
@@ -1251,13 +1452,128 @@ function WorkspaceChartPane({
 
   useEffect(() => {
     latestCandlesRef.current = candles;
+    const latest = candles.at(-1);
+    if (latest && (
+      latestFuturesRef.current.asOfMs === null
+      || latest.timestamp >= latestFuturesRef.current.asOfMs
+    )) {
+      latestFuturesRef.current = {
+        ...latestFuturesRef.current,
+        price: latest.close,
+        asOfMs: latest.timestamp,
+      };
+    }
   }, [candles]);
 
   useEffect(() => {
-    setResolvedContractSymbol(
-      pane.broker === "Databento" ? currentCmeContract(pane.symbol) : null,
-    );
+    const contractSymbol = pane.broker === "Databento" ? currentCmeContract(pane.symbol) : null;
+    setResolvedContractSymbol(contractSymbol);
+    latestFuturesRef.current = {
+      ...latestFuturesRef.current,
+      contractSymbol,
+      tickSize: futuresTickSize(pane.symbol),
+    };
   }, [pane.broker, pane.symbol]);
+
+  useEffect(() => {
+    if (!gammaLevelsAvailable || !nativeGammaConversion) return;
+    const timer = window.setTimeout(() => {
+      const conversions = [fallbackGammaConversion, nativeGammaConversion]
+        .filter((conversion): conversion is GammaConversionDefinition => Boolean(conversion));
+      void Promise.allSettled(conversions.map((conversion) => fetchGammaPayload(conversion)));
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [
+    fallbackGammaConversion?.id,
+    gammaLevelsAvailable,
+    nativeGammaConversion?.id,
+  ]);
+
+  useEffect(() => {
+    if (!gammaLevelsEnabled || !gammaLevelsAvailable || !nativeGammaConversion) {
+      setGammaLevelsLoading(false);
+      setGammaLevelsError(null);
+      if (!gammaLevelsAvailable) setGammaOverlay(null);
+      return;
+    }
+
+    let cancelled = false;
+    let timer: number | null = null;
+    let nativeApplied = false;
+    let retainedOverlay = gammaOverlay;
+
+    const applyConversion = async (conversion: GammaConversionDefinition) => {
+      const payload = await fetchGammaPayload(conversion);
+      if (cancelled) return null;
+      const future = latestFuturesRef.current;
+      const overlay = buildGammaChartOverlay({
+        payload,
+        conversion,
+        candles: latestCandlesRef.current,
+        futuresPrice: future.price,
+        futuresAsOfMs: future.asOfMs,
+        futuresContract: future.contractSymbol ?? currentCmeContract(pane.symbol) ?? conversion.futuresRoot,
+        tickSize: future.tickSize,
+        settings,
+      });
+      if (!overlay) throw new Error(
+        isNativeGammaConversion(conversion)
+          ? "Native futures gamma is building."
+          : "Waiting for a valid futures calibration.",
+      );
+      if (isNativeGammaConversion(conversion)) nativeApplied = true;
+      if (nativeApplied && !isNativeGammaConversion(conversion)) return payload;
+      retainedOverlay = overlay;
+      setGammaOverlay(overlay);
+      setGammaLevelsError(null);
+      setGammaLevelsLoading(false);
+      return payload;
+    };
+
+    const loadGamma = async () => {
+      setGammaLevelsLoading(!retainedOverlay);
+      const conversions = [
+        fallbackGammaConversion,
+        nativeGammaConversion,
+      ].filter((conversion): conversion is GammaConversionDefinition => Boolean(conversion));
+      const results = await Promise.allSettled(conversions.map((conversion) => applyConversion(conversion)));
+      if (cancelled) return;
+
+      const fulfilled = results
+        .filter((result): result is PromiseFulfilledResult<ChartGammaLevelsPayload | null> => result.status === "fulfilled")
+        .map((result) => result.value)
+        .filter((payload): payload is ChartGammaLevelsPayload => Boolean(payload));
+      if (!retainedOverlay) {
+        const firstFailure = results.find((result): result is PromiseRejectedResult => result.status === "rejected");
+        setGammaLevelsError(firstFailure?.reason instanceof Error
+          ? firstFailure.reason.message
+          : "Gamma levels are unavailable.");
+        setGammaLevelsLoading(false);
+      } else if (!fulfilled.length) {
+        setGammaOverlay((current) => current ? { ...current, stale: true } : current);
+      }
+
+      const refreshAfterMs = fulfilled.length
+        ? Math.min(...fulfilled.map((payload) => payload.refreshAfterMs))
+        : 10_000;
+      timer = window.setTimeout(() => void loadGamma(), Math.max(5_000, refreshAfterMs));
+    };
+
+    timer = window.setTimeout(() => void loadGamma(), 50);
+    return () => {
+      cancelled = true;
+      if (timer !== null) window.clearTimeout(timer);
+    };
+  }, [
+    fallbackGammaConversion?.id,
+    gammaLevelsAvailable,
+    gammaLevelsEnabled,
+    nativeGammaConversion?.id,
+    pane.symbol,
+    resolvedContractSymbol,
+    settings.downColor,
+    settings.upColor,
+  ]);
 
   useEffect(() => {
     const usingCTraderFeed = FALLBACK_CTRADER_BROKER_NAMES.includes(pane.broker as (typeof FALLBACK_CTRADER_BROKER_NAMES)[number]);
@@ -1307,9 +1623,16 @@ function WorkspaceChartPane({
       if (usingDatabentoPaneFeed && price.contractSymbol) {
         setResolvedContractSymbol(price.contractSymbol);
       }
+      const tickTimestamp = marketTimestamp(price.timestamp);
+      latestFuturesRef.current = {
+        price: price.mid,
+        asOfMs: tickTimestamp,
+        contractSymbol: price.contractSymbol ?? latestFuturesRef.current.contractSymbol,
+        tickSize: futuresTickSize(pane.symbol),
+      };
       pendingLiveTicksRef.current.push({
         mid: price.mid,
-        timestamp: marketTimestamp(price.timestamp),
+        timestamp: tickTimestamp,
         isTrade: price.isTrade,
         size: price.size,
         trades: price.trades,
@@ -1524,6 +1847,7 @@ function WorkspaceChartPane({
         <Chart
           candles={candles}
           trades={trades}
+          levels={gammaLevelsEnabled ? gammaOverlay?.levels ?? [] : []}
           instrument={displayCmeSymbol(pane.symbol)}
           timeframe={pane.timeframe}
           marketIsActive={marketIsActive}
@@ -1535,6 +1859,11 @@ function WorkspaceChartPane({
           chartDragEnabled={chartDragEnabled}
           onChartDragStart={onChartDragStart}
           onChartDragEnd={onChartDragEnd}
+          gammaLevelsEnabled={gammaLevelsEnabled}
+          gammaLevelsAvailable={gammaLevelsAvailable}
+          gammaLevelsLoading={gammaLevelsLoading}
+          gammaLevelsError={gammaLevelsError}
+          onToggleGammaLevels={onToggleGammaLevels}
         />
       )}
       <div className="pointer-events-none absolute bottom-14 left-1/2 z-20 inline-flex -translate-x-1/2 items-center gap-1.5 whitespace-nowrap rounded-full border border-border bg-panel/90 px-2.5 py-1 text-[10px] uppercase tracking-[0.12em] text-muted shadow-lg shadow-black/25 backdrop-blur">
@@ -2129,6 +2458,10 @@ export default function Home() {
   const [miniLoading, setMiniLoading] = useState(false);
   const [strategies, setStrategies] = useState<StrategyItem[]>(demoStrategies);
   const [chartIndicatorsSuppressed, setChartIndicatorsSuppressed] = useState(false);
+  const [gammaLevelsEnabled, setGammaLevelsEnabled] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.localStorage.getItem(GAMMA_LEVELS_ENABLED_STORAGE_KEY) === "true";
+  });
   const [selectedStrategy, setSelectedStrategy] = useState<string | null>(demoStrategies[0].id);
   const [activeStrategyId, setActiveStrategyId] = useState(demoStrategies[0].id);
   const [selectedVersion, setSelectedVersion] = useState<number | null>(null);
@@ -3230,6 +3563,13 @@ export default function Home() {
   useEffect(() => {
     window.localStorage.setItem(BOTTOM_WORKSPACE_SECTION_STORAGE_KEY, bottomWorkspaceSection);
   }, [bottomWorkspaceSection]);
+
+  useEffect(() => {
+    window.localStorage.setItem(
+      GAMMA_LEVELS_ENABLED_STORAGE_KEY,
+      gammaLevelsEnabled ? "true" : "false",
+    );
+  }, [gammaLevelsEnabled]);
 
   useEffect(() => {
     setChartAlerts(loadChartAlerts());
@@ -5363,6 +5703,8 @@ export default function Home() {
         onClose={() => closeWorkspacePane(pane.id)}
         closeDisabled={workspaceLocked || visibleWorkspacePaneIds.length <= 1}
         chartDragEnabled={!workspaceLocked && visibleWorkspacePaneIds.length > 1}
+        gammaLevelsEnabled={gammaLevelsEnabled}
+        onToggleGammaLevels={() => setGammaLevelsEnabled((current) => !current)}
         onChartDragStart={(event) => {
           event.dataTransfer.effectAllowed = "move";
           event.dataTransfer.setData("text/plain", pane.id);
