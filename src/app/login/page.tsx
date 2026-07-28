@@ -21,17 +21,16 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
       <div className="login-orb login-orb-right" />
       <section className="login-card">
         <div className="brand-row">
-          <div className="brand-mark">K</div>
-          <span>KWANT DESK</span>
+          <div className="brand-mark">⌁</div>
+          <span>Kwant Desk</span>
         </div>
-        <p className="eyebrow">PRIVATE RESEARCH WORKSPACE</p>
-        <h1>Decisions, quantified.</h1>
-        <p className="login-copy">
-          Options flow, research, and portfolio intelligence for approved members only.
-        </p>
+        <div className="login-heading">
+          <h1>Welcome back</h1>
+          <p>Access your private quantitative research workspace.</p>
+        </div>
         {error ? <p className="login-error">{messages[error] ?? messages.auth}</p> : null}
         <GoogleLoginButton />
-        <p className="login-note">Access is limited to authorised Google accounts.</p>
+        <p className="login-note">Only approved Google accounts can enter Kwant Desk.</p>
       </section>
     </main>
   );
