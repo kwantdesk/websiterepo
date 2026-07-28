@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { type ComponentType } from "react";
 import {
-  BarChart3,
+  Home,
   Settings,
   User,
 } from "lucide-react";
@@ -46,7 +46,7 @@ const navItems: Array<{
   title: string;
   icon: ComponentType<{ className?: string }>;
 }> = [
-  { key: "charts", href: "/", label: "Charts", title: "Charts", icon: BarChart3 },
+  { key: "charts", href: "/", label: "Home", title: "Home", icon: Home },
 ];
 
 export default function AppSidebar({
