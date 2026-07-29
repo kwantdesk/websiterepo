@@ -40,6 +40,7 @@ import {
   FolderPlus,
   Grid3X3,
   Info,
+  Layers3,
   List,
   Loader2,
   Lock,
@@ -87,12 +88,15 @@ import {
   normalizePaneIndicatorState,
 } from "@/lib/chartIndicatorConfig";
 import type { ChartGammaLevelsPayload } from "@/lib/chartGammaLevels";
+import type { GameplanPayload, GameplanSession } from "@/lib/gameplan";
 import {
   GAMEPLAN_CHART_OVERLAYS_EVENT,
   GAMEPLAN_CHART_OVERLAYS_STORAGE_KEY,
+  createGameplanChartOverlay,
   gameplanChartRootForInstrument,
   loadGameplanChartOverlays,
   removeGameplanChartOverlay,
+  saveGameplanChartOverlay,
   type GameplanChartOverlay,
   type GameplanChartOverlayStore,
 } from "@/lib/gameplanChartOverlay";
@@ -422,6 +426,24 @@ function displayCmeSymbol(symbol: string) {
 
 function displayCmeText(value: string) {
   return value.replace(/\b([A-Z0-9]+)\.[vnc]\.\d+\b/gi, "$1");
+}
+
+function currentGameplanSession(now = new Date()): GameplanSession {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    weekday: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(now);
+  const weekday = parts.find((part) => part.type === "weekday")?.value ?? "";
+  const hour = Number(parts.find((part) => part.type === "hour")?.value ?? -1);
+  const minute = Number(parts.find((part) => part.type === "minute")?.value ?? 0);
+  const minutes = hour * 60 + minute;
+  const weekdaySession = !["Sat", "Sun"].includes(weekday);
+  return weekdaySession && minutes >= 8 * 60 && minutes < 17 * 60
+    ? "newyork"
+    : "globex";
 }
 
 function csvCell(value: string | number | null) {
@@ -3131,6 +3153,8 @@ export default function KwantifyWorkspace({
   const [gammaLevelExportsByPane, setGammaLevelExportsByPane] = useState<Record<string, GammaLevelExportSnapshot>>({});
   const [gameplanChartOverlays, setGameplanChartOverlays] = useState<GameplanChartOverlayStore>(() =>
     loadGameplanChartOverlays());
+  const [quickGameplanLoading, setQuickGameplanLoading] = useState(false);
+  const [quickGameplanUpdatedRoot, setQuickGameplanUpdatedRoot] = useState<"NQ" | "ES" | null>(null);
   const [selectedStrategy, setSelectedStrategy] = useState<string | null>(demoStrategies[0].id);
   const [activeStrategyId, setActiveStrategyId] = useState(demoStrategies[0].id);
   const [selectedVersion, setSelectedVersion] = useState<number | null>(null);
@@ -3368,6 +3392,7 @@ export default function KwantifyWorkspace({
     () => workspacePanes.find((pane) => pane.id === activePaneId) ?? workspacePanes[0] ?? DEFAULT_WORKSPACE_PANES[0],
     [activePaneId, workspacePanes],
   );
+  const activeGameplanRoot = gameplanChartRootForInstrument(activeWorkspacePane.symbol);
   const visibleWorkspacePaneIds = useMemo(
     () => collectWorkspacePaneIds(workspaceTree),
     [workspaceTree],
@@ -3683,6 +3708,54 @@ export default function KwantifyWorkspace({
       }, hideAfterMs);
     }
   };
+
+  async function refreshActiveGameplanLevels() {
+    if (quickGameplanLoading) return;
+    const root = gameplanChartRootForInstrument(activeWorkspacePane.symbol);
+    if (!root) {
+      showReportToast("error", "Gameplan levels are available for NQ, MNQ, ES and MES charts.", 3_000);
+      return;
+    }
+
+    const session = currentGameplanSession();
+    setQuickGameplanLoading(true);
+    setQuickGameplanUpdatedRoot(null);
+    showReportToast("loading", `Refreshing the latest ${root} Gameplan levels…`);
+
+    try {
+      const response = await fetch(
+        `/api/gameplan?root=${root}&session=${session}&refresh=${Date.now()}`,
+        {
+          cache: "no-store",
+          credentials: "same-origin",
+          signal: AbortSignal.timeout(45_000),
+        },
+      );
+      const payload = await response.json() as GameplanPayload & { error?: string };
+      if (!response.ok) throw new Error(payload.error || "The latest Gameplan could not be loaded.");
+      if (payload.instrument !== root || payload.plan.edition.session !== session || !payload.plan.ladder.length) {
+        throw new Error("The latest Gameplan response did not match this chart.");
+      }
+
+      const nextStore = saveGameplanChartOverlay(createGameplanChartOverlay(root, payload.plan));
+      setGameplanChartOverlays(nextStore);
+      setQuickGameplanUpdatedRoot(root);
+      showReportToast(
+        "success",
+        `${root} ${session === "newyork" ? "New York" : "Globex"} Gameplan levels replaced with the latest edition.`,
+        2_800,
+      );
+      window.setTimeout(() => setQuickGameplanUpdatedRoot((current) => current === root ? null : current), 2_800);
+    } catch (reason) {
+      showReportToast(
+        "error",
+        reason instanceof Error ? reason.message : "The latest Gameplan levels could not be loaded.",
+        4_000,
+      );
+    } finally {
+      setQuickGameplanLoading(false);
+    }
+  }
 
   function normalizeHex(value: string) {
     const clean = value.replace("#", "").trim();
@@ -7484,6 +7557,30 @@ export default function KwantifyWorkspace({
             chartSettings={chartSettings}
             onChange={(next) => setIndicatorsForPane(activePaneId, next)}
           />
+          <button
+            type="button"
+            onClick={() => void refreshActiveGameplanLevels()}
+            disabled={!activeGameplanRoot || quickGameplanLoading}
+            title={activeGameplanRoot
+              ? `Replace this chart's levels with the latest ${activeGameplanRoot} Gameplan`
+              : "Gameplan levels are available for NQ, MNQ, ES and MES charts"}
+            className={`flex h-8 shrink-0 items-center gap-1.5 rounded-xl border px-3 text-[9px] font-bold uppercase tracking-[0.08em] transition-colors disabled:cursor-not-allowed disabled:opacity-35 ${
+              activeGameplanRoot && quickGameplanUpdatedRoot === activeGameplanRoot
+                ? "border-primary/40 bg-primary/15 text-primary"
+                : "border-primary/25 bg-primary/10 text-primary hover:border-primary/45 hover:bg-primary/15"
+            }`}
+          >
+            {quickGameplanLoading
+              ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              : activeGameplanRoot && quickGameplanUpdatedRoot === activeGameplanRoot
+                ? <Check className="h-3.5 w-3.5" />
+                : <Layers3 className="h-3.5 w-3.5" />}
+            {quickGameplanLoading
+              ? `Updating ${activeGameplanRoot ?? ""}`
+              : activeGameplanRoot && quickGameplanUpdatedRoot === activeGameplanRoot
+                ? `${activeGameplanRoot} Levels Updated`
+                : "Add Gameplan Levels"}
+          </button>
           <TimeZoneSelect
             value={chartSettings.timezone}
             onChange={changeChartTimeZone}
