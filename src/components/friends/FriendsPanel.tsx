@@ -95,6 +95,7 @@ export default function FriendsPanel({ onClose, onUnreadCountChange }: FriendsPa
   const [showFriendMenu, setShowFriendMenu] = useState(false);
   const [showBlocked, setShowBlocked] = useState(false);
   const [activeFriendId, setActiveFriendId] = useState("");
+  const [chatLoading, setChatLoading] = useState(false);
   const [draft, setDraft] = useState("");
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -185,9 +186,19 @@ export default function FriendsPanel({ onClose, onUnreadCountChange }: FriendsPa
   const activeFriend = payload.friends.find((friend) => friend.userId === activeFriendId) ?? null;
 
   useEffect(() => {
-    if (!activeFriendId) return;
-    void load(activeFriendId, true);
+    if (!activeFriendId) {
+      setChatLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setChatLoading(true);
+    void load(activeFriendId, true).finally(() => {
+      if (!cancelled) setChatLoading(false);
+    });
     void runAction("mark-read", { targetUserId: activeFriendId }, true);
+    return () => {
+      cancelled = true;
+    };
   }, [activeFriendId, load, runAction]);
 
   useEffect(() => {
@@ -216,6 +227,7 @@ export default function FriendsPanel({ onClose, onUnreadCountChange }: FriendsPa
   };
 
   const openChat = (friend: FriendSummary) => {
+    setChatLoading(true);
     setActiveFriendId(friend.userId);
     setShowAdd(false);
     setShowFriendMenu(false);
@@ -242,7 +254,13 @@ export default function FriendsPanel({ onClose, onUnreadCountChange }: FriendsPa
     return (
       <div className="flex h-full min-h-0 flex-col">
         <div className="flex h-14 shrink-0 items-center gap-2 border-b border-border px-3">
-          <button onClick={() => setActiveFriendId("")} className="flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground">
+          <button
+            onClick={() => {
+              setChatLoading(false);
+              setActiveFriendId("");
+            }}
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground"
+          >
             <ArrowLeft className="h-4 w-4" />
           </button>
           <Avatar friend={activeFriend} size="sm" />
@@ -295,7 +313,12 @@ export default function FriendsPanel({ onClose, onUnreadCountChange }: FriendsPa
         )}
 
         <div className="min-h-0 flex-1 overflow-y-auto px-3 py-4">
-          {payload.messages.length === 0 ? (
+          {chatLoading ? (
+            <div className="flex h-full min-h-48 flex-col items-center justify-center text-center" role="status" aria-live="polite">
+              <Loader2 className="h-5 w-5 animate-spin text-primary" />
+              <div className="mt-3 text-[11px] font-medium text-muted">Loading conversation...</div>
+            </div>
+          ) : payload.messages.length === 0 ? (
             <div className="flex h-full min-h-48 flex-col items-center justify-center text-center">
               <Avatar friend={activeFriend} size="lg" />
               <div className="mt-3 text-[13px] font-semibold">Connected with {activeFriend.displayName}</div>
@@ -325,6 +348,7 @@ export default function FriendsPanel({ onClose, onUnreadCountChange }: FriendsPa
             <textarea
               value={draft}
               onChange={(event) => setDraft(event.target.value)}
+              disabled={chatLoading}
               onKeyDown={(event) => {
                 if (event.key === "Enter" && !event.shiftKey) {
                   event.preventDefault();
@@ -332,12 +356,12 @@ export default function FriendsPanel({ onClose, onUnreadCountChange }: FriendsPa
                 }
               }}
               rows={1}
-              placeholder="Message..."
+              placeholder={chatLoading ? "Loading conversation..." : "Message..."}
               className="max-h-28 min-h-8 min-w-0 flex-1 resize-none bg-transparent px-2 py-1.5 text-[12px] outline-none placeholder:text-muted"
             />
             <button
               onClick={() => void sendMessage()}
-              disabled={!draft.trim() || busyId === activeFriend.userId}
+              disabled={chatLoading || !draft.trim() || busyId === activeFriend.userId}
               className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-primary text-background disabled:cursor-not-allowed disabled:opacity-30"
             >
               {busyId === activeFriend.userId ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
