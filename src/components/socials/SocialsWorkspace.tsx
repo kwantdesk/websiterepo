@@ -1897,7 +1897,13 @@ export default function SocialsWorkspace({
               isOwnProfile={viewingOwnProfile}
               savedIds={savedGameplanIds}
               repostedIds={repostedGameplanIds}
-              onBack={initialProfileHandle ? onCloseProfile : undefined}
+              onBack={initialProfileHandle
+                ? () => {
+                    if (viewingOwnProfile) onCloseProfile?.();
+                    else onOpenProfile?.(currentProfile.handle);
+                  }
+                : undefined}
+              backLabel={viewingOwnProfile ? "Back to Socials" : "Back to profile"}
               onEdit={() => setProfileEditing(true)}
               onMessage={() => onMessageProfile?.(viewedProfileObject.userId)}
               onOpenGameplan={setSelectedProfileRecord}

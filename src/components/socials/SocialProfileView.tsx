@@ -34,6 +34,7 @@ type SocialProfileViewProps = {
   savedIds: Set<string>;
   repostedIds: Set<string>;
   onBack?: () => void;
+  backLabel?: string;
   onEdit: () => void;
   onMessage: () => void;
   onOpenGameplan: (record: SocialObject) => void;
@@ -74,6 +75,7 @@ export default function SocialProfileView({
   savedIds,
   repostedIds,
   onBack,
+  backLabel = "Back to Socials",
   onEdit,
   onMessage,
   onOpenGameplan,
@@ -100,7 +102,7 @@ export default function SocialProfileView({
     <div className="mx-auto w-full max-w-6xl p-3 sm:p-4">
       {onBack ? (
         <button type="button" onClick={onBack} className="mb-3 flex h-8 items-center gap-2 rounded-xl border border-border bg-surface px-3 text-[8px] font-semibold text-muted hover:text-foreground">
-          ← Back to Socials
+          ← {backLabel}
         </button>
       ) : null}
 
