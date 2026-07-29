@@ -1,6 +1,8 @@
 import { getChartInterval, isEventBasedChartInterval } from "@/lib/chartIntervals";
 import { applyMarketTradesToEventBars, type MarketTrade } from "@/lib/eventBars";
 
+export const DATABENTO_HISTORICAL_BASE_URL = "https://api.databento.com/v0";
+
 export type DatabentoInstrument = {
   symbol: string;
   label: string;
@@ -133,7 +135,7 @@ async function historicalRequest(params: Record<string, string>, canRetryAvailab
     map_symbols: "true",
     ...params,
   });
-  const response = await fetch("https://hist.databento.com/v0/timeseries.get_range", {
+  const response = await fetch(`${DATABENTO_HISTORICAL_BASE_URL}/timeseries.get_range`, {
     method: "POST",
     headers: {
       Authorization: `Basic ${Buffer.from(`${key}:`).toString("base64")}`,

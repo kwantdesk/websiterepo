@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { createConnection } from "node:net";
 import { NextResponse } from "next/server";
-import { getDatabentoBars } from "@/lib/databento";
+import { DATABENTO_HISTORICAL_BASE_URL, getDatabentoBars } from "@/lib/databento";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -195,7 +195,7 @@ export async function GET() {
   const keyFormatValid = /^db-[A-Za-z0-9_-]{20,}$/.test(key);
   try {
     const response = await fetch(
-      "https://hist.databento.com/v0/metadata.get_dataset_range?dataset=GLBX.MDP3",
+      `${DATABENTO_HISTORICAL_BASE_URL}/metadata.get_dataset_range?dataset=GLBX.MDP3`,
       {
         headers: {
           Authorization: `Basic ${Buffer.from(`${key}:`).toString("base64")}`,
