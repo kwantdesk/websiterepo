@@ -2,7 +2,6 @@ import {
   Activity,
   BarChart3,
   CircleGauge,
-  Info,
   Radar,
   Scale,
   Waves,
@@ -196,7 +195,7 @@ export default function MarketMapIntelligence({ data }: { data: OptionsFlowPaylo
         <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"><Radar className="h-4 w-4" /></span>
         <div className="min-w-0">
           <h2 className="text-[12px] font-semibold text-foreground">Market map</h2>
-          <p className="mt-0.5 text-[9px] text-muted">Live KwantData structure · transparent Kwantify models · no proprietary look-alikes</p>
+          <p className="mt-0.5 text-[9px] text-muted">Live options structure powered by Kwant Data&apos;s proprietary model</p>
         </div>
         <div className="ml-auto hidden items-center gap-1.5 text-[8px] text-muted sm:flex">
           <SourceBadge kind="DIRECT" /><span>vendor field</span><SourceBadge kind="DERIVED" /><span>documented formula</span>
@@ -274,7 +273,7 @@ export default function MarketMapIntelligence({ data }: { data: OptionsFlowPaylo
           </div>
         </Card>
 
-        <Card title="Skew and term structure" subtitle="25-delta relative skew · ATM IV by expiration" icon={Waves} className="xl:col-span-7">
+        <Card title="Skew and term structure" subtitle="25-delta relative skew · ATM IV by expiration" icon={Waves} className="xl:col-span-12">
           <div className="mt-4 grid gap-2 sm:grid-cols-2">
             <SkewReadout label="0DTE skew" skew={volatility.skew0Dte} />
             <SkewReadout label="~30D skew" skew={volatility.skew30Dte} />
@@ -285,19 +284,8 @@ export default function MarketMapIntelligence({ data }: { data: OptionsFlowPaylo
           </div>
         </Card>
 
-        <Card title="Coverage and model boundaries" subtitle="What this screen does—and does not—claim" icon={Info} className="xl:col-span-5">
-          <div className="mt-4 space-y-2">
-            {marketMap.coverageGaps.map((gap) => (
-              <div key={gap.metric} className="rounded-xl border border-border bg-panel/70 px-3 py-2.5" title={gap.reason}>
-                <div className="flex items-center justify-between gap-3"><span className="text-[9px] font-semibold text-foreground">{gap.label}</span><span className="rounded-md border border-border bg-surface px-1.5 py-0.5 text-[8px] font-semibold tracking-[0.1em] text-muted">NOT CLAIMED</span></div>
-                <p className="mt-1 text-[8px] leading-4 text-muted">{gap.reason}</p>
-              </div>
-            ))}
-          </div>
-        </Card>
       </div>
     </section>
   );
 }
-
 

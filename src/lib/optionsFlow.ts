@@ -17,7 +17,7 @@ export type OptionsFlowTicker = (typeof OPTIONS_FLOW_TICKERS)[number];
 
 export type OptionsFuturesRoot = "ES" | "NQ" | "RTY";
 // RATIO/BASIS convert cash-index gamma onto the futures chart. NATIVE computes gamma
-// directly from the futures options chain (Databento) — no proxy, no conversion.
+// directly from the futures options chain (Databento) in native futures price terms.
 export type OptionsFuturesLevelTranslation = "BASIS" | "RATIO" | "NATIVE";
 
 const OPTIONS_FUTURES_RATIO_BOUNDS: Partial<Record<OptionsFlowTicker, readonly [number, number]>> = {
@@ -330,11 +330,6 @@ export type MarketMapIntelligence = {
     termStructure: VolatilityTermPoint[];
     termStructureState: "CONTANGO" | "FLAT" | "BACKWARDATION" | "UNAVAILABLE";
   };
-  coverageGaps: Array<{
-    metric: "MENTHORQ_1D_MOVE" | "MENTHORQ_HVL" | "MENTHORQ_QSCORES" | "MENTHORQ_BLIND_SPOTS" | "ONE_DAY_GEX_CHANGE" | "FULL_YEAR_IV_HISTORY";
-    label: string;
-    reason: string;
-  }>;
 };
 
 export type PositioningIntelligence = {
@@ -350,8 +345,8 @@ export type PositioningIntelligence = {
   tradeSidePremium: TradeSidePremiumSummary | null;
   methodology: {
     exposureSource: "KwantData Interval Map";
-    classificationSource: "KwantData trade-side proxy";
-    classificationConfidence: "PROXY";
+    classificationSource: "Kwant Data proprietary model";
+    classificationConfidence: "PROPRIETARY";
     note: string;
   };
 };
@@ -446,5 +441,3 @@ export type OptionsFlowPayload = {
   rateLimitRemaining: number | null;
   errors: string[];
 };
-
-

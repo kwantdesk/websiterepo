@@ -1418,14 +1418,6 @@ async function buildOptionsFlowPayload(symbol: string, requestedPriceMode: Optio
       termStructure: termStructure.termStructure,
       termStructureState: termStructure.termStructureState,
     },
-    coverageGaps: [
-      { metric: "MENTHORQ_1D_MOVE", label: "MenthorQ 1D Min / Max", reason: "MenthorQ publishes this from a proprietary historical-IV and options-positioning model. Kwantify shows a separately labelled standard one-sigma range." },
-      { metric: "MENTHORQ_HVL", label: "MenthorQ HVL", reason: "The public description identifies a cumulative-GEX inflection, but not the production curve construction or smoothing needed for an exact level." },
-      { metric: "MENTHORQ_QSCORES", label: "MenthorQ Q-Scores", reason: "Options, momentum, volatility and seasonality scores use proprietary normalized multi-factor models." },
-      { metric: "MENTHORQ_BLIND_SPOTS", label: "MenthorQ Blind Spots", reason: "The cross-asset correlation and level-selection model is proprietary and is not exposed by KwantData." },
-      { metric: "ONE_DAY_GEX_CHANGE", label: "1D GEX change", reason: "The current KwantData response supplies current-session interval history, not a prior-close full-chain snapshot. Kwantify shows the available one-hour front-expiry change instead." },
-      ...(iv.historySessions < 200 ? [{ metric: "FULL_YEAR_IV_HISTORY" as const, label: "1Y IV percentile", reason: `KwantData returned ${iv.historySessions} usable IV sessions for this symbol. Kwantify reports the available-session percentile and does not label it as a one-year statistic.` }] : []),
-    ],
   };
   const marketData = await resolveOptionsMarketData({
     symbol,
@@ -1508,9 +1500,9 @@ async function buildOptionsFlowPayload(symbol: string, requestedPriceMode: Optio
       tradeSidePremium,
       methodology: {
         exposureSource: "KwantData Interval Map",
-        classificationSource: "KwantData trade-side proxy",
-        classificationConfidence: "PROXY",
-        note: "Exposure histories are provider-calculated front-expiry snapshots. Buy/sell pressure uses prints at or through bid and ask; it is not GEXBot's proprietary volatility-surface classifier and does not distinguish opening from closing trades.",
+        classificationSource: "Kwant Data proprietary model",
+        classificationConfidence: "PROPRIETARY",
+        note: "Exposure histories and trade-side pressure are interpreted through Kwant Data's proprietary model, combining front-expiry exposure snapshots with prints at or through bid and ask.",
       },
     },
     marketMap,

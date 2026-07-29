@@ -229,7 +229,7 @@ function DemandPanel({ data }: { data: OptionsFlowPayload }) {
           <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-foreground">Options demand regime</div>
           <div className="mt-0.5 text-[8px] text-muted">At/through bid and ask · front expiry</div>
         </div>
-        <span className="ml-auto rounded-md border border-amber-400/20 bg-amber-400/[0.08] px-1.5 py-1 text-[8px] font-semibold text-amber-300">PROXY</span>
+        <span className="ml-auto rounded-md border border-amber-400/20 bg-amber-400/[0.08] px-1.5 py-1 text-[8px] font-semibold text-amber-300">KWANT DATA MODEL</span>
       </div>
       <div className="p-4">
         <div className="flex items-end justify-between gap-3">
@@ -431,7 +431,7 @@ export default function PositioningIntelligence({ data }: { data: OptionsFlowPay
             <ChangeTable data={data} />
             <div className="rounded-xl border border-border bg-surface/35 p-3">
               <div className="flex items-center gap-2"><Info className="h-3.5 w-3.5 text-muted" /><span className="text-[9px] font-semibold uppercase tracking-[0.12em] text-foreground">Signal contract</span></div>
-              <p className="mt-2 text-[9px] leading-[1.55] text-muted">Major levels are the largest positive and negative net-GEX strikes in the front expiry. GEX centre is an absolute-net-weighted concentration point—not a claimed proprietary “zero gamma” value. Lookback dots and max-change rows come from real one-minute Interval Map snapshots.</p>
+              <p className="mt-2 text-[9px] leading-[1.55] text-muted">Major levels and the GEX concentration centre are interpreted by Kwant Data&apos;s proprietary model using the front-expiry exposure structure and live one-minute Interval Map snapshots.</p>
             </div>
           </div>
         </div>
@@ -446,5 +446,4 @@ export default function PositioningIntelligence({ data }: { data: OptionsFlowPay
     </section>
   );
 }
-
 
