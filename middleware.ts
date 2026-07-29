@@ -1,5 +1,10 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import {
+  SITE_ACCESS_COOKIE,
+  isSiteAccessConfigured,
+  isValidSiteAccessToken,
+} from "@/lib/siteAccess";
 
 function allowed(email?: string | null) {
   const values = (process.env.ALLOWED_EMAILS ?? "")
@@ -11,7 +16,24 @@ function allowed(email?: string | null) {
 
 export async function middleware(request: NextRequest) {
   const response = NextResponse.next({ request });
-  if (request.nextUrl.pathname === "/api/databento/health") return response;
+  const pathname = request.nextUrl.pathname;
+
+  if (
+    pathname === "/" ||
+    pathname === "/api/site-access" ||
+    pathname === "/api/databento/health"
+  ) {
+    return response;
+  }
+
+  if (
+    isSiteAccessConfigured() &&
+    !(await isValidSiteAccessToken(request.cookies.get(SITE_ACCESS_COOKIE)?.value))
+  ) {
+    const holdingPage = new URL("/", request.url);
+    holdingPage.searchParams.set("returnTo", pathname);
+    return NextResponse.redirect(holdingPage);
+  }
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
