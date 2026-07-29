@@ -92,7 +92,7 @@ export default function HoldingPage() {
             <h1 className="text-[12px] font-semibold uppercase tracking-[0.28em] text-white sm:text-[13px]">
               Coming soon!
             </h1>
-            <p className="mt-2 text-[9px] uppercase tracking-[0.2em] text-white/44 sm:text-[10px]">
+            <p className="mt-2 text-[9px] uppercase tracking-[0.2em] text-white/60 sm:text-[10px]">
               Sign up to be the first to know....
             </p>
 
