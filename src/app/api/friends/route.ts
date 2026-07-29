@@ -54,6 +54,16 @@ function cleanIdentifier(value: unknown, maximum = 180) {
     : "";
 }
 
+function normalizeHandle(value: unknown) {
+  return typeof value === "string"
+    ? value.trim().replace(/^@+/, "").toLowerCase()
+    : "";
+}
+
+function validHandle(value: string) {
+  return /^[a-z][a-z0-9_]{2,23}$/.test(value);
+}
+
 function authorLabel(actor: RouteActor) {
   if (actor.displayName) return cleanText(actor.displayName, 48);
   const stem = actor.label.includes("@") ? actor.label.split("@")[0] : actor.label;
@@ -302,6 +312,35 @@ export async function GET(request: NextRequest) {
   const { actor, supabase } = await socialClient(request);
   if (!actor) return NextResponse.json({ error: "Authentication required." }, { status: 401 });
   if (!supabase) return NextResponse.json(emptyPayload(false));
+  const requestedHandle = request.nextUrl.searchParams.get("handle");
+  if (requestedHandle !== null) {
+    const handle = normalizeHandle(requestedHandle);
+    if (!validHandle(handle)) {
+      return NextResponse.json({
+        handle,
+        available: false,
+        reason: "Use 3–24 characters, start with a letter, and only use letters, numbers or underscores.",
+      });
+    }
+    const { data, error } = await supabase
+      .from("social_objects")
+      .select("user_id")
+      .eq("object_type", "profile")
+      .ilike("payload->>handle", handle)
+      .neq("user_id", actor.userId)
+      .limit(1);
+    if (error) {
+      if (tableUnavailable(error.code)) {
+        return NextResponse.json({
+          handle,
+          available: false,
+          reason: "Profile storage is not connected yet.",
+        });
+      }
+      return NextResponse.json({ error: "Handle availability could not be checked." }, { status: 502 });
+    }
+    return NextResponse.json({ handle, available: (data ?? []).length === 0 });
+  }
   const { rows, error } = await loadRows(supabase);
   if (error) {
     if (tableUnavailable(error.code)) return NextResponse.json(emptyPayload(false));
@@ -329,18 +368,61 @@ export async function POST(request: NextRequest) {
   const targetUserId = cleanIdentifier(body.targetUserId, 80);
   const now = new Date().toISOString();
 
-  if (action === "presence" || action === "heartbeat") {
+  if (action === "presence" || action === "identity" || action === "heartbeat") {
     const changes: Record<string, unknown> = { lastSeenAt: now };
-    if (action === "presence") {
-      changes.presenceStatus = normalizePresenceStatus(body.presenceStatus);
-      changes.presenceMessage = cleanText(body.presenceMessage, 80);
+    if (action === "presence" || action === "identity") {
+      const handle = normalizeHandle(body.handle);
+      if (!validHandle(handle)) {
+        return NextResponse.json({
+          code: "INVALID_HANDLE",
+          error: "Your handle must be 3–24 characters, start with a letter, and only use letters, numbers or underscores.",
+        }, { status: 400 });
+      }
+      const { data: duplicateHandle, error: handleError } = await supabase
+        .from("social_objects")
+        .select("user_id")
+        .eq("object_type", "profile")
+        .ilike("payload->>handle", handle)
+        .neq("user_id", actor.userId)
+        .limit(1);
+      if (handleError && !tableUnavailable(handleError.code)) {
+        return NextResponse.json({ error: "Your handle could not be verified." }, { status: 502 });
+      }
+      if ((duplicateHandle ?? []).length > 0) {
+        return NextResponse.json({
+          code: "HANDLE_TAKEN",
+          error: `@${handle} is already in use. Choose another handle.`,
+        }, { status: 409 });
+      }
+      if (action === "presence") {
+        changes.presenceStatus = normalizePresenceStatus(body.presenceStatus);
+        changes.presenceMessage = cleanText(body.presenceMessage, 80);
+      }
       const displayName = cleanText(body.displayName, 60);
-      const handle = cleanIdentifier(body.handle, 32).toLowerCase();
       if (displayName) changes.displayName = displayName;
-      if (handle) changes.handle = handle;
+      changes.handle = handle;
     }
     const { error } = await upsertProfile(supabase, actor, changes);
-    if (error) return NextResponse.json({ error: "Your status could not be saved." }, { status: 502 });
+    if (error?.code === "23505") {
+      return NextResponse.json({
+        code: "HANDLE_TAKEN",
+        error: `@${normalizeHandle(body.handle)} is already in use. Choose another handle.`,
+      }, { status: 409 });
+    }
+    if (error) return NextResponse.json({ error: "Your identity could not be saved." }, { status: 502 });
+    if ((action === "presence" || action === "identity") && actor.mode === "supabase") {
+      const displayName = cleanText(body.displayName, 60) || authorLabel(actor);
+      const handle = normalizeHandle(body.handle);
+      const { error: metadataError } = await supabase.auth.updateUser({
+        data: {
+          display_name: displayName,
+          username: handle,
+        },
+      });
+      if (metadataError) {
+        console.warn("Identity metadata sync failed", { message: metadataError.message });
+      }
+    }
     if (action === "heartbeat" && body.lightweight === true) {
       return NextResponse.json({ ok: true });
     }

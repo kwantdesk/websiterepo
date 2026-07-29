@@ -13,11 +13,14 @@ import {
   Bot,
   BrainCircuit,
   CalendarDays,
+  CheckCircle2,
+  CircleAlert,
   CreditCard,
   FlaskConical,
   Globe,
   KeyRound,
   Laptop,
+  Loader2,
   Phone,
   QrCode,
   Repeat,
@@ -54,6 +57,19 @@ type SettingsTab =
   | "Billing history"
   | "Alerts delivery"
   | "Email subscriptions";
+
+type HandleCheckState = {
+  state: "idle" | "checking" | "available" | "taken" | "invalid" | "error";
+  message: string;
+};
+
+function normalizeProfileHandle(value: string) {
+  return value.trim().replace(/^@+/, "").toLowerCase();
+}
+
+function isValidProfileHandle(value: string) {
+  return /^[a-z][a-z0-9_]{2,23}$/.test(value);
+}
 
 const navSections: { title: string; items: SettingsTab[] }[] = [
   { title: "Profile and Privacy", items: ["Identity", "Public profile", "Privacy preferences"] },
@@ -251,6 +267,8 @@ export default function SettingsPage() {
   const [presenceLoading, setPresenceLoading] = useState(true);
   const [presenceSaving, setPresenceSaving] = useState(false);
   const [presenceNotice, setPresenceNotice] = useState("");
+  const [savedHandle, setSavedHandle] = useState("");
+  const [handleCheck, setHandleCheck] = useState<HandleCheckState>({ state: "idle", message: "" });
   const [preferenceUserId, setPreferenceUserId] = useState("");
   const [preferencesReady, setPreferencesReady] = useState(false);
   const [toggles, setToggles] = useState<Record<string, boolean>>(() => {
@@ -324,13 +342,17 @@ export default function SettingsPage() {
       }
       setPreferenceUserId(user.id);
       setPreferencesReady(true);
-      setProfileName(
+      const authDisplayName =
         (user.user_metadata?.display_name as string | undefined) ??
           (user.user_metadata?.full_name as string | undefined) ??
-          ""
+          "";
+      const authHandle = normalizeProfileHandle(
+        (user.user_metadata?.username as string | undefined) ?? "",
       );
+      setProfileName(authDisplayName);
       setProfileEmail(user.email ?? "");
-      setProfileUsername((user.user_metadata?.username as string | undefined) ?? "");
+      setProfileUsername(authHandle);
+      setSavedHandle(authHandle);
       try {
         const friendsResponse = await fetch("/api/friends", { cache: "no-store" });
         if (friendsResponse.ok) {
@@ -338,12 +360,11 @@ export default function SettingsPage() {
           if (friendsPayload.viewer) {
             setPresenceStatus(friendsPayload.viewer.presenceStatus);
             setPresenceMessage(friendsPayload.viewer.presenceMessage);
-            if (!profileName && friendsPayload.viewer.displayName) {
-              setProfileName(friendsPayload.viewer.displayName);
-            }
-            if (!profileUsername && friendsPayload.viewer.handle) {
-              setProfileUsername(friendsPayload.viewer.handle);
-            }
+            const storedName = friendsPayload.viewer.displayName || authDisplayName;
+            const storedHandle = normalizeProfileHandle(friendsPayload.viewer.handle || authHandle);
+            setProfileName(storedName);
+            setProfileUsername(storedHandle);
+            setSavedHandle(storedHandle);
           }
         }
       } catch {
@@ -367,6 +388,53 @@ export default function SettingsPage() {
 
     loadProfile();
   }, [supabase]);
+
+  useEffect(() => {
+    if (presenceLoading) return;
+    const handle = normalizeProfileHandle(profileUsername);
+    if (!isValidProfileHandle(handle)) {
+      setHandleCheck({
+        state: "invalid",
+        message: "Use 3–24 characters, start with a letter, and only use letters, numbers or underscores.",
+      });
+      return;
+    }
+    if (handle === savedHandle) {
+      setHandleCheck({ state: "available", message: "This is your current handle." });
+      return;
+    }
+
+    const controller = new AbortController();
+    setHandleCheck({ state: "checking", message: "Checking availability..." });
+    const timer = window.setTimeout(async () => {
+      try {
+        const response = await fetch(`/api/friends?handle=${encodeURIComponent(handle)}`, {
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        const result = await response.json() as {
+          available?: boolean;
+          reason?: string;
+          error?: string;
+        };
+        if (!response.ok) throw new Error(result.error || "Availability could not be checked.");
+        setHandleCheck(result.available
+          ? { state: "available", message: `@${handle} is available.` }
+          : { state: "taken", message: result.reason || `@${handle} is already in use.` });
+      } catch (reason) {
+        if (controller.signal.aborted) return;
+        setHandleCheck({
+          state: "error",
+          message: reason instanceof Error ? reason.message : "Availability could not be checked.",
+        });
+      }
+    }, 350);
+
+    return () => {
+      controller.abort();
+      window.clearTimeout(timer);
+    };
+  }, [presenceLoading, profileUsername, savedHandle]);
 
   useEffect(() => {
     saveAppTheme(themeSettings);
@@ -400,6 +468,15 @@ export default function SettingsPage() {
     try {
       const fallbackName = profileEmail.includes("@") ? profileEmail.split("@")[0] : "Kwant Trader";
       const fallbackHandle = fallbackName.toLowerCase().replace(/[^a-z0-9]+/g, "").slice(0, 24);
+      const displayName = profileName.trim().replace(/\s+/g, " ").slice(0, 60);
+      const handle = normalizeProfileHandle(profileUsername || fallbackHandle);
+      if (displayName.length < 2) throw new Error("Enter a trader name with at least 2 characters.");
+      if (!isValidProfileHandle(handle)) {
+        throw new Error("Your handle must be 3–24 characters, start with a letter, and only use letters, numbers or underscores.");
+      }
+      if (handle !== savedHandle && handleCheck.state !== "available") {
+        throw new Error(handleCheck.message || "Wait for the handle availability check to finish.");
+      }
       const response = await fetch("/api/friends", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -407,13 +484,22 @@ export default function SettingsPage() {
           action: "presence",
           presenceStatus: nextStatus,
           presenceMessage,
-          displayName: profileName || fallbackName,
-          handle: profileUsername || fallbackHandle,
+          displayName,
+          handle,
         }),
       });
-      const result = await response.json() as { error?: string };
+      const result = await response.json() as FriendsPayload & { error?: string };
       if (!response.ok) throw new Error(result.error || "Identity could not be saved.");
-      setPresenceStatus(nextStatus);
+      const savedViewer = result.viewer;
+      setProfileName(savedViewer?.displayName || displayName);
+      setProfileUsername(savedViewer?.handle || handle);
+      setSavedHandle(savedViewer?.handle || handle);
+      setPresenceStatus(savedViewer?.presenceStatus || nextStatus);
+      setPresenceMessage(savedViewer?.presenceMessage ?? presenceMessage);
+      setHandleCheck({ state: "available", message: "This is your current handle." });
+      window.dispatchEvent(new CustomEvent("kwantdesk:identity-updated", {
+        detail: { displayName, handle },
+      }));
       setPresenceNotice("Identity saved across your Kwant Desk account.");
       window.setTimeout(() => setPresenceNotice(""), 2_600);
     } catch (reason) {
@@ -422,6 +508,12 @@ export default function SettingsPage() {
       setPresenceSaving(false);
     }
   }
+
+  const identityCanSave =
+    !presenceSaving
+    && profileName.trim().length >= 2
+    && isValidProfileHandle(normalizeProfileHandle(profileUsername))
+    && (normalizeProfileHandle(profileUsername) === savedHandle || handleCheck.state === "available");
 
   function updateThemeColor(key: keyof ThemeColors, color: string) {
     setThemeSettings((current) => ({ ...current, [key]: color }));
@@ -527,6 +619,50 @@ export default function SettingsPage() {
                   </div>
                 </div>
 
+                <div className="mt-6 grid gap-4 border-t border-border pt-5 sm:grid-cols-2">
+                  <label className="block">
+                    <span className="mb-2 block text-[11px] font-medium text-muted">Trader name</span>
+                    <input
+                      value={profileName}
+                      onChange={(event) => setProfileName(event.target.value.slice(0, 60))}
+                      className={input}
+                      placeholder="Your display name"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="mb-2 block text-[11px] font-medium text-muted">Unique handle</span>
+                    <div className="relative">
+                      <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[13px] text-muted">@</span>
+                      <input
+                        value={profileUsername}
+                        onChange={(event) => setProfileUsername(
+                          normalizeProfileHandle(event.target.value)
+                            .replace(/[^a-z0-9_]/g, "")
+                            .slice(0, 24),
+                        )}
+                        className={`${input} pl-8 pr-10`}
+                        placeholder="trader_handle"
+                        aria-describedby="identity-handle-status"
+                      />
+                      <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2">
+                        {handleCheck.state === "checking" && <Loader2 className="h-4 w-4 animate-spin text-muted" />}
+                        {handleCheck.state === "available" && <CheckCircle2 className="h-4 w-4 text-primary" />}
+                        {(handleCheck.state === "taken" || handleCheck.state === "invalid" || handleCheck.state === "error") && <CircleAlert className="h-4 w-4 text-danger" />}
+                      </span>
+                    </div>
+                    <span
+                      id="identity-handle-status"
+                      className={`mt-1.5 block text-[9px] ${
+                        handleCheck.state === "available" ? "text-primary" :
+                          handleCheck.state === "taken" || handleCheck.state === "invalid" || handleCheck.state === "error" ? "text-danger" :
+                            "text-muted"
+                      }`}
+                    >
+                      {handleCheck.message || "Used by friends to find you."}
+                    </span>
+                  </label>
+                </div>
+
                 <div className="mt-6 border-t border-border pt-5">
                   <div className={sectionTitle}>Presence</div>
                   <div className="grid gap-2 sm:grid-cols-2">
@@ -537,7 +673,6 @@ export default function SettingsPage() {
                           key={option.value}
                           disabled={presenceLoading || presenceSaving}
                           onClick={() => {
-                            setPresenceStatus(option.value);
                             void saveIdentity(option.value);
                           }}
                           className={`flex items-center gap-3 rounded-xl border px-3 py-3 text-left transition-colors ${
@@ -572,7 +707,7 @@ export default function SettingsPage() {
                     />
                     <button
                       onClick={() => void saveIdentity()}
-                      disabled={presenceSaving}
+                      disabled={!identityCanSave}
                       className="flex min-w-24 items-center justify-center rounded-xl bg-primary px-4 py-2 text-[12px] font-semibold text-background disabled:opacity-50"
                     >
                       {presenceSaving ? "Saving..." : "Save"}
@@ -615,7 +750,39 @@ export default function SettingsPage() {
               <section className="rounded-2xl border border-border bg-panel p-6">
                 <h2 className="mb-5 text-lg font-semibold">Picture and username</h2>
                 <div className="flex items-center gap-4"><div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary/20 text-2xl font-semibold text-primary">{(profileName || profileUsername).charAt(0).toUpperCase() || <User className="h-7 w-7" />}</div><div><button className={secondaryButton}>Upload photo</button><p className="mt-2 text-[12px] text-muted">JPG, GIF, or PNG. Max 700KB, 4000px for any dimension.</p></div></div>
-                <div className="mt-6 space-y-2 border-t border-border pt-5"><div className="text-[13px] text-muted">Username</div><div className="relative"><span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[13px] text-muted">@</span><input className={`${input} pl-8`} placeholder="Enter your username" value={profileUsername} onChange={(e) => setProfileUsername(e.target.value)} /></div></div>
+                <div className="mt-6 space-y-2 border-t border-border pt-5">
+                  <div className="text-[13px] text-muted">Unique handle</div>
+                  <div className="relative">
+                    <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[13px] text-muted">@</span>
+                    <input
+                      className={`${input} pl-8 pr-10`}
+                      placeholder="Enter your handle"
+                      value={profileUsername}
+                      onChange={(event) => setProfileUsername(
+                        normalizeProfileHandle(event.target.value)
+                          .replace(/[^a-z0-9_]/g, "")
+                          .slice(0, 24),
+                      )}
+                    />
+                    <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2">
+                      {handleCheck.state === "checking" && <Loader2 className="h-4 w-4 animate-spin text-muted" />}
+                      {handleCheck.state === "available" && <CheckCircle2 className="h-4 w-4 text-primary" />}
+                      {(handleCheck.state === "taken" || handleCheck.state === "invalid" || handleCheck.state === "error") && <CircleAlert className="h-4 w-4 text-danger" />}
+                    </span>
+                  </div>
+                  <div className={`text-[10px] ${
+                    handleCheck.state === "available" ? "text-primary" :
+                      handleCheck.state === "taken" || handleCheck.state === "invalid" || handleCheck.state === "error" ? "text-danger" :
+                        "text-muted"
+                  }`}>{handleCheck.message || "Handles are unique across Kwant Desk."}</div>
+                  <button
+                    onClick={() => void saveIdentity()}
+                    disabled={!identityCanSave}
+                    className="mt-2 rounded-xl bg-primary px-5 py-2.5 text-[12px] font-semibold text-background disabled:opacity-40"
+                  >
+                    {presenceSaving ? "Saving..." : "Save identity"}
+                  </button>
+                </div>
               </section>
               <section className="rounded-2xl border border-border bg-panel p-6">
                 <h2 className="mb-5 text-lg font-semibold">Social and website links</h2>

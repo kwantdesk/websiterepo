@@ -920,14 +920,36 @@ export default function SocialsWorkspace({
     setNotice(saved.cloudSaved ? `You joined ${payload.name}.` : `Your request for ${payload.name} is saved locally and will sync when account storage is ready.`);
   };
 
-  const saveProfile = () => {
+  const saveProfile = async () => {
     const profile: SocialProfilePayload = {
       ...profileDraft,
       displayName: profileDraft.displayName.trim() || "Kwant Trader",
       handle: profileDraft.handle.trim().toLowerCase().replace(/[^a-z0-9_]/g, "").slice(0, 24) || "trader",
       markets: [...new Set(profileDraft.markets.map((market) => market.trim().toUpperCase()).filter(Boolean))].slice(0, 8),
     };
-    void saveObject(buildLocalObject({
+    if (!/^[a-z][a-z0-9_]{2,23}$/.test(profile.handle)) {
+      setNotice("Your handle must be 3–24 characters, start with a letter, and only use letters, numbers or underscores.");
+      return;
+    }
+    try {
+      const identityResponse = await fetch("/api/friends", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "identity",
+          displayName: profile.displayName,
+          handle: profile.handle,
+        }),
+      });
+      const identityResult = await identityResponse.json() as { error?: string };
+      if (!identityResponse.ok) {
+        throw new Error(identityResult.error || "Trader identity could not be saved.");
+      }
+    } catch (reason) {
+      setNotice(reason instanceof Error ? reason.message : "Trader identity could not be saved.");
+      return;
+    }
+    const saved = await saveObject(buildLocalObject({
       id: "profile",
       userId: resolvedAccountKey,
       authorLabel: profile.displayName,
@@ -935,7 +957,8 @@ export default function SocialsWorkspace({
       scope: profile.visibility.profile,
       payload: profile,
     }));
-    setNotice("Trader identity updated.");
+    setProfileDraft(profile);
+    setNotice(saved.cloudSaved ? "Trader identity updated across your account." : "Trader identity could not be synced to account storage.");
   };
 
   const publishStructuredPost = async () => {
