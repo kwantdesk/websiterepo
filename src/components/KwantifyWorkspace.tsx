@@ -182,7 +182,7 @@ const RIGHT_PANEL_MIN_WIDTH = 240;
 const RIGHT_PANEL_MAX_WIDTH = 500;
 const RIGHT_PANEL_DEFAULT_WIDTH = 280;
 const RIGHT_PANEL_COLLAPSE_SNAP_WIDTH = 120;
-type RightPanel = "order" | "watchlist" | "kwantbot" | "optionstape" | "alerts" | "alertslog" | "friends";
+type RightPanel = "order" | "watchlist" | "zyon" | "kwantbot" | "optionstape" | "alerts" | "alertslog" | "friends";
 const CHART_INDICATORS_STORAGE_KEY = "kwantdesk-chart-indicators";
 
 type Message = { role: "user" | "assistant"; content: string };
@@ -3018,6 +3018,7 @@ export default function KwantifyWorkspace({
     const saved = window.localStorage.getItem("kwantdesk-right-panel-state");
     return saved === "order"
       || saved === "watchlist"
+      || saved === "zyon"
       || saved === "kwantbot"
       || saved === "optionstape"
       || saved === "alerts"
@@ -3033,6 +3034,7 @@ export default function KwantifyWorkspace({
     const saved = window.localStorage.getItem("kwantdesk-right-panel-state");
     return saved === "order"
       || saved === "watchlist"
+      || saved === "zyon"
       || saved === "kwantbot"
       || saved === "optionstape"
       || saved === "alerts"
@@ -8449,6 +8451,9 @@ export default function KwantifyWorkspace({
           {rightPanel === "kwantbot" && (
             <KwantBotInterpreterPanel interpreter={kwantBotInterpreter} />
           )}
+          {rightPanel === "zyon" && (
+            <ZyonWorkspace interpreter={kwantBotInterpreter} compact />
+          )}
           {rightPanel === "optionstape" && (
             <OptionsTapePanel interpreter={kwantBotInterpreter} />
           )}
@@ -8721,6 +8726,8 @@ export default function KwantifyWorkspace({
             title={`Reopen ${
               lastOpenRightPanel === "alertslog"
                 ? "Alerts Log"
+                : lastOpenRightPanel === "zyon"
+                  ? "ZYON"
                 : lastOpenRightPanel === "kwantbot"
                   ? "Kwant Bot"
                   : lastOpenRightPanel === "optionstape"
@@ -8737,6 +8744,7 @@ export default function KwantifyWorkspace({
         )}
         {[
           { id: "watchlist" as const, title: "Watchlist", icon: List },
+          { id: "zyon" as const, title: "ZYON", icon: Sparkles },
           { id: "kwantbot" as const, title: "Kwant Bot", icon: Bot },
           { id: "optionstape" as const, title: "Options Tape", icon: FileText },
           { id: "alerts" as const, title: "Alerts", icon: Bell },

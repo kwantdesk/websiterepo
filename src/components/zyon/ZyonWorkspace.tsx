@@ -344,10 +344,75 @@ function messageAttachments(
   );
 }
 
+function ZyonImagePreviewDialog({
+  imagePreview,
+  onClose,
+}: {
+  imagePreview: ZyonImagePreview | null;
+  onClose: () => void;
+}) {
+  if (!imagePreview || typeof document === "undefined") return null;
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[1000] bg-black/95 backdrop-blur-md"
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Image preview: ${imagePreview.name}`}
+      onPointerDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <div className="absolute right-4 top-4 z-10 flex items-center gap-2">
+        <button
+          type="button"
+          onClick={async () => {
+            try {
+              const response = await fetch(imagePreview.dataUrl);
+              if (!response.ok) throw new Error();
+              downloadBlob(await response.blob(), imagePreview.name);
+            } catch {
+              window.open(imagePreview.dataUrl, "_blank", "noopener,noreferrer");
+            }
+          }}
+          className="flex h-10 items-center gap-2 rounded-xl border border-white/15 bg-white/10 px-3.5 text-[11px] font-medium text-white shadow-xl backdrop-blur transition hover:bg-white/15"
+        >
+          <Download className="h-4 w-4" />
+          Save image
+        </button>
+        <button
+          type="button"
+          onClick={onClose}
+          className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/15 bg-white/10 text-white shadow-xl backdrop-blur transition hover:bg-white/15"
+          aria-label="Close image preview"
+        >
+          <X className="h-5 w-5" />
+        </button>
+      </div>
+      <div className="absolute inset-x-4 bottom-14 top-16 sm:inset-x-8 sm:bottom-16 sm:top-20">
+        <Image
+          src={imagePreview.dataUrl}
+          alt={imagePreview.name}
+          fill
+          sizes="100vw"
+          unoptimized
+          priority
+          className="select-none object-contain"
+        />
+      </div>
+      <div className="pointer-events-none absolute inset-x-4 bottom-4 truncate text-center text-[10px] text-white/60">
+        {imagePreview.name}
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 export default function ZyonWorkspace({
   interpreter,
+  compact = false,
 }: {
   interpreter: UseKwantBotInterpreterResult;
+  compact?: boolean;
 }) {
   const [model, setModel] = useState<ZyonModelKey>(() => {
     if (typeof window === "undefined") return "opus-5";
@@ -842,6 +907,225 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
       window.requestAnimationFrame(() => composerRef.current?.focus());
     }
   };
+
+  if (compact) {
+    return (
+      <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-background">
+        <header className="shrink-0 border-b border-border bg-panel">
+          <div className="flex items-center gap-2.5 px-3 pb-2 pt-3">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl border border-primary/20 bg-primary/10 text-primary shadow-[0_0_22px_color-mix(in_srgb,var(--primary)_12%,transparent)]">
+              <Sparkles className="h-4 w-4" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2">
+                <h2 className="text-[13px] font-semibold tracking-[0.12em] text-foreground">ZYON</h2>
+                <span className={`h-1.5 w-1.5 rounded-full ${online ? "animate-pulse bg-primary shadow-[0_0_7px_var(--primary)]" : "bg-muted"}`} />
+              </div>
+              <div className="mt-0.5 truncate text-[8px] text-muted">
+                {selectedRoot} intelligence · {contextState} · {cloudJournal === "synced" ? "journal synced" : "local journal"}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => { window.location.href = "/zyon"; }}
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-border bg-surface text-muted transition hover:border-primary/30 hover:text-primary"
+              title="Open the full ZYON workspace"
+              aria-label="Open the full ZYON workspace"
+            >
+              <Maximize2 className="h-3.5 w-3.5" />
+            </button>
+          </div>
+
+          <div className="flex items-center gap-2 border-t border-border/70 px-3 py-2">
+            <div className="flex shrink-0 items-center rounded-xl border border-border bg-surface/60 p-0.5">
+              {(["NQ", "ES"] as ZyonMarketRoot[]).map((root) => (
+                <button
+                  key={root}
+                  type="button"
+                  onClick={() => interpreter.selectRoot(root)}
+                  className={`rounded-lg px-2.5 py-1.5 font-mono text-[9px] font-semibold transition ${
+                    selectedRoot === root ? "bg-primary/12 text-primary" : "text-muted hover:text-foreground"
+                  }`}
+                >
+                  {root}
+                </button>
+              ))}
+            </div>
+            <KwantSelect
+              value={model}
+              onChange={(event) => {
+                if (isZyonModelKey(event.target.value)) setModel(event.target.value);
+              }}
+              menuLabel="ZYON model"
+              className="h-8 min-w-0 flex-1 rounded-xl border border-border bg-surface/60 px-2 text-[9px] font-semibold text-foreground"
+              aria-label="Select ZYON model"
+            >
+              {Object.entries(ZYON_MODELS).map(([key, item]) => (
+                <option key={key} value={key}>{item.label}</option>
+              ))}
+            </KwantSelect>
+            <button
+              type="button"
+              onClick={() => setOnline((current) => !current)}
+              className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border transition ${
+                online
+                  ? "border-primary/25 bg-primary/[0.08] text-primary"
+                  : "border-border bg-surface text-muted"
+              }`}
+              title={online ? "Pause ZYON" : "Bring ZYON online"}
+              aria-label={online ? "Pause ZYON" : "Bring ZYON online"}
+            >
+              <Radio className="h-3.5 w-3.5" />
+            </button>
+          </div>
+
+          <div className="grid grid-cols-2 border-t border-border/70 text-[8px]">
+            <div className="border-r border-border/70 px-3 py-2">
+              <span className="block uppercase tracking-[0.12em] text-muted">Live price</span>
+              <span className="mt-1 block font-mono text-[10px] text-foreground">
+                {currentPrice === null ? "—" : formatKwantBotPrice(selectedRoot, currentPrice)}
+              </span>
+            </div>
+            <div className="px-3 py-2">
+              <span className="block uppercase tracking-[0.12em] text-muted">Context</span>
+              <span className="mt-1 block truncate text-[9px] font-semibold text-foreground">
+                {context?.options.gammaRegime ?? "Waiting"}
+              </span>
+            </div>
+          </div>
+        </header>
+
+        <div className="min-h-0 flex-1 overflow-y-auto bg-[radial-gradient(circle_at_50%_0%,color-mix(in_srgb,var(--primary)_5%,transparent),transparent_38%)] px-3 py-4">
+          <div className="flex min-h-full flex-col justify-end">
+            <div className="mb-4 flex items-center gap-2 text-[8px] font-semibold uppercase tracking-[0.12em] text-muted/70">
+              <span className="h-px flex-1 bg-border" />
+              Shared ZYON conversation
+              <span className="h-px flex-1 bg-border" />
+            </div>
+            <div className="space-y-3">
+              {messages.map((message) => {
+                const assistant = message.role === "assistant";
+                return (
+                  <div key={message.id} className={`flex gap-2 ${assistant ? "justify-start" : "justify-end"}`}>
+                    {assistant ? (
+                      <span className="mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary">
+                        <Sparkles className="h-3 w-3" />
+                      </span>
+                    ) : null}
+                    <div className="max-w-[84%]">
+                      <div className={`overflow-hidden rounded-[17px] border px-3 py-2.5 ${
+                        assistant
+                          ? "rounded-bl-[6px] border-border bg-panel/85"
+                          : "rounded-br-[6px] border-primary/20 bg-primary/[0.09]"
+                      }`}>
+                        {messageAttachments(message.attachments, setImagePreview)}
+                        <p className="whitespace-pre-wrap text-[10px] leading-[1.65] text-foreground">{message.content}</p>
+                      </div>
+                      <div className={`mt-1 flex items-center gap-1.5 px-1 text-[7px] uppercase tracking-[0.08em] text-muted ${assistant ? "" : "justify-end"}`}>
+                        <span>{assistant ? "ZYON" : "YOU"}</span>
+                        {message.createdAt ? <span>{formatTime(message.createdAt)}</span> : null}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+              {sending ? (
+                <div className="flex items-center gap-2">
+                  <span className="flex h-7 w-7 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary">
+                    <Sparkles className="h-3 w-3 animate-pulse" />
+                  </span>
+                  <span className="flex items-center gap-2 rounded-2xl border border-border bg-panel/85 px-3 py-2.5 text-[9px] text-muted">
+                    <Loader2 className="h-3 w-3 animate-spin text-primary" />
+                    ZYON is analysing
+                  </span>
+                </div>
+              ) : null}
+              <div ref={messagesEndRef} />
+            </div>
+          </div>
+        </div>
+
+        <form onSubmit={sendMessage} className="shrink-0 border-t border-border bg-panel p-2.5">
+          {attachments.length ? (
+            <div className="mb-2 flex gap-2 overflow-x-auto">
+              {attachments.map((attachment) => (
+                <div key={attachment.id} className="relative flex h-12 min-w-0 max-w-[160px] items-center gap-2 overflow-hidden rounded-xl border border-border bg-background/50 pr-7">
+                  {isImage(attachment) ? (
+                    <Image src={attachment.dataUrl} alt={attachment.name} width={48} height={48} unoptimized className="h-12 w-12 shrink-0 object-cover" />
+                  ) : (
+                    <span className="ml-2 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"><FileText className="h-3.5 w-3.5" /></span>
+                  )}
+                  <span className="min-w-0 truncate text-[8px] text-foreground">{attachment.name}</span>
+                  <button
+                    type="button"
+                    onClick={() => setAttachments((current) => current.filter((item) => item.id !== attachment.id))}
+                    className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-background/85 text-muted hover:text-foreground"
+                    aria-label={`Remove ${attachment.name}`}
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : null}
+          <div className="rounded-[18px] border border-border bg-background/55 p-1.5 transition focus-within:border-primary/35">
+            <textarea
+              ref={composerRef}
+              value={draft}
+              onChange={(event) => setDraft(event.target.value.slice(0, 6_000))}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && !event.shiftKey) {
+                  event.preventDefault();
+                  void sendMessage();
+                }
+              }}
+              disabled={!online || sending}
+              placeholder={online ? `Message ZYON about ${selectedRoot}…` : "ZYON is paused"}
+              rows={2}
+              className="max-h-28 min-h-10 w-full resize-none bg-transparent px-2 py-1 text-[10px] leading-5 text-foreground outline-none placeholder:text-muted/45"
+            />
+            <div className="flex items-center gap-1 border-t border-border/70 pt-1.5">
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                accept="image/jpeg,image/png,image/gif,image/webp,application/pdf,text/plain,text/markdown,text/csv,application/json"
+                onChange={(event) => void handleFiles(event)}
+                className="hidden"
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={!online || sending || attachments.length >= MAX_ATTACHMENTS}
+                className="flex h-8 w-8 items-center justify-center rounded-full text-muted transition hover:bg-surface hover:text-primary disabled:opacity-35"
+                title="Attach a chart, image or file"
+                aria-label="Attach a chart, image or file"
+              >
+                <Paperclip className="h-3.5 w-3.5" />
+              </button>
+              <span className="text-[8px] text-muted">Images and files</span>
+              <button
+                type="submit"
+                disabled={!online || sending || (!draft.trim() && !attachments.length)}
+                className="ml-auto flex h-8 w-8 items-center justify-center rounded-full bg-primary text-background transition hover:brightness-110 disabled:opacity-30"
+                title="Send to ZYON"
+                aria-label="Send to ZYON"
+              >
+                {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+              </button>
+            </div>
+          </div>
+          {attachmentError || sendError ? (
+            <p role="alert" className="mt-1.5 px-1 text-[8px] leading-3 text-danger">{attachmentError || sendError}</p>
+          ) : (
+            <p className="mt-1.5 px-1 text-[7px] text-muted">Shared with the full ZYON page and account journal</p>
+          )}
+        </form>
+
+        <ZyonImagePreviewDialog imagePreview={imagePreview} onClose={() => setImagePreview(null)} />
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background">
@@ -1451,61 +1735,7 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
           </div>
         </div>
       ) : null}
-      {imagePreview && typeof document !== "undefined"
-        ? createPortal(
-          <div
-            className="fixed inset-0 z-[1000] bg-black/95 backdrop-blur-md"
-            role="dialog"
-            aria-modal="true"
-            aria-label={`Image preview: ${imagePreview.name}`}
-            onPointerDown={(event) => {
-              if (event.target === event.currentTarget) setImagePreview(null);
-            }}
-          >
-            <div className="absolute right-4 top-4 z-10 flex items-center gap-2">
-              <button
-                type="button"
-                onClick={async () => {
-                  try {
-                    const response = await fetch(imagePreview.dataUrl);
-                    if (!response.ok) throw new Error();
-                    downloadBlob(await response.blob(), imagePreview.name);
-                  } catch {
-                    window.open(imagePreview.dataUrl, "_blank", "noopener,noreferrer");
-                  }
-                }}
-                className="flex h-10 items-center gap-2 rounded-xl border border-white/15 bg-white/10 px-3.5 text-[11px] font-medium text-white shadow-xl backdrop-blur transition hover:bg-white/15"
-              >
-                <Download className="h-4 w-4" />
-                Save image
-              </button>
-              <button
-                type="button"
-                onClick={() => setImagePreview(null)}
-                className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/15 bg-white/10 text-white shadow-xl backdrop-blur transition hover:bg-white/15"
-                aria-label="Close image preview"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-            <div className="absolute inset-x-4 bottom-14 top-16 sm:inset-x-8 sm:bottom-16 sm:top-20">
-              <Image
-                src={imagePreview.dataUrl}
-                alt={imagePreview.name}
-                fill
-                sizes="100vw"
-                unoptimized
-                priority
-                className="select-none object-contain"
-              />
-            </div>
-            <div className="pointer-events-none absolute inset-x-4 bottom-4 truncate text-center text-[10px] text-white/60">
-              {imagePreview.name}
-            </div>
-          </div>,
-          document.body,
-        )
-        : null}
+      <ZyonImagePreviewDialog imagePreview={imagePreview} onClose={() => setImagePreview(null)} />
     </div>
   );
 }
