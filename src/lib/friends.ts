@@ -24,23 +24,54 @@ export type FriendRequestSummary = FriendSummary & {
   requestedAt: string;
 };
 
+export type FriendMessageAttachment = {
+  id: string;
+  name: string;
+  type: string;
+  size: number;
+  dataUrl: string;
+};
+
 export type FriendMessage = {
   id: string;
   senderUserId: string;
   recipientUserId: string;
   body: string;
   sentAt: string;
+  groupId?: string;
+  attachments?: FriendMessageAttachment[];
+};
+
+export type FriendGroupMember = FriendSummary & {
+  role: "owner" | "member";
+};
+
+export type FriendGroupSummary = {
+  id: string;
+  name: string;
+  description: string;
+  createdBy: string;
+  isOwner: boolean;
+  allowMemberInvites: boolean;
+  muted: boolean;
+  members: FriendGroupMember[];
+  unreadCount: number;
+  lastMessage: string;
+  lastMessageAt: string | null;
 };
 
 export type FriendsPayload = {
   cloud: boolean;
+  groupsReady: boolean;
   viewer: FriendSummary | null;
   friends: FriendSummary[];
+  groups: FriendGroupSummary[];
   incoming: FriendRequestSummary[];
   outgoing: FriendRequestSummary[];
   blocked: FriendSummary[];
   directory: FriendSummary[];
   messages: FriendMessage[];
+  groupMessages: FriendMessage[];
 };
 
 export const PRESENCE_OPTIONS: {

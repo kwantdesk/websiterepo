@@ -4,7 +4,10 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import { getRouteActor, type RouteActor } from "@/lib/serverAuth";
 import {
   normalizePresenceStatus,
+  type FriendGroupMember,
+  type FriendGroupSummary,
   type FriendMessage,
+  type FriendMessageAttachment,
   type FriendRequestSummary,
   type FriendSummary,
   type FriendsPayload,
@@ -27,15 +30,53 @@ type SocialRow = {
   updated_at: string;
 };
 
+type FriendChatRow = {
+  id: string;
+  name: string;
+  description: string;
+  created_by: string;
+  allow_member_invites: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+type FriendChatMemberRow = {
+  chat_id: string;
+  user_id: string;
+  role: "owner" | "member";
+  muted: boolean;
+  last_read_at: string;
+  joined_at: string;
+};
+
+type FriendChatMessageRow = {
+  id: string;
+  chat_id: string;
+  sender_user_id: string;
+  body: string;
+  attachments: unknown;
+  created_at: string;
+};
+
+type FriendChatRows = {
+  ready: boolean;
+  chats: FriendChatRow[];
+  members: FriendChatMemberRow[];
+  messages: FriendChatMessageRow[];
+};
+
 const emptyPayload = (cloud = false): FriendsPayload => ({
   cloud,
+  groupsReady: false,
   viewer: null,
   friends: [],
+  groups: [],
   incoming: [],
   outgoing: [],
   blocked: [],
   directory: [],
   messages: [],
+  groupMessages: [],
 });
 
 function tableUnavailable(code?: string) {
@@ -89,6 +130,31 @@ function stringArray(value: unknown) {
     : [];
 }
 
+function messageAttachments(value: unknown): FriendMessageAttachment[] {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, 2).flatMap((entry) => {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) return [];
+    const attachment = entry as Record<string, unknown>;
+    const id = cleanIdentifier(attachment.id, 80) || `image:${randomUUID()}`;
+    const type = cleanText(attachment.type, 80).toLowerCase();
+    const dataUrl = typeof attachment.dataUrl === "string" ? attachment.dataUrl.trim() : "";
+    const name = cleanText(attachment.name, 120) || "Chart image";
+    const declaredSize = Math.max(0, Math.floor(Number(attachment.size) || 0));
+    const prefix = /^data:image\/(png|jpe?g|webp|gif);base64,/i.exec(dataUrl);
+    if (!prefix || dataUrl.length > 1_350_000 || declaredSize > 950_000) return [];
+    const encoded = dataUrl.slice(prefix[0].length);
+    const approximateSize = Math.floor(encoded.length * 0.75);
+    if (!encoded || approximateSize > 950_000) return [];
+    return [{
+      id,
+      name,
+      type: type.startsWith("image/") ? type : `image/${prefix[1].toLowerCase().replace("jpg", "jpeg")}`,
+      size: approximateSize,
+      dataUrl,
+    }];
+  });
+}
+
 async function socialClient(request: NextRequest) {
   const actor = await getRouteActor(request);
   if (!actor) return { actor: null, supabase: null };
@@ -111,6 +177,61 @@ async function loadRows(
   return { rows: (data ?? []) as SocialRow[], error };
 }
 
+async function loadFriendChatRows(
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+  actorUserId: string,
+): Promise<FriendChatRows> {
+  const membershipResult = await supabase
+    .from("friend_chat_members")
+    .select("chat_id,user_id,role,muted,last_read_at,joined_at")
+    .eq("user_id", actorUserId)
+    .order("joined_at", { ascending: false });
+  if (membershipResult.error) {
+    if (tableUnavailable(membershipResult.error.code)) {
+      return { ready: false, chats: [], members: [], messages: [] };
+    }
+    console.warn("Friend group membership load failed", {
+      code: membershipResult.error.code,
+      message: membershipResult.error.message,
+    });
+    return { ready: false, chats: [], members: [], messages: [] };
+  }
+  const ownMemberships = (membershipResult.data ?? []) as FriendChatMemberRow[];
+  const chatIds = ownMemberships.map((row) => row.chat_id);
+  if (!chatIds.length) return { ready: true, chats: [], members: [], messages: [] };
+
+  const [chatResult, memberResult, messageResult] = await Promise.all([
+    supabase
+      .from("friend_chats")
+      .select("id,name,description,created_by,allow_member_invites,created_at,updated_at")
+      .in("id", chatIds),
+    supabase
+      .from("friend_chat_members")
+      .select("chat_id,user_id,role,muted,last_read_at,joined_at")
+      .in("chat_id", chatIds),
+    supabase
+      .from("friend_chat_messages")
+      .select("id,chat_id,sender_user_id,body,attachments,created_at")
+      .in("chat_id", chatIds)
+      .order("created_at", { ascending: true })
+      .limit(2_000),
+  ]);
+  const error = chatResult.error ?? memberResult.error ?? messageResult.error;
+  if (error) {
+    if (tableUnavailable(error.code)) {
+      return { ready: false, chats: [], members: [], messages: [] };
+    }
+    console.warn("Friend group chat load failed", { code: error.code, message: error.message });
+    return { ready: false, chats: [], members: [], messages: [] };
+  }
+  return {
+    ready: true,
+    chats: (chatResult.data ?? []) as FriendChatRow[],
+    members: (memberResult.data ?? []) as FriendChatMemberRow[],
+    messages: (messageResult.data ?? []) as FriendChatMessageRow[],
+  };
+}
+
 function effectiveStatus(payload: Record<string, unknown>) {
   const status = normalizePresenceStatus(payload.presenceStatus);
   const lastSeenAt = cleanText(payload.lastSeenAt, 40) || null;
@@ -123,7 +244,32 @@ function effectiveStatus(payload: Record<string, unknown>) {
   };
 }
 
-function buildPayload(rows: SocialRow[], actor: RouteActor, requestedFriendId = ""): FriendsPayload {
+function connectedFriendIds(rows: SocialRow[], userId: string) {
+  const outgoing = new Set(
+    rows
+      .filter((row) => row.object_type === "follow" && row.user_id === userId)
+      .map((row) => cleanIdentifier(row.payload?.targetUserId, 80))
+      .filter(Boolean),
+  );
+  const incoming = new Set(
+    rows
+      .filter(
+        (row) =>
+          row.object_type === "follow"
+          && cleanIdentifier(row.payload?.targetUserId, 80) === userId,
+      )
+      .map((row) => row.user_id),
+  );
+  return new Set([...outgoing].filter((target) => incoming.has(target)));
+}
+
+function buildPayload(
+  rows: SocialRow[],
+  actor: RouteActor,
+  requestedFriendId = "",
+  friendChatRows: FriendChatRows = { ready: false, chats: [], members: [], messages: [] },
+  requestedGroupId = "",
+): FriendsPayload {
   const profiles = new Map<string, SocialRow>();
   const follows = rows.filter((row) => row.object_type === "follow");
   const messages = rows.filter(
@@ -178,13 +324,15 @@ function buildPayload(rows: SocialRow[], actor: RouteActor, requestedFriendId = 
     const friendId = senderUserId === actor.userId ? recipientUserId : senderUserId;
     if (!friendId || !friendIds.has(friendId)) continue;
     const body = cleanText(row.payload?.body, 2_000);
-    if (!body) continue;
+    const attachments = messageAttachments(row.payload?.attachments);
+    if (!body && !attachments.length) continue;
     const item: FriendMessage = {
       id: row.id,
       senderUserId,
       recipientUserId,
       body,
       sentAt: cleanText(row.payload?.sentAt, 40) || row.created_at,
+      attachments: attachments.length ? attachments : undefined,
     };
     const list = messagesByFriend.get(friendId) ?? [];
     list.push(item);
@@ -218,7 +366,7 @@ function buildPayload(rows: SocialRow[], actor: RouteActor, requestedFriendId = 
       isOnline: presence.isOnline,
       desks: desksByUser.get(userId) ?? [],
       unreadCount,
-      lastMessage: last?.body ?? "",
+      lastMessage: last?.body || (last?.attachments?.length ? "Image" : ""),
       lastMessageAt: last?.sentAt ?? null,
     };
   };
@@ -258,16 +406,74 @@ function buildPayload(rows: SocialRow[], actor: RouteActor, requestedFriendId = 
     .map(summary)
     .sort((a, b) => Number(b.isOnline) - Number(a.isOnline) || a.displayName.localeCompare(b.displayName));
 
+  const chatMembers = new Map<string, FriendChatMemberRow[]>();
+  for (const member of friendChatRows.members) {
+    const members = chatMembers.get(member.chat_id) ?? [];
+    members.push(member);
+    chatMembers.set(member.chat_id, members);
+  }
+  const chatMessages = new Map<string, FriendMessage[]>();
+  for (const row of friendChatRows.messages) {
+    const attachments = messageAttachments(row.attachments);
+    const body = cleanText(row.body, 2_000);
+    if (!body && !attachments.length) continue;
+    const messages = chatMessages.get(row.chat_id) ?? [];
+    messages.push({
+      id: row.id,
+      groupId: row.chat_id,
+      senderUserId: row.sender_user_id,
+      recipientUserId: "",
+      body,
+      sentAt: row.created_at,
+      attachments: attachments.length ? attachments : undefined,
+    });
+    chatMessages.set(row.chat_id, messages);
+  }
+
+  const groups: FriendGroupSummary[] = friendChatRows.chats.map((chat) => {
+    const memberships = chatMembers.get(chat.id) ?? [];
+    const ownMembership = memberships.find((member) => member.user_id === actor.userId);
+    const messages = chatMessages.get(chat.id) ?? [];
+    const last = messages.at(-1);
+    const readTimestamp = Date.parse(ownMembership?.last_read_at ?? "") || 0;
+    const members: FriendGroupMember[] = memberships
+      .map((member) => ({ ...summary(member.user_id), role: member.role }))
+      .sort((a, b) => Number(b.role === "owner") - Number(a.role === "owner") || a.displayName.localeCompare(b.displayName));
+    return {
+      id: chat.id,
+      name: cleanText(chat.name, 60) || "Group chat",
+      description: cleanText(chat.description, 240),
+      createdBy: chat.created_by,
+      isOwner: chat.created_by === actor.userId || ownMembership?.role === "owner",
+      allowMemberInvites: Boolean(chat.allow_member_invites),
+      muted: Boolean(ownMembership?.muted),
+      members,
+      unreadCount: messages.filter(
+        (message) => message.senderUserId !== actor.userId && Date.parse(message.sentAt) > readTimestamp,
+      ).length,
+      lastMessage: last?.body || (last?.attachments?.length ? "Image" : ""),
+      lastMessageAt: last?.sentAt ?? null,
+    };
+  }).sort((a, b) => {
+    const newest = (Date.parse(b.lastMessageAt ?? "") || 0) - (Date.parse(a.lastMessageAt ?? "") || 0);
+    return newest || a.name.localeCompare(b.name);
+  });
+
   return {
     cloud: true,
+    groupsReady: friendChatRows.ready,
     viewer: summary(actor.userId),
     friends,
+    groups,
     incoming,
     outgoing,
     blocked: blockedProfiles,
     directory,
     messages: requestedFriendId && friendIds.has(requestedFriendId)
       ? messagesByFriend.get(requestedFriendId) ?? []
+      : [],
+    groupMessages: requestedGroupId && groups.some((group) => group.id === requestedGroupId)
+      ? chatMessages.get(requestedGroupId) ?? []
       : [],
   };
 }
@@ -341,14 +547,18 @@ export async function GET(request: NextRequest) {
     }
     return NextResponse.json({ handle, available: (data ?? []).length === 0 });
   }
-  const { rows, error } = await loadRows(supabase);
+  const [{ rows, error }, friendChatRows] = await Promise.all([
+    loadRows(supabase),
+    loadFriendChatRows(supabase, actor.userId),
+  ]);
   if (error) {
     if (tableUnavailable(error.code)) return NextResponse.json(emptyPayload(false));
     console.error("Friends load failed", { code: error.code, message: error.message });
     return NextResponse.json({ error: "Friends could not be loaded." }, { status: 502 });
   }
   const friendId = cleanIdentifier(request.nextUrl.searchParams.get("friendId"), 80);
-  return NextResponse.json(buildPayload(rows, actor, friendId), {
+  const groupId = cleanIdentifier(request.nextUrl.searchParams.get("groupId"), 80);
+  return NextResponse.json(buildPayload(rows, actor, friendId, friendChatRows, groupId), {
     headers: { "Cache-Control": "private, no-store, max-age=0" },
   });
 }
@@ -366,7 +576,9 @@ export async function POST(request: NextRequest) {
   }
   const action = cleanIdentifier(body.action, 32);
   const targetUserId = cleanIdentifier(body.targetUserId, 80);
+  const groupId = cleanIdentifier(body.groupId, 80);
   const now = new Date().toISOString();
+  let responseGroupId = groupId;
 
   if (action === "presence" || action === "identity" || action === "status" || action === "heartbeat") {
     const changes: Record<string, unknown> = { lastSeenAt: now };
@@ -518,10 +730,183 @@ export async function POST(request: NextRequest) {
         .eq("user_id", actor.userId)
         .eq("id", `follow:${targetUserId}`);
     }
+  } else if (action === "create-group") {
+    const name = cleanText(body.name, 60);
+    const description = cleanText(body.description, 240);
+    const requestedMembers = [...new Set(stringArray(body.memberUserIds))]
+      .filter((userId) => userId !== actor.userId)
+      .slice(0, 19);
+    if (!name) {
+      return NextResponse.json({ error: "Give the group chat a name." }, { status: 400 });
+    }
+    if (requestedMembers.length < 1) {
+      return NextResponse.json({ error: "Choose at least one friend for the group." }, { status: 400 });
+    }
+    const { rows, error: rowsError } = await loadRows(supabase);
+    if (rowsError) return NextResponse.json({ error: "Friends could not be verified." }, { status: 502 });
+    const friends = connectedFriendIds(rows, actor.userId);
+    if (requestedMembers.some((userId) => !friends.has(userId))) {
+      return NextResponse.json({ error: "Only connected friends can be added to a group." }, { status: 403 });
+    }
+    const newGroupId = randomUUID();
+    responseGroupId = newGroupId;
+    const { error: chatError } = await supabase.from("friend_chats").insert({
+      id: newGroupId,
+      name,
+      description,
+      created_by: actor.userId,
+      allow_member_invites: Boolean(body.allowMemberInvites),
+      created_at: now,
+      updated_at: now,
+    });
+    if (chatError) {
+      return NextResponse.json({
+        error: tableUnavailable(chatError.code)
+          ? "Group chat storage is not connected yet."
+          : "The group chat could not be created.",
+      }, { status: tableUnavailable(chatError.code) ? 503 : 502 });
+    }
+    const { error: ownerError } = await supabase.from("friend_chat_members").insert({
+      chat_id: newGroupId,
+      user_id: actor.userId,
+      role: "owner",
+      muted: false,
+      last_read_at: now,
+      joined_at: now,
+    });
+    if (ownerError) {
+      await supabase.from("friend_chats").delete().eq("id", newGroupId);
+      return NextResponse.json({ error: "The group owner could not be saved." }, { status: 502 });
+    }
+    const { error: membersError } = await supabase.from("friend_chat_members").insert(
+      requestedMembers.map((userId) => ({
+        chat_id: newGroupId,
+        user_id: userId,
+        role: "member",
+        muted: false,
+        last_read_at: now,
+        joined_at: now,
+      })),
+    );
+    if (membersError) {
+      await supabase.from("friend_chats").delete().eq("id", newGroupId);
+      return NextResponse.json({ error: "The selected friends could not be added." }, { status: 502 });
+    }
+  } else if (action === "group-settings") {
+    if (!groupId) return NextResponse.json({ error: "Choose a group chat." }, { status: 400 });
+    const changes: Record<string, unknown> = { updated_at: now };
+    if (body.name !== undefined) {
+      const name = cleanText(body.name, 60);
+      if (!name) return NextResponse.json({ error: "The group name cannot be empty." }, { status: 400 });
+      changes.name = name;
+    }
+    if (body.description !== undefined) changes.description = cleanText(body.description, 240);
+    if (body.allowMemberInvites !== undefined) changes.allow_member_invites = Boolean(body.allowMemberInvites);
+    const { error } = await supabase.from("friend_chats").update(changes).eq("id", groupId);
+    if (error) return NextResponse.json({ error: "Only the group owner can change these settings." }, { status: 403 });
+  } else if (action === "group-add-members") {
+    if (!groupId) return NextResponse.json({ error: "Choose a group chat." }, { status: 400 });
+    const requestedMembers = [...new Set(stringArray(body.memberUserIds))]
+      .filter((userId) => userId !== actor.userId)
+      .slice(0, 20);
+    if (!requestedMembers.length) {
+      return NextResponse.json({ error: "Choose at least one friend to add." }, { status: 400 });
+    }
+    const [{ rows, error: rowsError }, existingMembers] = await Promise.all([
+      loadRows(supabase),
+      supabase.from("friend_chat_members").select("user_id").eq("chat_id", groupId),
+    ]);
+    if (rowsError || existingMembers.error) {
+      return NextResponse.json({ error: "Group membership could not be checked." }, { status: 502 });
+    }
+    const friends = connectedFriendIds(rows, actor.userId);
+    const existing = new Set((existingMembers.data ?? []).map((row) => String(row.user_id)));
+    const additions = requestedMembers.filter((userId) => friends.has(userId) && !existing.has(userId));
+    if (!additions.length) {
+      return NextResponse.json({ error: "Those friends are already in the group." }, { status: 409 });
+    }
+    const { error } = await supabase.from("friend_chat_members").insert(
+      additions.map((userId) => ({
+        chat_id: groupId,
+        user_id: userId,
+        role: "member",
+        muted: false,
+        last_read_at: now,
+        joined_at: now,
+      })),
+    );
+    if (error) return NextResponse.json({ error: "You do not have permission to add members." }, { status: 403 });
+  } else if (action === "group-remove-member" || action === "group-leave") {
+    if (!groupId) return NextResponse.json({ error: "Choose a group chat." }, { status: 400 });
+    const memberUserId = action === "group-leave" ? actor.userId : targetUserId;
+    if (!memberUserId) return NextResponse.json({ error: "Choose a group member." }, { status: 400 });
+    const { data: chat } = await supabase
+      .from("friend_chats")
+      .select("created_by")
+      .eq("id", groupId)
+      .maybeSingle();
+    if (chat?.created_by === memberUserId) {
+      return NextResponse.json({
+        error: memberUserId === actor.userId
+          ? "Owners must delete the group instead of leaving it."
+          : "The group owner cannot be removed.",
+      }, { status: 409 });
+    }
+    const { error } = await supabase
+      .from("friend_chat_members")
+      .delete()
+      .eq("chat_id", groupId)
+      .eq("user_id", memberUserId);
+    if (error) return NextResponse.json({ error: "That member could not be removed." }, { status: 403 });
+  } else if (action === "group-delete") {
+    if (!groupId) return NextResponse.json({ error: "Choose a group chat." }, { status: 400 });
+    const { error } = await supabase.from("friend_chats").delete().eq("id", groupId);
+    if (error) return NextResponse.json({ error: "Only the owner can delete this group." }, { status: 403 });
+  } else if (action === "group-mute") {
+    if (!groupId) return NextResponse.json({ error: "Choose a group chat." }, { status: 400 });
+    const { error } = await supabase
+      .from("friend_chat_members")
+      .update({ muted: Boolean(body.muted) })
+      .eq("chat_id", groupId)
+      .eq("user_id", actor.userId);
+    if (error) return NextResponse.json({ error: "Notification settings could not be saved." }, { status: 502 });
+  } else if (action === "group-message") {
+    const bodyText = cleanText(body.body, 2_000);
+    const attachments = messageAttachments(body.attachments);
+    if (!groupId || (!bodyText && !attachments.length)) {
+      return NextResponse.json({ error: "Write a message or attach an image first." }, { status: 400 });
+    }
+    const { data: membership, error: membershipError } = await supabase
+      .from("friend_chat_members")
+      .select("chat_id")
+      .eq("chat_id", groupId)
+      .eq("user_id", actor.userId)
+      .maybeSingle();
+    if (membershipError || !membership) {
+      return NextResponse.json({ error: "You are no longer a member of this group." }, { status: 403 });
+    }
+    const { error } = await supabase.from("friend_chat_messages").insert({
+      id: randomUUID(),
+      chat_id: groupId,
+      sender_user_id: actor.userId,
+      body: bodyText,
+      attachments,
+      created_at: now,
+    });
+    if (error) return NextResponse.json({ error: "The group message could not be sent." }, { status: 502 });
+  } else if (action === "group-mark-read") {
+    if (!groupId) return NextResponse.json({ error: "Choose a group chat." }, { status: 400 });
+    const { error } = await supabase
+      .from("friend_chat_members")
+      .update({ last_read_at: now })
+      .eq("chat_id", groupId)
+      .eq("user_id", actor.userId);
+    if (error) return NextResponse.json({ error: "Read state could not be saved." }, { status: 502 });
   } else if (action === "message") {
     const bodyText = cleanText(body.body, 2_000);
-    if (!targetUserId || !bodyText) {
-      return NextResponse.json({ error: "Write a message first." }, { status: 400 });
+    const attachments = messageAttachments(body.attachments);
+    if (!targetUserId || (!bodyText && !attachments.length)) {
+      return NextResponse.json({ error: "Write a message or attach an image first." }, { status: 400 });
     }
     const { rows, error: rowsError } = await loadRows(supabase);
     if (rowsError) return NextResponse.json({ error: "Friendship could not be verified." }, { status: 502 });
@@ -551,6 +936,7 @@ export async function POST(request: NextRequest) {
         kind: "friend-message",
         recipientUserId: targetUserId,
         body: bodyText,
+        attachments,
         sentAt: now,
       },
     });
@@ -574,7 +960,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Unsupported friends action." }, { status: 400 });
   }
 
-  const { rows, error } = await loadRows(supabase);
+  const [{ rows, error }, friendChatRows] = await Promise.all([
+    loadRows(supabase),
+    loadFriendChatRows(supabase, actor.userId),
+  ]);
   if (error) return NextResponse.json({ ok: true });
-  return NextResponse.json(buildPayload(rows, actor, targetUserId));
+  return NextResponse.json(buildPayload(rows, actor, targetUserId, friendChatRows, responseGroupId));
 }
