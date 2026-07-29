@@ -61,6 +61,7 @@ type OneLinerSnapshot = {
 };
 
 const ONE_LINER_REFRESH_MS = 5 * 60_000;
+const LIVE_FEED_FAILURE_GRACE_MS = 60_000;
 
 const ROLE_COPY: Record<GameplanRole, string> = {
   magnet: "Price is pulled here and can stick. Consolidation is more likely than immediate travel.",
@@ -944,7 +945,7 @@ export default function GameplanWorkspace({ initialInstrument = "NQ" }: { initia
   const [oneLinerSnapshot, setOneLinerSnapshot] = useState<OneLinerSnapshot | null>(null);
   const [clockNow, setClockNow] = useState(() => Date.now());
   const [priceTick, setPriceTick] = useState<"up" | "down" | "flat">("flat");
-  const [liveFeedState, setLiveFeedState] = useState<"connecting" | "live" | "fallback">("connecting");
+  const [liveFeedState, setLiveFeedState] = useState<"connecting" | "live" | "fallback">("live");
   const [mode, setMode] = useState<DetailMode>("standard");
   const [whatIf, setWhatIf] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -956,6 +957,8 @@ export default function GameplanWorkspace({ initialInstrument = "NQ" }: { initia
   const [addedToChartKey, setAddedToChartKey] = useState<string | null>(null);
   const previousPriceRef = useRef<number | null>(null);
   const lastNativeTickAtRef = useRef(0);
+  const lastFeedSuccessAtRef = useRef(Date.now());
+  const feedFailureTimerRef = useRef<number | null>(null);
   const priceTickTimerRef = useRef<number | null>(null);
   const planRequestRef = useRef(0);
   const planRefreshDelayRef = useRef(5_000);
@@ -974,8 +977,35 @@ export default function GameplanWorkspace({ initialInstrument = "NQ" }: { initia
     setCurrentPrice(nextPrice);
   }, []);
 
+  const markFeedHealthy = useCallback(() => {
+    lastFeedSuccessAtRef.current = Date.now();
+    if (feedFailureTimerRef.current !== null) {
+      window.clearTimeout(feedFailureTimerRef.current);
+      feedFailureTimerRef.current = null;
+    }
+    setLiveFeedState("live");
+  }, []);
+
+  const deferFeedFailure = useCallback(() => {
+    if (feedFailureTimerRef.current !== null) return;
+    const checkFailure = () => {
+      const healthyAge = Date.now() - lastFeedSuccessAtRef.current;
+      if (healthyAge < LIVE_FEED_FAILURE_GRACE_MS) {
+        feedFailureTimerRef.current = window.setTimeout(
+          checkFailure,
+          LIVE_FEED_FAILURE_GRACE_MS - healthyAge,
+        );
+        return;
+      }
+      feedFailureTimerRef.current = null;
+      setLiveFeedState("fallback");
+    };
+    feedFailureTimerRef.current = window.setTimeout(checkFailure, LIVE_FEED_FAILURE_GRACE_MS);
+  }, []);
+
   useEffect(() => () => {
     if (priceTickTimerRef.current !== null) window.clearTimeout(priceTickTimerRef.current);
+    if (feedFailureTimerRef.current !== null) window.clearTimeout(feedFailureTimerRef.current);
   }, []);
 
   useEffect(() => {
@@ -1089,10 +1119,10 @@ export default function GameplanWorkspace({ initialInstrument = "NQ" }: { initia
 
   useEffect(() => {
     if (!payload) return;
-    setLiveFeedState("connecting");
+    markFeedHealthy();
     lastNativeTickAtRef.current = 0;
     const live = new EventSource(`/api/databento/live?symbols=${encodeURIComponent(`${root}.v.0`)}`);
-    live.addEventListener("status", () => setLiveFeedState("live"));
+    live.addEventListener("status", markFeedHealthy);
     live.onmessage = (event) => {
       try {
         const tick = JSON.parse(event.data) as { instrument?: string; mid?: number };
@@ -1100,14 +1130,14 @@ export default function GameplanWorkspace({ initialInstrument = "NQ" }: { initia
         const nextPrice = Number(tick.mid);
         if (!Number.isFinite(nextPrice) || nextPrice <= 0) return;
         lastNativeTickAtRef.current = Date.now();
-        setLiveFeedState("live");
+        markFeedHealthy();
         updateLivePrice(nextPrice);
       } catch {}
     };
-    live.addEventListener("feed-error", () => setLiveFeedState("fallback"));
-    live.onerror = () => setLiveFeedState("fallback");
+    live.addEventListener("feed-error", deferFeedFailure);
+    live.onerror = deferFeedFailure;
     return () => live.close();
-  }, [payload?.instrument, root, updateLivePrice]);
+  }, [deferFeedFailure, markFeedHealthy, payload?.instrument, root, updateLivePrice]);
 
   useEffect(() => {
     if (!payload) return;
@@ -1122,12 +1152,17 @@ export default function GameplanWorkspace({ initialInstrument = "NQ" }: { initia
           && response.ok
           && market.marketData?.lastPrice !== null
           && market.marketData?.lastPrice !== undefined
-          && Date.now() - lastNativeTickAtRef.current > 3_000
         ) {
-          setLiveFeedState("fallback");
-          updateLivePrice(market.marketData.lastPrice);
+          markFeedHealthy();
+          if (Date.now() - lastNativeTickAtRef.current > 3_000) {
+            updateLivePrice(market.marketData.lastPrice);
+          }
+        } else if (!cancelled) {
+          deferFeedFailure();
         }
-      } catch {}
+      } catch {
+        if (!cancelled) deferFeedFailure();
+      }
     };
     void poll();
     const timer = window.setInterval(() => void poll(), 2_000);
@@ -1135,7 +1170,7 @@ export default function GameplanWorkspace({ initialInstrument = "NQ" }: { initia
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [payload?.instrument, root, updateLivePrice]);
+  }, [deferFeedFailure, markFeedHealthy, payload?.instrument, root, updateLivePrice]);
 
   useEffect(() => {
     let disposed = false;
