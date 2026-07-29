@@ -6,6 +6,9 @@ export type RouteActor = {
   userId: string;
   label: string;
   mode: "supabase" | "local-dev";
+  displayName?: string;
+  username?: string;
+  avatarUrl?: string;
 };
 
 export async function getRouteActor(request?: NextRequest): Promise<RouteActor | null> {
@@ -60,11 +63,22 @@ export async function getRouteActor(request?: NextRequest): Promise<RouteActor |
   const displayName =
     typeof user.user_metadata?.display_name === "string"
       ? user.user_metadata.display_name.trim()
+      : typeof user.user_metadata?.full_name === "string"
+        ? user.user_metadata.full_name.trim()
       : "";
+  const avatarUrl =
+    typeof user.user_metadata?.avatar_url === "string"
+      ? user.user_metadata.avatar_url.trim()
+      : typeof user.user_metadata?.picture === "string"
+        ? user.user_metadata.picture.trim()
+        : "";
 
   return {
     userId: user.id,
     label: email || username || displayName || user.id,
     mode: "supabase",
+    displayName,
+    username,
+    avatarUrl,
   };
 }

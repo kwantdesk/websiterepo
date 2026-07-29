@@ -38,6 +38,7 @@ export type FriendsPayload = {
   friends: FriendSummary[];
   incoming: FriendRequestSummary[];
   outgoing: FriendRequestSummary[];
+  blocked: FriendSummary[];
   directory: FriendSummary[];
   messages: FriendMessage[];
 };

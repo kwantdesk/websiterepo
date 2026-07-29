@@ -33,6 +33,7 @@ const emptyPayload = (cloud = false): FriendsPayload => ({
   friends: [],
   incoming: [],
   outgoing: [],
+  blocked: [],
   directory: [],
   messages: [],
 });
@@ -54,6 +55,7 @@ function cleanIdentifier(value: unknown, maximum = 180) {
 }
 
 function authorLabel(actor: RouteActor) {
+  if (actor.displayName) return cleanText(actor.displayName, 48);
   const stem = actor.label.includes("@") ? actor.label.split("@")[0] : actor.label;
   return cleanText(stem.replace(/[._-]+/g, " "), 48) || "Kwant Trader";
 }
@@ -154,6 +156,7 @@ function buildPayload(rows: SocialRow[], actor: RouteActor, requestedFriendId = 
     (row) => cleanIdentifier(row.payload?.targetUserId, 80) === actor.userId,
   );
   const incomingByUser = new Map(incomingRows.map((row) => [row.user_id, row]));
+  const incomingUserIds = new Set(incomingRows.map((row) => row.user_id));
   const friendIds = new Set(
     [...outgoingTargets.keys()].filter((target) => incomingByUser.has(target) && !blocked.has(target)),
   );
@@ -232,8 +235,13 @@ function buildPayload(rows: SocialRow[], actor: RouteActor, requestedFriendId = 
         userId !== actor.userId
         && !friendIds.has(userId)
         && !blocked.has(userId)
-        && !outgoingTargets.has(userId),
+        && !outgoingTargets.has(userId)
+        && !incomingUserIds.has(userId),
     )
+    .map(summary)
+    .sort((a, b) => a.displayName.localeCompare(b.displayName));
+  const blockedProfiles = [...blocked]
+    .filter((userId) => profiles.has(userId))
     .map(summary)
     .sort((a, b) => a.displayName.localeCompare(b.displayName));
   const friends = [...friendIds]
@@ -246,6 +254,7 @@ function buildPayload(rows: SocialRow[], actor: RouteActor, requestedFriendId = 
     friends,
     incoming,
     outgoing,
+    blocked: blockedProfiles,
     directory,
     messages: requestedFriendId && friendIds.has(requestedFriendId)
       ? messagesByFriend.get(requestedFriendId) ?? []
@@ -267,6 +276,15 @@ async function upsertProfile(
   const payload = existing?.payload && typeof existing.payload === "object"
     ? existing.payload as Record<string, unknown>
     : {};
+  const fallbackHandle = (actor.username || actor.label.split("@")[0] || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "")
+    .slice(0, 24);
+  const identityDefaults = {
+    displayName: cleanText(payload.displayName, 60) || authorLabel(actor),
+    handle: cleanIdentifier(payload.handle, 32).toLowerCase() || fallbackHandle,
+    avatarUrl: cleanText(payload.avatarUrl, 1_000) || cleanText(actor.avatarUrl, 1_000),
+  };
   return supabase.from("social_objects").upsert({
     user_id: actor.userId,
     id: "profile",
@@ -275,7 +293,7 @@ async function upsertProfile(
     scope: "community",
     desk_id: null,
     parent_id: null,
-    payload: { ...payload, ...changes },
+    payload: { ...identityDefaults, ...payload, ...changes },
     updated_at: new Date().toISOString(),
   }, { onConflict: "user_id,id" });
 }
@@ -327,6 +345,28 @@ export async function POST(request: NextRequest) {
     if (!targetUserId || targetUserId === actor.userId) {
       return NextResponse.json({ error: "Choose another trader." }, { status: 400 });
     }
+    const { data: targetProfile } = await supabase
+      .from("social_objects")
+      .select("id")
+      .eq("user_id", targetUserId)
+      .eq("id", "profile")
+      .eq("object_type", "profile")
+      .maybeSingle();
+    if (!targetProfile) {
+      return NextResponse.json({ error: "That Kwant Desk account is not available." }, { status: 404 });
+    }
+    const { data: ownProfile } = await supabase
+      .from("social_objects")
+      .select("payload")
+      .eq("user_id", actor.userId)
+      .eq("id", "profile")
+      .maybeSingle();
+    const ownProfilePayload = ownProfile?.payload && typeof ownProfile.payload === "object"
+      ? ownProfile.payload as Record<string, unknown>
+      : {};
+    if (stringArray(ownProfilePayload.blockedUserIds).includes(targetUserId)) {
+      return NextResponse.json({ error: "Unblock this trader before sending a request." }, { status: 409 });
+    }
     if (action === "accept") {
       const { data: incoming } = await supabase
         .from("social_objects")
@@ -349,6 +389,16 @@ export async function POST(request: NextRequest) {
       updated_at: now,
     }, { onConflict: "user_id,id" });
     if (error) return NextResponse.json({ error: "The friend request could not be saved." }, { status: 502 });
+  } else if (action === "cancel") {
+    if (!targetUserId || targetUserId === actor.userId) {
+      return NextResponse.json({ error: "Choose another trader." }, { status: 400 });
+    }
+    const { error } = await supabase
+      .from("social_objects")
+      .delete()
+      .eq("user_id", actor.userId)
+      .eq("id", `follow:${targetUserId}`);
+    if (error) return NextResponse.json({ error: "The request could not be cancelled." }, { status: 502 });
   } else if (action === "decline" || action === "remove" || action === "block" || action === "unblock") {
     if (!targetUserId || targetUserId === actor.userId) {
       return NextResponse.json({ error: "Choose another trader." }, { status: 400 });

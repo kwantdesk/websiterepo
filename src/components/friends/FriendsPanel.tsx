@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
+  Ban,
   Check,
   ChevronDown,
   Clock3,
@@ -11,6 +12,8 @@ import {
   MoreHorizontal,
   Search,
   Send,
+  ShieldOff,
+  UserMinus,
   UserPlus,
   UsersRound,
   X,
@@ -31,6 +34,7 @@ const EMPTY: FriendsPayload = {
   friends: [],
   incoming: [],
   outgoing: [],
+  blocked: [],
   directory: [],
   messages: [],
 };
@@ -88,8 +92,11 @@ export default function FriendsPanel({ onClose, onUnreadCountChange }: FriendsPa
   const [query, setQuery] = useState("");
   const [showAdd, setShowAdd] = useState(false);
   const [showPresence, setShowPresence] = useState(false);
+  const [showFriendMenu, setShowFriendMenu] = useState(false);
+  const [showBlocked, setShowBlocked] = useState(false);
   const [activeFriendId, setActiveFriendId] = useState("");
   const [draft, setDraft] = useState("");
+  const [presenceDraft, setPresenceDraft] = useState("");
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -171,9 +178,16 @@ export default function FriendsPanel({ onClose, onUnreadCountChange }: FriendsPa
     };
   }, [activeFriendId, load]);
 
+  useEffect(() => {
+    const fallbackRefresh = window.setInterval(() => {
+      if (document.visibilityState === "visible") void load(activeFriendId, true);
+    }, 25_000);
+    return () => window.clearInterval(fallbackRefresh);
+  }, [activeFriendId, load]);
+
   const unreadTotal = useMemo(
-    () => payload.friends.reduce((total, friend) => total + friend.unreadCount, 0),
-    [payload.friends],
+    () => payload.incoming.length + payload.friends.reduce((total, friend) => total + friend.unreadCount, 0),
+    [payload.friends, payload.incoming.length],
   );
 
   useEffect(() => {
@@ -209,13 +223,14 @@ export default function FriendsPanel({ onClose, onUnreadCountChange }: FriendsPa
     setShowPresence(false);
     await runAction("presence", {
       presenceStatus,
-      presenceMessage: payload.viewer?.presenceMessage ?? "",
+      presenceMessage: presenceDraft || payload.viewer?.presenceMessage || "",
     });
   };
 
   const openChat = (friend: FriendSummary) => {
     setActiveFriendId(friend.userId);
     setShowAdd(false);
+    setShowFriendMenu(false);
   };
 
   const sendMessage = async () => {
@@ -224,6 +239,23 @@ export default function FriendsPanel({ onClose, onUnreadCountChange }: FriendsPa
     setDraft("");
     const sent = await runAction("message", { targetUserId: activeFriend.userId, body });
     if (sent) await load(activeFriend.userId, true);
+  };
+
+  const updatePresenceMessage = async () => {
+    const saved = await runAction("presence", {
+      presenceStatus: payload.viewer?.presenceStatus ?? "online",
+      presenceMessage: presenceDraft,
+    });
+    if (saved) setShowPresence(false);
+  };
+
+  const closeFriendship = async (action: "remove" | "block") => {
+    if (!activeFriend) return;
+    const completed = await runAction(action, { targetUserId: activeFriend.userId });
+    if (completed) {
+      setShowFriendMenu(false);
+      setActiveFriendId("");
+    }
   };
 
   if (activeFriend) {
@@ -240,9 +272,33 @@ export default function FriendsPanel({ onClose, onUnreadCountChange }: FriendsPa
               {activeFriend.isOnline ? presenceOption(activeFriend.presenceStatus).label : `Last seen ${timeLabel(activeFriend.lastSeenAt) || "recently"}`}
             </div>
           </div>
-          <button className="flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground">
-            <MoreHorizontal className="h-4 w-4" />
-          </button>
+          <div className="relative">
+            <button
+              title="Friend options"
+              onClick={() => setShowFriendMenu((value) => !value)}
+              className={`flex h-8 w-8 items-center justify-center rounded-lg ${showFriendMenu ? "bg-surface text-foreground" : "text-muted hover:bg-surface hover:text-foreground"}`}
+            >
+              <MoreHorizontal className="h-4 w-4" />
+            </button>
+            {showFriendMenu && (
+              <div className="absolute right-0 top-10 z-40 w-40 rounded-xl border border-border bg-panel p-1.5 shadow-2xl">
+                <button
+                  onClick={() => void closeFriendship("remove")}
+                  className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[10px] text-muted hover:bg-surface hover:text-foreground"
+                >
+                  <UserMinus className="h-3.5 w-3.5" />
+                  Remove friend
+                </button>
+                <button
+                  onClick={() => void closeFriendship("block")}
+                  className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[10px] text-danger hover:bg-danger/10"
+                >
+                  <Ban className="h-3.5 w-3.5" />
+                  Block account
+                </button>
+              </div>
+            )}
+          </div>
           <button onClick={onClose} className="flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground">
             <X className="h-4 w-4" />
           </button>
@@ -367,6 +423,23 @@ export default function FriendsPanel({ onClose, onUnreadCountChange }: FriendsPa
                 {payload.viewer?.presenceStatus === option.value && <Check className="h-3.5 w-3.5 text-primary" />}
               </button>
             ))}
+            <div className="mt-1 border-t border-border p-1.5">
+              <input
+                value={presenceDraft}
+                onChange={(event) => setPresenceDraft(event.target.value.slice(0, 80))}
+                onFocus={() => {
+                  if (!presenceDraft) setPresenceDraft(payload.viewer?.presenceMessage ?? "");
+                }}
+                placeholder="Add a short status"
+                className="h-8 w-full rounded-lg border border-border bg-surface px-2.5 text-[10px] outline-none placeholder:text-muted focus:border-primary/40"
+              />
+              <button
+                onClick={() => void updatePresenceMessage()}
+                className="mt-1.5 w-full rounded-lg bg-primary px-2 py-1.5 text-[9px] font-semibold text-background"
+              >
+                Save status
+              </button>
+            </div>
           </div>
         )}
       </div>
@@ -428,8 +501,8 @@ export default function FriendsPanel({ onClose, onUnreadCountChange }: FriendsPa
                         <div className="min-w-0 flex-1"><div className="truncate text-[11px] font-medium">{person.displayName}</div><div className="truncate text-[9px] text-muted">@{person.handle}</div></div>
                       </div>
                       <div className="mt-2 grid grid-cols-2 gap-1.5">
-                        <button onClick={() => void runAction("accept", { targetUserId: person.userId })} className="rounded-lg bg-primary px-2 py-1.5 text-[9px] font-semibold text-background">Accept</button>
-                        <button onClick={() => void runAction("decline", { targetUserId: person.userId })} className="rounded-lg border border-border bg-surface px-2 py-1.5 text-[9px] text-muted">Decline</button>
+                        <button disabled={busyId === person.userId} onClick={() => void runAction("accept", { targetUserId: person.userId })} className="rounded-lg bg-primary px-2 py-1.5 text-[9px] font-semibold text-background disabled:opacity-40">Accept</button>
+                        <button disabled={busyId === person.userId} onClick={() => void runAction("decline", { targetUserId: person.userId })} className="rounded-lg border border-border bg-surface px-2 py-1.5 text-[9px] text-muted disabled:opacity-40">Decline</button>
                       </div>
                     </div>
                   ))}
@@ -481,10 +554,49 @@ export default function FriendsPanel({ onClose, onUnreadCountChange }: FriendsPa
                     <div key={person.userId} className="flex items-center gap-2 rounded-xl px-2 py-2">
                       <Avatar friend={person} size="sm" />
                       <div className="min-w-0 flex-1"><div className="truncate text-[11px] font-medium">{person.displayName}</div><div className="truncate text-[9px] text-muted">@{person.handle}</div></div>
-                      <span className="text-[8px] uppercase tracking-wider text-muted">Sent</span>
+                      <button
+                        disabled={busyId === person.userId}
+                        onClick={() => void runAction("cancel", { targetUserId: person.userId })}
+                        className="rounded-lg border border-border bg-surface px-2 py-1.5 text-[8px] font-medium text-muted hover:text-foreground disabled:opacity-40"
+                      >
+                        Cancel
+                      </button>
                     </div>
                   ))}
                 </div>
+              </section>
+            )}
+
+            {payload.blocked.length > 0 && (
+              <section>
+                <button
+                  onClick={() => setShowBlocked((value) => !value)}
+                  className="flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-[9px] font-semibold uppercase tracking-[0.16em] text-muted hover:bg-surface"
+                >
+                  <span>Blocked · {payload.blocked.length}</span>
+                  <ChevronDown className={`h-3 w-3 transition-transform ${showBlocked ? "rotate-180" : ""}`} />
+                </button>
+                {showBlocked && (
+                  <div className="mt-1 space-y-1">
+                    {payload.blocked.map((person) => (
+                      <div key={person.userId} className="flex items-center gap-2 rounded-xl px-2 py-2">
+                        <Avatar friend={person} size="sm" />
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-[11px] font-medium">{person.displayName}</div>
+                          <div className="truncate text-[9px] text-muted">@{person.handle}</div>
+                        </div>
+                        <button
+                          disabled={busyId === person.userId}
+                          onClick={() => void runAction("unblock", { targetUserId: person.userId })}
+                          className="flex items-center gap-1 rounded-lg border border-border bg-surface px-2 py-1.5 text-[8px] text-muted hover:text-foreground disabled:opacity-40"
+                        >
+                          <ShieldOff className="h-3 w-3" />
+                          Unblock
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </section>
             )}
 

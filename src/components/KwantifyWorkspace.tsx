@@ -71,6 +71,7 @@ import {
 import { runBacktest, runStrategyCode, type BacktestConfig, type BacktestResult, type Candle, type Trade } from "@/lib/backtester";
 import { generateSampleData } from "@/lib/sampleData";
 import { createClient } from "@/lib/supabase";
+import type { FriendsPayload } from "@/lib/friends";
 import { useAccountPreferenceSync } from "@/hooks/useAccountPreferenceSync";
 import { hydrateUserPreferences, preferenceSnapshotFingerprint } from "@/lib/userPreferences";
 import { normalizeTimeZone } from "@/lib/timeZones";
@@ -3196,6 +3197,63 @@ export default function KwantifyWorkspace({
   useEffect(() => {
     watchlistRef.current = watchlist;
   }, [watchlist]);
+
+  useEffect(() => {
+    if (!supabase) return;
+    let cancelled = false;
+    let viewerId = "";
+    let refreshTimer: number | null = null;
+
+    const refreshUnread = async () => {
+      try {
+        const response = await fetch("/api/friends", { cache: "no-store" });
+        if (!response.ok || cancelled) return;
+        const next = await response.json() as FriendsPayload;
+        const unread = next.incoming.length
+          + next.friends.reduce((total, friend) => total + friend.unreadCount, 0);
+        if (!cancelled) setFriendsUnreadCount(unread);
+      } catch {
+        // Friends remain available from the rail if this background badge refresh fails.
+      }
+    };
+
+    void supabase.auth.getUser().then(({ data }: { data: { user: { id: string } | null } }) => {
+      if (cancelled || !data.user) return;
+      viewerId = data.user.id;
+      void refreshUnread();
+    });
+
+    const channel = supabase
+      .channel("kwantdesk-friends-badge")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "social_objects" },
+        (event: { new: Record<string, unknown>; old: Record<string, unknown> }) => {
+          const nextRow = event.new as { user_id?: string; payload?: Record<string, unknown> };
+          const previousRow = event.old as { user_id?: string; payload?: Record<string, unknown> };
+          const row = nextRow.user_id ? nextRow : previousRow;
+          const rowPayload = row.payload ?? {};
+          const relevant = Boolean(
+            viewerId
+            && (
+              row.user_id === viewerId
+              || rowPayload.targetUserId === viewerId
+              || rowPayload.recipientUserId === viewerId
+            )
+          );
+          if (!relevant) return;
+          if (refreshTimer) window.clearTimeout(refreshTimer);
+          refreshTimer = window.setTimeout(() => void refreshUnread(), 300);
+        },
+      )
+      .subscribe();
+
+    return () => {
+      cancelled = true;
+      if (refreshTimer) window.clearTimeout(refreshTimer);
+      void supabase.removeChannel(channel);
+    };
+  }, [supabase]);
 
   const linkedCTraderBrokerNames = useMemo(
     () => Array.from(new Set(linkedCTraderAccounts.map(resolveCTraderBrokerName))),
