@@ -634,6 +634,29 @@ function getPriceFormat(instrument: string) {
   return { type: "price" as const, precision: 2, minMove: 0.01 };
 }
 
+const DEFAULT_VISIBLE_CANDLE_COUNT = 140;
+const DEFAULT_RIGHT_CANDLE_PADDING = 8;
+
+function resetChartViewport(
+  chart: IChartApi,
+  candleSeries: CandleSeriesApi,
+  candleCount: number,
+) {
+  candleSeries.priceScale().applyOptions({ autoScale: true });
+  if (candleCount <= DEFAULT_VISIBLE_CANDLE_COUNT) {
+    chart.timeScale().fitContent();
+  } else {
+    chart.timeScale().setVisibleLogicalRange({
+      from: Math.max(0, candleCount - DEFAULT_VISIBLE_CANDLE_COUNT),
+      to: candleCount + DEFAULT_RIGHT_CANDLE_PADDING,
+    });
+  }
+
+  return window.requestAnimationFrame(() => {
+    candleSeries.priceScale().applyOptions({ autoScale: false });
+  });
+}
+
 function createId(prefix: string) {
   return `${prefix}_${Math.random().toString(36).slice(2, 10)}`;
 }
@@ -986,6 +1009,7 @@ export default function Chart({
   const toolbarToggleSuppressedRef = useRef(false);
   const latestCandleRef = useRef<Candle | null>(candles.at(-1) ?? null);
   const indicatorSampleTimerRef = useRef<number | null>(null);
+  const viewportResetFrameRef = useRef<number | null>(null);
   const pendingIndicatorCandlesRef = useRef(candles);
   const updateIndicatorSettingRef = useRef(onUpdateIndicatorSetting);
   const openIndicatorSettingsRef = useRef(onOpenIndicatorSettings);
@@ -2193,6 +2217,7 @@ export default function Chart({
     if (lastCandleKey === prevDataRef.current) return;
     prevDataRef.current = lastCandleKey;
 
+    const previousCandleCount = prevCandlesLengthRef.current;
     const needsFullRedraw =
       prevCandlesLengthRef.current === 0 ||
       Math.abs(candles.length - prevCandlesLengthRef.current) > 5 ||
@@ -2207,6 +2232,19 @@ export default function Chart({
         close: c.close,
       }));
       candleSeriesRef.current.setData(chartData);
+      const historyExpanded =
+        previousCandleCount <= 5
+        || candles.length >= Math.max(50, previousCandleCount * 1.5);
+      if (historyExpanded) {
+        if (viewportResetFrameRef.current !== null) {
+          window.cancelAnimationFrame(viewportResetFrameRef.current);
+        }
+        viewportResetFrameRef.current = resetChartViewport(
+          chartRef.current,
+          candleSeriesRef.current,
+          candles.length,
+        );
+      }
       applyMarkers(tradesRef.current);
       setTimeout(() => {
         if (tradesRef.current.length > 0) {
@@ -2371,10 +2409,10 @@ export default function Chart({
         applyLevels(levelsRef.current);
       }
     }, 100);
-    chart.timeScale().fitContent();
-    candleSeries.priceScale().applyOptions({
-      autoScale: false,
-    });
+    if (viewportResetFrameRef.current !== null) {
+      window.cancelAnimationFrame(viewportResetFrameRef.current);
+    }
+    viewportResetFrameRef.current = resetChartViewport(chart, candleSeries, chartData.length);
     prevCandlesLengthRef.current = candles.length;
     prevFirstTimestampRef.current = candles[0]?.timestamp ?? null;
     const lastCandle = candles[candles.length - 1];
@@ -2464,6 +2502,10 @@ export default function Chart({
       if (viewportFrameRef.current != null) {
         window.cancelAnimationFrame(viewportFrameRef.current);
         viewportFrameRef.current = null;
+      }
+      if (viewportResetFrameRef.current !== null) {
+        window.cancelAnimationFrame(viewportResetFrameRef.current);
+        viewportResetFrameRef.current = null;
       }
       if (chartRef.current) {
         if (candleSeriesRef.current && gameplanUnderlayRef.current) {

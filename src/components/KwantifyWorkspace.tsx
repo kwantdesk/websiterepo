@@ -1984,7 +1984,7 @@ function WorkspaceChartPane({
       if (latestCandlesRef.current.length) {
         void writeChartHistoryCache(pane.symbol, pane.timeframe, latestCandlesRef.current);
       }
-    }, 5_000);
+    }, 30_000);
     return () => {
       window.clearInterval(interval);
       if (latestCandlesRef.current.length) {
@@ -2159,7 +2159,7 @@ function WorkspaceChartPane({
     const clearPendingFrame = () => {
       pendingLiveTicksRef.current = [];
       if (liveFrameRef.current !== null) {
-        window.clearTimeout(liveFrameRef.current);
+        window.cancelAnimationFrame(liveFrameRef.current);
         liveFrameRef.current = null;
       }
     };
@@ -2219,7 +2219,7 @@ function WorkspaceChartPane({
       }
       if (liveFrameRef.current !== null) return;
 
-      liveFrameRef.current = window.setTimeout(() => {
+      liveFrameRef.current = window.requestAnimationFrame(() => {
         const queuedTicks = pendingLiveTicksRef.current.splice(0);
         liveFrameRef.current = null;
         const ticks = usingDatabentoPaneFeed && isEventBasedChartInterval(pane.timeframe)
@@ -2268,11 +2268,11 @@ function WorkspaceChartPane({
         }));
         const newBar = previous.at(-1)?.timestamp !== latest.timestamp;
         const now = Date.now();
-        if (newBar || now - lastCandleStateSyncRef.current >= 250) {
+        if (newBar || now - lastCandleStateSyncRef.current >= 500) {
           lastCandleStateSyncRef.current = now;
           setCandles(next);
         }
-      }, 50);
+      });
     };
 
     if (usingDatabentoPaneFeed) {
@@ -4246,8 +4246,7 @@ export default function KwantifyWorkspace({
     const abortController = new AbortController();
     let cancelled = false;
     let warmupTimer: number | null = null;
-    const instruments = [...DATABENTO_FUTURES, ...databentoOptions];
-    const symbols = Array.from(new Set(instruments.map((instrument) => instrument.symbol)));
+    const symbols = [...DATABENTO_DEFAULT_SYMBOLS];
     let cursor = 0;
 
     const warmNext = async () => {
@@ -4270,17 +4269,21 @@ export default function KwantifyWorkspace({
         } catch {
           if (abortController.signal.aborted) return;
         }
+        if (!cancelled) {
+          await new Promise<void>((resolve) => window.setTimeout(resolve, 750));
+        }
       }
     };
 
-    // Visible panes load first. Broad background warming begins only after startup is settled.
-    warmupTimer = window.setTimeout(() => void warmNext(), 6_000);
+    // Warm only the compact default futures set after startup. Loading the full
+    // futures/options catalogue here overwhelms the browser and competes with live ticks.
+    warmupTimer = window.setTimeout(() => void warmNext(), 20_000);
     return () => {
       cancelled = true;
       if (warmupTimer !== null) window.clearTimeout(warmupTimer);
       abortController.abort();
     };
-  }, [authChecked, databentoOptions]);
+  }, [authChecked]);
 
   useEffect(() => {
     savePaperTradingAccounts(paperTradingAccounts);

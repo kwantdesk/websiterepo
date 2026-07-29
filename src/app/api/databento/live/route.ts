@@ -61,7 +61,9 @@ export async function GET(request: Request) {
       let authenticated = false;
       let lastUpstreamMessageAt = Date.now();
       let downstreamHeartbeat: ReturnType<typeof setInterval> | null = null;
+      let downstreamFlush: ReturnType<typeof setInterval> | null = null;
       let upstreamHealthCheck: ReturnType<typeof setInterval> | null = null;
+      const pendingPayloads = new Map<string, CachedLivePayload["payload"]>();
 
       const send = (value: string) => {
         if (closed) return;
@@ -75,9 +77,35 @@ export async function GET(request: Request) {
         if (closed) return;
         closed = true;
         if (downstreamHeartbeat) clearInterval(downstreamHeartbeat);
+        if (downstreamFlush) clearInterval(downstreamFlush);
         if (upstreamHealthCheck) clearInterval(upstreamHealthCheck);
         socket?.destroy();
         try { controller.close(); } catch {}
+      };
+      const flushPendingPayloads = () => {
+        if (closed || pendingPayloads.size === 0) return;
+        const payloads = [...pendingPayloads.values()];
+        pendingPayloads.clear();
+        for (const payload of payloads) {
+          send(`data: ${JSON.stringify(payload)}\n\n`);
+        }
+      };
+      const queuePayload = (payload: CachedLivePayload["payload"]) => {
+        const previous = pendingPayloads.get(payload.instrument);
+        const previousTrades = previous?.isTrade ? Number(previous.trades ?? 1) : 0;
+        const nextTrades = payload.isTrade ? Number(payload.trades ?? 1) : 0;
+        const trades = previousTrades + nextTrades;
+        pendingPayloads.set(payload.instrument, {
+          ...payload,
+          isTrade: trades > 0,
+          size: trades > 0
+            ? Number(previous?.size ?? 0) + Number(payload.size ?? 0)
+            : undefined,
+          trades: trades > 0 ? trades : undefined,
+          delta: trades > 0
+            ? Number(previous?.delta ?? 0) + Number(payload.delta ?? 0)
+            : undefined,
+        });
       };
       closeStream = close;
 
@@ -92,6 +120,10 @@ export async function GET(request: Request) {
         () => send(`event: heartbeat\ndata: ${JSON.stringify({ timestamp: Date.now() })}\n\n`),
         8_000,
       );
+      // Raw CME MBP can deliver thousands of updates per second. A 32 ms
+      // per-symbol coalescing window preserves a fluid tape while preventing
+      // the browser main thread from being flooded by redundant book changes.
+      downstreamFlush = setInterval(flushPendingPayloads, 32);
       upstreamHealthCheck = setInterval(() => {
         if (authenticated && Date.now() - lastUpstreamMessageAt > 22_000) {
           close();
@@ -194,7 +226,7 @@ export async function GET(request: Request) {
               broker: "Databento",
             };
             liveQuoteCache.set(symbol, { payload, updatedAt: now });
-            send(`data: ${JSON.stringify(payload)}\n\n`);
+            queuePayload(payload);
           } catch {
             // Control and metadata records that are not JSON trade records are ignored.
           }
