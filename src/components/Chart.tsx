@@ -1967,7 +1967,7 @@ export default function Chart({
     const themeStyles = window.getComputedStyle(document.documentElement);
     const crosshairColor =
       themeStyles.getPropertyValue("--crosshair-color").trim()
-      || "rgba(214,180,95,.42)";
+      || "rgba(182,255,0,.78)";
     const crosshairLabelColor =
       themeStyles.getPropertyValue("--surface").trim()
       || "#18181B";

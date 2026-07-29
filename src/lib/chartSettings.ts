@@ -23,15 +23,15 @@ export const CHART_SETTINGS_METADATA_KEY = "chartSettings";
 
 export const defaultChartSettings: ChartSettings = {
   colorBarsPreviousClose: true,
-  upColor: "#D6B45F",
-  downColor: "#D96C5F",
-  borderUpColor: "#D6B45F",
-  borderDownColor: "#D96C5F",
-  wickUpColor: "#D6B45F",
-  wickDownColor: "#D96C5F99",
-  backgroundColor: "#0C0D0F",
+  upColor: "#B6FF00",
+  downColor: "#FFFFFF",
+  borderUpColor: "#B6FF00",
+  borderDownColor: "#FFFFFF",
+  wickUpColor: "#B6FF00",
+  wickDownColor: "#FFFFFF",
+  backgroundColor: "#000000",
   gridLines: true,
-  gridColor: "#1D1D1B",
+  gridColor: "#0A140C",
   timezone: "America/New_York",
   precision: "Default",
 };
