@@ -3,6 +3,7 @@ import { getDatabentoBars } from "@/lib/databento";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+export const maxDuration = 60;
 
 type HistoryCacheEntry = {
   candles: Awaited<ReturnType<typeof getDatabentoBars>>;
@@ -15,7 +16,7 @@ const globalHistoryCache = globalThis as typeof globalThis & {
 const historyCache = globalHistoryCache.__kwantdeskCmeHistory
   ?? (globalHistoryCache.__kwantdeskCmeHistory = new Map<string, HistoryCacheEntry>());
 const FRESH_CACHE_MS = 5 * 60_000;
-const HISTORY_WINDOW_MS = 8 * 24 * 60 * 60_000;
+const HISTORY_WINDOW_MS = 5 * 24 * 60 * 60_000;
 
 export async function GET(request: Request) {
   if (!process.env.DATABENTO_API_KEY) {

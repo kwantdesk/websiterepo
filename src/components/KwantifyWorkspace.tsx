@@ -128,6 +128,7 @@ import {
 import { applyMarketTradesToEventBars, futuresTickSize } from "@/lib/eventBars";
 import {
   mergeChartHistory,
+  readCompatibleChartHistoryCache,
   readChartHistoryCache,
   writeChartHistoryCache,
 } from "@/lib/chartHistoryCache";
@@ -1201,7 +1202,7 @@ async function fetchWorkspaceCandles(symbol: string, timeframe: string, broker: 
   if (broker === "Databento") {
     const response = await fetch(
       `/api/databento/market?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}`,
-      { cache: "default", signal: AbortSignal.timeout(15_000) },
+      { cache: "default", signal: AbortSignal.timeout(45_000) },
     );
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.error ?? `CME did not return candles for ${displayCmeSymbol(symbol)}.`);
@@ -1835,7 +1836,7 @@ function WorkspaceChartPane({
 
     const loadHistory = async () => {
       const cached = pane.broker === "Databento"
-        ? await readChartHistoryCache(pane.symbol, pane.timeframe)
+        ? await readCompatibleChartHistoryCache(pane.symbol, pane.timeframe)
         : null;
       if (cancelled) return;
       const requestedFrom = Date.parse(getPeriodConfig(period).from);
@@ -1857,7 +1858,9 @@ function WorkspaceChartPane({
         setLoading(false);
       } catch {
         if (cancelled) return;
-        if (!cachedCandles.length) setError("Unable to load CME history");
+        if (!cachedCandles.length && !latestCandlesRef.current.length) {
+          setError("Connecting to live CME data");
+        }
         setLoading(false);
       }
     };
@@ -2117,6 +2120,14 @@ function WorkspaceChartPane({
           ? queuedTicks
           : compactTimeBasedTicks(queuedTicks, pane.timeframe);
         if (!ticks.length) return;
+        const hasRenderableTick = !(
+          usingDatabentoPaneFeed
+          && isEventBasedChartInterval(pane.timeframe)
+        ) || ticks.some((tick) => tick.isTrade);
+        if (hasRenderableTick) {
+          setLoading(false);
+          setError(null);
+        }
         if (ticks.some((tick) => !tick.cached)) markMarketActive();
         setLiveFeedError(null);
         setCandles((previous) => {
@@ -2303,9 +2314,9 @@ function WorkspaceChartPane({
           </button>
         </div>
       )}
-      {loading ? (
+      {loading && !candles.length ? (
         <div className="flex h-full items-center justify-center text-[13px] text-muted">Loading chart data...</div>
-      ) : error ? (
+      ) : error && !candles.length ? (
         <div className="flex h-full items-center justify-center text-[13px] text-muted">{error}</div>
       ) : (
         <Chart
