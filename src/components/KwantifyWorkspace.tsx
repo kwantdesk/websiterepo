@@ -70,7 +70,7 @@ import { runBacktest, runStrategyCode, type BacktestConfig, type BacktestResult,
 import { generateSampleData } from "@/lib/sampleData";
 import { createClient } from "@/lib/supabase";
 import { useAccountPreferenceSync } from "@/hooks/useAccountPreferenceSync";
-import { hydrateUserPreferences } from "@/lib/userPreferences";
+import { hydrateUserPreferences, preferenceSnapshotFingerprint } from "@/lib/userPreferences";
 import { normalizeTimeZone } from "@/lib/timeZones";
 import { clearSavedStrategiesRaw, loadSavedStrategiesRaw, saveSavedStrategiesRaw } from "@/lib/automation";
 import { defaultChartSettings, extractUserChartSettings, loadStoredChartSettings, saveStoredChartSettings, type ChartSettings } from "@/lib/chartSettings";
@@ -1727,8 +1727,7 @@ function WorkspaceChartPane({
   const [liveFeedError, setLiveFeedError] = useState<string | null>(null);
   const [resolvedContractSymbol, setResolvedContractSymbol] = useState<string | null>(() =>
     pane.broker === "Databento" ? currentCmeContract(pane.symbol) : null);
-  const [lastMarketUpdateAt, setLastMarketUpdateAt] = useState<number | null>(null);
-  const [statusNow, setStatusNow] = useState(() => Date.now());
+  const [marketIsActive, setMarketIsActive] = useState(false);
   const [streamReconnectNonce, setStreamReconnectNonce] = useState(0);
   const [intervalCommandOpen, setIntervalCommandOpen] = useState(false);
   const [intervalCommandDraft, setIntervalCommandDraft] = useState("");
@@ -1752,6 +1751,8 @@ function WorkspaceChartPane({
   const pendingLiveTicksRef = useRef<QueuedLiveTick[]>([]);
   const liveOutlierCandidateRef = useRef<LiveOutlierCandidate | null>(null);
   const liveFrameRef = useRef<number | null>(null);
+  const marketActiveRef = useRef(false);
+  const marketInactiveTimerRef = useRef<number | null>(null);
   const gammaInstrument = displayCmeSymbol(pane.symbol);
   const gammaLevelsAvailable =
     pane.broker === "Databento" && isGammaChartInstrument(gammaInstrument);
@@ -1778,6 +1779,35 @@ function WorkspaceChartPane({
     () => gammaLevelsEnabled ? currentGammaOverlay?.levels ?? [] : [],
     [currentGammaOverlay, gammaLevelsEnabled],
   );
+  const markMarketActive = useCallback(() => {
+    if (!marketActiveRef.current) {
+      marketActiveRef.current = true;
+      setMarketIsActive(true);
+    }
+    if (marketInactiveTimerRef.current !== null) {
+      window.clearTimeout(marketInactiveTimerRef.current);
+    }
+    marketInactiveTimerRef.current = window.setTimeout(() => {
+      marketInactiveTimerRef.current = null;
+      marketActiveRef.current = false;
+      setMarketIsActive(false);
+    }, 15_000);
+  }, []);
+
+  useEffect(() => {
+    marketActiveRef.current = false;
+    setMarketIsActive(false);
+    if (marketInactiveTimerRef.current !== null) {
+      window.clearTimeout(marketInactiveTimerRef.current);
+      marketInactiveTimerRef.current = null;
+    }
+  }, [pane.broker, pane.symbol, pane.timeframe]);
+
+  useEffect(() => () => {
+    if (marketInactiveTimerRef.current !== null) {
+      window.clearTimeout(marketInactiveTimerRef.current);
+    }
+  }, []);
 
   useEffect(() => {
     onGammaExportSnapshot(pane.id, {
@@ -2091,11 +2121,7 @@ function WorkspaceChartPane({
           ? queuedTicks
           : compactTimeBasedTicks(queuedTicks, pane.timeframe);
         if (!ticks.length) return;
-        setLastMarketUpdateAt(
-          ticks.some((tick) => !tick.cached)
-            ? Date.now()
-            : Math.max(...ticks.map((tick) => tick.timestamp)),
-        );
+        if (ticks.some((tick) => !tick.cached)) markMarketActive();
         setLiveFeedError(null);
         setCandles((previous) => {
           if (usingDatabentoPaneFeed && isEventBasedChartInterval(pane.timeframe)) {
@@ -2161,7 +2187,7 @@ function WorkspaceChartPane({
       stream.close();
       clearPendingFrame();
     };
-  }, [pane.broker, pane.symbol, pane.timeframe, streamReconnectNonce]);
+  }, [markMarketActive, pane.broker, pane.symbol, pane.timeframe, streamReconnectNonce]);
 
   useEffect(() => {
     const usingMassivePaneFeed = pane.broker === "Massive" || isMassiveFuturesSymbol(pane.symbol);
@@ -2177,7 +2203,7 @@ function WorkspaceChartPane({
         const payload = await response.json();
         const snapshot = Array.isArray(payload.snapshots) ? payload.snapshots[0] : null;
         if (cancelled || !snapshot || typeof snapshot.lastPrice !== "number") return;
-        setLastMarketUpdateAt(Date.now());
+        markMarketActive();
         setCandles((prev) => mergeLiveMidIntoCandles(prev, snapshot.lastPrice, pane.symbol, pane.timeframe));
       } catch {
         if (!cancelled) {
@@ -2192,12 +2218,7 @@ function WorkspaceChartPane({
       cancelled = true;
       window.clearInterval(interval);
     };
-  }, [pane.broker, pane.symbol, pane.timeframe]);
-
-  useEffect(() => {
-    const interval = window.setInterval(() => setStatusNow(Date.now()), 1_000);
-    return () => window.clearInterval(interval);
-  }, []);
+  }, [markMarketActive, pane.broker, pane.symbol, pane.timeframe]);
 
   useEffect(() => {
     if (!active) {
@@ -2246,7 +2267,6 @@ function WorkspaceChartPane({
     setIntervalCommandError("");
   };
 
-  const marketIsActive = lastMarketUpdateAt ? statusNow - lastMarketUpdateAt <= 15_000 : false;
   const marketStatusLabel = loading
     ? "Loading"
     : marketIsActive
@@ -2822,7 +2842,7 @@ export default function KwantifyWorkspace({
   const [chartLoadingMessage, setChartLoadingMessage] = useState("");
   const [feedErrorByBroker, setFeedErrorByBroker] = useState<Record<string, string>>({});
   const [streamHealthyByBroker, setStreamHealthyByBroker] = useState<Record<string, boolean>>({});
-  const [lastStreamTickAtByBroker, setLastStreamTickAtByBroker] = useState<Record<string, number>>({});
+  const lastStreamTickAtByBrokerRef = useRef<Record<string, number>>({});
   const [streamReconnectNonce, setStreamReconnectNonce] = useState(0);
   const [orderSide, setOrderSide] = useState<"buy" | "sell">("buy");
   const [orderType, setOrderType] = useState<"market" | "limit" | "stop">("market");
@@ -4302,7 +4322,6 @@ export default function KwantifyWorkspace({
     let lastMessageAt = Date.now();
     let reconnecting = false;
     let streamMarkedHealthy = false;
-    let lastHealthStateAt = 0;
     let reconnectTimer: number | null = null;
     const markStreamAlive = () => {
       lastMessageAt = Date.now();
@@ -4388,42 +4407,63 @@ export default function KwantifyWorkspace({
 
           startTransition(() => {
             const now = Date.now();
-            if (now - lastHealthStateAt >= 1_000) {
-              lastHealthStateAt = now;
-              setLastStreamTickAtByBroker((current) => ({
-                ...current,
-                [activeChartBrokerLabel]: now,
-              }));
-            }
-            setWatchlist((current) => current.map((item) => {
-              if (item.broker !== activeChartBrokerLabel) return item;
-              const nextPrice = updates.get(item.symbol);
-              if (!nextPrice) return item;
-              const prevMid = item.lastPrice || nextPrice.mid;
-              const moveRatio = prevMid > 0 ? Math.abs(nextPrice.mid - prevMid) / prevMid : 0;
-              if (moveRatio > 0.2) return item;
-              const openPrice = item.openPrice || nextPrice.mid;
-              return {
-                ...item,
-                broker: nextPrice.broker || activeChartBrokerLabel,
-                contractSymbol: nextPrice.contractSymbol || item.contractSymbol,
-                lastPrice: nextPrice.mid,
-                openPrice,
-                bid: nextPrice.bid,
-                ask: nextPrice.ask,
-                mid: nextPrice.mid,
-                change: nextPrice.mid - openPrice,
-                changePercent: openPrice ? ((nextPrice.mid - openPrice) / openPrice) * 100 : 0,
-                flash: nextPrice.mid > prevMid ? "up" : nextPrice.mid < prevMid ? "down" : null,
-              };
-            }));
+            lastStreamTickAtByBrokerRef.current[activeChartBrokerLabel] = now;
+            setWatchlist((current) => {
+              let changed = false;
+              const next = current.map((item) => {
+                if (item.broker !== activeChartBrokerLabel) return item;
+                const nextPrice = updates.get(item.symbol);
+                if (!nextPrice) return item;
+                const prevMid = item.lastPrice || nextPrice.mid;
+                const moveRatio = prevMid > 0 ? Math.abs(nextPrice.mid - prevMid) / prevMid : 0;
+                if (moveRatio > 0.2) return item;
+                const openPrice = item.openPrice || nextPrice.mid;
+                const nextBroker = nextPrice.broker || activeChartBrokerLabel;
+                const nextContractSymbol = nextPrice.contractSymbol || item.contractSymbol;
+                const nextChange = nextPrice.mid - openPrice;
+                const nextChangePercent = openPrice ? (nextChange / openPrice) * 100 : 0;
+                const nextFlash: WatchlistItem["flash"] =
+                  nextPrice.mid > prevMid ? "up" : nextPrice.mid < prevMid ? "down" : null;
+                if (
+                  item.broker === nextBroker
+                  && item.contractSymbol === nextContractSymbol
+                  && item.lastPrice === nextPrice.mid
+                  && item.openPrice === openPrice
+                  && item.bid === nextPrice.bid
+                  && item.ask === nextPrice.ask
+                  && item.mid === nextPrice.mid
+                  && item.change === nextChange
+                  && item.changePercent === nextChangePercent
+                  && item.flash === nextFlash
+                ) {
+                  return item;
+                }
+                changed = true;
+                return {
+                  ...item,
+                  broker: nextBroker,
+                  contractSymbol: nextContractSymbol,
+                  lastPrice: nextPrice.mid,
+                  openPrice,
+                  bid: nextPrice.bid,
+                  ask: nextPrice.ask,
+                  mid: nextPrice.mid,
+                  change: nextChange,
+                  changePercent: nextChangePercent,
+                  flash: nextFlash,
+                };
+              });
+              return changed ? next : current;
+            });
           });
 
           if (watchlistFlashTimerRef.current === null) {
             watchlistFlashTimerRef.current = window.setTimeout(() => {
               watchlistFlashTimerRef.current = null;
               startTransition(() => {
-                setWatchlist((current) => current.map((item) => item.flash ? { ...item, flash: null } : item));
+                setWatchlist((current) => current.some((item) => item.flash)
+                  ? current.map((item) => item.flash ? { ...item, flash: null } : item)
+                  : current);
               });
             }, 300);
           }
@@ -4490,7 +4530,7 @@ export default function KwantifyWorkspace({
     const fetchPrices = async () => {
       try {
         if (usingCTraderFeed) {
-          const lastTickAt = lastStreamTickAtByBroker[activeChartBrokerLabel] ?? 0;
+          const lastTickAt = lastStreamTickAtByBrokerRef.current[activeChartBrokerLabel] ?? 0;
           const streamRecentlyAlive = streamHealthyByBroker[activeChartBrokerLabel] && Date.now() - lastTickAt < 3000;
           if (streamRecentlyAlive) return;
         }
@@ -4556,7 +4596,9 @@ export default function KwantifyWorkspace({
         });
 
         window.setTimeout(() => {
-          setWatchlist((current) => current.map((item) => ({ ...item, flash: null })));
+          setWatchlist((current) => current.some((item) => item.flash)
+            ? current.map((item) => item.flash ? { ...item, flash: null } : item)
+            : current);
         }, 300);
       } catch (err) {
         console.error("Price fetch error:", err);
@@ -4566,7 +4608,7 @@ export default function KwantifyWorkspace({
     fetchPrices();
     const interval = window.setInterval(fetchPrices, 500);
     return () => window.clearInterval(interval);
-  }, [activeChartBrokerLabel, chartTrades.length, lastStreamTickAtByBroker, selectedInstrument, selectedTimeframe, streamHealthyByBroker, usingCTraderFeed, watchlistSymbolsCsv]);
+  }, [activeChartBrokerLabel, chartTrades.length, selectedInstrument, selectedTimeframe, streamHealthyByBroker, usingCTraderFeed, watchlistSymbolsCsv]);
 
   useEffect(() => {
     const nameMap: Record<string, string> = {
@@ -4589,6 +4631,7 @@ export default function KwantifyWorkspace({
 
     const updateInactiveFeeds = async () => {
       const brokers = Object.keys(watchlistBrokerSymbols).filter((broker) => broker !== activeChartBrokerLabel);
+      if (brokers.length === 0) return;
       await Promise.all(
         brokers.map(async (broker) => {
           const symbols = watchlistBrokerSymbols[broker];
@@ -4641,12 +4684,14 @@ export default function KwantifyWorkspace({
       );
 
       window.setTimeout(() => {
-        setWatchlist((current) => current.map((item) => ({ ...item, flash: null })));
+        setWatchlist((current) => current.some((item) => item.flash)
+          ? current.map((item) => item.flash ? { ...item, flash: null } : item)
+          : current);
       }, 250);
     };
 
     updateInactiveFeeds();
-    const interval = window.setInterval(updateInactiveFeeds, 700);
+    const interval = window.setInterval(updateInactiveFeeds, 5_000);
     return () => window.clearInterval(interval);
   }, [activeChartBrokerLabel, cTraderBrokerNameSet, watchlistBrokerSymbols]);
 
@@ -4981,8 +5026,15 @@ export default function KwantifyWorkspace({
       try {
         hydrated = await hydrateUserPreferences(supabase, user);
         if (hydrated.changed) {
-          window.location.reload();
-          return;
+          const reloadKey = `kwantdesk:preference-hydration-reload:${user.id}`;
+          const hydratedFingerprint = preferenceSnapshotFingerprint(hydrated.snapshot);
+          if (window.sessionStorage.getItem(reloadKey) !== hydratedFingerprint) {
+            window.sessionStorage.setItem(reloadKey, hydratedFingerprint);
+            window.location.reload();
+            return;
+          }
+        } else {
+          window.sessionStorage.removeItem(`kwantdesk:preference-hydration-reload:${user.id}`);
         }
       } catch {
         // Keep the authenticated workspace available if preference sync is temporarily offline.

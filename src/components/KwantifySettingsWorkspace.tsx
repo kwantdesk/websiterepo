@@ -32,7 +32,7 @@ import { defaultTheme, resetTheme, saveTheme as saveAppTheme, type ThemeColors }
 import { defaultChartSettings, extractUserChartSettings, loadStoredChartSettings, mergeChartSettingsIntoTheme, saveStoredChartSettings, type ChartSettings } from "@/lib/chartSettings";
 import { createClient } from "@/lib/supabase";
 import { usagePlans } from "@/lib/usagePlans";
-import { hydrateUserPreferences } from "@/lib/userPreferences";
+import { hydrateUserPreferences, preferenceSnapshotFingerprint } from "@/lib/userPreferences";
 import { useAccountPreferenceSync } from "@/hooks/useAccountPreferenceSync";
 
 type SettingsTab =
@@ -292,8 +292,15 @@ export default function SettingsPage() {
       try {
         hydrated = await hydrateUserPreferences(supabase, user);
         if (hydrated.changed) {
-          window.location.reload();
-          return;
+          const reloadKey = `kwantdesk:preference-hydration-reload:${user.id}`;
+          const hydratedFingerprint = preferenceSnapshotFingerprint(hydrated.snapshot);
+          if (window.sessionStorage.getItem(reloadKey) !== hydratedFingerprint) {
+            window.sessionStorage.setItem(reloadKey, hydratedFingerprint);
+            window.location.reload();
+            return;
+          }
+        } else {
+          window.sessionStorage.removeItem(`kwantdesk:preference-hydration-reload:${user.id}`);
         }
       } catch {
         // Authentication and local preferences remain usable during a transient sync failure.

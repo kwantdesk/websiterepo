@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type ComponentType, type CSSProperties, type DragEvent as ReactDragEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type ComponentType, type CSSProperties, type DragEvent as ReactDragEvent, type RefObject } from "react";
 import {
   createChart,
   LineStyle,
@@ -725,6 +725,58 @@ function formatCountdown(ms: number) {
   return `${minutes}:${seconds.toString().padStart(2, "0")}`;
 }
 
+function CandleCountdownBadge({
+  candleIntervalMs,
+  hasCandles,
+  latestCandleRef,
+  marketIsActive,
+}: {
+  candleIntervalMs: number | null;
+  hasCandles: boolean;
+  latestCandleRef: RefObject<Candle | null>;
+  marketIsActive?: boolean;
+}) {
+  const [label, setLabel] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!candleIntervalMs || candleIntervalMs <= 0 || !hasCandles) {
+      setLabel(null);
+      return;
+    }
+
+    const updateCountdown = () => {
+      const lastCandle = latestCandleRef.current;
+      if (!lastCandle || !Number.isFinite(lastCandle.timestamp)) {
+        setLabel(null);
+        return;
+      }
+
+      const now = Date.now();
+      const nextFromLastCandle = lastCandle.timestamp + candleIntervalMs;
+      const remainingMs =
+        now <= nextFromLastCandle + candleIntervalMs
+          ? Math.max(0, nextFromLastCandle - now)
+          : candleIntervalMs - (now % candleIntervalMs || candleIntervalMs);
+      setLabel(marketIsActive === false ? "-" : formatCountdown(remainingMs));
+    };
+
+    updateCountdown();
+    const timer = window.setInterval(updateCountdown, 1_000);
+    return () => window.clearInterval(timer);
+  }, [candleIntervalMs, hasCandles, latestCandleRef, marketIsActive]);
+
+  if (!label) return null;
+
+  return (
+    <div
+      className="pointer-events-none absolute bottom-14 right-[76px] z-10 flex h-7 w-[54px] items-center justify-center rounded-lg bg-primary px-1.5 font-mono text-[10px] font-semibold leading-none text-background shadow-lg shadow-black/25"
+      title="Time until next candle opens"
+    >
+      {label}
+    </div>
+  );
+}
+
 function formatPriceDistance(entry: number, other: number, precision: number) {
   const diff = other - entry;
   const absolute = Math.abs(diff);
@@ -876,7 +928,6 @@ export default function Chart({
   const [overlaySize, setOverlaySize] = useState({ width: 0, height: 0 });
   const [viewportVersion, setViewportVersion] = useState(0);
   const [themeVersion, setThemeVersion] = useState(0);
-  const [candleCountdown, setCandleCountdown] = useState<{ label: string; top: number | null } | null>(null);
   const overlayRef = useRef<SVGSVGElement>(null);
   const toolbarRef = useRef<HTMLDivElement>(null);
   const latestPointerRef = useRef<{ x: number; y: number } | null>(null);
@@ -1881,38 +1932,6 @@ export default function Chart({
 
   const hasCandles = candles.length > 0;
   useEffect(() => {
-    if (!candleIntervalMs || candleIntervalMs <= 0 || !hasCandles) {
-      setCandleCountdown(null);
-      return;
-    }
-
-    const updateCountdown = () => {
-      const lastCandle = latestCandleRef.current;
-      if (!lastCandle || !Number.isFinite(lastCandle.timestamp)) {
-        setCandleCountdown(null);
-        return;
-      }
-
-      const now = Date.now();
-      const nextFromLastCandle = lastCandle.timestamp + candleIntervalMs;
-      const remainingMs =
-        now <= nextFromLastCandle + candleIntervalMs
-          ? Math.max(0, nextFromLastCandle - now)
-          : candleIntervalMs - (now % candleIntervalMs || candleIntervalMs);
-      const y = candleSeriesRef.current?.priceToCoordinate(lastCandle.close) ?? null;
-
-      setCandleCountdown({
-        label: marketIsActive === false ? "-" : formatCountdown(remainingMs),
-        top: typeof y === "number" ? clamp(y, 18, Math.max(18, overlaySize.height - 18)) : null,
-      });
-    };
-
-    updateCountdown();
-    const timer = window.setInterval(updateCountdown, 1_000);
-    return () => window.clearInterval(timer);
-  }, [candleIntervalMs, hasCandles, marketIsActive, overlaySize.height, viewportVersion]);
-
-  useEffect(() => {
     tradesRef.current = trades || [];
     applyMarkers(tradesRef.current);
   }, [trades]);
@@ -2331,14 +2350,12 @@ export default function Chart({
         }}
       />
 
-      {candleCountdown ? (
-        <div
-          className="pointer-events-none absolute bottom-14 right-[76px] z-10 flex h-7 w-[54px] items-center justify-center rounded-lg bg-primary px-1.5 font-mono text-[10px] font-semibold leading-none text-background shadow-lg shadow-black/25"
-          title="Time until next candle opens"
-        >
-          {candleCountdown.label}
-        </div>
-      ) : null}
+      <CandleCountdownBadge
+        candleIntervalMs={candleIntervalMs}
+        hasCandles={hasCandles}
+        latestCandleRef={latestCandleRef}
+        marketIsActive={marketIsActive}
+      />
 
       {toolbarEnabled && (
       <div
