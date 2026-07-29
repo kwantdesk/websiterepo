@@ -370,6 +370,7 @@ export default function SocialsWorkspace({
   });
   const [profileDraft, setProfileDraft] = useState<SocialProfilePayload>(() => buildDefaultProfile(resolvedLabel));
   const [profileEditing, setProfileEditing] = useState(false);
+  const [profileSaveState, setProfileSaveState] = useState<"idle" | "saving" | "error">("idle");
   const [avatarCrop, setAvatarCrop] = useState<AvatarCropDraft | null>(null);
   const [avatarCropSaving, setAvatarCropSaving] = useState(false);
   const [selectedProfileRecord, setSelectedProfileRecord] = useState<SocialObject | null>(null);
@@ -603,6 +604,10 @@ export default function SocialsWorkspace({
   useEffect(() => {
     setProfileDraft(currentProfile);
   }, [currentProfileObject?.updatedAt]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (profileEditing) setProfileSaveState("idle");
+  }, [profileEditing]);
 
   useEffect(() => {
     if (!initialProfileHandle) return;
@@ -1071,6 +1076,7 @@ export default function SocialsWorkspace({
   };
 
   const saveProfile = async () => {
+    if (profileSaveState === "saving") return;
     const profile = normalizeSocialProfile({
       ...profileDraft,
       displayName: profileDraft.displayName.trim() || "Kwant Trader",
@@ -1078,9 +1084,12 @@ export default function SocialsWorkspace({
       markets: [...new Set(profileDraft.markets.map((market) => market.trim().toUpperCase()).filter(Boolean))].slice(0, 8),
     }, resolvedLabel);
     if (!/^[a-z][a-z0-9_]{2,23}$/.test(profile.handle)) {
+      setProfileSaveState("error");
       setNotice("Your handle must be 3–24 characters, start with a letter, and only use letters, numbers or underscores.");
       return;
     }
+    setProfileSaveState("saving");
+    const saveStartedAt = Date.now();
     try {
       const identityResponse = await fetch("/api/friends", {
         method: "POST",
@@ -1096,6 +1105,7 @@ export default function SocialsWorkspace({
         throw new Error(identityResult.error || "Trader identity could not be saved.");
       }
     } catch (reason) {
+      setProfileSaveState("error");
       setNotice(reason instanceof Error ? reason.message : "Trader identity could not be saved.");
       return;
     }
@@ -1107,9 +1117,21 @@ export default function SocialsWorkspace({
       scope: profile.visibility.profile,
       payload: profile,
     }));
+    if (!saved.cloudSaved) {
+      setProfileSaveState("error");
+      setNotice("Profile not saved. Account storage is unavailable, so your editor has stayed open.");
+      return;
+    }
+    const remainingFeedbackTime = Math.max(0, 420 - (Date.now() - saveStartedAt));
+    if (remainingFeedbackTime) {
+      await new Promise((resolve) => window.setTimeout(resolve, remainingFeedbackTime));
+    }
     setProfileDraft(profile);
+    setTab("profile");
     setProfileEditing(false);
-    setNotice(saved.cloudSaved ? "Trader identity updated across your account." : "Trader identity could not be synced to account storage.");
+    setProfileSaveState("idle");
+    setNotice("Profile saved to your account.");
+    if (requestedProfileHandle !== profile.handle) onOpenProfile?.(profile.handle);
   };
 
   const publishStructuredPost = async () => {
@@ -2049,7 +2071,58 @@ export default function SocialsWorkspace({
                 <Card className="p-4"><div className="flex items-center gap-2"><BarChart3 className="h-4 w-4 text-primary" /><h3 className="text-[10px] font-semibold">Process dimensions</h3></div><div className="mt-4 space-y-3">{SCORE_LABELS.map(([key, label]) => <ScoreBar key={key} label={label} value={profileDraft.scores[key]} />)}</div><div className="mt-4 rounded-xl border border-border bg-background/30 p-3 text-[7px] leading-4 text-muted">Scores remain empty until verified platform activity supplies enough evidence. No vanity numbers are invented.</div></Card>
                 <Card className="p-4"><div className="flex items-center gap-2"><Eye className="h-4 w-4 text-primary" /><h3 className="text-[10px] font-semibold">Privacy controls</h3></div><div className="mt-4 space-y-3">{([["profile", "Identity card"], ["activity", "Activity"], ["scores", "Process scores"], ["cards", "Calling Cards"]] as Array<[keyof SocialProfilePayload["visibility"], string]>).map(([key, label]) => <div key={key} className="flex items-center gap-3"><span className="min-w-0 flex-1 text-[8px] text-muted">{label}</span><KwantSelect value={profileDraft.visibility[key]} onChange={(event) => setProfileDraft((current) => ({ ...current, visibility: { ...current.visibility, [key]: event.target.value as SocialScope } }))} className="h-8 rounded-lg border border-border bg-surface px-2 text-[8px] outline-none"><option value="private">Private</option><option value="friends">Friends</option><option value="desk">My Desk</option><option value="community">Community</option></KwantSelect></div>)}</div><div className="mt-5 rounded-xl border border-primary/20 bg-primary/[0.05] p-3 text-[7px] leading-4 text-muted"><ShieldCheck className="mb-2 h-4 w-4 text-primary" />Evidence remains private unless the record explicitly shares it. Broker credentials are never stored here.</div></Card>
               </div>
-              <div className="flex justify-end gap-2"><button type="button" onClick={() => { setProfileDraft(currentProfile); setProfileEditing(false); }} className="h-10 rounded-xl border border-border bg-surface px-5 text-[9px] font-semibold text-muted hover:text-foreground">Cancel</button><button type="button" onClick={saveProfile} className="h-10 rounded-xl bg-primary px-5 text-[9px] font-semibold text-background">Save profile</button></div>
+              <div className="sticky bottom-3 z-20 flex flex-col gap-3 rounded-2xl border border-border bg-panel/95 p-3 shadow-[0_18px_55px_rgba(0,0,0,0.55)] backdrop-blur-xl sm:flex-row sm:items-center">
+                <div className="min-w-0 flex-1" aria-live="polite">
+                  <div className={`flex items-center gap-2 text-[8px] font-semibold ${profileSaveState === "error" ? "text-danger" : profileSaveState === "saving" ? "text-primary" : "text-foreground"}`}>
+                    {profileSaveState === "saving" ? (
+                      <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-primary/25 border-t-primary" />
+                    ) : profileSaveState === "error" ? (
+                      <CircleAlert className="h-3.5 w-3.5" />
+                    ) : (
+                      <ShieldCheck className="h-3.5 w-3.5 text-primary" />
+                    )}
+                    {profileSaveState === "saving"
+                      ? "Saving changes to your account…"
+                      : profileSaveState === "error"
+                        ? "Your changes have not been saved."
+                        : "Your profile and photo will be saved to your account."}
+                  </div>
+                  <p className="mt-1 text-[7px] text-muted">
+                    {profileSaveState === "saving"
+                      ? "Checking your handle and syncing the finished profile."
+                      : profileSaveState === "error"
+                        ? "Review the message above, then try again."
+                        : "After saving, you’ll return to your public profile."}
+                  </p>
+                </div>
+                <div className="flex shrink-0 justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setProfileDraft(currentProfile);
+                      setProfileEditing(false);
+                      setProfileSaveState("idle");
+                    }}
+                    disabled={profileSaveState === "saving"}
+                    className="h-11 rounded-xl border border-border bg-surface px-5 text-[9px] font-semibold text-muted transition-all hover:border-primary/20 hover:text-foreground active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void saveProfile()}
+                    disabled={profileSaveState === "saving"}
+                    className="flex h-11 min-w-[142px] items-center justify-center gap-2 rounded-xl bg-primary px-6 text-[9px] font-semibold text-background shadow-[0_0_28px_color-mix(in_srgb,var(--primary)_24%,transparent)] transition-all hover:-translate-y-0.5 hover:brightness-110 active:translate-y-0 active:scale-[0.96] disabled:cursor-wait disabled:translate-y-0 disabled:opacity-75"
+                  >
+                    {profileSaveState === "saving" ? (
+                      <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-background/30 border-t-background" />
+                    ) : (
+                      <CheckCircle2 className="h-4 w-4" />
+                    )}
+                    {profileSaveState === "saving" ? "Saving profile…" : "Save profile"}
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
           ) : viewedProfileObject && viewedProfile ? (
