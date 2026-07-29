@@ -11,7 +11,9 @@ import {
   Download,
   FileText,
   Folder,
+  FolderDown,
   FolderOpen,
+  FolderPlus,
   ImagePlus,
   Loader2,
   Maximize2,
@@ -23,6 +25,7 @@ import {
   Send,
   ShieldCheck,
   Sparkles,
+  Trash2,
   X,
   Zap,
 } from "lucide-react";
@@ -40,9 +43,15 @@ import type { UseKwantBotInterpreterResult } from "@/hooks/useKwantBotInterprete
 import { formatKwantBotPrice } from "@/lib/kwantBotInterpreter";
 import {
   isZyonModelKey,
+  ZYON_CONVERSATION_TAG,
+  ZYON_CUSTOM_FOLDER_LIMIT,
+  ZYON_DAILY_ROOT_FOLDER_ID,
   ZYON_MODELS,
+  zyonConversationRole,
+  zyonEntryFolderId,
   zyonId,
   type ZyonAttachment,
+  type ZyonFolder,
   type ZyonJournalEntry,
   type ZyonMarketRoot,
   type ZyonMessage,
@@ -123,6 +132,14 @@ function formatDay(value: string) {
   }).format(date);
 }
 
+function localSessionDate() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 function mergeJournal(local: ZyonJournalEntry[], remote: ZyonJournalEntry[]) {
   const entries = new Map<string, ZyonJournalEntry>();
   [...local, ...remote].forEach((entry) => {
@@ -133,7 +150,145 @@ function mergeJournal(local: ZyonJournalEntry[], remote: ZyonJournalEntry[]) {
   });
   return [...entries.values()]
     .sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt))
-    .slice(0, 500);
+    .slice(0, 5_000);
+}
+
+function mergeFolders(local: ZyonFolder[], remote: ZyonFolder[]) {
+  const folders = new Map<string, ZyonFolder>();
+  [...local, ...remote].forEach((folder) => folders.set(folder.id, {
+    ...folders.get(folder.id),
+    ...folder,
+  }));
+  return [...folders.values()].sort((left, right) =>
+    left.createdAt.localeCompare(right.createdAt));
+}
+
+function messagesFromJournal(entries: ZyonJournalEntry[]) {
+  return entries
+    .filter((entry) => entry.tags.includes(ZYON_CONVERSATION_TAG))
+    .map((entry): ZyonMessage | null => {
+      const role = zyonConversationRole(entry);
+      if (!role) return null;
+      const attachments = entry.attachments.flatMap((attachment, index) =>
+        attachment.dataUrl ? [{
+          id: `${entry.id}-attachment-${index}`,
+          name: attachment.name,
+          type: attachment.type,
+          size: attachment.size,
+          dataUrl: attachment.dataUrl,
+        }] : []);
+      return {
+        id: entry.id,
+        role,
+        content: entry.body,
+        createdAt: entry.createdAt,
+        attachments: attachments.length ? attachments : undefined,
+      };
+    })
+    .filter((message): message is ZyonMessage => Boolean(message))
+    .sort((left, right) => Date.parse(left.createdAt) - Date.parse(right.createdAt));
+}
+
+function mergeMessages(local: ZyonMessage[], cloud: ZyonMessage[]) {
+  const merged = [...local];
+  for (const message of cloud) {
+    const duplicate = merged.some((candidate) =>
+      candidate.role === message.role
+      && candidate.content === message.content
+      && Math.abs(Date.parse(candidate.createdAt) - Date.parse(message.createdAt)) < 15_000);
+    if (!duplicate) merged.push(message);
+  }
+  return merged
+    .sort((left, right) => {
+      if (!left.createdAt) return -1;
+      if (!right.createdAt) return 1;
+      return Date.parse(left.createdAt) - Date.parse(right.createdAt);
+    })
+    .slice(-120);
+}
+
+function folderRows(folders: ZyonFolder[]) {
+  const byParent = new Map<string | null, ZyonFolder[]>();
+  folders.forEach((folder) => {
+    const children = byParent.get(folder.parentId) ?? [];
+    children.push(folder);
+    byParent.set(folder.parentId, children);
+  });
+  byParent.forEach((children) => children.sort((left, right) => {
+    if (left.kind === "system") return -1;
+    if (right.kind === "system") return 1;
+    if (left.kind === "daily" && right.kind === "daily") {
+      return (right.sessionDate ?? "").localeCompare(left.sessionDate ?? "");
+    }
+    return left.name.localeCompare(right.name);
+  }));
+  const rows: Array<{ folder: ZyonFolder; depth: number }> = [];
+  const visited = new Set<string>();
+  const visit = (parentId: string | null, depth: number) => {
+    for (const folder of byParent.get(parentId) ?? []) {
+      if (visited.has(folder.id)) continue;
+      visited.add(folder.id);
+      rows.push({ folder, depth });
+      visit(folder.id, depth + 1);
+    }
+  };
+  visit(null, 0);
+  folders.forEach((folder) => {
+    if (!visited.has(folder.id)) rows.push({ folder, depth: 0 });
+  });
+  return rows;
+}
+
+function descendantFolderIds(folders: ZyonFolder[], folderId: string) {
+  const ids = new Set([folderId]);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    folders.forEach((folder) => {
+      if (folder.parentId && ids.has(folder.parentId) && !ids.has(folder.id)) {
+        ids.add(folder.id);
+        changed = true;
+      }
+    });
+  }
+  return ids;
+}
+
+function escapeArchiveHtml(value: string) {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+}
+
+function safeArchiveName(value: string) {
+  return value.replace(/[^a-z0-9._-]+/gi, "-").replace(/^-+|-+$/g, "") || "zyon-folder";
+}
+
+function downloadBlob(blob: Blob, fileName: string) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  link.click();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
+}
+
+function blobDataUrl(blob: Blob) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "");
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function portableAttachmentSource(source: string) {
+  if (source.startsWith("data:")) return source;
+  const response = await fetch(source);
+  if (!response.ok) throw new Error("Attachment download failed.");
+  return blobDataUrl(await response.blob());
 }
 
 type ZyonImagePreview = Pick<ZyonAttachment, "name" | "dataUrl">;
@@ -202,6 +357,7 @@ export default function ZyonWorkspace({
   const [online, setOnline] = useState(true);
   const [messages, setMessages] = useState<ZyonMessage[]>([]);
   const [journal, setJournal] = useState<ZyonJournalEntry[]>([]);
+  const [folders, setFolders] = useState<ZyonFolder[]>([]);
   const [storeReady, setStoreReady] = useState(false);
   const [cloudJournal, setCloudJournal] = useState<"checking" | "synced" | "local">("checking");
   const [draft, setDraft] = useState("");
@@ -210,10 +366,20 @@ export default function ZyonWorkspace({
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState("");
   const [journalSearch, setJournalSearch] = useState("");
-  const [selectedDay, setSelectedDay] = useState(() => new Date().toISOString().slice(0, 10));
+  const [selectedDay, setSelectedDay] = useState(localSessionDate);
+  const [selectedFolderId, setSelectedFolderId] = useState(
+    () => `zyon-folder-day-${localSessionDate()}`,
+  );
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
   const [lastUsage, setLastUsage] = useState<{ inputTokens: number | null; outputTokens: number | null } | null>(null);
   const [imagePreview, setImagePreview] = useState<ZyonImagePreview | null>(null);
+  const [folderDialogOpen, setFolderDialogOpen] = useState(false);
+  const [folderName, setFolderName] = useState("");
+  const [folderParentId, setFolderParentId] = useState<string>("");
+  const [folderActionError, setFolderActionError] = useState("");
+  const [folderActionBusy, setFolderActionBusy] = useState(false);
+  const [folderToDelete, setFolderToDelete] = useState<ZyonFolder | null>(null);
+  const [exportingFolderId, setExportingFolderId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -231,8 +397,14 @@ export default function ZyonWorkspace({
     loadZyonState()
       .then((saved) => {
         if (!active) return;
-        setMessages(saved?.messages?.length ? saved.messages : [WELCOME_MESSAGE]);
-        setJournal(Array.isArray(saved?.journal) ? saved.journal : []);
+        setMessages((current) => mergeMessages(
+          saved?.messages?.length ? saved.messages : [WELCOME_MESSAGE],
+          current,
+        ));
+        setJournal((current) => mergeJournal(
+          Array.isArray(saved?.journal) ? saved.journal : [],
+          current,
+        ));
       })
       .catch(() => {
         if (active) setMessages([WELCOME_MESSAGE]);
@@ -249,7 +421,7 @@ export default function ZyonWorkspace({
     if (!storeReady) return;
     void saveZyonState({
       messages: messages.slice(-120),
-      journal: journal.slice(0, 500),
+      journal: journal.slice(0, 5_000),
     });
   }, [journal, messages, storeReady]);
 
@@ -259,12 +431,20 @@ export default function ZyonWorkspace({
       .then(async (response) => {
         const payload = await response.json() as {
           entries?: ZyonJournalEntry[];
+          folders?: ZyonFolder[];
           cloud?: boolean;
         };
         if (!response.ok) throw new Error();
         if (!active) return;
         if (Array.isArray(payload.entries)) {
           setJournal((current) => mergeJournal(current, payload.entries ?? []));
+          setMessages((current) => mergeMessages(
+            current,
+            messagesFromJournal(payload.entries ?? []),
+          ));
+        }
+        if (Array.isArray(payload.folders)) {
+          setFolders((current) => mergeFolders(current, payload.folders ?? []));
         }
         setCloudJournal(payload.cloud ? "synced" : "local");
       })
@@ -311,18 +491,57 @@ export default function ZyonWorkspace({
     );
   }, [journal, journalSearch]);
 
-  const journalByDay = useMemo(() => {
-    const grouped = new Map<string, ZyonJournalEntry[]>();
-    filteredJournal.forEach((entry) => {
-      const current = grouped.get(entry.sessionDate) ?? [];
-      current.push(entry);
-      grouped.set(entry.sessionDate, current);
+  const displayFolders = useMemo(() => {
+    const now = new Date().toISOString();
+    const next = mergeFolders([], folders);
+    if (!next.some((folder) => folder.id === ZYON_DAILY_ROOT_FOLDER_ID)) {
+      next.push({
+        id: ZYON_DAILY_ROOT_FOLDER_ID,
+        name: "Daily conversations",
+        parentId: null,
+        kind: "system",
+        sessionDate: null,
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+    const dates = new Set(journal.map((entry) => entry.sessionDate));
+    dates.forEach((sessionDate) => {
+      const id = `zyon-folder-day-${sessionDate}`;
+      if (next.some((folder) => folder.id === id)) return;
+      const entries = journal.filter((entry) => entry.sessionDate === sessionDate);
+      next.push({
+        id,
+        name: sessionDate,
+        parentId: ZYON_DAILY_ROOT_FOLDER_ID,
+        kind: "daily",
+        sessionDate,
+        createdAt: entries.at(-1)?.createdAt ?? now,
+        updatedAt: entries[0]?.createdAt ?? now,
+      });
     });
-    return [...grouped.entries()].sort(([left], [right]) => right.localeCompare(left));
-  }, [filteredJournal]);
-
-  const selectedDayEntries = journalByDay.find(([day]) => day === selectedDay)?.[1] ?? [];
-  const selectedEntry = journal.find((entry) => entry.id === selectedEntryId) ?? selectedDayEntries[0] ?? null;
+    return next;
+  }, [folders, journal]);
+  const flattenedFolders = useMemo(() => folderRows(displayFolders), [displayFolders]);
+  const selectedFolder = displayFolders.find((folder) => folder.id === selectedFolderId)
+    ?? displayFolders.find((folder) => folder.kind === "daily" && folder.sessionDate === selectedDay)
+    ?? displayFolders[0]
+    ?? null;
+  const selectedFolderEntries = useMemo(() => {
+    if (!selectedFolder) return [];
+    const descendantIds = descendantFolderIds(displayFolders, selectedFolder.id);
+    return filteredJournal
+      .filter((entry) => {
+        const entryFolderId = zyonEntryFolderId(entry);
+        if (entryFolderId && descendantIds.has(entryFolderId)) return true;
+        return selectedFolder.kind === "daily" && entry.sessionDate === selectedFolder.sessionDate;
+      })
+      .sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt));
+  }, [displayFolders, filteredJournal, selectedFolder]);
+  const selectedEntry = journal.find((entry) => entry.id === selectedEntryId)
+    ?? selectedFolderEntries[0]
+    ?? null;
+  const customFolderCount = displayFolders.filter((folder) => folder.kind === "custom").length;
   const nearestLevels = useMemo(() => {
     if (!context || currentPrice === null) return [];
     return [...context.levels]
@@ -336,6 +555,131 @@ export default function ZyonWorkspace({
       .sort((left, right) => left.distance - right.distance)
       .slice(0, 3);
   }, [context, currentPrice]);
+
+  const createFolder = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!folderName.trim() || folderActionBusy) return;
+    setFolderActionBusy(true);
+    setFolderActionError("");
+    try {
+      const response = await fetch("/api/zyon/journal", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: folderName,
+          parentId: folderParentId || null,
+          root: selectedRoot,
+        }),
+      });
+      const payload = await response.json().catch(() => null) as {
+        folder?: ZyonFolder;
+        error?: string;
+      } | null;
+      if (!response.ok || !payload?.folder) {
+        throw new Error(payload?.error || "The folder could not be created.");
+      }
+      setFolders((current) => mergeFolders(current, [payload.folder as ZyonFolder]));
+      setSelectedFolderId(payload.folder.id);
+      setSelectedEntryId(null);
+      setFolderDialogOpen(false);
+      setFolderName("");
+      setFolderParentId("");
+      setCloudJournal("synced");
+    } catch (error) {
+      setFolderActionError(error instanceof Error ? error.message : "The folder could not be created.");
+    } finally {
+      setFolderActionBusy(false);
+    }
+  };
+
+  const deleteFolder = async () => {
+    if (!folderToDelete || folderActionBusy) return;
+    setFolderActionBusy(true);
+    setFolderActionError("");
+    try {
+      const response = await fetch("/api/zyon/journal", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ folderId: folderToDelete.id }),
+      });
+      const payload = await response.json().catch(() => null) as {
+        folderIds?: string[];
+        error?: string;
+      } | null;
+      if (!response.ok) {
+        throw new Error(payload?.error || "The folder could not be deleted.");
+      }
+      const removedIds = new Set(payload?.folderIds ?? [folderToDelete.id]);
+      setFolders((current) => current.filter((folder) => !removedIds.has(folder.id)));
+      setJournal((current) => current.filter((entry) => {
+        const entryFolderId = zyonEntryFolderId(entry);
+        if (entryFolderId && removedIds.has(entryFolderId)) return false;
+        return !(folderToDelete.kind === "daily" && entry.sessionDate === folderToDelete.sessionDate);
+      }));
+      setSelectedFolderId(ZYON_DAILY_ROOT_FOLDER_ID);
+      setSelectedEntryId(null);
+      setFolderToDelete(null);
+      setCloudJournal("synced");
+    } catch (error) {
+      setFolderActionError(error instanceof Error ? error.message : "The folder could not be deleted.");
+    } finally {
+      setFolderActionBusy(false);
+    }
+  };
+
+  const exportFolder = async (folder: ZyonFolder) => {
+    setExportingFolderId(folder.id);
+    setFolderActionError("");
+    try {
+      const descendantIds = descendantFolderIds(displayFolders, folder.id);
+      const entries = journal
+        .filter((entry) => {
+          const entryFolderId = zyonEntryFolderId(entry);
+          if (entryFolderId && descendantIds.has(entryFolderId)) return true;
+          return folder.kind === "daily" && entry.sessionDate === folder.sessionDate;
+        })
+        .sort((left, right) => Date.parse(left.createdAt) - Date.parse(right.createdAt));
+      const sections = (await Promise.all(entries.map(async (entry) => {
+        const attachmentsHtml = (await Promise.all(entry.attachments
+          .filter((attachment) => attachment.dataUrl)
+          .map(async (attachment) => {
+            const source = await portableAttachmentSource(attachment.dataUrl as string);
+            const image = attachment.type.startsWith("image/")
+              ? `<img src="${source}" alt="${escapeArchiveHtml(attachment.name)}">`
+              : "";
+            return `<figure>${image}<figcaption>${escapeArchiveHtml(attachment.name)} · <a href="${source}" download="${escapeArchiveHtml(attachment.name)}">Download attachment</a></figcaption></figure>`;
+          }))).join("");
+        return `<article>
+          <div class="meta">${escapeArchiveHtml(new Date(entry.createdAt).toLocaleString())} · ${escapeArchiveHtml(entry.root)} · ${escapeArchiveHtml(entry.kind)}</div>
+          <h2>${escapeArchiveHtml(entry.title)}</h2>
+          <p class="summary">${escapeArchiveHtml(entry.summary)}</p>
+          <pre>${escapeArchiveHtml(entry.body)}</pre>
+          ${attachmentsHtml}
+        </article>`;
+      }))).join("");
+      const archive = `<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width">
+<title>${escapeArchiveHtml(folder.name)} · ZYON archive</title>
+<style>
+body{margin:0;background:#090909;color:#f5f5f5;font:14px Inter,Arial,sans-serif}main{max-width:900px;margin:auto;padding:48px 24px}
+h1{font-size:28px;margin:0 0 8px}.lead,.meta{color:#999}.lead{margin-bottom:32px}article{border-top:1px solid #292929;padding:26px 0}
+h2{font-size:17px;margin:7px 0}.summary{color:#d7bd70}pre{white-space:pre-wrap;font:13px/1.7 Inter,Arial,sans-serif;color:#ddd}
+figure{margin:18px 0;padding:12px;border:1px solid #292929;border-radius:14px}img{display:block;max-width:100%;max-height:720px;margin:auto;border-radius:9px}
+figcaption{margin-top:9px;color:#999;font-size:12px}a{color:#d7bd70}
+</style></head><body><main><h1>${escapeArchiveHtml(folder.name)}</h1>
+<p class="lead">ZYON conversation archive · ${entries.length} summarised ${entries.length === 1 ? "entry" : "entries"} · exported ${escapeArchiveHtml(new Date().toLocaleString())}</p>
+${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
+</main></body></html>`;
+      downloadBlob(
+        new Blob([archive], { type: "text/html;charset=utf-8" }),
+        `${safeArchiveName(folder.name)}-zyon-archive.html`,
+      );
+    } catch {
+      setFolderActionError("The folder archive could not be prepared.");
+    } finally {
+      setExportingFolderId(null);
+    }
+  };
 
   const handleFiles = async (event: ChangeEvent<HTMLInputElement>) => {
     const files = [...(event.target.files ?? [])];
@@ -391,10 +735,13 @@ export default function ZyonWorkspace({
           model,
           root: selectedRoot,
           messages: conversation.map((message) => ({
+            id: message.id,
             role: message.role,
             content: message.content,
             attachments: message.attachments,
           })),
+          localDate: localSessionDate(),
+          folderId: selectedFolder?.kind === "custom" ? selectedFolder.id : null,
           context: {
             root: selectedRoot,
             currentPrice,
@@ -412,6 +759,8 @@ export default function ZyonWorkspace({
         error?: unknown;
         model?: unknown;
         journalEntry?: ZyonJournalEntry | null;
+        journalEntries?: ZyonJournalEntry[];
+        folder?: { id?: string; sessionDate?: string; cloudSaved?: boolean };
         usage?: { inputTokens?: number | null; outputTokens?: number | null };
       } | null;
       if (!response.ok) {
@@ -431,20 +780,56 @@ export default function ZyonWorkspace({
         model: isZyonModelKey(payload?.model) ? payload.model : model,
       };
       setMessages((current) => [...current.slice(-119), reply]);
-      if (payload?.journalEntry) {
-        const journalEntry: ZyonJournalEntry = {
-          ...payload.journalEntry,
-          attachments: userMessage.attachments?.map((attachment) => ({
-            name: attachment.name,
-            type: attachment.type,
-            size: attachment.size,
-            dataUrl: attachment.dataUrl,
-          })) ?? payload.journalEntry.attachments,
+      const returnedEntries = Array.isArray(payload?.journalEntries)
+        ? payload.journalEntries
+        : payload?.journalEntry ? [payload.journalEntry] : [];
+      if (returnedEntries.length) {
+        const hydratedEntries = returnedEntries.map((entry) => {
+          const role = zyonConversationRole(entry);
+          return role === "user" && userMessage.attachments?.length
+            ? {
+              ...entry,
+              attachments: userMessage.attachments.map((attachment) => ({
+                name: attachment.name,
+                type: attachment.type,
+                size: attachment.size,
+                dataUrl: attachment.dataUrl,
+              })),
+            }
+            : entry;
+        });
+        setJournal((current) => mergeJournal(current, hydratedEntries));
+        const latestEntry = hydratedEntries.at(-1);
+        if (latestEntry) {
+          setSelectedDay(latestEntry.sessionDate);
+          setSelectedEntryId(latestEntry.id);
+        }
+        if (hydratedEntries.some((entry) => entry.cloudSaved)) setCloudJournal("synced");
+      }
+      if (payload?.folder?.id && payload.folder.sessionDate) {
+        const now = new Date().toISOString();
+        const systemFolder: ZyonFolder = {
+          id: ZYON_DAILY_ROOT_FOLDER_ID,
+          name: "Daily conversations",
+          parentId: null,
+          kind: "system",
+          sessionDate: null,
+          createdAt: now,
+          updatedAt: now,
         };
-        setJournal((current) => mergeJournal(current, [journalEntry]));
-        setSelectedDay(journalEntry.sessionDate);
-        setSelectedEntryId(journalEntry.id);
-        if (journalEntry.cloudSaved) setCloudJournal("synced");
+        const dailyFolder: ZyonFolder = {
+          id: payload.folder.id,
+          name: payload.folder.sessionDate,
+          parentId: selectedFolder?.kind === "custom"
+            ? selectedFolder.id
+            : ZYON_DAILY_ROOT_FOLDER_ID,
+          kind: "daily",
+          sessionDate: payload.folder.sessionDate,
+          createdAt: now,
+          updatedAt: now,
+        };
+        setFolders((current) => mergeFolders(current, [systemFolder, dailyFolder]));
+        setSelectedFolderId(dailyFolder.id);
       }
       setLastUsage({
         inputTokens: payload?.usage?.inputTokens ?? null,
@@ -526,19 +911,35 @@ export default function ZyonWorkspace({
             <div className="flex items-center justify-between">
               <div>
                 <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-foreground">Journal</div>
-                <div className="mt-0.5 text-[8px] text-muted">{journal.length} entries · daily folders</div>
+                <div className="mt-0.5 text-[8px] text-muted">{journal.length} summaries · {customFolderCount}/{ZYON_CUSTOM_FOLDER_LIMIT} folders</div>
               </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setDraft("Journal this trade for me: ");
-                  composerRef.current?.focus();
-                }}
-                className="flex h-8 w-8 items-center justify-center rounded-xl border border-border bg-surface text-muted transition hover:border-primary/30 hover:text-primary"
-                title="New journal note"
-              >
-                <Plus className="h-3.5 w-3.5" />
-              </button>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFolderParentId(selectedFolder?.id ?? "");
+                    setFolderName("");
+                    setFolderActionError("");
+                    setFolderDialogOpen(true);
+                  }}
+                  disabled={customFolderCount >= ZYON_CUSTOM_FOLDER_LIMIT}
+                  className="flex h-8 w-8 items-center justify-center rounded-xl border border-border bg-surface text-muted transition hover:border-primary/30 hover:text-primary disabled:opacity-35"
+                  title="Create folder"
+                >
+                  <FolderPlus className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDraft("Journal this trade for me: ");
+                    composerRef.current?.focus();
+                  }}
+                  className="flex h-8 w-8 items-center justify-center rounded-xl border border-border bg-surface text-muted transition hover:border-primary/30 hover:text-primary"
+                  title="New journal note"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                </button>
+              </div>
             </div>
             <label className="mt-3 flex h-8 items-center gap-2 rounded-xl border border-border bg-background/35 px-3 focus-within:border-primary/30">
               <Search className="h-3.5 w-3.5 text-muted" />
@@ -549,23 +950,53 @@ export default function ZyonWorkspace({
                 className="min-w-0 flex-1 bg-transparent text-[10px] text-foreground outline-none placeholder:text-muted/50"
               />
             </label>
+            {selectedFolder ? (
+              <div className="mt-2 flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => void exportFolder(selectedFolder)}
+                  disabled={exportingFolderId === selectedFolder.id}
+                  className="flex h-7 flex-1 items-center justify-center gap-1.5 rounded-lg border border-border bg-background/35 text-[8px] font-medium text-muted transition hover:border-primary/25 hover:text-primary disabled:opacity-50"
+                >
+                  {exportingFolderId === selectedFolder.id
+                    ? <Loader2 className="h-3 w-3 animate-spin" />
+                    : <FolderDown className="h-3 w-3" />}
+                  Download folder
+                </button>
+                {selectedFolder.kind !== "system" ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFolderActionError("");
+                      setFolderToDelete(selectedFolder);
+                    }}
+                    className="flex h-7 w-7 items-center justify-center rounded-lg border border-border bg-background/35 text-muted transition hover:border-danger/30 hover:text-danger"
+                    aria-label={`Delete ${selectedFolder.name}`}
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto p-2.5">
-            {!journalByDay.length ? (
+            {!flattenedFolders.length ? (
               <div className="flex h-full flex-col items-center justify-center px-5 text-center">
                 <Folder className="h-8 w-8 text-muted/35" />
                 <p className="mt-3 text-[10px] leading-5 text-muted">Tell ZYON about a trade or setup. It will create the first daily folder automatically.</p>
               </div>
             ) : (
               <div className="space-y-1.5">
-                {journalByDay.map(([day, entries]) => {
-                  const active = selectedDay === day;
+                {flattenedFolders.map(({ folder, depth }) => {
+                  const active = selectedFolder?.id === folder.id;
+                  const entries = active ? selectedFolderEntries : [];
                   return (
-                    <div key={day}>
+                    <div key={folder.id}>
                       <button
                         type="button"
                         onClick={() => {
-                          setSelectedDay(day);
+                          setSelectedFolderId(folder.id);
+                          if (folder.sessionDate) setSelectedDay(folder.sessionDate);
                           setSelectedEntryId(entries[0]?.id ?? null);
                         }}
                         className={`flex w-full items-center gap-2 rounded-xl border px-2.5 py-2 text-left transition ${
@@ -573,11 +1004,20 @@ export default function ZyonWorkspace({
                             ? "border-primary/25 bg-primary/[0.07] text-foreground"
                             : "border-transparent text-muted hover:border-border hover:bg-surface/60 hover:text-foreground"
                         }`}
+                        style={{ paddingLeft: `${10 + Math.min(depth, 4) * 12}px` }}
                       >
                         {active ? <FolderOpen className="h-4 w-4 shrink-0 text-primary" /> : <Folder className="h-4 w-4 shrink-0" />}
                         <span className="min-w-0 flex-1">
-                          <span className="block truncate text-[10px] font-medium">{formatDay(day)}</span>
-                          <span className="mt-0.5 block text-[8px] text-muted">{entries.length} {entries.length === 1 ? "entry" : "entries"}</span>
+                          <span className="block truncate text-[10px] font-medium">
+                            {folder.kind === "daily" && folder.sessionDate ? formatDay(folder.sessionDate) : folder.name}
+                          </span>
+                          <span className="mt-0.5 block text-[8px] text-muted">
+                            {folder.kind === "system"
+                              ? "Automatic archive"
+                              : folder.kind === "custom"
+                                ? "Custom folder"
+                                : `${entries.length || journal.filter((entry) => entry.sessionDate === folder.sessionDate).length} summaries`}
+                          </span>
                         </span>
                         <ChevronRight className={`h-3.5 w-3.5 transition ${active ? "rotate-90 text-primary" : ""}`} />
                       </button>
@@ -595,10 +1035,12 @@ export default function ZyonWorkspace({
                               }`}
                             >
                               <span className="flex items-center gap-1.5">
-                                <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[7px] font-semibold text-primary">{entry.kind}</span>
+                                <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[7px] font-semibold text-primary">
+                                  {zyonConversationRole(entry)?.toUpperCase() ?? entry.kind}
+                                </span>
                                 <span className="text-[7px] text-muted">{formatTime(entry.createdAt)}</span>
                               </span>
-                              <span className="mt-1 block truncate text-[9px] font-medium">{entry.title}</span>
+                              <span className="mt-1 block truncate text-[9px] font-medium">{entry.summary || entry.title}</span>
                             </button>
                           ))}
                         </div>
@@ -610,6 +1052,9 @@ export default function ZyonWorkspace({
             )}
           </div>
           <div className="border-t border-border px-3 py-2.5">
+            {folderActionError && !folderDialogOpen && !folderToDelete ? (
+              <p className="mb-2 text-[8px] leading-3 text-danger">{folderActionError}</p>
+            ) : null}
             <div className="flex items-center gap-2 text-[8px] uppercase tracking-[0.12em] text-muted">
               <span className={`h-1.5 w-1.5 rounded-full ${cloudJournal === "synced" ? "bg-primary" : "bg-muted"}`} />
               {cloudJournal === "checking" ? "Checking journal" : cloudJournal === "synced" ? "Account journal synced" : "Local journal active"}
@@ -914,6 +1359,98 @@ export default function ZyonWorkspace({
           </div>
         </aside>
       </div>
+      {folderDialogOpen ? (
+        <div className="fixed inset-0 z-[900] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+          <form
+            onSubmit={(event) => void createFolder(event)}
+            className="w-full max-w-[390px] rounded-2xl border border-border bg-panel p-5 shadow-2xl shadow-black/50"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h2 className="text-[14px] font-semibold text-foreground">Create ZYON folder</h2>
+                <p className="mt-1 text-[9px] leading-4 text-muted">Folders are backed up to this Google account and can contain other folders.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setFolderDialogOpen(false)}
+                className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-muted hover:text-foreground"
+                aria-label="Close folder dialog"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+            <label className="mt-5 block">
+              <span className="text-[8px] font-semibold uppercase tracking-[0.13em] text-muted">Folder name</span>
+              <input
+                value={folderName}
+                onChange={(event) => setFolderName(event.target.value.slice(0, 60))}
+                autoFocus
+                placeholder="e.g. London session reviews"
+                className="mt-2 h-10 w-full rounded-xl border border-border bg-background/50 px-3 text-[11px] text-foreground outline-none placeholder:text-muted/45 focus:border-primary/40"
+              />
+            </label>
+            <label className="mt-4 block">
+              <span className="text-[8px] font-semibold uppercase tracking-[0.13em] text-muted">Place inside</span>
+              <KwantSelect
+                value={folderParentId}
+                onChange={(event) => setFolderParentId(event.target.value)}
+                menuLabel="Parent folder"
+                className="mt-2 h-10 w-full rounded-xl border border-border bg-background/50 px-3 text-[10px] text-foreground"
+              >
+                <option value="">Top level</option>
+                {flattenedFolders.map(({ folder, depth }) => (
+                  <option key={folder.id} value={folder.id}>
+                    {"— ".repeat(Math.min(depth, 4))}{folder.kind === "daily" && folder.sessionDate ? formatDay(folder.sessionDate) : folder.name}
+                  </option>
+                ))}
+              </KwantSelect>
+            </label>
+            {folderActionError ? <p className="mt-3 text-[9px] text-danger">{folderActionError}</p> : null}
+            <div className="mt-5 flex items-center justify-between gap-3">
+              <span className="text-[8px] text-muted">{customFolderCount}/{ZYON_CUSTOM_FOLDER_LIMIT} custom folders used</span>
+              <button
+                type="submit"
+                disabled={!folderName.trim() || folderActionBusy}
+                className="flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-[9px] font-semibold text-background disabled:opacity-40"
+              >
+                {folderActionBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FolderPlus className="h-3.5 w-3.5" />}
+                Create folder
+              </button>
+            </div>
+          </form>
+        </div>
+      ) : null}
+      {folderToDelete ? (
+        <div className="fixed inset-0 z-[910] flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-[380px] rounded-2xl border border-danger/25 bg-panel p-5 shadow-2xl shadow-black/50">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-danger/10 text-danger">
+              <Trash2 className="h-4 w-4" />
+            </div>
+            <h2 className="mt-4 text-[14px] font-semibold text-foreground">Delete “{folderToDelete.name}”?</h2>
+            <p className="mt-2 text-[9px] leading-4 text-muted">This permanently removes the folder, its nested folders, conversation summaries, and retained images from your account.</p>
+            {folderActionError ? <p className="mt-3 text-[9px] text-danger">{folderActionError}</p> : null}
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setFolderToDelete(null)}
+                disabled={folderActionBusy}
+                className="h-9 rounded-xl border border-border px-4 text-[9px] font-medium text-muted hover:text-foreground"
+              >
+                Keep folder
+              </button>
+              <button
+                type="button"
+                onClick={() => void deleteFolder()}
+                disabled={folderActionBusy}
+                className="flex h-9 items-center gap-2 rounded-xl bg-danger px-4 text-[9px] font-semibold text-white disabled:opacity-40"
+              >
+                {folderActionBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                Delete permanently
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
       {imagePreview && typeof document !== "undefined"
         ? createPortal(
           <div
@@ -926,14 +1463,22 @@ export default function ZyonWorkspace({
             }}
           >
             <div className="absolute right-4 top-4 z-10 flex items-center gap-2">
-              <a
-                href={imagePreview.dataUrl}
-                download={imagePreview.name}
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    const response = await fetch(imagePreview.dataUrl);
+                    if (!response.ok) throw new Error();
+                    downloadBlob(await response.blob(), imagePreview.name);
+                  } catch {
+                    window.open(imagePreview.dataUrl, "_blank", "noopener,noreferrer");
+                  }
+                }}
                 className="flex h-10 items-center gap-2 rounded-xl border border-white/15 bg-white/10 px-3.5 text-[11px] font-medium text-white shadow-xl backdrop-blur transition hover:bg-white/15"
               >
                 <Download className="h-4 w-4" />
                 Save image
-              </a>
+              </button>
               <button
                 type="button"
                 onClick={() => setImagePreview(null)}

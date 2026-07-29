@@ -27,6 +27,20 @@ export const ZYON_MODELS = {
 
 export type ZyonModelKey = keyof typeof ZYON_MODELS;
 export type ZyonMarketRoot = "NQ" | "ES";
+export const ZYON_FOLDER_TAG = "zyon:folder";
+export const ZYON_CONVERSATION_TAG = "zyon:conversation";
+export const ZYON_DAILY_ROOT_FOLDER_ID = "zyon-folder-daily-conversations";
+export const ZYON_CUSTOM_FOLDER_LIMIT = 20;
+
+export type ZyonFolder = {
+  id: string;
+  name: string;
+  parentId: string | null;
+  kind: "system" | "daily" | "custom";
+  sessionDate: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
 
 export type ZyonAttachment = {
   id: string;
@@ -59,10 +73,40 @@ export type ZyonJournalEntry = {
     type: string;
     size: number;
     dataUrl?: string;
+    storagePath?: string;
   }>;
   createdAt: string;
   cloudSaved?: boolean;
 };
+
+export function zyonFolderIdTag(folderId: string) {
+  return `zyon:folder-id:${folderId}`;
+}
+
+export function zyonParentFolderTag(folderId: string | null) {
+  return `zyon:parent:${folderId ?? "root"}`;
+}
+
+export function zyonFolderKindTag(kind: ZyonFolder["kind"]) {
+  return `zyon:folder-kind:${kind}`;
+}
+
+export function zyonConversationRoleTag(role: ZyonMessage["role"]) {
+  return `zyon:role:${role}`;
+}
+
+export function zyonTagValue(tags: string[], prefix: string) {
+  return tags.find((tag) => tag.startsWith(prefix))?.slice(prefix.length) ?? null;
+}
+
+export function zyonEntryFolderId(entry: Pick<ZyonJournalEntry, "tags">) {
+  return zyonTagValue(entry.tags, "zyon:folder-id:");
+}
+
+export function zyonConversationRole(entry: Pick<ZyonJournalEntry, "tags">) {
+  const role = zyonTagValue(entry.tags, "zyon:role:");
+  return role === "user" || role === "assistant" ? role : null;
+}
 
 export function isZyonModelKey(value: unknown): value is ZyonModelKey {
   return typeof value === "string" && value in ZYON_MODELS;

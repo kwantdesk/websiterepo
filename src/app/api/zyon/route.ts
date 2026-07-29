@@ -9,8 +9,15 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import {
   isZyonMarketRoot,
   isZyonModelKey,
+  ZYON_CONVERSATION_TAG,
+  ZYON_DAILY_ROOT_FOLDER_ID,
+  ZYON_FOLDER_TAG,
   ZYON_MODELS,
+  zyonConversationRoleTag,
+  zyonFolderIdTag,
+  zyonFolderKindTag,
   zyonId,
+  zyonParentFolderTag,
   type ZyonJournalEntry,
   type ZyonMarketRoot,
 } from "@/lib/zyon";
@@ -34,6 +41,7 @@ type IncomingAttachment = {
 };
 
 type IncomingMessage = {
+  id?: unknown;
   role?: unknown;
   content?: unknown;
   attachments?: unknown;
@@ -97,6 +105,13 @@ function cleanText(value: unknown, limit: number) {
 
 function cleanFileName(value: unknown) {
   return cleanText(value, 180) || "attachment";
+}
+
+function cleanLocalDate(value: unknown) {
+  const date = cleanText(value, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(date)
+    ? date
+    : new Date().toISOString().slice(0, 10);
 }
 
 function parseDataUrl(value: unknown) {
@@ -278,13 +293,197 @@ function buildJournalEntry(
   };
 }
 
+function storedAttachments(attachments: IncomingAttachment[]) {
+  return attachments.slice(0, 4).flatMap((attachment) => {
+    const parsed = parseDataUrl(attachment.dataUrl);
+    if (!parsed) return [];
+    return [{
+      name: cleanFileName(attachment.name),
+      type: parsed.mediaType,
+      size: parsed.buffer.length,
+      dataUrl: `data:${parsed.mediaType};base64,${parsed.base64}`,
+    }];
+  });
+}
+
+function storageFileName(value: unknown, index: number) {
+  const name = cleanFileName(value)
+    .normalize("NFKD")
+    .replace(/[^a-zA-Z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 120);
+  return `${index + 1}-${name || "attachment"}`;
+}
+
+async function persistAttachments(args: {
+  actorId: string;
+  folderId: string;
+  entryId: string;
+  attachments: IncomingAttachment[];
+}) {
+  const inlineFallback = storedAttachments(args.attachments);
+  if (!inlineFallback.length) return inlineFallback;
+  try {
+    const supabase = await createSupabaseServerClient();
+    const stored: ZyonJournalEntry["attachments"] = [];
+    for (const [index, attachment] of args.attachments.slice(0, 4).entries()) {
+      const parsed = parseDataUrl(attachment.dataUrl);
+      if (!parsed) continue;
+      const path = `${args.actorId}/${args.folderId}/${args.entryId}/${storageFileName(attachment.name, index)}`;
+      const { error } = await supabase.storage
+        .from("zyon-attachments")
+        .upload(path, parsed.buffer, {
+          contentType: parsed.mediaType,
+          upsert: true,
+        });
+      if (error) throw error;
+      stored.push({
+        name: cleanFileName(attachment.name),
+        type: parsed.mediaType,
+        size: parsed.buffer.length,
+        storagePath: path,
+      });
+    }
+    return stored.length ? stored : inlineFallback;
+  } catch {
+    // Inline JSON storage keeps the image backed up until the private bucket
+    // migration is available on the connected Supabase project.
+    return inlineFallback;
+  }
+}
+
+function briefConversationSummary(text: string, fallback: string) {
+  const normalized = text.replace(/\s+/g, " ").trim();
+  if (!normalized) return fallback;
+  const sentence = normalized.match(/^.*?[.!?](?:\s|$)/)?.[0]?.trim() ?? normalized;
+  return sentence.slice(0, 280);
+}
+
+function conversationEntry(args: {
+  id: string;
+  sessionDate: string;
+  folderId: string;
+  root: ZyonMarketRoot;
+  role: "user" | "assistant";
+  text: string;
+  attachments?: ZyonJournalEntry["attachments"];
+  createdAt: string;
+}): ZyonJournalEntry {
+  const attachmentCount = args.attachments?.length ?? 0;
+  const speaker = args.role === "assistant" ? "ZYON" : "You";
+  const fallback = attachmentCount
+    ? `${speaker} shared ${attachmentCount} attachment${attachmentCount === 1 ? "" : "s"}.`
+    : `${speaker} added a conversation note.`;
+  return {
+    id: args.id,
+    sessionDate: args.sessionDate,
+    root: args.root,
+    title: `${speaker} · ${new Intl.DateTimeFormat("en-AU", {
+      hour: "2-digit",
+      minute: "2-digit",
+      timeZone: "UTC",
+    }).format(new Date(args.createdAt))}`,
+    summary: briefConversationSummary(args.text, fallback),
+    body: args.text || fallback,
+    kind: "NOTE",
+    tags: [
+      ZYON_CONVERSATION_TAG,
+      zyonConversationRoleTag(args.role),
+      zyonFolderIdTag(args.folderId),
+      args.root,
+    ],
+    attachments: args.attachments ?? [],
+    createdAt: args.createdAt,
+  };
+}
+
+async function ensureConversationFolders(args: {
+  actorId: string;
+  sessionDate: string;
+  root: ZyonMarketRoot;
+  requestedParentId: string | null;
+}) {
+  const dailyFolderId = `zyon-folder-day-${args.sessionDate}`;
+  const now = new Date().toISOString();
+  try {
+    const supabase = await createSupabaseServerClient();
+    const parentId = args.requestedParentId || ZYON_DAILY_ROOT_FOLDER_ID;
+    const rows = [
+      {
+        user_id: args.actorId,
+        id: ZYON_DAILY_ROOT_FOLDER_ID,
+        session_date: args.sessionDate,
+        root: args.root,
+        title: "Daily conversations",
+        summary: "",
+        body: "",
+        kind: "NOTE",
+        tags: [
+          ZYON_FOLDER_TAG,
+          zyonFolderIdTag(ZYON_DAILY_ROOT_FOLDER_ID),
+          zyonFolderKindTag("system"),
+          zyonParentFolderTag(null),
+        ],
+        attachments: [],
+        source: "zyon-folder",
+        created_at: now,
+        updated_at: now,
+      },
+      {
+        user_id: args.actorId,
+        id: dailyFolderId,
+        session_date: args.sessionDate,
+        root: args.root,
+        title: args.sessionDate,
+        summary: "",
+        body: "",
+        kind: "NOTE",
+        tags: [
+          ZYON_FOLDER_TAG,
+          zyonFolderIdTag(dailyFolderId),
+          zyonFolderKindTag("daily"),
+          zyonParentFolderTag(parentId),
+        ],
+        attachments: [],
+        source: "zyon-folder",
+        created_at: now,
+        updated_at: now,
+      },
+    ];
+    const { error } = await supabase
+      .from("zyon_journal_entries")
+      .upsert(rows, { onConflict: "user_id,id", ignoreDuplicates: true });
+    if (error) throw error;
+    if (args.requestedParentId) {
+      const { error: moveError } = await supabase
+        .from("zyon_journal_entries")
+        .update({
+          tags: [
+            ZYON_FOLDER_TAG,
+            zyonFolderIdTag(dailyFolderId),
+            zyonFolderKindTag("daily"),
+            zyonParentFolderTag(args.requestedParentId),
+          ],
+          updated_at: now,
+        })
+        .eq("user_id", args.actorId)
+        .eq("id", dailyFolderId);
+      if (moveError) throw moveError;
+    }
+    return { folderId: dailyFolderId, cloudSaved: true };
+  } catch (error) {
+    console.error("ZYON conversation folder save failed", error);
+    return { folderId: dailyFolderId, cloudSaved: false };
+  }
+}
+
 async function persistJournalEntry(
   actorId: string,
   entry: ZyonJournalEntry,
 ) {
   try {
     const supabase = await createSupabaseServerClient();
-    const { error } = await supabase.from("zyon_journal_entries").insert({
+    const { error } = await supabase.from("zyon_journal_entries").upsert({
       user_id: actorId,
       id: entry.id,
       session_date: entry.sessionDate,
@@ -298,7 +497,7 @@ async function persistJournalEntry(
       source: "zyon-auto",
       created_at: entry.createdAt,
       updated_at: entry.createdAt,
-    });
+    }, { onConflict: "user_id,id" });
     if (error) {
       if (error.code !== "42P01" && error.code !== "PGRST205") {
         console.error("ZYON journal save failed", {
@@ -334,6 +533,8 @@ export async function POST(request: NextRequest) {
     model?: unknown;
     root?: unknown;
     context?: unknown;
+    folderId?: unknown;
+    localDate?: unknown;
   };
   try {
     payload = await request.json();
@@ -356,6 +557,38 @@ export async function POST(request: NextRequest) {
         Boolean(attachment && typeof attachment === "object"),
     )
     : [];
+  const finalUserText = cleanText(finalRawMessage?.content, MAX_TEXT_LENGTH);
+  const sessionDate = cleanLocalDate(payload.localDate);
+  const requestedParentId = typeof payload.folderId === "string" && payload.folderId.trim()
+    ? payload.folderId.trim().slice(0, 160)
+    : null;
+  const conversationFolder = await ensureConversationFolders({
+    actorId: actor.userId,
+    sessionDate,
+    root,
+    requestedParentId,
+  });
+  const rawUserMessageId = cleanText(finalRawMessage?.id, 120);
+  const userConversationEntryId = rawUserMessageId
+    ? `zyon-conversation-${rawUserMessageId}`
+    : zyonId("zyon-conversation-user");
+  const persistedUserAttachments = await persistAttachments({
+    actorId: actor.userId,
+    folderId: conversationFolder.folderId,
+    entryId: userConversationEntryId,
+    attachments: finalAttachments,
+  });
+  const userConversationEntry = conversationEntry({
+    id: userConversationEntryId,
+    sessionDate,
+    folderId: conversationFolder.folderId,
+    root,
+    role: "user",
+    text: finalUserText,
+    attachments: persistedUserAttachments,
+    createdAt: new Date().toISOString(),
+  });
+  const userConversationCloudSaved = await persistJournalEntry(actor.userId, userConversationEntry);
   const contextJson = safeContext(payload.context);
 
   const system = [
@@ -443,7 +676,6 @@ export async function POST(request: NextRequest) {
         finalAttachments,
       )
       : null;
-    const finalUserText = cleanText(finalRawMessage?.content, MAX_TEXT_LENGTH);
     if (
       !journalEntry
       && /\b(?:journal|log|record|save)\b/i.test(finalUserText)
@@ -464,6 +696,19 @@ export async function POST(request: NextRequest) {
     const cloudSaved = journalEntry
       ? await persistJournalEntry(actor.userId, journalEntry)
       : false;
+    const assistantConversationEntry = conversationEntry({
+      id: zyonId("zyon-conversation-assistant"),
+      sessionDate,
+      folderId: conversationFolder.folderId,
+      root,
+      role: "assistant",
+      text,
+      createdAt: new Date().toISOString(),
+    });
+    const assistantConversationCloudSaved = await persistJournalEntry(
+      actor.userId,
+      assistantConversationEntry,
+    );
 
     if (!text && !journalEntry) {
       return NextResponse.json({ error: "ZYON returned an empty reply." }, { status: 502 });
@@ -474,6 +719,16 @@ export async function POST(request: NextRequest) {
         text: (text || "That has been recorded in your trading journal.").slice(0, 12_000),
         model: modelKey,
         journalEntry: journalEntry ? { ...journalEntry, cloudSaved } : null,
+        journalEntries: [
+          { ...userConversationEntry, cloudSaved: userConversationCloudSaved },
+          { ...assistantConversationEntry, cloudSaved: assistantConversationCloudSaved },
+          ...(journalEntry ? [{ ...journalEntry, cloudSaved }] : []),
+        ],
+        folder: {
+          id: conversationFolder.folderId,
+          sessionDate,
+          cloudSaved: conversationFolder.cloudSaved,
+        },
         usage: {
           inputTokens: result.usage?.input_tokens ?? null,
           outputTokens: result.usage?.output_tokens ?? null,
