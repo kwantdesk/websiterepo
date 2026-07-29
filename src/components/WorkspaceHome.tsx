@@ -36,7 +36,7 @@ export default function WorkspaceHome({ username = "" }: { username?: string }) 
         <ParticleTerrain />
         <div className="pointer-events-none absolute inset-0 z-[2] bg-[radial-gradient(circle_at_50%_42%,transparent_0%,rgba(0,0,0,.08)_50%,rgba(0,0,0,.72)_100%)]" />
         <div className="pointer-events-none absolute inset-0 z-[3] flex items-center justify-center px-6">
-          <div className="kwantdesk-home-logo relative w-[78vw] sm:w-[54vw] lg:w-[33vw]">
+          <div className="relative w-[78vw] sm:w-[54vw] lg:w-[33vw]">
             <Image
               src="/images/kwantdesk-wordmark.webp"
               alt="Kwant Desk"
@@ -49,29 +49,6 @@ export default function WorkspaceHome({ username = "" }: { username?: string }) 
             />
           </div>
         </div>
-        <style jsx global>{`
-          .kwantdesk-home-logo {
-            animation: kwantdesk-home-logo-float 10s ease-in-out infinite;
-            transform: translate3d(0, -7px, 0);
-            will-change: transform;
-          }
-
-          @keyframes kwantdesk-home-logo-float {
-            0%,
-            100% {
-              transform: translate3d(0, 7px, 0);
-            }
-            50% {
-              transform: translate3d(0, -7px, 0);
-            }
-          }
-
-          @media (prefers-reduced-motion: reduce) {
-            .kwantdesk-home-logo {
-              animation: none;
-            }
-          }
-        `}</style>
       </main>
     </div>
   );
