@@ -768,6 +768,39 @@ function timeframeToMs(timeframe?: string) {
   return null;
 }
 
+function buildSafeChartData(candles: Candle[]) {
+  const byTime = new Map<number, {
+    time: Time;
+    open: number;
+    high: number;
+    low: number;
+    close: number;
+  }>();
+
+  for (const candle of candles) {
+    const time = Math.floor(Number(candle.timestamp) / 1_000);
+    const open = Number(candle.open);
+    const high = Number(candle.high);
+    const low = Number(candle.low);
+    const close = Number(candle.close);
+    if (
+      !Number.isFinite(time)
+      || ![open, high, low, close].every(Number.isFinite)
+    ) continue;
+    byTime.set(time, {
+      time: time as Time,
+      open,
+      high: Math.max(open, high, low, close),
+      low: Math.min(open, high, low, close),
+      close,
+    });
+  }
+
+  return [...byTime.values()].sort(
+    (left, right) => Number(left.time) - Number(right.time),
+  );
+}
+
 function inferCandleIntervalMs(candles: Candle[]) {
   const diffs = candles
     .slice(-30)
@@ -1036,6 +1069,9 @@ export default function Chart({
   const toolbarDragStateRef = useRef<{ offsetX: number; offsetY: number; startClientX: number; startClientY: number; hasMoved: boolean } | null>(null);
   const toolbarToggleSuppressedRef = useRef(false);
   const latestCandleRef = useRef<Candle | null>(candles.at(-1) ?? null);
+  const lastRenderedCandleTimeRef = useRef<number | null>(
+    candles.length ? Math.floor(candles[candles.length - 1].timestamp / 1_000) : null,
+  );
   const indicatorSampleTimerRef = useRef<number | null>(null);
   const viewportResetFrameRef = useRef<number | null>(null);
   const chartVisualReadyTokenRef = useRef(0);
@@ -1082,13 +1118,23 @@ export default function Chart({
       const candle = pendingCandle;
       pendingCandle = null;
       if (!candle || !candleSeriesRef.current) return;
-      candleSeriesRef.current.update({
-        time: (candle.timestamp / 1_000) as Time,
-        open: candle.open,
-        high: candle.high,
-        low: candle.low,
-        close: candle.close,
-      });
+      const candleTime = Math.floor(candle.timestamp / 1_000);
+      if (
+        lastRenderedCandleTimeRef.current !== null
+        && candleTime < lastRenderedCandleTimeRef.current
+      ) return;
+      try {
+        candleSeriesRef.current.update({
+          time: candleTime as Time,
+          open: candle.open,
+          high: candle.high,
+          low: candle.low,
+          close: candle.close,
+        });
+        lastRenderedCandleTimeRef.current = candleTime;
+      } catch {
+        // A late tick from a cancelled timeframe must never take down the chart.
+      }
     };
     const receive = (event: Event) => {
       const detail = (event as CustomEvent<LiveChartCandleDetail>).detail;
@@ -2516,14 +2562,11 @@ export default function Chart({
       (prevFirstTimestampRef.current !== null && candles[0]?.timestamp !== prevFirstTimestampRef.current);
 
     if (needsFullRedraw) {
-      const chartData = candles.map((c) => ({
-        time: (c.timestamp / 1000) as Time,
-        open: c.open,
-        high: c.high,
-        low: c.low,
-        close: c.close,
-      }));
+      const chartData = buildSafeChartData(candles);
       candleSeriesRef.current.setData(chartData);
+      lastRenderedCandleTimeRef.current = chartData.length
+        ? Number(chartData[chartData.length - 1].time)
+        : null;
       const historyExpanded =
         previousCandleCount <= 5
         || candles.length >= Math.max(50, previousCandleCount * 1.5);
@@ -2553,7 +2596,18 @@ export default function Chart({
       close: lastSourceCandle.close,
     };
     if (lastCandle) {
-      candleSeriesRef.current.update(lastCandle);
+      const candleTime = Number(lastCandle.time);
+      if (
+        lastRenderedCandleTimeRef.current === null
+        || candleTime >= lastRenderedCandleTimeRef.current
+      ) {
+        try {
+          candleSeriesRef.current.update(lastCandle);
+          lastRenderedCandleTimeRef.current = candleTime;
+        } catch {
+          // A superseded history request can finish after a timeframe switch.
+        }
+      }
     }
 
     if (candles.length > prevCandlesLengthRef.current) {
@@ -2679,15 +2733,12 @@ export default function Chart({
     candleSeries.attachPrimitive(gameplanUnderlay);
     gameplanUnderlayRef.current = gameplanUnderlay;
 
-    const chartData = candles.map((c) => ({
-      time: (c.timestamp / 1000) as Time,
-      open: c.open,
-      high: c.high,
-      low: c.low,
-      close: c.close,
-    }));
+    const chartData = buildSafeChartData(candles);
 
     candleSeries.setData(chartData);
+    lastRenderedCandleTimeRef.current = chartData.length
+      ? Number(chartData[chartData.length - 1].time)
+      : null;
     applyMarkers(tradesRef.current);
     applyLevels(levelsRef.current);
     setTimeout(() => {
@@ -2812,6 +2863,7 @@ export default function Chart({
       prevCandlesLengthRef.current = 0;
       prevFirstTimestampRef.current = null;
       prevDataRef.current = "";
+      lastRenderedCandleTimeRef.current = null;
     };
   }, [instrument, priceFormat, settings, themeVersion]);
 

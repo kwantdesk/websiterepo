@@ -1281,6 +1281,7 @@ async function fetchWorkspaceCandles(
   period: string,
   outputsize = 500,
   includeOrderFlow = false,
+  signal?: AbortSignal,
 ) {
   const periodConfig = getPeriodConfig(period);
   const usingCTraderFeed = FALLBACK_CTRADER_BROKER_NAMES.includes(broker as (typeof FALLBACK_CTRADER_BROKER_NAMES)[number]);
@@ -1293,7 +1294,12 @@ async function fetchWorkspaceCandles(
   if (broker === "Databento") {
     const response = await fetch(
       `/api/databento/market?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}${includeOrderFlow ? "&orderFlow=1" : ""}`,
-      { cache: "default", signal: AbortSignal.timeout(45_000) },
+      {
+        cache: "default",
+        signal: signal
+          ? AbortSignal.any([signal, AbortSignal.timeout(45_000)])
+          : AbortSignal.timeout(45_000),
+      },
     );
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.error ?? `CME did not return candles for ${displayCmeSymbol(symbol)}.`);
@@ -1304,7 +1310,7 @@ async function fetchWorkspaceCandles(
 
   try {
     const storedUrl = `/api/market-data/history?broker=${encodeURIComponent(broker)}&symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}&from=${from}&to=${to}&limit=${historicalLimit}`;
-    const storedRes = await fetch(storedUrl, { cache: "no-store" });
+    const storedRes = await fetch(storedUrl, { cache: "no-store", signal });
     const storedData = await storedRes.json();
     if (storedData.configured && storedData.candles && storedData.candles.length > 0) {
       return sanitizeCandles(storedData.candles as Candle[], symbol);
@@ -1317,6 +1323,7 @@ async function fetchWorkspaceCandles(
     try {
       const res = await fetch(
         `/api/ctrader?action=candles&broker=${encodeURIComponent(broker)}&symbol=${encodeURIComponent(symbol)}&interval=${encodeURIComponent(timeframe)}&from=${Date.parse(periodConfig.from)}&to=${Date.now()}&count=${Math.max(outputsize, 3)}`,
+        { signal },
       );
       const data = await res.json();
       if (data.candles && data.candles.length > 0) return sanitizeCandles(data.candles as Candle[], symbol);
@@ -1330,7 +1337,7 @@ async function fetchWorkspaceCandles(
     try {
       let url = `/api/oanda?action=candles&instrument=${oandaInstrument}&granularity=${oandaGranularity}`;
       url += `&from=${encodeURIComponent(periodConfig.from)}&to=${encodeURIComponent(new Date(to).toISOString())}&maxCandles=${historicalLimit}`;
-      const res = await fetch(url);
+      const res = await fetch(url, { signal });
       const data = await res.json();
       if (data.candles && data.candles.length > 0) return sanitizeCandles(data.candles as Candle[], symbol);
     } catch {
@@ -1338,7 +1345,10 @@ async function fetchWorkspaceCandles(
     }
   }
 
-  const res = await fetch(`/api/market-data?symbol=${symbol}&interval=${timeframe}&outputsize=${historicalLimit}`);
+  const res = await fetch(
+    `/api/market-data?symbol=${symbol}&interval=${timeframe}&outputsize=${historicalLimit}`,
+    { signal },
+  );
   const data = await res.json();
   return sanitizeCandles((data.candles || []) as Candle[], symbol);
 }
@@ -1928,13 +1938,16 @@ function WorkspaceChartPane({
 
   useEffect(() => {
     let cancelled = false;
-    const retainedHistory = latestCandlesRef.current.length > 0;
+    const requestController = new AbortController();
     setLoading(true);
     setError(null);
-    if (!retainedHistory) {
-      setCandles([]);
-      latestCandlesRef.current = [];
-      historyHydratedRef.current = false;
+    setCandles([]);
+    latestCandlesRef.current = [];
+    historyHydratedRef.current = false;
+    pendingLiveTicksRef.current = [];
+    if (liveFrameRef.current !== null) {
+      window.cancelAnimationFrame(liveFrameRef.current);
+      liveFrameRef.current = null;
     }
 
     const loadHistory = async () => {
@@ -1950,6 +1963,7 @@ function WorkspaceChartPane({
       const cachedIsHydrated = cachedCandles.length > 0
         && (!needsFiveDayBackfill || hasFiveDayHistory(cachedHistory, pane.timeframe));
       if (cachedCandles.length) {
+        latestCandlesRef.current = cachedCandles;
         setCandles(cachedCandles);
       }
       if (cachedIsHydrated) {
@@ -1965,6 +1979,7 @@ function WorkspaceChartPane({
           period,
           500,
           needsOrderFlowHistory,
+          requestController.signal,
         );
         if (cancelled) return;
         const downloaded = sanitizeCandles(nextCandles, pane.symbol);
@@ -1979,14 +1994,17 @@ function WorkspaceChartPane({
         if (!remoteIsHydrated) {
           throw new Error("Five-day history was incomplete.");
         }
+        const merged = pane.broker === "Databento"
+          ? mergeChartHistory(latestCandlesRef.current, clean)
+          : clean;
+        latestCandlesRef.current = merged;
         historyHydratedRef.current = true;
-        setCandles((current) => pane.broker === "Databento"
-          ? mergeChartHistory(current, clean)
-          : clean);
+        setCandles(merged);
         setError(null);
         setLoading(false);
-      } catch {
+      } catch (loadError) {
         if (cancelled) return;
+        if (loadError instanceof DOMException && loadError.name === "AbortError") return;
         if (!cachedIsHydrated) {
           historyHydratedRef.current = false;
           setError("Five-day CME history is reconnecting");
@@ -1999,6 +2017,7 @@ function WorkspaceChartPane({
 
     return () => {
       cancelled = true;
+      requestController.abort();
     };
   }, [needsOrderFlowHistory, pane.broker, pane.symbol, pane.timeframe, period]);
 
@@ -5040,7 +5059,11 @@ export default function KwantifyWorkspace({
     return () => window.clearInterval(interval);
   }, [activeChartBrokerLabel, cTraderBrokerNameSet, watchlistBrokerSymbols]);
 
-  async function fetchChartCandles(outputsize = 500, period = selectedPeriod) {
+  async function fetchChartCandles(
+    outputsize = 500,
+    period = selectedPeriod,
+    signal?: AbortSignal,
+  ) {
     const periodConfig = getPeriodConfig(period);
     const oandaInstrument = OANDA_INSTRUMENT_MAP[selectedInstrument];
     const oandaGranularity = OANDA_GRANULARITY_MAP[selectedTimeframe] || "M5";
@@ -5050,10 +5073,16 @@ export default function KwantifyWorkspace({
 
     if (activeChartBrokerLabel === "Databento") {
       const cached = await readChartHistoryCache(selectedInstrument, selectedTimeframe);
+      if (signal?.aborted) throw new DOMException("Chart request cancelled.", "AbortError");
       try {
         const response = await fetch(
           `/api/databento/market?symbol=${encodeURIComponent(selectedInstrument)}&timeframe=${encodeURIComponent(selectedTimeframe)}&start=${encodeURIComponent(periodConfig.from)}`,
-          { cache: "no-store", signal: AbortSignal.timeout(30_000) },
+          {
+            cache: "no-store",
+            signal: signal
+              ? AbortSignal.any([signal, AbortSignal.timeout(30_000)])
+              : AbortSignal.timeout(30_000),
+          },
         );
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error ?? `CME did not return candles for ${displayCmeSymbol(selectedInstrument)}.`);
@@ -5070,7 +5099,7 @@ export default function KwantifyWorkspace({
 
     try {
       const storedUrl = `/api/market-data/history?broker=${encodeURIComponent(activeChartBrokerLabel)}&symbol=${encodeURIComponent(selectedInstrument)}&timeframe=${encodeURIComponent(selectedTimeframe)}&from=${from}&to=${to}&limit=${historicalLimit}`;
-      const storedRes = await fetch(storedUrl, { cache: "no-store" });
+      const storedRes = await fetch(storedUrl, { cache: "no-store", signal });
       const storedData = await storedRes.json();
       if (storedData.configured && storedData.candles && storedData.candles.length > 0) {
         return sanitizeCandles(storedData.candles as Candle[], selectedInstrument);
@@ -5083,6 +5112,7 @@ export default function KwantifyWorkspace({
       try {
         const res = await fetch(
           `/api/ctrader?action=candles&broker=${encodeURIComponent(activeChartBrokerLabel)}&symbol=${encodeURIComponent(selectedInstrument)}&interval=${encodeURIComponent(selectedTimeframe)}&from=${Date.parse(periodConfig.from)}&to=${Date.now()}&count=${Math.max(outputsize, 3)}`,
+          { signal },
         );
         const data = await res.json();
         if (data.candles && data.candles.length > 0) {
@@ -5097,7 +5127,7 @@ export default function KwantifyWorkspace({
     if (activeChartBrokerLabel === "Massive") {
       const res = await fetch(
         `/api/market-data?broker=Massive&symbol=${encodeURIComponent(selectedInstrument)}&interval=${encodeURIComponent(selectedTimeframe)}&from=${from}&to=${to}&outputsize=${historicalLimit}`,
-        { cache: "no-store" },
+        { cache: "no-store", signal },
       );
       const data = await res.json();
       return sanitizeCandles((data.candles || []) as Candle[], selectedInstrument);
@@ -5107,7 +5137,7 @@ export default function KwantifyWorkspace({
       try {
         let url = `/api/oanda?action=candles&instrument=${oandaInstrument}&granularity=${oandaGranularity}`;
         url += `&from=${encodeURIComponent(periodConfig.from)}&to=${encodeURIComponent(new Date(to).toISOString())}&maxCandles=${historicalLimit}`;
-        const res = await fetch(url);
+        const res = await fetch(url, { signal });
         const data = await res.json();
         if (data.candles && data.candles.length > 0) {
           return sanitizeCandles(data.candles as Candle[], selectedInstrument);
@@ -5117,7 +5147,10 @@ export default function KwantifyWorkspace({
       }
     }
 
-    const res = await fetch(`/api/market-data?symbol=${selectedInstrument}&interval=${selectedTimeframe}&outputsize=${outputsize}`);
+    const res = await fetch(
+      `/api/market-data?symbol=${selectedInstrument}&interval=${selectedTimeframe}&outputsize=${outputsize}`,
+      { signal },
+    );
     const data = await res.json();
     return sanitizeCandles((data.candles || []) as Candle[], selectedInstrument);
   }
@@ -5180,6 +5213,10 @@ export default function KwantifyWorkspace({
   }, [activeChartBrokerLabel, chartTrades.length, selectedInstrument, selectedTimeframe, usingCTraderFeed]);
 
   useEffect(() => {
+    let cancelled = false;
+    const requestController = new AbortController();
+    let clearMessageTimer: number | null = null;
+
     const loadData = async () => {
       try {
         showReportToast("loading", "Updating report...");
@@ -5189,7 +5226,12 @@ export default function KwantifyWorkspace({
           return;
         }
         setChartLoadingMessage(`Loading ${periodConfig.label} of ${selectedTimeframe} data... this may take a moment`);
-        const candles = await fetchChartCandles(getHistoricalCandleLimit(selectedPeriod, selectedTimeframe, 500));
+        const candles = await fetchChartCandles(
+          getHistoricalCandleLimit(selectedPeriod, selectedTimeframe, 500),
+          selectedPeriod,
+          requestController.signal,
+        );
+        if (cancelled) return;
         if (candles.length > 0) {
           setChartCandles(sanitizeCandles(candles, selectedInstrument));
           if (backtestResult && !backtestResult.error) {
@@ -5219,7 +5261,8 @@ export default function KwantifyWorkspace({
           }
           showReportToast("success", `Report updated — ${displayCmeSymbol(selectedInstrument)} ${selectedTimeframe}`, 2000);
         }
-      } catch {
+      } catch (loadError) {
+        if (cancelled || (loadError instanceof DOMException && loadError.name === "AbortError")) return;
         if (!usingCTraderFeed && activeChartBrokerLabel !== "Databento") {
           const fallback = generateSampleData(60);
           setChartCandles(fallback);
@@ -5227,10 +5270,17 @@ export default function KwantifyWorkspace({
         setChartLoadingMessage(activeChartBrokerLabel === "Databento" ? "Connecting to CME history…" : "");
         showReportToast("error", activeChartBrokerLabel === "Databento" ? "CME history is reconnecting" : "Failed to update report", 3000);
       } finally {
-        window.setTimeout(() => setChartLoadingMessage(""), 3500);
+        if (!cancelled) {
+          clearMessageTimer = window.setTimeout(() => setChartLoadingMessage(""), 3500);
+        }
       }
     };
-    loadData();
+    void loadData();
+    return () => {
+      cancelled = true;
+      requestController.abort();
+      if (clearMessageTimer !== null) window.clearTimeout(clearMessageTimer);
+    };
   }, [selectedInstrument, selectedTimeframe, selectedPeriod]);
 
   useEffect(() => {
