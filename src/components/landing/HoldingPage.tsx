@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import Image from "next/image";
-import { ArrowRight, Loader2 } from "lucide-react";
+import { ArrowRight, Check, Loader2 } from "lucide-react";
 import { useState, type FormEvent } from "react";
 
 const ParticleTerrain = dynamic(() => import("@/components/landing/ParticleTerrain"), {
@@ -13,6 +13,11 @@ export default function HoldingPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [waitlistEmail, setWaitlistEmail] = useState("");
+  const [waitlistError, setWaitlistError] = useState("");
+  const [waitlistStatus, setWaitlistStatus] = useState<
+    "idle" | "submitting" | "complete"
+  >("idle");
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -37,21 +42,114 @@ export default function HoldingPage() {
     }
   }
 
+  async function joinWaitlist(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!waitlistEmail || waitlistStatus === "submitting") return;
+    const website = new FormData(event.currentTarget).get("website");
+    setWaitlistStatus("submitting");
+    setWaitlistError("");
+
+    try {
+      const response = await fetch("/api/waitlist", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: waitlistEmail, website }),
+      });
+      const body = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(body.error || "Please try again.");
+      setWaitlistStatus("complete");
+      setWaitlistEmail("");
+    } catch (waitlistSubmitError) {
+      setWaitlistError(
+        waitlistSubmitError instanceof Error
+          ? waitlistSubmitError.message
+          : "Please try again.",
+      );
+      setWaitlistStatus("idle");
+    }
+  }
+
   return (
     <main className="fixed inset-0 isolate overflow-hidden bg-black" aria-label="Kwant Desk private access">
       <ParticleTerrain />
       <div className="pointer-events-none absolute inset-0 z-[2] bg-[radial-gradient(circle_at_50%_42%,transparent_0%,rgba(0,0,0,.08)_50%,rgba(0,0,0,.72)_100%)]" />
-      <div className="pointer-events-none absolute inset-0 z-[3] flex items-center justify-center px-6 pb-[5vh]">
-        <div className="kwantdesk-holding-logo relative w-[78vw] sm:w-[54vw] lg:w-[33vw]">
-          <Image
-            src="/images/kwantdesk-wordmark.webp"
-            alt="Kwant Desk"
-            width={1911}
-            height={305}
-            priority
-            sizes="(max-width: 639px) 78vw, (max-width: 1023px) 54vw, 33vw"
-            className="h-auto w-full drop-shadow-[0_0_28px_rgba(255,255,255,.06)]"
-          />
+      <div className="absolute inset-0 z-[3] flex items-center justify-center px-6 pb-[4vh]">
+        <div className="flex -translate-y-[2vh] flex-col items-center">
+          <div className="kwantdesk-holding-logo pointer-events-none relative w-[78vw] sm:w-[54vw] lg:w-[33vw]">
+            <Image
+              src="/images/kwantdesk-wordmark.webp"
+              alt="Kwant Desk"
+              width={1911}
+              height={305}
+              priority
+              sizes="(max-width: 639px) 78vw, (max-width: 1023px) 54vw, 33vw"
+              className="h-auto w-full drop-shadow-[0_0_28px_rgba(255,255,255,.06)]"
+            />
+          </div>
+
+          <div className="mt-8 flex flex-col items-center text-center sm:mt-10">
+            <h1 className="text-[12px] font-semibold uppercase tracking-[0.28em] text-white sm:text-[13px]">
+              Coming soon!
+            </h1>
+            <p className="mt-2 text-[9px] uppercase tracking-[0.2em] text-white/44 sm:text-[10px]">
+              Sign up to be the first to know....
+            </p>
+
+            {waitlistStatus === "complete" ? (
+              <div
+                role="status"
+                className="mt-5 flex h-11 w-[min(330px,84vw)] items-center justify-center gap-2 border border-white/24 bg-black/70 font-mono text-[11px] tracking-[0.12em] text-white backdrop-blur-xl"
+              >
+                <Check className="h-3.5 w-3.5" />
+                Complete!
+              </div>
+            ) : (
+              <form onSubmit={joinWaitlist} className="relative mt-5">
+                <label htmlFor="kwantdesk-waitlist-email" className="sr-only">
+                  Email address
+                </label>
+                <input
+                  name="website"
+                  type="text"
+                  tabIndex={-1}
+                  autoComplete="off"
+                  aria-hidden="true"
+                  className="absolute h-px w-px opacity-0"
+                />
+                <div className="flex h-11 w-[min(330px,84vw)] items-center border border-white/24 bg-black/70 pl-4 shadow-[0_18px_55px_rgba(0,0,0,.5)] backdrop-blur-xl transition-colors focus-within:border-white/50">
+                  <input
+                    id="kwantdesk-waitlist-email"
+                    type="email"
+                    required
+                    value={waitlistEmail}
+                    onChange={(event) => setWaitlistEmail(event.target.value)}
+                    placeholder="your@email.com"
+                    autoComplete="email"
+                    spellCheck={false}
+                    className="min-w-0 flex-1 border-0 bg-transparent font-mono text-[11px] tracking-[0.04em] text-white outline-none placeholder:text-white/24"
+                  />
+                  <button
+                    type="submit"
+                    disabled={!waitlistEmail || waitlistStatus === "submitting"}
+                    aria-label="Join the Kwant Desk waitlist"
+                    className="flex h-full w-11 shrink-0 items-center justify-center border-l border-white/16 text-white/62 transition hover:bg-white/[.08] hover:text-white disabled:cursor-default disabled:opacity-25"
+                  >
+                    {waitlistStatus === "submitting"
+                      ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      : <ArrowRight className="h-3.5 w-3.5" />}
+                  </button>
+                </div>
+                {waitlistError ? (
+                  <p
+                    role="alert"
+                    className="absolute top-[calc(100%+8px)] left-1/2 w-max max-w-[330px] -translate-x-1/2 font-mono text-[9px] tracking-[0.04em] text-white/50"
+                  >
+                    {waitlistError}
+                  </p>
+                ) : null}
+              </form>
+            )}
+          </div>
         </div>
       </div>
 

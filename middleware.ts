@@ -21,6 +21,7 @@ export async function middleware(request: NextRequest) {
   if (
     pathname === "/" ||
     pathname === "/api/site-access" ||
+    pathname === "/api/waitlist" ||
     pathname === "/api/databento/health"
   ) {
     return response;
