@@ -6,6 +6,7 @@ import {
   ArrowRight,
   ArrowUp,
   Bell,
+  Bot,
   BrainCircuit,
   BookOpen,
   Check,
@@ -68,6 +69,13 @@ import {
   type LiveAnalystEntry,
   type LiveAnalystSnapshot,
 } from "@/lib/gameplanLiveAnalyst";
+import {
+  GAMEPLAN_TIMEFRAMES,
+  buildGameplanTimeframeContexts,
+  isGameplanTimeframeContext,
+  type GameplanTimeframeContext,
+  type GameplanTimeframeId,
+} from "@/lib/gameplanTimeframeAnalysis";
 
 type DetailMode = "beginner" | "standard" | "pro";
 type Level = GameplanEdition["ladder"][number];
@@ -755,7 +763,7 @@ function Environment({
   );
 }
 
-type AnalystView = "live" | "log" | "reviews";
+type AnalystView = "live" | "timeframes" | "log" | "reviews";
 type AnalystArchiveState = "syncing" | "cloud" | "local";
 
 function liveAnalystStorageKey(root: "NQ" | "ES") {
@@ -792,6 +800,55 @@ function writeLocalAnalystEntries(root: "NQ" | "ES", entries: LiveAnalystEntry[]
   } catch {
     // The private cloud archive remains the primary durable store.
   }
+}
+
+function timeframeAnalysisStorageKey(root: "NQ" | "ES") {
+  return `kwantdesk:gameplan-timeframe-analysis:${root.toLowerCase()}:v1`;
+}
+
+function readLocalTimeframeContexts(root: "NQ" | "ES") {
+  if (typeof window === "undefined") return [];
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(timeframeAnalysisStorageKey(root)) ?? "[]") as unknown;
+    return Array.isArray(parsed)
+      ? parsed.filter(isGameplanTimeframeContext).filter((context) => context.root === root)
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeLocalTimeframeContexts(root: "NQ" | "ES", contexts: GameplanTimeframeContext[]) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(timeframeAnalysisStorageKey(root), JSON.stringify(contexts));
+  } catch {
+    // The current completed-window analysis can always be rebuilt from CME history.
+  }
+}
+
+function formatContextWindow(context: GameplanTimeframeContext) {
+  const start = new Date(context.windowStart);
+  const end = new Date(context.windowEnd);
+  const format = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    month: context.timeframe === "1d" || context.timeframe === "1w" ? "short" : undefined,
+    day: context.timeframe === "1d" || context.timeframe === "1w" ? "2-digit" : undefined,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+  return `${format.format(start)}-${format.format(end)} ET`;
+}
+
+function formatNextContextUpdate(value: string, now: number) {
+  const remaining = Math.max(0, Date.parse(value) - now);
+  const hours = Math.floor(remaining / 3_600_000);
+  const minutes = Math.floor((remaining % 3_600_000) / 60_000);
+  const seconds = Math.floor((remaining % 60_000) / 1_000);
+  if (hours) return `${hours}h ${minutes}m`;
+  if (minutes) return `${minutes}m ${seconds}s`;
+  return `${seconds}s`;
 }
 
 function analystMemoryRecord(entry: LiveAnalystEntry) {
@@ -851,6 +908,8 @@ function LiveMarketAnalyst({
   const [entries, setEntries] = useState<LiveAnalystEntry[]>([]);
   const [archiveState, setArchiveState] = useState<AnalystArchiveState>("syncing");
   const [archiveReady, setArchiveReady] = useState(false);
+  const [selectedTimeframe, setSelectedTimeframe] = useState<GameplanTimeframeId>("15m");
+  const [timeframeContexts, setTimeframeContexts] = useState<GameplanTimeframeContext[]>([]);
   const [analystClock, setAnalystClock] = useState(() => Date.now());
   const entriesRef = useRef<LiveAnalystEntry[]>([]);
   const snapshotRef = useRef<LiveAnalystSnapshot | null>(null);
@@ -865,6 +924,10 @@ function LiveMarketAnalyst({
   useEffect(() => {
     entriesRef.current = entries;
   }, [entries]);
+
+  useEffect(() => {
+    setTimeframeContexts(readLocalTimeframeContexts(root));
+  }, [root]);
 
   useEffect(() => {
     candlesRef.current = candles;
@@ -922,6 +985,34 @@ function LiveMarketAnalyst({
     }),
     [analystClock, candles, currentPrice, plan, root, session, volatility],
   );
+
+  const timeframeCandidates = useMemo(
+    () => buildGameplanTimeframeContexts({
+      root,
+      session,
+      plan,
+      candles,
+      now: analystClock,
+    }),
+    [analystClock, candles, plan, root, session],
+  );
+
+  useEffect(() => {
+    if (!timeframeCandidates.length) return;
+    setTimeframeContexts((current) => {
+      const next = GAMEPLAN_TIMEFRAMES.flatMap((timeframe) => {
+        const candidate = timeframeCandidates.find((context) => context.timeframe === timeframe.id);
+        const existing = current.find((context) => (
+          context.root === root
+          && context.timeframe === timeframe.id
+          && context.periodKey === candidate?.periodKey
+        ));
+        return existing ? [existing] : candidate ? [candidate] : [];
+      });
+      writeLocalTimeframeContexts(root, next);
+      return next;
+    });
+  }, [root, timeframeCandidates]);
 
   const snapshot = useMemo(() => {
     if (!baseSnapshot) return null;
@@ -1019,6 +1110,10 @@ function LiveMarketAnalyst({
   );
   const levelEngaged = snapshot?.phase === "TESTING" || snapshot?.phase === "APPROACH";
   const acceptancePresent = snapshot?.phase === "EXPANSION" && timeframeAligned;
+  const selectedContext = timeframeContexts.find((context) => context.timeframe === selectedTimeframe) ?? null;
+  const buyerContexts = timeframeContexts.filter((context) => context.control === "BUYERS").length;
+  const sellerContexts = timeframeContexts.filter((context) => context.control === "SELLERS").length;
+  const balancedContexts = timeframeContexts.filter((context) => context.control === "BALANCED").length;
 
   return (
     <Panel className="overflow-hidden">
@@ -1041,6 +1136,7 @@ function LiveMarketAnalyst({
       <div className="flex border-b border-border bg-background/25 px-3">
         {([
           ["live", "Live read", Radio],
+          ["timeframes", "Timeframe analysis", Bot],
           ["log", "Decision log", History],
           ["reviews", "Reasoning reviews", Scale],
         ] as const).map(([id, label, Icon]) => (
@@ -1176,6 +1272,143 @@ function LiveMarketAnalyst({
               <History className="mx-auto h-5 w-5 text-muted" />
               <div className="mt-2 text-[10px] font-semibold text-foreground">The decision log is building</div>
               <p className="mt-1 text-[8px] text-muted">The first entry appears after live price and the current Gameplan are aligned.</p>
+            </div>
+          )}
+        </div>
+      ) : null}
+
+      {view === "timeframes" ? (
+        <div className="p-3">
+          <div className="rounded-xl border border-border bg-card/60 p-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <div>
+                <div className="text-[7px] font-bold uppercase tracking-[0.16em] text-primary">{root} completed-window context</div>
+                <div className="mt-1 text-[10px] font-semibold text-foreground">Seven stable timeframe analysts</div>
+              </div>
+              <div className="ml-auto flex items-center gap-1.5 text-[7px]">
+                <span className="rounded-md border border-primary/20 bg-primary/10 px-2 py-1 text-primary">{buyerContexts} buyer</span>
+                <span className="rounded-md border border-danger/20 bg-danger/[0.06] px-2 py-1 text-danger">{sellerContexts} seller</span>
+                <span className="rounded-md border border-border bg-surface px-2 py-1 text-muted">{balancedContexts} balanced</span>
+              </div>
+            </div>
+            <p className="mt-2 max-w-2xl text-[8px] leading-4 text-muted">
+              Each analyst speaks from its last completed window. Live ticks cannot rewrite the narrative; it only changes when that timeframe closes and the next evidence set is complete.
+            </p>
+          </div>
+
+          <div className="mt-3 grid grid-cols-7 gap-1 rounded-xl border border-border bg-background/40 p-1">
+            {GAMEPLAN_TIMEFRAMES.map((timeframe) => {
+              const context = timeframeContexts.find((item) => item.timeframe === timeframe.id);
+              return (
+                <button
+                  key={timeframe.id}
+                  type="button"
+                  onClick={() => setSelectedTimeframe(timeframe.id)}
+                  className={`relative min-w-0 rounded-lg px-1 py-2 text-center transition-colors ${
+                    selectedTimeframe === timeframe.id
+                      ? "bg-primary/12 text-primary"
+                      : "text-muted hover:bg-surface hover:text-foreground"
+                  }`}
+                >
+                  <span className="block font-mono text-[9px] font-semibold">{timeframe.label}</span>
+                  <span className={`mx-auto mt-1 block h-1 w-1 rounded-full ${
+                    context?.control === "BUYERS"
+                      ? "bg-primary"
+                      : context?.control === "SELLERS"
+                        ? "bg-danger"
+                        : "bg-muted"
+                  }`} />
+                  {selectedTimeframe === timeframe.id ? <span className="absolute inset-x-2 bottom-0 h-px bg-primary shadow-[0_0_8px_var(--primary)]" /> : null}
+                </button>
+              );
+            })}
+          </div>
+
+          {selectedContext ? (
+            <div className="mt-3 overflow-hidden rounded-2xl border border-primary/20 bg-[radial-gradient(circle_at_90%_0%,color-mix(in_srgb,var(--primary)_9%,transparent),transparent_46%)]">
+              <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3">
+                <span className="flex h-8 w-8 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary">
+                  <Bot className="h-4 w-4" />
+                </span>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-[12px] font-semibold text-foreground">{root} {selectedContext.label}</span>
+                    <span className={`text-[8px] font-semibold ${controlTone(selectedContext.control)}`}>{selectedContext.control}</span>
+                  </div>
+                  <div className="mt-0.5 font-mono text-[7px] text-muted">{formatContextWindow(selectedContext)}</div>
+                </div>
+                <div className="ml-auto text-right">
+                  <div className="font-mono text-[10px] font-semibold text-foreground">{selectedContext.confidence}%</div>
+                  <div className="text-[7px] uppercase tracking-[0.1em] text-muted">context quality</div>
+                </div>
+              </div>
+
+              <div className="grid gap-3 p-4 lg:grid-cols-[1fr_.72fr]">
+                <div className="space-y-3">
+                  <div>
+                    <div className="text-[7px] font-bold uppercase tracking-[0.15em] text-primary">What happened</div>
+                    <p className="mt-1.5 text-[10px] leading-5 text-foreground/90">{selectedContext.whatHappened}</p>
+                  </div>
+                  <div className="rounded-xl border border-border bg-card/65 p-3">
+                    <div className="text-[7px] font-bold uppercase tracking-[0.15em] text-foreground">Level context</div>
+                    <p className="mt-1.5 text-[9px] leading-4 text-muted">{selectedContext.levelContext}</p>
+                  </div>
+                  <div className="rounded-xl border border-primary/20 bg-primary/[0.045] p-3">
+                    <div className="text-[7px] font-bold uppercase tracking-[0.15em] text-primary">Stable context hypothesis</div>
+                    <p className="mt-1.5 text-[9px] leading-4 text-foreground/85">{selectedContext.hypothesis}</p>
+                  </div>
+                  <div className="rounded-xl border border-border bg-surface/35 p-3">
+                    <div className="flex items-center gap-1.5 text-[7px] font-bold uppercase tracking-[0.15em] text-muted">
+                      <Layers3 className="h-3 w-3 text-primary" />
+                      Futures + options context
+                    </div>
+                    <p className="mt-1.5 text-[9px] leading-4 text-muted">{selectedContext.optionsContext}</p>
+                  </div>
+                </div>
+
+                <div className="grid content-start grid-cols-2 gap-2">
+                  {[
+                    ["Open", formatPrice(selectedContext.open)],
+                    ["Close", formatPrice(selectedContext.close)],
+                    ["High", formatPrice(selectedContext.high)],
+                    ["Low", formatPrice(selectedContext.low)],
+                    ["Net move", `${selectedContext.move >= 0 ? "+" : ""}${formatPrice(selectedContext.move)}`],
+                    ["Range", formatPrice(selectedContext.range)],
+                  ].map(([label, value]) => (
+                    <div key={label} className="rounded-xl border border-border bg-card p-2.5">
+                      <div className="text-[7px] uppercase tracking-[0.12em] text-muted">{label}</div>
+                      <div className="mt-1 font-mono text-[10px] font-semibold text-foreground">{value}</div>
+                    </div>
+                  ))}
+                  <div className="col-span-2 rounded-xl border border-border bg-card p-3">
+                    <div className="flex items-center justify-between text-[7px] uppercase tracking-[0.12em] text-muted">
+                      <span>Close location</span>
+                      <span className="font-mono text-foreground">{selectedContext.closeLocation}% of range</span>
+                    </div>
+                    <div className="mt-2 h-1 overflow-hidden rounded-full bg-surface">
+                      <div className="h-full rounded-full bg-primary" style={{ width: `${selectedContext.closeLocation}%` }} />
+                    </div>
+                  </div>
+                  <div className="col-span-2 rounded-xl border border-border bg-card p-3">
+                    <div className="flex items-center gap-2 text-[7px] text-muted">
+                      <Clock3 className="h-3 w-3 text-primary" />
+                      <span>Next locked update</span>
+                      <span className="ml-auto font-mono text-foreground">{formatNextContextUpdate(selectedContext.nextUpdateAt, analystClock)}</span>
+                    </div>
+                    <div className="mt-2 flex items-center gap-2 text-[7px] text-muted">
+                      <Database className="h-3 w-3 text-primary" />
+                      <span>{selectedContext.sampleBars} completed 5M bars</span>
+                      <span className="ml-auto font-mono">{Math.round(selectedContext.coverage * 100)}% window coverage</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="mt-3 rounded-xl border border-border bg-card p-5 text-center">
+              <Loader2 className="mx-auto h-5 w-5 animate-spin text-primary" />
+              <div className="mt-2 text-[10px] font-semibold text-foreground">Building {root} {selectedTimeframe.toUpperCase()} context</div>
+              <p className="mt-1 text-[8px] text-muted">Waiting for enough completed CME history to lock this timeframe.</p>
             </div>
           )}
         </div>
@@ -1671,7 +1904,7 @@ export default function GameplanWorkspace({ initialInstrument = "NQ" }: { initia
     const loadVolatilityHistory = async () => {
       try {
         const response = await fetch(
-          `/api/databento/market?symbol=${encodeURIComponent(`${root}.v.0`)}&timeframe=5m`,
+          `/api/databento/market?symbol=${encodeURIComponent(`${root}.v.0`)}&timeframe=5m&days=10`,
           { cache: "no-store" },
         );
         const result = await response.json() as { candles?: VolatilityCandle[]; error?: string };
