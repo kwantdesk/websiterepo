@@ -82,6 +82,7 @@ export default function HoldingPage() {
               width={1911}
               height={305}
               priority
+              unoptimized
               sizes="(max-width: 639px) 78vw, (max-width: 1023px) 54vw, 33vw"
               className="h-auto w-full drop-shadow-[0_0_28px_rgba(255,255,255,.06)]"
             />
