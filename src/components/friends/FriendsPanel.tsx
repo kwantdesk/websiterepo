@@ -100,7 +100,7 @@ export default function FriendsPanel({ onClose, onUnreadCountChange }: FriendsPa
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const load = useCallback(async (friendId = activeFriendId, quiet = false) => {
+  const load = useCallback(async (friendId = "", quiet = false) => {
     if (!quiet) setLoading(true);
     try {
       const response = await fetch(`/api/friends${friendId ? `?friendId=${encodeURIComponent(friendId)}` : ""}`, {
@@ -115,7 +115,7 @@ export default function FriendsPanel({ onClose, onUnreadCountChange }: FriendsPa
     } finally {
       setLoading(false);
     }
-  }, [activeFriendId]);
+  }, []);
 
   const runAction = useCallback(async (
     action: string,
@@ -144,19 +144,8 @@ export default function FriendsPanel({ onClose, onUnreadCountChange }: FriendsPa
   }, []);
 
   useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      await runAction("heartbeat", {}, true);
-      if (!cancelled) await load("", true);
-    })();
-    const heartbeat = window.setInterval(() => {
-      void runAction("heartbeat", {}, true);
-    }, 60_000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(heartbeat);
-    };
-  }, [load, runAction]);
+    void load("", true);
+  }, [load]);
 
   useEffect(() => {
     const supabase = createClient();

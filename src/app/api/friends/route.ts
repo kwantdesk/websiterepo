@@ -341,6 +341,9 @@ export async function POST(request: NextRequest) {
     }
     const { error } = await upsertProfile(supabase, actor, changes);
     if (error) return NextResponse.json({ error: "Your status could not be saved." }, { status: 502 });
+    if (action === "heartbeat" && body.lightweight === true) {
+      return NextResponse.json({ ok: true });
+    }
   } else if (action === "request" || action === "accept") {
     if (!targetUserId || targetUserId === actor.userId) {
       return NextResponse.json({ error: "Choose another trader." }, { status: 400 });

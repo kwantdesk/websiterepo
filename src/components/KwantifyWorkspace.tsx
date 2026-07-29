@@ -3203,6 +3203,7 @@ export default function KwantifyWorkspace({
     let cancelled = false;
     let viewerId = "";
     let refreshTimer: number | null = null;
+    let presenceTimer: number | null = null;
 
     const refreshUnread = async () => {
       try {
@@ -3217,10 +3218,25 @@ export default function KwantifyWorkspace({
       }
     };
 
+    const heartbeat = async () => {
+      if (document.visibilityState !== "visible") return;
+      try {
+        await fetch("/api/friends", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "heartbeat", lightweight: true }),
+        });
+      } catch {
+        // Presence catches up on the next heartbeat.
+      }
+    };
+
     void supabase.auth.getUser().then(({ data }: { data: { user: { id: string } | null } }) => {
       if (cancelled || !data.user) return;
       viewerId = data.user.id;
+      void heartbeat();
       void refreshUnread();
+      presenceTimer = window.setInterval(() => void heartbeat(), 60_000);
     });
 
     const channel = supabase
@@ -3251,6 +3267,7 @@ export default function KwantifyWorkspace({
     return () => {
       cancelled = true;
       if (refreshTimer) window.clearTimeout(refreshTimer);
+      if (presenceTimer) window.clearInterval(presenceTimer);
       void supabase.removeChannel(channel);
     };
   }, [supabase]);
