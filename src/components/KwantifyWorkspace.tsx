@@ -89,7 +89,11 @@ import {
   normalizePaneIndicatorState,
 } from "@/lib/chartIndicatorConfig";
 import type { ChartGammaLevelsPayload } from "@/lib/chartGammaLevels";
-import type { GameplanPayload, GameplanSession } from "@/lib/gameplan";
+import {
+  gameplanSessionLabel,
+  type GameplanPayload,
+  type GameplanSession,
+} from "@/lib/gameplan";
 import {
   GAMEPLAN_CHART_OVERLAYS_EVENT,
   GAMEPLAN_CHART_OVERLAYS_STORAGE_KEY,
@@ -431,21 +435,27 @@ function displayCmeText(value: string) {
 }
 
 function currentGameplanSession(now = new Date()): GameplanSession {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/New_York",
-    weekday: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-    hourCycle: "h23",
-  }).formatToParts(now);
-  const weekday = parts.find((part) => part.type === "weekday")?.value ?? "";
-  const hour = Number(parts.find((part) => part.type === "hour")?.value ?? -1);
-  const minute = Number(parts.find((part) => part.type === "minute")?.value ?? 0);
-  const minutes = hour * 60 + minute;
-  const weekdaySession = !["Sat", "Sun"].includes(weekday);
-  return weekdaySession && minutes >= 8 * 60 && minutes < 17 * 60
-    ? "newyork"
-    : "globex";
+  const hourIn = (timeZone: string) => {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    }).formatToParts(now);
+    const hour = Number(parts.find((part) => part.type === "hour")?.value ?? -1);
+    const minute = Number(parts.find((part) => part.type === "minute")?.value ?? 0);
+    return hour * 60 + minute;
+  };
+  const newYorkMinutes = hourIn("America/New_York");
+  const londonMinutes = hourIn("Europe/London");
+  const frankfurtMinutes = hourIn("Europe/Berlin");
+  const tokyoMinutes = hourIn("Asia/Tokyo");
+  if (newYorkMinutes >= 18 * 60) return "globex";
+  if (newYorkMinutes >= 9 * 60 + 30) return "newyork";
+  if (londonMinutes >= 8 * 60) return "london";
+  if (frankfurtMinutes >= 8 * 60) return "frankfurt";
+  if (tokyoMinutes >= 9 * 60) return "tokyo";
+  return "globex";
 }
 
 function csvCell(value: string | number | null) {
@@ -3783,7 +3793,7 @@ export default function KwantifyWorkspace({
       setQuickGameplanUpdatedRoot(root);
       showReportToast(
         "success",
-        `${root} ${session === "newyork" ? "New York" : "Globex"} Gameplan levels replaced with the latest edition.`,
+        `${root} ${gameplanSessionLabel(session)} Gameplan levels replaced with the latest edition.`,
         2_800,
       );
       window.setTimeout(() => setQuickGameplanUpdatedRoot((current) => current === root ? null : current), 2_800);

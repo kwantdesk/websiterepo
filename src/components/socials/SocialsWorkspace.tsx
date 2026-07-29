@@ -70,7 +70,12 @@ import {
 } from "@/lib/socials";
 import { buildExecutionComparison } from "@/lib/socials";
 import { SOCIAL_RECORD_COPY, SOCIAL_RECORD_RULES } from "@/lib/socialRecordConfig";
-import type { GameplanPayload, GameplanSession } from "@/lib/gameplan";
+import {
+  GAMEPLAN_SESSIONS,
+  gameplanSessionLabel,
+  type GameplanPayload,
+  type GameplanSession,
+} from "@/lib/gameplan";
 import { loadSocialState, normalizeSocialState, saveSocialState } from "@/lib/socialsStore";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -631,7 +636,7 @@ export default function SocialsWorkspace({
     };
     const base = {
       instrument: gameplan.instrument,
-      session: gameplanSession === "newyork" ? "New York" : "Globex",
+      session: gameplanSessionLabel(gameplanSession),
       direction: "BOTH" as const,
       marketContext: context,
       plannedEntryLow: trade.zone[0],
@@ -1380,8 +1385,7 @@ export default function SocialsWorkspace({
                     {(["NQ", "ES"] as const).map((instrument) => <button key={instrument} type="button" onClick={() => setGameplanInstrument(instrument)} className={`h-7 rounded-lg px-3 font-mono text-[8px] font-semibold ${gameplanInstrument === instrument ? "bg-primary text-background" : "text-muted hover:text-foreground"}`}>{instrument}</button>)}
                   </div>
                   <KwantSelect value={gameplanSession} onChange={(event) => setGameplanSession(event.target.value as GameplanSession)} className="h-9 rounded-xl border border-border bg-surface px-3 text-[8px] outline-none">
-                    <option value="newyork">New York</option>
-                    <option value="globex">Globex</option>
+                    {GAMEPLAN_SESSIONS.map(({ id, label }) => <option key={id} value={id}>{label}</option>)}
                   </KwantSelect>
                 </div>
                 {gameplanState === "loading" ? (

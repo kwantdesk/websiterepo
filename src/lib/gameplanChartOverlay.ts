@@ -1,6 +1,11 @@
 "use client";
 
-import type { GameplanEdition, GameplanRole, GameplanSession } from "@/lib/gameplan";
+import {
+  isGameplanSession,
+  type GameplanEdition,
+  type GameplanRole,
+  type GameplanSession,
+} from "@/lib/gameplan";
 
 export type GameplanChartRoot = "NQ" | "ES";
 
@@ -39,7 +44,7 @@ function normalizeOverlay(value: unknown): GameplanChartOverlay | null {
   if (
     candidate.version !== 1
     || (candidate.root !== "NQ" && candidate.root !== "ES")
-    || (candidate.session !== "globex" && candidate.session !== "newyork")
+    || !isGameplanSession(candidate.session)
     || typeof candidate.editionDate !== "string"
     || typeof candidate.publishedAt !== "string"
     || typeof candidate.addedAt !== "string"

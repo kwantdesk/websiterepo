@@ -31,12 +31,15 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type {
-  GameplanEdition,
-  GameplanPayload,
-  GameplanRole,
-  GameplanSession,
-  GameplanTapeState,
+import {
+  GAMEPLAN_SESSIONS,
+  gameplanSessionConfig,
+  gameplanSessionLabel,
+  type GameplanEdition,
+  type GameplanPayload,
+  type GameplanRole,
+  type GameplanSession,
+  type GameplanTapeState,
 } from "@/lib/gameplan";
 import {
   GAMEPLAN_CHART_OVERLAYS_EVENT,
@@ -190,20 +193,25 @@ function timeZoneOffset(date: Date, timeZone: string) {
 
 function nextOpen(session: GameplanSession) {
   const now = new Date();
-  const easternParts = new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/New_York",
+  const config = gameplanSessionConfig(session);
+  const sessionDateParts = new Intl.DateTimeFormat("en-US", {
+    timeZone: config.timeZone,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
   }).formatToParts(now);
-  const values = Object.fromEntries(easternParts.map((part) => [part.type, part.value]));
-  const hour = session === "newyork" ? 9 : 18;
-  const minute = session === "newyork" ? 30 : 0;
-  const utcGuess = Date.UTC(Number(values.year), Number(values.month) - 1, Number(values.day), hour, minute);
-  let target = utcGuess - timeZoneOffset(new Date(utcGuess), "America/New_York");
+  const values = Object.fromEntries(sessionDateParts.map((part) => [part.type, part.value]));
+  const utcGuess = Date.UTC(
+    Number(values.year),
+    Number(values.month) - 1,
+    Number(values.day),
+    config.openHour,
+    config.openMinute,
+  );
+  let target = utcGuess - timeZoneOffset(new Date(utcGuess), config.timeZone);
   if (target <= now.getTime()) {
     const tomorrowGuess = utcGuess + 86_400_000;
-    target = tomorrowGuess - timeZoneOffset(new Date(tomorrowGuess), "America/New_York");
+    target = tomorrowGuess - timeZoneOffset(new Date(tomorrowGuess), config.timeZone);
   }
   return target;
 }
@@ -1269,12 +1277,9 @@ export default function GameplanWorkspace({ initialInstrument = "NQ" }: { initia
             <button key={item} type="button" onClick={() => setRoot(item)} className={`rounded-lg px-3 py-1.5 font-mono text-[10px] font-semibold ${root === item ? "bg-primary text-background" : "text-muted hover:text-foreground"}`}>{item}</button>
           ))}
         </div>
-        <div className="flex rounded-xl border border-border bg-surface p-1">
-          {([
-            ["globex", "Globex"],
-            ["newyork", "New York"],
-          ] as const).map(([id, label]) => (
-            <button key={id} type="button" onClick={() => setSession(id)} className={`rounded-lg px-3 py-1.5 text-[10px] font-semibold ${session === id ? "bg-card text-foreground shadow-sm" : "text-muted hover:text-foreground"}`}>{label}</button>
+        <div className="flex max-w-full overflow-x-auto rounded-xl border border-border bg-surface p-1">
+          {GAMEPLAN_SESSIONS.map(({ id, label }) => (
+            <button key={id} type="button" onClick={() => setSession(id)} className={`shrink-0 rounded-lg px-3 py-1.5 text-[10px] font-semibold ${session === id ? "bg-card text-foreground shadow-sm" : "text-muted hover:text-foreground"}`}>{label}</button>
           ))}
         </div>
         <div className="ml-auto flex items-center gap-2">
@@ -1316,7 +1321,7 @@ export default function GameplanWorkspace({ initialInstrument = "NQ" }: { initia
         <div className="mx-auto max-w-[1680px] p-3 lg:p-4 xl:p-5">
           <div className="mb-3 grid gap-2 md:grid-cols-[auto_auto_1fr_auto] md:items-center">
             <div className="rounded-xl border border-border bg-panel px-3 py-2">
-              <Eyebrow>{session === "globex" ? "Globex edition" : "New York edition"}</Eyebrow>
+              <Eyebrow>{gameplanSessionLabel(session)} edition</Eyebrow>
               <div className="mt-1 text-[11px] font-semibold text-foreground">{formatDate(plan.edition.date)}</div>
             </div>
             <TapeBadge state={plan.environment.tape.state} />
@@ -1327,7 +1332,7 @@ export default function GameplanWorkspace({ initialInstrument = "NQ" }: { initia
                 <span className={`ml-auto rounded-md px-1.5 py-0.5 font-semibold ${payload.status === "LIVE" ? "bg-primary/10 text-primary" : "bg-danger/10 text-danger"}`}>{payload.status}</span>
               </div>
             </div>
-            {session === "newyork" ? (
+            {session !== "globex" ? (
               <button type="button" onClick={() => setShowDiff(!showDiff)} className={`flex h-full items-center gap-2 rounded-xl border px-3 py-2 text-[9px] font-semibold ${showDiff ? "border-primary/30 bg-primary/10 text-primary" : "border-border bg-panel text-muted hover:text-foreground"}`}>
                 <GitCompareArrows className="h-3.5 w-3.5" /> What changed?
               </button>
@@ -1338,8 +1343,8 @@ export default function GameplanWorkspace({ initialInstrument = "NQ" }: { initia
             <div className="mb-3 flex items-start gap-3 rounded-xl border border-primary/20 bg-primary/[0.045] px-4 py-3">
               <GitCompareArrows className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
               <div>
-                <div className="text-[10px] font-semibold text-foreground">New York edition delta</div>
-                <p className="mt-1 text-[10px] leading-5 text-muted">The map has been recomputed from the latest overnight positioning and futures price. A stored field-by-field Globex comparison will appear here when the edition publisher begins saving both daily snapshots.</p>
+                <div className="text-[10px] font-semibold text-foreground">{gameplanSessionLabel(session)} edition delta</div>
+                <p className="mt-1 text-[10px] leading-5 text-muted">The map has been recomputed from the latest positioning and futures price. A stored field-by-field comparison with the prior session will appear here when the edition publisher begins saving each daily snapshot.</p>
               </div>
             </div>
           ) : null}

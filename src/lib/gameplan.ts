@@ -1,9 +1,29 @@
 import type { OptionsFlowPayload, OptionsKeyLevel } from "@/lib/optionsFlow";
 
-export type GameplanSession = "globex" | "newyork";
+export const GAMEPLAN_SESSIONS = [
+  { id: "globex", label: "Globex", timeZone: "America/New_York", openHour: 18, openMinute: 0 },
+  { id: "tokyo", label: "Tokyo", timeZone: "Asia/Tokyo", openHour: 9, openMinute: 0 },
+  { id: "frankfurt", label: "Frankfurt", timeZone: "Europe/Berlin", openHour: 8, openMinute: 0 },
+  { id: "london", label: "London", timeZone: "Europe/London", openHour: 8, openMinute: 0 },
+  { id: "newyork", label: "New York", timeZone: "America/New_York", openHour: 9, openMinute: 30 },
+] as const;
+
+export type GameplanSession = (typeof GAMEPLAN_SESSIONS)[number]["id"];
 export type GameplanTapeState = "calm" | "snowball" | "mixed";
 export type GameplanRole = "magnet" | "wall" | "accelerant" | "decision";
 export type GameplanSource = "positioning" | "dated" | "tape-memory" | "em-math";
+
+export function isGameplanSession(value: unknown): value is GameplanSession {
+  return typeof value === "string" && GAMEPLAN_SESSIONS.some((session) => session.id === value);
+}
+
+export function gameplanSessionLabel(session: GameplanSession) {
+  return GAMEPLAN_SESSIONS.find((item) => item.id === session)?.label ?? session;
+}
+
+export function gameplanSessionConfig(session: GameplanSession) {
+  return GAMEPLAN_SESSIONS.find((item) => item.id === session) ?? GAMEPLAN_SESSIONS[0];
+}
 
 export type GameplanEdition = {
   edition: {

@@ -1,6 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextRequest, NextResponse } from "next/server";
-import { buildGameplanPayload, type GameplanSession } from "@/lib/gameplan";
+import { buildGameplanPayload, isGameplanSession } from "@/lib/gameplan";
 import {
   getConfiguredQuantDataApiKey,
   getOptionsFlowPayload,
@@ -44,14 +44,14 @@ export async function GET(request: NextRequest) {
   if (rootInput !== "NQ" && rootInput !== "ES") {
     return NextResponse.json({ error: "Gameplan currently supports NQ and ES." }, { status: 400 });
   }
-  if (sessionInput !== "globex" && sessionInput !== "newyork") {
+  if (!isGameplanSession(sessionInput)) {
     return NextResponse.json({ error: "Invalid Gameplan edition." }, { status: 400 });
   }
 
   try {
     const source = rootInput === "NQ" ? "NDX" : "SPX";
     const options = await getOptionsFlowPayload(source, "FUTURES");
-    const payload = buildGameplanPayload(options, rootInput, sessionInput as GameplanSession);
+    const payload = buildGameplanPayload(options, rootInput, sessionInput);
     return NextResponse.json(payload, {
       headers: { "Cache-Control": "private, no-store, max-age=0" },
     });
