@@ -1733,6 +1733,7 @@ function WorkspaceChartPane({
   const [gammaLevelsLoading, setGammaLevelsLoading] = useState(false);
   const [gammaLevelsError, setGammaLevelsError] = useState<string | null>(null);
   const intervalCommandInputRef = useRef<HTMLInputElement>(null);
+  const intervalCommandPanelRef = useRef<HTMLDivElement>(null);
   const latestCandlesRef = useRef<Candle[]>([]);
   const latestFuturesRef = useRef<{
     price: number | null;
@@ -2259,6 +2260,21 @@ function WorkspaceChartPane({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [active, intervalCommandOpen]);
 
+  useEffect(() => {
+    if (!intervalCommandOpen) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Node && intervalCommandPanelRef.current?.contains(target)) return;
+      setIntervalCommandOpen(false);
+      setIntervalCommandDraft("");
+      setIntervalCommandError("");
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown, true);
+    return () => document.removeEventListener("pointerdown", handlePointerDown, true);
+  }, [intervalCommandOpen]);
+
   const submitIntervalCommand = () => {
     const interval = parseChartIntervalInput(intervalCommandDraft);
     if (!interval) {
@@ -2371,6 +2387,7 @@ function WorkspaceChartPane({
       {intervalCommandOpen && (
         <div className="pointer-events-none absolute inset-0 z-50 flex items-center justify-center">
           <div
+            ref={intervalCommandPanelRef}
             className="pointer-events-auto w-[300px] max-w-[calc(100%-32px)] rounded-2xl border border-border bg-panel/95 p-3 shadow-2xl shadow-black/40 backdrop-blur-xl"
             onMouseDown={(event) => event.stopPropagation()}
           >
