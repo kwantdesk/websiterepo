@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type ComponentType, type CSSProperties, type DragEvent as ReactDragEvent, type RefObject } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type CSSProperties, type DragEvent as ReactDragEvent, type RefObject } from "react";
 import {
   createChart,
   LineStyle,
@@ -70,6 +70,18 @@ import {
   X,
 } from "lucide-react";
 import { Candle, Trade } from "@/lib/backtester";
+import {
+  LIVE_CHART_CANDLE_EVENT,
+  type LiveChartCandleDetail,
+} from "@/lib/chartLiveEvents";
+import type { ChartIndicatorInstance } from "@/lib/chartIndicatorCatalog";
+import {
+  calculateDeltaPercentHighlights,
+  calculateIndicatorSeries,
+  type CalculatedIndicatorSeries,
+} from "@/lib/chartIndicatorEngine";
+import ChartIndicatorPanes, { type IndicatorPaneGroup } from "@/components/ChartIndicatorPanes";
+import { calculateKwantStats } from "@/lib/kwantStats";
 import { defaultChartSettings, type ChartSettings } from "@/lib/chartSettings";
 import { compactTimeZoneLabel, normalizeTimeZone } from "@/lib/timeZones";
 
@@ -86,6 +98,9 @@ interface ChartProps {
   onOpenSettings?: () => void;
   onCreateAlertAtPrice?: (price: string) => void;
   onRemoveAllIndicators?: () => void;
+  indicators?: ChartIndicatorInstance[];
+  onUpdateIndicatorSetting?: (instanceId: string, key: string, value: number | string | boolean) => void;
+  onOpenIndicatorSettings?: (instanceId: string) => void;
   settings?: ChartSettings;
   toolbarEnabled?: boolean;
   chartDragEnabled?: boolean;
@@ -97,6 +112,7 @@ interface ChartProps {
   gammaLevelsError?: string | null;
   onToggleGammaLevels?: () => void;
   onRemoveGameplanOverlay?: () => void;
+  liveCandleEventKey?: string | null;
 }
 
 export interface ChartLevel {
@@ -735,11 +751,13 @@ function CandleCountdownBadge({
   hasCandles,
   latestCandleRef,
   marketIsActive,
+  bottom = 56,
 }: {
   candleIntervalMs: number | null;
   hasCandles: boolean;
   latestCandleRef: RefObject<Candle | null>;
   marketIsActive?: boolean;
+  bottom?: number;
 }) {
   const [label, setLabel] = useState<string | null>(null);
 
@@ -774,7 +792,8 @@ function CandleCountdownBadge({
 
   return (
     <div
-      className="pointer-events-none absolute bottom-14 right-[76px] z-10 flex h-7 w-[54px] items-center justify-center rounded-lg bg-primary px-1.5 font-mono text-[10px] font-semibold leading-none text-background shadow-lg shadow-black/25"
+      className="pointer-events-none absolute right-[76px] z-10 flex h-7 w-[54px] items-center justify-center rounded-lg bg-primary px-1.5 font-mono text-[10px] font-semibold leading-none text-background shadow-lg shadow-black/25"
+      style={{ bottom }}
       title="Time until next candle opens"
     >
       {label}
@@ -872,6 +891,16 @@ function getTextToolChrome(tool: DrawingToolId) {
   }
 }
 
+function lightweightIndicatorData(definition: CalculatedIndicatorSeries) {
+  if (definition.kind !== "line") return definition.data as any[];
+  return definition.data.map((point, index) => {
+    const { breakBefore: _breakBefore, ...linePoint } = point;
+    return definition.data[index + 1]?.breakBefore
+      ? { ...linePoint, color: "rgba(0, 0, 0, 0)" }
+      : linePoint;
+  }) as any[];
+}
+
 export default function Chart({
   candles,
   trades,
@@ -885,6 +914,9 @@ export default function Chart({
   onOpenSettings,
   onCreateAlertAtPrice,
   onRemoveAllIndicators,
+  indicators = [],
+  onUpdateIndicatorSetting,
+  onOpenIndicatorSettings,
   settings = defaultChartSettings,
   toolbarEnabled = true,
   chartDragEnabled = false,
@@ -896,6 +928,7 @@ export default function Chart({
   gammaLevelsError = null,
   onToggleGammaLevels,
   onRemoveGameplanOverlay,
+  liveCandleEventKey,
 }: ChartProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
@@ -907,6 +940,14 @@ export default function Chart({
   const tradesRef = useRef<(Trade & { markerVisible?: boolean })[]>([]);
   const levelsRef = useRef<ChartLevel[]>([]);
   const priceLinesRef = useRef<any[]>([]);
+  const indicatorSeriesRefs = useRef<Array<{
+    key: string;
+    kind: "line" | "histogram";
+    series: {
+      setData: (data: any[]) => void;
+      applyOptions: (options: Record<string, unknown>) => void;
+    };
+  }>>([]);
   const backgroundLevelsRef = useRef<ChartLevel[]>([]);
   const backgroundZonesRef = useRef<ChartZone[]>([]);
   const gameplanUnderlayRef = useRef<GameplanUnderlayPrimitive | null>(null);
@@ -933,6 +974,10 @@ export default function Chart({
   const [overlaySize, setOverlaySize] = useState({ width: 0, height: 0 });
   const [viewportVersion, setViewportVersion] = useState(0);
   const [themeVersion, setThemeVersion] = useState(0);
+  const [chartReadyRevision, setChartReadyRevision] = useState(0);
+  const [sampledIndicatorCandles, setSampledIndicatorCandles] = useState(candles);
+  const [indicatorPaneHeights, setIndicatorPaneHeights] = useState<Record<string, number>>({});
+  const [collapsedIndicatorPanes, setCollapsedIndicatorPanes] = useState<Record<string, boolean>>({});
   const overlayRef = useRef<SVGSVGElement>(null);
   const toolbarRef = useRef<HTMLDivElement>(null);
   const latestPointerRef = useRef<{ x: number; y: number } | null>(null);
@@ -940,11 +985,67 @@ export default function Chart({
   const toolbarDragStateRef = useRef<{ offsetX: number; offsetY: number; startClientX: number; startClientY: number; hasMoved: boolean } | null>(null);
   const toolbarToggleSuppressedRef = useRef(false);
   const latestCandleRef = useRef<Candle | null>(candles.at(-1) ?? null);
+  const indicatorSampleTimerRef = useRef<number | null>(null);
+  const pendingIndicatorCandlesRef = useRef(candles);
+  const updateIndicatorSettingRef = useRef(onUpdateIndicatorSetting);
+  const openIndicatorSettingsRef = useRef(onOpenIndicatorSettings);
 
   useEffect(() => {
     const handleThemeChange = () => setThemeVersion((version) => version + 1);
     window.addEventListener("kwantdesk:theme-change", handleThemeChange);
     return () => window.removeEventListener("kwantdesk:theme-change", handleThemeChange);
+  }, []);
+
+  useEffect(() => {
+    if (!liveCandleEventKey) return;
+    let pendingCandle: Candle | null = null;
+    let frame: number | null = null;
+    const flush = () => {
+      frame = null;
+      const candle = pendingCandle;
+      pendingCandle = null;
+      if (!candle || !candleSeriesRef.current) return;
+      candleSeriesRef.current.update({
+        time: (candle.timestamp / 1_000) as Time,
+        open: candle.open,
+        high: candle.high,
+        low: candle.low,
+        close: candle.close,
+      });
+    };
+    const receive = (event: Event) => {
+      const detail = (event as CustomEvent<LiveChartCandleDetail>).detail;
+      if (!detail || detail.key !== liveCandleEventKey) return;
+      pendingCandle = detail.candle;
+      latestCandleRef.current = detail.candle;
+      if (frame === null) frame = window.requestAnimationFrame(flush);
+    };
+    window.addEventListener(LIVE_CHART_CANDLE_EVENT, receive);
+    return () => {
+      window.removeEventListener(LIVE_CHART_CANDLE_EVENT, receive);
+      if (frame !== null) window.cancelAnimationFrame(frame);
+    };
+  }, [liveCandleEventKey]);
+
+  useEffect(() => {
+    updateIndicatorSettingRef.current = onUpdateIndicatorSetting;
+    openIndicatorSettingsRef.current = onOpenIndicatorSettings;
+  }, [onOpenIndicatorSettings, onUpdateIndicatorSetting]);
+
+  useEffect(() => {
+    pendingIndicatorCandlesRef.current = candles;
+    if (indicatorSampleTimerRef.current !== null) return;
+    indicatorSampleTimerRef.current = window.setTimeout(() => {
+      indicatorSampleTimerRef.current = null;
+      setSampledIndicatorCandles(pendingIndicatorCandlesRef.current);
+    }, 120);
+  }, [candles]);
+
+  useEffect(() => () => {
+    if (indicatorSampleTimerRef.current !== null) {
+      window.clearTimeout(indicatorSampleTimerRef.current);
+      indicatorSampleTimerRef.current = null;
+    }
   }, []);
 
   useEffect(() => {
@@ -966,6 +1067,204 @@ export default function Chart({
   }, [openToolbarGroup]);
 
   const priceFormat = useMemo(() => getPriceFormat(instrument), [instrument]);
+  const indicatorSignature = useMemo(() => JSON.stringify(indicators), [indicators]);
+  const indicatorCandles = useMemo(
+    () => sampledIndicatorCandles.slice(-1_500),
+    [sampledIndicatorCandles],
+  );
+  const calculatedIndicatorSeries = useMemo(
+    () => indicators.flatMap((instance) =>
+      calculateIndicatorSeries(
+        instance,
+        indicatorCandles,
+        {
+          primary: settings.upColor,
+          secondary: settings.borderUpColor,
+          positive: settings.upColor,
+          negative: settings.downColor,
+          muted: settings.gridColor,
+        },
+        { instrument, tickSize: priceFormat.minMove },
+      ).map((series) => ({ ...series, groupKey: instance.instanceId }))),
+    [
+      indicatorCandles,
+      indicatorSignature,
+      indicators,
+      instrument,
+      priceFormat.minMove,
+      settings.borderUpColor,
+      settings.downColor,
+      settings.gridColor,
+      settings.upColor,
+    ],
+  );
+  const calculatedIndicatorPanes = useMemo(() => {
+    return indicators.flatMap((instance): IndicatorPaneGroup[] => {
+      if (!instance.enabled) return [];
+      if (instance.indicatorId === "kwant-stats") {
+        return [{
+          key: instance.instanceId,
+          title: "KWANT STATS",
+          indicatorId: instance.indicatorId,
+          settings: instance.settings,
+          series: [],
+          stats: indicatorCandles.length
+            ? calculateKwantStats(
+              indicatorCandles,
+              [],
+              instance,
+              priceFormat.minMove,
+              {
+                positive: settings.upColor,
+                negative: settings.downColor,
+                neutral: settings.borderUpColor,
+                text: "var(--foreground)",
+                header: settings.gridColor,
+              },
+            )
+            : undefined,
+          unavailableReason: indicatorCandles.length ? undefined : "Waiting for chart history.",
+        }];
+      }
+      const series = calculatedIndicatorSeries.filter((definition) =>
+        definition.groupKey === instance.instanceId && definition.placement === "pane");
+      if (series.length) {
+        return [{
+          key: instance.instanceId,
+          title: series[0].label,
+          indicatorId: instance.indicatorId,
+          settings: instance.settings,
+          series,
+        }];
+      }
+      if ([
+        "cumulative-volume-delta",
+        "delta-cumulative-candlestick",
+        "delta-cumulative-histogram",
+        "delta-bar",
+      ].includes(instance.indicatorId)) {
+        return [{
+          key: instance.instanceId,
+          title: instance.indicatorId === "delta-bar" ? "Delta" : "Cumulative Delta",
+          indicatorId: instance.indicatorId,
+          settings: instance.settings,
+          series: [],
+          unavailableReason: "Waiting for executed CME bid/ask volume.",
+        }];
+      }
+      return [];
+    });
+  }, [
+    calculatedIndicatorSeries,
+    indicatorCandles,
+    indicatorSignature,
+    indicators,
+    priceFormat.minMove,
+    settings.borderUpColor,
+    settings.downColor,
+    settings.gridColor,
+    settings.upColor,
+  ]);
+  const defaultIndicatorPaneHeight = Math.max(88, Math.min(140, overlaySize.height * 0.18));
+  const resolvedIndicatorPaneHeights = useMemo(
+    () => Object.fromEntries(calculatedIndicatorPanes.map((group) => [
+      group.key,
+      indicatorPaneHeights[group.key] ?? defaultIndicatorPaneHeight,
+    ])),
+    [calculatedIndicatorPanes, defaultIndicatorPaneHeight, indicatorPaneHeights],
+  );
+  const indicatorPaneHeight = useMemo(
+    () => calculatedIndicatorPanes.reduce(
+      (total, group) => total + (
+        collapsedIndicatorPanes[group.key] ? 30 : resolvedIndicatorPaneHeights[group.key]
+      ),
+      0,
+    ),
+    [calculatedIndicatorPanes, collapsedIndicatorPanes, resolvedIndicatorPaneHeights],
+  );
+  const resizeIndicatorPane = useCallback((key: string, nextHeight: number) => {
+    setIndicatorPaneHeights((current) => ({
+      ...current,
+      [key]: Math.max(64, Math.min(420, Math.round(nextHeight))),
+    }));
+  }, []);
+  const toggleIndicatorPane = useCallback((key: string) => {
+    setCollapsedIndicatorPanes((current) => ({ ...current, [key]: !current[key] }));
+  }, []);
+  const indicatorTimeToX = useCallback(
+    (time: number) => chartRef.current?.timeScale().timeToCoordinate(time as Time) ?? null,
+    [],
+  );
+  const deltaHighlightInstance = useMemo(
+    () => indicators.find((instance) =>
+      instance.enabled && instance.indicatorId === "delta-highlight") ?? null,
+    [indicatorSignature, indicators],
+  );
+  const deltaHighlightMarkers = useMemo(() => {
+    if (!deltaHighlightInstance || !candleSeriesRef.current) return [];
+    const candleByTime = new Map(
+      indicatorCandles.map((candle) => [Math.floor(candle.timestamp / 1_000), candle]),
+    );
+    const settingsForIndicator = deltaHighlightInstance.settings ?? {};
+    const useThemeColors = settingsForIndicator.useThemeColors !== false;
+    const askColor = useThemeColors
+      ? settings.upColor
+      : String(settingsForIndicator.askColor ?? settings.upColor);
+    const bidColor = useThemeColors
+      ? settings.downColor
+      : String(settingsForIndicator.bidColor ?? settings.downColor);
+    const markerPosition = String(settingsForIndicator.markerPosition ?? "inBar");
+    const size = Math.max(4, Math.min(18, Number(settingsForIndicator.markerSize ?? 1) * 7));
+    const opacity = Math.max(0.05, Math.min(1, Number(settingsForIndicator.opacity ?? 82) / 100));
+    const showValue = settingsForIndicator.showValue !== false;
+    const shape = String(settingsForIndicator.markerShape ?? "square");
+
+    return calculateDeltaPercentHighlights(deltaHighlightInstance, indicatorCandles)
+      .flatMap((point) => {
+        const candle = candleByTime.get(point.time);
+        if (!candle) return [];
+        const x = indicatorTimeToX(point.time);
+        const markerPrice = markerPosition === "aboveBar"
+          ? candle.high + priceFormat.minMove * 2
+          : markerPosition === "belowBar"
+            ? candle.low - priceFormat.minMove * 2
+            : markerPosition === "outside"
+              ? point.side === "ask"
+                ? candle.high + priceFormat.minMove * 2
+                : candle.low - priceFormat.minMove * 2
+              : (candle.open + candle.close) / 2;
+        const y = candleSeriesRef.current?.priceToCoordinate(markerPrice) ?? null;
+        if (x === null || y === null) return [];
+        return [{
+          ...point,
+          x,
+          y,
+          size,
+          opacity,
+          showValue,
+          shape,
+          color: point.side === "ask" ? askColor : bidColor,
+        }];
+      });
+  }, [
+    chartReadyRevision,
+    deltaHighlightInstance,
+    indicatorCandles,
+    indicatorTimeToX,
+    priceFormat.minMove,
+    settings.downColor,
+    settings.upColor,
+    viewportVersion,
+  ]);
+  const updateIndicatorPaneSetting = useCallback(
+    (instanceId: string, key: string, value: number | string | boolean) =>
+      updateIndicatorSettingRef.current?.(instanceId, key, value),
+    [],
+  );
+  const openIndicatorPaneSettings = useCallback(
+    (instanceId: string) => openIndicatorSettingsRef.current?.(instanceId),
+    [],
+  );
   const candleIntervalMs = useMemo(() => timeframeToMs(timeframe) ?? inferCandleIntervalMs(candles), [candles, timeframe]);
   const toolbarMetrics = useMemo(() => {
     const availableWidth = overlaySize.width > 0 ? Math.max(180, overlaySize.width - 16) : 920;
@@ -2031,6 +2330,7 @@ export default function Chart({
     });
 
     chartRef.current = chart;
+    setChartReadyRevision((current) => current + 1);
 
     const candleSeries = chart.addCandlestickSeries({
       upColor: settings.upColor,
@@ -2178,12 +2478,94 @@ export default function Chart({
       }
       candleSeriesRef.current = null;
       gameplanUnderlayRef.current = null;
+      indicatorSeriesRefs.current = [];
       priceLinesRef.current = [];
       prevCandlesLengthRef.current = 0;
       prevFirstTimestampRef.current = null;
       prevDataRef.current = "";
     };
   }, [instrument, priceFormat, settings, themeVersion]);
+
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart) return;
+    const overlayDefinitions = calculatedIndicatorSeries.filter(
+      (definition) => definition.placement === "overlay",
+    );
+    const nextKeys = new Set(overlayDefinitions.map((definition) => definition.key));
+    const reusable = new Map(indicatorSeriesRefs.current.map((entry) => [entry.key, entry]));
+
+    indicatorSeriesRefs.current.forEach((entry) => {
+      const definition = overlayDefinitions.find((candidate) => candidate.key === entry.key);
+      const expectedKind = definition?.kind === "histogram" ? "histogram" : "line";
+      if (nextKeys.has(entry.key) && entry.kind === expectedKind) return;
+      try {
+        chart.removeSeries(entry.series as never);
+      } catch {
+        // Chart recreation may dispose its studies before this effect runs.
+      }
+      reusable.delete(entry.key);
+    });
+
+    indicatorSeriesRefs.current = overlayDefinitions.map((definition) => {
+      const kind = definition.kind === "histogram" ? "histogram" : "line";
+      const existing = reusable.get(definition.key);
+      const options = kind === "histogram"
+        ? {
+            color: definition.color,
+            lastValueVisible: false,
+            priceLineVisible: false,
+          }
+        : {
+            color: definition.color,
+            lineWidth: definition.lineWidth ?? 2,
+            lineStyle: definition.lineStyle === "dashed"
+              ? LineStyle.Dashed
+              : definition.lineStyle === "dotted"
+                ? LineStyle.Dotted
+                : LineStyle.Solid,
+            lastValueVisible: definition.lastValueVisible !== false,
+            priceLineVisible: false,
+            crosshairMarkerVisible: false,
+          };
+      if (existing && existing.kind === kind) {
+        existing.series.applyOptions(options);
+        existing.series.setData(lightweightIndicatorData(definition));
+        return existing;
+      }
+      const series = kind === "histogram"
+        ? chart.addHistogramSeries({
+            ...options,
+            priceScaleId: "right",
+            priceFormat: { type: "volume" },
+          })
+        : chart.addLineSeries({
+            ...options,
+            priceScaleId: "right",
+          });
+      series.setData(lightweightIndicatorData(definition));
+      return {
+        key: definition.key,
+        kind,
+        series: series as unknown as {
+          setData: (data: any[]) => void;
+          applyOptions: (options: Record<string, unknown>) => void;
+        },
+      };
+    });
+  }, [calculatedIndicatorSeries, chartReadyRevision]);
+
+  useEffect(() => {
+    const series = candleSeriesRef.current;
+    if (!series) return;
+    const paneRatio = overlaySize.height > 0 ? indicatorPaneHeight / overlaySize.height : 0;
+    series.priceScale().applyOptions({
+      scaleMargins: {
+        top: 0.08,
+        bottom: indicatorPaneHeight > 0 ? Math.min(0.72, 0.04 + paneRatio) : 0.08,
+      },
+    });
+  }, [chartReadyRevision, indicatorPaneHeight, overlaySize.height]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -2360,7 +2742,74 @@ export default function Chart({
         hasCandles={hasCandles}
         latestCandleRef={latestCandleRef}
         marketIsActive={marketIsActive}
+        bottom={56 + indicatorPaneHeight}
       />
+
+      <ChartIndicatorPanes
+        groups={calculatedIndicatorPanes}
+        width={overlaySize.width}
+        height={indicatorPaneHeight}
+        bottom={24}
+        timeframe={timeframe}
+        viewportVersion={viewportVersion}
+        paneHeights={resolvedIndicatorPaneHeights}
+        collapsedPanes={collapsedIndicatorPanes}
+        timeToX={indicatorTimeToX}
+        onResizePane={resizeIndicatorPane}
+        onTogglePane={toggleIndicatorPane}
+        onUpdateSetting={updateIndicatorPaneSetting}
+        onOpenSettings={openIndicatorPaneSettings}
+      />
+
+      {deltaHighlightMarkers.length ? (
+        <svg
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 z-[9] h-full w-full overflow-visible"
+        >
+          {deltaHighlightMarkers.map((marker) => (
+            <g
+              key={`${marker.time}-${marker.side}`}
+              transform={`translate(${marker.x} ${marker.y})`}
+              opacity={marker.opacity}
+            >
+              {marker.shape === "circle" ? (
+                <circle r={marker.size / 2} fill={marker.color} />
+              ) : marker.shape === "diamond" ? (
+                <rect
+                  x={-marker.size / 2}
+                  y={-marker.size / 2}
+                  width={marker.size}
+                  height={marker.size}
+                  rx={1}
+                  fill={marker.color}
+                  transform="rotate(45)"
+                />
+              ) : (
+                <rect
+                  x={-marker.size / 2}
+                  y={-marker.size / 2}
+                  width={marker.size}
+                  height={marker.size}
+                  rx={Math.max(1, marker.size * 0.12)}
+                  fill={marker.color}
+                />
+              )}
+              {marker.showValue ? (
+                <text
+                  x={marker.size / 2 + 3}
+                  y={3}
+                  fill={marker.color}
+                  fontFamily="var(--font-mono)"
+                  fontSize="9"
+                  fontWeight="700"
+                >
+                  {`${marker.deltaPercent >= 0 ? "+" : ""}${marker.deltaPercent.toFixed(0)}%`}
+                </text>
+              ) : null}
+            </g>
+          ))}
+        </svg>
+      ) : null}
 
       {toolbarEnabled && (
       <div

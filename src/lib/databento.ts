@@ -281,6 +281,97 @@ export async function getDatabentoBars(symbol: string, timeframe: string, start:
   return resample(bars, timeframe);
 }
 
+export async function getDatabentoBarsWithOrderFlow(
+  symbol: string,
+  timeframe: string,
+  start: string,
+  end: string,
+) {
+  const bars = await getDatabentoBars(symbol, timeframe, start, end);
+  if (!bars.length || isEventBasedChartInterval(timeframe)) return bars;
+
+  // Raw CME executions are deliberately bounded to the latest six hours.
+  // This is enough to hydrate order-flow studies immediately without making
+  // each chart load download an unbounded multi-day trade tape.
+  const requestedStart = Date.parse(start);
+  const requestedEnd = Date.parse(end);
+  const safeEnd = Number.isFinite(requestedEnd) ? requestedEnd : Date.now();
+  const flowStart = new Date(Math.max(
+    Number.isFinite(requestedStart) ? requestedStart : 0,
+    safeEnd - 6 * 60 * 60_000,
+  )).toISOString();
+  const tradeRows = await historicalRequest({
+    symbols: symbol,
+    stype_in: isContinuousFuture(symbol) ? "continuous" : "raw_symbol",
+    schema: "trades",
+    start: flowStart,
+    end,
+    limit: "200000",
+  });
+  const size = timeframeMs(timeframe);
+  const flowByBucket = new Map<number, {
+    volume: number;
+    trades: number;
+    askVolume: number;
+    bidVolume: number;
+    delta: number;
+    deltaHigh: number;
+    deltaLow: number;
+  }>();
+
+  tradeRows
+    .map((row) => {
+      const timestamp = time(row.ts_event ?? row.ts_recv ?? (row.hd as Record<string, unknown> | undefined)?.ts_event);
+      const tradeSize = Math.max(0, Number(row.size ?? 0));
+      const side = String(row.side ?? "").toUpperCase();
+      const delta = side === "A" || side === "ASK"
+        ? tradeSize
+        : side === "B" || side === "BID"
+          ? -tradeSize
+          : 0;
+      return { timestamp, tradeSize, delta };
+    })
+    .filter((row) => row.timestamp > 0 && row.tradeSize > 0)
+    .sort((left, right) => left.timestamp - right.timestamp)
+    .forEach((trade) => {
+      const bucket = Math.floor(trade.timestamp / size) * size;
+      const current = flowByBucket.get(bucket) ?? {
+        volume: 0,
+        trades: 0,
+        askVolume: 0,
+        bidVolume: 0,
+        delta: 0,
+        deltaHigh: 0,
+        deltaLow: 0,
+      };
+      current.volume += trade.tradeSize;
+      current.trades += 1;
+      if (trade.delta > 0) current.askVolume += trade.tradeSize;
+      if (trade.delta < 0) current.bidVolume += trade.tradeSize;
+      current.delta += trade.delta;
+      current.deltaHigh = Math.max(current.deltaHigh, current.delta);
+      current.deltaLow = Math.min(current.deltaLow, current.delta);
+      flowByBucket.set(bucket, current);
+    });
+
+  return bars.map((bar) => {
+    const flow = flowByBucket.get(Math.floor(bar.timestamp / size) * size);
+    if (!flow) return bar;
+    return {
+      ...bar,
+      volume: Math.max(Number(bar.volume ?? 0), flow.volume),
+      trades: flow.trades,
+      askVolume: flow.askVolume,
+      bidVolume: flow.bidVolume,
+      delta: flow.delta,
+      deltaOpen: 0,
+      deltaHigh: flow.deltaHigh,
+      deltaLow: flow.deltaLow,
+      deltaClose: flow.delta,
+    };
+  });
+}
+
 function optionClass(value: unknown) {
   const normalized = String(value ?? "").toUpperCase();
   if (normalized === "C" || normalized === "CALL" || normalized === "3") return "Call";

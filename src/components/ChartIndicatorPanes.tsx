@@ -1,0 +1,742 @@
+"use client";
+
+import { memo, useEffect, useRef, useState } from "react";
+import { Check, ChevronDown, GripHorizontal, Minus, Plus, Settings2 } from "lucide-react";
+import type { CalculatedIndicatorSeries } from "@/lib/chartIndicatorEngine";
+import type { KwantStatsTable } from "@/lib/kwantStats";
+
+type IndicatorPaneGroup = {
+  key: string;
+  title: string;
+  indicatorId: string;
+  settings?: Record<string, number | string | boolean>;
+  series: CalculatedIndicatorSeries[];
+  stats?: KwantStatsTable;
+  unavailableReason?: string;
+};
+
+function compact(value: number) {
+  const absolute = Math.abs(value);
+  if (absolute >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
+  if (absolute >= 1_000) return `${(value / 1_000).toFixed(1)}K`;
+  return value.toFixed(0);
+}
+
+function formatStatValue(value: number, format: "number" | "percent" | "seconds" | "ratio", autoFormat: boolean) {
+  if (!Number.isFinite(value)) return "—";
+  if (format === "percent") return `${value.toFixed(Math.abs(value) >= 100 ? 0 : 1)}%`;
+  if (format === "seconds") return `${value < 10 ? value.toFixed(1) : value.toFixed(0)}s`;
+  if (format === "ratio") return `${value.toFixed(Math.abs(value) >= 100 ? 0 : 2)}x`;
+  if (autoFormat) return compact(value);
+  return value.toLocaleString(undefined, { maximumFractionDigits: 2 });
+}
+
+function seriesDomain(series: CalculatedIndicatorSeries[]) {
+  const values = series.flatMap((definition) => definition.data.flatMap((point) => [
+    point.value,
+    point.open,
+    point.high,
+    point.low,
+    point.close,
+  ].filter((value): value is number => typeof value === "number" && Number.isFinite(value))));
+  if (series.some((definition) => definition.includeZeroInScale)) values.push(0);
+  if (!values.length) return { min: -1, max: 1 };
+  let min = Math.min(...values);
+  let max = Math.max(...values);
+  if (min === max) {
+    const padding = Math.max(1, Math.abs(min) * 0.05);
+    min -= padding;
+    max += padding;
+  } else {
+    const padding = (max - min) * 0.08;
+    min -= padding;
+    max += padding;
+  }
+  return { min, max };
+}
+
+type PanePoint = CalculatedIndicatorSeries["data"][number] & { x: number };
+
+function sampledPanePoints(
+  definition: CalculatedIndicatorSeries,
+  xForTime: (time: number) => number | null,
+  plotWidth: number,
+) {
+  const visible = definition.data
+    .map((point) => ({ ...point, x: xForTime(point.time) }))
+    .filter((point): point is PanePoint =>
+      point.x !== null && point.x >= -10 && point.x <= plotWidth + 10);
+  const maximumPoints = Math.max(160, Math.floor(plotWidth * 1.25));
+  if (visible.length <= maximumPoints) return visible;
+
+  const bucketWidth = Math.max(1, plotWidth / maximumPoints);
+  const buckets = new Map<number, PanePoint>();
+  visible.forEach((point) => {
+    const bucket = Math.floor(Math.max(0, point.x) / bucketWidth);
+    const current = buckets.get(bucket);
+    if (!current) {
+      buckets.set(bucket, { ...point });
+      return;
+    }
+    if (definition.kind === "candlestick") {
+      const currentOpen = current.open ?? current.value;
+      const pointClose = point.close ?? point.value;
+      current.open = currentOpen;
+      current.close = pointClose;
+      current.value = point.value;
+      current.high = Math.max(
+        current.high ?? currentOpen,
+        point.high ?? pointClose,
+      );
+      current.low = Math.min(
+        current.low ?? currentOpen,
+        point.low ?? pointClose,
+      );
+      current.color = point.color ?? current.color;
+      current.time = point.time;
+      current.x = point.x;
+      return;
+    }
+    // CVD bars and lines are cumulative values. Keep the final value in each
+    // screen bucket rather than creating thousands of SVG nodes per refresh.
+    buckets.set(bucket, { ...point, breakBefore: current.breakBefore || point.breakBefore });
+  });
+  return [...buckets.values()].sort((a, b) => a.x - b.x);
+}
+
+function ChartIndicatorPanes({
+  groups,
+  width,
+  height,
+  bottom,
+  timeframe,
+  viewportVersion,
+  paneHeights,
+  collapsedPanes,
+  timeToX,
+  onResizePane,
+  onTogglePane,
+  onUpdateSetting,
+  onOpenSettings,
+}: {
+  groups: IndicatorPaneGroup[];
+  width: number;
+  height: number;
+  bottom: number;
+  timeframe?: string;
+  viewportVersion: number;
+  paneHeights: Record<string, number>;
+  collapsedPanes: Record<string, boolean>;
+  timeToX: (time: number) => number | null;
+  onResizePane: (instanceId: string, height: number) => void;
+  onTogglePane: (instanceId: string) => void;
+  onUpdateSetting?: (instanceId: string, key: string, value: number | string | boolean) => void;
+  onOpenSettings?: (instanceId: string) => void;
+}) {
+  // The native chart moves independently of React. This value deliberately
+  // participates in memoized renders so pane plots follow pan and zoom.
+  void viewportVersion;
+  const [openMenu, setOpenMenu] = useState<string | null>(null);
+  const paneRootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!openMenu) return;
+    const dismissMenu = (event: PointerEvent) => {
+      const target = event.target as Node | null;
+      if (target && paneRootRef.current?.contains(target)) return;
+      setOpenMenu(null);
+    };
+    const dismissMenuWithKeyboard = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpenMenu(null);
+    };
+    document.addEventListener("pointerdown", dismissMenu, true);
+    document.addEventListener("keydown", dismissMenuWithKeyboard);
+    return () => {
+      document.removeEventListener("pointerdown", dismissMenu, true);
+      document.removeEventListener("keydown", dismissMenuWithKeyboard);
+    };
+  }, [openMenu]);
+
+  if (!groups.length || width <= 0 || height <= 0) return null;
+  const plotWidth = Math.max(0, width - 61);
+  const fallbackPaneHeight = Math.max(64, height / Math.max(1, groups.length));
+  let paneTop = 0;
+  const paneLayouts = groups.map((group) => {
+    const collapsed = Boolean(collapsedPanes[group.key]);
+    const paneHeight = collapsed ? 30 : paneHeights[group.key] ?? fallbackPaneHeight;
+    const layout = { group, top: paneTop, height: paneHeight, collapsed };
+    paneTop += paneHeight;
+    return layout;
+  });
+
+  return (
+    <div
+      ref={paneRootRef}
+      className={`pointer-events-none absolute left-0 ${openMenu ? "z-[80]" : "z-[9]"}`}
+      style={{ bottom, width, height }}
+    >
+    <svg
+      className="absolute inset-0"
+      width={width}
+      height={height}
+      viewBox={`0 0 ${width} ${height}`}
+      preserveAspectRatio="none"
+      aria-label="Chart indicator panes"
+    >
+      <defs>
+        {paneLayouts.map(({ group, top, height: paneHeight }, index) => (
+          <clipPath id={`indicator-pane-${group.key.replace(/[^a-z0-9-]/gi, "")}-${index}`} key={group.key}>
+            <rect x="0" y={top} width={plotWidth} height={paneHeight} />
+          </clipPath>
+        ))}
+      </defs>
+      {groups.map((group, groupIndex) => {
+        const layout = paneLayouts[groupIndex];
+        const top = layout.top;
+        const paneHeight = layout.height;
+        const collapsed = layout.collapsed;
+        const innerTop = top + 24;
+        const innerBottom = top + paneHeight - 9;
+        // CVD is calculated from the chart's exact candle boundaries, so it
+        // must share the chart time scale. Stretching its own tape across the
+        // pane detached range-chart CVD candles from their parent 40r bars.
+        const independentCvdTape = false;
+        const tapeTimes = independentCvdTape
+          ? group.series.flatMap((definition) => definition.data.map((point) => point.time))
+          : [];
+        const tapeStart = tapeTimes.length ? Math.min(...tapeTimes) : 0;
+        const tapeEnd = tapeTimes.length ? Math.max(...tapeTimes) : 0;
+        const tapeSpan = Math.max(1, tapeEnd - tapeStart);
+        const xForTime = (time: number) => independentCvdTape
+          ? ((time - tapeStart) / tapeSpan) * Math.max(1, plotWidth - 2) + 1
+          : timeToX(time);
+        // Scale against the currently visible chart range. Using the whole
+        // loaded history makes a live CVD tape look flat after one large move.
+        const visibleSeries = group.series.map((definition) => ({
+          ...definition,
+          data: definition.data.filter((point) => {
+            const x = xForTime(point.time);
+            return x !== null && x >= -10 && x <= plotWidth + 10;
+          }),
+        }));
+        const sharedSeries = visibleSeries.filter((series) => !series.independentScale);
+        const sharedDomain = seriesDomain(sharedSeries.length ? sharedSeries : visibleSeries);
+        const independentDomains = new Map(
+          visibleSeries
+            .filter((series) => series.independentScale)
+            .map((series) => [series.key, seriesDomain([series])] as const),
+        );
+        const yFor = (value: number, definition: CalculatedIndicatorSeries) => {
+          const domain = definition.independentScale
+            ? independentDomains.get(definition.key) ?? sharedDomain
+            : sharedDomain;
+          return innerBottom - ((value - domain.min) / (domain.max - domain.min)) * (innerBottom - innerTop);
+        };
+        const zeroSeries = group.series.find((series) => series.showZeroLine);
+        const zeroY = zeroSeries ? yFor(0, zeroSeries) : null;
+        const clipId = `indicator-pane-${group.key.replace(/[^a-z0-9-]/gi, "")}-${groupIndex}`;
+        const stats = group.stats;
+        const statsHeaderWidth = stats?.showHeader ? 72 : 0;
+        const statsInnerTop = top + 24;
+        const statsRowHeight = stats?.metrics.length
+          ? Math.max(9, (paneHeight - 27) / stats.metrics.length)
+          : 0;
+        const rawStatsBars = stats?.bars
+          .map((bar) => ({ ...bar, x: timeToX(bar.time) }))
+          .filter((bar): bar is typeof bar & { x: number } =>
+            bar.x !== null && bar.x >= -80 && bar.x <= plotWidth + 80)
+          ?? [];
+        const maximumStatsColumns = Math.max(80, Math.floor(plotWidth / 5));
+        const statsBars = rawStatsBars.length <= maximumStatsColumns
+          ? rawStatsBars
+          : [...rawStatsBars.reduce((buckets, bar) => {
+            const bucket = Math.floor(Math.max(0, bar.x) / Math.max(1, plotWidth / maximumStatsColumns));
+            buckets.set(bucket, bar);
+            return buckets;
+          }, new Map<number, (typeof rawStatsBars)[number]>()).values()].sort((left, right) => left.x - right.x);
+        const statsColumnWidth = statsBars.length > 1
+          ? Math.max(5, Math.min(64, Math.abs(statsBars[1].x - statsBars[0].x) * 0.9))
+          : 18;
+        const metricDistributions = new Map(
+          (stats?.metrics ?? []).map((metric) => {
+            const values = statsBars
+              .map((bar) => bar.values[metric.key])
+              .filter((value): value is number => value != null && Number.isFinite(value));
+            const mean = values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
+            const variance = values.length
+              ? values.reduce((sum, value) => sum + (value - mean) ** 2, 0) / values.length
+              : 0;
+            return [metric.key, { mean, deviation: Math.sqrt(variance) }] as const;
+          }),
+        );
+
+        return (
+          <g key={group.key}>
+            <rect x="0" y={top} width={width} height={paneHeight} fill="var(--chart-background)" fillOpacity="0.97" />
+            <line x1="0" y1={top + 0.5} x2={width} y2={top + 0.5} stroke="var(--grid-color)" strokeWidth="1" />
+            <line x1={plotWidth + 0.5} y1={top} x2={plotWidth + 0.5} y2={top + paneHeight} stroke="var(--grid-color)" strokeWidth="1" />
+            {group.indicatorId !== "cumulative-volume-delta" || collapsed ? (
+              <text x="10" y={top + 15} fill="var(--foreground)" fontSize="10" fontWeight="600" fontFamily="monospace">
+                {group.title}
+              </text>
+            ) : null}
+            {!collapsed && group.unavailableReason ? (
+              <text x="10" y={top + 34} fill="var(--muted)" fontSize="9" fontFamily="monospace">
+                {group.unavailableReason}
+              </text>
+            ) : null}
+            {!collapsed && stats ? (
+              <g clipPath={`url(#${clipId})`}>
+                {stats.metrics.map((metric, metricIndex) => {
+                  const rowTop = statsInnerTop + metricIndex * statsRowHeight;
+                  const distribution = metricDistributions.get(metric.key) ?? { mean: 0, deviation: 0 };
+                  const cellHeight = Math.max(1, statsRowHeight - 1);
+                  const cellPaths = new Map<string, { fill: string; opacity: number; commands: string[] }>();
+                  const textCells: Array<{ x: number; value: number }> = [];
+                  statsBars.forEach((bar) => {
+                    const value = bar.values[metric.key];
+                    if (value == null || !Number.isFinite(value)) return;
+                    const signedPositive = value >= 0;
+                    const fill = metric.tone === "positive"
+                      ? stats.positiveColor
+                      : metric.tone === "negative"
+                        ? stats.negativeColor
+                        : metric.tone === "signed"
+                          ? signedPositive ? stats.positiveColor : stats.negativeColor
+                          : stats.neutralColor;
+                    const magnitude = distribution.deviation > 0
+                      ? Math.abs(value - distribution.mean) / distribution.deviation
+                      : Math.abs(value) > 0 ? 1 : 0;
+                    const rawOpacity = metric.threshold > 0 && Math.abs(value) >= metric.threshold
+                      ? 0.82
+                      : Math.min(0.68, 0.08 + magnitude / Math.max(0.1, stats.coloringDeviation) * 0.38);
+                    const opacity = Math.max(0.1, Math.round(rawOpacity * 20) / 20);
+                    const key = `${fill}:${opacity}`;
+                    const group = cellPaths.get(key) ?? { fill, opacity, commands: [] };
+                    group.commands.push(
+                      `M${(bar.x - statsColumnWidth / 2).toFixed(2)},${(rowTop + 0.5).toFixed(2)}`
+                      + `h${statsColumnWidth.toFixed(2)}v${cellHeight.toFixed(2)}h-${statsColumnWidth.toFixed(2)}Z`,
+                    );
+                    cellPaths.set(key, group);
+                    if (statsColumnWidth >= 25 && statsRowHeight >= 10) textCells.push({ x: bar.x, value });
+                  });
+                  return (
+                    <g key={metric.key}>
+                      <line
+                        x1="0"
+                        y1={rowTop + statsRowHeight}
+                        x2={plotWidth}
+                        y2={rowTop + statsRowHeight}
+                        stroke="var(--grid-color)"
+                        strokeOpacity="0.55"
+                      />
+                      {[...cellPaths.values()].map((path, pathIndex) => (
+                        <path
+                          key={`${metric.key}-cells-${pathIndex}`}
+                          d={path.commands.join("")}
+                          fill={path.fill}
+                          fillOpacity={path.opacity}
+                        />
+                      ))}
+                      {textCells.map((cell, textIndex) => (
+                        <text
+                          key={`${metric.key}-text-${textIndex}`}
+                          x={cell.x}
+                          y={rowTop + statsRowHeight * 0.68}
+                          fill={stats.textColor}
+                          fontSize={Math.max(7, Math.min(9, statsRowHeight * 0.58))}
+                          fontFamily="monospace"
+                          textAnchor="middle"
+                        >
+                          {formatStatValue(cell.value, metric.format, stats.autoFormat)}
+                        </text>
+                      ))}
+                    </g>
+                  );
+                })}
+                {stats.showHeader ? (
+                  <g>
+                    <rect
+                      x="0"
+                      y={statsInnerTop}
+                      width={statsHeaderWidth}
+                      height={Math.max(0, stats.metrics.length * statsRowHeight)}
+                      fill={stats.headerColor}
+                      fillOpacity="0.96"
+                    />
+                    <line
+                      x1={statsHeaderWidth}
+                      y1={statsInnerTop}
+                      x2={statsHeaderWidth}
+                      y2={statsInnerTop + stats.metrics.length * statsRowHeight}
+                      stroke="var(--grid-color)"
+                    />
+                    {stats.metrics.map((metric, metricIndex) => (
+                      <text
+                        key={`header-${metric.key}`}
+                        x={statsHeaderWidth - 5}
+                        y={statsInnerTop + metricIndex * statsRowHeight + statsRowHeight * 0.68}
+                        fill={stats.textColor}
+                        fontSize={Math.max(7, Math.min(9, statsRowHeight * 0.56))}
+                        fontFamily="monospace"
+                        textAnchor="end"
+                      >
+                        {metric.label}
+                      </text>
+                    ))}
+                  </g>
+                ) : null}
+              </g>
+            ) : null}
+            {!collapsed && !stats && zeroSeries && zeroY !== null && zeroY >= innerTop && zeroY <= innerBottom ? (
+              <line
+                x1="0"
+                y1={zeroY}
+                x2={plotWidth}
+                y2={zeroY}
+                stroke={zeroSeries.zeroLineColor ?? "var(--muted)"}
+                strokeWidth={zeroSeries.zeroLineWidth ?? 1}
+                strokeDasharray="4 4"
+                opacity="0.72"
+              />
+            ) : null}
+            {!collapsed && !stats ? <g clipPath={`url(#${clipId})`}>
+              {group.series.map((definition) => {
+                const visible = sampledPanePoints(definition, xForTime, plotWidth);
+                if (!visible.length) return null;
+                if (definition.kind === "histogram") {
+                  const barWidth = visible.length > 1
+                    ? Math.max(1, Math.min(12, Math.abs(visible[1].x - visible[0].x) * 0.72))
+                    : 3;
+                  const zero = Math.max(innerTop, Math.min(innerBottom, yFor(0, definition)));
+                  const pathsByColor = new Map<string, string[]>();
+                  visible.forEach((point) => {
+                    const y = yFor(point.value, definition);
+                    const color = point.color ?? definition.color;
+                    const commands = pathsByColor.get(color) ?? [];
+                    const topY = Math.min(y, zero);
+                    const barHeight = Math.max(1, Math.abs(zero - y));
+                    commands.push(
+                      `M${(point.x - barWidth / 2).toFixed(2)},${topY.toFixed(2)}`
+                      + `h${barWidth.toFixed(2)}v${barHeight.toFixed(2)}h-${barWidth.toFixed(2)}Z`,
+                    );
+                    pathsByColor.set(color, commands);
+                  });
+                  return (
+                    <g key={definition.key}>
+                      {[...pathsByColor.entries()].map(([color, commands]) => (
+                        <path
+                          key={`${definition.key}-${color}`}
+                          d={commands.join("")}
+                          fill={color}
+                          opacity="0.88"
+                        />
+                      ))}
+                    </g>
+                  );
+                }
+                if (definition.kind === "candlestick") {
+                  const barWidth = visible.length > 1
+                    ? Math.max(2, Math.min(10, Math.abs(visible[1].x - visible[0].x) * 0.64))
+                    : 4;
+                  return (
+                    <g key={definition.key}>
+                      {visible.map((point) => {
+                        const open = point.open ?? point.value;
+                        const close = point.close ?? point.value;
+                        const high = point.high ?? Math.max(open, close);
+                        const low = point.low ?? Math.min(open, close);
+                        const color = point.color ?? definition.color;
+                        const openY = yFor(open, definition);
+                        const closeY = yFor(close, definition);
+                        return (
+                          <g key={`${definition.key}-${point.time}`}>
+                            <line
+                              x1={point.x}
+                              x2={point.x}
+                              y1={yFor(high, definition)}
+                              y2={yFor(low, definition)}
+                              stroke={color}
+                              strokeWidth="1"
+                              vectorEffect="non-scaling-stroke"
+                            />
+                            <rect
+                              x={point.x - barWidth / 2}
+                              y={Math.min(openY, closeY)}
+                              width={barWidth}
+                              height={Math.max(2, Math.abs(openY - closeY))}
+                              fill={color}
+                              opacity="0.96"
+                            />
+                          </g>
+                        );
+                      })}
+                    </g>
+                  );
+                }
+                const path = visible.map((point, index) =>
+                  `${index === 0 || point.breakBefore ? "M" : "L"} ${point.x} ${yFor(point.value, definition)}`,
+                ).join(" ");
+                return (
+                  <path
+                    key={definition.key}
+                    d={path}
+                    fill="none"
+                    stroke={definition.color}
+                    strokeWidth={definition.lineWidth ?? 2}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    vectorEffect="non-scaling-stroke"
+                  />
+                );
+              })}
+            </g> : null}
+            {!collapsed && !stats ? <text x={plotWidth + 6} y={innerTop + 2} fill="var(--muted)" fontSize="8" fontFamily="monospace">
+              {compact(sharedDomain.max)}
+            </text> : null}
+            {!collapsed && !stats ? <text x={plotWidth + 6} y={innerBottom} fill="var(--muted)" fontSize="8" fontFamily="monospace">
+              {compact(sharedDomain.min)}
+            </text> : null}
+            {!collapsed && independentCvdTape && tapeTimes.length ? (
+              <>
+                <text x="8" y={innerBottom} fill="var(--muted)" fontSize="8" fontFamily="monospace">
+                  {new Date(tapeStart * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                </text>
+                <text x={Math.max(8, plotWidth - 42)} y={innerBottom} fill="var(--muted)" fontSize="8" fontFamily="monospace">
+                  live
+                </text>
+              </>
+            ) : null}
+            {!collapsed && !stats ? <g transform={`translate(${Math.min(plotWidth - 8, group.indicatorId === "cumulative-volume-delta" ? 210 : 190)}, ${top + 8})`}>
+              {group.series.slice(group.indicatorId === "cumulative-volume-delta" ? 1 : 0).map((definition, index) => (
+                <g key={definition.key} transform={`translate(${index * 88}, 0)`}>
+                  <line x1="0" y1="3" x2="12" y2="3" stroke={definition.color} strokeWidth={definition.lineWidth ?? 2} />
+                  <text x="16" y="6" fill="var(--muted)" fontSize="8" fontFamily="monospace">
+                    {definition.label}
+                  </text>
+                </g>
+              ))}
+            </g> : null}
+          </g>
+        );
+      })}
+    </svg>
+      {paneLayouts.map(({ group, top, height: paneHeight, collapsed }) => (
+        <div key={`pane-shell-controls-${group.key}`}>
+          {!collapsed ? (
+            <button
+              type="button"
+              aria-label={`Resize ${group.title} pane`}
+              title={`Drag to resize ${group.title}`}
+              className="pointer-events-auto absolute left-1/2 z-30 flex h-3 w-14 -translate-x-1/2 -translate-y-1/2 touch-none select-none cursor-ns-resize items-center justify-center rounded-full border border-border bg-panel/95 text-muted shadow-sm hover:text-foreground"
+              style={{ top }}
+              onPointerDown={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                const handle = event.currentTarget;
+                const pointerId = event.pointerId;
+                handle.setPointerCapture(pointerId);
+                const startY = event.clientY;
+                const startHeight = paneHeight;
+                const move = (moveEvent: PointerEvent) => {
+                  if (moveEvent.pointerId !== pointerId) return;
+                  onResizePane(group.key, startHeight - (moveEvent.clientY - startY));
+                };
+                const finish = (upEvent: PointerEvent) => {
+                  if (upEvent.pointerId !== pointerId) return;
+                  window.removeEventListener("pointermove", move);
+                  window.removeEventListener("pointerup", finish);
+                  window.removeEventListener("pointercancel", finish);
+                  if (handle.hasPointerCapture(pointerId)) handle.releasePointerCapture(pointerId);
+                };
+                window.addEventListener("pointermove", move);
+                window.addEventListener("pointerup", finish);
+                window.addEventListener("pointercancel", finish);
+              }}
+            >
+              <GripHorizontal className="h-3 w-3" />
+            </button>
+          ) : null}
+          <button
+            type="button"
+            aria-label={collapsed ? `Expand ${group.title} pane` : `Minimize ${group.title} pane`}
+            title={collapsed ? `Expand ${group.title}` : `Minimize ${group.title}`}
+            onClick={(event) => {
+              event.stopPropagation();
+              setOpenMenu(null);
+              onTogglePane(group.key);
+            }}
+            className="pointer-events-auto absolute right-[66px] z-30 flex h-6 w-6 items-center justify-center rounded-md border border-border bg-panel/95 text-muted shadow-sm hover:text-foreground"
+            style={{ top: top + 4 }}
+          >
+            {collapsed ? <Plus className="h-3 w-3" /> : <Minus className="h-3 w-3" />}
+          </button>
+          {!collapsed && group.indicatorId === "kwant-stats" ? (
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                onOpenSettings?.(group.key);
+              }}
+              className="pointer-events-auto absolute right-[96px] z-30 flex h-6 w-6 items-center justify-center rounded-md border border-border bg-panel/95 text-muted shadow-sm hover:text-foreground"
+              style={{ top: top + 4 }}
+              title="KWANT STATS settings"
+              aria-label="Open KWANT STATS settings"
+            >
+              <Settings2 className="h-3 w-3" />
+            </button>
+          ) : null}
+        </div>
+      ))}
+      {groups.map((group, groupIndex) => {
+        if (group.indicatorId !== "cumulative-volume-delta" || paneLayouts[groupIndex].collapsed) return null;
+        const top = paneLayouts[groupIndex].top + 5;
+        const periodMode = String(group.settings?.periodMode ?? "Days");
+        const periodValue = Number(group.settings?.periodValue ?? 1);
+        const displayStyle = String(group.settings?.displayStyle ?? "candles");
+        const periodSelection = `${periodMode}:${periodValue}`;
+        const periodMenuKey = `${group.key}:period`;
+        const styleMenuKey = `${group.key}:style`;
+        const periodOptions = [
+          { mode: "Days", value: 1, label: "Session CVD" },
+          { mode: "Minutes", value: 30, label: "30-minute CVD" },
+          { mode: "Minutes", value: 15, label: "15-minute CVD" },
+          { mode: "Minutes", value: 5, label: "5-minute CVD" },
+          { mode: "Minutes", value: 1, label: "1-minute CVD" },
+          { mode: "Seconds", value: 30, label: "30-second CVD" },
+          { mode: "Seconds", value: 10, label: "10-second CVD" },
+          { mode: "Seconds", value: 5, label: "5-second CVD" },
+          { mode: "Seconds", value: 1, label: "1-second CVD" },
+          { mode: "Order", value: 1_000, label: "1,000-trade CVD" },
+          { mode: "Order", value: 500, label: "500-trade CVD" },
+          { mode: "Order", value: 100, label: "100-trade CVD" },
+        ];
+        const styleOptions = [
+          { value: "candles", label: "CVD candles" },
+          { value: "line", label: "CVD line" },
+          { value: "bars", label: "CVD bars" },
+        ];
+        const selectedPeriod = periodOptions.find(
+          (option) => `${option.mode}:${option.value}` === periodSelection,
+        );
+        const choosePeriod = (mode: string, value: number) => {
+          onUpdateSetting?.(group.key, "periodMode", mode);
+          onUpdateSetting?.(group.key, "periodValue", value);
+          setOpenMenu(null);
+        };
+        return (
+          <div
+            key={`controls-${group.key}`}
+            className="pointer-events-auto absolute left-2 right-[96px] z-20 flex h-7 items-center gap-1"
+            style={{ top }}
+            onMouseDown={(event) => event.stopPropagation()}
+            onPointerDown={(event) => event.stopPropagation()}
+            onPointerUp={(event) => event.stopPropagation()}
+            onClick={(event) => event.stopPropagation()}
+            onDoubleClick={(event) => event.stopPropagation()}
+            onWheel={(event) => event.stopPropagation()}
+          >
+            <span className="mr-1 font-mono text-[10px] font-semibold text-foreground">CVD</span>
+            <div className="relative">
+              <button
+                type="button"
+                aria-label="CVD rolling calculation"
+                aria-expanded={openMenu === periodMenuKey}
+                data-testid={`cvd-period-${group.key}`}
+                onClick={() => setOpenMenu((current) => current === periodMenuKey ? null : periodMenuKey)}
+                className="flex h-6 min-w-[116px] items-center justify-between gap-2 rounded-lg border border-border bg-panel/95 px-2 font-mono text-[9px] text-muted shadow-sm outline-none transition hover:border-foreground/15 hover:text-foreground focus:border-primary/60"
+                title={`CVD uses the active chart interval (${timeframe ?? "chart"})`}
+              >
+                <span>{selectedPeriod?.label ?? `${periodValue} ${periodMode}`}</span>
+                <ChevronDown className={`h-3 w-3 transition-transform ${openMenu === periodMenuKey ? "rotate-180" : ""}`} />
+              </button>
+              {openMenu === periodMenuKey ? (
+                <div
+                  role="menu"
+                  aria-label="CVD calculation choices"
+                  className="absolute bottom-full left-0 z-50 mb-1 max-h-80 w-52 overflow-y-auto rounded-xl border border-border bg-panel/98 p-1 shadow-2xl shadow-black/50 backdrop-blur-xl"
+                >
+                  {periodOptions.map((option) => (
+                    <button
+                      key={`${option.mode}:${option.value}`}
+                      type="button"
+                      role="menuitemradio"
+                      aria-checked={periodSelection === `${option.mode}:${option.value}`}
+                      onClick={() => choosePeriod(option.mode, option.value)}
+                      className={`flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left text-[10px] transition ${
+                        periodSelection === `${option.mode}:${option.value}`
+                          ? "bg-primary/10 text-foreground"
+                          : "text-muted hover:bg-foreground/[0.04] hover:text-foreground"
+                      }`}
+                    >
+                      <span>{option.label}</span>
+                      {periodSelection === `${option.mode}:${option.value}` ? <Check className="h-3 w-3 text-primary" /> : null}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+            <span className="hidden text-[8px] uppercase tracking-[0.12em] text-muted/70 sm:inline">
+              {timeframe ?? "chart"} tape
+            </span>
+            <div className="ml-auto flex items-center gap-1">
+              <div className="relative">
+                <button
+                  type="button"
+                  aria-label="CVD display style"
+                  aria-expanded={openMenu === styleMenuKey}
+                  data-testid={`cvd-style-${group.key}`}
+                  onClick={() => setOpenMenu((current) => current === styleMenuKey ? null : styleMenuKey)}
+                  className="flex h-6 min-w-[84px] items-center justify-between gap-2 rounded-lg border border-border bg-panel/95 px-2 text-[9px] text-muted shadow-sm outline-none transition hover:border-foreground/15 hover:text-foreground focus:border-primary/60"
+                >
+                  <span>{styleOptions.find((option) => option.value === displayStyle)?.label ?? styleOptions[0].label}</span>
+                  <ChevronDown className={`h-3 w-3 transition-transform ${openMenu === styleMenuKey ? "rotate-180" : ""}`} />
+                </button>
+                {openMenu === styleMenuKey ? (
+                  <div
+                    role="menu"
+                    aria-label="CVD display choices"
+                    className="absolute bottom-full right-0 z-50 mb-1 w-32 overflow-hidden rounded-xl border border-border bg-panel/98 p-1 shadow-2xl shadow-black/50 backdrop-blur-xl"
+                  >
+                    {styleOptions.map((option) => (
+                      <button
+                        key={option.value}
+                        type="button"
+                        role="menuitemradio"
+                        aria-checked={displayStyle === option.value}
+                        onClick={() => {
+                          onUpdateSetting?.(group.key, "displayStyle", option.value);
+                          setOpenMenu(null);
+                        }}
+                        className={`flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left text-[10px] transition ${
+                          displayStyle === option.value
+                            ? "bg-primary/10 text-foreground"
+                            : "text-muted hover:bg-foreground/[0.04] hover:text-foreground"
+                        }`}
+                      >
+                        <span>{option.label.replace("CVD ", "")}</span>
+                        {displayStyle === option.value ? <Check className="h-3 w-3 text-primary" /> : null}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+              <button
+                type="button"
+                onClick={() => onOpenSettings?.(group.key)}
+                className="flex h-6 w-6 items-center justify-center rounded-md border border-border bg-panel/95 text-muted hover:text-foreground"
+                title="CVD settings"
+              >
+                <Settings2 className="h-3 w-3" />
+              </button>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+export default memo(ChartIndicatorPanes);
+
+export type { IndicatorPaneGroup };

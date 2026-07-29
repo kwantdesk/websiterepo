@@ -2,6 +2,7 @@
 
 import KwantSelect from "@/components/ui/KwantSelect";
 import TimeZoneSelect from "@/components/ui/TimeZoneSelect";
+import ChartIndicatorsControl from "@/components/ChartIndicatorsControl";
 import KwantBotIntelligenceWorkspace from "@/components/kwantbot/KwantBotIntelligenceWorkspace";
 import KwantBotInterpreterPanel from "@/components/kwantbot/KwantBotInterpreterPanel";
 import { useKwantBotInterpreter } from "@/hooks/useKwantBotInterpreter";
@@ -75,6 +76,14 @@ import { normalizeTimeZone } from "@/lib/timeZones";
 import { clearSavedStrategiesRaw, loadSavedStrategiesRaw, saveSavedStrategiesRaw } from "@/lib/automation";
 import { defaultChartSettings, extractUserChartSettings, loadStoredChartSettings, saveStoredChartSettings, type ChartSettings } from "@/lib/chartSettings";
 import type { ChartLevel, ChartZone } from "@/components/Chart";
+import {
+  CHART_INDICATOR_BY_ID,
+  type ChartIndicatorInstance,
+} from "@/lib/chartIndicatorCatalog";
+import {
+  clonePaneIndicatorState,
+  normalizePaneIndicatorState,
+} from "@/lib/chartIndicatorConfig";
 import type { ChartGammaLevelsPayload } from "@/lib/chartGammaLevels";
 import {
   GAMEPLAN_CHART_OVERLAYS_EVENT,
@@ -126,6 +135,7 @@ import {
   type ChartIntervalKind,
 } from "@/lib/chartIntervals";
 import { applyMarketTradesToEventBars, futuresTickSize } from "@/lib/eventBars";
+import { LIVE_CHART_CANDLE_EVENT } from "@/lib/chartLiveEvents";
 import {
   mergeChartHistory,
   readCompatibleChartHistoryCache,
@@ -165,6 +175,7 @@ const RIGHT_PANEL_MIN_WIDTH = 240;
 const RIGHT_PANEL_MAX_WIDTH = 500;
 const RIGHT_PANEL_DEFAULT_WIDTH = 280;
 const RIGHT_PANEL_COLLAPSE_SNAP_WIDTH = 120;
+const CHART_INDICATORS_STORAGE_KEY = "kwantdesk-chart-indicators";
 
 type Message = { role: "user" | "assistant"; content: string };
 type StrategyVersion = { code: string; timestamp: Date | string; version: number };
@@ -285,6 +296,7 @@ type WorkspacePreset = {
   layout: WorkspaceLayoutNode;
   panes: WorkspacePane[];
   chartSettings: ChartSettings;
+  indicators?: Record<string, ChartIndicatorInstance[]>;
   updatedAt: string;
 };
 type WorkspaceBackupFile = {
@@ -645,7 +657,12 @@ function normalizeWorkspacePresets(value: unknown): WorkspacePreset[] {
         normalizeWorkspacePane(pane, DEFAULT_WORKSPACE_PANES[index] ?? DEFAULT_WORKSPACE_PANES[0]));
       const layout = normalizeWorkspaceLayoutNode(preset.layout, new Set(panes.map((pane) => pane.id)))
         ?? createWorkspaceLayoutTree("single", panes);
-      return { ...preset, panes, layout };
+      return {
+        ...preset,
+        panes,
+        layout,
+        indicators: normalizePaneIndicatorState(preset.indicators),
+      };
     })
     .slice(0, 100)
     .sort((a, b) => a.name.localeCompare(b.name));
@@ -1096,7 +1113,18 @@ function mergeLiveMidIntoCandles(
   symbol: string,
   timeframe: string,
   tickTimestamp = Date.now(),
+  flow?: {
+    isTrade?: boolean;
+    size?: number;
+    trades?: number;
+    delta?: number;
+  },
 ) {
+  const executedSize = flow?.isTrade ? Math.max(0, Number(flow.size ?? 0)) : 0;
+  const executedTrades = flow?.isTrade ? Math.max(1, Number(flow.trades ?? 1)) : 0;
+  const executedDelta = flow?.isTrade ? Number(flow.delta ?? 0) : 0;
+  const executedAsk = executedDelta > 0 ? executedSize : 0;
+  const executedBid = executedDelta < 0 ? executedSize : 0;
   if (!isPositiveFinite(mid)) return candles;
   if (candles.length === 0) {
     return [{
@@ -1105,7 +1133,12 @@ function mergeLiveMidIntoCandles(
       high: mid,
       low: mid,
       close: mid,
-      volume: 0,
+      volume: executedSize,
+      trades: executedTrades,
+      delta: executedDelta,
+      deltaClose: executedDelta,
+      askVolume: executedAsk,
+      bidVolume: executedBid,
     }];
   }
 
@@ -1126,6 +1159,12 @@ function mergeLiveMidIntoCandles(
         high: mid,
         low: mid,
         close: mid,
+        volume: executedSize,
+        trades: executedTrades,
+        delta: executedDelta,
+        deltaClose: executedDelta,
+        askVolume: executedAsk,
+        bidVolume: executedBid,
       },
       symbol,
       repairedLast.close,
@@ -1165,6 +1204,12 @@ function mergeLiveMidIntoCandles(
     close: mid,
     high: cappedHigh,
     low: cappedLow,
+    volume: Math.max(0, Number(repairedLast.volume ?? 0)) + executedSize,
+    trades: Math.max(0, Number(repairedLast.trades ?? 0)) + executedTrades,
+    delta: Number(repairedLast.delta ?? 0) + executedDelta,
+    deltaClose: Number(repairedLast.deltaClose ?? repairedLast.delta ?? 0) + executedDelta,
+    askVolume: Math.max(0, Number(repairedLast.askVolume ?? 0)) + executedAsk,
+    bidVolume: Math.max(0, Number(repairedLast.bidVolume ?? 0)) + executedBid,
   };
 
   return updated;
@@ -1203,7 +1248,14 @@ function reanchorLiveMidIntoCandles(candles: Candle[], mid: number, symbol: stri
   return updated;
 }
 
-async function fetchWorkspaceCandles(symbol: string, timeframe: string, broker: string, period: string, outputsize = 500) {
+async function fetchWorkspaceCandles(
+  symbol: string,
+  timeframe: string,
+  broker: string,
+  period: string,
+  outputsize = 500,
+  includeOrderFlow = false,
+) {
   const periodConfig = getPeriodConfig(period);
   const usingCTraderFeed = FALLBACK_CTRADER_BROKER_NAMES.includes(broker as (typeof FALLBACK_CTRADER_BROKER_NAMES)[number]);
   const oandaInstrument = OANDA_INSTRUMENT_MAP[symbol];
@@ -1214,7 +1266,7 @@ async function fetchWorkspaceCandles(symbol: string, timeframe: string, broker: 
 
   if (broker === "Databento") {
     const response = await fetch(
-      `/api/databento/market?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}`,
+      `/api/databento/market?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}${includeOrderFlow ? "&orderFlow=1" : ""}`,
       { cache: "default", signal: AbortSignal.timeout(45_000) },
     );
     const payload = await response.json();
@@ -1689,10 +1741,12 @@ function WorkspaceChartPane({
   period,
   settings,
   trades,
+  indicators,
   onActivate,
   onOpenSettings,
   onCreateAlertAtPrice,
   onRemoveAllIndicators,
+  onUpdateIndicatorSetting,
   onSelectPeriod,
   onSelectTimeframe,
   onClose,
@@ -1712,10 +1766,12 @@ function WorkspaceChartPane({
   period: string;
   settings: ChartSettings;
   trades?: (Trade & { markerVisible?: boolean })[];
+  indicators: ChartIndicatorInstance[];
   onActivate: () => void;
   onOpenSettings: () => void;
   onCreateAlertAtPrice: (price: string) => void;
   onRemoveAllIndicators: () => void;
+  onUpdateIndicatorSetting: (instanceId: string, key: string, value: number | string | boolean) => void;
   onSelectPeriod: (period: string) => void;
   onSelectTimeframe: (timeframe: string) => boolean;
   onClose?: () => void;
@@ -1747,6 +1803,7 @@ function WorkspaceChartPane({
   const intervalCommandInputRef = useRef<HTMLInputElement>(null);
   const intervalCommandPanelRef = useRef<HTMLDivElement>(null);
   const latestCandlesRef = useRef<Candle[]>([]);
+  const lastCandleStateSyncRef = useRef(0);
   const historyHydratedRef = useRef(false);
   const latestFuturesRef = useRef<{
     price: number | null;
@@ -1765,6 +1822,8 @@ function WorkspaceChartPane({
   const marketActiveRef = useRef(false);
   const marketInactiveTimerRef = useRef<number | null>(null);
   const gammaInstrument = displayCmeSymbol(pane.symbol);
+  const needsOrderFlowHistory = indicators.some((instance) =>
+    instance.enabled && CHART_INDICATOR_BY_ID.get(instance.indicatorId)?.requiresOrderFlow);
   const gammaLevelsAvailable =
     pane.broker === "Databento" && isGammaChartInstrument(gammaInstrument);
   const nativeGammaConversion = gammaLevelsAvailable
@@ -1843,11 +1902,14 @@ function WorkspaceChartPane({
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
+    const retainedHistory = latestCandlesRef.current.length > 0;
+    setLoading(!retainedHistory);
     setError(null);
-    setCandles([]);
-    latestCandlesRef.current = [];
-    historyHydratedRef.current = false;
+    if (!retainedHistory) {
+      setCandles([]);
+      latestCandlesRef.current = [];
+      historyHydratedRef.current = false;
+    }
 
     const loadHistory = async () => {
       const cached = pane.broker === "Databento"
@@ -1870,7 +1932,14 @@ function WorkspaceChartPane({
       }
 
       try {
-        const nextCandles = await fetchWorkspaceCandles(pane.symbol, pane.timeframe, pane.broker, period);
+        const nextCandles = await fetchWorkspaceCandles(
+          pane.symbol,
+          pane.timeframe,
+          pane.broker,
+          period,
+          500,
+          needsOrderFlowHistory,
+        );
         if (cancelled) return;
         const downloaded = sanitizeCandles(nextCandles, pane.symbol);
         const clean = pane.broker === "Databento"
@@ -1905,7 +1974,7 @@ function WorkspaceChartPane({
     return () => {
       cancelled = true;
     };
-  }, [pane.broker, pane.symbol, pane.timeframe, period]);
+  }, [needsOrderFlowHistory, pane.broker, pane.symbol, pane.timeframe, period]);
 
   useEffect(() => {
     if (pane.broker !== "Databento") return;
@@ -2165,31 +2234,42 @@ function WorkspaceChartPane({
         }
         if (ticks.some((tick) => !tick.cached)) markMarketActive();
         setLiveFeedError(null);
-        setCandles((previous) => {
-          if (usingDatabentoPaneFeed && isEventBasedChartInterval(pane.timeframe)) {
-            const trades = ticks
-              .filter((tick) => tick.isTrade)
-              .map((tick) => ({
-                timestamp: tick.timestamp,
-                price: tick.mid,
-                size: Number(tick.size ?? 0),
-                trades: Number(tick.trades ?? 1),
-                delta: Number(tick.delta ?? 0),
-              }));
-            return trades.length
-              ? applyMarketTradesToEventBars(previous, trades, pane.timeframe, pane.symbol)
-              : previous;
-          }
-          return ticks.reduce((current, tick) => {
-            return mergeLiveMidIntoCandles(
+        const previous = latestCandlesRef.current;
+        const next = usingDatabentoPaneFeed && isEventBasedChartInterval(pane.timeframe)
+          ? (() => {
+              const trades = ticks
+                .filter((tick) => tick.isTrade)
+                .map((tick) => ({
+                  timestamp: tick.timestamp,
+                  price: tick.mid,
+                  size: Number(tick.size ?? 0),
+                  trades: Number(tick.trades ?? 1),
+                  delta: Number(tick.delta ?? 0),
+                }));
+              return trades.length
+                ? applyMarketTradesToEventBars(previous, trades, pane.timeframe, pane.symbol)
+                : previous;
+            })()
+          : ticks.reduce((current, tick) => mergeLiveMidIntoCandles(
               current,
               tick.mid,
               pane.symbol,
               pane.timeframe,
               tick.timestamp,
-            );
-          }, previous);
-        });
+              tick,
+            ), previous);
+        if (next === previous || !next.length) return;
+        latestCandlesRef.current = next;
+        const latest = next.at(-1)!;
+        window.dispatchEvent(new CustomEvent(LIVE_CHART_CANDLE_EVENT, {
+          detail: { key: pane.id, candle: latest },
+        }));
+        const newBar = previous.at(-1)?.timestamp !== latest.timestamp;
+        const now = Date.now();
+        if (newBar || now - lastCandleStateSyncRef.current >= 250) {
+          lastCandleStateSyncRef.current = now;
+          setCandles(next);
+        }
       }, 50);
     };
 
@@ -2382,6 +2462,8 @@ function WorkspaceChartPane({
           onOpenSettings={onOpenSettings}
           onCreateAlertAtPrice={onCreateAlertAtPrice}
           onRemoveAllIndicators={onRemoveAllIndicators}
+          indicators={indicators}
+          onUpdateIndicatorSetting={onUpdateIndicatorSetting}
           toolbarEnabled
           chartDragEnabled={chartDragEnabled}
           onChartDragStart={onChartDragStart}
@@ -2392,6 +2474,7 @@ function WorkspaceChartPane({
           gammaLevelsError={gammaLevelsError}
           onToggleGammaLevels={onToggleGammaLevels}
           onRemoveGameplanOverlay={gameplanOverlay ? onRemoveGameplanOverlay : undefined}
+          liveCandleEventKey={pane.id}
         />
       )}
       <div className="pointer-events-none absolute bottom-14 left-1/2 z-20 inline-flex -translate-x-1/2 items-center gap-1.5 whitespace-nowrap rounded-full border border-border bg-panel/90 px-2.5 py-1 text-[10px] uppercase tracking-[0.12em] text-muted shadow-lg shadow-black/25 backdrop-blur">
@@ -2952,11 +3035,7 @@ export default function KwantifyWorkspace({
   const [chartAlerts, setChartAlerts] = useState<ChartAlertRecord[]>([]);
   const [editingChartAlert, setEditingChartAlert] = useState<ChartAlertRecord | null>(null);
   const [pendingAlertDelete, setPendingAlertDelete] = useState<ChartAlertRecord | null>(null);
-  const [rightPanelWidth, setRightPanelWidth] = useState(() => {
-    if (typeof window === "undefined") return RIGHT_PANEL_DEFAULT_WIDTH;
-    const saved = Number(window.localStorage.getItem("olisa-right-panel-width"));
-    return Number.isFinite(saved) ? Math.min(RIGHT_PANEL_MAX_WIDTH, Math.max(RIGHT_PANEL_MIN_WIDTH, saved)) : RIGHT_PANEL_DEFAULT_WIDTH;
-  });
+  const [rightPanelWidth, setRightPanelWidth] = useState(RIGHT_PANEL_DEFAULT_WIDTH);
   const kwantBotInterpreter = useKwantBotInterpreter({
     initialRoot: gameplanChartRootForInstrument(selectedInstrument) ?? "NQ",
     panelOpen: rightPanel === "kwantbot",
@@ -2986,18 +3065,8 @@ export default function KwantifyWorkspace({
   const [unitsType, setUnitsType] = useState<"units" | "lots" | "usd" | "pctBalance">("units");
   const [tpType, setTpType] = useState<"price" | "ticks" | "pctPrice" | "rewardUsd" | "rewardPct">("price");
   const [slType, setSlType] = useState<"price" | "ticks" | "pctPrice" | "riskUsd" | "riskPct">("price");
-  const [bottomPanelHeight, setBottomPanelHeight] = useState(() => {
-    if (typeof window === "undefined") return BOTTOM_PANEL_DEFAULT_HEIGHT;
-    const saved = Number(window.localStorage.getItem("olisa-bottom-panel-height"));
-    const initialMaxHeight = Math.max(BOTTOM_PANEL_DEFAULT_HEIGHT, window.innerHeight - 120);
-    return Number.isFinite(saved)
-      ? Math.min(initialMaxHeight, Math.max(BOTTOM_PANEL_MIN_HEIGHT, saved))
-      : BOTTOM_PANEL_DEFAULT_HEIGHT;
-  });
-  const [bottomMinimized, setBottomMinimized] = useState(() => {
-    if (typeof window === "undefined") return true;
-    return window.localStorage.getItem("kwantdesk-bottom-panel-minimized") !== "false";
-  });
+  const [bottomPanelHeight, setBottomPanelHeight] = useState(BOTTOM_PANEL_DEFAULT_HEIGHT);
+  const [bottomMinimized, setBottomMinimized] = useState(true);
   const bottomWorkspaceSection = section;
   const [equityPeriod, setEquityPeriod] = useState("365d");
   const [favTFs, setFavTFs] = useState<string[]>(() => {
@@ -3032,6 +3101,16 @@ export default function KwantifyWorkspace({
   const [miniLoading, setMiniLoading] = useState(false);
   const [strategies, setStrategies] = useState<StrategyItem[]>(demoStrategies);
   const [chartIndicatorsSuppressed, setChartIndicatorsSuppressed] = useState(false);
+  const [paneIndicators, setPaneIndicators] = useState<Record<string, ChartIndicatorInstance[]>>(() => {
+    if (typeof window === "undefined") return {};
+    try {
+      const current = window.localStorage.getItem(CHART_INDICATORS_STORAGE_KEY);
+      const legacy = window.localStorage.getItem("olisa-chart-pane-indicators");
+      return normalizePaneIndicatorState(JSON.parse(current ?? legacy ?? "{}"));
+    } catch {
+      return {};
+    }
+  });
   const [gammaLevelsEnabled, setGammaLevelsEnabled] = useState(() => {
     if (typeof window === "undefined") return false;
     return window.localStorage.getItem(GAMMA_LEVELS_ENABLED_STORAGE_KEY) === "true";
@@ -3964,6 +4043,29 @@ export default function KwantifyWorkspace({
   }, [rightPanel]);
 
   useEffect(() => {
+    const savedRightPanelWidth = window.localStorage.getItem("olisa-right-panel-width");
+    if (savedRightPanelWidth !== null) {
+      const width = Number(savedRightPanelWidth);
+      if (Number.isFinite(width)) {
+        setRightPanelWidth(Math.min(RIGHT_PANEL_MAX_WIDTH, Math.max(RIGHT_PANEL_MIN_WIDTH, width)));
+      }
+    }
+
+    const savedBottomPanelHeight = window.localStorage.getItem("olisa-bottom-panel-height");
+    if (savedBottomPanelHeight !== null) {
+      const height = Number(savedBottomPanelHeight);
+      if (Number.isFinite(height)) {
+        const maximum = Math.max(BOTTOM_PANEL_DEFAULT_HEIGHT, window.innerHeight - 120);
+        setBottomPanelHeight(Math.min(maximum, Math.max(BOTTOM_PANEL_MIN_HEIGHT, height)));
+      }
+    }
+
+    setBottomMinimized(
+      window.localStorage.getItem("kwantdesk-bottom-panel-minimized") !== "false",
+    );
+  }, []);
+
+  useEffect(() => {
     window.localStorage.setItem("kwantdesk-right-panel-state", rightPanel ?? "");
     window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
   }, [rightPanel]);
@@ -3977,6 +4079,14 @@ export default function KwantifyWorkspace({
     window.localStorage.setItem("olisa-chart-favourite-intervals", JSON.stringify(favTFs));
     window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
   }, [favTFs]);
+
+  useEffect(() => {
+    window.localStorage.setItem(
+      CHART_INDICATORS_STORAGE_KEY,
+      JSON.stringify(clonePaneIndicatorState(paneIndicators)),
+    );
+    window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
+  }, [paneIndicators]);
 
   const getBottomPanelMaxHeight = useCallback(() => {
     const mainRect = mainRef.current?.getBoundingClientRect();
@@ -5456,7 +5566,7 @@ export default function KwantifyWorkspace({
   const money = (value: number) => `${value >= 0 ? "+" : "-"}${formatDollar(value)}`;
   const plainMoney = (value: number) => `${value < 0 ? "-" : ""}${formatDollar(value)}`;
   const percent = (value: number) => `${Number.isFinite(value) ? value.toFixed(2) : "0.00"}%`;
-  const ratio = (value: number) => value === Infinity || value >= 999 ? "âˆž" : value.toFixed(2);
+  const ratio = (value: number) => value === Infinity || value >= 999 ? "∞" : value.toFixed(2);
   const formatTradeDate = (timestamp: number) => new Date(timestamp).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false });
   const sortedTrades = [...filteredTrades].sort((a, b) => {
     const valueFor = (trade: typeof filteredTrades[number]) => {
@@ -5581,8 +5691,35 @@ export default function KwantifyWorkspace({
     window.history.replaceState({}, "", nextUrl);
   }, []);
 
+  const setIndicatorsForPane = useCallback((paneId: string, next: ChartIndicatorInstance[]) => {
+    setChartIndicatorsSuppressed(false);
+    setPaneIndicators((current) => ({
+      ...current,
+      [paneId]: next.map((instance) => ({
+        ...instance,
+        settings: instance.settings ? { ...instance.settings } : undefined,
+      })),
+    }));
+  }, []);
+
+  const updatePaneIndicatorSetting = useCallback((
+    paneId: string,
+    instanceId: string,
+    key: string,
+    value: number | string | boolean,
+  ) => {
+    setPaneIndicators((current) => ({
+      ...current,
+      [paneId]: (current[paneId] ?? []).map((instance) =>
+        instance.instanceId === instanceId
+          ? { ...instance, settings: { ...(instance.settings ?? {}), [key]: value } }
+          : instance),
+    }));
+  }, []);
+
   const handleRemoveAllIndicatorsFromChart = useCallback(() => {
     setChartIndicatorsSuppressed(true);
+    setPaneIndicators((current) => ({ ...current, [activePaneId]: [] }));
     setStrategies((current) => {
       const next = current.map((strategy) =>
         strategy.addedToChart
@@ -5598,7 +5735,7 @@ export default function KwantifyWorkspace({
       persistStrategies(next);
       return next;
     });
-  }, []);
+  }, [activePaneId]);
 
   useEffect(() => {
     const handleRemoveAllIndicatorsEvent = () => {
@@ -6021,6 +6158,7 @@ export default function KwantifyWorkspace({
     layout: workspaceTree,
     panes: workspacePanes,
     chartSettings,
+    indicators: clonePaneIndicatorState(paneIndicators),
     updatedAt: new Date().toISOString(),
   });
 
@@ -6073,6 +6211,9 @@ export default function KwantifyWorkspace({
       setDraftChartSettings(preset.chartSettings);
       setChartSettingsSnapshot(preset.chartSettings);
       saveStoredChartSettings(preset.chartSettings);
+    }
+    if (preset.indicators) {
+      setPaneIndicators(clonePaneIndicatorState(preset.indicators));
     }
     const firstPaneId = collectWorkspacePaneIds(normalizedTree)[0];
     if (firstPaneId) setActivePaneId(firstPaneId);
@@ -6706,10 +6847,13 @@ export default function KwantifyWorkspace({
         period={pane.period}
         settings={chartSettings}
         trades={activePaneId === pane.id ? chartTrades : []}
+        indicators={paneIndicators[pane.id] ?? []}
         onActivate={() => activateWorkspacePane(pane.id)}
         onOpenSettings={openChartSettings}
         onCreateAlertAtPrice={openCreateAlert}
         onRemoveAllIndicators={handleRemoveAllIndicatorsFromChart}
+        onUpdateIndicatorSetting={(instanceId, key, value) =>
+          updatePaneIndicatorSetting(pane.id, instanceId, key, value)}
         onSelectPeriod={(period) => handleChartPeriod(pane.id, period)}
         onSelectTimeframe={(timeframe) => selectWorkspacePaneTimeframe(pane.id, timeframe)}
         onClose={() => closeWorkspacePane(pane.id)}
@@ -7251,6 +7395,13 @@ export default function KwantifyWorkspace({
             </div>
           </div>
           <div className="flex-1" />
+          <ChartIndicatorsControl
+            instrument={displayCmeSymbol(activeWorkspacePane.symbol)}
+            timeframe={formatChartInterval(activeWorkspacePane.timeframe)}
+            indicators={paneIndicators[activePaneId] ?? []}
+            chartSettings={chartSettings}
+            onChange={(next) => setIndicatorsForPane(activePaneId, next)}
+          />
           <TimeZoneSelect
             value={chartSettings.timezone}
             onChange={changeChartTimeZone}
@@ -7744,7 +7895,7 @@ export default function KwantifyWorkspace({
                         <div className="text-center">
                           <div className="text-[10px] uppercase tracking-wider text-muted">Profit factor</div>
                           <div className="font-mono text-[14px] font-semibold" style={{ color: profitFactor >= 1 ? "#22C55E" : "#EF4444" }}>
-                            {profitFactor === Infinity ? "âˆž" : profitFactor.toFixed(2)}
+                            {profitFactor === Infinity ? "∞" : profitFactor.toFixed(2)}
                           </div>
                         </div>
                       </div>

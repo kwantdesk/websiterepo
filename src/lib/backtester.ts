@@ -5,6 +5,16 @@ export interface Candle {
   low: number;
   close: number;
   volume?: number;
+  trades?: number;
+  bidVolume?: number;
+  askVolume?: number;
+  bidTrades?: number;
+  askTrades?: number;
+  delta?: number;
+  deltaOpen?: number;
+  deltaHigh?: number;
+  deltaLow?: number;
+  deltaClose?: number;
 }
 
 export interface Trade {
