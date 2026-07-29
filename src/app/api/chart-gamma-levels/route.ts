@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
   const source = (request.nextUrl.searchParams.get("source") || "").trim().toUpperCase();
   const nativeFuturesRequest = (root === "NQ" || root === "ES") && source === root;
   if (!nativeFuturesRequest && !getConfiguredQuantDataApiKey()) {
-    return NextResponse.json({ error: "QuantData is not configured." }, { status: 503 });
+    return NextResponse.json({ error: "KwantData is not configured." }, { status: 503 });
   }
   if (!(await isAuthenticated(request))) {
     return NextResponse.json({ error: "Authentication required." }, { status: 401 });

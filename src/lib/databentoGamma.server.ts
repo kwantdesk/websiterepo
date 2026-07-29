@@ -4,7 +4,7 @@
  * Computes MenthorQ-grade gamma levels DIRECTLY from the NQ/ES option chain — open
  * interest + settlement -> Black-76 gamma -> GEX per strike — with no cash-index proxy
  * and no basis conversion (levels are already in futures price terms). This is the
- * accurate replacement for the QuantData cash path in getChartGammaLevels().
+ * accurate replacement for the KwantData cash path in getChartGammaLevels().
  *
  * Validated 2026-07-24 vs MenthorQ NQ: Call Resistance 30,000, Put Support 28,000,
  * HVL ~29,207 (theirs 29,250), 6/10 GEX walls on-strike.

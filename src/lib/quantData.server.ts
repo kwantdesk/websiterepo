@@ -42,7 +42,7 @@ import type {
 
 const API_BASE = "https://api.quantdata.us/v1";
 const CACHE_TTL_MS = 4_000;
-// QuantData exposes these snapshots over REST rather than a push stream. Four
+// KwantData exposes these snapshots over REST rather than a push stream. Four
 // source surfaces at this cadence remain below the documented rolling-minute
 // allowance when NQ and ES are both visible, while detecting revisions quickly.
 const CHART_GAMMA_CACHE_TTL_MS = 2_500;
@@ -99,9 +99,9 @@ function textValue(value: unknown): string {
   return typeof value === "string" ? value : "";
 }
 
-// --- QuantData request throttle -------------------------------------------------
+// --- KwantData request throttle -------------------------------------------------
 // The options-flow workspace loads ~17 panels at once; firing them all instantly trips
-// QuantData's per-second rate limit and the stragglers fail. Space out request STARTS
+// KwantData's per-second rate limit and the stragglers fail. Space out request STARTS
 // and retry 429s with backoff so every panel resolves instead of erroring.
 const QD_MIN_SPACING_MS = 80;
 const QD_MAX_RETRIES = 4;
@@ -118,7 +118,7 @@ async function qdSchedule() {
 async function quantDataNetworkPost(path: string, body: JsonRecord) {
   const apiKey = getConfiguredQuantDataApiKey();
   if (!apiKey) {
-    throw new QuantDataError("QuantData is not configured.", 503, null);
+    throw new QuantDataError("KwantData is not configured.", 503, null);
   }
 
   for (let attempt = 0; ; attempt += 1) {
@@ -151,16 +151,16 @@ async function quantDataNetworkPost(path: string, body: JsonRecord) {
           continue;
         }
         const detail = isRecord(payload) ? textValue(payload.detail) || textValue(payload.title) : "";
-        throw new QuantDataError(detail || `QuantData request failed (${response.status}).`, response.status, remaining);
+        throw new QuantDataError(detail || `KwantData request failed (${response.status}).`, response.status, remaining);
       }
 
       return { payload, remaining };
     } catch (error) {
       if (error instanceof QuantDataError) throw error;
       if (error instanceof Error && error.name === "AbortError") {
-        throw new QuantDataError("QuantData timed out while loading this workspace.", 504, null);
+        throw new QuantDataError("KwantData timed out while loading this workspace.", 504, null);
       }
-      throw new QuantDataError("QuantData is temporarily unavailable.", 502, null);
+      throw new QuantDataError("KwantData is temporarily unavailable.", 502, null);
     } finally {
       clearTimeout(timeoutId);
     }
@@ -1030,8 +1030,8 @@ function createKeyLevels(args: {
       rank: 1,
       derived: true,
       explanation: args.expectedMove.approximate
-        ? "Approximate 1D maximum from the prior realized range because prior-session QuantData IV was unavailable."
-        : "One-sigma 1D maximum from prior-session QuantData 30-day ATM IV divided by sqrt(365), anchored to the session open.",
+        ? "Approximate 1D maximum from the prior realized range because prior-session KwantData IV was unavailable."
+        : "One-sigma 1D maximum from prior-session KwantData 30-day ATM IV divided by sqrt(365), anchored to the session open.",
     },
     args.expectedMove === null ? null : {
       id: "expected-move-min",
@@ -1044,8 +1044,8 @@ function createKeyLevels(args: {
       rank: 1,
       derived: true,
       explanation: args.expectedMove.approximate
-        ? "Approximate 1D minimum from the prior realized range because prior-session QuantData IV was unavailable."
-        : "One-sigma 1D minimum from prior-session QuantData 30-day ATM IV divided by sqrt(365), anchored to the session open.",
+        ? "Approximate 1D minimum from the prior realized range because prior-session KwantData IV was unavailable."
+        : "One-sigma 1D minimum from prior-session KwantData 30-day ATM IV divided by sqrt(365), anchored to the session open.",
     },
     ...args.gexClusters.map((row, index) => ({
       id: `gex-cluster-${index + 1}`,
@@ -1129,7 +1129,7 @@ function createKeyLevels(args: {
       value: null,
       rank: 1,
       derived: false,
-      explanation: "QuantData max-pain strike for the same-day expiration, calculated from open interest.",
+      explanation: "KwantData max-pain strike for the same-day expiration, calculated from open interest.",
     },
   ];
   return rows.filter((row): row is OptionsKeyLevel => row !== null);
@@ -1422,9 +1422,9 @@ async function buildOptionsFlowPayload(symbol: string, requestedPriceMode: Optio
       { metric: "MENTHORQ_1D_MOVE", label: "MenthorQ 1D Min / Max", reason: "MenthorQ publishes this from a proprietary historical-IV and options-positioning model. Kwantify shows a separately labelled standard one-sigma range." },
       { metric: "MENTHORQ_HVL", label: "MenthorQ HVL", reason: "The public description identifies a cumulative-GEX inflection, but not the production curve construction or smoothing needed for an exact level." },
       { metric: "MENTHORQ_QSCORES", label: "MenthorQ Q-Scores", reason: "Options, momentum, volatility and seasonality scores use proprietary normalized multi-factor models." },
-      { metric: "MENTHORQ_BLIND_SPOTS", label: "MenthorQ Blind Spots", reason: "The cross-asset correlation and level-selection model is proprietary and is not exposed by QuantData." },
-      { metric: "ONE_DAY_GEX_CHANGE", label: "1D GEX change", reason: "The current QuantData response supplies current-session interval history, not a prior-close full-chain snapshot. Kwantify shows the available one-hour front-expiry change instead." },
-      ...(iv.historySessions < 200 ? [{ metric: "FULL_YEAR_IV_HISTORY" as const, label: "1Y IV percentile", reason: `QuantData returned ${iv.historySessions} usable IV sessions for this symbol. Kwantify reports the available-session percentile and does not label it as a one-year statistic.` }] : []),
+      { metric: "MENTHORQ_BLIND_SPOTS", label: "MenthorQ Blind Spots", reason: "The cross-asset correlation and level-selection model is proprietary and is not exposed by KwantData." },
+      { metric: "ONE_DAY_GEX_CHANGE", label: "1D GEX change", reason: "The current KwantData response supplies current-session interval history, not a prior-close full-chain snapshot. Kwantify shows the available one-hour front-expiry change instead." },
+      ...(iv.historySessions < 200 ? [{ metric: "FULL_YEAR_IV_HISTORY" as const, label: "1Y IV percentile", reason: `KwantData returned ${iv.historySessions} usable IV sessions for this symbol. Kwantify reports the available-session percentile and does not label it as a one-year statistic.` }] : []),
     ],
   };
   const marketData = await resolveOptionsMarketData({
@@ -1456,12 +1456,12 @@ async function buildOptionsFlowPayload(symbol: string, requestedPriceMode: Optio
   if (!gamma && !flow.length && !candles.length) {
     const firstFailure = requests.find((result) => result.status === "rejected");
     if (firstFailure?.status === "rejected" && firstFailure.reason instanceof QuantDataError) throw firstFailure.reason;
-    throw new QuantDataError("No QuantData options data is available for this symbol.", 422, null);
+    throw new QuantDataError("No KwantData options data is available for this symbol.", 422, null);
   }
 
   return {
     symbol,
-    source: "QuantData",
+    source: "KwantData",
     asOf: new Date().toISOString(),
     refreshAfterMs: session.marketOpen ? 5_000 : 60_000,
     session,
@@ -1507,8 +1507,8 @@ async function buildOptionsFlowPayload(symbol: string, requestedPriceMode: Optio
       volatilitySkew,
       tradeSidePremium,
       methodology: {
-        exposureSource: "QuantData Interval Map",
-        classificationSource: "QuantData trade-side proxy",
+        exposureSource: "KwantData Interval Map",
+        classificationSource: "KwantData trade-side proxy",
         classificationConfidence: "PROXY",
         note: "Exposure histories are provider-calculated front-expiry snapshots. Buy/sell pressure uses prints at or through bid and ask; it is not GEXBot's proprietary volatility-surface classifier and does not distinguish opening from closing trades.",
       },
@@ -1533,7 +1533,7 @@ export async function getOptionsMarketPulse(
   const priceMode: OptionsPriceMode = priceModeInput.trim().toUpperCase() === "FUTURES" ? "FUTURES" : "CASH";
   const session = getUsOptionsSession();
 
-  // Keep the live cash-tape path independent from QuantData's one-minute
+  // Keep the live cash-tape path independent from KwantData's one-minute
   // history endpoint. History is loaded separately by the chart and merged
   // behind this quote, so an instrument switch can paint immediately.
   if (priceMode === "CASH" && !includeHistory) {
@@ -1660,7 +1660,7 @@ export async function getGexMapPanel(
     expiration,
     scope: "FRONT_EXPIRY",
     representation: "PER_ONE_PERCENT_MOVE",
-    source: "QuantData Interval Map",
+    source: "KwantData Interval Map",
     sourceTimeZone: "America/New_York",
     asOf: new Date(frameAsOf).toISOString(),
     status: historical || !currentSession.marketOpen ? "LAST_SESSION" : stale ? "DELAYED" : "LIVE",
@@ -1706,7 +1706,7 @@ export async function getChartGammaLevels(
     : (["SPX", "SPY"] as const);
   const requestedSource = sourceInput.trim().toUpperCase();
   // NATIVE futures-options gamma (Databento): the source IS the futures root (NQ/ES).
-  // NDX/QQQ/SPX/SPY keep the QuantData cash-conversion path below.
+  // NDX/QQQ/SPX/SPY keep the KwantData cash-conversion path below.
   if (requestedSource === root) {
     return buildNativeChartGamma(root as NativeGammaRoot);
   }

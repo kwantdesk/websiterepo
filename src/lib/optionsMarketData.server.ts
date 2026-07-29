@@ -111,7 +111,7 @@ function unavailableCashFallback(args: {
   return {
     requestedMode,
     mode: "CASH",
-    provider: "QuantData",
+    provider: "KwantData",
     status: !cashMarketOpen ? "LAST_SESSION" : stale ? "DELAYED" : "LIVE",
     symbol,
     futuresRoot,
@@ -123,7 +123,7 @@ function unavailableCashFallback(args: {
     levelPriceScale: 1,
     stale,
     fallback: requestedMode === "FUTURES",
-    detail: detail ?? (cashMarketOpen ? "QuantData one-minute underlying bars via fast REST polling." : "Latest completed QuantData options session."),
+    detail: detail ?? (cashMarketOpen ? "KwantData one-minute underlying bars via fast REST polling." : "Latest completed KwantData options session."),
     candles: cashCandles,
   };
 }
@@ -272,7 +272,7 @@ export async function resolveOptionsMarketData(args: {
     return unavailableCashFallback({
       ...args,
       futuresRoot,
-      detail: `${config.provider} futures feed unavailable: ${error instanceof Error ? error.message : "unknown gateway error"} Showing ${args.symbol} from QuantData.`,
+      detail: `${config.provider} futures feed unavailable: ${error instanceof Error ? error.message : "unknown gateway error"} Showing ${args.symbol} from KwantData.`,
     });
   }
 }

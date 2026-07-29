@@ -744,7 +744,7 @@ export default function GexMapWorkspace() {
         ) : (
           <footer className="flex h-7 shrink-0 items-center gap-2 border-t border-border bg-panel px-4 text-[8px] text-muted">
             <Radio className={`h-3 w-3 ${live ? "text-primary" : "text-muted"}`} />
-            <span>QuantData Interval Map · front expiry · per 1% underlying move</span>
+            <span>KwantData Interval Map · front expiry · per 1% underlying move</span>
             <span className="ml-auto">Positive and negative colours follow the active Kwantify theme. Intensity is normalized to each panel’s 95th-percentile absolute exposure.</span>
           </footer>
         )}

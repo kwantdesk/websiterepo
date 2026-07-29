@@ -159,7 +159,7 @@ function TermStructureChart({ points }: { points: VolatilityTermPoint[] }) {
 
   return (
     <div className="mt-3">
-      <svg viewBox={`0 0 ${width} ${height}`} className="h-[82px] w-full" preserveAspectRatio="none" role="img" aria-label="QuantData at-the-money implied volatility term structure">
+      <svg viewBox={`0 0 ${width} ${height}`} className="h-[82px] w-full" preserveAspectRatio="none" role="img" aria-label="KwantData at-the-money implied volatility term structure">
         {[0.25, 0.5, 0.75].map((ratio) => <line key={ratio} x1="0" x2={width} y1={height * ratio} y2={height * ratio} stroke="var(--grid-color)" strokeWidth="1" />)}
         <path d={path} fill="none" stroke="var(--primary)" strokeWidth="2" vectorEffect="non-scaling-stroke" />
         {selected.map((point, index) => <circle key={point.expiration} cx={x(index)} cy={y(point.atmIv)} r="2.25" fill="var(--panel)" stroke="var(--primary)" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />)}
@@ -196,7 +196,7 @@ export default function MarketMapIntelligence({ data }: { data: OptionsFlowPaylo
         <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"><Radar className="h-4 w-4" /></span>
         <div className="min-w-0">
           <h2 className="text-[12px] font-semibold text-foreground">Market map</h2>
-          <p className="mt-0.5 text-[9px] text-muted">Live QuantData structure · transparent Kwantify models · no proprietary look-alikes</p>
+          <p className="mt-0.5 text-[9px] text-muted">Live KwantData structure · transparent Kwantify models · no proprietary look-alikes</p>
         </div>
         <div className="ml-auto hidden items-center gap-1.5 text-[8px] text-muted sm:flex">
           <SourceBadge kind="DIRECT" /><span>vendor field</span><SourceBadge kind="DERIVED" /><span>documented formula</span>
@@ -234,7 +234,7 @@ export default function MarketMapIntelligence({ data }: { data: OptionsFlowPaylo
                 <div className="text-center"><div className="text-[8px] uppercase tracking-[0.12em] text-muted">{expected.anchorLabel.replaceAll("_", " ")}</div><div className="mt-1 font-mono text-[11px] font-semibold text-foreground">{price(expected.anchorPrice)}</div></div>
                 <div className="text-right"><div className="text-[8px] uppercase tracking-[0.12em] text-muted">1D Max</div><div className="mt-1 font-mono text-[11px] font-semibold text-primary">{price(expected.max)}</div></div>
               </div>
-              <p className="mt-3 border-t border-border pt-2 text-[8px] leading-4 text-muted">{expected.approximate ? "Prior-session realized-range fallback; approximate because the prior-session IV input was unavailable." : "One-sigma range from prior-session QuantData IV with no lookahead."}</p>
+              <p className="mt-3 border-t border-border pt-2 text-[8px] leading-4 text-muted">{expected.approximate ? "Prior-session realized-range fallback; approximate because the prior-session IV input was unavailable." : "One-sigma range from prior-session KwantData IV with no lookahead."}</p>
             </>
           ) : <div className="flex h-36 items-center justify-center text-[10px] text-muted">Expected range unavailable</div>}
         </Card>
@@ -267,7 +267,7 @@ export default function MarketMapIntelligence({ data }: { data: OptionsFlowPaylo
 
         <Card title="Volatility intelligence" subtitle="ATM IV, realized volatility, rank and risk premium" icon={Waves} className="xl:col-span-5">
           <div className="mt-4 grid grid-cols-2 gap-2">
-            <div className="rounded-xl border border-border bg-panel/70 p-3"><div className="text-[8px] uppercase tracking-[0.12em] text-muted">ATM IV · ~30D</div><div className="mt-2 font-mono text-[18px] font-semibold text-foreground">{percent(volatility.atmIv30d)}</div><div className="mt-1 text-[8px] text-muted">QuantData IV</div></div>
+            <div className="rounded-xl border border-border bg-panel/70 p-3"><div className="text-[8px] uppercase tracking-[0.12em] text-muted">ATM IV · ~30D</div><div className="mt-2 font-mono text-[18px] font-semibold text-foreground">{percent(volatility.atmIv30d)}</div><div className="mt-1 text-[8px] text-muted">KwantData IV</div></div>
             <div className="rounded-xl border border-border bg-panel/70 p-3"><div className="text-[8px] uppercase tracking-[0.12em] text-muted">Historical vol · 21D</div><div className="mt-2 font-mono text-[18px] font-semibold text-foreground">{percent(volatility.historicalVol21d)}</div><div className="mt-1 text-[8px] text-muted">Close-to-close annualized</div></div>
             <div className="rounded-xl border border-border bg-panel/70 p-3"><div className="text-[8px] uppercase tracking-[0.12em] text-muted">IV rank</div><div className="mt-2 font-mono text-[18px] font-semibold text-foreground">{percent(volatility.ivRank)}</div><div className="mt-1 text-[8px] text-muted">Percentile {percent(volatility.ivPercentile)} · {volatility.ivHistorySessions} sessions</div></div>
             <div className="rounded-xl border border-border bg-panel/70 p-3"><div className="text-[8px] uppercase tracking-[0.12em] text-muted">Vol risk premium</div><div className={`mt-2 font-mono text-[18px] font-semibold ${tone(volatility.vrp)}`}>{percent(volatility.vrp, 1, true)}</div><div className="mt-1 text-[8px] text-muted">{vrpState} · NVRP {volatility.normalizedVrp?.toFixed(2) ?? "—"}</div></div>

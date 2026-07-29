@@ -23,7 +23,7 @@ export type GexMapPanelPayload = {
   expiration: string;
   scope: "FRONT_EXPIRY";
   representation: "PER_ONE_PERCENT_MOVE";
-  source: "QuantData Interval Map";
+  source: "KwantData Interval Map";
   sourceTimeZone: "America/New_York";
   asOf: string;
   status: "LIVE" | "LAST_SESSION" | "DELAYED";

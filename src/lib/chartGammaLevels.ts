@@ -24,7 +24,7 @@ export type ChartGammaSourceLevel = {
 };
 
 export type ChartGammaSourceSnapshot = {
-  // NDX/QQQ/SPX/SPY = cash-index sources (QuantData, converted). NQ/ES = native
+  // NDX/QQQ/SPX/SPY = cash-index sources (KwantData, converted). NQ/ES = native
   // futures-options gamma computed directly from the chain (Databento, no conversion).
   symbol: "NDX" | "QQQ" | "SPX" | "SPY" | "NQ" | "ES";
   stockPrice: number;

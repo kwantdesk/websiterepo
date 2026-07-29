@@ -349,8 +349,8 @@ export type PositioningIntelligence = {
   volatilitySkew: VolatilitySkewPoint[];
   tradeSidePremium: TradeSidePremiumSummary | null;
   methodology: {
-    exposureSource: "QuantData Interval Map";
-    classificationSource: "QuantData trade-side proxy";
+    exposureSource: "KwantData Interval Map";
+    classificationSource: "KwantData trade-side proxy";
     classificationConfidence: "PROXY";
     note: string;
   };
@@ -370,7 +370,7 @@ export type OptionsPriceMode = "CASH" | "FUTURES";
 export type OptionsMarketData = {
   requestedMode: OptionsPriceMode;
   mode: OptionsPriceMode;
-  provider: "QuantData" | "Massive" | "Databento" | "Rithmic" | "dxFeed";
+  provider: "KwantData" | "Massive" | "Databento" | "Rithmic" | "dxFeed";
   status: "LIVE" | "DELAYED" | "LAST_SESSION" | "UNAVAILABLE";
   symbol: string;
   futuresRoot: OptionsFuturesRoot | null;
@@ -396,7 +396,7 @@ export type OptionsMarketPulsePayload = {
 
 export type OptionsFlowPayload = {
   symbol: string;
-  source: "QuantData";
+  source: "KwantData";
   asOf: string;
   refreshAfterMs: number;
   session: {

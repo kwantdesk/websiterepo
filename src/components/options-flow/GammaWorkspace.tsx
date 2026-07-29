@@ -989,14 +989,14 @@ export default function GammaWorkspace() {
             <Panel className="max-w-md p-6 text-center">
               <Database className="mx-auto h-6 w-6 text-danger" />
               <h2 className="mt-3 text-[15px] font-semibold">Live options data unavailable</h2>
-              <p className="mt-2 text-[12px] leading-5 text-muted">{error || "QuantData did not return a usable response."}</p>
+              <p className="mt-2 text-[12px] leading-5 text-muted">{error || "KwantData did not return a usable response."}</p>
               <button type="button" onClick={() => void loadData(symbol, priceMode)} className="mt-4 rounded-lg bg-primary px-4 py-2 text-[12px] font-semibold text-background">Try again</button>
             </Panel>
           </div>
         ) : (
           <div className="min-h-0 flex-1 overflow-y-auto bg-background p-3 lg:p-4">
             {error ? <div className="mb-3 flex items-center gap-2 rounded-xl border border-danger/20 bg-danger/10 px-3 py-2 text-[11px] text-danger"><Waves className="h-3.5 w-3.5" /> Refresh delayed: {error}. Showing the last good snapshot.</div> : null}
-            {data.errors.length ? <div className="mb-3 rounded-xl border border-amber-400/20 bg-amber-400/[0.06] px-3 py-2 text-[10px] text-amber-200/80">Some QuantData panels are temporarily partial: {data.errors.join(" · ")}</div> : null}
+            {data.errors.length ? <div className="mb-3 rounded-xl border border-amber-400/20 bg-amber-400/[0.06] px-3 py-2 text-[10px] text-amber-200/80">Some KwantData panels are temporarily partial: {data.errors.join(" · ")}</div> : null}
 
             <>
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
@@ -1030,14 +1030,14 @@ export default function GammaWorkspace() {
               </Panel>
 
               <Panel>
-                <PanelHeader title="Key options levels" eyebrow="Raw QuantData inputs · transparent Kwantify ranking" icon={TableProperties} trailing={<span className="text-[9px] uppercase tracking-[0.14em] text-muted">{data.levels.keyLevels.length} levels</span>} />
+                <PanelHeader title="Key options levels" eyebrow="Raw KwantData inputs · transparent Kwantify ranking" icon={TableProperties} trailing={<span className="text-[9px] uppercase tracking-[0.14em] text-muted">{data.levels.keyLevels.length} levels</span>} />
                 <KeyLevelsTable data={data} anchoredBasis={anchoredLevelBasis} anchoredScale={anchoredLevelScale} expectedMove={chartExpectedMove} />
               </Panel>
             </div>
 
             <div className="mt-3 grid gap-3 2xl:grid-cols-[minmax(0,1.15fr)_minmax(260px,.55fr)_minmax(300px,.7fr)]">
               <Panel>
-                <PanelHeader title="Intraday premium drift" eyebrow="Cumulative 5-minute QuantData buckets" icon={Activity} />
+                <PanelHeader title="Intraday premium drift" eyebrow="Cumulative 5-minute KwantData buckets" icon={Activity} />
                 <DriftChart points={data.drift} />
               </Panel>
               <Panel>
@@ -1076,8 +1076,8 @@ export default function GammaWorkspace() {
             </Panel>
 
             <div className="mt-3 flex flex-col gap-2 rounded-xl border border-border bg-panel px-4 py-3 text-[10px] leading-5 text-muted sm:flex-row sm:items-center sm:justify-between">
-              <span>GEX is raw QuantData call + dealer-signed put exposure. Gamma strength is normalized for the selected asset as |net GEX| / gross GEX: weak &lt;5%, moderate &lt;15%, strong &lt;30%, and extreme ≥30%; below 0.5% is neutral/balanced. Walls, magnet, centre and put-support candidates are transparent Kwantify rankings inside a ±3% near-the-money band; support candidates are concentrations, not guaranteed price floors. 0DTE uses expiration {data.session.sessionDate}. Open interest can lag the session open. {data.marketData.mode === "FUTURES" ? `${data.marketData.symbol} ticks independently; options levels use the last sane concurrent futures/source ratio, recalibrated every 10 minutes and immediately on a contract roll.` : "Chart and option strikes share the cash-underlying scale; price ticks do not reposition published levels."}</span>
-              <span className="shrink-0 font-mono">QuantData quota {data.rateLimitRemaining ?? "—"} remaining</span>
+              <span>GEX is raw KwantData call + dealer-signed put exposure. Gamma strength is normalized for the selected asset as |net GEX| / gross GEX: weak &lt;5%, moderate &lt;15%, strong &lt;30%, and extreme ≥30%; below 0.5% is neutral/balanced. Walls, magnet, centre and put-support candidates are transparent Kwantify rankings inside a ±3% near-the-money band; support candidates are concentrations, not guaranteed price floors. 0DTE uses expiration {data.session.sessionDate}. Open interest can lag the session open. {data.marketData.mode === "FUTURES" ? `${data.marketData.symbol} ticks independently; options levels use the last sane concurrent futures/source ratio, recalibrated every 10 minutes and immediately on a contract roll.` : "Chart and option strikes share the cash-underlying scale; price ticks do not reposition published levels."}</span>
+              <span className="shrink-0 font-mono">KwantData quota {data.rateLimitRemaining ?? "—"} remaining</span>
             </div>
             </>
           </div>
