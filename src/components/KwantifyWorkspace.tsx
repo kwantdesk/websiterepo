@@ -108,6 +108,11 @@ import {
 } from "@/lib/gameplanChartOverlay";
 import { serializeDeepChartsXml } from "@/lib/deepChartsExport";
 import {
+  PLATFORM_LEVEL_EXPORT_OPTIONS,
+  serializePlatformLevels,
+  type PlatformLevelExportFormat,
+} from "@/lib/platformLevelExport";
+import {
   buildChartGammaCalibration,
   cashFallbackGammaConversion,
   findCashCloseFuturesCandle,
@@ -319,7 +324,6 @@ type WorkspaceBackupFile = {
   presets: WorkspacePreset[];
 };
 type LevelExportType = "gamma" | "gameplan";
-type LevelExportFormat = "json" | "csv" | "xml";
 type GammaLevelExportSnapshot = {
   paneId: string;
   instrument: string;
@@ -3202,7 +3206,7 @@ export default function KwantifyWorkspace({
     gamma: true,
     gameplan: true,
   });
-  const [levelExportFormat, setLevelExportFormat] = useState<LevelExportFormat>("json");
+  const [levelExportFormat, setLevelExportFormat] = useState<PlatformLevelExportFormat>("deepcharts");
   const [selectedLevelExportInstruments, setSelectedLevelExportInstruments] = useState<string[]>([]);
   const [levelExportError, setLevelExportError] = useState("");
   const [gammaLevelExportsByPane, setGammaLevelExportsByPane] = useState<Record<string, GammaLevelExportSnapshot>>({});
@@ -3520,6 +3524,8 @@ export default function KwantifyWorkspace({
       selectedLevelExportInstruments,
     ],
   );
+  const activeLevelExportOption = PLATFORM_LEVEL_EXPORT_OPTIONS.find((option) => option.id === levelExportFormat)
+    ?? PLATFORM_LEVEL_EXPORT_OPTIONS[0];
   const chartStrategyOptions = useMemo(
     () =>
       (chartIndicatorsSuppressed ? [] : strategies)
@@ -6854,6 +6860,8 @@ export default function KwantifyWorkspace({
   const exportSelectedLevels = () => {
     const selectedOptions = availableLevelExportInstruments.filter((option) =>
       selectedLevelExportInstruments.includes(option.instrument));
+    const exportOption = PLATFORM_LEVEL_EXPORT_OPTIONS.find((option) => option.id === levelExportFormat)
+      ?? PLATFORM_LEVEL_EXPORT_OPTIONS[0];
     const rows: LevelExportRow[] = [];
     const gameplanColors = {
       magnet: chartSettings.upColor,
@@ -6918,6 +6926,10 @@ export default function KwantifyWorkspace({
       setLevelExportError("Select Gamma Levels, Gameplan Levels, or both.");
       return;
     }
+    if (exportOption.oneInstrument && selectedOptions.length !== 1) {
+      setLevelExportError(`${exportOption.label} requires exactly one instrument so levels cannot be placed on the wrong chart.`);
+      return;
+    }
     if (!rows.length) {
       setLevelExportError("The selected levels are still preparing or have not been added for this instrument.");
       return;
@@ -6974,11 +6986,18 @@ export default function KwantifyWorkspace({
         ...rows.map((row) => columns.map((column) => csvCell(row[column])).join(",")),
       ].join("\r\n");
       downloadLevelFile(csv, `${baseFilename}.csv`, "text/csv;charset=utf-8");
-    } else {
+    } else if (levelExportFormat === "deepcharts") {
       downloadLevelFile(
         serializeDeepChartsXml(rows, new Date(exportedAt)),
         `${baseFilename}.xml`,
         "application/json;charset=utf-8",
+      );
+    } else {
+      const source = serializePlatformLevels(levelExportFormat, rows);
+      downloadLevelFile(
+        source,
+        `${baseFilename}-${levelExportFormat}.${exportOption.extension}`,
+        exportOption.mimeType,
       );
     }
 
@@ -7705,14 +7724,14 @@ export default function KwantifyWorkspace({
                 onClick={() => setShowLevelsExport(false)}
                 aria-label="Close levels export"
               />
-              <div className="relative z-10 flex max-h-[calc(100vh-32px)] w-full max-w-[560px] flex-col overflow-hidden rounded-3xl border border-border bg-panel shadow-[0_28px_100px_rgba(0,0,0,.7)]">
+              <div className="relative z-10 flex max-h-[calc(100vh-32px)] w-full max-w-[680px] flex-col overflow-hidden rounded-3xl border border-border bg-panel shadow-[0_28px_100px_rgba(0,0,0,.7)]">
                 <div className="flex items-center gap-3 border-b border-border px-5 py-4">
                   <span className="flex h-10 w-10 items-center justify-center rounded-2xl border border-primary/20 bg-primary/10 text-primary">
                     <Download className="h-[18px] w-[18px]" />
                   </span>
                   <div className="min-w-0 flex-1">
                     <div className="text-[13px] font-semibold text-foreground">Export chart levels</div>
-                    <div className="mt-0.5 text-[10px] text-muted">Choose the level sets, instruments and file format.</div>
+                    <div className="mt-0.5 text-[10px] text-muted">Choose levels, instrument and the destination platform.</div>
                   </div>
                   <button
                     type="button"
@@ -7825,20 +7844,16 @@ export default function KwantifyWorkspace({
                   </section>
 
                   <section>
-                    <div className="mb-2.5 text-[9px] font-semibold uppercase tracking-[0.15em] text-muted">File format</div>
-                    <div className="grid grid-cols-3 gap-2">
-                      {([
-                        ["json", "JSON", "Structured"],
-                        ["csv", "CSV", "Spreadsheet"],
-                        ["xml", "DeepCharts XML", "Native annotation import"],
-                      ] as const).map(([format, label, detail]) => {
-                        const active = levelExportFormat === format;
+                    <div className="mb-2.5 text-[9px] font-semibold uppercase tracking-[0.15em] text-muted">Destination platform</div>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      {PLATFORM_LEVEL_EXPORT_OPTIONS.map((option) => {
+                        const active = levelExportFormat === option.id;
                         return (
                           <button
-                            key={format}
+                            key={option.id}
                             type="button"
                             onClick={() => {
-                              setLevelExportFormat(format);
+                              setLevelExportFormat(option.id);
                               setLevelExportError("");
                             }}
                             className={`rounded-2xl border px-3 py-3 text-left transition-colors ${
@@ -7847,11 +7862,24 @@ export default function KwantifyWorkspace({
                                 : "border-border bg-surface/35 hover:bg-surface"
                             }`}
                           >
-                            <span className={`block text-[10px] font-semibold ${active ? "text-primary" : "text-foreground"}`}>{label}</span>
-                            <span className="mt-1 block text-[8px] text-muted">{detail}</span>
+                            <span className="flex items-center gap-2">
+                              <span className={`text-[10px] font-semibold ${active ? "text-primary" : "text-foreground"}`}>{option.label}</span>
+                              <span className="ml-auto rounded-md border border-border bg-background/50 px-1.5 py-0.5 text-[7px] uppercase tracking-[0.08em] text-muted">{option.delivery}</span>
+                            </span>
+                            <span className="mt-1 block text-[8px] text-muted">{option.detail} Â· .{option.extension}</span>
                           </button>
                         );
                       })}
+                    </div>
+                    <div className="mt-2.5 rounded-xl border border-primary/15 bg-primary/[0.035] px-3 py-2.5">
+                      <div className="flex items-center gap-2 text-[8px] font-semibold text-primary">
+                        {activeLevelExportOption.label}
+                        <span className="rounded-md border border-primary/20 px-1.5 py-0.5 text-[7px] uppercase tracking-[0.08em]">{activeLevelExportOption.delivery}</span>
+                      </div>
+                      <p className="mt-1.5 text-[8px] leading-4 text-muted">{activeLevelExportOption.instructions}</p>
+                      {activeLevelExportOption.oneInstrument ? (
+                        <p className="mt-1 text-[7px] font-semibold text-foreground">Select exactly one instrument for this platform.</p>
+                      ) : null}
                     </div>
                   </section>
 
