@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 
 const WAITLIST_TABLE = "waitlist_signups";
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
@@ -42,29 +43,31 @@ export async function POST(request: Request) {
     );
   }
 
-  const response = await fetch(`${config.url}/rest/v1/${WAITLIST_TABLE}`, {
-    method: "POST",
-    headers: {
-      apikey: config.key,
-      Authorization: `Bearer ${config.key}`,
-      "Content-Type": "application/json",
-      Prefer: "return=minimal",
+  const supabase = createClient(config.url, config.key, {
+    auth: {
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+      persistSession: false,
     },
-    body: JSON.stringify({
-      email,
-      source: "kwantdesk-holding-page",
-    }),
-    cache: "no-store",
   });
 
-  if (response.ok) {
+  const { error } = await supabase
+    .from(WAITLIST_TABLE)
+    .insert({
+      email,
+      source: "kwantdesk-holding-page",
+    });
+
+  if (!error || error.code === "23505") {
     return NextResponse.json({ ok: true });
   }
 
-  const error = await response.json().catch(() => null) as { code?: string } | null;
-  if (response.status === 409 && error?.code === "23505") {
-    return NextResponse.json({ ok: true });
-  }
+  console.error("Waitlist signup failed", {
+    code: error.code,
+    message: error.message,
+    details: error.details,
+    hint: error.hint,
+  });
 
   return NextResponse.json(
     { error: "The waitlist is temporarily unavailable." },

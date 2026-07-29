@@ -122,11 +122,14 @@ export default function HoldingPage() {
                     type="email"
                     required
                     value={waitlistEmail}
-                    onChange={(event) => setWaitlistEmail(event.target.value)}
+                    onChange={(event) => {
+                      setWaitlistEmail(event.target.value);
+                      if (waitlistError) setWaitlistError("");
+                    }}
                     placeholder="your@email.com"
                     autoComplete="email"
                     spellCheck={false}
-                    className="min-w-0 flex-1 border-0 bg-transparent font-mono text-[11px] tracking-[0.04em] text-white outline-none placeholder:text-white/24"
+                    className="min-w-0 flex-1 appearance-none border-0 bg-transparent font-mono text-[11px] tracking-[0.04em] text-white caret-white outline-none placeholder:text-white/24"
                   />
                   <button
                     type="submit"
@@ -139,18 +142,19 @@ export default function HoldingPage() {
                       : <ArrowRight className="h-3.5 w-3.5" />}
                   </button>
                 </div>
-                {waitlistError ? (
-                  <p
-                    role="alert"
-                    className="absolute top-[calc(100%+8px)] left-1/2 w-max max-w-[330px] -translate-x-1/2 font-mono text-[9px] tracking-[0.04em] text-white/50"
-                  >
-                    {waitlistError}
-                  </p>
-                ) : null}
               </form>
             )}
-            <p className="mt-3 text-[9px] uppercase tracking-[0.2em] text-white sm:text-[10px]">
-              Sign up to be the first to know....
+            <p
+              role={waitlistError ? "alert" : "status"}
+              aria-live="polite"
+              className={`mt-3 min-h-[14px] text-[9px] uppercase tracking-[0.2em] sm:text-[10px] ${
+                waitlistError ? "text-white/60" : "text-white"
+              }`}
+            >
+              {waitlistError
+                || (waitlistStatus === "complete"
+                  ? "You're on the waitlist."
+                  : "Sign up to be the first to know....")}
             </p>
           </div>
         </div>
@@ -229,6 +233,25 @@ export default function HoldingPage() {
           50% {
             transform: translate3d(0, -7px, 0);
           }
+        }
+
+        #kwantdesk-waitlist-email,
+        #kwantdesk-waitlist-email:focus {
+          color: #fff !important;
+          background: transparent !important;
+          caret-color: #fff;
+          -webkit-text-fill-color: #fff !important;
+        }
+
+        #kwantdesk-waitlist-email:-webkit-autofill,
+        #kwantdesk-waitlist-email:-webkit-autofill:hover,
+        #kwantdesk-waitlist-email:-webkit-autofill:focus {
+          color: #fff !important;
+          caret-color: #fff;
+          -webkit-text-fill-color: #fff !important;
+          -webkit-box-shadow: 0 0 0 1000px #000 inset !important;
+          box-shadow: 0 0 0 1000px #000 inset !important;
+          transition: background-color 9999s ease-out 0s;
         }
 
         @media (prefers-reduced-motion: reduce) {
