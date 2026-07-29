@@ -6,7 +6,7 @@ import KwantBotIntelligenceWorkspace from "@/components/kwantbot/KwantBotIntelli
 import KwantBotInterpreterPanel from "@/components/kwantbot/KwantBotInterpreterPanel";
 import { useKwantBotInterpreter } from "@/hooks/useKwantBotInterpreter";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent as ReactDragEvent } from "react";
+import { startTransition, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent as ReactDragEvent } from "react";
 import { createPortal } from "react-dom";
 import dynamic from "next/dynamic";
 import Image from "next/image";
@@ -195,6 +195,15 @@ type LiveFeedPrice = {
   delta?: number;
   contractSymbol?: string;
   timestamp?: string | number;
+  cached?: boolean;
+};
+type QueuedLiveTick = {
+  mid: number;
+  timestamp: number;
+  isTrade?: boolean;
+  size?: number;
+  trades?: number;
+  delta?: number;
   cached?: boolean;
 };
 type KwantBotMessage = {
@@ -818,6 +827,38 @@ function marketTimestamp(value: unknown) {
   }
   const parsed = Date.parse(String(value ?? ""));
   return Number.isFinite(parsed) ? parsed : Date.now();
+}
+
+function compactTimeBasedTicks(ticks: QueuedLiveTick[], timeframe: string) {
+  if (ticks.length <= 4) return ticks;
+  const buckets = new Map<number, {
+    first: QueuedLiveTick;
+    low: QueuedLiveTick;
+    high: QueuedLiveTick;
+    last: QueuedLiveTick;
+  }>();
+
+  for (const tick of ticks) {
+    const bucket = getTimeframeBucketStart(tick.timestamp, timeframe);
+    const current = buckets.get(bucket);
+    if (!current) {
+      buckets.set(bucket, { first: tick, low: tick, high: tick, last: tick });
+      continue;
+    }
+    if (tick.mid < current.low.mid) current.low = tick;
+    if (tick.mid > current.high.mid) current.high = tick;
+    current.last = tick;
+  }
+
+  return [...buckets.entries()]
+    .sort(([left], [right]) => left - right)
+    .flatMap(([, bucket]) => {
+      const unique = new Map<string, QueuedLiveTick>();
+      for (const tick of [bucket.first, bucket.low, bucket.high, bucket.last]) {
+        unique.set(`${tick.timestamp}:${tick.mid}`, tick);
+      }
+      return [...unique.values()];
+    });
 }
 
 function formatPrice(price: number, symbol: string): string {
@@ -1708,15 +1749,7 @@ function WorkspaceChartPane({
     contractSymbol: currentCmeContract(pane.symbol),
     tickSize: futuresTickSize(pane.symbol),
   });
-  const pendingLiveTicksRef = useRef<Array<{
-    mid: number;
-    timestamp: number;
-    isTrade?: boolean;
-    size?: number;
-    trades?: number;
-    delta?: number;
-    cached?: boolean;
-  }>>([]);
+  const pendingLiveTicksRef = useRef<QueuedLiveTick[]>([]);
   const liveOutlierCandidateRef = useRef<LiveOutlierCandidate | null>(null);
   const liveFrameRef = useRef<number | null>(null);
   const gammaInstrument = displayCmeSymbol(pane.symbol);
@@ -1991,7 +2024,7 @@ function WorkspaceChartPane({
     const clearPendingFrame = () => {
       pendingLiveTicksRef.current = [];
       if (liveFrameRef.current !== null) {
-        window.cancelAnimationFrame(liveFrameRef.current);
+        window.clearTimeout(liveFrameRef.current);
         liveFrameRef.current = null;
       }
     };
@@ -2039,11 +2072,24 @@ function WorkspaceChartPane({
         delta: price.delta,
         cached: price.cached,
       });
+      if (usingDatabentoPaneFeed && isEventBasedChartInterval(pane.timeframe)) {
+        if (pendingLiveTicksRef.current.length > 10_000) {
+          pendingLiveTicksRef.current.splice(0, pendingLiveTicksRef.current.length - 10_000);
+        }
+      } else if (pendingLiveTicksRef.current.length > 512) {
+        pendingLiveTicksRef.current = compactTimeBasedTicks(
+          pendingLiveTicksRef.current,
+          pane.timeframe,
+        );
+      }
       if (liveFrameRef.current !== null) return;
 
-      liveFrameRef.current = window.requestAnimationFrame(() => {
-        const ticks = pendingLiveTicksRef.current.splice(0);
+      liveFrameRef.current = window.setTimeout(() => {
+        const queuedTicks = pendingLiveTicksRef.current.splice(0);
         liveFrameRef.current = null;
+        const ticks = usingDatabentoPaneFeed && isEventBasedChartInterval(pane.timeframe)
+          ? queuedTicks
+          : compactTimeBasedTicks(queuedTicks, pane.timeframe);
         if (!ticks.length) return;
         setLastMarketUpdateAt(
           ticks.some((tick) => !tick.cached)
@@ -2076,7 +2122,7 @@ function WorkspaceChartPane({
             );
           }, previous);
         });
-      });
+      }, 50);
     };
 
     if (usingDatabentoPaneFeed) {
@@ -2980,25 +3026,15 @@ export default function KwantifyWorkspace({
   const kwantBotAttachmentInputRef = useRef<HTMLInputElement>(null);
   const kwantBotComposerRef = useRef<HTMLTextAreaElement>(null);
   const pendingWatchlistPricesRef = useRef<Map<string, LiveFeedPrice>>(new Map());
-  const pendingSelectedTicksRef = useRef<LiveFeedPrice[]>([]);
   const pendingLiveQuoteCacheRef = useRef<Map<string, LiveFeedPrice & { openPrice?: number }>>(new Map());
   const watchlistLiveFrameRef = useRef<number | null>(null);
   const watchlistFlashTimerRef = useRef<number | null>(null);
   const liveQuoteCacheTimerRef = useRef<number | null>(null);
   const watchlistRef = useRef(watchlist);
-  const selectedInstrumentRef = useRef(selectedInstrument);
-  const selectedTimeframeRef = useRef(selectedTimeframe);
-  const chartTradesLengthRef = useRef(chartTrades.length);
 
   useEffect(() => {
     watchlistRef.current = watchlist;
   }, [watchlist]);
-
-  useEffect(() => {
-    selectedInstrumentRef.current = selectedInstrument;
-    selectedTimeframeRef.current = selectedTimeframe;
-    chartTradesLengthRef.current = chartTrades.length;
-  }, [chartTrades.length, selectedInstrument, selectedTimeframe]);
 
   const linkedCTraderBrokerNames = useMemo(
     () => Array.from(new Set(linkedCTraderAccounts.map(resolveCTraderBrokerName))),
@@ -3092,14 +3128,6 @@ export default function KwantifyWorkspace({
   } : null;
   const activeBrokerFeedError = feedErrorByBroker[activeChartBrokerLabel] ?? null;
 
-  useEffect(() => {
-    if (chartTrades.length > 0) return;
-    if (usingDatabentoFeed && isEventBasedChartInterval(selectedTimeframe)) return;
-    const selectedMid = selectedWatchlistItem?.mid;
-    if (!selectedMid || selectedMid <= 0) return;
-
-    setChartCandles((prev) => mergeLiveMidIntoCandles(prev, selectedMid, selectedInstrument, selectedTimeframe));
-  }, [chartTrades.length, selectedInstrument, selectedTimeframe, selectedWatchlistItem?.mid, usingDatabentoFeed]);
   const activeWorkspacePane = useMemo(
     () => workspacePanes.find((pane) => pane.id === activePaneId) ?? workspacePanes[0] ?? DEFAULT_WORKSPACE_PANES[0],
     [activePaneId, workspacePanes],
@@ -4273,9 +4301,13 @@ export default function KwantifyWorkspace({
     );
     let lastMessageAt = Date.now();
     let reconnecting = false;
+    let streamMarkedHealthy = false;
+    let lastHealthStateAt = 0;
     let reconnectTimer: number | null = null;
     const markStreamAlive = () => {
       lastMessageAt = Date.now();
+      if (streamMarkedHealthy) return;
+      streamMarkedHealthy = true;
       setStreamHealthyByBroker((current) => current[activeChartBrokerLabel]
         ? current
         : { ...current, [activeChartBrokerLabel]: true });
@@ -4307,6 +4339,7 @@ export default function KwantifyWorkspace({
       try {
         const payload = JSON.parse((event as MessageEvent<string>).data) as { error?: string };
         if (payload.error) {
+          streamMarkedHealthy = false;
           setFeedErrorByBroker((current) => ({ ...current, [activeChartBrokerLabel]: payload.error as string }));
         }
       } catch {
@@ -4346,89 +4379,56 @@ export default function KwantifyWorkspace({
           }
         }
         pendingWatchlistPricesRef.current.set(displayName, price);
-        if (displayName === selectedInstrumentRef.current && chartTradesLengthRef.current === 0) {
-          pendingSelectedTicksRef.current.push(price);
-        }
         if (watchlistLiveFrameRef.current !== null) return;
 
-        watchlistLiveFrameRef.current = window.requestAnimationFrame(() => {
+        watchlistLiveFrameRef.current = window.setTimeout(() => {
           const updates = new Map(pendingWatchlistPricesRef.current);
-          const selectedTicks = pendingSelectedTicksRef.current.splice(0);
           pendingWatchlistPricesRef.current.clear();
           watchlistLiveFrameRef.current = null;
 
-          setFeedErrorByBroker((current) => {
-            if (!current[activeChartBrokerLabel]) return current;
-            const next = { ...current };
-            delete next[activeChartBrokerLabel];
-            return next;
+          startTransition(() => {
+            const now = Date.now();
+            if (now - lastHealthStateAt >= 1_000) {
+              lastHealthStateAt = now;
+              setLastStreamTickAtByBroker((current) => ({
+                ...current,
+                [activeChartBrokerLabel]: now,
+              }));
+            }
+            setWatchlist((current) => current.map((item) => {
+              if (item.broker !== activeChartBrokerLabel) return item;
+              const nextPrice = updates.get(item.symbol);
+              if (!nextPrice) return item;
+              const prevMid = item.lastPrice || nextPrice.mid;
+              const moveRatio = prevMid > 0 ? Math.abs(nextPrice.mid - prevMid) / prevMid : 0;
+              if (moveRatio > 0.2) return item;
+              const openPrice = item.openPrice || nextPrice.mid;
+              return {
+                ...item,
+                broker: nextPrice.broker || activeChartBrokerLabel,
+                contractSymbol: nextPrice.contractSymbol || item.contractSymbol,
+                lastPrice: nextPrice.mid,
+                openPrice,
+                bid: nextPrice.bid,
+                ask: nextPrice.ask,
+                mid: nextPrice.mid,
+                change: nextPrice.mid - openPrice,
+                changePercent: openPrice ? ((nextPrice.mid - openPrice) / openPrice) * 100 : 0,
+                flash: nextPrice.mid > prevMid ? "up" : nextPrice.mid < prevMid ? "down" : null,
+              };
+            }));
           });
-          setStreamHealthyByBroker((current) => current[activeChartBrokerLabel]
-            ? current
-            : { ...current, [activeChartBrokerLabel]: true });
-          setLastStreamTickAtByBroker((current) => ({ ...current, [activeChartBrokerLabel]: Date.now() }));
-
-          setWatchlist((current) => current.map((item) => {
-            if (item.broker !== activeChartBrokerLabel) return item;
-            const nextPrice = updates.get(item.symbol);
-            if (!nextPrice) return item;
-            const prevMid = item.lastPrice || nextPrice.mid;
-            const moveRatio = prevMid > 0 ? Math.abs(nextPrice.mid - prevMid) / prevMid : 0;
-            if (moveRatio > 0.2) return item;
-            const openPrice = item.openPrice || nextPrice.mid;
-            return {
-              ...item,
-              broker: nextPrice.broker || activeChartBrokerLabel,
-              contractSymbol: nextPrice.contractSymbol || item.contractSymbol,
-              lastPrice: nextPrice.mid,
-              openPrice,
-              bid: nextPrice.bid,
-              ask: nextPrice.ask,
-              mid: nextPrice.mid,
-              change: nextPrice.mid - openPrice,
-              changePercent: openPrice ? ((nextPrice.mid - openPrice) / openPrice) * 100 : 0,
-              flash: nextPrice.mid > prevMid ? "up" : nextPrice.mid < prevMid ? "down" : null,
-            };
-          }));
 
           if (watchlistFlashTimerRef.current === null) {
             watchlistFlashTimerRef.current = window.setTimeout(() => {
               watchlistFlashTimerRef.current = null;
-              setWatchlist((current) => current.map((item) => item.flash ? { ...item, flash: null } : item));
+              startTransition(() => {
+                setWatchlist((current) => current.map((item) => item.flash ? { ...item, flash: null } : item));
+              });
             }, 300);
           }
 
-          if (selectedTicks.length) {
-            const selectedTimeframe = selectedTimeframeRef.current;
-            const selectedInstrument = selectedInstrumentRef.current;
-            setChartCandles((previous) => {
-              if (usingDatabentoFeed && isEventBasedChartInterval(selectedTimeframe)) {
-                const trades = selectedTicks
-                  .filter((tick) => tick.isTrade)
-                  .map((tick) => ({
-                    timestamp: marketTimestamp(tick.timestamp),
-                    price: tick.mid,
-                    size: Number(tick.size ?? 0),
-                    trades: Number(tick.trades ?? 1),
-                    delta: Number(tick.delta ?? 0),
-                  }));
-                return trades.length
-                  ? applyMarketTradesToEventBars(previous, trades, selectedTimeframe, selectedInstrument)
-                  : previous;
-              }
-              return selectedTicks.reduce(
-                (candles, tick) => mergeLiveMidIntoCandles(
-                  candles,
-                  tick.mid,
-                  selectedInstrument,
-                  selectedTimeframe,
-                  marketTimestamp(tick.timestamp),
-                ),
-                previous,
-              );
-            });
-          }
-        });
+        }, 250);
       } catch {}
     };
 
@@ -4445,7 +4445,6 @@ export default function KwantifyWorkspace({
       window.clearInterval(healthTimer);
       if (reconnectTimer !== null) window.clearTimeout(reconnectTimer);
       pendingWatchlistPricesRef.current.clear();
-      pendingSelectedTicksRef.current = [];
       if (liveQuoteCacheTimerRef.current !== null) {
         window.clearTimeout(liveQuoteCacheTimerRef.current);
         liveQuoteCacheTimerRef.current = null;
@@ -4455,7 +4454,7 @@ export default function KwantifyWorkspace({
         pendingLiveQuoteCacheRef.current.clear();
       }
       if (watchlistLiveFrameRef.current !== null) {
-        window.cancelAnimationFrame(watchlistLiveFrameRef.current);
+        window.clearTimeout(watchlistLiveFrameRef.current);
         watchlistLiveFrameRef.current = null;
       }
       if (watchlistFlashTimerRef.current !== null) {

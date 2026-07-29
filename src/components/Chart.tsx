@@ -883,6 +883,7 @@ export default function Chart({
   const viewportFrameRef = useRef<number | null>(null);
   const toolbarDragStateRef = useRef<{ offsetX: number; offsetY: number; startClientX: number; startClientY: number; hasMoved: boolean } | null>(null);
   const toolbarToggleSuppressedRef = useRef(false);
+  const latestCandleRef = useRef<Candle | null>(candles.at(-1) ?? null);
 
   useEffect(() => {
     const handleThemeChange = () => setThemeVersion((version) => version + 1);
@@ -1826,9 +1827,13 @@ export default function Chart({
   }
 
   useEffect(() => {
-    if (!candleSeriesRef.current || !chartRef.current || candles.length === 0) return;
-
+    if (candles.length === 0) {
+      latestCandleRef.current = null;
+      return;
+    }
     const lastSourceCandle = candles[candles.length - 1];
+    latestCandleRef.current = lastSourceCandle;
+    if (!candleSeriesRef.current || !chartRef.current) return;
     const lastCandleKey = `${lastSourceCandle.timestamp}-${lastSourceCandle.open}-${lastSourceCandle.high}-${lastSourceCandle.low}-${lastSourceCandle.close}`;
     if (lastCandleKey === prevDataRef.current) return;
     prevDataRef.current = lastCandleKey;
@@ -1874,14 +1879,15 @@ export default function Chart({
     }
   }, [candles]);
 
+  const hasCandles = candles.length > 0;
   useEffect(() => {
-    if (!candleIntervalMs || candleIntervalMs <= 0 || candles.length === 0) {
+    if (!candleIntervalMs || candleIntervalMs <= 0 || !hasCandles) {
       setCandleCountdown(null);
       return;
     }
 
     const updateCountdown = () => {
-      const lastCandle = candles[candles.length - 1];
+      const lastCandle = latestCandleRef.current;
       if (!lastCandle || !Number.isFinite(lastCandle.timestamp)) {
         setCandleCountdown(null);
         return;
@@ -1904,7 +1910,7 @@ export default function Chart({
     updateCountdown();
     const timer = window.setInterval(updateCountdown, 1_000);
     return () => window.clearInterval(timer);
-  }, [candles, candleIntervalMs, marketIsActive, overlaySize.height, viewportVersion]);
+  }, [candleIntervalMs, hasCandles, marketIsActive, overlaySize.height, viewportVersion]);
 
   useEffect(() => {
     tradesRef.current = trades || [];
