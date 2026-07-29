@@ -66,6 +66,7 @@ import {
   Trophy,
   Upload,
   User,
+  UsersRound,
   Wallet,
   X,
   Zap,
@@ -8844,7 +8845,7 @@ export default function KwantifyWorkspace({
           { id: "optionstape" as const, title: "Options Tape", icon: FileText },
           { id: "alerts" as const, title: "Alerts", icon: Bell },
           { id: "alertslog" as const, title: "Alerts Log", icon: BellRing },
-          { id: "friends" as const, title: "Friends", icon: User },
+          { id: "friends" as const, title: "Friends", icon: UsersRound },
         ].map((item) => {
           const Icon = item.icon;
           const active = rightPanel === item.id;
