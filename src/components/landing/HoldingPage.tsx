@@ -71,7 +71,7 @@ export default function HoldingPage() {
 
   return (
     <main className="fixed inset-0 isolate overflow-hidden bg-black" aria-label="Kwant Desk private access">
-      <div className="absolute inset-x-0 top-[8vh] bottom-[-8vh]">
+      <div className="absolute inset-x-0 top-[18vh] bottom-[-18vh]">
         <ParticleTerrain />
       </div>
       <div className="pointer-events-none absolute inset-0 z-[2] bg-[radial-gradient(circle_at_50%_42%,transparent_0%,rgba(0,0,0,.08)_50%,rgba(0,0,0,.72)_100%)]" />
