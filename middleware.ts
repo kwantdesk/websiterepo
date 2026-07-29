@@ -7,11 +7,7 @@ import {
 } from "@/lib/siteAccess";
 
 function allowed(email?: string | null) {
-  const values = (process.env.ALLOWED_EMAILS ?? "")
-    .split(",")
-    .map((value) => value.trim().toLowerCase())
-    .filter(Boolean);
-  return Boolean(email && values.includes(email.toLowerCase()));
+  return Boolean(email?.trim());
 }
 
 export async function middleware(request: NextRequest) {
