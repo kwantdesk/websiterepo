@@ -368,7 +368,7 @@ export async function POST(request: NextRequest) {
   const targetUserId = cleanIdentifier(body.targetUserId, 80);
   const now = new Date().toISOString();
 
-  if (action === "presence" || action === "identity" || action === "heartbeat") {
+  if (action === "presence" || action === "identity" || action === "status" || action === "heartbeat") {
     const changes: Record<string, unknown> = { lastSeenAt: now };
     if (action === "presence" || action === "identity") {
       const handle = normalizeHandle(body.handle);
@@ -394,22 +394,26 @@ export async function POST(request: NextRequest) {
           error: `@${handle} is already in use. Choose another handle.`,
         }, { status: 409 });
       }
-      if (action === "presence") {
-        changes.presenceStatus = normalizePresenceStatus(body.presenceStatus);
-        changes.presenceMessage = cleanText(body.presenceMessage, 80);
-      }
       const displayName = cleanText(body.displayName, 60);
       if (displayName) changes.displayName = displayName;
       changes.handle = handle;
     }
+    if (action === "presence" || action === "status") {
+      changes.presenceStatus = normalizePresenceStatus(body.presenceStatus);
+      changes.presenceMessage = cleanText(body.presenceMessage, 80);
+    }
     const { error } = await upsertProfile(supabase, actor, changes);
-    if (error?.code === "23505") {
+    if (error?.code === "23505" && (action === "presence" || action === "identity")) {
       return NextResponse.json({
         code: "HANDLE_TAKEN",
         error: `@${normalizeHandle(body.handle)} is already in use. Choose another handle.`,
       }, { status: 409 });
     }
-    if (error) return NextResponse.json({ error: "Your identity could not be saved." }, { status: 502 });
+    if (error) {
+      return NextResponse.json({
+        error: action === "status" ? "Your presence could not be saved." : "Your identity could not be saved.",
+      }, { status: 502 });
+    }
     if ((action === "presence" || action === "identity") && actor.mode === "supabase") {
       const displayName = cleanText(body.displayName, 60) || authorLabel(actor);
       const handle = normalizeHandle(body.handle);

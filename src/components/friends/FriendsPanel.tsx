@@ -210,7 +210,7 @@ export default function FriendsPanel({ onClose, onUnreadCountChange }: FriendsPa
 
   const selectPresence = async (presenceStatus: PresenceStatus) => {
     setShowPresence(false);
-    await runAction("presence", {
+    await runAction("status", {
       presenceStatus,
       presenceMessage: presenceDraft || payload.viewer?.presenceMessage || "",
     });
@@ -231,7 +231,7 @@ export default function FriendsPanel({ onClose, onUnreadCountChange }: FriendsPa
   };
 
   const updatePresenceMessage = async () => {
-    const saved = await runAction("presence", {
+    const saved = await runAction("status", {
       presenceStatus: payload.viewer?.presenceStatus ?? "online",
       presenceMessage: presenceDraft,
     });

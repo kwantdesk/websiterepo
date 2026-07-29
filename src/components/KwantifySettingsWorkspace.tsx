@@ -509,6 +509,32 @@ export default function SettingsPage() {
     }
   }
 
+  async function savePresence(nextStatus: PresenceStatus) {
+    setPresenceSaving(true);
+    setPresenceNotice("");
+    try {
+      const response = await fetch("/api/friends", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "status",
+          presenceStatus: nextStatus,
+          presenceMessage,
+        }),
+      });
+      const result = await response.json() as FriendsPayload & { error?: string };
+      if (!response.ok) throw new Error(result.error || "Presence could not be saved.");
+      setPresenceStatus(result.viewer?.presenceStatus || nextStatus);
+      setPresenceMessage(result.viewer?.presenceMessage ?? presenceMessage);
+      setPresenceNotice(`${presenceOption(nextStatus).label} status saved.`);
+      window.setTimeout(() => setPresenceNotice(""), 2_600);
+    } catch (reason) {
+      setPresenceNotice(reason instanceof Error ? reason.message : "Presence could not be saved.");
+    } finally {
+      setPresenceSaving(false);
+    }
+  }
+
   const identityCanSave =
     !presenceSaving
     && profileName.trim().length >= 2
@@ -673,7 +699,7 @@ export default function SettingsPage() {
                           key={option.value}
                           disabled={presenceLoading || presenceSaving}
                           onClick={() => {
-                            void saveIdentity(option.value);
+                            void savePresence(option.value);
                           }}
                           className={`flex items-center gap-3 rounded-xl border px-3 py-3 text-left transition-colors ${
                             active
