@@ -73,6 +73,13 @@ export type SocialProfilePayload = {
     scores: SocialScope;
     cards: SocialScope;
   };
+  avatarUrl?: string;
+  presenceStatus?: "online" | "dnd" | "away" | "sleeping" | "offline";
+  presenceMessage?: string;
+  lastSeenAt?: string;
+  blockedUserIds?: string[];
+  dismissedFriendRequests?: Record<string, string>;
+  friendReadAt?: Record<string, string>;
 };
 
 export type SocialPrecordPayload = {

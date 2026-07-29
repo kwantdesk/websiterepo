@@ -5,6 +5,7 @@ import TimeZoneSelect from "@/components/ui/TimeZoneSelect";
 import ChartIndicatorsControl from "@/components/ChartIndicatorsControl";
 import KwantBotIntelligenceWorkspace from "@/components/kwantbot/KwantBotIntelligenceWorkspace";
 import KwantBotInterpreterPanel from "@/components/kwantbot/KwantBotInterpreterPanel";
+import FriendsPanel from "@/components/friends/FriendsPanel";
 import { useKwantBotInterpreter } from "@/hooks/useKwantBotInterpreter";
 
 import { startTransition, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent as ReactDragEvent } from "react";
@@ -2987,7 +2988,7 @@ export default function KwantifyWorkspace({
   const [streamReconnectNonce, setStreamReconnectNonce] = useState(0);
   const [orderSide, setOrderSide] = useState<"buy" | "sell">("buy");
   const [orderType, setOrderType] = useState<"market" | "limit" | "stop">("market");
-  const [rightPanel, setRightPanel] = useState<"order" | "watchlist" | "kwantbot" | "alerts" | "alertslog" | null>(() => {
+  const [rightPanel, setRightPanel] = useState<"order" | "watchlist" | "kwantbot" | "alerts" | "alertslog" | "friends" | null>(() => {
     if (typeof window === "undefined") return "watchlist";
     const saved = window.localStorage.getItem("kwantdesk-right-panel-state");
     return saved === "order"
@@ -2995,12 +2996,13 @@ export default function KwantifyWorkspace({
       || saved === "kwantbot"
       || saved === "alerts"
       || saved === "alertslog"
+      || saved === "friends"
       ? saved
       : saved === ""
         ? null
         : "watchlist";
   });
-  const [lastOpenRightPanel, setLastOpenRightPanel] = useState<"order" | "watchlist" | "kwantbot" | "alerts" | "alertslog">(() => {
+  const [lastOpenRightPanel, setLastOpenRightPanel] = useState<"order" | "watchlist" | "kwantbot" | "alerts" | "alertslog" | "friends">(() => {
     if (typeof window === "undefined") return "watchlist";
     const saved = window.localStorage.getItem("kwantdesk-right-panel-state");
     return saved === "order"
@@ -3008,6 +3010,7 @@ export default function KwantifyWorkspace({
       || saved === "kwantbot"
       || saved === "alerts"
       || saved === "alertslog"
+      || saved === "friends"
       ? saved
       : "watchlist";
   });
@@ -3041,6 +3044,7 @@ export default function KwantifyWorkspace({
     panelOpen: rightPanel === "kwantbot",
   });
   const [alertLogCount, setAlertLogCount] = useState(5);
+  const [friendsUnreadCount, setFriendsUnreadCount] = useState(0);
   const [showBrokerModal, setShowBrokerModal] = useState(false);
   const [brokerSearch, setBrokerSearch] = useState("");
   const [brokerFavourites, setBrokerFavourites] = useState<string[]>([]);
@@ -6399,7 +6403,7 @@ export default function KwantifyWorkspace({
     document.addEventListener("mouseup", handleMouseUp);
   };
 
-  const toggleRightPanel = (panel: "order" | "watchlist" | "kwantbot" | "alerts" | "alertslog") => {
+  const toggleRightPanel = (panel: "order" | "watchlist" | "kwantbot" | "alerts" | "alertslog" | "friends") => {
     setRightPanel((current) => current === panel ? null : panel);
   };
 
@@ -8044,6 +8048,12 @@ export default function KwantifyWorkspace({
       {rightPanel && (
         <div style={{ width: rightPanelWidth }} className="relative flex shrink-0 flex-col border-l border-border bg-panel">
           <div onMouseDown={startRightPanelResize} className="absolute bottom-0 left-0 top-0 z-10 w-1 cursor-col-resize bg-transparent transition-colors hover:w-1.5 hover:bg-primary/30" />
+          {rightPanel === "friends" && (
+            <FriendsPanel
+              onClose={() => setRightPanel(null)}
+              onUnreadCountChange={setFriendsUnreadCount}
+            />
+          )}
           {rightPanel === "order" && (
             <div className="flex-1 overflow-y-auto p-4">
               <div className="mb-4 flex items-center justify-between">
@@ -8520,6 +8530,8 @@ export default function KwantifyWorkspace({
                 ? "Alerts Log"
                 : lastOpenRightPanel === "kwantbot"
                   ? "Kwant Bot"
+                  : lastOpenRightPanel === "friends"
+                    ? "Friends"
                   : lastOpenRightPanel.charAt(0).toUpperCase() + lastOpenRightPanel.slice(1)
             }`}
             onClick={reopenRightPanel}
@@ -8533,6 +8545,7 @@ export default function KwantifyWorkspace({
           { id: "kwantbot" as const, title: "Kwant Bot", icon: Bot },
           { id: "alerts" as const, title: "Alerts", icon: Bell },
           { id: "alertslog" as const, title: "Alerts Log", icon: BellRing },
+          { id: "friends" as const, title: "Friends", icon: User },
         ].map((item) => {
           const Icon = item.icon;
           const active = rightPanel === item.id;
@@ -8541,6 +8554,7 @@ export default function KwantifyWorkspace({
               <Icon className="h-[18px] w-[18px]" />
               {item.id === "kwantbot" && kwantBotInterpreter.unreadTotal > 0 && <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-semibold text-background">{Math.min(99, kwantBotInterpreter.unreadTotal)}</span>}
               {item.id === "alertslog" && alertLogCount > 0 && <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-danger text-[9px] font-semibold text-white">{alertLogCount}</span>}
+              {item.id === "friends" && friendsUnreadCount > 0 && <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-semibold text-background">{Math.min(99, friendsUnreadCount)}</span>}
             </button>
           );
         })}

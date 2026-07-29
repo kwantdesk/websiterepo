@@ -6,6 +6,9 @@ import { createClient } from "@/lib/supabase/server";
 export const dynamic = "force-dynamic";
 
 export default async function SettingsPage() {
+  if (process.env.KWANTIFY_DEV_AUTH_BYPASS === "1") {
+    return <KwantifySettingsWorkspace />;
+  }
   const supabase = await createClient();
   const { data } = await supabase.auth.getUser();
 

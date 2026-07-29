@@ -34,8 +34,15 @@ import { createClient } from "@/lib/supabase";
 import { usagePlans } from "@/lib/usagePlans";
 import { hydrateUserPreferences, preferenceSnapshotFingerprint } from "@/lib/userPreferences";
 import { useAccountPreferenceSync } from "@/hooks/useAccountPreferenceSync";
+import {
+  PRESENCE_OPTIONS,
+  presenceOption,
+  type FriendsPayload,
+  type PresenceStatus,
+} from "@/lib/friends";
 
 type SettingsTab =
+  | "Identity"
   | "Public profile"
   | "Privacy preferences"
   | "Account settings"
@@ -49,7 +56,7 @@ type SettingsTab =
   | "Email subscriptions";
 
 const navSections: { title: string; items: SettingsTab[] }[] = [
-  { title: "Profile and Privacy", items: ["Public profile", "Privacy preferences"] },
+  { title: "Profile and Privacy", items: ["Identity", "Public profile", "Privacy preferences"] },
   { title: "Account and Security", items: ["Account settings", "Active sessions"] },
   { title: "Appearance", items: ["Theme & Colors", "Chart defaults"] },
   { title: "Billing", items: ["Subscriptions", "Payment methods", "Billing history"] },
@@ -235,10 +242,15 @@ function ColorPicker({ label, value, onChange }: { label: string; value: string;
 
 export default function SettingsPage() {
   const supabase = useMemo(() => createClient(), []);
-  const [activeTab, setActiveTab] = useState<SettingsTab>("Public profile");
+  const [activeTab, setActiveTab] = useState<SettingsTab>("Identity");
   const [profileName, setProfileName] = useState("");
   const [profileEmail, setProfileEmail] = useState("");
   const [profileUsername, setProfileUsername] = useState("");
+  const [presenceStatus, setPresenceStatus] = useState<PresenceStatus>("online");
+  const [presenceMessage, setPresenceMessage] = useState("");
+  const [presenceLoading, setPresenceLoading] = useState(true);
+  const [presenceSaving, setPresenceSaving] = useState(false);
+  const [presenceNotice, setPresenceNotice] = useState("");
   const [preferenceUserId, setPreferenceUserId] = useState("");
   const [preferencesReady, setPreferencesReady] = useState(false);
   const [toggles, setToggles] = useState<Record<string, boolean>>(() => {
@@ -280,7 +292,10 @@ export default function SettingsPage() {
   }, []);
 
   useEffect(() => {
-    if (!supabase) return;
+    if (!supabase) {
+      setPresenceLoading(false);
+      return;
+    }
 
     const loadProfile = async () => {
       const user = (await supabase.auth.getUser()).data.user;
@@ -316,6 +331,26 @@ export default function SettingsPage() {
       );
       setProfileEmail(user.email ?? "");
       setProfileUsername((user.user_metadata?.username as string | undefined) ?? "");
+      try {
+        const friendsResponse = await fetch("/api/friends", { cache: "no-store" });
+        if (friendsResponse.ok) {
+          const friendsPayload = await friendsResponse.json() as FriendsPayload;
+          if (friendsPayload.viewer) {
+            setPresenceStatus(friendsPayload.viewer.presenceStatus);
+            setPresenceMessage(friendsPayload.viewer.presenceMessage);
+            if (!profileName && friendsPayload.viewer.displayName) {
+              setProfileName(friendsPayload.viewer.displayName);
+            }
+            if (!profileUsername && friendsPayload.viewer.handle) {
+              setProfileUsername(friendsPayload.viewer.handle);
+            }
+          }
+        }
+      } catch {
+        // Identity remains editable if the social profile is temporarily unavailable.
+      } finally {
+        setPresenceLoading(false);
+      }
       const hasStoredChartSettings = hydrated
         ? Object.prototype.hasOwnProperty.call(
             hydrated.snapshot.values,
@@ -357,6 +392,35 @@ export default function SettingsPage() {
 
   function toggle(key: string) {
     setToggles((current) => ({ ...current, [key]: !current[key] }));
+  }
+
+  async function saveIdentity(nextStatus = presenceStatus) {
+    setPresenceSaving(true);
+    setPresenceNotice("");
+    try {
+      const fallbackName = profileEmail.includes("@") ? profileEmail.split("@")[0] : "Kwant Trader";
+      const fallbackHandle = fallbackName.toLowerCase().replace(/[^a-z0-9]+/g, "").slice(0, 24);
+      const response = await fetch("/api/friends", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "presence",
+          presenceStatus: nextStatus,
+          presenceMessage,
+          displayName: profileName || fallbackName,
+          handle: profileUsername || fallbackHandle,
+        }),
+      });
+      const result = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(result.error || "Identity could not be saved.");
+      setPresenceStatus(nextStatus);
+      setPresenceNotice("Identity saved across your Kwant Desk account.");
+      window.setTimeout(() => setPresenceNotice(""), 2_600);
+    } catch (reason) {
+      setPresenceNotice(reason instanceof Error ? reason.message : "Identity could not be saved.");
+    } finally {
+      setPresenceSaving(false);
+    }
   }
 
   function updateThemeColor(key: keyof ThemeColors, color: string) {
@@ -443,7 +507,108 @@ export default function SettingsPage() {
       <section className="min-w-0 flex-1 overflow-y-auto p-8">
         <div className="mx-auto max-w-4xl">
           <h1 className="text-2xl font-semibold">{activeTab}</h1>
-          <p className="mt-2 text-[13px] text-muted">Manage your Kwantify account, appearance, billing, and notifications.</p>
+          <p className="mt-2 text-[13px] text-muted">Manage your Kwant Desk identity, appearance, billing, and notifications.</p>
+
+          {activeTab === "Identity" && (
+            <div className="mt-8 grid gap-6 lg:grid-cols-[1.05fr_.95fr]">
+              <section className="rounded-2xl border border-border bg-panel p-6">
+                <div className="flex items-start gap-4">
+                  <div className="relative flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl border border-border bg-surface text-xl font-semibold">
+                    {(profileName || profileUsername || profileEmail).charAt(0).toUpperCase() || <User className="h-6 w-6" />}
+                    <span className={`absolute -bottom-1 -right-1 h-4 w-4 rounded-full border-[3px] border-panel ${presenceOption(presenceStatus).dotClassName}`} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[17px] font-semibold">{profileName || profileUsername || "Kwant Trader"}</div>
+                    <div className="mt-0.5 text-[12px] text-muted">@{profileUsername || profileEmail.split("@")[0] || "trader"}</div>
+                    <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-border bg-surface px-2.5 py-1 text-[10px]">
+                      <span className={`h-2 w-2 rounded-full ${presenceOption(presenceStatus).dotClassName}`} />
+                      {presenceOption(presenceStatus).label}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-6 border-t border-border pt-5">
+                  <div className={sectionTitle}>Presence</div>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {PRESENCE_OPTIONS.map((option) => {
+                      const active = presenceStatus === option.value;
+                      return (
+                        <button
+                          key={option.value}
+                          disabled={presenceLoading || presenceSaving}
+                          onClick={() => {
+                            setPresenceStatus(option.value);
+                            void saveIdentity(option.value);
+                          }}
+                          className={`flex items-center gap-3 rounded-xl border px-3 py-3 text-left transition-colors ${
+                            active
+                              ? "border-primary/40 bg-primary/5"
+                              : "border-border bg-surface/40 hover:bg-surface"
+                          }`}
+                        >
+                          <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${option.dotClassName}`} />
+                          <span className="min-w-0 flex-1">
+                            <span className="block text-[12px] font-medium">{option.label}</span>
+                            <span className="block truncate text-[9px] text-muted">{option.helper}</span>
+                          </span>
+                          {active && <span className="h-1.5 w-1.5 rounded-full bg-primary shadow-[0_0_8px_var(--primary)]" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="mt-5">
+                  <label className="mb-2 block text-[11px] font-medium text-muted">Status note</label>
+                  <div className="flex gap-2">
+                    <input
+                      value={presenceMessage}
+                      onChange={(event) => setPresenceMessage(event.target.value.slice(0, 80))}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") void saveIdentity();
+                      }}
+                      className={input}
+                      placeholder="e.g. Mapping the New York session"
+                    />
+                    <button
+                      onClick={() => void saveIdentity()}
+                      disabled={presenceSaving}
+                      className="flex min-w-24 items-center justify-center rounded-xl bg-primary px-4 py-2 text-[12px] font-semibold text-background disabled:opacity-50"
+                    >
+                      {presenceSaving ? "Saving..." : "Save"}
+                    </button>
+                  </div>
+                  <div className="mt-2 flex items-center justify-between text-[9px] text-muted">
+                    <span>{presenceNotice || "Friends see this beneath your name."}</span>
+                    <span>{presenceMessage.length}/80</span>
+                  </div>
+                </div>
+              </section>
+
+              <section className="rounded-2xl border border-border bg-panel p-6">
+                <div className={sectionTitle}>How your identity travels</div>
+                <div className="space-y-3">
+                  {[
+                    ["Right rail", "Friends see whether you are online, focused, away or sleeping."],
+                    ["Private chat", "Messages and unread state stay with your account across devices."],
+                    ["Desks", "Shared Desk memberships appear as compact context in conversations."],
+                    ["Invisible mode", "You can continue using Kwant Desk while appearing offline."],
+                  ].map(([title, helper]) => (
+                    <div key={title} className="rounded-xl border border-border bg-surface/40 p-3.5">
+                      <div className="text-[12px] font-medium">{title}</div>
+                      <div className="mt-1 text-[10px] leading-5 text-muted">{helper}</div>
+                    </div>
+                  ))}
+                </div>
+                <button
+                  onClick={() => setActiveTab("Privacy preferences")}
+                  className="mt-4 w-full rounded-xl border border-border bg-surface px-4 py-2.5 text-[11px] text-muted hover:text-foreground"
+                >
+                  Open privacy controls
+                </button>
+              </section>
+            </div>
+          )}
 
           {activeTab === "Public profile" && (
             <div className="mt-8 space-y-8">
