@@ -239,7 +239,7 @@ export default function KwantBotInterpreterPanel({
               </div>
               <div className="mt-0.5 flex items-center gap-1 text-[9px] text-muted">
                 <span className={`h-1.5 w-1.5 rounded-full ${feedState === "live" ? "animate-pulse bg-primary shadow-[0_0_7px_var(--primary)]" : "bg-amber-400"}`} />
-                CME {feedState === "live" ? "connected" : feedState}
+                Kwant Bot {feedState === "live" ? "connected" : feedState}
               </div>
             </div>
           </div>
