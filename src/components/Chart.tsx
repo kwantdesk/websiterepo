@@ -161,10 +161,15 @@ class GameplanUnderlayRenderer implements ISeriesPrimitivePaneRenderer {
         context.lineTo(mediaSize.width, y + 0.5);
         context.stroke();
 
+        // Keep Gameplan labels anchored to their real price coordinate. Levels
+        // outside the visible price range should remain off-screen instead of
+        // being clamped into a stack above the chart controls.
+        if (y < 11 || y > mediaSize.height - 11) continue;
+
         const label = level.label;
         context.font = "700 9px 'JetBrains Mono', monospace";
         const labelWidth = Math.min(240, Math.max(82, context.measureText(label).width + 18));
-        const labelTop = Math.max(2, Math.min(mediaSize.height - 22, y - 11));
+        const labelTop = y - 11;
         context.setLineDash([]);
         context.fillStyle = this.primitive.backgroundColor();
         context.strokeStyle = level.color;
