@@ -74,7 +74,7 @@ export default function HoldingPage() {
       <ParticleTerrain />
       <div className="pointer-events-none absolute inset-0 z-[2] bg-[radial-gradient(circle_at_50%_42%,transparent_0%,rgba(0,0,0,.08)_50%,rgba(0,0,0,.72)_100%)]" />
       <div className="absolute inset-0 z-[3] flex items-center justify-center px-6 pb-[4vh]">
-        <div className="flex -translate-y-[2vh] flex-col items-center">
+        <div className="kwantdesk-holding-content flex flex-col items-center">
           <div className="kwantdesk-holding-logo pointer-events-none relative w-[78vw] sm:w-[54vw] lg:w-[33vw]">
             <Image
               src="/images/kwantdesk-wordmark.webp"
@@ -193,9 +193,30 @@ export default function HoldingPage() {
         </div>
       </form>
       <style jsx global>{`
+        .kwantdesk-holding-content {
+          --kwantdesk-logo-width: 78vw;
+          transform: translate3d(
+            0,
+            calc(var(--kwantdesk-logo-width) * -0.3192),
+            0
+          );
+        }
+
         .kwantdesk-holding-logo {
           animation: kwantdesk-logo-float 10s ease-in-out infinite;
           will-change: transform;
+        }
+
+        @media (min-width: 640px) {
+          .kwantdesk-holding-content {
+            --kwantdesk-logo-width: 54vw;
+          }
+        }
+
+        @media (min-width: 1024px) {
+          .kwantdesk-holding-content {
+            --kwantdesk-logo-width: 33vw;
+          }
         }
 
         @keyframes kwantdesk-logo-float {
