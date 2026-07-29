@@ -9,6 +9,8 @@ import {
   Download,
   MessageSquareText,
   NotebookTabs,
+  Pause,
+  Play,
   Radio,
   RefreshCw,
   Sparkles,
@@ -148,10 +150,20 @@ export default function KwantBotInterpreterPanel({
   const [now, setNow] = useState(Date.now());
   const [view, setView] = useState<"feed" | "journal">("feed");
   const [archiveExporting, setArchiveExporting] = useState(false);
+  const [feedPaused, setFeedPaused] = useState(false);
+  const [pausedMessages, setPausedMessages] = useState<Record<KwantBotMarketRoot, KwantBotInterpreterMessage[]> | null>(null);
   const feedScrollRef = useRef<HTMLDivElement | null>(null);
   const endRef = useRef<HTMLDivElement | null>(null);
-  const rootMessages = messages[selectedRoot];
+  const currentRootMessages = messages[selectedRoot];
+  const rootMessages = feedPaused
+    ? pausedMessages?.[selectedRoot] ?? []
+    : currentRootMessages;
   const latestMessageId = rootMessages.at(-1)?.id ?? "";
+  const queuedMessageCount = useMemo(() => {
+    if (!feedPaused || !pausedMessages) return 0;
+    const frozenIds = new Set(pausedMessages[selectedRoot].map((message) => message.id));
+    return currentRootMessages.filter((message) => !frozenIds.has(message.id)).length;
+  }, [currentRootMessages, feedPaused, pausedMessages, selectedRoot]);
   const context = contexts[selectedRoot];
   const price = livePrices[selectedRoot] ?? context?.currentPrice ?? null;
   const priceSamples = useMemo(
@@ -172,7 +184,7 @@ export default function KwantBotInterpreterPanel({
   }, []);
 
   useLayoutEffect(() => {
-    if (view !== "feed") return;
+    if (view !== "feed" || feedPaused) return;
 
     const scrollToLatest = () => {
       const container = feedScrollRef.current;
@@ -183,7 +195,21 @@ export default function KwantBotInterpreterPanel({
     scrollToLatest();
     const frame = window.requestAnimationFrame(scrollToLatest);
     return () => window.cancelAnimationFrame(frame);
-  }, [latestMessageId, selectedRoot, view]);
+  }, [feedPaused, latestMessageId, selectedRoot, view]);
+
+  const toggleFeedPause = () => {
+    if (feedPaused) {
+      setFeedPaused(false);
+      setPausedMessages(null);
+      return;
+    }
+    setPausedMessages({
+      NQ: [...messages.NQ],
+      ES: [...messages.ES],
+    });
+    setFeedPaused(true);
+    setView("feed");
+  };
 
   const downloadArchive = (blob: Blob, filename: string) => {
     const url = URL.createObjectURL(blob);
@@ -213,7 +239,7 @@ export default function KwantBotInterpreterPanel({
         livePrice: price,
         context,
         journal: journalEvents.slice().reverse(),
-        messages: rootMessages,
+        messages: currentRootMessages,
       };
       downloadArchive(
         new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }),
@@ -229,7 +255,7 @@ export default function KwantBotInterpreterPanel({
       <div className="shrink-0 border-b border-border bg-background/55">
         <div className="flex items-center justify-between gap-2 px-3 pb-2 pt-3">
           <div className="flex min-w-0 items-center gap-2">
-            <KwantBotAvatar speaking={feedState === "live"} />
+            <KwantBotAvatar speaking={feedState === "live" && !feedPaused} />
             <div className="min-w-0">
               <div className="flex items-center gap-1.5">
                 <h3 className="truncate text-[13px] font-semibold text-foreground">Kwant Bot</h3>
@@ -238,21 +264,36 @@ export default function KwantBotInterpreterPanel({
                 </span>
               </div>
               <div className="mt-0.5 flex items-center gap-1 text-[9px] text-muted">
-                <span className={`h-1.5 w-1.5 rounded-full ${feedState === "live" ? "animate-pulse bg-primary shadow-[0_0_7px_var(--primary)]" : "bg-amber-400"}`} />
-                Kwant Bot {feedState === "live" ? "connected" : feedState}
+                <span className={`h-1.5 w-1.5 rounded-full ${feedPaused ? "bg-amber-300" : feedState === "live" ? "animate-pulse bg-primary shadow-[0_0_7px_var(--primary)]" : "bg-amber-400"}`} />
+                Kwant Bot {feedPaused ? "feed paused" : feedState === "live" ? "connected" : feedState}
               </div>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={() => requestBrief()}
-            disabled={!context || price === null}
-            className="flex h-8 items-center gap-1.5 rounded-lg border border-primary/25 bg-primary/10 px-2 text-[9px] font-semibold uppercase tracking-[0.08em] text-primary transition-colors hover:bg-primary/15 disabled:cursor-not-allowed disabled:opacity-40"
-            title="Generate an immediate deterministic market read"
-          >
-            <RefreshCw className="h-3 w-3" />
-            Brief
-          </button>
+          <div className="flex shrink-0 items-center gap-1.5">
+            <button
+              type="button"
+              onClick={toggleFeedPause}
+              className={`flex h-8 items-center gap-1.5 rounded-lg border px-2 text-[9px] font-semibold uppercase tracking-[0.08em] transition-colors ${
+                feedPaused
+                  ? "border-amber-400/35 bg-amber-400/10 text-amber-300 hover:bg-amber-400/15"
+                  : "border-border bg-surface text-muted hover:border-primary/25 hover:text-primary"
+              }`}
+              title={feedPaused ? "Resume incoming KwantBot messages" : "Pause the visible feed while analysis continues in the background"}
+            >
+              {feedPaused ? <Play className="h-3 w-3" /> : <Pause className="h-3 w-3" />}
+              {feedPaused ? `Resume${queuedMessageCount ? ` ${queuedMessageCount}` : ""}` : "Pause"}
+            </button>
+            <button
+              type="button"
+              onClick={() => requestBrief()}
+              disabled={!context || price === null}
+              className="flex h-8 items-center gap-1.5 rounded-lg border border-primary/25 bg-primary/10 px-2 text-[9px] font-semibold uppercase tracking-[0.08em] text-primary transition-colors hover:bg-primary/15 disabled:cursor-not-allowed disabled:opacity-40"
+              title="Generate an immediate deterministic market read"
+            >
+              <RefreshCw className="h-3 w-3" />
+              Brief
+            </button>
+          </div>
         </div>
 
         <div className="grid grid-cols-2 gap-1.5 px-3 pb-2">
@@ -303,6 +344,24 @@ export default function KwantBotInterpreterPanel({
             {journalEvents.length ? <span className="rounded-full bg-surface px-1.5 py-0.5 text-[8px]">{journalEvents.length}</span> : null}
           </button>
         </div>
+
+        {feedPaused && view === "feed" ? (
+          <div className="flex items-center justify-between gap-2 border-t border-amber-400/20 bg-amber-400/[0.06] px-3 py-2">
+            <div className="flex min-w-0 items-center gap-2 text-[8px] font-semibold uppercase tracking-[0.1em] text-amber-300">
+              <Pause className="h-3 w-3 shrink-0" />
+              <span className="truncate">
+                Feed paused{queuedMessageCount ? ` · ${queuedMessageCount} update${queuedMessageCount === 1 ? "" : "s"} queued` : " · reading mode"}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={toggleFeedPause}
+              className="shrink-0 rounded-md border border-amber-400/30 bg-amber-400/10 px-2 py-1 text-[8px] font-semibold uppercase tracking-[0.08em] text-amber-200 hover:bg-amber-400/15"
+            >
+              Resume
+            </button>
+          </div>
+        ) : null}
 
         <div className="grid grid-cols-3 border-t border-border/70">
           <div className="border-r border-border/70 px-3 py-2">
@@ -366,7 +425,7 @@ export default function KwantBotInterpreterPanel({
                 </div>
               ) : rootMessages.map((item, index) => (
                 <div key={item.id} className="kwantbot-message-in flex items-end gap-2">
-                  <KwantBotAvatar speaking={index === rootMessages.length - 1} />
+                  <KwantBotAvatar speaking={!feedPaused && index === rootMessages.length - 1} />
                   <div className="min-w-0 max-w-[calc(100%-44px)]">
                     <div className="mb-1 flex items-center gap-2 px-1">
                       <span className="text-[10px] font-semibold text-foreground">Kwant Bot · {selectedRoot}</span>
@@ -408,7 +467,7 @@ export default function KwantBotInterpreterPanel({
               <button
                 type="button"
                 onClick={exportJournal}
-                disabled={archiveExporting || (!journalEvents.length && !rootMessages.length)}
+                disabled={archiveExporting || (!journalEvents.length && !currentRootMessages.length)}
                 className="flex h-7 shrink-0 items-center gap-1.5 rounded-lg border border-border bg-surface px-2 text-[8px] font-semibold uppercase tracking-[0.08em] text-muted transition-colors hover:border-primary/30 hover:text-primary disabled:opacity-35"
                 title={`Download the ${selectedRoot} cloud archive`}
               >
