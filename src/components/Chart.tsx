@@ -384,12 +384,25 @@ type DrawingPoint = {
   price: number;
 };
 
+type PositionVisualSettings = {
+  targetColor?: string;
+  stopColor?: string;
+  entryLineColor?: string;
+  textColor?: string;
+  fillOpacity?: number;
+  borderOpacity?: number;
+  lineWidth?: number;
+  lineStyle?: "solid" | "dashed" | "dotted";
+  showLabels?: boolean;
+};
+
 type ChartDrawing = {
   id: string;
   tool: DrawingToolId;
   points: DrawingPoint[];
   text?: string;
   color?: string;
+  positionStyle?: PositionVisualSettings;
 };
 
 type DrawingInteraction =
@@ -401,7 +414,7 @@ type DrawingInteraction =
     }
   | {
       drawingId: string;
-      mode: "anchor0" | "anchor1";
+      mode: "anchor0" | "anchor1" | "positionTargetLeft" | "positionTargetRight" | "positionStopLeft" | "positionStopRight";
       startPointer: DrawingPoint;
       originalPoints: DrawingPoint[];
     };
@@ -622,16 +635,27 @@ function LightbulbIconShim({ className }: { className?: string }) {
 }
 
 function getPriceFormat(instrument: string) {
+  const normalized = instrument.toUpperCase().replace(/[^A-Z0-9]/g, "");
   const fiveDecimal = ["EURUSD", "GBPUSD", "AUDUSD", "NZDUSD", "USDCAD", "USDCHF"];
   const threeDecimalForex = ["USDJPY"];
   const threeDecimal = ["XAUUSD", "OIL"];
   const oneDecimal = ["NAS100", "S&P500", "GER40", "UK100", "DOW30", "NIKKEI"];
 
-  if (fiveDecimal.includes(instrument)) return { type: "price" as const, precision: 5, minMove: 0.00001 };
-  if (threeDecimalForex.includes(instrument)) return { type: "price" as const, precision: 3, minMove: 0.001 };
-  if (threeDecimal.includes(instrument)) return { type: "price" as const, precision: 3, minMove: 0.001 };
-  if (oneDecimal.includes(instrument)) return { type: "price" as const, precision: 1, minMove: 0.1 };
+  if (/^(MNQ|NQ|MES|ES|M2K|RTY)/.test(normalized)) return { type: "price" as const, precision: 2, minMove: 0.25 };
+  if (/^(MYM|YM)/.test(normalized)) return { type: "price" as const, precision: 0, minMove: 1 };
+  if (/^(MGC|GC)/.test(normalized)) return { type: "price" as const, precision: 1, minMove: 0.1 };
+  if (/^(MCL|CL)/.test(normalized)) return { type: "price" as const, precision: 2, minMove: 0.01 };
+  if (fiveDecimal.includes(normalized)) return { type: "price" as const, precision: 5, minMove: 0.00001 };
+  if (threeDecimalForex.includes(normalized)) return { type: "price" as const, precision: 3, minMove: 0.001 };
+  if (threeDecimal.includes(normalized)) return { type: "price" as const, precision: 3, minMove: 0.001 };
+  if (oneDecimal.includes(normalized)) return { type: "price" as const, precision: 1, minMove: 0.1 };
   return { type: "price" as const, precision: 2, minMove: 0.01 };
+}
+
+function withAlpha(color: string, alpha: number) {
+  const match = color.match(/^#([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i);
+  if (!match) return color;
+  return `rgba(${parseInt(match[1], 16)}, ${parseInt(match[2], 16)}, ${parseInt(match[3], 16)}, ${alpha})`;
 }
 
 const DEFAULT_VISIBLE_CANDLE_COUNT = 140;
@@ -984,6 +1008,7 @@ export default function Chart({
   const [drawings, setDrawings] = useState<ChartDrawing[]>([]);
   const [draftDrawing, setDraftDrawing] = useState<ChartDrawing | null>(null);
   const [selectedDrawingId, setSelectedDrawingId] = useState<string | null>(null);
+  const [positionSettingsDrawingId, setPositionSettingsDrawingId] = useState<string | null>(null);
   const [drawingInteraction, setDrawingInteraction] = useState<DrawingInteraction | null>(null);
   const [hideDrawings, setHideDrawings] = useState(false);
   const [drawingsLocked, setDrawingsLocked] = useState(false);
@@ -1356,6 +1381,39 @@ export default function Chart({
     }
     return null;
   }, [selectedTool]);
+  const positionSettingsDrawing = drawings.find((drawing) =>
+    drawing.id === positionSettingsDrawingId
+    && (drawing.tool === "longPosition" || drawing.tool === "shortPosition")
+  ) ?? null;
+  const positionStyleDefaults: Required<PositionVisualSettings> = {
+    targetColor: settings.upColor,
+    stopColor: settings.downColor,
+    entryLineColor: "#A1A1AA",
+    textColor: "#050505",
+    fillOpacity: 0.14,
+    borderOpacity: 0.72,
+    lineWidth: 1.25,
+    lineStyle: "solid",
+    showLabels: true,
+  };
+  const activePositionStyle: Required<PositionVisualSettings> = {
+    targetColor: positionSettingsDrawing?.positionStyle?.targetColor ?? positionStyleDefaults.targetColor,
+    stopColor: positionSettingsDrawing?.positionStyle?.stopColor ?? positionStyleDefaults.stopColor,
+    entryLineColor: positionSettingsDrawing?.positionStyle?.entryLineColor ?? positionStyleDefaults.entryLineColor,
+    textColor: positionSettingsDrawing?.positionStyle?.textColor ?? positionStyleDefaults.textColor,
+    fillOpacity: positionSettingsDrawing?.positionStyle?.fillOpacity ?? positionStyleDefaults.fillOpacity,
+    borderOpacity: positionSettingsDrawing?.positionStyle?.borderOpacity ?? positionStyleDefaults.borderOpacity,
+    lineWidth: positionSettingsDrawing?.positionStyle?.lineWidth ?? positionStyleDefaults.lineWidth,
+    lineStyle: positionSettingsDrawing?.positionStyle?.lineStyle ?? positionStyleDefaults.lineStyle,
+    showLabels: positionSettingsDrawing?.positionStyle?.showLabels ?? positionStyleDefaults.showLabels,
+  };
+
+  function updatePositionVisualSettings(patch: Partial<PositionVisualSettings>) {
+    if (!positionSettingsDrawingId) return;
+    setDrawings((current) => current.map((drawing) => drawing.id === positionSettingsDrawingId
+      ? { ...drawing, positionStyle: { ...drawing.positionStyle, ...patch } }
+      : drawing));
+  }
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -1539,24 +1597,51 @@ export default function Chart({
     return chartRef.current?.timeScale().timeToCoordinate(time as Time) ?? null;
   }
 
+  function xToTime(x: number) {
+    const timeScale = chartRef.current?.timeScale();
+    if (!timeScale) return null;
+
+    const directTime = normalizeTimeValue(timeScale.coordinateToTime(x));
+    if (directTime != null) return directTime;
+
+    const lastCandle = candles[candles.length - 1];
+    const intervalSeconds = candleIntervalMs ? candleIntervalMs / 1000 : null;
+    if (!lastCandle || !intervalSeconds || intervalSeconds <= 0) return null;
+
+    const lastTime = Math.floor(lastCandle.timestamp / 1000);
+    const lastCoordinate = timeScale.timeToCoordinate(lastTime as Time);
+    const pointerLogical = timeScale.coordinateToLogical(x);
+    if (lastCoordinate == null || pointerLogical == null) return null;
+
+    const lastLogical = timeScale.coordinateToLogical(lastCoordinate);
+    if (lastLogical == null) return null;
+
+    return Math.round(lastTime + (Number(pointerLogical) - Number(lastLogical)) * intervalSeconds);
+  }
+
   function priceToY(price: number) {
     return candleSeriesRef.current?.priceToCoordinate(price) ?? null;
   }
 
-  function getPointerPoint(clientX: number, clientY: number) {
+  function snapPositionPrice(price: number) {
+    const snapped = Math.round(price / priceFormat.minMove) * priceFormat.minMove;
+    return Number(snapped.toFixed(priceFormat.precision));
+  }
+
+  function getPointerPoint(clientX: number, clientY: number, applyMagnet = true) {
     if (!chartContainerRef.current) return null;
     const rect = chartContainerRef.current.getBoundingClientRect();
     const localX = clientX - rect.left;
     const localY = clientY - rect.top;
 
-    const rawTime = normalizeTimeValue(chartRef.current?.timeScale().coordinateToTime(localX) ?? null);
+    const rawTime = xToTime(localX);
     const rawPrice = candleSeriesRef.current?.coordinateToPrice(localY) ?? null;
 
     if (rawTime == null || rawPrice == null) return null;
 
     let point: DrawingPoint = { time: rawTime, price: rawPrice };
 
-    if (magnetMode !== "off") {
+    if (applyMagnet && magnetMode !== "off") {
       const nearest = candles.reduce<Candle | null>((best, candle) => {
         if (!best) return candle;
         return Math.abs(candle.timestamp / 1000 - point.time) < Math.abs(best.timestamp / 1000 - point.time) ? candle : best;
@@ -1593,7 +1678,7 @@ export default function Chart({
   }
 
   function getLongShortGeometry(drawing: ChartDrawing) {
-    const [a, b] = drawing.points;
+    const [a, b, targetPoint] = drawing.points;
     if (!a || !b) return null;
     const ax = timeToX(a.time);
     const ay = priceToY(a.price);
@@ -1605,15 +1690,14 @@ export default function Chart({
     const entryPrice = a.price;
     const stopPrice = b.price;
     const risk = Math.max(Math.abs(entryPrice - stopPrice), priceFormat.minMove);
-    const targetPrice = isLong ? entryPrice + risk * 2 : entryPrice - risk * 2;
+    const targetPrice = targetPoint?.price ?? (isLong ? entryPrice + risk * 2 : entryPrice - risk * 2);
     const targetY = priceToY(targetPrice);
     const entryY = priceToY(entryPrice);
     const stopY = priceToY(stopPrice);
     if (targetY == null || entryY == null || stopY == null) return null;
 
-    const width = Math.max(80, Math.abs(bx - ax));
     const x = Math.min(ax, bx);
-    const boxWidth = width;
+    const boxWidth = Math.max(24, Math.abs(bx - ax));
     const profitTop = isLong ? targetY : entryY;
     const profitBottom = isLong ? entryY : targetY;
     const riskTop = isLong ? entryY : stopY;
@@ -1635,8 +1719,10 @@ export default function Chart({
       profitBottom,
       riskTop,
       riskBottom,
-      leftHandle: { x: ax, y: ay },
-      rightHandle: { x: bx, y: by },
+      targetLeftHandle: { x, y: targetY },
+      targetRightHandle: { x: x + boxWidth, y: targetY },
+      stopLeftHandle: { x, y: stopY },
+      stopRightHandle: { x: x + boxWidth, y: stopY },
       bounds: {
         left: x,
         right: x + boxWidth,
@@ -1653,14 +1739,10 @@ export default function Chart({
     const py = priceToY(point.price);
     if (px == null || py == null) return null;
 
-    const leftDistance = Math.hypot(px - geometry.leftHandle.x, py - geometry.leftHandle.y);
-    if (leftDistance <= 12) {
-      return { mode: "anchor0" as const };
-    }
-    const rightDistance = Math.hypot(px - geometry.rightHandle.x, py - geometry.rightHandle.y);
-    if (rightDistance <= 12) {
-      return { mode: "anchor1" as const };
-    }
+    if (Math.hypot(px - geometry.targetLeftHandle.x, py - geometry.targetLeftHandle.y) <= 14) return { mode: "positionTargetLeft" as const };
+    if (Math.hypot(px - geometry.targetRightHandle.x, py - geometry.targetRightHandle.y) <= 14) return { mode: "positionTargetRight" as const };
+    if (Math.hypot(px - geometry.stopLeftHandle.x, py - geometry.stopLeftHandle.y) <= 14) return { mode: "positionStopLeft" as const };
+    if (Math.hypot(px - geometry.stopRightHandle.x, py - geometry.stopRightHandle.y) <= 14) return { mode: "positionStopRight" as const };
 
     if (
       px >= geometry.bounds.left &&
@@ -1675,14 +1757,18 @@ export default function Chart({
   }
 
   function findInteractiveDrawing(point: DrawingPoint) {
-    const interactive = drawings
+    const interactive = [...drawings]
+      .reverse()
       .filter((drawing) => drawing.tool === "longPosition" || drawing.tool === "shortPosition")
       .map((drawing) => {
         const hit = getLongShortInteraction(drawing, point);
         if (!hit) return null;
         return { drawing, hit };
       })
-      .filter(Boolean) as { drawing: ChartDrawing; hit: { mode: "move" | "anchor0" | "anchor1" } }[];
+      .filter(Boolean) as {
+        drawing: ChartDrawing;
+        hit: { mode: "move" | "positionTargetLeft" | "positionTargetRight" | "positionStopLeft" | "positionStopRight" };
+      }[];
 
     return interactive[0] ?? null;
   }
@@ -1739,7 +1825,7 @@ export default function Chart({
   function handleDrawingPointerDown(event: React.PointerEvent<SVGSVGElement>) {
     if (event.button !== 0) return;
 
-    const point = getPointerPoint(event.clientX, event.clientY);
+    const point = getPointerPoint(event.clientX, event.clientY, selectedTool !== "cursor");
     if (!point) return;
 
     latestPointerRef.current = { x: event.clientX, y: event.clientY };
@@ -1750,14 +1836,19 @@ export default function Chart({
       const interactive = findInteractiveDrawing(point);
       if (interactive) {
         setSelectedDrawingId(interactive.drawing.id);
-        setDrawingInteraction({
-          drawingId: interactive.drawing.id,
-          mode: interactive.hit.mode,
-          startPointer: point,
-          originalPoints: interactive.drawing.points.map((currentPoint) => ({ ...currentPoint })),
-        });
+        setPositionSettingsDrawingId((current) => current && current !== interactive.drawing.id ? null : current);
+        if (!drawingsLocked) {
+          event.currentTarget.setPointerCapture(event.pointerId);
+          setDrawingInteraction({
+            drawingId: interactive.drawing.id,
+            mode: interactive.hit.mode,
+            startPointer: point,
+            originalPoints: interactive.drawing.points.map((currentPoint) => ({ ...currentPoint })),
+          });
+        }
       } else {
         setSelectedDrawingId(null);
+        setPositionSettingsDrawingId(null);
       }
       return;
     }
@@ -1805,12 +1896,13 @@ export default function Chart({
       points: [point, point],
       color: "#60A5FA",
     });
+    event.currentTarget.setPointerCapture(event.pointerId);
   }
 
   function handleDrawingPointerMove(event: React.PointerEvent<SVGSVGElement>) {
     latestPointerRef.current = { x: event.clientX, y: event.clientY };
     if (drawingInteraction) {
-      const point = getPointerPoint(event.clientX, event.clientY);
+      const point = getPointerPoint(event.clientX, event.clientY, false);
       if (!point) return;
       setDrawings((current) =>
         current.map((drawing) => {
@@ -1818,14 +1910,58 @@ export default function Chart({
           const basePoints = drawingInteraction.originalPoints.map((currentPoint) => ({ ...currentPoint }));
           if (drawingInteraction.mode === "move") {
             const timeDelta = point.time - drawingInteraction.startPointer.time;
-            const priceDelta = point.price - drawingInteraction.startPointer.price;
+            const nextEntryPrice = snapPositionPrice(
+              basePoints[0].price + point.price - drawingInteraction.startPointer.price
+            );
+            const priceDelta = nextEntryPrice - basePoints[0].price;
             return {
               ...drawing,
               points: basePoints.map((currentPoint) => ({
-                time: currentPoint.time + timeDelta,
-                price: currentPoint.price + priceDelta,
+                time: Math.round(currentPoint.time + timeDelta),
+                price: snapPositionPrice(currentPoint.price + priceDelta),
               })),
             };
+          }
+          if (
+            drawingInteraction.mode === "positionTargetLeft"
+            || drawingInteraction.mode === "positionTargetRight"
+            || drawingInteraction.mode === "positionStopLeft"
+            || drawingInteraction.mode === "positionStopRight"
+          ) {
+            const isLong = drawing.tool === "longPosition";
+            const isTarget = drawingInteraction.mode === "positionTargetLeft" || drawingInteraction.mode === "positionTargetRight";
+            const isLeft = drawingInteraction.mode === "positionTargetLeft" || drawingInteraction.mode === "positionStopLeft";
+            const minimumTimeSpan = Math.max(
+              1,
+              candles.length > 1 ? Math.round(Math.abs(candles[1].timestamp - candles[0].timestamp) / 1000) : 60
+            );
+            const startTime = basePoints[0].time;
+            const endTime = basePoints[1].time;
+            const nextTime = isLeft
+              ? Math.min(Math.round(point.time), endTime - minimumTimeSpan)
+              : Math.max(Math.round(point.time), startTime + minimumTimeSpan);
+            if (isLeft) {
+              basePoints[0] = { ...basePoints[0], time: nextTime };
+            } else {
+              basePoints[1] = { ...basePoints[1], time: nextTime };
+              if (basePoints[2]) basePoints[2] = { ...basePoints[2], time: nextTime };
+            }
+
+            if (isTarget) {
+              const targetPrice = snapPositionPrice(isLong
+                ? Math.max(point.price, basePoints[0].price + priceFormat.minMove)
+                : Math.min(point.price, basePoints[0].price - priceFormat.minMove));
+              if (basePoints[2]) basePoints[2] = { ...basePoints[2], price: targetPrice };
+              else basePoints.push({ time: basePoints[1].time, price: targetPrice });
+            } else {
+              basePoints[1] = {
+                ...basePoints[1],
+                price: snapPositionPrice(isLong
+                  ? Math.min(point.price, basePoints[0].price - priceFormat.minMove)
+                  : Math.max(point.price, basePoints[0].price + priceFormat.minMove)),
+              };
+            }
+            return { ...drawing, points: basePoints };
           }
           const anchorIndex = drawingInteraction.mode === "anchor0" ? 0 : 1;
           basePoints[anchorIndex] = point;
@@ -1838,24 +1974,29 @@ export default function Chart({
       return;
     }
     if (!draftDrawing) return;
-    const point = getPointerPoint(event.clientX, event.clientY);
+    const isPositionDraft = draftDrawing.tool === "longPosition" || draftDrawing.tool === "shortPosition";
+    const point = getPointerPoint(event.clientX, event.clientY, !isPositionDraft);
     if (!point) return;
     setDraftDrawing((current) => (current ? { ...current, points: [current.points[0], point] } : current));
   }
 
   function handleDrawingPointerUp(event: React.PointerEvent<SVGSVGElement>) {
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
     if (drawingInteraction) {
       setDrawingInteraction(null);
       return;
     }
     if (!draftDrawing) return;
-    const point = getPointerPoint(event.clientX, event.clientY);
+    const isPositionDraft = draftDrawing.tool === "longPosition" || draftDrawing.tool === "shortPosition";
+    const point = getPointerPoint(event.clientX, event.clientY, !isPositionDraft);
     if (!point) {
       setDraftDrawing(null);
       return;
     }
 
-    const finalized = { ...draftDrawing, points: [draftDrawing.points[0], point] };
+    let finalized = { ...draftDrawing, points: [draftDrawing.points[0], point] };
     const [a, b] = finalized.points;
     const timeDiff = Math.abs(a.time - b.time);
     const priceDiff = Math.abs(a.price - b.price);
@@ -1864,12 +2005,53 @@ export default function Chart({
       setDraftDrawing(null);
       return;
     }
+    if (finalized.tool === "longPosition" || finalized.tool === "shortPosition") {
+      const isLong = finalized.tool === "longPosition";
+      const entryPrice = snapPositionPrice(a.price);
+      const startTime = Math.min(a.time, b.time);
+      const endTime = Math.max(a.time, b.time);
+      const stopPrice = snapPositionPrice(isLong
+        ? Math.min(b.price, entryPrice - priceFormat.minMove)
+        : Math.max(b.price, entryPrice + priceFormat.minMove));
+      const riskDistance = Math.max(Math.abs(entryPrice - stopPrice), priceFormat.minMove);
+      const targetPrice = snapPositionPrice(isLong ? entryPrice + riskDistance * 2 : entryPrice - riskDistance * 2);
+      finalized = {
+        ...finalized,
+        points: [
+          { time: startTime, price: entryPrice },
+          { time: endTime, price: stopPrice },
+          { time: endTime, price: targetPrice },
+        ],
+      };
+    }
     finishDraft(finalized);
+  }
+
+  function handleDrawingPointerCancel(event: React.PointerEvent<SVGSVGElement>) {
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    setDrawingInteraction(null);
+    setDraftDrawing(null);
+  }
+
+  function handleDrawingDoubleClick(event: React.MouseEvent<SVGSVGElement>) {
+    if (selectedTool !== "cursor") return;
+    const point = getPointerPoint(event.clientX, event.clientY, false);
+    if (!point) return;
+    const interactive = findInteractiveDrawing(point);
+    if (!interactive) return;
+    event.preventDefault();
+    event.stopPropagation();
+    setDrawingInteraction(null);
+    setSelectedDrawingId(interactive.drawing.id);
+    setPositionSettingsDrawingId(interactive.drawing.id);
   }
 
   function removeDrawing(drawingId: string) {
     setDrawings((current) => current.filter((drawing) => drawing.id !== drawingId));
     setSelectedDrawingId((current) => (current === drawingId ? null : current));
+    setPositionSettingsDrawingId((current) => (current === drawingId ? null : current));
   }
 
   const renderableDrawings = useMemo(() => (hideDrawings ? [] : drawings), [drawings, hideDrawings]);
@@ -2115,31 +2297,111 @@ export default function Chart({
           const geometry = getLongShortGeometry(drawing);
           if (!geometry) return null;
           const isSelected = selectedDrawingId === drawing.id;
+          const stopDistance = Math.max(Math.abs(a.price - geometry.stopPrice), priceFormat.minMove);
+          const targetDistance = Math.max(Math.abs(geometry.targetPrice - a.price), priceFormat.minMove);
+          const targetTicks = Math.round(targetDistance / priceFormat.minMove);
+          const stopTicks = Math.round(stopDistance / priceFormat.minMove);
+          const targetText = `Target ${targetDistance.toFixed(priceFormat.precision)} pts · ${targetTicks} ticks`;
+          const stopText = `Stop ${stopDistance.toFixed(priceFormat.precision)} pts · ${stopTicks} ticks`;
+          const rewardRisk = targetDistance / stopDistance;
+          const rewardRiskLabel = (rewardRisk >= 10 ? rewardRisk.toFixed(1) : rewardRisk.toFixed(2))
+            .replace(/\.0+$/, "")
+            .replace(/(\.\d*[1-9])0+$/, "$1");
+          const rewardRiskText = `1:${rewardRiskLabel} R:R`;
+          const targetLabelWidth = Math.min(Math.max(156, targetText.length * 6.15 + 18), Math.max(156, overlaySize.width - geometry.x - 8));
+          const stopLabelWidth = Math.min(Math.max(156, stopText.length * 6.15 + 18), Math.max(156, overlaySize.width - geometry.x - 8));
+          const rewardRiskLabelWidth = Math.max(76, rewardRiskText.length * 6.4 + 20);
+          const profitTop = Math.min(geometry.profitTop, geometry.profitBottom);
+          const centredLabelX = (labelWidth: number) => clamp(
+            geometry.x + geometry.boxWidth / 2 - labelWidth / 2,
+            4,
+            Math.max(4, overlaySize.width - labelWidth - 4),
+          );
+          const targetLabelX = centredLabelX(targetLabelWidth);
+          const stopLabelX = centredLabelX(stopLabelWidth);
+          const rewardRiskLabelX = centredLabelX(rewardRiskLabelWidth);
+          const targetLabelY = clamp(geometry.targetY - 10.5, 4, Math.max(4, overlaySize.height - 25));
+          const stopLabelY = clamp(geometry.stopY - 10.5, 4, Math.max(4, overlaySize.height - 25));
+          const rewardRiskLabelY = clamp(geometry.entryY - 10.5, 4, Math.max(4, overlaySize.height - 25));
+          const visualStyle = drawing.positionStyle ?? {};
+          const profitColor = visualStyle.targetColor ?? settings.upColor;
+          const lossColor = visualStyle.stopColor ?? settings.downColor;
+          const entryLineColor = visualStyle.entryLineColor ?? "var(--foreground)";
+          const labelTextColor = visualStyle.textColor ?? "var(--background)";
+          const fillOpacity = clamp(visualStyle.fillOpacity ?? 0.14, 0, 0.6);
+          const borderOpacity = clamp(visualStyle.borderOpacity ?? 0.72, 0.1, 1);
+          const lineWidth = clamp(visualStyle.lineWidth ?? 1.25, 0.5, 4);
+          const lineDash = visualStyle.lineStyle === "dashed"
+            ? "7 5"
+            : visualStyle.lineStyle === "dotted"
+              ? "2 4"
+              : undefined;
+          const showLabels = visualStyle.showLabels ?? true;
           return (
-            <g key={`${keyPrefix}-${drawing.id}`}>
-              <rect x={geometry.x} y={Math.min(geometry.profitTop, geometry.profitBottom)} width={geometry.boxWidth} height={Math.abs(geometry.profitBottom - geometry.profitTop)} fill="rgba(34,197,94,0.18)" stroke="rgba(34,197,94,0.7)" />
-              <rect x={geometry.x} y={Math.min(geometry.riskTop, geometry.riskBottom)} width={geometry.boxWidth} height={Math.abs(geometry.riskBottom - geometry.riskTop)} fill="rgba(239,68,68,0.18)" stroke="rgba(239,68,68,0.7)" />
-              <line x1={geometry.x} y1={geometry.entryY} x2={geometry.x + geometry.boxWidth} y2={geometry.entryY} stroke="#E5E7EB" strokeWidth={1.4} strokeDasharray="5 3" />
-              <text x={geometry.x + 8} y={Math.min(geometry.profitTop, geometry.profitBottom) + 16} fill="#DCFCE7" fontSize="11" fontFamily="'JetBrains Mono', monospace">
-                TP {geometry.targetPrice.toFixed(priceFormat.precision)}
-              </text>
-              <text x={geometry.x + 8} y={Math.max(geometry.riskTop, geometry.riskBottom) - 8} fill="#FEE2E2" fontSize="11" fontFamily="'JetBrains Mono', monospace">
-                SL {geometry.stopPrice.toFixed(priceFormat.precision)}
-              </text>
+            <g
+              key={`${keyPrefix}-${drawing.id}`}
+              data-position-drawing-id={drawing.id}
+              style={{ pointerEvents: "all", cursor: drawingsLocked ? "default" : "move" }}
+            >
+              <rect
+                x={geometry.x}
+                y={profitTop}
+                width={geometry.boxWidth}
+                height={Math.abs(geometry.profitBottom - geometry.profitTop)}
+                fill={withAlpha(profitColor, fillOpacity)}
+                stroke={withAlpha(profitColor, borderOpacity)}
+                strokeWidth={lineWidth}
+                strokeDasharray={lineDash}
+              />
+              <rect
+                x={geometry.x}
+                y={Math.min(geometry.riskTop, geometry.riskBottom)}
+                width={geometry.boxWidth}
+                height={Math.abs(geometry.riskBottom - geometry.riskTop)}
+                fill={withAlpha(lossColor, fillOpacity)}
+                stroke={withAlpha(lossColor, borderOpacity)}
+                strokeWidth={lineWidth}
+                strokeDasharray={lineDash}
+              />
+              <line x1={geometry.x} y1={geometry.targetY} x2={geometry.x + geometry.boxWidth} y2={geometry.targetY} stroke={profitColor} strokeWidth={lineWidth} strokeDasharray={lineDash} />
+              <line x1={geometry.x} y1={geometry.entryY} x2={geometry.x + geometry.boxWidth} y2={geometry.entryY} stroke={entryLineColor} strokeOpacity={borderOpacity} strokeWidth={lineWidth} strokeDasharray={lineDash ?? "4 3"} />
+              <line x1={geometry.x} y1={geometry.stopY} x2={geometry.x + geometry.boxWidth} y2={geometry.stopY} stroke={lossColor} strokeWidth={lineWidth} strokeDasharray={lineDash} />
+
+              {showLabels && isSelected ? <g pointerEvents="none">
+                <rect x={targetLabelX} y={targetLabelY} width={targetLabelWidth} height={21} rx={10.5} fill={profitColor} />
+                <text x={targetLabelX + targetLabelWidth / 2} y={targetLabelY + 14} textAnchor="middle" fill={labelTextColor} fontSize="10" fontWeight="650" fontFamily="'JetBrains Mono', monospace">
+                  {targetText}
+                </text>
+                <rect x={stopLabelX} y={stopLabelY} width={stopLabelWidth} height={21} rx={10.5} fill={lossColor} />
+                <text x={stopLabelX + stopLabelWidth / 2} y={stopLabelY + 14} textAnchor="middle" fill={labelTextColor} fontSize="10" fontWeight="650" fontFamily="'JetBrains Mono', monospace">
+                  {stopText}
+                </text>
+                <rect x={rewardRiskLabelX} y={rewardRiskLabelY} width={rewardRiskLabelWidth} height={21} rx={10.5} fill={entryLineColor} />
+                <text x={rewardRiskLabelX + rewardRiskLabelWidth / 2} y={rewardRiskLabelY + 14} textAnchor="middle" fill={labelTextColor} fontSize="10" fontWeight="700" fontFamily="'JetBrains Mono', monospace">
+                  {rewardRiskText}
+                </text>
+              </g> : null}
               {isSelected ? (
                 <g>
-                  <rect
-                    x={geometry.bounds.left}
-                    y={geometry.bounds.top}
-                    width={geometry.bounds.right - geometry.bounds.left}
-                    height={geometry.bounds.bottom - geometry.bounds.top}
-                    fill="none"
-                    stroke="rgba(255,255,255,0.7)"
-                    strokeWidth={1}
-                    strokeDasharray="4 3"
-                  />
-                  <circle cx={geometry.leftHandle.x} cy={geometry.leftHandle.y} r={5.5} fill="#111827" stroke="#F9FAFB" strokeWidth={1.6} />
-                  <circle cx={geometry.rightHandle.x} cy={geometry.rightHandle.y} r={5.5} fill="#111827" stroke="#F9FAFB" strokeWidth={1.6} />
+                  {[
+                    geometry.targetLeftHandle,
+                    geometry.targetRightHandle,
+                    geometry.stopLeftHandle,
+                    geometry.stopRightHandle,
+                  ].map((handle, index) => (
+                    <rect
+                      key={index}
+                      x={handle.x - 4.5}
+                      y={handle.y - 4.5}
+                      width={9}
+                      height={9}
+                      rx={2}
+                      fill="var(--panel)"
+                      stroke="var(--primary)"
+                      strokeWidth={1.5}
+                      style={{ cursor: index === 0 || index === 3 ? "nwse-resize" : "nesw-resize" }}
+                    />
+                  ))}
                 </g>
               ) : null}
             </g>
@@ -2625,6 +2887,7 @@ export default function Chart({
         setTextEditor(null);
         setDrawingInteraction(null);
         setSelectedDrawingId(null);
+        setPositionSettingsDrawingId(null);
       }
       if (!isTypingContext && (event.key === "Delete" || event.key === "Backspace") && selectedDrawingId) {
         event.preventDefault();
@@ -2656,6 +2919,24 @@ export default function Chart({
       document.removeEventListener("pointerdown", onPointerDown, true);
     };
   }, [contextMenu]);
+
+  useEffect(() => {
+    if (!selectedDrawingId) return;
+
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      if (target.closest("[data-position-drawing-id]")) return;
+      if (target.closest("[data-position-settings-panel]")) return;
+      setSelectedDrawingId(null);
+      setPositionSettingsDrawingId(null);
+    };
+
+    document.addEventListener("pointerdown", onPointerDown, true);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown, true);
+    };
+  }, [selectedDrawingId]);
 
   const favoriteTools = useMemo(
     () =>
@@ -3166,9 +3447,25 @@ export default function Chart({
                       {drawing.tool === "text" && drawing.text ? drawing.text : `${drawing.points.length} point${drawing.points.length === 1 ? "" : "s"}`}
                     </div>
                   </div>
-                  <button type="button" onClick={() => removeDrawing(drawing.id)} className="rounded-lg p-1.5 text-muted hover:bg-danger/10 hover:text-danger">
-                    <Trash2 className="h-4 w-4" />
-                  </button>
+                  <div className="flex items-center gap-1">
+                    {drawing.tool === "longPosition" || drawing.tool === "shortPosition" ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedDrawingId(drawing.id);
+                          setPositionSettingsDrawingId(drawing.id);
+                        }}
+                        className="rounded-lg p-1.5 text-muted hover:bg-primary/10 hover:text-primary"
+                        aria-label={`Edit ${drawing.tool === "longPosition" ? "long" : "short"} position colours`}
+                        title="Edit position colours"
+                      >
+                        <Paintbrush2 className="h-4 w-4" />
+                      </button>
+                    ) : null}
+                    <button type="button" onClick={() => removeDrawing(drawing.id)} className="rounded-lg p-1.5 text-muted hover:bg-danger/10 hover:text-danger">
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
                 </div>
               ))
             )}
@@ -3232,6 +3529,126 @@ export default function Chart({
         </div>
       )}
 
+      {positionSettingsDrawing && (
+        <div
+          data-position-settings-panel
+          className="absolute right-3 top-16 z-30 w-[286px] overflow-hidden rounded-2xl border border-border bg-panel/96 shadow-2xl backdrop-blur-xl"
+          onPointerDown={(event) => event.stopPropagation()}
+          onDoubleClick={(event) => event.stopPropagation()}
+        >
+          <div className="flex h-11 items-center border-b border-border px-3.5">
+            <div>
+              <div className="text-[11px] font-semibold text-foreground">Position style</div>
+              <div className="text-[8px] uppercase tracking-[0.12em] text-muted">
+                {positionSettingsDrawing.tool === "longPosition" ? "Long position" : "Short position"}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setPositionSettingsDrawingId(null)}
+              className="ml-auto flex h-7 w-7 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground"
+              aria-label="Close position style"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+
+          <div className="space-y-4 p-3.5">
+            <div className="grid grid-cols-2 gap-2">
+              {([
+                ["Target", "targetColor"],
+                ["Stop", "stopColor"],
+                ["Entry line", "entryLineColor"],
+                ["Label text", "textColor"],
+              ] as const).map(([label, key]) => (
+                <label key={key} className="flex items-center gap-2 rounded-xl border border-border bg-background/45 px-2.5 py-2">
+                  <input
+                    type="color"
+                    value={activePositionStyle[key]}
+                    onChange={(event) => updatePositionVisualSettings({ [key]: event.target.value })}
+                    className="h-6 w-6 cursor-pointer rounded-md border-0 bg-transparent p-0"
+                    aria-label={`${label} color`}
+                  />
+                  <span>
+                    <span className="block text-[9px] font-medium text-foreground">{label}</span>
+                    <span className="block font-mono text-[8px] uppercase text-muted">{activePositionStyle[key]}</span>
+                  </span>
+                </label>
+              ))}
+            </div>
+
+            {([
+              ["Fill opacity", "fillOpacity", 0, 0.6, 0.01],
+              ["Border opacity", "borderOpacity", 0.1, 1, 0.01],
+              ["Line width", "lineWidth", 0.5, 4, 0.25],
+            ] as const).map(([label, key, min, max, step]) => (
+              <label key={key} className="block">
+                <span className="mb-1.5 flex items-center justify-between text-[9px] font-medium text-muted">
+                  <span>{label}</span>
+                  <span className="font-mono text-foreground">
+                    {key === "lineWidth" ? `${activePositionStyle[key].toFixed(2)} px` : `${Math.round(activePositionStyle[key] * 100)}%`}
+                  </span>
+                </span>
+                <input
+                  type="range"
+                  min={min}
+                  max={max}
+                  step={step}
+                  value={activePositionStyle[key]}
+                  onChange={(event) => updatePositionVisualSettings({ [key]: Number(event.target.value) })}
+                  className="w-full accent-primary"
+                />
+              </label>
+            ))}
+
+            <div className="grid grid-cols-[1fr_auto] items-end gap-3">
+              <label>
+                <span className="mb-1.5 block text-[9px] font-medium text-muted">Line style</span>
+                <select
+                  value={activePositionStyle.lineStyle}
+                  onChange={(event) => updatePositionVisualSettings({ lineStyle: event.target.value as PositionVisualSettings["lineStyle"] })}
+                  className="h-9 w-full rounded-xl border border-border bg-surface px-2.5 text-[11px] text-foreground outline-none"
+                >
+                  <option value="solid">Solid</option>
+                  <option value="dashed">Dashed</option>
+                  <option value="dotted">Dotted</option>
+                </select>
+              </label>
+              <label className="flex h-9 cursor-pointer items-center gap-2 rounded-xl border border-border bg-surface px-2.5 text-[10px] text-foreground">
+                <input
+                  type="checkbox"
+                  checked={activePositionStyle.showLabels}
+                  onChange={(event) => updatePositionVisualSettings({ showLabels: event.target.checked })}
+                  className="accent-primary"
+                />
+                Labels
+              </label>
+            </div>
+          </div>
+
+          <div className="flex items-center border-t border-border px-3.5 py-2.5">
+            <span className="text-[8px] text-muted">Double-click the position to reopen</span>
+            <button
+              type="button"
+              onClick={() => updatePositionVisualSettings({
+                targetColor: undefined,
+                stopColor: undefined,
+                entryLineColor: undefined,
+                textColor: undefined,
+                fillOpacity: undefined,
+                borderOpacity: undefined,
+                lineWidth: undefined,
+                lineStyle: undefined,
+                showLabels: undefined,
+              })}
+              className="ml-auto rounded-lg border border-border bg-surface px-2.5 py-1.5 text-[9px] font-medium text-muted hover:text-foreground"
+            >
+              Reset
+            </button>
+          </div>
+        </div>
+      )}
+
       <svg
         ref={overlayRef}
         className={`absolute inset-0 z-[12] ${selectedTool === "cursor" ? "pointer-events-none" : "pointer-events-auto"}`}
@@ -3243,6 +3660,8 @@ export default function Chart({
         onPointerDown={handleDrawingPointerDown}
         onPointerMove={handleDrawingPointerMove}
         onPointerUp={handleDrawingPointerUp}
+        onPointerCancel={handleDrawingPointerCancel}
+        onDoubleClick={handleDrawingDoubleClick}
         onContextMenu={(event) => {
           event.preventDefault();
           const point = getPointerPoint(event.clientX, event.clientY);
