@@ -57,7 +57,7 @@ function contextSnapshotKey(context: KwantBotMarketContext) {
 
 export type UseKwantBotInterpreterResult = {
   selectedRoot: KwantBotMarketRoot;
-  selectRoot: (root: KwantBotMarketRoot) => void;
+  selectRoot: (root: KwantBotMarketRoot, channel?: "kwantbot" | "options") => void;
   messages: RootRecord<KwantBotInterpreterMessage[]>;
   memory: RootRecord<KwantBotMemoryEvent[]>;
   learningReviews: KwantBotLearningReview[];
@@ -71,12 +71,16 @@ export type UseKwantBotInterpreterResult = {
   feedState: KwantBotFeedState;
   unread: RootRecord<number>;
   unreadTotal: number;
+  optionsUnread: RootRecord<number>;
+  optionsUnreadTotal: number;
   requestBrief: (root?: KwantBotMarketRoot) => void;
+  refreshContext: (root: KwantBotMarketRoot) => Promise<void>;
 };
 
 export function useKwantBotInterpreter(args: {
   initialRoot?: KwantBotMarketRoot;
   panelOpen: boolean;
+  optionsPanelOpen?: boolean;
 }): UseKwantBotInterpreterResult {
   const [selectedRoot, setSelectedRoot] = useState<KwantBotMarketRoot>(args.initialRoot ?? "NQ");
   const [messages, setMessages] = useState<RootRecord<KwantBotInterpreterMessage[]>>(emptyMessages);
@@ -101,10 +105,12 @@ export function useKwantBotInterpreter(args: {
   const [lastTickAt, setLastTickAt] = useState<RootRecord<number | null>>({ NQ: null, ES: null });
   const [feedState, setFeedState] = useState<KwantBotFeedState>("connecting");
   const [unread, setUnread] = useState<RootRecord<number>>({ NQ: 0, ES: 0 });
+  const [optionsUnread, setOptionsUnread] = useState<RootRecord<number>>({ NQ: 0, ES: 0 });
   const [storeReady, setStoreReady] = useState(false);
 
   const selectedRootRef = useRef(selectedRoot);
   const panelOpenRef = useRef(args.panelOpen);
+  const optionsPanelOpenRef = useRef(Boolean(args.optionsPanelOpen));
   const messagesRef = useRef(messages);
   const memoryRef = useRef(memory);
   const learningReviewsRef = useRef(learningReviews);
@@ -133,6 +139,10 @@ export function useKwantBotInterpreter(args: {
   useEffect(() => {
     panelOpenRef.current = args.panelOpen;
   }, [args.panelOpen]);
+
+  useEffect(() => {
+    optionsPanelOpenRef.current = Boolean(args.optionsPanelOpen);
+  }, [args.optionsPanelOpen]);
 
   useEffect(() => {
     messagesRef.current = messages;
@@ -168,10 +178,18 @@ export function useKwantBotInterpreter(args: {
     messagesRef.current = nextState;
     setMessages(nextState);
 
-    if (!panelOpenRef.current || selectedRootRef.current !== root) {
+    const kwantBotCount = unique.filter((item) => item.kind !== "options").length;
+    const optionsCount = unique.length - kwantBotCount;
+    if (kwantBotCount && (!panelOpenRef.current || selectedRootRef.current !== root)) {
       setUnread((current) => ({
         ...current,
-        [root]: Math.min(99, current[root] + unique.length),
+        [root]: Math.min(99, current[root] + kwantBotCount),
+      }));
+    }
+    if (optionsCount && (!optionsPanelOpenRef.current || selectedRootRef.current !== root)) {
+      setOptionsUnread((current) => ({
+        ...current,
+        [root]: Math.min(99, current[root] + optionsCount),
       }));
     }
   }, []);
@@ -638,10 +656,17 @@ export function useKwantBotInterpreter(args: {
     };
   }, [appendMemory, appendMessages, flushLivePrices, storeReady]);
 
-  const selectRoot = useCallback((root: KwantBotMarketRoot) => {
+  const selectRoot = useCallback((
+    root: KwantBotMarketRoot,
+    channel: "kwantbot" | "options" = "kwantbot",
+  ) => {
     selectedRootRef.current = root;
     setSelectedRoot(root);
-    setUnread((current) => ({ ...current, [root]: 0 }));
+    if (channel === "options") {
+      setOptionsUnread((current) => ({ ...current, [root]: 0 }));
+    } else {
+      setUnread((current) => ({ ...current, [root]: 0 }));
+    }
     if (Date.now() - contextFetchedAtRef.current[root] >= 10_000) {
       void fetchContext(root);
     }
@@ -651,6 +676,11 @@ export function useKwantBotInterpreter(args: {
     if (!args.panelOpen) return;
     setUnread((current) => ({ ...current, [selectedRoot]: 0 }));
   }, [args.panelOpen, selectedRoot]);
+
+  useEffect(() => {
+    if (!args.optionsPanelOpen) return;
+    setOptionsUnread((current) => ({ ...current, [selectedRoot]: 0 }));
+  }, [args.optionsPanelOpen, selectedRoot]);
 
   const requestBrief = useCallback((root = selectedRootRef.current) => {
     const context = contextsRef.current[root];
@@ -670,6 +700,10 @@ export function useKwantBotInterpreter(args: {
   }, [appendMessages]);
 
   const unreadTotal = useMemo(() => unread.NQ + unread.ES, [unread]);
+  const optionsUnreadTotal = useMemo(
+    () => optionsUnread.NQ + optionsUnread.ES,
+    [optionsUnread],
+  );
 
   return {
     selectedRoot,
@@ -687,6 +721,9 @@ export function useKwantBotInterpreter(args: {
     feedState,
     unread,
     unreadTotal,
+    optionsUnread,
+    optionsUnreadTotal,
     requestBrief,
+    refreshContext: fetchContext,
   };
 }

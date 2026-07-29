@@ -154,7 +154,10 @@ export default function KwantBotInterpreterPanel({
   const [pausedMessages, setPausedMessages] = useState<Record<KwantBotMarketRoot, KwantBotInterpreterMessage[]> | null>(null);
   const feedScrollRef = useRef<HTMLDivElement | null>(null);
   const endRef = useRef<HTMLDivElement | null>(null);
-  const currentRootMessages = messages[selectedRoot];
+  const currentRootMessages = useMemo(
+    () => messages[selectedRoot].filter((message) => message.kind !== "options"),
+    [messages, selectedRoot],
+  );
   const rootMessages = feedPaused
     ? pausedMessages?.[selectedRoot] ?? []
     : currentRootMessages;
@@ -172,7 +175,7 @@ export default function KwantBotInterpreterPanel({
   );
   const journalEvents = useMemo(
     () => memory[selectedRoot]
-      .filter((event) => event.type !== "price")
+      .filter((event) => event.type !== "price" && event.type !== "context")
       .slice()
       .reverse(),
     [memory, selectedRoot],
@@ -204,8 +207,8 @@ export default function KwantBotInterpreterPanel({
       return;
     }
     setPausedMessages({
-      NQ: [...messages.NQ],
-      ES: [...messages.ES],
+      NQ: messages.NQ.filter((message) => message.kind !== "options"),
+      ES: messages.ES.filter((message) => message.kind !== "options"),
     });
     setFeedPaused(true);
     setView("feed");

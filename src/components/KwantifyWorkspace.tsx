@@ -5,6 +5,7 @@ import TimeZoneSelect from "@/components/ui/TimeZoneSelect";
 import ChartIndicatorsControl from "@/components/ChartIndicatorsControl";
 import KwantBotIntelligenceWorkspace from "@/components/kwantbot/KwantBotIntelligenceWorkspace";
 import KwantBotInterpreterPanel from "@/components/kwantbot/KwantBotInterpreterPanel";
+import OptionsTapePanel from "@/components/kwantbot/OptionsTapePanel";
 import FriendsPanel from "@/components/friends/FriendsPanel";
 import { useKwantBotInterpreter } from "@/hooks/useKwantBotInterpreter";
 
@@ -181,6 +182,7 @@ const RIGHT_PANEL_MIN_WIDTH = 240;
 const RIGHT_PANEL_MAX_WIDTH = 500;
 const RIGHT_PANEL_DEFAULT_WIDTH = 280;
 const RIGHT_PANEL_COLLAPSE_SNAP_WIDTH = 120;
+type RightPanel = "order" | "watchlist" | "kwantbot" | "optionstape" | "alerts" | "alertslog" | "friends";
 const CHART_INDICATORS_STORAGE_KEY = "kwantdesk-chart-indicators";
 
 type Message = { role: "user" | "assistant"; content: string };
@@ -3011,12 +3013,13 @@ export default function KwantifyWorkspace({
   const [streamReconnectNonce, setStreamReconnectNonce] = useState(0);
   const [orderSide, setOrderSide] = useState<"buy" | "sell">("buy");
   const [orderType, setOrderType] = useState<"market" | "limit" | "stop">("market");
-  const [rightPanel, setRightPanel] = useState<"order" | "watchlist" | "kwantbot" | "alerts" | "alertslog" | "friends" | null>(() => {
+  const [rightPanel, setRightPanel] = useState<RightPanel | null>(() => {
     if (typeof window === "undefined") return "watchlist";
     const saved = window.localStorage.getItem("kwantdesk-right-panel-state");
     return saved === "order"
       || saved === "watchlist"
       || saved === "kwantbot"
+      || saved === "optionstape"
       || saved === "alerts"
       || saved === "alertslog"
       || saved === "friends"
@@ -3025,12 +3028,13 @@ export default function KwantifyWorkspace({
         ? null
         : "watchlist";
   });
-  const [lastOpenRightPanel, setLastOpenRightPanel] = useState<"order" | "watchlist" | "kwantbot" | "alerts" | "alertslog" | "friends">(() => {
+  const [lastOpenRightPanel, setLastOpenRightPanel] = useState<RightPanel>(() => {
     if (typeof window === "undefined") return "watchlist";
     const saved = window.localStorage.getItem("kwantdesk-right-panel-state");
     return saved === "order"
       || saved === "watchlist"
       || saved === "kwantbot"
+      || saved === "optionstape"
       || saved === "alerts"
       || saved === "alertslog"
       || saved === "friends"
@@ -3065,6 +3069,7 @@ export default function KwantifyWorkspace({
   const kwantBotInterpreter = useKwantBotInterpreter({
     initialRoot: gameplanChartRootForInstrument(selectedInstrument) ?? "NQ",
     panelOpen: rightPanel === "kwantbot",
+    optionsPanelOpen: rightPanel === "optionstape",
   });
   const [alertLogCount, setAlertLogCount] = useState(5);
   const [friendsUnreadCount, setFriendsUnreadCount] = useState(0);
@@ -6554,7 +6559,7 @@ export default function KwantifyWorkspace({
     document.addEventListener("mouseup", handleMouseUp);
   };
 
-  const toggleRightPanel = (panel: "order" | "watchlist" | "kwantbot" | "alerts" | "alertslog" | "friends") => {
+  const toggleRightPanel = (panel: RightPanel) => {
     setRightPanel((current) => current === panel ? null : panel);
   };
 
@@ -8434,6 +8439,9 @@ export default function KwantifyWorkspace({
           {rightPanel === "kwantbot" && (
             <KwantBotInterpreterPanel interpreter={kwantBotInterpreter} />
           )}
+          {rightPanel === "optionstape" && (
+            <OptionsTapePanel interpreter={kwantBotInterpreter} />
+          )}
           {false && rightPanel === "kwantbot" && (
             <div className="flex flex-1 flex-col overflow-hidden">
               <div className="relative h-[138px] shrink-0 overflow-hidden border-b border-border bg-background/45 px-4 py-4">
@@ -8705,6 +8713,8 @@ export default function KwantifyWorkspace({
                 ? "Alerts Log"
                 : lastOpenRightPanel === "kwantbot"
                   ? "Kwant Bot"
+                  : lastOpenRightPanel === "optionstape"
+                    ? "Options Tape"
                   : lastOpenRightPanel === "friends"
                     ? "Friends"
                   : lastOpenRightPanel.charAt(0).toUpperCase() + lastOpenRightPanel.slice(1)
@@ -8718,6 +8728,7 @@ export default function KwantifyWorkspace({
         {[
           { id: "watchlist" as const, title: "Watchlist", icon: List },
           { id: "kwantbot" as const, title: "Kwant Bot", icon: Bot },
+          { id: "optionstape" as const, title: "Options Tape", icon: FileText },
           { id: "alerts" as const, title: "Alerts", icon: Bell },
           { id: "alertslog" as const, title: "Alerts Log", icon: BellRing },
           { id: "friends" as const, title: "Friends", icon: User },
@@ -8728,6 +8739,7 @@ export default function KwantifyWorkspace({
             <button key={item.id} title={item.title} onClick={() => toggleRightPanel(item.id)} className={`relative flex h-9 w-9 items-center justify-center rounded-lg transition-colors ${active ? "bg-surface text-foreground" : "text-muted hover:bg-surface hover:text-foreground"}`}>
               <Icon className="h-[18px] w-[18px]" />
               {item.id === "kwantbot" && kwantBotInterpreter.unreadTotal > 0 && <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-semibold text-background">{Math.min(99, kwantBotInterpreter.unreadTotal)}</span>}
+              {item.id === "optionstape" && kwantBotInterpreter.optionsUnreadTotal > 0 && <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-semibold text-background">{Math.min(99, kwantBotInterpreter.optionsUnreadTotal)}</span>}
               {item.id === "alertslog" && alertLogCount > 0 && <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-danger text-[9px] font-semibold text-white">{alertLogCount}</span>}
               {item.id === "friends" && friendsUnreadCount > 0 && <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-semibold text-background">{Math.min(99, friendsUnreadCount)}</span>}
             </button>

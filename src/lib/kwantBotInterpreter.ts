@@ -379,7 +379,7 @@ export function buildContextChangeMessage(
     return message(
       next.root,
       "system",
-      `${next.root} interpreter online. ${next.oneLiner}${nearest ? ` Nearest verified level: ${nearest.name} at ${formatZone(next.root, nearest.zone)}.` : ""} I’ll report approaches, touches, confirmed responses, outcomes, options shifts, and a market read every 15 minutes.`,
+      `${next.root} interpreter online. ${next.oneLiner}${nearest ? ` Nearest verified level: ${nearest.name} at ${formatZone(next.root, nearest.zone)}.` : ""} I’ll report approaches, touches, confirmed responses, outcomes, and a market read every 15 minutes. Live positioning changes are routed to Options Tape.`,
       `context:${next.generatedAt}`,
       now,
       { price: next.currentPrice ?? undefined, levelId: nearest?.id },
