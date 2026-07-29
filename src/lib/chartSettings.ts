@@ -31,7 +31,7 @@ export const defaultChartSettings: ChartSettings = {
   wickDownColor: "#FFFFFF",
   backgroundColor: "#000000",
   gridLines: true,
-  gridColor: "#0A140C",
+  gridColor: "#111318",
   timezone: "America/New_York",
   precision: "Default",
 };
