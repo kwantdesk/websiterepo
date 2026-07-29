@@ -68,6 +68,8 @@ import {
 import { runBacktest, runStrategyCode, type BacktestConfig, type BacktestResult, type Candle, type Trade } from "@/lib/backtester";
 import { generateSampleData } from "@/lib/sampleData";
 import { createClient } from "@/lib/supabase";
+import { useAccountPreferenceSync } from "@/hooks/useAccountPreferenceSync";
+import { hydrateUserPreferences } from "@/lib/userPreferences";
 import { clearSavedStrategiesRaw, loadSavedStrategiesRaw, saveSavedStrategiesRaw } from "@/lib/automation";
 import { defaultChartSettings, extractUserChartSettings, loadStoredChartSettings, saveStoredChartSettings, type ChartSettings } from "@/lib/chartSettings";
 import type { ChartLevel, ChartZone } from "@/components/Chart";
@@ -2612,8 +2614,15 @@ export default function KwantifyWorkspace({
   section?: PrimaryWorkspaceSection;
 }) {
   const router = useRouter();
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const [authChecked, setAuthChecked] = useState(false);
+  const [preferenceUserId, setPreferenceUserId] = useState("");
+  const [preferencesReady, setPreferencesReady] = useState(false);
+  useAccountPreferenceSync({
+    supabase,
+    userId: preferenceUserId,
+    enabled: preferencesReady,
+  });
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -2757,8 +2766,30 @@ export default function KwantifyWorkspace({
   const [streamReconnectNonce, setStreamReconnectNonce] = useState(0);
   const [orderSide, setOrderSide] = useState<"buy" | "sell">("buy");
   const [orderType, setOrderType] = useState<"market" | "limit" | "stop">("market");
-  const [rightPanel, setRightPanel] = useState<"order" | "watchlist" | "kwantbot" | "alerts" | "alertslog" | null>("watchlist");
-  const [lastOpenRightPanel, setLastOpenRightPanel] = useState<"order" | "watchlist" | "kwantbot" | "alerts" | "alertslog">("watchlist");
+  const [rightPanel, setRightPanel] = useState<"order" | "watchlist" | "kwantbot" | "alerts" | "alertslog" | null>(() => {
+    if (typeof window === "undefined") return "watchlist";
+    const saved = window.localStorage.getItem("kwantdesk-right-panel-state");
+    return saved === "order"
+      || saved === "watchlist"
+      || saved === "kwantbot"
+      || saved === "alerts"
+      || saved === "alertslog"
+      ? saved
+      : saved === ""
+        ? null
+        : "watchlist";
+  });
+  const [lastOpenRightPanel, setLastOpenRightPanel] = useState<"order" | "watchlist" | "kwantbot" | "alerts" | "alertslog">(() => {
+    if (typeof window === "undefined") return "watchlist";
+    const saved = window.localStorage.getItem("kwantdesk-right-panel-state");
+    return saved === "order"
+      || saved === "watchlist"
+      || saved === "kwantbot"
+      || saved === "alerts"
+      || saved === "alertslog"
+      ? saved
+      : "watchlist";
+  });
   const [kwantBotMessages, setKwantBotMessages] = useState<KwantBotMessage[]>(() => {
     if (typeof window === "undefined") return DEFAULT_KWANTBOT_MESSAGES;
     try {
@@ -2825,10 +2856,24 @@ export default function KwantifyWorkspace({
       ? Math.min(initialMaxHeight, Math.max(BOTTOM_PANEL_MIN_HEIGHT, saved))
       : BOTTOM_PANEL_DEFAULT_HEIGHT;
   });
-  const [bottomMinimized, setBottomMinimized] = useState(true);
+  const [bottomMinimized, setBottomMinimized] = useState(() => {
+    if (typeof window === "undefined") return true;
+    return window.localStorage.getItem("kwantdesk-bottom-panel-minimized") !== "false";
+  });
   const bottomWorkspaceSection = section;
   const [equityPeriod, setEquityPeriod] = useState("365d");
-  const [favTFs, setFavTFs] = useState(["1m", "5m", "15m", "1h", "4h", "1D"]);
+  const [favTFs, setFavTFs] = useState<string[]>(() => {
+    const defaults = ["1m", "5m", "15m", "1h", "4h", "1D"];
+    if (typeof window === "undefined") return defaults;
+    try {
+      const saved = JSON.parse(window.localStorage.getItem("olisa-chart-favourite-intervals") ?? "null");
+      return Array.isArray(saved) && saved.every((item) => typeof item === "string")
+        ? saved
+        : defaults;
+    } catch {
+      return defaults;
+    }
+  });
   const [showAllTF, setShowAllTF] = useState(false);
   const [intervalDrafts, setIntervalDrafts] = useState<Record<ChartIntervalKind, { primary: number; secondary: number }>>({
     second: { primary: 1, secondary: 1 },
@@ -3771,6 +3816,21 @@ export default function KwantifyWorkspace({
       setLastOpenRightPanel(rightPanel);
     }
   }, [rightPanel]);
+
+  useEffect(() => {
+    window.localStorage.setItem("kwantdesk-right-panel-state", rightPanel ?? "");
+    window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
+  }, [rightPanel]);
+
+  useEffect(() => {
+    window.localStorage.setItem("kwantdesk-bottom-panel-minimized", String(bottomMinimized));
+    window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
+  }, [bottomMinimized]);
+
+  useEffect(() => {
+    window.localStorage.setItem("olisa-chart-favourite-intervals", JSON.stringify(favTFs));
+    window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
+  }, [favTFs]);
 
   const getBottomPanelMaxHeight = useCallback(() => {
     const mainRect = mainRef.current?.getBoundingClientRect();
@@ -4750,8 +4810,26 @@ export default function KwantifyWorkspace({
       }
       const existingUsername = user?.user_metadata?.username as string | undefined;
       setCurrentUsername(existingUsername ?? "Account");
-      const profileChartSettings = extractUserChartSettings(user);
-      if (profileChartSettings) {
+      let hydrated: Awaited<ReturnType<typeof hydrateUserPreferences>> | null = null;
+      try {
+        hydrated = await hydrateUserPreferences(supabase, user);
+        if (hydrated.changed) {
+          window.location.reload();
+          return;
+        }
+      } catch {
+        // Keep the authenticated workspace available if preference sync is temporarily offline.
+      }
+      setPreferenceUserId(user.id);
+      setPreferencesReady(true);
+      const hasStoredChartSettings = hydrated
+        ? Object.prototype.hasOwnProperty.call(
+            hydrated.snapshot.values,
+            "olisa-chart-settings",
+          )
+        : false;
+      const profileChartSettings = hasStoredChartSettings ? null : extractUserChartSettings(user);
+      if (!hasStoredChartSettings && profileChartSettings) {
         setChartSettings(profileChartSettings);
         setDraftChartSettings(profileChartSettings);
         setChartSettingsSnapshot(profileChartSettings);

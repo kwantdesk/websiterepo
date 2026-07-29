@@ -37,10 +37,12 @@ export function saveTheme(theme: ThemeColors) {
   if (typeof window === "undefined") return;
   localStorage.setItem("olisa-theme", JSON.stringify(theme));
   applyTheme(theme);
+  window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
 }
 
 export function resetTheme() {
   if (typeof window === "undefined") return;
   localStorage.removeItem("olisa-theme");
   applyTheme(defaultTheme);
+  window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
 }

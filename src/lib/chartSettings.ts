@@ -83,6 +83,7 @@ export function loadStoredChartSettings() {
 export function saveStoredChartSettings(settings: ChartSettings) {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(CHART_SETTINGS_STORAGE_KEY, JSON.stringify(normalizeChartSettings(settings)));
+  window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
 }
 
 export function extractUserChartSettings(user: { user_metadata?: Record<string, unknown> | null } | null | undefined) {

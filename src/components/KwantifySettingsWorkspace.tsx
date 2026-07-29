@@ -2,7 +2,7 @@
 
 import KwantSelect from "@/components/ui/KwantSelect";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import AppSidebar from "@/components/AppSidebar";
 import {
@@ -31,6 +31,8 @@ import { defaultTheme, resetTheme, saveTheme as saveAppTheme, type ThemeColors }
 import { defaultChartSettings, extractUserChartSettings, loadStoredChartSettings, mergeChartSettingsIntoTheme, saveStoredChartSettings, type ChartSettings } from "@/lib/chartSettings";
 import { createClient } from "@/lib/supabase";
 import { usagePlans } from "@/lib/usagePlans";
+import { hydrateUserPreferences } from "@/lib/userPreferences";
+import { useAccountPreferenceSync } from "@/hooks/useAccountPreferenceSync";
 
 type SettingsTab =
   | "Public profile"
@@ -118,6 +120,23 @@ const chartColorFields: { key: keyof ChartSettings; label: string }[] = [
 function Toggle({ checked, onChange }: { checked: boolean; onChange: () => void }) {
   return <button onClick={onChange} className={`h-5 w-10 rounded-full transition-all ${checked ? "bg-primary" : "border border-border bg-surface"}`}><span className={`block h-4 w-4 rounded-full bg-background transition-transform ${checked ? "translate-x-5" : "translate-x-0.5"}`} /></button>;
 }
+
+const defaultSettingsToggles: Record<string, boolean> = {
+  online: true,
+  chat: true,
+  authApp: false,
+  sms: false,
+  suspicious: true,
+  grid: true,
+  volume: true,
+  inApp: true,
+  email: true,
+  weekly: true,
+  performance: true,
+  features: true,
+  community: false,
+  promo: false,
+};
 
 function normalizeHex(value: string) {
   const clean = value.replace("#", "").trim();
@@ -212,26 +231,21 @@ function ColorPicker({ label, value, onChange }: { label: string; value: string;
 }
 
 export default function SettingsPage() {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const [activeTab, setActiveTab] = useState<SettingsTab>("Public profile");
   const [profileName, setProfileName] = useState("");
   const [profileEmail, setProfileEmail] = useState("");
   const [profileUsername, setProfileUsername] = useState("");
-  const [toggles, setToggles] = useState<Record<string, boolean>>({
-    online: true,
-    chat: true,
-    authApp: false,
-    sms: false,
-    suspicious: true,
-    grid: true,
-    volume: true,
-    inApp: true,
-    email: true,
-    weekly: true,
-    performance: true,
-    features: true,
-    community: false,
-    promo: false,
+  const [preferenceUserId, setPreferenceUserId] = useState("");
+  const [preferencesReady, setPreferencesReady] = useState(false);
+  const [toggles, setToggles] = useState<Record<string, boolean>>(() => {
+    if (typeof window === "undefined") return defaultSettingsToggles;
+    try {
+      const saved = JSON.parse(window.localStorage.getItem("kwantdesk-settings-toggles") ?? "{}");
+      return { ...defaultSettingsToggles, ...(saved && typeof saved === "object" ? saved : {}) };
+    } catch {
+      return defaultSettingsToggles;
+    }
   });
   const [themeSettings, setThemeSettings] = useState<ThemeColors>(() => {
     if (typeof window === "undefined") return defaultTheme;
@@ -239,13 +253,23 @@ export default function SettingsPage() {
     return saved ? { ...defaultTheme, ...JSON.parse(saved) } : defaultTheme;
   });
   const [chartSettings, setChartSettings] = useState<ChartSettings>(() => loadStoredChartSettings());
-  const [fontSize, setFontSize] = useState("Default");
+  const [fontSize, setFontSize] = useState(() => {
+    if (typeof window === "undefined") return "Default";
+    const saved = window.localStorage.getItem("kwantdesk-settings-font-size");
+    return saved === "Small" || saved === "Large" ? saved : "Default";
+  });
   const [chartDefaults, setChartDefaults] = useState(() => ({
     type: "Candles",
     timeframe: "5m",
     instrument: "NAS100",
     crosshair: "Normal",
   }));
+
+  useAccountPreferenceSync({
+    supabase,
+    userId: preferenceUserId,
+    enabled: preferencesReady,
+  });
 
   useEffect(() => {
     const savedDefaults = localStorage.getItem("olisa-chart-defaults");
@@ -263,6 +287,18 @@ export default function SettingsPage() {
         setProfileUsername("");
         return;
       }
+      let hydrated: Awaited<ReturnType<typeof hydrateUserPreferences>> | null = null;
+      try {
+        hydrated = await hydrateUserPreferences(supabase, user);
+        if (hydrated.changed) {
+          window.location.reload();
+          return;
+        }
+      } catch {
+        // Authentication and local preferences remain usable during a transient sync failure.
+      }
+      setPreferenceUserId(user.id);
+      setPreferencesReady(true);
       setProfileName(
         (user.user_metadata?.display_name as string | undefined) ??
           (user.user_metadata?.full_name as string | undefined) ??
@@ -270,8 +306,14 @@ export default function SettingsPage() {
       );
       setProfileEmail(user.email ?? "");
       setProfileUsername((user.user_metadata?.username as string | undefined) ?? "");
-      const profileChartSettings = extractUserChartSettings(user);
-      if (profileChartSettings) {
+      const hasStoredChartSettings = hydrated
+        ? Object.prototype.hasOwnProperty.call(
+            hydrated.snapshot.values,
+            "olisa-chart-settings",
+          )
+        : false;
+      const profileChartSettings = hasStoredChartSettings ? null : extractUserChartSettings(user);
+      if (!hasStoredChartSettings && profileChartSettings) {
         setChartSettings(profileChartSettings);
         setThemeSettings((current) => mergeChartSettingsIntoTheme(current, profileChartSettings));
         saveStoredChartSettings(profileChartSettings);
@@ -292,6 +334,16 @@ export default function SettingsPage() {
   useEffect(() => {
     setThemeSettings((current) => mergeChartSettingsIntoTheme(current, chartSettings));
   }, [chartSettings]);
+
+  useEffect(() => {
+    window.localStorage.setItem("kwantdesk-settings-toggles", JSON.stringify(toggles));
+    window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
+  }, [toggles]);
+
+  useEffect(() => {
+    window.localStorage.setItem("kwantdesk-settings-font-size", fontSize);
+    window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
+  }, [fontSize]);
 
   function toggle(key: string) {
     setToggles((current) => ({ ...current, [key]: !current[key] }));
