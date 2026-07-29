@@ -100,76 +100,240 @@ function GlowRing({
   );
 }
 
-function Helmet() {
-  const visorRef = useRef<THREE.MeshPhysicalMaterial>(null);
+function createVisorGeometry(scale: number) {
+  const shape = new THREE.Shape();
+  shape.moveTo(-0.98 * scale, 0.32 * scale);
+  shape.lineTo(-0.78 * scale, -0.31 * scale);
+  shape.lineTo(-0.18 * scale, -0.58 * scale);
+  shape.lineTo(0.18 * scale, -0.58 * scale);
+  shape.lineTo(0.78 * scale, -0.31 * scale);
+  shape.lineTo(0.98 * scale, 0.32 * scale);
+  shape.lineTo(0.62 * scale, 0.47 * scale);
+  shape.lineTo(-0.62 * scale, 0.47 * scale);
+  shape.closePath();
+
+  const geometry = new THREE.ExtrudeGeometry(shape, {
+    depth: 0.09,
+    bevelEnabled: true,
+    bevelSegments: 4,
+    bevelSize: 0.045,
+    bevelThickness: 0.04,
+    curveSegments: 12,
+  });
+  geometry.center();
+  return geometry;
+}
+
+function buildVisorNetwork() {
+  let seed = 0x5649534f;
+  const random = () => {
+    seed |= 0;
+    seed = (seed + 0x6d2b79f5) | 0;
+    let value = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    value = (value + Math.imul(value ^ (value >>> 7), 61 | value)) ^ value;
+    return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
+  };
+
+  const count = 72;
+  const nodes = new Float32Array(count * 3);
+  for (let index = 0; index < count; index++) {
+    const x = (random() - 0.5) * 1.62;
+    const widthT = Math.abs(x) / 0.81;
+    const minY = -0.42 + widthT * 0.18;
+    const maxY = 0.32 - widthT * 0.06;
+    nodes[index * 3] = x;
+    nodes[index * 3 + 1] = minY + random() * (maxY - minY);
+    nodes[index * 3 + 2] = 0;
+  }
+
+  const links: number[] = [];
+  for (let index = 0; index < count; index++) {
+    const ax = nodes[index * 3];
+    const ay = nodes[index * 3 + 1];
+    const nearest: { index: number; distance: number }[] = [];
+    for (let other = 0; other < count; other++) {
+      if (other === index) continue;
+      const dx = nodes[other * 3] - ax;
+      const dy = nodes[other * 3 + 1] - ay;
+      const distance = dx * dx + dy * dy;
+      if (distance < 0.095) nearest.push({ index: other, distance });
+    }
+    nearest
+      .sort((left, right) => left.distance - right.distance)
+      .slice(0, index % 3 === 0 ? 3 : 2)
+      .forEach(({ index: other }) => {
+        links.push(
+          ax,
+          ay,
+          0,
+          nodes[other * 3],
+          nodes[other * 3 + 1],
+          0,
+        );
+      });
+  }
+
+  return {
+    nodes,
+    links: new Float32Array(links),
+  };
+}
+
+function VisorFace() {
+  const outerGeometry = useMemo(() => createVisorGeometry(1), []);
+  const glassGeometry = useMemo(() => createVisorGeometry(0.91), []);
+  const network = useMemo(() => buildVisorNetwork(), []);
+  const nodeGeometry = useMemo(() => {
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.BufferAttribute(network.nodes, 3));
+    return geometry;
+  }, [network]);
+  const linkGeometry = useMemo(() => {
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.BufferAttribute(network.links, 3));
+    return geometry;
+  }, [network]);
+  const networkRef = useRef<THREE.Group>(null);
 
   useFrame(({ clock }) => {
-    if (!visorRef.current) return;
-    const pulse = Math.sin(clock.elapsedTime * 1.7) * 0.16;
-    visorRef.current.emissiveIntensity = 1.65 + pulse;
+    if (!networkRef.current) return;
+    const time = clock.elapsedTime;
+    networkRef.current.scale.setScalar(0.995 + Math.sin(time * 1.4) * 0.012);
+    networkRef.current.rotation.z = Math.sin(time * 0.55) * 0.008;
   });
 
-  return (
-    <group position={[0, 2.15, 0]}>
-      <mesh scale={[1.32, 1.05, 1.04]}>
-        <sphereGeometry args={[1, 56, 40]} />
-        <meshPhysicalMaterial {...METAL} />
-      </mesh>
+  useEffect(
+    () => () => {
+      outerGeometry.dispose();
+      glassGeometry.dispose();
+      nodeGeometry.dispose();
+      linkGeometry.dispose();
+    },
+    [glassGeometry, linkGeometry, nodeGeometry, outerGeometry],
+  );
 
-      <RoundedBox
-        args={[1.7, 0.82, 0.22]}
-        radius={0.25}
-        smoothness={8}
-        position={[0, -0.08, 0.91]}
-        rotation={[-0.08, 0, 0]}
-      >
-        <meshPhysicalMaterial
-          ref={visorRef}
-          color="#9befff"
-          emissive="#74e9ff"
-          emissiveIntensity={1.65}
-          metalness={0.18}
-          roughness={0.08}
-          transmission={0.15}
-          thickness={0.15}
-          transparent
-          opacity={0.9}
-          clearcoat={1}
-          clearcoatRoughness={0.04}
+  return (
+    <group position={[0, -0.08, 0.91]} rotation={[-0.055, 0, 0]}>
+      <mesh geometry={outerGeometry}>
+        <meshStandardMaterial
+          color="#bdf7ff"
+          emissive="#75ecff"
+          emissiveIntensity={3.4}
+          metalness={0.35}
+          roughness={0.1}
           toneMapped={false}
         />
-      </RoundedBox>
+      </mesh>
+      <mesh geometry={glassGeometry} position={[0, 0, 0.075]}>
+        <meshPhysicalMaterial
+          color="#010608"
+          emissive="#061a1e"
+          emissiveIntensity={0.7}
+          metalness={0.45}
+          roughness={0.09}
+          transmission={0.08}
+          clearcoat={1}
+          clearcoatRoughness={0.03}
+        />
+      </mesh>
+      <group ref={networkRef} position={[0, 0, 0.142]} scale={0.87}>
+        <lineSegments geometry={linkGeometry}>
+          <lineBasicMaterial
+            color="#e8fdff"
+            transparent
+            opacity={0.48}
+            blending={THREE.AdditiveBlending}
+            depthWrite={false}
+            toneMapped={false}
+          />
+        </lineSegments>
+        <points geometry={nodeGeometry}>
+          <pointsMaterial
+            color="#ffffff"
+            size={0.024}
+            sizeAttenuation
+            transparent
+            opacity={0.9}
+            blending={THREE.AdditiveBlending}
+            depthWrite={false}
+            toneMapped={false}
+          />
+        </points>
+      </group>
+    </group>
+  );
+}
+
+function Helmet() {
+  return (
+    <group position={[0, 2.15, 0]}>
+      <mesh scale={[1.36, 1.1, 1.08]}>
+        <sphereGeometry args={[1, 56, 40]} />
+        <meshPhysicalMaterial {...DARK_METAL} />
+      </mesh>
+
+      {[
+        [0.08, 0.52, "#11151a"],
+        [0.62, 0.42, "#171b20"],
+        [1.08, 0.42, "#0e1115"],
+        [1.54, 0.42, "#171b20"],
+        [2, 0.52, "#0e1115"],
+      ].map(([phiStart, phiLength, color], index) => (
+        <mesh key={index} scale={[1.39, 1.13, 1.11]}>
+          <sphereGeometry
+            args={[
+              1,
+              24,
+              18,
+              Number(phiStart),
+              Number(phiLength),
+              0.04,
+              1.42,
+            ]}
+          />
+          <meshPhysicalMaterial
+            color={String(color)}
+            metalness={0.96}
+            roughness={0.17 + (index % 2) * 0.05}
+            clearcoat={1}
+            clearcoatRoughness={0.09}
+            side={THREE.DoubleSide}
+          />
+        </mesh>
+      ))}
 
       <RoundedBox
-        args={[1.96, 0.14, 0.18]}
-        radius={0.06}
+        args={[2.04, 0.16, 0.2]}
+        radius={0.07}
         smoothness={4}
-        position={[0, 0.45, 0.67]}
+        position={[0, 0.5, 0.7]}
         rotation={[-0.22, 0, 0]}
       >
         <meshPhysicalMaterial {...PANEL_METAL} />
       </RoundedBox>
       <RoundedBox
-        args={[1.55, 0.19, 0.24]}
-        radius={0.08}
+        args={[1.24, 0.22, 0.24]}
+        radius={0.09}
         smoothness={4}
-        position={[0, 0.78, 0.37]}
+        position={[0, 0.87, 0.36]}
         rotation={[-0.42, 0, 0]}
       >
         <meshPhysicalMaterial {...PANEL_METAL} />
       </RoundedBox>
 
+      <VisorFace />
+
       {[-1, 1].map((side) => (
-        <group key={side} position={[side * 1.22, 0, 0.03]} rotation={[0, Math.PI / 2, 0]}>
+        <group key={side} position={[side * 1.28, 0, 0.03]} rotation={[0, Math.PI / 2, 0]}>
           <mesh>
-            <cylinderGeometry args={[0.38, 0.38, 0.19, 32]} />
+            <cylinderGeometry args={[0.4, 0.4, 0.22, 32]} />
             <meshPhysicalMaterial {...DARK_METAL} />
           </mesh>
-          <GlowRing position={[0, 0.1, 0]} rotation={[Math.PI / 2, 0, 0]} radius={0.23} />
+          <GlowRing position={[0, 0.12, 0]} rotation={[Math.PI / 2, 0, 0]} radius={0.24} />
         </group>
       ))}
 
-      <mesh position={[0, -0.7, 0.71]} scale={[0.68, 0.22, 0.3]}>
+      <mesh position={[0, -0.75, 0.62]} scale={[0.78, 0.22, 0.34]}>
         <sphereGeometry args={[1, 32, 18]} />
         <meshPhysicalMaterial {...DARK_METAL} />
       </mesh>
@@ -354,15 +518,43 @@ function buildDissolveData() {
     phases[index] = random() * Math.PI * 2;
   }
 
-  return { count, positions, base: new Float32Array(positions), phases };
+  const linkCount = 280;
+  const links = new Float32Array(linkCount * 6);
+  for (let index = 0; index < linkCount; index++) {
+    const source = Math.floor(random() * count);
+    let target = (source + 1 + Math.floor(random() * 24)) % count;
+    const sourceOffset = source * 3;
+    let targetOffset = target * 3;
+    const dx = positions[targetOffset] - positions[sourceOffset];
+    const dy = positions[targetOffset + 1] - positions[sourceOffset + 1];
+    const dz = positions[targetOffset + 2] - positions[sourceOffset + 2];
+    if (dx * dx + dy * dy + dz * dz > 0.72) {
+      target = (source + 1) % count;
+      targetOffset = target * 3;
+    }
+    const linkOffset = index * 6;
+    links[linkOffset] = positions[sourceOffset];
+    links[linkOffset + 1] = positions[sourceOffset + 1];
+    links[linkOffset + 2] = positions[sourceOffset + 2];
+    links[linkOffset + 3] = positions[targetOffset];
+    links[linkOffset + 4] = positions[targetOffset + 1];
+    links[linkOffset + 5] = positions[targetOffset + 2];
+  }
+
+  return { count, positions, base: new Float32Array(positions), phases, links };
 }
 
 function DissolveParticles() {
-  const pointsRef = useRef<THREE.Points>(null);
+  const groupRef = useRef<THREE.Group>(null);
   const data = useMemo(() => buildDissolveData(), []);
   const geometry = useMemo(() => {
     const nextGeometry = new THREE.BufferGeometry();
     nextGeometry.setAttribute("position", new THREE.BufferAttribute(data.positions, 3));
+    return nextGeometry;
+  }, [data]);
+  const linkGeometry = useMemo(() => {
+    const nextGeometry = new THREE.BufferGeometry();
+    nextGeometry.setAttribute("position", new THREE.BufferAttribute(data.links, 3));
     return nextGeometry;
   }, [data]);
 
@@ -378,24 +570,42 @@ function DissolveParticles() {
       values[offset + 2] = data.base[offset + 2] + drift * 0.55;
     }
     position.needsUpdate = true;
-    if (pointsRef.current) pointsRef.current.rotation.y = Math.sin(time * 0.16) * 0.045;
+    if (groupRef.current) groupRef.current.rotation.y = Math.sin(time * 0.16) * 0.045;
   });
 
-  useEffect(() => () => geometry.dispose(), [geometry]);
+  useEffect(
+    () => () => {
+      geometry.dispose();
+      linkGeometry.dispose();
+    },
+    [geometry, linkGeometry],
+  );
 
   return (
-    <points ref={pointsRef} geometry={geometry}>
-      <pointsMaterial
-        color="#dffcff"
-        size={0.025}
-        sizeAttenuation
-        transparent
-        opacity={0.7}
-        depthWrite={false}
-        blending={THREE.AdditiveBlending}
-        toneMapped={false}
-      />
-    </points>
+    <group ref={groupRef}>
+      <lineSegments geometry={linkGeometry}>
+        <lineBasicMaterial
+          color="#c9f8ff"
+          transparent
+          opacity={0.16}
+          depthWrite={false}
+          blending={THREE.AdditiveBlending}
+          toneMapped={false}
+        />
+      </lineSegments>
+      <points geometry={geometry}>
+        <pointsMaterial
+          color="#dffcff"
+          size={0.028}
+          sizeAttenuation
+          transparent
+          opacity={0.76}
+          depthWrite={false}
+          blending={THREE.AdditiveBlending}
+          toneMapped={false}
+        />
+      </points>
+    </group>
   );
 }
 
@@ -468,14 +678,14 @@ export default function KwantRobot3D() {
   const groupRef = useRef<THREE.Group>(null);
   const headRef = useRef<THREE.Group>(null);
   const { size } = useThree();
-  const responsiveScale = size.width < 520 ? 0.72 : size.width < 860 ? 0.88 : 1;
+  const responsiveScale = size.width < 520 ? 0.74 : size.width < 860 ? 1.02 : 1.5;
 
   useFrame((state) => {
     const time = state.clock.elapsedTime;
     const group = groupRef.current;
     if (!group) return;
 
-    group.position.y = -5.05 + Math.sin(time * 0.62) * 0.07;
+    group.position.y = -5.15 + Math.sin(time * 0.62) * 0.055;
     group.rotation.y = THREE.MathUtils.lerp(
       group.rotation.y,
       state.pointer.x * 0.09 + Math.sin(time * 0.22) * 0.025,
@@ -500,7 +710,7 @@ export default function KwantRobot3D() {
   return (
     <group
       ref={groupRef}
-      position={[0, -5.05, 4.5]}
+      position={[-0.18, -5.15, 4.5]}
       scale={responsiveScale}
       rotation={[0, 0, 0]}
     >

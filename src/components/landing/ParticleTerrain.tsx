@@ -441,10 +441,10 @@ function Scene({ terrain, stars }: { terrain: TerrainData; stars: StarData }) {
   return (
     <>
       <color attach="background" args={["#000000"]} />
-      <ambientLight intensity={0.42} />
-      <directionalLight position={[-5, 7, 10]} intensity={2.8} color="#f3f8ff" />
-      <directionalLight position={[6, 1, 7]} intensity={1.8} color="#a9efff" />
-      <pointLight position={[-3, -2, 8]} intensity={22} distance={18} decay={2} color="#8ceeff" />
+      <ambientLight intensity={0.55} />
+      <directionalLight position={[-5, 7, 10]} intensity={3.5} color="#ffffff" />
+      <directionalLight position={[6, 1, 7]} intensity={1.4} color="#d9f9ff" />
+      <pointLight position={[-3, -2, 8]} intensity={15} distance={18} decay={2} color="#a8f2ff" />
       <StarField data={stars} />
       <MountainPoints data={terrain} />
       <KwantRobot3D />
