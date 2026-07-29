@@ -8,22 +8,22 @@
 @import "@fontsource/jetbrains-mono/600.css";
 
 :root {
-  --background: #0C0D0F;
-  --foreground: #F3F0E8;
-  --primary: #C9A45C;
-  --secondary: #E2C985;
-  --accent: #C9A45C;
-  --muted: #958F84;
-  --border: #292824;
-  --card: #161615;
-  --danger: #D96C5F;
-  --panel: #111110;
-  --surface: #22211F;
-  --chart-background: #0C0D0F;
-  --grid-color: #1D1D1B;
-  --crosshair-color: rgba(201,164,92,.38);
-  --candle-up: #C9A45C;
-  --candle-down: #D96C5F;
+  --background: #030304;
+  --foreground: #F4F1E8;
+  --primary: #D6B45F;
+  --secondary: #F0D58A;
+  --accent: #D6B45F;
+  --muted: #79776F;
+  --border: #1D1D20;
+  --card: #0B0B0D;
+  --danger: #FF626C;
+  --panel: #070708;
+  --surface: #111113;
+  --chart-background: #030304;
+  --grid-color: #0B0B0D;
+  --crosshair-color: rgba(214,180,95,.42);
+  --candle-up: #D6B45F;
+  --candle-down: #FF626C;
 }
 
 @theme inline {

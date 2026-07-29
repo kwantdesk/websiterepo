@@ -25,8 +25,7 @@ export function cssVarName(key: string) {
 
 export function applyTheme(theme?: Partial<ThemeColors>) {
   if (typeof window === "undefined") return;
-  const saved = theme ?? JSON.parse(localStorage.getItem("olisa-theme") ?? "null");
-  if (!saved) return;
+  const saved = theme ?? JSON.parse(localStorage.getItem("olisa-theme") ?? "null") ?? defaultTheme;
   const root = document.documentElement;
   Object.entries(saved).forEach(([key, value]) => {
     root.style.setProperty(cssVarName(key), value as string);
