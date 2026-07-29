@@ -71,6 +71,7 @@ import {
 } from "lucide-react";
 import { Candle, Trade } from "@/lib/backtester";
 import { defaultChartSettings, type ChartSettings } from "@/lib/chartSettings";
+import { compactTimeZoneLabel, normalizeTimeZone } from "@/lib/timeZones";
 
 interface ChartProps {
   candles: Candle[];
@@ -635,6 +636,34 @@ function normalizeTimeValue(value: Time | null): number | null {
     return Math.floor(Date.UTC(value.year, value.month - 1, value.day) / 1000);
   }
   return null;
+}
+
+function formatChartTimestamp(
+  value: Time,
+  timeZone: string,
+  options: Intl.DateTimeFormatOptions,
+) {
+  const timestamp = normalizeTimeValue(value);
+  if (timestamp === null) return "";
+  return new Intl.DateTimeFormat("en-AU", {
+    timeZone: normalizeTimeZone(timeZone),
+    hour12: false,
+    ...options,
+  }).format(new Date(timestamp * 1_000));
+}
+
+function formatChartTick(value: Time, timeZone: string, timeframe?: string) {
+  const intervalMs = timeframeToMs(timeframe);
+  if (intervalMs && intervalMs >= 24 * 60 * 60_000) {
+    return formatChartTimestamp(value, timeZone, {
+      day: "2-digit",
+      month: "short",
+    });
+  }
+  return formatChartTimestamp(value, timeZone, {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 function clamp(value: number, min: number, max: number) {
@@ -1912,6 +1941,7 @@ export default function Chart({
     const crosshairLabelColor =
       themeStyles.getPropertyValue("--surface").trim()
       || "#18181B";
+    const chartTimeZone = normalizeTimeZone(settings.timezone);
 
     const chart = createChart(chartContainerRef.current, {
       layout: {
@@ -1920,6 +1950,17 @@ export default function Chart({
         fontSize: 11,
         fontFamily: "'JetBrains Mono', monospace",
         attributionLogo: false,
+      },
+      localization: {
+        locale: "en-AU",
+        timeFormatter: (time: Time) =>
+          `${formatChartTimestamp(time, chartTimeZone, {
+            day: "2-digit",
+            month: "short",
+            year: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+          })} · ${compactTimeZoneLabel(chartTimeZone)}`,
       },
       grid: {
         vertLines: { color: settings.gridLines ? settings.gridColor : "transparent" },
@@ -1933,6 +1974,8 @@ export default function Chart({
         borderColor: "#1A1A1D",
         timeVisible: true,
         secondsVisible: false,
+        tickMarkFormatter: (time: Time) =>
+          formatChartTick(time, chartTimeZone, timeframe),
       },
       crosshair: {
         mode: 0,

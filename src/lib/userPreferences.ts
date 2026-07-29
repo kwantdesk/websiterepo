@@ -31,6 +31,7 @@ const TRACKED_STORAGE_KEYS = new Set([
   "kwantdesk-bottom-panel-minimized",
   "kwantdesk-settings-toggles",
   "kwantdesk-settings-font-size",
+  "kwantdesk:economic-calendar-timezone:v1",
   "kwantify-chart-alerts",
   "kwantify-chart-tool-favorites",
   "kwantify-chart-toolbar-dock",
@@ -53,6 +54,7 @@ const METADATA_FALLBACK_KEYS = new Set([
   "kwantify-chart-toolbar-collapsed",
   "kwantdesk-settings-toggles",
   "kwantdesk-settings-font-size",
+  "kwantdesk:economic-calendar-timezone:v1",
 ]);
 
 export type UserPreferenceSnapshot = {

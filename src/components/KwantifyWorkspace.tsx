@@ -1,6 +1,7 @@
 "use client";
 
 import KwantSelect from "@/components/ui/KwantSelect";
+import TimeZoneSelect from "@/components/ui/TimeZoneSelect";
 import KwantBotIntelligenceWorkspace from "@/components/kwantbot/KwantBotIntelligenceWorkspace";
 import KwantBotInterpreterPanel from "@/components/kwantbot/KwantBotInterpreterPanel";
 import { useKwantBotInterpreter } from "@/hooks/useKwantBotInterpreter";
@@ -70,6 +71,7 @@ import { generateSampleData } from "@/lib/sampleData";
 import { createClient } from "@/lib/supabase";
 import { useAccountPreferenceSync } from "@/hooks/useAccountPreferenceSync";
 import { hydrateUserPreferences } from "@/lib/userPreferences";
+import { normalizeTimeZone } from "@/lib/timeZones";
 import { clearSavedStrategiesRaw, loadSavedStrategiesRaw, saveSavedStrategiesRaw } from "@/lib/automation";
 import { defaultChartSettings, extractUserChartSettings, loadStoredChartSettings, saveStoredChartSettings, type ChartSettings } from "@/lib/chartSettings";
 import type { ChartLevel, ChartZone } from "@/components/Chart";
@@ -3557,6 +3559,16 @@ export default function KwantifyWorkspace({
     setShowSettings(true);
   }
 
+  function changeChartTimeZone(timeZone: string) {
+    const normalized = normalizeTimeZone(timeZone);
+    const next = { ...chartSettings, timezone: normalized };
+    setChartSettings(next);
+    setDraftChartSettings(next);
+    setChartSettingsSnapshot(next);
+    saveStoredChartSettings(next);
+    void persistChartSettings(next);
+  }
+
   function openCreateAlert(defaultPrice?: string) {
     setEditingChartAlert(null);
     setChartAlertPriceDraft(defaultPrice ?? (selectedMidPrice ? formatPrice(selectedMidPrice, selectedInstrument) : ""));
@@ -6978,6 +6990,12 @@ export default function KwantifyWorkspace({
             </div>
           </div>
           <div className="flex-1" />
+          <TimeZoneSelect
+            value={chartSettings.timezone}
+            onChange={changeChartTimeZone}
+            menuLabel="Chart timezone"
+            compact
+          />
           <button
             type="button"
             onClick={openLevelsExport}
@@ -8602,7 +8620,7 @@ export default function KwantifyWorkspace({
                   <>
                     <section className="space-y-3"><h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted">Candles</h3><label className="flex items-center gap-2 text-[13px]"><input type="checkbox" checked={draftChartSettings.colorBarsPreviousClose} onChange={(event) => setDraftChartSettings((current) => ({ ...current, colorBarsPreviousClose: event.target.checked }))} />Color bars based on previous close</label><ColorButton field="upColor" label="Body up" /><ColorButton field="downColor" label="Body down" /><ColorButton field="borderUpColor" label="Border up" /><ColorButton field="borderDownColor" label="Border down" /><ColorButton field="wickUpColor" label="Wick up" /><ColorButton field="wickDownColor" label="Wick down" /></section>
                     <section className="space-y-3"><h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted">Chart</h3><ColorButton field="backgroundColor" label="Background" /><ColorButton field="gridColor" label="Grid lines" /><label className="flex items-center justify-between gap-3 text-[12px] text-muted"><span>Show grid lines</span><input type="checkbox" checked={draftChartSettings.gridLines} onChange={(event) => setDraftChartSettings((current) => ({ ...current, gridLines: event.target.checked }))} /></label></section>
-                    <section className="space-y-3"><h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted">Data</h3><KwantSelect value={draftChartSettings.timezone} onChange={(event) => setDraftChartSettings((current) => ({ ...current, timezone: event.target.value }))} className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-[13px]"><option>(UTC-5) New York</option><option>(UTC+0) London</option><option>(UTC+3) Dubai</option><option>(UTC+8) Singapore</option><option>(UTC+10) Sydney</option></KwantSelect><KwantSelect value={draftChartSettings.precision} onChange={(event) => setDraftChartSettings((current) => ({ ...current, precision: event.target.value }))} className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-[13px]"><option>Default</option><option>0</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option></KwantSelect></section>
+                    <section className="space-y-3"><h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted">Data</h3><TimeZoneSelect value={draftChartSettings.timezone} onChange={(timeZone) => setDraftChartSettings((current) => ({ ...current, timezone: timeZone }))} menuLabel="Chart timezone" /><KwantSelect value={draftChartSettings.precision} onChange={(event) => setDraftChartSettings((current) => ({ ...current, precision: event.target.value }))} className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-[13px]"><option>Default</option><option>0</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option></KwantSelect></section>
                   </>
                 )}
                 {settingsTab !== "Symbol" && <div className="text-[13px] text-muted">Settings for {settingsTab.toLowerCase()} will be available soon.</div>}

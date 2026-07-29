@@ -1,6 +1,7 @@
 "use client";
 
 import type { ThemeColors } from "@/lib/theme";
+import { normalizeTimeZone } from "@/lib/timeZones";
 
 export interface ChartSettings {
   colorBarsPreviousClose: boolean;
@@ -31,7 +32,7 @@ export const defaultChartSettings: ChartSettings = {
   backgroundColor: "#0C0D0F",
   gridLines: true,
   gridColor: "#1D1D1B",
-  timezone: "(UTC-5) New York",
+  timezone: "America/New_York",
   precision: "Default",
 };
 
@@ -65,7 +66,7 @@ export function normalizeChartSettings(value: unknown): ChartSettings {
           ? source.gridVisible
           : defaultChartSettings.gridLines,
     gridColor: pickColor(source.gridColor, defaultChartSettings.gridColor),
-    timezone: pickColor(source.timezone, defaultChartSettings.timezone),
+    timezone: normalizeTimeZone(pickColor(source.timezone, defaultChartSettings.timezone)),
     precision: pickColor(source.precision, defaultChartSettings.precision),
   };
 }

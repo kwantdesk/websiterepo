@@ -22,6 +22,7 @@ import {
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import TimeZoneSelect from "@/components/ui/TimeZoneSelect";
 import {
   ECONOMIC_CALENDAR_CURRENCIES,
   type EconomicCalendarEvent,
@@ -29,11 +30,16 @@ import {
   type EconomicCurrency,
   type EconomicImpact,
 } from "@/lib/economicCalendar";
+import {
+  browserTimeZone,
+  compactTimeZoneLabel,
+  normalizeTimeZone,
+} from "@/lib/timeZones";
 
-const TIME_ZONE = "Australia/Brisbane";
 const ALERTS_STORAGE_KEY = "kwantdesk:economic-calendar-alerts:v1";
 const CURRENCIES_STORAGE_KEY = "kwantdesk:economic-calendar-currencies:v1";
 const CALENDAR_CACHE_STORAGE_KEY = "kwantdesk:economic-calendar-cache:v2";
+const TIME_ZONE_STORAGE_KEY = "kwantdesk:economic-calendar-timezone:v1";
 const CALENDAR_HISTORY_DAYS = 7;
 const CALENDAR_FORWARD_DAYS = 90;
 const DEFAULT_CURRENCIES: EconomicCurrency[] = ["USD", "EUR", "GBP", "JPY", "AUD"];
@@ -50,10 +56,10 @@ const CURRENCY_COUNTRY: Record<EconomicCurrency, string> = {
   CNY: "China",
 };
 
-function dateKey(date: Date | string) {
+function dateKey(date: Date | string, timeZone: string) {
   const value = typeof date === "string" ? new Date(date) : date;
   const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: TIME_ZONE,
+    timeZone: normalizeTimeZone(timeZone),
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -63,18 +69,18 @@ function dateKey(date: Date | string) {
 }
 
 function localDateFromKey(key: string) {
-  return new Date(`${key}T12:00:00+10:00`);
+  return new Date(`${key}T12:00:00Z`);
 }
 
 function shiftDate(key: string, days: number) {
   const date = localDateFromKey(key);
   date.setUTCDate(date.getUTCDate() + days);
-  return dateKey(date);
+  return date.toISOString().slice(0, 10);
 }
 
 function formatDay(key: string) {
   return localDateFromKey(key).toLocaleDateString("en-AU", {
-    timeZone: TIME_ZONE,
+    timeZone: "UTC",
     weekday: "long",
     day: "numeric",
     month: "long",
@@ -82,27 +88,27 @@ function formatDay(key: string) {
   });
 }
 
-function formatShortDate(value: string) {
+function formatShortDate(value: string, timeZone: string) {
   return new Date(value).toLocaleDateString("en-AU", {
-    timeZone: TIME_ZONE,
+    timeZone: normalizeTimeZone(timeZone),
     weekday: "short",
     day: "2-digit",
     month: "short",
   });
 }
 
-function formatTime(value: string) {
+function formatTime(value: string, timeZone: string) {
   return new Date(value).toLocaleTimeString("en-AU", {
-    timeZone: TIME_ZONE,
+    timeZone: normalizeTimeZone(timeZone),
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
   });
 }
 
-function formatClock(date: Date) {
+function formatClock(date: Date, timeZone: string) {
   return date.toLocaleTimeString("en-AU", {
-    timeZone: TIME_ZONE,
+    timeZone: normalizeTimeZone(timeZone),
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",
@@ -151,10 +157,12 @@ function CurrencyBadge({ currency }: { currency: EconomicCurrency }) {
 
 function CalendarPopover({
   selected,
+  timeZone,
   onSelect,
   onClose,
 }: {
   selected: string;
+  timeZone: string;
   onSelect: (date: string) => void;
   onClose: () => void;
 }) {
@@ -193,7 +201,7 @@ function CalendarPopover({
               className={`flex h-8 items-center justify-center rounded-lg font-mono text-[10px] transition-colors ${
                 key === selected
                   ? "bg-primary font-semibold text-background"
-                  : key === dateKey(new Date())
+                  : key === dateKey(new Date(), timeZone)
                     ? "border border-primary/30 text-primary"
                     : "text-muted hover:bg-surface hover:text-foreground"
               }`}
@@ -258,7 +266,20 @@ function EventDetail({ event }: { event: EconomicCalendarEvent }) {
 }
 
 export default function NewsWorkspace() {
-  const [selectedDate, setSelectedDate] = useState(() => dateKey(new Date()));
+  const [timeZone, setTimeZone] = useState(() => {
+    if (typeof window === "undefined") return "UTC";
+    return normalizeTimeZone(
+      window.localStorage.getItem(TIME_ZONE_STORAGE_KEY) ?? browserTimeZone(),
+    );
+  });
+  const [selectedDate, setSelectedDate] = useState(() => {
+    const initialTimeZone = typeof window === "undefined"
+      ? "UTC"
+      : normalizeTimeZone(
+          window.localStorage.getItem(TIME_ZONE_STORAGE_KEY) ?? browserTimeZone(),
+        );
+    return dateKey(new Date(), initialTimeZone);
+  });
   const [selectedCurrencies, setSelectedCurrencies] = useState<EconomicCurrency[]>(DEFAULT_CURRENCIES);
   const [selectedImpacts, setSelectedImpacts] = useState<EconomicImpact[]>(["High", "Medium", "Low"]);
   const [alerts, setAlerts] = useState<string[]>([]);
@@ -300,11 +321,16 @@ export default function NewsWorkspace() {
     return () => window.clearInterval(timer);
   }, []);
 
+  useEffect(() => {
+    window.localStorage.setItem(TIME_ZONE_STORAGE_KEY, timeZone);
+    window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
+  }, [timeZone]);
+
   const loadCalendar = useCallback(async (manual = false) => {
     if (manual) setRefreshing(true);
     else if (!payloadRef.current) setLoading(true);
     try {
-      const today = dateKey(new Date());
+      const today = dateKey(new Date(), timeZone);
       const from = shiftDate(today, -CALENDAR_HISTORY_DAYS);
       const to = shiftDate(today, CALENDAR_FORWARD_DAYS);
       const response = await fetch(`/api/economic-calendar?from=${from}&to=${to}`, { cache: "no-store" });
@@ -320,7 +346,7 @@ export default function NewsWorkspace() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [timeZone]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => void loadCalendar(), 0);
@@ -343,7 +369,7 @@ export default function NewsWorkspace() {
       if (delay <= 0 || delay > 2_147_000_000) continue;
       const timer = window.setTimeout(() => {
         new Notification(`${event.currency} · ${event.name}`, {
-          body: `${event.impact} impact in 15 minutes · ${formatTime(event.date)} AEST`,
+          body: `${event.impact} impact in 15 minutes · ${formatTime(event.date, timeZone)} ${compactTimeZoneLabel(timeZone)}`,
           tag: event.id,
         });
       }, delay);
@@ -353,24 +379,30 @@ export default function NewsWorkspace() {
       alertTimersRef.current.forEach((timer) => window.clearTimeout(timer));
       alertTimersRef.current = [];
     };
-  }, [alerts, payload]);
+  }, [alerts, payload, timeZone]);
 
   const filteredEvents = useMemo(() => {
     if (!payload) return [];
     return payload.events
-      .filter((event) => dateKey(event.date) === selectedDate)
+      .filter((event) => dateKey(event.date, timeZone) === selectedDate)
       .filter((event) => selectedCurrencies.includes(event.currency))
       .filter((event) => selectedImpacts.includes(event.impact))
       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-  }, [payload, selectedCurrencies, selectedDate, selectedImpacts]);
+  }, [payload, selectedCurrencies, selectedDate, selectedImpacts, timeZone]);
 
   const allDayEvents = useMemo(
-    () => payload?.events.filter((event) => dateKey(event.date) === selectedDate) ?? [],
-    [payload, selectedDate],
+    () => payload?.events.filter((event) => dateKey(event.date, timeZone) === selectedDate) ?? [],
+    [payload, selectedDate, timeZone],
   );
   const nextEvent = filteredEvents.find((event) => new Date(event.date).getTime() > clock.getTime()) ?? null;
   const highImpactCount = filteredEvents.filter((event) => event.impact === "High").length;
-  const isToday = selectedDate === dateKey(clock);
+  const isToday = selectedDate === dateKey(clock, timeZone);
+
+  const changeTimeZone = (nextTimeZone: string) => {
+    const normalized = normalizeTimeZone(nextTimeZone);
+    setTimeZone(normalized);
+    setSelectedDate(dateKey(clock, normalized));
+  };
 
   const toggleCurrency = (currency: EconomicCurrency) => {
     setSelectedCurrencies((current) => {
@@ -410,9 +442,14 @@ export default function NewsWorkspace() {
         </div>
         <div className="hidden items-center gap-2 rounded-xl border border-border bg-surface px-3 py-2 md:flex">
           <Clock3 className="h-3.5 w-3.5 text-primary" />
-          <span className="font-mono text-[10px] font-semibold">{formatClock(clock)}</span>
-          <span className="text-[8px] font-semibold uppercase tracking-[0.12em] text-muted">AEST</span>
+          <span className="font-mono text-[10px] font-semibold">{formatClock(clock, timeZone)}</span>
         </div>
+        <TimeZoneSelect
+          value={timeZone}
+          onChange={changeTimeZone}
+          menuLabel="Economic calendar timezone"
+          compact
+        />
         <div className="flex items-center gap-2 rounded-xl border border-border bg-surface px-3 py-2 text-[9px] text-muted">
           <span className={`h-1.5 w-1.5 rounded-full ${payload ? "bg-primary" : "bg-muted"}`} />
           {payload?.provider ?? "Calendar feed"}
@@ -463,10 +500,10 @@ export default function NewsWorkspace() {
                 <span className="flex-1">{formatDay(selectedDate)}</span>
                 <ChevronDown className={`h-3.5 w-3.5 text-muted transition-transform ${calendarOpen ? "rotate-180" : ""}`} />
               </button>
-              {calendarOpen ? <CalendarPopover selected={selectedDate} onSelect={(date) => { setSelectedDate(date); setCalendarOpen(false); }} onClose={() => setCalendarOpen(false)} /> : null}
+              {calendarOpen ? <CalendarPopover selected={selectedDate} timeZone={timeZone} onSelect={(date) => { setSelectedDate(date); setCalendarOpen(false); }} onClose={() => setCalendarOpen(false)} /> : null}
             </div>
             <button type="button" onClick={() => setSelectedDate(shiftDate(selectedDate, 1))} className="flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-panel text-muted hover:text-foreground" aria-label="Next day"><ChevronRight className="h-4 w-4" /></button>
-            {!isToday ? <button type="button" onClick={() => setSelectedDate(dateKey(new Date()))} className="h-9 rounded-xl border border-primary/20 bg-primary/10 px-3 text-[9px] font-semibold text-primary">Today</button> : null}
+            {!isToday ? <button type="button" onClick={() => setSelectedDate(dateKey(new Date(), timeZone))} className="h-9 rounded-xl border border-primary/20 bg-primary/10 px-3 text-[9px] font-semibold text-primary">Today</button> : null}
             <div className="ml-auto flex items-center gap-1 rounded-xl border border-border bg-panel p-1">
               {(["High", "Medium", "Low"] as const).map((impact) => {
                 const active = selectedImpacts.includes(impact);
@@ -527,14 +564,14 @@ export default function NewsWorkspace() {
                   <div key={event.id}>
                     {insertNow ? (
                       <div className="relative flex items-center gap-2 px-4 py-1.5">
-                        <span className="font-mono text-[8px] font-semibold uppercase tracking-[0.14em] text-primary">Now {formatClock(clock).slice(0, 5)}</span>
+                        <span className="font-mono text-[8px] font-semibold uppercase tracking-[0.14em] text-primary">Now {formatClock(clock, timeZone).slice(0, 5)}</span>
                         <span className="h-px flex-1 bg-primary/35" />
                       </div>
                     ) : null}
                     <div className={`grid items-center gap-3 border-t border-border/70 px-4 py-3 transition-colors lg:grid-cols-[88px_72px_72px_minmax(220px,1fr)_64px_78px] ${expanded ? "bg-primary/[0.035]" : "hover:bg-surface/30"} ${event.status === "released" ? "opacity-65" : ""}`}>
-                      <div className="font-mono text-[9px] text-muted">{formatShortDate(event.date)}</div>
+                      <div className="font-mono text-[9px] text-muted">{formatShortDate(event.date, timeZone)}</div>
                       <div>
-                        <div className="font-mono text-[11px] font-semibold text-foreground">{formatTime(event.date)}</div>
+                        <div className="font-mono text-[11px] font-semibold text-foreground">{formatTime(event.date, timeZone)}</div>
                         <div className={`mt-0.5 text-[8px] ${upcoming ? "text-primary" : "text-muted"}`}>{timeUntil(event.date, clock)}</div>
                       </div>
                       <div><CurrencyBadge currency={event.currency} /></div>
@@ -583,7 +620,7 @@ export default function NewsWorkspace() {
           <div className="mt-3 flex flex-col gap-2 rounded-xl border border-border bg-panel px-4 py-3 text-[9px] leading-5 text-muted sm:flex-row sm:items-center sm:justify-between">
             <span>{payload?.note ?? "Economic calendar loading."}</span>
             <span className="shrink-0 font-mono">
-              {payload ? `Updated ${formatTime(payload.fetchedAt)} AEST · Coverage ${payload.coverage.from} to ${payload.coverage.to}` : "Connecting"}
+              {payload ? `Updated ${formatTime(payload.fetchedAt, timeZone)} ${compactTimeZoneLabel(timeZone)} · Coverage ${payload.coverage.from} to ${payload.coverage.to}` : "Connecting"}
             </span>
           </div>
           <div className="mt-3 flex items-start gap-2 px-2 py-2 text-[9px] leading-5 text-muted">
