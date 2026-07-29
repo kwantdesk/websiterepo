@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  Activity,
   AlarmClock,
   ArrowDown,
   ArrowRight,
@@ -10,7 +9,6 @@ import {
   BookOpen,
   Check,
   ChevronDown,
-  CircleGauge,
   Clock3,
   Copy,
   Download,
@@ -28,7 +26,6 @@ import {
   ShieldAlert,
   Sparkles,
   Target,
-  TrendingUp,
   X,
   Zap,
   type LucideIcon,
@@ -47,6 +44,11 @@ import {
   loadGameplanChartOverlays,
   saveGameplanChartOverlay,
 } from "@/lib/gameplanChartOverlay";
+import {
+  calculateVolatilitySnapshot,
+  type VolatilityCandle,
+  type VolatilitySnapshot,
+} from "@/lib/volatilityRegime";
 
 type DetailMode = "beginner" | "standard" | "pro";
 type Level = GameplanEdition["ladder"][number];
@@ -600,91 +602,130 @@ function Ladder({
   );
 }
 
-function GaugeCard({
-  icon: Icon,
-  label,
-  value,
-  detail,
-  progress,
-  danger = false,
-  open,
-  onClick,
+function Environment({
+  plan,
+  snapshot,
+  loading,
+  error,
+  feedState,
 }: {
-  icon: LucideIcon;
-  label: string;
-  value: string;
-  detail: string;
-  progress: number;
-  danger?: boolean;
-  open: boolean;
-  onClick: () => void;
+  plan: GameplanEdition;
+  snapshot: VolatilitySnapshot | null;
+  loading: boolean;
+  error: string | null;
+  feedState: "connecting" | "live" | "fallback";
 }) {
-  return (
-    <button type="button" onClick={onClick} className={`w-full rounded-xl border p-3.5 text-left transition-all ${open ? "border-primary/30 bg-primary/[0.045]" : "border-border bg-card hover:border-primary/20"}`}>
-      <div className="flex items-center gap-2">
-        <Icon className={`h-4 w-4 ${danger ? "text-danger" : "text-primary"}`} />
-        <span className="text-[9px] font-semibold uppercase tracking-[0.14em] text-muted">{label}</span>
-        <ChevronDown className={`ml-auto h-3.5 w-3.5 text-muted transition-transform ${open ? "rotate-180" : ""}`} />
-      </div>
-      <div className={`mt-2 text-[13px] font-semibold ${danger ? "text-danger" : "text-foreground"}`}>{value}</div>
-      <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-surface">
-        <div className={`h-full rounded-full ${danger ? "bg-danger" : "bg-primary"}`} style={{ width: `${Math.max(3, Math.min(100, progress))}%` }} />
-      </div>
-      <p className={`overflow-hidden text-[10px] leading-4 text-muted transition-all ${open ? "mt-3 max-h-28 opacity-100" : "max-h-0 opacity-0"}`}>{detail}</p>
-    </button>
-  );
-}
-
-function Environment({ plan }: { plan: GameplanEdition }) {
-  const [open, setOpen] = useState<string | null>("tape");
-  const tape = plan.environment.tape;
-  const cards = [
-    {
-      id: "tape",
-      icon: Activity,
-      label: "Tape type",
-      value: tape.state === "calm" ? "CALM" : tape.state === "snowball" ? "SNOWBALL" : "MIXED",
-      detail: tape.plain,
-      progress: tape.state === "calm" ? 30 : tape.state === "snowball" ? 88 : 55,
-      danger: tape.state === "snowball",
-    },
-    {
-      id: "fear",
-      icon: ShieldAlert,
-      label: "Fear gauge",
-      value: `${plan.environment.fear.ratio.toFixed(1)}× insurance / movement`,
-      detail: plan.environment.fear.plain,
-      progress: Math.min(100, plan.environment.fear.ratio * 45),
-      danger: plan.environment.fear.ratio > 1.4,
-    },
-    {
-      id: "flow",
-      icon: TrendingUp,
-      label: "Money-flow lean",
-      value: Math.abs(plan.environment.flow.lean) < 0.2 ? "BALANCED" : plan.environment.flow.lean > 0 ? "CALL LEAN" : "PUT LEAN",
-      detail: plan.environment.flow.plain,
-      progress: (plan.environment.flow.lean + 1) * 50,
-      danger: plan.environment.flow.lean < -0.2,
-    },
-    {
-      id: "expiry",
-      icon: Clock3,
-      label: "Expiry pressure",
-      value: plan.environment.expiry.relevant ? "ACTIVE TODAY" : "NOT ELEVATED",
-      detail: plan.environment.expiry.plain,
-      progress: plan.environment.expiry.relevant ? 82 : 22,
-      danger: false,
-    },
-  ];
+  const elevated = (snapshot?.score ?? 0) >= 60;
+  const regimeTone = elevated ? "text-danger" : "text-primary";
+  const markerTone = elevated
+    ? "bg-danger shadow-[0_0_14px_var(--danger)]"
+    : "bg-primary shadow-[0_0_14px_var(--primary)]";
+  const tapeLabel = plan.environment.tape.state === "calm"
+    ? "CALM TAPE"
+    : plan.environment.tape.state === "snowball"
+      ? "SNOWBALL TAPE"
+      : "MIXED TAPE";
 
   return (
     <Panel className="overflow-hidden">
-      <SectionHeading icon={CircleGauge} eyebrow="How to trade the map" title="Market environment" />
-      <div className="grid gap-2 p-3 sm:grid-cols-2 xl:grid-cols-1">
-        {cards.map((card) => (
-          <GaugeCard key={card.id} {...card} open={open === card.id} onClick={() => setOpen(open === card.id ? null : card.id)} />
-        ))}
-      </div>
+      <SectionHeading
+        icon={Gauge}
+        eyebrow="How to trade the map"
+        title="Volatility calculator"
+        trailing={(
+          <span className={`flex items-center gap-1.5 rounded-lg border px-2 py-1 font-mono text-[8px] font-semibold ${
+            feedState === "live"
+              ? "border-primary/20 bg-primary/10 text-primary"
+              : "border-border bg-surface text-muted"
+          }`}>
+            <span className={`h-1.5 w-1.5 rounded-full ${feedState === "live" ? "animate-pulse bg-primary" : "bg-muted"}`} />
+            {feedState === "live" ? "LIVE" : feedState === "connecting" ? "CONNECTING" : "CME FALLBACK"}
+          </span>
+        )}
+      />
+
+      {loading && !snapshot ? (
+        <div className="space-y-3 p-4">
+          <div className="h-20 animate-pulse rounded-xl bg-surface" />
+          <div className="grid grid-cols-3 gap-2">
+            <div className="h-14 animate-pulse rounded-xl bg-surface" />
+            <div className="h-14 animate-pulse rounded-xl bg-surface" />
+            <div className="h-14 animate-pulse rounded-xl bg-surface" />
+          </div>
+        </div>
+      ) : !snapshot ? (
+        <div className="p-4">
+          <div className="rounded-xl border border-border bg-card p-4 text-center">
+            <Gauge className="mx-auto h-5 w-5 text-muted" />
+            <div className="mt-2 text-[11px] font-semibold text-foreground">Building the volatility baseline</div>
+            <p className="mt-1 text-[9px] leading-4 text-muted">
+              {error ?? "Waiting for enough verified five-minute CME history to rank the current market."}
+            </p>
+          </div>
+        </div>
+      ) : (
+        <div className="p-4">
+          <div className="flex items-end gap-3">
+            <div className={`text-[28px] font-semibold leading-none tracking-[-0.04em] ${regimeTone}`}>{snapshot.regime}</div>
+            <div className="font-mono text-[12px] text-muted">{snapshot.score}<span className="text-[9px]"> / 100</span></div>
+            <span className={`ml-auto rounded-md border px-2 py-1 font-mono text-[8px] font-semibold ${
+              snapshot.trend === "RISING"
+                ? "border-danger/20 bg-danger/10 text-danger"
+                : snapshot.trend === "EASING"
+                  ? "border-primary/20 bg-primary/10 text-primary"
+                  : "border-border bg-surface text-muted"
+            }`}>{snapshot.trend}</span>
+          </div>
+
+          <div className="relative mt-4">
+            <div
+              className="h-2 rounded-full"
+              style={{
+                background: "linear-gradient(90deg, color-mix(in srgb, var(--primary) 18%, var(--surface)) 0%, var(--primary) 50%, var(--danger) 100%)",
+              }}
+            />
+            <span
+              className={`absolute top-1/2 h-3.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-background ${markerTone}`}
+              style={{ left: `${snapshot.score}%` }}
+            />
+            <div className="mt-2 flex justify-between font-mono text-[7px] uppercase tracking-[0.08em] text-muted">
+              <span>Low</span><span>Quiet</span><span>Normal</span><span>High</span><span>Extreme</span>
+            </div>
+          </div>
+
+          <div className="mt-4 grid grid-cols-3 gap-2">
+            <div className="rounded-xl border border-border bg-card p-3">
+              <div className="text-[8px] uppercase tracking-[0.12em] text-muted">Realised pace</div>
+              <div className="mt-1 font-mono text-[12px] font-semibold text-foreground">{snapshot.paceRatio.toFixed(2)}×</div>
+              <div className="mt-1 text-[8px] text-muted">{snapshot.pacePercentile}th percentile</div>
+            </div>
+            <div className="rounded-xl border border-border bg-card p-3">
+              <div className="text-[8px] uppercase tracking-[0.12em] text-muted">60m range</div>
+              <div className="mt-1 font-mono text-[12px] font-semibold text-foreground">{formatPrice(snapshot.currentRange)}</div>
+              <div className="mt-1 text-[8px] text-muted">Typical {formatPrice(snapshot.typicalRange)}</div>
+            </div>
+            <div className="rounded-xl border border-border bg-card p-3">
+              <div className="text-[8px] uppercase tracking-[0.12em] text-muted">Impulse</div>
+              <div className="mt-1 font-mono text-[12px] font-semibold text-foreground">{snapshot.impulsePercentile}th</div>
+              <div className="mt-1 text-[8px] text-muted">Range {snapshot.rangePercentile}th pct</div>
+            </div>
+          </div>
+
+          <div className={`mt-3 rounded-xl border p-3 ${
+            elevated ? "border-danger/20 bg-danger/[0.055]" : "border-primary/20 bg-primary/[0.045]"
+          }`}>
+            <div className={`text-[8px] font-semibold uppercase tracking-[0.14em] ${regimeTone}`}>Map adjustment</div>
+            <p className="mt-1.5 text-[9px] leading-4 text-muted">{snapshot.guidance}</p>
+          </div>
+
+          <div className="mt-3 flex flex-wrap items-center gap-1.5 text-[8px] text-muted">
+            <span className="rounded-md border border-border bg-surface px-2 py-1">{tapeLabel}</span>
+            <span className="rounded-md border border-border bg-surface px-2 py-1">{plan.environment.fear.ratio.toFixed(2)}× IV / realised</span>
+            <span className="rounded-md border border-border bg-surface px-2 py-1">{snapshot.sampleCount} windows / {snapshot.historyDays}D</span>
+            <span className="ml-auto font-mono">{formatLiveTimestamp(snapshot.updatedAt)}</span>
+          </div>
+        </div>
+      )}
     </Panel>
   );
 }
@@ -897,6 +938,9 @@ export default function GameplanWorkspace({ initialInstrument = "NQ" }: { initia
   const [session, setSession] = useState<GameplanSession>("newyork");
   const [payload, setPayload] = useState<GameplanPayload | null>(null);
   const [currentPrice, setCurrentPrice] = useState<number | null>(null);
+  const [volatilityCandles, setVolatilityCandles] = useState<VolatilityCandle[]>([]);
+  const [volatilityLoading, setVolatilityLoading] = useState(true);
+  const [volatilityError, setVolatilityError] = useState<string | null>(null);
   const [oneLinerSnapshot, setOneLinerSnapshot] = useState<OneLinerSnapshot | null>(null);
   const [clockNow, setClockNow] = useState(() => Date.now());
   const [priceTick, setPriceTick] = useState<"up" | "down" | "flat">("flat");
@@ -1093,6 +1137,53 @@ export default function GameplanWorkspace({ initialInstrument = "NQ" }: { initia
     };
   }, [payload?.instrument, root, updateLivePrice]);
 
+  useEffect(() => {
+    let disposed = false;
+    let timer: number | null = null;
+    setVolatilityCandles([]);
+    setVolatilityLoading(true);
+    setVolatilityError(null);
+
+    const loadVolatilityHistory = async () => {
+      try {
+        const response = await fetch(
+          `/api/databento/market?symbol=${encodeURIComponent(`${root}.v.0`)}&timeframe=5m`,
+          { cache: "no-store" },
+        );
+        const result = await response.json() as { candles?: VolatilityCandle[]; error?: string };
+        if (!response.ok) throw new Error(result.error ?? "CME volatility history is unavailable.");
+        if (!disposed && Array.isArray(result.candles) && result.candles.length) {
+          setVolatilityCandles(result.candles);
+          setVolatilityError(null);
+        }
+      } catch (historyError) {
+        if (!disposed) {
+          setVolatilityError(
+            historyError instanceof Error
+              ? historyError.message
+              : "CME volatility history is unavailable.",
+          );
+        }
+      } finally {
+        if (!disposed) {
+          setVolatilityLoading(false);
+          timer = window.setTimeout(() => void loadVolatilityHistory(), 30_000);
+        }
+      }
+    };
+
+    void loadVolatilityHistory();
+    return () => {
+      disposed = true;
+      if (timer !== null) window.clearTimeout(timer);
+    };
+  }, [root]);
+
+  const volatilitySnapshot = useMemo(
+    () => calculateVolatilitySnapshot(volatilityCandles, currentPrice),
+    [currentPrice, volatilityCandles],
+  );
+
   if (loading && !payload) return <LoadingState />;
   if (!payload) {
     return (
@@ -1253,7 +1344,13 @@ export default function GameplanWorkspace({ initialInstrument = "NQ" }: { initia
               setWhatIf={setWhatIf}
               onGlossary={setGlossaryTerm}
             />
-            <Environment plan={plan} />
+            <Environment
+              plan={plan}
+              snapshot={volatilitySnapshot}
+              loading={volatilityLoading}
+              error={volatilityError}
+              feedState={liveFeedState}
+            />
           </div>
 
           <div className="mb-3"><ScenarioRoads plan={plan} /></div>
