@@ -6,6 +6,30 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
+type CachedLivePayload = {
+  payload: {
+    instrument: string;
+    contractSymbol?: string;
+    bid: number;
+    ask: number;
+    mid: number;
+    isTrade: boolean;
+    size?: number;
+    trades?: number;
+    delta?: number;
+    timestamp: string | number;
+    broker: "Databento";
+  };
+  updatedAt: number;
+};
+
+const globalLiveQuoteCache = globalThis as typeof globalThis & {
+  __kwantdeskCmeLiveQuotes?: Map<string, CachedLivePayload>;
+};
+const liveQuoteCache = globalLiveQuoteCache.__kwantdeskCmeLiveQuotes
+  ?? (globalLiveQuoteCache.__kwantdeskCmeLiveQuotes = new Map<string, CachedLivePayload>());
+const LIVE_REPLAY_MAX_AGE_MS = 2 * 60_000;
+
 function numericPrice(value: unknown) {
   const parsed = typeof value === "number" ? value : Number(value);
   if (!Number.isFinite(parsed)) return 0;
@@ -58,7 +82,16 @@ export async function GET(request: Request) {
       closeStream = close;
 
       send("retry: 1500\n\n");
-      downstreamHeartbeat = setInterval(() => send(": heartbeat\n\n"), 8_000);
+      for (const symbol of symbols) {
+        const cached = liveQuoteCache.get(symbol);
+        if (cached && Date.now() - cached.updatedAt <= LIVE_REPLAY_MAX_AGE_MS) {
+          send(`data: ${JSON.stringify({ ...cached.payload, cached: true })}\n\n`);
+        }
+      }
+      downstreamHeartbeat = setInterval(
+        () => send(`event: heartbeat\ndata: ${JSON.stringify({ timestamp: Date.now() })}\n\n`),
+        8_000,
+      );
       upstreamHealthCheck = setInterval(() => {
         if (authenticated && Date.now() - lastUpstreamMessageAt > 22_000) {
           close();
@@ -147,7 +180,7 @@ export async function GET(request: Request) {
             const mid = bid && ask ? (bid + ask) / 2 : trade || bid || ask;
             if (!symbol || !mid) continue;
             const now = Date.now();
-            send(`data: ${JSON.stringify({
+            const payload: CachedLivePayload["payload"] = {
               instrument: symbol,
               contractSymbol: instrumentContracts.get(instrumentId),
               bid: bid || mid,
@@ -159,7 +192,9 @@ export async function GET(request: Request) {
               delta: isTrade ? (side === "A" || side === "ASK" ? size : side === "B" || side === "BID" ? -size : 0) : undefined,
               timestamp: record.hd?.ts_event ?? record.ts_recv ?? record.ts_out ?? now,
               broker: "Databento",
-            })}\n\n`);
+            };
+            liveQuoteCache.set(symbol, { payload, updatedAt: now });
+            send(`data: ${JSON.stringify(payload)}\n\n`);
           } catch {
             // Control and metadata records that are not JSON trade records are ignored.
           }

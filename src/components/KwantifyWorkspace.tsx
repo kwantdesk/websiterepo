@@ -130,6 +130,7 @@ import {
   readChartHistoryCache,
   writeChartHistoryCache,
 } from "@/lib/chartHistoryCache";
+import { readLiveQuoteCache, writeLiveQuoteCache } from "@/lib/liveQuoteCache";
 import {
   loadKwantBotConversation,
   saveKwantBotConversation,
@@ -194,6 +195,7 @@ type LiveFeedPrice = {
   delta?: number;
   contractSymbol?: string;
   timestamp?: string | number;
+  cached?: boolean;
 };
 type KwantBotMessage = {
   id: string;
@@ -805,6 +807,10 @@ function getTimeframeBucketStart(timestampMs: number, timeframe: string) {
 }
 
 function marketTimestamp(value: unknown) {
+  if (typeof value === "string" && /^\d+$/.test(value.trim())) {
+    const numeric = Number(value);
+    if (Number.isFinite(numeric)) return marketTimestamp(numeric);
+  }
   if (typeof value === "number") {
     if (value > 10_000_000_000_000_000) return Math.floor(value / 1_000_000);
     if (value > 10_000_000_000_000) return Math.floor(value / 1_000);
@@ -1157,8 +1163,8 @@ async function fetchWorkspaceCandles(symbol: string, timeframe: string, broker: 
 
   if (broker === "Databento") {
     const response = await fetch(
-      `/api/databento/market?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}&start=${encodeURIComponent(periodConfig.from)}`,
-      { cache: "no-store", signal: AbortSignal.timeout(30_000) },
+      `/api/databento/market?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}`,
+      { cache: "default", signal: AbortSignal.timeout(15_000) },
     );
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.error ?? `CME did not return candles for ${displayCmeSymbol(symbol)}.`);
@@ -1709,6 +1715,7 @@ function WorkspaceChartPane({
     size?: number;
     trades?: number;
     delta?: number;
+    cached?: boolean;
   }>>([]);
   const liveOutlierCandidateRef = useRef<LiveOutlierCandidate | null>(null);
   const liveFrameRef = useRef<number | null>(null);
@@ -2030,6 +2037,7 @@ function WorkspaceChartPane({
         size: price.size,
         trades: price.trades,
         delta: price.delta,
+        cached: price.cached,
       });
       if (liveFrameRef.current !== null) return;
 
@@ -2037,7 +2045,11 @@ function WorkspaceChartPane({
         const ticks = pendingLiveTicksRef.current.splice(0);
         liveFrameRef.current = null;
         if (!ticks.length) return;
-        setLastMarketUpdateAt(Date.now());
+        setLastMarketUpdateAt(
+          ticks.some((tick) => !tick.cached)
+            ? Date.now()
+            : Math.max(...ticks.map((tick) => tick.timestamp)),
+        );
         setLiveFeedError(null);
         setCandles((previous) => {
           if (usingDatabentoPaneFeed && isEventBasedChartInterval(pane.timeframe)) {
@@ -2969,8 +2981,24 @@ export default function KwantifyWorkspace({
   const kwantBotComposerRef = useRef<HTMLTextAreaElement>(null);
   const pendingWatchlistPricesRef = useRef<Map<string, LiveFeedPrice>>(new Map());
   const pendingSelectedTicksRef = useRef<LiveFeedPrice[]>([]);
+  const pendingLiveQuoteCacheRef = useRef<Map<string, LiveFeedPrice & { openPrice?: number }>>(new Map());
   const watchlistLiveFrameRef = useRef<number | null>(null);
   const watchlistFlashTimerRef = useRef<number | null>(null);
+  const liveQuoteCacheTimerRef = useRef<number | null>(null);
+  const watchlistRef = useRef(watchlist);
+  const selectedInstrumentRef = useRef(selectedInstrument);
+  const selectedTimeframeRef = useRef(selectedTimeframe);
+  const chartTradesLengthRef = useRef(chartTrades.length);
+
+  useEffect(() => {
+    watchlistRef.current = watchlist;
+  }, [watchlist]);
+
+  useEffect(() => {
+    selectedInstrumentRef.current = selectedInstrument;
+    selectedTimeframeRef.current = selectedTimeframe;
+    chartTradesLengthRef.current = chartTrades.length;
+  }, [chartTrades.length, selectedInstrument, selectedTimeframe]);
 
   const linkedCTraderBrokerNames = useMemo(
     () => Array.from(new Set(linkedCTraderAccounts.map(resolveCTraderBrokerName))),
@@ -3003,13 +3031,13 @@ export default function KwantifyWorkspace({
   );
   const watchlistSymbolsCsv = useMemo(() => {
     const unique = new Set<string>();
-    watchlist
-      .filter((item) => item.broker === activeChartBrokerLabel)
-      .forEach((item) => unique.add(item.symbol));
+    if (selectedInstrument) unique.add(selectedInstrument);
     workspacePanes
       .filter((pane) => pane.broker === activeChartBrokerLabel)
       .forEach((pane) => unique.add(pane.symbol));
-    if (selectedInstrument) unique.add(selectedInstrument);
+    watchlist
+      .filter((item) => item.broker === activeChartBrokerLabel)
+      .forEach((item) => unique.add(item.symbol));
     return Array.from(unique).join(",");
   }, [activeChartBrokerLabel, selectedInstrument, watchlist, workspacePanes]);
   const instrumentCategories = [
@@ -3922,6 +3950,7 @@ export default function KwantifyWorkspace({
     if (!authChecked) return;
     const abortController = new AbortController();
     let cancelled = false;
+    let warmupTimer: number | null = null;
     const instruments = [...DATABENTO_FUTURES, ...databentoOptions];
     const symbols = Array.from(new Set(instruments.map((instrument) => instrument.symbol)));
     let cursor = 0;
@@ -3934,8 +3963,8 @@ export default function KwantifyWorkspace({
 
         try {
           const response = await fetch(
-            `/api/databento/market?symbol=${encodeURIComponent(symbol)}&timeframe=5m&start=${encodeURIComponent(getPeriodConfig("5D").from)}`,
-            { cache: "no-store", signal: abortController.signal },
+            `/api/databento/market?symbol=${encodeURIComponent(symbol)}&timeframe=5m`,
+            { cache: "default", signal: abortController.signal },
           );
           if (!response.ok) continue;
           const payload = await response.json();
@@ -3949,9 +3978,11 @@ export default function KwantifyWorkspace({
       }
     };
 
-    void Promise.all([warmNext(), warmNext()]);
+    // Visible panes load first. Broad background warming begins only after startup is settled.
+    warmupTimer = window.setTimeout(() => void warmNext(), 6_000);
     return () => {
       cancelled = true;
+      if (warmupTimer !== null) window.clearTimeout(warmupTimer);
       abortController.abort();
     };
   }, [authChecked, databentoOptions]);
@@ -4146,6 +4177,75 @@ export default function KwantifyWorkspace({
   }, [watchlistContextMenu]);
 
   useEffect(() => {
+    if (!usingDatabentoFeed) return;
+    let cancelled = false;
+    let animationFrame: number | null = null;
+
+    const hydrateImmediateMarketState = async () => {
+      const quotes = readLiveQuoteCache();
+      const requestedSymbols = watchlistSymbolsCsv.split(",").filter(Boolean);
+      const missingSymbols = requestedSymbols.filter((symbol) => !quotes.has(symbol));
+
+      const histories = await Promise.all(missingSymbols.map(async (symbol) => {
+        const history = await readChartHistoryCache(symbol, "5m");
+        const candles = history?.candles ?? [];
+        const latest = candles.at(-1);
+        if (!latest) return null;
+        const sessionStart = Date.now() - 24 * 60 * 60_000;
+        const sessionOpen = candles.find((candle) => candle.timestamp >= sessionStart)?.open ?? latest.open;
+        return {
+          instrument: symbol,
+          bid: latest.close,
+          ask: latest.close,
+          mid: latest.close,
+          openPrice: sessionOpen,
+          broker: "Databento",
+          contractSymbol: currentCmeContract(symbol) ?? undefined,
+          timestamp: latest.timestamp,
+          cachedAt: history?.updatedAt ?? latest.timestamp,
+        };
+      }));
+      for (const quote of histories) {
+        if (quote) quotes.set(quote.instrument, quote);
+      }
+      if (cancelled || !quotes.size) return;
+
+      setWatchlist((current) => current.map((item) => {
+        if (item.broker !== "Databento") return item;
+        const quote = quotes.get(item.symbol);
+        if (!quote) return item;
+        const openPrice = quote.openPrice || item.openPrice || quote.mid;
+        return {
+          ...item,
+          contractSymbol: quote.contractSymbol || item.contractSymbol,
+          lastPrice: quote.mid,
+          openPrice,
+          bid: quote.bid,
+          ask: quote.ask,
+          mid: quote.mid,
+          change: quote.mid - openPrice,
+          changePercent: openPrice ? ((quote.mid - openPrice) / openPrice) * 100 : 0,
+          flash: null,
+        };
+      }));
+
+      animationFrame = window.requestAnimationFrame(() => {
+        for (const quote of quotes.values()) {
+          window.dispatchEvent(new CustomEvent("kwantdesk:databento-tick", {
+            detail: { ...quote, cached: true } satisfies LiveFeedPrice,
+          }));
+        }
+      });
+    };
+
+    void hydrateImmediateMarketState();
+    return () => {
+      cancelled = true;
+      if (animationFrame !== null) window.cancelAnimationFrame(animationFrame);
+    };
+  }, [usingDatabentoFeed, watchlistSymbolsCsv]);
+
+  useEffect(() => {
     const nameMap: Record<string, string> = {
       EUR_USD: "EURUSD",
       GBP_USD: "GBPUSD",
@@ -4174,6 +4274,18 @@ export default function KwantifyWorkspace({
     let lastMessageAt = Date.now();
     let reconnecting = false;
     let reconnectTimer: number | null = null;
+    const markStreamAlive = () => {
+      lastMessageAt = Date.now();
+      setStreamHealthyByBroker((current) => current[activeChartBrokerLabel]
+        ? current
+        : { ...current, [activeChartBrokerLabel]: true });
+      setFeedErrorByBroker((current) => {
+        if (!current[activeChartBrokerLabel]) return current;
+        const next = { ...current };
+        delete next[activeChartBrokerLabel];
+        return next;
+      });
+    };
     const reconnect = () => {
       if (reconnecting) return;
       reconnecting = true;
@@ -4188,11 +4300,27 @@ export default function KwantifyWorkspace({
     const healthTimer = window.setInterval(() => {
       if (usingDatabentoFeed && Date.now() - lastMessageAt > 18_000) reconnect();
     }, 3_000);
+    const handleStatus = () => markStreamAlive();
+    const handleHeartbeat = () => markStreamAlive();
+    const handleFeedError = (event: Event) => {
+      lastMessageAt = Date.now();
+      try {
+        const payload = JSON.parse((event as MessageEvent<string>).data) as { error?: string };
+        if (payload.error) {
+          setFeedErrorByBroker((current) => ({ ...current, [activeChartBrokerLabel]: payload.error as string }));
+        }
+      } catch {
+        // The EventSource error handler reconnects malformed failures.
+      }
+    };
+    eventSource.addEventListener("status", handleStatus);
+    eventSource.addEventListener("heartbeat", handleHeartbeat);
+    eventSource.addEventListener("feed-error", handleFeedError);
 
     eventSource.onmessage = (event) => {
       try {
         const price = JSON.parse(event.data) as LiveFeedPrice;
-        lastMessageAt = Date.now();
+        markStreamAlive();
         if (price.error) {
           setFeedErrorByBroker((current) => ({ ...current, [activeChartBrokerLabel]: price.error as string }));
           return;
@@ -4201,9 +4329,24 @@ export default function KwantifyWorkspace({
         const displayName = usingDatabentoFeed || usingCTraderFeed ? price.instrument : (nameMap[price.instrument] || price.instrument);
         if (usingDatabentoFeed) {
           window.dispatchEvent(new CustomEvent("kwantdesk:databento-tick", { detail: price }));
+          const previousItem = watchlistRef.current.find(
+            (item) => item.broker === "Databento" && item.symbol === displayName,
+          );
+          pendingLiveQuoteCacheRef.current.set(displayName, {
+            ...price,
+            openPrice: previousItem?.openPrice || price.mid,
+          });
+          if (liveQuoteCacheTimerRef.current === null) {
+            liveQuoteCacheTimerRef.current = window.setTimeout(() => {
+              liveQuoteCacheTimerRef.current = null;
+              const quotes = [...pendingLiveQuoteCacheRef.current.values()];
+              pendingLiveQuoteCacheRef.current.clear();
+              if (quotes.length) writeLiveQuoteCache(quotes);
+            }, 1_000);
+          }
         }
         pendingWatchlistPricesRef.current.set(displayName, price);
-        if (displayName === selectedInstrument && chartTrades.length === 0) {
+        if (displayName === selectedInstrumentRef.current && chartTradesLengthRef.current === 0) {
           pendingSelectedTicksRef.current.push(price);
         }
         if (watchlistLiveFrameRef.current !== null) return;
@@ -4256,6 +4399,8 @@ export default function KwantifyWorkspace({
           }
 
           if (selectedTicks.length) {
+            const selectedTimeframe = selectedTimeframeRef.current;
+            const selectedInstrument = selectedInstrumentRef.current;
             setChartCandles((previous) => {
               if (usingDatabentoFeed && isEventBasedChartInterval(selectedTimeframe)) {
                 const trades = selectedTicks
@@ -4294,10 +4439,21 @@ export default function KwantifyWorkspace({
 
     return () => {
       eventSource.close();
+      eventSource.removeEventListener("status", handleStatus);
+      eventSource.removeEventListener("heartbeat", handleHeartbeat);
+      eventSource.removeEventListener("feed-error", handleFeedError);
       window.clearInterval(healthTimer);
       if (reconnectTimer !== null) window.clearTimeout(reconnectTimer);
       pendingWatchlistPricesRef.current.clear();
       pendingSelectedTicksRef.current = [];
+      if (liveQuoteCacheTimerRef.current !== null) {
+        window.clearTimeout(liveQuoteCacheTimerRef.current);
+        liveQuoteCacheTimerRef.current = null;
+      }
+      if (pendingLiveQuoteCacheRef.current.size) {
+        writeLiveQuoteCache(pendingLiveQuoteCacheRef.current.values());
+        pendingLiveQuoteCacheRef.current.clear();
+      }
       if (watchlistLiveFrameRef.current !== null) {
         window.cancelAnimationFrame(watchlistLiveFrameRef.current);
         watchlistLiveFrameRef.current = null;
@@ -4307,7 +4463,7 @@ export default function KwantifyWorkspace({
         watchlistFlashTimerRef.current = null;
       }
     };
-  }, [activeChartBrokerLabel, chartTrades.length, selectedInstrument, selectedTimeframe, streamReconnectNonce, usingCTraderFeed, usingDatabentoFeed, watchlistSymbolsCsv]);
+  }, [activeChartBrokerLabel, streamReconnectNonce, usingCTraderFeed, usingDatabentoFeed, watchlistSymbolsCsv]);
 
   useEffect(() => {
     if (activeChartBrokerLabel === "Massive" || activeChartBrokerLabel === "Databento") {

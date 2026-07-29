@@ -14,7 +14,7 @@ const globalHistoryCache = globalThis as typeof globalThis & {
 };
 const historyCache = globalHistoryCache.__kwantdeskCmeHistory
   ?? (globalHistoryCache.__kwantdeskCmeHistory = new Map<string, HistoryCacheEntry>());
-const FRESH_CACHE_MS = 30_000;
+const FRESH_CACHE_MS = 5 * 60_000;
 const HISTORY_WINDOW_MS = 8 * 24 * 60 * 60_000;
 
 export async function GET(request: Request) {
