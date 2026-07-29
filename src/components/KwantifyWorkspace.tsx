@@ -273,6 +273,35 @@ type WorkspaceBackupFile = {
   exportedAt: string;
   presets: WorkspacePreset[];
 };
+type LevelExportType = "gamma" | "gameplan";
+type LevelExportFormat = "json" | "csv" | "xml";
+type GammaLevelExportSnapshot = {
+  paneId: string;
+  instrument: string;
+  sourceSymbol: string;
+  contractSymbol: string | null;
+  checkedAt: string | null;
+  regime: GammaChartOverlay["regime"] | null;
+  sourceLabel: string;
+  levels: ChartLevel[];
+};
+type LevelExportRow = {
+  levelType: "Gamma Levels" | "Gameplan Levels";
+  instrument: string;
+  sourceSymbol: string;
+  contractSymbol: string;
+  id: string;
+  name: string;
+  role: string;
+  price: number;
+  zoneLow: number;
+  zoneHigh: number;
+  strength: number | null;
+  color: string;
+  lineStyle: string;
+  source: string;
+  asOf: string;
+};
 export type PrimaryWorkspaceSection = "charts" | "gamma" | "gexmap" | "gameplan" | "kwantbot" | "news";
 
 const WORKSPACE_PRESETS_STORAGE_KEY = "kwantdesk-chart-workspace-presets";
@@ -355,6 +384,31 @@ function displayCmeSymbol(symbol: string) {
 
 function displayCmeText(value: string) {
   return value.replace(/\b([A-Z0-9]+)\.[vnc]\.\d+\b/gi, "$1");
+}
+
+function csvCell(value: string | number | null) {
+  const text = value === null ? "" : String(value);
+  return `"${text.replace(/"/g, "\"\"")}"`;
+}
+
+function xmlAttribute(value: string | number | null) {
+  return (value === null ? "" : String(value))
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function downloadLevelFile(content: string, filename: string, mimeType: string) {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
 }
 
 function displayMarketSource(broker: string) {
@@ -1588,6 +1642,8 @@ function WorkspaceChartPane({
   onChartDragEnd,
   gammaLevelsEnabled,
   onToggleGammaLevels,
+  levelExportRequested,
+  onGammaExportSnapshot,
   gameplanOverlay,
   onRemoveGameplanOverlay,
 }: {
@@ -1609,6 +1665,8 @@ function WorkspaceChartPane({
   onChartDragEnd?: () => void;
   gammaLevelsEnabled: boolean;
   onToggleGammaLevels: () => void;
+  levelExportRequested: boolean;
+  onGammaExportSnapshot: (paneId: string, snapshot: GammaLevelExportSnapshot | null) => void;
   gameplanOverlay: GameplanChartOverlay | null;
   onRemoveGameplanOverlay: () => void;
 }) {
@@ -1676,6 +1734,27 @@ function WorkspaceChartPane({
     () => gammaLevelsEnabled ? currentGammaOverlay?.levels ?? [] : [],
     [currentGammaOverlay, gammaLevelsEnabled],
   );
+
+  useEffect(() => {
+    onGammaExportSnapshot(pane.id, {
+      paneId: pane.id,
+      instrument: gammaInstrument,
+      sourceSymbol: pane.symbol,
+      contractSymbol: resolvedContractSymbol,
+      checkedAt: currentGammaOverlay?.checkedAt ?? null,
+      regime: currentGammaOverlay?.regime ?? null,
+      sourceLabel: currentGammaOverlay?.sourceLabel ?? "",
+      levels: currentGammaOverlay?.levels ?? [],
+    });
+    return () => onGammaExportSnapshot(pane.id, null);
+  }, [
+    currentGammaOverlay,
+    gammaInstrument,
+    onGammaExportSnapshot,
+    pane.id,
+    pane.symbol,
+    resolvedContractSymbol,
+  ]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1780,14 +1859,14 @@ function WorkspaceChartPane({
   ]);
 
   useEffect(() => {
-    if (!gammaLevelsEnabled || !gammaLevelsAvailable || !nativeGammaConversion) {
+    if ((!gammaLevelsEnabled && !levelExportRequested) || !gammaLevelsAvailable || !nativeGammaConversion) {
       setGammaLevelsLoading(false);
       setGammaLevelsError(null);
       if (!gammaLevelsAvailable) setGammaOverlay(null);
       return;
     }
     if (!gammaDataReady) {
-      setGammaLevelsLoading(true);
+      setGammaLevelsLoading(gammaLevelsEnabled);
       setGammaLevelsError(null);
       return;
     }
@@ -1826,7 +1905,7 @@ function WorkspaceChartPane({
     };
 
     const loadGamma = async () => {
-      setGammaLevelsLoading(!retainedOverlay);
+      setGammaLevelsLoading(gammaLevelsEnabled && !retainedOverlay);
       const conversions = [
         fallbackGammaConversion,
         nativeGammaConversion,
@@ -1864,6 +1943,7 @@ function WorkspaceChartPane({
     gammaDataReady,
     gammaLevelsAvailable,
     gammaLevelsEnabled,
+    levelExportRequested,
     nativeGammaConversion?.id,
     pane.symbol,
     resolvedContractSymbol,
@@ -2773,6 +2853,15 @@ export default function KwantifyWorkspace({
     if (typeof window === "undefined") return false;
     return window.localStorage.getItem(GAMMA_LEVELS_ENABLED_STORAGE_KEY) === "true";
   });
+  const [showLevelsExport, setShowLevelsExport] = useState(false);
+  const [levelExportTypes, setLevelExportTypes] = useState<Record<LevelExportType, boolean>>({
+    gamma: true,
+    gameplan: true,
+  });
+  const [levelExportFormat, setLevelExportFormat] = useState<LevelExportFormat>("json");
+  const [selectedLevelExportInstruments, setSelectedLevelExportInstruments] = useState<string[]>([]);
+  const [levelExportError, setLevelExportError] = useState("");
+  const [gammaLevelExportsByPane, setGammaLevelExportsByPane] = useState<Record<string, GammaLevelExportSnapshot>>({});
   const [gameplanChartOverlays, setGameplanChartOverlays] = useState<GameplanChartOverlayStore>(() =>
     loadGameplanChartOverlays());
   const [selectedStrategy, setSelectedStrategy] = useState<string | null>(demoStrategies[0].id);
@@ -2943,6 +3032,74 @@ export default function KwantifyWorkspace({
   const visibleWorkspacePaneIds = useMemo(
     () => collectWorkspacePaneIds(workspaceTree),
     [workspaceTree],
+  );
+  const handleGammaExportSnapshot = useCallback((
+    paneId: string,
+    snapshot: GammaLevelExportSnapshot | null,
+  ) => {
+    setGammaLevelExportsByPane((current) => {
+      if (!snapshot) {
+        if (!current[paneId]) return current;
+        const next = { ...current };
+        delete next[paneId];
+        return next;
+      }
+      return { ...current, [paneId]: snapshot };
+    });
+  }, []);
+  const availableLevelExportInstruments = useMemo(() => {
+    const options = new Map<string, {
+      instrument: string;
+      sourceSymbol: string;
+      contractSymbol: string;
+      gamma: GammaLevelExportSnapshot | null;
+      gameplan: GameplanChartOverlay | null;
+    }>();
+
+    for (const paneId of visibleWorkspacePaneIds) {
+      const pane = workspacePanes.find((candidate) => candidate.id === paneId);
+      if (!pane) continue;
+      const instrument = displayCmeSymbol(pane.symbol);
+      const snapshot = gammaLevelExportsByPane[pane.id] ?? null;
+      const gameplanRoot = gameplanChartRootForInstrument(pane.symbol);
+      const gameplan = gameplanRoot ? gameplanChartOverlays[gameplanRoot] ?? null : null;
+      const existing = options.get(instrument);
+      if (!existing) {
+        options.set(instrument, {
+          instrument,
+          sourceSymbol: pane.symbol,
+          contractSymbol: snapshot?.contractSymbol ?? currentCmeContract(pane.symbol) ?? "",
+          gamma: snapshot,
+          gameplan,
+        });
+      } else {
+        if ((snapshot?.levels.length ?? 0) > (existing.gamma?.levels.length ?? 0)) {
+          existing.gamma = snapshot;
+          existing.contractSymbol = snapshot?.contractSymbol ?? existing.contractSymbol;
+        }
+        if (!existing.gameplan && gameplan) existing.gameplan = gameplan;
+      }
+    }
+
+    return Array.from(options.values());
+  }, [
+    gammaLevelExportsByPane,
+    gameplanChartOverlays,
+    visibleWorkspacePaneIds,
+    workspacePanes,
+  ]);
+  const selectedLevelExportCount = useMemo(
+    () => availableLevelExportInstruments
+      .filter((option) => selectedLevelExportInstruments.includes(option.instrument))
+      .reduce((total, option) =>
+        total
+        + (levelExportTypes.gamma ? option.gamma?.levels.length ?? 0 : 0)
+        + (levelExportTypes.gameplan ? option.gameplan?.levels.length ?? 0 : 0), 0),
+    [
+      availableLevelExportInstruments,
+      levelExportTypes,
+      selectedLevelExportInstruments,
+    ],
   );
   const chartStrategyOptions = useMemo(
     () =>
@@ -5934,6 +6091,168 @@ export default function KwantifyWorkspace({
     window.location.href = `/api/ctrader/start?scope=trading&broker=${encodeURIComponent(brokerName)}&returnTo=${encodeURIComponent(returnTo)}`;
   };
 
+  const openLevelsExport = () => {
+    const activeInstrument = displayCmeSymbol(activeWorkspacePane.symbol);
+    const fallbackInstrument = availableLevelExportInstruments[0]?.instrument;
+    setSelectedLevelExportInstruments(
+      availableLevelExportInstruments.some((option) => option.instrument === activeInstrument)
+        ? [activeInstrument]
+        : fallbackInstrument
+          ? [fallbackInstrument]
+          : [],
+    );
+    setLevelExportTypes({ gamma: true, gameplan: true });
+    setLevelExportError("");
+    setShowLevelsExport(true);
+  };
+
+  const toggleLevelExportInstrument = (instrument: string) => {
+    setSelectedLevelExportInstruments((current) =>
+      current.includes(instrument)
+        ? current.filter((candidate) => candidate !== instrument)
+        : [...current, instrument]);
+    setLevelExportError("");
+  };
+
+  const exportSelectedLevels = () => {
+    const selectedOptions = availableLevelExportInstruments.filter((option) =>
+      selectedLevelExportInstruments.includes(option.instrument));
+    const rows: LevelExportRow[] = [];
+    const gameplanColors = {
+      magnet: chartSettings.upColor,
+      wall: chartSettings.downColor,
+      accelerant: mixChartColor(chartSettings.upColor, "#F59E0B", 0.62),
+      decision: mixChartColor(chartSettings.upColor, "#38BDF8", 0.62),
+    } satisfies Record<GameplanChartOverlay["levels"][number]["role"], string>;
+
+    for (const option of selectedOptions) {
+      if (levelExportTypes.gamma && option.gamma) {
+        for (const level of option.gamma.levels) {
+          rows.push({
+            levelType: "Gamma Levels",
+            instrument: option.instrument,
+            sourceSymbol: option.sourceSymbol,
+            contractSymbol: option.contractSymbol,
+            id: level.id,
+            name: level.label,
+            role: "gamma",
+            price: level.price,
+            zoneLow: level.price,
+            zoneHigh: level.price,
+            strength: null,
+            color: level.color,
+            lineStyle: level.lineStyle ?? "solid",
+            source: option.gamma.sourceLabel,
+            asOf: option.gamma.checkedAt ?? "",
+          });
+        }
+      }
+
+      if (levelExportTypes.gameplan && option.gameplan) {
+        for (const level of option.gameplan.levels) {
+          rows.push({
+            levelType: "Gameplan Levels",
+            instrument: option.instrument,
+            sourceSymbol: option.sourceSymbol,
+            contractSymbol: option.contractSymbol,
+            id: level.id,
+            name: level.name,
+            role: level.role,
+            price: (level.zone[0] + level.zone[1]) / 2,
+            zoneLow: level.zone[0],
+            zoneHigh: level.zone[1],
+            strength: level.strength,
+            color: gameplanColors[level.role],
+            lineStyle: level.role === "decision" ? "solid" : level.role === "accelerant" ? "dotted" : "dashed",
+            source: `Kwant Desk Gameplan · ${option.gameplan.session} · ${option.gameplan.editionDate}`,
+            asOf: option.gameplan.publishedAt,
+          });
+        }
+      }
+    }
+
+    if (!selectedOptions.length) {
+      setLevelExportError("Select at least one instrument.");
+      return;
+    }
+    if (!levelExportTypes.gamma && !levelExportTypes.gameplan) {
+      setLevelExportError("Select Gamma Levels, Gameplan Levels, or both.");
+      return;
+    }
+    if (!rows.length) {
+      setLevelExportError("The selected levels are still preparing or have not been added for this instrument.");
+      return;
+    }
+
+    const exportedAt = new Date().toISOString();
+    const filenameInstruments = selectedOptions
+      .map((option) => option.instrument)
+      .join("-")
+      .replace(/[^a-z0-9-]+/gi, "-")
+      .toLowerCase();
+    const baseFilename = `kwantdesk-levels-${filenameInstruments || "export"}-${exportedAt.slice(0, 10)}`;
+
+    if (levelExportFormat === "json") {
+      downloadLevelFile(
+        JSON.stringify({
+          format: "kwantdesk-chart-levels",
+          version: 1,
+          exportedAt,
+          instruments: selectedOptions.map((option) => ({
+            instrument: option.instrument,
+            sourceSymbol: option.sourceSymbol,
+            contractSymbol: option.contractSymbol,
+          })),
+          levelTypes: (Object.entries(levelExportTypes) as Array<[LevelExportType, boolean]>)
+            .filter(([, enabled]) => enabled)
+            .map(([type]) => type),
+          levels: rows,
+        }, null, 2),
+        `${baseFilename}.json`,
+        "application/json;charset=utf-8",
+      );
+    } else if (levelExportFormat === "csv") {
+      const columns: Array<keyof LevelExportRow> = [
+        "levelType",
+        "instrument",
+        "sourceSymbol",
+        "contractSymbol",
+        "id",
+        "name",
+        "role",
+        "price",
+        "zoneLow",
+        "zoneHigh",
+        "strength",
+        "color",
+        "lineStyle",
+        "source",
+        "asOf",
+      ];
+      const csv = [
+        columns.map((column) => csvCell(column)).join(","),
+        ...rows.map((row) => columns.map((column) => csvCell(row[column])).join(",")),
+      ].join("\r\n");
+      downloadLevelFile(csv, `${baseFilename}.csv`, "text/csv;charset=utf-8");
+    } else {
+      const levelXml = rows.map((row) =>
+        `    <Level type="${xmlAttribute(row.levelType)}" instrument="${xmlAttribute(row.instrument)}" sourceSymbol="${xmlAttribute(row.sourceSymbol)}" contract="${xmlAttribute(row.contractSymbol)}" id="${xmlAttribute(row.id)}" name="${xmlAttribute(row.name)}" role="${xmlAttribute(row.role)}" price="${xmlAttribute(row.price)}" zoneLow="${xmlAttribute(row.zoneLow)}" zoneHigh="${xmlAttribute(row.zoneHigh)}" strength="${xmlAttribute(row.strength)}" color="${xmlAttribute(row.color)}" lineStyle="${xmlAttribute(row.lineStyle)}" source="${xmlAttribute(row.source)}" asOf="${xmlAttribute(row.asOf)}" />`
+      ).join("\n");
+      const xml = [
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>",
+        `<DeepChartLevelExport version="1" source="Kwant Desk" exportedAt="${xmlAttribute(exportedAt)}">`,
+        "  <Levels>",
+        levelXml,
+        "  </Levels>",
+        "</DeepChartLevelExport>",
+      ].join("\n");
+      downloadLevelFile(xml, `${baseFilename}.xml`, "application/xml;charset=utf-8");
+    }
+
+    setLevelExportError("");
+    setShowLevelsExport(false);
+  };
+
   const clearBacktest = () => {
     setChartTrades([]);
     setBacktestResult(null);
@@ -6047,6 +6366,8 @@ export default function KwantifyWorkspace({
         chartDragEnabled={!workspaceLocked && visibleWorkspacePaneIds.length > 1}
         gammaLevelsEnabled={gammaLevelsEnabled}
         onToggleGammaLevels={() => setGammaLevelsEnabled((current) => !current)}
+        levelExportRequested={showLevelsExport}
+        onGammaExportSnapshot={handleGammaExportSnapshot}
         gameplanOverlay={gameplanRoot ? gameplanChartOverlays[gameplanRoot] ?? null : null}
         onRemoveGameplanOverlay={() => {
           if (!gameplanRoot) return;
@@ -6579,9 +6900,211 @@ export default function KwantifyWorkspace({
             </div>
           </div>
           <div className="flex-1" />
+          <button
+            type="button"
+            onClick={openLevelsExport}
+            title="Export chart levels"
+            aria-label="Export chart levels"
+            className="flex h-8 w-8 items-center justify-center rounded-full border border-border bg-surface text-muted transition-colors hover:border-primary/30 hover:bg-card hover:text-primary"
+          >
+            <Download className="h-4 w-4" />
+          </button>
           <button onClick={signOut} title={currentUsername ? `@${currentUsername}` : "Account"} className="flex h-8 w-8 items-center justify-center rounded-full border border-border bg-surface transition-colors hover:bg-card"><User className="h-4 w-4 text-muted" /></button>
         </header>
         )}
+
+        {showLevelsExport && typeof document !== "undefined"
+          ? createPortal(
+            <div className="fixed inset-0 z-[240] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+              <button
+                type="button"
+                className="absolute inset-0 cursor-default"
+                onClick={() => setShowLevelsExport(false)}
+                aria-label="Close levels export"
+              />
+              <div className="relative z-10 flex max-h-[calc(100vh-32px)] w-full max-w-[560px] flex-col overflow-hidden rounded-3xl border border-border bg-panel shadow-[0_28px_100px_rgba(0,0,0,.7)]">
+                <div className="flex items-center gap-3 border-b border-border px-5 py-4">
+                  <span className="flex h-10 w-10 items-center justify-center rounded-2xl border border-primary/20 bg-primary/10 text-primary">
+                    <Download className="h-[18px] w-[18px]" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[13px] font-semibold text-foreground">Export chart levels</div>
+                    <div className="mt-0.5 text-[10px] text-muted">Choose the level sets, instruments and file format.</div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowLevelsExport(false)}
+                    className="flex h-8 w-8 items-center justify-center rounded-xl text-muted hover:bg-surface hover:text-foreground"
+                    aria-label="Close levels export"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+
+                <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-5">
+                  <section>
+                    <div className="mb-2.5 text-[9px] font-semibold uppercase tracking-[0.15em] text-muted">Level type</div>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      {([
+                        ["gamma", "Gamma Levels", "Live options-derived chart levels"],
+                        ["gameplan", "Gameplan Levels", "Named levels and price zones"],
+                      ] as const).map(([type, label, description]) => {
+                        const active = levelExportTypes[type];
+                        return (
+                          <button
+                            key={type}
+                            type="button"
+                            aria-pressed={active}
+                            onClick={() => {
+                              setLevelExportTypes((current) => ({ ...current, [type]: !current[type] }));
+                              setLevelExportError("");
+                            }}
+                            className={`flex items-center gap-3 rounded-2xl border p-3 text-left transition-colors ${
+                              active
+                                ? "border-primary/35 bg-primary/[0.08]"
+                                : "border-border bg-surface/35 hover:bg-surface"
+                            }`}
+                          >
+                            <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border ${
+                              active ? "border-primary bg-primary text-background" : "border-border bg-background"
+                            }`}>
+                              {active ? <Check className="h-3 w-3" /> : null}
+                            </span>
+                            <span className="min-w-0">
+                              <span className={`block text-[11px] font-semibold ${active ? "text-foreground" : "text-muted"}`}>{label}</span>
+                              <span className="mt-0.5 block text-[9px] text-muted">{description}</span>
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </section>
+
+                  <section>
+                    <div className="mb-2.5 flex items-center justify-between">
+                      <span className="text-[9px] font-semibold uppercase tracking-[0.15em] text-muted">Instruments</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedLevelExportInstruments(
+                            selectedLevelExportInstruments.length === availableLevelExportInstruments.length
+                              ? []
+                              : availableLevelExportInstruments.map((option) => option.instrument),
+                          );
+                          setLevelExportError("");
+                        }}
+                        className="text-[9px] font-semibold text-primary hover:text-foreground"
+                      >
+                        {selectedLevelExportInstruments.length === availableLevelExportInstruments.length ? "Clear all" : "Select all"}
+                      </button>
+                    </div>
+                    <div className="space-y-1.5 rounded-2xl border border-border bg-background/35 p-2">
+                      {availableLevelExportInstruments.map((option) => {
+                        const active = selectedLevelExportInstruments.includes(option.instrument);
+                        const gammaCount = option.gamma?.levels.length ?? 0;
+                        const gameplanCount = option.gameplan?.levels.length ?? 0;
+                        const gammaPreparing = isGammaChartInstrument(option.instrument) && showLevelsExport && gammaCount === 0;
+                        return (
+                          <button
+                            key={option.instrument}
+                            type="button"
+                            aria-pressed={active}
+                            onClick={() => toggleLevelExportInstrument(option.instrument)}
+                            className={`flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-colors ${
+                              active
+                                ? "border-primary/25 bg-primary/[0.07]"
+                                : "border-transparent hover:border-border hover:bg-surface/50"
+                            }`}
+                          >
+                            <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border ${
+                              active ? "border-primary bg-primary text-background" : "border-border bg-surface"
+                            }`}>
+                              {active ? <Check className="h-3 w-3" /> : null}
+                            </span>
+                            <span className="min-w-0 flex-1">
+                              <span className="flex items-center gap-2">
+                                <span className="font-mono text-[12px] font-semibold text-foreground">{option.instrument}</span>
+                                {option.contractSymbol ? <span className="font-mono text-[9px] text-muted">{option.contractSymbol}</span> : null}
+                              </span>
+                              <span className="mt-0.5 block text-[9px] text-muted">
+                                {gammaPreparing ? "Preparing Gamma" : `${gammaCount} Gamma`}
+                                {" · "}{gameplanCount} Gameplan
+                              </span>
+                            </span>
+                            <span className="font-mono text-[10px] text-muted">{gammaCount + gameplanCount}</span>
+                          </button>
+                        );
+                      })}
+                      {!availableLevelExportInstruments.length ? (
+                        <div className="px-3 py-8 text-center text-[10px] text-muted">Open a chart to prepare its levels for export.</div>
+                      ) : null}
+                    </div>
+                  </section>
+
+                  <section>
+                    <div className="mb-2.5 text-[9px] font-semibold uppercase tracking-[0.15em] text-muted">File format</div>
+                    <div className="grid grid-cols-3 gap-2">
+                      {([
+                        ["json", "JSON", "Structured"],
+                        ["csv", "CSV", "Spreadsheet"],
+                        ["xml", "DeepChart XML", "Chart import"],
+                      ] as const).map(([format, label, detail]) => {
+                        const active = levelExportFormat === format;
+                        return (
+                          <button
+                            key={format}
+                            type="button"
+                            onClick={() => {
+                              setLevelExportFormat(format);
+                              setLevelExportError("");
+                            }}
+                            className={`rounded-2xl border px-3 py-3 text-left transition-colors ${
+                              active
+                                ? "border-primary/35 bg-primary/[0.08]"
+                                : "border-border bg-surface/35 hover:bg-surface"
+                            }`}
+                          >
+                            <span className={`block text-[10px] font-semibold ${active ? "text-primary" : "text-foreground"}`}>{label}</span>
+                            <span className="mt-1 block text-[8px] text-muted">{detail}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </section>
+
+                  {levelExportError ? (
+                    <div className="rounded-xl border border-danger/20 bg-danger/[0.08] px-3 py-2.5 text-[10px] text-danger">
+                      {levelExportError}
+                    </div>
+                  ) : null}
+                </div>
+
+                <div className="flex items-center gap-3 border-t border-border bg-background/25 px-5 py-4">
+                  <div className="mr-auto">
+                    <div className="font-mono text-[11px] font-semibold text-foreground">{selectedLevelExportCount} levels ready</div>
+                    <div className="mt-0.5 text-[8px] text-muted">The download is generated locally in your browser.</div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowLevelsExport(false)}
+                    className="h-9 rounded-xl border border-border px-4 text-[10px] font-semibold text-muted hover:bg-surface hover:text-foreground"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={exportSelectedLevels}
+                    className="flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-[10px] font-semibold text-background hover:brightness-110"
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    Export
+                  </button>
+                </div>
+              </div>
+            </div>,
+            document.body,
+          )
+          : null}
 
         {bottomWorkspaceSection === "charts" ? (
         <div className="min-h-0 flex-1 overflow-hidden">
