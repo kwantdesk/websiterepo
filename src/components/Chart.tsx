@@ -1842,6 +1842,7 @@ export default function Chart({
         textColor: "#9CA3AF",
         fontSize: 11,
         fontFamily: "'JetBrains Mono', monospace",
+        attributionLogo: false,
       },
       grid: {
         vertLines: { color: settings.gridLines ? settings.gridColor : "transparent" },
