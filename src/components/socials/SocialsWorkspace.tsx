@@ -82,10 +82,46 @@ import {
   type GameplanSession,
 } from "@/lib/gameplan";
 import { loadSocialState, normalizeSocialState, saveSocialState } from "@/lib/socialsStore";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type PointerEvent as ReactPointerEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 type SocialTab = "today" | "precords" | "desks" | "rankings" | "cards" | "profile";
 type FeedFilter = "all" | "live" | "proven" | "mine";
+type AvatarCropDraft = {
+  sourceUrl: string;
+  naturalWidth: number;
+  naturalHeight: number;
+  zoom: number;
+  offsetX: number;
+  offsetY: number;
+};
+
+const AVATAR_CROP_SIZE = 288;
+const AVATAR_OUTPUT_SIZE = 512;
+const MAX_AVATAR_SOURCE_BYTES = 12_000_000;
+
+function avatarCropScale(draft: AvatarCropDraft, zoom = draft.zoom) {
+  return Math.max(
+    AVATAR_CROP_SIZE / draft.naturalWidth,
+    AVATAR_CROP_SIZE / draft.naturalHeight,
+  ) * zoom;
+}
+
+function clampAvatarOffset(draft: AvatarCropDraft, offsetX: number, offsetY: number, zoom = draft.zoom) {
+  const scale = avatarCropScale(draft, zoom);
+  const maxX = Math.max(0, (draft.naturalWidth * scale - AVATAR_CROP_SIZE) / 2);
+  const maxY = Math.max(0, (draft.naturalHeight * scale - AVATAR_CROP_SIZE) / 2);
+  return {
+    offsetX: Math.max(-maxX, Math.min(maxX, offsetX)),
+    offsetY: Math.max(-maxY, Math.min(maxY, offsetY)),
+  };
+}
 
 const SOCIAL_TABS: Array<{ id: SocialTab; label: string; icon: typeof Activity }> = [
   { id: "today", label: "Record", icon: Activity },
@@ -334,6 +370,8 @@ export default function SocialsWorkspace({
   });
   const [profileDraft, setProfileDraft] = useState<SocialProfilePayload>(() => buildDefaultProfile(resolvedLabel));
   const [profileEditing, setProfileEditing] = useState(false);
+  const [avatarCrop, setAvatarCrop] = useState<AvatarCropDraft | null>(null);
+  const [avatarCropSaving, setAvatarCropSaving] = useState(false);
   const [selectedProfileRecord, setSelectedProfileRecord] = useState<SocialObject | null>(null);
   const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
   const [commentKinds, setCommentKinds] = useState<Record<string, SocialCommentPayload["kind"]>>({});
@@ -349,6 +387,14 @@ export default function SocialsWorkspace({
   const [notice, setNotice] = useState("");
   const evidenceInputRef = useRef<HTMLInputElement>(null);
   const avatarInputRef = useRef<HTMLInputElement>(null);
+  const avatarCropSourceRef = useRef<string | null>(null);
+  const avatarDragRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    originX: number;
+    originY: number;
+  } | null>(null);
 
   const upsertObject = useCallback((object: SocialObject, replaceKey?: string) => {
     setState((current) => ({
@@ -1234,23 +1280,142 @@ export default function SocialsWorkspace({
     void shareUrl(url, `${payload?.instrument ?? "Gameplan"} by ${authorProfile.displayName}`, "View this timestamped Kwant Desk Gameplan.");
   };
 
+  const closeAvatarCrop = useCallback(() => {
+    if (avatarCropSourceRef.current) {
+      URL.revokeObjectURL(avatarCropSourceRef.current);
+      avatarCropSourceRef.current = null;
+    }
+    avatarDragRef.current = null;
+    setAvatarCrop(null);
+    setAvatarCropSaving(false);
+  }, []);
+
+  useEffect(() => () => {
+    if (avatarCropSourceRef.current) URL.revokeObjectURL(avatarCropSourceRef.current);
+  }, []);
+
   const handleAvatar = (file: File | null) => {
     if (!file) return;
     if (!file.type.startsWith("image/")) {
       setNotice("Choose a PNG, JPG, WEBP, or GIF profile image.");
       return;
     }
-    if (file.size > 700_000) {
-      setNotice("Profile photos must be smaller than 700 KB.");
+    if (file.size > MAX_AVATAR_SOURCE_BYTES) {
+      setNotice("Choose a profile photo smaller than 12 MB.");
       return;
     }
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result !== "string") return;
-      setProfileDraft((current) => ({ ...current, avatarUrl: reader.result as string }));
+    const sourceUrl = URL.createObjectURL(file);
+    const image = new window.Image();
+    image.onload = () => {
+      if (!image.naturalWidth || !image.naturalHeight) {
+        URL.revokeObjectURL(sourceUrl);
+        setNotice("That profile photo has no usable image data.");
+        return;
+      }
+      if (avatarCropSourceRef.current) URL.revokeObjectURL(avatarCropSourceRef.current);
+      avatarCropSourceRef.current = sourceUrl;
+      setAvatarCrop({
+        sourceUrl,
+        naturalWidth: image.naturalWidth,
+        naturalHeight: image.naturalHeight,
+        zoom: 1,
+        offsetX: 0,
+        offsetY: 0,
+      });
+      setNotice("");
     };
-    reader.onerror = () => setNotice("That profile photo could not be read.");
-    reader.readAsDataURL(file);
+    image.onerror = () => {
+      URL.revokeObjectURL(sourceUrl);
+      setNotice("That profile photo could not be read.");
+    };
+    image.src = sourceUrl;
+  };
+
+  const updateAvatarZoom = (zoom: number) => {
+    setAvatarCrop((current) => {
+      if (!current) return current;
+      const nextZoom = Math.max(1, Math.min(3, zoom));
+      const clamped = clampAvatarOffset(current, current.offsetX, current.offsetY, nextZoom);
+      return { ...current, zoom: nextZoom, ...clamped };
+    });
+  };
+
+  const beginAvatarDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!avatarCrop) return;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    avatarDragRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      originX: avatarCrop.offsetX,
+      originY: avatarCrop.offsetY,
+    };
+  };
+
+  const moveAvatarDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const drag = avatarDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    setAvatarCrop((current) => {
+      if (!current) return current;
+      const next = clampAvatarOffset(
+        current,
+        drag.originX + event.clientX - drag.startX,
+        drag.originY + event.clientY - drag.startY,
+      );
+      return { ...current, ...next };
+    });
+  };
+
+  const endAvatarDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (avatarDragRef.current?.pointerId !== event.pointerId) return;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    avatarDragRef.current = null;
+  };
+
+  const saveCroppedAvatar = async () => {
+    const crop = avatarCrop;
+    if (!crop) return;
+    setAvatarCropSaving(true);
+    try {
+      const image = new window.Image();
+      image.src = crop.sourceUrl;
+      await image.decode();
+
+      const scale = avatarCropScale(crop);
+      const sourceSize = AVATAR_CROP_SIZE / scale;
+      const sourceX = crop.naturalWidth / 2 - (AVATAR_CROP_SIZE / 2 + crop.offsetX) / scale;
+      const sourceY = crop.naturalHeight / 2 - (AVATAR_CROP_SIZE / 2 + crop.offsetY) / scale;
+      const canvas = document.createElement("canvas");
+      canvas.width = AVATAR_OUTPUT_SIZE;
+      canvas.height = AVATAR_OUTPUT_SIZE;
+      const context = canvas.getContext("2d");
+      if (!context) throw new Error("Canvas is unavailable.");
+      context.imageSmoothingEnabled = true;
+      context.imageSmoothingQuality = "high";
+      context.fillStyle = "#090909";
+      context.fillRect(0, 0, AVATAR_OUTPUT_SIZE, AVATAR_OUTPUT_SIZE);
+      context.drawImage(
+        image,
+        sourceX,
+        sourceY,
+        sourceSize,
+        sourceSize,
+        0,
+        0,
+        AVATAR_OUTPUT_SIZE,
+        AVATAR_OUTPUT_SIZE,
+      );
+      const avatarUrl = canvas.toDataURL("image/jpeg", 0.88);
+      if (avatarUrl.length > 700_000) throw new Error("The cropped photo is still too large.");
+      setProfileDraft((current) => ({ ...current, avatarUrl }));
+      closeAvatarCrop();
+      setNotice("Profile photo cropped. Save your profile to publish it.");
+    } catch {
+      setAvatarCropSaving(false);
+      setNotice("That photo could not be cropped. Try another image.");
+    }
   };
 
   const commitConsensus = () => {
@@ -1928,6 +2093,109 @@ export default function SocialsWorkspace({
           <div className="flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-3xl border border-border bg-panel shadow-2xl shadow-black/70">
             <div className="flex h-12 shrink-0 items-center border-b border-border px-4"><div className="text-[10px] font-semibold text-foreground">Gameplan post</div><div className="ml-2 text-[8px] text-muted">Comments, reposts, shares and saves remain attached to the original record.</div><button type="button" onClick={() => setSelectedProfileRecord(null)} className="ml-auto flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground"><X className="h-4 w-4" /></button></div>
             <div className="min-h-0 flex-1 overflow-y-auto p-3">{renderPrecordCard(selectedProfileRecord)}</div>
+          </div>
+        </div>
+      ) : null}
+
+      {avatarCrop ? (
+        <div
+          className="fixed inset-0 z-[1200] flex items-center justify-center bg-black/80 p-4 backdrop-blur-md"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && !avatarCropSaving) closeAvatarCrop();
+          }}
+        >
+          <div className="w-full max-w-lg overflow-hidden rounded-3xl border border-border bg-panel shadow-2xl shadow-black/70">
+            <div className="flex items-start gap-3 border-b border-border p-5">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary">
+                <Camera className="h-4 w-4" />
+              </span>
+              <div>
+                <h2 className="text-[14px] font-semibold text-foreground">Crop profile photo</h2>
+                <p className="mt-1 text-[8px] leading-4 text-muted">Drag to reposition, then use the slider to resize your photo.</p>
+              </div>
+              <button
+                type="button"
+                onClick={closeAvatarCrop}
+                disabled={avatarCropSaving}
+                aria-label="Close profile photo editor"
+                className="ml-auto flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground disabled:opacity-40"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="flex flex-col items-center px-5 py-6">
+              <div
+                className="relative h-72 w-72 touch-none select-none overflow-hidden rounded-full border border-primary/35 bg-black shadow-[0_0_42px_color-mix(in_srgb,var(--primary)_14%,transparent)] cursor-grab active:cursor-grabbing"
+                onPointerDown={beginAvatarDrag}
+                onPointerMove={moveAvatarDrag}
+                onPointerUp={endAvatarDrag}
+                onPointerCancel={endAvatarDrag}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={avatarCrop.sourceUrl}
+                  alt="Profile photo crop preview"
+                  draggable={false}
+                  className="pointer-events-none absolute max-w-none select-none"
+                  style={{
+                    width: avatarCrop.naturalWidth * avatarCropScale(avatarCrop),
+                    height: avatarCrop.naturalHeight * avatarCropScale(avatarCrop),
+                    left: `calc(50% + ${avatarCrop.offsetX}px)`,
+                    top: `calc(50% + ${avatarCrop.offsetY}px)`,
+                    transform: "translate(-50%, -50%)",
+                  }}
+                />
+                <div className="pointer-events-none absolute inset-0 rounded-full ring-1 ring-inset ring-white/25" />
+                <div className="pointer-events-none absolute inset-x-0 top-1/2 h-px bg-white/[0.08]" />
+                <div className="pointer-events-none absolute inset-y-0 left-1/2 w-px bg-white/[0.08]" />
+              </div>
+
+              <div className="mt-6 flex w-full max-w-sm items-center gap-3">
+                <span className="text-[16px] leading-none text-muted">−</span>
+                <input
+                  type="range"
+                  min="1"
+                  max="3"
+                  step="0.01"
+                  value={avatarCrop.zoom}
+                  onChange={(event) => updateAvatarZoom(Number(event.target.value))}
+                  aria-label="Resize profile photo"
+                  className="h-1.5 min-w-0 flex-1 cursor-pointer accent-[var(--primary)]"
+                />
+                <Plus className="h-4 w-4 text-muted" />
+              </div>
+              <div className="mt-2 flex w-full max-w-sm items-center justify-between text-[7px] text-muted">
+                <span>Resize</span>
+                <button
+                  type="button"
+                  onClick={() => setAvatarCrop((current) => current ? { ...current, zoom: 1, offsetX: 0, offsetY: 0 } : current)}
+                  className="font-semibold text-muted transition-colors hover:text-primary"
+                >
+                  Reset position
+                </button>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 border-t border-border bg-background/20 px-5 py-4">
+              <button
+                type="button"
+                onClick={closeAvatarCrop}
+                disabled={avatarCropSaving}
+                className="h-9 rounded-xl border border-border px-4 text-[8px] font-semibold text-muted hover:text-foreground disabled:opacity-40"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void saveCroppedAvatar()}
+                disabled={avatarCropSaving}
+                className="flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-[8px] font-semibold text-background disabled:opacity-60"
+              >
+                {avatarCropSaving ? <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-background/30 border-t-background" /> : <Check className="h-3.5 w-3.5" />}
+                {avatarCropSaving ? "Preparing photo…" : "Use this photo"}
+              </button>
+            </div>
           </div>
         </div>
       ) : null}
