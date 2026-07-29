@@ -1929,7 +1929,7 @@ function WorkspaceChartPane({
   useEffect(() => {
     let cancelled = false;
     const retainedHistory = latestCandlesRef.current.length > 0;
-    setLoading(!retainedHistory);
+    setLoading(true);
     setError(null);
     if (!retainedHistory) {
       setCandles([]);
@@ -2471,7 +2471,22 @@ function WorkspaceChartPane({
         </div>
       )}
       {loading ? (
-        <div className="flex h-full items-center justify-center text-[13px] text-muted">Loading five days of CME history...</div>
+        <div
+          role="status"
+          aria-live="polite"
+          className="flex h-full items-center justify-center"
+          style={{ backgroundColor: settings.backgroundColor }}
+        >
+          <div className="flex items-center gap-3 rounded-2xl border border-border bg-panel/92 px-4 py-3 shadow-2xl shadow-black/35 backdrop-blur-xl">
+            <Loader2 className="h-4 w-4 animate-spin text-primary" />
+            <span>
+              <span className="block text-[12px] font-semibold text-foreground">Loading chart</span>
+              <span className="mt-0.5 block text-[9px] uppercase tracking-[0.14em] text-muted">
+                {displayCmeSymbol(pane.symbol)} · preparing five-day history
+              </span>
+            </span>
+          </div>
+        </div>
       ) : error ? (
         <div className="flex h-full items-center justify-center text-[13px] text-muted">{error}</div>
       ) : (

@@ -665,6 +665,7 @@ function resetChartViewport(
   chart: IChartApi,
   candleSeries: CandleSeriesApi,
   candleCount: number,
+  onSettled?: () => void,
 ) {
   candleSeries.priceScale().applyOptions({ autoScale: true });
   if (candleCount <= DEFAULT_VISIBLE_CANDLE_COUNT) {
@@ -678,6 +679,7 @@ function resetChartViewport(
 
   return window.requestAnimationFrame(() => {
     candleSeries.priceScale().applyOptions({ autoScale: false });
+    onSettled?.();
   });
 }
 
@@ -1021,6 +1023,7 @@ export default function Chart({
   const [clearConfirm, setClearConfirm] = useState(false);
   const [overlaySize, setOverlaySize] = useState({ width: 0, height: 0 });
   const [viewportVersion, setViewportVersion] = useState(0);
+  const [chartVisualReady, setChartVisualReady] = useState(false);
   const [themeVersion, setThemeVersion] = useState(0);
   const [chartReadyRevision, setChartReadyRevision] = useState(0);
   const [sampledIndicatorCandles, setSampledIndicatorCandles] = useState(candles);
@@ -1035,9 +1038,34 @@ export default function Chart({
   const latestCandleRef = useRef<Candle | null>(candles.at(-1) ?? null);
   const indicatorSampleTimerRef = useRef<number | null>(null);
   const viewportResetFrameRef = useRef<number | null>(null);
+  const chartVisualReadyTokenRef = useRef(0);
   const pendingIndicatorCandlesRef = useRef(candles);
   const updateIndicatorSettingRef = useRef(onUpdateIndicatorSetting);
   const openIndicatorSettingsRef = useRef(onOpenIndicatorSettings);
+
+  function resetViewportBeforeReveal(
+    chart: IChartApi,
+    candleSeries: CandleSeriesApi,
+    candleCount: number,
+  ) {
+    const readyToken = chartVisualReadyTokenRef.current + 1;
+    chartVisualReadyTokenRef.current = readyToken;
+    setChartVisualReady(false);
+    if (viewportResetFrameRef.current !== null) {
+      window.cancelAnimationFrame(viewportResetFrameRef.current);
+    }
+    viewportResetFrameRef.current = resetChartViewport(
+      chart,
+      candleSeries,
+      candleCount,
+      () => {
+        viewportResetFrameRef.current = null;
+        if (chartVisualReadyTokenRef.current === readyToken) {
+          setChartVisualReady(true);
+        }
+      },
+    );
+  }
 
   useEffect(() => {
     const handleThemeChange = () => setThemeVersion((version) => version + 1);
@@ -2470,6 +2498,8 @@ export default function Chart({
   useEffect(() => {
     if (candles.length === 0) {
       latestCandleRef.current = null;
+      chartVisualReadyTokenRef.current += 1;
+      setChartVisualReady(false);
       return;
     }
     const lastSourceCandle = candles[candles.length - 1];
@@ -2498,10 +2528,7 @@ export default function Chart({
         previousCandleCount <= 5
         || candles.length >= Math.max(50, previousCandleCount * 1.5);
       if (historyExpanded) {
-        if (viewportResetFrameRef.current !== null) {
-          window.cancelAnimationFrame(viewportResetFrameRef.current);
-        }
-        viewportResetFrameRef.current = resetChartViewport(
+        resetViewportBeforeReveal(
           chartRef.current,
           candleSeriesRef.current,
           candles.length,
@@ -2671,10 +2698,7 @@ export default function Chart({
         applyLevels(levelsRef.current);
       }
     }, 100);
-    if (viewportResetFrameRef.current !== null) {
-      window.cancelAnimationFrame(viewportResetFrameRef.current);
-    }
-    viewportResetFrameRef.current = resetChartViewport(chart, candleSeries, chartData.length);
+    resetViewportBeforeReveal(chart, candleSeries, chartData.length);
     prevCandlesLengthRef.current = candles.length;
     prevFirstTimestampRef.current = candles[0]?.timestamp ?? null;
     const lastCandle = candles[candles.length - 1];
@@ -2769,6 +2793,7 @@ export default function Chart({
         window.cancelAnimationFrame(viewportResetFrameRef.current);
         viewportResetFrameRef.current = null;
       }
+      chartVisualReadyTokenRef.current += 1;
       if (chartRef.current) {
         if (candleSeriesRef.current && gameplanUnderlayRef.current) {
           try {
@@ -3013,6 +3038,24 @@ export default function Chart({
 
   return (
     <div ref={chartContainerRef} className="relative h-full w-full overflow-hidden">
+      {!chartVisualReady ? (
+        <div
+          role="status"
+          aria-live="polite"
+          className="pointer-events-auto absolute inset-0 z-[90] flex items-center justify-center"
+          style={{ backgroundColor: settings.backgroundColor }}
+        >
+          <div className="flex items-center gap-3 rounded-2xl border border-border bg-panel/92 px-4 py-3 shadow-2xl shadow-black/35 backdrop-blur-xl">
+            <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary/20 border-t-primary" />
+            <span>
+              <span className="block text-[12px] font-semibold text-foreground">Loading chart</span>
+              <span className="mt-0.5 block text-[9px] uppercase tracking-[0.14em] text-muted">
+                {instrument} · fitting history and price scale
+              </span>
+            </span>
+          </div>
+        </div>
+      ) : null}
       {gammaLevelsEnabled && gammaLevelsLoading ? (
         <div className="pointer-events-none absolute inset-0 z-[19] flex items-center justify-center">
           <div
