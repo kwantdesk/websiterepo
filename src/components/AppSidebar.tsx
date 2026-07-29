@@ -11,6 +11,7 @@ import {
   LineChart,
   ScanLine,
   Settings,
+  Sparkles,
   User,
 } from "lucide-react";
 
@@ -29,6 +30,7 @@ type SidebarKey =
   | "journal"
   | "converter"
   | "news"
+  | "zyon"
   | "alerts"
   | "vault"
   | "leaderboard"
@@ -69,6 +71,7 @@ const navItems: Array<{
   { key: "gameplan", href: "/gameplan", label: "Gameplan", title: "Gameplan", icon: CalendarDays },
   { key: "kwantbot", href: "/kwantbot", label: "KwantBot", title: "KwantBot", icon: Bot },
   { key: "news", href: "/news", label: "News", title: "News", icon: BookOpen },
+  { key: "zyon", href: "/zyon", label: "ZYON", title: "ZYON Trading Intelligence", icon: Sparkles },
 ];
 
 function ActiveUnderline() {

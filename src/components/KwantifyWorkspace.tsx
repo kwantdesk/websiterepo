@@ -150,6 +150,7 @@ const GammaWorkspace = dynamic(() => import("@/components/options-flow/GammaWork
 const GexMapWorkspace = dynamic(() => import("@/components/gex-map/GexMapWorkspace"), { ssr: false });
 const GameplanWorkspace = dynamic(() => import("@/components/gameplan/GameplanWorkspace"), { ssr: false });
 const NewsWorkspace = dynamic(() => import("@/components/news/NewsWorkspace"), { ssr: false });
+const ZyonWorkspace = dynamic(() => import("@/components/zyon/ZyonWorkspace"), { ssr: false });
 
 const BOTTOM_PANEL_MIN_HEIGHT = 150;
 const BOTTOM_PANEL_DEFAULT_HEIGHT = 300;
@@ -317,7 +318,7 @@ type LevelExportRow = {
   source: string;
   asOf: string;
 };
-export type PrimaryWorkspaceSection = "charts" | "gamma" | "gexmap" | "gameplan" | "kwantbot" | "news";
+export type PrimaryWorkspaceSection = "charts" | "gamma" | "gexmap" | "gameplan" | "kwantbot" | "news" | "zyon";
 
 const WORKSPACE_PRESETS_STORAGE_KEY = "kwantdesk-chart-workspace-presets";
 const ACTIVE_WORKSPACE_PRESET_STORAGE_KEY = "kwantdesk-chart-workspace-active-preset";
@@ -332,6 +333,7 @@ const BOTTOM_WORKSPACE_SECTIONS = [
   { id: "gameplan" as const, label: "Gameplan" },
   { id: "kwantbot" as const, label: "KwantBot" },
   { id: "news" as const, label: "News" },
+  { id: "zyon" as const, label: "ZYON" },
 ];
 const DEFAULT_KWANTBOT_MESSAGES: KwantBotMessage[] = [
   {
@@ -7575,6 +7577,7 @@ export default function KwantifyWorkspace({
             {bottomWorkspaceSection === "gameplan" ? <GameplanWorkspace initialInstrument={displayCmeSymbol(selectedInstrument)} /> : null}
             {bottomWorkspaceSection === "kwantbot" ? <KwantBotIntelligenceWorkspace interpreter={kwantBotInterpreter} /> : null}
             {bottomWorkspaceSection === "news" ? <NewsWorkspace /> : null}
+            {bottomWorkspaceSection === "zyon" ? <ZyonWorkspace interpreter={kwantBotInterpreter} /> : null}
           </section>
         )}
 
