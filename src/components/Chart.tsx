@@ -58,6 +58,7 @@ import {
   Slash,
   SmilePlus,
   Sparkles,
+  Star,
   StickyNote,
   Table2,
   Tag,
@@ -342,6 +343,7 @@ type DrawingToolId =
   | "zoomOut";
 
 type ToolbarGroupId =
+  | "favorites"
   | "cursorTools"
   | "trend"
   | "fib"
@@ -567,7 +569,12 @@ const DRAWING_TOOLBAR_GROUPS: ToolbarGroup[] = [
   },
 ];
 
+const ALL_DRAWING_TOOLS = DRAWING_TOOLBAR_GROUPS.flatMap((group) => group.tools);
+const DRAWING_TOOL_FAVORITES_STORAGE_KEY = "kwantify-chart-tool-favorites";
+const DRAWING_TOOL_FAVORITES_EVENT = "kwantify-chart-tool-favorites-change";
+
 const TOOLBAR_ICON_MAP: Record<ToolbarGroupId, ComponentType<{ className?: string }>> = {
+  favorites: Star,
   cursorTools: Crosshair,
   trend: Slash,
   fib: Waypoints,
@@ -823,6 +830,7 @@ export default function Chart({
   const [copiedPrice, setCopiedPrice] = useState(false);
   const [selectedTool, setSelectedTool] = useState<DrawingToolId>("cursor");
   const [openToolbarGroup, setOpenToolbarGroup] = useState<ToolbarGroupId | null>(null);
+  const [favoriteToolIds, setFavoriteToolIds] = useState<DrawingToolId[]>([]);
   const [drawings, setDrawings] = useState<ChartDrawing[]>([]);
   const [draftDrawing, setDraftDrawing] = useState<ChartDrawing | null>(null);
   const [selectedDrawingId, setSelectedDrawingId] = useState<string | null>(null);
@@ -853,33 +861,59 @@ export default function Chart({
     return () => window.removeEventListener("kwantdesk:theme-change", handleThemeChange);
   }, []);
 
+  useEffect(() => {
+    if (!openToolbarGroup) return;
+    const dismissToolbarMenu = (event: PointerEvent) => {
+      const target = event.target as Node | null;
+      if (target && toolbarRef.current?.contains(target)) return;
+      setOpenToolbarGroup(null);
+    };
+    const dismissToolbarMenuWithKeyboard = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpenToolbarGroup(null);
+    };
+    document.addEventListener("pointerdown", dismissToolbarMenu, true);
+    document.addEventListener("keydown", dismissToolbarMenuWithKeyboard);
+    return () => {
+      document.removeEventListener("pointerdown", dismissToolbarMenu, true);
+      document.removeEventListener("keydown", dismissToolbarMenuWithKeyboard);
+    };
+  }, [openToolbarGroup]);
+
   const priceFormat = useMemo(() => getPriceFormat(instrument), [instrument]);
   const candleIntervalMs = useMemo(() => timeframeToMs(timeframe) ?? inferCandleIntervalMs(candles), [candles, timeframe]);
   const toolbarMetrics = useMemo(() => {
-    const minDimension = Math.min(
-      overlaySize.width > 0 ? overlaySize.width : Number.POSITIVE_INFINITY,
-      overlaySize.height > 0 ? overlaySize.height : Number.POSITIVE_INFINITY,
-    );
-    const compact = overlaySize.width > 0 && (overlaySize.width < 640 || overlaySize.height < 420 || minDimension < 420);
-    const tiny = overlaySize.width > 0 && (overlaySize.width < 430 || overlaySize.height < 320 || minDimension < 320);
-    const micro = overlaySize.width > 0 && (overlaySize.width < 320 || overlaySize.height < 250 || minDimension < 250);
-    const nano = overlaySize.width > 0 && (overlaySize.width < 280 || overlaySize.height < 220 || minDimension < 220);
+    const availableWidth = overlaySize.width > 0 ? Math.max(180, overlaySize.width - 16) : 920;
+    const availableHeight = overlaySize.height > 0 ? Math.max(150, overlaySize.height - 16) : 700;
+    const widthScale = availableWidth / 884;
+    const heightScale = availableHeight / 684;
+    const scale = clamp(Math.min(widthScale, heightScale), 0.3, 1);
+    const smooth = (value: number, minimum: number) =>
+      Math.max(minimum, Number((value * scale).toFixed(2)));
+    const buttonSize = smooth(44, 13.2);
+    const iconSize = smooth(18, 7);
+    const gap = smooth(8, 1.5);
     return {
-      buttonSize: nano ? 22 : micro ? 26 : tiny ? 30 : compact ? 36 : 44,
-      iconSize: nano ? 10 : micro ? 12 : tiny ? 13 : compact ? 16 : 18,
-      gap: nano ? 2 : micro ? 3 : tiny ? 4 : 8,
-      radius: nano ? 7 : micro ? 8 : tiny ? 9 : 12,
-      dockOffset: nano ? 4 : micro ? 6 : tiny ? 7 : 12,
-      dockStart: nano ? 24 : micro ? 30 : tiny ? 38 : 64,
-      menuWidth: nano ? 200 : micro ? 220 : tiny ? 260 : compact ? 320 : 420,
-      menuMaxHeight: nano ? "46vh" : micro ? "52vh" : tiny ? "58vh" : "74vh",
-      objectsPanelWidth: nano ? 188 : micro ? 208 : tiny ? 228 : 288,
+      scale,
+      buttonSize,
+      iconSize,
+      gap,
+      radius: smooth(12, 4),
+      dockOffset: smooth(12, 3),
+      dockStart: Math.max(buttonSize + 3, smooth(64, 20)),
+      menuWidth: Math.max(180, Number((420 * scale).toFixed(2))),
+      menuMaxHeight: `${Number((46 + 28 * scale).toFixed(2))}vh`,
+      objectsPanelWidth: Math.max(170, Number((288 * scale).toFixed(2))),
+      dragDotSize: smooth(6, 2.5),
     };
   }, [overlaySize.height, overlaySize.width]);
-  const toolbarIconClassName =
-    toolbarMetrics.iconSize <= 12 ? "h-3 w-3" : toolbarMetrics.iconSize <= 15 ? "h-[15px] w-[15px]" : toolbarMetrics.iconSize <= 17 ? "h-[17px] w-[17px]" : "h-[18px] w-[18px]";
-  const toolbarToolIconClassName =
-    toolbarMetrics.iconSize <= 12 ? "h-[11px] w-[11px]" : toolbarMetrics.iconSize <= 15 ? "h-[14px] w-[14px]" : toolbarMetrics.iconSize <= 17 ? "h-[15px] w-[15px]" : "h-4 w-4";
+  const toolbarButtonStyle = {
+    width: toolbarMetrics.buttonSize,
+    height: toolbarMetrics.buttonSize,
+    borderRadius: toolbarMetrics.radius,
+    transition: "width 70ms linear, height 70ms linear, border-radius 70ms linear",
+  } as CSSProperties;
+  const toolbarIconClassName = "h-[var(--chart-toolbar-icon)] w-[var(--chart-toolbar-icon)]";
+  const toolbarToolIconClassName = "h-[var(--chart-toolbar-tool-icon)] w-[var(--chart-toolbar-tool-icon)]";
   const toolbarDockStyle = toolbarDragPosition
     ? { left: toolbarDragPosition.x, top: toolbarDragPosition.y }
     : (() => {
@@ -897,6 +931,7 @@ export default function Chart({
   const toolbarMenuStyle = {
     width: toolbarMetrics.menuWidth,
     maxHeight: toolbarMetrics.menuMaxHeight,
+    transition: "width 70ms linear, max-height 70ms linear",
   } as CSSProperties;
   const objectsPanelStyle = {
     ...getObjectsPanelStyle(toolbarDock),
@@ -976,6 +1011,48 @@ export default function Chart({
       // ignore storage limits
     }
   }, [toolbarCollapsed]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const syncFavorites = (event?: Event) => {
+      if (event instanceof StorageEvent && event.key !== DRAWING_TOOL_FAVORITES_STORAGE_KEY) return;
+      try {
+        const raw = window.localStorage.getItem(DRAWING_TOOL_FAVORITES_STORAGE_KEY);
+        const stored = raw ? JSON.parse(raw) : [];
+        const validIds = new Set(ALL_DRAWING_TOOLS.map((tool) => tool.id));
+        setFavoriteToolIds(
+          Array.isArray(stored)
+            ? stored.filter((id): id is DrawingToolId =>
+                typeof id === "string" && validIds.has(id as DrawingToolId))
+            : [],
+        );
+      } catch {
+        setFavoriteToolIds([]);
+      }
+    };
+
+    syncFavorites();
+    window.addEventListener("storage", syncFavorites);
+    window.addEventListener(DRAWING_TOOL_FAVORITES_EVENT, syncFavorites);
+    return () => {
+      window.removeEventListener("storage", syncFavorites);
+      window.removeEventListener(DRAWING_TOOL_FAVORITES_EVENT, syncFavorites);
+    };
+  }, []);
+
+  function toggleFavoriteTool(toolId: DrawingToolId) {
+    const next = favoriteToolIds.includes(toolId)
+      ? favoriteToolIds.filter((id) => id !== toolId)
+      : [...favoriteToolIds, toolId];
+    setFavoriteToolIds(next);
+    try {
+      window.localStorage.setItem(DRAWING_TOOL_FAVORITES_STORAGE_KEY, JSON.stringify(next));
+      window.dispatchEvent(new Event(DRAWING_TOOL_FAVORITES_EVENT));
+    } catch {
+      // Keep the chart responsive if browser storage is unavailable.
+    }
+  }
 
   const applyMarkers = (tradeRows: (Trade & { markerVisible?: boolean })[]) => {
     if (!candleSeriesRef.current || !tradeRows || tradeRows.length === 0) {
@@ -2083,13 +2160,28 @@ export default function Chart({
     };
   }, [contextMenu]);
 
-  const toolbarGroups = useMemo(
+  const favoriteTools = useMemo(
     () =>
-      DRAWING_TOOLBAR_GROUPS.map((group) => ({
+      favoriteToolIds
+        .map((id) => ALL_DRAWING_TOOLS.find((tool) => tool.id === id))
+        .filter((tool): tool is ToolbarTool => Boolean(tool)),
+    [favoriteToolIds],
+  );
+  const toolbarGroups = useMemo(
+    () => [
+      {
+        id: "favorites" as const,
+        label: "Favourite Tools",
+        icon: Star,
+        tools: favoriteTools,
+        isActive: favoriteToolIds.includes(selectedTool),
+      },
+      ...DRAWING_TOOLBAR_GROUPS.map((group) => ({
         ...group,
         isActive: activeToolbarTool?.groupId === group.id,
       })),
-    [activeToolbarTool]
+    ],
+    [activeToolbarTool, favoriteToolIds, favoriteTools, selectedTool],
   );
 
   useEffect(() => {
@@ -2203,7 +2295,13 @@ export default function Chart({
       <div
         ref={toolbarRef}
         className={`absolute z-20 flex ${toolbarDock === "top" || toolbarDock === "bottom" ? "flex-row items-center" : "flex-col"}`}
-        style={{ ...toolbarDockStyle, gap: toolbarMetrics.gap }}
+        style={{
+          ...toolbarDockStyle,
+          gap: toolbarMetrics.gap,
+          transition: "gap 70ms linear",
+          "--chart-toolbar-icon": `${toolbarMetrics.iconSize}px`,
+          "--chart-toolbar-tool-icon": `${Math.max(8, Math.round(toolbarMetrics.iconSize * 0.9))}px`,
+        } as CSSProperties & Record<"--chart-toolbar-icon" | "--chart-toolbar-tool-icon", string>}
       >
         <button
           type="button"
@@ -2242,7 +2340,7 @@ export default function Chart({
             });
           }}
           className="flex items-center justify-center border border-transparent bg-panel/70 text-muted backdrop-blur transition-all hover:bg-surface hover:text-foreground"
-          style={{ width: toolbarMetrics.buttonSize, height: toolbarMetrics.buttonSize, borderRadius: toolbarMetrics.radius }}
+          style={toolbarButtonStyle}
           title={toolbarCollapsed ? "Expand toolbar" : "Collapse toolbar. Drag to dock on another chart edge"}
           aria-pressed={toolbarCollapsed}
         >
@@ -2251,7 +2349,7 @@ export default function Chart({
               <span
                 key={index}
                 className="rounded-full bg-current/85"
-                style={{ width: toolbarMetrics.iconSize <= 15 ? 5 : 6, height: toolbarMetrics.iconSize <= 15 ? 5 : 6 }}
+                style={{ width: toolbarMetrics.dragDotSize, height: toolbarMetrics.dragDotSize }}
               />
             ))}
           </span>
@@ -2268,7 +2366,7 @@ export default function Chart({
               ? "cursor-grab border-border bg-panel/80 text-muted hover:border-primary/40 hover:bg-surface hover:text-primary active:cursor-grabbing"
               : "cursor-not-allowed border-transparent bg-panel/45 text-muted/30"
           }`}
-          style={{ width: toolbarMetrics.buttonSize, height: toolbarMetrics.buttonSize, borderRadius: toolbarMetrics.radius }}
+          style={toolbarButtonStyle}
           title={chartDragEnabled ? "Drag this chart onto another chart to swap positions" : "Unlock the workspace and add another chart to reorder"}
           aria-label="Reorder chart"
         >
@@ -2288,13 +2386,22 @@ export default function Chart({
                 type="button"
                 onClick={(event) => {
                   event.stopPropagation();
+                  setShowObjectsPanel(false);
                   setOpenToolbarGroup((current) => (current === group.id ? null : group.id));
                 }}
                 className={`flex items-center justify-center border backdrop-blur ${getToolbarButtonTone(group.isActive || openToolbarGroup === group.id)}`}
-                style={{ width: toolbarMetrics.buttonSize, height: toolbarMetrics.buttonSize, borderRadius: toolbarMetrics.radius }}
+                style={toolbarButtonStyle}
                 title={group.label}
               >
-                <GroupIcon className={toolbarIconClassName} />
+                <GroupIcon
+                  className={`${toolbarIconClassName} ${
+                    group.id === "favorites"
+                      ? favoriteToolIds.length > 0
+                        ? "fill-yellow-400 text-yellow-400"
+                        : "text-yellow-400"
+                      : ""
+                  }`}
+                />
               </button>
               {openToolbarGroup === group.id && (
                 <div
@@ -2305,25 +2412,28 @@ export default function Chart({
                     {group.label}
                   </div>
                   <div className="overflow-y-auto p-2" style={{ maxHeight: toolbarMetrics.menuMaxHeight }}>
-                    {groupedSections.map((section, sectionIndex) => (
-                      <div key={`${group.id}-${section.section}`} className={sectionIndex > 0 ? "mt-2 border-t border-border pt-2" : ""}>
-                        <div className="px-3 pb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">
-                          {section.section}
+                    {group.id === "favorites" && group.tools.length === 0 ? (
+                      <div className="rounded-xl border border-dashed border-border px-4 py-8 text-center">
+                        <Star className="mx-auto h-5 w-5 text-yellow-400" />
+                        <div className="mt-2 text-[12px] font-medium text-foreground">No favourite tools yet</div>
+                        <div className="mt-1 text-[10px] leading-4 text-muted">
+                          Open any tool group and select its star for quick access here.
                         </div>
+                      </div>
+                    ) : groupedSections.map((section, sectionIndex) => (
+                      <div key={`${group.id}-${section.section}`} className={sectionIndex > 0 ? "mt-2 border-t border-border pt-2" : ""}>
+                        {section.section.toLowerCase() !== group.label.toLowerCase() ? (
+                          <div className="px-3 pb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">
+                            {section.section}
+                          </div>
+                        ) : null}
                         {section.tools.map((tool) => {
                           const ToolIcon = tool.icon;
                           const active = selectedTool === tool.id;
                           const implemented = tool.implemented === true;
                           return (
-                            <button
+                            <div
                               key={tool.id}
-                              type="button"
-                              aria-disabled={!implemented}
-                              onClick={() => {
-                                if (!implemented) return;
-                                setSelectedTool(tool.id);
-                                setOpenToolbarGroup(null);
-                              }}
                               className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-[13px] transition-all ${
                                 active
                                   ? "bg-primary/12 text-foreground"
@@ -2332,11 +2442,38 @@ export default function Chart({
                                     : "cursor-not-allowed text-muted/55"
                               }`}
                             >
-                              <ToolIcon className={`${toolbarToolIconClassName} ${active ? "text-primary" : implemented ? "text-muted" : "text-muted/45"}`} />
-                              <span className="flex-1 font-medium">{tool.label}</span>
-                              {tool.shortcut ? <span className="text-[12px] text-muted">{tool.shortcut}</span> : null}
-                              {!implemented && !tool.shortcut ? <span className="text-[11px] uppercase tracking-[0.14em] text-muted/50">Soon</span> : null}
-                            </button>
+                              <button
+                                type="button"
+                                aria-disabled={!implemented}
+                                onClick={() => {
+                                  if (!implemented) return;
+                                  setSelectedTool(tool.id);
+                                  setOpenToolbarGroup(null);
+                                }}
+                                className={`flex min-w-0 flex-1 items-center gap-3 text-left ${
+                                  implemented ? "" : "cursor-not-allowed"
+                                }`}
+                              >
+                                <ToolIcon className={`${toolbarToolIconClassName} shrink-0 ${active ? "text-primary" : implemented ? "text-muted" : "text-muted/45"}`} />
+                                <span className="min-w-0 flex-1 truncate font-medium">{tool.label}</span>
+                                {tool.shortcut ? <span className="shrink-0 text-[12px] text-muted">{tool.shortcut}</span> : null}
+                                {!implemented && !tool.shortcut ? <span className="shrink-0 text-[11px] uppercase tracking-[0.14em] text-muted/50">Soon</span> : null}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  toggleFavoriteTool(tool.id);
+                                }}
+                                className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition-colors hover:bg-yellow-400/10 hover:text-yellow-300 ${
+                                  favoriteToolIds.includes(tool.id) ? "text-yellow-400" : "text-muted/60"
+                                }`}
+                                aria-label={`${favoriteToolIds.includes(tool.id) ? "Remove" : "Add"} ${tool.label} ${favoriteToolIds.includes(tool.id) ? "from" : "to"} favourites`}
+                                title={`${favoriteToolIds.includes(tool.id) ? "Remove from" : "Add to"} favourites`}
+                              >
+                                <Star className={`h-3.5 w-3.5 ${favoriteToolIds.includes(tool.id) ? "fill-current" : ""}`} />
+                              </button>
+                            </div>
                           );
                         })}
                       </div>
@@ -2373,7 +2510,7 @@ export default function Chart({
                   ? getToolbarButtonTone(gammaLevelsEnabled)
                   : "cursor-not-allowed border-transparent bg-panel/45 text-muted/30"
               }`}
-              style={{ width: toolbarMetrics.buttonSize, height: toolbarMetrics.buttonSize, borderRadius: toolbarMetrics.radius }}
+              style={toolbarButtonStyle}
               title={
                 gammaLevelsAvailable
                   ? gammaLevelsError
@@ -2394,7 +2531,7 @@ export default function Chart({
               type="button"
               onClick={() => setMagnetMode((current) => (current === "off" ? "weak" : current === "weak" ? "strong" : "off"))}
               className={`flex items-center justify-center border backdrop-blur ${getToolbarButtonTone(magnetMode !== "off")}`}
-              style={{ width: toolbarMetrics.buttonSize, height: toolbarMetrics.buttonSize, borderRadius: toolbarMetrics.radius }}
+              style={toolbarButtonStyle}
               title={`Magnet: ${magnetMode}`}
             >
               <Magnet className={toolbarIconClassName} />
@@ -2403,7 +2540,7 @@ export default function Chart({
               type="button"
               onClick={() => setDrawingsLocked((current) => !current)}
               className={`flex items-center justify-center border backdrop-blur ${getToolbarButtonTone(drawingsLocked)}`}
-              style={{ width: toolbarMetrics.buttonSize, height: toolbarMetrics.buttonSize, borderRadius: toolbarMetrics.radius }}
+              style={toolbarButtonStyle}
               title={drawingsLocked ? "Unlock drawings" : "Lock drawings"}
             >
               <Lock className={toolbarIconClassName} />
@@ -2412,7 +2549,7 @@ export default function Chart({
               type="button"
               onClick={() => setHideDrawings((current) => !current)}
               className={`flex items-center justify-center border backdrop-blur ${getToolbarButtonTone(hideDrawings)}`}
-              style={{ width: toolbarMetrics.buttonSize, height: toolbarMetrics.buttonSize, borderRadius: toolbarMetrics.radius }}
+              style={toolbarButtonStyle}
               title={hideDrawings ? "Show drawings" : "Hide drawings"}
             >
               <Eye className={toolbarIconClassName} />
@@ -2421,7 +2558,7 @@ export default function Chart({
               type="button"
               onClick={() => setShowObjectsPanel((current) => !current)}
               className={`flex items-center justify-center border backdrop-blur ${getToolbarButtonTone(showObjectsPanel)}`}
-              style={{ width: toolbarMetrics.buttonSize, height: toolbarMetrics.buttonSize, borderRadius: toolbarMetrics.radius }}
+              style={toolbarButtonStyle}
               title="Object list"
             >
               <Link2 className={toolbarIconClassName} />
@@ -2430,7 +2567,7 @@ export default function Chart({
               type="button"
               onClick={() => setClearConfirm(true)}
               className="flex items-center justify-center border border-transparent bg-panel/70 text-muted backdrop-blur transition-all hover:bg-danger/10 hover:text-danger"
-              style={{ width: toolbarMetrics.buttonSize, height: toolbarMetrics.buttonSize, borderRadius: toolbarMetrics.radius }}
+              style={toolbarButtonStyle}
               title="Clear drawings"
             >
               <Trash2 className={toolbarIconClassName} />
