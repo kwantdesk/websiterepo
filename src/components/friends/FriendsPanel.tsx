@@ -22,6 +22,7 @@ import {
   Trash2,
   UserMinus,
   UserPlus,
+  UserRound,
   UserRoundPlus,
   UsersRound,
   Volume2,
@@ -67,6 +68,8 @@ const MAX_CHAT_IMAGE_BYTES = 900_000;
 type FriendsPanelProps = {
   onClose: () => void;
   onUnreadCountChange?: (count: number) => void;
+  initialFriendId?: string;
+  onViewProfile?: (handle: string) => void;
 };
 
 function initials(name: string) {
@@ -192,7 +195,7 @@ function MessageImages({
   );
 }
 
-export default function FriendsPanel({ onClose, onUnreadCountChange }: FriendsPanelProps) {
+export default function FriendsPanel({ onClose, onUnreadCountChange, initialFriendId = "", onViewProfile }: FriendsPanelProps) {
   const [payload, setPayload] = useState<FriendsPayload>(EMPTY);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState("");
@@ -327,6 +330,18 @@ export default function FriendsPanel({ onClose, onUnreadCountChange }: FriendsPa
 
   const activeFriend = payload.friends.find((friend) => friend.userId === activeFriendId) ?? null;
   const activeGroup = payload.groups.find((group) => group.id === activeGroupId) ?? null;
+
+  useEffect(() => {
+    if (!initialFriendId || activeFriendId === initialFriendId) return;
+    const friend = payload.friends.find((candidate) => candidate.userId === initialFriendId);
+    if (!friend) return;
+    setChatLoading(true);
+    setActiveGroupId("");
+    setActiveFriendId(friend.userId);
+    setAttachments([]);
+    setShowEmoji(false);
+    void load(friend.userId, true).finally(() => setChatLoading(false));
+  }, [activeFriendId, initialFriendId, load, payload.friends]);
 
   useEffect(() => {
     if (!activeFriendId) {
@@ -845,6 +860,16 @@ export default function FriendsPanel({ onClose, onUnreadCountChange }: FriendsPa
             </button>
             {showFriendMenu && (
               <div className="absolute right-0 top-10 z-40 w-40 rounded-xl border border-border bg-panel p-1.5 shadow-2xl">
+                <button
+                  onClick={() => {
+                    setShowFriendMenu(false);
+                    onViewProfile?.(activeFriend.handle);
+                  }}
+                  className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[10px] text-muted hover:bg-surface hover:text-foreground"
+                >
+                  <UserRound className="h-3.5 w-3.5" />
+                  View profile
+                </button>
                 <button
                   onClick={() => void closeFriendship("remove")}
                   className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[10px] text-muted hover:bg-surface hover:text-foreground"

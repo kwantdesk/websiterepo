@@ -160,6 +160,7 @@ import {
 } from "@/lib/kwantBotChatStore";
 import AppSidebar from "@/components/AppSidebar";
 import ChartCreateAlertModal from "@/components/alerts/ChartCreateAlertModal";
+import SocialsWorkspace from "@/components/socials/SocialsWorkspace";
 import {
   getExpirationLabel,
   getTriggerModeLabel,
@@ -175,7 +176,6 @@ const GameplanWorkspace = dynamic(() => import("@/components/gameplan/GameplanWo
 const NewsWorkspace = dynamic(() => import("@/components/news/NewsWorkspace"), { ssr: false });
 const ZyonWorkspace = dynamic(() => import("@/components/zyon/ZyonWorkspace"), { ssr: false });
 const JournalWorkspace = dynamic(() => import("@/components/journal/JournalWorkspace"), { ssr: false });
-const SocialsWorkspace = dynamic(() => import("@/components/socials/SocialsWorkspace"), { ssr: false });
 
 const BOTTOM_PANEL_MIN_HEIGHT = 150;
 const BOTTOM_PANEL_DEFAULT_HEIGHT = 300;
@@ -2901,8 +2901,10 @@ function KwantBotAttachments({
 
 export default function KwantifyWorkspace({
   section = "charts",
+  socialProfileHandle = "",
 }: {
   section?: PrimaryWorkspaceSection;
+  socialProfileHandle?: string;
 }) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
@@ -3073,6 +3075,7 @@ export default function KwantifyWorkspace({
         ? null
         : "watchlist";
   });
+  const [friendsInitialFriendId, setFriendsInitialFriendId] = useState("");
   const [lastOpenRightPanel, setLastOpenRightPanel] = useState<RightPanel>(() => {
     if (typeof window === "undefined") return "watchlist";
     const saved = window.localStorage.getItem("kwantdesk-right-panel-state");
@@ -8053,7 +8056,19 @@ export default function KwantifyWorkspace({
             {bottomWorkspaceSection === "news" ? <NewsWorkspace /> : null}
             {bottomWorkspaceSection === "zyon" ? <ZyonWorkspace interpreter={kwantBotInterpreter} /> : null}
             {bottomWorkspaceSection === "journal" ? <JournalWorkspace accountKey={preferenceUserId || currentUsername || "local"} /> : null}
-            {bottomWorkspaceSection === "socials" ? <SocialsWorkspace accountKey={preferenceUserId || currentUsername || "local"} accountLabel={currentUsername || "Kwant Trader"} /> : null}
+            {bottomWorkspaceSection === "socials" ? (
+              <SocialsWorkspace
+                accountKey={preferenceUserId || currentUsername || "local"}
+                accountLabel={currentUsername || "Kwant Trader"}
+                initialProfileHandle={socialProfileHandle}
+                onOpenProfile={(handle) => router.push(`/socials/${encodeURIComponent(handle)}`)}
+                onCloseProfile={() => router.push("/socials")}
+                onMessageProfile={(userId) => {
+                  setFriendsInitialFriendId(userId);
+                  setRightPanel("friends");
+                }}
+              />
+            ) : null}
           </section>
         )}
 
@@ -8319,6 +8334,11 @@ export default function KwantifyWorkspace({
             <FriendsPanel
               onClose={() => setRightPanel(null)}
               onUnreadCountChange={setFriendsUnreadCount}
+              initialFriendId={friendsInitialFriendId}
+              onViewProfile={(handle) => {
+                setRightPanel(null);
+                router.push(`/socials/${encodeURIComponent(handle)}`);
+              }}
             />
           )}
           {rightPanel === "order" && (

@@ -2,6 +2,7 @@ import {
   EMPTY_SOCIAL_STATE,
   SOCIAL_OBJECT_TYPES,
   SOCIAL_SCOPES,
+  normalizeSocialProfile,
   type SocialObject,
   type SocialState,
 } from "@/lib/socials";
@@ -11,6 +12,7 @@ const DATABASE_VERSION = 1;
 const STORE_NAME = "account-socials";
 const memoryStore = new Map<string, SocialState>();
 let databasePromise: Promise<IDBDatabase> | null = null;
+const STORAGE_TIMEOUT_MS = 1_200;
 
 function storageKey(accountKey: string) {
   return `kwantdesk:socials:${accountKey || "local"}:v1`;
@@ -37,7 +39,9 @@ function normalizeObject(value: unknown): SocialObject | null {
     scope: object.scope as SocialObject["scope"],
     deskId: typeof object.deskId === "string" ? object.deskId : null,
     parentId: typeof object.parentId === "string" ? object.parentId : null,
-    payload: object.payload as Record<string, unknown>,
+    payload: object.objectType === "profile"
+      ? normalizeSocialProfile(object.payload, typeof object.authorLabel === "string" ? object.authorLabel : "Kwant Trader")
+      : object.payload as Record<string, unknown>,
     createdAt: typeof object.createdAt === "string" ? object.createdAt : new Date(0).toISOString(),
     updatedAt: typeof object.updatedAt === "string" ? object.updatedAt : new Date(0).toISOString(),
     cloudSaved: Boolean(object.cloudSaved),
@@ -69,9 +73,32 @@ function openDatabase() {
       if (!database.objectStoreNames.contains(STORE_NAME)) database.createObjectStore(STORE_NAME);
     };
     request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error ?? new Error("Unable to open Socials storage."));
+    request.onerror = () => {
+      databasePromise = null;
+      reject(request.error ?? new Error("Unable to open Socials storage."));
+    };
+    request.onblocked = () => {
+      databasePromise = null;
+      reject(new Error("Socials storage is busy."));
+    };
   });
   return databasePromise;
+}
+
+function withStorageTimeout<T>(operation: Promise<T>) {
+  return new Promise<T>((resolve, reject) => {
+    const timer = window.setTimeout(() => reject(new Error("Socials storage timed out.")), STORAGE_TIMEOUT_MS);
+    operation.then(
+      (value) => {
+        window.clearTimeout(timer);
+        resolve(value);
+      },
+      (reason) => {
+        window.clearTimeout(timer);
+        reject(reason);
+      },
+    );
+  });
 }
 
 export async function loadSocialState(accountKey: string) {
@@ -79,13 +106,13 @@ export async function loadSocialState(accountKey: string) {
   const memory = memoryStore.get(key);
   if (memory) return normalizeSocialState(memory);
   try {
-    const database = await openDatabase();
-    const stored = await new Promise<unknown>((resolve, reject) => {
+    const database = await withStorageTimeout(openDatabase());
+    const stored = await withStorageTimeout(new Promise<unknown>((resolve, reject) => {
       const transaction = database.transaction(STORE_NAME, "readonly");
       const request = transaction.objectStore(STORE_NAME).get(key);
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error ?? new Error("Unable to read Socials storage."));
-    });
+    }));
     const normalized = normalizeSocialState(stored);
     memoryStore.set(key, normalized);
     return normalized;
@@ -104,13 +131,13 @@ export async function saveSocialState(accountKey: string, state: SocialState) {
   const normalized = normalizeSocialState(state);
   memoryStore.set(key, normalized);
   try {
-    const database = await openDatabase();
-    await new Promise<void>((resolve, reject) => {
+    const database = await withStorageTimeout(openDatabase());
+    await withStorageTimeout(new Promise<void>((resolve, reject) => {
       const transaction = database.transaction(STORE_NAME, "readwrite");
       transaction.objectStore(STORE_NAME).put(normalized, key);
       transaction.oncomplete = () => resolve();
       transaction.onerror = () => reject(transaction.error ?? new Error("Unable to save Socials storage."));
-    });
+    }));
     return true;
   } catch {
     try {

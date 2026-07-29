@@ -8,6 +8,7 @@ import {
   BarChart3,
   Bell,
   Bookmark,
+  Camera,
   CalendarDays,
   Check,
   CheckCircle2,
@@ -27,8 +28,10 @@ import {
   Network,
   Plus,
   Radar,
+  Repeat2,
   Search,
   Send,
+  Share2,
   ShieldCheck,
   SlidersHorizontal,
   Sparkles,
@@ -42,12 +45,14 @@ import {
   Zap,
 } from "lucide-react";
 import KwantSelect from "@/components/ui/KwantSelect";
+import SocialProfileView from "@/components/socials/SocialProfileView";
 import {
   buildDefaultProfile,
   calculateReasoningScore,
   calculateReceiptClassification,
   calculateReceiptScores,
   CALLING_CARD_CATALOG,
+  normalizeSocialProfile,
   PROCESS_STATUSES,
   profileScoreAverage,
   socialId,
@@ -79,7 +84,7 @@ import {
 import { loadSocialState, normalizeSocialState, saveSocialState } from "@/lib/socialsStore";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-type SocialTab = "today" | "precords" | "desks" | "rankings" | "cards" | "identity";
+type SocialTab = "today" | "precords" | "desks" | "rankings" | "cards" | "profile";
 type FeedFilter = "all" | "live" | "proven" | "mine";
 
 const SOCIAL_TABS: Array<{ id: SocialTab; label: string; icon: typeof Activity }> = [
@@ -88,7 +93,7 @@ const SOCIAL_TABS: Array<{ id: SocialTab; label: string; icon: typeof Activity }
   { id: "desks", label: "Desks", icon: UsersRound },
   { id: "rankings", label: "Reputation", icon: Trophy },
   { id: "cards", label: "Calling Cards", icon: Award },
-  { id: "identity", label: "Profile", icon: Radar },
+  { id: "profile", label: "Profile", icon: Radar },
 ];
 
 const SCORE_LABELS: Array<[keyof SocialProfilePayload["scores"], string]> = [
@@ -271,16 +276,38 @@ function buildLocalObject<T extends Record<string, unknown>>(args: {
 export default function SocialsWorkspace({
   accountKey,
   accountLabel,
+  initialProfileHandle = "",
+  onOpenProfile,
+  onCloseProfile,
+  onMessageProfile,
 }: {
   accountKey: string;
   accountLabel: string;
+  initialProfileHandle?: string;
+  onOpenProfile?: (handle: string) => void;
+  onCloseProfile?: () => void;
+  onMessageProfile?: (userId: string) => void;
 }) {
   const resolvedAccountKey = accountKey || "local";
   const resolvedLabel = accountLabel || "Kwant Trader";
-  const [state, setState] = useState<SocialState>({ version: 1, objects: [], cloud: false, loadedAt: "" });
+  const [state, setState] = useState<SocialState>(() => ({
+    version: 1,
+    objects: [
+      buildLocalObject({
+        id: "profile",
+        userId: resolvedAccountKey,
+        authorLabel: resolvedLabel,
+        objectType: "profile",
+        scope: "community",
+        payload: buildDefaultProfile(resolvedLabel),
+      }),
+    ],
+    cloud: false,
+    loadedAt: "",
+  }));
   const [ready, setReady] = useState(false);
   const [saveState, setSaveState] = useState<"loading" | "saved" | "local" | "error">("loading");
-  const [tab, setTab] = useState<SocialTab>("today");
+  const [tab, setTab] = useState<SocialTab>(initialProfileHandle ? "profile" : "today");
   const [feedFilter, setFeedFilter] = useState<FeedFilter>("all");
   const [query, setQuery] = useState("");
   const [showPostModal, setShowPostModal] = useState(false);
@@ -306,6 +333,8 @@ export default function SocialsWorkspace({
     weeklyMission: "Complete five preparation loops and three honest reviews.",
   });
   const [profileDraft, setProfileDraft] = useState<SocialProfilePayload>(() => buildDefaultProfile(resolvedLabel));
+  const [profileEditing, setProfileEditing] = useState(false);
+  const [selectedProfileRecord, setSelectedProfileRecord] = useState<SocialObject | null>(null);
   const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
   const [commentKinds, setCommentKinds] = useState<Record<string, SocialCommentPayload["kind"]>>({});
   const [consensusDraft, setConsensusDraft] = useState({
@@ -319,6 +348,7 @@ export default function SocialsWorkspace({
   });
   const [notice, setNotice] = useState("");
   const evidenceInputRef = useRef<HTMLInputElement>(null);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
 
   const upsertObject = useCallback((object: SocialObject, replaceKey?: string) => {
     setState((current) => ({
@@ -372,8 +402,46 @@ export default function SocialsWorkspace({
     }
   }, [upsertObject]);
 
+  const removeObject = useCallback(async (object: SocialObject) => {
+    setState((current) => ({
+      ...current,
+      objects: current.objects.filter((candidate) => objectKey(candidate) !== objectKey(object)),
+    }));
+    try {
+      const response = await fetch("/api/socials", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: object.id }),
+      });
+      if (!response.ok) {
+        const payload = await response.json() as { error?: string };
+        throw new Error(payload.error || "That Socials item could not be removed.");
+      }
+      return true;
+    } catch (reason) {
+      upsertObject(object);
+      setNotice(reason instanceof Error ? reason.message : "That Socials item could not be removed.");
+      return false;
+    }
+  }, [upsertObject]);
+
   useEffect(() => {
     let active = true;
+    setState({
+      version: 1,
+      objects: [
+        buildLocalObject({
+          id: "profile",
+          userId: resolvedAccountKey,
+          authorLabel: resolvedLabel,
+          objectType: "profile",
+          scope: "community",
+          payload: buildDefaultProfile(resolvedLabel),
+        }),
+      ],
+      cloud: false,
+      loadedAt: "",
+    });
     setReady(false);
     setSaveState("loading");
     void (async () => {
@@ -445,7 +513,32 @@ export default function SocialsWorkspace({
   const cards = useMemo(() => state.objects.filter((object) => object.objectType === "card"), [state.objects]);
   const consensus = useMemo(() => state.objects.filter((object) => object.objectType === "consensus"), [state.objects]);
   const currentProfileObject = profiles.find((object) => object.userId === resolvedAccountKey);
-  const currentProfile = typedPayload<SocialProfilePayload>(currentProfileObject) ?? buildDefaultProfile(resolvedLabel);
+  const currentProfile = normalizeSocialProfile(currentProfileObject?.payload, resolvedLabel);
+  const requestedProfileHandle = initialProfileHandle.trim().toLowerCase().replace(/^@/, "");
+  const viewedProfileObject = requestedProfileHandle
+    ? profiles.find((object) => normalizeSocialProfile(object.payload, object.authorLabel).handle === requestedProfileHandle)
+    : currentProfileObject;
+  const viewedProfile = viewedProfileObject
+    ? normalizeSocialProfile(viewedProfileObject.payload, viewedProfileObject.authorLabel)
+    : null;
+  const viewingOwnProfile = Boolean(viewedProfileObject && viewedProfileObject.userId === resolvedAccountKey);
+  const viewedGameplans = viewedProfileObject
+    ? precords.filter((object) =>
+        object.userId === viewedProfileObject.userId
+        && typedPayload<SocialPrecordPayload>(object)?.source === "GAMEPLAN")
+    : [];
+  const savedGameplanIds = new Set(
+    reactions
+      .filter((reaction) => reaction.userId === resolvedAccountKey && typedPayload<SocialReactionPayload>(reaction)?.kind === "SAVED")
+      .map((reaction) => reaction.parentId)
+      .filter((id): id is string => Boolean(id)),
+  );
+  const repostedGameplanIds = new Set(
+    posts
+      .filter((post) => post.userId === resolvedAccountKey && typedPayload<SocialPostPayload>(post)?.isRepost)
+      .map((post) => typedPayload<SocialPostPayload>(post)?.relatedPrecordId)
+      .filter((id): id is string => Boolean(id)),
+  );
   const todayProgressObject = state.objects.find((object) =>
     object.objectType === "progress"
     && object.userId === resolvedAccountKey
@@ -464,6 +557,13 @@ export default function SocialsWorkspace({
   useEffect(() => {
     setProfileDraft(currentProfile);
   }, [currentProfileObject?.updatedAt]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!initialProfileHandle) return;
+    setTab("profile");
+    setProfileEditing(false);
+    setSelectedProfileRecord(null);
+  }, [initialProfileHandle]);
 
   useEffect(() => {
     let active = true;
@@ -522,8 +622,7 @@ export default function SocialsWorkspace({
   }, [feedFilter, precords, query, receipts, resolvedAccountKey]);
 
   const rankedProfiles = useMemo(() => profiles
-    .map((object) => ({ object, profile: typedPayload<SocialProfilePayload>(object) }))
-    .filter((entry): entry is { object: SocialObject; profile: SocialProfilePayload } => Boolean(entry.profile))
+    .map((object) => ({ object, profile: normalizeSocialProfile(object.payload, object.authorLabel) }))
     .sort((left, right) => profileScoreAverage(right.profile) - profileScoreAverage(left.profile)), [profiles]);
 
   const notificationItems = useMemo(() => {
@@ -926,12 +1025,12 @@ export default function SocialsWorkspace({
   };
 
   const saveProfile = async () => {
-    const profile: SocialProfilePayload = {
+    const profile = normalizeSocialProfile({
       ...profileDraft,
       displayName: profileDraft.displayName.trim() || "Kwant Trader",
       handle: profileDraft.handle.trim().toLowerCase().replace(/[^a-z0-9_]/g, "").slice(0, 24) || "trader",
       markets: [...new Set(profileDraft.markets.map((market) => market.trim().toUpperCase()).filter(Boolean))].slice(0, 8),
-    };
+    }, resolvedLabel);
     if (!/^[a-z][a-z0-9_]{2,23}$/.test(profile.handle)) {
       setNotice("Your handle must be 3–24 characters, start with a letter, and only use letters, numbers or underscores.");
       return;
@@ -963,6 +1062,7 @@ export default function SocialsWorkspace({
       payload: profile,
     }));
     setProfileDraft(profile);
+    setProfileEditing(false);
     setNotice(saved.cloudSaved ? "Trader identity updated across your account." : "Trader identity could not be synced to account storage.");
   };
 
@@ -1044,6 +1144,115 @@ export default function SocialsWorkspace({
     setCommentDrafts((current) => ({ ...current, [precord.id]: "" }));
   };
 
+  const toggleGameplanSave = async (record: SocialObject) => {
+    const existing = reactions.find((reaction) =>
+      reaction.userId === resolvedAccountKey
+      && reaction.parentId === record.id
+      && typedPayload<SocialReactionPayload>(reaction)?.kind === "SAVED");
+    if (existing) {
+      await removeObject(existing);
+      setNotice("Removed from your saved Gameplans.");
+      return;
+    }
+    await saveObject(buildLocalObject({
+      id: `reaction:${record.id}:SAVED`,
+      userId: resolvedAccountKey,
+      authorLabel: currentProfile.displayName,
+      objectType: "reaction",
+      scope: "private",
+      parentId: record.id,
+      payload: { kind: "SAVED" } satisfies SocialReactionPayload,
+    }));
+    setNotice("Gameplan saved privately to your account.");
+  };
+
+  const toggleGameplanRepost = async (record: SocialObject) => {
+    const existing = posts.find((post) =>
+      post.userId === resolvedAccountKey
+      && typedPayload<SocialPostPayload>(post)?.isRepost
+      && typedPayload<SocialPostPayload>(post)?.relatedPrecordId === record.id);
+    if (existing) {
+      await removeObject(existing);
+      setNotice("Repost removed from your profile.");
+      return;
+    }
+    const payload = typedPayload<SocialPrecordPayload>(record);
+    if (!payload) return;
+    await saveObject(buildLocalObject({
+      id: `repost:${record.id}`,
+      userId: resolvedAccountKey,
+      authorLabel: currentProfile.displayName,
+      objectType: "post",
+      scope: record.scope === "private" ? "friends" : record.scope,
+      deskId: record.deskId,
+      parentId: record.id,
+      payload: {
+        kind: "MAP",
+        instrument: payload.instrument,
+        title: `Reposted ${record.authorLabel}'s Gameplan`,
+        body: payload.marketContext,
+        context: payload.confirmation,
+        condition: payload.bullCondition || payload.bearCondition,
+        invalidation: payload.invalidation,
+        relatedPrecordId: record.id,
+        observedAt: new Date().toISOString(),
+        isRepost: true,
+        repostOfUserId: record.userId,
+      } satisfies SocialPostPayload,
+    }));
+    setNotice("Gameplan reposted to your Social profile.");
+  };
+
+  const shareUrl = async (url: string, title: string, text: string) => {
+    try {
+      if (typeof navigator.share === "function") {
+        await navigator.share({ title, text, url });
+      } else {
+        await navigator.clipboard.writeText(url);
+        setNotice("Share link copied.");
+      }
+    } catch (reason) {
+      if (reason instanceof DOMException && reason.name === "AbortError") return;
+      setNotice("The share link could not be opened.");
+    }
+  };
+
+  const shareProfile = () => {
+    if (!viewedProfile) return;
+    const url = `${window.location.origin}/socials/${encodeURIComponent(viewedProfile.handle)}`;
+    void shareUrl(url, `${viewedProfile.displayName} on Kwant Desk`, `View @${viewedProfile.handle}'s Gameplan record.`);
+  };
+
+  const shareGameplan = (record: SocialObject) => {
+    const authorProfileObject = profiles.find((profile) => profile.userId === record.userId);
+    const authorProfile = authorProfileObject
+      ? normalizeSocialProfile(authorProfileObject.payload, authorProfileObject.authorLabel)
+      : viewedProfile;
+    if (!authorProfile) return;
+    const payload = typedPayload<SocialPrecordPayload>(record);
+    const url = `${window.location.origin}/socials/${encodeURIComponent(authorProfile.handle)}?gameplan=${encodeURIComponent(record.id)}`;
+    void shareUrl(url, `${payload?.instrument ?? "Gameplan"} by ${authorProfile.displayName}`, "View this timestamped Kwant Desk Gameplan.");
+  };
+
+  const handleAvatar = (file: File | null) => {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      setNotice("Choose a PNG, JPG, WEBP, or GIF profile image.");
+      return;
+    }
+    if (file.size > 700_000) {
+      setNotice("Profile photos must be smaller than 700 KB.");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result !== "string") return;
+      setProfileDraft((current) => ({ ...current, avatarUrl: reader.result as string }));
+    };
+    reader.onerror = () => setNotice("That profile photo could not be read.");
+    reader.readAsDataURL(file);
+  };
+
   const commitConsensus = () => {
     if (!consensusDraft.interpretation.trim() || !consensusDraft.invalidation.trim()) {
       setNotice("Record your interpretation and invalidation before revealing the Desk comparison.");
@@ -1094,7 +1303,8 @@ export default function SocialsWorkspace({
     const objectComments = comments.filter((comment) => comment.parentId === object.id);
     const objectReactions = reactions.filter((reaction) => reaction.parentId === object.id);
     const own = object.userId === resolvedAccountKey;
-    const profile = typedPayload<SocialProfilePayload>(profiles.find((candidate) => candidate.userId === object.userId));
+    const profileObject = profiles.find((candidate) => candidate.userId === object.userId);
+    const profile = profileObject ? normalizeSocialProfile(profileObject.payload, profileObject.authorLabel) : null;
     const status = receipt ? receipt.noTrade ? "NO TRIGGER" : receipt.classification === "JUSTIFIED ADAPTATION" ? "ADAPTED" : receipt.classification === "UNJUSTIFIED DEVIATION" ? "INVALIDATED" : "PARTIALLY PROVEN" : payload.status;
     return (
       <Card key={objectKey(object)} className="overflow-hidden">
@@ -1102,7 +1312,7 @@ export default function SocialsWorkspace({
           <Avatar label={object.authorLabel} active={profile?.processStatus !== "AWAY"} />
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="text-[10px] font-semibold text-foreground">{object.authorLabel}</span>
+              <button type="button" onClick={() => profile && onOpenProfile?.(profile.handle)} className="text-[10px] font-semibold text-foreground hover:text-primary">{object.authorLabel}</button>
               {profile ? <span className="text-[8px] text-muted">@{profile.handle}</span> : null}
               <span className="rounded-md bg-primary/10 px-1.5 py-0.5 text-[7px] font-semibold text-primary">{profile?.strongestDiscipline || "Independent trader"}</span>
             </div>
@@ -1203,6 +1413,9 @@ export default function SocialsWorkspace({
             const count = objectReactions.filter((reaction) => typedPayload<SocialReactionPayload>(reaction)?.kind === kind).length;
             return <button key={kind} type="button" onClick={() => addReaction(object, kind)} className={`flex h-7 items-center gap-1.5 rounded-lg px-2 text-[7px] font-semibold ${active ? "bg-primary/10 text-primary" : "text-muted hover:bg-surface hover:text-foreground"}`}><Star className="h-3 w-3" />{kind}{count ? ` ${count}` : ""}</button>;
           })}
+          <button type="button" onClick={() => void toggleGameplanRepost(object)} className={`flex h-7 items-center gap-1.5 rounded-lg px-2 text-[7px] font-semibold hover:bg-surface ${repostedGameplanIds.has(object.id) ? "text-primary" : "text-muted hover:text-foreground"}`}><Repeat2 className="h-3 w-3" />Repost</button>
+          <button type="button" onClick={() => void toggleGameplanSave(object)} className={`flex h-7 items-center gap-1.5 rounded-lg px-2 text-[7px] font-semibold hover:bg-surface ${savedGameplanIds.has(object.id) ? "text-primary" : "text-muted hover:text-foreground"}`}><Bookmark className={`h-3 w-3 ${savedGameplanIds.has(object.id) ? "fill-current" : ""}`} />Save</button>
+          <button type="button" onClick={() => shareGameplan(object)} className="flex h-7 items-center gap-1.5 rounded-lg px-2 text-[7px] font-semibold text-muted hover:bg-surface hover:text-foreground"><Share2 className="h-3 w-3" />Share</button>
           <span className="ml-auto flex items-center gap-1.5 text-[8px] text-muted"><MessageCircle className="h-3.5 w-3.5" />{objectComments.length} reviews</span>
         </div>
         {objectComments.length ? (
@@ -1232,7 +1445,8 @@ export default function SocialsWorkspace({
     if (!payload) return null;
     const objectComments = comments.filter((comment) => comment.parentId === object.id);
     const objectReactions = reactions.filter((reaction) => reaction.parentId === object.id);
-    const profile = typedPayload<SocialProfilePayload>(profiles.find((candidate) => candidate.userId === object.userId));
+    const profileObject = profiles.find((candidate) => candidate.userId === object.userId);
+    const profile = profileObject ? normalizeSocialProfile(profileObject.payload, profileObject.authorLabel) : null;
     const kindTone = payload.kind === "MAP"
       ? "text-primary bg-primary/10 border-primary/20"
       : payload.kind === "LIVE OBSERVATION"
@@ -1246,7 +1460,7 @@ export default function SocialsWorkspace({
           <Avatar label={object.authorLabel} active={profile?.processStatus !== "AWAY"} />
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="text-[10px] font-semibold">{object.authorLabel}</span>
+              <button type="button" onClick={() => profile && onOpenProfile?.(profile.handle)} className="text-[10px] font-semibold hover:text-primary">{object.authorLabel}</button>
               {profile ? <span className="text-[8px] text-muted">@{profile.handle}</span> : null}
               <span className={`rounded-lg border px-2 py-1 text-[7px] font-semibold ${kindTone}`}>{payload.kind}</span>
             </div>
@@ -1288,8 +1502,6 @@ export default function SocialsWorkspace({
     );
   };
 
-  if (!ready) return <div className="flex h-full items-center justify-center bg-background text-[10px] text-muted">Opening your Socials record…</div>;
-
   return (
     <div className="flex h-full min-h-0 flex-col bg-background text-foreground">
       <header className="shrink-0 border-b border-border bg-panel">
@@ -1307,14 +1519,14 @@ export default function SocialsWorkspace({
               <span className={`h-1.5 w-1.5 rounded-full ${saveState === "saved" ? "bg-primary" : saveState === "loading" ? "animate-pulse bg-warning" : "bg-accent"}`} />
               {saveState === "saved" ? "Network synced" : saveState === "loading" ? "Syncing" : "Local resilience"}
             </span>
-            <button type="button" onClick={() => setTab("identity")} className="flex h-8 items-center gap-2 rounded-xl border border-border bg-surface px-2.5 text-[8px] font-semibold text-muted hover:text-foreground"><Avatar label={currentProfile.displayName} size="sm" />@{currentProfile.handle}</button>
+            <button type="button" onClick={() => { setTab("profile"); setProfileEditing(false); onOpenProfile?.(currentProfile.handle); }} className="flex h-8 items-center gap-2 rounded-xl border border-border bg-surface px-2.5 text-[8px] font-semibold text-muted hover:text-foreground"><Avatar label={currentProfile.displayName} size="sm" />@{currentProfile.handle}</button>
             <button type="button" onClick={() => setTab("precords")} className="flex h-8 items-center gap-1.5 rounded-xl border border-primary/25 bg-primary/[0.06] px-3 text-[8px] font-semibold text-primary hover:bg-primary/10"><MessageCircle className="h-3.5 w-3.5" />Community review</button>
             <button type="button" onClick={() => setTab("today")} className="flex h-8 items-center gap-1.5 rounded-xl bg-primary px-3 text-[8px] font-semibold text-background hover:brightness-110"><LockKeyhole className="h-3.5 w-3.5" />{SOCIAL_RECORD_COPY.lockAction}</button>
           </div>
         </div>
         <nav className="flex items-center gap-1 overflow-x-auto px-3" aria-label="Socials views">
           {SOCIAL_TABS.map(({ id, label, icon: Icon }) => (
-            <button key={id} type="button" onClick={() => setTab(id)} className={`relative flex h-10 shrink-0 items-center gap-1.5 px-3 text-[10px] font-semibold ${tab === id ? "text-primary" : "text-muted hover:text-foreground"}`}>
+            <button key={id} type="button" onClick={() => { if (initialProfileHandle && id !== "profile") { onCloseProfile?.(); return; } setTab(id); if (id === "profile") setProfileEditing(false); }} className={`relative flex h-10 shrink-0 items-center gap-1.5 px-3 text-[10px] font-semibold ${tab === id ? "text-primary" : "text-muted hover:text-foreground"}`}>
               <Icon className="h-3.5 w-3.5" />{label}
               {id === "today" && notificationItems.length ? <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-danger px-1 text-[7px] text-white">{notificationItems.length}</span> : null}
               {tab === id ? <span className="absolute inset-x-2 bottom-0 h-0.5 rounded-full bg-primary shadow-[0_0_8px_var(--primary)]" /> : null}
@@ -1539,7 +1751,7 @@ export default function SocialsWorkspace({
                 ) : null}
               </div>
               <div className="space-y-3">
-                <Card className="p-4"><div className="flex items-center gap-2"><Compass className="h-4 w-4 text-primary" /><h3 className="text-[10px] font-semibold">Compatibility matching</h3></div><div className="mt-4 space-y-2">{[["Market", currentProfile.markets.join(", ")], ["Session", currentProfile.session], ["Timezone", currentProfile.timezone], ["Objective", currentProfile.improvementObjective]].map(([label, value]) => <div key={label} className="flex items-start justify-between gap-3 rounded-xl border border-border bg-surface/30 p-3 text-[8px]"><span className="text-muted">{label}</span><span className="text-right text-foreground">{value}</span></div>)}</div><button type="button" onClick={() => setTab("identity")} className="mt-3 w-full rounded-xl border border-border py-2.5 text-[8px] font-semibold text-muted hover:text-foreground">Refine matching profile</button></Card>
+                <Card className="p-4"><div className="flex items-center gap-2"><Compass className="h-4 w-4 text-primary" /><h3 className="text-[10px] font-semibold">Compatibility matching</h3></div><div className="mt-4 space-y-2">{[["Market", currentProfile.markets.join(", ")], ["Session", currentProfile.session], ["Timezone", currentProfile.timezone], ["Objective", currentProfile.improvementObjective]].map(([label, value]) => <div key={label} className="flex items-start justify-between gap-3 rounded-xl border border-border bg-surface/30 p-3 text-[8px]"><span className="text-muted">{label}</span><span className="text-right text-foreground">{value}</span></div>)}</div><button type="button" onClick={() => { setTab("profile"); setProfileEditing(true); }} className="mt-3 w-full rounded-xl border border-border py-2.5 text-[8px] font-semibold text-muted hover:text-foreground">Refine matching profile</button></Card>
                 <Card className="p-4"><div className="text-[7px] font-semibold uppercase tracking-[0.13em] text-primary">Desk rule</div><p className="mt-3 text-[9px] leading-5 text-foreground">Preparation can be shared. The next decision remains individual.</p><div className="mt-3 rounded-xl border border-border bg-background/30 p-3 text-[7px] leading-4 text-muted">Directional status is never shown publicly. Members appear as Preparing, Mapping, Waiting, Observing, Reviewing, or Away.</div></Card>
               </div>
             </div>
@@ -1612,13 +1824,24 @@ export default function SocialsWorkspace({
           </div>
         ) : null}
 
-        {tab === "identity" ? (
+        {tab === "profile" ? (
+          profileEditing && viewingOwnProfile ? (
           <div className="mx-auto grid max-w-6xl gap-3 p-3 lg:grid-cols-[360px_1fr]">
             <div className="space-y-3">
               <Card className="relative overflow-hidden p-5">
                 <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_70%_0%,color-mix(in_srgb,var(--primary)_16%,transparent),transparent_48%)]" />
                 <div className="relative">
-                  <div className="flex items-start gap-3"><Avatar label={profileDraft.displayName} active={profileDraft.processStatus !== "AWAY"} size="lg" /><div className="min-w-0"><h2 className="truncate text-[18px] font-semibold">{profileDraft.displayName}</h2><div className="mt-1 text-[9px] text-primary">@{profileDraft.handle}</div><div className="mt-2 flex flex-wrap gap-1">{profileDraft.markets.map((market) => <span key={market} className="rounded-lg border border-primary/20 bg-primary/10 px-2 py-1 text-[7px] font-semibold text-primary">{market}</span>)}</div></div></div>
+                  <div className="flex items-start gap-3">
+                    <button type="button" onClick={() => avatarInputRef.current?.click()} className="group relative flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-full border border-primary/25 bg-primary/10 text-[16px] font-semibold text-primary">
+                      {profileDraft.avatarUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={profileDraft.avatarUrl} alt="" className="h-full w-full object-cover" />
+                      ) : initials(profileDraft.displayName)}
+                      <span className="absolute inset-0 flex items-center justify-center bg-black/65 opacity-0 transition-opacity group-hover:opacity-100"><Camera className="h-4 w-4 text-white" /></span>
+                    </button>
+                    <input ref={avatarInputRef} type="file" accept="image/png,image/jpeg,image/webp,image/gif" className="hidden" onChange={(event) => { handleAvatar(event.target.files?.[0] ?? null); event.currentTarget.value = ""; }} />
+                    <div className="min-w-0"><h2 className="truncate text-[18px] font-semibold">{profileDraft.displayName}</h2><div className="mt-1 text-[9px] text-primary">@{profileDraft.handle}</div><button type="button" onClick={() => avatarInputRef.current?.click()} className="mt-2 text-[7px] font-semibold text-muted hover:text-primary">Change profile photo</button><div className="mt-2 flex flex-wrap gap-1">{profileDraft.markets.map((market) => <span key={market} className="rounded-lg border border-primary/20 bg-primary/10 px-2 py-1 text-[7px] font-semibold text-primary">{market}</span>)}</div></div>
+                  </div>
                   <p className="mt-5 text-[9px] leading-5 text-muted">{profileDraft.bio || `${profileDraft.session} · ${profileDraft.style}`}</p>
                   <div className="mt-4 rounded-xl border border-border bg-background/30 p-3"><div className="text-[7px] uppercase tracking-[0.13em] text-muted">Current focus</div><div className="mt-2 text-[9px] leading-4 text-foreground">{profileDraft.improvementObjective}</div></div>
                   <div className="mt-4 flex items-center justify-between"><div><div className="font-mono text-[28px] font-semibold text-primary">{profileScoreAverage(profileDraft) || "—"}</div><div className="text-[7px] text-muted">Process index</div></div><div className="text-right"><div className="text-[8px] font-semibold text-foreground">{profileDraft.strongestDiscipline}</div><div className="mt-1 text-[7px] text-muted">Strongest discipline</div></div></div>
@@ -1633,17 +1856,75 @@ export default function SocialsWorkspace({
                   {[["Display name", "displayName"], ["Handle", "handle"], ["Markets — comma separated", "markets"], ["Session", "session"], ["Timezone", "timezone"], ["Experience", "experience"], ["Trading style", "style"], ["Favourite theme", "favouriteTheme"], ["Strongest discipline", "strongestDiscipline"], ["Current blind spot", "currentBlindSpot"]].map(([label, key]) => <label key={key} className="block"><span className="mb-1.5 block text-[7px] font-semibold uppercase tracking-[0.1em] text-muted">{label}</span><input value={key === "markets" ? profileDraft.markets.join(", ") : String(profileDraft[key as keyof SocialProfilePayload])} onChange={(event) => setProfileDraft((current) => ({ ...current, [key]: key === "markets" ? event.target.value.split(",").map((market) => market.trim()) : event.target.value }))} className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[9px] outline-none focus:border-primary/40" /></label>)}
                   <label className="block md:col-span-2"><span className="mb-1.5 block text-[7px] font-semibold uppercase tracking-[0.1em] text-muted">Current improvement objective</span><textarea value={profileDraft.improvementObjective} onChange={(event) => setProfileDraft((current) => ({ ...current, improvementObjective: event.target.value }))} rows={3} className="w-full resize-none rounded-xl border border-border bg-background p-3 text-[9px] leading-4 outline-none focus:border-primary/40" /></label>
                   <label className="block md:col-span-2"><span className="mb-1.5 block text-[7px] font-semibold uppercase tracking-[0.1em] text-muted">Short professional context</span><textarea value={profileDraft.bio} onChange={(event) => setProfileDraft((current) => ({ ...current, bio: event.target.value }))} rows={3} className="w-full resize-none rounded-xl border border-border bg-background p-3 text-[9px] leading-4 outline-none focus:border-primary/40" /></label>
+                  <label className="block"><span className="mb-1.5 block text-[7px] font-semibold uppercase tracking-[0.1em] text-muted">Contact email</span><input type="email" value={profileDraft.contactEmail ?? ""} onChange={(event) => setProfileDraft((current) => ({ ...current, contactEmail: event.target.value }))} className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[9px] outline-none focus:border-primary/40" /></label>
+                  <label className="block"><span className="mb-1.5 block text-[7px] font-semibold uppercase tracking-[0.1em] text-muted">Website</span><input type="url" placeholder="https://" value={profileDraft.websiteUrl ?? ""} onChange={(event) => setProfileDraft((current) => ({ ...current, websiteUrl: event.target.value }))} className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[9px] outline-none focus:border-primary/40" /></label>
+                  <label className="flex items-center gap-3 rounded-xl border border-border bg-background/35 p-3 md:col-span-2"><input type="checkbox" checked={Boolean(profileDraft.showContactEmail)} onChange={(event) => setProfileDraft((current) => ({ ...current, showContactEmail: event.target.checked }))} className="h-4 w-4 accent-[var(--primary)]" /><span><span className="block text-[8px] font-semibold text-foreground">Show contact email publicly</span><span className="mt-0.5 block text-[7px] text-muted">Leave this off if messages should stay inside Kwant Desk.</span></span></label>
+                  <label className="block md:col-span-2">
+                    <span className="mb-1.5 block text-[7px] font-semibold uppercase tracking-[0.1em] text-muted">Calling Card banner</span>
+                    <KwantSelect value={profileDraft.callingCardCode ?? ""} onChange={(event) => setProfileDraft((current) => ({ ...current, callingCardCode: event.target.value }))} className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[9px] outline-none">
+                      <option value="">Automatic / latest earned card</option>
+                      {cards.filter((card) => card.userId === resolvedAccountKey).map((card) => typedPayload<SocialCardPayload>(card)).filter((card): card is SocialCardPayload => card !== null).filter((card) => card.public !== false).map((card) => <option key={card.code} value={card.code}>{card.name}</option>)}
+                    </KwantSelect>
+                  </label>
+                  <div className="space-y-2 md:col-span-2">
+                    <div className="text-[7px] font-semibold uppercase tracking-[0.1em] text-muted">Profile links</div>
+                    {[0, 1, 2].map((index) => {
+                      const link = profileDraft.profileLinks?.[index] ?? { label: "", url: "" };
+                      return (
+                        <div key={index} className="grid gap-2 sm:grid-cols-[150px_1fr]">
+                          <input value={link.label} onChange={(event) => setProfileDraft((current) => { const links = [...(current.profileLinks ?? [])]; links[index] = { label: event.target.value, url: links[index]?.url ?? "" }; return { ...current, profileLinks: links }; })} placeholder="Label" className="h-9 rounded-xl border border-border bg-background px-3 text-[8px] outline-none focus:border-primary/40" />
+                          <input value={link.url} onChange={(event) => setProfileDraft((current) => { const links = [...(current.profileLinks ?? [])]; links[index] = { label: links[index]?.label ?? "", url: event.target.value }; return { ...current, profileLinks: links }; })} placeholder="https://" className="h-9 rounded-xl border border-border bg-background px-3 text-[8px] outline-none focus:border-primary/40" />
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               </Card>
               <div className="grid gap-3 md:grid-cols-2">
                 <Card className="p-4"><div className="flex items-center gap-2"><BarChart3 className="h-4 w-4 text-primary" /><h3 className="text-[10px] font-semibold">Process dimensions</h3></div><div className="mt-4 space-y-3">{SCORE_LABELS.map(([key, label]) => <ScoreBar key={key} label={label} value={profileDraft.scores[key]} />)}</div><div className="mt-4 rounded-xl border border-border bg-background/30 p-3 text-[7px] leading-4 text-muted">Scores remain empty until verified platform activity supplies enough evidence. No vanity numbers are invented.</div></Card>
                 <Card className="p-4"><div className="flex items-center gap-2"><Eye className="h-4 w-4 text-primary" /><h3 className="text-[10px] font-semibold">Privacy controls</h3></div><div className="mt-4 space-y-3">{([["profile", "Identity card"], ["activity", "Activity"], ["scores", "Process scores"], ["cards", "Calling Cards"]] as Array<[keyof SocialProfilePayload["visibility"], string]>).map(([key, label]) => <div key={key} className="flex items-center gap-3"><span className="min-w-0 flex-1 text-[8px] text-muted">{label}</span><KwantSelect value={profileDraft.visibility[key]} onChange={(event) => setProfileDraft((current) => ({ ...current, visibility: { ...current.visibility, [key]: event.target.value as SocialScope } }))} className="h-8 rounded-lg border border-border bg-surface px-2 text-[8px] outline-none"><option value="private">Private</option><option value="friends">Friends</option><option value="desk">My Desk</option><option value="community">Community</option></KwantSelect></div>)}</div><div className="mt-5 rounded-xl border border-primary/20 bg-primary/[0.05] p-3 text-[7px] leading-4 text-muted"><ShieldCheck className="mb-2 h-4 w-4 text-primary" />Evidence remains private unless the record explicitly shares it. Broker credentials are never stored here.</div></Card>
               </div>
-              <div className="flex justify-end"><button type="button" onClick={saveProfile} className="h-10 rounded-xl bg-primary px-5 text-[9px] font-semibold text-background">Save trader identity</button></div>
+              <div className="flex justify-end gap-2"><button type="button" onClick={() => { setProfileDraft(currentProfile); setProfileEditing(false); }} className="h-10 rounded-xl border border-border bg-surface px-5 text-[9px] font-semibold text-muted hover:text-foreground">Cancel</button><button type="button" onClick={saveProfile} className="h-10 rounded-xl bg-primary px-5 text-[9px] font-semibold text-background">Save profile</button></div>
             </div>
           </div>
+          ) : viewedProfileObject && viewedProfile ? (
+            <SocialProfileView
+              profileObject={viewedProfileObject}
+              profile={viewedProfile}
+              gameplans={viewedGameplans}
+              cards={cards}
+              comments={comments}
+              isOwnProfile={viewingOwnProfile}
+              savedIds={savedGameplanIds}
+              repostedIds={repostedGameplanIds}
+              onBack={initialProfileHandle ? onCloseProfile : undefined}
+              onEdit={() => setProfileEditing(true)}
+              onMessage={() => onMessageProfile?.(viewedProfileObject.userId)}
+              onOpenGameplan={setSelectedProfileRecord}
+              onSave={(record) => void toggleGameplanSave(record)}
+              onRepost={(record) => void toggleGameplanRepost(record)}
+              onShareGameplan={shareGameplan}
+              onShareProfile={shareProfile}
+            />
+          ) : (
+            <div className="flex min-h-[420px] flex-col items-center justify-center p-8 text-center">
+              <Radar className="h-8 w-8 text-muted" />
+              <div className="mt-3 text-[11px] font-semibold text-foreground">Profile unavailable</div>
+              <p className="mt-2 max-w-sm text-[8px] leading-4 text-muted">This profile does not exist or its owner has limited who can view it.</p>
+              {onCloseProfile ? <button type="button" onClick={onCloseProfile} className="mt-4 rounded-xl border border-border bg-surface px-4 py-2 text-[8px] font-semibold text-muted hover:text-foreground">Back to Socials</button> : null}
+            </div>
+          )
         ) : null}
       </main>
+
+      {selectedProfileRecord ? (
+        <div className="fixed inset-0 z-[1150] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm" onMouseDown={(event) => { if (event.target === event.currentTarget) setSelectedProfileRecord(null); }}>
+          <div className="flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-3xl border border-border bg-panel shadow-2xl shadow-black/70">
+            <div className="flex h-12 shrink-0 items-center border-b border-border px-4"><div className="text-[10px] font-semibold text-foreground">Gameplan post</div><div className="ml-2 text-[8px] text-muted">Comments, reposts, shares and saves remain attached to the original record.</div><button type="button" onClick={() => setSelectedProfileRecord(null)} className="ml-auto flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground"><X className="h-4 w-4" /></button></div>
+            <div className="min-h-0 flex-1 overflow-y-auto p-3">{renderPrecordCard(selectedProfileRecord)}</div>
+          </div>
+        </div>
+      ) : null}
 
       {showPostModal ? (
         <div className="fixed inset-0 z-[1100] flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm" onMouseDown={(event) => { if (event.target === event.currentTarget) setShowPostModal(false); }}>

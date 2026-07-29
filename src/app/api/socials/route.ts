@@ -4,6 +4,7 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import { getRouteActor, type RouteActor } from "@/lib/serverAuth";
 import {
   calculateReasoningScore,
+  normalizeSocialProfile,
   SOCIAL_OBJECT_TYPES,
   SOCIAL_SCOPES,
   type SocialObject,
@@ -185,6 +186,21 @@ export async function POST(request: NextRequest) {
   } else if (objectType === "profile") {
     id = "profile";
     useUpsert = true;
+    const profile = normalizeSocialProfile(payload, authorLabel);
+    if (!/^[a-z][a-z0-9_]{2,23}$/.test(profile.handle)) {
+      return NextResponse.json({ error: "Use a valid 3–24 character profile handle." }, { status: 400 });
+    }
+    if (profile.callingCardCode) {
+      const { data: ownedCard } = await supabase
+        .from("social_objects")
+        .select("id")
+        .eq("user_id", actor.userId)
+        .eq("object_type", "card")
+        .eq("payload->>code", profile.callingCardCode)
+        .maybeSingle();
+      if (!ownedCard) profile.callingCardCode = "";
+    }
+    payload = profile as unknown as Record<string, unknown>;
   } else if (objectType === "progress") {
     const sessionDate = cleanIdentifier(payload.sessionDate, 10);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(sessionDate)) {
@@ -194,8 +210,11 @@ export async function POST(request: NextRequest) {
     useUpsert = true;
   } else if (objectType === "reaction") {
     const kind = cleanIdentifier(payload.kind, 20);
-    if (!parentId || !["USEFUL", "CLEAR", "EVIDENCE"].includes(kind)) {
+    if (!parentId || !["USEFUL", "CLEAR", "EVIDENCE", "SAVED"].includes(kind)) {
       return NextResponse.json({ error: "A valid reaction target and type are required." }, { status: 400 });
+    }
+    if (kind === "SAVED" && scope !== "private") {
+      return NextResponse.json({ error: "Saved Gameplans are private." }, { status: 400 });
     }
     id = `reaction:${parentId}:${kind}`;
     useUpsert = true;

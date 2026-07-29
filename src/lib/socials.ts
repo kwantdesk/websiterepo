@@ -103,6 +103,11 @@ export type SocialProfilePayload = {
   blockedUserIds?: string[];
   dismissedFriendRequests?: Record<string, string>;
   friendReadAt?: Record<string, string>;
+  contactEmail?: string;
+  websiteUrl?: string;
+  profileLinks?: Array<{ label: string; url: string }>;
+  showContactEmail?: boolean;
+  callingCardCode?: string;
 };
 
 export type SocialPrecordPayload = {
@@ -201,6 +206,8 @@ export type SocialPostPayload = {
   invalidation: string;
   relatedPrecordId: string | null;
   observedAt: string;
+  isRepost?: boolean;
+  repostOfUserId?: string;
 };
 
 export type SocialDeskPayload = {
@@ -228,7 +235,7 @@ export type SocialCommentPayload = {
 };
 
 export type SocialReactionPayload = {
-  kind: "USEFUL" | "CLEAR" | "EVIDENCE";
+  kind: "USEFUL" | "CLEAR" | "EVIDENCE" | "SAVED";
 };
 
 export type SocialCardPayload = {
@@ -428,6 +435,117 @@ export function buildDefaultProfile(label: string): SocialProfilePayload {
       scores: "friends",
       cards: "community",
     },
+    contactEmail: "",
+    websiteUrl: "",
+    profileLinks: [],
+    showContactEmail: false,
+    callingCardCode: "",
+  };
+}
+
+function profileText(value: unknown, fallback: string, maximum = 500) {
+  return typeof value === "string"
+    ? value.replace(/\u0000/g, "").trim().slice(0, maximum)
+    : fallback;
+}
+
+function profileScope(value: unknown, fallback: SocialScope): SocialScope {
+  return value === "private" || value === "friends" || value === "desk" || value === "community"
+    ? value
+    : fallback;
+}
+
+export function normalizeSocialProfile(value: unknown, label = "Kwant Trader"): SocialProfilePayload {
+  const fallback = buildDefaultProfile(label);
+  if (!value || typeof value !== "object") return fallback;
+  const candidate = value as Partial<SocialProfilePayload>;
+  const scores = candidate.scores && typeof candidate.scores === "object"
+    ? candidate.scores
+    : fallback.scores;
+  const visibility = candidate.visibility && typeof candidate.visibility === "object"
+    ? candidate.visibility
+    : fallback.visibility;
+  const processStatus = PROCESS_STATUSES.some((option) => option.id === candidate.processStatus)
+    ? candidate.processStatus as SocialProcessStatus
+    : fallback.processStatus;
+  const presenceStatus = candidate.presenceStatus === "dnd"
+    || candidate.presenceStatus === "away"
+    || candidate.presenceStatus === "sleeping"
+    || candidate.presenceStatus === "offline"
+    || candidate.presenceStatus === "online"
+    ? candidate.presenceStatus
+    : undefined;
+  const numberScore = (key: keyof SocialProfilePayload["scores"]) => {
+    const score = Number(scores[key]);
+    return Number.isFinite(score) ? Math.max(0, Math.min(100, Math.round(score))) : fallback.scores[key];
+  };
+  const links = Array.isArray(candidate.profileLinks)
+    ? candidate.profileLinks.flatMap((link) => {
+        if (!link || typeof link !== "object") return [];
+        const item = link as { label?: unknown; url?: unknown };
+        const url = profileText(item.url, "", 400);
+        if (!/^https?:\/\//i.test(url)) return [];
+        return [{
+          label: profileText(item.label, "Link", 32) || "Link",
+          url,
+        }];
+      }).slice(0, 4)
+    : [];
+  return {
+    ...fallback,
+    displayName: profileText(candidate.displayName, fallback.displayName, 60) || fallback.displayName,
+    handle: normalizeHandle(profileText(candidate.handle, fallback.handle, 24)),
+    bio: profileText(candidate.bio, "", 800),
+    markets: Array.isArray(candidate.markets)
+      ? [...new Set(candidate.markets.map((market) => profileText(market, "", 12).toUpperCase()).filter(Boolean))].slice(0, 8)
+      : fallback.markets,
+    session: profileText(candidate.session, fallback.session, 40),
+    timezone: profileText(candidate.timezone, fallback.timezone, 80),
+    experience: profileText(candidate.experience, fallback.experience, 60),
+    style: profileText(candidate.style, fallback.style, 100),
+    improvementObjective: profileText(candidate.improvementObjective, fallback.improvementObjective, 500),
+    favouriteTheme: profileText(candidate.favouriteTheme, fallback.favouriteTheme, 60),
+    processStatus,
+    strongestDiscipline: profileText(candidate.strongestDiscipline, fallback.strongestDiscipline, 100),
+    currentBlindSpot: profileText(candidate.currentBlindSpot, fallback.currentBlindSpot, 100),
+    scores: {
+      preparation: numberScore("preparation"),
+      confirmation: numberScore("confirmation"),
+      review: numberScore("review"),
+      calibration: numberScore("calibration"),
+      patience: numberScore("patience"),
+      contribution: numberScore("contribution"),
+      consistency: numberScore("consistency"),
+      research: numberScore("research"),
+    },
+    visibility: {
+      profile: profileScope(visibility.profile, fallback.visibility.profile),
+      activity: profileScope(visibility.activity, fallback.visibility.activity),
+      scores: profileScope(visibility.scores, fallback.visibility.scores),
+      cards: profileScope(visibility.cards, fallback.visibility.cards),
+    },
+    avatarUrl: typeof candidate.avatarUrl === "string" && candidate.avatarUrl.startsWith("data:image/")
+      ? candidate.avatarUrl.slice(0, 800_000)
+      : "",
+    presenceStatus,
+    presenceMessage: profileText(candidate.presenceMessage, "", 120),
+    lastSeenAt: profileText(candidate.lastSeenAt, "", 60),
+    blockedUserIds: Array.isArray(candidate.blockedUserIds)
+      ? candidate.blockedUserIds.filter((item): item is string => typeof item === "string").slice(0, 500)
+      : [],
+    dismissedFriendRequests: candidate.dismissedFriendRequests && typeof candidate.dismissedFriendRequests === "object"
+      ? candidate.dismissedFriendRequests
+      : {},
+    friendReadAt: candidate.friendReadAt && typeof candidate.friendReadAt === "object"
+      ? candidate.friendReadAt
+      : {},
+    contactEmail: profileText(candidate.contactEmail, "", 180),
+    websiteUrl: /^https?:\/\//i.test(profileText(candidate.websiteUrl, "", 400))
+      ? profileText(candidate.websiteUrl, "", 400)
+      : "",
+    profileLinks: links,
+    showContactEmail: Boolean(candidate.showContactEmail),
+    callingCardCode: profileText(candidate.callingCardCode, "", 80).replace(/[^a-z0-9-]/gi, ""),
   };
 }
 
