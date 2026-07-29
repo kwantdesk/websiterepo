@@ -9,6 +9,7 @@ import {
   CalendarDays,
   Home,
   LineChart,
+  NotebookPen,
   ScanLine,
   Settings,
   Sparkles,
@@ -72,6 +73,7 @@ const navItems: Array<{
   { key: "kwantbot", href: "/kwantbot", label: "KwantBot", title: "KwantBot", icon: Bot },
   { key: "news", href: "/news", label: "News", title: "News", icon: BookOpen },
   { key: "zyon", href: "/zyon", label: "ZYON", title: "ZYON Trading Intelligence", icon: Sparkles },
+  { key: "journal", href: "/journal", label: "Journal", title: "Journal", icon: NotebookPen },
 ];
 
 function ActiveUnderline() {
