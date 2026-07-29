@@ -8,11 +8,13 @@ import {
   CalendarDays,
   ChevronRight,
   CircleGauge,
+  Download,
   FileText,
   Folder,
   FolderOpen,
   ImagePlus,
   Loader2,
+  Maximize2,
   MessageSquareText,
   Paperclip,
   Plus,
@@ -32,6 +34,7 @@ import {
   type ChangeEvent,
   type FormEvent,
 } from "react";
+import { createPortal } from "react-dom";
 import KwantSelect from "@/components/ui/KwantSelect";
 import type { UseKwantBotInterpreterResult } from "@/hooks/useKwantBotInterpreter";
 import { formatKwantBotPrice } from "@/lib/kwantBotInterpreter";
@@ -133,18 +136,24 @@ function mergeJournal(local: ZyonJournalEntry[], remote: ZyonJournalEntry[]) {
     .slice(0, 500);
 }
 
-function messageAttachments(attachments: ZyonAttachment[] | undefined) {
+type ZyonImagePreview = Pick<ZyonAttachment, "name" | "dataUrl">;
+
+function messageAttachments(
+  attachments: ZyonAttachment[] | undefined,
+  onPreviewImage: (attachment: ZyonImagePreview) => void,
+) {
   if (!attachments?.length) return null;
   return (
     <div className={`mb-2 grid gap-2 ${attachments.length > 1 ? "grid-cols-2" : "grid-cols-1"}`}>
       {attachments.map((attachment) => (
-        <a
-          key={attachment.id}
-          href={attachment.dataUrl}
-          download={attachment.name}
-          className="group overflow-hidden rounded-xl border border-border/80 bg-background/35"
-        >
-          {isImage(attachment) ? (
+        isImage(attachment) ? (
+          <button
+            key={attachment.id}
+            type="button"
+            onClick={() => onPreviewImage(attachment)}
+            className="group relative overflow-hidden rounded-xl border border-border/80 bg-background/35 text-left"
+            aria-label={`Open ${attachment.name} full screen`}
+          >
             <Image
               src={attachment.dataUrl}
               alt={attachment.name}
@@ -153,7 +162,17 @@ function messageAttachments(attachments: ZyonAttachment[] | undefined) {
               unoptimized
               className="max-h-64 w-full object-cover transition duration-300 group-hover:scale-[1.01]"
             />
-          ) : (
+            <span className="pointer-events-none absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-lg border border-white/15 bg-black/60 text-white opacity-0 backdrop-blur transition group-hover:opacity-100">
+              <Maximize2 className="h-3.5 w-3.5" />
+            </span>
+          </button>
+        ) : (
+          <a
+            key={attachment.id}
+            href={attachment.dataUrl}
+            download={attachment.name}
+            className="group overflow-hidden rounded-xl border border-border/80 bg-background/35"
+          >
             <span className="flex min-h-16 items-center gap-3 px-3 py-2.5">
               <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
                 <FileText className="h-4 w-4" />
@@ -163,8 +182,8 @@ function messageAttachments(attachments: ZyonAttachment[] | undefined) {
                 <span className="mt-0.5 block text-[9px] text-muted">{Math.max(1, Math.round(attachment.size / 1024))} KB</span>
               </span>
             </span>
-          )}
-        </a>
+          </a>
+        )
       ))}
     </div>
   );
@@ -194,6 +213,7 @@ export default function ZyonWorkspace({
   const [selectedDay, setSelectedDay] = useState(() => new Date().toISOString().slice(0, 10));
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
   const [lastUsage, setLastUsage] = useState<{ inputTokens: number | null; outputTokens: number | null } | null>(null);
+  const [imagePreview, setImagePreview] = useState<ZyonImagePreview | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -259,6 +279,20 @@ export default function ZyonWorkspace({
   useEffect(() => {
     window.localStorage.setItem("kwantdesk:zyon:model", model);
   }, [model]);
+
+  useEffect(() => {
+    if (!imagePreview) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setImagePreview(null);
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [imagePreview]);
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
@@ -638,7 +672,7 @@ export default function ZyonWorkspace({
                             ? "border-border bg-panel/80 shadow-[0_12px_36px_rgba(0,0,0,.1)]"
                             : "border-primary/20 bg-primary/[0.09]"
                         }`}>
-                          {messageAttachments(message.attachments)}
+                          {messageAttachments(message.attachments, setImagePreview)}
                           <p className="whitespace-pre-wrap text-[11px] leading-[1.75] text-foreground">{message.content}</p>
                         </div>
                         <div className={`mt-1.5 flex items-center gap-2 px-1 text-[8px] text-muted ${assistant ? "" : "justify-end"}`}>
@@ -833,11 +867,24 @@ export default function ZyonWorkspace({
                       .filter((attachment) => attachment.dataUrl)
                       .slice(0, 4)
                       .map((attachment) => (
-                        <a
+                        <button
                           key={`${selectedEntry.id}:${attachment.name}`}
-                          href={attachment.dataUrl}
-                          download={attachment.name}
+                          type="button"
+                          onClick={() => {
+                            if (attachment.type.startsWith("image/") && attachment.dataUrl) {
+                              setImagePreview({
+                                name: attachment.name,
+                                dataUrl: attachment.dataUrl,
+                              });
+                            } else if (attachment.dataUrl) {
+                              const link = document.createElement("a");
+                              link.href = attachment.dataUrl;
+                              link.download = attachment.name;
+                              link.click();
+                            }
+                          }}
                           className="overflow-hidden rounded-lg border border-border"
+                          aria-label={attachment.type.startsWith("image/") ? `Open ${attachment.name} full screen` : attachment.name}
                         >
                           {attachment.type.startsWith("image/") ? (
                             <Image
@@ -851,7 +898,7 @@ export default function ZyonWorkspace({
                           ) : (
                             <span className="flex h-20 items-center justify-center px-2 text-center text-[8px] text-muted">{attachment.name}</span>
                           )}
-                        </a>
+                        </button>
                       ))}
                   </div>
                 ) : null}
@@ -867,6 +914,53 @@ export default function ZyonWorkspace({
           </div>
         </aside>
       </div>
+      {imagePreview && typeof document !== "undefined"
+        ? createPortal(
+          <div
+            className="fixed inset-0 z-[1000] bg-black/95 backdrop-blur-md"
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Image preview: ${imagePreview.name}`}
+            onPointerDown={(event) => {
+              if (event.target === event.currentTarget) setImagePreview(null);
+            }}
+          >
+            <div className="absolute right-4 top-4 z-10 flex items-center gap-2">
+              <a
+                href={imagePreview.dataUrl}
+                download={imagePreview.name}
+                className="flex h-10 items-center gap-2 rounded-xl border border-white/15 bg-white/10 px-3.5 text-[11px] font-medium text-white shadow-xl backdrop-blur transition hover:bg-white/15"
+              >
+                <Download className="h-4 w-4" />
+                Save image
+              </a>
+              <button
+                type="button"
+                onClick={() => setImagePreview(null)}
+                className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/15 bg-white/10 text-white shadow-xl backdrop-blur transition hover:bg-white/15"
+                aria-label="Close image preview"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="absolute inset-x-4 bottom-14 top-16 sm:inset-x-8 sm:bottom-16 sm:top-20">
+              <Image
+                src={imagePreview.dataUrl}
+                alt={imagePreview.name}
+                fill
+                sizes="100vw"
+                unoptimized
+                priority
+                className="select-none object-contain"
+              />
+            </div>
+            <div className="pointer-events-none absolute inset-x-4 bottom-4 truncate text-center text-[10px] text-white/60">
+              {imagePreview.name}
+            </div>
+          </div>,
+          document.body,
+        )
+        : null}
     </div>
   );
 }
