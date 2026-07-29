@@ -2,6 +2,7 @@
 
 import {
   Activity,
+  Archive,
   ArrowRight,
   Award,
   BarChart3,
@@ -29,6 +30,7 @@ import {
   Search,
   Send,
   ShieldCheck,
+  SlidersHorizontal,
   Sparkles,
   Star,
   Target,
@@ -50,7 +52,6 @@ import {
   profileScoreAverage,
   socialId,
   todayKey,
-  type PrecordDirection,
   type SocialCardPayload,
   type SocialCommentPayload,
   type SocialConsensusPayload,
@@ -67,6 +68,9 @@ import {
   type SocialScope,
   type SocialState,
 } from "@/lib/socials";
+import { buildExecutionComparison } from "@/lib/socials";
+import { SOCIAL_RECORD_COPY, SOCIAL_RECORD_RULES } from "@/lib/socialRecordConfig";
+import type { GameplanPayload, GameplanSession } from "@/lib/gameplan";
 import { loadSocialState, normalizeSocialState, saveSocialState } from "@/lib/socialsStore";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -74,12 +78,12 @@ type SocialTab = "today" | "precords" | "desks" | "rankings" | "cards" | "identi
 type FeedFilter = "all" | "live" | "proven" | "mine";
 
 const SOCIAL_TABS: Array<{ id: SocialTab; label: string; icon: typeof Activity }> = [
-  { id: "today", label: "Today", icon: Activity },
-  { id: "precords", label: "Precords", icon: LockKeyhole },
+  { id: "today", label: "Record", icon: Activity },
+  { id: "precords", label: "Community", icon: Network },
   { id: "desks", label: "Desks", icon: UsersRound },
-  { id: "rankings", label: "Rankings", icon: Trophy },
+  { id: "rankings", label: "Reputation", icon: Trophy },
   { id: "cards", label: "Calling Cards", icon: Award },
-  { id: "identity", label: "Identity", icon: Radar },
+  { id: "identity", label: "Profile", icon: Radar },
 ];
 
 const SCORE_LABELS: Array<[keyof SocialProfilePayload["scores"], string]> = [
@@ -112,33 +116,21 @@ const EMPTY_PROGRESS = (): SocialProgressPayload => ({
   graceDay: false,
 });
 
-const EMPTY_PRECORD = {
-  instrument: "NQ",
-  session: "New York",
-  direction: "BOTH" as PrecordDirection,
-  marketContext: "",
-  plannedEntryLow: "",
-  plannedEntryHigh: "",
-  plannedStop: "",
-  plannedTarget: "",
-  plannedSize: "",
-  maximumRisk: "",
-  plannedRiskReward: "",
-  bullCondition: "",
-  bearCondition: "",
-  confirmation: "",
-  invalidation: "",
-  expiryAt: "",
-  scope: "community" as SocialScope,
-};
-
 const EMPTY_RECEIPT = {
+  actualDirection: "LONG" as "LONG" | "SHORT",
   actualEntry: "",
   entryTime: "",
   actualStop: "",
   actualExit: "",
   exitTime: "",
   size: "",
+  maximumActualRisk: "",
+  fill2Price: "",
+  fill2Size: "",
+  fill2Time: "",
+  exit2Price: "",
+  exit2Size: "",
+  exit2Time: "",
   partialExits: "",
   fees: "",
   confirmationsAppeared: "",
@@ -223,7 +215,7 @@ function ScopeBadge({ scope }: { scope: SocialScope }) {
 
 function StatusBadge({ status }: { status: string }) {
   const active = ["LIVE", "ENTRY TRIGGERED", "UNDER REVIEW"].includes(status);
-  const completed = ["PROVEN", "ADAPTED", "NO TRIGGER"].includes(status);
+  const completed = ["PROVEN", "ADAPTED", "NO TRIGGER", "NO TRADE"].includes(status);
   return (
     <span className={`flex items-center gap-1.5 rounded-lg border px-2 py-1 text-[7px] font-semibold tracking-[0.08em] ${active ? "border-primary/30 bg-primary/10 text-primary" : completed ? "border-accent/30 bg-accent/10 text-accent" : "border-border bg-surface text-muted"}`}>
       <span className={`h-1.5 w-1.5 rounded-full ${active ? "animate-pulse bg-primary" : completed ? "bg-accent" : "bg-muted"}`} />
@@ -286,11 +278,15 @@ export default function SocialsWorkspace({
   const [tab, setTab] = useState<SocialTab>("today");
   const [feedFilter, setFeedFilter] = useState<FeedFilter>("all");
   const [query, setQuery] = useState("");
-  const [showPrecordModal, setShowPrecordModal] = useState(false);
   const [showPostModal, setShowPostModal] = useState(false);
   const [showReceiptFor, setShowReceiptFor] = useState<string | null>(null);
   const [showDeskModal, setShowDeskModal] = useState(false);
-  const [precordDraft, setPrecordDraft] = useState(EMPTY_PRECORD);
+  const [gameplanInstrument, setGameplanInstrument] = useState<"NQ" | "ES">("NQ");
+  const [gameplanSession, setGameplanSession] = useState<GameplanSession>("newyork");
+  const [gameplan, setGameplan] = useState<GameplanPayload | null>(null);
+  const [gameplanState, setGameplanState] = useState<"loading" | "ready" | "error">("loading");
+  const [recordScope, setRecordScope] = useState<SocialScope>("private");
+  const [assessmentState, setAssessmentState] = useState<"idle" | "reviewing">("idle");
   const [receiptDraft, setReceiptDraft] = useState(EMPTY_RECEIPT);
   const [postDraft, setPostDraft] = useState(EMPTY_POST);
   const [deskDraft, setDeskDraft] = useState({
@@ -464,6 +460,42 @@ export default function SocialsWorkspace({
     setProfileDraft(currentProfile);
   }, [currentProfileObject?.updatedAt]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    let active = true;
+    const controller = new AbortController();
+    setGameplanState("loading");
+    void (async () => {
+      try {
+        const response = await fetch(`/api/gameplan?root=${gameplanInstrument}&session=${gameplanSession}`, {
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        const payload = await response.json() as GameplanPayload & { error?: string };
+        if (!response.ok || !payload.plan) throw new Error(payload.error || "Gameplan unavailable");
+        if (!active) return;
+        setGameplan(payload);
+        setGameplanState("ready");
+      } catch (error) {
+        if (!active || (error instanceof DOMException && error.name === "AbortError")) return;
+        setGameplan(null);
+        setGameplanState("error");
+      }
+    })();
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [gameplanInstrument, gameplanSession]);
+
+  const currentGameplanId = gameplan
+    ? `${gameplan.instrument}:${gameplanSession}:${gameplan.generated_at}`
+    : "";
+  const lockedCurrentGameplan = precords.find((object) => {
+    if (object.userId !== resolvedAccountKey) return false;
+    const payload = typedPayload<SocialPrecordPayload>(object);
+    return Boolean(payload && payload.source === "GAMEPLAN" && payload.sourceGameplanId === currentGameplanId);
+  });
+
   const visiblePrecords = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
     return precords.filter((object) => {
@@ -542,47 +574,105 @@ export default function SocialsWorkspace({
     }));
   };
 
-  const publishPrecord = async () => {
-    if (precordDraft.scope === "desk" && !myDesks.length) {
-      setNotice("Create or join a Desk before publishing to Desk visibility.");
+  const lockCurrentGameplan = async () => {
+    if (!gameplan || gameplanState !== "ready") {
+      setNotice("The current Gameplan must finish loading before it can be locked.");
       return;
     }
+    if (lockedCurrentGameplan) {
+      setNotice("This exact Gameplan is already locked and awaiting its outcome.");
+      return;
+    }
+    if (recordScope === "desk" && !myDesks.length) {
+      setNotice("Create or join a Desk before using Desk visibility.");
+      return;
+    }
+
+    const trade = gameplan.plan.one_trade;
+    const context = [
+      gameplan.plan.one_liner,
+      gameplan.plan.environment.tape.plain,
+      gameplan.plan.environment.flow.plain,
+    ].filter(Boolean).join(" ");
+    const confirmation = [
+      `Long permission: ${trade.long_side.permission}`,
+      `Short permission: ${trade.short_side.permission}`,
+    ].join("\n");
+    const invalidation = [
+      `No trade if: ${trade.not_a_trade_if}`,
+      `Long stop: ${trade.long_side.stop}`,
+      `Short stop: ${trade.short_side.stop}`,
+    ].join("\n");
+    const snapshot = {
+      edition: gameplan.plan.edition,
+      environment: gameplan.plan.environment,
+      oneLiner: gameplan.plan.one_liner,
+      oneTrade: {
+        zone: trade.zone,
+        longSide: {
+          permission: trade.long_side.permission,
+          stop: trade.long_side.stop,
+          targets: trade.long_side.targets,
+        },
+        shortSide: {
+          permission: trade.short_side.permission,
+          stop: trade.short_side.stop,
+          targets: trade.short_side.targets,
+        },
+        notATradeIf: trade.not_a_trade_if,
+      },
+      ladder: gameplan.plan.ladder.slice(0, 12).map((level) => ({
+        zone: level.zone,
+        name: level.name,
+        role: level.role,
+        strength: level.strength,
+        why: level.why,
+      })),
+    };
     const base = {
-      instrument: precordDraft.instrument.trim().toUpperCase(),
-      session: precordDraft.session,
-      direction: precordDraft.direction,
-      marketContext: precordDraft.marketContext.trim(),
-      plannedEntryLow: numberOrNull(precordDraft.plannedEntryLow),
-      plannedEntryHigh: numberOrNull(precordDraft.plannedEntryHigh),
-      plannedStop: numberOrNull(precordDraft.plannedStop),
-      plannedTarget: numberOrNull(precordDraft.plannedTarget),
-      plannedSize: numberOrNull(precordDraft.plannedSize),
-      maximumRisk: numberOrNull(precordDraft.maximumRisk),
-      plannedRiskReward: numberOrNull(precordDraft.plannedRiskReward),
-      bullCondition: precordDraft.bullCondition.trim(),
-      bearCondition: precordDraft.bearCondition.trim(),
-      confirmation: precordDraft.confirmation.trim(),
-      invalidation: precordDraft.invalidation.trim(),
-      expiryAt: precordDraft.expiryAt ? new Date(precordDraft.expiryAt).toISOString() : null,
-      source: "SOCIALS" as const,
+      instrument: gameplan.instrument,
+      session: gameplanSession === "newyork" ? "New York" : "Globex",
+      direction: "BOTH" as const,
+      marketContext: context,
+      plannedEntryLow: trade.zone[0],
+      plannedEntryHigh: trade.zone[1],
+      plannedStop: null,
+      plannedTarget: null,
+      plannedSize: null,
+      maximumRisk: null,
+      plannedRiskReward: null,
+      bullCondition: trade.long_side.permission,
+      bearCondition: trade.short_side.permission,
+      confirmation,
+      invalidation,
+      expiryAt: null,
+      source: "GAMEPLAN" as const,
+      sourceGameplanId: currentGameplanId,
+      sourceGameplanVersion: gameplan.plan.edition.published_at,
+      sourceGeneratedAt: gameplan.generated_at,
+      gameplanSnapshot: snapshot,
+      scoreModelVersion: SOCIAL_RECORD_RULES.scoreModelVersion,
+      evidenceState: "PLATFORM TIMESTAMPED" as const,
     };
-    if (!base.instrument || !base.marketContext || !base.confirmation || !base.invalidation) {
-      setNotice("Instrument, context, confirmation, and invalidation are required before a plan can be locked.");
-      return;
-    }
-    const payload: SocialPrecordPayload = {
-      ...base,
-      lockedAt: new Date().toISOString(),
-      reasoningScore: calculateReasoningScore(base),
-      status: "PRECORDED",
-    };
+    const now = new Date().toISOString();
     const object = buildLocalObject({
       userId: resolvedAccountKey,
       authorLabel: currentProfile.displayName,
       objectType: "precord",
-      scope: precordDraft.scope,
-      deskId: precordDraft.scope === "desk" ? myDesks[0]?.id ?? null : null,
-      payload,
+      scope: recordScope,
+      deskId: recordScope === "desk" ? myDesks[0]?.id ?? null : null,
+      payload: {
+        ...base,
+        lockedAt: now,
+        reasoningScore: calculateReasoningScore(base),
+        status: "LOCKED",
+        lifecycle: [{
+          status: "LOCKED",
+          at: now,
+          source: "PLATFORM",
+          note: "Immutable Gameplan snapshot placed on record.",
+        }],
+      } satisfies SocialPrecordPayload,
     });
     await saveObject(object);
     if (!cards.some((card) => card.userId === resolvedAccountKey && typedPayload<SocialCardPayload>(card)?.code === "first-on-record")) {
@@ -598,7 +688,7 @@ export default function SocialsWorkspace({
           name: definition.name,
           family: definition.family,
           description: definition.description,
-          earnedAt: new Date().toISOString(),
+          earnedAt: now,
           active: true,
           equipped: false,
           public: true,
@@ -606,22 +696,70 @@ export default function SocialsWorkspace({
       }));
     }
     await saveProgressPatch({ prepare: true, map: true });
-    setPrecordDraft(EMPTY_PRECORD);
-    setShowPrecordModal(false);
-    setTab("precords");
-    setNotice("Precord locked. The original plan is now on record and cannot be rewritten.");
+    setNotice(`${gameplan.instrument} Gameplan locked. The source plan and its reasoning can no longer be rewritten.`);
   };
 
   const submitReceipt = async () => {
     const parent = precords.find((object) => object.id === showReceiptFor);
     if (!parent) return;
-    const classification = calculateReceiptClassification(
+    const plan = typedPayload<SocialPrecordPayload>(parent);
+    if (!plan) return;
+    setAssessmentState("reviewing");
+    const draftExecution = {
+      actualDirection: receiptDraft.noTrade ? null : receiptDraft.actualDirection,
+      actualEntry: numberOrNull(receiptDraft.actualEntry),
+      entryTime: receiptDraft.entryTime ? new Date(receiptDraft.entryTime).toISOString() : null,
+      actualStop: numberOrNull(receiptDraft.actualStop),
+      actualExit: numberOrNull(receiptDraft.actualExit),
+      exitTime: receiptDraft.exitTime ? new Date(receiptDraft.exitTime).toISOString() : null,
+      size: numberOrNull(receiptDraft.size),
+      maximumActualRisk: numberOrNull(receiptDraft.maximumActualRisk),
+      confirmationsAppeared: receiptDraft.confirmationsAppeared.trim(),
+      deviationReason: receiptDraft.deviationReason,
+      deviationDetail: receiptDraft.deviationDetail.trim(),
+      outcomeReview: receiptDraft.outcomeReview.trim(),
+      nextTimeRule: receiptDraft.nextTimeRule.trim(),
+      noTrade: receiptDraft.noTrade,
+      hasEvidence: Boolean(receiptDraft.evidenceDataUrl),
+    };
+    const localClassification = calculateReceiptClassification(
       receiptDraft.deviationReason,
       receiptDraft.deviationDetail,
       receiptDraft.confirmationsAppeared,
       Boolean(receiptDraft.evidenceDataUrl),
       receiptDraft.noTrade,
     );
+    let comparison = buildExecutionComparison(plan, draftExecution);
+    let assessment: NonNullable<SocialReceiptPayload["assessment"]> = {
+      classification: localClassification,
+      explanation: receiptDraft.noTrade
+        ? "The stated confirmation did not create an execution. This is a valid process-complete result."
+        : "The actual execution was compared with the immutable Gameplan using the current Kwant process rules.",
+      evidenceUsed: ["Locked Gameplan", receiptDraft.confirmationsAppeared ? "Recorded confirmation" : ""].filter(Boolean),
+      evidenceMissing: receiptDraft.evidenceDataUrl ? [] : ["Broker-verified execution evidence"],
+      confidence: receiptDraft.evidenceDataUrl ? 0.74 : 0.52,
+      evaluator: "RULES",
+      modelVersion: SOCIAL_RECORD_RULES.scoreModelVersion,
+      rubricVersion: SOCIAL_RECORD_RULES.assessmentRubricVersion,
+      assessedAt: new Date().toISOString(),
+      appealAvailable: true,
+    };
+    try {
+      const response = await fetch("/api/socials/assessment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ plan, execution: draftExecution }),
+      });
+      const reviewed = await response.json() as {
+        comparison?: SocialReceiptPayload["comparison"];
+        assessment?: SocialReceiptPayload["assessment"];
+      };
+      if (response.ok && reviewed.comparison?.length) comparison = reviewed.comparison;
+      if (response.ok && reviewed.assessment) assessment = reviewed.assessment;
+    } catch {
+      // The rules-based assessment remains explicit and usable if ZYON is unavailable.
+    }
+    const classification = assessment.classification;
     const scores = calculateReceiptScores({
       classification,
       confirmations: receiptDraft.confirmationsAppeared,
@@ -630,26 +768,57 @@ export default function SocialsWorkspace({
       hasEvidence: Boolean(receiptDraft.evidenceDataUrl),
       noTrade: receiptDraft.noTrade,
     });
+    const fillTwoPrice = numberOrNull(receiptDraft.fill2Price);
+    const exitTwoPrice = numberOrNull(receiptDraft.exit2Price);
+    const retrospective = Boolean(draftExecution.entryTime && Date.parse(draftExecution.entryTime) < Date.parse(plan.lockedAt));
     const payload: SocialReceiptPayload = {
-      actualEntry: numberOrNull(receiptDraft.actualEntry),
-      entryTime: receiptDraft.entryTime ? new Date(receiptDraft.entryTime).toISOString() : null,
-      actualStop: numberOrNull(receiptDraft.actualStop),
-      actualExit: numberOrNull(receiptDraft.actualExit),
-      exitTime: receiptDraft.exitTime ? new Date(receiptDraft.exitTime).toISOString() : null,
-      size: numberOrNull(receiptDraft.size),
+      actualDirection: draftExecution.actualDirection,
+      actualEntry: draftExecution.actualEntry,
+      entryTime: draftExecution.entryTime,
+      actualStop: draftExecution.actualStop,
+      actualExit: draftExecution.actualExit,
+      exitTime: draftExecution.exitTime,
+      size: draftExecution.size,
+      maximumActualRisk: draftExecution.maximumActualRisk,
       partialExits: receiptDraft.partialExits.trim(),
       fees: numberOrNull(receiptDraft.fees),
-      confirmationsAppeared: receiptDraft.confirmationsAppeared.trim(),
+      confirmationsAppeared: draftExecution.confirmationsAppeared,
       deviationReason: receiptDraft.deviationReason,
-      deviationDetail: receiptDraft.deviationDetail.trim(),
-      outcomeReview: receiptDraft.outcomeReview.trim(),
-      nextTimeRule: receiptDraft.nextTimeRule.trim(),
+      deviationDetail: draftExecution.deviationDetail,
+      outcomeReview: draftExecution.outcomeReview,
+      nextTimeRule: draftExecution.nextTimeRule,
       evidenceName: receiptDraft.evidenceName,
       evidenceDataUrl: receiptDraft.evidenceDataUrl,
       noTrade: receiptDraft.noTrade,
       classification,
       scores,
       addedAt: new Date().toISOString(),
+      fills: [
+        { price: draftExecution.actualEntry, size: draftExecution.size, time: draftExecution.entryTime },
+        ...(fillTwoPrice === null ? [] : [{
+          price: fillTwoPrice,
+          size: numberOrNull(receiptDraft.fill2Size),
+          time: receiptDraft.fill2Time ? new Date(receiptDraft.fill2Time).toISOString() : null,
+        }]),
+      ],
+      exits: [
+        { price: draftExecution.actualExit, size: draftExecution.size, time: draftExecution.exitTime },
+        ...(exitTwoPrice === null ? [] : [{
+          price: exitTwoPrice,
+          size: numberOrNull(receiptDraft.exit2Size),
+          time: receiptDraft.exit2Time ? new Date(receiptDraft.exit2Time).toISOString() : null,
+        }]),
+      ],
+      comparison,
+      retrospective,
+      evidenceState: "SELF REPORTED",
+      assessment,
+      scoreSnapshot: {
+        reasoning: plan.reasoningScore,
+        reasoningModelVersion: plan.scoreModelVersion ?? SOCIAL_RECORD_RULES.scoreModelVersion,
+        postExecutionModelVersion: SOCIAL_RECORD_RULES.scoreModelVersion,
+        createdAt: new Date().toISOString(),
+      },
     };
     await saveObject(buildLocalObject({
       id: `receipt:${parent.id}`,
@@ -668,6 +837,7 @@ export default function SocialsWorkspace({
     });
     setReceiptDraft(EMPTY_RECEIPT);
     setShowReceiptFor(null);
+    setAssessmentState("idle");
     setNotice(payload.noTrade ? "No Trigger recorded. Discipline counts even when no trade was placed." : "Execution receipt added without altering the original plan.");
   };
 
@@ -912,7 +1082,7 @@ export default function SocialsWorkspace({
               <span>{formatDate(payload.lockedAt, true)}</span>
               <span>·</span>
               <LockKeyhole className="h-3 w-3 text-primary" />
-              <span>Original reasoning locked</span>
+              <span>Platform timestamped · original reasoning locked</span>
             </div>
           </div>
           {!own ? <button type="button" onClick={() => followTrader(object)} className="flex h-8 items-center gap-1.5 rounded-xl border border-border px-2.5 text-[8px] font-semibold text-muted hover:text-foreground"><UserPlus className="h-3.5 w-3.5" />{follows.some((follow) => follow.userId === resolvedAccountKey && typedPayload<{ targetUserId: string }>(follow)?.targetUserId === object.userId) ? "Following" : "Follow"}</button> : null}
@@ -957,15 +1127,41 @@ export default function SocialsWorkspace({
             <div className="mt-4 overflow-hidden rounded-2xl border border-accent/25 bg-accent/[0.045]">
               <div className="flex flex-wrap items-center gap-2 border-b border-accent/15 px-3 py-2.5">
                 <CheckCircle2 className="h-4 w-4 text-accent" />
-                <span className="text-[9px] font-semibold text-foreground">Execution receipt</span>
+                <span className="text-[9px] font-semibold text-foreground">Actual Execution</span>
                 <span className="rounded-lg bg-accent/10 px-2 py-1 text-[7px] font-semibold text-accent">{receipt.classification}</span>
                 <span className="ml-auto font-mono text-[11px] font-semibold text-accent">{receipt.scores.final} final</span>
               </div>
-              <div className="grid gap-3 p-3 lg:grid-cols-[1fr_1fr_180px]">
-                <div><div className="text-[7px] uppercase tracking-[0.12em] text-muted">What happened</div><p className="mt-1.5 text-[9px] leading-4 text-foreground">{receipt.outcomeReview || (receipt.noTrade ? "Confirmation did not print. No trade was taken." : "Outcome review not supplied.")}</p></div>
-                <div><div className="text-[7px] uppercase tracking-[0.12em] text-muted">Next-time rule</div><p className="mt-1.5 text-[9px] leading-4 text-foreground">{receipt.nextTimeRule || "No rule recorded."}</p></div>
-                <div className="grid grid-cols-2 gap-1 text-[7px]">
-                  {Object.entries(receipt.scores).slice(0, 4).map(([label, value]) => <div key={label} className="rounded-lg border border-border/70 bg-background/25 p-2"><div className="capitalize text-muted">{label}</div><div className="mt-1 font-mono text-foreground">{value}</div></div>)}
+              {receipt.retrospective ? <div className="border-b border-warning/20 bg-warning/[0.07] px-3 py-2 text-[8px] font-semibold text-warning">RETROSPECTIVE · execution predates the plan lock and is excluded from proof-based rewards.</div> : null}
+              <div className="p-3">
+                <div className="overflow-x-auto rounded-xl border border-border">
+                  <div className="grid min-w-[720px] grid-cols-[112px_1fr_1fr_1fr_110px] border-b border-border bg-background/45 px-3 py-2 text-[7px] font-semibold uppercase tracking-[0.1em] text-muted">
+                    <span>Dimension</span><span>Locked plan</span><span>Actual</span><span>Difference</span><span>Status</span>
+                  </div>
+                  {(receipt.comparison ?? buildExecutionComparison(payload, receipt)).map((row) => (
+                    <div key={row.dimension} className="grid min-w-[720px] grid-cols-[112px_1fr_1fr_1fr_110px] border-b border-border/60 px-3 py-2.5 text-[8px] last:border-b-0">
+                      <span className="font-semibold text-foreground">{row.dimension}</span>
+                      <span className="pr-3 text-muted">{row.planned}</span>
+                      <span className="pr-3 text-foreground">{row.actual}</span>
+                      <span className="pr-3 text-muted">{row.difference}</span>
+                      <span className={`font-semibold ${["MATCHED", "MET", "VALID", "SAFER"].includes(row.status) ? "text-accent" : ["RETROSPECTIVE", "RISKIER", "DEVIATED", "UNMET"].includes(row.status) ? "text-warning" : "text-primary"}`}>{row.status}</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-3 grid gap-3 lg:grid-cols-[1fr_1fr_220px]">
+                  <div><div className="text-[7px] uppercase tracking-[0.12em] text-muted">What happened</div><p className="mt-1.5 text-[9px] leading-4 text-foreground">{receipt.outcomeReview || (receipt.noTrade ? "Confirmation did not print. No trade was taken." : "Outcome review not supplied.")}</p></div>
+                  <div><div className="text-[7px] uppercase tracking-[0.12em] text-muted">ZYON adaptation review</div><p className="mt-1.5 text-[9px] leading-4 text-foreground">{receipt.assessment?.explanation || receipt.nextTimeRule || "Assessment pending."}</p><div className="mt-2 text-[7px] text-muted">{receipt.assessment ? `${receipt.assessment.evaluator} · ${Math.round(receipt.assessment.confidence * 100)}% confidence · ${receipt.assessment.rubricVersion}` : "Rules-based review"}</div></div>
+                  <div className="grid grid-cols-2 gap-1 text-[7px]">
+                    <div className="rounded-lg border border-primary/20 bg-primary/[0.05] p-2"><div className="text-muted">Reasoning · fixed</div><div className="mt-1 font-mono text-primary">{payload.reasoningScore}</div></div>
+                    {Object.entries(receipt.scores).slice(0, 5).map(([label, value]) => <div key={label} className="rounded-lg border border-border/70 bg-background/25 p-2"><div className="capitalize text-muted">{label}</div><div className="mt-1 font-mono text-foreground">{value}</div></div>)}
+                  </div>
+                </div>
+                <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border/60 pt-3 text-[7px] text-muted">
+                  <ShieldCheck className="h-3.5 w-3.5 text-primary" />
+                  <span>{receipt.evidenceState ?? "SELF REPORTED"}</span>
+                  <span>·</span>
+                  <span>Original reasoning retained under {receipt.scoreSnapshot?.reasoningModelVersion ?? payload.scoreModelVersion ?? SOCIAL_RECORD_RULES.scoreModelVersion}</span>
+                  <span>·</span>
+                  <span>Factual assessment errors can be appealed.</span>
                 </div>
               </div>
             </div>
@@ -1075,8 +1271,8 @@ export default function SocialsWorkspace({
             <span className="absolute -right-1 -top-1 h-2.5 w-2.5 animate-pulse rounded-full border-2 border-panel bg-primary" />
           </span>
           <div>
-            <div className="flex items-center gap-2"><h1 className="text-[14px] font-semibold">Socials</h1><span className="rounded-md border border-border bg-surface px-1.5 py-0.5 text-[6px] font-semibold uppercase tracking-[0.13em] text-muted">Working title</span></div>
-            <p className="mt-0.5 text-[9px] text-muted">Trade independently · improve together · build a record that survives review</p>
+            <div className="flex items-center gap-2"><h1 className="text-[14px] font-semibold">{SOCIAL_RECORD_COPY.section}</h1><span className="rounded-md border border-border bg-surface px-1.5 py-0.5 text-[6px] font-semibold uppercase tracking-[0.13em] text-muted">Working title</span></div>
+            <p className="mt-0.5 text-[9px] text-muted">{SOCIAL_RECORD_COPY.tagline} · Build a record that survives review.</p>
           </div>
           <div className="ml-auto flex flex-wrap items-center gap-2">
             <span className={`flex h-8 items-center gap-1.5 rounded-xl border border-border bg-surface px-2.5 text-[8px] ${saveState === "error" ? "text-danger" : "text-muted"}`}>
@@ -1084,8 +1280,8 @@ export default function SocialsWorkspace({
               {saveState === "saved" ? "Network synced" : saveState === "loading" ? "Syncing" : "Local resilience"}
             </span>
             <button type="button" onClick={() => setTab("identity")} className="flex h-8 items-center gap-2 rounded-xl border border-border bg-surface px-2.5 text-[8px] font-semibold text-muted hover:text-foreground"><Avatar label={currentProfile.displayName} size="sm" />@{currentProfile.handle}</button>
-            <button type="button" onClick={() => setShowPostModal(true)} className="flex h-8 items-center gap-1.5 rounded-xl border border-primary/25 bg-primary/[0.06] px-3 text-[8px] font-semibold text-primary hover:bg-primary/10"><MessageCircle className="h-3.5 w-3.5" />Structured update</button>
-            <button type="button" onClick={() => setShowPrecordModal(true)} className="flex h-8 items-center gap-1.5 rounded-xl bg-primary px-3 text-[8px] font-semibold text-background hover:brightness-110"><LockKeyhole className="h-3.5 w-3.5" />Publish Precord</button>
+            <button type="button" onClick={() => setTab("precords")} className="flex h-8 items-center gap-1.5 rounded-xl border border-primary/25 bg-primary/[0.06] px-3 text-[8px] font-semibold text-primary hover:bg-primary/10"><MessageCircle className="h-3.5 w-3.5" />Community review</button>
+            <button type="button" onClick={() => setTab("today")} className="flex h-8 items-center gap-1.5 rounded-xl bg-primary px-3 text-[8px] font-semibold text-background hover:brightness-110"><LockKeyhole className="h-3.5 w-3.5" />{SOCIAL_RECORD_COPY.lockAction}</button>
           </div>
         </div>
         <nav className="flex items-center gap-1 overflow-x-auto px-3" aria-label="Socials views">
@@ -1131,57 +1327,89 @@ export default function SocialsWorkspace({
 
             <div className="space-y-3">
               <Card className="relative overflow-hidden p-5">
-                <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_80%_0%,color-mix(in_srgb,var(--primary)_13%,transparent),transparent_38%)]" />
-                <div className="relative flex flex-wrap items-start gap-4">
-                  <div className="max-w-2xl">
-                    <div className="flex items-center gap-2 text-[7px] font-semibold uppercase tracking-[0.15em] text-primary"><Zap className="h-3.5 w-3.5" />Today on your desk</div>
-                    <h2 className="mt-3 text-[22px] font-semibold tracking-[-0.035em]">Put the thought on record before the market gives you the answer.</h2>
-                    <p className="mt-2 max-w-xl text-[10px] leading-5 text-muted">A Precord preserves your original reasoning, then adds the actual execution and review underneath it. Nothing gets rewritten with hindsight.</p>
-                    <div className="mt-5 flex flex-wrap gap-2">
-                      <button type="button" onClick={() => setShowPrecordModal(true)} className="flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-[9px] font-semibold text-background"><LockKeyhole className="h-3.5 w-3.5" />Start a Precord</button>
-                      <button type="button" onClick={() => setTab("precords")} className="flex h-9 items-center gap-2 rounded-xl border border-border bg-surface px-4 text-[9px] font-semibold text-muted hover:text-foreground">Open the record <ArrowRight className="h-3.5 w-3.5" /></button>
-                    </div>
-                  </div>
-                  <div className="ml-auto grid min-w-[220px] grid-cols-2 gap-2">
-                    <div className="rounded-xl border border-border bg-background/40 p-3"><div className="font-mono text-[20px] font-semibold text-foreground">{precords.filter((object) => object.userId === resolvedAccountKey).length}</div><div className="mt-1 text-[7px] text-muted">Plans on record</div></div>
-                    <div className="rounded-xl border border-border bg-background/40 p-3"><div className="font-mono text-[20px] font-semibold text-primary">{receipts.filter((object) => object.userId === resolvedAccountKey).length}</div><div className="mt-1 text-[7px] text-muted">Receipts complete</div></div>
-                    <div className="rounded-xl border border-border bg-background/40 p-3"><div className="font-mono text-[20px] font-semibold text-foreground">{cards.filter((object) => object.userId === resolvedAccountKey).length}</div><div className="mt-1 text-[7px] text-muted">Calling Cards</div></div>
-                    <div className="rounded-xl border border-border bg-background/40 p-3"><div className="font-mono text-[20px] font-semibold text-accent">{profileScoreAverage(currentProfile)}</div><div className="mt-1 text-[7px] text-muted">Process index</div></div>
+                <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_75%_0%,color-mix(in_srgb,var(--primary)_16%,transparent),transparent_42%)]" />
+                <div className="relative">
+                  <div className="flex items-center gap-2 text-[8px] font-semibold uppercase tracking-[0.16em] text-primary"><Zap className="h-3.5 w-3.5" />The proof loop</div>
+                  <h2 className="mt-3 text-[28px] font-semibold tracking-[-0.045em]">{SOCIAL_RECORD_COPY.loop}</h2>
+                  <p className="mt-2 max-w-2xl text-[11px] leading-5 text-muted">The plan is recorded before the result. The execution is added afterward. Kwant preserves the difference so improvement cannot be rewritten with hindsight.</p>
+                  <div className="mt-5 grid gap-2 md:grid-cols-3">
+                    {[
+                      { number: "01", label: "PLAN", title: "Lock the real Gameplan", detail: "A platform-timestamped snapshot of what was known before the outcome.", icon: LockKeyhole },
+                      { number: "02", label: "PROVE", title: "Add what actually happened", detail: "Fills, exits, risk, confirmation, evidence—or an honest no trade.", icon: ShieldCheck },
+                      { number: "03", label: "REVIEW", title: "Compare without hindsight", detail: "Exact differences, ZYON adaptation review and append-only scores.", icon: SlidersHorizontal },
+                    ].map(({ number, label, title, detail, icon: Icon }) => (
+                      <div key={number} className="group rounded-2xl border border-border bg-background/45 p-4 transition-colors hover:border-primary/25">
+                        <div className="flex items-center justify-between"><span className="font-mono text-[8px] text-muted">{number}</span><Icon className="h-4 w-4 text-primary" /></div>
+                        <div className="mt-4 text-[7px] font-semibold tracking-[0.16em] text-primary">{label}</div>
+                        <div className="mt-1 text-[11px] font-semibold text-foreground">{title}</div>
+                        <p className="mt-2 text-[8px] leading-4 text-muted">{detail}</p>
+                      </div>
+                    ))}
                   </div>
                 </div>
               </Card>
 
-              <Card className="overflow-hidden">
-                <div className="flex items-center gap-2 border-b border-border px-4 py-3"><Compass className="h-4 w-4 text-primary" /><div><h3 className="text-[10px] font-semibold">Commit before reveal</h3><p className="mt-0.5 text-[7px] text-muted">Record your own interpretation before seeing the Desk pulse.</p></div>{todayConsensus ? <span className="ml-auto rounded-lg bg-primary/10 px-2 py-1 text-[7px] font-semibold text-primary">COMMITTED</span> : null}</div>
-                {todayConsensus ? (
-                  <div className="grid gap-3 p-4 md:grid-cols-[1fr_260px]">
-                    <div className="rounded-xl border border-primary/20 bg-primary/[0.045] p-3"><div className="text-[7px] uppercase tracking-[0.12em] text-primary">Your immutable view</div><p className="mt-2 text-[9px] leading-4 text-foreground">{typedPayload<SocialConsensusPayload>(todayConsensus)?.interpretation}</p><div className="mt-2 text-[7px] text-muted">Committed {formatDate(todayConsensus.createdAt, true)}</div></div>
-                    <div className="rounded-xl border border-border bg-surface/35 p-3"><div className="text-[8px] font-semibold text-foreground">{consensus.filter((object) => object.parentId === todayConsensus.parentId || typedPayload<SocialConsensusPayload>(object)?.level === typedPayload<SocialConsensusPayload>(todayConsensus)?.level).length || 1} recorded view</div><p className="mt-2 text-[8px] leading-4 text-muted">{myDesks.length ? "Desk comparison unlocks as members commit. Direction is never shown as a signal." : "You are first on record. Join or create a Desk to compare process conditions."}</p></div>
+              <Card className="overflow-hidden border-primary/20">
+                <div className="flex flex-wrap items-center gap-3 border-b border-border bg-background/25 px-4 py-3">
+                  <span className="flex h-9 w-9 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary"><Archive className="h-4 w-4" /></span>
+                  <div className="min-w-0 flex-1"><h3 className="text-[12px] font-semibold">Today’s source Gameplan</h3><p className="mt-0.5 text-[8px] text-muted">This is the existing Kwant Gameplan—not another plan builder.</p></div>
+                  <div className="flex rounded-xl border border-border bg-surface p-1">
+                    {(["NQ", "ES"] as const).map((instrument) => <button key={instrument} type="button" onClick={() => setGameplanInstrument(instrument)} className={`h-7 rounded-lg px-3 font-mono text-[8px] font-semibold ${gameplanInstrument === instrument ? "bg-primary text-background" : "text-muted hover:text-foreground"}`}>{instrument}</button>)}
                   </div>
+                  <KwantSelect value={gameplanSession} onChange={(event) => setGameplanSession(event.target.value as GameplanSession)} className="h-9 rounded-xl border border-border bg-surface px-3 text-[8px] outline-none">
+                    <option value="newyork">New York</option>
+                    <option value="globex">Globex</option>
+                  </KwantSelect>
+                </div>
+                {gameplanState === "loading" ? (
+                  <div className="flex min-h-[280px] items-center justify-center">
+                    <div className="text-center"><span className="mx-auto block h-7 w-7 animate-spin rounded-full border-2 border-primary/20 border-t-primary" /><div className="mt-3 text-[9px] font-semibold text-foreground">Loading the current Gameplan</div><div className="mt-1 text-[8px] text-muted">Preserving the source version and timestamp.</div></div>
+                  </div>
+                ) : gameplanState === "error" || !gameplan ? (
+                  <div className="flex min-h-[280px] items-center justify-center p-6 text-center"><div><CircleAlert className="mx-auto h-6 w-6 text-warning" /><div className="mt-3 text-[10px] font-semibold">The current Gameplan is unavailable.</div><p className="mt-2 max-w-sm text-[8px] leading-4 text-muted">Socials will never fabricate a plan. Resolve the Gameplan data source, then return here to place it on record.</p></div></div>
                 ) : (
-                  <div className="grid gap-2 p-4 md:grid-cols-2">
-                    <input value={consensusDraft.interpretation} onChange={(event) => setConsensusDraft((current) => ({ ...current, interpretation: event.target.value }))} placeholder="What matters at this level?" className="h-9 rounded-xl border border-border bg-background px-3 text-[8px] outline-none focus:border-primary/40" />
-                    <input value={consensusDraft.invalidation} onChange={(event) => setConsensusDraft((current) => ({ ...current, invalidation: event.target.value }))} placeholder="What invalidates your interpretation?" className="h-9 rounded-xl border border-border bg-background px-3 text-[8px] outline-none focus:border-primary/40" />
-                    <input value={consensusDraft.bullConfirmation} onChange={(event) => setConsensusDraft((current) => ({ ...current, bullConfirmation: event.target.value }))} placeholder="Bull confirmation" className="h-9 rounded-xl border border-border bg-background px-3 text-[8px] outline-none focus:border-primary/40" />
-                    <input value={consensusDraft.bearConfirmation} onChange={(event) => setConsensusDraft((current) => ({ ...current, bearConfirmation: event.target.value }))} placeholder="Bear confirmation" className="h-9 rounded-xl border border-border bg-background px-3 text-[8px] outline-none focus:border-primary/40" />
-                    <label className="flex items-center gap-2 rounded-xl border border-border bg-surface/30 px-3 text-[8px] text-muted"><input type="checkbox" checked={consensusDraft.enoughEvidence} onChange={(event) => setConsensusDraft((current) => ({ ...current, enoughEvidence: event.target.checked }))} className="accent-[var(--primary)]" />I currently have enough evidence</label>
-                    <button type="button" onClick={commitConsensus} className="h-9 rounded-xl bg-primary px-4 text-[8px] font-semibold text-background">Commit &amp; reveal Desk pulse</button>
-                  </div>
+                  <>
+                    <div className="p-4">
+                      <div className="flex flex-wrap items-start gap-3">
+                        <div>
+                          <div className="flex items-center gap-2"><span className="font-mono text-[26px] font-semibold">{gameplan.instrument}</span><span className="rounded-lg border border-primary/20 bg-primary/10 px-2 py-1 text-[7px] font-semibold text-primary">{gameplan.status}</span></div>
+                          <div className="mt-1 text-[7px] text-muted">Generated {formatDate(gameplan.generated_at, true)} · {gameplan.plan.edition.data_basis}</div>
+                        </div>
+                        <div className="ml-auto text-right"><div className="font-mono text-[22px] font-semibold text-foreground">{gameplan.current_price?.toLocaleString("en-US", { maximumFractionDigits: 2 }) ?? "—"}</div><div className="mt-1 text-[7px] uppercase tracking-[0.12em] text-muted">Current futures price</div></div>
+                      </div>
+                      <div className="mt-4 rounded-2xl border border-primary/20 bg-primary/[0.045] p-4">
+                        <div className="text-[7px] font-semibold uppercase tracking-[0.15em] text-primary">Market in one line</div>
+                        <p className="mt-2 text-[12px] leading-5 text-foreground">{gameplan.plan.one_liner}</p>
+                      </div>
+                      <div className="mt-3 grid gap-2 lg:grid-cols-[180px_1fr_1fr]">
+                        <div className="rounded-xl border border-border bg-surface/30 p-3"><div className="text-[7px] uppercase tracking-[0.12em] text-muted">Decision zone</div><div className="mt-2 font-mono text-[16px] font-semibold text-foreground">{gameplan.plan.one_trade.zone[0].toLocaleString()} – {gameplan.plan.one_trade.zone[1].toLocaleString()}</div><div className="mt-2 text-[7px] leading-4 text-muted">The record locks both sides. Direction remains the trader’s decision.</div></div>
+                        <div className="rounded-xl border border-primary/20 bg-primary/[0.035] p-3"><div className="text-[7px] font-semibold uppercase tracking-[0.12em] text-primary">Long permission</div><p className="mt-2 text-[8px] leading-4 text-foreground">{gameplan.plan.one_trade.long_side.permission}</p><div className="mt-3 font-mono text-[7px] text-muted">STOP {gameplan.plan.one_trade.long_side.stop} · TARGETS {gameplan.plan.one_trade.long_side.targets.join(" / ")}</div></div>
+                        <div className="rounded-xl border border-danger/20 bg-danger/[0.025] p-3"><div className="text-[7px] font-semibold uppercase tracking-[0.12em] text-danger">Short permission</div><p className="mt-2 text-[8px] leading-4 text-foreground">{gameplan.plan.one_trade.short_side.permission}</p><div className="mt-3 font-mono text-[7px] text-muted">STOP {gameplan.plan.one_trade.short_side.stop} · TARGETS {gameplan.plan.one_trade.short_side.targets.join(" / ")}</div></div>
+                      </div>
+                      <div className="mt-3 flex items-start gap-2 rounded-xl border border-warning/20 bg-warning/[0.04] p-3 text-[8px] leading-4 text-muted"><CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning" /><span><strong className="text-warning">No-trade condition:</strong> {gameplan.plan.one_trade.not_a_trade_if}</span></div>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2 border-t border-border bg-background/25 px-4 py-3">
+                      <div className="flex items-center gap-2 text-[8px] text-muted"><ShieldCheck className="h-3.5 w-3.5 text-primary" />Platform timestamped · source version retained</div>
+                      <div className="ml-auto flex flex-wrap items-center gap-2">
+                        <KwantSelect value={recordScope} onChange={(event) => setRecordScope(event.target.value as SocialScope)} disabled={Boolean(lockedCurrentGameplan)} className="h-9 rounded-xl border border-border bg-surface px-3 text-[8px] outline-none disabled:opacity-60">
+                          <option value="private">Private</option>
+                          <option value="friends">Friends</option>
+                          <option value="desk">My Desk</option>
+                          <option value="community">Community</option>
+                        </KwantSelect>
+                        {lockedCurrentGameplan ? (
+                          receipts.some((receipt) => receipt.parentId === lockedCurrentGameplan.id)
+                            ? <button type="button" onClick={() => setTab("precords")} className="flex h-9 items-center gap-2 rounded-xl border border-primary/25 bg-primary/[0.06] px-4 text-[9px] font-semibold text-primary"><CheckCircle2 className="h-3.5 w-3.5" />View completed record</button>
+                            : <><span className="flex h-9 items-center gap-2 rounded-xl border border-accent/25 bg-accent/[0.06] px-3 text-[8px] font-semibold text-accent"><LockKeyhole className="h-3.5 w-3.5" />{SOCIAL_RECORD_COPY.lockedState}</span><button type="button" onClick={() => setShowReceiptFor(lockedCurrentGameplan.id)} className="flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-[9px] font-semibold text-background"><Plus className="h-3.5 w-3.5" />Add Actual Execution</button></>
+                        ) : <button type="button" onClick={() => void lockCurrentGameplan()} className="flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-[9px] font-semibold text-background hover:brightness-110"><LockKeyhole className="h-3.5 w-3.5" />{SOCIAL_RECORD_COPY.lockAction}</button>}
+                      </div>
+                    </div>
+                  </>
                 )}
               </Card>
 
-              <Card className="overflow-hidden">
-                <div className="flex flex-wrap items-center gap-3 border-b border-border px-4 py-3">
-                  <MessageCircle className="h-4 w-4 text-primary" />
-                  <div className="min-w-0 flex-1"><h3 className="text-[10px] font-semibold">Structured activity</h3><p className="mt-0.5 text-[7px] text-muted">Maps, observations, review requests, lessons, and questions. No naked opinions.</p></div>
-                  <button type="button" onClick={() => setShowPostModal(true)} className="h-8 rounded-xl border border-primary/25 bg-primary/[0.07] px-3 text-[8px] font-semibold text-primary">Share update</button>
-                </div>
-                {!posts.length ? <div className="p-5 text-center text-[8px] leading-4 text-muted">The activity layer is quiet. Be first with a timestamped observation that includes its context and condition.</div> : null}
-              </Card>
-              {posts.slice(0, 4).map(renderStructuredPost)}
-
               {visiblePrecords.slice(0, 2).map(renderPrecordCard)}
-              {!precords.length ? <Card className="border-dashed p-8 text-center"><LockKeyhole className="mx-auto h-7 w-7 text-muted" /><div className="mt-3 text-[10px] font-semibold">Your record starts before the outcome.</div><div className="mx-auto mt-1 max-w-md text-[8px] leading-4 text-muted">Publish the market context, both conditions, confirmation, and invalidation. The platform will preserve the timestamp and leave the plan untouched.</div></Card> : null}
+              {!precords.length ? <Card className="border-dashed p-8 text-center"><LockKeyhole className="mx-auto h-7 w-7 text-muted" /><div className="mt-3 text-[10px] font-semibold">Your record starts before the outcome.</div><div className="mx-auto mt-1 max-w-md text-[8px] leading-4 text-muted">Lock the current source Gameplan above. The platform preserves its version and timestamp without creating another plan.</div></Card> : null}
             </div>
 
             <div className="space-y-3">
@@ -1221,14 +1449,21 @@ export default function SocialsWorkspace({
 
         {tab === "precords" ? (
           <div className="mx-auto max-w-6xl space-y-3 p-3">
+            <Card className="relative overflow-hidden p-5">
+              <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_90%_0%,color-mix(in_srgb,var(--primary)_13%,transparent),transparent_40%)]" />
+              <div className="relative flex flex-wrap items-end gap-4">
+                <div className="max-w-2xl"><div className="text-[7px] font-semibold uppercase tracking-[0.15em] text-primary">Evidence-backed community</div><h2 className="mt-2 text-[24px] font-semibold tracking-[-0.04em]">Share the complete decision—not a naked prediction.</h2><p className="mt-2 text-[9px] leading-5 text-muted">Every published record carries its source Gameplan, immutable timestamp, actual execution, evidence state and review context. The next decision remains individual.</p></div>
+                <div className="ml-auto flex flex-wrap gap-2"><button type="button" onClick={() => { setPostDraft((current) => ({ ...current, kind: "REVIEW REQUEST" })); setShowPostModal(true); }} className="flex h-9 items-center gap-2 rounded-xl border border-primary/25 bg-primary/[0.06] px-4 text-[8px] font-semibold text-primary"><MessageCircle className="h-3.5 w-3.5" />Request a review</button><button type="button" onClick={() => setTab("today")} className="flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-[8px] font-semibold text-background"><ArrowRight className="h-3.5 w-3.5" />Open today’s Gameplan</button></div>
+              </div>
+            </Card>
             <Card className="flex flex-wrap items-center gap-2 p-3">
-              <div className="relative min-w-[220px] flex-1"><Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search instrument, context, confirmation or trader" className="h-9 w-full rounded-xl border border-border bg-background pl-9 pr-3 text-[8px] outline-none focus:border-primary/40" /></div>
+              <div className="relative min-w-[220px] flex-1"><Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search records by instrument, context, evidence or trader" className="h-9 w-full rounded-xl border border-border bg-background pl-9 pr-3 text-[8px] outline-none focus:border-primary/40" /></div>
               {(["all", "live", "proven", "mine"] as FeedFilter[]).map((filter) => <button key={filter} type="button" onClick={() => setFeedFilter(filter)} className={`h-8 rounded-lg px-3 text-[8px] font-semibold capitalize ${feedFilter === filter ? "bg-primary/10 text-primary" : "text-muted hover:bg-surface hover:text-foreground"}`}>{filter}</button>)}
-              <button type="button" onClick={() => setShowPrecordModal(true)} className="flex h-9 items-center gap-1.5 rounded-xl bg-primary px-3 text-[8px] font-semibold text-background"><Plus className="h-3.5 w-3.5" />New Precord</button>
             </Card>
             <div className="mx-auto max-w-4xl space-y-3">
               {visiblePrecords.map(renderPrecordCard)}
-              {!visiblePrecords.length ? <Card className="border-dashed p-14 text-center"><LockKeyhole className="mx-auto h-8 w-8 text-muted" /><h2 className="mt-4 text-[13px] font-semibold">No records match this view.</h2><p className="mx-auto mt-2 max-w-md text-[8px] leading-4 text-muted">A public claim belongs here only when it contains a reason, condition, timestamp, or focused question.</p><button type="button" onClick={() => setShowPrecordModal(true)} className="mt-5 rounded-xl bg-primary px-4 py-2.5 text-[8px] font-semibold text-background">Put a plan on record</button></Card> : null}
+              {!visiblePrecords.length ? <Card className="border-dashed p-14 text-center"><LockKeyhole className="mx-auto h-8 w-8 text-muted" /><h2 className="mt-4 text-[13px] font-semibold">No Decision Records match this view.</h2><p className="mx-auto mt-2 max-w-md text-[8px] leading-4 text-muted">Records begin with the existing Gameplan, then gain their execution and evidence after the outcome.</p><button type="button" onClick={() => setTab("today")} className="mt-5 rounded-xl bg-primary px-4 py-2.5 text-[8px] font-semibold text-background">Open today’s Gameplan</button></Card> : null}
+              {feedFilter === "all" ? posts.filter((post) => post.scope !== "private" || post.userId === resolvedAccountKey).slice(0, 6).map(renderStructuredPost) : null}
             </div>
           </div>
         ) : null}
@@ -1385,7 +1620,7 @@ export default function SocialsWorkspace({
 
       {showPostModal ? (
         <div className="fixed inset-0 z-[1100] flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm" onMouseDown={(event) => { if (event.target === event.currentTarget) setShowPostModal(false); }}>
-          <div className="flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-3xl border border-border bg-panel shadow-2xl shadow-black/60">
+          <div className="flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-3xl border border-border bg-panel shadow-2xl shadow-black/60">
             <div className="flex items-start gap-3 border-b border-border p-5">
               <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary"><MessageCircle className="h-4 w-4" /></span>
               <div><h2 className="text-[14px] font-semibold">Share a structured update</h2><p className="mt-1 text-[8px] text-muted">The format carries the context. A claim without a reason, condition, timestamp, or focused question cannot enter the feed.</p></div>
@@ -1411,42 +1646,26 @@ export default function SocialsWorkspace({
         </div>
       ) : null}
 
-      {showPrecordModal ? (
-        <div className="fixed inset-0 z-[1100] flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm" onMouseDown={(event) => { if (event.target === event.currentTarget) setShowPrecordModal(false); }}>
-          <div className="flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-3xl border border-border bg-panel shadow-2xl shadow-black/60">
-            <div className="flex items-start gap-3 border-b border-border p-5"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary"><LockKeyhole className="h-4 w-4" /></span><div><h2 className="text-[14px] font-semibold">Publish a Precord</h2><p className="mt-1 text-[8px] text-muted">Plan first. Outcome later. The original reasoning becomes immutable when published.</p></div><button type="button" onClick={() => setShowPrecordModal(false)} className="ml-auto flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:bg-surface"><X className="h-4 w-4" /></button></div>
-            <div className="min-h-0 flex-1 overflow-y-auto p-5">
-              <div className="grid gap-3 md:grid-cols-4">
-                <label><span className="mb-1.5 block text-[7px] uppercase tracking-[0.1em] text-muted">Instrument</span><input value={precordDraft.instrument} onChange={(event) => setPrecordDraft((current) => ({ ...current, instrument: event.target.value }))} className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[9px] outline-none focus:border-primary/40" /></label>
-                <label><span className="mb-1.5 block text-[7px] uppercase tracking-[0.1em] text-muted">Session</span><KwantSelect value={precordDraft.session} onChange={(event) => setPrecordDraft((current) => ({ ...current, session: event.target.value }))} className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[9px] outline-none"><option>Globex</option><option>London</option><option>Pre-New York</option><option>New York</option></KwantSelect></label>
-                <label><span className="mb-1.5 block text-[7px] uppercase tracking-[0.1em] text-muted">Stance</span><KwantSelect value={precordDraft.direction} onChange={(event) => setPrecordDraft((current) => ({ ...current, direction: event.target.value as PrecordDirection }))} className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[9px] outline-none"><option value="BOTH">Both-sided</option><option value="NEUTRAL">Neutral</option><option value="LONG">Long conditional</option><option value="SHORT">Short conditional</option></KwantSelect></label>
-                <label><span className="mb-1.5 block text-[7px] uppercase tracking-[0.1em] text-muted">Visibility</span><KwantSelect value={precordDraft.scope} onChange={(event) => setPrecordDraft((current) => ({ ...current, scope: event.target.value as SocialScope }))} className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[9px] outline-none"><option value="private">Private</option><option value="friends">Friends</option><option value="desk">My Desk</option><option value="community">Community</option></KwantSelect></label>
-              </div>
-              <label className="mt-4 block"><span className="mb-1.5 block text-[7px] uppercase tracking-[0.1em] text-muted">Market context *</span><textarea value={precordDraft.marketContext} onChange={(event) => setPrecordDraft((current) => ({ ...current, marketContext: event.target.value }))} rows={4} placeholder="What is the environment, pressure, and reason this plan exists?" className="w-full resize-none rounded-xl border border-border bg-background p-3 text-[9px] leading-5 outline-none focus:border-primary/40" /></label>
-              <div className="mt-4 grid gap-3 md:grid-cols-3">
-                {[["Entry low", "plannedEntryLow"], ["Entry high", "plannedEntryHigh"], ["Stop", "plannedStop"], ["Target", "plannedTarget"], ["Position size", "plannedSize"], ["Maximum risk $", "maximumRisk"], ["Planned R:R", "plannedRiskReward"]].map(([label, key]) => <label key={key}><span className="mb-1.5 block text-[7px] uppercase tracking-[0.1em] text-muted">{label}</span><input type="number" step="any" value={precordDraft[key as keyof typeof precordDraft] as string} onChange={(event) => setPrecordDraft((current) => ({ ...current, [key]: event.target.value }))} className="h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] outline-none focus:border-primary/40" /></label>)}
-                <label><span className="mb-1.5 block text-[7px] uppercase tracking-[0.1em] text-muted">Plan expiry</span><input type="datetime-local" value={precordDraft.expiryAt} onChange={(event) => setPrecordDraft((current) => ({ ...current, expiryAt: event.target.value }))} className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[9px] outline-none focus:border-primary/40" /></label>
-              </div>
-              <div className="mt-4 grid gap-3 md:grid-cols-2">
-                <label><span className="mb-1.5 block text-[7px] uppercase tracking-[0.1em] text-primary">Bull permission</span><textarea value={precordDraft.bullCondition} onChange={(event) => setPrecordDraft((current) => ({ ...current, bullCondition: event.target.value }))} rows={3} className="w-full resize-none rounded-xl border border-border bg-background p-3 text-[9px] leading-4 outline-none focus:border-primary/40" /></label>
-                <label><span className="mb-1.5 block text-[7px] uppercase tracking-[0.1em] text-danger">Bear permission</span><textarea value={precordDraft.bearCondition} onChange={(event) => setPrecordDraft((current) => ({ ...current, bearCondition: event.target.value }))} rows={3} className="w-full resize-none rounded-xl border border-border bg-background p-3 text-[9px] leading-4 outline-none focus:border-primary/40" /></label>
-                <label><span className="mb-1.5 block text-[7px] uppercase tracking-[0.1em] text-muted">Confirmation required *</span><textarea value={precordDraft.confirmation} onChange={(event) => setPrecordDraft((current) => ({ ...current, confirmation: event.target.value }))} rows={3} className="w-full resize-none rounded-xl border border-border bg-background p-3 text-[9px] leading-4 outline-none focus:border-primary/40" /></label>
-                <label><span className="mb-1.5 block text-[7px] uppercase tracking-[0.1em] text-warning">Invalidation *</span><textarea value={precordDraft.invalidation} onChange={(event) => setPrecordDraft((current) => ({ ...current, invalidation: event.target.value }))} rows={3} className="w-full resize-none rounded-xl border border-border bg-background p-3 text-[9px] leading-4 outline-none focus:border-primary/40" /></label>
-              </div>
-              <div className="mt-4 rounded-xl border border-primary/20 bg-primary/[0.05] p-3 text-[8px] leading-4 text-muted"><strong className="text-primary">No hindsight editing:</strong> publishing locks this version and its timestamp. An execution receipt, review, or explicit amendment can add context later, but cannot rewrite what was known now.</div>
-            </div>
-            <div className="flex items-center justify-end gap-2 border-t border-border bg-background/20 px-5 py-4"><button type="button" onClick={() => setShowPrecordModal(false)} className="h-9 rounded-xl border border-border px-4 text-[8px] font-semibold text-muted">Cancel</button><button type="button" onClick={publishPrecord} className="flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-[8px] font-semibold text-background"><LockKeyhole className="h-3.5 w-3.5" />Publish &amp; lock</button></div>
-          </div>
-        </div>
-      ) : null}
-
       {showReceiptFor ? (
         <div className="fixed inset-0 z-[1100] flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm" onMouseDown={(event) => { if (event.target === event.currentTarget) setShowReceiptFor(null); }}>
           <div className="flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-3xl border border-border bg-panel shadow-2xl shadow-black/60">
             <div className="flex items-start gap-3 border-b border-border p-5"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent/10 text-accent"><CheckCircle2 className="h-4 w-4" /></span><div><h2 className="text-[14px] font-semibold">Add Actual Execution</h2><p className="mt-1 text-[8px] text-muted">Complete the record beneath the locked plan. The original remains unchanged.</p></div><button type="button" onClick={() => setShowReceiptFor(null)} className="ml-auto flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:bg-surface"><X className="h-4 w-4" /></button></div>
             <div className="min-h-0 flex-1 overflow-y-auto p-5">
               <label className="flex items-center gap-3 rounded-xl border border-border bg-surface/35 p-3"><input type="checkbox" checked={receiptDraft.noTrade} onChange={(event) => setReceiptDraft((current) => ({ ...current, noTrade: event.target.checked }))} className="h-4 w-4 accent-[var(--primary)]" /><span><span className="block text-[9px] font-semibold">No Trigger / no trade taken</span><span className="mt-0.5 block text-[7px] text-muted">This can complete the operating loop when confirmation never appeared.</span></span></label>
-              {!receiptDraft.noTrade ? <div className="mt-4 grid gap-3 md:grid-cols-3">{[["Actual entry", "actualEntry", "number"], ["Entry time", "entryTime", "datetime-local"], ["Actual stop", "actualStop", "number"], ["Actual exit", "actualExit", "number"], ["Exit time", "exitTime", "datetime-local"], ["Size", "size", "number"], ["Fees", "fees", "number"]].map(([label, key, type]) => <label key={key}><span className="mb-1.5 block text-[7px] uppercase tracking-[0.1em] text-muted">{label}</span><input type={type} step={type === "number" ? "any" : undefined} value={receiptDraft[key as keyof typeof receiptDraft] as string} onChange={(event) => setReceiptDraft((current) => ({ ...current, [key]: event.target.value }))} className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[9px] outline-none focus:border-primary/40" /></label>)}</div> : null}
+              {!receiptDraft.noTrade ? (
+                <>
+                  <div className="mt-4 grid gap-3 md:grid-cols-4">
+                    <label><span className="mb-1.5 block text-[7px] uppercase tracking-[0.1em] text-muted">Executed side</span><KwantSelect value={receiptDraft.actualDirection} onChange={(event) => setReceiptDraft((current) => ({ ...current, actualDirection: event.target.value as "LONG" | "SHORT" }))} className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[9px] outline-none"><option value="LONG">Long</option><option value="SHORT">Short</option></KwantSelect></label>
+                    {[["Average entry", "actualEntry", "number"], ["Entry time", "entryTime", "datetime-local"], ["Actual stop", "actualStop", "number"], ["Final exit", "actualExit", "number"], ["Exit time", "exitTime", "datetime-local"], ["Total size", "size", "number"], ["Maximum actual risk", "maximumActualRisk", "number"], ["Fees", "fees", "number"]].map(([label, key, type]) => <label key={key}><span className="mb-1.5 block text-[7px] uppercase tracking-[0.1em] text-muted">{label}</span><input type={type} step={type === "number" ? "any" : undefined} value={receiptDraft[key as keyof typeof receiptDraft] as string} onChange={(event) => setReceiptDraft((current) => ({ ...current, [key]: event.target.value }))} className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[9px] outline-none focus:border-primary/40" /></label>)}
+                  </div>
+                  <div className="mt-4 grid gap-3 rounded-2xl border border-border bg-surface/25 p-4 md:grid-cols-3">
+                    <div className="md:col-span-3"><div className="text-[8px] font-semibold text-foreground">Additional fill</div><div className="mt-0.5 text-[7px] text-muted">Preserve a second fill instead of hiding it inside one average.</div></div>
+                    {[["Fill price", "fill2Price", "number"], ["Fill size", "fill2Size", "number"], ["Fill time", "fill2Time", "datetime-local"]].map(([label, key, type]) => <label key={key}><span className="mb-1.5 block text-[7px] uppercase tracking-[0.1em] text-muted">{label}</span><input type={type} step={type === "number" ? "any" : undefined} value={receiptDraft[key as keyof typeof receiptDraft] as string} onChange={(event) => setReceiptDraft((current) => ({ ...current, [key]: event.target.value }))} className="h-9 w-full rounded-xl border border-border bg-background px-3 text-[8px] outline-none focus:border-primary/40" /></label>)}
+                    <div className="md:col-span-3 mt-1 border-t border-border pt-3"><div className="text-[8px] font-semibold text-foreground">Additional partial exit</div></div>
+                    {[["Exit price", "exit2Price", "number"], ["Exit size", "exit2Size", "number"], ["Exit time", "exit2Time", "datetime-local"]].map(([label, key, type]) => <label key={key}><span className="mb-1.5 block text-[7px] uppercase tracking-[0.1em] text-muted">{label}</span><input type={type} step={type === "number" ? "any" : undefined} value={receiptDraft[key as keyof typeof receiptDraft] as string} onChange={(event) => setReceiptDraft((current) => ({ ...current, [key]: event.target.value }))} className="h-9 w-full rounded-xl border border-border bg-background px-3 text-[8px] outline-none focus:border-primary/40" /></label>)}
+                  </div>
+                </>
+              ) : null}
               <div className="mt-4 grid gap-3 md:grid-cols-2">
                 <label><span className="mb-1.5 block text-[7px] uppercase tracking-[0.1em] text-muted">What changed?</span><KwantSelect value={receiptDraft.deviationReason} onChange={(event) => setReceiptDraft((current) => ({ ...current, deviationReason: event.target.value }))} className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[9px] outline-none"><option value="">No material deviation</option><option>CONFIRMATION ARRIVED LATER</option><option>ENTRY USED A DEFINED ZONE</option><option>ORDER-FLOW CONDITIONS IMPROVED</option><option>ORIGINAL PRICE WAS MISSED</option><option>MARKET STRUCTURE CHANGED</option><option>IMPULSIVE DEVIATION</option><option>OTHER</option></KwantSelect></label>
                 <label><span className="mb-1.5 block text-[7px] uppercase tracking-[0.1em] text-muted">Partial exits</span><input value={receiptDraft.partialExits} onChange={(event) => setReceiptDraft((current) => ({ ...current, partialExits: event.target.value }))} placeholder="Optional sizes and prices" className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[9px] outline-none focus:border-primary/40" /></label>
@@ -1457,8 +1676,9 @@ export default function SocialsWorkspace({
               </div>
               <button type="button" onClick={() => evidenceInputRef.current?.click()} className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-border bg-background/30 px-4 py-5 text-[8px] font-semibold text-muted hover:border-primary/35 hover:text-foreground"><ImageIcon className="h-4 w-4 text-primary" />{receiptDraft.evidenceName || "Attach chart or broker evidence · image up to 2 MB"}</button>
               <input ref={evidenceInputRef} type="file" accept="image/png,image/jpeg,image/webp,image/gif" className="hidden" onChange={(event) => { handleEvidence(event.target.files?.[0] ?? null); event.currentTarget.value = ""; }} />
+              <div className="mt-3 flex items-start gap-2 rounded-xl border border-border bg-background/30 p-3 text-[7px] leading-4 text-muted"><ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" /><span>Attachments remain private. Until a broker import verifies the execution, the public record is explicitly labelled <strong className="text-foreground">self reported</strong>.</span></div>
             </div>
-            <div className="flex items-center justify-end gap-2 border-t border-border bg-background/20 px-5 py-4"><button type="button" onClick={() => setShowReceiptFor(null)} className="h-9 rounded-xl border border-border px-4 text-[8px] font-semibold text-muted">Cancel</button><button type="button" onClick={submitReceipt} className="flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-[8px] font-semibold text-background"><CheckCircle2 className="h-3.5 w-3.5" />Complete receipt</button></div>
+            <div className="flex items-center justify-end gap-2 border-t border-border bg-background/20 px-5 py-4"><button type="button" onClick={() => setShowReceiptFor(null)} disabled={assessmentState === "reviewing"} className="h-9 rounded-xl border border-border px-4 text-[8px] font-semibold text-muted disabled:opacity-50">Cancel</button><button type="button" onClick={() => void submitReceipt()} disabled={assessmentState === "reviewing"} className="flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-[8px] font-semibold text-background disabled:opacity-60">{assessmentState === "reviewing" ? <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-background/30 border-t-background" /> : <CheckCircle2 className="h-3.5 w-3.5" />}{assessmentState === "reviewing" ? "ZYON reviewing…" : "Complete Decision Record"}</button></div>
           </div>
         </div>
       ) : null}

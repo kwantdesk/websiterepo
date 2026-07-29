@@ -17,6 +17,7 @@ export type SocialScope = "private" | "friends" | "desk" | "community";
 export type SocialProcessStatus = "PREPARING" | "MAPPING" | "WAITING" | "OBSERVING" | "REVIEWING" | "AWAY";
 export type PrecordDirection = "LONG" | "SHORT" | "BOTH" | "NEUTRAL";
 export type PrecordStatus =
+  | "LOCKED"
   | "PRECORDED"
   | "LIVE"
   | "ENTRY TRIGGERED"
@@ -27,7 +28,29 @@ export type PrecordStatus =
   | "ADAPTED"
   | "INVALIDATED"
   | "NO TRIGGER"
+  | "NO TRADE"
   | "EXPIRED";
+
+export type SocialLifecycleEvent = {
+  status: PrecordStatus;
+  at: string;
+  source: "PLATFORM" | "TRADER" | "ZYON";
+  note?: string;
+};
+
+export type SocialExecutionFill = {
+  price: number | null;
+  size: number | null;
+  time: string | null;
+};
+
+export type SocialExecutionComparison = {
+  dimension: "Entry" | "Stop" | "Target / exit" | "Size / risk" | "Confirmation" | "Timing";
+  planned: string;
+  actual: string;
+  difference: string;
+  status: "MATCHED" | "ADAPTED" | "DEVIATED" | "SAFER" | "RISKIER" | "MET" | "PARTIAL" | "UNMET" | "VALID" | "RETROSPECTIVE" | "NOT APPLICABLE";
+};
 
 export type SocialObject<TPayload = Record<string, unknown>> = {
   id: string;
@@ -103,9 +126,18 @@ export type SocialPrecordPayload = {
   reasoningScore: number;
   status: PrecordStatus;
   source: "SOCIALS" | "GAMEPLAN" | "CHARTS" | "GEXMAP" | "JOURNAL";
+  sourceGameplanId?: string;
+  sourceGameplanVersion?: string;
+  sourceGeneratedAt?: string;
+  gameplanSnapshot?: Record<string, unknown>;
+  contentHash?: string;
+  scoreModelVersion?: string;
+  evidenceState?: "SELF REPORTED" | "PLATFORM TIMESTAMPED" | "BROKER VERIFIED";
+  lifecycle?: SocialLifecycleEvent[];
 };
 
 export type SocialReceiptPayload = {
+  actualDirection?: "LONG" | "SHORT" | null;
   actualEntry: number | null;
   entryTime: string | null;
   actualStop: number | null;
@@ -133,6 +165,30 @@ export type SocialReceiptPayload = {
     final: number;
   };
   addedAt: string;
+  fills?: SocialExecutionFill[];
+  exits?: SocialExecutionFill[];
+  maximumActualRisk?: number | null;
+  comparison?: SocialExecutionComparison[];
+  retrospective?: boolean;
+  evidenceState?: "SELF REPORTED" | "PLATFORM TIMESTAMPED" | "BROKER VERIFIED";
+  assessment?: {
+    classification: "DISCIPLINED NO TRIGGER" | "JUSTIFIED ADAPTATION" | "PARTIALLY JUSTIFIED" | "UNJUSTIFIED DEVIATION" | "INSUFFICIENT EVIDENCE";
+    explanation: string;
+    evidenceUsed: string[];
+    evidenceMissing: string[];
+    confidence: number;
+    evaluator: "ZYON" | "RULES";
+    modelVersion: string;
+    rubricVersion: string;
+    assessedAt: string;
+    appealAvailable: boolean;
+  };
+  scoreSnapshot?: {
+    reasoning: number;
+    reasoningModelVersion: string;
+    postExecutionModelVersion: string;
+    createdAt: string;
+  };
 };
 
 export type SocialPostPayload = {
@@ -265,7 +321,7 @@ export const CALLING_CARD_CATALOG: CallingCardDefinition[] = [
     name: "First on Record",
     family: "LEGACY",
     description: "Published a first locked plan before the outcome.",
-    requirement: "Publish one complete Precord.",
+    requirement: "Lock one complete Decision Record.",
     accent: "gold",
   },
   {
@@ -437,6 +493,143 @@ export function calculateReceiptScores(args: {
     + evidenceConfidence * 0.15,
   );
   return { confirmation, discipline, execution, review, evidenceConfidence, final };
+}
+
+function compactNumber(value: number | null | undefined) {
+  if (value === null || value === undefined || !Number.isFinite(value)) return "Not recorded";
+  return value.toLocaleString("en-US", { maximumFractionDigits: 2 });
+}
+
+function numericDelta(actual: number | null | undefined, planned: number | null | undefined) {
+  if (actual === null || actual === undefined || planned === null || planned === undefined) return "Not comparable";
+  const delta = actual - planned;
+  return `${delta >= 0 ? "+" : ""}${delta.toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
+}
+
+export function buildExecutionComparison(
+  plan: SocialPrecordPayload,
+  execution: Pick<
+    SocialReceiptPayload,
+    "actualDirection" | "actualEntry" | "actualStop" | "actualExit" | "size" | "maximumActualRisk" | "confirmationsAppeared" | "entryTime" | "noTrade"
+  >,
+): SocialExecutionComparison[] {
+  if (execution.noTrade) {
+    return [
+      {
+        dimension: "Entry",
+        planned: plan.plannedEntryLow === plan.plannedEntryHigh
+          ? compactNumber(plan.plannedEntryLow)
+          : `${compactNumber(plan.plannedEntryLow)} – ${compactNumber(plan.plannedEntryHigh)}`,
+        actual: "No trade",
+        difference: "Confirmation did not create an execution",
+        status: "NOT APPLICABLE",
+      },
+      {
+        dimension: "Confirmation",
+        planned: plan.confirmation || "Not recorded",
+        actual: execution.confirmationsAppeared || "Not observed",
+        difference: execution.confirmationsAppeared ? "Evidence recorded without execution" : "Required evidence absent",
+        status: execution.confirmationsAppeared ? "PARTIAL" : "UNMET",
+      },
+      {
+        dimension: "Timing",
+        planned: plan.expiryAt ? `Valid until ${plan.expiryAt}` : plan.session,
+        actual: "No execution",
+        difference: "Session completed without a trigger",
+        status: "VALID",
+      },
+    ];
+  }
+
+  const snapshotTrade = (
+    plan.gameplanSnapshot
+    && typeof plan.gameplanSnapshot.oneTrade === "object"
+    && plan.gameplanSnapshot.oneTrade
+  ) ? plan.gameplanSnapshot.oneTrade as {
+      zone?: [number, number];
+      longSide?: { stop?: number; targets?: number[] };
+      shortSide?: { stop?: number; targets?: number[] };
+    } : null;
+  const snapshotSide = execution.actualDirection === "SHORT" ? snapshotTrade?.shortSide : snapshotTrade?.longSide;
+  const entryLow = snapshotTrade?.zone?.[0] ?? plan.plannedEntryLow;
+  const entryHigh = snapshotTrade?.zone?.[1] ?? plan.plannedEntryHigh ?? entryLow;
+  const plannedStop = snapshotSide?.stop ?? plan.plannedStop;
+  const plannedTarget = snapshotSide?.targets?.[0] ?? plan.plannedTarget;
+  const actualEntry = execution.actualEntry;
+  const entryMatched = actualEntry !== null
+    && actualEntry !== undefined
+    && entryLow !== null
+    && entryHigh !== null
+    && actualEntry >= Math.min(entryLow, entryHigh)
+    && actualEntry <= Math.max(entryLow, entryHigh);
+  const entryReference = entryLow !== null && entryHigh !== null ? (entryLow + entryHigh) / 2 : entryLow;
+  const retrospective = Boolean(
+    execution.entryTime
+    && plan.lockedAt
+    && Date.parse(execution.entryTime) < Date.parse(plan.lockedAt),
+  );
+  const stopMatched = execution.actualStop !== null
+    && plannedStop !== null
+    && plannedStop !== undefined
+    && Math.abs(execution.actualStop - plannedStop) <= 0.01;
+  const targetMatched = execution.actualExit !== null
+    && plannedTarget !== null
+    && plannedTarget !== undefined
+    && Math.abs(execution.actualExit - plannedTarget) <= 0.01;
+  const sizeMatched = execution.size !== null
+    && plan.plannedSize !== null
+    && execution.size <= plan.plannedSize;
+  const riskExceeded = execution.maximumActualRisk !== null
+    && execution.maximumActualRisk !== undefined
+    && plan.maximumRisk !== null
+    && execution.maximumActualRisk > plan.maximumRisk;
+  const hasPlannedRisk = plan.plannedSize !== null || plan.maximumRisk !== null;
+  const confirmationMet = Boolean(execution.confirmationsAppeared.trim());
+
+  return [
+    {
+      dimension: "Entry",
+      planned: entryLow === entryHigh ? compactNumber(entryLow) : `${compactNumber(entryLow)} – ${compactNumber(entryHigh)}`,
+      actual: compactNumber(actualEntry),
+      difference: numericDelta(actualEntry, entryReference),
+      status: entryMatched ? "MATCHED" : "DEVIATED",
+    },
+    {
+      dimension: "Stop",
+      planned: compactNumber(plannedStop),
+      actual: compactNumber(execution.actualStop),
+      difference: numericDelta(execution.actualStop, plannedStop),
+      status: plannedStop === null || plannedStop === undefined ? "NOT APPLICABLE" : stopMatched ? "MATCHED" : execution.actualStop === null ? "DEVIATED" : "ADAPTED",
+    },
+    {
+      dimension: "Target / exit",
+      planned: compactNumber(plannedTarget),
+      actual: compactNumber(execution.actualExit),
+      difference: numericDelta(execution.actualExit, plannedTarget),
+      status: plannedTarget === null || plannedTarget === undefined ? "NOT APPLICABLE" : targetMatched ? "MATCHED" : execution.actualExit === null ? "DEVIATED" : "ADAPTED",
+    },
+    {
+      dimension: "Size / risk",
+      planned: `${compactNumber(plan.plannedSize)} size · ${compactNumber(plan.maximumRisk)} max risk`,
+      actual: `${compactNumber(execution.size)} size · ${compactNumber(execution.maximumActualRisk)} max risk`,
+      difference: !hasPlannedRisk ? "No size or risk ceiling existed in the source plan" : riskExceeded ? "Maximum planned risk exceeded" : "Within stated risk ceiling",
+      status: !hasPlannedRisk ? "NOT APPLICABLE" : riskExceeded ? "RISKIER" : sizeMatched || plan.plannedSize === null ? "MATCHED" : "ADAPTED",
+    },
+    {
+      dimension: "Confirmation",
+      planned: plan.confirmation || "Not recorded",
+      actual: execution.confirmationsAppeared || "Not recorded",
+      difference: confirmationMet ? "Evidence supplied" : "Required evidence not supplied",
+      status: confirmationMet ? "MET" : "UNMET",
+    },
+    {
+      dimension: "Timing",
+      planned: plan.expiryAt ? `Valid until ${plan.expiryAt}` : plan.session,
+      actual: execution.entryTime || "Not recorded",
+      difference: !execution.entryTime ? "Execution time is required for proof status" : retrospective ? "Execution predates the plan lock" : "Execution follows the plan lock",
+      status: !execution.entryTime ? "NOT APPLICABLE" : retrospective ? "RETROSPECTIVE" : "VALID",
+    },
+  ];
 }
 
 export function profileScoreAverage(profile: SocialProfilePayload) {

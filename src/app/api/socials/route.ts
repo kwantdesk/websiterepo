@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { createHash } from "node:crypto";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { getRouteActor, type RouteActor } from "@/lib/serverAuth";
 import {
@@ -10,6 +11,7 @@ import {
   type SocialPrecordPayload,
   type SocialScope,
 } from "@/lib/socials";
+import { SOCIAL_RECORD_RULES } from "@/lib/socialRecordConfig";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -209,7 +211,7 @@ export async function POST(request: NextRequest) {
     id = `desk-member:${deskId}`;
     useUpsert = true;
   } else if (objectType === "receipt") {
-    if (!parentId) return NextResponse.json({ error: "Choose a locked Precord." }, { status: 400 });
+    if (!parentId) return NextResponse.json({ error: "Choose a locked Decision Record." }, { status: 400 });
     const { data: parent, error: parentError } = await supabase
       .from("social_objects")
       .select("id")
@@ -218,7 +220,7 @@ export async function POST(request: NextRequest) {
       .eq("object_type", "precord")
       .maybeSingle();
     if (parentError || !parent) {
-      return NextResponse.json({ error: "Only the owner can complete this Precord." }, { status: 403 });
+      return NextResponse.json({ error: "Only the owner can complete this Decision Record." }, { status: 403 });
     }
     const evidenceDataUrl = typeof payload.evidenceDataUrl === "string" && payload.evidenceDataUrl.startsWith("data:image/")
       ? payload.evidenceDataUrl.slice(0, 2_800_000)
@@ -242,7 +244,7 @@ export async function POST(request: NextRequest) {
       .select("id", { count: "exact", head: true })
       .eq("user_id", actor.userId)
       .eq("object_type", "precord");
-    if (!count) return NextResponse.json({ error: "Publish a Precord before claiming this card." }, { status: 409 });
+    if (!count) return NextResponse.json({ error: "Lock a Decision Record before claiming this card." }, { status: 409 });
     id = `card:${code}`;
     useUpsert = true;
   } else if (objectType === "precord") {
@@ -266,7 +268,31 @@ export async function POST(request: NextRequest) {
       ...candidate,
       lockedAt: now,
       reasoningScore: calculateReasoningScore(candidate),
-      status: "PRECORDED",
+      status: "LOCKED",
+      contentHash: createHash("sha256").update(JSON.stringify({
+        instrument: candidate.instrument,
+        session: candidate.session,
+        direction: candidate.direction,
+        marketContext: candidate.marketContext,
+        plannedEntryLow: candidate.plannedEntryLow,
+        plannedEntryHigh: candidate.plannedEntryHigh,
+        plannedStop: candidate.plannedStop,
+        plannedTarget: candidate.plannedTarget,
+        confirmation: candidate.confirmation,
+        invalidation: candidate.invalidation,
+        expiryAt: candidate.expiryAt,
+        sourceGameplanId: candidate.sourceGameplanId,
+        sourceGeneratedAt: candidate.sourceGeneratedAt,
+        gameplanSnapshot: candidate.gameplanSnapshot,
+      })).digest("hex"),
+      scoreModelVersion: SOCIAL_RECORD_RULES.scoreModelVersion,
+      evidenceState: "PLATFORM TIMESTAMPED",
+      lifecycle: [{
+        status: "LOCKED",
+        at: now,
+        source: "PLATFORM",
+        note: "Immutable Gameplan snapshot placed on record.",
+      }],
     };
     id = /^precord:[a-zA-Z0-9_-]{8,}$/.test(id) ? id : `precord:${crypto.randomUUID()}`;
   } else if (objectType === "desk") {
@@ -372,7 +398,7 @@ export async function DELETE(request: NextRequest) {
     .maybeSingle();
   if (!existing) return NextResponse.json({ error: "That object no longer exists." }, { status: 404 });
   if (existing.object_type === "precord") {
-    return NextResponse.json({ error: "Locked Precords cannot be deleted from the record." }, { status: 409 });
+    return NextResponse.json({ error: "Locked Decision Records cannot be deleted from the record." }, { status: 409 });
   }
   const { error } = await supabase.from("social_objects").delete().eq("user_id", actor.userId).eq("id", id);
   if (error) return NextResponse.json({ error: "The object could not be removed." }, { status: 502 });
