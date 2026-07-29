@@ -27,14 +27,18 @@ export async function middleware(request: NextRequest) {
     return response;
   }
 
-  if (
-    isSiteAccessConfigured() &&
-    !(await isValidSiteAccessToken(request.cookies.get(SITE_ACCESS_COOKIE)?.value))
-  ) {
+  const siteAccessConfigured = isSiteAccessConfigured();
+  const siteAccessGranted = siteAccessConfigured
+    ? await isValidSiteAccessToken(request.cookies.get(SITE_ACCESS_COOKIE)?.value)
+    : true;
+
+  if (siteAccessConfigured && !siteAccessGranted) {
     const holdingPage = new URL("/", request.url);
     holdingPage.searchParams.set("returnTo", pathname);
     return NextResponse.redirect(holdingPage);
   }
+
+  if (pathname === "/login") return response;
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -59,5 +63,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!login|auth|_next/static|_next/image|favicon.ico|images/|brand/).*)"],
+  matcher: ["/((?!auth|_next/static|_next/image|favicon.ico|images/|brand/).*)"],
 };

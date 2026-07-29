@@ -294,16 +294,17 @@ table,
 
 /* Kwant Desk retains its own restricted Google entry point; the authenticated
    workspace above uses the unmodified Kwantify stylesheet. */
-.login-page { min-height:100vh; display:grid; place-items:center; padding:24px; background:#09090B; }
+.login-page { min-height:100vh; display:grid; place-items:center; padding:24px; color:#fff; background:#000; }
 .login-orb { display:none; }
-.login-card { width:min(100%,400px); padding:32px; border:1px solid var(--border); border-radius:16px; background:var(--panel); box-shadow:0 25px 50px rgba(0,0,0,.4); }
-.brand-row { display:flex; align-items:center; justify-content:center; gap:12px; margin-bottom:32px; color:var(--foreground); font-size:18px; font-weight:600; }
-.brand-mark { display:grid; place-items:center; width:40px; height:40px; color:var(--primary); background:rgba(41,98,255,.1); border:1px solid rgba(41,98,255,.25); border-radius:8px; font-size:22px; font-weight:700; }
+.login-card { width:min(100%,400px); padding:32px; border:1px solid rgba(255,255,255,.14); border-radius:16px; background:#050505; box-shadow:0 25px 70px rgba(0,0,0,.72); }
+.brand-row { display:flex; align-items:center; justify-content:center; gap:12px; margin-bottom:32px; color:#fff; font-size:18px; font-weight:600; }
+.brand-mark { display:grid; place-items:center; width:40px; height:40px; color:#fff; background:#0a0a0a; border:1px solid rgba(255,255,255,.16); border-radius:8px; font-size:22px; font-weight:700; }
 .login-heading { margin-bottom:32px; text-align:center; }
 .login-card h1 { margin:0; font-size:24px; font-weight:600; letter-spacing:-.025em; }
-.login-heading p { margin:8px 0 0; color:var(--muted); font-size:13px; line-height:1.5; }
-.google-button { display:flex; align-items:center; justify-content:center; gap:12px; width:100%; min-height:48px; border:1px solid var(--border); border-radius:12px; color:var(--foreground); background:var(--surface); font-size:13px; font-weight:500; }
+.login-heading p { margin:8px 0 0; color:rgba(255,255,255,.48); font-size:13px; line-height:1.5; }
+.google-button { display:flex; align-items:center; justify-content:center; gap:12px; width:100%; min-height:48px; border:1px solid rgba(255,255,255,.16); border-radius:12px; color:#fff; background:#000; font-size:13px; font-weight:500; transition:background-color .2s,border-color .2s; }
+.google-button:hover { border-color:rgba(255,255,255,.3); background:#0c0c0c; }
 .google-g { color:#4285f4; font-size:18px; font-weight:900; }
 .login-note,.login-error { font-size:11px; text-align:center; line-height:1.5; }
-.login-note { margin:24px 0 0; color:var(--muted); }
+.login-note { margin:24px 0 0; color:rgba(255,255,255,.4); }
 .login-error { margin:0 0 14px; color:var(--danger); }
