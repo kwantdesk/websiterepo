@@ -34,6 +34,23 @@ const TRADING_ECONOMICS_COUNTRIES = [
   "new zealand",
   "china",
 ].join(",");
+const TRADING_ECONOMICS_REVALIDATE_SECONDS = 300;
+const FAIR_ECONOMY_REVALIDATE_SECONDS = 14_400;
+const STALE_CALENDAR_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1_000;
+
+type CalendarCacheEntry = {
+  payload: EconomicCalendarPayload;
+  storedAt: number;
+};
+
+const calendarGlobal = globalThis as typeof globalThis & {
+  __kwantdeskEconomicCalendarCache?: Map<string, CalendarCacheEntry>;
+  __kwantdeskEconomicCalendarRequests?: Map<string, Promise<EconomicCalendarPayload>>;
+};
+const calendarCache = calendarGlobal.__kwantdeskEconomicCalendarCache
+  ?? (calendarGlobal.__kwantdeskEconomicCalendarCache = new Map<string, CalendarCacheEntry>());
+const calendarRequests = calendarGlobal.__kwantdeskEconomicCalendarRequests
+  ?? (calendarGlobal.__kwantdeskEconomicCalendarRequests = new Map<string, Promise<EconomicCalendarPayload>>());
 
 type FairEconomyEvent = {
   title?: string;
@@ -175,7 +192,7 @@ async function fetchTradingEconomics(
   const countries = encodeURIComponent(TRADING_ECONOMICS_COUNTRIES);
   const url = `https://api.tradingeconomics.com/calendar/country/${countries}/${from}/${to}?c=${encodeURIComponent(apiKey)}&f=json`;
   const response = await fetch(url, {
-    cache: "no-store",
+    next: { revalidate: TRADING_ECONOMICS_REVALIDATE_SECONDS },
     signal: AbortSignal.timeout(15_000),
     headers: { Accept: "application/json" },
   });
@@ -186,16 +203,18 @@ async function fetchTradingEconomics(
     events: sortEvents(normalizeTradingEconomics(rows)),
     provider: "Trading Economics",
     fetchedAt: new Date().toISOString(),
-    refreshAfterMs: 300_000,
+    refreshAfterMs: TRADING_ECONOMICS_REVALIDATE_SECONDS * 1_000,
     coverage: { from, to, longRange: true },
-    partial: false,
-    note: "Forward calendar, forecasts and released values supplied by Trading Economics.",
+    partial: rows.length >= 1_000,
+    note: rows.length >= 1_000
+      ? "The forward schedule is live and refreshing automatically. The provider returned its maximum event count for this window."
+      : "Forward calendar, forecasts and released values refresh automatically.",
   };
 }
 
 async function fetchFairEconomy(): Promise<EconomicCalendarPayload> {
   const response = await fetch(FAIR_ECONOMY_URL, {
-    cache: "no-store",
+    next: { revalidate: FAIR_ECONOMY_REVALIDATE_SECONDS },
     signal: AbortSignal.timeout(15_000),
     headers: { Accept: "application/json" },
   });
@@ -207,26 +226,97 @@ async function fetchFairEconomy(): Promise<EconomicCalendarPayload> {
     events: sortEvents(normalizeFairEconomy(rows)),
     provider: "Fair Economy",
     fetchedAt: new Date().toISOString(),
-    refreshAfterMs: 600_000,
+    refreshAfterMs: FAIR_ECONOMY_REVALIDATE_SECONDS * 1_000,
     coverage: { ...coverage, longRange: false },
     partial: false,
-    note: "Current-week scheduled events and consensus values. Add a Trading Economics key for long-range dates, actual releases and official-source links.",
+    note: "Current-week scheduled events and consensus values refresh automatically.",
   };
 }
 
-export async function getEconomicCalendar(from: string, to: string) {
+function cacheKey(provider: "te" | "fair", from: string, to: string) {
+  return provider === "te" ? `${provider}:${from}:${to}` : provider;
+}
+
+function freshFor(payload: EconomicCalendarPayload) {
+  return payload.provider === "Trading Economics"
+    ? TRADING_ECONOMICS_REVALIDATE_SECONDS * 1_000
+    : FAIR_ECONOMY_REVALIDATE_SECONDS * 1_000;
+}
+
+function cachedCalendar(key: string, allowStale = false) {
+  const cached = calendarCache.get(key);
+  if (!cached) return null;
+  const age = Date.now() - cached.storedAt;
+  if (age > (allowStale ? STALE_CALENDAR_MAX_AGE_MS : freshFor(cached.payload))) return null;
+  return cached.payload;
+}
+
+function rememberCalendar(key: string, payload: EconomicCalendarPayload) {
+  calendarCache.set(key, { payload, storedAt: Date.now() });
+  return payload;
+}
+
+function staleCalendar(key: string) {
+  const cached = cachedCalendar(key, true);
+  if (!cached) return null;
+  return {
+    ...cached,
+    partial: true,
+    refreshAfterMs: 60_000,
+    note: "Calendar data is being served from the verified cache while the live source reconnects automatically.",
+  } satisfies EconomicCalendarPayload;
+}
+
+async function loadEconomicCalendar(from: string, to: string) {
   const apiKey = process.env.TRADING_ECONOMICS_API_KEY?.trim();
   if (apiKey) {
+    const key = cacheKey("te", from, to);
     try {
-      return await fetchTradingEconomics(apiKey, from, to);
-    } catch {
-      const fallback = await fetchFairEconomy();
-      return {
-        ...fallback,
-        partial: true,
-        note: "The long-range calendar is temporarily unavailable. Showing the current-week backup feed.",
-      };
+      return rememberCalendar(key, await fetchTradingEconomics(apiKey, from, to));
+    } catch (primaryError) {
+      const stale = staleCalendar(key);
+      if (stale) return stale;
+      try {
+        const fallbackKey = cacheKey("fair", from, to);
+        const fallback = cachedCalendar(fallbackKey)
+          ?? rememberCalendar(fallbackKey, await fetchFairEconomy());
+        return {
+          ...fallback,
+          partial: true,
+          note: "The forward source is reconnecting automatically. Current-week events remain available.",
+        };
+      } catch {
+        throw new Error(
+          primaryError instanceof Error
+            ? `The forward calendar is reconnecting: ${primaryError.message}`
+            : "The forward calendar is reconnecting.",
+        );
+      }
     }
   }
-  return fetchFairEconomy();
+
+  const key = cacheKey("fair", from, to);
+  try {
+    return rememberCalendar(key, await fetchFairEconomy());
+  } catch {
+    const stale = staleCalendar(key);
+    if (stale) return stale;
+    throw new Error("The economic calendar is reconnecting automatically.");
+  }
+}
+
+export async function getEconomicCalendar(from: string, to: string) {
+  const provider = process.env.TRADING_ECONOMICS_API_KEY?.trim() ? "te" : "fair";
+  const key = cacheKey(provider, from, to);
+  const cached = cachedCalendar(key);
+  if (cached) return cached;
+
+  const pending = calendarRequests.get(key);
+  if (pending) return pending;
+
+  const request = loadEconomicCalendar(from, to).finally(() => {
+    calendarRequests.delete(key);
+  });
+  calendarRequests.set(key, request);
+  return request;
 }

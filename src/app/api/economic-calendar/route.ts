@@ -40,15 +40,15 @@ export async function GET(request: NextRequest) {
   const start = new Date(`${from}T00:00:00Z`);
   const end = new Date(`${to}T23:59:59Z`);
   const span = end.getTime() - start.getTime();
-  if (Number.isNaN(span) || span < 0 || span > 45 * 86_400_000) {
-    return NextResponse.json({ error: "Calendar range must be between 1 and 45 days." }, { status: 400 });
+  if (Number.isNaN(span) || span < 0 || span > 120 * 86_400_000) {
+    return NextResponse.json({ error: "Calendar range must be between 1 and 120 days." }, { status: 400 });
   }
 
   try {
     const payload = await getEconomicCalendar(from, to);
     return NextResponse.json(payload, {
       headers: {
-        "Cache-Control": "private, max-age=120, stale-while-revalidate=300",
+        "Cache-Control": "private, max-age=300, stale-while-revalidate=900",
       },
     });
   } catch (error) {

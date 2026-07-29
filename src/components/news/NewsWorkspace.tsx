@@ -33,6 +33,9 @@ import {
 const TIME_ZONE = "Australia/Brisbane";
 const ALERTS_STORAGE_KEY = "kwantdesk:economic-calendar-alerts:v1";
 const CURRENCIES_STORAGE_KEY = "kwantdesk:economic-calendar-currencies:v1";
+const CALENDAR_CACHE_STORAGE_KEY = "kwantdesk:economic-calendar-cache:v2";
+const CALENDAR_HISTORY_DAYS = 7;
+const CALENDAR_FORWARD_DAYS = 90;
 const DEFAULT_CURRENCIES: EconomicCurrency[] = ["USD", "EUR", "GBP", "JPY", "AUD"];
 const IMPACT_ORDER: Record<EconomicImpact, number> = { High: 3, Medium: 2, Low: 1 };
 const CURRENCY_COUNTRY: Record<EconomicCurrency, string> = {
@@ -267,6 +270,7 @@ export default function NewsWorkspace() {
   const [error, setError] = useState<string | null>(null);
   const [clock, setClock] = useState(new Date());
   const alertTimersRef = useRef<number[]>([]);
+  const payloadRef = useRef<EconomicCalendarPayload | null>(null);
 
   useEffect(() => {
     try {
@@ -276,6 +280,18 @@ export default function NewsWorkspace() {
       }
       const savedAlerts = JSON.parse(window.localStorage.getItem(ALERTS_STORAGE_KEY) ?? "[]") as string[];
       if (Array.isArray(savedAlerts)) setAlerts(savedAlerts.filter((id) => typeof id === "string"));
+      const savedCalendar = JSON.parse(window.localStorage.getItem(CALENDAR_CACHE_STORAGE_KEY) ?? "null") as EconomicCalendarPayload | null;
+      if (
+        savedCalendar
+        && Array.isArray(savedCalendar.events)
+        && typeof savedCalendar.fetchedAt === "string"
+        && typeof savedCalendar.coverage?.from === "string"
+        && typeof savedCalendar.coverage?.to === "string"
+      ) {
+        payloadRef.current = savedCalendar;
+        setPayload(savedCalendar);
+        setLoading(false);
+      }
     } catch {}
   }, []);
 
@@ -286,22 +302,25 @@ export default function NewsWorkspace() {
 
   const loadCalendar = useCallback(async (manual = false) => {
     if (manual) setRefreshing(true);
-    else setLoading(true);
+    else if (!payloadRef.current) setLoading(true);
     try {
-      const from = shiftDate(selectedDate, -1);
-      const to = shiftDate(selectedDate, 1);
+      const today = dateKey(new Date());
+      const from = shiftDate(today, -CALENDAR_HISTORY_DAYS);
+      const to = shiftDate(today, CALENDAR_FORWARD_DAYS);
       const response = await fetch(`/api/economic-calendar?from=${from}&to=${to}`, { cache: "no-store" });
       const next = await response.json() as EconomicCalendarPayload & { error?: string };
       if (!response.ok) throw new Error(next.error || "Economic calendar could not be loaded.");
+      payloadRef.current = next;
       setPayload(next);
+      window.localStorage.setItem(CALENDAR_CACHE_STORAGE_KEY, JSON.stringify(next));
       setError(null);
-    } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "Economic calendar could not be loaded.");
+    } catch {
+      setError(payloadRef.current ? null : "The calendar is reconnecting. It will retry automatically.");
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [selectedDate]);
+  }, []);
 
   useEffect(() => {
     const timer = window.setTimeout(() => void loadCalendar(), 0);
@@ -309,8 +328,8 @@ export default function NewsWorkspace() {
   }, [loadCalendar]);
 
   useEffect(() => {
-    if (!payload) return;
-    const timer = window.setInterval(() => void loadCalendar(true), payload.refreshAfterMs);
+    const refreshAfterMs = Math.max(60_000, payload?.refreshAfterMs ?? 60_000);
+    const timer = window.setInterval(() => void loadCalendar(), refreshAfterMs);
     return () => window.clearInterval(timer);
   }, [loadCalendar, payload]);
 
@@ -394,7 +413,7 @@ export default function NewsWorkspace() {
           <span className="font-mono text-[10px] font-semibold">{formatClock(clock)}</span>
           <span className="text-[8px] font-semibold uppercase tracking-[0.12em] text-muted">AEST</span>
         </div>
-        <div className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-[9px] ${payload?.partial ? "border-danger/20 bg-danger/10 text-danger" : "border-border bg-surface text-muted"}`}>
+        <div className="flex items-center gap-2 rounded-xl border border-border bg-surface px-3 py-2 text-[9px] text-muted">
           <span className={`h-1.5 w-1.5 rounded-full ${payload ? "bg-primary" : "bg-muted"}`} />
           {payload?.provider ?? "Calendar feed"}
         </div>
@@ -434,7 +453,7 @@ export default function NewsWorkspace() {
       </div>
 
       <main className="min-h-0 flex-1 overflow-y-auto">
-        {error ? <div className="border-b border-danger/20 bg-danger/10 px-4 py-2 text-center text-[10px] text-danger">{error}{payload ? " · Showing the last good calendar." : ""}</div> : null}
+        {error && !payload ? <div className="border-b border-danger/20 bg-danger/10 px-4 py-2 text-center text-[10px] text-danger">{error}</div> : null}
         <div className="mx-auto max-w-[1680px] p-3 lg:p-4 xl:p-5">
           <div className="mb-3 flex flex-wrap items-center gap-2">
             <button type="button" onClick={() => setSelectedDate(shiftDate(selectedDate, -1))} className="flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-panel text-muted hover:text-foreground" aria-label="Previous day"><ChevronLeft className="h-4 w-4" /></button>
@@ -488,7 +507,7 @@ export default function NewsWorkspace() {
           {payload && !payload.coverage.longRange && (selectedDate < payload.coverage.from || selectedDate > payload.coverage.to) ? (
             <div className="mb-3 flex items-start gap-2 rounded-xl border border-danger/20 bg-danger/[0.055] px-4 py-3 text-[10px] leading-5 text-muted">
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-danger" />
-              <span>This backup feed covers {payload.coverage.from} to {payload.coverage.to}. Add the long-range calendar key to populate dates beyond the current published week.</span>
+              <span>The current-week source covers {payload.coverage.from} to {payload.coverage.to}. The forward source is reconnecting automatically.</span>
             </div>
           ) : null}
 
@@ -563,7 +582,9 @@ export default function NewsWorkspace() {
 
           <div className="mt-3 flex flex-col gap-2 rounded-xl border border-border bg-panel px-4 py-3 text-[9px] leading-5 text-muted sm:flex-row sm:items-center sm:justify-between">
             <span>{payload?.note ?? "Economic calendar loading."}</span>
-            <span className="shrink-0 font-mono">{payload ? `Updated ${formatTime(payload.fetchedAt)} AEST` : "Connecting"}</span>
+            <span className="shrink-0 font-mono">
+              {payload ? `Updated ${formatTime(payload.fetchedAt)} AEST · Coverage ${payload.coverage.from} to ${payload.coverage.to}` : "Connecting"}
+            </span>
           </div>
           <div className="mt-3 flex items-start gap-2 px-2 py-2 text-[9px] leading-5 text-muted">
             <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
