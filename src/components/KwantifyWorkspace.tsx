@@ -7147,7 +7147,12 @@ export default function KwantifyWorkspace({
         />
 
         {bottomWorkspaceSection === "charts" && (
-        <header className="relative flex h-[52px] shrink-0 items-center gap-3 border-b border-border bg-panel px-5">
+        <header className="relative grid h-[94px] shrink-0 grid-cols-[minmax(0,1fr)_auto] grid-rows-[42px_52px] border-b border-border bg-panel">
+          <div className={`relative col-start-1 row-start-2 flex min-w-0 items-center gap-2 px-3 ${
+            showAllTF
+              ? "overflow-visible"
+              : "overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          }`}>
           {chartTrades.length > 0 && (
             <>
               <div className="mx-1 h-5 w-px bg-border" />
@@ -7290,7 +7295,9 @@ export default function KwantifyWorkspace({
               </div>
             )}
           </div>
-          <div className="absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-1/2 items-center gap-1 rounded-xl border border-border bg-surface/70 p-1">
+          </div>
+          <div className="col-span-2 col-start-1 row-start-1 flex min-w-0 items-center justify-start gap-1 overflow-x-auto border-b border-border/70 px-3 [scrollbar-width:none] sm:justify-center [&::-webkit-scrollbar]:hidden">
+            <div className="flex shrink-0 items-center gap-1 rounded-xl border border-border bg-surface/70 p-1">
             {[
               {
                 layout: "single" as Exclude<WorkspaceLayout, "custom">,
@@ -7554,7 +7561,8 @@ export default function KwantifyWorkspace({
               ) : null}
             </div>
           </div>
-          <div className="flex-1" />
+          </div>
+          <div className="col-start-2 row-start-2 flex min-w-0 items-center justify-end gap-2 px-3">
           <ChartIndicatorsControl
             instrument={displayCmeSymbol(activeWorkspacePane.symbol)}
             timeframe={formatChartInterval(activeWorkspacePane.timeframe)}
@@ -7581,16 +7589,17 @@ export default function KwantifyWorkspace({
                 ? <Check className="h-3.5 w-3.5" />
                 : <Layers3 className="h-3.5 w-3.5" />}
             {quickGameplanLoading
-              ? `Updating ${activeGameplanRoot ?? ""}`
+              ? <span className="hidden xl:inline">{`Updating ${activeGameplanRoot ?? ""}`}</span>
               : activeGameplanRoot && quickGameplanUpdatedRoot === activeGameplanRoot
-                ? `${activeGameplanRoot} Levels Updated`
-                : "Add Gameplan Levels"}
+                ? <span className="hidden xl:inline">{`${activeGameplanRoot} Levels Updated`}</span>
+                : <span className="hidden xl:inline">Add Gameplan Levels</span>}
           </button>
           <TimeZoneSelect
             value={chartSettings.timezone}
             onChange={changeChartTimeZone}
             menuLabel="Chart timezone"
             compact
+            className="max-w-[36px] px-2 sm:max-w-[190px] sm:px-2.5 [&>span]:hidden sm:[&>span]:block [&>svg:last-child]:hidden sm:[&>svg:last-child]:block"
           />
           <button
             type="button"
@@ -7602,6 +7611,7 @@ export default function KwantifyWorkspace({
             <Download className="h-4 w-4" />
           </button>
           <button onClick={signOut} title={currentUsername ? `@${currentUsername}` : "Account"} className="flex h-8 w-8 items-center justify-center rounded-full border border-border bg-surface transition-colors hover:bg-card"><User className="h-4 w-4 text-muted" /></button>
+          </div>
         </header>
         )}
 
