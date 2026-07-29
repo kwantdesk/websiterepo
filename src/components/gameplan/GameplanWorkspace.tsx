@@ -6,24 +6,31 @@ import {
   ArrowRight,
   ArrowUp,
   Bell,
+  BrainCircuit,
   BookOpen,
   Check,
   ChevronDown,
   Clock3,
   Copy,
+  Database,
   Download,
   ExternalLink,
   FileDown,
   Gauge,
   GitCompareArrows,
+  History,
   Info,
   Layers3,
+  ListChecks,
   Loader2,
   Map,
   Pin,
+  Radio,
   RefreshCw,
   Route,
+  Scale,
   ShieldAlert,
+  ShieldCheck,
   Sparkles,
   Target,
   X,
@@ -52,6 +59,15 @@ import {
   type VolatilityCandle,
   type VolatilitySnapshot,
 } from "@/lib/volatilityRegime";
+import {
+  analystPublishReason,
+  buildLiveAnalystSnapshot,
+  createLiveAnalystEntry,
+  isLiveAnalystEntry,
+  reviewLiveAnalystEntry,
+  type LiveAnalystEntry,
+  type LiveAnalystSnapshot,
+} from "@/lib/gameplanLiveAnalyst";
 
 type DetailMode = "beginner" | "standard" | "pro";
 type Level = GameplanEdition["ladder"][number];
@@ -739,6 +755,471 @@ function Environment({
   );
 }
 
+type AnalystView = "live" | "log" | "reviews";
+type AnalystArchiveState = "syncing" | "cloud" | "local";
+
+function liveAnalystStorageKey(root: "NQ" | "ES") {
+  return `kwantdesk:gameplan-live-analyst:${root.toLowerCase()}:v1`;
+}
+
+function mergeLiveAnalystEntries(...collections: LiveAnalystEntry[][]) {
+  const merged = new globalThis.Map<string, LiveAnalystEntry>();
+  for (const collection of collections) {
+    for (const entry of collection) {
+      const existing = merged.get(entry.id);
+      if (!existing || (!existing.review && entry.review)) merged.set(entry.id, entry);
+    }
+  }
+  return [...merged.values()]
+    .sort((left, right) => Date.parse(right.generatedAt) - Date.parse(left.generatedAt))
+    .slice(0, 240);
+}
+
+function readLocalAnalystEntries(root: "NQ" | "ES") {
+  if (typeof window === "undefined") return [];
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(liveAnalystStorageKey(root)) ?? "[]") as unknown;
+    return Array.isArray(parsed) ? parsed.filter(isLiveAnalystEntry) : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeLocalAnalystEntries(root: "NQ" | "ES", entries: LiveAnalystEntry[]) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(liveAnalystStorageKey(root), JSON.stringify(entries.slice(0, 240)));
+  } catch {
+    // The private cloud archive remains the primary durable store.
+  }
+}
+
+function analystMemoryRecord(entry: LiveAnalystEntry) {
+  return {
+    id: entry.id,
+    root: entry.root,
+    type: "context",
+    createdAt: entry.generatedAt,
+    price: entry.price,
+    levelId: entry.nearestLevel.id,
+    levelName: entry.nearestLevel.name,
+    zone: entry.nearestLevel.zone,
+    reasoning: entry.thesis,
+    detail: "Kwant Desk Gameplan Live Market Analyst",
+    analyst: entry,
+  };
+}
+
+function trendTone(trend: LiveAnalystSnapshot["timeframe"]["fifteenMinute"]) {
+  if (trend === "UP") return "border-primary/25 bg-primary/10 text-primary";
+  if (trend === "DOWN") return "border-danger/25 bg-danger/10 text-danger";
+  return "border-border bg-surface text-muted";
+}
+
+function controlTone(control: LiveAnalystSnapshot["control"]) {
+  if (control === "BUYERS") return "text-primary";
+  if (control === "SELLERS") return "text-danger";
+  return "text-foreground";
+}
+
+function phaseLabel(phase: LiveAnalystSnapshot["phase"]) {
+  if (phase === "TESTING") return "LEVEL TEST";
+  if (phase === "APPROACH") return "LEVEL APPROACH";
+  if (phase === "EXPANSION") return "STRUCTURAL EXPANSION";
+  if (phase === "ROTATION") return "ROTATION";
+  return "OBSERVING";
+}
+
+function LiveMarketAnalyst({
+  root,
+  session,
+  plan,
+  currentPrice,
+  candles,
+  volatility,
+  feedState,
+}: {
+  root: "NQ" | "ES";
+  session: GameplanSession;
+  plan: GameplanEdition;
+  currentPrice: number | null;
+  candles: VolatilityCandle[];
+  volatility: VolatilitySnapshot | null;
+  feedState: "connecting" | "live" | "fallback";
+}) {
+  const [view, setView] = useState<AnalystView>("live");
+  const [entries, setEntries] = useState<LiveAnalystEntry[]>([]);
+  const [archiveState, setArchiveState] = useState<AnalystArchiveState>("syncing");
+  const [archiveReady, setArchiveReady] = useState(false);
+  const [analystClock, setAnalystClock] = useState(() => Date.now());
+  const entriesRef = useRef<LiveAnalystEntry[]>([]);
+  const snapshotRef = useRef<LiveAnalystSnapshot | null>(null);
+  const candlesRef = useRef<VolatilityCandle[]>(candles);
+  const currentPriceRef = useRef<number | null>(currentPrice);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setAnalystClock(Date.now()), 5_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    entriesRef.current = entries;
+  }, [entries]);
+
+  useEffect(() => {
+    candlesRef.current = candles;
+    currentPriceRef.current = currentPrice;
+  }, [candles, currentPrice]);
+
+  useEffect(() => {
+    let active = true;
+    const local = readLocalAnalystEntries(root);
+    entriesRef.current = local;
+    setEntries(local);
+    setArchiveReady(false);
+    setArchiveState("syncing");
+
+    void fetch(`/api/kwantbot/archive?root=${root}`, {
+      cache: "no-store",
+      credentials: "same-origin",
+    })
+      .then(async (response) => {
+        const payload = await response.json() as {
+          memory?: Array<{ analyst?: unknown }>;
+        };
+        if (!response.ok) throw new Error("Archive unavailable");
+        const remote = (payload.memory ?? [])
+          .map((record) => record.analyst)
+          .filter(isLiveAnalystEntry);
+        if (!active) return;
+        const next = mergeLiveAnalystEntries(local, remote);
+        entriesRef.current = next;
+        setEntries(next);
+        writeLocalAnalystEntries(root, next);
+        setArchiveState("cloud");
+      })
+      .catch(() => {
+        if (active) setArchiveState("local");
+      })
+      .finally(() => {
+        if (active) setArchiveReady(true);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [root]);
+
+  const baseSnapshot = useMemo(
+    () => buildLiveAnalystSnapshot({
+      root,
+      session,
+      plan,
+      currentPrice,
+      candles,
+      volatility,
+      now: analystClock,
+    }),
+    [analystClock, candles, currentPrice, plan, root, session, volatility],
+  );
+
+  const snapshot = useMemo(() => {
+    if (!baseSnapshot) return null;
+    const reviewedAtLevel = entries.find((entry) =>
+      entry.nearestLevel.id === baseSnapshot.nearestLevel.id
+      && entry.review);
+    const previous = entries.find((entry) =>
+      entry.session === session
+      && entry.sessionDate === plan.edition.date);
+    const memoryCopy = reviewedAtLevel?.review
+      ? reviewedAtLevel.review.verdict === "SUPPORTED"
+        ? ` Memory check: the most recent completed read at this level was supported with a ${reviewedAtLevel.review.reasoningScore}% reasoning score, but today still requires fresh confirmation.`
+        : reviewedAtLevel.review.verdict === "FAILED"
+          ? ` Memory check: the prior read at this level failed review, so this version requires stronger acceptance before assigning continuation.`
+          : " Memory check: the prior read at this level remained inconclusive, so no historical directional weight is being added."
+      : "";
+    const revisionCopy = previous && previous.control !== baseSnapshot.control
+      ? ` This revises the previous ${previous.control.toLowerCase()} read because the current timeframe evidence now favours ${baseSnapshot.control.toLowerCase()}.`
+      : "";
+    return {
+      ...baseSnapshot,
+      thesis: `${baseSnapshot.thesis}${revisionCopy}${memoryCopy}`,
+    };
+  }, [baseSnapshot, entries, plan.edition.date, session]);
+
+  useEffect(() => {
+    snapshotRef.current = snapshot;
+  }, [snapshot]);
+
+  const persistEntries = useCallback((records: LiveAnalystEntry[]) => {
+    if (!records.length) return;
+    const next = mergeLiveAnalystEntries(entriesRef.current, records);
+    entriesRef.current = next;
+    setEntries(next);
+    writeLocalAnalystEntries(root, next);
+    setArchiveState((current) => current === "cloud" ? "cloud" : "syncing");
+    void fetch("/api/kwantbot/archive", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ memory: records.map(analystMemoryRecord) }),
+    })
+      .then((response) => {
+        if (!response.ok) throw new Error("Archive unavailable");
+        setArchiveState("cloud");
+      })
+      .catch(() => setArchiveState("local"));
+  }, [root]);
+
+  useEffect(() => {
+    if (!archiveReady) return;
+    const evaluate = () => {
+      const current = snapshotRef.current;
+      const livePrice = currentPriceRef.current;
+      if (!current || livePrice === null) return;
+      const now = Date.now();
+      const reviewed = entriesRef.current
+        .filter((entry) => !entry.review)
+        .slice(0, 16)
+        .flatMap((entry) => {
+          const updated = reviewLiveAnalystEntry({
+            entry,
+            candles: candlesRef.current,
+            currentPrice: livePrice,
+            now,
+          });
+          return updated ? [updated] : [];
+        });
+      const entriesWithReviews = mergeLiveAnalystEntries(entriesRef.current, reviewed);
+      const previous = entriesWithReviews.find((entry) =>
+        entry.root === current.root
+        && entry.session === current.session
+        && entry.sessionDate === current.sessionDate) ?? null;
+      const reason = analystPublishReason(previous, current, now);
+      const nextEntry = reason ? createLiveAnalystEntry(current, reason) : null;
+      persistEntries(nextEntry ? [...reviewed, nextEntry] : reviewed);
+    };
+    evaluate();
+    const timer = window.setInterval(evaluate, 10_000);
+    return () => window.clearInterval(timer);
+  }, [archiveReady, persistEntries, root, session]);
+
+  const currentEntries = entries.filter((entry) =>
+    entry.sessionDate === plan.edition.date
+    && entry.session === session);
+  const reviewedEntries = entries.filter((entry) => entry.review);
+  const averageReviewScore = reviewedEntries.length
+    ? Math.round(reviewedEntries.reduce((sum, entry) => sum + (entry.review?.reasoningScore ?? 0), 0) / reviewedEntries.length)
+    : null;
+  const lastLogged = currentEntries[0] ?? null;
+  const timeframeAligned = Boolean(
+    snapshot
+    && snapshot.timeframe.fifteenMinute !== "FLAT"
+    && snapshot.timeframe.fifteenMinute === snapshot.timeframe.oneHour,
+  );
+  const levelEngaged = snapshot?.phase === "TESTING" || snapshot?.phase === "APPROACH";
+  const acceptancePresent = snapshot?.phase === "EXPANSION" && timeframeAligned;
+
+  return (
+    <Panel className="overflow-hidden">
+      <SectionHeading
+        icon={BrainCircuit}
+        eyebrow="Structured market reasoning"
+        title="Live Market Analyst"
+        trailing={(
+          <span className={`flex items-center gap-1.5 rounded-lg border px-2 py-1 font-mono text-[8px] font-semibold ${
+            feedState === "live"
+              ? "border-primary/20 bg-primary/10 text-primary"
+              : "border-border bg-surface text-muted"
+          }`}>
+            <span className={`h-1.5 w-1.5 rounded-full ${feedState === "live" ? "animate-pulse bg-primary" : "bg-muted"}`} />
+            {feedState === "live" ? "ANALYSING LIVE" : "RETAINING LAST READ"}
+          </span>
+        )}
+      />
+
+      <div className="flex border-b border-border bg-background/25 px-3">
+        {([
+          ["live", "Live read", Radio],
+          ["log", "Decision log", History],
+          ["reviews", "Reasoning reviews", Scale],
+        ] as const).map(([id, label, Icon]) => (
+          <button
+            key={id}
+            type="button"
+            onClick={() => setView(id)}
+            className={`relative flex h-10 items-center gap-1.5 px-2.5 text-[8px] font-semibold transition-colors ${
+              view === id ? "text-primary" : "text-muted hover:text-foreground"
+            }`}
+          >
+            <Icon className="h-3.5 w-3.5" />
+            {label}
+            {view === id ? <span className="absolute inset-x-2 bottom-0 h-px bg-primary shadow-[0_0_9px_var(--primary)]" /> : null}
+          </button>
+        ))}
+      </div>
+
+      {view === "live" ? (
+        !snapshot ? (
+          <div className="p-4">
+            <div className="rounded-xl border border-border bg-card p-5 text-center">
+              <BrainCircuit className="mx-auto h-5 w-5 text-muted" />
+              <div className="mt-2 text-[11px] font-semibold text-foreground">Building the first market read</div>
+              <p className="mt-1 text-[9px] leading-4 text-muted">Waiting for live price, named Gameplan levels, and enough five-minute structure.</p>
+            </div>
+          </div>
+        ) : (
+          <div className="p-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="rounded-md border border-primary/20 bg-primary/10 px-2 py-1 text-[8px] font-bold uppercase tracking-[0.13em] text-primary">{phaseLabel(snapshot.phase)}</span>
+              <span className={`text-[13px] font-semibold ${controlTone(snapshot.control)}`}>{snapshot.control} IN CONTROL</span>
+              <span className="ml-auto font-mono text-[10px] text-muted">{snapshot.confidence}% confidence</span>
+            </div>
+
+            <div className="mt-3 rounded-2xl border border-primary/20 bg-[radial-gradient(circle_at_90%_0%,color-mix(in_srgb,var(--primary)_10%,transparent),transparent_48%)] p-4">
+              <div className="flex items-start gap-3">
+                <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary">
+                  <BrainCircuit className="h-4 w-4" />
+                </span>
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-mono text-[11px] font-semibold text-foreground">{root} {formatPrice(snapshot.price)}</span>
+                    <span className="text-[8px] text-muted">{snapshot.nearestLevel.name} · {formatZone(snapshot.nearestLevel.zone)}</span>
+                  </div>
+                  <p className="mt-2 text-[10px] leading-5 text-foreground/90">{snapshot.thesis}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-3 grid grid-cols-3 gap-2">
+              {([
+                ["15M", snapshot.timeframe.fifteenMinute, snapshot.timeframe.fifteenMinuteMove],
+                ["1H", snapshot.timeframe.oneHour, snapshot.timeframe.oneHourMove],
+                ["4H", snapshot.timeframe.fourHour, snapshot.timeframe.fourHourMove],
+              ] as const).map(([label, trend, move]) => (
+                <div key={label} className={`rounded-xl border p-2.5 ${trendTone(trend)}`}>
+                  <div className="text-[7px] font-semibold uppercase tracking-[0.12em] opacity-70">{label} structure</div>
+                  <div className="mt-1 flex items-end justify-between gap-1">
+                    <span className="text-[10px] font-semibold">{trend}</span>
+                    <span className="font-mono text-[8px]">{move >= 0 ? "+" : ""}{formatPrice(move)}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-3 rounded-xl border border-border bg-card/55 p-3">
+              <div className="flex items-center gap-2 text-[8px] font-semibold text-foreground"><ListChecks className="h-3.5 w-3.5 text-primary" />Evidence gates</div>
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                {[
+                  ["Location mapped", true],
+                  ["Level engaged", levelEngaged],
+                  ["15M / 1H aligned", timeframeAligned],
+                  ["Acceptance present", acceptancePresent],
+                ].map(([label, complete]) => (
+                  <div key={String(label)} className="flex items-center gap-2 text-[8px] text-muted">
+                    <span className={`flex h-4 w-4 items-center justify-center rounded-full border ${complete ? "border-primary/30 bg-primary/10 text-primary" : "border-border bg-surface text-muted"}`}>
+                      {complete ? <Check className="h-2.5 w-2.5" /> : <span className="h-1 w-1 rounded-full bg-muted" />}
+                    </span>
+                    {label}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="mt-3 space-y-2">
+              <div className="rounded-xl border border-primary/20 bg-primary/[0.045] p-3">
+                <div className="text-[7px] font-bold uppercase tracking-[0.14em] text-primary">Confirmation</div>
+                <p className="mt-1.5 text-[9px] leading-4 text-muted">{snapshot.confirmation}</p>
+              </div>
+              <div className="rounded-xl border border-danger/20 bg-danger/[0.04] p-3">
+                <div className="text-[7px] font-bold uppercase tracking-[0.14em] text-danger">Invalidation</div>
+                <p className="mt-1.5 text-[9px] leading-4 text-muted">{snapshot.invalidation}</p>
+              </div>
+              <div className="rounded-xl border border-border bg-surface/35 p-3">
+                <div className="text-[7px] font-bold uppercase tracking-[0.14em] text-foreground">What matters next</div>
+                <p className="mt-1.5 text-[9px] leading-4 text-muted">{snapshot.nextEvidence}</p>
+              </div>
+            </div>
+
+            <div className="mt-3 flex flex-wrap items-center gap-1.5 text-[7px] text-muted">
+              <span className="rounded-md border border-border bg-surface px-2 py-1">{snapshot.options.coverage === "FULL" ? "US OPTIONS ACTIVE" : "OPTIONS MAP / THIN LIVE FLOW"}</span>
+              <span className="rounded-md border border-border bg-surface px-2 py-1">{snapshot.options.tape.toUpperCase()} TAPE</span>
+              <span className="rounded-md border border-border bg-surface px-2 py-1">{snapshot.volatility.regime} VOL · {snapshot.volatility.trend}</span>
+              <span className="ml-auto flex items-center gap-1 font-mono">
+                <Database className="h-3 w-3 text-primary" />
+                {archiveState === "cloud" ? "PRIVATE CLOUD MEMORY" : archiveState === "syncing" ? "SYNCING MEMORY" : "LOCAL MEMORY"}
+              </span>
+            </div>
+          </div>
+        )
+      ) : null}
+
+      {view === "log" ? (
+        <div className="max-h-[520px] space-y-2 overflow-y-auto p-3">
+          {currentEntries.length ? currentEntries.slice(0, 40).map((entry) => (
+            <div key={entry.id} className="rounded-xl border border-border bg-card p-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="rounded-md border border-primary/20 bg-primary/10 px-1.5 py-0.5 text-[7px] font-bold uppercase tracking-[0.12em] text-primary">{entry.reason}</span>
+                <span className={`text-[8px] font-semibold ${controlTone(entry.control)}`}>{entry.control}</span>
+                <span className="font-mono text-[8px] text-muted">{formatPrice(entry.price)}</span>
+                <span className="ml-auto font-mono text-[7px] text-muted">{formatLiveTimestamp(entry.generatedAt)}</span>
+              </div>
+              <p className="mt-2 text-[9px] leading-4 text-muted">{entry.thesis}</p>
+              <div className="mt-2 flex items-center gap-2 border-t border-border/70 pt-2 text-[7px] text-muted">
+                <span>{entry.nearestLevel.name} · {formatZone(entry.nearestLevel.zone)}</span>
+                <span className="ml-auto">Process score <strong className="text-foreground">{entry.processScore}%</strong></span>
+                {entry.review ? <span className={entry.review.verdict === "SUPPORTED" ? "text-primary" : entry.review.verdict === "FAILED" ? "text-danger" : "text-muted"}>{entry.review.verdict}</span> : <span>Review pending</span>}
+              </div>
+            </div>
+          )) : (
+            <div className="rounded-xl border border-border bg-card p-5 text-center">
+              <History className="mx-auto h-5 w-5 text-muted" />
+              <div className="mt-2 text-[10px] font-semibold text-foreground">The decision log is building</div>
+              <p className="mt-1 text-[8px] text-muted">The first entry appears after live price and the current Gameplan are aligned.</p>
+            </div>
+          )}
+        </div>
+      ) : null}
+
+      {view === "reviews" ? (
+        <div className="p-3">
+          <div className="grid grid-cols-3 gap-2">
+            <div className="rounded-xl border border-border bg-card p-3"><div className="text-[7px] uppercase tracking-[0.12em] text-muted">Reviewed</div><div className="mt-1 font-mono text-[16px] font-semibold text-foreground">{reviewedEntries.length}</div></div>
+            <div className="rounded-xl border border-border bg-card p-3"><div className="text-[7px] uppercase tracking-[0.12em] text-muted">Reasoning</div><div className="mt-1 font-mono text-[16px] font-semibold text-primary">{averageReviewScore ?? "—"}{averageReviewScore !== null ? "%" : ""}</div></div>
+            <div className="rounded-xl border border-border bg-card p-3"><div className="text-[7px] uppercase tracking-[0.12em] text-muted">Window</div><div className="mt-1 font-mono text-[16px] font-semibold text-foreground">15M</div></div>
+          </div>
+          <div className="mt-3 max-h-[430px] space-y-2 overflow-y-auto">
+            {reviewedEntries.length ? reviewedEntries.slice(0, 30).map((entry) => (
+              <div key={entry.id} className="rounded-xl border border-border bg-card p-3">
+                <div className="flex items-center gap-2">
+                  <ShieldCheck className={`h-3.5 w-3.5 ${entry.review?.verdict === "SUPPORTED" ? "text-primary" : entry.review?.verdict === "FAILED" ? "text-danger" : "text-muted"}`} />
+                  <span className="text-[8px] font-semibold text-foreground">{entry.review?.verdict}</span>
+                  <span className="text-[7px] text-muted">{entry.reason} · {entry.nearestLevel.name}</span>
+                  <span className="ml-auto font-mono text-[10px] font-semibold text-primary">{entry.review?.reasoningScore}%</span>
+                </div>
+                <p className="mt-2 text-[9px] leading-4 text-muted">{entry.review?.note}</p>
+                <div className="mt-2 text-[7px] text-muted">Original process {entry.processScore}% · move {entry.review && entry.review.move >= 0 ? "+" : ""}{formatPrice(entry.review?.move ?? 0)} · reviewed {formatLiveTimestamp(entry.review?.reviewedAt ?? null)}</div>
+              </div>
+            )) : (
+              <div className="rounded-xl border border-border bg-card p-5 text-center">
+                <Scale className="mx-auto h-5 w-5 text-muted" />
+                <div className="mt-2 text-[10px] font-semibold text-foreground">No completed reasoning reviews yet</div>
+                <p className="mt-1 text-[8px] leading-4 text-muted">Each material read is reviewed after 15 minutes. Unproven is recorded as inconclusive—not forced into right or wrong.</p>
+              </div>
+            )}
+          </div>
+        </div>
+      ) : null}
+
+      <div className="flex items-center gap-2 border-t border-border bg-background/25 px-4 py-2 text-[7px] text-muted">
+        <ShieldCheck className="h-3 w-3 text-primary" />
+        Deterministic evidence model · no generative opinion · material changes only
+        <span className="ml-auto font-mono">{lastLogged ? `Last log ${formatUpdateAge(lastLogged.generatedAt, analystClock)}` : "Initialising log"}</span>
+      </div>
+    </Panel>
+  );
+}
+
 function ScenarioRoads({ plan }: { plan: GameplanEdition }) {
   return (
     <Panel className="overflow-hidden">
@@ -1384,13 +1865,24 @@ export default function GameplanWorkspace({ initialInstrument = "NQ" }: { initia
               setWhatIf={setWhatIf}
               onGlossary={setGlossaryTerm}
             />
-            <Environment
-              plan={plan}
-              snapshot={volatilitySnapshot}
-              loading={volatilityLoading}
-              error={volatilityError}
-              feedState={liveFeedState}
-            />
+            <div className="space-y-3">
+              <LiveMarketAnalyst
+                root={root}
+                session={session}
+                plan={plan}
+                currentPrice={currentPrice}
+                candles={volatilityCandles}
+                volatility={volatilitySnapshot}
+                feedState={liveFeedState}
+              />
+              <Environment
+                plan={plan}
+                snapshot={volatilitySnapshot}
+                loading={volatilityLoading}
+                error={volatilityError}
+                feedState={liveFeedState}
+              />
+            </div>
           </div>
 
           <div className="mb-3"><ScenarioRoads plan={plan} /></div>
