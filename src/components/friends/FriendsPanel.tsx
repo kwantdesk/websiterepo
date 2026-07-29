@@ -96,7 +96,6 @@ export default function FriendsPanel({ onClose, onUnreadCountChange }: FriendsPa
   const [showBlocked, setShowBlocked] = useState(false);
   const [activeFriendId, setActiveFriendId] = useState("");
   const [draft, setDraft] = useState("");
-  const [presenceDraft, setPresenceDraft] = useState("");
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -212,7 +211,7 @@ export default function FriendsPanel({ onClose, onUnreadCountChange }: FriendsPa
     setShowPresence(false);
     await runAction("status", {
       presenceStatus,
-      presenceMessage: presenceDraft || payload.viewer?.presenceMessage || "",
+      presenceMessage: payload.viewer?.presenceMessage || "",
     });
   };
 
@@ -228,14 +227,6 @@ export default function FriendsPanel({ onClose, onUnreadCountChange }: FriendsPa
     setDraft("");
     const sent = await runAction("message", { targetUserId: activeFriend.userId, body });
     if (sent) await load(activeFriend.userId, true);
-  };
-
-  const updatePresenceMessage = async () => {
-    const saved = await runAction("status", {
-      presenceStatus: payload.viewer?.presenceStatus ?? "online",
-      presenceMessage: presenceDraft,
-    });
-    if (saved) setShowPresence(false);
   };
 
   const closeFriendship = async (action: "remove" | "block") => {
@@ -412,23 +403,6 @@ export default function FriendsPanel({ onClose, onUnreadCountChange }: FriendsPa
                 {payload.viewer?.presenceStatus === option.value && <Check className="h-3.5 w-3.5 text-primary" />}
               </button>
             ))}
-            <div className="mt-1 border-t border-border p-1.5">
-              <input
-                value={presenceDraft}
-                onChange={(event) => setPresenceDraft(event.target.value.slice(0, 80))}
-                onFocus={() => {
-                  if (!presenceDraft) setPresenceDraft(payload.viewer?.presenceMessage ?? "");
-                }}
-                placeholder="Add a short status"
-                className="h-8 w-full rounded-lg border border-border bg-surface px-2.5 text-[10px] outline-none placeholder:text-muted focus:border-primary/40"
-              />
-              <button
-                onClick={() => void updatePresenceMessage()}
-                className="mt-1.5 w-full rounded-lg bg-primary px-2 py-1.5 text-[9px] font-semibold text-background"
-              >
-                Save status
-              </button>
-            </div>
           </div>
         )}
       </div>
