@@ -941,7 +941,11 @@ function sanitizeCandles(candles: Candle[], symbol: string) {
     const previous = rows[index - 1];
     const next = rows[index + 1];
     const reference = previous.close;
-    const moveLimit = getSingleTickMoveLimit(rows.slice(0, index), symbol, reference);
+    // Only the recent volatility window is used by getSingleTickMoveLimit.
+    // Slicing the entire history for every candle made this pass O(n²) and
+    // blocked the chart thread on multi-day intraday histories.
+    const recentHistory = rows.slice(Math.max(0, index - 20), index);
+    const moveLimit = getSingleTickMoveLimit(recentHistory, symbol, reference);
     const nextConfirmsReference = Boolean(
       next && Math.abs(next.close - reference) <= moveLimit,
     );
