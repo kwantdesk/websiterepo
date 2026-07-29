@@ -4,6 +4,7 @@ import { getDatabentoBars } from "@/lib/databento";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 export const maxDuration = 60;
+export const preferredRegion = "iad1";
 
 type HistoryCacheEntry = {
   candles: Awaited<ReturnType<typeof getDatabentoBars>>;
