@@ -774,18 +774,30 @@ function isPositiveFinite(value: number) {
 }
 
 function getLiveMoveLimit(symbol: string) {
-  if (["EURUSD", "GBPUSD", "AUDUSD", "NZDUSD", "USDCAD", "USDCHF"].includes(symbol)) return 0.035;
-  if (symbol === "USDJPY") return 0.04;
-  if (["XAUUSD", "XAGUSD", "MGC", "GC"].includes(symbol)) return 0.08;
-  if (["NAS100", "S&P500", "GER40", "UK100", "DOW30", "NIKKEI", "MNQ", "NQ", "MES", "ES", "MYM", "YM", "M2K", "RTY"].includes(symbol)) return 0.1;
+  const root = displayCmeSymbol(symbol);
+  if (["EURUSD", "GBPUSD", "AUDUSD", "NZDUSD", "USDCAD", "USDCHF"].includes(root)) return 0.035;
+  if (root === "USDJPY") return 0.04;
+  if (["XAUUSD", "XAGUSD", "MGC", "GC"].includes(root)) return 0.08;
+  if (["NAS100", "S&P500", "GER40", "UK100", "DOW30", "NIKKEI", "MNQ", "NQ", "MES", "ES", "MYM", "YM", "M2K", "RTY"].includes(root)) return 0.1;
   return 0.12;
 }
 
 function getCandleRangeLimit(symbol: string) {
-  if (["EURUSD", "GBPUSD", "AUDUSD", "NZDUSD", "USDCAD", "USDCHF"].includes(symbol)) return 0.12;
-  if (symbol === "USDJPY") return 0.15;
-  if (["XAUUSD", "XAGUSD", "MGC", "GC"].includes(symbol)) return 0.25;
+  const root = displayCmeSymbol(symbol);
+  if (["EURUSD", "GBPUSD", "AUDUSD", "NZDUSD", "USDCAD", "USDCHF"].includes(root)) return 0.12;
+  if (root === "USDJPY") return 0.15;
+  if (["XAUUSD", "XAGUSD", "MGC", "GC"].includes(root)) return 0.25;
   return 0.4;
+}
+
+function getSingleTickMoveRatio(symbol: string) {
+  const root = displayCmeSymbol(symbol);
+  if (["MNQ", "NQ", "MES", "ES", "MYM", "YM", "M2K", "RTY"].includes(root)) return 0.002;
+  if (["6E", "6J", "6B", "6A", "6C"].includes(root)) return 0.0015;
+  if (["ZN", "ZB", "ZF", "ZT", "SR3"].includes(root)) return 0.002;
+  if (["CL", "NG", "RB", "HO"].includes(root)) return 0.006;
+  if (["GC", "MGC", "SI", "HG", "PL"].includes(root)) return 0.004;
+  return 0.003;
 }
 
 function getRecentTypicalRange(candles: Candle[], lookback = 8) {
@@ -803,6 +815,82 @@ function getRecentTypicalRange(candles: Candle[], lookback = 8) {
   const middle = Math.floor(ranges.length / 2);
   if (ranges.length % 2 === 0) return (ranges[middle - 1] + ranges[middle]) / 2;
   return ranges[middle];
+}
+
+function getSingleTickMoveLimit(candles: Candle[], symbol: string, reference: number) {
+  const typicalRange = getRecentTypicalRange(candles, 20);
+  return Math.max(
+    futuresTickSize(symbol) * 16,
+    reference * getSingleTickMoveRatio(symbol),
+    typicalRange * 3,
+  );
+}
+
+type LiveOutlierCandidate = {
+  price: number;
+  count: number;
+  firstSeenAt: number;
+  lastEventTimestamp: number;
+};
+
+function validateLiveTick(args: {
+  candles: Candle[];
+  symbol: string;
+  price: number;
+  timestamp: number;
+  referencePrice: number | null;
+  referenceTimestamp: number | null;
+  candidate: LiveOutlierCandidate | null;
+}) {
+  const {
+    candles,
+    symbol,
+    price,
+    timestamp,
+    referencePrice,
+    referenceTimestamp,
+    candidate,
+  } = args;
+  if (!isPositiveFinite(price) || !Number.isFinite(timestamp)) {
+    return { accepted: false, candidate: null as LiveOutlierCandidate | null };
+  }
+  if (referenceTimestamp !== null && timestamp < referenceTimestamp - 2_000) {
+    return { accepted: false, candidate };
+  }
+  if (!referencePrice || !isPositiveFinite(referencePrice)) {
+    return { accepted: true, candidate: null as LiveOutlierCandidate | null };
+  }
+
+  const move = Math.abs(price - referencePrice);
+  const limit = getSingleTickMoveLimit(candles, symbol, referencePrice);
+  if (move <= limit) {
+    return { accepted: true, candidate: null as LiveOutlierCandidate | null };
+  }
+
+  const now = Date.now();
+  const tolerance = Math.max(futuresTickSize(symbol) * 16, limit * 0.12);
+  const continuesCandidate =
+    candidate
+    && now - candidate.firstSeenAt <= 3_000
+    && Math.abs(price - candidate.price) <= tolerance;
+  const nextCandidate: LiveOutlierCandidate = continuesCandidate
+    ? {
+        price: (candidate.price * candidate.count + price) / (candidate.count + 1),
+        count: candidate.count + (timestamp === candidate.lastEventTimestamp ? 0 : 1),
+        firstSeenAt: candidate.firstSeenAt,
+        lastEventTimestamp: timestamp,
+      }
+    : {
+        price,
+        count: 1,
+        firstSeenAt: now,
+        lastEventTimestamp: timestamp,
+      };
+
+  if (nextCandidate.count >= 4) {
+    return { accepted: true, candidate: null as LiveOutlierCandidate | null };
+  }
+  return { accepted: false, candidate: nextCandidate };
 }
 
 function sanitizeCandle(candle: Candle, symbol: string, referencePrice?: number): Candle | null {
@@ -848,7 +936,48 @@ function sanitizeCandles(candles: Candle[], symbol: string) {
     if (cleanCandle) cleanCandles.push(cleanCandle);
   }
 
-  return cleanCandles;
+  return cleanCandles.map((candle, index, rows) => {
+    if (index === 0) return candle;
+    const previous = rows[index - 1];
+    const next = rows[index + 1];
+    const reference = previous.close;
+    const moveLimit = getSingleTickMoveLimit(rows.slice(0, index), symbol, reference);
+    const nextConfirmsReference = Boolean(
+      next && Math.abs(next.close - reference) <= moveLimit,
+    );
+    let open = candle.open;
+    let close = candle.close;
+
+    if (
+      Math.abs(open - reference) > moveLimit
+      && (Math.abs(close - reference) <= moveLimit || nextConfirmsReference)
+    ) open = reference;
+    if (
+      Math.abs(close - reference) > moveLimit
+      && nextConfirmsReference
+    ) close = Math.abs(next.open - reference) <= moveLimit ? next.open : reference;
+
+    const bodyHigh = Math.max(open, close);
+    const bodyLow = Math.min(open, close);
+    const bodyNearReference =
+      Math.abs(open - reference) <= moveLimit
+      || Math.abs(close - reference) <= moveLimit;
+    const repairIsConfirmed = nextConfirmsReference && bodyNearReference;
+    const high = repairIsConfirmed
+      ? Math.min(candle.high, bodyHigh + moveLimit)
+      : Math.max(candle.high, bodyHigh);
+    const low = repairIsConfirmed
+      ? Math.max(candle.low, bodyLow - moveLimit)
+      : Math.min(candle.low, bodyLow);
+
+    return {
+      ...candle,
+      open,
+      close,
+      high: Math.max(high, bodyHigh),
+      low: Math.min(low, bodyLow),
+    };
+  });
 }
 
 function mergeLiveMidIntoCandles(
@@ -880,13 +1009,12 @@ function mergeLiveMidIntoCandles(
   const liveBucketStart = getTimeframeBucketStart(tickTimestamp, timeframe);
 
   if (liveBucketStart > lastBucketStart) {
-    const anchor = repairedLast.close || repairedLast.open || mid;
     const nextCandle = sanitizeCandle(
       {
         timestamp: liveBucketStart,
-        open: anchor,
-        high: Math.max(anchor, mid),
-        low: Math.min(anchor, mid),
+        open: mid,
+        high: mid,
+        low: mid,
         close: mid,
       },
       symbol,
@@ -1516,6 +1644,7 @@ function WorkspaceChartPane({
     trades?: number;
     delta?: number;
   }>>([]);
+  const liveOutlierCandidateRef = useRef<LiveOutlierCandidate | null>(null);
   const liveFrameRef = useRef<number | null>(null);
   const gammaInstrument = displayCmeSymbol(pane.symbol);
   const gammaLevelsAvailable =
@@ -1626,6 +1755,7 @@ function WorkspaceChartPane({
       contractSymbol,
       tickSize: futuresTickSize(pane.symbol),
     };
+    liveOutlierCandidateRef.current = null;
     setGammaOverlay(null);
     setGammaLevelsError(null);
     setGammaLevelsLoading(gammaLevelsEnabled && gammaLevelsAvailable);
@@ -1782,10 +1912,23 @@ function WorkspaceChartPane({
         : (nameMap[price.instrument] || price.instrument);
       if (displayName !== pane.symbol) return;
 
+      const tickTimestamp = marketTimestamp(price.timestamp);
+      const latestFuture = latestFuturesRef.current;
+      const validation = validateLiveTick({
+        candles: latestCandlesRef.current,
+        symbol: pane.symbol,
+        price: Number(price.mid),
+        timestamp: tickTimestamp,
+        referencePrice: latestFuture.price,
+        referenceTimestamp: latestFuture.asOfMs,
+        candidate: liveOutlierCandidateRef.current,
+      });
+      liveOutlierCandidateRef.current = validation.candidate;
+      if (!validation.accepted) return;
+
       if (usingDatabentoPaneFeed && price.contractSymbol) {
         setResolvedContractSymbol(price.contractSymbol);
       }
-      const tickTimestamp = marketTimestamp(price.timestamp);
       latestFuturesRef.current = {
         price: price.mid,
         asOfMs: tickTimestamp,
@@ -1824,16 +1967,13 @@ function WorkspaceChartPane({
               : previous;
           }
           return ticks.reduce((current, tick) => {
-            const merged = mergeLiveMidIntoCandles(
+            return mergeLiveMidIntoCandles(
               current,
               tick.mid,
               pane.symbol,
               pane.timeframe,
               tick.timestamp,
             );
-            return merged === current
-              ? reanchorLiveMidIntoCandles(current, tick.mid, pane.symbol)
-              : merged;
           }, previous);
         });
       });
@@ -3798,10 +3938,28 @@ export default function KwantifyWorkspace({
         ? `/api/ctrader/stream?broker=${encodeURIComponent(activeChartBrokerLabel)}&symbols=${encodeURIComponent(watchlistSymbolsCsv)}`
         : "/api/oanda/stream",
     );
+    let lastMessageAt = Date.now();
+    let reconnecting = false;
+    let reconnectTimer: number | null = null;
+    const reconnect = () => {
+      if (reconnecting) return;
+      reconnecting = true;
+      eventSource.close();
+      setStreamHealthyByBroker((current) => ({ ...current, [activeChartBrokerLabel]: false }));
+      setFeedErrorByBroker((current) => ({
+        ...current,
+        [activeChartBrokerLabel]: `${displayMarketSource(activeChartBrokerLabel)} live feed is reconnecting.`,
+      }));
+      reconnectTimer = window.setTimeout(() => setStreamReconnectNonce((value) => value + 1), 1_200);
+    };
+    const healthTimer = window.setInterval(() => {
+      if (usingDatabentoFeed && Date.now() - lastMessageAt > 18_000) reconnect();
+    }, 3_000);
 
     eventSource.onmessage = (event) => {
       try {
         const price = JSON.parse(event.data) as LiveFeedPrice;
+        lastMessageAt = Date.now();
         if (price.error) {
           setFeedErrorByBroker((current) => ({ ...current, [activeChartBrokerLabel]: price.error as string }));
           return;
@@ -3897,18 +4055,14 @@ export default function KwantifyWorkspace({
     };
 
     eventSource.onerror = () => {
-      eventSource.close();
-      setStreamHealthyByBroker((current) => ({ ...current, [activeChartBrokerLabel]: false }));
-      setFeedErrorByBroker((current) => ({
-        ...current,
-        [activeChartBrokerLabel]: `${displayMarketSource(activeChartBrokerLabel)} live feed is reconnecting.`,
-      }));
-      window.setTimeout(() => setStreamReconnectNonce((value) => value + 1), 1200);
+      reconnect();
       console.log(`${activeChartBrokerLabel} stream disconnected, reconnecting...`);
     };
 
     return () => {
       eventSource.close();
+      window.clearInterval(healthTimer);
+      if (reconnectTimer !== null) window.clearTimeout(reconnectTimer);
       pendingWatchlistPricesRef.current.clear();
       pendingSelectedTicksRef.current = [];
       if (watchlistLiveFrameRef.current !== null) {
