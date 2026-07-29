@@ -6141,10 +6141,6 @@ export default function KwantifyWorkspace({
     );
   }
 
-  if (!authChecked) {
-    return <div className="h-screen w-screen bg-background" />;
-  }
-
   return (
     <div className="flex h-screen select-none overflow-hidden bg-background text-foreground">
       {showAI && (

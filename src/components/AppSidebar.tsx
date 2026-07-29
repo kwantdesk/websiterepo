@@ -132,6 +132,7 @@ export default function AppSidebar({
             <Link
               key={key}
               href={href}
+              prefetch
               aria-current={active ? "page" : undefined}
               className={active ? horizontalItemActive : horizontalItemInactive}
               title={title}
@@ -155,6 +156,7 @@ export default function AppSidebar({
       </button>
       <Link
         href="/settings"
+        prefetch
         className={activeItem === "settings" ? horizontalItemActive : horizontalItemInactive}
         title="Settings"
       >
