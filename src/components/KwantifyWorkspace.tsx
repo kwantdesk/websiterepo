@@ -1166,6 +1166,15 @@ function mergeLiveMidIntoCandles(
   return updated;
 }
 
+function hasFiveDayHistory(candles: Candle[], timeframe: string) {
+  if (candles.length === 0) return false;
+  const firstTimestamp = candles[0]?.timestamp ?? Number.POSITIVE_INFINITY;
+  const lastTimestamp = candles.at(-1)?.timestamp ?? 0;
+  const lastBucketEnd = lastTimestamp + getTimeframeMs(timeframe);
+  return firstTimestamp <= Date.now() - 4 * 24 * 60 * 60_000
+    && lastBucketEnd >= Date.now() - 3 * 24 * 60 * 60_000;
+}
+
 function reanchorLiveMidIntoCandles(candles: Candle[], mid: number, symbol: string) {
   if (!isPositiveFinite(mid) || candles.length === 0) return candles;
 
@@ -1208,8 +1217,7 @@ async function fetchWorkspaceCandles(symbol: string, timeframe: string, broker: 
     if (!response.ok) throw new Error(payload.error ?? `CME did not return candles for ${displayCmeSymbol(symbol)}.`);
     const downloaded = sanitizeCandles((payload.candles ?? []) as Candle[], symbol);
     if (downloaded.length) void writeChartHistoryCache(symbol, timeframe, downloaded);
-    const requestedFrom = Date.parse(periodConfig.from);
-    return downloaded.filter((candle) => candle.timestamp >= requestedFrom);
+    return downloaded;
   }
 
   try {
@@ -1735,6 +1743,7 @@ function WorkspaceChartPane({
   const intervalCommandInputRef = useRef<HTMLInputElement>(null);
   const intervalCommandPanelRef = useRef<HTMLDivElement>(null);
   const latestCandlesRef = useRef<Candle[]>([]);
+  const historyHydratedRef = useRef(false);
   const latestFuturesRef = useRef<{
     price: number | null;
     asOfMs: number | null;
@@ -1834,6 +1843,7 @@ function WorkspaceChartPane({
     setError(null);
     setCandles([]);
     latestCandlesRef.current = [];
+    historyHydratedRef.current = false;
 
     const loadHistory = async () => {
       const cached = pane.broker === "Databento"
@@ -1841,17 +1851,36 @@ function WorkspaceChartPane({
         : null;
       if (cancelled) return;
       const requestedFrom = Date.parse(getPeriodConfig(period).from);
-      const cachedCandles = cached?.candles.filter((candle) => candle.timestamp >= requestedFrom) ?? [];
+      const cachedHistory = sanitizeCandles(cached?.candles ?? [], pane.symbol);
+      const cachedCandles = cachedHistory.filter((candle) => candle.timestamp >= requestedFrom);
+      const needsFiveDayBackfill = pane.broker === "Databento"
+        && !isEventBasedChartInterval(pane.timeframe);
+      const cachedIsHydrated = cachedCandles.length > 0
+        && (!needsFiveDayBackfill || hasFiveDayHistory(cachedHistory, pane.timeframe));
       if (cachedCandles.length) {
-        setCandles(sanitizeCandles(cachedCandles, pane.symbol));
+        setCandles(cachedCandles);
+      }
+      if (cachedIsHydrated) {
+        historyHydratedRef.current = true;
         setLoading(false);
       }
 
       try {
         const nextCandles = await fetchWorkspaceCandles(pane.symbol, pane.timeframe, pane.broker, period);
         if (cancelled) return;
-        const clean = sanitizeCandles(nextCandles, pane.symbol);
-        if (!clean.length && !cachedCandles.length) throw new Error("No candles returned.");
+        const downloaded = sanitizeCandles(nextCandles, pane.symbol);
+        const clean = pane.broker === "Databento"
+          ? downloaded.filter((candle) => candle.timestamp >= requestedFrom)
+          : downloaded;
+        const mergedHistory = pane.broker === "Databento"
+          ? mergeChartHistory(cachedCandles, clean)
+          : clean;
+        const remoteIsHydrated = mergedHistory.length > 0
+          && (!needsFiveDayBackfill || hasFiveDayHistory(downloaded, pane.timeframe));
+        if (!remoteIsHydrated) {
+          throw new Error("Five-day history was incomplete.");
+        }
+        historyHydratedRef.current = true;
         setCandles((current) => pane.broker === "Databento"
           ? mergeChartHistory(current, clean)
           : clean);
@@ -1859,8 +1888,9 @@ function WorkspaceChartPane({
         setLoading(false);
       } catch {
         if (cancelled) return;
-        if (!cachedCandles.length && !latestCandlesRef.current.length) {
-          setError("Connecting to live CME data");
+        if (!cachedIsHydrated) {
+          historyHydratedRef.current = false;
+          setError("Five-day CME history is reconnecting");
         }
         setLoading(false);
       }
@@ -2125,7 +2155,7 @@ function WorkspaceChartPane({
           usingDatabentoPaneFeed
           && isEventBasedChartInterval(pane.timeframe)
         ) || ticks.some((tick) => tick.isTrade);
-        if (hasRenderableTick) {
+        if (hasRenderableTick && historyHydratedRef.current) {
           setLoading(false);
           setError(null);
         }
@@ -2330,9 +2360,9 @@ function WorkspaceChartPane({
           </button>
         </div>
       )}
-      {loading && !candles.length ? (
-        <div className="flex h-full items-center justify-center text-[13px] text-muted">Loading chart data...</div>
-      ) : error && !candles.length ? (
+      {loading ? (
+        <div className="flex h-full items-center justify-center text-[13px] text-muted">Loading five days of CME history...</div>
+      ) : error ? (
         <div className="flex h-full items-center justify-center text-[13px] text-muted">{error}</div>
       ) : (
         <Chart

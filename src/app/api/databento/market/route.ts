@@ -40,7 +40,7 @@ export async function GET(request: Request) {
   if (cached && now - cached.updatedAt <= FRESH_CACHE_MS) {
     return NextResponse.json(
       { candles: cached.candles, source: "CME", dataset: "GLBX.MDP3", range: "5D", cached: true },
-      { headers: { "Cache-Control": "private, max-age=15, stale-while-revalidate=300" } },
+      { headers: { "Cache-Control": "public, s-maxage=60, stale-while-revalidate=600" } },
     );
   }
 
@@ -49,13 +49,13 @@ export async function GET(request: Request) {
     if (candles.length) historyCache.set(cacheKey, { candles, updatedAt: now });
     return NextResponse.json(
       { candles, source: "CME", dataset: "GLBX.MDP3", range: "5D", cached: false },
-      { headers: { "Cache-Control": "private, max-age=15, stale-while-revalidate=300" } },
+      { headers: { "Cache-Control": "public, s-maxage=60, stale-while-revalidate=600" } },
     );
   } catch (error) {
     if (cached?.candles.length) {
       return NextResponse.json(
         { candles: cached.candles, source: "CME", dataset: "GLBX.MDP3", range: "5D", cached: true, stale: true },
-        { headers: { "Cache-Control": "private, max-age=15, stale-while-revalidate=300" } },
+        { headers: { "Cache-Control": "public, s-maxage=60, stale-while-revalidate=600" } },
       );
     }
     return NextResponse.json(
