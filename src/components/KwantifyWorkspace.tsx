@@ -85,6 +85,7 @@ import {
   type GameplanChartOverlay,
   type GameplanChartOverlayStore,
 } from "@/lib/gameplanChartOverlay";
+import { serializeDeepChartsXml } from "@/lib/deepChartsExport";
 import {
   buildChartGammaCalibration,
   cashFallbackGammaConversion,
@@ -315,6 +316,7 @@ type LevelExportRow = {
   strength: number | null;
   color: string;
   lineStyle: string;
+  lineWidth: number;
   source: string;
   asOf: string;
 };
@@ -406,14 +408,6 @@ function displayCmeText(value: string) {
 function csvCell(value: string | number | null) {
   const text = value === null ? "" : String(value);
   return `"${text.replace(/"/g, "\"\"")}"`;
-}
-
-function xmlAttribute(value: string | number | null) {
-  return (value === null ? "" : String(value))
-    .replace(/&/g, "&amp;")
-    .replace(/"/g, "&quot;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
 }
 
 function downloadLevelFile(content: string, filename: string, mimeType: string) {
@@ -6441,6 +6435,7 @@ export default function KwantifyWorkspace({
             strength: null,
             color: level.color,
             lineStyle: level.lineStyle ?? "solid",
+            lineWidth: level.lineWidth ?? 2,
             source: option.gamma.sourceLabel,
             asOf: option.gamma.checkedAt ?? "",
           });
@@ -6463,6 +6458,7 @@ export default function KwantifyWorkspace({
             strength: level.strength,
             color: gameplanColors[level.role],
             lineStyle: level.role === "decision" ? "solid" : level.role === "accelerant" ? "dotted" : "dashed",
+            lineWidth: level.strength >= 4 || level.role === "decision" ? 3 : 2,
             source: `Kwant Desk Gameplan · ${option.gameplan.session} · ${option.gameplan.editionDate}`,
             asOf: option.gameplan.publishedAt,
           });
@@ -6525,6 +6521,7 @@ export default function KwantifyWorkspace({
         "strength",
         "color",
         "lineStyle",
+        "lineWidth",
         "source",
         "asOf",
       ];
@@ -6534,18 +6531,11 @@ export default function KwantifyWorkspace({
       ].join("\r\n");
       downloadLevelFile(csv, `${baseFilename}.csv`, "text/csv;charset=utf-8");
     } else {
-      const levelXml = rows.map((row) =>
-        `    <Level type="${xmlAttribute(row.levelType)}" instrument="${xmlAttribute(row.instrument)}" sourceSymbol="${xmlAttribute(row.sourceSymbol)}" contract="${xmlAttribute(row.contractSymbol)}" id="${xmlAttribute(row.id)}" name="${xmlAttribute(row.name)}" role="${xmlAttribute(row.role)}" price="${xmlAttribute(row.price)}" zoneLow="${xmlAttribute(row.zoneLow)}" zoneHigh="${xmlAttribute(row.zoneHigh)}" strength="${xmlAttribute(row.strength)}" color="${xmlAttribute(row.color)}" lineStyle="${xmlAttribute(row.lineStyle)}" source="${xmlAttribute(row.source)}" asOf="${xmlAttribute(row.asOf)}" />`
-      ).join("\n");
-      const xml = [
-        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>",
-        `<DeepChartLevelExport version="1" source="Kwant Desk" exportedAt="${xmlAttribute(exportedAt)}">`,
-        "  <Levels>",
-        levelXml,
-        "  </Levels>",
-        "</DeepChartLevelExport>",
-      ].join("\n");
-      downloadLevelFile(xml, `${baseFilename}.xml`, "application/xml;charset=utf-8");
+      downloadLevelFile(
+        serializeDeepChartsXml(rows, new Date(exportedAt)),
+        `${baseFilename}.xml`,
+        "application/json;charset=utf-8",
+      );
     }
 
     setLevelExportError("");
@@ -7352,7 +7342,7 @@ export default function KwantifyWorkspace({
                       {([
                         ["json", "JSON", "Structured"],
                         ["csv", "CSV", "Spreadsheet"],
-                        ["xml", "DeepChart XML", "Chart import"],
+                        ["xml", "DeepCharts XML", "Native annotation import"],
                       ] as const).map(([format, label, detail]) => {
                         const active = levelExportFormat === format;
                         return (
