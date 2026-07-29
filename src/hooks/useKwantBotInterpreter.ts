@@ -6,6 +6,8 @@ import {
   buildKwantBotBriefing,
   createKwantBotRuntime,
   interpretKwantBotTick,
+  KWANTBOT_RESPONSE_COOLDOWN_MS,
+  KWANTBOT_TOUCH_COOLDOWN_MS,
   kwantBotInterpreterId,
   pruneKwantBotMemory,
   type KwantBotContextState,
@@ -53,6 +55,14 @@ function contextSnapshotKey(context: KwantBotMarketContext) {
     ? Math.floor(generatedAt / (5 * 60_000))
     : Math.floor(Date.now() / (5 * 60_000));
   return `${context.root}:${fiveMinuteBucket}`;
+}
+
+function messageCooldownMs(message: KwantBotInterpreterMessage) {
+  if (message.kind === "touch") return KWANTBOT_TOUCH_COOLDOWN_MS;
+  if (message.kind === "rejection" || message.kind === "acceptance") {
+    return KWANTBOT_RESPONSE_COOLDOWN_MS;
+  }
+  return null;
 }
 
 export type UseKwantBotInterpreterResult = {
@@ -165,10 +175,21 @@ export function useKwantBotInterpreter(args: {
     candidates: KwantBotInterpreterMessage[],
   ) => {
     if (!candidates.length) return;
-    const recentKeys = new Set(messagesRef.current[root].slice(-160).map((item) => item.dedupeKey));
+    const recent = [...messagesRef.current[root].slice(-160)];
     const unique = candidates.filter((item) => {
-      if (recentKeys.has(item.dedupeKey)) return false;
-      recentKeys.add(item.dedupeKey);
+      const previous = [...recent].reverse().find((candidate) => candidate.dedupeKey === item.dedupeKey);
+      if (previous) {
+        const cooldownMs = messageCooldownMs(item);
+        if (cooldownMs === null) return false;
+        const previousAt = Date.parse(previous.createdAt);
+        const nextAt = Date.parse(item.createdAt);
+        if (
+          !Number.isFinite(previousAt)
+          || !Number.isFinite(nextAt)
+          || nextAt - previousAt < cooldownMs
+        ) return false;
+      }
+      recent.push(item);
       return true;
     });
     if (!unique.length) return;

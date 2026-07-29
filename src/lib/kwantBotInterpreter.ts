@@ -123,6 +123,9 @@ export type KwantBotLevelRuntime = {
   touchedAt: number | null;
   lastApproachAt: number | null;
   lastTouchAt: number | null;
+  lastTouchSide: "above" | "below" | null;
+  lastResponseAt: number | null;
+  lastResponseKey: string | null;
 };
 
 export type KwantBotPendingOutcome = {
@@ -149,6 +152,8 @@ export type KwantBotTickResult = {
 };
 
 const FIFTEEN_MINUTES_MS = 15 * 60_000;
+export const KWANTBOT_TOUCH_COOLDOWN_MS = 5 * 60_000;
+export const KWANTBOT_RESPONSE_COOLDOWN_MS = 10 * 60_000;
 const DAY_MS = 24 * 60 * 60_000;
 const WEEK_MS = 7 * DAY_MS;
 
@@ -190,6 +195,21 @@ function sideOfZone(price: number, zone: [number, number]): "above" | "below" | 
   if (price > zone[1]) return "above";
   if (price < zone[0]) return "below";
   return "inside";
+}
+
+function hasRecentLevelEvent(
+  memory: KwantBotMemoryEvent[],
+  levelId: string,
+  type: KwantBotMemoryEvent["type"],
+  now: number,
+  cooldownMs: number,
+  detailMatches: (detail: string | undefined) => boolean,
+) {
+  return [...memory].reverse().some((event) => {
+    if (event.levelId !== levelId || event.type !== type || !detailMatches(event.detail)) return false;
+    const occurredAt = Date.parse(event.createdAt);
+    return Number.isFinite(occurredAt) && now - occurredAt < cooldownMs;
+  });
 }
 
 function message(
@@ -501,12 +521,16 @@ export function interpretKwantBotTick(args: {
     touchedAt: null,
     lastApproachAt: null,
     lastTouchAt: null,
+    lastTouchSide: null,
+    lastResponseAt: null,
+    lastResponseKey: null,
   };
   const currentSide = sideOfZone(price, nearest.zone);
   const priorSide = priorPrice === null ? currentSide : sideOfZone(priorPrice, nearest.zone);
 
   if (
     currentSide !== "inside"
+    && levelRuntime.phase !== "inside"
     && distance <= approachDistance
     && (!levelRuntime.lastApproachAt || now - levelRuntime.lastApproachAt >= 10 * 60_000)
   ) {
@@ -546,23 +570,39 @@ export function interpretKwantBotTick(args: {
     levelRuntime.phase = "inside";
     levelRuntime.entrySide = entrySide;
     levelRuntime.touchedAt = now;
-    levelRuntime.lastTouchAt = now;
-    messages.push(message(
-      root,
+    const touchDetail = `entered from ${entrySide}`;
+    const touchAnnouncedRecently = (
+      levelRuntime.lastTouchSide === entrySide
+      && levelRuntime.lastTouchAt !== null
+      && now - levelRuntime.lastTouchAt < KWANTBOT_TOUCH_COOLDOWN_MS
+    ) || hasRecentLevelEvent(
+      memory,
+      nearest.id,
       "touch",
-      `${root} has hit ${nearest.name} and is trading inside ${formatZone(root, nearest.zone)}.${approachReference} No directional call yet. ${nearest.ifHold} ${nearest.ifBreak}`,
-      `touch:${nearest.id}:${now}`,
       now,
-      { price, levelId: nearest.id },
-    ));
-    nextMemory.push(memoryEvent(root, "touch", now, {
-      price,
-      levelId: nearest.id,
-      levelName: nearest.name,
-      zone: nearest.zone,
-      reasoning: nearest.ifVisit,
-      detail: `entered from ${entrySide}`,
-    }));
+      KWANTBOT_TOUCH_COOLDOWN_MS,
+      (detail) => detail === touchDetail,
+    );
+    if (!touchAnnouncedRecently) {
+      messages.push(message(
+        root,
+        "touch",
+        `${root} has hit ${nearest.name} and is trading inside ${formatZone(root, nearest.zone)}.${approachReference} No directional call yet. ${nearest.ifHold} ${nearest.ifBreak}`,
+        `touch:${nearest.id}:${entrySide}`,
+        now,
+        { price, levelId: nearest.id },
+      ));
+      nextMemory.push(memoryEvent(root, "touch", now, {
+        price,
+        levelId: nearest.id,
+        levelName: nearest.name,
+        zone: nearest.zone,
+        reasoning: nearest.ifVisit,
+        detail: touchDetail,
+      }));
+      levelRuntime.lastTouchAt = now;
+      levelRuntime.lastTouchSide = entrySide;
+    }
   } else if (
     currentSide !== "inside"
     && levelRuntime.phase === "inside"
@@ -576,34 +616,52 @@ export function interpretKwantBotTick(args: {
     const direction = currentSide === "above" ? "up" : "down";
     const target = nextLevel(context.levels, nearest.zone, direction);
     const responseKind = rejected ? "rejection" : "acceptance";
+    const responseKey = `${responseKind}:${direction}`;
+    const responseDetail = `${direction} after ${now - levelRuntime.touchedAt}ms`;
+    const responseAnnouncedRecently = (
+      levelRuntime.lastResponseKey === responseKey
+      && levelRuntime.lastResponseAt !== null
+      && now - levelRuntime.lastResponseAt < KWANTBOT_RESPONSE_COOLDOWN_MS
+    ) || hasRecentLevelEvent(
+      memory,
+      nearest.id,
+      responseKind,
+      now,
+      KWANTBOT_RESPONSE_COOLDOWN_MS,
+      (detail) => detail === `${direction} response` || detail?.startsWith(`${direction} after `) === true,
+    );
     const responseText = rejected
       ? `${nearest.name} has rejected price back ${direction} after ${Math.max(1, Math.round((now - levelRuntime.touchedAt) / 1_000))} seconds in the zone. That is the first confirmation, not a reason to chase.${target ? ` The next mapped decision is ${target.name} at ${formatZone(root, target.zone)}.` : ""}`
       : `${root} has accepted through ${nearest.name} to the ${direction}. ${nearest.ifBreak}${target ? ` The next mapped decision is ${target.name} at ${formatZone(root, target.zone)}.` : ""} A retest that holds outside the zone is stronger than the first break.`;
-    messages.push(message(
-      root,
-      responseKind,
-      responseText,
-      `${responseKind}:${nearest.id}:${levelRuntime.touchedAt}`,
-      now,
-      { price, levelId: nearest.id },
-    ));
-    nextMemory.push(memoryEvent(root, responseKind, now, {
-      price,
-      levelId: nearest.id,
-      levelName: nearest.name,
-      zone: nearest.zone,
-      reasoning: rejected ? nearest.ifHold : nearest.ifBreak,
-      detail: `${direction} after ${now - levelRuntime.touchedAt}ms`,
-    }));
-    runtime.pendingOutcome = {
-      levelId: nearest.id,
-      levelName: nearest.name,
-      direction,
-      type: responseKind,
-      startedAt: now,
-      startPrice: price,
-      zone: nearest.zone,
-    };
+    if (!responseAnnouncedRecently) {
+      messages.push(message(
+        root,
+        responseKind,
+        responseText,
+        `${responseKind}:${nearest.id}:${direction}`,
+        now,
+        { price, levelId: nearest.id },
+      ));
+      nextMemory.push(memoryEvent(root, responseKind, now, {
+        price,
+        levelId: nearest.id,
+        levelName: nearest.name,
+        zone: nearest.zone,
+        reasoning: rejected ? nearest.ifHold : nearest.ifBreak,
+        detail: responseDetail,
+      }));
+      runtime.pendingOutcome = {
+        levelId: nearest.id,
+        levelName: nearest.name,
+        direction,
+        type: responseKind,
+        startedAt: now,
+        startPrice: price,
+        zone: nearest.zone,
+      };
+      levelRuntime.lastResponseAt = now;
+      levelRuntime.lastResponseKey = responseKey;
+    }
     levelRuntime.phase = "approach";
     levelRuntime.entrySide = null;
     levelRuntime.touchedAt = null;
