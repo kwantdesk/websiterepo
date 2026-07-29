@@ -14,6 +14,7 @@ import {
   Settings,
   Sparkles,
   User,
+  UsersRound,
 } from "lucide-react";
 
 type SidebarKey =
@@ -29,6 +30,7 @@ type SidebarKey =
   | "connector"
   | "tradeSyncer"
   | "journal"
+  | "socials"
   | "converter"
   | "news"
   | "zyon"
@@ -74,6 +76,7 @@ const navItems: Array<{
   { key: "news", href: "/news", label: "News", title: "News", icon: BookOpen },
   { key: "zyon", href: "/zyon", label: "ZYON", title: "ZYON Trading Intelligence", icon: Sparkles },
   { key: "journal", href: "/journal", label: "Journal", title: "Journal", icon: NotebookPen },
+  { key: "socials", href: "/socials", label: "Socials", title: "Socials", icon: UsersRound },
 ];
 
 function ActiveUnderline() {
