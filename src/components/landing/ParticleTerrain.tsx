@@ -3,7 +3,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
 import * as THREE from "three";
-import KwantRobot3D from "@/components/landing/KwantRobot3D";
 import { terrainHeight } from "@/lib/simplexNoise";
 
 const IS_DEV = process.env.NODE_ENV !== "production";
@@ -441,13 +440,8 @@ function Scene({ terrain, stars }: { terrain: TerrainData; stars: StarData }) {
   return (
     <>
       <color attach="background" args={["#000000"]} />
-      <ambientLight intensity={0.55} />
-      <directionalLight position={[-5, 7, 10]} intensity={3.5} color="#ffffff" />
-      <directionalLight position={[6, 1, 7]} intensity={1.4} color="#d9f9ff" />
-      <pointLight position={[-3, -2, 8]} intensity={15} distance={18} decay={2} color="#a8f2ff" />
       <StarField data={stars} />
       <MountainPoints data={terrain} />
-      <KwantRobot3D />
     </>
   );
 }
@@ -479,7 +473,7 @@ export default function ParticleTerrain() {
         <Canvas
           dpr={0.8}
           gl={{
-            antialias: true,
+            antialias: false,
             alpha: false,
             powerPreference: "high-performance",
           }}
@@ -492,8 +486,6 @@ export default function ParticleTerrain() {
           style={{ width: "100%", height: "100%", display: "block" }}
           onCreated={({ gl, camera }) => {
             gl.setPixelRatio(Math.min(window.devicePixelRatio, 1));
-            gl.toneMapping = THREE.ACESFilmicToneMapping;
-            gl.toneMappingExposure = 1.08;
             camera.position.set(0, 2.6, 19);
             camera.lookAt(0, -8.1, 1.4);
           }}
