@@ -98,7 +98,7 @@ export default function HoldingPage() {
             {waitlistStatus === "complete" ? (
               <div
                 role="status"
-                className="mt-5 flex h-11 w-[min(330px,84vw)] items-center justify-center gap-2 border border-white/24 bg-black/70 font-mono text-[11px] tracking-[0.12em] text-white backdrop-blur-xl"
+                className="mt-5 flex h-12 w-[min(380px,86vw)] items-center justify-center gap-2 rounded-full border border-white/24 bg-black/70 font-mono text-[11px] tracking-[0.12em] text-white shadow-[0_18px_55px_rgba(0,0,0,.5)] backdrop-blur-xl"
               >
                 <Check className="h-3.5 w-3.5" />
                 Complete!
@@ -116,7 +116,7 @@ export default function HoldingPage() {
                   aria-hidden="true"
                   className="absolute h-px w-px opacity-0"
                 />
-                <div className="flex h-11 w-[min(330px,84vw)] items-center border border-white/24 bg-black/70 pl-4 shadow-[0_18px_55px_rgba(0,0,0,.5)] backdrop-blur-xl transition-colors focus-within:border-white/50">
+                <div className="flex h-12 w-[min(380px,86vw)] items-center rounded-full border border-white/24 bg-black/70 p-1 pl-5 shadow-[0_18px_55px_rgba(0,0,0,.5)] backdrop-blur-xl transition-colors focus-within:border-white/50">
                   <input
                     id="kwantdesk-waitlist-email"
                     type="email"
@@ -132,7 +132,7 @@ export default function HoldingPage() {
                     type="submit"
                     disabled={!waitlistEmail || waitlistStatus === "submitting"}
                     aria-label="Join the Kwant Desk waitlist"
-                    className="flex h-full w-11 shrink-0 items-center justify-center border-l border-white/16 text-white/62 transition hover:bg-white/[.08] hover:text-white disabled:cursor-default disabled:opacity-25"
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/[.12] bg-white/[.06] text-white/62 transition hover:bg-white/[.12] hover:text-white disabled:cursor-default disabled:opacity-25"
                   >
                     {waitlistStatus === "submitting"
                       ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
