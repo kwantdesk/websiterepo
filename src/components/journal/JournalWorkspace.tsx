@@ -6,6 +6,8 @@ import {
   ArrowDownRight,
   ArrowUpRight,
   BarChart3,
+  BookOpen,
+  Bot,
   CalendarDays,
   Check,
   ChevronLeft,
@@ -25,6 +27,7 @@ import {
   LineChart,
   NotebookPen,
   Paperclip,
+  Plus,
   Search,
   ShieldCheck,
   Sparkles,
@@ -41,6 +44,7 @@ import {
   EMPTY_JOURNAL_STATE,
   journalTradesToCsv,
   parseJournalTextFile,
+  zyonOutcomesToJournalTrades,
   type JournalEvidence,
   type JournalImportBatch,
   type JournalState,
@@ -53,6 +57,27 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 type JournalTab = "pulse" | "calendar" | "trades" | "edgebook" | "evidence" | "imports";
 type OutcomeFilter = "all" | "wins" | "losses" | "breakeven" | "needs-review";
 type SortKey = "closedAt" | "netPnl" | "rMultiple" | "quantity" | "symbol";
+
+type JournalCloudState = "loading" | "cloud" | "local" | "error";
+
+type SocialJournalResponse = {
+  viewerId?: string;
+  objects?: Array<{
+    id: string;
+    userId: string;
+    objectType: string;
+    parentId: string | null;
+    payload: Record<string, unknown>;
+    createdAt: string;
+    updatedAt: string;
+  }>;
+};
+
+type CloudJournalResponse = {
+  cloud?: boolean;
+  trades?: JournalTrade[];
+  imports?: JournalImportBatch[];
+};
 
 const JOURNAL_TABS: Array<{ id: JournalTab; label: string; icon: typeof Activity }> = [
   { id: "pulse", label: "Pulse", icon: Activity },
@@ -275,8 +300,11 @@ function PerformanceList({ title, rows }: { title: string; rows: ReturnType<type
 
 export default function JournalWorkspace({ accountKey }: { accountKey: string }) {
   const [state, setState] = useState<JournalState>(EMPTY_JOURNAL_STATE);
+  const [zyonTrades, setZyonTrades] = useState<JournalTrade[]>([]);
+  const [zyonLoading, setZyonLoading] = useState(true);
   const [ready, setReady] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"loading" | "saved" | "error">("loading");
+  const [cloudState, setCloudState] = useState<JournalCloudState>("loading");
   const [tab, setTab] = useState<JournalTab>("pulse");
   const [showImport, setShowImport] = useState(false);
   const [importAccount, setImportAccount] = useState("Imported account");
@@ -301,16 +329,79 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
     let active = true;
     setReady(false);
     setSaveStatus("loading");
-    loadJournalState(resolvedAccountKey).then((stored) => {
+    Promise.all([
+      loadJournalState(resolvedAccountKey),
+      fetch("/api/journal", { cache: "no-store" })
+        .then(async (response): Promise<CloudJournalResponse> => response.ok ? response.json() as Promise<CloudJournalResponse> : { cloud: false })
+        .catch((): CloudJournalResponse => ({ cloud: false })),
+    ]).then(([stored, cloud]) => {
       if (!active) return;
-      setState(stored);
+      const cloudTrades = Array.isArray(cloud.trades) ? cloud.trades : [];
+      const cloudImports = Array.isArray(cloud.imports) ? cloud.imports : [];
+      const trades = new Map(stored.trades.map((trade) => [trade.id, trade]));
+      cloudTrades.forEach((trade) => trades.set(trade.id, trade));
+      const imports = new Map(stored.imports.map((batch) => [batch.id, batch]));
+      cloudImports.forEach((batch) => imports.set(batch.id, batch));
+      const merged = {
+        ...stored,
+        trades: [...trades.values()],
+        imports: [...imports.values()],
+      };
+      setState(merged);
+      setCloudState(cloud.cloud ? "cloud" : "local");
       setReady(true);
       setSaveStatus("saved");
+
+      if (cloud.cloud && (stored.trades.length || stored.imports.length)) {
+        const accountNames = [...new Set([
+          ...stored.trades.map((trade) => trade.account),
+          ...stored.imports.map((batch) => batch.account),
+        ].filter((name) => name && name !== "ZYON Journal"))];
+        accountNames.forEach((account) => {
+          void fetch("/api/journal", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              action: "sync",
+              account,
+              trades: stored.trades.filter((trade) => trade.account === account),
+              imports: stored.imports.filter((batch) => batch.account === account),
+            }),
+          });
+        });
+      }
     });
     return () => {
       active = false;
     };
   }, [resolvedAccountKey]);
+
+  const loadZyonOutcomes = useCallback(async () => {
+    try {
+      const response = await fetch("/api/socials?mine=1&types=precord,receipt", { cache: "no-store" });
+      if (!response.ok) throw new Error("ZYON outcomes could not be loaded.");
+      const data = await response.json() as SocialJournalResponse;
+      if (!data.viewerId || !Array.isArray(data.objects)) throw new Error("ZYON outcome storage is unavailable.");
+      setZyonTrades(zyonOutcomesToJournalTrades(data.objects, data.viewerId));
+    } catch {
+      setZyonTrades([]);
+    } finally {
+      setZyonLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadZyonOutcomes();
+    const refresh = window.setInterval(() => {
+      if (document.visibilityState === "visible") void loadZyonOutcomes();
+    }, 30_000);
+    const onFocus = () => void loadZyonOutcomes();
+    window.addEventListener("focus", onFocus);
+    return () => {
+      window.clearInterval(refresh);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [loadZyonOutcomes]);
 
   useEffect(() => {
     if (!ready) return;
@@ -321,15 +412,41 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
     return () => window.clearTimeout(timer);
   }, [ready, resolvedAccountKey, state]);
 
-  const accounts = useMemo(() => [...new Set([
+  const customAccounts = useMemo(() => [...new Set([
     ...state.trades.map((trade) => trade.account),
     ...state.evidence.map((item) => item.account),
     ...state.imports.map((item) => item.account),
-  ].filter(Boolean))].sort(), [state]);
+  ].filter((account) => account && account !== "ZYON Journal"))].sort(), [state]);
+  const accounts = useMemo(() => ["ZYON Journal", ...customAccounts], [customAccounts]);
+  const allTrades = useMemo(
+    () => [...zyonTrades, ...state.trades.filter((trade) => trade.account !== "ZYON Journal")],
+    [state.trades, zyonTrades],
+  );
+  const accountViews = useMemo(() => [
+    {
+      id: "all",
+      label: "Overall Journal",
+      detail: "Every connected account",
+      stats: calculateJournalStats(allTrades),
+      icon: BookOpen,
+    },
+    ...accounts.map((account) => {
+      const accountTrades = allTrades.filter((trade) => trade.account === account);
+      return {
+        id: account,
+        label: account,
+        detail: account === "ZYON Journal"
+          ? "Reviewed ZYON Gameplans"
+          : `${accountTrades.length} imported trade${accountTrades.length === 1 ? "" : "s"}`,
+        stats: calculateJournalStats(accountTrades),
+        icon: account === "ZYON Journal" ? Bot : FileSpreadsheet,
+      };
+    }),
+  ], [accounts, allTrades]);
 
   const filteredTrades = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
-    const filtered = state.trades.filter((trade) => {
+    const filtered = allTrades.filter((trade) => {
       if (accountFilter !== "all" && trade.account !== accountFilter) return false;
       if (outcomeFilter === "wins" && trade.netPnl <= 0) return false;
       if (outcomeFilter === "losses" && trade.netPnl >= 0) return false;
@@ -354,11 +471,12 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
       if (sortKey === "symbol") comparison = left.symbol.localeCompare(right.symbol);
       return sortDirection === "asc" ? comparison : -comparison;
     });
-  }, [accountFilter, outcomeFilter, query, sortDirection, sortKey, state.trades]);
+  }, [accountFilter, allTrades, outcomeFilter, query, sortDirection, sortKey]);
 
   const filteredEvidence = useMemo(() => state.evidence.filter((item) => accountFilter === "all" || item.account === accountFilter), [accountFilter, state.evidence]);
   const stats = useMemo(() => calculateJournalStats(filteredTrades, filteredEvidence), [filteredEvidence, filteredTrades]);
-  const selectedTrade = state.trades.find((trade) => trade.id === selectedTradeId) ?? null;
+  const selectedTrade = allTrades.find((trade) => trade.id === selectedTradeId) ?? null;
+  const selectedTradeIsZyon = Boolean(selectedTrade?.sourceImportId.startsWith("zyon:"));
   const selectedEvidence = state.evidence.find((item) => item.id === selectedEvidenceId) ?? null;
   const entryExitComplete = stats.tradeCount
     ? filteredTrades.filter((trade) => trade.entryPrice !== null && trade.exitPrice !== null && trade.side !== "UNKNOWN").length / stats.tradeCount
@@ -379,6 +497,41 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
       return [...current, ...selected.filter((file) => !known.has(`${file.name}:${file.size}:${file.lastModified}`))].slice(0, 30);
     });
     setImportMessage("");
+  }, []);
+
+  const syncCloudAccount = useCallback(async (
+    account: string,
+    trades: JournalTrade[],
+    imports: JournalImportBatch[],
+  ) => {
+    if (!account || account === "ZYON Journal") return false;
+    try {
+      const chunks = trades.length
+        ? Array.from({ length: Math.ceil(trades.length / 1_000) }, (_, index) => trades.slice(index * 1_000, (index + 1) * 1_000))
+        : [[]];
+      for (let index = 0; index < chunks.length; index += 1) {
+        const response = await fetch("/api/journal", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "sync",
+            account,
+            trades: chunks[index],
+            imports: index === 0 ? imports : [],
+          }),
+        });
+        const result = await response.json() as { cloud?: boolean };
+        if (!response.ok || !result.cloud) {
+          setCloudState("local");
+          return false;
+        }
+      }
+      setCloudState("cloud");
+      return true;
+    } catch {
+      setCloudState("error");
+      return false;
+    }
   }, []);
 
   const runImport = async () => {
@@ -543,14 +696,29 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
     setPendingFiles([]);
     setImporting(false);
     setImportMessage(`${newTrades.length} trade${newTrades.length === 1 ? "" : "s"} and ${newEvidence.length} evidence file${newEvidence.length === 1 ? "" : "s"} imported${duplicates ? ` · ${duplicates} duplicate${duplicates === 1 ? "" : "s"} skipped` : ""}.`);
-    if (newTrades.length) setTab("pulse");
+    if (newTrades.length || newImports.length) {
+      setAccountFilter(account);
+      setTab("pulse");
+      void syncCloudAccount(account, newTrades, newImports);
+    }
   };
 
   const updateTrade = (tradeId: string, patch: Partial<JournalTrade>) => {
+    const currentTrade = allTrades.find((trade) => trade.id === tradeId);
+    if (!currentTrade || currentTrade.sourceImportId.startsWith("zyon:")) return;
+    const updatedTrade = { ...currentTrade, ...patch };
     setState((current) => ({
       ...current,
       trades: current.trades.map((trade) => trade.id === tradeId ? { ...trade, ...patch } : trade),
     }));
+    void fetch("/api/journal", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "update", trade: updatedTrade }),
+    }).then(async (response) => {
+      const result = await response.json() as { cloud?: boolean };
+      setCloudState(response.ok && result.cloud ? "cloud" : "local");
+    }).catch(() => setCloudState("error"));
   };
 
   const updateEvidence = (evidenceId: string, patch: Partial<JournalEvidence>) => {
@@ -568,6 +736,12 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
       evidence: current.evidence.filter((item) => item.sourceImportId !== batch.id),
       imports: current.imports.filter((item) => item.id !== batch.id),
     }));
+    void fetch(`/api/journal?importId=${encodeURIComponent(batch.id)}`, {
+      method: "DELETE",
+    }).then(async (response) => {
+      const result = await response.json() as { cloud?: boolean };
+      setCloudState(response.ok && result.cloud ? "cloud" : "local");
+    }).catch(() => setCloudState("error"));
   };
 
   const exportJournal = (format: "csv" | "json") => {
@@ -606,6 +780,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
     ? filteredTrades.filter((trade) => localDateKey(trade.closedAt ?? trade.openedAt) === selectedDay)
     : [];
   const bySymbol = useMemo(() => groupPerformance(filteredTrades, (trade) => trade.symbol), [filteredTrades]);
+  const byAccount = useMemo(() => groupPerformance(filteredTrades, (trade) => trade.account), [filteredTrades]);
   const bySide = useMemo(() => groupPerformance(filteredTrades, (trade) => trade.side), [filteredTrades]);
   const byWeekday = useMemo(() => groupPerformance(filteredTrades, (trade) => new Date(trade.openedAt).toLocaleDateString("en-AU", { weekday: "long" })), [filteredTrades]);
   const byHour = useMemo(() => groupPerformance(filteredTrades, (trade) => `${String(new Date(trade.openedAt).getHours()).padStart(2, "0")}:00`), [filteredTrades]);
@@ -621,20 +796,45 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
         <div className="flex min-h-[64px] flex-wrap items-center gap-3 px-4 py-3">
           <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary"><NotebookPen className="h-4 w-4" /></span>
           <div className="min-w-0">
-            <h1 className="text-[14px] font-semibold tracking-[-0.01em] text-foreground">Journal</h1>
-            <p className="mt-0.5 text-[9px] text-muted">Imported performance · review evidence · measurable edge</p>
+            <h1 className="text-[14px] font-semibold tracking-[-0.01em] text-foreground">{accountFilter === "all" ? "Overall Journal" : accountFilter}</h1>
+            <p className="mt-0.5 text-[9px] text-muted">{accountFilter === "all" ? "Consolidated performance across every journal account" : accountFilter === "ZYON Journal" ? "Personal outcomes created from reviewed ZYON Gameplans" : "Imported performance · review evidence · measurable edge"}</p>
           </div>
           <div className="ml-auto flex flex-wrap items-center gap-2">
             <span className={`flex h-8 items-center gap-1.5 rounded-xl border border-border bg-surface px-2.5 text-[9px] ${saveStatus === "error" ? "text-danger" : "text-muted"}`}>
-              <span className={`h-1.5 w-1.5 rounded-full ${saveStatus === "saved" ? "bg-primary" : saveStatus === "error" ? "bg-danger" : "animate-pulse bg-warning"}`} />
-              {saveStatus === "saved" ? "Journal saved" : saveStatus === "error" ? "Local save limited" : "Saving"}
+              <span className={`h-1.5 w-1.5 rounded-full ${cloudState === "cloud" ? "bg-primary" : cloudState === "error" || saveStatus === "error" ? "bg-danger" : cloudState === "loading" || saveStatus === "loading" ? "animate-pulse bg-warning" : "bg-muted"}`} />
+              {cloudState === "cloud" ? "Account saved" : cloudState === "loading" ? "Connecting" : cloudState === "error" || saveStatus === "error" ? "Save interrupted" : "Local until connected"}
             </span>
-            <KwantSelect value={accountFilter} onChange={(event) => setAccountFilter(event.target.value)} className="h-8 rounded-xl border border-border bg-surface px-3 text-[9px] text-foreground outline-none">
-              <option value="all">All accounts</option>
-              {accounts.map((account) => <option key={account} value={account}>{account}</option>)}
-            </KwantSelect>
-            <button type="button" onClick={() => exportJournal("json")} disabled={!state.trades.length && !state.evidence.length} className="flex h-8 items-center gap-1.5 rounded-xl border border-border bg-surface px-3 text-[9px] font-semibold text-muted hover:text-foreground disabled:opacity-35"><Download className="h-3.5 w-3.5" />Backup</button>
-            <button type="button" onClick={() => setShowImport(true)} className="flex h-8 items-center gap-1.5 rounded-xl bg-primary px-3 text-[9px] font-semibold text-background hover:brightness-110"><Upload className="h-3.5 w-3.5" />Import</button>
+            <button type="button" onClick={() => exportJournal("json")} disabled={!allTrades.length && !state.evidence.length} className="flex h-8 items-center gap-1.5 rounded-xl border border-border bg-surface px-3 text-[9px] font-semibold text-muted hover:text-foreground disabled:opacity-35"><Download className="h-3.5 w-3.5" />Backup</button>
+            <button type="button" onClick={() => setShowImport(true)} className="flex h-8 items-center gap-1.5 rounded-xl bg-primary px-3 text-[9px] font-semibold text-background hover:brightness-110"><Plus className="h-3.5 w-3.5" />Add account</button>
+          </div>
+        </div>
+        <div className="border-t border-border/70 px-3 py-2">
+          <div className="flex items-stretch gap-2 overflow-x-auto pb-1" aria-label="Journal accounts">
+            {accountViews.map(({ id, label, detail, stats: accountStats, icon: Icon }) => {
+              const active = accountFilter === id;
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setAccountFilter(id)}
+                  className={`group min-w-[190px] shrink-0 rounded-2xl border px-3 py-2.5 text-left transition-all ${active ? "border-primary/45 bg-primary/[0.09] shadow-[0_0_18px_color-mix(in_srgb,var(--primary)_10%,transparent)]" : "border-border bg-background/30 hover:border-primary/25 hover:bg-surface/55"}`}
+                >
+                  <div className="flex items-start gap-2.5">
+                    <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border ${active ? "border-primary/25 bg-primary/12 text-primary" : "border-border bg-surface text-muted group-hover:text-foreground"}`}><Icon className="h-3.5 w-3.5" /></span>
+                    <span className="min-w-0 flex-1">
+                      <span className={`block truncate text-[10px] font-semibold ${active ? "text-primary" : "text-foreground"}`}>{label}</span>
+                      <span className="mt-0.5 block truncate text-[7px] text-muted">{detail}</span>
+                    </span>
+                    <span className={`font-mono text-[9px] font-semibold ${accountStats.netPnl > 0 ? "text-primary" : accountStats.netPnl < 0 ? "text-danger" : "text-muted"}`}>{compact(accountStats.netPnl)}</span>
+                  </div>
+                  <div className="mt-2 flex items-center justify-between border-t border-border/50 pt-2 text-[7px] text-muted">
+                    <span>{accountStats.tradeCount} outcome{accountStats.tradeCount === 1 ? "" : "s"}</span>
+                    <span>{percent(accountStats.winRate, 0)} win</span>
+                  </div>
+                </button>
+              );
+            })}
+            <button type="button" onClick={() => setShowImport(true)} className="flex min-w-[150px] shrink-0 items-center justify-center gap-2 rounded-2xl border border-dashed border-border bg-background/20 px-4 text-[9px] font-semibold text-muted transition-colors hover:border-primary/35 hover:bg-primary/[0.05] hover:text-primary"><Plus className="h-3.5 w-3.5" />Add account</button>
           </div>
         </div>
         <nav className="flex items-center gap-1 overflow-x-auto px-3" aria-label="Journal views">
@@ -649,14 +849,16 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {!state.trades.length && tab !== "evidence" && tab !== "imports" ? (
+        {!filteredTrades.length && tab !== "evidence" && tab !== "imports" ? (
           <div className="mx-auto flex min-h-full max-w-5xl items-center justify-center p-6">
             <div className="relative w-full overflow-hidden rounded-3xl border border-border bg-panel p-8 text-center shadow-2xl shadow-black/20">
               <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_10%,color-mix(in_srgb,var(--primary)_10%,transparent),transparent_42%)]" />
-              <div className="relative mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-primary/25 bg-primary/10 text-primary"><Import className="h-6 w-6" /></div>
-              <h2 className="relative mt-5 text-[22px] font-semibold tracking-[-0.03em] text-foreground">Bring your trading history into focus.</h2>
-              <p className="relative mx-auto mt-2 max-w-xl text-[11px] leading-5 text-muted">Import closed trades, executions, screenshots, or notes. Kwant Desk calculates performance only from the records you provide and keeps the source history visible.</p>
-              <button type="button" onClick={() => setShowImport(true)} className="relative mt-6 inline-flex h-10 items-center gap-2 rounded-xl bg-primary px-5 text-[10px] font-semibold text-background"><Upload className="h-4 w-4" />Choose files</button>
+              <div className="relative mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-primary/25 bg-primary/10 text-primary">{accountFilter === "ZYON Journal" ? <Bot className={`h-6 w-6 ${zyonLoading ? "animate-pulse" : ""}`} /> : <Import className="h-6 w-6" />}</div>
+              <h2 className="relative mt-5 text-[22px] font-semibold tracking-[-0.03em] text-foreground">{accountFilter === "ZYON Journal" ? zyonLoading ? "Loading your ZYON outcomes…" : "Your first reviewed Gameplan starts this Journal." : accountFilter === "all" ? "Build your consolidated trading record." : `${accountFilter} is ready for its first import.`}</h2>
+              <p className="relative mx-auto mt-2 max-w-xl text-[11px] leading-5 text-muted">{accountFilter === "ZYON Journal" ? "When a ZYON Gameplan completes its outcome review, it appears here automatically with its execution, P&L, reasoning score, timestamps, and review." : "Import closed trades, executions, screenshots, or notes. Overall Journal combines every account while each account keeps its own statistics."}</p>
+              {accountFilter === "ZYON Journal"
+                ? <button type="button" onClick={() => { window.location.href = "/zyon"; }} className="relative mt-6 inline-flex h-10 items-center gap-2 rounded-xl bg-primary px-5 text-[10px] font-semibold text-background"><Bot className="h-4 w-4" />Open ZYON</button>
+                : <button type="button" onClick={() => setShowImport(true)} className="relative mt-6 inline-flex h-10 items-center gap-2 rounded-xl bg-primary px-5 text-[10px] font-semibold text-background"><Plus className="h-4 w-4" />Add account</button>}
               <div className="relative mx-auto mt-7 grid max-w-3xl gap-2 sm:grid-cols-3">
                 {[
                   [FileSpreadsheet, "Trades", "CSV, TSV and JSON trade or execution files"],
@@ -674,7 +876,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
           </div>
         ) : null}
 
-        {state.trades.length && tab === "pulse" ? (
+        {filteredTrades.length && tab === "pulse" ? (
           <div className="space-y-3 p-3">
             <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-8">
               <MetricCard label="Net P&L" value={money(stats.netPnl)} detail={`${stats.tradeCount} imported trades`} icon={stats.netPnl >= 0 ? TrendingUp : TrendingDown} tone={stats.netPnl >= 0 ? "positive" : "negative"} />
@@ -703,6 +905,20 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
                 <div className="px-3 pb-3"><DailyBars trades={filteredTrades} /></div>
               </Card>
             </div>
+
+            {accountFilter === "all" ? (
+              <div className="grid gap-3 xl:grid-cols-[minmax(0,1.25fr)_minmax(300px,.75fr)]">
+                <PerformanceList title="Account performance" rows={byAccount} />
+                <Card className="p-4">
+                  <div className="flex items-center gap-2"><Layers3 className="h-4 w-4 text-primary" /><h3 className="text-[11px] font-semibold text-foreground">Consolidated record</h3></div>
+                  <p className="mt-2 text-[9px] leading-4 text-muted">Overall Journal combines every connected account without merging their source records. Select any account above to isolate its P&amp;L, calendar, trades, evidence, and edge statistics.</p>
+                  <div className="mt-4 grid grid-cols-2 gap-2">
+                    <div className="rounded-xl border border-border bg-background/35 p-3"><div className="text-[7px] uppercase tracking-[0.12em] text-muted">Accounts</div><div className="mt-1 font-mono text-[18px] font-semibold text-foreground">{accounts.length}</div></div>
+                    <div className="rounded-xl border border-border bg-background/35 p-3"><div className="text-[7px] uppercase tracking-[0.12em] text-muted">ZYON outcomes</div><div className="mt-1 font-mono text-[18px] font-semibold text-primary">{zyonTrades.length}</div></div>
+                  </div>
+                </Card>
+              </div>
+            ) : null}
 
             <div className="grid gap-3 xl:grid-cols-3">
               <Card className="overflow-hidden xl:col-span-2">
@@ -744,7 +960,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
           </div>
         ) : null}
 
-        {state.trades.length && tab === "calendar" ? (
+        {filteredTrades.length && tab === "calendar" ? (
           <div className="space-y-3 p-3">
             <Card className="overflow-hidden">
               <div className="flex items-center justify-between border-b border-border px-4 py-3">
@@ -773,7 +989,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
           </div>
         ) : null}
 
-        {state.trades.length && tab === "trades" ? (
+        {filteredTrades.length && tab === "trades" ? (
           <div className="space-y-3 p-3">
             <Card className="flex flex-wrap items-center gap-2 p-3">
               <div className="relative min-w-[220px] flex-1">
@@ -820,7 +1036,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
           </div>
         ) : null}
 
-        {state.trades.length && tab === "edgebook" ? (
+        {filteredTrades.length && tab === "edgebook" ? (
           <div className="space-y-3 p-3">
             <div className="grid gap-3 xl:grid-cols-2">
               <PerformanceList title="Instrument edge" rows={bySymbol} />
@@ -907,12 +1123,12 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
           <div className="w-full max-w-[650px] overflow-hidden rounded-3xl border border-border bg-panel shadow-2xl shadow-black/60">
             <div className="flex items-start gap-3 border-b border-border px-5 py-4">
               <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"><Upload className="h-4 w-4" /></span>
-              <div><h2 className="text-[14px] font-semibold text-foreground">Import journal data</h2><p className="mt-1 text-[9px] leading-4 text-muted">Closed trades, execution files, screenshots, JSON, Markdown, and text notes.</p></div>
+              <div><h2 className="text-[14px] font-semibold text-foreground">Add journal account</h2><p className="mt-1 text-[9px] leading-4 text-muted">Name the account, then import its closed trades, executions, screenshots, JSON, or notes.</p></div>
               <button type="button" onClick={() => setShowImport(false)} className="ml-auto flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground"><X className="h-4 w-4" /></button>
             </div>
             <div className="space-y-4 p-5">
               <div>
-                <label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.12em] text-muted">Account / import label</label>
+                <label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.12em] text-muted">Journal account name</label>
                 <input value={importAccount} onChange={(event) => setImportAccount(event.target.value)} className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[10px] text-foreground outline-none focus:border-primary/45" placeholder="e.g. Apex NQ Evaluation" />
               </div>
               <button
@@ -940,7 +1156,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
             </div>
             <div className="flex items-center justify-end gap-2 border-t border-border bg-background/20 px-5 py-4">
               <button type="button" onClick={() => setShowImport(false)} className="h-9 rounded-xl border border-border px-4 text-[9px] font-semibold text-muted hover:bg-surface hover:text-foreground">Close</button>
-              <button type="button" onClick={runImport} disabled={!pendingFiles.length || importing} className="flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-[9px] font-semibold text-background disabled:opacity-40">{importing ? <span className="h-3 w-3 animate-spin rounded-full border border-background/30 border-t-background" /> : <Upload className="h-3.5 w-3.5" />}{importing ? "Importing" : `Import ${pendingFiles.length || ""}`}</button>
+              <button type="button" onClick={runImport} disabled={!pendingFiles.length || importing} className="flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-[9px] font-semibold text-background disabled:opacity-40">{importing ? <span className="h-3 w-3 animate-spin rounded-full border border-background/30 border-t-background" /> : <Upload className="h-3.5 w-3.5" />}{importing ? "Creating account" : `Create & import ${pendingFiles.length || ""}`}</button>
             </div>
           </div>
         </div>
@@ -955,6 +1171,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
               <button type="button" onClick={() => setSelectedTradeId(null)} className="ml-auto flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground"><X className="h-4 w-4" /></button>
             </div>
             <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5">
+              {selectedTradeIsZyon ? <div className="flex items-start gap-2 rounded-xl border border-primary/20 bg-primary/[0.07] p-3 text-[8px] leading-4 text-muted"><Bot className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" /><span><strong className="text-foreground">Verified ZYON outcome.</strong> This record mirrors its locked Gameplan review and stays read-only here so the Journal cannot diverge from the original outcome.</span></div> : null}
               <div className="grid grid-cols-3 gap-2">
                 <div className="rounded-xl border border-border bg-background/35 p-3"><div className="text-[8px] uppercase tracking-[0.1em] text-muted">Net P&amp;L</div><div className={`mt-1 font-mono text-[16px] font-semibold ${selectedTrade.netPnl >= 0 ? "text-primary" : "text-danger"}`}>{money(selectedTrade.netPnl)}</div></div>
                 <div className="rounded-xl border border-border bg-background/35 p-3"><div className="text-[8px] uppercase tracking-[0.1em] text-muted">R multiple</div><div className="mt-1 font-mono text-[16px] font-semibold">{selectedTrade.rMultiple === null ? "—" : `${selectedTrade.rMultiple.toFixed(2)}R`}</div></div>
@@ -967,19 +1184,19 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
               </Card>
               <div>
                 <label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.12em] text-muted">Setup</label>
-                <input value={selectedTrade.setup} onChange={(event) => updateTrade(selectedTrade.id, { setup: event.target.value })} placeholder="Name the setup used" className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[9px] text-foreground outline-none focus:border-primary/45" />
+                <input value={selectedTrade.setup} disabled={selectedTradeIsZyon} onChange={(event) => updateTrade(selectedTrade.id, { setup: event.target.value })} placeholder="Name the setup used" className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[9px] text-foreground outline-none focus:border-primary/45 disabled:cursor-not-allowed disabled:opacity-70" />
               </div>
               <div>
                 <label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.12em] text-muted">Tags</label>
-                <input value={selectedTrade.tags.join(", ")} onChange={(event) => updateTrade(selectedTrade.id, { tags: [...new Set(event.target.value.split(",").map((tag) => tag.trim()).filter(Boolean))].slice(0, 24) })} placeholder="breakout, patient, news day" className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[9px] text-foreground outline-none focus:border-primary/45" />
+                <input value={selectedTrade.tags.join(", ")} disabled={selectedTradeIsZyon} onChange={(event) => updateTrade(selectedTrade.id, { tags: [...new Set(event.target.value.split(",").map((tag) => tag.trim()).filter(Boolean))].slice(0, 24) })} placeholder="breakout, patient, news day" className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[9px] text-foreground outline-none focus:border-primary/45 disabled:cursor-not-allowed disabled:opacity-70" />
               </div>
               <div>
                 <label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.12em] text-muted">Trade review</label>
-                <textarea value={selectedTrade.notes} onChange={(event) => updateTrade(selectedTrade.id, { notes: event.target.value })} rows={6} placeholder="What was the thesis? What confirmed it? What invalidated it? What will you repeat or change?" className="w-full resize-none rounded-xl border border-border bg-background p-3 text-[9px] leading-5 text-foreground outline-none focus:border-primary/45" />
+                <textarea value={selectedTrade.notes} disabled={selectedTradeIsZyon} onChange={(event) => updateTrade(selectedTrade.id, { notes: event.target.value })} rows={6} placeholder="What was the thesis? What confirmed it? What invalidated it? What will you repeat or change?" className="w-full resize-none rounded-xl border border-border bg-background p-3 text-[9px] leading-5 text-foreground outline-none focus:border-primary/45 disabled:cursor-not-allowed disabled:opacity-70" />
               </div>
               <div>
                 <label className="mb-2 block text-[8px] font-semibold uppercase tracking-[0.12em] text-muted">Execution quality</label>
-                <div className="flex items-center gap-1.5">{[1, 2, 3, 4, 5].map((rating) => <button key={rating} type="button" onClick={() => updateTrade(selectedTrade.id, { rating })} className={`flex h-8 w-8 items-center justify-center rounded-lg border ${selectedTrade.rating && rating <= selectedTrade.rating ? "border-primary/35 bg-primary/10 text-primary" : "border-border bg-background text-muted hover:text-foreground"}`}><Star className={`h-3.5 w-3.5 ${selectedTrade.rating && rating <= selectedTrade.rating ? "fill-current" : ""}`} /></button>)}</div>
+                <div className="flex items-center gap-1.5">{[1, 2, 3, 4, 5].map((rating) => <button key={rating} type="button" disabled={selectedTradeIsZyon} onClick={() => updateTrade(selectedTrade.id, { rating })} className={`flex h-8 w-8 items-center justify-center rounded-lg border disabled:cursor-not-allowed ${selectedTrade.rating && rating <= selectedTrade.rating ? "border-primary/35 bg-primary/10 text-primary" : "border-border bg-background text-muted hover:text-foreground"}`}><Star className={`h-3.5 w-3.5 ${selectedTrade.rating && rating <= selectedTrade.rating ? "fill-current" : ""}`} /></button>)}</div>
               </div>
               <div>
                 <div className="mb-2 flex items-center justify-between"><label className="text-[8px] font-semibold uppercase tracking-[0.12em] text-muted">Evidence</label><button type="button" onClick={() => { setSelectedTradeId(null); setTab("evidence"); }} className="text-[8px] font-semibold text-primary">OPEN LIBRARY</button></div>
@@ -999,7 +1216,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
             </div>
             <div className="flex items-center gap-3 border-t border-border bg-background/20 px-5 py-4">
               <div className="mr-auto text-[8px] text-muted">{selectedTrade.reviewedAt ? `Reviewed ${formatDate(selectedTrade.reviewedAt, true)}` : "Review remains open"}</div>
-              <button type="button" onClick={() => updateTrade(selectedTrade.id, { reviewedAt: selectedTrade.reviewedAt ? null : new Date().toISOString() })} className={`flex h-9 items-center gap-2 rounded-xl px-4 text-[9px] font-semibold ${selectedTrade.reviewedAt ? "border border-border bg-surface text-muted hover:text-foreground" : "bg-primary text-background"}`}>{selectedTrade.reviewedAt ? <CircleAlert className="h-3.5 w-3.5" /> : <Check className="h-3.5 w-3.5" />}{selectedTrade.reviewedAt ? "Reopen review" : "Mark reviewed"}</button>
+              {selectedTradeIsZyon ? <span className="flex h-9 items-center gap-2 rounded-xl border border-primary/20 bg-primary/[0.07] px-4 text-[9px] font-semibold text-primary"><ShieldCheck className="h-3.5 w-3.5" />ZYON reviewed</span> : <button type="button" onClick={() => updateTrade(selectedTrade.id, { reviewedAt: selectedTrade.reviewedAt ? null : new Date().toISOString() })} className={`flex h-9 items-center gap-2 rounded-xl px-4 text-[9px] font-semibold ${selectedTrade.reviewedAt ? "border border-border bg-surface text-muted hover:text-foreground" : "bg-primary text-background"}`}>{selectedTrade.reviewedAt ? <CircleAlert className="h-3.5 w-3.5" /> : <Check className="h-3.5 w-3.5" />}{selectedTrade.reviewedAt ? "Reopen review" : "Mark reviewed"}</button>}
             </div>
           </aside>
         </div>

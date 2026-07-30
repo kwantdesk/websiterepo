@@ -27,6 +27,16 @@ export type JournalTrade = {
   fingerprint: string;
 };
 
+type ZyonSocialRecord = {
+  id: string;
+  userId: string;
+  objectType: string;
+  parentId: string | null;
+  payload: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type JournalEvidence = {
   id: string;
   account: string;
@@ -227,6 +237,18 @@ function contractMultiplier(symbol: string) {
   return FUTURES_MULTIPLIERS[symbolRoot(symbol)] ?? 1;
 }
 
+function finiteNumber(value: unknown) {
+  if (value === null || value === undefined || value === "") return null;
+  const number = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function recordObject(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
 function hashText(value: string) {
   let hash = 2_166_136_261;
   for (let index = 0; index < value.length; index += 1) {
@@ -247,6 +269,101 @@ export function journalTradeFingerprint(trade: Pick<JournalTrade, "openedAt" | "
     trade.exitPrice?.toFixed(8) ?? "",
     trade.netPnl.toFixed(8),
   ].join("|"));
+}
+
+export function zyonOutcomesToJournalTrades(records: ZyonSocialRecord[], viewerId: string) {
+  const precards = new Map(
+    records
+      .filter((record) => record.userId === viewerId && record.objectType === "precord")
+      .filter((record) => String(record.payload.source ?? "").toUpperCase() === "ZYON")
+      .map((record) => [record.id, record]),
+  );
+
+  return records
+    .filter((record) => record.userId === viewerId && record.objectType === "receipt" && record.parentId && precards.has(record.parentId))
+    .map((receipt) => {
+      const precord = precards.get(receipt.parentId as string);
+      if (!precord) return null;
+
+      const planned = precord.payload;
+      const outcome = receipt.payload;
+      const path = recordObject(outcome.pathMetrics);
+      const scores = recordObject(outcome.scores);
+      const assessment = recordObject(outcome.assessment);
+      const directionText = String(outcome.actualDirection ?? planned.direction ?? "").toUpperCase();
+      const side: JournalSide = directionText === "LONG" || directionText === "SHORT" ? directionText : "UNKNOWN";
+      const symbol = String(planned.instrument ?? "UNKNOWN").trim().toUpperCase() || "UNKNOWN";
+      const entryPrice = finiteNumber(outcome.actualEntry) ?? finiteNumber(path.entryPrice);
+      const exitPrice = finiteNumber(outcome.actualExit) ?? finiteNumber(path.exitPrice);
+      const quantity = Math.abs(finiteNumber(outcome.size) ?? finiteNumber(planned.plannedSize) ?? 1);
+      const fees = Math.abs(finiteNumber(outcome.fees) ?? 0);
+      const noTrade = Boolean(outcome.noTrade);
+      const direction = side === "SHORT" ? -1 : 1;
+      const grossPnl = !noTrade && entryPrice !== null && exitPrice !== null
+        ? (exitPrice - entryPrice) * quantity * contractMultiplier(symbol) * direction
+        : 0;
+      const netPnl = grossPnl - fees;
+      const riskUnit = String(planned.riskUnit ?? "").toUpperCase();
+      const maximumActualRisk = finiteNumber(outcome.maximumActualRisk);
+      const plannedRisk = riskUnit === "DOLLARS" ? finiteNumber(planned.maximumRisk) : null;
+      const pathRiskPoints = finiteNumber(path.riskPoints);
+      const calculatedRisk = pathRiskPoints !== null
+        ? pathRiskPoints * quantity * contractMultiplier(symbol)
+        : null;
+      const initialRisk = maximumActualRisk ?? plannedRisk ?? calculatedRisk;
+      const explicitR = finiteNumber(path.realisedR);
+      const rMultiple = explicitR ?? (initialRisk && initialRisk > 0 ? netPnl / initialRisk : null);
+      const openedAt = String(outcome.entryTime ?? path.entryTime ?? planned.plannedEntryTime ?? precord.createdAt);
+      const closedAt = String(outcome.exitTime ?? path.exitTime ?? outcome.addedAt ?? receipt.updatedAt);
+      const openedTime = Date.parse(openedAt);
+      const closedTime = Date.parse(closedAt);
+      const durationSeconds = finiteNumber(path.durationSeconds);
+      const durationMs = durationSeconds !== null
+        ? Math.max(0, durationSeconds * 1_000)
+        : Number.isFinite(openedTime) && Number.isFinite(closedTime)
+          ? Math.max(0, closedTime - openedTime)
+          : null;
+      const reasoningScore = finiteNumber(scores.final);
+      const classification = String(outcome.classification ?? assessment.classification ?? "").trim();
+      const notes = [
+        String(outcome.outcomeReview ?? "").trim(),
+        String(outcome.nextTimeRule ?? "").trim() ? `Next time: ${String(outcome.nextTimeRule).trim()}` : "",
+        String(assessment.explanation ?? "").trim(),
+      ].filter(Boolean).join("\n\n");
+
+      const base: Omit<JournalTrade, "id" | "fingerprint"> = {
+        account: "ZYON Journal",
+        openedAt: Number.isNaN(Date.parse(openedAt)) ? precord.createdAt : openedAt,
+        closedAt: Number.isNaN(Date.parse(closedAt)) ? receipt.updatedAt : closedAt,
+        symbol,
+        side,
+        quantity: noTrade ? 0 : quantity,
+        entryPrice: noTrade ? null : entryPrice,
+        exitPrice: noTrade ? null : exitPrice,
+        grossPnl,
+        fees,
+        netPnl,
+        initialRisk: initialRisk !== null && initialRisk > 0 ? initialRisk : null,
+        rMultiple,
+        durationMs,
+        setup: noTrade ? "ZYON · No trade" : "ZYON Gameplan",
+        tags: [...new Set(["ZYON", String(planned.session ?? "").trim(), classification].filter(Boolean))],
+        notes,
+        rating: reasoningScore === null ? null : Math.max(1, Math.min(5, Math.round(reasoningScore / 20))),
+        reviewedAt: String(outcome.addedAt ?? receipt.updatedAt),
+        sourceImportId: `zyon:${precord.id}`,
+        sourceFile: "ZYON Gameplan outcome",
+        sourceRows: [],
+      };
+      const fingerprint = journalTradeFingerprint(base);
+      return {
+        ...base,
+        id: `zyon:${precord.id}`,
+        fingerprint,
+      } satisfies JournalTrade;
+    })
+    .filter((trade): trade is JournalTrade => Boolean(trade))
+    .sort((left, right) => Date.parse(right.closedAt ?? right.openedAt) - Date.parse(left.closedAt ?? left.openedAt));
 }
 
 function normalizeRows(rows: Array<Record<string, unknown>>) {

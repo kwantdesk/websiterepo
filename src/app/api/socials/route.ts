@@ -120,13 +120,20 @@ export async function GET(request: NextRequest) {
   if (!actor) return NextResponse.json({ error: "Authentication required." }, { status: 401 });
   if (!supabase) return unavailableResponse();
 
+  const mineOnly = request.nextUrl.searchParams.get("mine") === "1";
+  const requestedTypes = (request.nextUrl.searchParams.get("types") ?? "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter((value): value is SocialObjectType => SOCIAL_OBJECT_TYPES.includes(value as SocialObjectType));
   const rows: SocialRow[] = [];
   for (let offset = 0; offset < 2_000; offset += 500) {
-    const { data, error } = await supabase
+    let query = supabase
       .from("social_objects")
       .select("user_id,id,author_label,object_type,scope,desk_id,parent_id,payload,created_at,updated_at")
-      .order("created_at", { ascending: false })
-      .range(offset, offset + 499);
+      .order("created_at", { ascending: false });
+    if (mineOnly) query = query.eq("user_id", actor.userId);
+    if (requestedTypes.length) query = query.in("object_type", requestedTypes);
+    const { data, error } = await query.range(offset, offset + 499);
     if (error) {
       if (tableUnavailable(error.code)) return unavailableResponse();
       console.error("Socials load failed", { code: error.code, message: error.message });
