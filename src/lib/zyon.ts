@@ -128,6 +128,7 @@ export type ZyonGameplanDraft = {
   expiryAt: string | null;
   createdAt: string;
   updatedAt: string;
+  recordMode?: "LIVE" | "HISTORICAL";
   cloudSaved?: boolean;
 };
 

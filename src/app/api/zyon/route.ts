@@ -367,7 +367,7 @@ function buildGameplanDraft(
     || !tradingAccount
     || tradingAccount.size === null
     || (tradingAccount.mode === "PROP" && !tradingAccount.provider)
-    || entryTiming !== "VALID"
+    || (entryTiming !== "VALID" && entryTiming !== "TOO_OLD")
     || !reasoning
     || !confirmation
     || !invalidation
@@ -406,6 +406,7 @@ function buildGameplanDraft(
     expiryAt: cleanText(input.expiryAt, 60) || null,
     createdAt: now,
     updatedAt: now,
+    recordMode: entryTiming === "TOO_OLD" ? "HISTORICAL" : "LIVE",
   };
 }
 
@@ -721,6 +722,7 @@ async function persistGameplanDraft(
         confirmation: draft.confirmation,
         invalidation: draft.invalidation,
         expiryAt: draft.expiryAt,
+        recordMode: draft.recordMode ?? "LIVE",
       },
       source_message_id: sourceMessageId || null,
       created_at: draft.createdAt,
@@ -919,7 +921,8 @@ export async function POST(request: NextRequest) {
     "A Gameplan requires: instrument, explicit LONG or SHORT direction, entry time, entry price or zone, stop, at least one planned exit/take-profit price, maximum risk amount and unit, the trading account, reasoning, confirmation, and invalidation. Reasoning should faithfully synthesise the conversation; never invent a missing fact or price.",
     "Trading-account data must identify the environment (personal live, simulator, or prop firm), nominal account size and currency, and phase. For prop accounts also collect the provider and optional programme, for example Traderify Flex, USD 50K, Evaluation. Never request or store a broker login or private account number.",
     "If any required Gameplan fact is missing, DO NOT call save_trading_gameplan_draft. Ask one short, direct question for the most important missing fact, such as 'WHAT'S YOUR ENTRY TIME?' Continue this collection loop until every required fact is known.",
-    "Anti-lookahead rule: an actual entry or fill may be submitted only when its timestamp is no more than five minutes before the authoritative server time. Never change, round forward, or fabricate a timestamp to pass this rule. If it is older, explain that it cannot be placed on record.",
+    "Historical testing mode is enabled. An entry or fill older than five minutes may be saved, but it must preserve the trader's exact original timestamp and will be labelled HISTORICAL rather than represented as a live call.",
+    "For historical Gameplans, collect the same complete facts as a live Gameplan: instrument, direction, entry time and timezone, entry or zone, stop, targets, risk, trading account, reasoning, confirmation, and invalidation. Never invent or move a timestamp.",
     "Future entry timestamps are valid for planned limit orders. Ask for the trader's timezone when it is not known, then convert entryTime to an ISO 8601 timestamp with an explicit offset.",
     "Once every required fact is known, call save_trading_gameplan_draft immediately. This sends an editable holding record to Socials and writes the complete plan into today's ZYON journal folder. It does not publish the plan yet. Tell the trader to review it and post it to their Profile.",
     `Authoritative server time: ${new Date(requestReceivedAt).toISOString()}. Trader timezone: ${clientTimeZone}.`,
@@ -1149,14 +1152,14 @@ export async function POST(request: NextRequest) {
     const savedGameplanJournalCloud = savedGameplanJournalEntry
       ? await persistJournalEntry(actor.userId, savedGameplanJournalEntry)
       : false;
-    const responseText = gameplanEntryTiming === "TOO_OLD"
-      ? "That entry happened more than five minutes ago, so I cannot send it as a new Gameplan. This protects the record from lookahead. A future limit-order entry is allowed, or you can document the old trade as a journal review instead."
-      : gameplanEntryTiming === "INVALID" || gameplanEntryTiming === "MISSING"
-        ? "I need an exact entry time and timezone before I can send this Gameplan. What was your entry time?"
-        : gameplanDraftSave.blockedBy
+    const responseText = gameplanDraftSave.blockedBy
       ? "Your previous Gameplan is already in the Socials holding page. Post it to your Profile before asking ZYON to send another one."
       : gameplanDraft && !gameplanDraftSave.saved
         ? "I have the complete Gameplan, but the account holding record did not sync. Nothing was posted. Try Send Gameplan again."
+        : gameplanEntryTiming === "TOO_OLD" && gameplanDraft
+          ? "Historical Gameplan sent. It preserves the original entry timestamp, is labelled historical, and is waiting in Socials for your review before you post the record."
+          : gameplanEntryTiming === "INVALID" || gameplanEntryTiming === "MISSING"
+            ? "I need an exact entry time and timezone before I can send this Gameplan. What was your entry time?"
         : text || (gameplanDraft
           ? "Gameplan sent. It is saved in today's ZYON journal and waiting in Socials for your review. Check the details, then post it to your Profile."
           : "That has been recorded in your trading journal.");

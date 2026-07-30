@@ -1380,7 +1380,10 @@ export default function SocialsWorkspace({
           confluences: draft.confluences,
         },
         scoreModelVersion: SOCIAL_RECORD_RULES.scoreModelVersion,
-        evidenceState: "PLATFORM TIMESTAMPED" as const,
+        evidenceState: draft.recordMode === "HISTORICAL"
+          ? "SELF REPORTED" as const
+          : "PLATFORM TIMESTAMPED" as const,
+        recordMode: draft.recordMode ?? "LIVE",
       };
       const now = new Date().toISOString();
       const object = buildLocalObject({
@@ -1393,12 +1396,14 @@ export default function SocialsWorkspace({
           ...base,
           lockedAt: now,
           reasoningScore: calculateReasoningScore(base),
-          status: "LIVE",
+          status: draft.recordMode === "HISTORICAL" ? "UNDER REVIEW" : "LIVE",
           lifecycle: [{
             status: "LOCKED",
             at: now,
             source: "ZYON",
-            note: "Trader reviewed the ZYON holding record and posted it to their Profile.",
+            note: draft.recordMode === "HISTORICAL"
+              ? "Trader reviewed and posted a historical ZYON Gameplan for end-to-end testing."
+              : "Trader reviewed the ZYON holding record and posted it to their Profile.",
           }],
         } satisfies SocialPrecordPayload,
       });
@@ -1435,7 +1440,9 @@ export default function SocialsWorkspace({
       window.dispatchEvent(new CustomEvent("kwantdesk:gameplan-posted"));
       setZyonGameplanDraft(null);
       setZyonDraftState("missing");
-      setNotice(`${draft.instrument} Gameplan posted to your Profile. Live ranking is now in progress.`);
+      setNotice(draft.recordMode === "HISTORICAL"
+        ? `${draft.instrument} historical Gameplan posted to your Profile and is waiting for outcome review.`
+        : `${draft.instrument} Gameplan posted to your Profile. Live ranking is now in progress.`);
       setTab("reasoning");
       return;
     }
@@ -2551,7 +2558,7 @@ export default function SocialsWorkspace({
                             <span className="font-mono text-[26px] font-semibold">{zyonGameplanDraft.instrument}</span>
                             <span className="rounded-lg border border-warning/25 bg-warning/10 px-2 py-1 text-[7px] font-semibold text-warning">AWAITING PROFILE POST</span>
                           </div>
-                          <div className="mt-1 text-[7px] text-muted">Updated {formatDate(zyonGameplanDraft.updatedAt, true)} by ZYON · not yet on record</div>
+                          <div className="mt-1 text-[7px] text-muted">Updated {formatDate(zyonGameplanDraft.updatedAt, true)} by ZYON · {zyonGameplanDraft.recordMode === "HISTORICAL" ? "historical test · " : ""}not yet on record</div>
                         </div>
                         <div className="ml-auto text-right"><div className="text-[10px] font-semibold text-foreground">{zyonGameplanDraft.title}</div><div className="mt-1 text-[7px] uppercase tracking-[0.12em] text-muted">{zyonGameplanDraft.sessionDate}</div></div>
                       </div>
@@ -2560,7 +2567,7 @@ export default function SocialsWorkspace({
                         <label className="text-[7px] font-semibold uppercase tracking-[0.12em] text-muted">Instrument<input value={zyonGameplanDraft.instrument} onChange={(event) => setZyonGameplanDraft((current) => current ? { ...current, instrument: event.target.value.toUpperCase().slice(0, 16) } : current)} className="mt-1.5 h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[10px] text-foreground outline-none focus:border-primary/40" /></label>
                         <label className="text-[7px] font-semibold uppercase tracking-[0.12em] text-muted">Direction<KwantSelect value={zyonGameplanDraft.direction} onChange={(event) => setZyonGameplanDraft((current) => current ? { ...current, direction: event.target.value as ZyonGameplanDraft["direction"] } : current)} className="mt-1.5 h-10 w-full rounded-xl border border-border bg-background px-3 text-[9px] outline-none"><option value="LONG">Long</option><option value="SHORT">Short</option></KwantSelect></label>
                         <label className="text-[7px] font-semibold uppercase tracking-[0.12em] text-muted">Session<input value={zyonGameplanDraft.session} onChange={(event) => setZyonGameplanDraft((current) => current ? { ...current, session: event.target.value } : current)} className="mt-1.5 h-10 w-full rounded-xl border border-border bg-background px-3 text-[9px] text-foreground outline-none focus:border-primary/40" /></label>
-                        <label className="text-[7px] font-semibold uppercase tracking-[0.12em] text-muted">Entry time<input value={zyonGameplanDraft.entryTime} onChange={(event) => setZyonGameplanDraft((current) => current ? { ...current, entryTime: event.target.value.slice(0, 80) } : current)} placeholder="ISO time + offset" title="Actual entries must be recorded within five minutes. Future limit-order times are allowed." className="mt-1.5 h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] text-foreground outline-none focus:border-primary/40" /></label>
+                        <label className="text-[7px] font-semibold uppercase tracking-[0.12em] text-muted">Entry time<input value={zyonGameplanDraft.entryTime} onChange={(event) => setZyonGameplanDraft((current) => current ? { ...current, entryTime: event.target.value.slice(0, 80) } : current)} placeholder="ISO time + offset" title="Use the exact original timestamp. Entries older than five minutes are preserved as historical records." className="mt-1.5 h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] text-foreground outline-none focus:border-primary/40" /></label>
                         <label className="text-[7px] font-semibold uppercase tracking-[0.12em] text-muted">Risk<input type="number" value={zyonGameplanDraft.riskAmount ?? ""} onChange={(event) => setZyonGameplanDraft((current) => current ? { ...current, riskAmount: numberOrNull(event.target.value) } : current)} className="mt-1.5 h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] text-foreground outline-none focus:border-primary/40" /></label>
                         <label className="text-[7px] font-semibold uppercase tracking-[0.12em] text-muted">Risk unit<KwantSelect value={zyonGameplanDraft.riskUnit} onChange={(event) => setZyonGameplanDraft((current) => current ? { ...current, riskUnit: event.target.value as ZyonGameplanDraft["riskUnit"] } : current)} className="mt-1.5 h-10 w-full rounded-xl border border-border bg-background px-3 text-[9px] outline-none"><option value="DOLLARS">Dollars</option><option value="POINTS">Points</option><option value="TICKS">Ticks</option><option value="PERCENT">Percent</option></KwantSelect></label>
                       </div>

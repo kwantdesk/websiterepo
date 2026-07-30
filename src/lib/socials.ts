@@ -156,6 +156,7 @@ export type SocialPrecordPayload = {
   contentHash?: string;
   scoreModelVersion?: string;
   evidenceState?: "SELF REPORTED" | "PLATFORM TIMESTAMPED" | "BROKER VERIFIED";
+  recordMode?: "LIVE" | "HISTORICAL";
   lifecycle?: SocialLifecycleEvent[];
 };
 
