@@ -180,7 +180,20 @@ const GammaWorkspace = dynamic(() => import("@/components/options-flow/GammaWork
 const GexMapWorkspace = dynamic(() => import("@/components/gex-map/GexMapWorkspace"), { ssr: false });
 const GameplanWorkspace = dynamic(() => import("@/components/gameplan/GameplanWorkspace"), { ssr: false });
 const NewsWorkspace = dynamic(() => import("@/components/news/NewsWorkspace"), { ssr: false });
-const ZyonWorkspace = dynamic(() => import("@/components/zyon/ZyonWorkspace"), { ssr: false });
+const ZyonWorkspace = dynamic(() => import("@/components/zyon/ZyonWorkspace"), {
+  ssr: false,
+  loading: () => (
+    <div className="flex h-full min-h-0 flex-1 items-center justify-center bg-background">
+      <div className="text-center">
+        <span className="mx-auto flex h-11 w-11 items-center justify-center rounded-2xl border border-primary/20 bg-primary/[0.07] text-primary">
+          <Sparkles className="h-4 w-4 animate-pulse" />
+        </span>
+        <div className="mt-3 text-[8px] font-semibold text-foreground">Opening ZYON</div>
+        <div className="mt-1 text-[7px] text-muted">Loading the latest conversation.</div>
+      </div>
+    </div>
+  ),
+});
 const JournalWorkspace = dynamic(() => import("@/components/journal/JournalWorkspace"), { ssr: false });
 
 const BOTTOM_PANEL_MIN_HEIGHT = 150;

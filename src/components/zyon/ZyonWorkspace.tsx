@@ -31,6 +31,7 @@ import {
 } from "lucide-react";
 import {
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -291,6 +292,32 @@ async function portableAttachmentSource(source: string) {
   return blobDataUrl(await response.blob());
 }
 
+function ZyonLoadingState({ compact }: { compact: boolean }) {
+  return (
+    <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-background">
+      <header className={`flex h-[58px] shrink-0 items-center gap-3 border-b border-border bg-panel ${compact ? "px-3" : "px-4"}`}>
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl border border-primary/20 bg-primary/10 text-primary shadow-[0_0_22px_color-mix(in_srgb,var(--primary)_12%,transparent)]">
+          <Sparkles className="h-4 w-4" />
+        </span>
+        <div>
+          <div className="text-[12px] font-semibold tracking-[0.12em] text-foreground">ZYON</div>
+          <div className="mt-1 text-[7px] uppercase tracking-[0.12em] text-muted">Restoring conversation</div>
+        </div>
+      </header>
+      <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-[radial-gradient(circle_at_50%_45%,color-mix(in_srgb,var(--primary)_7%,transparent),transparent_38%)]">
+        <div className="text-center">
+          <span className="relative mx-auto flex h-12 w-12 items-center justify-center rounded-2xl border border-primary/20 bg-primary/[0.07] text-primary">
+            <Sparkles className="h-4 w-4 animate-pulse" />
+            <span className="absolute inset-[-6px] animate-spin rounded-[20px] border border-transparent border-t-primary/55" />
+          </span>
+          <div className="mt-4 text-[9px] font-semibold text-foreground">Opening ZYON</div>
+          <div className="mt-1 text-[7px] text-muted">Placing you at the latest message.</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 type ZyonImagePreview = Pick<ZyonAttachment, "name" | "dataUrl">;
 
 function messageAttachments(
@@ -447,7 +474,7 @@ export default function ZyonWorkspace({
   const [exportingFolderId, setExportingFolderId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesScrollRef = useRef<HTMLDivElement>(null);
 
   const selectedRoot = interpreter.selectedRoot;
   const context = interpreter.contexts[selectedRoot];
@@ -456,6 +483,7 @@ export default function ZyonWorkspace({
   const rootMessages = interpreter.messages[selectedRoot];
   const rootMemory = interpreter.memory[selectedRoot];
   const learningReviews = interpreter.learningReviews.filter((review) => review.root === selectedRoot);
+  const conversationReady = storeReady && cloudJournal !== "checking";
 
   useEffect(() => {
     let active = true;
@@ -492,7 +520,9 @@ export default function ZyonWorkspace({
 
   useEffect(() => {
     let active = true;
-    fetch("/api/zyon/journal", { cache: "no-store" })
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 8_000);
+    fetch("/api/zyon/journal", { cache: "no-store", signal: controller.signal })
       .then(async (response) => {
         const payload = await response.json() as {
           entries?: ZyonJournalEntry[];
@@ -515,9 +545,14 @@ export default function ZyonWorkspace({
       })
       .catch(() => {
         if (active) setCloudJournal("local");
+      })
+      .finally(() => {
+        window.clearTimeout(timeout);
       });
     return () => {
       active = false;
+      window.clearTimeout(timeout);
+      controller.abort();
     };
   }, []);
 
@@ -539,12 +574,12 @@ export default function ZyonWorkspace({
     };
   }, [imagePreview]);
 
-  useEffect(() => {
-    const frame = window.requestAnimationFrame(() => {
-      messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-    });
-    return () => window.cancelAnimationFrame(frame);
-  }, [messages.length, sending]);
+  useLayoutEffect(() => {
+    if (!conversationReady) return;
+    const container = messagesScrollRef.current;
+    if (!container) return;
+    container.scrollTop = container.scrollHeight;
+  }, [compact, conversationReady, messages.length, sending]);
 
   const filteredJournal = useMemo(() => {
     const query = journalSearch.trim().toLowerCase();
@@ -908,6 +943,10 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
     }
   };
 
+  if (!conversationReady) {
+    return <ZyonLoadingState compact={compact} />;
+  }
+
   if (compact) {
     return (
       <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-background">
@@ -995,7 +1034,7 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
           </div>
         </header>
 
-        <div className="min-h-0 flex-1 overflow-y-auto bg-[radial-gradient(circle_at_50%_0%,color-mix(in_srgb,var(--primary)_5%,transparent),transparent_38%)] px-3 py-4">
+        <div ref={messagesScrollRef} className="min-h-0 flex-1 overflow-y-auto bg-[radial-gradient(circle_at_50%_0%,color-mix(in_srgb,var(--primary)_5%,transparent),transparent_38%)] px-3 py-4">
           <div className="flex min-h-full flex-col justify-end">
             <div className="mb-4 flex items-center gap-2 text-[8px] font-semibold uppercase tracking-[0.12em] text-muted/70">
               <span className="h-px flex-1 bg-border" />
@@ -1040,7 +1079,6 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
                   </span>
                 </div>
               ) : null}
-              <div ref={messagesEndRef} />
             </div>
           </div>
         </div>
@@ -1341,13 +1379,13 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
             ) : null}
             <div className="flex items-center gap-2 text-[8px] uppercase tracking-[0.12em] text-muted">
               <span className={`h-1.5 w-1.5 rounded-full ${cloudJournal === "synced" ? "bg-primary" : "bg-muted"}`} />
-              {cloudJournal === "checking" ? "Checking journal" : cloudJournal === "synced" ? "Account journal synced" : "Local journal active"}
+              {cloudJournal === "synced" ? "Account journal synced" : "Local journal active"}
             </div>
           </div>
         </aside>
 
         <main className="flex min-w-0 flex-1 flex-col bg-[radial-gradient(circle_at_50%_0%,color-mix(in_srgb,var(--primary)_5%,transparent),transparent_38%)]">
-          <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-7">
+          <div ref={messagesScrollRef} className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-7">
             <div className="mx-auto flex min-h-full max-w-[880px] flex-col">
               {messages.length <= 1 ? (
                 <div className="mb-6 rounded-2xl border border-border bg-panel/70 p-4 shadow-[0_18px_60px_rgba(0,0,0,.12)]">
@@ -1424,7 +1462,6 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
                     </div>
                   </div>
                 ) : null}
-                <div ref={messagesEndRef} />
               </div>
             </div>
           </div>
