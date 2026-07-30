@@ -259,6 +259,36 @@ body {
   animation: kwantbot-message-out 360ms cubic-bezier(.2,.8,.2,1) both;
 }
 
+@keyframes zyon-first-message-enter {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes zyon-chat-enter {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.zyon-first-message-enter {
+  animation: zyon-first-message-enter 440ms cubic-bezier(.2,.8,.2,1) both;
+}
+
+.zyon-chat-enter {
+  animation: zyon-chat-enter 420ms cubic-bezier(.2,.8,.2,1) both;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .kwantbot-avatar-float,
   .kwantbot-avatar-speaking,
@@ -270,6 +300,8 @@ body {
   .kwantbot-home-particle,
   .kwantbot-message-in,
   .kwantbot-message-out,
+  .zyon-first-message-enter,
+  .zyon-chat-enter,
   .gameplan-current-level {
     animation: none;
   }

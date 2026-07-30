@@ -2940,6 +2940,7 @@ export default function KwantifyWorkspace({
   const [loading, setLoading] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [currentUsername, setCurrentUsername] = useState("");
+  const [currentDisplayName, setCurrentDisplayName] = useState("");
   const [currentAvatarUrl, setCurrentAvatarUrl] = useState("");
   const [showUsernameModal, setShowUsernameModal] = useState(false);
   const [newUsername, setNewUsername] = useState("");
@@ -5451,7 +5452,15 @@ export default function KwantifyWorkspace({
         return;
       }
       const existingUsername = user?.user_metadata?.username as string | undefined;
+      const existingDisplayName = (
+        (user?.user_metadata?.display_name as string | undefined)
+        ?? (user?.user_metadata?.full_name as string | undefined)
+        ?? existingUsername
+        ?? user.email?.split("@")[0]
+        ?? "Trader"
+      ).trim();
       setCurrentUsername(existingUsername ?? "Account");
+      setCurrentDisplayName(existingDisplayName || "Trader");
       let hydrated: Awaited<ReturnType<typeof hydrateUserPreferences>> | null = null;
       try {
         hydrated = await hydrateUserPreferences(supabase, user);
@@ -5498,7 +5507,10 @@ export default function KwantifyWorkspace({
         const response = await fetch("/api/friends", { cache: "no-store" });
         if (!response.ok) return;
         const payload = await response.json() as FriendsPayload;
-        if (active) setCurrentAvatarUrl(payload.viewer?.avatarUrl ?? "");
+        if (active) {
+          setCurrentAvatarUrl(payload.viewer?.avatarUrl ?? "");
+          if (payload.viewer?.displayName) setCurrentDisplayName(payload.viewer.displayName);
+        }
       } catch {
         // Keep the account control available with its initials fallback.
       }
@@ -5507,11 +5519,18 @@ export default function KwantifyWorkspace({
       const detail = (event as CustomEvent<{ avatarUrl?: string }>).detail;
       setCurrentAvatarUrl(detail?.avatarUrl ?? "");
     };
+    const handleIdentityUpdated = (event: Event) => {
+      const detail = (event as CustomEvent<{ displayName?: string; handle?: string }>).detail;
+      if (detail?.displayName) setCurrentDisplayName(detail.displayName);
+      if (detail?.handle) setCurrentUsername(detail.handle);
+    };
     void loadAvatar();
     window.addEventListener("kwantdesk:profile-updated", handleProfileUpdated);
+    window.addEventListener("kwantdesk:identity-updated", handleIdentityUpdated);
     return () => {
       active = false;
       window.removeEventListener("kwantdesk:profile-updated", handleProfileUpdated);
+      window.removeEventListener("kwantdesk:identity-updated", handleIdentityUpdated);
     };
   }, [authChecked, preferenceUserId]);
 
@@ -5644,6 +5663,7 @@ export default function KwantifyWorkspace({
   async function signOut() {
     await supabase?.auth?.signOut();
     setCurrentUsername("Account");
+    setCurrentDisplayName("");
     setShowUsernameModal(false);
     router.replace("/login?returnTo=/");
   }
@@ -5663,6 +5683,7 @@ export default function KwantifyWorkspace({
       return;
     }
     setCurrentUsername(newUsername);
+    setCurrentDisplayName(newUsername);
     setShowUsernameModal(false);
   }
 
@@ -8123,7 +8144,7 @@ export default function KwantifyWorkspace({
             {bottomWorkspaceSection === "gameplan" ? <GameplanWorkspace initialInstrument={displayCmeSymbol(selectedInstrument)} /> : null}
             {bottomWorkspaceSection === "kwantbot" ? <KwantBotIntelligenceWorkspace interpreter={kwantBotInterpreter} /> : null}
             {bottomWorkspaceSection === "news" ? <NewsWorkspace /> : null}
-            {bottomWorkspaceSection === "zyon" ? <ZyonWorkspace interpreter={kwantBotInterpreter} /> : null}
+            {bottomWorkspaceSection === "zyon" ? <ZyonWorkspace interpreter={kwantBotInterpreter} viewerName={currentDisplayName || currentUsername} /> : null}
             {bottomWorkspaceSection === "journal" ? <JournalWorkspace accountKey={preferenceUserId || currentUsername || "local"} /> : null}
             {bottomWorkspaceSection === "socials" ? (
               <SocialsWorkspace
@@ -8616,7 +8637,7 @@ export default function KwantifyWorkspace({
             <KwantBotInterpreterPanel interpreter={kwantBotInterpreter} />
           )}
           {rightPanel === "zyon" && (
-            <ZyonWorkspace interpreter={kwantBotInterpreter} compact />
+            <ZyonWorkspace interpreter={kwantBotInterpreter} compact viewerName={currentDisplayName || currentUsername} />
           )}
           {rightPanel === "optionstape" && (
             <OptionsTapePanel interpreter={kwantBotInterpreter} />

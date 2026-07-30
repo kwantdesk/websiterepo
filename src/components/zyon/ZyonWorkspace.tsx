@@ -442,9 +442,11 @@ function ZyonImagePreviewDialog({
 export default function ZyonWorkspace({
   interpreter,
   compact = false,
+  viewerName = "",
 }: {
   interpreter: UseKwantBotInterpreterResult;
   compact?: boolean;
+  viewerName?: string;
 }) {
   const [model, setModel] = useState<ZyonModelKey>(() => {
     if (typeof window === "undefined") return "opus-5";
@@ -520,6 +522,8 @@ export default function ZyonWorkspace({
   const rootMemory = interpreter.memory[selectedRoot];
   const learningReviews = interpreter.learningReviews.filter((review) => review.root === selectedRoot);
   const conversationReady = storeReady && cloudJournal !== "checking";
+  const conversationStarted = messages.some((message) => message.role === "user");
+  const greetingName = viewerName.trim().split(/\s+/)[0] || "Trader";
 
   const refreshGameplanStatus = useCallback(async () => {
     try {
@@ -1582,22 +1586,110 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
 
         <main className="flex min-w-0 flex-1 flex-col bg-[radial-gradient(circle_at_50%_0%,color-mix(in_srgb,var(--primary)_5%,transparent),transparent_38%)]">
           <div ref={messagesScrollRef} className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-7">
-            <div className="mx-auto flex min-h-full max-w-[880px] flex-col">
-              {messages.length <= 1 ? (
-                <div className="mb-6 rounded-2xl border border-border bg-panel/70 p-4 shadow-[0_18px_60px_rgba(0,0,0,.12)]">
-                  <div className="flex items-start gap-3">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-primary/20 bg-primary/10 text-primary">
-                      <Bot className="h-[18px] w-[18px]" />
-                    </div>
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <h2 className="text-[13px] font-semibold text-foreground">Start with evidence</h2>
-                        <span className="rounded-full bg-surface px-2 py-0.5 text-[7px] uppercase tracking-[0.13em] text-muted">{selectedRoot} context attached</span>
+            <div className={`mx-auto flex min-h-full max-w-[880px] flex-col ${conversationStarted ? "zyon-chat-enter" : "justify-center"}`}>
+              {!conversationStarted ? (
+                <div className="zyon-first-message-enter mx-auto flex w-full max-w-[720px] flex-col items-center justify-center py-8 text-center">
+                  <span className="flex h-12 w-12 items-center justify-center rounded-2xl border border-primary/20 bg-primary/10 text-primary shadow-[0_0_32px_color-mix(in_srgb,var(--primary)_16%,transparent)]">
+                    <Sparkles className="h-5 w-5" />
+                  </span>
+                  <div className="mt-5 text-[10px] font-semibold uppercase tracking-[0.18em] text-primary">ZYON · {selectedRoot} intelligence ready</div>
+                  <h2 className="mt-2 text-[27px] font-semibold tracking-[-0.04em] text-foreground sm:text-[32px]">
+                    Hello, {greetingName}. What&apos;s today&apos;s game plan?
+                  </h2>
+                  <p className="mt-2 max-w-xl text-[10px] leading-5 text-muted">
+                    Start with your read, attach a chart, or ask ZYON to challenge the plan against live market context.
+                  </p>
+
+                  <form onSubmit={sendMessage} className="mt-7 w-full text-left">
+                    {attachments.length ? (
+                      <div className="mb-2 flex flex-wrap gap-2">
+                        {attachments.map((attachment) => (
+                          <div key={attachment.id} className="relative flex h-14 max-w-[190px] items-center gap-2 overflow-hidden rounded-xl border border-border bg-panel/80 pr-7">
+                            {isImage(attachment) ? (
+                              <Image src={attachment.dataUrl} alt={attachment.name} width={56} height={56} unoptimized className="h-14 w-14 shrink-0 object-cover" />
+                            ) : (
+                              <span className="ml-2 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"><FileText className="h-4 w-4" /></span>
+                            )}
+                            <span className="min-w-0 truncate text-[9px] text-foreground">{attachment.name}</span>
+                            <button
+                              type="button"
+                              onClick={() => setAttachments((current) => current.filter((item) => item.id !== attachment.id))}
+                              className="absolute right-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-background/80 text-muted hover:text-foreground"
+                              aria-label={`Remove ${attachment.name}`}
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </div>
+                        ))}
                       </div>
-                      <p className="mt-1 max-w-2xl text-[10px] leading-5 text-muted">Send a screenshot, explain what you see, or ask ZYON to compare your discretionary idea with live Gameplan, gamma, options flow, and KwantBot memory.</p>
+                    ) : null}
+                    <div className={`rounded-3xl border bg-panel/80 p-2.5 text-left shadow-[0_24px_90px_rgba(0,0,0,.28)] backdrop-blur-xl transition focus-within:border-primary/40 focus-within:shadow-[0_24px_90px_rgba(0,0,0,.28),0_0_32px_color-mix(in_srgb,var(--primary)_10%,transparent)] ${
+                      online ? "border-border" : "border-border opacity-65"
+                    }`}>
+                      <textarea
+                        ref={composerRef}
+                        value={draft}
+                        onChange={(event) => setDraft(event.target.value.slice(0, 6_000))}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" && !event.shiftKey) {
+                            event.preventDefault();
+                            void sendMessage();
+                          }
+                        }}
+                        disabled={!online || sending}
+                        placeholder={online ? "Describe your plan, levels, conditions, or attach a chart…" : "ZYON is paused"}
+                        rows={2}
+                        autoFocus
+                        className="min-h-14 w-full resize-none overflow-y-hidden bg-transparent px-2 py-2 text-[12px] leading-5 text-foreground outline-none placeholder:text-muted/45"
+                      />
+                      <div className="flex flex-wrap items-center gap-2 border-t border-border/70 pt-2">
+                        <input
+                          ref={fileInputRef}
+                          type="file"
+                          multiple
+                          accept="image/jpeg,image/png,image/gif,image/webp,application/pdf,text/plain,text/markdown,text/csv,application/json"
+                          onChange={(event) => void handleFiles(event)}
+                          className="hidden"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => fileInputRef.current?.click()}
+                          disabled={!online || sending || attachments.length >= MAX_ATTACHMENTS}
+                          className="flex h-9 items-center gap-2 rounded-xl px-3 text-[9px] text-muted transition hover:bg-surface hover:text-foreground disabled:opacity-35"
+                        >
+                          <Paperclip className="h-3.5 w-3.5" />
+                          Attach
+                        </button>
+                        <KwantSelect
+                          value={model}
+                          onChange={(event) => {
+                            if (isZyonModelKey(event.target.value)) setModel(event.target.value);
+                          }}
+                          menuLabel="ZYON model"
+                          className="h-9 min-w-[138px] rounded-xl border border-border bg-surface/60 px-3 text-[9px] font-semibold text-foreground"
+                          aria-label="Select ZYON model"
+                        >
+                          {Object.entries(ZYON_MODELS).map(([key, item]) => (
+                            <option key={key} value={key}>{item.label}</option>
+                          ))}
+                        </KwantSelect>
+                        <span className="hidden text-[8px] text-muted sm:inline">{selectedRoot} live context attached</span>
+                        <button
+                          type="submit"
+                          disabled={!online || sending || (!draft.trim() && !attachments.length)}
+                          className="ml-auto flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-[9px] font-semibold text-background transition hover:brightness-110 disabled:cursor-default disabled:opacity-30"
+                        >
+                          {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+                          Start
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                  <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                    {attachmentError || sendError ? (
+                      <p role="alert" className="mt-2 text-center text-[9px] text-danger">{attachmentError || sendError}</p>
+                    ) : null}
+                  </form>
+
+                  <div className="mt-4 flex max-w-full gap-2 overflow-x-auto pb-1">
                     {QUICK_PROMPTS.map((prompt) => {
                       const Icon = prompt.icon;
                       return (
@@ -1608,17 +1700,16 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
                             setDraft(prompt.prompt);
                             composerRef.current?.focus();
                           }}
-                          className="flex items-center gap-2.5 rounded-xl border border-border bg-background/30 px-3 py-2.5 text-left text-[10px] text-muted transition hover:border-primary/25 hover:bg-primary/[0.04] hover:text-foreground"
+                          className="flex h-9 shrink-0 items-center gap-2 rounded-xl border border-border bg-background/35 px-3 text-[9px] text-muted transition hover:border-primary/25 hover:bg-primary/[0.04] hover:text-foreground"
                         >
-                          <Icon className="h-3.5 w-3.5 shrink-0 text-primary" />
+                          <Icon className="h-3.5 w-3.5 text-primary" />
                           {prompt.label}
                         </button>
                       );
                     })}
                   </div>
                 </div>
-              ) : null}
-
+              ) : (
               <div className="space-y-4">
                 {messages.map((message) => {
                   const assistant = message.role === "assistant";
@@ -1659,9 +1750,11 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
                   </div>
                 ) : null}
               </div>
+              )}
             </div>
           </div>
 
+          {conversationStarted ? (
           <div className="shrink-0 border-t border-border bg-panel/88 px-4 py-3 backdrop-blur-xl sm:px-7">
             <form onSubmit={sendMessage} className="mx-auto max-w-[880px]">
               {attachments.length ? (
@@ -1746,6 +1839,7 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
               )}
             </form>
           </div>
+          ) : null}
         </main>
 
         <aside className="hidden w-[284px] shrink-0 flex-col border-l border-border bg-panel/70 xl:flex">
