@@ -28,6 +28,7 @@ type SocialProfileViewProps = {
   profileObject: SocialObject;
   profile: SocialProfilePayload;
   gameplans: SocialObject[];
+  receipts: SocialObject[];
   cards: SocialObject[];
   comments: SocialObject[];
   reasoningScore: number | null;
@@ -70,6 +71,7 @@ export default function SocialProfileView({
   profileObject,
   profile,
   gameplans,
+  receipts,
   cards,
   comments,
   reasoningScore,
@@ -197,15 +199,19 @@ export default function SocialProfileView({
               const payload = payloadOf<SocialPrecordPayload>(record);
               if (!payload) return null;
               const commentCount = comments.filter((comment) => comment.parentId === record.id).length;
+              const complete = receipts.some((receipt) => receipt.parentId === record.id);
               const saved = savedIds.has(record.id);
               const reposted = repostedIds.has(record.id);
               return (
-                <article key={`${record.userId}:${record.id}`} className="group relative flex min-h-[255px] flex-col overflow-hidden bg-panel p-4">
+                <article key={`${record.userId}:${record.id}`} className={`group relative flex min-h-[255px] flex-col overflow-hidden bg-panel p-4 ${complete ? "shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--accent)_18%,transparent)]" : "shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--warning)_22%,transparent)]"}`}>
                   <button type="button" onClick={() => onOpenGameplan(record)} className="absolute inset-0 z-0 text-left" aria-label={`Open ${payload.instrument} Gameplan`} />
                   <div className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-300 group-hover:opacity-100 bg-[radial-gradient(circle_at_80%_0%,color-mix(in_srgb,var(--primary)_13%,transparent),transparent_48%)]" />
                   <div className="relative z-10 flex items-start justify-between pointer-events-none">
                     <span className="rounded-lg border border-primary/25 bg-primary/10 px-2 py-1 font-mono text-[9px] font-semibold text-primary">{payload.instrument}</span>
-                    <span className="text-[7px] text-muted">{formatDate(record.createdAt)}</span>
+                    <div className="text-right">
+                      <span className={`block rounded-md border px-1.5 py-0.5 text-[6px] font-semibold uppercase tracking-[0.1em] ${complete ? "border-accent/25 bg-accent/[0.08] text-accent" : "border-warning/25 bg-warning/[0.08] text-warning"}`}>{complete ? "Complete" : "Live ranking"}</span>
+                      <span className="mt-1 block text-[7px] text-muted">{formatDate(record.createdAt)}</span>
+                    </div>
                   </div>
                   <div className="relative z-10 mt-9 pointer-events-none">
                     <div className="text-[7px] font-semibold uppercase tracking-[0.16em] text-muted">{payload.session} · {payload.direction}</div>

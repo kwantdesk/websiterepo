@@ -89,6 +89,7 @@ export type ZyonGameplanDraft = {
   title: string;
   direction: ZyonGameplanDirection;
   session: string;
+  entryTime: string;
   entryLow: number;
   entryHigh: number;
   stop: number;
@@ -105,6 +106,55 @@ export type ZyonGameplanDraft = {
   updatedAt: string;
   cloudSaved?: boolean;
 };
+
+export type ZyonGameplanRequiredField =
+  | "instrument"
+  | "direction"
+  | "entryTime"
+  | "entry"
+  | "stop"
+  | "targets"
+  | "risk"
+  | "reasoning"
+  | "confirmation"
+  | "invalidation";
+
+export function zyonGameplanMissingFields(
+  draft: Partial<ZyonGameplanDraft> | null | undefined,
+): ZyonGameplanRequiredField[] {
+  if (!draft) {
+    return [
+      "instrument",
+      "direction",
+      "entryTime",
+      "entry",
+      "stop",
+      "targets",
+      "risk",
+      "reasoning",
+      "confirmation",
+      "invalidation",
+    ];
+  }
+  const missing: ZyonGameplanRequiredField[] = [];
+  if (!draft.instrument?.trim()) missing.push("instrument");
+  if (draft.direction !== "LONG" && draft.direction !== "SHORT") missing.push("direction");
+  if (!draft.entryTime?.trim()) missing.push("entryTime");
+  if (!Number.isFinite(draft.entryLow) || !Number.isFinite(draft.entryHigh)) missing.push("entry");
+  if (!Number.isFinite(draft.stop)) missing.push("stop");
+  if (!draft.targets?.some(Number.isFinite)) missing.push("targets");
+  if (
+    !Number.isFinite(draft.riskAmount)
+    || Number(draft.riskAmount) <= 0
+    || !["DOLLARS", "POINTS", "TICKS", "PERCENT"].includes(String(draft.riskUnit))
+  ) {
+    missing.push("risk");
+  }
+  if (!draft.reasoning?.trim()) missing.push("reasoning");
+  if (!draft.confirmation?.trim()) missing.push("confirmation");
+  if (!draft.invalidation?.trim()) missing.push("invalidation");
+  return missing;
+}
 
 export function zyonFolderIdTag(folderId: string) {
   return `zyon:folder-id:${folderId}`;

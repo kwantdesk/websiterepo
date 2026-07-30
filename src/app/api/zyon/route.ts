@@ -16,6 +16,7 @@ import {
   zyonConversationRoleTag,
   zyonFolderIdTag,
   zyonFolderKindTag,
+  zyonGameplanMissingFields,
   zyonId,
   zyonParentFolderTag,
   type ZyonGameplanDraft,
@@ -90,6 +91,7 @@ type GameplanToolInput = {
   instrument?: unknown;
   direction?: unknown;
   session?: unknown;
+  entryTime?: unknown;
   entryLow?: unknown;
   entryHigh?: unknown;
   stop?: unknown;
@@ -323,6 +325,7 @@ function buildGameplanDraft(
   input: GameplanToolInput,
   root: ZyonMarketRoot,
   context: unknown,
+  sourceMessageId: string,
 ): ZyonGameplanDraft | null {
   const entryLowRaw = finiteNumber(input.entryLow);
   const entryHighRaw = finiteNumber(input.entryHigh) ?? entryLowRaw;
@@ -333,11 +336,16 @@ function buildGameplanDraft(
   const reasoning = cleanText(input.reasoning, 5_000);
   const confirmation = cleanText(input.confirmation, 2_000);
   const invalidation = cleanText(input.invalidation, 2_000);
+  const entryTime = cleanText(input.entryTime, 80);
+  const riskAmount = finiteNumber(input.riskAmount);
   if (
     entryLowRaw === null
     || entryHighRaw === null
     || stop === null
     || !targets.length
+    || riskAmount === null
+    || riskAmount <= 0
+    || !entryTime
     || !reasoning
     || !confirmation
     || !invalidation
@@ -348,19 +356,22 @@ function buildGameplanDraft(
     : "DOLLARS";
   const now = new Date().toISOString();
   const sessionDate = sessionDateForContext(context);
+  const sourceKey = cleanText(sourceMessageId, 80).replace(/[^a-zA-Z0-9_-]/g, "")
+    || zyonId("submission");
   return {
-    id: `zyon-gameplan-draft:${sessionDate}:${root}`,
+    id: `zyon-gameplan-draft:${sessionDate}:${root}:${sourceKey}`,
     sessionDate,
     root,
     instrument: cleanText(input.instrument, 16).toUpperCase() || root,
     title: cleanText(input.title, 120) || `${root} Gameplan`,
     direction,
     session: cleanText(input.session, 60) || "New York",
+    entryTime,
     entryLow: Math.min(entryLowRaw, entryHighRaw),
     entryHigh: Math.max(entryLowRaw, entryHighRaw),
     stop,
     targets,
-    riskAmount: finiteNumber(input.riskAmount),
+    riskAmount,
     riskUnit,
     size: finiteNumber(input.size),
     reasoning,
@@ -372,6 +383,48 @@ function buildGameplanDraft(
     expiryAt: cleanText(input.expiryAt, 60) || null,
     createdAt: now,
     updatedAt: now,
+  };
+}
+
+function gameplanJournalEntry(
+  draft: ZyonGameplanDraft,
+  folderId: string,
+): ZyonJournalEntry {
+  const entry = draft.entryLow === draft.entryHigh
+    ? `${draft.entryLow}`
+    : `${draft.entryLow} - ${draft.entryHigh}`;
+  return {
+    id: `zyon-journal-${draft.id}`,
+    sessionDate: draft.sessionDate,
+    root: draft.root,
+    title: `${draft.instrument} Gameplan sent`,
+    summary: `${draft.direction} ${draft.instrument} from ${entry}; stop ${draft.stop}; targets ${draft.targets.join(", ")}.`,
+    body: [
+      "ZYON GAMEPLAN",
+      `Instrument: ${draft.instrument}`,
+      `Direction: ${draft.direction}`,
+      `Session: ${draft.session}`,
+      `Entry time: ${draft.entryTime}`,
+      `Entry: ${entry}`,
+      `Stop: ${draft.stop}`,
+      `Targets: ${draft.targets.join(", ")}`,
+      `Maximum risk: ${draft.riskAmount} ${draft.riskUnit}`,
+      draft.size === null ? "" : `Size: ${draft.size}`,
+      "",
+      "REASONING",
+      draft.reasoning,
+      "",
+      "CONFIRMATION",
+      draft.confirmation,
+      "",
+      "INVALIDATION",
+      draft.invalidation,
+      draft.confluences.length ? `\nCONFLUENCES\n${draft.confluences.join("\n")}` : "",
+    ].filter(Boolean).join("\n"),
+    kind: "SETUP",
+    tags: [draft.root, "gameplan", "zyon", zyonFolderIdTag(folderId)],
+    attachments: [],
+    createdAt: draft.createdAt,
   };
 }
 
@@ -601,6 +654,10 @@ async function persistGameplanDraft(
   draft: ZyonGameplanDraft,
   sourceMessageId: string,
 ) {
+  const pendingId = await pendingGameplanDraftId(actorId);
+  if (pendingId && pendingId !== draft.id) {
+    return { saved: false, blockedBy: pendingId };
+  }
   try {
     const supabase = await createSupabaseServerClient();
     const { error } = await supabase.from("zyon_gameplan_drafts").upsert({
@@ -613,6 +670,7 @@ async function persistGameplanDraft(
         instrument: draft.instrument,
         direction: draft.direction,
         session: draft.session,
+        entryTime: draft.entryTime,
         entryLow: draft.entryLow,
         entryHigh: draft.entryHigh,
         stop: draft.stop,
@@ -634,12 +692,43 @@ async function persistGameplanDraft(
       if (error.code !== "42P01" && error.code !== "PGRST205") {
         console.error("ZYON Gameplan draft save failed", { code: error.code, message: error.message });
       }
-      return false;
+      return { saved: false, blockedBy: null };
     }
-    return true;
+    return { saved: true, blockedBy: null };
   } catch (error) {
     console.error("ZYON Gameplan draft save failed", error);
-    return false;
+    return { saved: false, blockedBy: null };
+  }
+}
+
+async function pendingGameplanDraftId(actorId: string) {
+  try {
+    const supabase = await createSupabaseServerClient();
+    const [{ data: draftRows, error: draftError }, { data: recordRows, error: recordError }] = await Promise.all([
+      supabase
+        .from("zyon_gameplan_drafts")
+        .select("id")
+        .eq("user_id", actorId)
+        .order("updated_at", { ascending: false })
+        .limit(100),
+      supabase
+        .from("social_objects")
+        .select("payload")
+        .eq("user_id", actorId)
+        .eq("object_type", "precord")
+        .limit(500),
+    ]);
+    if (draftError || recordError) return null;
+    const postedIds = new Set(
+      (recordRows ?? []).map((row) => {
+        const recordPayload = row.payload as Record<string, unknown> | null;
+        return cleanText(recordPayload?.sourceGameplanId, 220);
+      }).filter(Boolean),
+    );
+    const newestDraftId = draftRows?.[0]?.id ?? null;
+    return newestDraftId && !postedIds.has(newestDraftId) ? newestDraftId : null;
+  } catch {
+    return null;
   }
 }
 
@@ -719,6 +808,40 @@ export async function POST(request: NextRequest) {
   });
   const userConversationCloudSaved = await persistJournalEntry(actor.userId, userConversationEntry);
   const contextJson = safeContext(payload.context);
+  const gameplanIntent = /\b(?:send|save|submit|create|new|document|update)\b[\s\S]{0,40}\bgame\s*plan\b/i.test(finalUserText)
+    || /\bgame\s*plan\b[\s\S]{0,40}\b(?:send|save|submit|create|new|document|update)\b/i.test(finalUserText);
+  const existingPendingGameplanId = gameplanIntent
+    ? await pendingGameplanDraftId(actor.userId)
+    : null;
+
+  if (existingPendingGameplanId && gameplanIntent) {
+    const pendingText = "Your previous Gameplan is already in the Socials holding page. Post it to your Profile before asking ZYON to send another one.";
+    const assistantConversationEntry = conversationEntry({
+      id: zyonId("zyon-conversation-assistant"),
+      sessionDate,
+      folderId: conversationFolder.folderId,
+      root,
+      role: "assistant",
+      text: pendingText,
+      createdAt: new Date().toISOString(),
+    });
+    const assistantConversationCloudSaved = await persistJournalEntry(actor.userId, assistantConversationEntry);
+    return NextResponse.json({
+      text: pendingText,
+      model: modelKey,
+      gameplanDraft: null,
+      pendingGameplanDraftId: existingPendingGameplanId,
+      journalEntries: [
+        { ...userConversationEntry, cloudSaved: userConversationCloudSaved },
+        { ...assistantConversationEntry, cloudSaved: assistantConversationCloudSaved },
+      ],
+      folder: {
+        id: conversationFolder.folderId,
+        sessionDate,
+        cloudSaved: conversationFolder.cloudSaved,
+      },
+    }, { headers: { "Cache-Control": "private, no-store, max-age=0" } });
+  }
 
   const system = [
     "You are ZYON, the private discretionary trading intelligence inside Kwant Desk.",
@@ -730,8 +853,10 @@ export async function POST(request: NextRequest) {
     "When an image does not reveal the instrument, timeframe, or price scale, say what is missing before drawing a strong conclusion.",
     "Use concise professional language. Challenge weak confirmation bias and state invalidation conditions.",
     "When the user recounts a trade, shares a meaningful setup, records a lesson, or asks to journal something, also call record_trading_journal. Always provide a normal text response as well.",
-    "When the user asks to save, document, create, or update today's Gameplan, call save_trading_gameplan_draft with every structured field you can establish. This creates a PRIVATE REVIEW DRAFT only. Never claim it is locked, published, sent to Socials, or scored. Tell the trader to review it in Socials and press Lock Today's Gameplan.",
-    "A Gameplan draft requires one explicit direction, an entry price or zone, stop, at least one take-profit target, reasoning, confirmation, and invalidation. Never invent a missing price. Ask for what is missing instead of calling the tool with guessed values.",
+    "When the user says 'send gameplan', presses Send Gameplan, or otherwise asks to save, document, create, update, or submit a Gameplan, reconstruct the setup from the full conversation and gather only the required facts that are still missing.",
+    "A Gameplan requires: instrument, explicit LONG or SHORT direction, entry time, entry price or zone, stop, at least one planned exit/take-profit price, maximum risk amount and unit, reasoning, confirmation, and invalidation. Reasoning should faithfully synthesise the conversation; never invent a missing fact or price.",
+    "If any required Gameplan fact is missing, DO NOT call save_trading_gameplan_draft. Ask one short, direct question for the most important missing fact, such as 'WHAT'S YOUR ENTRY TIME?' Continue this collection loop until every required fact is known.",
+    "Once every required fact is known, call save_trading_gameplan_draft immediately. This sends an editable holding record to Socials and writes the complete plan into today's ZYON journal folder. It does not publish the plan yet. Tell the trader to review it and post it to their Profile.",
     `Selected market: ${root}.`,
     `<kwantbot_context>${contextJson}</kwantbot_context>`,
   ].join("\n");
@@ -774,7 +899,7 @@ export async function POST(request: NextRequest) {
           },
           {
             name: "save_trading_gameplan_draft",
-            description: "Save or replace today's private structured Gameplan review draft. Use only when the trader explicitly asks to save, document, create, or update a Gameplan and all required prices are known.",
+            description: "Send a complete structured Gameplan to the trader's editable Socials holding page and daily ZYON journal. Use only after every required fact is known.",
             input_schema: {
               type: "object",
               properties: {
@@ -782,11 +907,12 @@ export async function POST(request: NextRequest) {
                 instrument: { type: "string", description: "NQ, MNQ, ES, or MES." },
                 direction: { type: "string", enum: ["LONG", "SHORT"] },
                 session: { type: "string" },
+                entryTime: { type: "string", description: "Trader's planned or actual entry time, including timezone when known." },
                 entryLow: { type: "number" },
                 entryHigh: { type: "number" },
                 stop: { type: "number" },
                 targets: { type: "array", items: { type: "number" }, minItems: 1, maxItems: 8 },
-                riskAmount: { type: ["number", "null"] },
+                riskAmount: { type: "number", exclusiveMinimum: 0 },
                 riskUnit: { type: "string", enum: ["DOLLARS", "POINTS", "TICKS", "PERCENT"] },
                 size: { type: ["number", "null"] },
                 reasoning: { type: "string" },
@@ -800,10 +926,13 @@ export async function POST(request: NextRequest) {
                 "instrument",
                 "direction",
                 "session",
+                "entryTime",
                 "entryLow",
                 "entryHigh",
                 "stop",
                 "targets",
+                "riskAmount",
+                "riskUnit",
                 "reasoning",
                 "confirmation",
                 "invalidation"
@@ -872,19 +1001,39 @@ export async function POST(request: NextRequest) {
       ? await persistJournalEntry(actor.userId, journalEntry)
       : false;
     let gameplanDraft = gameplanToolBlock?.input && typeof gameplanToolBlock.input === "object"
-      ? buildGameplanDraft(gameplanToolBlock.input as GameplanToolInput, root, payload.context)
+      ? buildGameplanDraft(
+        gameplanToolBlock.input as GameplanToolInput,
+        root,
+        payload.context,
+        rawUserMessageId,
+      )
       : null;
-    const gameplanDraftCloudSaved = gameplanDraft
+    if (gameplanDraft && zyonGameplanMissingFields(gameplanDraft).length) gameplanDraft = null;
+    const gameplanDraftSave = gameplanDraft
       ? await persistGameplanDraft(actor.userId, gameplanDraft, rawUserMessageId)
+      : { saved: false, blockedBy: null };
+    if (gameplanDraftSave.blockedBy) gameplanDraft = null;
+    if (gameplanDraft) gameplanDraft = { ...gameplanDraft, cloudSaved: gameplanDraftSave.saved };
+    const savedGameplanJournalEntry = gameplanDraft
+      ? gameplanJournalEntry(gameplanDraft, conversationFolder.folderId)
+      : null;
+    const savedGameplanJournalCloud = savedGameplanJournalEntry
+      ? await persistJournalEntry(actor.userId, savedGameplanJournalEntry)
       : false;
-    if (gameplanDraft) gameplanDraft = { ...gameplanDraft, cloudSaved: gameplanDraftCloudSaved };
+    const responseText = gameplanDraftSave.blockedBy
+      ? "Your previous Gameplan is already in the Socials holding page. Post it to your Profile before asking ZYON to send another one."
+      : gameplanDraft && !gameplanDraftSave.saved
+        ? "I have the complete Gameplan, but the account holding record did not sync. Nothing was posted. Try Send Gameplan again."
+        : text || (gameplanDraft
+          ? "Gameplan sent. It is saved in today's ZYON journal and waiting in Socials for your review. Check the details, then post it to your Profile."
+          : "That has been recorded in your trading journal.");
     const assistantConversationEntry = conversationEntry({
       id: zyonId("zyon-conversation-assistant"),
       sessionDate,
       folderId: conversationFolder.folderId,
       root,
       role: "assistant",
-      text,
+      text: responseText,
       createdAt: new Date().toISOString(),
     });
     const assistantConversationCloudSaved = await persistJournalEntry(
@@ -892,22 +1041,24 @@ export async function POST(request: NextRequest) {
       assistantConversationEntry,
     );
 
-    if (!text && !journalEntry && !gameplanDraft) {
+    if (!responseText && !journalEntry && !gameplanDraft) {
       return NextResponse.json({ error: "ZYON returned an empty reply." }, { status: 502 });
     }
 
     return NextResponse.json(
       {
-        text: (text || (gameplanDraft
-          ? "I saved this as today’s private structured Gameplan draft. Review the entry, stop, targets, risk and reasoning in Socials, choose its visibility, then press Lock Today’s Gameplan."
-          : "That has been recorded in your trading journal.")).slice(0, 12_000),
+        text: responseText.slice(0, 12_000),
         model: modelKey,
         journalEntry: journalEntry ? { ...journalEntry, cloudSaved } : null,
         gameplanDraft,
+        pendingGameplanDraftId: gameplanDraftSave.blockedBy,
         journalEntries: [
           { ...userConversationEntry, cloudSaved: userConversationCloudSaved },
           { ...assistantConversationEntry, cloudSaved: assistantConversationCloudSaved },
           ...(journalEntry ? [{ ...journalEntry, cloudSaved }] : []),
+          ...(savedGameplanJournalEntry
+            ? [{ ...savedGameplanJournalEntry, cloudSaved: savedGameplanJournalCloud }]
+            : []),
         ],
         folder: {
           id: conversationFolder.folderId,

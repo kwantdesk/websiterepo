@@ -115,6 +115,7 @@ export type SocialPrecordPayload = {
   session: string;
   direction: PrecordDirection;
   marketContext: string;
+  plannedEntryTime?: string | null;
   plannedEntryLow: number | null;
   plannedEntryHigh: number | null;
   plannedStop: number | null;
@@ -251,13 +252,13 @@ export type SocialDeskMemberPayload = {
 };
 
 export type SocialCommentPayload = {
-  kind: "QUESTION" | "REVIEW" | "COUNTERCASE" | "LESSON";
+  kind: "QUESTION" | "REVIEW" | "COUNTERCASE" | "LESSON" | "TRADER NOTE";
   body: string;
   helpful: boolean;
 };
 
 export type SocialReactionPayload = {
-  kind: "USEFUL" | "CLEAR" | "EVIDENCE" | "SAVED";
+  kind: "USEFUL" | "CLEAR" | "EVIDENCE" | "SAVED" | "FIRE" | "TARGET" | "BRAIN" | "APPLAUSE";
 };
 
 export type SocialCardPayload = {

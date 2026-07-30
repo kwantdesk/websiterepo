@@ -3,6 +3,7 @@ import { getRouteActor } from "@/lib/serverAuth";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import {
   isZyonMarketRoot,
+  zyonGameplanMissingFields,
   type ZyonGameplanDraft,
   type ZyonGameplanDirection,
   type ZyonGameplanRiskUnit,
@@ -62,6 +63,7 @@ function fromRow(row: DraftRow): ZyonGameplanDraft | null {
     title: clean(row.title, 120) || `${row.root} Gameplan`,
     direction,
     session: clean(payload.session, 60) || "New York",
+    entryTime: clean(payload.entryTime, 80),
     entryLow: Math.min(entryLow, entryHigh),
     entryHigh: Math.max(entryLow, entryHigh),
     stop: finite(payload.stop),
@@ -89,29 +91,118 @@ export async function GET(request: NextRequest) {
   const root = isZyonMarketRoot(rootParam) ? rootParam : null;
   try {
     const supabase = await createSupabaseServerClient();
-    let query = supabase
+    const { data, error } = await supabase
       .from("zyon_gameplan_drafts")
       .select("id,session_date,root,title,payload,created_at,updated_at")
       .eq("user_id", actor.userId)
       .order("updated_at", { ascending: false })
-      .limit(20);
-    if (root) query = query.eq("root", root);
-    const { data, error } = await query;
+      .limit(100);
     if (error) {
       if (tableUnavailable(error.code)) {
         return NextResponse.json({ drafts: [], cloud: false, migrationRequired: true });
       }
       throw error;
     }
-    const drafts = ((data ?? []) as DraftRow[])
+    const allDrafts = ((data ?? []) as DraftRow[])
       .map(fromRow)
       .filter((draft): draft is ZyonGameplanDraft => Boolean(draft));
+    const { data: recordRows, error: recordError } = await supabase
+      .from("social_objects")
+      .select("payload")
+      .eq("user_id", actor.userId)
+      .eq("object_type", "precord")
+      .limit(500);
+    if (recordError && !tableUnavailable(recordError.code)) throw recordError;
+    const postedDraftIds = new Set(
+      (recordRows ?? []).map((row) => {
+        const payload = row.payload as Record<string, unknown> | null;
+        return clean(payload?.sourceGameplanId, 220);
+      }).filter(Boolean),
+    );
+    const newestDraft = allDrafts[0] ?? null;
+    const pendingDraft = newestDraft && !postedDraftIds.has(newestDraft.id) ? newestDraft : null;
+    const drafts = root ? allDrafts.filter((draft) => draft.root === root) : allDrafts;
+    const localDate = clean(request.nextUrl.searchParams.get("localDate"), 10);
+    const today = /^\d{4}-\d{2}-\d{2}$/.test(localDate)
+      ? localDate
+      : new Date().toISOString().slice(0, 10);
     return NextResponse.json(
-      { drafts, draft: drafts[0] ?? null, cloud: true },
+      {
+        drafts,
+        draft: pendingDraft,
+        pendingDraft,
+        blocked: Boolean(pendingDraft),
+        sentToday: allDrafts.filter((draft) => draft.sessionDate === today).length,
+        postedDraftIds: [...postedDraftIds],
+        cloud: true,
+      },
       { headers: { "Cache-Control": "private, no-store, max-age=0" } },
     );
   } catch (error) {
     console.error("ZYON Gameplan draft load failed", error);
     return NextResponse.json({ error: "The ZYON Gameplan draft could not be loaded." }, { status: 502 });
+  }
+}
+
+export async function PUT(request: NextRequest) {
+  const actor = await getRouteActor(request);
+  if (!actor) return NextResponse.json({ error: "Authentication required." }, { status: 401 });
+  let draft: ZyonGameplanDraft;
+  try {
+    draft = await request.json() as ZyonGameplanDraft;
+  } catch {
+    return NextResponse.json({ error: "The Gameplan could not be read." }, { status: 400 });
+  }
+  const missing = zyonGameplanMissingFields(draft);
+  if (!clean(draft?.id, 220) || !isZyonMarketRoot(draft?.root) || missing.length) {
+    return NextResponse.json({
+      error: `Complete the required Gameplan details: ${missing.join(", ")}.`,
+      missing,
+    }, { status: 400 });
+  }
+  try {
+    const supabase = await createSupabaseServerClient();
+    const { data: existing, error: loadError } = await supabase
+      .from("zyon_gameplan_drafts")
+      .select("id")
+      .eq("user_id", actor.userId)
+      .eq("id", draft.id)
+      .maybeSingle();
+    if (loadError) throw loadError;
+    if (!existing) return NextResponse.json({ error: "That holding Gameplan no longer exists." }, { status: 404 });
+    const { error } = await supabase
+      .from("zyon_gameplan_drafts")
+      .update({
+        root: draft.root,
+        title: clean(draft.title, 120) || `${draft.root} Gameplan`,
+        payload: {
+          instrument: clean(draft.instrument, 16).toUpperCase(),
+          direction: draft.direction,
+          session: clean(draft.session, 60) || "New York",
+          entryTime: clean(draft.entryTime, 80),
+          entryLow: draft.entryLow,
+          entryHigh: draft.entryHigh,
+          stop: draft.stop,
+          targets: draft.targets.slice(0, 8),
+          riskAmount: draft.riskAmount,
+          riskUnit: draft.riskUnit,
+          size: draft.size,
+          reasoning: clean(draft.reasoning, 5_000),
+          confluences: draft.confluences.slice(0, 12),
+          confirmation: clean(draft.confirmation, 2_000),
+          invalidation: clean(draft.invalidation, 2_000),
+          expiryAt: draft.expiryAt,
+        },
+        updated_at: new Date().toISOString(),
+      })
+      .eq("user_id", actor.userId)
+      .eq("id", draft.id);
+    if (error) throw error;
+    return NextResponse.json({ saved: true }, {
+      headers: { "Cache-Control": "private, no-store, max-age=0" },
+    });
+  } catch (error) {
+    console.error("ZYON Gameplan draft update failed", error);
+    return NextResponse.json({ error: "The holding Gameplan could not be updated." }, { status: 502 });
   }
 }

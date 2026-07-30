@@ -79,7 +79,7 @@ import {
   type SocialScope,
   type SocialState,
 } from "@/lib/socials";
-import { type ZyonGameplanDraft } from "@/lib/zyon";
+import { zyonGameplanMissingFields, type ZyonGameplanDraft } from "@/lib/zyon";
 import { buildExecutionComparison } from "@/lib/socials";
 import { SOCIAL_RECORD_COPY, SOCIAL_RECORD_RULES } from "@/lib/socialRecordConfig";
 import {
@@ -487,7 +487,7 @@ export default function SocialsWorkspace({
   const [zyonGameplanDraft, setZyonGameplanDraft] = useState<ZyonGameplanDraft | null>(null);
   const [zyonDraftState, setZyonDraftState] = useState<"loading" | "ready" | "missing" | "migration">("loading");
   const [reasoningPaths, setReasoningPaths] = useState<Record<string, SocialReasoningPathMetrics>>({});
-  const [recordScope, setRecordScope] = useState<SocialScope>("private");
+  const [recordScope, setRecordScope] = useState<SocialScope>("community");
   const [assessmentState, setAssessmentState] = useState<"idle" | "reviewing">("idle");
   const [receiptDraft, setReceiptDraft] = useState(EMPTY_RECEIPT);
   const [postDraft, setPostDraft] = useState(EMPTY_POST);
@@ -715,8 +715,7 @@ export default function SocialsWorkspace({
   const viewedGameplans = viewedProfileObject
     ? precords.filter((object) =>
         object.userId === viewedProfileObject.userId
-        && ["GAMEPLAN", "ZYON"].includes(typedPayload<SocialPrecordPayload>(object)?.source ?? "")
-        && receipts.some((receipt) => receipt.parentId === object.id))
+        && ["GAMEPLAN", "ZYON"].includes(typedPayload<SocialPrecordPayload>(object)?.source ?? ""))
     : [];
   const savedGameplanIds = new Set(
     reactions
@@ -793,7 +792,7 @@ export default function SocialsWorkspace({
     setZyonDraftState("loading");
     void (async () => {
       try {
-        const response = await fetch(`/api/zyon/gameplan-draft?root=${gameplanInstrument}`, {
+        const response = await fetch(`/api/zyon/gameplan-draft?localDate=${todayKey()}`, {
           cache: "no-store",
           signal: controller.signal,
         });
@@ -1086,14 +1085,25 @@ export default function SocialsWorkspace({
   const lockCurrentGameplan = async () => {
     if (zyonGameplanDraft) {
       if (lockedCurrentGameplan) {
-        setNotice("This exact ZYON Gameplan is already locked and awaiting its outcome.");
+        setNotice("This ZYON Gameplan is already on your Profile and awaiting its outcome.");
         return;
       }
-      if (recordScope === "desk" && !myDesks.length) {
-        setNotice("Create or join a Desk before using Desk visibility.");
+      const missing = zyonGameplanMissingFields(zyonGameplanDraft);
+      if (missing.length) {
+        setNotice(`Complete the holding Gameplan before posting: ${missing.join(", ")}.`);
         return;
       }
       const draft = zyonGameplanDraft;
+      const draftResponse = await fetch("/api/zyon/gameplan-draft", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(draft),
+      });
+      const draftPayload = await draftResponse.json().catch(() => null) as { error?: string } | null;
+      if (!draftResponse.ok) {
+        setNotice(draftPayload?.error || "The edited holding Gameplan could not be saved.");
+        return;
+      }
       const entry = (draft.entryLow + draft.entryHigh) / 2;
       const riskPoints = Math.abs(entry - draft.stop);
       const target = draft.targets[0] ?? null;
@@ -1105,6 +1115,7 @@ export default function SocialsWorkspace({
         session: draft.session,
         direction: draft.direction,
         marketContext: draft.reasoning,
+        plannedEntryTime: draft.entryTime,
         plannedEntryLow: draft.entryLow,
         plannedEntryHigh: draft.entryHigh,
         plannedStop: draft.stop,
@@ -1126,6 +1137,7 @@ export default function SocialsWorkspace({
         sourceGeneratedAt: draft.updatedAt,
         gameplanSnapshot: {
           title: draft.title,
+          entryTime: draft.entryTime,
           entry: [draft.entryLow, draft.entryHigh],
           stop: draft.stop,
           targets: draft.targets,
@@ -1141,8 +1153,8 @@ export default function SocialsWorkspace({
         userId: resolvedAccountKey,
         authorLabel: currentProfile.displayName,
         objectType: "precord",
-        scope: recordScope,
-        deskId: recordScope === "desk" ? myDesks[0]?.id ?? null : null,
+        scope: "community",
+        deskId: null,
         payload: {
           ...base,
           lockedAt: now,
@@ -1152,11 +1164,19 @@ export default function SocialsWorkspace({
             status: "LOCKED",
             at: now,
             source: "ZYON",
-            note: "Trader reviewed and locked the private ZYON Gameplan draft.",
+            note: "Trader reviewed the ZYON holding record and posted it to their Profile.",
           }],
         } satisfies SocialPrecordPayload,
       });
-      await saveObject(object);
+      const savedRecord = await saveObject(object);
+      if (!savedRecord.cloudSaved) {
+        setState((current) => ({
+          ...current,
+          objects: current.objects.filter((candidate) => objectKey(candidate) !== objectKey(object)),
+        }));
+        setNotice("The Profile post did not reach account storage. Your holding Gameplan is still available; try again.");
+        return;
+      }
       if (!cards.some((card) => card.userId === resolvedAccountKey && typedPayload<SocialCardPayload>(card)?.code === "first-on-record")) {
         const definition = CALLING_CARD_CATALOG[0];
         await saveObject(buildLocalObject({
@@ -1178,7 +1198,10 @@ export default function SocialsWorkspace({
         }));
       }
       await saveProgressPatch({ prepare: true, map: true });
-      setNotice(`${draft.instrument} Gameplan locked. Live outcome tracking is now in progress.`);
+      window.dispatchEvent(new CustomEvent("kwantdesk:gameplan-posted"));
+      setZyonGameplanDraft(null);
+      setZyonDraftState("missing");
+      setNotice(`${draft.instrument} Gameplan posted to your Profile. Live ranking is now in progress.`);
       setTab("reasoning");
       return;
     }
@@ -1646,9 +1669,16 @@ export default function SocialsWorkspace({
     setNotice(`${typedPayload<SocialPostPayload>(object)?.kind ?? "Update"} published with context attached.`);
   };
 
-  const addReaction = (precord: SocialObject, kind: SocialReactionPayload["kind"]) => {
-    if (reactions.some((reaction) => reaction.userId === resolvedAccountKey && reaction.parentId === precord.id && typedPayload<SocialReactionPayload>(reaction)?.kind === kind)) return;
-    void saveObject(buildLocalObject({
+  const addReaction = async (precord: SocialObject, kind: SocialReactionPayload["kind"]) => {
+    const existing = reactions.find((reaction) =>
+      reaction.userId === resolvedAccountKey
+      && reaction.parentId === precord.id
+      && typedPayload<SocialReactionPayload>(reaction)?.kind === kind);
+    if (existing) {
+      await removeObject(existing);
+      return;
+    }
+    await saveObject(buildLocalObject({
       id: `reaction:${precord.id}:${kind}`,
       userId: resolvedAccountKey,
       authorLabel: currentProfile.displayName,
@@ -1671,7 +1701,8 @@ export default function SocialsWorkspace({
       deskId: precord.deskId,
       parentId: precord.id,
       payload: {
-        kind: commentKinds[precord.id] ?? "REVIEW",
+        kind: commentKinds[precord.id]
+          ?? (precord.userId === resolvedAccountKey ? "TRADER NOTE" : "REVIEW"),
         body,
         helpful: false,
       } satisfies SocialCommentPayload,
@@ -2009,7 +2040,7 @@ export default function SocialsWorkspace({
               <p className="mt-2 text-[9px] leading-4 text-foreground">{payload.confirmation}</p>
             </div>
             <div className="grid grid-cols-2 gap-1.5 text-[8px]">
-              <div className="rounded-xl border border-border bg-surface/35 p-2"><div className="text-muted">Entry</div><div className="mt-1 font-mono text-foreground">{payload.plannedEntryLow ?? "—"}{payload.plannedEntryHigh && payload.plannedEntryHigh !== payload.plannedEntryLow ? `–${payload.plannedEntryHigh}` : ""}</div></div>
+              <div className="rounded-xl border border-border bg-surface/35 p-2"><div className="text-muted">Entry</div><div className="mt-1 font-mono text-foreground">{payload.plannedEntryLow ?? "—"}{payload.plannedEntryHigh && payload.plannedEntryHigh !== payload.plannedEntryLow ? `–${payload.plannedEntryHigh}` : ""}</div>{payload.plannedEntryTime ? <div className="mt-1 truncate font-mono text-[6px] text-muted">{payload.plannedEntryTime}</div> : null}</div>
               <div className="rounded-xl border border-border bg-surface/35 p-2"><div className="text-muted">Stop</div><div className="mt-1 font-mono text-foreground">{payload.plannedStop ?? "—"}</div></div>
               <div className="rounded-xl border border-border bg-surface/35 p-2"><div className="text-muted">Targets</div><div className="mt-1 font-mono text-foreground">{payload.plannedTargets?.length ? payload.plannedTargets.join(" / ") : payload.plannedTarget ?? "—"}</div></div>
               <div className="rounded-xl border border-border bg-surface/35 p-2"><div className="text-muted">Max risk</div><div className="mt-1 font-mono text-foreground">{payload.maximumRisk === null ? "—" : `${payload.maximumRisk} ${payload.riskUnit ?? "DOLLARS"}`}</div></div>
@@ -2065,7 +2096,17 @@ export default function SocialsWorkspace({
           {(["USEFUL", "CLEAR", "EVIDENCE"] as const).map((kind) => {
             const active = objectReactions.some((reaction) => reaction.userId === resolvedAccountKey && typedPayload<SocialReactionPayload>(reaction)?.kind === kind);
             const count = objectReactions.filter((reaction) => typedPayload<SocialReactionPayload>(reaction)?.kind === kind).length;
-            return <button key={kind} type="button" onClick={() => addReaction(object, kind)} className={`flex h-7 items-center gap-1.5 rounded-lg px-2 text-[7px] font-semibold ${active ? "bg-primary/10 text-primary" : "text-muted hover:bg-surface hover:text-foreground"}`}><Star className="h-3 w-3" />{kind}{count ? ` ${count}` : ""}</button>;
+            return <button key={kind} type="button" onClick={() => void addReaction(object, kind)} className={`flex h-7 items-center gap-1.5 rounded-lg px-2 text-[7px] font-semibold ${active ? "bg-primary/10 text-primary" : "text-muted hover:bg-surface hover:text-foreground"}`}><Star className="h-3 w-3" />{kind}{count ? ` ${count}` : ""}</button>;
+          })}
+          {([
+            ["FIRE", "🔥"],
+            ["TARGET", "🎯"],
+            ["BRAIN", "🧠"],
+            ["APPLAUSE", "👏"],
+          ] as const).map(([kind, label]) => {
+            const active = objectReactions.some((reaction) => reaction.userId === resolvedAccountKey && typedPayload<SocialReactionPayload>(reaction)?.kind === kind);
+            const count = objectReactions.filter((reaction) => typedPayload<SocialReactionPayload>(reaction)?.kind === kind).length;
+            return <button key={kind} type="button" onClick={() => void addReaction(object, kind)} className={`flex h-7 items-center gap-1 rounded-lg px-2 text-[11px] ${active ? "bg-primary/10 ring-1 ring-primary/25" : "hover:bg-surface"}`}>{label}{count ? <span className="font-mono text-[7px] text-muted">{count}</span> : null}</button>;
           })}
           <button type="button" onClick={() => void toggleGameplanRepost(object)} className={`flex h-7 items-center gap-1.5 rounded-lg px-2 text-[7px] font-semibold hover:bg-surface ${repostedGameplanIds.has(object.id) ? "text-primary" : "text-muted hover:text-foreground"}`}><Repeat2 className="h-3 w-3" />Repost</button>
           <button type="button" onClick={() => void toggleGameplanSave(object)} className={`flex h-7 items-center gap-1.5 rounded-lg px-2 text-[7px] font-semibold hover:bg-surface ${savedGameplanIds.has(object.id) ? "text-primary" : "text-muted hover:text-foreground"}`}><Bookmark className={`h-3 w-3 ${savedGameplanIds.has(object.id) ? "fill-current" : ""}`} />Save</button>
@@ -2076,18 +2117,20 @@ export default function SocialsWorkspace({
           <div className="space-y-2 border-t border-border px-4 py-3">
             {objectComments.slice(-4).map((comment) => {
               const commentPayload = typedPayload<SocialCommentPayload>(comment);
-              return <div key={objectKey(comment)} className="flex gap-2"><Avatar label={comment.authorLabel} size="sm" /><div className="min-w-0 flex-1 rounded-xl border border-border bg-surface/35 px-3 py-2"><div className="flex items-center gap-2 text-[7px]"><span className="font-semibold text-foreground">{comment.authorLabel}</span><span className="rounded bg-primary/10 px-1.5 py-0.5 text-primary">{commentPayload?.kind}</span><span className="ml-auto text-muted">{formatDate(comment.createdAt, true)}</span></div><p className="mt-1 text-[8px] leading-4 text-muted">{commentPayload?.body}</p></div></div>;
+              const traderNote = commentPayload?.kind === "TRADER NOTE" && comment.userId === object.userId;
+              return <div key={objectKey(comment)} className="flex gap-2"><Avatar label={comment.authorLabel} size="sm" /><div className={`min-w-0 flex-1 rounded-xl rounded-bl-sm border px-3 py-2 ${traderNote ? "border-primary/25 bg-primary/[0.07]" : "border-border bg-surface/35"}`}><div className="flex items-center gap-2 text-[7px]"><span className="font-semibold text-foreground">{comment.authorLabel}</span><span className="rounded bg-primary/10 px-1.5 py-0.5 text-primary">{commentPayload?.kind}</span><span className="ml-auto text-muted">{formatDate(comment.createdAt, true)}</span></div><p className={`mt-1 text-[8px] leading-4 ${traderNote ? "text-foreground" : "text-muted"}`}>{commentPayload?.body}</p></div></div>;
             })}
           </div>
         ) : null}
         <div className="grid gap-2 border-t border-border px-4 py-3 sm:grid-cols-[112px_minmax(0,1fr)_34px]">
-          <KwantSelect value={commentKinds[object.id] ?? "REVIEW"} onChange={(event) => setCommentKinds((current) => ({ ...current, [object.id]: event.target.value as SocialCommentPayload["kind"] }))} className="h-8 rounded-lg border border-border bg-surface px-2 text-[8px] text-muted outline-none">
+          <KwantSelect value={commentKinds[object.id] ?? (own ? "TRADER NOTE" : "REVIEW")} onChange={(event) => setCommentKinds((current) => ({ ...current, [object.id]: event.target.value as SocialCommentPayload["kind"] }))} className="h-8 rounded-lg border border-border bg-surface px-2 text-[8px] text-muted outline-none">
+            {own ? <option value="TRADER NOTE">Trader note</option> : null}
             <option value="REVIEW">Review</option>
             <option value="QUESTION">Question</option>
             <option value="COUNTERCASE">Countercase</option>
             <option value="LESSON">Lesson</option>
           </KwantSelect>
-          <input value={commentDrafts[object.id] ?? ""} onChange={(event) => setCommentDrafts((current) => ({ ...current, [object.id]: event.target.value }))} onKeyDown={(event) => { if (event.key === "Enter") addComment(object); }} placeholder="Add evidence, a condition, or a focused question…" className="h-8 rounded-lg border border-border bg-background px-3 text-[8px] text-foreground outline-none placeholder:text-muted/55 focus:border-primary/40" />
+          <input value={commentDrafts[object.id] ?? ""} onChange={(event) => setCommentDrafts((current) => ({ ...current, [object.id]: event.target.value }))} onKeyDown={(event) => { if (event.key === "Enter") addComment(object); }} placeholder={own ? "Add your speech-bubble note…" : "Leave a focused comment…"} className="h-8 rounded-lg border border-border bg-background px-3 text-[8px] text-foreground outline-none placeholder:text-muted/55 focus:border-primary/40" />
           <button type="button" onClick={() => addComment(object)} className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-background"><Send className="h-3.5 w-3.5" /></button>
         </div>
       </Card>
@@ -2246,7 +2289,7 @@ export default function SocialsWorkspace({
               <Card className="overflow-hidden border-primary/20">
                 <div className="flex flex-wrap items-center gap-3 border-b border-border bg-background/25 px-4 py-3">
                   <span className="flex h-9 w-9 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary"><Archive className="h-4 w-4" /></span>
-                  <div className="min-w-0 flex-1"><h3 className="text-[12px] font-semibold">Today’s source Gameplan</h3><p className="mt-0.5 text-[8px] text-muted">ZYON fills the private draft. You review every field and choose where it goes before anything is locked.</p></div>
+                  <div className="min-w-0 flex-1"><h3 className="text-[12px] font-semibold">Gameplan holding page</h3><p className="mt-0.5 text-[8px] text-muted">ZYON sends one editable plan here. Review it, then post it to your Profile before creating another.</p></div>
                   <div className="flex rounded-xl border border-border bg-surface p-1">
                     {(["NQ", "ES"] as const).map((instrument) => <button key={instrument} type="button" onClick={() => setGameplanInstrument(instrument)} className={`h-7 rounded-lg px-3 font-mono text-[8px] font-semibold ${gameplanInstrument === instrument ? "bg-primary text-background" : "text-muted hover:text-foreground"}`}>{instrument}</button>)}
                   </div>
@@ -2256,7 +2299,7 @@ export default function SocialsWorkspace({
                 </div>
                 {zyonDraftState === "loading" ? (
                   <div className="flex min-h-[280px] items-center justify-center">
-                    <div className="text-center"><span className="mx-auto block h-7 w-7 animate-spin rounded-full border-2 border-primary/20 border-t-primary" /><div className="mt-3 text-[9px] font-semibold text-foreground">Checking ZYON’s private draft</div><div className="mt-1 text-[8px] text-muted">Nothing is published or locked automatically.</div></div>
+                    <div className="text-center"><span className="mx-auto block h-7 w-7 animate-spin rounded-full border-2 border-primary/20 border-t-primary" /><div className="mt-3 text-[9px] font-semibold text-foreground">Checking ZYON’s holding record</div><div className="mt-1 text-[8px] text-muted">Nothing is posted to your Profile automatically.</div></div>
                   </div>
                 ) : zyonGameplanDraft ? (
                   <>
@@ -2265,18 +2308,20 @@ export default function SocialsWorkspace({
                         <div>
                           <div className="flex items-center gap-2">
                             <span className="font-mono text-[26px] font-semibold">{zyonGameplanDraft.instrument}</span>
-                            <span className="rounded-lg border border-warning/25 bg-warning/10 px-2 py-1 text-[7px] font-semibold text-warning">PRIVATE REVIEW DRAFT</span>
+                            <span className="rounded-lg border border-warning/25 bg-warning/10 px-2 py-1 text-[7px] font-semibold text-warning">AWAITING PROFILE POST</span>
                           </div>
                           <div className="mt-1 text-[7px] text-muted">Updated {formatDate(zyonGameplanDraft.updatedAt, true)} by ZYON · not yet on record</div>
                         </div>
                         <div className="ml-auto text-right"><div className="text-[10px] font-semibold text-foreground">{zyonGameplanDraft.title}</div><div className="mt-1 text-[7px] uppercase tracking-[0.12em] text-muted">{zyonGameplanDraft.sessionDate}</div></div>
                       </div>
 
-                      <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                      <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-6">
                         <label className="text-[7px] font-semibold uppercase tracking-[0.12em] text-muted">Instrument<input value={zyonGameplanDraft.instrument} onChange={(event) => setZyonGameplanDraft((current) => current ? { ...current, instrument: event.target.value.toUpperCase().slice(0, 16) } : current)} className="mt-1.5 h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[10px] text-foreground outline-none focus:border-primary/40" /></label>
                         <label className="text-[7px] font-semibold uppercase tracking-[0.12em] text-muted">Direction<KwantSelect value={zyonGameplanDraft.direction} onChange={(event) => setZyonGameplanDraft((current) => current ? { ...current, direction: event.target.value as ZyonGameplanDraft["direction"] } : current)} className="mt-1.5 h-10 w-full rounded-xl border border-border bg-background px-3 text-[9px] outline-none"><option value="LONG">Long</option><option value="SHORT">Short</option></KwantSelect></label>
                         <label className="text-[7px] font-semibold uppercase tracking-[0.12em] text-muted">Session<input value={zyonGameplanDraft.session} onChange={(event) => setZyonGameplanDraft((current) => current ? { ...current, session: event.target.value } : current)} className="mt-1.5 h-10 w-full rounded-xl border border-border bg-background px-3 text-[9px] text-foreground outline-none focus:border-primary/40" /></label>
+                        <label className="text-[7px] font-semibold uppercase tracking-[0.12em] text-muted">Entry time<input value={zyonGameplanDraft.entryTime} onChange={(event) => setZyonGameplanDraft((current) => current ? { ...current, entryTime: event.target.value.slice(0, 80) } : current)} placeholder="09:35 ET" className="mt-1.5 h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] text-foreground outline-none focus:border-primary/40" /></label>
                         <label className="text-[7px] font-semibold uppercase tracking-[0.12em] text-muted">Risk<input type="number" value={zyonGameplanDraft.riskAmount ?? ""} onChange={(event) => setZyonGameplanDraft((current) => current ? { ...current, riskAmount: numberOrNull(event.target.value) } : current)} className="mt-1.5 h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] text-foreground outline-none focus:border-primary/40" /></label>
+                        <label className="text-[7px] font-semibold uppercase tracking-[0.12em] text-muted">Risk unit<KwantSelect value={zyonGameplanDraft.riskUnit} onChange={(event) => setZyonGameplanDraft((current) => current ? { ...current, riskUnit: event.target.value as ZyonGameplanDraft["riskUnit"] } : current)} className="mt-1.5 h-10 w-full rounded-xl border border-border bg-background px-3 text-[9px] outline-none"><option value="DOLLARS">Dollars</option><option value="POINTS">Points</option><option value="TICKS">Ticks</option><option value="PERCENT">Percent</option></KwantSelect></label>
                       </div>
                       <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
                         <label className="text-[7px] font-semibold uppercase tracking-[0.12em] text-muted">Entry low<input type="number" value={zyonGameplanDraft.entryLow} onChange={(event) => setZyonGameplanDraft((current) => current ? { ...current, entryLow: Number(event.target.value) } : current)} className="mt-1.5 h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] outline-none focus:border-primary/40" /></label>
@@ -2297,10 +2342,10 @@ export default function SocialsWorkspace({
                       </div>
                     </div>
                     <div className="flex flex-wrap items-center gap-2 border-t border-border bg-background/25 px-4 py-3">
-                      <div className="flex items-center gap-2 text-[8px] text-muted"><ShieldCheck className="h-3.5 w-3.5 text-primary" />Review first · locking creates the immutable timestamp</div>
+                      <div className="flex items-center gap-2 text-[8px] text-muted"><ShieldCheck className="h-3.5 w-3.5 text-primary" />Review first · posting starts immutable live ranking</div>
                       <div className="ml-auto flex flex-wrap items-center gap-2">
-                        <KwantSelect value={recordScope} onChange={(event) => setRecordScope(event.target.value as SocialScope)} disabled={Boolean(lockedCurrentGameplan)} className="h-9 rounded-xl border border-border bg-surface px-3 text-[8px] outline-none disabled:opacity-60"><option value="private">Private</option><option value="friends">Friends</option><option value="desk">My Desk</option><option value="community">Community / profile</option></KwantSelect>
-                        {lockedCurrentGameplan ? <button type="button" onClick={() => setTab("reasoning")} className="flex h-9 items-center gap-2 rounded-xl border border-warning/25 bg-warning/[0.06] px-4 text-[9px] font-semibold text-warning"><Clock3 className="h-3.5 w-3.5" />In progress · view My Reasoning</button> : <button type="button" onClick={() => void lockCurrentGameplan()} className="flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-[9px] font-semibold text-background shadow-[0_0_22px_color-mix(in_srgb,var(--primary)_20%,transparent)] hover:brightness-110"><LockKeyhole className="h-3.5 w-3.5" />Lock Today’s Gameplan</button>}
+                        <span className="flex h-9 items-center rounded-xl border border-border bg-surface px-3 text-[8px] font-semibold text-foreground"><Globe2 className="mr-2 h-3.5 w-3.5 text-primary" />Profile</span>
+                        {lockedCurrentGameplan ? <button type="button" onClick={() => setTab("reasoning")} className="flex h-9 items-center gap-2 rounded-xl border border-warning/25 bg-warning/[0.06] px-4 text-[9px] font-semibold text-warning"><Clock3 className="h-3.5 w-3.5" />Live ranking · view My Reasoning</button> : <button type="button" onClick={() => void lockCurrentGameplan()} className="flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-[9px] font-semibold text-background shadow-[0_0_22px_color-mix(in_srgb,var(--primary)_20%,transparent)] hover:brightness-110"><LockKeyhole className="h-3.5 w-3.5" />Post Gameplan to Profile</button>}
                       </div>
                     </div>
                   </>
@@ -2439,8 +2484,8 @@ export default function SocialsWorkspace({
               <Card className="border-dashed p-10 text-center">
                 <BrainCircuit className="mx-auto h-8 w-8 text-muted" />
                 <div className="mt-3 text-[11px] font-semibold text-foreground">No reasoning records yet</div>
-                <p className="mx-auto mt-2 max-w-md text-[8px] leading-4 text-muted">Ask ZYON to save today’s Gameplan, review its structured draft in Record, then press Lock Today’s Gameplan.</p>
-                <button type="button" onClick={() => setTab("today")} className="mt-4 rounded-xl bg-primary px-4 py-2.5 text-[8px] font-semibold text-background">Open today’s draft</button>
+                <p className="mx-auto mt-2 max-w-md text-[8px] leading-4 text-muted">Press Send Gameplan in ZYON. Once the required details are complete, review the holding record and post it to your Profile.</p>
+                <button type="button" onClick={() => setTab("today")} className="mt-4 rounded-xl bg-primary px-4 py-2.5 text-[8px] font-semibold text-background">Open holding page</button>
               </Card>
             )}
           </div>
@@ -2714,6 +2759,7 @@ export default function SocialsWorkspace({
               profileObject={viewedProfileObject}
               profile={viewedProfile}
               gameplans={viewedGameplans}
+              receipts={receipts}
               cards={cards}
               comments={comments}
               reasoningScore={reasoningScoreFromReceipts(receipts, viewedProfileObject.userId)}

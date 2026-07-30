@@ -6,6 +6,7 @@ import {
   Bot,
   BrainCircuit,
   CalendarDays,
+  CheckCircle2,
   ChevronRight,
   CircleGauge,
   Download,
@@ -31,6 +32,7 @@ import {
 } from "lucide-react";
 import {
   useEffect,
+  useCallback,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -53,6 +55,7 @@ import {
   zyonId,
   type ZyonAttachment,
   type ZyonFolder,
+  type ZyonGameplanDraft,
   type ZyonJournalEntry,
   type ZyonMarketRoot,
   type ZyonMessage,
@@ -472,6 +475,9 @@ export default function ZyonWorkspace({
   const [folderActionBusy, setFolderActionBusy] = useState(false);
   const [folderToDelete, setFolderToDelete] = useState<ZyonFolder | null>(null);
   const [exportingFolderId, setExportingFolderId] = useState<string | null>(null);
+  const [gameplanSendState, setGameplanSendState] = useState<"ready" | "checking" | "needs-info" | "sent">("ready");
+  const [gameplansSentToday, setGameplansSentToday] = useState(0);
+  const [pendingGameplanId, setPendingGameplanId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const messagesScrollRef = useRef<HTMLDivElement>(null);
@@ -484,6 +490,25 @@ export default function ZyonWorkspace({
   const rootMemory = interpreter.memory[selectedRoot];
   const learningReviews = interpreter.learningReviews.filter((review) => review.root === selectedRoot);
   const conversationReady = storeReady && cloudJournal !== "checking";
+
+  const refreshGameplanStatus = useCallback(async () => {
+    try {
+      const response = await fetch(`/api/zyon/gameplan-draft?localDate=${localSessionDate()}`, {
+        cache: "no-store",
+      });
+      const payload = await response.json() as {
+        pendingDraft?: ZyonGameplanDraft | null;
+        sentToday?: number;
+      };
+      if (!response.ok) return;
+      const pending = payload.pendingDraft ?? null;
+      setPendingGameplanId(pending?.id ?? null);
+      setGameplansSentToday(Number.isFinite(payload.sentToday) ? Number(payload.sentToday) : 0);
+      setGameplanSendState((current) => pending ? "sent" : current === "sent" ? "ready" : current);
+    } catch {
+      // The conversation remains available if status synchronization is temporarily unavailable.
+    }
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -559,6 +584,17 @@ export default function ZyonWorkspace({
   useEffect(() => {
     window.localStorage.setItem("kwantdesk:zyon:model", model);
   }, [model]);
+
+  useEffect(() => {
+    void refreshGameplanStatus();
+    const refresh = () => void refreshGameplanStatus();
+    window.addEventListener("focus", refresh);
+    window.addEventListener("kwantdesk:gameplan-posted", refresh);
+    return () => {
+      window.removeEventListener("focus", refresh);
+      window.removeEventListener("kwantdesk:gameplan-posted", refresh);
+    };
+  }, [refreshGameplanStatus]);
 
   useEffect(() => {
     if (!imagePreview) return;
@@ -808,21 +844,32 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
     }
   };
 
-  const sendMessage = async (event?: FormEvent) => {
+  const sendMessage = async (
+    event?: FormEvent,
+    overrideText?: string,
+    gameplanRequest = false,
+  ) => {
     event?.preventDefault();
-    const text = draft.trim().slice(0, 6_000);
-    if (!online || sending || (!text && !attachments.length)) return;
+    const text = (overrideText ?? draft).trim().slice(0, 6_000);
+    const outgoingAttachments = overrideText ? [] : attachments;
+    const gameplanExchange = gameplanRequest
+      || gameplanSendState === "needs-info"
+      || /\b(?:send|save|submit)\b[\s\S]{0,30}\bgame\s*plan\b/i.test(text);
+    if (!online || sending || (!text && !outgoingAttachments.length)) return;
+    if (gameplanExchange) setGameplanSendState("checking");
     const userMessage: ZyonMessage = {
       id: zyonId("zyon-user"),
       role: "user",
       content: text,
       createdAt: new Date().toISOString(),
-      attachments: attachments.length ? attachments : undefined,
+      attachments: outgoingAttachments.length ? outgoingAttachments : undefined,
     };
     const conversation = [...messages.slice(-23), userMessage];
     setMessages((current) => [...current.slice(-119), userMessage]);
-    setDraft("");
-    setAttachments([]);
+    if (!overrideText) {
+      setDraft("");
+      setAttachments([]);
+    }
     setAttachmentError("");
     setSendError("");
     setSending(true);
@@ -860,6 +907,8 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
         model?: unknown;
         journalEntry?: ZyonJournalEntry | null;
         journalEntries?: ZyonJournalEntry[];
+        gameplanDraft?: ZyonGameplanDraft | null;
+        pendingGameplanDraftId?: string | null;
         folder?: { id?: string; sessionDate?: string; cloudSaved?: boolean };
         usage?: { inputTokens?: number | null; outputTokens?: number | null };
       } | null;
@@ -880,6 +929,16 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
         model: isZyonModelKey(payload?.model) ? payload.model : model,
       };
       setMessages((current) => [...current.slice(-119), reply]);
+      if (payload?.gameplanDraft?.cloudSaved) {
+        setPendingGameplanId(payload.gameplanDraft.id);
+        setGameplanSendState("sent");
+        void refreshGameplanStatus();
+      } else if (payload?.pendingGameplanDraftId) {
+        setPendingGameplanId(payload.pendingGameplanDraftId);
+        setGameplanSendState("sent");
+      } else if (gameplanExchange) {
+        setGameplanSendState("needs-info");
+      }
       const returnedEntries = Array.isArray(payload?.journalEntries)
         ? payload.journalEntries
         : payload?.journalEntry ? [payload.journalEntry] : [];
@@ -937,11 +996,36 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
       });
     } catch (error) {
       setSendError(error instanceof Error ? error.message : "ZYON could not reply.");
+      if (gameplanExchange) setGameplanSendState("needs-info");
     } finally {
       setSending(false);
       window.requestAnimationFrame(() => composerRef.current?.focus());
     }
   };
+
+  const requestGameplan = () => {
+    if (pendingGameplanId || gameplanSendState === "sent") {
+      window.location.href = "/socials";
+      return;
+    }
+    void sendMessage(
+      undefined,
+      "Send Gameplan. Use our conversation for the reasoning and ask me only for the required information that is still missing.",
+      true,
+    );
+  };
+  const gameplanButtonLabel = gameplanSendState === "checking"
+    ? "ZYON CHECKING"
+    : gameplanSendState === "needs-info"
+      ? "ZYON NEEDS INFO"
+      : gameplanSendState === "sent"
+        ? "SENT · OPEN HOLDING"
+        : "SEND GAMEPLAN";
+  const gameplanButtonTone = gameplanSendState === "needs-info"
+    ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-300 shadow-[0_0_18px_rgba(52,211,153,0.12)]"
+    : gameplanSendState === "sent"
+      ? "border-primary/30 bg-primary/10 text-primary"
+      : "border-border bg-surface/60 text-foreground hover:border-primary/35 hover:text-primary";
 
   if (!conversationReady) {
     return <ZyonLoadingState compact={compact} />;
@@ -1016,6 +1100,25 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
             >
               <Radio className="h-3.5 w-3.5" />
             </button>
+          </div>
+
+          <div className="flex items-center gap-2 border-t border-border/70 px-3 py-2">
+            <button
+              type="button"
+              onClick={requestGameplan}
+              disabled={!online || sending}
+              className={`flex h-8 min-w-0 flex-1 items-center justify-center gap-2 rounded-xl border px-3 text-[8px] font-semibold uppercase tracking-[0.1em] transition disabled:opacity-45 ${gameplanButtonTone}`}
+            >
+              {gameplanSendState === "checking"
+                ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                : gameplanSendState === "sent"
+                  ? <CheckCircle2 className="h-3.5 w-3.5" />
+                  : <Send className="h-3.5 w-3.5" />}
+              {gameplanButtonLabel}
+            </button>
+            <span className="shrink-0 text-right font-mono text-[7px] leading-3 text-muted">
+              {gameplansSentToday}<br />today
+            </span>
           </div>
 
           <div className="grid grid-cols-2 border-t border-border/70 text-[8px]">
@@ -1182,6 +1285,23 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
         </div>
 
         <div className="ml-auto flex items-center gap-2">
+          <button
+            type="button"
+            onClick={requestGameplan}
+            disabled={!online || sending}
+            className={`flex h-8 items-center gap-2 rounded-xl border px-3 text-[8px] font-semibold uppercase tracking-[0.1em] transition disabled:opacity-45 ${gameplanButtonTone}`}
+            title={`${gameplansSentToday} Gameplans sent today`}
+          >
+            {gameplanSendState === "checking"
+              ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              : gameplanSendState === "sent"
+                ? <CheckCircle2 className="h-3.5 w-3.5" />
+                : <Send className="h-3.5 w-3.5" />}
+            {gameplanButtonLabel}
+            <span className="rounded-md border border-current/15 px-1.5 py-0.5 font-mono text-[7px]">
+              {gameplansSentToday} today
+            </span>
+          </button>
           <div className="flex items-center rounded-xl border border-border bg-surface/60 p-0.5">
             {(["NQ", "ES"] as ZyonMarketRoot[]).map((root) => (
               <button
