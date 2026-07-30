@@ -915,14 +915,6 @@ export default function GammaWorkspace() {
     setGexScope("FULL_CHAIN");
   };
 
-  const changePriceMode = (nextPriceMode: OptionsPriceMode) => {
-    setData(null);
-    dataRef.current = null;
-    setChartMarketPreview(null);
-    setError(null);
-    setPriceMode(nextPriceMode);
-  };
-
   return (
     <div className="flex h-full min-h-0 overflow-hidden bg-background text-foreground">
       <main className="flex min-w-0 flex-1 flex-col">
@@ -1001,12 +993,6 @@ export default function GammaWorkspace() {
               </div>
             ) : null}
           </div>
-          {selectedInstrument.futuresRoot ? (
-            <div className="hidden h-8 items-center rounded-lg border border-border bg-surface p-0.5 md:flex">
-              <button type="button" onClick={() => changePriceMode("CASH")} className={`h-7 rounded-md px-2.5 text-[10px] font-semibold ${priceMode === "CASH" ? "bg-panel text-foreground shadow-sm" : "text-muted"}`}>{symbol}</button>
-              <button type="button" onClick={() => changePriceMode("FUTURES")} className={`h-7 rounded-md px-2.5 text-[10px] font-semibold ${priceMode === "FUTURES" ? "bg-panel text-foreground shadow-sm" : "text-muted"}`}>{selectedInstrument.futuresRoot}</button>
-            </div>
-          ) : null}
           {headerMarketData?.lastPrice !== null && headerMarketData?.lastPrice !== undefined ? <span ref={livePriceRef} className={`rounded-md px-1.5 py-1 font-mono text-[12px] font-semibold transition-colors duration-150 ${priceTick === "UP" ? "bg-primary/10 text-primary" : priceTick === "DOWN" ? "bg-danger/10 text-danger" : "text-foreground"}`}>{headerMarketData.symbol} {formatPrice(headerMarketData.lastPrice)}</span> : null}
           <div className="ml-auto flex items-center gap-2">
             {headerMarketData ? (
