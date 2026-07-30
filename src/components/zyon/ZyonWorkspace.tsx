@@ -1580,10 +1580,10 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
           <div className="flex items-center gap-2">
             <h1 className="truncate text-[15px] font-semibold tracking-[0.12em] text-foreground">ZYON</h1>
             <span className="rounded-full border border-primary/20 bg-primary/[0.07] px-2 py-0.5 text-[7px] font-semibold uppercase tracking-[0.15em] text-primary">
-              Trading intelligence
+              AI Quant Analyst
             </span>
           </div>
-          <p className="mt-0.5 truncate text-[9px] text-muted">Discretionary confirmation · KwantBot aware · journal linked</p>
+          <p className="mt-0.5 truncate text-[9px] text-muted">Live Futures and Options Aware</p>
         </div>
 
         <div className="ml-auto flex items-center gap-2">
