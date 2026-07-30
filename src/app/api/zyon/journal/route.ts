@@ -211,6 +211,7 @@ export async function POST(request: NextRequest) {
     parentId?: unknown;
     root?: unknown;
     chatId?: unknown;
+    folderId?: unknown;
   };
   try {
     payload = await request.json();
@@ -223,6 +224,10 @@ export async function POST(request: NextRequest) {
   const name = cleanFolderName(payload.name);
   const requestedChatId = typeof payload.chatId === "string"
     ? payload.chatId.trim().slice(0, 160)
+    : "";
+  const requestedFolderId = typeof payload.folderId === "string"
+    && /^[a-zA-Z0-9_-]+$/.test(payload.folderId.trim())
+    ? payload.folderId.trim().slice(0, 160)
     : "";
   const chatId = requestedChatId || ZYON_DEFAULT_CHAT_ID;
   const parentId = typeof payload.parentId === "string" && payload.parentId.trim()
@@ -265,7 +270,9 @@ export async function POST(request: NextRequest) {
     }
     const now = new Date().toISOString();
     const newChat: ZyonChat = {
-      id: zyonId("zyon-chat"),
+      id: requestedChatId && /^[a-zA-Z0-9_-]+$/.test(requestedChatId)
+        ? requestedChatId
+        : zyonId("zyon-chat"),
       name,
       createdAt: now,
       updatedAt: now,
@@ -447,7 +454,7 @@ export async function POST(request: NextRequest) {
 
   const now = new Date().toISOString();
   const folder: ZyonFolder = {
-    id: zyonId("zyon-folder"),
+    id: requestedFolderId || zyonId("zyon-folder"),
     chatId,
     name,
     parentId,

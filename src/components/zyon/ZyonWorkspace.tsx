@@ -722,6 +722,9 @@ export default function ZyonWorkspace({
           Array.isArray(saved?.journal) ? saved.journal : [],
           current,
         ));
+        if (Array.isArray(saved?.folders)) {
+          setFolders((current) => mergeFolders(saved.folders ?? [], current));
+        }
       })
       .catch(() => {
         if (active) {
@@ -742,6 +745,7 @@ export default function ZyonWorkspace({
       messages: messages.slice(-120),
       journal: journal.slice(0, 5_000),
       chats,
+      folders,
       activeChatId,
       messagesByChat: Object.fromEntries(
         Object.entries(messagesByChat).map(([chatId, chatMessages]) => [
@@ -750,7 +754,7 @@ export default function ZyonWorkspace({
         ]),
       ),
     });
-  }, [accountKey, activeChatId, chats, journal, messages, messagesByChat, storeReady]);
+  }, [accountKey, activeChatId, chats, folders, journal, messages, messagesByChat, storeReady]);
 
   useEffect(() => {
     let active = true;
@@ -971,6 +975,28 @@ export default function ZyonWorkspace({
 
   const createChat = useCallback(async () => {
     if (chatActionBusy || chats.length >= ZYON_CHAT_LIMIT) return;
+    const now = new Date().toISOString();
+    const chat: ZyonChat = {
+      id: zyonId("zyon-chat"),
+      name: "New chat",
+      createdAt: now,
+      updatedAt: now,
+    };
+    const rootFolder: ZyonFolder = {
+      id: zyonDailyRootFolderId(chat.id),
+      chatId: chat.id,
+      name: "Daily conversations",
+      parentId: null,
+      kind: "system",
+      sessionDate: null,
+      createdAt: now,
+      updatedAt: now,
+    };
+    setChats((current) => mergeChats(current, [chat]));
+    setFolders((current) => mergeFolders(current, [rootFolder]));
+    openChat(chat.id);
+    setRenamingChatId(chat.id);
+    setChatNameDraft(chat.name);
     setChatActionBusy(true);
     setChatActionError("");
     try {
@@ -979,7 +1005,8 @@ export default function ZyonWorkspace({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "create-chat",
-          name: "New chat",
+          chatId: chat.id,
+          name: chat.name,
           root: selectedRoot,
         }),
       });
@@ -993,12 +1020,11 @@ export default function ZyonWorkspace({
       }
       setChats((current) => mergeChats(current, [payload.chat!]));
       if (payload.folder) setFolders((current) => mergeFolders(current, [payload.folder!]));
-      openChat(payload.chat.id);
-      setRenamingChatId(payload.chat.id);
-      setChatNameDraft(payload.chat.name);
       setCloudJournal("synced");
-    } catch (error) {
-      setChatActionError(error instanceof Error ? error.message : "The chat could not be created.");
+    } catch {
+      // Keep the optimistic chat available in IndexedDB so a temporary cloud
+      // storage problem never blocks the trader from starting a conversation.
+      setCloudJournal("local");
     } finally {
       setChatActionBusy(false);
     }
@@ -1057,6 +1083,30 @@ export default function ZyonWorkspace({
   const createFolder = async (event: FormEvent) => {
     event.preventDefault();
     if (!folderName.trim() || folderActionBusy) return;
+    const name = folderName.replace(/\s+/g, " ").trim().slice(0, 60);
+    const now = new Date().toISOString();
+    const folder: ZyonFolder = {
+      id: zyonId("zyon-folder"),
+      chatId: activeChatId,
+      name,
+      parentId: folderParentId || null,
+      kind: "custom",
+      sessionDate: null,
+      createdAt: now,
+      updatedAt: now,
+    };
+    setFolders((current) => mergeFolders(current, [folder]));
+    setSelectedFolderId(folder.id);
+    setExpandedFolderIds((current) => {
+      const next = new Set(current);
+      if (folder.parentId) next.add(folder.parentId);
+      next.add(folder.id);
+      return next;
+    });
+    setSelectedEntryId(null);
+    setFolderDialogOpen(false);
+    setFolderName("");
+    setFolderParentId("");
     setFolderActionBusy(true);
     setFolderActionError("");
     try {
@@ -1064,8 +1114,9 @@ export default function ZyonWorkspace({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name: folderName,
-          parentId: folderParentId || null,
+          folderId: folder.id,
+          name: folder.name,
+          parentId: folder.parentId,
           root: selectedRoot,
           chatId: activeChatId,
         }),
@@ -1085,13 +1136,11 @@ export default function ZyonWorkspace({
         next.add(payload.folder!.id);
         return next;
       });
-      setSelectedEntryId(null);
-      setFolderDialogOpen(false);
-      setFolderName("");
-      setFolderParentId("");
       setCloudJournal("synced");
-    } catch (error) {
-      setFolderActionError(error instanceof Error ? error.message : "The folder could not be created.");
+    } catch {
+      // The local folder remains usable and is persisted with the account's
+      // local ZYON workspace until cloud storage is available again.
+      setCloudJournal("local");
     } finally {
       setFolderActionBusy(false);
     }
