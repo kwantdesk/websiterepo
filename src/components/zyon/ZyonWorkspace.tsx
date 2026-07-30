@@ -1559,9 +1559,10 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
           </div>
           {attachmentError || sendError ? (
             <p role="alert" className="mt-1.5 px-1 text-[8px] leading-3 text-danger">{attachmentError || sendError}</p>
-          ) : (
-            <p className="mt-1.5 px-1 text-[7px] text-muted">Shared with the full ZYON page and account journal</p>
-          )}
+          ) : null}
+          <p className="mt-1.5 px-1 text-[7px] leading-3 text-muted">
+            ZYON provides general information only, not financial advice. You remain solely responsible for all trading decisions; to the extent permitted by law, Kwant Desk and ZYON accept no liability for financial loss or trading outcomes.
+          </p>
         </form>
 
         <ZyonImagePreviewDialog imagePreview={imagePreview} onClose={() => setImagePreview(null)} />
@@ -2232,12 +2233,13 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
               </div>
               {attachmentError || sendError ? (
                 <p role="alert" className="mt-2 text-[9px] text-danger">{attachmentError || sendError}</p>
-              ) : (
-                <div className="mt-2 flex items-center justify-between text-[8px] text-muted">
-                  <span>Research and decision support only · no order execution</span>
-                  {lastUsage ? <span className="font-mono">{lastUsage.inputTokens ?? "—"} in · {lastUsage.outputTokens ?? "—"} out</span> : null}
-                </div>
-              )}
+              ) : null}
+              <div className="mt-2 flex items-start justify-between gap-4 text-[8px] text-muted">
+                <span className="max-w-[680px] leading-3">
+                  ZYON provides general information only, not financial advice. You remain solely responsible for all trading decisions; to the extent permitted by law, Kwant Desk and ZYON accept no liability for financial loss or trading outcomes.
+                </span>
+                {lastUsage ? <span className="shrink-0 font-mono">{lastUsage.inputTokens ?? "—"} in · {lastUsage.outputTokens ?? "—"} out</span> : null}
+              </div>
             </form>
           </div>
           ) : null}
