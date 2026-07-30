@@ -19,6 +19,7 @@ import {
   Loader2,
   Maximize2,
   MessageSquareText,
+  Mic,
   Paperclip,
   Pencil,
   Plus,
@@ -46,6 +47,7 @@ import { createPortal } from "react-dom";
 import KwantLoader from "@/components/KwantLoader";
 import KwantSelect from "@/components/ui/KwantSelect";
 import type { UseKwantBotInterpreterResult } from "@/hooks/useKwantBotInterpreter";
+import { useSpeechDictation } from "@/hooks/useSpeechDictation";
 import { formatKwantBotPrice } from "@/lib/kwantBotInterpreter";
 import {
   isZyonModelKey,
@@ -398,6 +400,44 @@ function ZyonLoadingState({ compact }: { compact: boolean }) {
   );
 }
 
+type SpeechDictationControl = ReturnType<typeof useSpeechDictation>;
+
+function ZyonSpeechButton({
+  speech,
+  showLabel = false,
+}: {
+  speech: SpeechDictationControl;
+  showLabel?: boolean;
+}) {
+  const title = !speech.supported
+    ? "Speech input is not supported by this browser"
+    : speech.listening
+      ? "Stop dictation"
+      : "Dictate a message";
+
+  return (
+    <button
+      type="button"
+      onClick={speech.toggle}
+      disabled={!speech.supported}
+      aria-label={title}
+      aria-pressed={speech.listening}
+      title={title}
+      className={`flex h-8 shrink-0 items-center justify-center gap-2 rounded-xl px-2.5 text-[9px] transition disabled:cursor-not-allowed disabled:opacity-30 ${
+        speech.listening
+          ? "bg-primary/15 text-primary shadow-[0_0_18px_color-mix(in_srgb,var(--primary)_16%,transparent)]"
+          : "text-muted hover:bg-surface hover:text-primary"
+      }`}
+    >
+      <span className="relative flex h-4 w-4 items-center justify-center">
+        {speech.listening ? <span className="absolute inset-0 animate-ping rounded-full bg-primary/25" /> : null}
+        <Mic className="relative h-3.5 w-3.5" />
+      </span>
+      {showLabel ? <span>{speech.listening ? "Listening…" : "Dictate"}</span> : null}
+    </button>
+  );
+}
+
 type ZyonImagePreview = Pick<ZyonAttachment, "name" | "dataUrl">;
 
 function messageAttachments(
@@ -576,6 +616,12 @@ export default function ZyonWorkspace({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const messagesScrollRef = useRef<HTMLDivElement>(null);
+  const speechDictation = useSpeechDictation({
+    value: draft,
+    onChange: setDraft,
+    disabled: !online || sending,
+    maxLength: 6_000,
+  });
   const messages = messagesByChat[activeChatId] ?? [WELCOME_MESSAGE];
   const setMessages = useCallback((update: SetStateAction<ZyonMessage[]>) => {
     setMessagesByChat((current) => {
@@ -1581,7 +1627,10 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
               >
                 <Paperclip className="h-3.5 w-3.5" />
               </button>
-              <span className="text-[8px] text-muted">Images and files</span>
+              <ZyonSpeechButton speech={speechDictation} />
+              <span className="text-[8px] text-muted">
+                {speechDictation.listening ? "Listening…" : "Images and files"}
+              </span>
               <button
                 type="submit"
                 disabled={!online || sending || (!draft.trim() && !attachments.length)}
@@ -1593,8 +1642,8 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
               </button>
             </div>
           </div>
-          {attachmentError || sendError ? (
-            <p role="alert" className="mt-1.5 px-1 text-[8px] leading-3 text-danger">{attachmentError || sendError}</p>
+          {attachmentError || sendError || speechDictation.error ? (
+            <p role="alert" className="mt-1.5 px-1 text-[8px] leading-3 text-danger">{attachmentError || sendError || speechDictation.error}</p>
           ) : null}
           <p className="mt-1.5 px-1 text-[7px] leading-3 text-muted">
             ZYON provides general information only, not financial advice. You remain solely responsible for all trading decisions; to the extent permitted by law, Kwant Desk and ZYON accept no liability for financial loss or trading outcomes.
@@ -2094,6 +2143,7 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
                           <Paperclip className="h-3.5 w-3.5" />
                           Attach
                         </button>
+                        <ZyonSpeechButton speech={speechDictation} showLabel />
                         <KwantSelect
                           value={model}
                           onChange={(event) => {
@@ -2118,8 +2168,8 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
                         </button>
                       </div>
                     </div>
-                    {attachmentError || sendError ? (
-                      <p role="alert" className="mt-2 text-center text-[9px] text-danger">{attachmentError || sendError}</p>
+                    {attachmentError || sendError || speechDictation.error ? (
+                      <p role="alert" className="mt-2 text-center text-[9px] text-danger">{attachmentError || sendError || speechDictation.error}</p>
                     ) : null}
                   </form>
 
@@ -2245,6 +2295,7 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
                     <Paperclip className="h-3.5 w-3.5" />
                     Attach
                   </button>
+                  <ZyonSpeechButton speech={speechDictation} showLabel />
                   <span className="hidden text-[8px] text-muted sm:inline">Images · PDF · notes · max 4 files</span>
                   <div className="ml-auto flex items-center gap-2">
                     <span className="hidden text-[8px] text-muted sm:inline">Trading scope only</span>
@@ -2259,8 +2310,8 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
                   </div>
                 </div>
               </div>
-              {attachmentError || sendError ? (
-                <p role="alert" className="mt-2 text-[9px] text-danger">{attachmentError || sendError}</p>
+              {attachmentError || sendError || speechDictation.error ? (
+                <p role="alert" className="mt-2 text-[9px] text-danger">{attachmentError || sendError || speechDictation.error}</p>
               ) : null}
               <div className="mt-2 flex items-start justify-between gap-4 text-[8px] text-muted">
                 <span className="max-w-[680px] leading-3">
