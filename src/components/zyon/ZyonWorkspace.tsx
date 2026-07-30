@@ -490,6 +490,28 @@ export default function ZyonWorkspace({
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const messagesScrollRef = useRef<HTMLDivElement>(null);
 
+  const resizeComposer = useCallback(() => {
+    const composer = composerRef.current;
+    if (!composer) return;
+    const conversation = messagesScrollRef.current;
+    const keepConversationPinned = conversation
+      ? conversation.scrollHeight - conversation.scrollTop - conversation.clientHeight < 72
+      : false;
+    const minimumHeight = compact ? 40 : 48;
+    const viewportLimit = Math.floor(window.innerHeight * (compact ? 0.42 : 0.48));
+    const maximumHeight = Math.max(
+      minimumHeight,
+      Math.min(compact ? 340 : 460, viewportLimit),
+    );
+    composer.style.height = "0px";
+    const contentHeight = composer.scrollHeight;
+    composer.style.height = `${Math.max(minimumHeight, Math.min(contentHeight, maximumHeight))}px`;
+    composer.style.overflowY = contentHeight > maximumHeight ? "auto" : "hidden";
+    if (conversation && keepConversationPinned) {
+      conversation.scrollTop = conversation.scrollHeight;
+    }
+  }, [compact]);
+
   const selectedRoot = interpreter.selectedRoot;
   const context = interpreter.contexts[selectedRoot];
   const currentPrice = interpreter.livePrices[selectedRoot] ?? context?.currentPrice ?? null;
@@ -624,6 +646,15 @@ export default function ZyonWorkspace({
     if (!container) return;
     container.scrollTop = container.scrollHeight;
   }, [compact, conversationReady, messages.length, sending]);
+
+  useLayoutEffect(() => {
+    resizeComposer();
+  }, [draft, resizeComposer]);
+
+  useEffect(() => {
+    window.addEventListener("resize", resizeComposer);
+    return () => window.removeEventListener("resize", resizeComposer);
+  }, [resizeComposer]);
 
   const filteredJournal = useMemo(() => {
     const query = journalSearch.trim().toLowerCase();
@@ -1252,7 +1283,7 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
               disabled={!online || sending}
               placeholder={online ? `Message ZYON about ${selectedRoot}…` : "ZYON is paused"}
               rows={2}
-              className="max-h-28 min-h-10 w-full resize-none bg-transparent px-2 py-1 text-[10px] leading-5 text-foreground outline-none placeholder:text-muted/45"
+              className="min-h-10 w-full resize-none overflow-y-hidden bg-transparent px-2 py-1 text-[10px] leading-5 text-foreground outline-none placeholder:text-muted/45"
             />
             <div className="flex items-center gap-1 border-t border-border/70 pt-1.5">
               <input
@@ -1671,7 +1702,7 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
                   disabled={!online || sending}
                   placeholder={online ? `Message ZYON about ${selectedRoot}…` : "ZYON is paused"}
                   rows={2}
-                  className="max-h-36 min-h-12 w-full resize-none bg-transparent px-2 py-1 text-[11px] leading-5 text-foreground outline-none placeholder:text-muted/45"
+                  className="min-h-12 w-full resize-none overflow-y-hidden bg-transparent px-2 py-1 text-[11px] leading-5 text-foreground outline-none placeholder:text-muted/45"
                 />
                 <div className="flex items-center gap-2 border-t border-border/70 pt-2">
                   <input
