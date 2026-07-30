@@ -59,7 +59,12 @@ import {
   type DeskWorkspace as DeskWorkspaceModel,
 } from "@/lib/desks";
 import { type SocialProfilePayload } from "@/lib/socials";
-import { effectivePresenceStatus, presenceOption } from "@/lib/friends";
+import {
+  effectivePresenceStatus,
+  presenceOption,
+  type FriendSummary,
+  type FriendsPayload,
+} from "@/lib/friends";
 import {
   type ChangeEvent,
   type KeyboardEvent,
@@ -347,24 +352,39 @@ function DeskInviteButton({
   workspace,
   enabled,
   working,
+  friends,
+  friendsLoading,
+  friendsError,
+  memberUserIds,
+  pendingInviteUserIds,
   iconOnly = false,
+  onOpen,
   onInvite,
 }: {
   workspace: DeskWorkspaceModel;
   enabled: boolean;
   working: boolean;
+  friends: FriendSummary[];
+  friendsLoading: boolean;
+  friendsError: string;
+  memberUserIds: ReadonlySet<string>;
+  pendingInviteUserIds: ReadonlySet<string>;
   iconOnly?: boolean;
+  onOpen: () => void;
   onInvite: (username: string) => Promise<boolean>;
 }) {
   const [open, setOpen] = useState(false);
   const [username, setUsername] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const busy = working || submitting;
+  const [quickInvitingId, setQuickInvitingId] = useState("");
+  const [invitedUserIds, setInvitedUserIds] = useState<Set<string>>(() => new Set());
+  const busy = working || submitting || Boolean(quickInvitingId);
 
   const close = () => {
     if (busy) return;
     setOpen(false);
     setUsername("");
+    setInvitedUserIds(new Set());
   };
 
   const submit = async () => {
@@ -382,11 +402,29 @@ function DeskInviteButton({
     }
   };
 
+  const inviteFriend = async (friend: FriendSummary) => {
+    if (!friend.handle || busy || memberUserIds.has(friend.userId) || pendingInviteUserIds.has(friend.userId) || invitedUserIds.has(friend.userId)) return;
+    setQuickInvitingId(friend.userId);
+    try {
+      const saved = await onInvite(friend.handle);
+      if (saved) {
+        setInvitedUserIds((current) => new Set(current).add(friend.userId));
+      }
+    } finally {
+      setQuickInvitingId("");
+    }
+  };
+
   return (
     <>
       <button
         type="button"
-        onClick={() => setOpen(true)}
+        onClick={() => {
+          setOpen(true);
+          onOpen();
+        }}
+        onMouseEnter={onOpen}
+        onFocus={onOpen}
         disabled={!enabled}
         title="Invite a Kwant Desk user"
         className={iconOnly
@@ -399,7 +437,7 @@ function DeskInviteButton({
       {open ? (
         <Modal
           title={`Invite to ${workspace.name}`}
-          subtitle="Invite a Kwant Desk user by their unique @username."
+          subtitle="Invite a friend instantly or search by their unique @username."
           icon={<UserPlus className="h-4 w-4" />}
           onClose={close}
           footer={(
@@ -412,6 +450,86 @@ function DeskInviteButton({
             </>
           )}
         >
+          <section>
+            <div className="flex items-center gap-2">
+              <UsersRound className="h-3.5 w-3.5 text-primary" />
+              <span className="text-[7px] font-semibold uppercase tracking-[0.1em] text-muted">Your friends</span>
+              {friends.length ? <span className="ml-auto rounded-lg border border-border bg-background/40 px-2 py-1 font-mono text-[6px] text-muted">{friends.length}</span> : null}
+            </div>
+            <div className="mt-2 overflow-hidden rounded-2xl border border-border bg-background/25">
+              {friendsLoading && !friends.length ? (
+                <div className="flex h-24 items-center justify-center gap-2 text-[7px] text-muted">
+                  <span className="h-3 w-3 animate-spin rounded-full border-2 border-primary/20 border-t-primary" />
+                  Loading friends
+                </div>
+              ) : friends.length ? (
+                <div className="max-h-64 divide-y divide-border/55 overflow-y-auto">
+                  {friends.map((friend) => {
+                    const status = effectivePresenceStatus(friend.presenceStatus, friend.lastSeenAt);
+                    const statusDetails = presenceOption(status);
+                    const isMember = memberUserIds.has(friend.userId);
+                    const isPending = pendingInviteUserIds.has(friend.userId) || invitedUserIds.has(friend.userId);
+                    const isSending = quickInvitingId === friend.userId;
+                    return (
+                      <div key={friend.userId} className="flex min-h-14 items-center gap-3 px-3 py-2.5 transition-colors hover:bg-surface/30">
+                        <UserAvatar
+                          label={friend.displayName}
+                          avatarUrl={friend.avatarUrl}
+                          size="sm"
+                          statusClassName={statusDetails.dotClassName}
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-[8px] font-semibold text-foreground">{friend.displayName}</div>
+                          <div className="mt-0.5 flex items-center gap-1.5 text-[6px] text-muted">
+                            <span className="truncate">@{friend.handle}</span>
+                            <span className="opacity-40">&middot;</span>
+                            <span className="truncate">{statusDetails.label}</span>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => void inviteFriend(friend)}
+                          disabled={busy || isMember || isPending || !friend.handle}
+                          className={`flex h-8 min-w-[78px] items-center justify-center gap-1.5 rounded-xl border px-3 text-[7px] font-semibold transition-colors ${
+                            isMember
+                              ? "border-border bg-surface/35 text-muted"
+                              : isPending
+                                ? "border-primary/20 bg-primary/[0.05] text-primary"
+                                : "border-primary/25 bg-primary/[0.07] text-primary hover:border-primary/45 hover:bg-primary/[0.12]"
+                          } disabled:cursor-default`}
+                        >
+                          {isSending ? (
+                            <span className="h-3 w-3 animate-spin rounded-full border-2 border-primary/25 border-t-primary" />
+                          ) : isMember || isPending ? (
+                            <Check className="h-3 w-3" />
+                          ) : (
+                            <UserPlus className="h-3 w-3" />
+                          )}
+                          {isSending ? "Sending" : isMember ? "In Desk" : isPending ? "Pending" : "Invite"}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="flex min-h-24 items-center justify-center p-4 text-center">
+                  <div>
+                    <UsersRound className="mx-auto h-5 w-5 text-muted/60" />
+                    <div className="mt-2 text-[7px] font-semibold text-foreground">No friends to invite yet</div>
+                    <div className="mt-1 text-[6px] leading-4 text-muted">You can still invite any Kwant Desk user below.</div>
+                  </div>
+                </div>
+              )}
+            </div>
+            {friendsError ? <div className="mt-2 text-[6px] leading-4 text-warning">{friendsError}</div> : null}
+          </section>
+
+          <div className="my-4 flex items-center gap-3">
+            <span className="h-px flex-1 bg-border" />
+            <span className="text-[6px] font-semibold uppercase tracking-[0.12em] text-muted">Invite another user</span>
+            <span className="h-px flex-1 bg-border" />
+          </div>
+
           <label>
             <span className="mb-1.5 block text-[7px] uppercase tracking-[0.1em] text-muted">Kwant Desk user</span>
             <div className="flex h-11 items-center rounded-xl border border-border bg-background px-3 focus-within:border-primary/40">
@@ -724,11 +842,16 @@ export default function DeskWorkspace({
   const [imagePreview, setImagePreview] = useState<DeskMessageAttachment | null>(null);
   const [directoryQuery, setDirectoryQuery] = useState("");
   const [rosterFilter, setRosterFilter] = useState<"all" | "online" | "offline" | "inactive">("all");
+  const [inviteFriends, setInviteFriends] = useState<FriendSummary[]>([]);
+  const [inviteFriendsLoading, setInviteFriendsLoading] = useState(false);
+  const [inviteFriendsError, setInviteFriendsError] = useState("");
   const messageEndRef = useRef<HTMLDivElement>(null);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
   const selectedDeskRef = useRef("");
   const refreshTimerRef = useRef<number | null>(null);
   const suppressRefreshUntilRef = useRef(0);
+  const inviteFriendsRequestRef = useRef(false);
+  const inviteFriendsLoadedAtRef = useRef(0);
 
   selectedDeskRef.current = activeDeskId;
 
@@ -746,6 +869,30 @@ export default function DeskWorkspace({
       if (!silent) setLoading(false);
     }
   }, [onNotice]);
+
+  const loadInviteFriends = useCallback(async () => {
+    if (
+      inviteFriendsRequestRef.current
+      || Date.now() - inviteFriendsLoadedAtRef.current < 30_000
+    ) return;
+    inviteFriendsRequestRef.current = true;
+    setInviteFriendsLoading(true);
+    try {
+      const response = await fetch("/api/friends", { cache: "no-store" });
+      const result = await response.json() as FriendsPayload & { error?: string };
+      if (!response.ok) throw new Error(result.error || "Friends could not be loaded.");
+      setInviteFriends(result.friends ?? []);
+      setInviteFriendsError("");
+      inviteFriendsLoadedAtRef.current = Date.now();
+    } catch (reason) {
+      setInviteFriendsError(reason instanceof Error
+        ? reason.message
+        : "Friends could not be loaded. You can still invite by username.");
+    } finally {
+      inviteFriendsRequestRef.current = false;
+      setInviteFriendsLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     void loadNetwork(false);
@@ -822,6 +969,22 @@ export default function DeskWorkspace({
   const owner = activeMembership?.role === "owner";
   const canInvite = Boolean(activeDesk && activeMembership && (leader || activeDesk.allowMemberInvites));
   const activeMembers = network.members.filter((member) => member.deskId === activeDeskId);
+  const activeMemberUserIds = useMemo(
+    () => new Set(network.members
+      .filter((member) => member.deskId === activeDeskId)
+      .map((member) => member.userId)),
+    [activeDeskId, network.members],
+  );
+  const pendingInviteUserIds = useMemo(
+    () => new Set(network.requests
+      .filter((request) => (
+        request.deskId === activeDeskId
+        && request.requestType === "invite"
+        && request.status === "pending"
+      ))
+      .map((request) => request.userId)),
+    [activeDeskId, network.requests],
+  );
   const activeChannels = network.channels
     .filter((channel) => channel.deskId === activeDeskId)
     .sort((left, right) => left.position - right.position);
@@ -1257,7 +1420,18 @@ export default function DeskWorkspace({
                     <button type="button" onClick={openSettings} disabled={!owner} className="flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground disabled:opacity-30" title="Desk settings"><Settings2 className="h-3.5 w-3.5" /></button>
                   </div>
                   <div className="mt-3 grid grid-cols-2 gap-1.5">
-                    <DeskInviteButton workspace={activeDesk} enabled={canInvite} working={working} onInvite={sendInvite} />
+                    <DeskInviteButton
+                      workspace={activeDesk}
+                      enabled={canInvite}
+                      working={working}
+                      friends={inviteFriends}
+                      friendsLoading={inviteFriendsLoading}
+                      friendsError={inviteFriendsError}
+                      memberUserIds={activeMemberUserIds}
+                      pendingInviteUserIds={pendingInviteUserIds}
+                      onOpen={() => void loadInviteFriends()}
+                      onInvite={sendInvite}
+                    />
                     <button type="button" onClick={() => setShowMembers(true)} className="flex h-8 items-center justify-center gap-1.5 rounded-lg border border-border bg-surface/35 text-[7px] font-semibold text-muted hover:text-foreground"><UsersRound className="h-3 w-3" />Members</button>
                   </div>
                   <button
@@ -1327,7 +1501,19 @@ export default function DeskWorkspace({
                   >
                     {activeFocusLock && canReleaseFocus ? <Volume2 className="h-3.5 w-3.5" /> : <VolumeX className="h-3.5 w-3.5" />}
                   </button>
-                  <DeskInviteButton workspace={activeDesk} enabled={canInvite} working={working} iconOnly onInvite={sendInvite} />
+                  <DeskInviteButton
+                    workspace={activeDesk}
+                    enabled={canInvite}
+                    working={working}
+                    friends={inviteFriends}
+                    friendsLoading={inviteFriendsLoading}
+                    friendsError={inviteFriendsError}
+                    memberUserIds={activeMemberUserIds}
+                    pendingInviteUserIds={pendingInviteUserIds}
+                    iconOnly
+                    onOpen={() => void loadInviteFriends()}
+                    onInvite={sendInvite}
+                  />
                   <button type="button" onClick={() => setShowMembers(true)} className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-muted"><UsersRound className="h-3.5 w-3.5" /></button>
                   {owner ? <button type="button" onClick={openSettings} className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-muted"><Settings2 className="h-3.5 w-3.5" /></button> : null}
                 </div>
