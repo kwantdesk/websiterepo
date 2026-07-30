@@ -1025,6 +1025,7 @@ export default function DeskWorkspace({
     if (!activeDeskId) return;
     window.localStorage.setItem("kwantdesk-active-desk", activeDeskId);
     setDiscovering(false);
+    if (Date.now() < suppressRefreshUntilRef.current) return;
     void loadNetwork(true, activeDeskId);
   }, [activeDeskId, loadNetwork]);
 
@@ -1169,18 +1170,67 @@ export default function DeskWorkspace({
   };
 
   const archiveDesk = async () => {
-    if (!lifecycleTarget || lifecycleTarget.action !== "archive") return;
+    if (!lifecycleTarget || lifecycleTarget.action !== "archive" || working) return;
     const workspace = lifecycleTarget.workspace;
     const nextDesk = myWorkspaces.find((candidate) => candidate.deskId !== workspace.deskId) ?? null;
-    const archived = await perform(
-      { action: "archive-desk", deskId: workspace.deskId },
-      `${workspace.name} was archived.`,
-    );
-    if (!archived) return;
+    const previousActiveDeskId = activeDeskId;
+    const previousActiveChannelId = activeChannelId;
+    const archivedAt = new Date().toISOString();
+
+    suppressRefreshUntilRef.current = Date.now() + 5_000;
     setLifecycleTarget(null);
+    setWorking(true);
+    setNetwork((current) => ({
+      ...current,
+      workspaces: current.workspaces.map((candidate) =>
+        candidate.deskId === workspace.deskId
+          ? { ...candidate, archivedAt, updatedAt: archivedAt }
+          : candidate),
+    }));
     setActiveDeskId(nextDesk?.deskId ?? "");
     setActiveChannelId("");
-    if (!nextDesk && typeof window !== "undefined") window.localStorage.removeItem("kwantdesk-active-desk");
+    if (typeof window !== "undefined") {
+      if (nextDesk) window.localStorage.setItem("kwantdesk-active-desk", nextDesk.deskId);
+      else window.localStorage.removeItem("kwantdesk-active-desk");
+    }
+
+    try {
+      const response = await fetch("/api/socials/desks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "archive-desk", deskId: workspace.deskId }),
+      });
+      const payload = await response.json() as { error?: string; archivedAt?: string | null };
+      if (!response.ok) throw new Error(payload.error || "That Desk could not be archived.");
+      if (payload.archivedAt && payload.archivedAt !== archivedAt) {
+        setNetwork((current) => ({
+          ...current,
+          workspaces: current.workspaces.map((candidate) =>
+            candidate.deskId === workspace.deskId
+              ? { ...candidate, archivedAt: payload.archivedAt ?? archivedAt, updatedAt: payload.archivedAt ?? archivedAt }
+              : candidate),
+        }));
+      }
+      onNotice(`${workspace.name} was archived.`);
+    } catch (reason) {
+      suppressRefreshUntilRef.current = Date.now() + 1_000;
+      setNetwork((current) => ({
+        ...current,
+        workspaces: current.workspaces.map((candidate) =>
+          candidate.deskId === workspace.deskId ? workspace : candidate),
+      }));
+      setActiveDeskId(previousActiveDeskId);
+      setActiveChannelId(previousActiveChannelId);
+      setLifecycleTarget({ action: "archive", workspace });
+      if (typeof window !== "undefined") {
+        if (previousActiveDeskId) window.localStorage.setItem("kwantdesk-active-desk", previousActiveDeskId);
+        else window.localStorage.removeItem("kwantdesk-active-desk");
+      }
+      onNotice(reason instanceof Error ? reason.message : "That Desk could not be archived.");
+      void loadNetwork(true, previousActiveDeskId);
+    } finally {
+      setWorking(false);
+    }
   };
 
   const restoreDesk = async (workspace: DeskWorkspaceModel) => {

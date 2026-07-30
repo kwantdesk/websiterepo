@@ -833,9 +833,6 @@ export async function POST(request: NextRequest) {
     if (!result.data) {
       return NextResponse.json({ error: "Only the Desk owner can change its archive state." }, { status: 403 });
     }
-    if (archivedAt) {
-      await supabase.from("desk_focus_locks").delete().eq("desk_id", deskId);
-    }
     return NextResponse.json({ ok: true, archivedAt });
   }
 
