@@ -99,6 +99,8 @@ export type SocialProfilePayload = {
     activity: SocialScope;
     scores: SocialScope;
     cards: SocialScope;
+    followers: "private" | "community";
+    following: "private" | "community";
   };
   avatarUrl?: string;
   presenceStatus?: "online" | "dnd" | "away" | "sleeping" | "offline";
@@ -465,6 +467,8 @@ export function buildDefaultProfile(label: string): SocialProfilePayload {
       activity: "desk",
       scores: "friends",
       cards: "community",
+      followers: "community",
+      following: "community",
     },
     contactEmail: "",
     websiteUrl: "",
@@ -560,6 +564,8 @@ export function normalizeSocialProfile(value: unknown, label = "Kwant Trader"): 
       activity: profileScope(visibility.activity, fallback.visibility.activity),
       scores: profileScope(visibility.scores, fallback.visibility.scores),
       cards: profileScope(visibility.cards, fallback.visibility.cards),
+      followers: visibility.followers === "private" ? "private" : "community",
+      following: visibility.following === "private" ? "private" : "community",
     },
     avatarUrl: typeof candidate.avatarUrl === "string" && /^data:image\/(png|jpe?g|webp|gif);base64,/i.test(candidate.avatarUrl)
       ? candidate.avatarUrl.slice(0, 800_000)

@@ -1,6 +1,9 @@
 "use client";
 
+import { useCallback, useEffect, useState } from "react";
 import {
+  Bell,
+  BellRing,
   Bookmark,
   Briefcase,
   CalendarDays,
@@ -8,6 +11,8 @@ import {
   ExternalLink,
   Grid3X3,
   Link2,
+  LoaderCircle,
+  LockKeyhole,
   Mail,
   MapPin,
   MessageCircle,
@@ -17,6 +22,10 @@ import {
   Share2,
   ShieldCheck,
   Sparkles,
+  UserCheck,
+  UserPlus,
+  UsersRound,
+  X,
 } from "lucide-react";
 import {
   CALLING_CARD_CATALOG,
@@ -25,6 +34,12 @@ import {
   type SocialPrecordPayload,
   type SocialProfilePayload,
 } from "@/lib/socials";
+import type {
+  SocialFollowListItem,
+  SocialFollowListKind,
+  SocialFollowResponse,
+  SocialFollowSummary,
+} from "@/lib/socialFollows";
 import ReasoningOutcomeChart from "@/components/socials/ReasoningOutcomeChart";
 import UserAvatar from "@/components/socials/UserAvatar";
 
@@ -48,6 +63,7 @@ type SocialProfileViewProps = {
   onRepost: (record: SocialObject) => void;
   onShareGameplan: (record: SocialObject) => void;
   onShareProfile: () => void;
+  onOpenProfile?: (handle: string) => void;
 };
 
 function payloadOf<T>(object: SocialObject | undefined) {
@@ -93,7 +109,129 @@ export default function SocialProfileView({
   onRepost,
   onShareGameplan,
   onShareProfile,
+  onOpenProfile,
 }: SocialProfileViewProps) {
+  const [followSummary, setFollowSummary] = useState<SocialFollowSummary | null>(null);
+  const [followLoading, setFollowLoading] = useState(true);
+  const [followBusy, setFollowBusy] = useState(false);
+  const [followError, setFollowError] = useState("");
+  const [openFollowList, setOpenFollowList] = useState<SocialFollowListKind | null>(null);
+  const [followList, setFollowList] = useState<SocialFollowListItem[]>([]);
+  const [followListLoading, setFollowListLoading] = useState(false);
+  const [followListError, setFollowListError] = useState("");
+  const [followListNextOffset, setFollowListNextOffset] = useState<number | null>(null);
+
+  const loadFollowSummary = useCallback(async (signal?: AbortSignal) => {
+    setFollowLoading(true);
+    setFollowError("");
+    try {
+      const response = await fetch(
+        `/api/socials/follows?profileUserId=${encodeURIComponent(profileObject.userId)}`,
+        { cache: "no-store", signal },
+      );
+      const result = await response.json() as SocialFollowResponse;
+      if (!response.ok || !result.summary) {
+        throw new Error(result.error || "Follow information could not be loaded.");
+      }
+      setFollowSummary(result.summary);
+    } catch (error) {
+      if (signal?.aborted) return;
+      setFollowSummary(null);
+      setFollowError(error instanceof Error ? error.message : "Follow information could not be loaded.");
+    } finally {
+      if (!signal?.aborted) setFollowLoading(false);
+    }
+  }, [profileObject.userId]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setOpenFollowList(null);
+    setFollowList([]);
+    void loadFollowSummary(controller.signal);
+    return () => controller.abort();
+  }, [loadFollowSummary]);
+
+  const updateFollow = async (
+    action: "follow" | "unfollow" | "notifications",
+    enabled?: boolean,
+  ) => {
+    if (followBusy || isOwnProfile) return;
+    const previous = followSummary;
+    setFollowBusy(true);
+    setFollowError("");
+    if (previous) {
+      setFollowSummary({
+        ...previous,
+        viewerFollows: action === "follow"
+          ? true
+          : action === "unfollow"
+            ? false
+            : previous.viewerFollows,
+        followerCount: action === "follow" && !previous.viewerFollows
+          ? previous.followerCount + 1
+          : action === "unfollow" && previous.viewerFollows
+            ? Math.max(0, previous.followerCount - 1)
+            : previous.followerCount,
+        notificationsEnabled: action === "notifications"
+          ? Boolean(enabled)
+          : action === "unfollow"
+            ? false
+            : previous.notificationsEnabled,
+      });
+    }
+    try {
+      const response = await fetch("/api/socials/follows", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action,
+          targetUserId: profileObject.userId,
+          enabled,
+        }),
+      });
+      const result = await response.json() as SocialFollowResponse;
+      if (!response.ok || !result.summary) {
+        throw new Error(result.error || "The follow setting could not be saved.");
+      }
+      setFollowSummary(result.summary);
+    } catch (error) {
+      setFollowSummary(previous);
+      setFollowError(error instanceof Error ? error.message : "The follow setting could not be saved.");
+    } finally {
+      setFollowBusy(false);
+    }
+  };
+
+  const loadFollowList = async (kind: SocialFollowListKind, offset = 0) => {
+    if (followListLoading) return;
+    setFollowListLoading(true);
+    setFollowListError("");
+    try {
+      const response = await fetch(
+        `/api/socials/follows?profileUserId=${encodeURIComponent(profileObject.userId)}&list=${kind}&offset=${offset}&limit=50`,
+        { cache: "no-store" },
+      );
+      const result = await response.json() as SocialFollowResponse;
+      if (!response.ok || !result.summary || !result.list) {
+        throw new Error(result.error || "The account list could not be loaded.");
+      }
+      setFollowSummary(result.summary);
+      setFollowList((current) => offset === 0 ? result.list!.items : [...current, ...result.list!.items]);
+      setFollowListNextOffset(result.list.nextOffset);
+    } catch (error) {
+      setFollowListError(error instanceof Error ? error.message : "The account list could not be loaded.");
+    } finally {
+      setFollowListLoading(false);
+    }
+  };
+
+  const showFollowList = (kind: SocialFollowListKind) => {
+    setOpenFollowList(kind);
+    setFollowList([]);
+    setFollowListNextOffset(null);
+    void loadFollowList(kind, 0);
+  };
+
   const earnedCards = cards
     .filter((card) => card.userId === profileObject.userId)
     .map((card) => payloadOf<SocialCardPayload>(card))
@@ -145,17 +283,79 @@ export default function SocialProfileView({
                 <span className="flex items-center gap-1 rounded-lg border border-primary/20 bg-primary/10 px-2 py-1 text-[7px] font-semibold text-primary"><ShieldCheck className="h-3 w-3" />On record</span>
               </div>
               <div className="mt-1 text-[10px] text-primary">@{profile.handle}</div>
+              <div className="mt-2 flex items-center gap-4 text-[8px]">
+                <button
+                  type="button"
+                  onClick={() => showFollowList("followers")}
+                  disabled={followLoading}
+                  className="text-muted transition-colors hover:text-foreground disabled:cursor-wait"
+                >
+                  <span className="font-mono text-[10px] font-semibold text-foreground">{followSummary?.followerCount ?? "—"}</span>{" "}
+                  followers
+                </button>
+                <button
+                  type="button"
+                  onClick={() => showFollowList("following")}
+                  disabled={followLoading}
+                  className="text-muted transition-colors hover:text-foreground disabled:cursor-wait"
+                >
+                  <span className="font-mono text-[10px] font-semibold text-foreground">{followSummary?.followingCount ?? "—"}</span>{" "}
+                  following
+                </button>
+              </div>
             </div>
 
             <div className="flex flex-wrap gap-2 pb-1">
               {isOwnProfile ? (
                 <button type="button" onClick={onEdit} className="flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-[9px] font-semibold text-background"><Pencil className="h-3.5 w-3.5" />Edit profile</button>
               ) : (
-                <button type="button" onClick={onMessage} className="flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-[9px] font-semibold text-background"><Send className="h-3.5 w-3.5" />Message</button>
+                <>
+                  <button
+                    type="button"
+                    onClick={() => void updateFollow(followSummary?.viewerFollows ? "unfollow" : "follow")}
+                    disabled={followBusy || followLoading || !followSummary}
+                    className={`flex h-9 items-center gap-2 rounded-xl px-4 text-[9px] font-semibold disabled:cursor-wait disabled:opacity-50 ${
+                      followSummary?.viewerFollows
+                        ? "border border-primary/25 bg-primary/10 text-primary"
+                        : "bg-primary text-background"
+                    }`}
+                  >
+                    {followBusy ? (
+                      <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+                    ) : followSummary?.viewerFollows ? (
+                      <UserCheck className="h-3.5 w-3.5" />
+                    ) : (
+                      <UserPlus className="h-3.5 w-3.5" />
+                    )}
+                    {followSummary?.viewerFollows
+                      ? "Following"
+                      : followSummary?.followsViewer
+                        ? "Follow back"
+                        : "Follow"}
+                  </button>
+                  {followSummary?.viewerFollows ? (
+                    <button
+                      type="button"
+                      onClick={() => void updateFollow("notifications", !followSummary.notificationsEnabled)}
+                      disabled={followBusy}
+                      className={`flex h-9 w-9 items-center justify-center rounded-xl border transition-colors disabled:cursor-wait disabled:opacity-50 ${
+                        followSummary.notificationsEnabled
+                          ? "border-primary/35 bg-primary/10 text-primary"
+                          : "border-border bg-surface text-muted hover:text-foreground"
+                      }`}
+                      title={followSummary.notificationsEnabled ? "Turn off profile notifications" : "Turn on profile notifications"}
+                      aria-label={followSummary.notificationsEnabled ? "Turn off profile notifications" : "Turn on profile notifications"}
+                    >
+                      {followSummary.notificationsEnabled ? <BellRing className="h-4 w-4" /> : <Bell className="h-4 w-4" />}
+                    </button>
+                  ) : null}
+                  <button type="button" onClick={onMessage} className="flex h-9 items-center gap-2 rounded-xl border border-border bg-surface px-4 text-[9px] font-semibold text-muted hover:text-foreground"><Send className="h-3.5 w-3.5" />Message</button>
+                </>
               )}
               <button type="button" onClick={onShareProfile} className="flex h-9 items-center gap-2 rounded-xl border border-border bg-surface px-4 text-[9px] font-semibold text-muted hover:text-foreground"><Share2 className="h-3.5 w-3.5" />Share profile</button>
             </div>
           </div>
+          {followError ? <div className="mt-3 text-[7px] text-danger">{followError}</div> : null}
 
           <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
             <div>
@@ -253,6 +453,94 @@ export default function SocialProfileView({
           </div>
         )}
       </section>
+
+      {openFollowList ? (
+        <div
+          className="fixed inset-0 z-[1250] flex items-center justify-center bg-black/80 p-4 backdrop-blur-md"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setOpenFollowList(null);
+          }}
+        >
+          <section className="flex max-h-[78vh] w-full max-w-md flex-col overflow-hidden rounded-3xl border border-border bg-panel shadow-2xl shadow-black/70">
+            <header className="flex shrink-0 items-center gap-3 border-b border-border px-4 py-3">
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary">
+                <UsersRound className="h-4 w-4" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <h2 className="text-[11px] font-semibold capitalize text-foreground">{openFollowList}</h2>
+                <p className="mt-0.5 text-[7px] text-muted">
+                  {openFollowList === "followers"
+                    ? `${followSummary?.followerCount ?? 0} people follow @${profile.handle}`
+                    : `@${profile.handle} follows ${followSummary?.followingCount ?? 0} people`}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setOpenFollowList(null)}
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground"
+                aria-label="Close"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </header>
+
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              {(openFollowList === "followers" ? followSummary?.canViewFollowers : followSummary?.canViewFollowing) === false ? (
+                <div className="flex min-h-[260px] flex-col items-center justify-center p-8 text-center">
+                  <span className="flex h-12 w-12 items-center justify-center rounded-2xl border border-border bg-surface text-muted"><LockKeyhole className="h-5 w-5" /></span>
+                  <div className="mt-4 text-[10px] font-semibold text-foreground">This list is private</div>
+                  <p className="mt-2 max-w-xs text-[8px] leading-4 text-muted">The count stays public, but @{profile.handle} has hidden who is in this list.</p>
+                </div>
+              ) : followList.length ? (
+                <div className="divide-y divide-border/70">
+                  {followList.map((item) => (
+                    <button
+                      key={item.userId}
+                      type="button"
+                      onClick={() => {
+                        if (!item.handle || !onOpenProfile) return;
+                        setOpenFollowList(null);
+                        onOpenProfile(item.handle);
+                      }}
+                      className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-surface/60"
+                    >
+                      <UserAvatar label={item.displayName} avatarUrl={item.avatarUrl} size="sm" />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-[9px] font-semibold text-foreground">{item.displayName}</span>
+                        <span className="mt-0.5 block truncate text-[7px] text-muted">@{item.handle || "kwant-user"}</span>
+                      </span>
+                      {item.followsViewer ? <span className="rounded-lg bg-primary/10 px-2 py-1 text-[7px] font-semibold text-primary">Follows you</span> : null}
+                    </button>
+                  ))}
+                  {followListNextOffset !== null ? (
+                    <div className="p-3 text-center">
+                      <button
+                        type="button"
+                        onClick={() => void loadFollowList(openFollowList, followListNextOffset)}
+                        disabled={followListLoading}
+                        className="h-8 rounded-xl border border-border bg-surface px-4 text-[8px] font-semibold text-muted hover:text-foreground disabled:cursor-wait"
+                      >
+                        {followListLoading ? "Loading…" : "Load more"}
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+              ) : followListLoading ? (
+                <div className="flex min-h-[260px] flex-col items-center justify-center text-primary">
+                  <LoaderCircle className="h-6 w-6 animate-spin" />
+                  <span className="mt-3 text-[8px] text-muted">Loading {openFollowList}…</span>
+                </div>
+              ) : (
+                <div className="flex min-h-[260px] flex-col items-center justify-center p-8 text-center">
+                  <UsersRound className="h-7 w-7 text-muted" />
+                  <div className="mt-3 text-[10px] font-semibold text-foreground">No accounts here yet</div>
+                </div>
+              )}
+              {followListError ? <div className="border-t border-border p-4 text-center text-[8px] text-danger">{followListError}</div> : null}
+            </div>
+          </section>
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -40,7 +40,6 @@ import {
   Target,
   Trophy,
   Upload,
-  UserPlus,
   UsersRound,
   X,
   Zap,
@@ -715,7 +714,6 @@ export default function SocialsWorkspace({
   const memberships = useMemo(() => state.objects.filter((object) => object.objectType === "desk-member"), [state.objects]);
   const comments = useMemo(() => state.objects.filter((object) => object.objectType === "comment"), [state.objects]);
   const reactions = useMemo(() => state.objects.filter((object) => object.objectType === "reaction"), [state.objects]);
-  const follows = useMemo(() => state.objects.filter((object) => object.objectType === "follow"), [state.objects]);
   const cards = useMemo(() => state.objects.filter((object) => object.objectType === "card"), [state.objects]);
   const consensus = useMemo(() => state.objects.filter((object) => object.objectType === "consensus"), [state.objects]);
   const profileByUserId = useMemo(() => new Map(
@@ -1589,24 +1587,6 @@ export default function SocialsWorkspace({
     }
   };
 
-  const followTrader = (trader: SocialObject) => {
-    if (trader.userId === resolvedAccountKey) return;
-    if (follows.some((follow) => follow.userId === resolvedAccountKey && typedPayload<{ targetUserId: string }>(follow)?.targetUserId === trader.userId)) {
-      setNotice(`You already follow ${trader.authorLabel}.`);
-      return;
-    }
-    void saveObject(buildLocalObject({
-      id: `follow:${trader.userId}`,
-      userId: resolvedAccountKey,
-      authorLabel: currentProfile.displayName,
-      objectType: "follow",
-      scope: "community",
-      parentId: trader.userId,
-      payload: { targetUserId: trader.userId, followedAt: new Date().toISOString() },
-    }));
-    setNotice(`Following ${trader.authorLabel}. Their structured work now enters your Friends view.`);
-  };
-
   const joinDesk = async (desk: SocialObject) => {
     const payload = typedPayload<SocialDeskPayload>(desk);
     if (!payload || currentDeskIds.has(desk.id)) return;
@@ -2079,7 +2059,7 @@ export default function SocialsWorkspace({
               <span>Platform timestamped · original reasoning locked</span>
             </div>
           </div>
-          {!own ? <button type="button" onClick={() => followTrader(object)} className="flex h-8 items-center gap-1.5 rounded-xl border border-border px-2.5 text-[8px] font-semibold text-muted hover:text-foreground"><UserPlus className="h-3.5 w-3.5" />{follows.some((follow) => follow.userId === resolvedAccountKey && typedPayload<{ targetUserId: string }>(follow)?.targetUserId === object.userId) ? "Following" : "Follow"}</button> : null}
+          {!own && profile ? <button type="button" onClick={() => onOpenProfile?.(profile.handle)} className="flex h-8 items-center gap-1.5 rounded-xl border border-border px-2.5 text-[8px] font-semibold text-muted hover:text-foreground"><Radar className="h-3.5 w-3.5" />View profile</button> : null}
           <ScopeBadge scope={object.scope} />
         </div>
         <div className="p-4">
@@ -2778,7 +2758,70 @@ export default function SocialsWorkspace({
               </Card>
               <div className="grid gap-3 md:grid-cols-2">
                 <Card className="p-4"><div className="flex items-center gap-2"><BarChart3 className="h-4 w-4 text-primary" /><h3 className="text-[10px] font-semibold">Process dimensions</h3></div><div className="mt-4 space-y-3">{SCORE_LABELS.map(([key, label]) => <ScoreBar key={key} label={label} value={profileDraft.scores[key]} />)}</div><div className="mt-4 rounded-xl border border-border bg-background/30 p-3 text-[7px] leading-4 text-muted">Scores remain empty until verified platform activity supplies enough evidence. No vanity numbers are invented.</div></Card>
-                <Card className="p-4"><div className="flex items-center gap-2"><Eye className="h-4 w-4 text-primary" /><h3 className="text-[10px] font-semibold">Privacy controls</h3></div><div className="mt-4 space-y-3">{([["profile", "Identity card"], ["activity", "Activity"], ["scores", "Process scores"], ["cards", "Calling Cards"]] as Array<[keyof SocialProfilePayload["visibility"], string]>).map(([key, label]) => <div key={key} className="flex items-center gap-3"><span className="min-w-0 flex-1 text-[8px] text-muted">{label}</span><KwantSelect value={profileDraft.visibility[key]} onChange={(event) => setProfileDraft((current) => ({ ...current, visibility: { ...current.visibility, [key]: event.target.value as SocialScope } }))} className="h-8 rounded-lg border border-border bg-surface px-2 text-[8px] outline-none"><option value="private">Private</option><option value="friends">Friends</option><option value="desk">My Desk</option><option value="community">Community</option></KwantSelect></div>)}</div><div className="mt-5 rounded-xl border border-primary/20 bg-primary/[0.05] p-3 text-[7px] leading-4 text-muted"><ShieldCheck className="mb-2 h-4 w-4 text-primary" />Evidence remains private unless the record explicitly shares it. Broker credentials are never stored here.</div></Card>
+                <Card className="p-4">
+                  <div className="flex items-center gap-2">
+                    <Eye className="h-4 w-4 text-primary" />
+                    <h3 className="text-[10px] font-semibold">Privacy controls</h3>
+                  </div>
+                  <div className="mt-4 space-y-3">
+                    {([
+                      ["profile", "Identity card"],
+                      ["activity", "Activity"],
+                      ["scores", "Process scores"],
+                      ["cards", "Calling Cards"],
+                    ] as Array<["profile" | "activity" | "scores" | "cards", string]>).map(([key, label]) => (
+                      <div key={key} className="flex items-center gap-3">
+                        <span className="min-w-0 flex-1 text-[8px] text-muted">{label}</span>
+                        <KwantSelect
+                          value={profileDraft.visibility[key]}
+                          onChange={(event) => setProfileDraft((current) => ({
+                            ...current,
+                            visibility: {
+                              ...current.visibility,
+                              [key]: event.target.value as SocialScope,
+                            },
+                          }))}
+                          className="h-8 rounded-lg border border-border bg-surface px-2 text-[8px] outline-none"
+                        >
+                          <option value="private">Private</option>
+                          <option value="friends">Friends</option>
+                          <option value="desk">My Desk</option>
+                          <option value="community">Community</option>
+                        </KwantSelect>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="my-4 h-px bg-border" />
+                  <div className="space-y-3">
+                    {([
+                      ["followers", "Who follows me"],
+                      ["following", "Who I follow"],
+                    ] as Array<["followers" | "following", string]>).map(([key, label]) => (
+                      <div key={key} className="flex items-center gap-3">
+                        <span className="min-w-0 flex-1 text-[8px] text-muted">{label}</span>
+                        <KwantSelect
+                          value={profileDraft.visibility[key]}
+                          onChange={(event) => setProfileDraft((current) => ({
+                            ...current,
+                            visibility: {
+                              ...current.visibility,
+                              [key]: event.target.value === "private" ? "private" : "community",
+                            },
+                          }))}
+                          className="h-8 rounded-lg border border-border bg-surface px-2 text-[8px] outline-none"
+                        >
+                          <option value="community">Visible</option>
+                          <option value="private">Private</option>
+                        </KwantSelect>
+                      </div>
+                    ))}
+                    <p className="text-[7px] leading-4 text-muted">Follower and following counts always remain public. These controls only hide the account lists.</p>
+                  </div>
+                  <div className="mt-5 rounded-xl border border-primary/20 bg-primary/[0.05] p-3 text-[7px] leading-4 text-muted">
+                    <ShieldCheck className="mb-2 h-4 w-4 text-primary" />
+                    Evidence remains private unless the record explicitly shares it. Broker credentials are never stored here.
+                  </div>
+                </Card>
               </div>
               <div className="sticky bottom-3 z-20 flex flex-col gap-3 rounded-2xl border border-border bg-panel/95 p-3 shadow-[0_18px_55px_rgba(0,0,0,0.55)] backdrop-blur-xl sm:flex-row sm:items-center">
                 <div className="min-w-0 flex-1" aria-live="polite">
@@ -2860,6 +2903,7 @@ export default function SocialsWorkspace({
               onRepost={(record) => void toggleGameplanRepost(record)}
               onShareGameplan={shareGameplan}
               onShareProfile={shareProfile}
+              onOpenProfile={onOpenProfile}
             />
           ) : (
             <div className="flex min-h-[420px] flex-col items-center justify-center p-8 text-center">
