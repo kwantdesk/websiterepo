@@ -3629,6 +3629,10 @@ export default function KwantifyWorkspace({
     [activePaneId, workspacePanes],
   );
   const activeGameplanRoot = gameplanChartRootForInstrument(activeWorkspacePane.symbol);
+  const activeGameplanLevelsAdded = Boolean(
+    activeGameplanRoot
+    && gameplanChartOverlays[activeGameplanRoot]?.levels.length,
+  );
   const visibleWorkspacePaneIds = useMemo(
     () => collectWorkspacePaneIds(workspaceTree),
     [workspaceTree],
@@ -7930,7 +7934,9 @@ export default function KwantifyWorkspace({
             onClick={() => void refreshActiveGameplanLevels()}
             disabled={!activeGameplanRoot || quickGameplanLoading}
             title={activeGameplanRoot
-              ? `Replace this chart's levels with the latest ${activeGameplanRoot} Gameplan`
+              ? activeGameplanLevelsAdded
+                ? `Refresh this chart with the latest ${activeGameplanRoot} Gameplan levels`
+                : `Add the latest ${activeGameplanRoot} Gameplan levels to this chart`
               : "Gameplan levels are available for NQ, MNQ, ES and MES charts"}
             className={`flex h-8 shrink-0 items-center gap-1.5 rounded-xl border px-3 text-[9px] font-bold uppercase tracking-[0.08em] transition-colors disabled:cursor-not-allowed disabled:opacity-35 ${
               activeGameplanRoot && quickGameplanUpdatedRoot === activeGameplanRoot
@@ -7947,7 +7953,9 @@ export default function KwantifyWorkspace({
               ? <span className="hidden xl:inline">{`Updating ${activeGameplanRoot ?? ""}`}</span>
               : activeGameplanRoot && quickGameplanUpdatedRoot === activeGameplanRoot
                 ? <span className="hidden xl:inline">{`${activeGameplanRoot} Levels Updated`}</span>
-                : <span className="hidden xl:inline">Add Gameplan Levels</span>}
+                : <span className="hidden xl:inline">
+                    {activeGameplanLevelsAdded ? "Refresh Gameplan Levels" : "Add Gameplan Levels"}
+                  </span>}
           </button>
           <TimeZoneSelect
             value={chartSettings.timezone}
