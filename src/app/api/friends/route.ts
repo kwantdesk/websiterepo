@@ -97,7 +97,7 @@ function cleanIdentifier(value: unknown, maximum = 180) {
 
 function cleanAvatarUrl(value: unknown) {
   if (typeof value !== "string") return "";
-  if (/^data:image\/(png|jpe?g|webp|gif);base64,/i.test(value)) return value.slice(0, 800_000);
+  if (/^data:image\/(png|jpe?g|webp|gif);base64,/i.test(value)) return value.slice(0, 1_600_000);
   if (/^https:\/\//i.test(value)) return value.slice(0, 2_000);
   return "";
 }

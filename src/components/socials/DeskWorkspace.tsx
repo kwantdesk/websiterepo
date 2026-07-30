@@ -41,6 +41,10 @@ import KwantSelect from "@/components/ui/KwantSelect";
 import UserAvatar from "@/components/socials/UserAvatar";
 import { createClient as createSupabaseBrowserClient } from "@/lib/supabase";
 import {
+  prepareSharedImage,
+  prepareSquareImage,
+} from "@/lib/clientImageProcessing";
+import {
   DESK_CREATED_EVENT,
   EMPTY_DESK_NETWORK,
   type CreatedDeskPayload,
@@ -571,21 +575,20 @@ function DeskSettingsModal({
       ? "Visible in discovery. Every new member needs owner or moderator approval."
       : "Hidden from discovery. Membership is available by direct invitation only.";
 
-  const loadAvatar = (event: ChangeEvent<HTMLInputElement>) => {
+  const loadAvatar = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file) return;
-    if (!file.type.startsWith("image/") || file.size > 950_000) {
-      onNotice("Desk images must be under 950 KB.");
-      return;
+    try {
+      const prepared = await prepareSquareImage(file, {
+        size: 1080,
+        maxBytes: 1_000_000,
+      });
+      setDraft((current) => ({ ...current, avatarUrl: prepared.dataUrl }));
+      onNotice("Desk image prepared at 1080 × 1080. Save the Desk to publish it.");
+    } catch (error) {
+      onNotice(error instanceof Error ? error.message : "That Desk image could not be prepared.");
     }
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === "string") {
-        setDraft((current) => ({ ...current, avatarUrl: reader.result as string }));
-      }
-    };
-    reader.readAsDataURL(file);
   };
 
   const updateHex = (value: string) => {
@@ -615,6 +618,7 @@ function DeskSettingsModal({
           </button>
           <input ref={avatarRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={loadAvatar} />
           {draft.avatarUrl ? <button type="button" onClick={() => setDraft((current) => ({ ...current, avatarUrl: "" }))} className="mt-2 w-full text-center text-[7px] text-muted hover:text-danger">Remove image</button> : null}
+          <p className="mt-2 text-center text-[7px] leading-4 text-muted">Published at 1080 × 1080 in high-quality WebP.</p>
 
           <div className="mt-5">
             <span className="block text-[7px] font-semibold uppercase tracking-[0.1em] text-muted">Desk accent</span>
@@ -1115,26 +1119,25 @@ export default function DeskWorkspace({
     }
   };
 
-  const loadAttachment = (event: ChangeEvent<HTMLInputElement>) => {
+  const loadAttachment = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file) return;
-    if (!file.type.startsWith("image/") || file.size > 950_000) {
-      onNotice("Desk images must be PNG, JPEG, WebP or GIF and no larger than 950 KB.");
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result !== "string") return;
+    try {
+      const prepared = await prepareSharedImage(file, {
+        maximumEdge: 1920,
+        maxBytes: 900_000,
+      });
       setAttachment({
         id: `image:${crypto.randomUUID()}`,
-        name: file.name,
-        type: file.type,
-        size: file.size,
-        dataUrl: reader.result,
+        name: prepared.name,
+        type: prepared.type,
+        size: prepared.size,
+        dataUrl: prepared.dataUrl,
       });
-    };
-    reader.readAsDataURL(file);
+    } catch (error) {
+      onNotice(error instanceof Error ? error.message : "That Desk image could not be prepared.");
+    }
   };
 
   const teamScores = activeMembers.map((member) => profileFor(member.userId).score).filter((score) => score > 0);

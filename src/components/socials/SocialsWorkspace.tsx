@@ -94,6 +94,7 @@ import {
   DESK_CREATED_EVENT,
   type CreatedDeskPayload,
 } from "@/lib/desks";
+import { encodeCanvasImage } from "@/lib/clientImageProcessing";
 import { DATABENTO_LIVE_TICK_EVENT } from "@/lib/chartLiveEvents";
 import {
   type PointerEvent as ReactPointerEvent,
@@ -120,8 +121,8 @@ type DeskNameCheckState = {
 };
 
 const AVATAR_CROP_SIZE = 288;
-const AVATAR_OUTPUT_SIZE = 512;
-const MAX_AVATAR_SOURCE_BYTES = 12_000_000;
+const AVATAR_OUTPUT_SIZE = 1080;
+const MAX_AVATAR_SOURCE_BYTES = 20_000_000;
 
 function avatarCropScale(draft: AvatarCropDraft, zoom = draft.zoom) {
   return Math.max(
@@ -1983,11 +1984,14 @@ export default function SocialsWorkspace({
         AVATAR_OUTPUT_SIZE,
         AVATAR_OUTPUT_SIZE,
       );
-      const avatarUrl = canvas.toDataURL("image/jpeg", 0.88);
-      if (avatarUrl.length > 700_000) throw new Error("The cropped photo is still too large.");
-      setProfileDraft((current) => ({ ...current, avatarUrl }));
+      const prepared = await encodeCanvasImage(canvas, {
+        maxBytes: 1_100_000,
+        initialQuality: 0.94,
+        minimumQuality: 0.78,
+      });
+      setProfileDraft((current) => ({ ...current, avatarUrl: prepared.dataUrl }));
       closeAvatarCrop();
-      setNotice("Profile photo cropped. Save your profile to publish it.");
+      setNotice("Profile photo prepared at 1080 × 1080. Save your profile to publish it.");
     } catch {
       setAvatarCropSaving(false);
       setNotice("That photo could not be cropped. Try another image.");
@@ -2721,7 +2725,7 @@ export default function SocialsWorkspace({
                       <span className="absolute inset-0 flex items-center justify-center bg-black/65 opacity-0 transition-opacity group-hover:opacity-100"><Camera className="h-4 w-4 text-white" /></span>
                     </button>
                     <input ref={avatarInputRef} type="file" accept="image/png,image/jpeg,image/webp,image/gif" className="hidden" onChange={(event) => { handleAvatar(event.target.files?.[0] ?? null); event.currentTarget.value = ""; }} />
-                    <div className="min-w-0"><h2 className="truncate text-[18px] font-semibold">{profileDraft.displayName}</h2><div className="mt-1 text-[9px] text-primary">@{profileDraft.handle}</div><button type="button" onClick={() => avatarInputRef.current?.click()} className="mt-2 text-[7px] font-semibold text-muted hover:text-primary">Change profile photo</button><div className="mt-2 flex flex-wrap gap-1">{profileDraft.markets.map((market) => <span key={market} className="rounded-lg border border-primary/20 bg-primary/10 px-2 py-1 text-[7px] font-semibold text-primary">{market}</span>)}</div></div>
+                    <div className="min-w-0"><h2 className="truncate text-[18px] font-semibold">{profileDraft.displayName}</h2><div className="mt-1 text-[9px] text-primary">@{profileDraft.handle}</div><button type="button" onClick={() => avatarInputRef.current?.click()} className="mt-2 text-[7px] font-semibold text-muted hover:text-primary">Change profile photo</button><div className="mt-1 text-[7px] text-muted">Cropped and published at 1080 × 1080.</div><div className="mt-2 flex flex-wrap gap-1">{profileDraft.markets.map((market) => <span key={market} className="rounded-lg border border-primary/20 bg-primary/10 px-2 py-1 text-[7px] font-semibold text-primary">{market}</span>)}</div></div>
                   </div>
                   <p className="mt-5 text-[9px] leading-5 text-muted">{profileDraft.bio || `${profileDraft.session} · ${profileDraft.style}`}</p>
                   <div className="mt-4 rounded-xl border border-border bg-background/30 p-3"><div className="text-[7px] uppercase tracking-[0.13em] text-muted">Current focus</div><div className="mt-2 text-[9px] leading-4 text-foreground">{profileDraft.improvementObjective}</div></div>

@@ -568,7 +568,7 @@ export function normalizeSocialProfile(value: unknown, label = "Kwant Trader"): 
       following: visibility.following === "private" ? "private" : "community",
     },
     avatarUrl: typeof candidate.avatarUrl === "string" && /^data:image\/(png|jpe?g|webp|gif);base64,/i.test(candidate.avatarUrl)
-      ? candidate.avatarUrl.slice(0, 800_000)
+      ? candidate.avatarUrl.slice(0, 1_600_000)
       : typeof candidate.avatarUrl === "string" && /^https:\/\//i.test(candidate.avatarUrl)
         ? candidate.avatarUrl.slice(0, 2_000)
         : "",
