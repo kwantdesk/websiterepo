@@ -2649,11 +2649,29 @@ export default function SocialsWorkspace({
               <div className="flex flex-wrap items-center gap-3 border-b border-border px-4 py-3"><Trophy className="h-4 w-4 text-primary" /><div><h2 className="text-[11px] font-semibold">Process rankings</h2><p className="mt-0.5 text-[8px] text-muted">Friends and Desk first. Global visibility second. P&amp;L never enters the score.</p></div><div className="ml-auto flex gap-1">{["My Desk", "Friends", "This season"].map((label, index) => <button key={label} type="button" className={`rounded-lg px-3 py-2 text-[8px] font-semibold ${index === 0 ? "bg-primary/10 text-primary" : "text-muted hover:bg-surface"}`}>{label}</button>)}</div></div>
               <div className="overflow-x-auto">
                 <div className="min-w-[900px]">
-                  <div className="grid grid-cols-[52px_220px_repeat(8,1fr)_72px] border-b border-border px-4 py-2 text-[7px] font-semibold uppercase tracking-[0.09em] text-muted"><span>Rank</span><span>Trader</span>{SCORE_LABELS.map(([, label]) => <span key={label} className="text-center">{label.split(" ")[0]}</span>)}<span className="text-right">Index</span></div>
+                  <div className="grid grid-cols-[52px_240px_repeat(8,1fr)_72px] border-b border-border px-4 py-2 text-[7px] font-semibold uppercase tracking-[0.09em] text-muted"><span>Rank</span><span>Trader</span>{SCORE_LABELS.map(([, label]) => <span key={label} className="text-center">{label.split(" ")[0]}</span>)}<span className="text-right">Index</span></div>
                   {rankedProfiles.map(({ object, profile }, index) => (
-                    <div key={objectKey(object)} className="grid grid-cols-[52px_220px_repeat(8,1fr)_72px] items-center border-b border-border/55 px-4 py-3 text-[8px] hover:bg-surface/25">
+                    <div key={objectKey(object)} className="grid grid-cols-[52px_240px_repeat(8,1fr)_72px] items-center border-b border-border/55 px-4 py-3 text-[8px] transition-colors hover:bg-surface/25">
                       <span className={`font-mono text-[12px] font-semibold ${index < 3 ? "text-primary" : "text-muted"}`}>{String(index + 1).padStart(2, "0")}</span>
-                      <div className="flex items-center gap-2"><Avatar label={profile.displayName} avatarUrl={profile.avatarUrl} size="sm" active={profile.processStatus !== "AWAY"} /><span className="min-w-0"><span className="block truncate font-semibold">{profile.displayName}</span><span className="block truncate text-[7px] text-muted">@{profile.handle} · {profile.markets.join("/")}</span></span></div>
+                      <button
+                        type="button"
+                        onClick={() => onOpenProfile?.(profile.handle)}
+                        className="group flex min-w-0 items-center gap-3 rounded-xl py-1 pr-2 text-left outline-none focus-visible:ring-1 focus-visible:ring-primary/60"
+                        title={`View @${profile.handle}`}
+                      >
+                        <UserAvatar
+                          label={profile.displayName}
+                          avatarUrl={profile.avatarUrl}
+                          size="md"
+                          active={profile.processStatus !== "AWAY"}
+                          className="rounded-full ring-1 ring-primary/15 transition group-hover:ring-primary/45"
+                        />
+                        <span className="min-w-0">
+                          <span className="block truncate text-[9px] font-semibold text-foreground group-hover:text-primary">{profile.displayName}</span>
+                          <span className="mt-0.5 block truncate text-[7px] text-muted">@{profile.handle} · {profile.markets.join("/")}</span>
+                          <span className="mt-0.5 block text-[6px] uppercase tracking-[0.1em] text-muted/70">View profile</span>
+                        </span>
+                      </button>
                       {SCORE_LABELS.map(([key]) => <span key={key} className="text-center font-mono text-muted">{profile.scores[key] || "—"}</span>)}
                       <span className="text-right font-mono text-[11px] font-semibold text-primary">{profileScoreAverage(profile) || "—"}</span>
                     </div>
