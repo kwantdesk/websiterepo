@@ -82,12 +82,22 @@ import {
 } from "@/lib/chartIndicatorEngine";
 import ChartIndicatorPanes, { type IndicatorPaneGroup } from "@/components/ChartIndicatorPanes";
 import KwantLoader from "@/components/KwantLoader";
+import { calculateBigTradePrints, type BigTradePrint } from "@/lib/bigTrades";
+import { calculateDeepEffort } from "@/lib/deepEffort";
+import { calculateImbalanceRejectorSignals } from "@/lib/imbalanceRejector";
+import { calculateImbalanceZones } from "@/lib/imbalanceTracker";
+import type { InstitutionalTrade } from "@/lib/institutionalMarketData";
+import {
+  buildMarketSessionWindows,
+  buildPreviousSessionHighLowLevels,
+} from "@/lib/marketSessions";
 import { calculateKwantStats } from "@/lib/kwantStats";
 import { defaultChartSettings, type ChartSettings } from "@/lib/chartSettings";
 import { compactTimeZoneLabel, normalizeTimeZone } from "@/lib/timeZones";
 
 interface ChartProps {
   candles: Candle[];
+  marketTrades?: InstitutionalTrade[];
   trades?: (Trade & { markerVisible?: boolean })[];
   levels?: ChartLevel[];
   zones?: ChartZone[];
@@ -986,6 +996,7 @@ function lightweightIndicatorData(definition: CalculatedIndicatorSeries) {
 
 export default function Chart({
   candles,
+  marketTrades = [],
   trades,
   levels,
   zones = [],
@@ -1061,6 +1072,7 @@ export default function Chart({
   const [themeVersion, setThemeVersion] = useState(0);
   const [chartReadyRevision, setChartReadyRevision] = useState(0);
   const [sampledIndicatorCandles, setSampledIndicatorCandles] = useState(candles);
+  const [sampledIndicatorMarketTrades, setSampledIndicatorMarketTrades] = useState(marketTrades);
   const [indicatorPaneHeights, setIndicatorPaneHeights] = useState<Record<string, number>>({});
   const [collapsedIndicatorPanes, setCollapsedIndicatorPanes] = useState<Record<string, boolean>>({});
   const overlayRef = useRef<SVGSVGElement>(null);
@@ -1077,6 +1089,7 @@ export default function Chart({
   const viewportResetFrameRef = useRef<number | null>(null);
   const chartVisualReadyTokenRef = useRef(0);
   const pendingIndicatorCandlesRef = useRef(candles);
+  const pendingIndicatorMarketTradesRef = useRef(marketTrades);
   const updateIndicatorSettingRef = useRef(onUpdateIndicatorSetting);
   const openIndicatorSettingsRef = useRef(onOpenIndicatorSettings);
 
@@ -1158,12 +1171,14 @@ export default function Chart({
 
   useEffect(() => {
     pendingIndicatorCandlesRef.current = candles;
+    pendingIndicatorMarketTradesRef.current = marketTrades;
     if (indicatorSampleTimerRef.current !== null) return;
     indicatorSampleTimerRef.current = window.setTimeout(() => {
       indicatorSampleTimerRef.current = null;
       setSampledIndicatorCandles(pendingIndicatorCandlesRef.current);
+      setSampledIndicatorMarketTrades(pendingIndicatorMarketTradesRef.current);
     }, 120);
-  }, [candles]);
+  }, [candles, marketTrades]);
 
   useEffect(() => () => {
     if (indicatorSampleTimerRef.current !== null) {
@@ -1235,7 +1250,7 @@ export default function Chart({
           stats: indicatorCandles.length
             ? calculateKwantStats(
               indicatorCandles,
-              [],
+              sampledIndicatorMarketTrades,
               instance,
               priceFormat.minMove,
               {
@@ -1284,6 +1299,7 @@ export default function Chart({
     indicatorSignature,
     indicators,
     priceFormat.minMove,
+    sampledIndicatorMarketTrades,
     settings.borderUpColor,
     settings.downColor,
     settings.gridColor,
@@ -1390,6 +1406,346 @@ export default function Chart({
     [],
   );
   const candleIntervalMs = useMemo(() => timeframeToMs(timeframe) ?? inferCandleIntervalMs(candles), [candles, timeframe]);
+  const deepEffortIndicator = useMemo(
+    () => indicators.find((instance) =>
+      instance.enabled && instance.indicatorId === "deep-m-effort-nq") ?? null,
+    [indicatorSignature, indicators],
+  );
+  const deepEffort = useMemo(
+    () => deepEffortIndicator
+      ? calculateDeepEffort(indicatorCandles, {
+          zoneBars: Number(deepEffortIndicator.settings?.zoneBars ?? 22),
+          tickSize: priceFormat.minMove,
+          instrument,
+        })
+      : null,
+    [deepEffortIndicator, indicatorCandles, instrument, priceFormat.minMove],
+  );
+  const bigTradesIndicator = useMemo(
+    () => indicators.find((instance) =>
+      instance.enabled && instance.indicatorId === "big-trades") ?? null,
+    [indicatorSignature, indicators],
+  );
+  const bigTradePrints = useMemo(
+    () => bigTradesIndicator
+      ? calculateBigTradePrints(
+          indicatorCandles,
+          sampledIndicatorMarketTrades,
+          { ...(bigTradesIndicator.settings ?? {}), tickSize: priceFormat.minMove },
+        )
+      : [],
+    [bigTradesIndicator, indicatorCandles, priceFormat.minMove, sampledIndicatorMarketTrades],
+  );
+  const anchoredBigTradePrints = useMemo(() => {
+    if (!indicatorCandles.length || !bigTradePrints.length) return [];
+    type AnchoredBigTradePrint = BigTradePrint & { chartTimestamp: number };
+    const anchored = bigTradePrints.flatMap((print): AnchoredBigTradePrint[] => {
+      if (print.timestamp < indicatorCandles[0].timestamp) return [];
+      let low = 0;
+      let high = indicatorCandles.length - 1;
+      let anchorIndex = 0;
+      while (low <= high) {
+        const middle = Math.floor((low + high) / 2);
+        if (indicatorCandles[middle].timestamp <= print.timestamp) {
+          anchorIndex = middle;
+          low = middle + 1;
+        } else {
+          high = middle - 1;
+        }
+      }
+      return [{ ...print, chartTimestamp: indicatorCandles[anchorIndex].timestamp }];
+    });
+    const indicatorSettings = bigTradesIndicator?.settings ?? {};
+    if (indicatorSettings.combineByCandle === false) {
+      const maxPerBar = Math.max(1, Math.min(50, Number(indicatorSettings.maxMarkersPerBar ?? 6)));
+      const byBar = new Map<number, AnchoredBigTradePrint[]>();
+      anchored.forEach((print) => {
+        const group = byBar.get(print.chartTimestamp) ?? [];
+        group.push(print);
+        byBar.set(print.chartTimestamp, group);
+      });
+      return Array.from(byBar.values())
+        .flatMap((group) => group.sort((left, right) => right.volume - left.volume).slice(0, maxPerBar))
+        .sort((left, right) => left.timestamp - right.timestamp);
+    }
+
+    const grouped = new Map<string, AnchoredBigTradePrint>();
+    anchored.forEach((print) => {
+      const key = `${print.chartTimestamp}:${print.side}`;
+      const existing = grouped.get(key);
+      if (!existing) {
+        grouped.set(key, { ...print, id: `bar-${print.chartTimestamp}-${print.side}` });
+        return;
+      }
+      existing.volume += print.volume;
+      existing.executions += print.executions;
+      // Match Kwantify: the first qualified execution owns the marker's exact
+      // price. Later same-side executions grow it without sliding it.
+    });
+    const aggregates = Array.from(grouped.values());
+    const intervalMinutes = (candleIntervalMs ?? 60_000) / 60_000;
+    const historical = aggregates.filter((print) =>
+      print.chartTimestamp !== indicatorCandles.at(-1)?.timestamp);
+    let adaptiveThreshold = 0;
+    if (indicatorSettings.adaptiveTimeframeFilter !== false && historical.length >= 6) {
+      const percentile = intervalMinutes >= 240
+        ? 0.97
+        : intervalMinutes >= 60
+          ? 0.94
+          : intervalMinutes >= 15
+            ? 0.9
+            : intervalMinutes >= 5
+              ? 0.8
+              : 0.65;
+      const sortedVolumes = historical.map((print) => print.volume).sort((a, b) => a - b);
+      const position = percentile * (sortedVolumes.length - 1);
+      const lower = Math.floor(position);
+      const upper = Math.ceil(position);
+      const weight = position - lower;
+      adaptiveThreshold = sortedVolumes[lower] * (1 - weight) + sortedVolumes[upper] * weight;
+    }
+    const latestTimestamp = indicatorCandles.at(-1)?.timestamp;
+    const visible = aggregates.filter((print) =>
+      print.chartTimestamp === latestTimestamp || print.volume >= adaptiveThreshold);
+    if (!visible.length) return [];
+    const volumes = visible.map((print) => print.volume);
+    const minimumVolume = Math.min(...volumes);
+    const maximumVolume = Math.max(...volumes);
+    const visualRange = Math.max(1, maximumVolume - minimumVolume);
+    const minimumSize = clamp(Number(indicatorSettings.minimumSize ?? 6), 1, 80);
+    const maximumSize = Math.max(
+      minimumSize,
+      clamp(Number(indicatorSettings.maximumSize ?? 32), 1, 160),
+    );
+    const minimumOpacity = clamp(Number(indicatorSettings.minimumOpacity ?? 25) / 100, 0, 1);
+    const maximumOpacity = Math.max(
+      minimumOpacity,
+      clamp(Number(indicatorSettings.maximumOpacity ?? 90) / 100, 0, 1),
+    );
+    return visible.map((print) => {
+      const visualWeight = Math.sqrt(clamp(
+        (print.volume - minimumVolume) / visualRange,
+        0,
+        1,
+      ));
+      return {
+        ...print,
+        radius: minimumSize + (maximumSize - minimumSize) * visualWeight,
+        opacity: minimumOpacity + (maximumOpacity - minimumOpacity) * visualWeight,
+      };
+    }).sort((left, right) => left.timestamp - right.timestamp);
+  }, [bigTradePrints, bigTradesIndicator?.settings, candleIntervalMs, indicatorCandles]);
+  const positionedBigTradePrints = useMemo(() => anchoredBigTradePrints.flatMap((print) => {
+    const x = indicatorTimeToX(Math.floor(print.chartTimestamp / 1_000));
+    const y = candleSeriesRef.current?.priceToCoordinate(print.price) ?? null;
+    if (
+      x === null
+      || y === null
+      || x + print.radius < 0
+      || x - print.radius > Math.max(overlaySize.width - 58, 0)
+    ) return [];
+    return [{ ...print, x, y }];
+  }), [
+    anchoredBigTradePrints,
+    chartReadyRevision,
+    indicatorTimeToX,
+    overlaySize.width,
+    viewportVersion,
+  ]);
+  const positionedEffortZones = useMemo(() => {
+    if (!deepEffort || deepEffortIndicator?.settings?.showZones === false) return [];
+    return deepEffort.zones.flatMap((zone) => {
+      const startCandle = indicatorCandles[zone.startIndex];
+      if (!startCandle) return [];
+      const endCandle = indicatorCandles[Math.min(zone.endIndex, indicatorCandles.length - 1)];
+      const startX = indicatorTimeToX(Math.floor(startCandle.timestamp / 1_000));
+      const endX = endCandle
+        ? indicatorTimeToX(Math.floor(endCandle.timestamp / 1_000))
+        : null;
+      const topY = candleSeriesRef.current?.priceToCoordinate(zone.top) ?? null;
+      const bottomY = candleSeriesRef.current?.priceToCoordinate(zone.bottom) ?? null;
+      if (startX === null || topY === null || bottomY === null) return [];
+      const left = Math.max(-2, startX);
+      const right = Math.min(
+        Math.max(overlaySize.width - 58, 0),
+        endX ?? Math.max(overlaySize.width - 58, 0),
+      );
+      if (right <= left) return [];
+      return [{
+        ...zone,
+        x: left,
+        width: right - left,
+        y: Math.min(topY, bottomY),
+        height: Math.max(2, Math.abs(bottomY - topY)),
+      }];
+    });
+  }, [
+    chartReadyRevision,
+    deepEffort,
+    deepEffortIndicator?.settings?.showZones,
+    indicatorCandles,
+    indicatorTimeToX,
+    overlaySize.width,
+    viewportVersion,
+  ]);
+  const imbalanceTracker = useMemo(() => {
+    const instance = indicators.find((candidate) =>
+      candidate.enabled && candidate.indicatorId === "imbalance-tracker");
+    if (!instance) return null;
+    return {
+      instance,
+      zones: calculateImbalanceZones(
+        indicatorCandles,
+        sampledIndicatorMarketTrades,
+        instance,
+        priceFormat.minMove,
+      ),
+    };
+  }, [
+    indicatorCandles,
+    indicatorSignature,
+    indicators,
+    priceFormat.minMove,
+    sampledIndicatorMarketTrades,
+  ]);
+  const imbalanceRejector = useMemo(() => {
+    const instance = indicators.find((candidate) =>
+      candidate.enabled && candidate.indicatorId === "imbalance-rejector");
+    if (!instance) return null;
+    return {
+      instance,
+      signals: calculateImbalanceRejectorSignals(
+        indicatorCandles,
+        sampledIndicatorMarketTrades,
+        instance,
+        priceFormat.minMove,
+      ),
+    };
+  }, [
+    indicatorCandles,
+    indicatorSignature,
+    indicators,
+    priceFormat.minMove,
+    sampledIndicatorMarketTrades,
+  ]);
+  const positionedImbalanceZones = useMemo(() =>
+    (imbalanceTracker?.zones ?? []).flatMap((zone) => {
+      const startCandle = indicatorCandles[zone.startIndex];
+      const endCandle = indicatorCandles[Math.min(zone.endIndex, indicatorCandles.length - 1)];
+      if (!startCandle || !endCandle) return [];
+      const startX = indicatorTimeToX(Math.floor(startCandle.timestamp / 1_000));
+      const endX = indicatorTimeToX(Math.floor(endCandle.timestamp / 1_000));
+      const topY = candleSeriesRef.current?.priceToCoordinate(zone.top) ?? null;
+      const bottomY = candleSeriesRef.current?.priceToCoordinate(zone.bottom) ?? null;
+      if (startX === null || endX === null || topY === null || bottomY === null) return [];
+      return [{
+        ...zone,
+        x: startX,
+        width: Math.max(2, endX - startX),
+        y: Math.min(topY, bottomY),
+        height: Math.max(2, Math.abs(bottomY - topY)),
+      }];
+    }), [
+    chartReadyRevision,
+    imbalanceTracker,
+    indicatorCandles,
+    indicatorTimeToX,
+    viewportVersion,
+  ]);
+  const positionedImbalanceSignals = useMemo(() =>
+    (imbalanceRejector?.signals ?? []).flatMap((signal) => {
+      const x = indicatorTimeToX(Math.floor(signal.timestamp / 1_000));
+      const y = candleSeriesRef.current?.priceToCoordinate(signal.price) ?? null;
+      return x === null || y === null ? [] : [{ ...signal, x, y }];
+    }), [
+    chartReadyRevision,
+    imbalanceRejector,
+    indicatorTimeToX,
+    viewportVersion,
+  ]);
+  const sessionsIndicator = useMemo(
+    () => indicators.find((candidate) =>
+      candidate.enabled && candidate.indicatorId === "sessions") ?? null,
+    [indicatorSignature, indicators],
+  );
+  const sessionHighLowIndicator = useMemo(
+    () => indicators.find((candidate) =>
+      candidate.enabled && candidate.indicatorId === "session-highs-lows") ?? null,
+    [indicatorSignature, indicators],
+  );
+  const sessionHighLowSettings = useMemo(() => {
+    const own = sessionHighLowIndicator?.settings ?? {};
+    if (!sessionHighLowIndicator || own.followSessionsStudy === false || !sessionsIndicator) return own;
+    const linked = sessionsIndicator.settings ?? {};
+    const keys = [
+      "showTokyo", "showLondon", "showNewYork", "showSydney",
+      "tokyoLabel", "tokyoStart", "tokyoEnd", "tokyoColor",
+      "londonLabel", "londonStart", "londonEnd", "londonColor",
+      "newYorkLabel", "newYorkStart", "newYorkEnd", "newYorkColor",
+      "sydneyLabel", "sydneyStart", "sydneyEnd", "sydneyColor",
+      "hideWeekends",
+    ] as const;
+    return keys.reduce<Record<string, number | string | boolean>>((result, key) => {
+      if (linked[key] !== undefined) result[key] = linked[key]!;
+      return result;
+    }, { ...own });
+  }, [sessionHighLowIndicator, sessionsIndicator]);
+  const marketSessionWindows = useMemo(
+    () => sessionsIndicator
+      ? buildMarketSessionWindows(
+          indicatorCandles,
+          sessionsIndicator.settings ?? {},
+          candleIntervalMs ?? 60_000,
+        )
+      : [],
+    [candleIntervalMs, indicatorCandles, sessionsIndicator],
+  );
+  const previousSessionLevels = useMemo(
+    () => sessionHighLowIndicator
+      ? buildPreviousSessionHighLowLevels(
+          indicatorCandles,
+          sessionHighLowSettings,
+          candleIntervalMs ?? 60_000,
+        )
+      : [],
+    [candleIntervalMs, indicatorCandles, sessionHighLowIndicator, sessionHighLowSettings],
+  );
+  const positionedSessionWindows = useMemo(() => marketSessionWindows.flatMap((session) => {
+    const startX = indicatorTimeToX(Math.floor(session.startTimestamp / 1_000));
+    const endX = indicatorTimeToX(Math.floor(session.endTimestamp / 1_000));
+    const topY = candleSeriesRef.current?.priceToCoordinate(session.high) ?? null;
+    const bottomY = candleSeriesRef.current?.priceToCoordinate(session.low) ?? null;
+    if (startX === null || endX === null || topY === null || bottomY === null) return [];
+    return [{
+      ...session,
+      x: startX,
+      width: Math.max(2, endX - startX),
+      y: Math.min(topY, bottomY),
+      height: Math.max(2, Math.abs(bottomY - topY)),
+    }];
+  }), [
+    chartReadyRevision,
+    indicatorTimeToX,
+    marketSessionWindows,
+    viewportVersion,
+  ]);
+  const positionedSessionLevels = useMemo(() => previousSessionLevels.flatMap((level) => {
+    const startX = indicatorTimeToX(Math.floor(level.startTimestamp / 1_000));
+    const y = candleSeriesRef.current?.priceToCoordinate(level.price) ?? null;
+    if (startX === null || y === null) return [];
+    return [{
+      ...level,
+      x: Math.max(-2, startX),
+      width: Math.max(2, Math.max(overlaySize.width - 58, 0) - Math.max(-2, startX)),
+      y,
+    }];
+  }), [
+    chartReadyRevision,
+    indicatorTimeToX,
+    overlaySize.width,
+    previousSessionLevels,
+    viewportVersion,
+  ]);
   const toolbarMetrics = useMemo(() => {
     const availableWidth = overlaySize.width > 0 ? Math.max(180, overlaySize.width - 16) : 920;
     const availableHeight = overlaySize.height > 0 ? Math.max(150, overlaySize.height - 16) : 700;
@@ -3149,6 +3505,294 @@ export default function Chart({
         marketIsActive={marketIsActive}
         bottom={56 + indicatorPaneHeight}
       />
+
+      {(
+        positionedSessionWindows.length > 0
+        || positionedSessionLevels.length > 0
+        || positionedEffortZones.length > 0
+        || positionedImbalanceZones.length > 0
+        || positionedImbalanceSignals.length > 0
+        || positionedBigTradePrints.length > 0
+      ) ? (
+        <svg
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 z-[8] h-full w-full overflow-hidden"
+          viewBox={`0 0 ${Math.max(overlaySize.width, 1)} ${Math.max(overlaySize.height, 1)}`}
+          preserveAspectRatio="none"
+        >
+          {positionedSessionWindows.map((session) => {
+            const sessionSettings = sessionsIndicator?.settings ?? {};
+            const fillOpacity = clamp(Number(sessionSettings.fillOpacity ?? 10) / 100, 0, 1);
+            const lineOpacity = clamp(Number(sessionSettings.lineOpacity ?? 65) / 100, 0, 1);
+            const labelSize = String(sessionSettings.labelSize ?? "small");
+            const fontSize = labelSize === "tiny" ? 8 : labelSize === "normal" ? 11 : 9;
+            const change = session.close - session.open;
+            const suffix = sessionSettings.showPercentChange === true && session.open
+              ? ` ${(change / session.open * 100).toFixed(2)}%`
+              : sessionSettings.showPointChange === true
+                ? ` ${change >= 0 ? "+" : ""}${change.toFixed(priceFormat.precision)}`
+                : "";
+            return (
+              <g key={`${session.key}-${session.startTimestamp}`}>
+                {sessionSettings.showBackground !== false ? (
+                  <rect
+                    x={session.x}
+                    y={session.y}
+                    width={session.width}
+                    height={session.height}
+                    fill={session.color}
+                    fillOpacity={fillOpacity}
+                  />
+                ) : null}
+                {sessionSettings.showBorders !== false ? (
+                  <rect
+                    x={session.x}
+                    y={session.y}
+                    width={session.width}
+                    height={session.height}
+                    fill="none"
+                    stroke={session.color}
+                    strokeOpacity={lineOpacity}
+                    strokeWidth={clamp(Number(sessionSettings.borderWidth ?? 1), 0, 4)}
+                    strokeDasharray={String(sessionSettings.lineStyle ?? "dashed") === "dotted"
+                      ? "1 4"
+                      : String(sessionSettings.lineStyle ?? "dashed") === "solid" ? undefined : "6 5"}
+                  />
+                ) : null}
+                {sessionSettings.showOpenClose !== false ? (
+                  <>
+                    {([session.open, session.close] as const).map((price, index) => {
+                      const y = candleSeriesRef.current?.priceToCoordinate(price) ?? null;
+                      return y === null ? null : (
+                        <line
+                          key={index}
+                          x1={session.x}
+                          x2={session.x + session.width}
+                          y1={y}
+                          y2={y}
+                          stroke={session.color}
+                          strokeOpacity={lineOpacity * 0.72}
+                          strokeDasharray="3 4"
+                        />
+                      );
+                    })}
+                  </>
+                ) : null}
+                {sessionSettings.showLabels !== false ? (
+                  <text
+                    x={session.x + 5}
+                    y={Math.max(11, session.y + 12)}
+                    fill={session.color}
+                    fontFamily="'JetBrains Mono', monospace"
+                    fontSize={fontSize}
+                    fontWeight={700}
+                  >
+                    {session.label}{suffix}
+                  </text>
+                ) : null}
+              </g>
+            );
+          })}
+          {positionedSessionLevels.map((level) => {
+            const levelSettings = sessionHighLowSettings;
+            const useSessionColors = levelSettings.useSessionColors !== false;
+            const color = useSessionColors
+              ? level.session.color
+              : level.side === "high"
+                ? String(levelSettings.highColor ?? settings.upColor)
+                : String(levelSettings.lowColor ?? settings.downColor);
+            const opacity = clamp(Number(levelSettings.lineOpacity ?? 82) / 100, 0.05, 1);
+            const labelSize = String(levelSettings.labelSize ?? "small");
+            const fontSize = labelSize === "tiny" ? 8 : labelSize === "normal" ? 11 : 9;
+            return (
+              <g key={level.id} opacity={opacity}>
+                <line
+                  x1={level.x}
+                  x2={level.x + level.width}
+                  y1={level.y}
+                  y2={level.y}
+                  stroke={color}
+                  strokeWidth={clamp(Number(levelSettings.lineWidth ?? 1), 1, 4)}
+                  strokeDasharray={String(levelSettings.lineStyle ?? "dashed") === "dotted"
+                    ? "1 4"
+                    : String(levelSettings.lineStyle ?? "dashed") === "solid" ? undefined : "6 5"}
+                />
+                {levelSettings.showLabels !== false ? (
+                  <text
+                    x={Math.min(level.x + 7, Math.max(4, overlaySize.width - 210))}
+                    y={Math.max(10, level.y - 4)}
+                    fill={color}
+                    fontFamily="'JetBrains Mono', monospace"
+                    fontSize={fontSize}
+                    fontWeight={700}
+                  >
+                    {level.label} {level.price.toFixed(priceFormat.precision)}
+                  </text>
+                ) : null}
+              </g>
+            );
+          })}
+          {positionedEffortZones.map((zone) => {
+            const effortSettings = deepEffortIndicator?.settings ?? {};
+            const useThemeColors = effortSettings.useThemeColors !== false;
+            const color = zone.side === "ASK"
+              ? useThemeColors ? settings.upColor : String(effortSettings.askColor ?? settings.upColor)
+              : useThemeColors ? settings.downColor : String(effortSettings.bidColor ?? settings.downColor);
+            const opacity = clamp(Number(effortSettings.zoneOpacity ?? 20) / 100, 0.01, 1);
+            return (
+              <g key={zone.id}>
+                <rect
+                  x={zone.x}
+                  y={zone.y}
+                  width={zone.width}
+                  height={zone.height}
+                  rx={1.5}
+                  fill={color}
+                  fillOpacity={opacity}
+                  stroke={color}
+                  strokeOpacity={Math.min(1, opacity + 0.35)}
+                  strokeWidth={clamp(Number(effortSettings.zoneLineWidth ?? 1), 0, 4)}
+                />
+              </g>
+            );
+          })}
+          {positionedImbalanceZones.map((zone) => {
+            const trackerSettings = imbalanceTracker?.instance.settings ?? {};
+            const useThemeColors = trackerSettings.useThemeColors !== false;
+            const color = zone.side === "BUY"
+              ? zone.triggered
+                ? useThemeColors ? settings.borderUpColor : String(trackerSettings.buyTriggeredColor ?? settings.borderUpColor)
+                : useThemeColors ? settings.upColor : String(trackerSettings.buyColor ?? settings.upColor)
+              : zone.triggered
+                ? useThemeColors ? settings.borderDownColor : String(trackerSettings.sellTriggeredColor ?? settings.borderDownColor)
+                : useThemeColors ? settings.downColor : String(trackerSettings.sellColor ?? settings.downColor);
+            const opacity = clamp(Number(trackerSettings.opacity ?? 78) / 100, 0.05, 1);
+            return (
+              <rect
+                key={zone.id}
+                x={zone.x}
+                y={zone.y}
+                width={zone.width}
+                height={zone.height}
+                fill={color}
+                fillOpacity={opacity * 0.14}
+                stroke={color}
+                strokeOpacity={opacity}
+                strokeWidth={clamp(Number(trackerSettings.lineWidth ?? 1.5), 0.5, 5)}
+                strokeDasharray={zone.triggered ? "3 4" : undefined}
+              />
+            );
+          })}
+          {positionedImbalanceSignals.map((signal) => {
+            const rejectorSettings = imbalanceRejector?.instance.settings ?? {};
+            const useThemeColors = rejectorSettings.useThemeColors !== false;
+            const color = signal.side === "BULLISH"
+              ? useThemeColors ? settings.upColor : String(rejectorSettings.bullishColor ?? settings.upColor)
+              : useThemeColors ? settings.downColor : String(rejectorSettings.bearishColor ?? settings.downColor);
+            const size = clamp(Number(rejectorSettings.markerSize ?? 8), 3, 24);
+            const opacity = clamp(Number(rejectorSettings.opacity ?? 90) / 100, 0.1, 1);
+            const points = signal.side === "BULLISH"
+              ? `${signal.x},${signal.y - size} ${signal.x + size},${signal.y + size} ${signal.x - size},${signal.y + size}`
+              : `${signal.x},${signal.y + size} ${signal.x + size},${signal.y - size} ${signal.x - size},${signal.y - size}`;
+            return (
+              <polygon
+                key={signal.id}
+                points={points}
+                fill={color}
+                fillOpacity={opacity * 0.35}
+                stroke={color}
+                strokeOpacity={opacity}
+                strokeWidth={clamp(Number(rejectorSettings.markerThickness ?? 2), 0.5, 6)}
+              />
+            );
+          })}
+          {positionedBigTradePrints.map((print) => {
+            const tradeSettings = bigTradesIndicator?.settings ?? {};
+            const useThemeColors = tradeSettings.useThemeColors !== false;
+            const color = print.side === "ASK"
+              ? useThemeColors ? settings.upColor : String(tradeSettings.askColor ?? settings.upColor)
+              : useThemeColors ? settings.downColor : String(tradeSettings.bidColor ?? settings.downColor);
+            const markerType = String(tradeSettings.markerType ?? "circle");
+            const hollowFill = tradeSettings.hollowFill === true;
+            const informationMode = String(tradeSettings.informationMode ?? "volume");
+            const volumeLabel = print.volume >= 1_000
+              ? `${(print.volume / 1_000).toFixed(print.volume >= 10_000 ? 0 : 1)}K`
+              : String(Math.round(print.volume));
+            const label = informationMode === "side-volume"
+              ? `${print.side} ${volumeLabel}`
+              : informationMode === "executions"
+                ? `${print.executions}x`
+                : informationMode === "full"
+                  ? `${print.side} ${volumeLabel} · ${print.executions}x`
+                  : volumeLabel;
+            const showLabel = markerType === "text" || (
+              tradeSettings.showLabels !== false
+              && print.radius >= Number(tradeSettings.labelMinSize ?? 14)
+            );
+            const strokeWidth = Math.max(1, print.radius * 0.065);
+            return (
+              <g key={print.id} opacity={print.opacity}>
+                {!hollowFill && markerType !== "text" ? (
+                  <circle
+                    cx={print.x}
+                    cy={print.y}
+                    r={print.radius * 1.22}
+                    fill={color}
+                    fillOpacity={0.13}
+                  />
+                ) : null}
+                {markerType === "square" ? (
+                  <rect
+                    x={print.x - print.radius}
+                    y={print.y - print.radius}
+                    width={print.radius * 2}
+                    height={print.radius * 2}
+                    rx={Math.max(1.5, print.radius * 0.15)}
+                    fill={hollowFill ? "none" : color}
+                    fillOpacity={hollowFill ? 0 : 0.6}
+                    stroke={color}
+                    strokeWidth={strokeWidth}
+                  />
+                ) : markerType === "diamond" ? (
+                  <polygon
+                    points={`${print.x},${print.y - print.radius} ${print.x + print.radius},${print.y} ${print.x},${print.y + print.radius} ${print.x - print.radius},${print.y}`}
+                    fill={hollowFill ? "none" : color}
+                    fillOpacity={hollowFill ? 0 : 0.6}
+                    stroke={color}
+                    strokeWidth={strokeWidth}
+                  />
+                ) : markerType === "text" ? null : (
+                  <circle
+                    cx={print.x}
+                    cy={print.y}
+                    r={print.radius}
+                    fill={hollowFill ? "none" : color}
+                    fillOpacity={hollowFill ? 0 : 0.58}
+                    stroke={color}
+                    strokeWidth={strokeWidth}
+                  />
+                )}
+                {showLabel ? (
+                  <text
+                    x={print.x}
+                    y={print.y + 3}
+                    fill="var(--foreground)"
+                    fontFamily="'JetBrains Mono', monospace"
+                    fontSize={Math.max(7, Math.min(11, print.radius * 0.48))}
+                    fontWeight={800}
+                    textAnchor="middle"
+                    paintOrder="stroke"
+                    stroke="var(--background)"
+                    strokeWidth={2.5}
+                  >
+                    {label}
+                  </text>
+                ) : null}
+              </g>
+            );
+          })}
+        </svg>
+      ) : null}
 
       <ChartIndicatorPanes
         groups={calculatedIndicatorPanes}

@@ -1,5 +1,6 @@
 import { getChartInterval, isEventBasedChartInterval } from "@/lib/chartIntervals";
 import { applyMarketTradesToEventBars, type MarketTrade } from "@/lib/eventBars";
+import type { Candle } from "@/lib/backtester";
 
 export const DATABENTO_HISTORICAL_BASE_URL = "https://api.databento.com/v0";
 
@@ -19,6 +20,20 @@ export type DatabentoBar = {
   low: number;
   close: number;
   volume: number;
+};
+
+// Compact tuple sent to the browser for execution-tape indicators:
+// timestamp, price, size, signed aggressor delta.
+export type DatabentoExecutionTuple = [
+  timestamp: number,
+  price: number,
+  size: number,
+  delta: number,
+];
+
+export type DatabentoOrderFlowHistory = {
+  candles: Candle[];
+  executions: DatabentoExecutionTuple[];
 };
 
 export const DATABENTO_FUTURES: DatabentoInstrument[] = [
@@ -281,14 +296,16 @@ export async function getDatabentoBars(symbol: string, timeframe: string, start:
   return resample(bars, timeframe);
 }
 
-export async function getDatabentoBarsWithOrderFlow(
+export async function getDatabentoOrderFlowHistory(
   symbol: string,
   timeframe: string,
   start: string,
   end: string,
-) {
+): Promise<DatabentoOrderFlowHistory> {
   const bars = await getDatabentoBars(symbol, timeframe, start, end);
-  if (!bars.length || isEventBasedChartInterval(timeframe)) return bars;
+  if (!bars.length || isEventBasedChartInterval(timeframe)) {
+    return { candles: bars, executions: [] };
+  }
 
   // Raw CME executions are deliberately bounded to the latest six hours.
   // This is enough to hydrate order-flow studies immediately without making
@@ -319,9 +336,10 @@ export async function getDatabentoBarsWithOrderFlow(
     deltaLow: number;
   }>();
 
-  tradeRows
+  const executions = tradeRows
     .map((row) => {
       const timestamp = time(row.ts_event ?? row.ts_recv ?? (row.hd as Record<string, unknown> | undefined)?.ts_event);
+      const tradePrice = price(row.price);
       const tradeSize = Math.max(0, Number(row.size ?? 0));
       const side = String(row.side ?? "").toUpperCase();
       const delta = side === "A" || side === "ASK"
@@ -329,11 +347,12 @@ export async function getDatabentoBarsWithOrderFlow(
         : side === "B" || side === "BID"
           ? -tradeSize
           : 0;
-      return { timestamp, tradeSize, delta };
+      return { timestamp, price: tradePrice, tradeSize, delta };
     })
-    .filter((row) => row.timestamp > 0 && row.tradeSize > 0)
-    .sort((left, right) => left.timestamp - right.timestamp)
-    .forEach((trade) => {
+    .filter((row) => row.timestamp > 0 && row.price > 0 && row.tradeSize > 0 && row.delta !== 0)
+    .sort((left, right) => left.timestamp - right.timestamp);
+
+  executions.forEach((trade) => {
       const bucket = Math.floor(trade.timestamp / size) * size;
       const current = flowByBucket.get(bucket) ?? {
         volume: 0,
@@ -354,7 +373,7 @@ export async function getDatabentoBarsWithOrderFlow(
       flowByBucket.set(bucket, current);
     });
 
-  return bars.map((bar) => {
+  const candles = bars.map((bar) => {
     const flow = flowByBucket.get(Math.floor(bar.timestamp / size) * size);
     if (!flow) return bar;
     return {
@@ -370,6 +389,30 @@ export async function getDatabentoBarsWithOrderFlow(
       deltaClose: flow.delta,
     };
   });
+
+  // Raw GLBX trades can be extremely dense. Ten thousand recent prints are
+  // enough to establish adaptive thresholds and then continue seamlessly with
+  // the live tape without turning every chart response into a multi-megabyte
+  // object payload.
+  const compactExecutions = executions
+    .slice(-10_000)
+    .map((trade): DatabentoExecutionTuple => [
+      trade.timestamp,
+      trade.price,
+      trade.tradeSize,
+      trade.delta,
+    ]);
+
+  return { candles, executions: compactExecutions };
+}
+
+export async function getDatabentoBarsWithOrderFlow(
+  symbol: string,
+  timeframe: string,
+  start: string,
+  end: string,
+) {
+  return (await getDatabentoOrderFlowHistory(symbol, timeframe, start, end)).candles;
 }
 
 function optionClass(value: unknown) {

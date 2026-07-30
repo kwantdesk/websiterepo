@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
-import { getDatabentoBars, getDatabentoBarsWithOrderFlow } from "@/lib/databento";
+import {
+  getDatabentoBars,
+  getDatabentoOrderFlowHistory,
+  type DatabentoExecutionTuple,
+} from "@/lib/databento";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -8,6 +12,7 @@ export const preferredRegion = "iad1";
 
 type HistoryCacheEntry = {
   candles: Awaited<ReturnType<typeof getDatabentoBars>>;
+  executions: DatabentoExecutionTuple[];
   updatedAt: number;
 };
 
@@ -50,6 +55,7 @@ export async function GET(request: Request) {
     return NextResponse.json(
       {
         candles: cached.candles,
+        executions: includeOrderFlow ? cached.executions : [],
         source: "CME",
         dataset: "GLBX.MDP3",
         range: `${historyDays}D`,
@@ -61,13 +67,18 @@ export async function GET(request: Request) {
   }
 
   try {
-    const candles = includeOrderFlow
-      ? await getDatabentoBarsWithOrderFlow(symbol, timeframe, start, new Date(now).toISOString())
-      : await getDatabentoBars(symbol, timeframe, start, new Date(now).toISOString());
-    if (candles.length) historyCache.set(cacheKey, { candles, updatedAt: now });
+    const history = includeOrderFlow
+      ? await getDatabentoOrderFlowHistory(symbol, timeframe, start, new Date(now).toISOString())
+      : {
+          candles: await getDatabentoBars(symbol, timeframe, start, new Date(now).toISOString()),
+          executions: [] as DatabentoExecutionTuple[],
+        };
+    const { candles, executions } = history;
+    if (candles.length) historyCache.set(cacheKey, { candles, executions, updatedAt: now });
     return NextResponse.json(
       {
         candles,
+        executions,
         source: "CME",
         dataset: "GLBX.MDP3",
         range: `${historyDays}D`,
@@ -81,6 +92,7 @@ export async function GET(request: Request) {
       return NextResponse.json(
         {
           candles: cached.candles,
+          executions: includeOrderFlow ? cached.executions : [],
           source: "CME",
           dataset: "GLBX.MDP3",
           range: `${historyDays}D`,

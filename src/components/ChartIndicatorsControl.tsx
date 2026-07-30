@@ -41,6 +41,8 @@ export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "cumulative-volume-delta",
   "delta-cumulative-candlestick",
   "delta-cumulative-histogram",
+  "imbalance-tracker",
+  "imbalance-rejector",
   "moving-average",
   "vwap",
   "vwap-envelopes",
@@ -61,6 +63,9 @@ export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "bollinger-bands",
   "donchian-channel",
   "keltner-channel",
+  "sessions",
+  "session-highs-lows",
+  "big-trades",
   "kwant-stats",
   "deep-m-effort-nq",
 ]);

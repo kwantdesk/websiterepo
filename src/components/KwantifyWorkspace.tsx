@@ -94,6 +94,7 @@ import {
   normalizePaneIndicatorState,
 } from "@/lib/chartIndicatorConfig";
 import type { ChartGammaLevelsPayload } from "@/lib/chartGammaLevels";
+import type { InstitutionalTrade } from "@/lib/institutionalMarketData";
 import {
   gameplanSessionLabel,
   type GameplanPayload,
@@ -1391,6 +1392,48 @@ function reanchorLiveMidIntoCandles(candles: Candle[], mid: number, symbol: stri
 }
 
 const workspaceCandleRequests = new Map<string, Promise<Candle[]>>();
+const workspaceExecutionTape = new Map<string, InstitutionalTrade[]>();
+
+function workspaceOrderFlowKey(symbol: string, timeframe: string) {
+  return `${symbol}::${timeframe}::flow`;
+}
+
+function decodeExecutionTape(value: unknown): InstitutionalTrade[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((entry, index) => {
+    if (!Array.isArray(entry) || entry.length < 4) return [];
+    const timestamp = Number(entry[0]);
+    const price = Number(entry[1]);
+    const volume = Number(entry[2]);
+    const delta = Number(entry[3]);
+    if (
+      !Number.isFinite(timestamp)
+      || !Number.isFinite(price)
+      || !Number.isFinite(volume)
+      || !Number.isFinite(delta)
+      || timestamp <= 0
+      || price <= 0
+      || volume <= 0
+      || delta === 0
+    ) return [];
+    return [{
+      eventId: `cme-${timestamp}-${index}`,
+      recordIndex: timestamp * 10 + (index % 10),
+      timestamp,
+      open: price,
+      high: price,
+      low: price,
+      close: price,
+      trades: 1,
+      volume,
+      bidVolume: delta < 0 ? volume : 0,
+      askVolume: delta > 0 ? volume : 0,
+      delta,
+      aggressor: delta > 0 ? "BUY" as const : "SELL" as const,
+      sideSemanticsVersion: 1,
+    }];
+  });
+}
 
 async function fetchWorkspaceCandles(
   symbol: string,
@@ -1427,6 +1470,12 @@ async function fetchWorkspaceCandles(
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error ?? `CME did not return candles for ${displayCmeSymbol(symbol)}.`);
       const downloaded = sanitizeCandles((payload.candles ?? []) as Candle[], symbol);
+      if (includeOrderFlow) {
+        workspaceExecutionTape.set(
+          workspaceOrderFlowKey(symbol, timeframe),
+          decodeExecutionTape(payload.executions),
+        );
+      }
       if (downloaded.length) await writeChartHistoryCache(symbol, timeframe, downloaded);
       return downloaded;
     })();
@@ -1976,6 +2025,7 @@ function WorkspaceChartPane({
   onRemoveGameplanOverlay: () => void;
 }) {
   const [candles, setCandles] = useState<Candle[]>([]);
+  const [marketTrades, setMarketTrades] = useState<InstitutionalTrade[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [liveFeedError, setLiveFeedError] = useState<string | null>(null);
@@ -1992,7 +2042,9 @@ function WorkspaceChartPane({
   const intervalCommandInputRef = useRef<HTMLInputElement>(null);
   const intervalCommandPanelRef = useRef<HTMLDivElement>(null);
   const latestCandlesRef = useRef<Candle[]>([]);
+  const latestMarketTradesRef = useRef<InstitutionalTrade[]>([]);
   const lastCandleStateSyncRef = useRef(0);
+  const lastMarketTradeStateSyncRef = useRef(0);
   const historyHydratedRef = useRef(false);
   const liveTailStartTimestampRef = useRef<number | null>(null);
   const latestFuturesRef = useRef<{
@@ -2014,6 +2066,13 @@ function WorkspaceChartPane({
   const gammaInstrument = displayCmeSymbol(pane.symbol);
   const needsOrderFlowHistory = indicators.some((instance) =>
     instance.enabled && CHART_INDICATOR_BY_ID.get(instance.indicatorId)?.requiresOrderFlow);
+  const needsExecutionTape = indicators.some((instance) =>
+    instance.enabled && [
+      "big-trades",
+      "imbalance-tracker",
+      "imbalance-rejector",
+      "kwant-stats",
+    ].includes(instance.indicatorId));
   const gammaLevelsAvailable =
     pane.broker === "Databento" && isGammaChartInstrument(gammaInstrument);
   const nativeGammaConversion = gammaLevelsAvailable
@@ -2101,10 +2160,15 @@ function WorkspaceChartPane({
       immediateCache?.candles ?? [],
       pane.symbol,
     ).filter((candle) => candle.timestamp >= requestedFrom);
+    const immediateMarketTrades = needsOrderFlowHistory
+      ? workspaceExecutionTape.get(workspaceOrderFlowKey(pane.symbol, pane.timeframe)) ?? []
+      : [];
     setLoading(immediateCandles.length === 0);
     setError(null);
     setCandles(immediateCandles);
+    setMarketTrades(immediateMarketTrades);
     latestCandlesRef.current = immediateCandles;
+    latestMarketTradesRef.current = immediateMarketTrades;
     historyHydratedRef.current = immediateCandles.length > 0;
     liveTailStartTimestampRef.current = null;
     pendingLiveTicksRef.current = [];
@@ -2128,7 +2192,13 @@ function WorkspaceChartPane({
       );
       const cachedIsHydrated = cachedCandles.length > 0
         && cachedTailIsFresh
-        && (!needsFiveDayBackfill || hasFiveDayHistory(cachedHistory, pane.timeframe));
+        && (!needsFiveDayBackfill || hasFiveDayHistory(cachedHistory, pane.timeframe))
+        && (
+          !needsOrderFlowHistory
+          || cachedCandles.some((candle) =>
+            Number(candle.askVolume ?? 0) + Number(candle.bidVolume ?? 0) > 0)
+        )
+        && (!needsExecutionTape || immediateMarketTrades.length > 0);
       if (cachedCandles.length) {
         latestCandlesRef.current = cachedCandles;
         historyHydratedRef.current = true;
@@ -2153,6 +2223,9 @@ function WorkspaceChartPane({
           requestController.signal,
         );
         if (cancelled) return;
+        const nextMarketTrades = needsOrderFlowHistory
+          ? workspaceExecutionTape.get(workspaceOrderFlowKey(pane.symbol, pane.timeframe)) ?? []
+          : [];
         const downloaded = sanitizeCandles(nextCandles, pane.symbol);
         const clean = pane.broker === "Databento"
           ? downloaded.filter((candle) => candle.timestamp >= requestedFrom)
@@ -2170,8 +2243,10 @@ function WorkspaceChartPane({
             )
           : clean;
         latestCandlesRef.current = merged;
+        latestMarketTradesRef.current = nextMarketTrades;
         historyHydratedRef.current = true;
         setCandles(merged);
+        setMarketTrades(nextMarketTrades);
         setError(null);
         setLoading(false);
       } catch (loadError) {
@@ -2191,7 +2266,7 @@ function WorkspaceChartPane({
       cancelled = true;
       requestController.abort();
     };
-  }, [needsOrderFlowHistory, pane.broker, pane.symbol, pane.timeframe, period]);
+  }, [needsExecutionTape, needsOrderFlowHistory, pane.broker, pane.symbol, pane.timeframe, period]);
 
   useEffect(() => {
     if (pane.broker !== "Databento") return;
@@ -2446,6 +2521,39 @@ function WorkspaceChartPane({
           ? queuedTicks
           : compactTimeBasedTicks(queuedTicks, pane.timeframe);
         if (!ticks.length) return;
+        if (usingDatabentoPaneFeed && needsOrderFlowHistory) {
+          const liveExecutions = ticks.flatMap((tick, index): InstitutionalTrade[] => {
+            const volume = Math.max(0, Number(tick.size ?? 0));
+            const delta = Number(tick.delta ?? 0);
+            if (!tick.isTrade || volume <= 0 || delta === 0) return [];
+            return [{
+              eventId: `live-${tick.timestamp}-${index}`,
+              recordIndex: tick.timestamp * 10 + (index % 10),
+              timestamp: tick.timestamp,
+              open: tick.mid,
+              high: tick.mid,
+              low: tick.mid,
+              close: tick.mid,
+              trades: Math.max(1, Number(tick.trades ?? 1)),
+              volume,
+              bidVolume: delta < 0 ? volume : 0,
+              askVolume: delta > 0 ? volume : 0,
+              delta,
+              aggressor: delta > 0 ? "BUY" : "SELL",
+              sideSemanticsVersion: 1,
+            }];
+          });
+          if (liveExecutions.length) {
+            const nextTape = [...latestMarketTradesRef.current, ...liveExecutions].slice(-10_000);
+            latestMarketTradesRef.current = nextTape;
+            workspaceExecutionTape.set(workspaceOrderFlowKey(pane.symbol, pane.timeframe), nextTape);
+            const now = Date.now();
+            if (now - lastMarketTradeStateSyncRef.current >= 250) {
+              lastMarketTradeStateSyncRef.current = now;
+              setMarketTrades(nextTape);
+            }
+          }
+        }
         const hasRenderableTick = !(
           usingDatabentoPaneFeed
           && isEventBasedChartInterval(pane.timeframe)
@@ -2531,7 +2639,7 @@ function WorkspaceChartPane({
       stream.close();
       clearPendingFrame();
     };
-  }, [markMarketActive, pane.broker, pane.symbol, pane.timeframe, streamReconnectNonce]);
+  }, [markMarketActive, needsOrderFlowHistory, pane.broker, pane.symbol, pane.timeframe, streamReconnectNonce]);
 
   useEffect(() => {
     const usingMassivePaneFeed = pane.broker === "Massive" || isMassiveFuturesSymbol(pane.symbol);
@@ -2679,6 +2787,7 @@ function WorkspaceChartPane({
       ) : (
         <Chart
           candles={candles}
+          marketTrades={marketTrades}
           trades={trades}
           levels={chartLevels}
           backgroundLevels={gameplanDecorations.levels}
