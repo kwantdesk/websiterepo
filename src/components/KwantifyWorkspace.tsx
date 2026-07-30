@@ -164,6 +164,7 @@ import {
 } from "@/lib/chartLiveEvents";
 import {
   mergeChartHistory,
+  peekCompatibleChartHistoryCache,
   readCompatibleChartHistoryCache,
   readChartHistoryCache,
   writeChartHistoryCache,
@@ -1388,6 +1389,8 @@ function reanchorLiveMidIntoCandles(candles: Candle[], mid: number, symbol: stri
   return updated;
 }
 
+const workspaceCandleRequests = new Map<string, Promise<Candle[]>>();
+
 async function fetchWorkspaceCandles(
   symbol: string,
   timeframe: string,
@@ -1406,21 +1409,35 @@ async function fetchWorkspaceCandles(
   const historicalLimit = getHistoricalCandleLimit(period, timeframe, outputsize);
 
   if (broker === "Databento") {
-    const response = await fetch(
-      `/api/databento/market?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}${includeOrderFlow ? "&orderFlow=1" : ""}`,
-      {
-        cache: "no-store",
-        signal: signal
-          ? AbortSignal.any([signal, AbortSignal.timeout(45_000)])
-          : AbortSignal.timeout(45_000),
-      },
-    );
-    const payload = await response.json();
-    if (!response.ok) throw new Error(payload.error ?? `CME did not return candles for ${displayCmeSymbol(symbol)}.`);
-    if (payload.stale) throw new Error("CME history tail is stale.");
-    const downloaded = sanitizeCandles((payload.candles ?? []) as Candle[], symbol);
-    if (downloaded.length) void writeChartHistoryCache(symbol, timeframe, downloaded);
-    return downloaded;
+    const requestKey = `${symbol}::${timeframe}::${includeOrderFlow ? "flow" : "bars"}`;
+    const pending = workspaceCandleRequests.get(requestKey);
+    if (pending) return pending;
+
+    const request = (async () => {
+      const response = await fetch(
+        `/api/databento/market?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}${includeOrderFlow ? "&orderFlow=1" : ""}`,
+        {
+          cache: "no-store",
+          // Keep a history request alive across rapid timeframe switches. Its
+          // result still warms the browser cache for the next selection.
+          signal: AbortSignal.timeout(45_000),
+        },
+      );
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error ?? `CME did not return candles for ${displayCmeSymbol(symbol)}.`);
+      const downloaded = sanitizeCandles((payload.candles ?? []) as Candle[], symbol);
+      if (downloaded.length) await writeChartHistoryCache(symbol, timeframe, downloaded);
+      return downloaded;
+    })();
+
+    workspaceCandleRequests.set(requestKey, request);
+    try {
+      return await request;
+    } finally {
+      if (workspaceCandleRequests.get(requestKey) === request) {
+        workspaceCandleRequests.delete(requestKey);
+      }
+    }
   }
 
   try {
@@ -1466,6 +1483,26 @@ async function fetchWorkspaceCandles(
   );
   const data = await res.json();
   return sanitizeCandles((data.candles || []) as Candle[], symbol);
+}
+
+async function warmDatabentoChartHistory(symbol: string, timeframe: string) {
+  if (isEventBasedChartInterval(timeframe)) return;
+  const cached = await readChartHistoryCache(symbol, timeframe);
+  if (
+    cached?.candles.length
+    && Date.now() - cached.updatedAt <= 5 * 60_000
+    && hasFiveDayHistory(cached.candles, timeframe)
+  ) {
+    return;
+  }
+  await fetchWorkspaceCandles(
+    symbol,
+    timeframe,
+    "Databento",
+    "5D",
+    500,
+    false,
+  );
 }
 
 const presetTemplates: ChartTemplate[] = [
@@ -2055,11 +2092,19 @@ function WorkspaceChartPane({
   useEffect(() => {
     let cancelled = false;
     const requestController = new AbortController();
-    setLoading(true);
+    const requestedFrom = Date.parse(getPeriodConfig(period).from);
+    const immediateCache = pane.broker === "Databento"
+      ? peekCompatibleChartHistoryCache(pane.symbol, pane.timeframe)
+      : null;
+    const immediateCandles = sanitizeCandles(
+      immediateCache?.candles ?? [],
+      pane.symbol,
+    ).filter((candle) => candle.timestamp >= requestedFrom);
+    setLoading(immediateCandles.length === 0);
     setError(null);
-    setCandles([]);
-    latestCandlesRef.current = [];
-    historyHydratedRef.current = false;
+    setCandles(immediateCandles);
+    latestCandlesRef.current = immediateCandles;
+    historyHydratedRef.current = immediateCandles.length > 0;
     liveTailStartTimestampRef.current = null;
     pendingLiveTicksRef.current = [];
     if (liveFrameRef.current !== null) {
@@ -2072,7 +2117,6 @@ function WorkspaceChartPane({
         ? await readCompatibleChartHistoryCache(pane.symbol, pane.timeframe)
         : null;
       if (cancelled) return;
-      const requestedFrom = Date.parse(getPeriodConfig(period).from);
       const cachedHistory = sanitizeCandles(cached?.candles ?? [], pane.symbol);
       const cachedCandles = cachedHistory.filter((candle) => candle.timestamp >= requestedFrom);
       const needsFiveDayBackfill = pane.broker === "Databento"
@@ -2086,11 +2130,15 @@ function WorkspaceChartPane({
         && (!needsFiveDayBackfill || hasFiveDayHistory(cachedHistory, pane.timeframe));
       if (cachedCandles.length) {
         latestCandlesRef.current = cachedCandles;
+        historyHydratedRef.current = true;
         setCandles(cachedCandles);
+        setLoading(false);
+        setError(null);
       }
       if (cachedIsHydrated) {
         historyHydratedRef.current = true;
         setLoading(false);
+        return;
       }
 
       try {
@@ -2111,11 +2159,7 @@ function WorkspaceChartPane({
         const mergedHistory = pane.broker === "Databento"
           ? mergeChartHistory(cachedCandles, clean)
           : clean;
-        const remoteIsHydrated = mergedHistory.length > 0
-          && (!needsFiveDayBackfill || hasFiveDayHistory(downloaded, pane.timeframe));
-        if (!remoteIsHydrated) {
-          throw new Error("Five-day history was incomplete.");
-        }
+        if (!mergedHistory.length) throw new Error("CME returned no usable candles.");
         const merged = pane.broker === "Databento"
           ? mergeHistoricalWithLiveTail(
               mergedHistory,
@@ -2132,9 +2176,9 @@ function WorkspaceChartPane({
       } catch (loadError) {
         if (cancelled) return;
         if (loadError instanceof DOMException && loadError.name === "AbortError") return;
-        if (!cachedIsHydrated) {
+        if (!cachedCandles.length && !immediateCandles.length) {
           historyHydratedRef.current = false;
-          setError("Five-day CME history is reconnecting");
+          setError("CME history is temporarily unavailable.");
         }
         setLoading(false);
       }
@@ -2627,7 +2671,7 @@ function WorkspaceChartPane({
           style={{ backgroundColor: settings.backgroundColor }}
           icon={BarChart3}
           title="Loading chart"
-          detail={`${displayCmeSymbol(pane.symbol)} · preparing five-day history`}
+          detail={`${displayCmeSymbol(pane.symbol)} · restoring ${formatChartInterval(pane.timeframe)} candles`}
         />
       ) : error ? (
         <div className="flex h-full items-center justify-center text-[13px] text-muted">{error}</div>
@@ -4510,48 +4554,49 @@ export default function KwantifyWorkspace({
   }, [authChecked, databentoOptions.length, section]);
 
   useEffect(() => {
-    if (section !== "charts" || !authChecked) return;
-    const abortController = new AbortController();
+    if (!authChecked) return;
     let cancelled = false;
     let warmupTimer: number | null = null;
-    const symbols = [...DATABENTO_DEFAULT_SYMBOLS];
+    const visiblePaneIds = collectWorkspacePaneIds(workspaceTree);
+    const visiblePanes = visiblePaneIds
+      .map((paneId) => workspacePanes.find((pane) => pane.id === paneId))
+      .filter((pane): pane is WorkspacePane => Boolean(pane && pane.broker === "Databento"));
+    const prioritizedPanes = [
+      ...visiblePanes.filter((pane) => pane.id === activePaneId),
+      ...visiblePanes.filter((pane) => pane.id !== activePaneId),
+    ];
+    const requests = prioritizedPanes
+      .map((pane) => ({ symbol: pane.symbol, timeframe: "1m" }))
+      .filter((request, index, source) =>
+      source.findIndex((candidate) =>
+        candidate.symbol === request.symbol && candidate.timeframe === request.timeframe) === index);
     let cursor = 0;
 
     const warmNext = async () => {
-      while (!cancelled && cursor < symbols.length) {
-        const symbol = symbols[cursor++];
-        const cached = await readChartHistoryCache(symbol, "5m");
-        if (cached && Date.now() - cached.updatedAt < 5 * 60_000) continue;
-
+      while (!cancelled && cursor < requests.length) {
+        const request = requests[cursor++];
         try {
-          const response = await fetch(
-            `/api/databento/market?symbol=${encodeURIComponent(symbol)}&timeframe=5m`,
-            { cache: "default", signal: abortController.signal },
-          );
-          if (!response.ok) continue;
-          const payload = await response.json();
-          const candles = sanitizeCandles((payload.candles ?? []) as Candle[], symbol);
-          if (!cancelled && candles.length) {
-            await writeChartHistoryCache(symbol, "5m", candles);
-          }
+          await warmDatabentoChartHistory(request.symbol, request.timeframe);
         } catch {
-          if (abortController.signal.aborted) return;
+          if (cancelled) return;
         }
         if (!cancelled) {
-          await new Promise<void>((resolve) => window.setTimeout(resolve, 750));
+          await new Promise<void>((resolve) => window.setTimeout(resolve, 250));
         }
       }
     };
 
-    // Warm only the compact default futures set after startup. Loading the full
-    // futures/options catalogue here overwhelms the browser and competes with live ticks.
-    warmupTimer = window.setTimeout(() => void warmNext(), 20_000);
+    // Warm only the saved/visible workspace's 1m source so all standard higher
+    // intervals can be derived locally without downloading the full catalogue.
+    warmupTimer = window.setTimeout(
+      () => void warmNext(),
+      section === "charts" ? 600 : 1_200,
+    );
     return () => {
       cancelled = true;
       if (warmupTimer !== null) window.clearTimeout(warmupTimer);
-      abortController.abort();
     };
-  }, [authChecked, section]);
+  }, [activePaneId, authChecked, section, workspacePanes, workspaceTree]);
 
   useEffect(() => {
     savePaperTradingAccounts(paperTradingAccounts);
@@ -7204,10 +7249,17 @@ export default function KwantifyWorkspace({
 
   const selectInstrument = (symbol: string, broker?: string, watchlistKey?: string) => {
     clearBacktest();
+    const nextBroker = broker ?? connectedBroker ?? "OANDA";
+    if (nextBroker === "Databento") {
+      void warmDatabentoChartHistory(symbol, "1m");
+      if (selectedTimeframe !== "1m") {
+        void warmDatabentoChartHistory(symbol, selectedTimeframe);
+      }
+    }
     updateWorkspacePane(activePaneId, {
       symbol,
-      broker: broker ?? connectedBroker ?? "OANDA",
-      watchlistKey: watchlistKey ?? makeWatchlistKey(symbol, broker ?? connectedBroker ?? "OANDA"),
+      broker: nextBroker,
+      watchlistKey: watchlistKey ?? makeWatchlistKey(symbol, nextBroker),
     });
     setSelectedInstrument(symbol);
     if (watchlistKey) setSelectedWatchlistKey(watchlistKey);
@@ -7459,6 +7511,11 @@ export default function KwantifyWorkspace({
             {visibleFavouriteIntervals.map((tf) => (
               <button
                 key={tf}
+                onPointerEnter={() => {
+                  if (activeWorkspacePane.broker === "Databento") {
+                    void warmDatabentoChartHistory(activeWorkspacePane.symbol, tf);
+                  }
+                }}
                 onClick={() => selectTimeframe(tf)}
                 className={`rounded-lg px-2.5 py-1.5 text-[13px] transition-all ${selectedTimeframe === tf ? "bg-surface text-foreground" : "text-muted hover:text-foreground"}`}
               >
@@ -7556,6 +7613,11 @@ export default function KwantifyWorkspace({
                             <div key={option.id} className={`flex items-center rounded-lg border transition-colors ${selectedTimeframe === option.id ? "border-primary/30 bg-primary/10" : "border-transparent hover:border-border hover:bg-surface"}`}>
                               <button
                                 type="button"
+                                onPointerEnter={() => {
+                                  if (activeWorkspacePane.broker === "Databento") {
+                                    void warmDatabentoChartHistory(activeWorkspacePane.symbol, option.id);
+                                  }
+                                }}
                                 onClick={() => {
                                   selectTimeframe(option.id);
                                   setShowAllTF(false);

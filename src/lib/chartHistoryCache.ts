@@ -150,20 +150,15 @@ async function readAllCachedHistory() {
   return [...records.values()];
 }
 
-/**
- * Returns exact history when available, otherwise builds a larger time-based
- * interval from the finest compatible series already stored for this symbol.
- * Event-based charts deliberately require their own trades and are never
- * fabricated from OHLC candles.
- */
-export async function readCompatibleChartHistoryCache(symbol: string, timeframe: string) {
-  const exact = await readChartHistoryCache(symbol, timeframe);
-  if (exact?.candles.length) return exact;
-
+function buildCompatibleRecord(
+  records: CachedHistory[],
+  symbol: string,
+  timeframe: string,
+) {
   const targetDuration = timeframeDurationMs(timeframe);
   if (!targetDuration) return null;
 
-  const candidates = (await readAllCachedHistory())
+  const candidates = records
     .filter((record) => record.symbol === symbol)
     .map((record) => ({
       record,
@@ -185,13 +180,44 @@ export async function readCompatibleChartHistoryCache(symbol: string, timeframe:
   const candles = resampleCandles(source.candles, timeframe);
   if (!candles.length) return null;
 
-  const record: CachedHistory = {
+  return {
     key: cacheKey(symbol, timeframe),
     symbol,
     timeframe,
     candles,
     updatedAt: source.updatedAt,
-  };
+  } satisfies CachedHistory;
+}
+
+/**
+ * Synchronous first-paint lookup. Once a series has been read or prewarmed,
+ * timeframe switches can paint it in the same render instead of flashing a
+ * loading surface while IndexedDB is opened again.
+ */
+export function peekCompatibleChartHistoryCache(symbol: string, timeframe: string) {
+  const exact = memoryCache.get(cacheKey(symbol, timeframe));
+  if (exact?.candles.length) return exact;
+
+  const compatible = buildCompatibleRecord([...memoryCache.values()], symbol, timeframe);
+  if (compatible) memoryCache.set(compatible.key, compatible);
+  return compatible;
+}
+
+/**
+ * Returns exact history when available, otherwise builds a larger time-based
+ * interval from the finest compatible series already stored for this symbol.
+ * Event-based charts deliberately require their own trades and are never
+ * fabricated from OHLC candles.
+ */
+export async function readCompatibleChartHistoryCache(symbol: string, timeframe: string) {
+  const memoryRecord = peekCompatibleChartHistoryCache(symbol, timeframe);
+  if (memoryRecord?.candles.length) return memoryRecord;
+
+  const exact = await readChartHistoryCache(symbol, timeframe);
+  if (exact?.candles.length) return exact;
+
+  const record = buildCompatibleRecord(await readAllCachedHistory(), symbol, timeframe);
+  if (!record) return null;
   memoryCache.set(record.key, record);
   return record;
 }
