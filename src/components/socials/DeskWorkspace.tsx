@@ -279,6 +279,107 @@ function Modal({
   );
 }
 
+function DeskInviteButton({
+  workspace,
+  enabled,
+  working,
+  iconOnly = false,
+  onInvite,
+}: {
+  workspace: DeskWorkspaceModel;
+  enabled: boolean;
+  working: boolean;
+  iconOnly?: boolean;
+  onInvite: (username: string) => Promise<boolean>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [username, setUsername] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const busy = working || submitting;
+
+  const close = () => {
+    if (busy) return;
+    setOpen(false);
+    setUsername("");
+  };
+
+  const submit = async () => {
+    const normalized = username.trim().replace(/^@/, "");
+    if (!normalized || busy) return;
+    setSubmitting(true);
+    try {
+      const saved = await onInvite(normalized);
+      if (saved) {
+        setOpen(false);
+        setUsername("");
+      }
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        disabled={!enabled}
+        title="Invite a Kwant Desk user"
+        className={iconOnly
+          ? "flex h-8 w-8 items-center justify-center rounded-lg border border-border text-muted transition-colors hover:border-primary/25 hover:text-primary disabled:opacity-30"
+          : "flex h-8 items-center justify-center gap-1.5 rounded-lg border border-primary/20 bg-primary/[0.05] text-[7px] font-semibold text-primary transition-colors hover:border-primary/40 hover:bg-primary/[0.08] disabled:opacity-35"}
+      >
+        <UserPlus className={iconOnly ? "h-3.5 w-3.5" : "h-3 w-3"} />
+        {iconOnly ? null : "Invite"}
+      </button>
+      {open ? (
+        <Modal
+          title={`Invite to ${workspace.name}`}
+          subtitle="Invite a Kwant Desk user by their unique @username."
+          icon={<UserPlus className="h-4 w-4" />}
+          onClose={close}
+          footer={(
+            <>
+              <button type="button" onClick={close} disabled={busy} className="h-9 rounded-xl border border-border px-4 text-[8px] font-semibold text-muted disabled:opacity-40">Cancel</button>
+              <button type="button" onClick={() => void submit()} disabled={!username.trim() || busy} className="flex h-9 min-w-[116px] items-center justify-center gap-2 rounded-xl bg-primary px-4 text-[8px] font-semibold text-background disabled:opacity-50">
+                {submitting ? <span className="h-3 w-3 animate-spin rounded-full border-2 border-background/30 border-t-background" /> : null}
+                {submitting ? "Inviting…" : "Send invitation"}
+              </button>
+            </>
+          )}
+        >
+          <label>
+            <span className="mb-1.5 block text-[7px] uppercase tracking-[0.1em] text-muted">Kwant Desk user</span>
+            <div className="flex h-11 items-center rounded-xl border border-border bg-background px-3 focus-within:border-primary/40">
+              <span className="text-[9px] text-muted">@</span>
+              <input
+                autoFocus
+                autoComplete="off"
+                spellCheck={false}
+                value={username}
+                onChange={(event) => setUsername(event.target.value.replace(/^@/, ""))}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    void submit();
+                  }
+                }}
+                placeholder="username"
+                className="h-full flex-1 bg-transparent px-1 text-[9px] text-foreground outline-none placeholder:text-muted"
+              />
+            </div>
+          </label>
+          <div className="mt-3 rounded-xl border border-border bg-background/30 p-3 text-[7px] leading-4 text-muted">
+            {workspace.privacy === "PRIVATE"
+              ? "Private Desk invitations are the only route in. The Kwant Desk user must accept before channels become visible."
+              : "The Kwant Desk user receives an invitation they can accept or decline from the Desk directory."}
+          </div>
+        </Modal>
+      ) : null}
+    </>
+  );
+}
+
 function DeskSettingsModal({
   workspace,
   working,
@@ -428,7 +529,6 @@ export default function DeskWorkspace({
   const [activeChannelId, setActiveChannelId] = useState("");
   const [showSettings, setShowSettings] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
-  const [showInvite, setShowInvite] = useState(false);
   const [showMembers, setShowMembers] = useState(false);
   const [showChannel, setShowChannel] = useState(false);
   const [lifecycleTarget, setLifecycleTarget] = useState<{
@@ -437,7 +537,6 @@ export default function DeskWorkspace({
   } | null>(null);
   const [deleteConfirmation, setDeleteConfirmation] = useState("");
   const [channelEditor, setChannelEditor] = useState<ChannelDraft>(emptyChannelDraft);
-  const [inviteHandle, setInviteHandle] = useState("");
   const [message, setMessage] = useState("");
   const [attachment, setAttachment] = useState<DeskMessageAttachment | null>(null);
   const [imagePreview, setImagePreview] = useState<DeskMessageAttachment | null>(null);
@@ -788,17 +887,13 @@ export default function DeskWorkspace({
     await perform({ action: "resolve-request", deskId, requestId, resolution }, resolution === "accepted" ? "Desk access approved." : "Request updated.");
   };
 
-  const sendInvite = async () => {
-    if (!activeDesk || !inviteHandle.trim()) return;
-    const saved = await perform({
+  const sendInvite = async (username: string) => {
+    if (!activeDesk || !username.trim()) return false;
+    return perform({
       action: "invite",
       deskId: activeDesk.deskId,
-      handle: inviteHandle,
-    }, `Invitation sent to @${inviteHandle.replace(/^@/, "")}.`);
-    if (saved) {
-      setInviteHandle("");
-      setShowInvite(false);
-    }
+      handle: username,
+    }, `Invitation sent to @${username.replace(/^@/, "")}.`);
   };
 
   const openChannelEditor = (channel?: DeskChannel) => {
@@ -959,7 +1054,7 @@ export default function DeskWorkspace({
                     <button type="button" onClick={openSettings} disabled={!owner} className="flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground disabled:opacity-30" title="Desk settings"><Settings2 className="h-3.5 w-3.5" /></button>
                   </div>
                   <div className="mt-3 grid grid-cols-2 gap-1.5">
-                    <button type="button" onClick={() => setShowInvite(true)} disabled={!canInvite} className="flex h-8 items-center justify-center gap-1.5 rounded-lg border border-primary/20 bg-primary/[0.05] text-[7px] font-semibold text-primary disabled:opacity-35"><UserPlus className="h-3 w-3" />Invite</button>
+                    <DeskInviteButton workspace={activeDesk} enabled={canInvite} working={working} onInvite={sendInvite} />
                     <button type="button" onClick={() => setShowMembers(true)} className="flex h-8 items-center justify-center gap-1.5 rounded-lg border border-border bg-surface/35 text-[7px] font-semibold text-muted hover:text-foreground"><UsersRound className="h-3 w-3" />Members</button>
                   </div>
                   <button
@@ -1029,7 +1124,7 @@ export default function DeskWorkspace({
                   >
                     {activeFocusLock && canReleaseFocus ? <Volume2 className="h-3.5 w-3.5" /> : <VolumeX className="h-3.5 w-3.5" />}
                   </button>
-                  <button type="button" onClick={() => setShowInvite(true)} disabled={!canInvite} className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-muted disabled:opacity-30"><UserPlus className="h-3.5 w-3.5" /></button>
+                  <DeskInviteButton workspace={activeDesk} enabled={canInvite} working={working} iconOnly onInvite={sendInvite} />
                   <button type="button" onClick={() => setShowMembers(true)} className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-muted"><UsersRound className="h-3.5 w-3.5" /></button>
                   {owner ? <button type="button" onClick={openSettings} className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-muted"><Settings2 className="h-3.5 w-3.5" /></button> : null}
                 </div>
@@ -1296,13 +1391,6 @@ export default function DeskWorkspace({
               </label>
             </div>
           )}
-        </Modal>
-      ) : null}
-
-      {showInvite && activeDesk ? (
-        <Modal title={`Invite to ${activeDesk.name}`} subtitle="Invite a trader by their unique Kwant handle." icon={<UserPlus className="h-4 w-4" />} onClose={() => setShowInvite(false)} footer={<><button type="button" onClick={() => setShowInvite(false)} className="h-9 rounded-xl border border-border px-4 text-[8px] font-semibold text-muted">Cancel</button><button type="button" onClick={() => void sendInvite()} disabled={!inviteHandle.trim() || working} className="h-9 rounded-xl bg-primary px-4 text-[8px] font-semibold text-background disabled:opacity-50">Send invitation</button></>}>
-          <label><span className="mb-1.5 block text-[7px] uppercase tracking-[0.1em] text-muted">Trader handle</span><div className="flex h-11 items-center rounded-xl border border-border bg-background px-3 focus-within:border-primary/40"><span className="text-[9px] text-muted">@</span><input autoFocus value={inviteHandle} onChange={(event) => setInviteHandle(event.target.value.replace(/^@/, ""))} onKeyDown={(event) => { if (event.key === "Enter") void sendInvite(); }} placeholder="trader_handle" className="h-full flex-1 bg-transparent px-1 text-[9px] outline-none" /></div></label>
-          <div className="mt-3 rounded-xl border border-border bg-background/30 p-3 text-[7px] leading-4 text-muted">{activeDesk.privacy === "PRIVATE" ? "Private Desk invitations are the only route in. The trader must accept before channels become visible." : "The trader receives an invitation they can accept or decline from the Desk directory."}</div>
         </Modal>
       ) : null}
 

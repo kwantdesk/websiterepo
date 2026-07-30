@@ -1067,7 +1067,7 @@ export default function FriendsPanel({ onClose, onUnreadCountChange, initialFrie
               autoFocus
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search name or @handle"
+              placeholder="Search Kwant Desk users"
               className="w-full rounded-xl border border-border bg-surface py-2.5 pl-9 pr-3 text-[11px] outline-none placeholder:text-muted focus:border-primary/40"
             />
           </div>

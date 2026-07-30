@@ -676,7 +676,7 @@ export default function SettingsPage() {
                             .slice(0, 24),
                         )}
                         className={`${input} pl-8 pr-10`}
-                        placeholder="trader_handle"
+                        placeholder="kwantdesk_user"
                         aria-describedby="identity-handle-status"
                       />
                       <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2">

@@ -823,7 +823,7 @@ export async function POST(request: NextRequest) {
 
   if (action === "invite") {
     const handle = cleanHandle(body.handle);
-    if (!handle) return NextResponse.json({ error: "Enter a trader handle." }, { status: 400 });
+    if (!handle) return NextResponse.json({ error: "Enter a Kwant Desk user." }, { status: 400 });
     const { data: profile } = await supabase
       .from("social_objects")
       .select("user_id")
