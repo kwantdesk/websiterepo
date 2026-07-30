@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { type ComponentType } from "react";
+import { type ComponentType, useEffect } from "react";
 import {
   BarChart3,
   BookOpen,
@@ -17,6 +17,7 @@ import {
   User,
   UsersRound,
 } from "lucide-react";
+import { preloadWorkspaceData } from "@/lib/workspaceDataCache";
 
 type SidebarKey =
   | "ai"
@@ -82,16 +83,28 @@ const navItems: Array<{
   { key: "socials", href: "/socials", label: "Socials", title: "Socials", icon: UsersRound },
 ];
 
-function preloadWorkspace(key: SidebarKey) {
-  if (key === "gamma") return import("@/components/options-flow/GammaWorkspace");
-  if (key === "gexmap") return import("@/components/gex-map/GexMapWorkspace");
-  if (key === "gexdesk") return import("@/components/gexdesk/GexDeskWorkspace");
-  if (key === "gameplan") return import("@/components/gameplan/GameplanWorkspace");
-  if (key === "kwantbot") return import("@/components/kwantbot/KwantBotIntelligenceWorkspace");
-  if (key === "news") return import("@/components/news/NewsWorkspace");
-  if (key === "zyon") return import("@/components/zyon/ZyonWorkspace");
-  if (key === "journal") return import("@/components/journal/JournalWorkspace");
-  return Promise.resolve();
+function preloadWorkspaceComponent(key: SidebarKey) {
+  return key === "gamma"
+    ? import("@/components/options-flow/GammaWorkspace")
+    : key === "gexmap"
+      ? import("@/components/gex-map/GexMapWorkspace")
+      : key === "gexdesk"
+        ? import("@/components/gexdesk/GexDeskWorkspace")
+        : key === "gameplan"
+          ? import("@/components/gameplan/GameplanWorkspace")
+          : key === "kwantbot"
+            ? import("@/components/kwantbot/KwantBotIntelligenceWorkspace")
+            : key === "news"
+              ? import("@/components/news/NewsWorkspace")
+              : key === "zyon"
+                ? import("@/components/zyon/ZyonWorkspace")
+                : key === "journal"
+                  ? import("@/components/journal/JournalWorkspace")
+                  : Promise.resolve();
+}
+
+async function preloadWorkspace(key: SidebarKey) {
+  await Promise.allSettled([preloadWorkspaceComponent(key), preloadWorkspaceData(key)]);
 }
 
 function ActiveUnderline() {
@@ -110,6 +123,23 @@ export default function AppSidebar({
   onAccountClick,
   orientation = "vertical",
 }: AppSidebarProps) {
+  useEffect(() => {
+    const warmKeys: SidebarKey[] = [
+      "gamma",
+      "gameplan",
+      "gexmap",
+      "gexdesk",
+      "news",
+      "zyon",
+      "journal",
+    ];
+    const timers = warmKeys.map((key, index) => window.setTimeout(
+      () => void preloadWorkspaceComponent(key),
+      1_200 + index * 900,
+    ));
+    return () => timers.forEach((timer) => window.clearTimeout(timer));
+  }, []);
+
   if (orientation === "vertical") {
     return (
       <div className="relative z-[70] w-[52px] shrink-0 self-stretch">

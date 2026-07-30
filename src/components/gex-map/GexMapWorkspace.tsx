@@ -29,6 +29,11 @@ import {
   type ExposureStrike,
   type GreekMode,
 } from "@/lib/optionsFlow";
+import {
+  fetchWorkspaceData,
+  gexMapCacheKey,
+  readWorkspaceData,
+} from "@/lib/workspaceDataCache";
 
 type PanelConfig = {
   id: "left" | "centre" | "right";
@@ -432,21 +437,23 @@ function ExposurePanel({
 
 export default function GexMapWorkspace() {
   const [panels, setPanels] = useState<PanelConfig[]>(DEFAULT_PANELS);
-  const [panelData, setPanelData] = useState<Record<string, GexMapPanelPayload | null>>({
-    left: null,
-    centre: null,
-    right: null,
-  });
+  const [panelData, setPanelData] = useState<Record<string, GexMapPanelPayload | null>>(() =>
+    Object.fromEntries(DEFAULT_PANELS.map((panel) => [
+      panel.id,
+      readWorkspaceData<GexMapPanelPayload>(gexMapCacheKey(panel.symbol, panel.greekMode)),
+    ])),
+  );
   const [panelErrors, setPanelErrors] = useState<Record<string, string | null>>({
     left: null,
     centre: null,
     right: null,
   });
-  const [loading, setLoading] = useState<Record<string, boolean>>({
-    left: true,
-    centre: true,
-    right: true,
-  });
+  const [loading, setLoading] = useState<Record<string, boolean>>(() =>
+    Object.fromEntries(DEFAULT_PANELS.map((panel) => [
+      panel.id,
+      !readWorkspaceData<GexMapPanelPayload>(gexMapCacheKey(panel.symbol, panel.greekMode)),
+    ])),
+  );
   const [replayMode, setReplayMode] = useState(false);
   const [replayDate, setReplayDate] = useState("");
   const [cursor, setCursor] = useState(0);
@@ -466,7 +473,14 @@ export default function GexMapWorkspace() {
     const load = async () => {
       if (requestInFlight || cancelled) return;
       requestInFlight = true;
-      setLoading(Object.fromEntries(panels.map((panel) => [panel.id, true])));
+      const cachedPanels = Object.fromEntries(panels.map((panel) => {
+        const cached = readWorkspaceData<GexMapPanelPayload>(
+          gexMapCacheKey(panel.symbol, panel.greekMode, requestedReplayDate),
+        );
+        return [panel.id, cached];
+      }));
+      setPanelData((current) => ({ ...current, ...cachedPanels }));
+      setLoading(Object.fromEntries(panels.map((panel) => [panel.id, !cachedPanels[panel.id]])));
       try {
         const results = await Promise.allSettled(panels.map(async (panel) => {
           const query = new URLSearchParams({
@@ -474,9 +488,11 @@ export default function GexMapWorkspace() {
             greekMode: panel.greekMode,
             ...(requestedReplayDate ? { sessionDate: requestedReplayDate } : {}),
           });
-          const response = await fetch(`/api/gex-map?${query}`, { cache: "no-store" });
-          const payload = await response.json() as GexMapPanelPayload & { error?: string };
-          if (!response.ok) throw new Error(payload.error || `${panel.symbol} ${panel.greekMode} could not be loaded.`);
+          const payload = await fetchWorkspaceData<GexMapPanelPayload>(
+            gexMapCacheKey(panel.symbol, panel.greekMode, requestedReplayDate),
+            `/api/gex-map?${query}`,
+            { force: true },
+          );
           return { id: panel.id, payload };
         }));
         if (cancelled) return;

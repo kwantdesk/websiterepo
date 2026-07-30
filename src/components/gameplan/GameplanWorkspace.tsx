@@ -82,6 +82,11 @@ import {
   DATABENTO_LIVE_TICK_EVENT,
   type DatabentoLiveStatus,
 } from "@/lib/chartLiveEvents";
+import {
+  fetchWorkspaceData,
+  gameplanCacheKey,
+  readWorkspaceData,
+} from "@/lib/workspaceDataCache";
 
 type DetailMode = "beginner" | "standard" | "pro";
 type Level = GameplanEdition["ladder"][number];
@@ -1660,10 +1665,14 @@ function LoadingState() {
 
 export default function GameplanWorkspace({ initialInstrument = "NQ" }: { initialInstrument?: string }) {
   const initialRoot = initialInstrument.toUpperCase().startsWith("ES") || initialInstrument.toUpperCase().startsWith("MES") ? "ES" : "NQ";
+  const initialPayloadRef = useRef(
+    readWorkspaceData<GameplanPayload>(gameplanCacheKey(initialRoot, "newyork")),
+  );
+  const initialPayload = initialPayloadRef.current;
   const [root, setRoot] = useState<"NQ" | "ES">(initialRoot);
   const [session, setSession] = useState<GameplanSession>("newyork");
-  const [payload, setPayload] = useState<GameplanPayload | null>(null);
-  const [currentPrice, setCurrentPrice] = useState<number | null>(null);
+  const [payload, setPayload] = useState<GameplanPayload | null>(initialPayload);
+  const [currentPrice, setCurrentPrice] = useState<number | null>(initialPayload?.current_price ?? null);
   const [volatilityCandles, setVolatilityCandles] = useState<VolatilityCandle[]>([]);
   const [volatilityLoading, setVolatilityLoading] = useState(true);
   const [volatilityError, setVolatilityError] = useState<string | null>(null);
@@ -1673,21 +1682,21 @@ export default function GameplanWorkspace({ initialInstrument = "NQ" }: { initia
   const [liveFeedState, setLiveFeedState] = useState<"connecting" | "live" | "fallback">("live");
   const [mode, setMode] = useState<DetailMode>("standard");
   const [whatIf, setWhatIf] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!initialPayload);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [glossaryTerm, setGlossaryTerm] = useState<string | null>(null);
   const [showDiff, setShowDiff] = useState(false);
   const [copied, setCopied] = useState(false);
   const [addedToChartKey, setAddedToChartKey] = useState<string | null>(null);
-  const previousPriceRef = useRef<number | null>(null);
+  const previousPriceRef = useRef<number | null>(initialPayload?.current_price ?? null);
   const lastNativeTickAtRef = useRef(0);
   const lastFeedSuccessAtRef = useRef(Date.now());
   const feedFailureTimerRef = useRef<number | null>(null);
   const priceTickTimerRef = useRef<number | null>(null);
   const planRequestRef = useRef(0);
   const planRefreshDelayRef = useRef(5_000);
-  const latestPayloadRef = useRef<GameplanPayload | null>(null);
+  const latestPayloadRef = useRef<GameplanPayload | null>(initialPayload);
   const countdown = useCountdown(session);
 
   const updateLivePrice = useCallback((nextPrice: number) => {
@@ -1743,9 +1752,11 @@ export default function GameplanWorkspace({ initialInstrument = "NQ" }: { initia
     if (manual) setRefreshing(true);
     else if (!background) setLoading(true);
     try {
-      const response = await fetch(`/api/gameplan?root=${root}&session=${session}`, { cache: "no-store" });
-      const next = await response.json() as GameplanPayload & { error?: string };
-      if (!response.ok) throw new Error(next.error || "Gameplan could not be loaded.");
+      const next = await fetchWorkspaceData<GameplanPayload>(
+        gameplanCacheKey(root, session),
+        `/api/gameplan?root=${root}&session=${session}`,
+        { force: true },
+      );
       if (requestId !== planRequestRef.current) return;
       setPayload(next);
       latestPayloadRef.current = next;
@@ -1782,17 +1793,27 @@ export default function GameplanWorkspace({ initialInstrument = "NQ" }: { initia
   useEffect(() => {
     let disposed = false;
     let timer: number | null = null;
+    const cached = readWorkspaceData<GameplanPayload>(gameplanCacheKey(root, session));
+    if (cached) {
+      setPayload(cached);
+      latestPayloadRef.current = cached;
+      setLoading(false);
+      setError(null);
+      if (cached.current_price !== null) updateLivePrice(cached.current_price);
+    } else {
+      setPayload(null);
+    }
     const run = async (background: boolean) => {
       await loadPlan(false, background);
       if (!disposed) timer = window.setTimeout(() => void run(true), planRefreshDelayRef.current);
     };
-    timer = window.setTimeout(() => void run(false), 0);
+    timer = window.setTimeout(() => void run(Boolean(cached)), 0);
     return () => {
       disposed = true;
       planRequestRef.current += 1;
       if (timer !== null) window.clearTimeout(timer);
     };
-  }, [loadPlan]);
+  }, [loadPlan, root, session, updateLivePrice]);
 
   useEffect(() => {
     const refreshOneLiner = () => {

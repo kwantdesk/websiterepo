@@ -36,6 +36,11 @@ import type {
   GexDeskSourceSymbol,
   GexDeskZone,
 } from "@/lib/gexDesk";
+import {
+  fetchWorkspaceData,
+  gexdeskHistoryCacheKey,
+  readWorkspaceData,
+} from "@/lib/workspaceDataCache";
 
 type SourceFilter = "COMBINED" | GexDeskSourceSymbol;
 type ExpiryFilter = "ALL" | "0DTE";
@@ -242,7 +247,9 @@ function ZoneFocus({
 }
 
 export default function GexDeskWorkspace() {
-  const [payload, setPayload] = useState<GexDeskPayload | null>(null);
+  const initialPayloadRef = useRef(readWorkspaceData<GexDeskPayload>("gexdesk:map"));
+  const initialPayload = initialPayloadRef.current;
+  const [payload, setPayload] = useState<GexDeskPayload | null>(initialPayload);
   const [error, setError] = useState("");
   const [refreshing, setRefreshing] = useState(false);
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>("COMBINED");
@@ -270,9 +277,12 @@ export default function GexDeskWorkspace() {
     const controller = new AbortController();
     requestRef.current = controller;
     try {
-      const response = await fetch("/api/gexdesk", { cache: "no-store", signal: controller.signal });
-      const result = await response.json() as GexDeskPayload & { error?: string };
-      if (!response.ok) throw new Error(result.error || "Gexdesk could not load its positioning map.");
+      const result = await fetchWorkspaceData<GexDeskPayload>(
+        "gexdesk:map",
+        "/api/gexdesk",
+        { force: true },
+      );
+      if (controller.signal.aborted) return;
       setPayload((current) => ({
         ...result,
         zones: result.zones.map((zone) => {
@@ -302,7 +312,7 @@ export default function GexDeskWorkspace() {
   }, []);
 
   useEffect(() => {
-    void load();
+    void load(Boolean(initialPayload));
     return () => requestRef.current?.abort();
   }, [load]);
 
@@ -312,12 +322,12 @@ export default function GexDeskWorkspace() {
     const controller = new AbortController();
     historyRequestRef.current = controller;
     try {
-      const response = await fetch(`/api/gexdesk/history?source=${sourceFilter}`, {
-        cache: "no-store",
-        signal: controller.signal,
-      });
-      const result = await response.json() as GexDeskHistoryPayload & { error?: string };
-      if (!response.ok) throw new Error(result.error || "Intraday gamma evolution could not load.");
+      const result = await fetchWorkspaceData<GexDeskHistoryPayload>(
+        gexdeskHistoryCacheKey(sourceFilter),
+        `/api/gexdesk/history?source=${sourceFilter}`,
+        { force: true },
+      );
+      if (controller.signal.aborted) return;
       setHistory(result);
       setHistoryError("");
     } catch (historyLoadError) {
@@ -330,8 +340,9 @@ export default function GexDeskWorkspace() {
 
   useEffect(() => {
     if (activePanel !== "EVOLUTION") return;
-    setHistory(null);
-    void loadHistory();
+    const cached = readWorkspaceData<GexDeskHistoryPayload>(gexdeskHistoryCacheKey(sourceFilter));
+    setHistory(cached);
+    void loadHistory(Boolean(cached));
     const interval = window.setInterval(() => {
       if (document.visibilityState === "visible") void loadHistory(true);
     }, 30_000);

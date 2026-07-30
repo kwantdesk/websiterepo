@@ -38,6 +38,12 @@ import {
   type OptionsPriceMode,
   type PremiumDriftPoint,
 } from "@/lib/optionsFlow";
+import {
+  fetchWorkspaceData,
+  optionsFlowCacheKey,
+  readWorkspaceData,
+  writeWorkspaceData,
+} from "@/lib/workspaceDataCache";
 
 const LOCAL_FUTURES_PULSE_MS = 250;
 const LEVEL_REFRESH_MS = 5_000;
@@ -696,14 +702,15 @@ function LoadingScreen() {
 
 
 export default function GammaWorkspace() {
+  const initialData = readWorkspaceData<OptionsFlowPayload>(optionsFlowCacheKey("SPX", "CASH"));
   const pageScrollRef = useRef<HTMLDivElement | null>(null);
   const [symbol, setSymbol] = useState("SPX");
   const [priceMode, setPriceMode] = useState<OptionsPriceMode>("CASH");
   const [activeGreek, setActiveGreek] = useState<GreekMode>("GAMMA");
   const [gexScope, setGexScope] = useState<"FULL_CHAIN" | "ZERO_DTE">("FULL_CHAIN");
-  const [data, setData] = useState<OptionsFlowPayload | null>(null);
+  const [data, setData] = useState<OptionsFlowPayload | null>(initialData);
   const [chartMarketPreview, setChartMarketPreview] = useState<ChartMarketPreview | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!initialData);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pricePulseMs, setPricePulseMs] = useState(2_000);
@@ -734,7 +741,7 @@ export default function GammaWorkspace() {
   const livePriceRef = useRef<HTMLSpanElement>(null);
   const previousPriceRef = useRef<number | null>(null);
   const requestIdRef = useRef(0);
-  const dataRef = useRef<OptionsFlowPayload | null>(null);
+  const dataRef = useRef<OptionsFlowPayload | null>(initialData);
 
   useEffect(() => {
     if (!instrumentMenuOpen) return;
@@ -762,13 +769,12 @@ export default function GammaWorkspace() {
     if (manual) setRefreshing(true);
     else if (!background) setLoading(true);
     try {
-      const response = await fetch(
+      const payload = await fetchWorkspaceData<OptionsFlowPayload>(
+        optionsFlowCacheKey(nextSymbol, nextPriceMode),
         `/api/options-flow?symbol=${encodeURIComponent(nextSymbol)}&priceMode=${nextPriceMode}`,
-        { cache: "no-store" },
+        { force: true },
       );
-      const payload = await response.json() as OptionsFlowPayload & { error?: string };
       if (requestId !== requestIdRef.current) return;
-      if (!response.ok) throw new Error(payload.error || "Options Flow could not be loaded.");
       dataRef.current = payload;
       setData(payload);
       setError(null);
@@ -783,7 +789,20 @@ export default function GammaWorkspace() {
   }, []);
 
   useEffect(() => {
-    const timeout = window.setTimeout(() => void loadData(symbol, priceMode), 0);
+    const cached = readWorkspaceData<OptionsFlowPayload>(optionsFlowCacheKey(symbol, priceMode));
+    if (cached) {
+      dataRef.current = cached;
+      setData(cached);
+      setLoading(false);
+      setError(null);
+    } else {
+      dataRef.current = null;
+      setData(null);
+    }
+    const timeout = window.setTimeout(
+      () => void loadData(symbol, priceMode, false, Boolean(cached)),
+      0,
+    );
     return () => window.clearTimeout(timeout);
   }, [loadData, priceMode, symbol]);
 
@@ -831,6 +850,7 @@ export default function GammaWorkspace() {
             rateLimitRemaining: payload.rateLimitRemaining ?? active.rateLimitRemaining,
           };
           dataRef.current = next;
+          writeWorkspaceData(optionsFlowCacheKey(symbol, priceMode), next);
           return next;
         });
       } catch {
