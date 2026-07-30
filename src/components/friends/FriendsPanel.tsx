@@ -30,6 +30,7 @@ import {
   X,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase";
+import UserAvatar from "@/components/socials/UserAvatar";
 import {
   PRESENCE_OPTIONS,
   presenceOption,
@@ -100,16 +101,7 @@ function messageTime(value: string) {
 
 function Avatar({ friend, size = "md" }: { friend: FriendSummary; size?: "sm" | "md" | "lg" }) {
   const option = presenceOption(friend.presenceStatus);
-  const dimensions = size === "lg" ? "h-11 w-11 text-[13px]" : size === "sm" ? "h-8 w-8 text-[10px]" : "h-9 w-9 text-[11px]";
-  return (
-    <div className={`relative flex shrink-0 items-center justify-center rounded-full border border-border bg-surface font-semibold text-foreground ${dimensions}`}>
-      {friend.avatarUrl ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={friend.avatarUrl} alt="" className="h-full w-full rounded-full object-cover" />
-      ) : initials(friend.displayName)}
-      <span className={`absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-panel ${option.dotClassName}`} />
-    </div>
-  );
+  return <UserAvatar label={friend.displayName} avatarUrl={friend.avatarUrl} size={size === "lg" ? "lg" : size === "sm" ? "sm" : "md"} statusClassName={option.dotClassName} />;
 }
 
 function GroupAvatar({ group, size = "md" }: { group: FriendGroupSummary; size?: "sm" | "md" | "lg" }) {

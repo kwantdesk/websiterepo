@@ -547,9 +547,11 @@ export function normalizeSocialProfile(value: unknown, label = "Kwant Trader"): 
       scores: profileScope(visibility.scores, fallback.visibility.scores),
       cards: profileScope(visibility.cards, fallback.visibility.cards),
     },
-    avatarUrl: typeof candidate.avatarUrl === "string" && candidate.avatarUrl.startsWith("data:image/")
+    avatarUrl: typeof candidate.avatarUrl === "string" && /^data:image\/(png|jpe?g|webp|gif);base64,/i.test(candidate.avatarUrl)
       ? candidate.avatarUrl.slice(0, 800_000)
-      : "",
+      : typeof candidate.avatarUrl === "string" && /^https:\/\//i.test(candidate.avatarUrl)
+        ? candidate.avatarUrl.slice(0, 2_000)
+        : "",
     presenceStatus,
     presenceMessage: profileText(candidate.presenceMessage, "", 120),
     lastSeenAt: profileText(candidate.lastSeenAt, "", 60),

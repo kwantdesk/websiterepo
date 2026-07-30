@@ -6,6 +6,7 @@ import TimeZoneSelect from "@/components/ui/TimeZoneSelect";
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import AppSidebar from "@/components/AppSidebar";
+import UserAvatar from "@/components/socials/UserAvatar";
 import {
   BarChart3,
   Bell,
@@ -262,6 +263,7 @@ export default function SettingsPage() {
   const [profileName, setProfileName] = useState("");
   const [profileEmail, setProfileEmail] = useState("");
   const [profileUsername, setProfileUsername] = useState("");
+  const [profileAvatarUrl, setProfileAvatarUrl] = useState("");
   const [presenceStatus, setPresenceStatus] = useState<PresenceStatus>("online");
   const [presenceMessage, setPresenceMessage] = useState("");
   const [presenceLoading, setPresenceLoading] = useState(true);
@@ -321,6 +323,7 @@ export default function SettingsPage() {
         setProfileName("");
         setProfileEmail("");
         setProfileUsername("");
+        setProfileAvatarUrl("");
         return;
       }
       let hydrated: Awaited<ReturnType<typeof hydrateUserPreferences>> | null = null;
@@ -360,6 +363,7 @@ export default function SettingsPage() {
           if (friendsPayload.viewer) {
             setPresenceStatus(friendsPayload.viewer.presenceStatus);
             setPresenceMessage(friendsPayload.viewer.presenceMessage);
+            setProfileAvatarUrl(friendsPayload.viewer.avatarUrl);
             const storedName = friendsPayload.viewer.displayName || authDisplayName;
             const storedHandle = normalizeProfileHandle(friendsPayload.viewer.handle || authHandle);
             setProfileName(storedName);
@@ -631,10 +635,12 @@ export default function SettingsPage() {
             <div className="mt-8 grid gap-6 lg:grid-cols-[1.05fr_.95fr]">
               <section className="rounded-2xl border border-border bg-panel p-6">
                 <div className="flex items-start gap-4">
-                  <div className="relative flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl border border-border bg-surface text-xl font-semibold">
-                    {(profileName || profileUsername || profileEmail).charAt(0).toUpperCase() || <User className="h-6 w-6" />}
-                    <span className={`absolute -bottom-1 -right-1 h-4 w-4 rounded-full border-[3px] border-panel ${presenceOption(presenceStatus).dotClassName}`} />
-                  </div>
+                  <UserAvatar
+                    label={profileName || profileUsername || profileEmail || "Kwant Trader"}
+                    avatarUrl={profileAvatarUrl}
+                    size="lg"
+                    statusClassName={presenceOption(presenceStatus).dotClassName}
+                  />
                   <div className="min-w-0 flex-1">
                     <div className="text-[17px] font-semibold">{profileName || profileUsername || "Kwant Trader"}</div>
                     <div className="mt-0.5 text-[12px] text-muted">@{profileUsername || profileEmail.split("@")[0] || "trader"}</div>
@@ -775,7 +781,7 @@ export default function SettingsPage() {
             <div className="mt-8 space-y-8">
               <section className="rounded-2xl border border-border bg-panel p-6">
                 <h2 className="mb-5 text-lg font-semibold">Picture and username</h2>
-                <div className="flex items-center gap-4"><div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary/20 text-2xl font-semibold text-primary">{(profileName || profileUsername).charAt(0).toUpperCase() || <User className="h-7 w-7" />}</div><div><button className={secondaryButton}>Upload photo</button><p className="mt-2 text-[12px] text-muted">JPG, GIF, or PNG. Max 700KB, 4000px for any dimension.</p></div></div>
+                <div className="flex items-center gap-4"><UserAvatar label={profileName || profileUsername || "Kwant Trader"} avatarUrl={profileAvatarUrl} size="lg" /><div><Link href={profileUsername ? `/socials/${encodeURIComponent(profileUsername)}` : "/socials"} className={secondaryButton}>Edit profile photo</Link><p className="mt-2 text-[12px] text-muted">Crop and save your account photo from your Socials profile.</p></div></div>
                 <div className="mt-6 space-y-2 border-t border-border pt-5">
                   <div className="text-[13px] text-muted">Unique handle</div>
                   <div className="relative">

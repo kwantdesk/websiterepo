@@ -34,6 +34,7 @@ import {
   X,
 } from "lucide-react";
 import KwantSelect from "@/components/ui/KwantSelect";
+import UserAvatar from "@/components/socials/UserAvatar";
 import { createClient as createSupabaseBrowserClient } from "@/lib/supabase";
 import {
   EMPTY_DESK_NETWORK,
@@ -204,16 +205,7 @@ function ProfileAvatar({
   profile: DeskMemberProfile;
   size?: "sm" | "md";
 }) {
-  const classes = size === "sm" ? "h-7 w-7 rounded-lg text-[7px]" : "h-9 w-9 rounded-xl text-[9px]";
-  return (
-    <span className={`relative flex shrink-0 items-center justify-center overflow-hidden border border-primary/20 bg-primary/10 font-semibold text-primary ${classes}`}>
-      {profile.avatarUrl ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={profile.avatarUrl} alt="" className="h-full w-full object-cover" />
-      ) : initials(profile.displayName)}
-      {profile.processStatus !== "AWAY" ? <span className="absolute -bottom-px -right-px h-2.5 w-2.5 rounded-full border-2 border-panel bg-primary" /> : null}
-    </span>
-  );
+  return <UserAvatar label={profile.displayName} avatarUrl={profile.avatarUrl} size={size} active={profile.processStatus !== "AWAY"} />;
 }
 
 function Toggle({

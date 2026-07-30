@@ -49,6 +49,7 @@ import KwantSelect from "@/components/ui/KwantSelect";
 import SocialProfileView from "@/components/socials/SocialProfileView";
 import ReasoningOutcomeChart from "@/components/socials/ReasoningOutcomeChart";
 import DeskWorkspace from "@/components/socials/DeskWorkspace";
+import UserAvatar from "@/components/socials/UserAvatar";
 import {
   buildDefaultProfile,
   calculateReasoningScore,
@@ -331,14 +332,18 @@ function Card({ children, className = "" }: { children: React.ReactNode; classNa
   return <div className={`rounded-2xl border border-border bg-panel ${className}`}>{children}</div>;
 }
 
-function Avatar({ label, active = false, size = "md" }: { label: string; active?: boolean; size?: "sm" | "md" | "lg" }) {
-  const classes = size === "lg" ? "h-14 w-14 text-[14px]" : size === "sm" ? "h-7 w-7 text-[8px]" : "h-9 w-9 text-[10px]";
-  return (
-    <span className={`relative flex shrink-0 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 font-semibold text-primary ${classes}`}>
-      {initials(label)}
-      {active ? <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-panel bg-primary" /> : null}
-    </span>
-  );
+function Avatar({
+  label,
+  avatarUrl,
+  active = false,
+  size = "md",
+}: {
+  label: string;
+  avatarUrl?: string | null;
+  active?: boolean;
+  size?: "sm" | "md" | "lg";
+}) {
+  return <UserAvatar label={label} avatarUrl={avatarUrl} active={active} size={size} />;
 }
 
 function ScoreBar({ label, value }: { label: string; value: number }) {
@@ -702,6 +707,12 @@ export default function SocialsWorkspace({
   const follows = useMemo(() => state.objects.filter((object) => object.objectType === "follow"), [state.objects]);
   const cards = useMemo(() => state.objects.filter((object) => object.objectType === "card"), [state.objects]);
   const consensus = useMemo(() => state.objects.filter((object) => object.objectType === "consensus"), [state.objects]);
+  const profileByUserId = useMemo(() => new Map(
+    profiles.map((profile) => [
+      profile.userId,
+      normalizeSocialProfile(profile.payload, profile.authorLabel),
+    ]),
+  ), [profiles]);
   const currentProfileObject = profiles.find((object) => object.userId === resolvedAccountKey);
   const currentProfile = normalizeSocialProfile(currentProfileObject?.payload, resolvedLabel);
   const requestedProfileHandle = initialProfileHandle.trim().toLowerCase().replace(/^@/, "");
@@ -1588,6 +1599,7 @@ export default function SocialsWorkspace({
           action: "identity",
           displayName: profile.displayName,
           handle: profile.handle,
+          avatarUrl: profile.avatarUrl,
         }),
       });
       const identityResult = await identityResponse.json() as { error?: string };
@@ -1621,6 +1633,13 @@ export default function SocialsWorkspace({
     setProfileEditing(false);
     setProfileSaveState("idle");
     setNotice("Profile saved to your account.");
+    window.dispatchEvent(new CustomEvent("kwantdesk:profile-updated", {
+      detail: {
+        avatarUrl: profile.avatarUrl,
+        displayName: profile.displayName,
+        handle: profile.handle,
+      },
+    }));
     if (requestedProfileHandle !== profile.handle) onOpenProfile?.(profile.handle);
   };
 
@@ -1994,7 +2013,7 @@ export default function SocialsWorkspace({
     return (
       <Card key={objectKey(object)} className="overflow-hidden">
         <div className="flex items-start gap-3 border-b border-border px-4 py-3">
-          <Avatar label={object.authorLabel} active={profile?.processStatus !== "AWAY"} />
+          <Avatar label={object.authorLabel} avatarUrl={profile?.avatarUrl} active={profile?.processStatus !== "AWAY"} />
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
               <button type="button" onClick={() => profile && onOpenProfile?.(profile.handle)} className="text-[10px] font-semibold text-foreground hover:text-primary">{object.authorLabel}</button>
@@ -2118,7 +2137,7 @@ export default function SocialsWorkspace({
             {objectComments.slice(-4).map((comment) => {
               const commentPayload = typedPayload<SocialCommentPayload>(comment);
               const traderNote = commentPayload?.kind === "TRADER NOTE" && comment.userId === object.userId;
-              return <div key={objectKey(comment)} className="flex gap-2"><Avatar label={comment.authorLabel} size="sm" /><div className={`min-w-0 flex-1 rounded-xl rounded-bl-sm border px-3 py-2 ${traderNote ? "border-primary/25 bg-primary/[0.07]" : "border-border bg-surface/35"}`}><div className="flex items-center gap-2 text-[7px]"><span className="font-semibold text-foreground">{comment.authorLabel}</span><span className="rounded bg-primary/10 px-1.5 py-0.5 text-primary">{commentPayload?.kind}</span><span className="ml-auto text-muted">{formatDate(comment.createdAt, true)}</span></div><p className={`mt-1 text-[8px] leading-4 ${traderNote ? "text-foreground" : "text-muted"}`}>{commentPayload?.body}</p></div></div>;
+              return <div key={objectKey(comment)} className="flex gap-2"><Avatar label={comment.authorLabel} avatarUrl={profileByUserId.get(comment.userId)?.avatarUrl} size="sm" /><div className={`min-w-0 flex-1 rounded-xl rounded-bl-sm border px-3 py-2 ${traderNote ? "border-primary/25 bg-primary/[0.07]" : "border-border bg-surface/35"}`}><div className="flex items-center gap-2 text-[7px]"><span className="font-semibold text-foreground">{comment.authorLabel}</span><span className="rounded bg-primary/10 px-1.5 py-0.5 text-primary">{commentPayload?.kind}</span><span className="ml-auto text-muted">{formatDate(comment.createdAt, true)}</span></div><p className={`mt-1 text-[8px] leading-4 ${traderNote ? "text-foreground" : "text-muted"}`}>{commentPayload?.body}</p></div></div>;
             })}
           </div>
         ) : null}
@@ -2154,7 +2173,7 @@ export default function SocialsWorkspace({
     return (
       <Card key={objectKey(object)} className="overflow-hidden">
         <div className="flex items-start gap-3 border-b border-border px-4 py-3">
-          <Avatar label={object.authorLabel} active={profile?.processStatus !== "AWAY"} />
+          <Avatar label={object.authorLabel} avatarUrl={profile?.avatarUrl} active={profile?.processStatus !== "AWAY"} />
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
               <button type="button" onClick={() => profile && onOpenProfile?.(profile.handle)} className="text-[10px] font-semibold hover:text-primary">{object.authorLabel}</button>
@@ -2186,7 +2205,7 @@ export default function SocialsWorkspace({
           <div className="space-y-2 border-t border-border px-4 py-3">
             {objectComments.slice(-3).map((comment) => {
               const payloadComment = typedPayload<SocialCommentPayload>(comment);
-              return <div key={objectKey(comment)} className="flex gap-2"><Avatar label={comment.authorLabel} size="sm" /><div className="min-w-0 flex-1 rounded-xl border border-border bg-surface/35 px-3 py-2"><div className="flex items-center gap-2 text-[7px]"><span className="font-semibold">{comment.authorLabel}</span><span className="rounded bg-primary/10 px-1.5 py-0.5 text-primary">{payloadComment?.kind}</span></div><p className="mt-1 text-[8px] leading-4 text-muted">{payloadComment?.body}</p></div></div>;
+              return <div key={objectKey(comment)} className="flex gap-2"><Avatar label={comment.authorLabel} avatarUrl={profileByUserId.get(comment.userId)?.avatarUrl} size="sm" /><div className="min-w-0 flex-1 rounded-xl border border-border bg-surface/35 px-3 py-2"><div className="flex items-center gap-2 text-[7px]"><span className="font-semibold">{comment.authorLabel}</span><span className="rounded bg-primary/10 px-1.5 py-0.5 text-primary">{payloadComment?.kind}</span></div><p className="mt-1 text-[8px] leading-4 text-muted">{payloadComment?.body}</p></div></div>;
             })}
           </div>
         ) : null}
@@ -2216,7 +2235,7 @@ export default function SocialsWorkspace({
               <span className={`h-1.5 w-1.5 rounded-full ${saveState === "saved" ? "bg-primary" : saveState === "loading" ? "animate-pulse bg-warning" : "bg-accent"}`} />
               {saveState === "saved" ? "Network synced" : saveState === "loading" ? "Syncing" : "Local resilience"}
             </span>
-            <button type="button" onClick={() => { setTab("profile"); setProfileEditing(false); onOpenProfile?.(currentProfile.handle); }} className="flex h-8 items-center gap-2 rounded-xl border border-border bg-surface px-2.5 text-[8px] font-semibold text-muted hover:text-foreground"><Avatar label={currentProfile.displayName} size="sm" />@{currentProfile.handle}</button>
+            <button type="button" onClick={() => { setTab("profile"); setProfileEditing(false); onOpenProfile?.(currentProfile.handle); }} className="flex h-8 items-center gap-2 rounded-xl border border-border bg-surface px-2.5 text-[8px] font-semibold text-muted hover:text-foreground"><Avatar label={currentProfile.displayName} avatarUrl={currentProfile.avatarUrl} size="sm" />@{currentProfile.handle}</button>
             <button type="button" onClick={() => setTab("precords")} className="flex h-8 items-center gap-1.5 rounded-xl border border-primary/25 bg-primary/[0.06] px-3 text-[8px] font-semibold text-primary hover:bg-primary/10"><MessageCircle className="h-3.5 w-3.5" />Community review</button>
             <button type="button" onClick={() => setTab("today")} className="flex h-8 items-center gap-1.5 rounded-xl bg-primary px-3 text-[8px] font-semibold text-background hover:brightness-110"><LockKeyhole className="h-3.5 w-3.5" />{SOCIAL_RECORD_COPY.lockAction}</button>
           </div>
@@ -2531,7 +2550,7 @@ export default function SocialsWorkspace({
                 {myDesks.map((desk) => {
                   const payload = typedPayload<SocialDeskPayload>(desk);
                   const deskMembers = memberships.filter((member) => member.deskId === desk.id);
-                  return <Card key={objectKey(desk)} className="overflow-hidden"><div className="flex items-start gap-3 border-b border-border p-4"><span className="flex h-11 w-11 items-center justify-center rounded-2xl border border-primary/20 bg-primary/10 text-primary"><Network className="h-5 w-5" /></span><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><h3 className="text-[13px] font-semibold">{payload?.name}</h3><span className="rounded-lg border border-border bg-surface px-2 py-1 text-[7px] text-muted">{payload?.privacy}</span></div><p className="mt-1 text-[8px] leading-4 text-muted">{payload?.description || payload?.objective}</p></div><span className="font-mono text-[10px] text-primary">{deskMembers.length}/{payload?.capacity ?? 12}</span></div><div className="grid gap-3 p-4 md:grid-cols-[1fr_220px]"><div><div className="text-[7px] font-semibold uppercase tracking-[0.12em] text-muted">Weekly objective</div><div className="mt-2 rounded-xl border border-primary/20 bg-primary/[0.05] p-3 text-[9px] leading-4 text-foreground">{payload?.weeklyMission}</div><div className="mt-4 grid grid-cols-3 gap-2">{deskMembers.slice(0, 6).map((member) => { const memberPayload = typedPayload<SocialDeskMemberPayload>(member); return <div key={objectKey(member)} className="flex items-center gap-2 rounded-xl border border-border bg-surface/30 p-2"><Avatar label={member.authorLabel} size="sm" active={memberPayload?.status !== "AWAY"} /><span className="min-w-0"><span className="block truncate text-[8px] font-semibold">{member.authorLabel}</span><span className="block text-[7px] text-muted">{memberPayload?.status}</span></span></div>; })}</div></div><div className="space-y-3"><ScoreBar label="Preparation completion" value={deskMembers.length ? 72 : 0} /><ScoreBar label="Review integrity" value={deskMembers.length ? 64 : 0} /><ScoreBar label="Helpful reviews" value={deskMembers.length ? 58 : 0} /><div className="rounded-xl border border-border bg-background/30 p-3 text-[7px] leading-4 text-muted">Desk rankings measure shared process. P&amp;L is not part of the score.</div></div></div></Card>;
+                  return <Card key={objectKey(desk)} className="overflow-hidden"><div className="flex items-start gap-3 border-b border-border p-4"><span className="flex h-11 w-11 items-center justify-center rounded-2xl border border-primary/20 bg-primary/10 text-primary"><Network className="h-5 w-5" /></span><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><h3 className="text-[13px] font-semibold">{payload?.name}</h3><span className="rounded-lg border border-border bg-surface px-2 py-1 text-[7px] text-muted">{payload?.privacy}</span></div><p className="mt-1 text-[8px] leading-4 text-muted">{payload?.description || payload?.objective}</p></div><span className="font-mono text-[10px] text-primary">{deskMembers.length}/{payload?.capacity ?? 12}</span></div><div className="grid gap-3 p-4 md:grid-cols-[1fr_220px]"><div><div className="text-[7px] font-semibold uppercase tracking-[0.12em] text-muted">Weekly objective</div><div className="mt-2 rounded-xl border border-primary/20 bg-primary/[0.05] p-3 text-[9px] leading-4 text-foreground">{payload?.weeklyMission}</div><div className="mt-4 grid grid-cols-3 gap-2">{deskMembers.slice(0, 6).map((member) => { const memberPayload = typedPayload<SocialDeskMemberPayload>(member); return <div key={objectKey(member)} className="flex items-center gap-2 rounded-xl border border-border bg-surface/30 p-2"><Avatar label={member.authorLabel} avatarUrl={profileByUserId.get(member.userId)?.avatarUrl} size="sm" active={memberPayload?.status !== "AWAY"} /><span className="min-w-0"><span className="block truncate text-[8px] font-semibold">{member.authorLabel}</span><span className="block text-[7px] text-muted">{memberPayload?.status}</span></span></div>; })}</div></div><div className="space-y-3"><ScoreBar label="Preparation completion" value={deskMembers.length ? 72 : 0} /><ScoreBar label="Review integrity" value={deskMembers.length ? 64 : 0} /><ScoreBar label="Helpful reviews" value={deskMembers.length ? 58 : 0} /><div className="rounded-xl border border-border bg-background/30 p-3 text-[7px] leading-4 text-muted">Desk rankings measure shared process. P&amp;L is not part of the score.</div></div></div></Card>;
                 })}
                 {!myDesks.length ? <Card className="border-dashed p-14 text-center"><UsersRound className="mx-auto h-9 w-9 text-muted" /><h2 className="mt-4 text-[13px] font-semibold">Your Desk has not formed yet.</h2><p className="mx-auto mt-2 max-w-md text-[8px] leading-4 text-muted">Start with market, session, timezone, and one shared development objective. Capacity is deliberately capped at twelve.</p><button type="button" onClick={() => setShowDeskModal(true)} className="mt-5 rounded-xl bg-primary px-4 py-2.5 text-[8px] font-semibold text-background">Create the first Desk</button></Card> : null}
                 {availableDesks.length ? (
@@ -2584,7 +2603,7 @@ export default function SocialsWorkspace({
                   {rankedProfiles.map(({ object, profile }, index) => (
                     <div key={objectKey(object)} className="grid grid-cols-[52px_220px_repeat(8,1fr)_72px] items-center border-b border-border/55 px-4 py-3 text-[8px] hover:bg-surface/25">
                       <span className={`font-mono text-[12px] font-semibold ${index < 3 ? "text-primary" : "text-muted"}`}>{String(index + 1).padStart(2, "0")}</span>
-                      <div className="flex items-center gap-2"><Avatar label={profile.displayName} size="sm" active={profile.processStatus !== "AWAY"} /><span className="min-w-0"><span className="block truncate font-semibold">{profile.displayName}</span><span className="block truncate text-[7px] text-muted">@{profile.handle} · {profile.markets.join("/")}</span></span></div>
+                      <div className="flex items-center gap-2"><Avatar label={profile.displayName} avatarUrl={profile.avatarUrl} size="sm" active={profile.processStatus !== "AWAY"} /><span className="min-w-0"><span className="block truncate font-semibold">{profile.displayName}</span><span className="block truncate text-[7px] text-muted">@{profile.handle} · {profile.markets.join("/")}</span></span></div>
                       {SCORE_LABELS.map(([key]) => <span key={key} className="text-center font-mono text-muted">{profile.scores[key] || "—"}</span>)}
                       <span className="text-right font-mono text-[11px] font-semibold text-primary">{profileScoreAverage(profile) || "—"}</span>
                     </div>

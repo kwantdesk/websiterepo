@@ -7,6 +7,7 @@ import KwantBotIntelligenceWorkspace from "@/components/kwantbot/KwantBotIntelli
 import KwantBotInterpreterPanel from "@/components/kwantbot/KwantBotInterpreterPanel";
 import OptionsTapePanel from "@/components/kwantbot/OptionsTapePanel";
 import FriendsPanel from "@/components/friends/FriendsPanel";
+import UserAvatar from "@/components/socials/UserAvatar";
 import { useKwantBotInterpreter } from "@/hooks/useKwantBotInterpreter";
 
 import { startTransition, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent as ReactDragEvent } from "react";
@@ -2939,6 +2940,7 @@ export default function KwantifyWorkspace({
   const [loading, setLoading] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [currentUsername, setCurrentUsername] = useState("");
+  const [currentAvatarUrl, setCurrentAvatarUrl] = useState("");
   const [showUsernameModal, setShowUsernameModal] = useState(false);
   const [newUsername, setNewUsername] = useState("");
   const [usernameError, setUsernameError] = useState("");
@@ -5489,6 +5491,31 @@ export default function KwantifyWorkspace({
   }, [router, supabase]);
 
   useEffect(() => {
+    if (!authChecked || !preferenceUserId) return;
+    let active = true;
+    const loadAvatar = async () => {
+      try {
+        const response = await fetch("/api/friends", { cache: "no-store" });
+        if (!response.ok) return;
+        const payload = await response.json() as FriendsPayload;
+        if (active) setCurrentAvatarUrl(payload.viewer?.avatarUrl ?? "");
+      } catch {
+        // Keep the account control available with its initials fallback.
+      }
+    };
+    const handleProfileUpdated = (event: Event) => {
+      const detail = (event as CustomEvent<{ avatarUrl?: string }>).detail;
+      setCurrentAvatarUrl(detail?.avatarUrl ?? "");
+    };
+    void loadAvatar();
+    window.addEventListener("kwantdesk:profile-updated", handleProfileUpdated);
+    return () => {
+      active = false;
+      window.removeEventListener("kwantdesk:profile-updated", handleProfileUpdated);
+    };
+  }, [authChecked, preferenceUserId]);
+
+  useEffect(() => {
     saveStoredChartSettings(chartSettings);
   }, [chartSettings]);
 
@@ -7723,7 +7750,7 @@ export default function KwantifyWorkspace({
           >
             <Download className="h-4 w-4" />
           </button>
-          <button onClick={signOut} title={currentUsername ? `@${currentUsername}` : "Account"} className="flex h-8 w-8 items-center justify-center rounded-full border border-border bg-surface transition-colors hover:bg-card"><User className="h-4 w-4 text-muted" /></button>
+          <button onClick={signOut} title={currentUsername ? `@${currentUsername}` : "Account"} className="flex h-8 w-8 items-center justify-center rounded-full border border-border bg-surface transition-colors hover:bg-card"><UserAvatar label={currentUsername || "Kwant Trader"} avatarUrl={currentAvatarUrl} size="sm" /></button>
           </div>
         </header>
         )}

@@ -23,6 +23,7 @@ import {
   type SocialProfilePayload,
 } from "@/lib/socials";
 import ReasoningOutcomeChart from "@/components/socials/ReasoningOutcomeChart";
+import UserAvatar from "@/components/socials/UserAvatar";
 
 type SocialProfileViewProps = {
   profileObject: SocialObject;
@@ -45,10 +46,6 @@ type SocialProfileViewProps = {
   onShareGameplan: (record: SocialObject) => void;
   onShareProfile: () => void;
 };
-
-function initials(value: string) {
-  return value.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join("") || "KD";
-}
 
 function payloadOf<T>(object: SocialObject | undefined) {
   return (object?.payload ?? null) as T | null;
@@ -131,13 +128,7 @@ export default function SocialProfileView({
 
         <div className="relative px-4 pb-5 sm:px-7">
           <div className="-mt-12 flex flex-col gap-4 sm:flex-row sm:items-end">
-            <div className="relative flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-full border-[5px] border-panel bg-surface text-[24px] font-semibold text-foreground shadow-2xl">
-              {profile.avatarUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={profile.avatarUrl} alt={`${profile.displayName} profile`} className="h-full w-full object-cover" />
-              ) : initials(profile.displayName)}
-              <span className="absolute bottom-1.5 right-1.5 h-3 w-3 rounded-full border-2 border-panel bg-primary" />
-            </div>
+            <UserAvatar label={profile.displayName} avatarUrl={profile.avatarUrl} size="xl" active className="rounded-full border-[5px] border-panel shadow-2xl" />
 
             <div className="min-w-0 flex-1 pb-1">
               <div className="flex flex-wrap items-center gap-2">

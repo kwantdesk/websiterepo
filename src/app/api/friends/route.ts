@@ -95,6 +95,13 @@ function cleanIdentifier(value: unknown, maximum = 180) {
     : "";
 }
 
+function cleanAvatarUrl(value: unknown) {
+  if (typeof value !== "string") return "";
+  if (/^data:image\/(png|jpe?g|webp|gif);base64,/i.test(value)) return value.slice(0, 800_000);
+  if (/^https:\/\//i.test(value)) return value.slice(0, 2_000);
+  return "";
+}
+
 function normalizeHandle(value: unknown) {
   return typeof value === "string"
     ? value.trim().replace(/^@+/, "").toLowerCase()
@@ -359,7 +366,7 @@ function buildPayload(
       userId,
       displayName,
       handle: cleanIdentifier(payload.handle, 32).toLowerCase() || fallbackHandle,
-      avatarUrl: cleanText(payload.avatarUrl, 1_000),
+      avatarUrl: cleanAvatarUrl(payload.avatarUrl),
       presenceStatus: presence.status,
       presenceMessage: cleanText(payload.presenceMessage, 80),
       lastSeenAt: presence.lastSeenAt,
@@ -499,7 +506,7 @@ async function upsertProfile(
   const identityDefaults = {
     displayName: cleanText(payload.displayName, 60) || authorLabel(actor),
     handle: cleanIdentifier(payload.handle, 32).toLowerCase() || fallbackHandle,
-    avatarUrl: cleanText(payload.avatarUrl, 1_000) || cleanText(actor.avatarUrl, 1_000),
+    avatarUrl: cleanAvatarUrl(payload.avatarUrl) || cleanAvatarUrl(actor.avatarUrl),
   };
   return supabase.from("social_objects").upsert({
     user_id: actor.userId,
@@ -609,6 +616,7 @@ export async function POST(request: NextRequest) {
       const displayName = cleanText(body.displayName, 60);
       if (displayName) changes.displayName = displayName;
       changes.handle = handle;
+      if (body.avatarUrl !== undefined) changes.avatarUrl = cleanAvatarUrl(body.avatarUrl);
     }
     if (action === "presence" || action === "status") {
       changes.presenceStatus = normalizePresenceStatus(body.presenceStatus);
