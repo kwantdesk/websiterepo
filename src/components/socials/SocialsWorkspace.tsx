@@ -714,7 +714,8 @@ export default function SocialsWorkspace({
   const viewedGameplans = viewedProfileObject
     ? precords.filter((object) =>
         object.userId === viewedProfileObject.userId
-        && ["GAMEPLAN", "ZYON"].includes(typedPayload<SocialPrecordPayload>(object)?.source ?? ""))
+        && ["GAMEPLAN", "ZYON"].includes(typedPayload<SocialPrecordPayload>(object)?.source ?? "")
+        && receipts.some((receipt) => receipt.parentId === object.id))
     : [];
   const savedGameplanIds = new Set(
     reactions
