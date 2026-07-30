@@ -4,6 +4,7 @@ import {
   Activity,
   Archive,
   ArchiveRestore,
+  ArrowRight,
   BellRing,
   Check,
   ChevronDown,
@@ -81,6 +82,7 @@ type DeskWorkspaceProps = {
   onCreateDesk: () => void;
   onNotice: (message: string) => void;
   onOpenProfile?: (handle: string) => void;
+  onMessageProfile?: (userId: string) => void;
 };
 
 type WorkspaceDraft = {
@@ -820,6 +822,7 @@ export default function DeskWorkspace({
   onCreateDesk,
   onNotice,
   onOpenProfile,
+  onMessageProfile,
 }: DeskWorkspaceProps) {
   const [network, setNetwork] = useState<DeskNetworkPayload>(EMPTY_DESK_NETWORK);
   const [loading, setLoading] = useState(true);
@@ -830,6 +833,7 @@ export default function DeskWorkspace({
   const [showSettings, setShowSettings] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
   const [showMembers, setShowMembers] = useState(false);
+  const [selectedMemberId, setSelectedMemberId] = useState("");
   const [showChannel, setShowChannel] = useState(false);
   const [lifecycleTarget, setLifecycleTarget] = useState<{
     action: "archive" | "delete";
@@ -1320,6 +1324,14 @@ export default function DeskWorkspace({
   const participation = activeMembers.length ? Math.round(activeThisWeek / activeMembers.length * 100) : 0;
   const memberLeaderboard = [...activeMembers].sort((left, right) => profileFor(right.userId).score - profileFor(left.userId).score);
   const memberByUserId = new Map(activeMembers.map((member) => [member.userId, member]));
+  const selectedMember = selectedMemberId ? memberByUserId.get(selectedMemberId) ?? null : null;
+  const selectedMemberProfile = selectedMember ? profileFor(selectedMember.userId) : null;
+  const selectedMemberRank = selectedMember
+    ? memberLeaderboard.findIndex((member) => member.userId === selectedMember.userId) + 1
+    : 0;
+  const selectedMemberPresence = selectedMemberProfile
+    ? presenceOption(memberPresenceStatus(selectedMemberProfile))
+    : null;
   const inactiveDays = activeDesk?.inactivityDays ?? 14;
   const inactiveCutoff = Date.now() - inactiveDays * 86_400_000;
   const roster = activeMembers.map((member) => {
@@ -1359,6 +1371,23 @@ export default function DeskWorkspace({
     const query = directoryQuery.trim().toLowerCase();
     return !query || [workspace.name, workspace.description, workspace.objective, workspace.markets.join(" ")].some((value) => value.toLowerCase().includes(query));
   });
+
+  const openMemberCard = (userId: string, closeMembers = false) => {
+    if (closeMembers) setShowMembers(false);
+    setSelectedMemberId(userId);
+  };
+
+  const openSelectedMemberProfile = () => {
+    if (!selectedMemberProfile?.handle) return;
+    setSelectedMemberId("");
+    onOpenProfile?.(selectedMemberProfile.handle);
+  };
+
+  const messageSelectedMember = () => {
+    if (!selectedMember || selectedMember.userId === viewerId) return;
+    setSelectedMemberId("");
+    onMessageProfile?.(selectedMember.userId);
+  };
 
   if (loading && !network.ready) {
     return (
@@ -1676,7 +1705,7 @@ export default function DeskWorkspace({
                   <div className="mt-3 space-y-1">
                     {memberLeaderboard.slice(0, 8).map((member, index) => {
                       const profile = profileFor(member.userId);
-                      return <button type="button" key={member.userId} onClick={() => onOpenProfile?.(profile.handle)} className="flex w-full items-center gap-2 rounded-xl px-2 py-2 text-left hover:bg-surface/40"><span className={`w-4 font-mono text-[7px] ${index < 3 ? "text-primary" : "text-muted"}`}>{String(index + 1).padStart(2, "0")}</span><ProfileAvatar profile={profile} size="sm" /><span className="min-w-0 flex-1"><span className="block truncate text-[7px] font-semibold">{profile.displayName}</span><MemberRoleBadge member={member} compact /></span><span className="font-mono text-[8px] font-semibold text-primary">{profile.score || "—"}</span></button>;
+                      return <button type="button" key={member.userId} onClick={() => openMemberCard(member.userId)} className="group flex w-full items-center gap-2 rounded-xl px-2 py-2 text-left transition-colors hover:bg-surface/40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50"><span className={`w-4 font-mono text-[7px] ${index < 3 ? "text-primary" : "text-muted"}`}>{String(index + 1).padStart(2, "0")}</span><ProfileAvatar profile={profile} size="sm" /><span className="min-w-0 flex-1"><span className="block truncate text-[7px] font-semibold group-hover:text-primary">{profile.displayName}</span><MemberRoleBadge member={member} compact /></span><span className="font-mono text-[8px] font-semibold text-primary">{profile.score || "—"}</span><MoreHorizontal className="h-3 w-3 text-muted opacity-0 transition-opacity group-hover:opacity-100" /></button>;
                     })}
                   </div>
                 </div>
@@ -1720,10 +1749,11 @@ export default function DeskWorkspace({
                     {visibleRoster.slice(0, 12).map(({ member, profile, inactive }) => {
                       const presence = presenceOption(memberPresenceStatus(profile));
                       return (
-                        <button key={member.userId} type="button" onClick={() => onOpenProfile?.(profile.handle)} className="flex w-full items-center gap-2 rounded-xl px-2 py-2 text-left hover:bg-surface/40">
+                        <button key={member.userId} type="button" onClick={() => openMemberCard(member.userId)} className="group flex w-full items-center gap-2 rounded-xl px-2 py-2 text-left transition-colors hover:bg-surface/40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50">
                           <ProfileAvatar profile={profile} size="sm" />
-                          <span className="min-w-0 flex-1"><span className="block truncate text-[7px] font-semibold">{profile.displayName}</span><MemberRoleBadge member={member} compact /></span>
+                          <span className="min-w-0 flex-1"><span className="block truncate text-[7px] font-semibold group-hover:text-primary">{profile.displayName}</span><MemberRoleBadge member={member} compact /></span>
                           <span className="text-[5px] uppercase tracking-[0.08em] text-muted">{inactive ? "Inactive" : presence.label}</span>
+                          <MoreHorizontal className="h-3 w-3 text-muted opacity-0 transition-opacity group-hover:opacity-100" />
                         </button>
                       );
                     })}
@@ -1737,6 +1767,107 @@ export default function DeskWorkspace({
           </aside>
         </div>
       </div>
+
+      {selectedMember && selectedMemberProfile && activeDesk ? (
+        <Modal
+          title={selectedMemberProfile.displayName}
+          subtitle={`@${selectedMemberProfile.handle} · ${activeDesk.name}`}
+          icon={<UsersRound className="h-4 w-4" />}
+          onClose={() => setSelectedMemberId("")}
+          footer={(
+            <>
+              <button type="button" onClick={() => setSelectedMemberId("")} className="h-9 rounded-xl border border-border px-4 text-[8px] font-semibold text-muted hover:text-foreground">Close</button>
+              {owner ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedMemberId("");
+                    setShowMembers(true);
+                  }}
+                  className="flex h-9 items-center gap-2 rounded-xl border border-border px-4 text-[8px] font-semibold text-muted hover:border-primary/25 hover:text-foreground"
+                >
+                  <Settings2 className="h-3.5 w-3.5" />
+                  Manage member
+                </button>
+              ) : null}
+              {selectedMember.userId !== viewerId && onMessageProfile ? (
+                <button
+                  type="button"
+                  onClick={messageSelectedMember}
+                  className="flex h-9 items-center gap-2 rounded-xl border border-primary/25 bg-primary/[0.05] px-4 text-[8px] font-semibold text-primary hover:bg-primary/[0.09]"
+                >
+                  <MessageCircle className="h-3.5 w-3.5" />
+                  Message
+                </button>
+              ) : null}
+              <button
+                type="button"
+                onClick={openSelectedMemberProfile}
+                className="flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-[8px] font-semibold text-background shadow-[0_0_18px_color-mix(in_srgb,var(--primary)_18%,transparent)]"
+              >
+                View profile &amp; Gameplans
+                <ArrowRight className="h-3.5 w-3.5" />
+              </button>
+            </>
+          )}
+        >
+          <div className="relative overflow-hidden rounded-2xl border border-border bg-background/40 p-4">
+            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_15%_0%,color-mix(in_srgb,var(--primary)_13%,transparent),transparent_45%)]" />
+            <div className="relative flex items-center gap-4">
+              <UserAvatar
+                label={selectedMemberProfile.displayName}
+                avatarUrl={selectedMemberProfile.avatarUrl}
+                size="lg"
+                statusClassName={selectedMemberPresence?.dotClassName}
+                className="ring-1 ring-primary/20"
+              />
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="truncate text-[13px] font-semibold text-foreground">{selectedMemberProfile.displayName}</div>
+                  <MemberRoleBadge member={selectedMember} />
+                </div>
+                <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[7px] text-muted">
+                  <span>@{selectedMemberProfile.handle}</span>
+                  <span className="opacity-40">&middot;</span>
+                  <span>{selectedMemberPresence?.label ?? "Offline"}</span>
+                  <span className="opacity-40">&middot;</span>
+                  <span>Active {formatDateTime(selectedMember.lastActiveAt)}</span>
+                </div>
+                {selectedMemberProfile.processStatus ? (
+                  <div className="mt-2 text-[7px] font-semibold uppercase tracking-[0.1em] text-primary">{selectedMemberProfile.processStatus}</div>
+                ) : null}
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-3 grid grid-cols-3 gap-2">
+            <div className="rounded-xl border border-border bg-background/30 p-3 text-center">
+              <div className="font-mono text-[14px] font-semibold text-primary">{selectedMemberRank ? `#${selectedMemberRank}` : "—"}</div>
+              <div className="mt-1 text-[6px] uppercase tracking-[0.1em] text-muted">Desk rank</div>
+            </div>
+            <div className="rounded-xl border border-border bg-background/30 p-3 text-center">
+              <div className="font-mono text-[14px] font-semibold text-primary">{selectedMemberProfile.score || "—"}</div>
+              <div className="mt-1 text-[6px] uppercase tracking-[0.1em] text-muted">Reasoning index</div>
+            </div>
+            <div className="rounded-xl border border-border bg-background/30 p-3 text-center">
+              <div className="font-mono text-[14px] font-semibold text-primary">T{selectedMember.importanceLevel}</div>
+              <div className="mt-1 text-[6px] uppercase tracking-[0.1em] text-muted">Desk tier</div>
+            </div>
+          </div>
+
+          {selectedMember.responsibilities ? (
+            <div className="mt-3 rounded-xl border border-border bg-background/30 p-3">
+              <div className="text-[6px] font-semibold uppercase tracking-[0.11em] text-muted">Desk responsibilities</div>
+              <div className="mt-2 text-[8px] leading-5 text-foreground">{selectedMember.responsibilities}</div>
+            </div>
+          ) : null}
+
+          <div className="mt-3 flex items-start gap-2 rounded-xl border border-primary/20 bg-primary/[0.04] p-3 text-[7px] leading-5 text-muted">
+            <Gauge className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
+            <span>Open the full profile to see this user&apos;s published Gameplans, reasoning outcomes, activity and public trader identity.</span>
+          </div>
+        </Modal>
+      ) : null}
 
       {showSettings && activeDesk ? (
         <DeskSettingsModal
@@ -1826,9 +1957,11 @@ export default function DeskWorkspace({
               return (
                 <div key={member.userId} className="flex flex-wrap items-center gap-3 rounded-2xl border border-border bg-background/30 p-3">
                   <span className="w-5 font-mono text-[8px] text-muted">{String(index + 1).padStart(2, "0")}</span>
-                  <ProfileAvatar profile={profile} />
+                  <button type="button" onClick={() => openMemberCard(member.userId, true)} className="rounded-full outline-none ring-primary/50 focus-visible:ring-2" title={`Open ${profile.displayName}`}>
+                    <ProfileAvatar profile={profile} />
+                  </button>
                   <div className="min-w-[180px] flex-1">
-                    <div className="flex flex-wrap items-center gap-2"><button type="button" onClick={() => onOpenProfile?.(profile.handle)} className="text-[9px] font-semibold hover:text-primary">{profile.displayName}</button><MemberRoleBadge member={member} /><span title={presence.label} className={`h-1.5 w-1.5 rounded-full ${presence.dotClassName}`} /></div>
+                    <div className="flex flex-wrap items-center gap-2"><button type="button" onClick={() => openMemberCard(member.userId, true)} className="text-[9px] font-semibold hover:text-primary">{profile.displayName}</button><MemberRoleBadge member={member} /><span title={presence.label} className={`h-1.5 w-1.5 rounded-full ${presence.dotClassName}`} /></div>
                     <div className="mt-1 text-[7px] text-muted">@{profile.handle} · active {formatDateTime(member.lastActiveAt)}</div>
                     {member.responsibilities ? <div className="mt-1.5 max-w-xl text-[7px] leading-4 text-muted">{member.responsibilities}</div> : null}
                   </div>
