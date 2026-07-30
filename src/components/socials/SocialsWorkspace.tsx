@@ -91,6 +91,10 @@ import {
 } from "@/lib/gameplan";
 import { loadSocialState, normalizeSocialState, saveSocialState } from "@/lib/socialsStore";
 import {
+  DESK_CREATED_EVENT,
+  type CreatedDeskPayload,
+} from "@/lib/desks";
+import {
   type PointerEvent as ReactPointerEvent,
   useCallback,
   useEffect,
@@ -108,6 +112,10 @@ type AvatarCropDraft = {
   zoom: number;
   offsetX: number;
   offsetY: number;
+};
+type DeskNameCheckState = {
+  state: "idle" | "checking" | "available" | "taken" | "invalid" | "error";
+  message: string;
 };
 
 const AVATAR_CROP_SIZE = 288;
@@ -485,6 +493,8 @@ export default function SocialsWorkspace({
   const [showPostModal, setShowPostModal] = useState(false);
   const [showReceiptFor, setShowReceiptFor] = useState<string | null>(null);
   const [showDeskModal, setShowDeskModal] = useState(false);
+  const [deskCreating, setDeskCreating] = useState(false);
+  const [deskNameCheck, setDeskNameCheck] = useState<DeskNameCheckState>({ state: "idle", message: "" });
   const [gameplanInstrument, setGameplanInstrument] = useState<"NQ" | "ES">("NQ");
   const [gameplanSession, setGameplanSession] = useState<GameplanSession>("newyork");
   const [gameplan, setGameplan] = useState<GameplanPayload | null>(null);
@@ -762,6 +772,46 @@ export default function SocialsWorkspace({
   useEffect(() => {
     if (profileEditing) setProfileSaveState("idle");
   }, [profileEditing]);
+
+  useEffect(() => {
+    if (!showDeskModal) {
+      setDeskNameCheck({ state: "idle", message: "" });
+      return;
+    }
+    const name = deskDraft.name.trim().replace(/\s+/g, " ");
+    if (name.length < 3) {
+      setDeskNameCheck({
+        state: name.length ? "invalid" : "idle",
+        message: name.length ? "Use at least 3 characters." : "Desk names are unique across Kwant Desk.",
+      });
+      return;
+    }
+    const controller = new AbortController();
+    setDeskNameCheck({ state: "checking", message: "Checking Desk name..." });
+    const timer = window.setTimeout(async () => {
+      try {
+        const response = await fetch(`/api/socials/desks?nameAvailable=${encodeURIComponent(name)}`, {
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        const payload = await response.json() as { available?: boolean; reason?: string; error?: string };
+        if (!response.ok) throw new Error(payload.error || "Desk name could not be checked.");
+        setDeskNameCheck(payload.available
+          ? { state: "available", message: "Desk name is available." }
+          : { state: "taken", message: payload.reason || "This Desk already exists." });
+      } catch (reason) {
+        if (controller.signal.aborted) return;
+        setDeskNameCheck({
+          state: "error",
+          message: reason instanceof Error ? reason.message : "Desk name could not be checked.",
+        });
+      }
+    }, 300);
+    return () => {
+      controller.abort();
+      window.clearTimeout(timer);
+    };
+  }, [deskDraft.name, showDeskModal]);
 
   useEffect(() => {
     if (!initialProfileHandle) return;
@@ -1487,54 +1537,55 @@ export default function SocialsWorkspace({
       setNotice("A Desk needs a name and a shared objective.");
       return;
     }
-    const payload: SocialDeskPayload = {
-      name: deskDraft.name.trim(),
-      description: deskDraft.description.trim(),
-      markets: deskDraft.markets.split(",").map((market) => market.trim().toUpperCase()).filter(Boolean).slice(0, 8),
-      session: deskDraft.session,
-      timezone: deskDraft.timezone,
-      objective: deskDraft.objective.trim(),
-      privacy: deskDraft.privacy,
-      capacity: Math.max(2, Math.min(50, Number(deskDraft.capacity) || 8)),
-      weeklyMission: deskDraft.weeklyMission.trim(),
-    };
-    const desk = buildLocalObject({
-      userId: resolvedAccountKey,
-      authorLabel: currentProfile.displayName,
-      objectType: "desk",
-      scope: "community",
-      payload,
-    });
-    upsertObject(desk);
-    const member = buildLocalObject({
-      id: `desk-member:${desk.id}`,
-      userId: resolvedAccountKey,
-      authorLabel: currentProfile.displayName,
-      objectType: "desk-member",
-      scope: "desk",
-      deskId: desk.id,
-      parentId: desk.id,
-      payload: { role: "OWNER", status: currentProfile.processStatus, joinedAt: new Date().toISOString() } satisfies SocialDeskMemberPayload,
-    });
-    upsertObject(member);
-    const savedDesk = await saveObject(desk);
-    if (savedDesk.cloudSaved) {
-      try {
-        const response = await fetch("/api/socials/desks", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "initialize", deskId: savedDesk.id }),
-        });
-        if (!response.ok) {
-          const result = await response.json() as { error?: string };
-          setNotice(result.error || "The Desk was created, but its workspace still needs the multi-Desk migration.");
-        }
-      } catch {
-        setNotice("The Desk was created. Its workspace will initialize when account storage reconnects.");
-      }
+    if (deskNameCheck.state !== "available") {
+      setNotice(deskNameCheck.message || "Wait for the Desk name check to finish.");
+      return;
     }
-    setShowDeskModal(false);
-    if (savedDesk.cloudSaved) setNotice("Desk created. Its channels, roles and owner controls are ready.");
+    setDeskCreating(true);
+    try {
+      const response = await fetch("/api/socials/desks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "create",
+          name: deskDraft.name.trim().replace(/\s+/g, " "),
+          description: deskDraft.description.trim(),
+          markets: deskDraft.markets.split(",").map((market) => market.trim().toUpperCase()).filter(Boolean).slice(0, 8),
+          session: deskDraft.session,
+          timezone: deskDraft.timezone,
+          objective: deskDraft.objective.trim(),
+          privacy: deskDraft.privacy,
+          capacity: Math.max(2, Math.min(50, Number(deskDraft.capacity) || 8)),
+          weeklyMission: deskDraft.weeklyMission.trim(),
+        }),
+      });
+      const result = await response.json() as {
+        code?: string;
+        error?: string;
+        created?: CreatedDeskPayload;
+      };
+      if (!response.ok || !result.created) {
+        if (response.status === 409 || result.code === "DESK_NAME_TAKEN") {
+          setDeskNameCheck({ state: "taken", message: "This Desk already exists." });
+        }
+        throw new Error(result.error || "The Desk could not be created.");
+      }
+      window.dispatchEvent(new CustomEvent<CreatedDeskPayload>(DESK_CREATED_EVENT, {
+        detail: result.created,
+      }));
+      setShowDeskModal(false);
+      setDeskDraft((current) => ({
+        ...current,
+        name: "",
+        description: "",
+        objective: "",
+      }));
+      setNotice("Desk created. Its channels, roles and owner controls are ready.");
+    } catch (reason) {
+      setNotice(reason instanceof Error ? reason.message : "The Desk could not be created.");
+    } finally {
+      setDeskCreating(false);
+    }
   };
 
   const followTrader = (trader: SocialObject) => {
@@ -2989,17 +3040,56 @@ export default function SocialsWorkspace({
       ) : null}
 
       {showDeskModal ? (
-        <div className="fixed inset-0 z-[1100] flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm" onMouseDown={(event) => { if (event.target === event.currentTarget) setShowDeskModal(false); }}>
+        <div className="fixed inset-0 z-[1100] flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm" onMouseDown={(event) => { if (event.target === event.currentTarget && !deskCreating) setShowDeskModal(false); }}>
           <div className="w-full max-w-2xl overflow-hidden rounded-3xl border border-border bg-panel shadow-2xl shadow-black/60">
-            <div className="flex items-start gap-3 border-b border-border p-5"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary"><UsersRound className="h-4 w-4" /></span><div><h2 className="text-[14px] font-semibold">Create a Kwant Desk</h2><p className="mt-1 text-[8px] text-muted">A persistent trading group with its own standards, channels and roles.</p></div><button type="button" onClick={() => setShowDeskModal(false)} className="ml-auto flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:bg-surface"><X className="h-4 w-4" /></button></div>
+            <div className="flex items-start gap-3 border-b border-border p-5"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary"><UsersRound className="h-4 w-4" /></span><div><h2 className="text-[14px] font-semibold">Create a Kwant Desk</h2><p className="mt-1 text-[8px] text-muted">A persistent trading group with its own standards, channels and roles.</p></div><button type="button" onClick={() => setShowDeskModal(false)} disabled={deskCreating} className="ml-auto flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:bg-surface disabled:opacity-40"><X className="h-4 w-4" /></button></div>
             <div className="grid gap-3 p-5 md:grid-cols-2">
-              {[["Desk name", "name"], ["Markets — comma separated", "markets"], ["Session", "session"], ["Timezone", "timezone"], ["Capacity — maximum 50", "capacity"]].map(([label, key]) => <label key={key}><span className="mb-1.5 block text-[7px] uppercase tracking-[0.1em] text-muted">{label}</span><input value={String(deskDraft[key as keyof typeof deskDraft])} onChange={(event) => setDeskDraft((current) => ({ ...current, [key]: event.target.value }))} className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[9px] outline-none focus:border-primary/40" /></label>)}
+              <label>
+                <span className="mb-1.5 block text-[7px] uppercase tracking-[0.1em] text-muted">Unique Desk name *</span>
+                <div className="relative">
+                  <input
+                    value={deskDraft.name}
+                    maxLength={60}
+                    onChange={(event) => setDeskDraft((current) => ({ ...current, name: event.target.value }))}
+                    aria-describedby="desk-name-status"
+                    className={`h-10 w-full rounded-xl border bg-background px-3 pr-10 text-[9px] outline-none ${
+                      deskNameCheck.state === "available"
+                        ? "border-primary/55"
+                        : deskNameCheck.state === "taken" || deskNameCheck.state === "invalid" || deskNameCheck.state === "error"
+                          ? "border-danger/55"
+                          : "border-border focus:border-primary/40"
+                    }`}
+                    placeholder="e.g. New York Index Desk"
+                  />
+                  <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2">
+                    {deskNameCheck.state === "checking" ? <span className="block h-3.5 w-3.5 animate-spin rounded-full border-2 border-primary/25 border-t-primary" /> : null}
+                    {deskNameCheck.state === "available" ? <CheckCircle2 className="h-4 w-4 text-primary" /> : null}
+                    {deskNameCheck.state === "taken" || deskNameCheck.state === "invalid" || deskNameCheck.state === "error" ? <CircleAlert className="h-4 w-4 text-danger" /> : null}
+                  </span>
+                </div>
+                <span
+                  id="desk-name-status"
+                  className={`mt-1.5 block text-[7px] ${
+                    deskNameCheck.state === "available"
+                      ? "text-primary"
+                      : deskNameCheck.state === "taken" || deskNameCheck.state === "invalid" || deskNameCheck.state === "error"
+                        ? "text-danger"
+                        : "text-muted"
+                  }`}
+                >
+                  {deskNameCheck.message || "Desk names are unique across the platform."}
+                </span>
+              </label>
+              <label><span className="mb-1.5 block text-[7px] uppercase tracking-[0.1em] text-muted">Markets — comma separated</span><input value={deskDraft.markets} onChange={(event) => setDeskDraft((current) => ({ ...current, markets: event.target.value }))} className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[9px] outline-none focus:border-primary/40" placeholder="NQ, ES" /></label>
+              <label><span className="mb-1.5 block text-[7px] uppercase tracking-[0.1em] text-muted">Session</span><KwantSelect value={deskDraft.session} onChange={(event) => setDeskDraft((current) => ({ ...current, session: event.target.value }))} className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[9px] outline-none"><option value="Globex">Globex</option><option value="Tokyo">Tokyo</option><option value="Frankfurt">Frankfurt</option><option value="London">London</option><option value="New York">New York</option></KwantSelect></label>
+              <label><span className="mb-1.5 block text-[7px] uppercase tracking-[0.1em] text-muted">Timezone</span><input value={deskDraft.timezone} onChange={(event) => setDeskDraft((current) => ({ ...current, timezone: event.target.value }))} className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[9px] outline-none focus:border-primary/40" placeholder="Australia/Brisbane" /></label>
+              <label><span className="mb-1.5 block text-[7px] uppercase tracking-[0.1em] text-muted">Capacity — maximum 50</span><input type="number" min={2} max={50} value={deskDraft.capacity} onChange={(event) => setDeskDraft((current) => ({ ...current, capacity: event.target.value }))} className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[9px] outline-none focus:border-primary/40" /></label>
               <label><span className="mb-1.5 block text-[7px] uppercase tracking-[0.1em] text-muted">Joining</span><KwantSelect value={deskDraft.privacy} onChange={(event) => setDeskDraft((current) => ({ ...current, privacy: event.target.value as SocialDeskPayload["privacy"] }))} className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[9px] outline-none"><option value="PUBLIC">Public · instant join</option><option value="REQUEST">Request to join</option><option value="PRIVATE">Private invite</option></KwantSelect></label>
               <label className="md:col-span-2"><span className="mb-1.5 block text-[7px] uppercase tracking-[0.1em] text-muted">Shared development objective *</span><textarea value={deskDraft.objective} onChange={(event) => setDeskDraft((current) => ({ ...current, objective: event.target.value }))} rows={3} className="w-full resize-none rounded-xl border border-border bg-background p-3 text-[9px] outline-none focus:border-primary/40" /></label>
               <label className="md:col-span-2"><span className="mb-1.5 block text-[7px] uppercase tracking-[0.1em] text-muted">Desk description</span><textarea value={deskDraft.description} onChange={(event) => setDeskDraft((current) => ({ ...current, description: event.target.value }))} rows={3} className="w-full resize-none rounded-xl border border-border bg-background p-3 text-[9px] outline-none focus:border-primary/40" /></label>
               <label className="md:col-span-2"><span className="mb-1.5 block text-[7px] uppercase tracking-[0.1em] text-muted">First weekly mission</span><input value={deskDraft.weeklyMission} onChange={(event) => setDeskDraft((current) => ({ ...current, weeklyMission: event.target.value }))} className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[9px] outline-none focus:border-primary/40" /></label>
             </div>
-            <div className="flex justify-end gap-2 border-t border-border bg-background/20 px-5 py-4"><button type="button" onClick={() => setShowDeskModal(false)} className="h-9 rounded-xl border border-border px-4 text-[8px] font-semibold text-muted">Cancel</button><button type="button" onClick={createDesk} className="flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-[8px] font-semibold text-background"><UsersRound className="h-3.5 w-3.5" />Create Desk</button></div>
+            <div className="flex justify-end gap-2 border-t border-border bg-background/20 px-5 py-4"><button type="button" onClick={() => setShowDeskModal(false)} disabled={deskCreating} className="h-9 rounded-xl border border-border px-4 text-[8px] font-semibold text-muted disabled:opacity-40">Cancel</button><button type="button" onClick={() => void createDesk()} disabled={deskCreating || deskNameCheck.state !== "available" || !deskDraft.objective.trim()} className="flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-[8px] font-semibold text-background disabled:cursor-not-allowed disabled:opacity-40">{deskCreating ? <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-background/30 border-t-background" /> : <UsersRound className="h-3.5 w-3.5" />}{deskCreating ? "Creating Desk…" : "Create Desk"}</button></div>
           </div>
         </div>
       ) : null}

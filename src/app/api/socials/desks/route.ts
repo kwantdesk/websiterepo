@@ -5,6 +5,7 @@ import { getRouteActor } from "@/lib/serverAuth";
 import {
   EMPTY_DESK_NETWORK,
   type DeskChannel,
+  type CreatedDeskPayload,
   type DeskFocusLock,
   type DeskJoinRequest,
   type DeskMember,
@@ -281,6 +282,34 @@ async function deskClient(request: NextRequest) {
   }
 }
 
+function rpcUnavailable(code?: string) {
+  return code === "42883" || code === "PGRST202";
+}
+
+async function deskNameAvailable(
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+  name: string,
+  excludedDeskId: string | null = null,
+) {
+  const rpcResult = await supabase.rpc("desk_name_available", {
+    requested_name: name,
+    excluded_desk_id: excludedDeskId,
+  });
+  if (!rpcResult.error) return { available: Boolean(rpcResult.data), migrationReady: true };
+  if (!rpcUnavailable(rpcResult.error.code)) throw rpcResult.error;
+
+  const escapedName = name.replace(/[\\%_]/g, "\\$&");
+  let query = supabase
+    .from("desk_workspaces")
+    .select("desk_id")
+    .ilike("name", escapedName)
+    .limit(1);
+  if (excludedDeskId) query = query.neq("desk_id", excludedDeskId);
+  const fallback = await query;
+  if (fallback.error) throw fallback.error;
+  return { available: (fallback.data ?? []).length === 0, migrationReady: false };
+}
+
 function unavailable(viewerId: string | null = null) {
   return NextResponse.json(
     { ...EMPTY_DESK_NETWORK, viewerId },
@@ -293,8 +322,46 @@ export async function GET(request: NextRequest) {
   if (!actor) return NextResponse.json({ error: "Authentication required." }, { status: 401 });
   if (!supabase) return unavailable(actor.userId);
 
+  const requestedName = request.nextUrl.searchParams.get("nameAvailable");
+  if (requestedName !== null) {
+    const name = cleanText(requestedName, 60);
+    if (name.length < 3) {
+      return NextResponse.json({
+        available: false,
+        name,
+        reason: "Use at least 3 characters.",
+      });
+    }
+    try {
+      const availability = await deskNameAvailable(supabase, name);
+      return NextResponse.json({
+        available: availability.available,
+        name,
+        reason: availability.available ? "Desk name is available." : "This Desk already exists.",
+        migrationReady: availability.migrationReady,
+      }, { headers: { "Cache-Control": "private, no-store, max-age=0" } });
+    } catch {
+      return NextResponse.json({ error: "Desk name availability could not be checked." }, { status: 502 });
+    }
+  }
+
   const selectedDeskId = cleanIdentifier(request.nextUrl.searchParams.get("deskId"));
-  const [workspaceResult, memberResult, requestResult] = await Promise.all([
+  const channelRequest = selectedDeskId
+    ? supabase
+      .from("desk_channels")
+      .select("id,desk_id,name,description,channel_type,position,is_private,read_only,reaction_only,show_history,allowed_user_ids,created_by,created_at,updated_at")
+      .eq("desk_id", selectedDeskId)
+      .order("position", { ascending: true })
+    : Promise.resolve({ data: [] as ChannelRow[], error: null });
+  const messageRequest = selectedDeskId
+    ? supabase
+      .from("desk_messages")
+      .select("id,desk_id,channel_id,sender_user_id,body,attachments,created_at,updated_at")
+      .eq("desk_id", selectedDeskId)
+      .order("created_at", { ascending: false })
+      .limit(500)
+    : Promise.resolve({ data: [] as MessageRow[], error: null });
+  const [workspaceResult, memberResult, requestResult, focusLockResult, channelResult, messageResult] = await Promise.all([
     supabase
       .from("desk_workspaces")
       .select("desk_id,owner_id,name,description,objective,weekly_mission,markets,session,timezone,privacy,capacity,allow_member_invites,inactivity_days,avatar_url,accent_color,rules,created_at,updated_at")
@@ -308,6 +375,11 @@ export async function GET(request: NextRequest) {
       .select("id,desk_id,user_id,request_type,requested_by,status,created_at,updated_at")
       .eq("status", "pending")
       .order("created_at", { ascending: false }),
+    supabase
+      .from("desk_focus_locks")
+      .select("desk_id,locked_by,locked_at"),
+    channelRequest,
+    messageRequest,
   ]);
   const baseError = workspaceResult.error ?? memberResult.error ?? requestResult.error;
   if (baseError) {
@@ -316,13 +388,10 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Desks could not be loaded." }, { status: 502 });
   }
 
-  let channels: ChannelRow[] = [];
-  let messages: MessageRow[] = [];
+  const channels = (channelResult.data ?? []) as ChannelRow[];
+  const messages = ((messageResult.data ?? []) as MessageRow[]).reverse();
   let reactions: ReactionRow[] = [];
   let focusLocks: FocusLockRow[] = [];
-  const focusLockResult = await supabase
-    .from("desk_focus_locks")
-    .select("desk_id,locked_by,locked_at");
   if (!focusLockResult.error) {
     focusLocks = (focusLockResult.data ?? []) as FocusLockRow[];
   } else if (!tableUnavailable(focusLockResult.error.code)) {
@@ -332,26 +401,12 @@ export async function GET(request: NextRequest) {
     });
   }
   if (selectedDeskId) {
-    const channelResult = await supabase
-      .from("desk_channels")
-      .select("id,desk_id,name,description,channel_type,position,is_private,read_only,reaction_only,show_history,allowed_user_ids,created_by,created_at,updated_at")
-      .eq("desk_id", selectedDeskId)
-      .order("position", { ascending: true });
     if (channelResult.error && !tableUnavailable(channelResult.error.code)) {
       return NextResponse.json({ error: "Desk channels could not be loaded." }, { status: 502 });
     }
-    channels = (channelResult.data ?? []) as ChannelRow[];
-
-    const messageResult = await supabase
-      .from("desk_messages")
-      .select("id,desk_id,channel_id,sender_user_id,body,attachments,created_at,updated_at")
-      .eq("desk_id", selectedDeskId)
-      .order("created_at", { ascending: false })
-      .limit(500);
     if (messageResult.error && !tableUnavailable(messageResult.error.code)) {
       return NextResponse.json({ error: "Desk messages could not be loaded." }, { status: 502 });
     }
-    messages = ((messageResult.data ?? []) as MessageRow[]).reverse();
     const messageIds = messages.map((message) => message.id);
     if (messageIds.length) {
       const reactionResult = await supabase
@@ -424,6 +479,144 @@ export async function POST(request: NextRequest) {
   }
   const action = cleanIdentifier(body.action, 50);
   const deskId = cleanIdentifier(body.deskId);
+
+  if (action === "create") {
+    const name = cleanText(body.name, 60);
+    const objective = cleanText(body.objective, 500);
+    if (name.length < 3) {
+      return NextResponse.json({ error: "A Desk name must contain at least 3 characters." }, { status: 400 });
+    }
+    if (!objective) {
+      return NextResponse.json({ error: "A Desk needs a shared objective." }, { status: 400 });
+    }
+    const privacyCandidate = cleanText(body.privacy, 16).toUpperCase();
+    const privacy: DeskPrivacy = ["PUBLIC", "REQUEST", "PRIVATE"].includes(privacyCandidate)
+      ? privacyCandidate as DeskPrivacy
+      : "REQUEST";
+    const description = cleanText(body.description, 600);
+    const weeklyMission = cleanText(body.weeklyMission, 500);
+    const markets = stringArray(body.markets, 12);
+    const session = cleanText(body.session, 40) || "New York";
+    const timezone = cleanText(body.timezone, 80) || "UTC";
+    const capacity = Math.max(2, Math.min(50, Math.floor(Number(body.capacity) || 12)));
+
+    try {
+      const availability = await deskNameAvailable(supabase, name);
+      if (!availability.available) {
+        return NextResponse.json({
+          code: "DESK_NAME_TAKEN",
+          error: "This Desk already exists.",
+        }, { status: 409 });
+      }
+    } catch {
+      return NextResponse.json({ error: "Desk name availability could not be checked." }, { status: 502 });
+    }
+
+    const rpcResult = await supabase.rpc("desk_create_workspace", {
+      requested_name: name,
+      requested_description: description,
+      requested_objective: objective,
+      requested_weekly_mission: weeklyMission,
+      requested_markets: markets,
+      requested_session: session,
+      requested_timezone: timezone,
+      requested_privacy: privacy,
+      requested_capacity: capacity,
+    });
+    if (!rpcResult.error && rpcResult.data && typeof rpcResult.data === "object") {
+      const createdRows = rpcResult.data as {
+        workspace?: WorkspaceRow;
+        member?: MemberRow;
+        channels?: ChannelRow[];
+      };
+      if (createdRows.workspace && createdRows.member) {
+        const created: CreatedDeskPayload = {
+          workspace: fromWorkspace(createdRows.workspace),
+          member: fromMember(createdRows.member),
+          channels: (createdRows.channels ?? []).map(fromChannel),
+        };
+        return NextResponse.json({ ok: true, deskId: created.workspace.deskId, created }, { status: 201 });
+      }
+    }
+    if (rpcResult.error && !rpcUnavailable(rpcResult.error.code)) {
+      if (rpcResult.error.code === "23505") {
+        return NextResponse.json({
+          code: "DESK_NAME_TAKEN",
+          error: "This Desk already exists.",
+        }, { status: 409 });
+      }
+      return NextResponse.json({ error: rpcResult.error.message }, { status: 502 });
+    }
+
+    // Compatibility path while the uniqueness migration is being applied.
+    const createdDeskId = `desk:${randomUUID()}`;
+    const workspaceRow = {
+      desk_id: createdDeskId,
+      owner_id: actor.userId,
+      name,
+      description,
+      objective,
+      weekly_mission: weeklyMission,
+      markets,
+      session,
+      timezone,
+      privacy,
+      capacity,
+    };
+    const workspaceResult = await supabase
+      .from("desk_workspaces")
+      .insert(workspaceRow)
+      .select("desk_id,owner_id,name,description,objective,weekly_mission,markets,session,timezone,privacy,capacity,allow_member_invites,inactivity_days,avatar_url,accent_color,rules,created_at,updated_at")
+      .single();
+    if (workspaceResult.error) {
+      if (workspaceResult.error.code === "23505") {
+        return NextResponse.json({
+          code: "DESK_NAME_TAKEN",
+          error: "This Desk already exists.",
+        }, { status: 409 });
+      }
+      return NextResponse.json({ error: workspaceResult.error.message }, { status: 502 });
+    }
+    const ownerResult = await supabase.rpc("desk_request_access", { requested_desk_id: createdDeskId });
+    if (ownerResult.error) {
+      await supabase.from("desk_workspaces").delete().eq("desk_id", createdDeskId);
+      return NextResponse.json({ error: ownerResult.error.message }, { status: 502 });
+    }
+    const defaults = [
+      ["general", "The Desk floor for structured discussion.", "text", 10, false],
+      ["trade-floor", "Live observations and session coordination.", "text", 20, false],
+      ["desk-rules", "The shared standard and owner announcements.", "text", 30, true],
+      ["voice-lounge", "Voice rooms are reserved for a later release.", "voice", 40, false],
+    ] as const;
+    const channelResult = await supabase.from("desk_channels").insert(
+      defaults.map(([channelName, channelDescription, channelType, position, readOnly]) => ({
+        desk_id: createdDeskId,
+        name: channelName,
+        description: channelDescription,
+        channel_type: channelType,
+        position,
+        read_only: readOnly,
+        created_by: actor.userId,
+      })),
+    ).select("id,desk_id,name,description,channel_type,position,is_private,read_only,reaction_only,show_history,allowed_user_ids,created_by,created_at,updated_at");
+    if (channelResult.error) {
+      await supabase.from("desk_workspaces").delete().eq("desk_id", createdDeskId);
+      return NextResponse.json({ error: channelResult.error.message }, { status: 502 });
+    }
+    const now = new Date().toISOString();
+    const created: CreatedDeskPayload = {
+      workspace: fromWorkspace(workspaceResult.data as WorkspaceRow),
+      member: {
+        deskId: createdDeskId,
+        userId: actor.userId,
+        role: "owner",
+        joinedAt: now,
+        lastActiveAt: now,
+      },
+      channels: ((channelResult.data ?? []) as ChannelRow[]).map(fromChannel),
+    };
+    return NextResponse.json({ ok: true, deskId: createdDeskId, created }, { status: 201 });
+  }
 
   if (action === "initialize") {
     if (!deskId) return NextResponse.json({ error: "Choose a Desk." }, { status: 400 });
@@ -501,6 +694,18 @@ export async function POST(request: NextRequest) {
   }
 
   if (action === "update-settings") {
+    const name = cleanText(body.name, 60) || "Kwant Desk";
+    try {
+      const availability = await deskNameAvailable(supabase, name, deskId);
+      if (!availability.available) {
+        return NextResponse.json({
+          code: "DESK_NAME_TAKEN",
+          error: "This Desk already exists.",
+        }, { status: 409 });
+      }
+    } catch {
+      return NextResponse.json({ error: "Desk name availability could not be checked." }, { status: 502 });
+    }
     const privacyCandidate = cleanText(body.privacy, 16).toUpperCase();
     const privacy: DeskPrivacy = ["PUBLIC", "REQUEST", "PRIVATE"].includes(privacyCandidate)
       ? privacyCandidate as DeskPrivacy
@@ -514,7 +719,7 @@ export async function POST(request: NextRequest) {
       ? null
       : Math.max(7, Math.min(365, Math.floor(Number(body.inactivityDays) || 30)));
     const row = {
-      name: cleanText(body.name, 60) || "Kwant Desk",
+      name,
       description: cleanText(body.description, 600),
       objective: cleanText(body.objective, 500),
       weekly_mission: cleanText(body.weeklyMission, 500),
@@ -531,6 +736,12 @@ export async function POST(request: NextRequest) {
       updated_at: new Date().toISOString(),
     };
     const { error } = await supabase.from("desk_workspaces").update(row).eq("desk_id", deskId);
+    if (error?.code === "23505") {
+      return NextResponse.json({
+        code: "DESK_NAME_TAKEN",
+        error: "This Desk already exists.",
+      }, { status: 409 });
+    }
     if (error) return NextResponse.json({ error: error.message }, { status: 403 });
     return NextResponse.json({ ok: true });
   }

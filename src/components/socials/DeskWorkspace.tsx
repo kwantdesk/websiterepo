@@ -37,7 +37,9 @@ import KwantSelect from "@/components/ui/KwantSelect";
 import UserAvatar from "@/components/socials/UserAvatar";
 import { createClient as createSupabaseBrowserClient } from "@/lib/supabase";
 import {
+  DESK_CREATED_EVENT,
   EMPTY_DESK_NETWORK,
+  type CreatedDeskPayload,
   type DeskChannel,
   type DeskMember,
   type DeskMemberProfile,
@@ -292,6 +294,7 @@ export default function DeskWorkspace({
   const settingsAvatarRef = useRef<HTMLInputElement>(null);
   const selectedDeskRef = useRef("");
   const refreshTimerRef = useRef<number | null>(null);
+  const suppressRefreshUntilRef = useRef(0);
 
   selectedDeskRef.current = activeDeskId;
 
@@ -313,6 +316,53 @@ export default function DeskWorkspace({
   useEffect(() => {
     void loadNetwork(false);
   }, [loadNetwork]);
+
+  useEffect(() => {
+    const handleDeskCreated = (event: Event) => {
+      const created = (event as CustomEvent<CreatedDeskPayload>).detail;
+      if (!created?.workspace || created.member.userId !== viewerId) return;
+      suppressRefreshUntilRef.current = Date.now() + 2_500;
+      const viewerScore = Math.round(
+        Object.values(viewerProfile.scores).reduce((sum, value) => sum + value, 0)
+        / Math.max(1, Object.values(viewerProfile.scores).length),
+      );
+      setNetwork((current) => ({
+        ...current,
+        ready: true,
+        viewerId,
+        workspaces: [
+          created.workspace,
+          ...current.workspaces.filter((workspace) => workspace.deskId !== created.workspace.deskId),
+        ],
+        members: [
+          created.member,
+          ...current.members.filter((member) =>
+            member.deskId !== created.member.deskId || member.userId !== created.member.userId),
+        ],
+        channels: [
+          ...created.channels,
+          ...current.channels.filter((channel) => channel.deskId !== created.workspace.deskId),
+        ],
+        profiles: [
+          {
+            userId: viewerId,
+            displayName: viewerProfile.displayName,
+            handle: viewerProfile.handle,
+            avatarUrl: viewerProfile.avatarUrl || "",
+            processStatus: viewerProfile.processStatus,
+            score: viewerScore,
+            lastSeenAt: viewerProfile.lastSeenAt || null,
+          },
+          ...current.profiles.filter((profile) => profile.userId !== viewerId),
+        ],
+      }));
+      setDiscovering(false);
+      setActiveDeskId(created.workspace.deskId);
+      setActiveChannelId(created.channels.find((channel) => channel.name === "general")?.id ?? created.channels[0]?.id ?? "");
+    };
+    window.addEventListener(DESK_CREATED_EVENT, handleDeskCreated);
+    return () => window.removeEventListener(DESK_CREATED_EVENT, handleDeskCreated);
+  }, [viewerId, viewerProfile]);
 
   const viewerMemberships = useMemo(
     () => network.members.filter((member) => member.userId === viewerId),
@@ -363,7 +413,7 @@ export default function DeskWorkspace({
     if (!activeDeskId) return;
     window.localStorage.setItem("kwantdesk-active-desk", activeDeskId);
     setDiscovering(false);
-    void loadNetwork(false, activeDeskId);
+    void loadNetwork(true, activeDeskId);
   }, [activeDeskId, loadNetwork]);
 
   useEffect(() => {
@@ -372,9 +422,10 @@ export default function DeskWorkspace({
     if (!supabase) return;
     const refresh = (delay = 180) => {
       if (refreshTimerRef.current) window.clearTimeout(refreshTimerRef.current);
+      const suppressionDelay = Math.max(0, suppressRefreshUntilRef.current - Date.now());
       refreshTimerRef.current = window.setTimeout(() => {
         void loadNetwork(true, selectedDeskRef.current);
-      }, delay);
+      }, Math.max(delay, suppressionDelay));
     };
     const channel = supabase
       .channel("kwantdesk-multi-desks")

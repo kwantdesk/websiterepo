@@ -116,6 +116,14 @@ export type DeskNetworkPayload = {
   profiles: DeskMemberProfile[];
 };
 
+export type CreatedDeskPayload = {
+  workspace: DeskWorkspace;
+  member: DeskMember;
+  channels: DeskChannel[];
+};
+
+export const DESK_CREATED_EVENT = "kwantdesk:desk-created";
+
 export const EMPTY_DESK_NETWORK: DeskNetworkPayload = {
   ready: false,
   viewerId: null,
