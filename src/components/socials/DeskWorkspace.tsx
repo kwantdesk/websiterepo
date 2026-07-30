@@ -33,6 +33,7 @@ import {
   VolumeX,
   X,
 } from "lucide-react";
+import KwantLoader from "@/components/KwantLoader";
 import KwantSelect from "@/components/ui/KwantSelect";
 import UserAvatar from "@/components/socials/UserAvatar";
 import { createClient as createSupabaseBrowserClient } from "@/lib/supabase";
@@ -670,9 +671,12 @@ export default function DeskWorkspace({
 
   if (loading && !network.ready) {
     return (
-      <div className="flex h-full min-h-0 items-center justify-center rounded-3xl border border-border bg-panel">
-        <div className="text-center"><span className="mx-auto block h-7 w-7 animate-spin rounded-full border-2 border-primary/20 border-t-primary" /><div className="mt-3 text-[9px] font-semibold">Opening your Desks</div><div className="mt-1 text-[7px] text-muted">Loading memberships, channels and permissions.</div></div>
-      </div>
+      <KwantLoader
+        className="h-full min-h-0 rounded-3xl border border-border"
+        icon={UsersRound}
+        title="Opening your Desks"
+        detail="Loading memberships, channels and permissions."
+      />
     );
   }
 

@@ -19,6 +19,7 @@ import {
   SkipBack,
   SkipForward,
 } from "lucide-react";
+import KwantLoader from "@/components/KwantLoader";
 import {
   GEX_MAP_GREEKS,
   type GexMapPanelPayload,
@@ -357,9 +358,13 @@ function ExposurePanel({
 
       <div ref={scrollRef} className="relative min-h-0 flex-1 overflow-y-auto bg-chart-background">
         {loading && !payload ? (
-          <div className="flex h-full items-center justify-center gap-2 text-[11px] text-muted">
-            <Loader2 className="h-4 w-4 animate-spin text-primary" /> Loading {greek.short}
-          </div>
+          <KwantLoader
+            className="h-full"
+            compact
+            icon={ScanLine}
+            title={`Loading ${greek.short}`}
+            detail="Restoring the latest exposure frames"
+          />
         ) : error && !payload ? (
           <div className="flex h-full flex-col items-center justify-center px-8 text-center">
             <CircleStop className="mb-3 h-5 w-5 text-danger" />

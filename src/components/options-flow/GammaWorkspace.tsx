@@ -12,7 +12,6 @@ import {
   Database,
   Gauge,
   Layers3,
-  Loader2,
   Radio,
   RefreshCw,
   ScanLine,
@@ -22,6 +21,7 @@ import {
   Waves,
   Zap,
 } from "lucide-react";
+import KwantLoader from "@/components/KwantLoader";
 import MarketMapIntelligence from "@/components/options-flow/MarketMapIntelligence";
 import PositioningIntelligence from "@/components/options-flow/PositioningIntelligence";
 import {
@@ -685,15 +685,12 @@ function FlowBoard({ rows, selected, onSelect }: { rows: FlowBoardItem[]; select
 
 function LoadingScreen() {
   return (
-    <div className="flex flex-1 items-center justify-center bg-background">
-      <div className="text-center">
-        <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl border border-primary/20 bg-primary/10 text-primary">
-          <Loader2 className="h-5 w-5 animate-spin" />
-        </span>
-        <div className="mt-4 text-[13px] font-semibold text-foreground">Loading live options positioning</div>
-        <div className="mt-1 text-[11px] text-muted">Exposure, volatility, flow and price</div>
-      </div>
-    </div>
+    <KwantLoader
+      className="flex-1"
+      icon={Waves}
+      title="Loading live options positioning"
+      detail="Exposure, volatility, flow and price"
+    />
   );
 }
 

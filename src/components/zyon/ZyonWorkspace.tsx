@@ -43,6 +43,7 @@ import {
   type SetStateAction,
 } from "react";
 import { createPortal } from "react-dom";
+import KwantLoader from "@/components/KwantLoader";
 import KwantSelect from "@/components/ui/KwantSelect";
 import type { UseKwantBotInterpreterResult } from "@/hooks/useKwantBotInterpreter";
 import { formatKwantBotPrice } from "@/lib/kwantBotInterpreter";
@@ -346,16 +347,13 @@ function ZyonLoadingState({ compact }: { compact: boolean }) {
           <div className="mt-1 text-[7px] uppercase tracking-[0.12em] text-muted">Restoring conversation</div>
         </div>
       </header>
-      <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-[radial-gradient(circle_at_50%_45%,color-mix(in_srgb,var(--primary)_7%,transparent),transparent_38%)]">
-        <div className="text-center">
-          <span className="relative mx-auto flex h-12 w-12 items-center justify-center rounded-2xl border border-primary/20 bg-primary/[0.07] text-primary">
-            <Sparkles className="h-4 w-4 animate-pulse" />
-            <span className="absolute inset-[-6px] animate-spin rounded-[20px] border border-transparent border-t-primary/55" />
-          </span>
-          <div className="mt-4 text-[9px] font-semibold text-foreground">Opening ZYON</div>
-          <div className="mt-1 text-[7px] text-muted">Placing you at the latest message.</div>
-        </div>
-      </div>
+      <KwantLoader
+        className="min-h-0 flex-1"
+        compact={compact}
+        icon={Sparkles}
+        title="Opening ZYON"
+        detail="Placing you at the latest message."
+      />
     </div>
   );
 }

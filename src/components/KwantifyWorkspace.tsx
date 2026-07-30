@@ -7,6 +7,7 @@ import KwantBotIntelligenceWorkspace from "@/components/kwantbot/KwantBotIntelli
 import KwantBotInterpreterPanel from "@/components/kwantbot/KwantBotInterpreterPanel";
 import OptionsTapePanel from "@/components/kwantbot/OptionsTapePanel";
 import FriendsPanel from "@/components/friends/FriendsPanel";
+import KwantLoader from "@/components/KwantLoader";
 import UserAvatar from "@/components/socials/UserAvatar";
 import { useKwantBotInterpreter } from "@/hooks/useKwantBotInterpreter";
 
@@ -184,15 +185,13 @@ const NewsWorkspace = dynamic(() => import("@/components/news/NewsWorkspace"), {
 const ZyonWorkspace = dynamic(() => import("@/components/zyon/ZyonWorkspace"), {
   ssr: false,
   loading: () => (
-    <div className="flex h-full min-h-0 flex-1 items-center justify-center bg-background">
-      <div className="text-center">
-        <span className="mx-auto flex h-11 w-11 items-center justify-center rounded-2xl border border-primary/20 bg-primary/[0.07] text-primary">
-          <Sparkles className="h-4 w-4 animate-pulse" />
-        </span>
-        <div className="mt-3 text-[8px] font-semibold text-foreground">Opening ZYON</div>
-        <div className="mt-1 text-[7px] text-muted">Loading the latest conversation.</div>
-      </div>
-    </div>
+    <KwantLoader
+      className="h-full min-h-0 flex-1"
+      compact
+      icon={Sparkles}
+      title="Opening ZYON"
+      detail="Loading the latest conversation."
+    />
   ),
 });
 const JournalWorkspace = dynamic(() => import("@/components/journal/JournalWorkspace"), { ssr: false });
@@ -2519,22 +2518,13 @@ function WorkspaceChartPane({
         </div>
       )}
       {loading ? (
-        <div
-          role="status"
-          aria-live="polite"
-          className="flex h-full items-center justify-center"
+        <KwantLoader
+          className="h-full"
           style={{ backgroundColor: settings.backgroundColor }}
-        >
-          <div className="flex items-center gap-3 rounded-2xl border border-border bg-panel/92 px-4 py-3 shadow-2xl shadow-black/35 backdrop-blur-xl">
-            <Loader2 className="h-4 w-4 animate-spin text-primary" />
-            <span>
-              <span className="block text-[12px] font-semibold text-foreground">Loading chart</span>
-              <span className="mt-0.5 block text-[9px] uppercase tracking-[0.14em] text-muted">
-                {displayCmeSymbol(pane.symbol)} · preparing five-day history
-              </span>
-            </span>
-          </div>
-        </div>
+          icon={BarChart3}
+          title="Loading chart"
+          detail={`${displayCmeSymbol(pane.symbol)} · preparing five-day history`}
+        />
       ) : error ? (
         <div className="flex h-full items-center justify-center text-[13px] text-muted">{error}</div>
       ) : (

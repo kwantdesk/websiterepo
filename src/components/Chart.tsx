@@ -81,6 +81,7 @@ import {
   type CalculatedIndicatorSeries,
 } from "@/lib/chartIndicatorEngine";
 import ChartIndicatorPanes, { type IndicatorPaneGroup } from "@/components/ChartIndicatorPanes";
+import KwantLoader from "@/components/KwantLoader";
 import { calculateKwantStats } from "@/lib/kwantStats";
 import { defaultChartSettings, type ChartSettings } from "@/lib/chartSettings";
 import { compactTimeZoneLabel, normalizeTimeZone } from "@/lib/timeZones";
@@ -3091,37 +3092,23 @@ export default function Chart({
   return (
     <div ref={chartContainerRef} className="relative h-full w-full overflow-hidden">
       {!chartVisualReady ? (
-        <div
-          role="status"
-          aria-live="polite"
-          className="pointer-events-auto absolute inset-0 z-[90] flex items-center justify-center"
+        <KwantLoader
+          className="pointer-events-auto absolute inset-0 z-[90]"
           style={{ backgroundColor: settings.backgroundColor }}
-        >
-          <div className="flex items-center gap-3 rounded-2xl border border-border bg-panel/92 px-4 py-3 shadow-2xl shadow-black/35 backdrop-blur-xl">
-            <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary/20 border-t-primary" />
-            <span>
-              <span className="block text-[12px] font-semibold text-foreground">Loading chart</span>
-              <span className="mt-0.5 block text-[9px] uppercase tracking-[0.14em] text-muted">
-                {instrument} · fitting history and price scale
-              </span>
-            </span>
-          </div>
-        </div>
+          icon={ChartColumnIncreasing}
+          title="Loading chart"
+          detail={`${instrument} · fitting history and price scale`}
+        />
       ) : null}
       {gammaLevelsEnabled && gammaLevelsLoading ? (
-        <div className="pointer-events-none absolute inset-0 z-[19] flex items-center justify-center">
-          <div
-            role="status"
-            aria-live="polite"
-            className="flex items-center gap-3 rounded-xl border border-primary/25 bg-panel/92 px-4 py-3 text-left shadow-2xl shadow-black/35 backdrop-blur-md"
-          >
-            <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary/25 border-t-primary" />
-            <span>
-              <span className="block text-[12px] font-semibold text-foreground">Loading {instrument} gamma levels…</span>
-              <span className="mt-0.5 block text-[9px] uppercase tracking-[0.14em] text-muted">Syncing current levels</span>
-            </span>
-          </div>
-        </div>
+        <KwantLoader
+          className="pointer-events-none absolute inset-0 z-[19]"
+          compact
+          style={{ backgroundColor: settings.backgroundColor }}
+          icon={ScanLine}
+          title={`Loading ${instrument} gamma levels`}
+          detail="Syncing current levels"
+        />
       ) : null}
       <div
         ref={horzLineRef}

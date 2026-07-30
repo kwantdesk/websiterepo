@@ -39,6 +39,7 @@ import {
   Upload,
   X,
 } from "lucide-react";
+import KwantLoader from "@/components/KwantLoader";
 import {
   calculateJournalStats,
   EMPTY_JOURNAL_STATE,
@@ -787,7 +788,14 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
   const bySetup = useMemo(() => groupPerformance(filteredTrades, (trade) => trade.setup || trade.tags[0] || "Unclassified"), [filteredTrades]);
 
   if (!ready) {
-    return <div className="flex h-full items-center justify-center bg-background text-[11px] text-muted">Loading Journal memory…</div>;
+    return (
+      <KwantLoader
+        className="h-full"
+        icon={NotebookPen}
+        title="Loading Journal memory"
+        detail="Restoring accounts, records and saved evidence"
+      />
+    );
   }
 
   return (

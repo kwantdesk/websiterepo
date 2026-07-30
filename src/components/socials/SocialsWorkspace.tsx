@@ -45,6 +45,7 @@ import {
   X,
   Zap,
 } from "lucide-react";
+import KwantLoader from "@/components/KwantLoader";
 import KwantSelect from "@/components/ui/KwantSelect";
 import SocialProfileView from "@/components/socials/SocialProfileView";
 import ReasoningOutcomeChart from "@/components/socials/ReasoningOutcomeChart";
@@ -2368,9 +2369,13 @@ export default function SocialsWorkspace({
                   </KwantSelect>
                 </div>
                 {zyonDraftState === "loading" ? (
-                  <div className="flex min-h-[280px] items-center justify-center">
-                    <div className="text-center"><span className="mx-auto block h-7 w-7 animate-spin rounded-full border-2 border-primary/20 border-t-primary" /><div className="mt-3 text-[9px] font-semibold text-foreground">Checking ZYON’s holding record</div><div className="mt-1 text-[8px] text-muted">Nothing is posted to your Profile automatically.</div></div>
-                  </div>
+                  <KwantLoader
+                    className="min-h-[280px]"
+                    compact
+                    icon={BrainCircuit}
+                    title="Checking ZYON's holding record"
+                    detail="Nothing is posted to your Profile automatically."
+                  />
                 ) : zyonGameplanDraft ? (
                   <>
                     <div className="p-4">
@@ -2420,9 +2425,13 @@ export default function SocialsWorkspace({
                     </div>
                   </>
                 ) : gameplanState === "loading" ? (
-                  <div className="flex min-h-[280px] items-center justify-center">
-                    <div className="text-center"><span className="mx-auto block h-7 w-7 animate-spin rounded-full border-2 border-primary/20 border-t-primary" /><div className="mt-3 text-[9px] font-semibold text-foreground">Loading the current Gameplan</div><div className="mt-1 text-[8px] text-muted">Preserving the source version and timestamp.</div></div>
-                  </div>
+                  <KwantLoader
+                    className="min-h-[280px]"
+                    compact
+                    icon={Target}
+                    title="Loading the current Gameplan"
+                    detail="Preserving the source version and timestamp."
+                  />
                 ) : gameplanState === "error" || !gameplan ? (
                   <div className="flex min-h-[280px] items-center justify-center p-6 text-center"><div><CircleAlert className="mx-auto h-6 w-6 text-warning" /><div className="mt-3 text-[10px] font-semibold">The current Gameplan is unavailable.</div><p className="mt-2 max-w-sm text-[8px] leading-4 text-muted">Socials will never fabricate a plan. Resolve the Gameplan data source, then return here to place it on record.</p></div></div>
                 ) : (

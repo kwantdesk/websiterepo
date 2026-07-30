@@ -30,6 +30,7 @@ import {
   X,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase";
+import KwantLoader from "@/components/KwantLoader";
 import UserAvatar from "@/components/socials/UserAvatar";
 import {
   PRESENCE_OPTIONS,
@@ -514,10 +515,13 @@ export default function FriendsPanel({ onClose, onUnreadCountChange, initialFrie
   const renderConversation = (messages: FriendMessage[], group: FriendGroupSummary | null) => {
     if (chatLoading) {
       return (
-        <div className="flex h-full min-h-48 flex-col items-center justify-center text-center" role="status" aria-live="polite">
-          <Loader2 className="h-5 w-5 animate-spin text-primary" />
-          <div className="mt-3 text-[11px] font-medium text-muted">Loading conversation...</div>
-        </div>
+        <KwantLoader
+          className="h-full min-h-48"
+          compact
+          icon={MessageCircle}
+          title="Loading conversation"
+          detail="Restoring the latest messages."
+        />
       );
     }
     if (messages.length === 0) {
@@ -1092,7 +1096,13 @@ export default function FriendsPanel({ onClose, onUnreadCountChange, initialFrie
 
       <div className="min-h-0 flex-1 overflow-y-auto p-2">
         {loading && payload.friends.length === 0 ? (
-          <div className="flex h-full min-h-48 items-center justify-center"><Loader2 className="h-5 w-5 animate-spin text-primary" /></div>
+          <KwantLoader
+            className="h-full min-h-48 rounded-xl"
+            compact
+            icon={UsersRound}
+            title="Loading friends"
+            detail="Restoring presence and conversations."
+          />
         ) : !payload.cloud ? (
           <div className="flex h-full min-h-48 flex-col items-center justify-center px-6 text-center">
             <UsersRound className="h-7 w-7 text-muted" />

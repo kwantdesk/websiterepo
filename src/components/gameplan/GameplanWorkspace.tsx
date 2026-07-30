@@ -39,6 +39,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import KwantLoader from "@/components/KwantLoader";
 import {
   GAMEPLAN_SESSIONS,
   gameplanSessionConfig,
@@ -1643,15 +1644,12 @@ function GlossaryDrawer({ term, onClose }: { term: string | null; onClose: () =>
 
 function LoadingState() {
   return (
-    <div className="flex h-full min-h-[500px] items-center justify-center bg-background">
-      <div className="text-center">
-        <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl border border-primary/20 bg-primary/10 text-primary">
-          <Loader2 className="h-5 w-5 animate-spin" />
-        </span>
-        <div className="mt-4 text-[13px] font-semibold text-foreground">Building today&apos;s level map</div>
-        <div className="mt-1 text-[10px] text-muted">Positioning, volatility, flow and futures translation</div>
-      </div>
-    </div>
+    <KwantLoader
+      className="h-full min-h-[500px]"
+      icon={Map}
+      title="Building today's level map"
+      detail="Positioning, volatility, flow and futures translation"
+    />
   );
 }
 

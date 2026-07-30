@@ -16,12 +16,12 @@ import {
   Filter,
   Globe2,
   Info,
-  Loader2,
   RefreshCw,
   Sparkles,
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import KwantLoader from "@/components/KwantLoader";
 import TimeZoneSelect from "@/components/ui/TimeZoneSelect";
 import {
   ECONOMIC_CALENDAR_CURRENCIES,
@@ -217,15 +217,12 @@ function CalendarPopover({
 
 function LoadingState() {
   return (
-    <div className="flex flex-1 items-center justify-center bg-background">
-      <div className="text-center">
-        <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl border border-primary/20 bg-primary/10 text-primary">
-          <Loader2 className="h-5 w-5 animate-spin" />
-        </span>
-        <div className="mt-4 text-[13px] font-semibold">Loading the economic calendar</div>
-        <div className="mt-1 text-[10px] text-muted">Scheduled releases, forecasts and impact</div>
-      </div>
-    </div>
+    <KwantLoader
+      className="flex-1"
+      icon={CalendarDays}
+      title="Loading the economic calendar"
+      detail="Scheduled releases, forecasts and impact"
+    />
   );
 }
 
