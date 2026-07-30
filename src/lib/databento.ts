@@ -195,7 +195,7 @@ function timeframeMs(timeframe: string) {
 function resample(rows: DatabentoBar[], timeframe: string) {
   const size = timeframeMs(timeframe);
   const sourceSize = sourceSchema(timeframe) === "ohlcv-1s" ? 1_000 : sourceSchema(timeframe) === "ohlcv-1m" ? 60_000 : 86_400_000;
-  if (size <= sourceSize) return rows;
+  if (size < sourceSize) return rows;
   const buckets = new Map<number, DatabentoBar>();
   for (const row of rows) {
     const timestamp = Math.floor(row.timestamp / size) * size;

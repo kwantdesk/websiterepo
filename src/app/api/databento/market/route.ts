@@ -16,7 +16,10 @@ const globalHistoryCache = globalThis as typeof globalThis & {
 };
 const historyCache = globalHistoryCache.__kwantdeskCmeHistory
   ?? (globalHistoryCache.__kwantdeskCmeHistory = new Map<string, HistoryCacheEntry>());
-const FRESH_CACHE_MS = 5 * 60_000;
+// Intraday charts cannot reuse a five-minute-old tail: the live stream only
+// builds the current bucket and would leave the intervening closed bars blank.
+// A short process-local cache still deduplicates simultaneous pane requests.
+const FRESH_CACHE_MS = 12_000;
 const DEFAULT_HISTORY_DAYS = 5;
 const MAX_HISTORY_DAYS = 14;
 
@@ -45,8 +48,15 @@ export async function GET(request: Request) {
 
   if (cached && now - cached.updatedAt <= FRESH_CACHE_MS) {
     return NextResponse.json(
-      { candles: cached.candles, source: "CME", dataset: "GLBX.MDP3", range: `${historyDays}D`, cached: true },
-      { headers: { "Cache-Control": "public, s-maxage=60, stale-while-revalidate=600" } },
+      {
+        candles: cached.candles,
+        source: "CME",
+        dataset: "GLBX.MDP3",
+        range: `${historyDays}D`,
+        cached: true,
+        cachedAt: cached.updatedAt,
+      },
+      { headers: { "Cache-Control": "private, no-store, max-age=0" } },
     );
   }
 
@@ -56,14 +66,29 @@ export async function GET(request: Request) {
       : await getDatabentoBars(symbol, timeframe, start, new Date(now).toISOString());
     if (candles.length) historyCache.set(cacheKey, { candles, updatedAt: now });
     return NextResponse.json(
-      { candles, source: "CME", dataset: "GLBX.MDP3", range: `${historyDays}D`, cached: false },
-      { headers: { "Cache-Control": "public, s-maxage=60, stale-while-revalidate=600" } },
+      {
+        candles,
+        source: "CME",
+        dataset: "GLBX.MDP3",
+        range: `${historyDays}D`,
+        cached: false,
+        cachedAt: now,
+      },
+      { headers: { "Cache-Control": "private, no-store, max-age=0" } },
     );
   } catch (error) {
     if (cached?.candles.length) {
       return NextResponse.json(
-        { candles: cached.candles, source: "CME", dataset: "GLBX.MDP3", range: `${historyDays}D`, cached: true, stale: true },
-        { headers: { "Cache-Control": "public, s-maxage=60, stale-while-revalidate=600" } },
+        {
+          candles: cached.candles,
+          source: "CME",
+          dataset: "GLBX.MDP3",
+          range: `${historyDays}D`,
+          cached: true,
+          stale: true,
+          cachedAt: cached.updatedAt,
+        },
+        { headers: { "Cache-Control": "private, no-store, max-age=0" } },
       );
     }
     return NextResponse.json(

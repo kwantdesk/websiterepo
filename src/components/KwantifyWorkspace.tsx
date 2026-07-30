@@ -924,6 +924,50 @@ function getTimeframeBucketStart(timestampMs: number, timeframe: string) {
   return Math.floor(timestampMs / timeframeMs) * timeframeMs;
 }
 
+function mergeHistoricalWithLiveTail(
+  historical: Candle[],
+  rendered: Candle[],
+  timeframe: string,
+  liveTailStartTimestamp: number | null,
+) {
+  const normalizedHistory = mergeChartHistory([], historical);
+  if (liveTailStartTimestamp === null) return normalizedHistory;
+
+  const liveBucketStart = getTimeframeBucketStart(liveTailStartTimestamp, timeframe);
+  const byTimestamp = new Map(normalizedHistory.map((candle) => [
+    getTimeframeBucketStart(candle.timestamp, timeframe),
+    {
+      ...candle,
+      timestamp: getTimeframeBucketStart(candle.timestamp, timeframe),
+    },
+  ]));
+
+  for (const liveCandle of rendered) {
+    const timestamp = getTimeframeBucketStart(liveCandle.timestamp, timeframe);
+    if (timestamp < liveBucketStart) continue;
+    const historicalCandle = byTimestamp.get(timestamp);
+    if (!historicalCandle) {
+      byTimestamp.set(timestamp, { ...liveCandle, timestamp });
+      continue;
+    }
+    byTimestamp.set(timestamp, {
+      ...historicalCandle,
+      ...liveCandle,
+      timestamp,
+      open: historicalCandle.open,
+      high: Math.max(historicalCandle.high, liveCandle.high),
+      low: Math.min(historicalCandle.low, liveCandle.low),
+      close: liveCandle.close,
+      volume: Math.max(
+        Number(historicalCandle.volume ?? 0),
+        Number(liveCandle.volume ?? 0),
+      ),
+    });
+  }
+
+  return [...byTimestamp.values()].sort((left, right) => left.timestamp - right.timestamp);
+}
+
 function marketTimestamp(value: unknown) {
   if (typeof value === "string" && /^\d+$/.test(value.trim())) {
     const numeric = Number(value);
@@ -1360,7 +1404,7 @@ async function fetchWorkspaceCandles(
     const response = await fetch(
       `/api/databento/market?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}${includeOrderFlow ? "&orderFlow=1" : ""}`,
       {
-        cache: "default",
+        cache: "no-store",
         signal: signal
           ? AbortSignal.any([signal, AbortSignal.timeout(45_000)])
           : AbortSignal.timeout(45_000),
@@ -1368,6 +1412,7 @@ async function fetchWorkspaceCandles(
     );
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.error ?? `CME did not return candles for ${displayCmeSymbol(symbol)}.`);
+    if (payload.stale) throw new Error("CME history tail is stale.");
     const downloaded = sanitizeCandles((payload.candles ?? []) as Candle[], symbol);
     if (downloaded.length) void writeChartHistoryCache(symbol, timeframe, downloaded);
     return downloaded;
@@ -1906,6 +1951,7 @@ function WorkspaceChartPane({
   const latestCandlesRef = useRef<Candle[]>([]);
   const lastCandleStateSyncRef = useRef(0);
   const historyHydratedRef = useRef(false);
+  const liveTailStartTimestampRef = useRef<number | null>(null);
   const latestFuturesRef = useRef<{
     price: number | null;
     asOfMs: number | null;
@@ -2009,6 +2055,7 @@ function WorkspaceChartPane({
     setCandles([]);
     latestCandlesRef.current = [];
     historyHydratedRef.current = false;
+    liveTailStartTimestampRef.current = null;
     pendingLiveTicksRef.current = [];
     if (liveFrameRef.current !== null) {
       window.cancelAnimationFrame(liveFrameRef.current);
@@ -2025,7 +2072,12 @@ function WorkspaceChartPane({
       const cachedCandles = cachedHistory.filter((candle) => candle.timestamp >= requestedFrom);
       const needsFiveDayBackfill = pane.broker === "Databento"
         && !isEventBasedChartInterval(pane.timeframe);
+      const cachedTailIsFresh = Boolean(
+        cached?.updatedAt
+        && Date.now() - cached.updatedAt <= 20_000,
+      );
       const cachedIsHydrated = cachedCandles.length > 0
+        && cachedTailIsFresh
         && (!needsFiveDayBackfill || hasFiveDayHistory(cachedHistory, pane.timeframe));
       if (cachedCandles.length) {
         latestCandlesRef.current = cachedCandles;
@@ -2060,7 +2112,12 @@ function WorkspaceChartPane({
           throw new Error("Five-day history was incomplete.");
         }
         const merged = pane.broker === "Databento"
-          ? mergeChartHistory(latestCandlesRef.current, clean)
+          ? mergeHistoricalWithLiveTail(
+              mergedHistory,
+              latestCandlesRef.current,
+              pane.timeframe,
+              liveTailStartTimestampRef.current,
+            )
           : clean;
         latestCandlesRef.current = merged;
         historyHydratedRef.current = true;
@@ -2297,6 +2354,11 @@ function WorkspaceChartPane({
       liveOutlierCandidateRef.current = validation.candidate;
       if (!validation.accepted) return;
 
+      if (!price.cached) {
+        liveTailStartTimestampRef.current = liveTailStartTimestampRef.current === null
+          ? tickTimestamp
+          : Math.min(liveTailStartTimestampRef.current, tickTimestamp);
+      }
       if (usingDatabentoPaneFeed && price.contractSymbol) {
         setResolvedContractSymbol(price.contractSymbol);
       }
