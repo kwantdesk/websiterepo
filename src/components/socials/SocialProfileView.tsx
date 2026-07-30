@@ -2,11 +2,14 @@
 
 import {
   Bookmark,
+  Briefcase,
+  CalendarDays,
   Check,
   ExternalLink,
   Grid3X3,
   Link2,
   Mail,
+  MapPin,
   MessageCircle,
   Pencil,
   Repeat2,
@@ -55,6 +58,12 @@ function formatDate(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "—";
   return new Intl.DateTimeFormat("en-AU", { day: "2-digit", month: "short", year: "numeric" }).format(date);
+}
+
+function formatActiveSince(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Recently";
+  return new Intl.DateTimeFormat("en-AU", { month: "long", year: "numeric" }).format(date);
 }
 
 function zoneLabel(payload: SocialPrecordPayload) {
@@ -151,6 +160,12 @@ export default function SocialProfileView({
           <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
             <div>
               <p className="max-w-2xl text-[10px] leading-5 text-muted">{profile.bio || `${profile.session} · ${profile.style}`}</p>
+              <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-[8px] text-muted">
+                {profile.location ? <span className="flex items-center gap-1.5"><MapPin className="h-3.5 w-3.5 text-primary" />Lives in {profile.location}</span> : null}
+                {profile.occupation ? <span className="flex items-center gap-1.5"><Briefcase className="h-3.5 w-3.5 text-primary" />{profile.occupation}</span> : null}
+                <span className="flex items-center gap-1.5"><CalendarDays className="h-3.5 w-3.5 text-primary" />Active since {formatActiveSince(profile.activeSince || profileObject.createdAt)}</span>
+              </div>
+              {profile.interests ? <p className="mt-2 max-w-2xl text-[8px] leading-4 text-muted"><span className="font-semibold text-foreground">Interests:</span> {profile.interests}</p> : null}
               <div className="mt-3 flex flex-wrap gap-1.5">
                 {profile.markets.map((market) => <span key={market} className="rounded-lg border border-primary/20 bg-primary/10 px-2 py-1 text-[7px] font-semibold text-primary">{market}</span>)}
                 <span className="rounded-lg border border-border bg-surface px-2 py-1 text-[7px] text-muted">{profile.session}</span>

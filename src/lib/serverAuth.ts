@@ -6,6 +6,7 @@ export type RouteActor = {
   userId: string;
   label: string;
   mode: "supabase" | "local-dev";
+  createdAt?: string;
   displayName?: string;
   username?: string;
   avatarUrl?: string;
@@ -77,6 +78,7 @@ export async function getRouteActor(request?: NextRequest): Promise<RouteActor |
     userId: user.id,
     label: email || username || displayName || user.id,
     mode: "supabase",
+    createdAt: user.created_at,
     displayName,
     username,
     avatarUrl,

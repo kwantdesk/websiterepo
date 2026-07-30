@@ -70,6 +70,10 @@ export type SocialProfilePayload = {
   displayName: string;
   handle: string;
   bio: string;
+  location: string;
+  occupation: string;
+  interests: string;
+  activeSince: string;
   markets: string[];
   session: string;
   timezone: string;
@@ -432,6 +436,10 @@ export function buildDefaultProfile(label: string): SocialProfilePayload {
     displayName,
     handle: normalizeHandle(emailStem),
     bio: "",
+    location: "",
+    occupation: "",
+    interests: "",
+    activeSince: new Date().toISOString(),
     markets: ["NQ"],
     session: "New York",
     timezone: "Australia/Brisbane",
@@ -519,6 +527,12 @@ export function normalizeSocialProfile(value: unknown, label = "Kwant Trader"): 
     displayName: profileText(candidate.displayName, fallback.displayName, 60) || fallback.displayName,
     handle: normalizeHandle(profileText(candidate.handle, fallback.handle, 24)),
     bio: profileText(candidate.bio, "", 800),
+    location: profileText(candidate.location, "", 100),
+    occupation: profileText(candidate.occupation, "", 100),
+    interests: profileText(candidate.interests, "", 180),
+    activeSince: typeof candidate.activeSince === "string" && Number.isFinite(Date.parse(candidate.activeSince))
+      ? new Date(candidate.activeSince).toISOString()
+      : fallback.activeSince,
     markets: Array.isArray(candidate.markets)
       ? [...new Set(candidate.markets.map((market) => profileText(market, "", 12).toUpperCase()).filter(Boolean))].slice(0, 8)
       : fallback.markets,

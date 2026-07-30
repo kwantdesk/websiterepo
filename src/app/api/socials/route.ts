@@ -83,6 +83,10 @@ function sanitizeJson(value: unknown, depth = 0): unknown {
 }
 
 function fromRow(row: SocialRow): SocialObject {
+  const payload = row.object_type === "profile"
+    && (typeof row.payload.activeSince !== "string" || !Number.isFinite(Date.parse(row.payload.activeSince)))
+    ? { ...row.payload, activeSince: row.created_at }
+    : row.payload;
   return {
     id: row.id,
     userId: row.user_id,
@@ -91,7 +95,7 @@ function fromRow(row: SocialRow): SocialObject {
     scope: row.scope,
     deskId: row.desk_id,
     parentId: row.parent_id,
-    payload: row.payload,
+    payload,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     cloudSaved: true,
@@ -194,6 +198,9 @@ export async function POST(request: NextRequest) {
     id = "profile";
     useUpsert = true;
     const profile = normalizeSocialProfile(payload, authorLabel);
+    profile.activeSince = actor.createdAt && Number.isFinite(Date.parse(actor.createdAt))
+      ? new Date(actor.createdAt).toISOString()
+      : profile.activeSince;
     if (!/^[a-z][a-z0-9_]{2,23}$/.test(profile.handle)) {
       return NextResponse.json({ error: "Use a valid 3–24 character profile handle." }, { status: 400 });
     }
@@ -347,7 +354,6 @@ export async function POST(request: NextRequest) {
     desk_id: deskId,
     parent_id: parentId,
     payload,
-    created_at: now,
     updated_at: now,
   };
 
