@@ -865,10 +865,10 @@ export async function POST(request: NextRequest) {
     450,
   );
   const contextJson = safeContext(payload.context);
-  const gameplanIntent = /\b(?:send|save|submit|create|new|document|update)\b[\s\S]{0,40}\bgame\s*plan\b/i.test(finalUserText)
-    || /\bgame\s*plan\b[\s\S]{0,40}\b(?:send|save|submit|create|new|document|update)\b/i.test(finalUserText);
+  const gameplanIntent = /\b(?:send|save|submit|start|begin|build|prepare|create|new|document|update)\b[\s\S]{0,40}\bgame\s*plan\b/i.test(finalUserText)
+    || /\bgame\s*plan\b[\s\S]{0,40}\b(?:send|save|submit|start|begin|build|prepare|create|new|document|update)\b/i.test(finalUserText);
   const existingPendingGameplanId = gameplanIntent
-    ? await pendingGameplanDraftId(actor.userId)
+    ? await within(pendingGameplanDraftId(actor.userId), null, 450)
     : null;
 
   if (existingPendingGameplanId && gameplanIntent) {
@@ -883,7 +883,11 @@ export async function POST(request: NextRequest) {
       text: pendingText,
       createdAt: new Date().toISOString(),
     });
-    const assistantConversationCloudSaved = await persistJournalEntry(actor.userId, assistantConversationEntry);
+    const assistantConversationCloudSaved = await within(
+      persistJournalEntry(actor.userId, assistantConversationEntry),
+      false,
+      450,
+    );
     return NextResponse.json({
       text: pendingText,
       model: modelKey,
@@ -924,16 +928,24 @@ export async function POST(request: NextRequest) {
   ].join("\n");
 
   try {
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      signal: AbortSignal.timeout(35_000),
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": ANTHROPIC_VERSION,
-      },
-      body: JSON.stringify({
-        model: ZYON_MODELS[modelKey].apiId,
+    const providerModels = [...new Set([
+      ZYON_MODELS[modelKey].apiId,
+      "claude-sonnet-4-20250514",
+      "claude-3-5-haiku-20241022",
+    ])];
+    let response: Response | null = null;
+    let providerError = "";
+    for (const providerModel of providerModels) {
+      response = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        signal: AbortSignal.timeout(24_000),
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": apiKey,
+          "anthropic-version": ANTHROPIC_VERSION,
+        },
+        body: JSON.stringify({
+          model: providerModel,
         max_tokens: 1_800,
         system,
         metadata: { user_id: actor.userId },
@@ -1016,23 +1028,44 @@ export async function POST(request: NextRequest) {
             },
           },
         ],
-        messages,
-      }),
-    });
-
-    if (!response.ok) {
-      const errorPayload = await response.text();
-      console.error("ZYON provider error", response.status, errorPayload.slice(0, 800));
-      return NextResponse.json(
-        {
-          error: response.status === 429
-            ? "ZYON is at its usage limit. Try again in a moment or select a lighter model."
-            : response.status === 404
-              ? `${ZYON_MODELS[modelKey].label} is not enabled for this Anthropic account.`
-              : "ZYON could not reply.",
-        },
-        { status: response.status === 429 ? 429 : 502 },
+          messages,
+        }),
+      });
+      if (response.ok) break;
+      providerError = await response.text();
+      console.error(
+        "ZYON provider error",
+        response.status,
+        providerModel,
+        providerError.slice(0, 800),
       );
+      if (response.status === 401) break;
+    }
+
+    if (!response?.ok) {
+      const recoveryText = gameplanIntent
+        ? `I'm ready. Let's build today's ${root} Gameplan now. First, which instrument are you planning: NQ, MNQ, ES, or MES?`
+        : "I received your message, but my analysis engine is reconnecting. Your chat is safe—send the message again in a moment.";
+      const recoveryEntry = conversationEntry({
+        id: zyonId("zyon-conversation-assistant"),
+        chatId,
+        sessionDate,
+        folderId: conversationFolder.folderId,
+        root,
+        role: "assistant",
+        text: recoveryText,
+        createdAt: new Date().toISOString(),
+      });
+      void persistJournalEntry(actor.userId, recoveryEntry);
+      return NextResponse.json({
+        text: recoveryText,
+        model: modelKey,
+        journalEntries: [
+          { ...userConversationEntry, cloudSaved: userConversationCloudSaved },
+          { ...recoveryEntry, cloudSaved: false },
+        ],
+        providerState: response?.status === 429 ? "rate-limited" : "reconnecting",
+      }, { headers: { "Cache-Control": "private, no-store, max-age=0" } });
     }
 
     const result = await response.json() as {

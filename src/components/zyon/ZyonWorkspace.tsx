@@ -619,7 +619,7 @@ export default function ZyonWorkspace({
   const speechDictation = useSpeechDictation({
     value: draft,
     onChange: setDraft,
-    disabled: !online || sending,
+    disabled: sending,
     maxLength: 6_000,
   });
   const messages = messagesByChat[activeChatId] ?? [WELCOME_MESSAGE];
@@ -1278,8 +1278,10 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
     const outgoingAttachments = overrideText ? [] : attachments;
     const gameplanExchange = gameplanRequest
       || gameplanSendState === "needs-info"
-      || /\b(?:send|save|submit)\b[\s\S]{0,30}\bgame\s*plan\b/i.test(text);
-    if (!online || sending || (!text && !outgoingAttachments.length)) return;
+      || /\b(?:send|save|submit|start|begin|build|prepare|create)\b[\s\S]{0,40}\bgame\s*plan\b/i.test(text)
+      || /\bgame\s*plan\b[\s\S]{0,40}\b(?:send|save|submit|start|begin|build|prepare|create)\b/i.test(text);
+    if (sending || (!text && !outgoingAttachments.length)) return;
+    if (!online) setOnline(true);
     if (gameplanExchange) setGameplanSendState("checking");
     const userMessage: ZyonMessage = {
       id: zyonId("zyon-user"),
@@ -1542,7 +1544,7 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
             <button
               type="button"
               onClick={requestGameplan}
-              disabled={!online || sending}
+              disabled={sending}
               className={`flex h-8 min-w-0 flex-1 items-center justify-center gap-2 rounded-xl border px-3 text-[8px] font-semibold uppercase tracking-[0.1em] transition disabled:opacity-45 ${gameplanButtonTone}`}
             >
               {gameplanSendState === "checking"
@@ -1652,7 +1654,7 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
                   void sendMessage();
                 }
               }}
-              disabled={!online || sending}
+              disabled={sending}
               placeholder={online ? `Message ZYON about ${selectedRoot}…` : "ZYON is paused"}
               rows={2}
               className="min-h-10 w-full resize-none overflow-y-hidden bg-transparent px-2 py-1 text-[10px] leading-5 text-foreground outline-none placeholder:text-muted/45"
@@ -1669,7 +1671,7 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                disabled={!online || sending || attachments.length >= MAX_ATTACHMENTS}
+                disabled={sending || attachments.length >= MAX_ATTACHMENTS}
                 className="flex h-8 w-8 items-center justify-center rounded-full text-muted transition hover:bg-surface hover:text-primary disabled:opacity-35"
                 title="Attach a chart, image or file"
                 aria-label="Attach a chart, image or file"
@@ -1682,7 +1684,7 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
               </span>
               <button
                 type="submit"
-                disabled={!online || sending || (!draft.trim() && !attachments.length)}
+                disabled={sending || (!draft.trim() && !attachments.length)}
                 className="ml-auto flex h-8 w-8 items-center justify-center rounded-full bg-primary text-background transition hover:brightness-110 disabled:opacity-30"
                 title="Send to ZYON"
                 aria-label="Send to ZYON"
@@ -1744,7 +1746,7 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
           <button
             type="button"
             onClick={requestGameplan}
-            disabled={!online || sending}
+            disabled={sending}
             className={`flex h-8 items-center gap-2 rounded-xl border px-3 text-[8px] font-semibold uppercase tracking-[0.1em] transition disabled:opacity-45 ${gameplanButtonTone}`}
             title={`${gameplansSentToday} Gameplans sent today`}
           >
@@ -2168,7 +2170,7 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
                             void sendMessage();
                           }
                         }}
-                        disabled={!online || sending}
+                        disabled={sending}
                         placeholder={online ? "Describe your plan, levels, conditions, or attach a chart…" : "ZYON is paused"}
                         rows={2}
                         autoFocus
@@ -2186,7 +2188,7 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
                         <button
                           type="button"
                           onClick={() => fileInputRef.current?.click()}
-                          disabled={!online || sending || attachments.length >= MAX_ATTACHMENTS}
+                          disabled={sending || attachments.length >= MAX_ATTACHMENTS}
                           className="flex h-9 items-center gap-2 rounded-xl px-3 text-[9px] text-muted transition hover:bg-surface hover:text-foreground disabled:opacity-35"
                         >
                           <Paperclip className="h-3.5 w-3.5" />
@@ -2209,7 +2211,7 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
                         <span className="hidden text-[8px] text-muted sm:inline">{selectedRoot} live context attached</span>
                         <button
                           type="submit"
-                          disabled={!online || sending || (!draft.trim() && !attachments.length)}
+                          disabled={sending || (!draft.trim() && !attachments.length)}
                           className="ml-auto flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-[9px] font-semibold text-background transition hover:brightness-110 disabled:cursor-default disabled:opacity-30"
                         >
                           {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
@@ -2321,7 +2323,7 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
                       void sendMessage();
                     }
                   }}
-                  disabled={!online || sending}
+                  disabled={sending}
                   placeholder={online ? `Message ZYON about ${selectedRoot}…` : "ZYON is paused"}
                   rows={2}
                   className="min-h-12 w-full resize-none overflow-y-hidden bg-transparent px-2 py-1 text-[11px] leading-5 text-foreground outline-none placeholder:text-muted/45"
@@ -2338,7 +2340,7 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
-                    disabled={!online || sending || attachments.length >= MAX_ATTACHMENTS}
+                    disabled={sending || attachments.length >= MAX_ATTACHMENTS}
                     className="flex h-8 items-center gap-2 rounded-xl px-2.5 text-[9px] text-muted transition hover:bg-surface hover:text-foreground disabled:opacity-35"
                   >
                     <Paperclip className="h-3.5 w-3.5" />
@@ -2350,7 +2352,7 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
                     <span className="hidden text-[8px] text-muted sm:inline">Trading scope only</span>
                     <button
                       type="submit"
-                      disabled={!online || sending || (!draft.trim() && !attachments.length)}
+                      disabled={sending || (!draft.trim() && !attachments.length)}
                       className="flex h-8 items-center gap-2 rounded-xl bg-primary px-3.5 text-[9px] font-semibold text-background transition hover:brightness-110 disabled:cursor-default disabled:opacity-30"
                     >
                       {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
