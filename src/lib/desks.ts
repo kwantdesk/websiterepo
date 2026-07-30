@@ -133,6 +133,15 @@ export type CreatedDeskPayload = {
 
 export const DESK_CREATED_EVENT = "kwantdesk:desk-created";
 
+export function normalizeDeskDeletionConfirmation(value: string) {
+  return value
+    .normalize("NFKC")
+    .replace(/[\u200B-\u200D\uFEFF]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
 export const EMPTY_DESK_NETWORK: DeskNetworkPayload = {
   ready: false,
   viewerId: null,

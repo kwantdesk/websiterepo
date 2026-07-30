@@ -48,6 +48,7 @@ import {
 import {
   DESK_CREATED_EVENT,
   EMPTY_DESK_NETWORK,
+  normalizeDeskDeletionConfirmation,
   type CreatedDeskPayload,
   type DeskBadgeIcon,
   type DeskChannel,
@@ -1412,6 +1413,12 @@ export default function DeskWorkspace({
     );
   }
 
+  const deleteConfirmationMatches = Boolean(
+    lifecycleTarget?.action === "delete"
+    && normalizeDeskDeletionConfirmation(deleteConfirmation)
+      === normalizeDeskDeletionConfirmation(lifecycleTarget.workspace.name),
+  );
+
   return (
     <>
       <div className="h-full min-h-0 overflow-hidden rounded-3xl border border-border bg-panel shadow-[0_18px_70px_rgba(0,0,0,0.2)]">
@@ -1924,7 +1931,7 @@ export default function DeskWorkspace({
               {lifecycleTarget.action === "archive" ? (
                 <button type="button" onClick={() => void archiveDesk()} disabled={working} className="flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-[8px] font-semibold text-background disabled:opacity-40"><Archive className="h-3.5 w-3.5" />Archive Desk</button>
               ) : (
-                <button type="button" onClick={() => void deleteDesk()} disabled={working || deleteConfirmation !== lifecycleTarget.workspace.name} className="flex h-9 items-center gap-2 rounded-xl bg-danger px-4 text-[8px] font-semibold text-white disabled:opacity-35"><Trash2 className="h-3.5 w-3.5" />Delete forever</button>
+                <button type="button" onClick={() => void deleteDesk()} disabled={working || !deleteConfirmationMatches} className="flex h-9 items-center gap-2 rounded-xl bg-danger px-4 text-[8px] font-semibold text-white disabled:opacity-35"><Trash2 className="h-3.5 w-3.5" />Delete forever</button>
               )}
             </>
           )}
@@ -1940,7 +1947,24 @@ export default function DeskWorkspace({
               </div>
               <label className="mt-4 block">
                 <span className="mb-1.5 block text-[7px] uppercase tracking-[0.1em] text-muted">Enter <span className="font-semibold text-danger">{lifecycleTarget.workspace.name}</span> to confirm</span>
-                <input autoFocus value={deleteConfirmation} onChange={(event) => setDeleteConfirmation(event.target.value)} className="h-11 w-full rounded-xl border border-danger/25 bg-background px-3 text-[9px] text-foreground outline-none focus:border-danger/55" />
+                <input
+                  autoFocus
+                  value={deleteConfirmation}
+                  onChange={(event) => setDeleteConfirmation(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && deleteConfirmationMatches && !working) {
+                      event.preventDefault();
+                      void deleteDesk();
+                    }
+                  }}
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  className="h-11 w-full rounded-xl border border-danger/25 bg-background px-3 text-[9px] text-foreground outline-none focus:border-danger/55"
+                />
+                <span className={`mt-1.5 block text-[7px] ${deleteConfirmationMatches ? "text-primary" : "text-muted"}`}>
+                  {deleteConfirmationMatches ? "Desk name confirmed." : "Capitalisation and surrounding spaces are ignored."}
+                </span>
               </label>
             </div>
           )}

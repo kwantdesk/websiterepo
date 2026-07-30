@@ -4,6 +4,7 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import { getRouteActor } from "@/lib/serverAuth";
 import {
   EMPTY_DESK_NETWORK,
+  normalizeDeskDeletionConfirmation,
   type DeskChannel,
   type CreatedDeskPayload,
   type DeskFocusLock,
@@ -852,8 +853,11 @@ export async function POST(request: NextRequest) {
     if (!workspaceResult.data) {
       return NextResponse.json({ error: "Only the Desk owner can permanently delete it." }, { status: 403 });
     }
-    if (confirmation !== workspaceResult.data.name) {
-      return NextResponse.json({ error: "Enter the exact Desk name to confirm permanent deletion." }, { status: 400 });
+    if (
+      normalizeDeskDeletionConfirmation(confirmation)
+      !== normalizeDeskDeletionConfirmation(workspaceResult.data.name)
+    ) {
+      return NextResponse.json({ error: "Enter the displayed Desk name to confirm permanent deletion." }, { status: 400 });
     }
     const deleteResult = await supabase
       .from("desk_workspaces")
