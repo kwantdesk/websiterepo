@@ -2598,6 +2598,7 @@ export default function SocialsWorkspace({
               viewerProfile={currentProfile}
               onCreateDesk={() => setShowDeskModal(true)}
               onNotice={setNotice}
+              onOpenProfile={onOpenProfile}
             />
           </div>
         ) : null}

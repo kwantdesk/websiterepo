@@ -8,6 +8,7 @@ import {
   type CreatedDeskPayload,
   type DeskFocusLock,
   type DeskJoinRequest,
+  type DeskBadgeIcon,
   type DeskMember,
   type DeskMemberProfile,
   type DeskMessage,
@@ -49,6 +50,11 @@ type MemberRow = {
   desk_id: string;
   user_id: string;
   role: DeskRole;
+  display_role?: string | null;
+  badge_color?: string | null;
+  badge_icon?: DeskBadgeIcon | null;
+  responsibilities?: string | null;
+  importance_level?: number | null;
   joined_at: string;
   last_active_at: string;
 };
@@ -203,10 +209,36 @@ function fromWorkspace(row: WorkspaceRow): DeskWorkspace {
 }
 
 function fromMember(row: MemberRow): DeskMember {
+  const hasCustomIdentity = Boolean(
+    cleanText(row.display_role, 40)
+    || cleanText(row.badge_color, 7)
+    || cleanMultiline(row.responsibilities, 500)
+    || Number(row.importance_level),
+  );
+  const storedBadgeIcon = row.badge_icon === "crown"
+    || row.badge_icon === "star"
+    || row.badge_icon === "spark"
+    || row.badge_icon === "chart"
+    || row.badge_icon === "mentor"
+    || row.badge_icon === "shield"
+    ? row.badge_icon
+    : "shield";
+  const badgeIcon = hasCustomIdentity ? storedBadgeIcon : row.role === "owner" ? "crown" : "shield";
   return {
     deskId: row.desk_id,
     userId: row.user_id,
     role: row.role,
+    displayRole: cleanText(row.display_role, 40),
+    badgeColor: /^#[0-9a-f]{6}$/i.test(row.badge_color ?? "") ? String(row.badge_color).toLowerCase() : "",
+    badgeIcon,
+    responsibilities: cleanMultiline(row.responsibilities, 500),
+    importanceLevel: hasCustomIdentity
+      ? Math.max(0, Math.min(5, Math.floor(Number(row.importance_level) || 0)))
+      : row.role === "owner"
+        ? 5
+        : row.role === "moderator"
+          ? 3
+          : 0,
     joinedAt: row.joined_at,
     lastActiveAt: row.last_active_at,
   };
@@ -363,6 +395,21 @@ export async function GET(request: NextRequest) {
       .order("created_at", { ascending: false })
       .limit(500)
     : Promise.resolve({ data: [] as MessageRow[], error: null });
+  const memberRequest = (async () => {
+    const enhanced = await supabase
+      .from("desk_members")
+      .select("desk_id,user_id,role,display_role,badge_color,badge_icon,responsibilities,importance_level,joined_at,last_active_at")
+      .order("joined_at", { ascending: true });
+    if (!enhanced.error) return { ...enhanced, memberRolesReady: true };
+    if (enhanced.error.code !== "42703" && enhanced.error.code !== "PGRST204") {
+      return { ...enhanced, memberRolesReady: false };
+    }
+    const fallback = await supabase
+      .from("desk_members")
+      .select("desk_id,user_id,role,joined_at,last_active_at")
+      .order("joined_at", { ascending: true });
+    return { ...fallback, memberRolesReady: false };
+  })();
   const [workspaceResult, archiveStateResult, memberResult, requestResult, focusLockResult, channelResult, messageResult] = await Promise.all([
     supabase
       .from("desk_workspaces")
@@ -371,10 +418,7 @@ export async function GET(request: NextRequest) {
     supabase
       .from("desk_workspaces")
       .select("desk_id,archived_at"),
-    supabase
-      .from("desk_members")
-      .select("desk_id,user_id,role,joined_at,last_active_at")
-      .order("joined_at", { ascending: true }),
+    memberRequest,
     supabase
       .from("desk_join_requests")
       .select("id,desk_id,user_id,request_type,requested_by,status,created_at,updated_at")
@@ -451,6 +495,7 @@ export async function GET(request: NextRequest) {
       processStatus: normalized.processStatus,
       score: profileScoreAverage(normalized),
       lastSeenAt: typeof row?.payload?.lastSeenAt === "string" ? row.payload.lastSeenAt : null,
+      presenceStatus: normalized.presenceStatus ?? "offline",
     };
   });
 
@@ -474,6 +519,7 @@ export async function GET(request: NextRequest) {
     reactions: reactions.map(fromReaction),
     focusLocks: focusLocks.map(fromFocusLock),
     profiles,
+    memberRolesReady: memberResult.memberRolesReady,
   };
   return NextResponse.json(payload, {
     headers: { "Cache-Control": "private, no-store, max-age=0" },
@@ -624,6 +670,11 @@ export async function POST(request: NextRequest) {
         deskId: createdDeskId,
         userId: actor.userId,
         role: "owner",
+        displayRole: "",
+        badgeColor: "",
+        badgeIcon: "crown",
+        responsibilities: "",
+        importanceLevel: 5,
         joinedAt: now,
         lastActiveAt: now,
       },
@@ -876,6 +927,44 @@ export async function POST(request: NextRequest) {
       next_role: nextRole,
     });
     if (error) return NextResponse.json({ error: error.message }, { status: 403 });
+    return NextResponse.json({ ok: true, result: data });
+  }
+
+  if (action === "update-member-role") {
+    const targetUserId = cleanUuid(body.userId);
+    const nextSystemRole = cleanText(body.role, 20).toLowerCase();
+    const displayRole = cleanText(body.displayRole, 40);
+    const badgeColor = cleanText(body.badgeColor, 7).toLowerCase();
+    const badgeIcon = cleanText(body.badgeIcon, 20).toLowerCase();
+    const responsibilities = cleanMultiline(body.responsibilities, 500);
+    const importanceLevel = Math.max(0, Math.min(5, Math.floor(Number(body.importanceLevel) || 0)));
+    if (!targetUserId || !["owner", "moderator", "member"].includes(nextSystemRole)) {
+      return NextResponse.json({ error: "Choose a valid Desk member and permission level." }, { status: 400 });
+    }
+    if (badgeColor && !/^#[0-9a-f]{6}$/i.test(badgeColor)) {
+      return NextResponse.json({ error: "Choose a valid six-digit role colour." }, { status: 400 });
+    }
+    if (!["crown", "shield", "star", "spark", "chart", "mentor"].includes(badgeIcon)) {
+      return NextResponse.json({ error: "Choose a valid role icon." }, { status: 400 });
+    }
+    const { data, error } = await supabase.rpc("desk_update_member_role", {
+      requested_desk_id: deskId,
+      target_user_id: targetUserId,
+      next_system_role: nextSystemRole,
+      next_display_role: displayRole,
+      next_badge_color: badgeColor,
+      next_badge_icon: badgeIcon,
+      next_responsibilities: responsibilities,
+      next_importance_level: importanceLevel,
+    });
+    if (error) {
+      const unavailable = error.code === "PGRST202" || /desk_update_member_role/i.test(error.message);
+      return NextResponse.json({
+        error: unavailable
+          ? "Apply the Desk member roles migration in Supabase, then try again."
+          : error.message,
+      }, { status: unavailable ? 503 : 403 });
+    }
     return NextResponse.json({ ok: true, result: data });
   }
 

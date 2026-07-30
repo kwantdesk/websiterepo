@@ -1,5 +1,6 @@
 export type DeskPrivacy = "PUBLIC" | "REQUEST" | "PRIVATE";
 export type DeskRole = "owner" | "moderator" | "member";
+export type DeskBadgeIcon = "crown" | "shield" | "star" | "spark" | "chart" | "mentor";
 export type DeskRequestType = "request" | "invite";
 export type DeskRequestStatus = "pending" | "accepted" | "declined" | "cancelled";
 export type DeskChannelType = "text" | "voice";
@@ -30,6 +31,11 @@ export type DeskMember = {
   deskId: string;
   userId: string;
   role: DeskRole;
+  displayRole: string;
+  badgeColor: string;
+  badgeIcon: DeskBadgeIcon;
+  responsibilities: string;
+  importanceLevel: number;
   joinedAt: string;
   lastActiveAt: string;
 };
@@ -102,6 +108,7 @@ export type DeskMemberProfile = {
   processStatus: string;
   score: number;
   lastSeenAt: string | null;
+  presenceStatus: "online" | "dnd" | "away" | "sleeping" | "offline";
 };
 
 export type DeskNetworkPayload = {
@@ -115,6 +122,7 @@ export type DeskNetworkPayload = {
   reactions: DeskReaction[];
   focusLocks: DeskFocusLock[];
   profiles: DeskMemberProfile[];
+  memberRolesReady: boolean;
 };
 
 export type CreatedDeskPayload = {
@@ -136,4 +144,5 @@ export const EMPTY_DESK_NETWORK: DeskNetworkPayload = {
   reactions: [],
   focusLocks: [],
   profiles: [],
+  memberRolesReady: false,
 };

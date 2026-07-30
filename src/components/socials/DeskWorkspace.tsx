@@ -25,6 +25,7 @@ import {
   ShieldCheck,
   SmilePlus,
   Sparkles,
+  Star,
   Trophy,
   Trash2,
   Upload,
@@ -43,6 +44,7 @@ import {
   DESK_CREATED_EVENT,
   EMPTY_DESK_NETWORK,
   type CreatedDeskPayload,
+  type DeskBadgeIcon,
   type DeskChannel,
   type DeskMember,
   type DeskMemberProfile,
@@ -68,6 +70,7 @@ type DeskWorkspaceProps = {
   viewerProfile: SocialProfilePayload;
   onCreateDesk: () => void;
   onNotice: (message: string) => void;
+  onOpenProfile?: (handle: string) => void;
 };
 
 type WorkspaceDraft = {
@@ -97,6 +100,15 @@ type ChannelDraft = {
   reactionOnly: boolean;
   showHistory: boolean;
   allowedUserIds: string[];
+};
+
+type MemberRoleDraft = {
+  role: DeskRole;
+  displayRole: string;
+  badgeColor: string;
+  badgeIcon: DeskBadgeIcon;
+  responsibilities: string;
+  importanceLevel: number;
 };
 
 const REACTIONS = ["👍", "🔥", "🎯", "🧠", "✅"];
@@ -134,6 +146,44 @@ function formatDateTime(value: string) {
 
 function roleLabel(role: DeskRole) {
   return role === "owner" ? "Owner" : role === "moderator" ? "Moderator" : "Member";
+}
+
+function memberRoleLabel(member: DeskMember) {
+  return member.displayRole || roleLabel(member.role);
+}
+
+function memberBadgeColor(member: DeskMember) {
+  return member.badgeColor || (member.role === "owner" ? "#d8b45c" : member.role === "moderator" ? "#5271ff" : "#8b929e");
+}
+
+function memberIsOnline(profile: DeskMemberProfile) {
+  if (profile.presenceStatus === "offline" || profile.presenceStatus === "sleeping") return false;
+  const lastSeen = profile.lastSeenAt ? Date.parse(profile.lastSeenAt) : 0;
+  return Boolean(lastSeen && Date.now() - lastSeen < 150_000);
+}
+
+function MemberRoleIcon({ icon, className = "h-3 w-3" }: { icon: DeskBadgeIcon; className?: string }) {
+  if (icon === "crown") return <Crown className={className} />;
+  if (icon === "star") return <Star className={className} />;
+  if (icon === "spark") return <Sparkles className={className} />;
+  if (icon === "chart") return <Gauge className={className} />;
+  if (icon === "mentor") return <Trophy className={className} />;
+  return <ShieldCheck className={className} />;
+}
+
+function MemberRoleBadge({ member, compact = false }: { member: DeskMember; compact?: boolean }) {
+  const color = memberBadgeColor(member);
+  return (
+    <span
+      title={member.responsibilities || memberRoleLabel(member)}
+      className={`inline-flex max-w-[160px] items-center gap-1 rounded-lg border font-semibold ${compact ? "px-1.5 py-0.5 text-[5px]" : "px-2 py-1 text-[6px]"}`}
+      style={{ color, borderColor: `${color}55`, backgroundColor: `${color}12`, boxShadow: member.importanceLevel >= 4 ? `0 0 12px ${color}28` : undefined }}
+    >
+      <MemberRoleIcon icon={member.badgeIcon} className={compact ? "h-2.5 w-2.5" : "h-3 w-3"} />
+      <span className="truncate">{memberRoleLabel(member)}</span>
+      {member.importanceLevel > 0 ? <span className="font-mono opacity-70">T{member.importanceLevel}</span> : null}
+    </span>
+  );
 }
 
 function workspaceDraft(workspace: DeskWorkspaceModel): WorkspaceDraft {
@@ -220,7 +270,7 @@ function ProfileAvatar({
   profile: DeskMemberProfile;
   size?: "sm" | "md";
 }) {
-  return <UserAvatar label={profile.displayName} avatarUrl={profile.avatarUrl} size={size} active={profile.processStatus !== "AWAY"} />;
+  return <UserAvatar label={profile.displayName} avatarUrl={profile.avatarUrl} size={size} active={memberIsOnline(profile)} />;
 }
 
 function Toggle({
@@ -380,6 +430,123 @@ function DeskInviteButton({
   );
 }
 
+function MemberRoleControl({
+  member,
+  profile,
+  working,
+  rolesReady,
+  onSave,
+}: {
+  member: DeskMember;
+  profile: DeskMemberProfile;
+  working: boolean;
+  rolesReady: boolean;
+  onSave: (draft: MemberRoleDraft) => Promise<boolean>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [draft, setDraft] = useState<MemberRoleDraft>(() => ({
+    role: member.role,
+    displayRole: member.displayRole,
+    badgeColor: memberBadgeColor(member),
+    badgeIcon: member.badgeIcon,
+    responsibilities: member.responsibilities,
+    importanceLevel: member.importanceLevel,
+  }));
+  const validColor = /^#[0-9a-f]{6}$/i.test(draft.badgeColor);
+  const busy = working || saving;
+
+  const show = () => {
+    setDraft({
+      role: member.role,
+      displayRole: member.displayRole,
+      badgeColor: memberBadgeColor(member),
+      badgeIcon: member.badgeIcon,
+      responsibilities: member.responsibilities,
+      importanceLevel: member.importanceLevel,
+    });
+    setOpen(true);
+  };
+
+  const save = async () => {
+    if (!validColor || busy) return;
+    setSaving(true);
+    try {
+      const saved = await onSave(draft);
+      if (saved) setOpen(false);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <>
+      <button type="button" onClick={show} className="flex h-8 items-center gap-1.5 rounded-lg border border-primary/20 bg-primary/[0.04] px-2.5 text-[7px] font-semibold text-primary hover:border-primary/40"><Settings2 className="h-3 w-3" />Role</button>
+      {open ? (
+        <Modal
+          title={`Role · ${profile.displayName}`}
+          subtitle="Visible importance is separate from protected Desk permissions."
+          icon={<MemberRoleIcon icon={draft.badgeIcon} className="h-4 w-4" />}
+          onClose={() => { if (!busy) setOpen(false); }}
+          footer={(
+            <>
+              <button type="button" onClick={() => setOpen(false)} disabled={busy} className="h-9 rounded-xl border border-border px-4 text-[8px] font-semibold text-muted disabled:opacity-40">Cancel</button>
+              <button type="button" onClick={() => void save()} disabled={!rolesReady || !validColor || busy} className="flex h-9 min-w-[116px] items-center justify-center gap-2 rounded-xl bg-primary px-4 text-[8px] font-semibold text-background disabled:opacity-40">{saving ? <span className="h-3 w-3 animate-spin rounded-full border-2 border-background/30 border-t-background" /> : <Check className="h-3.5 w-3.5" />}{saving ? "Saving…" : "Save role"}</button>
+            </>
+          )}
+        >
+          {!rolesReady ? <div className="mb-4 rounded-xl border border-warning/25 bg-warning/[0.04] p-3 text-[7px] leading-4 text-warning">Desk member roles need the latest Supabase migration before they can be saved.</div> : null}
+          <div className="grid gap-4 md:grid-cols-2">
+            <label>
+              <span className="mb-1.5 block text-[7px] uppercase tracking-[0.1em] text-muted">Permission level</span>
+              <KwantSelect value={draft.role} disabled={member.role === "owner"} onChange={(event) => setDraft((current) => ({ ...current, role: event.target.value as DeskRole }))} className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[8px] outline-none disabled:opacity-55">
+                {member.role === "owner" ? <option value="owner">Owner</option> : null}
+                <option value="member">Member</option>
+                <option value="moderator">Moderator</option>
+              </KwantSelect>
+              <span className="mt-1.5 block text-[6px] leading-3 text-muted">Moderators can manage channels and members. Display roles never grant permissions.</span>
+            </label>
+            <label>
+              <span className="mb-1.5 block text-[7px] uppercase tracking-[0.1em] text-muted">Visible Desk role</span>
+              <input value={draft.displayRole} maxLength={40} onChange={(event) => setDraft((current) => ({ ...current, displayRole: event.target.value }))} placeholder={roleLabel(member.role)} className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[8px] outline-none focus:border-primary/40" />
+            </label>
+            <label>
+              <span className="mb-1.5 block text-[7px] uppercase tracking-[0.1em] text-muted">Role icon</span>
+              <KwantSelect value={draft.badgeIcon} onChange={(event) => setDraft((current) => ({ ...current, badgeIcon: event.target.value as DeskBadgeIcon }))} className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[8px] outline-none">
+                <option value="crown">Crown</option>
+                <option value="shield">Shield</option>
+                <option value="star">Star</option>
+                <option value="spark">Signal spark</option>
+                <option value="chart">Market chart</option>
+                <option value="mentor">Mentor trophy</option>
+              </KwantSelect>
+            </label>
+            <label>
+              <span className="mb-1.5 block text-[7px] uppercase tracking-[0.1em] text-muted">Importance tier · 0–5</span>
+              <input type="number" min={0} max={5} value={draft.importanceLevel} onChange={(event) => setDraft((current) => ({ ...current, importanceLevel: Math.max(0, Math.min(5, Number(event.target.value) || 0)) }))} className="h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[8px] outline-none focus:border-primary/40" />
+            </label>
+            <div className="md:col-span-2">
+              <span className="mb-1.5 block text-[7px] uppercase tracking-[0.1em] text-muted">Role colour</span>
+              <div className="flex flex-wrap items-center gap-2">
+                {DESK_ACCENTS.map((accent) => <button key={accent.value} type="button" onClick={() => setDraft((current) => ({ ...current, badgeColor: accent.value }))} title={accent.label} className={`h-8 w-8 rounded-xl border transition-transform hover:scale-105 ${draft.badgeColor.toLowerCase() === accent.value.toLowerCase() ? "border-white/70 ring-2 ring-primary/25" : "border-border"}`} style={{ backgroundColor: accent.value }} />)}
+                <div className={`flex h-9 items-center gap-2 rounded-xl border bg-background px-3 ${validColor ? "border-border" : "border-danger/45"}`}><span className="h-3 w-3 rounded-full border border-white/20" style={{ backgroundColor: validColor ? draft.badgeColor : "transparent" }} /><input value={draft.badgeColor} onChange={(event) => setDraft((current) => ({ ...current, badgeColor: `#${event.target.value.replace(/#/g, "").replace(/[^0-9a-f]/gi, "").slice(0, 6)}` }))} className="w-20 bg-transparent font-mono text-[8px] uppercase outline-none" /></div>
+              </div>
+            </div>
+            <label className="md:col-span-2">
+              <span className="mb-1.5 block text-[7px] uppercase tracking-[0.1em] text-muted">Responsibilities</span>
+              <textarea value={draft.responsibilities} maxLength={500} onChange={(event) => setDraft((current) => ({ ...current, responsibilities: event.target.value }))} rows={4} placeholder="What this person owns, maintains, reviews, or leads inside the Desk…" className="w-full resize-none rounded-xl border border-border bg-background p-3 text-[8px] leading-4 outline-none focus:border-primary/40" />
+            </label>
+            <div className="md:col-span-2 rounded-2xl border border-border bg-background/30 p-3">
+              <div className="text-[6px] uppercase tracking-[0.12em] text-muted">Preview</div>
+              <div className="mt-2 flex items-center gap-3"><ProfileAvatar profile={profile} /><div><div className="text-[9px] font-semibold">{profile.displayName}</div><MemberRoleBadge member={{ ...member, ...draft }} /></div></div>
+            </div>
+          </div>
+        </Modal>
+      ) : null}
+    </>
+  );
+}
+
 function DeskSettingsModal({
   workspace,
   working,
@@ -520,6 +687,7 @@ export default function DeskWorkspace({
   viewerProfile,
   onCreateDesk,
   onNotice,
+  onOpenProfile,
 }: DeskWorkspaceProps) {
   const [network, setNetwork] = useState<DeskNetworkPayload>(EMPTY_DESK_NETWORK);
   const [loading, setLoading] = useState(true);
@@ -541,6 +709,7 @@ export default function DeskWorkspace({
   const [attachment, setAttachment] = useState<DeskMessageAttachment | null>(null);
   const [imagePreview, setImagePreview] = useState<DeskMessageAttachment | null>(null);
   const [directoryQuery, setDirectoryQuery] = useState("");
+  const [rosterFilter, setRosterFilter] = useState<"all" | "online" | "offline" | "inactive">("all");
   const messageEndRef = useRef<HTMLDivElement>(null);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
   const selectedDeskRef = useRef("");
@@ -603,6 +772,7 @@ export default function DeskWorkspace({
             processStatus: viewerProfile.processStatus,
             score: viewerScore,
             lastSeenAt: viewerProfile.lastSeenAt || null,
+            presenceStatus: viewerProfile.presenceStatus ?? "online",
           },
           ...current.profiles.filter((profile) => profile.userId !== viewerId),
         ],
@@ -658,6 +828,7 @@ export default function DeskWorkspace({
     processStatus: userId === viewerId ? viewerProfile.processStatus : "AWAY",
     score: userId === viewerId ? Math.round(Object.values(viewerProfile.scores).reduce((sum, value) => sum + value, 0) / Math.max(1, Object.values(viewerProfile.scores).length)) : 0,
     lastSeenAt: null,
+    presenceStatus: userId === viewerId ? viewerProfile.presenceStatus ?? "online" : "offline",
   }, [profileMap, viewerId, viewerProfile]);
   const focusOwnerProfile = activeFocusLock ? profileFor(activeFocusLock.lockedBy) : null;
 
@@ -972,6 +1143,25 @@ export default function DeskWorkspace({
   const activeThisWeek = activeMembers.filter((member) => Date.parse(member.lastActiveAt) >= activeCutoff).length;
   const participation = activeMembers.length ? Math.round(activeThisWeek / activeMembers.length * 100) : 0;
   const memberLeaderboard = [...activeMembers].sort((left, right) => profileFor(right.userId).score - profileFor(left.userId).score);
+  const memberByUserId = new Map(activeMembers.map((member) => [member.userId, member]));
+  const inactiveDays = activeDesk?.inactivityDays ?? 14;
+  const inactiveCutoff = Date.now() - inactiveDays * 86_400_000;
+  const roster = activeMembers.map((member) => {
+    const profile = profileFor(member.userId);
+    const inactive = Date.parse(member.lastActiveAt) < inactiveCutoff;
+    const online = !inactive && memberIsOnline(profile);
+    return { member, profile, inactive, online };
+  });
+  const onlineRoster = roster.filter((entry) => entry.online);
+  const inactiveRoster = roster.filter((entry) => entry.inactive);
+  const offlineRoster = roster.filter((entry) => !entry.online && !entry.inactive);
+  const visibleRoster = rosterFilter === "online"
+    ? onlineRoster
+    : rosterFilter === "offline"
+      ? offlineRoster
+      : rosterFilter === "inactive"
+        ? inactiveRoster
+        : [...onlineRoster, ...offlineRoster, ...inactiveRoster];
   const workspaceScores = activeWorkspaces.map((workspace) => {
     const members = network.members.filter((member) => member.deskId === workspace.deskId);
     const scores = members.map((member) => profileFor(member.userId).score).filter((score) => score > 0);
@@ -1097,7 +1287,7 @@ export default function DeskWorkspace({
                 </div>
                 <div className="border-t border-border p-3">
                   <div className="rounded-xl border border-border bg-surface/30 p-2.5">
-                    <div className="flex items-center gap-2"><ProfileAvatar profile={profileFor(viewerId)} size="sm" /><div className="min-w-0 flex-1"><div className="truncate text-[8px] font-semibold">{profileFor(viewerId).displayName}</div><div className="text-[6px] capitalize text-primary">{roleLabel(activeMembership?.role ?? "member")}</div></div><span className="h-2 w-2 rounded-full bg-primary shadow-[0_0_8px_var(--primary)]" /></div>
+                    <div className="flex items-center gap-2"><ProfileAvatar profile={profileFor(viewerId)} size="sm" /><div className="min-w-0 flex-1"><div className="truncate text-[8px] font-semibold">{profileFor(viewerId).displayName}</div>{activeMembership ? <MemberRoleBadge member={activeMembership} compact /> : null}</div><span className="h-2 w-2 rounded-full bg-primary shadow-[0_0_8px_var(--primary)]" /></div>
                   </div>
                 </div>
               </>
@@ -1225,6 +1415,7 @@ export default function DeskWorkspace({
                     <div className="space-y-1">
                       {channelMessages.map((entry, index) => {
                         const profile = profileFor(entry.senderUserId);
+                        const deskMember = memberByUserId.get(entry.senderUserId);
                         const previous = channelMessages[index - 1];
                         const grouped = previous?.senderUserId === entry.senderUserId && Date.parse(entry.createdAt) - Date.parse(previous.createdAt) < 300_000;
                         const reactionGroups = REACTIONS.map((emoji) => ({
@@ -1235,7 +1426,7 @@ export default function DeskWorkspace({
                           <div key={entry.id} className={`group relative flex gap-3 rounded-xl px-2 py-2 hover:bg-surface/25 ${grouped ? "mt-0" : "mt-3"}`}>
                             <div className="w-9 shrink-0">{grouped ? <span className="block pt-1 text-center text-[5px] text-muted opacity-0 group-hover:opacity-100">{formatTime(entry.createdAt)}</span> : <ProfileAvatar profile={profile} />}</div>
                             <div className="min-w-0 flex-1">
-                              {!grouped ? <div className="flex items-baseline gap-2"><span className="text-[8px] font-semibold">{profile.displayName}</span><span className="text-[6px] text-muted">{formatDateTime(entry.createdAt)}</span></div> : null}
+                              {!grouped ? <div className="flex flex-wrap items-center gap-2"><button type="button" onClick={() => onOpenProfile?.(profile.handle)} className="text-[8px] font-semibold hover:text-primary">{profile.displayName}</button>{deskMember ? <MemberRoleBadge member={deskMember} compact /> : null}<span className="text-[6px] text-muted">{formatDateTime(entry.createdAt)}</span></div> : null}
                               {entry.body ? <p className="mt-1 whitespace-pre-wrap break-words text-[8px] leading-4 text-foreground/90">{entry.body}</p> : null}
                               {entry.attachments.map((item) => <button key={item.id} type="button" onClick={() => setImagePreview(item)} className="mt-2 block max-w-sm overflow-hidden rounded-xl border border-border bg-background/40"><img src={item.dataUrl} alt={item.name} className="max-h-64 w-full object-contain" /></button>)}
                               {reactionGroups.length ? <div className="mt-2 flex flex-wrap gap-1">{reactionGroups.map((group) => <button key={group.emoji} type="button" disabled={Boolean(activeFocusLock)} onClick={() => void perform({ action: "react", deskId: activeDesk.deskId, messageId: entry.id, emoji: group.emoji })} className={`flex items-center gap-1 rounded-lg border px-2 py-1 text-[7px] disabled:cursor-default ${group.users.some((reaction) => reaction.userId === viewerId) ? "border-primary/35 bg-primary/10 text-primary" : "border-border bg-surface/30 text-muted"}`}><span>{group.emoji}</span><span className="font-mono">{group.users.length}</span></button>)}</div> : null}
@@ -1286,7 +1477,7 @@ export default function DeskWorkspace({
                   <div className="mt-3 space-y-1">
                     {memberLeaderboard.slice(0, 8).map((member, index) => {
                       const profile = profileFor(member.userId);
-                      return <button type="button" key={member.userId} onClick={() => setShowMembers(true)} className="flex w-full items-center gap-2 rounded-xl px-2 py-2 text-left hover:bg-surface/40"><span className={`w-4 font-mono text-[7px] ${index < 3 ? "text-primary" : "text-muted"}`}>{String(index + 1).padStart(2, "0")}</span><ProfileAvatar profile={profile} size="sm" /><span className="min-w-0 flex-1"><span className="block truncate text-[7px] font-semibold">{profile.displayName}</span><span className="block text-[6px] text-muted">{roleLabel(member.role)}</span></span><span className="font-mono text-[8px] font-semibold text-primary">{profile.score || "—"}</span></button>;
+                      return <button type="button" key={member.userId} onClick={() => onOpenProfile?.(profile.handle)} className="flex w-full items-center gap-2 rounded-xl px-2 py-2 text-left hover:bg-surface/40"><span className={`w-4 font-mono text-[7px] ${index < 3 ? "text-primary" : "text-muted"}`}>{String(index + 1).padStart(2, "0")}</span><ProfileAvatar profile={profile} size="sm" /><span className="min-w-0 flex-1"><span className="block truncate text-[7px] font-semibold">{profile.displayName}</span><MemberRoleBadge member={member} compact /></span><span className="font-mono text-[8px] font-semibold text-primary">{profile.score || "—"}</span></button>;
                     })}
                   </div>
                 </div>
@@ -1307,6 +1498,35 @@ export default function DeskWorkspace({
                 <div className="mt-3 rounded-2xl border border-border bg-panel p-3">
                   <div className="flex items-center gap-2 text-[8px] font-semibold"><Activity className="h-3.5 w-3.5 text-primary" />Desk standard</div>
                   <p className="mt-3 whitespace-pre-wrap text-[7px] leading-4 text-muted">{activeDesk.rules}</p>
+                </div>
+
+                <div className="mt-3 rounded-2xl border border-border bg-panel p-3">
+                  <div className="flex items-center gap-2">
+                    <UsersRound className="h-3.5 w-3.5 text-primary" />
+                    <div className="text-[8px] font-semibold">Desk users</div>
+                    <button type="button" onClick={() => setShowMembers(true)} className="ml-auto text-[6px] font-semibold text-muted hover:text-primary">Manage</button>
+                  </div>
+                  <div className="mt-3 grid grid-cols-3 divide-x divide-border overflow-hidden rounded-xl border border-border bg-background/30">
+                    <button type="button" onClick={() => setRosterFilter("all")} className={`p-2 text-center ${rosterFilter === "all" ? "bg-primary/[0.06]" : ""}`}><span className="block font-mono text-[10px] font-semibold text-foreground">{roster.length}</span><span className="mt-0.5 block text-[5px] uppercase tracking-[0.1em] text-muted">Overall</span></button>
+                    <button type="button" onClick={() => setRosterFilter("online")} className={`p-2 text-center ${rosterFilter === "online" ? "bg-primary/[0.06]" : ""}`}><span className="block font-mono text-[10px] font-semibold text-primary">{onlineRoster.length}</span><span className="mt-0.5 block text-[5px] uppercase tracking-[0.1em] text-muted">Online</span></button>
+                    <button type="button" onClick={() => setRosterFilter("inactive")} className={`p-2 text-center ${rosterFilter === "inactive" ? "bg-primary/[0.06]" : ""}`}><span className="block font-mono text-[10px] font-semibold text-muted">{inactiveRoster.length}</span><span className="mt-0.5 block text-[5px] uppercase tracking-[0.1em] text-muted">Inactive</span></button>
+                  </div>
+                  <KwantSelect value={rosterFilter} onChange={(event) => setRosterFilter(event.target.value as typeof rosterFilter)} className="mt-2 h-8 w-full rounded-xl border border-border bg-background px-2 text-[7px] outline-none">
+                    <option value="all">All users · {roster.length}</option>
+                    <option value="online">Online · {onlineRoster.length}</option>
+                    <option value="offline">Offline · {offlineRoster.length}</option>
+                    <option value="inactive">Inactive · {inactiveRoster.length}</option>
+                  </KwantSelect>
+                  <div className="mt-2 space-y-1">
+                    {visibleRoster.slice(0, 12).map(({ member, profile, online, inactive }) => (
+                      <button key={member.userId} type="button" onClick={() => onOpenProfile?.(profile.handle)} className="flex w-full items-center gap-2 rounded-xl px-2 py-2 text-left hover:bg-surface/40">
+                        <span className="relative"><ProfileAvatar profile={profile} size="sm" /><span className={`absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full border-2 border-panel ${online ? "bg-primary shadow-[0_0_7px_var(--primary)]" : inactive ? "bg-danger/70" : "bg-muted"}`} /></span>
+                        <span className="min-w-0 flex-1"><span className="block truncate text-[7px] font-semibold">{profile.displayName}</span><MemberRoleBadge member={member} compact /></span>
+                        <span className="text-[5px] uppercase tracking-[0.08em] text-muted">{online ? "Online" : inactive ? "Inactive" : "Offline"}</span>
+                      </button>
+                    ))}
+                    {!visibleRoster.length ? <div className="rounded-xl border border-dashed border-border p-4 text-center text-[6px] text-muted">No users in this status.</div> : null}
+                  </div>
                 </div>
               </div>
             ) : (
@@ -1400,16 +1620,24 @@ export default function DeskWorkspace({
             {memberLeaderboard.map((member, index) => {
               const profile = profileFor(member.userId);
               const canRemove = member.role !== "owner" && (member.userId === viewerId || owner || (activeMembership?.role === "moderator" && member.role === "member"));
+              const online = memberIsOnline(profile);
               return (
                 <div key={member.userId} className="flex flex-wrap items-center gap-3 rounded-2xl border border-border bg-background/30 p-3">
-                  <span className="w-5 font-mono text-[8px] text-muted">{String(index + 1).padStart(2, "0")}</span><ProfileAvatar profile={profile} /><div className="min-w-[150px] flex-1"><div className="flex items-center gap-2"><span className="text-[9px] font-semibold">{profile.displayName}</span>{member.role === "owner" ? <Crown className="h-3 w-3 text-primary" /> : member.role === "moderator" ? <ShieldCheck className="h-3 w-3 text-primary" /> : null}</div><div className="mt-0.5 text-[7px] text-muted">@{profile.handle} · active {formatDateTime(member.lastActiveAt)}</div></div><div className="min-w-20"><div className="font-mono text-[11px] font-semibold text-primary">{profile.score || "—"}</div><div className="text-[6px] uppercase tracking-[0.1em] text-muted">Index</div></div>
-                  {owner && member.role !== "owner" ? <KwantSelect value={member.role} onChange={(event) => void perform({ action: "change-role", deskId: activeDesk.deskId, userId: member.userId, role: event.target.value }, `${profile.displayName} is now a ${event.target.value}.`)} className="h-8 rounded-lg border border-border bg-panel px-2 text-[7px] outline-none"><option value="member">Member</option><option value="moderator">Moderator</option></KwantSelect> : <span className="rounded-lg border border-border bg-panel px-2.5 py-2 text-[7px] text-muted">{roleLabel(member.role)}</span>}
+                  <span className="w-5 font-mono text-[8px] text-muted">{String(index + 1).padStart(2, "0")}</span>
+                  <ProfileAvatar profile={profile} />
+                  <div className="min-w-[180px] flex-1">
+                    <div className="flex flex-wrap items-center gap-2"><button type="button" onClick={() => onOpenProfile?.(profile.handle)} className="text-[9px] font-semibold hover:text-primary">{profile.displayName}</button><MemberRoleBadge member={member} /><span className={`h-1.5 w-1.5 rounded-full ${online ? "bg-primary shadow-[0_0_7px_var(--primary)]" : "bg-muted"}`} /></div>
+                    <div className="mt-1 text-[7px] text-muted">@{profile.handle} · active {formatDateTime(member.lastActiveAt)}</div>
+                    {member.responsibilities ? <div className="mt-1.5 max-w-xl text-[7px] leading-4 text-muted">{member.responsibilities}</div> : null}
+                  </div>
+                  <div className="min-w-20"><div className="font-mono text-[11px] font-semibold text-primary">{profile.score || "—"}</div><div className="text-[6px] uppercase tracking-[0.1em] text-muted">Index</div></div>
+                  {owner ? <MemberRoleControl member={member} profile={profile} working={working} rolesReady={network.memberRolesReady} onSave={(draft) => perform({ action: "update-member-role", deskId: activeDesk.deskId, userId: member.userId, ...draft }, `${profile.displayName}'s Desk role was updated.`)} /> : <MemberRoleBadge member={member} />}
                   {canRemove ? <button type="button" onClick={() => void perform({ action: "remove-member", deskId: activeDesk.deskId, userId: member.userId }, member.userId === viewerId ? `You left ${activeDesk.name}.` : `${profile.displayName} was removed.`)} className="flex h-8 items-center gap-1.5 rounded-lg border border-danger/20 bg-danger/[0.04] px-2.5 text-[7px] text-danger">{member.userId === viewerId ? <DoorOpen className="h-3 w-3" /> : <UserMinus className="h-3 w-3" />}{member.userId === viewerId ? "Leave" : "Remove"}</button> : null}
                 </div>
               );
             })}
           </div>
-          {owner ? <div className="mt-4 rounded-xl border border-primary/20 bg-primary/[0.04] p-3 text-[7px] leading-4 text-muted"><Crown className="mr-2 inline h-3.5 w-3.5 text-primary" />The owner cannot leave their Desk. Ownership transfer and Desk deletion will be handled as explicit safety workflows rather than accidental menu actions.</div> : null}
+          {owner ? <div className="mt-4 rounded-xl border border-primary/20 bg-primary/[0.04] p-3 text-[7px] leading-4 text-muted"><Crown className="mr-2 inline h-3.5 w-3.5 text-primary" />Permission levels control access. Visible Desk roles, colours, icons, tiers and responsibilities communicate identity without silently granting power.</div> : null}
         </Modal>
       ) : null}
 
