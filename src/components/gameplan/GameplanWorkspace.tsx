@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Activity,
   AlarmClock,
   ArrowDown,
   ArrowRight,
@@ -61,6 +62,10 @@ import {
   type VolatilityCandle,
   type VolatilitySnapshot,
 } from "@/lib/volatilityRegime";
+import {
+  calculateVolumeIntelligence,
+  type VolumeIntelligenceSnapshot,
+} from "@/lib/volumeIntelligence";
 import {
   analystPublishReason,
   buildLiveAnalystSnapshot,
@@ -766,6 +771,179 @@ function Environment({
             <span className="rounded-md border border-border bg-surface px-2 py-1">{tapeLabel}</span>
             <span className="rounded-md border border-border bg-surface px-2 py-1">{plan.environment.fear.ratio.toFixed(2)}× IV / realised</span>
             <span className="rounded-md border border-border bg-surface px-2 py-1">{snapshot.sampleCount} windows / {snapshot.historyDays}D</span>
+            <span className="ml-auto font-mono">{formatLiveTimestamp(snapshot.updatedAt)}</span>
+          </div>
+        </div>
+      )}
+    </Panel>
+  );
+}
+
+const VOLUME_FORMATTER = new Intl.NumberFormat("en-US", {
+  notation: "compact",
+  maximumFractionDigits: 1,
+});
+
+function formatVolume(value: number | null | undefined) {
+  return value && Number.isFinite(value) ? VOLUME_FORMATTER.format(value) : "—";
+}
+
+function VolumeIntelligence({
+  snapshot,
+  loading,
+  error,
+  feedState,
+}: {
+  snapshot: VolumeIntelligenceSnapshot | null;
+  loading: boolean;
+  error: string | null;
+  feedState: "connecting" | "live" | "fallback";
+}) {
+  const activeTone = snapshot?.paceLabel === "HEAVY" || snapshot?.paceLabel === "ACTIVE";
+
+  return (
+    <Panel className="overflow-hidden">
+      <SectionHeading
+        icon={Activity}
+        eyebrow="Participation and session pace"
+        title="Volume intelligence"
+        trailing={(
+          <span className={`flex items-center gap-1.5 rounded-lg border px-2 py-1 font-mono text-[8px] font-semibold ${
+            feedState === "live"
+              ? "border-primary/20 bg-primary/10 text-primary"
+              : "border-border bg-surface text-muted"
+          }`}>
+            <span className={`h-1.5 w-1.5 rounded-full ${feedState === "live" ? "animate-pulse bg-primary" : "bg-muted"}`} />
+            {feedState === "live" ? "LIVE CME VOLUME" : feedState === "connecting" ? "CONNECTING" : "LAST VERIFIED"}
+          </span>
+        )}
+      />
+
+      {loading && !snapshot ? (
+        <div className="space-y-3 p-4">
+          <div className="h-20 animate-pulse rounded-xl bg-surface" />
+          <div className="grid grid-cols-3 gap-2">
+            <div className="h-24 animate-pulse rounded-xl bg-surface" />
+            <div className="h-24 animate-pulse rounded-xl bg-surface" />
+            <div className="h-24 animate-pulse rounded-xl bg-surface" />
+          </div>
+        </div>
+      ) : !snapshot ? (
+        <div className="p-4">
+          <div className="rounded-xl border border-border bg-card p-4 text-center">
+            <Activity className="mx-auto h-5 w-5 text-muted" />
+            <div className="mt-2 text-[11px] font-semibold text-foreground">Building the session-volume baseline</div>
+            <p className="mt-1 text-[9px] leading-4 text-muted">
+              {error ?? "Waiting for enough verified CME volume to compare Asia, London, and New York."}
+            </p>
+          </div>
+        </div>
+      ) : (
+        <div className="p-4">
+          <div className="flex items-end gap-3">
+            <div className={`text-[28px] font-semibold leading-none tracking-[-0.04em] ${activeTone ? "text-primary" : "text-foreground"}`}>
+              {snapshot.paceLabel}
+            </div>
+            <div className="font-mono text-[12px] text-muted">
+              {snapshot.paceScore}<span className="text-[9px]"> / 100</span>
+            </div>
+            <span className={`ml-auto rounded-md border px-2 py-1 font-mono text-[8px] font-semibold ${
+              snapshot.trend === "RISING"
+                ? "border-primary/25 bg-primary/10 text-primary"
+                : "border-border bg-surface text-muted"
+            }`}>
+              {snapshot.trend}
+            </span>
+          </div>
+
+          <div className="relative mt-4">
+            <div
+              className="h-2 rounded-full"
+              style={{
+                background: "linear-gradient(90deg, var(--surface) 0%, color-mix(in srgb, var(--primary) 45%, var(--surface)) 50%, var(--primary) 100%)",
+              }}
+            />
+            <span
+              className="absolute top-1/2 h-3.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-background bg-primary shadow-[0_0_14px_var(--primary)]"
+              style={{ left: `${snapshot.paceScore}%` }}
+            />
+            <div className="mt-2 flex justify-between font-mono text-[7px] uppercase tracking-[0.08em] text-muted">
+              <span>Quiet</span><span>Normal</span><span>Heavy</span>
+            </div>
+          </div>
+
+          <div className="mt-4 grid grid-cols-2 gap-2">
+            <div className="rounded-xl border border-border bg-card p-3">
+              <div className="text-[8px] uppercase tracking-[0.12em] text-muted">{snapshot.rollingWindowMinutes}m average</div>
+              <div className="mt-1 font-mono text-[13px] font-semibold text-foreground">{formatVolume(snapshot.rollingAverageVolume)}</div>
+              <div className="mt-1 text-[8px] text-muted">contracts per 5m bar</div>
+            </div>
+            <div className="rounded-xl border border-border bg-card p-3">
+              <div className="text-[8px] uppercase tracking-[0.12em] text-muted">Relative pace</div>
+              <div className="mt-1 font-mono text-[13px] font-semibold text-primary">{snapshot.paceRatio.toFixed(2)}×</div>
+              <div className="mt-1 text-[8px] text-muted">same-phase baseline</div>
+            </div>
+          </div>
+
+          <div className="mt-3 grid gap-2 sm:grid-cols-3 xl:grid-cols-1 2xl:grid-cols-3">
+            {snapshot.sessions.map((sessionVolume) => {
+              const comparisonPercent = Math.round(sessionVolume.comparisonRatio * 100);
+              const scalePosition = Math.max(2, Math.min(100, sessionVolume.comparisonRatio * 50));
+              return (
+                <div
+                  key={sessionVolume.id}
+                  className={`rounded-xl border p-3 ${
+                    sessionVolume.active
+                      ? "border-primary/30 bg-primary/[0.055] shadow-[0_0_22px_color-mix(in_srgb,var(--primary)_7%,transparent)]"
+                      : "border-border bg-card"
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <span className={`h-1.5 w-1.5 rounded-full ${sessionVolume.active ? "animate-pulse bg-primary shadow-[0_0_7px_var(--primary)]" : "bg-muted/60"}`} />
+                    <span className="text-[9px] font-semibold text-foreground">{sessionVolume.label}</span>
+                    <span className="ml-auto font-mono text-[7px] text-muted">{sessionVolume.active ? "ACTIVE" : "LAST"}</span>
+                  </div>
+                  <div className="mt-1 font-mono text-[7px] text-muted">{sessionVolume.windowLabel}</div>
+                  <div className="mt-3 text-[7px] uppercase tracking-[0.1em] text-muted">
+                    {sessionVolume.active ? "Projected close" : "Previous session"}
+                  </div>
+                  <div className="mt-0.5 flex items-baseline gap-1.5">
+                    <span className="font-mono text-[12px] font-semibold text-foreground">
+                      {formatVolume(sessionVolume.projectedVolume ?? sessionVolume.previousVolume)}
+                    </span>
+                    <span className={`font-mono text-[7px] ${comparisonPercent >= 100 ? "text-primary" : "text-muted"}`}>
+                      {comparisonPercent}%
+                    </span>
+                  </div>
+                  <div className="relative mt-2 h-1.5 overflow-hidden rounded-full bg-surface">
+                    <span className="absolute inset-y-0 left-1/2 w-px bg-foreground/35" />
+                    <span
+                      className="block h-full rounded-full bg-primary transition-[width] duration-700"
+                      style={{ width: `${scalePosition}%` }}
+                    />
+                  </div>
+                  <div className="mt-1.5 flex items-center justify-between font-mono text-[7px] text-muted">
+                    <span>Avg {formatVolume(sessionVolume.averageVolume)}</span>
+                    <span>{sessionVolume.sampleCount} sessions</span>
+                  </div>
+                  {sessionVolume.active ? (
+                    <div className="mt-1.5 flex items-center justify-between font-mono text-[7px] text-muted">
+                      <span>Now {formatVolume(sessionVolume.currentVolume)}</span>
+                      <span>{Math.round(sessionVolume.elapsedPercent ?? 0)}% elapsed</span>
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="mt-3 rounded-xl border border-primary/20 bg-primary/[0.045] p-3">
+            <div className="text-[8px] font-semibold uppercase tracking-[0.14em] text-primary">Participation read</div>
+            <p className="mt-1.5 text-[9px] leading-4 text-muted">{snapshot.summary}</p>
+          </div>
+
+          <div className="mt-3 flex items-center gap-2 text-[8px] text-muted">
+            <span>Smoothed to suppress single-print noise</span>
             <span className="ml-auto font-mono">{formatLiveTimestamp(snapshot.updatedAt)}</span>
           </div>
         </div>
@@ -1970,6 +2148,10 @@ export default function GameplanWorkspace({ initialInstrument = "NQ" }: { initia
     () => calculateVolatilitySnapshot(volatilityCandles, currentPrice),
     [currentPrice, volatilityCandles],
   );
+  const volumeSnapshot = useMemo(
+    () => calculateVolumeIntelligence(volatilityCandles),
+    [volatilityCandles],
+  );
 
   if (loading && !payload) return <LoadingState />;
   if (!payload) {
@@ -2141,6 +2323,12 @@ export default function GameplanWorkspace({ initialInstrument = "NQ" }: { initia
               <Environment
                 plan={plan}
                 snapshot={volatilitySnapshot}
+                loading={volatilityLoading}
+                error={volatilityError}
+                feedState={liveFeedState}
+              />
+              <VolumeIntelligence
+                snapshot={volumeSnapshot}
                 loading={volatilityLoading}
                 error={volatilityError}
                 feedState={liveFeedState}
