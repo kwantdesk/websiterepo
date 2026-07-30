@@ -211,7 +211,7 @@ function mergeMessages(local: ZyonMessage[], cloud: ZyonMessage[]) {
     .slice(-120);
 }
 
-function folderRows(folders: ZyonFolder[]) {
+function folderRows(folders: ZyonFolder[], expandedFolderIds?: ReadonlySet<string>) {
   const byParent = new Map<string | null, ZyonFolder[]>();
   folders.forEach((folder) => {
     const children = byParent.get(folder.parentId) ?? [];
@@ -233,7 +233,9 @@ function folderRows(folders: ZyonFolder[]) {
       if (visited.has(folder.id)) continue;
       visited.add(folder.id);
       rows.push({ folder, depth });
-      visit(folder.id, depth + 1);
+      if (!expandedFolderIds || expandedFolderIds.has(folder.id)) {
+        visit(folder.id, depth + 1);
+      }
     }
   };
   visit(null, 0);
@@ -465,6 +467,12 @@ export default function ZyonWorkspace({
   const [selectedFolderId, setSelectedFolderId] = useState(
     () => `zyon-folder-day-${localSessionDate()}`,
   );
+  const [expandedFolderIds, setExpandedFolderIds] = useState<Set<string>>(
+    () => new Set([
+      ZYON_DAILY_ROOT_FOLDER_ID,
+      `zyon-folder-day-${localSessionDate()}`,
+    ]),
+  );
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
   const [lastUsage, setLastUsage] = useState<{ inputTokens: number | null; outputTokens: number | null } | null>(null);
   const [imagePreview, setImagePreview] = useState<ZyonImagePreview | null>(null);
@@ -658,7 +666,10 @@ export default function ZyonWorkspace({
     });
     return next;
   }, [folders, journal]);
-  const flattenedFolders = useMemo(() => folderRows(displayFolders), [displayFolders]);
+  const flattenedFolders = useMemo(
+    () => folderRows(displayFolders, expandedFolderIds),
+    [displayFolders, expandedFolderIds],
+  );
   const selectedFolder = displayFolders.find((folder) => folder.id === selectedFolderId)
     ?? displayFolders.find((folder) => folder.kind === "daily" && folder.sessionDate === selectedDay)
     ?? displayFolders[0]
@@ -716,6 +727,12 @@ export default function ZyonWorkspace({
       }
       setFolders((current) => mergeFolders(current, [payload.folder as ZyonFolder]));
       setSelectedFolderId(payload.folder.id);
+      setExpandedFolderIds((current) => {
+        const next = new Set(current);
+        if (payload.folder?.parentId) next.add(payload.folder.parentId);
+        next.add(payload.folder!.id);
+        return next;
+      });
       setSelectedEntryId(null);
       setFolderDialogOpen(false);
       setFolderName("");
@@ -753,6 +770,11 @@ export default function ZyonWorkspace({
         return !(folderToDelete.kind === "daily" && entry.sessionDate === folderToDelete.sessionDate);
       }));
       setSelectedFolderId(ZYON_DAILY_ROOT_FOLDER_ID);
+      setExpandedFolderIds((current) => {
+        const next = new Set([...current].filter((id) => !removedIds.has(id)));
+        next.add(ZYON_DAILY_ROOT_FOLDER_ID);
+        return next;
+      });
       setSelectedEntryId(null);
       setFolderToDelete(null);
       setCloudJournal("synced");
@@ -990,6 +1012,12 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
         };
         setFolders((current) => mergeFolders(current, [systemFolder, dailyFolder]));
         setSelectedFolderId(dailyFolder.id);
+        setExpandedFolderIds((current) => {
+          const next = new Set(current);
+          next.add(ZYON_DAILY_ROOT_FOLDER_ID);
+          next.add(dailyFolder.id);
+          return next;
+        });
       }
       setLastUsage({
         inputTokens: payload?.usage?.inputTokens ?? null,
@@ -1432,7 +1460,17 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
               <div className="space-y-1.5">
                 {flattenedFolders.map(({ folder, depth }) => {
                   const active = selectedFolder?.id === folder.id;
-                  const entries = active ? selectedFolderEntries : [];
+                  const expanded = expandedFolderIds.has(folder.id);
+                  const descendantIds = expanded ? descendantFolderIds(displayFolders, folder.id) : new Set<string>();
+                  const entries = expanded
+                    ? filteredJournal
+                      .filter((entry) => {
+                        const entryFolderId = zyonEntryFolderId(entry);
+                        if (entryFolderId && descendantIds.has(entryFolderId)) return true;
+                        return folder.kind === "daily" && entry.sessionDate === folder.sessionDate;
+                      })
+                      .sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt))
+                    : [];
                   return (
                     <div key={folder.id}>
                       <button
@@ -1440,7 +1478,13 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
                         onClick={() => {
                           setSelectedFolderId(folder.id);
                           if (folder.sessionDate) setSelectedDay(folder.sessionDate);
-                          setSelectedEntryId(entries[0]?.id ?? null);
+                          setExpandedFolderIds((current) => {
+                            const next = new Set(current);
+                            if (next.has(folder.id)) next.delete(folder.id);
+                            else next.add(folder.id);
+                            return next;
+                          });
+                          if (!active) setSelectedEntryId(null);
                         }}
                         className={`flex w-full items-center gap-2 rounded-xl border px-2.5 py-2 text-left transition ${
                           active
@@ -1449,7 +1493,7 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
                         }`}
                         style={{ paddingLeft: `${10 + Math.min(depth, 4) * 12}px` }}
                       >
-                        {active ? <FolderOpen className="h-4 w-4 shrink-0 text-primary" /> : <Folder className="h-4 w-4 shrink-0" />}
+                        {expanded ? <FolderOpen className="h-4 w-4 shrink-0 text-primary" /> : <Folder className="h-4 w-4 shrink-0" />}
                         <span className="min-w-0 flex-1">
                           <span className="block truncate text-[10px] font-medium">
                             {folder.kind === "daily" && folder.sessionDate ? formatDay(folder.sessionDate) : folder.name}
@@ -1462,9 +1506,9 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
                                 : `${entries.length || journal.filter((entry) => entry.sessionDate === folder.sessionDate).length} summaries`}
                           </span>
                         </span>
-                        <ChevronRight className={`h-3.5 w-3.5 transition ${active ? "rotate-90 text-primary" : ""}`} />
+                        <ChevronRight className={`h-3.5 w-3.5 transition ${expanded ? "rotate-90 text-primary" : ""}`} />
                       </button>
-                      {active ? (
+                      {expanded && entries.length ? (
                         <div className="ml-4 mt-1 space-y-1 border-l border-border pl-2">
                           {entries.map((entry) => (
                             <button
