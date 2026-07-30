@@ -402,6 +402,65 @@ body {
   }
 }
 
+@keyframes zyon-avatar-presence {
+  0%,
+  34%,
+  100% {
+    transform: scale(1.045) translate3d(0, 0, 0) rotate(0deg);
+  }
+  39% {
+    transform: scale(1.06) translate3d(1.2%, -.7%, 0) rotate(.65deg);
+  }
+  45% {
+    transform: scale(1.055) translate3d(-.7%, .3%, 0) rotate(-.35deg);
+  }
+  51% {
+    transform: scale(1.045) translate3d(0, 0, 0) rotate(0deg);
+  }
+}
+
+@keyframes zyon-avatar-speaking {
+  0%,
+  100% {
+    transform: scale(1.045) translate3d(0, 0, 0);
+  }
+  45% {
+    transform: scale(1.075) translate3d(0, -1.2%, 0) rotate(.45deg);
+  }
+}
+
+@keyframes zyon-avatar-halo {
+  0%,
+  100% {
+    opacity: .24;
+  }
+  50% {
+    opacity: .5;
+  }
+}
+
+.zyon-avatar-image {
+  transform: scale(1.045);
+  transform-origin: 50% 68%;
+  will-change: transform;
+}
+
+.zyon-avatar-animated .zyon-avatar-image {
+  animation: zyon-avatar-presence 9.5s cubic-bezier(.4,0,.2,1) infinite;
+}
+
+.zyon-avatar-speaking .zyon-avatar-image {
+  animation: zyon-avatar-speaking 1.15s ease-in-out infinite;
+}
+
+.zyon-avatar-halo {
+  background:
+    radial-gradient(circle at 52% 63%, color-mix(in srgb, var(--primary) 18%, transparent), transparent 48%),
+    linear-gradient(145deg, color-mix(in srgb, var(--primary) 7%, transparent), transparent 52%);
+  mix-blend-mode: screen;
+  animation: zyon-avatar-halo 4.2s ease-in-out infinite;
+}
+
 .zyon-first-message-enter {
   animation: zyon-first-message-enter 440ms cubic-bezier(.2,.8,.2,1) both;
 }
@@ -421,6 +480,8 @@ body {
   .kwantbot-home-particle,
   .kwantbot-message-in,
   .kwantbot-message-out,
+  .zyon-avatar-image,
+  .zyon-avatar-halo,
   .zyon-first-message-enter,
   .zyon-chat-enter,
   .gameplan-current-level,

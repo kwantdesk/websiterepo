@@ -335,13 +335,53 @@ async function portableAttachmentSource(source: string) {
   return blobDataUrl(await response.blob());
 }
 
+function ZyonAvatar({
+  size = "md",
+  animated = false,
+  speaking = false,
+  online = false,
+}: {
+  size?: "sm" | "md" | "lg" | "xl";
+  animated?: boolean;
+  speaking?: boolean;
+  online?: boolean;
+}) {
+  const frame = size === "sm"
+    ? "h-7 w-7"
+    : size === "lg"
+      ? "h-12 w-12"
+      : size === "xl"
+        ? "h-16 w-16"
+        : "h-9 w-9";
+  const imageSize = size === "sm" ? "28px" : size === "lg" ? "48px" : size === "xl" ? "64px" : "36px";
+  return (
+    <span
+      className={`zyon-avatar relative inline-flex shrink-0 overflow-hidden rounded-full border border-primary/25 bg-black shadow-[0_0_22px_color-mix(in_srgb,var(--primary)_13%,transparent)] ${frame} ${
+        animated ? "zyon-avatar-animated" : ""
+      } ${speaking ? "zyon-avatar-speaking" : ""}`}
+      aria-label="ZYON profile picture"
+    >
+      <span className="zyon-avatar-halo pointer-events-none absolute inset-0 z-10 rounded-full" />
+      <Image
+        src="/images/zyon-avatar.jpg"
+        alt="ZYON, AI Quant Analyst"
+        fill
+        sizes={imageSize}
+        className="zyon-avatar-image object-cover"
+      />
+      <span className="pointer-events-none absolute inset-0 z-20 rounded-full ring-1 ring-inset ring-white/[0.08]" />
+      {online ? (
+        <span className="absolute bottom-[6%] right-[6%] z-30 h-[20%] w-[20%] rounded-full border-2 border-panel bg-primary shadow-[0_0_8px_var(--primary)]" />
+      ) : null}
+    </span>
+  );
+}
+
 function ZyonLoadingState({ compact }: { compact: boolean }) {
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-background">
       <header className={`flex h-[58px] shrink-0 items-center gap-3 border-b border-border bg-panel ${compact ? "px-3" : "px-4"}`}>
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl border border-primary/20 bg-primary/10 text-primary shadow-[0_0_22px_color-mix(in_srgb,var(--primary)_12%,transparent)]">
-          <Sparkles className="h-4 w-4" />
-        </span>
+        <ZyonAvatar animated />
         <div>
           <div className="text-[12px] font-semibold tracking-[0.12em] text-foreground">ZYON</div>
           <div className="mt-1 text-[7px] uppercase tracking-[0.12em] text-muted">Restoring conversation</div>
@@ -1339,9 +1379,7 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
       <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-background">
         <header className="shrink-0 border-b border-border bg-panel">
           <div className="flex items-center gap-2.5 px-3 pb-2 pt-3">
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl border border-primary/20 bg-primary/10 text-primary shadow-[0_0_22px_color-mix(in_srgb,var(--primary)_12%,transparent)]">
-              <Sparkles className="h-4 w-4" />
-            </span>
+            <ZyonAvatar animated online={online} />
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
                 <h2 className="text-[13px] font-semibold tracking-[0.12em] text-foreground">ZYON</h2>
@@ -1453,9 +1491,7 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
                 return (
                   <div key={message.id} className={`flex gap-2 ${assistant ? "justify-start" : "justify-end"}`}>
                     {assistant ? (
-                      <span className="mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary">
-                        <Sparkles className="h-3 w-3" />
-                      </span>
+                      <span className="mt-1"><ZyonAvatar size="sm" /></span>
                     ) : null}
                     <div className="max-w-[84%]">
                       <div className={`overflow-hidden rounded-[17px] border px-3 py-2.5 ${
@@ -1476,9 +1512,7 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
               })}
               {sending ? (
                 <div className="flex items-center gap-2">
-                  <span className="flex h-7 w-7 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary">
-                    <Sparkles className="h-3 w-3 animate-pulse" />
-                  </span>
+                  <ZyonAvatar size="sm" speaking />
                   <span className="flex items-center gap-2 rounded-2xl border border-border bg-panel/85 px-3 py-2.5 text-[9px] text-muted">
                     <Loader2 className="h-3 w-3 animate-spin text-primary" />
                     ZYON is analysing
@@ -1575,9 +1609,7 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background">
       <header className="flex h-[58px] shrink-0 items-center gap-3 border-b border-border bg-panel px-4">
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl border border-primary/20 bg-primary/10 text-primary shadow-[0_0_24px_color-mix(in_srgb,var(--primary)_12%,transparent)]">
-          <Sparkles className="h-[17px] w-[17px]" />
-        </div>
+        <ZyonAvatar animated online={online} />
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <h1 className="truncate text-[15px] font-semibold tracking-[0.12em] text-foreground">ZYON</h1>
@@ -1993,9 +2025,7 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
             <div className={`mx-auto flex min-h-full max-w-[880px] flex-col ${conversationStarted ? "zyon-chat-enter" : "justify-center"}`}>
               {!conversationStarted ? (
                 <div className="zyon-first-message-enter mx-auto flex w-full max-w-[720px] flex-col items-center justify-center py-8 text-center">
-                  <span className="flex h-12 w-12 items-center justify-center rounded-2xl border border-primary/20 bg-primary/10 text-primary shadow-[0_0_32px_color-mix(in_srgb,var(--primary)_16%,transparent)]">
-                    <Sparkles className="h-5 w-5" />
-                  </span>
+                  <ZyonAvatar size="xl" animated online={online} />
                   <div className="mt-5 text-[10px] font-semibold uppercase tracking-[0.18em] text-primary">ZYON · {selectedRoot} intelligence ready</div>
                   <h2 className="mt-2 text-[27px] font-semibold tracking-[-0.04em] text-foreground sm:text-[32px]">
                     Hello, {greetingName}. What&apos;s today&apos;s game plan?
@@ -2120,9 +2150,7 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
                   return (
                     <div key={message.id} className={`flex gap-3 ${assistant ? "justify-start" : "justify-end"}`}>
                       {assistant ? (
-                        <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary">
-                          <Sparkles className="h-3.5 w-3.5" />
-                        </div>
+                        <span className="mt-1"><ZyonAvatar size="md" /></span>
                       ) : null}
                       <div className={`max-w-[84%] ${assistant ? "" : "order-first"}`}>
                         <div className={`overflow-hidden rounded-2xl border px-4 py-3 ${
@@ -2144,9 +2172,7 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
                 })}
                 {sending ? (
                   <div className="flex items-center gap-3">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary">
-                      <Sparkles className="h-3.5 w-3.5 animate-pulse" />
-                    </div>
+                    <ZyonAvatar size="md" speaking />
                     <div className="flex items-center gap-2 rounded-2xl border border-border bg-panel/80 px-4 py-3 text-[10px] text-muted">
                       <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
                       {ZYON_MODELS[model].label} is checking your read against live context
