@@ -21,6 +21,7 @@ export type DeskWorkspace = {
   avatarUrl: string;
   accentColor: string;
   rules: string;
+  archivedAt: string | null;
   createdAt: string;
   updatedAt: string;
 };

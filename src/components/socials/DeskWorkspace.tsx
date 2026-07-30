@@ -3,6 +3,7 @@
 import {
   Activity,
   Archive,
+  ArchiveRestore,
   BellRing,
   Check,
   ChevronDown,
@@ -25,6 +26,7 @@ import {
   SmilePlus,
   Sparkles,
   Trophy,
+  Trash2,
   Upload,
   UserMinus,
   UserPlus,
@@ -280,10 +282,16 @@ export default function DeskWorkspace({
   const [activeDeskId, setActiveDeskId] = useState("");
   const [activeChannelId, setActiveChannelId] = useState("");
   const [showSettings, setShowSettings] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
   const [showInvite, setShowInvite] = useState(false);
   const [showMembers, setShowMembers] = useState(false);
   const [showChannel, setShowChannel] = useState(false);
   const [settings, setSettings] = useState<WorkspaceDraft | null>(null);
+  const [lifecycleTarget, setLifecycleTarget] = useState<{
+    action: "archive" | "delete";
+    workspace: DeskWorkspaceModel;
+  } | null>(null);
+  const [deleteConfirmation, setDeleteConfirmation] = useState("");
   const [channelEditor, setChannelEditor] = useState<ChannelDraft>(emptyChannelDraft);
   const [inviteHandle, setInviteHandle] = useState("");
   const [message, setMessage] = useState("");
@@ -370,11 +378,19 @@ export default function DeskWorkspace({
     [network.members, viewerId],
   );
   const memberDeskIds = useMemo(() => new Set(viewerMemberships.map((member) => member.deskId)), [viewerMemberships]);
-  const myWorkspaces = useMemo(
-    () => network.workspaces.filter((workspace) => memberDeskIds.has(workspace.deskId)),
-    [memberDeskIds, network.workspaces],
+  const activeWorkspaces = useMemo(
+    () => network.workspaces.filter((workspace) => !workspace.archivedAt),
+    [network.workspaces],
   );
-  const activeDesk = network.workspaces.find((workspace) => workspace.deskId === activeDeskId) ?? null;
+  const archivedWorkspaces = useMemo(
+    () => network.workspaces.filter((workspace) => workspace.ownerId === viewerId && Boolean(workspace.archivedAt)),
+    [network.workspaces, viewerId],
+  );
+  const myWorkspaces = useMemo(
+    () => activeWorkspaces.filter((workspace) => memberDeskIds.has(workspace.deskId)),
+    [activeWorkspaces, memberDeskIds],
+  );
+  const activeDesk = activeWorkspaces.find((workspace) => workspace.deskId === activeDeskId) ?? null;
   const activeMembership = viewerMemberships.find((member) => member.deskId === activeDeskId) ?? null;
   const leader = activeMembership?.role === "owner" || activeMembership?.role === "moderator";
   const owner = activeMembership?.role === "owner";
@@ -519,6 +535,61 @@ export default function DeskWorkspace({
     if (saved) setShowSettings(false);
   };
 
+  const openLifecycle = (action: "archive" | "delete", workspace: DeskWorkspaceModel) => {
+    setShowSettings(false);
+    setShowArchived(false);
+    setDeleteConfirmation("");
+    setLifecycleTarget({ action, workspace });
+  };
+
+  const archiveDesk = async () => {
+    if (!lifecycleTarget || lifecycleTarget.action !== "archive") return;
+    const workspace = lifecycleTarget.workspace;
+    const nextDesk = myWorkspaces.find((candidate) => candidate.deskId !== workspace.deskId) ?? null;
+    const archived = await perform(
+      { action: "archive-desk", deskId: workspace.deskId },
+      `${workspace.name} was archived.`,
+    );
+    if (!archived) return;
+    setLifecycleTarget(null);
+    setActiveDeskId(nextDesk?.deskId ?? "");
+    setActiveChannelId("");
+    if (!nextDesk && typeof window !== "undefined") window.localStorage.removeItem("kwantdesk-active-desk");
+  };
+
+  const restoreDesk = async (workspace: DeskWorkspaceModel) => {
+    const restored = await perform(
+      { action: "restore-desk", deskId: workspace.deskId },
+      `${workspace.name} is active again.`,
+    );
+    if (!restored) return;
+    setShowArchived(false);
+    setActiveDeskId(workspace.deskId);
+    setActiveChannelId("");
+  };
+
+  const deleteDesk = async () => {
+    if (!lifecycleTarget || lifecycleTarget.action !== "delete") return;
+    const workspace = lifecycleTarget.workspace;
+    const nextDesk = myWorkspaces.find((candidate) => candidate.deskId !== workspace.deskId) ?? null;
+    const deleted = await perform(
+      {
+        action: "delete-desk",
+        deskId: workspace.deskId,
+        confirmation: deleteConfirmation,
+      },
+      `${workspace.name} was permanently deleted.`,
+    );
+    if (!deleted) return;
+    setLifecycleTarget(null);
+    setDeleteConfirmation("");
+    if (activeDeskId === workspace.deskId) {
+      setActiveDeskId(nextDesk?.deskId ?? "");
+      setActiveChannelId("");
+      if (!nextDesk && typeof window !== "undefined") window.localStorage.removeItem("kwantdesk-active-desk");
+    }
+  };
+
   const requestAccess = async (workspace: DeskWorkspaceModel) => {
     const label = workspace.privacy === "PUBLIC" ? `Joined ${workspace.name}.` : `Request sent to ${workspace.name}.`;
     await perform({ action: "request-access", deskId: workspace.deskId }, label);
@@ -647,7 +718,7 @@ export default function DeskWorkspace({
   const activeThisWeek = activeMembers.filter((member) => Date.parse(member.lastActiveAt) >= activeCutoff).length;
   const participation = activeMembers.length ? Math.round(activeThisWeek / activeMembers.length * 100) : 0;
   const memberLeaderboard = [...activeMembers].sort((left, right) => profileFor(right.userId).score - profileFor(left.userId).score);
-  const workspaceScores = network.workspaces.map((workspace) => {
+  const workspaceScores = activeWorkspaces.map((workspace) => {
     const members = network.members.filter((member) => member.deskId === workspace.deskId);
     const scores = members.map((member) => profileFor(member.userId).score).filter((score) => score > 0);
     return {
@@ -663,7 +734,7 @@ export default function DeskWorkspace({
   const ownPendingRequests = new Set(network.requests
     .filter((request) => request.userId === viewerId && request.requestType === "request" && request.status === "pending")
     .map((request) => request.deskId));
-  const available = network.workspaces.filter((workspace) => !memberDeskIds.has(workspace.deskId));
+  const available = activeWorkspaces.filter((workspace) => !memberDeskIds.has(workspace.deskId));
   const filteredAvailable = available.filter((workspace) => {
     const query = directoryQuery.trim().toLowerCase();
     return !query || [workspace.name, workspace.description, workspace.objective, workspace.markets.join(" ")].some((value) => value.toLowerCase().includes(query));
@@ -704,6 +775,15 @@ export default function DeskWorkspace({
                 <DeskMark workspace={workspace} active={!discovering && activeDeskId === workspace.deskId} />
               </button>
             ))}
+            <button
+              type="button"
+              onClick={() => setShowArchived(true)}
+              className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-border bg-surface/25 text-muted transition-colors hover:border-primary/30 hover:text-primary"
+              title="Archived Desks"
+            >
+              <Archive className="h-4 w-4" />
+              {archivedWorkspaces.length ? <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full border border-background bg-primary px-1 font-mono text-[6px] font-semibold text-background">{archivedWorkspaces.length}</span> : null}
+            </button>
             <button type="button" onClick={() => setDiscovering(true)} className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border transition-colors ${discovering ? "border-primary/45 bg-primary/10 text-primary" : "border-border bg-surface/40 text-muted hover:text-foreground"}`} title="Discover Desks"><Search className="h-4 w-4" /></button>
             <button type="button" onClick={onCreateDesk} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-dashed border-primary/35 text-primary hover:bg-primary/10" title="Create a Desk"><Plus className="h-4 w-4" /></button>
             <div className="hidden flex-1 xl:block" />
@@ -1016,8 +1096,82 @@ export default function DeskWorkspace({
                 <Toggle checked={settings.allowMemberInvites} onChange={(checked) => setSettings((current) => current ? { ...current, allowMemberInvites: checked } : current)} label="Member invitations" detail="Allow ordinary members to invite people they already know." />
                 <label className="rounded-xl border border-border bg-background/35 p-3"><span className="block text-[8px] font-semibold">Inactive member automation</span><span className="mt-0.5 block text-[7px] leading-3 text-muted">Non-owners are removed after this many inactive days. Leave blank to disable.</span><input type="number" min={7} max={365} value={settings.inactivityDays} onChange={(event) => setSettings((current) => current ? { ...current, inactivityDays: event.target.value } : current)} placeholder="Disabled" className="mt-2 h-8 w-full rounded-lg border border-border bg-panel px-3 font-mono text-[8px] outline-none focus:border-primary/40" /></label>
               </div>
+              <div className="md:col-span-2 rounded-2xl border border-danger/20 bg-danger/[0.025] p-4">
+                <div className="text-[8px] font-semibold text-foreground">Desk lifecycle</div>
+                <p className="mt-1 text-[7px] leading-4 text-muted">Archiving hides this Desk from members and discovery while preserving everything for you. Permanent deletion removes its channels, messages, membership and settings.</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button type="button" onClick={() => openLifecycle("archive", activeDesk)} className="flex h-9 items-center gap-2 rounded-xl border border-primary/25 bg-primary/[0.05] px-4 text-[8px] font-semibold text-primary"><Archive className="h-3.5 w-3.5" />Archive Desk</button>
+                  <button type="button" onClick={() => openLifecycle("delete", activeDesk)} className="flex h-9 items-center gap-2 rounded-xl border border-danger/25 bg-danger/[0.05] px-4 text-[8px] font-semibold text-danger"><Trash2 className="h-3.5 w-3.5" />Delete permanently</button>
+                </div>
+              </div>
             </div>
           </div>
+        </Modal>
+      ) : null}
+
+      {showArchived ? (
+        <Modal
+          title="Archived Desks"
+          subtitle="Only you can see these Desks. Restore one at any time or remove it permanently."
+          icon={<Archive className="h-4 w-4" />}
+          onClose={() => setShowArchived(false)}
+        >
+          {archivedWorkspaces.length ? (
+            <div className="space-y-2">
+              {archivedWorkspaces.map((workspace) => (
+                <div key={workspace.deskId} className="flex flex-wrap items-center gap-3 rounded-2xl border border-border bg-background/35 p-3 opacity-70 transition-opacity hover:opacity-100">
+                  <DeskMark workspace={workspace} compact />
+                  <div className="min-w-[160px] flex-1">
+                    <div className="text-[9px] font-semibold text-foreground">{workspace.name}</div>
+                    <div className="mt-1 text-[7px] text-muted">Archived {workspace.archivedAt ? formatDateTime(workspace.archivedAt) : "recently"} · hidden from every member</div>
+                  </div>
+                  <button type="button" onClick={() => void restoreDesk(workspace)} disabled={working} className="flex h-8 items-center gap-1.5 rounded-lg border border-primary/25 bg-primary/[0.05] px-3 text-[7px] font-semibold text-primary disabled:opacity-40"><ArchiveRestore className="h-3 w-3" />Restore</button>
+                  <button type="button" onClick={() => openLifecycle("delete", workspace)} disabled={working} className="flex h-8 items-center gap-1.5 rounded-lg border border-danger/25 bg-danger/[0.04] px-3 text-[7px] font-semibold text-danger disabled:opacity-40"><Trash2 className="h-3 w-3" />Delete</button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="py-10 text-center">
+              <Archive className="mx-auto h-6 w-6 text-muted" />
+              <div className="mt-3 text-[10px] font-semibold text-foreground">No archived Desks</div>
+              <div className="mt-1 text-[8px] text-muted">Desks you archive will remain recoverable here.</div>
+            </div>
+          )}
+        </Modal>
+      ) : null}
+
+      {lifecycleTarget ? (
+        <Modal
+          title={lifecycleTarget.action === "archive" ? `Archive ${lifecycleTarget.workspace.name}?` : `Delete ${lifecycleTarget.workspace.name}?`}
+          subtitle={lifecycleTarget.action === "archive" ? "This is reversible and keeps the complete Desk record." : "This cannot be undone."}
+          icon={lifecycleTarget.action === "archive" ? <Archive className="h-4 w-4" /> : <Trash2 className="h-4 w-4 text-danger" />}
+          onClose={() => { setLifecycleTarget(null); setDeleteConfirmation(""); }}
+          footer={(
+            <>
+              <button type="button" onClick={() => { setLifecycleTarget(null); setDeleteConfirmation(""); }} className="h-9 rounded-xl border border-border px-4 text-[8px] font-semibold text-muted">Cancel</button>
+              {lifecycleTarget.action === "archive" ? (
+                <button type="button" onClick={() => void archiveDesk()} disabled={working} className="flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-[8px] font-semibold text-background disabled:opacity-40"><Archive className="h-3.5 w-3.5" />Archive Desk</button>
+              ) : (
+                <button type="button" onClick={() => void deleteDesk()} disabled={working || deleteConfirmation !== lifecycleTarget.workspace.name} className="flex h-9 items-center gap-2 rounded-xl bg-danger px-4 text-[8px] font-semibold text-white disabled:opacity-35"><Trash2 className="h-3.5 w-3.5" />Delete forever</button>
+              )}
+            </>
+          )}
+        >
+          {lifecycleTarget.action === "archive" ? (
+            <div className="rounded-2xl border border-primary/20 bg-primary/[0.04] p-4 text-[8px] leading-5 text-muted">
+              <span className="font-semibold text-foreground">{lifecycleTarget.workspace.name}</span> will disappear from member sidebars, Desk discovery, rankings and live channels. Its complete history remains intact in your Archived Desks.
+            </div>
+          ) : (
+            <div>
+              <div className="rounded-2xl border border-danger/25 bg-danger/[0.04] p-4 text-[8px] leading-5 text-muted">
+                Permanent deletion removes the Desk, every channel, message, reaction, member and pending invitation. This record cannot be restored.
+              </div>
+              <label className="mt-4 block">
+                <span className="mb-1.5 block text-[7px] uppercase tracking-[0.1em] text-muted">Enter <span className="font-semibold text-danger">{lifecycleTarget.workspace.name}</span> to confirm</span>
+                <input autoFocus value={deleteConfirmation} onChange={(event) => setDeleteConfirmation(event.target.value)} className="h-11 w-full rounded-xl border border-danger/25 bg-background px-3 text-[9px] text-foreground outline-none focus:border-danger/55" />
+              </label>
+            </div>
+          )}
         </Modal>
       ) : null}
 

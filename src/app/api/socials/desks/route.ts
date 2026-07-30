@@ -40,6 +40,7 @@ type WorkspaceRow = {
   avatar_url: string;
   accent_color: string;
   rules: string;
+  archived_at?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -195,6 +196,7 @@ function fromWorkspace(row: WorkspaceRow): DeskWorkspace {
     avatarUrl: row.avatar_url,
     accentColor: row.accent_color,
     rules: row.rules,
+    archivedAt: row.archived_at ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -361,11 +363,14 @@ export async function GET(request: NextRequest) {
       .order("created_at", { ascending: false })
       .limit(500)
     : Promise.resolve({ data: [] as MessageRow[], error: null });
-  const [workspaceResult, memberResult, requestResult, focusLockResult, channelResult, messageResult] = await Promise.all([
+  const [workspaceResult, archiveStateResult, memberResult, requestResult, focusLockResult, channelResult, messageResult] = await Promise.all([
     supabase
       .from("desk_workspaces")
       .select("desk_id,owner_id,name,description,objective,weekly_mission,markets,session,timezone,privacy,capacity,allow_member_invites,inactivity_days,avatar_url,accent_color,rules,created_at,updated_at")
       .order("created_at", { ascending: true }),
+    supabase
+      .from("desk_workspaces")
+      .select("desk_id,archived_at"),
     supabase
       .from("desk_members")
       .select("desk_id,user_id,role,joined_at,last_active_at")
@@ -449,10 +454,19 @@ export async function GET(request: NextRequest) {
     };
   });
 
+  const archivedAtByDesk = new Map<string, string | null>(
+    archiveStateResult.error
+      ? []
+      : ((archiveStateResult.data ?? []) as Array<{ desk_id: string; archived_at: string | null }>)
+        .map((row) => [row.desk_id, row.archived_at]),
+  );
   const payload: DeskNetworkPayload = {
     ready: true,
     viewerId: actor.userId,
-    workspaces: ((workspaceResult.data ?? []) as WorkspaceRow[]).map(fromWorkspace),
+    workspaces: ((workspaceResult.data ?? []) as WorkspaceRow[]).map((row) => fromWorkspace({
+      ...row,
+      archived_at: archivedAtByDesk.get(row.desk_id) ?? null,
+    })),
     members: members.map(fromMember),
     requests: requests.map(fromRequest),
     channels: channels.map(fromChannel),
@@ -744,6 +758,61 @@ export async function POST(request: NextRequest) {
     }
     if (error) return NextResponse.json({ error: error.message }, { status: 403 });
     return NextResponse.json({ ok: true });
+  }
+
+  if (action === "archive-desk" || action === "restore-desk") {
+    const archivedAt = action === "archive-desk" ? new Date().toISOString() : null;
+    const result = await supabase
+      .from("desk_workspaces")
+      .update({ archived_at: archivedAt, updated_at: new Date().toISOString() })
+      .eq("desk_id", deskId)
+      .eq("owner_id", actor.userId)
+      .select("desk_id")
+      .maybeSingle();
+    if (result.error) {
+      if (result.error.code === "42703" || result.error.code === "PGRST204") {
+        return NextResponse.json(
+          { error: "Apply the Desk archive migration in Supabase first." },
+          { status: 503 },
+        );
+      }
+      return NextResponse.json({ error: result.error.message }, { status: 403 });
+    }
+    if (!result.data) {
+      return NextResponse.json({ error: "Only the Desk owner can change its archive state." }, { status: 403 });
+    }
+    if (archivedAt) {
+      await supabase.from("desk_focus_locks").delete().eq("desk_id", deskId);
+    }
+    return NextResponse.json({ ok: true, archivedAt });
+  }
+
+  if (action === "delete-desk") {
+    const confirmation = cleanText(body.confirmation, 60);
+    const workspaceResult = await supabase
+      .from("desk_workspaces")
+      .select("desk_id,name")
+      .eq("desk_id", deskId)
+      .eq("owner_id", actor.userId)
+      .maybeSingle();
+    if (workspaceResult.error) {
+      return NextResponse.json({ error: workspaceResult.error.message }, { status: 403 });
+    }
+    if (!workspaceResult.data) {
+      return NextResponse.json({ error: "Only the Desk owner can permanently delete it." }, { status: 403 });
+    }
+    if (confirmation !== workspaceResult.data.name) {
+      return NextResponse.json({ error: "Enter the exact Desk name to confirm permanent deletion." }, { status: 400 });
+    }
+    const deleteResult = await supabase
+      .from("desk_workspaces")
+      .delete()
+      .eq("desk_id", deskId)
+      .eq("owner_id", actor.userId);
+    if (deleteResult.error) {
+      return NextResponse.json({ error: deleteResult.error.message }, { status: 403 });
+    }
+    return NextResponse.json({ ok: true, deleted: true });
   }
 
   if (action === "request-access") {
