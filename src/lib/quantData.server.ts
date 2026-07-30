@@ -42,12 +42,15 @@ import type {
 import {
   buildGexDeskPayload,
   emptyGexDeskPressure,
+  type GexDeskHistoryPayload,
   type GexDeskPayload,
+  type GexDeskPressurePoint,
   type GexDeskPressure,
   type GexDeskPressureSource,
   type GexDeskSourceSnapshot,
   type GexDeskSourceSymbol,
 } from "@/lib/gexDesk";
+import { getDatabentoBars } from "@/lib/databento";
 
 const API_BASE = "https://api.quantdata.us/v1";
 const CACHE_TTL_MS = 4_000;
@@ -1685,6 +1688,12 @@ function gexDeskPressureSource(
   payload: unknown,
 ): GexDeskPressureSource {
   const rows = isRecord(payload) && Array.isArray(payload.data) ? payload.data : [];
+  const timedTrades: Array<{
+    timestamp: number;
+    signedWeight: number;
+    weight: number;
+    confidence: number;
+  }> = [];
   let signedWeight = 0;
   let totalWeight = 0;
   let confidenceWeight = 0;
@@ -1731,8 +1740,50 @@ function gexDeskPressureSource(
       ? rawTimestamp * 1_000
       : rawTimestamp;
     newestTimestamp = Math.max(newestTimestamp, timestamp);
+    if (timestamp > 0 && weight > 0) {
+      timedTrades.push({
+        timestamp,
+        signedWeight: direction * weight,
+        weight: Math.abs(weight),
+        confidence,
+      });
+    }
     tradeCount += 1;
   }
+
+  const minuteBuckets = new Map<number, {
+    signedWeight: number;
+    weight: number;
+    confidenceWeight: number;
+    tradeCount: number;
+  }>();
+  for (const trade of timedTrades) {
+    const timestamp = Math.floor(trade.timestamp / 60_000) * 60_000;
+    const current = minuteBuckets.get(timestamp) ?? {
+      signedWeight: 0,
+      weight: 0,
+      confidenceWeight: 0,
+      tradeCount: 0,
+    };
+    current.signedWeight += trade.signedWeight;
+    current.weight += trade.weight;
+    current.confidenceWeight += trade.confidence * trade.weight;
+    current.tradeCount += 1;
+    minuteBuckets.set(timestamp, current);
+  }
+  const series = [...minuteBuckets.entries()]
+    .sort(([left], [right]) => left - right)
+    .slice(-45)
+    .map(([timestamp, bucket]) => ({
+      timestamp,
+      score: bucket.weight > 0
+        ? Math.max(-100, Math.min(100, bucket.signedWeight / bucket.weight * 100))
+        : 0,
+      confidence: bucket.weight > 0
+        ? Math.max(0, Math.min(1, bucket.confidenceWeight / bucket.weight))
+        : 0,
+      tradeCount: bucket.tradeCount,
+    }));
 
   return {
     symbol,
@@ -1741,6 +1792,7 @@ function gexDeskPressureSource(
     tradeCount,
     callShare: totalWeight > 0 ? callWeight / totalWeight : 0.5,
     asOf: newestTimestamp > 0 ? new Date(newestTimestamp).toISOString() : null,
+    series,
   };
 }
 
@@ -1753,14 +1805,50 @@ function combineGexDeskPressure(sources: GexDeskPressureSource[]): GexDeskPressu
   if (!totalWeight || !sources.some((source) => source.tradeCount > 0)) return emptyGexDeskPressure(sources);
   const score = weighted.reduce((sum, entry) => sum + entry.source.score * entry.weight, 0) / totalWeight;
   const confidence = weighted.reduce((sum, entry) => sum + entry.source.confidence * entry.weight, 0) / totalWeight;
+  const timestamps = [...new Set(
+    sources.flatMap((source) => source.series.map((point) => point.timestamp)),
+  )].sort((left, right) => left - right);
+  const series: GexDeskPressurePoint[] = timestamps.slice(-45).map((timestamp) => {
+    const points = sources.flatMap((source) => {
+      const point = source.series.find((candidate) => candidate.timestamp === timestamp);
+      if (!point) return [];
+      return [{
+        point,
+        weight: Math.max(0.1, point.confidence) * Math.sqrt(Math.max(1, point.tradeCount)),
+      }];
+    });
+    const weight = points.reduce((sum, entry) => sum + entry.weight, 0);
+    return {
+      timestamp,
+      score: weight > 0
+        ? points.reduce((sum, entry) => sum + entry.point.score * entry.weight, 0) / weight
+        : 0,
+      confidence: weight > 0
+        ? points.reduce((sum, entry) => sum + entry.point.confidence * entry.weight, 0) / weight
+        : 0,
+      tradeCount: points.reduce((sum, entry) => sum + entry.point.tradeCount, 0),
+    };
+  });
+  const latestPoints = series.slice(-3);
+  const priorPoints = series.slice(-6, -3);
+  const latestPressure = latestPoints.reduce((sum, point) => sum + Math.abs(point.score), 0) / Math.max(1, latestPoints.length);
+  const priorPressure = priorPoints.reduce((sum, point) => sum + Math.abs(point.score), 0) / Math.max(1, priorPoints.length);
+  const persistence: GexDeskPressure["persistence"] = series.length < 4
+    ? "STEADY"
+    : latestPressure > priorPressure + 8
+      ? "BUILDING"
+      : latestPressure < priorPressure - 8
+        ? "FADING"
+        : "STEADY";
   return {
     score,
     state: score > 12 ? "CALL_PRESSURE" : score < -12 ? "PUT_PRESSURE" : "BALANCED",
-    persistence: Math.abs(score) >= 42 ? "BUILDING" : Math.abs(score) <= 10 ? "FADING" : "STEADY",
+    persistence,
     confidence,
     tradeCount: sources.reduce((sum, source) => sum + source.tradeCount, 0),
     method: "Estimated confidence-weighted signed delta demand; directional premium proxy where option delta is unavailable",
     sources,
+    series,
   };
 }
 
@@ -1842,6 +1930,155 @@ export function getGexDeskPayload(): Promise<GexDeskPayload> {
   });
   gexDeskCache = { expiresAt: Date.now() + 12_000, promise };
   return promise;
+}
+
+function latestAtOrBefore<T extends { timestamp: number }>(rows: T[], timestamp: number): T | null {
+  let low = 0;
+  let high = rows.length - 1;
+  let match: T | null = null;
+  while (low <= high) {
+    const middle = Math.floor((low + high) / 2);
+    const row = rows[middle];
+    if (row.timestamp <= timestamp) {
+      match = row;
+      low = middle + 1;
+    } else {
+      high = middle - 1;
+    }
+  }
+  return match;
+}
+
+export async function getGexDeskHistory(
+  sourceInput: string,
+): Promise<GexDeskHistoryPayload> {
+  const requestedSource = sourceInput.trim().toUpperCase();
+  const source: "COMBINED" | GexDeskSourceSymbol = requestedSource === "NDX" || requestedSource === "QQQ"
+    ? requestedSource
+    : "COMBINED";
+  const symbols: GexDeskSourceSymbol[] = source === "COMBINED" ? ["NDX", "QQQ"] : [source];
+  const session = getUsOptionsSession();
+  const start = `${session.sessionDate}T00:00:00.000Z`;
+  const end = new Date().toISOString();
+  const [panelResults, nqResult] = await Promise.all([
+    Promise.allSettled(symbols.map((symbol) => getGexMapPanel(symbol, "GAMMA", session.sessionDate))),
+    getDatabentoBars("NQ.v.0", "1m", start, end),
+  ]);
+  const panels = panelResults.flatMap((result, index) => result.status === "fulfilled"
+    ? [{ symbol: symbols[index], panel: result.value }]
+    : []);
+  const errors = panelResults.flatMap((result, index) => result.status === "rejected"
+    ? [`${symbols[index]} history: ${result.reason instanceof Error ? result.reason.message : "unavailable"}`]
+    : []);
+  if (!panels.length) {
+    throw new QuantDataError(errors.join(" | ") || "No intraday gamma history is available.", 422, null);
+  }
+  if (!nqResult.length) {
+    throw new QuantDataError("NQ history is unavailable for timestamp-aligned gamma mapping.", 422, null);
+  }
+
+  const allTimestamps = [...new Set(panels.flatMap(({ panel }) => panel.frames.map((frame) => frame.timestamp)))]
+    .sort((left, right) => left - right);
+  const timestampStep = Math.max(1, Math.ceil(allTimestamps.length / 72));
+  const sampledTimestamps = allTimestamps.filter((_, index) => index % timestampStep === 0);
+  const finalTimestamp = allTimestamps.at(-1);
+  if (finalTimestamp && sampledTimestamps.at(-1) !== finalTimestamp) sampledTimestamps.push(finalTimestamp);
+  if (!sampledTimestamps.length) {
+    throw new QuantDataError("The intraday gamma map has no timestamped frames.", 422, null);
+  }
+
+  const latestNq = nqResult.at(-1)?.close ?? null;
+  if (!latestNq) {
+    throw new QuantDataError("NQ history does not contain a valid reference price.", 422, null);
+  }
+  const bucketSize = Math.max(10, Math.round((latestNq * 0.0007) / 5) * 5);
+  const priceLow = Math.floor((latestNq * 0.965) / bucketSize) * bucketSize;
+  const priceHigh = Math.ceil((latestNq * 1.035) / bucketSize) * bucketSize;
+  const priceBuckets = Array.from(
+    { length: Math.round((priceHigh - priceLow) / bucketSize) + 1 },
+    (_, index) => priceLow + index * bucketSize,
+  );
+  const rowValues = new Map(priceBuckets.map((price) => [price, {
+    net: [] as number[],
+    gross: [] as number[],
+    change: [] as number[],
+  }]));
+  const panelState = panels.map(({ symbol, panel }) => ({
+    symbol,
+    panel,
+    frameIndex: 0,
+    strikes: new Map<number, ExposureStrike>(),
+  }));
+  let mappingChecks = 0;
+  let mappingMatches = 0;
+  const nqPrices: number[] = [];
+
+  for (const timestamp of sampledTimestamps) {
+    const nqBar = latestAtOrBefore(nqResult, timestamp);
+    nqPrices.push(nqBar?.close ?? latestNq);
+    const combined = new Map<number, { net: number; gross: number }>();
+    for (const state of panelState) {
+      while (
+        state.frameIndex < state.panel.frames.length
+        && state.panel.frames[state.frameIndex].timestamp <= timestamp
+      ) {
+        for (const row of state.panel.frames[state.frameIndex].updates) {
+          state.strikes.set(row.strike, row);
+        }
+        state.frameIndex += 1;
+      }
+      const sourceBar = latestAtOrBefore(state.panel.candles, timestamp);
+      mappingChecks += 1;
+      if (!nqBar || !sourceBar || timestamp - nqBar.timestamp > 3 * 60_000 || timestamp - sourceBar.timestamp > 3 * 60_000) {
+        continue;
+      }
+      mappingMatches += 1;
+      for (const strike of state.strikes.values()) {
+        const mapped = nqBar.close * strike.strike / sourceBar.close;
+        if (!Number.isFinite(mapped) || mapped < priceLow || mapped > priceHigh) continue;
+        const price = Math.round(mapped / bucketSize) * bucketSize;
+        const current = combined.get(price) ?? { net: 0, gross: 0 };
+        current.net += strike.net;
+        current.gross += Math.abs(strike.call) + Math.abs(strike.put);
+        combined.set(price, current);
+      }
+    }
+    for (const price of priceBuckets) {
+      const current = combined.get(price) ?? { net: 0, gross: 0 };
+      const values = rowValues.get(price)!;
+      const previous = values.net.at(-1) ?? current.net;
+      values.net.push(current.net);
+      values.gross.push(current.gross);
+      values.change.push(current.net - previous);
+    }
+  }
+
+  const rows = priceBuckets.map((price) => ({ price, ...rowValues.get(price)! }));
+  const statuses = panels.map(({ panel }) => panel.status);
+  const status: GexDeskHistoryPayload["status"] = panels.length < symbols.length
+    ? "PARTIAL"
+    : statuses.some((value) => value === "DELAYED")
+      ? "DELAYED"
+      : session.marketOpen
+        ? "LIVE"
+        : "LAST_SESSION";
+  return {
+    instrument: "NQ",
+    source,
+    sessionDate: session.sessionDate,
+    expiration: panels.map(({ panel }) => panel.expiration).filter(Boolean).join(" / ") || null,
+    asOf: new Date(Math.max(...sampledTimestamps)).toISOString(),
+    status,
+    bucketSize,
+    priceLow,
+    priceHigh,
+    timestamps: sampledTimestamps,
+    nqPrices,
+    rows,
+    mappingCoverage: mappingChecks > 0 ? mappingMatches / mappingChecks : 0,
+    errors,
+    disclosure: "Intraday gamma exposure mapped with timestamp-aligned source and NQ prices. Change shows each bucket versus its prior sampled frame.",
+  };
 }
 
 export async function getOptionsFlowPayload(symbolInput: string, priceModeInput: string = "CASH") {

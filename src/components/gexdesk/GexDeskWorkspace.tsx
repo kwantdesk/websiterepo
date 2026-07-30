@@ -5,9 +5,13 @@ import {
   Activity,
   AlertTriangle,
   BarChart3,
+  CalendarRange,
   Crosshair,
+  GitCompareArrows,
   Gauge,
+  History,
   Layers3,
+  Map,
   Radio,
   RefreshCw,
   ScanLine,
@@ -16,6 +20,9 @@ import {
 } from "lucide-react";
 import KwantLoader from "@/components/KwantLoader";
 import KwantSelect from "@/components/ui/KwantSelect";
+import GexDeskDepthPanels, {
+  type GexDeskPanel,
+} from "@/components/gexdesk/GexDeskDepthPanels";
 import {
   DATABENTO_LIVE_STATUS_EVENT,
   DATABENTO_LIVE_TICK_EVENT,
@@ -23,6 +30,7 @@ import {
 } from "@/lib/chartLiveEvents";
 import type {
   GexDeskBehaviour,
+  GexDeskHistoryPayload,
   GexDeskPayload,
   GexDeskRailPoint,
   GexDeskSourceSymbol,
@@ -186,6 +194,21 @@ function ZoneFocus({
             </div>
           ))}
         </div>
+        <div className="grid grid-cols-2 gap-2">
+          <div className="rounded-xl border border-border bg-background/30 p-3">
+            <div className="flex items-center justify-between text-[6px] uppercase tracking-[0.12em] text-muted"><span>Calls</span><span>Puts</span></div>
+            <div className="mt-2 flex h-2 overflow-hidden rounded-full bg-surface">
+              <div className="bg-foreground/75" style={{ width: `${zone.callShare * 100}%` }} />
+              <div className="bg-muted/45" style={{ width: `${(1 - zone.callShare) * 100}%` }} />
+            </div>
+            <div className="mt-1.5 flex justify-between font-mono text-[6px] text-muted"><span>{formatPercent(zone.callShare)}</span><span>{formatPercent(1 - zone.callShare)}</span></div>
+          </div>
+          <div className="rounded-xl border border-border bg-background/30 p-3">
+            <div className="text-[6px] uppercase tracking-[0.12em] text-muted">Snapshot state</div>
+            <div className={`mt-2 text-[9px] font-semibold ${zone.state === "BUILDING" ? "text-primary" : zone.state === "WEAKENING" ? "text-accent" : "text-foreground"}`}>{zone.state}</div>
+            <div className="mt-1 text-[6px] text-muted">{formatCompact(zone.gross)} gross exposure</div>
+          </div>
+        </div>
         <div className="rounded-xl border border-border bg-background/30 p-3">
           <div className="text-[6px] font-semibold uppercase tracking-[0.13em] text-muted">Why it matters</div>
           <p className="mt-2 text-[8px] leading-5 text-foreground">{zone.explanation}</p>
@@ -206,6 +229,13 @@ function ZoneFocus({
           </div>
           <div className="mt-1.5 flex justify-between text-[6px] text-muted"><span>NDX {formatPercent(zone.ndxShare)}</span><span>QQQ {formatPercent(zone.qqqShare)}</span></div>
         </div>
+        <div className="rounded-xl border border-border bg-background/30 p-3">
+          <div className="text-[6px] font-semibold uppercase tracking-[0.13em] text-muted">Original mapped strikes</div>
+          <div className="mt-2 space-y-1.5 text-[7px]">
+            <div><span className="mr-2 text-primary">NDX</span><span className="font-mono text-muted">{zone.ndxStrikes.length ? zone.ndxStrikes.map((value) => value.toFixed(0)).join(", ") : "No local contribution"}</span></div>
+            <div><span className="mr-2 text-accent">QQQ</span><span className="font-mono text-muted">{zone.qqqStrikes.length ? zone.qqqStrikes.map((value) => value.toFixed(1)).join(", ") : "No local contribution"}</span></div>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -219,7 +249,11 @@ export default function GexDeskWorkspace() {
   const [expiryFilter, setExpiryFilter] = useState<ExpiryFilter>("ALL");
   const [compositeMode, setCompositeMode] = useState<CompositeMode>("ECONOMIC");
   const [viewMode, setViewMode] = useState<ViewMode>("SIMPLE");
+  const [activePanel, setActivePanel] = useState<GexDeskPanel>("MAP");
   const [selectedZoneId, setSelectedZoneId] = useState("");
+  const [history, setHistory] = useState<GexDeskHistoryPayload | null>(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState("");
   const [livePrice, setLivePrice] = useState<number | null>(null);
   const [feedStatus, setFeedStatus] = useState<DatabentoLiveStatus>("connecting");
   const [lastTickAt, setLastTickAt] = useState(0);
@@ -228,6 +262,7 @@ export default function GexDeskWorkspace() {
   const livePriceRef = useRef<number | null>(null);
   const updateFrameRef = useRef<number | null>(null);
   const requestRef = useRef<AbortController | null>(null);
+  const historyRequestRef = useRef<AbortController | null>(null);
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setRefreshing(true);
@@ -238,7 +273,18 @@ export default function GexDeskWorkspace() {
       const response = await fetch("/api/gexdesk", { cache: "no-store", signal: controller.signal });
       const result = await response.json() as GexDeskPayload & { error?: string };
       if (!response.ok) throw new Error(result.error || "Gexdesk could not load its positioning map.");
-      setPayload(result);
+      setPayload((current) => ({
+        ...result,
+        zones: result.zones.map((zone) => {
+          const previous = current?.zones.find((candidate) => Math.abs(candidate.center - zone.center) <= Math.max(5, zone.high - zone.low));
+          if (!previous || previous.gross <= 0) return zone;
+          const change = zone.gross / previous.gross - 1;
+          return {
+            ...zone,
+            state: change >= 0.04 ? "BUILDING" : change <= -0.04 ? "WEAKENING" : "STABLE",
+          };
+        }),
+      }));
       setError("");
       if (livePriceRef.current === null && result.nqPrice) {
         livePriceRef.current = result.nqPrice;
@@ -259,6 +305,41 @@ export default function GexDeskWorkspace() {
     void load();
     return () => requestRef.current?.abort();
   }, [load]);
+
+  const loadHistory = useCallback(async (silent = false) => {
+    if (!silent) setHistoryLoading(true);
+    historyRequestRef.current?.abort();
+    const controller = new AbortController();
+    historyRequestRef.current = controller;
+    try {
+      const response = await fetch(`/api/gexdesk/history?source=${sourceFilter}`, {
+        cache: "no-store",
+        signal: controller.signal,
+      });
+      const result = await response.json() as GexDeskHistoryPayload & { error?: string };
+      if (!response.ok) throw new Error(result.error || "Intraday gamma evolution could not load.");
+      setHistory(result);
+      setHistoryError("");
+    } catch (historyLoadError) {
+      if (historyLoadError instanceof Error && historyLoadError.name === "AbortError") return;
+      setHistoryError(historyLoadError instanceof Error ? historyLoadError.message : "Intraday gamma evolution is temporarily unavailable.");
+    } finally {
+      if (!silent) setHistoryLoading(false);
+    }
+  }, [sourceFilter]);
+
+  useEffect(() => {
+    if (activePanel !== "EVOLUTION") return;
+    setHistory(null);
+    void loadHistory();
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === "visible") void loadHistory(true);
+    }, 30_000);
+    return () => {
+      window.clearInterval(interval);
+      historyRequestRef.current?.abort();
+    };
+  }, [activePanel, loadHistory]);
 
   useEffect(() => {
     if (!payload) return;
@@ -396,6 +477,18 @@ export default function GexDeskWorkspace() {
   const regimeTone = behaviourTone(payload.regime.behaviour);
   const pressureTone = payload.pressure.score > 12 ? "text-primary" : payload.pressure.score < -12 ? "text-accent" : "text-foreground";
   const tapeTone = tape.state === "CONFIRMING" ? "text-primary" : tape.state === "DIVERGING" ? "text-accent" : "text-muted";
+  const panelItems: Array<{
+    id: GexDeskPanel;
+    label: string;
+    icon: typeof Activity;
+    analyst: boolean;
+  }> = [
+    { id: "MAP", label: "Map", icon: Map, analyst: false },
+    { id: "EVOLUTION", label: "Evolution", icon: History, analyst: true },
+    { id: "EXPIRIES", label: "Expiries", icon: CalendarRange, analyst: true },
+    { id: "FLOW", label: "Flow & Tape", icon: Waves, analyst: true },
+    { id: "SOURCES", label: "Sources", icon: GitCompareArrows, analyst: true },
+  ];
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background text-foreground">
@@ -420,7 +513,16 @@ export default function GexDeskWorkspace() {
           <option value="ECONOMIC">Economic strength</option>
           <option value="AGREEMENT">Source agreement</option>
         </KwantSelect>
-        <KwantSelect value={viewMode} onChange={(event) => setViewMode(event.target.value as ViewMode)} menuLabel="Workspace depth" className="h-8 min-w-24 rounded-xl border border-border bg-surface px-2.5 text-[8px]">
+        <KwantSelect
+          value={viewMode}
+          onChange={(event) => {
+            const nextMode = event.target.value as ViewMode;
+            setViewMode(nextMode);
+            if (nextMode === "SIMPLE") setActivePanel("MAP");
+          }}
+          menuLabel="Workspace depth"
+          className="h-8 min-w-24 rounded-xl border border-border bg-surface px-2.5 text-[8px]"
+        >
           <option value="SIMPLE">Simple view</option>
           <option value="ANALYST">Analyst view</option>
         </KwantSelect>
@@ -431,6 +533,32 @@ export default function GexDeskWorkspace() {
           </span>
           <button type="button" onClick={() => void load()} disabled={refreshing} className="flex h-8 w-8 items-center justify-center rounded-xl border border-border bg-surface text-muted hover:text-foreground disabled:opacity-40" title="Refresh positioning map"><RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} /></button>
         </div>
+      </div>
+
+      <div className="flex shrink-0 items-center gap-1 overflow-x-auto border-b border-border bg-background px-3 py-1.5">
+        {panelItems.map((item) => {
+          const Icon = item.icon;
+          const active = activePanel === item.id;
+          return (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => {
+                setActivePanel(item.id);
+                if (item.analyst) setViewMode("ANALYST");
+              }}
+              className={`relative flex h-8 shrink-0 items-center gap-2 rounded-xl px-3 text-[7px] font-semibold transition-colors ${active ? "bg-primary/[0.08] text-primary" : "text-muted hover:bg-surface hover:text-foreground"}`}
+            >
+              <Icon className="h-3.5 w-3.5" />
+              {item.label}
+              {item.analyst ? <span className="text-[5px] font-medium uppercase tracking-[0.1em] opacity-55">Analyst</span> : null}
+              {active ? <span className="absolute inset-x-3 -bottom-1.5 h-px bg-primary shadow-[0_0_8px_var(--primary)]" /> : null}
+            </button>
+          );
+        })}
+        <span className="ml-auto hidden shrink-0 text-[6px] text-muted lg:block">
+          MAP = positioning · PRESSURE = change · TAPE = observed NQ
+        </span>
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-3">
@@ -444,6 +572,8 @@ export default function GexDeskWorkspace() {
             <MetricCard label="Options pressure" value={`${payload.pressure.score >= 0 ? "+" : ""}${payload.pressure.score.toFixed(0)}`} detail={`${payload.pressure.state.replace("_", " ")} · ${payload.pressure.persistence}`} icon={Waves} tone={pressureTone} />
           </section>
 
+          {activePanel === "MAP" ? (
+            <>
           <section className="grid min-h-[610px] gap-3 xl:grid-cols-[minmax(0,1fr)_350px]">
             <div className="min-w-0 overflow-hidden rounded-2xl border border-border bg-panel">
               <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3">
@@ -595,6 +725,21 @@ export default function GexDeskWorkspace() {
               </div>
             </section>
           ) : null}
+            </>
+          ) : (
+            <GexDeskDepthPanels
+              panel={activePanel}
+              payload={payload}
+              history={history}
+              historyLoading={historyLoading}
+              historyError={historyError}
+              sourceFilter={sourceFilter}
+              livePrice={livePrice}
+              selectedZone={selectedZone}
+              tapeTicks={tickBufferRef.current}
+              feedStatus={feedStatus}
+            />
+          )}
 
           <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-panel px-3 py-2 text-[6px] leading-4 text-muted">
             <AlertTriangle className="h-3 w-3 shrink-0 text-warning" />

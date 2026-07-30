@@ -308,6 +308,47 @@ Avoid:
 
 ## Delivery phases
 
+## Requirement coverage audit
+
+This audit is maintained against the complete founder brief. A visually small default map is intentional progressive disclosure; the full desk is available through the Map, Evolution, Expiries, Flow & Tape, and Sources surfaces.
+
+### Delivered end to end
+
+- MAP / PRESSURE / TAPE remain visibly separate.
+- NDX/NDXP and QQQ exposure is mapped to live NQ-equivalent price.
+- Regime uses net divided by gross gamma and is labelled stabilising, amplifying, or transition.
+- Gross 0DTE share is shown without netting away opposing exposure.
+- Economic-strength and source-agreement composite views are distinct.
+- The gamma rail, current NQ marker, and a maximum of five behavioural zones share one price axis.
+- Zone strength and current priority are separate.
+- Level Focus includes expected behaviour, tape evidence, invalidation, distance, source mix, call/put mix, 0DTE mix, original strikes, and observed build/weakening state.
+- Options pressure is a confidence-weighted relative index with a time series and source decomposition.
+- NQ confirmation comes from the shared application CME stream; Gexdesk does not open a second live connection.
+- Expiry contribution is grouped into 0DTE, 1DTE, 2–5DTE, 6–30DTE, and 30+DTE before the full analyst matrix.
+- NDX and QQQ profiles can be inspected separately with regime agreement and mapped-profile correlation.
+- Source status, snapshot freshness, partial failures, mapping coverage, and the last valid payload remain visible.
+- Raw mapped NQ buckets preserve their contributing NDX and QQQ strikes.
+- Custom Kwant Desk controls are used throughout; there are no native browser/Windows dropdowns.
+
+### Added after the completeness audit
+
+- An Intraday Evolution surface backed by QuantData interval maps.
+- Historical NQ-equivalent mapping uses source and NQ prices from the same minute, rather than applying the current mapping ratio to old exposure.
+- Exposure and change modes show where gamma was stored and where it built or faded.
+- The observed NQ path is overlaid on the evolution surface.
+- Flow & Tape contains synchronized pressure and futures-delta series with a plain-language confirming, diverging, or leading/unconfirmed state.
+- Sources contains source-specific profiles, a raw mapped-bucket inspector, original strikes, integrity states, and explicit model boundaries.
+- Heavy historical work is fetched only when Evolution is opened, protecting navigation and the live chart engine.
+
+### Deliberately gated until the data is methodologically valid
+
+- A precise zero-gamma/gamma-flip level is not shown until spot-grid repricing is validated.
+- Exact futures-contract hedging quantities are not shown until exposure units and conversion assumptions are verified.
+- Gamma zones are not rendered as resting liquidity or as an options DOM.
+- Open interest remains secondary and is not blended into live pressure because it is delayed and does not reveal position side.
+- Full depth-based replenishment, pull/stack, absorption, and iceberg evidence awaits the validated futures depth layer; current TAPE uses observed prints, signed delta, velocity, and price response.
+- Historical outcome statistics, replay research, calibrated alerts, charm/vanna overlays, and saved Gexdesk layouts remain later-phase product work rather than simulated features.
+
 ### Phase 1 — present implementation
 
 - top-level Gexdesk route and navigation;

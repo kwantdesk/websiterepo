@@ -22,6 +22,14 @@ export type GexDeskPressureSource = {
   tradeCount: number;
   callShare: number;
   asOf: string | null;
+  series: GexDeskPressurePoint[];
+};
+
+export type GexDeskPressurePoint = {
+  timestamp: number;
+  score: number;
+  confidence: number;
+  tradeCount: number;
 };
 
 export type GexDeskPressure = {
@@ -32,6 +40,7 @@ export type GexDeskPressure = {
   tradeCount: number;
   method: string;
   sources: GexDeskPressureSource[];
+  series: GexDeskPressurePoint[];
 };
 
 export type GexDeskRailPoint = {
@@ -46,6 +55,8 @@ export type GexDeskRailPoint = {
   qqqNet: number;
   qqqGross: number;
   sourceAgreement: number;
+  ndxStrikes: number[];
+  qqqStrikes: number[];
 };
 
 export type GexDeskZone = {
@@ -63,6 +74,9 @@ export type GexDeskZone = {
   qqqShare: number;
   sourceAgreement: number;
   state: GexDeskZoneState;
+  gross: number;
+  ndxStrikes: number[];
+  qqqStrikes: number[];
   explanation: string;
   tapeWatch: string;
   invalidation: string;
@@ -75,6 +89,31 @@ export type GexDeskExpiryRow = {
   put: number;
   net: number;
   gross: number;
+};
+
+export type GexDeskHistoryRow = {
+  price: number;
+  net: number[];
+  gross: number[];
+  change: number[];
+};
+
+export type GexDeskHistoryPayload = {
+  instrument: "NQ";
+  source: "COMBINED" | GexDeskSourceSymbol;
+  sessionDate: string;
+  expiration: string | null;
+  asOf: string;
+  status: "LIVE" | "LAST_SESSION" | "DELAYED" | "PARTIAL";
+  bucketSize: number;
+  priceLow: number;
+  priceHigh: number;
+  timestamps: number[];
+  nqPrices: number[];
+  rows: GexDeskHistoryRow[];
+  mappingCoverage: number;
+  errors: string[];
+  disclosure: string;
 };
 
 export type GexDeskPayload = {
@@ -175,6 +214,7 @@ export function emptyGexDeskPressure(sources: GexDeskPressureSource[] = []): Gex
     tradeCount: sources.reduce((sum, source) => sum + source.tradeCount, 0),
     method: "Estimated confidence-weighted directional options activity",
     sources,
+    series: [],
   };
 }
 
@@ -218,6 +258,8 @@ export function buildGexDeskPayload({
         qqqNet: 0,
         qqqGross: 0,
         sourceAgreement: 0,
+        ndxStrikes: [],
+        qqqStrikes: [],
       };
       const rowGross = Math.abs(row.call) + Math.abs(row.put);
       current.call += row.call;
@@ -228,9 +270,11 @@ export function buildGexDeskPayload({
       if (source.symbol === "NDX") {
         current.ndxNet += row.net;
         current.ndxGross += rowGross;
+        if (!current.ndxStrikes.includes(row.strike)) current.ndxStrikes.push(row.strike);
       } else {
         current.qqqNet += row.net;
         current.qqqGross += rowGross;
+        if (!current.qqqStrikes.includes(row.strike)) current.qqqStrikes.push(row.strike);
       }
       buckets.set(price, current);
     }
@@ -298,6 +342,9 @@ export function buildGexDeskPayload({
         qqqShare,
         sourceAgreement: row.sourceAgreement,
         state: "STABLE" as const,
+        gross: row.gross,
+        ndxStrikes: row.ndxStrikes,
+        qqqStrikes: row.qqqStrikes,
         ...copy,
       };
     })
@@ -409,10 +456,92 @@ export function createGexDeskFixture(): GexDeskPayload {
       tradeCount: 186,
       method: "Estimated confidence-weighted signed delta demand; directional premium proxy where option delta is unavailable",
       sources: [
-        { symbol: "NDX", score: 18, confidence: 0.78, tradeCount: 72, callShare: 0.57, asOf: new Date().toISOString() },
-        { symbol: "QQQ", score: 34, confidence: 0.84, tradeCount: 114, callShare: 0.64, asOf: new Date().toISOString() },
+        {
+          symbol: "NDX",
+          score: 18,
+          confidence: 0.78,
+          tradeCount: 72,
+          callShare: 0.57,
+          asOf: new Date().toISOString(),
+          series: Array.from({ length: 18 }, (_, index) => ({
+            timestamp: Date.now() - (17 - index) * 60_000,
+            score: Math.sin(index * 0.75) * 25 + 14,
+            confidence: 0.74,
+            tradeCount: 4 + index % 5,
+          })),
+        },
+        {
+          symbol: "QQQ",
+          score: 34,
+          confidence: 0.84,
+          tradeCount: 114,
+          callShare: 0.64,
+          asOf: new Date().toISOString(),
+          series: Array.from({ length: 18 }, (_, index) => ({
+            timestamp: Date.now() - (17 - index) * 60_000,
+            score: Math.sin(index * 0.62 + 0.5) * 28 + 22,
+            confidence: 0.82,
+            tradeCount: 6 + index % 6,
+          })),
+        },
       ],
+      series: Array.from({ length: 18 }, (_, index) => ({
+        timestamp: Date.now() - (17 - index) * 60_000,
+        score: Math.sin(index * 0.68 + 0.2) * 23 + 21,
+        confidence: 0.8,
+        tradeCount: 11 + index % 8,
+      })),
     },
     refreshAfterMs: 60_000,
   });
+}
+
+export function createGexDeskHistoryFixture(
+  sourceInput: string = "COMBINED",
+): GexDeskHistoryPayload {
+  const source: GexDeskHistoryPayload["source"] = sourceInput === "NDX" || sourceInput === "QQQ"
+    ? sourceInput
+    : "COMBINED";
+  const now = Date.now();
+  const timestamps = Array.from({ length: 56 }, (_, index) => now - (55 - index) * 3 * 60_000);
+  const bucketSize = 20;
+  const priceLow = 27_420;
+  const priceHigh = 28_640;
+  const prices = Array.from(
+    { length: Math.round((priceHigh - priceLow) / bucketSize) + 1 },
+    (_, index) => priceLow + index * bucketSize,
+  );
+  const rows = prices.map((price) => {
+    const net = timestamps.map((_, index) => {
+      const movingCenter = 28_020 + Math.sin(index / 10) * 55;
+      const primary = Math.exp(-((price - movingCenter) ** 2) / (2 * 95 ** 2)) * 0.86;
+      const negativePocket = Math.exp(-((price - (27_770 + index * 1.2)) ** 2) / (2 * 70 ** 2)) * -0.68;
+      const upper = Math.exp(-((price - 28_310) ** 2) / (2 * 55 ** 2)) * (0.28 + index / 120);
+      return (primary + negativePocket + upper) * 1_000_000_000;
+    });
+    const gross = net.map((value, index) => Math.abs(value) * (1.18 + (index % 5) * 0.025));
+    return {
+      price,
+      net,
+      gross,
+      change: net.map((value, index) => value - (net[index - 1] ?? value)),
+    };
+  });
+  return {
+    instrument: "NQ",
+    source,
+    sessionDate: new Date().toISOString().slice(0, 10),
+    expiration: new Date().toISOString().slice(0, 10),
+    asOf: new Date(now).toISOString(),
+    status: "LIVE",
+    bucketSize,
+    priceLow,
+    priceHigh,
+    timestamps,
+    nqPrices: timestamps.map((_, index) => 27_870 + index * 3.1 + Math.sin(index / 4.5) * 34),
+    rows,
+    mappingCoverage: 0.98,
+    errors: [],
+    disclosure: "Intraday gamma exposure mapped with timestamp-aligned source and NQ prices. Change shows each bucket versus its prior sampled frame.",
+  };
 }
