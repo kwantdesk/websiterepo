@@ -13,6 +13,7 @@ import {
   type SocialScope,
 } from "@/lib/socials";
 import { SOCIAL_RECORD_RULES } from "@/lib/socialRecordConfig";
+import { normalizeZyonTradingAccount } from "@/lib/zyon";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -352,6 +353,7 @@ export async function POST(request: NextRequest) {
       bearCondition: cleanText(payload.bearCondition, 1_500),
       confirmation: cleanText(payload.confirmation, 1_500),
       invalidation: cleanText(payload.invalidation, 1_500),
+      tradingAccount: normalizeZyonTradingAccount(payload.tradingAccount),
       source: ["SOCIALS", "GAMEPLAN", "CHARTS", "GEXMAP", "JOURNAL", "ZYON"].includes(source) ? source : "SOCIALS",
     } as unknown as Omit<SocialPrecordPayload, "reasoningScore" | "lockedAt" | "status">;
     if (!candidate.instrument || !candidate.marketContext || !candidate.confirmation || !candidate.invalidation) {
@@ -372,6 +374,7 @@ export async function POST(request: NextRequest) {
         plannedStop: candidate.plannedStop,
         plannedTarget: candidate.plannedTarget,
         plannedTargets: candidate.plannedTargets,
+        tradingAccount: candidate.tradingAccount,
         confirmation: candidate.confirmation,
         invalidation: candidate.invalidation,
         expiryAt: candidate.expiryAt,

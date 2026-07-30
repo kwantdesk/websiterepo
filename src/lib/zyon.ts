@@ -29,6 +29,17 @@ export type ZyonModelKey = keyof typeof ZYON_MODELS;
 export type ZyonMarketRoot = "NQ" | "ES";
 export type ZyonGameplanDirection = "LONG" | "SHORT";
 export type ZyonGameplanRiskUnit = "DOLLARS" | "POINTS" | "TICKS" | "PERCENT";
+export type ZyonTradingAccountMode = "LIVE" | "SIM" | "PROP";
+export type ZyonTradingAccountPhase = "LIVE" | "SIMULATION" | "EVALUATION" | "FUNDED";
+export type ZyonTradingAccountCurrency = "USD" | "AUD" | "GBP" | "EUR" | "CAD";
+export type ZyonTradingAccount = {
+  mode: ZyonTradingAccountMode;
+  provider: string;
+  program: string;
+  phase: ZyonTradingAccountPhase;
+  size: number | null;
+  currency: ZyonTradingAccountCurrency;
+};
 export const ZYON_FOLDER_TAG = "zyon:folder";
 export const ZYON_CONVERSATION_TAG = "zyon:conversation";
 export const ZYON_CHAT_TAG = "zyon:chat";
@@ -109,6 +120,7 @@ export type ZyonGameplanDraft = {
   riskAmount: number | null;
   riskUnit: ZyonGameplanRiskUnit;
   size: number | null;
+  tradingAccount: ZyonTradingAccount | null;
   reasoning: string;
   confluences: string[];
   confirmation: string;
@@ -127,6 +139,7 @@ export type ZyonGameplanRequiredField =
   | "stop"
   | "targets"
   | "risk"
+  | "account"
   | "reasoning"
   | "confirmation"
   | "invalidation";
@@ -136,6 +149,65 @@ export type ZyonGameplanEntryTimingStatus =
   | "MISSING"
   | "INVALID"
   | "TOO_OLD";
+
+const ZYON_TRADING_ACCOUNT_MODES = new Set<ZyonTradingAccountMode>(["LIVE", "SIM", "PROP"]);
+const ZYON_TRADING_ACCOUNT_PHASES = new Set<ZyonTradingAccountPhase>(["LIVE", "SIMULATION", "EVALUATION", "FUNDED"]);
+const ZYON_TRADING_ACCOUNT_CURRENCIES = new Set<ZyonTradingAccountCurrency>(["USD", "AUD", "GBP", "EUR", "CAD"]);
+
+export function normalizeZyonTradingAccount(value: unknown): ZyonTradingAccount | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const account = value as Record<string, unknown>;
+  const mode = String(account.mode ?? "").toUpperCase() as ZyonTradingAccountMode;
+  const phase = String(account.phase ?? "").toUpperCase() as ZyonTradingAccountPhase;
+  if (!ZYON_TRADING_ACCOUNT_MODES.has(mode) || !ZYON_TRADING_ACCOUNT_PHASES.has(phase)) return null;
+  const size = typeof account.size === "number" ? account.size : Number(account.size);
+  const currencyCandidate = String(account.currency ?? "USD").toUpperCase() as ZyonTradingAccountCurrency;
+  return {
+    mode,
+    provider: typeof account.provider === "string"
+      ? account.provider.replace(/\u0000/g, "").trim().slice(0, 80)
+      : "",
+    program: typeof account.program === "string"
+      ? account.program.replace(/\u0000/g, "").trim().slice(0, 80)
+      : "",
+    phase,
+    size: Number.isFinite(size) && size > 0 ? size : null,
+    currency: ZYON_TRADING_ACCOUNT_CURRENCIES.has(currencyCandidate) ? currencyCandidate : "USD",
+  };
+}
+
+function compactAccountSize(size: number, currency: ZyonTradingAccountCurrency) {
+  const formatted = size >= 1_000 && size % 1_000 === 0
+    ? `${size / 1_000}K`
+    : size.toLocaleString("en-US", { maximumFractionDigits: 0 });
+  const symbol = currency === "USD"
+    ? "$"
+    : currency === "GBP"
+      ? "£"
+      : currency === "EUR"
+        ? "€"
+        : `${currency} `;
+  return `${symbol}${formatted}`;
+}
+
+export function zyonTradingAccountLabel(value: unknown) {
+  const account = normalizeZyonTradingAccount(value);
+  if (!account || account.size === null) return "Account not set";
+  const size = compactAccountSize(account.size, account.currency);
+  if (account.mode === "LIVE") {
+    return account.provider
+      ? `${account.provider} · ${size} ${account.phase === "FUNDED" ? "Funded" : "Live"}`
+      : `${account.phase === "FUNDED" ? "Funded" : "Live"} · ${size}`;
+  }
+  if (account.mode === "SIM") {
+    return account.provider
+      ? `${account.provider} · ${size} Simulation`
+      : `Sim · ${size}`;
+  }
+  const provider = [account.provider, account.program].filter(Boolean).join(" ") || "Prop firm";
+  const phase = account.phase === "EVALUATION" ? "Evaluation" : account.phase === "FUNDED" ? "Funded" : "Live";
+  return `${provider} · ${size} ${phase}`;
+}
 
 export function zyonGameplanEntryTimingStatus(
   entryTime: unknown,
@@ -166,6 +238,7 @@ export function zyonGameplanMissingFields(
       "stop",
       "targets",
       "risk",
+      "account",
       "reasoning",
       "confirmation",
       "invalidation",
@@ -188,6 +261,22 @@ export function zyonGameplanMissingFields(
     || !["DOLLARS", "POINTS", "TICKS", "PERCENT"].includes(String(draft.riskUnit))
   ) {
     missing.push("risk");
+  }
+  const tradingAccount = normalizeZyonTradingAccount(draft.tradingAccount);
+  const accountPhaseMatches = tradingAccount?.mode === "LIVE"
+    ? tradingAccount.phase === "LIVE"
+    : tradingAccount?.mode === "SIM"
+      ? tradingAccount.phase === "SIMULATION"
+      : tradingAccount?.mode === "PROP"
+        ? tradingAccount.phase === "EVALUATION" || tradingAccount.phase === "FUNDED"
+        : false;
+  if (
+    !tradingAccount
+    || tradingAccount.size === null
+    || !accountPhaseMatches
+    || (tradingAccount.mode === "PROP" && !tradingAccount.provider)
+  ) {
+    missing.push("account");
   }
   if (!draft.reasoning?.trim()) missing.push("reasoning");
   if (!draft.confirmation?.trim()) missing.push("confirmation");

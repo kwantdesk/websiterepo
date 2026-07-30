@@ -1,3 +1,5 @@
+import { zyonTradingAccountLabel } from "@/lib/zyon";
+
 export type JournalSide = "LONG" | "SHORT" | "UNKNOWN";
 
 export type JournalTrade = {
@@ -325,7 +327,10 @@ export function zyonOutcomesToJournalTrades(records: ZyonSocialRecord[], viewerI
           : null;
       const reasoningScore = finiteNumber(scores.final);
       const classification = String(outcome.classification ?? assessment.classification ?? "").trim();
+      const tradingAccount = zyonTradingAccountLabel(planned.tradingAccount);
+      const hasTradingAccount = tradingAccount !== "Account not set";
       const notes = [
+        hasTradingAccount ? `Trading account: ${tradingAccount}` : "",
         String(outcome.outcomeReview ?? "").trim(),
         String(outcome.nextTimeRule ?? "").trim() ? `Next time: ${String(outcome.nextTimeRule).trim()}` : "",
         String(assessment.explanation ?? "").trim(),
@@ -346,8 +351,10 @@ export function zyonOutcomesToJournalTrades(records: ZyonSocialRecord[], viewerI
         initialRisk: initialRisk !== null && initialRisk > 0 ? initialRisk : null,
         rMultiple,
         durationMs,
-        setup: noTrade ? "ZYON · No trade" : "ZYON Gameplan",
-        tags: [...new Set(["ZYON", String(planned.session ?? "").trim(), classification].filter(Boolean))],
+        setup: noTrade
+          ? `ZYON · ${hasTradingAccount ? `${tradingAccount} · ` : ""}No trade`
+          : `ZYON Gameplan${hasTradingAccount ? ` · ${tradingAccount}` : ""}`,
+        tags: [...new Set(["ZYON", hasTradingAccount ? tradingAccount : "", String(planned.session ?? "").trim(), classification].filter(Boolean))],
         notes,
         rating: reasoningScore === null ? null : Math.max(1, Math.min(5, Math.round(reasoningScore / 20))),
         reviewedAt: String(outcome.addedAt ?? receipt.updatedAt),

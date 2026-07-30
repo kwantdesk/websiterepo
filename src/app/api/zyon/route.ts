@@ -14,6 +14,7 @@ import {
   ZYON_DEFAULT_CHAT_ID,
   ZYON_FOLDER_TAG,
   ZYON_MODELS,
+  normalizeZyonTradingAccount,
   zyonChatIdTag,
   zyonConversationRoleTag,
   zyonDailyFolderId,
@@ -24,6 +25,7 @@ import {
   zyonGameplanMissingFields,
   zyonId,
   zyonParentFolderTag,
+  zyonTradingAccountLabel,
   type ZyonGameplanDraft,
   type ZyonGameplanDirection,
   type ZyonGameplanEntryTimingStatus,
@@ -105,6 +107,7 @@ type GameplanToolInput = {
   riskAmount?: unknown;
   riskUnit?: unknown;
   size?: unknown;
+  tradingAccount?: unknown;
   reasoning?: unknown;
   confluences?: unknown;
   confirmation?: unknown;
@@ -346,6 +349,7 @@ function buildGameplanDraft(
   const entryTime = cleanText(input.entryTime, 80);
   const entryTiming = zyonGameplanEntryTimingStatus(entryTime, referenceTime);
   const riskAmount = finiteNumber(input.riskAmount);
+  const tradingAccount = normalizeZyonTradingAccount(input.tradingAccount);
   if (
     entryLowRaw === null
     || entryHighRaw === null
@@ -353,6 +357,9 @@ function buildGameplanDraft(
     || !targets.length
     || riskAmount === null
     || riskAmount <= 0
+    || !tradingAccount
+    || tradingAccount.size === null
+    || (tradingAccount.mode === "PROP" && !tradingAccount.provider)
     || entryTiming !== "VALID"
     || !reasoning
     || !confirmation
@@ -382,6 +389,7 @@ function buildGameplanDraft(
     riskAmount,
     riskUnit,
     size: finiteNumber(input.size),
+    tradingAccount,
     reasoning,
     confluences: Array.isArray(input.confluences)
       ? input.confluences.map((value) => cleanText(value, 300)).filter(Boolean).slice(0, 12)
@@ -418,6 +426,7 @@ function gameplanJournalEntry(
       `Targets: ${draft.targets.join(", ")}`,
       `Maximum risk: ${draft.riskAmount} ${draft.riskUnit}`,
       draft.size === null ? "" : `Size: ${draft.size}`,
+      `Trading account: ${zyonTradingAccountLabel(draft.tradingAccount)}`,
       "",
       "REASONING",
       draft.reasoning,
@@ -699,6 +708,7 @@ async function persistGameplanDraft(
         riskAmount: draft.riskAmount,
         riskUnit: draft.riskUnit,
         size: draft.size,
+        tradingAccount: draft.tradingAccount,
         reasoning: draft.reasoning,
         confluences: draft.confluences,
         confirmation: draft.confirmation,
@@ -886,7 +896,8 @@ export async function POST(request: NextRequest) {
     "Use concise professional language. Challenge weak confirmation bias and state invalidation conditions.",
     "When the user recounts a trade, shares a meaningful setup, records a lesson, or asks to journal something, also call record_trading_journal. Always provide a normal text response as well.",
     "When the user says 'send gameplan', presses Send Gameplan, or otherwise asks to save, document, create, update, or submit a Gameplan, reconstruct the setup from the full conversation and gather only the required facts that are still missing.",
-    "A Gameplan requires: instrument, explicit LONG or SHORT direction, entry time, entry price or zone, stop, at least one planned exit/take-profit price, maximum risk amount and unit, reasoning, confirmation, and invalidation. Reasoning should faithfully synthesise the conversation; never invent a missing fact or price.",
+    "A Gameplan requires: instrument, explicit LONG or SHORT direction, entry time, entry price or zone, stop, at least one planned exit/take-profit price, maximum risk amount and unit, the trading account, reasoning, confirmation, and invalidation. Reasoning should faithfully synthesise the conversation; never invent a missing fact or price.",
+    "Trading-account data must identify the environment (personal live, simulator, or prop firm), nominal account size and currency, and phase. For prop accounts also collect the provider and optional programme, for example Traderify Flex, USD 50K, Evaluation. Never request or store a broker login or private account number.",
     "If any required Gameplan fact is missing, DO NOT call save_trading_gameplan_draft. Ask one short, direct question for the most important missing fact, such as 'WHAT'S YOUR ENTRY TIME?' Continue this collection loop until every required fact is known.",
     "Anti-lookahead rule: an actual entry or fill may be submitted only when its timestamp is no more than five minutes before the authoritative server time. Never change, round forward, or fabricate a timestamp to pass this rule. If it is older, explain that it cannot be placed on record.",
     "Future entry timestamps are valid for planned limit orders. Ask for the trader's timezone when it is not known, then convert entryTime to an ISO 8601 timestamp with an explicit offset.",
@@ -950,6 +961,18 @@ export async function POST(request: NextRequest) {
                 riskAmount: { type: "number", exclusiveMinimum: 0 },
                 riskUnit: { type: "string", enum: ["DOLLARS", "POINTS", "TICKS", "PERCENT"] },
                 size: { type: ["number", "null"] },
+                tradingAccount: {
+                  type: "object",
+                  properties: {
+                    mode: { type: "string", enum: ["LIVE", "SIM", "PROP"] },
+                    provider: { type: "string", description: "Broker or prop-firm name. Required for PROP; optional for LIVE or SIM." },
+                    program: { type: "string", description: "Optional programme or account product, for example Flex." },
+                    phase: { type: "string", enum: ["LIVE", "SIMULATION", "EVALUATION", "FUNDED"] },
+                    size: { type: "number", exclusiveMinimum: 0, description: "Nominal account size, for example 50000." },
+                    currency: { type: "string", enum: ["USD", "AUD", "GBP", "EUR", "CAD"] },
+                  },
+                  required: ["mode", "provider", "program", "phase", "size", "currency"],
+                },
                 reasoning: { type: "string" },
                 confluences: { type: "array", items: { type: "string" }, maxItems: 12 },
                 confirmation: { type: "string" },
@@ -968,6 +991,7 @@ export async function POST(request: NextRequest) {
                 "targets",
                 "riskAmount",
                 "riskUnit",
+                "tradingAccount",
                 "reasoning",
                 "confirmation",
                 "invalidation"

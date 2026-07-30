@@ -3,6 +3,7 @@ import { getRouteActor } from "@/lib/serverAuth";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import {
   isZyonMarketRoot,
+  normalizeZyonTradingAccount,
   zyonGameplanEntryTimingStatus,
   zyonGameplanMissingFields,
   type ZyonGameplanDraft,
@@ -72,6 +73,7 @@ function fromRow(row: DraftRow): ZyonGameplanDraft | null {
     riskAmount: optionalFinite(payload.riskAmount),
     riskUnit,
     size: optionalFinite(payload.size),
+    tradingAccount: normalizeZyonTradingAccount(payload.tradingAccount),
     reasoning: clean(payload.reasoning, 5_000),
     confluences: Array.isArray(payload.confluences)
       ? payload.confluences.map((value) => clean(value, 300)).filter(Boolean).slice(0, 12)
@@ -201,6 +203,7 @@ export async function PUT(request: NextRequest) {
           riskAmount: draft.riskAmount,
           riskUnit: draft.riskUnit,
           size: draft.size,
+          tradingAccount: normalizeZyonTradingAccount(draft.tradingAccount),
           reasoning: clean(draft.reasoning, 5_000),
           confluences: draft.confluences.slice(0, 12),
           confirmation: clean(draft.confirmation, 2_000),

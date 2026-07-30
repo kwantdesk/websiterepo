@@ -130,6 +130,14 @@ export type SocialPrecordPayload = {
   plannedSize: number | null;
   maximumRisk: number | null;
   riskUnit?: "DOLLARS" | "POINTS" | "TICKS" | "PERCENT";
+  tradingAccount?: {
+    mode: "LIVE" | "SIM" | "PROP";
+    provider: string;
+    program: string;
+    phase: "LIVE" | "SIMULATION" | "EVALUATION" | "FUNDED";
+    size: number | null;
+    currency: "USD" | "AUD" | "GBP" | "EUR" | "CAD";
+  } | null;
   plannedRiskReward: number | null;
   confluences?: string[];
   bullCondition: string;

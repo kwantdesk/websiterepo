@@ -41,6 +41,7 @@ import {
   Trophy,
   Upload,
   UsersRound,
+  WalletCards,
   X,
   Zap,
 } from "lucide-react";
@@ -80,7 +81,15 @@ import {
   type SocialScope,
   type SocialState,
 } from "@/lib/socials";
-import { zyonGameplanMissingFields, type ZyonGameplanDraft } from "@/lib/zyon";
+import {
+  normalizeZyonTradingAccount,
+  zyonGameplanMissingFields,
+  zyonTradingAccountLabel,
+  type ZyonGameplanDraft,
+  type ZyonTradingAccount,
+  type ZyonTradingAccountMode,
+  type ZyonTradingAccountPhase,
+} from "@/lib/zyon";
 import { buildExecutionComparison } from "@/lib/socials";
 import { SOCIAL_RECORD_COPY, SOCIAL_RECORD_RULES } from "@/lib/socialRecordConfig";
 import {
@@ -301,6 +310,20 @@ function numberOrNull(value: string) {
   if (!value.trim()) return null;
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
+}
+
+function tradingAccountForMode(
+  mode: ZyonTradingAccountMode,
+  current?: ZyonTradingAccount | null,
+): ZyonTradingAccount {
+  return {
+    mode,
+    provider: current?.provider ?? "",
+    program: current?.program ?? "",
+    phase: mode === "PROP" ? "EVALUATION" : mode === "LIVE" ? "LIVE" : "SIMULATION",
+    size: current?.size ?? null,
+    currency: current?.currency ?? "USD",
+  };
 }
 
 type ReasoningCandle = {
@@ -1318,6 +1341,7 @@ export default function SocialsWorkspace({
       const plannedRiskReward = target !== null && riskPoints > 0
         ? Number((Math.abs(target - entry) / riskPoints).toFixed(2))
         : null;
+      const tradingAccount = normalizeZyonTradingAccount(draft.tradingAccount);
       const base = {
         instrument: draft.instrument,
         session: draft.session,
@@ -1332,6 +1356,7 @@ export default function SocialsWorkspace({
         plannedSize: draft.size,
         maximumRisk: draft.riskAmount,
         riskUnit: draft.riskUnit,
+        tradingAccount,
         plannedRiskReward,
         confluences: draft.confluences,
         bullCondition: draft.direction === "LONG" ? draft.confirmation : "",
@@ -1351,6 +1376,7 @@ export default function SocialsWorkspace({
           targets: draft.targets,
           riskAmount: draft.riskAmount,
           riskUnit: draft.riskUnit,
+          tradingAccount,
           confluences: draft.confluences,
         },
         scoreModelVersion: SOCIAL_RECORD_RULES.scoreModelVersion,
@@ -2223,6 +2249,7 @@ export default function SocialsWorkspace({
             <span className="rounded-lg border border-border bg-surface px-2 py-1 text-[8px] font-semibold text-muted">{payload.session}</span>
             <span className={`rounded-lg px-2 py-1 text-[8px] font-semibold ${payload.direction === "LONG" ? "bg-primary/10 text-primary" : payload.direction === "SHORT" ? "bg-danger/10 text-danger" : "bg-accent/10 text-accent"}`}>{payload.direction}</span>
             <StatusBadge status={status} />
+            {payload.tradingAccount ? <span className="flex items-center gap-1.5 rounded-lg border border-primary/20 bg-primary/[0.06] px-2 py-1 text-[8px] font-semibold text-primary"><WalletCards className="h-3 w-3" />{zyonTradingAccountLabel(payload.tradingAccount)}</span> : null}
             <span className="ml-auto flex items-center gap-1.5 rounded-xl border border-primary/20 bg-primary/[0.06] px-2.5 py-1.5 text-[8px] text-primary"><Gauge className="h-3.5 w-3.5" /><strong className="font-mono">{payload.reasoningScore}</strong> reasoning</span>
           </div>
           <p className="mt-4 text-[11px] leading-5 text-foreground">{payload.marketContext}</p>
@@ -2536,6 +2563,120 @@ export default function SocialsWorkspace({
                         <label className="text-[7px] font-semibold uppercase tracking-[0.12em] text-muted">Entry time<input value={zyonGameplanDraft.entryTime} onChange={(event) => setZyonGameplanDraft((current) => current ? { ...current, entryTime: event.target.value.slice(0, 80) } : current)} placeholder="ISO time + offset" title="Actual entries must be recorded within five minutes. Future limit-order times are allowed." className="mt-1.5 h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] text-foreground outline-none focus:border-primary/40" /></label>
                         <label className="text-[7px] font-semibold uppercase tracking-[0.12em] text-muted">Risk<input type="number" value={zyonGameplanDraft.riskAmount ?? ""} onChange={(event) => setZyonGameplanDraft((current) => current ? { ...current, riskAmount: numberOrNull(event.target.value) } : current)} className="mt-1.5 h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] text-foreground outline-none focus:border-primary/40" /></label>
                         <label className="text-[7px] font-semibold uppercase tracking-[0.12em] text-muted">Risk unit<KwantSelect value={zyonGameplanDraft.riskUnit} onChange={(event) => setZyonGameplanDraft((current) => current ? { ...current, riskUnit: event.target.value as ZyonGameplanDraft["riskUnit"] } : current)} className="mt-1.5 h-10 w-full rounded-xl border border-border bg-background px-3 text-[9px] outline-none"><option value="DOLLARS">Dollars</option><option value="POINTS">Points</option><option value="TICKS">Ticks</option><option value="PERCENT">Percent</option></KwantSelect></label>
+                      </div>
+                      <div className="mt-3 rounded-2xl border border-primary/20 bg-primary/[0.035] p-3">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="flex h-8 w-8 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary"><WalletCards className="h-4 w-4" /></span>
+                          <div>
+                            <div className="text-[8px] font-semibold text-foreground">Trading account</div>
+                            <div className="mt-0.5 text-[7px] text-muted">Record the environment actually carrying this plan. Never enter an account number or login.</div>
+                          </div>
+                          <span className="ml-auto rounded-xl border border-primary/20 bg-background/45 px-3 py-1.5 text-[8px] font-semibold text-primary">{zyonTradingAccountLabel(zyonGameplanDraft.tradingAccount)}</span>
+                        </div>
+                        <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-6">
+                          <label className="text-[7px] font-semibold uppercase tracking-[0.12em] text-muted">
+                            Environment
+                            <KwantSelect
+                              value={zyonGameplanDraft.tradingAccount?.mode ?? ""}
+                              onChange={(event) => setZyonGameplanDraft((current) => current ? {
+                                ...current,
+                                tradingAccount: tradingAccountForMode(
+                                  event.target.value as ZyonTradingAccountMode,
+                                  current.tradingAccount,
+                                ),
+                              } : current)}
+                              className="mt-1.5 h-10 w-full rounded-xl border border-border bg-background px-3 text-[9px] outline-none"
+                            >
+                              <option value="" disabled>Select account</option>
+                              <option value="LIVE">Personal live</option>
+                              <option value="SIM">Simulation</option>
+                              <option value="PROP">Prop firm</option>
+                            </KwantSelect>
+                          </label>
+                          <label className="text-[7px] font-semibold uppercase tracking-[0.12em] text-muted">
+                            Provider / firm
+                            <input
+                              value={zyonGameplanDraft.tradingAccount?.provider ?? ""}
+                              onChange={(event) => setZyonGameplanDraft((current) => current ? {
+                                ...current,
+                                tradingAccount: {
+                                  ...tradingAccountForMode(current.tradingAccount?.mode ?? "SIM", current.tradingAccount),
+                                  provider: event.target.value.slice(0, 80),
+                                },
+                              } : current)}
+                              placeholder="Traderify / Lucid / broker"
+                              className="mt-1.5 h-10 w-full rounded-xl border border-border bg-background px-3 text-[9px] text-foreground outline-none placeholder:text-muted/55 focus:border-primary/40"
+                            />
+                          </label>
+                          <label className="text-[7px] font-semibold uppercase tracking-[0.12em] text-muted">
+                            Programme
+                            <input
+                              value={zyonGameplanDraft.tradingAccount?.program ?? ""}
+                              onChange={(event) => setZyonGameplanDraft((current) => current ? {
+                                ...current,
+                                tradingAccount: {
+                                  ...tradingAccountForMode(current.tradingAccount?.mode ?? "SIM", current.tradingAccount),
+                                  program: event.target.value.slice(0, 80),
+                                },
+                              } : current)}
+                              placeholder="Flex / Standard"
+                              className="mt-1.5 h-10 w-full rounded-xl border border-border bg-background px-3 text-[9px] text-foreground outline-none placeholder:text-muted/55 focus:border-primary/40"
+                            />
+                          </label>
+                          <label className="text-[7px] font-semibold uppercase tracking-[0.12em] text-muted">
+                            Phase
+                            <KwantSelect
+                              value={zyonGameplanDraft.tradingAccount?.phase ?? ""}
+                              onChange={(event) => setZyonGameplanDraft((current) => current ? {
+                                ...current,
+                                tradingAccount: {
+                                  ...tradingAccountForMode(current.tradingAccount?.mode ?? "SIM", current.tradingAccount),
+                                  phase: event.target.value as ZyonTradingAccountPhase,
+                                },
+                              } : current)}
+                              className="mt-1.5 h-10 w-full rounded-xl border border-border bg-background px-3 text-[9px] outline-none"
+                            >
+                              <option value="" disabled>Select phase</option>
+                              {zyonGameplanDraft.tradingAccount?.mode === "LIVE" ? <option value="LIVE">Live</option> : null}
+                              {zyonGameplanDraft.tradingAccount?.mode === "SIM" ? <option value="SIMULATION">Simulation</option> : null}
+                              {zyonGameplanDraft.tradingAccount?.mode === "PROP" ? <><option value="EVALUATION">Evaluation</option><option value="FUNDED">Funded</option></> : null}
+                            </KwantSelect>
+                          </label>
+                          <label className="text-[7px] font-semibold uppercase tracking-[0.12em] text-muted">
+                            Account size
+                            <input
+                              type="number"
+                              min="1"
+                              step="1000"
+                              value={zyonGameplanDraft.tradingAccount?.size ?? ""}
+                              onChange={(event) => setZyonGameplanDraft((current) => current ? {
+                                ...current,
+                                tradingAccount: {
+                                  ...tradingAccountForMode(current.tradingAccount?.mode ?? "SIM", current.tradingAccount),
+                                  size: numberOrNull(event.target.value),
+                                },
+                              } : current)}
+                              placeholder="50000"
+                              className="mt-1.5 h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] text-foreground outline-none placeholder:text-muted/55 focus:border-primary/40"
+                            />
+                          </label>
+                          <label className="text-[7px] font-semibold uppercase tracking-[0.12em] text-muted">
+                            Currency
+                            <KwantSelect
+                              value={zyonGameplanDraft.tradingAccount?.currency ?? "USD"}
+                              onChange={(event) => setZyonGameplanDraft((current) => current ? {
+                                ...current,
+                                tradingAccount: {
+                                  ...tradingAccountForMode(current.tradingAccount?.mode ?? "SIM", current.tradingAccount),
+                                  currency: event.target.value as ZyonTradingAccount["currency"],
+                                },
+                              } : current)}
+                              className="mt-1.5 h-10 w-full rounded-xl border border-border bg-background px-3 text-[9px] outline-none"
+                            >
+                              {["USD", "AUD", "GBP", "EUR", "CAD"].map((currency) => <option key={currency} value={currency}>{currency}</option>)}
+                            </KwantSelect>
+                          </label>
+                        </div>
                       </div>
                       <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
                         <label className="text-[7px] font-semibold uppercase tracking-[0.12em] text-muted">Entry low<input type="number" value={zyonGameplanDraft.entryLow} onChange={(event) => setZyonGameplanDraft((current) => current ? { ...current, entryLow: Number(event.target.value) } : current)} className="mt-1.5 h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] outline-none focus:border-primary/40" /></label>
