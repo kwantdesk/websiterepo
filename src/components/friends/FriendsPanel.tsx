@@ -42,6 +42,7 @@ import {
   type FriendsPayload,
   type PresenceStatus,
 } from "@/lib/friends";
+import { storeSocialProfilePreview } from "@/lib/socialProfilePreview";
 
 const EMPTY: FriendsPayload = {
   cloud: false,
@@ -980,6 +981,13 @@ export default function FriendsPanel({ onClose, onUnreadCountChange, initialFrie
                 <button
                   onClick={() => {
                     setShowFriendMenu(false);
+                    storeSocialProfilePreview({
+                      userId: activeFriend.userId,
+                      displayName: activeFriend.displayName,
+                      handle: activeFriend.handle,
+                      avatarUrl: activeFriend.avatarUrl,
+                      isOnline: activeFriend.isOnline,
+                    });
                     onViewProfile?.(activeFriend.handle);
                   }}
                   className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[10px] text-muted hover:bg-surface hover:text-foreground"

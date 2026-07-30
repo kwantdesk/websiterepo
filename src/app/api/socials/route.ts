@@ -125,10 +125,67 @@ export async function GET(request: NextRequest) {
   if (!supabase) return unavailableResponse();
 
   const mineOnly = request.nextUrl.searchParams.get("mine") === "1";
+  const requestedProfileHandle = cleanIdentifier(
+    request.nextUrl.searchParams.get("profileHandle"),
+    24,
+  ).toLowerCase();
   const requestedTypes = (request.nextUrl.searchParams.get("types") ?? "")
     .split(",")
     .map((value) => value.trim())
     .filter((value): value is SocialObjectType => SOCIAL_OBJECT_TYPES.includes(value as SocialObjectType));
+
+  if (requestedProfileHandle) {
+    const { data: profileData, error: profileError } = await supabase
+      .from("social_objects")
+      .select("user_id,id,author_label,object_type,scope,desk_id,parent_id,payload,created_at,updated_at")
+      .eq("object_type", "profile")
+      .eq("payload->>handle", requestedProfileHandle)
+      .maybeSingle();
+    if (profileError) {
+      if (tableUnavailable(profileError.code)) return unavailableResponse();
+      console.error("Social profile lookup failed", {
+        code: profileError.code,
+        message: profileError.message,
+      });
+      return NextResponse.json({ error: "This profile could not be loaded." }, { status: 502 });
+    }
+    if (!profileData) {
+      return NextResponse.json(
+        { objects: [], cloud: true, viewerId: actor.userId, profileFound: false },
+        { headers: { "Cache-Control": "private, no-store, max-age=0" } },
+      );
+    }
+
+    const profileRow = profileData as SocialRow;
+    const { data: profileObjects, error: objectsError } = await supabase
+      .from("social_objects")
+      .select("user_id,id,author_label,object_type,scope,desk_id,parent_id,payload,created_at,updated_at")
+      .eq("user_id", profileRow.user_id)
+      .in("object_type", ["profile", "precord", "receipt", "card"])
+      .order("created_at", { ascending: false })
+      .limit(500);
+    if (objectsError) {
+      if (tableUnavailable(objectsError.code)) return unavailableResponse();
+      console.error("Social profile records failed", {
+        code: objectsError.code,
+        message: objectsError.message,
+      });
+      return NextResponse.json({ error: "This profile could not be loaded." }, { status: 502 });
+    }
+
+    const rows = (profileObjects ?? []) as SocialRow[];
+    if (!rows.some((row) => row.object_type === "profile")) rows.unshift(profileRow);
+    return NextResponse.json(
+      {
+        objects: rows.map(fromRow),
+        cloud: true,
+        viewerId: actor.userId,
+        profileFound: true,
+      },
+      { headers: { "Cache-Control": "private, no-store, max-age=0" } },
+    );
+  }
+
   const rows: SocialRow[] = [];
   for (let offset = 0; offset < 2_000; offset += 500) {
     let query = supabase

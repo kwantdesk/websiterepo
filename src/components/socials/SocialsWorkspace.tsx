@@ -97,6 +97,10 @@ import {
 import { encodeCanvasImage } from "@/lib/clientImageProcessing";
 import { DATABENTO_LIVE_TICK_EVENT } from "@/lib/chartLiveEvents";
 import {
+  loadSocialProfilePreview,
+  type SocialProfilePreview,
+} from "@/lib/socialProfilePreview";
+import {
   type PointerEvent as ReactPointerEvent,
   useCallback,
   useEffect,
@@ -119,6 +123,79 @@ type DeskNameCheckState = {
   state: "idle" | "checking" | "available" | "taken" | "invalid" | "error";
   message: string;
 };
+type RequestedProfileState = "idle" | "loading" | "ready" | "missing" | "error";
+
+function ProfileOpeningState({
+  preview,
+  failed = false,
+  onBack,
+}: {
+  preview: SocialProfilePreview | null;
+  failed?: boolean;
+  onBack?: () => void;
+}) {
+  if (failed) {
+    return (
+      <div className="flex min-h-[420px] flex-col items-center justify-center p-8 text-center">
+        <Radar className="h-8 w-8 text-muted" />
+        <div className="mt-3 text-[11px] font-semibold text-foreground">Profile could not load</div>
+        <p className="mt-2 max-w-sm text-[8px] leading-4 text-muted">
+          The account is available, but its profile data could not be reached. Try opening it again.
+        </p>
+        {onBack ? (
+          <button type="button" onClick={onBack} className="mt-4 rounded-xl border border-border bg-surface px-4 py-2 text-[8px] font-semibold text-muted hover:text-foreground">
+            Back to Socials
+          </button>
+        ) : null}
+      </div>
+    );
+  }
+
+  return (
+    <div className="mx-auto w-full max-w-6xl p-3 sm:p-4" aria-label="Opening profile">
+      <section className="overflow-hidden rounded-3xl border border-border bg-panel shadow-[0_24px_80px_rgba(0,0,0,0.28)]">
+        <div className="relative h-40 overflow-hidden border-b border-border sm:h-48">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_12%,color-mix(in_srgb,var(--primary)_22%,transparent),transparent_35%),radial-gradient(circle_at_82%_70%,color-mix(in_srgb,var(--accent)_12%,transparent),transparent_38%),linear-gradient(125deg,color-mix(in_srgb,var(--surface)_78%,black),var(--background))]" />
+          <div className="absolute inset-0 opacity-30 [background-image:linear-gradient(color-mix(in_srgb,var(--primary)_18%,transparent)_1px,transparent_1px),linear-gradient(90deg,color-mix(in_srgb,var(--primary)_18%,transparent)_1px,transparent_1px)] [background-size:32px_32px]" />
+          <div className="absolute inset-x-0 bottom-0 h-px bg-primary shadow-[0_0_18px_var(--primary)]" />
+        </div>
+        <div className="relative px-4 pb-6 sm:px-7">
+          <div className="-mt-12 flex items-end gap-4">
+            <UserAvatar
+              label={preview?.displayName ?? "Kwant Desk user"}
+              avatarUrl={preview?.avatarUrl}
+              size="xl"
+              active={preview?.isOnline}
+              className="rounded-full border-[5px] border-panel shadow-2xl"
+            />
+            <div className="min-w-0 flex-1 pb-1">
+              <div className="truncate text-[22px] font-semibold tracking-[-0.03em] text-foreground">
+                {preview?.displayName ?? "Opening profile"}
+              </div>
+              <div className="mt-1 text-[10px] text-primary">
+                {preview ? `@${preview.handle}` : "Loading account details"}
+              </div>
+            </div>
+          </div>
+          <div className="mt-6 grid gap-3 lg:grid-cols-[minmax(0,1fr)_360px]">
+            <div className="space-y-2">
+              <div className="h-2.5 w-4/5 animate-pulse rounded-full bg-surface" />
+              <div className="h-2.5 w-3/5 animate-pulse rounded-full bg-surface" />
+            </div>
+            <div className="h-16 animate-pulse rounded-2xl border border-border bg-background/35" />
+          </div>
+          <KwantLoader
+            title={preview ? `Opening ${preview.displayName}` : "Opening profile"}
+            detail="Loading this account's public record."
+            icon={UsersRound}
+            compact
+            className="mt-5 min-h-[150px] rounded-2xl border border-border"
+          />
+        </div>
+      </section>
+    </div>
+  );
+}
 
 const AVATAR_CROP_SIZE = 288;
 const AVATAR_OUTPUT_SIZE = 1080;
@@ -525,6 +602,12 @@ export default function SocialsWorkspace({
   const [avatarCrop, setAvatarCrop] = useState<AvatarCropDraft | null>(null);
   const [avatarCropSaving, setAvatarCropSaving] = useState(false);
   const [selectedProfileRecord, setSelectedProfileRecord] = useState<SocialObject | null>(null);
+  const [requestedProfileState, setRequestedProfileState] = useState<RequestedProfileState>(
+    initialProfileHandle ? "loading" : "idle",
+  );
+  const [requestedProfilePreview, setRequestedProfilePreview] = useState<SocialProfilePreview | null>(
+    () => loadSocialProfilePreview(initialProfileHandle),
+  );
   const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
   const [commentKinds, setCommentKinds] = useState<Record<string, SocialCommentPayload["kind"]>>({});
   const [consensusDraft, setConsensusDraft] = useState({
@@ -820,6 +903,62 @@ export default function SocialsWorkspace({
     setProfileEditing(false);
     setSelectedProfileRecord(null);
   }, [initialProfileHandle]);
+
+  useEffect(() => {
+    if (!requestedProfileHandle) {
+      setRequestedProfileState("idle");
+      setRequestedProfilePreview(null);
+      return;
+    }
+
+    let active = true;
+    const controller = new AbortController();
+    setRequestedProfilePreview(loadSocialProfilePreview(requestedProfileHandle));
+    setRequestedProfileState("loading");
+    void (async () => {
+      try {
+        const response = await fetch(
+          `/api/socials?profileHandle=${encodeURIComponent(requestedProfileHandle)}`,
+          { cache: "no-store", signal: controller.signal },
+        );
+        const payload = await response.json() as {
+          objects?: SocialObject[];
+          cloud?: boolean;
+          profileFound?: boolean;
+          error?: string;
+        };
+        if (!response.ok) throw new Error(payload.error || "This profile could not be loaded.");
+        if (!payload.cloud) throw new Error("Account storage is unavailable.");
+        if (payload.profileFound === false) {
+          if (active) setRequestedProfileState("missing");
+          return;
+        }
+        if (!payload.profileFound || !Array.isArray(payload.objects)) {
+          throw new Error("This profile could not be loaded.");
+        }
+        const incomingObjects = payload.objects.map((object) => ({ ...object, cloudSaved: true }));
+        const incomingKeys = new Set(incomingObjects.map(objectKey));
+        if (!active) return;
+        setState((current) => ({
+          ...current,
+          cloud: true,
+          objects: [
+            ...incomingObjects,
+            ...current.objects.filter((object) => !incomingKeys.has(objectKey(object))),
+          ].slice(0, 5_000),
+        }));
+        setRequestedProfileState("ready");
+      } catch (reason) {
+        if (!active || (reason instanceof DOMException && reason.name === "AbortError")) return;
+        setRequestedProfileState("error");
+      }
+    })();
+
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [requestedProfileHandle]);
 
   useEffect(() => {
     let active = true;
@@ -2931,6 +3070,17 @@ export default function SocialsWorkspace({
               onShareGameplan={shareGameplan}
               onShareProfile={shareProfile}
               onOpenProfile={onOpenProfile}
+            />
+          ) : requestedProfileHandle && requestedProfileState === "error" ? (
+            <ProfileOpeningState
+              preview={requestedProfilePreview}
+              failed
+              onBack={onCloseProfile}
+            />
+          ) : requestedProfileHandle && requestedProfileState !== "missing" ? (
+            <ProfileOpeningState
+              preview={requestedProfilePreview}
+              onBack={onCloseProfile}
             />
           ) : (
             <div className="flex min-h-[420px] flex-col items-center justify-center p-8 text-center">
