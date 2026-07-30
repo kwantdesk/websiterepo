@@ -696,6 +696,7 @@ function LoadingScreen() {
 
 
 export default function GammaWorkspace() {
+  const pageScrollRef = useRef<HTMLDivElement | null>(null);
   const [symbol, setSymbol] = useState("SPX");
   const [priceMode, setPriceMode] = useState<OptionsPriceMode>("CASH");
   const [activeGreek, setActiveGreek] = useState<GreekMode>("GAMMA");
@@ -708,6 +709,27 @@ export default function GammaWorkspace() {
   const [pricePulseMs, setPricePulseMs] = useState(2_000);
   const [priceTick, setPriceTick] = useState<"UP" | "DOWN" | "FLAT">("FLAT");
   const [instrumentMenuOpen, setInstrumentMenuOpen] = useState(false);
+
+  useEffect(() => {
+    const pageScroller = pageScrollRef.current;
+    if (!pageScroller) return;
+
+    const routeWheelToPage = (event: WheelEvent) => {
+      if (event.ctrlKey || event.deltaY === 0) return;
+      event.preventDefault();
+      event.stopPropagation();
+
+      const deltaMultiplier = event.deltaMode === 1
+        ? 32
+        : event.deltaMode === 2
+          ? pageScroller.clientHeight
+          : 1;
+      pageScroller.scrollTop += event.deltaY * deltaMultiplier;
+    };
+
+    pageScroller.addEventListener("wheel", routeWheelToPage, { capture: true, passive: false });
+    return () => pageScroller.removeEventListener("wheel", routeWheelToPage, { capture: true });
+  }, [data]);
   const instrumentMenuRef = useRef<HTMLDivElement>(null);
   const livePriceRef = useRef<HTMLSpanElement>(null);
   const previousPriceRef = useRef<number | null>(null);
@@ -991,7 +1013,10 @@ export default function GammaWorkspace() {
             </Panel>
           </div>
         ) : (
-          <div className="min-h-0 flex-1 overflow-y-auto bg-background p-3 lg:p-4">
+          <div
+            ref={pageScrollRef}
+            className="min-h-0 flex-1 overflow-y-auto bg-background p-3 lg:p-4"
+          >
             {error ? <div className="mb-3 flex items-center gap-2 rounded-xl border border-danger/20 bg-danger/10 px-3 py-2 text-[11px] text-danger"><Waves className="h-3.5 w-3.5" /> Refresh delayed: {error}. Showing the last good snapshot.</div> : null}
             {data.errors.length ? <div className="mb-3 rounded-xl border border-amber-400/20 bg-amber-400/[0.06] px-3 py-2 text-[10px] text-amber-200/80">Some KwantData panels are temporarily partial: {data.errors.join(" · ")}</div> : null}
 
