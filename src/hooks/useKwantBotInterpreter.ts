@@ -31,6 +31,7 @@ import {
 import {
   DATABENTO_LIVE_STATUS_EVENT,
   DATABENTO_LIVE_TICK_EVENT,
+  readDatabentoLiveStatus,
   type DatabentoLiveStatus,
 } from "@/lib/chartLiveEvents";
 
@@ -289,12 +290,28 @@ export function useKwantBotInterpreter(args: {
       .then((stored) => {
         if (cancelled || !stored || stored.version !== 1) return;
         const restoredMessages = {
-          NQ: Array.isArray(stored.messages?.NQ) ? stored.messages.NQ.slice(-INITIAL_LOCAL_MESSAGE_LIMIT) : [],
-          ES: Array.isArray(stored.messages?.ES) ? stored.messages.ES.slice(-INITIAL_LOCAL_MESSAGE_LIMIT) : [],
+          NQ: mergeById(
+            Array.isArray(stored.messages?.NQ) ? stored.messages.NQ : [],
+            messagesRef.current.NQ,
+            INITIAL_LOCAL_MESSAGE_LIMIT,
+          ),
+          ES: mergeById(
+            Array.isArray(stored.messages?.ES) ? stored.messages.ES : [],
+            messagesRef.current.ES,
+            INITIAL_LOCAL_MESSAGE_LIMIT,
+          ),
         };
         const restoredMemory = {
-          NQ: pruneKwantBotMemory(Array.isArray(stored.memory?.NQ) ? stored.memory.NQ : []).slice(-INITIAL_LOCAL_MEMORY_LIMIT),
-          ES: pruneKwantBotMemory(Array.isArray(stored.memory?.ES) ? stored.memory.ES : []).slice(-INITIAL_LOCAL_MEMORY_LIMIT),
+          NQ: pruneKwantBotMemory(mergeById(
+            Array.isArray(stored.memory?.NQ) ? stored.memory.NQ : [],
+            memoryRef.current.NQ,
+            INITIAL_LOCAL_MEMORY_LIMIT,
+          )).slice(-INITIAL_LOCAL_MEMORY_LIMIT),
+          ES: pruneKwantBotMemory(mergeById(
+            Array.isArray(stored.memory?.ES) ? stored.memory.ES : [],
+            memoryRef.current.ES,
+            INITIAL_LOCAL_MEMORY_LIMIT,
+          )).slice(-INITIAL_LOCAL_MEMORY_LIMIT),
         };
         messagesRef.current = restoredMessages;
         memoryRef.current = restoredMemory;
@@ -667,7 +684,7 @@ export function useKwantBotInterpreter(args: {
   }, [appendMemory, appendMessages]);
 
   useEffect(() => {
-    if (!runtimeEnabled || !storeReady) return;
+    if (!runtimeEnabled) return;
     ROOTS.forEach((root) => void fetchContext(root));
     const timer = window.setInterval(() => {
       const now = Date.now();
@@ -679,7 +696,7 @@ export function useKwantBotInterpreter(args: {
       });
     }, 5_000);
     return () => window.clearInterval(timer);
-  }, [fetchContext, runtimeEnabled, storeReady]);
+  }, [fetchContext, runtimeEnabled]);
 
   const flushLivePrices = useCallback(() => {
     animationFrameRef.current = null;
@@ -694,7 +711,10 @@ export function useKwantBotInterpreter(args: {
   }, []);
 
   useEffect(() => {
-    if (!runtimeEnabled || !storeReady) return;
+    if (!runtimeEnabled) return;
+    const currentStatus = readDatabentoLiveStatus();
+    if (currentStatus) setFeedState(currentStatus);
+
     const receiveTick = (event: Event) => {
       const tick = (event as CustomEvent<{
         instrument?: string;
@@ -763,7 +783,7 @@ export function useKwantBotInterpreter(args: {
         animationFrameRef.current = null;
       }
     };
-  }, [appendMemory, appendMessages, flushLivePrices, runtimeEnabled, storeReady]);
+  }, [appendMemory, appendMessages, flushLivePrices, runtimeEnabled]);
 
   const selectRoot = useCallback((
     root: KwantBotMarketRoot,

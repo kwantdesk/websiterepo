@@ -157,9 +157,9 @@ import {
 } from "@/lib/chartIntervals";
 import { applyMarketTradesToEventBars, futuresTickSize } from "@/lib/eventBars";
 import {
-  DATABENTO_LIVE_STATUS_EVENT,
   DATABENTO_LIVE_TICK_EVENT,
   LIVE_CHART_CANDLE_EVENT,
+  publishDatabentoLiveStatus,
   type DatabentoLiveStatus,
 } from "@/lib/chartLiveEvents";
 import {
@@ -4893,15 +4893,13 @@ export default function KwantifyWorkspace({
     let reconnectTimer: number | null = null;
     const publishDatabentoStatus = (status: DatabentoLiveStatus) => {
       if (!usingDatabentoFeed) return;
-      window.dispatchEvent(new CustomEvent(DATABENTO_LIVE_STATUS_EVENT, {
-        detail: status,
-      }));
+      publishDatabentoLiveStatus(status);
     };
     const markStreamAlive = () => {
       lastMessageAt = Date.now();
+      publishDatabentoStatus("live");
       if (streamMarkedHealthy) return;
       streamMarkedHealthy = true;
-      publishDatabentoStatus("live");
       setStreamHealthyByBroker((current) => current[activeChartBrokerLabel]
         ? current
         : { ...current, [activeChartBrokerLabel]: true });
@@ -4941,6 +4939,8 @@ export default function KwantifyWorkspace({
         // The EventSource error handler reconnects malformed failures.
       }
     };
+    publishDatabentoStatus("connecting");
+    eventSource.addEventListener("open", handleStatus);
     eventSource.addEventListener("status", handleStatus);
     eventSource.addEventListener("heartbeat", handleHeartbeat);
     eventSource.addEventListener("feed-error", handleFeedError);
@@ -5056,6 +5056,7 @@ export default function KwantifyWorkspace({
 
     return () => {
       eventSource.close();
+      eventSource.removeEventListener("open", handleStatus);
       eventSource.removeEventListener("status", handleStatus);
       eventSource.removeEventListener("heartbeat", handleHeartbeat);
       eventSource.removeEventListener("feed-error", handleFeedError);
