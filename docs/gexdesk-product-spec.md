@@ -1,0 +1,358 @@
+# Gexdesk — Product and Implementation Memory
+
+Last updated: 30 July 2026
+
+Status: Authoritative product brief for the Kwant Desk implementation
+
+Source: Founder brief supplied in `NDX / QQQ Gamma Visualisation for Bookmap Product, Data, Calculation, and User-…/pasted-text.txt`
+
+## Product definition
+
+Gexdesk is a price-aligned options-positioning workspace for NQ. It converts NDX, NDXP, and QQQ options positioning, expiration structure, and live options activity into a small number of understandable behavioural zones, then compares those expectations with observed NQ futures activity.
+
+It is not an options DOM and must never imply that calculated gamma is resting futures liquidity. The product exists to make a complex derivatives landscape readable without hiding the distinction between calculated positioning, changing options pressure, and observed futures confirmation.
+
+The default view must answer five questions quickly:
+
+1. Is the options environment stabilising, amplifying, or in transition?
+2. Where are the nearest meaningful behavioural zones in NQ price?
+3. What behaviour is expected at those zones?
+4. Is the positioning or options pressure changing?
+5. Is the NQ futures tape confirming that expectation?
+
+## Non-negotiable model: MAP / PRESSURE / TAPE
+
+Every visual and every explanation belongs to one of three clearly labelled layers.
+
+### MAP — stored positioning
+
+MAP describes the current options-positioning landscape:
+
+- net and gross gamma exposure;
+- mapped NDX, NDXP, and QQQ strike contributions;
+- call-side and put-side concentration;
+- expiration structure and 0DTE concentration;
+- nearby behavioural zones;
+- source agreement and source contribution.
+
+MAP is a calculated model. It is not resting liquidity, exact dealer inventory, or guaranteed support/resistance.
+
+### PRESSURE — changing options flow
+
+PRESSURE describes the direction and confidence of recent options activity:
+
+- confidence-weighted signed delta demand;
+- call/put and bid/ask classification;
+- short rolling impulse and persistence;
+- source and expiration contribution;
+- building, weakening, or stable positioning where successive snapshots support that conclusion.
+
+Until exact executable units have been fully validated, pressure is a normalized relative index from -100 to +100 and is explicitly labelled as estimated.
+
+### TAPE — observed NQ confirmation
+
+TAPE is based on actual NQ futures prints:
+
+- current price and tick direction;
+- signed trade delta;
+- short-horizon velocity;
+- price response at or near a mapped zone;
+- whether futures behaviour confirms, leads, diverges from, or remains neutral to the options expectation.
+
+TAPE is not derived from options positioning and must not be presented as though it is.
+
+## Data responsibilities
+
+### QuantData
+
+QuantData is the options-positioning and options-flow source:
+
+- NDX and QQQ gamma exposure by strike;
+- 0DTE gamma exposure;
+- total net and gross exposure;
+- expiration structure;
+- consolidated options order flow;
+- source spot values used in mapping.
+
+Product-facing attribution is “Kwant Data proprietary model.” Do not display the external vendor name in the UI.
+
+### Databento
+
+Databento is the futures observation source:
+
+- native NQ futures spot;
+- shared live NQ ticks;
+- trade size and signed delta;
+- futures velocity and response;
+- freshness and connection state.
+
+The Gexdesk client reuses Kwant Desk’s existing shared CME stream. It must not open a second live Databento connection.
+
+### Failure rules
+
+- Missing data is unknown, never zero.
+- A stale source is visibly faded and timestamped.
+- A failed source can be excluded from a partial combined result, but the UI must disclose the partial state.
+- Last good data may remain visible with a stale label; it must not masquerade as current.
+- The page must show source freshness and the time of the most recent successful snapshot.
+
+## Core calculations
+
+### Regime
+
+Use the bounded ratio:
+
+`regimeRatio = totalNetGex / totalGrossGex`
+
+Classification:
+
+- greater than `+0.10`: stabilising;
+- less than `-0.10`: amplifying;
+- otherwise: transition.
+
+The UI must show both the plain-language state and the ratio. Thresholds may later become instrument- and session-aware, but must remain versioned and explainable.
+
+### 0DTE share
+
+`zeroDteShare = grossZeroDteGex / grossAllExpiryGex`
+
+Use gross exposure for both numerator and denominator so positive and negative contributions do not cancel.
+
+### Mapping options strikes to NQ
+
+For each source:
+
+`mappedNqPrice = currentNqPrice × sourceStrike / sourceSpot`
+
+This is the default relative mapping for NDX and QQQ. NDXP is grouped with NDX where the upstream endpoint does not separate it cleanly.
+
+Every mapped contribution retains:
+
+- original source;
+- original strike;
+- mapped NQ price;
+- net, absolute, call, and put contribution;
+- expiration bucket where available.
+
+### Composite modes
+
+Economic mode:
+
+- sums exposure in compatible per-1% source units;
+- visibly preserves NDX/NDXP and QQQ contribution;
+- is used for primary zone strength.
+
+Agreement mode:
+
+- normalizes source profiles;
+- compares sign, shape, and zone overlap;
+- prevents one source’s scale from hiding disagreement.
+
+The user can switch modes. The default combined view shows economic strength with a separate agreement score.
+
+### Source agreement
+
+Agreement combines:
+
+- regime-sign agreement;
+- mapped-profile correlation;
+- overlap of the strongest nearby zones.
+
+The result is displayed as high, mixed, or low agreement with an explainable percentage. It is not a confidence guarantee.
+
+### Zone formation
+
+Mapped strike contributions are aggregated into volatility-aware NQ price buckets. Nearby high-contribution buckets are clustered into zones.
+
+Each zone has:
+
+- low, centre, and high NQ price;
+- stabilising, amplifying, or transition behaviour;
+- absolute strength;
+- current priority;
+- call/put contribution;
+- NDX/NDXP and QQQ source mix;
+- 0DTE share;
+- distance from current NQ price;
+- building, weakening, or stable snapshot state;
+- a concise expected-behaviour explanation;
+- an observed-tape condition to watch;
+- an invalidation condition.
+
+Strength and priority are distinct. Strength describes the stored options concentration. Priority incorporates proximity, source agreement, expiration relevance, and live context.
+
+### Options pressure
+
+Recent options trades are signed using bid/ask classification and weighted by:
+
+- option delta;
+- trade size;
+- classification confidence;
+- reduced confidence for mid-market or complex activity.
+
+The first implementation exposes a relative `-100…+100` pressure index, not unverified dollar flow. The UI identifies this as estimated pressure.
+
+### NQ confirmation
+
+The client evaluates the shared NQ tape against the selected zone:
+
+- confirming: price response and signed delta agree with the expected zone behaviour;
+- leading: the futures tape moves before options pressure changes;
+- diverging: price or delta rejects the options expectation;
+- neutral: insufficient evidence or price is not interacting with a relevant zone.
+
+No mysterious composite “AI confidence” score is permitted in this layer.
+
+## Information architecture
+
+Gexdesk is a first-class top-navigation workspace.
+
+### Default analyst surface
+
+1. Regime strip
+   - stabilising / transition / amplifying;
+   - regime ratio;
+   - 0DTE share;
+   - NDX/QQQ agreement;
+   - live NQ price and freshness.
+
+2. Price-aligned gamma rail
+   - current NQ price glows with the active theme;
+   - mapped exposure bars are aligned to NQ price;
+   - only the strongest three to five zones are emphasized;
+   - stabilising and amplifying contributions use visually distinct theme-aware treatments;
+   - the chart must not imitate a liquidity heatmap or order book.
+
+3. Zone focus
+   - clicking a zone explains why it matters;
+   - expected behaviour;
+   - source and expiration contribution;
+   - what the options pressure is doing;
+   - what the NQ tape must do to confirm;
+   - explicit invalidation.
+
+4. Pressure ribbon
+   - recent options impulse;
+   - persistence and state;
+   - NDX/QQQ contribution;
+   - estimated-unit disclosure.
+
+5. Tape confirmation
+   - confirming, leading, diverging, or neutral;
+   - current signed delta and short-horizon velocity;
+   - live feed status.
+
+### Controls
+
+- source: Combined, NDX, QQQ;
+- expiry: All expiries, 0DTE;
+- composite: Economic, Agreement;
+- view: Simple, Analyst.
+
+Controls use the Kwant Desk custom dropdown component and must never fall back to native Windows-styled selects.
+
+### Analyst view
+
+Analyst view may add:
+
+- expiration stack;
+- source comparison;
+- raw mapped strike contributions;
+- recent snapshot changes;
+- calculation and freshness details.
+
+It must preserve the same visual hierarchy and not overwhelm the default view.
+
+## Visual language
+
+- Use the active Kwant Desk theme variables exclusively.
+- Backgrounds remain black or near-black.
+- Primary and accent colours communicate state without turning the page into a rainbow.
+- White remains the neutral information colour.
+- Current NQ price uses the existing slow theme-aware glow treatment.
+- Borders are subtle; no heavy white outlines.
+- Use dense, precise typography consistent with the charting workspace.
+- Loaders use the shared `KwantLoader`.
+- The workspace fits the viewport and uses controlled internal scrolling.
+- Heatmap styling from Kwantify may inform density and depth, but Gexdesk must remain a behavioural gamma map, not a copied futures-liquidity heatmap.
+
+## Refresh and performance
+
+- shared NQ tape: event-driven through the existing application connection;
+- options pressure: target 3–10 seconds;
+- exposure map: target 15–30 seconds;
+- expiration structure: target 30–60 seconds;
+- API calls are cached and coalesced;
+- previous successful snapshots remain available during refresh;
+- navigation must not tear down the shared CME engine;
+- no page-level polling loop may trigger a full application refresh.
+
+## Required language and disclosures
+
+Persistent page disclosure:
+
+> Estimated options positioning and pressure. Not resting liquidity, exact dealer inventory, or a guaranteed trading signal.
+
+Preferred product sentence:
+
+> A price-aligned options-positioning layer for NQ that converts NDX and QQQ gamma, expiration structure, and live options activity into a small number of behavioural zones, then compares those expectations with observed NQ order flow.
+
+Avoid:
+
+- guaranteed support or resistance;
+- exact dealer positioning unless a validated source explicitly provides it;
+- exact futures contract demand inferred only from options flow;
+- “liquidity” for calculated gamma zones;
+- precise gamma flip claims without validated repricing;
+- hiding stale or partial sources.
+
+## Delivery phases
+
+### Phase 1 — present implementation
+
+- top-level Gexdesk route and navigation;
+- combined NDX/QQQ mapped gamma rail;
+- regime, 0DTE share, source agreement;
+- three to five behavioural zones;
+- selected zone explanation;
+- shared live NQ tape confirmation;
+- estimated pressure index;
+- source freshness and partial-data handling;
+- simple and analyst modes.
+
+### Phase 2
+
+- full expiration matrix;
+- richer snapshot-change history;
+- more rigorous pressure persistence;
+- calibration by session and realized volatility;
+- deeper source contribution and strike inspection.
+
+### Phase 3
+
+- validated historical outcome testing;
+- reaction statistics by zone type, regime, session, and distance;
+- versioned model calibration;
+- alerts and saved Gexdesk layouts;
+- additional supported futures mappings where the data model is defensible.
+
+## Product decisions locked by this brief
+
+- NQ is the primary futures instrument.
+- NDX/NDXP and QQQ remain visibly separate sources even when combined.
+- MAP, PRESSURE, and TAPE are never blended into an unexplained score.
+- The default view emphasizes a few meaningful zones, not every strike.
+- Live futures confirmation comes from the shared Databento engine.
+- Options positioning and flow come through the existing QuantData server integration and are branded in-product as the Kwant Data proprietary model.
+- All uncertainty, freshness, and partial-source states remain visible.
+
+## Technical confirmations still required before claiming full model precision
+
+- exact unit definitions returned by each exposure endpoint;
+- whether NDXP is independently identified in every response;
+- whether the upstream feed supplies dealer-side sign or only trade-side classification;
+- the correct handling of complex/multi-leg trades;
+- final expiry-bucket definitions and expiry timezone;
+- historical calibration of clustering width, regime thresholds, and confirmation windows.
+
+Until confirmed, the UI uses relative units and restrained language.

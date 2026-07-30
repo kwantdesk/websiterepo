@@ -149,6 +149,22 @@ body {
   }
 }
 
+@keyframes gexdesk-live-price-breathe {
+  0%, 100% {
+    opacity: .72;
+    filter: drop-shadow(0 0 3px color-mix(in srgb, var(--primary) 34%, transparent));
+  }
+  50% {
+    opacity: 1;
+    filter: drop-shadow(0 0 11px color-mix(in srgb, var(--primary) 74%, transparent));
+  }
+}
+
+.gexdesk-live-price {
+  transform-origin: center;
+  animation: gexdesk-live-price-breathe 3.6s ease-in-out infinite;
+}
+
 .gex-current-price-marker {
   outline: 1px solid rgba(255, 255, 255, .58);
   outline-offset: -1px;
@@ -410,6 +426,7 @@ body {
   .gameplan-current-level,
   .gex-current-price-marker,
   .gex-current-price-dash,
+  .gexdesk-live-price,
   .kwant-loader-halo,
   .kwant-loader-orbit,
   .kwant-loader-icon {

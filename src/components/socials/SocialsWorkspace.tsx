@@ -89,6 +89,7 @@ import {
   type GameplanPayload,
   type GameplanSession,
 } from "@/lib/gameplan";
+import { effectivePresenceStatus, presenceOption } from "@/lib/friends";
 import { loadSocialState, normalizeSocialState, saveSocialState } from "@/lib/socialsStore";
 import {
   DESK_CREATED_EVENT,
@@ -423,14 +424,16 @@ function Avatar({
   label,
   avatarUrl,
   active = false,
+  statusClassName = "",
   size = "md",
 }: {
   label: string;
   avatarUrl?: string | null;
   active?: boolean;
+  statusClassName?: string;
   size?: "sm" | "md" | "lg";
 }) {
-  return <UserAvatar label={label} avatarUrl={avatarUrl} active={active} size={size} />;
+  return <UserAvatar label={label} avatarUrl={avatarUrl} active={active} statusClassName={statusClassName} size={size} />;
 }
 
 function ScoreBar({ label, value }: { label: string; value: number }) {
@@ -2193,7 +2196,11 @@ export default function SocialsWorkspace({
     return (
       <Card key={objectKey(object)} className="overflow-hidden">
         <div className="flex items-start gap-3 border-b border-border px-4 py-3">
-          <Avatar label={object.authorLabel} avatarUrl={profile?.avatarUrl} active={profile?.processStatus !== "AWAY"} />
+          <Avatar
+            label={object.authorLabel}
+            avatarUrl={profile?.avatarUrl}
+            statusClassName={profile ? presenceOption(effectivePresenceStatus(profile.presenceStatus, profile.lastSeenAt)).dotClassName : ""}
+          />
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
               <button type="button" onClick={() => profile && onOpenProfile?.(profile.handle)} className="text-[10px] font-semibold text-foreground hover:text-primary">{object.authorLabel}</button>
@@ -2353,7 +2360,11 @@ export default function SocialsWorkspace({
     return (
       <Card key={objectKey(object)} className="overflow-hidden">
         <div className="flex items-start gap-3 border-b border-border px-4 py-3">
-          <Avatar label={object.authorLabel} avatarUrl={profile?.avatarUrl} active={profile?.processStatus !== "AWAY"} />
+          <Avatar
+            label={object.authorLabel}
+            avatarUrl={profile?.avatarUrl}
+            statusClassName={profile ? presenceOption(effectivePresenceStatus(profile.presenceStatus, profile.lastSeenAt)).dotClassName : ""}
+          />
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
               <button type="button" onClick={() => profile && onOpenProfile?.(profile.handle)} className="text-[10px] font-semibold hover:text-primary">{object.authorLabel}</button>
@@ -2739,7 +2750,7 @@ export default function SocialsWorkspace({
                 {myDesks.map((desk) => {
                   const payload = typedPayload<SocialDeskPayload>(desk);
                   const deskMembers = memberships.filter((member) => member.deskId === desk.id);
-                  return <Card key={objectKey(desk)} className="overflow-hidden"><div className="flex items-start gap-3 border-b border-border p-4"><span className="flex h-11 w-11 items-center justify-center rounded-2xl border border-primary/20 bg-primary/10 text-primary"><Network className="h-5 w-5" /></span><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><h3 className="text-[13px] font-semibold">{payload?.name}</h3><span className="rounded-lg border border-border bg-surface px-2 py-1 text-[7px] text-muted">{payload?.privacy}</span></div><p className="mt-1 text-[8px] leading-4 text-muted">{payload?.description || payload?.objective}</p></div><span className="font-mono text-[10px] text-primary">{deskMembers.length}/{payload?.capacity ?? 12}</span></div><div className="grid gap-3 p-4 md:grid-cols-[1fr_220px]"><div><div className="text-[7px] font-semibold uppercase tracking-[0.12em] text-muted">Weekly objective</div><div className="mt-2 rounded-xl border border-primary/20 bg-primary/[0.05] p-3 text-[9px] leading-4 text-foreground">{payload?.weeklyMission}</div><div className="mt-4 grid grid-cols-3 gap-2">{deskMembers.slice(0, 6).map((member) => { const memberPayload = typedPayload<SocialDeskMemberPayload>(member); return <div key={objectKey(member)} className="flex items-center gap-2 rounded-xl border border-border bg-surface/30 p-2"><Avatar label={member.authorLabel} avatarUrl={profileByUserId.get(member.userId)?.avatarUrl} size="sm" active={memberPayload?.status !== "AWAY"} /><span className="min-w-0"><span className="block truncate text-[8px] font-semibold">{member.authorLabel}</span><span className="block text-[7px] text-muted">{memberPayload?.status}</span></span></div>; })}</div></div><div className="space-y-3"><ScoreBar label="Preparation completion" value={deskMembers.length ? 72 : 0} /><ScoreBar label="Review integrity" value={deskMembers.length ? 64 : 0} /><ScoreBar label="Helpful reviews" value={deskMembers.length ? 58 : 0} /><div className="rounded-xl border border-border bg-background/30 p-3 text-[7px] leading-4 text-muted">Desk rankings measure shared process. P&amp;L is not part of the score.</div></div></div></Card>;
+                  return <Card key={objectKey(desk)} className="overflow-hidden"><div className="flex items-start gap-3 border-b border-border p-4"><span className="flex h-11 w-11 items-center justify-center rounded-2xl border border-primary/20 bg-primary/10 text-primary"><Network className="h-5 w-5" /></span><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><h3 className="text-[13px] font-semibold">{payload?.name}</h3><span className="rounded-lg border border-border bg-surface px-2 py-1 text-[7px] text-muted">{payload?.privacy}</span></div><p className="mt-1 text-[8px] leading-4 text-muted">{payload?.description || payload?.objective}</p></div><span className="font-mono text-[10px] text-primary">{deskMembers.length}/{payload?.capacity ?? 12}</span></div><div className="grid gap-3 p-4 md:grid-cols-[1fr_220px]"><div><div className="text-[7px] font-semibold uppercase tracking-[0.12em] text-muted">Weekly objective</div><div className="mt-2 rounded-xl border border-primary/20 bg-primary/[0.05] p-3 text-[9px] leading-4 text-foreground">{payload?.weeklyMission}</div><div className="mt-4 grid grid-cols-3 gap-2">{deskMembers.slice(0, 6).map((member) => { const memberPayload = typedPayload<SocialDeskMemberPayload>(member); const memberProfile = profileByUserId.get(member.userId); return <div key={objectKey(member)} className="flex items-center gap-2 rounded-xl border border-border bg-surface/30 p-2"><Avatar label={member.authorLabel} avatarUrl={memberProfile?.avatarUrl} size="sm" statusClassName={memberProfile ? presenceOption(effectivePresenceStatus(memberProfile.presenceStatus, memberProfile.lastSeenAt)).dotClassName : "bg-zinc-500"} /><span className="min-w-0"><span className="block truncate text-[8px] font-semibold">{member.authorLabel}</span><span className="block text-[7px] text-muted">{memberPayload?.status}</span></span></div>; })}</div></div><div className="space-y-3"><ScoreBar label="Preparation completion" value={deskMembers.length ? 72 : 0} /><ScoreBar label="Review integrity" value={deskMembers.length ? 64 : 0} /><ScoreBar label="Helpful reviews" value={deskMembers.length ? 58 : 0} /><div className="rounded-xl border border-border bg-background/30 p-3 text-[7px] leading-4 text-muted">Desk rankings measure shared process. P&amp;L is not part of the score.</div></div></div></Card>;
                 })}
                 {!myDesks.length ? <Card className="border-dashed p-14 text-center"><UsersRound className="mx-auto h-9 w-9 text-muted" /><h2 className="mt-4 text-[13px] font-semibold">Your Desk has not formed yet.</h2><p className="mx-auto mt-2 max-w-md text-[8px] leading-4 text-muted">Start with market, session, timezone, and one shared development objective. Capacity is deliberately capped at twelve.</p><button type="button" onClick={() => setShowDeskModal(true)} className="mt-5 rounded-xl bg-primary px-4 py-2.5 text-[8px] font-semibold text-background">Create the first Desk</button></Card> : null}
                 {availableDesks.length ? (
@@ -2802,13 +2813,18 @@ export default function SocialsWorkspace({
                           label={profile.displayName}
                           avatarUrl={profile.avatarUrl}
                           size="md"
-                          active={profile.processStatus !== "AWAY"}
+                          statusClassName={presenceOption(effectivePresenceStatus(
+                            profile.presenceStatus,
+                            profile.lastSeenAt,
+                          )).dotClassName}
                           className="rounded-full ring-1 ring-primary/15 transition group-hover:ring-primary/45"
                         />
                         <span className="min-w-0">
                           <span className="block truncate text-[9px] font-semibold text-foreground group-hover:text-primary">{profile.displayName}</span>
                           <span className="mt-0.5 block truncate text-[7px] text-muted">@{profile.handle} · {profile.markets.join("/")}</span>
-                          <span className="mt-0.5 block text-[6px] uppercase tracking-[0.1em] text-muted/70">View profile</span>
+                          <span className="mt-0.5 block text-[6px] uppercase tracking-[0.1em] text-muted/70">
+                            {presenceOption(effectivePresenceStatus(profile.presenceStatus, profile.lastSeenAt)).label} Â· View profile
+                          </span>
                         </span>
                       </button>
                       {SCORE_LABELS.map(([key]) => <span key={key} className="text-center font-mono text-muted">{profile.scores[key] || "—"}</span>)}

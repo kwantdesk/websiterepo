@@ -121,3 +121,14 @@ export function normalizePresenceStatus(value: unknown): PresenceStatus {
 export function presenceOption(status: PresenceStatus) {
   return PRESENCE_OPTIONS.find((option) => option.value === status) ?? PRESENCE_OPTIONS[0];
 }
+
+export function effectivePresenceStatus(
+  status: PresenceStatus | null | undefined,
+  lastSeenAt?: string | null,
+  now = Date.now(),
+): PresenceStatus {
+  const normalized = normalizePresenceStatus(status);
+  if (normalized !== "online") return normalized;
+  const lastSeen = lastSeenAt ? Date.parse(lastSeenAt) : 0;
+  return lastSeen > 0 && now - lastSeen < 150_000 ? "online" : "offline";
+}

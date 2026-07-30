@@ -39,6 +39,15 @@ import type {
   ChartGammaSourceLevel,
   ChartGammaSourceSnapshot,
 } from "@/lib/chartGammaLevels";
+import {
+  buildGexDeskPayload,
+  emptyGexDeskPressure,
+  type GexDeskPayload,
+  type GexDeskPressure,
+  type GexDeskPressureSource,
+  type GexDeskSourceSnapshot,
+  type GexDeskSourceSymbol,
+} from "@/lib/gexDesk";
 
 const API_BASE = "https://api.quantdata.us/v1";
 const CACHE_TTL_MS = 4_000;
@@ -61,6 +70,7 @@ type CachedEndpoint = {
 
 const requestCache = new Map<string, CachedRequest>();
 const endpointCache = new Map<string, CachedEndpoint>();
+let gexDeskCache: { expiresAt: number; promise: Promise<GexDeskPayload> } | null = null;
 
 class QuantDataError extends Error {
   constructor(
@@ -1668,6 +1678,170 @@ export async function getGexMapPanel(
       .filter((value): value is number => value !== null)
       .sort((a, b) => a - b)[0] ?? null,
   };
+}
+
+function gexDeskPressureSource(
+  symbol: GexDeskSourceSymbol,
+  payload: unknown,
+): GexDeskPressureSource {
+  const rows = isRecord(payload) && Array.isArray(payload.data) ? payload.data : [];
+  let signedWeight = 0;
+  let totalWeight = 0;
+  let confidenceWeight = 0;
+  let callWeight = 0;
+  let newestTimestamp = 0;
+  let tradeCount = 0;
+
+  for (const raw of rows) {
+    if (!isRecord(raw)) continue;
+    const contract = textValue(raw.contractType).toUpperCase();
+    if (contract !== "CALL" && contract !== "PUT") continue;
+    const side = (textValue(raw.tradeSideCode) || textValue(raw.tradeSide)).toUpperCase();
+    const bought = side.includes("ASK") || side === "AA" || side === "A";
+    const sold = side.includes("BID") || side === "BB" || side === "B";
+    const consolidation = textValue(raw.tradeConsolidationType).toUpperCase();
+    const confidence = bought || sold
+      ? consolidation.includes("COMPLEX") || consolidation.includes("MULTI")
+        ? 0.55
+        : 1
+      : 0.3;
+    const sideSign = bought ? 1 : sold ? -1 : 0;
+    const contractSign = contract === "CALL" ? 1 : -1;
+    const sentiment = classifySentiment(raw);
+    const fallbackSign = sentiment === "BULLISH" ? 1 : sentiment === "BEARISH" ? -1 : 0;
+    const direction = sideSign ? sideSign * contractSign : fallbackSign;
+    const delta = Math.abs(
+      finiteNumber(raw.delta)
+      ?? finiteNumber(raw.optionDelta)
+      ?? finiteNumber(raw.greekDelta)
+      ?? 0,
+    );
+    const size = Math.max(1, finiteNumber(raw.size) ?? finiteNumber(raw.quantity) ?? 1);
+    const premium = Math.max(1, finiteNumber(raw.premium) ?? 1);
+    const magnitude = delta > 0
+      ? delta * size
+      : Math.sqrt(premium);
+    const weight = magnitude * confidence;
+    signedWeight += direction * weight;
+    totalWeight += Math.abs(weight);
+    confidenceWeight += confidence * Math.abs(weight);
+    if (contract === "CALL") callWeight += Math.abs(weight);
+    const rawTimestamp = finiteNumber(raw.tradeTime) ?? 0;
+    const timestamp = rawTimestamp > 0 && rawTimestamp < 10_000_000_000
+      ? rawTimestamp * 1_000
+      : rawTimestamp;
+    newestTimestamp = Math.max(newestTimestamp, timestamp);
+    tradeCount += 1;
+  }
+
+  return {
+    symbol,
+    score: totalWeight > 0 ? Math.max(-100, Math.min(100, signedWeight / totalWeight * 100)) : 0,
+    confidence: totalWeight > 0 ? Math.max(0, Math.min(1, confidenceWeight / totalWeight)) : 0,
+    tradeCount,
+    callShare: totalWeight > 0 ? callWeight / totalWeight : 0.5,
+    asOf: newestTimestamp > 0 ? new Date(newestTimestamp).toISOString() : null,
+  };
+}
+
+function combineGexDeskPressure(sources: GexDeskPressureSource[]): GexDeskPressure {
+  const weighted = sources.map((source) => ({
+    source,
+    weight: Math.max(0.1, source.confidence) * Math.sqrt(Math.max(1, source.tradeCount)),
+  }));
+  const totalWeight = weighted.reduce((sum, entry) => sum + entry.weight, 0);
+  if (!totalWeight || !sources.some((source) => source.tradeCount > 0)) return emptyGexDeskPressure(sources);
+  const score = weighted.reduce((sum, entry) => sum + entry.source.score * entry.weight, 0) / totalWeight;
+  const confidence = weighted.reduce((sum, entry) => sum + entry.source.confidence * entry.weight, 0) / totalWeight;
+  return {
+    score,
+    state: score > 12 ? "CALL_PRESSURE" : score < -12 ? "PUT_PRESSURE" : "BALANCED",
+    persistence: Math.abs(score) >= 42 ? "BUILDING" : Math.abs(score) <= 10 ? "FADING" : "STEADY",
+    confidence,
+    tradeCount: sources.reduce((sum, source) => sum + source.tradeCount, 0),
+    method: "Estimated confidence-weighted signed delta demand; directional premium proxy where option delta is unavailable",
+    sources,
+  };
+}
+
+async function buildGexDeskServerPayload(): Promise<GexDeskPayload> {
+  const session = getUsOptionsSession();
+  const symbols = ["NDX", "QQQ"] as const;
+  const [requests, nqPrice] = await Promise.all([
+    Promise.allSettled([
+    ...symbols.map((symbol) => quantDataPost("/options/tool/exposure-by-strike", {
+      sessionDate: session.sessionDate,
+      greekMode: "GAMMA",
+      representationMode: "PER_ONE_PERCENT_MOVE",
+      filter: { ticker: symbol },
+    }, 15_000)),
+    ...symbols.map((symbol) => quantDataPost("/options/tool/exposure-by-strike", {
+      sessionDate: session.sessionDate,
+      greekMode: "GAMMA",
+      representationMode: "PER_ONE_PERCENT_MOVE",
+      filter: { ticker: symbol, expirationDate: session.sessionDate },
+    }, 15_000)),
+    ...symbols.map((symbol) => quantDataPost("/options/tool/order-flow/consolidated", {
+      sessionDate: session.sessionDate,
+      filter: { ticker: symbol },
+      size: 160,
+      sort: { field: "tradeTime", direction: "DESCENDING" },
+    }, 5_000)),
+    ]),
+    getNativeFuturesSpot("NQ").catch(() => null),
+  ]);
+
+  const fullResults = requests.slice(0, 2);
+  const zeroDteResults = requests.slice(2, 4);
+  const flowResults = requests.slice(4, 6);
+  const sources: GexDeskSourceSnapshot[] = symbols.map((symbol, index) => {
+    const full = fullResults[index];
+    const zeroDte = zeroDteResults[index];
+    const fullPayload = full?.status === "fulfilled" ? full.value.payload : null;
+    const zeroPayload = zeroDte?.status === "fulfilled" ? zeroDte.value.payload : null;
+    const exposure = parseExposure(fullPayload, symbol, "GAMMA");
+    const zeroDteExposure = parseExposure(zeroPayload, symbol, "GAMMA", session.sessionDate);
+    const spot = readStockPrice(fullPayload, symbol);
+    const failure = full?.status === "rejected"
+      ? full.reason instanceof Error ? full.reason.message : "positioning unavailable"
+      : exposure && spot
+        ? null
+        : "positioning snapshot is incomplete";
+    return {
+      symbol,
+      spot,
+      status: exposure && spot ? session.marketOpen ? "LIVE" : "LAST_GOOD" : "UNAVAILABLE",
+      asOf: new Date().toISOString(),
+      exposure,
+      zeroDteExposure,
+      error: failure,
+    };
+  });
+  const pressureSources = symbols.map((symbol, index) => {
+    const flow = flowResults[index];
+    return gexDeskPressureSource(
+      symbol,
+      flow?.status === "fulfilled" ? flow.value.payload : null,
+    );
+  });
+  return buildGexDeskPayload({
+    sessionDate: session.sessionDate,
+    marketOpen: session.marketOpen,
+    nqPrice,
+    sources,
+    pressure: combineGexDeskPressure(pressureSources),
+    refreshAfterMs: session.marketOpen ? 15_000 : 60_000,
+  });
+}
+
+export function getGexDeskPayload(): Promise<GexDeskPayload> {
+  if (gexDeskCache && gexDeskCache.expiresAt > Date.now()) return gexDeskCache.promise;
+  const promise = buildGexDeskServerPayload().catch((error) => {
+    gexDeskCache = null;
+    throw error;
+  });
+  gexDeskCache = { expiresAt: Date.now() + 12_000, promise };
+  return promise;
 }
 
 export async function getOptionsFlowPayload(symbolInput: string, priceModeInput: string = "CASH") {

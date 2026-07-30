@@ -59,6 +59,7 @@ import {
   type DeskWorkspace as DeskWorkspaceModel,
 } from "@/lib/desks";
 import { type SocialProfilePayload } from "@/lib/socials";
+import { effectivePresenceStatus, presenceOption } from "@/lib/friends";
 import {
   type ChangeEvent,
   type KeyboardEvent,
@@ -161,9 +162,11 @@ function memberBadgeColor(member: DeskMember) {
 }
 
 function memberIsOnline(profile: DeskMemberProfile) {
-  if (profile.presenceStatus === "offline" || profile.presenceStatus === "sleeping") return false;
-  const lastSeen = profile.lastSeenAt ? Date.parse(profile.lastSeenAt) : 0;
-  return Boolean(lastSeen && Date.now() - lastSeen < 150_000);
+  return memberPresenceStatus(profile) === "online";
+}
+
+function memberPresenceStatus(profile: DeskMemberProfile) {
+  return effectivePresenceStatus(profile.presenceStatus, profile.lastSeenAt);
 }
 
 function MemberRoleIcon({ icon, className = "h-3 w-3" }: { icon: DeskBadgeIcon; className?: string }) {
@@ -274,7 +277,14 @@ function ProfileAvatar({
   profile: DeskMemberProfile;
   size?: "sm" | "md";
 }) {
-  return <UserAvatar label={profile.displayName} avatarUrl={profile.avatarUrl} size={size} active={memberIsOnline(profile)} />;
+  return (
+    <UserAvatar
+      label={profile.displayName}
+      avatarUrl={profile.avatarUrl}
+      size={size}
+      statusClassName={presenceOption(memberPresenceStatus(profile)).dotClassName}
+    />
+  );
 }
 
 function Toggle({
@@ -1290,7 +1300,7 @@ export default function DeskWorkspace({
                 </div>
                 <div className="border-t border-border p-3">
                   <div className="rounded-xl border border-border bg-surface/30 p-2.5">
-                    <div className="flex items-center gap-2"><ProfileAvatar profile={profileFor(viewerId)} size="sm" /><div className="min-w-0 flex-1"><div className="truncate text-[8px] font-semibold">{profileFor(viewerId).displayName}</div>{activeMembership ? <MemberRoleBadge member={activeMembership} compact /> : null}</div><span className="h-2 w-2 rounded-full bg-primary shadow-[0_0_8px_var(--primary)]" /></div>
+                    <div className="flex items-center gap-2"><ProfileAvatar profile={profileFor(viewerId)} size="sm" /><div className="min-w-0 flex-1"><div className="truncate text-[8px] font-semibold">{profileFor(viewerId).displayName}</div>{activeMembership ? <MemberRoleBadge member={activeMembership} compact /> : null}</div></div>
                   </div>
                 </div>
               </>
@@ -1521,13 +1531,16 @@ export default function DeskWorkspace({
                     <option value="inactive">Inactive · {inactiveRoster.length}</option>
                   </KwantSelect>
                   <div className="mt-2 space-y-1">
-                    {visibleRoster.slice(0, 12).map(({ member, profile, online, inactive }) => (
-                      <button key={member.userId} type="button" onClick={() => onOpenProfile?.(profile.handle)} className="flex w-full items-center gap-2 rounded-xl px-2 py-2 text-left hover:bg-surface/40">
-                        <span className="relative"><ProfileAvatar profile={profile} size="sm" /><span className={`absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full border-2 border-panel ${online ? "bg-primary shadow-[0_0_7px_var(--primary)]" : inactive ? "bg-danger/70" : "bg-muted"}`} /></span>
-                        <span className="min-w-0 flex-1"><span className="block truncate text-[7px] font-semibold">{profile.displayName}</span><MemberRoleBadge member={member} compact /></span>
-                        <span className="text-[5px] uppercase tracking-[0.08em] text-muted">{online ? "Online" : inactive ? "Inactive" : "Offline"}</span>
-                      </button>
-                    ))}
+                    {visibleRoster.slice(0, 12).map(({ member, profile, inactive }) => {
+                      const presence = presenceOption(memberPresenceStatus(profile));
+                      return (
+                        <button key={member.userId} type="button" onClick={() => onOpenProfile?.(profile.handle)} className="flex w-full items-center gap-2 rounded-xl px-2 py-2 text-left hover:bg-surface/40">
+                          <ProfileAvatar profile={profile} size="sm" />
+                          <span className="min-w-0 flex-1"><span className="block truncate text-[7px] font-semibold">{profile.displayName}</span><MemberRoleBadge member={member} compact /></span>
+                          <span className="text-[5px] uppercase tracking-[0.08em] text-muted">{inactive ? "Inactive" : presence.label}</span>
+                        </button>
+                      );
+                    })}
                     {!visibleRoster.length ? <div className="rounded-xl border border-dashed border-border p-4 text-center text-[6px] text-muted">No users in this status.</div> : null}
                   </div>
                 </div>
@@ -1623,13 +1636,13 @@ export default function DeskWorkspace({
             {memberLeaderboard.map((member, index) => {
               const profile = profileFor(member.userId);
               const canRemove = member.role !== "owner" && (member.userId === viewerId || owner || (activeMembership?.role === "moderator" && member.role === "member"));
-              const online = memberIsOnline(profile);
+              const presence = presenceOption(memberPresenceStatus(profile));
               return (
                 <div key={member.userId} className="flex flex-wrap items-center gap-3 rounded-2xl border border-border bg-background/30 p-3">
                   <span className="w-5 font-mono text-[8px] text-muted">{String(index + 1).padStart(2, "0")}</span>
                   <ProfileAvatar profile={profile} />
                   <div className="min-w-[180px] flex-1">
-                    <div className="flex flex-wrap items-center gap-2"><button type="button" onClick={() => onOpenProfile?.(profile.handle)} className="text-[9px] font-semibold hover:text-primary">{profile.displayName}</button><MemberRoleBadge member={member} /><span className={`h-1.5 w-1.5 rounded-full ${online ? "bg-primary shadow-[0_0_7px_var(--primary)]" : "bg-muted"}`} /></div>
+                    <div className="flex flex-wrap items-center gap-2"><button type="button" onClick={() => onOpenProfile?.(profile.handle)} className="text-[9px] font-semibold hover:text-primary">{profile.displayName}</button><MemberRoleBadge member={member} /><span title={presence.label} className={`h-1.5 w-1.5 rounded-full ${presence.dotClassName}`} /></div>
                     <div className="mt-1 text-[7px] text-muted">@{profile.handle} · active {formatDateTime(member.lastActiveAt)}</div>
                     {member.responsibilities ? <div className="mt-1.5 max-w-xl text-[7px] leading-4 text-muted">{member.responsibilities}</div> : null}
                   </div>

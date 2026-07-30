@@ -8,6 +8,7 @@ import {
   Bot,
   CalendarDays,
   Home,
+  Layers3,
   LineChart,
   NotebookPen,
   ScanLine,
@@ -24,6 +25,7 @@ type SidebarKey =
   | "charts"
   | "gamma"
   | "gexmap"
+  | "gexdesk"
   | "gameplan"
   | "kwantbot"
   | "automation"
@@ -71,6 +73,7 @@ const navItems: Array<{
   { key: "charts", href: "/charts", label: "Charts", title: "Charts", icon: LineChart },
   { key: "gamma", href: "/gamma", label: "Gamma", title: "Gamma", icon: BarChart3 },
   { key: "gexmap", href: "/gexmap", label: "GEXMAP", title: "GEX Map", icon: ScanLine },
+  { key: "gexdesk", href: "/gexdesk", label: "Gexdesk", title: "Gexdesk", icon: Layers3 },
   { key: "gameplan", href: "/gameplan", label: "Gameplan", title: "Gameplan", icon: CalendarDays },
   { key: "kwantbot", href: "/kwantbot", label: "KwantBot", title: "KwantBot", icon: Bot },
   { key: "news", href: "/news", label: "News", title: "News", icon: BookOpen },
@@ -82,6 +85,7 @@ const navItems: Array<{
 function preloadWorkspace(key: SidebarKey) {
   if (key === "gamma") return import("@/components/options-flow/GammaWorkspace");
   if (key === "gexmap") return import("@/components/gex-map/GexMapWorkspace");
+  if (key === "gexdesk") return import("@/components/gexdesk/GexDeskWorkspace");
   if (key === "gameplan") return import("@/components/gameplan/GameplanWorkspace");
   if (key === "kwantbot") return import("@/components/kwantbot/KwantBotIntelligenceWorkspace");
   if (key === "news") return import("@/components/news/NewsWorkspace");

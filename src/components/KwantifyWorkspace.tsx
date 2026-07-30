@@ -207,6 +207,10 @@ const GexMapWorkspace = dynamic(() => import("@/components/gex-map/GexMapWorkspa
   ssr: false,
   loading: () => workspaceLoader("Opening GEXMAP", "Restoring exposure panels."),
 });
+const GexDeskWorkspace = dynamic(() => import("@/components/gexdesk/GexDeskWorkspace"), {
+  ssr: false,
+  loading: () => workspaceLoader("Opening Gexdesk", "Mapping options positioning onto live NQ."),
+});
 const GameplanWorkspace = dynamic(() => import("@/components/gameplan/GameplanWorkspace"), {
   ssr: false,
   loading: () => workspaceLoader("Opening Gameplan", "Loading the active session map."),
@@ -402,7 +406,7 @@ type LevelExportRow = {
   source: string;
   asOf: string;
 };
-export type PrimaryWorkspaceSection = "charts" | "gamma" | "gexmap" | "gameplan" | "kwantbot" | "news" | "zyon" | "journal" | "socials";
+export type PrimaryWorkspaceSection = "charts" | "gamma" | "gexmap" | "gexdesk" | "gameplan" | "kwantbot" | "news" | "zyon" | "journal" | "socials";
 
 const WORKSPACE_PRESETS_STORAGE_KEY = "kwantdesk-chart-workspace-presets";
 const ACTIVE_WORKSPACE_PRESET_STORAGE_KEY = "kwantdesk-chart-workspace-active-preset";
@@ -414,6 +418,7 @@ const BOTTOM_WORKSPACE_SECTIONS = [
   { id: "charts" as const, label: "Charts" },
   { id: "gamma" as const, label: "Gamma" },
   { id: "gexmap" as const, label: "GEXMAP" },
+  { id: "gexdesk" as const, label: "Gexdesk" },
   { id: "gameplan" as const, label: "Gameplan" },
   { id: "kwantbot" as const, label: "KwantBot" },
   { id: "news" as const, label: "News" },
@@ -8266,6 +8271,7 @@ export default function KwantifyWorkspace({
           >
             {bottomWorkspaceSection === "gamma" ? <GammaWorkspace /> : null}
             {bottomWorkspaceSection === "gexmap" ? <GexMapWorkspace /> : null}
+            {bottomWorkspaceSection === "gexdesk" ? <GexDeskWorkspace /> : null}
             {bottomWorkspaceSection === "gameplan" ? <GameplanWorkspace initialInstrument={displayCmeSymbol(selectedInstrument)} /> : null}
             {bottomWorkspaceSection === "kwantbot" ? <KwantBotIntelligenceWorkspace interpreter={kwantBotInterpreter} /> : null}
             {bottomWorkspaceSection === "news" ? <NewsWorkspace /> : null}

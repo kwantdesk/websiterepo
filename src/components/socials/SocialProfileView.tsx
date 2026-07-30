@@ -42,6 +42,7 @@ import type {
 } from "@/lib/socialFollows";
 import ReasoningOutcomeChart from "@/components/socials/ReasoningOutcomeChart";
 import UserAvatar from "@/components/socials/UserAvatar";
+import { effectivePresenceStatus, presenceOption } from "@/lib/friends";
 
 type SocialProfileViewProps = {
   profileObject: SocialObject;
@@ -275,7 +276,13 @@ export default function SocialProfileView({
 
         <div className="relative px-4 pb-5 sm:px-7">
           <div className="-mt-12 flex flex-col gap-4 sm:flex-row sm:items-end">
-            <UserAvatar label={profile.displayName} avatarUrl={profile.avatarUrl} size="xl" active className="rounded-full border-[5px] border-panel shadow-2xl" />
+            <UserAvatar
+              label={profile.displayName}
+              avatarUrl={profile.avatarUrl}
+              size="xl"
+              statusClassName={presenceOption(effectivePresenceStatus(profile.presenceStatus, profile.lastSeenAt)).dotClassName}
+              className="rounded-full border-[5px] border-panel shadow-2xl"
+            />
 
             <div className="min-w-0 flex-1 pb-1">
               <div className="flex flex-wrap items-center gap-2">
