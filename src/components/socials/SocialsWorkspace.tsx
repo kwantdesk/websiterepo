@@ -94,6 +94,7 @@ import {
   DESK_CREATED_EVENT,
   type CreatedDeskPayload,
 } from "@/lib/desks";
+import { DATABENTO_LIVE_TICK_EVENT } from "@/lib/chartLiveEvents";
 import {
   type PointerEvent as ReactPointerEvent,
   useCallback,
@@ -1022,10 +1023,13 @@ export default function SocialsWorkspace({
 
     void evaluate();
     const timer = window.setInterval(() => void evaluate(), 20_000);
-    const live = new EventSource("/api/databento/live?symbols=NQ.v.0%2CES.v.0");
-    live.onmessage = (event) => {
+    const receiveLiveTick = (event: Event) => {
       try {
-        const tick = JSON.parse(event.data) as { instrument?: string; mid?: number; timestamp?: string | number };
+        const tick = (event as CustomEvent<{
+          instrument?: string;
+          mid?: number;
+          timestamp?: string | number;
+        }>).detail;
         const instrument = String(tick.instrument ?? "").toUpperCase();
         const root: "NQ" | "ES" | null = instrument.startsWith("NQ")
           ? "NQ"
@@ -1058,9 +1062,10 @@ export default function SocialsWorkspace({
         }
       } catch {}
     };
+    window.addEventListener(DATABENTO_LIVE_TICK_EVENT, receiveLiveTick);
     return () => {
       cancelled = true;
-      live.close();
+      window.removeEventListener(DATABENTO_LIVE_TICK_EVENT, receiveLiveTick);
       window.clearInterval(timer);
     };
   }, [currentProfile.displayName, myReasoningRecords, receipts, resolvedAccountKey, saveObject]);

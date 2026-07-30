@@ -79,6 +79,17 @@ const navItems: Array<{
   { key: "socials", href: "/socials", label: "Socials", title: "Socials", icon: UsersRound },
 ];
 
+function preloadWorkspace(key: SidebarKey) {
+  if (key === "gamma") return import("@/components/options-flow/GammaWorkspace");
+  if (key === "gexmap") return import("@/components/gex-map/GexMapWorkspace");
+  if (key === "gameplan") return import("@/components/gameplan/GameplanWorkspace");
+  if (key === "kwantbot") return import("@/components/kwantbot/KwantBotIntelligenceWorkspace");
+  if (key === "news") return import("@/components/news/NewsWorkspace");
+  if (key === "zyon") return import("@/components/zyon/ZyonWorkspace");
+  if (key === "journal") return import("@/components/journal/JournalWorkspace");
+  return Promise.resolve();
+}
+
 function ActiveUnderline() {
   return (
     <span
@@ -110,7 +121,14 @@ export default function AppSidebar({
           </button>
 
           {navItems.map(({ key, href, label, title, icon: Icon }) => (
-            <Link key={key} href={href} className={activeItem === key ? verticalItemActive : verticalItemInactive} title={title}>
+            <Link
+              key={key}
+              href={href}
+              onPointerEnter={() => void preloadWorkspace(key)}
+              onFocus={() => void preloadWorkspace(key)}
+              className={activeItem === key ? verticalItemActive : verticalItemInactive}
+              title={title}
+            >
               <Icon className="h-[18px] w-[18px] shrink-0" />
               <span className={verticalItemLabel}>{label}</span>
             </Link>
@@ -141,6 +159,8 @@ export default function AppSidebar({
               key={key}
               href={href}
               prefetch
+              onPointerEnter={() => void preloadWorkspace(key)}
+              onFocus={() => void preloadWorkspace(key)}
               aria-current={active ? "page" : undefined}
               className={active ? horizontalItemActive : horizontalItemInactive}
               title={title}

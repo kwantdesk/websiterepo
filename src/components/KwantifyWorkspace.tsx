@@ -154,7 +154,12 @@ import {
   type ChartIntervalKind,
 } from "@/lib/chartIntervals";
 import { applyMarketTradesToEventBars, futuresTickSize } from "@/lib/eventBars";
-import { LIVE_CHART_CANDLE_EVENT } from "@/lib/chartLiveEvents";
+import {
+  DATABENTO_LIVE_STATUS_EVENT,
+  DATABENTO_LIVE_TICK_EVENT,
+  LIVE_CHART_CANDLE_EVENT,
+  type DatabentoLiveStatus,
+} from "@/lib/chartLiveEvents";
 import {
   mergeChartHistory,
   readCompatibleChartHistoryCache,
@@ -177,11 +182,37 @@ import {
   type ChartAlertRecord,
 } from "@/lib/chartAlerts";
 
-const Chart = dynamic(() => import("@/components/Chart"), { ssr: false });
-const GammaWorkspace = dynamic(() => import("@/components/options-flow/GammaWorkspace"), { ssr: false });
-const GexMapWorkspace = dynamic(() => import("@/components/gex-map/GexMapWorkspace"), { ssr: false });
-const GameplanWorkspace = dynamic(() => import("@/components/gameplan/GameplanWorkspace"), { ssr: false });
-const NewsWorkspace = dynamic(() => import("@/components/news/NewsWorkspace"), { ssr: false });
+function workspaceLoader(title: string, detail: string) {
+  return (
+    <KwantLoader
+      className="h-full min-h-0 flex-1"
+      compact
+      title={title}
+      detail={detail}
+    />
+  );
+}
+
+const Chart = dynamic(() => import("@/components/Chart"), {
+  ssr: false,
+  loading: () => workspaceLoader("Loading chart", "Restoring cached candles and layout."),
+});
+const GammaWorkspace = dynamic(() => import("@/components/options-flow/GammaWorkspace"), {
+  ssr: false,
+  loading: () => workspaceLoader("Opening Gamma", "Restoring the latest options view."),
+});
+const GexMapWorkspace = dynamic(() => import("@/components/gex-map/GexMapWorkspace"), {
+  ssr: false,
+  loading: () => workspaceLoader("Opening GEXMAP", "Restoring exposure panels."),
+});
+const GameplanWorkspace = dynamic(() => import("@/components/gameplan/GameplanWorkspace"), {
+  ssr: false,
+  loading: () => workspaceLoader("Opening Gameplan", "Loading the active session map."),
+});
+const NewsWorkspace = dynamic(() => import("@/components/news/NewsWorkspace"), {
+  ssr: false,
+  loading: () => workspaceLoader("Opening News", "Loading the economic calendar."),
+});
 const ZyonWorkspace = dynamic(() => import("@/components/zyon/ZyonWorkspace"), {
   ssr: false,
   loading: () => (
@@ -194,7 +225,10 @@ const ZyonWorkspace = dynamic(() => import("@/components/zyon/ZyonWorkspace"), {
     />
   ),
 });
-const JournalWorkspace = dynamic(() => import("@/components/journal/JournalWorkspace"), { ssr: false });
+const JournalWorkspace = dynamic(() => import("@/components/journal/JournalWorkspace"), {
+  ssr: false,
+  loading: () => workspaceLoader("Opening Journal", "Restoring account records."),
+});
 
 const BOTTOM_PANEL_MIN_HEIGHT = 150;
 const BOTTOM_PANEL_DEFAULT_HEIGHT = 300;
@@ -2351,9 +2385,9 @@ function WorkspaceChartPane({
         const price = (event as CustomEvent<LiveFeedPrice>).detail;
         if (price) consumeLivePrice(price);
       };
-      window.addEventListener("kwantdesk:databento-tick", receiveSharedDatabentoTick);
+      window.addEventListener(DATABENTO_LIVE_TICK_EVENT, receiveSharedDatabentoTick);
       return () => {
-        window.removeEventListener("kwantdesk:databento-tick", receiveSharedDatabentoTick);
+        window.removeEventListener(DATABENTO_LIVE_TICK_EVENT, receiveSharedDatabentoTick);
         clearPendingFrame();
       };
     }
@@ -2916,6 +2950,8 @@ export default function KwantifyWorkspace({
   socialProfileHandle?: string;
 }) {
   const router = useRouter();
+  const activeWorkspaceSectionRef = useRef(section);
+  activeWorkspaceSectionRef.current = section;
   const supabase = useMemo(() => createClient(), []);
   const [authChecked, setAuthChecked] = useState(false);
   const [preferenceUserId, setPreferenceUserId] = useState("");
@@ -3130,6 +3166,12 @@ export default function KwantifyWorkspace({
     initialRoot: gameplanChartRootForInstrument(selectedInstrument) ?? "NQ",
     panelOpen: rightPanel === "kwantbot",
     optionsPanelOpen: rightPanel === "optionstape",
+    enabled: section === "kwantbot"
+      || section === "zyon"
+      || (
+        section === "charts"
+        && (rightPanel === "kwantbot" || rightPanel === "optionstape" || rightPanel === "zyon")
+      ),
   });
   const [alertLogCount, setAlertLogCount] = useState(5);
   const [friendsUnreadCount, setFriendsUnreadCount] = useState(0);
@@ -4373,7 +4415,7 @@ export default function KwantifyWorkspace({
   }, []);
 
   useEffect(() => {
-    if (!authChecked || databentoOptions.length > 0) return;
+    if (section !== "charts" || !authChecked || databentoOptions.length > 0) return;
     let active = true;
     setOptionsLoading(true);
     fetch("/api/databento/options", { cache: "no-store" })
@@ -4391,10 +4433,10 @@ export default function KwantifyWorkspace({
     return () => {
       active = false;
     };
-  }, [authChecked, databentoOptions.length]);
+  }, [authChecked, databentoOptions.length, section]);
 
   useEffect(() => {
-    if (!authChecked) return;
+    if (section !== "charts" || !authChecked) return;
     const abortController = new AbortController();
     let cancelled = false;
     let warmupTimer: number | null = null;
@@ -4435,7 +4477,7 @@ export default function KwantifyWorkspace({
       if (warmupTimer !== null) window.clearTimeout(warmupTimer);
       abortController.abort();
     };
-  }, [authChecked]);
+  }, [authChecked, section]);
 
   useEffect(() => {
     savePaperTradingAccounts(paperTradingAccounts);
@@ -4681,7 +4723,7 @@ export default function KwantifyWorkspace({
 
       animationFrame = window.requestAnimationFrame(() => {
         for (const quote of quotes.values()) {
-          window.dispatchEvent(new CustomEvent("kwantdesk:databento-tick", {
+          window.dispatchEvent(new CustomEvent(DATABENTO_LIVE_TICK_EVENT, {
             detail: { ...quote, cached: true } satisfies LiveFeedPrice,
           }));
         }
@@ -4725,10 +4767,17 @@ export default function KwantifyWorkspace({
     let reconnecting = false;
     let streamMarkedHealthy = false;
     let reconnectTimer: number | null = null;
+    const publishDatabentoStatus = (status: DatabentoLiveStatus) => {
+      if (!usingDatabentoFeed) return;
+      window.dispatchEvent(new CustomEvent(DATABENTO_LIVE_STATUS_EVENT, {
+        detail: status,
+      }));
+    };
     const markStreamAlive = () => {
       lastMessageAt = Date.now();
       if (streamMarkedHealthy) return;
       streamMarkedHealthy = true;
+      publishDatabentoStatus("live");
       setStreamHealthyByBroker((current) => current[activeChartBrokerLabel]
         ? current
         : { ...current, [activeChartBrokerLabel]: true });
@@ -4743,6 +4792,7 @@ export default function KwantifyWorkspace({
       if (reconnecting) return;
       reconnecting = true;
       eventSource.close();
+      publishDatabentoStatus("reconnecting");
       setStreamHealthyByBroker((current) => ({ ...current, [activeChartBrokerLabel]: false }));
       setFeedErrorByBroker((current) => ({
         ...current,
@@ -4782,7 +4832,7 @@ export default function KwantifyWorkspace({
 
         const displayName = usingDatabentoFeed || usingCTraderFeed ? price.instrument : (nameMap[price.instrument] || price.instrument);
         if (usingDatabentoFeed) {
-          window.dispatchEvent(new CustomEvent("kwantdesk:databento-tick", { detail: price }));
+          window.dispatchEvent(new CustomEvent(DATABENTO_LIVE_TICK_EVENT, { detail: price }));
           const previousItem = watchlistRef.current.find(
             (item) => item.broker === "Databento" && item.symbol === displayName,
           );
@@ -4796,8 +4846,9 @@ export default function KwantifyWorkspace({
               const quotes = [...pendingLiveQuoteCacheRef.current.values()];
               pendingLiveQuoteCacheRef.current.clear();
               if (quotes.length) writeLiveQuoteCache(quotes);
-            }, 1_000);
+            }, 5_000);
           }
+          if (activeWorkspaceSectionRef.current !== "charts") return;
         }
         pendingWatchlistPricesRef.current.set(displayName, price);
         if (watchlistLiveFrameRef.current !== null) return;
@@ -4907,6 +4958,7 @@ export default function KwantifyWorkspace({
   }, [activeChartBrokerLabel, streamReconnectNonce, usingCTraderFeed, usingDatabentoFeed, watchlistSymbolsCsv]);
 
   useEffect(() => {
+    if (section !== "charts") return;
     if (activeChartBrokerLabel === "Massive" || activeChartBrokerLabel === "Databento") {
       return;
     }
@@ -5010,9 +5062,10 @@ export default function KwantifyWorkspace({
     fetchPrices();
     const interval = window.setInterval(fetchPrices, 500);
     return () => window.clearInterval(interval);
-  }, [activeChartBrokerLabel, chartTrades.length, selectedInstrument, selectedTimeframe, streamHealthyByBroker, usingCTraderFeed, watchlistSymbolsCsv]);
+  }, [activeChartBrokerLabel, chartTrades.length, section, selectedInstrument, selectedTimeframe, streamHealthyByBroker, usingCTraderFeed, watchlistSymbolsCsv]);
 
   useEffect(() => {
+    if (section !== "charts") return;
     const nameMap: Record<string, string> = {
       EUR_USD: "EURUSD",
       GBP_USD: "GBPUSD",
@@ -5095,7 +5148,7 @@ export default function KwantifyWorkspace({
     updateInactiveFeeds();
     const interval = window.setInterval(updateInactiveFeeds, 5_000);
     return () => window.clearInterval(interval);
-  }, [activeChartBrokerLabel, cTraderBrokerNameSet, watchlistBrokerSymbols]);
+  }, [activeChartBrokerLabel, cTraderBrokerNameSet, section, watchlistBrokerSymbols]);
 
   async function fetchChartCandles(
     outputsize = 500,
@@ -5194,6 +5247,7 @@ export default function KwantifyWorkspace({
   }
 
   useEffect(() => {
+    if (section !== "charts") return;
     if (!selectedInstrument) return;
     if (chartTrades.length > 0) return;
 
@@ -5248,9 +5302,10 @@ export default function KwantifyWorkspace({
 
     const interval = window.setInterval(checkNewCandle, 5000);
     return () => window.clearInterval(interval);
-  }, [activeChartBrokerLabel, chartTrades.length, selectedInstrument, selectedTimeframe, usingCTraderFeed]);
+  }, [activeChartBrokerLabel, chartTrades.length, section, selectedInstrument, selectedTimeframe, usingCTraderFeed]);
 
   useEffect(() => {
+    if (section !== "charts") return;
     let cancelled = false;
     const requestController = new AbortController();
     let clearMessageTimer: number | null = null;
@@ -5319,7 +5374,7 @@ export default function KwantifyWorkspace({
       requestController.abort();
       if (clearMessageTimer !== null) window.clearTimeout(clearMessageTimer);
     };
-  }, [selectedInstrument, selectedTimeframe, selectedPeriod]);
+  }, [section, selectedInstrument, selectedTimeframe, selectedPeriod]);
 
   useEffect(() => {
     if (!backtestResult || backtestResult.error) {
@@ -8137,7 +8192,6 @@ export default function KwantifyWorkspace({
         </div>
         ) : (
           <section
-            key={bottomWorkspaceSection}
             className="min-h-0 flex-1 overflow-hidden bg-panel"
             aria-label={`${BOTTOM_WORKSPACE_SECTIONS.find((section) => section.id === bottomWorkspaceSection)?.label ?? "Workspace"} workspace`}
           >

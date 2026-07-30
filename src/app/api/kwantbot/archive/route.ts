@@ -15,6 +15,9 @@ const CONTEXT_TABLE = "kwantbot_context_snapshots";
 const MAX_MESSAGE_BATCH = 500;
 const MAX_MEMORY_BATCH = 1_000;
 const MAX_CONTEXT_BATCH = 24;
+const INITIAL_MESSAGE_PAGE = 180;
+const INITIAL_MEMORY_PAGE = 600;
+const INITIAL_CONTEXT_PAGE = 24;
 
 type ContextSnapshot = {
   snapshotKey: string;
@@ -82,6 +85,17 @@ function parsePayload<T>(
   return (rows ?? []).map((row) => row.payload).filter(guard);
 }
 
+function validCursor(value: string | null) {
+  if (!value) return null;
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : null;
+}
+
+function pageLimit(value: string | null, fallback: number, maximum: number) {
+  const parsed = Math.floor(Number(value));
+  return Number.isFinite(parsed) ? Math.max(1, Math.min(maximum, parsed)) : fallback;
+}
+
 export async function GET(request: NextRequest) {
   const actor = await getRouteActor(request);
   if (!actor || actor.mode !== "supabase") {
@@ -91,6 +105,18 @@ export async function GET(request: NextRequest) {
   const requestedRoot = request.nextUrl.searchParams.get("root");
   const root = isRoot(requestedRoot) ? requestedRoot : null;
   const download = request.nextUrl.searchParams.get("download") === "1";
+  const messageLimit = download
+    ? 10_000
+    : pageLimit(request.nextUrl.searchParams.get("messageLimit"), INITIAL_MESSAGE_PAGE, 500);
+  const memoryLimit = download
+    ? 50_000
+    : pageLimit(request.nextUrl.searchParams.get("memoryLimit"), INITIAL_MEMORY_PAGE, 1_500);
+  const contextLimit = download
+    ? 5_000
+    : pageLimit(request.nextUrl.searchParams.get("contextLimit"), INITIAL_CONTEXT_PAGE, 100);
+  const messagesBefore = validCursor(request.nextUrl.searchParams.get("messagesBefore"));
+  const memoryBefore = validCursor(request.nextUrl.searchParams.get("memoryBefore"));
+  const contextsBefore = validCursor(request.nextUrl.searchParams.get("contextsBefore"));
 
   try {
     const supabase = await createClient();
@@ -99,25 +125,28 @@ export async function GET(request: NextRequest) {
       .select("payload,created_at")
       .eq("user_id", actor.userId)
       .order("created_at", { ascending: false })
-      .limit(download ? 10_000 : 2_000);
+      .limit(messageLimit + (download ? 0 : 1));
     let memoryQuery = supabase
       .from(MEMORY_TABLE)
       .select("payload,created_at")
       .eq("user_id", actor.userId)
       .order("created_at", { ascending: false })
-      .limit(download ? 50_000 : 5_000);
+      .limit(memoryLimit + (download ? 0 : 1));
     let contextQuery = supabase
       .from(CONTEXT_TABLE)
       .select("payload,generated_at,snapshot_key")
       .eq("user_id", actor.userId)
       .order("generated_at", { ascending: false })
-      .limit(download ? 5_000 : 100);
+      .limit(contextLimit + (download ? 0 : 1));
 
     if (root) {
       messageQuery = messageQuery.eq("root", root);
       memoryQuery = memoryQuery.eq("root", root);
       contextQuery = contextQuery.eq("root", root);
     }
+    if (!download && messagesBefore) messageQuery = messageQuery.lt("created_at", messagesBefore);
+    if (!download && memoryBefore) memoryQuery = memoryQuery.lt("created_at", memoryBefore);
+    if (!download && contextsBefore) contextQuery = contextQuery.lt("generated_at", contextsBefore);
 
     const [messageResult, memoryResult, contextResult] = await Promise.all([
       messageQuery,
@@ -127,11 +156,14 @@ export async function GET(request: NextRequest) {
     const error = messageResult.error ?? memoryResult.error ?? contextResult.error;
     if (error) throw new Error(error.message);
 
-    const messages = parsePayload(messageResult.data, isMessage)
+    const messageRows = (messageResult.data ?? []).slice(0, messageLimit);
+    const memoryRows = (memoryResult.data ?? []).slice(0, memoryLimit);
+    const contextRows = (contextResult.data ?? []).slice(0, contextLimit);
+    const messages = parsePayload(messageRows, isMessage)
       .sort((left, right) => Date.parse(left.createdAt) - Date.parse(right.createdAt));
-    const memory = parsePayload(memoryResult.data, isMemoryEvent)
+    const memory = parsePayload(memoryRows, isMemoryEvent)
       .sort((left, right) => Date.parse(left.createdAt) - Date.parse(right.createdAt));
-    const contexts = parsePayload(contextResult.data, isContext)
+    const contexts = parsePayload(contextRows, isContext)
       .sort((left, right) => Date.parse(left.generatedAt) - Date.parse(right.generatedAt));
     const archive = {
       format: "kwantdesk-kwantbot-archive-v1",
@@ -141,6 +173,20 @@ export async function GET(request: NextRequest) {
       messages,
       memory,
       contexts,
+      page: download ? undefined : {
+        messages: {
+          hasMore: (messageResult.data?.length ?? 0) > messageLimit,
+          before: messageRows.at(-1)?.created_at ?? null,
+        },
+        memory: {
+          hasMore: (memoryResult.data?.length ?? 0) > memoryLimit,
+          before: memoryRows.at(-1)?.created_at ?? null,
+        },
+        contexts: {
+          hasMore: (contextResult.data?.length ?? 0) > contextLimit,
+          before: contextRows.at(-1)?.generated_at ?? null,
+        },
+      },
     };
 
     return NextResponse.json(

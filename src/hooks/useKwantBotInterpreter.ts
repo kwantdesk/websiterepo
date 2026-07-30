@@ -28,9 +28,31 @@ import {
   type KwantBotLearningReview,
   type KwantBotLearningSyncState,
 } from "@/lib/kwantBotLearning";
+import {
+  DATABENTO_LIVE_STATUS_EVENT,
+  DATABENTO_LIVE_TICK_EVENT,
+  type DatabentoLiveStatus,
+} from "@/lib/chartLiveEvents";
 
 const ROOTS: KwantBotMarketRoot[] = ["NQ", "ES"];
-const MESSAGE_LIMIT = 500;
+const MESSAGE_LIMIT = 2_000;
+const MEMORY_LIMIT = 5_000;
+const INITIAL_LOCAL_MESSAGE_LIMIT = 500;
+const INITIAL_LOCAL_MEMORY_LIMIT = 1_000;
+
+type ArchivePageState = {
+  messages: { hasMore: boolean; before: string | null };
+  memory: { hasMore: boolean; before: string | null };
+  contexts: { hasMore: boolean; before: string | null };
+};
+
+type ArchivePayload = {
+  configured?: boolean;
+  messages?: KwantBotInterpreterMessage[];
+  memory?: KwantBotMemoryEvent[];
+  contexts?: KwantBotMarketContext[];
+  page?: ArchivePageState;
+};
 
 type RootRecord<T> = Record<KwantBotMarketRoot, T>;
 
@@ -73,6 +95,8 @@ export type UseKwantBotInterpreterResult = {
   learningReviews: KwantBotLearningReview[];
   learningSyncState: KwantBotLearningSyncState;
   archiveSyncState: KwantBotLearningSyncState;
+  archiveHasMore: boolean;
+  archiveLoadingOlder: boolean;
   contexts: RootRecord<KwantBotMarketContext | null>;
   contextStates: RootRecord<KwantBotContextState>;
   contextErrors: RootRecord<string | null>;
@@ -85,19 +109,24 @@ export type UseKwantBotInterpreterResult = {
   optionsUnreadTotal: number;
   requestBrief: (root?: KwantBotMarketRoot) => void;
   refreshContext: (root: KwantBotMarketRoot) => Promise<void>;
+  loadOlderArchive: () => Promise<void>;
 };
 
 export function useKwantBotInterpreter(args: {
   initialRoot?: KwantBotMarketRoot;
   panelOpen: boolean;
   optionsPanelOpen?: boolean;
+  enabled?: boolean;
 }): UseKwantBotInterpreterResult {
+  const runtimeEnabled = args.enabled !== false;
   const [selectedRoot, setSelectedRoot] = useState<KwantBotMarketRoot>(args.initialRoot ?? "NQ");
   const [messages, setMessages] = useState<RootRecord<KwantBotInterpreterMessage[]>>(emptyMessages);
   const [memory, setMemory] = useState<RootRecord<KwantBotMemoryEvent[]>>(emptyMemory);
   const [learningReviews, setLearningReviews] = useState<KwantBotLearningReview[]>([]);
   const [learningSyncState, setLearningSyncState] = useState<KwantBotLearningSyncState>("local");
   const [archiveSyncState, setArchiveSyncState] = useState<KwantBotLearningSyncState>("local");
+  const [archiveHasMore, setArchiveHasMore] = useState(false);
+  const [archiveLoadingOlder, setArchiveLoadingOlder] = useState(false);
   const [archiveSyncPulse, setArchiveSyncPulse] = useState(0);
   const [contexts, setContexts] = useState<RootRecord<KwantBotMarketContext | null>>({
     NQ: null,
@@ -141,6 +170,10 @@ export function useKwantBotInterpreter(args: {
   const archivedMessageIdsRef = useRef(new Set<string>());
   const archivedMemoryIdsRef = useRef(new Set<string>());
   const archivedContextKeysRef = useRef(new Set<string>());
+  const archivePageRef = useRef<ArchivePageState | null>(null);
+  const storeHydrationStartedRef = useRef(false);
+  const cloudArchiveHydratedRef = useRef(false);
+  const cloudLearningHydratedRef = useRef(false);
 
   useEffect(() => {
     selectedRootRef.current = selectedRoot;
@@ -248,17 +281,20 @@ export function useKwantBotInterpreter(args: {
   }, []);
 
   useEffect(() => {
+    if (!runtimeEnabled || storeReady || storeHydrationStartedRef.current) return;
+    storeHydrationStartedRef.current = true;
     let cancelled = false;
+    let settled = false;
     loadKwantBotMarketState()
       .then((stored) => {
         if (cancelled || !stored || stored.version !== 1) return;
         const restoredMessages = {
-          NQ: Array.isArray(stored.messages?.NQ) ? stored.messages.NQ.slice(-MESSAGE_LIMIT) : [],
-          ES: Array.isArray(stored.messages?.ES) ? stored.messages.ES.slice(-MESSAGE_LIMIT) : [],
+          NQ: Array.isArray(stored.messages?.NQ) ? stored.messages.NQ.slice(-INITIAL_LOCAL_MESSAGE_LIMIT) : [],
+          ES: Array.isArray(stored.messages?.ES) ? stored.messages.ES.slice(-INITIAL_LOCAL_MESSAGE_LIMIT) : [],
         };
         const restoredMemory = {
-          NQ: pruneKwantBotMemory(Array.isArray(stored.memory?.NQ) ? stored.memory.NQ : []),
-          ES: pruneKwantBotMemory(Array.isArray(stored.memory?.ES) ? stored.memory.ES : []),
+          NQ: pruneKwantBotMemory(Array.isArray(stored.memory?.NQ) ? stored.memory.NQ : []).slice(-INITIAL_LOCAL_MEMORY_LIMIT),
+          ES: pruneKwantBotMemory(Array.isArray(stored.memory?.ES) ? stored.memory.ES : []).slice(-INITIAL_LOCAL_MEMORY_LIMIT),
         };
         messagesRef.current = restoredMessages;
         memoryRef.current = restoredMemory;
@@ -288,15 +324,17 @@ export function useKwantBotInterpreter(args: {
       })
       .catch(() => undefined)
       .finally(() => {
+        settled = true;
         if (!cancelled) setStoreReady(true);
       });
     return () => {
       cancelled = true;
+      if (!settled) storeHydrationStartedRef.current = false;
     };
-  }, []);
+  }, [runtimeEnabled, storeReady]);
 
   useEffect(() => {
-    if (!storeReady) return;
+    if (!runtimeEnabled || !storeReady) return;
     const timer = window.setTimeout(() => {
       saveKwantBotMarketState({
         version: 1,
@@ -307,76 +345,126 @@ export function useKwantBotInterpreter(args: {
       }).catch(() => undefined);
     }, 800);
     return () => window.clearTimeout(timer);
-  }, [learningReviews, memory, messages, selectedRoot, storeReady]);
+  }, [learningReviews, memory, messages, runtimeEnabled, selectedRoot, storeReady]);
+
+  const mergeArchivePage = useCallback((body: ArchivePayload) => {
+    const remoteMessages = Array.isArray(body.messages) ? body.messages : [];
+    const remoteMemory = Array.isArray(body.memory) ? body.memory : [];
+    const remoteContexts = Array.isArray(body.contexts) ? body.contexts : [];
+    remoteMessages.forEach((item) => archivedMessageIdsRef.current.add(item.id));
+    remoteMemory.forEach((item) => archivedMemoryIdsRef.current.add(item.id));
+    remoteContexts.forEach((item) => archivedContextKeysRef.current.add(contextSnapshotKey(item)));
+
+    const nextMessages: RootRecord<KwantBotInterpreterMessage[]> = {
+      NQ: mergeById(
+        messagesRef.current.NQ,
+        remoteMessages.filter((item) => item.root === "NQ"),
+        MESSAGE_LIMIT,
+      ),
+      ES: mergeById(
+        messagesRef.current.ES,
+        remoteMessages.filter((item) => item.root === "ES"),
+        MESSAGE_LIMIT,
+      ),
+    };
+    const nextMemory: RootRecord<KwantBotMemoryEvent[]> = {
+      NQ: pruneKwantBotMemory(mergeById(
+        memoryRef.current.NQ,
+        remoteMemory.filter((item) => item.root === "NQ"),
+        MEMORY_LIMIT,
+      )).slice(-MEMORY_LIMIT),
+      ES: pruneKwantBotMemory(mergeById(
+        memoryRef.current.ES,
+        remoteMemory.filter((item) => item.root === "ES"),
+        MEMORY_LIMIT,
+      )).slice(-MEMORY_LIMIT),
+    };
+    messagesRef.current = nextMessages;
+    memoryRef.current = nextMemory;
+    setMessages(nextMessages);
+    setMemory(nextMemory);
+    if (body.page) {
+      archivePageRef.current = body.page;
+      setArchiveHasMore(
+        body.page.messages.hasMore
+        || body.page.memory.hasMore
+        || body.page.contexts.hasMore,
+      );
+    }
+  }, []);
 
   useEffect(() => {
-    if (!storeReady) return;
+    if (!runtimeEnabled || !storeReady || cloudArchiveHydratedRef.current) return;
+    cloudArchiveHydratedRef.current = true;
     let cancelled = false;
+    let settled = false;
     fetch("/api/kwantbot/archive", {
       cache: "no-store",
       credentials: "same-origin",
     })
       .then(async (response) => {
-        const body = await response.json() as {
-          configured?: boolean;
-          messages?: KwantBotInterpreterMessage[];
-          memory?: KwantBotMemoryEvent[];
-          contexts?: KwantBotMarketContext[];
-        };
+        const body = await response.json() as ArchivePayload;
         if (!response.ok || !body.configured) throw new Error("Cloud archive unavailable.");
         if (cancelled) return;
-
-        const remoteMessages = Array.isArray(body.messages) ? body.messages : [];
-        const remoteMemory = Array.isArray(body.memory) ? body.memory : [];
-        const remoteContexts = Array.isArray(body.contexts) ? body.contexts : [];
-        remoteMessages.forEach((item) => archivedMessageIdsRef.current.add(item.id));
-        remoteMemory.forEach((item) => archivedMemoryIdsRef.current.add(item.id));
-        remoteContexts.forEach((item) => archivedContextKeysRef.current.add(contextSnapshotKey(item)));
-
-        const nextMessages: RootRecord<KwantBotInterpreterMessage[]> = {
-          NQ: mergeById(
-            messagesRef.current.NQ,
-            remoteMessages.filter((item) => item.root === "NQ"),
-            MESSAGE_LIMIT,
-          ),
-          ES: mergeById(
-            messagesRef.current.ES,
-            remoteMessages.filter((item) => item.root === "ES"),
-            MESSAGE_LIMIT,
-          ),
-        };
-        const nextMemory: RootRecord<KwantBotMemoryEvent[]> = {
-          NQ: pruneKwantBotMemory(mergeById(
-            memoryRef.current.NQ,
-            remoteMemory.filter((item) => item.root === "NQ"),
-            50_000,
-          )),
-          ES: pruneKwantBotMemory(mergeById(
-            memoryRef.current.ES,
-            remoteMemory.filter((item) => item.root === "ES"),
-            50_000,
-          )),
-        };
-        messagesRef.current = nextMessages;
-        memoryRef.current = nextMemory;
-        setMessages(nextMessages);
-        setMemory(nextMemory);
+        mergeArchivePage(body);
         cloudArchiveReadyRef.current = true;
         setArchiveSyncState("synced");
         setArchiveSyncPulse((value) => value + 1);
+        settled = true;
       })
       .catch(() => {
         if (cancelled) return;
+        settled = true;
+        cloudArchiveHydratedRef.current = false;
         cloudArchiveReadyRef.current = false;
         setArchiveSyncState("local");
       });
     return () => {
       cancelled = true;
+      if (!settled) cloudArchiveHydratedRef.current = false;
     };
-  }, [storeReady]);
+  }, [mergeArchivePage, runtimeEnabled, storeReady]);
+
+  const loadOlderArchive = useCallback(async () => {
+    const page = archivePageRef.current;
+    if (!page || archiveLoadingOlder || !(
+      page.messages.hasMore
+      || page.memory.hasMore
+      || page.contexts.hasMore
+    )) return;
+
+    setArchiveLoadingOlder(true);
+    try {
+      const params = new URLSearchParams({
+        messageLimit: "180",
+        memoryLimit: "600",
+        contextLimit: "24",
+        messagesBefore: page.messages.hasMore && page.messages.before
+          ? page.messages.before
+          : "1970-01-01T00:00:00.000Z",
+        memoryBefore: page.memory.hasMore && page.memory.before
+          ? page.memory.before
+          : "1970-01-01T00:00:00.000Z",
+        contextsBefore: page.contexts.hasMore && page.contexts.before
+          ? page.contexts.before
+          : "1970-01-01T00:00:00.000Z",
+      });
+      const response = await fetch(`/api/kwantbot/archive?${params.toString()}`, {
+        cache: "no-store",
+        credentials: "same-origin",
+      });
+      const body = await response.json() as ArchivePayload;
+      if (!response.ok || !body.configured) throw new Error("Cloud archive unavailable.");
+      mergeArchivePage(body);
+    } catch {
+      setArchiveSyncState("error");
+    } finally {
+      setArchiveLoadingOlder(false);
+    }
+  }, [archiveLoadingOlder, mergeArchivePage]);
 
   useEffect(() => {
-    if (!storeReady || !cloudArchiveReadyRef.current || archiveSyncInFlightRef.current) return;
+    if (!runtimeEnabled || !storeReady || !cloudArchiveReadyRef.current || archiveSyncInFlightRef.current) return;
 
     const pendingMessages = ROOTS
       .flatMap((root) => messages[root])
@@ -449,11 +537,13 @@ export function useKwantBotInterpreter(args: {
     }, 1_200);
 
     return () => window.clearTimeout(timer);
-  }, [archiveSyncPulse, contexts, memory, messages, storeReady]);
+  }, [archiveSyncPulse, contexts, memory, messages, runtimeEnabled, storeReady]);
 
   useEffect(() => {
-    if (!storeReady) return;
+    if (!runtimeEnabled || !storeReady || cloudLearningHydratedRef.current) return;
+    cloudLearningHydratedRef.current = true;
     let cancelled = false;
+    let settled = false;
     fetch("/api/kwantbot/learning-reviews", {
       cache: "no-store",
       credentials: "same-origin",
@@ -473,19 +563,23 @@ export function useKwantBotInterpreter(args: {
         learningReviewsRef.current = nextReviews;
         setLearningReviews(nextReviews);
         setLearningSyncState("synced");
+        settled = true;
       })
       .catch(() => {
         if (cancelled) return;
+        settled = true;
+        cloudLearningHydratedRef.current = false;
         cloudLearningReadyRef.current = false;
         setLearningSyncState("local");
       });
     return () => {
       cancelled = true;
+      if (!settled) cloudLearningHydratedRef.current = false;
     };
-  }, [storeReady]);
+  }, [runtimeEnabled, storeReady]);
 
   useEffect(() => {
-    if (!storeReady || !cloudLearningReadyRef.current) return;
+    if (!runtimeEnabled || !storeReady || !cloudLearningReadyRef.current) return;
     const pending = learningReviews.filter((review) => review.syncState === "local").slice(-500);
     if (!pending.length) return;
     setLearningSyncState("syncing");
@@ -517,7 +611,7 @@ export function useKwantBotInterpreter(args: {
         });
     }, 1_200);
     return () => window.clearTimeout(timer);
-  }, [learningReviews, storeReady]);
+  }, [learningReviews, runtimeEnabled, storeReady]);
 
   const fetchContext = useCallback(async (root: KwantBotMarketRoot) => {
     if (contextInFlightRef.current[root]) return;
@@ -573,7 +667,7 @@ export function useKwantBotInterpreter(args: {
   }, [appendMemory, appendMessages]);
 
   useEffect(() => {
-    if (!storeReady) return;
+    if (!runtimeEnabled || !storeReady) return;
     ROOTS.forEach((root) => void fetchContext(root));
     const timer = window.setInterval(() => {
       const now = Date.now();
@@ -585,7 +679,7 @@ export function useKwantBotInterpreter(args: {
       });
     }, 5_000);
     return () => window.clearInterval(timer);
-  }, [fetchContext, storeReady]);
+  }, [fetchContext, runtimeEnabled, storeReady]);
 
   const flushLivePrices = useCallback(() => {
     animationFrameRef.current = null;
@@ -600,82 +694,76 @@ export function useKwantBotInterpreter(args: {
   }, []);
 
   useEffect(() => {
-    if (!storeReady) return;
-    let source: EventSource | null = null;
-    let cancelled = false;
+    if (!runtimeEnabled || !storeReady) return;
+    const receiveTick = (event: Event) => {
+      const tick = (event as CustomEvent<{
+        instrument?: string;
+        mid?: number;
+        bid?: number;
+        ask?: number;
+      }>).detail;
+      if (!tick) return;
+      const instrument = String(tick.instrument ?? "").toUpperCase();
+      const root: KwantBotMarketRoot | null = instrument.startsWith("NQ")
+        ? "NQ"
+        : instrument.startsWith("ES")
+          ? "ES"
+          : null;
+      const price = Number(tick.mid ?? (Number(tick.bid) + Number(tick.ask)) / 2);
+      if (!root || !Number.isFinite(price) || price <= 0) return;
 
-    const connect = () => {
-      if (cancelled) return;
-      setFeedState((current) => current === "live" ? "reconnecting" : "connecting");
-      source = new EventSource("/api/databento/live?symbols=NQ.v.0%2CES.v.0");
-      source.addEventListener("status", () => setFeedState("live"));
-      source.addEventListener("feed-error", () => setFeedState("reconnecting"));
-      source.onerror = () => setFeedState("reconnecting");
-      source.onmessage = (event) => {
-        let tick: {
-          instrument?: string;
-          mid?: number;
-          bid?: number;
-          ask?: number;
-        };
-        try {
-          tick = JSON.parse(event.data) as typeof tick;
-        } catch {
-          return;
-        }
-        const instrument = String(tick.instrument ?? "").toUpperCase();
-        const root: KwantBotMarketRoot | null = instrument.startsWith("NQ")
-          ? "NQ"
-          : instrument.startsWith("ES")
-            ? "ES"
-            : null;
-        const price = Number(tick.mid ?? (Number(tick.bid) + Number(tick.ask)) / 2);
-        if (!root || !Number.isFinite(price) || price <= 0) return;
+      setFeedState("live");
+      const now = Date.now();
+      pendingPricesRef.current[root] = price;
+      pendingTickAtRef.current[root] = now;
+      if (animationFrameRef.current === null) {
+        animationFrameRef.current = window.requestAnimationFrame(flushLivePrices);
+      }
 
-        const now = Date.now();
-        pendingPricesRef.current[root] = price;
-        pendingTickAtRef.current[root] = now;
-        if (animationFrameRef.current === null) {
-          animationFrameRef.current = window.requestAnimationFrame(flushLivePrices);
-        }
-
-        const additions: KwantBotMemoryEvent[] = [];
-        const minuteBucket = Math.floor(now / 60_000);
-        if (minuteBucketRef.current[root] !== minuteBucket) {
-          minuteBucketRef.current[root] = minuteBucket;
-          additions.push({
-            id: kwantBotInterpreterId("memory-price"),
-            root,
-            type: "price",
-            createdAt: new Date(now).toISOString(),
-            price,
-          });
-        }
-
-        const result = interpretKwantBotTick({
+      const additions: KwantBotMemoryEvent[] = [];
+      const minuteBucket = Math.floor(now / 60_000);
+      if (minuteBucketRef.current[root] !== minuteBucket) {
+        minuteBucketRef.current[root] = minuteBucket;
+        additions.push({
+          id: kwantBotInterpreterId("memory-price"),
           root,
+          type: "price",
+          createdAt: new Date(now).toISOString(),
           price,
-          now,
-          context: contextsRef.current[root],
-          memory: memoryRef.current[root],
-          runtime: runtimeRef.current[root],
         });
-        runtimeRef.current[root] = result.runtime;
-        appendMessages(root, result.messages);
-        appendMemory(root, [...additions, ...result.memory], now);
-      };
+      }
+
+      const result = interpretKwantBotTick({
+        root,
+        price,
+        now,
+        context: contextsRef.current[root],
+        memory: memoryRef.current[root],
+        runtime: runtimeRef.current[root],
+      });
+      runtimeRef.current[root] = result.runtime;
+      appendMessages(root, result.messages);
+      appendMemory(root, [...additions, ...result.memory], now);
     };
 
-    connect();
+    const receiveStatus = (event: Event) => {
+      const status = (event as CustomEvent<DatabentoLiveStatus>).detail;
+      if (status === "live" || status === "connecting" || status === "reconnecting") {
+        setFeedState(status);
+      }
+    };
+
+    window.addEventListener(DATABENTO_LIVE_TICK_EVENT, receiveTick);
+    window.addEventListener(DATABENTO_LIVE_STATUS_EVENT, receiveStatus);
     return () => {
-      cancelled = true;
-      source?.close();
+      window.removeEventListener(DATABENTO_LIVE_TICK_EVENT, receiveTick);
+      window.removeEventListener(DATABENTO_LIVE_STATUS_EVENT, receiveStatus);
       if (animationFrameRef.current !== null) {
         window.cancelAnimationFrame(animationFrameRef.current);
         animationFrameRef.current = null;
       }
     };
-  }, [appendMemory, appendMessages, flushLivePrices, storeReady]);
+  }, [appendMemory, appendMessages, flushLivePrices, runtimeEnabled, storeReady]);
 
   const selectRoot = useCallback((
     root: KwantBotMarketRoot,
@@ -734,6 +822,8 @@ export function useKwantBotInterpreter(args: {
     learningReviews,
     learningSyncState,
     archiveSyncState,
+    archiveHasMore,
+    archiveLoadingOlder,
     contexts,
     contextStates,
     contextErrors,
@@ -746,5 +836,6 @@ export function useKwantBotInterpreter(args: {
     optionsUnreadTotal,
     requestBrief,
     refreshContext: fetchContext,
+    loadOlderArchive,
   };
 }

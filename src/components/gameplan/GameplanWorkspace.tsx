@@ -77,6 +77,11 @@ import {
   type GameplanTimeframeContext,
   type GameplanTimeframeId,
 } from "@/lib/gameplanTimeframeAnalysis";
+import {
+  DATABENTO_LIVE_STATUS_EVENT,
+  DATABENTO_LIVE_TICK_EVENT,
+  type DatabentoLiveStatus,
+} from "@/lib/chartLiveEvents";
 
 type DetailMode = "beginner" | "standard" | "pro";
 type Level = GameplanEdition["ladder"][number];
@@ -1841,12 +1846,10 @@ export default function GameplanWorkspace({ initialInstrument = "NQ" }: { initia
     if (!payload) return;
     markFeedHealthy();
     lastNativeTickAtRef.current = 0;
-    const live = new EventSource(`/api/databento/live?symbols=${encodeURIComponent(`${root}.v.0`)}`);
-    live.addEventListener("status", markFeedHealthy);
-    live.onmessage = (event) => {
+    const receiveTick = (event: Event) => {
       try {
-        const tick = JSON.parse(event.data) as { instrument?: string; mid?: number };
-        if (tick.instrument !== `${root}.v.0`) return;
+        const tick = (event as CustomEvent<{ instrument?: string; mid?: number }>).detail;
+        if (!String(tick?.instrument ?? "").toUpperCase().startsWith(root)) return;
         const nextPrice = Number(tick.mid);
         if (!Number.isFinite(nextPrice) || nextPrice <= 0) return;
         lastNativeTickAtRef.current = Date.now();
@@ -1854,9 +1857,17 @@ export default function GameplanWorkspace({ initialInstrument = "NQ" }: { initia
         updateLivePrice(nextPrice);
       } catch {}
     };
-    live.addEventListener("feed-error", deferFeedFailure);
-    live.onerror = deferFeedFailure;
-    return () => live.close();
+    const receiveStatus = (event: Event) => {
+      const status = (event as CustomEvent<DatabentoLiveStatus>).detail;
+      if (status === "live") markFeedHealthy();
+      else if (status === "reconnecting") deferFeedFailure();
+    };
+    window.addEventListener(DATABENTO_LIVE_TICK_EVENT, receiveTick);
+    window.addEventListener(DATABENTO_LIVE_STATUS_EVENT, receiveStatus);
+    return () => {
+      window.removeEventListener(DATABENTO_LIVE_TICK_EVENT, receiveTick);
+      window.removeEventListener(DATABENTO_LIVE_STATUS_EVENT, receiveStatus);
+    };
   }, [deferFeedFailure, markFeedHealthy, payload?.instrument, root, updateLivePrice]);
 
   useEffect(() => {

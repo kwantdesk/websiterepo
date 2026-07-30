@@ -302,6 +302,8 @@ export default function KwantBotIntelligenceWorkspace({
     learningReviews,
     learningSyncState,
     archiveSyncState,
+    archiveHasMore,
+    archiveLoadingOlder,
     contexts,
     contextStates,
     contextErrors,
@@ -309,6 +311,7 @@ export default function KwantBotIntelligenceWorkspace({
     lastTickAt,
     feedState,
     requestBrief,
+    loadOlderArchive,
   } = interpreter;
   const [view, setView] = useState<WorkspaceView>("command");
   const [journalFilter, setJournalFilter] = useState<JournalFilter>("all");
@@ -942,6 +945,19 @@ export default function KwantBotIntelligenceWorkspace({
                         </article>
                       );
                     })}
+                    {archiveHasMore ? (
+                      <div className="pt-2 text-center">
+                        <button
+                          type="button"
+                          onClick={() => void loadOlderArchive()}
+                          disabled={archiveLoadingOlder}
+                          className="inline-flex h-9 items-center gap-2 rounded-xl border border-border bg-surface px-4 text-[8px] font-semibold uppercase tracking-[0.09em] text-muted transition-colors hover:border-primary/30 hover:text-primary disabled:cursor-wait disabled:opacity-50"
+                        >
+                          <History className={`h-3.5 w-3.5 ${archiveLoadingOlder ? "animate-pulse" : ""}`} />
+                          {archiveLoadingOlder ? "Loading older evidence…" : "Load older evidence"}
+                        </button>
+                      </div>
+                    ) : null}
                   </div>
                 )}
               </div>
