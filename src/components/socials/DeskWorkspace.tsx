@@ -100,6 +100,16 @@ type ChannelDraft = {
 };
 
 const REACTIONS = ["👍", "🔥", "🎯", "🧠", "✅"];
+const DESK_ACCENTS = [
+  { label: "Onyx Gold", value: "#d8b45c" },
+  { label: "Kwant Green", value: "#b7ff3c" },
+  { label: "Signal Blue", value: "#5271ff" },
+  { label: "Ice", value: "#f2f5ef" },
+  { label: "Cyan", value: "#20d7e7" },
+  { label: "Violet", value: "#a878ff" },
+  { label: "Rose", value: "#ff6f91" },
+  { label: "Amber", value: "#ff9f1a" },
+] as const;
 
 function initials(value: string) {
   return value.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join("") || "KD";
@@ -269,6 +279,141 @@ function Modal({
   );
 }
 
+function DeskSettingsModal({
+  workspace,
+  working,
+  onClose,
+  onSave,
+  onLifecycle,
+  onNotice,
+}: {
+  workspace: DeskWorkspaceModel;
+  working: boolean;
+  onClose: () => void;
+  onSave: (draft: WorkspaceDraft) => void;
+  onLifecycle: (action: "archive" | "delete", workspace: DeskWorkspaceModel) => void;
+  onNotice: (message: string) => void;
+}) {
+  const [draft, setDraft] = useState<WorkspaceDraft>(() => workspaceDraft(workspace));
+  const avatarRef = useRef<HTMLInputElement>(null);
+  const validAccent = /^#[0-9a-fA-F]{6}$/.test(draft.accentColor);
+  const privacyDetail = draft.privacy === "PUBLIC"
+    ? "Visible in discovery. Any trader can join immediately."
+    : draft.privacy === "REQUEST"
+      ? "Visible in discovery. Every new member needs owner or moderator approval."
+      : "Hidden from discovery. Membership is available by direct invitation only.";
+
+  const loadAvatar = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    if (!file.type.startsWith("image/") || file.size > 950_000) {
+      onNotice("Desk images must be under 950 KB.");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        setDraft((current) => ({ ...current, avatarUrl: reader.result as string }));
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const updateHex = (value: string) => {
+    const normalized = `#${value.replace(/#/g, "").replace(/[^0-9a-f]/gi, "").slice(0, 6)}`;
+    setDraft((current) => ({ ...current, accentColor: normalized }));
+  };
+
+  return (
+    <Modal
+      title={`${workspace.name} settings`}
+      subtitle="Owner controls for identity, access, standards and inactivity."
+      icon={<Settings2 className="h-4 w-4" />}
+      onClose={onClose}
+      wide
+      footer={(
+        <>
+          <button type="button" onClick={onClose} className="h-9 rounded-xl border border-border px-4 text-[8px] font-semibold text-muted">Cancel</button>
+          <button type="button" onClick={() => onSave(draft)} disabled={working || !validAccent} className="flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-[8px] font-semibold text-background shadow-[0_0_20px_color-mix(in_srgb,var(--primary)_14%,transparent)] transition hover:brightness-110 disabled:opacity-40"><Check className="h-3.5 w-3.5" />Save Desk</button>
+        </>
+      )}
+    >
+      <div className="grid gap-5 lg:grid-cols-[220px_1fr]">
+        <div>
+          <div className="text-[7px] font-semibold uppercase tracking-[0.13em] text-muted">Desk identity</div>
+          <button type="button" onClick={() => avatarRef.current?.click()} className="mt-3 flex aspect-square w-full items-center justify-center overflow-hidden rounded-3xl border border-dashed border-primary/30 bg-primary/[0.05] text-primary transition hover:border-primary/55 hover:bg-primary/[0.08]">
+            {draft.avatarUrl ? <img src={draft.avatarUrl} alt="" className="h-full w-full object-cover" /> : <span className="text-center"><Upload className="mx-auto h-5 w-5" /><span className="mt-2 block text-[7px]">Upload Desk image</span></span>}
+          </button>
+          <input ref={avatarRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={loadAvatar} />
+          {draft.avatarUrl ? <button type="button" onClick={() => setDraft((current) => ({ ...current, avatarUrl: "" }))} className="mt-2 w-full text-center text-[7px] text-muted hover:text-danger">Remove image</button> : null}
+
+          <div className="mt-5">
+            <span className="block text-[7px] font-semibold uppercase tracking-[0.1em] text-muted">Desk accent</span>
+            <div className="mt-2 grid grid-cols-4 gap-2">
+              {DESK_ACCENTS.map((accent) => {
+                const selected = draft.accentColor.toLowerCase() === accent.value.toLowerCase();
+                return (
+                  <button
+                    key={accent.value}
+                    type="button"
+                    onClick={() => setDraft((current) => ({ ...current, accentColor: accent.value }))}
+                    title={accent.label}
+                    aria-label={accent.label}
+                    className={`relative aspect-square rounded-xl border bg-background/50 p-1.5 transition-all ${selected ? "border-foreground/50 shadow-[0_0_18px_color-mix(in_srgb,var(--primary)_18%,transparent)]" : "border-border hover:border-foreground/25"}`}
+                  >
+                    <span className="block h-full w-full rounded-lg" style={{ background: accent.value, boxShadow: `0 0 ${selected ? 16 : 8}px ${accent.value}35` }} />
+                    {selected ? <Check className="absolute inset-0 m-auto h-3.5 w-3.5 text-black mix-blend-difference invert" /> : null}
+                  </button>
+                );
+              })}
+            </div>
+            <label className={`mt-3 flex h-10 items-center gap-2 rounded-xl border bg-background px-3 transition-colors ${validAccent ? "border-border focus-within:border-primary/40" : "border-danger/50"}`}>
+              <span className="h-4 w-4 shrink-0 rounded-full border border-white/15" style={{ background: validAccent ? draft.accentColor : "transparent", boxShadow: validAccent ? `0 0 10px ${draft.accentColor}55` : undefined }} />
+              <span className="font-mono text-[9px] text-muted">#</span>
+              <input value={draft.accentColor.replace(/^#/, "")} onChange={(event) => updateHex(event.target.value)} maxLength={6} spellCheck={false} aria-label="Custom Desk accent hex code" className="h-full min-w-0 flex-1 bg-transparent font-mono text-[9px] uppercase text-foreground outline-none" />
+            </label>
+            {!validAccent ? <div className="mt-1.5 text-[7px] text-danger">Enter a complete six-digit hex colour.</div> : null}
+          </div>
+        </div>
+
+        <div className="grid content-start gap-3 md:grid-cols-2">
+          <label><span className="mb-1.5 block text-[7px] uppercase tracking-[0.1em] text-muted">Desk name</span><input value={draft.name} onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))} className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[8px] outline-none focus:border-primary/40" /></label>
+          <label>
+            <span className="mb-1.5 block text-[7px] uppercase tracking-[0.1em] text-muted">Privacy</span>
+            <KwantSelect value={draft.privacy} menuLabel="Desk privacy" onChange={(event) => setDraft((current) => ({ ...current, privacy: event.target.value as DeskPrivacy }))} className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[8px] outline-none">
+              <option value="PUBLIC">Public · instant access</option>
+              <option value="REQUEST">Approval required</option>
+              <option value="PRIVATE">Private · invite only</option>
+            </KwantSelect>
+            <span className="mt-1.5 block text-[7px] leading-3 text-muted">{privacyDetail}</span>
+          </label>
+          <label><span className="mb-1.5 block text-[7px] uppercase tracking-[0.1em] text-muted">Markets</span><input value={draft.markets} onChange={(event) => setDraft((current) => ({ ...current, markets: event.target.value }))} placeholder="NQ, ES" className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[8px] outline-none focus:border-primary/40" /></label>
+          <label><span className="mb-1.5 block text-[7px] uppercase tracking-[0.1em] text-muted">Capacity · 2–50</span><input type="number" min={2} max={50} value={draft.capacity} onChange={(event) => setDraft((current) => ({ ...current, capacity: event.target.value }))} className="h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[8px] outline-none focus:border-primary/40" /></label>
+          <label><span className="mb-1.5 block text-[7px] uppercase tracking-[0.1em] text-muted">Session</span><input value={draft.session} onChange={(event) => setDraft((current) => ({ ...current, session: event.target.value }))} className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[8px] outline-none focus:border-primary/40" /></label>
+          <label><span className="mb-1.5 block text-[7px] uppercase tracking-[0.1em] text-muted">Timezone</span><input value={draft.timezone} onChange={(event) => setDraft((current) => ({ ...current, timezone: event.target.value }))} className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[8px] outline-none focus:border-primary/40" /></label>
+          <label className="md:col-span-2"><span className="mb-1.5 block text-[7px] uppercase tracking-[0.1em] text-muted">Description</span><textarea value={draft.description} onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))} rows={2} className="w-full resize-none rounded-xl border border-border bg-background p-3 text-[8px] outline-none focus:border-primary/40" /></label>
+          <label className="md:col-span-2"><span className="mb-1.5 block text-[7px] uppercase tracking-[0.1em] text-muted">Shared objective</span><textarea value={draft.objective} onChange={(event) => setDraft((current) => ({ ...current, objective: event.target.value }))} rows={2} className="w-full resize-none rounded-xl border border-border bg-background p-3 text-[8px] outline-none focus:border-primary/40" /></label>
+          <label className="md:col-span-2"><span className="mb-1.5 block text-[7px] uppercase tracking-[0.1em] text-muted">Weekly mission</span><textarea value={draft.weeklyMission} onChange={(event) => setDraft((current) => ({ ...current, weeklyMission: event.target.value }))} rows={2} className="w-full resize-none rounded-xl border border-border bg-background p-3 text-[8px] outline-none focus:border-primary/40" /></label>
+          <label className="md:col-span-2"><span className="mb-1.5 block text-[7px] uppercase tracking-[0.1em] text-muted">Desk rules</span><textarea value={draft.rules} onChange={(event) => setDraft((current) => ({ ...current, rules: event.target.value }))} rows={5} className="w-full resize-none rounded-xl border border-border bg-background p-3 text-[8px] leading-4 outline-none focus:border-primary/40" /></label>
+          <div className="md:col-span-2 grid gap-2 md:grid-cols-2">
+            <Toggle checked={draft.allowMemberInvites} onChange={(checked) => setDraft((current) => ({ ...current, allowMemberInvites: checked }))} label="Member invitations" detail="Allow ordinary members to invite people they already know." />
+            <label className="rounded-xl border border-border bg-background/35 p-3"><span className="block text-[8px] font-semibold">Inactive member automation</span><span className="mt-0.5 block text-[7px] leading-3 text-muted">Non-owners are removed after this many inactive days. Leave blank to disable.</span><input type="number" min={7} max={365} value={draft.inactivityDays} onChange={(event) => setDraft((current) => ({ ...current, inactivityDays: event.target.value }))} placeholder="Disabled" className="mt-2 h-8 w-full rounded-lg border border-border bg-panel px-3 font-mono text-[8px] outline-none focus:border-primary/40" /></label>
+          </div>
+          <div className="md:col-span-2 rounded-2xl border border-danger/20 bg-danger/[0.025] p-4">
+            <div className="text-[8px] font-semibold text-foreground">Desk lifecycle</div>
+            <p className="mt-1 text-[7px] leading-4 text-muted">Archiving hides this Desk from members and discovery while preserving everything for you. Permanent deletion removes its channels, messages, membership and settings.</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button type="button" onClick={() => onLifecycle("archive", workspace)} className="flex h-9 items-center gap-2 rounded-xl border border-primary/25 bg-primary/[0.05] px-4 text-[8px] font-semibold text-primary"><Archive className="h-3.5 w-3.5" />Archive Desk</button>
+              <button type="button" onClick={() => onLifecycle("delete", workspace)} className="flex h-9 items-center gap-2 rounded-xl border border-danger/25 bg-danger/[0.05] px-4 text-[8px] font-semibold text-danger"><Trash2 className="h-3.5 w-3.5" />Delete permanently</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 export default function DeskWorkspace({
   viewerId,
   viewerProfile,
@@ -286,7 +431,6 @@ export default function DeskWorkspace({
   const [showInvite, setShowInvite] = useState(false);
   const [showMembers, setShowMembers] = useState(false);
   const [showChannel, setShowChannel] = useState(false);
-  const [settings, setSettings] = useState<WorkspaceDraft | null>(null);
   const [lifecycleTarget, setLifecycleTarget] = useState<{
     action: "archive" | "delete";
     workspace: DeskWorkspaceModel;
@@ -300,7 +444,6 @@ export default function DeskWorkspace({
   const [directoryQuery, setDirectoryQuery] = useState("");
   const messageEndRef = useRef<HTMLDivElement>(null);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
-  const settingsAvatarRef = useRef<HTMLInputElement>(null);
   const selectedDeskRef = useRef("");
   const refreshTimerRef = useRef<number | null>(null);
   const suppressRefreshUntilRef = useRef(0);
@@ -519,20 +662,51 @@ export default function DeskWorkspace({
 
   const openSettings = () => {
     if (!activeDesk) return;
-    setSettings(workspaceDraft(activeDesk));
     setShowSettings(true);
   };
 
-  const saveSettings = async () => {
-    if (!activeDesk || !settings) return;
+  const saveSettings = async (draft: WorkspaceDraft) => {
+    if (!activeDesk) return;
+    const previousWorkspace = activeDesk;
+    const optimisticWorkspace: DeskWorkspaceModel = {
+      ...activeDesk,
+      name: draft.name.trim() || activeDesk.name,
+      description: draft.description.trim(),
+      objective: draft.objective.trim(),
+      weeklyMission: draft.weeklyMission.trim(),
+      markets: draft.markets.split(",").map((market) => market.trim().toUpperCase()).filter(Boolean),
+      session: draft.session.trim() || "New York",
+      timezone: draft.timezone.trim() || "UTC",
+      privacy: draft.privacy,
+      capacity: Math.max(2, Math.min(50, Math.floor(Number(draft.capacity) || 12))),
+      allowMemberInvites: draft.allowMemberInvites,
+      inactivityDays: draft.inactivityDays ? Math.max(7, Math.min(365, Math.floor(Number(draft.inactivityDays) || 30))) : null,
+      avatarUrl: draft.avatarUrl,
+      accentColor: draft.accentColor,
+      rules: draft.rules.trim(),
+      updatedAt: new Date().toISOString(),
+    };
+    setShowSettings(false);
+    setNetwork((current) => ({
+      ...current,
+      workspaces: current.workspaces.map((workspace) =>
+        workspace.deskId === optimisticWorkspace.deskId ? optimisticWorkspace : workspace),
+    }));
     const saved = await perform({
       action: "update-settings",
       deskId: activeDesk.deskId,
-      ...settings,
-      markets: settings.markets.split(",").map((market) => market.trim().toUpperCase()).filter(Boolean),
-      inactivityDays: settings.inactivityDays || null,
+      ...draft,
+      markets: optimisticWorkspace.markets,
+      inactivityDays: draft.inactivityDays || null,
     }, "Desk settings saved.");
-    if (saved) setShowSettings(false);
+    if (!saved) {
+      setNetwork((current) => ({
+        ...current,
+        workspaces: current.workspaces.map((workspace) =>
+          workspace.deskId === previousWorkspace.deskId ? previousWorkspace : workspace),
+      }));
+      setShowSettings(true);
+    }
   };
 
   const openLifecycle = (action: "archive" | "delete", workspace: DeskWorkspaceModel) => {
@@ -693,21 +867,6 @@ export default function DeskWorkspace({
         size: file.size,
         dataUrl: reader.result,
       });
-    };
-    reader.readAsDataURL(file);
-  };
-
-  const loadDeskAvatar = (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-    if (!file || !settings) return;
-    if (!file.type.startsWith("image/") || file.size > 950_000) {
-      onNotice("Desk images must be under 950 KB.");
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === "string") setSettings((current) => current ? { ...current, avatarUrl: reader.result as string } : current);
     };
     reader.readAsDataURL(file);
   };
@@ -1062,51 +1221,16 @@ export default function DeskWorkspace({
         </div>
       </div>
 
-      {showSettings && activeDesk && settings ? (
-        <Modal
-          title={`${activeDesk.name} settings`}
-          subtitle="Owner controls for identity, access, standards and inactivity."
-          icon={<Settings2 className="h-4 w-4" />}
+      {showSettings && activeDesk ? (
+        <DeskSettingsModal
+          key={activeDesk.deskId}
+          workspace={activeDesk}
+          working={working}
           onClose={() => setShowSettings(false)}
-          wide
-          footer={<><button type="button" onClick={() => setShowSettings(false)} className="h-9 rounded-xl border border-border px-4 text-[8px] font-semibold text-muted">Cancel</button><button type="button" onClick={() => void saveSettings()} disabled={working} className="flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-[8px] font-semibold text-background disabled:opacity-50"><Check className="h-3.5 w-3.5" />Save Desk</button></>}
-        >
-          <div className="grid gap-5 lg:grid-cols-[200px_1fr]">
-            <div>
-              <div className="text-[7px] font-semibold uppercase tracking-[0.13em] text-muted">Desk identity</div>
-              <button type="button" onClick={() => settingsAvatarRef.current?.click()} className="mt-3 flex aspect-square w-full items-center justify-center overflow-hidden rounded-3xl border border-dashed border-primary/30 bg-primary/[0.05] text-primary">
-                {settings.avatarUrl ? <img src={settings.avatarUrl} alt="" className="h-full w-full object-cover" /> : <span className="text-center"><Upload className="mx-auto h-5 w-5" /><span className="mt-2 block text-[7px]">Upload Desk image</span></span>}
-              </button>
-              <input ref={settingsAvatarRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={loadDeskAvatar} />
-              {settings.avatarUrl ? <button type="button" onClick={() => setSettings((current) => current ? { ...current, avatarUrl: "" } : current)} className="mt-2 w-full text-center text-[7px] text-muted hover:text-danger">Remove image</button> : null}
-              <label className="mt-4 block"><span className="mb-1.5 block text-[7px] uppercase tracking-[0.1em] text-muted">Desk accent</span><div className="flex items-center gap-2 rounded-xl border border-border bg-background p-2"><input type="color" value={settings.accentColor} onChange={(event) => setSettings((current) => current ? { ...current, accentColor: event.target.value } : current)} className="h-8 w-10 cursor-pointer rounded-lg border-0 bg-transparent" /><span className="font-mono text-[8px] text-muted">{settings.accentColor}</span></div></label>
-            </div>
-            <div className="grid gap-3 md:grid-cols-2">
-              <label><span className="mb-1.5 block text-[7px] uppercase tracking-[0.1em] text-muted">Desk name</span><input value={settings.name} onChange={(event) => setSettings((current) => current ? { ...current, name: event.target.value } : current)} className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[8px] outline-none focus:border-primary/40" /></label>
-              <label><span className="mb-1.5 block text-[7px] uppercase tracking-[0.1em] text-muted">Privacy</span><KwantSelect value={settings.privacy} onChange={(event) => setSettings((current) => current ? { ...current, privacy: event.target.value as DeskPrivacy } : current)} className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[8px] outline-none"><option value="PUBLIC">Public · instant join</option><option value="REQUEST">Request · owner approval</option><option value="PRIVATE">Private · invite only</option></KwantSelect></label>
-              <label><span className="mb-1.5 block text-[7px] uppercase tracking-[0.1em] text-muted">Markets</span><input value={settings.markets} onChange={(event) => setSettings((current) => current ? { ...current, markets: event.target.value } : current)} placeholder="NQ, ES" className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[8px] outline-none focus:border-primary/40" /></label>
-              <label><span className="mb-1.5 block text-[7px] uppercase tracking-[0.1em] text-muted">Capacity · 2–50</span><input type="number" min={2} max={50} value={settings.capacity} onChange={(event) => setSettings((current) => current ? { ...current, capacity: event.target.value } : current)} className="h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[8px] outline-none focus:border-primary/40" /></label>
-              <label><span className="mb-1.5 block text-[7px] uppercase tracking-[0.1em] text-muted">Session</span><input value={settings.session} onChange={(event) => setSettings((current) => current ? { ...current, session: event.target.value } : current)} className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[8px] outline-none focus:border-primary/40" /></label>
-              <label><span className="mb-1.5 block text-[7px] uppercase tracking-[0.1em] text-muted">Timezone</span><input value={settings.timezone} onChange={(event) => setSettings((current) => current ? { ...current, timezone: event.target.value } : current)} className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[8px] outline-none focus:border-primary/40" /></label>
-              <label className="md:col-span-2"><span className="mb-1.5 block text-[7px] uppercase tracking-[0.1em] text-muted">Description</span><textarea value={settings.description} onChange={(event) => setSettings((current) => current ? { ...current, description: event.target.value } : current)} rows={2} className="w-full resize-none rounded-xl border border-border bg-background p-3 text-[8px] outline-none focus:border-primary/40" /></label>
-              <label className="md:col-span-2"><span className="mb-1.5 block text-[7px] uppercase tracking-[0.1em] text-muted">Shared objective</span><textarea value={settings.objective} onChange={(event) => setSettings((current) => current ? { ...current, objective: event.target.value } : current)} rows={2} className="w-full resize-none rounded-xl border border-border bg-background p-3 text-[8px] outline-none focus:border-primary/40" /></label>
-              <label className="md:col-span-2"><span className="mb-1.5 block text-[7px] uppercase tracking-[0.1em] text-muted">Weekly mission</span><textarea value={settings.weeklyMission} onChange={(event) => setSettings((current) => current ? { ...current, weeklyMission: event.target.value } : current)} rows={2} className="w-full resize-none rounded-xl border border-border bg-background p-3 text-[8px] outline-none focus:border-primary/40" /></label>
-              <label className="md:col-span-2"><span className="mb-1.5 block text-[7px] uppercase tracking-[0.1em] text-muted">Desk rules</span><textarea value={settings.rules} onChange={(event) => setSettings((current) => current ? { ...current, rules: event.target.value } : current)} rows={5} className="w-full resize-none rounded-xl border border-border bg-background p-3 text-[8px] leading-4 outline-none focus:border-primary/40" /></label>
-              <div className="md:col-span-2 grid gap-2 md:grid-cols-2">
-                <Toggle checked={settings.allowMemberInvites} onChange={(checked) => setSettings((current) => current ? { ...current, allowMemberInvites: checked } : current)} label="Member invitations" detail="Allow ordinary members to invite people they already know." />
-                <label className="rounded-xl border border-border bg-background/35 p-3"><span className="block text-[8px] font-semibold">Inactive member automation</span><span className="mt-0.5 block text-[7px] leading-3 text-muted">Non-owners are removed after this many inactive days. Leave blank to disable.</span><input type="number" min={7} max={365} value={settings.inactivityDays} onChange={(event) => setSettings((current) => current ? { ...current, inactivityDays: event.target.value } : current)} placeholder="Disabled" className="mt-2 h-8 w-full rounded-lg border border-border bg-panel px-3 font-mono text-[8px] outline-none focus:border-primary/40" /></label>
-              </div>
-              <div className="md:col-span-2 rounded-2xl border border-danger/20 bg-danger/[0.025] p-4">
-                <div className="text-[8px] font-semibold text-foreground">Desk lifecycle</div>
-                <p className="mt-1 text-[7px] leading-4 text-muted">Archiving hides this Desk from members and discovery while preserving everything for you. Permanent deletion removes its channels, messages, membership and settings.</p>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <button type="button" onClick={() => openLifecycle("archive", activeDesk)} className="flex h-9 items-center gap-2 rounded-xl border border-primary/25 bg-primary/[0.05] px-4 text-[8px] font-semibold text-primary"><Archive className="h-3.5 w-3.5" />Archive Desk</button>
-                  <button type="button" onClick={() => openLifecycle("delete", activeDesk)} className="flex h-9 items-center gap-2 rounded-xl border border-danger/25 bg-danger/[0.05] px-4 text-[8px] font-semibold text-danger"><Trash2 className="h-3.5 w-3.5" />Delete permanently</button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </Modal>
+          onSave={(draft) => void saveSettings(draft)}
+          onLifecycle={openLifecycle}
+          onNotice={onNotice}
+        />
       ) : null}
 
       {showArchived ? (
