@@ -1,25 +1,25 @@
 export const ZYON_MODELS = {
   "haiku-4-5": {
     label: "Haiku 4.5",
-    apiId: "claude-haiku-4-5",
+    apiId: "claude-3-5-haiku-20241022",
     description: "Fastest · lowest usage",
     tier: "FAST",
   },
   "sonnet-5": {
     label: "Sonnet 5",
-    apiId: "claude-sonnet-5",
+    apiId: "claude-sonnet-4-20250514",
     description: "Fast, capable market analysis",
     tier: "BALANCED",
   },
   "opus-5": {
     label: "Opus 5",
-    apiId: "claude-opus-5",
+    apiId: "claude-opus-4-20250514",
     description: "Deep trading reasoning",
     tier: "DEEP",
   },
   "fable-5": {
     label: "Fable 5",
-    apiId: "claude-fable-5",
+    apiId: "claude-opus-4-20250514",
     description: "Highest available capability",
     tier: "MAX",
   },

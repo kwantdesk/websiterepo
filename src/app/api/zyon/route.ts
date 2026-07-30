@@ -146,6 +146,13 @@ function cleanLocalDate(value: unknown) {
     : new Date().toISOString().slice(0, 10);
 }
 
+async function within<T>(promise: Promise<T>, fallback: T, milliseconds = 600) {
+  return Promise.race([
+    promise.catch(() => fallback),
+    new Promise<T>((resolve) => setTimeout(() => resolve(fallback), milliseconds)),
+  ]);
+}
+
 function parseDataUrl(value: unknown) {
   if (typeof value !== "string" || value.length > MAX_ATTACHMENT_BYTES * 1.45) {
     return null;
@@ -819,23 +826,28 @@ export async function POST(request: NextRequest) {
   const requestedParentId = typeof payload.folderId === "string" && payload.folderId.trim()
     ? payload.folderId.trim().slice(0, 160)
     : null;
-  const conversationFolder = await ensureConversationFolders({
+  const fallbackFolder = {
+    folderId: zyonDailyFolderId(chatId, sessionDate),
+    cloudSaved: false,
+  };
+  const conversationFolderPromise = ensureConversationFolders({
     actorId: actor.userId,
     chatId,
     sessionDate,
     root,
     requestedParentId,
   });
+  const conversationFolder = await within(conversationFolderPromise, fallbackFolder, 450);
   const rawUserMessageId = cleanText(finalRawMessage?.id, 120);
   const userConversationEntryId = rawUserMessageId
     ? `zyon-conversation-${rawUserMessageId}`
     : zyonId("zyon-conversation-user");
-  const persistedUserAttachments = await persistAttachments({
+  const persistedUserAttachments = await within(persistAttachments({
     actorId: actor.userId,
     folderId: conversationFolder.folderId,
     entryId: userConversationEntryId,
     attachments: finalAttachments,
-  });
+  }), storedAttachments(finalAttachments), 450);
   const userConversationEntry = conversationEntry({
     id: userConversationEntryId,
     chatId,
@@ -847,7 +859,11 @@ export async function POST(request: NextRequest) {
     attachments: persistedUserAttachments,
     createdAt: new Date().toISOString(),
   });
-  const userConversationCloudSaved = await persistJournalEntry(actor.userId, userConversationEntry);
+  const userConversationCloudSaved = await within(
+    persistJournalEntry(actor.userId, userConversationEntry),
+    false,
+    450,
+  );
   const contextJson = safeContext(payload.context);
   const gameplanIntent = /\b(?:send|save|submit|create|new|document|update)\b[\s\S]{0,40}\bgame\s*plan\b/i.test(finalUserText)
     || /\bgame\s*plan\b[\s\S]{0,40}\b(?:send|save|submit|create|new|document|update)\b/i.test(finalUserText);
@@ -910,6 +926,7 @@ export async function POST(request: NextRequest) {
   try {
     const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
+      signal: AbortSignal.timeout(35_000),
       headers: {
         "Content-Type": "application/json",
         "x-api-key": apiKey,
@@ -1120,9 +1137,10 @@ export async function POST(request: NextRequest) {
       text: responseText,
       createdAt: new Date().toISOString(),
     });
-    const assistantConversationCloudSaved = await persistJournalEntry(
-      actor.userId,
-      assistantConversationEntry,
+    const assistantConversationCloudSaved = await within(
+      persistJournalEntry(actor.userId, assistantConversationEntry),
+      false,
+      450,
     );
 
     if (!responseText && !journalEntry && !gameplanDraft) {
