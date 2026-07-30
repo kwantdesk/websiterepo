@@ -7,6 +7,7 @@ import {
   BookOpen,
   Bot,
   CalendarDays,
+  History,
   Home,
   Layers3,
   LineChart,
@@ -34,6 +35,7 @@ type SidebarKey =
   | "tradeSyncer"
   | "journal"
   | "socials"
+  | "backtesting"
   | "converter"
   | "news"
   | "zyon"
@@ -81,6 +83,7 @@ const navItems: Array<{
   { key: "zyon", href: "/zyon", label: "ZYON", title: "ZYON Trading Intelligence", icon: Sparkles },
   { key: "journal", href: "/journal", label: "Journal", title: "Journal", icon: NotebookPen },
   { key: "socials", href: "/socials", label: "Socials", title: "Socials", icon: UsersRound },
+  { key: "backtesting", href: "/backtesting", label: "Backtesting", title: "Backtesting", icon: History },
 ];
 
 function preloadWorkspaceComponent(key: SidebarKey) {

@@ -407,7 +407,7 @@ type LevelExportRow = {
   source: string;
   asOf: string;
 };
-export type PrimaryWorkspaceSection = "charts" | "gamma" | "gexmap" | "gexdesk" | "gameplan" | "kwantbot" | "news" | "zyon" | "journal" | "socials";
+export type PrimaryWorkspaceSection = "charts" | "gamma" | "gexmap" | "gexdesk" | "gameplan" | "kwantbot" | "news" | "zyon" | "journal" | "socials" | "backtesting";
 
 const WORKSPACE_PRESETS_STORAGE_KEY = "kwantdesk-chart-workspace-presets";
 const ACTIVE_WORKSPACE_PRESET_STORAGE_KEY = "kwantdesk-chart-workspace-active-preset";
@@ -426,6 +426,7 @@ const BOTTOM_WORKSPACE_SECTIONS = [
   { id: "zyon" as const, label: "ZYON" },
   { id: "journal" as const, label: "Journal" },
   { id: "socials" as const, label: "Socials" },
+  { id: "backtesting" as const, label: "Backtesting" },
 ];
 const DEFAULT_KWANTBOT_MESSAGES: KwantBotMessage[] = [
   {

@@ -18,6 +18,7 @@ const SECTION_BY_PATH: Record<string, PrimaryWorkspaceSection> = {
   "/zyon": "zyon",
   "/journal": "journal",
   "/socials": "socials",
+  "/backtesting": "backtesting",
 };
 
 function workspaceLocation(pathname: string) {
