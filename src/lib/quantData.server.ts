@@ -1910,7 +1910,8 @@ async function buildGexDeskServerPayload(): Promise<GexDeskPayload> {
     ...symbols.map((symbol) => quantDataPost("/options/tool/order-flow/consolidated", {
       sessionDate: session.sessionDate,
       filter: { ticker: symbol },
-      size: 160,
+      // QuantData caps this cursor-paginated endpoint at 100 rows per request.
+      size: 100,
       sort: { field: "tradeTime", direction: "DESCENDING" },
     }, 5_000)),
     ]),
@@ -1959,6 +1960,11 @@ async function buildGexDeskServerPayload(): Promise<GexDeskPayload> {
       nqPrice,
     );
   });
+  const flowErrors = symbols.flatMap((symbol, index) => {
+    const flow = flowResults[index];
+    if (flow?.status !== "rejected") return [];
+    return [`${symbol} options tape: ${flow.reason instanceof Error ? flow.reason.message : "upstream request failed"}`];
+  });
   return buildGexDeskPayload({
     sessionDate: session.sessionDate,
     marketOpen: session.marketOpen,
@@ -1966,6 +1972,7 @@ async function buildGexDeskServerPayload(): Promise<GexDeskPayload> {
     sources,
     pressure: combineGexDeskPressure(pressureSources),
     optionsTape,
+    upstreamErrors: flowErrors,
     refreshAfterMs: session.marketOpen ? 5_000 : 60_000,
   });
 }

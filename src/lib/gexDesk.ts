@@ -166,6 +166,7 @@ type BuildGexDeskPayloadArgs = {
   sources: GexDeskSourceSnapshot[];
   pressure: GexDeskPressure;
   optionsTape?: GexDeskOptionPrint[];
+  upstreamErrors?: string[];
   refreshAfterMs?: number;
 };
 
@@ -240,6 +241,7 @@ export function buildGexDeskPayload({
   sources,
   pressure,
   optionsTape = [],
+  upstreamErrors = [],
   refreshAfterMs = marketOpen ? 15_000 : 60_000,
 }: BuildGexDeskPayloadArgs): GexDeskPayload {
   const usableSources = sources.filter((source) => source.exposure && source.spot && source.spot > 0);
@@ -375,7 +377,10 @@ export function buildGexDeskPayload({
       net: row.net,
       gross: Math.abs(row.call) + Math.abs(row.put),
     })));
-  const errors = sources.flatMap((source) => source.error ? [`${source.symbol}: ${source.error}`] : []);
+  const errors = [
+    ...sources.flatMap((source) => source.error ? [`${source.symbol}: ${source.error}`] : []),
+    ...upstreamErrors,
+  ];
 
   return {
     instrument: "NQ",

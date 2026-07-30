@@ -197,6 +197,7 @@ export default function GexDeskOptionsHeatmap({
   const [metric, setMetric] = useState<HeatMetric>("PREMIUM");
   const [selectedPrice, setSelectedPrice] = useState<number | null>(null);
   const optionsTape = Array.isArray(payload.optionsTape) ? payload.optionsTape : [];
+  const tapeUnavailable = payload.errors.some((error) => error.includes("options tape:"));
   const model = useMemo(() => {
     const snapshotPrice = Number.isFinite(payload.nqPrice) ? payload.nqPrice : null;
     const latestTapeTimestamp = optionsTape.reduce((latest, print) => {
@@ -368,8 +369,14 @@ export default function GexDeskOptionsHeatmap({
               <div className="flex h-[650px] items-center justify-center p-6 text-center">
                 <div className="max-w-sm">
                   <Waves className="mx-auto h-7 w-7 text-muted" />
-                  <div className="mt-3 text-[10px] font-semibold">Waiting for mapped options prints</div>
-                  <p className="mt-2 text-[7px] leading-5 text-muted">The heatmap appears from real NDX and QQQ consolidated call/put activity. No synthetic heat is drawn when the tape is unavailable.</p>
+                  <div className="mt-3 text-[10px] font-semibold">
+                    {tapeUnavailable ? "Options tape temporarily unavailable" : "Waiting for mapped options prints"}
+                  </div>
+                  <p className="mt-2 text-[7px] leading-5 text-muted">
+                    {tapeUnavailable
+                      ? "The live options source did not return a usable tape. Kwant Desk will retry automatically."
+                      : "The heatmap appears from real NDX and QQQ consolidated call/put activity. No synthetic heat is drawn when the tape is unavailable."}
+                  </p>
                 </div>
               </div>
             ) : (
