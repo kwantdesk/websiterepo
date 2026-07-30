@@ -20,6 +20,7 @@ import {
   Maximize2,
   MessageSquareText,
   Paperclip,
+  Pencil,
   Plus,
   Radio,
   Search,
@@ -39,6 +40,7 @@ import {
   useState,
   type ChangeEvent,
   type FormEvent,
+  type SetStateAction,
 } from "react";
 import { createPortal } from "react-dom";
 import KwantSelect from "@/components/ui/KwantSelect";
@@ -46,14 +48,19 @@ import type { UseKwantBotInterpreterResult } from "@/hooks/useKwantBotInterprete
 import { formatKwantBotPrice } from "@/lib/kwantBotInterpreter";
 import {
   isZyonModelKey,
+  ZYON_CHAT_LIMIT,
   ZYON_CONVERSATION_TAG,
   ZYON_CUSTOM_FOLDER_LIMIT,
-  ZYON_DAILY_ROOT_FOLDER_ID,
+  ZYON_DEFAULT_CHAT_ID,
   ZYON_MODELS,
   zyonConversationRole,
+  zyonDailyFolderId,
+  zyonDailyRootFolderId,
+  zyonEntryChatId,
   zyonEntryFolderId,
   zyonId,
   type ZyonAttachment,
+  type ZyonChat,
   type ZyonFolder,
   type ZyonGameplanDraft,
   type ZyonJournalEntry,
@@ -71,6 +78,12 @@ const WELCOME_MESSAGE: ZyonMessage = {
   content: "I’m ZYON. I can compare your discretionary read with live KwantBot context, inspect chart screenshots, challenge confirmation bias, and keep the useful parts in your trading journal.",
   createdAt: "",
   model: "opus-5",
+};
+const PRIMARY_CHAT: ZyonChat = {
+  id: ZYON_DEFAULT_CHAT_ID,
+  name: "Primary chat",
+  createdAt: "",
+  updatedAt: "",
 };
 
 const QUICK_PROMPTS = [
@@ -167,9 +180,21 @@ function mergeFolders(local: ZyonFolder[], remote: ZyonFolder[]) {
     left.createdAt.localeCompare(right.createdAt));
 }
 
-function messagesFromJournal(entries: ZyonJournalEntry[]) {
+function mergeChats(local: ZyonChat[], remote: ZyonChat[]) {
+  const chats = new Map<string, ZyonChat>();
+  [...local, ...remote].forEach((chat) => chats.set(chat.id, {
+    ...chats.get(chat.id),
+    ...chat,
+  }));
+  return [...chats.values()].sort((left, right) =>
+    right.updatedAt.localeCompare(left.updatedAt));
+}
+
+function messagesFromJournal(entries: ZyonJournalEntry[], chatId: string) {
   return entries
-    .filter((entry) => entry.tags.includes(ZYON_CONVERSATION_TAG))
+    .filter((entry) =>
+      entry.tags.includes(ZYON_CONVERSATION_TAG)
+      && zyonEntryChatId(entry) === chatId)
     .map((entry): ZyonMessage | null => {
       const role = zyonConversationRole(entry);
       if (!role) return null;
@@ -191,6 +216,18 @@ function messagesFromJournal(entries: ZyonJournalEntry[]) {
     })
     .filter((message): message is ZyonMessage => Boolean(message))
     .sort((left, right) => Date.parse(left.createdAt) - Date.parse(right.createdAt));
+}
+
+function messagesByChatFromJournal(entries: ZyonJournalEntry[], chats: ZyonChat[]) {
+  const chatIds = new Set([
+    ZYON_DEFAULT_CHAT_ID,
+    ...chats.map((chat) => chat.id),
+    ...entries.map(zyonEntryChatId),
+  ]);
+  return [...chatIds].reduce<Record<string, ZyonMessage[]>>((grouped, chatId) => {
+    grouped[chatId] = messagesFromJournal(entries, chatId);
+    return grouped;
+  }, {});
 }
 
 function mergeMessages(local: ZyonMessage[], cloud: ZyonMessage[]) {
@@ -454,7 +491,11 @@ export default function ZyonWorkspace({
     return isZyonModelKey(saved) ? saved : "opus-5";
   });
   const [online, setOnline] = useState(true);
-  const [messages, setMessages] = useState<ZyonMessage[]>([]);
+  const [chats, setChats] = useState<ZyonChat[]>([PRIMARY_CHAT]);
+  const [activeChatId, setActiveChatId] = useState(ZYON_DEFAULT_CHAT_ID);
+  const [messagesByChat, setMessagesByChat] = useState<Record<string, ZyonMessage[]>>({
+    [ZYON_DEFAULT_CHAT_ID]: [WELCOME_MESSAGE],
+  });
   const [journal, setJournal] = useState<ZyonJournalEntry[]>([]);
   const [folders, setFolders] = useState<ZyonFolder[]>([]);
   const [storeReady, setStoreReady] = useState(false);
@@ -467,12 +508,12 @@ export default function ZyonWorkspace({
   const [journalSearch, setJournalSearch] = useState("");
   const [selectedDay, setSelectedDay] = useState(localSessionDate);
   const [selectedFolderId, setSelectedFolderId] = useState(
-    () => `zyon-folder-day-${localSessionDate()}`,
+    () => zyonDailyFolderId(ZYON_DEFAULT_CHAT_ID, localSessionDate()),
   );
   const [expandedFolderIds, setExpandedFolderIds] = useState<Set<string>>(
     () => new Set([
-      ZYON_DAILY_ROOT_FOLDER_ID,
-      `zyon-folder-day-${localSessionDate()}`,
+      zyonDailyRootFolderId(ZYON_DEFAULT_CHAT_ID),
+      zyonDailyFolderId(ZYON_DEFAULT_CHAT_ID, localSessionDate()),
     ]),
   );
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
@@ -488,9 +529,21 @@ export default function ZyonWorkspace({
   const [gameplanSendState, setGameplanSendState] = useState<"ready" | "checking" | "needs-info" | "sent">("ready");
   const [gameplansSentToday, setGameplansSentToday] = useState(0);
   const [pendingGameplanId, setPendingGameplanId] = useState<string | null>(null);
+  const [chatActionBusy, setChatActionBusy] = useState(false);
+  const [chatActionError, setChatActionError] = useState("");
+  const [renamingChatId, setRenamingChatId] = useState<string | null>(null);
+  const [chatNameDraft, setChatNameDraft] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const messagesScrollRef = useRef<HTMLDivElement>(null);
+  const messages = messagesByChat[activeChatId] ?? [WELCOME_MESSAGE];
+  const setMessages = useCallback((update: SetStateAction<ZyonMessage[]>) => {
+    setMessagesByChat((current) => {
+      const previous = current[activeChatId] ?? [WELCOME_MESSAGE];
+      const next = typeof update === "function" ? update(previous) : update;
+      return { ...current, [activeChatId]: next };
+    });
+  }, [activeChatId]);
 
   const resizeComposer = useCallback(() => {
     const composer = composerRef.current;
@@ -549,17 +602,43 @@ export default function ZyonWorkspace({
     loadZyonState()
       .then((saved) => {
         if (!active) return;
-        setMessages((current) => mergeMessages(
-          saved?.messages?.length ? saved.messages : [WELCOME_MESSAGE],
-          current,
-        ));
+        const savedChats = Array.isArray(saved?.chats) && saved.chats.length
+          ? mergeChats([PRIMARY_CHAT], saved.chats)
+          : [PRIMARY_CHAT];
+        const savedMessagesByChat = saved?.messagesByChat
+          && typeof saved.messagesByChat === "object"
+          ? saved.messagesByChat
+          : {
+            [ZYON_DEFAULT_CHAT_ID]: saved?.messages?.length
+              ? saved.messages
+              : [WELCOME_MESSAGE],
+          };
+        setChats(savedChats);
+        setMessagesByChat((current) => {
+          const next = { ...current };
+          Object.entries(savedMessagesByChat).forEach(([chatId, chatMessages]) => {
+            next[chatId] = mergeMessages(
+              Array.isArray(chatMessages) && chatMessages.length ? chatMessages : [WELCOME_MESSAGE],
+              current[chatId] ?? [],
+            );
+          });
+          return next;
+        });
+        if (
+          typeof saved?.activeChatId === "string"
+          && savedChats.some((chat) => chat.id === saved.activeChatId)
+        ) {
+          setActiveChatId(saved.activeChatId);
+        }
         setJournal((current) => mergeJournal(
           Array.isArray(saved?.journal) ? saved.journal : [],
           current,
         ));
       })
       .catch(() => {
-        if (active) setMessages([WELCOME_MESSAGE]);
+        if (active) {
+          setMessagesByChat({ [ZYON_DEFAULT_CHAT_ID]: [WELCOME_MESSAGE] });
+        }
       })
       .finally(() => {
         if (active) setStoreReady(true);
@@ -574,8 +653,16 @@ export default function ZyonWorkspace({
     void saveZyonState({
       messages: messages.slice(-120),
       journal: journal.slice(0, 5_000),
+      chats,
+      activeChatId,
+      messagesByChat: Object.fromEntries(
+        Object.entries(messagesByChat).map(([chatId, chatMessages]) => [
+          chatId,
+          chatMessages.slice(-120),
+        ]),
+      ),
     });
-  }, [journal, messages, storeReady]);
+  }, [activeChatId, chats, journal, messages, messagesByChat, storeReady]);
 
   useEffect(() => {
     let active = true;
@@ -586,16 +673,31 @@ export default function ZyonWorkspace({
         const payload = await response.json() as {
           entries?: ZyonJournalEntry[];
           folders?: ZyonFolder[];
+          chats?: ZyonChat[];
           cloud?: boolean;
         };
         if (!response.ok) throw new Error();
         if (!active) return;
         if (Array.isArray(payload.entries)) {
           setJournal((current) => mergeJournal(current, payload.entries ?? []));
-          setMessages((current) => mergeMessages(
-            current,
-            messagesFromJournal(payload.entries ?? []),
-          ));
+          const remoteChats = mergeChats(
+            [PRIMARY_CHAT],
+            Array.isArray(payload.chats) ? payload.chats : [],
+          );
+          const cloudMessagesByChat = messagesByChatFromJournal(
+            payload.entries ?? [],
+            remoteChats,
+          );
+          setMessagesByChat((current) => {
+            const next = { ...current };
+            Object.entries(cloudMessagesByChat).forEach(([chatId, chatMessages]) => {
+              next[chatId] = mergeMessages(current[chatId] ?? [WELCOME_MESSAGE], chatMessages);
+            });
+            return next;
+          });
+        }
+        if (Array.isArray(payload.chats)) {
+          setChats((current) => mergeChats(current, [PRIMARY_CHAT, ...(payload.chats ?? [])]));
         }
         if (Array.isArray(payload.folders)) {
           setFolders((current) => mergeFolders(current, payload.folders ?? []));
@@ -618,6 +720,16 @@ export default function ZyonWorkspace({
   useEffect(() => {
     window.localStorage.setItem("kwantdesk:zyon:model", model);
   }, [model]);
+
+  useEffect(() => {
+    const today = localSessionDate();
+    const rootFolderId = zyonDailyRootFolderId(activeChatId);
+    const todayFolderId = zyonDailyFolderId(activeChatId, today);
+    setSelectedDay(today);
+    setSelectedFolderId(todayFolderId);
+    setExpandedFolderIds(new Set([rootFolderId, todayFolderId]));
+    setSelectedEntryId(null);
+  }, [activeChatId]);
 
   useEffect(() => {
     void refreshGameplanStatus();
@@ -649,7 +761,7 @@ export default function ZyonWorkspace({
     const container = messagesScrollRef.current;
     if (!container) return;
     container.scrollTop = container.scrollHeight;
-  }, [compact, conversationReady, messages.length, sending]);
+  }, [activeChatId, compact, conversationReady, messages.length, sending]);
 
   useLayoutEffect(() => {
     resizeComposer();
@@ -660,22 +772,33 @@ export default function ZyonWorkspace({
     return () => window.removeEventListener("resize", resizeComposer);
   }, [resizeComposer]);
 
+  const activeJournal = useMemo(
+    () => journal.filter((entry) => zyonEntryChatId(entry) === activeChatId),
+    [activeChatId, journal],
+  );
+  const orderedChats = useMemo(
+    () => [...chats].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt)),
+    [chats],
+  );
+  const activeChat = chats.find((chat) => chat.id === activeChatId) ?? PRIMARY_CHAT;
+  const activeRootFolderId = zyonDailyRootFolderId(activeChatId);
   const filteredJournal = useMemo(() => {
     const query = journalSearch.trim().toLowerCase();
-    if (!query) return journal;
-    return journal.filter((entry) =>
+    if (!query) return activeJournal;
+    return activeJournal.filter((entry) =>
       `${entry.title} ${entry.summary} ${entry.body} ${entry.tags.join(" ")} ${entry.root}`
         .toLowerCase()
         .includes(query),
     );
-  }, [journal, journalSearch]);
+  }, [activeJournal, journalSearch]);
 
   const displayFolders = useMemo(() => {
     const now = new Date().toISOString();
-    const next = mergeFolders([], folders);
-    if (!next.some((folder) => folder.id === ZYON_DAILY_ROOT_FOLDER_ID)) {
+    const next = mergeFolders([], folders.filter((folder) => folder.chatId === activeChatId));
+    if (!next.some((folder) => folder.id === activeRootFolderId)) {
       next.push({
-        id: ZYON_DAILY_ROOT_FOLDER_ID,
+        id: activeRootFolderId,
+        chatId: activeChatId,
         name: "Daily conversations",
         parentId: null,
         kind: "system",
@@ -684,15 +807,16 @@ export default function ZyonWorkspace({
         updatedAt: now,
       });
     }
-    const dates = new Set(journal.map((entry) => entry.sessionDate));
+    const dates = new Set(activeJournal.map((entry) => entry.sessionDate));
     dates.forEach((sessionDate) => {
-      const id = `zyon-folder-day-${sessionDate}`;
+      const id = zyonDailyFolderId(activeChatId, sessionDate);
       if (next.some((folder) => folder.id === id)) return;
-      const entries = journal.filter((entry) => entry.sessionDate === sessionDate);
+      const entries = activeJournal.filter((entry) => entry.sessionDate === sessionDate);
       next.push({
         id,
+        chatId: activeChatId,
         name: sessionDate,
-        parentId: ZYON_DAILY_ROOT_FOLDER_ID,
+        parentId: activeRootFolderId,
         kind: "daily",
         sessionDate,
         createdAt: entries.at(-1)?.createdAt ?? now,
@@ -700,7 +824,7 @@ export default function ZyonWorkspace({
       });
     });
     return next;
-  }, [folders, journal]);
+  }, [activeChatId, activeJournal, activeRootFolderId, folders]);
   const flattenedFolders = useMemo(
     () => folderRows(displayFolders, expandedFolderIds),
     [displayFolders, expandedFolderIds],
@@ -720,7 +844,7 @@ export default function ZyonWorkspace({
       })
       .sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt));
   }, [displayFolders, filteredJournal, selectedFolder]);
-  const selectedEntry = journal.find((entry) => entry.id === selectedEntryId)
+  const selectedEntry = activeJournal.find((entry) => entry.id === selectedEntryId)
     ?? selectedFolderEntries[0]
     ?? null;
   const customFolderCount = displayFolders.filter((folder) => folder.kind === "custom").length;
@@ -738,6 +862,110 @@ export default function ZyonWorkspace({
       .slice(0, 3);
   }, [context, currentPrice]);
 
+  const openChat = useCallback((chatId: string) => {
+    const today = localSessionDate();
+    const rootFolderId = zyonDailyRootFolderId(chatId);
+    const todayFolderId = zyonDailyFolderId(chatId, today);
+    setActiveChatId(chatId);
+    setMessagesByChat((current) => current[chatId]
+      ? current
+      : { ...current, [chatId]: [WELCOME_MESSAGE] });
+    setSelectedDay(today);
+    setSelectedFolderId(todayFolderId);
+    setExpandedFolderIds(new Set([rootFolderId, todayFolderId]));
+    setSelectedEntryId(null);
+    setJournalSearch("");
+    setDraft("");
+    setAttachments([]);
+    setAttachmentError("");
+    setSendError("");
+  }, []);
+
+  const createChat = useCallback(async () => {
+    if (chatActionBusy || chats.length >= ZYON_CHAT_LIMIT) return;
+    setChatActionBusy(true);
+    setChatActionError("");
+    try {
+      const response = await fetch("/api/zyon/journal", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "create-chat",
+          name: "New chat",
+          root: selectedRoot,
+        }),
+      });
+      const payload = await response.json().catch(() => null) as {
+        chat?: ZyonChat;
+        folder?: ZyonFolder;
+        error?: string;
+      } | null;
+      if (!response.ok || !payload?.chat) {
+        throw new Error(payload?.error || "The chat could not be created.");
+      }
+      setChats((current) => mergeChats(current, [payload.chat!]));
+      if (payload.folder) setFolders((current) => mergeFolders(current, [payload.folder!]));
+      openChat(payload.chat.id);
+      setRenamingChatId(payload.chat.id);
+      setChatNameDraft(payload.chat.name);
+      setCloudJournal("synced");
+    } catch (error) {
+      setChatActionError(error instanceof Error ? error.message : "The chat could not be created.");
+    } finally {
+      setChatActionBusy(false);
+    }
+  }, [chatActionBusy, chats.length, openChat, selectedRoot]);
+
+  const renameChat = useCallback(async (chatId: string) => {
+    const name = chatNameDraft.replace(/\s+/g, " ").trim().slice(0, 60);
+    const existing = chats.find((chat) => chat.id === chatId);
+    if (!name || !existing || chatActionBusy) {
+      setRenamingChatId(null);
+      setChatNameDraft("");
+      return;
+    }
+    if (existing.name === name) {
+      setRenamingChatId(null);
+      setChatNameDraft("");
+      return;
+    }
+    const previousName = existing.name;
+    const updatedAt = new Date().toISOString();
+    setChats((current) => current.map((chat) =>
+      chat.id === chatId ? { ...chat, name, updatedAt } : chat));
+    setRenamingChatId(null);
+    setChatNameDraft("");
+    setChatActionBusy(true);
+    setChatActionError("");
+    try {
+      const response = await fetch("/api/zyon/journal", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "rename-chat",
+          chatId,
+          name,
+          root: selectedRoot,
+        }),
+      });
+      const payload = await response.json().catch(() => null) as {
+        chat?: ZyonChat;
+        error?: string;
+      } | null;
+      if (!response.ok || !payload?.chat) {
+        throw new Error(payload?.error || "The chat could not be renamed.");
+      }
+      setChats((current) => mergeChats(current, [payload.chat!]));
+      setCloudJournal("synced");
+    } catch (error) {
+      setChats((current) => current.map((chat) =>
+        chat.id === chatId ? { ...chat, name: previousName } : chat));
+      setChatActionError(error instanceof Error ? error.message : "The chat could not be renamed.");
+    } finally {
+      setChatActionBusy(false);
+    }
+  }, [chatActionBusy, chatNameDraft, chats, selectedRoot]);
+
   const createFolder = async (event: FormEvent) => {
     event.preventDefault();
     if (!folderName.trim() || folderActionBusy) return;
@@ -751,6 +979,7 @@ export default function ZyonWorkspace({
           name: folderName,
           parentId: folderParentId || null,
           root: selectedRoot,
+          chatId: activeChatId,
         }),
       });
       const payload = await response.json().catch(() => null) as {
@@ -800,14 +1029,15 @@ export default function ZyonWorkspace({
       const removedIds = new Set(payload?.folderIds ?? [folderToDelete.id]);
       setFolders((current) => current.filter((folder) => !removedIds.has(folder.id)));
       setJournal((current) => current.filter((entry) => {
+        if (zyonEntryChatId(entry) !== activeChatId) return true;
         const entryFolderId = zyonEntryFolderId(entry);
         if (entryFolderId && removedIds.has(entryFolderId)) return false;
         return !(folderToDelete.kind === "daily" && entry.sessionDate === folderToDelete.sessionDate);
       }));
-      setSelectedFolderId(ZYON_DAILY_ROOT_FOLDER_ID);
+      setSelectedFolderId(activeRootFolderId);
       setExpandedFolderIds((current) => {
         const next = new Set([...current].filter((id) => !removedIds.has(id)));
-        next.add(ZYON_DAILY_ROOT_FOLDER_ID);
+        next.add(activeRootFolderId);
         return next;
       });
       setSelectedEntryId(null);
@@ -923,6 +1153,10 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
     };
     const conversation = [...messages.slice(-23), userMessage];
     setMessages((current) => [...current.slice(-119), userMessage]);
+    setChats((current) => current.map((chat) =>
+      chat.id === activeChatId
+        ? { ...chat, updatedAt: userMessage.createdAt }
+        : chat));
     if (!overrideText) {
       setDraft("");
       setAttachments([]);
@@ -938,6 +1172,7 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
         body: JSON.stringify({
           model,
           root: selectedRoot,
+          chatId: activeChatId,
           messages: conversation.map((message) => ({
             id: message.id,
             role: message.role,
@@ -1026,7 +1261,8 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
       if (payload?.folder?.id && payload.folder.sessionDate) {
         const now = new Date().toISOString();
         const systemFolder: ZyonFolder = {
-          id: ZYON_DAILY_ROOT_FOLDER_ID,
+          id: activeRootFolderId,
+          chatId: activeChatId,
           name: "Daily conversations",
           parentId: null,
           kind: "system",
@@ -1036,10 +1272,11 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
         };
         const dailyFolder: ZyonFolder = {
           id: payload.folder.id,
+          chatId: activeChatId,
           name: payload.folder.sessionDate,
           parentId: selectedFolder?.kind === "custom"
             ? selectedFolder.id
-            : ZYON_DAILY_ROOT_FOLDER_ID,
+            : activeRootFolderId,
           kind: "daily",
           sessionDate: payload.folder.sessionDate,
           createdAt: now,
@@ -1049,7 +1286,7 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
         setSelectedFolderId(dailyFolder.id);
         setExpandedFolderIds((current) => {
           const next = new Set(current);
-          next.add(ZYON_DAILY_ROOT_FOLDER_ID);
+          next.add(activeRootFolderId);
           next.add(dailyFolder.id);
           return next;
         });
@@ -1349,6 +1586,28 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
         </div>
 
         <div className="ml-auto flex items-center gap-2">
+          <KwantSelect
+            value={activeChatId}
+            onChange={(event) => openChat(event.target.value)}
+            menuLabel="ZYON chat"
+            className="h-8 min-w-[118px] rounded-xl border border-border bg-surface/60 px-3 text-[9px] font-semibold text-foreground lg:hidden"
+            aria-label="Select ZYON chat"
+          >
+            {orderedChats.map((chat) => (
+              <option key={chat.id} value={chat.id}>{chat.name}</option>
+            ))}
+          </KwantSelect>
+          <button
+            type="button"
+            onClick={() => void createChat()}
+            disabled={chatActionBusy || chats.length >= ZYON_CHAT_LIMIT}
+            className="flex h-8 w-8 items-center justify-center rounded-xl border border-border bg-surface/60 text-muted transition hover:border-primary/30 hover:text-primary disabled:opacity-40 lg:hidden"
+            title="New chat"
+          >
+            {chatActionBusy
+              ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              : <Plus className="h-3.5 w-3.5" />}
+          </button>
           <button
             type="button"
             onClick={requestGameplan}
@@ -1412,12 +1671,154 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
       </header>
 
       <div className="flex min-h-0 flex-1">
+        <aside className="hidden w-[184px] shrink-0 flex-col border-r border-border bg-background/55 lg:flex">
+          <div className="border-b border-border p-3">
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-foreground">Chats</div>
+                <div className="mt-0.5 text-[8px] text-muted">{chats.length}/{ZYON_CHAT_LIMIT} workspaces</div>
+              </div>
+              <button
+                type="button"
+                onClick={() => void createChat()}
+                disabled={chatActionBusy || chats.length >= ZYON_CHAT_LIMIT}
+                className="flex h-8 w-8 items-center justify-center rounded-xl border border-primary/20 bg-primary/[0.07] text-primary transition hover:border-primary/40 hover:bg-primary/10 disabled:opacity-40"
+                title="New chat"
+              >
+                {chatActionBusy
+                  ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  : <Plus className="h-3.5 w-3.5" />}
+              </button>
+            </div>
+            <button
+              type="button"
+              onClick={() => void createChat()}
+              disabled={chatActionBusy || chats.length >= ZYON_CHAT_LIMIT}
+              className="mt-3 flex h-8 w-full items-center justify-center gap-2 rounded-xl border border-border bg-surface/60 text-[8px] font-semibold uppercase tracking-[0.12em] text-muted transition hover:border-primary/30 hover:text-primary disabled:opacity-40"
+            >
+              <MessageSquareText className="h-3.5 w-3.5" />
+              New chat
+            </button>
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto p-2">
+            <div className="space-y-1">
+              {orderedChats.map((chat) => {
+                const selected = chat.id === activeChatId;
+                const chatMessages = messagesByChat[chat.id] ?? [];
+                const lastMessage = [...chatMessages]
+                  .reverse()
+                  .find((message) => message.id !== WELCOME_MESSAGE.id);
+                const renaming = renamingChatId === chat.id;
+                return (
+                  <div
+                    key={chat.id}
+                    className={`group rounded-xl border transition ${
+                      selected
+                        ? "border-primary/25 bg-primary/[0.07]"
+                        : "border-transparent hover:border-border hover:bg-surface/50"
+                    }`}
+                  >
+                    <div
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => openChat(chat.id)}
+                      onDoubleClick={() => {
+                        setRenamingChatId(chat.id);
+                        setChatNameDraft(chat.name);
+                      }}
+                      onKeyDown={(event) => {
+                        if ((event.key === "Enter" || event.key === " ") && !renaming) {
+                          event.preventDefault();
+                          openChat(chat.id);
+                        }
+                      }}
+                      className="flex w-full items-start gap-2 px-2.5 py-2.5 text-left"
+                    >
+                      <span className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border ${
+                        selected
+                          ? "border-primary/25 bg-primary/10 text-primary"
+                          : "border-border bg-background/40 text-muted"
+                      }`}>
+                        <MessageSquareText className="h-3 w-3" />
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        {renaming ? (
+                          <input
+                            value={chatNameDraft}
+                            onChange={(event) => setChatNameDraft(event.target.value.slice(0, 60))}
+                            onClick={(event) => event.stopPropagation()}
+                            onDoubleClick={(event) => event.stopPropagation()}
+                            onBlur={() => void renameChat(chat.id)}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter") {
+                                event.preventDefault();
+                                event.currentTarget.blur();
+                              }
+                              if (event.key === "Escape") {
+                                setChatNameDraft(chat.name);
+                                event.currentTarget.blur();
+                              }
+                            }}
+                            autoFocus
+                            className="h-5 w-full rounded-md border border-primary/30 bg-background px-1.5 text-[9px] font-medium text-foreground outline-none"
+                            aria-label="Rename chat"
+                          />
+                        ) : (
+                          <span className={`block truncate text-[9px] font-medium ${
+                            selected ? "text-foreground" : "text-muted group-hover:text-foreground"
+                          }`}>
+                            {chat.name}
+                          </span>
+                        )}
+                        <span className="mt-1 block truncate text-[7px] text-muted/70">
+                          {lastMessage?.content || "Start a new conversation"}
+                        </span>
+                      </span>
+                      {!renaming ? (
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setRenamingChatId(chat.id);
+                            setChatNameDraft(chat.name);
+                          }}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter" || event.key === " ") {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              setRenamingChatId(chat.id);
+                              setChatNameDraft(chat.name);
+                            }
+                          }}
+                          className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted transition hover:bg-surface hover:text-foreground ${
+                            selected ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+                          }`}
+                          title="Rename chat"
+                        >
+                          <Pencil className="h-3 w-3" />
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+          <div className="border-t border-border px-3 py-2.5">
+            {chatActionError ? (
+              <p className="text-[8px] leading-3 text-danger">{chatActionError}</p>
+            ) : (
+              <p className="truncate text-[8px] text-muted">{activeChat.name}</p>
+            )}
+          </div>
+        </aside>
+
         <aside className="hidden w-[252px] shrink-0 flex-col border-r border-border bg-panel/70 lg:flex">
           <div className="border-b border-border p-3">
             <div className="flex items-center justify-between">
               <div>
                 <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-foreground">Journal</div>
-                <div className="mt-0.5 text-[8px] text-muted">{journal.length} summaries · {customFolderCount}/{ZYON_CUSTOM_FOLDER_LIMIT} folders</div>
+                <div className="mt-0.5 text-[8px] text-muted">{activeJournal.length} summaries · {customFolderCount}/{ZYON_CUSTOM_FOLDER_LIMIT} folders</div>
               </div>
               <div className="flex items-center gap-1.5">
                 <button
@@ -1538,7 +1939,7 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
                               ? "Automatic archive"
                               : folder.kind === "custom"
                                 ? "Custom folder"
-                                : `${entries.length || journal.filter((entry) => entry.sessionDate === folder.sessionDate).length} summaries`}
+                                : `${entries.length || activeJournal.filter((entry) => entry.sessionDate === folder.sessionDate).length} summaries`}
                           </span>
                         </span>
                         <ChevronRight className={`h-3.5 w-3.5 transition ${expanded ? "rotate-90 text-primary" : ""}`} />

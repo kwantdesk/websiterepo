@@ -9,11 +9,15 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import {
   isZyonMarketRoot,
   isZyonModelKey,
+  ZYON_CHAT_TAG,
   ZYON_CONVERSATION_TAG,
-  ZYON_DAILY_ROOT_FOLDER_ID,
+  ZYON_DEFAULT_CHAT_ID,
   ZYON_FOLDER_TAG,
   ZYON_MODELS,
+  zyonChatIdTag,
   zyonConversationRoleTag,
+  zyonDailyFolderId,
+  zyonDailyRootFolderId,
   zyonFolderIdTag,
   zyonFolderKindTag,
   zyonGameplanEntryTimingStatus,
@@ -500,6 +504,7 @@ function briefConversationSummary(text: string, fallback: string) {
 
 function conversationEntry(args: {
   id: string;
+  chatId: string;
   sessionDate: string;
   folderId: string;
   root: ZyonMarketRoot;
@@ -527,6 +532,7 @@ function conversationEntry(args: {
     kind: "NOTE",
     tags: [
       ZYON_CONVERSATION_TAG,
+      zyonChatIdTag(args.chatId),
       zyonConversationRoleTag(args.role),
       zyonFolderIdTag(args.folderId),
       args.root,
@@ -538,19 +544,21 @@ function conversationEntry(args: {
 
 async function ensureConversationFolders(args: {
   actorId: string;
+  chatId: string;
   sessionDate: string;
   root: ZyonMarketRoot;
   requestedParentId: string | null;
 }) {
-  const dailyFolderId = `zyon-folder-day-${args.sessionDate}`;
+  const dailyRootFolderId = zyonDailyRootFolderId(args.chatId);
+  const dailyFolderId = zyonDailyFolderId(args.chatId, args.sessionDate);
   const now = new Date().toISOString();
   try {
     const supabase = await createSupabaseServerClient();
-    const parentId = args.requestedParentId || ZYON_DAILY_ROOT_FOLDER_ID;
+    const parentId = args.requestedParentId || dailyRootFolderId;
     const rows = [
       {
         user_id: args.actorId,
-        id: ZYON_DAILY_ROOT_FOLDER_ID,
+        id: dailyRootFolderId,
         session_date: args.sessionDate,
         root: args.root,
         title: "Daily conversations",
@@ -559,7 +567,8 @@ async function ensureConversationFolders(args: {
         kind: "NOTE",
         tags: [
           ZYON_FOLDER_TAG,
-          zyonFolderIdTag(ZYON_DAILY_ROOT_FOLDER_ID),
+          zyonChatIdTag(args.chatId),
+          zyonFolderIdTag(dailyRootFolderId),
           zyonFolderKindTag("system"),
           zyonParentFolderTag(null),
         ],
@@ -579,6 +588,7 @@ async function ensureConversationFolders(args: {
         kind: "NOTE",
         tags: [
           ZYON_FOLDER_TAG,
+          zyonChatIdTag(args.chatId),
           zyonFolderIdTag(dailyFolderId),
           zyonFolderKindTag("daily"),
           zyonParentFolderTag(parentId),
@@ -593,12 +603,19 @@ async function ensureConversationFolders(args: {
       .from("zyon_journal_entries")
       .upsert(rows, { onConflict: "user_id,id", ignoreDuplicates: true });
     if (error) throw error;
+    await supabase
+      .from("zyon_journal_entries")
+      .update({ updated_at: now })
+      .eq("user_id", args.actorId)
+      .eq("id", args.chatId)
+      .contains("tags", [ZYON_CHAT_TAG]);
     if (args.requestedParentId) {
       const { error: moveError } = await supabase
         .from("zyon_journal_entries")
         .update({
           tags: [
             ZYON_FOLDER_TAG,
+            zyonChatIdTag(args.chatId),
             zyonFolderIdTag(dailyFolderId),
             zyonFolderKindTag("daily"),
             zyonParentFolderTag(args.requestedParentId),
@@ -757,6 +774,7 @@ export async function POST(request: NextRequest) {
     root?: unknown;
     context?: unknown;
     folderId?: unknown;
+    chatId?: unknown;
     localDate?: unknown;
     clientTimeZone?: unknown;
   };
@@ -768,6 +786,10 @@ export async function POST(request: NextRequest) {
 
   const modelKey = isZyonModelKey(payload.model) ? payload.model : "opus-5";
   const root = isZyonMarketRoot(payload.root) ? payload.root : "NQ";
+  const requestedChatId = cleanText(payload.chatId, 160);
+  const chatId = /^[a-zA-Z0-9_-]+$/.test(requestedChatId)
+    ? requestedChatId
+    : ZYON_DEFAULT_CHAT_ID;
   const clientTimeZone = cleanText(payload.clientTimeZone, 80) || "UTC";
   const messages = normalizeMessages(payload.messages);
   if (!messages.length || messages.at(-1)?.role !== "user") {
@@ -789,6 +811,7 @@ export async function POST(request: NextRequest) {
     : null;
   const conversationFolder = await ensureConversationFolders({
     actorId: actor.userId,
+    chatId,
     sessionDate,
     root,
     requestedParentId,
@@ -805,6 +828,7 @@ export async function POST(request: NextRequest) {
   });
   const userConversationEntry = conversationEntry({
     id: userConversationEntryId,
+    chatId,
     sessionDate,
     folderId: conversationFolder.folderId,
     root,
@@ -825,6 +849,7 @@ export async function POST(request: NextRequest) {
     const pendingText = "Your previous Gameplan is already in the Socials holding page. Post it to your Profile before asking ZYON to send another one.";
     const assistantConversationEntry = conversationEntry({
       id: zyonId("zyon-conversation-assistant"),
+      chatId,
       sessionDate,
       folderId: conversationFolder.folderId,
       root,
@@ -1007,6 +1032,12 @@ export async function POST(request: NextRequest) {
         tags: [root, "discretionary"],
       }, root, payload.context, finalAttachments);
     }
+    if (journalEntry && !journalEntry.tags.includes(zyonChatIdTag(chatId))) {
+      journalEntry = {
+        ...journalEntry,
+        tags: [...journalEntry.tags, zyonChatIdTag(chatId)],
+      };
+    }
     const cloudSaved = journalEntry
       ? await persistJournalEntry(actor.userId, journalEntry)
       : false;
@@ -1032,8 +1063,14 @@ export async function POST(request: NextRequest) {
       : { saved: false, blockedBy: null };
     if (gameplanDraftSave.blockedBy) gameplanDraft = null;
     if (gameplanDraft) gameplanDraft = { ...gameplanDraft, cloudSaved: gameplanDraftSave.saved };
-    const savedGameplanJournalEntry = gameplanDraft
+    const unscopedGameplanJournalEntry = gameplanDraft
       ? gameplanJournalEntry(gameplanDraft, conversationFolder.folderId)
+      : null;
+    const savedGameplanJournalEntry = unscopedGameplanJournalEntry
+      ? {
+        ...unscopedGameplanJournalEntry,
+        tags: [...unscopedGameplanJournalEntry.tags, zyonChatIdTag(chatId)],
+      }
       : null;
     const savedGameplanJournalCloud = savedGameplanJournalEntry
       ? await persistJournalEntry(actor.userId, savedGameplanJournalEntry)
@@ -1051,6 +1088,7 @@ export async function POST(request: NextRequest) {
           : "That has been recorded in your trading journal.");
     const assistantConversationEntry = conversationEntry({
       id: zyonId("zyon-conversation-assistant"),
+      chatId,
       sessionDate,
       folderId: conversationFolder.folderId,
       root,

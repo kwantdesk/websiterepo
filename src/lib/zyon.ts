@@ -31,16 +31,27 @@ export type ZyonGameplanDirection = "LONG" | "SHORT";
 export type ZyonGameplanRiskUnit = "DOLLARS" | "POINTS" | "TICKS" | "PERCENT";
 export const ZYON_FOLDER_TAG = "zyon:folder";
 export const ZYON_CONVERSATION_TAG = "zyon:conversation";
+export const ZYON_CHAT_TAG = "zyon:chat";
+export const ZYON_DEFAULT_CHAT_ID = "zyon-chat-primary";
+export const ZYON_CHAT_LIMIT = 30;
 export const ZYON_DAILY_ROOT_FOLDER_ID = "zyon-folder-daily-conversations";
 export const ZYON_CUSTOM_FOLDER_LIMIT = 20;
 export const ZYON_RETRO_ENTRY_WINDOW_MS = 5 * 60 * 1_000;
 
 export type ZyonFolder = {
   id: string;
+  chatId: string;
   name: string;
   parentId: string | null;
   kind: "system" | "daily" | "custom";
   sessionDate: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ZyonChat = {
+  id: string;
+  name: string;
   createdAt: string;
   updatedAt: string;
 };
@@ -200,6 +211,10 @@ export function zyonConversationRoleTag(role: ZyonMessage["role"]) {
   return `zyon:role:${role}`;
 }
 
+export function zyonChatIdTag(chatId: string) {
+  return `zyon:chat-id:${chatId}`;
+}
+
 export function zyonTagValue(tags: string[], prefix: string) {
   return tags.find((tag) => tag.startsWith(prefix))?.slice(prefix.length) ?? null;
 }
@@ -211,6 +226,22 @@ export function zyonEntryFolderId(entry: Pick<ZyonJournalEntry, "tags">) {
 export function zyonConversationRole(entry: Pick<ZyonJournalEntry, "tags">) {
   const role = zyonTagValue(entry.tags, "zyon:role:");
   return role === "user" || role === "assistant" ? role : null;
+}
+
+export function zyonEntryChatId(entry: Pick<ZyonJournalEntry, "tags">) {
+  return zyonTagValue(entry.tags, "zyon:chat-id:") ?? ZYON_DEFAULT_CHAT_ID;
+}
+
+export function zyonDailyRootFolderId(chatId: string) {
+  return chatId === ZYON_DEFAULT_CHAT_ID
+    ? ZYON_DAILY_ROOT_FOLDER_ID
+    : `zyon-folder-daily-${chatId}`;
+}
+
+export function zyonDailyFolderId(chatId: string, sessionDate: string) {
+  return chatId === ZYON_DEFAULT_CHAT_ID
+    ? `zyon-folder-day-${sessionDate}`
+    : `zyon-folder-day-${chatId}-${sessionDate}`;
 }
 
 export function isZyonModelKey(value: unknown): value is ZyonModelKey {

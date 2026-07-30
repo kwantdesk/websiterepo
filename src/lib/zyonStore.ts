@@ -1,4 +1,4 @@
-import type { ZyonJournalEntry, ZyonMessage } from "@/lib/zyon";
+import type { ZyonChat, ZyonJournalEntry, ZyonMessage } from "@/lib/zyon";
 
 const DB_NAME = "kwantdesk-zyon";
 const DB_VERSION = 1;
@@ -8,6 +8,9 @@ const STATE_KEY = "primary";
 export type ZyonStoredState = {
   messages: ZyonMessage[];
   journal: ZyonJournalEntry[];
+  chats?: ZyonChat[];
+  activeChatId?: string;
+  messagesByChat?: Record<string, ZyonMessage[]>;
 };
 
 function openDatabase() {

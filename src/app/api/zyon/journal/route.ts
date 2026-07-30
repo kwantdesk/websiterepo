@@ -3,13 +3,19 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import { getRouteActor } from "@/lib/serverAuth";
 import {
   isZyonMarketRoot,
+  ZYON_CHAT_LIMIT,
+  ZYON_CHAT_TAG,
   ZYON_CUSTOM_FOLDER_LIMIT,
+  ZYON_DEFAULT_CHAT_ID,
   ZYON_FOLDER_TAG,
+  zyonChatIdTag,
+  zyonDailyRootFolderId,
   zyonFolderIdTag,
   zyonFolderKindTag,
   zyonId,
   zyonParentFolderTag,
   zyonTagValue,
+  type ZyonChat,
   type ZyonFolder,
   type ZyonJournalEntry,
 } from "@/lib/zyon";
@@ -60,10 +66,24 @@ function folderFromRow(row: JournalRow): ZyonFolder | null {
   const parent = zyonTagValue(tags, "zyon:parent:");
   return {
     id: row.id,
+    chatId: zyonTagValue(tags, "zyon:chat-id:") ?? ZYON_DEFAULT_CHAT_ID,
     name: row.title,
     parentId: !parent || parent === "root" ? null : parent,
     kind,
     sessionDate: kind === "daily" ? row.session_date : null,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at || row.created_at,
+  };
+}
+
+function chatFromRow(row: JournalRow): ZyonChat | null {
+  const tags = Array.isArray(row.tags) ? row.tags : [];
+  if (!tags.includes(ZYON_CHAT_TAG)) return null;
+  const chatId = zyonTagValue(tags, "zyon:chat-id:");
+  if (!chatId) return null;
+  return {
+    id: chatId,
+    name: row.title,
     createdAt: row.created_at,
     updatedAt: row.updated_at || row.created_at,
   };
@@ -76,8 +96,19 @@ function cleanFolderName(value: unknown) {
 }
 
 function unavailableResponse() {
+  const now = new Date().toISOString();
   return NextResponse.json(
-    { entries: [], folders: [], cloud: false },
+    {
+      entries: [],
+      folders: [],
+      chats: [{
+        id: ZYON_DEFAULT_CHAT_ID,
+        name: "Primary chat",
+        createdAt: now,
+        updatedAt: now,
+      }],
+      cloud: false,
+    },
     { headers: { "Cache-Control": "private, no-store, max-age=0" } },
   );
 }
@@ -139,15 +170,32 @@ export async function GET(request: NextRequest) {
       })),
     }));
   }
+  const chats = rows
+    .map(chatFromRow)
+    .filter((chat): chat is ZyonChat => Boolean(chat));
+  if (!chats.some((chat) => chat.id === ZYON_DEFAULT_CHAT_ID)) {
+    const oldest = rows.at(-1);
+    chats.push({
+      id: ZYON_DEFAULT_CHAT_ID,
+      name: "Primary chat",
+      createdAt: oldest?.created_at ?? new Date().toISOString(),
+      updatedAt: rows[0]?.updated_at ?? rows[0]?.created_at ?? new Date().toISOString(),
+    });
+  }
   const folders = rows
     .map(folderFromRow)
     .filter((folder): folder is ZyonFolder => Boolean(folder));
   const entries = rows
-    .filter((row) => !folderFromRow(row))
+    .filter((row) => !folderFromRow(row) && !chatFromRow(row))
     .map(fromRow)
     .filter((entry): entry is ZyonJournalEntry => Boolean(entry));
   return NextResponse.json(
-    { entries, folders, cloud: true },
+    {
+      entries,
+      folders,
+      chats: chats.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt)),
+      cloud: true,
+    },
     { headers: { "Cache-Control": "private, no-store, max-age=0" } },
   );
 }
@@ -157,19 +205,35 @@ export async function POST(request: NextRequest) {
   if (!actor) {
     return NextResponse.json({ error: "Authentication required." }, { status: 401 });
   }
-  let payload: { name?: unknown; parentId?: unknown; root?: unknown };
+  let payload: {
+    action?: unknown;
+    name?: unknown;
+    parentId?: unknown;
+    root?: unknown;
+    chatId?: unknown;
+  };
   try {
     payload = await request.json();
   } catch {
     return NextResponse.json({ error: "Folder details could not be read." }, { status: 400 });
   }
+  const action = payload.action === "create-chat" || payload.action === "rename-chat"
+    ? payload.action
+    : "create-folder";
   const name = cleanFolderName(payload.name);
+  const requestedChatId = typeof payload.chatId === "string"
+    ? payload.chatId.trim().slice(0, 160)
+    : "";
+  const chatId = requestedChatId || ZYON_DEFAULT_CHAT_ID;
   const parentId = typeof payload.parentId === "string" && payload.parentId.trim()
     ? payload.parentId.trim().slice(0, 160)
     : null;
   const root = isZyonMarketRoot(payload.root) ? payload.root : "NQ";
   if (!name) {
-    return NextResponse.json({ error: "Give the folder a name." }, { status: 400 });
+    return NextResponse.json(
+      { error: action === "create-folder" ? "Give the folder a name." : "Give the chat a name." },
+      { status: 400 },
+    );
   }
 
   let supabase;
@@ -178,6 +242,149 @@ export async function POST(request: NextRequest) {
   } catch {
     return NextResponse.json({ error: "Account storage is unavailable." }, { status: 503 });
   }
+
+  if (action === "create-chat") {
+    const { data: chatRows, error: chatLoadError } = await supabase
+      .from("zyon_journal_entries")
+      .select("id")
+      .eq("user_id", actor.userId)
+      .contains("tags", [ZYON_CHAT_TAG])
+      .limit(ZYON_CHAT_LIMIT + 1);
+    if (chatLoadError) {
+      return NextResponse.json({ error: "Chats could not be loaded." }, { status: 502 });
+    }
+    const storedChats = chatRows ?? [];
+    const effectiveChatCount = storedChats.some((row) => row.id === ZYON_DEFAULT_CHAT_ID)
+      ? storedChats.length
+      : storedChats.length + 1;
+    if (effectiveChatCount >= ZYON_CHAT_LIMIT) {
+      return NextResponse.json(
+        { error: `Each account can keep up to ${ZYON_CHAT_LIMIT} ZYON chats.` },
+        { status: 409 },
+      );
+    }
+    const now = new Date().toISOString();
+    const newChat: ZyonChat = {
+      id: zyonId("zyon-chat"),
+      name,
+      createdAt: now,
+      updatedAt: now,
+    };
+    const rootFolder: ZyonFolder = {
+      id: zyonDailyRootFolderId(newChat.id),
+      chatId: newChat.id,
+      name: "Daily conversations",
+      parentId: null,
+      kind: "system",
+      sessionDate: null,
+      createdAt: now,
+      updatedAt: now,
+    };
+    const { error } = await supabase.from("zyon_journal_entries").insert([
+      {
+        user_id: actor.userId,
+        id: newChat.id,
+        session_date: now.slice(0, 10),
+        root,
+        title: newChat.name,
+        summary: "",
+        body: "",
+        kind: "NOTE",
+        tags: [ZYON_CHAT_TAG, zyonChatIdTag(newChat.id)],
+        attachments: [],
+        source: "zyon-chat",
+        created_at: now,
+        updated_at: now,
+      },
+      {
+        user_id: actor.userId,
+        id: rootFolder.id,
+        session_date: now.slice(0, 10),
+        root,
+        title: rootFolder.name,
+        summary: "",
+        body: "",
+        kind: "NOTE",
+        tags: [
+          ZYON_FOLDER_TAG,
+          zyonChatIdTag(newChat.id),
+          zyonFolderIdTag(rootFolder.id),
+          zyonFolderKindTag("system"),
+          zyonParentFolderTag(null),
+        ],
+        attachments: [],
+        source: "zyon-folder",
+        created_at: now,
+        updated_at: now,
+      },
+    ]);
+    if (error) {
+      return NextResponse.json({ error: "The chat could not be created." }, { status: 502 });
+    }
+    return NextResponse.json({ chat: newChat, folder: rootFolder }, { status: 201 });
+  }
+
+  if (action === "rename-chat") {
+    if (!requestedChatId) {
+      return NextResponse.json({ error: "Choose a chat to rename." }, { status: 400 });
+    }
+    const now = new Date().toISOString();
+    const { data: existingChatRow, error: existingChatError } = await supabase
+      .from("zyon_journal_entries")
+      .select("id,tags,created_at")
+      .eq("user_id", actor.userId)
+      .eq("id", requestedChatId)
+      .maybeSingle();
+    if (existingChatError) {
+      return NextResponse.json({ error: "The chat could not be loaded." }, { status: 502 });
+    }
+    if (
+      existingChatRow
+      && (!Array.isArray(existingChatRow.tags) || !existingChatRow.tags.includes(ZYON_CHAT_TAG))
+    ) {
+      return NextResponse.json({ error: "That chat name cannot be changed." }, { status: 409 });
+    }
+    if (!existingChatRow && requestedChatId !== ZYON_DEFAULT_CHAT_ID) {
+      return NextResponse.json({ error: "That chat no longer exists." }, { status: 404 });
+    }
+    const chatRow = {
+      user_id: actor.userId,
+      id: requestedChatId,
+      session_date: now.slice(0, 10),
+      root,
+      title: name,
+      summary: "",
+      body: "",
+      kind: "NOTE",
+      tags: [ZYON_CHAT_TAG, zyonChatIdTag(requestedChatId)],
+      attachments: [],
+      source: "zyon-chat",
+      created_at: existingChatRow?.created_at ?? now,
+      updated_at: now,
+    };
+    const { error } = existingChatRow
+      ? await supabase
+        .from("zyon_journal_entries")
+        .update({
+          title: name,
+          tags: chatRow.tags,
+          updated_at: now,
+        })
+        .eq("user_id", actor.userId)
+        .eq("id", requestedChatId)
+      : await supabase.from("zyon_journal_entries").insert(chatRow);
+    if (error) {
+      return NextResponse.json({ error: "The chat could not be renamed." }, { status: 502 });
+    }
+    const chat: ZyonChat = {
+      id: requestedChatId,
+      name,
+      createdAt: existingChatRow?.created_at ?? now,
+      updatedAt: now,
+    };
+    return NextResponse.json({ chat });
+  }
+
   const { data: folderRows, error: folderLoadError } = await supabase
     .from("zyon_journal_entries")
     .select("id,tags")
@@ -188,21 +395,60 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Folders could not be loaded." }, { status: 502 });
   }
   const existingFolders = (folderRows ?? []) as Array<{ id: string; tags: string[] | null }>;
+  const expectedRootFolderId = zyonDailyRootFolderId(chatId);
+  if (
+    parentId === expectedRootFolderId
+    && !existingFolders.some((row) => row.id === expectedRootFolderId)
+  ) {
+    const rootCreatedAt = new Date().toISOString();
+    const rootTags = [
+      ZYON_FOLDER_TAG,
+      zyonChatIdTag(chatId),
+      zyonFolderIdTag(expectedRootFolderId),
+      zyonFolderKindTag("system"),
+      zyonParentFolderTag(null),
+    ];
+    const { error: rootCreateError } = await supabase.from("zyon_journal_entries").insert({
+      user_id: actor.userId,
+      id: expectedRootFolderId,
+      session_date: rootCreatedAt.slice(0, 10),
+      root,
+      title: "Daily conversations",
+      summary: "",
+      body: "",
+      kind: "NOTE",
+      tags: rootTags,
+      attachments: [],
+      source: "zyon-folder",
+      created_at: rootCreatedAt,
+      updated_at: rootCreatedAt,
+    });
+    if (rootCreateError) {
+      return NextResponse.json({ error: "The chat archive could not be prepared." }, { status: 502 });
+    }
+    existingFolders.push({ id: expectedRootFolderId, tags: rootTags });
+  }
   const customCount = existingFolders.filter((row) =>
-    Array.isArray(row.tags) && row.tags.includes(zyonFolderKindTag("custom"))).length;
+    Array.isArray(row.tags)
+    && row.tags.includes(zyonFolderKindTag("custom"))
+    && (zyonTagValue(row.tags, "zyon:chat-id:") ?? ZYON_DEFAULT_CHAT_ID) === chatId).length;
   if (customCount >= ZYON_CUSTOM_FOLDER_LIMIT) {
     return NextResponse.json(
       { error: `Each account can keep up to ${ZYON_CUSTOM_FOLDER_LIMIT} custom folders.` },
       { status: 409 },
     );
   }
-  if (parentId && !existingFolders.some((row) => row.id === parentId)) {
+  if (parentId && !existingFolders.some((row) =>
+    row.id === parentId
+    && (zyonTagValue(Array.isArray(row.tags) ? row.tags : [], "zyon:chat-id:")
+      ?? ZYON_DEFAULT_CHAT_ID) === chatId)) {
     return NextResponse.json({ error: "The parent folder no longer exists." }, { status: 409 });
   }
 
   const now = new Date().toISOString();
   const folder: ZyonFolder = {
     id: zyonId("zyon-folder"),
+    chatId,
     name,
     parentId,
     kind: "custom",
@@ -221,6 +467,7 @@ export async function POST(request: NextRequest) {
     kind: "NOTE",
     tags: [
       ZYON_FOLDER_TAG,
+      zyonChatIdTag(chatId),
       zyonFolderIdTag(folder.id),
       zyonFolderKindTag("custom"),
       zyonParentFolderTag(parentId),
