@@ -8,8 +8,10 @@ import KwantBotInterpreterPanel from "@/components/kwantbot/KwantBotInterpreterP
 import OptionsTapePanel from "@/components/kwantbot/OptionsTapePanel";
 import FriendsPanel from "@/components/friends/FriendsPanel";
 import KwantLoader from "@/components/KwantLoader";
+import SocialNotificationsPanel from "@/components/socials/SocialNotificationsPanel";
 import UserAvatar from "@/components/socials/UserAvatar";
 import { useKwantBotInterpreter } from "@/hooks/useKwantBotInterpreter";
+import { useSocialNotifications } from "@/hooks/useSocialNotifications";
 
 import { startTransition, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent as ReactDragEvent } from "react";
 import { createPortal } from "react-dom";
@@ -240,6 +242,7 @@ const RIGHT_PANEL_MAX_WIDTH = 500;
 const RIGHT_PANEL_DEFAULT_WIDTH = 280;
 const RIGHT_PANEL_COLLAPSE_SNAP_WIDTH = 120;
 type RightPanel = "order" | "watchlist" | "zyon" | "kwantbot" | "optionstape" | "alerts" | "alertslog" | "friends";
+type AlertsPanelTab = "social" | "market";
 const CHART_INDICATORS_STORAGE_KEY = "kwantdesk-chart-indicators";
 
 type Message = { role: "user" | "assistant"; content: string };
@@ -3174,6 +3177,8 @@ export default function KwantifyWorkspace({
       ),
   });
   const [alertLogCount, setAlertLogCount] = useState(5);
+  const [alertsPanelTab, setAlertsPanelTab] = useState<AlertsPanelTab>("social");
+  const socialNotifications = useSocialNotifications();
   const [friendsUnreadCount, setFriendsUnreadCount] = useState(0);
   const [friendsOnlineCount, setFriendsOnlineCount] = useState(0);
   const [showBrokerModal, setShowBrokerModal] = useState(false);
@@ -8867,10 +8872,66 @@ export default function KwantifyWorkspace({
           )}
           {rightPanel === "alerts" && (
             <div className="flex flex-1 flex-col overflow-hidden">
-              <div className="flex h-12 items-center justify-between border-b border-border px-4"><h3 className="text-[14px] font-semibold">Alerts</h3><button onClick={() => openCreateAlert()} className="flex h-7 w-7 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground"><Plus className="h-3.5 w-3.5" /></button></div>
-              <div className="flex-1 overflow-y-auto p-4">
-                {selectedInstrument ? (
-                  instrumentAlerts.length > 0 ? (
+              <div className="flex h-12 shrink-0 items-center justify-between border-b border-border px-4">
+                <div className="flex items-center gap-2">
+                  <h3 className="text-[14px] font-semibold">Alerts</h3>
+                  {socialNotifications.unreadCount > 0 ? (
+                    <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-semibold text-background">
+                      {Math.min(99, socialNotifications.unreadCount)}
+                    </span>
+                  ) : null}
+                </div>
+                {alertsPanelTab === "market" ? (
+                  <button onClick={() => openCreateAlert()} className="flex h-7 w-7 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground" title="Create market alert">
+                    <Plus className="h-3.5 w-3.5" />
+                  </button>
+                ) : null}
+              </div>
+              <div className="grid h-10 shrink-0 grid-cols-2 gap-1 border-b border-border bg-background/25 p-1">
+                <button
+                  type="button"
+                  onClick={() => setAlertsPanelTab("social")}
+                  className={`relative rounded-lg text-[8px] font-semibold transition-colors ${
+                    alertsPanelTab === "social" ? "bg-surface text-foreground" : "text-muted hover:text-foreground"
+                  }`}
+                >
+                  Social
+                  {socialNotifications.unreadCount > 0 ? (
+                    <span className="absolute right-2 top-1/2 h-1.5 w-1.5 -translate-y-1/2 rounded-full bg-primary shadow-[0_0_8px_var(--primary)]" />
+                  ) : null}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAlertsPanelTab("market")}
+                  className={`rounded-lg text-[8px] font-semibold transition-colors ${
+                    alertsPanelTab === "market" ? "bg-surface text-foreground" : "text-muted hover:text-foreground"
+                  }`}
+                >
+                  Market alerts
+                </button>
+              </div>
+              {alertsPanelTab === "social" ? (
+                <SocialNotificationsPanel
+                  items={socialNotifications.items}
+                  configured={socialNotifications.configured}
+                  loading={socialNotifications.loading}
+                  loadingMore={socialNotifications.loadingMore}
+                  error={socialNotifications.error}
+                  nextOffset={socialNotifications.nextOffset}
+                  onLoadMore={() => void socialNotifications.loadMore()}
+                  onMarkAllRead={() => void socialNotifications.markAllRead()}
+                  onOpen={(item) => {
+                    void socialNotifications.markRead([item.id]);
+                    setRightPanel(null);
+                    if (item.sourceHandle) router.push(`/socials/${encodeURIComponent(item.sourceHandle)}`);
+                    else router.push("/socials");
+                  }}
+                />
+              ) : (
+                <>
+                  <div className="flex-1 overflow-y-auto p-4">
+                    {selectedInstrument ? (
+                      instrumentAlerts.length > 0 ? (
                         <div className="space-y-2">
                           {instrumentAlerts.slice(0, 6).map((alert) => (
                             <div key={alert.id} className="rounded-xl border border-border bg-background/30 p-3">
@@ -8920,10 +8981,12 @@ export default function KwantifyWorkspace({
                             </div>
                           ))}
                         </div>
-                  ) : <div className="rounded-xl border border-dashed border-border p-5 text-center text-[13px] text-muted">No alerts for {displayCmeSymbol(selectedInstrument)}. Create one from the chart or press +.</div>
-                ) : <div className="rounded-xl border border-dashed border-border p-5 text-center text-[13px] text-muted">Choose a market to create an alert.</div>}
-              </div>
-              <div className="border-t border-border p-4"><button onClick={() => { window.location.href = "/alerts"; }} className="w-full rounded-xl border border-border bg-surface px-4 py-2.5 text-[13px] text-muted hover:text-foreground">Manage All Alerts</button></div>
+                      ) : <div className="rounded-xl border border-dashed border-border p-5 text-center text-[13px] text-muted">No alerts for {displayCmeSymbol(selectedInstrument)}. Create one from the chart or press +.</div>
+                    ) : <div className="rounded-xl border border-dashed border-border p-5 text-center text-[13px] text-muted">Choose a market to create an alert.</div>}
+                  </div>
+                  <div className="border-t border-border p-4"><button onClick={() => { window.location.href = "/alerts"; }} className="w-full rounded-xl border border-border bg-surface px-4 py-2.5 text-[13px] text-muted hover:text-foreground">Manage Market Alerts</button></div>
+                </>
+              )}
             </div>
           )}
           {rightPanel === "alertslog" && (
@@ -8999,6 +9062,7 @@ export default function KwantifyWorkspace({
               <Icon className="h-[18px] w-[18px]" />
               {item.id === "kwantbot" && kwantBotInterpreter.unreadTotal > 0 && <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-semibold text-background">{Math.min(99, kwantBotInterpreter.unreadTotal)}</span>}
               {item.id === "optionstape" && kwantBotInterpreter.optionsUnreadTotal > 0 && <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-semibold text-background">{Math.min(99, kwantBotInterpreter.optionsUnreadTotal)}</span>}
+              {item.id === "alerts" && socialNotifications.unreadCount > 0 && <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-semibold text-background">{Math.min(99, socialNotifications.unreadCount)}</span>}
               {item.id === "alertslog" && alertLogCount > 0 && <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-danger text-[9px] font-semibold text-white">{alertLogCount}</span>}
               {item.id === "friends" && friendsOnlineCount > 0 && <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full border border-background bg-primary px-1 text-[9px] font-semibold text-background shadow-[0_0_10px_color-mix(in_srgb,var(--primary)_45%,transparent)]" aria-label={`${friendsOnlineCount} friends online`}>{Math.min(99, friendsOnlineCount)}</span>}
               {item.id === "friends" && friendsUnreadCount > 0 && <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-background bg-danger" aria-label={`${friendsUnreadCount} unread friend notifications`} />}
