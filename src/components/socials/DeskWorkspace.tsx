@@ -29,6 +29,8 @@ import {
   UserMinus,
   UserPlus,
   UsersRound,
+  Volume2,
+  VolumeX,
   X,
 } from "lucide-react";
 import KwantSelect from "@/components/ui/KwantSelect";
@@ -340,6 +342,11 @@ export default function DeskWorkspace({
     .sort((left, right) => left.position - right.position);
   const activeChannel = activeChannels.find((channel) => channel.id === activeChannelId) ?? activeChannels.find((channel) => channel.channelType === "text") ?? null;
   const channelMessages = network.messages.filter((entry) => entry.channelId === activeChannel?.id);
+  const activeFocusLock = (network.focusLocks ?? []).find((lock) => lock.deskId === activeDeskId) ?? null;
+  const canReleaseFocus = Boolean(activeFocusLock && (
+    activeFocusLock.lockedBy === viewerId
+    || leader
+  ));
 
   const profileMap = useMemo(() => new Map(network.profiles.map((profile) => [profile.userId, profile])), [network.profiles]);
   const profileFor = useCallback((userId: string): DeskMemberProfile => profileMap.get(userId) ?? {
@@ -351,6 +358,7 @@ export default function DeskWorkspace({
     score: userId === viewerId ? Math.round(Object.values(viewerProfile.scores).reduce((sum, value) => sum + value, 0) / Math.max(1, Object.values(viewerProfile.scores).length)) : 0,
     lastSeenAt: null,
   }, [profileMap, viewerId, viewerProfile]);
+  const focusOwnerProfile = activeFocusLock ? profileFor(activeFocusLock.lockedBy) : null;
 
   useEffect(() => {
     if (!network.ready || activeDeskId || !myWorkspaces.length) return;
@@ -384,6 +392,7 @@ export default function DeskWorkspace({
       .on("postgres_changes", { event: "*", schema: "public", table: "desk_channels" }, () => refresh(180))
       .on("postgres_changes", { event: "*", schema: "public", table: "desk_messages" }, () => refresh(120))
       .on("postgres_changes", { event: "*", schema: "public", table: "desk_message_reactions" }, () => refresh(120))
+      .on("postgres_changes", { event: "*", schema: "public", table: "desk_focus_locks" }, () => refresh(80))
       .subscribe();
     return () => {
       if (refreshTimerRef.current) window.clearTimeout(refreshTimerRef.current);
@@ -471,6 +480,21 @@ export default function DeskWorkspace({
     await perform({ action: "request-access", deskId: workspace.deskId }, label);
   };
 
+  const toggleDeskFocus = async () => {
+    if (!activeDesk || working) return;
+    if (activeFocusLock && !canReleaseFocus) {
+      onNotice("Only the trader who silenced this Desk or a Desk leader can reopen it.");
+      return;
+    }
+    await perform({
+      action: "toggle-focus",
+      deskId: activeDesk.deskId,
+      locked: !activeFocusLock,
+    }, activeFocusLock
+      ? `${activeDesk.name} is open again.`
+      : `${activeDesk.name} is now silent for trading focus.`);
+  };
+
   const resolveRequest = async (requestId: string, resolution: "accepted" | "declined" | "cancelled", deskId: string) => {
     await perform({ action: "resolve-request", deskId, requestId, resolution }, resolution === "accepted" ? "Desk access approved." : "Request updated.");
   };
@@ -508,6 +532,10 @@ export default function DeskWorkspace({
 
   const sendMessage = async () => {
     if (!activeDesk || !activeChannel || (!message.trim() && !attachment) || working) return;
+    if (activeFocusLock) {
+      onNotice("This Desk is in trading focus mode. Messages are paused.");
+      return;
+    }
     const draftMessage = message;
     const draftAttachment = attachment;
     setMessage("");
@@ -648,6 +676,22 @@ export default function DeskWorkspace({
                     <button type="button" onClick={() => setShowInvite(true)} disabled={!canInvite} className="flex h-8 items-center justify-center gap-1.5 rounded-lg border border-primary/20 bg-primary/[0.05] text-[7px] font-semibold text-primary disabled:opacity-35"><UserPlus className="h-3 w-3" />Invite</button>
                     <button type="button" onClick={() => setShowMembers(true)} className="flex h-8 items-center justify-center gap-1.5 rounded-lg border border-border bg-surface/35 text-[7px] font-semibold text-muted hover:text-foreground"><UsersRound className="h-3 w-3" />Members</button>
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => void toggleDeskFocus()}
+                    disabled={working}
+                    className={`mt-1.5 flex h-9 w-full items-center justify-center gap-2 rounded-xl border text-[7px] font-semibold transition disabled:opacity-50 ${
+                      activeFocusLock
+                        ? "border-primary/40 bg-primary/10 text-primary shadow-[0_0_18px_color-mix(in_srgb,var(--primary)_10%,transparent)]"
+                        : "border-border bg-surface/25 text-muted hover:border-primary/30 hover:text-foreground"
+                    }`}
+                    title={activeFocusLock
+                      ? canReleaseFocus ? "Reopen this Desk for messages and reactions" : "Trading focus is controlled by the trader who enabled it or a Desk leader"
+                      : "Silence this Desk so every member can only view"}
+                  >
+                    {activeFocusLock && canReleaseFocus ? <Volume2 className="h-3.5 w-3.5" /> : <VolumeX className="h-3.5 w-3.5" />}
+                    {activeFocusLock ? canReleaseFocus ? "Reopen Desk" : "Desk silenced" : "Silence Desk"}
+                  </button>
                 </div>
                 <div className="min-h-0 flex-1 overflow-y-auto p-2.5">
                   <div className="mb-2 flex items-center justify-between px-1.5"><span className="text-[6px] font-semibold uppercase tracking-[0.14em] text-muted">Text channels</span>{leader ? <button type="button" onClick={() => openChannelEditor()} className="text-muted hover:text-primary"><Plus className="h-3 w-3" /></button> : null}</div>
@@ -687,6 +731,18 @@ export default function DeskWorkspace({
                 <div className="flex items-center gap-2">
                   <DeskMark workspace={activeDesk} compact active />
                   <div className="min-w-0 flex-1"><div className="truncate text-[9px] font-semibold">{activeDesk.name}</div><div className="mt-0.5 text-[6px] text-muted">{activeMembers.length} members · index {teamScore || "—"}</div></div>
+                  <button
+                    type="button"
+                    onClick={() => void toggleDeskFocus()}
+                    disabled={working}
+                    className={`flex h-8 w-8 items-center justify-center rounded-lg border ${
+                      activeFocusLock ? "border-primary/40 bg-primary/10 text-primary" : "border-border text-muted"
+                    } disabled:opacity-40`}
+                    title={activeFocusLock ? canReleaseFocus ? "Reopen Desk" : "Desk silenced for trading focus" : "Silence Desk"}
+                    aria-label={activeFocusLock ? canReleaseFocus ? "Reopen Desk" : "Desk silenced for trading focus" : "Silence Desk"}
+                  >
+                    {activeFocusLock && canReleaseFocus ? <Volume2 className="h-3.5 w-3.5" /> : <VolumeX className="h-3.5 w-3.5" />}
+                  </button>
                   <button type="button" onClick={() => setShowInvite(true)} disabled={!canInvite} className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-muted disabled:opacity-30"><UserPlus className="h-3.5 w-3.5" /></button>
                   <button type="button" onClick={() => setShowMembers(true)} className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-muted"><UsersRound className="h-3.5 w-3.5" /></button>
                   {owner ? <button type="button" onClick={openSettings} className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-muted"><Settings2 className="h-3.5 w-3.5" /></button> : null}
@@ -755,11 +811,31 @@ export default function DeskWorkspace({
                   <span className="flex h-9 w-9 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary">{activeChannel?.isPrivate ? <LockKeyhole className="h-4 w-4" /> : <Hash className="h-4 w-4" />}</span>
                   <div className="min-w-0"><h2 className="text-[11px] font-semibold">{activeChannel?.name ?? "Desk overview"}</h2><p className="mt-0.5 truncate text-[7px] text-muted">{activeChannel?.description || activeDesk.objective}</p></div>
                   <div className="ml-auto flex items-center gap-2">
+                    {activeFocusLock ? <span className="flex items-center gap-1.5 rounded-lg border border-primary/35 bg-primary/10 px-2 py-1 text-[6px] font-semibold uppercase tracking-[0.1em] text-primary"><VolumeX className="h-3 w-3" />Trading focus</span> : null}
                     {activeChannel?.readOnly ? <span className="rounded-lg border border-border bg-surface/30 px-2 py-1 text-[6px] uppercase tracking-[0.1em] text-muted">Read only</span> : null}
                     {activeChannel?.reactionOnly ? <span className="rounded-lg border border-border bg-surface/30 px-2 py-1 text-[6px] uppercase tracking-[0.1em] text-muted">Reactions only</span> : null}
                     <button type="button" onClick={() => setShowMembers(true)} className="flex h-8 items-center gap-1.5 rounded-lg border border-border bg-surface/30 px-2.5 text-[7px] text-muted hover:text-foreground"><UsersRound className="h-3 w-3" />{activeMembers.length}</button>
                   </div>
                 </header>
+
+                {activeFocusLock ? (
+                  <div className="flex flex-wrap items-center gap-3 border-b border-primary/20 bg-primary/[0.045] px-4 py-2.5">
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-primary/25 bg-primary/10 text-primary">
+                      <VolumeX className="h-3.5 w-3.5" />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[8px] font-semibold text-foreground">Desk silenced for trading focus</div>
+                      <div className="mt-0.5 truncate text-[6px] text-muted">
+                        {focusOwnerProfile?.displayName ?? "A Desk member"} paused messages, attachments and reactions at {formatTime(activeFocusLock.lockedAt)}. Everyone remains able to view.
+                      </div>
+                    </div>
+                    {canReleaseFocus ? (
+                      <button type="button" onClick={() => void toggleDeskFocus()} disabled={working} className="flex h-8 items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 px-3 text-[7px] font-semibold text-primary disabled:opacity-40">
+                        <Volume2 className="h-3 w-3" />Reopen Desk
+                      </button>
+                    ) : null}
+                  </div>
+                ) : null}
 
                 <div className="min-h-0 flex-1 overflow-y-auto px-3 py-4 lg:px-5">
                   {!channelMessages.length ? (
@@ -781,9 +857,9 @@ export default function DeskWorkspace({
                               {!grouped ? <div className="flex items-baseline gap-2"><span className="text-[8px] font-semibold">{profile.displayName}</span><span className="text-[6px] text-muted">{formatDateTime(entry.createdAt)}</span></div> : null}
                               {entry.body ? <p className="mt-1 whitespace-pre-wrap break-words text-[8px] leading-4 text-foreground/90">{entry.body}</p> : null}
                               {entry.attachments.map((item) => <button key={item.id} type="button" onClick={() => setImagePreview(item)} className="mt-2 block max-w-sm overflow-hidden rounded-xl border border-border bg-background/40"><img src={item.dataUrl} alt={item.name} className="max-h-64 w-full object-contain" /></button>)}
-                              {reactionGroups.length ? <div className="mt-2 flex flex-wrap gap-1">{reactionGroups.map((group) => <button key={group.emoji} type="button" onClick={() => void perform({ action: "react", deskId: activeDesk.deskId, messageId: entry.id, emoji: group.emoji })} className={`flex items-center gap-1 rounded-lg border px-2 py-1 text-[7px] ${group.users.some((reaction) => reaction.userId === viewerId) ? "border-primary/35 bg-primary/10 text-primary" : "border-border bg-surface/30 text-muted"}`}><span>{group.emoji}</span><span className="font-mono">{group.users.length}</span></button>)}</div> : null}
+                              {reactionGroups.length ? <div className="mt-2 flex flex-wrap gap-1">{reactionGroups.map((group) => <button key={group.emoji} type="button" disabled={Boolean(activeFocusLock)} onClick={() => void perform({ action: "react", deskId: activeDesk.deskId, messageId: entry.id, emoji: group.emoji })} className={`flex items-center gap-1 rounded-lg border px-2 py-1 text-[7px] disabled:cursor-default ${group.users.some((reaction) => reaction.userId === viewerId) ? "border-primary/35 bg-primary/10 text-primary" : "border-border bg-surface/30 text-muted"}`}><span>{group.emoji}</span><span className="font-mono">{group.users.length}</span></button>)}</div> : null}
                             </div>
-                            <div className="absolute -top-4 right-2 hidden rounded-xl border border-border bg-panel p-1 shadow-xl group-hover:flex">{REACTIONS.map((emoji) => <button key={emoji} type="button" onClick={() => void perform({ action: "react", deskId: activeDesk.deskId, messageId: entry.id, emoji })} className="flex h-7 w-7 items-center justify-center rounded-lg text-[12px] hover:bg-surface">{emoji}</button>)}</div>
+                            {!activeFocusLock ? <div className="absolute -top-4 right-2 hidden rounded-xl border border-border bg-panel p-1 shadow-xl group-hover:flex">{REACTIONS.map((emoji) => <button key={emoji} type="button" onClick={() => void perform({ action: "react", deskId: activeDesk.deskId, messageId: entry.id, emoji })} className="flex h-7 w-7 items-center justify-center rounded-lg text-[12px] hover:bg-surface">{emoji}</button>)}</div> : null}
                           </div>
                         );
                       })}
@@ -793,8 +869,10 @@ export default function DeskWorkspace({
                 </div>
 
                 <div className="border-t border-border bg-background/35 p-3">
-                  {attachment ? <div className="mb-2 flex items-center gap-2 rounded-xl border border-border bg-panel p-2"><img src={attachment.dataUrl} alt="" className="h-12 w-12 rounded-lg object-cover" /><div className="min-w-0 flex-1"><div className="truncate text-[7px] font-semibold">{attachment.name}</div><div className="mt-0.5 text-[6px] text-muted">{Math.round(attachment.size / 1024)} KB</div></div><button type="button" onClick={() => setAttachment(null)} className="flex h-7 w-7 items-center justify-center rounded-lg text-muted hover:bg-surface"><X className="h-3.5 w-3.5" /></button></div> : null}
-                  {(activeChannel?.readOnly || activeChannel?.reactionOnly) && !leader ? (
+                  {attachment && !activeFocusLock ? <div className="mb-2 flex items-center gap-2 rounded-xl border border-border bg-panel p-2"><img src={attachment.dataUrl} alt="" className="h-12 w-12 rounded-lg object-cover" /><div className="min-w-0 flex-1"><div className="truncate text-[7px] font-semibold">{attachment.name}</div><div className="mt-0.5 text-[6px] text-muted">{Math.round(attachment.size / 1024)} KB</div></div><button type="button" onClick={() => setAttachment(null)} className="flex h-7 w-7 items-center justify-center rounded-lg text-muted hover:bg-surface"><X className="h-3.5 w-3.5" /></button></div> : null}
+                  {activeFocusLock ? (
+                    <div className="flex h-12 items-center justify-center gap-2 rounded-xl border border-primary/20 bg-primary/[0.045] text-[7px] text-muted"><VolumeX className="h-3.5 w-3.5 text-primary" />Trading focus is active. This Desk is view only.</div>
+                  ) : (activeChannel?.readOnly || activeChannel?.reactionOnly) && !leader ? (
                     <div className="flex h-12 items-center justify-center gap-2 rounded-xl border border-border bg-surface/25 text-[7px] text-muted"><ShieldCheck className="h-3.5 w-3.5 text-primary" />{activeChannel.reactionOnly ? "This channel accepts reactions only." : "Only Desk leaders can post in this channel."}</div>
                   ) : (
                     <div className="flex items-end gap-2 rounded-2xl border border-border bg-panel p-2 focus-within:border-primary/35">

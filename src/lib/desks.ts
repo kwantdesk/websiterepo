@@ -87,6 +87,12 @@ export type DeskReaction = {
   createdAt: string;
 };
 
+export type DeskFocusLock = {
+  deskId: string;
+  lockedBy: string;
+  lockedAt: string;
+};
+
 export type DeskMemberProfile = {
   userId: string;
   displayName: string;
@@ -106,6 +112,7 @@ export type DeskNetworkPayload = {
   channels: DeskChannel[];
   messages: DeskMessage[];
   reactions: DeskReaction[];
+  focusLocks: DeskFocusLock[];
   profiles: DeskMemberProfile[];
 };
 
@@ -118,6 +125,6 @@ export const EMPTY_DESK_NETWORK: DeskNetworkPayload = {
   channels: [],
   messages: [],
   reactions: [],
+  focusLocks: [],
   profiles: [],
 };
-

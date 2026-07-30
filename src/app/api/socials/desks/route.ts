@@ -5,6 +5,7 @@ import { getRouteActor } from "@/lib/serverAuth";
 import {
   EMPTY_DESK_NETWORK,
   type DeskChannel,
+  type DeskFocusLock,
   type DeskJoinRequest,
   type DeskMember,
   type DeskMemberProfile,
@@ -94,6 +95,12 @@ type ReactionRow = {
   user_id: string;
   emoji: string;
   created_at: string;
+};
+
+type FocusLockRow = {
+  desk_id: string;
+  locked_by: string;
+  locked_at: string;
 };
 
 type ProfileRow = {
@@ -256,6 +263,14 @@ function fromReaction(row: ReactionRow): DeskReaction {
   };
 }
 
+function fromFocusLock(row: FocusLockRow): DeskFocusLock {
+  return {
+    deskId: row.desk_id,
+    lockedBy: row.locked_by,
+    lockedAt: row.locked_at,
+  };
+}
+
 async function deskClient(request: NextRequest) {
   const actor = await getRouteActor(request);
   if (!actor) return { actor: null, supabase: null };
@@ -304,6 +319,18 @@ export async function GET(request: NextRequest) {
   let channels: ChannelRow[] = [];
   let messages: MessageRow[] = [];
   let reactions: ReactionRow[] = [];
+  let focusLocks: FocusLockRow[] = [];
+  const focusLockResult = await supabase
+    .from("desk_focus_locks")
+    .select("desk_id,locked_by,locked_at");
+  if (!focusLockResult.error) {
+    focusLocks = (focusLockResult.data ?? []) as FocusLockRow[];
+  } else if (!tableUnavailable(focusLockResult.error.code)) {
+    console.error("Desk focus lock load failed", {
+      code: focusLockResult.error.code,
+      message: focusLockResult.error.message,
+    });
+  }
   if (selectedDeskId) {
     const channelResult = await supabase
       .from("desk_channels")
@@ -376,6 +403,7 @@ export async function GET(request: NextRequest) {
     channels: channels.map(fromChannel),
     messages: messages.map(fromMessage),
     reactions: reactions.map(fromReaction),
+    focusLocks: focusLocks.map(fromFocusLock),
     profiles,
   };
   return NextResponse.json(payload, {
@@ -454,6 +482,23 @@ export async function POST(request: NextRequest) {
   }
 
   if (!deskId) return NextResponse.json({ error: "Choose a Desk." }, { status: 400 });
+
+  if (action === "toggle-focus") {
+    const { data, error } = await supabase.rpc("desk_set_focus_lock", {
+      requested_desk_id: deskId,
+      next_locked: body.locked !== false,
+    });
+    if (error) {
+      if (error.code === "42883" || error.code === "PGRST202") {
+        return NextResponse.json(
+          { error: "Apply the Desk focus-lock migration in Supabase first." },
+          { status: 503 },
+        );
+      }
+      return NextResponse.json({ error: error.message }, { status: 403 });
+    }
+    return NextResponse.json({ ok: true, focus: data });
+  }
 
   if (action === "update-settings") {
     const privacyCandidate = cleanText(body.privacy, 16).toUpperCase();
@@ -608,6 +653,17 @@ export async function POST(request: NextRequest) {
   }
 
   if (action === "send-message") {
+    const { data: focusLock, error: focusError } = await supabase
+      .from("desk_focus_locks")
+      .select("desk_id")
+      .eq("desk_id", deskId)
+      .maybeSingle();
+    if (!focusError && focusLock) {
+      return NextResponse.json(
+        { error: "This Desk is in trading focus mode. Messages are paused until it is reopened." },
+        { status: 423 },
+      );
+    }
     const channelId = cleanUuid(body.channelId);
     const messageBody = cleanMultiline(body.message, 4_000);
     const attachments = messageAttachments(body.attachments);
@@ -628,6 +684,17 @@ export async function POST(request: NextRequest) {
   }
 
   if (action === "react") {
+    const { data: focusLock, error: focusError } = await supabase
+      .from("desk_focus_locks")
+      .select("desk_id")
+      .eq("desk_id", deskId)
+      .maybeSingle();
+    if (!focusError && focusLock) {
+      return NextResponse.json(
+        { error: "This Desk is in trading focus mode. Reactions are paused until it is reopened." },
+        { status: 423 },
+      );
+    }
     const messageId = cleanUuid(body.messageId);
     const emoji = cleanText(body.emoji, 16);
     if (!messageId || !emoji) return NextResponse.json({ error: "Choose a reaction." }, { status: 400 });
