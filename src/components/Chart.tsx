@@ -122,6 +122,8 @@ interface ChartProps {
   gammaLevelsLoading?: boolean;
   gammaLevelsError?: string | null;
   onToggleGammaLevels?: () => void;
+  historicalStructureEnabled?: boolean;
+  onToggleHistoricalStructure?: () => void;
   onRemoveGameplanOverlay?: () => void;
   liveCandleEventKey?: string | null;
 }
@@ -1021,6 +1023,8 @@ export default function Chart({
   gammaLevelsLoading = false,
   gammaLevelsError = null,
   onToggleGammaLevels,
+  historicalStructureEnabled = false,
+  onToggleHistoricalStructure,
   onRemoveGameplanOverlay,
   liveCandleEventKey,
 }: ChartProps) {
@@ -4095,6 +4099,38 @@ export default function Chart({
               aria-pressed={gammaLevelsEnabled}
             >
               <ScanLine className={`${toolbarIconClassName} ${gammaLevelsLoading ? "animate-pulse" : ""}`} />
+            </button>
+            <button
+              type="button"
+              disabled={!onToggleHistoricalStructure}
+              onClick={(event) => {
+                event.stopPropagation();
+                onToggleHistoricalStructure?.();
+              }}
+              className={`flex items-center justify-center border backdrop-blur ${
+                onToggleHistoricalStructure
+                  ? getToolbarButtonTone(historicalStructureEnabled)
+                  : "cursor-not-allowed border-transparent bg-panel/45 text-muted/30"
+              }`}
+              style={toolbarButtonStyle}
+              title={
+                historicalStructureEnabled
+                  ? "Hide historical supply, demand, support and resistance"
+                  : "Show historical supply, demand, support and resistance"
+              }
+              aria-label={
+                historicalStructureEnabled
+                  ? "Hide historical structure zones"
+                  : "Show historical structure zones"
+              }
+              aria-pressed={historicalStructureEnabled}
+            >
+              <span
+                aria-hidden="true"
+                className={`${toolbarIconClassName} flex items-center justify-center rounded-[4px] border border-current font-mono text-[9px] font-black leading-none`}
+              >
+                S
+              </span>
             </button>
             <button
               type="button"

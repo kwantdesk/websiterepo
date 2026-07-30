@@ -419,6 +419,7 @@ const ACTIVE_WORKSPACE_PRESET_STORAGE_KEY = "kwantdesk-chart-workspace-active-pr
 const WORKSPACE_BACKUP_FORMAT = "kwantdesk-chart-workspaces";
 const MAX_WORKSPACE_BACKUP_BYTES = 2_000_000;
 const GAMMA_LEVELS_ENABLED_STORAGE_KEY = "kwantdesk:chart-gamma-levels-enabled:v1";
+const HISTORICAL_STRUCTURE_ENABLED_STORAGE_KEY = "kwantdesk:chart-historical-structure-enabled:v1";
 const KWANTBOT_MESSAGES_STORAGE_KEY = "kwantdesk-kwantbot-messages";
 const BOTTOM_WORKSPACE_SECTIONS = [
   { id: "charts" as const, label: "Charts" },
@@ -1993,6 +1994,8 @@ function WorkspaceChartPane({
   onChartDragEnd,
   gammaLevelsEnabled,
   onToggleGammaLevels,
+  historicalStructureEnabled,
+  onToggleHistoricalStructure,
   levelExportRequested,
   onGammaExportSnapshot,
   gameplanOverlay,
@@ -2018,6 +2021,8 @@ function WorkspaceChartPane({
   onChartDragEnd?: () => void;
   gammaLevelsEnabled: boolean;
   onToggleGammaLevels: () => void;
+  historicalStructureEnabled: boolean;
+  onToggleHistoricalStructure: () => void;
   levelExportRequested: boolean;
   onGammaExportSnapshot: (paneId: string, snapshot: GammaLevelExportSnapshot | null) => void;
   gameplanOverlay: GameplanChartOverlay | null;
@@ -2809,6 +2814,8 @@ function WorkspaceChartPane({
           gammaLevelsLoading={gammaLevelsLoading}
           gammaLevelsError={gammaLevelsError}
           onToggleGammaLevels={onToggleGammaLevels}
+          historicalStructureEnabled={historicalStructureEnabled}
+          onToggleHistoricalStructure={onToggleHistoricalStructure}
           onRemoveGameplanOverlay={gameplanOverlay ? onRemoveGameplanOverlay : undefined}
           liveCandleEventKey={pane.id}
         />
@@ -3474,6 +3481,10 @@ export default function KwantifyWorkspace({
   const [gammaLevelsEnabled, setGammaLevelsEnabled] = useState(() => {
     if (typeof window === "undefined") return false;
     return window.localStorage.getItem(GAMMA_LEVELS_ENABLED_STORAGE_KEY) === "true";
+  });
+  const [historicalStructureEnabled, setHistoricalStructureEnabled] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.localStorage.getItem(HISTORICAL_STRUCTURE_ENABLED_STORAGE_KEY) === "true";
   });
   const [showLevelsExport, setShowLevelsExport] = useState(false);
   const [levelExportTypes, setLevelExportTypes] = useState<Record<LevelExportType, boolean>>({
@@ -4863,6 +4874,13 @@ export default function KwantifyWorkspace({
       gammaLevelsEnabled ? "true" : "false",
     );
   }, [gammaLevelsEnabled]);
+
+  useEffect(() => {
+    window.localStorage.setItem(
+      HISTORICAL_STRUCTURE_ENABLED_STORAGE_KEY,
+      historicalStructureEnabled ? "true" : "false",
+    );
+  }, [historicalStructureEnabled]);
 
   useEffect(() => {
     const syncOverlays = () => setGameplanChartOverlays(loadGameplanChartOverlays());
@@ -7479,6 +7497,8 @@ export default function KwantifyWorkspace({
         chartDragEnabled={!workspaceLocked && visibleWorkspacePaneIds.length > 1}
         gammaLevelsEnabled={gammaLevelsEnabled}
         onToggleGammaLevels={() => setGammaLevelsEnabled((current) => !current)}
+        historicalStructureEnabled={historicalStructureEnabled}
+        onToggleHistoricalStructure={() => setHistoricalStructureEnabled((current) => !current)}
         levelExportRequested={showLevelsExport}
         onGammaExportSnapshot={handleGammaExportSnapshot}
         gameplanOverlay={gameplanRoot ? gameplanChartOverlays[gameplanRoot] ?? null : null}
