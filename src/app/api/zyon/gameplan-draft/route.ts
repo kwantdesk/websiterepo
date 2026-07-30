@@ -3,6 +3,7 @@ import { getRouteActor } from "@/lib/serverAuth";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import {
   isZyonMarketRoot,
+  zyonGameplanEntryTimingStatus,
   zyonGameplanMissingFields,
   type ZyonGameplanDraft,
   type ZyonGameplanDirection,
@@ -164,12 +165,25 @@ export async function PUT(request: NextRequest) {
     const supabase = await createSupabaseServerClient();
     const { data: existing, error: loadError } = await supabase
       .from("zyon_gameplan_drafts")
-      .select("id")
+      .select("id,created_at")
       .eq("user_id", actor.userId)
       .eq("id", draft.id)
       .maybeSingle();
     if (loadError) throw loadError;
     if (!existing) return NextResponse.json({ error: "That holding Gameplan no longer exists." }, { status: 404 });
+    const entryTiming = zyonGameplanEntryTimingStatus(draft.entryTime, existing.created_at);
+    if (entryTiming === "TOO_OLD") {
+      return NextResponse.json({
+        error: "The entry timestamp is more than five minutes before the original ZYON submission. It cannot be posted because that would introduce lookahead.",
+        code: "ENTRY_TOO_OLD",
+      }, { status: 400 });
+    }
+    if (entryTiming !== "VALID") {
+      return NextResponse.json({
+        error: "Enter an exact entry time with a timezone before posting this Gameplan.",
+        code: "ENTRY_TIME_INVALID",
+      }, { status: 400 });
+    }
     const { error } = await supabase
       .from("zyon_gameplan_drafts")
       .update({

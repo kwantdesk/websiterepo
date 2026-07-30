@@ -33,6 +33,7 @@ export const ZYON_FOLDER_TAG = "zyon:folder";
 export const ZYON_CONVERSATION_TAG = "zyon:conversation";
 export const ZYON_DAILY_ROOT_FOLDER_ID = "zyon-folder-daily-conversations";
 export const ZYON_CUSTOM_FOLDER_LIMIT = 20;
+export const ZYON_RETRO_ENTRY_WINDOW_MS = 5 * 60 * 1_000;
 
 export type ZyonFolder = {
   id: string;
@@ -119,6 +120,29 @@ export type ZyonGameplanRequiredField =
   | "confirmation"
   | "invalidation";
 
+export type ZyonGameplanEntryTimingStatus =
+  | "VALID"
+  | "MISSING"
+  | "INVALID"
+  | "TOO_OLD";
+
+export function zyonGameplanEntryTimingStatus(
+  entryTime: unknown,
+  referenceTime: string | number | Date = Date.now(),
+): ZyonGameplanEntryTimingStatus {
+  if (typeof entryTime !== "string" || !entryTime.trim()) return "MISSING";
+  const entryTimestamp = Date.parse(entryTime);
+  const referenceTimestamp = referenceTime instanceof Date
+    ? referenceTime.getTime()
+    : typeof referenceTime === "number"
+      ? referenceTime
+      : Date.parse(referenceTime);
+  if (!Number.isFinite(entryTimestamp) || !Number.isFinite(referenceTimestamp)) return "INVALID";
+  return entryTimestamp < referenceTimestamp - ZYON_RETRO_ENTRY_WINDOW_MS
+    ? "TOO_OLD"
+    : "VALID";
+}
+
 export function zyonGameplanMissingFields(
   draft: Partial<ZyonGameplanDraft> | null | undefined,
 ): ZyonGameplanRequiredField[] {
@@ -139,7 +163,11 @@ export function zyonGameplanMissingFields(
   const missing: ZyonGameplanRequiredField[] = [];
   if (!draft.instrument?.trim()) missing.push("instrument");
   if (draft.direction !== "LONG" && draft.direction !== "SHORT") missing.push("direction");
-  if (!draft.entryTime?.trim()) missing.push("entryTime");
+  if (
+    typeof draft.entryTime !== "string"
+    || !draft.entryTime.trim()
+    || !Number.isFinite(Date.parse(draft.entryTime))
+  ) missing.push("entryTime");
   if (!Number.isFinite(draft.entryLow) || !Number.isFinite(draft.entryHigh)) missing.push("entry");
   if (!Number.isFinite(draft.stop)) missing.push("stop");
   if (!draft.targets?.some(Number.isFinite)) missing.push("targets");

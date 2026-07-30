@@ -888,6 +888,7 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
             attachments: message.attachments,
           })),
           localDate: localSessionDate(),
+          clientTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
           folderId: selectedFolder?.kind === "custom" ? selectedFolder.id : null,
           context: {
             root: selectedRoot,

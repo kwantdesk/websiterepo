@@ -16,11 +16,13 @@ import {
   zyonConversationRoleTag,
   zyonFolderIdTag,
   zyonFolderKindTag,
+  zyonGameplanEntryTimingStatus,
   zyonGameplanMissingFields,
   zyonId,
   zyonParentFolderTag,
   type ZyonGameplanDraft,
   type ZyonGameplanDirection,
+  type ZyonGameplanEntryTimingStatus,
   type ZyonGameplanRiskUnit,
   type ZyonJournalEntry,
   type ZyonMarketRoot,
@@ -326,6 +328,7 @@ function buildGameplanDraft(
   root: ZyonMarketRoot,
   context: unknown,
   sourceMessageId: string,
+  referenceTime: number,
 ): ZyonGameplanDraft | null {
   const entryLowRaw = finiteNumber(input.entryLow);
   const entryHighRaw = finiteNumber(input.entryHigh) ?? entryLowRaw;
@@ -337,6 +340,7 @@ function buildGameplanDraft(
   const confirmation = cleanText(input.confirmation, 2_000);
   const invalidation = cleanText(input.invalidation, 2_000);
   const entryTime = cleanText(input.entryTime, 80);
+  const entryTiming = zyonGameplanEntryTimingStatus(entryTime, referenceTime);
   const riskAmount = finiteNumber(input.riskAmount);
   if (
     entryLowRaw === null
@@ -345,7 +349,7 @@ function buildGameplanDraft(
     || !targets.length
     || riskAmount === null
     || riskAmount <= 0
-    || !entryTime
+    || entryTiming !== "VALID"
     || !reasoning
     || !confirmation
     || !invalidation
@@ -733,6 +737,7 @@ async function pendingGameplanDraftId(actorId: string) {
 }
 
 export async function POST(request: NextRequest) {
+  const requestReceivedAt = Date.now();
   const actor = await getRouteActor(request);
   if (!actor) {
     return NextResponse.json({ error: "Sign in to use ZYON." }, { status: 401 });
@@ -753,6 +758,7 @@ export async function POST(request: NextRequest) {
     context?: unknown;
     folderId?: unknown;
     localDate?: unknown;
+    clientTimeZone?: unknown;
   };
   try {
     payload = await request.json();
@@ -762,6 +768,7 @@ export async function POST(request: NextRequest) {
 
   const modelKey = isZyonModelKey(payload.model) ? payload.model : "opus-5";
   const root = isZyonMarketRoot(payload.root) ? payload.root : "NQ";
+  const clientTimeZone = cleanText(payload.clientTimeZone, 80) || "UTC";
   const messages = normalizeMessages(payload.messages);
   if (!messages.length || messages.at(-1)?.role !== "user") {
     return NextResponse.json({ error: "Write a trading message for ZYON." }, { status: 400 });
@@ -856,7 +863,10 @@ export async function POST(request: NextRequest) {
     "When the user says 'send gameplan', presses Send Gameplan, or otherwise asks to save, document, create, update, or submit a Gameplan, reconstruct the setup from the full conversation and gather only the required facts that are still missing.",
     "A Gameplan requires: instrument, explicit LONG or SHORT direction, entry time, entry price or zone, stop, at least one planned exit/take-profit price, maximum risk amount and unit, reasoning, confirmation, and invalidation. Reasoning should faithfully synthesise the conversation; never invent a missing fact or price.",
     "If any required Gameplan fact is missing, DO NOT call save_trading_gameplan_draft. Ask one short, direct question for the most important missing fact, such as 'WHAT'S YOUR ENTRY TIME?' Continue this collection loop until every required fact is known.",
+    "Anti-lookahead rule: an actual entry or fill may be submitted only when its timestamp is no more than five minutes before the authoritative server time. Never change, round forward, or fabricate a timestamp to pass this rule. If it is older, explain that it cannot be placed on record.",
+    "Future entry timestamps are valid for planned limit orders. Ask for the trader's timezone when it is not known, then convert entryTime to an ISO 8601 timestamp with an explicit offset.",
     "Once every required fact is known, call save_trading_gameplan_draft immediately. This sends an editable holding record to Socials and writes the complete plan into today's ZYON journal folder. It does not publish the plan yet. Tell the trader to review it and post it to their Profile.",
+    `Authoritative server time: ${new Date(requestReceivedAt).toISOString()}. Trader timezone: ${clientTimeZone}.`,
     `Selected market: ${root}.`,
     `<kwantbot_context>${contextJson}</kwantbot_context>`,
   ].join("\n");
@@ -907,7 +917,7 @@ export async function POST(request: NextRequest) {
                 instrument: { type: "string", description: "NQ, MNQ, ES, or MES." },
                 direction: { type: "string", enum: ["LONG", "SHORT"] },
                 session: { type: "string" },
-                entryTime: { type: "string", description: "Trader's planned or actual entry time, including timezone when known." },
+                entryTime: { type: "string", description: "ISO 8601 planned or actual entry timestamp with an explicit UTC offset." },
                 entryLow: { type: "number" },
                 entryHigh: { type: "number" },
                 stop: { type: "number" },
@@ -1000,12 +1010,20 @@ export async function POST(request: NextRequest) {
     const cloudSaved = journalEntry
       ? await persistJournalEntry(actor.userId, journalEntry)
       : false;
+    const gameplanEntryTiming: ZyonGameplanEntryTimingStatus | null =
+      gameplanToolBlock?.input && typeof gameplanToolBlock.input === "object"
+        ? zyonGameplanEntryTimingStatus(
+          (gameplanToolBlock.input as GameplanToolInput).entryTime,
+          requestReceivedAt,
+        )
+        : null;
     let gameplanDraft = gameplanToolBlock?.input && typeof gameplanToolBlock.input === "object"
       ? buildGameplanDraft(
         gameplanToolBlock.input as GameplanToolInput,
         root,
         payload.context,
         rawUserMessageId,
+        requestReceivedAt,
       )
       : null;
     if (gameplanDraft && zyonGameplanMissingFields(gameplanDraft).length) gameplanDraft = null;
@@ -1020,7 +1038,11 @@ export async function POST(request: NextRequest) {
     const savedGameplanJournalCloud = savedGameplanJournalEntry
       ? await persistJournalEntry(actor.userId, savedGameplanJournalEntry)
       : false;
-    const responseText = gameplanDraftSave.blockedBy
+    const responseText = gameplanEntryTiming === "TOO_OLD"
+      ? "That entry happened more than five minutes ago, so I cannot send it as a new Gameplan. This protects the record from lookahead. A future limit-order entry is allowed, or you can document the old trade as a journal review instead."
+      : gameplanEntryTiming === "INVALID" || gameplanEntryTiming === "MISSING"
+        ? "I need an exact entry time and timezone before I can send this Gameplan. What was your entry time?"
+        : gameplanDraftSave.blockedBy
       ? "Your previous Gameplan is already in the Socials holding page. Post it to your Profile before asking ZYON to send another one."
       : gameplanDraft && !gameplanDraftSave.saved
         ? "I have the complete Gameplan, but the account holding record did not sync. Nothing was posted. Try Send Gameplan again."
