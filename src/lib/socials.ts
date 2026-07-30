@@ -119,9 +119,12 @@ export type SocialPrecordPayload = {
   plannedEntryHigh: number | null;
   plannedStop: number | null;
   plannedTarget: number | null;
+  plannedTargets?: number[];
   plannedSize: number | null;
   maximumRisk: number | null;
+  riskUnit?: "DOLLARS" | "POINTS" | "TICKS" | "PERCENT";
   plannedRiskReward: number | null;
+  confluences?: string[];
   bullCondition: string;
   bearCondition: string;
   confirmation: string;
@@ -130,7 +133,7 @@ export type SocialPrecordPayload = {
   lockedAt: string;
   reasoningScore: number;
   status: PrecordStatus;
-  source: "SOCIALS" | "GAMEPLAN" | "CHARTS" | "GEXMAP" | "JOURNAL";
+  source: "SOCIALS" | "GAMEPLAN" | "CHARTS" | "GEXMAP" | "JOURNAL" | "ZYON";
   sourceGameplanId?: string;
   sourceGameplanVersion?: string;
   sourceGeneratedAt?: string;
@@ -194,6 +197,25 @@ export type SocialReceiptPayload = {
     postExecutionModelVersion: string;
     createdAt: string;
   };
+  pathMetrics?: SocialReasoningPathMetrics;
+};
+
+export type SocialReasoningPathMetrics = {
+  status: "IN PROGRESS" | "TARGET HIT" | "STOP HIT" | "EXPIRED" | "COMPLETE";
+  entryPrice: number;
+  exitPrice: number;
+  entryTime: string;
+  exitTime: string;
+  pointsInDirection: number;
+  adverseExcursion: number;
+  favourableExcursion: number;
+  ticksCaught: number;
+  riskPoints: number;
+  realisedR: number;
+  plannedR: number | null;
+  durationSeconds: number;
+  targetsHit: number[];
+  outcomeScore: number;
 };
 
 export type SocialPostPayload = {
@@ -556,7 +578,7 @@ export function calculateReasoningScore(payload: Omit<SocialPrecordPayload, "rea
     Boolean(payload.marketContext.trim()),
     payload.plannedEntryLow !== null,
     payload.plannedStop !== null,
-    payload.plannedTarget !== null,
+    payload.plannedTarget !== null || Boolean(payload.plannedTargets?.length),
     Boolean(payload.bullCondition.trim()),
     Boolean(payload.bearCondition.trim()),
     Boolean(payload.confirmation.trim()),
@@ -567,6 +589,59 @@ export function calculateReasoningScore(payload: Omit<SocialPrecordPayload, "rea
   const bothSidedBonus = payload.bullCondition.trim() && payload.bearCondition.trim() ? 8 : 0;
   const neutralBonus = payload.direction === "BOTH" || payload.direction === "NEUTRAL" ? 4 : 0;
   return Math.min(96, Math.round(42 + completeness * 42 + bothSidedBonus + neutralBonus));
+}
+
+export function calculateTrackedReasoningScore(
+  plan: Pick<SocialPrecordPayload, "reasoningScore" | "direction" | "plannedEntryLow" | "plannedEntryHigh" | "plannedStop" | "plannedTarget" | "plannedTargets" | "maximumRisk">,
+  path: Omit<SocialReasoningPathMetrics, "outcomeScore">,
+) {
+  const entry = path.entryPrice;
+  const stop = plan.plannedStop;
+  const riskPoints = stop === null ? path.riskPoints : Math.abs(entry - stop);
+  const directionSign = plan.direction === "SHORT" ? -1 : 1;
+  const realisedPoints = (path.exitPrice - entry) * directionSign;
+  const realisedR = riskPoints > 0 ? realisedPoints / riskPoints : 0;
+  const maeRatio = riskPoints > 0 ? path.adverseExcursion / riskPoints : 1;
+  const targets = plan.plannedTargets?.length
+    ? plan.plannedTargets
+    : plan.plannedTarget === null ? [] : [plan.plannedTarget];
+  const targetProgress = targets.length ? Math.min(1, path.targetsHit.length / targets.length) : 0;
+  const planQuality = Math.max(0, Math.min(100, plan.reasoningScore));
+  const directionScore = Math.max(0, Math.min(100, 50 + realisedR * 28));
+  const adverseControl = Math.max(0, Math.min(100, 100 - maeRatio * 70));
+  const captureEfficiency = path.favourableExcursion > 0
+    ? Math.max(0, Math.min(100, path.pointsInDirection / path.favourableExcursion * 100))
+    : realisedPoints >= 0 ? 70 : 20;
+  const outcomeScore = Math.round(
+    planQuality * 0.35
+    + directionScore * 0.25
+    + adverseControl * 0.15
+    + captureEfficiency * 0.15
+    + targetProgress * 100 * 0.1,
+  );
+  return {
+    ...path,
+    riskPoints,
+    realisedR: Number(realisedR.toFixed(2)),
+    plannedR: plan.plannedTarget !== null && riskPoints > 0
+      ? Number((Math.abs(plan.plannedTarget - entry) / riskPoints).toFixed(2))
+      : null,
+    outcomeScore: Math.max(0, Math.min(100, outcomeScore)),
+  } satisfies SocialReasoningPathMetrics;
+}
+
+export function reasoningScoreFromReceipts(
+  receipts: SocialObject[],
+  userId: string,
+) {
+  const completed = receipts
+    .filter((object) => object.objectType === "receipt" && object.userId === userId)
+    .map((object) => object.payload as SocialReceiptPayload)
+    .map((payload) => payload.pathMetrics?.outcomeScore ?? payload.scores?.final)
+    .filter((score): score is number => Number.isFinite(score));
+  return completed.length
+    ? Math.round(completed.reduce((sum, score) => sum + score, 0) / completed.length)
+    : null;
 }
 
 export function calculateReceiptClassification(

@@ -17,12 +17,12 @@ import {
 } from "lucide-react";
 import {
   CALLING_CARD_CATALOG,
-  profileScoreAverage,
   type SocialCardPayload,
   type SocialObject,
   type SocialPrecordPayload,
   type SocialProfilePayload,
 } from "@/lib/socials";
+import ReasoningOutcomeChart from "@/components/socials/ReasoningOutcomeChart";
 
 type SocialProfileViewProps = {
   profileObject: SocialObject;
@@ -30,6 +30,7 @@ type SocialProfileViewProps = {
   gameplans: SocialObject[];
   cards: SocialObject[];
   comments: SocialObject[];
+  reasoningScore: number | null;
   isOwnProfile: boolean;
   savedIds: Set<string>;
   repostedIds: Set<string>;
@@ -71,6 +72,7 @@ export default function SocialProfileView({
   gameplans,
   cards,
   comments,
+  reasoningScore,
   isOwnProfile,
   savedIds,
   repostedIds,
@@ -97,6 +99,13 @@ export default function SocialProfileView({
     ...(profile.websiteUrl ? [{ label: "Website", url: profile.websiteUrl }] : []),
     ...(profile.profileLinks ?? []),
   ].slice(0, 5);
+  const scoreTone = reasoningScore === null
+    ? "var(--warning)"
+    : reasoningScore < 25
+      ? "var(--danger)"
+      : reasoningScore < 65
+        ? "var(--warning)"
+        : "var(--accent)";
 
   return (
     <div className="mx-auto w-full max-w-6xl p-3 sm:p-4">
@@ -162,8 +171,12 @@ export default function SocialProfileView({
             <div className="grid grid-cols-3 divide-x divide-border overflow-hidden rounded-2xl border border-border bg-background/35">
               <div className="p-3 text-center"><div className="font-mono text-[18px] font-semibold text-foreground">{gameplans.length}</div><div className="mt-1 text-[7px] uppercase tracking-[0.12em] text-muted">Gameplans</div></div>
               <div className="p-3 text-center"><div className="font-mono text-[18px] font-semibold text-foreground">{receivedComments}</div><div className="mt-1 text-[7px] uppercase tracking-[0.12em] text-muted">Reviews</div></div>
-              <div className="p-3 text-center"><div className="font-mono text-[18px] font-semibold text-primary">{profileScoreAverage(profile) || "—"}</div><div className="mt-1 text-[7px] uppercase tracking-[0.12em] text-muted">Process</div></div>
+              <div className="p-3 text-center"><div className="font-mono text-[18px] font-semibold" style={{ color: scoreTone }}>{reasoningScore === null ? "—" : `${reasoningScore}%`}</div><div className="mt-1 text-[7px] uppercase tracking-[0.12em] text-muted">Reasoning</div></div>
             </div>
+          </div>
+          <div className="mt-4 rounded-2xl border border-border bg-background/35 p-3">
+            <div className="flex items-center justify-between text-[8px]"><span className="font-semibold uppercase tracking-[0.13em] text-muted">Reasoning score</span><span className="font-mono font-semibold" style={{ color: scoreTone }}>{reasoningScore === null ? "Waiting for a completed Gameplan" : `${reasoningScore}%`}</span></div>
+            <div className="mt-2 h-2 overflow-hidden rounded-full bg-surface"><div className="h-full rounded-full transition-[width] duration-700" style={{ width: `${reasoningScore === null ? 42 : Math.max(3, reasoningScore)}%`, background: scoreTone, boxShadow: `0 0 18px ${scoreTone}` }} /></div>
           </div>
         </div>
       </section>
@@ -198,6 +211,17 @@ export default function SocialProfileView({
                     <div className="text-[7px] font-semibold uppercase tracking-[0.16em] text-muted">{payload.session} · {payload.direction}</div>
                     <div className="mt-2 font-mono text-[24px] font-semibold tracking-[-0.04em] text-foreground">{zoneLabel(payload)}</div>
                     <p className="mt-3 line-clamp-3 text-[9px] leading-5 text-muted">{payload.marketContext}</p>
+                  </div>
+                  <div className="relative z-10 mt-3">
+                    <ReasoningOutcomeChart
+                      instrument={payload.instrument}
+                      lockedAt={payload.lockedAt}
+                      entryLow={payload.plannedEntryLow}
+                      entryHigh={payload.plannedEntryHigh}
+                      stop={payload.plannedStop}
+                      targets={payload.plannedTargets?.length ? payload.plannedTargets : payload.plannedTarget === null ? [] : [payload.plannedTarget]}
+                      height={105}
+                    />
                   </div>
                   <div className="relative z-20 mt-auto flex items-center gap-1 border-t border-border/70 pt-3">
                     <button type="button" onClick={() => onOpenGameplan(record)} className="flex h-7 items-center gap-1.5 rounded-lg px-2 text-[7px] text-muted hover:bg-surface hover:text-foreground"><MessageCircle className="h-3.5 w-3.5" />{commentCount}</button>

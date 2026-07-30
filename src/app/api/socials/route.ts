@@ -245,12 +245,15 @@ export async function POST(request: NextRequest) {
       ? payload.evidenceDataUrl.slice(0, 2_800_000)
       : "";
     const evidenceName = cleanText(payload.evidenceName, 180);
+    const hasPlatformPathEvidence = payload.evidenceState === "PLATFORM TIMESTAMPED"
+      && payload.pathMetrics
+      && typeof payload.pathMetrics === "object";
     if (evidenceDataUrl) privateEvidence = { name: evidenceName || "receipt-evidence", dataUrl: evidenceDataUrl };
     payload = {
       ...payload,
       evidenceName: "",
       evidenceDataUrl: "",
-      hasEvidence: Boolean(evidenceDataUrl),
+      hasEvidence: Boolean(evidenceDataUrl) || Boolean(hasPlatformPathEvidence),
     };
     id = `receipt:${parentId}`;
   } else if (objectType === "card") {
@@ -278,7 +281,7 @@ export async function POST(request: NextRequest) {
       bearCondition: cleanText(payload.bearCondition, 1_500),
       confirmation: cleanText(payload.confirmation, 1_500),
       invalidation: cleanText(payload.invalidation, 1_500),
-      source: ["SOCIALS", "GAMEPLAN", "CHARTS", "GEXMAP", "JOURNAL"].includes(source) ? source : "SOCIALS",
+      source: ["SOCIALS", "GAMEPLAN", "CHARTS", "GEXMAP", "JOURNAL", "ZYON"].includes(source) ? source : "SOCIALS",
     } as unknown as Omit<SocialPrecordPayload, "reasoningScore" | "lockedAt" | "status">;
     if (!candidate.instrument || !candidate.marketContext || !candidate.confirmation || !candidate.invalidation) {
       return NextResponse.json({ error: "Instrument, context, confirmation, and invalidation are required." }, { status: 400 });
@@ -297,6 +300,7 @@ export async function POST(request: NextRequest) {
         plannedEntryHigh: candidate.plannedEntryHigh,
         plannedStop: candidate.plannedStop,
         plannedTarget: candidate.plannedTarget,
+        plannedTargets: candidate.plannedTargets,
         confirmation: candidate.confirmation,
         invalidation: candidate.invalidation,
         expiryAt: candidate.expiryAt,

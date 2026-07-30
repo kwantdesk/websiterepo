@@ -18,6 +18,9 @@ import {
   zyonFolderKindTag,
   zyonId,
   zyonParentFolderTag,
+  type ZyonGameplanDraft,
+  type ZyonGameplanDirection,
+  type ZyonGameplanRiskUnit,
   type ZyonJournalEntry,
   type ZyonMarketRoot,
 } from "@/lib/zyon";
@@ -81,6 +84,24 @@ type JournalToolInput = {
   body?: unknown;
   kind?: unknown;
   tags?: unknown;
+};
+type GameplanToolInput = {
+  title?: unknown;
+  instrument?: unknown;
+  direction?: unknown;
+  session?: unknown;
+  entryLow?: unknown;
+  entryHigh?: unknown;
+  stop?: unknown;
+  targets?: unknown;
+  riskAmount?: unknown;
+  riskUnit?: unknown;
+  size?: unknown;
+  reasoning?: unknown;
+  confluences?: unknown;
+  confirmation?: unknown;
+  invalidation?: unknown;
+  expiryAt?: unknown;
 };
 
 const SUPPORTED_IMAGE_TYPES = new Set<ClaudeImageBlock["source"]["media_type"]>([
@@ -290,6 +311,67 @@ function buildJournalEntry(
         : 0,
     })),
     createdAt: new Date().toISOString(),
+  };
+}
+
+function finiteNumber(value: unknown) {
+  const parsed = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function buildGameplanDraft(
+  input: GameplanToolInput,
+  root: ZyonMarketRoot,
+  context: unknown,
+): ZyonGameplanDraft | null {
+  const entryLowRaw = finiteNumber(input.entryLow);
+  const entryHighRaw = finiteNumber(input.entryHigh) ?? entryLowRaw;
+  const stop = finiteNumber(input.stop);
+  const targets = Array.isArray(input.targets)
+    ? input.targets.map(finiteNumber).filter((value): value is number => value !== null).slice(0, 8)
+    : [];
+  const reasoning = cleanText(input.reasoning, 5_000);
+  const confirmation = cleanText(input.confirmation, 2_000);
+  const invalidation = cleanText(input.invalidation, 2_000);
+  if (
+    entryLowRaw === null
+    || entryHighRaw === null
+    || stop === null
+    || !targets.length
+    || !reasoning
+    || !confirmation
+    || !invalidation
+  ) return null;
+  const direction: ZyonGameplanDirection = input.direction === "SHORT" ? "SHORT" : "LONG";
+  const riskUnit: ZyonGameplanRiskUnit = ["DOLLARS", "POINTS", "TICKS", "PERCENT"].includes(String(input.riskUnit))
+    ? input.riskUnit as ZyonGameplanRiskUnit
+    : "DOLLARS";
+  const now = new Date().toISOString();
+  const sessionDate = sessionDateForContext(context);
+  return {
+    id: `zyon-gameplan-draft:${sessionDate}:${root}`,
+    sessionDate,
+    root,
+    instrument: cleanText(input.instrument, 16).toUpperCase() || root,
+    title: cleanText(input.title, 120) || `${root} Gameplan`,
+    direction,
+    session: cleanText(input.session, 60) || "New York",
+    entryLow: Math.min(entryLowRaw, entryHighRaw),
+    entryHigh: Math.max(entryLowRaw, entryHighRaw),
+    stop,
+    targets,
+    riskAmount: finiteNumber(input.riskAmount),
+    riskUnit,
+    size: finiteNumber(input.size),
+    reasoning,
+    confluences: Array.isArray(input.confluences)
+      ? input.confluences.map((value) => cleanText(value, 300)).filter(Boolean).slice(0, 12)
+      : [],
+    confirmation,
+    invalidation,
+    expiryAt: cleanText(input.expiryAt, 60) || null,
+    createdAt: now,
+    updatedAt: now,
   };
 }
 
@@ -514,6 +596,53 @@ async function persistJournalEntry(
   }
 }
 
+async function persistGameplanDraft(
+  actorId: string,
+  draft: ZyonGameplanDraft,
+  sourceMessageId: string,
+) {
+  try {
+    const supabase = await createSupabaseServerClient();
+    const { error } = await supabase.from("zyon_gameplan_drafts").upsert({
+      user_id: actorId,
+      id: draft.id,
+      session_date: draft.sessionDate,
+      root: draft.root,
+      title: draft.title,
+      payload: {
+        instrument: draft.instrument,
+        direction: draft.direction,
+        session: draft.session,
+        entryLow: draft.entryLow,
+        entryHigh: draft.entryHigh,
+        stop: draft.stop,
+        targets: draft.targets,
+        riskAmount: draft.riskAmount,
+        riskUnit: draft.riskUnit,
+        size: draft.size,
+        reasoning: draft.reasoning,
+        confluences: draft.confluences,
+        confirmation: draft.confirmation,
+        invalidation: draft.invalidation,
+        expiryAt: draft.expiryAt,
+      },
+      source_message_id: sourceMessageId || null,
+      created_at: draft.createdAt,
+      updated_at: draft.updatedAt,
+    }, { onConflict: "user_id,id" });
+    if (error) {
+      if (error.code !== "42P01" && error.code !== "PGRST205") {
+        console.error("ZYON Gameplan draft save failed", { code: error.code, message: error.message });
+      }
+      return false;
+    }
+    return true;
+  } catch (error) {
+    console.error("ZYON Gameplan draft save failed", error);
+    return false;
+  }
+}
+
 export async function POST(request: NextRequest) {
   const actor = await getRouteActor(request);
   if (!actor) {
@@ -601,6 +730,8 @@ export async function POST(request: NextRequest) {
     "When an image does not reveal the instrument, timeframe, or price scale, say what is missing before drawing a strong conclusion.",
     "Use concise professional language. Challenge weak confirmation bias and state invalidation conditions.",
     "When the user recounts a trade, shares a meaningful setup, records a lesson, or asks to journal something, also call record_trading_journal. Always provide a normal text response as well.",
+    "When the user asks to save, document, create, or update today's Gameplan, call save_trading_gameplan_draft with every structured field you can establish. This creates a PRIVATE REVIEW DRAFT only. Never claim it is locked, published, sent to Socials, or scored. Tell the trader to review it in Socials and press Lock Today's Gameplan.",
+    "A Gameplan draft requires one explicit direction, an entry price or zone, stop, at least one take-profit target, reasoning, confirmation, and invalidation. Never invent a missing price. Ask for what is missing instead of calling the tool with guessed values.",
     `Selected market: ${root}.`,
     `<kwantbot_context>${contextJson}</kwantbot_context>`,
   ].join("\n");
@@ -618,28 +749,68 @@ export async function POST(request: NextRequest) {
         max_tokens: 1_800,
         system,
         metadata: { user_id: actor.userId },
-        tools: [{
-          name: "record_trading_journal",
-          description: "Record a durable ZYON trading-journal entry when the user describes a trade, setup, review, lesson, or explicitly asks to save a note.",
-          input_schema: {
-            type: "object",
-            properties: {
-              title: { type: "string", description: "Short descriptive journal title." },
-              summary: { type: "string", description: "One-sentence summary." },
-              body: { type: "string", description: "Complete factual journal entry including setup, action, reasoning, outcome if known, and next lesson." },
-              kind: {
-                type: "string",
-                enum: ["TRADE", "SETUP", "REVIEW", "LESSON", "NOTE"],
+        tools: [
+          {
+            name: "record_trading_journal",
+            description: "Record a durable ZYON trading-journal entry when the user describes a trade, setup, review, lesson, or explicitly asks to save a note.",
+            input_schema: {
+              type: "object",
+              properties: {
+                title: { type: "string", description: "Short descriptive journal title." },
+                summary: { type: "string", description: "One-sentence summary." },
+                body: { type: "string", description: "Complete factual journal entry including setup, action, reasoning, outcome if known, and next lesson." },
+                kind: {
+                  type: "string",
+                  enum: ["TRADE", "SETUP", "REVIEW", "LESSON", "NOTE"],
+                },
+                tags: {
+                  type: "array",
+                  items: { type: "string" },
+                  maxItems: 8,
+                },
               },
-              tags: {
-                type: "array",
-                items: { type: "string" },
-                maxItems: 8,
-              },
+              required: ["title", "body", "kind"],
             },
-            required: ["title", "body", "kind"],
           },
-        }],
+          {
+            name: "save_trading_gameplan_draft",
+            description: "Save or replace today's private structured Gameplan review draft. Use only when the trader explicitly asks to save, document, create, or update a Gameplan and all required prices are known.",
+            input_schema: {
+              type: "object",
+              properties: {
+                title: { type: "string" },
+                instrument: { type: "string", description: "NQ, MNQ, ES, or MES." },
+                direction: { type: "string", enum: ["LONG", "SHORT"] },
+                session: { type: "string" },
+                entryLow: { type: "number" },
+                entryHigh: { type: "number" },
+                stop: { type: "number" },
+                targets: { type: "array", items: { type: "number" }, minItems: 1, maxItems: 8 },
+                riskAmount: { type: ["number", "null"] },
+                riskUnit: { type: "string", enum: ["DOLLARS", "POINTS", "TICKS", "PERCENT"] },
+                size: { type: ["number", "null"] },
+                reasoning: { type: "string" },
+                confluences: { type: "array", items: { type: "string" }, maxItems: 12 },
+                confirmation: { type: "string" },
+                invalidation: { type: "string" },
+                expiryAt: { type: ["string", "null"], description: "ISO timestamp when known." },
+              },
+              required: [
+                "title",
+                "instrument",
+                "direction",
+                "session",
+                "entryLow",
+                "entryHigh",
+                "stop",
+                "targets",
+                "reasoning",
+                "confirmation",
+                "invalidation"
+              ],
+            },
+          },
+        ],
         messages,
       }),
     });
@@ -667,6 +838,10 @@ export async function POST(request: NextRequest) {
     const toolBlock = result.content?.find(
       (block): block is ToolUseBlock =>
         block?.type === "tool_use" && block.name === "record_trading_journal",
+    );
+    const gameplanToolBlock = result.content?.find(
+      (block): block is ToolUseBlock =>
+        block?.type === "tool_use" && block.name === "save_trading_gameplan_draft",
     );
     let journalEntry = toolBlock?.input && typeof toolBlock.input === "object"
       ? buildJournalEntry(
@@ -696,6 +871,13 @@ export async function POST(request: NextRequest) {
     const cloudSaved = journalEntry
       ? await persistJournalEntry(actor.userId, journalEntry)
       : false;
+    let gameplanDraft = gameplanToolBlock?.input && typeof gameplanToolBlock.input === "object"
+      ? buildGameplanDraft(gameplanToolBlock.input as GameplanToolInput, root, payload.context)
+      : null;
+    const gameplanDraftCloudSaved = gameplanDraft
+      ? await persistGameplanDraft(actor.userId, gameplanDraft, rawUserMessageId)
+      : false;
+    if (gameplanDraft) gameplanDraft = { ...gameplanDraft, cloudSaved: gameplanDraftCloudSaved };
     const assistantConversationEntry = conversationEntry({
       id: zyonId("zyon-conversation-assistant"),
       sessionDate,
@@ -710,15 +892,18 @@ export async function POST(request: NextRequest) {
       assistantConversationEntry,
     );
 
-    if (!text && !journalEntry) {
+    if (!text && !journalEntry && !gameplanDraft) {
       return NextResponse.json({ error: "ZYON returned an empty reply." }, { status: 502 });
     }
 
     return NextResponse.json(
       {
-        text: (text || "That has been recorded in your trading journal.").slice(0, 12_000),
+        text: (text || (gameplanDraft
+          ? "I saved this as today’s private structured Gameplan draft. Review the entry, stop, targets, risk and reasoning in Socials, choose its visibility, then press Lock Today’s Gameplan."
+          : "That has been recorded in your trading journal.")).slice(0, 12_000),
         model: modelKey,
         journalEntry: journalEntry ? { ...journalEntry, cloudSaved } : null,
+        gameplanDraft,
         journalEntries: [
           { ...userConversationEntry, cloudSaved: userConversationCloudSaved },
           { ...assistantConversationEntry, cloudSaved: assistantConversationCloudSaved },

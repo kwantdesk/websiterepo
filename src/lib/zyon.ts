@@ -27,6 +27,8 @@ export const ZYON_MODELS = {
 
 export type ZyonModelKey = keyof typeof ZYON_MODELS;
 export type ZyonMarketRoot = "NQ" | "ES";
+export type ZyonGameplanDirection = "LONG" | "SHORT";
+export type ZyonGameplanRiskUnit = "DOLLARS" | "POINTS" | "TICKS" | "PERCENT";
 export const ZYON_FOLDER_TAG = "zyon:folder";
 export const ZYON_CONVERSATION_TAG = "zyon:conversation";
 export const ZYON_DAILY_ROOT_FOLDER_ID = "zyon-folder-daily-conversations";
@@ -76,6 +78,31 @@ export type ZyonJournalEntry = {
     storagePath?: string;
   }>;
   createdAt: string;
+  cloudSaved?: boolean;
+};
+
+export type ZyonGameplanDraft = {
+  id: string;
+  sessionDate: string;
+  root: ZyonMarketRoot;
+  instrument: string;
+  title: string;
+  direction: ZyonGameplanDirection;
+  session: string;
+  entryLow: number;
+  entryHigh: number;
+  stop: number;
+  targets: number[];
+  riskAmount: number | null;
+  riskUnit: ZyonGameplanRiskUnit;
+  size: number | null;
+  reasoning: string;
+  confluences: string[];
+  confirmation: string;
+  invalidation: string;
+  expiryAt: string | null;
+  createdAt: string;
+  updatedAt: string;
   cloudSaved?: boolean;
 };
 

@@ -7,6 +7,7 @@ import {
   Award,
   BarChart3,
   Bell,
+  BrainCircuit,
   Bookmark,
   Camera,
   CalendarDays,
@@ -46,15 +47,18 @@ import {
 } from "lucide-react";
 import KwantSelect from "@/components/ui/KwantSelect";
 import SocialProfileView from "@/components/socials/SocialProfileView";
+import ReasoningOutcomeChart from "@/components/socials/ReasoningOutcomeChart";
 import {
   buildDefaultProfile,
   calculateReasoningScore,
   calculateReceiptClassification,
   calculateReceiptScores,
+  calculateTrackedReasoningScore,
   CALLING_CARD_CATALOG,
   normalizeSocialProfile,
   PROCESS_STATUSES,
   profileScoreAverage,
+  reasoningScoreFromReceipts,
   socialId,
   todayKey,
   type SocialCardPayload,
@@ -70,9 +74,11 @@ import {
   type SocialProgressPayload,
   type SocialReactionPayload,
   type SocialReceiptPayload,
+  type SocialReasoningPathMetrics,
   type SocialScope,
   type SocialState,
 } from "@/lib/socials";
+import { type ZyonGameplanDraft } from "@/lib/zyon";
 import { buildExecutionComparison } from "@/lib/socials";
 import { SOCIAL_RECORD_COPY, SOCIAL_RECORD_RULES } from "@/lib/socialRecordConfig";
 import {
@@ -91,7 +97,7 @@ import {
   useState,
 } from "react";
 
-type SocialTab = "today" | "precords" | "desks" | "rankings" | "cards" | "profile";
+type SocialTab = "today" | "reasoning" | "precords" | "desks" | "rankings" | "cards" | "profile";
 type FeedFilter = "all" | "live" | "proven" | "mine";
 type AvatarCropDraft = {
   sourceUrl: string;
@@ -125,6 +131,7 @@ function clampAvatarOffset(draft: AvatarCropDraft, offsetX: number, offsetY: num
 
 const SOCIAL_TABS: Array<{ id: SocialTab; label: string; icon: typeof Activity }> = [
   { id: "today", label: "Record", icon: Activity },
+  { id: "reasoning", label: "My Reasoning", icon: BrainCircuit },
   { id: "precords", label: "Community", icon: Network },
   { id: "desks", label: "Desks", icon: UsersRound },
   { id: "rankings", label: "Reputation", icon: Trophy },
@@ -206,6 +213,99 @@ function numberOrNull(value: string) {
   return Number.isFinite(number) ? number : null;
 }
 
+type ReasoningCandle = {
+  timestamp: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+};
+
+function evaluateReasoningPath(
+  plan: SocialPrecordPayload,
+  candles: ReasoningCandle[],
+): SocialReasoningPathMetrics | null {
+  if (
+    !["LONG", "SHORT"].includes(plan.direction)
+    || plan.plannedEntryLow === null
+    || plan.plannedStop === null
+  ) return null;
+  const entryLow = Math.min(plan.plannedEntryLow, plan.plannedEntryHigh ?? plan.plannedEntryLow);
+  const entryHigh = Math.max(plan.plannedEntryLow, plan.plannedEntryHigh ?? plan.plannedEntryLow);
+  const lockedAt = Date.parse(plan.lockedAt);
+  const eligible = candles.filter((candle) =>
+    candle.timestamp >= lockedAt
+    && Number.isFinite(candle.high)
+    && Number.isFinite(candle.low));
+  const entryIndex = eligible.findIndex((candle) => candle.low <= entryHigh && candle.high >= entryLow);
+  if (entryIndex < 0) return null;
+  const entryCandle = eligible[entryIndex];
+  const entryPrice = Math.max(entryLow, Math.min(entryHigh, entryCandle.open || (entryLow + entryHigh) / 2));
+  const targets = (plan.plannedTargets?.length
+    ? plan.plannedTargets
+    : plan.plannedTarget === null ? [] : [plan.plannedTarget])
+    .filter(Number.isFinite);
+  const long = plan.direction === "LONG";
+  let favourableExcursion = 0;
+  let adverseExcursion = 0;
+  let exitPrice = eligible.at(-1)?.close ?? entryPrice;
+  let exitTime = eligible.at(-1)?.timestamp ?? entryCandle.timestamp;
+  let status: SocialReasoningPathMetrics["status"] = "IN PROGRESS";
+  const hitTargets: number[] = [];
+
+  for (const candle of eligible.slice(entryIndex)) {
+    favourableExcursion = Math.max(
+      favourableExcursion,
+      long ? candle.high - entryPrice : entryPrice - candle.low,
+    );
+    adverseExcursion = Math.max(
+      adverseExcursion,
+      long ? entryPrice - candle.low : candle.high - entryPrice,
+    );
+    const stopHit = long ? candle.low <= plan.plannedStop : candle.high >= plan.plannedStop;
+    if (stopHit) {
+      status = "STOP HIT";
+      exitPrice = plan.plannedStop;
+      exitTime = candle.timestamp;
+      break;
+    }
+    for (const target of targets) {
+      if (hitTargets.includes(target)) continue;
+      const hit = long ? candle.high >= target : candle.low <= target;
+      if (hit) hitTargets.push(target);
+    }
+    if (targets.length && hitTargets.length === targets.length) {
+      status = "TARGET HIT";
+      exitPrice = targets.at(-1) as number;
+      exitTime = candle.timestamp;
+      break;
+    }
+    exitPrice = candle.close;
+    exitTime = candle.timestamp;
+  }
+
+  const riskPoints = Math.abs(entryPrice - plan.plannedStop);
+  const directionSign = long ? 1 : -1;
+  const pointsInDirection = (exitPrice - entryPrice) * directionSign;
+  const path = {
+    status,
+    entryPrice,
+    exitPrice,
+    entryTime: new Date(entryCandle.timestamp).toISOString(),
+    exitTime: new Date(exitTime).toISOString(),
+    pointsInDirection,
+    adverseExcursion,
+    favourableExcursion,
+    ticksCaught: pointsInDirection / 0.25,
+    riskPoints,
+    realisedR: riskPoints > 0 ? pointsInDirection / riskPoints : 0,
+    plannedR: null,
+    durationSeconds: Math.max(0, Math.round((exitTime - entryCandle.timestamp) / 1_000)),
+    targetsHit: hitTargets,
+  };
+  return calculateTrackedReasoningScore(plan, path);
+}
+
 function formatDate(value: string, includeTime = false) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "—";
@@ -250,6 +350,36 @@ function ScoreBar({ label, value }: { label: string; value: number }) {
       <div className="h-1.5 overflow-hidden rounded-full bg-surface">
         <div className="h-full rounded-full bg-primary transition-[width] duration-500" style={{ width: `${Math.max(0, Math.min(100, value))}%` }} />
       </div>
+    </div>
+  );
+}
+
+function ReasoningScoreBar({ value, waiting = false }: { value: number | null; waiting?: boolean }) {
+  const normalized = value === null ? 0 : Math.max(0, Math.min(100, value));
+  const tone = waiting || value === null
+    ? "var(--warning)"
+    : normalized < 25
+      ? "var(--danger)"
+      : normalized < 65
+        ? "var(--warning)"
+        : "var(--accent)";
+  return (
+    <div className="rounded-2xl border border-border bg-background/35 p-3">
+      <div className="flex items-center justify-between">
+        <span className="text-[8px] font-semibold uppercase tracking-[0.13em] text-muted">Reasoning score</span>
+        <span className="font-mono text-[16px] font-semibold" style={{ color: tone }}>{value === null ? "WAITING" : `${normalized}%`}</span>
+      </div>
+      <div className="mt-3 h-2 overflow-hidden rounded-full bg-surface">
+        <div
+          className="h-full rounded-full transition-[width] duration-700"
+          style={{
+            width: `${value === null ? 42 : Math.max(3, normalized)}%`,
+            background: tone,
+            boxShadow: `0 0 16px ${tone}`,
+          }}
+        />
+      </div>
+      <div className="mt-2 flex justify-between font-mono text-[6px] text-muted"><span>0</span><span>25</span><span>50</span><span>65</span><span>100</span></div>
     </div>
   );
 }
@@ -353,6 +483,9 @@ export default function SocialsWorkspace({
   const [gameplanSession, setGameplanSession] = useState<GameplanSession>("newyork");
   const [gameplan, setGameplan] = useState<GameplanPayload | null>(null);
   const [gameplanState, setGameplanState] = useState<"loading" | "ready" | "error">("loading");
+  const [zyonGameplanDraft, setZyonGameplanDraft] = useState<ZyonGameplanDraft | null>(null);
+  const [zyonDraftState, setZyonDraftState] = useState<"loading" | "ready" | "missing" | "migration">("loading");
+  const [reasoningPaths, setReasoningPaths] = useState<Record<string, SocialReasoningPathMetrics>>({});
   const [recordScope, setRecordScope] = useState<SocialScope>("private");
   const [assessmentState, setAssessmentState] = useState<"idle" | "reviewing">("idle");
   const [receiptDraft, setReceiptDraft] = useState(EMPTY_RECEIPT);
@@ -396,6 +529,7 @@ export default function SocialsWorkspace({
     originX: number;
     originY: number;
   } | null>(null);
+  const completingReasoningRef = useRef(new Set<string>());
 
   const upsertObject = useCallback((object: SocialObject, replaceKey?: string) => {
     setState((current) => ({
@@ -552,6 +686,14 @@ export default function SocialsWorkspace({
   const posts = useMemo(() => state.objects.filter((object) => object.objectType === "post").sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt)), [state.objects]);
   const precords = useMemo(() => state.objects.filter((object) => object.objectType === "precord").sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt)), [state.objects]);
   const receipts = useMemo(() => state.objects.filter((object) => object.objectType === "receipt"), [state.objects]);
+  const myReasoningRecords = useMemo(
+    () => precords.filter((object) => object.userId === resolvedAccountKey),
+    [precords, resolvedAccountKey],
+  );
+  const myReasoningScore = useMemo(
+    () => reasoningScoreFromReceipts(receipts, resolvedAccountKey),
+    [receipts, resolvedAccountKey],
+  );
   const desks = useMemo(() => state.objects.filter((object) => object.objectType === "desk"), [state.objects]);
   const memberships = useMemo(() => state.objects.filter((object) => object.objectType === "desk-member"), [state.objects]);
   const comments = useMemo(() => state.objects.filter((object) => object.objectType === "comment"), [state.objects]);
@@ -572,7 +714,7 @@ export default function SocialsWorkspace({
   const viewedGameplans = viewedProfileObject
     ? precords.filter((object) =>
         object.userId === viewedProfileObject.userId
-        && typedPayload<SocialPrecordPayload>(object)?.source === "GAMEPLAN")
+        && ["GAMEPLAN", "ZYON"].includes(typedPayload<SocialPrecordPayload>(object)?.source ?? ""))
     : [];
   const savedGameplanIds = new Set(
     reactions
@@ -643,14 +785,224 @@ export default function SocialsWorkspace({
     };
   }, [gameplanInstrument, gameplanSession]);
 
-  const currentGameplanId = gameplan
+  useEffect(() => {
+    let active = true;
+    const controller = new AbortController();
+    setZyonDraftState("loading");
+    void (async () => {
+      try {
+        const response = await fetch(`/api/zyon/gameplan-draft?root=${gameplanInstrument}`, {
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        const payload = await response.json() as {
+          draft?: ZyonGameplanDraft | null;
+          migrationRequired?: boolean;
+        };
+        if (!active) return;
+        if (payload.migrationRequired) {
+          setZyonGameplanDraft(null);
+          setZyonDraftState("migration");
+          return;
+        }
+        setZyonGameplanDraft(payload.draft ?? null);
+        setZyonDraftState(payload.draft ? "ready" : "missing");
+      } catch (error) {
+        if (!active || (error instanceof DOMException && error.name === "AbortError")) return;
+        setZyonGameplanDraft(null);
+        setZyonDraftState("missing");
+      }
+    })();
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [gameplanInstrument]);
+
+  const currentGameplanId = zyonGameplanDraft?.id ?? (gameplan
     ? `${gameplan.instrument}:${gameplanSession}:${gameplan.generated_at}`
-    : "";
+    : "");
   const lockedCurrentGameplan = precords.find((object) => {
     if (object.userId !== resolvedAccountKey) return false;
     const payload = typedPayload<SocialPrecordPayload>(object);
-    return Boolean(payload && payload.source === "GAMEPLAN" && payload.sourceGameplanId === currentGameplanId);
+    return Boolean(payload && payload.sourceGameplanId === currentGameplanId);
   });
+
+  useEffect(() => {
+    const activeRecords = myReasoningRecords.filter((record) => {
+      const plan = typedPayload<SocialPrecordPayload>(record);
+      return plan
+        && ["LONG", "SHORT"].includes(plan.direction)
+        && !receipts.some((receipt) => receipt.parentId === record.id);
+    });
+    if (!activeRecords.length) return;
+    let cancelled = false;
+    const candlesByRoot = new Map<"NQ" | "ES", ReasoningCandle[]>();
+
+    const completeRecord = async (
+      record: SocialObject,
+      plan: SocialPrecordPayload,
+      metrics: SocialReasoningPathMetrics,
+    ) => {
+      if (
+        completingReasoningRef.current.has(record.id)
+        || metrics.status === "IN PROGRESS"
+      ) return;
+      completingReasoningRef.current.add(record.id);
+      const trackedDirection = plan.direction as "LONG" | "SHORT";
+      const automaticScores = {
+        confirmation: plan.reasoningScore,
+        discipline: metrics.status === "TARGET HIT" ? 94 : 72,
+        execution: metrics.outcomeScore,
+        review: metrics.outcomeScore,
+        evidenceConfidence: 96,
+        final: metrics.outcomeScore,
+      };
+      const receiptPayload: SocialReceiptPayload = {
+        actualDirection: trackedDirection,
+        actualEntry: metrics.entryPrice,
+        entryTime: metrics.entryTime,
+        actualStop: plan.plannedStop,
+        actualExit: metrics.exitPrice,
+        exitTime: metrics.exitTime,
+        size: plan.plannedSize,
+        partialExits: metrics.targetsHit.length
+          ? `Targets reached: ${metrics.targetsHit.join(", ")}`
+          : "",
+        fees: null,
+        confirmationsAppeared: plan.confirmation,
+        deviationReason: "PLATFORM TRACKED",
+        deviationDetail: "CME price path reconstructed from the immutable lock timestamp.",
+        outcomeReview: metrics.status === "TARGET HIT"
+          ? `The final planned target was reached after ${metrics.durationSeconds} seconds.`
+          : `The planned stop was reached after ${metrics.durationSeconds} seconds.`,
+        nextTimeRule: "Review the locked thesis against the recorded path before changing the next plan.",
+        evidenceName: "",
+        evidenceDataUrl: "",
+        hasEvidence: true,
+        noTrade: false,
+        classification: "JUSTIFIED ADAPTATION",
+        scores: automaticScores,
+        addedAt: metrics.exitTime,
+        fills: [{ price: metrics.entryPrice, size: plan.plannedSize, time: metrics.entryTime }],
+        exits: [{ price: metrics.exitPrice, size: plan.plannedSize, time: metrics.exitTime }],
+        maximumActualRisk: metrics.adverseExcursion,
+        comparison: buildExecutionComparison(plan, {
+          actualDirection: trackedDirection,
+          actualEntry: metrics.entryPrice,
+          actualStop: plan.plannedStop,
+          actualExit: metrics.exitPrice,
+          size: plan.plannedSize,
+          maximumActualRisk: metrics.adverseExcursion,
+          confirmationsAppeared: plan.confirmation,
+          entryTime: metrics.entryTime,
+          noTrade: false,
+        }),
+        retrospective: false,
+        evidenceState: "PLATFORM TIMESTAMPED",
+        assessment: {
+          classification: "JUSTIFIED ADAPTATION",
+          explanation: `Platform path review: ${metrics.pointsInDirection.toFixed(2)} points in the planned direction, ${metrics.adverseExcursion.toFixed(2)} points adverse excursion, ${metrics.realisedR.toFixed(2)}R realised and ${metrics.targetsHit.length} target${metrics.targetsHit.length === 1 ? "" : "s"} reached.`,
+          evidenceUsed: ["Immutable Gameplan", "CME 5-minute price path", "Target and stop geometry"],
+          evidenceMissing: ["Broker fill and slippage"],
+          confidence: 0.92,
+          evaluator: "RULES",
+          modelVersion: "kwant-path-v1",
+          rubricVersion: "reasoning-path-v1",
+          assessedAt: metrics.exitTime,
+          appealAvailable: true,
+        },
+        scoreSnapshot: {
+          reasoning: plan.reasoningScore,
+          reasoningModelVersion: plan.scoreModelVersion ?? SOCIAL_RECORD_RULES.scoreModelVersion,
+          postExecutionModelVersion: "kwant-path-v1",
+          createdAt: metrics.exitTime,
+        },
+        pathMetrics: metrics,
+      };
+      await saveObject(buildLocalObject({
+        id: `receipt:${record.id}`,
+        userId: resolvedAccountKey,
+        authorLabel: currentProfile.displayName,
+        objectType: "receipt",
+        scope: record.scope,
+        deskId: record.deskId,
+        parentId: record.id,
+        payload: receiptPayload,
+      }));
+      setNotice(`${plan.instrument} Gameplan completed. Its Reasoning Score is ${metrics.outcomeScore}%.`);
+    };
+
+    const evaluate = async () => {
+      const byRoot = new Map<"NQ" | "ES", SocialObject[]>();
+      for (const record of activeRecords) {
+        const plan = typedPayload<SocialPrecordPayload>(record);
+        if (!plan) continue;
+        const root = plan.instrument.toUpperCase().includes("NQ") ? "NQ" : "ES";
+        byRoot.set(root, [...(byRoot.get(root) ?? []), record]);
+      }
+      await Promise.all([...byRoot.entries()].map(async ([root, records]) => {
+        try {
+          const response = await fetch(`/api/databento/market?symbol=${root}.v.0&timeframe=5m&days=14`, { cache: "no-store" });
+          const body = await response.json() as { candles?: ReasoningCandle[] };
+          if (!response.ok || !Array.isArray(body.candles) || cancelled) return;
+          candlesByRoot.set(root, body.candles);
+          for (const record of records) {
+            const plan = typedPayload<SocialPrecordPayload>(record);
+            if (!plan) continue;
+            const metrics = evaluateReasoningPath(plan, body.candles);
+            if (!metrics || cancelled) continue;
+            setReasoningPaths((current) => ({ ...current, [record.id]: metrics }));
+            await completeRecord(record, plan, metrics);
+          }
+        } catch {}
+      }));
+    };
+
+    void evaluate();
+    const timer = window.setInterval(() => void evaluate(), 20_000);
+    const live = new EventSource("/api/databento/live?symbols=NQ.v.0%2CES.v.0");
+    live.onmessage = (event) => {
+      try {
+        const tick = JSON.parse(event.data) as { instrument?: string; mid?: number; timestamp?: string | number };
+        const instrument = String(tick.instrument ?? "").toUpperCase();
+        const root: "NQ" | "ES" | null = instrument.startsWith("NQ")
+          ? "NQ"
+          : instrument.startsWith("ES") ? "ES" : null;
+        const price = Number(tick.mid);
+        if (!root || !Number.isFinite(price) || price <= 0 || cancelled) return;
+        const baseCandles = candlesByRoot.get(root);
+        if (!baseCandles?.length) return;
+        let timestamp = typeof tick.timestamp === "number"
+          ? tick.timestamp
+          : Date.parse(String(tick.timestamp ?? "")) || Date.now();
+        if (timestamp > 10_000_000_000_000_000) timestamp = Math.floor(timestamp / 1_000_000);
+        else if (timestamp > 10_000_000_000_000) timestamp = Math.floor(timestamp / 1_000);
+        const nextCandles = [...baseCandles.slice(-4_500), {
+          timestamp,
+          open: price,
+          high: price,
+          low: price,
+          close: price,
+        }];
+        candlesByRoot.set(root, nextCandles);
+        for (const record of activeRecords) {
+          const plan = typedPayload<SocialPrecordPayload>(record);
+          const recordRoot = plan?.instrument.toUpperCase().includes("NQ") ? "NQ" : "ES";
+          if (!plan || recordRoot !== root) continue;
+          const metrics = evaluateReasoningPath(plan, nextCandles);
+          if (!metrics) continue;
+          setReasoningPaths((current) => ({ ...current, [record.id]: metrics }));
+          void completeRecord(record, plan, metrics);
+        }
+      } catch {}
+    };
+    return () => {
+      cancelled = true;
+      live.close();
+      window.clearInterval(timer);
+    };
+  }, [currentProfile.displayName, myReasoningRecords, receipts, resolvedAccountKey, saveObject]);
 
   const visiblePrecords = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -730,6 +1082,104 @@ export default function SocialsWorkspace({
   };
 
   const lockCurrentGameplan = async () => {
+    if (zyonGameplanDraft) {
+      if (lockedCurrentGameplan) {
+        setNotice("This exact ZYON Gameplan is already locked and awaiting its outcome.");
+        return;
+      }
+      if (recordScope === "desk" && !myDesks.length) {
+        setNotice("Create or join a Desk before using Desk visibility.");
+        return;
+      }
+      const draft = zyonGameplanDraft;
+      const entry = (draft.entryLow + draft.entryHigh) / 2;
+      const riskPoints = Math.abs(entry - draft.stop);
+      const target = draft.targets[0] ?? null;
+      const plannedRiskReward = target !== null && riskPoints > 0
+        ? Number((Math.abs(target - entry) / riskPoints).toFixed(2))
+        : null;
+      const base = {
+        instrument: draft.instrument,
+        session: draft.session,
+        direction: draft.direction,
+        marketContext: draft.reasoning,
+        plannedEntryLow: draft.entryLow,
+        plannedEntryHigh: draft.entryHigh,
+        plannedStop: draft.stop,
+        plannedTarget: target,
+        plannedTargets: draft.targets,
+        plannedSize: draft.size,
+        maximumRisk: draft.riskAmount,
+        riskUnit: draft.riskUnit,
+        plannedRiskReward,
+        confluences: draft.confluences,
+        bullCondition: draft.direction === "LONG" ? draft.confirmation : "",
+        bearCondition: draft.direction === "SHORT" ? draft.confirmation : "",
+        confirmation: draft.confirmation,
+        invalidation: draft.invalidation,
+        expiryAt: draft.expiryAt,
+        source: "ZYON" as const,
+        sourceGameplanId: draft.id,
+        sourceGameplanVersion: "zyon-structured-v1",
+        sourceGeneratedAt: draft.updatedAt,
+        gameplanSnapshot: {
+          title: draft.title,
+          entry: [draft.entryLow, draft.entryHigh],
+          stop: draft.stop,
+          targets: draft.targets,
+          riskAmount: draft.riskAmount,
+          riskUnit: draft.riskUnit,
+          confluences: draft.confluences,
+        },
+        scoreModelVersion: SOCIAL_RECORD_RULES.scoreModelVersion,
+        evidenceState: "PLATFORM TIMESTAMPED" as const,
+      };
+      const now = new Date().toISOString();
+      const object = buildLocalObject({
+        userId: resolvedAccountKey,
+        authorLabel: currentProfile.displayName,
+        objectType: "precord",
+        scope: recordScope,
+        deskId: recordScope === "desk" ? myDesks[0]?.id ?? null : null,
+        payload: {
+          ...base,
+          lockedAt: now,
+          reasoningScore: calculateReasoningScore(base),
+          status: "LIVE",
+          lifecycle: [{
+            status: "LOCKED",
+            at: now,
+            source: "ZYON",
+            note: "Trader reviewed and locked the private ZYON Gameplan draft.",
+          }],
+        } satisfies SocialPrecordPayload,
+      });
+      await saveObject(object);
+      if (!cards.some((card) => card.userId === resolvedAccountKey && typedPayload<SocialCardPayload>(card)?.code === "first-on-record")) {
+        const definition = CALLING_CARD_CATALOG[0];
+        await saveObject(buildLocalObject({
+          id: `card:${definition.code}`,
+          userId: resolvedAccountKey,
+          authorLabel: currentProfile.displayName,
+          objectType: "card",
+          scope: "community",
+          payload: {
+            code: definition.code,
+            name: definition.name,
+            family: definition.family,
+            description: definition.description,
+            earnedAt: now,
+            active: true,
+            equipped: false,
+            public: true,
+          } satisfies SocialCardPayload,
+        }));
+      }
+      await saveProgressPatch({ prepare: true, map: true });
+      setNotice(`${draft.instrument} Gameplan locked. Live outcome tracking is now in progress.`);
+      setTab("reasoning");
+      return;
+    }
     if (!gameplan || gameplanState !== "ready") {
       setNotice("The current Gameplan must finish loading before it can be locked.");
       return;
@@ -1544,8 +1994,8 @@ export default function SocialsWorkspace({
             <div className="grid grid-cols-2 gap-1.5 text-[8px]">
               <div className="rounded-xl border border-border bg-surface/35 p-2"><div className="text-muted">Entry</div><div className="mt-1 font-mono text-foreground">{payload.plannedEntryLow ?? "—"}{payload.plannedEntryHigh && payload.plannedEntryHigh !== payload.plannedEntryLow ? `–${payload.plannedEntryHigh}` : ""}</div></div>
               <div className="rounded-xl border border-border bg-surface/35 p-2"><div className="text-muted">Stop</div><div className="mt-1 font-mono text-foreground">{payload.plannedStop ?? "—"}</div></div>
-              <div className="rounded-xl border border-border bg-surface/35 p-2"><div className="text-muted">Target</div><div className="mt-1 font-mono text-foreground">{payload.plannedTarget ?? "—"}</div></div>
-              <div className="rounded-xl border border-border bg-surface/35 p-2"><div className="text-muted">Max risk</div><div className="mt-1 font-mono text-foreground">{payload.maximumRisk === null ? "—" : `$${payload.maximumRisk}`}</div></div>
+              <div className="rounded-xl border border-border bg-surface/35 p-2"><div className="text-muted">Targets</div><div className="mt-1 font-mono text-foreground">{payload.plannedTargets?.length ? payload.plannedTargets.join(" / ") : payload.plannedTarget ?? "—"}</div></div>
+              <div className="rounded-xl border border-border bg-surface/35 p-2"><div className="text-muted">Max risk</div><div className="mt-1 font-mono text-foreground">{payload.maximumRisk === null ? "—" : `${payload.maximumRisk} ${payload.riskUnit ?? "DOLLARS"}`}</div></div>
             </div>
           </div>
           {receipt ? (
@@ -1779,7 +2229,7 @@ export default function SocialsWorkspace({
               <Card className="overflow-hidden border-primary/20">
                 <div className="flex flex-wrap items-center gap-3 border-b border-border bg-background/25 px-4 py-3">
                   <span className="flex h-9 w-9 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary"><Archive className="h-4 w-4" /></span>
-                  <div className="min-w-0 flex-1"><h3 className="text-[12px] font-semibold">Today’s source Gameplan</h3><p className="mt-0.5 text-[8px] text-muted">This is the existing Kwant Gameplan—not another plan builder.</p></div>
+                  <div className="min-w-0 flex-1"><h3 className="text-[12px] font-semibold">Today’s source Gameplan</h3><p className="mt-0.5 text-[8px] text-muted">ZYON fills the private draft. You review every field and choose where it goes before anything is locked.</p></div>
                   <div className="flex rounded-xl border border-border bg-surface p-1">
                     {(["NQ", "ES"] as const).map((instrument) => <button key={instrument} type="button" onClick={() => setGameplanInstrument(instrument)} className={`h-7 rounded-lg px-3 font-mono text-[8px] font-semibold ${gameplanInstrument === instrument ? "bg-primary text-background" : "text-muted hover:text-foreground"}`}>{instrument}</button>)}
                   </div>
@@ -1787,7 +2237,57 @@ export default function SocialsWorkspace({
                     {GAMEPLAN_SESSIONS.map(({ id, label }) => <option key={id} value={id}>{label}</option>)}
                   </KwantSelect>
                 </div>
-                {gameplanState === "loading" ? (
+                {zyonDraftState === "loading" ? (
+                  <div className="flex min-h-[280px] items-center justify-center">
+                    <div className="text-center"><span className="mx-auto block h-7 w-7 animate-spin rounded-full border-2 border-primary/20 border-t-primary" /><div className="mt-3 text-[9px] font-semibold text-foreground">Checking ZYON’s private draft</div><div className="mt-1 text-[8px] text-muted">Nothing is published or locked automatically.</div></div>
+                  </div>
+                ) : zyonGameplanDraft ? (
+                  <>
+                    <div className="p-4">
+                      <div className="flex flex-wrap items-start gap-3">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono text-[26px] font-semibold">{zyonGameplanDraft.instrument}</span>
+                            <span className="rounded-lg border border-warning/25 bg-warning/10 px-2 py-1 text-[7px] font-semibold text-warning">PRIVATE REVIEW DRAFT</span>
+                          </div>
+                          <div className="mt-1 text-[7px] text-muted">Updated {formatDate(zyonGameplanDraft.updatedAt, true)} by ZYON · not yet on record</div>
+                        </div>
+                        <div className="ml-auto text-right"><div className="text-[10px] font-semibold text-foreground">{zyonGameplanDraft.title}</div><div className="mt-1 text-[7px] uppercase tracking-[0.12em] text-muted">{zyonGameplanDraft.sessionDate}</div></div>
+                      </div>
+
+                      <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                        <label className="text-[7px] font-semibold uppercase tracking-[0.12em] text-muted">Instrument<input value={zyonGameplanDraft.instrument} onChange={(event) => setZyonGameplanDraft((current) => current ? { ...current, instrument: event.target.value.toUpperCase().slice(0, 16) } : current)} className="mt-1.5 h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[10px] text-foreground outline-none focus:border-primary/40" /></label>
+                        <label className="text-[7px] font-semibold uppercase tracking-[0.12em] text-muted">Direction<KwantSelect value={zyonGameplanDraft.direction} onChange={(event) => setZyonGameplanDraft((current) => current ? { ...current, direction: event.target.value as ZyonGameplanDraft["direction"] } : current)} className="mt-1.5 h-10 w-full rounded-xl border border-border bg-background px-3 text-[9px] outline-none"><option value="LONG">Long</option><option value="SHORT">Short</option></KwantSelect></label>
+                        <label className="text-[7px] font-semibold uppercase tracking-[0.12em] text-muted">Session<input value={zyonGameplanDraft.session} onChange={(event) => setZyonGameplanDraft((current) => current ? { ...current, session: event.target.value } : current)} className="mt-1.5 h-10 w-full rounded-xl border border-border bg-background px-3 text-[9px] text-foreground outline-none focus:border-primary/40" /></label>
+                        <label className="text-[7px] font-semibold uppercase tracking-[0.12em] text-muted">Risk<input type="number" value={zyonGameplanDraft.riskAmount ?? ""} onChange={(event) => setZyonGameplanDraft((current) => current ? { ...current, riskAmount: numberOrNull(event.target.value) } : current)} className="mt-1.5 h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] text-foreground outline-none focus:border-primary/40" /></label>
+                      </div>
+                      <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                        <label className="text-[7px] font-semibold uppercase tracking-[0.12em] text-muted">Entry low<input type="number" value={zyonGameplanDraft.entryLow} onChange={(event) => setZyonGameplanDraft((current) => current ? { ...current, entryLow: Number(event.target.value) } : current)} className="mt-1.5 h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] outline-none focus:border-primary/40" /></label>
+                        <label className="text-[7px] font-semibold uppercase tracking-[0.12em] text-muted">Entry high<input type="number" value={zyonGameplanDraft.entryHigh} onChange={(event) => setZyonGameplanDraft((current) => current ? { ...current, entryHigh: Number(event.target.value) } : current)} className="mt-1.5 h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] outline-none focus:border-primary/40" /></label>
+                        <label className="text-[7px] font-semibold uppercase tracking-[0.12em] text-muted">Stop<input type="number" value={zyonGameplanDraft.stop} onChange={(event) => setZyonGameplanDraft((current) => current ? { ...current, stop: Number(event.target.value) } : current)} className="mt-1.5 h-10 w-full rounded-xl border border-danger/25 bg-background px-3 font-mono text-[9px] outline-none focus:border-danger/50" /></label>
+                        <label className="text-[7px] font-semibold uppercase tracking-[0.12em] text-muted">Take profits<input value={zyonGameplanDraft.targets.join(", ")} onChange={(event) => setZyonGameplanDraft((current) => current ? { ...current, targets: event.target.value.split(",").map((value) => Number(value.trim())).filter(Number.isFinite).slice(0, 8) } : current)} placeholder="TP1, TP2, TP3" className="mt-1.5 h-10 w-full rounded-xl border border-primary/25 bg-background px-3 font-mono text-[9px] outline-none focus:border-primary/50" /></label>
+                      </div>
+                      <div className="mt-3 grid gap-2 lg:grid-cols-2">
+                        <label className="text-[7px] font-semibold uppercase tracking-[0.12em] text-muted">Reasoning<textarea value={zyonGameplanDraft.reasoning} onChange={(event) => setZyonGameplanDraft((current) => current ? { ...current, reasoning: event.target.value } : current)} rows={5} className="mt-1.5 w-full resize-none rounded-xl border border-border bg-background p-3 text-[9px] leading-5 text-foreground outline-none focus:border-primary/40" /></label>
+                        <div className="grid gap-2">
+                          <label className="text-[7px] font-semibold uppercase tracking-[0.12em] text-muted">Confirmation<textarea value={zyonGameplanDraft.confirmation} onChange={(event) => setZyonGameplanDraft((current) => current ? { ...current, confirmation: event.target.value } : current)} rows={2} className="mt-1.5 w-full resize-none rounded-xl border border-border bg-background p-3 text-[9px] leading-4 outline-none focus:border-primary/40" /></label>
+                          <label className="text-[7px] font-semibold uppercase tracking-[0.12em] text-muted">Invalidation<textarea value={zyonGameplanDraft.invalidation} onChange={(event) => setZyonGameplanDraft((current) => current ? { ...current, invalidation: event.target.value } : current)} rows={2} className="mt-1.5 w-full resize-none rounded-xl border border-danger/20 bg-background p-3 text-[9px] leading-4 outline-none focus:border-danger/40" /></label>
+                        </div>
+                      </div>
+                      <div className="mt-3 rounded-xl border border-border bg-surface/30 p-3">
+                        <div className="text-[7px] font-semibold uppercase tracking-[0.12em] text-muted">Confluences</div>
+                        <div className="mt-2 flex flex-wrap gap-1.5">{zyonGameplanDraft.confluences.length ? zyonGameplanDraft.confluences.map((item) => <span key={item} className="rounded-lg border border-primary/20 bg-primary/[0.06] px-2 py-1 text-[7px] text-primary">{item}</span>) : <span className="text-[8px] text-muted">No confluences were recorded.</span>}</div>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2 border-t border-border bg-background/25 px-4 py-3">
+                      <div className="flex items-center gap-2 text-[8px] text-muted"><ShieldCheck className="h-3.5 w-3.5 text-primary" />Review first · locking creates the immutable timestamp</div>
+                      <div className="ml-auto flex flex-wrap items-center gap-2">
+                        <KwantSelect value={recordScope} onChange={(event) => setRecordScope(event.target.value as SocialScope)} disabled={Boolean(lockedCurrentGameplan)} className="h-9 rounded-xl border border-border bg-surface px-3 text-[8px] outline-none disabled:opacity-60"><option value="private">Private</option><option value="friends">Friends</option><option value="desk">My Desk</option><option value="community">Community / profile</option></KwantSelect>
+                        {lockedCurrentGameplan ? <button type="button" onClick={() => setTab("reasoning")} className="flex h-9 items-center gap-2 rounded-xl border border-warning/25 bg-warning/[0.06] px-4 text-[9px] font-semibold text-warning"><Clock3 className="h-3.5 w-3.5" />In progress · view My Reasoning</button> : <button type="button" onClick={() => void lockCurrentGameplan()} className="flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-[9px] font-semibold text-background shadow-[0_0_22px_color-mix(in_srgb,var(--primary)_20%,transparent)] hover:brightness-110"><LockKeyhole className="h-3.5 w-3.5" />Lock Today’s Gameplan</button>}
+                      </div>
+                    </div>
+                  </>
+                ) : gameplanState === "loading" ? (
                   <div className="flex min-h-[280px] items-center justify-center">
                     <div className="text-center"><span className="mx-auto block h-7 w-7 animate-spin rounded-full border-2 border-primary/20 border-t-primary" /><div className="mt-3 text-[9px] font-semibold text-foreground">Loading the current Gameplan</div><div className="mt-1 text-[8px] text-muted">Preserving the source version and timestamp.</div></div>
                   </div>
@@ -1870,6 +2370,62 @@ export default function SocialsWorkspace({
                   : "Your development story begins with one complete plan-to-review loop. Profit is not required for the record to improve."}</p>
               </Card>
             </div>
+          </div>
+        ) : null}
+
+        {tab === "reasoning" ? (
+          <div className="mx-auto max-w-6xl space-y-3 p-3">
+            <Card className="relative overflow-hidden p-5">
+              <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_86%_0%,color-mix(in_srgb,var(--primary)_16%,transparent),transparent_42%)]" />
+              <div className="relative grid gap-5 lg:grid-cols-[minmax(0,1fr)_330px]">
+                <div>
+                  <div className="flex items-center gap-2 text-[8px] font-semibold uppercase tracking-[0.16em] text-primary"><BrainCircuit className="h-4 w-4" />My Reasoning</div>
+                  <h2 className="mt-3 text-[26px] font-semibold tracking-[-0.04em] text-foreground">Every thesis, measured against what price did next.</h2>
+                  <p className="mt-2 max-w-2xl text-[10px] leading-5 text-muted">Orange records are still live. Completed records turn green and contribute to the account’s Reasoning Score using plan quality, directional progress, adverse excursion, capture efficiency, realised R and target completion.</p>
+                  <div className="mt-4 grid grid-cols-3 gap-2">
+                    <div className="rounded-xl border border-border bg-background/35 p-3"><div className="font-mono text-[19px] font-semibold text-foreground">{myReasoningRecords.length}</div><div className="mt-1 text-[7px] uppercase tracking-[0.12em] text-muted">All plans</div></div>
+                    <div className="rounded-xl border border-warning/20 bg-warning/[0.035] p-3"><div className="font-mono text-[19px] font-semibold text-warning">{myReasoningRecords.filter((record) => !receipts.some((receipt) => receipt.parentId === record.id)).length}</div><div className="mt-1 text-[7px] uppercase tracking-[0.12em] text-muted">In progress</div></div>
+                    <div className="rounded-xl border border-accent/20 bg-accent/[0.035] p-3"><div className="font-mono text-[19px] font-semibold text-accent">{myReasoningRecords.filter((record) => receipts.some((receipt) => receipt.parentId === record.id)).length}</div><div className="mt-1 text-[7px] uppercase tracking-[0.12em] text-muted">Complete</div></div>
+                  </div>
+                </div>
+                <ReasoningScoreBar value={myReasoningScore} waiting={myReasoningScore === null} />
+              </div>
+            </Card>
+
+            {myReasoningRecords.length ? myReasoningRecords.map((record) => {
+              const plan = typedPayload<SocialPrecordPayload>(record);
+              const receipt = typedPayload<SocialReceiptPayload>(receipts.find((candidate) => candidate.parentId === record.id));
+              const metrics = receipt?.pathMetrics ?? reasoningPaths[record.id];
+              if (!plan) return null;
+              return (
+                <div key={`reasoning:${objectKey(record)}`} className={`rounded-2xl border ${receipt ? "border-accent/25 shadow-[0_0_24px_color-mix(in_srgb,var(--accent)_7%,transparent)]" : "border-warning/25 shadow-[0_0_24px_color-mix(in_srgb,var(--warning)_6%,transparent)]"}`}>
+                  <div className={`flex flex-wrap items-center gap-2 rounded-t-2xl border-b px-4 py-2.5 ${receipt ? "border-accent/15 bg-accent/[0.04]" : "border-warning/15 bg-warning/[0.04]"}`}>
+                    <span className={`h-2 w-2 rounded-full ${receipt ? "bg-accent shadow-[0_0_10px_var(--accent)]" : "animate-pulse bg-warning shadow-[0_0_10px_var(--warning)]"}`} />
+                    <span className={`text-[8px] font-semibold uppercase tracking-[0.14em] ${receipt ? "text-accent" : "text-warning"}`}>{receipt ? "Complete" : "In progress"}</span>
+                    {metrics ? <div className="ml-auto flex flex-wrap gap-3 font-mono text-[7px] text-muted"><span>{metrics.pointsInDirection.toFixed(2)} pts</span><span>{metrics.adverseExcursion.toFixed(2)} MAE</span><span>{metrics.ticksCaught.toFixed(0)} ticks</span><span>{metrics.realisedR.toFixed(2)}R</span><span>{Math.round(metrics.durationSeconds / 60)} min</span></div> : <span className="ml-auto text-[7px] text-muted">Waiting for entry, target, or stop evidence</span>}
+                  </div>
+                  <div className="bg-panel p-3 pb-0">
+                    <ReasoningOutcomeChart
+                      instrument={plan.instrument}
+                      lockedAt={plan.lockedAt}
+                      entryLow={plan.plannedEntryLow}
+                      entryHigh={plan.plannedEntryHigh}
+                      stop={plan.plannedStop}
+                      targets={plan.plannedTargets?.length ? plan.plannedTargets : plan.plannedTarget === null ? [] : [plan.plannedTarget]}
+                      height={190}
+                    />
+                  </div>
+                  {renderPrecordCard(record)}
+                </div>
+              );
+            }) : (
+              <Card className="border-dashed p-10 text-center">
+                <BrainCircuit className="mx-auto h-8 w-8 text-muted" />
+                <div className="mt-3 text-[11px] font-semibold text-foreground">No reasoning records yet</div>
+                <p className="mx-auto mt-2 max-w-md text-[8px] leading-4 text-muted">Ask ZYON to save today’s Gameplan, review its structured draft in Record, then press Lock Today’s Gameplan.</p>
+                <button type="button" onClick={() => setTab("today")} className="mt-4 rounded-xl bg-primary px-4 py-2.5 text-[8px] font-semibold text-background">Open today’s draft</button>
+              </Card>
+            )}
           </div>
         ) : null}
 
@@ -2132,6 +2688,7 @@ export default function SocialsWorkspace({
               gameplans={viewedGameplans}
               cards={cards}
               comments={comments}
+              reasoningScore={reasoningScoreFromReceipts(receipts, viewedProfileObject.userId)}
               isOwnProfile={viewingOwnProfile}
               savedIds={savedGameplanIds}
               repostedIds={repostedGameplanIds}
