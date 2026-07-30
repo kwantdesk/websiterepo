@@ -3133,6 +3133,7 @@ export default function KwantifyWorkspace({
   });
   const [alertLogCount, setAlertLogCount] = useState(5);
   const [friendsUnreadCount, setFriendsUnreadCount] = useState(0);
+  const [friendsOnlineCount, setFriendsOnlineCount] = useState(0);
   const [showBrokerModal, setShowBrokerModal] = useState(false);
   const [brokerSearch, setBrokerSearch] = useState("");
   const [brokerFavourites, setBrokerFavourites] = useState<string[]>([]);
@@ -3294,14 +3295,21 @@ export default function KwantifyWorkspace({
     let refreshTimer: number | null = null;
     let presenceTimer: number | null = null;
 
-    const refreshUnread = async () => {
+    let friendIds = new Set<string>();
+
+    const refreshFriendBadge = async () => {
       try {
         const response = await fetch("/api/friends", { cache: "no-store" });
         if (!response.ok || cancelled) return;
         const next = await response.json() as FriendsPayload;
+        friendIds = new Set(next.friends.map((friend) => friend.userId));
         const unread = next.incoming.length
           + next.friends.reduce((total, friend) => total + friend.unreadCount, 0);
-        if (!cancelled) setFriendsUnreadCount(unread);
+        const online = next.friends.filter((friend) => friend.isOnline).length;
+        if (!cancelled) {
+          setFriendsUnreadCount(unread);
+          setFriendsOnlineCount(online);
+        }
       } catch {
         // Friends remain available from the rail if this background badge refresh fails.
       }
@@ -3324,8 +3332,11 @@ export default function KwantifyWorkspace({
       if (cancelled || !data.user) return;
       viewerId = data.user.id;
       void heartbeat();
-      void refreshUnread();
-      presenceTimer = window.setInterval(() => void heartbeat(), 60_000);
+      void refreshFriendBadge();
+      presenceTimer = window.setInterval(() => {
+        void heartbeat();
+        void refreshFriendBadge();
+      }, 60_000);
     });
 
     const channel = supabase
@@ -3342,13 +3353,14 @@ export default function KwantifyWorkspace({
             viewerId
             && (
               row.user_id === viewerId
+              || friendIds.has(row.user_id ?? "")
               || rowPayload.targetUserId === viewerId
               || rowPayload.recipientUserId === viewerId
             )
           );
           if (!relevant) return;
           if (refreshTimer) window.clearTimeout(refreshTimer);
-          refreshTimer = window.setTimeout(() => void refreshUnread(), 300);
+          refreshTimer = window.setTimeout(() => void refreshFriendBadge(), 300);
         },
       )
       .subscribe();
@@ -8929,12 +8941,13 @@ export default function KwantifyWorkspace({
           const Icon = item.icon;
           const active = rightPanel === item.id;
           return (
-            <button key={item.id} title={item.title} onClick={() => toggleRightPanel(item.id)} className={`relative flex h-9 w-9 items-center justify-center rounded-lg transition-colors ${active ? "bg-surface text-foreground" : "text-muted hover:bg-surface hover:text-foreground"}`}>
+            <button key={item.id} title={item.id === "friends" ? `${friendsOnlineCount} friends online` : item.title} onClick={() => toggleRightPanel(item.id)} className={`relative flex h-9 w-9 items-center justify-center rounded-lg transition-colors ${active ? "bg-surface text-foreground" : "text-muted hover:bg-surface hover:text-foreground"}`}>
               <Icon className="h-[18px] w-[18px]" />
               {item.id === "kwantbot" && kwantBotInterpreter.unreadTotal > 0 && <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-semibold text-background">{Math.min(99, kwantBotInterpreter.unreadTotal)}</span>}
               {item.id === "optionstape" && kwantBotInterpreter.optionsUnreadTotal > 0 && <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-semibold text-background">{Math.min(99, kwantBotInterpreter.optionsUnreadTotal)}</span>}
               {item.id === "alertslog" && alertLogCount > 0 && <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-danger text-[9px] font-semibold text-white">{alertLogCount}</span>}
-              {item.id === "friends" && friendsUnreadCount > 0 && <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-semibold text-background">{Math.min(99, friendsUnreadCount)}</span>}
+              {item.id === "friends" && friendsOnlineCount > 0 && <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full border border-background bg-primary px-1 text-[9px] font-semibold text-background shadow-[0_0_10px_color-mix(in_srgb,var(--primary)_45%,transparent)]" aria-label={`${friendsOnlineCount} friends online`}>{Math.min(99, friendsOnlineCount)}</span>}
+              {item.id === "friends" && friendsUnreadCount > 0 && <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-background bg-danger" aria-label={`${friendsUnreadCount} unread friend notifications`} />}
             </button>
           );
         })}
