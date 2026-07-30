@@ -841,6 +841,7 @@ export default function DeskWorkspace({
     workspace: DeskWorkspaceModel;
   } | null>(null);
   const [deleteConfirmation, setDeleteConfirmation] = useState("");
+  const [deletingDeskId, setDeletingDeskId] = useState("");
   const [channelEditor, setChannelEditor] = useState<ChannelDraft>(emptyChannelDraft);
   const [message, setMessage] = useState("");
   const [attachment, setAttachment] = useState<DeskMessageAttachment | null>(null);
@@ -1245,24 +1246,66 @@ export default function DeskWorkspace({
   };
 
   const deleteDesk = async () => {
-    if (!lifecycleTarget || lifecycleTarget.action !== "delete") return;
+    if (!lifecycleTarget || lifecycleTarget.action !== "delete" || deletingDeskId) return;
     const workspace = lifecycleTarget.workspace;
+    const confirmation = deleteConfirmation;
+    const expectedName = normalizeDeskDeletionConfirmation(workspace.name);
+    if (!expectedName || normalizeDeskDeletionConfirmation(confirmation) !== expectedName) return;
     const nextDesk = myWorkspaces.find((candidate) => candidate.deskId !== workspace.deskId) ?? null;
-    const deleted = await perform(
-      {
-        action: "delete-desk",
-        deskId: workspace.deskId,
-        confirmation: deleteConfirmation,
-      },
-      `${workspace.name} was permanently deleted.`,
-    );
-    if (!deleted) return;
+    const previousNetwork = network;
+    const previousActiveDeskId = activeDeskId;
+    const previousActiveChannelId = activeChannelId;
+
+    suppressRefreshUntilRef.current = Date.now() + 5_000;
+    setDeletingDeskId(workspace.deskId);
     setLifecycleTarget(null);
     setDeleteConfirmation("");
+    setNetwork((current) => ({
+      ...current,
+      workspaces: current.workspaces.filter((candidate) => candidate.deskId !== workspace.deskId),
+      members: current.members.filter((member) => member.deskId !== workspace.deskId),
+      requests: current.requests.filter((request) => request.deskId !== workspace.deskId),
+      channels: current.channels.filter((channel) => channel.deskId !== workspace.deskId),
+      messages: current.messages.filter((entry) => entry.deskId !== workspace.deskId),
+      focusLocks: current.focusLocks.filter((lock) => lock.deskId !== workspace.deskId),
+    }));
     if (activeDeskId === workspace.deskId) {
       setActiveDeskId(nextDesk?.deskId ?? "");
       setActiveChannelId("");
-      if (!nextDesk && typeof window !== "undefined") window.localStorage.removeItem("kwantdesk-active-desk");
+      if (typeof window !== "undefined") {
+        if (nextDesk) window.localStorage.setItem("kwantdesk-active-desk", nextDesk.deskId);
+        else window.localStorage.removeItem("kwantdesk-active-desk");
+      }
+    }
+
+    try {
+      const response = await fetch("/api/socials/desks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "delete-desk",
+          deskId: workspace.deskId,
+          confirmation: workspace.name,
+        }),
+      });
+      const payload = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(payload.error || "That Desk could not be permanently deleted.");
+      onNotice(`${workspace.name} was permanently deleted.`);
+    } catch (reason) {
+      suppressRefreshUntilRef.current = Date.now() + 1_000;
+      setNetwork(previousNetwork);
+      setActiveDeskId(previousActiveDeskId);
+      setActiveChannelId(previousActiveChannelId);
+      setDeleteConfirmation(confirmation);
+      setLifecycleTarget({ action: "delete", workspace });
+      if (typeof window !== "undefined") {
+        if (previousActiveDeskId) window.localStorage.setItem("kwantdesk-active-desk", previousActiveDeskId);
+        else window.localStorage.removeItem("kwantdesk-active-desk");
+      }
+      onNotice(reason instanceof Error ? reason.message : "That Desk could not be permanently deleted.");
+      void loadNetwork(true, previousActiveDeskId);
+    } finally {
+      setDeletingDeskId("");
     }
   };
 
@@ -1463,10 +1506,12 @@ export default function DeskWorkspace({
     );
   }
 
+  const expectedDeleteConfirmation = lifecycleTarget?.action === "delete"
+    ? normalizeDeskDeletionConfirmation(lifecycleTarget.workspace.name)
+    : "";
   const deleteConfirmationMatches = Boolean(
-    lifecycleTarget?.action === "delete"
-    && normalizeDeskDeletionConfirmation(deleteConfirmation)
-      === normalizeDeskDeletionConfirmation(lifecycleTarget.workspace.name),
+    expectedDeleteConfirmation
+    && normalizeDeskDeletionConfirmation(deleteConfirmation) === expectedDeleteConfirmation,
   );
 
   return (
@@ -1981,7 +2026,7 @@ export default function DeskWorkspace({
               {lifecycleTarget.action === "archive" ? (
                 <button type="button" onClick={() => void archiveDesk()} disabled={working} className="flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-[8px] font-semibold text-background disabled:opacity-40"><Archive className="h-3.5 w-3.5" />Archive Desk</button>
               ) : (
-                <button type="button" onClick={() => void deleteDesk()} disabled={working || !deleteConfirmationMatches} className="flex h-9 items-center gap-2 rounded-xl bg-danger px-4 text-[8px] font-semibold text-white disabled:opacity-35"><Trash2 className="h-3.5 w-3.5" />Delete forever</button>
+                <button type="button" onClick={() => void deleteDesk()} disabled={Boolean(deletingDeskId) || !deleteConfirmationMatches} className="flex h-9 items-center gap-2 rounded-xl bg-danger px-4 text-[8px] font-semibold text-white transition-all enabled:shadow-[0_0_18px_color-mix(in_srgb,var(--color-danger)_20%,transparent)] disabled:cursor-not-allowed disabled:opacity-35"><Trash2 className="h-3.5 w-3.5" />Delete forever</button>
               )}
             </>
           )}
@@ -2010,10 +2055,12 @@ export default function DeskWorkspace({
                   autoCapitalize="none"
                   autoCorrect="off"
                   spellCheck={false}
-                  className="h-11 w-full rounded-xl border border-danger/25 bg-background px-3 text-[9px] text-foreground outline-none focus:border-danger/55"
+                  placeholder={lifecycleTarget.workspace.name}
+                  className={`h-11 w-full rounded-xl border bg-background px-3 text-[9px] text-foreground outline-none transition-colors ${deleteConfirmationMatches ? "border-primary/55" : "border-danger/25 focus:border-danger/55"}`}
                 />
-                <span className={`mt-1.5 block text-[7px] ${deleteConfirmationMatches ? "text-primary" : "text-muted"}`}>
-                  {deleteConfirmationMatches ? "Desk name confirmed." : "Capitalisation and surrounding spaces are ignored."}
+                <span className={`mt-1.5 flex items-center gap-1.5 text-[7px] ${deleteConfirmationMatches ? "text-primary" : "text-muted"}`}>
+                  {deleteConfirmationMatches ? <Check className="h-3 w-3" /> : null}
+                  {deleteConfirmationMatches ? "Desk name confirmed — deletion is enabled." : deleteConfirmation ? "That does not match the Desk name yet." : "Capitalisation, punctuation and surrounding spaces are ignored."}
                 </span>
               </label>
             </div>

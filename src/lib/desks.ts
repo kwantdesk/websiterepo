@@ -135,9 +135,10 @@ export const DESK_CREATED_EVENT = "kwantdesk:desk-created";
 
 export function normalizeDeskDeletionConfirmation(value: string) {
   return value
-    .normalize("NFKC")
+    .normalize("NFKD")
+    .replace(/\p{M}+/gu, "")
     .replace(/[\u200B-\u200D\uFEFF]/g, "")
-    .replace(/\s+/g, " ")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
     .trim()
     .toLowerCase();
 }
