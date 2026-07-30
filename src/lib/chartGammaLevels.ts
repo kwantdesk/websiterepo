@@ -39,6 +39,7 @@ export type ChartGammaLevelsPayload = {
   checkedAt: string;
   refreshAfterMs: number;
   marketOpen: boolean;
+  snapshotMode?: "LIVE" | "NEW_YORK_EOD";
   sessionDate: string;
   environment: {
     gammaRegime: GammaRegime;
@@ -49,5 +50,4 @@ export type ChartGammaLevelsPayload = {
   revision: string;
   sources: ChartGammaSourceSnapshot[];
 };
-
 

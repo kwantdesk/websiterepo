@@ -777,6 +777,50 @@ function expectedMoveRange(args: {
   };
 }
 
+function chartSessionExpectedMove(args: {
+  sessionDate: string;
+  marketOpen: boolean;
+  iv: ReturnType<typeof parseIvRank>;
+  dailyCandles: OptionsCandle[];
+  fallbackPrice: number | null;
+}): MarketMapIntelligence["expectedMove"] {
+  const ordered = [...args.dailyCandles].sort((left, right) => left.timestamp - right.timestamp);
+  const completed = ordered.filter((candle) => {
+    const date = new Date(candle.timestamp).toISOString().slice(0, 10);
+    return args.marketOpen ? date < args.sessionDate : date <= args.sessionDate;
+  });
+  const anchorCandle = completed.at(-1) ?? null;
+  const anchorPrice = anchorCandle?.close ?? args.fallbackPrice;
+  if (anchorPrice === null || anchorPrice <= 0) return null;
+
+  const annualizedIv = args.marketOpen
+    ? args.iv.priorAtmIv
+    : args.iv.atmIv ?? args.iv.priorAtmIv;
+  const priorCandle = completed.at(-2) ?? null;
+  const approximate = annualizedIv === null || annualizedIv <= 0;
+  const movePercent = !approximate
+    ? annualizedIv! / Math.sqrt(252)
+    : priorCandle && priorCandle.close > 0
+      ? (priorCandle.high - priorCandle.low) / (2 * priorCandle.close)
+      : 0;
+  if (!Number.isFinite(movePercent) || movePercent <= 0) return null;
+
+  const moveDollars = anchorPrice * movePercent;
+  return {
+    method: approximate ? "PRIOR_REALIZED_RANGE" : "QD_PRIOR_IV_ONE_SIGMA",
+    anchorPrice,
+    anchorLabel: "LATEST_PRICE",
+    annualizedIv: approximate ? movePercent * Math.sqrt(252) : annualizedIv!,
+    movePercent,
+    moveDollars,
+    min: anchorPrice - moveDollars,
+    max: anchorPrice + moveDollars,
+    sourceExpiration: args.iv.expiration,
+    approximate,
+    exactMenthorQEquivalent: false,
+  };
+}
+
 function deriveDteGamma(gamma: ExposureSummary | null, sessionDate: string): MarketMapIntelligence["dealerPositioning"]["dteGamma"] {
   const buckets: MarketMapIntelligence["dealerPositioning"]["dteGamma"] = [
     { label: "0-5 DTE", minDte: 0, maxDte: 5, call: 0, put: 0, net: 0, gross: 0 },
@@ -820,37 +864,82 @@ function parseMaxPain(payload: unknown) {
 
 function deriveGammaLevels(gamma: ExposureSummary | null, spot: number | null) {
   if (!gamma || !gamma.strikes.length) {
-    return { callWall: null, putWall: null, gammaMagnet: null, gammaCenter: null };
+    return { callWall: null, putWall: null, gammaHvl: null, gammaMagnet: null, gammaCenter: null };
   }
   const relevant = spot === null
     ? gamma.strikes
     : gamma.strikes.filter((strike) => strike.strike >= spot * 0.97 && strike.strike <= spot * 1.03);
-  if (!relevant.length) return { callWall: null, putWall: null, gammaMagnet: null, gammaCenter: null };
+  if (!relevant.length) return { callWall: null, putWall: null, gammaHvl: null, gammaMagnet: null, gammaCenter: null };
   const callWall = relevant.reduce((best, strike) => strike.call > best.call ? strike : best).strike;
   const putWall = relevant.reduce((best, strike) => Math.abs(strike.put) > Math.abs(best.put) ? strike : best).strike;
   const gammaMagnet = relevant.reduce((best, strike) => Math.abs(strike.net) > Math.abs(best.net) ? strike : best).strike;
+  const hvlRows = gamma.strikes
+    .filter((strike) => Number.isFinite(strike.net))
+    .sort((left, right) => left.strike - right.strike);
+  const cumulativeProfile = hvlRows.reduce<Array<{ strike: number; cumulative: number }>>((profile, strike) => {
+    profile.push({
+      strike: strike.strike,
+      cumulative: (profile.at(-1)?.cumulative ?? 0) + strike.net,
+    });
+    return profile;
+  }, []);
+  const exactHvl = cumulativeProfile.find((row) => row.cumulative === 0)?.strike ?? null;
+  const gammaCrossings = cumulativeProfile.slice(1).flatMap((right, index) => {
+    const left = cumulativeProfile[index];
+    if (
+      left.cumulative === 0
+      || right.cumulative === 0
+      || Math.sign(left.cumulative) === Math.sign(right.cumulative)
+    ) return [];
+    const distance = right.cumulative - left.cumulative;
+    if (distance === 0) return [];
+    const crossing = left.strike
+      + ((0 - left.cumulative) / distance) * (right.strike - left.strike);
+    return Number.isFinite(crossing) ? [crossing] : [];
+  });
+  const gammaHvl = exactHvl ?? (
+    gammaCrossings.length
+      ? gammaCrossings.reduce((nearest, crossing) =>
+        spot !== null && Math.abs(crossing - spot) < Math.abs(nearest - spot) ? crossing : nearest)
+      : null
+  );
   const totalWeight = relevant.reduce((sum, strike) => sum + Math.abs(strike.net), 0);
   const gammaCenter = totalWeight > 0
     ? relevant.reduce((sum, strike) => sum + strike.strike * Math.abs(strike.net), 0) / totalWeight
     : null;
-  return { callWall, putWall, gammaMagnet, gammaCenter };
+  return { callWall, putWall, gammaHvl, gammaMagnet, gammaCenter };
 }
 
 function chartGammaSourceLevels(
   gamma: ExposureSummary,
   spot: number,
+  expectedMove: MarketMapIntelligence["expectedMove"] = null,
+  delta: ExposureSummary | null = null,
 ): ChartGammaSourceLevel[] {
   const key = deriveGammaLevels(gamma, spot);
-  const nearMoney = gamma.strikes.filter((row) =>
-    row.strike >= spot * 0.97 && row.strike <= spot * 1.03);
-  const positive = nearMoney
-    .filter((row) => row.net > 0)
-    .sort((a, b) => b.net - a.net)
-    .slice(0, 3);
-  const negative = nearMoney
-    .filter((row) => row.net < 0)
-    .sort((a, b) => a.net - b.net)
-    .slice(0, 3);
+  const lowerBound = expectedMove?.min ?? spot * 0.97;
+  const upperBound = expectedMove?.max ?? spot * 1.03;
+  const deltaByStrike = new Map(delta?.strikes.map((row) => [row.strike, row.net]) ?? []);
+  const candidates = gamma.strikes.filter((row) =>
+    row.strike >= lowerBound
+    && row.strike <= upperBound
+    && (row.net !== 0 || (deltaByStrike.get(row.strike) ?? 0) !== 0));
+  const maxGex = Math.max(1, ...candidates.map((row) => Math.abs(row.net)));
+  const maxDex = Math.max(1, ...candidates.map((row) => Math.abs(deltaByStrike.get(row.strike) ?? 0)));
+  const rankedGex = candidates
+    .map((row) => {
+      const dex = deltaByStrike.get(row.strike) ?? 0;
+      return {
+        ...row,
+        dex,
+        score: Math.abs(row.net) / maxGex * 0.65 + Math.abs(dex) / maxDex * 0.35,
+      };
+    })
+    .sort((left, right) =>
+      right.score - left.score
+      || Math.abs(right.net) - Math.abs(left.net)
+      || Math.abs(right.dex) - Math.abs(left.dex))
+    .slice(0, 10);
   const rows: Array<ChartGammaSourceLevel | null> = [
     key.callWall === null ? null : {
       id: "call-wall",
@@ -866,6 +955,14 @@ function chartGammaSourceLevels(
       label: "Put wall",
       price: key.putWall,
       value: strikeMetric(gamma, key.putWall, "put"),
+      rank: 1,
+    },
+    key.gammaHvl === null ? null : {
+      id: "hvl",
+      kind: "GAMMA_MAGNET",
+      label: "HVL",
+      price: key.gammaHvl,
+      value: null,
       rank: 1,
     },
     key.gammaMagnet === null ? null : {
@@ -884,34 +981,61 @@ function chartGammaSourceLevels(
       value: null,
       rank: 1,
     },
-    ...positive.map((row, index) => ({
-      id: `positive-${index + 1}`,
-      kind: "POSITIVE_GEX" as const,
-      label: `+GEX ${index + 1}`,
-      price: row.strike,
-      value: row.net,
-      rank: index + 1,
-    })),
-    ...negative.map((row, index) => ({
-      id: `negative-${index + 1}`,
-      kind: "NEGATIVE_GEX" as const,
-      label: `−GEX ${index + 1}`,
+    expectedMove === null ? null : {
+      id: "expected-move-max",
+      kind: "EXPECTED_MOVE_MAX",
+      label: "1D Max",
+      price: expectedMove.max,
+      value: expectedMove.movePercent,
+      rank: 1,
+    },
+    expectedMove === null ? null : {
+      id: "expected-move-min",
+      kind: "EXPECTED_MOVE_MIN",
+      label: "1D Min",
+      price: expectedMove.min,
+      value: -expectedMove.movePercent,
+      rank: 1,
+    },
+    ...rankedGex.map((row, index) => ({
+      id: `gex-${index + 1}`,
+      kind: row.net > 0 ? "POSITIVE_GEX" as const : "NEGATIVE_GEX" as const,
+      label: `GEX ${index + 1}`,
       price: row.strike,
       value: row.net,
       rank: index + 1,
     })),
   ];
-  return rows.filter((row): row is ChartGammaSourceLevel => row !== null);
+  const merged = new Map<string, ChartGammaSourceLevel>();
+  for (const row of rows.filter((candidate): candidate is ChartGammaSourceLevel => candidate !== null)) {
+    const priceKey = row.price.toFixed(6);
+    const existing = merged.get(priceKey);
+    if (!existing) {
+      merged.set(priceKey, row);
+      continue;
+    }
+    const labels = new Set([...existing.label.split(" / "), ...row.label.split(" / ")]);
+    merged.set(priceKey, {
+      ...existing,
+      id: `${existing.id}-${row.id}`,
+      label: [...labels].join(" / "),
+      value: Math.abs(row.value ?? 0) > Math.abs(existing.value ?? 0) ? row.value : existing.value,
+      rank: Math.min(existing.rank, row.rank),
+    });
+  }
+  return [...merged.values()];
 }
 
 function chartGammaSourceSnapshot(
   symbol: ChartGammaSourceSnapshot["symbol"],
   payload: unknown,
+  expectedMove: MarketMapIntelligence["expectedMove"] = null,
+  delta: ExposureSummary | null = null,
 ): ChartGammaSourceSnapshot | null {
   const gamma = parseExposure(payload, symbol, "GAMMA");
   const stockPrice = readStockPrice(payload, symbol);
   if (!gamma || stockPrice === null || stockPrice <= 0) return null;
-  const levels = chartGammaSourceLevels(gamma, stockPrice);
+  const levels = chartGammaSourceLevels(gamma, stockPrice, expectedMove, delta);
   const validationStrikes = gamma.strikes
     .map((row) => row.strike)
     .filter((strike) => strike >= stockPrice * 0.97 && strike <= stockPrice * 1.03);
@@ -1169,10 +1293,10 @@ function getUsOptionsSession(now = new Date()) {
   const minutes = read("hour") * 60 + read("minute");
   const easternDate = new Date(Date.UTC(year, month - 1, day));
   const weekday = easternDate.getUTCDay();
-  const marketOpen = weekday >= 1 && weekday <= 5 && minutes >= 9 * 60 + 30 && minutes < 16 * 60 + 15;
+  const marketOpen = weekday >= 1 && weekday <= 5 && minutes >= 9 * 60 + 30 && minutes < 16 * 60;
   const sessionDate = new Date(easternDate);
 
-  if (!marketOpen && !(weekday >= 1 && weekday <= 5 && minutes >= 16 * 60 + 15)) {
+  if (!marketOpen && !(weekday >= 1 && weekday <= 5 && minutes >= 16 * 60)) {
     sessionDate.setUTCDate(sessionDate.getUTCDate() - 1);
   }
   while (sessionDate.getUTCDay() === 0 || sessionDate.getUTCDay() === 6) {
@@ -2179,37 +2303,71 @@ export async function getChartGammaLevels(
     requestedSource as ChartGammaSourceSnapshot["symbol"],
   ];
   const session = getUsOptionsSession();
-  const results = await Promise.allSettled(symbols.map((symbol) =>
+  const symbol = symbols[0];
+  const dailyRange = {
+    startTime: `${offsetIsoDate(session.sessionDate, -60)}T00:00:00Z`,
+    endTime: `${offsetIsoDate(session.sessionDate, 1)}T23:59:59Z`,
+  };
+  const [exposureResult, deltaResult, ivResult, dailyResult] = await Promise.allSettled([
     quantDataPost("/options/tool/exposure-by-strike", {
       sessionDate: session.sessionDate,
       greekMode: "GAMMA",
       representationMode: "PER_ONE_PERCENT_MOVE",
       filter: { ticker: symbol },
-    }, CHART_GAMMA_CACHE_TTL_MS)));
-  const sources = results.flatMap((result, index) => {
-    if (result.status !== "fulfilled") return [];
-    const parsed = chartGammaSourceSnapshot(symbols[index], result.value.payload);
-    return parsed ? [parsed] : [];
+    }, session.marketOpen ? CHART_GAMMA_CACHE_TTL_MS : 300_000),
+    quantDataPost("/options/tool/exposure-by-strike", {
+      sessionDate: session.sessionDate,
+      greekMode: "DELTA",
+      representationMode: "PER_ONE_PERCENT_MOVE",
+      filter: { ticker: symbol },
+    }, session.marketOpen ? CHART_GAMMA_CACHE_TTL_MS : 300_000),
+    quantDataPost("/options/tool/iv-rank", {
+      filter: { ticker: symbol },
+      lookBackPeriod: 252,
+      maturity: 30,
+    }, 300_000),
+    quantDataPost("/equities/tool/stock-price-over-time", {
+      timeRange: dailyRange,
+      aggregationPeriod: "1d",
+      filter: { ticker: symbol },
+    }, 300_000),
+  ]);
+  const exposurePayload = exposureResult.status === "fulfilled" ? exposureResult.value.payload : null;
+  const parsedGamma = parseExposure(exposurePayload, symbol, "GAMMA");
+  const parsedDelta = parseExposure(
+    deltaResult.status === "fulfilled" ? deltaResult.value.payload : null,
+    symbol,
+    "DELTA",
+  );
+  const stockPrice = readStockPrice(exposurePayload, symbol);
+  const iv = parseIvRank(ivResult.status === "fulfilled" ? ivResult.value.payload : null, session.sessionDate);
+  const dailyCandles = parseCandles(dailyResult.status === "fulfilled" ? dailyResult.value.payload : null);
+  const expectedMove = chartSessionExpectedMove({
+    sessionDate: session.sessionDate,
+    marketOpen: session.marketOpen,
+    iv,
+    dailyCandles,
+    fallbackPrice: stockPrice,
   });
+  const parsedSource = chartGammaSourceSnapshot(symbol, exposurePayload, expectedMove, parsedDelta);
+  const sources = parsedSource ? [parsedSource] : [];
   if (!sources.length) {
-    const firstFailure = results.find((result) => result.status === "rejected");
-    if (firstFailure?.status === "rejected" && firstFailure.reason instanceof QuantDataError) {
-      throw firstFailure.reason;
+    if (exposureResult.status === "rejected" && exposureResult.reason instanceof QuantDataError) {
+      throw exposureResult.reason;
     }
     throw new QuantDataError(`No current gamma exposure is available for ${root}.`, 422, null);
   }
 
-  const selectedPayload = results[0]?.status === "fulfilled" ? results[0].value.payload : null;
-  const selectedGamma = parseExposure(selectedPayload, symbols[0], "GAMMA");
-  const environment = classifyGammaEnvironment(selectedGamma?.net ?? null, selectedGamma?.gross ?? null);
+  const environment = classifyGammaEnvironment(parsedGamma?.net ?? null, parsedGamma?.gross ?? null);
   const revision = JSON.stringify(sources.map((source) => [source.symbol, source.revision]));
 
   return {
     root,
-    requestedSource: symbols[0],
+    requestedSource: symbol,
     checkedAt: new Date().toISOString(),
-    refreshAfterMs: session.marketOpen ? CHART_GAMMA_CACHE_TTL_MS : 60_000,
+    refreshAfterMs: session.marketOpen ? 5_000 : 60_000,
     marketOpen: session.marketOpen,
+    snapshotMode: session.marketOpen ? "LIVE" : "NEW_YORK_EOD",
     sessionDate: session.sessionDate,
     environment,
     revision,
@@ -2246,6 +2404,7 @@ async function buildNativeChartGamma(root: NativeGammaRoot): Promise<ChartGammaL
     checkedAt: new Date().toISOString(),
     refreshAfterMs: session.marketOpen ? 60_000 : 300_000,
     marketOpen: session.marketOpen,
+    snapshotMode: session.marketOpen ? "LIVE" : "NEW_YORK_EOD",
     sessionDate: session.sessionDate,
     environment,
     revision: snap.revision,

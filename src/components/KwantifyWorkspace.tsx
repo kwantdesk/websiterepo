@@ -1968,7 +1968,7 @@ function buildGammaChartOverlay(args: {
     checkedAt: payload.checkedAt,
     sourceLabel: isNativeGammaConversion(conversion)
       ? `${conversion.label} · Databento futures options`
-      : `${conversion.label} · ${calibration.scale.toFixed(6)}×`,
+      : `${conversion.label} · ${payload.marketOpen ? "LIVE NY OPTIONS" : "NEW YORK EOD"} · ${calibration.scale.toFixed(6)}×`,
     stale: false,
   };
 }
@@ -2079,11 +2079,11 @@ function WorkspaceChartPane({
     ].includes(instance.indicatorId));
   const gammaLevelsAvailable =
     pane.broker === "Databento" && isGammaChartInstrument(gammaInstrument);
-  const nativeGammaConversion = gammaLevelsAvailable
-    ? resolveGammaConversion(undefined, gammaInstrument)
+  const primaryGammaConversion = gammaLevelsAvailable
+    ? cashFallbackGammaConversion(gammaInstrument)
     : null;
   const fallbackGammaConversion = gammaLevelsAvailable
-    ? cashFallbackGammaConversion(gammaInstrument)
+    ? resolveGammaConversion(undefined, gammaInstrument)
     : null;
   const expectedGammaContract =
     pane.broker === "Databento" ? currentCmeContract(pane.symbol) : null;
@@ -2318,9 +2318,9 @@ function WorkspaceChartPane({
   }, [pane.broker, pane.symbol]);
 
   useEffect(() => {
-    if (!gammaLevelsAvailable || !nativeGammaConversion) return;
+    if (!gammaLevelsAvailable || !primaryGammaConversion) return;
     const timer = window.setTimeout(() => {
-      const conversions = [fallbackGammaConversion, nativeGammaConversion]
+      const conversions = [fallbackGammaConversion, primaryGammaConversion]
         .filter((conversion): conversion is GammaConversionDefinition => Boolean(conversion));
       void Promise.allSettled(conversions.map((conversion) => fetchGammaPayload(conversion)));
     }, 250);
@@ -2328,11 +2328,11 @@ function WorkspaceChartPane({
   }, [
     fallbackGammaConversion?.id,
     gammaLevelsAvailable,
-    nativeGammaConversion?.id,
+    primaryGammaConversion?.id,
   ]);
 
   useEffect(() => {
-    if ((!gammaLevelsEnabled && !levelExportRequested) || !gammaLevelsAvailable || !nativeGammaConversion) {
+    if ((!gammaLevelsEnabled && !levelExportRequested) || !gammaLevelsAvailable || !primaryGammaConversion) {
       setGammaLevelsLoading(false);
       setGammaLevelsError(null);
       if (!gammaLevelsAvailable) setGammaOverlay(null);
@@ -2346,11 +2346,11 @@ function WorkspaceChartPane({
 
     let cancelled = false;
     let timer: number | null = null;
-    let nativeApplied = false;
+    let primaryApplied = false;
     let retainedOverlay = currentGammaOverlay;
 
     const applyConversion = async (conversion: GammaConversionDefinition) => {
-      const payload = await fetchGammaPayload(conversion, { allowStale: true });
+      const payload = await fetchGammaPayload(conversion);
       if (cancelled) return null;
       const future = latestFuturesRef.current;
       const overlay = buildGammaChartOverlay({
@@ -2368,8 +2368,9 @@ function WorkspaceChartPane({
           ? "Native futures gamma is building."
           : "Waiting for a valid futures calibration.",
       );
-      if (isNativeGammaConversion(conversion)) nativeApplied = true;
-      if (nativeApplied && !isNativeGammaConversion(conversion)) return payload;
+      const isPrimary = conversion.id === primaryGammaConversion.id;
+      if (isPrimary) primaryApplied = true;
+      if (primaryApplied && !isPrimary) return payload;
       retainedOverlay = overlay;
       setGammaOverlay(overlay);
       setGammaLevelsError(null);
@@ -2381,7 +2382,7 @@ function WorkspaceChartPane({
       setGammaLevelsLoading(gammaLevelsEnabled && !retainedOverlay);
       const conversions = [
         fallbackGammaConversion,
-        nativeGammaConversion,
+        primaryGammaConversion,
       ].filter((conversion): conversion is GammaConversionDefinition => Boolean(conversion));
       const results = await Promise.allSettled(conversions.map((conversion) => applyConversion(conversion)));
       if (cancelled) return;
@@ -2417,7 +2418,7 @@ function WorkspaceChartPane({
     gammaLevelsAvailable,
     gammaLevelsEnabled,
     levelExportRequested,
-    nativeGammaConversion?.id,
+    primaryGammaConversion?.id,
     pane.symbol,
     resolvedContractSymbol,
     settings.downColor,
