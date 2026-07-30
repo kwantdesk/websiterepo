@@ -170,6 +170,10 @@ import {
   readChartHistoryCache,
   writeChartHistoryCache,
 } from "@/lib/chartHistoryCache";
+import {
+  DEFAULT_CHART_HISTORY_CALENDAR_DAYS,
+  hasMinimumChartHistory,
+} from "@/lib/chartHistoryWindow";
 import { readLiveQuoteCache, writeLiveQuoteCache } from "@/lib/liveQuoteCache";
 import {
   loadKwantBotConversation,
@@ -886,7 +890,7 @@ function getPeriodConfig(period: string): { from: string; label: string } {
   const day = 24 * 60 * 60 * 1000;
   return {
     "1D": { from: new Date(now - 1 * day).toISOString(), label: "1D" },
-    "5D": { from: new Date(now - 5 * day).toISOString(), label: "5D" },
+    "5D": { from: new Date(now - DEFAULT_CHART_HISTORY_CALENDAR_DAYS * day).toISOString(), label: "5D" },
     "1W": { from: new Date(now - 7 * day).toISOString(), label: "1W" },
     "1M": { from: new Date(now - 30 * day).toISOString(), label: "1M" },
     "3M": { from: new Date(now - 90 * day).toISOString(), label: "3M" },
@@ -1359,12 +1363,7 @@ function mergeLiveMidIntoCandles(
 }
 
 function hasFiveDayHistory(candles: Candle[], timeframe: string) {
-  if (candles.length === 0) return false;
-  const firstTimestamp = candles[0]?.timestamp ?? Number.POSITIVE_INFINITY;
-  const lastTimestamp = candles.at(-1)?.timestamp ?? 0;
-  const lastBucketEnd = lastTimestamp + getTimeframeMs(timeframe);
-  return firstTimestamp <= Date.now() - 4 * 24 * 60 * 60_000
-    && lastBucketEnd >= Date.now() - 3 * 24 * 60 * 60_000;
+  return hasMinimumChartHistory(candles, timeframe);
 }
 
 function reanchorLiveMidIntoCandles(candles: Candle[], mid: number, symbol: string) {
@@ -1459,7 +1458,7 @@ async function fetchWorkspaceCandles(
 
     const request = (async () => {
       const response = await fetch(
-        `/api/databento/market?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}${includeOrderFlow ? "&orderFlow=1" : ""}`,
+        `/api/databento/market?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}&days=${DEFAULT_CHART_HISTORY_CALENDAR_DAYS}${includeOrderFlow ? "&orderFlow=1" : ""}`,
         {
           cache: "no-store",
           // Keep a history request alive across rapid timeframe switches. Its
@@ -5401,7 +5400,7 @@ export default function KwantifyWorkspace({
       if (signal?.aborted) throw new DOMException("Chart request cancelled.", "AbortError");
       try {
         const response = await fetch(
-          `/api/databento/market?symbol=${encodeURIComponent(selectedInstrument)}&timeframe=${encodeURIComponent(selectedTimeframe)}&start=${encodeURIComponent(periodConfig.from)}`,
+          `/api/databento/market?symbol=${encodeURIComponent(selectedInstrument)}&timeframe=${encodeURIComponent(selectedTimeframe)}&days=${DEFAULT_CHART_HISTORY_CALENDAR_DAYS}`,
           {
             cache: "no-store",
             signal: signal

@@ -4,6 +4,7 @@ import {
   getDatabentoOrderFlowHistory,
   type DatabentoExecutionTuple,
 } from "@/lib/databento";
+import { DEFAULT_CHART_HISTORY_CALENDAR_DAYS } from "@/lib/chartHistoryWindow";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -25,7 +26,7 @@ const historyCache = globalHistoryCache.__kwantdeskCmeHistory
 // builds the current bucket and would leave the intervening closed bars blank.
 // A short process-local cache still deduplicates simultaneous pane requests.
 const FRESH_CACHE_MS = 12_000;
-const DEFAULT_HISTORY_DAYS = 5;
+const DEFAULT_HISTORY_DAYS = DEFAULT_CHART_HISTORY_CALENDAR_DAYS;
 const MAX_HISTORY_DAYS = 14;
 
 export async function GET(request: Request) {
