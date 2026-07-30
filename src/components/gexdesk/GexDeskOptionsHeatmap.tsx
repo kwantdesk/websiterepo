@@ -34,6 +34,13 @@ const PLOT_RIGHT = 918;
 const PLOT_TOP = 20;
 const PLOT_BOTTOM = 522;
 const HEAT_WINDOWS: HeatWindow[] = [15, 30, 60, 120];
+const MAX_HEAT_CELLS = 1_200;
+const HEATMAP_TIME_FORMATTER = new Intl.DateTimeFormat("en-US", {
+  timeZone: "America/New_York",
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+});
 
 function clamp(value: number, low: number, high: number) {
   return Math.max(low, Math.min(high, value));
@@ -59,13 +66,30 @@ function formatPrice(value: number | null) {
     : value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+function normalizeTimestamp(value: number) {
+  if (!Number.isFinite(value) || value <= 0) return null;
+  const timestamp = value >= 1e18
+    ? Math.floor(value / 1e6)
+    : value >= 1e15
+      ? Math.floor(value / 1e3)
+      : value >= 1e12
+        ? Math.floor(value)
+        : value >= 1e9
+          ? Math.floor(value * 1e3)
+          : Number.NaN;
+  return Number.isFinite(timestamp) && !Number.isNaN(new Date(timestamp).getTime())
+    ? timestamp
+    : null;
+}
+
 function timeLabel(timestamp: number) {
-  return new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/New_York",
-    hour: "2-digit",
-    minute: "2-digit",
-    hourCycle: "h23",
-  }).format(new Date(timestamp));
+  const safeTimestamp = normalizeTimestamp(timestamp);
+  if (safeTimestamp === null) return "--:--";
+  try {
+    return HEATMAP_TIME_FORMATTER.format(new Date(safeTimestamp));
+  } catch {
+    return "--:--";
+  }
 }
 
 function percentile(values: number[], amount: number) {
@@ -88,10 +112,22 @@ function aggregateTape(
 ) {
   const cells = new Map<string, HeatCell>();
   const levels = new Map<number, TapeLevel>();
-  for (const print of prints) {
-    if (print.timestamp < startTime) continue;
-    const timestamp = Math.floor(print.timestamp / 60_000) * 60_000;
-    const price = Math.round(print.mappedPrice / bucketSize) * bucketSize;
+  for (const print of prints.slice(-2_500)) {
+    if (print.contractType !== "CALL" && print.contractType !== "PUT") continue;
+    const safeTimestamp = normalizeTimestamp(Number(print.timestamp));
+    const mappedPrice = Number(print.mappedPrice);
+    const premium = Math.max(0, Number(print.premium));
+    const size = Math.max(0, Number(print.size));
+    if (
+      safeTimestamp === null
+      || safeTimestamp < startTime
+      || !Number.isFinite(mappedPrice)
+      || mappedPrice <= 0
+      || !Number.isFinite(premium)
+      || !Number.isFinite(size)
+    ) continue;
+    const timestamp = Math.floor(safeTimestamp / 60_000) * 60_000;
+    const price = Math.round(mappedPrice / bucketSize) * bucketSize;
     const key = `${timestamp}:${price}`;
     const cell = cells.get(key) ?? {
       timestamp,
@@ -112,20 +148,21 @@ function aggregateTape(
       calls: 0,
       puts: 0,
     };
-    const confidenceWeight = clamp(print.confidence, 0.2, 1);
+    const confidence = Number(print.confidence);
+    const confidenceWeight = Number.isFinite(confidence) ? clamp(confidence, 0.2, 1) : 0.3;
     if (print.contractType === "CALL") {
-      cell.callPremium += print.premium * confidenceWeight;
-      cell.callContracts += print.size * confidenceWeight;
+      cell.callPremium += premium * confidenceWeight;
+      cell.callContracts += size * confidenceWeight;
       cell.calls += 1;
-      level.callPremium += print.premium * confidenceWeight;
-      level.callContracts += print.size * confidenceWeight;
+      level.callPremium += premium * confidenceWeight;
+      level.callContracts += size * confidenceWeight;
       level.calls += 1;
     } else {
-      cell.putPremium += print.premium * confidenceWeight;
-      cell.putContracts += print.size * confidenceWeight;
+      cell.putPremium += premium * confidenceWeight;
+      cell.putContracts += size * confidenceWeight;
       cell.puts += 1;
-      level.putPremium += print.premium * confidenceWeight;
-      level.putContracts += print.size * confidenceWeight;
+      level.putPremium += premium * confidenceWeight;
+      level.putContracts += size * confidenceWeight;
       level.puts += 1;
     }
     cells.set(key, cell);
@@ -159,26 +196,29 @@ export default function GexDeskOptionsHeatmap({
   const [windowMinutes, setWindowMinutes] = useState<HeatWindow>(60);
   const [metric, setMetric] = useState<HeatMetric>("PREMIUM");
   const [selectedPrice, setSelectedPrice] = useState<number | null>(null);
+  const optionsTape = Array.isArray(payload.optionsTape) ? payload.optionsTape : [];
   const model = useMemo(() => {
-    const currentPrice = livePrice ?? payload.nqPrice;
-    const latestDataTimestamp = Math.max(
-      payload.optionsTape.at(-1)?.timestamp ?? 0,
-      history?.timestamps.at(-1) ?? 0,
-      priceTicks.at(-1)?.timestamp ?? 0,
-      Date.parse(payload.asOf),
-    );
-    const endTime = payload.marketOpen ? Math.max(Date.now(), latestDataTimestamp) : latestDataTimestamp;
+    const snapshotPrice = Number.isFinite(payload.nqPrice) ? payload.nqPrice : null;
+    const latestTapeTimestamp = optionsTape.reduce((latest, print) => {
+      const timestamp = normalizeTimestamp(Number(print.timestamp));
+      return timestamp === null ? latest : Math.max(latest, timestamp);
+    }, 0);
+    const payloadTimestamp = normalizeTimestamp(Date.parse(payload.asOf)) ?? 0;
+    const latestDataTimestamp = Math.max(latestTapeTimestamp, payloadTimestamp);
+    const endTime = payload.marketOpen
+      ? Math.max(Date.now(), latestDataTimestamp)
+      : latestDataTimestamp || Date.now();
     const startTime = endTime - windowMinutes * 60_000;
-    const bucketSize = currentPrice
-      ? Math.max(10, Math.round((currentPrice * 0.0007) / 5) * 5)
+    const bucketSize = snapshotPrice
+      ? Math.max(10, Math.round((snapshotPrice * 0.0007) / 5) * 5)
       : 20;
-    const aggregate = aggregateTape(payload.optionsTape, bucketSize, startTime);
+    const aggregate = aggregateTape(optionsTape, bucketSize, startTime);
     const activePrintPrices = aggregate.levels.map((level) => level.price);
-    const center = currentPrice
+    const center = snapshotPrice
       ?? activePrintPrices[Math.floor(activePrintPrices.length / 2)]
       ?? 0;
-    const rawLow = activePrintPrices.length ? Math.min(...activePrintPrices, center) : center - 350;
-    const rawHigh = activePrintPrices.length ? Math.max(...activePrintPrices, center) : center + 350;
+    const rawLow = activePrintPrices.reduce((lowest, price) => Math.min(lowest, price), center);
+    const rawHigh = activePrintPrices.reduce((highest, price) => Math.max(highest, price), center);
     const minimumSpan = 700;
     const low = Math.floor(Math.max(center - 900, Math.min(rawLow - bucketSize, center - minimumSpan / 2)) / bucketSize) * bucketSize;
     const high = Math.ceil(Math.min(center + 900, Math.max(rawHigh + bucketSize, center + minimumSpan / 2)) / bucketSize) * bucketSize;
@@ -189,29 +229,6 @@ export default function GexDeskOptionsHeatmap({
     ) * (PLOT_RIGHT - PLOT_LEFT);
     const yForPrice = (price: number) => PLOT_TOP + (high - price) / Math.max(1, high - low) * (PLOT_BOTTOM - PLOT_TOP);
 
-    const historicalPricePoints = history
-      ? history.timestamps.map((timestamp, index) => ({
-          timestamp,
-          price: history.nqPrices[index],
-        }))
-      : [];
-    const combinedPoints = [...historicalPricePoints, ...priceTicks]
-      .filter((point) => (
-        point.timestamp >= startTime
-        && point.timestamp <= endTime
-        && Number.isFinite(point.price)
-        && point.price >= low - bucketSize
-        && point.price <= high + bucketSize
-      ))
-      .sort((left, right) => left.timestamp - right.timestamp);
-    const pointBuckets = new Map<number, { timestamp: number; price: number }>();
-    for (const point of combinedPoints) {
-      pointBuckets.set(Math.floor(point.timestamp / 5_000), point);
-    }
-    const pricePoints = [...pointBuckets.values()];
-    const pricePath = pricePoints.map((point, index) => (
-      `${index ? "L" : "M"}${xForTime(point.timestamp).toFixed(2)},${yForPrice(point.price).toFixed(2)}`
-    )).join(" ");
     const sideValues = aggregate.cells.flatMap((cell) => [
       sideValue(cell, "CALL", metric),
       sideValue(cell, "PUT", metric),
@@ -230,7 +247,7 @@ export default function GexDeskOptionsHeatmap({
       - sideValue(left, "CALL", metric) - sideValue(left, "PUT", metric)
     ))[0] ?? null;
     return {
-      currentPrice,
+      snapshotPrice,
       startTime,
       endTime,
       bucketSize,
@@ -238,16 +255,56 @@ export default function GexDeskOptionsHeatmap({
       high,
       xForTime,
       yForPrice,
-      cells: aggregate.cells,
+      cells: aggregate.cells
+        .filter((cell) => cell.price >= low && cell.price <= high)
+        .slice(-MAX_HEAT_CELLS),
       levels: visibleLevels,
-      pricePath,
       heatCeiling,
       totalCallPremium,
       totalPutPremium,
       totalPremium,
       hottest,
     };
-  }, [history, livePrice, metric, payload, priceTicks, windowMinutes]);
+  }, [metric, optionsTape, payload.asOf, payload.marketOpen, payload.nqPrice, windowMinutes]);
+
+  const currentPrice = livePrice !== null && Number.isFinite(livePrice)
+    ? livePrice
+    : model.snapshotPrice;
+  const pricePath = useMemo(() => {
+    const historicalPricePoints = history && Array.isArray(history.timestamps) && Array.isArray(history.nqPrices)
+      ? history.timestamps.map((timestamp, index) => ({
+          timestamp: normalizeTimestamp(Number(timestamp)),
+          price: Number(history.nqPrices[index]),
+        }))
+      : [];
+    const livePoint = livePrice !== null && Number.isFinite(livePrice)
+      ? [{ timestamp: model.endTime, price: livePrice }]
+      : [];
+    const combinedPoints = [
+      ...historicalPricePoints,
+      ...priceTicks.map((point) => ({
+        timestamp: normalizeTimestamp(Number(point.timestamp)),
+        price: Number(point.price),
+      })),
+      ...livePoint,
+    ]
+      .filter((point): point is { timestamp: number; price: number } => (
+        point.timestamp !== null
+        && point.timestamp >= model.startTime
+        && point.timestamp <= model.endTime
+        && Number.isFinite(point.price)
+        && point.price >= model.low - model.bucketSize
+        && point.price <= model.high + model.bucketSize
+      ))
+      .sort((left, right) => left.timestamp - right.timestamp);
+    const pointBuckets = new Map<number, { timestamp: number; price: number }>();
+    for (const point of combinedPoints) {
+      pointBuckets.set(Math.floor(point.timestamp / 5_000), point);
+    }
+    return [...pointBuckets.values()].map((point, index) => (
+      `${index ? "L" : "M"}${model.xForTime(point.timestamp).toFixed(2)},${model.yForPrice(point.price).toFixed(2)}`
+    )).join(" ");
+  }, [history, livePrice, model, priceTicks]);
 
   const maximumLevelValue = Math.max(
     1,
@@ -307,7 +364,7 @@ export default function GexDeskOptionsHeatmap({
 
         <div className="grid min-h-[650px] xl:grid-cols-[minmax(0,1fr)_350px]">
           <div className="relative min-w-0 overflow-hidden border-b border-border bg-background xl:border-b-0 xl:border-r">
-            {!payload.optionsTape.length ? (
+            {!optionsTape.length ? (
               <div className="flex h-[650px] items-center justify-center p-6 text-center">
                 <div className="max-w-sm">
                   <Waves className="mx-auto h-7 w-7 text-muted" />
@@ -319,10 +376,6 @@ export default function GexDeskOptionsHeatmap({
               <div className="relative h-[650px] overflow-hidden bg-[radial-gradient(circle_at_68%_42%,color-mix(in_srgb,var(--primary)_6%,transparent),transparent_42%)]">
                 <svg className="h-full w-full" viewBox="0 0 1000 560" preserveAspectRatio="none" role="img" aria-label="Mapped options call and put activity heatmap with live MNQ price">
                   <defs>
-                    <filter id="gexdesk-heat-glow" x="-70%" y="-70%" width="240%" height="240%">
-                      <feGaussianBlur stdDeviation="4" result="blur" />
-                      <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
-                    </filter>
                     <linearGradient id="gexdesk-heat-fade" x1="0" x2="1">
                       <stop offset="0%" stopColor="var(--background)" stopOpacity="0.45" />
                       <stop offset="100%" stopColor="var(--background)" stopOpacity="0" />
@@ -362,25 +415,25 @@ export default function GexDeskOptionsHeatmap({
                     const putIntensity = putValue > 0 ? clamp(Math.pow(putValue / model.heatCeiling, 0.42), 0.08, 1) : 0;
                     return (
                       <g key={`${cell.timestamp}:${cell.price}`}>
-                        {callIntensity ? <rect x={x} y={centerY - rowHeight / 2} width={Math.max(2, nextX - x + 0.6)} height={rowHeight / 2 + 0.2} fill="var(--primary)" opacity={0.08 + callIntensity * 0.84} filter={callIntensity > 0.72 ? "url(#gexdesk-heat-glow)" : undefined} /> : null}
-                        {putIntensity ? <rect x={x} y={centerY} width={Math.max(2, nextX - x + 0.6)} height={rowHeight / 2 + 0.2} fill="var(--accent)" opacity={0.08 + putIntensity * 0.84} filter={putIntensity > 0.72 ? "url(#gexdesk-heat-glow)" : undefined} /> : null}
+                        {callIntensity ? <rect x={x} y={centerY - rowHeight / 2} width={Math.max(2, nextX - x + 0.6)} height={rowHeight / 2 + 0.2} fill="var(--primary)" opacity={0.08 + callIntensity * 0.84} /> : null}
+                        {putIntensity ? <rect x={x} y={centerY} width={Math.max(2, nextX - x + 0.6)} height={rowHeight / 2 + 0.2} fill="var(--accent)" opacity={0.08 + putIntensity * 0.84} /> : null}
                       </g>
                     );
                   })}
                   {selected ? (
                     <line x1={PLOT_LEFT} x2={PLOT_RIGHT} y1={model.yForPrice(selected.price)} y2={model.yForPrice(selected.price)} stroke="var(--foreground)" strokeOpacity="0.26" strokeDasharray="3 4" vectorEffect="non-scaling-stroke" />
                   ) : null}
-                  {model.pricePath ? (
+                  {pricePath ? (
                     <>
-                      <path d={model.pricePath} fill="none" stroke="var(--background)" strokeOpacity="0.9" strokeWidth="5" strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
-                      <path d={model.pricePath} fill="none" stroke="var(--foreground)" strokeWidth="2.1" strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+                      <path d={pricePath} fill="none" stroke="var(--background)" strokeOpacity="0.9" strokeWidth="5" strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+                      <path d={pricePath} fill="none" stroke="var(--foreground)" strokeWidth="2.1" strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
                     </>
                   ) : null}
-                  {model.currentPrice !== null ? (
+                  {currentPrice !== null ? (
                     <g className="gexdesk-live-price">
-                      <line x1={PLOT_LEFT} x2="956" y1={model.yForPrice(model.currentPrice)} y2={model.yForPrice(model.currentPrice)} stroke="var(--foreground)" strokeOpacity="0.72" strokeWidth="1" strokeDasharray="4 4" vectorEffect="non-scaling-stroke" />
-                      <rect x="922" y={model.yForPrice(model.currentPrice) - 10} width="70" height="20" rx="5" fill="var(--primary)" />
-                      <text x="957" y={model.yForPrice(model.currentPrice) + 3.5} textAnchor="middle" fill="var(--background)" fontSize="8.5" fontFamily="monospace" fontWeight="700">{formatPrice(model.currentPrice)}</text>
+                      <line x1={PLOT_LEFT} x2="956" y1={model.yForPrice(currentPrice)} y2={model.yForPrice(currentPrice)} stroke="var(--foreground)" strokeOpacity="0.72" strokeWidth="1" strokeDasharray="4 4" vectorEffect="non-scaling-stroke" />
+                      <rect x="922" y={model.yForPrice(currentPrice) - 10} width="70" height="20" rx="5" fill="var(--primary)" />
+                      <text x="957" y={model.yForPrice(currentPrice) + 3.5} textAnchor="middle" fill="var(--background)" fontSize="8.5" fontFamily="monospace" fontWeight="700">{formatPrice(currentPrice)}</text>
                     </g>
                   ) : null}
                   <rect x={PLOT_LEFT} y={PLOT_TOP} width="84" height={PLOT_BOTTOM - PLOT_TOP} fill="url(#gexdesk-heat-fade)" />
@@ -405,7 +458,7 @@ export default function GexDeskOptionsHeatmap({
                   <div className="text-[8px] font-semibold">Call / put level tape</div>
                   <div className="mt-0.5 text-[6px] text-muted">Confidence-weighted mapped activity</div>
                 </div>
-                <span className="ml-auto font-mono text-[8px] font-semibold text-foreground">{formatPrice(model.currentPrice)}</span>
+                <span className="ml-auto font-mono text-[8px] font-semibold text-foreground">{formatPrice(currentPrice)}</span>
               </div>
               <div className="mt-3 flex h-2 overflow-hidden rounded-full bg-surface">
                 <div className="bg-primary" style={{ width: `${callShare * 100}%` }} />
@@ -425,7 +478,7 @@ export default function GexDeskOptionsHeatmap({
               {model.levels.map((level) => {
                 const callValue = sideValue(level, "CALL", metric);
                 const putValue = sideValue(level, "PUT", metric);
-                const nearLive = model.currentPrice !== null && Math.abs(level.price - model.currentPrice) <= model.bucketSize / 2;
+                const nearLive = currentPrice !== null && Math.abs(level.price - currentPrice) <= model.bucketSize / 2;
                 const active = selected?.price === level.price;
                 return (
                   <button

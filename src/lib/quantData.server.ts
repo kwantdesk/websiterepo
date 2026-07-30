@@ -27,7 +27,10 @@ import {
   type GexMapPanelPayload,
 } from "@/lib/gexMap";
 import { resolveCashLevelOne } from "@/lib/optionsLevelOne.server";
-import { filterUsRegularCashSessionCandles } from "@/lib/optionsLevelOne";
+import {
+  filterUsRegularCashSessionCandles,
+  normalizeMarketTimestamp,
+} from "@/lib/optionsLevelOne";
 import { resolveOptionsMarketData } from "@/lib/optionsMarketData.server";
 import {
   getNativeFuturesSpot,
@@ -1736,10 +1739,7 @@ function gexDeskPressureSource(
     totalWeight += Math.abs(weight);
     confidenceWeight += confidence * Math.abs(weight);
     if (contract === "CALL") callWeight += Math.abs(weight);
-    const rawTimestamp = finiteNumber(raw.tradeTime) ?? 0;
-    const timestamp = rawTimestamp > 0 && rawTimestamp < 10_000_000_000
-      ? rawTimestamp * 1_000
-      : rawTimestamp;
+    const timestamp = normalizeMarketTimestamp(raw.tradeTime) ?? 0;
     newestTimestamp = Math.max(newestTimestamp, timestamp);
     if (timestamp > 0 && weight > 0) {
       timedTrades.push({
@@ -1815,9 +1815,8 @@ function gexDeskOptionsTape(
     const rawSide = row.side.toUpperCase();
     const bought = rawSide.includes("ASK") || rawSide === "AA" || rawSide === "A";
     const sold = rawSide.includes("BID") || rawSide === "BB" || rawSide === "B";
-    const timestamp = row.tradeTime > 0 && row.tradeTime < 10_000_000_000
-      ? row.tradeTime * 1_000
-      : row.tradeTime;
+    const timestamp = normalizeMarketTimestamp(row.tradeTime);
+    if (timestamp === null) return [];
     const complex = row.consolidationType.toUpperCase().includes("COMPLEX")
       || row.consolidationType.toUpperCase().includes("MULTI");
     return [{

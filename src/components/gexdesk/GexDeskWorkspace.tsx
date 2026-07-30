@@ -24,6 +24,7 @@ import KwantSelect from "@/components/ui/KwantSelect";
 import GexDeskDepthPanels, {
   type GexDeskPanel,
 } from "@/components/gexdesk/GexDeskDepthPanels";
+import GexDeskHeatmapBoundary from "@/components/gexdesk/GexDeskHeatmapBoundary";
 import GexDeskOptionsHeatmap from "@/components/gexdesk/GexDeskOptionsHeatmap";
 import {
   DATABENTO_LIVE_STATUS_EVENT,
@@ -274,7 +275,9 @@ export default function GexDeskWorkspace() {
   const livePriceRef = useRef<number | null>(null);
   const liveInstrumentRef = useRef<"MNQ" | "NQ">("MNQ");
   const preferredMnqAtRef = useRef(0);
-  const updateFrameRef = useRef<number | null>(null);
+  const uiTickTimerRef = useRef<number | null>(null);
+  const lastUiTickRef = useRef(0);
+  const latestTickTimestampRef = useRef(0);
   const requestRef = useRef<AbortController | null>(null);
   const historyRequestRef = useRef<AbortController | null>(null);
 
@@ -434,13 +437,16 @@ export default function GexDeskWorkspace() {
       const heatCutoff = timestamp - 2 * 60 * 60_000;
       while (heatTicks.length && heatTicks[0].timestamp < heatCutoff) heatTicks.shift();
       if (heatTicks.length > 2_500) heatTicks.splice(0, heatTicks.length - 2_500);
-      if (updateFrameRef.current !== null) return;
-      updateFrameRef.current = window.requestAnimationFrame(() => {
-        updateFrameRef.current = null;
+      latestTickTimestampRef.current = timestamp;
+      if (uiTickTimerRef.current !== null) return;
+      const delay = Math.max(0, 100 - (Date.now() - lastUiTickRef.current));
+      uiTickTimerRef.current = window.setTimeout(() => {
+        uiTickTimerRef.current = null;
+        lastUiTickRef.current = Date.now();
         setLivePrice(livePriceRef.current);
-        setLastTickAt(timestamp);
+        setLastTickAt(latestTickTimestampRef.current);
         setFeedStatus("live");
-      });
+      }, delay);
     };
     const receiveStatus = (event: Event) => {
       setFeedStatus((event as CustomEvent<DatabentoLiveStatus>).detail);
@@ -450,7 +456,7 @@ export default function GexDeskWorkspace() {
     return () => {
       window.removeEventListener(DATABENTO_LIVE_TICK_EVENT, receiveTick);
       window.removeEventListener(DATABENTO_LIVE_STATUS_EVENT, receiveStatus);
-      if (updateFrameRef.current !== null) window.cancelAnimationFrame(updateFrameRef.current);
+      if (uiTickTimerRef.current !== null) window.clearTimeout(uiTickTimerRef.current);
     };
   }, []);
 
@@ -783,16 +789,18 @@ export default function GexDeskWorkspace() {
           ) : null}
             </>
           ) : activePanel === "HEATMAP" ? (
-            <GexDeskOptionsHeatmap
-              payload={payload}
-              history={history}
-              historyLoading={historyLoading}
-              historyError={historyError}
-              livePrice={livePrice}
-              priceTicks={heatPriceTicksRef.current}
-              feedStatus={feedStatus}
-              liveInstrument={liveInstrument}
-            />
+            <GexDeskHeatmapBoundary key={`${payload.sessionDate}:${sourceFilter}`}>
+              <GexDeskOptionsHeatmap
+                payload={payload}
+                history={history}
+                historyLoading={historyLoading}
+                historyError={historyError}
+                livePrice={livePrice}
+                priceTicks={heatPriceTicksRef.current}
+                feedStatus={feedStatus}
+                liveInstrument={liveInstrument}
+              />
+            </GexDeskHeatmapBoundary>
           ) : (
             <GexDeskDepthPanels
               panel={activePanel}
