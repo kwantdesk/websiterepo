@@ -48,6 +48,7 @@ import {
 import KwantSelect from "@/components/ui/KwantSelect";
 import SocialProfileView from "@/components/socials/SocialProfileView";
 import ReasoningOutcomeChart from "@/components/socials/ReasoningOutcomeChart";
+import DeskWorkspace from "@/components/socials/DeskWorkspace";
 import {
   buildDefaultProfile,
   calculateReasoningScore,
@@ -1460,7 +1461,7 @@ export default function SocialsWorkspace({
       timezone: deskDraft.timezone,
       objective: deskDraft.objective.trim(),
       privacy: deskDraft.privacy,
-      capacity: Math.max(2, Math.min(12, Number(deskDraft.capacity) || 8)),
+      capacity: Math.max(2, Math.min(50, Number(deskDraft.capacity) || 8)),
       weeklyMission: deskDraft.weeklyMission.trim(),
     };
     const desk = buildLocalObject({
@@ -1482,9 +1483,24 @@ export default function SocialsWorkspace({
       payload: { role: "OWNER", status: currentProfile.processStatus, joinedAt: new Date().toISOString() } satisfies SocialDeskMemberPayload,
     });
     upsertObject(member);
-    await saveObject(desk);
+    const savedDesk = await saveObject(desk);
+    if (savedDesk.cloudSaved) {
+      try {
+        const response = await fetch("/api/socials/desks", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "initialize", deskId: savedDesk.id }),
+        });
+        if (!response.ok) {
+          const result = await response.json() as { error?: string };
+          setNotice(result.error || "The Desk was created, but its workspace still needs the multi-Desk migration.");
+        }
+      } catch {
+        setNotice("The Desk was created. Its workspace will initialize when account storage reconnects.");
+      }
+    }
     setShowDeskModal(false);
-    setNotice("Desk created. Invite compatible traders after the cloud membership is confirmed.");
+    if (savedDesk.cloudSaved) setNotice("Desk created. Its channels, roles and owner controls are ready.");
   };
 
   const followTrader = (trader: SocialObject) => {
@@ -2452,6 +2468,17 @@ export default function SocialsWorkspace({
         ) : null}
 
         {tab === "desks" ? (
+          <div className="p-3">
+            <DeskWorkspace
+              viewerId={resolvedAccountKey}
+              viewerProfile={currentProfile}
+              onCreateDesk={() => setShowDeskModal(true)}
+              onNotice={setNotice}
+            />
+          </div>
+        ) : null}
+
+        {false ? (
           <div className="mx-auto max-w-6xl space-y-3 p-3">
             <div className="grid gap-3 lg:grid-cols-[1fr_320px]">
               <div className="space-y-3">
@@ -2899,10 +2926,10 @@ export default function SocialsWorkspace({
       {showDeskModal ? (
         <div className="fixed inset-0 z-[1100] flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm" onMouseDown={(event) => { if (event.target === event.currentTarget) setShowDeskModal(false); }}>
           <div className="w-full max-w-2xl overflow-hidden rounded-3xl border border-border bg-panel shadow-2xl shadow-black/60">
-            <div className="flex items-start gap-3 border-b border-border p-5"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary"><UsersRound className="h-4 w-4" /></span><div><h2 className="text-[14px] font-semibold">Create a Kwant Desk</h2><p className="mt-1 text-[8px] text-muted">A persistent group of 5–12 compatible traders.</p></div><button type="button" onClick={() => setShowDeskModal(false)} className="ml-auto flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:bg-surface"><X className="h-4 w-4" /></button></div>
+            <div className="flex items-start gap-3 border-b border-border p-5"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary"><UsersRound className="h-4 w-4" /></span><div><h2 className="text-[14px] font-semibold">Create a Kwant Desk</h2><p className="mt-1 text-[8px] text-muted">A persistent trading group with its own standards, channels and roles.</p></div><button type="button" onClick={() => setShowDeskModal(false)} className="ml-auto flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:bg-surface"><X className="h-4 w-4" /></button></div>
             <div className="grid gap-3 p-5 md:grid-cols-2">
-              {[["Desk name", "name"], ["Markets — comma separated", "markets"], ["Session", "session"], ["Timezone", "timezone"], ["Capacity — maximum 12", "capacity"]].map(([label, key]) => <label key={key}><span className="mb-1.5 block text-[7px] uppercase tracking-[0.1em] text-muted">{label}</span><input value={String(deskDraft[key as keyof typeof deskDraft])} onChange={(event) => setDeskDraft((current) => ({ ...current, [key]: event.target.value }))} className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[9px] outline-none focus:border-primary/40" /></label>)}
-              <label><span className="mb-1.5 block text-[7px] uppercase tracking-[0.1em] text-muted">Joining</span><KwantSelect value={deskDraft.privacy} onChange={(event) => setDeskDraft((current) => ({ ...current, privacy: event.target.value as SocialDeskPayload["privacy"] }))} className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[9px] outline-none"><option value="REQUEST">Request to join</option><option value="PRIVATE">Private invite</option></KwantSelect></label>
+              {[["Desk name", "name"], ["Markets — comma separated", "markets"], ["Session", "session"], ["Timezone", "timezone"], ["Capacity — maximum 50", "capacity"]].map(([label, key]) => <label key={key}><span className="mb-1.5 block text-[7px] uppercase tracking-[0.1em] text-muted">{label}</span><input value={String(deskDraft[key as keyof typeof deskDraft])} onChange={(event) => setDeskDraft((current) => ({ ...current, [key]: event.target.value }))} className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[9px] outline-none focus:border-primary/40" /></label>)}
+              <label><span className="mb-1.5 block text-[7px] uppercase tracking-[0.1em] text-muted">Joining</span><KwantSelect value={deskDraft.privacy} onChange={(event) => setDeskDraft((current) => ({ ...current, privacy: event.target.value as SocialDeskPayload["privacy"] }))} className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[9px] outline-none"><option value="PUBLIC">Public · instant join</option><option value="REQUEST">Request to join</option><option value="PRIVATE">Private invite</option></KwantSelect></label>
               <label className="md:col-span-2"><span className="mb-1.5 block text-[7px] uppercase tracking-[0.1em] text-muted">Shared development objective *</span><textarea value={deskDraft.objective} onChange={(event) => setDeskDraft((current) => ({ ...current, objective: event.target.value }))} rows={3} className="w-full resize-none rounded-xl border border-border bg-background p-3 text-[9px] outline-none focus:border-primary/40" /></label>
               <label className="md:col-span-2"><span className="mb-1.5 block text-[7px] uppercase tracking-[0.1em] text-muted">Desk description</span><textarea value={deskDraft.description} onChange={(event) => setDeskDraft((current) => ({ ...current, description: event.target.value }))} rows={3} className="w-full resize-none rounded-xl border border-border bg-background p-3 text-[9px] outline-none focus:border-primary/40" /></label>
               <label className="md:col-span-2"><span className="mb-1.5 block text-[7px] uppercase tracking-[0.1em] text-muted">First weekly mission</span><input value={deskDraft.weeklyMission} onChange={(event) => setDeskDraft((current) => ({ ...current, weeklyMission: event.target.value }))} className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[9px] outline-none focus:border-primary/40" /></label>

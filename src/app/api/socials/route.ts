@@ -324,7 +324,7 @@ export async function POST(request: NextRequest) {
     payload = {
       ...payload,
       name,
-      capacity: Math.max(2, Math.min(12, Number(payload.capacity) || 8)),
+      capacity: Math.max(2, Math.min(50, Number(payload.capacity) || 8)),
     };
     id = /^desk:[a-zA-Z0-9_-]{8,}$/.test(id) ? id : `desk:${crypto.randomUUID()}`;
   } else if (!id) {

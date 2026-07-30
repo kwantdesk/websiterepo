@@ -239,7 +239,7 @@ export type SocialDeskPayload = {
   session: string;
   timezone: string;
   objective: string;
-  privacy: "PRIVATE" | "REQUEST";
+  privacy: "PUBLIC" | "PRIVATE" | "REQUEST";
   capacity: number;
   weeklyMission: string;
 };
