@@ -197,6 +197,7 @@ export default function FriendsPanel({ onClose, onUnreadCountChange, initialFrie
   const [showGroupCreate, setShowGroupCreate] = useState(false);
   const [showGroupSettings, setShowGroupSettings] = useState(false);
   const [showPresence, setShowPresence] = useState(false);
+  const [optimisticPresenceStatus, setOptimisticPresenceStatus] = useState<PresenceStatus | null>(null);
   const [showFriendMenu, setShowFriendMenu] = useState(false);
   const [showBlocked, setShowBlocked] = useState(false);
   const [activeFriendId, setActiveFriendId] = useState("");
@@ -322,6 +323,7 @@ export default function FriendsPanel({ onClose, onUnreadCountChange, initialFrie
 
   const activeFriend = payload.friends.find((friend) => friend.userId === activeFriendId) ?? null;
   const activeGroup = payload.groups.find((group) => group.id === activeGroupId) ?? null;
+  const viewerPresenceStatus = optimisticPresenceStatus ?? payload.viewer?.presenceStatus ?? "online";
 
   useEffect(() => {
     if (!initialFriendId || activeFriendId === initialFriendId) return;
@@ -383,10 +385,13 @@ export default function FriendsPanel({ onClose, onUnreadCountChange, initialFrie
 
   const selectPresence = async (presenceStatus: PresenceStatus) => {
     setShowPresence(false);
+    if (presenceStatus === viewerPresenceStatus && optimisticPresenceStatus === null) return;
+    setOptimisticPresenceStatus(presenceStatus);
     await runAction("status", {
       presenceStatus,
       presenceMessage: payload.viewer?.presenceMessage || "",
     });
+    setOptimisticPresenceStatus(null);
   };
 
   const openChat = (friend: FriendSummary) => {
@@ -950,9 +955,9 @@ export default function FriendsPanel({ onClose, onUnreadCountChange, initialFrie
           }}
           className="flex w-full items-center gap-2 rounded-xl border border-border bg-background/30 px-3 py-2 text-left hover:bg-surface"
         >
-          <span className={`h-2 w-2 rounded-full ${presenceOption(payload.viewer?.presenceStatus ?? "online").dotClassName}`} />
+          <span className={`h-2 w-2 rounded-full ${presenceOption(viewerPresenceStatus).dotClassName}`} />
           <span className="min-w-0 flex-1">
-            <span className="block text-[11px] font-medium">{presenceOption(payload.viewer?.presenceStatus ?? "online").label}</span>
+            <span className="block text-[11px] font-medium">{presenceOption(viewerPresenceStatus).label}</span>
             <span className="block truncate text-[9px] text-muted">{payload.viewer?.presenceMessage || "Set your status in Identity"}</span>
           </span>
           <ChevronDown className="h-3.5 w-3.5 text-muted" />
@@ -970,7 +975,7 @@ export default function FriendsPanel({ onClose, onUnreadCountChange, initialFrie
                   <span className="block text-[11px] font-medium">{option.label}</span>
                   <span className="block text-[9px] text-muted">{option.helper}</span>
                 </span>
-                {payload.viewer?.presenceStatus === option.value && <Check className="h-3.5 w-3.5 text-primary" />}
+                {viewerPresenceStatus === option.value && <Check className="h-3.5 w-3.5 text-primary" />}
               </button>
             ))}
           </div>

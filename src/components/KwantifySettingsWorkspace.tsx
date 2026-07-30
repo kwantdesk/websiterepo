@@ -514,6 +514,8 @@ export default function SettingsPage() {
   }
 
   async function savePresence(nextStatus: PresenceStatus) {
+    const previousStatus = presenceStatus;
+    setPresenceStatus(nextStatus);
     setPresenceSaving(true);
     setPresenceNotice("");
     try {
@@ -533,6 +535,7 @@ export default function SettingsPage() {
       setPresenceNotice(`${presenceOption(nextStatus).label} status saved.`);
       window.setTimeout(() => setPresenceNotice(""), 2_600);
     } catch (reason) {
+      setPresenceStatus(previousStatus);
       setPresenceNotice(reason instanceof Error ? reason.message : "Presence could not be saved.");
     } finally {
       setPresenceSaving(false);
