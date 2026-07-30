@@ -2304,7 +2304,7 @@ export default function SocialsWorkspace({
 
       {notice ? <div className="flex shrink-0 items-center gap-2 border-b border-primary/15 bg-primary/[0.055] px-4 py-2 text-[8px] text-primary"><Sparkles className="h-3.5 w-3.5" /><span className="min-w-0 flex-1">{notice}</span><button type="button" onClick={() => setNotice("")}><X className="h-3.5 w-3.5" /></button></div> : null}
 
-      <main className="min-h-0 flex-1 overflow-y-auto">
+      <main className={`min-h-0 flex-1 ${tab === "desks" ? "overflow-hidden" : "overflow-y-auto"}`}>
         {tab === "today" ? (
           <div className="grid min-h-full gap-3 p-3 xl:grid-cols-[230px_minmax(0,1fr)_290px]">
             <div className="space-y-3">
@@ -2583,7 +2583,7 @@ export default function SocialsWorkspace({
         ) : null}
 
         {tab === "desks" ? (
-          <div className="p-3">
+          <div className="h-full min-h-0 p-3">
             <DeskWorkspace
               viewerId={resolvedAccountKey}
               viewerProfile={currentProfile}

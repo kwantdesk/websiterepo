@@ -670,7 +670,7 @@ export default function DeskWorkspace({
 
   if (loading && !network.ready) {
     return (
-      <div className="flex min-h-[620px] items-center justify-center rounded-3xl border border-border bg-panel">
+      <div className="flex h-full min-h-0 items-center justify-center rounded-3xl border border-border bg-panel">
         <div className="text-center"><span className="mx-auto block h-7 w-7 animate-spin rounded-full border-2 border-primary/20 border-t-primary" /><div className="mt-3 text-[9px] font-semibold">Opening your Desks</div><div className="mt-1 text-[7px] text-muted">Loading memberships, channels and permissions.</div></div>
       </div>
     );
@@ -678,7 +678,7 @@ export default function DeskWorkspace({
 
   if (!network.ready) {
     return (
-      <div className="flex min-h-[620px] items-center justify-center rounded-3xl border border-border bg-panel p-6">
+      <div className="flex h-full min-h-0 items-center justify-center rounded-3xl border border-border bg-panel p-6">
         <div className="max-w-lg text-center">
           <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl border border-primary/20 bg-primary/10 text-primary"><Network className="h-5 w-5" /></span>
           <h2 className="mt-4 text-[15px] font-semibold">Multi-Desk storage is ready to connect</h2>
@@ -690,8 +690,8 @@ export default function DeskWorkspace({
 
   return (
     <>
-      <div className="overflow-hidden rounded-3xl border border-border bg-panel shadow-[0_18px_70px_rgba(0,0,0,0.2)]">
-        <div className="grid min-h-[680px] xl:h-[calc(100dvh-150px)] xl:min-h-[680px] xl:grid-cols-[68px_224px_minmax(0,1fr)] 2xl:grid-cols-[68px_224px_minmax(0,1fr)_286px]">
+      <div className="h-full min-h-0 overflow-hidden rounded-3xl border border-border bg-panel shadow-[0_18px_70px_rgba(0,0,0,0.2)]">
+        <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] xl:grid-cols-[68px_224px_minmax(0,1fr)] xl:grid-rows-1 2xl:grid-cols-[68px_224px_minmax(0,1fr)_286px]">
           <aside className="flex items-center gap-2 overflow-x-auto border-b border-border bg-background/65 p-2 xl:flex-col xl:overflow-x-visible xl:border-b-0 xl:border-r">
             <button type="button" onClick={() => { setDiscovering(false); if (myWorkspaces[0]) setActiveDeskId(myWorkspaces[0].deskId); }} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-primary/25 bg-primary/10 text-primary shadow-[0_0_18px_color-mix(in_srgb,var(--primary)_12%,transparent)]" title="My Desks"><Network className="h-4 w-4" /></button>
             <span className="hidden h-px w-8 bg-border xl:block" />
@@ -847,9 +847,9 @@ export default function DeskWorkspace({
                 </div>
               </div>
             ) : activeChannel?.channelType === "voice" ? (
-              <div className="flex min-h-[520px] flex-1 items-center justify-center p-6 text-center"><div><span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-primary/20 bg-primary/10 text-primary"><Mic2 className="h-6 w-6" /></span><h2 className="mt-4 text-[14px] font-semibold">{activeChannel.name}</h2><p className="mx-auto mt-2 max-w-sm text-[8px] leading-5 text-muted">Voice channels are structured in the Desk now, but live audio is intentionally reserved for the next release. No fake connection state.</p></div></div>
+              <div className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto p-6 text-center"><div><span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-primary/20 bg-primary/10 text-primary"><Mic2 className="h-6 w-6" /></span><h2 className="mt-4 text-[14px] font-semibold">{activeChannel.name}</h2><p className="mx-auto mt-2 max-w-sm text-[8px] leading-5 text-muted">Voice channels are structured in the Desk now, but live audio is intentionally reserved for the next release. No fake connection state.</p></div></div>
             ) : (
-              <div className="flex min-h-[520px] flex-1 flex-col">
+              <div className="flex min-h-0 flex-1 flex-col">
                 <header className="flex min-h-16 flex-wrap items-center gap-3 border-b border-border bg-background/35 px-4 py-3">
                   <span className="flex h-9 w-9 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary">{activeChannel?.isPrivate ? <LockKeyhole className="h-4 w-4" /> : <Hash className="h-4 w-4" />}</span>
                   <div className="min-w-0"><h2 className="text-[11px] font-semibold">{activeChannel?.name ?? "Desk overview"}</h2><p className="mt-0.5 truncate text-[7px] text-muted">{activeChannel?.description || activeDesk.objective}</p></div>
