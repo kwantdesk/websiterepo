@@ -4213,8 +4213,10 @@ export default function KwantifyWorkspace({
   }, [rightPanel]);
 
   useEffect(() => {
+    if (!preferenceUserId) return;
     let active = true;
-    loadKwantBotConversation<unknown>()
+    setKwantBotStoreReady(false);
+    loadKwantBotConversation<unknown>(preferenceUserId)
       .then((saved) => {
         if (!active) return;
         const clean = normalizeKwantBotMessages(saved);
@@ -4229,12 +4231,12 @@ export default function KwantifyWorkspace({
     return () => {
       active = false;
     };
-  }, []);
+  }, [preferenceUserId]);
 
   useEffect(() => {
-    if (!kwantBotStoreReady) return;
+    if (!kwantBotStoreReady || !preferenceUserId) return;
     const messages = kwantBotMessages.slice(-100);
-    void saveKwantBotConversation(messages).catch(() => {
+    void saveKwantBotConversation(preferenceUserId, messages).catch(() => {
       // Keep the active chat usable even if browser storage is unavailable.
     });
     try {
@@ -4243,7 +4245,7 @@ export default function KwantifyWorkspace({
     } catch {
       // IndexedDB remains the full attachment store.
     }
-  }, [kwantBotMessages, kwantBotStoreReady]);
+  }, [kwantBotMessages, kwantBotStoreReady, preferenceUserId]);
 
   useEffect(() => {
     const receiveKwantBotMessage = (event: Event) => {
@@ -8267,7 +8269,7 @@ export default function KwantifyWorkspace({
             {bottomWorkspaceSection === "gameplan" ? <GameplanWorkspace initialInstrument={displayCmeSymbol(selectedInstrument)} /> : null}
             {bottomWorkspaceSection === "kwantbot" ? <KwantBotIntelligenceWorkspace interpreter={kwantBotInterpreter} /> : null}
             {bottomWorkspaceSection === "news" ? <NewsWorkspace /> : null}
-            {bottomWorkspaceSection === "zyon" ? <ZyonWorkspace interpreter={kwantBotInterpreter} viewerName={currentDisplayName || currentUsername} /> : null}
+            {bottomWorkspaceSection === "zyon" ? <ZyonWorkspace interpreter={kwantBotInterpreter} viewerName={currentDisplayName || currentUsername} accountKey={preferenceUserId} /> : null}
             {bottomWorkspaceSection === "journal" ? <JournalWorkspace accountKey={preferenceUserId || currentUsername || "local"} /> : null}
             {bottomWorkspaceSection === "socials" ? (
               <SocialsWorkspace
@@ -8760,7 +8762,7 @@ export default function KwantifyWorkspace({
             <KwantBotInterpreterPanel interpreter={kwantBotInterpreter} />
           )}
           {rightPanel === "zyon" && (
-            <ZyonWorkspace interpreter={kwantBotInterpreter} compact viewerName={currentDisplayName || currentUsername} />
+            <ZyonWorkspace interpreter={kwantBotInterpreter} compact viewerName={currentDisplayName || currentUsername} accountKey={preferenceUserId} />
           )}
           {rightPanel === "optionstape" && (
             <OptionsTapePanel interpreter={kwantBotInterpreter} />

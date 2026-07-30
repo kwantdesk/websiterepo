@@ -3,6 +3,8 @@ import type { SupabaseClient, User } from "@supabase/supabase-js";
 const USER_PREFERENCES_TABLE = "user_preferences";
 const USER_PREFERENCES_METADATA_KEY = "kwantdesk_preferences";
 const LEGACY_PREFERENCES_OWNER_KEY = "kwantdesk:legacy-preferences-owner:v1";
+const SOCIAL_OBJECTS_TABLE = "social_objects";
+const SOCIAL_PREFERENCES_ID = "account-preferences";
 
 const TRACKED_STORAGE_KEYS = new Set([
   "olisa-theme",
@@ -34,6 +36,8 @@ const TRACKED_STORAGE_KEYS = new Set([
   "kwantdesk-settings-toggles",
   "kwantdesk-settings-font-size",
   "kwantdesk:economic-calendar-timezone:v1",
+  "kwantdesk-kwantbot-messages",
+  "kwantdesk:zyon:model",
   "kwantify-chart-alerts",
   "kwantify-chart-tool-favorites",
   "kwantify-chart-toolbar-dock",
@@ -169,6 +173,21 @@ async function loadCloudPreferences(
     return normalizeSnapshot(data.preferences, data.updated_at);
   }
 
+  const { data: socialFallback, error: socialFallbackError } = await supabase
+    .from(SOCIAL_OBJECTS_TABLE)
+    .select("payload, updated_at")
+    .eq("user_id", user.id)
+    .eq("id", SOCIAL_PREFERENCES_ID)
+    .maybeSingle();
+  if (!socialFallbackError && socialFallback?.payload) {
+    const payload = socialFallback.payload as Record<string, unknown>;
+    const snapshot = normalizeSnapshot(
+      payload.preferences ?? payload,
+      socialFallback.updated_at,
+    );
+    if (snapshot) return snapshot;
+  }
+
   const metadataSnapshot = normalizeSnapshot(user.user_metadata?.[USER_PREFERENCES_METADATA_KEY]);
   return metadataSnapshot ? { ...metadataSnapshot, complete: false } : null;
 }
@@ -201,6 +220,24 @@ export async function saveUserPreferences(
     );
 
   if (!error) return;
+
+  const { error: socialFallbackError } = await supabase
+    .from(SOCIAL_OBJECTS_TABLE)
+    .upsert(
+      {
+        user_id: userId,
+        id: SOCIAL_PREFERENCES_ID,
+        author_label: "Kwant Desk account",
+        object_type: "progress",
+        scope: "private",
+        desk_id: null,
+        parent_id: null,
+        payload: { preferences: snapshot },
+        updated_at: snapshot.updatedAt,
+      },
+      { onConflict: "user_id,id" },
+    );
+  if (!socialFallbackError) return;
 
   await supabase.auth.updateUser({
     data: {

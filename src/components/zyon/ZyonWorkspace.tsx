@@ -478,10 +478,12 @@ export default function ZyonWorkspace({
   interpreter,
   compact = false,
   viewerName = "",
+  accountKey = "",
 }: {
   interpreter: UseKwantBotInterpreterResult;
   compact?: boolean;
   viewerName?: string;
+  accountKey?: string;
 }) {
   const [model, setModel] = useState<ZyonModelKey>(() => {
     if (typeof window === "undefined") return "opus-5";
@@ -596,8 +598,10 @@ export default function ZyonWorkspace({
   }, []);
 
   useEffect(() => {
+    if (!accountKey) return;
     let active = true;
-    loadZyonState()
+    setStoreReady(false);
+    loadZyonState(accountKey)
       .then((saved) => {
         if (!active) return;
         const savedChats = Array.isArray(saved?.chats) && saved.chats.length
@@ -644,11 +648,11 @@ export default function ZyonWorkspace({
     return () => {
       active = false;
     };
-  }, []);
+  }, [accountKey]);
 
   useEffect(() => {
-    if (!storeReady) return;
-    void saveZyonState({
+    if (!storeReady || !accountKey) return;
+    void saveZyonState(accountKey, {
       messages: messages.slice(-120),
       journal: journal.slice(0, 5_000),
       chats,
@@ -660,7 +664,7 @@ export default function ZyonWorkspace({
         ]),
       ),
     });
-  }, [activeChatId, chats, journal, messages, messagesByChat, storeReady]);
+  }, [accountKey, activeChatId, chats, journal, messages, messagesByChat, storeReady]);
 
   useEffect(() => {
     let active = true;
