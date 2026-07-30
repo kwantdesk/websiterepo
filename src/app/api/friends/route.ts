@@ -95,6 +95,13 @@ function cleanIdentifier(value: unknown, maximum = 180) {
     : "";
 }
 
+function clientMessageId(value: unknown) {
+  const candidate = cleanIdentifier(value, 40);
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(candidate)
+    ? candidate
+    : randomUUID();
+}
+
 function cleanAvatarUrl(value: unknown) {
   if (typeof value !== "string") return "";
   if (/^data:image\/(png|jpe?g|webp|gif);base64,/i.test(value)) return value.slice(0, 1_600_000);
@@ -881,6 +888,7 @@ export async function POST(request: NextRequest) {
   } else if (action === "group-message") {
     const bodyText = cleanText(body.body, 2_000);
     const attachments = messageAttachments(body.attachments);
+    const messageId = clientMessageId(body.clientMessageId);
     if (!groupId || (!bodyText && !attachments.length)) {
       return NextResponse.json({ error: "Write a message or attach an image first." }, { status: 400 });
     }
@@ -893,14 +901,14 @@ export async function POST(request: NextRequest) {
     if (membershipError || !membership) {
       return NextResponse.json({ error: "You are no longer a member of this group." }, { status: 403 });
     }
-    const { error } = await supabase.from("friend_chat_messages").insert({
-      id: randomUUID(),
+    const { error } = await supabase.from("friend_chat_messages").upsert({
+      id: messageId,
       chat_id: groupId,
       sender_user_id: actor.userId,
       body: bodyText,
       attachments,
       created_at: now,
-    });
+    }, { onConflict: "id", ignoreDuplicates: true });
     if (error) return NextResponse.json({ error: "The group message could not be sent." }, { status: 502 });
   } else if (action === "group-mark-read") {
     if (!groupId) return NextResponse.json({ error: "Choose a group chat." }, { status: 400 });
@@ -913,6 +921,7 @@ export async function POST(request: NextRequest) {
   } else if (action === "message") {
     const bodyText = cleanText(body.body, 2_000);
     const attachments = messageAttachments(body.attachments);
+    const messageId = clientMessageId(body.clientMessageId);
     if (!targetUserId || (!bodyText && !attachments.length)) {
       return NextResponse.json({ error: "Write a message or attach an image first." }, { status: 400 });
     }
@@ -932,9 +941,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Messages are available after both traders connect." }, { status: 403 });
     }
     const conversationId = [actor.userId, targetUserId].sort().join(":");
-    const { error } = await supabase.from("social_objects").insert({
+    const { error } = await supabase.from("social_objects").upsert({
       user_id: actor.userId,
-      id: `friend-message:${randomUUID()}`,
+      id: `friend-message:${messageId}`,
       author_label: authorLabel(actor),
       object_type: "comment",
       scope: "friends",
@@ -947,7 +956,7 @@ export async function POST(request: NextRequest) {
         attachments,
         sentAt: now,
       },
-    });
+    }, { onConflict: "user_id,id", ignoreDuplicates: true });
     if (error) return NextResponse.json({ error: "The message could not be sent." }, { status: 502 });
   } else if (action === "mark-read") {
     if (!targetUserId) return NextResponse.json({ error: "Choose a conversation." }, { status: 400 });

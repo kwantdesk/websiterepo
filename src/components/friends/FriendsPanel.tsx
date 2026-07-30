@@ -74,6 +74,19 @@ type FriendsPanelProps = {
   onViewProfile?: (handle: string) => void;
 };
 
+type OptimisticFriendMessage = FriendMessage & {
+  clientMessageId: string;
+  conversationId: string;
+  conversationType: "friend" | "group";
+  deliveryStatus: "sending" | "sent" | "failed";
+};
+
+function isOptimisticFriendMessage(
+  message: FriendMessage | OptimisticFriendMessage,
+): message is OptimisticFriendMessage {
+  return "deliveryStatus" in message && "clientMessageId" in message;
+}
+
 function initials(name: string) {
   return name
     .split(/\s+/)
@@ -206,6 +219,7 @@ export default function FriendsPanel({ onClose, onUnreadCountChange, initialFrie
   const [chatLoading, setChatLoading] = useState(false);
   const [draft, setDraft] = useState("");
   const [attachments, setAttachments] = useState<FriendMessageAttachment[]>([]);
+  const [optimisticMessages, setOptimisticMessages] = useState<OptimisticFriendMessage[]>([]);
   const [attachmentError, setAttachmentError] = useState("");
   const [showEmoji, setShowEmoji] = useState(false);
   const [imagePreview, setImagePreview] = useState<FriendMessageAttachment | null>(null);
@@ -218,6 +232,7 @@ export default function FriendsPanel({ onClose, onUnreadCountChange, initialFrie
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const deliveryTimersRef = useRef(new Map<string, ReturnType<typeof setTimeout>>());
 
   const load = useCallback(async (friendId = "", quiet = false, groupId = "") => {
     if (!quiet) setLoading(true);
@@ -369,7 +384,12 @@ export default function FriendsPanel({ onClose, onUnreadCountChange, initialFrie
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ block: "end", behavior: "smooth" });
-  }, [payload.groupMessages.length, payload.messages.length, activeFriendId, activeGroupId]);
+  }, [payload.groupMessages.length, payload.messages.length, optimisticMessages, activeFriendId, activeGroupId]);
+
+  useEffect(() => () => {
+    for (const timer of deliveryTimersRef.current.values()) clearTimeout(timer);
+    deliveryTimersRef.current.clear();
+  }, []);
 
   const searchResults = useMemo(() => {
     const clean = query.trim().toLowerCase().replace(/^@/, "");
@@ -440,32 +460,90 @@ export default function FriendsPanel({ onClose, onUnreadCountChange, initialFrie
     }
   };
 
-  const sendMessage = async () => {
+  const deliverOptimisticMessage = useCallback(async (message: OptimisticFriendMessage) => {
+    const existingTimer = deliveryTimersRef.current.get(message.id);
+    if (existingTimer) {
+      clearTimeout(existingTimer);
+      deliveryTimersRef.current.delete(message.id);
+    }
+    setOptimisticMessages((current) => current.map((candidate) =>
+      candidate.id === message.id
+        ? { ...candidate, deliveryStatus: "sending" }
+        : candidate));
+
+    try {
+      const response = await fetch("/api/friends", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(message.conversationType === "group"
+          ? {
+              action: "group-message",
+              groupId: message.conversationId,
+              body: message.body,
+              attachments: message.attachments ?? [],
+              clientMessageId: message.clientMessageId,
+            }
+          : {
+              action: "message",
+              targetUserId: message.conversationId,
+              body: message.body,
+              attachments: message.attachments ?? [],
+              clientMessageId: message.clientMessageId,
+            }),
+      });
+      const next = await response.json() as FriendsPayload & { error?: string };
+      if (!response.ok) throw new Error(next.error || "The message could not be sent.");
+      if ("friends" in next) setPayload(next);
+      setError("");
+      setOptimisticMessages((current) => current.map((candidate) =>
+        candidate.id === message.id
+          ? { ...candidate, deliveryStatus: "sent" }
+          : candidate));
+      const timer = setTimeout(() => {
+        setOptimisticMessages((current) => current.filter((candidate) => candidate.id !== message.id));
+        deliveryTimersRef.current.delete(message.id);
+      }, 1_400);
+      deliveryTimersRef.current.set(message.id, timer);
+    } catch (reason) {
+      setOptimisticMessages((current) => current.map((candidate) =>
+        candidate.id === message.id
+          ? { ...candidate, deliveryStatus: "failed" }
+          : candidate));
+      setError(reason instanceof Error ? reason.message : "The message could not be sent.");
+    }
+  }, []);
+
+  const sendMessage = () => {
     const body = draft.trim();
     if ((!body && !attachments.length) || (!activeFriend && !activeGroup)) return;
-    setDraft("");
+    const senderUserId = payload.viewer?.userId;
+    if (!senderUserId) return;
+    const clientMessageId = crypto.randomUUID();
+    const conversationType = activeGroup ? "group" : "friend";
+    const conversationId = activeGroup?.id ?? activeFriend?.userId ?? "";
     const outgoingAttachments = attachments;
+    const optimisticMessage: OptimisticFriendMessage = {
+      id: conversationType === "group"
+        ? clientMessageId
+        : `friend-message:${clientMessageId}`,
+      clientMessageId,
+      conversationId,
+      conversationType,
+      deliveryStatus: "sending",
+      senderUserId,
+      recipientUserId: activeFriend?.userId ?? "",
+      groupId: activeGroup?.id,
+      body,
+      sentAt: new Date().toISOString(),
+      attachments: outgoingAttachments.length ? outgoingAttachments : undefined,
+    };
+
+    setDraft("");
     setAttachments([]);
     setAttachmentError("");
     setShowEmoji(false);
-    if (activeGroup) {
-      const sent = await runAction("group-message", {
-        groupId: activeGroup.id,
-        body,
-        attachments: outgoingAttachments,
-      });
-      if (sent) await load("", true, activeGroup.id);
-      else setAttachments(outgoingAttachments);
-      return;
-    }
-    if (!activeFriend) return;
-    const sent = await runAction("message", {
-      targetUserId: activeFriend.userId,
-      body,
-      attachments: outgoingAttachments,
-    });
-    if (sent) await load(activeFriend.userId, true);
-    else setAttachments(outgoingAttachments);
+    setOptimisticMessages((current) => [...current, optimisticMessage]);
+    void deliverOptimisticMessage(optimisticMessage);
   };
 
   const createGroup = async () => {
@@ -524,7 +602,24 @@ export default function FriendsPanel({ onClose, onUnreadCountChange, initialFrie
         />
       );
     }
-    if (messages.length === 0) {
+    const conversationType = group ? "group" : "friend";
+    const conversationId = group?.id ?? activeFriend?.userId ?? "";
+    const byId = new Map<string, FriendMessage | OptimisticFriendMessage>(
+      messages.map((message) => [message.id, message]),
+    );
+    for (const message of optimisticMessages) {
+      if (
+        message.conversationType === conversationType
+        && message.conversationId === conversationId
+      ) {
+        byId.set(message.id, message);
+      }
+    }
+    const renderedMessages = [...byId.values()].sort(
+      (left, right) => Date.parse(left.sentAt) - Date.parse(right.sentAt),
+    );
+
+    if (renderedMessages.length === 0) {
       return (
         <div className="flex h-full min-h-48 flex-col items-center justify-center text-center">
           {group ? <GroupAvatar group={group} size="lg" /> : activeFriend ? <Avatar friend={activeFriend} size="lg" /> : null}
@@ -541,18 +636,39 @@ export default function FriendsPanel({ onClose, onUnreadCountChange, initialFrie
     }
     return (
       <div className="space-y-2">
-        {messages.map((message) => {
+        {renderedMessages.map((message) => {
           const mine = message.senderUserId === payload.viewer?.userId;
           const sender = group?.members.find((member) => member.userId === message.senderUserId);
+          const optimisticMessage = isOptimisticFriendMessage(message) ? message : null;
+          const deliveryStatus = optimisticMessage?.deliveryStatus ?? null;
           return (
             <div key={message.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
-              <div className={`max-w-[84%] rounded-2xl px-3 py-2 ${mine ? "rounded-br-md bg-primary text-background" : "rounded-bl-md border border-border bg-surface text-foreground"}`}>
+              <div className={`max-w-[84%] rounded-2xl px-3 py-2 ${mine ? `rounded-br-md bg-primary text-background ${deliveryStatus === "failed" ? "ring-1 ring-danger" : ""}` : "rounded-bl-md border border-border bg-surface text-foreground"}`}>
                 {group && !mine ? (
                   <div className="mb-1 text-[8px] font-semibold text-primary">{sender?.displayName ?? "Group member"}</div>
                 ) : null}
                 <MessageImages attachments={message.attachments} onPreview={setImagePreview} />
                 {message.body ? <div className="whitespace-pre-wrap break-words text-[12px] leading-5">{message.body}</div> : null}
-                <div className={`mt-1 text-right text-[8px] ${mine ? "text-background/60" : "text-muted"}`}>{messageTime(message.sentAt)}</div>
+                <div className={`mt-1 flex items-center justify-end gap-1 text-right text-[8px] ${mine ? "text-background/65" : "text-muted"}`}>
+                  <span>{messageTime(message.sentAt)}</span>
+                  {deliveryStatus === "sending" ? (
+                    <span className="inline-flex items-center gap-0.5"><Clock3 className="h-2.5 w-2.5" /> Sending…</span>
+                  ) : null}
+                  {deliveryStatus === "sent" ? (
+                    <span className="inline-flex items-center gap-0.5"><Check className="h-2.5 w-2.5" /> Sent</span>
+                  ) : null}
+                  {deliveryStatus === "failed" ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (optimisticMessage) void deliverOptimisticMessage(optimisticMessage);
+                      }}
+                      className="font-semibold text-background underline underline-offset-2"
+                    >
+                      Not sent · Retry
+                    </button>
+                  ) : null}
+                </div>
               </div>
             </div>
           );
@@ -636,7 +752,7 @@ export default function FriendsPanel({ onClose, onUnreadCountChange, initialFrie
           onKeyDown={(event) => {
             if (event.key === "Enter" && !event.shiftKey) {
               event.preventDefault();
-              void sendMessage();
+              sendMessage();
             }
           }}
           rows={1}
@@ -645,11 +761,11 @@ export default function FriendsPanel({ onClose, onUnreadCountChange, initialFrie
         />
         <button
           type="button"
-          onClick={() => void sendMessage()}
-          disabled={chatLoading || (!draft.trim() && !attachments.length) || busyId === conversationId}
+          onClick={sendMessage}
+          disabled={chatLoading || (!draft.trim() && !attachments.length)}
           className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-primary text-background disabled:cursor-not-allowed disabled:opacity-30"
         >
-          {busyId === conversationId ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+          <Send className="h-3.5 w-3.5" />
         </button>
       </div>
     </div>
