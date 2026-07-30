@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { getRouteActor } from "@/lib/serverAuth";
-import type { JournalImportBatch, JournalTrade } from "@/lib/journal";
+import { isZyonJournalAccountName, type JournalImportBatch, type JournalTrade } from "@/lib/journal";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -203,7 +203,7 @@ export async function POST(request: NextRequest) {
     const sourceTrade = body.trade as Partial<JournalTrade> | null;
     const account = cleanText(sourceTrade?.account, 80);
     const trade = sanitizeTrade(sourceTrade, account);
-    if (!account || !trade || trade.sourceImportId.startsWith("zyon:")) {
+    if (!account || isZyonJournalAccountName(account) || !trade || trade.sourceImportId.startsWith("zyon:")) {
       return NextResponse.json({ error: "Choose an imported Journal trade." }, { status: 400 });
     }
     const { error } = await supabase
@@ -224,7 +224,7 @@ export async function POST(request: NextRequest) {
 
   if (action !== "sync") return NextResponse.json({ error: "Unsupported Journal action." }, { status: 400 });
   const account = cleanText(body.account, 80);
-  if (!account || account === "ZYON Journal") return NextResponse.json({ error: "Choose a custom account name." }, { status: 400 });
+  if (!account || isZyonJournalAccountName(account)) return NextResponse.json({ error: "Choose a custom account name." }, { status: 400 });
   const id = accountId(account);
   const trades = (Array.isArray(body.trades) ? body.trades : [])
     .map((trade) => sanitizeTrade(trade, account))

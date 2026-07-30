@@ -43,8 +43,10 @@ import KwantLoader from "@/components/KwantLoader";
 import {
   calculateJournalStats,
   EMPTY_JOURNAL_STATE,
+  isZyonJournalAccountName,
   journalTradesToCsv,
   parseJournalTextFile,
+  ZYON_JOURNAL_ACCOUNT,
   zyonOutcomesToJournalTrades,
   type JournalEvidence,
   type JournalImportBatch,
@@ -325,6 +327,8 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const resolvedAccountKey = accountKey || "local";
+  const zyonJournalSelected = accountFilter === ZYON_JOURNAL_ACCOUNT;
+  const importTargetsZyon = isZyonJournalAccountName(importAccount);
 
   useEffect(() => {
     let active = true;
@@ -357,7 +361,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
         const accountNames = [...new Set([
           ...stored.trades.map((trade) => trade.account),
           ...stored.imports.map((batch) => batch.account),
-        ].filter((name) => name && name !== "ZYON Journal"))];
+        ].filter((name) => name && !isZyonJournalAccountName(name)))];
         accountNames.forEach((account) => {
           void fetch("/api/journal", {
             method: "POST",
@@ -417,10 +421,10 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
     ...state.trades.map((trade) => trade.account),
     ...state.evidence.map((item) => item.account),
     ...state.imports.map((item) => item.account),
-  ].filter((account) => account && account !== "ZYON Journal"))].sort(), [state]);
-  const accounts = useMemo(() => ["ZYON Journal", ...customAccounts], [customAccounts]);
+  ].filter((account) => account && !isZyonJournalAccountName(account)))].sort(), [state]);
+  const accounts = useMemo(() => [ZYON_JOURNAL_ACCOUNT, ...customAccounts], [customAccounts]);
   const allTrades = useMemo(
-    () => [...zyonTrades, ...state.trades.filter((trade) => trade.account !== "ZYON Journal")],
+    () => [...zyonTrades, ...state.trades.filter((trade) => !isZyonJournalAccountName(trade.account))],
     [state.trades, zyonTrades],
   );
   const accountViews = useMemo(() => [
@@ -436,11 +440,11 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
       return {
         id: account,
         label: account,
-        detail: account === "ZYON Journal"
+        detail: account === ZYON_JOURNAL_ACCOUNT
           ? "Reviewed ZYON Gameplans"
           : `${accountTrades.length} imported trade${accountTrades.length === 1 ? "" : "s"}`,
         stats: calculateJournalStats(accountTrades),
-        icon: account === "ZYON Journal" ? Bot : FileSpreadsheet,
+        icon: account === ZYON_JOURNAL_ACCOUNT ? Bot : FileSpreadsheet,
       };
     }),
   ], [accounts, allTrades]);
@@ -474,7 +478,10 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
     });
   }, [accountFilter, allTrades, outcomeFilter, query, sortDirection, sortKey]);
 
-  const filteredEvidence = useMemo(() => state.evidence.filter((item) => accountFilter === "all" || item.account === accountFilter), [accountFilter, state.evidence]);
+  const filteredEvidence = useMemo(
+    () => state.evidence.filter((item) => !isZyonJournalAccountName(item.account) && (accountFilter === "all" || item.account === accountFilter)),
+    [accountFilter, state.evidence],
+  );
   const stats = useMemo(() => calculateJournalStats(filteredTrades, filteredEvidence), [filteredEvidence, filteredTrades]);
   const selectedTrade = allTrades.find((trade) => trade.id === selectedTradeId) ?? null;
   const selectedTradeIsZyon = Boolean(selectedTrade?.sourceImportId.startsWith("zyon:"));
@@ -505,7 +512,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
     trades: JournalTrade[],
     imports: JournalImportBatch[],
   ) => {
-    if (!account || account === "ZYON Journal") return false;
+    if (!account || isZyonJournalAccountName(account)) return false;
     try {
       const chunks = trades.length
         ? Array.from({ length: Math.ceil(trades.length / 1_000) }, (_, index) => trades.slice(index * 1_000, (index + 1) * 1_000))
@@ -537,9 +544,13 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
 
   const runImport = async () => {
     if (!pendingFiles.length || importing) return;
+    const account = importAccount.trim() || "Imported account";
+    if (isZyonJournalAccountName(account)) {
+      setImportMessage("ZYON Journal is automatic-only. Choose a different account name for imports.");
+      return;
+    }
     setImporting(true);
     setImportMessage("");
-    const account = importAccount.trim() || "Imported account";
     const existingFingerprints = new Set(state.trades.map((trade) => trade.fingerprint));
     const newTrades: JournalTrade[] = [];
     const newEvidence: JournalEvidence[] = [];
@@ -706,7 +717,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
 
   const updateTrade = (tradeId: string, patch: Partial<JournalTrade>) => {
     const currentTrade = allTrades.find((trade) => trade.id === tradeId);
-    if (!currentTrade || currentTrade.sourceImportId.startsWith("zyon:")) return;
+    if (!currentTrade || isZyonJournalAccountName(currentTrade.account) || currentTrade.sourceImportId.startsWith("zyon:")) return;
     const updatedTrade = { ...currentTrade, ...patch };
     setState((current) => ({
       ...current,
@@ -730,6 +741,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
   };
 
   const deleteImport = (batch: JournalImportBatch) => {
+    if (isZyonJournalAccountName(batch.account)) return;
     if (!window.confirm(`Remove "${batch.fileName}" and every Journal record created by this import?`)) return;
     setState((current) => ({
       ...current,
@@ -824,7 +836,10 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
                 <button
                   key={id}
                   type="button"
-                  onClick={() => setAccountFilter(id)}
+                  onClick={() => {
+                    setAccountFilter(id);
+                    if (id === ZYON_JOURNAL_ACCOUNT && tab === "imports") setTab("pulse");
+                  }}
                   className={`group min-w-[190px] shrink-0 rounded-2xl border px-3 py-2.5 text-left transition-all ${active ? "border-primary/45 bg-primary/[0.09] shadow-[0_0_18px_color-mix(in_srgb,var(--primary)_10%,transparent)]" : "border-border bg-background/30 hover:border-primary/25 hover:bg-surface/55"}`}
                 >
                   <div className="flex items-start gap-2.5">
@@ -846,7 +861,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
           </div>
         </div>
         <nav className="flex items-center gap-1 overflow-x-auto px-3" aria-label="Journal views">
-          {JOURNAL_TABS.map(({ id, label, icon: Icon }) => (
+          {JOURNAL_TABS.filter(({ id }) => !zyonJournalSelected || id !== "imports").map(({ id, label, icon: Icon }) => (
             <button key={id} type="button" onClick={() => setTab(id)} className={`relative flex h-10 shrink-0 items-center gap-1.5 px-3 text-[10px] font-semibold transition-colors ${tab === id ? "text-primary" : "text-muted hover:text-foreground"}`}>
               <Icon className="h-3.5 w-3.5" />
               {label}
@@ -1067,7 +1082,9 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
             <Card className="flex flex-wrap items-center gap-3 p-4">
               <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary"><ImageIcon className="h-4 w-4" /></span>
               <div><h2 className="text-[11px] font-semibold text-foreground">Evidence library</h2><p className="mt-0.5 text-[8px] text-muted">{filteredEvidence.length} screenshots and notes · attach evidence inside any trade review</p></div>
-              <button type="button" onClick={() => setShowImport(true)} className="ml-auto flex h-8 items-center gap-1.5 rounded-xl border border-border bg-surface px-3 text-[9px] font-semibold text-muted hover:text-foreground"><Upload className="h-3.5 w-3.5" />Add evidence</button>
+              {zyonJournalSelected
+                ? <span className="ml-auto rounded-xl border border-primary/20 bg-primary/[0.07] px-3 py-2 text-[8px] font-semibold text-primary">Automatic from ZYON</span>
+                : <button type="button" onClick={() => setShowImport(true)} className="ml-auto flex h-8 items-center gap-1.5 rounded-xl border border-border bg-surface px-3 text-[9px] font-semibold text-muted hover:text-foreground"><Upload className="h-3.5 w-3.5" />Add evidence</button>}
             </Card>
             {filteredEvidence.length ? (
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5">
@@ -1088,7 +1105,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
                 ))}
               </div>
             ) : (
-              <Card className="flex flex-col items-center justify-center border-dashed px-6 py-20 text-center"><ImageIcon className="h-8 w-8 text-muted" /><div className="mt-4 text-[11px] font-semibold text-foreground">No evidence imported</div><div className="mt-1 max-w-md text-[9px] leading-4 text-muted">Import chart screenshots, research images, Markdown, or text notes. Evidence can then be attached to a trade review.</div></Card>
+              <Card className="flex flex-col items-center justify-center border-dashed px-6 py-20 text-center"><ImageIcon className="h-8 w-8 text-muted" /><div className="mt-4 text-[11px] font-semibold text-foreground">{zyonJournalSelected ? "No ZYON evidence yet" : "No evidence imported"}</div><div className="mt-1 max-w-md text-[9px] leading-4 text-muted">{zyonJournalSelected ? "Evidence is added automatically when a ZYON Gameplan completes its outcome review." : "Import chart screenshots, research images, Markdown, or text notes. Evidence can then be attached to a trade review."}</div></Card>
             )}
           </div>
         ) : null}
@@ -1137,7 +1154,8 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
             <div className="space-y-4 p-5">
               <div>
                 <label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.12em] text-muted">Journal account name</label>
-                <input value={importAccount} onChange={(event) => setImportAccount(event.target.value)} className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[10px] text-foreground outline-none focus:border-primary/45" placeholder="e.g. Apex NQ Evaluation" />
+                <input value={importAccount} onChange={(event) => { setImportAccount(event.target.value); setImportMessage(""); }} aria-invalid={importTargetsZyon} className={`h-10 w-full rounded-xl border bg-background px-3 text-[10px] text-foreground outline-none ${importTargetsZyon ? "border-danger/70 focus:border-danger" : "border-border focus:border-primary/45"}`} placeholder="e.g. Apex NQ Evaluation" />
+                {importTargetsZyon ? <p className="mt-1.5 text-[8px] leading-4 text-danger">ZYON Journal is automatic-only and cannot receive imported trades, files, or evidence.</p> : null}
               </div>
               <button
                 type="button"
@@ -1164,7 +1182,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
             </div>
             <div className="flex items-center justify-end gap-2 border-t border-border bg-background/20 px-5 py-4">
               <button type="button" onClick={() => setShowImport(false)} className="h-9 rounded-xl border border-border px-4 text-[9px] font-semibold text-muted hover:bg-surface hover:text-foreground">Close</button>
-              <button type="button" onClick={runImport} disabled={!pendingFiles.length || importing} className="flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-[9px] font-semibold text-background disabled:opacity-40">{importing ? <span className="h-3 w-3 animate-spin rounded-full border border-background/30 border-t-background" /> : <Upload className="h-3.5 w-3.5" />}{importing ? "Creating account" : `Create & import ${pendingFiles.length || ""}`}</button>
+              <button type="button" onClick={runImport} disabled={!pendingFiles.length || importing || importTargetsZyon} className="flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-[9px] font-semibold text-background disabled:opacity-40">{importing ? <span className="h-3 w-3 animate-spin rounded-full border border-background/30 border-t-background" /> : <Upload className="h-3.5 w-3.5" />}{importing ? "Creating account" : `Create & import ${pendingFiles.length || ""}`}</button>
             </div>
           </div>
         </div>

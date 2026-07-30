@@ -1,5 +1,12 @@
 import { zyonTradingAccountLabel } from "@/lib/zyon";
 
+export const ZYON_JOURNAL_ACCOUNT = "ZYON Journal";
+
+export function isZyonJournalAccountName(value: unknown) {
+  return typeof value === "string"
+    && value.normalize("NFKC").replace(/\s+/g, " ").trim().toLowerCase() === ZYON_JOURNAL_ACCOUNT.toLowerCase();
+}
+
 export type JournalSide = "LONG" | "SHORT" | "UNKNOWN";
 
 export type JournalTrade = {
