@@ -121,6 +121,47 @@ body {
   will-change: border-color, box-shadow;
 }
 
+@keyframes gex-current-price-glow {
+  0%, 100% {
+    outline-color: rgba(255, 255, 255, .38);
+    box-shadow:
+      inset 0 0 7px rgba(255, 255, 255, .025),
+      0 0 3px rgba(255, 255, 255, .04);
+  }
+  50% {
+    outline-color: rgba(255, 255, 255, .98);
+    box-shadow:
+      inset 0 0 18px rgba(255, 255, 255, .12),
+      0 0 14px rgba(255, 255, 255, .18);
+  }
+}
+
+@keyframes gex-current-price-dash-glow {
+  0%, 100% {
+    opacity: .42;
+    box-shadow: 0 0 3px rgba(255, 255, 255, .12);
+  }
+  50% {
+    opacity: 1;
+    box-shadow:
+      0 0 8px rgba(255, 255, 255, .9),
+      0 0 16px rgba(255, 255, 255, .46);
+  }
+}
+
+.gex-current-price-marker {
+  outline: 1px solid rgba(255, 255, 255, .58);
+  outline-offset: -1px;
+  animation: gex-current-price-glow 3.8s ease-in-out infinite;
+  will-change: outline-color, box-shadow;
+}
+
+.gex-current-price-dash {
+  background: #fff;
+  animation: gex-current-price-dash-glow 3.8s ease-in-out infinite;
+  will-change: opacity, box-shadow;
+}
+
 .kwantbot-avatar-float {
   animation: kwantbot-float 4.6s ease-in-out infinite;
   transform-origin: 50% 82%;
@@ -302,13 +343,25 @@ body {
   .kwantbot-message-out,
   .zyon-first-message-enter,
   .zyon-chat-enter,
-  .gameplan-current-level {
+  .gameplan-current-level,
+  .gex-current-price-marker,
+  .gex-current-price-dash {
     animation: none;
   }
 
   .gameplan-current-level {
     border-color: color-mix(in srgb, var(--primary) 34%, var(--border));
     box-shadow: 0 0 18px color-mix(in srgb, var(--primary) 9%, transparent);
+  }
+
+  .gex-current-price-marker {
+    outline-color: rgba(255, 255, 255, .82);
+    box-shadow: inset 0 0 12px rgba(255, 255, 255, .08);
+  }
+
+  .gex-current-price-dash {
+    opacity: .9;
+    box-shadow: 0 0 8px rgba(255, 255, 255, .45);
   }
 }
 
