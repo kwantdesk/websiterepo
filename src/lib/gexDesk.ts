@@ -43,6 +43,19 @@ export type GexDeskPressure = {
   series: GexDeskPressurePoint[];
 };
 
+export type GexDeskOptionPrint = {
+  id: string;
+  source: GexDeskSourceSymbol;
+  timestamp: number;
+  contractType: "CALL" | "PUT";
+  side: "BOUGHT" | "SOLD" | "MID";
+  strike: number;
+  mappedPrice: number;
+  premium: number;
+  size: number;
+  confidence: number;
+};
+
 export type GexDeskRailPoint = {
   price: number;
   call: number;
@@ -141,6 +154,7 @@ export type GexDeskPayload = {
   zones: GexDeskZone[];
   expiries: GexDeskExpiryRow[];
   pressure: GexDeskPressure;
+  optionsTape: GexDeskOptionPrint[];
   errors: string[];
   disclosure: string;
 };
@@ -151,6 +165,7 @@ type BuildGexDeskPayloadArgs = {
   nqPrice: number | null;
   sources: GexDeskSourceSnapshot[];
   pressure: GexDeskPressure;
+  optionsTape?: GexDeskOptionPrint[];
   refreshAfterMs?: number;
 };
 
@@ -224,6 +239,7 @@ export function buildGexDeskPayload({
   nqPrice,
   sources,
   pressure,
+  optionsTape = [],
   refreshAfterMs = marketOpen ? 15_000 : 60_000,
 }: BuildGexDeskPayloadArgs): GexDeskPayload {
   const usableSources = sources.filter((source) => source.exposure && source.spot && source.spot > 0);
@@ -386,6 +402,7 @@ export function buildGexDeskPayload({
     zones,
     expiries: expiries.sort((left, right) => left.expiration.localeCompare(right.expiration)),
     pressure,
+    optionsTape: [...optionsTape].sort((left, right) => left.timestamp - right.timestamp),
     errors,
     disclosure: "Estimated options positioning and pressure. Not resting liquidity, exact dealer inventory, or a guaranteed trading signal.",
   };
@@ -395,6 +412,28 @@ export function createGexDeskFixture(): GexDeskPayload {
   const nqPrice = 28_042.25;
   const sessionDate = new Date().toISOString().slice(0, 10);
   const expiration = sessionDate;
+  const optionLevels = [27_760, 27_860, 27_940, 28_000, 28_060, 28_140, 28_220, 28_340];
+  const optionsTape: GexDeskOptionPrint[] = Array.from({ length: 190 }, (_, index) => {
+    const source: GexDeskSourceSymbol = index % 3 === 0 ? "NDX" : "QQQ";
+    const contractType: GexDeskOptionPrint["contractType"] = index % 5 < 3 ? "CALL" : "PUT";
+    const mappedPrice = optionLevels[(index * 5 + Math.floor(index / 9)) % optionLevels.length];
+    const sourceSpot = source === "NDX" ? 20_450 : 505;
+    const strike = sourceSpot * mappedPrice / nqPrice;
+    const size = 8 + (index * 17) % 140;
+    const premium = (18_000 + (index * 41_731) % 580_000) * (mappedPrice === 28_000 || mappedPrice === 28_140 ? 2.4 : 1);
+    return {
+      id: `fixture-${source}-${index}`,
+      source,
+      timestamp: Date.now() - (189 - index) * 20_000,
+      contractType,
+      side: index % 4 === 0 ? "SOLD" : index % 7 === 0 ? "MID" : "BOUGHT",
+      strike,
+      mappedPrice,
+      premium,
+      size,
+      confidence: index % 7 === 0 ? 0.55 : 1,
+    };
+  });
   const sourceFixture = (
     symbol: GexDeskSourceSymbol,
     spot: number,
@@ -492,6 +531,7 @@ export function createGexDeskFixture(): GexDeskPayload {
         tradeCount: 11 + index % 8,
       })),
     },
+    optionsTape,
     refreshAfterMs: 60_000,
   });
 }

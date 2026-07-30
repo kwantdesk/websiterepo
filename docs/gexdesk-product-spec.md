@@ -221,7 +221,7 @@ Gexdesk is a first-class top-navigation workspace.
    - mapped exposure bars are aligned to NQ price;
    - only the strongest three to five zones are emphasized;
    - stabilising and amplifying contributions use visually distinct theme-aware treatments;
-   - the chart must not imitate a liquidity heatmap or order book.
+   - the map itself must remain a behavioural positioning rail rather than imitating resting futures liquidity.
 
 3. Zone focus
    - clicking a zone explains why it matters;
@@ -241,6 +241,25 @@ Gexdesk is a first-class top-navigation workspace.
    - confirming, leading, diverging, or neutral;
    - current signed delta and short-horizon velocity;
    - live feed status.
+
+### Options activity heatmap
+
+The Heatmap tab sits directly beside Map and is a distinct tape surface rather than a restyling of the positioning rail.
+
+- consolidated NDX and QQQ call/put prints are mapped onto NQ-equivalent price levels;
+- the live MNQ price path is preferred, with NQ as a feed fallback;
+- the plot uses a continuous white price line and never draws trade bubbles;
+- horizontal heat cells represent actual options activity at a mapped price and minute;
+- brightness may be scaled by premium or contract count;
+- calls and puts use the active theme primary and accent colours;
+- repeated or larger prints make the relevant level progressively brighter;
+- the right-hand ladder replaces a futures DOM with call-versus-put activity at each level, including premium or contracts and print counts;
+- the current price and the hottest mapped level are visually distinguishable;
+- no synthetic heat is drawn when the options tape is unavailable.
+
+Required disclosure:
+
+> Brightness measures consolidated call/put activity mapped to NQ-equivalent levels. It is options activity, not resting futures liquidity.
 
 ### Controls
 
@@ -274,12 +293,12 @@ It must preserve the same visual hierarchy and not overwhelm the default view.
 - Use dense, precise typography consistent with the charting workspace.
 - Loaders use the shared `KwantLoader`.
 - The workspace fits the viewport and uses controlled internal scrolling.
-- Heatmap styling from Kwantify may inform density and depth, but Gexdesk must remain a behavioural gamma map, not a copied futures-liquidity heatmap.
+- Kwantify's heatmap may inform density, depth and price-path legibility. Gexdesk must keep the behavioural Map and the options-activity Heatmap as clearly separated products.
 
 ## Refresh and performance
 
 - shared NQ tape: event-driven through the existing application connection;
-- options pressure: target 3–10 seconds;
+- options pressure and heatmap tape: target 3–10 seconds;
 - exposure map: target 15–30 seconds;
 - expiration structure: target 30–60 seconds;
 - API calls are cached and coalesced;

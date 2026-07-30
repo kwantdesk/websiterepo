@@ -7,6 +7,7 @@ import {
   BarChart3,
   CalendarRange,
   Crosshair,
+  Flame,
   GitCompareArrows,
   Gauge,
   History,
@@ -23,6 +24,7 @@ import KwantSelect from "@/components/ui/KwantSelect";
 import GexDeskDepthPanels, {
   type GexDeskPanel,
 } from "@/components/gexdesk/GexDeskDepthPanels";
+import GexDeskOptionsHeatmap from "@/components/gexdesk/GexDeskOptionsHeatmap";
 import {
   DATABENTO_LIVE_STATUS_EVENT,
   DATABENTO_LIVE_TICK_EVENT,
@@ -40,6 +42,7 @@ import {
   fetchWorkspaceData,
   gexdeskHistoryCacheKey,
   readWorkspaceData,
+  writeWorkspaceData,
 } from "@/lib/workspaceDataCache";
 
 type SourceFilter = "COMBINED" | GexDeskSourceSymbol;
@@ -263,10 +266,14 @@ export default function GexDeskWorkspace() {
   const [historyError, setHistoryError] = useState("");
   const [livePrice, setLivePrice] = useState<number | null>(null);
   const [feedStatus, setFeedStatus] = useState<DatabentoLiveStatus>("connecting");
+  const [liveInstrument, setLiveInstrument] = useState<"MNQ" | "NQ">("MNQ");
   const [lastTickAt, setLastTickAt] = useState(0);
   const [now, setNow] = useState(Date.now());
   const tickBufferRef = useRef<TapeTick[]>([]);
+  const heatPriceTicksRef = useRef<TapeTick[]>([]);
   const livePriceRef = useRef<number | null>(null);
+  const liveInstrumentRef = useRef<"MNQ" | "NQ">("MNQ");
+  const preferredMnqAtRef = useRef(0);
   const updateFrameRef = useRef<number | null>(null);
   const requestRef = useRef<AbortController | null>(null);
   const historyRequestRef = useRef<AbortController | null>(null);
@@ -283,18 +290,31 @@ export default function GexDeskWorkspace() {
         { force: true },
       );
       if (controller.signal.aborted) return;
-      setPayload((current) => ({
-        ...result,
-        zones: result.zones.map((zone) => {
-          const previous = current?.zones.find((candidate) => Math.abs(candidate.center - zone.center) <= Math.max(5, zone.high - zone.low));
-          if (!previous || previous.gross <= 0) return zone;
-          const change = zone.gross / previous.gross - 1;
-          return {
-            ...zone,
-            state: change >= 0.04 ? "BUILDING" : change <= -0.04 ? "WEAKENING" : "STABLE",
-          };
-        }),
-      }));
+      setPayload((current) => {
+        const optionsById = new globalThis.Map(
+          [...(current?.optionsTape ?? []), ...(result.optionsTape ?? [])]
+            .map((print) => [print.id, print]),
+        );
+        const optionsTape = [...optionsById.values()]
+          .filter((print) => Date.now() - print.timestamp <= 6 * 60 * 60_000)
+          .sort((left, right) => left.timestamp - right.timestamp)
+          .slice(-2_500);
+        const nextPayload: GexDeskPayload = {
+          ...result,
+          optionsTape,
+          zones: result.zones.map((zone) => {
+            const previous = current?.zones.find((candidate) => Math.abs(candidate.center - zone.center) <= Math.max(5, zone.high - zone.low));
+            if (!previous || previous.gross <= 0) return zone;
+            const change = zone.gross / previous.gross - 1;
+            return {
+              ...zone,
+              state: change >= 0.04 ? "BUILDING" : change <= -0.04 ? "WEAKENING" : "STABLE",
+            };
+          }),
+        };
+        writeWorkspaceData("gexdesk:map", nextPayload);
+        return nextPayload;
+      });
       setError("");
       if (livePriceRef.current === null && result.nqPrice) {
         livePriceRef.current = result.nqPrice;
@@ -339,7 +359,7 @@ export default function GexDeskWorkspace() {
   }, [sourceFilter]);
 
   useEffect(() => {
-    if (activePanel !== "EVOLUTION") return;
+    if (activePanel !== "EVOLUTION" && activePanel !== "HEATMAP") return;
     const cached = readWorkspaceData<GexDeskHistoryPayload>(gexdeskHistoryCacheKey(sourceFilter));
     setHistory(cached);
     void loadHistory(Boolean(cached));
@@ -374,7 +394,10 @@ export default function GexDeskWorkspace() {
         size?: number;
         timestamp?: string | number;
       }>).detail;
-      if (!String(tick?.instrument ?? "").toUpperCase().startsWith("NQ")) return;
+      const instrument = String(tick?.instrument ?? "").toUpperCase();
+      const isMnq = instrument.startsWith("MNQ");
+      const isNq = instrument.startsWith("NQ");
+      if (!isMnq && !isNq) return;
       const price = Number(tick.mid);
       if (!Number.isFinite(price) || price <= 0) return;
       const parsedTimestamp = typeof tick.timestamp === "string" ? Date.parse(tick.timestamp) : Number(tick.timestamp);
@@ -386,10 +409,31 @@ export default function GexDeskWorkspace() {
         : Number.isFinite(Number(tick.size))
           ? Number(tick.size)
           : 0;
+      if (isMnq) {
+        preferredMnqAtRef.current = timestamp;
+      } else if (timestamp - preferredMnqAtRef.current < 5_000) {
+        return;
+      }
+      const nextInstrument = isMnq ? "MNQ" : "NQ";
+      if (liveInstrumentRef.current !== nextInstrument) {
+        liveInstrumentRef.current = nextInstrument;
+        setLiveInstrument(nextInstrument);
+      }
       livePriceRef.current = price;
       tickBufferRef.current = [...tickBufferRef.current, { price, delta, timestamp }]
         .filter((row) => timestamp - row.timestamp <= 30_000)
         .slice(-600);
+      const heatTicks = heatPriceTicksRef.current;
+      const latestHeatTick = heatTicks.at(-1);
+      const nextHeatTick = { price, delta, timestamp };
+      if (latestHeatTick && Math.floor(latestHeatTick.timestamp / 1_000) === Math.floor(timestamp / 1_000)) {
+        heatTicks[heatTicks.length - 1] = nextHeatTick;
+      } else {
+        heatTicks.push(nextHeatTick);
+      }
+      const heatCutoff = timestamp - 2 * 60 * 60_000;
+      while (heatTicks.length && heatTicks[0].timestamp < heatCutoff) heatTicks.shift();
+      if (heatTicks.length > 2_500) heatTicks.splice(0, heatTicks.length - 2_500);
       if (updateFrameRef.current !== null) return;
       updateFrameRef.current = window.requestAnimationFrame(() => {
         updateFrameRef.current = null;
@@ -495,6 +539,7 @@ export default function GexDeskWorkspace() {
     analyst: boolean;
   }> = [
     { id: "MAP", label: "Map", icon: Map, analyst: false },
+    { id: "HEATMAP", label: "Heatmap", icon: Flame, analyst: false },
     { id: "EVOLUTION", label: "Evolution", icon: History, analyst: true },
     { id: "EXPIRIES", label: "Expiries", icon: CalendarRange, analyst: true },
     { id: "FLOW", label: "Flow & Tape", icon: Waves, analyst: true },
@@ -540,7 +585,7 @@ export default function GexDeskWorkspace() {
         <div className="ml-auto flex items-center gap-2">
           <span className={`flex items-center gap-1.5 rounded-xl border px-2.5 py-1.5 text-[7px] font-semibold ${feedStatus === "live" ? "border-primary/25 bg-primary/[0.06] text-primary" : "border-border bg-surface text-muted"}`}>
             <span className={`h-1.5 w-1.5 rounded-full ${feedStatus === "live" ? "animate-pulse bg-primary shadow-[0_0_8px_var(--primary)]" : "bg-muted"}`} />
-            NQ TAPE {feedStatus.toUpperCase()}
+            {liveInstrument} TAPE {feedStatus.toUpperCase()}
           </span>
           <button type="button" onClick={() => void load()} disabled={refreshing} className="flex h-8 w-8 items-center justify-center rounded-xl border border-border bg-surface text-muted hover:text-foreground disabled:opacity-40" title="Refresh positioning map"><RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} /></button>
         </div>
@@ -568,7 +613,7 @@ export default function GexDeskWorkspace() {
           );
         })}
         <span className="ml-auto hidden shrink-0 text-[6px] text-muted lg:block">
-          MAP = positioning · PRESSURE = change · TAPE = observed NQ
+          MAP = positioning · HEATMAP = call / put activity · TAPE = observed {liveInstrument}
         </span>
       </div>
 
@@ -737,6 +782,17 @@ export default function GexDeskWorkspace() {
             </section>
           ) : null}
             </>
+          ) : activePanel === "HEATMAP" ? (
+            <GexDeskOptionsHeatmap
+              payload={payload}
+              history={history}
+              historyLoading={historyLoading}
+              historyError={historyError}
+              livePrice={livePrice}
+              priceTicks={heatPriceTicksRef.current}
+              feedStatus={feedStatus}
+              liveInstrument={liveInstrument}
+            />
           ) : (
             <GexDeskDepthPanels
               panel={activePanel}

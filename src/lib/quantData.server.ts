@@ -43,6 +43,7 @@ import {
   buildGexDeskPayload,
   emptyGexDeskPressure,
   type GexDeskHistoryPayload,
+  type GexDeskOptionPrint,
   type GexDeskPayload,
   type GexDeskPressurePoint,
   type GexDeskPressure,
@@ -1796,6 +1797,44 @@ function gexDeskPressureSource(
   };
 }
 
+function gexDeskOptionsTape(
+  source: GexDeskSourceSymbol,
+  payload: unknown,
+  spot: number | null,
+  nqPrice: number | null,
+): GexDeskOptionPrint[] {
+  if (!spot || spot <= 0 || !nqPrice || nqPrice <= 0) return [];
+  return parseFlow(payload).flatMap((row) => {
+    if (
+      (row.contractType !== "CALL" && row.contractType !== "PUT")
+      || row.strikePrice === null
+      || row.strikePrice <= 0
+    ) return [];
+    const mappedPrice = nqPrice * row.strikePrice / spot;
+    if (!Number.isFinite(mappedPrice) || Math.abs(mappedPrice / nqPrice - 1) > 0.09) return [];
+    const rawSide = row.side.toUpperCase();
+    const bought = rawSide.includes("ASK") || rawSide === "AA" || rawSide === "A";
+    const sold = rawSide.includes("BID") || rawSide === "BB" || rawSide === "B";
+    const timestamp = row.tradeTime > 0 && row.tradeTime < 10_000_000_000
+      ? row.tradeTime * 1_000
+      : row.tradeTime;
+    const complex = row.consolidationType.toUpperCase().includes("COMPLEX")
+      || row.consolidationType.toUpperCase().includes("MULTI");
+    return [{
+      id: `${source}:${row.id}`,
+      source,
+      timestamp,
+      contractType: row.contractType,
+      side: bought ? "BOUGHT" : sold ? "SOLD" : "MID",
+      strike: row.strikePrice,
+      mappedPrice,
+      premium: Math.max(0, row.premium),
+      size: Math.max(0, row.size ?? 0),
+      confidence: bought || sold ? complex ? 0.55 : 1 : 0.3,
+    }];
+  });
+}
+
 function combineGexDeskPressure(sources: GexDeskPressureSource[]): GexDeskPressure {
   const weighted = sources.map((source) => ({
     source,
@@ -1912,13 +1951,23 @@ async function buildGexDeskServerPayload(): Promise<GexDeskPayload> {
       flow?.status === "fulfilled" ? flow.value.payload : null,
     );
   });
+  const optionsTape = symbols.flatMap((symbol, index) => {
+    const flow = flowResults[index];
+    return gexDeskOptionsTape(
+      symbol,
+      flow?.status === "fulfilled" ? flow.value.payload : null,
+      sources[index]?.spot ?? null,
+      nqPrice,
+    );
+  });
   return buildGexDeskPayload({
     sessionDate: session.sessionDate,
     marketOpen: session.marketOpen,
     nqPrice,
     sources,
     pressure: combineGexDeskPressure(pressureSources),
-    refreshAfterMs: session.marketOpen ? 15_000 : 60_000,
+    optionsTape,
+    refreshAfterMs: session.marketOpen ? 5_000 : 60_000,
   });
 }
 
@@ -1928,7 +1977,7 @@ export function getGexDeskPayload(): Promise<GexDeskPayload> {
     gexDeskCache = null;
     throw error;
   });
-  gexDeskCache = { expiresAt: Date.now() + 12_000, promise };
+  gexDeskCache = { expiresAt: Date.now() + 4_000, promise };
   return promise;
 }
 
