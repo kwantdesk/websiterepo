@@ -32,7 +32,7 @@ import {
   Video,
   Wallet,
 } from "lucide-react";
-import { defaultTheme, resetTheme, saveTheme as saveAppTheme, type ThemeColors } from "@/lib/theme";
+import { defaultTheme, readStoredTheme, resetTheme, saveTheme as saveAppTheme, type ThemeColors } from "@/lib/theme";
 import { defaultChartSettings, extractUserChartSettings, loadStoredChartSettings, mergeChartSettingsIntoTheme, saveStoredChartSettings, type ChartSettings } from "@/lib/chartSettings";
 import { createClient } from "@/lib/supabase";
 import { usagePlans } from "@/lib/usagePlans";
@@ -283,9 +283,7 @@ export default function SettingsPage() {
     }
   });
   const [themeSettings, setThemeSettings] = useState<ThemeColors>(() => {
-    if (typeof window === "undefined") return defaultTheme;
-    const saved = localStorage.getItem("olisa-theme");
-    return saved ? { ...defaultTheme, ...JSON.parse(saved) } : defaultTheme;
+    return readStoredTheme();
   });
   const [chartSettings, setChartSettings] = useState<ChartSettings>(() => loadStoredChartSettings());
   const [fontSize, setFontSize] = useState(() => {

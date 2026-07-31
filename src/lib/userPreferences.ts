@@ -1,4 +1,5 @@
 import type { SupabaseClient, User } from "@supabase/supabase-js";
+import { applyTheme } from "@/lib/theme";
 
 const USER_PREFERENCES_TABLE = "user_preferences";
 const USER_PREFERENCES_METADATA_KEY = "kwantdesk_preferences";
@@ -253,6 +254,7 @@ export async function hydrateUserPreferences(
   user: User,
 ) {
   const current = captureBrowserPreferences();
+  const themeAtHydrationStart = current.values["olisa-theme"];
   const cloud = await loadCloudPreferences(supabase, user);
   const scoped = readScopedPreferences(user.id);
   let selected = cloud;
@@ -298,8 +300,26 @@ export async function hydrateUserPreferences(
     await saveUserPreferences(supabase, user.id, selected);
   }
 
+  // A theme click is an immediate user decision. If it happened while the
+  // account snapshot was loading, do not let the slower response repaint an
+  // older colour scheme over it.
+  const latest = captureBrowserPreferences();
+  if (latest.values["olisa-theme"] !== themeAtHydrationStart) {
+    selected = {
+      ...selected,
+      updatedAt: latest.updatedAt,
+      values: {
+        ...selected.values,
+        ...(latest.values["olisa-theme"]
+          ? { "olisa-theme": latest.values["olisa-theme"] }
+          : {}),
+      },
+    };
+  }
+
   const changed = preferenceSnapshotFingerprint(current) !== preferenceSnapshotFingerprint(selected);
   applyBrowserPreferences(selected);
+  applyTheme();
   saveScopedPreferences(user.id, selected);
   return { changed, snapshot: selected };
 }

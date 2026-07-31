@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import ThemeProvider from "@/components/ThemeProvider";
+import { themeBootstrapScript } from "@/lib/theme";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -9,7 +10,10 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeBootstrapScript() }} />
+      </head>
       <body><ThemeProvider>{children}</ThemeProvider></body>
     </html>
   );

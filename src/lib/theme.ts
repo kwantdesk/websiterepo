@@ -19,13 +19,40 @@ export const defaultTheme = {
 
 export type ThemeColors = typeof defaultTheme;
 
+export const THEME_STORAGE_KEY = "olisa-theme";
+
 export function cssVarName(key: string) {
   return `--${key.replace(/([A-Z])/g, "-$1").toLowerCase()}`;
 }
 
+function normalizeTheme(value: unknown): ThemeColors {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return defaultTheme;
+  const candidate = value as Record<string, unknown>;
+  return Object.fromEntries(
+    Object.entries(defaultTheme).map(([key, fallback]) => [
+      key,
+      typeof candidate[key] === "string" && candidate[key] ? candidate[key] : fallback,
+    ]),
+  ) as ThemeColors;
+}
+
+export function readStoredTheme() {
+  if (typeof window === "undefined") return defaultTheme;
+  try {
+    return normalizeTheme(JSON.parse(window.localStorage.getItem(THEME_STORAGE_KEY) ?? "null"));
+  } catch {
+    return defaultTheme;
+  }
+}
+
+export function themeBootstrapScript() {
+  const fallback = JSON.stringify(defaultTheme).replace(/</g, "\\u003c");
+  return `(()=>{try{const d=${fallback};const v=JSON.parse(localStorage.getItem(${JSON.stringify(THEME_STORAGE_KEY)})||"null");const t=v&&typeof v==="object"&&!Array.isArray(v)?{...d,...v}:d;const r=document.documentElement;for(const [k,x] of Object.entries(t)){if(typeof x!=="string"||!x)continue;r.style.setProperty("--"+k.replace(/([A-Z])/g,"-$1").toLowerCase(),x)}r.dataset.themeReady="true"}catch{document.documentElement.dataset.themeReady="true"}})()`;
+}
+
 export function applyTheme(theme?: Partial<ThemeColors>) {
   if (typeof window === "undefined") return;
-  const saved = theme ?? JSON.parse(localStorage.getItem("olisa-theme") ?? "null") ?? defaultTheme;
+  const saved = theme ? normalizeTheme(theme) : readStoredTheme();
   const root = document.documentElement;
   Object.entries(saved).forEach(([key, value]) => {
     root.style.setProperty(cssVarName(key), value as string);
@@ -35,14 +62,15 @@ export function applyTheme(theme?: Partial<ThemeColors>) {
 
 export function saveTheme(theme: ThemeColors) {
   if (typeof window === "undefined") return;
-  localStorage.setItem("olisa-theme", JSON.stringify(theme));
-  applyTheme(theme);
+  const normalized = normalizeTheme(theme);
+  localStorage.setItem(THEME_STORAGE_KEY, JSON.stringify(normalized));
+  applyTheme(normalized);
   window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
 }
 
 export function resetTheme() {
   if (typeof window === "undefined") return;
-  localStorage.removeItem("olisa-theme");
+  localStorage.removeItem(THEME_STORAGE_KEY);
   applyTheme(defaultTheme);
   window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
 }
