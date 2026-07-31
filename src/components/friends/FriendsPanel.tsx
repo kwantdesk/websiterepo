@@ -12,6 +12,7 @@ import {
   Loader2,
   MessageSquarePlus,
   MessageCircle,
+  Mic,
   MoreHorizontal,
   Paperclip,
   Search,
@@ -32,6 +33,7 @@ import {
 import { createClient } from "@/lib/supabase";
 import KwantLoader from "@/components/KwantLoader";
 import UserAvatar from "@/components/socials/UserAvatar";
+import { useSpeechDictation } from "@/hooks/useSpeechDictation";
 import {
   PRESENCE_OPTIONS,
   presenceOption,
@@ -234,6 +236,12 @@ export default function FriendsPanel({ onClose, onUnreadCountChange, initialFrie
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const deliveryTimersRef = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  const speechDictation = useSpeechDictation({
+    value: draft,
+    onChange: setDraft,
+    disabled: chatLoading || (!activeFriendId && !activeGroupId),
+    maxLength: 2_000,
+  });
 
   const load = useCallback(async (friendId = "", quiet = false, groupId = "") => {
     if (!quiet) setLoading(true);
@@ -539,6 +547,7 @@ export default function FriendsPanel({ onClose, onUnreadCountChange, initialFrie
       attachments: outgoingAttachments.length ? outgoingAttachments : undefined,
     };
 
+    speechDictation.stop();
     setDraft("");
     setAttachments([]);
     setAttachmentError("");
@@ -700,6 +709,7 @@ export default function FriendsPanel({ onClose, onUnreadCountChange, initialFrie
         </div>
       ) : null}
       {attachmentError ? <div className="mb-2 text-[9px] text-danger">{attachmentError}</div> : null}
+      {speechDictation.error ? <div className="mb-2 text-[9px] text-danger">{speechDictation.error}</div> : null}
       <div className="relative flex items-end gap-1.5 rounded-2xl border border-border bg-surface p-1.5 focus-within:border-primary/40">
         <input
           ref={imageInputRef}
@@ -760,6 +770,29 @@ export default function FriendsPanel({ onClose, onUnreadCountChange, initialFrie
           placeholder={chatLoading ? "Loading conversation..." : "Message..."}
           className="max-h-28 min-h-8 min-w-0 flex-1 resize-none bg-transparent px-1 py-1.5 text-[12px] outline-none placeholder:text-muted"
         />
+        <button
+          type="button"
+          onClick={() => {
+            speechDictation.clearError();
+            speechDictation.toggle();
+          }}
+          disabled={chatLoading || !speechDictation.supported}
+          aria-label={speechDictation.listening ? "Stop dictating message" : "Dictate message"}
+          aria-pressed={speechDictation.listening}
+          title={!speechDictation.supported
+            ? "Speech input is not supported by this browser"
+            : speechDictation.listening
+              ? "Stop dictation"
+              : "Dictate a message"}
+          className={`relative flex h-8 w-8 shrink-0 items-center justify-center rounded-xl transition disabled:cursor-not-allowed disabled:opacity-30 ${
+            speechDictation.listening
+              ? "bg-primary/15 text-primary shadow-[0_0_18px_color-mix(in_srgb,var(--primary)_16%,transparent)]"
+              : "text-muted hover:bg-panel hover:text-primary"
+          }`}
+        >
+          {speechDictation.listening ? <span className="absolute inset-2 animate-ping rounded-full bg-primary/25" /> : null}
+          <Mic className="relative h-3.5 w-3.5" />
+        </button>
         <button
           type="button"
           onClick={sendMessage}
