@@ -504,6 +504,14 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
 
   const addFiles = useCallback((files: FileList | File[]) => {
     const selected = [...files];
+    const firstFileName = selected[0]?.name.trim() ?? "";
+    if (firstFileName) {
+      const extensionIndex = firstFileName.lastIndexOf(".");
+      const accountName = (
+        extensionIndex > 0 ? firstFileName.slice(0, extensionIndex) : firstFileName
+      ).trim().slice(0, 80);
+      setImportAccount(accountName || "Imported account");
+    }
     setPendingFiles((current) => {
       const known = new Set(current.map((file) => `${file.name}:${file.size}:${file.lastModified}`));
       return [...current, ...selected.filter((file) => !known.has(`${file.name}:${file.size}:${file.lastModified}`))].slice(0, 30);
