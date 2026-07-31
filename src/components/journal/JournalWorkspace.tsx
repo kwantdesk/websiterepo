@@ -767,6 +767,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
     if (newTrades.length || newImports.length) {
       setAccountFilter(account);
       setTab("pulse");
+      setShowImport(false);
       void syncCloudAccount(account, newTrades, newImports);
     }
   };
