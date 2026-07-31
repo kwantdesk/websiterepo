@@ -102,6 +102,7 @@ function sanitizeTrade(value: unknown, account: string): JournalTrade | null {
     reviewedAt: isoDate(trade.reviewedAt, null),
     sourceImportId: cleanId(trade.sourceImportId),
     sourceFile: cleanText(trade.sourceFile, 220),
+    sourceSheet: cleanText(trade.sourceSheet, 120) || undefined,
     sourceRows: Array.isArray(trade.sourceRows)
       ? trade.sourceRows.map((row) => Math.max(0, Math.round(finite(row)))).slice(0, 200)
       : [],
@@ -114,7 +115,7 @@ function sanitizeImport(value: unknown, account: string): JournalImportBatch | n
   const batch = value as Partial<JournalImportBatch>;
   const id = cleanId(batch.id);
   if (!id) return null;
-  const allowedSchemas: JournalImportBatch["detectedSchema"][] = ["closed-trades", "executions", "json", "evidence", "notes", "unknown"];
+  const allowedSchemas: JournalImportBatch["detectedSchema"][] = ["closed-trades", "executions", "workbook", "json", "evidence", "notes", "unknown"];
   return {
     id,
     account,

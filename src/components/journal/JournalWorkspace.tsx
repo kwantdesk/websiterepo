@@ -50,6 +50,7 @@ import {
   zyonOutcomesToJournalTrades,
   type JournalEvidence,
   type JournalImportBatch,
+  type JournalParseResult,
   type JournalState,
   type JournalTrade,
 } from "@/lib/journal";
@@ -91,8 +92,11 @@ const JOURNAL_TABS: Array<{ id: JournalTab; label: string; icon: typeof Activity
   { id: "imports", label: "Imports", icon: FolderArchive },
 ];
 
-const ACCEPTED_FILES = ".csv,.tsv,.txt,.json,.md,.png,.jpg,.jpeg,.webp,.gif";
+const ACCEPTED_FILES = ".xlsx,.xls,.xlsm,.xlsb,.ods,.fods,.xml,.html,.htm,.csv,.tsv,.txt,.json,.md,.png,.jpg,.jpeg,.webp,.gif";
+const SPREADSHEET_EXTENSIONS = new Set(["xlsx", "xls", "xlsm", "xlsb", "ods", "fods", "xml", "html", "htm"]);
+const TABULAR_TEXT_EXTENSIONS = new Set(["csv", "tsv", "txt", "json"]);
 const MAX_EVIDENCE_BYTES = 8_000_000;
+const MAX_WORKBOOK_BYTES = 75_000_000;
 
 function money(value: number | null, signed = true) {
   if (value === null || !Number.isFinite(value)) return "—";
@@ -631,46 +635,90 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
         continue;
       }
 
-      const text = await file.text();
-      const firstLine = text.split(/\r?\n/, 1)[0]?.toLowerCase() ?? "";
-      const looksLikeTradeTable = /[,;\t]/.test(firstLine)
-        && /(symbol|instrument|ticker|contract)/.test(firstLine)
-        && /(pnl|profit|price|entry|exit|side|direction|action)/.test(firstLine);
-      const isNote = extension === "md" || (extension === "txt" && !looksLikeTradeTable);
-      if (isNote) {
-        const dataUrl = `data:text/plain;charset=utf-8,${encodeURIComponent(text)}`;
-        newEvidence.push({
-          id: crypto.randomUUID(),
-          account,
-          name: file.name,
-          mimeType: file.type || "text/plain",
-          size: file.size,
-          importedAt,
-          sourceImportId: importId,
-          tradeId: null,
-          dataUrl,
-          textContent: text.slice(0, 100_000),
-          caption: "",
-        });
-        newImports.push({
-          id: importId,
-          account,
-          fileName: file.name,
-          fileType: file.type || extension,
-          fileSize: file.size,
-          importedAt,
-          detectedSchema: "notes",
-          sourceRows: text.split(/\r?\n/).length,
-          acceptedTrades: 0,
-          rejectedRows: 0,
-          duplicateTrades: 0,
-          evidenceCount: 1,
-          warnings: [],
-        });
-        continue;
+      let parsed: JournalParseResult;
+      if (SPREADSHEET_EXTENSIONS.has(extension)) {
+        if (file.size > MAX_WORKBOOK_BYTES) {
+          parsed = {
+            trades: [],
+            detectedSchema: "workbook",
+            sourceRows: 0,
+            rejectedRows: 0,
+            warnings: ["Workbook exceeds the 75 MB browser import limit. Export the trade sheet as CSV or split the workbook into smaller files."],
+          };
+        } else {
+          try {
+            const { parseJournalSpreadsheetFile } = await import("@/lib/journalSpreadsheet");
+            parsed = await parseJournalSpreadsheetFile(file.name, await file.arrayBuffer(), account, importId);
+          } catch {
+            parsed = {
+              trades: [],
+              detectedSchema: "workbook",
+              sourceRows: 0,
+              rejectedRows: 0,
+              warnings: ["The workbook importer could not read this file. Check that it is not password protected or damaged."],
+            };
+          }
+        }
+      } else {
+        if (extension !== "md" && !TABULAR_TEXT_EXTENSIONS.has(extension)) {
+          newImports.push({
+            id: importId,
+            account,
+            fileName: file.name,
+            fileType: file.type || extension,
+            fileSize: file.size,
+            importedAt,
+            detectedSchema: "unknown",
+            sourceRows: 0,
+            acceptedTrades: 0,
+            rejectedRows: 0,
+            duplicateTrades: 0,
+            evidenceCount: 0,
+            warnings: ["Unsupported file type. Use a workbook, delimited trade export, JSON, HTML/XML table, note, or image."],
+          });
+          continue;
+        }
+        const text = await file.text();
+        const firstLine = text.split(/\r?\n/, 1)[0]?.toLowerCase() ?? "";
+        const looksLikeTradeTable = /[,;\t]/.test(firstLine)
+          && /(symbol|instrument|ticker|contract|trade)/.test(firstLine)
+          && /(pnl|profit|price|entry|exit|side|direction|action|type)/.test(firstLine);
+        const isNote = extension === "md" || (extension === "txt" && !looksLikeTradeTable);
+        if (isNote) {
+          const dataUrl = `data:text/plain;charset=utf-8,${encodeURIComponent(text)}`;
+          newEvidence.push({
+            id: crypto.randomUUID(),
+            account,
+            name: file.name,
+            mimeType: file.type || "text/plain",
+            size: file.size,
+            importedAt,
+            sourceImportId: importId,
+            tradeId: null,
+            dataUrl,
+            textContent: text.slice(0, 100_000),
+            caption: "",
+          });
+          newImports.push({
+            id: importId,
+            account,
+            fileName: file.name,
+            fileType: file.type || extension,
+            fileSize: file.size,
+            importedAt,
+            detectedSchema: "notes",
+            sourceRows: text.split(/\r?\n/).length,
+            acceptedTrades: 0,
+            rejectedRows: 0,
+            duplicateTrades: 0,
+            evidenceCount: 1,
+            warnings: [],
+          });
+          continue;
+        }
+        parsed = parseJournalTextFile(file.name, text, account, importId);
       }
 
-      const parsed = parseJournalTextFile(file.name, text, account, importId);
       let fileDuplicates = 0;
       const accepted = parsed.trades.filter((trade) => {
         if (existingFingerprints.has(trade.fingerprint)) {
@@ -884,7 +932,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
                 : <button type="button" onClick={() => setShowImport(true)} className="relative mt-6 inline-flex h-10 items-center gap-2 rounded-xl bg-primary px-5 text-[10px] font-semibold text-background"><Plus className="h-4 w-4" />Add account</button>}
               <div className="relative mx-auto mt-7 grid max-w-3xl gap-2 sm:grid-cols-3">
                 {[
-                  [FileSpreadsheet, "Trades", "CSV, TSV and JSON trade or execution files"],
+                  [FileSpreadsheet, "Trades", "TradingView XLSX, broker workbooks, CSV, TSV and JSON exports"],
                   [ImageIcon, "Evidence", "PNG, JPG, WEBP and GIF screenshots"],
                   [FileText, "Notes", "Markdown and text research files"],
                 ].map(([Icon, label, detail]) => (
@@ -1148,7 +1196,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
           <div className="w-full max-w-[650px] overflow-hidden rounded-3xl border border-border bg-panel shadow-2xl shadow-black/60">
             <div className="flex items-start gap-3 border-b border-border px-5 py-4">
               <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"><Upload className="h-4 w-4" /></span>
-              <div><h2 className="text-[14px] font-semibold text-foreground">Add journal account</h2><p className="mt-1 text-[9px] leading-4 text-muted">Name the account, then import its closed trades, executions, screenshots, JSON, or notes.</p></div>
+              <div><h2 className="text-[14px] font-semibold text-foreground">Add journal account</h2><p className="mt-1 text-[9px] leading-4 text-muted">Name the account, then import TradingView workbooks, broker trade exports, executions, screenshots, JSON, or notes.</p></div>
               <button type="button" onClick={() => setShowImport(false)} className="ml-auto flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground"><X className="h-4 w-4" /></button>
             </div>
             <div className="space-y-4 p-5">
@@ -1168,8 +1216,8 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
               >
                 <Import className="h-7 w-7 text-primary" />
                 <span className="mt-3 text-[11px] font-semibold text-foreground">Drop files here or browse</span>
-                <span className="mt-1 text-[8px] leading-4 text-muted">CSV · TSV · JSON · PNG · JPG · WEBP · GIF · MD · TXT</span>
-                <span className="mt-2 text-[8px] text-muted">Images up to 8 MB · maximum 30 files per import</span>
+                <span className="mt-1 max-w-[500px] text-[8px] leading-4 text-muted">XLSX · XLS · XLSM · XLSB · ODS · XML/HTML · CSV · TSV · JSON · images · notes</span>
+                <span className="mt-2 text-[8px] text-muted">Workbooks up to 75 MB · images up to 8 MB · maximum 30 files</span>
               </button>
               <input ref={fileInputRef} type="file" accept={ACCEPTED_FILES} multiple className="hidden" onChange={(event) => { if (event.target.files) addFiles(event.target.files); event.currentTarget.value = ""; }} />
               {pendingFiles.length ? (
@@ -1178,7 +1226,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
                 </div>
               ) : null}
               {importMessage ? <div className="rounded-xl border border-primary/20 bg-primary/[0.07] px-3 py-2 text-[9px] text-primary">{importMessage}</div> : null}
-              <div className="rounded-xl border border-border bg-surface/35 p-3 text-[8px] leading-4 text-muted"><strong className="text-foreground">Source-first import:</strong> duplicate trades are skipped, unmatched executions remain visible as warnings, and every accepted record keeps its source file and row numbers.</div>
+              <div className="rounded-xl border border-border bg-surface/35 p-3 text-[8px] leading-4 text-muted"><strong className="text-foreground">Source-first import:</strong> every workbook sheet is checked, TradingView entry/exit rows are paired, duplicates are skipped, unmatched rows stay visible as warnings, and accepted records retain their source file, sheet, and row numbers.</div>
             </div>
             <div className="flex items-center justify-end gap-2 border-t border-border bg-background/20 px-5 py-4">
               <button type="button" onClick={() => setShowImport(false)} className="h-9 rounded-xl border border-border px-4 text-[9px] font-semibold text-muted hover:bg-surface hover:text-foreground">Close</button>
@@ -1205,7 +1253,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
               </div>
               <Card className="p-4">
                 <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-[9px]">
-                  {[["Entry", selectedTrade.entryPrice?.toLocaleString("en-US", { maximumFractionDigits: 6 }) ?? "—"], ["Exit", selectedTrade.exitPrice?.toLocaleString("en-US", { maximumFractionDigits: 6 }) ?? "—"], ["Quantity", selectedTrade.quantity.toLocaleString()], ["Fees", money(selectedTrade.fees, false)], ["Gross P&L", money(selectedTrade.grossPnl)], ["Source", `${selectedTrade.sourceFile} · rows ${selectedTrade.sourceRows.join(", ")}`]].map(([label, value]) => <div key={label}><div className="text-[8px] uppercase tracking-[0.1em] text-muted">{label}</div><div className="mt-1 break-words font-mono text-foreground">{value}</div></div>)}
+                  {[["Entry", selectedTrade.entryPrice?.toLocaleString("en-US", { maximumFractionDigits: 6 }) ?? "—"], ["Exit", selectedTrade.exitPrice?.toLocaleString("en-US", { maximumFractionDigits: 6 }) ?? "—"], ["Quantity", selectedTrade.quantity.toLocaleString()], ["Fees", money(selectedTrade.fees, false)], ["Gross P&L", money(selectedTrade.grossPnl)], ["Source", `${selectedTrade.sourceFile}${selectedTrade.sourceSheet ? ` · ${selectedTrade.sourceSheet}` : ""} · rows ${selectedTrade.sourceRows.join(", ")}`]].map(([label, value]) => <div key={label}><div className="text-[8px] uppercase tracking-[0.1em] text-muted">{label}</div><div className="mt-1 break-words font-mono text-foreground">{value}</div></div>)}
                 </div>
               </Card>
               <div>

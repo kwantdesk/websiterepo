@@ -32,6 +32,7 @@ export type JournalTrade = {
   reviewedAt: string | null;
   sourceImportId: string;
   sourceFile: string;
+  sourceSheet?: string;
   sourceRows: number[];
   fingerprint: string;
 };
@@ -67,7 +68,7 @@ export type JournalImportBatch = {
   fileType: string;
   fileSize: number;
   importedAt: string;
-  detectedSchema: "closed-trades" | "executions" | "json" | "evidence" | "notes" | "unknown";
+  detectedSchema: "closed-trades" | "executions" | "workbook" | "json" | "evidence" | "notes" | "unknown";
   sourceRows: number;
   acceptedTrades: number;
   rejectedRows: number;
@@ -119,19 +120,25 @@ const HEADER_ALIASES = {
   time: ["time", "tradetime", "filltime", "executiontime", "updatedatetimee", "updatedatetimel"],
   symbol: ["symbol", "instrument", "ticker", "contract", "market", "tradingsymbol"],
   side: ["side", "direction", "buysell", "action", "actiontype", "type", "ordertype"],
-  quantity: ["quantity", "qty", "qtyfilled", "filledqty", "size", "contracts", "volume", "shares"],
+  quantity: ["quantity", "qty", "qtyfilled", "filledqty", "size", "positionsize", "positionqty", "contracts", "volume", "shares"],
   entryPrice: ["entryprice", "entry", "openprice", "averageentryprice", "avgentryprice", "buyprice"],
   exitPrice: ["exitprice", "exit", "closeprice", "averageexitprice", "avgexitprice", "sellprice"],
   price: ["price", "fillprice", "executionprice", "averageprice", "avgprice"],
-  grossPnl: ["grosspnl", "grossprofit", "profitloss", "pnl", "pl", "realizedpnl", "realizedpl", "profit"],
-  netPnl: ["netpnl", "netprofit", "netpl", "netprofitloss"],
+  grossPnl: ["grosspnl", "grosspnlusd", "grossprofit", "grossprofitusd", "profitloss", "pnl", "pnlusd", "pl", "realizedpnl", "realizedpnlusd", "realizedpl", "profit", "profitusd"],
+  netPnl: ["netpnl", "netpnlusd", "netprofit", "netprofitusd", "netpl", "netplusd", "netprofitloss"],
   fees: ["fees", "fee", "commission", "commissions", "totalfees", "brokerage"],
   initialRisk: ["initialrisk", "risk", "riskamount", "plannedrisk"],
   rMultiple: ["rmultiple", "realizedr", "r", "resultinr"],
-  setup: ["setup", "strategy", "playbook", "tradetype", "pattern"],
+  setup: ["setup", "strategy", "playbook", "tradetype", "pattern", "signal"],
   tags: ["tags", "tag", "mistakes", "labels"],
   notes: ["notes", "note", "comment", "comments", "description"],
   rating: ["rating", "traderating", "grade"],
+} as const;
+
+const TRADINGVIEW_ALIASES = {
+  tradeNumber: ["tradeno", "tradenumber", "tradeid"],
+  tradeType: ["type", "tradetype", "entryexit"],
+  signal: ["signal", "order", "ordername"],
 } as const;
 
 const FUTURES_MULTIPLIERS: Record<string, number> = {
@@ -171,6 +178,24 @@ export const EMPTY_JOURNAL_STATE: JournalState = {
 
 function normalizeHeader(value: string) {
   return value.trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function headerMatches(header: string, aliases: readonly string[]) {
+  return aliases.some((alias) => header === alias || header.startsWith(`${alias}usd`) || header.startsWith(`${alias}aud`));
+}
+
+export function journalHeaderScore(cells: unknown[]) {
+  const headers = cells.map((cell) => normalizeHeader(String(cell ?? ""))).filter(Boolean);
+  const has = (aliases: readonly string[]) => headers.some((header) => headerMatches(header, aliases));
+  let score = 0;
+  if (has(HEADER_ALIASES.symbol)) score += 3;
+  if (has(HEADER_ALIASES.openedAt) || has(HEADER_ALIASES.date)) score += 3;
+  if (has(HEADER_ALIASES.entryPrice) || has(HEADER_ALIASES.exitPrice) || has(HEADER_ALIASES.price)) score += 2;
+  if (has(HEADER_ALIASES.grossPnl) || has(HEADER_ALIASES.netPnl)) score += 2;
+  if (has(HEADER_ALIASES.side) || has(TRADINGVIEW_ALIASES.tradeType)) score += 1;
+  if (has(HEADER_ALIASES.quantity)) score += 1;
+  if (has(TRADINGVIEW_ALIASES.tradeNumber)) score += 3;
+  return score;
 }
 
 function parseNumber(value: unknown) {
@@ -438,11 +463,22 @@ export function parseDelimited(text: string, delimiter?: string) {
   ));
 }
 
+export type JournalParseOptions = {
+  sourceSheet?: string;
+  sourceRowNumbers?: number[];
+  symbolFallback?: string;
+};
+
+function sourceRowNumber(options: JournalParseOptions, index: number) {
+  return options.sourceRowNumbers?.[index] ?? index + 2;
+}
+
 function parseClosedTrades(
   rows: Array<Record<string, unknown>>,
   account: string,
   importId: string,
   fileName: string,
+  options: JournalParseOptions = {},
 ) {
   const trades: JournalTrade[] = [];
   const warnings: string[] = [];
@@ -451,7 +487,7 @@ function parseClosedTrades(
   rows.forEach((row, index) => {
     const openedAt = dateFromRow(row, HEADER_ALIASES.openedAt);
     const closedAt = dateFromRow(row, HEADER_ALIASES.closedAt, false);
-    const symbol = String(valueFor(row, HEADER_ALIASES.symbol) ?? "").trim().toUpperCase();
+    const symbol = String(valueFor(row, HEADER_ALIASES.symbol) ?? options.symbolFallback ?? "").trim().toUpperCase();
     const side = parseSide(valueFor(row, HEADER_ALIASES.side));
     const quantity = Math.abs(parseNumber(valueFor(row, HEADER_ALIASES.quantity)) ?? 1);
     const entryPrice = parseNumber(valueFor(row, HEADER_ALIASES.entryPrice));
@@ -498,7 +534,8 @@ function parseClosedTrades(
       reviewedAt: null,
       sourceImportId: importId,
       sourceFile: fileName,
-      sourceRows: [index + 2],
+      sourceSheet: options.sourceSheet,
+      sourceRows: [sourceRowNumber(options, index)],
     };
     const fingerprint = journalTradeFingerprint(base);
     trades.push({ ...base, id: `${importId}-${index + 1}-${fingerprint}`, fingerprint });
@@ -525,16 +562,17 @@ function parseExecutions(
   account: string,
   importId: string,
   fileName: string,
+  options: JournalParseOptions = {},
 ) {
   const executions = rows.flatMap((row, index) => {
     const timestamp = dateFromRow(row, HEADER_ALIASES.openedAt);
-    const symbol = String(valueFor(row, HEADER_ALIASES.symbol) ?? "").trim().toUpperCase();
+    const symbol = String(valueFor(row, HEADER_ALIASES.symbol) ?? options.symbolFallback ?? "").trim().toUpperCase();
     const side = parseSide(valueFor(row, HEADER_ALIASES.side));
     const quantity = Math.abs(parseNumber(valueFor(row, HEADER_ALIASES.quantity)) ?? 0);
     const price = parseNumber(valueFor(row, HEADER_ALIASES.price) ?? valueFor(row, HEADER_ALIASES.entryPrice));
     const fees = Math.abs(parseNumber(valueFor(row, HEADER_ALIASES.fees)) ?? 0);
     if (!timestamp || !symbol || side === "UNKNOWN" || !quantity || price === null) return [];
-    return [{ timestamp, symbol, side, quantity, price, fees, rowNumber: index + 2 }];
+    return [{ timestamp, symbol, side, quantity, price, fees, rowNumber: sourceRowNumber(options, index) }];
   }).sort((left, right) => Date.parse(left.timestamp) - Date.parse(right.timestamp));
 
   const positions = new Map<string, OpenExecutionPosition>();
@@ -602,6 +640,7 @@ function parseExecutions(
           reviewedAt: null,
           sourceImportId: importId,
           sourceFile: fileName,
+          sourceSheet: options.sourceSheet,
           sourceRows: [...new Set(position.sourceRows)],
         };
         const fingerprint = journalTradeFingerprint(base);
@@ -638,6 +677,132 @@ function parseExecutions(
   return { trades, rejectedRows: rejectedRows + unmatchedExecutions, warnings };
 }
 
+function parseTradingViewStrategyRows(
+  rows: Array<Record<string, unknown>>,
+  account: string,
+  importId: string,
+  fileName: string,
+  options: JournalParseOptions = {},
+) {
+  const groups = new Map<string, Array<{ row: Record<string, unknown>; index: number }>>();
+  rows.forEach((row, index) => {
+    const tradeNumber = String(valueFor(row, TRADINGVIEW_ALIASES.tradeNumber) ?? "").trim();
+    if (!tradeNumber) return;
+    const group = groups.get(tradeNumber) ?? [];
+    group.push({ row, index });
+    groups.set(tradeNumber, group);
+  });
+
+  const trades: JournalTrade[] = [];
+  let rejectedRows = 0;
+  let usedFallbackSymbol = false;
+
+  for (const [tradeNumber, group] of groups) {
+    const entry = group.find(({ row }) => /entry/i.test(String(valueFor(row, TRADINGVIEW_ALIASES.tradeType) ?? "")));
+    const exit = group.find(({ row }) => /exit/i.test(String(valueFor(row, TRADINGVIEW_ALIASES.tradeType) ?? "")));
+    if (!entry || !exit) {
+      rejectedRows += group.length;
+      continue;
+    }
+
+    const entryType = String(valueFor(entry.row, TRADINGVIEW_ALIASES.tradeType) ?? "").toUpperCase();
+    const side: JournalSide = entryType.includes("SHORT") ? "SHORT" : entryType.includes("LONG") ? "LONG" : "UNKNOWN";
+    const openedAt = dateFromRow(entry.row, HEADER_ALIASES.openedAt);
+    const closedAt = dateFromRow(exit.row, HEADER_ALIASES.openedAt);
+    const entryPrice = parseNumber(valueFor(entry.row, HEADER_ALIASES.price) ?? valueFor(entry.row, HEADER_ALIASES.entryPrice));
+    const exitPrice = parseNumber(valueFor(exit.row, HEADER_ALIASES.price) ?? valueFor(exit.row, HEADER_ALIASES.exitPrice));
+    const symbolValue = valueFor(entry.row, HEADER_ALIASES.symbol) ?? valueFor(exit.row, HEADER_ALIASES.symbol);
+    const symbol = String(symbolValue ?? options.symbolFallback ?? "TRADINGVIEW").trim().toUpperCase() || "TRADINGVIEW";
+    const quantity = Math.abs(parseNumber(valueFor(entry.row, HEADER_ALIASES.quantity) ?? valueFor(exit.row, HEADER_ALIASES.quantity)) ?? 1);
+    const explicitNet = parseNumber(valueFor(exit.row, HEADER_ALIASES.netPnl) ?? valueFor(exit.row, HEADER_ALIASES.grossPnl));
+    const fees = Math.abs(parseNumber(valueFor(exit.row, HEADER_ALIASES.fees)) ?? 0);
+    if (!openedAt || !closedAt || entryPrice === null || exitPrice === null) {
+      rejectedRows += group.length;
+      continue;
+    }
+    if (!symbolValue && !options.symbolFallback) usedFallbackSymbol = true;
+    const direction = side === "SHORT" ? -1 : 1;
+    const calculatedGross = (exitPrice - entryPrice) * quantity * contractMultiplier(symbol) * direction;
+    const netPnl = explicitNet ?? calculatedGross - fees;
+    const grossPnl = explicitNet === null ? calculatedGross : explicitNet + fees;
+    const rowNumbers = [...new Set(group.map(({ index }) => sourceRowNumber(options, index)))].sort((left, right) => left - right);
+    const base: Omit<JournalTrade, "id" | "fingerprint"> = {
+      account,
+      openedAt,
+      closedAt,
+      symbol,
+      side,
+      quantity,
+      entryPrice,
+      exitPrice,
+      grossPnl,
+      fees,
+      netPnl,
+      initialRisk: null,
+      rMultiple: null,
+      durationMs: Math.max(0, Date.parse(closedAt) - Date.parse(openedAt)),
+      setup: String(valueFor(entry.row, TRADINGVIEW_ALIASES.signal) ?? valueFor(exit.row, TRADINGVIEW_ALIASES.signal) ?? "").trim(),
+      tags: ["TradingView"],
+      notes: `TradingView strategy trade ${tradeNumber}`,
+      rating: null,
+      reviewedAt: null,
+      sourceImportId: importId,
+      sourceFile: fileName,
+      sourceSheet: options.sourceSheet,
+      sourceRows: rowNumbers,
+    };
+    const fingerprint = journalTradeFingerprint(base);
+    trades.push({ ...base, id: `${importId}-tradingview-${tradeNumber.replace(/[^a-zA-Z0-9_-]/g, "")}-${fingerprint}`, fingerprint });
+  }
+
+  const warnings = [
+    ...(rejectedRows ? [`${rejectedRows} TradingView row${rejectedRows === 1 ? "" : "s"} did not form a complete entry/exit pair.`] : []),
+    ...(usedFallbackSymbol ? ["TradingView did not include the strategy symbol, so imported trades are labelled TRADINGVIEW. You can edit the symbol after import."] : []),
+  ];
+  return { trades, rejectedRows, warnings };
+}
+
+export function parseJournalRows(
+  fileName: string,
+  sourceRows: Array<Record<string, unknown>>,
+  account: string,
+  importId: string,
+  options: JournalParseOptions = {},
+): JournalParseResult {
+  if (!sourceRows.length) {
+    return { trades: [], detectedSchema: "unknown", sourceRows: 0, rejectedRows: 0, warnings: ["No tabular trade rows were found."] };
+  }
+
+  const rows = normalizeRows(sourceRows);
+  const headers = new Set(Object.keys(rows[0] ?? {}));
+  const hasTradingViewTradeNumber = TRADINGVIEW_ALIASES.tradeNumber.some((header) => headers.has(header));
+  const hasTradingViewType = TRADINGVIEW_ALIASES.tradeType.some((header) => headers.has(header));
+  const hasTradingViewDate = HEADER_ALIASES.openedAt.some((header) => headers.has(header));
+  const hasTradingViewPrice = HEADER_ALIASES.price.some((header) => headers.has(header));
+  const isTradingViewStrategy = hasTradingViewTradeNumber && hasTradingViewType && hasTradingViewDate && hasTradingViewPrice;
+  if (isTradingViewStrategy) {
+    return {
+      ...parseTradingViewStrategyRows(rows, account, importId, fileName, options),
+      sourceRows: rows.length,
+      detectedSchema: "closed-trades",
+    };
+  }
+
+  const hasEntryExit = [...HEADER_ALIASES.entryPrice, ...HEADER_ALIASES.exitPrice, ...HEADER_ALIASES.grossPnl, ...HEADER_ALIASES.netPnl]
+    .some((header) => headers.has(header));
+  const hasExecutionPrice = HEADER_ALIASES.price.some((header) => headers.has(header));
+  const hasSide = HEADER_ALIASES.side.some((header) => headers.has(header));
+  const result = hasEntryExit || !hasExecutionPrice || !hasSide
+    ? parseClosedTrades(rows, account, importId, fileName, options)
+    : parseExecutions(rows, account, importId, fileName, options);
+
+  return {
+    ...result,
+    sourceRows: rows.length,
+    detectedSchema: hasEntryExit || !hasExecutionPrice || !hasSide ? "closed-trades" : "executions",
+  };
+}
+
 export function parseJournalTextFile(
   fileName: string,
   text: string,
@@ -645,7 +810,6 @@ export function parseJournalTextFile(
   importId: string,
 ): JournalParseResult {
   let sourceRows: Array<Record<string, unknown>> = [];
-  let detectedSchema: JournalParseResult["detectedSchema"] = "unknown";
   const extension = fileName.split(".").pop()?.toLowerCase();
 
   if (extension === "json") {
@@ -657,7 +821,6 @@ export function parseJournalTextFile(
           ? (parsed as { trades: Array<Record<string, unknown>> }).trades
           : [];
       sourceRows = rows.filter((row): row is Record<string, unknown> => Boolean(row && typeof row === "object"));
-      detectedSchema = "json";
     } catch {
       return { trades: [], detectedSchema: "unknown", sourceRows: 0, rejectedRows: 0, warnings: ["The JSON file could not be parsed."] };
     }
@@ -665,27 +828,8 @@ export function parseJournalTextFile(
     sourceRows = parseDelimited(text);
   }
 
-  if (!sourceRows.length) {
-    return { trades: [], detectedSchema, sourceRows: 0, rejectedRows: 0, warnings: ["No tabular trade rows were found."] };
-  }
-
-  const rows = normalizeRows(sourceRows);
-  const headers = new Set(Object.keys(rows[0] ?? {}));
-  const hasEntryExit = [...HEADER_ALIASES.entryPrice, ...HEADER_ALIASES.exitPrice, ...HEADER_ALIASES.grossPnl, ...HEADER_ALIASES.netPnl]
-    .some((header) => headers.has(header));
-  const hasExecutionPrice = HEADER_ALIASES.price.some((header) => headers.has(header));
-  const hasSide = HEADER_ALIASES.side.some((header) => headers.has(header));
-  const result = hasEntryExit || !hasExecutionPrice || !hasSide
-    ? parseClosedTrades(rows, account, importId, fileName)
-    : parseExecutions(rows, account, importId, fileName);
-
-  return {
-    ...result,
-    sourceRows: rows.length,
-    detectedSchema: detectedSchema === "json"
-      ? "json"
-      : hasEntryExit || !hasExecutionPrice || !hasSide ? "closed-trades" : "executions",
-  };
+  const result = parseJournalRows(fileName, sourceRows, account, importId);
+  return extension === "json" ? { ...result, detectedSchema: "json" } : result;
 }
 
 export function calculateJournalStats(trades: JournalTrade[], evidence: JournalEvidence[] = []): JournalStats {
