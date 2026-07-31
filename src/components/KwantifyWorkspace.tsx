@@ -8715,15 +8715,12 @@ export default function KwantifyWorkspace({
           <div className="hidden w-[44px] shrink-0 flex-col items-center gap-2 border-l border-border bg-panel py-3">
             {[
               { id: "watchlist" as const, title: "Watchlist", icon: List },
-              { id: "alerts" as const, title: "Alerts", icon: Bell },
-              { id: "alertslog" as const, title: "Alerts Log", icon: BellRing },
             ].map((item) => {
               const Icon = item.icon;
               const active = rightPanel === item.id;
               return (
                 <button key={item.id} title={item.title} onClick={() => setRightPanel(active ? null : item.id)} className={`relative flex h-9 w-9 items-center justify-center rounded-lg transition-colors ${active ? "bg-surface text-foreground" : "text-muted hover:bg-surface hover:text-foreground"}`}>
                   <Icon className="h-[18px] w-[18px]" />
-                  {item.id === "alertslog" && alertLogCount > 0 && <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-danger text-[9px] font-semibold text-white">{alertLogCount}</span>}
                 </button>
               );
             })}
@@ -9586,8 +9583,6 @@ export default function KwantifyWorkspace({
           { id: "zyon" as const, title: "ZYON", icon: Sparkles },
           { id: "kwantbot" as const, title: "Kwant Bot", icon: Bot },
           { id: "optionstape" as const, title: "Options Tape", icon: FileText },
-          { id: "alerts" as const, title: "Alerts", icon: Bell },
-          { id: "alertslog" as const, title: "Alerts Log", icon: BellRing },
           { id: "friends" as const, title: "Friends", icon: UsersRound },
         ].map((item) => {
           const Icon = item.icon;
@@ -9597,8 +9592,6 @@ export default function KwantifyWorkspace({
               <Icon className="h-[18px] w-[18px]" />
               {item.id === "kwantbot" && kwantBotInterpreter.unreadTotal > 0 && <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-semibold text-background">{Math.min(99, kwantBotInterpreter.unreadTotal)}</span>}
               {item.id === "optionstape" && kwantBotInterpreter.optionsUnreadTotal > 0 && <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-semibold text-background">{Math.min(99, kwantBotInterpreter.optionsUnreadTotal)}</span>}
-              {item.id === "alerts" && socialNotifications.unreadCount > 0 && <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-semibold text-background">{Math.min(99, socialNotifications.unreadCount)}</span>}
-              {item.id === "alertslog" && alertLogCount > 0 && <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-danger text-[9px] font-semibold text-white">{alertLogCount}</span>}
               {item.id === "friends" && friendsOnlineCount > 0 && <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full border border-background bg-primary px-1 text-[9px] font-semibold text-background shadow-[0_0_10px_color-mix(in_srgb,var(--primary)_45%,transparent)]" aria-label={`${friendsOnlineCount} friends online`}>{Math.min(99, friendsOnlineCount)}</span>}
               {item.id === "friends" && friendsUnreadCount > 0 && <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-background bg-danger" aria-label={`${friendsUnreadCount} unread friend notifications`} />}
             </button>
