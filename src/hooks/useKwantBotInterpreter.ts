@@ -25,6 +25,7 @@ import {
 import {
   buildKwantBotLearningReview,
   mergeKwantBotLearningReviews,
+  type KwantBotLearningCalibration,
   type KwantBotLearningReview,
   type KwantBotLearningSyncState,
 } from "@/lib/kwantBotLearning";
@@ -94,6 +95,7 @@ export type UseKwantBotInterpreterResult = {
   messages: RootRecord<KwantBotInterpreterMessage[]>;
   memory: RootRecord<KwantBotMemoryEvent[]>;
   learningReviews: KwantBotLearningReview[];
+  learningCalibration: RootRecord<KwantBotLearningCalibration | null>;
   learningSyncState: KwantBotLearningSyncState;
   archiveSyncState: KwantBotLearningSyncState;
   archiveHasMore: boolean;
@@ -124,6 +126,10 @@ export function useKwantBotInterpreter(args: {
   const [messages, setMessages] = useState<RootRecord<KwantBotInterpreterMessage[]>>(emptyMessages);
   const [memory, setMemory] = useState<RootRecord<KwantBotMemoryEvent[]>>(emptyMemory);
   const [learningReviews, setLearningReviews] = useState<KwantBotLearningReview[]>([]);
+  const [learningCalibration, setLearningCalibration] = useState<RootRecord<KwantBotLearningCalibration | null>>({
+    NQ: null,
+    ES: null,
+  });
   const [learningSyncState, setLearningSyncState] = useState<KwantBotLearningSyncState>("local");
   const [archiveSyncState, setArchiveSyncState] = useState<KwantBotLearningSyncState>("local");
   const [archiveHasMore, setArchiveHasMore] = useState(false);
@@ -569,6 +575,7 @@ export function useKwantBotInterpreter(args: {
         const body = await response.json() as {
           configured?: boolean;
           reviews?: KwantBotLearningReview[];
+          calibration?: KwantBotLearningCalibration[];
         };
         if (!response.ok || !body.configured) throw new Error("Cloud learning journal unavailable.");
         if (cancelled) return;
@@ -579,6 +586,13 @@ export function useKwantBotInterpreter(args: {
         );
         learningReviewsRef.current = nextReviews;
         setLearningReviews(nextReviews);
+        if (Array.isArray(body.calibration)) {
+          const byRoot: RootRecord<KwantBotLearningCalibration | null> = { NQ: null, ES: null };
+          body.calibration.forEach((entry) => {
+            if (entry?.root === "NQ" || entry?.root === "ES") byRoot[entry.root] = entry;
+          });
+          setLearningCalibration(byRoot);
+        }
         setLearningSyncState("synced");
         settled = true;
       })
@@ -608,13 +622,26 @@ export function useKwantBotInterpreter(args: {
         body: JSON.stringify({ reviews: pending }),
       })
         .then(async (response) => {
-          const body = await response.json() as { configured?: boolean; ids?: string[] };
+          const body = await response.json() as {
+            configured?: boolean;
+            ids?: string[];
+            calibration?: KwantBotLearningCalibration[];
+          };
           if (!response.ok || !body.configured) throw new Error("Cloud learning journal unavailable.");
           const savedIds = new Set(body.ids ?? pending.map((review) => review.id));
           const nextReviews = learningReviewsRef.current.map((review) =>
             savedIds.has(review.id) ? { ...review, syncState: "synced" as const } : review);
           learningReviewsRef.current = nextReviews;
           setLearningReviews(nextReviews);
+          if (Array.isArray(body.calibration)) {
+            setLearningCalibration((current) => {
+              const next = { ...current };
+              body.calibration?.forEach((entry) => {
+                if (entry?.root === "NQ" || entry?.root === "ES") next[entry.root] = entry;
+              });
+              return next;
+            });
+          }
           setLearningSyncState("synced");
         })
         .catch(() => {
@@ -840,6 +867,7 @@ export function useKwantBotInterpreter(args: {
     messages,
     memory,
     learningReviews,
+    learningCalibration,
     learningSyncState,
     archiveSyncState,
     archiveHasMore,

@@ -325,6 +325,7 @@ export default function KwantBotIntelligenceWorkspace({
     messages,
     memory,
     learningReviews,
+    learningCalibration,
     learningSyncState,
     archiveSyncState,
     archiveHasMore,
@@ -499,46 +500,66 @@ export default function KwantBotIntelligenceWorkspace({
       .sort((left, right) => Date.parse(right.reviewedAt) - Date.parse(left.reviewedAt)),
     [learningReviews, selectedRoot],
   );
+  const rootCalibration = learningCalibration[selectedRoot];
   const latestLearningReview = rootLearningReviews[0] ?? null;
-  const averageLearningScore = rootLearningReviews.length
-    ? Math.round(rootLearningReviews.reduce((total, review) => total + review.score, 0) / rootLearningReviews.length)
+  const averageLearningScore = rootCalibration?.averageScore
+    ?? (rootLearningReviews.length
+      ? Math.round(rootLearningReviews.reduce((total, review) => total + review.score, 0) / rootLearningReviews.length)
+      : null);
+  const lifetimeReviewCount = rootCalibration?.reviewCount ?? rootLearningReviews.length;
+  const confirmedLearningReviews = rootCalibration?.confirmedCount
+    ?? rootLearningReviews.filter((review) => review.verdict === "CONFIRMED").length;
+  const failedLearningReviews = rootCalibration?.failedCount
+    ?? rootLearningReviews.filter((review) => review.verdict === "FAILED").length;
+  const fallbackBaseline = rootLearningReviews.length
+    ? [...rootLearningReviews].reverse().slice(0, 10)
+    : [];
+  const fallbackBaselineAverage = fallbackBaseline.length
+    ? Math.round(fallbackBaseline.reduce((total, review) => total + review.score, 0) / fallbackBaseline.length)
     : null;
-  const confirmedLearningReviews = rootLearningReviews.filter((review) => review.verdict === "CONFIRMED").length;
-  const failedLearningReviews = rootLearningReviews.filter((review) => review.verdict === "FAILED").length;
-  const recentLearningAverage = rootLearningReviews.length
-    ? rootLearningReviews.slice(0, 10).reduce((total, review) => total + review.score, 0)
-      / Math.min(10, rootLearningReviews.length)
-    : null;
-  const previousLearningWindow = rootLearningReviews.slice(10, 20);
-  const previousLearningAverage = previousLearningWindow.length
-    ? previousLearningWindow.reduce((total, review) => total + review.score, 0) / previousLearningWindow.length
-    : null;
-  const learningTrend = recentLearningAverage !== null && previousLearningAverage !== null
-    ? Math.round(recentLearningAverage - previousLearningAverage)
-    : null;
-  const calibrationReviews = useMemo(
-    () => rootLearningReviews.slice(0, 12).reverse(),
-    [rootLearningReviews],
-  );
+  const baselineLearningAverage = rootCalibration?.baselineAverage ?? fallbackBaselineAverage;
+  const recentLearningAverage = rootCalibration?.recentAverage
+    ?? (rootLearningReviews.length
+      ? Math.round(rootLearningReviews.slice(0, 10).reduce((total, review) => total + review.score, 0)
+        / Math.min(10, rootLearningReviews.length))
+      : null);
+  const learningTrend = rootCalibration?.changeFromBaseline
+    ?? (averageLearningScore !== null && baselineLearningAverage !== null
+      ? averageLearningScore - baselineLearningAverage
+      : null);
+  const calibrationCheckpoints = useMemo(() => {
+    if (rootCalibration?.checkpoints.length) return rootCalibration.checkpoints;
+    const chronological = [...rootLearningReviews].reverse();
+    if (!chronological.length) return [];
+    const stride = Math.max(1, Math.ceil(chronological.length / 24));
+    let runningScore = 0;
+    return chronological.flatMap((review, index) => {
+      runningScore += review.score;
+      const reviewCount = index + 1;
+      if (reviewCount !== chronological.length && reviewCount % stride !== 0) return [];
+      return [{
+        reviewCount,
+        averageScore: Math.round(runningScore / reviewCount),
+        reviewedAt: review.reviewedAt,
+      }];
+    });
+  }, [rootCalibration, rootLearningReviews]);
   const calibrationWindow = useMemo(() => {
-    const oldest = calibrationReviews[0] ?? null;
-    const newest = calibrationReviews.at(-1) ?? null;
+    const oldest = rootCalibration?.firstReviewedAt ?? rootLearningReviews.at(-1)?.reviewedAt ?? null;
+    const newest = rootCalibration?.lastReviewedAt ?? rootLearningReviews[0]?.reviewedAt ?? null;
     if (!oldest || !newest) return null;
-    const oldestTimestamp = Date.parse(oldest.reviewedAt);
-    const newestTimestamp = Date.parse(newest.reviewedAt);
-    const sampleLabel = rootLearningReviews.length > calibrationReviews.length
-      ? `Last ${calibrationReviews.length} of ${rootLearningReviews.length} reviews`
-      : `${calibrationReviews.length} completed review${calibrationReviews.length === 1 ? "" : "s"}`;
-    const oldestDate = formatCalibrationDate(oldest.reviewedAt);
-    const newestDate = formatCalibrationDate(newest.reviewedAt);
+    const oldestTimestamp = Date.parse(oldest);
+    const newestTimestamp = Date.parse(newest);
+    const oldestDate = formatCalibrationDate(oldest);
+    const newestDate = formatCalibrationDate(newest);
     return {
-      sampleLabel,
+      sampleLabel: `All ${lifetimeReviewCount} review${lifetimeReviewCount === 1 ? "" : "s"}`,
       dateRange: oldestDate === newestDate ? oldestDate : `${oldestDate} - ${newestDate}`,
-      duration: calibrationReviews.length > 1 && Number.isFinite(oldestTimestamp) && Number.isFinite(newestTimestamp)
+      duration: lifetimeReviewCount > 1 && Number.isFinite(oldestTimestamp) && Number.isFinite(newestTimestamp)
         ? formatCalibrationDuration(newestTimestamp - oldestTimestamp)
         : null,
     };
-  }, [calibrationReviews, rootLearningReviews.length]);
+  }, [lifetimeReviewCount, rootCalibration, rootLearningReviews]);
   const blindSpots = useMemo(() => {
     const counts = new Map<string, number>();
     rootLearningReviews.forEach((review) => {
@@ -1062,21 +1083,21 @@ export default function KwantBotIntelligenceWorkspace({
               />
               <StatCard
                 label="Reviewed outcomes"
-                value={`${rootLearningReviews.length}`}
+                value={`${lifetimeReviewCount}`}
                 detail={`${confirmedLearningReviews} confirmed · ${failedLearningReviews} failed`}
                 icon={ListChecks}
               />
               <StatCard
                 label="Calibration trend"
                 value={learningTrend === null ? "Building sample" : `${learningTrend >= 0 ? "+" : ""}${learningTrend} pts`}
-                detail="Latest 10 reviews versus the previous 10"
+                detail="Lifetime average versus the opening 10-review baseline"
                 icon={learningTrend !== null && learningTrend < 0 ? TrendingDown : TrendingUp}
                 active={learningTrend !== null && learningTrend > 0}
               />
               <StatCard
                 label="Learning memory"
                 value={learningSyncState === "synced" ? "Cloud synced" : learningSyncState === "syncing" ? "Syncing" : "Local retained"}
-                detail={learningSyncState === "synced" ? "Authenticated Supabase journal" : "Safe on this device; cloud table pending"}
+                detail={learningSyncState === "synced" ? "Permanent account-backed review record" : "Safe on this device; cloud table pending"}
                 icon={learningSyncState === "synced" ? Cloud : CloudOff}
                 active={learningSyncState === "synced"}
               />
@@ -1216,15 +1237,15 @@ export default function KwantBotIntelligenceWorkspace({
                     <section className="overflow-hidden rounded-2xl border border-border bg-panel">
                       <SectionTitle
                         icon={Gauge}
-                        eyebrow="Calibration"
+                        eyebrow="Lifetime calibration"
                         title="Is the reasoning improving?"
-                        detail="Scores compare review quality across completed cycles, not market direction accuracy alone."
+                        detail="Every completed review stays in the account record. The cumulative average is measured from the first retained cycle onward."
                         trailing={calibrationWindow ? (
                           <div
                             className="shrink-0 rounded-xl border border-primary/20 bg-primary/[0.05] px-3 py-2 text-right"
-                            title={`Calibration covers ${calibrationWindow.sampleLabel.toLowerCase()} from ${calibrationWindow.dateRange}.`}
+                            title={`Permanent calibration covers ${calibrationWindow.sampleLabel.toLowerCase()} from ${calibrationWindow.dateRange}.`}
                           >
-                            <div className="text-[6px] font-semibold uppercase tracking-[0.16em] text-primary">Data window</div>
+                            <div className="text-[6px] font-semibold uppercase tracking-[0.16em] text-primary">Lifetime record</div>
                             <div className="mt-0.5 text-[8px] font-semibold text-foreground">{calibrationWindow.sampleLabel}</div>
                             <div className="mt-0.5 font-mono text-[7px] text-muted">
                               {calibrationWindow.dateRange}{calibrationWindow.duration ? ` · ${calibrationWindow.duration}` : ""}
@@ -1232,16 +1253,44 @@ export default function KwantBotIntelligenceWorkspace({
                           </div>
                         ) : null}
                       />
-                      <div className="space-y-2 p-4">
-                        {calibrationReviews.map((review) => (
-                          <div key={review.id} className="grid grid-cols-[64px_1fr_34px] items-center gap-2">
-                            <div className="truncate text-[7px] font-semibold text-muted">{review.levelName}</div>
-                            <div className="h-1.5 overflow-hidden rounded-full bg-background">
-                              <div className="h-full rounded-full bg-primary" style={{ width: `${review.score}%` }} />
-                            </div>
-                            <div className="text-right font-mono text-[8px] text-foreground">{review.score}</div>
+                      <div className="p-4">
+                        <div className="mb-4 grid grid-cols-2 gap-2">
+                          <div className="rounded-xl border border-border bg-background/40 p-3">
+                            <div className="text-[6px] font-semibold uppercase tracking-[0.12em] text-muted">Opening baseline</div>
+                            <div className="mt-1 font-mono text-[13px] font-semibold text-foreground">{baselineLearningAverage === null ? "—" : `${baselineLearningAverage}%`}</div>
+                            <div className="mt-0.5 text-[6px] text-muted">First {rootCalibration?.baselineReviewCount ?? Math.min(10, lifetimeReviewCount)} reviews</div>
                           </div>
-                        ))}
+                          <div className="rounded-xl border border-primary/20 bg-primary/[0.04] p-3">
+                            <div className="text-[6px] font-semibold uppercase tracking-[0.12em] text-primary">All-time average</div>
+                            <div className="mt-1 font-mono text-[13px] font-semibold text-foreground">{averageLearningScore === null ? "—" : `${averageLearningScore}%`}</div>
+                            <div className="mt-0.5 text-[6px] text-muted">Across all {lifetimeReviewCount} reviews</div>
+                          </div>
+                          <div className="rounded-xl border border-border bg-background/40 p-3">
+                            <div className="text-[6px] font-semibold uppercase tracking-[0.12em] text-muted">Latest sample</div>
+                            <div className="mt-1 font-mono text-[13px] font-semibold text-foreground">{recentLearningAverage === null ? "—" : `${recentLearningAverage}%`}</div>
+                            <div className="mt-0.5 text-[6px] text-muted">Latest {rootCalibration?.recentReviewCount ?? Math.min(10, lifetimeReviewCount)} reviews</div>
+                          </div>
+                          <div className="rounded-xl border border-border bg-background/40 p-3">
+                            <div className="text-[6px] font-semibold uppercase tracking-[0.12em] text-muted">Net improvement</div>
+                            <div className={`mt-1 font-mono text-[13px] font-semibold ${learningTrend === null ? "text-muted" : learningTrend >= 0 ? "text-primary" : "text-danger"}`}>{learningTrend === null ? "—" : `${learningTrend >= 0 ? "+" : ""}${learningTrend} pts`}</div>
+                            <div className="mt-0.5 text-[6px] text-muted">All-time versus baseline</div>
+                          </div>
+                        </div>
+                        <div className="mb-2 flex items-center justify-between text-[6px] font-semibold uppercase tracking-[0.12em] text-muted">
+                          <span>Cumulative checkpoints</span>
+                          <span>Average score</span>
+                        </div>
+                        <div className="space-y-2">
+                          {calibrationCheckpoints.map((checkpoint) => (
+                            <div key={`${checkpoint.reviewCount}:${checkpoint.reviewedAt}`} className="grid grid-cols-[64px_1fr_34px] items-center gap-2" title={`${formatCalibrationDate(checkpoint.reviewedAt)} · ${checkpoint.reviewCount} total reviews`}>
+                              <div className="truncate font-mono text-[7px] font-semibold text-muted">#{checkpoint.reviewCount}</div>
+                              <div className="h-1.5 overflow-hidden rounded-full bg-background">
+                                <div className="h-full rounded-full bg-primary" style={{ width: `${checkpoint.averageScore}%` }} />
+                              </div>
+                              <div className="text-right font-mono text-[8px] text-foreground">{checkpoint.averageScore}</div>
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     </section>
 
@@ -1277,7 +1326,7 @@ export default function KwantBotIntelligenceWorkspace({
                           </div>
                           <p className="mt-1 text-[8px] leading-4 text-muted">
                             {learningSyncState === "synced"
-                              ? "Authenticated reviews are stored per user in Supabase and merged with this device journal."
+                              ? "Every authenticated review is retained per user in Supabase. Lifetime calibration is rebuilt from the complete record, not a rolling daily window."
                               : "Reviews remain available on this device. Cloud sync activates when the KwantBot learning table is available."}
                           </p>
                         </div>

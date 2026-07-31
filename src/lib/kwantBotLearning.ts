@@ -9,6 +9,30 @@ export type KwantBotLearningVerdict = "CONFIRMED" | "PARTIAL" | "FAILED";
 export type KwantBotLearningGrade = "EXCELLENT" | "GOOD" | "MIXED" | "POOR";
 export type KwantBotLearningSyncState = "local" | "syncing" | "synced" | "error";
 
+export type KwantBotCalibrationCheckpoint = {
+  reviewCount: number;
+  averageScore: number;
+  reviewedAt: string;
+};
+
+export type KwantBotLearningCalibration = {
+  root: KwantBotMarketRoot;
+  reviewCount: number;
+  scoreSum: number;
+  averageScore: number;
+  confirmedCount: number;
+  partialCount: number;
+  failedCount: number;
+  firstReviewedAt: string;
+  lastReviewedAt: string;
+  baselineReviewCount: number;
+  baselineAverage: number;
+  recentReviewCount: number;
+  recentAverage: number;
+  changeFromBaseline: number;
+  checkpoints: KwantBotCalibrationCheckpoint[];
+};
+
 export type KwantBotLearningReview = {
   id: string;
   root: KwantBotMarketRoot;
