@@ -1,4 +1,5 @@
 import "server-only";
+import { unstable_cache } from "next/cache";
 
 import {
   OPTIONS_FLOW_TICKERS,
@@ -34,8 +35,10 @@ import {
 } from "@/lib/optionsLevelOne";
 import { resolveOptionsMarketData } from "@/lib/optionsMarketData.server";
 import {
+  getNativeFuturesSessionClose,
   getNativeFuturesSpot,
   getNativeGammaSnapshot,
+  newYorkCashCloseIso,
   type NativeGammaRoot,
 } from "@/lib/databentoGamma.server";
 import type {
@@ -2513,15 +2516,26 @@ export async function getGexDeskHistory(
 export async function getOptionsFlowPayload(symbolInput: string, priceModeInput: string = "CASH") {
   const symbol = symbolInput.trim().toUpperCase();
   const priceMode: OptionsPriceMode = priceModeInput.trim().toUpperCase() === "FUTURES" ? "FUTURES" : "CASH";
+  const session = getUsOptionsSession();
   const cacheKey = `${symbol}:${priceMode}`;
   const cached = requestCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) return cached.promise;
 
-  const promise = buildOptionsFlowPayload(symbol, priceMode).catch((error) => {
+  const promise = (session.marketOpen
+    ? buildOptionsFlowPayload(symbol, priceMode)
+    : unstable_cache(
+      () => buildOptionsFlowPayload(symbol, priceMode),
+      ["completed-new-york-options-flow-v1", symbol, priceMode, session.sessionDate],
+      { revalidate: 6 * 60 * 60 },
+    )()
+  ).catch((error) => {
     requestCache.delete(cacheKey);
     throw error;
   });
-  requestCache.set(cacheKey, { expiresAt: Date.now() + CACHE_TTL_MS, promise });
+  requestCache.set(cacheKey, {
+    expiresAt: Date.now() + (session.marketOpen ? CACHE_TTL_MS : 5 * 60_000),
+    promise,
+  });
   return promise;
 }
 
@@ -2664,9 +2678,12 @@ export async function getGexDeskZeroGammaPayload(): Promise<GexDeskZeroGammaPayl
 
 async function buildNativeChartGamma(root: NativeGammaRoot): Promise<ChartGammaLevelsPayload> {
   const session = getUsOptionsSession();
-  const spot = await getNativeFuturesSpot(root);
+  const spot = session.marketOpen
+    ? await getNativeFuturesSpot(root)
+    : await getNativeFuturesSessionClose(root, session.sessionDate)
+      ?? await getNativeFuturesSpot(root);
   if (!spot) {
-    throw new QuantDataError(`No live ${root} futures price is available.`, 503, null);
+    throw new QuantDataError(`No current or completed-session ${root} futures price is available.`, 503, null);
   }
   const snap = await getNativeGammaSnapshot(root, session.sessionDate, spot);
   if (!snap.levels.length) {
@@ -2683,11 +2700,11 @@ async function buildNativeChartGamma(root: NativeGammaRoot): Promise<ChartGammaL
   return {
     root,
     requestedSource: root,
-    checkedAt: new Date().toISOString(),
+    checkedAt: session.marketOpen ? new Date().toISOString() : newYorkCashCloseIso(snap.sessionDate),
     refreshAfterMs: session.marketOpen ? 60_000 : 300_000,
     marketOpen: session.marketOpen,
     snapshotMode: session.marketOpen ? "LIVE" : "NEW_YORK_EOD",
-    sessionDate: session.sessionDate,
+    sessionDate: snap.sessionDate,
     environment,
     revision: snap.revision,
     sources: [source],

@@ -291,6 +291,39 @@ function priorTradingDayIso(iso: string): string {
   return dt.toISOString().slice(0, 10);
 }
 
+function zonedEpochMs(dateIso: string, hour: number, minute: number, timeZone: string) {
+  const [year, month, day] = dateIso.split("-").map(Number);
+  const wallClockUtc = Date.UTC(year, month - 1, day, hour, minute);
+  let candidate = wallClockUtc;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+    }).formatToParts(new Date(candidate));
+    const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+    const representedAsUtc = Date.UTC(
+      Number(values.year),
+      Number(values.month) - 1,
+      Number(values.day),
+      Number(values.hour) % 24,
+      Number(values.minute),
+      Number(values.second),
+    );
+    candidate = wallClockUtc - (representedAsUtc - candidate);
+  }
+  return candidate;
+}
+
+export function newYorkCashCloseIso(tradeIso: string) {
+  return new Date(zonedEpochMs(tradeIso, 16, 0, "America/New_York")).toISOString();
+}
+
 // Recompute time-to-expiry LIVE (floor ~15 min). For quarterlies this barely moves;
 // for 0DTE it is the whole game — gamma concentrates into the close as T -> 0.
 function liveT(g: Greek, nowSec: number): number {
@@ -535,8 +568,47 @@ export async function getNativeGammaSnapshot(root: NativeGammaRoot, tradeIso: st
     box: ev.box,
     netGex: ev.netGex, grossGex: ev.grossGex, levels,
     validationStrikes: ev.walls.slice(0, 6).map(([k]) => k),
-    revision: `native:${root}:${tradeIso}:${Math.round(liveSpot)}`,
+    revision: `native:${root}:${usedIso}:${Math.round(liveSpot)}`,
   };
+}
+
+function databentoTimestampMs(row: any): number | null {
+  const value = row?.hd?.ts_event ?? row?.timestamp ?? row?.ts_event;
+  if (typeof value === "string" && !/^\d+$/.test(value)) {
+    const parsed = Date.parse(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return null;
+  if (numeric > 10_000_000_000_000_000) return Math.floor(numeric / 1_000_000);
+  if (numeric > 10_000_000_000_000) return Math.floor(numeric / 1_000);
+  return numeric < 10_000_000_000 ? numeric * 1_000 : numeric;
+}
+
+async function buildNativeFuturesSessionClose(root: NativeGammaRoot, tradeIso: string) {
+  const closeMs = Date.parse(newYorkCashCloseIso(tradeIso));
+  const start = new Date(closeMs - 20 * 60_000).toISOString();
+  const end = new Date(closeMs + 60_000).toISOString();
+  const rows = await dbPull("ohlcv-1m", start, end, CFG[root].contSymbol, "continuous", 60);
+  const eligible = rows.filter((row) => {
+    const timestamp = databentoTimestampMs(row);
+    return timestamp === null || timestamp < closeMs;
+  });
+  const last = eligible.at(-1) ?? rows.at(-1);
+  const close = Number(last?.close) / 1e9;
+  return Number.isFinite(close) && close > 0 ? Math.round(close * 100) / 100 : null;
+}
+
+/** The completed 16:00 New York futures print used to freeze off-session levels. */
+export async function getNativeFuturesSessionClose(root: NativeGammaRoot, tradeIso: string): Promise<number | null> {
+  return durableOrDirect(
+    () => unstable_cache(
+      async () => buildNativeFuturesSessionClose(root, tradeIso),
+      ["native-futures-new-york-close-v1", root, tradeIso],
+      { revalidate: 24 * 60 * 60 },
+    )(),
+    () => buildNativeFuturesSessionClose(root, tradeIso),
+  );
 }
 
 /** Live front-month futures price (spot for the gamma math), via Databento. */

@@ -120,6 +120,7 @@ type ValueAreaPayload = {
 };
 
 const LEVELZ_LAYOUT_STORAGE_KEY = "kwantdesk:levelz-layout:v1";
+const LEVELZ_SNAPSHOT_STORAGE_KEY = "kwantdesk:levelz-snapshots:v1";
 const FIVE_DAY_HISTORY_DAYS = 8;
 const MARKET_CACHE_MS = 15_000;
 
@@ -141,6 +142,93 @@ const marketCache = new Map<string, { candles: Candle[]; updatedAt: number }>();
 const marketRequests = new Map<string, Promise<Candle[]>>();
 const levelCache = new Map<string, { snapshot: LevelSnapshot; updatedAt: number }>();
 const levelRequests = new Map<string, Promise<LevelSnapshot>>();
+
+function isNewYorkOptionsOpen(now = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    weekday: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(now);
+  const read = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value ?? "";
+  const weekday = read("weekday");
+  const minutes = Number(read("hour")) * 60 + Number(read("minute"));
+  return weekday !== "Sat" && weekday !== "Sun" && minutes >= 9 * 60 + 30 && minutes < 16 * 60;
+}
+
+function storedSnapshotKey(config: PanelConfig) {
+  return `${levelRoot(config.instrument)}:${config.family}`;
+}
+
+function isStoredLevelSnapshot(value: unknown): value is LevelSnapshot {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Partial<LevelSnapshot>;
+  return Array.isArray(candidate.levels)
+    && candidate.levels.length > 0
+    && Array.isArray(candidate.zones)
+    && typeof candidate.source === "string"
+    && typeof candidate.status === "string";
+}
+
+function rethemeSnapshot(snapshot: LevelSnapshot, family: LevelFamily, settings: ChartSettings): LevelSnapshot {
+  if (family === "gamma") {
+    return {
+      ...snapshot,
+      levels: snapshot.levels.map((level) => ({
+        ...level,
+        color: gammaColor(level.kind as ChartGammaSourceLevelKind, settings),
+      })),
+    };
+  }
+  if (family !== "gameplan") return snapshot;
+  const roleColors: Record<string, string> = {
+    MAGNET: settings.upColor,
+    WALL: settings.downColor,
+    ACCELERANT: "#F59E0B",
+    DECISION: "#22D3EE",
+  };
+  const levels = snapshot.levels.map((level) => ({ ...level, color: roleColors[level.kind] ?? level.color }));
+  return {
+    ...snapshot,
+    levels,
+    zones: snapshot.zones.map((zone, index) => {
+      const color = levels[index]?.color ?? zone.color;
+      return { ...zone, color, fillColor: `${color}18` };
+    }),
+  };
+}
+
+function readStoredLevelSnapshot(config: PanelConfig, settings: ChartSettings) {
+  if (typeof window === "undefined" || (config.family !== "gamma" && config.family !== "gameplan")) return null;
+  try {
+    const stored = JSON.parse(window.localStorage.getItem(LEVELZ_SNAPSHOT_STORAGE_KEY) ?? "{}") as Record<string, unknown>;
+    const snapshot = stored[storedSnapshotKey(config)];
+    return isStoredLevelSnapshot(snapshot) ? rethemeSnapshot(snapshot, config.family, settings) : null;
+  } catch {
+    return null;
+  }
+}
+
+function storeLevelSnapshot(config: PanelConfig, snapshot: LevelSnapshot) {
+  if (typeof window === "undefined" || !snapshot.levels.length || (config.family !== "gamma" && config.family !== "gameplan")) return;
+  try {
+    const stored = JSON.parse(window.localStorage.getItem(LEVELZ_SNAPSHOT_STORAGE_KEY) ?? "{}") as Record<string, unknown>;
+    stored[storedSnapshotKey(config)] = snapshot;
+    window.localStorage.setItem(LEVELZ_SNAPSHOT_STORAGE_KEY, JSON.stringify(stored));
+  } catch {}
+}
+
+function retainedNewYorkSnapshot(snapshot: LevelSnapshot, family: LevelFamily, marketOpen: boolean) {
+  if (family !== "gamma" && family !== "gameplan") return snapshot;
+  return {
+    ...snapshot,
+    status: "EOD" as const,
+    note: marketOpen
+      ? `The live New York refresh is reconnecting. The last confirmed snapshot remains on screen instead of disappearing. ${snapshot.note}`
+      : `New York is closed. These levels are frozen from the latest completed New York session and remain active through Asia, Tokyo, Frankfurt, London and pre-market. ${snapshot.note}`,
+  };
+}
 
 function marketSymbol(instrument: LevelInstrument) {
   return `${instrument}.v.0`;
@@ -340,7 +428,7 @@ function makeGammaSnapshot(payload: ChartGammaLevelsPayload, settings: ChartSett
   };
 }
 
-function makeGameplanSnapshot(payload: GameplanPayload, settings: ChartSettings): LevelSnapshot {
+function makeGameplanSnapshot(payload: GameplanPayload, settings: ChartSettings, marketOpen: boolean): LevelSnapshot {
   const roleColors = {
     magnet: settings.upColor,
     wall: settings.downColor,
@@ -384,11 +472,13 @@ function makeGameplanSnapshot(payload: GameplanPayload, settings: ChartSettings)
     zones,
     asOf: payload.generated_at,
     source: `${payload.source_symbol} positioning · ${payload.plan.edition.session}`,
-    status: payload.status === "LIVE" ? "LIVE" : "READY",
+    status: marketOpen && payload.status === "LIVE" ? "LIVE" : "EOD",
     regime: payload.plan.environment.tape.plain,
     tape: payload.plan.environment.tape.state.toUpperCase(),
     flowLean: payload.plan.environment.flow.lean,
-    note: payload.plan.one_liner,
+    note: marketOpen
+      ? payload.plan.one_liner
+      : `New York is closed. This Gameplan is frozen from the latest completed New York edition. ${payload.plan.one_liner}`,
   };
 }
 
@@ -493,7 +583,7 @@ async function buildLevelSnapshot(config: PanelConfig, settings: ChartSettings) 
   }
   if (config.family === "gameplan") {
     const payload = await requestJson<GameplanPayload & { error?: string }>(`/api/gameplan?root=${root}&session=newyork`);
-    return makeGameplanSnapshot(payload, settings);
+    return makeGameplanSnapshot(payload, settings, isNewYorkOptionsOpen());
   }
   const payload = await requestJson<ValueAreaPayload>(`/api/databento/value-area?symbol=${encodeURIComponent(marketSymbol(config.instrument))}`);
   return makeValueAreaSnapshot(payload, settings);
@@ -515,7 +605,15 @@ async function fetchLevelSnapshot(config: PanelConfig, settings: ChartSettings, 
   const request = buildLevelSnapshot(config, settings)
     .then((snapshot) => {
       levelCache.set(key, { snapshot, updatedAt: Date.now() });
+      storeLevelSnapshot(config, snapshot);
       return snapshot;
+    })
+    .catch((error) => {
+      const fallback = cached?.snapshot ?? readStoredLevelSnapshot(config, settings);
+      if (!fallback?.levels.length) throw error;
+      const retained = retainedNewYorkSnapshot(fallback, config.family, isNewYorkOptionsOpen());
+      levelCache.set(key, { snapshot: retained, updatedAt: Date.now() });
+      return retained;
     })
     .finally(() => levelRequests.delete(key));
   levelRequests.set(key, request);
@@ -578,10 +676,17 @@ function useLevelSnapshot(config: PanelConfig, settings: ChartSettings) {
   const [loading, setLoading] = useState(config.family !== "structure");
   const [error, setError] = useState("");
   const [refreshNonce, setRefreshNonce] = useState(0);
+  const [newYorkOpen, setNewYorkOpen] = useState(() => isNewYorkOptionsOpen());
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(config.family !== "structure");
+    const retained = readStoredLevelSnapshot(config, settings);
+    if (retained) {
+      setSnapshot(retainedNewYorkSnapshot(retained, config.family, isNewYorkOptionsOpen()));
+      setLoading(false);
+    } else {
+      setLoading(config.family !== "structure");
+    }
     setError("");
     void fetchLevelSnapshot(config, settings, refreshNonce > 0)
       .then((next) => {
@@ -598,17 +703,22 @@ function useLevelSnapshot(config: PanelConfig, settings: ChartSettings) {
   }, [config, refreshNonce, settings]);
 
   useEffect(() => {
+    const timer = window.setInterval(() => setNewYorkOpen(isNewYorkOptionsOpen()), 30_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
     const refreshMs = config.family === "gamma"
-      ? 15_000
+      ? newYorkOpen ? 15_000 : 5 * 60_000
       : config.family === "gameplan"
-        ? 60_000
+        ? newYorkOpen ? 15_000 : 5 * 60_000
         : config.family === "value-area"
           ? 5 * 60_000
           : null;
     if (refreshMs === null) return;
     const timer = window.setInterval(() => setRefreshNonce((value) => value + 1), refreshMs);
     return () => window.clearInterval(timer);
-  }, [config.family]);
+  }, [config.family, newYorkOpen]);
 
   return { snapshot, loading, error, refresh: () => setRefreshNonce((value) => value + 1) };
 }

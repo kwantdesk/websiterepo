@@ -2,6 +2,12 @@ import { createServerClient } from "@supabase/ssr";
 import { NextRequest, NextResponse } from "next/server";
 import { buildGameplanPayload, isGameplanSession } from "@/lib/gameplan";
 import {
+  getNativeFuturesSessionClose,
+  getNativeFuturesSpot,
+  newYorkCashCloseIso,
+} from "@/lib/databentoGamma.server";
+import { isOptionsFuturesRatioSane, type OptionsFlowPayload } from "@/lib/optionsFlow";
+import {
   getConfiguredQuantDataApiKey,
   getOptionsFlowPayload,
   getQuantDataHttpError,
@@ -49,9 +55,45 @@ export async function GET(request: NextRequest) {
   }
 
   try {
+    const root = rootInput as "NQ" | "ES";
     const source = rootInput === "NQ" ? "NDX" : "SPX";
     const options = await getOptionsFlowPayload(source, "FUTURES");
-    const payload = buildGameplanPayload(options, rootInput, sessionInput);
+    const futuresPrice = options.session.marketOpen
+      ? await getNativeFuturesSpot(root).catch(() => null)
+      : await getNativeFuturesSessionClose(root, options.session.sessionDate).catch(() => null);
+    const cashPrice = options.stockPrice;
+    const scale = futuresPrice && cashPrice && cashPrice > 0 ? futuresPrice / cashPrice : null;
+    const canCalibrate = futuresPrice !== null
+      && cashPrice !== null
+      && scale !== null
+      && isOptionsFuturesRatioSane(source, scale);
+    const calibratedOptions: OptionsFlowPayload = canCalibrate
+      ? {
+        ...options,
+        marketData: {
+          ...options.marketData,
+          mode: "FUTURES" as const,
+          provider: "Databento" as const,
+          status: options.session.marketOpen ? "LIVE" as const : "LAST_SESSION" as const,
+          symbol: root,
+          futuresRoot: root,
+          asOf: options.session.marketOpen
+            ? new Date().toISOString()
+            : newYorkCashCloseIso(options.session.sessionDate),
+          lastPrice: futuresPrice,
+          bid: null,
+          ask: null,
+          basisToOptionsUnderlying: futuresPrice! - cashPrice!,
+          levelPriceScale: scale,
+          stale: !options.session.marketOpen,
+          fallback: false,
+          detail: options.session.marketOpen
+            ? "Live CME futures calibration against the active New York options snapshot."
+            : "Frozen CME futures calibration at the latest completed New York close.",
+        },
+      }
+      : options;
+    const payload = buildGameplanPayload(calibratedOptions, root, sessionInput);
     return NextResponse.json(payload, {
       headers: { "Cache-Control": "private, no-store, max-age=0" },
     });
