@@ -163,6 +163,8 @@ import {
   DATABENTO_LIVE_TICK_EVENT,
   LIVE_CHART_CANDLE_EVENT,
   publishDatabentoLiveStatus,
+  readDatabentoLiveTail,
+  recordDatabentoLiveTick,
   type DatabentoLiveStatus,
 } from "@/lib/chartLiveEvents";
 import {
@@ -983,6 +985,65 @@ function mergeHistoricalWithLiveTail(
   }
 
   return [...byTimestamp.values()].sort((left, right) => left.timestamp - right.timestamp);
+}
+
+function mergeObservedDatabentoTail(
+  historical: Candle[],
+  observedSeconds: Candle[],
+  timeframe: string,
+) {
+  if (!observedSeconds.length || isEventBasedChartInterval(timeframe)) return historical;
+  const buckets = new Map<number, Candle>();
+  for (const second of observedSeconds) {
+    const timestamp = getTimeframeBucketStart(second.timestamp, timeframe);
+    const existing = buckets.get(timestamp);
+    if (!existing) {
+      buckets.set(timestamp, { ...second, timestamp });
+      continue;
+    }
+    buckets.set(timestamp, {
+      ...existing,
+      high: Math.max(existing.high, second.high),
+      low: Math.min(existing.low, second.low),
+      close: second.close,
+      volume: Number(existing.volume ?? 0) + Number(second.volume ?? 0),
+      trades: Number(existing.trades ?? 0) + Number(second.trades ?? 0),
+      delta: Number(existing.delta ?? 0) + Number(second.delta ?? 0),
+      deltaClose: Number(existing.deltaClose ?? existing.delta ?? 0) + Number(second.deltaClose ?? second.delta ?? 0),
+      askVolume: Number(existing.askVolume ?? 0) + Number(second.askVolume ?? 0),
+      bidVolume: Number(existing.bidVolume ?? 0) + Number(second.bidVolume ?? 0),
+    });
+  }
+
+  const currentBucket = getTimeframeBucketStart(Date.now(), timeframe);
+  const merged = new Map(mergeChartHistory([], historical).map((candle) => [
+    getTimeframeBucketStart(candle.timestamp, timeframe),
+    { ...candle, timestamp: getTimeframeBucketStart(candle.timestamp, timeframe) },
+  ]));
+  for (const [timestamp, observed] of buckets) {
+    const existing = merged.get(timestamp);
+    if (!existing) {
+      merged.set(timestamp, observed);
+      continue;
+    }
+    // Closed historical bars remain authoritative. The live tail only fills
+    // missing buckets and completes the still-forming bucket.
+    if (timestamp < currentBucket) continue;
+    merged.set(timestamp, {
+      ...existing,
+      ...observed,
+      timestamp,
+      open: existing.open,
+      high: Math.max(existing.high, observed.high),
+      low: Math.min(existing.low, observed.low),
+      close: observed.close,
+      volume: Math.max(Number(existing.volume ?? 0), Number(observed.volume ?? 0)),
+      trades: Math.max(Number(existing.trades ?? 0), Number(observed.trades ?? 0)),
+      askVolume: Math.max(Number(existing.askVolume ?? 0), Number(observed.askVolume ?? 0)),
+      bidVolume: Math.max(Number(existing.bidVolume ?? 0), Number(observed.bidVolume ?? 0)),
+    });
+  }
+  return [...merged.values()].sort((left, right) => left.timestamp - right.timestamp);
 }
 
 function marketTimestamp(value: unknown) {
@@ -2350,21 +2411,28 @@ function WorkspaceChartPane({
     const immediateCache = pane.broker === "Databento"
       ? peekCompatibleChartHistoryCache(pane.symbol, pane.timeframe)
       : null;
-    const immediateCandles = sanitizeCandles(
+    const observedTail = pane.broker === "Databento"
+      ? readDatabentoLiveTail(pane.symbol)
+      : [];
+    const immediateHistory = sanitizeCandles(
       immediateCache?.candles ?? [],
       pane.symbol,
     ).filter((candle) => candle.timestamp >= requestedFrom);
+    const immediateCandles = pane.broker === "Databento"
+      ? mergeObservedDatabentoTail(immediateHistory, observedTail, pane.timeframe)
+      : immediateHistory;
+    const hasImmediateHistory = immediateHistory.length > 0;
     const immediateMarketTrades = needsOrderFlowHistory
       ? workspaceExecutionTape.get(workspaceOrderFlowKey(pane.symbol, pane.timeframe)) ?? []
       : [];
-    setLoading(immediateCandles.length === 0);
+    setLoading(!hasImmediateHistory);
     setError(null);
-    setCandles(immediateCandles);
+    setCandles(hasImmediateHistory ? immediateCandles : []);
     setMarketTrades(immediateMarketTrades);
-    latestCandlesRef.current = immediateCandles;
+    latestCandlesRef.current = hasImmediateHistory ? immediateCandles : [];
     latestMarketTradesRef.current = immediateMarketTrades;
-    historyHydratedRef.current = immediateCandles.length > 0;
-    liveTailStartTimestampRef.current = null;
+    historyHydratedRef.current = hasImmediateHistory;
+    liveTailStartTimestampRef.current = observedTail[0]?.timestamp ?? null;
     pendingLiveTicksRef.current = [];
     if (liveFrameRef.current !== null) {
       window.cancelAnimationFrame(liveFrameRef.current);
@@ -2377,7 +2445,27 @@ function WorkspaceChartPane({
         : null;
       if (cancelled) return;
       const cachedHistory = sanitizeCandles(cached?.candles ?? [], pane.symbol);
-      const cachedCandles = cachedHistory.filter((candle) => candle.timestamp >= requestedFrom);
+      const cachedBase = cachedHistory.filter((candle) => candle.timestamp >= requestedFrom);
+      const latestObservedTail = pane.broker === "Databento"
+        ? readDatabentoLiveTail(pane.symbol)
+        : [];
+      if (latestObservedTail.length) {
+        const firstObserved = latestObservedTail[0].timestamp;
+        liveTailStartTimestampRef.current = liveTailStartTimestampRef.current === null
+          ? firstObserved
+          : Math.min(liveTailStartTimestampRef.current, firstObserved);
+      }
+      const cachedWithObserved = pane.broker === "Databento"
+        ? mergeObservedDatabentoTail(cachedBase, latestObservedTail, pane.timeframe)
+        : cachedBase;
+      const cachedCandles = pane.broker === "Databento"
+        ? mergeHistoricalWithLiveTail(
+            cachedWithObserved,
+            latestCandlesRef.current,
+            pane.timeframe,
+            liveTailStartTimestampRef.current,
+          )
+        : cachedWithObserved;
       const needsFiveDayBackfill = pane.broker === "Databento"
         && !isEventBasedChartInterval(pane.timeframe);
       const cachedTailIsFresh = Boolean(
@@ -2393,7 +2481,7 @@ function WorkspaceChartPane({
             Number(candle.askVolume ?? 0) + Number(candle.bidVolume ?? 0) > 0)
         )
         && (!needsExecutionTape || immediateMarketTrades.length > 0);
-      if (cachedCandles.length) {
+      if (cachedBase.length) {
         latestCandlesRef.current = cachedCandles;
         historyHydratedRef.current = true;
         setCandles(cachedCandles);
@@ -2428,9 +2516,21 @@ function WorkspaceChartPane({
           ? mergeChartHistory(cachedCandles, clean)
           : clean;
         if (!mergedHistory.length) throw new Error("CME returned no usable candles.");
+        const latestObserved = pane.broker === "Databento"
+          ? readDatabentoLiveTail(pane.symbol)
+          : [];
+        if (latestObserved.length) {
+          const firstObserved = latestObserved[0].timestamp;
+          liveTailStartTimestampRef.current = liveTailStartTimestampRef.current === null
+            ? firstObserved
+            : Math.min(liveTailStartTimestampRef.current, firstObserved);
+        }
+        const historyWithObserved = pane.broker === "Databento"
+          ? mergeObservedDatabentoTail(mergedHistory, latestObserved, pane.timeframe)
+          : mergedHistory;
         const merged = pane.broker === "Databento"
           ? mergeHistoricalWithLiveTail(
-              mergedHistory,
+              historyWithObserved,
               latestCandlesRef.current,
               pane.timeframe,
               liveTailStartTimestampRef.current,
@@ -5242,6 +5342,7 @@ export default function KwantifyWorkspace({
 
       animationFrame = window.requestAnimationFrame(() => {
         for (const quote of quotes.values()) {
+          recordDatabentoLiveTick(quote);
           window.dispatchEvent(new CustomEvent(DATABENTO_LIVE_TICK_EVENT, {
             detail: { ...quote, cached: true } satisfies LiveFeedPrice,
           }));
@@ -5351,6 +5452,7 @@ export default function KwantifyWorkspace({
 
         const displayName = usingDatabentoFeed || usingCTraderFeed ? price.instrument : (nameMap[price.instrument] || price.instrument);
         if (usingDatabentoFeed) {
+          recordDatabentoLiveTick(price);
           window.dispatchEvent(new CustomEvent(DATABENTO_LIVE_TICK_EVENT, { detail: price }));
           const previousItem = watchlistRef.current.find(
             (item) => item.broker === "Databento" && item.symbol === displayName,
