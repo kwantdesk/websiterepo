@@ -5,6 +5,7 @@ import { NextRequest, NextResponse } from "next/server";
 // default function timeout can kill it mid-build. Cached calls return in milliseconds.
 export const maxDuration = 120;
 import {
+  getCashCalibratedChartGammaLevels,
   getChartGammaLevels,
   getConfiguredQuantDataApiKey,
   getQuantDataHttpError,
@@ -35,7 +36,8 @@ async function isAuthenticated(request: NextRequest) {
 export async function GET(request: NextRequest) {
   const root = (request.nextUrl.searchParams.get("root") || "").trim().toUpperCase();
   const source = (request.nextUrl.searchParams.get("source") || "").trim().toUpperCase();
-  const nativeFuturesRequest = (root === "NQ" || root === "ES") && source === root;
+  const calibratedRequest = request.nextUrl.searchParams.get("calibrated") === "1";
+  const nativeFuturesRequest = !calibratedRequest && (root === "NQ" || root === "ES") && source === root;
   if (!nativeFuturesRequest && !getConfiguredQuantDataApiKey()) {
     return NextResponse.json({ error: "KwantData is not configured." }, { status: 503 });
   }
@@ -43,10 +45,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Authentication required." }, { status: 401 });
   }
   try {
-    const payload = await getChartGammaLevels(
-      root,
-      source,
-    );
+    const payload = calibratedRequest && (root === "NQ" || root === "ES")
+      ? await getCashCalibratedChartGammaLevels(root, source)
+      : await getChartGammaLevels(root, source);
     return NextResponse.json(payload, {
       headers: { "Cache-Control": "private, no-store, max-age=0" },
     });

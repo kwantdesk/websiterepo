@@ -579,8 +579,11 @@ async function buildLevelSnapshot(config: PanelConfig, settings: ChartSettings) 
   if (config.family === "structure") return emptyStructureSnapshot();
   const root = levelRoot(config.instrument);
   if (config.family === "gamma") {
+    const gammaSource = root === "NQ" ? "QQQ" : "SPY";
     const [gamma, gameplan] = await Promise.all([
-      requestJson<ChartGammaLevelsPayload & { error?: string }>(`/api/chart-gamma-levels?root=${root}&source=${root}`),
+      requestJson<ChartGammaLevelsPayload & { error?: string }>(
+        `/api/chart-gamma-levels?root=${root}&source=${gammaSource}&calibrated=1`,
+      ),
       requestJson<GameplanPayload & { error?: string }>(`/api/gameplan?root=${root}&session=newyork`).catch(() => null),
     ]);
     const snapshot = makeGammaSnapshot(gamma, settings);

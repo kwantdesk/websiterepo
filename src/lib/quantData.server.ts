@@ -2715,17 +2715,24 @@ async function buildNativeChartGamma(root: NativeGammaRoot): Promise<ChartGammaL
     };
   } catch (nativeError) {
     try {
-      return await buildCashCalibratedGammaFallback(root);
+      return await getCashCalibratedChartGammaLevels(root);
     } catch {
       throw nativeError;
     }
   }
 }
 
-async function buildCashCalibratedGammaFallback(
+export async function getCashCalibratedChartGammaLevels(
   root: NativeGammaRoot,
+  sourceInput?: string,
 ): Promise<ChartGammaLevelsPayload> {
-  const calibrationSource = root === "NQ" ? "NDX" : "SPX";
+  const defaultSource = root === "NQ" ? "QQQ" : "SPY";
+  const normalizedSource = (sourceInput || defaultSource).trim().toUpperCase();
+  const compatibleSources = root === "NQ" ? new Set(["NDX", "QQQ"]) : new Set(["SPX", "SPY"]);
+  if (!compatibleSources.has(normalizedSource)) {
+    throw new QuantDataError(`${normalizedSource || "The requested source"} cannot be calibrated to ${root}.`, 400, null);
+  }
+  const calibrationSource = normalizedSource as ChartGammaSourceSnapshot["symbol"];
   const cashPayload = await getChartGammaLevels(root, calibrationSource);
   const cashSource = cashPayload.sources.find((source) => source.symbol === calibrationSource);
   if (!cashSource || !cashSource.levels.length || !Number.isFinite(cashSource.stockPrice) || cashSource.stockPrice <= 0) {
