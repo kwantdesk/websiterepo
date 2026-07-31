@@ -147,6 +147,7 @@ export type SocialPrecordPayload = {
   bearCondition: string;
   confirmation: string;
   invalidation: string;
+  traderNotes?: string;
   expiryAt: string | null;
   lockedAt: string;
   reasoningScore: number;

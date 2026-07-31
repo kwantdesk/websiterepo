@@ -80,6 +80,7 @@ function fromRow(row: DraftRow): ZyonGameplanDraft | null {
       : [],
     confirmation: clean(payload.confirmation, 2_000),
     invalidation: clean(payload.invalidation, 2_000),
+    notes: clean(payload.notes, 4_000),
     expiryAt: clean(payload.expiryAt, 60) || null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -168,7 +169,7 @@ export async function PUT(request: NextRequest) {
     const supabase = await createSupabaseServerClient();
     const { data: existing, error: loadError } = await supabase
       .from("zyon_gameplan_drafts")
-      .select("id,created_at")
+      .select("id,session_date,created_at")
       .eq("user_id", actor.userId)
       .eq("id", draft.id)
       .maybeSingle();
@@ -184,6 +185,7 @@ export async function PUT(request: NextRequest) {
     const { error } = await supabase
       .from("zyon_gameplan_drafts")
       .update({
+        session_date: /^\d{4}-\d{2}-\d{2}$/.test(draft.sessionDate) ? draft.sessionDate : existing.session_date,
         root: draft.root,
         title: clean(draft.title, 120) || `${draft.root} Gameplan`,
         payload: {
@@ -191,19 +193,20 @@ export async function PUT(request: NextRequest) {
           direction: draft.direction,
           session: clean(draft.session, 60) || "New York",
           entryTime: clean(draft.entryTime, 80),
-          entryLow: draft.entryLow,
-          entryHigh: draft.entryHigh,
+          entryLow: Math.min(draft.entryLow, draft.entryHigh),
+          entryHigh: Math.max(draft.entryLow, draft.entryHigh),
           stop: draft.stop,
-          targets: draft.targets.slice(0, 8),
+          targets: draft.targets.filter(Number.isFinite).slice(0, 8),
           riskAmount: draft.riskAmount,
           riskUnit: draft.riskUnit,
           size: draft.size,
           tradingAccount: normalizeZyonTradingAccount(draft.tradingAccount),
           reasoning: clean(draft.reasoning, 5_000),
-          confluences: draft.confluences.slice(0, 12),
+          confluences: draft.confluences.map((item) => clean(item, 300)).filter(Boolean).slice(0, 12),
           confirmation: clean(draft.confirmation, 2_000),
           invalidation: clean(draft.invalidation, 2_000),
-          expiryAt: draft.expiryAt,
+          notes: clean(draft.notes, 4_000),
+          expiryAt: clean(draft.expiryAt, 60) || null,
           recordMode: entryTiming === "TOO_OLD" ? "HISTORICAL" : "LIVE",
         },
         updated_at: new Date().toISOString(),
@@ -211,7 +214,7 @@ export async function PUT(request: NextRequest) {
       .eq("user_id", actor.userId)
       .eq("id", draft.id);
     if (error) throw error;
-    return NextResponse.json({ saved: true }, {
+    return NextResponse.json({ saved: true, recordMode: entryTiming === "TOO_OLD" ? "HISTORICAL" : "LIVE" }, {
       headers: { "Cache-Control": "private, no-store, max-age=0" },
     });
   } catch (error) {

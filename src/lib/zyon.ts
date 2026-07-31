@@ -125,6 +125,7 @@ export type ZyonGameplanDraft = {
   confluences: string[];
   confirmation: string;
   invalidation: string;
+  notes: string;
   expiryAt: string | null;
   createdAt: string;
   updatedAt: string;

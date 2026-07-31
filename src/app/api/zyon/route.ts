@@ -113,6 +113,7 @@ type GameplanToolInput = {
   confluences?: unknown;
   confirmation?: unknown;
   invalidation?: unknown;
+  notes?: unknown;
   expiryAt?: unknown;
 };
 
@@ -474,6 +475,7 @@ function buildGameplanDraft(
       : [],
     confirmation,
     invalidation,
+    notes: cleanText(input.notes, 4_000),
     expiryAt: cleanText(input.expiryAt, 60) || null,
     createdAt: now,
     updatedAt: now,
@@ -515,6 +517,7 @@ function gameplanJournalEntry(
       "",
       "INVALIDATION",
       draft.invalidation,
+      draft.notes ? `\nTRADER NOTES\n${draft.notes}` : "",
       draft.confluences.length ? `\nCONFLUENCES\n${draft.confluences.join("\n")}` : "",
     ].filter(Boolean).join("\n"),
     kind: "SETUP",
@@ -792,6 +795,7 @@ async function persistGameplanDraft(
         confluences: draft.confluences,
         confirmation: draft.confirmation,
         invalidation: draft.invalidation,
+        notes: draft.notes,
         expiryAt: draft.expiryAt,
         recordMode: draft.recordMode ?? "LIVE",
       },
@@ -945,7 +949,7 @@ export async function POST(request: NextRequest) {
     : null;
 
   if (existingPendingGameplanId && gameplanIntent) {
-    const pendingText = "Your previous Gameplan is already in the Socials holding page. Post it to your Profile before asking ZYON to send another one.";
+    const pendingText = "Your previous Gameplan is already in the Socials holding page. Review and lock it into Scoring before asking ZYON to send another one.";
     const assistantConversationEntry = conversationEntry({
       id: zyonId("zyon-conversation-assistant"),
       chatId,
@@ -995,7 +999,7 @@ export async function POST(request: NextRequest) {
     "Historical testing mode is enabled. An entry or fill older than five minutes may be saved, but it must preserve the trader's exact original timestamp and will be labelled HISTORICAL rather than represented as a live call.",
     "For historical Gameplans, collect the same complete facts as a live Gameplan: instrument, direction, entry time and timezone, entry or zone, stop, targets, risk, trading account, reasoning, confirmation, and invalidation. Never invent or move a timestamp.",
     "Future entry timestamps are valid for planned limit orders. Ask for the trader's timezone when it is not known, then convert entryTime to an ISO 8601 timestamp with an explicit offset.",
-    "Once every required fact is known, call save_trading_gameplan_draft immediately. This sends an editable holding record to Socials and writes the complete plan into today's ZYON journal folder. It does not publish the plan yet. Tell the trader to review it and post it to their Profile.",
+    "Once every required fact is known, call save_trading_gameplan_draft immediately. This sends a fully pre-filled editable record to the Socials holding page and writes the complete plan into today's ZYON journal folder. It does not publish or score the plan yet. Tell the trader to review or adjust every field, add optional notes, then lock it into Scoring.",
     `Authoritative server time: ${new Date(requestReceivedAt).toISOString()}. Trader timezone: ${clientTimeZone}.`,
     `Selected market: ${root}.`,
     `<kwantbot_context>${contextJson}</kwantbot_context>`,
@@ -1077,6 +1081,7 @@ export async function POST(request: NextRequest) {
                 confluences: { type: "array", items: { type: "string" }, maxItems: 12 },
                 confirmation: { type: "string" },
                 invalidation: { type: "string" },
+                notes: { type: "string", description: "Optional trader notes inferred from the conversation; may be blank and remains editable in holding." },
                 expiryAt: { type: ["string", "null"], description: "ISO timestamp when known." },
               },
               required: [
@@ -1226,7 +1231,7 @@ export async function POST(request: NextRequest) {
       ? await persistJournalEntry(actor.userId, savedGameplanJournalEntry)
       : false;
     const responseText = gameplanDraftSave.blockedBy
-      ? "Your previous Gameplan is already in the Socials holding page. Post it to your Profile before asking ZYON to send another one."
+      ? "Your previous Gameplan is already in the Socials holding page. Review and lock it into Scoring before asking ZYON to send another one."
       : gameplanDraft && !gameplanDraftSave.saved
         ? "I have the complete Gameplan, but the account holding record did not sync. Nothing was posted. Try Send Gameplan again."
         : gameplanEntryTiming === "TOO_OLD" && gameplanDraft
@@ -1234,7 +1239,7 @@ export async function POST(request: NextRequest) {
           : gameplanEntryTiming === "INVALID" || gameplanEntryTiming === "MISSING"
             ? "I need an exact entry time and timezone before I can send this Gameplan. What was your entry time?"
         : text || (gameplanDraft
-          ? "Gameplan sent. It is saved in today's ZYON journal and waiting in Socials for your review. Check the details, then post it to your Profile."
+          ? "Gameplan sent. It is saved in today's ZYON journal and waiting in Socials as a fully editable form. Check every detail, add any notes, then lock it into Scoring."
           : "That has been recorded in your trading journal.");
     const assistantConversationEntry = conversationEntry({
       id: zyonId("zyon-conversation-assistant"),
