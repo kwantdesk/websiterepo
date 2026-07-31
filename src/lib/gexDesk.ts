@@ -135,6 +135,26 @@ export type GexDeskHistoryPayload = {
   disclosure: string;
 };
 
+export type GexDeskZeroGammaCurvePoint = {
+  price: number;
+  netGex: number;
+};
+
+export type GexDeskZeroGammaPayload = {
+  instrument: "NQ";
+  sessionDate: string;
+  asOf: string;
+  marketOpen: boolean;
+  status: "LIVE" | "EOD";
+  spot: number;
+  trueGammaFlip: number | null;
+  netGex: number;
+  grossGex: number;
+  curve: GexDeskZeroGammaCurvePoint[];
+  method: "TRUE_OI_SCENARIO";
+  disclosure: string;
+};
+
 export type GexDeskPayload = {
   instrument: "NQ";
   sessionDate: string;
@@ -604,5 +624,32 @@ export function createGexDeskHistoryFixture(
     mappingCoverage: 0.98,
     errors: [],
     disclosure: "Intraday gamma exposure mapped with timestamp-aligned source and NQ prices. Change shows each bucket versus its prior sampled frame.",
+  };
+}
+
+export function createGexDeskZeroGammaFixture(): GexDeskZeroGammaPayload {
+  const spot = 28_084;
+  const trueGammaFlip = 28_020;
+  const curve = Array.from({ length: 121 }, (_, index) => {
+    const price = 27_500 + index * 10;
+    const distance = price - trueGammaFlip;
+    return {
+      price,
+      netGex: distance * 7_500_000 + Math.sin(index / 9) * 110_000_000,
+    };
+  });
+  return {
+    instrument: "NQ",
+    sessionDate: new Date().toISOString().slice(0, 10),
+    asOf: new Date().toISOString(),
+    marketOpen: true,
+    status: "LIVE",
+    spot,
+    trueGammaFlip,
+    netGex: 1_420_000_000,
+    grossGex: 8_760_000_000,
+    curve,
+    method: "TRUE_OI_SCENARIO",
+    disclosure: "True open-interest gamma flip from the included native CME NQ structural and current-session 0DTE chains. Every included option is repriced across hypothetical NQ futures prices using Black-76 gamma; the crossing nearest live NQ is selected and linearly interpolated.",
   };
 }

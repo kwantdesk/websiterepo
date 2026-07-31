@@ -53,6 +53,7 @@ import {
   type GexDeskPressureSource,
   type GexDeskSourceSnapshot,
   type GexDeskSourceSymbol,
+  type GexDeskZeroGammaPayload,
 } from "@/lib/gexDesk";
 import { getDatabentoBars } from "@/lib/databento";
 
@@ -2394,6 +2395,38 @@ export async function getChartGammaLevels(
 /** Current US options session date (YYYY-MM-DD) — used by the gamma warming cron. */
 export function getUsOptionsSessionDate(): string {
   return getUsOptionsSession().sessionDate;
+}
+
+export async function getGexDeskZeroGammaPayload(): Promise<GexDeskZeroGammaPayload> {
+  const session = getUsOptionsSession();
+  try {
+    const spot = await getNativeFuturesSpot("NQ");
+    if (!spot) {
+      throw new QuantDataError("No current or last-good NQ futures price is available.", 503, null);
+    }
+    const snapshot = await getNativeGammaSnapshot("NQ", session.sessionDate, spot);
+    return {
+      instrument: "NQ",
+      sessionDate: snapshot.sessionDate,
+      asOf: new Date().toISOString(),
+      marketOpen: session.marketOpen,
+      status: session.marketOpen ? "LIVE" : "EOD",
+      spot,
+      trueGammaFlip: snapshot.hvl,
+      netGex: snapshot.netGex,
+      grossGex: snapshot.grossGex,
+      curve: snapshot.gammaFlipCurve,
+      method: "TRUE_OI_SCENARIO",
+      disclosure: "True open-interest gamma flip from the included native CME NQ structural and current-session 0DTE chains. Every included option is repriced across hypothetical NQ futures prices using Black-76 gamma; the zero crossing nearest live NQ is selected and linearly interpolated.",
+    };
+  } catch (error) {
+    if (error instanceof QuantDataError) throw error;
+    throw new QuantDataError(
+      "The native NQ zero-gamma scenario is temporarily unavailable.",
+      503,
+      null,
+    );
+  }
 }
 
 async function buildNativeChartGamma(root: NativeGammaRoot): Promise<ChartGammaLevelsPayload> {

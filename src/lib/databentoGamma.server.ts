@@ -38,12 +38,18 @@ export type NativeGammaSnapshot = {
   callResistance: number | null;
   putSupport: number | null;
   hvl: number | null;
+  gammaFlipCurve: NativeGammaCurvePoint[];
   box: { max: number; min: number } | null;
   netGex: number;
   grossGex: number;
   levels: ChartGammaSourceLevel[];
   validationStrikes: number[];
   revision: string;
+};
+
+export type NativeGammaCurvePoint = {
+  price: number;
+  netGex: number;
 };
 
 // --------------------------------------------------------------------------- //
@@ -301,6 +307,7 @@ function evaluate(chain: Chain, spot: number, mult: number) {
   const callG = new Map<number, number>();
   const putG = new Map<number, number>();
   const greeksLive = withLiveT(chain.greeks, nowSec);
+  const zeroDteGreeksLive = withLiveT(chain.zeroDte ?? [], nowSec);
   for (const g of greeksLive) {
     const dg = g.oi * mult * gamma76(spot, g.K, g.T, g.iv) * spot * spot * 0.01;
     const m = g.isCall ? callG : putG;
@@ -314,7 +321,12 @@ function evaluate(chain: Chain, spot: number, mult: number) {
     .sort((a, b) => b[1] - a[1]);
   const callRes = argmax([...callG].filter(([k]) => k > spot));
   const putSup = argmax([...putG].filter(([k]) => k < spot));
-  const flip = zeroGamma(greeksLive, spot, mult);
+  const gammaFlipCurve = gammaScenarioCurve(
+    [...greeksLive, ...zeroDteGreeksLive],
+    spot,
+    mult,
+  );
+  const flip = zeroGamma(gammaFlipCurve, spot);
   let box: { max: number; min: number } | null = null;
   if (chain.straddle) {
     const half = chain.straddle.price * Math.sqrt(1 / Math.max(chain.straddle.dte, 1));
@@ -328,7 +340,7 @@ function evaluate(chain: Chain, spot: number, mult: number) {
   // 0DTE profile: same math, only the current session's expiry (daily/weekly roots).
   const zCall = new Map<number, number>();
   const zPut = new Map<number, number>();
-  for (const g of withLiveT(chain.zeroDte ?? [], nowSec)) {
+  for (const g of zeroDteGreeksLive) {
     const dg = g.oi * mult * gamma76(spot, g.K, g.T, g.iv) * spot * spot * 0.01;
     const m = g.isCall ? zCall : zPut;
     m.set(g.K, (m.get(g.K) || 0) + dg);
@@ -338,8 +350,16 @@ function evaluate(chain: Chain, spot: number, mult: number) {
   const zeroDteWall = argmax(zTotal);
   const zeroDteCallRes = argmax([...zCall].filter(([k]) => k > spot));
   const zeroDtePutSup = argmax([...zPut].filter(([k]) => k < spot));
+  for (const value of zCall.values()) {
+    netGex += value;
+    grossGex += Math.abs(value);
+  }
+  for (const value of zPut.values()) {
+    netGex -= value;
+    grossGex += Math.abs(value);
+  }
 
-  return { walls, callRes, putSup, flip, box, netGex, grossGex, callG, putG,
+  return { walls, callRes, putSup, flip, gammaFlipCurve, box, netGex, grossGex, callG, putG,
            zeroDteWall, zeroDteCallRes, zeroDtePutSup };
 }
 
@@ -348,10 +368,10 @@ function argmax(entries: Array<[number, number]>): number | null {
   return entries.reduce((a, b) => (b[1] > a[1] ? b : a))[0];
 }
 
-function zeroGamma(greeks: Greek[], spot: number, mult: number): number | null {
-  if (!greeks.length) return null;
+function gammaScenarioCurve(greeks: Greek[], spot: number, mult: number): NativeGammaCurvePoint[] {
+  if (!greeks.length) return [];
   const lo = spot * 0.9, hi = spot * 1.1, steps = 240;
-  let prevS: number | null = null, prevG: number | null = null, cross: number | null = null;
+  const curve: NativeGammaCurvePoint[] = [];
   for (let i = 0; i <= steps; i += 1) {
     const S = lo + ((hi - lo) * i) / steps;
     let g = 0;
@@ -359,10 +379,37 @@ function zeroGamma(greeks: Greek[], spot: number, mult: number): number | null {
       const gg = o.oi * mult * gamma76(S, o.K, o.T, o.iv) * S * S * 0.01;
       g += o.isCall ? gg : -gg;
     }
-    if (prevG !== null && prevG < 0 && g >= 0) cross = Math.abs(g) < Math.abs(prevG) ? S : prevS;
-    prevS = S; prevG = g;
+    curve.push({
+      price: Math.round(S * 100) / 100,
+      netGex: g,
+    });
   }
-  return cross === null ? null : Math.round(cross);
+  return curve;
+}
+
+function zeroGamma(curve: NativeGammaCurvePoint[], spot: number): number | null {
+  if (!curve.length) return null;
+  const crossings: number[] = [];
+  for (let index = 1; index < curve.length; index += 1) {
+    const left = curve[index - 1];
+    const right = curve[index];
+    if (left.netGex === 0) {
+      crossings.push(left.price);
+      continue;
+    }
+    if (right.netGex === 0) {
+      crossings.push(right.price);
+      continue;
+    }
+    if (Math.sign(left.netGex) === Math.sign(right.netGex)) continue;
+    const weight = Math.abs(left.netGex) / (Math.abs(left.netGex) + Math.abs(right.netGex));
+    crossings.push(left.price + (right.price - left.price) * weight);
+  }
+  if (!crossings.length) return null;
+  const nearest = crossings.reduce((best, crossing) => (
+    Math.abs(crossing - spot) < Math.abs(best - spot) ? crossing : best
+  ));
+  return Math.round(nearest * 100) / 100;
 }
 
 // --------------------------------------------------------------------------- //
@@ -483,7 +530,9 @@ export async function getNativeGammaSnapshot(root: NativeGammaRoot, tradeIso: st
   }
   return {
     root, spot: liveSpot, sessionDate: usedIso,
-    callResistance: ev.callRes, putSupport: ev.putSup, hvl: ev.flip, box: ev.box,
+    callResistance: ev.callRes, putSupport: ev.putSup, hvl: ev.flip,
+    gammaFlipCurve: ev.gammaFlipCurve,
+    box: ev.box,
     netGex: ev.netGex, grossGex: ev.grossGex, levels,
     validationStrikes: ev.walls.slice(0, 6).map(([k]) => k),
     revision: `native:${root}:${tradeIso}:${Math.round(liveSpot)}`,
@@ -494,10 +543,12 @@ export async function getNativeGammaSnapshot(root: NativeGammaRoot, tradeIso: st
 export async function getNativeFuturesSpot(root: NativeGammaRoot): Promise<number | null> {
   const now = new Date();
   const start = new Date(now.getTime() - 30 * 60000).toISOString().slice(0, 16);
-  const rows = await dbPull("ohlcv-1m", start, "", CFG[root].contSymbol, "continuous", 60);
+  let rows = await dbPull("ohlcv-1m", start, "", CFG[root].contSymbol, "continuous", 60);
+  if (!rows.length) {
+    const fallbackStart = new Date(now.getTime() - 7 * 24 * 60 * 60000).toISOString().slice(0, 16);
+    rows = await dbPull("ohlcv-1m", fallbackStart, "", CFG[root].contSymbol, "continuous", 12_000);
+  }
   if (!rows.length) return null;
   const last = rows[rows.length - 1];
   return last.close ? Math.round((Number(last.close) / 1e9) * 100) / 100 : null;
 }
-
-
