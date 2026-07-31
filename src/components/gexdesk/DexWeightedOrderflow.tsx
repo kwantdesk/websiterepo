@@ -20,12 +20,12 @@ import type {
 
 type SourceFilter = "COMBINED" | GexDeskSourceSymbol;
 type Aggregation = 1_000 | 5_000 | 15_000 | 30_000 | 60_000 | 300_000;
-type ExpiryFilter = "ALL" | "0DTE" | "1DTE";
+type ExpiryFilter = "ALL" | "0DTE" | "1DTE" | "LATER";
 type ConfidenceFilter = "ALL" | "HIGH_MEDIUM" | "HIGH";
 type ViewMode = "COMPOSITION" | "NET";
 type ValueMode = "RAW" | "Z_SCORE" | "PERCENTILE";
 type Smoothing = 0 | 5 | 10 | 20;
-type WeightingMode = "DEX" | "GEX";
+type WeightingMode = "DEX" | "GEX" | "CONVEXITY";
 type GexUnit = "DOLLAR_1PCT" | "SHARE_POINT";
 type Structure = "LONG_CALL" | "SHORT_PUT" | "LONG_PUT" | "SHORT_CALL";
 type ConfidenceTier = "HIGH" | "MEDIUM" | "LOW";
@@ -85,6 +85,7 @@ type DexBucket = {
 
 type MutableBucket = {
   timestamp: number;
+  metricNet: number;
   longCall: number;
   shortPut: number;
   longPut: number;
@@ -149,7 +150,8 @@ function nextBusinessDate(date: string) {
 function expiryMatches(print: GexDeskOptionPrint, filter: ExpiryFilter, sessionDate: string) {
   if (filter === "ALL") return true;
   if (filter === "0DTE") return print.expiration === sessionDate;
-  return print.expiration === nextBusinessDate(sessionDate);
+  if (filter === "1DTE") return print.expiration === nextBusinessDate(sessionDate);
+  return Boolean(print.expiration && print.expiration > nextBusinessDate(sessionDate));
 }
 
 function confidenceTier(value: number): ConfidenceTier {
@@ -237,6 +239,7 @@ function moneynessLabel(print: GexDeskOptionPrint) {
 function emptyMutableBucket(timestamp: number): MutableBucket {
   return {
     timestamp,
+    metricNet: 0,
     longCall: 0,
     shortPut: 0,
     longPut: 0,
@@ -357,7 +360,11 @@ function contributionsFromPrints(
       delta,
       contracts,
       dex: weightedValue,
-      signedDex: weightedValue * signedDirection(structure),
+      signedDex: weightedValue * (
+        args.weighting === "CONVEXITY"
+          ? print.side === "BOUGHT" ? 1 : -1
+          : signedDirection(structure)
+      ),
       directionalDex,
       signedDirectionalDex: directionalDex * signedDirection(structure),
       gamma: (args.weighting === "DEX"
@@ -392,6 +399,7 @@ function aggregateContributions(
     else if (row.structure === "SHORT_PUT") bucket.shortPut += row.dex;
     else if (row.structure === "LONG_PUT") bucket.longPut += row.dex;
     else bucket.shortCall += row.dex;
+    bucket.metricNet += row.signedDex;
     bucket.convexity += row.gamma;
     bucket.directionalDex += row.signedDirectionalDex;
     bucket.weightedConfidence += row.dex * row.confidence;
@@ -429,12 +437,12 @@ function aggregateContributions(
     .filter((timestamp) => timestamp < visibleStart)
     .reduce((sum, timestamp) => {
       const row = grouped.get(timestamp)!;
-      return sum + row.longCall + row.shortPut - row.longPut - row.shortCall;
+      return sum + row.metricNet;
     }, 0);
 
   const activeNets = groupedTimes.map((timestamp) => {
     const row = grouped.get(timestamp)!;
-    return row.longCall + row.shortPut - row.longPut - row.shortCall;
+    return row.metricNet;
   });
   const activeDexNets = groupedTimes.map((timestamp) => grouped.get(timestamp)!.directionalDex);
   const mean = activeNets.length
@@ -457,7 +465,7 @@ function aggregateContributions(
     const row = grouped.get(timestamp) ?? emptyMutableBucket(timestamp);
     const bullish = row.longCall + row.shortPut;
     const bearish = row.longPut + row.shortCall;
-    const net = bullish - bearish;
+    const net = row.metricNet;
     cumulative += net;
     const gross = bullish + bearish;
     const magnitudeRank = sortedMagnitude.length
@@ -539,6 +547,16 @@ function linePath(
 
 function selectedFlowLabel(bucket: DexBucket, weighting: WeightingMode) {
   if (!bucket.prints) return "No classified flow";
+  if (weighting === "CONVEXITY") {
+    const dexStrong = Math.abs(bucket.dexPercentile) >= 55;
+    const convexityStrong = Math.abs(bucket.percentile) >= 55;
+    if (!dexStrong && !convexityStrong) return "Balanced gamma demand and supply";
+    if (bucket.directionalDex > 0 && bucket.net > 0) return "Long-call-driven rally";
+    if (bucket.directionalDex > 0 && bucket.net < 0) return "Short-put-driven rally";
+    if (bucket.directionalDex < 0 && bucket.net > 0) return "Long-put-driven selloff";
+    if (bucket.directionalDex < 0 && bucket.net < 0) return "Short-call-driven weakness";
+    return bucket.net >= 0 ? "Long-gamma demand" : "Short-gamma supply";
+  }
   if (weighting === "GEX") {
     const dexStrong = Math.abs(bucket.dexPercentile) >= 70;
     const gexStrong = Math.abs(bucket.percentile) >= 70;
@@ -632,8 +650,9 @@ export default function DexWeightedOrderflow({
   const [smoothing, setSmoothing] = useState<Smoothing>(10);
   const [gexUnit, setGexUnit] = useState<GexUnit>("DOLLAR_1PCT");
   const [selectedIndex, setSelectedIndex] = useState(VISIBLE_BARS - 1);
-  const metricName = weighting === "GEX" ? "GEX" : "DEX";
-  const unitLabel = weighting === "GEX"
+  const metricName = weighting === "CONVEXITY" ? "CONVEXITY" : weighting;
+  const displayTitle = weighting === "CONVEXITY" ? "Convexity Orderflow" : `${metricName}-Weighted Orderflow`;
+  const unitLabel = weighting !== "DEX"
     ? gexUnit === "DOLLAR_1PCT" ? "dollar gamma / 1% move" : "share gamma / point"
     : "underlying-equivalent shares";
 
@@ -689,11 +708,17 @@ export default function DexWeightedOrderflow({
       : valueMode === "PERCENTILE" ? bucket.percentile
         : bucket.net
   );
+  const positiveComposition = (bucket: DexBucket) => (
+    weighting === "CONVEXITY" ? bucket.longCall + bucket.longPut : bucket.bullish
+  );
+  const negativeComposition = (bucket: DexBucket) => (
+    weighting === "CONVEXITY" ? bucket.shortCall + bucket.shortPut : bucket.bearish
+  );
   const maximumDex = Math.max(
     1,
     ...buckets.map((bucket) => (
       viewMode === "COMPOSITION" && valueMode === "RAW"
-        ? Math.max(bucket.bullish, bucket.bearish)
+        ? Math.max(positiveComposition(bucket), negativeComposition(bucket))
         : Math.abs(displayValue(bucket))
     )),
     ...buckets.map((bucket) => valueMode === "RAW" ? Math.abs(bucket.ema) : 0),
@@ -712,6 +737,7 @@ export default function DexWeightedOrderflow({
     + (priceHigh - price) / Math.max(1, priceHigh - priceLow) * (PRICE_BOTTOM - PRICE_TOP);
   const dexY = (value: number) => DEX_ZERO
     - value / maximumDex * (DEX_ZERO - DEX_TOP);
+  const boundedDexY = (value: number) => clamp(dexY(value), DEX_TOP, DEX_BOTTOM);
   const cumulativeY = (value: number) => (CUM_TOP + CUM_BOTTOM) / 2
     - value / maximumCumulative * ((CUM_BOTTOM - CUM_TOP) / 2 - 4);
   const barCell = (PLOT_RIGHT - PLOT_LEFT) / Math.max(1, buckets.length);
@@ -731,6 +757,17 @@ export default function DexWeightedOrderflow({
   const selectedX = xFor(selectedIndex);
   const latestActive = [...buckets].reverse().find((bucket) => bucket.prints > 0) ?? selected;
   const recent = buckets.slice(-10);
+  const recentActive = recent.filter((bucket) => bucket.prints > 0);
+  const previousActive = recentActive.at(-2);
+  const metricVelocity = latestActive.net - (previousActive?.net ?? latestActive.net);
+  const flowTypeShift = Boolean(
+    weighting === "CONVEXITY"
+    && previousActive
+    && Math.sign(previousActive.net) !== 0
+    && Math.sign(latestActive.net) !== 0
+    && Math.sign(previousActive.net) !== Math.sign(latestActive.net)
+    && Math.sign(previousActive.directionalDex) === Math.sign(latestActive.directionalDex),
+  );
   const positiveBars = recent.filter((bucket) => bucket.net > 0).length;
   const negativeBars = recent.filter((bucket) => bucket.net < 0).length;
   const persistenceDirection = positiveBars === negativeBars
@@ -798,7 +835,7 @@ export default function DexWeightedOrderflow({
     .slice(0, 3);
   const strikeMaximum = Math.max(1, ...selected.strikes.map((row) => Math.abs(row.value)));
   const expiryMaximum = Math.max(1, ...selected.expiries.map((row) => Math.abs(row.value)));
-  const attributionBuckets = weighting === "GEX" ? selected.moneynessBuckets : selected.deltaBuckets;
+  const attributionBuckets = weighting !== "DEX" ? selected.moneynessBuckets : selected.deltaBuckets;
   const attributionMaximum = Math.max(1, ...attributionBuckets.map((row) => Math.abs(row.value)));
   const quadrantDexMaximum = Math.max(1, ...recent.map((bucket) => Math.abs(bucket.directionalDex)));
   const quadrantGexMaximum = Math.max(1, ...recent.map((bucket) => Math.abs(bucket.net)));
@@ -816,11 +853,13 @@ export default function DexWeightedOrderflow({
             <Waves className="h-3.5 w-3.5" />
           </span>
           <div className="hidden min-w-0 sm:block">
-            <div className="text-[8px] font-semibold">{metricName}-Weighted Orderflow</div>
+            <div className="text-[8px] font-semibold">{displayTitle}</div>
             <div className="text-[6px] uppercase tracking-[0.12em] text-muted">
               {weighting === "GEX"
                 ? "Gamma sensitivity + potential hedge acceleration"
-                : "NDX / QQQ options → NQ price context"}
+                : weighting === "CONVEXITY"
+                  ? "Long-option gamma demand vs short-option gamma supply"
+                  : "NDX / QQQ options → NQ price context"}
             </div>
           </div>
         </div>
@@ -862,6 +901,7 @@ export default function DexWeightedOrderflow({
           <option value="ALL">All expiry</option>
           <option value="0DTE">0DTE</option>
           <option value="1DTE">1DTE</option>
+          <option value="LATER">Weekly + later</option>
         </KwantSelect>
 
         <KwantSelect
@@ -875,11 +915,11 @@ export default function DexWeightedOrderflow({
           <option value="HIGH">High only</option>
         </KwantSelect>
 
-        {weighting === "GEX" ? (
+        {weighting !== "DEX" ? (
           <KwantSelect
             value={gexUnit}
             onChange={(event) => setGexUnit(event.target.value as GexUnit)}
-            menuLabel="GEX display unit"
+            menuLabel={`${weighting === "CONVEXITY" ? "Convexity" : "GEX"} display unit`}
             className="h-8 min-w-32 rounded-xl border border-border bg-surface px-2.5 text-[7px] font-semibold"
           >
             <option value="DOLLAR_1PCT">Dollar GEX / 1%</option>
@@ -989,6 +1029,15 @@ export default function DexWeightedOrderflow({
           <rect x={PLOT_LEFT} y={DEX_TOP} width={PLOT_RIGHT - PLOT_LEFT} height={DEX_BOTTOM - DEX_TOP} rx="10" fill="var(--panel)" fillOpacity="0.32" />
           <rect x={PLOT_LEFT} y={CUM_TOP} width={PLOT_RIGHT - PLOT_LEFT} height={CUM_BOTTOM - CUM_TOP} rx="10" fill="var(--panel)" fillOpacity="0.32" />
           <rect x={SIDE_LEFT} y="20" width="266" height="560" rx="14" fill="var(--panel)" fillOpacity="0.45" stroke="var(--border)" />
+          {weighting === "CONVEXITY" && valueMode === "Z_SCORE" ? (
+            <>
+              <rect x={PLOT_LEFT} y={boundedDexY(2.5)} width={PLOT_RIGHT - PLOT_LEFT} height={Math.max(0, boundedDexY(1) - boundedDexY(2.5))} fill="var(--primary)" fillOpacity="0.045" />
+              <rect x={PLOT_LEFT} y={boundedDexY(1)} width={PLOT_RIGHT - PLOT_LEFT} height={Math.max(0, boundedDexY(-1) - boundedDexY(1))} fill="var(--foreground)" fillOpacity="0.018" />
+              <rect x={PLOT_LEFT} y={boundedDexY(-1)} width={PLOT_RIGHT - PLOT_LEFT} height={Math.max(0, boundedDexY(-2.5) - boundedDexY(-1))} fill="var(--accent)" fillOpacity="0.045" />
+              <text x={PLOT_RIGHT - 8} y={boundedDexY(1) - 3} textAnchor="end" fill="var(--primary)" fillOpacity="0.7" fontSize="5">LONG VOL</text>
+              <text x={PLOT_RIGHT - 8} y={boundedDexY(-1) + 8} textAnchor="end" fill="var(--accent)" fillOpacity="0.7" fontSize="5">SHORT VOL</text>
+            </>
+          ) : null}
 
           {[0, 1, 2, 3, 4, 5].map((index) => {
             const x = PLOT_LEFT + index / 5 * (PLOT_RIGHT - PLOT_LEFT);
@@ -1053,10 +1102,14 @@ export default function DexWeightedOrderflow({
             const active = selectedIndex === index;
             const confidenceOpacity = bucket.confidence >= 0.85 ? 0.92 : bucket.confidence >= 0.5 ? 0.62 : 0.3;
             if (viewMode === "COMPOSITION" && valueMode === "RAW") {
-              const longCallHeight = bucket.longCall / maximumDex * (DEX_ZERO - DEX_TOP);
-              const shortPutHeight = bucket.shortPut / maximumDex * (DEX_ZERO - DEX_TOP);
-              const longPutHeight = bucket.longPut / maximumDex * (DEX_BOTTOM - DEX_ZERO);
-              const shortCallHeight = bucket.shortCall / maximumDex * (DEX_BOTTOM - DEX_ZERO);
+              const positiveCall = bucket.longCall;
+              const positivePut = weighting === "CONVEXITY" ? bucket.longPut : bucket.shortPut;
+              const negativePut = weighting === "CONVEXITY" ? bucket.shortPut : bucket.longPut;
+              const negativeCall = bucket.shortCall;
+              const positiveCallHeight = positiveCall / maximumDex * (DEX_ZERO - DEX_TOP);
+              const positivePutHeight = positivePut / maximumDex * (DEX_ZERO - DEX_TOP);
+              const negativePutHeight = negativePut / maximumDex * (DEX_BOTTOM - DEX_ZERO);
+              const negativeCallHeight = negativeCall / maximumDex * (DEX_BOTTOM - DEX_ZERO);
               return (
                 <g
                   key={bucket.timestamp}
@@ -1064,17 +1117,33 @@ export default function DexWeightedOrderflow({
                   onClick={() => setSelectedIndex(index)}
                   className="cursor-crosshair"
                 >
-                  {bucket.longCall > 0 ? (
-                    <rect x={x} y={DEX_ZERO - longCallHeight} width={barWidth} height={longCallHeight} rx="1.5" fill="var(--primary)" fillOpacity={confidenceOpacity} />
+                  {positiveCall > 0 ? (
+                    <rect x={x} y={DEX_ZERO - positiveCallHeight} width={barWidth} height={positiveCallHeight} rx="1.5" fill="var(--primary)" fillOpacity={confidenceOpacity} />
                   ) : null}
-                  {bucket.shortPut > 0 ? (
-                    <rect x={x} y={DEX_ZERO - longCallHeight - shortPutHeight} width={barWidth} height={shortPutHeight} rx="1.5" fill="url(#dex-put-sold)" fillOpacity={confidenceOpacity} />
+                  {positivePut > 0 ? (
+                    <rect
+                      x={x}
+                      y={DEX_ZERO - positiveCallHeight - positivePutHeight}
+                      width={barWidth}
+                      height={positivePutHeight}
+                      rx="1.5"
+                      fill={weighting === "CONVEXITY" ? "var(--accent)" : "url(#dex-put-sold)"}
+                      fillOpacity={confidenceOpacity}
+                    />
                   ) : null}
-                  {bucket.longPut > 0 ? (
-                    <rect x={x} y={DEX_ZERO} width={barWidth} height={longPutHeight} rx="1.5" fill="var(--accent)" fillOpacity={confidenceOpacity} />
+                  {negativePut > 0 ? (
+                    <rect
+                      x={x}
+                      y={DEX_ZERO}
+                      width={barWidth}
+                      height={negativePutHeight}
+                      rx="1.5"
+                      fill={weighting === "CONVEXITY" ? "url(#dex-put-sold)" : "var(--accent)"}
+                      fillOpacity={confidenceOpacity}
+                    />
                   ) : null}
-                  {bucket.shortCall > 0 ? (
-                    <rect x={x} y={DEX_ZERO + longPutHeight} width={barWidth} height={shortCallHeight} rx="1.5" fill="url(#dex-call-sold)" fillOpacity={confidenceOpacity} />
+                  {negativeCall > 0 ? (
+                    <rect x={x} y={DEX_ZERO + negativePutHeight} width={barWidth} height={negativeCallHeight} rx="1.5" fill="url(#dex-call-sold)" fillOpacity={confidenceOpacity} />
                   ) : null}
                   <rect x={x - barCell * 0.15} y={DEX_TOP} width={barCell} height={DEX_BOTTOM - DEX_TOP} fill="transparent" />
                   {active ? <rect x={x - 2} y={DEX_TOP} width={barWidth + 4} height={DEX_BOTTOM - DEX_TOP} rx="3" fill="none" stroke="var(--foreground)" strokeOpacity="0.35" /> : null}
@@ -1107,7 +1176,9 @@ export default function DexWeightedOrderflow({
             <g transform={`translate(${clamp(selectedX - 45, PLOT_LEFT + 4, PLOT_RIGHT - 98)},${selected.net >= 0 ? DEX_TOP + 26 : DEX_BOTTOM - 13})`}>
               <rect width="94" height="15" rx="7.5" fill="var(--primary)" fillOpacity="0.1" stroke="var(--primary)" strokeOpacity="0.42" />
               <text x="47" y="10.5" textAnchor="middle" fill="var(--primary)" fontSize="6" fontWeight="700">
-                {metricName} SPIKE · {selectedMagnitudePercentile.toFixed(0)}TH
+                {weighting === "CONVEXITY"
+                  ? selected.net >= 0 ? "OPTION BUYING SURGE" : "OPTION SELLING SURGE"
+                  : `${metricName} SPIKE · ${selectedMagnitudePercentile.toFixed(0)}TH`}
               </text>
             </g>
           ) : null}
@@ -1133,7 +1204,9 @@ export default function DexWeightedOrderflow({
             <line x1="0" x2="234" y1="108" y2="108" stroke="var(--border)" />
             <text y="128" fill="var(--muted)" fontSize="6">SESSION NET {metricName}</text>
             <text x="234" y="128" textAnchor="end" fill={sessionNet >= 0 ? "var(--primary)" : "var(--accent)"} fontSize="9" fontFamily="monospace">{signedCompact(sessionNet)}</text>
-            <text y="148" fill="var(--muted)" fontSize="6">BULLISH SHARE</text>
+            <text y="148" fill="var(--muted)" fontSize="6">
+              {weighting === "CONVEXITY" ? "LONG GAMMA SHARE" : "BULLISH SHARE"}
+            </text>
             <text x="234" y="148" textAnchor="end" fill="var(--foreground)" fontSize="9" fontFamily="monospace">{(bullishShare * 100).toFixed(0)}%</text>
             <rect y="158" width="234" height="5" rx="2.5" fill="var(--surface)" />
             <rect y="158" width={234 * bullishShare} height="5" rx="2.5" fill="var(--primary)" />
@@ -1145,6 +1218,15 @@ export default function DexWeightedOrderflow({
                 <text y="226" fill="var(--muted)" fontSize="6">DEX: {signedCompact(latestActive.directionalDex)} · {Math.abs(latestActive.dexPercentile).toFixed(0)}th percentile</text>
                 <text y="241" fill="var(--muted)" fontSize="6">GEX: {signedCompact(latestActive.net)} · {Math.abs(latestActive.percentile).toFixed(0)}th percentile</text>
               </>
+            ) : weighting === "CONVEXITY" ? (
+              <>
+                <text y="226" fill="var(--muted)" fontSize="6">
+                  DEX {signedCompact(latestActive.directionalDex)} · Convexity {signedCompact(latestActive.net)}
+                </text>
+                <text y="241" fill="var(--muted)" fontSize="6">
+                  {latestActive.net >= 0 ? "Gamma being acquired · volatility demand" : "Gamma being supplied · volatility selling"}
+                </text>
+              </>
             ) : (
               <>
                 <text y="226" fill="var(--muted)" fontSize="6">Dominant: {structureLabel(latestActive.dominant)}</text>
@@ -1155,13 +1237,23 @@ export default function DexWeightedOrderflow({
             <line x1="0" x2="234" y1="262" y2="262" stroke="var(--border)" />
             <text y="282" fill="var(--muted)" fontSize="7" letterSpacing="1.2">PRICE / {metricName} READ</text>
             <text y="304" fill={divergence === "BULLISH" ? "var(--primary)" : divergence === "BEARISH" ? "var(--accent)" : "var(--foreground)"} fontSize="10" fontWeight="700">
-              {divergence === "NONE" ? "Not established" : divergence === "CONFIRMING" ? "Flow confirming price" : `${divergence} divergence`}
+              {weighting === "CONVEXITY"
+                ? divergence === "BEARISH" ? "Price up / convexity down"
+                  : divergence === "BULLISH" ? "Price down / convexity up"
+                    : divergence === "CONFIRMING" ? "Price / convexity aligned" : "Not established"
+                : divergence === "NONE" ? "Not established"
+                  : divergence === "CONFIRMING" ? "Flow confirming price" : `${divergence} divergence`}
             </text>
             <text y="321" fill="var(--muted)" fontSize="6">
-              {divergence === "BEARISH" ? `Price higher · cumulative ${metricName} lower`
-                : divergence === "BULLISH" ? `Price lower · cumulative ${metricName} higher`
-                  : divergence === "CONFIRMING" ? `Price and cumulative ${metricName} agree`
-                    : "Insufficient directional separation"}
+              {weighting === "CONVEXITY"
+                ? divergence === "BEARISH" ? "Rally becoming more short-volatility driven"
+                  : divergence === "BULLISH" ? "Down move gaining long-volatility demand"
+                    : divergence === "CONFIRMING" ? "Price and gamma ownership are moving together"
+                      : "Insufficient directional separation"
+                : divergence === "BEARISH" ? `Price higher · cumulative ${metricName} lower`
+                  : divergence === "BULLISH" ? `Price lower · cumulative ${metricName} higher`
+                    : divergence === "CONFIRMING" ? `Price and cumulative ${metricName} agree`
+                      : "Insufficient directional separation"}
             </text>
 
             <line x1="0" x2="234" y1="342" y2="342" stroke="var(--border)" />
@@ -1204,8 +1296,16 @@ export default function DexWeightedOrderflow({
           </div>
           <div className="mt-2 grid grid-cols-3 gap-1.5">
             <Metric label={`Net ${metricName}`} value={signedCompact(selected.net)} detail={`${selected.prints} prints`} />
-            <Metric label="Bullish" value={compact(selected.bullish)} detail="LC + short puts" />
-            <Metric label="Bearish" value={compact(selected.bearish)} detail="LP + short calls" />
+            <Metric
+              label={weighting === "CONVEXITY" ? "Long gamma" : "Bullish"}
+              value={compact(positiveComposition(selected))}
+              detail={weighting === "CONVEXITY" ? "Long calls + puts" : "LC + short puts"}
+            />
+            <Metric
+              label={weighting === "CONVEXITY" ? "Short gamma" : "Bearish"}
+              value={compact(negativeComposition(selected))}
+              detail={weighting === "CONVEXITY" ? "Short calls + puts" : "LP + short calls"}
+            />
           </div>
           <div className="mt-1.5 grid grid-cols-4 gap-1 text-center font-mono text-[6px]">
             <span className="rounded-md bg-primary/[0.08] px-1 py-1 text-primary">LC {compact(selected.longCall)}</span>
@@ -1236,7 +1336,7 @@ export default function DexWeightedOrderflow({
         <div className="rounded-2xl border border-border bg-background/35 p-3">
           <div className="flex items-center gap-1.5 text-[7px] font-semibold uppercase tracking-[0.13em] text-muted">
             <Sparkles className="h-3 w-3 text-primary" />
-            Expiry + {weighting === "GEX" ? "moneyness" : "delta"} mix
+            Expiry + {weighting !== "DEX" ? "moneyness" : "delta"} mix
           </div>
           <div className="mt-2 grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
@@ -1253,7 +1353,7 @@ export default function DexWeightedOrderflow({
               {attributionBuckets.slice(0, 3).map((row) => (
                 <TinyMeter
                   key={row.label}
-                  label={weighting === "GEX" ? row.label : `Δ ${row.label}`}
+                  label={weighting !== "DEX" ? row.label : `Δ ${row.label}`}
                   value={row.value}
                   maximum={attributionMaximum}
                   tone="bg-accent"
@@ -1263,55 +1363,81 @@ export default function DexWeightedOrderflow({
           </div>
         </div>
 
-        {weighting === "GEX" ? (
+        {weighting !== "DEX" ? (
           <div className="rounded-2xl border border-border bg-background/35 p-3">
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-1.5 text-[7px] font-semibold uppercase tracking-[0.13em] text-muted">
                 <Crosshair className="h-3 w-3 text-primary" />
-                DEX / GEX matrix
+                DEX / {weighting === "CONVEXITY" ? "Convexity" : "GEX"} matrix
               </div>
-              <span className="font-mono text-[6px] text-primary">{selectedFlowLabel(latestActive, weighting)}</span>
+              <span className="font-mono text-[6px] text-primary">
+                {flowTypeShift ? "FLOW TYPE SHIFT" : selectedFlowLabel(latestActive, weighting)}
+              </span>
             </div>
             <svg
               className="mt-1.5 h-[62px] w-full overflow-visible"
               viewBox="0 0 200 80"
               role="img"
-              aria-label="Recent DEX and GEX orderflow quadrant path"
+              aria-label={`Recent DEX and ${weighting === "CONVEXITY" ? "convexity" : "GEX"} orderflow quadrant path`}
             >
               <rect x="0" y="0" width="200" height="80" rx="9" fill="var(--surface)" fillOpacity="0.52" />
               <rect x="100" y="0" width="100" height="40" fill="var(--primary)" fillOpacity="0.035" />
               <rect x="0" y="40" width="100" height="40" fill="var(--accent)" fillOpacity="0.035" />
               <line x1="100" x2="100" y1="5" y2="75" stroke="var(--border)" />
               <line x1="6" x2="194" y1="40" y2="40" stroke="var(--border)" />
-              <text x="105" y="9" fill="var(--primary)" fontSize="4.8">BULLISH + CONVEX</text>
-              <text x="5" y="74" fill="var(--accent)" fontSize="4.8">BEARISH + PUT GAMMA</text>
-              <text x="5" y="9" fill="var(--muted)" fontSize="4.5">MIXED: DEX- / GEX+</text>
-              <text x="105" y="74" fill="var(--muted)" fontSize="4.5">MIXED: DEX+ / GEX-</text>
+              {weighting === "CONVEXITY" ? (
+                <>
+                  <text x="105" y="9" fill="var(--primary)" fontSize="4.8">LONG CALL · BULL + LONG VOL</text>
+                  <text x="5" y="74" fill="var(--accent)" fontSize="4.8">SHORT CALL · BEAR + SHORT VOL</text>
+                  <text x="5" y="9" fill="var(--muted)" fontSize="4.5">LONG PUT · BEAR + LONG VOL</text>
+                  <text x="105" y="74" fill="var(--muted)" fontSize="4.5">SHORT PUT · BULL + SHORT VOL</text>
+                </>
+              ) : (
+                <>
+                  <text x="105" y="9" fill="var(--primary)" fontSize="4.8">BULLISH + CONVEX</text>
+                  <text x="5" y="74" fill="var(--accent)" fontSize="4.8">BEARISH + PUT GAMMA</text>
+                  <text x="5" y="9" fill="var(--muted)" fontSize="4.5">MIXED: DEX- / GEX+</text>
+                  <text x="105" y="74" fill="var(--muted)" fontSize="4.5">MIXED: DEX+ / GEX-</text>
+                </>
+              )}
               {quadrantPath ? (
                 <path d={quadrantPath} fill="none" stroke="var(--foreground)" strokeOpacity="0.44" strokeWidth="1" />
               ) : null}
               {quadrantPoints.map((point, index) => {
                 const isLatest = index === quadrantPoints.length - 1;
+                const pointBucket = recent[index];
+                const pointMagnitude = Math.abs(pointBucket?.net ?? 0) / quadrantGexMaximum;
+                const pointConfidence = pointBucket?.confidence ?? 0;
                 return (
                   <g key={`${point.x}-${point.y}-${index}`}>
                     {isLatest ? <circle cx={point.x} cy={point.y} r="7" fill="var(--primary)" fillOpacity="0.1" /> : null}
                     <circle
                       cx={point.x}
                       cy={point.y}
-                      r={isLatest ? 3.2 : 1.6}
+                      r={isLatest ? 3.6 : 1.2 + pointMagnitude * 1.5}
                       fill={isLatest ? "var(--primary)" : "var(--foreground)"}
-                      fillOpacity={isLatest ? 1 : 0.38}
+                      fillOpacity={isLatest ? 1 : 0.18 + pointConfidence * 0.52}
                     />
                   </g>
                 );
               })}
               <text x="194" y="38" textAnchor="end" fill="var(--muted)" fontSize="4.5">DEX →</text>
-              <text x="102" y="8" fill="var(--muted)" fontSize="4.5" transform="rotate(-90 102 8)">GEX →</text>
+              <text x="102" y="8" fill="var(--muted)" fontSize="4.5" transform="rotate(-90 102 8)">
+                {weighting === "CONVEXITY" ? "CONVEXITY" : "GEX"} →
+              </text>
             </svg>
             <div className="mt-1 grid grid-cols-3 gap-1 font-mono text-[5.5px]">
               <span className="rounded-md bg-surface px-1.5 py-1 text-muted">1M DEX <b className="text-foreground">{signedCompact(currentDexOneMinute)}</b></span>
-              <span className="rounded-md bg-surface px-1.5 py-1 text-muted">5M DEX <b className="text-foreground">{signedCompact(currentDexFiveMinutes)}</b></span>
-              <span className="rounded-md bg-surface px-1.5 py-1 text-muted">SESSION <b className="text-foreground">{signedCompact(sessionDirectionalDex)}</b></span>
+              <span className="rounded-md bg-surface px-1.5 py-1 text-muted">
+                {weighting === "CONVEXITY" ? "VELOCITY" : "5M DEX"}{" "}
+                <b className="text-foreground">{signedCompact(weighting === "CONVEXITY" ? metricVelocity : currentDexFiveMinutes)}</b>
+              </span>
+              <span className="rounded-md bg-surface px-1.5 py-1 text-muted">
+                {weighting === "CONVEXITY" ? "PERSIST" : "SESSION"}{" "}
+                <b className="text-foreground">
+                  {weighting === "CONVEXITY" ? `${(persistence * 100).toFixed(0)}%` : signedCompact(sessionDirectionalDex)}
+                </b>
+              </span>
             </div>
           </div>
         ) : (
@@ -1331,11 +1457,13 @@ export default function DexWeightedOrderflow({
         </div>
         )}
       </div>
-      {weighting === "GEX" ? (
+      {weighting !== "DEX" ? (
         <div className="border-t border-border px-3 py-1.5 text-[6px] leading-3 text-muted">
-          GEX is estimated from classified option flow using contracts × gamma × 100
+          {weighting === "CONVEXITY"
+            ? "Convexity is estimated as bought-option GEX minus sold-option GEX using contracts × gamma × 100"
+            : "GEX is estimated from classified directional option flow using contracts × gamma × 100"}
           {gexUnit === "DOLLAR_1PCT" ? " × spot² × 1%." : " per underlying point."}
-          {" "}DEX and GEX remain separate measures; prints without defensible gamma are excluded, and linked multi-leg intent may not be recoverable from the public tape.
+          {" "}DEX, GEX and convexity remain separate measures; prints without defensible gamma are excluded, and linked multi-leg intent may not be recoverable from the public tape.
           {" "}{classified.midPrints} midpoint and {classified.unweightedPrints} missing-gamma prints are outside the weighted series.
         </div>
       ) : null}
@@ -1345,4 +1473,8 @@ export default function DexWeightedOrderflow({
 
 export function GexWeightedOrderflow(props: OrderflowProps) {
   return <DexWeightedOrderflow {...props} weighting="GEX" />;
+}
+
+export function ConvexityOrderflow(props: OrderflowProps) {
+  return <DexWeightedOrderflow {...props} weighting="CONVEXITY" />;
 }
