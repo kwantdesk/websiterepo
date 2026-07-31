@@ -15,6 +15,7 @@ import {
 } from "lightweight-charts";
 import { useEffect, useMemo, useRef, useState } from "react";
 import KwantSelect from "@/components/ui/KwantSelect";
+import ClassifiedVolumeLadder from "@/components/gexdesk/ClassifiedVolumeLadder";
 import KwantSteps from "@/components/gexdesk/KwantSteps";
 import LookbackPlayback from "@/components/gexdesk/LookbackPlayback";
 import MajorGamma from "@/components/gexdesk/MajorGamma";
@@ -446,7 +447,7 @@ export default function GexViewWorkspace({
   const [charts, setCharts] = useState<GexViewChartConfig[]>(initialCharts);
   const activeChart = charts[activeIndex] ?? DEFAULT_CHART;
   const preloadKey = useMemo(
-    () => [...new Set(charts.slice(4).map((chart) => `${chart.instrument}::${chart.timeframe}`))].join("|"),
+    () => [...new Set(charts.slice(5).map((chart) => `${chart.instrument}::${chart.timeframe}`))].join("|"),
     [charts],
   );
 
@@ -456,7 +457,7 @@ export default function GexViewWorkspace({
 
   useEffect(() => {
     const uniqueCharts = [...new Map(
-      charts.slice(4).map((chart) => [`${chart.instrument}::${chart.timeframe}`, chart]),
+      charts.slice(5).map((chart) => [`${chart.instrument}::${chart.timeframe}`, chart]),
     ).values()];
     void Promise.allSettled(uniqueCharts.map((chart) => loadHistory(chart.instrument, chart.timeframe)));
   }, [preloadKey]);
@@ -483,7 +484,7 @@ export default function GexViewWorkspace({
         </button>
 
         <div className="min-w-0 overflow-hidden rounded-3xl border border-border bg-panel shadow-[0_24px_80px_rgba(0,0,0,0.28)]">
-          {activeIndex > 3 ? <div className="flex min-h-12 flex-wrap items-center gap-2 border-b border-border bg-panel px-3 py-2">
+          {activeIndex > 4 ? <div className="flex min-h-12 flex-wrap items-center gap-2 border-b border-border bg-panel px-3 py-2">
             <div className="flex min-w-0 items-center gap-2">
               <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-primary/25 bg-primary/[0.07] text-primary">
                 <LineChart className="h-3.5 w-3.5" />
@@ -575,6 +576,14 @@ export default function GexViewWorkspace({
                 history={history}
                 historyLoading={historyLoading}
                 historyError={historyError}
+                livePrice={livePrice}
+                sourceFilter={sourceFilter}
+                onSourceFilterChange={onSourceFilterChange}
+              />
+            ) : activeIndex === 4 ? (
+              <ClassifiedVolumeLadder
+                payload={payload}
+                history={history}
                 livePrice={livePrice}
                 sourceFilter={sourceFilter}
                 onSourceFilterChange={onSourceFilterChange}
