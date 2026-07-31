@@ -49,5 +49,12 @@ export type ChartGammaLevelsPayload = {
   };
   revision: string;
   sources: ChartGammaSourceSnapshot[];
+  /**
+   * Native futures gamma is preferred. When the native CME options chain is
+   * temporarily unavailable, the server can return a cash-index gamma map
+   * calibrated onto the matching futures price so charts do not go blank.
+   */
+  dataOrigin?: "NATIVE_FUTURES" | "CASH_INDEX" | "CASH_CALIBRATED_FALLBACK";
+  calibrationSource?: ChartGammaSourceSnapshot["symbol"];
+  levelPriceScale?: number;
 };
-

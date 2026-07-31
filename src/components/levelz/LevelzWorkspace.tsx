@@ -398,8 +398,15 @@ function gammaEducationForLevel(kind: ChartGammaSourceLevelKind, label: string) 
 }
 
 function makeGammaSnapshot(payload: ChartGammaLevelsPayload, settings: ChartSettings): LevelSnapshot {
-  const source = payload.sources.find((item) => item.symbol === payload.requestedSource);
-  const levels = (source?.levels ?? []).slice(0, 24).map((level): IntelligentLevel => ({
+  const source = payload.sources.find((item) => item.symbol === payload.requestedSource && item.levels.length)
+    ?? payload.sources.find((item) => item.levels.length);
+  const validLevels = (source?.levels ?? []).filter((level) =>
+    Number.isFinite(level.price) && level.price > 0 && typeof level.label === "string" && level.label.length > 0,
+  );
+  if (!source || !validLevels.length) {
+    throw new Error(`No usable ${payload.root} gamma levels were returned.`);
+  }
+  const levels = validLevels.slice(0, 24).map((level): IntelligentLevel => ({
     id: `levelz-gamma-${payload.root}-${level.id}`,
     price: level.price,
     color: gammaColor(level.kind, settings),
@@ -417,7 +424,9 @@ function makeGammaSnapshot(payload: ChartGammaLevelsPayload, settings: ChartSett
     levels,
     zones: [],
     asOf: payload.checkedAt,
-    source: `${payload.root} CME options gamma`,
+    source: payload.dataOrigin === "CASH_CALIBRATED_FALLBACK"
+      ? `KwantData ${payload.calibrationSource ?? "cash-index"} gamma · CME calibrated`
+      : `${payload.root} CME options gamma`,
     status: payload.marketOpen ? "LIVE" : "EOD",
     regime: payload.environment.gammaStateLabel,
     tape: "Loading session tape context",

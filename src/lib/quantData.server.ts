@@ -4,6 +4,7 @@ import { unstable_cache } from "next/cache";
 import {
   OPTIONS_FLOW_TICKERS,
   classifyGammaEnvironment,
+  isOptionsFuturesRatioSane,
   type ExposureExpiry,
   type ExposureStrike,
   type ExposureSummary,
@@ -2636,6 +2637,7 @@ export async function getChartGammaLevels(
     environment,
     revision,
     sources,
+    dataOrigin: "CASH_INDEX",
   };
 }
 
@@ -2677,37 +2679,90 @@ export async function getGexDeskZeroGammaPayload(): Promise<GexDeskZeroGammaPayl
 }
 
 async function buildNativeChartGamma(root: NativeGammaRoot): Promise<ChartGammaLevelsPayload> {
-  const session = getUsOptionsSession();
-  const spot = session.marketOpen
+  try {
+    const session = getUsOptionsSession();
+    const spot = session.marketOpen
+      ? await getNativeFuturesSpot(root)
+      : await getNativeFuturesSessionClose(root, session.sessionDate)
+        ?? await getNativeFuturesSpot(root);
+    if (!spot) {
+      throw new QuantDataError(`No current or completed-session ${root} futures price is available.`, 503, null);
+    }
+    const snap = await getNativeGammaSnapshot(root, session.sessionDate, spot);
+    if (!snap.levels.length) {
+      throw new QuantDataError(`No native gamma map is available for ${root}.`, 422, null);
+    }
+    const environment = classifyGammaEnvironment(snap.netGex, snap.grossGex);
+    const source: ChartGammaSourceSnapshot = {
+      symbol: root,
+      stockPrice: snap.spot,
+      revision: snap.revision,
+      validationStrikes: snap.validationStrikes,
+      levels: snap.levels,
+    };
+    return {
+      root,
+      requestedSource: root,
+      checkedAt: session.marketOpen ? new Date().toISOString() : newYorkCashCloseIso(snap.sessionDate),
+      refreshAfterMs: session.marketOpen ? 60_000 : 300_000,
+      marketOpen: session.marketOpen,
+      snapshotMode: session.marketOpen ? "LIVE" : "NEW_YORK_EOD",
+      sessionDate: snap.sessionDate,
+      environment,
+      revision: snap.revision,
+      sources: [source],
+      dataOrigin: "NATIVE_FUTURES",
+    };
+  } catch (nativeError) {
+    try {
+      return await buildCashCalibratedGammaFallback(root);
+    } catch {
+      throw nativeError;
+    }
+  }
+}
+
+async function buildCashCalibratedGammaFallback(
+  root: NativeGammaRoot,
+): Promise<ChartGammaLevelsPayload> {
+  const calibrationSource = root === "NQ" ? "NDX" : "SPX";
+  const cashPayload = await getChartGammaLevels(root, calibrationSource);
+  const cashSource = cashPayload.sources.find((source) => source.symbol === calibrationSource);
+  if (!cashSource || !cashSource.levels.length || !Number.isFinite(cashSource.stockPrice) || cashSource.stockPrice <= 0) {
+    throw new QuantDataError(`No ${calibrationSource} gamma snapshot is available to calibrate ${root}.`, 422, null);
+  }
+
+  const futuresPrice = cashPayload.marketOpen
     ? await getNativeFuturesSpot(root)
-    : await getNativeFuturesSessionClose(root, session.sessionDate)
+    : await getNativeFuturesSessionClose(root, cashPayload.sessionDate)
       ?? await getNativeFuturesSpot(root);
-  if (!spot) {
-    throw new QuantDataError(`No current or completed-session ${root} futures price is available.`, 503, null);
+  const scale = futuresPrice ? futuresPrice / cashSource.stockPrice : Number.NaN;
+  if (!futuresPrice || !Number.isFinite(scale) || !isOptionsFuturesRatioSane(calibrationSource, scale)) {
+    throw new QuantDataError(`No valid ${calibrationSource} to ${root} calibration is available.`, 503, null);
   }
-  const snap = await getNativeGammaSnapshot(root, session.sessionDate, spot);
-  if (!snap.levels.length) {
-    throw new QuantDataError(`No native gamma map is available for ${root}.`, 422, null);
-  }
-  const environment = classifyGammaEnvironment(snap.netGex, snap.grossGex);
-  const source: ChartGammaSourceSnapshot = {
+
+  const toFuturesPrice = (price: number) => Math.round((price * scale) / 0.25) * 0.25;
+  const revision = `cash-calibrated:${calibrationSource}:${root}:${cashSource.revision}:${scale.toFixed(8)}`;
+  const calibratedSource: ChartGammaSourceSnapshot = {
     symbol: root,
-    stockPrice: snap.spot,
-    revision: snap.revision,
-    validationStrikes: snap.validationStrikes,
-    levels: snap.levels,
+    stockPrice: futuresPrice,
+    revision,
+    validationStrikes: cashSource.validationStrikes.map(toFuturesPrice),
+    levels: cashSource.levels.map((level) => ({
+      ...level,
+      id: `calibrated-${calibrationSource.toLowerCase()}-${level.id}`,
+      price: toFuturesPrice(level.price),
+    })),
   };
+
   return {
-    root,
+    ...cashPayload,
     requestedSource: root,
-    checkedAt: session.marketOpen ? new Date().toISOString() : newYorkCashCloseIso(snap.sessionDate),
-    refreshAfterMs: session.marketOpen ? 60_000 : 300_000,
-    marketOpen: session.marketOpen,
-    snapshotMode: session.marketOpen ? "LIVE" : "NEW_YORK_EOD",
-    sessionDate: snap.sessionDate,
-    environment,
-    revision: snap.revision,
-    sources: [source],
+    revision,
+    sources: [calibratedSource],
+    dataOrigin: "CASH_CALIBRATED_FALLBACK",
+    calibrationSource,
+    levelPriceScale: scale,
   };
 }
 
