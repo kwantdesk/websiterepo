@@ -598,8 +598,15 @@ function useLevelSnapshot(config: PanelConfig, settings: ChartSettings) {
   }, [config, refreshNonce, settings]);
 
   useEffect(() => {
-    if (config.family !== "gamma") return;
-    const timer = window.setInterval(() => setRefreshNonce((value) => value + 1), 15_000);
+    const refreshMs = config.family === "gamma"
+      ? 15_000
+      : config.family === "gameplan"
+        ? 60_000
+        : config.family === "value-area"
+          ? 5 * 60_000
+          : null;
+    if (refreshMs === null) return;
+    const timer = window.setInterval(() => setRefreshNonce((value) => value + 1), refreshMs);
     return () => window.clearInterval(timer);
   }, [config.family]);
 
