@@ -3547,23 +3547,27 @@ export default function Chart({
   return (
     <div ref={chartContainerRef} className="relative h-full w-full overflow-hidden">
       {!chartVisualReady ? (
-        <KwantLoader
-          className="pointer-events-auto absolute inset-0 z-[90]"
-          style={{ backgroundColor: settings.backgroundColor }}
-          icon={ChartColumnIncreasing}
-          title="Loading chart"
-          detail={`${instrument} · fitting history and price scale`}
-        />
+        <div className="pointer-events-auto absolute inset-0 z-[90]" style={{ backgroundColor: settings.backgroundColor }}>
+          <KwantLoader
+            className="h-full w-full"
+            style={{ backgroundColor: settings.backgroundColor }}
+            icon={ChartColumnIncreasing}
+            title="Loading chart"
+            detail={`${instrument} · fitting history and price scale`}
+          />
+        </div>
       ) : null}
       {gammaLevelsEnabled && gammaLevelsLoading ? (
-        <KwantLoader
-          className="pointer-events-none absolute inset-0 z-[19]"
-          compact
-          style={{ backgroundColor: settings.backgroundColor }}
-          icon={ScanLine}
-          title={`Loading ${instrument} gamma levels`}
-          detail="Syncing current levels"
-        />
+        <div className="pointer-events-none absolute inset-0 z-[19]" style={{ backgroundColor: settings.backgroundColor }}>
+          <KwantLoader
+            className="h-full w-full"
+            compact
+            style={{ backgroundColor: settings.backgroundColor }}
+            icon={ScanLine}
+            title={`Loading ${instrument} gamma levels`}
+            detail="Syncing current levels"
+          />
+        </div>
       ) : null}
       <div
         ref={horzLineRef}

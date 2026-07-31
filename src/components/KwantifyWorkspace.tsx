@@ -2233,6 +2233,7 @@ function WorkspaceChartPane({
   onGammaExportSnapshot,
   gameplanOverlay,
   onRemoveGameplanOverlay,
+  loadingMessage,
 }: {
   pane: WorkspacePane;
   active: boolean;
@@ -2262,6 +2263,7 @@ function WorkspaceChartPane({
   onGammaExportSnapshot: (paneId: string, snapshot: GammaLevelExportSnapshot | null) => void;
   gameplanOverlay: GameplanChartOverlay | null;
   onRemoveGameplanOverlay: () => void;
+  loadingMessage?: string;
 }) {
   const [candles, setCandles] = useState<Candle[]>([]);
   const [marketTrades, setMarketTrades] = useState<InstitutionalTrade[]>([]);
@@ -3123,13 +3125,15 @@ function WorkspaceChartPane({
         </div>
       )}
       {loading ? (
-        <KwantLoader
-          className="h-full"
-          style={{ backgroundColor: settings.backgroundColor }}
-          icon={BarChart3}
-          title="Loading chart"
-          detail={`${displayCmeSymbol(pane.symbol)} · restoring ${formatChartInterval(pane.timeframe)} candles`}
-        />
+        <div className="absolute inset-0 z-10" style={{ backgroundColor: settings.backgroundColor }}>
+          <KwantLoader
+            className="h-full w-full"
+            style={{ backgroundColor: settings.backgroundColor }}
+            icon={BarChart3}
+            title="Loading chart"
+            detail={`${displayCmeSymbol(pane.symbol)} · restoring ${formatChartInterval(pane.timeframe)} candles`}
+          />
+        </div>
       ) : error ? (
         <div className="flex h-full items-center justify-center text-[13px] text-muted">{error}</div>
       ) : (
@@ -3184,6 +3188,11 @@ function WorkspaceChartPane({
         <span>{formatChartInterval(pane.timeframe)}</span>
         <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-semibold ${marketStatusClasses}`}>{marketStatusLabel}</span>
       </div>
+      {loadingMessage ? (
+        <div className="pointer-events-none absolute bottom-[86px] left-1/2 z-30 max-w-[calc(100%-32px)] -translate-x-1/2 truncate rounded-lg border border-border bg-panel/92 px-3 py-1.5 text-[10px] text-muted shadow-lg shadow-black/25 backdrop-blur">
+          {loadingMessage}
+        </div>
+      ) : null}
       <div className="absolute bottom-14 left-3 z-20 flex items-center gap-0.5 rounded-lg border border-border bg-panel/80 px-1 py-0.5 backdrop-blur">
         {["1D", "5D", "1W", "1M", "3M", "6M", "1Y", "All"].map((range) => (
           <button
@@ -7875,6 +7884,7 @@ export default function KwantifyWorkspace({
         levelExportRequested={showLevelsExport}
         onGammaExportSnapshot={handleGammaExportSnapshot}
         gameplanOverlay={gameplanRoot ? gameplanChartOverlays[gameplanRoot] ?? null : null}
+        loadingMessage={activePaneId === pane.id ? chartLoadingMessage : ""}
         onRemoveGameplanOverlay={() => {
           if (!gameplanRoot) return;
           setGameplanChartOverlays(removeGameplanChartOverlay(gameplanRoot));
@@ -8686,7 +8696,6 @@ export default function KwantifyWorkspace({
         <div className="min-h-0 flex-1 overflow-hidden">
           <div ref={workspaceAreaRef} className="relative h-full min-w-0">
             {renderWorkspaceNode(workspaceTree)}
-            {chartLoadingMessage && <div className="absolute left-1/2 top-3 z-20 -translate-x-1/2 rounded-lg border border-border bg-panel/90 px-3 py-1.5 text-[12px] text-muted shadow-lg backdrop-blur">{chartLoadingMessage}</div>}
           </div>
           {false && rightPanel && (
             <div style={{ width: rightPanelWidth }} className="relative flex shrink-0 flex-col border-l border-border bg-panel">
