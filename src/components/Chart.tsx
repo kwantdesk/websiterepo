@@ -3182,9 +3182,91 @@ export default function Chart({
       });
     };
 
+    const handlePriceScaleWheel = (event: WheelEvent) => {
+      const containerRect = container.getBoundingClientRect();
+      const priceScaleWidth = chart.priceScale("right").width();
+      const localX = event.clientX - containerRect.left;
+      const localY = event.clientY - containerRect.top;
+      const isOverRightPriceScale =
+        priceScaleWidth > 0
+        && localX >= containerRect.width - priceScaleWidth
+        && localX <= containerRect.width
+        && localY >= 0
+        && localY <= containerRect.height;
+
+      if (!isOverRightPriceScale || event.deltaY === 0) return;
+
+      const priceScaleCanvas = Array.from(container.querySelectorAll("canvas"))
+        .reverse()
+        .find((canvas) => {
+          const rect = canvas.getBoundingClientRect();
+          return (
+            rect.width >= priceScaleWidth - 2
+            && rect.width <= priceScaleWidth + 2
+            && rect.height > containerRect.height * 0.5
+            && event.clientX >= rect.left
+            && event.clientX <= rect.right
+            && event.clientY >= rect.top
+            && event.clientY <= rect.bottom
+          );
+        });
+
+      if (!priceScaleCanvas) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+
+      const axisRect = priceScaleCanvas.getBoundingClientRect();
+      const wheelDelta =
+        event.deltaMode === WheelEvent.DOM_DELTA_LINE
+          ? event.deltaY * 16
+          : event.deltaMode === WheelEvent.DOM_DELTA_PAGE
+            ? event.deltaY * axisRect.height
+            : event.deltaY;
+      const dragDistance =
+        Math.sign(wheelDelta)
+        * Math.max(6, Math.min(42, Math.abs(wheelDelta) * 0.18));
+      const startY = Math.max(
+        axisRect.top + 44,
+        Math.min(axisRect.bottom - 44, event.clientY),
+      );
+      const endY = Math.max(
+        axisRect.top + 2,
+        Math.min(axisRect.bottom - 2, startY + dragDistance),
+      );
+      const axisX = Math.max(
+        axisRect.left + 2,
+        Math.min(axisRect.right - 2, event.clientX),
+      );
+      const eventInit = {
+        bubbles: true,
+        cancelable: true,
+        clientX: axisX,
+        button: 0,
+        buttons: 1,
+        view: window,
+      };
+
+      priceScaleCanvas.dispatchEvent(new MouseEvent("mousedown", {
+        ...eventInit,
+        clientY: startY,
+      }));
+      document.documentElement.dispatchEvent(new MouseEvent("mousemove", {
+        ...eventInit,
+        clientY: endY,
+      }));
+      document.documentElement.dispatchEvent(new MouseEvent("mouseup", {
+        ...eventInit,
+        buttons: 0,
+        clientY: endY,
+      }));
+      scheduleViewportRefresh();
+    };
+
     container.addEventListener("mousemove", handleMouseMove);
     container.addEventListener("mouseleave", handleMouseLeave);
     container.addEventListener("contextmenu", handleContextMenu);
+    container.addEventListener("wheel", handlePriceScaleWheel, { capture: true, passive: false });
     window.addEventListener("resize", handleResize);
     chart.timeScale().subscribeVisibleLogicalRangeChange(scheduleViewportRefresh);
     const resizeObserver = new ResizeObserver(handleResize);
@@ -3194,6 +3276,7 @@ export default function Chart({
       container.removeEventListener("mousemove", handleMouseMove);
       container.removeEventListener("mouseleave", handleMouseLeave);
       container.removeEventListener("contextmenu", handleContextMenu);
+      container.removeEventListener("wheel", handlePriceScaleWheel, { capture: true });
       window.removeEventListener("resize", handleResize);
       chart.timeScale().unsubscribeVisibleLogicalRangeChange(scheduleViewportRefresh);
       resizeObserver.disconnect();
