@@ -202,6 +202,31 @@ function formatReviewDuration(milliseconds: number | null) {
   return `${minutes}m ${seconds % 60}s`;
 }
 
+function formatCalibrationDuration(milliseconds: number) {
+  const totalMinutes = Math.max(0, Math.floor(milliseconds / 60_000));
+  if (totalMinutes < 60) return `${Math.max(1, totalMinutes)}m`;
+  const totalHours = Math.floor(totalMinutes / 60);
+  const remainingMinutes = totalMinutes % 60;
+  if (totalHours < 48) return `${totalHours}h ${remainingMinutes}m`;
+  const totalDays = Math.floor(totalHours / 24);
+  const remainingHours = totalHours % 24;
+  if (totalDays < 60) return `${totalDays}d ${remainingHours}h`;
+  const years = Math.floor(totalDays / 365);
+  const months = Math.floor((totalDays % 365) / 30);
+  if (years) return `${years}y ${months}mo`;
+  return `${Math.floor(totalDays / 30)}mo ${totalDays % 30}d`;
+}
+
+function formatCalibrationDate(value: string) {
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) return "Unknown";
+  return new Intl.DateTimeFormat(undefined, {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  }).format(timestamp);
+}
+
 function BotAvatar() {
   return (
     <div className="relative h-14 w-14 shrink-0">
@@ -491,6 +516,29 @@ export default function KwantBotIntelligenceWorkspace({
   const learningTrend = recentLearningAverage !== null && previousLearningAverage !== null
     ? Math.round(recentLearningAverage - previousLearningAverage)
     : null;
+  const calibrationReviews = useMemo(
+    () => rootLearningReviews.slice(0, 12).reverse(),
+    [rootLearningReviews],
+  );
+  const calibrationWindow = useMemo(() => {
+    const oldest = calibrationReviews[0] ?? null;
+    const newest = calibrationReviews.at(-1) ?? null;
+    if (!oldest || !newest) return null;
+    const oldestTimestamp = Date.parse(oldest.reviewedAt);
+    const newestTimestamp = Date.parse(newest.reviewedAt);
+    const sampleLabel = rootLearningReviews.length > calibrationReviews.length
+      ? `Last ${calibrationReviews.length} of ${rootLearningReviews.length} reviews`
+      : `${calibrationReviews.length} completed review${calibrationReviews.length === 1 ? "" : "s"}`;
+    const oldestDate = formatCalibrationDate(oldest.reviewedAt);
+    const newestDate = formatCalibrationDate(newest.reviewedAt);
+    return {
+      sampleLabel,
+      dateRange: oldestDate === newestDate ? oldestDate : `${oldestDate} - ${newestDate}`,
+      duration: calibrationReviews.length > 1 && Number.isFinite(oldestTimestamp) && Number.isFinite(newestTimestamp)
+        ? formatCalibrationDuration(newestTimestamp - oldestTimestamp)
+        : null,
+    };
+  }, [calibrationReviews, rootLearningReviews.length]);
   const blindSpots = useMemo(() => {
     const counts = new Map<string, number>();
     rootLearningReviews.forEach((review) => {
@@ -1171,9 +1219,21 @@ export default function KwantBotIntelligenceWorkspace({
                         eyebrow="Calibration"
                         title="Is the reasoning improving?"
                         detail="Scores compare review quality across completed cycles, not market direction accuracy alone."
+                        trailing={calibrationWindow ? (
+                          <div
+                            className="shrink-0 rounded-xl border border-primary/20 bg-primary/[0.05] px-3 py-2 text-right"
+                            title={`Calibration covers ${calibrationWindow.sampleLabel.toLowerCase()} from ${calibrationWindow.dateRange}.`}
+                          >
+                            <div className="text-[6px] font-semibold uppercase tracking-[0.16em] text-primary">Data window</div>
+                            <div className="mt-0.5 text-[8px] font-semibold text-foreground">{calibrationWindow.sampleLabel}</div>
+                            <div className="mt-0.5 font-mono text-[7px] text-muted">
+                              {calibrationWindow.dateRange}{calibrationWindow.duration ? ` · ${calibrationWindow.duration}` : ""}
+                            </div>
+                          </div>
+                        ) : null}
                       />
                       <div className="space-y-2 p-4">
-                        {rootLearningReviews.slice(0, 12).reverse().map((review) => (
+                        {calibrationReviews.map((review) => (
                           <div key={review.id} className="grid grid-cols-[64px_1fr_34px] items-center gap-2">
                             <div className="truncate text-[7px] font-semibold text-muted">{review.levelName}</div>
                             <div className="h-1.5 overflow-hidden rounded-full bg-background">
