@@ -6,6 +6,7 @@ import {
   ArrowDownRight,
   ArrowUpRight,
   BarChart3,
+  BrainCircuit,
   BookOpen,
   Bot,
   CalendarDays,
@@ -28,11 +29,13 @@ import {
   NotebookPen,
   Paperclip,
   Plus,
+  RefreshCw,
   Search,
   ShieldCheck,
   Sparkles,
   Star,
   Tags,
+  Target,
   Trash2,
   TrendingDown,
   TrendingUp,
@@ -55,10 +58,16 @@ import {
   type JournalTrade,
 } from "@/lib/journal";
 import { loadJournalState, saveJournalState } from "@/lib/journalStore";
+import {
+  buildJournalAnalysisEvidence,
+  type JournalAnalysisFinding,
+  type JournalAnalysisLeak,
+  type JournalQuantAnalysis,
+} from "@/lib/journalAnalysis";
 import KwantSelect from "@/components/ui/KwantSelect";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-type JournalTab = "pulse" | "calendar" | "trades" | "edgebook" | "evidence" | "imports";
+type JournalTab = "pulse" | "calendar" | "trades" | "edgebook" | "analysis" | "evidence" | "imports";
 type OutcomeFilter = "all" | "wins" | "losses" | "breakeven" | "needs-review";
 type SortKey = "closedAt" | "netPnl" | "rMultiple" | "quantity" | "symbol";
 
@@ -83,11 +92,19 @@ type CloudJournalResponse = {
   imports?: JournalImportBatch[];
 };
 
+type JournalAnalysisResponse = {
+  analysis?: JournalQuantAnalysis | null;
+  fingerprint?: string;
+  cloud?: boolean;
+  error?: string;
+};
+
 const JOURNAL_TABS: Array<{ id: JournalTab; label: string; icon: typeof Activity }> = [
   { id: "pulse", label: "Pulse", icon: Activity },
   { id: "calendar", label: "Calendar", icon: CalendarDays },
   { id: "trades", label: "Trade Log", icon: FileSpreadsheet },
   { id: "edgebook", label: "Edgebook", icon: Sparkles },
+  { id: "analysis", label: "Analysis", icon: BrainCircuit },
   { id: "evidence", label: "Evidence", icon: ImageIcon },
   { id: "imports", label: "Imports", icon: FolderArchive },
 ];
@@ -305,6 +322,47 @@ function PerformanceList({ title, rows }: { title: string; rows: ReturnType<type
   );
 }
 
+function AnalysisConfidenceBadge({ value }: { value: JournalQuantAnalysis["confidence"] }) {
+  const tone = value === "HIGH"
+    ? "border-primary/25 bg-primary/10 text-primary"
+    : value === "MODERATE"
+      ? "border-warning/25 bg-warning/10 text-warning"
+      : "border-border bg-surface text-muted";
+  return <span className={`rounded-full border px-2 py-1 text-[7px] font-semibold tracking-[0.1em] ${tone}`}>{value} CONFIDENCE</span>;
+}
+
+function AnalysisFindingCard({
+  finding,
+  kind,
+}: {
+  finding: JournalAnalysisFinding | JournalAnalysisLeak;
+  kind: "strength" | "edge" | "leak";
+}) {
+  const tone = kind === "leak" ? "text-danger" : kind === "edge" ? "text-accent" : "text-primary";
+  const Icon = kind === "leak" ? CircleAlert : kind === "edge" ? Target : TrendingUp;
+  return (
+    <div className="rounded-2xl border border-border bg-background/35 p-4">
+      <div className="flex items-start gap-2.5">
+        <span className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-border bg-surface ${tone}`}><Icon className="h-3.5 w-3.5" /></span>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <h4 className="text-[10px] font-semibold text-foreground">{finding.title}</h4>
+            <AnalysisConfidenceBadge value={finding.confidence} />
+          </div>
+          <div className="mt-2 rounded-xl border border-border/70 bg-panel px-3 py-2 font-mono text-[8px] leading-4 text-muted">{finding.evidence}</div>
+          <p className="mt-2 text-[9px] leading-[1.55] text-muted">{finding.interpretation}</p>
+          {"correction" in finding ? (
+            <div className="mt-3 border-l-2 border-primary/55 pl-3">
+              <div className="text-[7px] font-semibold uppercase tracking-[0.14em] text-primary">Correction</div>
+              <p className="mt-1 text-[9px] leading-[1.55] text-foreground/90">{finding.correction}</p>
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function JournalWorkspace({ accountKey }: { accountKey: string }) {
   const [state, setState] = useState<JournalState>(EMPTY_JOURNAL_STATE);
   const [zyonTrades, setZyonTrades] = useState<JournalTrade[]>([]);
@@ -313,6 +371,10 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
   const [saveStatus, setSaveStatus] = useState<"loading" | "saved" | "error">("loading");
   const [cloudState, setCloudState] = useState<JournalCloudState>("loading");
   const [tab, setTab] = useState<JournalTab>("pulse");
+  const [journalAnalysis, setJournalAnalysis] = useState<JournalQuantAnalysis | null>(null);
+  const [analysisLoadedAccount, setAnalysisLoadedAccount] = useState("");
+  const [analysisStatus, setAnalysisStatus] = useState<"idle" | "loading" | "generating" | "ready" | "error">("idle");
+  const [analysisError, setAnalysisError] = useState("");
   const [showImport, setShowImport] = useState(false);
   const [importAccount, setImportAccount] = useState("Imported account");
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
@@ -329,6 +391,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
   const [calendarMonth, setCalendarMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1));
   const [selectedDay, setSelectedDay] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const analysisRequestRef = useRef(0);
 
   const resolvedAccountKey = accountKey || "local";
   const zyonJournalSelected = accountFilter === ZYON_JOURNAL_ACCOUNT;
@@ -486,6 +549,19 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
     () => state.evidence.filter((item) => !isZyonJournalAccountName(item.account) && (accountFilter === "all" || item.account === accountFilter)),
     [accountFilter, state.evidence],
   );
+  const analysisAccount = accountFilter === "all" ? "Overall Journal" : accountFilter;
+  const analysisTrades = useMemo(
+    () => allTrades.filter((trade) => accountFilter === "all" || trade.account === accountFilter),
+    [accountFilter, allTrades],
+  );
+  const analysisEvidenceItems = useMemo(
+    () => state.evidence.filter((item) => accountFilter === "all" || item.account === accountFilter),
+    [accountFilter, state.evidence],
+  );
+  const analysisEvidence = useMemo(
+    () => buildJournalAnalysisEvidence(analysisAccount, analysisTrades, analysisEvidenceItems),
+    [analysisAccount, analysisEvidenceItems, analysisTrades],
+  );
   const stats = useMemo(() => calculateJournalStats(filteredTrades, filteredEvidence), [filteredEvidence, filteredTrades]);
   const selectedTrade = allTrades.find((trade) => trade.id === selectedTradeId) ?? null;
   const selectedTradeIsZyon = Boolean(selectedTrade?.sourceImportId.startsWith("zyon:"));
@@ -501,6 +577,61 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
     ? Math.round(((entryExitComplete ?? 0) * 0.45 + (stats.reviewedPercent ?? 0) * 0.4 + (evidencePercent ?? 0) * 0.15) * 100)
     : 0;
   const unreviewed = filteredTrades.filter((trade) => !trade.reviewedAt);
+  const analysisIsStale = Boolean(journalAnalysis && journalAnalysis.fingerprint !== analysisEvidence.fingerprint);
+
+  useEffect(() => {
+    if (tab !== "analysis") return;
+    if (analysisLoadedAccount === analysisAccount) return;
+    const controller = new AbortController();
+    const requestId = ++analysisRequestRef.current;
+    setAnalysisStatus("loading");
+    setAnalysisError("");
+    setJournalAnalysis(null);
+    void fetch(`/api/journal/analysis?account=${encodeURIComponent(analysisAccount)}`, {
+      cache: "no-store",
+      signal: controller.signal,
+    }).then(async (response) => {
+      const result = await response.json() as JournalAnalysisResponse;
+      if (!response.ok) throw new Error(result.error || "The saved analysis could not be loaded.");
+      if (controller.signal.aborted || requestId !== analysisRequestRef.current) return;
+      setJournalAnalysis(result.analysis ?? null);
+      setAnalysisLoadedAccount(analysisAccount);
+      setAnalysisStatus("ready");
+    }).catch((error: unknown) => {
+      if (controller.signal.aborted || requestId !== analysisRequestRef.current) return;
+      setAnalysisStatus("error");
+      setAnalysisError(error instanceof Error ? error.message : "The saved analysis could not be loaded.");
+    });
+    return () => controller.abort();
+  }, [analysisAccount, analysisLoadedAccount, tab]);
+
+  const runJournalAnalysis = useCallback(async () => {
+    if (analysisEvidence.performance.trades < 3) {
+      setAnalysisError("Add at least three closed trades before running a quantitative review.");
+      return;
+    }
+    setAnalysisStatus("generating");
+    setAnalysisError("");
+    const requestId = ++analysisRequestRef.current;
+    try {
+      const response = await fetch("/api/journal/analysis", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ account: analysisAccount, evidence: analysisEvidence }),
+      });
+      const result = await response.json() as JournalAnalysisResponse;
+      if (!response.ok || !result.analysis) throw new Error(result.error || "The mentor could not complete this analysis.");
+      if (requestId === analysisRequestRef.current) {
+        setJournalAnalysis(result.analysis);
+        setAnalysisLoadedAccount(analysisAccount);
+        setAnalysisStatus("ready");
+      }
+    } catch (error) {
+      if (requestId !== analysisRequestRef.current) return;
+      setAnalysisStatus("error");
+      setAnalysisError(error instanceof Error ? error.message : "The mentor could not complete this analysis.");
+    }
+  }, [analysisAccount, analysisEvidence]);
 
   const addFiles = useCallback((files: FileList | File[]) => {
     const selected = [...files];
@@ -894,6 +1025,14 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
                   key={id}
                   type="button"
                   onClick={() => {
+                    const nextAnalysisAccount = id === "all" ? "Overall Journal" : id;
+                    if (nextAnalysisAccount !== analysisLoadedAccount) {
+                      analysisRequestRef.current += 1;
+                      setJournalAnalysis(null);
+                      setAnalysisLoadedAccount("");
+                      setAnalysisStatus("idle");
+                      setAnalysisError("");
+                    }
                     setAccountFilter(id);
                     if (id === ZYON_JOURNAL_ACCOUNT && tab === "imports") setTab("pulse");
                   }}
@@ -929,7 +1068,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {!filteredTrades.length && tab !== "evidence" && tab !== "imports" ? (
+        {!filteredTrades.length && tab !== "analysis" && tab !== "evidence" && tab !== "imports" ? (
           <div className="mx-auto flex min-h-full max-w-5xl items-center justify-center p-6">
             <div className="relative w-full overflow-hidden rounded-3xl border border-border bg-panel p-8 text-center shadow-2xl shadow-black/20">
               <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_10%,color-mix(in_srgb,var(--primary)_10%,transparent),transparent_42%)]" />
@@ -1131,6 +1270,147 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
               </div>
               <p className="mt-3 text-[8px] leading-4 text-muted">Edgebook ranks only the selected imported population. Treat small samples as questions to investigate, not proof of a repeatable edge.</p>
             </Card>
+          </div>
+        ) : null}
+
+        {tab === "analysis" ? (
+          <div className="space-y-3 p-3">
+            <Card className="relative overflow-hidden p-4">
+              <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_8%_0%,color-mix(in_srgb,var(--primary)_11%,transparent),transparent_36%)]" />
+              <div className="relative flex flex-wrap items-center gap-3">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-primary/25 bg-primary/10 text-primary"><BrainCircuit className="h-5 w-5" /></span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h2 className="text-[13px] font-semibold tracking-[-0.01em] text-foreground">Quant mentor analysis</h2>
+                    {journalAnalysis ? <AnalysisConfidenceBadge value={journalAnalysis.confidence} /> : null}
+                    {analysisIsStale ? <span className="rounded-full border border-warning/25 bg-warning/10 px-2 py-1 text-[7px] font-semibold text-warning">NEW JOURNAL DATA</span> : null}
+                  </div>
+                  <p className="mt-1 max-w-3xl text-[9px] leading-4 text-muted">A per-account review grounded in recorded expectancy, risk, drawdown, setups, timing, process quality and recent change. The model interprets fixed calculations; it cannot invent the evidence.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void runJournalAnalysis()}
+                  disabled={analysisEvidence.performance.trades < 3 || analysisStatus === "generating"}
+                  className="flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-[9px] font-semibold text-background transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <RefreshCw className={`h-3.5 w-3.5 ${analysisStatus === "generating" ? "animate-spin" : ""}`} />
+                  {analysisStatus === "generating" ? "Analyzing record" : journalAnalysis ? "Refresh analysis" : "Run analysis"}
+                </button>
+              </div>
+            </Card>
+
+            <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+              <MetricCard label="Evidence window" value={`${analysisEvidence.performance.trades}`} detail={`${analysisEvidence.window.tradedDays} traded days · ${formatDate(analysisEvidence.window.firstTradeAt)} to ${formatDate(analysisEvidence.window.lastTradeAt)}`} icon={FileSpreadsheet} />
+              <MetricCard label="Expectancy" value={money(analysisEvidence.performance.expectancy)} detail="Deterministic net result per trade" icon={Sparkles} tone={(analysisEvidence.performance.expectancy ?? 0) >= 0 ? "positive" : "negative"} />
+              <MetricCard label="Profit factor" value={analysisEvidence.performance.profitFactorState === "NO LOSSES" ? "No losses" : ratio(analysisEvidence.performance.profitFactor)} detail={`${money(analysisEvidence.performance.grossProfit, false)} gross profit · ${money(analysisEvidence.performance.grossLoss, false)} gross loss`} icon={BarChart3} />
+              <MetricCard label="Max drawdown" value={money(-analysisEvidence.performance.maxDrawdown)} detail="Peak-to-trough recorded P&L" icon={TrendingDown} tone="negative" />
+              <MetricCard label="Review integrity" value={`${analysisEvidence.dataQuality.reviewIntegrityScore}%`} detail={`${analysisEvidence.dataQuality.reviewedPercent}% reviewed · ${analysisEvidence.dataQuality.riskCompletePercent}% risk-complete`} icon={ShieldCheck} tone={analysisEvidence.dataQuality.reviewIntegrityScore >= 80 ? "positive" : "neutral"} />
+            </div>
+
+            {analysisError ? (
+              <div className="flex items-start gap-2 rounded-2xl border border-danger/25 bg-danger/[0.07] px-4 py-3 text-[9px] leading-4 text-danger"><CircleAlert className="mt-0.5 h-4 w-4 shrink-0" />{analysisError}</div>
+            ) : null}
+
+            {analysisEvidence.performance.trades < 3 ? (
+              <Card className="flex min-h-[330px] flex-col items-center justify-center border-dashed px-6 py-16 text-center">
+                <BrainCircuit className="h-8 w-8 text-muted" />
+                <h3 className="mt-4 text-[13px] font-semibold text-foreground">The mentor needs a minimum defensible sample.</h3>
+                <p className="mt-2 max-w-lg text-[9px] leading-4 text-muted">Add at least three closed trades to begin. Confidence remains explicitly low on small samples, and no setup is called an edge until the data can support it.</p>
+              </Card>
+            ) : null}
+
+            {analysisEvidence.performance.trades >= 3 && (analysisStatus === "loading" || analysisStatus === "idle") && !journalAnalysis ? (
+              <Card className="min-h-[330px] overflow-hidden"><KwantLoader className="min-h-[330px]" icon={BrainCircuit} title="Loading mentor memory" detail={`Restoring the last evidence-backed review for ${analysisAccount}`} /></Card>
+            ) : null}
+
+            {analysisEvidence.performance.trades >= 3 && analysisStatus === "generating" && !journalAnalysis ? (
+              <Card className="min-h-[360px] overflow-hidden"><KwantLoader className="min-h-[360px]" icon={BrainCircuit} title="Analyzing the trading record" detail="Testing expectancy, risk consistency, drawdown, setup concentration, timing and review quality" /></Card>
+            ) : null}
+
+            {analysisEvidence.performance.trades >= 3 && analysisStatus !== "loading" && analysisStatus !== "idle" && !journalAnalysis && analysisStatus !== "generating" ? (
+              <Card className="relative overflow-hidden px-6 py-16 text-center">
+                <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_25%,color-mix(in_srgb,var(--primary)_9%,transparent),transparent_38%)]" />
+                <span className="relative mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-primary/25 bg-primary/10 text-primary"><BrainCircuit className="h-6 w-6" /></span>
+                <h3 className="relative mt-5 text-[18px] font-semibold tracking-[-0.025em] text-foreground">Turn the record into a measurable operating plan.</h3>
+                <p className="relative mx-auto mt-2 max-w-2xl text-[10px] leading-5 text-muted">The review will identify supported strengths, probable leaks, conditional edges and the three highest-value improvements. Every claim carries its sample and confidence.</p>
+                <button type="button" onClick={() => void runJournalAnalysis()} className="relative mt-6 inline-flex h-10 items-center gap-2 rounded-xl bg-primary px-5 text-[10px] font-semibold text-background hover:brightness-110"><BrainCircuit className="h-4 w-4" />Run evidence-backed analysis</button>
+              </Card>
+            ) : null}
+
+            {journalAnalysis ? (
+              <>
+                {analysisIsStale ? (
+                  <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-warning/25 bg-warning/[0.06] px-4 py-3">
+                    <RefreshCw className="h-4 w-4 text-warning" />
+                    <div className="min-w-0 flex-1"><div className="text-[9px] font-semibold text-warning">This analysis predates the current journal record.</div><div className="mt-0.5 text-[8px] text-muted">The saved review stays visible until you choose to refresh it.</div></div>
+                    <button type="button" onClick={() => void runJournalAnalysis()} disabled={analysisStatus === "generating"} className="rounded-lg border border-warning/30 px-3 py-1.5 text-[8px] font-semibold text-warning disabled:opacity-40">REFRESH NOW</button>
+                  </div>
+                ) : null}
+
+                <Card className="relative overflow-hidden p-5">
+                  <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(105deg,color-mix(in_srgb,var(--primary)_7%,transparent),transparent_48%)]" />
+                  <div className="relative grid gap-5 xl:grid-cols-[minmax(0,1.4fr)_minmax(280px,.6fr)]">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2 text-[7px] font-semibold uppercase tracking-[0.14em] text-primary"><BrainCircuit className="h-3.5 w-3.5" />Quantitative read · {formatDate(journalAnalysis.generatedAt, true)}</div>
+                      <h3 className="mt-3 max-w-4xl text-[20px] font-semibold leading-tight tracking-[-0.03em] text-foreground">{journalAnalysis.headline}</h3>
+                      <p className="mt-3 max-w-4xl text-[10px] leading-[1.75] text-foreground/85">{journalAnalysis.executiveRead}</p>
+                    </div>
+                    <div className="rounded-2xl border border-border bg-background/45 p-4">
+                      <div className="text-[7px] font-semibold uppercase tracking-[0.14em] text-muted">Trader profile · evidence only</div>
+                      <p className="mt-2 text-[9px] leading-[1.65] text-muted">{journalAnalysis.traderProfile}</p>
+                      <div className="mt-3 flex items-center justify-between border-t border-border/70 pt-3 text-[7px] text-muted"><span>{journalAnalysis.model}</span><AnalysisConfidenceBadge value={journalAnalysis.confidence} /></div>
+                    </div>
+                  </div>
+                </Card>
+
+                <div className="grid gap-3 xl:grid-cols-2">
+                  <Card className="overflow-hidden">
+                    <div className="flex items-center gap-2 border-b border-border px-4 py-3"><TrendingUp className="h-4 w-4 text-primary" /><div><h3 className="text-[11px] font-semibold text-foreground">What is working</h3><p className="mt-0.5 text-[8px] text-muted">Strengths supported by the selected record</p></div></div>
+                    <div className="space-y-2 p-3">{journalAnalysis.strengths.map((finding, index) => <AnalysisFindingCard key={`${finding.title}-${index}`} finding={finding} kind="strength" />)}</div>
+                  </Card>
+                  <Card className="overflow-hidden">
+                    <div className="flex items-center gap-2 border-b border-border px-4 py-3"><Target className="h-4 w-4 text-accent" /><div><h3 className="text-[11px] font-semibold text-foreground">Where the edge may live</h3><p className="mt-0.5 text-[8px] text-muted">Conditional advantages, separated from small-sample noise</p></div></div>
+                    <div className="space-y-2 p-3">
+                      {journalAnalysis.edges.map((finding, index) => <AnalysisFindingCard key={`${finding.title}-${index}`} finding={finding} kind="edge" />)}
+                      {!journalAnalysis.edges.length ? <div className="rounded-2xl border border-dashed border-border px-5 py-12 text-center text-[9px] leading-4 text-muted">No repeatable edge can be defended from the present sample yet. That is a valid analytical result.</div> : null}
+                    </div>
+                  </Card>
+                </div>
+
+                <Card className="overflow-hidden">
+                  <div className="flex items-center gap-2 border-b border-border px-4 py-3"><CircleAlert className="h-4 w-4 text-danger" /><div><h3 className="text-[11px] font-semibold text-foreground">Leaks and critique</h3><p className="mt-0.5 text-[8px] text-muted">Direct criticism tied to quantified cost, inconsistency or missing process evidence</p></div></div>
+                  <div className="grid gap-2 p-3 xl:grid-cols-2">{journalAnalysis.leaks.map((finding, index) => <AnalysisFindingCard key={`${finding.title}-${index}`} finding={finding} kind="leak" />)}</div>
+                </Card>
+
+                <Card className="overflow-hidden">
+                  <div className="flex items-center gap-2 border-b border-border px-4 py-3"><Target className="h-4 w-4 text-primary" /><div><h3 className="text-[11px] font-semibold text-foreground">Three-priority operating plan</h3><p className="mt-0.5 text-[8px] text-muted">Measurable corrections ranked by expected decision value</p></div></div>
+                  <div className="grid gap-2 p-3 xl:grid-cols-3">
+                    {journalAnalysis.priorities.map((priority) => (
+                      <div key={`${priority.rank}-${priority.action}`} className="rounded-2xl border border-border bg-background/35 p-4">
+                        <div className="flex items-center gap-2"><span className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary text-[10px] font-bold text-background">{priority.rank}</span><h4 className="text-[10px] font-semibold leading-4 text-foreground">{priority.action}</h4></div>
+                        <div className="mt-3 space-y-2 text-[8px] leading-4">
+                          <div><span className="font-semibold uppercase tracking-[0.1em] text-muted">Measure</span><p className="mt-0.5 text-foreground/85">{priority.measurement}</p></div>
+                          <div><span className="font-semibold uppercase tracking-[0.1em] text-muted">Target</span><p className="mt-0.5 font-mono text-primary">{priority.target}</p></div>
+                          <p className="border-t border-border/70 pt-2 text-muted">{priority.rationale}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </Card>
+
+                <div className="grid gap-3 xl:grid-cols-[minmax(0,1.25fr)_minmax(280px,.75fr)]">
+                  <Card className="p-5">
+                    <div className="flex items-center gap-2 text-[8px] font-semibold uppercase tracking-[0.14em] text-primary"><Bot className="h-4 w-4" />Mentor note</div>
+                    <p className="mt-3 text-[10px] leading-[1.8] text-foreground/90">{journalAnalysis.mentorNote}</p>
+                  </Card>
+                  <Card className="p-5">
+                    <div className="text-[8px] font-semibold uppercase tracking-[0.14em] text-muted">Limits of this read</div>
+                    <ul className="mt-3 space-y-2">{journalAnalysis.caveats.map((item, index) => <li key={`${item}-${index}`} className="flex gap-2 text-[8px] leading-4 text-muted"><span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-warning" />{item}</li>)}</ul>
+                    <p className="mt-4 border-t border-border/70 pt-3 text-[7px] leading-4 text-muted">Performance analysis and educational decision support only. It is not financial advice and does not predict future results.</p>
+                  </Card>
+                </div>
+              </>
+            ) : null}
           </div>
         ) : null}
 
