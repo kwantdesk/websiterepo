@@ -108,6 +108,9 @@ export type DeskMemberProfile = {
   processStatus: string;
   score: number;
   lastSeenAt: string | null;
+  activityStreak: number;
+  longestActivityStreak: number;
+  lastActivityDate: string;
   presenceStatus: "online" | "dnd" | "away" | "sleeping" | "offline";
 };
 

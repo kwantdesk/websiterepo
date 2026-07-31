@@ -13,6 +13,9 @@ export type FriendSummary = {
   presenceStatus: PresenceStatus;
   presenceMessage: string;
   lastSeenAt: string | null;
+  activityStreak: number;
+  longestActivityStreak: number;
+  lastActivityDate: string;
   isOnline: boolean;
   desks: FriendDesk[];
   unreadCount: number;

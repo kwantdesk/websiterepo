@@ -3857,7 +3857,11 @@ export default function KwantifyWorkspace({
         await fetch("/api/friends", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "heartbeat", lightweight: true }),
+          body: JSON.stringify({
+            action: "heartbeat",
+            lightweight: true,
+            timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+          }),
         });
       } catch {
         // Presence catches up on the next heartbeat.

@@ -496,6 +496,9 @@ export async function GET(request: NextRequest) {
       processStatus: normalized.processStatus,
       score: profileScoreAverage(normalized),
       lastSeenAt: typeof row?.payload?.lastSeenAt === "string" ? row.payload.lastSeenAt : null,
+      activityStreak: normalized.activityStreak,
+      longestActivityStreak: normalized.longestActivityStreak,
+      lastActivityDate: normalized.lastActivityDate,
       presenceStatus: normalized.presenceStatus ?? "offline",
     };
   });

@@ -377,6 +377,9 @@ function buildPayload(
       presenceStatus: presence.status,
       presenceMessage: cleanText(payload.presenceMessage, 80),
       lastSeenAt: presence.lastSeenAt,
+      activityStreak: Math.max(0, Math.floor(Number(payload.activityStreak) || 0)),
+      longestActivityStreak: Math.max(0, Math.floor(Number(payload.longestActivityStreak) || 0)),
+      lastActivityDate: cleanText(payload.lastActivityDate, 10),
       isOnline: presence.isOnline,
       desks: desksByUser.get(userId) ?? [],
       unreadCount,
@@ -629,6 +632,23 @@ export async function POST(request: NextRequest) {
       changes.presenceStatus = normalizePresenceStatus(body.presenceStatus);
       changes.presenceMessage = cleanText(body.presenceMessage, 80);
     }
+    let streakPayload: Record<string, unknown> | null = null;
+    if (action === "heartbeat") {
+      const { data: streakData, error: streakError } = await supabase.rpc("record_user_activity", {
+        requested_time_zone: cleanText(body.timeZone, 80) || "UTC",
+      });
+      if (!streakError && streakData && typeof streakData === "object" && !Array.isArray(streakData)) {
+        streakPayload = streakData as Record<string, unknown>;
+        changes.activityStreak = Math.max(0, Math.floor(Number(streakPayload.currentStreak) || 0));
+        changes.longestActivityStreak = Math.max(0, Math.floor(Number(streakPayload.longestStreak) || 0));
+        changes.lastActivityDate = cleanText(streakPayload.lastActivityDate, 10);
+      } else if (streakError && streakError.code !== "42883" && streakError.code !== "PGRST202") {
+        console.warn("Activity streak update failed", {
+          code: streakError.code,
+          message: streakError.message,
+        });
+      }
+    }
     const { error } = await upsertProfile(supabase, actor, changes);
     if (error?.code === "23505" && (action === "presence" || action === "identity")) {
       return NextResponse.json({
@@ -655,7 +675,7 @@ export async function POST(request: NextRequest) {
       }
     }
     if (action === "heartbeat" && body.lightweight === true) {
-      return NextResponse.json({ ok: true });
+      return NextResponse.json({ ok: true, streak: streakPayload });
     }
   } else if (action === "request" || action === "accept") {
     if (!targetUserId || targetUserId === actor.userId) {

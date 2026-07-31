@@ -106,6 +106,9 @@ export type SocialProfilePayload = {
   presenceStatus?: "online" | "dnd" | "away" | "sleeping" | "offline";
   presenceMessage?: string;
   lastSeenAt?: string;
+  activityStreak: number;
+  longestActivityStreak: number;
+  lastActivityDate: string;
   blockedUserIds?: string[];
   dismissedFriendRequests?: Record<string, string>;
   friendReadAt?: Record<string, string>;
@@ -484,6 +487,9 @@ export function buildDefaultProfile(label: string): SocialProfilePayload {
     profileLinks: [],
     showContactEmail: false,
     callingCardCode: "",
+    activityStreak: 0,
+    longestActivityStreak: 0,
+    lastActivityDate: "",
   };
 }
 
@@ -584,6 +590,15 @@ export function normalizeSocialProfile(value: unknown, label = "Kwant Trader"): 
     presenceStatus,
     presenceMessage: profileText(candidate.presenceMessage, "", 120),
     lastSeenAt: profileText(candidate.lastSeenAt, "", 60),
+    activityStreak: Number.isFinite(Number(candidate.activityStreak))
+      ? Math.max(0, Math.floor(Number(candidate.activityStreak)))
+      : 0,
+    longestActivityStreak: Number.isFinite(Number(candidate.longestActivityStreak))
+      ? Math.max(0, Math.floor(Number(candidate.longestActivityStreak)))
+      : 0,
+    lastActivityDate: /^\d{4}-\d{2}-\d{2}$/.test(profileText(candidate.lastActivityDate, "", 10))
+      ? profileText(candidate.lastActivityDate, "", 10)
+      : "",
     blockedUserIds: Array.isArray(candidate.blockedUserIds)
       ? candidate.blockedUserIds.filter((item): item is string => typeof item === "string").slice(0, 500)
       : [],

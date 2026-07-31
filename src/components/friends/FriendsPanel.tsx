@@ -32,6 +32,7 @@ import {
 } from "lucide-react";
 import { createClient } from "@/lib/supabase";
 import KwantLoader from "@/components/KwantLoader";
+import ActivityStreakBadge from "@/components/socials/ActivityStreakBadge";
 import UserAvatar from "@/components/socials/UserAvatar";
 import { useSpeechDictation } from "@/hooks/useSpeechDictation";
 import {
@@ -119,6 +120,15 @@ function messageTime(value: string) {
 function Avatar({ friend, size = "md" }: { friend: FriendSummary; size?: "sm" | "md" | "lg" }) {
   const option = presenceOption(friend.presenceStatus);
   return <UserAvatar label={friend.displayName} avatarUrl={friend.avatarUrl} size={size === "lg" ? "lg" : size === "sm" ? "sm" : "md"} statusClassName={option.dotClassName} />;
+}
+
+function FriendName({ friend, className = "" }: { friend: FriendSummary; className?: string }) {
+  return (
+    <span className={`flex min-w-0 items-center gap-1.5 ${className}`}>
+      <span className="truncate">{friend.displayName}</span>
+      <ActivityStreakBadge streak={friend.activityStreak} compact />
+    </span>
+  );
 }
 
 function GroupAvatar({ group, size = "md" }: { group: FriendGroupSummary; size?: "sm" | "md" | "lg" }) {
@@ -914,7 +924,7 @@ export default function FriendsPanel({ onClose, onUnreadCountChange, initialFrie
                 <div key={member.userId} className="flex items-center gap-2 rounded-xl px-2 py-2 hover:bg-surface">
                   <Avatar friend={member} size="sm" />
                   <div className="min-w-0 flex-1">
-                    <div className="truncate text-[11px] font-medium">{member.displayName}</div>
+                    <FriendName friend={member} className="text-[11px] font-medium" />
                     <div className="truncate text-[9px] text-muted">@{member.handle} {member.role === "owner" ? "\u00b7 Owner" : ""}</div>
                   </div>
                   {activeGroup.isOwner && member.role !== "owner" ? (
@@ -945,7 +955,7 @@ export default function FriendsPanel({ onClose, onUnreadCountChange, initialFrie
                         className="flex w-full items-center gap-2 rounded-xl px-2 py-2 text-left hover:bg-surface"
                       >
                         <Avatar friend={friend} size="sm" />
-                        <span className="min-w-0 flex-1 truncate text-[10px]">{friend.displayName}</span>
+                        <FriendName friend={friend} className="min-w-0 flex-1 text-[10px]" />
                         <UserPlus className="h-3.5 w-3.5 text-primary" />
                       </button>
                     ))}
@@ -996,7 +1006,7 @@ export default function FriendsPanel({ onClose, onUnreadCountChange, initialFrie
           </button>
           <Avatar friend={activeFriend} size="sm" />
           <div className="min-w-0 flex-1">
-            <div className="truncate text-[13px] font-semibold">{activeFriend.displayName}</div>
+            <FriendName friend={activeFriend} className="text-[13px] font-semibold" />
             <div className="truncate text-[10px] text-muted">
               {activeFriend.isOnline ? presenceOption(activeFriend.presenceStatus).label : `Last seen ${timeLabel(activeFriend.lastSeenAt) || "recently"}`}
             </div>
@@ -1190,7 +1200,7 @@ export default function FriendsPanel({ onClose, onUnreadCountChange, initialFrie
                     >
                       <Avatar friend={friend} size="sm" />
                       <span className="min-w-0 flex-1">
-                        <span className="block truncate text-[10px] font-medium">{friend.displayName}</span>
+                        <FriendName friend={friend} className="text-[10px] font-medium" />
                         <span className="block truncate text-[8px] text-muted">@{friend.handle}</span>
                       </span>
                       <span className={`flex h-4 w-4 items-center justify-center rounded-full border ${selected ? "border-primary bg-primary text-background" : "border-border"}`}>
@@ -1235,7 +1245,7 @@ export default function FriendsPanel({ onClose, onUnreadCountChange, initialFrie
               <div key={person.userId} className="flex items-center gap-2 rounded-xl px-2 py-2 hover:bg-surface">
                 <Avatar friend={person} size="sm" />
                 <div className="min-w-0 flex-1">
-                  <div className="truncate text-[11px] font-medium">{person.displayName}</div>
+                  <FriendName friend={person} className="text-[11px] font-medium" />
                   <div className="truncate text-[9px] text-muted">@{person.handle}</div>
                 </div>
                 <button
@@ -1276,7 +1286,7 @@ export default function FriendsPanel({ onClose, onUnreadCountChange, initialFrie
                     <div key={person.userId} className="rounded-xl border border-primary/15 bg-primary/5 p-2.5">
                       <div className="flex items-center gap-2">
                         <Avatar friend={person} size="sm" />
-                        <div className="min-w-0 flex-1"><div className="truncate text-[11px] font-medium">{person.displayName}</div><div className="truncate text-[9px] text-muted">@{person.handle}</div></div>
+                        <div className="min-w-0 flex-1"><FriendName friend={person} className="text-[11px] font-medium" /><div className="truncate text-[9px] text-muted">@{person.handle}</div></div>
                       </div>
                       <div className="mt-2 grid grid-cols-2 gap-1.5">
                         <button disabled={busyId === person.userId} onClick={() => void runAction("accept", { targetUserId: person.userId })} className="rounded-lg bg-primary px-2 py-1.5 text-[9px] font-semibold text-background disabled:opacity-40">Accept</button>
@@ -1329,7 +1339,7 @@ export default function FriendsPanel({ onClose, onUnreadCountChange, initialFrie
                     <button key={friend.userId} onClick={() => openChat(friend)} className="flex w-full items-center gap-2 rounded-xl p-2 text-left hover:bg-surface">
                       <Avatar friend={friend} />
                       <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-1"><span className="truncate text-[11px] font-medium">{friend.displayName}</span>{friend.desks.length > 0 && <span className="rounded bg-primary/10 px-1 py-0.5 text-[7px] text-primary">{friend.desks.length} desk{friend.desks.length === 1 ? "" : "s"}</span>}</div>
+                        <div className="flex items-center gap-1"><FriendName friend={friend} className="text-[11px] font-medium" />{friend.desks.length > 0 && <span className="rounded bg-primary/10 px-1 py-0.5 text-[7px] text-primary">{friend.desks.length} desk{friend.desks.length === 1 ? "" : "s"}</span>}</div>
                         <div className="truncate text-[9px] text-muted">{friend.presenceMessage || presenceOption(friend.presenceStatus).label}</div>
                       </div>
                       {friend.unreadCount > 0 ? <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[8px] font-semibold text-background">{Math.min(99, friend.unreadCount)}</span> : <MessageCircle className="h-3.5 w-3.5 text-muted" />}
@@ -1347,7 +1357,7 @@ export default function FriendsPanel({ onClose, onUnreadCountChange, initialFrie
                     <button key={friend.userId} onClick={() => openChat(friend)} className="flex w-full items-center gap-2 rounded-xl p-2 text-left hover:bg-surface">
                       <Avatar friend={friend} />
                       <div className="min-w-0 flex-1">
-                        <div className="truncate text-[11px] font-medium">{friend.displayName}</div>
+                        <FriendName friend={friend} className="text-[11px] font-medium" />
                         <div className="flex items-center gap-1 truncate text-[9px] text-muted"><Clock3 className="h-2.5 w-2.5" />{friend.lastSeenAt ? `Last seen ${timeLabel(friend.lastSeenAt)}` : "Offline"}{friend.desks.length > 0 ? ` · ${friend.desks.length} desks` : ""}</div>
                       </div>
                       {friend.unreadCount > 0 && <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[8px] font-semibold text-background">{Math.min(99, friend.unreadCount)}</span>}

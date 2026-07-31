@@ -48,6 +48,7 @@ import {
 import KwantLoader from "@/components/KwantLoader";
 import KwantSelect from "@/components/ui/KwantSelect";
 import SocialProfileView from "@/components/socials/SocialProfileView";
+import ActivityStreakBadge from "@/components/socials/ActivityStreakBadge";
 import ReasoningOutcomeChart from "@/components/socials/ReasoningOutcomeChart";
 import DeskWorkspace from "@/components/socials/DeskWorkspace";
 import UserAvatar from "@/components/socials/UserAvatar";
@@ -2969,7 +2970,10 @@ export default function SocialsWorkspace({
                           className="rounded-full ring-1 ring-primary/15 transition group-hover:ring-primary/45"
                         />
                         <span className="min-w-0">
-                          <span className="block truncate text-[9px] font-semibold text-foreground group-hover:text-primary">{profile.displayName}</span>
+                          <span className="flex min-w-0 items-center gap-1.5">
+                            <span className="truncate text-[9px] font-semibold text-foreground group-hover:text-primary">{profile.displayName}</span>
+                            <ActivityStreakBadge streak={profile.activityStreak} compact />
+                          </span>
                           <span className="mt-0.5 block truncate text-[7px] text-muted">@{profile.handle} · {profile.markets.join("/")}</span>
                           <span className="mt-0.5 block text-[6px] uppercase tracking-[0.1em] text-muted/70">
                             {presenceOption(effectivePresenceStatus(profile.presenceStatus, profile.lastSeenAt)).label} Â· View profile

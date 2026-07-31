@@ -41,6 +41,7 @@ import type {
   SocialFollowSummary,
 } from "@/lib/socialFollows";
 import ReasoningOutcomeChart from "@/components/socials/ReasoningOutcomeChart";
+import ActivityStreakBadge from "@/components/socials/ActivityStreakBadge";
 import UserAvatar from "@/components/socials/UserAvatar";
 import { effectivePresenceStatus, presenceOption } from "@/lib/friends";
 
@@ -288,6 +289,7 @@ export default function SocialProfileView({
               <div className="flex flex-wrap items-center gap-2">
                 <h1 className="truncate text-[22px] font-semibold tracking-[-0.03em] text-foreground">{profile.displayName}</h1>
                 <span className="flex items-center gap-1 rounded-lg border border-primary/20 bg-primary/10 px-2 py-1 text-[7px] font-semibold text-primary"><ShieldCheck className="h-3 w-3" />On record</span>
+                <ActivityStreakBadge streak={profile.activityStreak} />
               </div>
               <div className="mt-1 text-[10px] text-primary">@{profile.handle}</div>
               <div className="mt-2 flex items-center gap-4 text-[8px]">
