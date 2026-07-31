@@ -1947,12 +1947,15 @@ function gexDeskOptionsTape(
       id: `${source}:${row.id}`,
       source,
       timestamp,
+      expiration: row.expirationDate,
       contractType: row.contractType,
       side: bought ? "BOUGHT" : sold ? "SOLD" : "MID",
       strike: row.strikePrice,
       mappedPrice,
       premium: Math.max(0, row.premium),
       size: Math.max(0, row.size ?? 0),
+      volume: Math.max(0, row.volume ?? 0),
+      openInterest: Math.max(0, row.openInterest ?? 0),
       confidence: bought || sold ? complex ? 0.55 : 1 : 0.3,
     }];
   });
@@ -2052,6 +2055,12 @@ async function buildGexDeskServerPayload(): Promise<GexDeskPayload> {
     const zeroPayload = zeroDte?.status === "fulfilled" ? zeroDte.value.payload : null;
     const exposure = parseExposure(fullPayload, symbol, "GAMMA");
     const zeroDteExposure = parseExposure(zeroPayload, symbol, "GAMMA", session.sessionDate);
+    const oneDteExpiration = exposure?.expiries
+      .map((row) => row.expiration)
+      .find((expiration) => expiration > session.sessionDate) ?? null;
+    const oneDteExposure = oneDteExpiration
+      ? parseExposure(fullPayload, symbol, "GAMMA", oneDteExpiration)
+      : null;
     const spot = readStockPrice(fullPayload, symbol);
     const failure = full?.status === "rejected"
       ? full.reason instanceof Error ? full.reason.message : "positioning unavailable"
@@ -2065,6 +2074,7 @@ async function buildGexDeskServerPayload(): Promise<GexDeskPayload> {
       asOf: new Date().toISOString(),
       exposure,
       zeroDteExposure,
+      oneDteExposure,
       error: failure,
     };
   });
@@ -2178,6 +2188,8 @@ export async function getGexDeskHistory(
     (_, index) => priceLow + index * bucketSize,
   );
   const rowValues = new Map(priceBuckets.map((price) => [price, {
+    call: [] as number[],
+    put: [] as number[],
     net: [] as number[],
     gross: [] as number[],
     change: [] as number[],
@@ -2195,7 +2207,7 @@ export async function getGexDeskHistory(
   for (const timestamp of sampledTimestamps) {
     const nqBar = latestAtOrBefore(nqResult, timestamp);
     nqPrices.push(nqBar?.close ?? latestNq);
-    const combined = new Map<number, { net: number; gross: number }>();
+    const combined = new Map<number, { call: number; put: number; net: number; gross: number }>();
     for (const state of panelState) {
       while (
         state.frameIndex < state.panel.frames.length
@@ -2216,16 +2228,20 @@ export async function getGexDeskHistory(
         const mapped = nqBar.close * strike.strike / sourceBar.close;
         if (!Number.isFinite(mapped) || mapped < priceLow || mapped > priceHigh) continue;
         const price = Math.round(mapped / bucketSize) * bucketSize;
-        const current = combined.get(price) ?? { net: 0, gross: 0 };
+        const current = combined.get(price) ?? { call: 0, put: 0, net: 0, gross: 0 };
+        current.call += strike.call;
+        current.put += strike.put;
         current.net += strike.net;
         current.gross += Math.abs(strike.call) + Math.abs(strike.put);
         combined.set(price, current);
       }
     }
     for (const price of priceBuckets) {
-      const current = combined.get(price) ?? { net: 0, gross: 0 };
+      const current = combined.get(price) ?? { call: 0, put: 0, net: 0, gross: 0 };
       const values = rowValues.get(price)!;
       const previous = values.net.at(-1) ?? current.net;
+      values.call.push(current.call);
+      values.put.push(current.put);
       values.net.push(current.net);
       values.gross.push(current.gross);
       values.change.push(current.net - previous);

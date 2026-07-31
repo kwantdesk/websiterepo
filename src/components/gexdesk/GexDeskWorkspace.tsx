@@ -364,26 +364,28 @@ export default function GexDeskWorkspace() {
   }, [sourceFilter]);
 
   useEffect(() => {
-    if (activePanel !== "EVOLUTION" && activePanel !== "HEATMAP") return;
+    if (activePanel !== "EVOLUTION" && activePanel !== "HEATMAP" && activePanel !== "GEX_VIEW") return;
     const cached = readWorkspaceData<GexDeskHistoryPayload>(gexdeskHistoryCacheKey(sourceFilter));
     setHistory(cached);
     void loadHistory(Boolean(cached));
-    const interval = window.setInterval(() => {
-      if (document.visibilityState === "visible") void loadHistory(true);
-    }, 30_000);
+    const interval = payload?.marketOpen
+      ? window.setInterval(() => {
+          if (document.visibilityState === "visible") void loadHistory(true);
+        }, 30_000)
+      : null;
     return () => {
-      window.clearInterval(interval);
+      if (interval !== null) window.clearInterval(interval);
       historyRequestRef.current?.abort();
     };
-  }, [activePanel, loadHistory]);
+  }, [activePanel, loadHistory, payload?.marketOpen]);
 
   useEffect(() => {
-    if (!payload) return;
+    if (!payload?.marketOpen) return;
     const interval = window.setInterval(() => {
       if (document.visibilityState === "visible") void load(true);
     }, payload.refreshAfterMs);
     return () => window.clearInterval(interval);
-  }, [load, payload?.refreshAfterMs]);
+  }, [load, payload?.marketOpen, payload?.refreshAfterMs]);
 
   useEffect(() => {
     const clock = window.setInterval(() => setNow(Date.now()), 1_000);
@@ -642,7 +644,15 @@ export default function GexDeskWorkspace() {
           </section> : null}
 
           {activePanel === "GEX_VIEW" ? (
-            <GexViewWorkspace />
+            <GexViewWorkspace
+              payload={payload}
+              history={history}
+              historyLoading={historyLoading}
+              historyError={historyError}
+              livePrice={livePrice}
+              sourceFilter={sourceFilter}
+              onSourceFilterChange={setSourceFilter}
+            />
           ) : activePanel === "MAP" ? (
             <>
           <section className="grid min-h-[610px] gap-3 xl:grid-cols-[minmax(0,1fr)_350px]">

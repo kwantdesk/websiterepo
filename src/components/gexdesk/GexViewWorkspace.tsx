@@ -15,6 +15,7 @@ import {
 } from "lightweight-charts";
 import { useEffect, useMemo, useRef, useState } from "react";
 import KwantSelect from "@/components/ui/KwantSelect";
+import KwantSteps from "@/components/gexdesk/KwantSteps";
 import type { Candle } from "@/lib/backtester";
 import {
   DATABENTO_LIVE_STATUS_EVENT,
@@ -29,6 +30,11 @@ import {
 } from "@/lib/chartHistoryCache";
 import { DEFAULT_CHART_HISTORY_CALENDAR_DAYS } from "@/lib/chartHistoryWindow";
 import { DATABENTO_DEFAULT_SYMBOLS, DATABENTO_FUTURES } from "@/lib/databento";
+import type {
+  GexDeskHistoryPayload,
+  GexDeskPayload,
+  GexDeskSourceSymbol,
+} from "@/lib/gexDesk";
 
 type GexViewChartMode = "CANDLES" | "LINE";
 type GexViewChartConfig = {
@@ -416,7 +422,23 @@ function initialCharts(): GexViewChartConfig[] {
   }
 }
 
-export default function GexViewWorkspace() {
+export default function GexViewWorkspace({
+  payload,
+  history,
+  historyLoading,
+  historyError,
+  livePrice,
+  sourceFilter,
+  onSourceFilterChange,
+}: {
+  payload: GexDeskPayload;
+  history: GexDeskHistoryPayload | null;
+  historyLoading: boolean;
+  historyError: string;
+  livePrice: number | null;
+  sourceFilter: "COMBINED" | GexDeskSourceSymbol;
+  onSourceFilterChange: (source: "COMBINED" | GexDeskSourceSymbol) => void;
+}) {
   const [activeIndex, setActiveIndex] = useState(0);
   const [charts, setCharts] = useState<GexViewChartConfig[]>(initialCharts);
   const activeChart = charts[activeIndex] ?? DEFAULT_CHART;
@@ -458,7 +480,7 @@ export default function GexViewWorkspace() {
         </button>
 
         <div className="min-w-0 overflow-hidden rounded-3xl border border-border bg-panel shadow-[0_24px_80px_rgba(0,0,0,0.28)]">
-          <div className="flex min-h-12 flex-wrap items-center gap-2 border-b border-border bg-panel px-3 py-2">
+          {activeIndex !== 0 ? <div className="flex min-h-12 flex-wrap items-center gap-2 border-b border-border bg-panel px-3 py-2">
             <div className="flex min-w-0 items-center gap-2">
               <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-primary/25 bg-primary/[0.07] text-primary">
                 <LineChart className="h-3.5 w-3.5" />
@@ -513,14 +535,26 @@ export default function GexViewWorkspace() {
                 <span className="hidden sm:inline">Line</span>
               </button>
             </div>
-          </div>
+          </div> : null}
 
           <div className="h-[clamp(640px,calc(100vh-230px),900px)] min-h-[640px]">
-            <GexViewChart
-              key={`${activeIndex}:${activeChart.instrument}:${activeChart.timeframe}:${activeChart.mode}`}
-              config={activeChart}
-              chartNumber={activeIndex + 1}
-            />
+            {activeIndex === 0 ? (
+              <KwantSteps
+                payload={payload}
+                history={history}
+                historyLoading={historyLoading}
+                historyError={historyError}
+                livePrice={livePrice}
+                sourceFilter={sourceFilter}
+                onSourceFilterChange={onSourceFilterChange}
+              />
+            ) : (
+              <GexViewChart
+                key={`${activeIndex}:${activeChart.instrument}:${activeChart.timeframe}:${activeChart.mode}`}
+                config={activeChart}
+                chartNumber={activeIndex + 1}
+              />
+            )}
           </div>
 
           <div className="flex h-9 items-center justify-center gap-2 border-t border-border bg-panel">

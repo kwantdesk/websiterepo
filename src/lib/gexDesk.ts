@@ -12,6 +12,7 @@ export type GexDeskSourceSnapshot = {
   asOf: string;
   exposure: ExposureSummary | null;
   zeroDteExposure: ExposureSummary | null;
+  oneDteExposure: ExposureSummary | null;
   error: string | null;
 };
 
@@ -47,12 +48,15 @@ export type GexDeskOptionPrint = {
   id: string;
   source: GexDeskSourceSymbol;
   timestamp: number;
+  expiration: string | null;
   contractType: "CALL" | "PUT";
   side: "BOUGHT" | "SOLD" | "MID";
   strike: number;
   mappedPrice: number;
   premium: number;
   size: number;
+  volume: number;
+  openInterest: number;
   confidence: number;
 };
 
@@ -106,6 +110,8 @@ export type GexDeskExpiryRow = {
 
 export type GexDeskHistoryRow = {
   price: number;
+  call: number[];
+  put: number[];
   net: number[];
   gross: number[];
   change: number[];
@@ -430,12 +436,15 @@ export function createGexDeskFixture(): GexDeskPayload {
       id: `fixture-${source}-${index}`,
       source,
       timestamp: Date.now() - (189 - index) * 20_000,
+      expiration,
       contractType,
       side: index % 4 === 0 ? "SOLD" : index % 7 === 0 ? "MID" : "BOUGHT",
       strike,
       mappedPrice,
       premium,
       size,
+      volume: size * (4 + index % 12),
+      openInterest: size * (10 + index % 18),
       confidence: index % 7 === 0 ? 0.55 : 1,
     };
   });
@@ -481,6 +490,11 @@ export function createGexDeskFixture(): GexDeskPayload {
       asOf: new Date().toISOString(),
       exposure: summary(strikes),
       zeroDteExposure: summary(zeroDteStrikes),
+      oneDteExposure: summary(strikes.map((row, index) => {
+        const call = row.call * (index % 5 === 0 ? 0.36 : 0.18);
+        const put = row.put * (index % 4 === 0 ? 0.34 : 0.17);
+        return { ...row, call, put, net: call + put };
+      })),
       error: null,
     };
   };
@@ -567,6 +581,8 @@ export function createGexDeskHistoryFixture(
     const gross = net.map((value, index) => Math.abs(value) * (1.18 + (index % 5) * 0.025));
     return {
       price,
+      call: net.map((value) => Math.max(0, value) + Math.abs(value) * 0.22),
+      put: net.map((value) => Math.min(0, value) - Math.abs(value) * 0.18),
       net,
       gross,
       change: net.map((value, index) => value - (net[index - 1] ?? value)),
