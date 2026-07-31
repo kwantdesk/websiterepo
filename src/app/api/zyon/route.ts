@@ -32,6 +32,7 @@ import {
   type ZyonGameplanRiskUnit,
   type ZyonJournalEntry,
   type ZyonMarketRoot,
+  type ZyonModelKey,
 } from "@/lib/zyon";
 
 export const dynamic = "force-dynamic";
@@ -128,6 +129,16 @@ const JOURNAL_KINDS = new Set<ZyonJournalEntry["kind"]>([
   "LESSON",
   "NOTE",
 ]);
+const ANTHROPIC_MODEL_CACHE_MS = 10 * 60_000;
+type AnthropicModelRecord = {
+  id?: unknown;
+  display_name?: unknown;
+  created_at?: unknown;
+};
+let anthropicModelCache: {
+  expiresAt: number;
+  models: Array<{ id: string; name: string; createdAt: number }>;
+} | null = null;
 
 function cleanText(value: unknown, limit: number) {
   return typeof value === "string"
@@ -151,6 +162,66 @@ async function within<T>(promise: Promise<T>, fallback: T, milliseconds = 600) {
     promise.catch(() => fallback),
     new Promise<T>((resolve) => setTimeout(() => resolve(fallback), milliseconds)),
   ]);
+}
+
+async function availableAnthropicModels(apiKey: string) {
+  if (anthropicModelCache && anthropicModelCache.expiresAt > Date.now()) {
+    return anthropicModelCache.models;
+  }
+  try {
+    const response = await fetch("https://api.anthropic.com/v1/models?limit=100", {
+      cache: "no-store",
+      signal: AbortSignal.timeout(5_000),
+      headers: {
+        "x-api-key": apiKey,
+        "anthropic-version": ANTHROPIC_VERSION,
+      },
+    });
+    if (!response.ok) return [];
+    const payload = await response.json() as { data?: AnthropicModelRecord[] };
+    const models = (payload.data ?? [])
+      .flatMap((model) => {
+        const id = cleanText(model.id, 160);
+        if (!id) return [];
+        return [{
+          id,
+          name: cleanText(model.display_name, 160).toLowerCase(),
+          createdAt: Date.parse(cleanText(model.created_at, 80)) || 0,
+        }];
+      })
+      .sort((left, right) => right.createdAt - left.createdAt);
+    if (models.length) {
+      anthropicModelCache = {
+        expiresAt: Date.now() + ANTHROPIC_MODEL_CACHE_MS,
+        models,
+      };
+    }
+    return models;
+  } catch {
+    return [];
+  }
+}
+
+async function providerModelsFor(apiKey: string, modelKey: ZyonModelKey) {
+  const available = await availableAnthropicModels(apiKey);
+  const preferredFamily = modelKey === "haiku-4-5"
+    ? "haiku"
+    : modelKey === "sonnet-5"
+      ? "sonnet"
+      : "opus";
+  const orderedAvailable = [
+    ...available.filter((model) => model.name.includes(preferredFamily) || model.id.includes(preferredFamily)),
+    ...available.filter((model) => model.name.includes("sonnet") || model.id.includes("sonnet")),
+    ...available.filter((model) => model.name.includes("haiku") || model.id.includes("haiku")),
+    ...available,
+  ].map((model) => model.id);
+  const configuredFallbacks = [
+    ZYON_MODELS[modelKey].apiId,
+    "claude-opus-4-1-20250805",
+    "claude-sonnet-4-20250514",
+    "claude-3-5-haiku-20241022",
+  ];
+  return [...new Set(available.length ? orderedAvailable : configuredFallbacks)].slice(0, 4);
 }
 
 function parseDataUrl(value: unknown) {
@@ -931,28 +1002,25 @@ export async function POST(request: NextRequest) {
   ].join("\n");
 
   try {
-    const providerModels = [...new Set([
-      ZYON_MODELS[modelKey].apiId,
-      "claude-sonnet-4-20250514",
-      "claude-3-5-haiku-20241022",
-    ])];
+    const providerModels = await providerModelsFor(apiKey, modelKey);
     let response: Response | null = null;
     let providerError = "";
-    for (const providerModel of providerModels) {
-      response = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        signal: AbortSignal.timeout(24_000),
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": apiKey,
-          "anthropic-version": ANTHROPIC_VERSION,
-        },
-        body: JSON.stringify({
-          model: providerModel,
-        max_tokens: 1_800,
-        system,
-        metadata: { user_id: actor.userId },
-        tools: [
+    for (const [modelIndex, providerModel] of providerModels.entries()) {
+      try {
+        response = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          signal: AbortSignal.timeout(modelIndex === 0 ? 14_000 : 9_000),
+          headers: {
+            "Content-Type": "application/json",
+            "x-api-key": apiKey,
+            "anthropic-version": ANTHROPIC_VERSION,
+          },
+          body: JSON.stringify({
+            model: providerModel,
+            max_tokens: 1_800,
+            system,
+            metadata: { user_id: actor.userId },
+            tools: [
           {
             name: "record_trading_journal",
             description: "Record a durable ZYON trading-journal entry when the user describes a trade, setup, review, lesson, or explicitly asks to save a note.",
@@ -1030,19 +1098,24 @@ export async function POST(request: NextRequest) {
               ],
             },
           },
-        ],
-          messages,
-        }),
-      });
-      if (response.ok) break;
-      providerError = await response.text();
-      console.error(
-        "ZYON provider error",
-        response.status,
-        providerModel,
-        providerError.slice(0, 800),
-      );
-      if (response.status === 401) break;
+            ],
+            messages,
+          }),
+        });
+        if (response.ok) break;
+        providerError = await response.text();
+        console.error(
+          "ZYON provider error",
+          response.status,
+          providerModel,
+          providerError.slice(0, 800),
+        );
+        if (response.status === 401 || response.status === 403) break;
+      } catch (modelError) {
+        providerError = modelError instanceof Error ? modelError.message : "provider request failed";
+        console.error("ZYON provider request failed", providerModel, providerError);
+        response = null;
+      }
     }
 
     if (!response?.ok) {
@@ -1212,6 +1285,37 @@ export async function POST(request: NextRequest) {
     );
   } catch (error) {
     console.error("ZYON request failed", error);
-    return NextResponse.json({ error: "ZYON could not reply." }, { status: 502 });
+    const recoveryText = gameplanIntent
+      ? `I'm ready. Let's build today's ${root} Gameplan now. First, which instrument are you planning: NQ, MNQ, ES, or MES?`
+      : "I received your message, but my analysis engine is reconnecting. Your chat is safe—send the message again in a moment.";
+    const recoveryEntry = conversationEntry({
+      id: zyonId("zyon-conversation-assistant"),
+      chatId,
+      sessionDate,
+      folderId: conversationFolder.folderId,
+      root,
+      role: "assistant",
+      text: recoveryText,
+      createdAt: new Date().toISOString(),
+    });
+    const recoveryCloudSaved = await within(
+      persistJournalEntry(actor.userId, recoveryEntry),
+      false,
+      450,
+    );
+    return NextResponse.json({
+      text: recoveryText,
+      model: modelKey,
+      journalEntries: [
+        { ...userConversationEntry, cloudSaved: userConversationCloudSaved },
+        { ...recoveryEntry, cloudSaved: recoveryCloudSaved },
+      ],
+      folder: {
+        id: conversationFolder.folderId,
+        sessionDate,
+        cloudSaved: conversationFolder.cloudSaved,
+      },
+      providerState: "reconnecting",
+    }, { headers: { "Cache-Control": "private, no-store, max-age=0" } });
   }
 }
