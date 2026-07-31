@@ -7,6 +7,7 @@ import {
   BarChart3,
   CalendarRange,
   Crosshair,
+  Eye,
   Flame,
   GitCompareArrows,
   Gauge,
@@ -544,6 +545,7 @@ export default function GexDeskWorkspace() {
     icon: typeof Activity;
     analyst: boolean;
   }> = [
+    { id: "GEX_VIEW", label: "Gex View", icon: Eye, analyst: false },
     { id: "MAP", label: "Map", icon: Map, analyst: false },
     { id: "HEATMAP", label: "Heatmap", icon: Flame, analyst: false },
     { id: "EVOLUTION", label: "Evolution", icon: History, analyst: true },
@@ -634,7 +636,18 @@ export default function GexDeskWorkspace() {
             <MetricCard label="Options pressure" value={`${payload.pressure.score >= 0 ? "+" : ""}${payload.pressure.score.toFixed(0)}`} detail={`${payload.pressure.state.replace("_", " ")} · ${payload.pressure.persistence}`} icon={Waves} tone={pressureTone} />
           </section>
 
-          {activePanel === "MAP" ? (
+          {activePanel === "GEX_VIEW" ? (
+            <section className="relative flex min-h-[610px] items-center justify-center overflow-hidden rounded-2xl border border-border bg-panel">
+              <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_45%,color-mix(in_srgb,var(--primary)_7%,transparent),transparent_42%)]" />
+              <div className="relative flex max-w-sm flex-col items-center px-6 text-center">
+                <span className="flex h-12 w-12 items-center justify-center rounded-2xl border border-primary/25 bg-primary/[0.07] text-primary shadow-[0_0_28px_color-mix(in_srgb,var(--primary)_16%,transparent)]">
+                  <Eye className="h-5 w-5" />
+                </span>
+                <h2 className="mt-4 text-[12px] font-semibold">Gex View</h2>
+                <p className="mt-2 text-[7px] uppercase tracking-[0.14em] text-muted">Workspace ready for the next Gexdesk section</p>
+              </div>
+            </section>
+          ) : activePanel === "MAP" ? (
             <>
           <section className="grid min-h-[610px] gap-3 xl:grid-cols-[minmax(0,1fr)_350px]">
             <div className="min-w-0 overflow-hidden rounded-2xl border border-border bg-panel">

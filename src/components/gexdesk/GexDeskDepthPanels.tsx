@@ -23,11 +23,11 @@ import type {
   GexDeskZone,
 } from "@/lib/gexDesk";
 
-export type GexDeskPanel = "MAP" | "HEATMAP" | "EVOLUTION" | "EXPIRIES" | "FLOW" | "SOURCES";
+export type GexDeskPanel = "GEX_VIEW" | "MAP" | "HEATMAP" | "EVOLUTION" | "EXPIRIES" | "FLOW" | "SOURCES";
 export type GexDeskTapeTick = { price: number; delta: number; timestamp: number };
 
 type PanelProps = {
-  panel: Exclude<GexDeskPanel, "MAP" | "HEATMAP">;
+  panel: Exclude<GexDeskPanel, "GEX_VIEW" | "MAP" | "HEATMAP">;
   payload: GexDeskPayload;
   history: GexDeskHistoryPayload | null;
   historyLoading: boolean;
