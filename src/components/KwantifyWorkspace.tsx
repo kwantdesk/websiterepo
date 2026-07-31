@@ -157,6 +157,7 @@ import {
   type ChartIntervalKind,
 } from "@/lib/chartIntervals";
 import { applyMarketTradesToEventBars, futuresTickSize } from "@/lib/eventBars";
+import type { ValueAreaProfile } from "@/lib/valueArea";
 import {
   DATABENTO_LIVE_TICK_EVENT,
   LIVE_CHART_CANDLE_EVENT,
@@ -420,6 +421,7 @@ const WORKSPACE_BACKUP_FORMAT = "kwantdesk-chart-workspaces";
 const MAX_WORKSPACE_BACKUP_BYTES = 2_000_000;
 const GAMMA_LEVELS_ENABLED_STORAGE_KEY = "kwantdesk:chart-gamma-levels-enabled:v1";
 const HISTORICAL_STRUCTURE_ENABLED_STORAGE_KEY = "kwantdesk:chart-historical-structure-enabled:v1";
+const VALUE_AREA_LEVELS_ENABLED_STORAGE_KEY = "kwantdesk:chart-value-area-levels-enabled:v1";
 const KWANTBOT_MESSAGES_STORAGE_KEY = "kwantdesk-kwantbot-messages";
 const BOTTOM_WORKSPACE_SECTIONS = [
   { id: "charts" as const, label: "Charts" },
@@ -1713,6 +1715,38 @@ type GammaPayloadCacheEntry = {
   payload?: ChartGammaLevelsPayload;
 };
 
+type CompletedValueAreaProfile = ValueAreaProfile & {
+  start: string;
+  end: string;
+  label: string;
+};
+
+type ValueAreaPayload = {
+  symbol: string;
+  source: "CME";
+  dataset: "GLBX.MDP3";
+  method: "TRADE_BY_TRADE";
+  valueAreaTarget: number;
+  generatedAt: string;
+  nextRefreshAt: string;
+  daily: CompletedValueAreaProfile;
+  weekly: CompletedValueAreaProfile;
+};
+
+type ValueAreaChartOverlay = {
+  instrument: string;
+  levels: ChartLevel[];
+  dailyLabel: string;
+  weeklyLabel: string;
+  generatedAt: string;
+};
+
+type ValueAreaPayloadCacheEntry = {
+  expiresAt: number;
+  promise: Promise<ValueAreaPayload>;
+  payload?: ValueAreaPayload;
+};
+
 type GameplanChartDecorations = {
   levels: ChartLevel[];
   zones: ChartZone[];
@@ -1789,6 +1823,140 @@ function buildGameplanChartDecorations(
         label: `${level.name} · ${formatGameplanZone(level.zone[0], level.zone[1])}`,
       };
     }),
+  };
+}
+
+const valueAreaPayloadCache = new Map<string, ValueAreaPayloadCacheEntry>();
+
+function fetchValueAreaPayload(symbol: string) {
+  const cacheKey = symbol.toUpperCase();
+  const cached = valueAreaPayloadCache.get(cacheKey);
+  const now = Date.now();
+  if (cached && cached.expiresAt > now) return cached.promise;
+
+  const previous = cached;
+  const promise = fetch(
+    `/api/databento/value-area?symbol=${encodeURIComponent(symbol)}`,
+    { cache: "no-store" },
+  )
+    .then(async (response) => {
+      const payload = await response.json() as ValueAreaPayload & { error?: string };
+      if (!response.ok) throw new Error(payload.error || "CME value-area levels are unavailable.");
+      const refreshAt = Date.parse(payload.nextRefreshAt);
+      const current = valueAreaPayloadCache.get(cacheKey);
+      if (current?.promise === promise) {
+        current.expiresAt = Number.isFinite(refreshAt)
+          ? Math.max(Date.now() + 30_000, refreshAt)
+          : Date.now() + 60 * 60_000;
+        current.payload = payload;
+      }
+      return payload;
+    })
+    .catch((error) => {
+      if (valueAreaPayloadCache.get(cacheKey)?.promise === promise) {
+        if (previous?.payload) {
+          valueAreaPayloadCache.set(cacheKey, {
+            ...previous,
+            expiresAt: Date.now() + 30_000,
+          });
+        } else {
+          valueAreaPayloadCache.delete(cacheKey);
+        }
+      }
+      throw error;
+    });
+
+  valueAreaPayloadCache.set(cacheKey, {
+    expiresAt: Date.now() + 30_000,
+    promise,
+    payload: previous?.payload,
+  });
+  return promise;
+}
+
+function validValueAreaProfile(profile: CompletedValueAreaProfile) {
+  return [
+    profile.vah,
+    profile.val,
+    profile.poc,
+    profile.vwap,
+    profile.totalVolume,
+    profile.tradeRecords,
+  ].every((value) => Number.isFinite(value))
+    && profile.val <= profile.poc
+    && profile.poc <= profile.vah
+    && profile.totalVolume > 0
+    && profile.tradeRecords > 0;
+}
+
+function buildValueAreaChartOverlay(
+  payload: ValueAreaPayload,
+  instrument: string,
+  settings: ChartSettings,
+): ValueAreaChartOverlay | null {
+  if (
+    payload.symbol.toUpperCase() !== instrument.toUpperCase()
+    || payload.method !== "TRADE_BY_TRADE"
+    || !validValueAreaProfile(payload.daily)
+    || !validValueAreaProfile(payload.weekly)
+  ) {
+    return null;
+  }
+
+  const dailyColor = mixChartColor(settings.upColor, "#38BDF8", 0.56);
+  const weeklyColor = mixChartColor(settings.upColor, "#F59E0B", 0.68);
+  const periodLevels = (
+    prefix: "PD" | "PW",
+    profile: CompletedValueAreaProfile,
+    color: string,
+  ): ChartLevel[] => [
+    {
+      id: `${prefix.toLowerCase()}-vah-${profile.end}`,
+      price: profile.vah,
+      color,
+      label: `${prefix} VAH`,
+      lineStyle: "dashed",
+      lineWidth: 1,
+      axisLabelVisible: true,
+    },
+    {
+      id: `${prefix.toLowerCase()}-val-${profile.end}`,
+      price: profile.val,
+      color,
+      label: `${prefix} VAL`,
+      lineStyle: "dashed",
+      lineWidth: 1,
+      axisLabelVisible: true,
+    },
+    {
+      id: `${prefix.toLowerCase()}-poc-${profile.end}`,
+      price: profile.poc,
+      color,
+      label: `${prefix} POC`,
+      lineStyle: "solid",
+      lineWidth: 2,
+      axisLabelVisible: true,
+    },
+    {
+      id: `${prefix.toLowerCase()}-vwap-${profile.end}`,
+      price: profile.vwap,
+      color,
+      label: `${prefix} VWAP`,
+      lineStyle: "dotted",
+      lineWidth: 2,
+      axisLabelVisible: true,
+    },
+  ];
+
+  return {
+    instrument,
+    levels: [
+      ...periodLevels("PD", payload.daily, dailyColor),
+      ...periodLevels("PW", payload.weekly, weeklyColor),
+    ],
+    dailyLabel: payload.daily.label,
+    weeklyLabel: payload.weekly.label,
+    generatedAt: payload.generatedAt,
   };
 }
 
@@ -1996,6 +2164,8 @@ function WorkspaceChartPane({
   onToggleGammaLevels,
   historicalStructureEnabled,
   onToggleHistoricalStructure,
+  valueAreaLevelsEnabled,
+  onToggleValueAreaLevels,
   levelExportRequested,
   onGammaExportSnapshot,
   gameplanOverlay,
@@ -2023,6 +2193,8 @@ function WorkspaceChartPane({
   onToggleGammaLevels: () => void;
   historicalStructureEnabled: boolean;
   onToggleHistoricalStructure: () => void;
+  valueAreaLevelsEnabled: boolean;
+  onToggleValueAreaLevels: () => void;
   levelExportRequested: boolean;
   onGammaExportSnapshot: (paneId: string, snapshot: GammaLevelExportSnapshot | null) => void;
   gameplanOverlay: GameplanChartOverlay | null;
@@ -2043,6 +2215,9 @@ function WorkspaceChartPane({
   const [gammaOverlay, setGammaOverlay] = useState<GammaChartOverlay | null>(null);
   const [gammaLevelsLoading, setGammaLevelsLoading] = useState(false);
   const [gammaLevelsError, setGammaLevelsError] = useState<string | null>(null);
+  const [valueAreaOverlay, setValueAreaOverlay] = useState<ValueAreaChartOverlay | null>(null);
+  const [valueAreaLevelsLoading, setValueAreaLevelsLoading] = useState(false);
+  const [valueAreaLevelsError, setValueAreaLevelsError] = useState<string | null>(null);
   const intervalCommandInputRef = useRef<HTMLInputElement>(null);
   const intervalCommandPanelRef = useRef<HTMLDivElement>(null);
   const latestCandlesRef = useRef<Candle[]>([]);
@@ -2079,6 +2254,8 @@ function WorkspaceChartPane({
     ].includes(instance.indicatorId));
   const gammaLevelsAvailable =
     pane.broker === "Databento" && isGammaChartInstrument(gammaInstrument);
+  const valueAreaLevelsAvailable =
+    pane.broker === "Databento" && isContinuousFuture(pane.symbol);
   const primaryGammaConversion = gammaLevelsAvailable
     ? cashFallbackGammaConversion(gammaInstrument)
     : null;
@@ -2099,8 +2276,19 @@ function WorkspaceChartPane({
     [gameplanOverlay, settings],
   );
   const chartLevels = useMemo(
-    () => gammaLevelsEnabled ? currentGammaOverlay?.levels ?? [] : [],
-    [currentGammaOverlay, gammaLevelsEnabled],
+    () => [
+      ...(gammaLevelsEnabled ? currentGammaOverlay?.levels ?? [] : []),
+      ...(valueAreaLevelsEnabled && valueAreaOverlay?.instrument === pane.symbol
+        ? valueAreaOverlay.levels
+        : []),
+    ],
+    [
+      currentGammaOverlay,
+      gammaLevelsEnabled,
+      pane.symbol,
+      valueAreaLevelsEnabled,
+      valueAreaOverlay,
+    ],
   );
   const markMarketActive = useCallback(() => {
     if (!marketActiveRef.current) {
@@ -2315,6 +2503,9 @@ function WorkspaceChartPane({
     setGammaOverlay(null);
     setGammaLevelsError(null);
     setGammaLevelsLoading(gammaLevelsEnabled && gammaLevelsAvailable);
+    setValueAreaOverlay(null);
+    setValueAreaLevelsError(null);
+    setValueAreaLevelsLoading(valueAreaLevelsEnabled && valueAreaLevelsAvailable);
   }, [pane.broker, pane.symbol]);
 
   useEffect(() => {
@@ -2423,6 +2614,56 @@ function WorkspaceChartPane({
     resolvedContractSymbol,
     settings.downColor,
     settings.upColor,
+  ]);
+
+  useEffect(() => {
+    if (!valueAreaLevelsEnabled || !valueAreaLevelsAvailable) {
+      setValueAreaLevelsLoading(false);
+      setValueAreaLevelsError(null);
+      if (!valueAreaLevelsAvailable) setValueAreaOverlay(null);
+      return;
+    }
+
+    let cancelled = false;
+    let timer: number | null = null;
+    const loadValueArea = async () => {
+      setValueAreaLevelsLoading((current) => current || !valueAreaOverlay);
+      try {
+        const payload = await fetchValueAreaPayload(pane.symbol);
+        if (cancelled) return;
+        const overlay = buildValueAreaChartOverlay(payload, pane.symbol, settings);
+        if (!overlay) throw new Error("CME returned an invalid completed-period profile.");
+        setValueAreaOverlay(overlay);
+        setValueAreaLevelsError(null);
+        setValueAreaLevelsLoading(false);
+
+        const refreshAt = Date.parse(payload.nextRefreshAt);
+        const delay = Number.isFinite(refreshAt)
+          ? Math.max(30_000, refreshAt - Date.now())
+          : 60 * 60_000;
+        timer = window.setTimeout(() => void loadValueArea(), delay);
+      } catch (loadError) {
+        if (cancelled) return;
+        setValueAreaLevelsError(
+          loadError instanceof Error
+            ? loadError.message
+            : "CME value-area levels are unavailable.",
+        );
+        setValueAreaLevelsLoading(false);
+        timer = window.setTimeout(() => void loadValueArea(), 60_000);
+      }
+    };
+
+    timer = window.setTimeout(() => void loadValueArea(), 25);
+    return () => {
+      cancelled = true;
+      if (timer !== null) window.clearTimeout(timer);
+    };
+  }, [
+    pane.symbol,
+    settings.upColor,
+    valueAreaLevelsAvailable,
+    valueAreaLevelsEnabled,
   ]);
 
   useEffect(() => {
@@ -2817,6 +3058,16 @@ function WorkspaceChartPane({
           onToggleGammaLevels={onToggleGammaLevels}
           historicalStructureEnabled={historicalStructureEnabled}
           onToggleHistoricalStructure={onToggleHistoricalStructure}
+          valueAreaLevelsEnabled={valueAreaLevelsEnabled}
+          valueAreaLevelsAvailable={valueAreaLevelsAvailable}
+          valueAreaLevelsLoading={valueAreaLevelsLoading}
+          valueAreaLevelsError={valueAreaLevelsError}
+          valueAreaLevelsDescription={
+            valueAreaOverlay
+              ? `Prior session ${valueAreaOverlay.dailyLabel} · Prior week ${valueAreaOverlay.weeklyLabel}`
+              : ""
+          }
+          onToggleValueAreaLevels={onToggleValueAreaLevels}
           onRemoveGameplanOverlay={gameplanOverlay ? onRemoveGameplanOverlay : undefined}
           liveCandleEventKey={pane.id}
         />
@@ -3486,6 +3737,10 @@ export default function KwantifyWorkspace({
   const [historicalStructureEnabled, setHistoricalStructureEnabled] = useState(() => {
     if (typeof window === "undefined") return false;
     return window.localStorage.getItem(HISTORICAL_STRUCTURE_ENABLED_STORAGE_KEY) === "true";
+  });
+  const [valueAreaLevelsEnabled, setValueAreaLevelsEnabled] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.localStorage.getItem(VALUE_AREA_LEVELS_ENABLED_STORAGE_KEY) === "true";
   });
   const [showLevelsExport, setShowLevelsExport] = useState(false);
   const [levelExportTypes, setLevelExportTypes] = useState<Record<LevelExportType, boolean>>({
@@ -4882,6 +5137,13 @@ export default function KwantifyWorkspace({
       historicalStructureEnabled ? "true" : "false",
     );
   }, [historicalStructureEnabled]);
+
+  useEffect(() => {
+    window.localStorage.setItem(
+      VALUE_AREA_LEVELS_ENABLED_STORAGE_KEY,
+      valueAreaLevelsEnabled ? "true" : "false",
+    );
+  }, [valueAreaLevelsEnabled]);
 
   useEffect(() => {
     const syncOverlays = () => setGameplanChartOverlays(loadGameplanChartOverlays());
@@ -7500,6 +7762,8 @@ export default function KwantifyWorkspace({
         onToggleGammaLevels={() => setGammaLevelsEnabled((current) => !current)}
         historicalStructureEnabled={historicalStructureEnabled}
         onToggleHistoricalStructure={() => setHistoricalStructureEnabled((current) => !current)}
+        valueAreaLevelsEnabled={valueAreaLevelsEnabled}
+        onToggleValueAreaLevels={() => setValueAreaLevelsEnabled((current) => !current)}
         levelExportRequested={showLevelsExport}
         onGammaExportSnapshot={handleGammaExportSnapshot}
         gameplanOverlay={gameplanRoot ? gameplanChartOverlays[gameplanRoot] ?? null : null}

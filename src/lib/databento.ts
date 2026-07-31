@@ -1,6 +1,12 @@
 import { getChartInterval, isEventBasedChartInterval } from "@/lib/chartIntervals";
 import { applyMarketTradesToEventBars, type MarketTrade } from "@/lib/eventBars";
 import type { Candle } from "@/lib/backtester";
+import {
+  addValueAreaTrade,
+  createValueAreaAccumulator,
+  finalizeValueAreaProfile,
+  type ValueAreaProfile,
+} from "@/lib/valueArea";
 
 export const DATABENTO_HISTORICAL_BASE_URL = "https://api.databento.com/v0";
 
@@ -183,6 +189,110 @@ async function historicalRequest(params: Record<string, string>, canRetryAvailab
     throw new Error(`Databento request failed (${response.status}): ${detail.slice(0, 180)}`);
   }
   return parseRows(await response.text());
+}
+
+async function streamHistoricalRows(
+  params: Record<string, string>,
+  onRow: (row: Record<string, unknown>) => void,
+): Promise<void> {
+  const key = process.env.DATABENTO_API_KEY?.trim();
+  if (!key) throw new Error("Databento is not configured.");
+
+  const form = new URLSearchParams({
+    dataset: "GLBX.MDP3",
+    encoding: "json",
+    pretty_px: "true",
+    pretty_ts: "true",
+    map_symbols: "true",
+    ...params,
+  });
+  const response = await fetch(`${DATABENTO_HISTORICAL_BASE_URL}/timeseries.get_range`, {
+    method: "POST",
+    headers: {
+      Authorization: `Basic ${Buffer.from(`${key}:`).toString("base64")}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: form,
+    cache: "no-store",
+  });
+  if (!response.ok) {
+    const detail = await response.text();
+    const availableEnd = response.status === 422
+      ? availableEndFromError(detail)
+      : null;
+    const requestedStart = Date.parse(params.start ?? "");
+    const requestedEnd = Date.parse(params.end ?? "");
+    if (
+      availableEnd
+      && Number.isFinite(requestedStart)
+      && availableEnd > requestedStart
+      && (!Number.isFinite(requestedEnd) || availableEnd < requestedEnd)
+    ) {
+      throw new Error("Databento has not completed the requested CME profile window yet.");
+    }
+    throw new Error(`Databento request failed (${response.status}): ${detail.slice(0, 180)}`);
+  }
+  if (!response.body) throw new Error("Databento returned an empty CME trade stream.");
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let malformedRecords = 0;
+  const processLine = (line: string) => {
+    const text = line.trim();
+    if (!text) return;
+    try {
+      const decoded = JSON.parse(text) as unknown;
+      const records = Array.isArray(decoded) ? decoded : [decoded];
+      records.forEach((record) => {
+        if (record && typeof record === "object" && !Array.isArray(record)) {
+          onRow(record as Record<string, unknown>);
+        }
+      });
+    } catch {
+      malformedRecords += 1;
+    }
+  };
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let newline = buffer.indexOf("\n");
+    while (newline >= 0) {
+      processLine(buffer.slice(0, newline));
+      buffer = buffer.slice(newline + 1);
+      newline = buffer.indexOf("\n");
+    }
+  }
+  buffer += decoder.decode();
+  processLine(buffer);
+  if (malformedRecords > 0) {
+    throw new Error("Databento returned malformed CME trade records; the profile was rejected.");
+  }
+}
+
+export async function getDatabentoValueAreaProfile(
+  symbol: string,
+  start: string,
+  end: string,
+  tickSize: number,
+): Promise<ValueAreaProfile | null> {
+  const accumulator = createValueAreaAccumulator(tickSize);
+  await streamHistoricalRows({
+    symbols: symbol,
+    stype_in: isContinuousFuture(symbol) ? "continuous" : "raw_symbol",
+    schema: "trades",
+    start,
+    end,
+  }, (row) => {
+    addValueAreaTrade(accumulator, {
+      timestamp: time(row.ts_event ?? row.ts_recv ?? (row.hd as Record<string, unknown> | undefined)?.ts_event),
+      price: price(row.price),
+      size: Math.max(0, Number(row.size ?? 0)),
+    });
+  });
+  return finalizeValueAreaProfile(accumulator);
 }
 
 function sourceSchema(timeframe: string) {

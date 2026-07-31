@@ -124,6 +124,12 @@ interface ChartProps {
   onToggleGammaLevels?: () => void;
   historicalStructureEnabled?: boolean;
   onToggleHistoricalStructure?: () => void;
+  valueAreaLevelsEnabled?: boolean;
+  valueAreaLevelsAvailable?: boolean;
+  valueAreaLevelsLoading?: boolean;
+  valueAreaLevelsError?: string | null;
+  valueAreaLevelsDescription?: string;
+  onToggleValueAreaLevels?: () => void;
   onRemoveGameplanOverlay?: () => void;
   liveCandleEventKey?: string | null;
 }
@@ -1025,6 +1031,12 @@ export default function Chart({
   onToggleGammaLevels,
   historicalStructureEnabled = false,
   onToggleHistoricalStructure,
+  valueAreaLevelsEnabled = false,
+  valueAreaLevelsAvailable = false,
+  valueAreaLevelsLoading = false,
+  valueAreaLevelsError = null,
+  valueAreaLevelsDescription = "",
+  onToggleValueAreaLevels,
   onRemoveGameplanOverlay,
   liveCandleEventKey,
 }: ChartProps) {
@@ -4213,6 +4225,40 @@ export default function Chart({
                 className={`${toolbarIconClassName} flex items-center justify-center rounded-[4px] border border-current font-mono text-[9px] font-black leading-none`}
               >
                 S
+              </span>
+            </button>
+            <button
+              type="button"
+              disabled={!valueAreaLevelsAvailable || !onToggleValueAreaLevels}
+              onClick={(event) => {
+                event.stopPropagation();
+                onToggleValueAreaLevels?.();
+              }}
+              className={`flex items-center justify-center border backdrop-blur ${
+                valueAreaLevelsAvailable && onToggleValueAreaLevels
+                  ? getToolbarButtonTone(valueAreaLevelsEnabled)
+                  : "cursor-not-allowed border-transparent bg-panel/45 text-muted/30"
+              }`}
+              style={toolbarButtonStyle}
+              title={
+                !valueAreaLevelsAvailable
+                  ? "Value-area levels require a CME futures chart"
+                  : valueAreaLevelsError
+                    ? `Value area unavailable: ${valueAreaLevelsError}`
+                    : valueAreaLevelsLoading
+                      ? "Calculating prior-session and prior-week value areas from CME trades"
+                      : valueAreaLevelsEnabled
+                        ? valueAreaLevelsDescription || "Hide completed-period VAH, VAL, POC and VWAP"
+                        : "Show prior-session and prior-week VAH, VAL, POC and VWAP"
+              }
+              aria-label={valueAreaLevelsEnabled ? "Hide value-area levels" : "Show value-area levels"}
+              aria-pressed={valueAreaLevelsEnabled}
+            >
+              <span
+                aria-hidden="true"
+                className={`${toolbarIconClassName} flex items-center justify-center rounded-[4px] border border-current font-mono text-[7px] font-black leading-none ${valueAreaLevelsLoading ? "animate-pulse" : ""}`}
+              >
+                VA
               </span>
             </button>
             <button
