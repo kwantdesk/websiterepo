@@ -17,6 +17,7 @@ import {
   type OptionsFlowPrint,
   type OptionsKeyLevel,
   type OptionsMarketPulsePayload,
+  type OptionsPositioningPulsePayload,
   type OptionsPriceMode,
   type PremiumDriftPoint,
   type TradeSidePremiumSummary,
@@ -459,11 +460,11 @@ function parseIntervalMap(
     .map(([timestampKey, rawBucket]) => ({ timestamp: finiteNumber(timestampKey), rawBucket }))
     .filter((entry): entry is { timestamp: number; rawBucket: unknown } => entry.timestamp !== null)
     .sort((a, b) => a.timestamp - b.timestamp);
-  const currentByStrike = new Map<number, ExposureStrike>();
   const strikeSnapshots: ParsedIntervalMap["strikeSnapshots"] = [];
 
   for (const { timestamp, rawBucket } of orderedBuckets) {
     if (!isRecord(rawBucket)) continue;
+    const bucketByStrike = new Map<number, ExposureStrike>();
     const expiryNode = rawBucket[expiration];
     if (isRecord(expiryNode)) {
       for (const [strikeKey, rawCell] of Object.entries(expiryNode)) {
@@ -472,11 +473,11 @@ function parseIntervalMap(
         if (strike === null) continue;
         const call = finiteNumber(rawCell.CALL) ?? 0;
         const put = finiteNumber(rawCell.PUT) ?? 0;
-        currentByStrike.set(strike, { strike, call, put, net: call + put });
+        bucketByStrike.set(strike, { strike, call, put, net: call + put });
       }
     }
-    if (currentByStrike.size && isOptionsSessionTimestamp(timestamp)) {
-      strikeSnapshots.push({ timestamp, strikes: new Map(currentByStrike) });
+    if (bucketByStrike.size && isOptionsSessionTimestamp(timestamp)) {
+      strikeSnapshots.push({ timestamp, strikes: bucketByStrike });
     }
   }
 
@@ -511,6 +512,69 @@ function parseIntervalMap(
       lookbacks,
     },
     strikeSnapshots,
+  };
+}
+
+export async function getOptionsPositioningPulse(
+  symbolInput: string,
+  modeInput: string,
+  expirationInput: string,
+  strikeRange: { min: number; max: number } | null = null,
+): Promise<OptionsPositioningPulsePayload> {
+  const symbol = symbolInput.trim().toUpperCase();
+  const mode = modeInput.trim().toUpperCase() as GreekMode;
+  const expiration = expirationInput.trim();
+  if (!OPTIONS_FLOW_TICKERS.includes(symbol as (typeof OPTIONS_FLOW_TICKERS)[number])) {
+    throw new QuantDataError("This ticker is not supported by live positioning.", 400, null);
+  }
+  if (!["GAMMA", "DELTA", "VANNA", "CHARM"].includes(mode)) {
+    throw new QuantDataError("A valid positioning Greek is required.", 400, null);
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(expiration)) {
+    throw new QuantDataError("A valid front expiration is required.", 400, null);
+  }
+
+  const session = getUsOptionsSession();
+  const result = await quantDataPost("/options/tool/interval-map", {
+    sessionDate: session.sessionDate,
+    aggregationPeriod: "1m",
+    greekMode: mode,
+    filter: {
+      ticker: symbol,
+      expirationDate: expiration,
+      ...(strikeRange ? {
+        minStrikePrice: strikeRange.min,
+        maxStrikePrice: strikeRange.max,
+      } : {}),
+    },
+  }, session.marketOpen ? 4_000 : 60_000);
+  const parsed = parseIntervalMap(result.payload, mode, expiration);
+  if (!parsed.series?.points.length) {
+    throw new QuantDataError(
+      session.marketOpen
+        ? "Live positioning is waiting for the first completed one-minute bucket."
+        : "No completed positioning buckets are available for this session.",
+      422,
+      result.remaining,
+    );
+  }
+  const latestTimestamp = parsed.series.points.at(-1)!.timestamp;
+  const status: OptionsPositioningPulsePayload["status"] = session.marketOpen
+    ? Date.now() - latestTimestamp <= 3 * 60_000
+      ? "LIVE"
+      : "DELAYED"
+    : "LAST_SESSION";
+  return {
+    symbol,
+    source: "KwantData",
+    asOf: new Date(latestTimestamp).toISOString(),
+    refreshAfterMs: session.marketOpen ? 5_000 : 60_000,
+    status,
+    session,
+    mode,
+    expiration,
+    series: parsed.series,
+    rateLimitRemaining: result.remaining,
   };
 }
 

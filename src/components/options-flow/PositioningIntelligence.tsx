@@ -16,6 +16,7 @@ import type {
   GreekMode,
   IntradayExposureSeries,
   OptionsFlowPayload,
+  OptionsPositioningPulsePayload,
   PremiumDriftPoint,
 } from "@/lib/optionsFlow";
 
@@ -343,12 +344,140 @@ function ExposureFlowChart({ series, drift }: { series: IntradayExposureSeries |
   );
 }
 
+function mergeExposureSeries(
+  current: IntradayExposureSeries | null,
+  incoming: IntradayExposureSeries | null,
+) {
+  if (!incoming) return current;
+  if (
+    !current
+    || current.mode !== incoming.mode
+    || current.expiration !== incoming.expiration
+  ) {
+    return incoming;
+  }
+  const points = new Map(current.points.map((point) => [point.timestamp, point]));
+  incoming.points.forEach((point) => points.set(point.timestamp, point));
+  return {
+    ...incoming,
+    points: [...points.values()]
+      .sort((left, right) => left.timestamp - right.timestamp)
+      .slice(-420),
+    latestStrikes: incoming.latestStrikes.length
+      ? incoming.latestStrikes
+      : current.latestStrikes,
+    lookbacks: incoming.lookbacks.length ? incoming.lookbacks : current.lookbacks,
+  };
+}
+
+type ExposureLiveStatus = "CONNECTING" | "LIVE" | "DELAYED" | "WAITING" | "LAST_SESSION" | "RECONNECTING";
+
 function FlowView({ data }: { data: OptionsFlowPayload }) {
   const [mode, setMode] = useState<GreekMode>("DELTA");
-  const series = data.positioning.history[mode];
+  const baseSeries = data.positioning.history[mode];
+  const [series, setSeries] = useState<IntradayExposureSeries | null>(baseSeries);
+  const [liveStatus, setLiveStatus] = useState<ExposureLiveStatus>(
+    data.session.marketOpen ? "CONNECTING" : "LAST_SESSION",
+  );
+  const [lastProviderUpdate, setLastProviderUpdate] = useState<string | null>(
+    baseSeries?.points.length
+      ? new Date(baseSeries.points.at(-1)!.timestamp).toISOString()
+      : null,
+  );
+
+  useEffect(() => {
+    setSeries((current) => mergeExposureSeries(current, baseSeries));
+    if (baseSeries?.points.length) {
+      const incomingUpdate = new Date(baseSeries.points.at(-1)!.timestamp).toISOString();
+      setLastProviderUpdate((current) =>
+        current && Date.parse(current) > Date.parse(incomingUpdate)
+          ? current
+          : incomingUpdate);
+    }
+  }, [baseSeries]);
+
+  useEffect(() => {
+    const expiration = data.positioning.expiration;
+    if (!expiration) {
+      setLiveStatus("WAITING");
+      return;
+    }
+
+    let cancelled = false;
+    let timer: number | null = null;
+    setSeries(data.positioning.history[mode]);
+    setLiveStatus(data.session.marketOpen ? "CONNECTING" : "LAST_SESSION");
+
+    const poll = async () => {
+      let nextDelay = data.session.marketOpen ? 5_000 : 60_000;
+      try {
+        const params = new URLSearchParams({
+          symbol: data.symbol,
+          mode,
+          expiration,
+        });
+        if (data.positioning.strikeRange) {
+          params.set("minStrike", String(data.positioning.strikeRange.min));
+          params.set("maxStrike", String(data.positioning.strikeRange.max));
+        }
+        const response = await fetch(`/api/options-flow/positioning?${params}`, {
+          cache: "no-store",
+        });
+        const payload = await response.json() as OptionsPositioningPulsePayload & { error?: string };
+        if (!response.ok) throw new Error(payload.error || "Live exposure flow is unavailable.");
+        if (
+          cancelled
+          || payload.symbol !== data.symbol
+          || payload.mode !== mode
+          || payload.expiration !== expiration
+        ) {
+          return;
+        }
+        setSeries((current) => mergeExposureSeries(current, payload.series));
+        setLastProviderUpdate(payload.asOf);
+        setLiveStatus(payload.status);
+        nextDelay = Math.max(5_000, payload.refreshAfterMs);
+      } catch (error) {
+        if (cancelled) return;
+        const waitingForFirstBucket =
+          error instanceof Error
+          && error.message.toLowerCase().includes("first completed one-minute bucket");
+        setLiveStatus(waitingForFirstBucket ? "WAITING" : "RECONNECTING");
+      } finally {
+        if (!cancelled) timer = window.setTimeout(() => void poll(), nextDelay);
+      }
+    };
+
+    timer = window.setTimeout(() => void poll(), 25);
+    return () => {
+      cancelled = true;
+      if (timer !== null) window.clearTimeout(timer);
+    };
+  }, [
+    data.positioning.expiration,
+    data.positioning.strikeRange?.max,
+    data.positioning.strikeRange?.min,
+    data.session.marketOpen,
+    data.symbol,
+    mode,
+  ]);
+
   const latest = series?.points.at(-1) ?? null;
   const first = series?.points[0] ?? null;
   const change = latest && first ? latest.net - first.net : null;
+  const liveLabel = liveStatus === "LAST_SESSION"
+    ? "LAST SESSION"
+    : liveStatus === "RECONNECTING"
+      ? "RECONNECTING"
+      : liveStatus === "WAITING"
+        ? "WAITING FOR 1M"
+        : liveStatus;
+  const liveTone = liveStatus === "LIVE"
+    ? "border-primary/20 bg-primary/10 text-primary"
+    : liveStatus === "RECONNECTING" || liveStatus === "DELAYED"
+      ? "border-danger/20 bg-danger/10 text-danger"
+      : "border-border bg-panel text-muted";
+
   return (
     <div className="grid gap-3 p-3 xl:grid-cols-[minmax(0,1fr)_280px]">
       <div className="overflow-hidden rounded-xl border border-border bg-surface/25">
@@ -356,8 +485,12 @@ function FlowView({ data }: { data: OptionsFlowPayload }) {
           <Waves className="h-3.5 w-3.5 text-primary" />
           <div>
             <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-foreground">Live exposure flow</div>
-            <div className="mt-0.5 text-[8px] text-muted">One-minute front-expiry snapshots · spot overlay</div>
+            <div className="mt-0.5 text-[8px] text-muted">Session baseline + live one-minute front-expiry buckets · price overlay</div>
           </div>
+          <span className={`flex items-center gap-1 rounded-md border px-1.5 py-1 text-[7px] font-semibold ${liveTone}`}>
+            <Radio className={`h-2.5 w-2.5 ${liveStatus === "LIVE" ? "animate-pulse" : ""}`} />
+            {liveLabel}
+          </span>
           <div className="ml-auto flex rounded-lg border border-border bg-panel p-0.5">
             {(Object.keys(MODE_META) as GreekMode[]).map((item) => <button key={item} type="button" onClick={() => setMode(item)} className={`rounded-md px-2.5 py-1 text-[8px] font-semibold ${mode === item ? "bg-primary text-background" : "text-muted hover:text-foreground"}`}>{MODE_META[item].short}</button>)}
           </div>
@@ -369,16 +502,25 @@ function FlowView({ data }: { data: OptionsFlowPayload }) {
           <div className="text-[8px] font-semibold uppercase tracking-[0.14em] text-muted">{MODE_META[mode].title}</div>
           <div className={`mt-2 font-mono text-[23px] font-semibold ${latest && latest.net >= 0 ? "text-primary" : "text-danger"}`}>{formatCompact(latest?.net ?? null, true)}</div>
           <div className="mt-1 text-[9px] text-muted">{MODE_META[mode].detail}</div>
-          <div className="mt-4 flex items-center justify-between border-t border-border pt-3 text-[9px]"><span className="text-muted">Visible-window change</span><span className={`font-mono font-semibold ${(change ?? 0) >= 0 ? "text-primary" : "text-danger"}`}>{formatCompact(change, true)}</span></div>
+          <div className="mt-4 flex items-center justify-between border-t border-border pt-3 text-[9px]"><span className="text-muted">Versus opening bucket</span><span className={`font-mono font-semibold ${(change ?? 0) >= 0 ? "text-primary" : "text-danger"}`}>{formatCompact(change, true)}</span></div>
         </div>
         <div className="rounded-xl border border-border bg-surface/25 p-4">
           <div className="flex items-center gap-2"><Braces className="h-3.5 w-3.5 text-accent" /><span className="text-[9px] font-semibold uppercase tracking-[0.13em] text-foreground">How to read it</span></div>
-          <p className="mt-3 text-[9px] leading-[1.55] text-muted">Call, put, and net lines are provider-calculated exposure snapshots, not decorative transforms. Divergence from spot highlights positioning shifts; it does not by itself identify a buyer, seller, opening trade, or directional entry.</p>
+          <p className="mt-3 text-[9px] leading-[1.55] text-muted">Each point is the provider&apos;s completed one-minute exposure bucket. The first bucket is retained as the session baseline; new call, put and net observations are merged by provider timestamp. This identifies positioning change, not the owner or intent of an individual trade.</p>
         </div>
         <div className="rounded-xl border border-border bg-surface/25 p-4">
           <div className="text-[8px] font-semibold uppercase tracking-[0.13em] text-muted">Coverage</div>
           <div className="mt-2 font-mono text-[12px] font-semibold text-foreground">{formatExpiry(data.positioning.expiration)}</div>
-          <div className="mt-1 text-[9px] text-muted">{series?.points.length ?? 0} one-minute snapshots · {series?.latestStrikes.length ?? 0} strike nodes</div>
+          <div className="mt-1 text-[9px] text-muted">{series?.points.length ?? 0} one-minute buckets · {series?.latestStrikes.length ?? 0} latest strike nodes</div>
+          <div className="mt-2 border-t border-border pt-2 text-[8px] text-muted">
+            Provider bucket {lastProviderUpdate
+              ? new Date(lastProviderUpdate).toLocaleTimeString("en-AU", {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                  second: "2-digit",
+                })
+              : "pending"}
+          </div>
         </div>
       </div>
     </div>
@@ -446,4 +588,3 @@ export default function PositioningIntelligence({ data }: { data: OptionsFlowPay
     </section>
   );
 }
-

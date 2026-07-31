@@ -224,6 +224,22 @@ export type IntradayExposureSeries = {
   }>;
 };
 
+export type OptionsPositioningPulsePayload = {
+  symbol: string;
+  source: "KwantData";
+  asOf: string;
+  refreshAfterMs: number;
+  status: "LIVE" | "DELAYED" | "LAST_SESSION";
+  session: {
+    marketOpen: boolean;
+    sessionDate: string;
+  };
+  mode: GreekMode;
+  expiration: string;
+  series: IntradayExposureSeries;
+  rateLimitRemaining: number | null;
+};
+
 export type GammaChangeWindow = {
   minutes: 1 | 5 | 15 | 30;
   strike: number;
