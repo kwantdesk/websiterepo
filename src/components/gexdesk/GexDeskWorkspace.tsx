@@ -27,6 +27,7 @@ import GexDeskDepthPanels, {
 } from "@/components/gexdesk/GexDeskDepthPanels";
 import GexDeskHeatmapBoundary from "@/components/gexdesk/GexDeskHeatmapBoundary";
 import GexDeskOptionsHeatmap from "@/components/gexdesk/GexDeskOptionsHeatmap";
+import GexViewWorkspace from "@/components/gexdesk/GexViewWorkspace";
 import {
   DATABENTO_LIVE_STATUS_EVENT,
   DATABENTO_LIVE_TICK_EVENT,
@@ -564,39 +565,43 @@ export default function GexDeskWorkspace() {
             <div className="truncate text-[6px] uppercase tracking-[0.14em] text-muted">NQ positioning intelligence</div>
           </div>
         </div>
-        <KwantSelect value={sourceFilter} onChange={(event) => setSourceFilter(event.target.value as SourceFilter)} menuLabel="Positioning source" className="h-8 min-w-28 rounded-xl border border-border bg-surface px-2.5 text-[8px]">
-          <option value="COMBINED">Combined · NDX + QQQ</option>
-          <option value="NDX">NDX / NDXP</option>
-          <option value="QQQ">QQQ</option>
-        </KwantSelect>
-        <KwantSelect value={expiryFilter} onChange={(event) => setExpiryFilter(event.target.value as ExpiryFilter)} menuLabel="Expiry scope" className="h-8 min-w-24 rounded-xl border border-border bg-surface px-2.5 text-[8px]">
-          <option value="ALL">All expiries</option>
-          <option value="0DTE">0DTE</option>
-        </KwantSelect>
-        <KwantSelect value={compositeMode} onChange={(event) => setCompositeMode(event.target.value as CompositeMode)} menuLabel="Composite mode" className="h-8 min-w-24 rounded-xl border border-border bg-surface px-2.5 text-[8px]">
-          <option value="ECONOMIC">Economic strength</option>
-          <option value="AGREEMENT">Source agreement</option>
-        </KwantSelect>
-        <KwantSelect
-          value={viewMode}
-          onChange={(event) => {
-            const nextMode = event.target.value as ViewMode;
-            setViewMode(nextMode);
-            if (nextMode === "SIMPLE") setActivePanel("MAP");
-          }}
-          menuLabel="Workspace depth"
-          className="h-8 min-w-24 rounded-xl border border-border bg-surface px-2.5 text-[8px]"
-        >
-          <option value="SIMPLE">Simple view</option>
-          <option value="ANALYST">Analyst view</option>
-        </KwantSelect>
-        <div className="ml-auto flex items-center gap-2">
+        {activePanel !== "GEX_VIEW" ? (
+          <>
+            <KwantSelect value={sourceFilter} onChange={(event) => setSourceFilter(event.target.value as SourceFilter)} menuLabel="Positioning source" className="h-8 min-w-28 rounded-xl border border-border bg-surface px-2.5 text-[8px]">
+              <option value="COMBINED">Combined · NDX + QQQ</option>
+              <option value="NDX">NDX / NDXP</option>
+              <option value="QQQ">QQQ</option>
+            </KwantSelect>
+            <KwantSelect value={expiryFilter} onChange={(event) => setExpiryFilter(event.target.value as ExpiryFilter)} menuLabel="Expiry scope" className="h-8 min-w-24 rounded-xl border border-border bg-surface px-2.5 text-[8px]">
+              <option value="ALL">All expiries</option>
+              <option value="0DTE">0DTE</option>
+            </KwantSelect>
+            <KwantSelect value={compositeMode} onChange={(event) => setCompositeMode(event.target.value as CompositeMode)} menuLabel="Composite mode" className="h-8 min-w-24 rounded-xl border border-border bg-surface px-2.5 text-[8px]">
+              <option value="ECONOMIC">Economic strength</option>
+              <option value="AGREEMENT">Source agreement</option>
+            </KwantSelect>
+            <KwantSelect
+              value={viewMode}
+              onChange={(event) => {
+                const nextMode = event.target.value as ViewMode;
+                setViewMode(nextMode);
+                if (nextMode === "SIMPLE") setActivePanel("MAP");
+              }}
+              menuLabel="Workspace depth"
+              className="h-8 min-w-24 rounded-xl border border-border bg-surface px-2.5 text-[8px]"
+            >
+              <option value="SIMPLE">Simple view</option>
+              <option value="ANALYST">Analyst view</option>
+            </KwantSelect>
+          </>
+        ) : null}
+        {activePanel !== "GEX_VIEW" ? <div className="ml-auto flex items-center gap-2">
           <span className={`flex items-center gap-1.5 rounded-xl border px-2.5 py-1.5 text-[7px] font-semibold ${feedStatus === "live" ? "border-primary/25 bg-primary/[0.06] text-primary" : "border-border bg-surface text-muted"}`}>
             <span className={`h-1.5 w-1.5 rounded-full ${feedStatus === "live" ? "animate-pulse bg-primary shadow-[0_0_8px_var(--primary)]" : "bg-muted"}`} />
             {liveInstrument} TAPE {feedStatus.toUpperCase()}
           </span>
           <button type="button" onClick={() => void load()} disabled={refreshing} className="flex h-8 w-8 items-center justify-center rounded-xl border border-border bg-surface text-muted hover:text-foreground disabled:opacity-40" title="Refresh positioning map"><RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} /></button>
-        </div>
+        </div> : null}
       </div>
 
       <div className="flex shrink-0 items-center gap-1 overflow-x-auto border-b border-border bg-background px-3 py-1.5">
@@ -627,26 +632,17 @@ export default function GexDeskWorkspace() {
 
       <div className="min-h-0 flex-1 overflow-y-auto p-3">
         <div className="mx-auto max-w-[1680px] space-y-3">
-          {error ? <div className="flex items-center gap-2 rounded-xl border border-warning/25 bg-warning/[0.05] px-3 py-2 text-[7px] text-warning"><AlertTriangle className="h-3.5 w-3.5" />Refresh failed; the last successful Gexdesk map remains visible. {error}</div> : null}
-          <section className="grid gap-2 md:grid-cols-2 xl:grid-cols-5">
+          {error && activePanel !== "GEX_VIEW" ? <div className="flex items-center gap-2 rounded-xl border border-warning/25 bg-warning/[0.05] px-3 py-2 text-[7px] text-warning"><AlertTriangle className="h-3.5 w-3.5" />Refresh failed; the last successful Gexdesk map remains visible. {error}</div> : null}
+          {activePanel !== "GEX_VIEW" ? <section className="grid gap-2 md:grid-cols-2 xl:grid-cols-5">
             <MetricCard label="Environment" value={regimeTone.label} detail={`Net / gross ${payload.regime.ratio >= 0 ? "+" : ""}${payload.regime.ratio.toFixed(3)}`} icon={Gauge} tone={regimeTone.text} />
             <MetricCard label="NQ futures" value={formatNumber(livePrice ?? payload.nqPrice)} detail={lastTickAt ? `Tick ${timeAgo(new Date(lastTickAt).toISOString(), now)}` : `Snapshot ${timeAgo(payload.asOf, now)}`} icon={Radio} />
             <MetricCard label="0DTE concentration" value={formatPercent(payload.regime.zeroDteShare)} detail={`${formatCompact(payload.regime.gross)} gross mapped GEX`} icon={Activity} />
             <MetricCard label="Source agreement" value={`${payload.agreement.score}% · ${payload.agreement.label}`} detail={`${payload.agreement.regimeAligned ? "Regimes align" : "Regimes differ"} · corr ${payload.agreement.profileCorrelation.toFixed(2)}`} icon={ShieldCheck} />
             <MetricCard label="Options pressure" value={`${payload.pressure.score >= 0 ? "+" : ""}${payload.pressure.score.toFixed(0)}`} detail={`${payload.pressure.state.replace("_", " ")} · ${payload.pressure.persistence}`} icon={Waves} tone={pressureTone} />
-          </section>
+          </section> : null}
 
           {activePanel === "GEX_VIEW" ? (
-            <section className="relative flex min-h-[610px] items-center justify-center overflow-hidden rounded-2xl border border-border bg-panel">
-              <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_45%,color-mix(in_srgb,var(--primary)_7%,transparent),transparent_42%)]" />
-              <div className="relative flex max-w-sm flex-col items-center px-6 text-center">
-                <span className="flex h-12 w-12 items-center justify-center rounded-2xl border border-primary/25 bg-primary/[0.07] text-primary shadow-[0_0_28px_color-mix(in_srgb,var(--primary)_16%,transparent)]">
-                  <Eye className="h-5 w-5" />
-                </span>
-                <h2 className="mt-4 text-[12px] font-semibold">Gex View</h2>
-                <p className="mt-2 text-[7px] uppercase tracking-[0.14em] text-muted">Workspace ready for the next Gexdesk section</p>
-              </div>
-            </section>
+            <GexViewWorkspace />
           ) : activePanel === "MAP" ? (
             <>
           <section className="grid min-h-[610px] gap-3 xl:grid-cols-[minmax(0,1fr)_350px]">
