@@ -11,12 +11,15 @@ import {
   ShieldCheck,
   Target,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import KwantLoader from "@/components/KwantLoader";
-import type {
-  SocialObject,
-  SocialPrecordPayload,
-  SocialReceiptPayload,
+import {
+  buildAutomaticGameplanReceipt,
+  evaluateReasoningPath,
+  type SocialReasoningCandle,
+  type SocialObject,
+  type SocialPrecordPayload,
+  type SocialReceiptPayload,
 } from "@/lib/socials";
 
 export type GameplanRecordTab = "scoring" | "previous";
@@ -157,10 +160,11 @@ export default function GameplanRecordsWorkspace({ tab }: { tab: GameplanRecordT
   const [refreshing, setRefreshing] = useState(false);
   const [cloud, setCloud] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const scoringRef = useRef(new Set<string>());
 
-  const loadRecords = useCallback(async (manual = false) => {
+  const loadRecords = useCallback(async (manual = false, silent = false) => {
     if (manual) setRefreshing(true);
-    else setLoading(true);
+    else if (!silent) setLoading(true);
     try {
       const response = await fetch("/api/socials?mine=1&types=precord,receipt", { cache: "no-store" });
       const result = await response.json() as SocialsResponse;
@@ -178,6 +182,21 @@ export default function GameplanRecordsWorkspace({ tab }: { tab: GameplanRecordT
 
   useEffect(() => {
     void loadRecords();
+  }, [loadRecords]);
+
+  useEffect(() => {
+    const refresh = () => void loadRecords(false, true);
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") refresh();
+    };
+    window.addEventListener("kwantdesk:gameplan-locked", refresh);
+    window.addEventListener("kwantdesk:gameplan-scored", refresh);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    return () => {
+      window.removeEventListener("kwantdesk:gameplan-locked", refresh);
+      window.removeEventListener("kwantdesk:gameplan-scored", refresh);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
   }, [loadRecords]);
 
   const records = useMemo(() => {
@@ -201,6 +220,71 @@ export default function GameplanRecordsWorkspace({ tab }: { tab: GameplanRecordT
   }, [objects, tab]);
 
   const complete = tab === "previous";
+
+  useEffect(() => {
+    if (tab !== "scoring" || loading || !records.length) return;
+    let cancelled = false;
+    const evaluateOpenRecords = async () => {
+      const byRoot = new Map<"NQ" | "ES", GameplanRecord[]>();
+      for (const record of records) {
+        if (record.receipt || !["LONG", "SHORT"].includes(record.plan.payload.direction)) continue;
+        const root = record.plan.payload.instrument.toUpperCase().includes("NQ") ? "NQ" : "ES";
+        byRoot.set(root, [...(byRoot.get(root) ?? []), record]);
+      }
+      await Promise.all([...byRoot.entries()].map(async ([root, rootRecords]) => {
+        try {
+          const response = await fetch(`/api/databento/market?symbol=${root}.v.0&timeframe=5m&days=14`, { cache: "no-store" });
+          const body = await response.json() as { candles?: SocialReasoningCandle[] };
+          if (!response.ok || !Array.isArray(body.candles) || cancelled) return;
+          for (const record of rootRecords) {
+            const metrics = evaluateReasoningPath(record.plan.payload, body.candles);
+            if (!metrics || metrics.status === "IN PROGRESS" || scoringRef.current.has(record.plan.id) || cancelled) continue;
+            scoringRef.current.add(record.plan.id);
+            try {
+              const saveResponse = await fetch("/api/socials", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  object: {
+                    id: `receipt:${record.plan.id}`,
+                    objectType: "receipt",
+                    scope: record.plan.scope,
+                    deskId: record.plan.deskId,
+                    parentId: record.plan.id,
+                    authorLabel: record.plan.authorLabel,
+                    payload: buildAutomaticGameplanReceipt(record.plan.payload, metrics),
+                  },
+                }),
+              });
+              const saved = await saveResponse.json() as { object?: SocialObject; error?: string };
+              if (!saveResponse.ok || !saved.object) throw new Error(saved.error ?? "The scored result could not be saved.");
+              if (cancelled) return;
+              setObjects((current) => [
+                saved.object as SocialObject,
+                ...current.filter((object) => !(object.objectType === "receipt" && object.parentId === record.plan.id)),
+              ]);
+              window.dispatchEvent(new CustomEvent("kwantdesk:gameplan-scored", {
+                detail: { recordId: record.plan.id, score: metrics.outcomeScore },
+              }));
+            } catch (scoreError) {
+              if (!cancelled) setError(scoreError instanceof Error ? scoreError.message : "The scored result could not be saved.");
+            } finally {
+              scoringRef.current.delete(record.plan.id);
+            }
+          }
+        } catch {
+          // Keep the locked plan orange when the market history feed is temporarily unavailable.
+        }
+      }));
+    };
+    void evaluateOpenRecords();
+    const timer = window.setInterval(() => void evaluateOpenRecords(), 20_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [loading, records, tab]);
+
   const copy = complete
     ? {
         eyebrow: "Account history",

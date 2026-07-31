@@ -30,6 +30,7 @@ import {
   Plus,
   Radar,
   Repeat2,
+  Scale,
   Search,
   Send,
   Share2,
@@ -54,10 +55,11 @@ import DeskWorkspace from "@/components/socials/DeskWorkspace";
 import UserAvatar from "@/components/socials/UserAvatar";
 import {
   buildDefaultProfile,
+  buildAutomaticGameplanReceipt,
+  buildExecutionComparison,
   calculateReasoningScore,
   calculateReceiptClassification,
   calculateReceiptScores,
-  calculateTrackedReasoningScore,
   CALLING_CARD_CATALOG,
   normalizeSocialProfile,
   PROCESS_STATUSES,
@@ -79,6 +81,7 @@ import {
   type SocialReactionPayload,
   type SocialReceiptPayload,
   type SocialReasoningPathMetrics,
+  type SocialReasoningCandle,
   type SocialScope,
   type SocialState,
 } from "@/lib/socials";
@@ -91,7 +94,7 @@ import {
   type ZyonTradingAccountMode,
   type ZyonTradingAccountPhase,
 } from "@/lib/zyon";
-import { buildExecutionComparison } from "@/lib/socials";
+import { evaluateReasoningPath } from "@/lib/socials";
 import { SOCIAL_RECORD_COPY, SOCIAL_RECORD_RULES } from "@/lib/socialRecordConfig";
 import {
   GAMEPLAN_SESSIONS,
@@ -121,7 +124,7 @@ import {
 } from "react";
 
 type SocialTab = "today" | "reasoning" | "precords" | "desks" | "rankings" | "cards" | "profile";
-type FeedFilter = "all" | "live" | "proven" | "mine";
+type FeedFilter = "all" | "proven" | "mine";
 type AvatarCropDraft = {
   sourceUrl: string;
   naturalWidth: number;
@@ -327,99 +330,6 @@ function tradingAccountForMode(
   };
 }
 
-type ReasoningCandle = {
-  timestamp: number;
-  open: number;
-  high: number;
-  low: number;
-  close: number;
-};
-
-function evaluateReasoningPath(
-  plan: SocialPrecordPayload,
-  candles: ReasoningCandle[],
-): SocialReasoningPathMetrics | null {
-  if (
-    !["LONG", "SHORT"].includes(plan.direction)
-    || plan.plannedEntryLow === null
-    || plan.plannedStop === null
-  ) return null;
-  const entryLow = Math.min(plan.plannedEntryLow, plan.plannedEntryHigh ?? plan.plannedEntryLow);
-  const entryHigh = Math.max(plan.plannedEntryLow, plan.plannedEntryHigh ?? plan.plannedEntryLow);
-  const lockedAt = Date.parse(plan.lockedAt);
-  const eligible = candles.filter((candle) =>
-    candle.timestamp >= lockedAt
-    && Number.isFinite(candle.high)
-    && Number.isFinite(candle.low));
-  const entryIndex = eligible.findIndex((candle) => candle.low <= entryHigh && candle.high >= entryLow);
-  if (entryIndex < 0) return null;
-  const entryCandle = eligible[entryIndex];
-  const entryPrice = Math.max(entryLow, Math.min(entryHigh, entryCandle.open || (entryLow + entryHigh) / 2));
-  const targets = (plan.plannedTargets?.length
-    ? plan.plannedTargets
-    : plan.plannedTarget === null ? [] : [plan.plannedTarget])
-    .filter(Number.isFinite);
-  const long = plan.direction === "LONG";
-  let favourableExcursion = 0;
-  let adverseExcursion = 0;
-  let exitPrice = eligible.at(-1)?.close ?? entryPrice;
-  let exitTime = eligible.at(-1)?.timestamp ?? entryCandle.timestamp;
-  let status: SocialReasoningPathMetrics["status"] = "IN PROGRESS";
-  const hitTargets: number[] = [];
-
-  for (const candle of eligible.slice(entryIndex)) {
-    favourableExcursion = Math.max(
-      favourableExcursion,
-      long ? candle.high - entryPrice : entryPrice - candle.low,
-    );
-    adverseExcursion = Math.max(
-      adverseExcursion,
-      long ? entryPrice - candle.low : candle.high - entryPrice,
-    );
-    const stopHit = long ? candle.low <= plan.plannedStop : candle.high >= plan.plannedStop;
-    if (stopHit) {
-      status = "STOP HIT";
-      exitPrice = plan.plannedStop;
-      exitTime = candle.timestamp;
-      break;
-    }
-    for (const target of targets) {
-      if (hitTargets.includes(target)) continue;
-      const hit = long ? candle.high >= target : candle.low <= target;
-      if (hit) hitTargets.push(target);
-    }
-    if (targets.length && hitTargets.length === targets.length) {
-      status = "TARGET HIT";
-      exitPrice = targets.at(-1) as number;
-      exitTime = candle.timestamp;
-      break;
-    }
-    exitPrice = candle.close;
-    exitTime = candle.timestamp;
-  }
-
-  const riskPoints = Math.abs(entryPrice - plan.plannedStop);
-  const directionSign = long ? 1 : -1;
-  const pointsInDirection = (exitPrice - entryPrice) * directionSign;
-  const path = {
-    status,
-    entryPrice,
-    exitPrice,
-    entryTime: new Date(entryCandle.timestamp).toISOString(),
-    exitTime: new Date(exitTime).toISOString(),
-    pointsInDirection,
-    adverseExcursion,
-    favourableExcursion,
-    ticksCaught: pointsInDirection / 0.25,
-    riskPoints,
-    realisedR: riskPoints > 0 ? pointsInDirection / riskPoints : 0,
-    plannedR: null,
-    durationSeconds: Math.max(0, Math.round((exitTime - entryCandle.timestamp) / 1_000)),
-    targetsHit: hitTargets,
-  };
-  return calculateTrackedReasoningScore(plan, path);
-}
-
 function formatDate(value: string, includeTime = false) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "—";
@@ -566,6 +476,7 @@ export default function SocialsWorkspace({
   onOpenProfile,
   onCloseProfile,
   onMessageProfile,
+  onOpenGameplanScoring,
 }: {
   accountKey: string;
   accountLabel: string;
@@ -573,6 +484,7 @@ export default function SocialsWorkspace({
   onOpenProfile?: (handle: string) => void;
   onCloseProfile?: () => void;
   onMessageProfile?: (userId: string) => void;
+  onOpenGameplanScoring?: () => void;
 }) {
   const resolvedAccountKey = accountKey || "local";
   const resolvedLabel = accountLabel || "Kwant Trader";
@@ -847,6 +759,7 @@ export default function SocialsWorkspace({
   const viewedGameplans = viewedProfileObject
     ? precords.filter((object) =>
         object.userId === viewedProfileObject.userId
+        && receipts.some((receipt) => receipt.parentId === object.id)
         && ["GAMEPLAN", "ZYON"].includes(typedPayload<SocialPrecordPayload>(object)?.source ?? ""))
     : [];
   const savedGameplanIds = new Set(
@@ -1066,7 +979,7 @@ export default function SocialsWorkspace({
     });
     if (!activeRecords.length) return;
     let cancelled = false;
-    const candlesByRoot = new Map<"NQ" | "ES", ReasoningCandle[]>();
+    const candlesByRoot = new Map<"NQ" | "ES", SocialReasoningCandle[]>();
 
     const completeRecord = async (
       record: SocialObject,
@@ -1078,78 +991,7 @@ export default function SocialsWorkspace({
         || metrics.status === "IN PROGRESS"
       ) return;
       completingReasoningRef.current.add(record.id);
-      const trackedDirection = plan.direction as "LONG" | "SHORT";
-      const automaticScores = {
-        confirmation: plan.reasoningScore,
-        discipline: metrics.status === "TARGET HIT" ? 94 : 72,
-        execution: metrics.outcomeScore,
-        review: metrics.outcomeScore,
-        evidenceConfidence: 96,
-        final: metrics.outcomeScore,
-      };
-      const receiptPayload: SocialReceiptPayload = {
-        actualDirection: trackedDirection,
-        actualEntry: metrics.entryPrice,
-        entryTime: metrics.entryTime,
-        actualStop: plan.plannedStop,
-        actualExit: metrics.exitPrice,
-        exitTime: metrics.exitTime,
-        size: plan.plannedSize,
-        partialExits: metrics.targetsHit.length
-          ? `Targets reached: ${metrics.targetsHit.join(", ")}`
-          : "",
-        fees: null,
-        confirmationsAppeared: plan.confirmation,
-        deviationReason: "PLATFORM TRACKED",
-        deviationDetail: "CME price path reconstructed from the immutable lock timestamp.",
-        outcomeReview: metrics.status === "TARGET HIT"
-          ? `The final planned target was reached after ${metrics.durationSeconds} seconds.`
-          : `The planned stop was reached after ${metrics.durationSeconds} seconds.`,
-        nextTimeRule: "Review the locked thesis against the recorded path before changing the next plan.",
-        evidenceName: "",
-        evidenceDataUrl: "",
-        hasEvidence: true,
-        noTrade: false,
-        classification: "JUSTIFIED ADAPTATION",
-        scores: automaticScores,
-        addedAt: metrics.exitTime,
-        fills: [{ price: metrics.entryPrice, size: plan.plannedSize, time: metrics.entryTime }],
-        exits: [{ price: metrics.exitPrice, size: plan.plannedSize, time: metrics.exitTime }],
-        maximumActualRisk: metrics.adverseExcursion,
-        comparison: buildExecutionComparison(plan, {
-          actualDirection: trackedDirection,
-          actualEntry: metrics.entryPrice,
-          actualStop: plan.plannedStop,
-          actualExit: metrics.exitPrice,
-          size: plan.plannedSize,
-          maximumActualRisk: metrics.adverseExcursion,
-          confirmationsAppeared: plan.confirmation,
-          entryTime: metrics.entryTime,
-          noTrade: false,
-        }),
-        retrospective: false,
-        evidenceState: "PLATFORM TIMESTAMPED",
-        assessment: {
-          classification: "JUSTIFIED ADAPTATION",
-          explanation: `Platform path review: ${metrics.pointsInDirection.toFixed(2)} points in the planned direction, ${metrics.adverseExcursion.toFixed(2)} points adverse excursion, ${metrics.realisedR.toFixed(2)}R realised and ${metrics.targetsHit.length} target${metrics.targetsHit.length === 1 ? "" : "s"} reached.`,
-          evidenceUsed: ["Immutable Gameplan", "CME 5-minute price path", "Target and stop geometry"],
-          evidenceMissing: ["Broker fill and slippage"],
-          confidence: 0.92,
-          evaluator: "RULES",
-          modelVersion: "kwant-path-v1",
-          rubricVersion: "reasoning-path-v1",
-          assessedAt: metrics.exitTime,
-          appealAvailable: true,
-        },
-        scoreSnapshot: {
-          reasoning: plan.reasoningScore,
-          reasoningModelVersion: plan.scoreModelVersion ?? SOCIAL_RECORD_RULES.scoreModelVersion,
-          postExecutionModelVersion: "kwant-path-v1",
-          createdAt: metrics.exitTime,
-        },
-        pathMetrics: metrics,
-      };
-      await saveObject(buildLocalObject({
+      const savedReceipt = await saveObject(buildLocalObject({
         id: `receipt:${record.id}`,
         userId: resolvedAccountKey,
         authorLabel: currentProfile.displayName,
@@ -1157,8 +999,15 @@ export default function SocialsWorkspace({
         scope: record.scope,
         deskId: record.deskId,
         parentId: record.id,
-        payload: receiptPayload,
+        payload: buildAutomaticGameplanReceipt(plan, metrics),
       }));
+      if (savedReceipt.cloudSaved) {
+        window.dispatchEvent(new CustomEvent("kwantdesk:gameplan-scored", {
+          detail: { recordId: record.id, score: metrics.outcomeScore },
+        }));
+      } else {
+        completingReasoningRef.current.delete(record.id);
+      }
       setNotice(`${plan.instrument} Gameplan completed. Its Reasoning Score is ${metrics.outcomeScore}%.`);
     };
 
@@ -1173,7 +1022,7 @@ export default function SocialsWorkspace({
       await Promise.all([...byRoot.entries()].map(async ([root, records]) => {
         try {
           const response = await fetch(`/api/databento/market?symbol=${root}.v.0&timeframe=5m&days=14`, { cache: "no-store" });
-          const body = await response.json() as { candles?: ReasoningCandle[] };
+          const body = await response.json() as { candles?: SocialReasoningCandle[] };
           if (!response.ok || !Array.isArray(body.candles) || cancelled) return;
           candlesByRoot.set(root, body.candles);
           for (const record of records) {
@@ -1243,8 +1092,8 @@ export default function SocialsWorkspace({
       const payload = typedPayload<SocialPrecordPayload>(object);
       if (!payload) return false;
       const receipt = receipts.find((candidate) => candidate.parentId === object.id);
+      if (!receipt) return false;
       if (feedFilter === "mine" && object.userId !== resolvedAccountKey) return false;
-      if (feedFilter === "live" && receipt) return false;
       if (feedFilter === "proven" && !receipt) return false;
       if (normalizedQuery && ![
         payload.instrument,
@@ -1317,12 +1166,12 @@ export default function SocialsWorkspace({
   const lockCurrentGameplan = async () => {
     if (zyonGameplanDraft) {
       if (lockedCurrentGameplan) {
-        setNotice("This ZYON Gameplan is already on your Profile and awaiting its outcome.");
+        setNotice("This Gameplan is already locked in Scoring and awaiting its outcome.");
         return;
       }
       const missing = zyonGameplanMissingFields(zyonGameplanDraft);
       if (missing.length) {
-        setNotice(`Complete the holding Gameplan before posting: ${missing.join(", ")}.`);
+        setNotice(`Complete the holding Gameplan before locking it: ${missing.join(", ")}.`);
         return;
       }
       const draft = zyonGameplanDraft;
@@ -1403,8 +1252,8 @@ export default function SocialsWorkspace({
             at: now,
             source: "ZYON",
             note: draft.recordMode === "HISTORICAL"
-              ? "Trader reviewed and posted a historical ZYON Gameplan for end-to-end testing."
-              : "Trader reviewed the ZYON holding record and posted it to their Profile.",
+              ? "Trader reviewed and locked a historical Gameplan for end-to-end scoring."
+              : "Trader reviewed the KwantBot holding record and sent it to Scoring.",
           }],
         } satisfies SocialPrecordPayload,
       });
@@ -1414,7 +1263,7 @@ export default function SocialsWorkspace({
           ...current,
           objects: current.objects.filter((candidate) => objectKey(candidate) !== objectKey(object)),
         }));
-        setNotice("The Profile post did not reach account storage. Your holding Gameplan is still available; try again.");
+        setNotice("The locked Gameplan did not reach account storage. It remains in holding; try again.");
         return;
       }
       if (!cards.some((card) => card.userId === resolvedAccountKey && typedPayload<SocialCardPayload>(card)?.code === "first-on-record")) {
@@ -1438,13 +1287,16 @@ export default function SocialsWorkspace({
         }));
       }
       await saveProgressPatch({ prepare: true, map: true });
-      window.dispatchEvent(new CustomEvent("kwantdesk:gameplan-posted"));
+      window.localStorage.setItem("kwantdesk:gameplan-page-tab", "scoring");
+      window.dispatchEvent(new CustomEvent("kwantdesk:gameplan-locked", {
+        detail: { recordId: savedRecord.id },
+      }));
       setZyonGameplanDraft(null);
       setZyonDraftState("missing");
       setNotice(draft.recordMode === "HISTORICAL"
-        ? `${draft.instrument} historical Gameplan posted to your Profile and is waiting for outcome review.`
-        : `${draft.instrument} Gameplan posted to your Profile. Live ranking is now in progress.`);
-      setTab("reasoning");
+        ? `${draft.instrument} historical Gameplan locked and sent to Scoring for outcome review.`
+        : `${draft.instrument} Gameplan locked. Live scoring is now in progress.`);
+      onOpenGameplanScoring?.();
       return;
     }
     if (!gameplan || gameplanState !== "ready") {
@@ -1546,7 +1398,7 @@ export default function SocialsWorkspace({
         }],
       } satisfies SocialPrecordPayload,
     });
-    await saveObject(object);
+    const savedRecord = await saveObject(object);
     if (!cards.some((card) => card.userId === resolvedAccountKey && typedPayload<SocialCardPayload>(card)?.code === "first-on-record")) {
       const definition = CALLING_CARD_CATALOG[0];
       await saveObject(buildLocalObject({
@@ -1568,7 +1420,16 @@ export default function SocialsWorkspace({
       }));
     }
     await saveProgressPatch({ prepare: true, map: true });
-    setNotice(`${gameplan.instrument} Gameplan locked. The source plan and its reasoning can no longer be rewritten.`);
+    if (savedRecord.cloudSaved) {
+      window.localStorage.setItem("kwantdesk:gameplan-page-tab", "scoring");
+      window.dispatchEvent(new CustomEvent("kwantdesk:gameplan-locked", {
+        detail: { recordId: savedRecord.id },
+      }));
+      setNotice(`${gameplan.instrument} Gameplan locked and sent to Scoring.`);
+      onOpenGameplanScoring?.();
+    } else {
+      setNotice("The locked Gameplan did not reach account storage. Try again before leaving holding.");
+    }
   };
 
   const submitReceipt = async () => {
@@ -1692,7 +1553,7 @@ export default function SocialsWorkspace({
         createdAt: new Date().toISOString(),
       },
     };
-    await saveObject(buildLocalObject({
+    const savedReceipt = await saveObject(buildLocalObject({
       id: `receipt:${parent.id}`,
       userId: resolvedAccountKey,
       authorLabel: currentProfile.displayName,
@@ -1702,6 +1563,11 @@ export default function SocialsWorkspace({
       parentId: parent.id,
       payload,
     }));
+    if (savedReceipt.cloudSaved) {
+      window.dispatchEvent(new CustomEvent("kwantdesk:gameplan-scored", {
+        detail: { recordId: parent.id, score: payload.scores.final },
+      }));
+    }
     await saveProgressPatch({
       review: true,
       improve: Boolean(payload.nextTimeRule),
@@ -2534,7 +2400,7 @@ export default function SocialsWorkspace({
               <Card className="overflow-hidden border-primary/20">
                 <div className="flex flex-wrap items-center gap-3 border-b border-border bg-background/25 px-4 py-3">
                   <span className="flex h-9 w-9 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary"><Archive className="h-4 w-4" /></span>
-                  <div className="min-w-0 flex-1"><h3 className="text-[12px] font-semibold">Gameplan holding page</h3><p className="mt-0.5 text-[8px] text-muted">ZYON sends one editable plan here. Review it, then post it to your Profile before creating another.</p></div>
+                  <div className="min-w-0 flex-1"><h3 className="text-[12px] font-semibold">Gameplan holding page</h3><p className="mt-0.5 text-[8px] text-muted">KwantBot sends one editable plan here. Review it, then lock it into Gameplan Scoring before creating another.</p></div>
                   <div className="flex rounded-xl border border-border bg-surface p-1">
                     {(["NQ", "ES"] as const).map((instrument) => <button key={instrument} type="button" onClick={() => setGameplanInstrument(instrument)} className={`h-7 rounded-lg px-3 font-mono text-[8px] font-semibold ${gameplanInstrument === instrument ? "bg-primary text-background" : "text-muted hover:text-foreground"}`}>{instrument}</button>)}
                   </div>
@@ -2707,8 +2573,8 @@ export default function SocialsWorkspace({
                     <div className="flex flex-wrap items-center gap-2 border-t border-border bg-background/25 px-4 py-3">
                       <div className="flex items-center gap-2 text-[8px] text-muted"><ShieldCheck className="h-3.5 w-3.5 text-primary" />Actual fills: five-minute window · future limit orders allowed</div>
                       <div className="ml-auto flex flex-wrap items-center gap-2">
-                        <span className="flex h-9 items-center rounded-xl border border-border bg-surface px-3 text-[8px] font-semibold text-foreground"><Globe2 className="mr-2 h-3.5 w-3.5 text-primary" />Profile</span>
-                        {lockedCurrentGameplan ? <button type="button" onClick={() => setTab("reasoning")} className="flex h-9 items-center gap-2 rounded-xl border border-warning/25 bg-warning/[0.06] px-4 text-[9px] font-semibold text-warning"><Clock3 className="h-3.5 w-3.5" />Live ranking · view My Reasoning</button> : <button type="button" onClick={() => void lockCurrentGameplan()} className="flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-[9px] font-semibold text-background shadow-[0_0_22px_color-mix(in_srgb,var(--primary)_20%,transparent)] hover:brightness-110"><LockKeyhole className="h-3.5 w-3.5" />Post Gameplan to Profile</button>}
+                        <span className="flex h-9 items-center rounded-xl border border-warning/20 bg-warning/[0.05] px-3 text-[8px] font-semibold text-warning"><Scale className="mr-2 h-3.5 w-3.5" />SCORING</span>
+                        {lockedCurrentGameplan ? <button type="button" onClick={onOpenGameplanScoring} className="flex h-9 items-center gap-2 rounded-xl border border-warning/25 bg-warning/[0.06] px-4 text-[9px] font-semibold text-warning"><Clock3 className="h-3.5 w-3.5" />Sent to Scoring</button> : <button type="button" onClick={() => void lockCurrentGameplan()} className="flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-[9px] font-semibold text-background shadow-[0_0_22px_color-mix(in_srgb,var(--primary)_20%,transparent)] hover:brightness-110"><LockKeyhole className="h-3.5 w-3.5" />Lock in Gameplan</button>}
                       </div>
                     </div>
                   </>
@@ -2869,7 +2735,7 @@ export default function SocialsWorkspace({
             </Card>
             <Card className="flex flex-wrap items-center gap-2 p-3">
               <div className="relative min-w-[220px] flex-1"><Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search records by instrument, context, evidence or trader" className="h-9 w-full rounded-xl border border-border bg-background pl-9 pr-3 text-[8px] outline-none focus:border-primary/40" /></div>
-              {(["all", "live", "proven", "mine"] as FeedFilter[]).map((filter) => <button key={filter} type="button" onClick={() => setFeedFilter(filter)} className={`h-8 rounded-lg px-3 text-[8px] font-semibold capitalize ${feedFilter === filter ? "bg-primary/10 text-primary" : "text-muted hover:bg-surface hover:text-foreground"}`}>{filter}</button>)}
+              {(["all", "proven", "mine"] as FeedFilter[]).map((filter) => <button key={filter} type="button" onClick={() => setFeedFilter(filter)} className={`h-8 rounded-lg px-3 text-[8px] font-semibold capitalize ${feedFilter === filter ? "bg-primary/10 text-primary" : "text-muted hover:bg-surface hover:text-foreground"}`}>{filter}</button>)}
             </Card>
             <div className="mx-auto max-w-4xl space-y-3">
               {visiblePrecords.map(renderPrecordCard)}

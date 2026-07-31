@@ -8757,6 +8757,7 @@ export default function KwantifyWorkspace({
                   setFriendsInitialFriendId(userId);
                   setRightPanel("friends");
                 }}
+                onOpenGameplanScoring={() => router.push("/gameplan?tab=scoring")}
               />
             ) : null}
           </section>

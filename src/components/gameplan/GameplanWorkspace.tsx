@@ -2390,6 +2390,16 @@ const GAMEPLAN_PAGE_TABS: Array<{
 export default function GameplanWorkspace({ initialInstrument = "NQ" }: { initialInstrument?: string }) {
   const [pageTab, setPageTab] = useState<GameplanPageTab>("gameplan");
 
+  useEffect(() => {
+    const requested = new URLSearchParams(window.location.search).get("tab")
+      ?? window.localStorage.getItem("kwantdesk:gameplan-page-tab");
+    if (requested === "scoring" || requested === "previous") setPageTab(requested);
+    window.localStorage.removeItem("kwantdesk:gameplan-page-tab");
+    const openScoring = () => setPageTab("scoring");
+    window.addEventListener("kwantdesk:gameplan-locked", openScoring);
+    return () => window.removeEventListener("kwantdesk:gameplan-locked", openScoring);
+  }, []);
+
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background text-foreground">
       <nav className="relative z-40 flex min-h-[48px] shrink-0 items-stretch gap-1 overflow-x-auto border-b border-border bg-panel px-3 sm:px-4" aria-label="Gameplan sections">

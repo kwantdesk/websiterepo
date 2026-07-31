@@ -237,6 +237,14 @@ export type SocialReasoningPathMetrics = {
   outcomeScore: number;
 };
 
+export type SocialReasoningCandle = {
+  timestamp: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+};
+
 export type SocialPostPayload = {
   kind: "MAP" | "LIVE OBSERVATION" | "REVIEW REQUEST" | "LESSON" | "QUESTION";
   instrument: string;
@@ -675,6 +683,164 @@ export function calculateTrackedReasoningScore(
       : null,
     outcomeScore: Math.max(0, Math.min(100, outcomeScore)),
   } satisfies SocialReasoningPathMetrics;
+}
+
+export function evaluateReasoningPath(
+  plan: SocialPrecordPayload,
+  candles: SocialReasoningCandle[],
+): SocialReasoningPathMetrics | null {
+  if (
+    !["LONG", "SHORT"].includes(plan.direction)
+    || plan.plannedEntryLow === null
+    || plan.plannedStop === null
+  ) return null;
+  const entryLow = Math.min(plan.plannedEntryLow, plan.plannedEntryHigh ?? plan.plannedEntryLow);
+  const entryHigh = Math.max(plan.plannedEntryLow, plan.plannedEntryHigh ?? plan.plannedEntryLow);
+  const lockedAt = Date.parse(plan.lockedAt);
+  const eligible = candles.filter((candle) =>
+    candle.timestamp >= lockedAt
+    && Number.isFinite(candle.high)
+    && Number.isFinite(candle.low));
+  const entryIndex = eligible.findIndex((candle) => candle.low <= entryHigh && candle.high >= entryLow);
+  if (entryIndex < 0) return null;
+  const entryCandle = eligible[entryIndex];
+  const entryPrice = Math.max(entryLow, Math.min(entryHigh, entryCandle.open || (entryLow + entryHigh) / 2));
+  const targets = (plan.plannedTargets?.length
+    ? plan.plannedTargets
+    : plan.plannedTarget === null ? [] : [plan.plannedTarget])
+    .filter(Number.isFinite);
+  const long = plan.direction === "LONG";
+  let favourableExcursion = 0;
+  let adverseExcursion = 0;
+  let exitPrice = eligible.at(-1)?.close ?? entryPrice;
+  let exitTime = eligible.at(-1)?.timestamp ?? entryCandle.timestamp;
+  let status: SocialReasoningPathMetrics["status"] = "IN PROGRESS";
+  const hitTargets: number[] = [];
+
+  for (const candle of eligible.slice(entryIndex)) {
+    favourableExcursion = Math.max(
+      favourableExcursion,
+      long ? candle.high - entryPrice : entryPrice - candle.low,
+    );
+    adverseExcursion = Math.max(
+      adverseExcursion,
+      long ? entryPrice - candle.low : candle.high - entryPrice,
+    );
+    const stopHit = long ? candle.low <= plan.plannedStop : candle.high >= plan.plannedStop;
+    if (stopHit) {
+      status = "STOP HIT";
+      exitPrice = plan.plannedStop;
+      exitTime = candle.timestamp;
+      break;
+    }
+    for (const target of targets) {
+      if (hitTargets.includes(target)) continue;
+      const hit = long ? candle.high >= target : candle.low <= target;
+      if (hit) hitTargets.push(target);
+    }
+    if (targets.length && hitTargets.length === targets.length) {
+      status = "TARGET HIT";
+      exitPrice = targets.at(-1) as number;
+      exitTime = candle.timestamp;
+      break;
+    }
+    exitPrice = candle.close;
+    exitTime = candle.timestamp;
+  }
+
+  const riskPoints = Math.abs(entryPrice - plan.plannedStop);
+  const directionSign = long ? 1 : -1;
+  const pointsInDirection = (exitPrice - entryPrice) * directionSign;
+  return calculateTrackedReasoningScore(plan, {
+    status,
+    entryPrice,
+    exitPrice,
+    entryTime: new Date(entryCandle.timestamp).toISOString(),
+    exitTime: new Date(exitTime).toISOString(),
+    pointsInDirection,
+    adverseExcursion,
+    favourableExcursion,
+    ticksCaught: pointsInDirection / 0.25,
+    riskPoints,
+    realisedR: riskPoints > 0 ? pointsInDirection / riskPoints : 0,
+    plannedR: null,
+    durationSeconds: Math.max(0, Math.round((exitTime - entryCandle.timestamp) / 1_000)),
+    targetsHit: hitTargets,
+  });
+}
+
+export function buildAutomaticGameplanReceipt(
+  plan: SocialPrecordPayload,
+  metrics: SocialReasoningPathMetrics,
+): SocialReceiptPayload {
+  const trackedDirection = plan.direction as "LONG" | "SHORT";
+  return {
+    actualDirection: trackedDirection,
+    actualEntry: metrics.entryPrice,
+    entryTime: metrics.entryTime,
+    actualStop: plan.plannedStop,
+    actualExit: metrics.exitPrice,
+    exitTime: metrics.exitTime,
+    size: plan.plannedSize,
+    partialExits: metrics.targetsHit.length ? `Targets reached: ${metrics.targetsHit.join(", ")}` : "",
+    fees: null,
+    confirmationsAppeared: plan.confirmation,
+    deviationReason: "PLATFORM TRACKED",
+    deviationDetail: "CME price path reconstructed from the immutable lock timestamp.",
+    outcomeReview: metrics.status === "TARGET HIT"
+      ? `The final planned target was reached after ${metrics.durationSeconds} seconds.`
+      : `The planned stop was reached after ${metrics.durationSeconds} seconds.`,
+    nextTimeRule: "Review the locked thesis against the recorded path before changing the next plan.",
+    evidenceName: "",
+    evidenceDataUrl: "",
+    hasEvidence: true,
+    noTrade: false,
+    classification: "JUSTIFIED ADAPTATION",
+    scores: {
+      confirmation: plan.reasoningScore,
+      discipline: metrics.status === "TARGET HIT" ? 94 : 72,
+      execution: metrics.outcomeScore,
+      review: metrics.outcomeScore,
+      evidenceConfidence: 96,
+      final: metrics.outcomeScore,
+    },
+    addedAt: metrics.exitTime,
+    fills: [{ price: metrics.entryPrice, size: plan.plannedSize, time: metrics.entryTime }],
+    exits: [{ price: metrics.exitPrice, size: plan.plannedSize, time: metrics.exitTime }],
+    maximumActualRisk: metrics.adverseExcursion,
+    comparison: buildExecutionComparison(plan, {
+      actualDirection: trackedDirection,
+      actualEntry: metrics.entryPrice,
+      actualStop: plan.plannedStop,
+      actualExit: metrics.exitPrice,
+      size: plan.plannedSize,
+      maximumActualRisk: metrics.adverseExcursion,
+      confirmationsAppeared: plan.confirmation,
+      entryTime: metrics.entryTime,
+      noTrade: false,
+    }),
+    retrospective: false,
+    evidenceState: "PLATFORM TIMESTAMPED",
+    assessment: {
+      classification: "JUSTIFIED ADAPTATION",
+      explanation: `Platform path review: ${metrics.pointsInDirection.toFixed(2)} points in the planned direction, ${metrics.adverseExcursion.toFixed(2)} points adverse excursion, ${metrics.realisedR.toFixed(2)}R realised and ${metrics.targetsHit.length} target${metrics.targetsHit.length === 1 ? "" : "s"} reached.`,
+      evidenceUsed: ["Immutable Gameplan", "CME 5-minute price path", "Target and stop geometry"],
+      evidenceMissing: ["Broker fill and slippage"],
+      confidence: 0.92,
+      evaluator: "RULES",
+      modelVersion: "kwant-path-v1",
+      rubricVersion: "reasoning-path-v1",
+      assessedAt: metrics.exitTime,
+      appealAvailable: true,
+    },
+    scoreSnapshot: {
+      reasoning: plan.reasoningScore,
+      reasoningModelVersion: plan.scoreModelVersion ?? "kwant-process-v1",
+      postExecutionModelVersion: "kwant-path-v1",
+      createdAt: metrics.exitTime,
+    },
+    pathMetrics: metrics,
+  };
 }
 
 export function reasoningScoreFromReceipts(
