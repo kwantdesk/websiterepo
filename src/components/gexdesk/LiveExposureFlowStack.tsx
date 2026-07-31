@@ -37,6 +37,80 @@ const EMPTY_STATUS: Record<GreekMode, FlowStatus> = {
   CHARM: "CONNECTING",
 };
 
+const NEW_YORK_DATE_PARTS = new Intl.DateTimeFormat("en-US", {
+  timeZone: "America/New_York",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+
+const NEW_YORK_DATE_TIME_PARTS = new Intl.DateTimeFormat("en-US", {
+  timeZone: "America/New_York",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hourCycle: "h23",
+});
+
+function readDatePart(parts: Intl.DateTimeFormatPart[], type: Intl.DateTimeFormatPartTypes) {
+  return Number(parts.find((part) => part.type === type)?.value ?? 0);
+}
+
+function newYorkSessionClose(timestamp: number | null) {
+  if (!timestamp || !Number.isFinite(timestamp)) return null;
+  const sessionParts = NEW_YORK_DATE_PARTS.formatToParts(new Date(timestamp));
+  const year = readDatePart(sessionParts, "year");
+  const month = readDatePart(sessionParts, "month");
+  const day = readDatePart(sessionParts, "day");
+  const targetLocalEpoch = Date.UTC(year, month - 1, day, 16, 0, 0);
+  let candidate = targetLocalEpoch;
+
+  // Resolve 16:00 New York to UTC without assuming a fixed EST/EDT offset.
+  for (let pass = 0; pass < 2; pass += 1) {
+    const localParts = NEW_YORK_DATE_TIME_PARTS.formatToParts(new Date(candidate));
+    const representedLocalEpoch = Date.UTC(
+      readDatePart(localParts, "year"),
+      readDatePart(localParts, "month") - 1,
+      readDatePart(localParts, "day"),
+      readDatePart(localParts, "hour"),
+      readDatePart(localParts, "minute"),
+      readDatePart(localParts, "second"),
+    );
+    candidate += targetLocalEpoch - representedLocalEpoch;
+  }
+  return candidate;
+}
+
+function lastSessionClose(series: IntradayExposureSeries | null) {
+  return newYorkSessionClose(series?.points.at(-1)?.timestamp ?? null);
+}
+
+function elapsedSinceSessionClose(closeTimestamp: number | null, now: number | null) {
+  if (!closeTimestamp || !now) return null;
+  const elapsedSeconds = Math.max(0, Math.floor((now - closeTimestamp) / 1_000));
+  const hours = Math.floor(elapsedSeconds / 3_600);
+  const minutes = Math.floor(elapsedSeconds % 3_600 / 60);
+  const seconds = elapsedSeconds % 60;
+  return `${hours}h ${String(minutes).padStart(2, "0")}m ${String(seconds).padStart(2, "0")}s ago`;
+}
+
+function LastSessionLabel({ closeTimestamp }: { closeTimestamp: number | null }) {
+  const [now, setNow] = useState<number | null>(null);
+
+  useEffect(() => {
+    const update = () => setNow(Date.now());
+    update();
+    const timer = window.setInterval(update, 1_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const sessionAge = elapsedSinceSessionClose(closeTimestamp, now);
+  return <>LAST SESSION{sessionAge ? ` (${sessionAge})` : ""}</>;
+}
+
 function compact(value: number | null) {
   if (value === null || !Number.isFinite(value)) return "--";
   const absolute = Math.abs(value);
@@ -150,7 +224,6 @@ function ExposureStrip({
   const latest = series?.points.at(-1) ?? null;
   const first = series?.points[0] ?? null;
   const change = latest && first ? latest.net - first.net : null;
-  const statusLabel = status === "LAST_SESSION" ? "LAST SESSION" : status;
 
   return (
     <div className="grid min-h-0 flex-1 grid-cols-[160px_minmax(0,1fr)] border-b border-border last:border-b-0">
@@ -158,7 +231,9 @@ function ExposureStrip({
         <div className="flex items-center gap-2">
           <span className="font-mono text-[14px] font-semibold text-foreground">{MODE_META[mode].short}</span>
           <span className={`rounded-md border px-1.5 py-0.5 text-[6px] font-semibold ${statusTone(status)}`}>
-            {statusLabel}
+            {status === "LAST_SESSION"
+              ? <LastSessionLabel closeTimestamp={lastSessionClose(series)} />
+              : status}
           </span>
         </div>
         <div className="mt-0.5 text-[7px] text-muted">{MODE_META[mode].detail}</div>
@@ -290,6 +365,10 @@ export default function LiveExposureFlowStack({
       : marketOpen
         ? "CONNECTING"
         : "LAST SESSION";
+  const aggregateSessionClose = Math.max(
+    0,
+    ...MODES.map((mode) => lastSessionClose(seriesByMode[mode]) ?? 0),
+  ) || null;
 
   const handleInstrument = (next: GexDeskSourceSymbol) => {
     setSymbol(next);
@@ -319,7 +398,9 @@ export default function LiveExposureFlowStack({
 
         <span className={`ml-auto flex items-center gap-1.5 rounded-lg border px-2 py-1 text-[7px] font-semibold ${aggregateStatus === "LIVE" ? "border-primary/25 bg-primary/10 text-primary" : aggregateStatus === "RECONNECTING" ? "border-danger/25 bg-danger/10 text-danger" : "border-border bg-surface text-muted"}`}>
           <Radio className={`h-2.5 w-2.5 ${aggregateStatus === "LIVE" ? "animate-pulse" : ""}`} />
-          {aggregateStatus}
+          {aggregateStatus === "LAST SESSION"
+            ? <LastSessionLabel closeTimestamp={aggregateSessionClose} />
+            : aggregateStatus}
         </span>
         <span className="rounded-lg border border-border bg-surface px-2 py-1 font-mono text-[7px] text-muted">
           FRONT {expiration ?? "--"}
