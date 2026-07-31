@@ -130,6 +130,12 @@ function ratio(value: number | null) {
   return value === null || !Number.isFinite(value) ? "—" : value.toFixed(2);
 }
 
+function riskReward(value: number | null) {
+  if (value === null || !Number.isFinite(value)) return "—";
+  const reward = value < 0 ? `−${Math.abs(value).toFixed(2)}` : value.toFixed(2);
+  return `1 : ${reward}`;
+}
+
 function compact(value: number) {
   const absolute = Math.abs(value);
   const sign = value < 0 ? "−" : value > 0 ? "+" : "";
@@ -1102,7 +1108,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
               <MetricCard label="Win rate" value={percent(stats.winRate)} detail={`${filteredTrades.filter((trade) => trade.netPnl > 0).length} wins · ${filteredTrades.filter((trade) => trade.netPnl < 0).length} losses`} icon={Activity} />
               <MetricCard label="Profit factor" value={ratio(stats.profitFactor)} detail={`${money(stats.grossProfit, false)} / ${money(stats.grossLoss, false)}`} icon={BarChart3} />
               <MetricCard label="Expectancy" value={money(stats.expectancy)} detail="Average net result per trade" icon={Sparkles} tone={(stats.expectancy ?? 0) >= 0 ? "positive" : "negative"} />
-              <MetricCard label="Average R" value={stats.averageR === null ? "—" : `${stats.averageR.toFixed(2)}R`} detail={`${filteredTrades.filter((trade) => trade.rMultiple !== null).length} risk-complete trades`} icon={Layers3} />
+              <MetricCard label="Avg risk : reward" value={riskReward(stats.averageR)} detail={`${filteredTrades.filter((trade) => trade.rMultiple !== null).length} risk-complete trades`} icon={Layers3} />
               <MetricCard label="Max drawdown" value={money(-stats.maxDrawdown)} detail="Peak-to-trough imported P&L" icon={TrendingDown} tone="negative" />
               <MetricCard label="Review integrity" value={`${reviewIntegrity}%`} detail="Source 45% · review 40% · evidence 15%" icon={ShieldCheck} tone={reviewIntegrity >= 80 ? "positive" : "neutral"} />
               <MetricCard label="Open reviews" value={String(unreviewed.length)} detail={`${stats.reviewedCount} marked reviewed`} icon={CircleAlert} tone={unreviewed.length ? "negative" : "positive"} />
