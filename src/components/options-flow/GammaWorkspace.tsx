@@ -702,9 +702,9 @@ function LoadingScreen() {
 
 
 export default function GammaWorkspace() {
-  const initialData = readWorkspaceData<OptionsFlowPayload>(optionsFlowCacheKey("SPX", "CASH"));
+  const initialData = readWorkspaceData<OptionsFlowPayload>(optionsFlowCacheKey("QQQ", "CASH"));
   const pageScrollRef = useRef<HTMLDivElement | null>(null);
-  const [symbol, setSymbol] = useState("SPX");
+  const [symbol, setSymbol] = useState("QQQ");
   const [priceMode, setPriceMode] = useState<OptionsPriceMode>("CASH");
   const [activeGreek, setActiveGreek] = useState<GreekMode>("GAMMA");
   const [gexScope, setGexScope] = useState<"FULL_CHAIN" | "ZERO_DTE">("FULL_CHAIN");
