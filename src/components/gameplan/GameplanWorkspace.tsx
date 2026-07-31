@@ -92,6 +92,7 @@ import {
   gameplanCacheKey,
   readWorkspaceData,
 } from "@/lib/workspaceDataCache";
+import GameplanRecordsWorkspace, { type GameplanRecordTab } from "@/components/gameplan/GameplanRecordsWorkspace";
 
 type DetailMode = "beginner" | "standard" | "pro";
 type Level = GameplanEdition["ladder"][number];
@@ -1841,7 +1842,7 @@ function LoadingState() {
   );
 }
 
-export default function GameplanWorkspace({ initialInstrument = "NQ" }: { initialInstrument?: string }) {
+function GameplanLiveWorkspace({ initialInstrument = "NQ" }: { initialInstrument?: string }) {
   const initialRoot = initialInstrument.toUpperCase().startsWith("ES") || initialInstrument.toUpperCase().startsWith("MES") ? "ES" : "NQ";
   const initialPayloadRef = useRef(
     readWorkspaceData<GameplanPayload>(gameplanCacheKey(initialRoot, "newyork")),
@@ -2370,6 +2371,54 @@ export default function GameplanWorkspace({ initialInstrument = "NQ" }: { initia
         </div>
       </div>
       <GlossaryDrawer term={glossaryTerm} onClose={() => setGlossaryTerm(null)} />
+    </div>
+  );
+}
+
+type GameplanPageTab = "gameplan" | GameplanRecordTab;
+
+const GAMEPLAN_PAGE_TABS: Array<{
+  id: GameplanPageTab;
+  label: string;
+  icon: LucideIcon;
+}> = [
+  { id: "gameplan", label: "GAME PLAN", icon: Map },
+  { id: "scoring", label: "SCORING", icon: Scale },
+  { id: "previous", label: "PREVIOUS GAME PLANS", icon: History },
+];
+
+export default function GameplanWorkspace({ initialInstrument = "NQ" }: { initialInstrument?: string }) {
+  const [pageTab, setPageTab] = useState<GameplanPageTab>("gameplan");
+
+  return (
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background text-foreground">
+      <nav className="relative z-40 flex min-h-[48px] shrink-0 items-stretch gap-1 overflow-x-auto border-b border-border bg-panel px-3 sm:px-4" aria-label="Gameplan sections">
+        {GAMEPLAN_PAGE_TABS.map(({ id, label, icon: Icon }) => {
+          const active = pageTab === id;
+          return (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setPageTab(id)}
+              className={`group relative flex shrink-0 items-center gap-2 px-3.5 text-[9px] font-semibold tracking-[0.08em] transition-colors ${active ? "text-primary" : "text-muted hover:text-foreground"}`}
+              aria-current={active ? "page" : undefined}
+            >
+              <Icon className={`h-3.5 w-3.5 transition-colors ${active ? "text-primary" : "text-muted group-hover:text-foreground"}`} />
+              {label}
+              <span className={`absolute inset-x-2 bottom-0 h-px origin-center bg-primary transition-transform ${active ? "scale-x-100 shadow-[0_0_12px_var(--color-primary)]" : "scale-x-0"}`} />
+            </button>
+          );
+        })}
+      </nav>
+
+      <div className={`min-h-0 flex-1 ${pageTab === "gameplan" ? "block" : "hidden"}`}>
+        <GameplanLiveWorkspace initialInstrument={initialInstrument} />
+      </div>
+      {pageTab !== "gameplan" ? (
+        <div className="min-h-0 flex-1">
+          <GameplanRecordsWorkspace tab={pageTab} />
+        </div>
+      ) : null}
     </div>
   );
 }
