@@ -8,6 +8,7 @@ import {
   BellRing,
   Check,
   ChevronDown,
+  Clock3,
   Crown,
   DoorOpen,
   Gauge,
@@ -16,6 +17,7 @@ import {
   Image as ImageIcon,
   LockKeyhole,
   MessageCircle,
+  Mic,
   Mic2,
   MoreHorizontal,
   Network,
@@ -41,6 +43,7 @@ import KwantLoader from "@/components/KwantLoader";
 import KwantSelect from "@/components/ui/KwantSelect";
 import UserAvatar from "@/components/socials/UserAvatar";
 import { createClient as createSupabaseBrowserClient } from "@/lib/supabase";
+import { useSpeechDictation } from "@/hooks/useSpeechDictation";
 import {
   prepareSharedImage,
   prepareSquareImage,
@@ -54,6 +57,7 @@ import {
   type DeskChannel,
   type DeskMember,
   type DeskMemberProfile,
+  type DeskMessage,
   type DeskMessageAttachment,
   type DeskNetworkPayload,
   type DeskPrivacy,
@@ -123,6 +127,14 @@ type MemberRoleDraft = {
   responsibilities: string;
   importanceLevel: number;
 };
+
+type OptimisticDeskMessage = DeskMessage & {
+  deliveryStatus: "sending" | "sent" | "failed";
+};
+
+function isOptimisticDeskMessage(message: DeskMessage): message is OptimisticDeskMessage {
+  return "deliveryStatus" in message;
+}
 
 const REACTIONS = ["👍", "🔥", "🎯", "🧠", "✅"];
 const DESK_ACCENTS = [
@@ -844,6 +856,7 @@ export default function DeskWorkspace({
   const [deletingDeskId, setDeletingDeskId] = useState("");
   const [channelEditor, setChannelEditor] = useState<ChannelDraft>(emptyChannelDraft);
   const [message, setMessage] = useState("");
+  const [optimisticMessages, setOptimisticMessages] = useState<OptimisticDeskMessage[]>([]);
   const [attachment, setAttachment] = useState<DeskMessageAttachment | null>(null);
   const [imagePreview, setImagePreview] = useState<DeskMessageAttachment | null>(null);
   const [directoryQuery, setDirectoryQuery] = useState("");
@@ -858,6 +871,7 @@ export default function DeskWorkspace({
   const suppressRefreshUntilRef = useRef(0);
   const inviteFriendsRequestRef = useRef(false);
   const inviteFriendsLoadedAtRef = useRef(0);
+  const deliveryTimersRef = useRef(new Map<string, ReturnType<typeof setTimeout>>());
 
   selectedDeskRef.current = activeDeskId;
 
@@ -995,12 +1009,27 @@ export default function DeskWorkspace({
     .filter((channel) => channel.deskId === activeDeskId)
     .sort((left, right) => left.position - right.position);
   const activeChannel = activeChannels.find((channel) => channel.id === activeChannelId) ?? activeChannels.find((channel) => channel.channelType === "text") ?? null;
-  const channelMessages = network.messages.filter((entry) => entry.channelId === activeChannel?.id);
+  const channelMessages = useMemo(() => {
+    const byId = new Map<string, DeskMessage>();
+    network.messages
+      .filter((entry) => entry.channelId === activeChannel?.id)
+      .forEach((entry) => byId.set(entry.id, entry));
+    optimisticMessages
+      .filter((entry) => entry.channelId === activeChannel?.id)
+      .forEach((entry) => byId.set(entry.id, entry));
+    return [...byId.values()].sort((left, right) => Date.parse(left.createdAt) - Date.parse(right.createdAt));
+  }, [activeChannel?.id, network.messages, optimisticMessages]);
   const activeFocusLock = (network.focusLocks ?? []).find((lock) => lock.deskId === activeDeskId) ?? null;
   const canReleaseFocus = Boolean(activeFocusLock && (
     activeFocusLock.lockedBy === viewerId
     || leader
   ));
+  const speechDictation = useSpeechDictation({
+    value: message,
+    onChange: setMessage,
+    disabled: Boolean(activeFocusLock) || !activeDesk || !activeChannel || activeChannel.channelType !== "text",
+    maxLength: 4_000,
+  });
 
   const profileMap = useMemo(() => new Map(network.profiles.map((profile) => [profile.userId, profile])), [network.profiles]);
   const profileFor = useCallback((userId: string): DeskMemberProfile => profileMap.get(userId) ?? {
@@ -1092,6 +1121,11 @@ export default function DeskWorkspace({
   useEffect(() => {
     messageEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [channelMessages.length, activeChannel?.id]);
+
+  useEffect(() => () => {
+    for (const timer of deliveryTimersRef.current.values()) clearTimeout(timer);
+    deliveryTimersRef.current.clear();
+  }, []);
 
   const perform = useCallback(async (body: Record<string, unknown>, success?: string) => {
     setWorking(true);
@@ -1360,27 +1394,69 @@ export default function DeskWorkspace({
     if (saved) setShowChannel(false);
   };
 
-  const sendMessage = async () => {
-    if (!activeDesk || !activeChannel || (!message.trim() && !attachment) || working) return;
+  const deliverDeskMessage = useCallback(async (outgoing: OptimisticDeskMessage) => {
+    const existingTimer = deliveryTimersRef.current.get(outgoing.id);
+    if (existingTimer) {
+      clearTimeout(existingTimer);
+      deliveryTimersRef.current.delete(outgoing.id);
+    }
+    setOptimisticMessages((current) => current.map((entry) => entry.id === outgoing.id
+      ? { ...entry, deliveryStatus: "sending" }
+      : entry));
+    try {
+      const response = await fetch("/api/socials/desks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "send-message",
+          deskId: outgoing.deskId,
+          channelId: outgoing.channelId,
+          clientMessageId: outgoing.id,
+          message: outgoing.body,
+          attachments: outgoing.attachments,
+        }),
+      });
+      const payload = await response.json() as { error?: string; messageId?: string };
+      if (!response.ok) throw new Error(payload.error || "The Desk message could not be sent.");
+      setOptimisticMessages((current) => current.map((entry) => entry.id === outgoing.id
+        ? { ...entry, deliveryStatus: "sent" }
+        : entry));
+      void loadNetwork(true, outgoing.deskId);
+      const timer = setTimeout(() => {
+        setOptimisticMessages((current) => current.filter((entry) => entry.id !== outgoing.id));
+        deliveryTimersRef.current.delete(outgoing.id);
+      }, 1_500);
+      deliveryTimersRef.current.set(outgoing.id, timer);
+    } catch (reason) {
+      setOptimisticMessages((current) => current.map((entry) => entry.id === outgoing.id
+        ? { ...entry, deliveryStatus: "failed" }
+        : entry));
+      onNotice(reason instanceof Error ? reason.message : "The Desk message could not be sent.");
+    }
+  }, [loadNetwork, onNotice]);
+
+  const sendMessage = () => {
+    if (!activeDesk || !activeChannel || (!message.trim() && !attachment)) return;
     if (activeFocusLock) {
       onNotice("This Desk is in trading focus mode. Messages are paused.");
       return;
     }
-    const draftMessage = message;
-    const draftAttachment = attachment;
-    setMessage("");
-    setAttachment(null);
-    const saved = await perform({
-      action: "send-message",
+    const outgoing: OptimisticDeskMessage = {
+      id: crypto.randomUUID(),
       deskId: activeDesk.deskId,
       channelId: activeChannel.id,
-      message: draftMessage,
-      attachments: draftAttachment ? [draftAttachment] : [],
-    });
-    if (!saved) {
-      setMessage(draftMessage);
-      setAttachment(draftAttachment);
-    }
+      senderUserId: viewerId,
+      body: message.trim(),
+      attachments: attachment ? [attachment] : [],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      deliveryStatus: "sending",
+    };
+    speechDictation.stop();
+    setMessage("");
+    setAttachment(null);
+    setOptimisticMessages((current) => [...current, outgoing]);
+    void deliverDeskMessage(outgoing);
   };
 
   const handleMessageKey = (event: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -1748,6 +1824,7 @@ export default function DeskWorkspace({
                         const deskMember = memberByUserId.get(entry.senderUserId);
                         const previous = channelMessages[index - 1];
                         const grouped = previous?.senderUserId === entry.senderUserId && Date.parse(entry.createdAt) - Date.parse(previous.createdAt) < 300_000;
+                        const optimistic = isOptimisticDeskMessage(entry) ? entry : null;
                         const reactionGroups = REACTIONS.map((emoji) => ({
                           emoji,
                           users: network.reactions.filter((reaction) => reaction.messageId === entry.id && reaction.emoji === emoji),
@@ -1759,6 +1836,13 @@ export default function DeskWorkspace({
                               {!grouped ? <div className="flex flex-wrap items-center gap-2"><button type="button" onClick={() => onOpenProfile?.(profile.handle)} className="text-[8px] font-semibold hover:text-primary">{profile.displayName}</button>{deskMember ? <MemberRoleBadge member={deskMember} compact /> : null}<span className="text-[6px] text-muted">{formatDateTime(entry.createdAt)}</span></div> : null}
                               {entry.body ? <p className="mt-1 whitespace-pre-wrap break-words text-[8px] leading-4 text-foreground/90">{entry.body}</p> : null}
                               {entry.attachments.map((item) => <button key={item.id} type="button" onClick={() => setImagePreview(item)} className="mt-2 block max-w-sm overflow-hidden rounded-xl border border-border bg-background/40"><img src={item.dataUrl} alt={item.name} className="max-h-64 w-full object-contain" /></button>)}
+                              {optimistic ? (
+                                <div className={`mt-1 flex items-center gap-1 text-[6px] ${optimistic.deliveryStatus === "failed" ? "text-danger" : "text-muted"}`}>
+                                  {optimistic.deliveryStatus === "sending" ? <><Clock3 className="h-2.5 w-2.5" />Sendingâ€¦</> : null}
+                                  {optimistic.deliveryStatus === "sent" ? <><Check className="h-2.5 w-2.5 text-primary" />Sent</> : null}
+                                  {optimistic.deliveryStatus === "failed" ? <button type="button" onClick={() => void deliverDeskMessage(optimistic)} className="font-semibold underline underline-offset-2">Not sent Â· Retry</button> : null}
+                                </div>
+                              ) : null}
                               {reactionGroups.length ? <div className="mt-2 flex flex-wrap gap-1">{reactionGroups.map((group) => <button key={group.emoji} type="button" disabled={Boolean(activeFocusLock)} onClick={() => void perform({ action: "react", deskId: activeDesk.deskId, messageId: entry.id, emoji: group.emoji })} className={`flex items-center gap-1 rounded-lg border px-2 py-1 text-[7px] disabled:cursor-default ${group.users.some((reaction) => reaction.userId === viewerId) ? "border-primary/35 bg-primary/10 text-primary" : "border-border bg-surface/30 text-muted"}`}><span>{group.emoji}</span><span className="font-mono">{group.users.length}</span></button>)}</div> : null}
                             </div>
                             {!activeFocusLock ? <div className="absolute -top-4 right-2 hidden rounded-xl border border-border bg-panel p-1 shadow-xl group-hover:flex">{REACTIONS.map((emoji) => <button key={emoji} type="button" onClick={() => void perform({ action: "react", deskId: activeDesk.deskId, messageId: entry.id, emoji })} className="flex h-7 w-7 items-center justify-center rounded-lg text-[12px] hover:bg-surface">{emoji}</button>)}</div> : null}
@@ -1777,12 +1861,27 @@ export default function DeskWorkspace({
                   ) : (activeChannel?.readOnly || activeChannel?.reactionOnly) && !leader ? (
                     <div className="flex h-12 items-center justify-center gap-2 rounded-xl border border-border bg-surface/25 text-[7px] text-muted"><ShieldCheck className="h-3.5 w-3.5 text-primary" />{activeChannel.reactionOnly ? "This channel accepts reactions only." : "Only Desk leaders can post in this channel."}</div>
                   ) : (
+                    <>
+                    {speechDictation.error ? <div className="mb-2 text-[7px] text-danger">{speechDictation.error}</div> : null}
                     <div className="flex items-end gap-2 rounded-2xl border border-border bg-panel p-2 focus-within:border-primary/35">
                       <button type="button" onClick={() => attachmentInputRef.current?.click()} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-primary" title="Attach image"><Plus className="h-4 w-4" /></button>
-                      <textarea value={message} onChange={(event) => setMessage(event.target.value)} onKeyDown={handleMessageKey} rows={1} placeholder={`Message #${activeChannel?.name ?? "desk"}`} className="max-h-28 min-h-8 flex-1 resize-none bg-transparent px-1 py-2 text-[8px] leading-4 outline-none placeholder:text-muted" />
-                      <button type="button" onClick={() => void sendMessage()} disabled={working || (!message.trim() && !attachment)} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary text-background disabled:opacity-35"><Send className="h-3.5 w-3.5" /></button>
+                      <textarea value={message} maxLength={4_000} onChange={(event) => setMessage(event.target.value)} onKeyDown={handleMessageKey} rows={1} placeholder={`Message #${activeChannel?.name ?? "desk"}`} className="max-h-28 min-h-8 flex-1 resize-none bg-transparent px-1 py-2 text-[8px] leading-4 outline-none placeholder:text-muted" />
+                      <button
+                        type="button"
+                        onClick={() => { speechDictation.clearError(); speechDictation.toggle(); }}
+                        disabled={!speechDictation.supported}
+                        aria-label={speechDictation.listening ? "Stop dictating Desk message" : "Dictate Desk message"}
+                        aria-pressed={speechDictation.listening}
+                        title={!speechDictation.supported ? "Speech input is not supported by this browser" : speechDictation.listening ? "Stop dictation" : "Dictate a message"}
+                        className={`relative flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition disabled:cursor-not-allowed disabled:opacity-30 ${speechDictation.listening ? "bg-primary/15 text-primary shadow-[0_0_18px_color-mix(in_srgb,var(--primary)_16%,transparent)]" : "text-muted hover:bg-surface hover:text-primary"}`}
+                      >
+                        {speechDictation.listening ? <span className="absolute inset-2 animate-ping rounded-full bg-primary/25" /> : null}
+                        <Mic className="relative h-3.5 w-3.5" />
+                      </button>
+                      <button type="button" onClick={sendMessage} disabled={!message.trim() && !attachment} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary text-background disabled:opacity-35"><Send className="h-3.5 w-3.5" /></button>
                       <input ref={attachmentInputRef} type="file" accept="image/png,image/jpeg,image/webp,image/gif" className="hidden" onChange={loadAttachment} />
                     </div>
+                    </>
                   )}
                 </div>
               </div>

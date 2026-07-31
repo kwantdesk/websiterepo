@@ -1041,7 +1041,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Write a message or attach an image." }, { status: 400 });
     }
     const row = {
-      id: randomUUID(),
+      id: cleanUuid(body.clientMessageId) || randomUUID(),
       desk_id: deskId,
       channel_id: channelId,
       sender_user_id: actor.userId,
@@ -1049,7 +1049,23 @@ export async function POST(request: NextRequest) {
       attachments,
     };
     const { error } = await supabase.from("desk_messages").insert(row);
-    if (error) return NextResponse.json({ error: error.message }, { status: 403 });
+    if (error?.code === "23505") {
+      const existing = await supabase
+        .from("desk_messages")
+        .select("id")
+        .eq("id", row.id)
+        .eq("sender_user_id", actor.userId)
+        .maybeSingle();
+      if (existing.data?.id) return NextResponse.json({ ok: true, messageId: existing.data.id, duplicate: true });
+    }
+    if (error) {
+      const permissionDenied = error.code === "42501";
+      return NextResponse.json({
+        error: permissionDenied
+          ? "You cannot post in this Desk channel. Check its privacy, read-only and trading-focus settings."
+          : error.message,
+      }, { status: permissionDenied ? 403 : 502 });
+    }
     return NextResponse.json({ ok: true, messageId: row.id });
   }
 
