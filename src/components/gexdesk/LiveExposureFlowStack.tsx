@@ -175,7 +175,7 @@ function ExposureStrip({
         <div className="pointer-events-none absolute left-3 top-2 z-10 flex items-center gap-3 text-[6px] font-semibold">
           <span className="flex items-center gap-1 text-primary"><i className="h-1 w-1 rounded-full bg-primary" />CALL {compact(latest?.call ?? null)}</span>
           <span className="flex items-center gap-1 text-danger"><i className="h-1 w-1 rounded-full bg-danger" />PUT {compact(latest?.put ?? null)}</span>
-          <span className="flex items-center gap-1 text-accent"><i className="h-1 w-1 rounded-full bg-accent" />NET</span>
+          <span className="flex items-center gap-1 text-foreground"><i className="h-1 w-1 rounded-full bg-foreground" />NET</span>
         </div>
         {series?.points.length && series.points.length >= 2 ? (
           <svg
@@ -189,10 +189,10 @@ function ExposureStrip({
               <line key={ratio} x1="0" x2={geometry.width} y1={ratio * geometry.height} y2={ratio * geometry.height} stroke="var(--grid-color)" strokeWidth="1" />
             ))}
             <line x1="0" x2={geometry.width} y1={geometry.zeroY} y2={geometry.zeroY} stroke="var(--border)" strokeWidth="1" strokeDasharray="4 5" />
-            <path d={geometry.netArea} fill="var(--accent)" fillOpacity="0.055" />
+            <path d={geometry.netArea} fill="var(--foreground)" fillOpacity="0.045" />
             <path d={geometry.callPath} fill="none" stroke="var(--primary)" strokeWidth="1.2" vectorEffect="non-scaling-stroke" />
             <path d={geometry.putPath} fill="none" stroke="var(--danger)" strokeWidth="1.2" vectorEffect="non-scaling-stroke" />
-            <path d={geometry.netPath} fill="none" stroke="var(--accent)" strokeWidth="2" vectorEffect="non-scaling-stroke" />
+            <path d={geometry.netPath} fill="none" stroke="var(--foreground)" strokeWidth="2" vectorEffect="non-scaling-stroke" />
             {showTimeAxis ? geometry.ticks.map((tick) => (
               <text key={`${tick.x}-${tick.label}`} x={tick.x} y={geometry.height - 5} textAnchor="middle" fill="var(--muted)" fontSize="7">{tick.label}</text>
             )) : null}
