@@ -83,6 +83,7 @@ export type JournalAnalysisEvidencePack = {
     rMultiple: number | null;
     rating: number | null;
     note: string;
+    improvement: string;
   }>;
 };
 
@@ -376,6 +377,7 @@ export function buildJournalAnalysisEvidence(
         rMultiple: nullableRounded(trade.rMultiple, 3),
         rating: nullableRounded(trade.rating, 1),
         note: cleanContext(trade.notes, 360),
+        improvement: cleanContext(trade.improvements ?? "", 360),
       })),
   };
 }

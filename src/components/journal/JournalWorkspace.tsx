@@ -7,9 +7,11 @@ import {
   ArrowUpRight,
   BarChart3,
   BrainCircuit,
+  BookPlus,
   BookOpen,
   Bot,
   CalendarDays,
+  Camera,
   Check,
   ChevronLeft,
   ChevronRight,
@@ -31,6 +33,7 @@ import {
   Plus,
   RefreshCw,
   Search,
+  Save,
   ShieldCheck,
   Sparkles,
   Star,
@@ -51,6 +54,7 @@ import {
   parseJournalTextFile,
   ZYON_JOURNAL_ACCOUNT,
   zyonOutcomesToJournalTrades,
+  type JournalAccount,
   type JournalEvidence,
   type JournalImportBatch,
   type JournalParseResult,
@@ -72,6 +76,26 @@ type OutcomeFilter = "all" | "wins" | "losses" | "breakeven" | "needs-review";
 type SortKey = "closedAt" | "netPnl" | "rMultiple" | "quantity" | "symbol";
 
 type JournalCloudState = "loading" | "cloud" | "local" | "error";
+type AccountCreationMode = "manual" | "import";
+
+type ManualTradeDraft = {
+  name: string;
+  symbol: string;
+  side: "LONG" | "SHORT";
+  contractClass: "MICRO" | "MINI" | "OTHER";
+  quantity: string;
+  openedAt: string;
+  closedAt: string;
+  entryPrice: string;
+  exitPrice: string;
+  initialRisk: string;
+  netPnl: string;
+  fees: string;
+  tags: string;
+  notes: string;
+  improvements: string;
+  rating: number | null;
+};
 
 type SocialJournalResponse = {
   viewerId?: string;
@@ -88,8 +112,10 @@ type SocialJournalResponse = {
 
 type CloudJournalResponse = {
   cloud?: boolean;
+  accounts?: JournalAccount[];
   trades?: JournalTrade[];
   imports?: JournalImportBatch[];
+  evidence?: JournalEvidence[];
 };
 
 type JournalAnalysisResponse = {
@@ -114,6 +140,71 @@ const SPREADSHEET_EXTENSIONS = new Set(["xlsx", "xls", "xlsm", "xlsb", "ods", "f
 const TABULAR_TEXT_EXTENSIONS = new Set(["csv", "tsv", "txt", "json"]);
 const MAX_EVIDENCE_BYTES = 8_000_000;
 const MAX_WORKBOOK_BYTES = 75_000_000;
+const MAX_MANUAL_IMAGE_BYTES = 20_000_000;
+const MAX_CLOUD_IMAGE_BYTES = 1_800_000;
+
+function localDateTimeInput(date = new Date()) {
+  const shifted = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+  return shifted.toISOString().slice(0, 16);
+}
+
+function newManualTradeDraft(): ManualTradeDraft {
+  const now = new Date();
+  return {
+    name: "",
+    symbol: "NQ",
+    side: "LONG",
+    contractClass: "MINI",
+    quantity: "1",
+    openedAt: localDateTimeInput(new Date(now.getTime() - 15 * 60_000)),
+    closedAt: localDateTimeInput(now),
+    entryPrice: "",
+    exitPrice: "",
+    initialRisk: "",
+    netPnl: "",
+    fees: "0",
+    tags: "",
+    notes: "",
+    improvements: "",
+    rating: null,
+  };
+}
+
+async function prepareManualEvidence(file: File) {
+  if (!file.type.startsWith("image/") || file.size > MAX_MANUAL_IMAGE_BYTES) {
+    throw new Error(`${file.name} must be an image smaller than 20 MB.`);
+  }
+  let bitmap: ImageBitmap;
+  try {
+    bitmap = await createImageBitmap(file);
+  } catch {
+    if (file.size <= MAX_CLOUD_IMAGE_BYTES) {
+      return { name: file.name, mimeType: file.type, size: file.size, dataUrl: await fileToDataUrl(file) };
+    }
+    throw new Error(`${file.name} could not be prepared.`);
+  }
+  const scale = Math.min(1, 1_920 / Math.max(bitmap.width, bitmap.height));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+  canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+  const context = canvas.getContext("2d");
+  if (!context) {
+    bitmap.close();
+    throw new Error(`${file.name} could not be prepared.`);
+  }
+  context.fillStyle = "#000000";
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  bitmap.close();
+  let blob: Blob | null = null;
+  for (const quality of [0.92, 0.86, 0.8, 0.72]) {
+    blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", quality));
+    if (blob && blob.size <= MAX_CLOUD_IMAGE_BYTES) break;
+  }
+  if (!blob || blob.size > MAX_CLOUD_IMAGE_BYTES) throw new Error(`${file.name} is still too large after high-quality compression.`);
+  const prepared = new File([blob], file.name.replace(/\.[^.]+$/, "") + ".jpg", { type: "image/jpeg" });
+  return { name: prepared.name, mimeType: prepared.type, size: prepared.size, dataUrl: await fileToDataUrl(prepared) };
+}
 
 function money(value: number | null, signed = true) {
   if (value === null || !Number.isFinite(value)) return "—";
@@ -382,11 +473,17 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
   const [analysisStatus, setAnalysisStatus] = useState<"idle" | "loading" | "generating" | "ready" | "error">("idle");
   const [analysisError, setAnalysisError] = useState("");
   const [showImport, setShowImport] = useState(false);
+  const [accountCreationMode, setAccountCreationMode] = useState<AccountCreationMode>("manual");
   const [importAccount, setImportAccount] = useState("Imported account");
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [importing, setImporting] = useState(false);
   const [importDragging, setImportDragging] = useState(false);
   const [importMessage, setImportMessage] = useState("");
+  const [showManualTrade, setShowManualTrade] = useState(false);
+  const [manualTrade, setManualTrade] = useState<ManualTradeDraft>(() => newManualTradeDraft());
+  const [manualEvidenceFiles, setManualEvidenceFiles] = useState<File[]>([]);
+  const [manualTradeError, setManualTradeError] = useState("");
+  const [manualTradeSaving, setManualTradeSaving] = useState(false);
   const [query, setQuery] = useState("");
   const [accountFilter, setAccountFilter] = useState("all");
   const [outcomeFilter, setOutcomeFilter] = useState<OutcomeFilter>("all");
@@ -397,6 +494,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
   const [calendarMonth, setCalendarMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1));
   const [selectedDay, setSelectedDay] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const manualEvidenceInputRef = useRef<HTMLInputElement>(null);
   const analysisRequestRef = useRef(0);
 
   const resolvedAccountKey = accountKey || "local";
@@ -414,15 +512,23 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
         .catch((): CloudJournalResponse => ({ cloud: false })),
     ]).then(([stored, cloud]) => {
       if (!active) return;
+      const cloudAccounts = Array.isArray(cloud.accounts) ? cloud.accounts : [];
       const cloudTrades = Array.isArray(cloud.trades) ? cloud.trades : [];
       const cloudImports = Array.isArray(cloud.imports) ? cloud.imports : [];
+      const cloudEvidence = Array.isArray(cloud.evidence) ? cloud.evidence : [];
+      const accounts = new Map(stored.accounts.map((account) => [account.id, account]));
+      cloudAccounts.forEach((account) => accounts.set(account.id, account));
       const trades = new Map(stored.trades.map((trade) => [trade.id, trade]));
       cloudTrades.forEach((trade) => trades.set(trade.id, trade));
       const imports = new Map(stored.imports.map((batch) => [batch.id, batch]));
       cloudImports.forEach((batch) => imports.set(batch.id, batch));
+      const evidence = new Map(stored.evidence.map((item) => [item.id, item]));
+      cloudEvidence.forEach((item) => evidence.set(item.id, item));
       const merged = {
         ...stored,
+        accounts: [...accounts.values()],
         trades: [...trades.values()],
+        evidence: [...evidence.values()],
         imports: [...imports.values()],
       };
       setState(merged);
@@ -491,11 +597,13 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
   }, [ready, resolvedAccountKey, state]);
 
   const customAccounts = useMemo(() => [...new Set([
+    ...state.accounts.map((account) => account.name),
     ...state.trades.map((trade) => trade.account),
     ...state.evidence.map((item) => item.account),
     ...state.imports.map((item) => item.account),
   ].filter((account) => account && !isZyonJournalAccountName(account)))].sort(), [state]);
   const accounts = useMemo(() => [ZYON_JOURNAL_ACCOUNT, ...customAccounts], [customAccounts]);
+  const accountSource = useMemo(() => new Map(state.accounts.map((account) => [account.name, account.source])), [state.accounts]);
   const allTrades = useMemo(
     () => [...zyonTrades, ...state.trades.filter((trade) => !isZyonJournalAccountName(trade.account))],
     [state.trades, zyonTrades],
@@ -515,12 +623,14 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
         label: account,
         detail: account === ZYON_JOURNAL_ACCOUNT
           ? "Reviewed ZYON Gameplans"
+          : accountSource.get(account) === "manual"
+            ? "Native KwantDesk Journal"
           : `${accountTrades.length} imported trade${accountTrades.length === 1 ? "" : "s"}`,
         stats: calculateJournalStats(accountTrades),
-        icon: account === ZYON_JOURNAL_ACCOUNT ? Bot : FileSpreadsheet,
+        icon: account === ZYON_JOURNAL_ACCOUNT ? Bot : accountSource.get(account) === "manual" ? NotebookPen : FileSpreadsheet,
       };
     }),
-  ], [accounts, allTrades]);
+  ], [accountSource, accounts, allTrades]);
 
   const filteredTrades = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -535,6 +645,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
         trade.account,
         trade.setup,
         trade.notes,
+        trade.improvements ?? "",
         trade.sourceFile,
         ...trade.tags,
       ].some((value) => value.toLowerCase().includes(normalizedQuery))) return false;
@@ -572,6 +683,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
   const selectedTrade = allTrades.find((trade) => trade.id === selectedTradeId) ?? null;
   const selectedTradeIsZyon = Boolean(selectedTrade?.sourceImportId.startsWith("zyon:"));
   const selectedEvidence = state.evidence.find((item) => item.id === selectedEvidenceId) ?? null;
+  const selectedAccountIsManual = accountFilter !== "all" && accountSource.get(accountFilter) === "manual";
   const entryExitComplete = stats.tradeCount
     ? filteredTrades.filter((trade) => trade.entryPrice !== null && trade.exitPrice !== null && trade.side !== "UNKNOWN").length / stats.tradeCount
     : null;
@@ -690,6 +802,167 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
       return false;
     }
   }, []);
+
+  const createNativeJournal = async () => {
+    const account = importAccount.trim().slice(0, 80);
+    if (!account || isZyonJournalAccountName(account)) {
+      setImportMessage("Give the KwantDesk Journal a unique account name.");
+      return;
+    }
+    const normalized = account.normalize("NFKC").toLowerCase();
+    if (customAccounts.some((candidate) => candidate.normalize("NFKC").toLowerCase() === normalized)) {
+      setImportMessage("A Journal with that name already exists.");
+      return;
+    }
+    setImporting(true);
+    setImportMessage("");
+    try {
+      const response = await fetch("/api/journal", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "create-account", account }),
+      });
+      const result = await response.json() as { cloud?: boolean; account?: JournalAccount; error?: string };
+      if (!response.ok || !result.account) throw new Error(result.error || "The KwantDesk Journal could not be created.");
+      setState((current) => ({
+        ...current,
+        accounts: [...current.accounts.filter((candidate) => candidate.id !== result.account?.id), result.account as JournalAccount],
+      }));
+      setCloudState(result.cloud ? "cloud" : "local");
+      setAccountFilter(account);
+      setTab("pulse");
+      setShowImport(false);
+      setImportAccount("Imported account");
+    } catch (error) {
+      setImportMessage(error instanceof Error ? error.message : "The KwantDesk Journal could not be created.");
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const openManualTrade = () => {
+    setManualTrade(newManualTradeDraft());
+    setManualEvidenceFiles([]);
+    setManualTradeError("");
+    setShowManualTrade(true);
+  };
+
+  const persistEvidence = useCallback(async (evidence: JournalEvidence) => {
+    try {
+      const response = await fetch("/api/journal", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "save-evidence", account: evidence.account, evidence }),
+      });
+      const result = await response.json() as { cloud?: boolean };
+      if (!response.ok || !result.cloud) throw new Error("Evidence save failed.");
+      setCloudState("cloud");
+      return true;
+    } catch {
+      setCloudState("local");
+      return false;
+    }
+  }, []);
+
+  const submitManualTrade = async () => {
+    if (!selectedAccountIsManual || manualTradeSaving) return;
+    const openedAt = Date.parse(manualTrade.openedAt);
+    const closedAt = Date.parse(manualTrade.closedAt);
+    const quantity = Number(manualTrade.quantity);
+    const entryPrice = Number(manualTrade.entryPrice);
+    const exitPrice = Number(manualTrade.exitPrice);
+    const initialRisk = Number(manualTrade.initialRisk);
+    const netPnl = Number(manualTrade.netPnl);
+    const fees = Number(manualTrade.fees || 0);
+    if (!manualTrade.name.trim() || !manualTrade.symbol.trim()) {
+      setManualTradeError("Give the trade a name and instrument.");
+      return;
+    }
+    if ([manualTrade.quantity, manualTrade.entryPrice, manualTrade.exitPrice, manualTrade.initialRisk, manualTrade.netPnl].some((value) => !value.trim())) {
+      setManualTradeError("Complete the contracts, entry, exit, initial risk and profit/loss fields. Enter 0 for a breakeven result.");
+      return;
+    }
+    if (![openedAt, closedAt, quantity, entryPrice, exitPrice, initialRisk, netPnl, fees].every(Number.isFinite) || quantity <= 0 || initialRisk <= 0 || closedAt < openedAt) {
+      setManualTradeError("Complete valid entry, exit, contract size, risk, profit/loss and timestamps. Exit cannot be before entry.");
+      return;
+    }
+    setManualTradeSaving(true);
+    setManualTradeError("");
+    try {
+      const preparedEvidence = await Promise.all(manualEvidenceFiles.map(prepareManualEvidence));
+      const id = crypto.randomUUID();
+      const sourceImportId = `manual:${id}`;
+      const now = new Date().toISOString();
+      const trade: JournalTrade = {
+        id,
+        account: accountFilter,
+        openedAt: new Date(openedAt).toISOString(),
+        closedAt: new Date(closedAt).toISOString(),
+        symbol: manualTrade.symbol.trim().toUpperCase().slice(0, 32),
+        side: manualTrade.side,
+        quantity,
+        entryPrice,
+        exitPrice,
+        grossPnl: netPnl + Math.max(0, fees),
+        fees: Math.max(0, fees),
+        netPnl,
+        initialRisk,
+        rMultiple: netPnl / initialRisk,
+        durationMs: closedAt - openedAt,
+        setup: manualTrade.name.trim().slice(0, 160),
+        tags: [...new Set(manualTrade.tags.split(",").map((tag) => tag.trim()).filter(Boolean))].slice(0, 24),
+        notes: manualTrade.notes.trim().slice(0, 8_000),
+        improvements: manualTrade.improvements.trim().slice(0, 8_000),
+        contractClass: manualTrade.contractClass,
+        rating: manualTrade.rating,
+        reviewedAt: manualTrade.notes.trim() || manualTrade.improvements.trim() || manualTrade.rating ? now : null,
+        sourceImportId,
+        sourceFile: "KwantDesk Manual",
+        sourceRows: [],
+        fingerprint: sourceImportId,
+      };
+      const evidence: JournalEvidence[] = preparedEvidence.map((item) => ({
+        id: crypto.randomUUID(),
+        account: accountFilter,
+        name: item.name,
+        mimeType: item.mimeType,
+        size: item.size,
+        importedAt: now,
+        sourceImportId,
+        tradeId: id,
+        dataUrl: item.dataUrl,
+        caption: "",
+      }));
+      setState((current) => ({
+        ...current,
+        trades: [...current.trades, trade].slice(-50_000),
+        evidence: [...evidence, ...current.evidence].slice(0, 500),
+      }));
+      setShowManualTrade(false);
+      setSelectedTradeId(id);
+      setManualEvidenceFiles([]);
+      setManualTrade(newManualTradeDraft());
+      void Promise.all([
+        fetch("/api/journal", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "create-trade", account: accountFilter, trade }),
+        }).then(async (response) => {
+          const result = await response.json() as { cloud?: boolean };
+          if (!response.ok || !result.cloud) throw new Error("Trade save failed.");
+          return true;
+        }),
+        ...evidence.map(async (item) => {
+          if (!await persistEvidence(item)) throw new Error("Evidence save failed.");
+          return true;
+        }),
+      ]).then(() => setCloudState("cloud")).catch(() => setCloudState("local"));
+    } catch (error) {
+      setManualTradeError(error instanceof Error ? error.message : "The manual trade could not be prepared.");
+    } finally {
+      setManualTradeSaving(false);
+    }
+  };
 
   const runImport = async () => {
     if (!pendingFiles.length || importing) return;
@@ -894,6 +1167,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
 
     setState((current) => ({
       version: 1,
+      accounts: current.accounts,
       trades: [...current.trades, ...newTrades].slice(-50_000),
       evidence: [...newEvidence, ...current.evidence].slice(0, 500),
       imports: [...newImports, ...current.imports].slice(0, 500),
@@ -928,10 +1202,14 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
   };
 
   const updateEvidence = (evidenceId: string, patch: Partial<JournalEvidence>) => {
+    const currentEvidence = state.evidence.find((item) => item.id === evidenceId);
+    if (!currentEvidence) return;
+    const updatedEvidence = { ...currentEvidence, ...patch };
     setState((current) => ({
       ...current,
       evidence: current.evidence.map((item) => item.id === evidenceId ? { ...item, ...patch } : item),
     }));
+    void persistEvidence(updatedEvidence);
   };
 
   const deleteImport = (batch: JournalImportBatch) => {
@@ -961,6 +1239,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
       version: 1,
       exportedAt: new Date().toISOString(),
       accountFilter,
+      accounts: state.accounts,
       trades: filteredTrades,
       evidence: filteredEvidence,
       imports: state.imports,
@@ -1018,8 +1297,9 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
               <span className={`h-1.5 w-1.5 rounded-full ${cloudState === "cloud" ? "bg-primary" : cloudState === "error" || saveStatus === "error" ? "bg-danger" : cloudState === "loading" || saveStatus === "loading" ? "animate-pulse bg-warning" : "bg-muted"}`} />
               {cloudState === "cloud" ? "Account saved" : cloudState === "loading" ? "Connecting" : cloudState === "error" || saveStatus === "error" ? "Save interrupted" : "Local until connected"}
             </span>
+            {selectedAccountIsManual ? <button type="button" onClick={openManualTrade} className="flex h-8 items-center gap-1.5 rounded-xl bg-primary px-3 text-[9px] font-semibold text-background hover:brightness-110"><Plus className="h-3.5 w-3.5" />Add trade</button> : null}
             <button type="button" onClick={() => exportJournal("json")} disabled={!allTrades.length && !state.evidence.length} className="flex h-8 items-center gap-1.5 rounded-xl border border-border bg-surface px-3 text-[9px] font-semibold text-muted hover:text-foreground disabled:opacity-35"><Download className="h-3.5 w-3.5" />Backup</button>
-            <button type="button" onClick={() => setShowImport(true)} className="flex h-8 items-center gap-1.5 rounded-xl bg-primary px-3 text-[9px] font-semibold text-background hover:brightness-110"><Plus className="h-3.5 w-3.5" />Add account</button>
+            <button type="button" onClick={() => { setAccountCreationMode("manual"); setImportAccount("My KwantDesk Journal"); setImportMessage(""); setShowImport(true); }} className="flex h-8 items-center gap-1.5 rounded-xl border border-border bg-surface px-3 text-[9px] font-semibold text-muted hover:text-foreground"><BookPlus className="h-3.5 w-3.5" />Add account</button>
           </div>
         </div>
         <div className="border-t border-border/70 px-3 py-2">
@@ -1059,7 +1339,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
                 </button>
               );
             })}
-            <button type="button" onClick={() => setShowImport(true)} className="flex min-w-[150px] shrink-0 items-center justify-center gap-2 rounded-2xl border border-dashed border-border bg-background/20 px-4 text-[9px] font-semibold text-muted transition-colors hover:border-primary/35 hover:bg-primary/[0.05] hover:text-primary"><Plus className="h-3.5 w-3.5" />Add account</button>
+            <button type="button" onClick={() => { setAccountCreationMode("manual"); setImportAccount("My KwantDesk Journal"); setImportMessage(""); setShowImport(true); }} className="flex min-w-[150px] shrink-0 items-center justify-center gap-2 rounded-2xl border border-dashed border-border bg-background/20 px-4 text-[9px] font-semibold text-muted transition-colors hover:border-primary/35 hover:bg-primary/[0.05] hover:text-primary"><Plus className="h-3.5 w-3.5" />Add account</button>
           </div>
         </div>
         <nav className="flex items-center gap-1 overflow-x-auto px-3" aria-label="Journal views">
@@ -1079,11 +1359,13 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
             <div className="relative w-full overflow-hidden rounded-3xl border border-border bg-panel p-8 text-center shadow-2xl shadow-black/20">
               <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_10%,color-mix(in_srgb,var(--primary)_10%,transparent),transparent_42%)]" />
               <div className="relative mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-primary/25 bg-primary/10 text-primary">{accountFilter === "ZYON Journal" ? <Bot className={`h-6 w-6 ${zyonLoading ? "animate-pulse" : ""}`} /> : <Import className="h-6 w-6" />}</div>
-              <h2 className="relative mt-5 text-[22px] font-semibold tracking-[-0.03em] text-foreground">{accountFilter === "ZYON Journal" ? zyonLoading ? "Loading your ZYON outcomes…" : "Your first reviewed Gameplan starts this Journal." : accountFilter === "all" ? "Build your consolidated trading record." : `${accountFilter} is ready for its first import.`}</h2>
-              <p className="relative mx-auto mt-2 max-w-xl text-[11px] leading-5 text-muted">{accountFilter === "ZYON Journal" ? "When a ZYON Gameplan completes its outcome review, it appears here automatically with its execution, P&L, reasoning score, timestamps, and review." : "Import closed trades, executions, screenshots, or notes. Overall Journal combines every account while each account keeps its own statistics."}</p>
+              <h2 className="relative mt-5 text-[22px] font-semibold tracking-[-0.03em] text-foreground">{accountFilter === "ZYON Journal" ? zyonLoading ? "Loading your ZYON outcomes…" : "Your first reviewed Gameplan starts this Journal." : selectedAccountIsManual ? "Document your first trade." : accountFilter === "all" ? "Build your consolidated trading record." : `${accountFilter} is ready for its first import.`}</h2>
+              <p className="relative mx-auto mt-2 max-w-xl text-[11px] leading-5 text-muted">{accountFilter === "ZYON Journal" ? "When a ZYON Gameplan completes its outcome review, it appears here automatically with its execution, P&L, reasoning score, timestamps, and review." : selectedAccountIsManual ? "Record the setup, entry, exit, risk, outcome, screenshots and an optional honest review. The trade will flow into every Journal view automatically." : "Import closed trades, executions, screenshots, or notes. Overall Journal combines every account while each account keeps its own statistics."}</p>
               {accountFilter === "ZYON Journal"
                 ? <button type="button" onClick={() => { window.location.href = "/zyon"; }} className="relative mt-6 inline-flex h-10 items-center gap-2 rounded-xl bg-primary px-5 text-[10px] font-semibold text-background"><Bot className="h-4 w-4" />Open ZYON</button>
-                : <button type="button" onClick={() => setShowImport(true)} className="relative mt-6 inline-flex h-10 items-center gap-2 rounded-xl bg-primary px-5 text-[10px] font-semibold text-background"><Plus className="h-4 w-4" />Add account</button>}
+                : selectedAccountIsManual
+                  ? <button type="button" onClick={openManualTrade} className="relative mt-6 inline-flex h-10 items-center gap-2 rounded-xl bg-primary px-5 text-[10px] font-semibold text-background"><Plus className="h-4 w-4" />Add manual trade</button>
+                  : <button type="button" onClick={() => { setAccountCreationMode("manual"); setImportAccount("My KwantDesk Journal"); setImportMessage(""); setShowImport(true); }} className="relative mt-6 inline-flex h-10 items-center gap-2 rounded-xl bg-primary px-5 text-[10px] font-semibold text-background"><Plus className="h-4 w-4" />Add account</button>}
               <div className="relative mx-auto mt-7 grid max-w-3xl gap-2 sm:grid-cols-3">
                 {[
                   [FileSpreadsheet, "Trades", "TradingView XLSX, broker workbooks, CSV, TSV and JSON exports"],
@@ -1490,42 +1772,128 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
         <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm" onMouseDown={(event) => { if (event.target === event.currentTarget) setShowImport(false); }}>
           <div className="w-full max-w-[650px] overflow-hidden rounded-3xl border border-border bg-panel shadow-2xl shadow-black/60">
             <div className="flex items-start gap-3 border-b border-border px-5 py-4">
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"><Upload className="h-4 w-4" /></span>
-              <div><h2 className="text-[14px] font-semibold text-foreground">Add journal account</h2><p className="mt-1 text-[9px] leading-4 text-muted">Name the account, then import TradingView workbooks, broker trade exports, executions, screenshots, JSON, or notes.</p></div>
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"><BookPlus className="h-4 w-4" /></span>
+              <div><h2 className="text-[14px] font-semibold text-foreground">Add journal account</h2><p className="mt-1 text-[9px] leading-4 text-muted">Create a native KwantDesk Journal for manual documentation, or connect an account from exported trade files.</p></div>
               <button type="button" onClick={() => setShowImport(false)} className="ml-auto flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground"><X className="h-4 w-4" /></button>
             </div>
             <div className="space-y-4 p-5">
+              <div className="grid gap-2 sm:grid-cols-2">
+                <button type="button" onClick={() => { setAccountCreationMode("manual"); setImportAccount("My KwantDesk Journal"); setPendingFiles([]); setImportMessage(""); }} className={`rounded-2xl border p-4 text-left transition-all ${accountCreationMode === "manual" ? "border-primary/45 bg-primary/[0.08] shadow-[0_0_18px_color-mix(in_srgb,var(--primary)_8%,transparent)]" : "border-border bg-background/30 hover:border-primary/25"}`}>
+                  <BookPlus className={`h-5 w-5 ${accountCreationMode === "manual" ? "text-primary" : "text-muted"}`} />
+                  <div className="mt-3 text-[10px] font-semibold text-foreground">KwantDesk Journal</div>
+                  <div className="mt-1 text-[8px] leading-4 text-muted">Document trades manually with risk, outcome, screenshots and honest review notes.</div>
+                </button>
+                <button type="button" onClick={() => { setAccountCreationMode("import"); setImportAccount("Imported account"); setImportMessage(""); }} className={`rounded-2xl border p-4 text-left transition-all ${accountCreationMode === "import" ? "border-primary/45 bg-primary/[0.08] shadow-[0_0_18px_color-mix(in_srgb,var(--primary)_8%,transparent)]" : "border-border bg-background/30 hover:border-primary/25"}`}>
+                  <Upload className={`h-5 w-5 ${accountCreationMode === "import" ? "text-primary" : "text-muted"}`} />
+                  <div className="mt-3 text-[10px] font-semibold text-foreground">Import account</div>
+                  <div className="mt-1 text-[8px] leading-4 text-muted">Upload broker, TradingView, spreadsheet, CSV, JSON and evidence exports.</div>
+                </button>
+              </div>
               <div>
-                <label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.12em] text-muted">Journal account name</label>
+                <label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.12em] text-muted">{accountCreationMode === "manual" ? "KwantDesk Journal name" : "Imported account name"}</label>
                 <input value={importAccount} onChange={(event) => { setImportAccount(event.target.value); setImportMessage(""); }} aria-invalid={importTargetsZyon} className={`h-10 w-full rounded-xl border bg-background px-3 text-[10px] text-foreground outline-none ${importTargetsZyon ? "border-danger/70 focus:border-danger" : "border-border focus:border-primary/45"}`} placeholder="e.g. Apex NQ Evaluation" />
                 {importTargetsZyon ? <p className="mt-1.5 text-[8px] leading-4 text-danger">ZYON Journal is automatic-only and cannot receive imported trades, files, or evidence.</p> : null}
               </div>
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                onDragEnter={(event) => { event.preventDefault(); setImportDragging(true); }}
-                onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; setImportDragging(true); }}
-                onDragLeave={() => setImportDragging(false)}
-                onDrop={(event) => { event.preventDefault(); setImportDragging(false); addFiles(event.dataTransfer.files); }}
-                className={`flex min-h-[170px] w-full flex-col items-center justify-center rounded-2xl border border-dashed px-6 text-center transition-colors ${importDragging ? "border-primary bg-primary/10" : "border-border bg-background/35 hover:border-primary/45"}`}
-              >
-                <Import className="h-7 w-7 text-primary" />
-                <span className="mt-3 text-[11px] font-semibold text-foreground">Drop files here or browse</span>
-                <span className="mt-1 max-w-[500px] text-[8px] leading-4 text-muted">XLSX · XLS · XLSM · XLSB · ODS · XML/HTML · CSV · TSV · JSON · images · notes</span>
-                <span className="mt-2 text-[8px] text-muted">Workbooks up to 75 MB · images up to 8 MB · maximum 30 files</span>
-              </button>
-              <input ref={fileInputRef} type="file" accept={ACCEPTED_FILES} multiple className="hidden" onChange={(event) => { if (event.target.files) addFiles(event.target.files); event.currentTarget.value = ""; }} />
-              {pendingFiles.length ? (
-                <div className="max-h-44 space-y-1 overflow-y-auto rounded-xl border border-border bg-background/25 p-2">
-                  {pendingFiles.map((file) => <div key={`${file.name}:${file.size}:${file.lastModified}`} className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-[8px] hover:bg-surface"><FileText className="h-3.5 w-3.5 text-muted" /><span className="min-w-0 flex-1 truncate text-foreground">{file.name}</span><span className="font-mono text-muted">{Math.max(1, Math.round(file.size / 1024))} KB</span><button type="button" onClick={() => setPendingFiles((current) => current.filter((candidate) => candidate !== file))} className="text-muted hover:text-danger"><X className="h-3.5 w-3.5" /></button></div>)}
+              {accountCreationMode === "import" ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    onDragEnter={(event) => { event.preventDefault(); setImportDragging(true); }}
+                    onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; setImportDragging(true); }}
+                    onDragLeave={() => setImportDragging(false)}
+                    onDrop={(event) => { event.preventDefault(); setImportDragging(false); addFiles(event.dataTransfer.files); }}
+                    className={`flex min-h-[150px] w-full flex-col items-center justify-center rounded-2xl border border-dashed px-6 text-center transition-colors ${importDragging ? "border-primary bg-primary/10" : "border-border bg-background/35 hover:border-primary/45"}`}
+                  >
+                    <Import className="h-7 w-7 text-primary" />
+                    <span className="mt-3 text-[11px] font-semibold text-foreground">Drop files here or browse</span>
+                    <span className="mt-1 max-w-[500px] text-[8px] leading-4 text-muted">XLSX · XLS · XLSM · XLSB · ODS · XML/HTML · CSV · TSV · JSON · images · notes</span>
+                    <span className="mt-2 text-[8px] text-muted">Workbooks up to 75 MB · images up to 8 MB · maximum 30 files</span>
+                  </button>
+                  <input ref={fileInputRef} type="file" accept={ACCEPTED_FILES} multiple className="hidden" onChange={(event) => { if (event.target.files) addFiles(event.target.files); event.currentTarget.value = ""; }} />
+                  {pendingFiles.length ? (
+                    <div className="max-h-44 space-y-1 overflow-y-auto rounded-xl border border-border bg-background/25 p-2">
+                      {pendingFiles.map((file) => <div key={`${file.name}:${file.size}:${file.lastModified}`} className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-[8px] hover:bg-surface"><FileText className="h-3.5 w-3.5 text-muted" /><span className="min-w-0 flex-1 truncate text-foreground">{file.name}</span><span className="font-mono text-muted">{Math.max(1, Math.round(file.size / 1024))} KB</span><button type="button" onClick={() => setPendingFiles((current) => current.filter((candidate) => candidate !== file))} className="text-muted hover:text-danger"><X className="h-3.5 w-3.5" /></button></div>)}
+                    </div>
+                  ) : null}
+                  <div className="rounded-xl border border-border bg-surface/35 p-3 text-[8px] leading-4 text-muted"><strong className="text-foreground">Source-first import:</strong> every workbook sheet is checked, TradingView entry/exit rows are paired, duplicates are skipped, unmatched rows stay visible as warnings, and accepted records retain their source file, sheet, and row numbers.</div>
+                </>
+              ) : (
+                <div className="rounded-2xl border border-border bg-background/30 p-4">
+                  <div className="flex items-center gap-2 text-[9px] font-semibold text-foreground"><NotebookPen className="h-4 w-4 text-primary" />Native manual record</div>
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                    {["Entry, exit, risk and P&L", "Micro, mini or other contracts", "Optional screenshots and evidence", "Review and improvement notes"].map((item) => <div key={item} className="flex items-center gap-2 rounded-xl border border-border/70 bg-panel px-3 py-2 text-[8px] text-muted"><Check className="h-3 w-3 text-primary" />{item}</div>)}
+                  </div>
+                  <p className="mt-3 text-[8px] leading-4 text-muted">Once created, use <strong className="text-foreground">Add trade</strong> inside this account. Every manual record will populate Calendar, Trade Log, Edgebook and Analysis.</p>
                 </div>
-              ) : null}
+              )}
               {importMessage ? <div className="rounded-xl border border-primary/20 bg-primary/[0.07] px-3 py-2 text-[9px] text-primary">{importMessage}</div> : null}
-              <div className="rounded-xl border border-border bg-surface/35 p-3 text-[8px] leading-4 text-muted"><strong className="text-foreground">Source-first import:</strong> every workbook sheet is checked, TradingView entry/exit rows are paired, duplicates are skipped, unmatched rows stay visible as warnings, and accepted records retain their source file, sheet, and row numbers.</div>
             </div>
             <div className="flex items-center justify-end gap-2 border-t border-border bg-background/20 px-5 py-4">
               <button type="button" onClick={() => setShowImport(false)} className="h-9 rounded-xl border border-border px-4 text-[9px] font-semibold text-muted hover:bg-surface hover:text-foreground">Close</button>
-              <button type="button" onClick={runImport} disabled={!pendingFiles.length || importing || importTargetsZyon} className="flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-[9px] font-semibold text-background disabled:opacity-40">{importing ? <span className="h-3 w-3 animate-spin rounded-full border border-background/30 border-t-background" /> : <Upload className="h-3.5 w-3.5" />}{importing ? "Creating account" : `Create & import ${pendingFiles.length || ""}`}</button>
+              <button type="button" onClick={accountCreationMode === "manual" ? createNativeJournal : runImport} disabled={importing || importTargetsZyon || (accountCreationMode === "import" && !pendingFiles.length) || !importAccount.trim()} className="flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-[9px] font-semibold text-background disabled:opacity-40">{importing ? <span className="h-3 w-3 animate-spin rounded-full border border-background/30 border-t-background" /> : accountCreationMode === "manual" ? <BookPlus className="h-3.5 w-3.5" /> : <Upload className="h-3.5 w-3.5" />}{importing ? "Creating account" : accountCreationMode === "manual" ? "Create KwantDesk Journal" : `Create & import ${pendingFiles.length || ""}`}</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {showManualTrade && selectedAccountIsManual ? (
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/72 p-4 backdrop-blur-sm" onMouseDown={(event) => { if (event.target === event.currentTarget && !manualTradeSaving) setShowManualTrade(false); }}>
+          <div className="flex max-h-[94vh] w-full max-w-[880px] flex-col overflow-hidden rounded-3xl border border-border bg-panel shadow-2xl shadow-black/65">
+            <div className="flex items-start gap-3 border-b border-border px-5 py-4">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-primary/25 bg-primary/10 text-primary"><NotebookPen className="h-4 w-4" /></span>
+              <div className="min-w-0"><h2 className="text-[14px] font-semibold text-foreground">Document a trade</h2><p className="mt-1 truncate text-[9px] text-muted">{accountFilter} · native KwantDesk Journal</p></div>
+              <button type="button" disabled={manualTradeSaving} onClick={() => setShowManualTrade(false)} className="ml-auto flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground disabled:opacity-40"><X className="h-4 w-4" /></button>
+            </div>
+            <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-5">
+              <section>
+                <div className="mb-3"><h3 className="text-[10px] font-semibold text-foreground">Trade identity</h3><p className="mt-0.5 text-[8px] text-muted">Name the idea and record what was actually traded.</p></div>
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  <div className="sm:col-span-2"><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Trade / setup name *</label><input value={manualTrade.name} onChange={(event) => setManualTrade((current) => ({ ...current, name: event.target.value }))} placeholder="e.g. New York open reclaim" className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[9px] text-foreground outline-none focus:border-primary/45" /></div>
+                  <div><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Instrument *</label><input value={manualTrade.symbol} onChange={(event) => setManualTrade((current) => ({ ...current, symbol: event.target.value.toUpperCase() }))} placeholder="NQ" className="h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] text-foreground outline-none focus:border-primary/45" /></div>
+                  <div><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Direction *</label><KwantSelect value={manualTrade.side} onChange={(event) => setManualTrade((current) => ({ ...current, side: event.target.value as "LONG" | "SHORT" }))} className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[9px] text-foreground outline-none"><option value="LONG">Long</option><option value="SHORT">Short</option></KwantSelect></div>
+                  <div><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Contract class *</label><KwantSelect value={manualTrade.contractClass} onChange={(event) => setManualTrade((current) => ({ ...current, contractClass: event.target.value as ManualTradeDraft["contractClass"] }))} className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[9px] text-foreground outline-none"><option value="MICRO">Micro</option><option value="MINI">Mini</option><option value="OTHER">Other</option></KwantSelect></div>
+                  <div><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Contracts *</label><input type="number" min="0.01" step="0.01" value={manualTrade.quantity} onChange={(event) => setManualTrade((current) => ({ ...current, quantity: event.target.value }))} className="h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] text-foreground outline-none focus:border-primary/45" /></div>
+                  <div className="sm:col-span-2"><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Tags</label><input value={manualTrade.tags} onChange={(event) => setManualTrade((current) => ({ ...current, tags: event.target.value }))} placeholder="reclaim, patient, New York" className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[9px] text-foreground outline-none focus:border-primary/45" /></div>
+                </div>
+              </section>
+
+              <section className="border-t border-border pt-5">
+                <div className="mb-3"><h3 className="text-[10px] font-semibold text-foreground">Execution and risk</h3><p className="mt-0.5 text-[8px] text-muted">These fields drive the Journal’s P&amp;L, risk-to-reward and performance analysis.</p></div>
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  <div className="lg:col-span-2"><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Entry time *</label><input type="datetime-local" value={manualTrade.openedAt} onChange={(event) => setManualTrade((current) => ({ ...current, openedAt: event.target.value }))} className="h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] text-foreground outline-none focus:border-primary/45" /></div>
+                  <div className="lg:col-span-2"><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Exit time *</label><input type="datetime-local" value={manualTrade.closedAt} onChange={(event) => setManualTrade((current) => ({ ...current, closedAt: event.target.value }))} className="h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] text-foreground outline-none focus:border-primary/45" /></div>
+                  <div><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Entry price *</label><input type="number" step="any" value={manualTrade.entryPrice} onChange={(event) => setManualTrade((current) => ({ ...current, entryPrice: event.target.value }))} placeholder="0.00" className="h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] text-foreground outline-none focus:border-primary/45" /></div>
+                  <div><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Exit price *</label><input type="number" step="any" value={manualTrade.exitPrice} onChange={(event) => setManualTrade((current) => ({ ...current, exitPrice: event.target.value }))} placeholder="0.00" className="h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] text-foreground outline-none focus:border-primary/45" /></div>
+                  <div><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Initial risk ($) *</label><input type="number" min="0" step="0.01" value={manualTrade.initialRisk} onChange={(event) => setManualTrade((current) => ({ ...current, initialRisk: event.target.value }))} placeholder="250.00" className="h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] text-foreground outline-none focus:border-primary/45" /></div>
+                  <div><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Net profit / loss ($) *</label><input type="number" step="0.01" value={manualTrade.netPnl} onChange={(event) => setManualTrade((current) => ({ ...current, netPnl: event.target.value }))} placeholder="Use minus for a loss" className="h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] text-foreground outline-none focus:border-primary/45" /></div>
+                  <div><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Fees ($)</label><input type="number" min="0" step="0.01" value={manualTrade.fees} onChange={(event) => setManualTrade((current) => ({ ...current, fees: event.target.value }))} className="h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] text-foreground outline-none focus:border-primary/45" /></div>
+                  <div className="sm:col-span-2 lg:col-span-3"><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Calculated risk : reward</label><div className="flex h-10 items-center rounded-xl border border-border bg-surface/45 px-3 font-mono text-[11px] font-semibold text-primary">{Number(manualTrade.initialRisk) > 0 && Number.isFinite(Number(manualTrade.netPnl)) ? riskReward(Number(manualTrade.netPnl) / Number(manualTrade.initialRisk)) : "1 : —"}</div></div>
+                </div>
+              </section>
+
+              <section className="border-t border-border pt-5">
+                <div className="mb-3"><h3 className="text-[10px] font-semibold text-foreground">Review notes <span className="font-normal text-muted">· optional</span></h3><p className="mt-0.5 text-[8px] text-muted">Write honestly. Both fields can be left blank and the trade will still submit.</p></div>
+                <div className="grid gap-3 lg:grid-cols-2">
+                  <div><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Notes</label><textarea value={manualTrade.notes} onChange={(event) => setManualTrade((current) => ({ ...current, notes: event.target.value }))} rows={6} placeholder="What happened? What were you thinking? Were you patient, emotional, early or late?" className="w-full resize-y rounded-xl border border-border bg-background p-3 text-[9px] leading-5 text-foreground outline-none focus:border-primary/45" /></div>
+                  <div><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">How can I do better next time?</label><textarea value={manualTrade.improvements} onChange={(event) => setManualTrade((current) => ({ ...current, improvements: event.target.value }))} rows={6} placeholder="The specific behaviour, rule or preparation you will change next time." className="w-full resize-y rounded-xl border border-border bg-background p-3 text-[9px] leading-5 text-foreground outline-none focus:border-primary/45" /></div>
+                </div>
+                <div className="mt-3"><label className="mb-2 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Execution quality <span className="font-normal normal-case tracking-normal">· optional</span></label><div className="flex items-center gap-1.5">{[1, 2, 3, 4, 5].map((rating) => <button key={rating} type="button" onClick={() => setManualTrade((current) => ({ ...current, rating: current.rating === rating ? null : rating }))} className={`flex h-8 w-8 items-center justify-center rounded-lg border ${manualTrade.rating && rating <= manualTrade.rating ? "border-primary/35 bg-primary/10 text-primary" : "border-border bg-background text-muted hover:text-foreground"}`}><Star className={`h-3.5 w-3.5 ${manualTrade.rating && rating <= manualTrade.rating ? "fill-current" : ""}`} /></button>)}</div></div>
+              </section>
+
+              <section className="border-t border-border pt-5">
+                <div className="mb-3"><h3 className="text-[10px] font-semibold text-foreground">Evidence <span className="font-normal text-muted">· optional</span></h3><p className="mt-0.5 text-[8px] text-muted">Attach chart screenshots or execution evidence. Images are kept at up to 1920px and prepared for private account storage.</p></div>
+                <button type="button" onClick={() => manualEvidenceInputRef.current?.click()} className="flex min-h-[110px] w-full flex-col items-center justify-center rounded-2xl border border-dashed border-border bg-background/30 px-5 text-center hover:border-primary/40 hover:bg-primary/[0.04]"><Camera className="h-5 w-5 text-primary" /><span className="mt-2 text-[9px] font-semibold text-foreground">Add screenshots or photos</span><span className="mt-1 text-[8px] text-muted">PNG · JPG · WEBP · up to 20 MB before preparation</span></button>
+                <input ref={manualEvidenceInputRef} type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple className="hidden" onChange={(event) => { if (event.target.files) setManualEvidenceFiles((current) => [...current, ...Array.from(event.target.files ?? [])].slice(0, 8)); event.currentTarget.value = ""; }} />
+                {manualEvidenceFiles.length ? <div className="mt-2 grid gap-2 sm:grid-cols-2">{manualEvidenceFiles.map((file) => <div key={`${file.name}:${file.size}:${file.lastModified}`} className="flex items-center gap-2 rounded-xl border border-border bg-background/35 px-3 py-2 text-[8px]"><ImageIcon className="h-3.5 w-3.5 text-primary" /><span className="min-w-0 flex-1 truncate text-foreground">{file.name}</span><span className="font-mono text-muted">{Math.max(1, Math.round(file.size / 1024))} KB</span><button type="button" onClick={() => setManualEvidenceFiles((current) => current.filter((candidate) => candidate !== file))} className="text-muted hover:text-danger"><X className="h-3.5 w-3.5" /></button></div>)}</div> : null}
+              </section>
+
+              {manualTradeError ? <div className="flex items-start gap-2 rounded-xl border border-danger/25 bg-danger/[0.07] px-3 py-2 text-[9px] leading-4 text-danger"><CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />{manualTradeError}</div> : null}
+            </div>
+            <div className="flex items-center gap-2 border-t border-border bg-background/20 px-5 py-4">
+              <span className="mr-auto text-[8px] text-muted">Notes and evidence are optional.</span>
+              <button type="button" disabled={manualTradeSaving} onClick={() => setShowManualTrade(false)} className="h-9 rounded-xl border border-border px-4 text-[9px] font-semibold text-muted hover:bg-surface hover:text-foreground disabled:opacity-40">Cancel</button>
+              <button type="button" disabled={manualTradeSaving} onClick={() => void submitManualTrade()} className="flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-[9px] font-semibold text-background disabled:opacity-50">{manualTradeSaving ? <span className="h-3 w-3 animate-spin rounded-full border border-background/30 border-t-background" /> : <Save className="h-3.5 w-3.5" />}{manualTradeSaving ? "Preparing evidence" : "Save trade"}</button>
             </div>
           </div>
         </div>
@@ -1548,7 +1916,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
               </div>
               <Card className="p-4">
                 <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-[9px]">
-                  {[["Entry", selectedTrade.entryPrice?.toLocaleString("en-US", { maximumFractionDigits: 6 }) ?? "—"], ["Exit", selectedTrade.exitPrice?.toLocaleString("en-US", { maximumFractionDigits: 6 }) ?? "—"], ["Quantity", selectedTrade.quantity.toLocaleString()], ["Fees", money(selectedTrade.fees, false)], ["Gross P&L", money(selectedTrade.grossPnl)], ["Source", `${selectedTrade.sourceFile}${selectedTrade.sourceSheet ? ` · ${selectedTrade.sourceSheet}` : ""} · rows ${selectedTrade.sourceRows.join(", ")}`]].map(([label, value]) => <div key={label}><div className="text-[8px] uppercase tracking-[0.1em] text-muted">{label}</div><div className="mt-1 break-words font-mono text-foreground">{value}</div></div>)}
+                  {[["Entry", selectedTrade.entryPrice?.toLocaleString("en-US", { maximumFractionDigits: 6 }) ?? "—"], ["Exit", selectedTrade.exitPrice?.toLocaleString("en-US", { maximumFractionDigits: 6 }) ?? "—"], ["Quantity", selectedTrade.quantity.toLocaleString()], ["Contract", selectedTrade.contractClass ?? "—"], ["Fees", money(selectedTrade.fees, false)], ["Gross P&L", money(selectedTrade.grossPnl)], ["Source", `${selectedTrade.sourceFile}${selectedTrade.sourceSheet ? ` · ${selectedTrade.sourceSheet}` : ""} · rows ${selectedTrade.sourceRows.join(", ")}`]].map(([label, value]) => <div key={label}><div className="text-[8px] uppercase tracking-[0.1em] text-muted">{label}</div><div className="mt-1 break-words font-mono text-foreground">{value}</div></div>)}
                 </div>
               </Card>
               <div>
@@ -1564,13 +1932,17 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
                 <textarea value={selectedTrade.notes} disabled={selectedTradeIsZyon} onChange={(event) => updateTrade(selectedTrade.id, { notes: event.target.value })} rows={6} placeholder="What was the thesis? What confirmed it? What invalidated it? What will you repeat or change?" className="w-full resize-none rounded-xl border border-border bg-background p-3 text-[9px] leading-5 text-foreground outline-none focus:border-primary/45 disabled:cursor-not-allowed disabled:opacity-70" />
               </div>
               <div>
+                <label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.12em] text-muted">How can I do better next time?</label>
+                <textarea value={selectedTrade.improvements ?? ""} disabled={selectedTradeIsZyon} onChange={(event) => updateTrade(selectedTrade.id, { improvements: event.target.value })} rows={5} placeholder="Record one specific behaviour, rule or preparation change for the next trade." className="w-full resize-none rounded-xl border border-border bg-background p-3 text-[9px] leading-5 text-foreground outline-none focus:border-primary/45 disabled:cursor-not-allowed disabled:opacity-70" />
+              </div>
+              <div>
                 <label className="mb-2 block text-[8px] font-semibold uppercase tracking-[0.12em] text-muted">Execution quality</label>
                 <div className="flex items-center gap-1.5">{[1, 2, 3, 4, 5].map((rating) => <button key={rating} type="button" disabled={selectedTradeIsZyon} onClick={() => updateTrade(selectedTrade.id, { rating })} className={`flex h-8 w-8 items-center justify-center rounded-lg border disabled:cursor-not-allowed ${selectedTrade.rating && rating <= selectedTrade.rating ? "border-primary/35 bg-primary/10 text-primary" : "border-border bg-background text-muted hover:text-foreground"}`}><Star className={`h-3.5 w-3.5 ${selectedTrade.rating && rating <= selectedTrade.rating ? "fill-current" : ""}`} /></button>)}</div>
               </div>
               <div>
                 <div className="mb-2 flex items-center justify-between"><label className="text-[8px] font-semibold uppercase tracking-[0.12em] text-muted">Evidence</label><button type="button" onClick={() => { setSelectedTradeId(null); setTab("evidence"); }} className="text-[8px] font-semibold text-primary">OPEN LIBRARY</button></div>
                 <div className="grid grid-cols-3 gap-2">
-                  {state.evidence.map((item) => {
+                  {state.evidence.filter((item) => item.account === selectedTrade.account).map((item) => {
                     const attached = item.tradeId === selectedTrade.id;
                     return (
                       <button key={item.id} type="button" onClick={() => updateEvidence(item.id, { tradeId: attached ? null : selectedTrade.id })} className={`relative h-20 overflow-hidden rounded-xl border text-left ${attached ? "border-primary shadow-[0_0_0_1px_var(--primary)]" : "border-border opacity-65 hover:opacity-100"}`} title={attached ? `Detach ${item.name}` : `Attach ${item.name}`}>
@@ -1579,7 +1951,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
                       </button>
                     );
                   })}
-                  {!state.evidence.length ? <div className="col-span-3 rounded-xl border border-dashed border-border px-3 py-8 text-center text-[8px] text-muted">Import screenshots or notes to attach evidence.</div> : null}
+                  {!state.evidence.some((item) => item.account === selectedTrade.account) ? <div className="col-span-3 rounded-xl border border-dashed border-border px-3 py-8 text-center text-[8px] text-muted">Add screenshots or notes to this account to attach evidence.</div> : null}
                 </div>
               </div>
             </div>

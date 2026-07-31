@@ -28,6 +28,8 @@ export type JournalTrade = {
   setup: string;
   tags: string[];
   notes: string;
+  improvements?: string;
+  contractClass?: "MICRO" | "MINI" | "OTHER";
   rating: number | null;
   reviewedAt: string | null;
   sourceImportId: string;
@@ -35,6 +37,14 @@ export type JournalTrade = {
   sourceSheet?: string;
   sourceRows: number[];
   fingerprint: string;
+};
+
+export type JournalAccount = {
+  id: string;
+  name: string;
+  source: "import" | "manual";
+  createdAt: string;
+  updatedAt: string;
 };
 
 type ZyonSocialRecord = {
@@ -79,6 +89,7 @@ export type JournalImportBatch = {
 
 export type JournalState = {
   version: 1;
+  accounts: JournalAccount[];
   trades: JournalTrade[];
   evidence: JournalEvidence[];
   imports: JournalImportBatch[];
@@ -171,6 +182,7 @@ const FUTURES_MULTIPLIERS: Record<string, number> = {
 
 export const EMPTY_JOURNAL_STATE: JournalState = {
   version: 1,
+  accounts: [],
   trades: [],
   evidence: [],
   imports: [],
@@ -903,6 +915,8 @@ export function journalTradesToCsv(trades: JournalTrade[]) {
     "Rating",
     "Reviewed At",
     "Notes",
+    "How To Improve Next Time",
+    "Contract Class",
     "Source File",
   ];
   const escape = (value: unknown) => `"${String(value ?? "").replaceAll('"', '""')}"`;
@@ -927,6 +941,8 @@ export function journalTradesToCsv(trades: JournalTrade[]) {
       trade.rating,
       trade.reviewedAt,
       trade.notes,
+      trade.improvements ?? "",
+      trade.contractClass ?? "",
       trade.sourceFile,
     ].map(escape).join(",")),
   ].join("\r\n");

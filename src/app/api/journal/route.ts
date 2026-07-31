@@ -1,7 +1,13 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { getRouteActor } from "@/lib/serverAuth";
-import { isZyonJournalAccountName, type JournalImportBatch, type JournalTrade } from "@/lib/journal";
+import {
+  isZyonJournalAccountName,
+  type JournalAccount,
+  type JournalEvidence,
+  type JournalImportBatch,
+  type JournalTrade,
+} from "@/lib/journal";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -22,6 +28,13 @@ type ImportRow = {
   payload: JournalImportBatch;
 };
 
+type EvidenceRow = {
+  payload: JournalEvidence & { kind?: string };
+};
+
+const JOURNAL_EVIDENCE_KIND = "journal-evidence-v1";
+const MAX_CLOUD_EVIDENCE_DATA_URL = 2_500_000;
+
 function tableUnavailable(code?: string) {
   return code === "42P01" || code === "PGRST205";
 }
@@ -29,6 +42,12 @@ function tableUnavailable(code?: string) {
 function cleanText(value: unknown, maximum: number) {
   return typeof value === "string"
     ? value.replace(/[\u0000-\u001f]/g, " ").replace(/\s+/g, " ").trim().slice(0, maximum)
+    : "";
+}
+
+function cleanLongText(value: unknown, maximum: number) {
+  return typeof value === "string"
+    ? value.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, " ").trim().slice(0, maximum)
     : "";
 }
 
@@ -97,7 +116,9 @@ function sanitizeTrade(value: unknown, account: string): JournalTrade | null {
     durationMs: nullableFinite(trade.durationMs),
     setup: cleanText(trade.setup, 160),
     tags: Array.isArray(trade.tags) ? trade.tags.map((tag) => cleanText(tag, 48)).filter(Boolean).slice(0, 24) : [],
-    notes: cleanText(trade.notes, 8_000),
+    notes: cleanLongText(trade.notes, 8_000),
+    improvements: cleanLongText(trade.improvements, 8_000),
+    contractClass: trade.contractClass === "MICRO" || trade.contractClass === "MINI" ? trade.contractClass : "OTHER",
     rating: nullableFinite(trade.rating),
     reviewedAt: isoDate(trade.reviewedAt, null),
     sourceImportId: cleanId(trade.sourceImportId),
@@ -107,6 +128,37 @@ function sanitizeTrade(value: unknown, account: string): JournalTrade | null {
       ? trade.sourceRows.map((row) => Math.max(0, Math.round(finite(row)))).slice(0, 200)
       : [],
     fingerprint: cleanId(trade.fingerprint, 120),
+  };
+}
+
+function sanitizeEvidence(value: unknown, account: string): JournalEvidence | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const item = value as Partial<JournalEvidence>;
+  const id = cleanId(item.id);
+  const dataUrl = typeof item.dataUrl === "string" ? item.dataUrl.trim() : "";
+  if (!id || !account || dataUrl.length > MAX_CLOUD_EVIDENCE_DATA_URL || !/^data:(?:image\/(?:jpeg|png|webp|gif)|text\/plain)[;,]/i.test(dataUrl)) return null;
+  return {
+    id,
+    account,
+    name: cleanText(item.name, 220) || "Journal evidence",
+    mimeType: cleanText(item.mimeType, 80) || "application/octet-stream",
+    size: Math.max(0, Math.round(finite(item.size))),
+    importedAt: isoDate(item.importedAt, new Date().toISOString()) as string,
+    sourceImportId: cleanId(item.sourceImportId),
+    tradeId: cleanId(item.tradeId) || null,
+    dataUrl,
+    textContent: cleanText(item.textContent, 100_000) || undefined,
+    caption: cleanText(item.caption, 2_000),
+  };
+}
+
+function fromAccountRow(row: AccountRow): JournalAccount {
+  return {
+    id: row.id,
+    name: row.name,
+    source: row.source,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
   };
 }
 
@@ -150,7 +202,7 @@ export async function GET(request: NextRequest) {
   if (!actor) return NextResponse.json({ error: "Authentication required." }, { status: 401 });
   if (!supabase) return NextResponse.json({ cloud: false, accounts: [], trades: [], imports: [] });
 
-  const [accountResult, tradeResult, importResult] = await Promise.all([
+  const [accountResult, tradeResult, importResult, evidenceResult] = await Promise.all([
     supabase
       .from("journal_accounts")
       .select("id,name,source,created_at,updated_at")
@@ -168,6 +220,14 @@ export async function GET(request: NextRequest) {
       .eq("user_id", actor.userId)
       .order("created_at", { ascending: false })
       .limit(2_000),
+    supabase
+      .from("social_objects")
+      .select("payload")
+      .eq("user_id", actor.userId)
+      .eq("object_type", "progress")
+      .eq("payload->>kind", JOURNAL_EVIDENCE_KIND)
+      .order("created_at", { ascending: false })
+      .limit(500),
   ]);
 
   const error = accountResult.error ?? tradeResult.error ?? importResult.error;
@@ -181,9 +241,12 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json({
     cloud: true,
-    accounts: (accountResult.data ?? []) as AccountRow[],
+    accounts: ((accountResult.data ?? []) as AccountRow[]).map(fromAccountRow),
     trades: ((tradeResult.data ?? []) as TradeRow[]).map((row) => row.payload),
     imports: ((importResult.data ?? []) as ImportRow[]).map((row) => row.payload),
+    evidence: evidenceResult.error
+      ? []
+      : ((evidenceResult.data ?? []) as EvidenceRow[]).map((row) => row.payload),
   }, { headers: { "Cache-Control": "private, no-store, max-age=0" } });
 }
 
@@ -192,7 +255,7 @@ export async function POST(request: NextRequest) {
   if (!actor) return NextResponse.json({ error: "Authentication required." }, { status: 401 });
   if (!supabase) return NextResponse.json({ cloud: false, error: "Journal cloud storage is unavailable." }, { status: 503 });
 
-  let body: { action?: unknown; account?: unknown; trades?: unknown; imports?: unknown; trade?: unknown };
+  let body: { action?: unknown; account?: unknown; trades?: unknown; imports?: unknown; trade?: unknown; evidence?: unknown };
   try {
     body = await request.json();
   } catch {
@@ -200,12 +263,92 @@ export async function POST(request: NextRequest) {
   }
 
   const action = cleanText(body.action, 20);
+  if (action === "create-account") {
+    const account = cleanText(body.account, 80);
+    if (!account || isZyonJournalAccountName(account)) {
+      return NextResponse.json({ error: "Choose a unique KwantDesk Journal name." }, { status: 400 });
+    }
+    const { data: existingAccounts, error: existingError } = await supabase
+      .from("journal_accounts")
+      .select("id,name,source,created_at,updated_at")
+      .eq("user_id", actor.userId)
+      .limit(500);
+    if (existingError) return NextResponse.json({ error: "Journal accounts could not be checked." }, { status: 502 });
+    const normalized = account.normalize("NFKC").trim().toLowerCase();
+    if (((existingAccounts ?? []) as AccountRow[]).some((row) => row.name.normalize("NFKC").trim().toLowerCase() === normalized)) {
+      return NextResponse.json({ error: "A Journal with that name already exists." }, { status: 409 });
+    }
+    const now = new Date().toISOString();
+    const row = { user_id: actor.userId, id: accountId(account), name: account, source: "manual", created_at: now, updated_at: now };
+    const { data, error } = await supabase
+      .from("journal_accounts")
+      .insert(row)
+      .select("id,name,source,created_at,updated_at")
+      .single();
+    if (error) return NextResponse.json({ error: "The KwantDesk Journal could not be created." }, { status: 502 });
+    return NextResponse.json({ cloud: true, account: fromAccountRow(data as AccountRow) });
+  }
+
+  if (action === "create-trade") {
+    const account = cleanText(body.account, 80);
+    const trade = sanitizeTrade(body.trade, account);
+    if (!account || isZyonJournalAccountName(account) || !trade || !trade.sourceImportId.startsWith("manual:")) {
+      return NextResponse.json({ error: "Complete the required manual trade details." }, { status: 400 });
+    }
+    const accountKey = accountId(account);
+    const { data: accountRow, error: accountError } = await supabase
+      .from("journal_accounts")
+      .select("id,source")
+      .eq("user_id", actor.userId)
+      .eq("id", accountKey)
+      .maybeSingle();
+    if (accountError || !accountRow || accountRow.source !== "manual") {
+      return NextResponse.json({ error: "Choose a native KwantDesk Journal account." }, { status: 400 });
+    }
+    const { error } = await supabase.from("journal_trades").upsert({
+      user_id: actor.userId,
+      id: trade.id,
+      account_id: accountKey,
+      source_import_id: trade.sourceImportId,
+      opened_at: trade.openedAt,
+      closed_at: trade.closedAt,
+      payload: trade,
+    }, { onConflict: "user_id,id" });
+    if (error) return NextResponse.json({ error: "The manual trade could not be saved." }, { status: 502 });
+    return NextResponse.json({ cloud: true, trade });
+  }
+
+  if (action === "save-evidence") {
+    const account = cleanText(body.account, 80);
+    const evidence = sanitizeEvidence(body.evidence, account);
+    if (!evidence || isZyonJournalAccountName(account)) {
+      return NextResponse.json({ error: "That evidence file could not be saved." }, { status: 400 });
+    }
+    const payload = { ...evidence, kind: JOURNAL_EVIDENCE_KIND };
+    if (Buffer.byteLength(JSON.stringify(payload), "utf8") > 2_850_000) {
+      return NextResponse.json({ error: "Compress this evidence image before saving it." }, { status: 413 });
+    }
+    const { error } = await supabase.from("social_objects").upsert({
+      user_id: actor.userId,
+      id: `journal-evidence:${evidence.id}`,
+      author_label: actor.label,
+      object_type: "progress",
+      scope: "private",
+      desk_id: null,
+      parent_id: evidence.tradeId,
+      payload,
+      updated_at: evidence.importedAt,
+    }, { onConflict: "user_id,id" });
+    if (error) return NextResponse.json({ error: "Journal evidence could not be saved." }, { status: 502 });
+    return NextResponse.json({ cloud: true, evidence });
+  }
+
   if (action === "update") {
     const sourceTrade = body.trade as Partial<JournalTrade> | null;
     const account = cleanText(sourceTrade?.account, 80);
     const trade = sanitizeTrade(sourceTrade, account);
     if (!account || isZyonJournalAccountName(account) || !trade || trade.sourceImportId.startsWith("zyon:")) {
-      return NextResponse.json({ error: "Choose an imported Journal trade." }, { status: 400 });
+      return NextResponse.json({ error: "Choose a custom Journal trade." }, { status: 400 });
     }
     const { error } = await supabase
       .from("journal_trades")
@@ -236,9 +379,20 @@ export async function POST(request: NextRequest) {
     .filter((batch): batch is JournalImportBatch => Boolean(batch))
     .slice(0, 200);
 
+  const { data: currentAccount, error: currentAccountError } = await supabase
+    .from("journal_accounts")
+    .select("source")
+    .eq("user_id", actor.userId)
+    .eq("id", id)
+    .maybeSingle();
+  if (currentAccountError) {
+    if (tableUnavailable(currentAccountError.code)) return NextResponse.json({ cloud: false }, { status: 503 });
+    return NextResponse.json({ error: "Journal account could not be checked." }, { status: 502 });
+  }
+  const source = currentAccount?.source === "manual" ? "manual" : "import";
   const { error: accountError } = await supabase
     .from("journal_accounts")
-    .upsert({ user_id: actor.userId, id, name: account, source: "import" }, { onConflict: "user_id,id" });
+    .upsert({ user_id: actor.userId, id, name: account, source }, { onConflict: "user_id,id" });
   if (accountError) {
     if (tableUnavailable(accountError.code)) return NextResponse.json({ cloud: false }, { status: 503 });
     return NextResponse.json({ error: "Journal account could not be saved." }, { status: 502 });
@@ -277,6 +431,16 @@ export async function DELETE(request: NextRequest) {
   const { actor, supabase } = await journalClient(request);
   if (!actor) return NextResponse.json({ error: "Authentication required." }, { status: 401 });
   if (!supabase) return NextResponse.json({ cloud: false }, { status: 503 });
+  const evidenceId = cleanId(request.nextUrl.searchParams.get("evidenceId"));
+  if (evidenceId) {
+    const { error } = await supabase
+      .from("social_objects")
+      .delete()
+      .eq("user_id", actor.userId)
+      .eq("id", `journal-evidence:${evidenceId}`);
+    if (error) return NextResponse.json({ error: "Journal evidence could not be removed." }, { status: 502 });
+    return NextResponse.json({ cloud: true });
+  }
   const importId = cleanId(request.nextUrl.searchParams.get("importId"));
   if (!importId) return NextResponse.json({ error: "Choose an import to remove." }, { status: 400 });
 

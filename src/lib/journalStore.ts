@@ -17,6 +17,7 @@ function normalizeState(value: unknown): JournalState {
   const candidate = value as Partial<JournalState>;
   return {
     version: 1,
+    accounts: Array.isArray(candidate.accounts) ? candidate.accounts : [],
     trades: Array.isArray(candidate.trades) ? candidate.trades : [],
     evidence: Array.isArray(candidate.evidence) ? candidate.evidence : [],
     imports: Array.isArray(candidate.imports) ? candidate.imports : [],
