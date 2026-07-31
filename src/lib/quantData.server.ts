@@ -1922,6 +1922,142 @@ function gexDeskPressureSource(
   };
 }
 
+function normalPdf(value: number) {
+  return Math.exp(-0.5 * value * value) / Math.sqrt(2 * Math.PI);
+}
+
+function normalCdf(value: number) {
+  const sign = value < 0 ? -1 : 1;
+  const absolute = Math.abs(value) / Math.sqrt(2);
+  const t = 1 / (1 + 0.3275911 * absolute);
+  const erf = 1 - (
+    (
+      (
+        (
+          (1.061405429 * t - 1.453152027) * t
+          + 1.421413741
+        ) * t - 0.284496736
+      ) * t + 0.254829592
+    ) * t
+  ) * Math.exp(-absolute * absolute);
+  return 0.5 * (1 + sign * erf);
+}
+
+function normalizedIv(value: number | null) {
+  if (value === null || !Number.isFinite(value) || value <= 0) return null;
+  const normalized = value > 5 ? value / 100 : value;
+  return normalized >= 0.01 && normalized <= 5 ? normalized : null;
+}
+
+function easternMinutesAt(timestamp: number) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(new Date(timestamp));
+  const hour = Number(parts.find((part) => part.type === "hour")?.value ?? 0);
+  const minute = Number(parts.find((part) => part.type === "minute")?.value ?? 0);
+  return hour * 60 + minute;
+}
+
+function yearsToExpiry(dte: number | null, timestamp: number) {
+  const providerDte = dte !== null && Number.isFinite(dte) ? Math.max(0, dte) : 0;
+  const minutesRemaining = Math.max(1, 16 * 60 - easternMinutesAt(timestamp));
+  const remainingDay = minutesRemaining / (24 * 60);
+  return Math.max(1 / (365 * 24 * 60), (providerDte + remainingDay) / 365);
+}
+
+function optionPriceBlackScholes(
+  contractType: "CALL" | "PUT",
+  spot: number,
+  strike: number,
+  years: number,
+  volatility: number,
+) {
+  if (spot <= 0 || strike <= 0 || years <= 0 || volatility <= 0) return null;
+  const rootTime = Math.sqrt(years);
+  const d1 = (Math.log(spot / strike) + 0.5 * volatility * volatility * years)
+    / (volatility * rootTime);
+  const d2 = d1 - volatility * rootTime;
+  return contractType === "CALL"
+    ? spot * normalCdf(d1) - strike * normalCdf(d2)
+    : strike * normalCdf(-d2) - spot * normalCdf(-d1);
+}
+
+function impliedVolatilityFromPrice(
+  contractType: "CALL" | "PUT",
+  optionPrice: number | null,
+  spot: number,
+  strike: number,
+  years: number,
+) {
+  if (
+    optionPrice === null
+    || !Number.isFinite(optionPrice)
+    || optionPrice <= 0
+    || optionPrice >= spot
+  ) return null;
+  const intrinsic = contractType === "CALL"
+    ? Math.max(0, spot - strike)
+    : Math.max(0, strike - spot);
+  if (optionPrice < intrinsic - 0.01) return null;
+  let low = 0.01;
+  let high = 5;
+  for (let iteration = 0; iteration < 64; iteration += 1) {
+    const middle = (low + high) / 2;
+    const modelPrice = optionPriceBlackScholes(contractType, spot, strike, years, middle);
+    if (modelPrice === null) return null;
+    if (modelPrice > optionPrice) high = middle;
+    else low = middle;
+  }
+  const result = (low + high) / 2;
+  return Number.isFinite(result) ? result : null;
+}
+
+function blackScholesTradeGreeks(args: {
+  contractType: "CALL" | "PUT";
+  spot: number;
+  strike: number;
+  years: number;
+  volatility: number;
+}) {
+  const { contractType, spot, strike, years, volatility } = args;
+  if (
+    spot <= 0
+    || strike <= 0
+    || years <= 0
+    || volatility <= 0
+  ) return null;
+  const rootTime = Math.sqrt(years);
+  const d1 = (
+    Math.log(spot / strike)
+    + 0.5 * volatility * volatility * years
+  ) / (volatility * rootTime);
+  const density = normalPdf(d1);
+  const delta = contractType === "CALL" ? normalCdf(d1) : normalCdf(d1) - 1;
+  const gamma = density / (spot * volatility * rootTime);
+  const bumpedVolatility = Math.min(5, volatility + 0.01);
+  const bumpedD1 = (
+    Math.log(spot / strike)
+    + 0.5 * bumpedVolatility * bumpedVolatility * years
+  ) / (bumpedVolatility * rootTime);
+  const bumpedDelta = contractType === "CALL" ? normalCdf(bumpedD1) : normalCdf(bumpedD1) - 1;
+  const vannaPerVolPoint = bumpedDelta - delta;
+  const oneDay = 1 / 365;
+  const elapsedDays = Math.min(1, Math.max(1 / (24 * 60), years * 365 * 0.5));
+  const nextYears = Math.max(1 / (365 * 24 * 60), years - elapsedDays * oneDay);
+  const nextRootTime = Math.sqrt(nextYears);
+  const nextD1 = (
+    Math.log(spot / strike)
+    + 0.5 * volatility * volatility * nextYears
+  ) / (volatility * nextRootTime);
+  const nextDelta = contractType === "CALL" ? normalCdf(nextD1) : normalCdf(nextD1) - 1;
+  const charmPerDay = (nextDelta - delta) / elapsedDays;
+  if (![delta, gamma, vannaPerVolPoint, charmPerDay].every(Number.isFinite)) return null;
+  return { delta, gamma, vannaPerVolPoint, charmPerDay };
+}
+
 function gexDeskOptionsTape(
   source: GexDeskSourceSymbol,
   payload: unknown,
@@ -1944,6 +2080,25 @@ function gexDeskOptionsTape(
     if (timestamp === null) return [];
     const complex = row.consolidationType.toUpperCase().includes("COMPLEX")
       || row.consolidationType.toUpperCase().includes("MULTI");
+    const underlyingPrice = row.stockPrice && row.stockPrice > 0 ? row.stockPrice : spot;
+    const years = yearsToExpiry(row.dte, timestamp);
+    const providerIv = normalizedIv(row.impliedVolatility);
+    const solvedIv = providerIv ?? impliedVolatilityFromPrice(
+      row.contractType,
+      row.optionPrice,
+      underlyingPrice,
+      row.strikePrice,
+      years,
+    );
+    const greeks = solvedIv === null
+      ? null
+      : blackScholesTradeGreeks({
+          contractType: row.contractType,
+          spot: underlyingPrice,
+          strike: row.strikePrice,
+          years,
+          volatility: solvedIv,
+        });
     return [{
       id: `${source}:${row.id}`,
       source,
@@ -1958,6 +2113,19 @@ function gexDeskOptionsTape(
       volume: Math.max(0, row.volume ?? 0),
       openInterest: Math.max(0, row.openInterest ?? 0),
       confidence: bought || sold ? complex ? 0.55 : 1 : 0.3,
+      underlyingPrice,
+      optionPrice: row.optionPrice,
+      impliedVolatility: solvedIv,
+      dte: row.dte,
+      optionGamma: greeks?.gamma ?? null,
+      optionDelta: greeks?.delta ?? null,
+      optionVannaPerVolPoint: greeks?.vannaPerVolPoint ?? null,
+      optionCharmPerDay: greeks?.charmPerDay ?? null,
+      greekMethod: solvedIv === null
+        ? null
+        : providerIv !== null
+          ? "PROVIDER_IV_BLACK_SCHOLES"
+          : "PRICE_IMPLIED_BLACK_SCHOLES",
     }];
   });
 }

@@ -58,6 +58,15 @@ export type GexDeskOptionPrint = {
   volume: number;
   openInterest: number;
   confidence: number;
+  underlyingPrice?: number | null;
+  optionPrice?: number | null;
+  impliedVolatility?: number | null;
+  dte?: number | null;
+  optionGamma?: number | null;
+  optionDelta?: number | null;
+  optionVannaPerVolPoint?: number | null;
+  optionCharmPerDay?: number | null;
+  greekMethod?: "PROVIDER_IV_BLACK_SCHOLES" | "PRICE_IMPLIED_BLACK_SCHOLES" | null;
 };
 
 export type GexDeskRailPoint = {
