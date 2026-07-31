@@ -189,6 +189,7 @@ function GexViewChart({
         textColor: muted,
         fontFamily: "var(--font-sans)",
         fontSize: 10,
+        attributionLogo: false,
       },
       grid: {
         vertLines: { color: border, style: 1 },
@@ -444,8 +445,8 @@ export default function GexViewWorkspace() {
   const next = () => setActiveIndex((index) => (index + 1) % CHART_COUNT);
 
   return (
-    <section className="flex min-h-[610px] items-center justify-center py-5">
-      <div className="grid w-full max-w-[1220px] grid-cols-[42px_minmax(0,1fr)_42px] items-center gap-3">
+    <section className="flex min-h-[720px] items-center justify-center py-3">
+      <div className="grid w-full max-w-[1660px] grid-cols-[48px_minmax(0,1fr)_48px] items-center gap-3">
         <button
           type="button"
           onClick={previous}
@@ -514,7 +515,7 @@ export default function GexViewWorkspace() {
             </div>
           </div>
 
-          <div className="h-[500px] min-h-[360px]">
+          <div className="h-[clamp(640px,calc(100vh-230px),900px)] min-h-[640px]">
             <GexViewChart
               key={`${activeIndex}:${activeChart.instrument}:${activeChart.timeframe}:${activeChart.mode}`}
               config={activeChart}
