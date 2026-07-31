@@ -2,6 +2,7 @@
 
 import {
   Activity,
+  Crosshair,
   Gauge,
   Radio,
   Sparkles,
@@ -24,6 +25,8 @@ type ConfidenceFilter = "ALL" | "HIGH_MEDIUM" | "HIGH";
 type ViewMode = "COMPOSITION" | "NET";
 type ValueMode = "RAW" | "Z_SCORE" | "PERCENTILE";
 type Smoothing = 0 | 5 | 10 | 20;
+type WeightingMode = "DEX" | "GEX";
+type GexUnit = "DOLLAR_1PCT" | "SHARE_POINT";
 type Structure = "LONG_CALL" | "SHORT_PUT" | "LONG_PUT" | "SHORT_CALL";
 type ConfidenceTier = "HIGH" | "MEDIUM" | "LOW";
 
@@ -36,6 +39,8 @@ type DexContribution = {
   contracts: number;
   dex: number;
   signedDex: number;
+  directionalDex: number;
+  signedDirectionalDex: number;
   gamma: number;
   confidence: number;
   tier: ConfidenceTier;
@@ -43,6 +48,7 @@ type DexContribution = {
   source: GexDeskSourceSymbol;
   complexTrade: boolean;
   greekMethod: GexDeskOptionPrint["greekMethod"];
+  moneyness: string;
 };
 
 type DexBucket = {
@@ -56,6 +62,9 @@ type DexBucket = {
   net: number;
   cumulative: number;
   convexity: number;
+  directionalDex: number;
+  dexZScore: number;
+  dexPercentile: number;
   confidence: number;
   high: number;
   medium: number;
@@ -70,6 +79,7 @@ type DexBucket = {
   strikes: Array<{ label: string; value: number }>;
   expiries: Array<{ label: string; value: number }>;
   deltaBuckets: Array<{ label: string; value: number }>;
+  moneynessBuckets: Array<{ label: string; value: number }>;
   dominant: Structure | null;
 };
 
@@ -80,6 +90,7 @@ type MutableBucket = {
   longPut: number;
   shortCall: number;
   convexity: number;
+  directionalDex: number;
   weightedConfidence: number;
   high: number;
   medium: number;
@@ -90,6 +101,7 @@ type MutableBucket = {
   strikes: Map<string, number>;
   expiries: Map<string, number>;
   deltaBuckets: Map<string, number>;
+  moneynessBuckets: Map<string, number>;
 };
 
 const AGGREGATIONS: Array<{ value: Aggregation; label: string }> = [
@@ -209,6 +221,19 @@ function deltaBucketLabel(delta: number) {
   return "0.80–1.00";
 }
 
+function moneynessLabel(print: GexDeskOptionPrint) {
+  const spot = Number(print.underlyingPrice);
+  const strike = Number(print.strike);
+  if (!Number.isFinite(spot) || spot <= 0 || !Number.isFinite(strike) || strike <= 0) {
+    return "Unknown";
+  }
+  const distance = Math.abs(strike / spot - 1);
+  if (distance <= 0.005) return "Near ATM";
+  const inTheMoney = print.contractType === "CALL" ? strike < spot : strike > spot;
+  if (inTheMoney) return distance >= 0.03 ? "Deep ITM" : "ITM";
+  return distance >= 0.03 ? "Deep OTM" : "OTM";
+}
+
 function emptyMutableBucket(timestamp: number): MutableBucket {
   return {
     timestamp,
@@ -217,6 +242,7 @@ function emptyMutableBucket(timestamp: number): MutableBucket {
     longPut: 0,
     shortCall: 0,
     convexity: 0,
+    directionalDex: 0,
     weightedConfidence: 0,
     high: 0,
     medium: 0,
@@ -227,6 +253,7 @@ function emptyMutableBucket(timestamp: number): MutableBucket {
     strikes: new Map(),
     expiries: new Map(),
     deltaBuckets: new Map(),
+    moneynessBuckets: new Map(),
   };
 }
 
@@ -281,6 +308,8 @@ function contributionsFromPrints(
     confidenceFilter: ConfidenceFilter;
     minimumSize: number;
     sessionDate: string;
+    weighting: WeightingMode;
+    gexUnit: GexUnit;
   },
 ) {
   const rows: DexContribution[] = [];
@@ -298,21 +327,28 @@ function contributionsFromPrints(
       midPrints += 1;
       continue;
     }
-    const delta = Number(print.optionDelta);
-    if (!Number.isFinite(delta) || Math.abs(delta) <= 0 || Math.abs(delta) > 1.001) {
-      unweightedPrints += 1;
-      continue;
-    }
     const confidence = clamp(Number(print.confidence) || 0, 0, 1);
     const tier = confidenceTier(confidence);
     if (args.confidenceFilter === "HIGH" && tier !== "HIGH") continue;
     if (args.confidenceFilter === "HIGH_MEDIUM" && tier === "LOW") continue;
-    const dex = Math.abs(delta) * contracts * 100;
-    if (!Number.isFinite(dex) || dex <= 0) continue;
+    const delta = Number(print.optionDelta);
+    const validDelta = Number.isFinite(delta) && Math.abs(delta) > 0 && Math.abs(delta) <= 1.001;
+    const directionalDex = validDelta ? Math.abs(delta) * contracts * 100 : 0;
     const gamma = Number(print.optionGamma);
-    const gammaEquivalent = Number.isFinite(gamma) && gamma > 0
+    const shareGamma = Number.isFinite(gamma) && gamma > 0
       ? gamma * contracts * 100
       : 0;
+    const spot = Number(print.underlyingPrice);
+    const dollarGamma = shareGamma > 0 && Number.isFinite(spot) && spot > 0
+      ? shareGamma * spot * spot * 0.01
+      : 0;
+    const weightedValue = args.weighting === "DEX"
+      ? directionalDex
+      : args.gexUnit === "DOLLAR_1PCT" ? dollarGamma : shareGamma;
+    if (!Number.isFinite(weightedValue) || weightedValue <= 0) {
+      unweightedPrints += 1;
+      continue;
+    }
     rows.push({
       id: print.id,
       timestamp,
@@ -320,15 +356,21 @@ function contributionsFromPrints(
       expiration: print.expiration,
       delta,
       contracts,
-      dex,
-      signedDex: dex * signedDirection(structure),
-      gamma: gammaEquivalent * (print.side === "BOUGHT" ? 1 : -1),
+      dex: weightedValue,
+      signedDex: weightedValue * signedDirection(structure),
+      directionalDex,
+      signedDirectionalDex: directionalDex * signedDirection(structure),
+      gamma: (args.weighting === "DEX"
+        ? shareGamma
+        : args.gexUnit === "DOLLAR_1PCT" ? dollarGamma : shareGamma)
+        * (print.side === "BOUGHT" ? 1 : -1),
       confidence,
       tier,
       structure,
       source: print.source,
       complexTrade: Boolean(print.complexTrade),
       greekMethod: print.greekMethod,
+      moneyness: moneynessLabel(print),
     });
   }
   return { rows, midPrints, unweightedPrints };
@@ -351,6 +393,7 @@ function aggregateContributions(
     else if (row.structure === "LONG_PUT") bucket.longPut += row.dex;
     else bucket.shortCall += row.dex;
     bucket.convexity += row.gamma;
+    bucket.directionalDex += row.signedDirectionalDex;
     bucket.weightedConfidence += row.dex * row.confidence;
     bucket[row.tier.toLowerCase() as "high" | "medium" | "low"] += row.dex;
     if (row.complexTrade) bucket.complex += row.dex;
@@ -363,6 +406,10 @@ function aggregateContributions(
     bucket.expiries.set(expiration, (bucket.expiries.get(expiration) ?? 0) + Math.abs(row.dex));
     const deltaLabel = deltaBucketLabel(row.delta);
     bucket.deltaBuckets.set(deltaLabel, (bucket.deltaBuckets.get(deltaLabel) ?? 0) + Math.abs(row.dex));
+    bucket.moneynessBuckets.set(
+      row.moneyness,
+      (bucket.moneynessBuckets.get(row.moneyness) ?? 0) + Math.abs(row.dex),
+    );
     grouped.set(timestamp, bucket);
   }
 
@@ -389,6 +436,7 @@ function aggregateContributions(
     const row = grouped.get(timestamp)!;
     return row.longCall + row.shortPut - row.longPut - row.shortCall;
   });
+  const activeDexNets = groupedTimes.map((timestamp) => grouped.get(timestamp)!.directionalDex);
   const mean = activeNets.length
     ? activeNets.reduce((sum, value) => sum + value, 0) / activeNets.length
     : 0;
@@ -397,6 +445,14 @@ function aggregateContributions(
     / Math.max(1, activeNets.length - 1),
   );
   const sortedMagnitude = activeNets.map(Math.abs).sort((left, right) => left - right);
+  const dexMean = activeDexNets.length
+    ? activeDexNets.reduce((sum, value) => sum + value, 0) / activeDexNets.length
+    : 0;
+  const dexDeviation = Math.sqrt(
+    activeDexNets.reduce((sum, value) => sum + (value - dexMean) ** 2, 0)
+    / Math.max(1, activeDexNets.length - 1),
+  );
+  const sortedDexMagnitude = activeDexNets.map(Math.abs).sort((left, right) => left - right);
   const base: DexBucket[] = visibleTimes.map((timestamp, index) => {
     const row = grouped.get(timestamp) ?? emptyMutableBucket(timestamp);
     const bullish = row.longCall + row.shortPut;
@@ -406,6 +462,9 @@ function aggregateContributions(
     const gross = bullish + bearish;
     const magnitudeRank = sortedMagnitude.length
       ? sortedMagnitude.filter((value) => value <= Math.abs(net)).length / sortedMagnitude.length
+      : 0;
+    const dexMagnitudeRank = sortedDexMagnitude.length
+      ? sortedDexMagnitude.filter((value) => value <= Math.abs(row.directionalDex)).length / sortedDexMagnitude.length
       : 0;
     const structures: Array<[Structure, number]> = [
       ["LONG_CALL", row.longCall],
@@ -429,6 +488,9 @@ function aggregateContributions(
       net,
       cumulative,
       convexity: row.convexity,
+      directionalDex: row.directionalDex,
+      dexZScore: dexDeviation > 0 ? (row.directionalDex - dexMean) / dexDeviation : 0,
+      dexPercentile: (row.directionalDex < 0 ? -1 : row.directionalDex > 0 ? 1 : 0) * dexMagnitudeRank * 100,
       confidence: gross > 0 ? row.weightedConfidence / gross : 0,
       high: row.high,
       medium: row.medium,
@@ -443,6 +505,7 @@ function aggregateContributions(
       strikes: mapEntries(row.strikes, 4),
       expiries: mapEntries(row.expiries, 4),
       deltaBuckets: mapEntries(row.deltaBuckets, 5),
+      moneynessBuckets: mapEntries(row.moneynessBuckets, 5),
       dominant: dominant && dominant[1] > 0 ? dominant[0] : null,
     };
   });
@@ -474,14 +537,40 @@ function linePath(
   }).filter(Boolean).join(" ");
 }
 
-function selectedFlowLabel(bucket: DexBucket) {
+function selectedFlowLabel(bucket: DexBucket, weighting: WeightingMode) {
   if (!bucket.prints) return "No classified flow";
+  if (weighting === "GEX") {
+    const dexStrong = Math.abs(bucket.dexPercentile) >= 70;
+    const gexStrong = Math.abs(bucket.percentile) >= 70;
+    if (!dexStrong && !gexStrong) return "Low directional and gamma pressure";
+    if (bucket.directionalDex > 0 && bucket.net > 0) {
+      return dexStrong && gexStrong
+        ? "Bullish flow + high gamma urgency"
+        : dexStrong ? "Bullish size / lower gamma urgency" : "Lower size / high positive gamma";
+    }
+    if (bucket.directionalDex < 0 && bucket.net < 0) {
+      return dexStrong && gexStrong
+        ? "Bearish flow + high gamma urgency"
+        : dexStrong ? "Bearish size / lower gamma urgency" : "Lower size / high negative gamma";
+    }
+    if (bucket.directionalDex < 0 && bucket.net > 0) return "Mixed: bearish DEX / positive GEX";
+    if (bucket.directionalDex > 0 && bucket.net < 0) return "Mixed: bullish DEX / negative GEX";
+    return bucket.net >= 0 ? "Positive gamma sensitivity" : "Negative gamma sensitivity";
+  }
   if (Math.abs(bucket.net) < Math.max(bucket.bullish, bucket.bearish) * 0.08) return "Balanced two-way flow";
   if (bucket.net > 0 && bucket.convexity >= 0) return "Long-call-led bullish flow";
   if (bucket.net > 0) return "Short-put-led bullish flow";
   if (bucket.convexity >= 0) return "Long-put-led bearish flow";
   return "Short-call-led bearish flow";
 }
+
+type OrderflowProps = {
+  payload: GexDeskPayload;
+  history: GexDeskHistoryPayload | null;
+  livePrice: number | null;
+  sourceFilter: SourceFilter;
+  onSourceFilterChange: (source: SourceFilter) => void;
+};
 
 function Metric({
   label,
@@ -532,13 +621,8 @@ export default function DexWeightedOrderflow({
   livePrice,
   sourceFilter,
   onSourceFilterChange,
-}: {
-  payload: GexDeskPayload;
-  history: GexDeskHistoryPayload | null;
-  livePrice: number | null;
-  sourceFilter: SourceFilter;
-  onSourceFilterChange: (source: SourceFilter) => void;
-}) {
+  weighting = "DEX",
+}: OrderflowProps & { weighting?: WeightingMode }) {
   const [aggregation, setAggregation] = useState<Aggregation>(15_000);
   const [expiryFilter, setExpiryFilter] = useState<ExpiryFilter>("ALL");
   const [confidenceFilter, setConfidenceFilter] = useState<ConfidenceFilter>("HIGH_MEDIUM");
@@ -546,7 +630,12 @@ export default function DexWeightedOrderflow({
   const [viewMode, setViewMode] = useState<ViewMode>("COMPOSITION");
   const [valueMode, setValueMode] = useState<ValueMode>("RAW");
   const [smoothing, setSmoothing] = useState<Smoothing>(10);
+  const [gexUnit, setGexUnit] = useState<GexUnit>("DOLLAR_1PCT");
   const [selectedIndex, setSelectedIndex] = useState(VISIBLE_BARS - 1);
+  const metricName = weighting === "GEX" ? "GEX" : "DEX";
+  const unitLabel = weighting === "GEX"
+    ? gexUnit === "DOLLAR_1PCT" ? "dollar gamma / 1% move" : "share gamma / point"
+    : "underlying-equivalent shares";
 
   const tape = Array.isArray(payload.optionsTape) ? payload.optionsTape : [];
   const classified = useMemo(
@@ -556,6 +645,8 @@ export default function DexWeightedOrderflow({
       confidenceFilter,
       minimumSize,
       sessionDate: payload.sessionDate,
+      weighting,
+      gexUnit,
     }),
     [
       confidenceFilter,
@@ -564,6 +655,8 @@ export default function DexWeightedOrderflow({
       payload.sessionDate,
       sourceFilter,
       tape,
+      weighting,
+      gexUnit,
     ],
   );
   const aggregationResult = useMemo(
@@ -584,7 +677,7 @@ export default function DexWeightedOrderflow({
 
   useEffect(() => {
     setSelectedIndex(VISIBLE_BARS - 1);
-  }, [aggregation, confidenceFilter, expiryFilter, minimumSize, sourceFilter]);
+  }, [aggregation, confidenceFilter, expiryFilter, gexUnit, minimumSize, sourceFilter, weighting]);
 
   useEffect(() => {
     if (selectedIndex >= buckets.length) setSelectedIndex(Math.max(0, buckets.length - 1));
@@ -653,6 +746,10 @@ export default function DexWeightedOrderflow({
     0,
   );
   const sessionNet = totalBullish - totalBearish;
+  const sessionDirectionalDex = classified.rows.reduce(
+    (sum, row) => sum + row.signedDirectionalDex,
+    0,
+  );
   const currentEnd = Math.max(
     classified.rows.at(-1)?.timestamp ?? 0,
     payload.marketOpen ? Date.now() : 0,
@@ -660,8 +757,13 @@ export default function DexWeightedOrderflow({
   const netSince = (duration: number) => classified.rows
     .filter((row) => row.timestamp >= currentEnd - duration)
     .reduce((sum, row) => sum + row.signedDex, 0);
+  const dexSince = (duration: number) => classified.rows
+    .filter((row) => row.timestamp >= currentEnd - duration)
+    .reduce((sum, row) => sum + row.signedDirectionalDex, 0);
   const currentOneMinute = netSince(60_000);
   const currentFiveMinutes = netSince(300_000);
+  const currentDexOneMinute = dexSince(60_000);
+  const currentDexFiveMinutes = dexSince(300_000);
   const sessionGross = totalBullish + totalBearish;
   const bullishShare = sessionGross > 0 ? totalBullish / sessionGross : 0.5;
   const quality = classified.rows.reduce(
@@ -681,13 +783,13 @@ export default function DexWeightedOrderflow({
     selectedMagnitudePercentile >= 99 || Math.abs(selected.zScore) >= 3
   );
   const priceChange = (recent.at(-1)?.price ?? 0) - (recent.find((bucket) => bucket.price !== null)?.price ?? 0);
-  const dexChange = (recent.at(-1)?.cumulative ?? 0) - (recent[0]?.cumulative ?? 0);
+  const metricChange = (recent.at(-1)?.cumulative ?? 0) - (recent[0]?.cumulative ?? 0);
   const divergence = Math.abs(priceChange) < Math.max(1, (priceHigh - priceLow) * 0.03)
-    || Math.abs(dexChange) < maximumCumulative * 0.04
+    || Math.abs(metricChange) < maximumCumulative * 0.04
     ? "NONE"
-    : priceChange > 0 && dexChange < 0
+    : priceChange > 0 && metricChange < 0
       ? "BEARISH"
-      : priceChange < 0 && dexChange > 0
+      : priceChange < 0 && metricChange > 0
         ? "BULLISH"
         : "CONFIRMING";
   const nearestZones = payload.zones
@@ -696,7 +798,15 @@ export default function DexWeightedOrderflow({
     .slice(0, 3);
   const strikeMaximum = Math.max(1, ...selected.strikes.map((row) => Math.abs(row.value)));
   const expiryMaximum = Math.max(1, ...selected.expiries.map((row) => Math.abs(row.value)));
-  const deltaMaximum = Math.max(1, ...selected.deltaBuckets.map((row) => Math.abs(row.value)));
+  const attributionBuckets = weighting === "GEX" ? selected.moneynessBuckets : selected.deltaBuckets;
+  const attributionMaximum = Math.max(1, ...attributionBuckets.map((row) => Math.abs(row.value)));
+  const quadrantDexMaximum = Math.max(1, ...recent.map((bucket) => Math.abs(bucket.directionalDex)));
+  const quadrantGexMaximum = Math.max(1, ...recent.map((bucket) => Math.abs(bucket.net)));
+  const quadrantPoints = recent.map((bucket) => ({
+    x: 100 + bucket.directionalDex / quadrantDexMaximum * 82,
+    y: 40 - bucket.net / quadrantGexMaximum * 31,
+  }));
+  const quadrantPath = linePath(quadrantPoints);
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-panel">
@@ -706,9 +816,11 @@ export default function DexWeightedOrderflow({
             <Waves className="h-3.5 w-3.5" />
           </span>
           <div className="hidden min-w-0 sm:block">
-            <div className="text-[8px] font-semibold">DEX-Weighted Orderflow</div>
+            <div className="text-[8px] font-semibold">{metricName}-Weighted Orderflow</div>
             <div className="text-[6px] uppercase tracking-[0.12em] text-muted">
-              NDX / QQQ options → NQ price context
+              {weighting === "GEX"
+                ? "Gamma sensitivity + potential hedge acceleration"
+                : "NDX / QQQ options → NQ price context"}
             </div>
           </div>
         </div>
@@ -763,6 +875,18 @@ export default function DexWeightedOrderflow({
           <option value="HIGH">High only</option>
         </KwantSelect>
 
+        {weighting === "GEX" ? (
+          <KwantSelect
+            value={gexUnit}
+            onChange={(event) => setGexUnit(event.target.value as GexUnit)}
+            menuLabel="GEX display unit"
+            className="h-8 min-w-32 rounded-xl border border-border bg-surface px-2.5 text-[7px] font-semibold"
+          >
+            <option value="DOLLAR_1PCT">Dollar GEX / 1%</option>
+            <option value="SHARE_POINT">Share gamma / point</option>
+          </KwantSelect>
+        ) : null}
+
         <label className="flex h-8 items-center gap-1.5 rounded-xl border border-border bg-surface px-2.5 text-[6px] text-muted">
           Min
           <input
@@ -810,14 +934,14 @@ export default function DexWeightedOrderflow({
                 valueMode === mode ? "bg-primary/[0.12] text-primary" : "text-muted hover:text-foreground"
               }`}
             >
-              {mode === "Z_SCORE" ? "Z-score" : mode === "PERCENTILE" ? "Percentile" : "Raw DEX"}
+              {mode === "Z_SCORE" ? "Z-score" : mode === "PERCENTILE" ? "Percentile" : `Raw ${metricName}`}
             </button>
           ))}
         </div>
         <KwantSelect
           value={String(smoothing)}
           onChange={(event) => setSmoothing(Number(event.target.value) as Smoothing)}
-          menuLabel="DEX smoothing"
+          menuLabel={`${metricName} smoothing`}
           className="h-8 min-w-24 rounded-xl border border-border bg-surface px-2.5 text-[7px] font-semibold"
         >
           <option value="0">EMA off</option>
@@ -830,7 +954,7 @@ export default function DexWeightedOrderflow({
           <span><strong className="text-accent">ACCENT</strong> puts</span>
           <span><strong className="text-primary">SOLID</strong> bought / long volatility</span>
           <span><strong className="text-accent">STRIPED</strong> sold / short volatility</span>
-          <span>Unit: underlying-equivalent shares</span>
+          <span>Unit: {unitLabel}</span>
         </div>
       </div>
 
@@ -839,7 +963,7 @@ export default function DexWeightedOrderflow({
           viewBox={`0 0 ${SVG_WIDTH} ${SVG_HEIGHT}`}
           className="h-full w-full rounded-2xl border border-border bg-background/55"
           role="img"
-          aria-label="NQ price aligned with DEX-weighted classified options orderflow"
+          aria-label={`NQ price aligned with ${metricName}-weighted classified options orderflow`}
         >
           <defs>
             <pattern id="dex-call-sold" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
@@ -908,10 +1032,12 @@ export default function DexWeightedOrderflow({
           ) : null}
 
           <text x={PLOT_LEFT + 10} y={DEX_TOP + 17} fill="var(--muted)" fontSize="7" letterSpacing="1.2">
-            {viewMode === "COMPOSITION" && valueMode === "RAW" ? "CLASSIFIED DEX COMPOSITION" : "NET DEX ORDERFLOW"}
+            {viewMode === "COMPOSITION" && valueMode === "RAW"
+              ? `CLASSIFIED ${metricName} COMPOSITION`
+              : `NET ${metricName} ORDERFLOW`}
           </text>
           <text x={PLOT_RIGHT - 10} y={DEX_TOP + 17} textAnchor="end" fill="var(--muted)" fontSize="6">
-            {valueMode === "RAW" ? "UNDERLYING-EQUIVALENT SHARES" : valueMode === "Z_SCORE" ? "SESSION Z-SCORE" : "SIGNED SESSION PERCENTILE"}
+            {valueMode === "RAW" ? unitLabel.toUpperCase() : valueMode === "Z_SCORE" ? "SESSION Z-SCORE" : "SIGNED SESSION PERCENTILE"}
           </text>
           <line x1={PLOT_LEFT} x2={PLOT_RIGHT} y1={DEX_ZERO} y2={DEX_ZERO} stroke="var(--foreground)" strokeOpacity="0.68" strokeWidth="1.25" />
           <text x={PLOT_LEFT - 6} y={DEX_ZERO + 2} textAnchor="end" fill="var(--foreground)" fontSize="7">0</text>
@@ -981,12 +1107,12 @@ export default function DexWeightedOrderflow({
             <g transform={`translate(${clamp(selectedX - 45, PLOT_LEFT + 4, PLOT_RIGHT - 98)},${selected.net >= 0 ? DEX_TOP + 26 : DEX_BOTTOM - 13})`}>
               <rect width="94" height="15" rx="7.5" fill="var(--primary)" fillOpacity="0.1" stroke="var(--primary)" strokeOpacity="0.42" />
               <text x="47" y="10.5" textAnchor="middle" fill="var(--primary)" fontSize="6" fontWeight="700">
-                DEX SPIKE · {selectedMagnitudePercentile.toFixed(0)}TH
+                {metricName} SPIKE · {selectedMagnitudePercentile.toFixed(0)}TH
               </text>
             </g>
           ) : null}
 
-          <text x={PLOT_LEFT + 10} y={CUM_TOP + 17} fill="var(--muted)" fontSize="7" letterSpacing="1.2">SESSION CUMULATIVE DEX</text>
+          <text x={PLOT_LEFT + 10} y={CUM_TOP + 17} fill="var(--muted)" fontSize="7" letterSpacing="1.2">SESSION CUMULATIVE {metricName}</text>
           <line x1={PLOT_LEFT} x2={PLOT_RIGHT} y1={(CUM_TOP + CUM_BOTTOM) / 2} y2={(CUM_TOP + CUM_BOTTOM) / 2} stroke="var(--border)" />
           {cumulativePath ? <path d={cumulativePath} fill="none" stroke="var(--primary)" strokeWidth="2" filter="url(#dex-soft-glow)" /> : null}
           <line x1={selectedX} x2={selectedX} y1={PRICE_TOP} y2={CUM_BOTTOM} stroke="var(--foreground)" strokeOpacity="0.24" strokeDasharray="3 5" />
@@ -999,13 +1125,13 @@ export default function DexWeightedOrderflow({
             <text y="43" fill="var(--muted)" fontSize="6">latest active {AGGREGATIONS.find((row) => row.value === aggregation)?.label} window</text>
             <text x="234" y="43" textAnchor="end" fill="var(--muted)" fontSize="6">{Math.abs(latestActive.percentile).toFixed(0)}th percentile</text>
 
-            <text y="72" fill="var(--muted)" fontSize="6">1M DEX</text>
-            <text x="104" y="72" fill="var(--muted)" fontSize="6">5M DEX</text>
+            <text y="72" fill="var(--muted)" fontSize="6">1M {metricName}</text>
+            <text x="104" y="72" fill="var(--muted)" fontSize="6">5M {metricName}</text>
             <text y="88" fill="var(--foreground)" fontSize="10" fontFamily="monospace">{signedCompact(currentOneMinute)}</text>
             <text x="104" y="88" fill="var(--foreground)" fontSize="10" fontFamily="monospace">{signedCompact(currentFiveMinutes)}</text>
 
             <line x1="0" x2="234" y1="108" y2="108" stroke="var(--border)" />
-            <text y="128" fill="var(--muted)" fontSize="6">SESSION NET</text>
+            <text y="128" fill="var(--muted)" fontSize="6">SESSION NET {metricName}</text>
             <text x="234" y="128" textAnchor="end" fill={sessionNet >= 0 ? "var(--primary)" : "var(--accent)"} fontSize="9" fontFamily="monospace">{signedCompact(sessionNet)}</text>
             <text y="148" fill="var(--muted)" fontSize="6">BULLISH SHARE</text>
             <text x="234" y="148" textAnchor="end" fill="var(--foreground)" fontSize="9" fontFamily="monospace">{(bullishShare * 100).toFixed(0)}%</text>
@@ -1013,19 +1139,28 @@ export default function DexWeightedOrderflow({
             <rect y="158" width={234 * bullishShare} height="5" rx="2.5" fill="var(--primary)" />
 
             <text y="190" fill="var(--muted)" fontSize="7" letterSpacing="1.2">FLOW TYPE</text>
-            <text y="210" fill="var(--foreground)" fontSize="9" fontWeight="700">{selectedFlowLabel(latestActive)}</text>
-            <text y="226" fill="var(--muted)" fontSize="6">Dominant: {structureLabel(latestActive.dominant)}</text>
-            <text y="241" fill="var(--muted)" fontSize="6">Persistence: {(persistence * 100).toFixed(0)}% {persistenceDirection}</text>
+            <text y="210" fill="var(--foreground)" fontSize="9" fontWeight="700">{selectedFlowLabel(latestActive, weighting)}</text>
+            {weighting === "GEX" ? (
+              <>
+                <text y="226" fill="var(--muted)" fontSize="6">DEX: {signedCompact(latestActive.directionalDex)} · {Math.abs(latestActive.dexPercentile).toFixed(0)}th percentile</text>
+                <text y="241" fill="var(--muted)" fontSize="6">GEX: {signedCompact(latestActive.net)} · {Math.abs(latestActive.percentile).toFixed(0)}th percentile</text>
+              </>
+            ) : (
+              <>
+                <text y="226" fill="var(--muted)" fontSize="6">Dominant: {structureLabel(latestActive.dominant)}</text>
+                <text y="241" fill="var(--muted)" fontSize="6">Persistence: {(persistence * 100).toFixed(0)}% {persistenceDirection}</text>
+              </>
+            )}
 
             <line x1="0" x2="234" y1="262" y2="262" stroke="var(--border)" />
-            <text y="282" fill="var(--muted)" fontSize="7" letterSpacing="1.2">PRICE / DEX READ</text>
+            <text y="282" fill="var(--muted)" fontSize="7" letterSpacing="1.2">PRICE / {metricName} READ</text>
             <text y="304" fill={divergence === "BULLISH" ? "var(--primary)" : divergence === "BEARISH" ? "var(--accent)" : "var(--foreground)"} fontSize="10" fontWeight="700">
               {divergence === "NONE" ? "Not established" : divergence === "CONFIRMING" ? "Flow confirming price" : `${divergence} divergence`}
             </text>
             <text y="321" fill="var(--muted)" fontSize="6">
-              {divergence === "BEARISH" ? "Price higher · cumulative DEX lower"
-                : divergence === "BULLISH" ? "Price lower · cumulative DEX higher"
-                  : divergence === "CONFIRMING" ? "Price and cumulative DEX agree"
+              {divergence === "BEARISH" ? `Price higher · cumulative ${metricName} lower`
+                : divergence === "BULLISH" ? `Price lower · cumulative ${metricName} higher`
+                  : divergence === "CONFIRMING" ? `Price and cumulative ${metricName} agree`
                     : "Insufficient directional separation"}
             </text>
 
@@ -1068,7 +1203,7 @@ export default function DexWeightedOrderflow({
             <span className="font-mono text-[7px] text-foreground">{timeLabel(selected.timestamp, aggregation < 60_000)}</span>
           </div>
           <div className="mt-2 grid grid-cols-3 gap-1.5">
-            <Metric label="Net" value={signedCompact(selected.net)} detail={`${selected.prints} prints`} />
+            <Metric label={`Net ${metricName}`} value={signedCompact(selected.net)} detail={`${selected.prints} prints`} />
             <Metric label="Bullish" value={compact(selected.bullish)} detail="LC + short puts" />
             <Metric label="Bearish" value={compact(selected.bearish)} detail="LP + short calls" />
           </div>
@@ -1101,7 +1236,7 @@ export default function DexWeightedOrderflow({
         <div className="rounded-2xl border border-border bg-background/35 p-3">
           <div className="flex items-center gap-1.5 text-[7px] font-semibold uppercase tracking-[0.13em] text-muted">
             <Sparkles className="h-3 w-3 text-primary" />
-            Expiry + delta mix
+            Expiry + {weighting === "GEX" ? "moneyness" : "delta"} mix
           </div>
           <div className="mt-2 grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
@@ -1115,13 +1250,71 @@ export default function DexWeightedOrderflow({
               ))}
             </div>
             <div className="space-y-1.5">
-              {selected.deltaBuckets.slice(0, 3).map((row) => (
-                <TinyMeter key={row.label} label={`Δ ${row.label}`} value={row.value} maximum={deltaMaximum} tone="bg-accent" />
+              {attributionBuckets.slice(0, 3).map((row) => (
+                <TinyMeter
+                  key={row.label}
+                  label={weighting === "GEX" ? row.label : `Δ ${row.label}`}
+                  value={row.value}
+                  maximum={attributionMaximum}
+                  tone="bg-accent"
+                />
               ))}
             </div>
           </div>
         </div>
 
+        {weighting === "GEX" ? (
+          <div className="rounded-2xl border border-border bg-background/35 p-3">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5 text-[7px] font-semibold uppercase tracking-[0.13em] text-muted">
+                <Crosshair className="h-3 w-3 text-primary" />
+                DEX / GEX matrix
+              </div>
+              <span className="font-mono text-[6px] text-primary">{selectedFlowLabel(latestActive, weighting)}</span>
+            </div>
+            <svg
+              className="mt-1.5 h-[62px] w-full overflow-visible"
+              viewBox="0 0 200 80"
+              role="img"
+              aria-label="Recent DEX and GEX orderflow quadrant path"
+            >
+              <rect x="0" y="0" width="200" height="80" rx="9" fill="var(--surface)" fillOpacity="0.52" />
+              <rect x="100" y="0" width="100" height="40" fill="var(--primary)" fillOpacity="0.035" />
+              <rect x="0" y="40" width="100" height="40" fill="var(--accent)" fillOpacity="0.035" />
+              <line x1="100" x2="100" y1="5" y2="75" stroke="var(--border)" />
+              <line x1="6" x2="194" y1="40" y2="40" stroke="var(--border)" />
+              <text x="105" y="9" fill="var(--primary)" fontSize="4.8">BULLISH + CONVEX</text>
+              <text x="5" y="74" fill="var(--accent)" fontSize="4.8">BEARISH + PUT GAMMA</text>
+              <text x="5" y="9" fill="var(--muted)" fontSize="4.5">MIXED: DEX- / GEX+</text>
+              <text x="105" y="74" fill="var(--muted)" fontSize="4.5">MIXED: DEX+ / GEX-</text>
+              {quadrantPath ? (
+                <path d={quadrantPath} fill="none" stroke="var(--foreground)" strokeOpacity="0.44" strokeWidth="1" />
+              ) : null}
+              {quadrantPoints.map((point, index) => {
+                const isLatest = index === quadrantPoints.length - 1;
+                return (
+                  <g key={`${point.x}-${point.y}-${index}`}>
+                    {isLatest ? <circle cx={point.x} cy={point.y} r="7" fill="var(--primary)" fillOpacity="0.1" /> : null}
+                    <circle
+                      cx={point.x}
+                      cy={point.y}
+                      r={isLatest ? 3.2 : 1.6}
+                      fill={isLatest ? "var(--primary)" : "var(--foreground)"}
+                      fillOpacity={isLatest ? 1 : 0.38}
+                    />
+                  </g>
+                );
+              })}
+              <text x="194" y="38" textAnchor="end" fill="var(--muted)" fontSize="4.5">DEX →</text>
+              <text x="102" y="8" fill="var(--muted)" fontSize="4.5" transform="rotate(-90 102 8)">GEX →</text>
+            </svg>
+            <div className="mt-1 grid grid-cols-3 gap-1 font-mono text-[5.5px]">
+              <span className="rounded-md bg-surface px-1.5 py-1 text-muted">1M DEX <b className="text-foreground">{signedCompact(currentDexOneMinute)}</b></span>
+              <span className="rounded-md bg-surface px-1.5 py-1 text-muted">5M DEX <b className="text-foreground">{signedCompact(currentDexFiveMinutes)}</b></span>
+              <span className="rounded-md bg-surface px-1.5 py-1 text-muted">SESSION <b className="text-foreground">{signedCompact(sessionDirectionalDex)}</b></span>
+            </div>
+          </div>
+        ) : (
         <div className="rounded-2xl border border-border bg-background/35 p-3">
           <div className="flex items-center gap-1.5 text-[7px] font-semibold uppercase tracking-[0.13em] text-muted">
             <TriangleAlert className="h-3 w-3 text-accent" />
@@ -1136,7 +1329,20 @@ export default function DexWeightedOrderflow({
             <span className="rounded-lg border border-border bg-surface px-2 py-1 text-muted">Multi-leg flow shown gross unless linked upstream</span>
           </div>
         </div>
+        )}
       </div>
+      {weighting === "GEX" ? (
+        <div className="border-t border-border px-3 py-1.5 text-[6px] leading-3 text-muted">
+          GEX is estimated from classified option flow using contracts × gamma × 100
+          {gexUnit === "DOLLAR_1PCT" ? " × spot² × 1%." : " per underlying point."}
+          {" "}DEX and GEX remain separate measures; prints without defensible gamma are excluded, and linked multi-leg intent may not be recoverable from the public tape.
+          {" "}{classified.midPrints} midpoint and {classified.unweightedPrints} missing-gamma prints are outside the weighted series.
+        </div>
+      ) : null}
     </div>
   );
+}
+
+export function GexWeightedOrderflow(props: OrderflowProps) {
+  return <DexWeightedOrderflow {...props} weighting="GEX" />;
 }
