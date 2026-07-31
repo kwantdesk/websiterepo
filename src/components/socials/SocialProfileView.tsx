@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Bell,
   BellRing,
@@ -44,6 +44,21 @@ import ReasoningOutcomeChart from "@/components/socials/ReasoningOutcomeChart";
 import ActivityStreakBadge from "@/components/socials/ActivityStreakBadge";
 import UserAvatar from "@/components/socials/UserAvatar";
 import { effectivePresenceStatus, presenceOption } from "@/lib/friends";
+import { createClient as createSupabaseBrowserClient } from "@/lib/supabase/client";
+
+const SOCIAL_FOLLOW_CHANGED_EVENT = "kwantdesk:social-follow-changed";
+const SOCIAL_FOLLOW_BROADCAST_CHANNEL = "kwantdesk-social-follows";
+
+function announceFollowChange(targetUserId: string) {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent(SOCIAL_FOLLOW_CHANGED_EVENT, {
+    detail: { targetUserId },
+  }));
+  if (!("BroadcastChannel" in window)) return;
+  const channel = new BroadcastChannel(SOCIAL_FOLLOW_BROADCAST_CHANNEL);
+  channel.postMessage({ type: "follow-changed", targetUserId });
+  channel.close();
+}
 
 type SocialProfileViewProps = {
   profileObject: SocialObject;
@@ -122,6 +137,7 @@ export default function SocialProfileView({
   const [followListLoading, setFollowListLoading] = useState(false);
   const [followListError, setFollowListError] = useState("");
   const [followListNextOffset, setFollowListNextOffset] = useState<number | null>(null);
+  const followListRequestRef = useRef(0);
 
   const loadFollowSummary = useCallback(async (signal?: AbortSignal) => {
     setFollowLoading(true);
@@ -138,7 +154,6 @@ export default function SocialProfileView({
       setFollowSummary(result.summary);
     } catch (error) {
       if (signal?.aborted) return;
-      setFollowSummary(null);
       setFollowError(error instanceof Error ? error.message : "Follow information could not be loaded.");
     } finally {
       if (!signal?.aborted) setFollowLoading(false);
@@ -196,6 +211,7 @@ export default function SocialProfileView({
         throw new Error(result.error || "The follow setting could not be saved.");
       }
       setFollowSummary(result.summary);
+      announceFollowChange(profileObject.userId);
     } catch (error) {
       setFollowSummary(previous);
       setFollowError(error instanceof Error ? error.message : "The follow setting could not be saved.");
@@ -204,8 +220,8 @@ export default function SocialProfileView({
     }
   };
 
-  const loadFollowList = async (kind: SocialFollowListKind, offset = 0) => {
-    if (followListLoading) return;
+  const loadFollowList = useCallback(async (kind: SocialFollowListKind, offset = 0) => {
+    const requestId = ++followListRequestRef.current;
     setFollowListLoading(true);
     setFollowListError("");
     try {
@@ -217,15 +233,17 @@ export default function SocialProfileView({
       if (!response.ok || !result.summary || !result.list) {
         throw new Error(result.error || "The account list could not be loaded.");
       }
+      if (requestId !== followListRequestRef.current) return;
       setFollowSummary(result.summary);
       setFollowList((current) => offset === 0 ? result.list!.items : [...current, ...result.list!.items]);
       setFollowListNextOffset(result.list.nextOffset);
     } catch (error) {
+      if (requestId !== followListRequestRef.current) return;
       setFollowListError(error instanceof Error ? error.message : "The account list could not be loaded.");
     } finally {
-      setFollowListLoading(false);
+      if (requestId === followListRequestRef.current) setFollowListLoading(false);
     }
-  };
+  }, [profileObject.userId]);
 
   const showFollowList = (kind: SocialFollowListKind) => {
     setOpenFollowList(kind);
@@ -233,6 +251,66 @@ export default function SocialProfileView({
     setFollowListNextOffset(null);
     void loadFollowList(kind, 0);
   };
+
+  useEffect(() => {
+    let disposed = false;
+    let refreshTimer: number | null = null;
+    let broadcastChannel: BroadcastChannel | null = null;
+    let realtimeChannel: ReturnType<ReturnType<typeof createSupabaseBrowserClient>["channel"]> | null = null;
+
+    const refresh = () => {
+      if (disposed || refreshTimer !== null) return;
+      refreshTimer = window.setTimeout(() => {
+        refreshTimer = null;
+        if (disposed) return;
+        void loadFollowSummary();
+        if (openFollowList) void loadFollowList(openFollowList, 0);
+      }, 100);
+    };
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") refresh();
+    };
+
+    window.addEventListener(SOCIAL_FOLLOW_CHANGED_EVENT, refresh);
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", handleVisibility);
+
+    if ("BroadcastChannel" in window) {
+      broadcastChannel = new BroadcastChannel(SOCIAL_FOLLOW_BROADCAST_CHANNEL);
+      broadcastChannel.addEventListener("message", refresh);
+    }
+
+    try {
+      const supabase = createSupabaseBrowserClient();
+      realtimeChannel = supabase
+        .channel(`profile-follows:${profileObject.userId}`)
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "social_profile_follows" },
+          (payload) => {
+            const next = payload.new as Record<string, unknown>;
+            const previous = payload.old as Record<string, unknown>;
+            const followerId = String(next.follower_id ?? previous.follower_id ?? "");
+            const followingId = String(next.following_id ?? previous.following_id ?? "");
+            if (followerId === profileObject.userId || followingId === profileObject.userId) refresh();
+          },
+        )
+        .subscribe();
+    } catch {
+      // Focus, visibility and cross-tab events remain as the no-realtime fallback.
+    }
+
+    return () => {
+      disposed = true;
+      if (refreshTimer !== null) window.clearTimeout(refreshTimer);
+      window.removeEventListener(SOCIAL_FOLLOW_CHANGED_EVENT, refresh);
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", handleVisibility);
+      broadcastChannel?.removeEventListener("message", refresh);
+      broadcastChannel?.close();
+      if (realtimeChannel) void realtimeChannel.unsubscribe();
+    };
+  }, [loadFollowList, loadFollowSummary, openFollowList, profileObject.userId]);
 
   const earnedCards = cards
     .filter((card) => card.userId === profileObject.userId)
