@@ -7,6 +7,7 @@ import {
   BookOpen,
   Bot,
   CalendarDays,
+  Crosshair,
   History,
   Home,
   Layers3,
@@ -26,6 +27,7 @@ type SidebarKey =
   | "home"
   | "charts"
   | "gamma"
+  | "levelz"
   | "gexmap"
   | "gexdesk"
   | "gameplan"
@@ -75,6 +77,7 @@ const navItems: Array<{
   { key: "home", href: "/", label: "Home", title: "Home", icon: Home },
   { key: "charts", href: "/charts", label: "Charts", title: "Charts", icon: LineChart },
   { key: "gamma", href: "/gamma", label: "Gamma", title: "Gamma", icon: BarChart3 },
+  { key: "levelz", href: "/levelz", label: "LEVELZ", title: "LEVELZ", icon: Crosshair },
   { key: "gexmap", href: "/gexmap", label: "GEXMAP", title: "GEX Map", icon: ScanLine },
   { key: "gexdesk", href: "/gexdesk", label: "Gexdesk", title: "Gexdesk", icon: Layers3 },
   { key: "gameplan", href: "/gameplan", label: "Gameplan", title: "Gameplan", icon: CalendarDays },
@@ -89,21 +92,23 @@ const navItems: Array<{
 function preloadWorkspaceComponent(key: SidebarKey) {
   return key === "gamma"
     ? import("@/components/options-flow/GammaWorkspace")
-    : key === "gexmap"
-      ? import("@/components/gex-map/GexMapWorkspace")
-      : key === "gexdesk"
-        ? import("@/components/gexdesk/GexDeskWorkspace")
-        : key === "gameplan"
-          ? import("@/components/gameplan/GameplanWorkspace")
-          : key === "kwantbot"
-            ? import("@/components/kwantbot/KwantBotIntelligenceWorkspace")
-            : key === "news"
-              ? import("@/components/news/NewsWorkspace")
-              : key === "zyon"
-                ? import("@/components/zyon/ZyonWorkspace")
-                : key === "journal"
-                  ? import("@/components/journal/JournalWorkspace")
-                  : Promise.resolve();
+    : key === "levelz"
+      ? import("@/components/levelz/LevelzWorkspace")
+      : key === "gexmap"
+        ? import("@/components/gex-map/GexMapWorkspace")
+        : key === "gexdesk"
+          ? import("@/components/gexdesk/GexDeskWorkspace")
+          : key === "gameplan"
+            ? import("@/components/gameplan/GameplanWorkspace")
+            : key === "kwantbot"
+              ? import("@/components/kwantbot/KwantBotIntelligenceWorkspace")
+              : key === "news"
+                ? import("@/components/news/NewsWorkspace")
+                : key === "zyon"
+                  ? import("@/components/zyon/ZyonWorkspace")
+                  : key === "journal"
+                    ? import("@/components/journal/JournalWorkspace")
+                    : Promise.resolve();
 }
 
 async function preloadWorkspace(key: SidebarKey) {
@@ -129,6 +134,7 @@ export default function AppSidebar({
   useEffect(() => {
     const warmKeys: SidebarKey[] = [
       "gamma",
+      "levelz",
       "gameplan",
       "gexmap",
       "gexdesk",

@@ -10,6 +10,7 @@ import FriendsPanel from "@/components/friends/FriendsPanel";
 import KwantLoader from "@/components/KwantLoader";
 import SocialNotificationsPanel from "@/components/socials/SocialNotificationsPanel";
 import UserAvatar from "@/components/socials/UserAvatar";
+import LevelzWorkspace from "@/components/levelz/LevelzWorkspace";
 import { useKwantBotInterpreter } from "@/hooks/useKwantBotInterpreter";
 import { useSocialNotifications } from "@/hooks/useSocialNotifications";
 
@@ -413,7 +414,7 @@ type LevelExportRow = {
   source: string;
   asOf: string;
 };
-export type PrimaryWorkspaceSection = "charts" | "gamma" | "gexmap" | "gexdesk" | "gameplan" | "kwantbot" | "news" | "zyon" | "journal" | "socials" | "backtesting";
+export type PrimaryWorkspaceSection = "charts" | "gamma" | "levelz" | "gexmap" | "gexdesk" | "gameplan" | "kwantbot" | "news" | "zyon" | "journal" | "socials" | "backtesting";
 
 const WORKSPACE_PRESETS_STORAGE_KEY = "kwantdesk-chart-workspace-presets";
 const ACTIVE_WORKSPACE_PRESET_STORAGE_KEY = "kwantdesk-chart-workspace-active-preset";
@@ -426,6 +427,7 @@ const KWANTBOT_MESSAGES_STORAGE_KEY = "kwantdesk-kwantbot-messages";
 const BOTTOM_WORKSPACE_SECTIONS = [
   { id: "charts" as const, label: "Charts" },
   { id: "gamma" as const, label: "Gamma" },
+  { id: "levelz" as const, label: "LEVELZ" },
   { id: "gexmap" as const, label: "GEXMAP" },
   { id: "gexdesk" as const, label: "Gexdesk" },
   { id: "gameplan" as const, label: "Gameplan" },
@@ -8732,6 +8734,7 @@ export default function KwantifyWorkspace({
             aria-label={`${BOTTOM_WORKSPACE_SECTIONS.find((section) => section.id === bottomWorkspaceSection)?.label ?? "Workspace"} workspace`}
           >
             {bottomWorkspaceSection === "gamma" ? <GammaWorkspace /> : null}
+            {bottomWorkspaceSection === "levelz" ? <LevelzWorkspace /> : null}
             {bottomWorkspaceSection === "gexmap" ? <GexMapWorkspace /> : null}
             {bottomWorkspaceSection === "gexdesk" ? <GexDeskWorkspace /> : null}
             {bottomWorkspaceSection === "gameplan" ? <GameplanWorkspace initialInstrument={displayCmeSymbol(selectedInstrument)} /> : null}
