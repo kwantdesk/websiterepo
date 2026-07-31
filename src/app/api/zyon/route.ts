@@ -1230,17 +1230,19 @@ export async function POST(request: NextRequest) {
     const savedGameplanJournalCloud = savedGameplanJournalEntry
       ? await persistJournalEntry(actor.userId, savedGameplanJournalEntry)
       : false;
+    const liveGameplanSentMessage = "Gameplan sent — it's now waiting for you in Socials → Gameplan Holding. Review the pre-filled record, adjust anything you need, then press Lock today's game plan to approve and publish it into Scoring. Nothing is published or scored until you lock it.";
+    const historicalGameplanSentMessage = "Historical Gameplan sent — it's now waiting for you in Socials → Gameplan Holding with its original entry timestamp preserved. Review the pre-filled record, adjust anything you need, then press Lock today's game plan to approve and publish it into Scoring. Nothing is published or scored until you lock it.";
     const responseText = gameplanDraftSave.blockedBy
       ? "Your previous Gameplan is already in the Socials holding page. Review and lock it into Scoring before asking ZYON to send another one."
       : gameplanDraft && !gameplanDraftSave.saved
         ? "I have the complete Gameplan, but the account holding record did not sync. Nothing was posted. Try Send Gameplan again."
         : gameplanEntryTiming === "TOO_OLD" && gameplanDraft
-          ? "Historical Gameplan sent. It preserves the original entry timestamp, is labelled historical, and is waiting in Socials for your review before you post the record."
+          ? historicalGameplanSentMessage
           : gameplanEntryTiming === "INVALID" || gameplanEntryTiming === "MISSING"
             ? "I need an exact entry time and timezone before I can send this Gameplan. What was your entry time?"
-        : text || (gameplanDraft
-          ? "Gameplan sent. It is saved in today's ZYON journal and waiting in Socials as a fully editable form. Check every detail, add any notes, then lock it into Scoring."
-          : "That has been recorded in your trading journal.");
+            : gameplanDraft
+              ? liveGameplanSentMessage
+              : text || "That has been recorded in your trading journal.";
     const assistantConversationEntry = conversationEntry({
       id: zyonId("zyon-conversation-assistant"),
       chatId,
