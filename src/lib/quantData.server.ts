@@ -2126,6 +2126,7 @@ function gexDeskOptionsTape(
         : providerIv !== null
           ? "PROVIDER_IV_BLACK_SCHOLES"
           : "PRICE_IMPLIED_BLACK_SCHOLES",
+      complexTrade: complex,
     }];
   });
 }

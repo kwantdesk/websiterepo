@@ -67,6 +67,7 @@ export type GexDeskOptionPrint = {
   optionVannaPerVolPoint?: number | null;
   optionCharmPerDay?: number | null;
   greekMethod?: "PROVIDER_IV_BLACK_SCHOLES" | "PRICE_IMPLIED_BLACK_SCHOLES" | null;
+  complexTrade?: boolean;
 };
 
 export type GexDeskRailPoint = {
