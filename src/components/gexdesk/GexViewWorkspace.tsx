@@ -22,7 +22,7 @@ import DexWeightedOrderflow, {
   GexWeightedOrderflow,
 } from "@/components/gexdesk/DexWeightedOrderflow";
 import ExpiryOrderflowComparison from "@/components/gexdesk/ExpiryOrderflowComparison";
-import KwantSteps from "@/components/gexdesk/KwantSteps";
+import GammaOrderflowTerminal from "@/components/gexdesk/GammaOrderflowTerminal";
 import LiveExposureFlowStack from "@/components/gexdesk/LiveExposureFlowStack";
 import LookbackPlayback from "@/components/gexdesk/LookbackPlayback";
 import MajorGamma from "@/components/gexdesk/MajorGamma";
@@ -549,7 +549,7 @@ export default function GexViewWorkspace({
 
           <div className="h-[clamp(640px,calc(100vh-230px),900px)] min-h-[640px]">
             {activeIndex === 0 ? (
-              <KwantSteps
+              <GammaOrderflowTerminal
                 payload={payload}
                 history={history}
                 historyLoading={historyLoading}
