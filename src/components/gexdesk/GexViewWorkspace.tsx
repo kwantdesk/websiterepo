@@ -23,9 +23,9 @@ import DexWeightedOrderflow, {
 } from "@/components/gexdesk/DexWeightedOrderflow";
 import ExpiryOrderflowComparison from "@/components/gexdesk/ExpiryOrderflowComparison";
 import KwantSteps from "@/components/gexdesk/KwantSteps";
+import LiveExposureFlowStack from "@/components/gexdesk/LiveExposureFlowStack";
 import LookbackPlayback from "@/components/gexdesk/LookbackPlayback";
 import MajorGamma from "@/components/gexdesk/MajorGamma";
-import ZeroGamma from "@/components/gexdesk/ZeroGamma";
 import type { Candle } from "@/lib/backtester";
 import {
   DATABENTO_LIVE_STATUS_EVENT,
@@ -559,12 +559,10 @@ export default function GexViewWorkspace({
                 onSourceFilterChange={onSourceFilterChange}
               />
             ) : activeIndex === 1 ? (
-              <ZeroGamma
+              <LiveExposureFlowStack
                 payload={payload}
-                history={history}
-                historyLoading={historyLoading}
-                historyError={historyError}
-                livePrice={livePrice}
+                sourceFilter={sourceFilter}
+                onSourceFilterChange={onSourceFilterChange}
               />
             ) : activeIndex === 2 ? (
               <MajorGamma
