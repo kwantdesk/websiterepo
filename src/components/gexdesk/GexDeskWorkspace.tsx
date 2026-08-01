@@ -263,7 +263,7 @@ export default function GexDeskWorkspace() {
   const [expiryFilter, setExpiryFilter] = useState<ExpiryFilter>("ALL");
   const [compositeMode, setCompositeMode] = useState<CompositeMode>("ECONOMIC");
   const [viewMode, setViewMode] = useState<ViewMode>("SIMPLE");
-  const [activePanel, setActivePanel] = useState<GexDeskPanel>("MAP");
+  const [activePanel, setActivePanel] = useState<GexDeskPanel>("GEX_VIEW");
   const [selectedZoneId, setSelectedZoneId] = useState("");
   const [history, setHistory] = useState<GexDeskHistoryPayload | null>(null);
   const [historyLoading, setHistoryLoading] = useState(false);

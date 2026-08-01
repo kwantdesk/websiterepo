@@ -22,7 +22,6 @@ import DexWeightedOrderflow, {
   GexWeightedOrderflow,
 } from "@/components/gexdesk/DexWeightedOrderflow";
 import ExpiryOrderflowComparison from "@/components/gexdesk/ExpiryOrderflowComparison";
-import GammaOrderflowTerminal from "@/components/gexdesk/GammaOrderflowTerminal";
 import LiveExposureFlowStack from "@/components/gexdesk/LiveExposureFlowStack";
 import LookbackPlayback from "@/components/gexdesk/LookbackPlayback";
 import MajorGamma from "@/components/gexdesk/MajorGamma";
@@ -64,7 +63,7 @@ type LiveTick = {
   timestamp?: string | number;
 };
 
-const CHART_COUNT = 10;
+const CHART_COUNT = 9;
 const STORAGE_KEY = "kwantdesk:gex-view:charts:v1";
 const DEFAULT_CHART: GexViewChartConfig = {
   instrument: "NQ.v.0",
@@ -549,22 +548,12 @@ export default function GexViewWorkspace({
 
           <div className="h-[clamp(640px,calc(100vh-230px),900px)] min-h-[640px]">
             {activeIndex === 0 ? (
-              <GammaOrderflowTerminal
-                payload={payload}
-                history={history}
-                historyLoading={historyLoading}
-                historyError={historyError}
-                livePrice={livePrice}
-                sourceFilter={sourceFilter}
-                onSourceFilterChange={onSourceFilterChange}
-              />
-            ) : activeIndex === 1 ? (
               <LiveExposureFlowStack
                 payload={payload}
                 sourceFilter={sourceFilter}
                 onSourceFilterChange={onSourceFilterChange}
               />
-            ) : activeIndex === 2 ? (
+            ) : activeIndex === 1 ? (
               <MajorGamma
                 payload={payload}
                 history={history}
@@ -574,7 +563,7 @@ export default function GexViewWorkspace({
                 sourceFilter={sourceFilter}
                 onSourceFilterChange={onSourceFilterChange}
               />
-            ) : activeIndex === 3 ? (
+            ) : activeIndex === 2 ? (
               <LookbackPlayback
                 payload={payload}
                 history={history}
@@ -584,7 +573,7 @@ export default function GexViewWorkspace({
                 sourceFilter={sourceFilter}
                 onSourceFilterChange={onSourceFilterChange}
               />
-            ) : activeIndex === 4 ? (
+            ) : activeIndex === 3 ? (
               <ClassifiedVolumeLadder
                 payload={payload}
                 history={history}
@@ -592,7 +581,7 @@ export default function GexViewWorkspace({
                 sourceFilter={sourceFilter}
                 onSourceFilterChange={onSourceFilterChange}
               />
-            ) : activeIndex === 5 ? (
+            ) : activeIndex === 4 ? (
               <ClassifiedGexLadder
                 payload={payload}
                 history={history}
@@ -600,7 +589,7 @@ export default function GexViewWorkspace({
                 sourceFilter={sourceFilter}
                 onSourceFilterChange={onSourceFilterChange}
               />
-            ) : activeIndex === 6 ? (
+            ) : activeIndex === 5 ? (
               <DexWeightedOrderflow
                 payload={payload}
                 history={history}
@@ -608,7 +597,7 @@ export default function GexViewWorkspace({
                 sourceFilter={sourceFilter}
                 onSourceFilterChange={onSourceFilterChange}
               />
-            ) : activeIndex === 7 ? (
+            ) : activeIndex === 6 ? (
               <GexWeightedOrderflow
                 payload={payload}
                 history={history}
@@ -616,7 +605,7 @@ export default function GexViewWorkspace({
                 sourceFilter={sourceFilter}
                 onSourceFilterChange={onSourceFilterChange}
               />
-            ) : activeIndex === 8 ? (
+            ) : activeIndex === 7 ? (
               <ConvexityOrderflow
                 payload={payload}
                 history={history}
@@ -624,7 +613,7 @@ export default function GexViewWorkspace({
                 sourceFilter={sourceFilter}
                 onSourceFilterChange={onSourceFilterChange}
               />
-            ) : activeIndex === 9 ? (
+            ) : activeIndex === 8 ? (
               <ExpiryOrderflowComparison
                 payload={payload}
                 history={history}
