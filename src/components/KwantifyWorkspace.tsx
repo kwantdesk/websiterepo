@@ -142,6 +142,11 @@ import {
   isMassiveFuturesSymbol,
 } from "@/lib/massiveFutures";
 import {
+  MARKET_INDEX_DEFINITIONS,
+  getMarketIndexDefinition,
+  isMarketIndexSymbol,
+} from "@/lib/marketIndices";
+import {
   DATABENTO_DEFAULT_SYMBOLS,
   DATABENTO_FUTURES,
   isContinuousFuture,
@@ -560,7 +565,9 @@ function downloadLevelFile(content: string, filename: string, mimeType: string) 
 }
 
 function displayMarketSource(broker: string) {
-  return broker === "Databento" ? "CME" : broker;
+  if (broker === "Databento") return "CME";
+  if (broker === "Market Index") return "CBOE";
+  return broker;
 }
 
 function fallbackFuturesContract(root: string, now = new Date()) {
@@ -800,7 +807,7 @@ function loadLocalWorkspacePresets(): WorkspacePreset[] {
 }
 
 function normalizeWorkspacePane(pane: Partial<WorkspacePane>, fallback: WorkspacePane): WorkspacePane {
-  if (pane.broker !== "Databento") return fallback;
+  if (pane.broker !== "Databento" && pane.broker !== "Market Index") return fallback;
   return {
     id: pane.id ?? fallback.id,
     symbol: pane.symbol ?? fallback.symbol,
@@ -820,13 +827,14 @@ function createWatchlistItem(symbol: string, broker: string, detail?: { price: s
   const changePercent = detail ? Number(detail.change.replace("%", "")) : 0;
   const massiveDefinition = broker === "Massive" ? getMassiveFuturesSymbolDefinition(symbol) : null;
   const databentoDefinition = broker === "Databento" ? DATABENTO_FUTURES.find((item) => item.symbol === symbol) : null;
+  const marketIndexDefinition = broker === "Market Index" ? getMarketIndexDefinition(symbol) : null;
   return {
     key: makeWatchlistKey(symbol, broker),
     symbol,
     broker,
-    displayName: massiveDefinition?.displayName ?? databentoDefinition?.label,
+    displayName: massiveDefinition?.displayName ?? databentoDefinition?.label ?? marketIndexDefinition?.displayName,
     contractSymbol: broker === "Databento" ? currentCmeContract(symbol) ?? undefined : undefined,
-    exchange: massiveDefinition?.exchange ?? databentoDefinition?.venue,
+    exchange: massiveDefinition?.exchange ?? databentoDefinition?.venue ?? marketIndexDefinition?.exchange,
     delayed: massiveDefinition?.delayed ?? false,
     marketType: broker === "Databento" ? (isContinuousFuture(symbol) ? ("futures" as const) : ("options" as const)) : massiveDefinition ? ("futures" as const) : ("spot" as const),
     lastPrice: mid,
@@ -880,6 +888,11 @@ const defaultWatchlistSections: WatchlistSection[] = [
     id: "default",
     name: "Main",
     symbols: DATABENTO_DEFAULT_SYMBOLS.map((symbol) => makeWatchlistKey(symbol, "Databento")),
+  },
+  {
+    id: "macro",
+    name: "Volatility",
+    symbols: MARKET_INDEX_DEFINITIONS.map((index) => makeWatchlistKey(index.symbol, "Market Index")),
   },
 ];
 
@@ -1103,15 +1116,17 @@ function compactTimeBasedTicks(ticks: QueuedLiveTick[], timeframe: string) {
 }
 
 function formatPrice(price: number, symbol: string): string {
+  const root = displayCmeSymbol(symbol).toUpperCase();
   const fiveDecimal = ["EURUSD", "GBPUSD", "AUDUSD", "NZDUSD", "USDCAD", "USDCHF"];
   const threeDecimalForex = ["USDJPY"];
   const threeDecimal = ["XAUUSD", "OIL"];
   const oneDecimal = ["NAS100", "S&P500", "GER40", "UK100", "DOW30", "NIKKEI", "MNQ", "NQ", "MES", "ES", "MYM", "YM", "M2K", "RTY", "MGC", "GC"];
 
-  if (fiveDecimal.includes(symbol)) return price.toFixed(5);
-  if (threeDecimalForex.includes(symbol)) return price.toFixed(3);
-  if (threeDecimal.includes(symbol)) return price.toFixed(3);
-  if (oneDecimal.includes(symbol)) return price.toFixed(1);
+  if (root === "10Y") return price.toFixed(3);
+  if (fiveDecimal.includes(root)) return price.toFixed(5);
+  if (threeDecimalForex.includes(root)) return price.toFixed(3);
+  if (threeDecimal.includes(root)) return price.toFixed(3);
+  if (oneDecimal.includes(root)) return price.toFixed(1);
   return price.toFixed(2);
 }
 
@@ -1563,6 +1578,16 @@ async function fetchWorkspaceCandles(
         workspaceCandleRequests.delete(requestKey);
       }
     }
+  }
+
+  if (broker === "Market Index") {
+    const response = await fetch(
+      `/api/market-indices?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}&from=${from}&to=${to}`,
+      { cache: "no-store", signal },
+    );
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.error ?? `${symbol} index history is unavailable.`);
+    return sanitizeCandles((payload.candles ?? []) as Candle[], symbol);
   }
 
   try {
@@ -2834,6 +2859,7 @@ function WorkspaceChartPane({
   useEffect(() => {
     const usingCTraderFeed = FALLBACK_CTRADER_BROKER_NAMES.includes(pane.broker as (typeof FALLBACK_CTRADER_BROKER_NAMES)[number]);
     const usingMassivePaneFeed = pane.broker === "Massive" || isMassiveFuturesSymbol(pane.symbol);
+    const usingMarketIndexPaneFeed = pane.broker === "Market Index" || isMarketIndexSymbol(pane.symbol);
     const usingDatabentoPaneFeed = pane.broker === "Databento";
     const nameMap: Record<string, string> = {
       EUR_USD: "EURUSD",
@@ -2853,7 +2879,7 @@ function WorkspaceChartPane({
       NZD_USD: "NZDUSD",
     };
 
-    if (usingMassivePaneFeed) {
+    if (usingMassivePaneFeed || usingMarketIndexPaneFeed) {
       return;
     }
 
@@ -3054,13 +3080,16 @@ function WorkspaceChartPane({
 
   useEffect(() => {
     const usingMassivePaneFeed = pane.broker === "Massive" || isMassiveFuturesSymbol(pane.symbol);
-    if (!usingMassivePaneFeed) return;
+    const usingMarketIndexPaneFeed = pane.broker === "Market Index" || isMarketIndexSymbol(pane.symbol);
+    if (!usingMassivePaneFeed && !usingMarketIndexPaneFeed) return;
 
     let cancelled = false;
 
     const loadSnapshots = async () => {
       try {
-        const response = await fetch(`/api/massive-futures/snapshot?symbols=${encodeURIComponent(pane.symbol)}`, {
+        const response = await fetch(usingMarketIndexPaneFeed
+          ? `/api/market-indices?snapshot=1&symbols=${encodeURIComponent(pane.symbol)}`
+          : `/api/massive-futures/snapshot?symbols=${encodeURIComponent(pane.symbol)}`, {
           cache: "no-store",
         });
         const payload = await response.json();
@@ -3070,13 +3099,15 @@ function WorkspaceChartPane({
         setCandles((prev) => mergeLiveMidIntoCandles(prev, snapshot.lastPrice, pane.symbol, pane.timeframe));
       } catch {
         if (!cancelled) {
-          setLiveFeedError("Massive delayed futures snapshot is unavailable right now.");
+          setLiveFeedError(usingMarketIndexPaneFeed
+            ? "Cboe index snapshot is unavailable right now."
+            : "Massive delayed futures snapshot is unavailable right now.");
         }
       }
     };
 
     void loadSnapshots();
-    const interval = window.setInterval(loadSnapshots, 20_000);
+    const interval = window.setInterval(loadSnapshots, usingMarketIndexPaneFeed ? 2_000 : 20_000);
     return () => {
       cancelled = true;
       window.clearInterval(interval);
@@ -3711,6 +3742,7 @@ export default function KwantifyWorkspace({
   const [workspaceDropTargetPaneId, setWorkspaceDropTargetPaneId] = useState<string | null>(null);
   const [watchlist, setWatchlist] = useState<WatchlistItem[]>([
     ...DATABENTO_DEFAULT_SYMBOLS.map((symbol) => createWatchlistItem(symbol, "Databento")),
+    ...MARKET_INDEX_DEFINITIONS.map((index) => createWatchlistItem(index.symbol, "Market Index")),
   ]);
   const [watchlistContextMenu, setWatchlistContextMenu] = useState<{ x: number; y: number; key: string; symbol: string } | null>(null);
   const [watchlistFavorites, setWatchlistFavorites] = useState<string[]>(() => {
@@ -3734,9 +3766,18 @@ export default function KwantifyWorkspace({
     try {
       const saved = JSON.parse(window.localStorage.getItem("olisa-watchlist-sections") ?? "null");
       const containsLegacyMarket = Array.isArray(saved) && saved.some((section) =>
-        Array.isArray(section?.symbols) && section.symbols.some((key: unknown) => typeof key !== "string" || !key.startsWith("Databento::")),
+        Array.isArray(section?.symbols) && section.symbols.some((key: unknown) =>
+          typeof key !== "string"
+          || (!key.startsWith("Databento::") && !key.startsWith("Market Index::"))),
       );
-      return Array.isArray(saved) && saved.length > 0 && !containsLegacyMarket ? saved : defaultWatchlistSections;
+      if (!Array.isArray(saved) || saved.length === 0 || containsLegacyMarket) return defaultWatchlistSections;
+      const hasMarketIndices = saved.some((section) =>
+        Array.isArray(section?.symbols)
+        && section.symbols.some((key: unknown) => typeof key === "string" && key.startsWith("Market Index::")),
+      );
+      return hasMarketIndices
+        ? saved
+        : [...saved, defaultWatchlistSections.find((section) => section.id === "macro")!];
     } catch {
       return defaultWatchlistSections;
     }
@@ -4099,8 +4140,17 @@ export default function KwantifyWorkspace({
   const cTraderBrokerNameSet = useMemo(() => new Set(cTraderBrokerNames), [cTraderBrokerNames]);
   const usingCTraderFeed = connectedBroker ? cTraderBrokerNameSet.has(connectedBroker) : false;
   const usingMassiveFeed = connectedBroker === "Massive" || isMassiveFuturesSymbol(selectedInstrument);
+  const usingMarketIndexFeed = connectedBroker === "Market Index" || isMarketIndexSymbol(selectedInstrument);
   const usingDatabentoFeed = connectedBroker === "Databento";
-  const activeChartBrokerLabel = usingDatabentoFeed ? "Databento" : usingCTraderFeed && connectedBroker ? connectedBroker : usingMassiveFeed ? "Massive" : "OANDA";
+  const activeChartBrokerLabel = usingDatabentoFeed
+    ? "Databento"
+    : usingMarketIndexFeed
+      ? "Market Index"
+      : usingCTraderFeed && connectedBroker
+        ? connectedBroker
+        : usingMassiveFeed
+          ? "Massive"
+          : "OANDA";
   const availableChartIntervalGroups = useMemo(
     () => CHART_INTERVAL_GROUPS
       .map((group) => ({
@@ -4128,11 +4178,18 @@ export default function KwantifyWorkspace({
   const instrumentCategories = [
     {
       category: "CME Futures",
+      broker: "Databento",
       items: DATABENTO_FUTURES.map((instrument) => [instrument.symbol, `${instrument.label} · ${instrument.venue}`]),
     },
     {
       category: "CME Options",
+      broker: "Databento",
       items: databentoOptions.map((instrument) => [instrument.symbol, `${instrument.label} · ${instrument.group}`]),
+    },
+    {
+      category: "Volatility Indices",
+      broker: "Market Index",
+      items: MARKET_INDEX_DEFINITIONS.map((index) => [index.symbol, `${index.displayName} · ${index.exchange}`]),
     },
   ];
   const watchlistDetails: Record<string, { price: string; change: string; up: boolean }> = {
@@ -4454,25 +4511,18 @@ export default function KwantifyWorkspace({
               ? "Live prices are available on the shared feed, but order entry stays locked until you connect your own broker account."
               : "Connect a broker account and choose the account you want to route orders through.",
         };
-  const pickerEnabledBrokers = useMemo(
-    () => ["Databento"],
-    [],
-  );
   const instrumentPickerItems = useMemo<InstrumentPickerItem[]>(
     () =>
-      pickerEnabledBrokers.flatMap((brokerName) =>
-        instrumentCategories.flatMap((group) =>
-          group.items
-            .map(([symbol, fullName]) => ({
-              key: `${brokerName}::${symbol}`,
+      instrumentCategories.flatMap((group) =>
+        group.items.map(([symbol, fullName]) => ({
+              key: `${group.broker}::${symbol}`,
               symbol,
               fullName,
               category: group.category,
-              broker: brokerName,
+              broker: group.broker,
             })),
-        ),
       ),
-    [instrumentCategories, pickerEnabledBrokers],
+    [instrumentCategories],
   );
   const filteredInstrumentPickerItems = useMemo(() => {
     const query = instrumentSearch.trim().toLowerCase();
@@ -5436,6 +5486,7 @@ export default function KwantifyWorkspace({
   }, [usingDatabentoFeed, watchlistSymbolsCsv]);
 
   useEffect(() => {
+    if (activeChartBrokerLabel === "Market Index" || activeChartBrokerLabel === "Massive") return;
     const nameMap: Record<string, string> = {
       EUR_USD: "EURUSD",
       GBP_USD: "GBPUSD",
@@ -5689,14 +5740,17 @@ export default function KwantifyWorkspace({
           if (streamRecentlyAlive) return;
         }
         const res = await fetch(
-          activeChartBrokerLabel === "Massive"
+          activeChartBrokerLabel === "Market Index"
+            ? `/api/market-indices?snapshot=1&symbols=${encodeURIComponent(watchlistSymbolsCsv)}`
+          : activeChartBrokerLabel === "Massive"
             ? `/api/massive-futures/snapshot?symbols=${encodeURIComponent(watchlistSymbolsCsv)}`
             : usingCTraderFeed
               ? `/api/ctrader?action=pricing&broker=${encodeURIComponent(activeChartBrokerLabel)}&symbols=${encodeURIComponent(watchlistSymbolsCsv)}`
               : "/api/oanda?action=pricing",
         );
         const data = await res.json();
-        const prices = activeChartBrokerLabel === "Massive" ? data.snapshots : data.prices;
+        const usingSnapshotPrices = activeChartBrokerLabel === "Massive" || activeChartBrokerLabel === "Market Index";
+        const prices = usingSnapshotPrices ? data.snapshots : data.prices;
         if (!res.ok || data.error || !prices) {
           setFeedErrorByBroker((current) => ({
             ...current,
@@ -5712,17 +5766,17 @@ export default function KwantifyWorkspace({
           return next;
         });
 
-        prices.forEach((price: { instrument?: string; symbol?: string; bid?: number; ask?: number; mid?: number; broker?: string; lastPrice?: number; openPrice?: number }) => {
+        prices.forEach((price: { instrument?: string; symbol?: string; bid?: number; ask?: number; mid?: number; broker?: string; lastPrice?: number; openPrice?: number; delayed?: boolean }) => {
           const displayName =
-            activeChartBrokerLabel === "Massive"
+            usingSnapshotPrices
               ? price.symbol || ""
               : usingCTraderFeed
                 ? price.instrument || ""
                 : (nameMap[price.instrument || ""] || price.instrument || "");
-          const mid = activeChartBrokerLabel === "Massive" ? Number(price.lastPrice ?? 0) : Number(price.mid ?? 0);
-          const bid = activeChartBrokerLabel === "Massive" ? mid : Number(price.bid ?? mid);
-          const ask = activeChartBrokerLabel === "Massive" ? mid : Number(price.ask ?? mid);
-          const openPriceFromFeed = activeChartBrokerLabel === "Massive" ? Number(price.openPrice ?? mid) : undefined;
+          const mid = usingSnapshotPrices ? Number(price.lastPrice ?? 0) : Number(price.mid ?? 0);
+          const bid = usingSnapshotPrices ? mid : Number(price.bid ?? mid);
+          const ask = usingSnapshotPrices ? mid : Number(price.ask ?? mid);
+          const openPriceFromFeed = usingSnapshotPrices ? Number(price.openPrice ?? mid) : undefined;
 
           setWatchlist((current) => current.map((item) => {
             if (item.symbol !== displayName || item.broker !== activeChartBrokerLabel) return item;
@@ -5733,6 +5787,7 @@ export default function KwantifyWorkspace({
             return {
               ...item,
               broker: price.broker || activeChartBrokerLabel,
+              delayed: price.delayed ?? item.delayed,
               lastPrice: mid,
               openPrice,
               bid,
@@ -5760,7 +5815,7 @@ export default function KwantifyWorkspace({
     };
 
     fetchPrices();
-    const interval = window.setInterval(fetchPrices, 500);
+    const interval = window.setInterval(fetchPrices, activeChartBrokerLabel === "Market Index" ? 2_000 : 500);
     return () => window.clearInterval(interval);
   }, [activeChartBrokerLabel, chartTrades.length, section, selectedInstrument, selectedTimeframe, streamHealthyByBroker, usingCTraderFeed, watchlistSymbolsCsv]);
 
@@ -5792,7 +5847,10 @@ export default function KwantifyWorkspace({
           const symbols = watchlistBrokerSymbols[broker];
           if (!symbols || symbols.length === 0) return;
           const isCTrader = cTraderBrokerNameSet.has(broker);
-          const url = broker === "Massive"
+          const usesSnapshotPrices = broker === "Massive" || broker === "Market Index";
+          const url = broker === "Market Index"
+            ? `/api/market-indices?snapshot=1&symbols=${encodeURIComponent(symbols.join(","))}`
+            : broker === "Massive"
             ? `/api/massive-futures/snapshot?symbols=${encodeURIComponent(symbols.join(","))}`
             : isCTrader
               ? `/api/ctrader?action=pricing&broker=${encodeURIComponent(broker)}&symbols=${encodeURIComponent(symbols.join(","))}`
@@ -5801,15 +5859,15 @@ export default function KwantifyWorkspace({
           try {
             const res = await fetch(url);
             const data = await res.json();
-            const prices = broker === "Massive" ? data.snapshots : data.prices;
+            const prices = usesSnapshotPrices ? data.snapshots : data.prices;
             if (!res.ok || data.error || !Array.isArray(prices)) return;
 
-            prices.forEach((price: { instrument?: string; symbol?: string; bid?: number; ask?: number; mid?: number; broker?: string; lastPrice?: number; openPrice?: number }) => {
-              const displayName = broker === "Massive" ? price.symbol || "" : isCTrader ? price.instrument || "" : (nameMap[price.instrument || ""] || price.instrument || "");
-              const mid = broker === "Massive" ? Number(price.lastPrice ?? 0) : Number(price.mid ?? 0);
-              const bid = broker === "Massive" ? mid : Number(price.bid ?? mid);
-              const ask = broker === "Massive" ? mid : Number(price.ask ?? mid);
-              const openPriceFromFeed = broker === "Massive" ? Number(price.openPrice ?? mid) : undefined;
+            prices.forEach((price: { instrument?: string; symbol?: string; bid?: number; ask?: number; mid?: number; broker?: string; lastPrice?: number; openPrice?: number; delayed?: boolean }) => {
+              const displayName = usesSnapshotPrices ? price.symbol || "" : isCTrader ? price.instrument || "" : (nameMap[price.instrument || ""] || price.instrument || "");
+              const mid = usesSnapshotPrices ? Number(price.lastPrice ?? 0) : Number(price.mid ?? 0);
+              const bid = usesSnapshotPrices ? mid : Number(price.bid ?? mid);
+              const ask = usesSnapshotPrices ? mid : Number(price.ask ?? mid);
+              const openPriceFromFeed = usesSnapshotPrices ? Number(price.openPrice ?? mid) : undefined;
               setWatchlist((current) =>
                 current.map((item) => {
                   if (item.symbol !== displayName || item.broker !== broker) return item;
@@ -5820,6 +5878,7 @@ export default function KwantifyWorkspace({
                   return {
                     ...item,
                     broker: price.broker || broker,
+                    delayed: price.delayed ?? item.delayed,
                     lastPrice: mid,
                     openPrice,
                     bid,
@@ -5886,6 +5945,16 @@ export default function KwantifyWorkspace({
         if (fallback.length) return sanitizeCandles(fallback, selectedInstrument);
         throw error;
       }
+    }
+
+    if (activeChartBrokerLabel === "Market Index") {
+      const response = await fetch(
+        `/api/market-indices?symbol=${encodeURIComponent(selectedInstrument)}&timeframe=${encodeURIComponent(selectedTimeframe)}&from=${from}&to=${to}`,
+        { cache: "no-store", signal },
+      );
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error ?? `${selectedInstrument} index history is unavailable.`);
+      return sanitizeCandles((payload.candles ?? []) as Candle[], selectedInstrument);
     }
 
     try {
@@ -5959,6 +6028,8 @@ export default function KwantifyWorkspace({
           ? `/api/ctrader?action=candles&broker=${encodeURIComponent(activeChartBrokerLabel)}&symbol=${encodeURIComponent(selectedInstrument)}&interval=${encodeURIComponent(selectedTimeframe)}&count=3`
           : activeChartBrokerLabel === "Databento"
             ? null
+          : activeChartBrokerLabel === "Market Index"
+            ? `/api/market-indices?snapshot=1&symbols=${encodeURIComponent(selectedInstrument)}`
           : activeChartBrokerLabel === "Massive"
             ? `/api/massive-futures/snapshot?symbols=${encodeURIComponent(selectedInstrument)}`
           : oandaInst
@@ -5969,7 +6040,7 @@ export default function KwantifyWorkspace({
 
         const res = await fetch(url);
         const data = await res.json();
-        if (activeChartBrokerLabel === "Massive" && Array.isArray(data.snapshots) && data.snapshots[0]?.lastPrice) {
+        if ((activeChartBrokerLabel === "Massive" || activeChartBrokerLabel === "Market Index") && Array.isArray(data.snapshots) && data.snapshots[0]?.lastPrice) {
           setChartCandles((prev) => mergeLiveMidIntoCandles(prev, Number(data.snapshots[0].lastPrice), selectedInstrument, selectedTimeframe));
           return;
         }
@@ -6040,7 +6111,9 @@ export default function KwantifyWorkspace({
           showReportToast("success", `Report updated — ${displayCmeSymbol(selectedInstrument)} ${selectedTimeframe}`, 2000);
           setChartLoadingMessage(`Loaded ${candles.length.toLocaleString()} candles`);
         } else {
-          const fallback = activeChartBrokerLabel === "Databento" ? [] : generateSampleData(60);
+          const fallback = activeChartBrokerLabel === "Databento" || activeChartBrokerLabel === "Market Index"
+            ? []
+            : generateSampleData(60);
           if (fallback.length) setChartCandles(fallback);
           if (backtestResult && !backtestResult.error) {
             const config: BacktestConfig = {
@@ -6056,7 +6129,7 @@ export default function KwantifyWorkspace({
         }
       } catch (loadError) {
         if (cancelled || (loadError instanceof DOMException && loadError.name === "AbortError")) return;
-        if (!usingCTraderFeed && activeChartBrokerLabel !== "Databento") {
+        if (!usingCTraderFeed && activeChartBrokerLabel !== "Databento" && activeChartBrokerLabel !== "Market Index") {
           const fallback = generateSampleData(60);
           setChartCandles(fallback);
         }

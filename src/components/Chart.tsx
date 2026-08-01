@@ -660,6 +660,8 @@ function getPriceFormat(instrument: string) {
   const threeDecimal = ["XAUUSD", "OIL"];
   const oneDecimal = ["NAS100", "S&P500", "GER40", "UK100", "DOW30", "NIKKEI"];
 
+  if (/^10Y/.test(normalized)) return { type: "price" as const, precision: 3, minMove: 0.001 };
+  if (["VIX", "VXN"].includes(normalized)) return { type: "price" as const, precision: 2, minMove: 0.01 };
   if (/^(MNQ|NQ|MES|ES|M2K|RTY)/.test(normalized)) return { type: "price" as const, precision: 2, minMove: 0.25 };
   if (/^(MYM|YM)/.test(normalized)) return { type: "price" as const, precision: 0, minMove: 1 };
   if (/^(MGC|GC)/.test(normalized)) return { type: "price" as const, precision: 1, minMove: 0.1 };

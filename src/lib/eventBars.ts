@@ -26,6 +26,7 @@ export function futuresTickSize(symbol: string) {
   if (root === "HG") return 0.0005;
   if (["ZN", "ZF"].includes(root)) return 1 / 64;
   if (["ZB", "ZT"].includes(root)) return 1 / 32;
+  if (root === "10Y") return 0.001;
   if (root === "SR3") return 0.0025;
   if (["6E", "6A", "6C"].includes(root)) return 0.00005;
   if (root === "6B") return 0.0001;
