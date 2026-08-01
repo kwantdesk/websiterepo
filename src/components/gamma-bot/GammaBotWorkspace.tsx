@@ -6,6 +6,7 @@ import {
   ChevronDown,
   CirclePause,
   CirclePlay,
+  ExternalLink,
   Gauge,
   Radio,
   RefreshCw,
@@ -15,6 +16,7 @@ import {
   Waves,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 
 import KwantLoader from "@/components/KwantLoader";
 import type {
@@ -117,6 +119,7 @@ function FeedCard({ item }: { item: FeedItem }) {
 }
 
 export default function GammaBotWorkspace() {
+  const router = useRouter();
   const [instrument, setInstrument] = useState<GammaBotInstrument>("NQ");
   const [data, setData] = useState<GammaBotPayload | null>(null);
   const [livePrice, setLivePrice] = useState<number | null>(null);
@@ -323,11 +326,27 @@ export default function GammaBotWorkspace() {
                   </h2>
                   <p className="mt-3 max-w-3xl text-[13px] leading-6 text-muted">{data?.regime.plainEnglish}</p>
                 </div>
-                <div className="rounded-2xl border border-border bg-surface/45 px-5 py-4 text-right">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const params = new URLSearchParams({
+                      market: instrument,
+                      source: data?.sourceSymbol ?? (instrument === "NQ" ? "QQQ" : "SPY"),
+                    });
+                    router.push(`/gexmap?${params.toString()}`);
+                  }}
+                  onMouseEnter={() => router.prefetch("/gexmap")}
+                  className="group rounded-2xl border border-border bg-surface/45 px-5 py-4 text-right transition-colors hover:border-primary/35 hover:bg-primary/[0.055] focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                  aria-label={`Open ${instrument} options strikes in GEX Map`}
+                  title={`Open ${instrument === "NQ" ? "QQQ and NDX" : "SPY and SPX"} in GEX Map`}
+                >
                   <div className="text-[9px] font-semibold uppercase tracking-[0.16em] text-muted">{instrument} live</div>
                   <div className="mt-1 font-mono text-[24px] font-semibold text-foreground">{formatPrice(livePrice)}</div>
-                  <div className="mt-1 flex items-center justify-end gap-1.5 text-[10px] text-primary"><Radio className="h-3 w-3" /> {data?.priceStatus ?? "UNAVAILABLE"}</div>
-                </div>
+                  <div className="mt-1 flex items-center justify-end gap-1.5 text-[10px] text-primary">
+                    <Radio className="h-3 w-3" /> {data?.priceStatus ?? "UNAVAILABLE"}
+                    <ExternalLink className="ml-1 h-3 w-3 opacity-65 transition-opacity group-hover:opacity-100" />
+                  </div>
+                </button>
               </div>
             </section>
 

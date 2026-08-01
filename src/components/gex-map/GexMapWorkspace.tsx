@@ -41,11 +41,25 @@ type PanelConfig = {
   greekMode: GreekMode;
 };
 
+type GexMapMarket = "NQ" | "ES";
+
 const DEFAULT_PANELS: PanelConfig[] = [
   { id: "left", symbol: "SPX", greekMode: "GAMMA" },
   { id: "centre", symbol: "SPY", greekMode: "DELTA" },
   { id: "right", symbol: "QQQ", greekMode: "VANNA" },
 ];
+const MARKET_PANELS: Record<GexMapMarket, PanelConfig[]> = {
+  NQ: [
+    { id: "left", symbol: "NDX", greekMode: "GAMMA" },
+    { id: "centre", symbol: "QQQ", greekMode: "DELTA" },
+    { id: "right", symbol: "QQQ", greekMode: "VANNA" },
+  ],
+  ES: [
+    { id: "left", symbol: "SPX", greekMode: "GAMMA" },
+    { id: "centre", symbol: "SPY", greekMode: "DELTA" },
+    { id: "right", symbol: "SPY", greekMode: "VANNA" },
+  ],
+};
 const SPEEDS = [1, 2, 5, 10] as const;
 const FRAME_STEPS = [1, 2, 5, 10] as const;
 
@@ -70,6 +84,16 @@ function formatCompact(value: number) {
   if (absolute >= 1_000_000) return `${sign}$${(absolute / 1_000_000).toFixed(2)}M`;
   if (absolute >= 1_000) return `${sign}$${(absolute / 1_000).toFixed(1)}K`;
   return `${sign}$${absolute.toFixed(0)}`;
+}
+
+function linkedMarketFromLocation(): GexMapMarket | null {
+  if (typeof window === "undefined") return null;
+  const market = new URLSearchParams(window.location.search).get("market")?.toUpperCase();
+  return market === "NQ" || market === "ES" ? market : null;
+}
+
+function initialPanelsForMarket(market: GexMapMarket | null) {
+  return (market ? MARKET_PANELS[market] : DEFAULT_PANELS).map((panel) => ({ ...panel }));
 }
 
 function formatPrice(value: number | null) {
@@ -436,9 +460,11 @@ function ExposurePanel({
 }
 
 export default function GexMapWorkspace() {
-  const [panels, setPanels] = useState<PanelConfig[]>(DEFAULT_PANELS);
+  const linkedMarket = useMemo(() => linkedMarketFromLocation(), []);
+  const initialPanels = useMemo(() => initialPanelsForMarket(linkedMarket), [linkedMarket]);
+  const [panels, setPanels] = useState<PanelConfig[]>(initialPanels);
   const [panelData, setPanelData] = useState<Record<string, GexMapPanelPayload | null>>(() =>
-    Object.fromEntries(DEFAULT_PANELS.map((panel) => [
+    Object.fromEntries(initialPanels.map((panel) => [
       panel.id,
       readWorkspaceData<GexMapPanelPayload>(gexMapCacheKey(panel.symbol, panel.greekMode)),
     ])),
@@ -449,7 +475,7 @@ export default function GexMapWorkspace() {
     right: null,
   });
   const [loading, setLoading] = useState<Record<string, boolean>>(() =>
-    Object.fromEntries(DEFAULT_PANELS.map((panel) => [
+    Object.fromEntries(initialPanels.map((panel) => [
       panel.id,
       !readWorkspaceData<GexMapPanelPayload>(gexMapCacheKey(panel.symbol, panel.greekMode)),
     ])),
@@ -618,7 +644,7 @@ export default function GexMapWorkspace() {
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <h1 className="text-[13px] font-semibold tracking-tight">GEXMAP</h1>
-              <span className="rounded-md border border-border bg-surface px-1.5 py-0.5 text-[8px] font-semibold uppercase tracking-[0.14em] text-muted">3 panels</span>
+              <span className="rounded-md border border-border bg-surface px-1.5 py-0.5 text-[8px] font-semibold uppercase tracking-[0.14em] text-muted">{linkedMarket ? `${linkedMarket} context` : "3 panels"}</span>
             </div>
             <p className="text-[9px] text-muted">Signed front-expiry exposure by strike</p>
           </div>
