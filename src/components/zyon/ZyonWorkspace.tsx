@@ -1873,10 +1873,10 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
                 type="button"
                 onClick={() => setChatsCollapsed(false)}
                 className="flex h-8 w-8 items-center justify-center rounded-xl border border-primary/20 bg-primary/[0.07] text-primary transition hover:border-primary/40"
-                title="Open chats"
-                aria-label="Open chats"
+                title="Expand chats"
+                aria-label="Expand chats"
               >
-                <MessageSquareText className="h-3.5 w-3.5" />
+                <ChevronRight className="h-3.5 w-3.5" />
               </button>
               <button
                 type="button"
@@ -2054,10 +2054,10 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
                 type="button"
                 onClick={() => setJournalCollapsed(false)}
                 className="flex h-8 w-8 items-center justify-center rounded-xl border border-primary/20 bg-primary/[0.07] text-primary transition hover:border-primary/40"
-                title="Open journal"
-                aria-label="Open journal"
+                title="Expand journal"
+                aria-label="Expand journal"
               >
-                <FileText className="h-3.5 w-3.5" />
+                <ChevronRight className="h-3.5 w-3.5" />
               </button>
             </div>
           ) : <>
