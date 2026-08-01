@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { type ComponentType, useEffect } from "react";
 import {
+  BarChart3,
   BookOpen,
   CalendarDays,
   Crosshair,
@@ -76,6 +77,7 @@ const navItems: Array<{
   { key: "charts", href: "/charts", label: "Charts", title: "Charts", icon: LineChart },
   { key: "zyon", href: "/zyon", label: "ZYON", title: "ZYON Trading Intelligence", icon: Sparkles },
   { key: "gameplan", href: "/gameplan", label: "Gameplan", title: "Gameplan", icon: CalendarDays },
+  { key: "gamma", href: "/gamma", label: "GAMMA", title: "Gamma", icon: BarChart3 },
   { key: "levelz", href: "/levelz", label: "LEVELZ", title: "LEVELZ", icon: Crosshair },
   { key: "news", href: "/news", label: "News", title: "News", icon: BookOpen },
   { key: "gexmap", href: "/gexmap", label: "GEX MAP", title: "GEX Map", icon: ScanLine },
