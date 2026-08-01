@@ -13,9 +13,10 @@
  * OPTIONS FLOW/MANUAL_TRADING/kwantify_gamma_service/lib/native_gamma.py
  */
 import { unstable_cache } from "next/cache";
-import type {
-  ChartGammaSourceLevel,
-  ChartGammaSourceLevelKind,
+import {
+  mergeGammaLevelsAtSamePrice,
+  type ChartGammaSourceLevel,
+  type ChartGammaSourceLevelKind,
 } from "@/lib/chartGammaLevels";
 
 const DB_BASE = "https://hist.databento.com/v0/timeseries.get_range";
@@ -630,7 +631,7 @@ export async function getNativeGammaSnapshot(root: NativeGammaRoot, tradeIso: st
     callResistance: ev.callRes, putSupport: ev.putSup, hvl: ev.hvl, zeroGamma: ev.flip,
     gammaFlipCurve: ev.gammaFlipCurve,
     box: ev.box,
-    netGex: ev.netGex, grossGex: ev.grossGex, levels,
+    netGex: ev.netGex, grossGex: ev.grossGex, levels: mergeGammaLevelsAtSamePrice(levels, 0.25),
     validationStrikes: ev.walls.slice(0, 6).map(([k]) => k),
     revision: `native:${root}:${usedIso}:${Math.round(liveSpot)}`,
   };

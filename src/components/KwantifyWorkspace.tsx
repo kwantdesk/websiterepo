@@ -93,7 +93,7 @@ import {
   clonePaneIndicatorState,
   normalizePaneIndicatorState,
 } from "@/lib/chartIndicatorConfig";
-import type { ChartGammaLevelsPayload } from "@/lib/chartGammaLevels";
+import { mergeGammaLevelsAtSamePrice, type ChartGammaLevelsPayload } from "@/lib/chartGammaLevels";
 import type { InstitutionalTrade } from "@/lib/institutionalMarketData";
 import {
   gameplanSessionLabel,
@@ -2186,11 +2186,11 @@ function buildGammaChartOverlay(args: {
 
   if (!calibration) return null;
 
-  const levels = source.levels
+  const levels = mergeGammaLevelsAtSamePrice(source.levels
     .map((level) => ({
       ...level,
       price: roundedGammaPrice(level.price, calibration.scale, args.tickSize),
-    }))
+    })), args.tickSize)
     .sort((left, right) => {
       const leftPrimary = ["CALL_WALL", "PUT_WALL", "GAMMA_MAGNET", "GAMMA_CENTRE", "HIGH_VOL_LEVEL", "ZERO_GAMMA", "MAJOR_POSITIVE_OI", "MAJOR_POSITIVE_VOLUME"].includes(left.kind) ? 0 : 1;
       const rightPrimary = ["CALL_WALL", "PUT_WALL", "GAMMA_MAGNET", "GAMMA_CENTRE", "HIGH_VOL_LEVEL", "ZERO_GAMMA", "MAJOR_POSITIVE_OI", "MAJOR_POSITIVE_VOLUME"].includes(right.kind) ? 0 : 1;

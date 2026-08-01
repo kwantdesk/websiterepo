@@ -27,6 +27,65 @@ export type ChartGammaSourceLevel = {
   rank: number;
 };
 
+const GAMMA_LEVEL_KIND_PRIORITY: Record<ChartGammaSourceLevelKind, number> = {
+  CALL_WALL: 100,
+  PUT_WALL: 100,
+  ZERO_GAMMA: 95,
+  HIGH_VOL_LEVEL: 94,
+  GAMMA_CENTRE: 90,
+  MAJOR_POSITIVE_OI: 85,
+  MAJOR_POSITIVE_VOLUME: 84,
+  EXPECTED_MOVE_MAX: 80,
+  EXPECTED_MOVE_MIN: 80,
+  POSITIVE_GEX: 20,
+  NEGATIVE_GEX: 20,
+  GAMMA_MAGNET: 10,
+};
+
+/**
+ * Collapses gamma references that resolve to the same tradable tick. Converting
+ * cash-index levels onto futures can make previously distinct source strikes land
+ * on one price; rendering each one separately produces duplicated lines and labels.
+ */
+export function mergeGammaLevelsAtSamePrice(
+  levels: ChartGammaSourceLevel[],
+  tickSize = 0.25,
+) {
+  const safeTick = Number.isFinite(tickSize) && tickSize > 0 ? tickSize : 0.25;
+  const grouped = new Map<number, ChartGammaSourceLevel>();
+
+  for (const level of levels) {
+    if (!Number.isFinite(level.price) || level.price <= 0) continue;
+    const tick = Math.round(level.price / safeTick);
+    const price = tick * safeTick;
+    const existing = grouped.get(tick);
+    if (!existing) {
+      grouped.set(tick, { ...level, price });
+      continue;
+    }
+
+    const labels = new Set([
+      ...existing.label.split(" / ").map((label) => label.trim()).filter(Boolean),
+      ...level.label.split(" / ").map((label) => label.trim()).filter(Boolean),
+    ]);
+    const primary = GAMMA_LEVEL_KIND_PRIORITY[level.kind] > GAMMA_LEVEL_KIND_PRIORITY[existing.kind]
+      ? level
+      : existing;
+    grouped.set(tick, {
+      ...primary,
+      id: `${existing.id}-${level.id}`,
+      price,
+      label: [...labels].join(" / "),
+      value: Math.abs(level.value ?? 0) > Math.abs(existing.value ?? 0)
+        ? level.value
+        : existing.value,
+      rank: Math.min(existing.rank, level.rank),
+    });
+  }
+
+  return [...grouped.values()];
+}
+
 export type ChartGammaSourceSnapshot = {
   // NDX/QQQ/SPX/SPY = cash-index sources (KwantData, converted). NQ/ES = native
   // futures-options gamma computed directly from the chain (Databento, no conversion).

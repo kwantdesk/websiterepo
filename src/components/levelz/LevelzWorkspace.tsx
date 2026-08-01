@@ -18,7 +18,7 @@ import type { ChartLevel, ChartZone } from "@/components/Chart";
 import KwantLoader from "@/components/KwantLoader";
 import KwantSelect from "@/components/ui/KwantSelect";
 import type { Candle } from "@/lib/backtester";
-import type { ChartGammaLevelsPayload, ChartGammaSourceLevelKind } from "@/lib/chartGammaLevels";
+import { mergeGammaLevelsAtSamePrice, type ChartGammaLevelsPayload, type ChartGammaSourceLevelKind } from "@/lib/chartGammaLevels";
 import {
   DATABENTO_LIVE_STATUS_EVENT,
   DATABENTO_LIVE_TICK_EVENT,
@@ -437,9 +437,9 @@ function gammaEducationForLevel(kind: ChartGammaSourceLevelKind, label: string) 
 function makeGammaSnapshot(payload: ChartGammaLevelsPayload, settings: ChartSettings): LevelSnapshot {
   const source = payload.sources.find((item) => item.symbol === payload.requestedSource && item.levels.length)
     ?? payload.sources.find((item) => item.levels.length);
-  const validLevels = (source?.levels ?? []).filter((level) =>
+  const validLevels = mergeGammaLevelsAtSamePrice((source?.levels ?? []).filter((level) =>
     Number.isFinite(level.price) && level.price > 0 && typeof level.label === "string" && level.label.length > 0,
-  );
+  ), 0.25);
   if (!source || !validLevels.length) {
     throw new Error(`No usable ${payload.root} gamma levels were returned.`);
   }

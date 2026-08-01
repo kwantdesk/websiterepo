@@ -42,10 +42,11 @@ import {
   newYorkCashCloseIso,
   type NativeGammaRoot,
 } from "@/lib/databentoGamma.server";
-import type {
-  ChartGammaLevelsPayload,
-  ChartGammaSourceLevel,
-  ChartGammaSourceSnapshot,
+import {
+  mergeGammaLevelsAtSamePrice,
+  type ChartGammaLevelsPayload,
+  type ChartGammaSourceLevel,
+  type ChartGammaSourceSnapshot,
 } from "@/lib/chartGammaLevels";
 import {
   buildGexDeskPayload,
@@ -2911,11 +2912,11 @@ export async function getCashCalibratedChartGammaLevels(
     stockPrice: futuresPrice,
     revision,
     validationStrikes: cashSource.validationStrikes.map(toFuturesPrice),
-    levels: cashSource.levels.map((level) => ({
+    levels: mergeGammaLevelsAtSamePrice(cashSource.levels.map((level) => ({
       ...level,
       id: `calibrated-${calibrationSource.toLowerCase()}-${level.id}`,
       price: toFuturesPrice(level.price),
-    })),
+    })), 0.25),
   };
 
   return {
