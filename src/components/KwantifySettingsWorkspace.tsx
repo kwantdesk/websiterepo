@@ -44,6 +44,7 @@ import {
   type FriendsPayload,
   type PresenceStatus,
 } from "@/lib/friends";
+import { cacheProfileIdentity, readProfileIdentityCache } from "@/lib/profileIdentityCache";
 
 type SettingsTab =
   | "Identity"
@@ -315,15 +316,65 @@ export default function SettingsPage() {
       return;
     }
 
+    let active = true;
     const loadProfile = async () => {
-      const user = (await supabase.auth.getUser()).data.user;
+      const sessionUser = (await supabase.auth.getSession()).data.session?.user ?? null;
+      const user = sessionUser ?? (await supabase.auth.getUser()).data.user;
       if (!user) {
+        if (!active) return;
         setProfileName("");
         setProfileEmail("");
         setProfileUsername("");
         setProfileAvatarUrl("");
+        setPresenceLoading(false);
         return;
       }
+      const cachedIdentity = readProfileIdentityCache(user.id);
+      const authDisplayName =
+        (user.user_metadata?.display_name as string | undefined) ??
+          (user.user_metadata?.full_name as string | undefined) ??
+          "";
+      const authHandle = normalizeProfileHandle(
+        (user.user_metadata?.username as string | undefined) ?? "",
+      );
+      const authAvatarUrl =
+        (user.user_metadata?.avatar_url as string | undefined) ??
+          (user.user_metadata?.picture as string | undefined) ??
+          "";
+      if (!active) return;
+      setPreferenceUserId(user.id);
+      setPreferencesReady(true);
+      setProfileName(cachedIdentity?.displayName || authDisplayName);
+      setProfileEmail(user.email ?? "");
+      setProfileUsername(cachedIdentity?.handle || authHandle);
+      setSavedHandle(cachedIdentity?.handle || authHandle);
+      setProfileAvatarUrl(cachedIdentity?.avatarUrl || authAvatarUrl);
+      setPresenceLoading(false);
+
+      void (async () => {
+        try {
+          const friendsResponse = await fetch("/api/friends", { cache: "no-store" });
+          if (!friendsResponse.ok) return;
+          const friendsPayload = await friendsResponse.json() as FriendsPayload;
+          if (!active || !friendsPayload.viewer) return;
+          const storedName = friendsPayload.viewer.displayName || authDisplayName;
+          const storedHandle = normalizeProfileHandle(friendsPayload.viewer.handle || authHandle);
+          setPresenceStatus(friendsPayload.viewer.presenceStatus);
+          setPresenceMessage(friendsPayload.viewer.presenceMessage);
+          setProfileAvatarUrl(friendsPayload.viewer.avatarUrl || authAvatarUrl);
+          setProfileName(storedName);
+          setProfileUsername(storedHandle);
+          setSavedHandle(storedHandle);
+          cacheProfileIdentity(user.id, {
+            avatarUrl: friendsPayload.viewer.avatarUrl || authAvatarUrl,
+            displayName: storedName,
+            handle: storedHandle,
+          });
+        } catch {
+          // The cached identity remains visible during a transient profile refresh failure.
+        }
+      })();
+
       let hydrated: Awaited<ReturnType<typeof hydrateUserPreferences>> | null = null;
       try {
         hydrated = await hydrateUserPreferences(supabase, user);
@@ -341,39 +392,7 @@ export default function SettingsPage() {
       } catch {
         // Authentication and local preferences remain usable during a transient sync failure.
       }
-      setPreferenceUserId(user.id);
-      setPreferencesReady(true);
-      const authDisplayName =
-        (user.user_metadata?.display_name as string | undefined) ??
-          (user.user_metadata?.full_name as string | undefined) ??
-          "";
-      const authHandle = normalizeProfileHandle(
-        (user.user_metadata?.username as string | undefined) ?? "",
-      );
-      setProfileName(authDisplayName);
-      setProfileEmail(user.email ?? "");
-      setProfileUsername(authHandle);
-      setSavedHandle(authHandle);
-      try {
-        const friendsResponse = await fetch("/api/friends", { cache: "no-store" });
-        if (friendsResponse.ok) {
-          const friendsPayload = await friendsResponse.json() as FriendsPayload;
-          if (friendsPayload.viewer) {
-            setPresenceStatus(friendsPayload.viewer.presenceStatus);
-            setPresenceMessage(friendsPayload.viewer.presenceMessage);
-            setProfileAvatarUrl(friendsPayload.viewer.avatarUrl);
-            const storedName = friendsPayload.viewer.displayName || authDisplayName;
-            const storedHandle = normalizeProfileHandle(friendsPayload.viewer.handle || authHandle);
-            setProfileName(storedName);
-            setProfileUsername(storedHandle);
-            setSavedHandle(storedHandle);
-          }
-        }
-      } catch {
-        // Identity remains editable if the social profile is temporarily unavailable.
-      } finally {
-        setPresenceLoading(false);
-      }
+      if (!active) return;
       const hasStoredChartSettings = hydrated
         ? Object.prototype.hasOwnProperty.call(
             hydrated.snapshot.values,
@@ -388,7 +407,10 @@ export default function SettingsPage() {
       }
     };
 
-    loadProfile();
+    void loadProfile();
+    return () => {
+      active = false;
+    };
   }, [supabase]);
 
   useEffect(() => {

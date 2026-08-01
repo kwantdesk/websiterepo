@@ -60,6 +60,7 @@ import CallingCardVisual from "@/components/socials/CallingCardVisual";
 import ReasoningOutcomeChart from "@/components/socials/ReasoningOutcomeChart";
 import DeskWorkspace from "@/components/socials/DeskWorkspace";
 import UserAvatar from "@/components/socials/UserAvatar";
+import { cacheProfileIdentity } from "@/lib/profileIdentityCache";
 import {
   buildDefaultProfile,
   buildAutomaticGameplanReceipt,
@@ -1912,6 +1913,11 @@ export default function SocialsWorkspace({
     setProfileEditing(false);
     setProfileSaveState("idle");
     setNotice("Profile saved to your account.");
+    cacheProfileIdentity(resolvedAccountKey, {
+      avatarUrl: profile.avatarUrl,
+      displayName: profile.displayName,
+      handle: profile.handle,
+    });
     window.dispatchEvent(new CustomEvent("kwantdesk:profile-updated", {
       detail: {
         avatarUrl: profile.avatarUrl,

@@ -79,6 +79,7 @@ import { runBacktest, runStrategyCode, type BacktestConfig, type BacktestResult,
 import { generateSampleData } from "@/lib/sampleData";
 import { createClient } from "@/lib/supabase";
 import type { FriendsPayload } from "@/lib/friends";
+import { cacheProfileIdentity, readProfileIdentityCache } from "@/lib/profileIdentityCache";
 import { useAccountPreferenceSync } from "@/hooks/useAccountPreferenceSync";
 import { hydrateUserPreferences, preferenceSnapshotFingerprint } from "@/lib/userPreferences";
 import { normalizeTimeZone } from "@/lib/timeZones";
@@ -6337,6 +6338,12 @@ export default function KwantifyWorkspace({
   useEffect(() => {
     if (!authChecked || !preferenceUserId) return;
     let active = true;
+    const cachedIdentity = readProfileIdentityCache(preferenceUserId);
+    if (cachedIdentity) {
+      setCurrentAvatarUrl(cachedIdentity.avatarUrl);
+      if (cachedIdentity.displayName) setCurrentDisplayName(cachedIdentity.displayName);
+      if (cachedIdentity.handle) setCurrentUsername(cachedIdentity.handle);
+    }
     const loadAvatar = async () => {
       try {
         const response = await fetch("/api/friends", { cache: "no-store" });
@@ -6345,19 +6352,33 @@ export default function KwantifyWorkspace({
         if (active) {
           setCurrentAvatarUrl(payload.viewer?.avatarUrl ?? "");
           if (payload.viewer?.displayName) setCurrentDisplayName(payload.viewer.displayName);
+          cacheProfileIdentity(preferenceUserId, {
+            avatarUrl: payload.viewer?.avatarUrl ?? "",
+            displayName: payload.viewer?.displayName ?? "",
+            handle: payload.viewer?.handle ?? "",
+          });
         }
       } catch {
         // Keep the account control available with its initials fallback.
       }
     };
     const handleProfileUpdated = (event: Event) => {
-      const detail = (event as CustomEvent<{ avatarUrl?: string }>).detail;
+      const detail = (event as CustomEvent<{ avatarUrl?: string; displayName?: string; handle?: string }>).detail;
       setCurrentAvatarUrl(detail?.avatarUrl ?? "");
+      cacheProfileIdentity(preferenceUserId, {
+        avatarUrl: detail?.avatarUrl ?? "",
+        displayName: detail?.displayName,
+        handle: detail?.handle,
+      });
     };
     const handleIdentityUpdated = (event: Event) => {
       const detail = (event as CustomEvent<{ displayName?: string; handle?: string }>).detail;
       if (detail?.displayName) setCurrentDisplayName(detail.displayName);
       if (detail?.handle) setCurrentUsername(detail.handle);
+      cacheProfileIdentity(preferenceUserId, {
+        displayName: detail?.displayName,
+        handle: detail?.handle,
+      });
     };
     void loadAvatar();
     window.addEventListener("kwantdesk:profile-updated", handleProfileUpdated);
