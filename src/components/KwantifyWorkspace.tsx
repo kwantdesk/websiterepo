@@ -2,7 +2,6 @@
 
 import KwantSelect from "@/components/ui/KwantSelect";
 import TimeZoneSelect from "@/components/ui/TimeZoneSelect";
-import ChartIndicatorsControl from "@/components/ChartIndicatorsControl";
 import KwantBotIntelligenceWorkspace from "@/components/kwantbot/KwantBotIntelligenceWorkspace";
 import KwantBotInterpreterPanel from "@/components/kwantbot/KwantBotInterpreterPanel";
 import OptionsTapePanel from "@/components/kwantbot/OptionsTapePanel";
@@ -6710,17 +6709,6 @@ export default function KwantifyWorkspace({
     window.history.replaceState({}, "", nextUrl);
   }, []);
 
-  const setIndicatorsForPane = useCallback((paneId: string, next: ChartIndicatorInstance[]) => {
-    setChartIndicatorsSuppressed(false);
-    setPaneIndicators((current) => ({
-      ...current,
-      [paneId]: next.map((instance) => ({
-        ...instance,
-        settings: instance.settings ? { ...instance.settings } : undefined,
-      })),
-    }));
-  }, []);
-
   const updatePaneIndicatorSetting = useCallback((
     paneId: string,
     instanceId: string,
@@ -7923,7 +7911,7 @@ export default function KwantifyWorkspace({
         period={pane.period}
         settings={chartSettings}
         trades={activePaneId === pane.id ? chartTrades : []}
-        indicators={paneIndicators[pane.id] ?? []}
+        indicators={[]}
         onActivate={() => activateWorkspacePane(pane.id)}
         onOpenSettings={openChartSettings}
         onCreateAlertAtPrice={openCreateAlert}
@@ -8494,13 +8482,6 @@ export default function KwantifyWorkspace({
           </div>
           </div>
           <div className="col-start-2 row-start-2 flex min-w-0 items-center justify-end gap-2 px-3">
-          <ChartIndicatorsControl
-            instrument={displayCmeSymbol(activeWorkspacePane.symbol)}
-            timeframe={formatChartInterval(activeWorkspacePane.timeframe)}
-            indicators={paneIndicators[activePaneId] ?? []}
-            chartSettings={chartSettings}
-            onChange={(next) => setIndicatorsForPane(activePaneId, next)}
-          />
           <button
             type="button"
             onClick={() => void refreshActiveGameplanLevels()}

@@ -4632,20 +4632,22 @@ export default function Chart({
             <Bell className="h-4 w-4 text-muted" />
             <span className="flex-1 text-left">Add alert at {contextMenu.price}...</span>
           </button>
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              e.preventDefault();
-              onRemoveAllIndicators?.();
-              window.dispatchEvent(new CustomEvent("kwantify:remove-all-indicators"));
-              setContextMenu(null);
-            }}
-            className="flex w-full cursor-pointer items-center gap-3 px-4 py-2.5 text-[13px] text-foreground transition-colors hover:bg-surface"
-          >
-            <Trash2 className="h-4 w-4 text-muted" />
-            <span className="flex-1 text-left">Remove all indicators from chart</span>
-          </button>
+          {indicators.length > 0 ? (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                onRemoveAllIndicators?.();
+                window.dispatchEvent(new CustomEvent("kwantify:remove-all-indicators"));
+                setContextMenu(null);
+              }}
+              className="flex w-full cursor-pointer items-center gap-3 px-4 py-2.5 text-[13px] text-foreground transition-colors hover:bg-surface"
+            >
+              <Trash2 className="h-4 w-4 text-muted" />
+              <span className="flex-1 text-left">Remove all indicators from chart</span>
+            </button>
+          ) : null}
           {(zones.length > 0 || backgroundZones.length > 0) && onRemoveGameplanOverlay ? (
             <button
               type="button"
