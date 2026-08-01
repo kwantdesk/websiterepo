@@ -65,6 +65,61 @@ function timeLabel(timestamp: number) {
   }).format(new Date(timestamp));
 }
 
+function detailedTimeLabel(timestamp: number) {
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    month: "short",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+    timeZoneName: "short",
+  }).format(new Date(timestamp));
+}
+
+function evolutionRole(call: number, put: number, net: number, concentration: number) {
+  const callMagnitude = Math.abs(call);
+  const putMagnitude = Math.abs(put);
+  const total = callMagnitude + putMagnitude;
+  const callShare = total > 0 ? callMagnitude / total : 0.5;
+  const dominant = concentration >= 0.64;
+
+  if (dominant && callShare >= 0.62) {
+    return {
+      label: "Call wall",
+      detail: "Call gamma is the dominant exposure at this mapped price and timestamp.",
+      tone: "text-primary",
+    };
+  }
+  if (dominant && callShare <= 0.38) {
+    return {
+      label: "Put support / put wall",
+      detail: "Put gamma is the dominant exposure at this mapped price and timestamp.",
+      tone: "text-accent",
+    };
+  }
+  if (net > 0) {
+    return {
+      label: "Positive gamma node",
+      detail: "Net mapped exposure is positive, consistent with more stabilising hedge pressure.",
+      tone: "text-primary",
+    };
+  }
+  if (net < 0) {
+    return {
+      label: "Negative gamma pocket",
+      detail: "Net mapped exposure is negative, consistent with more amplifying hedge pressure.",
+      tone: "text-accent",
+    };
+  }
+  return {
+    label: "Balanced node",
+    detail: "Call and put exposure are currently offsetting at this mapped price.",
+    tone: "text-muted",
+  };
+}
+
 function dayDistance(sessionDate: string, expiration: string) {
   const start = Date.parse(`${sessionDate}T00:00:00Z`);
   const end = Date.parse(`${expiration}T00:00:00Z`);
@@ -148,6 +203,7 @@ export function EvolutionPanel({
   embedded?: boolean;
 }) {
   const [mode, setMode] = useState<"EXPOSURE" | "CHANGE">("EXPOSURE");
+  const [hoveredCell, setHoveredCell] = useState<{ columnIndex: number; rowIndex: number; x: number; y: number } | null>(null);
   const summary = useMemo(() => {
     if (!history?.rows.length || !history.timestamps.length) return null;
     const lastIndex = history.timestamps.length - 1;
@@ -179,6 +235,36 @@ export function EvolutionPanel({
   const primaryPath = history.nqPrices.map((price, index) => (
     `${index ? "L" : "M"}${index.toFixed(2)},${yForPrice(price).toFixed(2)}`
   )).join(" ");
+  const hovered = hoveredCell ? (() => {
+    const row = history.rows[hoveredCell.rowIndex];
+    const timestamp = history.timestamps[hoveredCell.columnIndex];
+    if (!row || timestamp === undefined) return null;
+    const call = row.call[hoveredCell.columnIndex] ?? 0;
+    const put = row.put[hoveredCell.columnIndex] ?? 0;
+    const net = row.net[hoveredCell.columnIndex] ?? 0;
+    const gross = row.gross[hoveredCell.columnIndex] ?? 0;
+    const change = row.change[hoveredCell.columnIndex] ?? 0;
+    const heatMagnitude = mode === "EXPOSURE" ? gross : Math.abs(change);
+    const columnPeak = Math.max(1, ...history.rows.map((candidate) => (
+      mode === "EXPOSURE"
+        ? candidate.gross[hoveredCell.columnIndex] ?? 0
+        : Math.abs(candidate.change[hoveredCell.columnIndex] ?? 0)
+    )));
+    const concentration = clamp(heatMagnitude / columnPeak, 0, 1);
+    return {
+      ...hoveredCell,
+      row,
+      timestamp,
+      call,
+      put,
+      net,
+      gross,
+      change,
+      concentration,
+      nqPrice: history.nqPrices[hoveredCell.columnIndex] ?? null,
+      role: evolutionRole(call, put, net, concentration),
+    };
+  })() : null;
 
   return (
     <div className={embedded ? "h-full min-h-0" : "space-y-3"}>
@@ -231,51 +317,125 @@ export function EvolutionPanel({
               <span>{history.source} / {history.expiration || "front expiry"}</span>
               <span>{history.status} · {percent(history.mappingCoverage)} timestamp coverage</span>
             </div>
-            <div className={`relative overflow-hidden rounded-xl border border-border bg-background ${embedded ? "min-h-[420px] flex-1" : "h-[620px]"}`}>
-              <svg className="h-full w-full" viewBox={`0 0 ${Math.max(1, columnCount)} ${Math.max(1, rowCount)}`} preserveAspectRatio="none" aria-label="Intraday mapped gamma exposure heatmap">
-                {history.rows.map((row, rowIndex) => {
-                  const y = rowCount - 1 - rowIndex;
-                  return history.timestamps.map((timestamp, columnIndex) => {
-                    const net = mode === "EXPOSURE" ? row.net[columnIndex] ?? 0 : row.change[columnIndex] ?? 0;
-                    const magnitude = mode === "EXPOSURE" ? row.gross[columnIndex] ?? 0 : Math.abs(net);
-                    if (magnitude <= 0) return null;
-                    const opacity = clamp(Math.pow(magnitude / maximum, 0.55), 0.025, 0.92);
-                    return (
-                      <rect
-                        key={`${timestamp}:${row.price}`}
-                        x={columnIndex}
-                        y={y}
-                        width="1.05"
-                        height="1.05"
-                        fill={net >= 0 ? "var(--primary)" : "var(--accent)"}
-                        opacity={opacity}
-                      />
-                    );
-                  });
-                })}
-                <path d={primaryPath} fill="none" stroke="var(--foreground)" strokeWidth="0.22" strokeOpacity="0.86" vectorEffect="non-scaling-stroke" />
-                {live !== null ? (
-                  <line
-                    x1="0"
-                    x2={columnCount}
-                    y1={yForPrice(live)}
-                    y2={yForPrice(live)}
-                    stroke="var(--primary)"
-                    strokeWidth="0.28"
-                    strokeDasharray="1 1"
-                    vectorEffect="non-scaling-stroke"
-                  />
+            <div
+              className={`relative overflow-hidden rounded-xl border border-border bg-background ${embedded ? "min-h-[420px] flex-1" : "h-[620px]"}`}
+              onMouseLeave={() => setHoveredCell(null)}
+            >
+              <div
+                className="absolute bottom-7 left-0 right-[72px] top-0 cursor-crosshair overflow-hidden"
+                onMouseMove={(event) => {
+                  const bounds = event.currentTarget.getBoundingClientRect();
+                  if (!bounds.width || !bounds.height || !columnCount || !rowCount) return;
+                  const xRatio = clamp((event.clientX - bounds.left) / bounds.width, 0, 0.999999);
+                  const yRatio = clamp((event.clientY - bounds.top) / bounds.height, 0, 0.999999);
+                  const columnIndex = Math.min(columnCount - 1, Math.floor(xRatio * columnCount));
+                  const rowIndex = clamp(rowCount - 1 - Math.floor(yRatio * rowCount), 0, rowCount - 1);
+                  setHoveredCell((current) => (
+                    current?.columnIndex === columnIndex && current.rowIndex === rowIndex
+                      ? current
+                      : {
+                          columnIndex,
+                          rowIndex,
+                          x: (columnIndex + 0.5) / columnCount * 100,
+                          y: (rowCount - 1 - rowIndex + 0.5) / rowCount * 100,
+                        }
+                  ));
+                }}
+              >
+                <svg className="pointer-events-none h-full w-full" viewBox={`0 0 ${Math.max(1, columnCount)} ${Math.max(1, rowCount)}`} preserveAspectRatio="none" aria-label="Intraday mapped gamma exposure heatmap">
+                  {history.rows.map((row, rowIndex) => {
+                    const y = rowCount - 1 - rowIndex;
+                    return history.timestamps.map((timestamp, columnIndex) => {
+                      const net = mode === "EXPOSURE" ? row.net[columnIndex] ?? 0 : row.change[columnIndex] ?? 0;
+                      const magnitude = mode === "EXPOSURE" ? row.gross[columnIndex] ?? 0 : Math.abs(net);
+                      if (magnitude <= 0) return null;
+                      const opacity = clamp(Math.pow(magnitude / maximum, 0.55), 0.025, 0.92);
+                      return (
+                        <rect
+                          key={`${timestamp}:${row.price}`}
+                          x={columnIndex}
+                          y={y}
+                          width="1.05"
+                          height="1.05"
+                          fill={net >= 0 ? "var(--primary)" : "var(--accent)"}
+                          opacity={opacity}
+                        />
+                      );
+                    });
+                  })}
+                  <path d={primaryPath} fill="none" stroke="var(--foreground)" strokeWidth="0.22" strokeOpacity="0.86" vectorEffect="non-scaling-stroke" />
+                  {live !== null ? (
+                    <line
+                      x1="0"
+                      x2={columnCount}
+                      y1={yForPrice(live)}
+                      y2={yForPrice(live)}
+                      stroke="var(--primary)"
+                      strokeWidth="0.28"
+                      strokeDasharray="1 1"
+                      vectorEffect="non-scaling-stroke"
+                    />
+                  ) : null}
+                </svg>
+
+                {hovered ? (
+                  <>
+                    <span className="pointer-events-none absolute inset-y-0 z-10 w-px bg-primary/70 shadow-[0_0_8px_var(--primary)]" style={{ left: `${hovered.x}%` }} />
+                    <span className="pointer-events-none absolute inset-x-0 z-10 h-px bg-primary/70 shadow-[0_0_8px_var(--primary)]" style={{ top: `${hovered.y}%` }} />
+                    <span
+                      className="pointer-events-none absolute z-20 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-background bg-primary shadow-[0_0_12px_var(--primary)]"
+                      style={{ left: `${hovered.x}%`, top: `${hovered.y}%` }}
+                    />
+                    <div
+                      className="pointer-events-none absolute z-30 w-[270px] rounded-xl border border-primary/30 bg-panel/95 p-3 shadow-[0_14px_40px_rgba(0,0,0,.55),0_0_22px_color-mix(in_srgb,var(--primary)_18%,transparent)] backdrop-blur-md"
+                      style={{
+                        left: `${hovered.x}%`,
+                        top: `${hovered.y}%`,
+                        transform: `translate(${hovered.x > 62 ? "calc(-100% - 12px)" : "12px"}, ${hovered.y > 58 ? "calc(-100% - 12px)" : "12px"})`,
+                      }}
+                    >
+                      <div className="flex items-start justify-between gap-3 border-b border-border pb-2">
+                        <div>
+                          <div className={`text-[8px] font-semibold uppercase tracking-[0.12em] ${hovered.role.tone}`}>{hovered.role.label}</div>
+                          <div className="mt-1 font-mono text-[11px] font-semibold text-foreground">NQ {hovered.row.price.toFixed(0)}</div>
+                        </div>
+                        <div className="text-right font-mono text-[7px] text-muted">{detailedTimeLabel(hovered.timestamp)}</div>
+                      </div>
+                      <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2 text-[7px]">
+                        <div><span className="block uppercase tracking-[0.1em] text-muted">Call GEX</span><span className="mt-0.5 block font-mono font-semibold text-primary">{compact(hovered.call)}</span></div>
+                        <div><span className="block uppercase tracking-[0.1em] text-muted">Put GEX</span><span className="mt-0.5 block font-mono font-semibold text-accent">{compact(hovered.put)}</span></div>
+                        <div><span className="block uppercase tracking-[0.1em] text-muted">Net GEX</span><span className={`mt-0.5 block font-mono font-semibold ${hovered.net >= 0 ? "text-primary" : "text-accent"}`}>{compact(hovered.net)}</span></div>
+                        <div><span className="block uppercase tracking-[0.1em] text-muted">Gross exposure</span><span className="mt-0.5 block font-mono font-semibold text-foreground">{compact(hovered.gross)}</span></div>
+                        <div><span className="block uppercase tracking-[0.1em] text-muted">Frame change</span><span className={`mt-0.5 block font-mono font-semibold ${hovered.change >= 0 ? "text-primary" : "text-accent"}`}>{compact(hovered.change)}</span></div>
+                        <div><span className="block uppercase tracking-[0.1em] text-muted">Heat strength</span><span className="mt-0.5 block font-mono font-semibold text-foreground">{percent(hovered.concentration, 0)}</span></div>
+                        <div><span className="block uppercase tracking-[0.1em] text-muted">NQ at time</span><span className="mt-0.5 block font-mono font-semibold text-foreground">{hovered.nqPrice?.toFixed(2) ?? "--"}</span></div>
+                        <div><span className="block uppercase tracking-[0.1em] text-muted">Heat input</span><span className="mt-0.5 block font-semibold text-foreground">{mode === "EXPOSURE" ? "Gross GEX" : "|Net GEX change|"}</span></div>
+                      </div>
+                      <p className="mt-2 border-t border-border pt-2 text-[7px] leading-4 text-muted">{hovered.role.detail}</p>
+                      <div className="mt-2 flex justify-between gap-3 font-mono text-[6px] uppercase tracking-[0.09em] text-muted"><span>{history.source}</span><span className="truncate">{history.expiration || "Front expiry"}</span></div>
+                    </div>
+                  </>
                 ) : null}
-              </svg>
-              <div className="pointer-events-none absolute inset-x-3 bottom-2 flex justify-between font-mono text-[6px] text-foreground/70">
-                <span>{timeLabel(history.timestamps[0])}</span>
-                <span>{timeLabel(history.timestamps[Math.floor(history.timestamps.length / 2)])}</span>
-                <span>{timeLabel(history.timestamps.at(-1)!)}</span>
               </div>
-              <div className="pointer-events-none absolute inset-y-3 right-2 flex flex-col justify-between font-mono text-[6px] text-foreground/75">
-                <span>{history.priceHigh.toFixed(0)}</span>
-                <span>{((history.priceHigh + history.priceLow) / 2).toFixed(0)}</span>
-                <span>{history.priceLow.toFixed(0)}</span>
+
+              <div className="pointer-events-none absolute bottom-0 left-0 right-[72px] h-7 border-t border-border bg-panel/95">
+                <div className="absolute inset-x-3 inset-y-0 flex items-center justify-between font-mono text-[7px] text-foreground/70">
+                  <span>{timeLabel(history.timestamps[0])}</span>
+                  <span>{timeLabel(history.timestamps[Math.floor(history.timestamps.length / 2)])}</span>
+                  <span>{timeLabel(history.timestamps.at(-1)!)}</span>
+                </div>
+                {hovered ? <span className="absolute top-1/2 z-20 -translate-x-1/2 -translate-y-1/2 rounded-md border border-primary/40 bg-primary px-2 py-1 font-mono text-[7px] font-semibold text-background shadow-[0_0_12px_var(--primary)]" style={{ left: `clamp(30px, ${hovered.x}%, calc(100% - 30px))` }}>{timeLabel(hovered.timestamp)}</span> : null}
+              </div>
+
+              <div className="pointer-events-none absolute bottom-0 right-0 top-0 w-[72px] border-l border-border bg-panel/95">
+                <div className="absolute bottom-7 inset-x-0 top-0">
+                  <div className="absolute inset-x-0 inset-y-2 flex flex-col items-center justify-between font-mono text-[7px] text-foreground/75">
+                    <span>{history.priceHigh.toFixed(0)}</span>
+                    <span>{((history.priceHigh + history.priceLow) / 2).toFixed(0)}</span>
+                    <span>{history.priceLow.toFixed(0)}</span>
+                  </div>
+                  {hovered ? <span className="absolute left-1/2 z-20 -translate-x-1/2 -translate-y-1/2 rounded-md border border-primary/40 bg-primary px-2 py-1 font-mono text-[7px] font-semibold text-background shadow-[0_0_12px_var(--primary)]" style={{ top: `clamp(12px, ${hovered.y}%, calc(100% - 12px))` }}>{hovered.row.price.toFixed(0)}</span> : null}
+                </div>
               </div>
             </div>
           </div>
