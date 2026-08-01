@@ -9,6 +9,7 @@ import {
   SOCIAL_SCOPES,
   type SocialObject,
   type SocialObjectType,
+  type SocialPostPayload,
   type SocialPrecordPayload,
   type SocialScope,
 } from "@/lib/socials";
@@ -282,13 +283,46 @@ export async function POST(request: NextRequest) {
     useUpsert = true;
   } else if (objectType === "reaction") {
     const kind = cleanIdentifier(payload.kind, 20);
-    if (!parentId || !["USEFUL", "CLEAR", "EVIDENCE", "SAVED"].includes(kind)) {
+    if (!parentId || !["LIKE", "USEFUL", "CLEAR", "EVIDENCE", "SAVED", "FIRE", "TARGET", "BRAIN", "APPLAUSE"].includes(kind)) {
       return NextResponse.json({ error: "A valid reaction target and type are required." }, { status: 400 });
     }
     if (kind === "SAVED" && scope !== "private") {
       return NextResponse.json({ error: "Saved Gameplans are private." }, { status: 400 });
     }
     id = `reaction:${parentId}:${kind}`;
+    useUpsert = true;
+  } else if (objectType === "post") {
+    const kind = cleanText(payload.kind, 24) as SocialPostPayload["kind"];
+    const imageDataUrl = typeof payload.imageDataUrl === "string"
+      && /^data:image\/(png|jpe?g|webp|gif);base64,/i.test(payload.imageDataUrl)
+      && payload.imageDataUrl.length <= 1_350_000
+      ? payload.imageDataUrl
+      : "";
+    payload = {
+      ...payload,
+      kind: ["POST", "MAP", "LIVE OBSERVATION", "REVIEW REQUEST", "LESSON", "QUESTION"].includes(kind) ? kind : "POST",
+      instrument: cleanText(payload.instrument, 16).toUpperCase(),
+      title: cleanText(payload.title, 180),
+      body: cleanText(payload.body, 4_000),
+      context: cleanText(payload.context, 2_000),
+      condition: cleanText(payload.condition, 1_500),
+      invalidation: cleanText(payload.invalidation, 1_500),
+      imageDataUrl,
+      imageName: imageDataUrl ? cleanText(payload.imageName, 140) : "",
+      relatedPrecordId: cleanIdentifier(payload.relatedPrecordId, 180) || null,
+      repostOfUserId: cleanIdentifier(payload.repostOfUserId, 80) || undefined,
+      repostOfPostId: cleanIdentifier(payload.repostOfPostId, 180) || undefined,
+      isRepost: payload.isRepost === true,
+      observedAt: typeof payload.observedAt === "string" && Number.isFinite(Date.parse(payload.observedAt))
+        ? new Date(payload.observedAt).toISOString()
+        : now,
+    };
+    if (!payload.instrument || !payload.body) {
+      return NextResponse.json({ error: "Instrument and post are required." }, { status: 400 });
+    }
+    id = /^post:[a-zA-Z0-9_-]{8,}$/.test(id) || /^repost:[a-zA-Z0-9:_-]{8,}$/.test(id)
+      ? id
+      : `post:${crypto.randomUUID()}`;
     useUpsert = true;
   } else if (objectType === "follow") {
     const targetUserId = cleanIdentifier(payload.targetUserId, 80);

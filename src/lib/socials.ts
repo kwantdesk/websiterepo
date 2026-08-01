@@ -247,7 +247,7 @@ export type SocialReasoningCandle = {
 };
 
 export type SocialPostPayload = {
-  kind: "MAP" | "LIVE OBSERVATION" | "REVIEW REQUEST" | "LESSON" | "QUESTION";
+  kind: "POST" | "MAP" | "LIVE OBSERVATION" | "REVIEW REQUEST" | "LESSON" | "QUESTION";
   instrument: string;
   title: string;
   body: string;
@@ -256,8 +256,11 @@ export type SocialPostPayload = {
   invalidation: string;
   relatedPrecordId: string | null;
   observedAt: string;
+  imageDataUrl?: string;
+  imageName?: string;
   isRepost?: boolean;
   repostOfUserId?: string;
+  repostOfPostId?: string;
 };
 
 export type SocialDeskPayload = {
@@ -285,7 +288,7 @@ export type SocialCommentPayload = {
 };
 
 export type SocialReactionPayload = {
-  kind: "USEFUL" | "CLEAR" | "EVIDENCE" | "SAVED" | "FIRE" | "TARGET" | "BRAIN" | "APPLAUSE";
+  kind: "LIKE" | "USEFUL" | "CLEAR" | "EVIDENCE" | "SAVED" | "FIRE" | "TARGET" | "BRAIN" | "APPLAUSE";
 };
 
 export type SocialCardPayload = {

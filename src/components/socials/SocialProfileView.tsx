@@ -43,7 +43,7 @@ import type {
 import ReasoningOutcomeChart from "@/components/socials/ReasoningOutcomeChart";
 import ActivityStreakBadge from "@/components/socials/ActivityStreakBadge";
 import UserAvatar from "@/components/socials/UserAvatar";
-import { effectivePresenceStatus, presenceOption } from "@/lib/friends";
+import { effectivePresenceStatus, presenceOption, type FriendsPayload } from "@/lib/friends";
 import { createClient as createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 const SOCIAL_FOLLOW_CHANGED_EVENT = "kwantdesk:social-follow-changed";
@@ -137,7 +137,56 @@ export default function SocialProfileView({
   const [followListLoading, setFollowListLoading] = useState(false);
   const [followListError, setFollowListError] = useState("");
   const [followListNextOffset, setFollowListNextOffset] = useState<number | null>(null);
+  const [friendState, setFriendState] = useState<"loading" | "friend" | "incoming" | "outgoing" | "none" | "unavailable">("loading");
+  const [friendBusy, setFriendBusy] = useState(false);
   const followListRequestRef = useRef(0);
+
+  const loadFriendState = useCallback(async (signal?: AbortSignal) => {
+    if (isOwnProfile) return;
+    try {
+      const response = await fetch("/api/friends", { cache: "no-store", signal });
+      const result = await response.json() as FriendsPayload & { error?: string };
+      if (!response.ok) throw new Error(result.error || "Friends could not be loaded.");
+      if (result.friends.some((item) => item.userId === profileObject.userId)) setFriendState("friend");
+      else if (result.incoming.some((item) => item.userId === profileObject.userId)) setFriendState("incoming");
+      else if (result.outgoing.some((item) => item.userId === profileObject.userId)) setFriendState("outgoing");
+      else setFriendState("none");
+    } catch {
+      if (!signal?.aborted) setFriendState("unavailable");
+    }
+  }, [isOwnProfile, profileObject.userId]);
+
+  useEffect(() => {
+    if (isOwnProfile) return;
+    const controller = new AbortController();
+    setFriendState("loading");
+    void loadFriendState(controller.signal);
+    return () => controller.abort();
+  }, [isOwnProfile, loadFriendState]);
+
+  const updateFriend = async () => {
+    if (friendBusy || isOwnProfile || friendState === "friend" || friendState === "outgoing") return;
+    setFriendBusy(true);
+    const previous = friendState;
+    setFriendState(friendState === "incoming" ? "friend" : "outgoing");
+    try {
+      const response = await fetch("/api/friends", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: previous === "incoming" ? "accept" : "request",
+          targetUserId: profileObject.userId,
+        }),
+      });
+      const result = await response.json() as FriendsPayload & { error?: string };
+      if (!response.ok) throw new Error(result.error || "The friend request could not be saved.");
+      await loadFriendState();
+    } catch {
+      setFriendState(previous);
+    } finally {
+      setFriendBusy(false);
+    }
+  };
 
   const loadFollowSummary = useCallback(async (signal?: AbortSignal) => {
     setFollowLoading(true);
@@ -436,7 +485,8 @@ export default function SocialProfileView({
                       {followSummary.notificationsEnabled ? <BellRing className="h-4 w-4" /> : <Bell className="h-4 w-4" />}
                     </button>
                   ) : null}
-                  <button type="button" onClick={onMessage} className="flex h-9 items-center gap-2 rounded-xl border border-border bg-surface px-4 text-[9px] font-semibold text-muted hover:text-foreground"><Send className="h-3.5 w-3.5" />Message</button>
+                  <button type="button" onClick={() => void updateFriend()} disabled={friendBusy || friendState === "loading" || friendState === "outgoing" || friendState === "friend" || friendState === "unavailable"} className={`flex h-9 items-center gap-2 rounded-xl border px-3 text-[9px] font-semibold disabled:cursor-default ${friendState === "friend" ? "border-primary/25 bg-primary/10 text-primary" : "border-border bg-surface text-muted hover:text-foreground disabled:opacity-60"}`}><UsersRound className="h-3.5 w-3.5" />{friendBusy ? "Saving…" : friendState === "friend" ? "Friends" : friendState === "incoming" ? "Accept friend" : friendState === "outgoing" ? "Request sent" : "Add friend"}</button>
+                  {friendState === "friend" ? <button type="button" onClick={onMessage} className="flex h-9 items-center gap-2 rounded-xl border border-border bg-surface px-4 text-[9px] font-semibold text-muted hover:text-foreground"><Send className="h-3.5 w-3.5" />Message</button> : null}
                 </>
               )}
               <button type="button" onClick={onShareProfile} className="flex h-9 items-center gap-2 rounded-xl border border-border bg-surface px-4 text-[9px] font-semibold text-muted hover:text-foreground"><Share2 className="h-3.5 w-3.5" />Share profile</button>

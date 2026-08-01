@@ -21,11 +21,13 @@ import {
   Flame,
   Gauge,
   Globe2,
+  Heart,
   Image as ImageIcon,
   Layers3,
   LockKeyhole,
   Medal,
   MessageCircle,
+  MoreHorizontal,
   Network,
   Plus,
   Radar,
@@ -40,7 +42,9 @@ import {
   Star,
   Target,
   Trophy,
+  Trash2,
   Upload,
+  UserPlus,
   UsersRound,
   WalletCards,
   X,
@@ -102,7 +106,8 @@ import {
   DESK_CREATED_EVENT,
   type CreatedDeskPayload,
 } from "@/lib/desks";
-import { encodeCanvasImage } from "@/lib/clientImageProcessing";
+import { encodeCanvasImage, prepareSharedImage } from "@/lib/clientImageProcessing";
+import type { SocialFollowListItem, SocialFollowResponse } from "@/lib/socialFollows";
 import { DATABENTO_LIVE_TICK_EVENT } from "@/lib/chartLiveEvents";
 import {
   loadSocialProfilePreview,
@@ -117,8 +122,9 @@ import {
   useState,
 } from "react";
 
-type SocialTab = "today" | "reasoning" | "precords" | "desks" | "rankings" | "cards" | "profile";
+type SocialTab = "today" | "reasoning" | "precords" | "desks" | "feed" | "rankings" | "cards" | "profile";
 type FeedFilter = "all" | "proven" | "mine";
+type SocialFeedMode = "following" | "recommended" | "latest";
 type AvatarCropDraft = {
   sourceUrl: string;
   naturalWidth: number;
@@ -231,6 +237,7 @@ const SOCIAL_TABS: Array<{ id: SocialTab; label: string; icon: typeof Activity }
   { id: "reasoning", label: "My Reasoning", icon: BrainCircuit },
   { id: "precords", label: "Community", icon: Network },
   { id: "desks", label: "Desks", icon: UsersRound },
+  { id: "feed", label: "Feed", icon: Heart },
   { id: "rankings", label: "Reputation", icon: Trophy },
   { id: "cards", label: "Calling Cards", icon: Award },
   { id: "profile", label: "Profile", icon: Radar },
@@ -294,13 +301,15 @@ const EMPTY_RECEIPT = {
 };
 
 const EMPTY_POST = {
-  kind: "LIVE OBSERVATION" as SocialPostPayload["kind"],
+  kind: "POST" as SocialPostPayload["kind"],
   instrument: "NQ",
   title: "",
   body: "",
   context: "",
   condition: "",
   invalidation: "",
+  imageDataUrl: "",
+  imageName: "",
   scope: "community" as SocialScope,
 };
 
@@ -501,8 +510,15 @@ export default function SocialsWorkspace({
   const [saveState, setSaveState] = useState<"loading" | "saved" | "local" | "error">("loading");
   const [tab, setTab] = useState<SocialTab>(initialProfileHandle ? "profile" : "today");
   const [feedFilter, setFeedFilter] = useState<FeedFilter>("all");
+  const [socialFeedMode, setSocialFeedMode] = useState<SocialFeedMode>("following");
+  const [followingUsers, setFollowingUsers] = useState<SocialFollowListItem[]>([]);
+  const [followingState, setFollowingState] = useState<"loading" | "ready" | "unavailable">("loading");
+  const [followActionUserId, setFollowActionUserId] = useState("");
   const [query, setQuery] = useState("");
   const [showPostModal, setShowPostModal] = useState(false);
+  const [editingPostId, setEditingPostId] = useState<string | null>(null);
+  const [postImagePreparing, setPostImagePreparing] = useState(false);
+  const [openPostMenuId, setOpenPostMenuId] = useState<string | null>(null);
   const [showReceiptFor, setShowReceiptFor] = useState<string | null>(null);
   const [showDeskModal, setShowDeskModal] = useState(false);
   const [deskCreating, setDeskCreating] = useState(false);
@@ -705,6 +721,54 @@ export default function SocialsWorkspace({
       active = false;
     };
   }, [resolvedAccountKey, resolvedLabel]);
+
+  const loadFollowingUsers = useCallback(async (quiet = false) => {
+    if (!quiet) setFollowingState("loading");
+    try {
+      const collected: SocialFollowListItem[] = [];
+      let offset = 0;
+      for (let page = 0; page < 5; page += 1) {
+        const response = await fetch(
+          `/api/socials/follows?profileUserId=${encodeURIComponent(resolvedAccountKey)}&list=following&offset=${offset}&limit=100`,
+          { cache: "no-store" },
+        );
+        const result = await response.json() as SocialFollowResponse;
+        if (!response.ok || !result.list) {
+          throw new Error(result.error || "Following could not be loaded.");
+        }
+        collected.push(...result.list.items);
+        if (result.list.nextOffset === null) break;
+        offset = result.list.nextOffset;
+      }
+      setFollowingUsers(collected);
+      setFollowingState("ready");
+    } catch {
+      setFollowingState("unavailable");
+    }
+  }, [resolvedAccountKey]);
+
+  useEffect(() => {
+    if (!ready) return;
+    void loadFollowingUsers();
+    const refresh = () => void loadFollowingUsers(true);
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") refresh();
+    };
+    const channel = "BroadcastChannel" in window
+      ? new BroadcastChannel("kwantdesk-social-follows")
+      : null;
+    window.addEventListener("kwantdesk:social-follow-changed", refresh);
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", handleVisibility);
+    channel?.addEventListener("message", refresh);
+    return () => {
+      window.removeEventListener("kwantdesk:social-follow-changed", refresh);
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", handleVisibility);
+      channel?.removeEventListener("message", refresh);
+      channel?.close();
+    };
+  }, [loadFollowingUsers, ready]);
 
   useEffect(() => {
     if (!ready) return;
@@ -1075,6 +1139,34 @@ export default function SocialsWorkspace({
       return true;
     });
   }, [feedFilter, precords, query, receipts, resolvedAccountKey]);
+
+  const followingUserIds = useMemo(
+    () => new Set(followingUsers.map((item) => item.userId)),
+    [followingUsers],
+  );
+  const socialFeedObjects = useMemo(() => {
+    const completedGameplans = precords.filter((record) =>
+      receipts.some((receipt) => receipt.parentId === record.id));
+    return [...posts, ...completedGameplans]
+      .filter((object) => {
+        if (object.scope === "private" && object.userId !== resolvedAccountKey) return false;
+        if (socialFeedMode === "following") {
+          return object.userId === resolvedAccountKey || followingUserIds.has(object.userId);
+        }
+        if (socialFeedMode === "recommended") {
+          return object.scope === "community"
+            && object.userId !== resolvedAccountKey
+            && !followingUserIds.has(object.userId);
+        }
+        return true;
+      })
+      .sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt));
+  }, [followingUserIds, posts, precords, receipts, resolvedAccountKey, socialFeedMode]);
+  const suggestedProfiles = useMemo(() => profiles
+    .filter((object) => object.userId !== resolvedAccountKey && !followingUserIds.has(object.userId))
+    .map((object) => ({ object, profile: normalizeSocialProfile(object.payload, object.authorLabel) }))
+    .sort((left, right) => profileScoreAverage(right.profile) - profileScoreAverage(left.profile))
+    .slice(0, 5), [followingUserIds, profiles, resolvedAccountKey]);
 
   const rankedProfiles = useMemo(() => profiles
     .map((object) => ({ object, profile: normalizeSocialProfile(object.payload, object.authorLabel) }))
@@ -1589,6 +1681,93 @@ export default function SocialsWorkspace({
     if (requestedProfileHandle !== profile.handle) onOpenProfile?.(profile.handle);
   };
 
+  const openNewPost = (kind: SocialPostPayload["kind"] = "POST") => {
+    setEditingPostId(null);
+    setPostDraft({ ...EMPTY_POST, kind });
+    setShowPostModal(true);
+  };
+
+  const closePostComposer = () => {
+    setShowPostModal(false);
+    setEditingPostId(null);
+    setPostDraft(EMPTY_POST);
+  };
+
+  const openPostEditor = (post: SocialObject) => {
+    const payload = typedPayload<SocialPostPayload>(post);
+    if (!payload || post.userId !== resolvedAccountKey) return;
+    setEditingPostId(post.id);
+    setPostDraft({
+      kind: payload.kind,
+      instrument: payload.instrument,
+      title: payload.title,
+      body: payload.body,
+      context: payload.context,
+      condition: payload.condition,
+      invalidation: payload.invalidation,
+      imageDataUrl: payload.imageDataUrl ?? "",
+      imageName: payload.imageName ?? "",
+      scope: post.scope,
+    });
+    setOpenPostMenuId(null);
+    setShowPostModal(true);
+  };
+
+  const preparePostImage = async (file: File | null) => {
+    if (!file) return;
+    setPostImagePreparing(true);
+    try {
+      const image = await prepareSharedImage(file, { maximumEdge: 1920, maxBytes: 900_000 });
+      setPostDraft((current) => ({
+        ...current,
+        imageDataUrl: image.dataUrl,
+        imageName: image.name,
+      }));
+    } catch (reason) {
+      setNotice(reason instanceof Error ? reason.message : "That image could not be prepared.");
+    } finally {
+      setPostImagePreparing(false);
+    }
+  };
+
+  const deleteStructuredPost = async (post: SocialObject) => {
+    if (post.userId !== resolvedAccountKey) return;
+    setOpenPostMenuId(null);
+    const removed = await removeObject(post);
+    setNotice(removed ? "Post deleted from your feed." : "That post could not be deleted.");
+  };
+
+  const updateFeedFollow = async (targetUserId: string, currentlyFollowing: boolean) => {
+    if (followActionUserId) return;
+    const previous = followingUsers;
+    setFollowActionUserId(targetUserId);
+    if (currentlyFollowing) {
+      setFollowingUsers((current) => current.filter((item) => item.userId !== targetUserId));
+    }
+    try {
+      const response = await fetch("/api/socials/follows", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: currentlyFollowing ? "unfollow" : "follow",
+          targetUserId,
+        }),
+      });
+      const result = await response.json() as SocialFollowResponse;
+      if (!response.ok) throw new Error(result.error || "That follow could not be saved.");
+      await loadFollowingUsers(true);
+      window.dispatchEvent(new CustomEvent("kwantdesk:social-follow-changed", {
+        detail: { targetUserId },
+      }));
+      setNotice(currentlyFollowing ? "Unfollowed. Their new posts will leave your Following feed." : "Following. Their new posts will now appear in your feed.");
+    } catch (reason) {
+      setFollowingUsers(previous);
+      setNotice(reason instanceof Error ? reason.message : "That follow could not be saved.");
+    } finally {
+      setFollowActionUserId("");
+    }
+  };
+
   const publishStructuredPost = async () => {
     if (postDraft.scope === "desk" && !myDesks.length) {
       setNotice("Create or join a Desk before publishing to Desk visibility.");
@@ -1596,8 +1775,9 @@ export default function SocialsWorkspace({
     }
     const requiresCondition = postDraft.kind === "MAP" || postDraft.kind === "LIVE OBSERVATION";
     const requiresInvalidation = postDraft.kind === "MAP";
-    if (!postDraft.instrument.trim() || !postDraft.body.trim() || !postDraft.context.trim()) {
-      setNotice("A structured update needs an instrument, the update itself, and the context behind it.");
+    const requiresContext = postDraft.kind !== "POST" && postDraft.kind !== "QUESTION";
+    if (!postDraft.instrument.trim() || !postDraft.body.trim() || (requiresContext && !postDraft.context.trim())) {
+      setNotice(requiresContext ? "This update needs an instrument, the update itself, and the context behind it." : "Add an instrument and write your post first.");
       return;
     }
     if (requiresCondition && !postDraft.condition.trim()) {
@@ -1608,7 +1788,11 @@ export default function SocialsWorkspace({
       setNotice("A Map needs an invalidation so other traders can audit it without guessing.");
       return;
     }
-    const object = buildLocalObject({
+    const existingPost = editingPostId
+      ? posts.find((post) => post.id === editingPostId && post.userId === resolvedAccountKey)
+      : null;
+    let object = buildLocalObject({
+      id: existingPost?.id,
       userId: resolvedAccountKey,
       authorLabel: currentProfile.displayName,
       objectType: "post",
@@ -1623,15 +1807,28 @@ export default function SocialsWorkspace({
         condition: postDraft.condition.trim(),
         invalidation: postDraft.invalidation.trim(),
         relatedPrecordId: null,
-        observedAt: new Date().toISOString(),
+        observedAt: existingPost
+          ? typedPayload<SocialPostPayload>(existingPost)?.observedAt ?? existingPost.createdAt
+          : new Date().toISOString(),
+        imageDataUrl: postDraft.imageDataUrl,
+        imageName: postDraft.imageName,
       } satisfies SocialPostPayload,
     });
+    if (existingPost) {
+      object = {
+        ...object,
+        parentId: existingPost.parentId,
+        createdAt: existingPost.createdAt,
+        updatedAt: new Date().toISOString(),
+      };
+    }
     await saveObject(object);
     await saveProgressPatch(postDraft.kind === "MAP" ? { map: true } : postDraft.kind === "LIVE OBSERVATION" ? { observe: true } : {});
     setPostDraft(EMPTY_POST);
+    setEditingPostId(null);
     setShowPostModal(false);
-    setTab("today");
-    setNotice(`${typedPayload<SocialPostPayload>(object)?.kind ?? "Update"} published with context attached.`);
+    setTab("feed");
+    setNotice(existingPost ? "Post updated." : `${typedPayload<SocialPostPayload>(object)?.kind ?? "Update"} published to your feed.`);
   };
 
   const addReaction = async (precord: SocialObject, kind: SocialReactionPayload["kind"]) => {
@@ -1763,6 +1960,46 @@ export default function SocialsWorkspace({
     const payload = typedPayload<SocialPrecordPayload>(record);
     const url = `${window.location.origin}/socials/${encodeURIComponent(authorProfile.handle)}?gameplan=${encodeURIComponent(record.id)}`;
     void shareUrl(url, `${payload?.instrument ?? "Gameplan"} by ${authorProfile.displayName}`, "View this timestamped Kwant Desk Gameplan.");
+  };
+
+  const shareStructuredPost = (post: SocialObject) => {
+    const payload = typedPayload<SocialPostPayload>(post);
+    const authorProfile = profileByUserId.get(post.userId);
+    const handle = authorProfile?.handle || currentProfile.handle;
+    const url = `${window.location.origin}/socials/${encodeURIComponent(handle)}?post=${encodeURIComponent(post.id)}`;
+    void shareUrl(url, payload?.title || `${post.authorLabel} on Kwant Desk`, payload?.body || "View this Kwant Desk post.");
+  };
+
+  const toggleStructuredPostRepost = async (post: SocialObject) => {
+    const existing = posts.find((candidate) =>
+      candidate.userId === resolvedAccountKey
+      && typedPayload<SocialPostPayload>(candidate)?.isRepost
+      && typedPayload<SocialPostPayload>(candidate)?.repostOfPostId === post.id);
+    if (existing) {
+      await removeObject(existing);
+      setNotice("Repost removed from your feed.");
+      return;
+    }
+    const payload = typedPayload<SocialPostPayload>(post);
+    if (!payload) return;
+    await saveObject(buildLocalObject({
+      id: `repost:${post.id}`,
+      userId: resolvedAccountKey,
+      authorLabel: currentProfile.displayName,
+      objectType: "post",
+      scope: post.scope === "private" ? "friends" : post.scope,
+      deskId: post.deskId,
+      parentId: post.id,
+      payload: {
+        ...payload,
+        title: payload.title || `Reposted from ${post.authorLabel}`,
+        observedAt: new Date().toISOString(),
+        isRepost: true,
+        repostOfUserId: post.userId,
+        repostOfPostId: post.id,
+      } satisfies SocialPostPayload,
+    }));
+    setNotice("Post shared to your feed.");
   };
 
   const closeAvatarCrop = useCallback(() => {
@@ -2116,6 +2353,11 @@ export default function SocialsWorkspace({
     if (!payload) return null;
     const objectComments = comments.filter((comment) => comment.parentId === object.id);
     const objectReactions = reactions.filter((reaction) => reaction.parentId === object.id);
+    const own = object.userId === resolvedAccountKey;
+    const liked = objectReactions.some((reaction) => reaction.userId === resolvedAccountKey && typedPayload<SocialReactionPayload>(reaction)?.kind === "LIKE");
+    const likeCount = objectReactions.filter((reaction) => typedPayload<SocialReactionPayload>(reaction)?.kind === "LIKE").length;
+    const reposts = posts.filter((post) => typedPayload<SocialPostPayload>(post)?.repostOfPostId === object.id);
+    const reposted = reposts.some((post) => post.userId === resolvedAccountKey);
     const profileObject = profiles.find((candidate) => candidate.userId === object.userId);
     const profile = profileObject ? normalizeSocialProfile(profileObject.payload, profileObject.authorLabel) : null;
     const kindTone = payload.kind === "MAP"
@@ -2126,7 +2368,7 @@ export default function SocialsWorkspace({
           ? "text-warning bg-warning/10 border-warning/20"
           : "text-foreground bg-surface border-border";
     return (
-      <Card key={objectKey(object)} className="overflow-hidden">
+      <Card key={objectKey(object)} className="relative overflow-hidden">
         <div className="flex items-start gap-3 border-b border-border px-4 py-3">
           <Avatar
             label={object.authorLabel}
@@ -2140,12 +2382,20 @@ export default function SocialsWorkspace({
               <span className={`rounded-lg border px-2 py-1 text-[7px] font-semibold ${kindTone}`}>{payload.kind}</span>
             </div>
             <div className="mt-1 text-[7px] text-muted">{formatDate(payload.observedAt, true)} · {payload.instrument}</div>
+            {payload.isRepost ? <div className="mt-1 flex items-center gap-1 text-[7px] text-primary"><Repeat2 className="h-3 w-3" />Reposted to this feed</div> : null}
           </div>
           <ScopeBadge scope={object.scope} />
+          {own ? (
+            <div className="relative">
+              <button type="button" onClick={() => setOpenPostMenuId((current) => current === object.id ? null : object.id)} className="flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground" aria-label="Post options"><MoreHorizontal className="h-4 w-4" /></button>
+              {openPostMenuId === object.id ? <div className="absolute right-0 top-9 z-30 w-36 overflow-hidden rounded-xl border border-border bg-panel p-1 shadow-2xl"><button type="button" onClick={() => openPostEditor(object)} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-[8px] text-muted hover:bg-surface hover:text-foreground"><SlidersHorizontal className="h-3.5 w-3.5" />Edit post</button><button type="button" onClick={() => void deleteStructuredPost(object)} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-[8px] text-danger hover:bg-danger/10"><Trash2 className="h-3.5 w-3.5" />Delete post</button></div> : null}
+            </div>
+          ) : null}
         </div>
         <div className="p-4">
           {payload.title ? <h3 className="text-[13px] font-semibold tracking-[-0.015em]">{payload.title}</h3> : null}
           <p className="mt-2 text-[10px] leading-5 text-foreground">{payload.body}</p>
+          {payload.imageDataUrl ? <div className="mt-4 overflow-hidden rounded-2xl border border-border bg-black"><img src={payload.imageDataUrl} alt={payload.imageName || payload.title || "Social post attachment"} className="max-h-[560px] w-full object-contain" /></div> : null}
           <div className="mt-3 grid gap-2 md:grid-cols-3">
             <div className="rounded-xl border border-border bg-background/35 p-3"><div className="text-[7px] font-semibold uppercase tracking-[0.12em] text-muted">Context</div><p className="mt-2 text-[8px] leading-4 text-foreground">{payload.context}</p></div>
             <div className="rounded-xl border border-border bg-background/35 p-3"><div className="text-[7px] font-semibold uppercase tracking-[0.12em] text-muted">Condition / evidence</div><p className="mt-2 text-[8px] leading-4 text-foreground">{payload.condition || "Not required for this update type."}</p></div>
@@ -2153,12 +2403,10 @@ export default function SocialsWorkspace({
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-1.5 border-t border-border bg-background/20 px-4 py-2.5">
-          {(["USEFUL", "CLEAR", "EVIDENCE"] as const).map((kind) => {
-            const active = objectReactions.some((reaction) => reaction.userId === resolvedAccountKey && typedPayload<SocialReactionPayload>(reaction)?.kind === kind);
-            const count = objectReactions.filter((reaction) => typedPayload<SocialReactionPayload>(reaction)?.kind === kind).length;
-            return <button key={kind} type="button" onClick={() => addReaction(object, kind)} className={`flex h-7 items-center gap-1.5 rounded-lg px-2 text-[7px] font-semibold ${active ? "bg-primary/10 text-primary" : "text-muted hover:bg-surface hover:text-foreground"}`}><Star className="h-3 w-3" />{kind}{count ? ` ${count}` : ""}</button>;
-          })}
-          <span className="ml-auto flex items-center gap-1.5 text-[8px] text-muted"><MessageCircle className="h-3.5 w-3.5" />{objectComments.length} responses</span>
+          <button type="button" onClick={() => void addReaction(object, "LIKE")} className={`flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[8px] font-semibold ${liked ? "bg-primary/10 text-primary" : "text-muted hover:bg-surface hover:text-foreground"}`}><Heart className={`h-3.5 w-3.5 ${liked ? "fill-current" : ""}`} />Like{likeCount ? ` ${likeCount}` : ""}</button>
+          <button type="button" onClick={() => document.getElementById(`comment:${object.id}`)?.focus()} className="flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[8px] font-semibold text-muted hover:bg-surface hover:text-foreground"><MessageCircle className="h-3.5 w-3.5" />Comment{objectComments.length ? ` ${objectComments.length}` : ""}</button>
+          <button type="button" onClick={() => void toggleStructuredPostRepost(object)} className={`flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[8px] font-semibold ${reposted ? "bg-primary/10 text-primary" : "text-muted hover:bg-surface hover:text-foreground"}`}><Repeat2 className="h-3.5 w-3.5" />Repost{reposts.length ? ` ${reposts.length}` : ""}</button>
+          <button type="button" onClick={() => shareStructuredPost(object)} className="ml-auto flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[8px] font-semibold text-muted hover:bg-surface hover:text-foreground"><Share2 className="h-3.5 w-3.5" />Share</button>
         </div>
         {objectComments.length ? (
           <div className="space-y-2 border-t border-border px-4 py-3">
@@ -2170,7 +2418,7 @@ export default function SocialsWorkspace({
         ) : null}
         <div className="grid gap-2 border-t border-border px-4 py-3 sm:grid-cols-[112px_minmax(0,1fr)_34px]">
           <KwantSelect value={commentKinds[object.id] ?? "QUESTION"} onChange={(event) => setCommentKinds((current) => ({ ...current, [object.id]: event.target.value as SocialCommentPayload["kind"] }))} className="h-8 rounded-lg border border-border bg-surface px-2 text-[8px] text-muted outline-none"><option value="QUESTION">Question</option><option value="REVIEW">Review</option><option value="COUNTERCASE">Countercase</option><option value="LESSON">Lesson</option></KwantSelect>
-          <input value={commentDrafts[object.id] ?? ""} onChange={(event) => setCommentDrafts((current) => ({ ...current, [object.id]: event.target.value }))} onKeyDown={(event) => { if (event.key === "Enter") addComment(object); }} placeholder="Respond with context, evidence, or a focused question…" className="h-8 rounded-lg border border-border bg-background px-3 text-[8px] outline-none placeholder:text-muted/55 focus:border-primary/40" />
+          <input id={`comment:${object.id}`} value={commentDrafts[object.id] ?? ""} onChange={(event) => setCommentDrafts((current) => ({ ...current, [object.id]: event.target.value }))} onKeyDown={(event) => { if (event.key === "Enter") addComment(object); }} placeholder="Respond with context, evidence, or a focused question…" className="h-8 rounded-lg border border-border bg-background px-3 text-[8px] outline-none placeholder:text-muted/55 focus:border-primary/40" />
           <button type="button" onClick={() => addComment(object)} className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-background"><Send className="h-3.5 w-3.5" /></button>
         </div>
       </Card>
@@ -2562,7 +2810,7 @@ export default function SocialsWorkspace({
               <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_90%_0%,color-mix(in_srgb,var(--primary)_13%,transparent),transparent_40%)]" />
               <div className="relative flex flex-wrap items-end gap-4">
                 <div className="max-w-2xl"><div className="text-[7px] font-semibold uppercase tracking-[0.15em] text-primary">Evidence-backed community</div><h2 className="mt-2 text-[24px] font-semibold tracking-[-0.04em]">Share the complete decision—not a naked prediction.</h2><p className="mt-2 text-[9px] leading-5 text-muted">Every published record carries its source Gameplan, immutable timestamp, actual execution, evidence state and review context. The next decision remains individual.</p></div>
-                <div className="ml-auto flex flex-wrap gap-2"><button type="button" onClick={() => { setPostDraft((current) => ({ ...current, kind: "REVIEW REQUEST" })); setShowPostModal(true); }} className="flex h-9 items-center gap-2 rounded-xl border border-primary/25 bg-primary/[0.06] px-4 text-[8px] font-semibold text-primary"><MessageCircle className="h-3.5 w-3.5" />Request a review</button><button type="button" onClick={() => setTab("today")} className="flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-[8px] font-semibold text-background"><ArrowRight className="h-3.5 w-3.5" />Open today’s Gameplan</button></div>
+                <div className="ml-auto flex flex-wrap gap-2"><button type="button" onClick={() => openNewPost("REVIEW REQUEST")} className="flex h-9 items-center gap-2 rounded-xl border border-primary/25 bg-primary/[0.06] px-4 text-[8px] font-semibold text-primary"><MessageCircle className="h-3.5 w-3.5" />Request a review</button><button type="button" onClick={() => setTab("today")} className="flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-[8px] font-semibold text-background"><ArrowRight className="h-3.5 w-3.5" />Open today’s Gameplan</button></div>
               </div>
             </Card>
             <Card className="flex flex-wrap items-center gap-2 p-3">
@@ -2574,6 +2822,67 @@ export default function SocialsWorkspace({
               {!visiblePrecords.length ? <Card className="border-dashed p-14 text-center"><LockKeyhole className="mx-auto h-8 w-8 text-muted" /><h2 className="mt-4 text-[13px] font-semibold">No Decision Records match this view.</h2><p className="mx-auto mt-2 max-w-md text-[8px] leading-4 text-muted">Records begin with the existing Gameplan, then gain their execution and evidence after the outcome.</p><button type="button" onClick={() => setTab("today")} className="mt-5 rounded-xl bg-primary px-4 py-2.5 text-[8px] font-semibold text-background">Open today’s Gameplan</button></Card> : null}
               {feedFilter === "all" ? posts.filter((post) => post.scope !== "private" || post.userId === resolvedAccountKey).slice(0, 6).map(renderStructuredPost) : null}
             </div>
+          </div>
+        ) : null}
+
+        {tab === "feed" ? (
+          <div className="mx-auto grid max-w-7xl gap-3 p-3 xl:grid-cols-[minmax(0,820px)_320px]">
+            <div className="min-w-0 space-y-3">
+              <Card className="relative overflow-hidden p-5">
+                <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_86%_0%,color-mix(in_srgb,var(--primary)_15%,transparent),transparent_42%)]" />
+                <div className="relative flex flex-wrap items-end gap-4">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 text-[7px] font-semibold uppercase tracking-[0.16em] text-primary"><Heart className="h-3.5 w-3.5" />Your market network</div>
+                    <h2 className="mt-2 text-[24px] font-semibold tracking-[-0.04em]">Gameplans, observations and traders worth following.</h2>
+                    <p className="mt-2 max-w-2xl text-[9px] leading-5 text-muted">Following controls this feed only. Friend requests remain separate and unlock private chat and Desk invitations.</p>
+                  </div>
+                  <button type="button" onClick={() => openNewPost()} className="flex h-10 items-center gap-2 rounded-xl bg-primary px-4 text-[8px] font-semibold text-background hover:brightness-110"><Plus className="h-3.5 w-3.5" />Create post</button>
+                </div>
+                <div className="relative mt-4 flex gap-1 rounded-xl border border-border bg-background/35 p-1">
+                  {(["following", "recommended", "latest"] as SocialFeedMode[]).map((mode) => <button key={mode} type="button" onClick={() => setSocialFeedMode(mode)} className={`flex h-8 flex-1 items-center justify-center rounded-lg px-3 text-[8px] font-semibold capitalize transition-colors ${socialFeedMode === mode ? "bg-primary/12 text-primary shadow-[0_0_18px_color-mix(in_srgb,var(--primary)_10%,transparent)]" : "text-muted hover:bg-surface hover:text-foreground"}`}>{mode}</button>)}
+                </div>
+              </Card>
+
+              <Card className="flex items-center gap-3 p-3">
+                <Avatar label={currentProfile.displayName} avatarUrl={currentProfile.avatarUrl} />
+                <button type="button" onClick={() => openNewPost()} className="h-10 min-w-0 flex-1 rounded-2xl border border-border bg-background px-4 text-left text-[9px] text-muted transition-colors hover:border-primary/30 hover:text-foreground">Share a market observation, chart or question…</button>
+                <button type="button" onClick={() => openNewPost("MAP")} className="flex h-10 items-center gap-2 rounded-xl border border-border bg-surface px-3 text-[8px] font-semibold text-muted hover:text-foreground"><ImageIcon className="h-3.5 w-3.5" />Chart post</button>
+              </Card>
+
+              {followingState === "unavailable" ? <Card className="border-warning/25 bg-warning/[0.04] p-4 text-[8px] leading-4 text-warning">Follower storage is not available in this Supabase project yet. Community posts remain visible under Latest while the account-backed follow migration is applied.</Card> : null}
+
+              <div className="space-y-3">
+                {socialFeedObjects.map((object) => object.objectType === "precord" ? renderPrecordCard(object) : renderStructuredPost(object))}
+                {!socialFeedObjects.length ? (
+                  <Card className="border-dashed p-12 text-center">
+                    <Heart className="mx-auto h-8 w-8 text-muted" />
+                    <h3 className="mt-4 text-[12px] font-semibold">{socialFeedMode === "following" ? "Your Following feed is ready." : "No posts match this view yet."}</h3>
+                    <p className="mx-auto mt-2 max-w-md text-[8px] leading-4 text-muted">{socialFeedMode === "following" ? "Follow traders from Recommended or open a profile and press Follow. Their new posts and completed Gameplans will appear here automatically." : "Create the first structured market post or return when the network has new activity."}</p>
+                    <div className="mt-5 flex justify-center gap-2"><button type="button" onClick={() => setSocialFeedMode("recommended")} className="rounded-xl border border-primary/25 bg-primary/[0.06] px-4 py-2.5 text-[8px] font-semibold text-primary">Find traders</button><button type="button" onClick={() => openNewPost()} className="rounded-xl bg-primary px-4 py-2.5 text-[8px] font-semibold text-background">Create post</button></div>
+                  </Card>
+                ) : null}
+              </div>
+            </div>
+
+            <aside className="space-y-3 xl:sticky xl:top-3 xl:self-start">
+              <Card className="overflow-hidden">
+                <div className="flex items-center gap-2 border-b border-border px-4 py-3"><UsersRound className="h-4 w-4 text-primary" /><div><h3 className="text-[10px] font-semibold">Recommended traders</h3><p className="mt-0.5 text-[7px] text-muted">Follow shapes your feed. It does not create a private friendship.</p></div></div>
+                <div className="divide-y divide-border/60">
+                  {suggestedProfiles.map(({ object, profile }) => (
+                    <div key={objectKey(object)} className="flex items-center gap-2.5 p-3">
+                      <button type="button" onClick={() => onOpenProfile?.(profile.handle)}><Avatar label={profile.displayName} avatarUrl={profile.avatarUrl} size="sm" statusClassName={presenceOption(effectivePresenceStatus(profile.presenceStatus, profile.lastSeenAt)).dotClassName} /></button>
+                      <button type="button" onClick={() => onOpenProfile?.(profile.handle)} className="min-w-0 flex-1 text-left"><span className="block truncate text-[8px] font-semibold text-foreground">{profile.displayName}</span><span className="mt-0.5 block truncate text-[7px] text-muted">@{profile.handle} · {profile.strongestDiscipline || profile.style}</span></button>
+                      <button type="button" onClick={() => void updateFeedFollow(object.userId, false)} disabled={Boolean(followActionUserId)} className="flex h-8 items-center gap-1.5 rounded-lg border border-primary/25 bg-primary/[0.07] px-2.5 text-[7px] font-semibold text-primary disabled:opacity-50">{followActionUserId === object.userId ? <span className="h-3 w-3 animate-spin rounded-full border border-primary/30 border-t-primary" /> : <UserPlus className="h-3 w-3" />}Follow</button>
+                    </div>
+                  ))}
+                  {!suggestedProfiles.length ? <div className="p-5 text-center text-[8px] leading-4 text-muted">You are following every visible trader. Latest will show the whole network.</div> : null}
+                </div>
+              </Card>
+              <Card className="p-4">
+                <div className="text-[7px] font-semibold uppercase tracking-[0.14em] text-primary">Two different connections</div>
+                <div className="mt-3 space-y-3 text-[8px] leading-4 text-muted"><p><strong className="text-foreground">Follow</strong> — see public posts and Gameplans in this feed. Either trader can follow or unfollow independently.</p><p><strong className="text-foreground">Friend</strong> — a two-way accepted relationship for private messages, group chats and quick Desk invitations.</p></div>
+              </Card>
+            </aside>
           </div>
         ) : null}
 
@@ -3073,29 +3382,33 @@ export default function SocialsWorkspace({
       ) : null}
 
       {showPostModal ? (
-        <div className="fixed inset-0 z-[1100] flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm" onMouseDown={(event) => { if (event.target === event.currentTarget) setShowPostModal(false); }}>
+        <div className="fixed inset-0 z-[1100] flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm" onMouseDown={(event) => { if (event.target === event.currentTarget) closePostComposer(); }}>
           <div className="flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-3xl border border-border bg-panel shadow-2xl shadow-black/60">
             <div className="flex items-start gap-3 border-b border-border p-5">
               <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary"><MessageCircle className="h-4 w-4" /></span>
-              <div><h2 className="text-[14px] font-semibold">Share a structured update</h2><p className="mt-1 text-[8px] text-muted">The format carries the context. A claim without a reason, condition, timestamp, or focused question cannot enter the feed.</p></div>
-              <button type="button" onClick={() => setShowPostModal(false)} className="ml-auto flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:bg-surface"><X className="h-4 w-4" /></button>
+              <div><h2 className="text-[14px] font-semibold">{editingPostId ? "Edit your post" : "Create a feed post"}</h2><p className="mt-1 text-[8px] text-muted">Share the observation and enough market context for another trader to understand it.</p></div>
+              <button type="button" onClick={closePostComposer} className="ml-auto flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:bg-surface"><X className="h-4 w-4" /></button>
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto p-5">
               <div className="grid gap-3 md:grid-cols-3">
-                <label><span className="mb-1.5 block text-[7px] uppercase tracking-[0.1em] text-muted">Update type</span><KwantSelect value={postDraft.kind} onChange={(event) => setPostDraft((current) => ({ ...current, kind: event.target.value as SocialPostPayload["kind"] }))} className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[9px] outline-none"><option value="MAP">Map</option><option value="LIVE OBSERVATION">Live Observation</option><option value="REVIEW REQUEST">Review Request</option><option value="LESSON">Lesson</option><option value="QUESTION">Question</option></KwantSelect></label>
+                <label><span className="mb-1.5 block text-[7px] uppercase tracking-[0.1em] text-muted">Update type</span><KwantSelect value={postDraft.kind} onChange={(event) => setPostDraft((current) => ({ ...current, kind: event.target.value as SocialPostPayload["kind"] }))} className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[9px] outline-none"><option value="POST">Post</option><option value="MAP">Map</option><option value="LIVE OBSERVATION">Live Observation</option><option value="REVIEW REQUEST">Review Request</option><option value="LESSON">Lesson</option><option value="QUESTION">Question</option></KwantSelect></label>
                 <label><span className="mb-1.5 block text-[7px] uppercase tracking-[0.1em] text-muted">Instrument</span><input value={postDraft.instrument} onChange={(event) => setPostDraft((current) => ({ ...current, instrument: event.target.value }))} className="h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] outline-none focus:border-primary/40" /></label>
                 <label><span className="mb-1.5 block text-[7px] uppercase tracking-[0.1em] text-muted">Visibility</span><KwantSelect value={postDraft.scope} onChange={(event) => setPostDraft((current) => ({ ...current, scope: event.target.value as SocialScope }))} className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[9px] outline-none"><option value="private">Private</option><option value="friends">Friends</option><option value="desk">My Desk</option><option value="community">Community</option></KwantSelect></label>
               </div>
               <label className="mt-4 block"><span className="mb-1.5 block text-[7px] uppercase tracking-[0.1em] text-muted">Title</span><input value={postDraft.title} onChange={(event) => setPostDraft((current) => ({ ...current, title: event.target.value }))} placeholder="Optional concise headline" className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[9px] outline-none placeholder:text-muted/55 focus:border-primary/40" /></label>
               <label className="mt-4 block"><span className="mb-1.5 block text-[7px] uppercase tracking-[0.1em] text-muted">{postDraft.kind === "QUESTION" ? "Focused question *" : postDraft.kind === "LESSON" ? "Lesson *" : "What changed or matters? *"}</span><textarea value={postDraft.body} onChange={(event) => setPostDraft((current) => ({ ...current, body: event.target.value }))} rows={4} className="w-full resize-none rounded-xl border border-border bg-background p-3 text-[9px] leading-5 outline-none focus:border-primary/40" /></label>
+              <div className="mt-4 overflow-hidden rounded-2xl border border-dashed border-border bg-background/30">
+                {postDraft.imageDataUrl ? <div className="relative border-b border-border bg-black"><img src={postDraft.imageDataUrl} alt={postDraft.imageName || "Post attachment preview"} className="max-h-[360px] w-full object-contain" /><button type="button" onClick={() => setPostDraft((current) => ({ ...current, imageDataUrl: "", imageName: "" }))} className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full border border-white/15 bg-black/70 text-white"><X className="h-4 w-4" /></button></div> : null}
+                <label className="flex cursor-pointer items-center justify-center gap-2 px-4 py-4 text-[8px] font-semibold text-muted hover:text-foreground"><ImageIcon className="h-4 w-4 text-primary" />{postImagePreparing ? "Preparing image…" : postDraft.imageDataUrl ? "Replace chart or image" : "Add chart or image"}<input type="file" accept="image/png,image/jpeg,image/webp,image/gif" disabled={postImagePreparing} className="hidden" onChange={(event) => { void preparePostImage(event.target.files?.[0] ?? null); event.currentTarget.value = ""; }} /></label>
+              </div>
               <div className="mt-4 grid gap-3 md:grid-cols-2">
-                <label><span className="mb-1.5 block text-[7px] uppercase tracking-[0.1em] text-muted">Context / reason *</span><textarea value={postDraft.context} onChange={(event) => setPostDraft((current) => ({ ...current, context: event.target.value }))} rows={4} placeholder="What evidence or market state makes this relevant?" className="w-full resize-none rounded-xl border border-border bg-background p-3 text-[9px] leading-4 outline-none placeholder:text-muted/55 focus:border-primary/40" /></label>
+                <label><span className="mb-1.5 block text-[7px] uppercase tracking-[0.1em] text-muted">Context / reason{postDraft.kind === "POST" || postDraft.kind === "QUESTION" ? "" : " *"}</span><textarea value={postDraft.context} onChange={(event) => setPostDraft((current) => ({ ...current, context: event.target.value }))} rows={4} placeholder="What evidence or market state makes this relevant?" className="w-full resize-none rounded-xl border border-border bg-background p-3 text-[9px] leading-4 outline-none placeholder:text-muted/55 focus:border-primary/40" /></label>
                 <label><span className="mb-1.5 block text-[7px] uppercase tracking-[0.1em] text-muted">Condition / evidence{postDraft.kind === "MAP" || postDraft.kind === "LIVE OBSERVATION" ? " *" : ""}</span><textarea value={postDraft.condition} onChange={(event) => setPostDraft((current) => ({ ...current, condition: event.target.value }))} rows={4} placeholder="What would confirm this observation?" className="w-full resize-none rounded-xl border border-border bg-background p-3 text-[9px] leading-4 outline-none placeholder:text-muted/55 focus:border-primary/40" /></label>
                 <label className="md:col-span-2"><span className="mb-1.5 block text-[7px] uppercase tracking-[0.1em] text-muted">Invalidation{postDraft.kind === "MAP" ? " *" : ""}</span><textarea value={postDraft.invalidation} onChange={(event) => setPostDraft((current) => ({ ...current, invalidation: event.target.value }))} rows={3} placeholder="What would make this interpretation wrong?" className="w-full resize-none rounded-xl border border-border bg-background p-3 text-[9px] leading-4 outline-none placeholder:text-muted/55 focus:border-primary/40" /></label>
               </div>
               <div className="mt-4 rounded-xl border border-primary/20 bg-primary/[0.05] p-3 text-[8px] leading-4 text-muted"><strong className="text-primary">{postDraft.kind}:</strong> {postDraft.kind === "MAP" ? "Share the structure, both the confirming condition and the invalidation." : postDraft.kind === "LIVE OBSERVATION" ? "Timestamp the observation and show what evidence would sustain it." : postDraft.kind === "REVIEW REQUEST" ? "Ask for one precise form of feedback rather than broad approval." : postDraft.kind === "LESSON" ? "Anchor the lesson in a specific context another trader can recognise." : "Give enough context for a useful answer."}</div>
             </div>
-            <div className="flex justify-end gap-2 border-t border-border bg-background/20 px-5 py-4"><button type="button" onClick={() => setShowPostModal(false)} className="h-9 rounded-xl border border-border px-4 text-[8px] font-semibold text-muted">Cancel</button><button type="button" onClick={() => void publishStructuredPost()} className="flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-[8px] font-semibold text-background"><Send className="h-3.5 w-3.5" />Publish structured update</button></div>
+            <div className="flex justify-end gap-2 border-t border-border bg-background/20 px-5 py-4"><button type="button" onClick={closePostComposer} className="h-9 rounded-xl border border-border px-4 text-[8px] font-semibold text-muted">Cancel</button><button type="button" onClick={() => void publishStructuredPost()} disabled={postImagePreparing} className="flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-[8px] font-semibold text-background disabled:opacity-50"><Send className="h-3.5 w-3.5" />{editingPostId ? "Save changes" : "Publish to feed"}</button></div>
           </div>
         </div>
       ) : null}
