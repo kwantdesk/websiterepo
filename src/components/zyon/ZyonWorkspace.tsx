@@ -7,6 +7,7 @@ import {
   BrainCircuit,
   CalendarDays,
   CheckCircle2,
+  ChevronLeft,
   ChevronRight,
   CircleGauge,
   Download,
@@ -624,6 +625,8 @@ export default function ZyonWorkspace({
   const [chatActionError, setChatActionError] = useState("");
   const [renamingChatId, setRenamingChatId] = useState<string | null>(null);
   const [chatNameDraft, setChatNameDraft] = useState("");
+  const [chatsCollapsed, setChatsCollapsed] = useState(false);
+  const [journalCollapsed, setJournalCollapsed] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const messagesScrollRef = useRef<HTMLDivElement>(null);
@@ -1861,24 +1864,62 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
       </header>
 
       <div className="flex min-h-0 flex-1">
-        <aside className="hidden w-[184px] shrink-0 flex-col border-r border-border bg-background/55 lg:flex">
+        <aside className={`hidden shrink-0 flex-col border-r border-border bg-background/55 transition-[width] duration-200 lg:flex ${
+          chatsCollapsed ? "w-12" : "w-[184px]"
+        }`}>
+          {chatsCollapsed ? (
+            <div className="flex h-full flex-col items-center gap-2 py-3">
+              <button
+                type="button"
+                onClick={() => setChatsCollapsed(false)}
+                className="flex h-8 w-8 items-center justify-center rounded-xl border border-primary/20 bg-primary/[0.07] text-primary transition hover:border-primary/40"
+                title="Open chats"
+                aria-label="Open chats"
+              >
+                <MessageSquareText className="h-3.5 w-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => void createChat()}
+                disabled={chatActionBusy || chats.length >= ZYON_CHAT_LIMIT}
+                className="flex h-8 w-8 items-center justify-center rounded-xl border border-border bg-surface/60 text-muted transition hover:border-primary/30 hover:text-primary disabled:opacity-35"
+                title="New chat"
+                aria-label="New chat"
+              >
+                {chatActionBusy
+                  ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  : <Plus className="h-3.5 w-3.5" />}
+              </button>
+            </div>
+          ) : <>
           <div className="border-b border-border p-3">
             <div className="flex items-center justify-between gap-2">
               <div>
                 <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-foreground">Chats</div>
                 <div className="mt-0.5 text-[8px] text-muted">{chats.length}/{ZYON_CHAT_LIMIT} workspaces</div>
               </div>
-              <button
-                type="button"
-                onClick={() => void createChat()}
-                disabled={chatActionBusy || chats.length >= ZYON_CHAT_LIMIT}
-                className="flex h-8 w-8 items-center justify-center rounded-xl border border-primary/20 bg-primary/[0.07] text-primary transition hover:border-primary/40 hover:bg-primary/10 disabled:opacity-40"
-                title="New chat"
-              >
-                {chatActionBusy
-                  ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  : <Plus className="h-3.5 w-3.5" />}
-              </button>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setChatsCollapsed(true)}
+                  className="flex h-8 w-8 items-center justify-center rounded-xl border border-border bg-surface/60 text-muted transition hover:border-primary/30 hover:text-primary"
+                  title="Minimize chats"
+                  aria-label="Minimize chats"
+                >
+                  <ChevronLeft className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void createChat()}
+                  disabled={chatActionBusy || chats.length >= ZYON_CHAT_LIMIT}
+                  className="flex h-8 w-8 items-center justify-center rounded-xl border border-primary/20 bg-primary/[0.07] text-primary transition hover:border-primary/40 hover:bg-primary/10 disabled:opacity-40"
+                  title="New chat"
+                >
+                  {chatActionBusy
+                    ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    : <Plus className="h-3.5 w-3.5" />}
+                </button>
+              </div>
             </div>
             <button
               type="button"
@@ -2001,9 +2042,25 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
               <p className="truncate text-[8px] text-muted">{activeChat.name}</p>
             )}
           </div>
+          </>}
         </aside>
 
-        <aside className="hidden w-[252px] shrink-0 flex-col border-r border-border bg-panel/70 lg:flex">
+        <aside className={`hidden shrink-0 flex-col border-r border-border bg-panel/70 transition-[width] duration-200 lg:flex ${
+          journalCollapsed ? "w-12" : "w-[252px]"
+        }`}>
+          {journalCollapsed ? (
+            <div className="flex h-full flex-col items-center gap-2 py-3">
+              <button
+                type="button"
+                onClick={() => setJournalCollapsed(false)}
+                className="flex h-8 w-8 items-center justify-center rounded-xl border border-primary/20 bg-primary/[0.07] text-primary transition hover:border-primary/40"
+                title="Open journal"
+                aria-label="Open journal"
+              >
+                <FileText className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          ) : <>
           <div className="border-b border-border p-3">
             <div className="flex items-center justify-between">
               <div>
@@ -2011,6 +2068,15 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
                 <div className="mt-0.5 text-[8px] text-muted">{activeJournal.length} summaries · {customFolderCount}/{ZYON_CUSTOM_FOLDER_LIMIT} folders</div>
               </div>
               <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setJournalCollapsed(true)}
+                  className="flex h-8 w-8 items-center justify-center rounded-xl border border-border bg-surface text-muted transition hover:border-primary/30 hover:text-primary"
+                  title="Minimize journal"
+                  aria-label="Minimize journal"
+                >
+                  <ChevronLeft className="h-3.5 w-3.5" />
+                </button>
                 <button
                   type="button"
                   onClick={() => {
@@ -2173,6 +2239,7 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
               {cloudJournal === "synced" ? "Account journal synced" : "Local journal active"}
             </div>
           </div>
+          </>}
         </aside>
 
         <main className="flex min-w-0 flex-1 flex-col bg-[radial-gradient(circle_at_50%_0%,color-mix(in_srgb,var(--primary)_5%,transparent),transparent_38%)]">
@@ -2430,7 +2497,7 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
           ) : null}
         </main>
 
-        <aside className="hidden w-[284px] shrink-0 flex-col border-l border-border bg-panel/70 xl:flex">
+        <aside className="hidden" aria-hidden="true">
           <div className="border-b border-border p-4">
             <div className="flex items-center justify-between">
               <div>
