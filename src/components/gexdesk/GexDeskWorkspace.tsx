@@ -11,7 +11,6 @@ import {
   Flame,
   GitCompareArrows,
   Gauge,
-  History,
   Layers3,
   Map,
   Radio,
@@ -365,7 +364,7 @@ export default function GexDeskWorkspace() {
   }, [sourceFilter]);
 
   useEffect(() => {
-    if (activePanel !== "EVOLUTION" && activePanel !== "HEATMAP" && activePanel !== "GEX_VIEW") return;
+    if (activePanel !== "HEATMAP" && activePanel !== "GEX_VIEW") return;
     const cached = readWorkspaceData<GexDeskHistoryPayload>(gexdeskHistoryCacheKey(sourceFilter));
     setHistory(cached);
     void loadHistory(Boolean(cached));
@@ -553,7 +552,6 @@ export default function GexDeskWorkspace() {
     { id: "GEX_VIEW", label: "Gex View", description: "Visual exposure terminal", icon: Eye, analyst: false },
     { id: "MAP", label: "Map", description: "Positioning by strike", icon: Map, analyst: false },
     { id: "HEATMAP", label: "Heatmap", description: "Call and put activity", icon: Flame, analyst: false },
-    { id: "EVOLUTION", label: "Evolution", description: "Exposure through time", icon: History, analyst: true },
     { id: "EXPIRIES", label: "Expiries", description: "Term structure", icon: CalendarRange, analyst: true },
     { id: "FLOW", label: "Flow & Tape", description: "Live options pressure", icon: Waves, analyst: true },
     { id: "SOURCES", label: "Sources", description: "Cross-source evidence", icon: GitCompareArrows, analyst: true },

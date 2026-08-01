@@ -23,7 +23,7 @@ import type {
   GexDeskZone,
 } from "@/lib/gexDesk";
 
-export type GexDeskPanel = "GEX_VIEW" | "MAP" | "HEATMAP" | "EVOLUTION" | "EXPIRIES" | "FLOW" | "SOURCES";
+export type GexDeskPanel = "GEX_VIEW" | "MAP" | "HEATMAP" | "EXPIRIES" | "FLOW" | "SOURCES";
 export type GexDeskTapeTick = { price: number; delta: number; timestamp: number };
 
 type PanelProps = {
@@ -134,16 +134,18 @@ function EmptyPanel({
   );
 }
 
-function EvolutionPanel({
+export function EvolutionPanel({
   history,
   loading,
   error,
   livePrice,
+  embedded = false,
 }: {
   history: GexDeskHistoryPayload | null;
   loading: boolean;
   error: string;
   livePrice: number | null;
+  embedded?: boolean;
 }) {
   const [mode, setMode] = useState<"EXPOSURE" | "CHANGE">("EXPOSURE");
   const summary = useMemo(() => {
@@ -179,8 +181,8 @@ function EvolutionPanel({
   )).join(" ");
 
   return (
-    <div className="space-y-3">
-      <section className="overflow-hidden rounded-2xl border border-border bg-panel">
+    <div className={embedded ? "h-full min-h-0" : "space-y-3"}>
+      <section className={`overflow-hidden bg-panel ${embedded ? "h-full min-h-0" : "rounded-2xl border border-border"}`}>
         <SectionHeader
           icon={Layers3}
           eyebrow="MAP CHANGE"
@@ -627,9 +629,6 @@ function SourcesPanel({ payload }: { payload: GexDeskPayload }) {
 }
 
 export default function GexDeskDepthPanels(props: PanelProps) {
-  if (props.panel === "EVOLUTION") {
-    return <EvolutionPanel history={props.history} loading={props.historyLoading} error={props.historyError} livePrice={props.livePrice} />;
-  }
   if (props.panel === "EXPIRIES") {
     return <ExpiryPanel payload={props.payload} selectedZone={props.selectedZone} />;
   }

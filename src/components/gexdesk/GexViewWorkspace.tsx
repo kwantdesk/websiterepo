@@ -22,6 +22,7 @@ import DexWeightedOrderflow, {
   GexWeightedOrderflow,
 } from "@/components/gexdesk/DexWeightedOrderflow";
 import ExpiryOrderflowComparison from "@/components/gexdesk/ExpiryOrderflowComparison";
+import { EvolutionPanel } from "@/components/gexdesk/GexDeskDepthPanels";
 import LiveExposureFlowStack from "@/components/gexdesk/LiveExposureFlowStack";
 import LookbackPlayback from "@/components/gexdesk/LookbackPlayback";
 import MajorGamma from "@/components/gexdesk/MajorGamma";
@@ -63,7 +64,7 @@ type LiveTick = {
   timestamp?: string | number;
 };
 
-const CHART_COUNT = 9;
+const CHART_COUNT = 10;
 const STORAGE_KEY = "kwantdesk:gex-view:charts:v1";
 const DEFAULT_CHART: GexViewChartConfig = {
   instrument: "NQ.v.0",
@@ -554,6 +555,14 @@ export default function GexViewWorkspace({
                 onSourceFilterChange={onSourceFilterChange}
               />
             ) : activeIndex === 1 ? (
+              <EvolutionPanel
+                history={history}
+                loading={historyLoading}
+                error={historyError}
+                livePrice={livePrice}
+                embedded
+              />
+            ) : activeIndex === 2 ? (
               <MajorGamma
                 payload={payload}
                 history={history}
@@ -563,7 +572,7 @@ export default function GexViewWorkspace({
                 sourceFilter={sourceFilter}
                 onSourceFilterChange={onSourceFilterChange}
               />
-            ) : activeIndex === 2 ? (
+            ) : activeIndex === 3 ? (
               <LookbackPlayback
                 payload={payload}
                 history={history}
@@ -573,7 +582,7 @@ export default function GexViewWorkspace({
                 sourceFilter={sourceFilter}
                 onSourceFilterChange={onSourceFilterChange}
               />
-            ) : activeIndex === 3 ? (
+            ) : activeIndex === 4 ? (
               <ClassifiedVolumeLadder
                 payload={payload}
                 history={history}
@@ -581,7 +590,7 @@ export default function GexViewWorkspace({
                 sourceFilter={sourceFilter}
                 onSourceFilterChange={onSourceFilterChange}
               />
-            ) : activeIndex === 4 ? (
+            ) : activeIndex === 5 ? (
               <ClassifiedGexLadder
                 payload={payload}
                 history={history}
@@ -589,7 +598,7 @@ export default function GexViewWorkspace({
                 sourceFilter={sourceFilter}
                 onSourceFilterChange={onSourceFilterChange}
               />
-            ) : activeIndex === 5 ? (
+            ) : activeIndex === 6 ? (
               <DexWeightedOrderflow
                 payload={payload}
                 history={history}
@@ -597,7 +606,7 @@ export default function GexViewWorkspace({
                 sourceFilter={sourceFilter}
                 onSourceFilterChange={onSourceFilterChange}
               />
-            ) : activeIndex === 6 ? (
+            ) : activeIndex === 7 ? (
               <GexWeightedOrderflow
                 payload={payload}
                 history={history}
@@ -605,7 +614,7 @@ export default function GexViewWorkspace({
                 sourceFilter={sourceFilter}
                 onSourceFilterChange={onSourceFilterChange}
               />
-            ) : activeIndex === 7 ? (
+            ) : activeIndex === 8 ? (
               <ConvexityOrderflow
                 payload={payload}
                 history={history}
@@ -613,7 +622,7 @@ export default function GexViewWorkspace({
                 sourceFilter={sourceFilter}
                 onSourceFilterChange={onSourceFilterChange}
               />
-            ) : activeIndex === 8 ? (
+            ) : activeIndex === 9 ? (
               <ExpiryOrderflowComparison
                 payload={payload}
                 history={history}
