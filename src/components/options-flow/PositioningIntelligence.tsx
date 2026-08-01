@@ -137,7 +137,7 @@ function StructureLadder({ data }: { data: OptionsFlowPayload }) {
 
 function ChangeTable({ data }: { data: OptionsFlowPayload }) {
   return (
-    <div className="overflow-hidden rounded-xl border border-border bg-surface/35">
+    <div className="h-full overflow-hidden rounded-xl border border-border bg-surface/35">
       <div className="flex items-center gap-2 border-b border-border px-3 py-2.5">
         <Activity className="h-3.5 w-3.5 text-accent" />
         <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-foreground">Largest GEX change</span>
@@ -174,7 +174,7 @@ function StateLadder({ data }: { data: OptionsFlowPayload }) {
   const near = nearestStrike(rows, data.stockPrice);
 
   return (
-    <div className="overflow-hidden rounded-xl border border-border bg-surface/25">
+    <div className="flex h-full flex-col overflow-hidden rounded-xl border border-border bg-surface/25">
       <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2.5">
         <Crosshair className="h-3.5 w-3.5 text-primary" />
         <div>
@@ -186,7 +186,7 @@ function StateLadder({ data }: { data: OptionsFlowPayload }) {
       <div className="grid grid-cols-[72px_1fr_92px] border-b border-border px-3 py-2 text-[8px] font-semibold uppercase tracking-[0.12em] text-muted">
         <span>Strike</span><span>Concentration</span><span className="text-right">State</span>
       </div>
-      <div className="min-h-[390px]">
+      <div className="min-h-[390px] flex-1">
         {rows.length ? rows.map((row) => {
           const positive = row.net >= 0;
           const width = Math.max(2, Math.abs(row.net) / maximum * 50);
@@ -211,7 +211,7 @@ function StateLadder({ data }: { data: OptionsFlowPayload }) {
 
 function DemandPanel({ data }: { data: OptionsFlowPayload }) {
   const premium = data.positioning.tradeSidePremium;
-  if (!premium) return <div className="flex min-h-[460px] items-center justify-center rounded-xl border border-border bg-surface/25 text-[10px] text-muted">Trade-side premium is unavailable</div>;
+  if (!premium) return <div className="flex h-full min-h-[460px] items-center justify-center rounded-xl border border-border bg-surface/25 text-[10px] text-muted">Trade-side premium is unavailable</div>;
   const longShare = premium.longShare ?? 0.5;
   const state = longShare >= 0.55 ? "VOLATILITY BID" : longShare <= 0.45 ? "VOLATILITY OFFERED" : "BALANCED DEMAND";
   const gammaNet = data.positioning.history.GAMMA?.points.at(-1)?.net ?? 0;
@@ -224,7 +224,7 @@ function DemandPanel({ data }: { data: OptionsFlowPayload }) {
   const totalPut = premium.putBought + premium.putSold;
 
   return (
-    <div className="overflow-hidden rounded-xl border border-border bg-surface/25">
+    <div className="h-full overflow-hidden rounded-xl border border-border bg-surface/25">
       <div className="flex items-center gap-2 border-b border-border px-3 py-2.5">
         <CircleGauge className="h-3.5 w-3.5 text-accent" />
         <div>
@@ -320,18 +320,18 @@ function ExposureFlowChart({ series, drift }: { series: IntradayExposureSeries |
     };
   }, [drift, series]);
 
-  if (!series || series.points.length < 2) return <div className="flex h-[330px] items-center justify-center text-[10px] text-muted">Intraday exposure history is unavailable</div>;
+  if (!series || series.points.length < 2) return <div className="flex min-h-[330px] flex-1 items-center justify-center text-[10px] text-muted">Intraday exposure history is unavailable</div>;
   const latest = series.points.at(-1)!;
 
   return (
-    <div className="px-3 pb-3 pt-2">
+    <div className="flex min-h-0 flex-1 flex-col px-3 pb-3 pt-2">
       <div className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[9px]">
         <span className="flex items-center gap-1.5 text-primary"><span className="h-1.5 w-1.5 rounded-full bg-primary" />Call {formatCompact(latest.call, true)}</span>
         <span className="flex items-center gap-1.5 text-danger"><span className="h-1.5 w-1.5 rounded-full bg-danger" />Put {formatCompact(latest.put, true)}</span>
         <span className="flex items-center gap-1.5 text-accent"><span className="h-1.5 w-1.5 rounded-full bg-accent" />Net {formatCompact(latest.net, true)}</span>
         <span className="flex items-center gap-1.5 text-foreground"><span className="h-px w-3 bg-foreground" />Spot</span>
       </div>
-      <svg viewBox={`0 0 ${geometry.width} ${geometry.height}`} className="h-[330px] w-full" preserveAspectRatio="none" role="img" aria-label={`${MODE_META[series.mode].title} intraday history with spot`}>
+      <svg viewBox={`0 0 ${geometry.width} ${geometry.height}`} className="min-h-[330px] flex-1 w-full" preserveAspectRatio="none" role="img" aria-label={`${MODE_META[series.mode].title} intraday history with spot`}>
         {[0, .25, .5, .75, 1].map((ratio) => <line key={ratio} x1="52" x2={geometry.width - 58} y1={24 + ratio * (geometry.height - 58)} y2={24 + ratio * (geometry.height - 58)} stroke="var(--grid-color)" strokeWidth="1" />)}
         {geometry.ticks.map((tick) => <g key={tick.x}><line x1={tick.x} x2={tick.x} y1="24" y2={geometry.height - 34} stroke="var(--grid-color)" strokeWidth="1" /><text x={tick.x} y={geometry.height - 10} textAnchor="middle" fill="var(--muted)" fontSize="9">{tick.label}</text></g>)}
         {geometry.labels.map((label) => <text key={`${label.y}-${label.label}`} x="48" y={label.y + 3} textAnchor="end" fill="var(--muted)" fontSize="9">{label.label}</text>)}
@@ -498,8 +498,8 @@ function FlowView({ data }: { data: OptionsFlowPayload }) {
       : "border-border bg-panel text-muted";
 
   return (
-    <div className="grid gap-3 p-3 xl:grid-cols-[minmax(0,1fr)_280px]">
-      <div className="overflow-hidden rounded-xl border border-border bg-surface/25">
+    <div className="grid gap-3 p-3 xl:grid-cols-[minmax(0,1fr)_380px] xl:grid-rows-[568px]">
+      <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-border bg-surface/25">
         <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2.5">
           <Waves className="h-3.5 w-3.5 text-primary" />
           <div>
@@ -516,7 +516,7 @@ function FlowView({ data }: { data: OptionsFlowPayload }) {
         </div>
         <ExposureFlowChart series={series} drift={data.drift} />
       </div>
-      <div className="space-y-3">
+      <div className="grid h-full gap-3 xl:grid-rows-3">
         <div className="rounded-xl border border-border bg-surface/25 p-4">
           <div className="text-[8px] font-semibold uppercase tracking-[0.14em] text-muted">{MODE_META[mode].title}</div>
           <div className={`mt-2 font-mono text-[23px] font-semibold ${latest && latest.net >= 0 ? "text-primary" : "text-danger"}`}>{formatCompact(latest?.net ?? null, true)}</div>
@@ -571,15 +571,15 @@ export default function PositioningIntelligence({ data }: { data: OptionsFlowPay
       </div>
 
       <div className="border-b border-border">
-        <div className="grid gap-3 p-3 2xl:grid-cols-[minmax(0,1.55fr)_minmax(300px,.55fr)]">
-          <div className="overflow-hidden rounded-xl border border-border bg-surface/25">
+        <div className="grid gap-3 p-3 xl:grid-cols-[minmax(0,1fr)_380px] xl:grid-rows-[568px]">
+          <div className="h-full overflow-hidden rounded-xl border border-border bg-surface/25">
             <div className="flex flex-wrap items-center gap-3 border-b border-border px-3 py-2.5">
               <div><div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-foreground">GEX structure</div><div className="mt-0.5 text-[8px] text-muted">Current call/put exposure with 5m, 15m and 30m lookback dots · IV skew at right</div></div>
               <div className="ml-auto flex items-center gap-3 text-[8px] text-muted"><span className="flex items-center gap-1"><i className="h-1.5 w-1.5 rounded-full bg-muted" />5m</span><span className="flex items-center gap-1"><i className="h-1.5 w-1.5 rounded-full bg-accent" />15m</span><span className="flex items-center gap-1"><i className="h-1.5 w-1.5 rounded-full bg-secondary" />30m</span></div>
             </div>
             <StructureLadder data={data} />
           </div>
-          <div className="space-y-3">
+          <div className="grid h-full gap-3 xl:grid-rows-[auto_minmax(0,1fr)_auto]">
             <div className="grid grid-cols-3 gap-2">
               <div className="rounded-xl border border-primary/20 bg-primary/[0.06] p-3"><div className="text-[8px] font-semibold uppercase tracking-[0.12em] text-primary">Major +GEX</div><div className="mt-2 font-mono text-[14px] font-semibold text-foreground">{formatPrice(data.positioning.majorPositiveGamma?.strike ?? null)}</div><div className="mt-1 truncate font-mono text-[8px] text-primary">{formatCompact(data.positioning.majorPositiveGamma?.value ?? null, true)}</div></div>
               <div className="rounded-xl border border-danger/20 bg-danger/[0.06] p-3"><div className="text-[8px] font-semibold uppercase tracking-[0.12em] text-danger">Major −GEX</div><div className="mt-2 font-mono text-[14px] font-semibold text-foreground">{formatPrice(data.positioning.majorNegativeGamma?.strike ?? null)}</div><div className="mt-1 truncate font-mono text-[8px] text-danger">{formatCompact(data.positioning.majorNegativeGamma?.value ?? null, true)}</div></div>
@@ -595,7 +595,7 @@ export default function PositioningIntelligence({ data }: { data: OptionsFlowPay
       </div>
 
       <div className="border-b border-border bg-surface/[0.06]">
-        <div className="grid gap-3 p-3 xl:grid-cols-[minmax(0,1fr)_380px]"><StateLadder data={data} /><DemandPanel data={data} /></div>
+        <div className="grid gap-3 p-3 xl:grid-cols-[minmax(0,1fr)_380px] xl:grid-rows-[568px]"><StateLadder data={data} /><DemandPanel data={data} /></div>
       </div>
 
       <FlowView data={data} />
