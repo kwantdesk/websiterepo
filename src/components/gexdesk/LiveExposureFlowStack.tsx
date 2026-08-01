@@ -3,6 +3,11 @@
 import { Activity, Radio, Waves } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import KwantSelect from "@/components/ui/KwantSelect";
+import {
+  fetchPositioningPulse,
+  readPositioningPulse,
+  subscribePositioningPulse,
+} from "@/lib/liveExposureFlowClient";
 import type {
   GreekMode,
   IntradayExposureSeries,
@@ -308,26 +313,40 @@ export default function LiveExposureFlowStack({
   }, [sourceFilter]);
 
   useEffect(() => {
-    setSeriesByMode(EMPTY_SERIES);
-    setStatusByMode(Object.fromEntries(MODES.map((mode) => [mode, expiration ? "CONNECTING" : "WAITING"])) as Record<GreekMode, FlowStatus>);
-    setLastProviderUpdate(null);
+    const cachedPulses = Object.fromEntries(MODES.map((mode) => [
+      mode,
+      readPositioningPulse({ symbol, mode, expiration: expiration ?? "" }),
+    ])) as Record<GreekMode, OptionsPositioningPulsePayload | null>;
+    const cachedSeries = Object.fromEntries(MODES.map((mode) => [
+      mode,
+      cachedPulses[mode]?.series ?? null,
+    ])) as Record<GreekMode, IntradayExposureSeries | null>;
+    setSeriesByMode(cachedSeries);
+    setStatusByMode(Object.fromEntries(MODES.map((mode) => [
+      mode,
+      expiration ? cachedPulses[mode]?.status ?? "CONNECTING" : "WAITING",
+    ])) as Record<GreekMode, FlowStatus>);
+    setLastProviderUpdate(Math.max(
+      0,
+      ...MODES.map((mode) => Date.parse(cachedPulses[mode]?.asOf ?? "") || 0),
+    ) || null);
     if (!expiration) return;
 
     let cancelled = false;
     let timer: number | null = null;
+    let polling = false;
     const revision = requestRevision.current + 1;
     requestRevision.current = revision;
 
     const poll = async () => {
-      let nextDelay = marketOpen ? 10_000 : 60_000;
+      if (polling || cancelled) return;
+      polling = true;
+      let nextDelay = marketOpen ? 5_000 : 60_000;
       const settled = await Promise.allSettled(MODES.map(async (mode) => {
-        const params = new URLSearchParams({ symbol, mode, expiration });
-        const response = await fetch(`/api/options-flow/positioning?${params}`, { cache: "no-store" });
-        const body = await response.json() as OptionsPositioningPulsePayload & { error?: string };
-        if (!response.ok) throw new Error(body.error || `${MODE_META[mode].short} flow is unavailable.`);
-        return body;
+        return fetchPositioningPulse({ symbol, mode, expiration });
       }));
 
+      polling = false;
       if (cancelled || requestRevision.current !== revision) return;
       settled.forEach((result, index) => {
         const mode = MODES[index];
@@ -351,10 +370,34 @@ export default function LiveExposureFlowStack({
       if (!cancelled) timer = window.setTimeout(() => void poll(), nextDelay);
     };
 
+    const unsubscribers = MODES.map((mode) => subscribePositioningPulse(
+      { symbol, mode, expiration },
+      (incoming) => {
+        if (cancelled || requestRevision.current !== revision) return;
+        setSeriesByMode((current) => ({
+          ...current,
+          [mode]: mergeSeries(current[mode], incoming.series),
+        }));
+        setStatusByMode((current) => ({ ...current, [mode]: incoming.status }));
+        setLastProviderUpdate((current) => Math.max(current ?? 0, Date.parse(incoming.asOf)));
+      },
+    ));
+    const refreshVisible = () => {
+      if (document.visibilityState !== "visible" || polling) return;
+      if (timer !== null) window.clearTimeout(timer);
+      timer = null;
+      void poll();
+    };
+
     void poll();
+    window.addEventListener("focus", refreshVisible);
+    document.addEventListener("visibilitychange", refreshVisible);
     return () => {
       cancelled = true;
       if (timer !== null) window.clearTimeout(timer);
+      unsubscribers.forEach((unsubscribe) => unsubscribe());
+      window.removeEventListener("focus", refreshVisible);
+      document.removeEventListener("visibilitychange", refreshVisible);
     };
   }, [expiration, marketOpen, symbol]);
 

@@ -19,6 +19,11 @@ import type {
   OptionsPositioningPulsePayload,
   PremiumDriftPoint,
 } from "@/lib/optionsFlow";
+import {
+  fetchPositioningPulse,
+  readPositioningPulse,
+  subscribePositioningPulse,
+} from "@/lib/liveExposureFlowClient";
 
 const MODE_META: Record<GreekMode, { short: string; title: string; detail: string }> = {
   GAMMA: { short: "GEX", title: "Net gamma", detail: "Dealer-signed gamma exposure" },
@@ -401,26 +406,25 @@ function FlowView({ data }: { data: OptionsFlowPayload }) {
 
     let cancelled = false;
     let timer: number | null = null;
-    setSeries(data.positioning.history[mode]);
-    setLiveStatus(data.session.marketOpen ? "CONNECTING" : "LAST_SESSION");
+    let polling = false;
+    const strikeRange = data.positioning.strikeRange;
+    const request = {
+      symbol: data.symbol,
+      mode,
+      expiration,
+      strikeRange,
+    };
+    const cached = readPositioningPulse(request);
+    setSeries((current) => mergeExposureSeries(current, cached?.series ?? data.positioning.history[mode]));
+    setLiveStatus(cached?.status ?? (data.session.marketOpen ? "CONNECTING" : "LAST_SESSION"));
+    if (cached?.asOf) setLastProviderUpdate(cached.asOf);
 
     const poll = async () => {
+      if (polling || cancelled) return;
+      polling = true;
       let nextDelay = data.session.marketOpen ? 5_000 : 60_000;
       try {
-        const params = new URLSearchParams({
-          symbol: data.symbol,
-          mode,
-          expiration,
-        });
-        if (data.positioning.strikeRange) {
-          params.set("minStrike", String(data.positioning.strikeRange.min));
-          params.set("maxStrike", String(data.positioning.strikeRange.max));
-        }
-        const response = await fetch(`/api/options-flow/positioning?${params}`, {
-          cache: "no-store",
-        });
-        const payload = await response.json() as OptionsPositioningPulsePayload & { error?: string };
-        if (!response.ok) throw new Error(payload.error || "Live exposure flow is unavailable.");
+        const payload = await fetchPositioningPulse(request);
         if (
           cancelled
           || payload.symbol !== data.symbol
@@ -440,14 +444,33 @@ function FlowView({ data }: { data: OptionsFlowPayload }) {
           && error.message.toLowerCase().includes("first completed one-minute bucket");
         setLiveStatus(waitingForFirstBucket ? "WAITING" : "RECONNECTING");
       } finally {
+        polling = false;
         if (!cancelled) timer = window.setTimeout(() => void poll(), nextDelay);
       }
     };
 
+    const unsubscribe = subscribePositioningPulse(request, (payload) => {
+      if (cancelled) return;
+      setSeries((current) => mergeExposureSeries(current, payload.series));
+      setLastProviderUpdate(payload.asOf);
+      setLiveStatus(payload.status);
+    });
+    const refreshVisible = () => {
+      if (document.visibilityState !== "visible" || polling) return;
+      if (timer !== null) window.clearTimeout(timer);
+      timer = null;
+      void poll();
+    };
+
     timer = window.setTimeout(() => void poll(), 25);
+    window.addEventListener("focus", refreshVisible);
+    document.addEventListener("visibilitychange", refreshVisible);
     return () => {
       cancelled = true;
       if (timer !== null) window.clearTimeout(timer);
+      unsubscribe();
+      window.removeEventListener("focus", refreshVisible);
+      document.removeEventListener("visibilitychange", refreshVisible);
     };
   }, [
     data.positioning.expiration,
