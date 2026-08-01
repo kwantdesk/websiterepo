@@ -94,6 +94,7 @@ import {
 import { calculateKwantStats } from "@/lib/kwantStats";
 import { defaultChartSettings, type ChartSettings } from "@/lib/chartSettings";
 import { compactTimeZoneLabel, normalizeTimeZone } from "@/lib/timeZones";
+import { resolveChartLevelOverlaps } from "@/lib/chartLevelOverlap";
 
 interface ChartProps {
   candles: Candle[];
@@ -152,6 +153,8 @@ export interface ChartZone {
   fillColor: string;
   label: string;
 }
+
+const EMPTY_CHART_LEVELS: ChartLevel[] = [];
 
 type CandleSeriesApi = ReturnType<IChartApi["addCandlestickSeries"]>;
 
@@ -1010,7 +1013,7 @@ export default function Chart({
   trades,
   levels,
   zones = [],
-  backgroundLevels = [],
+  backgroundLevels = EMPTY_CHART_LEVELS,
   backgroundZones = [],
   instrument = "Instrument",
   timeframe,
@@ -1224,6 +1227,10 @@ export default function Chart({
   }, [openToolbarGroup]);
 
   const priceFormat = useMemo(() => getPriceFormat(instrument), [instrument]);
+  const resolvedLevelLayers = useMemo(
+    () => resolveChartLevelOverlaps(levels ?? [], backgroundLevels, priceFormat.minMove),
+    [backgroundLevels, levels, priceFormat.minMove],
+  );
   const indicatorSignature = useMemo(() => JSON.stringify(indicators), [indicators]);
   const indicatorCandles = useMemo(
     () => sampledIndicatorCandles.slice(-1_500),
@@ -2997,19 +3004,19 @@ export default function Chart({
   }, [trades]);
 
   useEffect(() => {
-    levelsRef.current = levels || [];
+    levelsRef.current = resolvedLevelLayers.foreground;
     applyLevels(levelsRef.current);
-  }, [levels]);
+  }, [resolvedLevelLayers.foreground]);
 
   useEffect(() => {
-    backgroundLevelsRef.current = backgroundLevels;
+    backgroundLevelsRef.current = resolvedLevelLayers.background;
     backgroundZonesRef.current = backgroundZones;
     gameplanUnderlayRef.current?.update(
       backgroundLevelsRef.current,
       backgroundZonesRef.current,
       settings.backgroundColor,
     );
-  }, [backgroundLevels, backgroundZones, settings.backgroundColor]);
+  }, [backgroundZones, resolvedLevelLayers.background, settings.backgroundColor]);
 
   useEffect(() => {
     if (!chartContainerRef.current || candles.length === 0) return;
