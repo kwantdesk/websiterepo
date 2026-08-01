@@ -10424,7 +10424,13 @@ export default function KwantifyWorkspace({
         </div>
       )}
       {showInstrumentSearch && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4"
+          onClick={() => {
+            setShowInstrumentSearch(false);
+            setInstrumentSearch("");
+          }}
+        >
           <div className="flex h-[620px] w-full max-w-[820px] flex-col overflow-hidden rounded-2xl border border-border bg-panel shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center gap-3 border-b border-border px-5 py-4">
               <Search className="h-4 w-4 text-muted" />
