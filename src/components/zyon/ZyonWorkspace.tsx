@@ -72,6 +72,10 @@ import {
   type ZyonModelKey,
 } from "@/lib/zyon";
 import { loadZyonState, saveZyonState } from "@/lib/zyonStore";
+import {
+  ZYON_GAMEPLAN_LAUNCH_PARAM,
+  ZYON_GAMEPLAN_START_MESSAGE,
+} from "@/lib/zyonGameplanLaunch";
 
 const MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024;
 const MAX_ATTACHMENTS = 4;
@@ -616,6 +620,7 @@ export default function ZyonWorkspace({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const messagesScrollRef = useRef<HTMLDivElement>(null);
+  const gameplanLaunchConsumedRef = useRef(false);
   const speechDictation = useSpeechDictation({
     value: draft,
     onChange: setDraft,
@@ -1448,6 +1453,17 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
       window.requestAnimationFrame(() => composerRef.current?.focus());
     }
   };
+
+  useEffect(() => {
+    if (compact || !conversationReady || sending || gameplanLaunchConsumedRef.current) return;
+    const url = new URL(window.location.href);
+    if (url.searchParams.get("launch") !== ZYON_GAMEPLAN_LAUNCH_PARAM) return;
+
+    gameplanLaunchConsumedRef.current = true;
+    url.searchParams.delete("launch");
+    window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
+    void sendMessage(undefined, ZYON_GAMEPLAN_START_MESSAGE, true);
+  }, [compact, conversationReady, sending]);
 
   const requestGameplan = () => {
     if (pendingGameplanId || gameplanSendState === "sent") {

@@ -50,6 +50,7 @@ import {
   X,
   Zap,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import KwantLoader from "@/components/KwantLoader";
 import KwantSelect from "@/components/ui/KwantSelect";
 import SocialProfileView from "@/components/socials/SocialProfileView";
@@ -133,6 +134,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { zyonGameplanLaunchHref } from "@/lib/zyonGameplanLaunch";
 
 type SocialTab = "today" | "reasoning" | "precords" | "desks" | "feed" | "rankings" | "cards" | "profile";
 type FeedFilter = "all" | "proven" | "mine";
@@ -492,6 +494,7 @@ export default function SocialsWorkspace({
   onMessageProfile?: (userId: string) => void;
   onOpenGameplanScoring?: () => void;
 }) {
+  const router = useRouter();
   const resolvedAccountKey = accountKey || "local";
   const resolvedLabel = accountLabel || "Kwant Trader";
   const [state, setState] = useState<SocialState>(() => ({
@@ -2746,7 +2749,7 @@ export default function SocialsWorkspace({
                   <button
                     type="button"
                     onClick={() => {
-                      if (gameplanProcessIndex === 0) window.location.href = "/zyon";
+                      if (gameplanProcessIndex === 0) router.push(zyonGameplanLaunchHref());
                       else if (gameplanProcessIndex === 1) document.getElementById("gameplan-holding")?.scrollIntoView({ behavior: "smooth", block: "start" });
                       else if (gameplanProcessIndex === 2) onOpenGameplanScoring?.();
                       else setTab("reasoning");
@@ -2975,7 +2978,7 @@ export default function SocialsWorkspace({
                       <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl border border-border bg-surface/55 text-muted"><Archive className="h-5 w-5" /></span>
                       <div className="mt-4 text-[11px] font-semibold text-foreground">No Gameplan is waiting for approval.</div>
                       <p className="mt-2 text-[8px] leading-4 text-muted">Build the next plan with ZYON and press Send Gameplan. Its completed fields will appear here automatically for your review.</p>
-                      <button type="button" onClick={() => { window.location.href = "/zyon"; }} className="mt-4 inline-flex h-9 items-center gap-2 rounded-xl border border-primary/25 bg-primary/[0.06] px-4 text-[8px] font-semibold text-primary hover:bg-primary/10"><Sparkles className="h-3.5 w-3.5" />Open ZYON</button>
+                      <button type="button" onClick={() => router.push(zyonGameplanLaunchHref())} className="mt-4 inline-flex h-9 items-center gap-2 rounded-xl border border-primary/25 bg-primary/[0.06] px-4 text-[8px] font-semibold text-primary hover:bg-primary/10"><Sparkles className="h-3.5 w-3.5" />Make Gameplan</button>
                     </div>
                   </div>
                 )}

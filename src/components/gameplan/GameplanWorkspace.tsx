@@ -39,6 +39,7 @@ import {
   Zap,
   type LucideIcon,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import KwantLoader from "@/components/KwantLoader";
 import {
@@ -87,6 +88,7 @@ import {
   DATABENTO_LIVE_TICK_EVENT,
   type DatabentoLiveStatus,
 } from "@/lib/chartLiveEvents";
+import { zyonGameplanLaunchHref } from "@/lib/zyonGameplanLaunch";
 import {
   fetchWorkspaceData,
   gameplanCacheKey,
@@ -1843,6 +1845,7 @@ function LoadingState() {
 }
 
 function GameplanLiveWorkspace({ initialInstrument = "NQ" }: { initialInstrument?: string }) {
+  const router = useRouter();
   const initialRoot = initialInstrument.toUpperCase().startsWith("ES") || initialInstrument.toUpperCase().startsWith("MES") ? "ES" : "NQ";
   const initialPayloadRef = useRef(
     readWorkspaceData<GameplanPayload>(gameplanCacheKey(initialRoot, "newyork")),
@@ -2227,6 +2230,15 @@ function GameplanLiveWorkspace({ initialInstrument = "NQ" }: { initialInstrument
           >
             {addedToChartKey === currentPlanKey ? <Check className="h-3.5 w-3.5" /> : <Layers3 className="h-3.5 w-3.5" />}
             {!planMatchesSelection ? "SYNCING PLAN" : addedToChartKey === currentPlanKey ? "ADDED TO CHART" : "ADD TO CHART"}
+          </button>
+          <button
+            type="button"
+            onClick={() => router.push(zyonGameplanLaunchHref())}
+            className="flex h-9 items-center gap-2 rounded-xl border border-primary/25 bg-primary/10 px-3 text-[10px] font-bold tracking-[0.08em] text-primary transition-colors hover:border-primary/45 hover:bg-primary/15"
+            title="Start building a Gameplan with ZYON"
+          >
+            <Sparkles className="h-3.5 w-3.5" />
+            MAKE GAMEPLAN
           </button>
           <div className="hidden items-center gap-2 rounded-xl border border-border bg-surface px-3 py-2 md:flex">
             <AlarmClock className="h-3.5 w-3.5 text-primary" />
