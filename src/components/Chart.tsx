@@ -4669,7 +4669,7 @@ export default function Chart({
               className="flex w-full cursor-pointer items-center gap-3 px-4 py-2.5 text-[13px] text-foreground transition-colors hover:bg-surface"
             >
               <Layers3 className="h-4 w-4 text-primary" />
-              <span className="flex-1 text-left">Remove all Gameplan levels</span>
+              <span className="flex-1 text-left">Remove all Quant levels</span>
             </button>
           ) : null}
           <button

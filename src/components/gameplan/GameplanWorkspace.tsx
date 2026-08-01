@@ -1288,7 +1288,7 @@ function LiveMarketAnalyst({
             <div className="rounded-xl border border-border bg-card p-5 text-center">
               <BrainCircuit className="mx-auto h-5 w-5 text-muted" />
               <div className="mt-2 text-[11px] font-semibold text-foreground">Building the first market read</div>
-              <p className="mt-1 text-[9px] leading-4 text-muted">Waiting for live price, named Gameplan levels, and enough five-minute structure.</p>
+              <p className="mt-1 text-[9px] leading-4 text-muted">Waiting for live price, named Quant levels, and enough five-minute structure.</p>
             </div>
           </div>
         ) : (

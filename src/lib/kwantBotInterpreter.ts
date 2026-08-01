@@ -370,7 +370,7 @@ export function buildKwantBotBriefing(args: {
     : "The rolling 24-hour price memory is still building.";
   const levelText = nearest
     ? `${nearest.name} (${formatZone(root, nearest.zone)}) is nearest, ${distanceToZone(price, nearest.zone).toFixed(2)} points away${touchCount ? `, with ${touchCount} recorded touch${touchCount === 1 ? "" : "es"} in the last 24h` : ""}.`
-    : "No verified Gameplan level is loaded yet.";
+    : "No verified Quant level is loaded yet.";
   const historyText = nearest && recentLevelOutcomes.length
     ? `Across retained weekly memory, ${nearest.name} has ${confirmedOutcomes} confirmed follow-through outcome${confirmedOutcomes === 1 ? "" : "s"} from ${recentLevelOutcomes.length} completed read${recentLevelOutcomes.length === 1 ? "" : "s"}.`
     : "There is not enough retained weekly level history yet to claim a repeatable response.";
