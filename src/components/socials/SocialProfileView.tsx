@@ -399,16 +399,16 @@ export default function SocialProfileView({
         </div>
 
         <div className="relative px-4 pb-5 sm:px-7">
-          <div className="-mt-12 flex flex-col gap-4 sm:flex-row sm:items-end">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
             <UserAvatar
               label={profile.displayName}
               avatarUrl={profile.avatarUrl}
               size="xl"
               statusClassName={presenceOption(effectivePresenceStatus(profile.presenceStatus, profile.lastSeenAt)).dotClassName}
-              className="rounded-full border-[5px] border-panel shadow-2xl"
+              className="-mt-12 rounded-full border-[5px] border-panel shadow-2xl"
             />
 
-            <div className="min-w-0 flex-1 pb-1">
+            <div className="min-w-0 flex-1 pb-1 sm:pt-5">
               <div className="flex flex-wrap items-center gap-2">
                 <h1 className="truncate text-[22px] font-semibold tracking-[-0.03em] text-foreground">{profile.displayName}</h1>
                 <span className="flex items-center gap-1 rounded-lg border border-primary/20 bg-primary/10 px-2 py-1 text-[7px] font-semibold text-primary"><ShieldCheck className="h-3 w-3" />On record</span>
@@ -437,7 +437,7 @@ export default function SocialProfileView({
               </div>
             </div>
 
-            <div className="flex flex-wrap gap-2 pb-1">
+            <div className="flex flex-wrap gap-2 pb-1 sm:pt-5">
               {isOwnProfile ? (
                 <button type="button" onClick={onEdit} className="flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-[9px] font-semibold text-background"><Pencil className="h-3.5 w-3.5" />Edit profile</button>
               ) : (
