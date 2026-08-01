@@ -123,29 +123,36 @@ body {
 
 @keyframes gex-current-price-glow {
   0%, 100% {
-    outline-color: rgba(255, 255, 255, .38);
+    outline-color: color-mix(in srgb, var(--primary) 74%, var(--accent));
     box-shadow:
-      inset 0 0 7px rgba(255, 255, 255, .025),
-      0 0 3px rgba(255, 255, 255, .04);
+      inset 0 0 12px color-mix(in srgb, var(--primary) 16%, transparent),
+      inset 0 0 2px color-mix(in srgb, var(--accent) 58%, transparent),
+      0 0 8px color-mix(in srgb, var(--primary) 42%, transparent),
+      0 0 18px color-mix(in srgb, var(--accent) 16%, transparent);
   }
   50% {
-    outline-color: rgba(255, 255, 255, .98);
+    outline-color: color-mix(in srgb, var(--accent) 58%, var(--primary));
     box-shadow:
-      inset 0 0 18px rgba(255, 255, 255, .12),
-      0 0 14px rgba(255, 255, 255, .18);
+      inset 0 0 24px color-mix(in srgb, var(--primary) 30%, transparent),
+      inset 0 0 5px color-mix(in srgb, var(--accent) 82%, transparent),
+      0 0 14px color-mix(in srgb, var(--primary) 78%, transparent),
+      0 0 34px color-mix(in srgb, var(--accent) 42%, transparent);
   }
 }
 
 @keyframes gex-current-price-dash-glow {
   0%, 100% {
-    opacity: .42;
-    box-shadow: 0 0 3px rgba(255, 255, 255, .12);
+    opacity: .78;
+    box-shadow:
+      0 0 6px color-mix(in srgb, var(--primary) 72%, transparent),
+      0 0 13px color-mix(in srgb, var(--accent) 28%, transparent);
   }
   50% {
     opacity: 1;
     box-shadow:
-      0 0 8px rgba(255, 255, 255, .9),
-      0 0 16px rgba(255, 255, 255, .46);
+      0 0 10px color-mix(in srgb, var(--accent) 80%, var(--primary)),
+      0 0 24px color-mix(in srgb, var(--primary) 76%, transparent),
+      0 0 38px color-mix(in srgb, var(--accent) 48%, transparent);
   }
 }
 
@@ -166,15 +173,22 @@ body {
 }
 
 .gex-current-price-marker {
-  outline: 1px solid rgba(255, 255, 255, .58);
-  outline-offset: -1px;
-  animation: gex-current-price-glow 3.8s ease-in-out infinite;
+  isolation: isolate;
+  outline: 2px solid color-mix(in srgb, var(--primary) 78%, var(--accent));
+  outline-offset: -2px;
+  background-image: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--primary) 30%, transparent),
+    color-mix(in srgb, var(--accent) 12%, transparent) 48%,
+    color-mix(in srgb, var(--primary) 26%, transparent)
+  );
+  animation: gex-current-price-glow 3.2s ease-in-out infinite;
   will-change: outline-color, box-shadow;
 }
 
 .gex-current-price-dash {
-  background: #fff;
-  animation: gex-current-price-dash-glow 3.8s ease-in-out infinite;
+  background: linear-gradient(180deg, var(--accent), var(--primary));
+  animation: gex-current-price-dash-glow 3.2s ease-in-out infinite;
   will-change: opacity, box-shadow;
 }
 
@@ -500,13 +514,15 @@ body {
   }
 
   .gex-current-price-marker {
-    outline-color: rgba(255, 255, 255, .82);
-    box-shadow: inset 0 0 12px rgba(255, 255, 255, .08);
+    outline-color: color-mix(in srgb, var(--primary) 72%, var(--accent));
+    box-shadow:
+      inset 0 0 18px color-mix(in srgb, var(--primary) 22%, transparent),
+      0 0 16px color-mix(in srgb, var(--primary) 48%, transparent);
   }
 
   .gex-current-price-dash {
-    opacity: .9;
-    box-shadow: 0 0 8px rgba(255, 255, 255, .45);
+    opacity: 1;
+    box-shadow: 0 0 14px color-mix(in srgb, var(--primary) 72%, transparent);
   }
 }
 

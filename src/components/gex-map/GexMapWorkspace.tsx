@@ -418,12 +418,12 @@ function ExposurePanel({
                 <div
                   key={row.strike}
                   data-near-spot={nearSpot ? "true" : undefined}
-                  className={`relative grid h-[25px] grid-cols-[64px_1fr_86px] items-center border-b border-black/10 px-2 font-mono text-[9px] transition-colors ${nearSpot ? "gex-current-price-marker z-[1]" : ""}`}
+                  className={`relative grid grid-cols-[64px_1fr_86px] items-center border-b border-black/10 px-2 font-mono text-[9px] transition-[height,margin,background-color] ${nearSpot ? "gex-current-price-marker z-[2] my-[3px] h-[33px]" : "h-[25px]"}`}
                   style={{ backgroundColor: heatColor(row.net, strength) }}
                   title={`${greek.short} ${formatCompact(row.net)} · Call ${formatCompact(row.call)} · Put ${formatCompact(row.put)}`}
                 >
                   <span className={`relative flex items-center font-semibold ${nearSpot ? "text-foreground" : "text-foreground/90"}`}>
-                    {nearSpot ? <span className="gex-current-price-dash absolute -left-2 h-4 w-1 rounded-r" /> : null}
+                    {nearSpot ? <span className="gex-current-price-dash absolute -left-2 h-6 w-1.5 rounded-r-md" /> : null}
                     {row.strike.toLocaleString("en-US", { maximumFractionDigits: 2 })}
                   </span>
                   <span className="truncate text-right font-semibold text-foreground drop-shadow-sm">{formatCompact(row.net)}</span>
