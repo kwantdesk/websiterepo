@@ -45,6 +45,9 @@ const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 const MAX_TOTAL_ATTACHMENT_BYTES = 20 * 1024 * 1024;
 const MAX_TEXT_ATTACHMENT_LENGTH = 120_000;
 const MAX_CONTEXT_LENGTH = 55_000;
+// Image analysis, tool use and deep reasoning can legitimately exceed a short
+// chat timeout. These attempts stay inside the route's 120-second ceiling.
+const PROVIDER_TIMEOUTS_MS = [50_000, 25_000, 15_000] as const;
 
 type IncomingAttachment = {
   name?: unknown;
@@ -222,7 +225,8 @@ async function providerModelsFor(apiKey: string, modelKey: ZyonModelKey) {
     "claude-sonnet-4-20250514",
     "claude-3-5-haiku-20241022",
   ];
-  return [...new Set(available.length ? orderedAvailable : configuredFallbacks)].slice(0, 4);
+  return [...new Set(available.length ? orderedAvailable : configuredFallbacks)]
+    .slice(0, PROVIDER_TIMEOUTS_MS.length);
 }
 
 function parseDataUrl(value: unknown) {
@@ -1009,11 +1013,12 @@ export async function POST(request: NextRequest) {
     const providerModels = await providerModelsFor(apiKey, modelKey);
     let response: Response | null = null;
     let providerError = "";
+    let providerStatus: number | null = null;
     for (const [modelIndex, providerModel] of providerModels.entries()) {
       try {
         response = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
-          signal: AbortSignal.timeout(modelIndex === 0 ? 14_000 : 9_000),
+          signal: AbortSignal.timeout(PROVIDER_TIMEOUTS_MS[modelIndex] ?? 15_000),
           headers: {
             "Content-Type": "application/json",
             "x-api-key": apiKey,
@@ -1108,6 +1113,7 @@ export async function POST(request: NextRequest) {
           }),
         });
         if (response.ok) break;
+        providerStatus = response.status;
         providerError = await response.text();
         console.error(
           "ZYON provider error",
@@ -1115,7 +1121,7 @@ export async function POST(request: NextRequest) {
           providerModel,
           providerError.slice(0, 800),
         );
-        if (response.status === 401 || response.status === 403) break;
+        if (response.status === 401 || response.status === 403 || response.status === 429) break;
       } catch (modelError) {
         providerError = modelError instanceof Error ? modelError.message : "provider request failed";
         console.error("ZYON provider request failed", providerModel, providerError);
@@ -1124,29 +1130,17 @@ export async function POST(request: NextRequest) {
     }
 
     if (!response?.ok) {
-      const recoveryText = gameplanIntent
-        ? `I'm ready. Let's build today's ${root} Gameplan now. First, which instrument are you planning: NQ, MNQ, ES, or MES?`
-        : "I received your message, but my analysis engine is reconnecting. Your chat is safe—send the message again in a moment.";
-      const recoveryEntry = conversationEntry({
-        id: zyonId("zyon-conversation-assistant"),
-        chatId,
-        sessionDate,
-        folderId: conversationFolder.folderId,
-        root,
-        role: "assistant",
-        text: recoveryText,
-        createdAt: new Date().toISOString(),
-      });
-      void persistJournalEntry(actor.userId, recoveryEntry);
+      const rateLimited = providerStatus === 429;
       return NextResponse.json({
-        text: recoveryText,
-        model: modelKey,
-        journalEntries: [
-          { ...userConversationEntry, cloudSaved: userConversationCloudSaved },
-          { ...recoveryEntry, cloudSaved: false },
-        ],
-        providerState: response?.status === 429 ? "rate-limited" : "reconnecting",
-      }, { headers: { "Cache-Control": "private, no-store, max-age=0" } });
+        error: rateLimited
+          ? "ZYON is temporarily rate-limited. Your message is saved; retry it shortly."
+          : "ZYON's analysis service did not complete this request. Your message is saved; retry it.",
+        retryable: true,
+        providerState: rateLimited ? "rate-limited" : "unavailable",
+      }, {
+        status: rateLimited ? 429 : 503,
+        headers: { "Cache-Control": "private, no-store, max-age=0" },
+      });
     }
 
     const result = await response.json() as {
@@ -1292,37 +1286,13 @@ export async function POST(request: NextRequest) {
     );
   } catch (error) {
     console.error("ZYON request failed", error);
-    const recoveryText = gameplanIntent
-      ? `I'm ready. Let's build today's ${root} Gameplan now. First, which instrument are you planning: NQ, MNQ, ES, or MES?`
-      : "I received your message, but my analysis engine is reconnecting. Your chat is safe—send the message again in a moment.";
-    const recoveryEntry = conversationEntry({
-      id: zyonId("zyon-conversation-assistant"),
-      chatId,
-      sessionDate,
-      folderId: conversationFolder.folderId,
-      root,
-      role: "assistant",
-      text: recoveryText,
-      createdAt: new Date().toISOString(),
-    });
-    const recoveryCloudSaved = await within(
-      persistJournalEntry(actor.userId, recoveryEntry),
-      false,
-      450,
-    );
     return NextResponse.json({
-      text: recoveryText,
-      model: modelKey,
-      journalEntries: [
-        { ...userConversationEntry, cloudSaved: userConversationCloudSaved },
-        { ...recoveryEntry, cloudSaved: recoveryCloudSaved },
-      ],
-      folder: {
-        id: conversationFolder.folderId,
-        sessionDate,
-        cloudSaved: conversationFolder.cloudSaved,
-      },
-      providerState: "reconnecting",
-    }, { headers: { "Cache-Control": "private, no-store, max-age=0" } });
+      error: "ZYON's analysis service did not complete this request. Your message is saved; retry it.",
+      retryable: true,
+      providerState: "unavailable",
+    }, {
+      status: 503,
+      headers: { "Cache-Control": "private, no-store, max-age=0" },
+    });
   }
 }
