@@ -17,14 +17,14 @@ type LayeredLevel<T extends MergeableChartLevel> = {
 };
 
 const REFERENCE_LABELS: Array<[RegExp, string]> = [
-  [/\bPD VAH\b/gi, "Previous Day Value Area High"],
-  [/\bPD VAL\b/gi, "Previous Day Value Area Low"],
-  [/\bPD POC\b/gi, "Previous Day Point of Control"],
-  [/\bPD VWAP\b/gi, "Previous Day Volume-Weighted Average Price"],
-  [/\bPW VAH\b/gi, "Previous Week Value Area High"],
-  [/\bPW VAL\b/gi, "Previous Week Value Area Low"],
-  [/\bPW POC\b/gi, "Previous Week Point of Control"],
-  [/\bPW VWAP\b/gi, "Previous Week Volume-Weighted Average Price"],
+  [/\bPD VAH\b/gi, "Previous Day VAH"],
+  [/\bPD VAL\b/gi, "Previous Day VAL"],
+  [/\bPD POC\b/gi, "Previous Day POC"],
+  [/\bPD VWAP\b/gi, "Previous Day VWAP"],
+  [/\bPW VAH\b/gi, "Previous Week VAH"],
+  [/\bPW VAL\b/gi, "Previous Week VAL"],
+  [/\bPW POC\b/gi, "Previous Week POC"],
+  [/\bPW VWAP\b/gi, "Previous Week VWAP"],
   [/\bHVL\b/gi, "High Volatility Level"],
   [/\bMPO\b/gi, "Major Positive Open Interest"],
   [/\bMPV\b/gi, "Major Positive Volume"],
