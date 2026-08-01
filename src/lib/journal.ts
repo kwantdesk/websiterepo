@@ -19,8 +19,12 @@ export type JournalTrade = {
   quantity: number;
   entryPrice: number | null;
   exitPrice: number | null;
+  stopPrice?: number | null;
+  targetPrice?: number | null;
+  plannedRiskReward?: number | null;
   grossPnl: number;
   fees: number;
+  feesKnown?: boolean;
   netPnl: number;
   initialRisk: number | null;
   rMultiple: number | null;

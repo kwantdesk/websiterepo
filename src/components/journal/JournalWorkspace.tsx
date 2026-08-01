@@ -82,13 +82,16 @@ type AccountCreationMode = "manual" | "import";
 type ManualTradeDraft = {
   name: string;
   symbol: string;
-  side: "LONG" | "SHORT";
-  contractClass: "MICRO" | "MINI" | "OTHER";
+  side: "" | "LONG" | "SHORT";
+  contractClass: "" | "MICRO" | "MINI" | "OTHER";
   quantity: string;
   openedAt: string;
   closedAt: string;
   entryPrice: string;
   exitPrice: string;
+  stopPrice: string;
+  targetPrice: string;
+  plannedRiskReward: string;
   initialRisk: string;
   netPnl: string;
   fees: string;
@@ -96,6 +99,73 @@ type ManualTradeDraft = {
   notes: string;
   improvements: string;
   rating: number | null;
+};
+
+type ManualExtractionFieldName =
+  | "setupName"
+  | "symbol"
+  | "side"
+  | "contractClass"
+  | "quantity"
+  | "openedAt"
+  | "closedAt"
+  | "entryPrice"
+  | "exitPrice"
+  | "stopPrice"
+  | "targetPrice"
+  | "initialRisk"
+  | "netPnl"
+  | "fees"
+  | "plannedRiskReward";
+
+type ManualExtractionField = {
+  value: string | number;
+  confidence: "HIGH" | "MODERATE" | "LOW";
+  evidence: string;
+};
+
+type ManualImageExtraction = {
+  fields: Record<ManualExtractionFieldName, ManualExtractionField | null>;
+  extractedCount: number;
+  summary: string;
+  warnings: string[];
+  model: string;
+};
+
+const EXTRACTION_TO_DRAFT: Record<ManualExtractionFieldName, keyof ManualTradeDraft> = {
+  setupName: "name",
+  symbol: "symbol",
+  side: "side",
+  contractClass: "contractClass",
+  quantity: "quantity",
+  openedAt: "openedAt",
+  closedAt: "closedAt",
+  entryPrice: "entryPrice",
+  exitPrice: "exitPrice",
+  stopPrice: "stopPrice",
+  targetPrice: "targetPrice",
+  initialRisk: "initialRisk",
+  netPnl: "netPnl",
+  fees: "fees",
+  plannedRiskReward: "plannedRiskReward",
+};
+
+const EXTRACTION_LABELS: Record<ManualExtractionFieldName, string> = {
+  setupName: "Setup name",
+  symbol: "Instrument",
+  side: "Direction",
+  contractClass: "Contract class",
+  quantity: "Contracts",
+  openedAt: "Entry time",
+  closedAt: "Exit time",
+  entryPrice: "Entry price",
+  exitPrice: "Exit price",
+  stopPrice: "Stop price",
+  targetPrice: "Target price",
+  initialRisk: "Initial risk",
+  netPnl: "Net P&L",
+  fees: "Fees",
+  plannedRiskReward: "Planned R:R",
 };
 
 type SocialJournalResponse = {
@@ -150,20 +220,22 @@ function localDateTimeInput(date = new Date()) {
 }
 
 function newManualTradeDraft(): ManualTradeDraft {
-  const now = new Date();
   return {
     name: "",
-    symbol: "NQ",
-    side: "LONG",
-    contractClass: "MINI",
-    quantity: "1",
-    openedAt: localDateTimeInput(new Date(now.getTime() - 15 * 60_000)),
-    closedAt: localDateTimeInput(now),
+    symbol: "",
+    side: "",
+    contractClass: "",
+    quantity: "",
+    openedAt: "",
+    closedAt: "",
     entryPrice: "",
     exitPrice: "",
+    stopPrice: "",
+    targetPrice: "",
+    plannedRiskReward: "",
     initialRisk: "",
     netPnl: "",
-    fees: "0",
+    fees: "",
     tags: "",
     notes: "",
     improvements: "",
@@ -483,6 +555,10 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
   const [showManualTrade, setShowManualTrade] = useState(false);
   const [manualTrade, setManualTrade] = useState<ManualTradeDraft>(() => newManualTradeDraft());
   const [manualEvidenceFiles, setManualEvidenceFiles] = useState<File[]>([]);
+  const [manualEvidenceDragging, setManualEvidenceDragging] = useState(false);
+  const [manualImageExtraction, setManualImageExtraction] = useState<ManualImageExtraction | null>(null);
+  const [manualImageAnalysisStatus, setManualImageAnalysisStatus] = useState<"idle" | "analyzing" | "ready" | "error">("idle");
+  const [manualImageAnalysisMessage, setManualImageAnalysisMessage] = useState("");
   const [manualTradeError, setManualTradeError] = useState("");
   const [manualTradeSaving, setManualTradeSaving] = useState(false);
   const [query, setQuery] = useState("");
@@ -496,6 +572,8 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
   const [selectedDay, setSelectedDay] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const manualEvidenceInputRef = useRef<HTMLInputElement>(null);
+  const manualTradeTouchedRef = useRef(new Set<keyof ManualTradeDraft>());
+  const manualAnalysisRevisionRef = useRef(0);
   const analysisRequestRef = useRef(0);
 
   const resolvedAccountKey = accountKey || "local";
@@ -842,10 +920,109 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
   };
 
   const openManualTrade = () => {
+    manualAnalysisRevisionRef.current += 1;
+    manualTradeTouchedRef.current.clear();
     setManualTrade(newManualTradeDraft());
     setManualEvidenceFiles([]);
+    setManualEvidenceDragging(false);
+    setManualImageExtraction(null);
+    setManualImageAnalysisStatus("idle");
+    setManualImageAnalysisMessage("");
     setManualTradeError("");
     setShowManualTrade(true);
+  };
+
+  function updateManualTradeField<K extends keyof ManualTradeDraft>(field: K, value: ManualTradeDraft[K]) {
+    manualTradeTouchedRef.current.add(field);
+    setManualTrade((current) => ({ ...current, [field]: value }));
+  }
+
+  const applyImageExtraction = (extraction: ManualImageExtraction) => {
+    setManualTrade((current) => {
+      const next = { ...current };
+      for (const [fieldName, extracted] of Object.entries(extraction.fields) as Array<[ManualExtractionFieldName, ManualExtractionField | null]>) {
+        if (!extracted || extracted.confidence !== "HIGH") continue;
+        const draftField = EXTRACTION_TO_DRAFT[fieldName];
+        if (manualTradeTouchedRef.current.has(draftField)) continue;
+        if (String((next as unknown as Record<string, unknown>)[draftField] ?? "").trim()) continue;
+        const value = fieldName === "openedAt" || fieldName === "closedAt"
+          ? localDateTimeInput(new Date(String(extracted.value)))
+          : String(extracted.value);
+        (next as unknown as Record<string, unknown>)[draftField] = value;
+      }
+      return next;
+    });
+  };
+
+  const analyzeManualEvidence = async (files: File[]) => {
+    const candidates = files.filter((file) => file.type.startsWith("image/")).slice(0, 3);
+    if (!candidates.length) return;
+    const revision = manualAnalysisRevisionRef.current + 1;
+    manualAnalysisRevisionRef.current = revision;
+    setManualImageAnalysisStatus("analyzing");
+    setManualImageAnalysisMessage(`Reading ${candidates.length === 1 ? candidates[0].name : `${candidates.length} screenshots`} without guessing…`);
+    let completed = 0;
+    let verified = 0;
+    let latestError = "";
+    for (const file of candidates) {
+      try {
+        const prepared = await prepareManualEvidence(file);
+        const response = await fetch("/api/journal/extract-trade", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ image: prepared.dataUrl, filename: file.name }),
+        });
+        const result = await response.json() as ManualImageExtraction & { error?: string };
+        if (!response.ok) throw new Error(result.error || `${file.name} could not be analyzed.`);
+        if (revision !== manualAnalysisRevisionRef.current) return;
+        completed += 1;
+        verified += Object.values(result.fields).filter((field) => field?.confidence === "HIGH").length;
+        applyImageExtraction(result);
+        setManualImageExtraction((current) => {
+          if (!current) return result;
+          const fields = { ...current.fields };
+          for (const fieldName of Object.keys(result.fields) as ManualExtractionFieldName[]) {
+            const incoming = result.fields[fieldName];
+            const existing = fields[fieldName];
+            if (incoming && (!existing || incoming.confidence === "HIGH")) fields[fieldName] = incoming;
+          }
+          return {
+            ...result,
+            fields,
+            extractedCount: Object.values(fields).filter(Boolean).length,
+            summary: `${completed} screenshots analyzed.`,
+            warnings: [...new Set([...current.warnings, ...result.warnings])].slice(0, 10),
+          };
+        });
+      } catch (error) {
+        latestError = error instanceof Error ? error.message : `${file.name} could not be analyzed.`;
+      }
+    }
+    if (revision !== manualAnalysisRevisionRef.current) return;
+    if (!completed) {
+      setManualImageAnalysisStatus("error");
+      setManualImageAnalysisMessage(latestError || "The screenshot could not be analyzed.");
+      return;
+    }
+    setManualImageAnalysisStatus("ready");
+    setManualImageAnalysisMessage(
+      verified
+        ? `${verified} high-confidence fields were filled. Review every value before saving.`
+        : "No exact fields were safe to fill. The screenshot remains attached as evidence.",
+    );
+  };
+
+  const addManualEvidence = (files: File[]) => {
+    const accepted = files
+      .filter((file) => file.type.startsWith("image/") && file.size <= MAX_MANUAL_IMAGE_BYTES)
+      .slice(0, 8);
+    if (!accepted.length) {
+      setManualTradeError("Add a PNG, JPG, WEBP or GIF image smaller than 20 MB.");
+      return;
+    }
+    setManualTradeError("");
+    setManualEvidenceFiles((current) => [...current, ...accepted].slice(0, 8));
+    void analyzeManualEvidence(accepted);
   };
 
   const persistEvidence = useCallback(async (evidence: JournalEvidence) => {
@@ -875,8 +1052,11 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
     const initialRisk = Number(manualTrade.initialRisk);
     const netPnl = Number(manualTrade.netPnl);
     const fees = Number(manualTrade.fees || 0);
-    if (!manualTrade.name.trim() || !manualTrade.symbol.trim()) {
-      setManualTradeError("Give the trade a name and instrument.");
+    const stopPrice = manualTrade.stopPrice.trim() ? Number(manualTrade.stopPrice) : null;
+    const targetPrice = manualTrade.targetPrice.trim() ? Number(manualTrade.targetPrice) : null;
+    const plannedRiskReward = manualTrade.plannedRiskReward.trim() ? Number(manualTrade.plannedRiskReward) : null;
+    if (!manualTrade.name.trim() || !manualTrade.symbol.trim() || !manualTrade.side || !manualTrade.contractClass) {
+      setManualTradeError("Give the trade a name, instrument, direction and contract class.");
       return;
     }
     if ([manualTrade.quantity, manualTrade.entryPrice, manualTrade.exitPrice, manualTrade.initialRisk, manualTrade.netPnl].some((value) => !value.trim())) {
@@ -885,6 +1065,10 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
     }
     if (![openedAt, closedAt, quantity, entryPrice, exitPrice, initialRisk, netPnl, fees].every(Number.isFinite) || quantity <= 0 || initialRisk <= 0 || closedAt < openedAt) {
       setManualTradeError("Complete valid entry, exit, contract size, risk, profit/loss and timestamps. Exit cannot be before entry.");
+      return;
+    }
+    if ([stopPrice, targetPrice, plannedRiskReward].some((value) => value !== null && (!Number.isFinite(value) || value <= 0))) {
+      setManualTradeError("Stop, target and planned risk : reward must be positive numbers when supplied.");
       return;
     }
     setManualTradeSaving(true);
@@ -904,8 +1088,12 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
         quantity,
         entryPrice,
         exitPrice,
+        stopPrice,
+        targetPrice,
+        plannedRiskReward,
         grossPnl: netPnl + Math.max(0, fees),
         fees: Math.max(0, fees),
+        feesKnown: Boolean(manualTrade.fees.trim()),
         netPnl,
         initialRisk,
         rMultiple: netPnl / initialRisk,
@@ -1847,42 +2035,80 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
               <section>
                 <div className="mb-3"><h3 className="text-[10px] font-semibold text-foreground">Trade identity</h3><p className="mt-0.5 text-[8px] text-muted">Name the idea and record what was actually traded.</p></div>
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                  <div className="sm:col-span-2"><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Trade / setup name *</label><input value={manualTrade.name} onChange={(event) => setManualTrade((current) => ({ ...current, name: event.target.value }))} placeholder="e.g. New York open reclaim" className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[9px] text-foreground outline-none focus:border-primary/45" /></div>
-                  <div><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Instrument *</label><input value={manualTrade.symbol} onChange={(event) => setManualTrade((current) => ({ ...current, symbol: event.target.value.toUpperCase() }))} placeholder="NQ" className="h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] text-foreground outline-none focus:border-primary/45" /></div>
-                  <div><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Direction *</label><KwantSelect value={manualTrade.side} onChange={(event) => setManualTrade((current) => ({ ...current, side: event.target.value as "LONG" | "SHORT" }))} className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[9px] text-foreground outline-none"><option value="LONG">Long</option><option value="SHORT">Short</option></KwantSelect></div>
-                  <div><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Contract class *</label><KwantSelect value={manualTrade.contractClass} onChange={(event) => setManualTrade((current) => ({ ...current, contractClass: event.target.value as ManualTradeDraft["contractClass"] }))} className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[9px] text-foreground outline-none"><option value="MICRO">Micro</option><option value="MINI">Mini</option><option value="OTHER">Other</option></KwantSelect></div>
-                  <div><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Contracts *</label><input type="number" min="0.01" step="0.01" value={manualTrade.quantity} onChange={(event) => setManualTrade((current) => ({ ...current, quantity: event.target.value }))} className="h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] text-foreground outline-none focus:border-primary/45" /></div>
-                  <div className="sm:col-span-2"><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Tags</label><input value={manualTrade.tags} onChange={(event) => setManualTrade((current) => ({ ...current, tags: event.target.value }))} placeholder="reclaim, patient, New York" className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[9px] text-foreground outline-none focus:border-primary/45" /></div>
+                  <div className="sm:col-span-2"><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Trade / setup name *</label><input value={manualTrade.name} onChange={(event) => updateManualTradeField("name", event.target.value)} placeholder="e.g. New York open reclaim" className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[9px] text-foreground outline-none focus:border-primary/45" /></div>
+                  <div><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Instrument *</label><input value={manualTrade.symbol} onChange={(event) => updateManualTradeField("symbol", event.target.value.toUpperCase())} placeholder="NQ" className="h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] text-foreground outline-none focus:border-primary/45" /></div>
+                  <div><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Direction *</label><KwantSelect value={manualTrade.side} onChange={(event) => updateManualTradeField("side", event.target.value as ManualTradeDraft["side"])} className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[9px] text-foreground outline-none"><option value="" disabled>Select direction</option><option value="LONG">Long</option><option value="SHORT">Short</option></KwantSelect></div>
+                  <div><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Contract class *</label><KwantSelect value={manualTrade.contractClass} onChange={(event) => updateManualTradeField("contractClass", event.target.value as ManualTradeDraft["contractClass"])} className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[9px] text-foreground outline-none"><option value="" disabled>Select class</option><option value="MICRO">Micro</option><option value="MINI">Mini</option><option value="OTHER">Other</option></KwantSelect></div>
+                  <div><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Contracts *</label><input type="number" min="0.01" step="0.01" value={manualTrade.quantity} onChange={(event) => updateManualTradeField("quantity", event.target.value)} className="h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] text-foreground outline-none focus:border-primary/45" /></div>
+                  <div className="sm:col-span-2"><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Tags</label><input value={manualTrade.tags} onChange={(event) => updateManualTradeField("tags", event.target.value)} placeholder="reclaim, patient, New York" className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[9px] text-foreground outline-none focus:border-primary/45" /></div>
                 </div>
               </section>
 
               <section className="border-t border-border pt-5">
                 <div className="mb-3"><h3 className="text-[10px] font-semibold text-foreground">Execution and risk</h3><p className="mt-0.5 text-[8px] text-muted">These fields drive the Journal’s P&amp;L, risk-to-reward and performance analysis.</p></div>
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                  <div className="lg:col-span-2"><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Entry time *</label><input type="datetime-local" value={manualTrade.openedAt} onChange={(event) => setManualTrade((current) => ({ ...current, openedAt: event.target.value }))} className="h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] text-foreground outline-none focus:border-primary/45" /></div>
-                  <div className="lg:col-span-2"><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Exit time *</label><input type="datetime-local" value={manualTrade.closedAt} onChange={(event) => setManualTrade((current) => ({ ...current, closedAt: event.target.value }))} className="h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] text-foreground outline-none focus:border-primary/45" /></div>
-                  <div><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Entry price *</label><input type="number" step="any" value={manualTrade.entryPrice} onChange={(event) => setManualTrade((current) => ({ ...current, entryPrice: event.target.value }))} placeholder="0.00" className="h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] text-foreground outline-none focus:border-primary/45" /></div>
-                  <div><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Exit price *</label><input type="number" step="any" value={manualTrade.exitPrice} onChange={(event) => setManualTrade((current) => ({ ...current, exitPrice: event.target.value }))} placeholder="0.00" className="h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] text-foreground outline-none focus:border-primary/45" /></div>
-                  <div><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Initial risk ($) *</label><input type="number" min="0" step="0.01" value={manualTrade.initialRisk} onChange={(event) => setManualTrade((current) => ({ ...current, initialRisk: event.target.value }))} placeholder="250.00" className="h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] text-foreground outline-none focus:border-primary/45" /></div>
-                  <div><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Net profit / loss ($) *</label><input type="number" step="0.01" value={manualTrade.netPnl} onChange={(event) => setManualTrade((current) => ({ ...current, netPnl: event.target.value }))} placeholder="Use minus for a loss" className="h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] text-foreground outline-none focus:border-primary/45" /></div>
-                  <div><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Fees ($)</label><input type="number" min="0" step="0.01" value={manualTrade.fees} onChange={(event) => setManualTrade((current) => ({ ...current, fees: event.target.value }))} className="h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] text-foreground outline-none focus:border-primary/45" /></div>
-                  <div className="sm:col-span-2 lg:col-span-3"><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Calculated risk : reward</label><div className="flex h-10 items-center rounded-xl border border-border bg-surface/45 px-3 font-mono text-[11px] font-semibold text-primary">{Number(manualTrade.initialRisk) > 0 && Number.isFinite(Number(manualTrade.netPnl)) ? riskReward(Number(manualTrade.netPnl) / Number(manualTrade.initialRisk)) : "1 : —"}</div></div>
+                  <div className="lg:col-span-2"><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Entry time *</label><input type="datetime-local" value={manualTrade.openedAt} onChange={(event) => updateManualTradeField("openedAt", event.target.value)} className="h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] text-foreground outline-none focus:border-primary/45" /></div>
+                  <div className="lg:col-span-2"><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Exit time *</label><input type="datetime-local" value={manualTrade.closedAt} onChange={(event) => updateManualTradeField("closedAt", event.target.value)} className="h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] text-foreground outline-none focus:border-primary/45" /></div>
+                  <div><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Entry price *</label><input type="number" step="any" value={manualTrade.entryPrice} onChange={(event) => updateManualTradeField("entryPrice", event.target.value)} placeholder="0.00" className="h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] text-foreground outline-none focus:border-primary/45" /></div>
+                  <div><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Exit price *</label><input type="number" step="any" value={manualTrade.exitPrice} onChange={(event) => updateManualTradeField("exitPrice", event.target.value)} placeholder="0.00" className="h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] text-foreground outline-none focus:border-primary/45" /></div>
+                  <div><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Stop price</label><input type="number" step="any" value={manualTrade.stopPrice} onChange={(event) => updateManualTradeField("stopPrice", event.target.value)} placeholder="Only if known" className="h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] text-foreground outline-none focus:border-primary/45" /></div>
+                  <div><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Target price</label><input type="number" step="any" value={manualTrade.targetPrice} onChange={(event) => updateManualTradeField("targetPrice", event.target.value)} placeholder="Only if known" className="h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] text-foreground outline-none focus:border-primary/45" /></div>
+                  <div><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Initial risk ($) *</label><input type="number" min="0" step="0.01" value={manualTrade.initialRisk} onChange={(event) => updateManualTradeField("initialRisk", event.target.value)} placeholder="250.00" className="h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] text-foreground outline-none focus:border-primary/45" /></div>
+                  <div><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Net profit / loss ($) *</label><input type="number" step="0.01" value={manualTrade.netPnl} onChange={(event) => updateManualTradeField("netPnl", event.target.value)} placeholder="Use minus for a loss" className="h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] text-foreground outline-none focus:border-primary/45" /></div>
+                  <div><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Fees ($)</label><input type="number" min="0" step="0.01" value={manualTrade.fees} onChange={(event) => updateManualTradeField("fees", event.target.value)} placeholder="Leave blank if unknown" className="h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] text-foreground outline-none focus:border-primary/45" /></div>
+                  <div><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Planned risk : reward</label><div className="flex h-10 items-center rounded-xl border border-border bg-background px-3 focus-within:border-primary/45"><span className="font-mono text-[9px] text-muted">1 :</span><input type="number" min="0" step="0.01" value={manualTrade.plannedRiskReward} onChange={(event) => updateManualTradeField("plannedRiskReward", event.target.value)} placeholder="3.00" className="h-full min-w-0 flex-1 bg-transparent pl-2 font-mono text-[9px] text-foreground outline-none" /></div></div>
+                  <div className="sm:col-span-2 lg:col-span-4"><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Realized risk : reward</label><div className="flex h-10 items-center rounded-xl border border-border bg-surface/45 px-3 font-mono text-[11px] font-semibold text-primary">{Number(manualTrade.initialRisk) > 0 && Number.isFinite(Number(manualTrade.netPnl)) ? riskReward(Number(manualTrade.netPnl) / Number(manualTrade.initialRisk)) : "1 : —"}</div></div>
                 </div>
               </section>
 
               <section className="border-t border-border pt-5">
                 <div className="mb-3"><h3 className="text-[10px] font-semibold text-foreground">Review notes <span className="font-normal text-muted">· optional</span></h3><p className="mt-0.5 text-[8px] text-muted">Write honestly. Both fields can be left blank and the trade will still submit.</p></div>
                 <div className="grid gap-3 lg:grid-cols-2">
-                  <div><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Notes</label><textarea value={manualTrade.notes} onChange={(event) => setManualTrade((current) => ({ ...current, notes: event.target.value }))} rows={6} placeholder="What happened? What were you thinking? Were you patient, emotional, early or late?" className="w-full resize-y rounded-xl border border-border bg-background p-3 text-[9px] leading-5 text-foreground outline-none focus:border-primary/45" /></div>
-                  <div><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">How can I do better next time?</label><textarea value={manualTrade.improvements} onChange={(event) => setManualTrade((current) => ({ ...current, improvements: event.target.value }))} rows={6} placeholder="The specific behaviour, rule or preparation you will change next time." className="w-full resize-y rounded-xl border border-border bg-background p-3 text-[9px] leading-5 text-foreground outline-none focus:border-primary/45" /></div>
+                  <div><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Notes</label><textarea value={manualTrade.notes} onChange={(event) => updateManualTradeField("notes", event.target.value)} rows={6} placeholder="What happened? What were you thinking? Were you patient, emotional, early or late?" className="w-full resize-y rounded-xl border border-border bg-background p-3 text-[9px] leading-5 text-foreground outline-none focus:border-primary/45" /></div>
+                  <div><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">How can I do better next time?</label><textarea value={manualTrade.improvements} onChange={(event) => updateManualTradeField("improvements", event.target.value)} rows={6} placeholder="The specific behaviour, rule or preparation you will change next time." className="w-full resize-y rounded-xl border border-border bg-background p-3 text-[9px] leading-5 text-foreground outline-none focus:border-primary/45" /></div>
                 </div>
-                <div className="mt-3"><label className="mb-2 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Execution quality <span className="font-normal normal-case tracking-normal">· optional</span></label><div className="flex items-center gap-1.5">{[1, 2, 3, 4, 5].map((rating) => <button key={rating} type="button" onClick={() => setManualTrade((current) => ({ ...current, rating: current.rating === rating ? null : rating }))} className={`flex h-8 w-8 items-center justify-center rounded-lg border ${manualTrade.rating && rating <= manualTrade.rating ? "border-primary/35 bg-primary/10 text-primary" : "border-border bg-background text-muted hover:text-foreground"}`}><Star className={`h-3.5 w-3.5 ${manualTrade.rating && rating <= manualTrade.rating ? "fill-current" : ""}`} /></button>)}</div></div>
+                <div className="mt-3"><label className="mb-2 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Execution quality <span className="font-normal normal-case tracking-normal">· optional</span></label><div className="flex items-center gap-1.5">{[1, 2, 3, 4, 5].map((rating) => <button key={rating} type="button" onClick={() => updateManualTradeField("rating", manualTrade.rating === rating ? null : rating)} className={`flex h-8 w-8 items-center justify-center rounded-lg border ${manualTrade.rating && rating <= manualTrade.rating ? "border-primary/35 bg-primary/10 text-primary" : "border-border bg-background text-muted hover:text-foreground"}`}><Star className={`h-3.5 w-3.5 ${manualTrade.rating && rating <= manualTrade.rating ? "fill-current" : ""}`} /></button>)}</div></div>
               </section>
 
               <section className="border-t border-border pt-5">
-                <div className="mb-3"><h3 className="text-[10px] font-semibold text-foreground">Evidence <span className="font-normal text-muted">· optional</span></h3><p className="mt-0.5 text-[8px] text-muted">Attach chart screenshots or execution evidence. Images are kept at up to 1920px and prepared for private account storage.</p></div>
-                <button type="button" onClick={() => manualEvidenceInputRef.current?.click()} className="flex min-h-[110px] w-full flex-col items-center justify-center rounded-2xl border border-dashed border-border bg-background/30 px-5 text-center hover:border-primary/40 hover:bg-primary/[0.04]"><Camera className="h-5 w-5 text-primary" /><span className="mt-2 text-[9px] font-semibold text-foreground">Add screenshots or photos</span><span className="mt-1 text-[8px] text-muted">PNG · JPG · WEBP · up to 20 MB before preparation</span></button>
-                <input ref={manualEvidenceInputRef} type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple className="hidden" onChange={(event) => { if (event.target.files) setManualEvidenceFiles((current) => [...current, ...Array.from(event.target.files ?? [])].slice(0, 8)); event.currentTarget.value = ""; }} />
+                <div className="mb-3"><h3 className="text-[10px] font-semibold text-foreground">Screenshot evidence <span className="font-normal text-muted">· optional</span></h3><p className="mt-0.5 text-[8px] leading-4 text-muted">Drop a TradingView, broker or execution screenshot. AI fills only clearly visible facts; uncertain values remain blank for you to complete.</p></div>
+                <button
+                  type="button"
+                  onClick={() => manualEvidenceInputRef.current?.click()}
+                  onDragEnter={(event) => { event.preventDefault(); setManualEvidenceDragging(true); }}
+                  onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; setManualEvidenceDragging(true); }}
+                  onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setManualEvidenceDragging(false); }}
+                  onDrop={(event) => { event.preventDefault(); setManualEvidenceDragging(false); addManualEvidence(Array.from(event.dataTransfer.files)); }}
+                  className={`flex min-h-[128px] w-full flex-col items-center justify-center rounded-2xl border border-dashed px-5 text-center transition-colors ${manualEvidenceDragging ? "border-primary bg-primary/10" : "border-border bg-background/30 hover:border-primary/40 hover:bg-primary/[0.04]"}`}
+                >
+                  {manualImageAnalysisStatus === "analyzing" ? <Sparkles className="h-5 w-5 animate-pulse text-primary" /> : <Camera className="h-5 w-5 text-primary" />}
+                  <span className="mt-2 text-[9px] font-semibold text-foreground">Drop screenshots here or browse</span>
+                  <span className="mt-1 text-[8px] text-muted">PNG · JPG · WEBP · GIF · up to 20 MB before private preparation</span>
+                  <span className="mt-2 text-[8px] text-primary/80">Evidence extraction starts automatically</span>
+                </button>
+                <input ref={manualEvidenceInputRef} type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple className="hidden" onChange={(event) => { if (event.target.files) addManualEvidence(Array.from(event.target.files)); event.currentTarget.value = ""; }} />
+                {manualImageAnalysisStatus !== "idle" ? (
+                  <div className={`mt-3 rounded-2xl border p-3 ${manualImageAnalysisStatus === "error" ? "border-danger/25 bg-danger/[0.06]" : "border-primary/20 bg-primary/[0.06]"}`}>
+                    <div className="flex items-start gap-2">
+                      {manualImageAnalysisStatus === "analyzing" ? <RefreshCw className="mt-0.5 h-3.5 w-3.5 shrink-0 animate-spin text-primary" /> : manualImageAnalysisStatus === "error" ? <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0 text-danger" /> : <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />}
+                      <div className="min-w-0 flex-1">
+                        <div className={`text-[9px] font-semibold ${manualImageAnalysisStatus === "error" ? "text-danger" : "text-foreground"}`}>{manualImageAnalysisMessage}</div>
+                        {manualImageExtraction && manualImageAnalysisStatus === "ready" ? (
+                          <div className="mt-2 grid gap-1.5 sm:grid-cols-2">
+                            {(Object.entries(manualImageExtraction.fields) as Array<[ManualExtractionFieldName, ManualExtractionField | null]>).filter(([, field]) => field).map(([fieldName, field]) => field ? (
+                              <div key={fieldName} className="rounded-xl border border-border/70 bg-background/45 px-3 py-2">
+                                <div className="flex items-center gap-2"><span className="text-[8px] font-semibold text-foreground">{EXTRACTION_LABELS[fieldName]}</span><span className={`ml-auto rounded-full px-1.5 py-0.5 text-[6px] font-semibold ${field.confidence === "HIGH" ? "bg-primary/12 text-primary" : "bg-warning/12 text-warning"}`}>{field.confidence === "HIGH" ? "FILLED" : "REVIEW"}</span></div>
+                                <div className="mt-1 truncate font-mono text-[9px] text-foreground">{String(field.value)}</div>
+                                <div className="mt-1 line-clamp-2 text-[7px] leading-3 text-muted">{field.evidence}</div>
+                              </div>
+                            ) : null)}
+                          </div>
+                        ) : null}
+                        {Boolean(manualImageExtraction?.warnings.length) && manualImageAnalysisStatus === "ready" ? <div className="mt-2 text-[7px] leading-3 text-muted">{manualImageExtraction?.warnings.join(" · ")}</div> : null}
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
                 {manualEvidenceFiles.length ? <div className="mt-2 grid gap-2 sm:grid-cols-2">{manualEvidenceFiles.map((file) => <div key={`${file.name}:${file.size}:${file.lastModified}`} className="flex items-center gap-2 rounded-xl border border-border bg-background/35 px-3 py-2 text-[8px]"><ImageIcon className="h-3.5 w-3.5 text-primary" /><span className="min-w-0 flex-1 truncate text-foreground">{file.name}</span><span className="font-mono text-muted">{Math.max(1, Math.round(file.size / 1024))} KB</span><button type="button" onClick={() => setManualEvidenceFiles((current) => current.filter((candidate) => candidate !== file))} className="text-muted hover:text-danger"><X className="h-3.5 w-3.5" /></button></div>)}</div> : null}
               </section>
 
@@ -1914,7 +2140,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
               </div>
               <Card className="p-4">
                 <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-[9px]">
-                  {[["Entry", selectedTrade.entryPrice?.toLocaleString("en-US", { maximumFractionDigits: 6 }) ?? "—"], ["Exit", selectedTrade.exitPrice?.toLocaleString("en-US", { maximumFractionDigits: 6 }) ?? "—"], ["Quantity", selectedTrade.quantity.toLocaleString()], ["Contract", selectedTrade.contractClass ?? "—"], ["Fees", money(selectedTrade.fees, false)], ["Gross P&L", money(selectedTrade.grossPnl)], ["Source", `${selectedTrade.sourceFile}${selectedTrade.sourceSheet ? ` · ${selectedTrade.sourceSheet}` : ""} · rows ${selectedTrade.sourceRows.join(", ")}`]].map(([label, value]) => <div key={label}><div className="text-[8px] uppercase tracking-[0.1em] text-muted">{label}</div><div className="mt-1 break-words font-mono text-foreground">{value}</div></div>)}
+                  {[["Entry", selectedTrade.entryPrice?.toLocaleString("en-US", { maximumFractionDigits: 6 }) ?? "—"], ["Exit", selectedTrade.exitPrice?.toLocaleString("en-US", { maximumFractionDigits: 6 }) ?? "—"], ["Stop", selectedTrade.stopPrice?.toLocaleString("en-US", { maximumFractionDigits: 6 }) ?? "Not recorded"], ["Target", selectedTrade.targetPrice?.toLocaleString("en-US", { maximumFractionDigits: 6 }) ?? "Not recorded"], ["Planned R:R", selectedTrade.plannedRiskReward ? `1 : ${selectedTrade.plannedRiskReward.toFixed(2)}` : "Not recorded"], ["Quantity", selectedTrade.quantity.toLocaleString()], ["Contract", selectedTrade.contractClass ?? "—"], ["Fees", selectedTrade.feesKnown === false ? "Not recorded" : money(selectedTrade.fees, false)], ["Gross P&L", money(selectedTrade.grossPnl)], ["Source", `${selectedTrade.sourceFile}${selectedTrade.sourceSheet ? ` · ${selectedTrade.sourceSheet}` : ""} · rows ${selectedTrade.sourceRows.join(", ")}`]].map(([label, value]) => <div key={label}><div className="text-[8px] uppercase tracking-[0.1em] text-muted">{label}</div><div className="mt-1 break-words font-mono text-foreground">{value}</div></div>)}
                 </div>
               </Card>
               <div>
