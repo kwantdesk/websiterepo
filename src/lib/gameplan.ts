@@ -52,6 +52,79 @@ export function gameplanSessionConfig(session: GameplanSession) {
   return GAMEPLAN_SESSIONS.find((item) => item.id === session) ?? GAMEPLAN_SESSIONS[0];
 }
 
+function timeZoneOffset(date: Date, timeZone: string) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(date);
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return Date.UTC(
+    Number(values.year),
+    Number(values.month) - 1,
+    Number(values.day),
+    Number(values.hour),
+    Number(values.minute),
+    Number(values.second),
+  ) - date.getTime();
+}
+
+function sessionOpenTimestamp(
+  session: (typeof GAMEPLAN_SESSIONS)[number],
+  localDate: Date,
+) {
+  const utcGuess = Date.UTC(
+    localDate.getUTCFullYear(),
+    localDate.getUTCMonth(),
+    localDate.getUTCDate(),
+    session.openHour,
+    session.openMinute,
+  );
+  return utcGuess - timeZoneOffset(new Date(utcGuess), session.timeZone);
+}
+
+function sessionRunsOnLocalDay(session: GameplanSession, localDay: number) {
+  if (session === "globex") return localDay === 0 || (localDay >= 1 && localDay <= 4);
+  return localDay >= 1 && localDay <= 5;
+}
+
+/** Returns the most recently opened valid market session. */
+export function currentGameplanSession(at = new Date()): GameplanSession {
+  const now = at.getTime();
+  let latest: { session: GameplanSession; openedAt: number } | null = null;
+
+  for (const session of GAMEPLAN_SESSIONS) {
+    const localParts = new Intl.DateTimeFormat("en-US", {
+      timeZone: session.timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).formatToParts(at);
+    const values = Object.fromEntries(localParts.map((part) => [part.type, part.value]));
+    const localDate = new Date(Date.UTC(
+      Number(values.year),
+      Number(values.month) - 1,
+      Number(values.day),
+    ));
+
+    for (let daysBack = 0; daysBack < 7; daysBack += 1) {
+      const candidateDate = new Date(localDate.getTime() - daysBack * 86_400_000);
+      if (!sessionRunsOnLocalDay(session.id, candidateDate.getUTCDay())) continue;
+      const openedAt = sessionOpenTimestamp(session, candidateDate);
+      if (openedAt > now) continue;
+      if (!latest || openedAt > latest.openedAt) latest = { session: session.id, openedAt };
+      break;
+    }
+  }
+
+  return latest?.session ?? "newyork";
+}
+
 export type GameplanEdition = {
   edition: {
     session: GameplanSession;

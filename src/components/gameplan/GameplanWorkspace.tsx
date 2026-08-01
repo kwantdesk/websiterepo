@@ -2,7 +2,6 @@
 
 import {
   Activity,
-  AlarmClock,
   ArrowDown,
   ArrowRight,
   ArrowUp,
@@ -43,8 +42,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import KwantLoader from "@/components/KwantLoader";
 import {
-  GAMEPLAN_SESSIONS,
-  gameplanSessionConfig,
+  currentGameplanSession,
   gameplanSessionLabel,
   type GameplanEdition,
   type GameplanPayload,
@@ -209,69 +207,6 @@ function formatDate(value: string) {
   const date = new Date(`${value}T12:00:00`);
   if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleDateString("en-AU", { weekday: "short", day: "numeric", month: "short", year: "numeric" });
-}
-
-function timeZoneOffset(date: Date, timeZone: string) {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hourCycle: "h23",
-  }).formatToParts(date);
-  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
-  const asUtc = Date.UTC(
-    Number(values.year),
-    Number(values.month) - 1,
-    Number(values.day),
-    Number(values.hour),
-    Number(values.minute),
-    Number(values.second),
-  );
-  return asUtc - date.getTime();
-}
-
-function nextOpen(session: GameplanSession) {
-  const now = new Date();
-  const config = gameplanSessionConfig(session);
-  const sessionDateParts = new Intl.DateTimeFormat("en-US", {
-    timeZone: config.timeZone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(now);
-  const values = Object.fromEntries(sessionDateParts.map((part) => [part.type, part.value]));
-  const utcGuess = Date.UTC(
-    Number(values.year),
-    Number(values.month) - 1,
-    Number(values.day),
-    config.openHour,
-    config.openMinute,
-  );
-  let target = utcGuess - timeZoneOffset(new Date(utcGuess), config.timeZone);
-  if (target <= now.getTime()) {
-    const tomorrowGuess = utcGuess + 86_400_000;
-    target = tomorrowGuess - timeZoneOffset(new Date(tomorrowGuess), config.timeZone);
-  }
-  return target;
-}
-
-function useCountdown(session: GameplanSession) {
-  const [remaining, setRemaining] = useState(0);
-  useEffect(() => {
-    const update = () => setRemaining(Math.max(0, nextOpen(session) - Date.now()));
-    update();
-    const timer = window.setInterval(update, 1_000);
-    return () => window.clearInterval(timer);
-  }, [session]);
-  const totalSeconds = Math.floor(remaining / 1_000);
-  const hours = Math.floor(totalSeconds / 3_600);
-  const minutes = Math.floor((totalSeconds % 3_600) / 60);
-  const seconds = totalSeconds % 60;
-  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 }
 
 function Panel({
@@ -1924,12 +1859,13 @@ function LoadingState() {
 function GameplanLiveWorkspace({ initialInstrument = "NQ" }: { initialInstrument?: string }) {
   const router = useRouter();
   const initialRoot = initialInstrument.toUpperCase().startsWith("ES") || initialInstrument.toUpperCase().startsWith("MES") ? "ES" : "NQ";
+  const initialSessionRef = useRef<GameplanSession>(currentGameplanSession());
   const initialPayloadRef = useRef(
-    readWorkspaceData<GameplanPayload>(gameplanCacheKey(initialRoot, "newyork")),
+    readWorkspaceData<GameplanPayload>(gameplanCacheKey(initialRoot, initialSessionRef.current)),
   );
   const initialPayload = initialPayloadRef.current;
   const [root, setRoot] = useState<"NQ" | "ES">(initialRoot);
-  const [session, setSession] = useState<GameplanSession>("newyork");
+  const [session, setSession] = useState<GameplanSession>(initialSessionRef.current);
   const [payload, setPayload] = useState<GameplanPayload | null>(initialPayload);
   const [currentPrice, setCurrentPrice] = useState<number | null>(initialPayload?.current_price ?? null);
   const [volatilityCandles, setVolatilityCandles] = useState<VolatilityCandle[]>([]);
@@ -1956,7 +1892,16 @@ function GameplanLiveWorkspace({ initialInstrument = "NQ" }: { initialInstrument
   const planRequestRef = useRef(0);
   const planRefreshDelayRef = useRef(5_000);
   const latestPayloadRef = useRef<GameplanPayload | null>(initialPayload);
-  const countdown = useCountdown(session);
+
+  useEffect(() => {
+    const syncLiveSession = () => {
+      const nextSession = currentGameplanSession();
+      setSession((current) => current === nextSession ? current : nextSession);
+    };
+    syncLiveSession();
+    const timer = window.setInterval(syncLiveSession, 30_000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   const updateLivePrice = useCallback((nextPrice: number) => {
     if (!Number.isFinite(nextPrice) || nextPrice <= 0) return;
@@ -2013,11 +1958,14 @@ function GameplanLiveWorkspace({ initialInstrument = "NQ" }: { initialInstrument
     try {
       const next = await fetchWorkspaceData<GameplanPayload>(
         gameplanCacheKey(root, session),
-        `/api/gameplan?root=${root}&session=${session}`,
+        `/api/gameplan?root=${root}`,
         { force: true },
       );
       if (requestId !== planRequestRef.current) return;
       setPayload(next);
+      setSession((current) => current === next.plan.edition.session
+        ? current
+        : next.plan.edition.session);
       latestPayloadRef.current = next;
       planRefreshDelayRef.current = Math.max(5_000, Math.min(60_000, next.refresh_after_ms));
       setOneLinerSnapshot((current) => {
@@ -2277,17 +2225,18 @@ function GameplanLiveWorkspace({ initialInstrument = "NQ" }: { initialInstrument
         </span>
         <div className="mr-2 min-w-0">
           <div className="text-[12px] font-semibold">Kwant Desk Gameplan</div>
-          <div className="text-[9px] text-muted">Pre-session decision map</div>
+          <div className="text-[9px] text-muted">Gameplan for {gameplanSessionLabel(session)} right now</div>
         </div>
         <div className="flex rounded-xl border border-border bg-surface p-1">
           {(["NQ", "ES"] as const).map((item) => (
             <button key={item} type="button" onClick={() => setRoot(item)} className={`rounded-lg px-3 py-1.5 font-mono text-[10px] font-semibold ${root === item ? "bg-primary text-background" : "text-muted hover:text-foreground"}`}>{item}</button>
           ))}
         </div>
-        <div className="flex max-w-full overflow-x-auto rounded-xl border border-border bg-surface p-1">
-          {GAMEPLAN_SESSIONS.map(({ id, label }) => (
-            <button key={id} type="button" onClick={() => setSession(id)} className={`shrink-0 rounded-lg px-3 py-1.5 text-[10px] font-semibold ${session === id ? "bg-card text-foreground shadow-sm" : "text-muted hover:text-foreground"}`}>{label}</button>
-          ))}
+        <div className="flex h-9 items-center gap-2 rounded-xl border border-primary/20 bg-primary/[0.06] px-3">
+          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary shadow-[0_0_8px_var(--primary)]" />
+          <span className="text-[8px] font-bold uppercase tracking-[0.13em] text-muted">Gameplan for</span>
+          <span className="text-[10px] font-semibold text-foreground">{gameplanSessionLabel(session)}</span>
+          <span className="rounded-md bg-primary/10 px-1.5 py-0.5 text-[7px] font-bold uppercase tracking-[0.12em] text-primary">Auto</span>
         </div>
         <div className="ml-auto flex items-center gap-2">
           <button
@@ -2317,11 +2266,6 @@ function GameplanLiveWorkspace({ initialInstrument = "NQ" }: { initialInstrument
             <Sparkles className="h-3.5 w-3.5" />
             MAKE GAMEPLAN
           </button>
-          <div className="hidden items-center gap-2 rounded-xl border border-border bg-surface px-3 py-2 md:flex">
-            <AlarmClock className="h-3.5 w-3.5 text-primary" />
-            <span className="text-[9px] text-muted">Open in</span>
-            <span className="font-mono text-[10px] font-semibold text-foreground">{countdown}</span>
-          </div>
           <button type="button" onClick={() => void loadPlan(true)} disabled={refreshing} className="flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-surface text-muted hover:text-foreground disabled:opacity-50" aria-label="Refresh Gameplan">
             <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
           </button>
@@ -2337,7 +2281,7 @@ function GameplanLiveWorkspace({ initialInstrument = "NQ" }: { initialInstrument
         <div className="mx-auto max-w-[1680px] p-3 lg:p-4 xl:p-5">
           <div className="mb-3 grid gap-2 md:grid-cols-[auto_auto_1fr_auto] md:items-center">
             <div className="rounded-xl border border-border bg-panel px-3 py-2">
-              <Eyebrow>{gameplanSessionLabel(session)} edition</Eyebrow>
+              <Eyebrow>Gameplan for {gameplanSessionLabel(session)}</Eyebrow>
               <div className="mt-1 text-[11px] font-semibold text-foreground">{formatDate(plan.edition.date)}</div>
             </div>
             <TapeBadge state={plan.environment.tape.state} />

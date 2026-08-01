@@ -1,6 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextRequest, NextResponse } from "next/server";
-import { buildGameplanPayload, isGameplanSession } from "@/lib/gameplan";
+import { buildGameplanPayload, currentGameplanSession } from "@/lib/gameplan";
 import {
   getNativeFuturesSessionClose,
   getNativeFuturesSpot,
@@ -46,14 +46,10 @@ export async function GET(request: NextRequest) {
   }
 
   const rootInput = (request.nextUrl.searchParams.get("root") || "NQ").trim().toUpperCase();
-  const sessionInput = (request.nextUrl.searchParams.get("session") || "newyork").trim().toLowerCase();
+  const liveSession = currentGameplanSession();
   if (rootInput !== "NQ" && rootInput !== "ES") {
     return NextResponse.json({ error: "Gameplan currently supports NQ and ES." }, { status: 400 });
   }
-  if (!isGameplanSession(sessionInput)) {
-    return NextResponse.json({ error: "Invalid Gameplan edition." }, { status: 400 });
-  }
-
   try {
     const root = rootInput as "NQ" | "ES";
     const source = rootInput === "NQ" ? "NDX" : "SPX";
@@ -93,7 +89,7 @@ export async function GET(request: NextRequest) {
         },
       }
       : options;
-    const payload = buildGameplanPayload(calibratedOptions, root, sessionInput);
+    const payload = buildGameplanPayload(calibratedOptions, root, liveSession);
     return NextResponse.json(payload, {
       headers: { "Cache-Control": "private, no-store, max-age=0" },
     });
