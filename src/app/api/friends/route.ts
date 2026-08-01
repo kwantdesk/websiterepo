@@ -13,6 +13,7 @@ import {
   type FriendsPayload,
   type PresenceStatus,
 } from "@/lib/friends";
+import { isValidProfileHandle, PROFILE_HANDLE_REQUIREMENTS } from "@/lib/profileHandle";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -113,10 +114,6 @@ function normalizeHandle(value: unknown) {
   return typeof value === "string"
     ? value.trim().replace(/^@+/, "").toLowerCase()
     : "";
-}
-
-function validHandle(value: string) {
-  return /^[a-z][a-z0-9_]{2,23}$/.test(value);
 }
 
 function authorLabel(actor: RouteActor) {
@@ -509,13 +506,20 @@ async function upsertProfile(
   const payload = existing?.payload && typeof existing.payload === "object"
     ? existing.payload as Record<string, unknown>
     : {};
-  const fallbackHandle = (actor.username || actor.label.split("@")[0] || "")
+  const requestedFallbackHandle = (actor.username || actor.label.split("@")[0] || "")
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "")
     .slice(0, 24);
+  const generatedFallbackHandle = `trader_${actor.userId.replace(/[^a-z0-9]/gi, "").slice(0, 10)}`
+    .toLowerCase()
+    .slice(0, 24);
+  const fallbackHandle = isValidProfileHandle(requestedFallbackHandle)
+    ? requestedFallbackHandle
+    : generatedFallbackHandle;
+  const storedHandle = normalizeHandle(payload.handle);
   const identityDefaults = {
     displayName: cleanText(payload.displayName, 60) || authorLabel(actor),
-    handle: cleanIdentifier(payload.handle, 32).toLowerCase() || fallbackHandle,
+    handle: isValidProfileHandle(storedHandle) ? storedHandle : fallbackHandle,
     avatarUrl: cleanAvatarUrl(payload.avatarUrl) || cleanAvatarUrl(actor.avatarUrl),
   };
   return supabase.from("social_objects").upsert({
@@ -526,7 +530,7 @@ async function upsertProfile(
     scope: "community",
     desk_id: null,
     parent_id: null,
-    payload: { ...identityDefaults, ...payload, ...changes },
+    payload: { ...payload, ...identityDefaults, ...changes },
     updated_at: new Date().toISOString(),
   }, { onConflict: "user_id,id" });
 }
@@ -538,11 +542,11 @@ export async function GET(request: NextRequest) {
   const requestedHandle = request.nextUrl.searchParams.get("handle");
   if (requestedHandle !== null) {
     const handle = normalizeHandle(requestedHandle);
-    if (!validHandle(handle)) {
+    if (!isValidProfileHandle(handle)) {
       return NextResponse.json({
         handle,
         available: false,
-        reason: "Use 3–24 characters, start with a letter, and only use letters, numbers or underscores.",
+        reason: PROFILE_HANDLE_REQUIREMENTS,
       });
     }
     const { data, error } = await supabase
@@ -601,10 +605,10 @@ export async function POST(request: NextRequest) {
     const changes: Record<string, unknown> = { lastSeenAt: now };
     if (action === "presence" || action === "identity") {
       const handle = normalizeHandle(body.handle);
-      if (!validHandle(handle)) {
+      if (!isValidProfileHandle(handle)) {
         return NextResponse.json({
           code: "INVALID_HANDLE",
-          error: "Your handle must be 3–24 characters, start with a letter, and only use letters, numbers or underscores.",
+          error: PROFILE_HANDLE_REQUIREMENTS,
         }, { status: 400 });
       }
       const { data: duplicateHandle, error: handleError } = await supabase

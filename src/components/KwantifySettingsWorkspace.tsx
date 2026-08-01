@@ -45,6 +45,7 @@ import {
   type PresenceStatus,
 } from "@/lib/friends";
 import { cacheProfileIdentity, readProfileIdentityCache } from "@/lib/profileIdentityCache";
+import { isValidProfileHandle, PROFILE_HANDLE_REQUIREMENTS } from "@/lib/profileHandle";
 
 type SettingsTab =
   | "Identity"
@@ -67,10 +68,6 @@ type HandleCheckState = {
 
 function normalizeProfileHandle(value: string) {
   return value.trim().replace(/^@+/, "").toLowerCase();
-}
-
-function isValidProfileHandle(value: string) {
-  return /^[a-z][a-z0-9_]{2,23}$/.test(value);
 }
 
 const navSections: { title: string; items: SettingsTab[] }[] = [
@@ -419,7 +416,7 @@ export default function SettingsPage() {
     if (!isValidProfileHandle(handle)) {
       setHandleCheck({
         state: "invalid",
-        message: "Use 3–24 characters, start with a letter, and only use letters, numbers or underscores.",
+        message: PROFILE_HANDLE_REQUIREMENTS,
       });
       return;
     }
@@ -496,7 +493,7 @@ export default function SettingsPage() {
       const handle = normalizeProfileHandle(profileUsername || fallbackHandle);
       if (displayName.length < 2) throw new Error("Enter a trader name with at least 2 characters.");
       if (!isValidProfileHandle(handle)) {
-        throw new Error("Your handle must be 3–24 characters, start with a letter, and only use letters, numbers or underscores.");
+        throw new Error(PROFILE_HANDLE_REQUIREMENTS);
       }
       if (handle !== savedHandle && handleCheck.state !== "available") {
         throw new Error(handleCheck.message || "Wait for the handle availability check to finish.");

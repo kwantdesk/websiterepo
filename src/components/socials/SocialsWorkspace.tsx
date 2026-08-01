@@ -61,6 +61,7 @@ import ReasoningOutcomeChart from "@/components/socials/ReasoningOutcomeChart";
 import DeskWorkspace from "@/components/socials/DeskWorkspace";
 import UserAvatar from "@/components/socials/UserAvatar";
 import { cacheProfileIdentity } from "@/lib/profileIdentityCache";
+import { isValidProfileHandle, PROFILE_HANDLE_REQUIREMENTS } from "@/lib/profileHandle";
 import {
   buildDefaultProfile,
   buildAutomaticGameplanReceipt,
@@ -1864,9 +1865,9 @@ export default function SocialsWorkspace({
       handle: profileDraft.handle.trim().toLowerCase().replace(/[^a-z0-9_]/g, "").slice(0, 24) || "trader",
       markets: [...new Set(profileDraft.markets.map((market) => market.trim().toUpperCase()).filter(Boolean))].slice(0, 8),
     }, resolvedLabel);
-    if (!/^[a-z][a-z0-9_]{2,23}$/.test(profile.handle)) {
+    if (!isValidProfileHandle(profile.handle)) {
       setProfileSaveState("error");
-      setNotice("Your handle must be 3–24 characters, start with a letter, and only use letters, numbers or underscores.");
+      setNotice(PROFILE_HANDLE_REQUIREMENTS);
       return;
     }
     setProfileSaveState("saving");

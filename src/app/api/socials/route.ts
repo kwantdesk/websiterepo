@@ -16,6 +16,7 @@ import {
 } from "@/lib/socials";
 import { SOCIAL_RECORD_RULES } from "@/lib/socialRecordConfig";
 import { normalizeZyonTradingAccount } from "@/lib/zyon";
+import { isValidProfileHandle, PROFILE_HANDLE_REQUIREMENTS } from "@/lib/profileHandle";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -261,8 +262,8 @@ export async function POST(request: NextRequest) {
     profile.activeSince = actor.createdAt && Number.isFinite(Date.parse(actor.createdAt))
       ? new Date(actor.createdAt).toISOString()
       : profile.activeSince;
-    if (!/^[a-z][a-z0-9_]{2,23}$/.test(profile.handle)) {
-      return NextResponse.json({ error: "Use a valid 3–24 character profile handle." }, { status: 400 });
+    if (!isValidProfileHandle(profile.handle)) {
+      return NextResponse.json({ error: PROFILE_HANDLE_REQUIREMENTS }, { status: 400 });
     }
     if (profile.callingCardCode && profile.callingCardCode !== "origin-signal") {
       const { data: ownedCard } = await supabase
