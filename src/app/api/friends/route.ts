@@ -665,6 +665,16 @@ export async function POST(request: NextRequest) {
         error: action === "status" ? "Your presence could not be saved." : "Your identity could not be saved.",
       }, { status: 502 });
     }
+    if (action === "status") {
+      return NextResponse.json({
+        ok: true,
+        viewer: {
+          presenceStatus: normalizePresenceStatus(body.presenceStatus),
+          presenceMessage: cleanText(body.presenceMessage, 80),
+          lastSeenAt: now,
+        },
+      });
+    }
     if ((action === "presence" || action === "identity") && actor.mode === "supabase") {
       const displayName = cleanText(body.displayName, 60) || authorLabel(actor);
       const handle = normalizeHandle(body.handle);

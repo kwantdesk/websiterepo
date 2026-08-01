@@ -3,7 +3,7 @@
 import KwantSelect from "@/components/ui/KwantSelect";
 import TimeZoneSelect from "@/components/ui/TimeZoneSelect";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import AppSidebar from "@/components/AppSidebar";
 import UserAvatar from "@/components/socials/UserAvatar";
@@ -266,7 +266,17 @@ export default function SettingsPage() {
   const [presenceMessage, setPresenceMessage] = useState("");
   const [presenceLoading, setPresenceLoading] = useState(true);
   const [presenceSaving, setPresenceSaving] = useState(false);
+  const [presenceSyncing, setPresenceSyncing] = useState(false);
   const [presenceNotice, setPresenceNotice] = useState("");
+  const confirmedPresenceRef = useRef<PresenceStatus>("online");
+  const presenceRevisionRef = useRef(0);
+  const presenceWorkerRef = useRef(false);
+  const pendingPresenceRef = useRef<{
+    status: PresenceStatus;
+    message: string;
+    revision: number;
+    previousConfirmedStatus: PresenceStatus;
+  } | null>(null);
   const [savedHandle, setSavedHandle] = useState("");
   const [handleCheck, setHandleCheck] = useState<HandleCheckState>({ state: "idle", message: "" });
   const [preferenceUserId, setPreferenceUserId] = useState("");
@@ -348,6 +358,7 @@ export default function SettingsPage() {
       setProfileAvatarUrl(cachedIdentity?.avatarUrl || authAvatarUrl);
       setPresenceLoading(false);
 
+      const profileLoadPresenceRevision = presenceRevisionRef.current;
       void (async () => {
         try {
           const friendsResponse = await fetch("/api/friends", { cache: "no-store" });
@@ -356,7 +367,10 @@ export default function SettingsPage() {
           if (!active || !friendsPayload.viewer) return;
           const storedName = friendsPayload.viewer.displayName || authDisplayName;
           const storedHandle = normalizeProfileHandle(friendsPayload.viewer.handle || authHandle);
-          setPresenceStatus(friendsPayload.viewer.presenceStatus);
+          if (presenceRevisionRef.current === profileLoadPresenceRevision) {
+            confirmedPresenceRef.current = friendsPayload.viewer.presenceStatus;
+            setPresenceStatus(friendsPayload.viewer.presenceStatus);
+          }
           setPresenceMessage(friendsPayload.viewer.presenceMessage);
           setProfileAvatarUrl(friendsPayload.viewer.avatarUrl || authAvatarUrl);
           setProfileName(storedName);
@@ -515,7 +529,8 @@ export default function SettingsPage() {
       setProfileName(savedViewer?.displayName || displayName);
       setProfileUsername(savedViewer?.handle || handle);
       setSavedHandle(savedViewer?.handle || handle);
-      setPresenceStatus(savedViewer?.presenceStatus || nextStatus);
+      confirmedPresenceRef.current = savedViewer?.presenceStatus || nextStatus;
+      setPresenceStatus(confirmedPresenceRef.current);
       setPresenceMessage(savedViewer?.presenceMessage ?? presenceMessage);
       setHandleCheck({ state: "available", message: "This is your current handle." });
       window.dispatchEvent(new CustomEvent("kwantdesk:identity-updated", {
@@ -530,32 +545,69 @@ export default function SettingsPage() {
     }
   }
 
-  async function savePresence(nextStatus: PresenceStatus) {
-    const previousStatus = presenceStatus;
+  function savePresence(nextStatus: PresenceStatus) {
+    if (nextStatus === presenceStatus) return;
+    const requestRevision = ++presenceRevisionRef.current;
     setPresenceStatus(nextStatus);
-    setPresenceSaving(true);
-    setPresenceNotice("");
+    setPresenceSyncing(true);
+    setPresenceNotice(`${presenceOption(nextStatus).label} selected · syncing…`);
+    window.dispatchEvent(new CustomEvent("kwantdesk:presence-updated", {
+      detail: { presenceStatus: nextStatus },
+    }));
+    pendingPresenceRef.current = {
+      status: nextStatus,
+      message: presenceMessage,
+      revision: requestRevision,
+      previousConfirmedStatus: confirmedPresenceRef.current,
+    };
+    void flushPresenceQueue();
+  }
+
+  async function flushPresenceQueue() {
+    if (presenceWorkerRef.current) return;
+    presenceWorkerRef.current = true;
     try {
-      const response = await fetch("/api/friends", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "status",
-          presenceStatus: nextStatus,
-          presenceMessage,
-        }),
-      });
-      const result = await response.json() as FriendsPayload & { error?: string };
-      if (!response.ok) throw new Error(result.error || "Presence could not be saved.");
-      setPresenceStatus(result.viewer?.presenceStatus || nextStatus);
-      setPresenceMessage(result.viewer?.presenceMessage ?? presenceMessage);
-      setPresenceNotice(`${presenceOption(nextStatus).label} status saved.`);
-      window.setTimeout(() => setPresenceNotice(""), 2_600);
-    } catch (reason) {
-      setPresenceStatus(previousStatus);
-      setPresenceNotice(reason instanceof Error ? reason.message : "Presence could not be saved.");
+      while (pendingPresenceRef.current) {
+        const request = pendingPresenceRef.current;
+        pendingPresenceRef.current = null;
+        try {
+          const response = await fetch("/api/friends", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              action: "status",
+              presenceStatus: request.status,
+              presenceMessage: request.message,
+            }),
+          });
+          const result = await response.json() as {
+            error?: string;
+            viewer?: { presenceStatus?: PresenceStatus; presenceMessage?: string };
+          };
+          if (!response.ok) throw new Error(result.error || "Presence could not be saved.");
+          const savedStatus = result.viewer?.presenceStatus || request.status;
+          confirmedPresenceRef.current = savedStatus;
+          if (request.revision !== presenceRevisionRef.current) continue;
+          setPresenceStatus(savedStatus);
+          setPresenceMessage(result.viewer?.presenceMessage ?? request.message);
+          setPresenceNotice(`${presenceOption(savedStatus).label} status saved.`);
+          window.dispatchEvent(new CustomEvent("kwantdesk:presence-updated", {
+            detail: { presenceStatus: savedStatus },
+          }));
+          window.setTimeout(() => setPresenceNotice(""), 2_600);
+        } catch (reason) {
+          if (request.revision !== presenceRevisionRef.current || pendingPresenceRef.current) continue;
+          setPresenceStatus(request.previousConfirmedStatus);
+          window.dispatchEvent(new CustomEvent("kwantdesk:presence-updated", {
+            detail: { presenceStatus: request.previousConfirmedStatus },
+          }));
+          setPresenceNotice(reason instanceof Error ? reason.message : "Presence could not be saved.");
+        }
+      }
     } finally {
-      setPresenceSaving(false);
+      presenceWorkerRef.current = false;
+      if (pendingPresenceRef.current) void flushPresenceQueue();
+      else setPresenceSyncing(false);
     }
   }
 
@@ -716,18 +768,21 @@ export default function SettingsPage() {
                 </div>
 
                 <div className="mt-6 border-t border-border pt-5">
-                  <div className={sectionTitle}>Presence</div>
+                  <div className={`${sectionTitle} flex items-center justify-between`}>
+                    <span>Presence</span>
+                    {presenceSyncing ? <span className="flex items-center gap-1.5 normal-case tracking-normal text-primary"><Loader2 className="h-3 w-3 animate-spin" />Syncing</span> : null}
+                  </div>
                   <div className="grid gap-2 sm:grid-cols-2">
                     {PRESENCE_OPTIONS.map((option) => {
                       const active = presenceStatus === option.value;
                       return (
                         <button
                           key={option.value}
-                          disabled={presenceLoading || presenceSaving}
+                          disabled={presenceLoading}
                           onClick={() => {
                             void savePresence(option.value);
                           }}
-                          className={`flex items-center gap-3 rounded-xl border px-3 py-3 text-left transition-colors ${
+                          className={`flex items-center gap-3 rounded-xl border px-3 py-3 text-left transition-all duration-150 active:scale-[0.99] ${
                             active
                               ? "border-primary/40 bg-primary/5"
                               : "border-border bg-surface/40 hover:bg-surface"

@@ -304,6 +304,19 @@ export default function FriendsPanel({ onClose, onUnreadCountChange, initialFrie
   }, [load]);
 
   useEffect(() => {
+    const handlePresenceUpdated = (event: Event) => {
+      const detail = (event as CustomEvent<{ presenceStatus?: PresenceStatus }>).detail;
+      if (!detail?.presenceStatus) return;
+      setPayload((current) => current.viewer ? {
+        ...current,
+        viewer: { ...current.viewer, presenceStatus: detail.presenceStatus as PresenceStatus },
+      } : current);
+    };
+    window.addEventListener("kwantdesk:presence-updated", handlePresenceUpdated);
+    return () => window.removeEventListener("kwantdesk:presence-updated", handlePresenceUpdated);
+  }, []);
+
+  useEffect(() => {
     const supabase = createClient();
     if (!supabase) return;
     let channel = supabase
@@ -427,10 +440,16 @@ export default function FriendsPanel({ onClose, onUnreadCountChange, initialFrie
     setShowPresence(false);
     if (presenceStatus === viewerPresenceStatus && optimisticPresenceStatus === null) return;
     setOptimisticPresenceStatus(presenceStatus);
-    await runAction("status", {
+    const saved = await runAction("status", {
       presenceStatus,
       presenceMessage: payload.viewer?.presenceMessage || "",
     });
+    if (saved) {
+      setPayload((current) => current.viewer ? {
+        ...current,
+        viewer: { ...current.viewer, presenceStatus },
+      } : current);
+    }
     setOptimisticPresenceStatus(null);
   };
 
