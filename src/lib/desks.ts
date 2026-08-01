@@ -135,6 +135,7 @@ export type CreatedDeskPayload = {
 };
 
 export const DESK_CREATED_EVENT = "kwantdesk:desk-created";
+export const DESK_NETWORK_CHANGED_EVENT = "kwantdesk:desk-network-changed";
 
 export function normalizeDeskDeletionConfirmation(value: string) {
   return value

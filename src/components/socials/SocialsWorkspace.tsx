@@ -109,6 +109,7 @@ import {
 import { loadSocialState, normalizeSocialState, saveSocialState } from "@/lib/socialsStore";
 import {
   DESK_CREATED_EVENT,
+  DESK_NETWORK_CHANGED_EVENT,
   EMPTY_DESK_NETWORK,
   type CreatedDeskPayload,
   type DeskNetworkPayload,
@@ -522,7 +523,7 @@ export default function SocialsWorkspace({
   const [followActionUserId, setFollowActionUserId] = useState("");
   const [rankingScope, setRankingScope] = useState<RankingScope>("desk");
   const [rankingFriends, setRankingFriends] = useState<FriendSummary[]>([]);
-  const [rankingDeskNetwork, setRankingDeskNetwork] = useState<DeskNetworkPayload>(EMPTY_DESK_NETWORK);
+  const [deskNetwork, setDeskNetwork] = useState<DeskNetworkPayload>(EMPTY_DESK_NETWORK);
   const [rankingObjects, setRankingObjects] = useState<SocialObject[]>([]);
   const [rankingDeskId, setRankingDeskId] = useState("");
   const [rankingDirectoryState, setRankingDirectoryState] = useState<"idle" | "loading" | "ready" | "unavailable">("idle");
@@ -782,23 +783,12 @@ export default function SocialsWorkspace({
     };
   }, [loadFollowingUsers, ready]);
 
-  const loadRankingDirectory = useCallback(async (quiet = false) => {
-    if (!quiet) setRankingDirectoryState("loading");
-    let loadedSource = false;
-    try {
-      const response = await fetch("/api/friends", { cache: "no-store" });
-      const result = await response.json() as FriendsPayload & { error?: string };
-      if (!response.ok || !result.cloud) throw new Error(result.error || "Friends could not be loaded.");
-      setRankingFriends(result.friends ?? []);
-      loadedSource = true;
-    } catch {
-      if (!quiet) setRankingFriends([]);
-    }
+  const loadDeskNetwork = useCallback(async (quiet = false) => {
     try {
       const response = await fetch("/api/socials/desks", { cache: "no-store" });
       const result = await response.json() as DeskNetworkPayload & { error?: string };
       if (!response.ok || !result.ready) throw new Error(result.error || "Desks could not be loaded.");
-      setRankingDeskNetwork(result);
+      setDeskNetwork(result);
       const membershipDeskIds = new Set(
         result.members
           .filter((member) => member.userId === resolvedAccountKey)
@@ -813,13 +803,48 @@ export default function SocialsWorkspace({
         : availableDeskIds.includes(savedDeskId)
           ? savedDeskId
           : availableDeskIds[0] ?? "");
-      loadedSource = true;
+      return true;
     } catch {
       if (!quiet) {
-        setRankingDeskNetwork(EMPTY_DESK_NETWORK);
+        setDeskNetwork(EMPTY_DESK_NETWORK);
         setRankingDeskId("");
       }
+      return false;
     }
+  }, [resolvedAccountKey]);
+
+  useEffect(() => {
+    if (!ready) return;
+    void loadDeskNetwork();
+    const refresh = () => void loadDeskNetwork(true);
+    const refreshVisible = () => {
+      if (document.visibilityState === "visible") refresh();
+    };
+    window.addEventListener(DESK_CREATED_EVENT, refresh);
+    window.addEventListener(DESK_NETWORK_CHANGED_EVENT, refresh);
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refreshVisible);
+    return () => {
+      window.removeEventListener(DESK_CREATED_EVENT, refresh);
+      window.removeEventListener(DESK_NETWORK_CHANGED_EVENT, refresh);
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refreshVisible);
+    };
+  }, [loadDeskNetwork, ready]);
+
+  const loadRankingDirectory = useCallback(async (quiet = false) => {
+    if (!quiet) setRankingDirectoryState("loading");
+    let loadedSource = false;
+    try {
+      const response = await fetch("/api/friends", { cache: "no-store" });
+      const result = await response.json() as FriendsPayload & { error?: string };
+      if (!response.ok || !result.cloud) throw new Error(result.error || "Friends could not be loaded.");
+      setRankingFriends(result.friends ?? []);
+      loadedSource = true;
+    } catch {
+      if (!quiet) setRankingFriends([]);
+    }
+    if (await loadDeskNetwork(quiet)) loadedSource = true;
     try {
       const response = await fetch("/api/socials?types=profile,precord,receipt,comment,progress", { cache: "no-store" });
       const result = await response.json() as { objects?: SocialObject[]; cloud?: boolean; error?: string };
@@ -830,7 +855,7 @@ export default function SocialsWorkspace({
       if (!quiet) setRankingObjects([]);
     }
     setRankingDirectoryState(loadedSource ? "ready" : "unavailable");
-  }, [resolvedAccountKey]);
+  }, [loadDeskNetwork]);
 
   useEffect(() => {
     if (!ready || tab !== "rankings") return;
@@ -930,6 +955,14 @@ export default function SocialsWorkspace({
   const currentDeskIds = new Set(currentMemberships.map((object) => object.deskId).filter(Boolean));
   const myDesks = desks.filter((object) => currentDeskIds.has(object.id) || object.userId === resolvedAccountKey);
   const availableDesks = desks.filter((object) => !currentDeskIds.has(object.id) && object.userId !== resolvedAccountKey);
+  const liveDeskMembershipIds = new Set(
+    deskNetwork.members
+      .filter((member) => member.userId === resolvedAccountKey)
+      .map((member) => member.deskId),
+  );
+  const myLiveDesks = deskNetwork.workspaces.filter((workspace) =>
+    !workspace.archivedAt
+    && (workspace.ownerId === resolvedAccountKey || liveDeskMembershipIds.has(workspace.deskId)));
   const todayConsensus = consensus.find((object) =>
     object.userId === resolvedAccountKey
     && typedPayload<SocialConsensusPayload>(object)?.sessionDate === todayKey());
@@ -1315,14 +1348,14 @@ export default function SocialsWorkspace({
 
   const rankingDeskOptions = useMemo(() => {
     const memberDeskIds = new Set(
-      rankingDeskNetwork.members
+      deskNetwork.members
         .filter((member) => member.userId === resolvedAccountKey)
         .map((member) => member.deskId),
     );
-    return rankingDeskNetwork.workspaces.filter((workspace) =>
+    return deskNetwork.workspaces.filter((workspace) =>
       !workspace.archivedAt
       && (workspace.ownerId === resolvedAccountKey || memberDeskIds.has(workspace.deskId)));
-  }, [rankingDeskNetwork.members, rankingDeskNetwork.workspaces, resolvedAccountKey]);
+  }, [deskNetwork.members, deskNetwork.workspaces, resolvedAccountKey]);
   const rankingSourceObjects = useMemo(() => {
     const byObjectId = new Map<string, SocialObject>();
     for (const object of [...rankingObjects, ...state.objects]) {
@@ -1352,7 +1385,7 @@ export default function SocialsWorkspace({
         lastActivityDate: friend.lastActivityDate,
       }, friend.displayName));
     }
-    for (const memberProfile of rankingDeskNetwork.profiles) {
+    for (const memberProfile of deskNetwork.profiles) {
       if (byUserId.has(memberProfile.userId)) continue;
       byUserId.set(memberProfile.userId, normalizeSocialProfile({
         ...buildDefaultProfile(memberProfile.displayName),
@@ -1367,7 +1400,7 @@ export default function SocialsWorkspace({
       }, memberProfile.displayName));
     }
     return [...byUserId.entries()].map(([userId, profile]) => ({ userId, profile }));
-  }, [rankingDeskNetwork.profiles, rankingFriends, rankingSourceObjects]);
+  }, [deskNetwork.profiles, rankingFriends, rankingSourceObjects]);
   const allSeasonRankings = useMemo(() => rankingProfiles
     .map(({ userId, profile }) => ({
       userId,
@@ -1383,16 +1416,16 @@ export default function SocialsWorkspace({
     if (rankingScope === "desk") {
       if (!rankingDeskId) return [];
       const memberIds = new Set(
-        rankingDeskNetwork.members
+        deskNetwork.members
           .filter((member) => member.deskId === rankingDeskId)
           .map((member) => member.userId),
       );
-      const desk = rankingDeskNetwork.workspaces.find((workspace) => workspace.deskId === rankingDeskId);
+      const desk = deskNetwork.workspaces.find((workspace) => workspace.deskId === rankingDeskId);
       if (desk?.ownerId) memberIds.add(desk.ownerId);
       return allSeasonRankings.filter((entry) => memberIds.has(entry.userId));
     }
     return allSeasonRankings;
-  }, [allSeasonRankings, rankingDeskId, rankingDeskNetwork.members, rankingDeskNetwork.workspaces, rankingFriends, rankingScope]);
+  }, [allSeasonRankings, deskNetwork.members, deskNetwork.workspaces, rankingDeskId, rankingFriends, rankingScope]);
   const rankingSeason = useMemo(() => processReputationSeason(), []);
 
   const notificationItems = useMemo(() => {
@@ -1410,9 +1443,9 @@ export default function SocialsWorkspace({
         title: `${comment.authorLabel} reviewed your record`,
         detail: typedPayload<SocialCommentPayload>(comment)?.body ?? "",
       })),
-      ...(myDesks.length ? [{ id: "desk-mission", title: "Your Desk mission is active", detail: "One completed review moves the shared standard forward." }] : []),
+      ...(myLiveDesks.length ? [{ id: "desk-mission", title: "Your Desk mission is active", detail: "One completed review moves the shared standard forward." }] : []),
     ];
-  }, [comments, myDesks.length, precords, receipts, resolvedAccountKey]);
+  }, [comments, myLiveDesks.length, precords, receipts, resolvedAccountKey]);
 
   const saveProgressPatch = async (patch: Partial<SocialProgressPayload>) => {
     const currentProgress = typedPayload<SocialProgressPayload>(state.objects.find((object) =>
@@ -2997,13 +3030,12 @@ export default function SocialsWorkspace({
                 </div>
               </Card>
               <Card className="overflow-hidden">
-                <div className="flex items-center gap-2 border-b border-border px-4 py-3"><UsersRound className="h-4 w-4 text-primary" /><h3 className="text-[10px] font-semibold">Live on your Desk</h3><span className="ml-auto text-[7px] text-muted">{currentMemberships.length ? `${currentMemberships.length} memberships` : "No Desk yet"}</span></div>
+                <div className="flex items-center gap-2 border-b border-border px-4 py-3"><UsersRound className="h-4 w-4 text-primary" /><h3 className="text-[10px] font-semibold">Live on your Desk</h3><span className="ml-auto text-[7px] text-muted">{myLiveDesks.length ? `${myLiveDesks.length} active Desk${myLiveDesks.length === 1 ? "" : "s"}` : deskNetwork.ready ? "No active Desk" : "Syncing Desks"}</span></div>
                 <div className="p-3">
-                  {myDesks.length ? myDesks.slice(0, 2).map((desk) => {
-                    const payload = typedPayload<SocialDeskPayload>(desk);
-                    const deskMembers = memberships.filter((member) => member.deskId === desk.id);
-                    return <button key={objectKey(desk)} type="button" onClick={() => setTab("desks")} className="mb-2 flex w-full items-center gap-3 rounded-xl border border-border bg-surface/35 p-3 text-left hover:border-primary/25"><span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary"><Network className="h-4 w-4" /></span><span className="min-w-0 flex-1"><span className="block truncate text-[9px] font-semibold">{payload?.name}</span><span className="mt-1 block truncate text-[7px] text-muted">{payload?.objective}</span></span><span className="font-mono text-[8px] text-primary">{deskMembers.length}/{payload?.capacity ?? 12}</span></button>;
-                  }) : <div className="rounded-xl border border-dashed border-border p-5 text-center"><div className="text-[9px] font-semibold">Find the people who trade your hours.</div><div className="mt-1 text-[7px] leading-4 text-muted">Desks are intentionally small: compatible markets, session, timezone, and improvement objective.</div><button type="button" onClick={() => setShowDeskModal(true)} className="mt-3 rounded-lg border border-primary/25 bg-primary/[0.07] px-3 py-2 text-[8px] font-semibold text-primary">Create a Desk</button></div>}
+                  {myLiveDesks.length ? myLiveDesks.slice(0, 2).map((desk) => {
+                    const memberCount = new Set(deskNetwork.members.filter((member) => member.deskId === desk.deskId).map((member) => member.userId)).size;
+                    return <button key={desk.deskId} type="button" onClick={() => setTab("desks")} className="mb-2 flex w-full items-center gap-3 rounded-xl border border-border bg-surface/35 p-3 text-left hover:border-primary/25"><span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary"><Network className="h-4 w-4" /></span><span className="min-w-0 flex-1"><span className="block truncate text-[9px] font-semibold">{desk.name}</span><span className="mt-1 block truncate text-[7px] text-muted">{desk.objective}</span></span><span className="font-mono text-[8px] text-primary">{memberCount}/{desk.capacity}</span></button>;
+                  }) : deskNetwork.ready ? <div className="rounded-xl border border-dashed border-border p-5 text-center"><div className="text-[9px] font-semibold">Find the people who trade your hours.</div><div className="mt-1 text-[7px] leading-4 text-muted">Desks are intentionally small: compatible markets, session, timezone, and improvement objective.</div><button type="button" onClick={() => setShowDeskModal(true)} className="mt-3 rounded-lg border border-primary/25 bg-primary/[0.07] px-3 py-2 text-[8px] font-semibold text-primary">Create a Desk</button></div> : <div className="rounded-xl border border-border bg-surface/30 p-5 text-center text-[8px] text-muted">Connecting your active Desks...</div>}
                 </div>
               </Card>
               <Card className="overflow-hidden">

@@ -51,6 +51,7 @@ import {
 } from "@/lib/clientImageProcessing";
 import {
   DESK_CREATED_EVENT,
+  DESK_NETWORK_CHANGED_EVENT,
   EMPTY_DESK_NETWORK,
   normalizeDeskDeletionConfirmation,
   type CreatedDeskPayload,
@@ -1146,6 +1147,7 @@ export default function DeskWorkspace({
       if (!response.ok) throw new Error(payload.error || "That Desk action could not be completed.");
       if (success) onNotice(success);
       await loadNetwork(true, selectedDeskRef.current || body.deskId as string | undefined);
+      window.dispatchEvent(new CustomEvent(DESK_NETWORK_CHANGED_EVENT));
       return true;
     } catch (reason) {
       onNotice(reason instanceof Error ? reason.message : "That Desk action could not be completed.");
@@ -1254,6 +1256,7 @@ export default function DeskWorkspace({
         }));
       }
       onNotice(`${workspace.name} was archived.`);
+      window.dispatchEvent(new CustomEvent(DESK_NETWORK_CHANGED_EVENT));
     } catch (reason) {
       suppressRefreshUntilRef.current = Date.now() + 1_000;
       setNetwork((current) => ({
@@ -1332,6 +1335,7 @@ export default function DeskWorkspace({
       const payload = await response.json() as { error?: string };
       if (!response.ok) throw new Error(payload.error || "That Desk could not be permanently deleted.");
       onNotice(`${workspace.name} was permanently deleted.`);
+      window.dispatchEvent(new CustomEvent(DESK_NETWORK_CHANGED_EVENT));
     } catch (reason) {
       suppressRefreshUntilRef.current = Date.now() + 1_000;
       setNetwork(previousNetwork);
