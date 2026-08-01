@@ -1694,69 +1694,146 @@ function ScenarioRoads({ plan }: { plan: GameplanEdition }) {
   );
 }
 
-function OneTrade({ plan, onGlossary }: { plan: GameplanEdition; onGlossary: (term: string) => void }) {
-  const [side, setSide] = useState<"long" | "short">("long");
-  const selected = side === "long" ? plan.one_trade.long_side : plan.one_trade.short_side;
-  const [checks, setChecks] = useState([false, false, false]);
+function APlusTradeCard({
+  setup,
+  tone,
+  fallbackZone,
+  onGlossary,
+}: {
+  setup: GameplanEdition["one_trade"]["long_side"];
+  tone: "long" | "short";
+  fallbackZone: [number, number];
+  onGlossary: (term: string) => void;
+}) {
+  const long = tone === "long";
+  const zone = Array.isArray(setup.zone) && setup.zone.length === 2
+    ? setup.zone
+    : fallbackZone;
+  const entryReference = Number.isFinite(setup.entry_reference)
+    ? setup.entry_reference
+    : long ? zone[1] : zone[0];
+  const risk = Math.max(0.25, Math.abs(entryReference - setup.stop));
+  const legacyTargets = setup.targets.map((price, index) => ({
+    price,
+    level: `Target ${index + 1}`,
+    reason: "Verified session-ladder target.",
+    risk_reward: Number((Math.abs(price - entryReference) / risk).toFixed(2)),
+    pay_percent: setup.targets.length === 1 ? 100 : index === 0 ? 60 : 40,
+  }));
+  const targets = setup.target_details?.length ? setup.target_details : legacyTargets;
+  const reasoning = setup.reasoning?.length
+    ? setup.reasoning
+    : ["This is the highest-ranked verified location for this side of the current session map."];
+  const bestRiskReward = Number.isFinite(setup.best_risk_reward)
+    ? setup.best_risk_reward
+    : targets.reduce((best, target) => Math.max(best, target.risk_reward), 0);
   return (
-    <Panel className="overflow-hidden border-primary/25 bg-[radial-gradient(circle_at_85%_0%,color-mix(in_srgb,var(--color-primary)_10%,transparent),transparent_38%)]">
-      <SectionHeading
-        icon={Target}
-        eyebrow="The highest-quality location"
-        title="The One Trade"
-        trailing={<span className="rounded-lg border border-primary/20 bg-primary/10 px-2.5 py-1 font-mono text-[10px] font-semibold text-primary">{formatZone(plan.one_trade.zone)}</span>}
-      />
-      <div className="p-4 lg:p-5">
-        <div className="mb-4 inline-flex rounded-xl border border-border bg-surface p-1">
-          {(["long", "short"] as const).map((item) => (
-            <button key={item} type="button" onClick={() => setSide(item)} className={`rounded-lg px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.1em] ${side === item ? item === "long" ? "bg-primary text-background" : "bg-danger text-white" : "text-muted"}`}>
-              {item} side
-            </button>
-          ))}
+    <div className={`overflow-hidden rounded-2xl border bg-card ${long ? "border-primary/25" : "border-danger/25"}`}>
+      <div className={`border-b px-4 py-3 ${long ? "border-primary/20 bg-primary/[0.055]" : "border-danger/20 bg-danger/[0.045]"}`}>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <div className={`text-[8px] font-bold uppercase tracking-[0.16em] ${long ? "text-primary" : "text-danger"}`}>
+              {long ? "Long-side" : "Short-side"} A+ trade of the day
+            </div>
+            <h3 className="mt-1 text-[14px] font-semibold text-foreground">{setup.setup_name || `${setup.level_name || "Highest-ranked level"} ${long ? "defence" : "rejection"}`}</h3>
+            <div className="mt-1 text-[8px] text-muted">Highest-ranked {long ? "support" : "resistance"} location &middot; live confirmation required</div>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className={`rounded-lg border px-2 py-1 font-mono text-[10px] font-bold ${long ? "border-primary/25 bg-primary/10 text-primary" : "border-danger/25 bg-danger/10 text-danger"}`}>
+              {setup.quality_grade || "A+"} &middot; {setup.quality_score ?? "Pending"}{Number.isFinite(setup.quality_score) ? "/100" : ""}
+            </span>
+            <span className="rounded-lg border border-border bg-background/45 px-2 py-1 font-mono text-[10px] text-foreground">{formatZone(zone)}</span>
+          </div>
         </div>
-        <div className="grid gap-3 xl:grid-cols-[1.35fr_.65fr]">
-          <div className="rounded-xl border border-border bg-card p-4">
-            <Eyebrow>The permission</Eyebrow>
-            <p className="mt-2 text-[12px] leading-5 text-foreground">{selected.permission}</p>
-            <p className="mt-3 text-[10px] leading-4 text-muted">
-              Divergence = get ready. Only the <TermButton term="print" onClick={() => onGlossary("Print")} /> = go.
-            </p>
-            <div className="mt-4 space-y-2">
-              {["At the planned level?", "Aggression failing to make progress?", "Counter-side takes control and leaves?"].map((label, index) => (
-                <button
-                  key={label}
-                  type="button"
-                  onClick={() => setChecks((current) => current.map((value, checkIndex) => checkIndex === index ? !value : value))}
-                  className="flex w-full items-center gap-2.5 rounded-lg border border-border bg-surface/60 px-3 py-2 text-left text-[10px] text-muted hover:text-foreground"
-                >
-                  <span className={`flex h-4 w-4 items-center justify-center rounded border ${checks[index] ? "border-primary bg-primary text-background" : "border-muted/50"}`}>
-                    {checks[index] ? <Check className="h-3 w-3" /> : null}
-                  </span>
-                  {label}
-                </button>
+      </div>
+      <div className="grid gap-3 p-4 xl:grid-cols-[1.12fr_.88fr]">
+        <div className="space-y-3">
+          <div className="rounded-xl border border-border bg-background/30 p-3.5">
+            <Eyebrow>Why this location earns A+ consideration</Eyebrow>
+            <div className="mt-2.5 space-y-2">
+              {reasoning.map((reason, index) => (
+                <div key={`${index}:${reason}`} className="flex items-start gap-2 text-[9px] leading-4 text-muted">
+                  <span className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${long ? "bg-primary" : "bg-danger"}`} />
+                  <span>{reason}</span>
+                </div>
               ))}
             </div>
           </div>
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
-            <div className="rounded-xl border border-border bg-card p-4">
-              <Eyebrow>Idea is wrong below / above</Eyebrow>
-              <div className="mt-2 font-mono text-[17px] font-semibold text-danger">{formatPrice(selected.stop)}</div>
-              <p className="mt-1 text-[9px] text-muted">The stop belongs where the thesis is invalid, not where the loss feels comfortable.</p>
-            </div>
-            <div className="rounded-xl border border-border bg-card p-4">
-              <Eyebrow>Pay yourself at the levels</Eyebrow>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {selected.targets.map((target, index) => (
-                  <span key={target} className="rounded-lg border border-primary/20 bg-primary/10 px-2.5 py-1.5 font-mono text-[11px] font-semibold text-primary">T{index + 1} {formatPrice(target)}</span>
-                ))}
-              </div>
-            </div>
+          <div className={`rounded-xl border p-3.5 ${long ? "border-primary/20 bg-primary/[0.035]" : "border-danger/20 bg-danger/[0.03]"}`}>
+            <Eyebrow>Options-flow alignment</Eyebrow>
+            <p className="mt-2 text-[9px] leading-4 text-foreground/90">{setup.options_alignment || "Wait for classified options flow to confirm or stop opposing the planned direction."}</p>
+          </div>
+          <div className="rounded-xl border border-border bg-background/30 p-3.5">
+            <Eyebrow>Permission to execute</Eyebrow>
+            <p className="mt-2 text-[10px] leading-5 text-foreground">{setup.permission}</p>
+            <p className="mt-2 text-[9px] text-muted">Location creates interest. Only the <TermButton term="print" onClick={() => onGlossary("Print")} /> creates permission.</p>
           </div>
         </div>
-        <div className="mt-3 flex items-start gap-2 rounded-xl border border-danger/20 bg-danger/[0.055] px-4 py-3">
-          <X className="mt-0.5 h-4 w-4 shrink-0 text-danger" />
-          <p className="text-[10px] leading-5 text-muted"><strong className="mr-1 text-danger">NOT A TRADE:</strong>{plan.one_trade.not_a_trade_if}</p>
+
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-2">
+            <div className="rounded-xl border border-border bg-background/30 p-3">
+              <Eyebrow>Entry reference</Eyebrow>
+              <div className="mt-2 font-mono text-[15px] font-semibold text-foreground">{formatPrice(entryReference)}</div>
+            </div>
+            <div className="rounded-xl border border-danger/20 bg-danger/[0.045] p-3">
+              <Eyebrow>Thesis stop</Eyebrow>
+              <div className="mt-2 font-mono text-[15px] font-semibold text-danger">{formatPrice(setup.stop)}</div>
+            </div>
+          </div>
+          <div className="rounded-xl border border-border bg-background/30 p-3.5">
+            <div className="flex items-center justify-between gap-2">
+              <Eyebrow>Pay yourself at verified levels</Eyebrow>
+              <span className={`rounded-md px-1.5 py-0.5 font-mono text-[8px] ${long ? "bg-primary/10 text-primary" : "bg-danger/10 text-danger"}`}>
+                Best R:R 1:{bestRiskReward.toFixed(2)}
+              </span>
+            </div>
+            <div className="mt-2.5 space-y-2">
+              {targets.length ? targets.map((target, index) => (
+                <div key={`${target.price}:${target.level}`} className="rounded-lg border border-border bg-surface/45 p-2.5">
+                  <div className="flex items-center gap-2">
+                    <span className={`rounded px-1.5 py-0.5 font-mono text-[8px] font-bold ${long ? "bg-primary/10 text-primary" : "bg-danger/10 text-danger"}`}>T{index + 1}</span>
+                    <span className="min-w-0 flex-1 truncate text-[9px] font-semibold text-foreground">{target.level}</span>
+                    <span className="font-mono text-[10px] font-semibold text-foreground">{formatPrice(target.price)}</span>
+                  </div>
+                  <div className="mt-1.5 flex items-center gap-2 text-[7px] text-muted">
+                    <span>Pay {target.pay_percent}%</span>
+                    <span>&middot;</span>
+                    <span>R:R 1:{target.risk_reward.toFixed(2)}</span>
+                  </div>
+                  <p className="mt-1 text-[8px] leading-3 text-muted">{target.reason}</p>
+                </div>
+              )) : (
+                <p className="rounded-lg border border-dashed border-border p-3 text-center text-[8px] text-muted">No verified target exists beyond this location yet.</p>
+              )}
+            </div>
+          </div>
+          <div className="rounded-xl border border-danger/20 bg-danger/[0.045] p-3.5">
+            <Eyebrow>Invalidation</Eyebrow>
+            <p className="mt-2 text-[9px] leading-4 text-muted">{setup.invalidation || `The thesis is invalid beyond ${formatPrice(setup.stop)} or when live options flow materially opposes the setup.`}</p>
+          </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function APlusTrades({ plan, onGlossary }: { plan: GameplanEdition; onGlossary: (term: string) => void }) {
+  return (
+    <Panel className="overflow-hidden border-primary/20 bg-[radial-gradient(circle_at_50%_0%,color-mix(in_srgb,var(--color-primary)_8%,transparent),transparent_36%)]">
+      <SectionHeading
+        icon={Target}
+        eyebrow="The day's highest-ranked asymmetric locations"
+        title="A+ Long & Short Trades of the Day"
+        trailing={<span className="hidden text-[8px] text-muted lg:block">Structure + options flow + confirmation + target R:R</span>}
+      />
+      <div className="grid gap-3 p-3 lg:grid-cols-2 lg:p-4">
+        <APlusTradeCard setup={plan.one_trade.long_side} tone="long" fallbackZone={plan.one_trade.zone} onGlossary={onGlossary} />
+        <APlusTradeCard setup={plan.one_trade.short_side} tone="short" fallbackZone={plan.one_trade.zone} onGlossary={onGlossary} />
+      </div>
+      <div className="mx-3 mb-3 flex items-start gap-2 rounded-xl border border-danger/20 bg-danger/[0.045] px-4 py-3 lg:mx-4 lg:mb-4">
+        <X className="mt-0.5 h-4 w-4 shrink-0 text-danger" />
+        <p className="text-[9px] leading-4 text-muted"><strong className="mr-1 text-danger">STAND DOWN:</strong>{plan.one_trade.not_a_trade_if}</p>
       </div>
     </Panel>
   );
@@ -2350,10 +2427,8 @@ function GameplanLiveWorkspace({ initialInstrument = "NQ" }: { initialInstrument
           </div>
 
           <div className="mb-3"><ScenarioRoads plan={plan} /></div>
-          <div className="mb-3 grid gap-3 xl:grid-cols-[minmax(0,1.35fr)_minmax(340px,.65fr)]">
-            <OneTrade plan={plan} onGlossary={setGlossaryTerm} />
-            <Receipts plan={plan} />
-          </div>
+          <div className="mb-3"><APlusTrades plan={plan} onGlossary={setGlossaryTerm} /></div>
+          <div className="mb-3"><Receipts plan={plan} /></div>
 
           <Panel className="mb-3 overflow-hidden">
             <div className="flex flex-wrap items-center gap-3 p-3 lg:px-4">

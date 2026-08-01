@@ -13,6 +13,33 @@ export type GameplanTapeState = "calm" | "snowball" | "mixed";
 export type GameplanRole = "magnet" | "wall" | "accelerant" | "decision";
 export type GameplanSource = "positioning" | "dated" | "tape-memory" | "em-math";
 
+export type GameplanAPlusTarget = {
+  price: number;
+  level: string;
+  reason: string;
+  risk_reward: number;
+  pay_percent: number;
+};
+
+export type GameplanAPlusSetup = {
+  side: "LONG" | "SHORT";
+  quality_score: number;
+  quality_grade: "A+" | "A" | "B+" | "WAIT";
+  setup_name: string;
+  zone: [number, number];
+  level_name: string;
+  level_role: GameplanRole;
+  permission: string;
+  options_alignment: string;
+  reasoning: string[];
+  entry_reference: number;
+  stop: number;
+  targets: number[];
+  target_details: GameplanAPlusTarget[];
+  best_risk_reward: number;
+  invalidation: string;
+};
+
 export function isGameplanSession(value: unknown): value is GameplanSession {
   return typeof value === "string" && GAMEPLAN_SESSIONS.some((session) => session.id === value);
 }
@@ -65,8 +92,8 @@ export type GameplanEdition = {
   }>;
   one_trade: {
     zone: [number, number];
-    long_side: { permission: string; stop: number; targets: number[] };
-    short_side: { permission: string; stop: number; targets: number[] };
+    long_side: GameplanAPlusSetup;
+    short_side: GameplanAPlusSetup;
     not_a_trade_if: string;
   };
   receipts: {
@@ -213,6 +240,176 @@ function nearestLevels(levels: GameplanEdition["ladder"], current: number | null
   return { below, hinge, above };
 }
 
+function aPlusSetupForSide(
+  side: "LONG" | "SHORT",
+  ladder: GameplanEdition["ladder"],
+  current: number | null,
+  flowLean: number,
+  tape: GameplanTapeState,
+  root: "NQ" | "ES",
+): GameplanAPlusSetup {
+  const direction = side === "LONG" ? 1 : -1;
+  const middleLevel = ladder[Math.floor(ladder.length / 2)];
+  const referencePrice = current
+    ?? (middleLevel ? (middleLevel.zone[0] + middleLevel.zone[1]) / 2 : 0);
+  const directional = ladder.filter((level) => {
+    const midpoint = (level.zone[0] + level.zone[1]) / 2;
+    return side === "LONG" ? midpoint <= referencePrice : midpoint >= referencePrice;
+  });
+  const candidates = directional;
+  const stopBuffer = root === "NQ" ? 12 : 3;
+
+  const ranked = candidates.map((level) => {
+    const midpoint = (level.zone[0] + level.zone[1]) / 2;
+    const entryReference = side === "LONG" ? level.zone[1] : level.zone[0];
+    const stop = roundToTick(
+      side === "LONG" ? level.zone[0] - stopBuffer : level.zone[1] + stopBuffer,
+      root,
+    );
+    const risk = Math.max(0.25, Math.abs(entryReference - stop));
+    const targetLevels = ladder
+      .filter((candidate) => {
+        const targetPrice = side === "LONG" ? candidate.zone[0] : candidate.zone[1];
+        return side === "LONG" ? targetPrice > entryReference : targetPrice < entryReference;
+      })
+      .sort((left, right) => {
+        const leftPrice = side === "LONG" ? left.zone[0] : left.zone[1];
+        const rightPrice = side === "LONG" ? right.zone[0] : right.zone[1];
+        return side === "LONG" ? leftPrice - rightPrice : rightPrice - leftPrice;
+      })
+      .filter((candidate, index, rows) => {
+        const price = side === "LONG" ? candidate.zone[0] : candidate.zone[1];
+        return index === rows.findIndex((row) =>
+          (side === "LONG" ? row.zone[0] : row.zone[1]) === price);
+      })
+      .slice(0, 3);
+    const paySplits = targetLevels.length >= 3
+      ? [40, 35, 25]
+      : targetLevels.length === 2 ? [60, 40] : [100];
+    const targetDetails = targetLevels.map((target, index): GameplanAPlusTarget => {
+      const price = side === "LONG" ? target.zone[0] : target.zone[1];
+      return {
+        price,
+        level: target.name,
+        reason: `Pay into ${target.name}; it is the next verified ${target.role} on the options-derived session ladder.`,
+        risk_reward: Number((Math.abs(price - entryReference) / risk).toFixed(2)),
+        pay_percent: paySplits[index] ?? 0,
+      };
+    });
+    const bestRiskReward = targetDetails.reduce(
+      (best, target) => Math.max(best, target.risk_reward),
+      0,
+    );
+    const characterAlignment = direction * level.order_character.balance;
+    const flowAlignment = direction * flowLean;
+    const roleScore = level.role === "wall"
+      ? 15
+      : level.role === "decision" ? 12 : level.role === "accelerant" ? 9 : 7;
+    const sourceScore = Math.min(12, level.sources.length * 4);
+    const characterScore = Math.round(Math.max(-5, Math.min(12, characterAlignment * 12)));
+    const flowScore = Math.round(Math.max(-7, Math.min(12, flowAlignment * 12)));
+    const rrScore = Math.min(16, Math.round(bestRiskReward * 4));
+    const correctSideScore = side === "LONG"
+      ? midpoint <= referencePrice ? 8 : 0
+      : midpoint >= referencePrice ? 8 : 0;
+    const distancePenalty = Math.min(
+      18,
+      Math.round(Math.abs(midpoint - referencePrice) / (root === "NQ" ? 40 : 10)),
+    );
+    const qualityScore = Math.max(0, Math.min(100,
+      25
+      + level.strength * 5
+      + roleScore
+      + sourceScore
+      + characterScore
+      + flowScore
+      + rrScore
+      + correctSideScore
+      - distancePenalty,
+    ));
+    return {
+      level,
+      entryReference,
+      stop,
+      targetDetails,
+      bestRiskReward,
+      qualityScore,
+      characterAlignment,
+      flowAlignment,
+    };
+  }).sort((left, right) => right.qualityScore - left.qualityScore);
+
+  const selected = ranked[0];
+  if (!selected) {
+    return {
+      side,
+      quality_score: 0,
+      quality_grade: "WAIT",
+      setup_name: `${side === "LONG" ? "Long" : "Short"} setup awaiting verified levels`,
+      zone: [referencePrice, referencePrice],
+      level_name: "NO VERIFIED LEVEL",
+      level_role: "decision",
+      permission: "No trade until a verified structural level and options-flow context are available.",
+      options_alignment: "Options alignment is unavailable.",
+      reasoning: ["The current edition does not contain enough verified ladder data to manufacture an A+ setup."],
+      entry_reference: referencePrice,
+      stop: referencePrice,
+      targets: [],
+      target_details: [],
+      best_risk_reward: 0,
+      invalidation: "Unavailable until the session ladder reconnects.",
+    };
+  }
+
+  const { level, targetDetails, flowAlignment, characterAlignment } = selected;
+  const flowDescription = Math.abs(flowLean) < 0.15
+    ? "Classified options premium is balanced, so the setup requires stronger price confirmation."
+    : flowAlignment > 0
+      ? `Classified options premium is aligned with the ${side.toLowerCase()} side.`
+      : `Classified options premium currently opposes the ${side.toLowerCase()} side; wait for that pressure to weaken or reverse.`;
+  const tapeDescription = tape === "snowball"
+    ? "Negative-gamma conditions reward displacement and clean continuation; do not anticipate the turn."
+    : tape === "calm"
+      ? "Positive-gamma conditions favour a defended level and rotation toward the next positioning concentration."
+      : "Mixed gamma conditions require acceptance away from the entry zone before treating the reaction as real.";
+  const permission = side === "LONG"
+    ? `Price trades into ${formatLevel(level.zone[0])}-${formatLevel(level.zone[1])}; sell aggression stops making progress, buyers reclaim the upper edge, and price leaves the zone with displacement while options flow confirms or stops opposing the move.`
+    : `Price trades into ${formatLevel(level.zone[0])}-${formatLevel(level.zone[1])}; buy aggression stops making progress, sellers reclaim the lower edge, and price leaves the zone with displacement while options flow confirms or stops opposing the move.`;
+  const invalidation = side === "LONG"
+    ? `The thesis is invalid if price accepts below ${formatLevel(selected.stop)} or bearish options pressure expands through the defence.`
+    : `The thesis is invalid if price accepts above ${formatLevel(selected.stop)} or bullish options pressure expands through the rejection.`;
+
+  return {
+    side,
+    quality_score: selected.qualityScore,
+    quality_grade: selected.qualityScore >= 80 ? "A+" : selected.qualityScore >= 70 ? "A" : "B+",
+    setup_name: `${level.name} ${side === "LONG" ? "defence" : "rejection"}`,
+    zone: level.zone,
+    level_name: level.name,
+    level_role: level.role,
+    permission,
+    options_alignment: flowDescription,
+    reasoning: [
+      level.why,
+      `${level.name} carries ${level.strength}/5 structural strength from ${level.sources.join(" + ")} evidence.`,
+      characterAlignment > 0.2
+        ? `Its order character supports the ${side.toLowerCase()} thesis.`
+        : `Its order character is not fully aligned, so the live reaction must do more of the work.`,
+      flowDescription,
+      tapeDescription,
+      targetDetails.length
+        ? `The furthest verified pay-yourself level offers approximately 1:${selected.bestRiskReward.toFixed(2)} risk-to-reward from the conservative entry reference.`
+        : "No verified pay-yourself level exists beyond this zone yet.",
+    ],
+    entry_reference: selected.entryReference,
+    stop: selected.stop,
+    targets: targetDetails.map((target) => target.price),
+    target_details: targetDetails,
+    best_risk_reward: selected.bestRiskReward,
+    invalidation,
+  };
+}
+
 export function buildGameplanPayload(
   data: OptionsFlowPayload,
   root: "NQ" | "ES",
@@ -252,6 +449,8 @@ export function buildGameplanPayload(
     })
     .filter(([low, high]) => high > low && (high - low) > (root === "NQ" ? 25 : 7))
     .slice(0, 3);
+  const longAPlus = aPlusSetupForSide("LONG", ladder, current, flowLean, tape, root);
+  const shortAPlus = aPlusSetupForSide("SHORT", ladder, current, flowLean, tape, root);
 
   const weights = tape === "snowball" ? [0.28, 0.38, 0.34] : [0.48, 0.27, 0.25];
   const date = data.session.sessionDate;
@@ -319,17 +518,9 @@ export function buildGameplanPayload(
     ],
     one_trade: {
       zone,
-      long_side: {
-        permission: "Selling pushes into the zone but makes no progress; buyers then take control and price leaves the level with real distance.",
-        stop: roundToTick(zone[0] - (root === "NQ" ? 12 : 3), root),
-        targets: (targetUp.length ? targetUp : [above]).slice(0, 2),
-      },
-      short_side: {
-        permission: "Buying pushes into the zone but cannot advance; sellers take control and price leaves the level cleanly to the downside.",
-        stop: roundToTick(zone[1] + (root === "NQ" ? 12 : 3), root),
-        targets: (targetDown.length ? targetDown : [below]).slice(0, 2),
-      },
-      not_a_trade_if: "Price churns through the zone without displacement, the first reaction has already travelled to target, or the live print contradicts the planned direction.",
+      long_side: longAPlus,
+      short_side: shortAPlus,
+      not_a_trade_if: "Neither card is permission by itself. Stand down if price churns through the location, the first reaction has already reached its pay-yourself level, options flow materially opposes the direction, or the required displacement never prints.",
     },
     receipts: {
       date: previousDate.toISOString().slice(0, 10),
