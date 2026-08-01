@@ -67,6 +67,11 @@ function signedDirection(value: number | null, positive: string, negative: strin
   return value > 0 ? positive : negative;
 }
 
+function sentenceCase(value: string) {
+  const normalized = value.trim();
+  return normalized.replace(/[A-Za-z]/, (letter) => letter.toUpperCase());
+}
+
 function regimeExplanation(regime: GammaRegime) {
   if (regime === "POSITIVE") {
     return "Dealer hedging is more likely to lean against price movement. Expect more two-way trade and respect for nearby magnets until price proves acceptance beyond them.";
@@ -197,7 +202,11 @@ function buildMessages(data: OptionsFlowPayload, levels: GammaBotLevel[]): Gamma
     importance: data.environment.volatilityState === "EXPANSION RISK" ? "IMPORTANT" : "STANDARD",
   });
 
-  return messages;
+  return messages.map((message) => ({
+    ...message,
+    headline: sentenceCase(message.headline),
+    body: sentenceCase(message.body),
+  }));
 }
 
 export function buildGammaBotPayload(

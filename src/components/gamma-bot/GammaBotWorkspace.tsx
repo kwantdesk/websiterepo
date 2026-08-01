@@ -78,6 +78,11 @@ function metricTone(value: number | null) {
   return value > 0 ? "text-primary" : "text-danger";
 }
 
+function sentenceCase(value: string) {
+  const normalized = value.trim();
+  return normalized.replace(/[A-Za-z]/, (letter) => letter.toUpperCase());
+}
+
 function FeedCard({ item }: { item: FeedItem }) {
   const categoryIcon = item.category === "LEVEL"
     ? Target
@@ -103,8 +108,8 @@ function FeedCard({ item }: { item: FeedItem }) {
             </div>
             <time className="font-mono text-[10px] text-muted">{timeLabel(item.timestamp)}</time>
           </div>
-          <h3 className="mt-2 text-[14px] font-semibold text-foreground">{item.headline}</h3>
-          <p className="mt-1.5 text-[12px] leading-5 text-muted">{item.body}</p>
+          <h3 className="mt-2 text-[14px] font-semibold text-foreground">{sentenceCase(item.headline)}</h3>
+          <p className="mt-1.5 text-[12px] leading-5 text-muted">{sentenceCase(item.body)}</p>
         </div>
       </div>
     </article>
@@ -314,7 +319,7 @@ export default function GammaBotWorkspace() {
                 <div>
                   <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-primary">What this means now</div>
                   <h2 className="mt-2 text-[22px] font-semibold tracking-[-0.02em] text-foreground sm:text-[28px]">
-                    {data?.regime.label.toLowerCase().replace("·", "—") ?? "Gamma context unavailable"}
+                    {data ? sentenceCase(data.regime.label.toLowerCase().replace("·", "—")) : "Gamma context unavailable"}
                   </h2>
                   <p className="mt-3 max-w-3xl text-[13px] leading-6 text-muted">{data?.regime.plainEnglish}</p>
                 </div>
@@ -407,7 +412,7 @@ export default function GammaBotWorkspace() {
                         <span className="font-mono text-[10px] text-primary">{formatPrice(level.price)}</span>
                         <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted transition-transform group-open:rotate-180" />
                       </summary>
-                      <p className="border-t border-border px-3 py-3 text-[10px] leading-5 text-muted">{level.explanation}</p>
+                      <p className="border-t border-border px-3 py-3 text-[10px] leading-5 text-muted">{sentenceCase(level.explanation)}</p>
                     </details>
                   ))}
               </div>
