@@ -49,6 +49,7 @@ export type JournalAccount = {
   source: "import" | "manual";
   createdAt: string;
   updatedAt: string;
+  archivedAt?: string | null;
 };
 
 type ZyonSocialRecord = {

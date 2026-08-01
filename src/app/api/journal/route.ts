@@ -32,7 +32,18 @@ type EvidenceRow = {
   payload: JournalEvidence & { kind?: string };
 };
 
+type AccountStateRow = {
+  payload: {
+    kind?: unknown;
+    accountId?: unknown;
+    account?: unknown;
+    archivedAt?: unknown;
+  };
+};
+
 const JOURNAL_EVIDENCE_KIND = "journal-evidence-v1";
+const JOURNAL_ACCOUNT_STATE_KIND = "journal-account-state-v1";
+const JOURNAL_ANALYSIS_KIND = "journal-quant-analysis-v1";
 const MAX_CLOUD_EVIDENCE_DATA_URL = 2_500_000;
 
 function tableUnavailable(code?: string) {
@@ -156,13 +167,14 @@ function sanitizeEvidence(value: unknown, account: string): JournalEvidence | nu
   };
 }
 
-function fromAccountRow(row: AccountRow): JournalAccount {
+function fromAccountRow(row: AccountRow, archivedAt?: string | null): JournalAccount {
   return {
     id: row.id,
     name: row.name,
     source: row.source,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    archivedAt: archivedAt ?? null,
   };
 }
 
@@ -206,7 +218,7 @@ export async function GET(request: NextRequest) {
   if (!actor) return NextResponse.json({ error: "Authentication required." }, { status: 401 });
   if (!supabase) return NextResponse.json({ cloud: false, accounts: [], trades: [], imports: [] });
 
-  const [accountResult, tradeResult, importResult, evidenceResult] = await Promise.all([
+  const [accountResult, tradeResult, importResult, evidenceResult, accountStateResult] = await Promise.all([
     supabase
       .from("journal_accounts")
       .select("id,name,source,created_at,updated_at")
@@ -232,6 +244,13 @@ export async function GET(request: NextRequest) {
       .eq("payload->>kind", JOURNAL_EVIDENCE_KIND)
       .order("created_at", { ascending: false })
       .limit(500),
+    supabase
+      .from("social_objects")
+      .select("payload")
+      .eq("user_id", actor.userId)
+      .eq("object_type", "progress")
+      .eq("payload->>kind", JOURNAL_ACCOUNT_STATE_KIND)
+      .limit(500),
   ]);
 
   const error = accountResult.error ?? tradeResult.error ?? importResult.error;
@@ -243,9 +262,18 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Journal could not be loaded." }, { status: 502 });
   }
 
+  const archiveStates = new Map<string, string>();
+  if (!accountStateResult.error) {
+    for (const row of (accountStateResult.data ?? []) as AccountStateRow[]) {
+      const id = cleanId(row.payload?.accountId);
+      const archivedAt = isoDate(row.payload?.archivedAt, null);
+      if (id && archivedAt) archiveStates.set(id, archivedAt);
+    }
+  }
+
   return NextResponse.json({
     cloud: true,
-    accounts: ((accountResult.data ?? []) as AccountRow[]).map(fromAccountRow),
+    accounts: ((accountResult.data ?? []) as AccountRow[]).map((row) => fromAccountRow(row, archiveStates.get(row.id))),
     trades: ((tradeResult.data ?? []) as TradeRow[]).map((row) => row.payload),
     imports: ((importResult.data ?? []) as ImportRow[]).map((row) => row.payload),
     evidence: evidenceResult.error
@@ -267,6 +295,84 @@ export async function POST(request: NextRequest) {
   }
 
   const action = cleanText(body.action, 20);
+  if (action === "archive-account" || action === "restore-account" || action === "delete-account") {
+    const account = cleanText(body.account, 80);
+    if (!account || isZyonJournalAccountName(account)) {
+      return NextResponse.json({ error: "Choose a custom Journal account." }, { status: 400 });
+    }
+    const id = accountId(account);
+    const { data: accountRow, error: accountError } = await supabase
+      .from("journal_accounts")
+      .select("id,name,source,created_at,updated_at")
+      .eq("user_id", actor.userId)
+      .eq("id", id)
+      .maybeSingle();
+    if (accountError) return NextResponse.json({ error: "The Journal account could not be checked." }, { status: 502 });
+    if (!accountRow) return NextResponse.json({ error: "That Journal account no longer exists." }, { status: 404 });
+    const storedAccount = accountRow as AccountRow;
+    const stateId = `journal-account-state:${id}`;
+
+    if (action === "archive-account") {
+      const archivedAt = new Date().toISOString();
+      const { error } = await supabase.from("social_objects").upsert({
+        user_id: actor.userId,
+        id: stateId,
+        author_label: actor.label,
+        object_type: "progress",
+        scope: "private",
+        desk_id: null,
+        parent_id: null,
+        payload: {
+          kind: JOURNAL_ACCOUNT_STATE_KIND,
+          accountId: id,
+          account: storedAccount.name,
+          archivedAt,
+        },
+        updated_at: archivedAt,
+      }, { onConflict: "user_id,id" });
+      if (error) return NextResponse.json({ error: "The Journal could not be archived." }, { status: 502 });
+      return NextResponse.json({ cloud: true, account: fromAccountRow(storedAccount, archivedAt) });
+    }
+
+    if (action === "restore-account") {
+      const { error } = await supabase
+        .from("social_objects")
+        .delete()
+        .eq("user_id", actor.userId)
+        .eq("id", stateId);
+      if (error) return NextResponse.json({ error: "The Journal could not be restored." }, { status: 502 });
+      return NextResponse.json({ cloud: true, account: fromAccountRow(storedAccount, null) });
+    }
+
+    const evidenceDelete = await supabase
+      .from("social_objects")
+      .delete()
+      .eq("user_id", actor.userId)
+      .eq("payload->>kind", JOURNAL_EVIDENCE_KIND)
+      .eq("payload->>account", storedAccount.name);
+    if (evidenceDelete.error) return NextResponse.json({ error: "Journal evidence could not be removed." }, { status: 502 });
+    const analysisDelete = await supabase
+      .from("social_objects")
+      .delete()
+      .eq("user_id", actor.userId)
+      .eq("payload->>kind", JOURNAL_ANALYSIS_KIND)
+      .eq("payload->>account", storedAccount.name);
+    if (analysisDelete.error) return NextResponse.json({ error: "Journal analysis could not be removed." }, { status: 502 });
+    const stateDelete = await supabase
+      .from("social_objects")
+      .delete()
+      .eq("user_id", actor.userId)
+      .eq("id", stateId);
+    if (stateDelete.error) return NextResponse.json({ error: "Journal archive state could not be removed." }, { status: 502 });
+    const accountDelete = await supabase
+      .from("journal_accounts")
+      .delete()
+      .eq("user_id", actor.userId)
+      .eq("id", id);
+    if (accountDelete.error) return NextResponse.json({ error: "The Journal could not be deleted." }, { status: 502 });
+    return NextResponse.json({ cloud: true, deleted: storedAccount.name });
+  }
+
   if (action === "create-account") {
     const account = cleanText(body.account, 80);
     if (!account || isZyonJournalAccountName(account)) {

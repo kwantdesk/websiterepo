@@ -3,6 +3,7 @@
 import Image from "next/image";
 import {
   Activity,
+  ArchiveRestore,
   ArrowDownRight,
   ArrowUpRight,
   BarChart3,
@@ -29,6 +30,7 @@ import {
   Layers3,
   LineChart,
   NotebookPen,
+  MoreVertical,
   Paperclip,
   Plus,
   RefreshCw,
@@ -379,7 +381,6 @@ function MetricCard({
     </Card>
   );
 }
-
 function EquityCurve({ trades }: { trades: JournalTrade[] }) {
   const geometry = useMemo(() => {
     const ordered = [...trades].sort((left, right) => Date.parse(left.closedAt ?? left.openedAt) - Date.parse(right.closedAt ?? right.openedAt));
@@ -426,7 +427,6 @@ function EquityCurve({ trades }: { trades: JournalTrade[] }) {
     </div>
   );
 }
-
 function DailyBars({ trades }: { trades: JournalTrade[] }) {
   const days = useMemo(() => {
     const grouped = new Map<string, number>();
@@ -454,7 +454,6 @@ function DailyBars({ trades }: { trades: JournalTrade[] }) {
     </div>
   );
 }
-
 function groupPerformance(trades: JournalTrade[], key: (trade: JournalTrade) => string) {
   const groups = new Map<string, JournalTrade[]>();
   for (const trade of trades) {
@@ -532,7 +531,6 @@ function AnalysisFindingCard({
     </div>
   );
 }
-
 export default function JournalWorkspace({ accountKey }: { accountKey: string }) {
   const [state, setState] = useState<JournalState>(EMPTY_JOURNAL_STATE);
   const [zyonTrades, setZyonTrades] = useState<JournalTrade[]>([]);
@@ -561,6 +559,11 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
   const [manualImageAnalysisMessage, setManualImageAnalysisMessage] = useState("");
   const [manualTradeError, setManualTradeError] = useState("");
   const [manualTradeSaving, setManualTradeSaving] = useState(false);
+  const [accountMenu, setAccountMenu] = useState<{ account: string; x: number; y: number } | null>(null);
+  const [showArchive, setShowArchive] = useState(false);
+  const [deleteJournalTarget, setDeleteJournalTarget] = useState<string | null>(null);
+  const [journalLifecycleBusy, setJournalLifecycleBusy] = useState<string | null>(null);
+  const [journalLifecycleMessage, setJournalLifecycleMessage] = useState("");
   const [query, setQuery] = useState("");
   const [accountFilter, setAccountFilter] = useState("all");
   const [outcomeFilter, setOutcomeFilter] = useState<OutcomeFilter>("all");
@@ -675,17 +678,25 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
     return () => window.clearTimeout(timer);
   }, [ready, resolvedAccountKey, state]);
 
+  const archivedAccountNames = useMemo(
+    () => new Set(state.accounts.filter((account) => Boolean(account.archivedAt)).map((account) => account.name)),
+    [state.accounts],
+  );
+  const archivedAccounts = useMemo(
+    () => state.accounts.filter((account) => Boolean(account.archivedAt)).sort((left, right) => Date.parse(right.archivedAt ?? "") - Date.parse(left.archivedAt ?? "")),
+    [state.accounts],
+  );
   const customAccounts = useMemo(() => [...new Set([
     ...state.accounts.map((account) => account.name),
     ...state.trades.map((trade) => trade.account),
     ...state.evidence.map((item) => item.account),
     ...state.imports.map((item) => item.account),
-  ].filter((account) => account && !isZyonJournalAccountName(account)))].sort(), [state]);
+  ].filter((account) => account && !isZyonJournalAccountName(account) && !archivedAccountNames.has(account)))].sort(), [archivedAccountNames, state]);
   const accounts = useMemo(() => [ZYON_JOURNAL_ACCOUNT, ...customAccounts], [customAccounts]);
   const accountSource = useMemo(() => new Map(state.accounts.map((account) => [account.name, account.source])), [state.accounts]);
   const allTrades = useMemo(
-    () => [...zyonTrades, ...state.trades.filter((trade) => !isZyonJournalAccountName(trade.account))],
-    [state.trades, zyonTrades],
+    () => [...zyonTrades, ...state.trades.filter((trade) => !isZyonJournalAccountName(trade.account) && !archivedAccountNames.has(trade.account))],
+    [archivedAccountNames, state.trades, zyonTrades],
   );
   const accountViews = useMemo(() => [
     {
@@ -710,6 +721,10 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
       };
     }),
   ], [accountSource, accounts, allTrades]);
+  const archivedAccountViews = useMemo(() => archivedAccounts.map((account) => ({
+    ...account,
+    stats: calculateJournalStats(state.trades.filter((trade) => trade.account === account.name)),
+  })), [archivedAccounts, state.trades]);
 
   const filteredTrades = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -742,8 +757,12 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
   }, [accountFilter, allTrades, outcomeFilter, query, sortDirection, sortKey]);
 
   const filteredEvidence = useMemo(
-    () => state.evidence.filter((item) => !isZyonJournalAccountName(item.account) && (accountFilter === "all" || item.account === accountFilter)),
-    [accountFilter, state.evidence],
+    () => state.evidence.filter((item) => !isZyonJournalAccountName(item.account) && !archivedAccountNames.has(item.account) && (accountFilter === "all" || item.account === accountFilter)),
+    [accountFilter, archivedAccountNames, state.evidence],
+  );
+  const filteredImports = useMemo(
+    () => state.imports.filter((item) => !archivedAccountNames.has(item.account) && (accountFilter === "all" || item.account === accountFilter)),
+    [accountFilter, archivedAccountNames, state.imports],
   );
   const analysisAccount = accountFilter === "all" ? "Overall Journal" : accountFilter;
   const analysisTrades = useMemo(
@@ -751,8 +770,8 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
     [accountFilter, allTrades],
   );
   const analysisEvidenceItems = useMemo(
-    () => state.evidence.filter((item) => accountFilter === "all" || item.account === accountFilter),
-    [accountFilter, state.evidence],
+    () => state.evidence.filter((item) => !archivedAccountNames.has(item.account) && (accountFilter === "all" || item.account === accountFilter)),
+    [accountFilter, archivedAccountNames, state.evidence],
   );
   const analysisEvidence = useMemo(
     () => buildJournalAnalysisEvidence(analysisAccount, analysisTrades, analysisEvidenceItems),
@@ -1372,6 +1391,96 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
     }
   };
 
+  const runJournalLifecycle = async (action: "archive-account" | "restore-account" | "delete-account", account: string) => {
+    const response = await fetch("/api/journal", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action, account }),
+    });
+    const result = await response.json() as { cloud?: boolean; error?: string; account?: JournalAccount };
+    if (!response.ok || !result.cloud) throw new Error(result.error || "The Journal could not be updated.");
+    return result;
+  };
+
+  const archiveJournal = async (account: string) => {
+    if (isZyonJournalAccountName(account) || journalLifecycleBusy) return;
+    const previous = state.accounts.find((candidate) => candidate.name === account)?.archivedAt ?? null;
+    const archivedAt = new Date().toISOString();
+    setAccountMenu(null);
+    setJournalLifecycleBusy(account);
+    setJournalLifecycleMessage("");
+    setState((current) => ({
+      ...current,
+      accounts: current.accounts.map((candidate) => candidate.name === account ? { ...candidate, archivedAt } : candidate),
+    }));
+    if (accountFilter === account) setAccountFilter("all");
+    try {
+      const result = await runJournalLifecycle("archive-account", account);
+      setState((current) => ({
+        ...current,
+        accounts: current.accounts.map((candidate) => candidate.name === account ? { ...candidate, archivedAt: result.account?.archivedAt ?? archivedAt } : candidate),
+      }));
+      setJournalLifecycleMessage(`${account} moved to Archive.`);
+    } catch (error) {
+      setState((current) => ({
+        ...current,
+        accounts: current.accounts.map((candidate) => candidate.name === account ? { ...candidate, archivedAt: previous } : candidate),
+      }));
+      setJournalLifecycleMessage(error instanceof Error ? error.message : "The Journal could not be archived.");
+    } finally {
+      setJournalLifecycleBusy(null);
+    }
+  };
+
+  const restoreJournal = async (account: string) => {
+    if (isZyonJournalAccountName(account) || journalLifecycleBusy) return;
+    const previous = state.accounts.find((candidate) => candidate.name === account)?.archivedAt ?? new Date().toISOString();
+    setJournalLifecycleBusy(account);
+    setJournalLifecycleMessage("");
+    setState((current) => ({
+      ...current,
+      accounts: current.accounts.map((candidate) => candidate.name === account ? { ...candidate, archivedAt: null } : candidate),
+    }));
+    try {
+      await runJournalLifecycle("restore-account", account);
+      setJournalLifecycleMessage(`${account} restored to active Journals.`);
+    } catch (error) {
+      setState((current) => ({
+        ...current,
+        accounts: current.accounts.map((candidate) => candidate.name === account ? { ...candidate, archivedAt: previous } : candidate),
+      }));
+      setJournalLifecycleMessage(error instanceof Error ? error.message : "The Journal could not be restored.");
+    } finally {
+      setJournalLifecycleBusy(null);
+    }
+  };
+
+  const deleteJournalForever = async (account: string) => {
+    if (isZyonJournalAccountName(account) || journalLifecycleBusy) return;
+    const snapshot = state;
+    setDeleteJournalTarget(null);
+    setAccountMenu(null);
+    setJournalLifecycleBusy(account);
+    setJournalLifecycleMessage("");
+    setState((current) => ({
+      ...current,
+      accounts: current.accounts.filter((candidate) => candidate.name !== account),
+      trades: current.trades.filter((trade) => trade.account !== account),
+      evidence: current.evidence.filter((item) => item.account !== account),
+      imports: current.imports.filter((item) => item.account !== account),
+    }));
+    if (accountFilter === account) setAccountFilter("all");
+    try {
+      await runJournalLifecycle("delete-account", account);
+      setJournalLifecycleMessage(`${account} was permanently deleted.`);
+    } catch (error) {
+      setState(snapshot);
+      setJournalLifecycleMessage(error instanceof Error ? error.message : "The Journal could not be deleted.");
+    } finally {
+      setJournalLifecycleBusy(null);
+    }
+  };
+
   const updateTrade = (tradeId: string, patch: Partial<JournalTrade>) => {
     const currentTrade = allTrades.find((trade) => trade.id === tradeId);
     if (!currentTrade || isZyonJournalAccountName(currentTrade.account) || currentTrade.sourceImportId.startsWith("zyon:")) return;
@@ -1487,18 +1596,21 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
               {cloudState === "cloud" ? "Account saved" : cloudState === "loading" ? "Connecting" : cloudState === "error" || saveStatus === "error" ? "Save interrupted" : "Local until connected"}
             </span>
             {selectedAccountIsManual ? <button type="button" onClick={openManualTrade} className="flex h-8 items-center gap-1.5 rounded-xl bg-primary px-3 text-[9px] font-semibold text-background hover:brightness-110"><Plus className="h-3.5 w-3.5" />Add trade</button> : null}
+            <button type="button" onClick={() => setShowArchive(true)} className="relative flex h-8 items-center gap-1.5 rounded-xl border border-border bg-surface px-3 text-[9px] font-semibold text-muted hover:text-foreground"><FolderArchive className="h-3.5 w-3.5" />Archive{archivedAccounts.length ? <span className="ml-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 font-mono text-[7px] font-semibold text-background">{archivedAccounts.length}</span> : null}</button>
             <button type="button" onClick={() => exportJournal("json")} disabled={!allTrades.length && !state.evidence.length} className="flex h-8 items-center gap-1.5 rounded-xl border border-border bg-surface px-3 text-[9px] font-semibold text-muted hover:text-foreground disabled:opacity-35"><Download className="h-3.5 w-3.5" />Backup</button>
             <button type="button" onClick={() => { setAccountCreationMode("manual"); setImportAccount("My KwantDesk Journal"); setImportMessage(""); setShowImport(true); }} className="flex h-8 items-center gap-1.5 rounded-xl border border-border bg-surface px-3 text-[9px] font-semibold text-muted hover:text-foreground"><BookPlus className="h-3.5 w-3.5" />Add account</button>
           </div>
         </div>
+        {journalLifecycleMessage ? <div className="mx-4 mb-2 flex items-center gap-2 rounded-xl border border-primary/20 bg-primary/[0.06] px-3 py-2 text-[8px] text-muted"><Check className="h-3.5 w-3.5 shrink-0 text-primary" /><span className="min-w-0 flex-1 truncate">{journalLifecycleMessage}</span><button type="button" onClick={() => setJournalLifecycleMessage("")} className="text-muted hover:text-foreground"><X className="h-3.5 w-3.5" /></button></div> : null}
         <div className="border-t border-border/70 px-3 py-2">
           <div className="flex items-stretch gap-2 overflow-x-auto pb-1" aria-label="Journal accounts">
             {accountViews.map(({ id, label, detail, stats: accountStats, icon: Icon }) => {
               const active = accountFilter === id;
               return (
-                <button
+                <div
                   key={id}
-                  type="button"
+                  role="button"
+                  tabIndex={0}
                   onClick={() => {
                     const nextAnalysisAccount = id === "all" ? "Overall Journal" : id;
                     if (nextAnalysisAccount !== analysisLoadedAccount) {
@@ -1511,6 +1623,14 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
                     setAccountFilter(id);
                     if (id === ZYON_JOURNAL_ACCOUNT && tab === "imports") setTab("pulse");
                   }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") event.currentTarget.click();
+                  }}
+                  onContextMenu={(event) => {
+                    if (id === "all" || id === ZYON_JOURNAL_ACCOUNT) return;
+                    event.preventDefault();
+                    setAccountMenu({ account: id, x: Math.max(8, Math.min(event.clientX, window.innerWidth - 210)), y: Math.max(8, Math.min(event.clientY, window.innerHeight - 126)) });
+                  }}
                   className={`group min-w-[190px] shrink-0 rounded-2xl border px-3 py-2.5 text-left transition-all ${active ? "border-primary/45 bg-primary/[0.09] shadow-[0_0_18px_color-mix(in_srgb,var(--primary)_10%,transparent)]" : "border-border bg-background/30 hover:border-primary/25 hover:bg-surface/55"}`}
                 >
                   <div className="flex items-start gap-2.5">
@@ -1520,12 +1640,13 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
                       <span className="mt-0.5 block truncate text-[7px] text-muted">{detail}</span>
                     </span>
                     <span className={`font-mono text-[9px] font-semibold ${accountStats.netPnl > 0 ? "text-primary" : accountStats.netPnl < 0 ? "text-danger" : "text-muted"}`}>{compact(accountStats.netPnl)}</span>
+                    {id !== "all" && id !== ZYON_JOURNAL_ACCOUNT ? <button type="button" aria-label={`Manage ${label}`} onClick={(event) => { event.stopPropagation(); const bounds = event.currentTarget.getBoundingClientRect(); setAccountMenu({ account: id, x: Math.max(8, Math.min(bounds.right, window.innerWidth - 210)), y: Math.max(8, Math.min(bounds.bottom + 4, window.innerHeight - 126)) }); }} className="-mr-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg text-muted opacity-60 hover:bg-surface hover:text-foreground group-hover:opacity-100"><MoreVertical className="h-3.5 w-3.5" /></button> : null}
                   </div>
                   <div className="mt-2 flex items-center justify-between border-t border-border/50 pt-2 text-[7px] text-muted">
                     <span>{accountStats.tradeCount} outcome{accountStats.tradeCount === 1 ? "" : "s"}</span>
                     <span>{percent(accountStats.winRate, 0)} win</span>
                   </div>
-                </button>
+                </div>
               );
             })}
             <button type="button" onClick={() => { setAccountCreationMode("manual"); setImportAccount("My KwantDesk Journal"); setImportMessage(""); setShowImport(true); }} className="flex min-w-[150px] shrink-0 items-center justify-center gap-2 rounded-2xl border border-dashed border-border bg-background/20 px-4 text-[9px] font-semibold text-muted transition-colors hover:border-primary/35 hover:bg-primary/[0.05] hover:text-primary"><Plus className="h-3.5 w-3.5" />Add account</button>
@@ -1929,7 +2050,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
               <button type="button" onClick={() => setShowImport(true)} className="ml-auto flex h-8 items-center gap-1.5 rounded-xl bg-primary px-3 text-[9px] font-semibold text-background"><Upload className="h-3.5 w-3.5" />New import</button>
             </Card>
             <div className="space-y-2">
-              {state.imports.map((batch) => (
+              {filteredImports.map((batch) => (
                 <Card key={batch.id} className="p-4">
                   <div className="flex items-start gap-3">
                     <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-border bg-surface text-muted">{batch.detectedSchema === "json" ? <FileJson className="h-4 w-4" /> : batch.detectedSchema === "evidence" ? <ImageIcon className="h-4 w-4" /> : batch.detectedSchema === "notes" ? <FileText className="h-4 w-4" /> : <FileSpreadsheet className="h-4 w-4" />}</span>
@@ -1948,11 +2069,61 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
                   </div>
                 </Card>
               ))}
-              {!state.imports.length ? <Card className="border-dashed px-6 py-20 text-center text-[10px] text-muted">No import history yet.</Card> : null}
+              {!filteredImports.length ? <Card className="border-dashed px-6 py-20 text-center text-[10px] text-muted">No import history yet.</Card> : null}
             </div>
           </div>
         ) : null}
       </div>
+
+      {accountMenu ? (
+        <div className="fixed inset-0 z-[1150]" onMouseDown={() => setAccountMenu(null)} onContextMenu={(event) => { event.preventDefault(); setAccountMenu(null); }}>
+          <div className="fixed w-[200px] overflow-hidden rounded-2xl border border-border bg-panel p-1.5 shadow-2xl shadow-black/70" style={{ left: accountMenu.x, top: accountMenu.y }} onMouseDown={(event) => event.stopPropagation()}>
+            <div className="truncate border-b border-border px-3 py-2 text-[8px] font-semibold text-foreground">{accountMenu.account}</div>
+            <button type="button" onClick={() => void archiveJournal(accountMenu.account)} disabled={Boolean(journalLifecycleBusy)} className="mt-1 flex h-9 w-full items-center gap-2 rounded-xl px-3 text-left text-[9px] font-semibold text-muted hover:bg-primary/[0.08] hover:text-primary disabled:opacity-40"><FolderArchive className="h-3.5 w-3.5" />Archive Journal</button>
+            <button type="button" onClick={() => { setDeleteJournalTarget(accountMenu.account); setAccountMenu(null); }} disabled={Boolean(journalLifecycleBusy)} className="flex h-9 w-full items-center gap-2 rounded-xl px-3 text-left text-[9px] font-semibold text-muted hover:bg-danger/10 hover:text-danger disabled:opacity-40"><Trash2 className="h-3.5 w-3.5" />Delete permanently</button>
+          </div>
+        </div>
+      ) : null}
+
+      {showArchive ? (
+        <div className="fixed inset-0 z-[1050] flex items-center justify-center bg-black/72 p-4 backdrop-blur-sm" onMouseDown={(event) => { if (event.target === event.currentTarget && !journalLifecycleBusy) setShowArchive(false); }}>
+          <div className="flex max-h-[82vh] w-full max-w-[720px] flex-col overflow-hidden rounded-3xl border border-border bg-panel shadow-2xl shadow-black/70">
+            <div className="flex items-start gap-3 border-b border-border px-5 py-4">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary"><FolderArchive className="h-4 w-4" /></span>
+              <div className="min-w-0 flex-1"><h2 className="text-[14px] font-semibold text-foreground">Archived Journals</h2><p className="mt-1 text-[9px] leading-4 text-muted">Archived accounts keep every trade, screenshot, import and analysis, but stay out of your active Journal and consolidated statistics.</p></div>
+              <button type="button" disabled={Boolean(journalLifecycleBusy)} onClick={() => setShowArchive(false)} className="flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground disabled:opacity-40"><X className="h-4 w-4" /></button>
+            </div>
+            <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-4">
+              {archivedAccountViews.map((account) => (
+                <div key={account.id} className="flex flex-wrap items-center gap-3 rounded-2xl border border-border bg-background/35 p-4">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border bg-surface text-muted">{account.source === "manual" ? <NotebookPen className="h-4 w-4" /> : <FileSpreadsheet className="h-4 w-4" />}</span>
+                  <div className="min-w-[180px] flex-1"><div className="truncate text-[10px] font-semibold text-foreground">{account.name}</div><div className="mt-1 text-[8px] text-muted">Archived {formatDate(account.archivedAt ?? account.updatedAt, true)} · {account.stats.tradeCount} trades · {money(account.stats.netPnl)}</div></div>
+                  <button type="button" onClick={() => void restoreJournal(account.name)} disabled={Boolean(journalLifecycleBusy)} className="flex h-9 items-center gap-2 rounded-xl border border-primary/25 bg-primary/[0.07] px-3 text-[9px] font-semibold text-primary hover:bg-primary/[0.12] disabled:opacity-40">{journalLifecycleBusy === account.name ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <ArchiveRestore className="h-3.5 w-3.5" />}Restore</button>
+                  <button type="button" onClick={() => setDeleteJournalTarget(account.name)} disabled={Boolean(journalLifecycleBusy)} className="flex h-9 w-9 items-center justify-center rounded-xl border border-border text-muted hover:border-danger/25 hover:bg-danger/10 hover:text-danger disabled:opacity-40" title="Delete Journal permanently"><Trash2 className="h-3.5 w-3.5" /></button>
+                </div>
+              ))}
+              {!archivedAccountViews.length ? <div className="flex min-h-[260px] flex-col items-center justify-center rounded-2xl border border-dashed border-border px-6 text-center"><FolderArchive className="h-7 w-7 text-muted" /><h3 className="mt-4 text-[12px] font-semibold text-foreground">Archive is empty</h3><p className="mt-2 max-w-sm text-[9px] leading-4 text-muted">Right-click a Journal account or use its three-dot menu to archive it without losing its record.</p></div> : null}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {deleteJournalTarget ? (
+        <div className="fixed inset-0 z-[1200] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm" onMouseDown={(event) => { if (event.target === event.currentTarget && !journalLifecycleBusy) setDeleteJournalTarget(null); }}>
+          <div className="w-full max-w-[470px] overflow-hidden rounded-3xl border border-danger/25 bg-panel shadow-2xl shadow-black/80">
+            <div className="p-5">
+              <span className="flex h-11 w-11 items-center justify-center rounded-2xl border border-danger/25 bg-danger/10 text-danger"><Trash2 className="h-5 w-5" /></span>
+              <h2 className="mt-5 text-[17px] font-semibold tracking-[-0.02em] text-foreground">Delete “{deleteJournalTarget}”?</h2>
+              <p className="mt-2 text-[9px] leading-5 text-muted">This permanently removes the Journal account, its trades, imports, screenshots and saved analysis. This action cannot be undone. Archive it instead if you may need the record later.</p>
+              <div className="mt-4 rounded-2xl border border-danger/20 bg-danger/[0.05] p-3 text-[8px] text-danger">You are deleting {state.trades.filter((trade) => trade.account === deleteJournalTarget).length} recorded trade{state.trades.filter((trade) => trade.account === deleteJournalTarget).length === 1 ? "" : "s"} and {state.evidence.filter((item) => item.account === deleteJournalTarget).length} evidence file{state.evidence.filter((item) => item.account === deleteJournalTarget).length === 1 ? "" : "s"}.</div>
+            </div>
+            <div className="flex items-center justify-end gap-2 border-t border-border bg-background/20 px-5 py-4">
+              <button type="button" disabled={Boolean(journalLifecycleBusy)} onClick={() => setDeleteJournalTarget(null)} className="h-9 rounded-xl border border-border px-4 text-[9px] font-semibold text-muted hover:bg-surface hover:text-foreground disabled:opacity-40">Cancel</button>
+              <button type="button" disabled={Boolean(journalLifecycleBusy)} onClick={() => void deleteJournalForever(deleteJournalTarget)} className="flex h-9 items-center gap-2 rounded-xl bg-danger px-4 text-[9px] font-semibold text-white hover:brightness-110 disabled:opacity-40">{journalLifecycleBusy === deleteJournalTarget ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}Delete Journal forever</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {showImport ? (
         <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm" onMouseDown={(event) => { if (event.target === event.currentTarget) setShowImport(false); }}>
