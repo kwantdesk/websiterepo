@@ -67,7 +67,6 @@ import {
   calculateReceiptScores,
   CALLING_CARD_CATALOG,
   normalizeSocialProfile,
-  PROCESS_STATUSES,
   profileScoreAverage,
   reasoningScoreFromReceipts,
   socialId,
@@ -80,7 +79,6 @@ import {
   type SocialObject,
   type SocialPrecordPayload,
   type SocialPostPayload,
-  type SocialProcessStatus,
   type SocialProfilePayload,
   type SocialProgressPayload,
   type SocialReactionPayload,
@@ -255,12 +253,15 @@ const SCORE_LABELS: Array<[keyof SocialProfilePayload["scores"], string]> = [
   ["research", "Research"],
 ];
 
-const PROGRESS_STEPS: Array<{ key: keyof Pick<SocialProgressPayload, "prepare" | "map" | "observe" | "review" | "improve">; label: string }> = [
-  { key: "prepare", label: "Prepare" },
-  { key: "map", label: "Map" },
-  { key: "observe", label: "Observe" },
-  { key: "review", label: "Review" },
-  { key: "improve", label: "Improve" },
+const GAMEPLAN_PROCESS_STEPS: Array<{
+  label: string;
+  detail: string;
+  icon: typeof Activity;
+}> = [
+  { label: "Make Gameplan", detail: "Build the structured plan with ZYON.", icon: BrainCircuit },
+  { label: "Publish Gameplan", detail: "Review the holding record and lock it in.", icon: Send },
+  { label: "Awaiting Gameplan scoring", detail: "Price action is evaluating the published plan.", icon: Clock3 },
+  { label: "Gameplan finalised", detail: "The outcome and Reasoning Score are preserved.", icon: CheckCircle2 },
 ];
 
 const EMPTY_PROGRESS = (): SocialProgressPayload => ({
@@ -354,8 +355,8 @@ function typedPayload<T>(object: SocialObject | undefined | null) {
   return (object?.payload ?? null) as T | null;
 }
 
-function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
-  return <div className={`rounded-2xl border border-border bg-panel ${className}`}>{children}</div>;
+function Card({ children, className = "", id }: { children: React.ReactNode; className?: string; id?: string }) {
+  return <div id={id} className={`rounded-2xl border border-border bg-panel ${className}`}>{children}</div>;
 }
 
 function Avatar({
@@ -431,19 +432,6 @@ function StatusBadge({ status }: { status: string }) {
       <span className={`h-1.5 w-1.5 rounded-full ${active ? "animate-pulse bg-primary" : completed ? "bg-accent" : "bg-muted"}`} />
       {status}
     </span>
-  );
-}
-
-function ProgressRing({ value }: { value: number }) {
-  const degrees = Math.round(value * 3.6);
-  return (
-    <div className="relative flex h-24 w-24 items-center justify-center rounded-full" style={{ background: `conic-gradient(var(--primary) ${degrees}deg, color-mix(in srgb, var(--surface) 92%, transparent) ${degrees}deg)` }}>
-      <div className="absolute inset-[7px] rounded-full border border-border bg-panel" />
-      <div className="relative text-center">
-        <div className="font-mono text-[22px] font-semibold text-foreground">{value}%</div>
-        <div className="text-[7px] uppercase tracking-[0.14em] text-muted">Full loop</div>
-      </div>
-    </div>
   );
 }
 
@@ -846,8 +834,6 @@ export default function SocialsWorkspace({
     && object.userId === resolvedAccountKey
     && typedPayload<SocialProgressPayload>(object)?.sessionDate === todayKey());
   const todayProgress = typedPayload<SocialProgressPayload>(todayProgressObject) ?? EMPTY_PROGRESS();
-  const completedProgress = PROGRESS_STEPS.filter((step) => todayProgress[step.key]).length;
-  const progressPercent = Math.round(completedProgress / PROGRESS_STEPS.length * 100);
   const currentMemberships = memberships.filter((object) => object.userId === resolvedAccountKey);
   const currentDeskIds = new Set(currentMemberships.map((object) => object.deskId).filter(Boolean));
   const myDesks = desks.filter((object) => currentDeskIds.has(object.id) || object.userId === resolvedAccountKey);
@@ -992,19 +978,19 @@ export default function SocialsWorkspace({
 
   useEffect(() => {
     let active = true;
-    const controller = new AbortController();
-    setZyonDraftState("loading");
-    void (async () => {
+    let requestNumber = 0;
+    const loadDraft = async (showLoading = false) => {
+      const currentRequest = ++requestNumber;
+      if (showLoading) setZyonDraftState("loading");
       try {
         const response = await fetch(`/api/zyon/gameplan-draft?localDate=${todayKey()}`, {
           cache: "no-store",
-          signal: controller.signal,
         });
         const payload = await response.json() as {
           draft?: ZyonGameplanDraft | null;
           migrationRequired?: boolean;
         };
-        if (!active) return;
+        if (!active || currentRequest !== requestNumber) return;
         if (payload.migrationRequired) {
           setZyonGameplanDraft(null);
           setZyonTargetsInput("");
@@ -1017,16 +1003,26 @@ export default function SocialsWorkspace({
         setZyonConfluencesInput(payload.draft?.confluences.join("\n") ?? "");
         setZyonDraftState(payload.draft ? "ready" : "missing");
       } catch (error) {
-        if (!active || (error instanceof DOMException && error.name === "AbortError")) return;
+        if (!active || currentRequest !== requestNumber) return;
         setZyonGameplanDraft(null);
         setZyonTargetsInput("");
         setZyonConfluencesInput("");
         setZyonDraftState("missing");
       }
-    })();
+    };
+    const refreshDraft = () => void loadDraft(false);
+    const refreshVisibleDraft = () => {
+      if (document.visibilityState === "visible") refreshDraft();
+    };
+    void loadDraft(true);
+    window.addEventListener("kwantdesk:zyon-gameplan-sent", refreshDraft);
+    window.addEventListener("focus", refreshDraft);
+    document.addEventListener("visibilitychange", refreshVisibleDraft);
     return () => {
       active = false;
-      controller.abort();
+      window.removeEventListener("kwantdesk:zyon-gameplan-sent", refreshDraft);
+      window.removeEventListener("focus", refreshDraft);
+      document.removeEventListener("visibilitychange", refreshVisibleDraft);
     };
   }, []);
 
@@ -1036,6 +1032,29 @@ export default function SocialsWorkspace({
     const payload = typedPayload<SocialPrecordPayload>(object);
     return Boolean(payload && payload.sourceGameplanId === currentGameplanId);
   });
+  const latestGameplanRecord = myReasoningRecords.find((object) => {
+    const payload = typedPayload<SocialPrecordPayload>(object);
+    return payload?.source === "ZYON" || payload?.source === "GAMEPLAN";
+  }) ?? null;
+  const gameplanProcessRecord = lockedCurrentGameplan ?? latestGameplanRecord;
+  const gameplanProcessPlan = typedPayload<SocialPrecordPayload>(gameplanProcessRecord);
+  const gameplanProcessReceiptObject = gameplanProcessRecord
+    ? receipts.find((receipt) => receipt.parentId === gameplanProcessRecord.id) ?? null
+    : null;
+  const gameplanProcessReceipt = typedPayload<SocialReceiptPayload>(gameplanProcessReceiptObject);
+  const gameplanProcessIndex = zyonGameplanDraft
+    ? 1
+    : gameplanProcessRecord
+      ? gameplanProcessReceipt ? 3 : 2
+      : 0;
+  const gameplanProcessPercent = gameplanProcessIndex === 3 ? 100 : Math.round(gameplanProcessIndex / 3 * 100);
+  const gameplanProcessLabel = zyonGameplanDraft?.title
+    ?? (typeof gameplanProcessPlan?.gameplanSnapshot?.title === "string" ? gameplanProcessPlan.gameplanSnapshot.title : "")
+    ?? "";
+  const gameplanProcessTimestamp = zyonGameplanDraft?.updatedAt
+    ?? gameplanProcessReceipt?.addedAt
+    ?? gameplanProcessPlan?.lockedAt
+    ?? "";
 
   useEffect(() => {
     const activeRecords = myReasoningRecords.filter((record) => {
@@ -1239,23 +1258,6 @@ export default function SocialsWorkspace({
       objectType: "progress",
       scope: "private",
       payload,
-    }));
-  };
-
-  const updateProgress = (key: keyof SocialProgressPayload, value: boolean) => {
-    void saveProgressPatch({ [key]: value });
-  };
-
-  const updateStatus = (status: SocialProcessStatus) => {
-    const profile = { ...currentProfile, processStatus: status };
-    setProfileDraft(profile);
-    void saveObject(buildLocalObject({
-      id: "profile",
-      userId: resolvedAccountKey,
-      authorLabel: profile.displayName,
-      objectType: "profile",
-      scope: profile.visibility.profile,
-      payload: profile,
     }));
   };
 
@@ -2520,26 +2522,73 @@ export default function SocialsWorkspace({
         {tab === "today" ? (
           <div className="grid min-h-full gap-3 p-3 xl:grid-cols-[230px_minmax(0,1fr)_290px]">
             <div className="space-y-3">
-              <Card className="p-4">
-                <div className="flex items-center gap-2"><Activity className="h-4 w-4 text-primary" /><h2 className="text-[10px] font-semibold">Today’s operating loop</h2></div>
-                <div className="mt-5 flex justify-center"><ProgressRing value={progressPercent} /></div>
-                <div className="mt-5 space-y-1.5">
-                  {PROGRESS_STEPS.map((step, index) => (
-                    <button key={step.key} type="button" onClick={() => updateProgress(step.key, !todayProgress[step.key])} className={`flex h-9 w-full items-center gap-2 rounded-xl border px-2.5 text-left text-[8px] font-semibold ${todayProgress[step.key] ? "border-primary/25 bg-primary/[0.07] text-primary" : "border-border bg-surface/30 text-muted hover:text-foreground"}`}>
-                      <span className={`flex h-5 w-5 items-center justify-center rounded-lg ${todayProgress[step.key] ? "bg-primary text-background" : "bg-surface text-muted"}`}>{todayProgress[step.key] ? <Check className="h-3 w-3" /> : index + 1}</span>
-                      {step.label}
-                    </button>
-                  ))}
-                </div>
-                <button type="button" onClick={() => updateProgress("noTrade", !todayProgress.noTrade)} className={`mt-3 flex w-full items-center gap-2 rounded-xl border p-3 text-left ${todayProgress.noTrade ? "border-accent/25 bg-accent/[0.07]" : "border-border bg-background/30"}`}>
-                  <ShieldCheck className={`h-4 w-4 ${todayProgress.noTrade ? "text-accent" : "text-muted"}`} />
-                  <span><span className="block text-[8px] font-semibold text-foreground">No trade is a result</span><span className="mt-0.5 block text-[7px] leading-3 text-muted">Preserve the loop when permission never prints.</span></span>
-                </button>
-              </Card>
-              <Card className="p-4">
-                <div className="text-[7px] font-semibold uppercase tracking-[0.14em] text-muted">Current process status</div>
-                <div className="mt-3 grid grid-cols-2 gap-1.5">
-                  {PROCESS_STATUSES.map((status) => <button key={status.id} type="button" onClick={() => updateStatus(status.id)} className={`rounded-lg border px-2 py-2 text-[7px] font-semibold ${currentProfile.processStatus === status.id ? "border-primary/25 bg-primary/10 text-primary" : "border-border bg-surface/35 text-muted hover:text-foreground"}`}>{status.label}</button>)}
+              <Card className="relative overflow-hidden p-4">
+                <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_0%,color-mix(in_srgb,var(--primary)_12%,transparent),transparent_42%)]" />
+                <div className="relative">
+                  <div className="flex items-center gap-2">
+                    <Activity className="h-4 w-4 text-primary" />
+                    <h2 className="text-[10px] font-semibold">Automatic Gameplan process</h2>
+                  </div>
+                  <div className="mt-2 flex items-center gap-1.5 text-[6px] font-semibold uppercase tracking-[0.13em] text-muted">
+                    <span className={`h-1.5 w-1.5 rounded-full ${zyonDraftState === "loading" ? "animate-pulse bg-warning" : "bg-primary shadow-[0_0_8px_var(--primary)]"}`} />
+                    {zyonDraftState === "loading" ? "Syncing account state" : "Updates from your live record"}
+                  </div>
+
+                  <div className="mt-4 h-1 overflow-hidden rounded-full bg-surface">
+                    <div className="h-full rounded-full bg-primary shadow-[0_0_12px_var(--primary)] transition-[width] duration-500" style={{ width: `${gameplanProcessPercent}%` }} />
+                  </div>
+                  <div className="mt-1.5 flex items-center justify-between font-mono text-[6px] text-muted">
+                    <span>{gameplanProcessPercent}%</span>
+                    <span>AUTOMATIC</span>
+                  </div>
+
+                  <div className="mt-4 space-y-2">
+                    {GAMEPLAN_PROCESS_STEPS.map((step, index) => {
+                      const complete = gameplanProcessIndex === 3 ? index <= 3 : index < gameplanProcessIndex;
+                      const active = index === gameplanProcessIndex;
+                      const Icon = step.icon;
+                      return (
+                        <div key={step.label} className={`relative flex gap-2.5 rounded-xl border p-2.5 transition-colors ${active ? "border-primary/30 bg-primary/[0.075]" : complete ? "border-primary/15 bg-primary/[0.025]" : "border-border bg-background/25"}`} aria-current={active ? "step" : undefined}>
+                          <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border ${complete ? "border-primary bg-primary text-background" : active ? "border-primary/35 bg-primary/10 text-primary shadow-[0_0_13px_color-mix(in_srgb,var(--primary)_22%,transparent)]" : "border-border bg-surface text-muted"}`}>
+                            {complete ? <Check className="h-3.5 w-3.5" /> : <Icon className={`h-3.5 w-3.5 ${active && index === 2 ? "animate-pulse" : ""}`} />}
+                          </span>
+                          <span className="min-w-0 pt-0.5">
+                            <span className={`block text-[8px] font-semibold ${active || complete ? "text-foreground" : "text-muted"}`}>{step.label}</span>
+                            <span className="mt-1 block text-[6.5px] leading-3 text-muted">{step.detail}</span>
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <div className="mt-4 rounded-xl border border-border bg-background/40 p-3">
+                    <div className="text-[7px] font-semibold text-foreground">
+                      {gameplanProcessLabel || (gameplanProcessIndex === 0 ? "No active Gameplan" : `${gameplanProcessPlan?.instrument ?? "Gameplan"} record`)}
+                    </div>
+                    <div className="mt-1 text-[6.5px] leading-3 text-muted">
+                      {gameplanProcessIndex === 0
+                        ? "Start with ZYON. The process will advance without manual status controls."
+                        : gameplanProcessIndex === 1
+                          ? `Waiting for your review in holding${gameplanProcessTimestamp ? ` · ${formatDate(gameplanProcessTimestamp, true)}` : ""}.`
+                          : gameplanProcessIndex === 2
+                            ? `Published and awaiting its outcome${gameplanProcessTimestamp ? ` · ${formatDate(gameplanProcessTimestamp, true)}` : ""}.`
+                            : `${gameplanProcessReceipt?.scores.final !== undefined ? `Final score ${gameplanProcessReceipt.scores.final}/100` : "Final scoring saved"}${gameplanProcessTimestamp ? ` · ${formatDate(gameplanProcessTimestamp, true)}` : ""}.`}
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (gameplanProcessIndex === 0) window.location.href = "/zyon";
+                      else if (gameplanProcessIndex === 1) document.getElementById("gameplan-holding")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                      else if (gameplanProcessIndex === 2) onOpenGameplanScoring?.();
+                      else setTab("reasoning");
+                    }}
+                    className="mt-3 flex h-9 w-full items-center justify-center gap-2 rounded-xl border border-primary/25 bg-primary/[0.07] text-[8px] font-semibold text-primary hover:bg-primary/10"
+                  >
+                    {gameplanProcessIndex === 0 ? <Sparkles className="h-3.5 w-3.5" /> : gameplanProcessIndex === 1 ? <Archive className="h-3.5 w-3.5" /> : gameplanProcessIndex === 2 ? <Clock3 className="h-3.5 w-3.5" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
+                    {gameplanProcessIndex === 0 ? "Make Gameplan" : gameplanProcessIndex === 1 ? "Review and publish" : gameplanProcessIndex === 2 ? "Open scoring" : "View finalised record"}
+                  </button>
                 </div>
               </Card>
             </div>
@@ -2568,7 +2617,7 @@ export default function SocialsWorkspace({
                 </div>
               </Card>
 
-              <Card className="overflow-hidden border-primary/20">
+              <Card id="gameplan-holding" className="scroll-mt-3 overflow-hidden border-primary/20">
                 <div className="flex flex-wrap items-center gap-3 border-b border-border bg-background/25 px-4 py-3">
                   <span className="flex h-9 w-9 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary"><Archive className="h-4 w-4" /></span>
                   <div className="min-w-0 flex-1"><h3 className="text-[12px] font-semibold">Gameplan holding page</h3><p className="mt-0.5 text-[8px] text-muted">ZYON fills the complete plan from your conversation. Review or change any field, add optional notes, then lock it into Scoring.</p></div>
@@ -2796,9 +2845,15 @@ export default function SocialsWorkspace({
               </Card>
               <Card className="p-4">
                 <div className="flex items-center gap-2"><Sparkles className="h-4 w-4 text-primary" /><h3 className="text-[10px] font-semibold">This week’s story</h3></div>
-                <p className="mt-3 text-[8px] leading-4 text-muted">{completedProgress
-                  ? `You completed ${completedProgress} of five process steps today. ${todayProgress.noTrade ? "You protected the record by recognising a no-trade condition." : "Your next leverage point is completing the outcome review."}`
-                  : "Your development story begins with one complete plan-to-review loop. Profit is not required for the record to improve."}</p>
+                <p className="mt-3 text-[8px] leading-4 text-muted">
+                  {gameplanProcessIndex === 0
+                    ? "Your next record begins by making a complete Gameplan with ZYON. The lifecycle will update here automatically."
+                    : gameplanProcessIndex === 1
+                      ? "Your Gameplan is safely in holding. Review the pre-filled details and publish it when the record is accurate."
+                      : gameplanProcessIndex === 2
+                        ? "Your published Gameplan is being scored against what price does next. No manual status update is required."
+                        : `Your latest Gameplan is finalised${gameplanProcessReceipt?.scores.final !== undefined ? ` with a ${gameplanProcessReceipt.scores.final}/100 score` : ""}. Sending the next plan to holding starts a fresh lifecycle.`}
+                </p>
               </Card>
             </div>
           </div>

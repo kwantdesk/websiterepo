@@ -1364,10 +1364,16 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
       if (payload?.gameplanDraft?.cloudSaved) {
         setPendingGameplanId(payload.gameplanDraft.id);
         setGameplanSendState("sent");
+        window.dispatchEvent(new CustomEvent("kwantdesk:zyon-gameplan-sent", {
+          detail: { draftId: payload.gameplanDraft.id },
+        }));
         void refreshGameplanStatus();
       } else if (payload?.pendingGameplanDraftId) {
         setPendingGameplanId(payload.pendingGameplanDraftId);
         setGameplanSendState("sent");
+        window.dispatchEvent(new CustomEvent("kwantdesk:zyon-gameplan-sent", {
+          detail: { draftId: payload.pendingGameplanDraftId },
+        }));
       } else if (gameplanExchange) {
         setGameplanSendState("needs-info");
       }
