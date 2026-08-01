@@ -99,10 +99,6 @@ export async function preloadWorkspaceData(key: string) {
     );
   }
 
-  if (key === "gammaBot") {
-    return fetchWorkspaceData("gamma-bot:NQ", "/api/gamma-bot?instrument=NQ");
-  }
-
   if (key === "gexmap") {
     const panels = [
       { symbol: "SPX", greekMode: "GAMMA" },

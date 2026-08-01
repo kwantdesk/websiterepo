@@ -217,10 +217,6 @@ const GammaWorkspace = dynamic(() => import("@/components/options-flow/GammaWork
   ssr: false,
   loading: () => workspaceLoader("Opening Gamma", "Restoring the latest options view."),
 });
-const GammaBotWorkspace = dynamic(() => import("@/components/gamma-bot/GammaBotWorkspace"), {
-  ssr: false,
-  loading: () => workspaceLoader("Opening Gamma Bot", "Translating live GEX, DEX and level reactions."),
-});
 const GexMapWorkspace = dynamic(() => import("@/components/gex-map/GexMapWorkspace"), {
   ssr: false,
   loading: () => workspaceLoader("Opening GEXMAP", "Restoring exposure panels."),
@@ -430,7 +426,7 @@ type LevelExportRow = {
   source: string;
   asOf: string;
 };
-export type PrimaryWorkspaceSection = "charts" | "gamma" | "gammaBot" | "levelz" | "gexmap" | "gexdesk" | "gameplan" | "kwantbot" | "news" | "zyon" | "journal" | "socials" | "backtesting";
+export type PrimaryWorkspaceSection = "charts" | "gamma" | "levelz" | "gexmap" | "gexdesk" | "gameplan" | "kwantbot" | "news" | "zyon" | "journal" | "socials" | "backtesting";
 
 const WORKSPACE_PRESETS_STORAGE_KEY = "kwantdesk-chart-workspace-presets";
 const ACTIVE_WORKSPACE_PRESET_STORAGE_KEY = "kwantdesk-chart-workspace-active-preset";
@@ -443,7 +439,6 @@ const KWANTBOT_MESSAGES_STORAGE_KEY = "kwantdesk-kwantbot-messages";
 const BOTTOM_WORKSPACE_SECTIONS = [
   { id: "charts" as const, label: "Charts" },
   { id: "gamma" as const, label: "Gamma" },
-  { id: "gammaBot" as const, label: "Gamma Bot" },
   { id: "levelz" as const, label: "LEVELZ" },
   { id: "gexmap" as const, label: "GEXMAP" },
   { id: "gexdesk" as const, label: "Gexdesk" },
@@ -9035,7 +9030,6 @@ export default function KwantifyWorkspace({
             aria-label={`${BOTTOM_WORKSPACE_SECTIONS.find((section) => section.id === bottomWorkspaceSection)?.label ?? "Workspace"} workspace`}
           >
             {bottomWorkspaceSection === "gamma" ? <GammaWorkspace /> : null}
-            {bottomWorkspaceSection === "gammaBot" ? <GammaBotWorkspace /> : null}
             {bottomWorkspaceSection === "levelz" ? <LevelzWorkspace /> : null}
             {bottomWorkspaceSection === "gexmap" ? <GexMapWorkspace /> : null}
             {bottomWorkspaceSection === "gexdesk" ? <GexDeskWorkspace /> : null}

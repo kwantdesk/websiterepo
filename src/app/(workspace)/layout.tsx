@@ -10,7 +10,6 @@ import KwantifyWorkspace, {
 const SECTION_BY_PATH: Record<string, PrimaryWorkspaceSection> = {
   "/charts": "charts",
   "/gamma": "gamma",
-  "/gamma-bot": "gammaBot",
   "/levelz": "levelz",
   "/gexmap": "gexmap",
   "/gexdesk": "gexdesk",
