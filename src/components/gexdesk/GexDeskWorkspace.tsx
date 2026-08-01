@@ -670,11 +670,9 @@ export default function GexDeskWorkspace() {
                   </defs>
                   {Array.from({ length: 9 }, (_, index) => {
                     const y = DISPLAY_TOP + index / 8 * (DISPLAY_BOTTOM - DISPLAY_TOP);
-                    const price = railRange.high - index / 8 * (railRange.high - railRange.low);
                     return (
                       <g key={index}>
                         <line x1="72" x2="936" y1={y} y2={y} stroke="var(--border)" strokeOpacity="0.45" strokeWidth="1" />
-                        <text x="944" y={y + 3} fill="var(--muted)" fontSize="10" fontFamily="monospace">{formatNumber(price, 0)}</text>
                       </g>
                     );
                   })}
@@ -687,7 +685,6 @@ export default function GexDeskWorkspace() {
                     return (
                       <g key={zone.id} onClick={() => setSelectedZoneId(zone.id)} className="cursor-pointer">
                         <rect x="72" y={Math.min(highY, lowY)} width="864" height={Math.max(4, Math.abs(lowY - highY))} fill={tone.color} fillOpacity={active ? 0.12 : 0.055} stroke={tone.color} strokeOpacity={active ? 0.75 : 0.28} strokeWidth={active ? 1.4 : 1} rx="5" />
-                        <text x="84" y={yForPrice(zone.center) + 3} fill={tone.color} fontSize="9" fontFamily="monospace" fontWeight="600">{tone.label.toUpperCase()} · {formatNumber(zone.center, 0)} · P{zone.priority}</text>
                       </g>
                     );
                   })}
@@ -716,13 +713,50 @@ export default function GexDeskWorkspace() {
                     <g className="gexdesk-live-price">
                       <line x1="60" x2="942" y1={yForPrice(livePrice)} y2={yForPrice(livePrice)} stroke="var(--foreground)" strokeWidth="1.2" />
                       <circle cx="500" cy={yForPrice(livePrice)} r="5" fill="var(--background)" stroke="var(--primary)" strokeWidth="2" />
-                      <rect x="840" y={yForPrice(livePrice) - 11} width="100" height="22" rx="6" fill="var(--primary)" />
-                      <text x="890" y={yForPrice(livePrice) + 3.5} textAnchor="middle" fill="var(--background)" fontSize="10" fontFamily="monospace" fontWeight="700">NQ {formatNumber(livePrice)}</text>
                     </g>
                   ) : null}
-                  <text x="485" y="20" textAnchor="end" fill="var(--muted)" fontSize="8">AMPLIFYING / NEGATIVE</text>
-                  <text x="515" y="20" fill="var(--muted)" fontSize="8">STABILISING / POSITIVE</text>
                 </svg>
+                <div className="pointer-events-none absolute inset-0 overflow-hidden font-sans">
+                  <div className="absolute left-[7.2%] right-1/2 top-[11px] pr-3 text-right text-[8px] font-medium tracking-[0.02em] text-muted">
+                    AMPLIFYING / NEGATIVE
+                  </div>
+                  <div className="absolute left-1/2 right-[6.4%] top-[11px] pl-3 text-[8px] font-medium tracking-[0.02em] text-muted">
+                    STABILISING / POSITIVE
+                  </div>
+                  {Array.from({ length: 9 }, (_, index) => {
+                    const y = DISPLAY_TOP + index / 8 * (DISPLAY_BOTTOM - DISPLAY_TOP);
+                    const price = railRange.high - index / 8 * (railRange.high - railRange.low);
+                    return (
+                      <span
+                        key={index}
+                        className="absolute right-[1.8%] -translate-y-1/2 text-[10px] font-medium tabular-nums text-muted"
+                        style={{ top: `${y / DISPLAY_HEIGHT * 100}%` }}
+                      >
+                        {formatNumber(price, 0)}
+                      </span>
+                    );
+                  })}
+                  {payload.zones.map((zone) => {
+                    const tone = behaviourTone(zone.behaviour);
+                    return (
+                      <span
+                        key={zone.id}
+                        className="absolute left-[8.4%] max-w-[62%] -translate-y-1/2 truncate text-[9px] font-semibold tracking-[0.01em] tabular-nums"
+                        style={{ top: `${yForPrice(zone.center) / DISPLAY_HEIGHT * 100}%`, color: tone.color }}
+                      >
+                        {tone.label.toUpperCase()} · {formatNumber(zone.center, 0)} · P{zone.priority}
+                      </span>
+                    );
+                  })}
+                  {livePrice !== null ? (
+                    <span
+                      className="absolute right-[6%] min-w-[100px] -translate-y-1/2 rounded-md bg-primary px-2.5 py-1 text-center text-[10px] font-bold tabular-nums text-background shadow-[0_0_18px_color-mix(in_srgb,var(--primary)_20%,transparent)]"
+                      style={{ top: `${yForPrice(livePrice) / DISPLAY_HEIGHT * 100}%` }}
+                    >
+                      NQ {formatNumber(livePrice)}
+                    </span>
+                  ) : null}
+                </div>
               </div>
             </div>
             <ZoneFocus zone={selectedZone} livePrice={livePrice} />
