@@ -3745,6 +3745,7 @@ export default function KwantifyWorkspace({
     ...MARKET_INDEX_DEFINITIONS.map((index) => createWatchlistItem(index.symbol, "Market Index")),
   ]);
   const [watchlistContextMenu, setWatchlistContextMenu] = useState<{ x: number; y: number; key: string; symbol: string } | null>(null);
+  const [watchlistPanelContextMenu, setWatchlistPanelContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [watchlistFavorites, setWatchlistFavorites] = useState<string[]>(() => {
     if (typeof window === "undefined") return [];
     try {
@@ -5416,6 +5417,15 @@ export default function KwantifyWorkspace({
   }, [watchlistContextMenu]);
 
   useEffect(() => {
+    if (!watchlistPanelContextMenu) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setWatchlistPanelContextMenu(null);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [watchlistPanelContextMenu]);
+
+  useEffect(() => {
     if (!usingDatabentoFeed) return;
     let cancelled = false;
     let animationFrame: number | null = null;
@@ -6966,6 +6976,7 @@ export default function KwantifyWorkspace({
     setWatchlistSections((current) => [...current, { id, name: "New Section", symbols: [] }]);
     setRenamingSectionId(id);
     setWatchlistContextMenu(null);
+    setWatchlistPanelContextMenu(null);
   };
 
   const moveWatchlistSection = (sectionId: string, direction: "up" | "down") => {
@@ -7039,6 +7050,7 @@ export default function KwantifyWorkspace({
         onClick={() => selectInstrument(row.symbol, row.broker, row.key)}
         onContextMenu={(event) => {
           event.preventDefault();
+          setWatchlistPanelContextMenu(null);
           setSectionContextMenu(null);
           setWatchlistContextMenu({ x: event.clientX, y: event.clientY, key: row.key, symbol: row.symbol });
         }}
@@ -9437,8 +9449,41 @@ export default function KwantifyWorkspace({
             </div>
           )}
           {rightPanel === "watchlist" && (
-            <div className="flex flex-1 flex-col overflow-hidden">
-              <div className="flex h-12 items-center justify-between border-b border-border px-4"><button className="flex items-center gap-1 text-[14px] font-semibold">Watchlist <ChevronDown className="h-3.5 w-3.5 text-muted" /></button><div className="flex items-center gap-1"><button onClick={() => setShowInstrumentSearch(true)} className="flex h-7 w-7 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground"><Plus className="h-3.5 w-3.5" /></button><button className="flex h-7 w-7 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground"><Grid3X3 className="h-3.5 w-3.5" /></button><button className="flex h-7 w-7 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground"><MoreHorizontal className="h-3.5 w-3.5" /></button></div></div>
+            <div
+              className="flex flex-1 flex-col overflow-hidden"
+              onContextMenu={(event) => {
+                if (event.defaultPrevented) return;
+                event.preventDefault();
+                setWatchlistContextMenu(null);
+                setSectionContextMenu(null);
+                setWatchlistPanelContextMenu({
+                  x: Math.max(12, Math.min(event.clientX, window.innerWidth - 224)),
+                  y: Math.max(12, Math.min(event.clientY, window.innerHeight - 240)),
+                });
+              }}
+            >
+              <div className="flex h-12 items-center justify-between border-b border-border px-4">
+                <button className="flex items-center gap-1 text-[14px] font-semibold">Watchlist <ChevronDown className="h-3.5 w-3.5 text-muted" /></button>
+                <div className="flex items-center gap-1">
+                  <button onClick={() => setShowInstrumentSearch(true)} className="flex h-7 w-7 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground"><Plus className="h-3.5 w-3.5" /></button>
+                  <button className="flex h-7 w-7 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground"><Grid3X3 className="h-3.5 w-3.5" /></button>
+                  <button
+                    onClick={(event) => {
+                      const bounds = event.currentTarget.getBoundingClientRect();
+                      setWatchlistContextMenu(null);
+                      setSectionContextMenu(null);
+                      setWatchlistPanelContextMenu({
+                        x: Math.max(12, bounds.right - 208),
+                        y: bounds.bottom + 6,
+                      });
+                    }}
+                    className="flex h-7 w-7 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground"
+                    aria-label="Watchlist options"
+                  >
+                    <MoreHorizontal className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </div>
               <div className="grid grid-cols-[minmax(92px,1fr)_74px_54px_54px] gap-2 border-b border-border px-3 py-2 text-[10px] uppercase tracking-wider text-muted"><span>Symbol</span><span className="text-right">Last</span><span className="text-right">Chg</span><span className="text-right">Chg%</span></div>
               <div className="flex-1 overflow-y-auto">
                 {watchlistSections.map((section) => {
@@ -9450,6 +9495,7 @@ export default function KwantifyWorkspace({
                         className={`flex items-center justify-between border-t-2 px-3 py-2 ${sectionDropTarget ? "border-blue-500" : "border-transparent"}`}
                         onContextMenu={(event) => {
                           event.preventDefault();
+                          setWatchlistPanelContextMenu(null);
                           setWatchlistContextMenu(null);
                           setSectionContextMenu({ x: event.clientX, y: event.clientY, sectionId: section.id });
                         }}
@@ -10105,6 +10151,81 @@ export default function KwantifyWorkspace({
             )}
           </div>
         </div>
+      )}
+
+      {watchlistPanelContextMenu && (
+        <>
+          <div className="fixed inset-0 z-40" onMouseDown={() => setWatchlistPanelContextMenu(null)} />
+          <div
+            onMouseDown={(event) => event.stopPropagation()}
+            className="fixed z-50 w-[208px] rounded-xl border border-border bg-panel py-1.5 shadow-2xl"
+            style={{ left: watchlistPanelContextMenu.x, top: watchlistPanelContextMenu.y }}
+          >
+            <button
+              type="button"
+              onMouseDown={(event) => {
+                event.stopPropagation();
+                setWatchlistPanelContextMenu(null);
+                setShowInstrumentSearch(true);
+              }}
+              className="flex w-full items-center gap-3 px-3 py-2 text-left text-[13px] text-foreground hover:bg-surface"
+            >
+              <Plus className="h-4 w-4 text-muted" />
+              <span>Add instrument</span>
+            </button>
+            <button
+              type="button"
+              onMouseDown={(event) => {
+                event.stopPropagation();
+                addWatchlistSection();
+              }}
+              className="flex w-full items-center gap-3 px-3 py-2 text-left text-[13px] text-foreground hover:bg-surface"
+            >
+              <FolderPlus className="h-4 w-4 text-muted" />
+              <span>Add section</span>
+            </button>
+            <div className="my-1 border-t border-border" />
+            <button
+              type="button"
+              onMouseDown={(event) => {
+                event.stopPropagation();
+                setCollapsedWatchlistSections(
+                  Object.fromEntries(watchlistSections.map((section) => [section.id, true])),
+                );
+                setWatchlistPanelContextMenu(null);
+              }}
+              className="flex w-full items-center gap-3 px-3 py-2 text-left text-[13px] text-foreground hover:bg-surface"
+            >
+              <ChevronUp className="h-4 w-4 text-muted" />
+              <span>Collapse all sections</span>
+            </button>
+            <button
+              type="button"
+              onMouseDown={(event) => {
+                event.stopPropagation();
+                setCollapsedWatchlistSections({});
+                setWatchlistPanelContextMenu(null);
+              }}
+              className="flex w-full items-center gap-3 px-3 py-2 text-left text-[13px] text-foreground hover:bg-surface"
+            >
+              <ChevronDown className="h-4 w-4 text-muted" />
+              <span>Expand all sections</span>
+            </button>
+            <button
+              type="button"
+              disabled={Object.keys(watchlistFlags).length === 0}
+              onMouseDown={(event) => {
+                event.stopPropagation();
+                setWatchlistFlags({});
+                setWatchlistPanelContextMenu(null);
+              }}
+              className="flex w-full items-center gap-3 px-3 py-2 text-left text-[13px] text-muted hover:bg-surface hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <Settings2 className="h-4 w-4" />
+              <span>Clear all flags</span>
+            </button>
+          </div>
+        </>
       )}
 
       {sectionContextMenu && (
