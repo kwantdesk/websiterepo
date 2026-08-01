@@ -20,8 +20,6 @@ import type {
   PremiumDriftPoint,
 } from "@/lib/optionsFlow";
 
-type IntelligenceView = "STRUCTURE" | "STATE" | "FLOW";
-
 const MODE_META: Record<GreekMode, { short: string; title: string; detail: string }> = {
   GAMMA: { short: "GEX", title: "Net gamma", detail: "Dealer-signed gamma exposure" },
   DELTA: { short: "DEX", title: "Delta inventory", detail: "Dealer-signed directional exposure" },
@@ -161,7 +159,7 @@ function ChangeTable({ data }: { data: OptionsFlowPayload }) {
 }
 
 function StateLadder({ data }: { data: OptionsFlowPayload }) {
-  const [mode, setMode] = useState<GreekMode>("GAMMA");
+  const mode: GreekMode = "GAMMA";
   const series = data.positioning.history[mode];
   const rows = useMemo(() => [...(series?.latestStrikes ?? [])]
     .sort((a, b) => Math.abs(b.net) - Math.abs(a.net))
@@ -175,12 +173,10 @@ function StateLadder({ data }: { data: OptionsFlowPayload }) {
       <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2.5">
         <Crosshair className="h-3.5 w-3.5 text-primary" />
         <div>
-          <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-foreground">Exposure state map</div>
+          <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-foreground">State map</div>
           <div className="mt-0.5 text-[8px] text-muted">Highest-concentration front-expiry nodes</div>
         </div>
-        <div className="ml-auto flex rounded-lg border border-border bg-panel p-0.5">
-          {(Object.keys(MODE_META) as GreekMode[]).map((item) => <button key={item} type="button" onClick={() => setMode(item)} className={`rounded-md px-2 py-1 text-[8px] font-semibold ${mode === item ? "bg-primary text-background" : "text-muted hover:text-foreground"}`}>{MODE_META[item].short}</button>)}
-        </div>
+        <span className="ml-auto rounded-md border border-primary/20 bg-primary/[0.07] px-2 py-1 font-mono text-[8px] font-semibold text-primary">GEX STATE</span>
       </div>
       <div className="grid grid-cols-[72px_1fr_92px] border-b border-border px-3 py-2 text-[8px] font-semibold uppercase tracking-[0.12em] text-muted">
         <span>Strike</span><span>Concentration</span><span className="text-right">State</span>
@@ -373,7 +369,7 @@ function mergeExposureSeries(
 type ExposureLiveStatus = "CONNECTING" | "LIVE" | "DELAYED" | "WAITING" | "LAST_SESSION" | "RECONNECTING";
 
 function FlowView({ data }: { data: OptionsFlowPayload }) {
-  const [mode, setMode] = useState<GreekMode>("DELTA");
+  const [mode, setMode] = useState<GreekMode>("GAMMA");
   const baseSeries = data.positioning.history[mode];
   const [series, setSeries] = useState<IntradayExposureSeries | null>(baseSeries);
   const [liveStatus, setLiveStatus] = useState<ExposureLiveStatus>(
@@ -484,7 +480,7 @@ function FlowView({ data }: { data: OptionsFlowPayload }) {
         <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2.5">
           <Waves className="h-3.5 w-3.5 text-primary" />
           <div>
-            <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-foreground">Live exposure flow</div>
+            <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-foreground">Flow regime</div>
             <div className="mt-0.5 text-[8px] text-muted">Session baseline + live one-minute front-expiry buckets · price overlay</div>
           </div>
           <span className={`flex items-center gap-1 rounded-md border px-1.5 py-1 text-[7px] font-semibold ${liveTone}`}>
@@ -528,7 +524,6 @@ function FlowView({ data }: { data: OptionsFlowPayload }) {
 }
 
 export default function PositioningIntelligence({ data }: { data: OptionsFlowPayload }) {
-  const [view, setView] = useState<IntelligenceView>("STRUCTURE");
   const gammaSeries = data.positioning.history.GAMMA;
   const frontCenter = useMemo(() => {
     const strikes = gammaSeries?.latestStrikes ?? [];
@@ -546,20 +541,17 @@ export default function PositioningIntelligence({ data }: { data: OptionsFlowPay
             <p className="mt-0.5 truncate text-[9px] text-muted">Strike concentration · moving Greek exposure · classified trade-side pressure</p>
           </div>
         </div>
-        <div className="flex w-fit rounded-xl border border-border bg-surface p-1 lg:ml-auto">
-          {(["STRUCTURE", "STATE", "FLOW"] as const).map((item) => <button key={item} type="button" onClick={() => setView(item)} className={`rounded-lg px-3 py-1.5 text-[9px] font-semibold transition-colors ${view === item ? "bg-panel text-foreground shadow-sm ring-1 ring-border" : "text-muted hover:text-foreground"}`}>{item === "STRUCTURE" ? "GEX structure" : item === "STATE" ? "State map" : "Flow regime"}</button>)}
-        </div>
-        <div className="flex items-center gap-2 text-[8px] text-muted">
+        <div className="flex items-center gap-2 text-[8px] text-muted lg:ml-auto">
           <span className="rounded-md border border-border bg-surface px-2 py-1 font-mono">1m</span>
           <span className="rounded-md border border-border bg-surface px-2 py-1 font-mono">FRONT · {formatExpiry(data.positioning.expiration)}</span>
         </div>
       </div>
 
-      {view === "STRUCTURE" ? (
+      <div className="border-b border-border">
         <div className="grid gap-3 p-3 2xl:grid-cols-[minmax(0,1.55fr)_minmax(300px,.55fr)]">
           <div className="overflow-hidden rounded-xl border border-border bg-surface/25">
             <div className="flex flex-wrap items-center gap-3 border-b border-border px-3 py-2.5">
-              <div><div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-foreground">Live GEX structure</div><div className="mt-0.5 text-[8px] text-muted">Current call/put exposure with 5m, 15m and 30m lookback dots · IV skew at right</div></div>
+              <div><div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-foreground">GEX structure</div><div className="mt-0.5 text-[8px] text-muted">Current call/put exposure with 5m, 15m and 30m lookback dots · IV skew at right</div></div>
               <div className="ml-auto flex items-center gap-3 text-[8px] text-muted"><span className="flex items-center gap-1"><i className="h-1.5 w-1.5 rounded-full bg-muted" />5m</span><span className="flex items-center gap-1"><i className="h-1.5 w-1.5 rounded-full bg-accent" />15m</span><span className="flex items-center gap-1"><i className="h-1.5 w-1.5 rounded-full bg-secondary" />30m</span></div>
             </div>
             <StructureLadder data={data} />
@@ -577,9 +569,13 @@ export default function PositioningIntelligence({ data }: { data: OptionsFlowPay
             </div>
           </div>
         </div>
-      ) : view === "STATE" ? (
+      </div>
+
+      <div className="border-b border-border bg-surface/[0.06]">
         <div className="grid gap-3 p-3 xl:grid-cols-[minmax(0,1fr)_380px]"><StateLadder data={data} /><DemandPanel data={data} /></div>
-      ) : <FlowView data={data} />}
+      </div>
+
+      <FlowView data={data} />
 
       <div className="flex flex-col gap-2 border-t border-border bg-surface/20 px-4 py-3 text-[9px] leading-4 text-muted lg:flex-row lg:items-center lg:justify-between">
         <span>{data.positioning.methodology.note}</span>
