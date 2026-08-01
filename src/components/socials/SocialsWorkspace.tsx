@@ -99,12 +99,25 @@ import {
 } from "@/lib/zyon";
 import { evaluateReasoningPath } from "@/lib/socials";
 import { SOCIAL_RECORD_COPY, SOCIAL_RECORD_RULES } from "@/lib/socialRecordConfig";
-import { effectivePresenceStatus, presenceOption } from "@/lib/friends";
+import {
+  effectivePresenceStatus,
+  presenceOption,
+  type FriendSummary,
+  type FriendsPayload,
+} from "@/lib/friends";
 import { loadSocialState, normalizeSocialState, saveSocialState } from "@/lib/socialsStore";
 import {
   DESK_CREATED_EVENT,
+  EMPTY_DESK_NETWORK,
   type CreatedDeskPayload,
+  type DeskNetworkPayload,
 } from "@/lib/desks";
+import {
+  calculateProcessReputation,
+  compareProcessReputation,
+  processReputationSeason,
+  PROCESS_REPUTATION_VERSION,
+} from "@/lib/socialReputation";
 import { encodeCanvasImage, prepareSharedImage } from "@/lib/clientImageProcessing";
 import type { SocialFollowListItem, SocialFollowResponse } from "@/lib/socialFollows";
 import { DATABENTO_LIVE_TICK_EVENT } from "@/lib/chartLiveEvents";
@@ -124,6 +137,7 @@ import {
 type SocialTab = "today" | "reasoning" | "precords" | "desks" | "feed" | "rankings" | "cards" | "profile";
 type FeedFilter = "all" | "proven" | "mine";
 type SocialFeedMode = "following" | "recommended" | "latest";
+type RankingScope = "desk" | "friends" | "season";
 type AvatarCropDraft = {
   sourceUrl: string;
   naturalWidth: number;
@@ -503,6 +517,12 @@ export default function SocialsWorkspace({
   const [followingUsers, setFollowingUsers] = useState<SocialFollowListItem[]>([]);
   const [followingState, setFollowingState] = useState<"loading" | "ready" | "unavailable">("loading");
   const [followActionUserId, setFollowActionUserId] = useState("");
+  const [rankingScope, setRankingScope] = useState<RankingScope>("desk");
+  const [rankingFriends, setRankingFriends] = useState<FriendSummary[]>([]);
+  const [rankingDeskNetwork, setRankingDeskNetwork] = useState<DeskNetworkPayload>(EMPTY_DESK_NETWORK);
+  const [rankingObjects, setRankingObjects] = useState<SocialObject[]>([]);
+  const [rankingDeskId, setRankingDeskId] = useState("");
+  const [rankingDirectoryState, setRankingDirectoryState] = useState<"idle" | "loading" | "ready" | "unavailable">("idle");
   const [query, setQuery] = useState("");
   const [showPostModal, setShowPostModal] = useState(false);
   const [editingPostId, setEditingPostId] = useState<string | null>(null);
@@ -758,6 +778,75 @@ export default function SocialsWorkspace({
       channel?.close();
     };
   }, [loadFollowingUsers, ready]);
+
+  const loadRankingDirectory = useCallback(async (quiet = false) => {
+    if (!quiet) setRankingDirectoryState("loading");
+    let loadedSource = false;
+    try {
+      const response = await fetch("/api/friends", { cache: "no-store" });
+      const result = await response.json() as FriendsPayload & { error?: string };
+      if (!response.ok || !result.cloud) throw new Error(result.error || "Friends could not be loaded.");
+      setRankingFriends(result.friends ?? []);
+      loadedSource = true;
+    } catch {
+      if (!quiet) setRankingFriends([]);
+    }
+    try {
+      const response = await fetch("/api/socials/desks", { cache: "no-store" });
+      const result = await response.json() as DeskNetworkPayload & { error?: string };
+      if (!response.ok || !result.ready) throw new Error(result.error || "Desks could not be loaded.");
+      setRankingDeskNetwork(result);
+      const membershipDeskIds = new Set(
+        result.members
+          .filter((member) => member.userId === resolvedAccountKey)
+          .map((member) => member.deskId),
+      );
+      const availableDeskIds = result.workspaces
+        .filter((workspace) => !workspace.archivedAt && (workspace.ownerId === resolvedAccountKey || membershipDeskIds.has(workspace.deskId)))
+        .map((workspace) => workspace.deskId);
+      const savedDeskId = window.localStorage.getItem("kwantdesk-active-desk") ?? "";
+      setRankingDeskId((current) => availableDeskIds.includes(current)
+        ? current
+        : availableDeskIds.includes(savedDeskId)
+          ? savedDeskId
+          : availableDeskIds[0] ?? "");
+      loadedSource = true;
+    } catch {
+      if (!quiet) {
+        setRankingDeskNetwork(EMPTY_DESK_NETWORK);
+        setRankingDeskId("");
+      }
+    }
+    try {
+      const response = await fetch("/api/socials?types=profile,precord,receipt,comment,progress", { cache: "no-store" });
+      const result = await response.json() as { objects?: SocialObject[]; cloud?: boolean; error?: string };
+      if (!response.ok || !result.cloud) throw new Error(result.error || "Reputation evidence could not be loaded.");
+      setRankingObjects(result.objects ?? []);
+      loadedSource = true;
+    } catch {
+      if (!quiet) setRankingObjects([]);
+    }
+    setRankingDirectoryState(loadedSource ? "ready" : "unavailable");
+  }, [resolvedAccountKey]);
+
+  useEffect(() => {
+    if (!ready || tab !== "rankings") return;
+    void loadRankingDirectory();
+    const refresh = () => void loadRankingDirectory(true);
+    const refreshVisible = () => {
+      if (document.visibilityState === "visible") refresh();
+    };
+    const timer = window.setInterval(refresh, 20_000);
+    window.addEventListener("focus", refresh);
+    window.addEventListener(DESK_CREATED_EVENT, refresh);
+    document.addEventListener("visibilitychange", refreshVisible);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", refresh);
+      window.removeEventListener(DESK_CREATED_EVENT, refresh);
+      document.removeEventListener("visibilitychange", refreshVisible);
+    };
+  }, [loadRankingDirectory, ready, tab]);
 
   useEffect(() => {
     if (!ready) return;
@@ -1221,9 +1310,87 @@ export default function SocialsWorkspace({
     .sort((left, right) => profileScoreAverage(right.profile) - profileScoreAverage(left.profile))
     .slice(0, 5), [followingUserIds, profiles, resolvedAccountKey]);
 
-  const rankedProfiles = useMemo(() => profiles
-    .map((object) => ({ object, profile: normalizeSocialProfile(object.payload, object.authorLabel) }))
-    .sort((left, right) => profileScoreAverage(right.profile) - profileScoreAverage(left.profile)), [profiles]);
+  const rankingDeskOptions = useMemo(() => {
+    const memberDeskIds = new Set(
+      rankingDeskNetwork.members
+        .filter((member) => member.userId === resolvedAccountKey)
+        .map((member) => member.deskId),
+    );
+    return rankingDeskNetwork.workspaces.filter((workspace) =>
+      !workspace.archivedAt
+      && (workspace.ownerId === resolvedAccountKey || memberDeskIds.has(workspace.deskId)));
+  }, [rankingDeskNetwork.members, rankingDeskNetwork.workspaces, resolvedAccountKey]);
+  const rankingSourceObjects = useMemo(() => {
+    const byObjectId = new Map<string, SocialObject>();
+    for (const object of [...rankingObjects, ...state.objects]) {
+      const current = byObjectId.get(object.id);
+      if (!current || Date.parse(object.updatedAt) >= Date.parse(current.updatedAt)) {
+        byObjectId.set(object.id, object);
+      }
+    }
+    return [...byObjectId.values()];
+  }, [rankingObjects, state.objects]);
+  const rankingProfiles = useMemo(() => {
+    const byUserId = new Map<string, SocialProfilePayload>();
+    for (const object of rankingSourceObjects.filter((item) => item.objectType === "profile")) {
+      byUserId.set(object.userId, normalizeSocialProfile(object.payload, object.authorLabel));
+    }
+    for (const friend of rankingFriends) {
+      if (byUserId.has(friend.userId)) continue;
+      byUserId.set(friend.userId, normalizeSocialProfile({
+        ...buildDefaultProfile(friend.displayName),
+        displayName: friend.displayName,
+        handle: friend.handle,
+        avatarUrl: friend.avatarUrl,
+        presenceStatus: friend.presenceStatus,
+        lastSeenAt: friend.lastSeenAt ?? "",
+        activityStreak: friend.activityStreak,
+        longestActivityStreak: friend.longestActivityStreak,
+        lastActivityDate: friend.lastActivityDate,
+      }, friend.displayName));
+    }
+    for (const memberProfile of rankingDeskNetwork.profiles) {
+      if (byUserId.has(memberProfile.userId)) continue;
+      byUserId.set(memberProfile.userId, normalizeSocialProfile({
+        ...buildDefaultProfile(memberProfile.displayName),
+        displayName: memberProfile.displayName,
+        handle: memberProfile.handle,
+        avatarUrl: memberProfile.avatarUrl,
+        presenceStatus: memberProfile.presenceStatus,
+        lastSeenAt: memberProfile.lastSeenAt ?? "",
+        activityStreak: memberProfile.activityStreak,
+        longestActivityStreak: memberProfile.longestActivityStreak,
+        lastActivityDate: memberProfile.lastActivityDate,
+      }, memberProfile.displayName));
+    }
+    return [...byUserId.entries()].map(([userId, profile]) => ({ userId, profile }));
+  }, [rankingDeskNetwork.profiles, rankingFriends, rankingSourceObjects]);
+  const allSeasonRankings = useMemo(() => rankingProfiles
+    .map(({ userId, profile }) => ({
+      userId,
+      profile,
+      reputation: calculateProcessReputation(userId, rankingSourceObjects, profile),
+    }))
+    .sort(compareProcessReputation), [rankingProfiles, rankingSourceObjects]);
+  const rankedProfiles = useMemo(() => {
+    if (rankingScope === "friends") {
+      const friendIds = new Set(rankingFriends.map((friend) => friend.userId));
+      return allSeasonRankings.filter((entry) => friendIds.has(entry.userId));
+    }
+    if (rankingScope === "desk") {
+      if (!rankingDeskId) return [];
+      const memberIds = new Set(
+        rankingDeskNetwork.members
+          .filter((member) => member.deskId === rankingDeskId)
+          .map((member) => member.userId),
+      );
+      const desk = rankingDeskNetwork.workspaces.find((workspace) => workspace.deskId === rankingDeskId);
+      if (desk?.ownerId) memberIds.add(desk.ownerId);
+      return allSeasonRankings.filter((entry) => memberIds.has(entry.userId));
+    }
+    return allSeasonRankings;
+  }, [allSeasonRankings, rankingDeskId, rankingDeskNetwork.members, rankingDeskNetwork.workspaces, rankingFriends, rankingScope]);
+  const rankingSeason = useMemo(() => processReputationSeason(), []);
 
   const notificationItems = useMemo(() => {
     const mine = new Set(precords.filter((object) => object.userId === resolvedAccountKey).map((object) => object.id));
@@ -3064,12 +3231,55 @@ export default function SocialsWorkspace({
         {tab === "rankings" ? (
           <div className="mx-auto max-w-6xl space-y-3 p-3">
             <Card className="overflow-hidden">
-              <div className="flex flex-wrap items-center gap-3 border-b border-border px-4 py-3"><Trophy className="h-4 w-4 text-primary" /><div><h2 className="text-[11px] font-semibold">Process rankings</h2><p className="mt-0.5 text-[8px] text-muted">Friends and Desk first. Global visibility second. P&amp;L never enters the score.</p></div><div className="ml-auto flex gap-1">{["My Desk", "Friends", "This season"].map((label, index) => <button key={label} type="button" className={`rounded-lg px-3 py-2 text-[8px] font-semibold ${index === 0 ? "bg-primary/10 text-primary" : "text-muted hover:bg-surface"}`}>{label}</button>)}</div></div>
+              <div className="flex flex-wrap items-center gap-3 border-b border-border px-4 py-3">
+                <Trophy className="h-4 w-4 text-primary" />
+                <div>
+                  <h2 className="text-[11px] font-semibold">Process rankings</h2>
+                  <p className="mt-0.5 text-[8px] text-muted">Verified process evidence from this season. P&amp;L never enters the score.</p>
+                </div>
+                <div className="ml-auto flex gap-1">
+                  {([['desk', 'My Desk'], ['friends', 'Friends'], ['season', 'This season']] as Array<[RankingScope, string]>).map(([scope, label]) => (
+                    <button
+                      key={scope}
+                      type="button"
+                      onClick={() => setRankingScope(scope)}
+                      className={`rounded-lg px-3 py-2 text-[8px] font-semibold transition-colors ${rankingScope === scope ? "bg-primary/10 text-primary" : "text-muted hover:bg-surface hover:text-foreground"}`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-2 border-b border-border/70 bg-surface/20 px-4 py-2">
+                {rankingScope === "desk" && rankingDeskOptions.length > 1 ? (
+                  <KwantSelect
+                    value={rankingDeskId}
+                    onChange={(event) => {
+                      setRankingDeskId(event.target.value);
+                      window.localStorage.setItem("kwantdesk-active-desk", event.target.value);
+                    }}
+                    className="h-8 min-w-[180px] rounded-lg border border-border bg-background px-3 text-[8px] font-semibold outline-none"
+                    aria-label="Select Desk ranking"
+                  >
+                    {rankingDeskOptions.map((workspace) => <option key={workspace.deskId} value={workspace.deskId}>{workspace.name}</option>)}
+                  </KwantSelect>
+                ) : null}
+                <span className="text-[7px] text-muted">
+                  {rankingScope === "desk"
+                    ? `${rankingDeskOptions.find((workspace) => workspace.deskId === rankingDeskId)?.name ?? "No Desk selected"} · current members only`
+                    : rankingScope === "friends"
+                      ? `${rankingFriends.length} accepted friend${rankingFriends.length === 1 ? "" : "s"}`
+                      : `Platform-wide · ${rankingSeason.start.toLocaleDateString(undefined, { month: "short", day: "numeric" })}–${rankingSeason.end.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}`}
+                </span>
+                <span className="ml-auto text-[6px] uppercase tracking-[0.1em] text-muted/70">
+                  {rankingDirectoryState === "loading" ? "Syncing membership" : rankingDirectoryState === "unavailable" ? "Directory reconnecting" : PROCESS_REPUTATION_VERSION}
+                </span>
+              </div>
               <div className="overflow-x-auto">
                 <div className="min-w-[900px]">
                   <div className="grid grid-cols-[52px_240px_repeat(8,1fr)_72px] border-b border-border px-4 py-2 text-[7px] font-semibold uppercase tracking-[0.09em] text-muted"><span>Rank</span><span>Trader</span>{SCORE_LABELS.map(([, label]) => <span key={label} className="text-center">{label.split(" ")[0]}</span>)}<span className="text-right">Index</span></div>
-                  {rankedProfiles.map(({ object, profile }, index) => (
-                    <div key={objectKey(object)} className="grid grid-cols-[52px_240px_repeat(8,1fr)_72px] items-center border-b border-border/55 px-4 py-3 text-[8px] transition-colors hover:bg-surface/25">
+                  {rankedProfiles.map(({ userId, profile, reputation }, index) => (
+                    <div key={userId} className="grid grid-cols-[52px_240px_repeat(8,1fr)_72px] items-center border-b border-border/55 px-4 py-3 text-[8px] transition-colors hover:bg-surface/25">
                       <span className={`font-mono text-[12px] font-semibold ${index < 3 ? "text-primary" : "text-muted"}`}>{String(index + 1).padStart(2, "0")}</span>
                       <button
                         type="button"
@@ -3094,14 +3304,23 @@ export default function SocialsWorkspace({
                           </span>
                           <span className="mt-0.5 block truncate text-[7px] text-muted">@{profile.handle} · {profile.markets.join("/")}</span>
                           <span className="mt-0.5 block text-[6px] uppercase tracking-[0.1em] text-muted/70">
-                            {presenceOption(effectivePresenceStatus(profile.presenceStatus, profile.lastSeenAt)).label} Â· View profile
+                            {presenceOption(effectivePresenceStatus(profile.presenceStatus, profile.lastSeenAt)).label} · {reputation.completedRecords} completed · {reputation.lockedPlans} plans
                           </span>
                         </span>
                       </button>
-                      {SCORE_LABELS.map(([key]) => <span key={key} className="text-center font-mono text-muted">{profile.scores[key] || "—"}</span>)}
-                      <span className="text-right font-mono text-[11px] font-semibold text-primary">{profileScoreAverage(profile) || "—"}</span>
+                      {SCORE_LABELS.map(([key]) => <span key={key} className="text-center font-mono text-muted">{reputation.scores[key] || "—"}</span>)}
+                      <span className="text-right font-mono text-[11px] font-semibold text-primary">{reputation.index || "—"}</span>
                     </div>
                   ))}
+                  {rankedProfiles.length === 0 ? (
+                    <div className="flex min-h-32 items-center justify-center px-6 text-center text-[8px] leading-5 text-muted">
+                      {rankingScope === "desk"
+                        ? rankingDeskId ? "This Desk has no current members to rank." : "Join or create a Desk to see its current member ranking."
+                        : rankingScope === "friends"
+                          ? "Accepted friends will appear here once connected."
+                          : "No eligible platform profiles are available for this season yet."}
+                    </div>
+                  ) : null}
                 </div>
               </div>
             </Card>
