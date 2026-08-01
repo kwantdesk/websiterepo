@@ -42,6 +42,7 @@ import type {
 } from "@/lib/socialFollows";
 import ReasoningOutcomeChart from "@/components/socials/ReasoningOutcomeChart";
 import ActivityStreakBadge from "@/components/socials/ActivityStreakBadge";
+import CallingCardVisual from "@/components/socials/CallingCardVisual";
 import UserAvatar from "@/components/socials/UserAvatar";
 import { effectivePresenceStatus, presenceOption, type FriendsPayload } from "@/lib/friends";
 import { createClient as createSupabaseBrowserClient } from "@/lib/supabase/client";
@@ -368,7 +369,9 @@ export default function SocialProfileView({
   const selectedCard = earnedCards.find((card) => card.code === profile.callingCardCode && card.public !== false)
     ?? earnedCards.find((card) => card.equipped && card.public !== false)
     ?? earnedCards.find((card) => card.public !== false);
-  const cardDefinition = CALLING_CARD_CATALOG.find((definition) => definition.code === selectedCard?.code);
+  const cardDefinition = CALLING_CARD_CATALOG.find((definition) => definition.code === (profile.callingCardCode || selectedCard?.code))
+    ?? CALLING_CARD_CATALOG.find((definition) => definition.starter)
+    ?? CALLING_CARD_CATALOG[0];
   const receivedComments = comments.filter((comment) => gameplans.some((record) => record.id === comment.parentId)).length;
   const links = [
     ...(profile.websiteUrl ? [{ label: "Website", url: profile.websiteUrl }] : []),
@@ -392,14 +395,7 @@ export default function SocialProfileView({
 
       <section className="overflow-hidden rounded-3xl border border-border bg-panel shadow-[0_24px_80px_rgba(0,0,0,0.28)]">
         <div className="relative h-40 overflow-hidden border-b border-border sm:h-48">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_12%,color-mix(in_srgb,var(--primary)_22%,transparent),transparent_35%),radial-gradient(circle_at_82%_70%,color-mix(in_srgb,var(--accent)_12%,transparent),transparent_38%),linear-gradient(125deg,color-mix(in_srgb,var(--surface)_78%,black),var(--background))]" />
-          <div className="absolute inset-0 opacity-30 [background-image:linear-gradient(color-mix(in_srgb,var(--primary)_18%,transparent)_1px,transparent_1px),linear-gradient(90deg,color-mix(in_srgb,var(--primary)_18%,transparent)_1px,transparent_1px)] [background-size:32px_32px]" />
-          <div className="absolute inset-x-0 bottom-0 h-px bg-primary shadow-[0_0_18px_var(--primary)]" />
-          <div className="absolute right-5 top-5 max-w-[250px] rounded-2xl border border-primary/25 bg-black/35 px-4 py-3 text-right backdrop-blur-md">
-            <div className="flex items-center justify-end gap-1.5 text-[7px] font-semibold uppercase tracking-[0.16em] text-primary"><Sparkles className="h-3 w-3" />Calling Card</div>
-            <div className="mt-2 text-[15px] font-semibold text-foreground">{selectedCard?.name ?? cardDefinition?.name ?? "Building the record"}</div>
-            <div className="mt-1 text-[7px] leading-4 text-muted">{selectedCard?.description ?? cardDefinition?.description ?? "Verified Gameplans will unlock a permanent identity card."}</div>
-          </div>
+          <CallingCardVisual definition={cardDefinition} ownerName={profile.displayName} earnedLabel={selectedCard ? `EARNED ${formatDate(selectedCard.earnedAt).toUpperCase()}` : "FOUNDING ISSUE"} banner />
         </div>
 
         <div className="relative px-4 pb-5 sm:px-7">

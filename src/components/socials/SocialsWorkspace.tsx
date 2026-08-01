@@ -54,6 +54,7 @@ import KwantLoader from "@/components/KwantLoader";
 import KwantSelect from "@/components/ui/KwantSelect";
 import SocialProfileView from "@/components/socials/SocialProfileView";
 import ActivityStreakBadge from "@/components/socials/ActivityStreakBadge";
+import CallingCardVisual from "@/components/socials/CallingCardVisual";
 import ReasoningOutcomeChart from "@/components/socials/ReasoningOutcomeChart";
 import DeskWorkspace from "@/components/socials/DeskWorkspace";
 import UserAvatar from "@/components/socials/UserAvatar";
@@ -795,6 +796,13 @@ export default function SocialsWorkspace({
   const comments = useMemo(() => state.objects.filter((object) => object.objectType === "comment"), [state.objects]);
   const reactions = useMemo(() => state.objects.filter((object) => object.objectType === "reaction"), [state.objects]);
   const cards = useMemo(() => state.objects.filter((object) => object.objectType === "card"), [state.objects]);
+  const earnedCardCodes = useMemo(() => new Set([
+    "origin-signal",
+    ...cards
+      .filter((card) => card.userId === resolvedAccountKey)
+      .map((card) => typedPayload<SocialCardPayload>(card)?.code)
+      .filter((code): code is string => Boolean(code)),
+  ]), [cards, resolvedAccountKey]);
   const consensus = useMemo(() => state.objects.filter((object) => object.objectType === "consensus"), [state.objects]);
   const profileByUserId = useMemo(() => new Map(
     profiles.map((profile) => [
@@ -804,6 +812,9 @@ export default function SocialsWorkspace({
   ), [profiles]);
   const currentProfileObject = profiles.find((object) => object.userId === resolvedAccountKey);
   const currentProfile = normalizeSocialProfile(currentProfileObject?.payload, resolvedLabel);
+  const equippedCallingCard = CALLING_CARD_CATALOG.find((definition) => definition.code === currentProfile.callingCardCode)
+    ?? CALLING_CARD_CATALOG.find((definition) => definition.starter)
+    ?? CALLING_CARD_CATALOG[0];
   const requestedProfileHandle = initialProfileHandle.trim().toLowerCase().replace(/^@/, "");
   const viewedProfileObject = requestedProfileHandle
     ? profiles.find((object) => normalizeSocialProfile(object.payload, object.authorLabel).handle === requestedProfileHandle)
@@ -848,6 +859,29 @@ export default function SocialsWorkspace({
   useEffect(() => {
     setProfileDraft(currentProfile);
   }, [currentProfileObject?.updatedAt]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!ready || cards.some((card) => card.userId === resolvedAccountKey && typedPayload<SocialCardPayload>(card)?.code === "origin-signal")) return;
+    const definition = CALLING_CARD_CATALOG.find((card) => card.code === "origin-signal");
+    if (!definition) return;
+    void saveObject(buildLocalObject({
+      id: `card:${definition.code}`,
+      userId: resolvedAccountKey,
+      authorLabel: currentProfile.displayName,
+      objectType: "card",
+      scope: "community",
+      payload: {
+        code: definition.code,
+        name: definition.name,
+        family: definition.family,
+        description: definition.description,
+        earnedAt: new Date().toISOString(),
+        active: true,
+        equipped: true,
+        public: true,
+      } satisfies SocialCardPayload,
+    }));
+  }, [cards, currentProfile.displayName, ready, resolvedAccountKey, saveObject]);
 
   useEffect(() => {
     if (profileEditing) setProfileSaveState("idle");
@@ -1348,7 +1382,8 @@ export default function SocialsWorkspace({
         return;
       }
       if (!cards.some((card) => card.userId === resolvedAccountKey && typedPayload<SocialCardPayload>(card)?.code === "first-on-record")) {
-        const definition = CALLING_CARD_CATALOG[0];
+        const definition = CALLING_CARD_CATALOG.find((card) => card.code === "first-on-record");
+        if (!definition) throw new Error("The First on Record Calling Card is unavailable.");
         await saveObject(buildLocalObject({
           id: `card:${definition.code}`,
           userId: resolvedAccountKey,
@@ -1679,6 +1714,27 @@ export default function SocialsWorkspace({
       },
     }));
     if (requestedProfileHandle !== profile.handle) onOpenProfile?.(profile.handle);
+  };
+
+  const equipCallingCard = async (definition: (typeof CALLING_CARD_CATALOG)[number]) => {
+    const earned = definition.starter || cards.some((card) =>
+      card.userId === resolvedAccountKey
+      && typedPayload<SocialCardPayload>(card)?.code === definition.code);
+    if (!earned) {
+      setNotice(definition.requirement);
+      return;
+    }
+    const profile = { ...currentProfile, callingCardCode: definition.code };
+    setProfileDraft(profile);
+    const saved = await saveObject(buildLocalObject({
+      id: "profile",
+      userId: resolvedAccountKey,
+      authorLabel: profile.displayName,
+      objectType: "profile",
+      scope: profile.visibility.profile,
+      payload: profile,
+    }));
+    setNotice(saved.cloudSaved ? `${definition.name} is now your profile banner.` : "The banner is selected locally and will sync when account storage reconnects.");
   };
 
   const openNewPost = (kind: SocialPostPayload["kind"] = "POST") => {
@@ -3002,42 +3058,36 @@ export default function SocialsWorkspace({
 
         {tab === "cards" ? (
           <div className="mx-auto max-w-6xl space-y-3 p-3">
-            <div className="grid gap-3 lg:grid-cols-[320px_1fr]">
-              <div className="space-y-3">
-                <Card className="relative overflow-hidden p-5">
-                  <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,color-mix(in_srgb,var(--primary)_18%,transparent),transparent_50%)]" />
-                  <div className="relative">
-                    <div className="flex items-center gap-2 text-[7px] font-semibold uppercase tracking-[0.15em] text-primary"><Flame className="h-3.5 w-3.5" />Active state</div>
-                    <div className="mt-5 flex h-44 flex-col justify-between rounded-2xl border border-primary/25 bg-black/35 p-4 shadow-[0_0_30px_color-mix(in_srgb,var(--primary)_9%,transparent)]">
-                      <div className="flex items-start justify-between"><span className="flex h-10 w-10 items-center justify-center rounded-xl border border-primary/25 bg-primary/10 text-primary"><Flame className="h-5 w-5" /></span><span className="text-[7px] uppercase tracking-[0.16em] text-muted">Momentum · temporary</span></div>
-                      <div><div className="text-[22px] font-semibold tracking-[-0.03em] text-foreground">No active state</div><div className="mt-1 text-[8px] text-muted">Verified current form equips automatically.</div></div>
-                    </div>
-                    <p className="mt-3 text-[7px] leading-4 text-muted">An active state disappears when the condition ends. The first achievement remains permanently collectible.</p>
-                  </div>
-                </Card>
-                <Card className="p-4"><div className="flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-primary" /><h3 className="text-[10px] font-semibold">Private correction track</h3></div><div className="mt-3 rounded-xl border border-border bg-background/30 p-3"><div className="text-[8px] font-semibold text-foreground">No unstable process detected</div><p className="mt-1 text-[7px] leading-4 text-muted">Corrective diagnoses are private, evidence-backed, appealable, and paired with a path to transformation.</p></div></Card>
-              </div>
-              <div className="space-y-3">
-                <Card className="p-4"><div className="flex items-center gap-2"><Award className="h-4 w-4 text-primary" /><div><h2 className="text-[11px] font-semibold">Calling Card collection</h2><p className="mt-0.5 text-[8px] text-muted">{cards.filter((card) => card.userId === resolvedAccountKey).length} earned · origin, mastery, contribution, and transformation</p></div></div></Card>
-                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                  {CALLING_CARD_CATALOG.map((definition) => {
-                    const earnedObject = cards.find((card) => card.userId === resolvedAccountKey && typedPayload<SocialCardPayload>(card)?.code === definition.code);
-                    const earned = typedPayload<SocialCardPayload>(earnedObject);
-                    const hidden = definition.family === "HIDDEN" && !earned;
-                    return (
-                      <Card key={definition.code} className={`relative min-h-[210px] overflow-hidden p-4 ${earned ? "border-primary/30" : ""}`}>
-                        <div className={`pointer-events-none absolute inset-0 ${earned ? "bg-[radial-gradient(circle_at_80%_0%,color-mix(in_srgb,var(--primary)_15%,transparent),transparent_45%)]" : "bg-gradient-to-br from-transparent to-surface/25"}`} />
-                        <div className="relative flex h-full flex-col">
-                          <div className="flex items-start justify-between"><span className={`flex h-10 w-10 items-center justify-center rounded-xl border ${earned ? "border-primary/25 bg-primary/10 text-primary" : "border-border bg-surface text-muted"}`}>{hidden ? <EyeOff className="h-4 w-4" /> : definition.family === "MOMENTUM" ? <Flame className="h-4 w-4" /> : definition.family === "CONTRIBUTION" ? <UsersRound className="h-4 w-4" /> : definition.family === "MASTERY" ? <Medal className="h-4 w-4" /> : <Award className="h-4 w-4" />}</span><span className="rounded-lg border border-border bg-background/35 px-2 py-1 text-[6px] font-semibold uppercase tracking-[0.12em] text-muted">{definition.family}</span></div>
-                          <div className="mt-5 text-[16px] font-semibold tracking-[-0.02em]">{hidden ? "Undiscovered" : definition.name}</div>
-                          <p className="mt-2 text-[8px] leading-4 text-muted">{hidden ? "The requirement is revealed only after the positive behaviour is completed." : definition.description}</p>
-                          <div className="mt-auto border-t border-border/70 pt-3 text-[7px] text-muted">{earned ? `Earned ${formatDate(earned.earnedAt)}` : definition.requirement}</div>
-                        </div>
-                      </Card>
-                    );
-                  })}
-                </div>
-              </div>
+            <Card className="relative overflow-hidden p-5">
+              <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_86%_0%,color-mix(in_srgb,var(--primary)_14%,transparent),transparent_42%)]" />
+              <div className="relative flex flex-wrap items-end gap-4"><div className="min-w-0 flex-1"><div className="flex items-center gap-2 text-[7px] font-semibold uppercase tracking-[0.16em] text-primary"><Award className="h-3.5 w-3.5" />Calling Card collection</div><h2 className="mt-2 text-[24px] font-semibold tracking-[-0.04em]">Your trading identity, earned on record.</h2><p className="mt-2 max-w-2xl text-[9px] leading-5 text-muted">Every account begins with Origin Signal. The remaining cards unlock from verifiable process, discipline, contribution and adaptation—not a single profit screenshot.</p></div><div className="rounded-2xl border border-primary/20 bg-primary/[0.05] px-4 py-3 text-right"><div className="font-mono text-[22px] font-semibold text-primary">{earnedCardCodes.size}/10</div><div className="mt-1 text-[7px] uppercase tracking-[0.13em] text-muted">Unlocked</div></div></div>
+            </Card>
+
+            <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_300px]">
+              <Card className="overflow-hidden p-4">
+                <div className="flex items-center gap-2 pb-3"><Sparkles className="h-4 w-4 text-primary" /><div><h3 className="text-[10px] font-semibold">Active profile banner</h3><p className="mt-0.5 text-[7px] text-muted">This animated card is shown across the top of your public profile.</p></div></div>
+                <CallingCardVisual definition={equippedCallingCard} ownerName={currentProfile.displayName} />
+              </Card>
+              <Card className="p-4">
+                <div className="flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-primary" /><h3 className="text-[10px] font-semibold">How cards work</h3></div>
+                <div className="mt-4 space-y-3 text-[8px] leading-4 text-muted"><p><strong className="text-foreground">Identity layer.</strong> The card becomes the banner on your profile and travels with your public record.</p><p><strong className="text-foreground">Verified unlocks.</strong> Rules are calculated from account-backed Gameplans, receipts, streaks and accepted reviews.</p><p><strong className="text-foreground">Generated artwork.</strong> New artwork can be produced from a reference image and dropped into this same 3D motion shell.</p></div>
+                <div className="mt-4 rounded-xl border border-primary/20 bg-primary/[0.05] p-3 text-[7px] leading-4 text-muted"><strong className="text-primary">Origin Signal</strong> is permanent and can always be re-equipped.</div>
+              </Card>
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-2">
+              {CALLING_CARD_CATALOG.map((definition) => {
+                const earnedObject = cards.find((card) => card.userId === resolvedAccountKey && typedPayload<SocialCardPayload>(card)?.code === definition.code);
+                const earned = typedPayload<SocialCardPayload>(earnedObject);
+                const unlocked = earnedCardCodes.has(definition.code);
+                const selected = equippedCallingCard.code === definition.code;
+                return (
+                  <Card key={definition.code} className={`overflow-hidden p-3 ${selected ? "border-primary/35 shadow-[0_0_24px_color-mix(in_srgb,var(--primary)_8%,transparent)]" : unlocked ? "border-primary/20" : ""}`}>
+                    <CallingCardVisual definition={definition} ownerName={currentProfile.displayName} locked={!unlocked} earnedLabel={earned ? `EARNED ${formatDate(earned.earnedAt).toUpperCase()}` : definition.starter ? "FOUNDING ISSUE" : ""} />
+                    <div className="flex items-center gap-3 px-1 pb-1 pt-3"><div className="min-w-0 flex-1"><div className="text-[9px] font-semibold text-foreground">{definition.name}</div><div className="mt-1 text-[7px] leading-4 text-muted">{unlocked ? definition.description : definition.requirement}</div></div>{unlocked ? <button type="button" onClick={() => void equipCallingCard(definition)} disabled={selected} className={`h-8 shrink-0 rounded-lg px-3 text-[7px] font-semibold ${selected ? "border border-primary/25 bg-primary/10 text-primary" : "bg-primary text-background hover:brightness-110"}`}>{selected ? "On profile" : "Use banner"}</button> : <span className="flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-border bg-surface px-3 text-[7px] font-semibold text-muted"><LockKeyhole className="h-3 w-3" />Locked</span>}</div>
+                  </Card>
+                );
+              })}
             </div>
           </div>
         ) : null}
@@ -3080,8 +3130,8 @@ export default function SocialsWorkspace({
                   <label className="block md:col-span-2">
                     <span className="mb-1.5 block text-[7px] font-semibold uppercase tracking-[0.1em] text-muted">Calling Card banner</span>
                     <KwantSelect value={profileDraft.callingCardCode ?? ""} onChange={(event) => setProfileDraft((current) => ({ ...current, callingCardCode: event.target.value }))} className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[9px] outline-none">
-                      <option value="">Automatic / latest earned card</option>
-                      {cards.filter((card) => card.userId === resolvedAccountKey).map((card) => typedPayload<SocialCardPayload>(card)).filter((card): card is SocialCardPayload => card !== null).filter((card) => card.public !== false).map((card) => <option key={card.code} value={card.code}>{card.name}</option>)}
+                      <option value="origin-signal">Origin Signal · default</option>
+                      {cards.filter((card) => card.userId === resolvedAccountKey).map((card) => typedPayload<SocialCardPayload>(card)).filter((card): card is SocialCardPayload => card !== null).filter((card) => card.public !== false && card.code !== "origin-signal").map((card) => <option key={card.code} value={card.code}>{card.name}</option>)}
                     </KwantSelect>
                   </label>
                   <div className="space-y-2 md:col-span-2">

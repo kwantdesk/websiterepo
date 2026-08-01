@@ -335,10 +335,15 @@ export type SocialState = {
 export type CallingCardDefinition = {
   code: string;
   name: string;
+  tagline: string;
   family: "LEGACY" | "MASTERY" | "MOMENTUM" | "CONTRIBUTION" | "HIDDEN" | "TRANSFORMED";
   description: string;
   requirement: string;
   accent: "gold" | "green" | "blue" | "violet" | "red" | "white";
+  motif: "origin" | "record" | "permission" | "streak" | "architecture" | "consistency" | "review" | "steel" | "decay" | "cartography";
+  tier: "ORIGIN" | "BRONZE" | "SILVER" | "GOLD" | "OBSIDIAN";
+  starter?: boolean;
+  artworkUrl?: string;
 };
 
 export const EMPTY_SOCIAL_STATE: SocialState = {
@@ -377,68 +382,115 @@ export const PROCESS_STATUSES: Array<{ id: SocialProcessStatus; label: string }>
 
 export const CALLING_CARD_CATALOG: CallingCardDefinition[] = [
   {
+    code: "origin-signal",
+    name: "Origin Signal",
+    tagline: "Every record starts somewhere.",
+    family: "LEGACY",
+    description: "The founding identity card issued when a trader joins Kwant Desk.",
+    requirement: "Issued automatically to every verified Kwant Desk account.",
+    accent: "green",
+    motif: "origin",
+    tier: "ORIGIN",
+    starter: true,
+  },
+  {
     code: "first-on-record",
     name: "First on Record",
+    tagline: "Reasoning before outcome.",
     family: "LEGACY",
     description: "Published a first locked plan before the outcome.",
     requirement: "Lock one complete Decision Record.",
     accent: "gold",
+    motif: "record",
+    tier: "BRONZE",
   },
   {
     code: "waited-for-permission",
     name: "Waited for Permission",
+    tagline: "No trigger is still a decision.",
     family: "MASTERY",
     description: "Completed the plan and correctly recorded no trade when confirmation never appeared.",
     requirement: "Verify one complete no-trigger receipt.",
     accent: "green",
+    motif: "permission",
+    tier: "SILVER",
   },
   {
     code: "five-straight",
     name: "Five Straight",
+    tagline: "Consistency survived the week.",
     family: "MOMENTUM",
     description: "Permanent record of the first five-session verified win streak.",
     requirement: "Five risk-normalized winning sessions.",
     accent: "red",
+    motif: "streak",
+    tier: "GOLD",
   },
   {
     code: "daily-architect",
     name: "Daily Architect",
+    tagline: "Structure, repeated deliberately.",
     family: "HIDDEN",
     description: "Built complete plans across twenty scheduled sessions.",
     requirement: "Hidden until earned.",
     accent: "blue",
+    motif: "architecture",
+    tier: "SILVER",
   },
   {
     code: "quiet-consistency",
     name: "Quiet Consistency",
+    tagline: "The work remained when nobody watched.",
     family: "HIDDEN",
     description: "Completed thirty plan-to-review cycles without chasing public attention.",
     requirement: "Hidden until earned.",
     accent: "white",
+    motif: "consistency",
+    tier: "GOLD",
   },
   {
     code: "plan-reviewer",
     name: "Plan Reviewer",
+    tagline: "Made another trader sharper.",
     family: "CONTRIBUTION",
     description: "Provided repeatedly useful evidence-based peer reviews.",
     requirement: "Ten reviews accepted as helpful.",
     accent: "violet",
+    motif: "review",
+    tier: "SILVER",
   },
   {
     code: "tempered-steel",
     name: "Tempered Steel",
+    tagline: "Weakness converted into process.",
     family: "TRANSFORMED",
     description: "Corrected unstable risk and produced a verified risk-normalized sample.",
     requirement: "Complete the private Glass Cannon correction track.",
     accent: "white",
+    motif: "steel",
+    tier: "OBSIDIAN",
   },
   {
     code: "zero-alpha-decay",
     name: "0α Decay",
+    tagline: "The edge survived new evidence.",
     family: "MASTERY",
     description: "Reasoning and execution quality remained stable as evidence grew.",
     requirement: "Revalidated monthly after a qualifying multi-regime sample.",
     accent: "gold",
+    motif: "decay",
+    tier: "OBSIDIAN",
+  },
+  {
+    code: "market-cartographer",
+    name: "Market Cartographer",
+    tagline: "Mapped uncertainty before it moved.",
+    family: "MASTERY",
+    description: "Built reliable two-sided maps across multiple market regimes and sessions.",
+    requirement: "Complete fifty scored Gameplans across three verified market regimes.",
+    accent: "blue",
+    motif: "cartography",
+    tier: "GOLD",
   },
 ];
 
@@ -498,7 +550,7 @@ export function buildDefaultProfile(label: string): SocialProfilePayload {
     websiteUrl: "",
     profileLinks: [],
     showContactEmail: false,
-    callingCardCode: "",
+    callingCardCode: "origin-signal",
     activityStreak: 0,
     longestActivityStreak: 0,
     lastActivityDate: "",
@@ -626,7 +678,7 @@ export function normalizeSocialProfile(value: unknown, label = "Kwant Trader"): 
       : "",
     profileLinks: links,
     showContactEmail: Boolean(candidate.showContactEmail),
-    callingCardCode: profileText(candidate.callingCardCode, "", 80).replace(/[^a-z0-9-]/gi, ""),
+    callingCardCode: profileText(candidate.callingCardCode, fallback.callingCardCode ?? "origin-signal", 80).replace(/[^a-z0-9-]/gi, "") || "origin-signal",
   };
 }
 

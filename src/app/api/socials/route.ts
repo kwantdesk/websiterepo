@@ -4,6 +4,7 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import { getRouteActor, type RouteActor } from "@/lib/serverAuth";
 import {
   calculateReasoningScore,
+  CALLING_CARD_CATALOG,
   normalizeSocialProfile,
   SOCIAL_OBJECT_TYPES,
   SOCIAL_SCOPES,
@@ -263,7 +264,7 @@ export async function POST(request: NextRequest) {
     if (!/^[a-z][a-z0-9_]{2,23}$/.test(profile.handle)) {
       return NextResponse.json({ error: "Use a valid 3–24 character profile handle." }, { status: 400 });
     }
-    if (profile.callingCardCode) {
+    if (profile.callingCardCode && profile.callingCardCode !== "origin-signal") {
       const { data: ownedCard } = await supabase
         .from("social_objects")
         .select("id")
@@ -364,15 +365,30 @@ export async function POST(request: NextRequest) {
     id = `receipt:${parentId}`;
   } else if (objectType === "card") {
     const code = cleanIdentifier(payload.code, 80);
-    if (code !== "first-on-record") {
+    const definition = CALLING_CARD_CATALOG.find((candidate) => candidate.code === code);
+    if (!definition || !["origin-signal", "first-on-record"].includes(code)) {
       return NextResponse.json({ error: "Calling Cards are awarded by verified product rules." }, { status: 403 });
     }
-    const { count } = await supabase
-      .from("social_objects")
-      .select("id", { count: "exact", head: true })
-      .eq("user_id", actor.userId)
-      .eq("object_type", "precord");
-    if (!count) return NextResponse.json({ error: "Lock a Decision Record before claiming this card." }, { status: 409 });
+    if (code === "first-on-record") {
+      const { count } = await supabase
+        .from("social_objects")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", actor.userId)
+        .eq("object_type", "precord");
+      if (!count) return NextResponse.json({ error: "Lock a Decision Record before claiming this card." }, { status: 409 });
+    }
+    payload = {
+      code: definition.code,
+      name: definition.name,
+      family: definition.family,
+      description: definition.description,
+      earnedAt: typeof payload.earnedAt === "string" && Number.isFinite(Date.parse(payload.earnedAt))
+        ? new Date(payload.earnedAt).toISOString()
+        : now,
+      active: payload.active !== false,
+      equipped: payload.equipped === true || definition.starter === true,
+      public: payload.public !== false,
+    };
     id = `card:${code}`;
     useUpsert = true;
   } else if (objectType === "precord") {

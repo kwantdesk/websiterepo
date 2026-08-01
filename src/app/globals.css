@@ -538,3 +538,230 @@ table,
 .login-note,.login-error { font-size:11px; text-align:center; line-height:1.5; }
 .login-note { margin:24px 0 0; color:rgba(255,255,255,.4); }
 .login-error { margin:0 0 14px; color:var(--danger); }
+
+/* Calling Cards are collectible profile banners. Artwork can be swapped for a
+   generated render later without changing the motion, identity, or lock layer. */
+.calling-card {
+  position: relative;
+  width: 100%;
+  min-height: 238px;
+  perspective: 1200px;
+  isolation: isolate;
+}
+
+.calling-card--banner {
+  height: 100%;
+  min-height: 0;
+}
+
+.calling-card__plane {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--calling-primary) 34%, #22252b);
+  border-radius: 22px;
+  background:
+    radial-gradient(circle at 72% 42%, var(--calling-haze), transparent 30%),
+    radial-gradient(circle at 12% 115%, color-mix(in srgb, var(--calling-secondary) 12%, transparent), transparent 42%),
+    linear-gradient(135deg, #030405, #080a0d 52%, #020303);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.08),
+    inset 0 0 44px rgba(255,255,255,.018),
+    0 22px 55px rgba(0,0,0,.42),
+    0 0 30px color-mix(in srgb, var(--calling-primary) 7%, transparent);
+  transform-style: preserve-3d;
+  animation: calling-card-float 7s ease-in-out infinite;
+  transition: transform .65s cubic-bezier(.2,.8,.2,1), border-color .4s ease, box-shadow .4s ease;
+}
+
+.calling-card:hover .calling-card__plane {
+  animation-play-state: paused;
+  border-color: color-mix(in srgb, var(--calling-primary) 58%, #22252b);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.1), 0 30px 70px rgba(0,0,0,.55), 0 0 38px color-mix(in srgb, var(--calling-primary) 12%, transparent);
+  transform: rotateX(1.4deg) rotateY(-2.5deg) translateY(-2px);
+}
+
+.calling-card--banner .calling-card__plane {
+  border-width: 0 0 1px;
+  border-radius: 0;
+  animation-duration: 9s;
+}
+
+.calling-card__art {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: .62;
+  filter: saturate(.85) contrast(1.12);
+  mix-blend-mode: screen;
+}
+
+.calling-card__grid {
+  position: absolute;
+  inset: 0;
+  opacity: .18;
+  background-image:
+    linear-gradient(color-mix(in srgb, var(--calling-primary) 32%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--calling-primary) 24%, transparent) 1px, transparent 1px);
+  background-size: 30px 30px;
+  mask-image: linear-gradient(90deg, transparent, #000 34%, #000 86%, transparent);
+}
+
+.calling-card__haze {
+  position: absolute;
+  width: 190px;
+  height: 190px;
+  border-radius: 999px;
+  background: var(--calling-haze);
+  filter: blur(48px);
+  animation: calling-card-breathe 5.8s ease-in-out infinite;
+}
+
+.calling-card__haze--one { right: 8%; top: -38%; }
+.calling-card__haze--two { right: 31%; bottom: -68%; animation-delay: -2.4s; }
+
+.calling-card__core {
+  position: absolute;
+  right: clamp(22px, 9%, 90px);
+  top: 50%;
+  width: 118px;
+  height: 118px;
+  transform: translateY(-50%);
+  border: 1px solid color-mix(in srgb, var(--calling-primary) 42%, transparent);
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(circle, color-mix(in srgb, var(--calling-primary) 16%, #050607), #030405 62%);
+  color: var(--calling-primary);
+  box-shadow: inset 0 0 30px color-mix(in srgb, var(--calling-primary) 14%, transparent), 0 0 32px color-mix(in srgb, var(--calling-primary) 12%, transparent);
+}
+
+.calling-card__orbit {
+  position: absolute;
+  inset: 10px;
+  border: 1px solid color-mix(in srgb, var(--calling-secondary) 48%, transparent);
+  border-radius: 50%;
+  border-left-color: transparent;
+  animation: calling-card-orbit 8s linear infinite;
+}
+
+.calling-card__orbit--two { inset: 21px; animation-duration: 5s; animation-direction: reverse; }
+.calling-card__orbit--three { inset: 33px; border-style: dashed; animation-duration: 11s; }
+.calling-card__core-code { font-family: var(--font-jetbrains-mono), monospace; font-size: 18px; font-weight: 700; letter-spacing: -.04em; text-shadow: 0 0 16px var(--calling-primary); }
+
+.calling-card__circuit {
+  position: absolute;
+  right: 13%;
+  width: 34%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--calling-primary), transparent);
+  opacity: .38;
+}
+
+.calling-card__circuit::before,
+.calling-card__circuit::after {
+  content: "";
+  position: absolute;
+  top: -2px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--calling-secondary);
+  box-shadow: 0 0 10px var(--calling-secondary);
+}
+
+.calling-card__circuit::before { left: 19%; }
+.calling-card__circuit::after { right: 23%; }
+.calling-card__circuit--one { top: 28%; transform: rotate(-8deg); }
+.calling-card__circuit--two { bottom: 25%; transform: rotate(9deg); }
+
+.calling-card__scan {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, transparent 0%, color-mix(in srgb, var(--calling-primary) 8%, transparent) 49%, transparent 51%);
+  background-size: 100% 46px;
+  opacity: .45;
+  animation: calling-card-scan 7.5s linear infinite;
+}
+
+.calling-card__shine {
+  position: absolute;
+  inset: -80% -45%;
+  background: linear-gradient(110deg, transparent 38%, rgba(255,255,255,.11) 48%, transparent 58%);
+  transform: translateX(-32%);
+  animation: calling-card-shine 8s ease-in-out infinite;
+}
+
+.calling-card__content {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  padding: 18px;
+  transform: translateZ(20px);
+}
+
+.calling-card__header,
+.calling-card__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 7px;
+  font-weight: 700;
+  letter-spacing: .14em;
+  color: rgba(255,255,255,.46);
+  text-transform: uppercase;
+}
+
+.calling-card__brand,
+.calling-card__owner { display: flex; align-items: center; gap: 6px; color: var(--calling-primary); }
+.calling-card__identity { margin-top: auto; max-width: 68%; }
+.calling-card__family { color: var(--calling-primary); font-size: 7px; font-weight: 700; letter-spacing: .16em; }
+.calling-card__name { margin-top: 8px; color: #fff; font-size: clamp(20px, 2.2vw, 31px); font-weight: 650; letter-spacing: -.045em; line-height: 1; text-shadow: 0 8px 30px rgba(0,0,0,.72); }
+.calling-card__tagline { margin-top: 7px; color: rgba(255,255,255,.55); font-size: 8px; line-height: 1.4; }
+.calling-card__footer { margin-top: 20px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,.08); }
+
+.calling-card__lock {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 20px;
+  color: rgba(255,255,255,.82);
+  text-align: center;
+  background: rgba(2,3,4,.6);
+  backdrop-filter: blur(5px) saturate(.55);
+}
+
+.calling-card__lock-icon { display: grid; place-items: center; width: 42px; height: 42px; border: 1px solid rgba(255,255,255,.16); border-radius: 14px; background: rgba(255,255,255,.06); }
+.calling-card__lock strong { font-size: 9px; letter-spacing: .18em; }
+.calling-card__lock > span:last-child { max-width: 230px; color: rgba(255,255,255,.46); font-size: 7px; line-height: 1.5; }
+.calling-card--locked .calling-card__core { filter: grayscale(1); opacity: .45; }
+
+@keyframes calling-card-float { 0%, 100% { transform: translateY(0) rotateX(0); } 50% { transform: translateY(-2px) rotateX(.35deg); } }
+@keyframes calling-card-breathe { 0%, 100% { opacity: .55; transform: scale(.86); } 50% { opacity: 1; transform: scale(1.08); } }
+@keyframes calling-card-orbit { to { transform: rotate(360deg); } }
+@keyframes calling-card-scan { to { background-position: 0 92px; } }
+@keyframes calling-card-shine { 0%, 64% { transform: translateX(-36%); opacity: 0; } 72% { opacity: .75; } 84%, 100% { transform: translateX(36%); opacity: 0; } }
+
+@media (max-width: 640px) {
+  .calling-card__core { right: 15px; width: 92px; height: 92px; }
+  .calling-card__identity { max-width: 72%; }
+  .calling-card__serial { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .calling-card__plane,
+  .calling-card__haze,
+  .calling-card__orbit,
+  .calling-card__scan,
+  .calling-card__shine { animation: none; }
+}
