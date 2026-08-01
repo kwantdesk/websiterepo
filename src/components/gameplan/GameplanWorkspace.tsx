@@ -45,6 +45,7 @@ import KwantLoader from "@/components/KwantLoader";
 import {
   currentGameplanSession,
   gameplanSessionLabel,
+  resolveGameplanSessionTarget,
   type GameplanEdition,
   type GameplanPayload,
   type GameplanRole,
@@ -2198,6 +2199,12 @@ function GameplanLiveWorkspace({ initialInstrument = "NQ" }: { initialInstrument
   }
 
   const plan = payload.plan;
+  const sessionTarget = resolveGameplanSessionTarget(new Date(clockNow));
+  const preparingNextSession = sessionTarget.phase === "PREPARING" && sessionTarget.session === session;
+  const preparationMinutes = Math.max(1, Math.ceil(sessionTarget.millisecondsUntilOpen / 60_000));
+  const preparationCountdown = preparationMinutes >= 60
+    ? `${Math.floor(preparationMinutes / 60)}h ${preparationMinutes % 60}m`
+    : `${preparationMinutes}m`;
   const snapshotMatchesSelection =
     oneLinerSnapshot?.instrument === root
     && oneLinerSnapshot.session === session;
@@ -2226,7 +2233,11 @@ function GameplanLiveWorkspace({ initialInstrument = "NQ" }: { initialInstrument
         </span>
         <div className="mr-2 min-w-0">
           <div className="text-[12px] font-semibold">Kwant Desk Gameplan</div>
-          <div className="text-[9px] text-muted">Gameplan for {gameplanSessionLabel(session)} right now</div>
+          <div className="text-[9px] text-muted">
+            {preparingNextSession
+              ? `Preparing for ${gameplanSessionLabel(session)} · opens in ${preparationCountdown}`
+              : `Gameplan for ${gameplanSessionLabel(session)} right now`}
+          </div>
         </div>
         <div className="flex rounded-xl border border-border bg-surface p-1">
           {(["NQ", "ES"] as const).map((item) => (
@@ -2235,9 +2246,9 @@ function GameplanLiveWorkspace({ initialInstrument = "NQ" }: { initialInstrument
         </div>
         <div className="flex h-9 items-center gap-2 rounded-xl border border-primary/20 bg-primary/[0.06] px-3">
           <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary shadow-[0_0_8px_var(--primary)]" />
-          <span className="text-[8px] font-bold uppercase tracking-[0.13em] text-muted">Gameplan for</span>
+          <span className="text-[8px] font-bold uppercase tracking-[0.13em] text-muted">{preparingNextSession ? "Preparing" : "Gameplan for"}</span>
           <span className="text-[10px] font-semibold text-foreground">{gameplanSessionLabel(session)}</span>
-          <span className="rounded-md bg-primary/10 px-1.5 py-0.5 text-[7px] font-bold uppercase tracking-[0.12em] text-primary">Auto</span>
+          <span className="rounded-md bg-primary/10 px-1.5 py-0.5 text-[7px] font-bold uppercase tracking-[0.12em] text-primary">{preparingNextSession ? preparationCountdown : "Auto"}</span>
         </div>
         <div className="ml-auto flex items-center gap-2">
           <button
@@ -2282,7 +2293,7 @@ function GameplanLiveWorkspace({ initialInstrument = "NQ" }: { initialInstrument
         <div className="mx-auto max-w-[1680px] p-3 lg:p-4 xl:p-5">
           <div className="mb-3 grid gap-2 md:grid-cols-[auto_auto_1fr_auto] md:items-center">
             <div className="rounded-xl border border-border bg-panel px-3 py-2">
-              <Eyebrow>Gameplan for {gameplanSessionLabel(session)}</Eyebrow>
+              <Eyebrow>{preparingNextSession ? "Preparing" : "Gameplan for"} {gameplanSessionLabel(session)}</Eyebrow>
               <div className="mt-1 text-[11px] font-semibold text-foreground">{formatDate(plan.edition.date)}</div>
             </div>
             <TapeBadge state={plan.environment.tape.state} />

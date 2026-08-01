@@ -9,6 +9,14 @@ export const GAMEPLAN_SESSIONS = [
 ] as const;
 
 export type GameplanSession = (typeof GAMEPLAN_SESSIONS)[number]["id"];
+export const GAMEPLAN_PREPARATION_WINDOW_MS = 2 * 60 * 60 * 1_000;
+export type GameplanSessionTarget = {
+  session: GameplanSession;
+  activeSession: GameplanSession;
+  phase: "ACTIVE" | "PREPARING";
+  opensAt: string;
+  millisecondsUntilOpen: number;
+};
 export type GameplanTapeState = "calm" | "snowball" | "mixed";
 export type GameplanRole = "magnet" | "wall" | "accelerant" | "decision";
 export type GameplanSource = "positioning" | "dated" | "tape-memory" | "em-math";
@@ -93,10 +101,14 @@ function sessionRunsOnLocalDay(session: GameplanSession, localDay: number) {
   return localDay >= 1 && localDay <= 5;
 }
 
-/** Returns the most recently opened valid market session. */
-export function currentGameplanSession(at = new Date()): GameplanSession {
+/**
+ * Targets the active market session until the next valid session is within the
+ * two-hour preparation window, then rolls the Gameplan forward automatically.
+ */
+export function resolveGameplanSessionTarget(at = new Date()): GameplanSessionTarget {
   const now = at.getTime();
   let latest: { session: GameplanSession; openedAt: number } | null = null;
+  let next: { session: GameplanSession; openedAt: number } | null = null;
 
   for (const session of GAMEPLAN_SESSIONS) {
     const localParts = new Intl.DateTimeFormat("en-US", {
@@ -112,17 +124,32 @@ export function currentGameplanSession(at = new Date()): GameplanSession {
       Number(values.day),
     ));
 
-    for (let daysBack = 0; daysBack < 7; daysBack += 1) {
-      const candidateDate = new Date(localDate.getTime() - daysBack * 86_400_000);
+    for (let dayOffset = -7; dayOffset <= 8; dayOffset += 1) {
+      const candidateDate = new Date(localDate.getTime() + dayOffset * 86_400_000);
       if (!sessionRunsOnLocalDay(session.id, candidateDate.getUTCDay())) continue;
       const openedAt = sessionOpenTimestamp(session, candidateDate);
-      if (openedAt > now) continue;
-      if (!latest || openedAt > latest.openedAt) latest = { session: session.id, openedAt };
-      break;
+      if (openedAt <= now) {
+        if (!latest || openedAt > latest.openedAt) latest = { session: session.id, openedAt };
+      } else if (!next || openedAt < next.openedAt) {
+        next = { session: session.id, openedAt };
+      }
     }
   }
 
-  return latest?.session ?? "newyork";
+  const active = latest ?? { session: "newyork" as const, openedAt: now };
+  const preparing = next !== null && next.openedAt - now <= GAMEPLAN_PREPARATION_WINDOW_MS;
+  const target = preparing ? next! : active;
+  return {
+    session: target.session,
+    activeSession: active.session,
+    phase: preparing ? "PREPARING" : "ACTIVE",
+    opensAt: new Date(target.openedAt).toISOString(),
+    millisecondsUntilOpen: preparing ? Math.max(0, target.openedAt - now) : 0,
+  };
+}
+
+export function currentGameplanSession(at = new Date()): GameplanSession {
+  return resolveGameplanSessionTarget(at).session;
 }
 
 export type GameplanEdition = {
