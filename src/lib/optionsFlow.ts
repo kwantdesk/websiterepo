@@ -139,6 +139,8 @@ export type OptionsLevelKind =
   | "PUT_WALL"
   | "GAMMA_MAGNET"
   | "GAMMA_CENTRE"
+  | "HIGH_VOL_LEVEL"
+  | "ZERO_GAMMA"
   | "EXPECTED_MOVE_MAX"
   | "EXPECTED_MOVE_MIN"
   | "GEX_CLUSTER"
@@ -431,6 +433,7 @@ export type OptionsFlowPayload = {
   levels: {
     callWall: number | null;
     putWall: number | null;
+    gammaHvl: number | null;
     gammaMagnet: number | null;
     gammaCenter: number | null;
     frontExpiration: string | null;

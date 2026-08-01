@@ -38,6 +38,7 @@ export type NativeGammaSnapshot = {
   callResistance: number | null;
   putSupport: number | null;
   hvl: number | null;
+  zeroGamma: number | null;
   gammaFlipCurve: NativeGammaCurvePoint[];
   box: { max: number; min: number } | null;
   netGex: number;
@@ -360,6 +361,7 @@ function evaluate(chain: Chain, spot: number, mult: number) {
     mult,
   );
   const flip = zeroGamma(gammaFlipCurve, spot);
+  const hvl = highVolLevel(gammaFlipCurve, spot, flip);
   let box: { max: number; min: number } | null = null;
   if (chain.straddle) {
     const half = chain.straddle.price * Math.sqrt(1 / Math.max(chain.straddle.dte, 1));
@@ -392,7 +394,7 @@ function evaluate(chain: Chain, spot: number, mult: number) {
     grossGex += Math.abs(value);
   }
 
-  return { walls, callRes, putSup, flip, gammaFlipCurve, box, netGex, grossGex, callG, putG,
+  return { walls, callRes, putSup, flip, hvl, gammaFlipCurve, box, netGex, grossGex, callG, putG,
            zeroDteWall, zeroDteCallRes, zeroDtePutSup };
 }
 
@@ -443,6 +445,55 @@ function zeroGamma(curve: NativeGammaCurvePoint[], spot: number): number | null 
     Math.abs(crossing - spot) < Math.abs(best - spot) ? crossing : best
   ));
   return Math.round(nearest * 100) / 100;
+}
+
+/**
+ * High Volatility Level: the strongest local transition in the scenario-GEX
+ * curve near the active zero-gamma regime boundary. A five-point moving
+ * average suppresses strike-grid noise; a local maximum in |dGEX/dS| marks an
+ * inflection/steepest-slope candidate. Zero Gamma remains a separate root.
+ */
+function highVolLevel(
+  curve: NativeGammaCurvePoint[],
+  spot: number,
+  zeroGammaLevel: number | null,
+): number | null {
+  if (curve.length < 9 || !Number.isFinite(spot) || spot <= 0) return null;
+  const smoothed = curve.map((point, index) => {
+    const from = Math.max(0, index - 2);
+    const to = Math.min(curve.length - 1, index + 2);
+    let total = 0;
+    for (let offset = from; offset <= to; offset += 1) total += curve[offset].netGex;
+    return { price: point.price, netGex: total / (to - from + 1) };
+  });
+  const slopes = smoothed.slice(1, -1).map((point, index) => {
+    const left = smoothed[index];
+    const right = smoothed[index + 2];
+    return {
+      price: point.price,
+      slope: (right.netGex - left.netGex) / Math.max(right.price - left.price, 1e-9),
+    };
+  });
+  const band = spot * NEAR_BAND;
+  const nearby = slopes.filter((row) => Math.abs(row.price - spot) <= band);
+  if (!nearby.length) return null;
+  const localTransitions = nearby.filter((row) => {
+    const index = slopes.findIndex((candidate) => candidate.price === row.price);
+    if (index <= 0 || index >= slopes.length - 1) return false;
+    const magnitude = Math.abs(row.slope);
+    return magnitude >= Math.abs(slopes[index - 1].slope)
+      && magnitude >= Math.abs(slopes[index + 1].slope);
+  });
+  const candidates = localTransitions.length ? localTransitions : nearby;
+  const maxSlope = Math.max(...candidates.map((row) => Math.abs(row.slope)));
+  if (!Number.isFinite(maxSlope) || maxSlope <= 0) return null;
+  const anchor = zeroGammaLevel ?? spot;
+  const selected = candidates.reduce((best, row) => {
+    const score = Math.abs(row.slope) / maxSlope * 0.8
+      + Math.max(0, 1 - Math.abs(row.price - anchor) / band) * 0.2;
+    return score > best.score ? { row, score } : best;
+  }, { row: candidates[0], score: Number.NEGATIVE_INFINITY }).row;
+  return Math.round(selected.price * 100) / 100;
 }
 
 // --------------------------------------------------------------------------- //
@@ -547,7 +598,8 @@ export async function getNativeGammaSnapshot(root: NativeGammaRoot, tradeIso: st
   });
   if (ev.callRes) levels.push(level("CALL_WALL", "Call Resistance", ev.callRes, ev.callG.get(ev.callRes) ?? null, 0));
   if (ev.putSup) levels.push(level("PUT_WALL", "Put Support", ev.putSup, ev.putG.get(ev.putSup) ?? null, 0));
-  if (ev.flip) levels.push(level("GAMMA_MAGNET", "HVL / gamma flip", ev.flip, null, 0));
+  if (ev.flip) levels.push(level("ZERO_GAMMA", "Zero Gamma", ev.flip, null, 0));
+  if (ev.hvl) levels.push(level("HIGH_VOL_LEVEL", "HVL", ev.hvl, null, 0));
   if (ev.box) {
     // 1D expected range from the front-expiry ATM straddle, anchored to the live spot.
     levels.push(level("EXPECTED_MOVE_MAX", "1D Max", ev.box.max, null, 0));
@@ -563,7 +615,7 @@ export async function getNativeGammaSnapshot(root: NativeGammaRoot, tradeIso: st
   }
   return {
     root, spot: liveSpot, sessionDate: usedIso,
-    callResistance: ev.callRes, putSupport: ev.putSup, hvl: ev.flip,
+    callResistance: ev.callRes, putSupport: ev.putSup, hvl: ev.hvl, zeroGamma: ev.flip,
     gammaFlipCurve: ev.gammaFlipCurve,
     box: ev.box,
     netGex: ev.netGex, grossGex: ev.grossGex, levels,

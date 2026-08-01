@@ -9,6 +9,8 @@ export type ChartGammaSourceLevelKind =
   | "PUT_WALL"
   | "GAMMA_MAGNET"
   | "GAMMA_CENTRE"
+  | "HIGH_VOL_LEVEL"
+  | "ZERO_GAMMA"
   | "POSITIVE_GEX"
   | "NEGATIVE_GEX"
   | "EXPECTED_MOVE_MAX"

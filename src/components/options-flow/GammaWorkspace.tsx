@@ -556,6 +556,8 @@ function chartLevelLabel(level: OptionsKeyLevel) {
     case "ZERO_DTE_PUT_SUPPORT": return "0DTE support";
     case "GAMMA_MAGNET": return "Magnet";
     case "GAMMA_CENTRE": return "GEX centre";
+    case "HIGH_VOL_LEVEL": return "HVL";
+    case "ZERO_GAMMA": return "Zero Gamma";
     case "PUT_SUPPORT": return "Put support";
     default: return level.label;
   }

@@ -2097,6 +2097,8 @@ function gammaLevelColor(kind: string, settings: ChartSettings) {
   if (kind === "CALL_WALL" || kind === "POSITIVE_GEX") return settings.upColor;
   if (kind === "PUT_WALL" || kind === "NEGATIVE_GEX") return settings.downColor;
   if (kind === "GAMMA_CENTRE") return "#06B6D4";
+  if (kind === "ZERO_GAMMA") return "#F8FAFC";
+  if (kind === "HIGH_VOL_LEVEL") return "#F59E0B";
   if (kind === "EXPECTED_MOVE_MAX" || kind === "EXPECTED_MOVE_MIN") return "#F59E0B";
   return "#8B5CF6";
 }
@@ -2180,8 +2182,8 @@ function buildGammaChartOverlay(args: {
       price: roundedGammaPrice(level.price, calibration.scale, args.tickSize),
     }))
     .sort((left, right) => {
-      const leftPrimary = ["CALL_WALL", "PUT_WALL", "GAMMA_MAGNET", "GAMMA_CENTRE"].includes(left.kind) ? 0 : 1;
-      const rightPrimary = ["CALL_WALL", "PUT_WALL", "GAMMA_MAGNET", "GAMMA_CENTRE"].includes(right.kind) ? 0 : 1;
+      const leftPrimary = ["CALL_WALL", "PUT_WALL", "GAMMA_MAGNET", "GAMMA_CENTRE", "HIGH_VOL_LEVEL", "ZERO_GAMMA"].includes(left.kind) ? 0 : 1;
+      const rightPrimary = ["CALL_WALL", "PUT_WALL", "GAMMA_MAGNET", "GAMMA_CENTRE", "HIGH_VOL_LEVEL", "ZERO_GAMMA"].includes(right.kind) ? 0 : 1;
       return leftPrimary - rightPrimary || left.rank - right.rank;
     })
     .slice(0, 24)
@@ -2206,6 +2208,30 @@ function buildGammaChartOverlay(args: {
       ? `${conversion.label} · Databento futures options`
       : `${conversion.label} · ${payload.marketOpen ? "LIVE NY OPTIONS" : "NEW YORK EOD"} · ${calibration.scale.toFixed(6)}×`,
     stale: false,
+  };
+}
+
+function isGammaRegimeTransitionLevel(level: ChartLevel) {
+  return level.label.startsWith("Zero Gamma ") || level.label.startsWith("HVL ");
+}
+
+function mergeNativeGammaTransitions(
+  base: GammaChartOverlay,
+  native: GammaChartOverlay | null,
+): GammaChartOverlay {
+  if (!native) return base;
+  const transitions = native.levels.filter(isGammaRegimeTransitionLevel);
+  if (!transitions.length) return base;
+  return {
+    ...base,
+    levels: [
+      ...base.levels.filter((level) => !isGammaRegimeTransitionLevel(level)),
+      ...transitions,
+    ],
+    checkedAt: Date.parse(native.checkedAt) > Date.parse(base.checkedAt)
+      ? native.checkedAt
+      : base.checkedAt,
+    sourceLabel: `${base.sourceLabel} · native Zero Gamma/HVL`,
   };
 }
 
@@ -2656,6 +2682,7 @@ function WorkspaceChartPane({
     let timer: number | null = null;
     let primaryApplied = false;
     let retainedOverlay = currentGammaOverlay;
+    let nativeTransitionOverlay: GammaChartOverlay | null = null;
 
     const applyConversion = async (conversion: GammaConversionDefinition) => {
       const payload = await fetchGammaPayload(conversion);
@@ -2677,10 +2704,16 @@ function WorkspaceChartPane({
           : "Waiting for a valid futures calibration.",
       );
       const isPrimary = conversion.id === primaryGammaConversion.id;
+      const isNative = isNativeGammaConversion(conversion);
+      if (isNative) nativeTransitionOverlay = overlay;
       if (isPrimary) primaryApplied = true;
-      if (primaryApplied && !isPrimary) return payload;
-      retainedOverlay = overlay;
-      setGammaOverlay(overlay);
+      const nextOverlay = isPrimary
+        ? mergeNativeGammaTransitions(overlay, nativeTransitionOverlay)
+        : primaryApplied && retainedOverlay
+          ? mergeNativeGammaTransitions(retainedOverlay, overlay)
+          : overlay;
+      retainedOverlay = nextOverlay;
+      setGammaOverlay(nextOverlay);
       setGammaLevelsError(null);
       setGammaLevelsLoading(false);
       return payload;

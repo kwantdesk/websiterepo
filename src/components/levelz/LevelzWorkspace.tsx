@@ -327,6 +327,8 @@ function gammaColor(kind: ChartGammaSourceLevelKind, settings: ChartSettings) {
   if (kind === "CALL_WALL" || kind === "POSITIVE_GEX") return settings.upColor;
   if (kind === "PUT_WALL" || kind === "NEGATIVE_GEX") return settings.downColor;
   if (kind === "GAMMA_CENTRE") return "#22D3EE";
+  if (kind === "ZERO_GAMMA") return "#F8FAFC";
+  if (kind === "HIGH_VOL_LEVEL") return "#F59E0B";
   if (kind === "EXPECTED_MOVE_MAX" || kind === "EXPECTED_MOVE_MIN") return "#F59E0B";
   return "#A78BFA";
 }
@@ -355,6 +357,18 @@ const GAMMA_EDUCATION: Record<ChartGammaSourceLevelKind, Pick<IntelligentLevel, 
     firstTouch: "Treat the first visit as a balance test. Direction is confirmed by acceptance on one side, not by a single wick.",
     hold: "Acceptance above makes the centre support-like; acceptance below makes it resistance-like.",
     break: "A clean cross can rotate price toward the next major call- or put-side concentration.",
+  },
+  HIGH_VOL_LEVEL: {
+    explanation: "The High Volatility Level is the strongest nearby transition in the scenario gamma curve. It marks where the curve changes most aggressively, not where aggregate gamma is exactly zero.",
+    firstTouch: "Watch whether realised range expands as price enters the transition. The reaction matters more than a single print through the line.",
+    hold: "Holding on the positive-gamma side supports greater stability and mean reversion when the wider options tape agrees.",
+    break: "Acceptance onto the negative-gamma side raises acceleration risk, particularly when 0DTE positioning and directional flow confirm.",
+  },
+  ZERO_GAMMA: {
+    explanation: "Zero Gamma is the scenario price where repriced signed aggregate GEX crosses zero. It is the calculated boundary between positive- and negative-gamma positioning under the current chain assumptions.",
+    firstTouch: "Treat the first test as a regime decision, not automatic support or resistance. Confirm which side gains acceptance.",
+    hold: "Sustained trade on the positive-gamma side favours more counter-move hedging and local compression.",
+    break: "Sustained trade on the negative-gamma side can make hedging more pro-cyclical and increase continuation risk.",
   },
   POSITIVE_GEX: {
     explanation: "A ranked strike carrying positive gamma exposure. Positive-gamma concentrations can encourage counter-move hedging and local mean reversion when the broader regime agrees.",
@@ -434,6 +448,18 @@ function makeGammaSnapshot(payload: ChartGammaLevelsPayload, settings: ChartSett
     note: payload.marketOpen
       ? "Gamma levels refresh from the active options snapshot."
       : "New York is closed; the completed New York snapshot remains the structural reference.",
+  };
+}
+
+function mergeNativeGammaTransitions(base: LevelSnapshot, native: LevelSnapshot): LevelSnapshot {
+  const isTransition = (level: IntelligentLevel) => level.kind === "ZERO_GAMMA" || level.kind === "HIGH_VOL_LEVEL";
+  const transitions = native.levels.filter(isTransition);
+  if (!transitions.length) return base;
+  return {
+    ...base,
+    levels: [...base.levels.filter((level) => !isTransition(level)), ...transitions],
+    asOf: base.asOf && native.asOf && Date.parse(base.asOf) > Date.parse(native.asOf) ? base.asOf : native.asOf,
+    source: `${base.source} · native Zero Gamma/HVL`,
   };
 }
 
@@ -705,6 +731,21 @@ function useLevelSnapshot(config: PanelConfig, settings: ChartSettings) {
         if (cancelled) return;
         setSnapshot(next);
         setLoading(false);
+        if (config.family === "gamma") {
+          const root = levelRoot(config.instrument);
+          void requestJson<ChartGammaLevelsPayload & { error?: string }>(
+            `/api/chart-gamma-levels?root=${root}&source=${root}`,
+          ).then((nativePayload) => {
+            if (cancelled) return;
+            const merged = mergeNativeGammaTransitions(next, makeGammaSnapshot(nativePayload, settings));
+            const key = `${config.instrument}:${config.family}:${settings.upColor}:${settings.downColor}`;
+            levelCache.set(key, { snapshot: merged, updatedAt: Date.now() });
+            storeLevelSnapshot(config, merged);
+            setSnapshot(merged);
+          }).catch(() => {
+            // The calibrated cash map remains usable while native transition levels warm.
+          });
+        }
       })
       .catch((problem) => {
         if (cancelled) return;

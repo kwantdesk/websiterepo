@@ -945,33 +945,35 @@ function deriveGammaLevels(gamma: ExposureSummary | null, spot: number | null) {
   const hvlRows = gamma.strikes
     .filter((strike) => Number.isFinite(strike.net))
     .sort((left, right) => left.strike - right.strike);
-  const cumulativeProfile = hvlRows.reduce<Array<{ strike: number; cumulative: number }>>((profile, strike) => {
-    profile.push({
-      strike: strike.strike,
-      cumulative: (profile.at(-1)?.cumulative ?? 0) + strike.net,
-    });
-    return profile;
-  }, []);
-  const exactHvl = cumulativeProfile.find((row) => row.cumulative === 0)?.strike ?? null;
-  const gammaCrossings = cumulativeProfile.slice(1).flatMap((right, index) => {
-    const left = cumulativeProfile[index];
-    if (
-      left.cumulative === 0
-      || right.cumulative === 0
-      || Math.sign(left.cumulative) === Math.sign(right.cumulative)
-    ) return [];
-    const distance = right.cumulative - left.cumulative;
-    if (distance === 0) return [];
-    const crossing = left.strike
-      + ((0 - left.cumulative) / distance) * (right.strike - left.strike);
-    return Number.isFinite(crossing) ? [crossing] : [];
+  const smoothed = hvlRows.map((row, index) => {
+    const from = Math.max(0, index - 1);
+    const to = Math.min(hvlRows.length - 1, index + 1);
+    let total = 0;
+    for (let offset = from; offset <= to; offset += 1) total += hvlRows[offset].net;
+    return { strike: row.strike, net: total / (to - from + 1) };
   });
-  const gammaHvl = exactHvl ?? (
-    gammaCrossings.length
-      ? gammaCrossings.reduce((nearest, crossing) =>
-        spot !== null && Math.abs(crossing - spot) < Math.abs(nearest - spot) ? crossing : nearest)
-      : null
-  );
+  const slopes = smoothed.slice(1, -1).map((row, index) => {
+    const left = smoothed[index];
+    const right = smoothed[index + 2];
+    return {
+      strike: row.strike,
+      slope: (right.net - left.net) / Math.max(right.strike - left.strike, 1e-9),
+    };
+  });
+  const hvlCandidates = slopes.filter((row, index) => {
+    if (index === 0 || index === slopes.length - 1) return false;
+    if (spot !== null && Math.abs(row.strike - spot) / spot > 0.03) return false;
+    const magnitude = Math.abs(row.slope);
+    return magnitude >= Math.abs(slopes[index - 1].slope)
+      && magnitude >= Math.abs(slopes[index + 1].slope);
+  });
+  const rankedHvlCandidates = (hvlCandidates.length ? hvlCandidates : slopes)
+    .filter((row) => spot === null || Math.abs(row.strike - spot) / spot <= 0.03)
+    .sort((left, right) => Math.abs(right.slope) - Math.abs(left.slope)
+      || (spot === null ? 0 : Math.abs(left.strike - spot) - Math.abs(right.strike - spot)));
+  const gammaHvl = Math.abs(rankedHvlCandidates[0]?.slope ?? 0) > 0
+    ? rankedHvlCandidates[0].strike
+    : null;
   const totalWeight = relevant.reduce((sum, strike) => sum + Math.abs(strike.net), 0);
   const gammaCenter = totalWeight > 0
     ? relevant.reduce((sum, strike) => sum + strike.strike * Math.abs(strike.net), 0) / totalWeight
@@ -1028,7 +1030,7 @@ function chartGammaSourceLevels(
     },
     key.gammaHvl === null ? null : {
       id: "hvl",
-      kind: "GAMMA_MAGNET",
+      kind: "HIGH_VOL_LEVEL",
       label: "HVL",
       price: key.gammaHvl,
       value: null,
@@ -1204,6 +1206,18 @@ function createKeyLevels(args: {
       rank: 1,
       derived: true,
       explanation: "Strike with the largest absolute put gamma exposure across all expirations.",
+    },
+    args.fullLevels.gammaHvl === null ? null : {
+      id: "hvl",
+      kind: "HIGH_VOL_LEVEL",
+      label: "HVL",
+      price: args.fullLevels.gammaHvl,
+      scope: "FULL_CHAIN",
+      metric: "GEX",
+      value: strikeMetric(args.gamma, args.fullLevels.gammaHvl, "net"),
+      rank: 1,
+      derived: true,
+      explanation: "High Volatility Level: the strongest nearby inflection or steepest transition in the smoothed gamma-exposure profile. It is separate from the scenario-repriced Zero Gamma crossing.",
     },
     args.fullLevels.gammaMagnet === null ? null : {
       id: "gamma-magnet",
@@ -1681,6 +1695,7 @@ async function buildOptionsFlowPayload(symbol: string, requestedPriceMode: Optio
     levels: {
       callWall: fullLevels.callWall,
       putWall: fullLevels.putWall,
+      gammaHvl: fullLevels.gammaHvl,
       gammaMagnet: fullLevels.gammaMagnet,
       gammaCenter: fullLevels.gammaCenter,
       frontExpiration,
@@ -2661,7 +2676,7 @@ export async function getGexDeskZeroGammaPayload(): Promise<GexDeskZeroGammaPayl
       marketOpen: session.marketOpen,
       status: session.marketOpen ? "LIVE" : "EOD",
       spot,
-      trueGammaFlip: snapshot.hvl,
+      trueGammaFlip: snapshot.zeroGamma,
       netGex: snapshot.netGex,
       grossGex: snapshot.grossGex,
       curve: snapshot.gammaFlipCurve,
