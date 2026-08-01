@@ -1,5 +1,5 @@
 export type PlatformLevelInput = {
-  levelType: "Gamma Levels" | "Gameplan Levels";
+  levelType: "Gamma Levels" | "Gameplan Levels" | "Value Area Levels" | "Historical Supply/Demand + S/R";
   instrument: string;
   contractSymbol: string;
   id: string;
@@ -217,7 +217,7 @@ namespace KwantDesk
         public KwantDeskLevels()
         {
             Name = "Kwant Desk Levels";
-            Description = "Exported Gamma and Gameplan levels for ${cString(levels[0]?.instrument ?? "")}";
+            Description = "Exported Kwant Desk chart levels for ${cString(levels[0]?.instrument ?? "")}";
             SeparateWindow = false;
 ${series}
         }
@@ -264,7 +264,7 @@ SCSFExport scsf_KwantDeskLevels(SCStudyInterfaceRef sc)
     if (sc.SetDefaults)
     {
         sc.GraphName = "Kwant Desk Levels";
-        sc.StudyDescription = "Exported Gamma and Gameplan levels for ${cString(levels[0]?.instrument ?? "")}";
+        sc.StudyDescription = "Exported Kwant Desk chart levels for ${cString(levels[0]?.instrument ?? "")}";
         sc.AutoLoop = 0;
         sc.GraphRegion = 0;
         return;
@@ -301,7 +301,7 @@ namespace NinjaTrader.NinjaScript.Indicators
         {
             if (State == State.SetDefaults)
             {
-                Description = "Exported Gamma and Gameplan levels for ${cString(levels[0]?.instrument ?? "")}";
+                Description = "Exported Kwant Desk chart levels for ${cString(levels[0]?.instrument ?? "")}";
                 Name = "KwantDeskLevels";
                 Calculate = Calculate.OnBarClose;
                 IsOverlay = true;

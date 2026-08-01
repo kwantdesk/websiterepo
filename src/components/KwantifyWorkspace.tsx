@@ -387,7 +387,12 @@ type WorkspaceBackupFile = {
   exportedAt: string;
   presets: WorkspacePreset[];
 };
-type LevelExportType = "gamma" | "gameplan";
+type LevelExportType = "gamma" | "gameplan" | "valueArea" | "historicalStructure";
+type ValueAreaLevelExportSnapshot = {
+  checkedAt: string;
+  sourceLabel: string;
+  levels: ChartLevel[];
+};
 type GammaLevelExportSnapshot = {
   paneId: string;
   instrument: string;
@@ -397,9 +402,10 @@ type GammaLevelExportSnapshot = {
   regime: GammaChartOverlay["regime"] | null;
   sourceLabel: string;
   levels: ChartLevel[];
+  valueArea: ValueAreaLevelExportSnapshot | null;
 };
 type LevelExportRow = {
-  levelType: "Gamma Levels" | "Gameplan Levels";
+  levelType: "Gamma Levels" | "Gameplan Levels" | "Value Area Levels" | "Historical Supply/Demand + S/R";
   instrument: string;
   sourceSymbol: string;
   contractSymbol: string;
@@ -2395,6 +2401,13 @@ function WorkspaceChartPane({
       regime: currentGammaOverlay?.regime ?? null,
       sourceLabel: currentGammaOverlay?.sourceLabel ?? "",
       levels: currentGammaOverlay?.levels ?? [],
+      valueArea: valueAreaOverlay
+        ? {
+            checkedAt: valueAreaOverlay.generatedAt,
+            sourceLabel: `CME trade-by-trade value area · ${valueAreaOverlay.dailyLabel} · ${valueAreaOverlay.weeklyLabel}`,
+            levels: valueAreaOverlay.levels,
+          }
+        : null,
     });
     return () => onGammaExportSnapshot(pane.id, null);
   }, [
@@ -2404,6 +2417,7 @@ function WorkspaceChartPane({
     pane.id,
     pane.symbol,
     resolvedContractSymbol,
+    valueAreaOverlay,
   ]);
 
   useEffect(() => {
@@ -2721,7 +2735,7 @@ function WorkspaceChartPane({
   ]);
 
   useEffect(() => {
-    if (!valueAreaLevelsEnabled || !valueAreaLevelsAvailable) {
+    if ((!valueAreaLevelsEnabled && !levelExportRequested) || !valueAreaLevelsAvailable) {
       setValueAreaLevelsLoading(false);
       setValueAreaLevelsError(null);
       if (!valueAreaLevelsAvailable) setValueAreaOverlay(null);
@@ -2765,6 +2779,7 @@ function WorkspaceChartPane({
     };
   }, [
     pane.symbol,
+    levelExportRequested,
     settings.upColor,
     valueAreaLevelsAvailable,
     valueAreaLevelsEnabled,
@@ -3857,6 +3872,8 @@ export default function KwantifyWorkspace({
   const [levelExportTypes, setLevelExportTypes] = useState<Record<LevelExportType, boolean>>({
     gamma: true,
     gameplan: true,
+    valueArea: false,
+    historicalStructure: false,
   });
   const [levelExportFormat, setLevelExportFormat] = useState<PlatformLevelExportFormat>("deepcharts");
   const [selectedLevelExportInstruments, setSelectedLevelExportInstruments] = useState<string[]>([]);
@@ -4148,6 +4165,7 @@ export default function KwantifyWorkspace({
       contractSymbol: string;
       gamma: GammaLevelExportSnapshot | null;
       gameplan: GameplanChartOverlay | null;
+      valueArea: ValueAreaLevelExportSnapshot | null;
     }>();
 
     for (const paneId of visibleWorkspacePaneIds) {
@@ -4165,6 +4183,7 @@ export default function KwantifyWorkspace({
           contractSymbol: snapshot?.contractSymbol ?? currentCmeContract(pane.symbol) ?? "",
           gamma: snapshot,
           gameplan,
+          valueArea: snapshot?.valueArea ?? null,
         });
       } else {
         if ((snapshot?.levels.length ?? 0) > (existing.gamma?.levels.length ?? 0)) {
@@ -4172,6 +4191,9 @@ export default function KwantifyWorkspace({
           existing.contractSymbol = snapshot?.contractSymbol ?? existing.contractSymbol;
         }
         if (!existing.gameplan && gameplan) existing.gameplan = gameplan;
+        if ((snapshot?.valueArea?.levels.length ?? 0) > (existing.valueArea?.levels.length ?? 0)) {
+          existing.valueArea = snapshot?.valueArea ?? existing.valueArea;
+        }
       }
     }
 
@@ -4188,7 +4210,8 @@ export default function KwantifyWorkspace({
       .reduce((total, option) =>
         total
         + (levelExportTypes.gamma ? option.gamma?.levels.length ?? 0 : 0)
-        + (levelExportTypes.gameplan ? option.gameplan?.levels.length ?? 0 : 0), 0),
+        + (levelExportTypes.gameplan ? option.gameplan?.levels.length ?? 0 : 0)
+        + (levelExportTypes.valueArea ? option.valueArea?.levels.length ?? 0 : 0), 0),
     [
       availableLevelExportInstruments,
       levelExportTypes,
@@ -7593,7 +7616,12 @@ export default function KwantifyWorkspace({
           ? [fallbackInstrument]
           : [],
     );
-    setLevelExportTypes({ gamma: true, gameplan: true });
+    setLevelExportTypes({
+      gamma: true,
+      gameplan: true,
+      valueArea: false,
+      historicalStructure: false,
+    });
     setLevelExportError("");
     setShowLevelsExport(true);
   };
@@ -7665,15 +7693,47 @@ export default function KwantifyWorkspace({
           });
         }
       }
+
+      if (levelExportTypes.valueArea && option.valueArea) {
+        for (const level of option.valueArea.levels) {
+          rows.push({
+            levelType: "Value Area Levels",
+            instrument: option.instrument,
+            sourceSymbol: option.sourceSymbol,
+            contractSymbol: option.contractSymbol,
+            id: level.id,
+            name: level.label,
+            role: level.label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, ""),
+            price: level.price,
+            zoneLow: level.price,
+            zoneHigh: level.price,
+            strength: null,
+            color: level.color,
+            lineStyle: level.lineStyle ?? "solid",
+            lineWidth: level.lineWidth ?? 2,
+            source: option.valueArea.sourceLabel,
+            asOf: option.valueArea.checkedAt,
+          });
+        }
+      }
     }
 
     if (!selectedOptions.length) {
       setLevelExportError("Select at least one instrument.");
       return;
     }
-    if (!levelExportTypes.gamma && !levelExportTypes.gameplan) {
-      setLevelExportError("Select Gamma Levels, Gameplan Levels, or both.");
+    if (!levelExportTypes.gamma && !levelExportTypes.gameplan && !levelExportTypes.valueArea) {
+      setLevelExportError("Select Gamma Levels, Gameplan Levels, or Value Area Levels.");
       return;
+    }
+    if (levelExportTypes.valueArea) {
+      const missingValueArea = selectedOptions
+        .filter((option) => !(option.valueArea?.levels.length))
+        .map((option) => option.instrument);
+      if (missingValueArea.length) {
+        setLevelExportError(`Value Area levels are still preparing for ${missingValueArea.join(", ")}.`);
+        return;
+      }
     }
     if (exportOption.oneInstrument && selectedOptions.length !== 1) {
       setLevelExportError(`${exportOption.label} requires exactly one instrument so levels cannot be placed on the wrong chart.`);
@@ -8523,21 +8583,28 @@ export default function KwantifyWorkspace({
                     <div className="mb-2.5 text-[9px] font-semibold uppercase tracking-[0.15em] text-muted">Level type</div>
                     <div className="grid gap-2 sm:grid-cols-2">
                       {([
-                        ["gamma", "Gamma Levels", "Live options-derived chart levels"],
-                        ["gameplan", "Gameplan Levels", "Named levels and price zones"],
-                      ] as const).map(([type, label, description]) => {
+                        ["gamma", "Gamma Levels", "Live options-derived chart levels", false],
+                        ["gameplan", "Gameplan Levels", "Named levels and price zones", false],
+                        ["valueArea", "Value Area Levels", "Prior-day and prior-week VAH, VAL, POC and VWAP", false],
+                        ["historicalStructure", "Historical Supply/Demand + S/R", "Validated historical structure export is being built", true],
+                      ] as const).map(([type, label, description, disabled]) => {
                         const active = levelExportTypes[type];
                         return (
                           <button
                             key={type}
                             type="button"
+                            disabled={disabled}
+                            aria-disabled={disabled}
                             aria-pressed={active}
                             onClick={() => {
+                              if (disabled) return;
                               setLevelExportTypes((current) => ({ ...current, [type]: !current[type] }));
                               setLevelExportError("");
                             }}
                             className={`flex items-center gap-3 rounded-2xl border p-3 text-left transition-colors ${
-                              active
+                              disabled
+                                ? "cursor-not-allowed border-border bg-surface/15 opacity-50"
+                                : active
                                 ? "border-primary/35 bg-primary/[0.08]"
                                 : "border-border bg-surface/35 hover:bg-surface"
                             }`}
@@ -8547,8 +8614,11 @@ export default function KwantifyWorkspace({
                             }`}>
                               {active ? <Check className="h-3 w-3" /> : null}
                             </span>
-                            <span className="min-w-0">
-                              <span className={`block text-[11px] font-semibold ${active ? "text-foreground" : "text-muted"}`}>{label}</span>
+                            <span className="min-w-0 flex-1">
+                              <span className={`flex items-center gap-2 text-[11px] font-semibold ${active ? "text-foreground" : "text-muted"}`}>
+                                {label}
+                                {disabled ? <span className="rounded-md border border-border px-1.5 py-0.5 text-[7px] uppercase tracking-[0.08em] text-muted">Preparing</span> : null}
+                              </span>
                               <span className="mt-0.5 block text-[9px] text-muted">{description}</span>
                             </span>
                           </button>
@@ -8580,7 +8650,9 @@ export default function KwantifyWorkspace({
                         const active = selectedLevelExportInstruments.includes(option.instrument);
                         const gammaCount = option.gamma?.levels.length ?? 0;
                         const gameplanCount = option.gameplan?.levels.length ?? 0;
+                        const valueAreaCount = option.valueArea?.levels.length ?? 0;
                         const gammaPreparing = isGammaChartInstrument(option.instrument) && showLevelsExport && gammaCount === 0;
+                        const valueAreaPreparing = showLevelsExport && valueAreaCount === 0;
                         return (
                           <button
                             key={option.instrument}
@@ -8606,9 +8678,10 @@ export default function KwantifyWorkspace({
                               <span className="mt-0.5 block text-[9px] text-muted">
                                 {gammaPreparing ? "Preparing Gamma" : `${gammaCount} Gamma`}
                                 {" · "}{gameplanCount} Gameplan
+                                {" · "}{valueAreaPreparing ? "Preparing Value Area" : `${valueAreaCount} Value Area`}
                               </span>
                             </span>
-                            <span className="font-mono text-[10px] text-muted">{gammaCount + gameplanCount}</span>
+                            <span className="font-mono text-[10px] text-muted">{gammaCount + gameplanCount + valueAreaCount}</span>
                           </button>
                         );
                       })}

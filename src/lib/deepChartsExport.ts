@@ -1,5 +1,5 @@
 export type DeepChartsLevelInput = {
-  levelType: "Gamma Levels" | "Gameplan Levels";
+  levelType: "Gamma Levels" | "Gameplan Levels" | "Value Area Levels" | "Historical Supply/Demand + S/R";
   instrument: string;
   contractSymbol: string;
   id: string;
@@ -229,7 +229,7 @@ function cleanText(value: string) {
 
 function annotationText(level: DeepChartsLevelInput) {
   const name = cleanText(level.name) || `${level.instrument} ${level.price}`;
-  if (level.levelType === "Gamma Levels") return name;
+  if (level.levelType === "Gamma Levels" || level.levelType === "Value Area Levels") return name;
   const zone = level.zoneLow === level.zoneHigh
     ? String(level.price)
     : `${level.zoneLow}-${level.zoneHigh}`;
