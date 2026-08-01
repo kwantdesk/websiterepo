@@ -5,6 +5,7 @@ import {
   AlertTriangle,
   Bell,
   BellRing,
+  BrainCircuit,
   CalendarDays,
   Check,
   ChevronDown,
@@ -17,11 +18,13 @@ import {
   Globe2,
   Info,
   RefreshCw,
+  Radio,
   Sparkles,
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import KwantLoader from "@/components/KwantLoader";
+import MacroWorkspace, { type MacroNewsView } from "@/components/news/MacroWorkspace";
 import TimeZoneSelect from "@/components/ui/TimeZoneSelect";
 import {
   ECONOMIC_CALENDAR_CURRENCIES,
@@ -262,7 +265,7 @@ function EventDetail({ event }: { event: EconomicCalendarEvent }) {
   );
 }
 
-export default function NewsWorkspace() {
+function EconomicCalendarWorkspace() {
   const [timeZone, setTimeZone] = useState(() => {
     if (typeof window === "undefined") return "UTC";
     return normalizeTimeZone(
@@ -626,6 +629,51 @@ export default function NewsWorkspace() {
           </div>
         </div>
       </main>
+    </div>
+  );
+}
+
+type NewsView = "calendar" | MacroNewsView;
+
+export default function NewsWorkspace() {
+  const [view, setView] = useState<NewsView>("calendar");
+  const sections: Array<{ id: NewsView; label: string; description: string; icon: typeof CalendarDays }> = [
+    { id: "calendar", label: "Economic Calendar", description: "Scheduled catalysts", icon: CalendarDays },
+    { id: "macro", label: "Macroeconomics", description: "Causal event maps", icon: BrainCircuit },
+    { id: "developments", label: "Live Macro Developments", description: "Policy and geopolitical shocks", icon: Radio },
+  ];
+  return (
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background text-foreground">
+      <nav className="shrink-0 border-b border-border bg-panel px-3 py-2 lg:px-4" aria-label="News sections">
+        <div className="flex items-center gap-1.5 overflow-x-auto">
+          {sections.map((section) => {
+            const Icon = section.icon;
+            const active = section.id === view;
+            return (
+              <button
+                key={section.id}
+                type="button"
+                onClick={() => setView(section.id)}
+                className={`group relative flex h-10 shrink-0 items-center gap-2.5 rounded-xl border px-3 text-left transition-colors ${
+                  active
+                    ? "border-primary/30 bg-primary/10 text-primary"
+                    : "border-transparent text-muted hover:border-border hover:bg-surface/60 hover:text-foreground"
+                }`}
+              >
+                <Icon className="h-3.5 w-3.5" />
+                <span>
+                  <span className="block text-[9px] font-bold uppercase tracking-[0.1em]">{section.label}</span>
+                  <span className={`hidden text-[7px] normal-case tracking-normal sm:block ${active ? "text-primary/70" : "text-muted"}`}>{section.description}</span>
+                </span>
+                {active ? <span className="absolute -bottom-[9px] left-3 right-3 h-px bg-primary shadow-[0_0_8px_var(--primary)]" /> : null}
+              </button>
+            );
+          })}
+        </div>
+      </nav>
+      <div className="min-h-0 flex-1">
+        {view === "calendar" ? <EconomicCalendarWorkspace /> : <MacroWorkspace view={view} />}
+      </div>
     </div>
   );
 }

@@ -343,7 +343,7 @@ export function isContinuousFuture(symbol: string) {
   return /\.[vnc]\.\d+$/.test(symbol);
 }
 
-export async function getDatabentoBars(symbol: string, timeframe: string, start: string, end: string) {
+export async function getDatabentoBars(symbol: string, timeframe: string, start: string, end: string): Promise<DatabentoBar[]> {
   if (!getChartInterval(timeframe)) throw new Error(`Unsupported chart interval: ${timeframe}`);
   if (isEventBasedChartInterval(timeframe)) {
     const requestedStart = Date.parse(start);
@@ -384,7 +384,14 @@ export async function getDatabentoBars(symbol: string, timeframe: string, start:
       })
       .filter((row) => row.timestamp > 0 && row.price > 0)
       .sort((a, b) => a.timestamp - b.timestamp);
-    return applyMarketTradesToEventBars([], trades, timeframe, symbol, 3_000);
+    return applyMarketTradesToEventBars([], trades, timeframe, symbol, 3_000).map((bar) => ({
+      timestamp: bar.timestamp,
+      open: bar.open,
+      high: bar.high,
+      low: bar.low,
+      close: bar.close,
+      volume: bar.volume ?? 0,
+    }));
   }
 
   const rows = await historicalRequest({

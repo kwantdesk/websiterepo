@@ -4,6 +4,7 @@ import {
   getDatabentoOrderFlowHistory,
   type DatabentoExecutionTuple,
 } from "@/lib/databento";
+import type { Candle } from "@/lib/backtester";
 import { DEFAULT_CHART_HISTORY_CALENDAR_DAYS } from "@/lib/chartHistoryWindow";
 
 export const dynamic = "force-dynamic";
@@ -12,7 +13,7 @@ export const maxDuration = 60;
 export const preferredRegion = "iad1";
 
 type HistoryCacheEntry = {
-  candles: Awaited<ReturnType<typeof getDatabentoBars>>;
+  candles: Candle[];
   executions: DatabentoExecutionTuple[];
   updatedAt: number;
 };
