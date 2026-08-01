@@ -141,6 +141,8 @@ export type OptionsLevelKind =
   | "GAMMA_CENTRE"
   | "HIGH_VOL_LEVEL"
   | "ZERO_GAMMA"
+  | "MAJOR_POSITIVE_OI"
+  | "MAJOR_POSITIVE_VOLUME"
   | "EXPECTED_MOVE_MAX"
   | "EXPECTED_MOVE_MIN"
   | "GEX_CLUSTER"
@@ -436,6 +438,8 @@ export type OptionsFlowPayload = {
     gammaHvl: number | null;
     gammaMagnet: number | null;
     gammaCenter: number | null;
+    majorPositiveOi: number | null;
+    majorPositiveVolume: number | null;
     frontExpiration: string | null;
     zeroDteAvailable: boolean;
     zeroDteCallWall: number | null;

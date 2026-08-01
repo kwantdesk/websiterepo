@@ -933,12 +933,12 @@ function parseMaxPain(payload: unknown) {
 
 function deriveGammaLevels(gamma: ExposureSummary | null, spot: number | null) {
   if (!gamma || !gamma.strikes.length) {
-    return { callWall: null, putWall: null, gammaHvl: null, gammaMagnet: null, gammaCenter: null };
+    return { callWall: null, putWall: null, gammaHvl: null, gammaMagnet: null, gammaCenter: null, majorPositiveOi: null };
   }
   const relevant = spot === null
     ? gamma.strikes
     : gamma.strikes.filter((strike) => strike.strike >= spot * 0.97 && strike.strike <= spot * 1.03);
-  if (!relevant.length) return { callWall: null, putWall: null, gammaHvl: null, gammaMagnet: null, gammaCenter: null };
+  if (!relevant.length) return { callWall: null, putWall: null, gammaHvl: null, gammaMagnet: null, gammaCenter: null, majorPositiveOi: null };
   const callWall = relevant.reduce((best, strike) => strike.call > best.call ? strike : best).strike;
   const putWall = relevant.reduce((best, strike) => Math.abs(strike.put) > Math.abs(best.put) ? strike : best).strike;
   const gammaMagnet = relevant.reduce((best, strike) => Math.abs(strike.net) > Math.abs(best.net) ? strike : best).strike;
@@ -978,7 +978,86 @@ function deriveGammaLevels(gamma: ExposureSummary | null, spot: number | null) {
   const gammaCenter = totalWeight > 0
     ? relevant.reduce((sum, strike) => sum + strike.strike * Math.abs(strike.net), 0) / totalWeight
     : null;
-  return { callWall, putWall, gammaHvl, gammaMagnet, gammaCenter };
+  const positiveOiRows = gamma.strikes.filter((strike) => strike.net > 0);
+  const majorPositiveOi = positiveOiRows.length
+    ? positiveOiRows.reduce((best, strike) => strike.net > best.net ? strike : best)
+    : null;
+  return { callWall, putWall, gammaHvl, gammaMagnet, gammaCenter, majorPositiveOi };
+}
+
+/**
+ * Estimate the current-session volume GEX profile using the same volume/OI
+ * scaling used by GEX Desk. Consolidated flow can contain several prints for
+ * one contract, while `volume` and `openInterest` are contract snapshots, so
+ * only the largest observed snapshot is retained before rolling up by strike.
+ */
+function deriveSessionVolumeGamma(
+  gamma: ExposureSummary | null,
+  flow: OptionsFlowPrint[],
+): ExposureSummary | null {
+  if (!gamma?.strikes.length || !flow.length) return null;
+  const contracts = new Map<string, {
+    strike: number;
+    contractType: "CALL" | "PUT";
+    volume: number;
+    openInterest: number;
+  }>();
+  for (const row of flow) {
+    if (
+      (row.contractType !== "CALL" && row.contractType !== "PUT")
+      || row.strikePrice === null
+      || row.strikePrice <= 0
+    ) continue;
+    const volume = Math.max(0, row.volume ?? 0);
+    const openInterest = Math.max(0, row.openInterest ?? 0);
+    if (!volume || !openInterest) continue;
+    const key = `${row.expirationDate ?? "unknown"}:${row.strikePrice}:${row.contractType}`;
+    const previous = contracts.get(key);
+    if (!previous || volume > previous.volume || openInterest > previous.openInterest) {
+      contracts.set(key, {
+        strike: row.strikePrice,
+        contractType: row.contractType,
+        volume,
+        openInterest,
+      });
+    }
+  }
+  const ratios = new Map<number, { callVolume: number; callOi: number; putVolume: number; putOi: number }>();
+  for (const contract of contracts.values()) {
+    const aggregate = ratios.get(contract.strike) ?? { callVolume: 0, callOi: 0, putVolume: 0, putOi: 0 };
+    if (contract.contractType === "CALL") {
+      aggregate.callVolume += contract.volume;
+      aggregate.callOi += contract.openInterest;
+    } else {
+      aggregate.putVolume += contract.volume;
+      aggregate.putOi += contract.openInterest;
+    }
+    ratios.set(contract.strike, aggregate);
+  }
+  const strikes = gamma.strikes.map((strike) => {
+    const ratio = ratios.get(strike.strike);
+    const callScale = ratio?.callOi ? Math.min(8, ratio.callVolume / ratio.callOi) : 0;
+    const putScale = ratio?.putOi ? Math.min(8, ratio.putVolume / ratio.putOi) : 0;
+    const call = strike.call * callScale;
+    const put = strike.put * putScale;
+    return { strike: strike.strike, call, put, net: call + put };
+  }).filter((strike) => strike.call !== 0 || strike.put !== 0);
+  if (!strikes.length) return null;
+  return {
+    mode: "GAMMA",
+    representation: "PER_ONE_PERCENT_MOVE",
+    net: strikes.reduce((sum, strike) => sum + strike.net, 0),
+    gross: strikes.reduce((sum, strike) => sum + Math.abs(strike.call) + Math.abs(strike.put), 0),
+    strikes,
+    expiries: [],
+  };
+}
+
+function majorPositiveGamma(exposure: ExposureSummary | null) {
+  const positive = exposure?.strikes.filter((strike) => strike.net > 0) ?? [];
+  return positive.length
+    ? positive.reduce((best, strike) => strike.net > best.net ? strike : best)
+    : null;
 }
 
 function chartGammaSourceLevels(
@@ -986,8 +1065,10 @@ function chartGammaSourceLevels(
   spot: number,
   expectedMove: MarketMapIntelligence["expectedMove"] = null,
   delta: ExposureSummary | null = null,
+  sessionVolumeGamma: ExposureSummary | null = null,
 ): ChartGammaSourceLevel[] {
   const key = deriveGammaLevels(gamma, spot);
+  const majorPositiveVolume = majorPositiveGamma(sessionVolumeGamma);
   const lowerBound = expectedMove?.min ?? spot * 0.97;
   const upperBound = expectedMove?.max ?? spot * 1.03;
   const deltaByStrike = new Map(delta?.strikes.map((row) => [row.strike, row.net]) ?? []);
@@ -1052,6 +1133,22 @@ function chartGammaSourceLevels(
       value: null,
       rank: 1,
     },
+    key.majorPositiveOi === null ? null : {
+      id: "major-positive-oi",
+      kind: "MAJOR_POSITIVE_OI",
+      label: "MPO",
+      price: key.majorPositiveOi.strike,
+      value: key.majorPositiveOi.net,
+      rank: 0,
+    },
+    majorPositiveVolume === null ? null : {
+      id: "major-positive-volume",
+      kind: "MAJOR_POSITIVE_VOLUME",
+      label: "MPV",
+      price: majorPositiveVolume.strike,
+      value: majorPositiveVolume.net,
+      rank: 0,
+    },
     expectedMove === null ? null : {
       id: "expected-move-max",
       kind: "EXPECTED_MOVE_MAX",
@@ -1102,11 +1199,13 @@ function chartGammaSourceSnapshot(
   payload: unknown,
   expectedMove: MarketMapIntelligence["expectedMove"] = null,
   delta: ExposureSummary | null = null,
+  flowPayload: unknown = null,
 ): ChartGammaSourceSnapshot | null {
   const gamma = parseExposure(payload, symbol, "GAMMA");
   const stockPrice = readStockPrice(payload, symbol);
   if (!gamma || stockPrice === null || stockPrice <= 0) return null;
-  const levels = chartGammaSourceLevels(gamma, stockPrice, expectedMove, delta);
+  const sessionVolumeGamma = deriveSessionVolumeGamma(gamma, parseFlow(flowPayload));
+  const levels = chartGammaSourceLevels(gamma, stockPrice, expectedMove, delta, sessionVolumeGamma);
   const validationStrikes = gamma.strikes
     .map((row) => row.strike)
     .filter((strike) => strike >= stockPrice * 0.97 && strike <= stockPrice * 1.03);
@@ -1173,6 +1272,7 @@ function strikeMetric(exposure: ExposureSummary | null, price: number | null, fi
 
 function createKeyLevels(args: {
   gamma: ExposureSummary | null;
+  sessionVolumeGamma: ExposureSummary | null;
   zeroDteGamma: ExposureSummary | null;
   zeroDteMaxPain: number | null;
   fullLevels: ReturnType<typeof deriveGammaLevels>;
@@ -1182,6 +1282,7 @@ function createKeyLevels(args: {
   expectedMove: MarketMapIntelligence["expectedMove"];
   gexClusters: ReturnType<typeof deriveGexClusters>;
 }) {
+  const sessionMajorPositive = majorPositiveGamma(args.sessionVolumeGamma);
   const rows: Array<OptionsKeyLevel | null> = [
     args.fullLevels.callWall === null ? null : {
       id: "call-wall",
@@ -1242,6 +1343,30 @@ function createKeyLevels(args: {
       rank: 1,
       derived: true,
       explanation: "Absolute-net-GEX weighted average strike across the full chain.",
+    },
+    args.fullLevels.majorPositiveOi === null ? null : {
+      id: "major-positive-oi",
+      kind: "MAJOR_POSITIVE_OI",
+      label: "MPO",
+      price: args.fullLevels.majorPositiveOi.strike,
+      scope: "FULL_CHAIN",
+      metric: "GEX",
+      value: args.fullLevels.majorPositiveOi.net,
+      rank: 1,
+      derived: true,
+      explanation: "Major Positive Open Interest: the strike with the largest positive net gamma exposure in the open-interest structure.",
+    },
+    sessionMajorPositive === null ? null : {
+      id: "major-positive-volume",
+      kind: "MAJOR_POSITIVE_VOLUME",
+      label: "MPV",
+      price: sessionMajorPositive.strike,
+      scope: "SESSION",
+      metric: "GEX",
+      value: sessionMajorPositive.net,
+      rank: 1,
+      derived: true,
+      explanation: "Major Positive Volume: the strike with the largest positive current-session volume GEX estimate. It is more responsive than the open-interest structure.",
     },
     args.expectedMove === null ? null : {
       id: "expected-move-max",
@@ -1525,6 +1650,7 @@ async function buildOptionsFlowPayload(symbol: string, requestedPriceMode: Optio
         ? new Date(candles.at(-1)!.timestamp).toISOString()
         : null;
   const fullLevels = deriveGammaLevels(gamma, stockPrice);
+  const sessionVolumeGamma = deriveSessionVolumeGamma(gamma, flow);
   const zeroDteLevels = deriveGammaLevels(zeroDteGamma, stockPrice);
   const frontExpiration = gamma?.expiries[0]?.expiration ?? null;
   const strikeRange = stockPrice === null ? null : {
@@ -1606,6 +1732,7 @@ async function buildOptionsFlowPayload(symbol: string, requestedPriceMode: Optio
   const gexClusters = deriveGexClusters(gamma, exposures.DELTA, stockPrice);
   const keyLevels = createKeyLevels({
     gamma,
+    sessionVolumeGamma,
     zeroDteGamma,
     zeroDteMaxPain,
     fullLevels,
@@ -1698,6 +1825,8 @@ async function buildOptionsFlowPayload(symbol: string, requestedPriceMode: Optio
       gammaHvl: fullLevels.gammaHvl,
       gammaMagnet: fullLevels.gammaMagnet,
       gammaCenter: fullLevels.gammaCenter,
+      majorPositiveOi: fullLevels.majorPositiveOi?.strike ?? null,
+      majorPositiveVolume: majorPositiveGamma(sessionVolumeGamma)?.strike ?? null,
       frontExpiration,
       zeroDteAvailable,
       zeroDteCallWall: zeroDteLevels.callWall,
@@ -2588,7 +2717,7 @@ export async function getChartGammaLevels(
     startTime: `${offsetIsoDate(session.sessionDate, -60)}T00:00:00Z`,
     endTime: `${offsetIsoDate(session.sessionDate, 1)}T23:59:59Z`,
   };
-  const [exposureResult, deltaResult, ivResult, dailyResult] = await Promise.allSettled([
+  const [exposureResult, deltaResult, flowResult, ivResult, dailyResult] = await Promise.allSettled([
     quantDataPost("/options/tool/exposure-by-strike", {
       sessionDate: session.sessionDate,
       greekMode: "GAMMA",
@@ -2600,6 +2729,12 @@ export async function getChartGammaLevels(
       greekMode: "DELTA",
       representationMode: "PER_ONE_PERCENT_MOVE",
       filter: { ticker: symbol },
+    }, session.marketOpen ? CHART_GAMMA_CACHE_TTL_MS : 300_000),
+    quantDataPost("/options/tool/order-flow/consolidated", {
+      sessionDate: session.sessionDate,
+      filter: { ticker: symbol },
+      size: 100,
+      sort: { field: "tradeTime", direction: "DESCENDING" },
     }, session.marketOpen ? CHART_GAMMA_CACHE_TTL_MS : 300_000),
     quantDataPost("/options/tool/iv-rank", {
       filter: { ticker: symbol },
@@ -2629,7 +2764,13 @@ export async function getChartGammaLevels(
     dailyCandles,
     fallbackPrice: stockPrice,
   });
-  const parsedSource = chartGammaSourceSnapshot(symbol, exposurePayload, expectedMove, parsedDelta);
+  const parsedSource = chartGammaSourceSnapshot(
+    symbol,
+    exposurePayload,
+    expectedMove,
+    parsedDelta,
+    flowResult.status === "fulfilled" ? flowResult.value.payload : null,
+  );
   const sources = parsedSource ? [parsedSource] : [];
   if (!sources.length) {
     if (exposureResult.status === "rejected" && exposureResult.reason instanceof QuantDataError) {

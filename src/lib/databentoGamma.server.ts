@@ -385,6 +385,15 @@ function evaluate(chain: Chain, spot: number, mult: number) {
   const zeroDteWall = argmax(zTotal);
   const zeroDteCallRes = argmax([...zCall].filter(([k]) => k > spot));
   const zeroDtePutSup = argmax([...zPut].filter(([k]) => k < spot));
+  const allOiStrikes = [...new Set([...strikes, ...zStrikes])];
+  const signedOi = new Map(allOiStrikes.map((strike) => [
+    strike,
+    (callG.get(strike) || 0) - (putG.get(strike) || 0)
+      + (zCall.get(strike) || 0) - (zPut.get(strike) || 0),
+  ]));
+  const majorPositiveOi = [...signedOi]
+    .filter(([, value]) => value > 0)
+    .sort((left, right) => right[1] - left[1])[0] ?? null;
   for (const value of zCall.values()) {
     netGex += value;
     grossGex += Math.abs(value);
@@ -395,7 +404,7 @@ function evaluate(chain: Chain, spot: number, mult: number) {
   }
 
   return { walls, callRes, putSup, flip, hvl, gammaFlipCurve, box, netGex, grossGex, callG, putG,
-           zeroDteWall, zeroDteCallRes, zeroDtePutSup };
+           majorPositiveOi, zeroDteWall, zeroDteCallRes, zeroDtePutSup };
 }
 
 function argmax(entries: Array<[number, number]>): number | null {
@@ -600,6 +609,9 @@ export async function getNativeGammaSnapshot(root: NativeGammaRoot, tradeIso: st
   if (ev.putSup) levels.push(level("PUT_WALL", "Put Support", ev.putSup, ev.putG.get(ev.putSup) ?? null, 0));
   if (ev.flip) levels.push(level("ZERO_GAMMA", "Zero Gamma", ev.flip, null, 0));
   if (ev.hvl) levels.push(level("HIGH_VOL_LEVEL", "HVL", ev.hvl, null, 0));
+  if (ev.majorPositiveOi) {
+    levels.push(level("MAJOR_POSITIVE_OI", "MPO", ev.majorPositiveOi[0], ev.majorPositiveOi[1], 0));
+  }
   if (ev.box) {
     // 1D expected range from the front-expiry ATM straddle, anchored to the live spot.
     levels.push(level("EXPECTED_MOVE_MAX", "1D Max", ev.box.max, null, 0));

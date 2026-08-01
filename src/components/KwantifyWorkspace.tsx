@@ -2094,7 +2094,12 @@ function warmGammaPayloadCache() {
 }
 
 function gammaLevelColor(kind: string, settings: ChartSettings) {
-  if (kind === "CALL_WALL" || kind === "POSITIVE_GEX") return settings.upColor;
+  if (
+    kind === "CALL_WALL"
+    || kind === "POSITIVE_GEX"
+    || kind === "MAJOR_POSITIVE_OI"
+    || kind === "MAJOR_POSITIVE_VOLUME"
+  ) return settings.upColor;
   if (kind === "PUT_WALL" || kind === "NEGATIVE_GEX") return settings.downColor;
   if (kind === "GAMMA_CENTRE") return "#06B6D4";
   if (kind === "ZERO_GAMMA") return "#F8FAFC";
@@ -2182,8 +2187,8 @@ function buildGammaChartOverlay(args: {
       price: roundedGammaPrice(level.price, calibration.scale, args.tickSize),
     }))
     .sort((left, right) => {
-      const leftPrimary = ["CALL_WALL", "PUT_WALL", "GAMMA_MAGNET", "GAMMA_CENTRE", "HIGH_VOL_LEVEL", "ZERO_GAMMA"].includes(left.kind) ? 0 : 1;
-      const rightPrimary = ["CALL_WALL", "PUT_WALL", "GAMMA_MAGNET", "GAMMA_CENTRE", "HIGH_VOL_LEVEL", "ZERO_GAMMA"].includes(right.kind) ? 0 : 1;
+      const leftPrimary = ["CALL_WALL", "PUT_WALL", "GAMMA_MAGNET", "GAMMA_CENTRE", "HIGH_VOL_LEVEL", "ZERO_GAMMA", "MAJOR_POSITIVE_OI", "MAJOR_POSITIVE_VOLUME"].includes(left.kind) ? 0 : 1;
+      const rightPrimary = ["CALL_WALL", "PUT_WALL", "GAMMA_MAGNET", "GAMMA_CENTRE", "HIGH_VOL_LEVEL", "ZERO_GAMMA", "MAJOR_POSITIVE_OI", "MAJOR_POSITIVE_VOLUME"].includes(right.kind) ? 0 : 1;
       return leftPrimary - rightPrimary || left.rank - right.rank;
     })
     .slice(0, 24)
@@ -2192,8 +2197,12 @@ function buildGammaChartOverlay(args: {
       price: level.price,
       color: gammaLevelColor(level.kind, args.settings),
       label: `${level.label} · ${conversion.source}→${conversion.target}`,
-      lineStyle: level.kind === "POSITIVE_GEX" || level.kind === "NEGATIVE_GEX" ? "dotted" : "dashed",
-      lineWidth: level.kind === "CALL_WALL" || level.kind === "PUT_WALL" ? 2 : 1,
+      lineStyle: level.kind === "MAJOR_POSITIVE_VOLUME" || /(^| \/ )MPV($| \/ )/.test(level.label)
+        ? "solid"
+        : level.kind === "POSITIVE_GEX" || level.kind === "NEGATIVE_GEX"
+          ? "dotted"
+          : "dashed",
+      lineWidth: level.kind === "CALL_WALL" || level.kind === "PUT_WALL" || level.kind === "MAJOR_POSITIVE_VOLUME" || /(^| \/ )MPV($| \/ )/.test(level.label) ? 2 : 1,
       axisLabelVisible: true,
     }));
 

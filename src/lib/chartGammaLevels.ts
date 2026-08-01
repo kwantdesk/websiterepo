@@ -11,6 +11,8 @@ export type ChartGammaSourceLevelKind =
   | "GAMMA_CENTRE"
   | "HIGH_VOL_LEVEL"
   | "ZERO_GAMMA"
+  | "MAJOR_POSITIVE_OI"
+  | "MAJOR_POSITIVE_VOLUME"
   | "POSITIVE_GEX"
   | "NEGATIVE_GEX"
   | "EXPECTED_MOVE_MAX"

@@ -536,6 +536,7 @@ function mapKeyLevelToChart(
 
 function levelTone(level: OptionsKeyLevel) {
   if (level.kind === "EXPECTED_MOVE_MAX" || level.kind === "EXPECTED_MOVE_MIN") return "text-warning";
+  if (level.kind === "MAJOR_POSITIVE_OI" || level.kind === "MAJOR_POSITIVE_VOLUME") return "text-primary";
   if (level.kind === "GEX_CLUSTER") return "text-accent";
   if (level.kind.includes("PUT") || level.kind === "ZERO_DTE_MAX_PAIN") return "text-danger";
   if (level.kind.includes("CALL")) return "text-primary";
@@ -558,6 +559,8 @@ function chartLevelLabel(level: OptionsKeyLevel) {
     case "GAMMA_CENTRE": return "GEX centre";
     case "HIGH_VOL_LEVEL": return "HVL";
     case "ZERO_GAMMA": return "Zero Gamma";
+    case "MAJOR_POSITIVE_OI": return "MPO";
+    case "MAJOR_POSITIVE_VOLUME": return "MPV";
     case "PUT_SUPPORT": return "Put support";
     default: return level.label;
   }

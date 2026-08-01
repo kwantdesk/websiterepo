@@ -324,7 +324,12 @@ async function fetchMarketCandles(instrument: LevelInstrument, timeframe: LevelT
 }
 
 function gammaColor(kind: ChartGammaSourceLevelKind, settings: ChartSettings) {
-  if (kind === "CALL_WALL" || kind === "POSITIVE_GEX") return settings.upColor;
+  if (
+    kind === "CALL_WALL"
+    || kind === "POSITIVE_GEX"
+    || kind === "MAJOR_POSITIVE_OI"
+    || kind === "MAJOR_POSITIVE_VOLUME"
+  ) return settings.upColor;
   if (kind === "PUT_WALL" || kind === "NEGATIVE_GEX") return settings.downColor;
   if (kind === "GAMMA_CENTRE") return "#22D3EE";
   if (kind === "ZERO_GAMMA") return "#F8FAFC";
@@ -370,6 +375,18 @@ const GAMMA_EDUCATION: Record<ChartGammaSourceLevelKind, Pick<IntelligentLevel, 
     hold: "Sustained trade on the positive-gamma side favours more counter-move hedging and local compression.",
     break: "Sustained trade on the negative-gamma side can make hedging more pro-cyclical and increase continuation risk.",
   },
+  MAJOR_POSITIVE_OI: {
+    explanation: "MPO is the strike with the largest positive net gamma exposure in the open-interest structure. It is the slower structural positive-gamma concentration carried into the session.",
+    firstTouch: "Check whether price slows, pins or rejects around the strike. Its meaning depends on approach direction and the surrounding gamma regime.",
+    hold: "Repeated rotation around MPO supports a structural magnet or dampening interpretation while its exposure remains concentrated.",
+    break: "Sustained acceptance through MPO means the structural concentration is being overwhelmed; confirm whether active volume exposure is migrating elsewhere.",
+  },
+  MAJOR_POSITIVE_VOLUME: {
+    explanation: "MPV is the strike with the largest positive current-session volume GEX estimate. It tracks the strongest active positive-gamma concentration being traded today and can migrate faster than MPO.",
+    firstTouch: "Watch whether live options activity continues building at the strike and whether futures movement loses velocity into it.",
+    hold: "A stable or growing MPV with repeated rotation supports an active pinning or dampening read.",
+    break: "Acceptance through a shrinking or migrating MPV weakens the earlier intraday reference and shifts attention to its new strike.",
+  },
   POSITIVE_GEX: {
     explanation: "A ranked strike carrying positive gamma exposure. Positive-gamma concentrations can encourage counter-move hedging and local mean reversion when the broader regime agrees.",
     firstTouch: "Watch for range compression and reduced follow-through as price reaches the strike.",
@@ -408,6 +425,12 @@ function gammaEducationForLevel(kind: ChartGammaSourceLevelKind, label: string) 
   if (/\bGEX\s*\d+\b/i.test(label)) {
     details.push("The number is its concentration rank in the current exposure snapshot, not a promise of reaction strength. Stability, change through time, and tape confirmation decide whether the level remains relevant.");
   }
+  if (/(^| \/ )MPO($| \/ )/.test(label) && kind !== "MAJOR_POSITIVE_OI") {
+    details.push("This strike also contains MPO, the largest positive net GEX concentration in the open-interest structure.");
+  }
+  if (/(^| \/ )MPV($| \/ )/.test(label) && kind !== "MAJOR_POSITIVE_VOLUME") {
+    details.push("This strike also contains MPV, the largest positive current-session volume GEX estimate.");
+  }
   return details.length ? { ...base, explanation: `${base.explanation} ${details.join(" ")}` } : base;
 }
 
@@ -425,8 +448,8 @@ function makeGammaSnapshot(payload: ChartGammaLevelsPayload, settings: ChartSett
     price: level.price,
     color: gammaColor(level.kind, settings),
     label: level.label,
-    lineStyle: level.kind === "CALL_WALL" || level.kind === "PUT_WALL" ? "solid" : "dashed",
-    lineWidth: level.kind === "CALL_WALL" || level.kind === "PUT_WALL" ? 2 : 1,
+    lineStyle: level.kind === "CALL_WALL" || level.kind === "PUT_WALL" || level.kind === "MAJOR_POSITIVE_VOLUME" || /(^| \/ )MPV($| \/ )/.test(level.label) ? "solid" : "dashed",
+    lineWidth: level.kind === "CALL_WALL" || level.kind === "PUT_WALL" || level.kind === "MAJOR_POSITIVE_VOLUME" || /(^| \/ )MPV($| \/ )/.test(level.label) ? 2 : 1,
     axisLabelVisible: true,
     family: "gamma",
     kind: level.kind,
