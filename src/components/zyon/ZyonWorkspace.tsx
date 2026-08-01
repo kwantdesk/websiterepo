@@ -1308,10 +1308,13 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
     setAttachmentError("");
     setSendError("");
     setSending(true);
+    const responseController = new AbortController();
+    const responseTimeout = window.setTimeout(() => responseController.abort(), 110_000);
 
     try {
       const response = await fetch("/api/zyon", {
         method: "POST",
+        signal: responseController.signal,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           model,
@@ -1446,9 +1449,14 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
         outputTokens: payload?.usage?.outputTokens ?? null,
       });
     } catch (error) {
-      setSendError(error instanceof Error ? error.message : "ZYON could not reply.");
+      setSendError(
+        error instanceof DOMException && error.name === "AbortError"
+          ? "ZYON did not complete within 110 seconds. Your message is saved; retry it."
+          : error instanceof Error ? error.message : "ZYON could not reply.",
+      );
       if (gameplanExchange) setGameplanSendState("needs-info");
     } finally {
+      window.clearTimeout(responseTimeout);
       setSending(false);
       window.requestAnimationFrame(() => composerRef.current?.focus());
     }
