@@ -182,7 +182,7 @@ export function EvolutionPanel({
 
   return (
     <div className={embedded ? "h-full min-h-0" : "space-y-3"}>
-      <section className={`overflow-hidden bg-panel ${embedded ? "h-full min-h-0" : "rounded-2xl border border-border"}`}>
+      <section className={`overflow-hidden bg-panel ${embedded ? "flex h-full min-h-0 flex-col" : "rounded-2xl border border-border"}`}>
         <SectionHeader
           icon={Layers3}
           eyebrow="MAP CHANGE"
@@ -203,13 +203,35 @@ export function EvolutionPanel({
             </div>
           )}
         />
-        <div className="grid min-h-[570px] xl:grid-cols-[minmax(0,1fr)_290px]">
-          <div className="relative min-w-0 overflow-hidden border-b border-border bg-background/25 p-4 xl:border-b-0 xl:border-r">
+        <div className={embedded ? "flex min-h-0 flex-1 flex-col" : "min-h-[700px]"}>
+          <aside className="grid shrink-0 gap-2 border-b border-border bg-background/15 p-3 md:grid-cols-3">
+            <div className="rounded-xl border border-primary/20 bg-primary/[0.04] px-4 py-3">
+              <div className="flex items-center gap-2 text-[6px] font-semibold uppercase tracking-[0.13em] text-primary"><GitCompareArrows className="h-3.5 w-3.5" />What changed</div>
+              <div className="mt-2 flex items-end gap-3"><span className="font-mono text-[16px] font-semibold">{summary?.building?.price.toFixed(0) ?? "--"}</span><span className="pb-0.5 font-mono text-[8px] text-muted">{summary?.building ? compact(summary.building.change) : "unavailable"}</span></div>
+              <p className="mt-1 text-[7px] leading-4 text-muted">Largest latest sampled exposure change. Direction describes the map, not a trade signal.</p>
+            </div>
+            <div className="rounded-xl border border-border bg-background/35 px-4 py-3">
+              <div className="flex items-center gap-2 text-[6px] font-semibold uppercase tracking-[0.13em] text-muted"><Activity className="h-3.5 w-3.5 text-primary" />Strongest current concentration</div>
+              <div className="mt-2 flex items-end gap-3"><span className="font-mono text-[16px] font-semibold">{summary?.strongest?.price.toFixed(0) ?? "--"}</span><span className="pb-0.5 font-mono text-[8px] text-muted">{summary?.strongest ? compact(summary.strongest.gross) : "unavailable"}</span></div>
+              <p className="mt-1 text-[7px] leading-4 text-muted">The strike carrying the greatest current gross mapped exposure.</p>
+            </div>
+            <div className="rounded-xl border border-border bg-background/35 px-4 py-3">
+              <div className="flex items-center gap-2 text-[6px] font-semibold uppercase tracking-[0.13em] text-muted"><Clock3 className="h-3.5 w-3.5 text-primary" />How to read it</div>
+              <div className="mt-2 grid grid-cols-3 gap-2 text-[7px] leading-4 text-muted">
+                <p><span className="block font-semibold text-primary">Primary</span>Stabilising</p>
+                <p><span className="block font-semibold text-accent">Accent</span>Amplifying</p>
+                <p><span className="block font-semibold text-foreground">White</span>NQ price</p>
+              </div>
+              <p className="mt-1 text-[7px] leading-4 text-muted">Use Change to locate exposure building or fading through the session.</p>
+            </div>
+            {history.errors.length || error ? <div className="rounded-xl border border-warning/20 bg-warning/[0.04] px-4 py-2 text-[7px] leading-4 text-warning md:col-span-3">{[...history.errors, error].filter(Boolean).join(" · ")}</div> : null}
+          </aside>
+          <div className={`relative min-w-0 overflow-hidden bg-background/25 p-4 ${embedded ? "flex min-h-0 flex-1 flex-col" : ""}`}>
             <div className="mb-3 flex items-center justify-between gap-3 text-[6px] uppercase tracking-[0.11em] text-muted">
               <span>{history.source} / {history.expiration || "front expiry"}</span>
               <span>{history.status} · {percent(history.mappingCoverage)} timestamp coverage</span>
             </div>
-            <div className="relative h-[500px] overflow-hidden rounded-xl border border-border bg-background">
+            <div className={`relative overflow-hidden rounded-xl border border-border bg-background ${embedded ? "min-h-[420px] flex-1" : "h-[620px]"}`}>
               <svg className="h-full w-full" viewBox={`0 0 ${Math.max(1, columnCount)} ${Math.max(1, rowCount)}`} preserveAspectRatio="none" aria-label="Intraday mapped gamma exposure heatmap">
                 {history.rows.map((row, rowIndex) => {
                   const y = rowCount - 1 - rowIndex;
@@ -257,32 +279,6 @@ export function EvolutionPanel({
               </div>
             </div>
           </div>
-          <aside className="space-y-3 p-4">
-            <div className="rounded-xl border border-primary/20 bg-primary/[0.04] p-3">
-              <div className="text-[6px] font-semibold uppercase tracking-[0.13em] text-primary">What changed</div>
-              <div className="mt-2 font-mono text-[15px] font-semibold">{summary?.building?.price.toFixed(0) ?? "--"}</div>
-              <p className="mt-2 text-[7px] leading-5 text-muted">
-                Largest latest sampled change: {summary?.building ? compact(summary.building.change) : "unavailable"}. Direction is the exposure change, not a trade signal.
-              </p>
-            </div>
-            <div className="rounded-xl border border-border bg-background/30 p-3">
-              <div className="text-[6px] font-semibold uppercase tracking-[0.13em] text-muted">Strongest current concentration</div>
-              <div className="mt-2 font-mono text-[15px] font-semibold">{summary?.strongest?.price.toFixed(0) ?? "--"}</div>
-              <p className="mt-2 text-[7px] leading-5 text-muted">{summary?.strongest ? `${compact(summary.strongest.gross)} gross mapped exposure` : "No current concentration is available."}</p>
-            </div>
-            <div className="rounded-xl border border-border bg-background/30 p-3">
-              <div className="flex items-center gap-2 text-[7px] font-semibold"><Clock3 className="h-3.5 w-3.5 text-primary" />How to read it</div>
-              <div className="mt-3 space-y-2 text-[7px] leading-5 text-muted">
-                <p><span className="text-primary">Primary</span> = stabilising gamma concentration.</p>
-                <p><span className="text-accent">Accent</span> = amplifying gamma concentration.</p>
-                <p><span className="text-foreground">White path</span> = observed NQ price.</p>
-                <p>Use Change to see where exposure is building or fading rather than treating opening levels as permanent.</p>
-              </div>
-            </div>
-            {history.errors.length || error ? (
-              <div className="rounded-xl border border-warning/20 bg-warning/[0.04] p-3 text-[7px] leading-5 text-warning">{[...history.errors, error].filter(Boolean).join(" · ")}</div>
-            ) : null}
-          </aside>
         </div>
       </section>
     </div>
