@@ -4,6 +4,7 @@ import Link from "next/link";
 import { type ComponentType, useEffect } from "react";
 import {
   BarChart3,
+  Bot,
   BookOpen,
   CalendarDays,
   Crosshair,
@@ -26,6 +27,7 @@ type SidebarKey =
   | "home"
   | "charts"
   | "gamma"
+  | "gammaBot"
   | "levelz"
   | "gexmap"
   | "gexdesk"
@@ -78,6 +80,7 @@ const navItems: Array<{
   { key: "zyon", href: "/zyon", label: "ZYON", title: "ZYON Trading Intelligence", icon: Sparkles },
   { key: "gameplan", href: "/gameplan", label: "Gameplan", title: "Gameplan", icon: CalendarDays },
   { key: "gamma", href: "/gamma", label: "GAMMA", title: "Gamma", icon: BarChart3 },
+  { key: "gammaBot", href: "/gamma-bot", label: "GAMMA BOT", title: "Gamma Bot", icon: Bot },
   { key: "levelz", href: "/levelz", label: "LEVELZ", title: "LEVELZ", icon: Crosshair },
   { key: "news", href: "/news", label: "News", title: "News", icon: BookOpen },
   { key: "gexmap", href: "/gexmap", label: "GEX MAP", title: "GEX Map", icon: ScanLine },
@@ -90,6 +93,8 @@ const navItems: Array<{
 function preloadWorkspaceComponent(key: SidebarKey) {
   return key === "gamma"
     ? import("@/components/options-flow/GammaWorkspace")
+    : key === "gammaBot"
+      ? import("@/components/gamma-bot/GammaBotWorkspace")
     : key === "levelz"
       ? import("@/components/levelz/LevelzWorkspace")
       : key === "gexmap"
@@ -132,6 +137,7 @@ export default function AppSidebar({
   useEffect(() => {
     const warmKeys: SidebarKey[] = [
       "gamma",
+      "gammaBot",
       "levelz",
       "gameplan",
       "gexmap",
