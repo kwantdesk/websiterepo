@@ -39,6 +39,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
+import WorkspaceSubnav from "@/components/ui/WorkspaceSubnav";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import KwantLoader from "@/components/KwantLoader";
 import {
@@ -2411,11 +2412,12 @@ type GameplanPageTab = "gameplan" | GameplanRecordTab;
 const GAMEPLAN_PAGE_TABS: Array<{
   id: GameplanPageTab;
   label: string;
+  description: string;
   icon: LucideIcon;
 }> = [
-  { id: "gameplan", label: "GAME PLAN", icon: Map },
-  { id: "scoring", label: "SCORING", icon: Scale },
-  { id: "previous", label: "PREVIOUS GAME PLANS", icon: History },
+  { id: "gameplan", label: "Game Plan", description: "Live session map", icon: Map },
+  { id: "scoring", label: "Scoring", description: "Plans awaiting outcome", icon: Scale },
+  { id: "previous", label: "Previous Game Plans", description: "Finalised plan archive", icon: History },
 ];
 
 export default function GameplanWorkspace({ initialInstrument = "NQ" }: { initialInstrument?: string }) {
@@ -2433,24 +2435,7 @@ export default function GameplanWorkspace({ initialInstrument = "NQ" }: { initia
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background text-foreground">
-      <nav className="relative z-40 flex min-h-[48px] shrink-0 items-stretch gap-1 overflow-x-auto border-b border-border bg-panel px-3 sm:px-4" aria-label="Gameplan sections">
-        {GAMEPLAN_PAGE_TABS.map(({ id, label, icon: Icon }) => {
-          const active = pageTab === id;
-          return (
-            <button
-              key={id}
-              type="button"
-              onClick={() => setPageTab(id)}
-              className={`group relative flex shrink-0 items-center gap-2 px-3.5 text-[9px] font-semibold tracking-[0.08em] transition-colors ${active ? "text-primary" : "text-muted hover:text-foreground"}`}
-              aria-current={active ? "page" : undefined}
-            >
-              <Icon className={`h-3.5 w-3.5 transition-colors ${active ? "text-primary" : "text-muted group-hover:text-foreground"}`} />
-              {label}
-              <span className={`absolute inset-x-2 bottom-0 h-px origin-center bg-primary transition-transform ${active ? "scale-x-100 shadow-[0_0_12px_var(--color-primary)]" : "scale-x-0"}`} />
-            </button>
-          );
-        })}
-      </nav>
+      <WorkspaceSubnav items={GAMEPLAN_PAGE_TABS} value={pageTab} onChange={setPageTab} ariaLabel="Gameplan sections" className="relative z-40" />
 
       <div className={`min-h-0 flex-1 ${pageTab === "gameplan" ? "block" : "hidden"}`}>
         <GameplanLiveWorkspace initialInstrument={initialInstrument} />

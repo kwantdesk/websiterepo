@@ -53,6 +53,7 @@ import {
 import { useRouter } from "next/navigation";
 import KwantLoader from "@/components/KwantLoader";
 import KwantSelect from "@/components/ui/KwantSelect";
+import WorkspaceSubnav from "@/components/ui/WorkspaceSubnav";
 import SocialProfileView from "@/components/socials/SocialProfileView";
 import ActivityStreakBadge from "@/components/socials/ActivityStreakBadge";
 import CallingCardVisual from "@/components/socials/CallingCardVisual";
@@ -248,15 +249,15 @@ function clampAvatarOffset(draft: AvatarCropDraft, offsetX: number, offsetY: num
   };
 }
 
-const SOCIAL_TABS: Array<{ id: SocialTab; label: string; icon: typeof Activity }> = [
-  { id: "today", label: "Record", icon: Activity },
-  { id: "reasoning", label: "My Reasoning", icon: BrainCircuit },
-  { id: "precords", label: "Community", icon: Network },
-  { id: "desks", label: "Desks", icon: UsersRound },
-  { id: "feed", label: "Feed", icon: Heart },
-  { id: "rankings", label: "Reputation", icon: Trophy },
-  { id: "cards", label: "Calling Cards", icon: Award },
-  { id: "profile", label: "Profile", icon: Radar },
+const SOCIAL_TABS: Array<{ id: SocialTab; label: string; description: string; icon: typeof Activity }> = [
+  { id: "today", label: "Record", description: "Your live process", icon: Activity },
+  { id: "reasoning", label: "My Reasoning", description: "Reviewed game plans", icon: BrainCircuit },
+  { id: "precords", label: "Community", description: "Shared trading records", icon: Network },
+  { id: "desks", label: "Desks", description: "Your trading groups", icon: UsersRound },
+  { id: "feed", label: "Feed", description: "Following and posts", icon: Heart },
+  { id: "rankings", label: "Reputation", description: "Rankings and trust", icon: Trophy },
+  { id: "cards", label: "Calling Cards", description: "Identity rewards", icon: Award },
+  { id: "profile", label: "Profile", description: "Your public identity", icon: Radar },
 ];
 
 const SCORE_LABELS: Array<[keyof SocialProfilePayload["scores"], string]> = [
@@ -2688,7 +2689,7 @@ export default function SocialsWorkspace({
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-background text-foreground">
-      <header className="shrink-0 border-b border-border bg-panel">
+      <header className="shrink-0 bg-panel">
         <div className="flex min-h-[64px] flex-wrap items-center gap-3 px-4 py-3">
           <span className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-primary/25 bg-primary/10 text-primary">
             <Network className="h-4 w-4" />
@@ -2708,15 +2709,19 @@ export default function SocialsWorkspace({
             <button type="button" onClick={() => setTab("today")} className="flex h-8 items-center gap-1.5 rounded-xl bg-primary px-3 text-[8px] font-semibold text-background hover:brightness-110"><LockKeyhole className="h-3.5 w-3.5" />{SOCIAL_RECORD_COPY.lockAction}</button>
           </div>
         </div>
-        <nav className="flex items-center gap-1 overflow-x-auto px-3" aria-label="Socials views">
-          {SOCIAL_TABS.map(({ id, label, icon: Icon }) => (
-            <button key={id} type="button" onClick={() => { if (initialProfileHandle && id !== "profile") { onCloseProfile?.(); return; } setTab(id); if (id === "profile") setProfileEditing(false); }} className={`relative flex h-10 shrink-0 items-center gap-1.5 px-3 text-[10px] font-semibold ${tab === id ? "text-primary" : "text-muted hover:text-foreground"}`}>
-              <Icon className="h-3.5 w-3.5" />{label}
-              {id === "today" && notificationItems.length ? <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-danger px-1 text-[7px] text-white">{notificationItems.length}</span> : null}
-              {tab === id ? <span className="absolute inset-x-2 bottom-0 h-0.5 rounded-full bg-primary shadow-[0_0_8px_var(--primary)]" /> : null}
-            </button>
-          ))}
-        </nav>
+        <WorkspaceSubnav
+          items={SOCIAL_TABS.map((item) => item.id === "today" && notificationItems.length ? { ...item, badge: notificationItems.length } : item)}
+          value={tab}
+          onChange={(id) => {
+            if (initialProfileHandle && id !== "profile") {
+              onCloseProfile?.();
+              return;
+            }
+            setTab(id);
+            if (id === "profile") setProfileEditing(false);
+          }}
+          ariaLabel="Socials views"
+        />
       </header>
 
       {notice ? <div className="flex shrink-0 items-center gap-2 border-b border-primary/15 bg-primary/[0.055] px-4 py-2 text-[8px] text-primary"><Sparkles className="h-3.5 w-3.5" /><span className="min-w-0 flex-1">{notice}</span><button type="button" onClick={() => setNotice("")}><X className="h-3.5 w-3.5" /></button></div> : null}

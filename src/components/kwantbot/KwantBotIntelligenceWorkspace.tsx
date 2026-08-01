@@ -33,6 +33,7 @@ import {
   Zap,
 } from "lucide-react";
 import type { UseKwantBotInterpreterResult } from "@/hooks/useKwantBotInterpreter";
+import WorkspaceSubnav from "@/components/ui/WorkspaceSubnav";
 import {
   formatKwantBotPrice,
   type KwantBotInterpreterMessage,
@@ -54,12 +55,13 @@ const ROOT_DETAILS: Record<KwantBotMarketRoot, { name: string; contract: string 
 const VIEW_ITEMS: Array<{
   id: WorkspaceView;
   label: string;
+  description: string;
   icon: typeof BrainCircuit;
 }> = [
-  { id: "command", label: "Command Centre", icon: BrainCircuit },
-  { id: "journal", label: "Running Journal", icon: NotebookTabs },
-  { id: "levels", label: "Level Memory", icon: Waypoints },
-  { id: "learning", label: "Machine Learning", icon: GraduationCap },
+  { id: "command", label: "Command Centre", description: "Live market analysis", icon: BrainCircuit },
+  { id: "journal", label: "Running Journal", description: "Timestamped memory", icon: NotebookTabs },
+  { id: "levels", label: "Level Memory", description: "Remembered reactions", icon: Waypoints },
+  { id: "learning", label: "Machine Learning", description: "Calibration and review", icon: GraduationCap },
 ];
 
 const JOURNAL_FILTERS: Array<{ id: JournalFilter; label: string }> = [
@@ -572,7 +574,7 @@ export default function KwantBotIntelligenceWorkspace({
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background">
-      <header className="relative shrink-0 overflow-hidden border-b border-border bg-panel">
+      <header className="relative shrink-0 overflow-hidden bg-panel">
         <div className="pointer-events-none absolute -left-8 -top-20 h-52 w-52 rounded-full bg-primary/[0.07] blur-3xl" />
         <div className="relative flex min-h-[76px] items-center gap-4 px-5 py-3">
           <div className="flex min-w-0 items-center gap-3">
@@ -625,28 +627,18 @@ export default function KwantBotIntelligenceWorkspace({
           </button>
         </div>
 
-        <nav className="relative flex h-10 items-center gap-1 border-t border-border/70 px-5" aria-label="KwantBot intelligence views">
-          {VIEW_ITEMS.map((item) => {
-            const Icon = item.icon;
-            const active = view === item.id;
-            return (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => setView(item.id)}
-                className={`relative flex h-8 items-center gap-2 rounded-lg px-3 text-[10px] font-semibold transition-colors ${active ? "bg-primary/10 text-primary" : "text-muted hover:bg-surface hover:text-foreground"}`}
-              >
-                <Icon className="h-3.5 w-3.5" />
-                {item.label}
-                {active ? <span className="absolute inset-x-3 -bottom-[5px] h-0.5 rounded-full bg-primary shadow-[0_0_8px_var(--primary)]" /> : null}
-              </button>
-            );
-          })}
-          <div className="ml-auto flex items-center gap-2 text-[8px] uppercase tracking-[0.11em] text-muted">
-            <ShieldCheck className="h-3 w-3 text-primary" />
-            Every claim keeps its evidence trail
-          </div>
-        </nav>
+        <WorkspaceSubnav
+          items={VIEW_ITEMS}
+          value={view}
+          onChange={setView}
+          ariaLabel="KwantBot intelligence views"
+          trailing={(
+            <div className="hidden items-center gap-2 text-[8px] uppercase tracking-[0.11em] text-muted lg:flex">
+              <ShieldCheck className="h-3 w-3 text-primary" />
+              Every claim keeps its evidence trail
+            </div>
+          )}
+        />
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4">

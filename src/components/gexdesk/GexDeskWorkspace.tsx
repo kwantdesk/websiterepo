@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import KwantLoader from "@/components/KwantLoader";
 import KwantSelect from "@/components/ui/KwantSelect";
+import WorkspaceSubnav from "@/components/ui/WorkspaceSubnav";
 import GexDeskDepthPanels, {
   type GexDeskPanel,
 } from "@/components/gexdesk/GexDeskDepthPanels";
@@ -545,16 +546,17 @@ export default function GexDeskWorkspace() {
   const panelItems: Array<{
     id: GexDeskPanel;
     label: string;
+    description: string;
     icon: typeof Activity;
     analyst: boolean;
   }> = [
-    { id: "GEX_VIEW", label: "Gex View", icon: Eye, analyst: false },
-    { id: "MAP", label: "Map", icon: Map, analyst: false },
-    { id: "HEATMAP", label: "Heatmap", icon: Flame, analyst: false },
-    { id: "EVOLUTION", label: "Evolution", icon: History, analyst: true },
-    { id: "EXPIRIES", label: "Expiries", icon: CalendarRange, analyst: true },
-    { id: "FLOW", label: "Flow & Tape", icon: Waves, analyst: true },
-    { id: "SOURCES", label: "Sources", icon: GitCompareArrows, analyst: true },
+    { id: "GEX_VIEW", label: "Gex View", description: "Visual exposure terminal", icon: Eye, analyst: false },
+    { id: "MAP", label: "Map", description: "Positioning by strike", icon: Map, analyst: false },
+    { id: "HEATMAP", label: "Heatmap", description: "Call and put activity", icon: Flame, analyst: false },
+    { id: "EVOLUTION", label: "Evolution", description: "Exposure through time", icon: History, analyst: true },
+    { id: "EXPIRIES", label: "Expiries", description: "Term structure", icon: CalendarRange, analyst: true },
+    { id: "FLOW", label: "Flow & Tape", description: "Live options pressure", icon: Waves, analyst: true },
+    { id: "SOURCES", label: "Sources", description: "Cross-source evidence", icon: GitCompareArrows, analyst: true },
   ];
 
   return (
@@ -606,31 +608,20 @@ export default function GexDeskWorkspace() {
         </div> : null}
       </div>
 
-      <div className="flex shrink-0 items-center gap-1 overflow-x-auto border-b border-border bg-background px-3 py-1.5">
-        {panelItems.map((item) => {
-          const Icon = item.icon;
-          const active = activePanel === item.id;
-          return (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => {
-                setActivePanel(item.id);
-                if (item.analyst) setViewMode("ANALYST");
-              }}
-              className={`relative flex h-8 shrink-0 items-center gap-2 rounded-xl px-3 text-[7px] font-semibold transition-colors ${active ? "bg-primary/[0.08] text-primary" : "text-muted hover:bg-surface hover:text-foreground"}`}
-            >
-              <Icon className="h-3.5 w-3.5" />
-              {item.label}
-              {item.analyst ? <span className="text-[5px] font-medium uppercase tracking-[0.1em] opacity-55">Analyst</span> : null}
-              {active ? <span className="absolute inset-x-3 -bottom-1.5 h-px bg-primary shadow-[0_0_8px_var(--primary)]" /> : null}
-            </button>
-          );
-        })}
-        <span className="ml-auto hidden shrink-0 text-[6px] text-muted lg:block">
-          MAP = positioning · HEATMAP = call / put activity · TAPE = observed {liveInstrument}
-        </span>
-      </div>
+      <WorkspaceSubnav
+        items={panelItems}
+        value={activePanel}
+        onChange={(id) => {
+          setActivePanel(id);
+          if (panelItems.find((item) => item.id === id)?.analyst) setViewMode("ANALYST");
+        }}
+        ariaLabel="Gexdesk sections"
+        trailing={(
+          <span className="hidden text-[6px] text-muted xl:block">
+            MAP = positioning · HEATMAP = call / put activity · TAPE = observed {liveInstrument}
+          </span>
+        )}
+      />
 
       <div className="min-h-0 flex-1 overflow-y-auto p-3">
         <div className="mx-auto max-w-[1680px] space-y-3">

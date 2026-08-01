@@ -46,6 +46,7 @@ import {
   X,
 } from "lucide-react";
 import KwantLoader from "@/components/KwantLoader";
+import WorkspaceSubnav from "@/components/ui/WorkspaceSubnav";
 import {
   calculateJournalStats,
   EMPTY_JOURNAL_STATE,
@@ -125,14 +126,14 @@ type JournalAnalysisResponse = {
   error?: string;
 };
 
-const JOURNAL_TABS: Array<{ id: JournalTab; label: string; icon: typeof Activity }> = [
-  { id: "pulse", label: "Pulse", icon: Activity },
-  { id: "calendar", label: "Calendar", icon: CalendarDays },
-  { id: "trades", label: "Trade Log", icon: FileSpreadsheet },
-  { id: "edgebook", label: "Edgebook", icon: Sparkles },
-  { id: "analysis", label: "Analysis", icon: BrainCircuit },
-  { id: "evidence", label: "Evidence", icon: ImageIcon },
-  { id: "imports", label: "Imports", icon: FolderArchive },
+const JOURNAL_TABS: Array<{ id: JournalTab; label: string; description: string; icon: typeof Activity }> = [
+  { id: "pulse", label: "Pulse", description: "Account overview", icon: Activity },
+  { id: "calendar", label: "Calendar", description: "Performance by day", icon: CalendarDays },
+  { id: "trades", label: "Trade Log", description: "Every recorded trade", icon: FileSpreadsheet },
+  { id: "edgebook", label: "Edgebook", description: "Repeatable patterns", icon: Sparkles },
+  { id: "analysis", label: "Analysis", description: "Quant mentor review", icon: BrainCircuit },
+  { id: "evidence", label: "Evidence", description: "Screenshots and notes", icon: ImageIcon },
+  { id: "imports", label: "Imports", description: "Source file history", icon: FolderArchive },
 ];
 
 const ACCEPTED_FILES = ".xlsx,.xls,.xlsm,.xlsb,.ods,.fods,.xml,.html,.htm,.csv,.tsv,.txt,.json,.md,.png,.jpg,.jpeg,.webp,.gif";
@@ -1285,7 +1286,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-background text-foreground">
-      <header className="shrink-0 border-b border-border bg-panel">
+      <header className="shrink-0 bg-panel">
         <div className="flex min-h-[64px] flex-wrap items-center gap-3 px-4 py-3">
           <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary"><NotebookPen className="h-4 w-4" /></span>
           <div className="min-w-0">
@@ -1342,15 +1343,12 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
             <button type="button" onClick={() => { setAccountCreationMode("manual"); setImportAccount("My KwantDesk Journal"); setImportMessage(""); setShowImport(true); }} className="flex min-w-[150px] shrink-0 items-center justify-center gap-2 rounded-2xl border border-dashed border-border bg-background/20 px-4 text-[9px] font-semibold text-muted transition-colors hover:border-primary/35 hover:bg-primary/[0.05] hover:text-primary"><Plus className="h-3.5 w-3.5" />Add account</button>
           </div>
         </div>
-        <nav className="flex items-center gap-1 overflow-x-auto px-3" aria-label="Journal views">
-          {JOURNAL_TABS.filter(({ id }) => !zyonJournalSelected || id !== "imports").map(({ id, label, icon: Icon }) => (
-            <button key={id} type="button" onClick={() => setTab(id)} className={`relative flex h-10 shrink-0 items-center gap-1.5 px-3 text-[10px] font-semibold transition-colors ${tab === id ? "text-primary" : "text-muted hover:text-foreground"}`}>
-              <Icon className="h-3.5 w-3.5" />
-              {label}
-              {tab === id ? <span className="absolute inset-x-2 bottom-0 h-0.5 rounded-full bg-primary shadow-[0_0_8px_var(--primary)]" /> : null}
-            </button>
-          ))}
-        </nav>
+        <WorkspaceSubnav
+          items={JOURNAL_TABS.filter(({ id }) => !zyonJournalSelected || id !== "imports")}
+          value={tab}
+          onChange={setTab}
+          ariaLabel="Journal views"
+        />
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
