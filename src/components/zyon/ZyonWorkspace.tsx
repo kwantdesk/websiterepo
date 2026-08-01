@@ -55,6 +55,8 @@ import {
   ZYON_CONVERSATION_TAG,
   ZYON_CUSTOM_FOLDER_LIMIT,
   ZYON_DEFAULT_CHAT_ID,
+  ZYON_GAMEPLAN_READY_TAG,
+  ZYON_GAMEPLAN_SENT_TAG,
   ZYON_MODELS,
   zyonConversationRole,
   zyonDailyFolderId,
@@ -219,6 +221,11 @@ function messagesFromJournal(entries: ZyonJournalEntry[], chatId: string) {
         content: entry.body,
         createdAt: entry.createdAt,
         attachments: attachments.length ? attachments : undefined,
+        gameplanStatus: entry.tags.includes(ZYON_GAMEPLAN_SENT_TAG)
+          ? "sent"
+          : entry.tags.includes(ZYON_GAMEPLAN_READY_TAG)
+            ? "ready"
+            : undefined,
       };
     })
     .filter((message): message is ZyonMessage => Boolean(message))
@@ -610,7 +617,7 @@ export default function ZyonWorkspace({
   const [folderActionBusy, setFolderActionBusy] = useState(false);
   const [folderToDelete, setFolderToDelete] = useState<ZyonFolder | null>(null);
   const [exportingFolderId, setExportingFolderId] = useState<string | null>(null);
-  const [gameplanSendState, setGameplanSendState] = useState<"ready" | "checking" | "needs-info" | "sent">("ready");
+  const [gameplanSendState, setGameplanSendState] = useState<"unavailable" | "checking" | "ready" | "sent">("unavailable");
   const [gameplansSentToday, setGameplansSentToday] = useState(0);
   const [pendingGameplanId, setPendingGameplanId] = useState<string | null>(null);
   const [chatActionBusy, setChatActionBusy] = useState(false);
@@ -682,7 +689,7 @@ export default function ZyonWorkspace({
       const pending = payload.pendingDraft ?? null;
       setPendingGameplanId(pending?.id ?? null);
       setGameplansSentToday(Number.isFinite(payload.sentToday) ? Number(payload.sentToday) : 0);
-      setGameplanSendState((current) => pending ? "sent" : current === "sent" ? "ready" : current);
+      setGameplanSendState((current) => pending ? "sent" : current === "sent" ? "unavailable" : current);
     } catch {
       // The conversation remains available if status synchronization is temporarily unavailable.
     }
@@ -838,6 +845,14 @@ export default function ZyonWorkspace({
       window.removeEventListener("kwantdesk:gameplan-posted", refresh);
     };
   }, [refreshGameplanStatus]);
+
+  useEffect(() => {
+    if (sending || pendingGameplanId) return;
+    const latestStatus = [...messages]
+      .reverse()
+      .find((message) => message.gameplanStatus)?.gameplanStatus;
+    setGameplanSendState(latestStatus === "ready" ? "ready" : "unavailable");
+  }, [activeChatId, messages, pendingGameplanId, sending]);
 
   useEffect(() => {
     if (!imagePreview) return;
@@ -1282,7 +1297,6 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
     const text = (overrideText ?? draft).trim().slice(0, 6_000);
     const outgoingAttachments = overrideText ? [] : attachments;
     const gameplanExchange = gameplanRequest
-      || gameplanSendState === "needs-info"
       || /\b(?:send|save|submit|start|begin|build|prepare|create)\b[\s\S]{0,40}\bgame\s*plan\b/i.test(text)
       || /\bgame\s*plan\b[\s\S]{0,40}\b(?:send|save|submit|start|begin|build|prepare|create)\b/i.test(text);
     if (sending || (!text && !outgoingAttachments.length)) return;
@@ -1348,6 +1362,7 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
         journalEntry?: ZyonJournalEntry | null;
         journalEntries?: ZyonJournalEntry[];
         gameplanDraft?: ZyonGameplanDraft | null;
+        gameplanReady?: boolean;
         pendingGameplanDraftId?: string | null;
         folder?: { id?: string; sessionDate?: string; cloudSaved?: boolean };
         usage?: { inputTokens?: number | null; outputTokens?: number | null };
@@ -1367,6 +1382,9 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
         content: content.slice(0, 12_000),
         createdAt: new Date().toISOString(),
         model: isZyonModelKey(payload?.model) ? payload.model : model,
+        gameplanStatus: payload?.gameplanDraft?.cloudSaved || payload?.pendingGameplanDraftId
+          ? "sent"
+          : payload?.gameplanReady ? "ready" : undefined,
       };
       setMessages((current) => [...current.slice(-119), reply]);
       if (payload?.gameplanDraft?.cloudSaved) {
@@ -1382,8 +1400,10 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
         window.dispatchEvent(new CustomEvent("kwantdesk:zyon-gameplan-sent", {
           detail: { draftId: payload.pendingGameplanDraftId },
         }));
+      } else if (payload?.gameplanReady) {
+        setGameplanSendState("ready");
       } else if (gameplanExchange) {
-        setGameplanSendState("needs-info");
+        setGameplanSendState("unavailable");
       }
       const returnedEntries = Array.isArray(payload?.journalEntries)
         ? payload.journalEntries
@@ -1454,7 +1474,7 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
           ? "ZYON did not complete within 110 seconds. Your message is saved; retry it."
           : error instanceof Error ? error.message : "ZYON could not reply.",
       );
-      if (gameplanExchange) setGameplanSendState("needs-info");
+      if (gameplanExchange) setGameplanSendState("unavailable");
     } finally {
       window.clearTimeout(responseTimeout);
       setSending(false);
@@ -1478,24 +1498,28 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
       window.location.href = "/socials";
       return;
     }
+    if (gameplanSendState !== "ready") return;
     void sendMessage(
       undefined,
-      "Send Gameplan. Use our conversation for the reasoning and ask me only for the required information that is still missing.",
+      "Send Gameplan. Use the complete validated Gameplan from our conversation and submit it to the holding page now.",
       true,
     );
   };
   const gameplanButtonLabel = gameplanSendState === "checking"
     ? "ZYON CHECKING"
-    : gameplanSendState === "needs-info"
-      ? "ZYON NEEDS INFO"
-      : gameplanSendState === "sent"
+    : gameplanSendState === "sent"
         ? "SENT · OPEN HOLDING"
         : "SEND GAMEPLAN";
-  const gameplanButtonTone = gameplanSendState === "needs-info"
-    ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-300 shadow-[0_0_18px_rgba(52,211,153,0.12)]"
-    : gameplanSendState === "sent"
-      ? "border-primary/30 bg-primary/10 text-primary"
-      : "border-border bg-surface/60 text-foreground hover:border-primary/35 hover:text-primary";
+  const gameplanButtonTone = gameplanSendState === "sent"
+    ? "border-primary/30 bg-primary/10 text-primary"
+    : gameplanSendState === "ready"
+      ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-300 shadow-[0_0_18px_rgba(52,211,153,0.12)] hover:border-emerald-300/60"
+      : "border-border bg-surface/60 text-muted";
+  const gameplanButtonDisabled = sending
+    || (gameplanSendState !== "ready" && gameplanSendState !== "sent");
+  const gameplanButtonTitle = gameplanSendState === "unavailable"
+    ? "Complete the Gameplan with ZYON before sending it"
+    : `${gameplansSentToday} Gameplans sent today`;
 
   if (!conversationReady) {
     return <ZyonLoadingState compact={compact} />;
@@ -1574,7 +1598,8 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
             <button
               type="button"
               onClick={requestGameplan}
-              disabled={sending}
+              disabled={gameplanButtonDisabled}
+              title={gameplanButtonTitle}
               className={`flex h-8 min-w-0 flex-1 items-center justify-center gap-2 rounded-xl border px-3 text-[8px] font-semibold uppercase tracking-[0.1em] transition disabled:opacity-45 ${gameplanButtonTone}`}
             >
               {gameplanSendState === "checking"
@@ -1776,9 +1801,9 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
           <button
             type="button"
             onClick={requestGameplan}
-            disabled={sending}
+            disabled={gameplanButtonDisabled}
             className={`flex h-8 items-center gap-2 rounded-xl border px-3 text-[8px] font-semibold uppercase tracking-[0.1em] transition disabled:opacity-45 ${gameplanButtonTone}`}
-            title={`${gameplansSentToday} Gameplans sent today`}
+            title={gameplanButtonTitle}
           >
             {gameplanSendState === "checking"
               ? <Loader2 className="h-3.5 w-3.5 animate-spin" />

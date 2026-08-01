@@ -14,6 +14,8 @@ import {
   ZYON_CONVERSATION_TAG,
   ZYON_DEFAULT_CHAT_ID,
   ZYON_FOLDER_TAG,
+  ZYON_GAMEPLAN_READY_TAG,
+  ZYON_GAMEPLAN_SENT_TAG,
   ZYON_MODELS,
   normalizeZyonTradingAccount,
   zyonChatIdTag,
@@ -615,6 +617,7 @@ function conversationEntry(args: {
   role: "user" | "assistant";
   text: string;
   attachments?: ZyonJournalEntry["attachments"];
+  gameplanStatus?: "ready" | "sent";
   createdAt: string;
 }): ZyonJournalEntry {
   const attachmentCount = args.attachments?.length ?? 0;
@@ -640,6 +643,8 @@ function conversationEntry(args: {
       zyonConversationRoleTag(args.role),
       zyonFolderIdTag(args.folderId),
       args.root,
+      ...(args.gameplanStatus === "ready" ? [ZYON_GAMEPLAN_READY_TAG] : []),
+      ...(args.gameplanStatus === "sent" ? [ZYON_GAMEPLAN_SENT_TAG] : []),
     ],
     attachments: args.attachments ?? [],
     createdAt: args.createdAt,
@@ -967,13 +972,13 @@ export async function POST(request: NextRequest) {
     browserSupplement: payload.context,
     assemblyError: marketContextError || null,
   });
-  const gameplanIntent = /\b(?:send|save|submit|start|begin|build|prepare|create|new|document|update)\b[\s\S]{0,40}\bgame\s*plan\b/i.test(finalUserText)
-    || /\bgame\s*plan\b[\s\S]{0,40}\b(?:send|save|submit|start|begin|build|prepare|create|new|document|update)\b/i.test(finalUserText);
-  const existingPendingGameplanId = gameplanIntent
+  const gameplanSubmitIntent = /\b(?:send|save|submit|publish)\b[\s\S]{0,40}\bgame\s*plan\b/i.test(finalUserText)
+    || /\bgame\s*plan\b[\s\S]{0,40}\b(?:send|save|submit|publish)\b/i.test(finalUserText);
+  const existingPendingGameplanId = gameplanSubmitIntent
     ? await within(pendingGameplanDraftId(actor.userId), null, 450)
     : null;
 
-  if (existingPendingGameplanId && gameplanIntent) {
+  if (existingPendingGameplanId && gameplanSubmitIntent) {
     const pendingText = "Your previous Gameplan is already in the Socials holding page. Review and lock it into Scoring before asking ZYON to send another one.";
     const assistantConversationEntry = conversationEntry({
       id: zyonId("zyon-conversation-assistant"),
@@ -983,6 +988,7 @@ export async function POST(request: NextRequest) {
       root,
       role: "assistant",
       text: pendingText,
+      gameplanStatus: "sent",
       createdAt: new Date().toISOString(),
     });
     const assistantConversationCloudSaved = await within(
@@ -993,6 +999,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       text: pendingText,
       model: modelKey,
+      gameplanReady: false,
       gameplanDraft: null,
       pendingGameplanDraftId: existingPendingGameplanId,
       journalEntries: [
@@ -1020,14 +1027,15 @@ export async function POST(request: NextRequest) {
     "When an image does not reveal the instrument, timeframe, or price scale, say what is missing before drawing a strong conclusion.",
     "Use concise professional language. Challenge weak confirmation bias and state invalidation conditions.",
     "When the user recounts a trade, shares a meaningful setup, records a lesson, or asks to journal something, also call record_trading_journal. Always provide a normal text response as well.",
-    "When the user says 'send gameplan', presses Send Gameplan, or otherwise asks to save, document, create, update, or submit a Gameplan, reconstruct the setup from the full conversation and gather only the required facts that are still missing.",
+    "Build the Gameplan conversationally. Reconstruct it from the full conversation and gather only the required facts that are still missing.",
     "A Gameplan requires: instrument, explicit LONG or SHORT direction, entry time, entry price or zone, stop, at least one planned exit/take-profit price, maximum risk amount and unit, the trading account, reasoning, confirmation, and invalidation. Reasoning should faithfully synthesise the conversation; never invent a missing fact or price.",
     "Trading-account data must identify the environment (personal live, simulator, or prop firm), nominal account size and currency, and phase. For prop accounts also collect the provider and optional programme, for example Traderify Flex, USD 50K, Evaluation. Never request or store a broker login or private account number.",
-    "If any required Gameplan fact is missing, DO NOT call save_trading_gameplan_draft. Ask one short, direct question for the most important missing fact, such as 'WHAT'S YOUR ENTRY TIME?' Continue this collection loop until every required fact is known.",
+    "If any required Gameplan fact is missing, DO NOT call save_trading_gameplan_draft. Ask one short, direct question for the most important missing fact, such as 'WHAT'S YOUR ENTRY TIME?' Continue this collection loop until every required fact is known. The Send Gameplan button must remain locked while anything is missing.",
     "Historical testing mode is enabled. An entry or fill older than five minutes may be saved, but it must preserve the trader's exact original timestamp and will be labelled HISTORICAL rather than represented as a live call.",
     "For historical Gameplans, collect the same complete facts as a live Gameplan: instrument, direction, entry time and timezone, entry or zone, stop, targets, risk, trading account, reasoning, confirmation, and invalidation. Never invent or move a timestamp.",
     "Future entry timestamps are valid for planned limit orders. Ask for the trader's timezone when it is not known, then convert entryTime to an ISO 8601 timestamp with an explicit offset.",
-    "Once every required fact is known, call save_trading_gameplan_draft immediately. This sends a fully pre-filled editable record to the Socials holding page and writes the complete plan into today's ZYON journal folder. It does not publish or score the plan yet. Tell the trader to review or adjust every field, add optional notes, then lock it into Scoring.",
+    "Once every required fact is known, call save_trading_gameplan_draft to validate and prepare the complete structured plan, even if the trader has not pressed Send Gameplan yet. The server will only persist it to the holding page when the latest user message explicitly asks to send, save, submit, or publish the Gameplan.",
+    "When the trader explicitly presses or asks for Send Gameplan and every fact is known, call save_trading_gameplan_draft again. Only then will the server send the pre-filled editable record to Socials holding and today's ZYON journal. Tell the trader to review it, adjust anything needed, then lock it into Scoring.",
     `Authoritative server time: ${new Date(requestReceivedAt).toISOString()}. Trader timezone: ${clientTimeZone}.`,
     `Selected market: ${root}.`,
     `<kwantdesk_market_context>${contextJson}</kwantdesk_market_context>`,
@@ -1081,7 +1089,7 @@ export async function POST(request: NextRequest) {
           },
           {
             name: "save_trading_gameplan_draft",
-            description: "Send a complete structured Gameplan to the trader's editable Socials holding page and daily ZYON journal. Use only after every required fact is known.",
+            description: "Validate and prepare a complete structured Gameplan after every required fact is known. The server only sends it to Socials holding when the trader explicitly asks to send, save, submit, or publish it.",
             input_schema: {
               type: "object",
               properties: {
@@ -1238,7 +1246,7 @@ export async function POST(request: NextRequest) {
           requestReceivedAt,
         )
         : null;
-    let gameplanDraft = gameplanToolBlock?.input && typeof gameplanToolBlock.input === "object"
+    let preparedGameplanDraft = gameplanToolBlock?.input && typeof gameplanToolBlock.input === "object"
       ? buildGameplanDraft(
         gameplanToolBlock.input as GameplanToolInput,
         root,
@@ -1247,13 +1255,18 @@ export async function POST(request: NextRequest) {
         requestReceivedAt,
       )
       : null;
-    if (gameplanDraft && zyonGameplanMissingFields(gameplanDraft).length) gameplanDraft = null;
+    if (preparedGameplanDraft && zyonGameplanMissingFields(preparedGameplanDraft).length) {
+      preparedGameplanDraft = null;
+    }
+    let gameplanDraft = gameplanSubmitIntent ? preparedGameplanDraft : null;
     const gameplanDraftSave = gameplanDraft
       ? await persistGameplanDraft(actor.userId, gameplanDraft, rawUserMessageId)
       : { saved: false, blockedBy: null };
     if (gameplanDraftSave.blockedBy) gameplanDraft = null;
     if (gameplanDraft) gameplanDraft = { ...gameplanDraft, cloudSaved: gameplanDraftSave.saved };
-    const unscopedGameplanJournalEntry = gameplanDraft
+    const gameplanWasSent = Boolean(gameplanDraft?.cloudSaved || gameplanDraftSave.blockedBy);
+    const gameplanReady = Boolean(preparedGameplanDraft && !gameplanWasSent);
+    const unscopedGameplanJournalEntry = gameplanDraft?.cloudSaved
       ? gameplanJournalEntry(gameplanDraft, conversationFolder.folderId)
       : null;
     const savedGameplanJournalEntry = unscopedGameplanJournalEntry
@@ -1277,7 +1290,9 @@ export async function POST(request: NextRequest) {
             ? "I need an exact entry time and timezone before I can send this Gameplan. What was your entry time?"
             : gameplanDraft
               ? liveGameplanSentMessage
-              : text || "That has been recorded in your trading journal.";
+              : gameplanReady
+                ? text || "Your Gameplan is complete. The Send Gameplan button is now unlocked."
+                : text || "That has been recorded in your trading journal.";
     const assistantConversationEntry = conversationEntry({
       id: zyonId("zyon-conversation-assistant"),
       chatId,
@@ -1286,6 +1301,7 @@ export async function POST(request: NextRequest) {
       root,
       role: "assistant",
       text: responseText,
+      gameplanStatus: gameplanWasSent ? "sent" : gameplanReady ? "ready" : undefined,
       createdAt: new Date().toISOString(),
     });
     const assistantConversationCloudSaved = await within(
@@ -1302,6 +1318,7 @@ export async function POST(request: NextRequest) {
       {
         text: responseText.slice(0, 12_000),
         model: modelKey,
+        gameplanReady,
         journalEntry: journalEntry ? { ...journalEntry, cloudSaved } : null,
         gameplanDraft,
         pendingGameplanDraftId: gameplanDraftSave.blockedBy,

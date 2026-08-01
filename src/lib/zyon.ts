@@ -82,7 +82,11 @@ export type ZyonMessage = {
   createdAt: string;
   model?: ZyonModelKey;
   attachments?: ZyonAttachment[];
+  gameplanStatus?: "ready" | "sent";
 };
+
+export const ZYON_GAMEPLAN_READY_TAG = "zyon:gameplan:ready";
+export const ZYON_GAMEPLAN_SENT_TAG = "zyon:gameplan:sent";
 
 export type ZyonJournalEntry = {
   id: string;
