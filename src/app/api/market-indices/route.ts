@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import {
   fetchMarketIndexCandles,
   fetchMarketIndexSnapshots,
+  hasLiveMarketIndexAccess,
 } from "@/lib/marketIndices.server";
 import { getMarketIndexDefinition } from "@/lib/marketIndices";
 
@@ -11,15 +12,9 @@ export const runtime = "nodejs";
 export const maxDuration = 30;
 
 const MAX_HISTORY_DAYS = 370;
+const CBOE_VIX_HISTORY_START = Date.UTC(1990, 0, 1);
 
 export async function GET(request: Request) {
-  if (!process.env.MASSIVE_API_KEY && !process.env.POLYGON_API_KEY) {
-    return NextResponse.json(
-      { error: "Market indices are not configured. Add MASSIVE_API_KEY in Vercel." },
-      { status: 503 },
-    );
-  }
-
   const url = new URL(request.url);
   if (url.searchParams.get("snapshot") === "1") {
     const symbols = (url.searchParams.get("symbols") ?? "")
@@ -33,7 +28,11 @@ export async function GET(request: Request) {
     try {
       const snapshots = await fetchMarketIndexSnapshots(symbols);
       return NextResponse.json(
-        { snapshots, source: "CBOE", asOf: new Date().toISOString() },
+        {
+          snapshots,
+          source: hasLiveMarketIndexAccess() ? "CBOE" : "CBOE EOD",
+          asOf: new Date().toISOString(),
+        },
         { headers: { "Cache-Control": "private, no-store, max-age=0" } },
       );
     } catch (error) {
@@ -52,14 +51,23 @@ export async function GET(request: Request) {
   const now = Date.now();
   const requestedFrom = Number(url.searchParams.get("from"));
   const requestedTo = Number(url.searchParams.get("to"));
-  const earliest = now - MAX_HISTORY_DAYS * 24 * 60 * 60_000;
+  const usingCboeVixArchive = symbol === "VIX" && !hasLiveMarketIndexAccess();
+  const earliest = usingCboeVixArchive
+    ? CBOE_VIX_HISTORY_START
+    : now - MAX_HISTORY_DAYS * 24 * 60 * 60_000;
   const from = Number.isFinite(requestedFrom) ? Math.max(earliest, requestedFrom) : now - 8 * 24 * 60 * 60_000;
   const to = Number.isFinite(requestedTo) ? Math.min(now, requestedTo) : now;
 
   try {
     const candles = await fetchMarketIndexCandles({ symbol, timeframe, from, to });
     return NextResponse.json(
-      { candles, symbol, source: "CBOE", from, to },
+      {
+        candles,
+        symbol,
+        source: hasLiveMarketIndexAccess() ? "CBOE" : "CBOE EOD",
+        from,
+        to,
+      },
       { headers: { "Cache-Control": "private, no-store, max-age=0" } },
     );
   } catch (error) {
@@ -69,4 +77,3 @@ export async function GET(request: Request) {
     );
   }
 }
-

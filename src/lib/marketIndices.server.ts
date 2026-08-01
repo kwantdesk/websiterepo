@@ -20,6 +20,8 @@ export type MarketIndexSnapshot = {
 };
 
 const MASSIVE_API_BASE = "https://api.massive.com";
+const CBOE_VIX_DAILY_HISTORY_URL =
+  "https://cdn.cboe.com/api/global/us_indices/daily_prices/VIX_History.csv";
 
 function getMassiveApiKey() {
   return process.env.MASSIVE_API_KEY?.trim()
@@ -33,6 +35,10 @@ function requireMassiveApiKey() {
     throw new Error("Market indices are not configured. Add MASSIVE_API_KEY in Vercel.");
   }
   return key;
+}
+
+export function hasLiveMarketIndexAccess() {
+  return Boolean(getMassiveApiKey());
 }
 
 function isRecord(value: unknown): value is JsonRecord {
@@ -62,6 +68,93 @@ function timeframeToAggregate(timeframe: string) {
   return resolution;
 }
 
+function parseCboeDate(value: string) {
+  const match = value.trim().match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (!match) return null;
+  const timestamp = Date.UTC(Number(match[3]), Number(match[1]) - 1, Number(match[2]));
+  return Number.isFinite(timestamp) ? timestamp : null;
+}
+
+async function fetchCboeVixDailyCandles() {
+  const response = await fetch(CBOE_VIX_DAILY_HISTORY_URL, {
+    next: { revalidate: 3_600 },
+    signal: AbortSignal.timeout(12_000),
+  });
+  if (!response.ok) {
+    throw new Error(`Cboe VIX history failed (${response.status}).`);
+  }
+  const lines = (await response.text()).split(/\r?\n/).slice(1);
+  return lines.flatMap((line): Candle[] => {
+    const [date, openValue, highValue, lowValue, closeValue] = line.split(",");
+    const timestamp = parseCboeDate(date ?? "");
+    const open = finiteNumber(openValue);
+    const high = finiteNumber(highValue);
+    const low = finiteNumber(lowValue);
+    const close = finiteNumber(closeValue);
+    if (timestamp === null || open === null || high === null || low === null || close === null) return [];
+    return [{ timestamp, open, high, low, close, volume: 0 }];
+  });
+}
+
+function aggregateCboeDailyCandles(candles: Candle[], timeframe: string) {
+  if (timeframe === "1D") return candles;
+  if (timeframe !== "1W" && timeframe !== "1M") {
+    throw new Error(
+      "Live and intraday VIX require an indices-entitled MASSIVE_API_KEY. Official Cboe end-of-day history is available on 1D, 1W and 1M.",
+    );
+  }
+  const grouped = new Map<string, Candle[]>();
+  for (const candle of candles) {
+    const date = new Date(candle.timestamp);
+    const key = timeframe === "1M"
+      ? `${date.getUTCFullYear()}-${date.getUTCMonth()}`
+      : (() => {
+          const monday = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+          const day = monday.getUTCDay() || 7;
+          monday.setUTCDate(monday.getUTCDate() - day + 1);
+          return monday.toISOString().slice(0, 10);
+        })();
+    grouped.set(key, [...(grouped.get(key) ?? []), candle]);
+  }
+  return [...grouped.values()].map((rows) => ({
+    timestamp: rows[0].timestamp,
+    open: rows[0].open,
+    high: Math.max(...rows.map((row) => row.high)),
+    low: Math.min(...rows.map((row) => row.low)),
+    close: rows[rows.length - 1].close,
+    volume: 0,
+  }));
+}
+
+async function fetchCboeVixEodCandles(options: { timeframe: string; from: number; to: number }) {
+  const daily = (await fetchCboeVixDailyCandles()).filter(
+    (candle) => candle.timestamp >= options.from && candle.timestamp <= options.to,
+  );
+  return aggregateCboeDailyCandles(daily, options.timeframe);
+}
+
+async function fetchCboeVixEodSnapshots(symbols: string[]): Promise<MarketIndexSnapshot[]> {
+  if (!symbols.some((symbol) => symbol.trim().toUpperCase() === "VIX")) return [];
+  const rows = await fetchCboeVixDailyCandles();
+  const latest = rows.at(-1);
+  const previous = rows.at(-2);
+  if (!latest) return [];
+  const previousClose = previous?.close ?? latest.open;
+  const change = latest.close - previousClose;
+  return [{
+    symbol: "VIX",
+    broker: "Market Index",
+    exchange: "CBOE",
+    lastPrice: latest.close,
+    openPrice: previousClose,
+    change,
+    changePercent: previousClose ? change / previousClose * 100 : 0,
+    timestamp: latest.timestamp,
+    delayed: true,
+    marketOpen: false,
+  }];
+}
+
 async function fetchMassiveJson(url: string) {
   const response = await fetch(url, {
     headers: { Authorization: `Bearer ${requireMassiveApiKey()}` },
@@ -85,6 +178,12 @@ export async function fetchMarketIndexCandles(options: {
 }): Promise<Candle[]> {
   const definition = getMarketIndexDefinition(options.symbol);
   if (!definition) throw new Error(`${options.symbol} is not a supported market index.`);
+  if (!hasLiveMarketIndexAccess()) {
+    if (definition.symbol !== "VIX") {
+      throw new Error(`${definition.symbol} requires an indices-entitled MASSIVE_API_KEY.`);
+    }
+    return fetchCboeVixEodCandles(options);
+  }
   const { multiplier, timespan } = timeframeToAggregate(options.timeframe);
   const fromDate = new Date(options.from).toISOString().slice(0, 10);
   const toDate = new Date(options.to).toISOString().slice(0, 10);
@@ -117,6 +216,9 @@ export async function fetchMarketIndexCandles(options: {
 }
 
 export async function fetchMarketIndexSnapshots(symbols: string[]) {
+  if (!hasLiveMarketIndexAccess()) {
+    return fetchCboeVixEodSnapshots(symbols);
+  }
   const results = await Promise.allSettled(symbols.map(async (symbol): Promise<MarketIndexSnapshot | null> => {
     const definition = getMarketIndexDefinition(symbol);
     if (!definition) return null;
@@ -160,6 +262,10 @@ export async function fetchMarketIndexSnapshots(symbols: string[]) {
     };
   }));
 
-  return results.flatMap((result) =>
+  const snapshots = results.flatMap((result) =>
     result.status === "fulfilled" && result.value ? [result.value] : []);
+  if (snapshots.length || !symbols.some((symbol) => symbol.trim().toUpperCase() === "VIX")) {
+    return snapshots;
+  }
+  return fetchCboeVixEodSnapshots(symbols);
 }
