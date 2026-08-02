@@ -45,6 +45,7 @@ import {
 import {
   mergeGammaLevelsAtSamePrice,
   type ChartGammaLevelsPayload,
+  type ChartGammaPositioningSnapshot,
   type ChartGammaSourceLevel,
   type ChartGammaSourceSnapshot,
 } from "@/lib/chartGammaLevels";
@@ -2864,13 +2865,14 @@ export async function getChartGammaLevels(
 
   const environment = classifyGammaEnvironment(parsedGamma?.net ?? null, parsedGamma?.gross ?? null);
   const revision = JSON.stringify(sources.map((source) => [source.symbol, source.revision]));
+  const checkedAt = session.marketOpen
+    ? new Date().toISOString()
+    : newYorkCashCloseIso(session.sessionDate);
 
   return {
     root,
     requestedSource: symbol,
-    checkedAt: session.marketOpen
-      ? new Date().toISOString()
-      : newYorkCashCloseIso(session.sessionDate),
+    checkedAt,
     refreshAfterMs: session.marketOpen ? 5_000 : 60_000,
     marketOpen: session.marketOpen,
     snapshotMode: session.marketOpen ? "LIVE" : "NEW_YORK_EOD",
@@ -2879,6 +2881,19 @@ export async function getChartGammaLevels(
     revision,
     sources,
     dataOrigin: "CASH_INDEX",
+    positioning: parsedGamma && stockPrice !== null && stockPrice > 0
+      ? chartGammaPositioningSnapshot({
+          root: root as NativeGammaRoot,
+          sourceSymbol: symbol as ChartGammaPositioningSnapshot["sourceSymbol"],
+          expiration: null,
+          asOf: Date.parse(checkedAt),
+          status: session.marketOpen ? "LIVE" : "NEW_YORK_EOD",
+          sourcePrice: stockPrice,
+          futuresPrice: stockPrice,
+          priceScale: 1,
+          strikes: parsedGamma.strikes,
+        })
+      : undefined,
   };
 }
 
@@ -3010,6 +3025,33 @@ export async function getCashCalibratedChartGammaLevels(
       price: toFuturesPrice(level.price),
     })), 0.25),
   };
+  const positioning = cashPayload.positioning
+    ? chartGammaPositioningSnapshot({
+        root,
+        sourceSymbol: calibrationSource as ChartGammaPositioningSnapshot["sourceSymbol"],
+        expiration: cashPayload.positioning.expiration,
+        asOf: Date.parse(cashPayload.positioning.asOf),
+        status: cashPayload.positioning.status,
+        sourcePrice: cashPayload.positioning.sourcePrice,
+        futuresPrice,
+        priceScale: scale,
+        strikes: cashPayload.positioning.strikes.map((row) => ({
+          strike: row.sourceStrike,
+          call: row.call,
+          put: row.put,
+          net: row.net,
+        })),
+        lookbacks: cashPayload.positioning.lookbacks.map((lookback) => ({
+          minutes: lookback.minutes,
+          strikes: lookback.strikes.map((row) => ({
+            strike: row.sourceStrike,
+            call: row.call,
+            put: row.put,
+            net: row.net,
+          })),
+        })),
+      })
+    : undefined;
 
   return {
     ...cashPayload,
@@ -3019,6 +3061,7 @@ export async function getCashCalibratedChartGammaLevels(
     dataOrigin: "CASH_CALIBRATED_FALLBACK",
     calibrationSource,
     levelPriceScale: scale,
+    positioning,
   };
 }
 
@@ -3040,6 +3083,52 @@ function exposureAtFrame(mode: "GAMMA" | "DELTA", frame: GexMapFrame): ExposureS
     gross: strikes.reduce((sum, row) => sum + Math.abs(row.call) + Math.abs(row.put), 0),
     strikes,
     expiries: [],
+  };
+}
+
+function chartGammaPositioningSnapshot(args: {
+  root: NativeGammaRoot;
+  sourceSymbol: ChartGammaPositioningSnapshot["sourceSymbol"];
+  expiration: string | null;
+  asOf: number;
+  status: ChartGammaPositioningSnapshot["status"];
+  sourcePrice: number;
+  futuresPrice: number;
+  priceScale: number;
+  strikes: ExposureStrike[];
+  lookbacks?: Array<{ minutes: 5 | 15 | 30; strikes: ExposureStrike[] }>;
+}): ChartGammaPositioningSnapshot {
+  const convert = (row: ExposureStrike) => ({
+    sourceStrike: row.strike,
+    futuresEquivalent: Math.round((row.strike * args.priceScale) / 0.25) * 0.25,
+    call: row.call,
+    put: row.put,
+    net: row.net,
+  });
+  const strikes = args.strikes
+    .filter((row) => Number.isFinite(row.strike) && row.strike > 0)
+    .map(convert)
+    .sort((left, right) => left.sourceStrike - right.sourceStrike);
+  return {
+    sourceSymbol: args.sourceSymbol,
+    futuresRoot: args.root,
+    expiration: args.expiration,
+    asOf: new Date(args.asOf).toISOString(),
+    status: args.status,
+    sourcePrice: args.sourcePrice,
+    futuresPrice: args.futuresPrice,
+    priceScale: args.priceScale,
+    totals: {
+      call: strikes.reduce((sum, row) => sum + row.call, 0),
+      put: strikes.reduce((sum, row) => sum + row.put, 0),
+      net: strikes.reduce((sum, row) => sum + row.net, 0),
+      gross: strikes.reduce((sum, row) => sum + Math.abs(row.call) + Math.abs(row.put), 0),
+    },
+    strikes,
+    lookbacks: (args.lookbacks ?? []).map((lookback) => ({
+      minutes: lookback.minutes,
+      strikes: lookback.strikes.map(convert).sort((left, right) => left.sourceStrike - right.sourceStrike),
+    })),
   };
 }
 
@@ -3083,7 +3172,8 @@ export async function getHistoricalCashCalibratedChartGammaLevelsAt(
     getGexMapPanel(source, "DELTA", sessionDate).catch(() => null),
     getChartGammaLevels(root, source, previousWeekdayIso(sessionDate)).catch(() => null),
   ]);
-  const gammaFrame = [...gammaPanel.frames].reverse().find((frame) => frame.timestamp <= asOf);
+  const eligibleGammaFrames = gammaPanel.frames.filter((frame) => frame.timestamp <= asOf);
+  const gammaFrame = eligibleGammaFrames.at(-1);
   if (!gammaFrame?.updates.length) {
     throw new QuantDataError(`No ${source} intraday gamma frame exists at or before the replay clock.`, 422, null);
   }
@@ -3103,6 +3193,11 @@ export async function getHistoricalCashCalibratedChartGammaLevelsAt(
   const toFuturesPrice = (price: number) => Math.round((price * scale) / 0.25) * 0.25;
   const gamma = exposureAtFrame("GAMMA", gammaFrame);
   const delta = deltaFrame ? exposureAtFrame("DELTA", deltaFrame) : null;
+  const positioningLookbacks = ([5, 15, 30] as const).flatMap((minutes) => {
+    const target = gammaFrame.timestamp - minutes * 60_000;
+    const frame = [...eligibleGammaFrames].reverse().find((candidate) => candidate.timestamp <= target);
+    return frame ? [{ minutes, strikes: exposureAtFrame("GAMMA", frame).strikes }] : [];
+  });
   const dynamicLevels = chartGammaSourceLevels(gamma, cashPrice, null, delta)
     .map((level) => ({
       ...level,
@@ -3191,6 +3286,18 @@ export async function getHistoricalCashCalibratedChartGammaLevelsAt(
     dataOrigin: "CASH_CALIBRATED_FALLBACK",
     calibrationSource: source as ChartGammaSourceSnapshot["symbol"],
     levelPriceScale: scale,
+    positioning: chartGammaPositioningSnapshot({
+      root,
+      sourceSymbol: source as ChartGammaPositioningSnapshot["sourceSymbol"],
+      expiration: gammaPanel.expiration,
+      asOf: gammaFrame.timestamp,
+      status: "HISTORICAL_INTRADAY",
+      sourcePrice: cashPrice,
+      futuresPrice,
+      priceScale: scale,
+      strikes: gamma.strikes,
+      lookbacks: positioningLookbacks,
+    }),
   };
 }
 

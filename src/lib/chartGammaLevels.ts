@@ -96,6 +96,36 @@ export type ChartGammaSourceSnapshot = {
   levels: ChartGammaSourceLevel[];
 };
 
+export type ChartGammaPositioningStrike = {
+  sourceStrike: number;
+  futuresEquivalent: number;
+  call: number;
+  put: number;
+  net: number;
+};
+
+export type ChartGammaPositioningSnapshot = {
+  sourceSymbol: "NDX" | "QQQ" | "SPX" | "SPY";
+  futuresRoot: Extract<OptionsFuturesRoot, "NQ" | "ES">;
+  expiration: string | null;
+  asOf: string;
+  status: "LIVE" | "HISTORICAL_INTRADAY" | "NEW_YORK_EOD";
+  sourcePrice: number;
+  futuresPrice: number;
+  priceScale: number;
+  totals: {
+    call: number;
+    put: number;
+    net: number;
+    gross: number;
+  };
+  strikes: ChartGammaPositioningStrike[];
+  lookbacks: Array<{
+    minutes: 5 | 15 | 30;
+    strikes: ChartGammaPositioningStrike[];
+  }>;
+};
+
 export type ChartGammaLevelsPayload = {
   root: Extract<OptionsFuturesRoot, "NQ" | "ES">;
   requestedSource: ChartGammaSourceSnapshot["symbol"];
@@ -120,4 +150,5 @@ export type ChartGammaLevelsPayload = {
   dataOrigin?: "NATIVE_FUTURES" | "CASH_INDEX" | "CASH_CALIBRATED_FALLBACK";
   calibrationSource?: ChartGammaSourceSnapshot["symbol"];
   levelPriceScale?: number;
+  positioning?: ChartGammaPositioningSnapshot;
 };

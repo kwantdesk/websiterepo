@@ -28,6 +28,7 @@ import { mergeGammaLevelsAtSamePrice } from "@/lib/chartGammaLevels";
 import type { GameplanPayload, GameplanRole } from "@/lib/gameplan";
 import { defaultChartSettings, loadStoredChartSettings, type ChartSettings } from "@/lib/chartSettings";
 import KwantLoader from "@/components/KwantLoader";
+import HistoricalGexPanel from "@/components/backtesting/HistoricalGexPanel";
 import KwantSelect from "@/components/ui/KwantSelect";
 import TimeZoneSelect from "@/components/ui/TimeZoneSelect";
 import { browserTimeZone, normalizeTimeZone, timeZoneCity } from "@/lib/timeZones";
@@ -257,12 +258,11 @@ function replayOptionsSnapshot(replayMs: number) {
   const newYorkClose = 16 * 60;
   const isTradingDay = weekday >= 1 && weekday <= 5;
   if (isTradingDay && minute >= newYorkOpen && minute < newYorkClose) {
-    const fiveMinuteBucket = Math.floor(minute / 5) * 5;
     return {
       mode: "INTRADAY" as const,
       sessionDate,
       asOf: new Date(replayMs).toISOString(),
-      key: `${sessionDate}:INTRADAY:${fiveMinuteBucket}`,
+      key: `${sessionDate}:INTRADAY:${minute}`,
     };
   }
   const completedDate = latestCompletedOptionsSession(replayMs);
@@ -485,6 +485,8 @@ export default function BacktestingWorkspace() {
   const [levelLoading, setLevelLoading] = useState(false);
   const [levelError, setLevelError] = useState<Record<LevelFamily, string>>({ gamma: "", quant: "", valueArea: "" });
   const [gammaLevels, setGammaLevels] = useState<ChartLevel[]>([]);
+  const [gammaPositioning, setGammaPositioning] = useState<ChartGammaLevelsPayload | null>(null);
+  const [showGexPanel, setShowGexPanel] = useState(false);
   const [quantLevels, setQuantLevels] = useState<ChartLevel[]>([]);
   const [quantZones, setQuantZones] = useState<ChartZone[]>([]);
   const [valueAreaLevels, setValueAreaLevels] = useState<ChartLevel[]>([]);
@@ -581,8 +583,13 @@ export default function BacktestingWorkspace() {
       valueAreaRequest,
     ]);
     if (requestId !== levelRequestIdRef.current) return;
-    if (gamma.status === "fulfilled") setGammaLevels(gammaSnapshot(gamma.value, settings));
-    else setGammaLevels([]);
+    if (gamma.status === "fulfilled") {
+      setGammaLevels(gammaSnapshot(gamma.value, settings));
+      setGammaPositioning(gamma.value);
+    } else {
+      setGammaLevels([]);
+      setGammaPositioning(null);
+    }
     if (snapshot.mode === "INTRADAY" && gamma.status === "fulfilled") {
       const intradaySnapshot = quantSnapshotFromGamma(gamma.value, root, settings);
       setQuantLevels(intradaySnapshot.levels);
@@ -690,6 +697,7 @@ export default function BacktestingWorkspace() {
     setPlaying(false);
     setLevelState({ gamma: false, quant: false, valueArea: false });
     setGammaLevels([]);
+    setGammaPositioning(null);
     setQuantLevels([]);
     setQuantZones([]);
     setValueAreaLevels([]);
@@ -1044,6 +1052,15 @@ export default function BacktestingWorkspace() {
               </button>
               <button
                 type="button"
+                onClick={() => setShowGexPanel((current) => !current)}
+                aria-expanded={showGexPanel}
+                className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[9px] font-semibold transition-colors ${showGexPanel ? "border-primary/35 bg-primary/10 text-primary" : "border-border text-muted hover:text-foreground"}`}
+              >
+                <Layers3 className="h-3 w-3" />
+                {showGexPanel ? "Hide GEX" : "Show GEX"}
+              </button>
+              <button
+                type="button"
                 onClick={() => toggleLevel("quant")}
                 className={`rounded-lg border px-2.5 py-1.5 text-[9px] font-semibold ${levelState.quant ? "border-primary/35 bg-primary/10 text-primary" : "border-border text-muted hover:text-foreground"}`}
               >
@@ -1236,6 +1253,15 @@ export default function BacktestingWorkspace() {
             valueAreaLevelsError={levelError.valueArea || null}
             valueAreaLevelsDescription="Historical prior-session and prior-week VAH, VAL, POC and VWAP"
             onToggleValueAreaLevels={() => toggleLevel("valueArea")}
+          />
+        ) : null}
+
+        {started && showGexPanel ? (
+          <HistoricalGexPanel
+            snapshot={gammaPositioning}
+            loading={levelLoading}
+            error={levelError.gamma}
+            onClose={() => setShowGexPanel(false)}
           />
         ) : null}
 
