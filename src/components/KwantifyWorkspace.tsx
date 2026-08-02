@@ -8912,14 +8912,14 @@ export default function KwantifyWorkspace({
               )}
               {rightPanel === "watchlist" && (
                 <div className="flex flex-1 flex-col overflow-hidden">
-                  <div className="flex h-12 items-center justify-between border-b border-border px-4"><button className="flex items-center gap-1 text-[14px] font-semibold">Watchlist <ChevronDown className="h-3.5 w-3.5 text-muted" /></button><div className="flex items-center gap-1"><button onClick={() => setShowInstrumentSearch(true)} className="flex h-7 w-7 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground"><Plus className="h-3.5 w-3.5" /></button><button className="flex h-7 w-7 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground"><Grid3X3 className="h-3.5 w-3.5" /></button><button className="flex h-7 w-7 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground"><MoreHorizontal className="h-3.5 w-3.5" /></button></div></div>
+                  <div className="flex h-14 shrink-0 items-center justify-between border-b border-border px-4"><button className="flex items-center gap-1 text-[14px] font-semibold">Watchlist <ChevronDown className="h-3.5 w-3.5 text-muted" /></button><div className="flex items-center gap-1"><button onClick={() => setShowInstrumentSearch(true)} className="flex h-7 w-7 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground"><Plus className="h-3.5 w-3.5" /></button><button className="flex h-7 w-7 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground"><Grid3X3 className="h-3.5 w-3.5" /></button><button className="flex h-7 w-7 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground"><MoreHorizontal className="h-3.5 w-3.5" /></button></div></div>
                   <div className="grid grid-cols-[minmax(92px,1fr)_74px_54px_54px] gap-2 border-b border-border px-3 py-2 text-[10px] uppercase tracking-wider text-muted"><span>Symbol</span><span className="text-right">Last</span><span className="text-right">Chg</span><span className="text-right">Chg%</span></div>
                   <div className="flex-1 overflow-y-auto">{watchlist.map((row) => { const item = getStaticWatchlistDetail(row.symbol, row.broker, watchlistDetails); const displayPrice = item?.price ?? (row.mid ? row.mid.toLocaleString(undefined, { maximumFractionDigits: 5 }) : "--"); const change = item ? Number(item.change.replace("%", "")) : row.change; const changePercent = item ? Number(item.change.replace("%", "")) : row.changePercent; const up = changePercent >= 0; return <button key={row.key} onClick={() => selectInstrument(row.symbol, row.broker, row.key)} className={`grid w-full grid-cols-[minmax(92px,1fr)_74px_54px_54px] items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-surface/60 ${selectedWatchlistKey === row.key ? "bg-surface" : ""}`}><span className="min-w-0"><span className="block truncate text-[9px] uppercase tracking-wider text-muted">{displayMarketSource(row.broker)}</span><span className="flex min-w-0 items-center gap-1.5"><span className="block truncate text-[13px] font-medium text-foreground">{displayCmeSymbol(row.symbol)}</span>{row.contractSymbol ? <span className="shrink-0 font-mono text-[9px] text-muted">{row.contractSymbol}</span> : null}</span></span><span className="text-right font-mono text-[12px] text-foreground">{displayPrice}</span><span className={`text-right font-mono text-[11px] ${up ? "text-primary" : "text-danger"}`}>{up ? "+" : "-"}{Math.abs(change).toFixed(2)}</span><span className={`text-right font-mono text-[11px] ${up ? "text-primary" : "text-danger"}`}>{up ? "+" : ""}{changePercent.toFixed(2)}%</span></button>; })}</div>
                 </div>
               )}
               {rightPanel === "alerts" && (
                 <div className="flex flex-1 flex-col overflow-hidden">
-                  <div className="flex h-12 items-center justify-between border-b border-border px-4"><h3 className="text-[14px] font-semibold">Alerts</h3><button onClick={() => openCreateAlert()} className="flex h-7 w-7 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground"><Plus className="h-3.5 w-3.5" /></button></div>
+                  <div className="flex h-14 shrink-0 items-center justify-between border-b border-border px-4"><h3 className="text-[14px] font-semibold">Alerts</h3><button onClick={() => openCreateAlert()} className="flex h-7 w-7 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground"><Plus className="h-3.5 w-3.5" /></button></div>
                   <div className="flex-1 overflow-y-auto p-4">
                     {selectedInstrument ? (
                       instrumentAlerts.length > 0 ? (
@@ -8981,7 +8981,7 @@ export default function KwantifyWorkspace({
               )}
               {rightPanel === "alertslog" && (
                 <div className="flex flex-1 flex-col overflow-hidden">
-                  <div className="flex h-12 items-center justify-between border-b border-border px-4">
+                  <div className="flex h-14 shrink-0 items-center justify-between border-b border-border px-4">
                     <div className="flex items-center gap-2"><BellRing className="h-4 w-4 text-primary" /><h3 className="text-[14px] font-semibold">Signal Log</h3><span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-danger px-1 text-[9px] font-semibold text-white">{alertLogCount}</span></div>
                     <button onClick={() => setAlertLogCount(0)} className="text-[11px] font-medium text-muted hover:text-foreground">Clear All</button>
                   </div>
@@ -9460,7 +9460,7 @@ export default function KwantifyWorkspace({
                 });
               }}
             >
-              <div className="flex h-12 items-center justify-between border-b border-border px-4">
+              <div className="flex h-14 shrink-0 items-center justify-between border-b border-border px-4">
                 <button className="flex items-center gap-1 text-[14px] font-semibold">Watchlist <ChevronDown className="h-3.5 w-3.5 text-muted" /></button>
                 <div className="flex items-center gap-1">
                   <button onClick={() => setShowInstrumentSearch(true)} className="flex h-7 w-7 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground"><Plus className="h-3.5 w-3.5" /></button>
@@ -9742,7 +9742,7 @@ export default function KwantifyWorkspace({
           )}
           {rightPanel === "alerts" && (
             <div className="flex flex-1 flex-col overflow-hidden">
-              <div className="flex h-12 shrink-0 items-center justify-between border-b border-border px-4">
+              <div className="flex h-14 shrink-0 items-center justify-between border-b border-border px-4">
                 <div className="flex items-center gap-2">
                   <h3 className="text-[14px] font-semibold">Alerts</h3>
                   {socialNotifications.unreadCount > 0 ? (
@@ -9861,7 +9861,7 @@ export default function KwantifyWorkspace({
           )}
           {rightPanel === "alertslog" && (
             <div className="flex flex-1 flex-col overflow-hidden">
-              <div className="flex h-12 items-center justify-between border-b border-border px-4">
+              <div className="flex h-14 shrink-0 items-center justify-between border-b border-border px-4">
                 <div className="flex items-center gap-2"><BellRing className="h-4 w-4 text-primary" /><h3 className="text-[14px] font-semibold">Signal Log</h3><span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-danger px-1 text-[9px] font-semibold text-white">{alertLogCount}</span></div>
                 <button onClick={() => setAlertLogCount(0)} className="text-[11px] font-medium text-muted hover:text-foreground">Clear All</button>
               </div>
@@ -9895,6 +9895,7 @@ export default function KwantifyWorkspace({
         </div>
       )}
       <div className="relative flex w-[44px] shrink-0 flex-col items-center gap-2 border-l border-border bg-panel py-3">
+        <span aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-14 z-10 h-px -translate-y-px bg-border" />
         {!rightPanel && (
           <button
             title={`Reopen ${

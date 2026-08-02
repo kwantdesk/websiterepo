@@ -394,7 +394,7 @@ function ZyonAvatar({
 function ZyonLoadingState({ compact }: { compact: boolean }) {
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-background">
-      <header className={`flex h-[58px] shrink-0 items-center gap-3 border-b border-border bg-panel ${compact ? "px-3" : "px-4"}`}>
+      <header className={`flex shrink-0 items-center gap-3 border-b border-border bg-panel ${compact ? "h-14 px-3" : "h-[58px] px-4"}`}>
         <ZyonAvatar animated />
         <div>
           <div className="text-[12px] font-semibold tracking-[0.12em] text-foreground">ZYON</div>
@@ -1532,7 +1532,7 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
     return (
       <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-background">
         <header className="shrink-0 border-b border-border bg-panel">
-          <div className="flex items-center gap-2.5 px-3 pb-2 pt-3">
+          <div className="flex h-14 items-center gap-2.5 border-b border-border px-3">
             <ZyonAvatar animated online={online} />
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
@@ -1554,7 +1554,7 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
             </button>
           </div>
 
-          <div className="flex items-center gap-2 border-t border-border/70 px-3 py-2">
+          <div className="flex items-center gap-2 px-3 py-2">
             <div className="flex shrink-0 items-center rounded-xl border border-border bg-surface/60 p-0.5">
               {(["NQ", "ES"] as ZyonMarketRoot[]).map((root) => (
                 <button

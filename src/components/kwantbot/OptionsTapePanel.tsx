@@ -170,7 +170,7 @@ export default function OptionsTapePanel({
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       <div className="shrink-0 border-b border-border bg-background/55">
-        <div className="flex items-center justify-between gap-2 px-3 pb-2 pt-3">
+        <div className="flex h-14 items-center justify-between gap-2 border-b border-border px-3">
           <div className="flex min-w-0 items-center gap-2">
             <OptionsTapeAvatar speaking={feedState === "live" && !feedPaused} />
             <div className="min-w-0">
