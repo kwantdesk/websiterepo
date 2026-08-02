@@ -945,11 +945,6 @@ function LevelChartCard({
           </div>
         ) : null}
 
-        <div className="pointer-events-none absolute bottom-2 left-2 z-30 flex max-w-[calc(100%-16px)] items-center gap-2 rounded-lg border border-border/80 bg-panel/90 px-2 py-1 text-[7px] backdrop-blur">
-          <span className={`h-1.5 w-1.5 rounded-full ${market.liveStatus === "live" ? "animate-pulse bg-primary" : "bg-muted"}`} />
-          <span className="font-semibold text-foreground">{levels.snapshot.status}</span>
-          <span className="truncate text-muted">{levels.error || levels.snapshot.source}</span>
-        </div>
       </div>
     </section>
   );
