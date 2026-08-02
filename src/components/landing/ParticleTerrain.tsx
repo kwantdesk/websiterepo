@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { terrainHeight } from "@/lib/simplexNoise";
@@ -436,63 +436,65 @@ function StarField({ data }: { data: StarData }) {
   return <points ref={pointsRef} geometry={geometry} material={material} frustumCulled={false} />;
 }
 
-function Scene({ terrain, stars }: { terrain: TerrainData; stars: StarData }) {
+function FirstFrameSignal({ onReady }: { onReady?: () => void }) {
+  const hasSignalledRef = useRef(false);
+
+  useFrame(() => {
+    if (hasSignalledRef.current || !onReady) return;
+    hasSignalledRef.current = true;
+    window.requestAnimationFrame(onReady);
+  });
+
+  return null;
+}
+
+function Scene({
+  terrain,
+  stars,
+  onReady,
+}: {
+  terrain: TerrainData;
+  stars: StarData;
+  onReady?: () => void;
+}) {
   return (
     <>
       <color attach="background" args={["#000000"]} />
       <StarField data={stars} />
       <MountainPoints data={terrain} />
+      <FirstFrameSignal onReady={onReady} />
     </>
   );
 }
 
-export default function ParticleTerrain() {
-  const [terrain, setTerrain] = useState<TerrainData | null>(null);
+export default function ParticleTerrain({ onReady }: { onReady?: () => void }) {
+  const terrain = useMemo(() => buildTerrain(), []);
   const stars = useMemo(() => buildStarData(), []);
-
-  useEffect(() => {
-    let cancelled = false;
-    const run = () => {
-      if (!cancelled) setTerrain(buildTerrain());
-    };
-    const idleId =
-      typeof window.requestIdleCallback !== "undefined"
-        ? window.requestIdleCallback(run, { timeout: 200 })
-        : window.setTimeout(run, 0);
-
-    return () => {
-      cancelled = true;
-      if (typeof window.cancelIdleCallback !== "undefined") window.cancelIdleCallback(idleId);
-      else window.clearTimeout(idleId);
-    };
-  }, []);
 
   return (
     <div className="absolute inset-0 h-full w-full bg-black">
-      {terrain ? (
-        <Canvas
-          dpr={0.8}
-          gl={{
-            antialias: false,
-            alpha: false,
-            powerPreference: "high-performance",
-          }}
-          camera={{
-            position: [0, 2.6, 19],
-            fov: 58,
-            near: 0.1,
-            far: 120,
-          }}
-          style={{ width: "100%", height: "100%", display: "block" }}
-          onCreated={({ gl, camera }) => {
-            gl.setPixelRatio(Math.min(window.devicePixelRatio, 1));
-            camera.position.set(0, 2.6, 19);
-            camera.lookAt(0, -8.1, 1.4);
-          }}
-        >
-          <Scene terrain={terrain} stars={stars} />
-        </Canvas>
-      ) : null}
+      <Canvas
+        dpr={0.8}
+        gl={{
+          antialias: false,
+          alpha: false,
+          powerPreference: "high-performance",
+        }}
+        camera={{
+          position: [0, 2.6, 19],
+          fov: 58,
+          near: 0.1,
+          far: 120,
+        }}
+        style={{ width: "100%", height: "100%", display: "block" }}
+        onCreated={({ gl, camera }) => {
+          gl.setPixelRatio(Math.min(window.devicePixelRatio, 1));
+          camera.position.set(0, 2.6, 19);
+          camera.lookAt(0, -8.1, 1.4);
+        }}
+      >
+        <Scene terrain={terrain} stars={stars} onReady={onReady} />
+      </Canvas>
     </div>
   );
 }
