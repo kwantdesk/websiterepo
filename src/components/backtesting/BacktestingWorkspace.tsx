@@ -3,7 +3,6 @@
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  CalendarDays,
   Check,
   ChevronDown,
   ChevronLeft,
@@ -31,6 +30,7 @@ import { defaultChartSettings, loadStoredChartSettings, type ChartSettings } fro
 import KwantLoader from "@/components/KwantLoader";
 import HistoricalGexPanel from "@/components/backtesting/HistoricalGexPanel";
 import HistoricalZyonPanel from "@/components/backtesting/HistoricalZyonPanel";
+import ReplayDatePicker from "@/components/backtesting/ReplayDatePicker";
 import KwantSelect from "@/components/ui/KwantSelect";
 import TimeZoneSelect from "@/components/ui/TimeZoneSelect";
 import { browserTimeZone, normalizeTimeZone, timeZoneCity } from "@/lib/timeZones";
@@ -1062,13 +1062,10 @@ export default function BacktestingWorkspace() {
             className="h-11 bg-background"
           />
         </label>
-        <label className="space-y-2">
+        <div className="space-y-2">
           <span className="text-[9px] font-semibold uppercase tracking-[0.14em] text-muted">Replay date</span>
-          <div className="relative">
-            <CalendarDays className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted" />
-            <input type="date" min="2010-06-06" max={new Date().toISOString().slice(0, 10)} value={date} onChange={(event) => { setError(""); setDate(event.target.value); }} className="h-11 w-full rounded-xl border border-border bg-background pl-9 pr-3 text-[12px] text-foreground outline-none focus:border-primary/40" />
-          </div>
-        </label>
+          <ReplayDatePicker min="2010-06-06" max={new Date().toISOString().slice(0, 10)} value={date} onChange={(nextDate) => { setError(""); setDate(nextDate); }} />
+        </div>
         <label className="space-y-2">
           <span className="text-[9px] font-semibold uppercase tracking-[0.14em] text-muted">Start time · {timeZoneCity(replayTimeZone)}</span>
           <div className="relative">
@@ -1494,13 +1491,10 @@ export default function BacktestingWorkspace() {
                   className="h-11 bg-background"
                 />
               </label>
-              <label className="space-y-2">
+              <div className="space-y-2">
                 <span className="text-[9px] font-semibold uppercase tracking-[0.14em] text-muted">Replay date</span>
-                <div className="relative">
-                  <CalendarDays className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted" />
-                  <input type="date" min="2010-06-06" max={new Date().toISOString().slice(0, 10)} value={date} onChange={(event) => { setError(""); setDate(event.target.value); }} className="h-11 w-full rounded-xl border border-border bg-background pl-9 pr-3 text-[12px] text-foreground outline-none focus:border-primary/40" />
-                </div>
-              </label>
+                <ReplayDatePicker min="2010-06-06" max={new Date().toISOString().slice(0, 10)} value={date} onChange={(nextDate) => { setError(""); setDate(nextDate); }} />
+              </div>
               <label className="space-y-2">
                 <span className="text-[9px] font-semibold uppercase tracking-[0.14em] text-muted">Start time · {timeZoneCity(replayTimeZone)}</span>
                 <div className="relative">
