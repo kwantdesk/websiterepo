@@ -55,6 +55,7 @@ const MAX_CONTEXT_LENGTH = 120_000;
 // Image analysis, tool use and deep reasoning can legitimately exceed a short
 // chat timeout. These attempts stay inside the route's 120-second ceiling.
 const PROVIDER_TIMEOUTS_MS = [50_000, 25_000, 15_000] as const;
+const HISTORICAL_PROVIDER_TIMEOUTS_MS = [16_000, 9_000, 6_000] as const;
 
 type IncomingAttachment = {
   name?: unknown;
@@ -359,6 +360,10 @@ function normalizeMessages(value: unknown): ClaudeMessage[] {
       merged.push(message);
     }
   }
+  // UI welcome cards are not model-authored conversation turns. Defensively
+  // remove any leading assistant copy so the provider always receives a valid
+  // conversation beginning with the trader.
+  while (merged[0]?.role === "assistant") merged.shift();
   return merged;
 }
 
@@ -377,6 +382,71 @@ function retryAfterMilliseconds(value: string | null) {
   if (Number.isFinite(seconds)) return Math.max(0, Math.round(seconds * 1_000));
   const timestamp = Date.parse(value);
   return Number.isFinite(timestamp) ? Math.max(0, timestamp - Date.now()) : null;
+}
+
+function historicalReplayFallbackText(
+  context: Awaited<ReturnType<typeof getHistoricalZyonContext>>,
+) {
+  const currentPrice = context.replay.currentPrice;
+  const unique = new Map<string, { label: string; price: number; family: string }>();
+  for (const level of context.screen.levels) {
+    if (!Number.isFinite(level.price) || level.price <= 0) continue;
+    const key = `${level.family}:${level.label}:${level.price.toFixed(4)}`;
+    unique.set(key, { label: level.label, price: level.price, family: level.family });
+  }
+  for (const level of context.gamma?.levels ?? []) {
+    if (!Number.isFinite(level.futuresPrice) || level.futuresPrice <= 0) continue;
+    const key = `gamma:${level.label}:${level.futuresPrice.toFixed(4)}`;
+    unique.set(key, { label: level.label, price: level.futuresPrice, family: "gamma" });
+  }
+  const levels = [...unique.values()].sort((left, right) => left.price - right.price);
+  const below = levels.filter((level) => level.price <= currentPrice).slice(-3).reverse();
+  const above = levels.filter((level) => level.price > currentPrice).slice(0, 3);
+  const nearestSupport = below[0] ?? null;
+  const nearestResistance = above[0] ?? null;
+  const oneHour = context.priceAction.windows.find((window) => window.window === "1H") ?? null;
+  const oneDay = context.priceAction.windows.find((window) => window.window === "1D") ?? null;
+  const formatLevel = (level: { label: string; price: number; family: string } | null) => level
+    ? `${level.label} ${level.price.toFixed(2)} (${level.family})`
+    : "not available at this cutoff";
+  const formatList = (rows: typeof levels) => rows.length
+    ? rows.map((level) => `${level.label} ${level.price.toFixed(2)}`).join("; ")
+    : "No verified level was available at the replay cutoff.";
+  const shortInvalidation = nearestResistance?.price ?? currentPrice;
+  const longInvalidation = nearestSupport?.price ?? currentPrice;
+  const environment = context.gamma?.environment ?? "Gamma regime unavailable";
+
+  return [
+    `HISTORICAL ZYON GAMEPLAN — ${context.replay.instrument}`,
+    `Cutoff: ${context.cutoff.asOf} | New York ${context.cutoff.newYorkClock} | ${context.cutoff.sessionState} | no lookahead`,
+    "",
+    "OBSERVATION",
+    `Replay price is ${currentPrice.toFixed(2)}. One-hour change: ${oneHour ? `${oneHour.change.toFixed(2)} (${oneHour.changePercent.toFixed(2)}%)` : "unavailable"}. One-day change: ${oneDay ? `${oneDay.change.toFixed(2)} (${oneDay.changePercent.toFixed(2)}%)` : "unavailable"}. Gamma environment: ${environment}.`,
+    `Nearest structure below: ${formatLevel(nearestSupport)}. Nearest structure above: ${formatLevel(nearestResistance)}.`,
+    "",
+    "INTERPRETATION",
+    nearestSupport && nearestResistance
+      ? `Price is bracketed between ${nearestSupport.price.toFixed(2)} and ${nearestResistance.price.toFixed(2)}. Inside that bracket there is no confirmed directional trade; acceptance or rejection at an edge is required.`
+      : "The verified replay context does not contain both sides of a complete level bracket, so conviction must remain reduced.",
+    "",
+    "LONG SCENARIO",
+    nearestResistance
+      ? `Require acceptance above ${nearestResistance.price.toFixed(2)} (${nearestResistance.label}), followed by a hold or successful retest. Invalidate on a sustained return below ${longInvalidation.toFixed(2)}. Targets: ${formatList(above.slice(1, 3))}`
+      : "No verified upside trigger was available. Do not invent one.",
+    "",
+    "SHORT SCENARIO",
+    nearestSupport
+      ? `Require rejection from overhead structure or acceptance below ${nearestSupport.price.toFixed(2)} (${nearestSupport.label}), followed by a failed reclaim. Invalidate on a sustained return above ${shortInvalidation.toFixed(2)}. Targets: ${formatList(below.slice(1, 3))}`
+      : "No verified downside trigger was available. Do not invent one.",
+    "",
+    "NO-TRADE CONDITION",
+    "Stand aside while price rotates between the nearest verified levels without acceptance, rejection, or follow-through. Do not use candles or options information after the displayed cutoff.",
+    "",
+    "RISK LOGIC",
+    "Size from the distance between the confirmed entry and structural invalidation; do not widen the stop after entry. This is a historical practice reconstruction, not financial advice.",
+    "",
+    "The reasoning provider did not complete in time, so this fail-safe response was generated only from the verified replay candles and levels already available at the cutoff.",
+  ].join("\n");
 }
 
 function sessionDateForContext(value: unknown) {
@@ -1080,6 +1150,9 @@ export async function POST(request: NextRequest) {
 
   try {
     const providerModels = await providerModelsFor(apiKey, modelKey);
+    const providerTimeouts = historicalReplay
+      ? HISTORICAL_PROVIDER_TIMEOUTS_MS
+      : PROVIDER_TIMEOUTS_MS;
     let response: Response | null = null;
     let providerError = "";
     let providerStatus: number | null = null;
@@ -1089,7 +1162,7 @@ export async function POST(request: NextRequest) {
       try {
         response = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
-          signal: AbortSignal.timeout(PROVIDER_TIMEOUTS_MS[modelIndex] ?? 15_000),
+          signal: AbortSignal.timeout(providerTimeouts[modelIndex] ?? 6_000),
           headers: {
             "Content-Type": "application/json",
             "x-api-key": apiKey,
@@ -1206,6 +1279,18 @@ export async function POST(request: NextRequest) {
     }
 
     if (!response?.ok) {
+      if (historicalReplay) {
+        return NextResponse.json({
+          text: historicalReplayFallbackText(historicalReplay),
+          model: modelKey,
+          degraded: true,
+          retryable: true,
+          requestId: providerRequestId,
+          providerState: providerStatus === 429 ? "rate-limited" : providerStatus === 529 ? "overloaded" : "unavailable",
+        }, {
+          headers: { "Cache-Control": "private, no-store, max-age=0" },
+        });
+      }
       const rateLimited = providerStatus === 429;
       const overloaded = providerStatus === 529;
       return NextResponse.json({
@@ -1383,6 +1468,17 @@ export async function POST(request: NextRequest) {
     );
   } catch (error) {
     console.error("ZYON request failed", error);
+    if (historicalReplay) {
+      return NextResponse.json({
+        text: historicalReplayFallbackText(historicalReplay),
+        model: modelKey,
+        degraded: true,
+        retryable: true,
+        providerState: "unavailable",
+      }, {
+        headers: { "Cache-Control": "private, no-store, max-age=0" },
+      });
+    }
     return NextResponse.json({
       error: "ZYON's analysis service did not complete this request. Your message is saved; retry it.",
       retryable: true,

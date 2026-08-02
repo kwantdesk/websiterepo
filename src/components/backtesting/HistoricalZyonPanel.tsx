@@ -117,12 +117,16 @@ export default function HistoricalZyonPanel({
       createdAt: new Date().toISOString(),
     };
     const conversation = [...messages.slice(-23), userMessage];
+    const firstUserIndex = conversation.findIndex((message) => message.role === "user");
+    const providerConversation = firstUserIndex >= 0
+      ? conversation.slice(firstUserIndex)
+      : [userMessage];
     setMessages((current) => [...current, userMessage]);
     if (!override) setDraft("");
     setSending(true);
     setError("");
     const controller = new AbortController();
-    const timeout = window.setTimeout(() => controller.abort(), 110_000);
+    const timeout = window.setTimeout(() => controller.abort(), 50_000);
     try {
       const replay = currentContextRef.current;
       const response = await fetch("/api/zyon", {
@@ -136,7 +140,9 @@ export default function HistoricalZyonPanel({
           localDate: replay.asOf.slice(0, 10),
           clientTimeZone: replay.replayTimeZone,
           historicalReplay: replay,
-          messages: conversation.map((message) => ({
+          // The local welcome card is UI copy, not a provider-authored turn.
+          // Anthropic conversations must begin with the user's actual request.
+          messages: providerConversation.map((message) => ({
             id: message.id,
             role: message.role,
             content: message.content,
@@ -154,9 +160,16 @@ export default function HistoricalZyonPanel({
         createdAt: new Date().toISOString(),
       }]);
     } catch (problem) {
-      setError(problem instanceof DOMException && problem.name === "AbortError"
-        ? "Historical ZYON did not complete within 110 seconds. Retry the message."
-        : problem instanceof Error ? problem.message : "Historical ZYON could not reply.");
+      const failure = problem instanceof DOMException && problem.name === "AbortError"
+        ? "Historical ZYON did not complete within 50 seconds. Your replay is still intact; press the message again to retry."
+        : problem instanceof Error ? problem.message : "Historical ZYON could not reply.";
+      setError(failure);
+      setMessages((current) => [...current, {
+        id: id("historical-zyon-failure"),
+        role: "assistant",
+        content: `I could not complete that historical analysis request. ${failure}`,
+        createdAt: new Date().toISOString(),
+      }]);
     } finally {
       window.clearTimeout(timeout);
       setSending(false);

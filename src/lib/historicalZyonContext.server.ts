@@ -12,6 +12,21 @@ import type {
 } from "@/lib/historicalZyon";
 
 const MAX_REPLAY_AGE_MS = 20 * 365 * 24 * 60 * 60_000;
+const HISTORICAL_GAMMA_CONTEXT_TIMEOUT_MS = 4_000;
+
+async function within<T>(promise: Promise<T>, milliseconds: number): Promise<{ timedOut: false; value: T } | { timedOut: true }> {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  try {
+    return await Promise.race([
+      promise.then((value) => ({ timedOut: false as const, value })),
+      new Promise<{ timedOut: true }>((resolve) => {
+        timer = setTimeout(() => resolve({ timedOut: true }), milliseconds);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
 
 function text(value: unknown, limit: number) {
   return typeof value === "string" ? value.replace(/\u0000/g, "").trim().slice(0, limit) : "";
@@ -220,13 +235,21 @@ export async function getHistoricalZyonContext(replay: ValidHistoricalZyonReplay
   const source = replay.root === "NQ" ? "QQQ" : "SPY";
   const cutoff = replayOptionsCutoff(replay.asOfMs);
   const warnings: string[] = [];
-  const gamma = await (cutoff.mode === "INTRADAY"
+  const gammaRequest = (cutoff.mode === "INTRADAY"
     ? getHistoricalReplayChartGammaLevels(replay.root, source, replay.asOf, replay.currentPrice)
     : getHistoricalCashCalibratedChartGammaLevelsAtOrBefore(replay.root, source, cutoff.sessionDate, replay.currentPrice))
     .catch((error) => {
       warnings.push(error instanceof Error ? error.message : "Historical Gamma could not be reconstructed.");
       return null;
     });
+  // The backtester already supplies its exact, cutoff-safe screen levels. A
+  // slow options reconstruction may enrich ZYON, but must never prevent the
+  // chat itself from replying.
+  const gammaResult = await within(gammaRequest, HISTORICAL_GAMMA_CONTEXT_TIMEOUT_MS);
+  const gamma = gammaResult.timedOut ? null : gammaResult.value;
+  if (gammaResult.timedOut) {
+    warnings.push("Historical Gamma enrichment exceeded four seconds; ZYON used the verified replay candles and on-screen levels instead.");
+  }
   const sourceLevels = gamma?.sources.find((item) => item.levels.length)?.levels ?? [];
   const positioning = gamma?.positioning ?? null;
   const nearestStrikes = positioning
