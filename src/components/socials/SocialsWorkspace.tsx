@@ -6,7 +6,6 @@ import {
   ArrowRight,
   Award,
   BarChart3,
-  Bell,
   BrainCircuit,
   Bookmark,
   Camera,
@@ -3338,25 +3337,6 @@ export default function SocialsWorkspace({
                     return <button key={desk.deskId} type="button" onClick={() => setTab("desks")} className="mb-2 flex w-full items-center gap-3 rounded-xl border border-border bg-surface/35 p-3 text-left hover:border-primary/25"><span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary"><Network className="h-4 w-4" /></span><span className="min-w-0 flex-1"><span className="block truncate text-[9px] font-semibold">{desk.name}</span><span className="mt-1 block truncate text-[7px] text-muted">{desk.objective}</span></span><span className="font-mono text-[8px] text-primary">{memberCount}/{desk.capacity}</span></button>;
                   }) : deskNetwork.ready ? <div className="rounded-xl border border-dashed border-border p-5 text-center"><div className="text-[9px] font-semibold">Find the people who trade your hours.</div><div className="mt-1 text-[7px] leading-4 text-muted">Desks are intentionally small: compatible markets, session, timezone, and improvement objective.</div><button type="button" onClick={() => setShowDeskModal(true)} className="mt-3 rounded-lg border border-primary/25 bg-primary/[0.07] px-3 py-2 text-[8px] font-semibold text-primary">Create a Desk</button></div> : <div className="rounded-xl border border-border bg-surface/30 p-5 text-center text-[8px] text-muted">Connecting your active Desks...</div>}
                 </div>
-              </Card>
-              <Card className="overflow-hidden">
-                <div className="flex items-center gap-2 border-b border-border px-4 py-3"><Bell className="h-4 w-4 text-primary" /><h3 className="text-[10px] font-semibold">Unfinished value</h3>{notificationItems.length ? <span className="ml-auto rounded-full bg-danger px-1.5 py-0.5 text-[7px] text-white">{notificationItems.length}</span> : null}</div>
-                <div className="divide-y divide-border/60">
-                  {notificationItems.map((item) => <div key={item.id} className="px-4 py-3"><div className="text-[8px] font-semibold text-foreground">{item.title}</div><div className="mt-1 text-[7px] leading-3 text-muted">{item.detail}</div></div>)}
-                  {!notificationItems.length ? <div className="flex items-center gap-2 px-4 py-8 text-[8px] text-muted"><Check className="h-4 w-4 text-primary" />Nothing is demanding urgency.</div> : null}
-                </div>
-              </Card>
-              <Card className="p-4">
-                <div className="flex items-center gap-2"><Sparkles className="h-4 w-4 text-primary" /><h3 className="text-[10px] font-semibold">This week’s story</h3></div>
-                <p className="mt-3 text-[8px] leading-4 text-muted">
-                  {gameplanProcessIndex === 0
-                    ? "Your next record begins by making a complete Gameplan with ZYON. The lifecycle will update here automatically."
-                    : gameplanProcessIndex === 1
-                      ? "Your Gameplan is safely in holding. Review the pre-filled details and publish it when the record is accurate."
-                      : gameplanProcessIndex === 2
-                        ? "Your published Gameplan is being scored against what price does next. No manual status update is required."
-                        : `Your latest Gameplan is finalised${gameplanProcessReceipt?.scores.final !== undefined ? ` with a ${gameplanProcessReceipt.scores.final}/100 score` : ""}. Sending the next plan to holding starts a fresh lifecycle.`}
-                </p>
               </Card>
             </div>
           </div>
