@@ -133,8 +133,8 @@ as $$
             where relation.follower_id = profile.user_id and relation.following_id = viewer.id
           ) then 38 else 0 end
         + case
-            when profile_view.last_viewed_at between now() - interval '14 days' and now() - interval '20 hours' then 46
-            when profile_view.last_viewed_at > now() - interval '20 hours' then 10
+            when profile_view.last_viewed_at between now() - interval '14 days' and now() - interval '24 hours' then 46
+            when profile_view.last_viewed_at > now() - interval '24 hours' then 10
             else 0
           end
         + case when profile.updated_at > now() - interval '7 days' then 8 else 0 end
@@ -183,7 +183,7 @@ as $$
       when candidate.mutual_follow_count > 0 then candidate.mutual_follow_count || case when candidate.mutual_follow_count = 1 then ' mutual connection' else ' mutual connections' end
       when candidate.follows_viewer then 'Follows you'
       when candidate.shared_desk_count > 0 then 'Trades in your Desk network'
-      when candidate.recently_viewed_at between now() - interval '14 days' and now() - interval '20 hours' then 'A profile you viewed recently'
+      when candidate.recently_viewed_at between now() - interval '14 days' and now() - interval '24 hours' then 'A profile you viewed yesterday'
       when candidate.market_overlap_count > 0 then 'Shared markets and trading focus'
       else 'Active in the Kwant Desk network'
     end as reason
