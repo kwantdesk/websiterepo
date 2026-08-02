@@ -64,6 +64,7 @@ import {
   type JournalParseResult,
   type JournalState,
   type JournalTrade,
+  type JournalTradingAccountType,
 } from "@/lib/journal";
 import { loadJournalState, saveJournalState } from "@/lib/journalStore";
 import {
@@ -102,6 +103,9 @@ type ManualTradeDraft = {
   tags: string;
   notes: string;
   improvements: string;
+  tradingAccountName: string;
+  tradingAccountType: "" | JournalTradingAccountType;
+  accountSize: string;
   rating: number | null;
 };
 
@@ -126,6 +130,9 @@ const MANUAL_TRADE_DICTATION_LABELS: Record<ManualTradeDictationField, string> =
   tags: "Tags",
   notes: "Notes",
   improvements: "How can I do better next time?",
+  tradingAccountName: "Account / provider",
+  tradingAccountType: "Account type",
+  accountSize: "Account size",
 };
 
 const MANUAL_TRADE_NUMBER_FIELDS = new Set<ManualTradeDictationField>([
@@ -138,6 +145,7 @@ const MANUAL_TRADE_NUMBER_FIELDS = new Set<ManualTradeDictationField>([
   "initialRisk",
   "netPnl",
   "fees",
+  "accountSize",
 ]);
 
 type ManualExtractionFieldName =
@@ -279,6 +287,9 @@ function newManualTradeDraft(): ManualTradeDraft {
     tags: "",
     notes: "",
     improvements: "",
+    tradingAccountName: "Prop firm",
+    tradingAccountType: "",
+    accountSize: "",
     rating: null,
   };
 }
@@ -418,6 +429,13 @@ function riskReward(value: number | null) {
   if (value === null || !Number.isFinite(value)) return "—";
   const reward = value < 0 ? `−${Math.abs(value).toFixed(2)}` : value.toFixed(2);
   return `1 : ${reward}`;
+}
+
+function tradingAccountTypeLabel(value: JournalTradingAccountType | undefined) {
+  if (value === "LIVE_CAPITAL") return "Live capital";
+  if (value === "EVALUATION") return "Evaluation";
+  if (value === "FUNDED") return "Funded account";
+  return "Not recorded";
 }
 
 function compact(value: number) {
@@ -776,6 +794,12 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
         if (/\bmicro\b/.test(normalized)) value = "MICRO";
         else if (/\bmini\b/.test(normalized)) value = "MINI";
         else if (/\bother\b/.test(normalized)) value = "OTHER";
+        else return current;
+      } else if (field === "tradingAccountType") {
+        const normalized = transcript.toLowerCase();
+        if (/\b(live|personal|capital)\b/.test(normalized)) value = "LIVE_CAPITAL";
+        else if (/\b(eval|evaluation|challenge)\b/.test(normalized)) value = "EVALUATION";
+        else if (/\b(funded|funding)\b/.test(normalized)) value = "FUNDED";
         else return current;
       } else if (field === "symbol") {
         value = transcript.toUpperCase().replace(/[^A-Z0-9._-]/g, "").slice(0, 32);
@@ -1330,6 +1354,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
     const stopPrice = manualTrade.stopPrice.trim() ? Number(manualTrade.stopPrice) : null;
     const targetPrice = manualTrade.targetPrice.trim() ? Number(manualTrade.targetPrice) : null;
     const plannedRiskReward = manualTrade.plannedRiskReward.trim() ? Number(manualTrade.plannedRiskReward) : null;
+    const accountSize = manualTrade.accountSize.trim() ? Number(manualTrade.accountSize) : null;
     if (!manualTrade.name.trim() || !manualTrade.symbol.trim() || !manualTrade.side || !manualTrade.contractClass) {
       setManualTradeError("Give the trade a name, instrument, direction and contract class.");
       return;
@@ -1344,6 +1369,10 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
     }
     if ([stopPrice, targetPrice, plannedRiskReward].some((value) => value !== null && (!Number.isFinite(value) || value <= 0))) {
       setManualTradeError("Stop, target and planned risk : reward must be positive numbers when supplied.");
+      return;
+    }
+    if (accountSize !== null && (!Number.isFinite(accountSize) || accountSize <= 0)) {
+      setManualTradeError("Account size must be a positive number when supplied.");
       return;
     }
     setManualTradeSaving(true);
@@ -1378,6 +1407,9 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
         notes: manualTrade.notes.trim().slice(0, 8_000),
         improvements: manualTrade.improvements.trim().slice(0, 8_000),
         contractClass: manualTrade.contractClass,
+        tradingAccountName: manualTrade.tradingAccountName.trim().slice(0, 120) || undefined,
+        tradingAccountType: manualTrade.tradingAccountType || undefined,
+        accountSize,
         rating: manualTrade.rating,
         reviewedAt: manualTrade.notes.trim() || manualTrade.improvements.trim() || manualTrade.rating ? now : null,
         sourceImportId,
@@ -2505,6 +2537,15 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
               </section>
 
               <section className="border-t border-border pt-5">
+                <div className="mb-3"><h3 className="text-[10px] font-semibold text-foreground">Trading account <span className="font-normal text-muted">· optional</span></h3><p className="mt-0.5 text-[8px] text-muted">Record the prop firm or capital account, its stage, and the account size.</p></div>
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <div><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Account / provider</label><input value={manualTrade.tradingAccountName} onFocus={() => manualDictation.activate("tradingAccountName")} onChange={(event) => updateManualTradeField("tradingAccountName", event.target.value)} placeholder="Prop firm or brokerage" className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[9px] text-foreground outline-none focus:border-primary/45" /></div>
+                  <div><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Account type</label><KwantSelect value={manualTrade.tradingAccountType} onFocus={() => manualDictation.activate("tradingAccountType")} onChange={(event) => updateManualTradeField("tradingAccountType", event.target.value as ManualTradeDraft["tradingAccountType"])} menuLabel="Account type" className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[9px] text-foreground outline-none"><option value="">Select account type</option><option value="LIVE_CAPITAL">Live capital</option><option value="EVALUATION">Evaluation</option><option value="FUNDED">Funded account</option></KwantSelect></div>
+                  <div><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Account size</label><div className="flex h-10 items-center rounded-xl border border-border bg-background px-3 focus-within:border-primary/45"><span className="font-mono text-[9px] text-muted">$</span><input type="number" min="0" step="any" value={manualTrade.accountSize} onFocus={() => manualDictation.activate("accountSize")} onChange={(event) => updateManualTradeField("accountSize", event.target.value)} placeholder="50,000" className="h-full min-w-0 flex-1 bg-transparent pl-2 font-mono text-[9px] text-foreground outline-none" /></div></div>
+                </div>
+              </section>
+
+              <section className="border-t border-border pt-5">
                 <div className="mb-3"><h3 className="text-[10px] font-semibold text-foreground">Execution and risk</h3><p className="mt-0.5 text-[8px] text-muted">These fields drive the Journal’s P&amp;L, risk-to-reward and performance analysis.</p></div>
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                   <div className="lg:col-span-2"><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Entry time *</label><input type="datetime-local" value={manualTrade.openedAt} onFocus={() => manualDictation.activate("openedAt")} onChange={(event) => updateManualTradeField("openedAt", event.target.value)} className="h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] text-foreground outline-none focus:border-primary/45" /></div>
@@ -2607,6 +2648,9 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
               <Card className="p-4">
                 <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-[9px]">
                   {[["Entry", selectedTrade.entryPrice?.toLocaleString("en-US", { maximumFractionDigits: 6 }) ?? "—"], ["Exit", selectedTrade.exitPrice?.toLocaleString("en-US", { maximumFractionDigits: 6 }) ?? "—"], ["Stop", selectedTrade.stopPrice?.toLocaleString("en-US", { maximumFractionDigits: 6 }) ?? "Not recorded"], ["Target", selectedTrade.targetPrice?.toLocaleString("en-US", { maximumFractionDigits: 6 }) ?? "Not recorded"], ["Planned R:R", selectedTrade.plannedRiskReward ? `1 : ${selectedTrade.plannedRiskReward.toFixed(2)}` : "Not recorded"], ["Quantity", selectedTrade.quantity.toLocaleString()], ["Contract", selectedTrade.contractClass ?? "—"], ["Fees", selectedTrade.feesKnown === false ? "Not recorded" : money(selectedTrade.fees, false)], ["Gross P&L", money(selectedTrade.grossPnl)], ["Source", `${selectedTrade.sourceFile}${selectedTrade.sourceSheet ? ` · ${selectedTrade.sourceSheet}` : ""} · rows ${selectedTrade.sourceRows.join(", ")}`]].map(([label, value]) => <div key={label}><div className="text-[8px] uppercase tracking-[0.1em] text-muted">{label}</div><div className="mt-1 break-words font-mono text-foreground">{value}</div></div>)}
+                  <div><div className="text-[8px] uppercase tracking-[0.1em] text-muted">Trading account</div><div className="mt-1 break-words font-mono text-foreground">{selectedTrade.tradingAccountName ?? "Not recorded"}</div></div>
+                  <div><div className="text-[8px] uppercase tracking-[0.1em] text-muted">Account type</div><div className="mt-1 break-words font-mono text-foreground">{tradingAccountTypeLabel(selectedTrade.tradingAccountType)}</div></div>
+                  <div><div className="text-[8px] uppercase tracking-[0.1em] text-muted">Account size</div><div className="mt-1 break-words font-mono text-foreground">{selectedTrade.accountSize ? money(selectedTrade.accountSize, false) : "Not recorded"}</div></div>
                 </div>
               </Card>
               <div>

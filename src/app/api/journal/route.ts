@@ -109,6 +109,7 @@ function sanitizeTrade(value: unknown, account: string): JournalTrade | null {
   const symbol = cleanText(trade.symbol, 32).toUpperCase();
   if (!id || !openedAt || !symbol) return null;
   const side = trade.side === "LONG" || trade.side === "SHORT" ? trade.side : "UNKNOWN";
+  const accountSize = nullableFinite(trade.accountSize);
   return {
     id,
     account,
@@ -134,6 +135,11 @@ function sanitizeTrade(value: unknown, account: string): JournalTrade | null {
     notes: cleanLongText(trade.notes, 8_000),
     improvements: cleanLongText(trade.improvements, 8_000),
     contractClass: trade.contractClass === "MICRO" || trade.contractClass === "MINI" ? trade.contractClass : "OTHER",
+    tradingAccountName: cleanText(trade.tradingAccountName, 120) || undefined,
+    tradingAccountType: trade.tradingAccountType === "LIVE_CAPITAL" || trade.tradingAccountType === "EVALUATION" || trade.tradingAccountType === "FUNDED"
+      ? trade.tradingAccountType
+      : undefined,
+    accountSize: accountSize === null ? null : Math.max(0, accountSize),
     rating: nullableFinite(trade.rating),
     reviewedAt: isoDate(trade.reviewedAt, null),
     sourceImportId: cleanId(trade.sourceImportId),

@@ -8,6 +8,7 @@ export function isZyonJournalAccountName(value: unknown) {
 }
 
 export type JournalSide = "LONG" | "SHORT" | "UNKNOWN";
+export type JournalTradingAccountType = "LIVE_CAPITAL" | "EVALUATION" | "FUNDED";
 
 export type JournalTrade = {
   id: string;
@@ -34,6 +35,9 @@ export type JournalTrade = {
   notes: string;
   improvements?: string;
   contractClass?: "MICRO" | "MINI" | "OTHER";
+  tradingAccountName?: string;
+  tradingAccountType?: JournalTradingAccountType;
+  accountSize?: number | null;
   rating: number | null;
   reviewedAt: string | null;
   sourceImportId: string;
@@ -922,6 +926,9 @@ export function journalTradesToCsv(trades: JournalTrade[]) {
     "Notes",
     "How To Improve Next Time",
     "Contract Class",
+    "Trading Account",
+    "Account Type",
+    "Account Size",
     "Source File",
   ];
   const escape = (value: unknown) => `"${String(value ?? "").replaceAll('"', '""')}"`;
@@ -948,6 +955,9 @@ export function journalTradesToCsv(trades: JournalTrade[]) {
       trade.notes,
       trade.improvements ?? "",
       trade.contractClass ?? "",
+      trade.tradingAccountName ?? "",
+      trade.tradingAccountType ?? "",
+      trade.accountSize ?? "",
       trade.sourceFile,
     ].map(escape).join(",")),
   ].join("\r\n");
