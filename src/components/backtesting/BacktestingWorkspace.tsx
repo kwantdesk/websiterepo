@@ -25,6 +25,8 @@ import type { GameplanPayload, GameplanRole } from "@/lib/gameplan";
 import { defaultChartSettings, loadStoredChartSettings, type ChartSettings } from "@/lib/chartSettings";
 import KwantLoader from "@/components/KwantLoader";
 import KwantSelect from "@/components/ui/KwantSelect";
+import TimeZoneSelect from "@/components/ui/TimeZoneSelect";
+import { browserTimeZone, normalizeTimeZone, timeZoneCity } from "@/lib/timeZones";
 
 const Chart = dynamic(() => import("@/components/Chart"), {
   ssr: false,
@@ -67,6 +69,7 @@ const INSTRUMENTS: Array<{ id: ReplayInstrument; symbol: string; label: string }
 ];
 const TIMEFRAMES: ReplayTimeframe[] = ["1m", "5m", "15m", "30m", "1h", "4h"];
 const SPEEDS = [1, 2, 8, 10, 20, 40, 100, 200] as const;
+const REPLAY_TIME_ZONE_STORAGE_KEY = "kwantdesk:backtesting-timezone:v1";
 
 function previousWeekday(date: Date) {
   const value = new Date(date);
@@ -101,12 +104,13 @@ function timeZoneOffset(date: Date, timeZone: string) {
   ) - date.getTime();
 }
 
-function newYorkLocalToUtc(date: string, time: string) {
+function zonedLocalToUtc(date: string, time: string, timeZone: string) {
   const [year, month, day] = date.split("-").map(Number);
   const [hour, minute] = time.split(":").map(Number);
   const guess = Date.UTC(year, month - 1, day, hour, minute, 0);
-  const first = guess - timeZoneOffset(new Date(guess), "America/New_York");
-  return first - (timeZoneOffset(new Date(first), "America/New_York") - timeZoneOffset(new Date(guess), "America/New_York"));
+  const normalized = normalizeTimeZone(timeZone);
+  const first = guess - timeZoneOffset(new Date(guess), normalized);
+  return first - (timeZoneOffset(new Date(first), normalized) - timeZoneOffset(new Date(guess), normalized));
 }
 
 function latestCompletedOptionsSession(replayMs: number) {
@@ -128,9 +132,9 @@ function latestCompletedOptionsSession(replayMs: number) {
   return previousWeekday(utcDate).toISOString().slice(0, 10);
 }
 
-function formatReplayClock(timestamp: number) {
+function formatReplayClock(timestamp: number, timeZone: string) {
   return new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/New_York",
+    timeZone: normalizeTimeZone(timeZone),
     month: "short",
     day: "2-digit",
     year: "numeric",
@@ -216,6 +220,7 @@ export default function BacktestingWorkspace() {
   const [showSetup, setShowSetup] = useState(false);
   const [instrument, setInstrument] = useState<ReplayInstrument>("NQ");
   const [timeframe, setTimeframe] = useState<ReplayTimeframe>("1m");
+  const [replayTimeZone, setReplayTimeZone] = useState("America/New_York");
   const [date, setDate] = useState(defaultReplayDate);
   const [time, setTime] = useState("09:30");
   const [candles, setCandles] = useState<Candle[]>([]);
@@ -238,7 +243,14 @@ export default function BacktestingWorkspace() {
   const [snapshotDate, setSnapshotDate] = useState("");
   const accumulatorRef = useRef(0);
 
-  useEffect(() => setSettings(loadStoredChartSettings()), []);
+  useEffect(() => {
+    const storedSettings = loadStoredChartSettings();
+    setSettings(storedSettings);
+    setReplayTimeZone(normalizeTimeZone(
+      window.localStorage.getItem(REPLAY_TIME_ZONE_STORAGE_KEY)
+      ?? browserTimeZone(),
+    ));
+  }, []);
 
   const selectedDefinition = INSTRUMENTS.find((item) => item.id === instrument) ?? INSTRUMENTS[0];
   const root = instrument === "NQ" || instrument === "MNQ" ? "NQ" : "ES";
@@ -309,9 +321,9 @@ export default function BacktestingWorkspace() {
   }, []);
 
   const startReplay = useCallback(async () => {
-    const startAt = newYorkLocalToUtc(date, time);
+    const startAt = zonedLocalToUtc(date, time, replayTimeZone);
     if (!Number.isFinite(startAt) || startAt >= Date.now()) {
-      setError("Choose a historical New York date and time before now.");
+      setError(`Choose a historical date and time in ${timeZoneCity(replayTimeZone)} before now.`);
       return;
     }
     setLoading(true);
@@ -340,7 +352,7 @@ export default function BacktestingWorkspace() {
     } finally {
       setLoading(false);
     }
-  }, [candleIndexAt, date, loadLevels, loadReplayCandles, time, timeframe]);
+  }, [candleIndexAt, date, loadLevels, loadReplayCandles, replayTimeZone, time, timeframe]);
 
   const changeReplayTimeframe = useCallback(async (nextTimeframe: ReplayTimeframe) => {
     if (!started || !sessionStartAt || nextTimeframe === timeframe || timeframeLoading) return;
@@ -393,6 +405,12 @@ export default function BacktestingWorkspace() {
     setLevelState((current) => ({ ...current, [family]: !current[family] }));
   };
 
+  const changeReplayTimeZone = (nextTimeZone: string) => {
+    const normalized = normalizeTimeZone(nextTimeZone);
+    setReplayTimeZone(normalized);
+    window.localStorage.setItem(REPLAY_TIME_ZONE_STORAGE_KEY, normalized);
+  };
+
   const renderSetupPanel = (overlay: boolean) => (
     <div className="w-[min(620px,calc(100%-32px))] overflow-hidden rounded-[24px] border border-border bg-panel/95 shadow-2xl backdrop-blur-xl">
       <div className="flex items-center gap-3 border-b border-border px-5 py-4">
@@ -407,7 +425,7 @@ export default function BacktestingWorkspace() {
         )}
         <div>
           <div className="text-[14px] font-semibold text-foreground">Start historical replay</div>
-          <div className="mt-0.5 text-[9px] text-muted">Choose the market state to reconstruct · times use America/New_York</div>
+          <div className="mt-0.5 text-[9px] text-muted">Choose the market state to reconstruct · replay times use your selected timezone</div>
         </div>
         {overlay ? (
           <button type="button" onClick={() => setShowSetup(false)} className="ml-auto flex h-8 w-8 items-center justify-center rounded-xl text-muted hover:bg-surface hover:text-foreground">
@@ -422,6 +440,15 @@ export default function BacktestingWorkspace() {
             {INSTRUMENTS.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
           </KwantSelect>
         </label>
+        <label className="space-y-2 sm:col-span-2">
+          <span className="text-[9px] font-semibold uppercase tracking-[0.14em] text-muted">Replay timezone</span>
+          <TimeZoneSelect
+            value={replayTimeZone}
+            onChange={changeReplayTimeZone}
+            menuLabel="Replay timezone"
+            className="h-11 bg-background"
+          />
+        </label>
         <label className="space-y-2">
           <span className="text-[9px] font-semibold uppercase tracking-[0.14em] text-muted">Replay date</span>
           <div className="relative">
@@ -430,7 +457,7 @@ export default function BacktestingWorkspace() {
           </div>
         </label>
         <label className="space-y-2">
-          <span className="text-[9px] font-semibold uppercase tracking-[0.14em] text-muted">Start time · NY</span>
+          <span className="text-[9px] font-semibold uppercase tracking-[0.14em] text-muted">Start time · {timeZoneCity(replayTimeZone)}</span>
           <div className="relative">
             <Clock3 className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted" />
             <input type="time" value={time} onChange={(event) => setTime(event.target.value)} className="h-11 w-full rounded-xl border border-border bg-background pl-9 pr-3 font-mono text-[12px] text-foreground outline-none focus:border-primary/40" />
@@ -597,9 +624,9 @@ export default function BacktestingWorkspace() {
                   aria-label="Replay position"
                 />
                 <div className="mt-1 flex items-center justify-between font-mono text-[8px] text-muted">
-                  <span>{formatReplayClock(candles[replayStartIndex]?.timestamp ?? 0)} NY</span>
-                  <span className="text-foreground">{replayClock ? formatReplayClock(replayClock) : "--"} NY</span>
-                  <span>{formatReplayClock(candles.at(-1)?.timestamp ?? 0)} NY</span>
+                  <span>{formatReplayClock(candles[replayStartIndex]?.timestamp ?? 0, replayTimeZone)} {timeZoneCity(replayTimeZone)}</span>
+                  <span className="text-foreground">{replayClock ? formatReplayClock(replayClock, replayTimeZone) : "--"} {timeZoneCity(replayTimeZone)}</span>
+                  <span>{formatReplayClock(candles.at(-1)?.timestamp ?? 0, replayTimeZone)} {timeZoneCity(replayTimeZone)}</span>
                 </div>
               </div>
               <div className="flex max-w-full items-center gap-1 overflow-x-auto rounded-xl border border-border bg-background/45 p-1">
@@ -633,7 +660,7 @@ export default function BacktestingWorkspace() {
               <button type="button" onClick={() => setShowSetup(false)} className="flex h-8 w-8 items-center justify-center rounded-xl border border-border text-muted hover:text-foreground"><ChevronLeft className="h-4 w-4" /></button>
               <div>
                 <div className="text-[14px] font-semibold text-foreground">Start historical replay</div>
-                <div className="mt-0.5 text-[9px] text-muted">Times are interpreted in America/New_York</div>
+                <div className="mt-0.5 text-[9px] text-muted">Replay date and time use {timeZoneCity(replayTimeZone)}</div>
               </div>
               <button type="button" onClick={() => setShowSetup(false)} className="ml-auto flex h-8 w-8 items-center justify-center rounded-xl text-muted hover:bg-surface hover:text-foreground"><X className="h-4 w-4" /></button>
             </div>
@@ -644,6 +671,15 @@ export default function BacktestingWorkspace() {
                   {INSTRUMENTS.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
                 </KwantSelect>
               </label>
+              <label className="space-y-2 sm:col-span-2">
+                <span className="text-[9px] font-semibold uppercase tracking-[0.14em] text-muted">Replay timezone</span>
+                <TimeZoneSelect
+                  value={replayTimeZone}
+                  onChange={changeReplayTimeZone}
+                  menuLabel="Replay timezone"
+                  className="h-11 bg-background"
+                />
+              </label>
               <label className="space-y-2">
                 <span className="text-[9px] font-semibold uppercase tracking-[0.14em] text-muted">Replay date</span>
                 <div className="relative">
@@ -652,7 +688,7 @@ export default function BacktestingWorkspace() {
                 </div>
               </label>
               <label className="space-y-2">
-                <span className="text-[9px] font-semibold uppercase tracking-[0.14em] text-muted">Start time · NY</span>
+                <span className="text-[9px] font-semibold uppercase tracking-[0.14em] text-muted">Start time · {timeZoneCity(replayTimeZone)}</span>
                 <div className="relative">
                   <Clock3 className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted" />
                   <input type="time" value={time} onChange={(event) => setTime(event.target.value)} className="h-11 w-full rounded-xl border border-border bg-background pl-9 pr-3 font-mono text-[12px] text-foreground outline-none focus:border-primary/40" />
