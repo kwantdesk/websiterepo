@@ -248,12 +248,32 @@ async function providerModelsFor(apiKey: string, modelKey: ZyonModelKey) {
 }
 
 function isPresenceCheck(text: string, attachments: IncomingAttachment[]) {
-  if (attachments.length || text.length > 220) return false;
+  if (attachments.length || text.length > 320) return false;
   const normalized = text.toLowerCase().replace(/[^a-z0-9\s'?]/g, " ").replace(/\s+/g, " ").trim();
-  if (!/\b(?:hello|hi|hey|good morning|good afternoon|good evening|are you there|you there|ready)\b/.test(normalized)) {
+  const explicitlyCheckingPresence = /\b(?:are you there|you there|still there|are you online|can you hear me|hello zyon|hi zyon)\b/.test(normalized);
+  const greeting = /\b(?:hello|hi|hey|good morning|good afternoon|good evening|ready)\b/.test(normalized);
+  if (!explicitlyCheckingPresence && !greeting) {
     return false;
   }
-  return !/\b(?:analyse|analyze|analysis|chart|price|level|gamma|gex|dex|options|flow|setup|trade|entry|stop|target|why|what|where|when|how|game\s*plan|gameplan)\b/.test(normalized);
+  // Session wording such as "for the morning session" is still a presence
+  // check. Only route to the model when the same message also contains an
+  // actual market-analysis request.
+  return !/\b(?:analyse|analyze|analysis|chart|price|level|gamma|gex|dex|options|flow|setup|trade|entry|stop|target|support|resistance|exposure|positioning|game\s*plan|gameplan)\b/.test(normalized);
+}
+
+function needsPersistenceTools(messages: ClaudeMessage[]) {
+  const recentConversation = messages
+    .slice(-10)
+    .map((message) => typeof message.content === "string"
+      ? message.content
+      : message.content
+        .filter((block): block is ClaudeTextBlock => block.type === "text")
+        .map((block) => block.text)
+        .join(" "))
+    .join(" ")
+    .toLowerCase();
+
+  return /\b(?:game\s*plan|gameplan|journal|log\s+(?:this|that|trade)|record\s+(?:this|that|trade)|save\s+(?:this|that|trade|setup|note))\b/.test(recentConversation);
 }
 
 function parseDataUrl(value: unknown) {
@@ -1331,6 +1351,12 @@ export async function POST(request: NextRequest) {
     const providerTimeouts = historicalReplay
       ? HISTORICAL_PROVIDER_TIMEOUTS_MS
       : PROVIDER_TIMEOUTS_MS;
+    // Ordinary live Q&A does not need write-capable journal/Gameplan tools.
+    // Keeping those schemas off the request makes the common chat path much
+    // smaller and prevents an optional tool-schema rejection from taking the
+    // entire analyst offline. The tools remain available throughout an active
+    // journal or Gameplan conversation.
+    const usePersistenceTools = !historicalReplay && needsPersistenceTools(messages);
     let response: Response | null = null;
     let providerError = "";
     let providerStatus: number | null = null;
@@ -1352,7 +1378,7 @@ export async function POST(request: NextRequest) {
             temperature: 0.2,
             system,
             metadata: { user_id: actor.userId },
-            tools: historicalReplay ? undefined : [
+            tools: usePersistenceTools ? [
           {
             name: "record_trading_journal",
             description: "Record a durable ZYON trading-journal entry when the user describes a trade, setup, review, lesson, or explicitly asks to save a note.",
@@ -1392,7 +1418,7 @@ export async function POST(request: NextRequest) {
                 targets: { type: "array", items: { type: "number" }, minItems: 1, maxItems: 8 },
                 riskAmount: { type: "number", exclusiveMinimum: 0 },
                 riskUnit: { type: "string", enum: ["DOLLARS", "POINTS", "TICKS", "PERCENT"] },
-                size: { type: ["number", "null"] },
+                size: { type: "number" },
                 tradingAccount: {
                   type: "object",
                   properties: {
@@ -1410,7 +1436,7 @@ export async function POST(request: NextRequest) {
                 confirmation: { type: "string" },
                 invalidation: { type: "string" },
                 notes: { type: "string", description: "Optional trader notes inferred from the conversation; may be blank and remains editable in holding." },
-                expiryAt: { type: ["string", "null"], description: "ISO timestamp when known." },
+                expiryAt: { type: "string", description: "ISO timestamp when known." },
               },
               required: [
                 "title",
@@ -1431,7 +1457,7 @@ export async function POST(request: NextRequest) {
               ],
             },
           },
-            ],
+            ] : undefined,
             messages,
           }),
         });
