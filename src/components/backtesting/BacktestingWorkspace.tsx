@@ -360,6 +360,77 @@ export default function BacktestingWorkspace() {
     setLevelState((current) => ({ ...current, [family]: !current[family] }));
   };
 
+  const renderSetupPanel = (overlay: boolean) => (
+    <div className="w-[min(620px,calc(100%-32px))] overflow-hidden rounded-[24px] border border-border bg-panel/95 shadow-2xl backdrop-blur-xl">
+      <div className="flex items-center gap-3 border-b border-border px-5 py-4">
+        {overlay ? (
+          <button type="button" onClick={() => setShowSetup(false)} className="flex h-8 w-8 items-center justify-center rounded-xl border border-border text-muted hover:text-foreground">
+            <ChevronLeft className="h-4 w-4" />
+          </button>
+        ) : (
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-primary/25 bg-primary/10 text-primary">
+            <Clock3 className="h-4 w-4" />
+          </div>
+        )}
+        <div>
+          <div className="text-[14px] font-semibold text-foreground">Start historical replay</div>
+          <div className="mt-0.5 text-[9px] text-muted">Choose the market state to reconstruct · times use America/New_York</div>
+        </div>
+        {overlay ? (
+          <button type="button" onClick={() => setShowSetup(false)} className="ml-auto flex h-8 w-8 items-center justify-center rounded-xl text-muted hover:bg-surface hover:text-foreground">
+            <X className="h-4 w-4" />
+          </button>
+        ) : null}
+      </div>
+      <div className="grid gap-4 p-5 sm:grid-cols-2">
+        <label className="space-y-2 sm:col-span-2">
+          <span className="text-[9px] font-semibold uppercase tracking-[0.14em] text-muted">Instrument</span>
+          <KwantSelect value={instrument} onChange={(event) => setInstrument(event.target.value as ReplayInstrument)} className="h-11 w-full rounded-xl border border-border bg-background px-3 text-[12px] text-foreground outline-none focus:border-primary/40">
+            {INSTRUMENTS.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
+          </KwantSelect>
+        </label>
+        <label className="space-y-2">
+          <span className="text-[9px] font-semibold uppercase tracking-[0.14em] text-muted">Replay date</span>
+          <div className="relative">
+            <CalendarDays className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted" />
+            <input type="date" min="2010-06-06" max={new Date().toISOString().slice(0, 10)} value={date} onChange={(event) => setDate(event.target.value)} className="h-11 w-full rounded-xl border border-border bg-background pl-9 pr-3 text-[12px] text-foreground outline-none focus:border-primary/40" />
+          </div>
+        </label>
+        <label className="space-y-2">
+          <span className="text-[9px] font-semibold uppercase tracking-[0.14em] text-muted">Start time · NY</span>
+          <div className="relative">
+            <Clock3 className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted" />
+            <input type="time" value={time} onChange={(event) => setTime(event.target.value)} className="h-11 w-full rounded-xl border border-border bg-background pl-9 pr-3 font-mono text-[12px] text-foreground outline-none focus:border-primary/40" />
+          </div>
+        </label>
+        <label className="space-y-2 sm:col-span-2">
+          <span className="text-[9px] font-semibold uppercase tracking-[0.14em] text-muted">Chart timeframe</span>
+          <div className="grid grid-cols-6 gap-1 rounded-xl border border-border bg-background p-1">
+            {TIMEFRAMES.map((option) => (
+              <button key={option} type="button" onClick={() => setTimeframe(option)} className={`h-9 rounded-lg font-mono text-[10px] ${timeframe === option ? "bg-primary text-background" : "text-muted hover:bg-surface hover:text-foreground"}`}>{option}</button>
+            ))}
+          </div>
+        </label>
+        <div className="sm:col-span-2 rounded-2xl border border-border bg-background/45 p-4">
+          <div className="flex items-center gap-2 text-[10px] font-semibold text-foreground"><Layers3 className="h-3.5 w-3.5 text-primary" /> Historical coverage</div>
+          <div className="mt-3 grid gap-2 text-[9px] leading-4 text-muted sm:grid-cols-2">
+            <div><span className="block font-semibold text-foreground">CME candles + value area</span>Documented from June 2010; actual access depends on Databento entitlement.</div>
+            <div><span className="block font-semibold text-foreground">Gamma + Quant levels</span>KwantData documents 365+ days. Older dates remain unavailable unless a validated native options reconstruction exists.</div>
+          </div>
+        </div>
+        {error ? <div className="sm:col-span-2 rounded-xl border border-danger/25 bg-danger/10 px-3 py-2.5 text-[10px] text-danger">{error}</div> : null}
+      </div>
+      <div className="flex items-center gap-3 border-t border-border bg-background/25 px-5 py-4">
+        <div className="mr-auto flex items-center gap-2 text-[9px] text-muted"><Check className="h-3.5 w-3.5 text-primary" /> No future bars are rendered</div>
+        {overlay ? <button type="button" onClick={() => setShowSetup(false)} className="h-10 rounded-xl border border-border px-4 text-[10px] font-semibold text-muted hover:text-foreground">Cancel</button> : null}
+        <button type="button" onClick={() => void startReplay()} disabled={loading || !date || !time} className="flex h-10 items-center gap-2 rounded-xl bg-primary px-5 text-[10px] font-semibold text-background hover:brightness-110 disabled:opacity-40">
+          {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
+          Start replay
+        </button>
+      </div>
+    </div>
+  );
+
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background">
       <header className="flex min-h-14 shrink-0 flex-wrap items-center gap-3 border-b border-border bg-panel px-4 py-2">
@@ -410,53 +481,50 @@ export default function BacktestingWorkspace() {
               </button>
             </>
           ) : null}
-          <button
-            type="button"
-            onClick={() => setShowSetup(true)}
-            className="flex h-9 items-center gap-2 rounded-xl border border-primary/30 bg-primary/10 px-4 text-[11px] font-semibold text-primary transition-colors hover:bg-primary/15"
-          >
-            <Play className="h-3.5 w-3.5" />
-            Backtest
-          </button>
+          {started ? (
+            <button
+              type="button"
+              onClick={() => setShowSetup(true)}
+              className="flex h-9 items-center gap-2 rounded-xl border border-primary/30 bg-primary/10 px-4 text-[11px] font-semibold text-primary transition-colors hover:bg-primary/15"
+            >
+              <Play className="h-3.5 w-3.5" />
+              Backtest
+            </button>
+          ) : null}
         </div>
       </header>
 
       <div className="relative min-h-0 flex-1 overflow-hidden">
-        <Chart
-          candles={visibleCandles}
-          levels={activeLevels}
-          zones={activeZones}
-          instrument={selectedDefinition.id}
-          timeframe={timeframe}
-          marketIsActive={false}
-          settings={settings}
-          toolbarEnabled
-          gammaLevelsEnabled={levelState.gamma}
-          gammaLevelsAvailable
-          gammaLevelsLoading={levelLoading}
-          gammaLevelsError={levelError.gamma || null}
-          onToggleGammaLevels={() => toggleLevel("gamma")}
-          valueAreaLevelsEnabled={levelState.valueArea}
-          valueAreaLevelsAvailable
-          valueAreaLevelsLoading={levelLoading}
-          valueAreaLevelsError={levelError.valueArea || null}
-          valueAreaLevelsDescription="Historical prior-session and prior-week VAH, VAL, POC and VWAP"
-          onToggleValueAreaLevels={() => toggleLevel("valueArea")}
-        />
+        {started ? (
+          <Chart
+            candles={visibleCandles}
+            levels={activeLevels}
+            zones={activeZones}
+            instrument={selectedDefinition.id}
+            timeframe={timeframe}
+            marketIsActive={false}
+            settings={settings}
+            toolbarEnabled
+            gammaLevelsEnabled={levelState.gamma}
+            gammaLevelsAvailable
+            gammaLevelsLoading={levelLoading}
+            gammaLevelsError={levelError.gamma || null}
+            onToggleGammaLevels={() => toggleLevel("gamma")}
+            valueAreaLevelsEnabled={levelState.valueArea}
+            valueAreaLevelsAvailable
+            valueAreaLevelsLoading={levelLoading}
+            valueAreaLevelsError={levelError.valueArea || null}
+            valueAreaLevelsDescription="Historical prior-session and prior-week VAH, VAL, POC and VWAP"
+            onToggleValueAreaLevels={() => toggleLevel("valueArea")}
+          />
+        ) : null}
 
         {!started && !loading ? (
-          <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-background/65 backdrop-blur-[2px]">
-            <div className="pointer-events-auto w-[min(480px,calc(100%-32px))] rounded-[24px] border border-border bg-panel/95 p-7 text-center shadow-2xl">
-              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl border border-primary/25 bg-primary/10 text-primary shadow-[0_0_30px_color-mix(in_srgb,var(--primary)_20%,transparent)]">
-                <Clock3 className="h-5 w-5" />
-              </div>
-              <h2 className="mt-5 text-[18px] font-semibold text-foreground">Replay the market without lookahead</h2>
-              <p className="mx-auto mt-2 max-w-[380px] text-[11px] leading-5 text-muted">
-                Choose a historical instrument and New York start time. Candles reveal forward from that clock while level calculations use only completed, eligible source windows.
-              </p>
-              <button type="button" onClick={() => setShowSetup(true)} className="mt-5 rounded-xl bg-primary px-5 py-2.5 text-[11px] font-semibold text-background hover:brightness-110">
-                Configure backtest
-              </button>
+          <div className="absolute inset-0 z-20 flex items-center justify-center overflow-y-auto bg-background px-4 py-8">
+            <div className="pointer-events-none absolute inset-0 opacity-35 [background-image:linear-gradient(to_right,var(--border)_1px,transparent_1px),linear-gradient(to_bottom,var(--border)_1px,transparent_1px)] [background-size:64px_64px]" />
+            <div className="pointer-events-none absolute left-1/2 top-1/2 h-[360px] w-[560px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary/[0.06] blur-[100px]" />
+            <div className="relative z-10 flex w-full justify-center">
+              {renderSetupPanel(false)}
             </div>
           </div>
         ) : null}
@@ -519,7 +587,7 @@ export default function BacktestingWorkspace() {
         ) : null}
       </div>
 
-      {showSetup ? (
+      {showSetup && started ? (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm" onMouseDown={(event) => { if (event.target === event.currentTarget && !loading) setShowSetup(false); }}>
           <div className="w-[min(620px,100%)] overflow-hidden rounded-[24px] border border-border bg-panel shadow-2xl">
             <div className="flex items-center gap-3 border-b border-border px-5 py-4">
