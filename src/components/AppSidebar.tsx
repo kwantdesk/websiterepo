@@ -191,8 +191,8 @@ export default function AppSidebar({
   }
 
   return (
-    <header className="relative z-[70] flex h-11 w-full shrink-0 items-center gap-1 border-b border-border bg-panel px-3">
-      <nav className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto overflow-y-hidden" aria-label="Primary workspace">
+    <header className="relative z-[70] flex h-14 w-full shrink-0 items-center gap-1 border-b border-border bg-panel px-3">
+      <nav className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto overflow-y-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" aria-label="Primary workspace">
         {navItems.map(({ key, href, label, title, icon: Icon }) => {
           const active = activeItem === key;
           return (

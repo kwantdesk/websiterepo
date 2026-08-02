@@ -30,10 +30,10 @@ export default function WorkspaceSubnav<T extends string>({
 }: WorkspaceSubnavProps<T>) {
   return (
     <nav
-      className={`shrink-0 border-b border-border bg-panel px-3 py-2 lg:px-4 ${className}`}
+      className={`h-14 shrink-0 border-b border-border bg-panel px-3 lg:px-4 ${className}`}
       aria-label={ariaLabel}
     >
-      <div className="flex items-center gap-1.5 overflow-x-auto">
+      <div className="flex h-full items-center gap-1.5 overflow-x-auto overflow-y-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {items.map((item) => {
           const Icon = item.icon;
           const active = item.id === value;
@@ -59,7 +59,7 @@ export default function WorkspaceSubnav<T extends string>({
                 ) : null}
               </span>
               {item.badge ? <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-danger px-1 text-[7px] font-semibold text-white">{item.badge}</span> : null}
-              {active ? <span className="absolute -bottom-[9px] left-3 right-3 h-px bg-primary shadow-[0_0_8px_var(--primary)]" /> : null}
+              {active ? <span className="absolute -bottom-[7px] left-3 right-3 h-px bg-primary shadow-[0_0_8px_var(--primary)]" /> : null}
             </button>
           );
         })}
