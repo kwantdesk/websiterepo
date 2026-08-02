@@ -102,7 +102,7 @@ export default function HistoricalGexPanel({
   }, [nearest?.sourceStrike, snapshot?.checkedAt]);
 
   return (
-    <aside className={`absolute inset-y-0 right-0 z-40 flex flex-col border-l border-border bg-panel/98 shadow-[-20px_0_60px_rgba(0,0,0,0.38)] backdrop-blur-xl ${paired ? "w-[min(430px,48vw)]" : "w-[min(430px,calc(100%-24px))]"}`}>
+    <aside className={`absolute inset-y-0 right-0 z-40 flex flex-col border-l border-border bg-panel/98 backdrop-blur-xl ${paired ? "w-[min(390px,28vw)]" : "w-[min(430px,36vw)]"}`}>
       <div className="flex min-h-14 items-center gap-3 border-b border-border px-4">
         <span className="flex h-8 w-8 items-center justify-center rounded-xl border border-primary/25 bg-primary/10 text-primary"><Activity className="h-4 w-4" /></span>
         <div className="min-w-0">

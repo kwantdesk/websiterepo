@@ -182,8 +182,8 @@ export default function HistoricalZyonPanel({
 
   return (
     <aside
-      className={`absolute inset-y-0 z-40 flex w-[min(430px,48vw)] flex-col border-l border-border bg-panel/98 shadow-[-20px_0_60px_rgba(0,0,0,0.38)] backdrop-blur-xl ${paired ? "" : "right-0"}`}
-      style={paired ? { right: "min(430px, 48vw)" } : undefined}
+      className={`absolute inset-y-0 z-40 flex flex-col border-l border-border bg-panel/98 backdrop-blur-xl ${paired ? "w-[min(390px,28vw)]" : "right-0 w-[min(430px,36vw)]"}`}
+      style={paired ? { right: "min(390px, 28vw)" } : undefined}
     >
       <header className="flex min-h-14 shrink-0 items-center gap-3 border-b border-border px-3">
         <span className="relative flex h-8 w-8 items-center justify-center rounded-xl border border-primary/25 bg-primary/10 text-primary">

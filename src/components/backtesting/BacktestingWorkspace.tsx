@@ -1178,6 +1178,14 @@ export default function BacktestingWorkspace() {
     </div>
   );
 
+  const zyonDocked = started && showZyonPanel && Boolean(historicalZyonContext);
+  const gexDocked = started && showGexPanel;
+  const replayDockWidth = gexDocked && zyonDocked
+    ? "min(780px, 56vw)"
+    : gexDocked || zyonDocked
+      ? "min(430px, 36vw)"
+      : "0px";
+
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background">
       <header className="relative z-40 shrink-0 border-b border-border bg-panel">
@@ -1400,7 +1408,11 @@ export default function BacktestingWorkspace() {
       </header>
 
       <div className="relative min-h-0 flex-1 overflow-hidden">
-        {started ? (
+        <div
+          className="relative h-full min-h-0 overflow-hidden transition-[margin-right] duration-200 ease-out"
+          style={{ marginRight: replayDockWidth }}
+        >
+          {started ? (
           <Chart
             candles={visibleCandles}
             levels={activeLevels}
@@ -1424,9 +1436,9 @@ export default function BacktestingWorkspace() {
             valueAreaLevelsDescription="Historical prior-session and prior-week VAH, VAL, POC and VWAP"
             onToggleValueAreaLevels={() => toggleLevel("valueArea")}
           />
-        ) : null}
+          ) : null}
 
-        {started && levelState.quant && quantLevels.length === 0 && activeOptionsSnapshot ? (
+          {started && levelState.quant && quantLevels.length === 0 && activeOptionsSnapshot ? (
           <div className="pointer-events-none absolute right-4 top-[62px] z-30 flex max-w-[340px] items-start gap-2.5 rounded-xl border border-amber-400/30 bg-[#0b0b0b]/94 px-3 py-2.5 shadow-[0_14px_40px_rgba(0,0,0,0.42)] backdrop-blur-xl">
             <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border border-amber-400/25 bg-amber-400/10 text-amber-300">
               <TriangleAlert className="h-3.5 w-3.5" />
@@ -1442,31 +1454,9 @@ export default function BacktestingWorkspace() {
               </div>
             </div>
           </div>
-        ) : null}
+          ) : null}
 
-        {started && showGexPanel ? (
-          <HistoricalGexPanel
-            snapshot={gammaPositioning}
-            loading={levelLoading && !gammaPositioning}
-            error={levelError.gamma}
-            releaseState={activeOptionsSnapshot?.kwantReleased
-              ? "RELEASED"
-              : activeOptionsSnapshot?.mode === "INTRADAY" ? "OPENING" : "PREOPEN"}
-            sessionDate={activeOptionsSnapshot?.newYorkDate ?? date}
-            paired={showZyonPanel}
-            onClose={() => setShowGexPanel(false)}
-          />
-        ) : null}
-
-        {started && showZyonPanel && historicalZyonContext ? (
-          <HistoricalZyonPanel
-            context={historicalZyonContext}
-            paired={showGexPanel}
-            onClose={() => setShowZyonPanel(false)}
-          />
-        ) : null}
-
-        {started && intervalCommandOpen ? (
+          {started && intervalCommandOpen ? (
           <div className="pointer-events-none absolute inset-0 z-50 flex items-center justify-center">
             <div
               ref={intervalCommandPanelRef}
@@ -1502,9 +1492,9 @@ export default function BacktestingWorkspace() {
               </div>
             </div>
           </div>
-        ) : null}
+          ) : null}
 
-        {!started && !loading ? (
+          {!started && !loading ? (
           <div className="absolute inset-0 z-20 flex items-center justify-center overflow-y-auto bg-background px-4 py-8">
             <div className="pointer-events-none absolute inset-0 opacity-35 [background-image:linear-gradient(to_right,var(--border)_1px,transparent_1px),linear-gradient(to_bottom,var(--border)_1px,transparent_1px)] [background-size:64px_64px]" />
             <div className="pointer-events-none absolute left-1/2 top-1/2 h-[360px] w-[560px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary/[0.06] blur-[100px]" />
@@ -1512,15 +1502,15 @@ export default function BacktestingWorkspace() {
               {renderSetupPanel(false)}
             </div>
           </div>
-        ) : null}
+          ) : null}
 
-        {loading ? (
+          {loading ? (
           <div className="absolute inset-0 z-40 bg-background/90">
             <KwantLoader className="h-full" title="Building replay" detail="Loading one week of CME context and the selected replay session." />
           </div>
-        ) : null}
+          ) : null}
 
-        {started ? (
+          {started ? (
           <div className="absolute bottom-8 left-1/2 z-30 w-[min(920px,calc(100%-32px))] -translate-x-1/2 rounded-2xl border border-border bg-panel/95 px-3 py-3 shadow-2xl backdrop-blur-xl">
             <div className="flex flex-wrap items-center gap-2">
               <button type="button" onClick={() => void togglePlayback()} disabled={tickerLoading} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary text-background hover:brightness-110 disabled:cursor-wait disabled:opacity-60">
@@ -1582,6 +1572,29 @@ export default function BacktestingWorkspace() {
               ))}
             </div>
           </div>
+          ) : null}
+        </div>
+
+        {gexDocked ? (
+          <HistoricalGexPanel
+            snapshot={gammaPositioning}
+            loading={levelLoading && !gammaPositioning}
+            error={levelError.gamma}
+            releaseState={activeOptionsSnapshot?.kwantReleased
+              ? "RELEASED"
+              : activeOptionsSnapshot?.mode === "INTRADAY" ? "OPENING" : "PREOPEN"}
+            sessionDate={activeOptionsSnapshot?.newYorkDate ?? date}
+            paired={zyonDocked}
+            onClose={() => setShowGexPanel(false)}
+          />
+        ) : null}
+
+        {zyonDocked && historicalZyonContext ? (
+          <HistoricalZyonPanel
+            context={historicalZyonContext}
+            paired={gexDocked}
+            onClose={() => setShowZyonPanel(false)}
+          />
         ) : null}
       </div>
 
