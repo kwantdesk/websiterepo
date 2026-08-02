@@ -533,6 +533,7 @@ export default function BacktestingWorkspace() {
   const pendingLevelRefreshRef = useRef<{ clock: number; futuresPrice: number | null } | null>(null);
   const levelRefreshTimerRef = useRef<number | null>(null);
   const levelRequestIdRef = useRef(0);
+  const levelLoadingRef = useRef(false);
   const intervalCommandInputRef = useRef<HTMLInputElement>(null);
   const intervalCommandPanelRef = useRef<HTMLDivElement>(null);
   const timeframeMenuRef = useRef<HTMLDivElement>(null);
@@ -623,6 +624,11 @@ export default function BacktestingWorkspace() {
   const loadLevels = useCallback(async (clock: number, force = false, futuresPrice: number | null = null) => {
     const snapshot = replayOptionsSnapshot(clock);
     if (!force && snapshot.key === levelSnapshotKey) return;
+    if (levelLoadingRef.current) {
+      pendingLevelRefreshRef.current = { clock, futuresPrice };
+      return;
+    }
+    levelLoadingRef.current = true;
     setLevelSnapshotKey(snapshot.key);
     setSnapshotDate(snapshot.sessionDate);
     setLevelLoading(true);
@@ -634,61 +640,84 @@ export default function BacktestingWorkspace() {
       ? `&futuresPrice=${encodeURIComponent(String(futuresPrice))}`
       : "";
     const eodGammaUrl = `/api/chart-gamma-levels?root=${root}&source=${gammaSource}&calibrated=1&replay=1&sessionDate=${completedDate}${replayPrice}`;
-    const gammaRequest = snapshot.mode === "INTRADAY" && futuresPrice !== null
+    const eodGammaRequest = requestJson<ChartGammaLevelsPayload & { error?: string }>(eodGammaUrl, { cache: "force-cache" });
+    const intradayGammaRequest = snapshot.mode === "INTRADAY" && futuresPrice !== null
       ? requestJson<ChartGammaLevelsPayload & { error?: string }>(
           `/api/chart-gamma-levels?root=${root}&source=${gammaSource}&calibrated=1&replay=1&sessionDate=${snapshot.sessionDate}&asOf=${encodeURIComponent(snapshot.asOf)}&futuresPrice=${encodeURIComponent(String(futuresPrice))}`,
           { cache: "force-cache" },
         )
-      : requestJson<ChartGammaLevelsPayload & { error?: string }>(eodGammaUrl, { cache: "force-cache" });
-    const quantRequest = snapshot.mode === "EOD"
-      ? requestJson<GameplanPayload & { error?: string }>(
-          `/api/gameplan?root=${root}&sessionDate=${snapshot.sessionDate}`,
-          { cache: "force-cache" },
-        )
       : Promise.resolve(null);
+    // Quant levels begin from the last completed New York plan. They are
+    // replaced only when a genuine intraday Gamma frame becomes eligible.
+    const quantRequest = requestJson<GameplanPayload & { error?: string }>(
+      `/api/gameplan?root=${root}&sessionDate=${completedDate}`,
+      { cache: "force-cache" },
+    );
     const valueAreaRequest = valueAreaSnapshotKey === snapshot.sessionDate && valueAreaLevels.length
       ? Promise.resolve(null)
       : requestJson<ValueAreaPayload>(
           `/api/databento/value-area?symbol=${encodeURIComponent(selectedDefinition.symbol)}&asOf=${encodeURIComponent(new Date(clock).toISOString())}`,
           { cache: "force-cache" },
         );
-    const [gamma, quant, valueArea] = await Promise.allSettled([
-      gammaRequest,
-      quantRequest,
-      valueAreaRequest,
-    ]);
-    if (requestId !== levelRequestIdRef.current) return;
-    if (gamma.status === "fulfilled") {
-      setGammaLevels(gammaSnapshot(gamma.value, settings));
-      setGammaPositioning(gamma.value);
-    } else {
-      setGammaLevels([]);
-      setGammaPositioning(null);
+    try {
+      // Paint the completed-session structure first. Do not make it wait for
+      // the heavier intraday map or value-area reconstruction.
+      const [eodGamma, quant] = await Promise.allSettled([eodGammaRequest, quantRequest]);
+      if (requestId !== levelRequestIdRef.current) return;
+      if (eodGamma.status === "fulfilled") {
+        setGammaLevels(gammaSnapshot(eodGamma.value, settings));
+        setGammaPositioning(eodGamma.value);
+      }
+      if (quant.status === "fulfilled") {
+        const completedPlan = quantSnapshot(quant.value, settings);
+        setQuantLevels(completedPlan.levels);
+        setQuantZones(completedPlan.zones);
+      } else if (eodGamma.status === "fulfilled") {
+        const completedFallback = quantSnapshotFromGamma(eodGamma.value, root, settings);
+        setQuantLevels(completedFallback.levels);
+        setQuantZones(completedFallback.zones);
+      }
+
+      const [intradayGamma, valueArea] = await Promise.allSettled([intradayGammaRequest, valueAreaRequest]);
+      if (requestId !== levelRequestIdRef.current) return;
+      const eligibleIntraday = intradayGamma.status === "fulfilled"
+        && intradayGamma.value !== null
+        && intradayGamma.value.snapshotMode === "HISTORICAL_INTRADAY";
+      if (eligibleIntraday && intradayGamma.value) {
+        setGammaLevels(gammaSnapshot(intradayGamma.value, settings));
+        setGammaPositioning(intradayGamma.value);
+        const livePlan = quantSnapshotFromGamma(intradayGamma.value, root, settings);
+        setQuantLevels(livePlan.levels);
+        setQuantZones(livePlan.zones);
+      }
+      if (valueArea.status === "fulfilled" && valueArea.value) {
+        setValueAreaLevels(valueAreaSnapshot(valueArea.value));
+        setValueAreaSnapshotKey(snapshot.sessionDate);
+      } else if (valueArea.status === "rejected") {
+        setValueAreaLevels([]);
+      }
+
+      const gammaAvailable = eodGamma.status === "fulfilled" || intradayGamma.status === "fulfilled";
+      const quantAvailable = quant.status === "fulfilled" || eodGamma.status === "fulfilled" || eligibleIntraday;
+      setLevelError({
+        gamma: gammaAvailable
+          ? ""
+          : eodGamma.status === "rejected" && eodGamma.reason instanceof Error
+            ? eodGamma.reason.message
+            : intradayGamma.status === "rejected" && intradayGamma.reason instanceof Error
+              ? intradayGamma.reason.message
+              : "Gamma unavailable",
+        quant: quantAvailable
+          ? ""
+          : quant.reason instanceof Error ? quant.reason.message : "Quant levels unavailable",
+        valueArea: valueArea.status === "rejected"
+          ? valueArea.reason instanceof Error ? valueArea.reason.message : "Value area unavailable"
+          : "",
+      });
+    } finally {
+      levelLoadingRef.current = false;
+      setLevelLoading(false);
     }
-    if (snapshot.mode === "INTRADAY" && gamma.status === "fulfilled") {
-      const intradaySnapshot = quantSnapshotFromGamma(gamma.value, root, settings);
-      setQuantLevels(intradaySnapshot.levels);
-      setQuantZones(intradaySnapshot.zones);
-    } else if (quant.status === "fulfilled" && quant.value) {
-      const snapshot = quantSnapshot(quant.value, settings);
-      setQuantLevels(snapshot.levels);
-      setQuantZones(snapshot.zones);
-    } else {
-      setQuantLevels([]);
-      setQuantZones([]);
-    }
-    if (valueArea.status === "fulfilled" && valueArea.value) {
-      setValueAreaLevels(valueAreaSnapshot(valueArea.value));
-      setValueAreaSnapshotKey(snapshot.sessionDate);
-    } else if (valueArea.status === "rejected") setValueAreaLevels([]);
-    setLevelError({
-      gamma: gamma.status === "rejected" ? (gamma.reason instanceof Error ? gamma.reason.message : "Gamma unavailable") : "",
-      quant: snapshot.mode === "INTRADAY"
-        ? gamma.status === "rejected" ? (gamma.reason instanceof Error ? gamma.reason.message : "Quant levels unavailable") : ""
-        : quant.status === "rejected" ? (quant.reason instanceof Error ? quant.reason.message : "Quant levels unavailable") : "",
-      valueArea: valueArea.status === "rejected" ? (valueArea.reason instanceof Error ? valueArea.reason.message : "Value area unavailable") : "",
-    });
-    setLevelLoading(false);
   }, [levelSnapshotKey, root, selectedDefinition.symbol, settings, valueAreaLevels.length, valueAreaSnapshotKey]);
 
   const loadReplayCandles = useCallback(async (requestedTimeframe: ReplayTimeframe, startAt: number) => {
@@ -781,6 +810,7 @@ export default function BacktestingWorkspace() {
     setTickerCoverageEnd(0);
     setTickerError("");
     tickerRequestIdRef.current += 1;
+    levelRequestIdRef.current += 1;
     setValueAreaSnapshotKey("");
     setSnapshotDate("");
     setLevelSnapshotKey("");
@@ -996,6 +1026,14 @@ export default function BacktestingWorkspace() {
       void loadLevels(pending.clock, false, pending.futuresPrice);
     }, delay);
   }, [levelSnapshotKey, loadLevels, replayClock, started, visibleCandles]);
+
+  useEffect(() => {
+    if (levelLoading || !started || levelLoadingRef.current) return;
+    const pending = pendingLevelRefreshRef.current;
+    if (!pending) return;
+    pendingLevelRefreshRef.current = null;
+    void loadLevels(pending.clock, true, pending.futuresPrice);
+  }, [levelLoading, loadLevels, started]);
 
   useEffect(() => () => {
     if (levelRefreshTimerRef.current !== null) window.clearTimeout(levelRefreshTimerRef.current);
