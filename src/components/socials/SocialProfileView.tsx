@@ -439,6 +439,7 @@ export default function SocialProfileView({
               avatarUrl={profile.avatarUrl}
               size="xl"
               statusClassName={presenceOption(effectivePresenceStatus(profile.presenceStatus, profile.lastSeenAt)).dotClassName}
+              statusPositionClassName="!-bottom-1.5 !-right-1.5"
               className="-mt-12 rounded-full border-[5px] border-panel shadow-2xl"
             />
 

@@ -8,6 +8,7 @@ type UserAvatarProps = {
   size?: UserAvatarSize;
   active?: boolean;
   statusClassName?: string;
+  statusPositionClassName?: string;
   className?: string;
   imageClassName?: string;
 };
@@ -42,6 +43,7 @@ export default function UserAvatar({
   size = "md",
   active = false,
   statusClassName = "",
+  statusPositionClassName = "",
   className = "",
   imageClassName = "",
 }: UserAvatarProps) {
@@ -63,7 +65,7 @@ export default function UserAvatar({
           />
         ) : null}
       </span>
-      {active || statusClassName ? <span className={`absolute -bottom-px -right-px rounded-full border-panel shadow-[0_0_8px_currentColor] ${statusClassName || "bg-primary text-primary"} ${classes.status}`} /> : null}
+      {active || statusClassName ? <span className={`absolute -bottom-px -right-px rounded-full border-panel shadow-[0_0_8px_currentColor] ${statusPositionClassName} ${statusClassName || "bg-primary text-primary"} ${classes.status}`} /> : null}
     </span>
   );
 }
