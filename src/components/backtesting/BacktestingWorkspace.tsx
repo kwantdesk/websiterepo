@@ -219,11 +219,13 @@ export default function BacktestingWorkspace() {
   const [date, setDate] = useState(defaultReplayDate);
   const [time, setTime] = useState("09:30");
   const [candles, setCandles] = useState<Candle[]>([]);
+  const [sessionStartAt, setSessionStartAt] = useState<number | null>(null);
   const [replayStartIndex, setReplayStartIndex] = useState(0);
   const [visibleIndex, setVisibleIndex] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState<(typeof SPEEDS)[number]>(1);
   const [loading, setLoading] = useState(false);
+  const [timeframeLoading, setTimeframeLoading] = useState(false);
   const [error, setError] = useState("");
   const [started, setStarted] = useState(false);
   const [levelState, setLevelState] = useState<Record<LevelFamily, boolean>>({ gamma: false, quant: false, valueArea: false });
@@ -287,6 +289,25 @@ export default function BacktestingWorkspace() {
     setLevelLoading(false);
   }, [root, selectedDefinition.symbol, settings, snapshotDate]);
 
+  const loadReplayCandles = useCallback(async (requestedTimeframe: ReplayTimeframe, startAt: number) => {
+    const start = new Date(startAt - 9 * 24 * 60 * 60_000).toISOString();
+    const end = new Date(Math.min(Date.now(), startAt + 30 * 60 * 60_000)).toISOString();
+    const payload = await requestJson<SessionPayload>(
+      `/api/backtesting/session?symbol=${encodeURIComponent(selectedDefinition.symbol)}&timeframe=${requestedTimeframe}&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`,
+    );
+    const ordered = payload.candles
+      .filter((candle) => Number.isFinite(candle.timestamp) && candle.timestamp <= Date.parse(end))
+      .sort((left, right) => left.timestamp - right.timestamp);
+    return { ordered, end };
+  }, [selectedDefinition.symbol]);
+
+  const candleIndexAt = useCallback((ordered: Candle[], clock: number) => {
+    if (!ordered.length) return 0;
+    const firstFuture = ordered.findIndex((candle) => candle.timestamp > clock);
+    if (firstFuture < 0) return ordered.length - 1;
+    return Math.max(0, firstFuture - 1);
+  }, []);
+
   const startReplay = useCallback(async () => {
     const startAt = newYorkLocalToUtc(date, time);
     if (!Number.isFinite(startAt) || startAt >= Date.now()) {
@@ -303,17 +324,10 @@ export default function BacktestingWorkspace() {
     setValueAreaLevels([]);
     setSnapshotDate("");
     try {
-      const start = new Date(startAt - 9 * 24 * 60 * 60_000).toISOString();
-      const end = new Date(Math.min(Date.now(), startAt + 30 * 60 * 60_000)).toISOString();
-      const payload = await requestJson<SessionPayload>(
-        `/api/backtesting/session?symbol=${encodeURIComponent(selectedDefinition.symbol)}&timeframe=${timeframe}&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`,
-      );
-      const ordered = payload.candles
-        .filter((candle) => Number.isFinite(candle.timestamp) && candle.timestamp <= Date.parse(end))
-        .sort((left, right) => left.timestamp - right.timestamp);
-      const firstFuture = ordered.findIndex((candle) => candle.timestamp > startAt);
-      const index = firstFuture <= 0 ? Math.max(0, ordered.length - 1) : firstFuture - 1;
+      const { ordered } = await loadReplayCandles(timeframe, startAt);
+      const index = candleIndexAt(ordered, startAt);
       setCandles(ordered);
+      setSessionStartAt(startAt);
       setReplayStartIndex(index);
       setVisibleIndex(index);
       setStarted(true);
@@ -326,7 +340,26 @@ export default function BacktestingWorkspace() {
     } finally {
       setLoading(false);
     }
-  }, [date, loadLevels, selectedDefinition.symbol, time, timeframe]);
+  }, [candleIndexAt, date, loadLevels, loadReplayCandles, time, timeframe]);
+
+  const changeReplayTimeframe = useCallback(async (nextTimeframe: ReplayTimeframe) => {
+    if (!started || !sessionStartAt || nextTimeframe === timeframe || timeframeLoading) return;
+    const targetClock = replayClock ?? sessionStartAt;
+    setPlaying(false);
+    setTimeframeLoading(true);
+    setError("");
+    try {
+      const { ordered } = await loadReplayCandles(nextTimeframe, sessionStartAt);
+      setTimeframe(nextTimeframe);
+      setCandles(ordered);
+      setReplayStartIndex(candleIndexAt(ordered, sessionStartAt));
+      setVisibleIndex(candleIndexAt(ordered, targetClock));
+    } catch (problem) {
+      setError(problem instanceof Error ? problem.message : "That historical timeframe could not be loaded.");
+    } finally {
+      setTimeframeLoading(false);
+    }
+  }, [candleIndexAt, loadReplayCandles, replayClock, sessionStartAt, started, timeframe, timeframeLoading]);
 
   useEffect(() => {
     if (!playing || !candles.length) return;
@@ -403,14 +436,6 @@ export default function BacktestingWorkspace() {
             <input type="time" value={time} onChange={(event) => setTime(event.target.value)} className="h-11 w-full rounded-xl border border-border bg-background pl-9 pr-3 font-mono text-[12px] text-foreground outline-none focus:border-primary/40" />
           </div>
         </label>
-        <label className="space-y-2 sm:col-span-2">
-          <span className="text-[9px] font-semibold uppercase tracking-[0.14em] text-muted">Chart timeframe</span>
-          <div className="grid grid-cols-6 gap-1 rounded-xl border border-border bg-background p-1">
-            {TIMEFRAMES.map((option) => (
-              <button key={option} type="button" onClick={() => setTimeframe(option)} className={`h-9 rounded-lg font-mono text-[10px] ${timeframe === option ? "bg-primary text-background" : "text-muted hover:bg-surface hover:text-foreground"}`}>{option}</button>
-            ))}
-          </div>
-        </label>
         <div className="sm:col-span-2 rounded-2xl border border-border bg-background/45 p-4">
           <div className="flex items-center gap-2 text-[10px] font-semibold text-foreground"><Layers3 className="h-3.5 w-3.5 text-primary" /> Historical coverage</div>
           <div className="mt-3 grid gap-2 text-[9px] leading-4 text-muted sm:grid-cols-2">
@@ -447,8 +472,22 @@ export default function BacktestingWorkspace() {
           {started ? (
             <>
               <span className="rounded-lg border border-border bg-background/45 px-2.5 py-1.5 font-mono text-[9px] text-muted">
-                {selectedDefinition.id} · {timeframe}
+                {selectedDefinition.id}
               </span>
+              <div className="flex items-center gap-0.5 rounded-lg border border-border bg-background/45 p-0.5">
+                {TIMEFRAMES.map((option) => (
+                  <button
+                    key={option}
+                    type="button"
+                    onClick={() => void changeReplayTimeframe(option)}
+                    disabled={timeframeLoading}
+                    className={`h-7 min-w-8 rounded-md px-2 font-mono text-[9px] transition-colors disabled:cursor-wait ${timeframe === option ? "bg-primary text-background" : "text-muted hover:bg-surface hover:text-foreground"}`}
+                  >
+                    {option}
+                  </button>
+                ))}
+                {timeframeLoading ? <Loader2 className="mx-1 h-3 w-3 animate-spin text-primary" /> : null}
+              </div>
               <button
                 type="button"
                 onClick={() => toggleLevel("gamma")}
@@ -617,14 +656,6 @@ export default function BacktestingWorkspace() {
                 <div className="relative">
                   <Clock3 className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted" />
                   <input type="time" value={time} onChange={(event) => setTime(event.target.value)} className="h-11 w-full rounded-xl border border-border bg-background pl-9 pr-3 font-mono text-[12px] text-foreground outline-none focus:border-primary/40" />
-                </div>
-              </label>
-              <label className="space-y-2 sm:col-span-2">
-                <span className="text-[9px] font-semibold uppercase tracking-[0.14em] text-muted">Chart timeframe</span>
-                <div className="grid grid-cols-6 gap-1 rounded-xl border border-border bg-background p-1">
-                  {TIMEFRAMES.map((option) => (
-                    <button key={option} type="button" onClick={() => setTimeframe(option)} className={`h-9 rounded-lg font-mono text-[10px] ${timeframe === option ? "bg-primary text-background" : "text-muted hover:bg-surface hover:text-foreground"}`}>{option}</button>
-                  ))}
                 </div>
               </label>
               <div className="sm:col-span-2 rounded-2xl border border-border bg-background/45 p-4">
