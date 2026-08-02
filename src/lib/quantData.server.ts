@@ -2526,6 +2526,7 @@ function latestAtOrBefore<T extends { timestamp: number }>(rows: T[], timestamp:
 export async function getGexDeskHistory(
   sourceInput: string,
   instrumentInput: string = "NQ",
+  requestedSessionDate?: string,
 ): Promise<GexDeskHistoryPayload> {
   const instrument: GexDeskHistoryInstrument = instrumentInput.trim().toUpperCase() === "ES" ? "ES" : "NQ";
   const compatibleSources: GexDeskHistorySourceSymbol[] = instrument === "ES"
@@ -2537,10 +2538,18 @@ export async function getGexDeskHistory(
     : "COMBINED";
   const symbols: GexDeskHistorySourceSymbol[] = source === "COMBINED" ? compatibleSources : [source];
   const session = getUsOptionsSession();
-  const start = `${session.sessionDate}T00:00:00.000Z`;
-  const end = new Date().toISOString();
+  const sessionDate = requestedSessionDate?.trim() || session.sessionDate;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(sessionDate) || Number.isNaN(Date.parse(`${sessionDate}T00:00:00Z`))) {
+    throw new QuantDataError("A valid replay session date is required.", 400, null);
+  }
+  if (sessionDate > session.sessionDate) {
+    throw new QuantDataError("A future options session cannot be replayed.", 400, null);
+  }
+  const currentSession = sessionDate === session.sessionDate;
+  const start = `${sessionDate}T00:00:00.000Z`;
+  const end = currentSession ? new Date().toISOString() : `${offsetIsoDate(sessionDate, 1)}T00:00:00.000Z`;
   const [panelResults, futuresResult] = await Promise.all([
-    Promise.allSettled(symbols.map((symbol) => getGexMapPanel(symbol, "GAMMA", session.sessionDate))),
+    Promise.allSettled(symbols.map((symbol) => getGexMapPanel(symbol, "GAMMA", sessionDate))),
     getDatabentoBars(`${instrument}.v.0`, "1m", start, end),
   ]);
   const panels = panelResults.flatMap((result, index) => result.status === "fulfilled"
@@ -2650,13 +2659,13 @@ export async function getGexDeskHistory(
     ? "PARTIAL"
     : statuses.some((value) => value === "DELAYED")
       ? "DELAYED"
-      : session.marketOpen
+      : currentSession && session.marketOpen
         ? "LIVE"
         : "LAST_SESSION";
   return {
     instrument,
     source,
-    sessionDate: session.sessionDate,
+    sessionDate,
     expiration: panels.map(({ panel }) => panel.expiration).filter(Boolean).join(" / ") || null,
     asOf: new Date(Math.max(...sampledTimestamps)).toISOString(),
     status,
@@ -2672,6 +2681,28 @@ export async function getGexDeskHistory(
     errors,
     disclosure: `Intraday gamma exposure mapped with timestamp-aligned source and ${instrument} prices. Change shows each bucket versus its prior sampled frame.`,
   };
+}
+
+export async function getGexDeskReplaySessionDates(limitInput: number = 5): Promise<string[]> {
+  const limit = Math.max(1, Math.min(10, Math.floor(limitInput)));
+  const session = getUsOptionsSession();
+  const result = await quantDataPost("/equities/tool/stock-price-over-time", {
+    timeRange: {
+      startTime: `${offsetIsoDate(session.sessionDate, -18)}T00:00:00.000Z`,
+      endTime: `${offsetIsoDate(session.sessionDate, 1)}T00:00:00.000Z`,
+    },
+    aggregationPeriod: "1d",
+    filter: { ticker: "QQQ" },
+  }, 5 * 60_000);
+  const sessionDates = [...new Set(parseCandles(result.payload)
+    .map((candle) => new Date(candle.timestamp).toISOString().slice(0, 10))
+    .filter((date) => date <= session.sessionDate))]
+    .sort()
+    .slice(-limit);
+  if (!sessionDates.length) {
+    throw new QuantDataError("No recent US options sessions are available for replay.", 422, result.remaining);
+  }
+  return sessionDates;
 }
 
 export async function getOptionsFlowPayload(symbolInput: string, priceModeInput: string = "CASH") {
