@@ -3022,6 +3022,178 @@ export async function getCashCalibratedChartGammaLevels(
   };
 }
 
+function previousWeekdayIso(date: string) {
+  const value = new Date(`${date}T00:00:00.000Z`);
+  do value.setUTCDate(value.getUTCDate() - 1);
+  while (value.getUTCDay() === 0 || value.getUTCDay() === 6);
+  return value.toISOString().slice(0, 10);
+}
+
+function exposureAtFrame(mode: "GAMMA" | "DELTA", frame: GexMapFrame): ExposureSummary {
+  const strikes = frame.updates
+    .filter((row) => Number.isFinite(row.strike) && row.strike > 0)
+    .sort((left, right) => left.strike - right.strike);
+  return {
+    mode,
+    representation: "PER_ONE_PERCENT_MOVE",
+    net: strikes.reduce((sum, row) => sum + row.net, 0),
+    gross: strikes.reduce((sum, row) => sum + Math.abs(row.call) + Math.abs(row.put), 0),
+    strikes,
+    expiries: [],
+  };
+}
+
+/**
+ * Reconstruct the chart gamma state at a historical New York timestamp.
+ * Only interval-map frames timestamped at or before `asOf` are eligible. The
+ * moving front-expiry profile is combined with the previous completed New York
+ * EOD structure, then translated onto the contemporaneous CME futures price.
+ */
+export async function getHistoricalCashCalibratedChartGammaLevelsAt(
+  root: NativeGammaRoot,
+  sourceInput: string,
+  asOfInput: string,
+  futuresPrice: number,
+): Promise<ChartGammaLevelsPayload> {
+  const asOf = Date.parse(asOfInput);
+  if (!Number.isFinite(asOf) || asOf > Date.now()) {
+    throw new QuantDataError("A valid historical gamma replay timestamp is required.", 400, null);
+  }
+  if (!Number.isFinite(futuresPrice) || futuresPrice <= 0) {
+    throw new QuantDataError("A valid point-in-time CME futures price is required.", 400, null);
+  }
+
+  const source = (sourceInput || (root === "NQ" ? "QQQ" : "SPY")).trim().toUpperCase();
+  const compatible = root === "NQ" ? new Set(["NDX", "QQQ"]) : new Set(["SPX", "SPY"]);
+  if (!compatible.has(source)) {
+    throw new QuantDataError(`${source || "The requested source"} cannot be calibrated to ${root}.`, 400, null);
+  }
+  const sessionParts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date(asOf));
+  const readSessionPart = (type: Intl.DateTimeFormatPartTypes) =>
+    sessionParts.find((part) => part.type === type)?.value ?? "";
+  const sessionDate = `${readSessionPart("year")}-${readSessionPart("month")}-${readSessionPart("day")}`;
+
+  const [gammaPanel, deltaPanel, priorEod] = await Promise.all([
+    getGexMapPanel(source, "GAMMA", sessionDate),
+    getGexMapPanel(source, "DELTA", sessionDate).catch(() => null),
+    getChartGammaLevels(root, source, previousWeekdayIso(sessionDate)).catch(() => null),
+  ]);
+  const gammaFrame = [...gammaPanel.frames].reverse().find((frame) => frame.timestamp <= asOf);
+  if (!gammaFrame?.updates.length) {
+    throw new QuantDataError(`No ${source} intraday gamma frame exists at or before the replay clock.`, 422, null);
+  }
+  const deltaFrame = deltaPanel
+    ? [...deltaPanel.frames].reverse().find((frame) => frame.timestamp <= asOf) ?? null
+    : null;
+  const cashCandle = [...gammaPanel.candles].reverse().find((candle) => candle.timestamp <= asOf) ?? null;
+  const cashPrice = cashCandle?.close ?? null;
+  if (!cashPrice || cashPrice <= 0) {
+    throw new QuantDataError(`No ${source} price exists at or before the replay clock.`, 422, null);
+  }
+
+  const scale = futuresPrice / cashPrice;
+  if (!isOptionsFuturesRatioSane(source, scale)) {
+    throw new QuantDataError(`The historical ${source} to ${root} calibration is outside its validated range.`, 422, null);
+  }
+  const toFuturesPrice = (price: number) => Math.round((price * scale) / 0.25) * 0.25;
+  const gamma = exposureAtFrame("GAMMA", gammaFrame);
+  const delta = deltaFrame ? exposureAtFrame("DELTA", deltaFrame) : null;
+  const dynamicLevels = chartGammaSourceLevels(gamma, cashPrice, null, delta)
+    .map((level) => ({
+      ...level,
+      id: `historical-intraday-${level.id}`,
+      label: `${level.label} · intraday`,
+      price: toFuturesPrice(level.price),
+    }));
+
+  const structuralKinds = new Set<ChartGammaSourceLevel["kind"]>([
+    "CALL_WALL",
+    "PUT_WALL",
+    "HIGH_VOL_LEVEL",
+    "GAMMA_MAGNET",
+    "GAMMA_CENTRE",
+    "MAJOR_POSITIVE_OI",
+  ]);
+  const priorSource = priorEod?.sources.find((candidate) => candidate.symbol === source) ?? null;
+  const structuralLevels = (priorSource?.levels ?? [])
+    .filter((level) => structuralKinds.has(level.kind))
+    .map((level) => ({
+      ...level,
+      id: `prior-eod-${level.id}`,
+      label: `${level.label} · EOD`,
+      price: toFuturesPrice(level.price),
+    }));
+
+  const priorExpectedMax = priorSource?.levels.find((level) => level.kind === "EXPECTED_MOVE_MAX") ?? null;
+  const priorExpectedMin = priorSource?.levels.find((level) => level.kind === "EXPECTED_MOVE_MIN") ?? null;
+  const sessionCashOpen = gammaPanel.candles.find((candle) => candle.timestamp <= asOf)?.open ?? cashPrice;
+  const expectedMove = priorExpectedMax && priorExpectedMin
+    ? Math.abs(priorExpectedMax.price - priorExpectedMin.price) / 2
+    : null;
+  const expectedLevels: ChartGammaSourceLevel[] = expectedMove && expectedMove > 0
+    ? [
+        {
+          id: "historical-expected-move-max",
+          kind: "EXPECTED_MOVE_MAX",
+          label: "1D Max",
+          price: toFuturesPrice(sessionCashOpen + expectedMove),
+          value: null,
+          rank: 1,
+        },
+        {
+          id: "historical-expected-move-min",
+          kind: "EXPECTED_MOVE_MIN",
+          label: "1D Min",
+          price: toFuturesPrice(sessionCashOpen - expectedMove),
+          value: null,
+          rank: 1,
+        },
+      ]
+    : [];
+  const levels = mergeGammaLevelsAtSamePrice([
+    ...dynamicLevels,
+    ...structuralLevels,
+    ...expectedLevels,
+  ], 0.25);
+  const environment = classifyGammaEnvironment(gamma.net, gamma.gross);
+  const revision = JSON.stringify({
+    sessionDate,
+    frame: gammaFrame.timestamp,
+    scale: Number(scale.toFixed(8)),
+    levels: levels.map((level) => [level.kind, level.price, level.value]),
+  });
+  const calibratedSource: ChartGammaSourceSnapshot = {
+    symbol: root,
+    stockPrice: futuresPrice,
+    revision,
+    validationStrikes: gamma.strikes
+      .filter((row) => row.strike >= cashPrice * 0.97 && row.strike <= cashPrice * 1.03)
+      .map((row) => toFuturesPrice(row.strike)),
+    levels,
+  };
+
+  return {
+    root,
+    requestedSource: root,
+    checkedAt: new Date(gammaFrame.timestamp).toISOString(),
+    refreshAfterMs: 5 * 60_000,
+    marketOpen: false,
+    snapshotMode: "HISTORICAL_INTRADAY",
+    sessionDate,
+    environment,
+    revision,
+    sources: [calibratedSource],
+    dataOrigin: "CASH_CALIBRATED_FALLBACK",
+    calibrationSource: source as ChartGammaSourceSnapshot["symbol"],
+    levelPriceScale: scale,
+  };
+}
+
 export function getQuantDataHttpError(error: unknown) {
   if (error instanceof QuantDataError) {
     return { status: error.status, message: error.message, remaining: error.remaining };

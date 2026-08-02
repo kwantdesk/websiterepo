@@ -8,6 +8,7 @@ import {
   getCashCalibratedChartGammaLevels,
   getChartGammaLevels,
   getConfiguredQuantDataApiKey,
+  getHistoricalCashCalibratedChartGammaLevelsAt,
   getQuantDataHttpError,
 } from "@/lib/quantData.server";
 
@@ -37,6 +38,8 @@ export async function GET(request: NextRequest) {
   const root = (request.nextUrl.searchParams.get("root") || "").trim().toUpperCase();
   const source = (request.nextUrl.searchParams.get("source") || "").trim().toUpperCase();
   const sessionDate = request.nextUrl.searchParams.get("sessionDate")?.trim();
+  const asOf = request.nextUrl.searchParams.get("asOf")?.trim();
+  const futuresPrice = Number(request.nextUrl.searchParams.get("futuresPrice"));
   const calibratedRequest = request.nextUrl.searchParams.get("calibrated") === "1";
   const nativeFuturesRequest = !calibratedRequest && (root === "NQ" || root === "ES") && source === root;
   if (!nativeFuturesRequest && !getConfiguredQuantDataApiKey()) {
@@ -47,10 +50,16 @@ export async function GET(request: NextRequest) {
   }
   try {
     const payload = calibratedRequest && (root === "NQ" || root === "ES")
-      ? await getCashCalibratedChartGammaLevels(root, source, sessionDate)
+      ? asOf
+        ? await getHistoricalCashCalibratedChartGammaLevelsAt(root, source, asOf, futuresPrice)
+        : await getCashCalibratedChartGammaLevels(root, source, sessionDate)
       : await getChartGammaLevels(root, source, sessionDate);
     return NextResponse.json(payload, {
-      headers: { "Cache-Control": "private, no-store, max-age=0" },
+      headers: {
+        "Cache-Control": asOf || sessionDate
+          ? "private, max-age=86400, stale-while-revalidate=604800"
+          : "private, no-store, max-age=0",
+      },
     });
   } catch (error) {
     const problem = getQuantDataHttpError(error);

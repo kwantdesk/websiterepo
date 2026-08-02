@@ -102,7 +102,7 @@ export type ChartGammaLevelsPayload = {
   checkedAt: string;
   refreshAfterMs: number;
   marketOpen: boolean;
-  snapshotMode?: "LIVE" | "NEW_YORK_EOD";
+  snapshotMode?: "LIVE" | "NEW_YORK_EOD" | "HISTORICAL_INTRADAY";
   sessionDate: string;
   environment: {
     gammaRegime: GammaRegime;

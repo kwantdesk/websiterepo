@@ -97,7 +97,11 @@ export async function GET(request: NextRequest) {
       : options;
     const payload = buildGameplanPayload(calibratedOptions, root, liveSession);
     return NextResponse.json(payload, {
-      headers: { "Cache-Control": "private, no-store, max-age=0" },
+      headers: {
+        "Cache-Control": historical
+          ? "private, max-age=86400, stale-while-revalidate=604800"
+          : "private, no-store, max-age=0",
+      },
     });
   } catch (error) {
     const problem = getQuantDataHttpError(error);

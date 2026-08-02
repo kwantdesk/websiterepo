@@ -135,6 +135,41 @@ function latestCompletedOptionsSession(replayMs: number) {
   return previousWeekday(utcDate).toISOString().slice(0, 10);
 }
 
+function replayOptionsSnapshot(replayMs: number) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(new Date(replayMs));
+  const read = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value ?? "";
+  const sessionDate = `${read("year")}-${read("month")}-${read("day")}`;
+  const minute = Number(read("hour")) * 60 + Number(read("minute"));
+  const weekday = new Date(`${sessionDate}T00:00:00.000Z`).getUTCDay();
+  const newYorkOpen = 9 * 60 + 30;
+  const newYorkClose = 16 * 60;
+  const isTradingDay = weekday >= 1 && weekday <= 5;
+  if (isTradingDay && minute >= newYorkOpen && minute < newYorkClose) {
+    const fiveMinuteBucket = Math.floor(minute / 5) * 5;
+    return {
+      mode: "INTRADAY" as const,
+      sessionDate,
+      asOf: new Date(replayMs).toISOString(),
+      key: `${sessionDate}:INTRADAY:${fiveMinuteBucket}`,
+    };
+  }
+  const completedDate = latestCompletedOptionsSession(replayMs);
+  return {
+    mode: "EOD" as const,
+    sessionDate: completedDate,
+    asOf: null,
+    key: `${completedDate}:EOD`,
+  };
+}
+
 function formatReplayClock(timestamp: number, timeZone: string) {
   return new Intl.DateTimeFormat("en-US", {
     timeZone: normalizeTimeZone(timeZone),
@@ -194,6 +229,60 @@ function quantSnapshot(payload: GameplanPayload, settings: ChartSettings) {
     fillColor: `${colors[row.role]}16`,
     label: row.name,
   }));
+  return { levels, zones };
+}
+
+function quantSnapshotFromGamma(payload: ChartGammaLevelsPayload, root: "NQ" | "ES", settings: ChartSettings) {
+  const source = payload.sources.find((item) => item.symbol === payload.requestedSource && item.levels.length)
+    ?? payload.sources.find((item) => item.levels.length);
+  const colors: Record<GameplanRole, string> = {
+    magnet: settings.upColor,
+    wall: settings.downColor,
+    accelerant: "#F59E0B",
+    decision: "#22D3EE",
+  };
+  const roleFor = (kind: ChartGammaSourceLevelKind): GameplanRole => {
+    if (kind === "GAMMA_MAGNET") return "magnet";
+    if (kind === "EXPECTED_MOVE_MAX" || kind === "EXPECTED_MOVE_MIN") return "accelerant";
+    if (kind === "GAMMA_CENTRE" || kind === "ZERO_GAMMA") return "decision";
+    return "wall";
+  };
+  const nameFor = (kind: ChartGammaSourceLevelKind) => {
+    if (kind === "CALL_WALL") return "THE CEILING";
+    if (kind === "PUT_WALL") return "THE FORTRESS";
+    if (kind === "GAMMA_MAGNET") return "THE MAGNET";
+    if (kind === "GAMMA_CENTRE" || kind === "ZERO_GAMMA") return "THE HINGE";
+    if (kind === "EXPECTED_MOVE_MAX") return "THE UPPER EDGE";
+    if (kind === "EXPECTED_MOVE_MIN") return "THE TRAPDOOR";
+    return "POSITIONING WALL";
+  };
+  const rows = mergeGammaLevelsAtSamePrice(source?.levels ?? [], 0.25).slice(0, 16);
+  const levels: ChartLevel[] = rows.map((row, index) => {
+    const role = roleFor(row.kind);
+    return {
+      id: `replay-quant-intraday-${payload.sessionDate}-${index}`,
+      price: row.price,
+      color: colors[role],
+      label: `${nameFor(row.kind)} · ${role.toUpperCase()}`,
+      lineStyle: role === "decision" ? "solid" : role === "accelerant" ? "dotted" : "dashed",
+      lineWidth: row.rank <= 2 ? 2 : 1,
+      axisLabelVisible: true,
+    };
+  });
+  const zones: ChartZone[] = rows.map((row, index) => {
+    const role = roleFor(row.kind);
+    const halfWidth = root === "NQ"
+      ? role === "magnet" ? 12 : 6
+      : role === "magnet" ? 3 : 1.5;
+    return {
+      id: `replay-quant-intraday-zone-${payload.sessionDate}-${index}`,
+      low: row.price - halfWidth,
+      high: row.price + halfWidth,
+      color: colors[role],
+      fillColor: `${colors[role]}16`,
+      label: nameFor(row.kind),
+    };
+  });
   return { levels, zones };
 }
 
@@ -262,8 +351,14 @@ export default function BacktestingWorkspace() {
   const [quantLevels, setQuantLevels] = useState<ChartLevel[]>([]);
   const [quantZones, setQuantZones] = useState<ChartZone[]>([]);
   const [valueAreaLevels, setValueAreaLevels] = useState<ChartLevel[]>([]);
+  const [valueAreaSnapshotKey, setValueAreaSnapshotKey] = useState("");
   const [snapshotDate, setSnapshotDate] = useState("");
+  const [levelSnapshotKey, setLevelSnapshotKey] = useState("");
   const accumulatorRef = useRef(0);
+  const lastLevelLoadAtRef = useRef(0);
+  const pendingLevelRefreshRef = useRef<{ clock: number; futuresPrice: number | null } | null>(null);
+  const levelRefreshTimerRef = useRef<number | null>(null);
+  const levelRequestIdRef = useRef(0);
 
   useEffect(() => {
     const storedSettings = loadStoredChartSettings();
@@ -277,6 +372,7 @@ export default function BacktestingWorkspace() {
   const selectedDefinition = INSTRUMENTS.find((item) => item.id === instrument) ?? INSTRUMENTS[0];
   const root = instrument === "NQ" || instrument === "MNQ" ? "NQ" : "ES";
   const replayClock = candles[Math.min(visibleIndex, Math.max(0, candles.length - 1))]?.timestamp ?? null;
+  const activeOptionsSnapshot = replayClock ? replayOptionsSnapshot(replayClock) : null;
   const visibleCandles = useMemo(() => candles.slice(0, visibleIndex + 1), [candles, visibleIndex]);
   const activeLevels = useMemo(() => [
     ...(levelState.gamma ? gammaLevels : []),
@@ -285,27 +381,48 @@ export default function BacktestingWorkspace() {
   ], [gammaLevels, levelState, quantLevels, valueAreaLevels]);
   const activeZones = levelState.quant ? quantZones : [];
 
-  const loadLevels = useCallback(async (clock: number, force = false) => {
-    const eligibleDate = latestCompletedOptionsSession(clock);
-    if (!force && eligibleDate === snapshotDate) return;
-    setSnapshotDate(eligibleDate);
+  const loadLevels = useCallback(async (clock: number, force = false, futuresPrice: number | null = null) => {
+    const snapshot = replayOptionsSnapshot(clock);
+    if (!force && snapshot.key === levelSnapshotKey) return;
+    setLevelSnapshotKey(snapshot.key);
+    setSnapshotDate(snapshot.sessionDate);
     setLevelLoading(true);
     setLevelError({ gamma: "", quant: "", valueArea: "" });
+    const requestId = ++levelRequestIdRef.current;
     const gammaSource = root === "NQ" ? "QQQ" : "SPY";
+    const completedDate = latestCompletedOptionsSession(clock);
+    const eodGammaUrl = `/api/chart-gamma-levels?root=${root}&source=${gammaSource}&calibrated=1&sessionDate=${completedDate}`;
+    const gammaRequest = snapshot.mode === "INTRADAY" && futuresPrice !== null
+      ? requestJson<ChartGammaLevelsPayload & { error?: string }>(
+          `/api/chart-gamma-levels?root=${root}&source=${gammaSource}&calibrated=1&sessionDate=${snapshot.sessionDate}&asOf=${encodeURIComponent(snapshot.asOf)}&futuresPrice=${encodeURIComponent(String(futuresPrice))}`,
+          { cache: "force-cache" },
+        ).catch(() => requestJson<ChartGammaLevelsPayload & { error?: string }>(eodGammaUrl, { cache: "force-cache" }))
+      : requestJson<ChartGammaLevelsPayload & { error?: string }>(eodGammaUrl, { cache: "force-cache" });
+    const quantRequest = snapshot.mode === "EOD"
+      ? requestJson<GameplanPayload & { error?: string }>(
+          `/api/gameplan?root=${root}&sessionDate=${snapshot.sessionDate}`,
+          { cache: "force-cache" },
+        )
+      : Promise.resolve(null);
+    const valueAreaRequest = valueAreaSnapshotKey === snapshot.sessionDate && valueAreaLevels.length
+      ? Promise.resolve(null)
+      : requestJson<ValueAreaPayload>(
+          `/api/databento/value-area?symbol=${encodeURIComponent(selectedDefinition.symbol)}&asOf=${encodeURIComponent(new Date(clock).toISOString())}`,
+          { cache: "force-cache" },
+        );
     const [gamma, quant, valueArea] = await Promise.allSettled([
-      requestJson<ChartGammaLevelsPayload & { error?: string }>(
-        `/api/chart-gamma-levels?root=${root}&source=${gammaSource}&calibrated=1&sessionDate=${eligibleDate}`,
-      ),
-      requestJson<GameplanPayload & { error?: string }>(
-        `/api/gameplan?root=${root}&sessionDate=${eligibleDate}`,
-      ),
-      requestJson<ValueAreaPayload>(
-        `/api/databento/value-area?symbol=${encodeURIComponent(selectedDefinition.symbol)}&asOf=${encodeURIComponent(new Date(clock).toISOString())}`,
-      ),
+      gammaRequest,
+      quantRequest,
+      valueAreaRequest,
     ]);
+    if (requestId !== levelRequestIdRef.current) return;
     if (gamma.status === "fulfilled") setGammaLevels(gammaSnapshot(gamma.value, settings));
     else setGammaLevels([]);
-    if (quant.status === "fulfilled") {
+    if (snapshot.mode === "INTRADAY" && gamma.status === "fulfilled") {
+      const intradaySnapshot = quantSnapshotFromGamma(gamma.value, root, settings);
+      setQuantLevels(intradaySnapshot.levels);
+      setQuantZones(intradaySnapshot.zones);
+    } else if (quant.status === "fulfilled" && quant.value) {
       const snapshot = quantSnapshot(quant.value, settings);
       setQuantLevels(snapshot.levels);
       setQuantZones(snapshot.zones);
@@ -313,15 +430,19 @@ export default function BacktestingWorkspace() {
       setQuantLevels([]);
       setQuantZones([]);
     }
-    if (valueArea.status === "fulfilled") setValueAreaLevels(valueAreaSnapshot(valueArea.value));
-    else setValueAreaLevels([]);
+    if (valueArea.status === "fulfilled" && valueArea.value) {
+      setValueAreaLevels(valueAreaSnapshot(valueArea.value));
+      setValueAreaSnapshotKey(snapshot.sessionDate);
+    } else if (valueArea.status === "rejected") setValueAreaLevels([]);
     setLevelError({
       gamma: gamma.status === "rejected" ? (gamma.reason instanceof Error ? gamma.reason.message : "Gamma unavailable") : "",
-      quant: quant.status === "rejected" ? (quant.reason instanceof Error ? quant.reason.message : "Quant levels unavailable") : "",
+      quant: snapshot.mode === "INTRADAY"
+        ? gamma.status === "rejected" ? (gamma.reason instanceof Error ? gamma.reason.message : "Quant levels unavailable") : ""
+        : quant.status === "rejected" ? (quant.reason instanceof Error ? quant.reason.message : "Quant levels unavailable") : "",
       valueArea: valueArea.status === "rejected" ? (valueArea.reason instanceof Error ? valueArea.reason.message : "Value area unavailable") : "",
     });
     setLevelLoading(false);
-  }, [root, selectedDefinition.symbol, settings, snapshotDate]);
+  }, [levelSnapshotKey, root, selectedDefinition.symbol, settings, valueAreaLevels.length, valueAreaSnapshotKey]);
 
   const loadReplayCandles = useCallback(async (requestedTimeframe: ReplayTimeframe, startAt: number) => {
     const start = new Date(startAt - REPLAY_LOOKBACK_MS).toISOString();
@@ -357,7 +478,9 @@ export default function BacktestingWorkspace() {
     setQuantLevels([]);
     setQuantZones([]);
     setValueAreaLevels([]);
+    setValueAreaSnapshotKey("");
     setSnapshotDate("");
+    setLevelSnapshotKey("");
     try {
       const { ordered } = await loadReplayCandles(timeframe, startAt);
       const index = candleIndexAt(ordered, startAt);
@@ -369,7 +492,7 @@ export default function BacktestingWorkspace() {
       setShowSetup(false);
       // Paint the replay as soon as CME candles arrive. Historical options
       // reconstruction can be materially slower and hydrates independently.
-      void loadLevels(startAt, true);
+      void loadLevels(startAt, true, ordered[index]?.close ?? null);
     } catch (problem) {
       setError(problem instanceof Error ? problem.message : "The replay could not be started.");
     } finally {
@@ -414,9 +537,27 @@ export default function BacktestingWorkspace() {
 
   useEffect(() => {
     if (!replayClock || !started) return;
-    const eligible = latestCompletedOptionsSession(replayClock);
-    if (eligible !== snapshotDate) void loadLevels(replayClock);
-  }, [loadLevels, replayClock, snapshotDate, started]);
+    const snapshot = replayOptionsSnapshot(replayClock);
+    if (snapshot.key === levelSnapshotKey) return;
+    pendingLevelRefreshRef.current = {
+      clock: replayClock,
+      futuresPrice: visibleCandles.at(-1)?.close ?? null,
+    };
+    if (levelRefreshTimerRef.current !== null) return;
+    const delay = Math.max(0, 2_000 - (Date.now() - lastLevelLoadAtRef.current));
+    levelRefreshTimerRef.current = window.setTimeout(() => {
+      levelRefreshTimerRef.current = null;
+      const pending = pendingLevelRefreshRef.current;
+      pendingLevelRefreshRef.current = null;
+      if (!pending) return;
+      lastLevelLoadAtRef.current = Date.now();
+      void loadLevels(pending.clock, false, pending.futuresPrice);
+    }, delay);
+  }, [levelSnapshotKey, loadLevels, replayClock, started, visibleCandles]);
+
+  useEffect(() => () => {
+    if (levelRefreshTimerRef.current !== null) window.clearTimeout(levelRefreshTimerRef.current);
+  }, []);
 
   const resetReplay = () => {
     setPlaying(false);
@@ -561,7 +702,7 @@ export default function BacktestingWorkspace() {
               </button>
               <button
                 type="button"
-                onClick={() => replayClock && void loadLevels(replayClock, true)}
+                onClick={() => replayClock && void loadLevels(replayClock, true, visibleCandles.at(-1)?.close ?? null)}
                 disabled={levelLoading}
                 className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-muted hover:text-primary disabled:opacity-40"
                 title="Rebuild levels from the latest eligible snapshot"
@@ -666,7 +807,12 @@ export default function BacktestingWorkspace() {
               </div>
             </div>
             <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-border/70 pt-2 text-[8px] text-muted">
-              <span className="inline-flex items-center gap-1.5"><ShieldCheck className="h-3 w-3 text-primary" /> Snapshot cut-off: {snapshotDate || "preparing"} New York EOD</span>
+              <span className="inline-flex items-center gap-1.5">
+                <ShieldCheck className="h-3 w-3 text-primary" />
+                {activeOptionsSnapshot?.mode === "INTRADAY"
+                  ? `New York intraday snapshot · ${formatReplayClock(replayClock ?? 0, "America/New_York")} NY`
+                  : `Snapshot cut-off: ${snapshotDate || "preparing"} New York EOD`}
+              </span>
               <span>{levelLoading ? "Refreshing eligible levels…" : "Future candles remain hidden"}</span>
               {Object.entries(levelError).filter(([, message]) => message).map(([family, message]) => (
                 <span key={family} className="text-danger">{family}: {message}</span>
