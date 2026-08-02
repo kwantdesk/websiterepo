@@ -177,7 +177,7 @@ export default function HistoricalZyonPanel({
   };
 
   const startGameplan = () => void send(undefined,
-    `ZYON, build the historical ${context.instrument} Gameplan for the session approaching at the current replay cutoff. Use only the verified information available now. Give me the market condition, important Gamma and Quant levels, long scenario, short scenario, no-trade condition, confirmation, invalidation, risk logic and targets. Do not use anything after the replay clock.`,
+    `ZYON, build the historical ${context.instrument} Gameplan for the session approaching at the current replay cutoff. Use only the verified information available now. Give me the market condition, important Gamma and Kwant levels, long scenario, short scenario, no-trade condition, confirmation, invalidation, risk logic and targets. Do not use anything after the replay clock.`,
   );
 
   return (

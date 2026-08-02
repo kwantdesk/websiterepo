@@ -407,7 +407,7 @@ function historicalReplayFallbackText(
   const oneHour = context.priceAction.windows.find((window) => window.window === "1H") ?? null;
   const oneDay = context.priceAction.windows.find((window) => window.window === "1D") ?? null;
   const formatLevel = (level: { label: string; price: number; family: string } | null) => level
-    ? `${level.label} ${level.price.toFixed(2)} (${level.family})`
+    ? `${level.label} ${level.price.toFixed(2)} (${level.family === "quant" ? "Kwant" : level.family})`
     : "not available at this cutoff";
   const formatList = (rows: typeof levels) => rows.length
     ? rows.map((level) => `${level.label} ${level.price.toFixed(2)}`).join("; ")

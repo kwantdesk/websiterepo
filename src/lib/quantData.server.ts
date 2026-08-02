@@ -3337,15 +3337,22 @@ export async function getHistoricalCashCalibratedChartGammaLevelsAtOrBefore(
 ): Promise<ChartGammaLevelsPayload> {
   let candidate = requestedSessionDate;
   let lastError: unknown = null;
+  const requestedSource = sourceInput.trim().toUpperCase();
+  const fallbackSource = root === "NQ"
+    ? requestedSource === "QQQ" ? "NDX" : "QQQ"
+    : requestedSource === "SPY" ? "SPX" : "SPY";
+  const sources = [...new Set([requestedSource, fallbackSource])];
   for (let attempt = 0; attempt < 6; attempt += 1) {
-    try {
-      return await getCashCalibratedChartGammaLevels(root, sourceInput, candidate, futuresPrice);
-    } catch (error) {
-      lastError = error;
-      const problem = getQuantDataHttpError(error);
-      if (problem.status !== 404 && problem.status !== 422) throw error;
-      candidate = previousWeekdayIso(candidate);
+    for (const source of sources) {
+      try {
+        return await getCashCalibratedChartGammaLevels(root, source, candidate, futuresPrice);
+      } catch (error) {
+        lastError = error;
+        const problem = getQuantDataHttpError(error);
+        if (problem.status !== 404 && problem.status !== 422) throw error;
+      }
     }
+    candidate = previousWeekdayIso(candidate);
   }
   throw lastError ?? new QuantDataError("No completed historical gamma session is available before this replay date.", 422, null);
 }

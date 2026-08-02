@@ -19,6 +19,7 @@ import {
   ShieldCheck,
   Sparkles,
   Star,
+  TriangleAlert,
   X,
 } from "lucide-react";
 import type { Candle } from "@/lib/backtester";
@@ -292,12 +293,15 @@ function replayOptionsSnapshot(replayMs: number) {
   const newYorkOpen = 9 * 60 + 30;
   const newYorkClose = 16 * 60;
   const isTradingDay = weekday >= 1 && weekday <= 5;
+  const kwantReleased = isTradingDay && minute >= newYorkOpen + 5;
   if (isTradingDay && minute >= newYorkOpen && minute < newYorkClose) {
     return {
       mode: "INTRADAY" as const,
       sessionDate,
       asOf: new Date(replayMs).toISOString(),
       key: `${sessionDate}:INTRADAY:${minute}`,
+      newYorkDate: sessionDate,
+      kwantReleased,
     };
   }
   const completedDate = latestCompletedOptionsSession(replayMs);
@@ -306,6 +310,8 @@ function replayOptionsSnapshot(replayMs: number) {
     sessionDate: completedDate,
     asOf: null,
     key: `${completedDate}:EOD`,
+    newYorkDate: sessionDate,
+    kwantReleased,
   };
 }
 
@@ -441,7 +447,7 @@ function valueAreaSnapshot(payload: ValueAreaPayload): ChartLevel[] {
 
 async function requestJson<T extends { error?: string }>(
   url: string,
-  options: { timeoutMs?: number; cache?: RequestCache } = {},
+  options: { timeoutMs?: number; cache?: RequestCache; timeoutMessage?: string } = {},
 ) {
   const controller = options.timeoutMs ? new AbortController() : null;
   const timer = options.timeoutMs
@@ -457,7 +463,7 @@ async function requestJson<T extends { error?: string }>(
     return payload;
   } catch (problem) {
     if (problem instanceof DOMException && problem.name === "AbortError") {
-      throw new Error("Replay candles took longer than 20 seconds. Try again or select a larger timeframe.");
+      throw new Error(options.timeoutMessage ?? "Historical request timed out. Retry it.");
     }
     throw problem;
   } finally {
@@ -535,6 +541,10 @@ export default function BacktestingWorkspace() {
   const levelRefreshTimerRef = useRef<number | null>(null);
   const levelRequestIdRef = useRef(0);
   const levelLoadingRef = useRef(false);
+  const eodGammaCacheRef = useRef<{
+    key: string;
+    payload: ChartGammaLevelsPayload & { error?: string };
+  } | null>(null);
   const intervalCommandInputRef = useRef<HTMLInputElement>(null);
   const intervalCommandPanelRef = useRef<HTMLDivElement>(null);
   const timeframeMenuRef = useRef<HTMLDivElement>(null);
@@ -633,7 +643,6 @@ export default function BacktestingWorkspace() {
     setLevelSnapshotKey(snapshot.key);
     setSnapshotDate(snapshot.sessionDate);
     setLevelLoading(true);
-    setLevelError({ gamma: "", quant: "", valueArea: "" });
     const requestId = ++levelRequestIdRef.current;
     const gammaSource = root === "NQ" ? "QQQ" : "SPY";
     const completedDate = latestCompletedOptionsSession(clock);
@@ -641,45 +650,78 @@ export default function BacktestingWorkspace() {
       ? `&futuresPrice=${encodeURIComponent(String(futuresPrice))}`
       : "";
     const eodGammaUrl = `/api/chart-gamma-levels?root=${root}&source=${gammaSource}&calibrated=1&replay=1&sessionDate=${completedDate}${replayPrice}`;
-    const eodGammaRequest = requestJson<ChartGammaLevelsPayload & { error?: string }>(eodGammaUrl, { cache: "force-cache" });
-    const intradayGammaRequest = snapshot.mode === "INTRADAY" && futuresPrice !== null
+    const eodCacheKey = `${root}:${completedDate}`;
+    const cachedEodGamma = eodGammaCacheRef.current?.key === eodCacheKey
+      ? eodGammaCacheRef.current.payload
+      : null;
+    const eodGammaRequest = cachedEodGamma
+      ? Promise.resolve(cachedEodGamma)
+      : requestJson<ChartGammaLevelsPayload & { error?: string }>(eodGammaUrl, {
+          cache: "force-cache",
+          timeoutMs: 18_000,
+          timeoutMessage: "The prior New York EOD Gamma snapshot timed out.",
+        });
+    // There is deliberately no synthetic Kwant structure before the first
+    // validated post-open release. The prior EOD Gamma structure remains on
+    // screen while we wait for that timestamped intraday frame.
+    const intradayGammaRequest = snapshot.mode === "INTRADAY" && snapshot.kwantReleased && futuresPrice !== null
       ? requestJson<ChartGammaLevelsPayload & { error?: string }>(
           `/api/chart-gamma-levels?root=${root}&source=${gammaSource}&calibrated=1&replay=1&sessionDate=${snapshot.sessionDate}&asOf=${encodeURIComponent(snapshot.asOf)}&futuresPrice=${encodeURIComponent(String(futuresPrice))}`,
-          { cache: "force-cache" },
+          {
+            cache: "force-cache",
+            timeoutMs: 15_000,
+            timeoutMessage: "The historical intraday Gamma frame timed out.",
+          },
         )
       : Promise.resolve(null);
-    // Quant levels begin from the last completed New York plan. They are
-    // replaced only when a genuine intraday Gamma frame becomes eligible.
-    const quantRequest = requestJson<GameplanPayload & { error?: string }>(
-      `/api/gameplan?root=${root}&sessionDate=${completedDate}`,
-      { cache: "force-cache" },
-    );
+    const kwantRequest = snapshot.mode === "EOD" && snapshot.kwantReleased
+      ? requestJson<GameplanPayload & { error?: string }>(
+          `/api/gameplan?root=${root}&sessionDate=${snapshot.newYorkDate}`,
+          {
+            cache: "force-cache",
+            timeoutMs: 15_000,
+            timeoutMessage: "The completed Kwant level edition timed out.",
+          },
+        )
+      : Promise.resolve(null);
     const valueAreaRequest = valueAreaSnapshotKey === snapshot.sessionDate && valueAreaLevels.length
       ? Promise.resolve(null)
       : requestJson<ValueAreaPayload>(
           `/api/databento/value-area?symbol=${encodeURIComponent(selectedDefinition.symbol)}&asOf=${encodeURIComponent(new Date(clock).toISOString())}`,
-          { cache: "force-cache" },
+          {
+            cache: "force-cache",
+            timeoutMs: 15_000,
+            timeoutMessage: "The historical value-area snapshot timed out.",
+          },
         );
+    // Attach rejection handlers immediately while still allowing the EOD
+    // Gamma result to paint before the other independent sources finish.
+    const eodGammaResult = Promise.allSettled([eodGammaRequest]);
+    const kwantResult = Promise.allSettled([kwantRequest]);
+    const intradayGammaResult = Promise.allSettled([intradayGammaRequest]);
+    const valueAreaResult = Promise.allSettled([valueAreaRequest]);
     try {
       // Paint the completed-session structure first. Do not make it wait for
       // the heavier intraday map or value-area reconstruction.
-      const [eodGamma, quant] = await Promise.allSettled([eodGammaRequest, quantRequest]);
+      const [eodGamma] = await eodGammaResult;
       if (requestId !== levelRequestIdRef.current) return;
       if (eodGamma.status === "fulfilled") {
+        eodGammaCacheRef.current = { key: eodCacheKey, payload: eodGamma.value };
         setGammaLevels(gammaSnapshot(eodGamma.value, settings));
         setGammaPositioning(eodGamma.value);
       }
-      if (quant.status === "fulfilled") {
-        const completedPlan = quantSnapshot(quant.value, settings);
+      const [kwant] = await kwantResult;
+      if (requestId !== levelRequestIdRef.current) return;
+      if (!snapshot.kwantReleased) {
+        setQuantLevels([]);
+        setQuantZones([]);
+      } else if (kwant.status === "fulfilled" && kwant.value) {
+        const completedPlan = quantSnapshot(kwant.value, settings);
         setQuantLevels(completedPlan.levels);
         setQuantZones(completedPlan.zones);
-      } else if (eodGamma.status === "fulfilled") {
-        const completedFallback = quantSnapshotFromGamma(eodGamma.value, root, settings);
-        setQuantLevels(completedFallback.levels);
-        setQuantZones(completedFallback.zones);
       }
 
-      const [intradayGamma, valueArea] = await Promise.allSettled([intradayGammaRequest, valueAreaRequest]);
+      const [[intradayGamma], [valueArea]] = await Promise.all([intradayGammaResult, valueAreaResult]);
       if (requestId !== levelRequestIdRef.current) return;
       const eligibleIntraday = intradayGamma.status === "fulfilled"
         && intradayGamma.value !== null
@@ -690,6 +732,13 @@ export default function BacktestingWorkspace() {
         const livePlan = quantSnapshotFromGamma(intradayGamma.value, root, settings);
         setQuantLevels(livePlan.levels);
         setQuantZones(livePlan.zones);
+      } else if (
+        eodGamma.status === "rejected"
+        && intradayGamma.status === "fulfilled"
+        && intradayGamma.value
+      ) {
+        setGammaLevels(gammaSnapshot(intradayGamma.value, settings));
+        setGammaPositioning(intradayGamma.value);
       }
       if (valueArea.status === "fulfilled" && valueArea.value) {
         setValueAreaLevels(valueAreaSnapshot(valueArea.value));
@@ -698,8 +747,8 @@ export default function BacktestingWorkspace() {
         setValueAreaLevels([]);
       }
 
-      const gammaAvailable = eodGamma.status === "fulfilled" || intradayGamma.status === "fulfilled";
-      const quantAvailable = quant.status === "fulfilled" || eodGamma.status === "fulfilled" || eligibleIntraday;
+      const gammaAvailable = eodGamma.status === "fulfilled"
+        || (intradayGamma.status === "fulfilled" && intradayGamma.value !== null);
       setLevelError({
         gamma: gammaAvailable
           ? ""
@@ -708,9 +757,9 @@ export default function BacktestingWorkspace() {
             : intradayGamma.status === "rejected" && intradayGamma.reason instanceof Error
               ? intradayGamma.reason.message
               : "Gamma unavailable",
-        quant: quantAvailable
-          ? ""
-          : quant.reason instanceof Error ? quant.reason.message : "Quant levels unavailable",
+        // A missing Kwant edition is communicated by the compact release
+        // notice on the chart, not as a disruptive loading/error state.
+        quant: "",
         valueArea: valueArea.status === "rejected"
           ? valueArea.reason instanceof Error ? valueArea.reason.message : "Value area unavailable"
           : "",
@@ -812,6 +861,7 @@ export default function BacktestingWorkspace() {
     setTickerError("");
     tickerRequestIdRef.current += 1;
     levelRequestIdRef.current += 1;
+    eodGammaCacheRef.current = null;
     setValueAreaSnapshotKey("");
     setSnapshotDate("");
     setLevelSnapshotKey("");
@@ -1177,7 +1227,7 @@ export default function BacktestingWorkspace() {
                 onClick={() => toggleLevel("quant")}
                 className={`rounded-lg border px-2.5 py-1.5 text-[9px] font-semibold ${levelState.quant ? "border-primary/35 bg-primary/10 text-primary" : "border-border text-muted hover:text-foreground"}`}
               >
-                Quant levels
+                Kwant levels
               </button>
               <button
                 type="button"
@@ -1374,6 +1424,24 @@ export default function BacktestingWorkspace() {
             valueAreaLevelsDescription="Historical prior-session and prior-week VAH, VAL, POC and VWAP"
             onToggleValueAreaLevels={() => toggleLevel("valueArea")}
           />
+        ) : null}
+
+        {started && levelState.quant && quantLevels.length === 0 && activeOptionsSnapshot ? (
+          <div className="pointer-events-none absolute right-4 top-[62px] z-30 flex max-w-[340px] items-start gap-2.5 rounded-xl border border-amber-400/30 bg-[#0b0b0b]/94 px-3 py-2.5 shadow-[0_14px_40px_rgba(0,0,0,0.42)] backdrop-blur-xl">
+            <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border border-amber-400/25 bg-amber-400/10 text-amber-300">
+              <TriangleAlert className="h-3.5 w-3.5" />
+            </span>
+            <div>
+              <div className="text-[9px] font-semibold uppercase tracking-[0.1em] text-foreground">Kwant levels not released</div>
+              <div className="mt-1 text-[8px] leading-4 text-muted">
+                {activeOptionsSnapshot.kwantReleased
+                  ? "No validated Kwant edition exists at this replay timestamp yet. It will appear automatically at the first recorded release."
+                  : activeOptionsSnapshot.mode === "INTRADAY"
+                    ? `The ${activeOptionsSnapshot.newYorkDate} edition is still being established. It normally appears within the first five minutes after New York opens.`
+                    : `The ${activeOptionsSnapshot.newYorkDate} edition is not available before New York opens. It normally appears within the first five minutes.`}
+              </div>
+            </div>
+          </div>
         ) : null}
 
         {started && showGexPanel ? (
