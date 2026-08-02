@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useEffect } from "react";
-import { Activity, Crosshair, Layers3, ShieldCheck, X } from "lucide-react";
+import { Activity, Clock3, Crosshair, Layers3, ShieldCheck, X } from "lucide-react";
 import type {
   ChartGammaLevelsPayload,
   ChartGammaPositioningStrike,
@@ -60,12 +60,16 @@ export default function HistoricalGexPanel({
   snapshot,
   loading,
   error,
+  releaseState,
+  sessionDate,
   paired = false,
   onClose,
 }: {
   snapshot: ChartGammaLevelsPayload | null;
   loading: boolean;
   error: string;
+  releaseState: "PREOPEN" | "OPENING" | "RELEASED";
+  sessionDate: string;
   paired?: boolean;
   onClose: () => void;
 }) {
@@ -106,13 +110,35 @@ export default function HistoricalGexPanel({
             <span className="text-[12px] font-semibold uppercase tracking-[0.1em] text-foreground">Historical GEX</span>
             <span className="rounded-md border border-primary/25 bg-primary/10 px-1.5 py-0.5 text-[7px] font-semibold text-primary">NO LOOKAHEAD</span>
           </div>
-          <div className="mt-0.5 truncate font-mono text-[8px] text-muted">{clock(snapshot?.checkedAt)} NY · {positioning?.status === "HISTORICAL_INTRADAY" ? "intraday frame" : "prior New York EOD"}</div>
+          <div className="mt-0.5 truncate font-mono text-[8px] text-muted">
+            {!positioning && releaseState !== "RELEASED"
+              ? `${sessionDate} · waiting for New York GEX`
+              : `${clock(snapshot?.checkedAt)} NY · ${positioning?.status === "HISTORICAL_INTRADAY" ? "intraday frame" : "prior New York EOD"}`}
+          </div>
         </div>
         <button type="button" onClick={onClose} className="ml-auto flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground" aria-label="Close historical GEX"><X className="h-4 w-4" /></button>
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-3">
-        {loading && !snapshot ? (
+        {!positioning && releaseState !== "RELEASED" ? (
+          <div className="flex h-full flex-col items-center justify-center px-6 text-center">
+            <span className="relative flex h-12 w-12 items-center justify-center rounded-2xl border border-primary/25 bg-primary/10 text-primary">
+              <Clock3 className="h-5 w-5" />
+              <span className="absolute inset-0 animate-ping rounded-2xl border border-primary/20" />
+            </span>
+            <div className="mt-4 text-[12px] font-semibold text-foreground">
+              {releaseState === "OPENING" ? "Waiting for opening GEX" : "Waiting for New York market open"}
+            </div>
+            <div className="mt-2 max-w-[290px] text-[9px] leading-4 text-muted">
+              {releaseState === "OPENING"
+                ? `The ${sessionDate} GEX structure is being established. The first validated frame normally appears within the opening five minutes and will populate here automatically.`
+                : `The ${sessionDate} intraday GEX structure does not exist before New York options trading begins. Prior EOD Gamma may remain on the chart; live session GEX will appear here automatically after the open.`}
+            </div>
+            <div className="mt-4 rounded-lg border border-primary/15 bg-primary/[0.04] px-3 py-2 font-mono text-[8px] text-primary">
+              No future GEX frames are being used
+            </div>
+          </div>
+        ) : loading && !snapshot ? (
           <div className="flex h-full flex-col items-center justify-center text-center">
             <span className="flex h-10 w-10 animate-pulse items-center justify-center rounded-2xl border border-primary/25 bg-primary/10 text-primary"><Layers3 className="h-4 w-4" /></span>
             <div className="mt-3 text-[11px] font-semibold text-foreground">Restoring point-in-time GEX</div>

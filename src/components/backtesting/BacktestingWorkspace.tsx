@@ -1449,6 +1449,10 @@ export default function BacktestingWorkspace() {
             snapshot={gammaPositioning}
             loading={levelLoading && !gammaPositioning}
             error={levelError.gamma}
+            releaseState={activeOptionsSnapshot?.kwantReleased
+              ? "RELEASED"
+              : activeOptionsSnapshot?.mode === "INTRADAY" ? "OPENING" : "PREOPEN"}
+            sessionDate={activeOptionsSnapshot?.newYorkDate ?? date}
             paired={showZyonPanel}
             onClose={() => setShowGexPanel(false)}
           />
