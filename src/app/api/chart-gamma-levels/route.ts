@@ -8,7 +8,8 @@ import {
   getCashCalibratedChartGammaLevels,
   getChartGammaLevels,
   getConfiguredQuantDataApiKey,
-  getHistoricalCashCalibratedChartGammaLevelsAt,
+  getHistoricalCashCalibratedChartGammaLevelsAtOrBefore,
+  getHistoricalReplayChartGammaLevels,
   getQuantDataHttpError,
 } from "@/lib/quantData.server";
 
@@ -41,6 +42,7 @@ export async function GET(request: NextRequest) {
   const asOf = request.nextUrl.searchParams.get("asOf")?.trim();
   const futuresPrice = Number(request.nextUrl.searchParams.get("futuresPrice"));
   const calibratedRequest = request.nextUrl.searchParams.get("calibrated") === "1";
+  const replayRequest = request.nextUrl.searchParams.get("replay") === "1";
   const nativeFuturesRequest = !calibratedRequest && (root === "NQ" || root === "ES") && source === root;
   if (!nativeFuturesRequest && !getConfiguredQuantDataApiKey()) {
     return NextResponse.json({ error: "KwantData is not configured." }, { status: 503 });
@@ -51,8 +53,15 @@ export async function GET(request: NextRequest) {
   try {
     const payload = calibratedRequest && (root === "NQ" || root === "ES")
       ? asOf
-        ? await getHistoricalCashCalibratedChartGammaLevelsAt(root, source, asOf, futuresPrice)
-        : await getCashCalibratedChartGammaLevels(root, source, sessionDate)
+        ? await getHistoricalReplayChartGammaLevels(root, source, asOf, futuresPrice)
+        : replayRequest && sessionDate
+          ? await getHistoricalCashCalibratedChartGammaLevelsAtOrBefore(
+              root,
+              source,
+              sessionDate,
+              Number.isFinite(futuresPrice) && futuresPrice > 0 ? futuresPrice : undefined,
+            )
+          : await getCashCalibratedChartGammaLevels(root, source, sessionDate)
       : await getChartGammaLevels(root, source, sessionDate);
     return NextResponse.json(payload, {
       headers: {

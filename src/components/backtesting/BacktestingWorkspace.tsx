@@ -630,12 +630,15 @@ export default function BacktestingWorkspace() {
     const requestId = ++levelRequestIdRef.current;
     const gammaSource = root === "NQ" ? "QQQ" : "SPY";
     const completedDate = latestCompletedOptionsSession(clock);
-    const eodGammaUrl = `/api/chart-gamma-levels?root=${root}&source=${gammaSource}&calibrated=1&sessionDate=${completedDate}`;
+    const replayPrice = futuresPrice !== null && Number.isFinite(futuresPrice) && futuresPrice > 0
+      ? `&futuresPrice=${encodeURIComponent(String(futuresPrice))}`
+      : "";
+    const eodGammaUrl = `/api/chart-gamma-levels?root=${root}&source=${gammaSource}&calibrated=1&replay=1&sessionDate=${completedDate}${replayPrice}`;
     const gammaRequest = snapshot.mode === "INTRADAY" && futuresPrice !== null
       ? requestJson<ChartGammaLevelsPayload & { error?: string }>(
-          `/api/chart-gamma-levels?root=${root}&source=${gammaSource}&calibrated=1&sessionDate=${snapshot.sessionDate}&asOf=${encodeURIComponent(snapshot.asOf)}&futuresPrice=${encodeURIComponent(String(futuresPrice))}`,
+          `/api/chart-gamma-levels?root=${root}&source=${gammaSource}&calibrated=1&replay=1&sessionDate=${snapshot.sessionDate}&asOf=${encodeURIComponent(snapshot.asOf)}&futuresPrice=${encodeURIComponent(String(futuresPrice))}`,
           { cache: "force-cache" },
-        ).catch(() => requestJson<ChartGammaLevelsPayload & { error?: string }>(eodGammaUrl, { cache: "force-cache" }))
+        )
       : requestJson<ChartGammaLevelsPayload & { error?: string }>(eodGammaUrl, { cache: "force-cache" });
     const quantRequest = snapshot.mode === "EOD"
       ? requestJson<GameplanPayload & { error?: string }>(

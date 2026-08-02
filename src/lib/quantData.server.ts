@@ -2989,6 +2989,7 @@ export async function getCashCalibratedChartGammaLevels(
   root: NativeGammaRoot,
   sourceInput?: string,
   requestedSessionDate?: string,
+  futuresPriceOverride?: number,
 ): Promise<ChartGammaLevelsPayload> {
   const defaultSource = root === "NQ" ? "QQQ" : "SPY";
   const normalizedSource = (sourceInput || defaultSource).trim().toUpperCase();
@@ -3003,10 +3004,13 @@ export async function getCashCalibratedChartGammaLevels(
     throw new QuantDataError(`No ${calibrationSource} gamma snapshot is available to calibrate ${root}.`, 422, null);
   }
 
-  const futuresPrice = cashPayload.marketOpen
+  const verifiedReplayPrice = Number.isFinite(futuresPriceOverride) && (futuresPriceOverride ?? 0) > 0
+    ? futuresPriceOverride ?? null
+    : null;
+  const futuresPrice = verifiedReplayPrice ?? (cashPayload.marketOpen
     ? await getNativeFuturesSpot(root)
     : await getNativeFuturesSessionClose(root, cashPayload.sessionDate)
-      ?? await getNativeFuturesSpot(root);
+      ?? await getNativeFuturesSpot(root));
   const scale = futuresPrice ? futuresPrice / cashSource.stockPrice : Number.NaN;
   if (!futuresPrice || !Number.isFinite(scale) || !isOptionsFuturesRatioSane(calibrationSource, scale)) {
     throw new QuantDataError(`No valid ${calibrationSource} to ${root} calibration is available.`, 503, null);
@@ -3299,6 +3303,81 @@ export async function getHistoricalCashCalibratedChartGammaLevelsAt(
       lookbacks: positioningLookbacks,
     }),
   };
+}
+
+function latestCompletedOptionsSessionAt(timestamp: number) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(new Date(timestamp));
+  const read = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value ?? "";
+  const sessionDate = `${read("year")}-${read("month")}-${read("day")}`;
+  const minute = Number(read("hour")) * 60 + Number(read("minute"));
+  const weekday = new Date(`${sessionDate}T00:00:00.000Z`).getUTCDay();
+  return weekday >= 1 && weekday <= 5 && minute >= 16 * 60 + 5
+    ? sessionDate
+    : previousWeekdayIso(sessionDate);
+}
+
+/**
+ * Resolve the latest completed structural options session at or before a replay
+ * date. Weekends and exchange holidays are skipped without ever moving forward
+ * from the requested cutoff.
+ */
+export async function getHistoricalCashCalibratedChartGammaLevelsAtOrBefore(
+  root: NativeGammaRoot,
+  sourceInput: string,
+  requestedSessionDate: string,
+  futuresPrice?: number,
+): Promise<ChartGammaLevelsPayload> {
+  let candidate = requestedSessionDate;
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    try {
+      return await getCashCalibratedChartGammaLevels(root, sourceInput, candidate, futuresPrice);
+    } catch (error) {
+      lastError = error;
+      const problem = getQuantDataHttpError(error);
+      if (problem.status !== 404 && problem.status !== 422) throw error;
+      candidate = previousWeekdayIso(candidate);
+    }
+  }
+  throw lastError ?? new QuantDataError("No completed historical gamma session is available before this replay date.", 422, null);
+}
+
+/**
+ * Point-in-time replay resolver. Prefer the last intraday frame that existed at
+ * the replay clock. Before the first frame (or beyond intraday-map retention),
+ * fall back to the latest completed EOD structure, calibrated with the futures
+ * price already visible in the replay rather than a second historical pull.
+ */
+export async function getHistoricalReplayChartGammaLevels(
+  root: NativeGammaRoot,
+  sourceInput: string,
+  asOfInput: string,
+  futuresPrice: number,
+): Promise<ChartGammaLevelsPayload> {
+  const asOf = Date.parse(asOfInput);
+  if (!Number.isFinite(asOf) || asOf > Date.now()) {
+    throw new QuantDataError("A valid historical gamma replay timestamp is required.", 400, null);
+  }
+  try {
+    return await getHistoricalCashCalibratedChartGammaLevelsAt(root, sourceInput, asOfInput, futuresPrice);
+  } catch (intradayError) {
+    const problem = getQuantDataHttpError(intradayError);
+    if (problem.status !== 404 && problem.status !== 422) throw intradayError;
+    return getHistoricalCashCalibratedChartGammaLevelsAtOrBefore(
+      root,
+      sourceInput,
+      latestCompletedOptionsSessionAt(asOf),
+      futuresPrice,
+    );
+  }
 }
 
 export function getQuantDataHttpError(error: unknown) {

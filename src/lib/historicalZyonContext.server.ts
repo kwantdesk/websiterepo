@@ -1,8 +1,8 @@
 import "server-only";
 
 import {
-  getCashCalibratedChartGammaLevels,
-  getHistoricalCashCalibratedChartGammaLevelsAt,
+  getHistoricalCashCalibratedChartGammaLevelsAtOrBefore,
+  getHistoricalReplayChartGammaLevels,
 } from "@/lib/quantData.server";
 import type {
   HistoricalZyonLevel,
@@ -221,8 +221,8 @@ export async function getHistoricalZyonContext(replay: ValidHistoricalZyonReplay
   const cutoff = replayOptionsCutoff(replay.asOfMs);
   const warnings: string[] = [];
   const gamma = await (cutoff.mode === "INTRADAY"
-    ? getHistoricalCashCalibratedChartGammaLevelsAt(replay.root, source, replay.asOf, replay.currentPrice)
-    : getCashCalibratedChartGammaLevels(replay.root, source, cutoff.sessionDate))
+    ? getHistoricalReplayChartGammaLevels(replay.root, source, replay.asOf, replay.currentPrice)
+    : getHistoricalCashCalibratedChartGammaLevelsAtOrBefore(replay.root, source, cutoff.sessionDate, replay.currentPrice))
     .catch((error) => {
       warnings.push(error instanceof Error ? error.message : "Historical Gamma could not be reconstructed.");
       return null;
