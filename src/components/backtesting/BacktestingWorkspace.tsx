@@ -1004,13 +1004,6 @@ export default function BacktestingWorkspace() {
             <input type="time" value={time} onChange={(event) => { setError(""); setTime(event.target.value); }} className="h-11 w-full rounded-xl border border-border bg-background pl-9 pr-3 font-mono text-[12px] text-foreground outline-none focus:border-primary/40" />
           </div>
         </label>
-        <div className="sm:col-span-2 rounded-2xl border border-border bg-background/45 p-4">
-          <div className="flex items-center gap-2 text-[10px] font-semibold text-foreground"><Layers3 className="h-3.5 w-3.5 text-primary" /> Historical coverage</div>
-          <div className="mt-3 grid gap-2 text-[9px] leading-4 text-muted sm:grid-cols-2">
-            <div><span className="block font-semibold text-foreground">CME candles + value area</span>Documented from June 2010; actual access depends on Databento entitlement.</div>
-            <div><span className="block font-semibold text-foreground">Gamma + Quant levels</span>KwantData documents 365+ days. Older dates remain unavailable unless a validated native options reconstruction exists.</div>
-          </div>
-        </div>
         {error ? <div className="sm:col-span-2 rounded-xl border border-danger/25 bg-danger/10 px-3 py-2.5 text-[10px] text-danger">{error}</div> : null}
       </div>
       <div className="flex items-center gap-3 border-t border-border bg-background/25 px-5 py-4">
@@ -1425,13 +1418,6 @@ export default function BacktestingWorkspace() {
                   <input type="time" value={time} onChange={(event) => { setError(""); setTime(event.target.value); }} className="h-11 w-full rounded-xl border border-border bg-background pl-9 pr-3 font-mono text-[12px] text-foreground outline-none focus:border-primary/40" />
                 </div>
               </label>
-              <div className="sm:col-span-2 rounded-2xl border border-border bg-background/45 p-4">
-                <div className="flex items-center gap-2 text-[10px] font-semibold text-foreground"><Layers3 className="h-3.5 w-3.5 text-primary" /> Historical coverage</div>
-                <div className="mt-3 grid gap-2 text-[9px] leading-4 text-muted sm:grid-cols-2">
-                  <div><span className="block font-semibold text-foreground">CME candles + value area</span>Documented from June 2010; actual access depends on Databento entitlement.</div>
-                  <div><span className="block font-semibold text-foreground">Gamma + Quant levels</span>KwantData documents 365+ days. Older dates remain unavailable unless a validated native options reconstruction exists.</div>
-                </div>
-              </div>
               {error ? <div className="sm:col-span-2 rounded-xl border border-danger/25 bg-danger/10 px-3 py-2.5 text-[10px] text-danger">{error}</div> : null}
             </div>
             <div className="flex items-center gap-3 border-t border-border bg-background/25 px-5 py-4">
