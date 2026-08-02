@@ -23,6 +23,8 @@ type ReplayMessage = {
   role: "user" | "assistant";
   content: string;
   createdAt: string;
+  degraded?: boolean;
+  providerState?: string;
 };
 
 function id(prefix: string) {
@@ -147,7 +149,12 @@ export default function HistoricalZyonPanel({
           })),
         }),
       });
-      const payload = await response.json().catch(() => null) as { text?: unknown; error?: unknown } | null;
+      const payload = await response.json().catch(() => null) as {
+        text?: unknown;
+        error?: unknown;
+        degraded?: unknown;
+        providerState?: unknown;
+      } | null;
       if (!response.ok) throw new Error(typeof payload?.error === "string" ? payload.error : "Historical ZYON could not reply.");
       const reply = typeof payload?.text === "string" ? payload.text.trim() : "";
       if (!reply) throw new Error("Historical ZYON returned an empty reply.");
@@ -156,6 +163,8 @@ export default function HistoricalZyonPanel({
         role: "assistant",
         content: reply.slice(0, 12_000),
         createdAt: new Date().toISOString(),
+        degraded: payload?.degraded === true,
+        providerState: typeof payload?.providerState === "string" ? payload.providerState : undefined,
       }]);
     } catch (problem) {
       const failure = problem instanceof DOMException && problem.name === "AbortError"
@@ -228,6 +237,11 @@ export default function HistoricalZyonPanel({
           <div key={message.id} className={`flex gap-2 ${message.role === "user" ? "justify-end" : "justify-start"}`}>
             {message.role === "assistant" ? <span className="mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border border-primary/20 bg-primary/10 text-primary"><Bot className="h-3 w-3" /></span> : null}
             <div className={`max-w-[86%] rounded-2xl px-3 py-2.5 text-[9px] leading-[1.55] ${message.role === "user" ? "rounded-br-md bg-primary text-background" : "rounded-bl-md border border-border bg-surface/55 text-foreground"}`}>
+              {message.degraded ? (
+                <div className="mb-2 text-[7px] font-semibold uppercase tracking-[0.1em] text-warning">
+                  Verified replay fallback{message.providerState ? ` / model ${message.providerState}` : ""}
+                </div>
+              ) : null}
               <div className="whitespace-pre-wrap">{message.content}</div>
             </div>
           </div>

@@ -55,7 +55,10 @@ const MAX_CONTEXT_LENGTH = 120_000;
 // Image analysis, tool use and deep reasoning can legitimately exceed a short
 // chat timeout. These attempts stay inside the route's 120-second ceiling.
 const PROVIDER_TIMEOUTS_MS = [50_000, 25_000, 15_000] as const;
-const HISTORICAL_PROVIDER_TIMEOUTS_MS = [16_000, 9_000, 6_000] as const;
+// Historical questions carry a larger point-in-time context than ordinary
+// chat. Give the primary model enough time to reason over it while retaining
+// bounded fallbacks inside the client's 50-second request window.
+const HISTORICAL_PROVIDER_TIMEOUTS_MS = [28_000, 10_000, 5_000] as const;
 
 type IncomingAttachment = {
   name?: unknown;
@@ -384,29 +387,148 @@ function retryAfterMilliseconds(value: string | null) {
   return Number.isFinite(timestamp) ? Math.max(0, timestamp - Date.now()) : null;
 }
 
-function historicalReplayFallbackText(
+type HistoricalReplayLevel = {
+  label: string;
+  price: number;
+  family: string;
+  visible: boolean;
+};
+
+function historicalReplayLevels(
   context: Awaited<ReturnType<typeof getHistoricalZyonContext>>,
 ) {
-  const currentPrice = context.replay.currentPrice;
-  const unique = new Map<string, { label: string; price: number; family: string }>();
+  const unique = new Map<string, HistoricalReplayLevel>();
   for (const level of context.screen.levels) {
     if (!Number.isFinite(level.price) || level.price <= 0) continue;
     const key = `${level.family}:${level.label}:${level.price.toFixed(4)}`;
-    unique.set(key, { label: level.label, price: level.price, family: level.family });
+    unique.set(key, {
+      label: level.label,
+      price: level.price,
+      family: level.family,
+      visible: level.visible,
+    });
   }
   for (const level of context.gamma?.levels ?? []) {
     if (!Number.isFinite(level.futuresPrice) || level.futuresPrice <= 0) continue;
     const key = `gamma:${level.label}:${level.futuresPrice.toFixed(4)}`;
-    unique.set(key, { label: level.label, price: level.futuresPrice, family: "gamma" });
+    unique.set(key, {
+      label: level.label,
+      price: level.futuresPrice,
+      family: "gamma",
+      visible: true,
+    });
   }
-  const levels = [...unique.values()].sort((left, right) => left.price - right.price);
+  return [...unique.values()].sort((left, right) => left.price - right.price);
+}
+
+function requestsHistoricalGameplan(question: string) {
+  return (
+    /\b(?:build|create|make|write|generate|restate|repeat|update|show)\b[\s\S]{0,40}\bgame\s*plan\b/i.test(question)
+    || /\bgame\s*plan\b[\s\S]{0,40}\b(?:build|create|make|write|generate|restate|repeat|update|show)\b/i.test(question)
+  );
+}
+
+function historicalMentionedLevel(levels: HistoricalReplayLevel[], question: string) {
+  const aliases: Array<{ query: RegExp; level: RegExp }> = [
+    { query: /\bput\s+support\b/i, level: /\bput\s+support\b/i },
+    { query: /\bcall\s+(?:wall|resistance)\b/i, level: /\bcall\s+(?:wall|resistance)\b/i },
+    { query: /\bzero\s+gamma\b/i, level: /\bzero\s+gamma\b/i },
+    { query: /\bhvl\b/i, level: /\bhvl\b/i },
+    { query: /\bmpo\b/i, level: /\bmpo\b/i },
+    { query: /\bmpv\b/i, level: /\bmpv\b/i },
+    { query: /\bfortress\b/i, level: /\bfortress\b/i },
+    { query: /\bpositioning\s+wall\b/i, level: /\bpositioning\s+wall\b/i },
+    { query: /\bbuyer\s+defen[cs]e\b/i, level: /\bbuyer\s+defen[cs]e\b/i },
+    { query: /\btrapdoor\b/i, level: /\btrapdoor\b/i },
+  ];
+  const alias = aliases.find((candidate) => candidate.query.test(question));
+  if (alias) return levels.filter((level) => alias.level.test(level.label));
+
+  const meaningfulWords = question.toLowerCase().match(/[a-z]{3,}/g) ?? [];
+  return levels.filter((level) => {
+    const label = level.label.toLowerCase();
+    return meaningfulWords.length >= 2
+      && meaningfulWords.filter((word) => label.includes(word)).length >= 2;
+  });
+}
+
+function historicalFocusedFallbackText(
+  context: Awaited<ReturnType<typeof getHistoricalZyonContext>>,
+  question: string,
+) {
+  const currentPrice = context.replay.currentPrice;
+  const levels = historicalReplayLevels(context);
+  const mentioned = historicalMentionedLevel(levels, question)
+    .sort((left, right) => Math.abs(left.price - currentPrice) - Math.abs(right.price - currentPrice));
+  const target = mentioned[0] ?? null;
+  const below = levels.filter((level) => level.price < (target?.price ?? currentPrice)).slice(-1)[0] ?? null;
+  const above = levels.find((level) => level.price > (target?.price ?? currentPrice)) ?? null;
+  const oneHour = context.priceAction.windows.find((window) => window.window === "1H") ?? null;
+  const isPutSupportQuestion = /\bput\s+support\b/i.test(question);
+  const isResistanceQuestion = /\b(?:call\s+(?:wall|resistance)|resistance|ceiling)\b/i.test(question)
+    || /\b(?:call\s+(?:wall|resistance)|resistance|ceiling)\b/i.test(target?.label ?? "");
+  const relation = target
+    ? Math.abs(currentPrice - target.price) < Math.max(0.5, currentPrice * 0.00005)
+      ? "testing the level"
+      : currentPrice > target.price
+        ? `${(currentPrice - target.price).toFixed(2)} points above it`
+        : `${(target.price - currentPrice).toFixed(2)} points below it`
+    : "not measurable because that named level is absent";
+  const nextBelow = below ? `${below.label} ${below.price.toFixed(2)}` : "no lower verified level is loaded";
+  const nextAbove = above ? `${above.label} ${above.price.toFixed(2)}` : "no higher verified level is loaded";
+
+  if (!target) {
+    const nearest = [...levels]
+      .sort((left, right) => Math.abs(left.price - currentPrice) - Math.abs(right.price - currentPrice))
+      .slice(0, 3)
+      .map((level) => `${level.label} ${level.price.toFixed(2)}`)
+      .join("; ");
+    return [
+      "FOCUSED REPLAY READ",
+      `At ${context.cutoff.asOf}, ${context.replay.instrument} is ${currentPrice.toFixed(2)}. The exact named level in your question is not present in the verified replay snapshot, so I will not pretend it is active.`,
+      nearest ? `Nearest verified structure: ${nearest}.` : "No verified Gamma or Kwant levels are loaded at this cutoff.",
+      "If the level appears later in replay, assess it from that new cutoff; do not import a later level into this moment.",
+      "",
+      "The full reasoning model was unavailable for this turn, so this answer used only the cutoff-safe replay state.",
+    ].join("\n");
+  }
+
+  return [
+    `FOCUSED REPLAY READ - ${target.label.toUpperCase()}`,
+    "",
+    "OBSERVATION",
+    `${context.replay.instrument} is ${currentPrice.toFixed(2)} at ${context.cutoff.newYorkClock} New York. ${target.label} is ${target.price.toFixed(2)} (${target.family}) and price is ${relation}. ${oneHour ? `The verified 1-hour change into this cutoff is ${oneHour.change.toFixed(2)} (${oneHour.changePercent.toFixed(2)}%).` : "The 1-hour change is unavailable."}`,
+    "",
+    "INTERPRETATION",
+    isPutSupportQuestion
+      ? "Put Support is a conditional downside reaction area, not an automatic bounce. Approaching from above, concentrated put-side Gamma can slow or absorb the decline and create a pin or rejection. If that exposure weakens, or price accepts below it, the same area stops behaving as support and downside can accelerate."
+      : `This level is relevant because it is the verified ${target.family} structure explicitly named in your question. Its role depends on whether price rejects, holds, reclaims, or accepts through it; the label alone is not confirmation.`,
+    "",
+    "TRADE CONDITION",
+    isResistanceQuestion
+      ? `Resistant response: price tests ${target.price.toFixed(2)}, rejects it, and remains below it; the next verified downside reference is ${nextBelow}. Invalidation: sustained acceptance above ${target.price.toFixed(2)} or a successful retest from above; the next verified upside reference is ${nextAbove}. Do not call the reaction before one of those conditions prints.`
+      : `Supportive response: price tests ${target.price.toFixed(2)}, rejects or reclaims it, and then holds above it; the next verified upside reference is ${nextAbove}. Invalidation: sustained acceptance below ${target.price.toFixed(2)} or a failed reclaim; the next verified downside reference is ${nextBelow}. Do not call the reaction before one of those conditions prints.`,
+    "",
+    "The full reasoning model was unavailable for this turn, so this focused answer used only the cutoff-safe replay price and levels.",
+  ].join("\n");
+}
+
+function historicalReplayFallbackText(
+  context: Awaited<ReturnType<typeof getHistoricalZyonContext>>,
+  question: string,
+) {
+  if (!requestsHistoricalGameplan(question)) {
+    return historicalFocusedFallbackText(context, question);
+  }
+  const currentPrice = context.replay.currentPrice;
+  const levels = historicalReplayLevels(context);
   const below = levels.filter((level) => level.price <= currentPrice).slice(-3).reverse();
   const above = levels.filter((level) => level.price > currentPrice).slice(0, 3);
   const nearestSupport = below[0] ?? null;
   const nearestResistance = above[0] ?? null;
   const oneHour = context.priceAction.windows.find((window) => window.window === "1H") ?? null;
   const oneDay = context.priceAction.windows.find((window) => window.window === "1D") ?? null;
-  const formatLevel = (level: { label: string; price: number; family: string } | null) => level
+  const formatLevel = (level: HistoricalReplayLevel | null) => level
     ? `${level.label} ${level.price.toFixed(2)} (${level.family === "quant" ? "Kwant" : level.family})`
     : "not available at this cutoff";
   const formatList = (rows: typeof levels) => rows.length
@@ -1120,6 +1242,8 @@ export async function POST(request: NextRequest) {
       "The screen.levels and screen.zones arrays are the exact historical levels loaded in the backtester. visible=true means the family is currently drawn. Use those exact prices and labels; never substitute current-day levels.",
       "Gamma data is reconstructed at or before the replay cutoff. During New York options hours it uses the latest eligible intraday options frame. Outside those hours it uses the latest completed New York EOD Gamma structure. Cash-option strikes and futuresEquivalent prices are separate; use futuresEquivalent when discussing NQ, MNQ, ES or MES price.",
       "When asked to create a Gameplan, produce a complete historical practice Gameplan immediately from the supplied cutoff: market condition, directional and neutral scenarios, exact conditional entries or zones, confirmation, invalidation, stop logic, targets, risk logic, and what would make the trader stand aside. Do not request the date, and do not save or publish it to Socials.",
+      "The latest user message controls the response type. Answer that exact question directly. Never restate, regenerate, or paste the full Gameplan unless the latest message explicitly asks you to build, update, repeat, or show the Gameplan. Treat the earlier Gameplan as conversation memory, not as the default response template.",
+      "For a question about a named level such as Put Support, Call Resistance, HVL, Zero Gamma, MPO, MPV, a Gamma level, or a Kwant level: locate the exact matching level in the authoritative replay context; state its futures-equivalent price, current-price relationship and data freshness; then explain its conditional role, confirmation, invalidation and the next verified structure. If it is absent at this cutoff, say so plainly and do not import it from another time.",
       "Before the requested session opens, use only information that would genuinely have existed before that open. After playback starts, discuss only developments visible up to the current replay cutoff. If the replay advances, treat the newest supplied cutoff as the present moment and reassess without revealing what happens next.",
       "Every material claim must be tied to a supplied price window, candle, level, zone, Gamma state, call/put exposure, or an explicitly stated limitation. If a required historical source is unavailable, name it and continue from the verified evidence rather than guessing.",
     ] : [
@@ -1281,7 +1405,7 @@ export async function POST(request: NextRequest) {
     if (!response?.ok) {
       if (historicalReplay) {
         return NextResponse.json({
-          text: historicalReplayFallbackText(historicalReplay),
+          text: historicalReplayFallbackText(historicalReplay, finalUserText),
           model: modelKey,
           degraded: true,
           retryable: true,
@@ -1470,7 +1594,7 @@ export async function POST(request: NextRequest) {
     console.error("ZYON request failed", error);
     if (historicalReplay) {
       return NextResponse.json({
-        text: historicalReplayFallbackText(historicalReplay),
+        text: historicalReplayFallbackText(historicalReplay, finalUserText),
         model: modelKey,
         degraded: true,
         retryable: true,
