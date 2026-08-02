@@ -85,6 +85,98 @@ const REPLAY_TIME_ZONE_STORAGE_KEY = "kwantdesk:backtesting-timezone:v1";
 const REPLAY_LOOKBACK_MS = 7 * 24 * 60 * 60_000;
 const REPLAY_FORWARD_MS = 24 * 60 * 60_000;
 const REPLAY_LOAD_TIMEOUT_MS = 20_000;
+const REPLAY_TICK_WINDOW_MS = 6 * 60 * 60_000;
+const REPLAY_TICK_PREFETCH_MS = 10 * 60_000;
+
+function replayIntervalMs(timeframe: string) {
+  const match = timeframe.match(/^(\d+)(s|m|h|D|W|M)$/);
+  if (!match) return null;
+  const value = Math.max(1, Number(match[1]));
+  const unitMs: Record<string, number> = {
+    s: 1_000,
+    m: 60_000,
+    h: 60 * 60_000,
+    D: 24 * 60 * 60_000,
+    W: 7 * 24 * 60 * 60_000,
+    M: 30 * 24 * 60 * 60_000,
+  };
+  return value * unitMs[match[2]];
+}
+
+function firstCandleAtOrAfter(candles: Candle[], timestamp: number) {
+  let low = 0;
+  let high = candles.length;
+  while (low < high) {
+    const middle = Math.floor((low + high) / 2);
+    if (candles[middle].timestamp < timestamp) low = middle + 1;
+    else high = middle;
+  }
+  return low;
+}
+
+function firstCandleAfter(candles: Candle[], timestamp: number) {
+  let low = 0;
+  let high = candles.length;
+  while (low < high) {
+    const middle = Math.floor((low + high) / 2);
+    if (candles[middle].timestamp <= timestamp) low = middle + 1;
+    else high = middle;
+  }
+  return low;
+}
+
+function historicalCandlesAtClock(
+  candles: Candle[],
+  oneSecondBars: Candle[],
+  timeframe: string,
+  clock: number | null,
+) {
+  if (!candles.length || clock === null) return [];
+  const intervalMs = replayIntervalMs(timeframe);
+  if (!intervalMs) return candles.slice(0, firstCandleAfter(candles, clock));
+
+  const bucketStart = Math.floor(clock / intervalMs) * intervalMs;
+  const completedEnd = firstCandleAtOrAfter(candles, bucketStart);
+  const completed = candles.slice(0, completedEnd);
+  const tickStart = firstCandleAtOrAfter(oneSecondBars, bucketStart);
+  const tickEnd = firstCandleAfter(oneSecondBars, clock);
+  const intrabar = oneSecondBars.slice(tickStart, tickEnd);
+  if (intrabar.length) {
+    let high = intrabar[0].high;
+    let low = intrabar[0].low;
+    let volume = 0;
+    intrabar.forEach((bar) => {
+      high = Math.max(high, bar.high);
+      low = Math.min(low, bar.low);
+      volume += bar.volume ?? 0;
+    });
+    return [
+      ...completed,
+      {
+        timestamp: bucketStart,
+        open: intrabar[0].open,
+        high,
+        low,
+        close: intrabar.at(-1)?.close ?? intrabar[0].close,
+        volume,
+      },
+    ];
+  }
+
+  const source = candles[completedEnd]?.timestamp === bucketStart ? candles[completedEnd] : undefined;
+  if (!source || bucketStart > clock) return completed;
+  return [
+    ...completed,
+    {
+      timestamp: bucketStart,
+      open: source.open,
+      high: source.open,
+      low: source.open,
+      close: source.open,
+      volume: 0,
+    },
+  ];
+}
 
 function previousWeekday(date: Date) {
   const value = new Date(date);
@@ -347,13 +439,19 @@ export default function BacktestingWorkspace() {
   const [date, setDate] = useState(defaultReplayDate);
   const [time, setTime] = useState("09:30");
   const [candles, setCandles] = useState<Candle[]>([]);
+  const [oneSecondBars, setOneSecondBars] = useState<Candle[]>([]);
   const [sessionStartAt, setSessionStartAt] = useState<number | null>(null);
   const [replayStartIndex, setReplayStartIndex] = useState(0);
   const [visibleIndex, setVisibleIndex] = useState(0);
+  const [playbackClock, setPlaybackClock] = useState<number | null>(null);
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState<(typeof SPEEDS)[number]>(1);
   const [loading, setLoading] = useState(false);
   const [timeframeLoading, setTimeframeLoading] = useState(false);
+  const [tickerLoading, setTickerLoading] = useState(false);
+  const [tickerError, setTickerError] = useState("");
+  const [tickerCoverageStart, setTickerCoverageStart] = useState(0);
+  const [tickerCoverageEnd, setTickerCoverageEnd] = useState(0);
   const [favouriteTimeframes, setFavouriteTimeframes] = useState<string[]>(() => {
     if (typeof window === "undefined") return DEFAULT_FAVOURITE_TIMEFRAMES;
     try {
@@ -393,7 +491,6 @@ export default function BacktestingWorkspace() {
   const [valueAreaSnapshotKey, setValueAreaSnapshotKey] = useState("");
   const [snapshotDate, setSnapshotDate] = useState("");
   const [levelSnapshotKey, setLevelSnapshotKey] = useState("");
-  const accumulatorRef = useRef(0);
   const lastLevelLoadAtRef = useRef(0);
   const pendingLevelRefreshRef = useRef<{ clock: number; futuresPrice: number | null } | null>(null);
   const levelRefreshTimerRef = useRef<number | null>(null);
@@ -401,6 +498,7 @@ export default function BacktestingWorkspace() {
   const intervalCommandInputRef = useRef<HTMLInputElement>(null);
   const intervalCommandPanelRef = useRef<HTMLDivElement>(null);
   const timeframeMenuRef = useRef<HTMLDivElement>(null);
+  const tickerRequestIdRef = useRef(0);
 
   useEffect(() => {
     const storedSettings = loadStoredChartSettings();
@@ -417,9 +515,17 @@ export default function BacktestingWorkspace() {
 
   const selectedDefinition = INSTRUMENTS.find((item) => item.id === instrument) ?? INSTRUMENTS[0];
   const root = instrument === "NQ" || instrument === "MNQ" ? "NQ" : "ES";
-  const replayClock = candles[Math.min(visibleIndex, Math.max(0, candles.length - 1))]?.timestamp ?? null;
+  const replayClock = playbackClock;
+  const replayDataClock = replayClock === null ? null : Math.floor(replayClock / 1_000) * 1_000;
   const activeOptionsSnapshot = replayClock ? replayOptionsSnapshot(replayClock) : null;
-  const visibleCandles = useMemo(() => candles.slice(0, visibleIndex + 1), [candles, visibleIndex]);
+  const visibleCandles = useMemo(
+    () => historicalCandlesAtClock(candles, oneSecondBars, timeframe, replayDataClock),
+    [candles, oneSecondBars, replayDataClock, timeframe],
+  );
+  const replayEndClock = useMemo(() => {
+    if (!candles.length) return null;
+    return (candles.at(-1)?.timestamp ?? 0) + (replayIntervalMs(timeframe) ?? 1_000);
+  }, [candles, timeframe]);
   const activeLevels = useMemo(() => [
     ...(levelState.gamma ? gammaLevels : []),
     ...(levelState.quant ? quantLevels : []),
@@ -516,11 +622,61 @@ export default function BacktestingWorkspace() {
     return { ordered, end };
   }, [selectedDefinition.symbol]);
 
+  const loadReplayTickerWindow = useCallback(async (
+    clock: number,
+    reset = false,
+    requestedTimeframe = timeframe,
+  ) => {
+    if (!Number.isFinite(clock) || (tickerLoading && !reset)) return false;
+    if (
+      !reset
+      && tickerCoverageStart <= clock
+      && tickerCoverageEnd >= clock + REPLAY_TICK_PREFETCH_MS
+    ) return true;
+
+    const requestId = ++tickerRequestIdRef.current;
+    const intervalMs = replayIntervalMs(requestedTimeframe);
+    const activeBucketStart = intervalMs
+      ? Math.floor(clock / intervalMs) * intervalMs
+      : clock - 60_000;
+    const requestStart = reset
+      ? Math.max(clock - 24 * 60 * 60_000, activeBucketStart)
+      : Math.max(clock, tickerCoverageEnd - 1_000);
+    const requestEnd = Math.min(Date.now(), Math.max(clock + REPLAY_TICK_WINDOW_MS, requestStart + REPLAY_TICK_WINDOW_MS));
+    if (requestEnd <= requestStart) return false;
+
+    setTickerLoading(true);
+    setTickerError("");
+    try {
+      const payload = await requestJson<SessionPayload>(
+        `/api/backtesting/session?symbol=${encodeURIComponent(selectedDefinition.symbol)}&timeframe=1s&start=${encodeURIComponent(new Date(requestStart).toISOString())}&end=${encodeURIComponent(new Date(requestEnd).toISOString())}`,
+        { timeoutMs: REPLAY_LOAD_TIMEOUT_MS, cache: "force-cache" },
+      );
+      if (requestId !== tickerRequestIdRef.current) return false;
+      const ordered = payload.candles
+        .filter((bar) => Number.isFinite(bar.timestamp) && bar.timestamp >= requestStart && bar.timestamp <= requestEnd)
+        .sort((left, right) => left.timestamp - right.timestamp);
+      setOneSecondBars((current) => {
+        if (reset) return ordered;
+        const merged = new Map(current.map((bar) => [bar.timestamp, bar]));
+        ordered.forEach((bar) => merged.set(bar.timestamp, bar));
+        return [...merged.values()].sort((left, right) => left.timestamp - right.timestamp);
+      });
+      setTickerCoverageStart((current) => reset || current === 0 ? requestStart : Math.min(current, requestStart));
+      setTickerCoverageEnd((current) => reset ? requestEnd : Math.max(current, requestEnd));
+      return true;
+    } catch (problem) {
+      if (requestId !== tickerRequestIdRef.current) return false;
+      setTickerError(problem instanceof Error ? problem.message : "Historical one-second replay could not be loaded.");
+      return false;
+    } finally {
+      if (requestId === tickerRequestIdRef.current) setTickerLoading(false);
+    }
+  }, [selectedDefinition.symbol, tickerCoverageEnd, tickerCoverageStart, tickerLoading, timeframe]);
+
   const candleIndexAt = useCallback((ordered: Candle[], clock: number) => {
     if (!ordered.length) return 0;
-    const firstFuture = ordered.findIndex((candle) => candle.timestamp > clock);
-    if (firstFuture < 0) return ordered.length - 1;
-    return Math.max(0, firstFuture - 1);
+    return Math.max(0, Math.min(ordered.length - 1, firstCandleAfter(ordered, clock) - 1));
   }, []);
 
   const startReplay = useCallback(async () => {
@@ -537,6 +693,11 @@ export default function BacktestingWorkspace() {
     setQuantLevels([]);
     setQuantZones([]);
     setValueAreaLevels([]);
+    setOneSecondBars([]);
+    setTickerCoverageStart(0);
+    setTickerCoverageEnd(0);
+    setTickerError("");
+    tickerRequestIdRef.current += 1;
     setValueAreaSnapshotKey("");
     setSnapshotDate("");
     setLevelSnapshotKey("");
@@ -547,17 +708,19 @@ export default function BacktestingWorkspace() {
       setSessionStartAt(startAt);
       setReplayStartIndex(index);
       setVisibleIndex(index);
+      setPlaybackClock(startAt);
       setStarted(true);
       setShowSetup(false);
       // Paint the replay as soon as CME candles arrive. Historical options
       // reconstruction can be materially slower and hydrates independently.
       void loadLevels(startAt, true, ordered[index]?.close ?? null);
+      void loadReplayTickerWindow(startAt, true);
     } catch (problem) {
       setError(problem instanceof Error ? problem.message : "The replay could not be started.");
     } finally {
       setLoading(false);
     }
-  }, [candleIndexAt, date, loadLevels, loadReplayCandles, replayTimeZone, time, timeframe]);
+  }, [candleIndexAt, date, loadLevels, loadReplayCandles, loadReplayTickerWindow, replayTimeZone, time, timeframe]);
 
   const changeReplayTimeframe = useCallback(async (nextTimeframe: ReplayTimeframe) => {
     if (!started || !sessionStartAt || nextTimeframe === timeframe || timeframeLoading) return;
@@ -575,12 +738,18 @@ export default function BacktestingWorkspace() {
       setCandles(ordered);
       setReplayStartIndex(candleIndexAt(ordered, sessionStartAt));
       setVisibleIndex(candleIndexAt(ordered, targetClock));
+      setPlaybackClock(targetClock);
+      setOneSecondBars([]);
+      setTickerCoverageStart(0);
+      setTickerCoverageEnd(0);
+      tickerRequestIdRef.current += 1;
+      void loadReplayTickerWindow(targetClock, true, nextTimeframe);
     } catch (problem) {
       setError(problem instanceof Error ? problem.message : "That historical timeframe could not be loaded.");
     } finally {
       setTimeframeLoading(false);
     }
-  }, [candleIndexAt, loadReplayCandles, replayClock, sessionStartAt, started, timeframe, timeframeLoading]);
+  }, [candleIndexAt, loadReplayCandles, loadReplayTickerWindow, replayClock, sessionStartAt, started, timeframe, timeframeLoading]);
 
   const toggleFavouriteTimeframe = useCallback((interval: string) => {
     setFavouriteTimeframes((current) => current.includes(interval)
@@ -664,21 +833,66 @@ export default function BacktestingWorkspace() {
     return () => document.removeEventListener("pointerdown", handlePointerDown, true);
   }, [intervalCommandOpen, showAllTimeframes]);
 
+  const togglePlayback = useCallback(async () => {
+    if (playing) {
+      setPlaying(false);
+      return;
+    }
+    if (replayClock === null) return;
+    const tickerReady = tickerCoverageStart <= replayClock && tickerCoverageEnd > replayClock + 1_000;
+    if (!tickerReady) {
+      const loaded = await loadReplayTickerWindow(replayClock, true);
+      if (!loaded) return;
+    }
+    setTickerError("");
+    setPlaying(true);
+  }, [loadReplayTickerWindow, playing, replayClock, tickerCoverageEnd, tickerCoverageStart]);
+
   useEffect(() => {
     if (!playing || !candles.length) return;
-    const timer = window.setInterval(() => {
-      accumulatorRef.current += speed / 10;
-      const advance = Math.floor(accumulatorRef.current);
-      if (advance < 1) return;
-      accumulatorRef.current -= advance;
-      setVisibleIndex((current) => {
-        const next = Math.min(candles.length - 1, current + advance);
-        if (next >= candles.length - 1) setPlaying(false);
+    const intervalMs = replayIntervalMs(timeframe) ?? 1_000;
+    const replayEnd = (candles.at(-1)?.timestamp ?? 0) + intervalMs;
+    let previousUpdate = performance.now();
+
+    const advance = () => {
+      const updateTime = performance.now();
+      const elapsed = Math.min(500, Math.max(0, updateTime - previousUpdate));
+      previousUpdate = updateTime;
+      setPlaybackClock((current) => {
+        if (current === null) return current;
+        const availableEnd = tickerCoverageEnd > 0
+          ? Math.min(replayEnd, tickerCoverageEnd)
+          : current;
+        const next = Math.min(availableEnd, current + elapsed * speed);
         return next;
       });
-    }, 100);
+    };
+
+    const timer = window.setInterval(advance, 100);
     return () => window.clearInterval(timer);
-  }, [candles, playing, speed]);
+  }, [candles, playing, speed, tickerCoverageEnd, timeframe]);
+
+  useEffect(() => {
+    if (playing && replayClock !== null && replayEndClock !== null && replayClock >= replayEndClock) {
+      setPlaying(false);
+    }
+  }, [playing, replayClock, replayEndClock]);
+
+  useEffect(() => {
+    if (replayClock === null || !candles.length) return;
+    setVisibleIndex(candleIndexAt(candles, replayClock));
+  }, [candleIndexAt, candles, replayClock]);
+
+  useEffect(() => {
+    if (!playing || replayClock === null || tickerLoading || tickerCoverageEnd <= 0) return;
+    const lead = Math.max(REPLAY_TICK_PREFETCH_MS, speed * 5_000);
+    if (replayClock < tickerCoverageEnd - lead) return;
+    void loadReplayTickerWindow(tickerCoverageEnd, false);
+  }, [loadReplayTickerWindow, playing, replayClock, speed, tickerCoverageEnd, tickerLoading]);
+
+  useEffect(() => {
+    if (tickerError) setPlaying(false);
+  }, [tickerError]);
 
   useEffect(() => {
     if (!replayClock || !started) return;
@@ -707,7 +921,10 @@ export default function BacktestingWorkspace() {
   const resetReplay = () => {
     setPlaying(false);
     setVisibleIndex(replayStartIndex);
-    accumulatorRef.current = 0;
+    setPlaybackClock(sessionStartAt);
+    if (sessionStartAt !== null && !(tickerCoverageStart <= sessionStartAt && tickerCoverageEnd > sessionStartAt)) {
+      void loadReplayTickerWindow(sessionStartAt, true);
+    }
   };
 
   const toggleLevel = (family: LevelFamily) => {
@@ -1072,8 +1289,8 @@ export default function BacktestingWorkspace() {
         {started ? (
           <div className="absolute bottom-8 left-1/2 z-30 w-[min(920px,calc(100%-32px))] -translate-x-1/2 rounded-2xl border border-border bg-panel/95 px-3 py-3 shadow-2xl backdrop-blur-xl">
             <div className="flex flex-wrap items-center gap-2">
-              <button type="button" onClick={() => setPlaying((current) => !current)} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary text-background hover:brightness-110">
-                {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+              <button type="button" onClick={() => void togglePlayback()} disabled={tickerLoading} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary text-background hover:brightness-110 disabled:cursor-wait disabled:opacity-60">
+                {tickerLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
               </button>
               <button type="button" onClick={resetReplay} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-border text-muted hover:text-foreground" title="Reset to replay start">
                 <RotateCcw className="h-3.5 w-3.5" />
@@ -1086,7 +1303,14 @@ export default function BacktestingWorkspace() {
                   value={visibleIndex}
                   onChange={(event) => {
                     setPlaying(false);
-                    setVisibleIndex(Number(event.target.value));
+                    const nextIndex = Number(event.target.value);
+                    const nextClock = candles[nextIndex]?.timestamp ?? sessionStartAt;
+                    setVisibleIndex(nextIndex);
+                    setPlaybackClock(nextClock);
+                    if (
+                      nextClock !== null
+                      && !(tickerCoverageStart <= nextClock && tickerCoverageEnd > nextClock + REPLAY_TICK_PREFETCH_MS)
+                    ) void loadReplayTickerWindow(nextClock, true);
                   }}
                   className="h-1.5 w-full cursor-pointer accent-[var(--primary)]"
                   aria-label="Replay position"
@@ -1117,7 +1341,8 @@ export default function BacktestingWorkspace() {
                   ? `New York intraday snapshot · ${formatReplayClock(replayClock ?? 0, "America/New_York")} NY`
                   : `Snapshot cut-off: ${snapshotDate || "preparing"} New York EOD`}
               </span>
-              <span>{levelLoading ? "Refreshing eligible levels…" : "Future candles remain hidden"}</span>
+              <span>{tickerLoading ? "Loading historical ticker…" : playing ? `${speed}× real-time market clock` : levelLoading ? "Refreshing eligible levels…" : "Future candles remain hidden"}</span>
+              {tickerError ? <span className="text-danger">ticker: {tickerError}</span> : null}
               {Object.entries(levelError).filter(([, message]) => message).map(([family, message]) => (
                 <span key={family} className="text-danger">{family}: {message}</span>
               ))}
