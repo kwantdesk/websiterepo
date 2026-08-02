@@ -63,6 +63,7 @@ export default function HistoricalGexPanel({
   releaseState,
   sessionDate,
   onClose,
+  variant = "historical",
 }: {
   snapshot: ChartGammaLevelsPayload | null;
   loading: boolean;
@@ -70,10 +71,14 @@ export default function HistoricalGexPanel({
   releaseState: "PREOPEN" | "OPENING" | "RELEASED";
   sessionDate: string;
   onClose: () => void;
+  variant?: "historical" | "live";
 }) {
+  const live = variant === "live";
   const scrollRef = useRef<HTMLDivElement>(null);
   const positioning = snapshot?.positioning ?? null;
-  const source = snapshot?.sources[0] ?? null;
+  const source = snapshot?.sources.find((candidate) => candidate.symbol === positioning?.sourceSymbol)
+    ?? snapshot?.sources[0]
+    ?? null;
   const levels = useMemo(() => (source?.levels ?? [])
     .filter((level) => IMPORTANT_LEVELS.has(level.kind))
     .sort((left, right) => Math.abs(left.price - (positioning?.futuresPrice ?? source?.stockPrice ?? 0)) - Math.abs(right.price - (positioning?.futuresPrice ?? source?.stockPrice ?? 0)))
@@ -105,16 +110,20 @@ export default function HistoricalGexPanel({
         <span className="flex h-8 w-8 items-center justify-center rounded-xl border border-primary/25 bg-primary/10 text-primary"><Activity className="h-4 w-4" /></span>
         <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <span className="text-[12px] font-semibold uppercase tracking-[0.1em] text-foreground">Historical GEX</span>
-            <span className="rounded-md border border-primary/25 bg-primary/10 px-1.5 py-0.5 text-[7px] font-semibold text-primary">NO LOOKAHEAD</span>
+            <span className="text-[12px] font-semibold uppercase tracking-[0.1em] text-foreground">{live ? "Live GEX" : "Historical GEX"}</span>
+            <span className="rounded-md border border-primary/25 bg-primary/10 px-1.5 py-0.5 text-[7px] font-semibold text-primary">
+              {live ? positioning?.status === "LIVE" ? "LIVE" : "EOD" : "NO LOOKAHEAD"}
+            </span>
           </div>
           <div className="mt-0.5 truncate font-mono text-[8px] text-muted">
             {!positioning && releaseState !== "RELEASED"
               ? `${sessionDate} · waiting for New York GEX`
-              : `${clock(snapshot?.checkedAt)} NY · ${positioning?.status === "HISTORICAL_INTRADAY" ? "intraday frame" : "prior New York EOD"}`}
+              : live
+                ? `${clock(positioning?.asOf ?? snapshot?.checkedAt)} NY · ${positioning?.status === "LIVE" ? "live options frame" : "latest New York EOD"}`
+                : `${clock(snapshot?.checkedAt)} NY · ${positioning?.status === "HISTORICAL_INTRADAY" ? "intraday frame" : "prior New York EOD"}`}
           </div>
         </div>
-        <button type="button" onClick={onClose} className="ml-auto flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground" aria-label="Close historical GEX"><X className="h-4 w-4" /></button>
+        <button type="button" onClick={onClose} className="ml-auto flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground" aria-label={live ? "Close live GEX" : "Close historical GEX"}><X className="h-4 w-4" /></button>
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-3">
@@ -133,20 +142,20 @@ export default function HistoricalGexPanel({
                 : `The ${sessionDate} intraday GEX structure does not exist before New York options trading begins. Prior EOD Gamma may remain on the chart; live session GEX will appear here automatically after the open.`}
             </div>
             <div className="mt-4 rounded-lg border border-primary/15 bg-primary/[0.04] px-3 py-2 font-mono text-[8px] text-primary">
-              No future GEX frames are being used
+              {live ? "Waiting for the next validated options frame" : "No future GEX frames are being used"}
             </div>
           </div>
         ) : loading && !snapshot ? (
           <div className="flex h-full flex-col items-center justify-center text-center">
             <span className="flex h-10 w-10 animate-pulse items-center justify-center rounded-2xl border border-primary/25 bg-primary/10 text-primary"><Layers3 className="h-4 w-4" /></span>
-            <div className="mt-3 text-[11px] font-semibold text-foreground">Restoring point-in-time GEX</div>
-            <div className="mt-1 text-[9px] text-muted">Only frames at or before the replay clock are eligible.</div>
+            <div className="mt-3 text-[11px] font-semibold text-foreground">{live ? "Loading live GEX" : "Restoring point-in-time GEX"}</div>
+            <div className="mt-1 text-[9px] text-muted">{live ? "Synchronising the latest options frame with the active futures chart." : "Only frames at or before the replay clock are eligible."}</div>
           </div>
         ) : !positioning ? (
           <div className="rounded-2xl border border-border bg-surface/30 p-5 text-center">
             <ShieldCheck className="mx-auto h-5 w-5 text-muted" />
-            <div className="mt-3 text-[11px] font-semibold text-foreground">Historical structure unavailable</div>
-            <div className="mt-1 text-[9px] leading-4 text-muted">{error || "No validated GEX frame exists for this replay timestamp."}</div>
+            <div className="mt-3 text-[11px] font-semibold text-foreground">{live ? "Live GEX unavailable" : "Historical structure unavailable"}</div>
+            <div className="mt-1 text-[9px] leading-4 text-muted">{error || (live ? "The live options structure is not available for this chart." : "No validated GEX frame exists for this replay timestamp.")}</div>
           </div>
         ) : (
           <>
@@ -221,7 +230,9 @@ export default function HistoricalGexPanel({
 
             <div className="mt-3 flex items-start gap-2 rounded-xl border border-primary/15 bg-primary/[0.04] p-3 text-[8px] leading-4 text-muted">
               <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
-              <span>The panel selects the last completed options frame at or before the replay clock. Outside New York options hours it freezes the previous completed New York EOD structure.</span>
+              <span>{live
+                ? "The panel follows the active NQ or ES chart and refreshes from the shared live Gamma cache. Outside New York options hours it holds the latest completed New York EOD structure."
+                : "The panel selects the last completed options frame at or before the replay clock. Outside New York options hours it freezes the previous completed New York EOD structure."}</span>
             </div>
           </>
         )}

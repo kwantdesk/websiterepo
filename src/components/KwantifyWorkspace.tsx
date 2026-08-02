@@ -247,6 +247,10 @@ const ZyonWorkspace = dynamic(() => import("@/components/zyon/ZyonWorkspace"), {
     />
   ),
 });
+const LiveGexPanel = dynamic(() => import("@/components/backtesting/HistoricalGexPanel"), {
+  ssr: false,
+  loading: () => workspaceLoader("Opening live GEX", "Synchronising the latest options structure."),
+});
 const JournalWorkspace = dynamic(() => import("@/components/journal/JournalWorkspace"), {
   ssr: false,
   loading: () => workspaceLoader("Opening Journal", "Restoring account records."),
@@ -265,7 +269,7 @@ const RIGHT_PANEL_MIN_WIDTH = 240;
 const RIGHT_PANEL_MAX_WIDTH = 500;
 const RIGHT_PANEL_DEFAULT_WIDTH = 280;
 const RIGHT_PANEL_COLLAPSE_SNAP_WIDTH = 120;
-type RightPanel = "order" | "watchlist" | "zyon" | "kwantbot" | "optionstape" | "alerts" | "alertslog" | "friends";
+type RightPanel = "order" | "watchlist" | "gex" | "zyon" | "kwantbot" | "optionstape" | "alerts" | "alertslog" | "friends";
 type AlertsPanelTab = "social" | "market";
 const CHART_INDICATORS_STORAGE_KEY = "kwantdesk-chart-indicators";
 
@@ -3784,6 +3788,7 @@ export default function KwantifyWorkspace({
     const saved = window.localStorage.getItem("kwantdesk-right-panel-state");
     return saved === "order"
       || saved === "watchlist"
+      || saved === "gex"
       || saved === "zyon"
       || saved === "kwantbot"
       || saved === "optionstape"
@@ -3801,6 +3806,7 @@ export default function KwantifyWorkspace({
     const saved = window.localStorage.getItem("kwantdesk-right-panel-state");
     return saved === "order"
       || saved === "watchlist"
+      || saved === "gex"
       || saved === "zyon"
       || saved === "kwantbot"
       || saved === "optionstape"
@@ -3925,6 +3931,9 @@ export default function KwantifyWorkspace({
     if (typeof window === "undefined") return false;
     return window.localStorage.getItem(GAMMA_LEVELS_ENABLED_STORAGE_KEY) === "true";
   });
+  const [liveGexSnapshot, setLiveGexSnapshot] = useState<ChartGammaLevelsPayload | null>(null);
+  const [liveGexLoading, setLiveGexLoading] = useState(false);
+  const [liveGexError, setLiveGexError] = useState("");
   const [historicalStructureEnabled, setHistoricalStructureEnabled] = useState(() => {
     if (typeof window === "undefined") return false;
     return window.localStorage.getItem(HISTORICAL_STRUCTURE_ENABLED_STORAGE_KEY) === "true";
@@ -4222,6 +4231,57 @@ export default function KwantifyWorkspace({
     () => workspacePanes.find((pane) => pane.id === activePaneId) ?? workspacePanes[0] ?? DEFAULT_WORKSPACE_PANES[0],
     [activePaneId, workspacePanes],
   );
+  const activeLiveGexConversion = useMemo(
+    () => cashFallbackGammaConversion(displayCmeSymbol(activeWorkspacePane.symbol)),
+    [activeWorkspacePane.symbol],
+  );
+
+  useEffect(() => {
+    if (rightPanel !== "gex") return;
+    if (!activeLiveGexConversion) {
+      setLiveGexSnapshot(null);
+      setLiveGexLoading(false);
+      setLiveGexError("Live GEX is available for NQ, MNQ, ES and MES charts.");
+      return;
+    }
+
+    let cancelled = false;
+    let timer: number | null = null;
+    const conversion = activeLiveGexConversion;
+    setLiveGexSnapshot((current) => (
+      current?.root === conversion.futuresRoot && current.requestedSource === conversion.source
+        ? current
+        : null
+    ));
+    setLiveGexLoading(true);
+    setLiveGexError("");
+
+    const loadLiveGex = async () => {
+      try {
+        const payload = await fetchGammaPayload(conversion);
+        if (cancelled) return;
+        setLiveGexSnapshot(payload);
+        setLiveGexError("");
+        setLiveGexLoading(false);
+        timer = window.setTimeout(
+          () => void loadLiveGex(),
+          Math.max(5_000, Math.min(60_000, payload.refreshAfterMs)),
+        );
+      } catch (loadError) {
+        if (cancelled) return;
+        setLiveGexError(loadError instanceof Error ? loadError.message : "Live GEX is temporarily unavailable.");
+        setLiveGexLoading(false);
+        timer = window.setTimeout(() => void loadLiveGex(), 10_000);
+      }
+    };
+
+    void loadLiveGex();
+    return () => {
+      cancelled = true;
+      if (timer !== null) window.clearTimeout(timer);
+    };
+  }, [activeLiveGexConversion, rightPanel]);
+
   const activeGameplanRoot = gameplanChartRootForInstrument(activeWorkspacePane.symbol);
   const activeGameplanLevelsAdded = Boolean(
     activeGameplanRoot
@@ -7542,10 +7602,16 @@ export default function KwantifyWorkspace({
   };
 
   const toggleRightPanel = (panel: RightPanel) => {
+    if (panel === "gex") {
+      setRightPanelWidth((current) => Math.max(360, current));
+    }
     setRightPanel((current) => current === panel ? null : panel);
   };
 
   const reopenRightPanel = () => {
+    if (lastOpenRightPanel === "gex") {
+      setRightPanelWidth((current) => Math.max(360, current));
+    }
     setRightPanel(lastOpenRightPanel);
   };
 
@@ -9569,6 +9635,21 @@ export default function KwantifyWorkspace({
               </div>
             </div>
           )}
+          {rightPanel === "gex" && (
+            <LiveGexPanel
+              snapshot={liveGexSnapshot}
+              loading={liveGexLoading}
+              error={liveGexError}
+              releaseState={liveGexError
+                ? "RELEASED"
+                : liveGexSnapshot?.positioning
+                  ? "RELEASED"
+                  : liveGexSnapshot?.marketOpen ? "OPENING" : "PREOPEN"}
+              sessionDate={liveGexSnapshot?.sessionDate ?? "Current session"}
+              variant="live"
+              onClose={() => setRightPanel(null)}
+            />
+          )}
           {rightPanel === "kwantbot" && (
             <KwantBotInterpreterPanel interpreter={kwantBotInterpreter} />
           )}
@@ -9906,6 +9987,8 @@ export default function KwantifyWorkspace({
             title={`Reopen ${
               lastOpenRightPanel === "alertslog"
                 ? "Alerts Log"
+                : lastOpenRightPanel === "gex"
+                  ? "Live GEX"
                 : lastOpenRightPanel === "zyon"
                   ? "ZYON"
                 : lastOpenRightPanel === "kwantbot"
@@ -9924,6 +10007,7 @@ export default function KwantifyWorkspace({
         )}
         {[
           { id: "watchlist" as const, title: "Watchlist", icon: List },
+          { id: "gex" as const, title: "Live GEX", icon: Layers3 },
           { id: "zyon" as const, title: "ZYON", icon: Sparkles },
           { id: "kwantbot" as const, title: "Kwant Bot", icon: Bot },
           { id: "optionstape" as const, title: "Options Tape", icon: FileText },
