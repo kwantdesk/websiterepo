@@ -615,6 +615,265 @@ table,
   animation: calling-card-art-drift 12s ease-in-out infinite alternate;
 }
 
+/* Every illustrated issue keeps its original painted scene, then receives a
+   lightweight GPU-friendly motion pass tailored to the story of that card. */
+.calling-card__motion {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  overflow: hidden;
+  pointer-events: none;
+  transition: filter .5s ease, opacity .5s ease;
+}
+
+.calling-card:hover .calling-card__motion {
+  filter: brightness(1.14) saturate(1.12);
+}
+
+.calling-card__motion-field,
+.calling-card__motion-beam,
+.calling-card__motion-sparks,
+.calling-card__motion-trace {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  will-change: transform, opacity;
+}
+
+.calling-card__motion-trace {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  fill: none;
+}
+
+.calling-card__trace-line {
+  vector-effect: non-scaling-stroke;
+  stroke: var(--calling-primary);
+  stroke-width: 1.2;
+  stroke-linecap: round;
+  stroke-dasharray: 5 11;
+  filter: drop-shadow(0 0 5px var(--calling-primary));
+  animation: calling-card-route-flow 5.8s linear infinite;
+}
+
+.calling-card__trace-line--two {
+  stroke: var(--calling-secondary);
+  stroke-width: .8;
+  animation-duration: 8.6s;
+  animation-direction: reverse;
+}
+
+.calling-card__trace-nodes {
+  fill: var(--calling-secondary);
+  filter: drop-shadow(0 0 5px var(--calling-secondary));
+  animation: calling-card-node-pulse 2.8s ease-in-out infinite;
+}
+
+/* Origin Signal: the issued signal continuously acquires and releases charge. */
+.calling-card--motif-origin .calling-card__motion-field {
+  opacity: .46;
+  background:
+    radial-gradient(circle at 76% 48%, color-mix(in srgb, var(--calling-primary) 30%, transparent) 0 2%, transparent 21%),
+    conic-gradient(from 0deg at 76% 48%, transparent 0 16%, color-mix(in srgb, var(--calling-secondary) 18%, transparent) 18%, transparent 22% 61%, color-mix(in srgb, var(--calling-primary) 15%, transparent) 64%, transparent 69%);
+  animation: calling-card-origin-charge 7s ease-in-out infinite;
+}
+
+.calling-card--motif-origin .calling-card__motion-trace {
+  opacity: .2;
+  animation: calling-card-trace-breathe 6s ease-in-out infinite;
+}
+
+/* First on Record: the vault and first locked record pulse with a restrained
+   archival gold light rather than moving the character itself. */
+.calling-card--motif-record .calling-card__motion-field {
+  opacity: .4;
+  background:
+    radial-gradient(circle at 77% 58%, color-mix(in srgb, var(--calling-primary) 48%, transparent) 0 1%, color-mix(in srgb, var(--calling-primary) 14%, transparent) 7%, transparent 22%),
+    radial-gradient(circle at 89% 42%, color-mix(in srgb, var(--calling-secondary) 16%, transparent), transparent 18%);
+  animation: calling-card-record-seal 6.8s ease-in-out infinite;
+}
+
+.calling-card--motif-record .calling-card__motion-beam {
+  opacity: .22;
+  left: 58%;
+  width: 44%;
+  background: linear-gradient(96deg, transparent 34%, color-mix(in srgb, var(--calling-secondary) 18%, transparent) 49%, transparent 63%);
+  animation: calling-card-archive-sweep 9s ease-in-out infinite;
+}
+
+/* Waited for Permission: the locked gate beacon breathes while lightning only
+   flashes occasionally, preserving the deliberate waiting mood. */
+.calling-card--motif-permission .calling-card__motion-field {
+  opacity: .5;
+  background:
+    radial-gradient(circle at 84% 51%, color-mix(in srgb, var(--calling-primary) 55%, transparent) 0 1.2%, color-mix(in srgb, var(--calling-primary) 16%, transparent) 4%, transparent 15%),
+    radial-gradient(ellipse at 72% 13%, rgba(255,255,255,.22), transparent 16%);
+  animation: calling-card-permission-beacon 5.4s ease-in-out infinite;
+}
+
+.calling-card--motif-permission .calling-card__motion-beam {
+  opacity: 0;
+  background:
+    linear-gradient(114deg, transparent 58%, rgba(255,255,255,.74) 58.4% 58.7%, transparent 59.2%),
+    linear-gradient(71deg, transparent 65%, color-mix(in srgb, var(--calling-secondary) 58%, transparent) 65.3% 65.6%, transparent 66.1%);
+  animation: calling-card-lightning 8.4s steps(1, end) infinite;
+}
+
+.calling-card--motif-permission .calling-card__motion-sparks {
+  opacity: .2;
+  background-image: radial-gradient(circle, var(--calling-primary) 0 1px, transparent 1.8px);
+  background-size: 47px 39px;
+  mask-image: linear-gradient(90deg, transparent 42%, #000 68%, transparent);
+  animation: calling-card-embers-rise 13s linear infinite;
+}
+
+/* Five Straight: energy keeps travelling toward the fifth gate. */
+.calling-card--motif-streak .calling-card__motion-beam {
+  left: 27%;
+  top: 47%;
+  width: 66%;
+  height: 42%;
+  opacity: .54;
+  background: repeating-linear-gradient(170deg, transparent 0 12px, color-mix(in srgb, var(--calling-primary) 42%, transparent) 13px 14px, transparent 16px 24px);
+  clip-path: polygon(0 56%, 74% 24%, 100% 50%, 69% 65%, 0 85%);
+  animation: calling-card-streak-run 2.7s linear infinite;
+}
+
+.calling-card--motif-streak .calling-card__motion-sparks {
+  opacity: .36;
+  background-image: radial-gradient(ellipse, var(--calling-secondary) 0 1px, transparent 2px);
+  background-size: 61px 27px;
+  mask-image: linear-gradient(90deg, transparent 25%, #000 55%, transparent 96%);
+  animation: calling-card-sparks-forward 5.2s linear infinite;
+}
+
+/* Daily Architect: a construction scan rises through the holographic city. */
+.calling-card--motif-architecture .calling-card__motion-field {
+  left: 47%;
+  top: 38%;
+  width: 51%;
+  height: 59%;
+  opacity: .32;
+  background: repeating-linear-gradient(90deg, color-mix(in srgb, var(--calling-primary) 26%, transparent) 0 1px, transparent 1px 28px);
+  mask-image: linear-gradient(180deg, transparent, #000 32%, #000);
+  animation: calling-card-blueprint-grid 10s linear infinite;
+}
+
+.calling-card--motif-architecture .calling-card__motion-beam {
+  left: 46%;
+  top: 21%;
+  width: 52%;
+  height: 4px;
+  opacity: .56;
+  background: linear-gradient(90deg, transparent, var(--calling-secondary), transparent);
+  box-shadow: 0 0 13px color-mix(in srgb, var(--calling-primary) 54%, transparent);
+  animation: calling-card-build-scan 6.6s ease-in-out infinite;
+}
+
+/* Quiet Consistency: rain continues and the workshop lights flicker almost
+   imperceptibly, matching repetition without spectacle. */
+.calling-card--motif-consistency .calling-card__motion-beam {
+  opacity: .12;
+  background: repeating-linear-gradient(101deg, transparent 0 24px, rgba(255,255,255,.26) 25px, transparent 27px 48px);
+  background-size: 190px 190px;
+  animation: calling-card-rain 2.8s linear infinite;
+}
+
+.calling-card--motif-consistency .calling-card__motion-field {
+  opacity: .27;
+  background: repeating-radial-gradient(ellipse at 58% 69%, rgba(255,255,255,.23) 0 1px, transparent 3px 43px);
+  mask-image: linear-gradient(90deg, transparent 35%, #000 52%, #000 90%, transparent);
+  animation: calling-card-workshop-lights 8s steps(1, end) infinite;
+}
+
+/* Plan Reviewer: the annotated chart routes redraw between both analysts. */
+.calling-card--motif-review .calling-card__motion-trace {
+  opacity: .48;
+  transform: translateY(-13px);
+  animation: calling-card-trace-breathe 5.5s ease-in-out infinite;
+}
+
+.calling-card--motif-review .calling-card__motion-field {
+  opacity: .32;
+  background: radial-gradient(circle at 72% 36%, color-mix(in srgb, var(--calling-primary) 38%, transparent), transparent 17%);
+  animation: calling-card-review-focus 5.5s ease-in-out infinite;
+}
+
+/* Tempered Steel: the furnace cycles and restrained embers lift around the
+   armour, while the silhouette itself remains steady. */
+.calling-card--motif-steel .calling-card__motion-field {
+  opacity: .48;
+  background:
+    radial-gradient(ellipse at 67% 54%, color-mix(in srgb, var(--calling-secondary) 36%, transparent), transparent 21%),
+    radial-gradient(circle at 49% 66%, color-mix(in srgb, var(--calling-primary) 24%, transparent), transparent 17%);
+  animation: calling-card-furnace 5.7s ease-in-out infinite;
+}
+
+.calling-card--motif-steel .calling-card__motion-sparks {
+  left: 38%;
+  width: 54%;
+  opacity: .48;
+  background-image:
+    radial-gradient(circle, #ffb05c 0 1px, transparent 2px),
+    radial-gradient(circle, var(--calling-primary) 0 1px, transparent 1.8px);
+  background-position: 0 0, 24px 16px;
+  background-size: 53px 47px, 71px 61px;
+  mask-image: linear-gradient(180deg, transparent, #000 24%, #000 76%, transparent);
+  animation: calling-card-embers-rise 6.4s linear infinite;
+}
+
+/* Zero Alpha Decay: the recorded edge stays alive as an electrical waveform
+   while the two surrounding regimes alternately charge. */
+.calling-card--motif-decay .calling-card__motion-trace {
+  opacity: .62;
+  transform: translateY(9px) scaleY(.58);
+  animation: calling-card-alpha-wave 4.2s ease-in-out infinite;
+}
+
+.calling-card--motif-decay .calling-card__motion-field {
+  opacity: .38;
+  background:
+    radial-gradient(circle at 67% 24%, rgba(111,186,255,.18), transparent 19%),
+    radial-gradient(circle at 84% 24%, rgba(255,138,37,.2), transparent 19%),
+    radial-gradient(ellipse at 69% 64%, color-mix(in srgb, var(--calling-primary) 34%, transparent), transparent 15%);
+  animation: calling-card-regime-balance 7.6s ease-in-out infinite;
+}
+
+.calling-card--motif-decay .calling-card__motion-beam {
+  opacity: 0;
+  background: linear-gradient(76deg, transparent 70%, rgba(255,255,255,.55) 70.3% 70.55%, transparent 71%);
+  animation: calling-card-lightning 9.2s steps(1, end) infinite -2s;
+}
+
+/* Market Cartographer: routes flow across the terrain and their junctions
+   breathe, making the map feel calculated rather than merely panned. */
+.calling-card--motif-cartography .calling-card__motion-trace {
+  opacity: .72;
+  transform: translateY(13px) scaleY(.74);
+  animation: calling-card-map-awaken 6.8s ease-in-out infinite;
+}
+
+.calling-card--motif-cartography .calling-card__motion-beam {
+  left: 37%;
+  top: 21%;
+  width: 62%;
+  height: 58%;
+  opacity: .16;
+  background: conic-gradient(from 220deg at 76% 62%, transparent, color-mix(in srgb, var(--calling-secondary) 28%, transparent), transparent 22%);
+  animation: calling-card-map-scan 11s linear infinite;
+}
+
+.calling-card--motif-cartography .calling-card__motion-sparks {
+  left: 41%;
+  width: 56%;
+  opacity: .28;
+  background-image: radial-gradient(circle, var(--calling-secondary) 0 1px, transparent 2px);
+  background-size: 72px 43px;
+  mask-image: radial-gradient(ellipse at 65% 67%, #000, transparent 72%);
+  animation: calling-card-map-nodes 7s ease-in-out infinite;
+}
+
 .calling-card--illustrated .calling-card__core,
 .calling-card--illustrated .calling-card__circuit { display: none; }
 .calling-card--illustrated .calling-card__grid { opacity: .07; }
@@ -762,6 +1021,28 @@ table,
 @keyframes calling-card-orbit { to { transform: rotate(360deg); } }
 @keyframes calling-card-scan { to { background-position: 0 92px; } }
 @keyframes calling-card-shine { 0%, 64% { transform: translateX(-36%); opacity: 0; } 72% { opacity: .75; } 84%, 100% { transform: translateX(36%); opacity: 0; } }
+@keyframes calling-card-route-flow { to { stroke-dashoffset: -64; } }
+@keyframes calling-card-node-pulse { 0%, 100% { opacity: .35; } 50% { opacity: 1; } }
+@keyframes calling-card-origin-charge { 0%, 100% { opacity: .32; transform: rotate(-2deg) scale(.97); } 50% { opacity: .6; transform: rotate(2deg) scale(1.03); } }
+@keyframes calling-card-record-seal { 0%, 100% { opacity: .26; transform: scale(.98); } 46% { opacity: .5; transform: scale(1.025); } }
+@keyframes calling-card-archive-sweep { 0%, 58% { transform: translateX(-48%); opacity: 0; } 70% { opacity: .28; } 86%, 100% { transform: translateX(52%); opacity: 0; } }
+@keyframes calling-card-permission-beacon { 0%, 100% { opacity: .32; transform: scale(.99); } 50% { opacity: .62; transform: scale(1.018); } }
+@keyframes calling-card-lightning { 0%, 69%, 72%, 74%, 100% { opacity: 0; } 70%, 73% { opacity: .7; } }
+@keyframes calling-card-embers-rise { from { background-position: 0 80px, 24px 96px; } to { background-position: 18px -130px, 40px -104px; } }
+@keyframes calling-card-streak-run { from { background-position: 0 0; transform: translateX(-1.5%); } to { background-position: 112px 0; transform: translateX(2.5%); } }
+@keyframes calling-card-sparks-forward { from { background-position: -120px 0; } to { background-position: 130px -18px; } }
+@keyframes calling-card-blueprint-grid { from { background-position: 0 0; } to { background-position: 56px 0; } }
+@keyframes calling-card-build-scan { 0%, 100% { transform: translateY(136px); opacity: 0; } 14% { opacity: .55; } 72% { opacity: .35; } 86% { transform: translateY(0); opacity: 0; } }
+@keyframes calling-card-rain { from { background-position: 0 -190px; } to { background-position: -42px 190px; } }
+@keyframes calling-card-workshop-lights { 0%, 100% { opacity: .19; } 28% { opacity: .3; } 29% { opacity: .21; } 31% { opacity: .29; } 68% { opacity: .25; } }
+@keyframes calling-card-trace-breathe { 0%, 100% { opacity: .22; } 50% { opacity: .58; } }
+@keyframes calling-card-review-focus { 0%, 100% { opacity: .18; transform: scale(.96); } 50% { opacity: .42; transform: scale(1.035); } }
+@keyframes calling-card-furnace { 0%, 100% { opacity: .3; transform: scale(.98); } 48% { opacity: .58; transform: scale(1.03); } 56% { opacity: .47; transform: scale(1.012); } }
+@keyframes calling-card-alpha-wave { 0%, 100% { opacity: .35; transform: translateY(9px) scaleY(.52); } 50% { opacity: .72; transform: translateY(9px) scaleY(.7); } }
+@keyframes calling-card-regime-balance { 0%, 100% { opacity: .28; transform: translateX(-.5%); } 50% { opacity: .48; transform: translateX(.5%); } }
+@keyframes calling-card-map-awaken { 0%, 100% { opacity: .45; } 50% { opacity: .8; } }
+@keyframes calling-card-map-scan { to { transform: rotate(360deg); } }
+@keyframes calling-card-map-nodes { 0%, 100% { opacity: .18; background-position: 0 0; } 50% { opacity: .38; background-position: 18px -8px; } }
 
 @media (max-width: 640px) {
   .calling-card__core { right: 15px; width: 92px; height: 92px; }
@@ -775,5 +1056,11 @@ table,
   .calling-card__haze,
   .calling-card__orbit,
   .calling-card__scan,
-  .calling-card__shine { animation: none; }
+  .calling-card__shine,
+  .calling-card__motion-field,
+  .calling-card__motion-beam,
+  .calling-card__motion-sparks,
+  .calling-card__motion-trace,
+  .calling-card__trace-line,
+  .calling-card__trace-nodes { animation: none; }
 }

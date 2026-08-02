@@ -49,12 +49,26 @@ export default function CallingCardVisual({
   } as CSSProperties;
 
   return (
-    <div className={`calling-card ${banner ? "calling-card--banner" : ""} ${locked ? "calling-card--locked" : ""} ${definition.artworkUrl ? "calling-card--illustrated" : ""} ${className}`} style={style}>
+    <div className={`calling-card calling-card--motif-${definition.motif} ${banner ? "calling-card--banner" : ""} ${locked ? "calling-card--locked" : ""} ${definition.artworkUrl ? "calling-card--illustrated" : ""} ${className}`} style={style}>
       <div className="calling-card__plane">
         {definition.artworkUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={definition.artworkUrl} alt="" className="calling-card__art" />
         ) : null}
+        <div className="calling-card__motion" aria-hidden="true">
+          <span className="calling-card__motion-field" />
+          <span className="calling-card__motion-beam" />
+          <span className="calling-card__motion-sparks" />
+          <svg className="calling-card__motion-trace" viewBox="0 0 1000 240" preserveAspectRatio="none">
+            <path className="calling-card__trace-line calling-card__trace-line--one" d="M330 184 C410 166 438 201 512 168 S632 106 694 134 S794 185 876 106 S938 76 1005 88" />
+            <path className="calling-card__trace-line calling-card__trace-line--two" d="M354 210 C430 184 472 222 548 184 S676 150 726 166 S830 199 904 138 S960 116 1010 122" />
+            <g className="calling-card__trace-nodes">
+              <circle cx="512" cy="168" r="3" />
+              <circle cx="694" cy="134" r="3" />
+              <circle cx="876" cy="106" r="3" />
+            </g>
+          </svg>
+        </div>
         <div className="calling-card__grid" />
         <div className="calling-card__haze calling-card__haze--one" />
         <div className="calling-card__haze calling-card__haze--two" />
