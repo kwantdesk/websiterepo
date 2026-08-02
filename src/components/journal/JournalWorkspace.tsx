@@ -72,7 +72,7 @@ import {
   type JournalQuantAnalysis,
 } from "@/lib/journalAnalysis";
 import KwantSelect from "@/components/ui/KwantSelect";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 type JournalTab = "pulse" | "calendar" | "trades" | "edgebook" | "analysis" | "evidence" | "imports";
 type OutcomeFilter = "all" | "wins" | "losses" | "breakeven" | "needs-review";
@@ -305,8 +305,12 @@ function riskReward(value: number | null) {
 function compact(value: number) {
   const absolute = Math.abs(value);
   const sign = value < 0 ? "−" : value > 0 ? "+" : "";
-  if (absolute >= 1_000_000) return `${sign}$${(absolute / 1_000_000).toFixed(2)}M`;
-  if (absolute >= 1_000) return `${sign}$${(absolute / 1_000).toFixed(1)}K`;
+  const formatMagnitude = (magnitude: number) => magnitude.toLocaleString("en-US", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: magnitude >= 100 ? 0 : magnitude >= 10 ? 1 : 2,
+  });
+  if (absolute >= 1_000_000) return `${sign}$${formatMagnitude(absolute / 1_000_000)}M`;
+  if (absolute >= 1_000) return `${sign}$${formatMagnitude(absolute / 1_000)}K`;
   return `${sign}$${absolute.toFixed(0)}`;
 }
 
@@ -357,15 +361,62 @@ function Card({ children, className = "" }: { children: React.ReactNode; classNa
   return <div className={`rounded-2xl border border-border bg-panel ${className}`}>{children}</div>;
 }
 
+function ResponsiveMetricValue({
+  value,
+  compactValue,
+  className,
+}: {
+  value: string;
+  compactValue?: string;
+  className: string;
+}) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const fullValueProbeRef = useRef<HTMLSpanElement>(null);
+  const [showCompact, setShowCompact] = useState(false);
+
+  useLayoutEffect(() => {
+    const container = containerRef.current;
+    const fullValueProbe = fullValueProbeRef.current;
+    if (!container || !fullValueProbe || !compactValue || compactValue === value) {
+      setShowCompact(false);
+      return;
+    }
+
+    const measure = () => {
+      setShowCompact(fullValueProbe.scrollWidth > container.clientWidth);
+    };
+    measure();
+
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", measure);
+      return () => window.removeEventListener("resize", measure);
+    }
+
+    const observer = new ResizeObserver(measure);
+    observer.observe(container);
+    observer.observe(fullValueProbe);
+    return () => observer.disconnect();
+  }, [compactValue, value]);
+
+  return (
+    <div ref={containerRef} className={`relative min-w-0 overflow-hidden ${className}`} title={value}>
+      <span ref={fullValueProbeRef} aria-hidden="true" className="pointer-events-none invisible absolute whitespace-nowrap">{value}</span>
+      <span className="block truncate whitespace-nowrap">{showCompact && compactValue ? compactValue : value}</span>
+    </div>
+  );
+}
+
 function MetricCard({
   label,
   value,
+  compactValue,
   detail,
   icon: Icon,
   tone = "neutral",
 }: {
   label: string;
   value: string;
+  compactValue?: string;
   detail: string;
   icon: typeof Activity;
   tone?: "positive" | "negative" | "neutral";
@@ -376,7 +427,11 @@ function MetricCard({
         <span className="text-[9px] font-semibold uppercase tracking-[0.14em] text-muted">{label}</span>
         <Icon className={`h-3.5 w-3.5 ${tone === "positive" ? "text-primary" : tone === "negative" ? "text-danger" : "text-muted"}`} />
       </div>
-      <div className={`mt-3 truncate font-mono text-[22px] font-semibold ${tone === "positive" ? "text-primary" : tone === "negative" ? "text-danger" : "text-foreground"}`}>{value}</div>
+      <ResponsiveMetricValue
+        value={value}
+        compactValue={compactValue}
+        className={`mt-3 font-mono text-[22px] font-semibold ${tone === "positive" ? "text-primary" : tone === "negative" ? "text-danger" : "text-foreground"}`}
+      />
       <div className="mt-1 truncate text-[9px] text-muted">{detail}</div>
     </Card>
   );
@@ -1693,12 +1748,12 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
         {filteredTrades.length && tab === "pulse" ? (
           <div className="space-y-3 p-3">
             <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-8">
-              <MetricCard label="Net P&L" value={money(stats.netPnl)} detail={`${stats.tradeCount} imported trades`} icon={stats.netPnl >= 0 ? TrendingUp : TrendingDown} tone={stats.netPnl >= 0 ? "positive" : "negative"} />
+              <MetricCard label="Net P&L" value={money(stats.netPnl)} compactValue={compact(stats.netPnl)} detail={`${stats.tradeCount} imported trades`} icon={stats.netPnl >= 0 ? TrendingUp : TrendingDown} tone={stats.netPnl >= 0 ? "positive" : "negative"} />
               <MetricCard label="Win rate" value={percent(stats.winRate)} detail={`${filteredTrades.filter((trade) => trade.netPnl > 0).length} wins · ${filteredTrades.filter((trade) => trade.netPnl < 0).length} losses`} icon={Activity} />
               <MetricCard label="Profit factor" value={ratio(stats.profitFactor)} detail={`${money(stats.grossProfit, false)} / ${money(stats.grossLoss, false)}`} icon={BarChart3} />
-              <MetricCard label="Expectancy" value={money(stats.expectancy)} detail="Average net result per trade" icon={Sparkles} tone={(stats.expectancy ?? 0) >= 0 ? "positive" : "negative"} />
+              <MetricCard label="Expectancy" value={money(stats.expectancy)} compactValue={stats.expectancy === null ? undefined : compact(stats.expectancy)} detail="Average net result per trade" icon={Sparkles} tone={(stats.expectancy ?? 0) >= 0 ? "positive" : "negative"} />
               <MetricCard label="Avg risk : reward" value={riskReward(stats.averageR)} detail={`${filteredTrades.filter((trade) => trade.rMultiple !== null).length} risk-complete trades`} icon={Layers3} />
-              <MetricCard label="Max drawdown" value={money(-stats.maxDrawdown)} detail="Peak-to-trough imported P&L" icon={TrendingDown} tone="negative" />
+              <MetricCard label="Max drawdown" value={money(-stats.maxDrawdown)} compactValue={compact(-stats.maxDrawdown)} detail="Peak-to-trough imported P&L" icon={TrendingDown} tone="negative" />
               <MetricCard label="Review integrity" value={`${reviewIntegrity}%`} detail="Source 45% · review 40% · evidence 15%" icon={ShieldCheck} tone={reviewIntegrity >= 80 ? "positive" : "neutral"} />
               <MetricCard label="Open reviews" value={String(unreviewed.length)} detail={`${stats.reviewedCount} marked reviewed`} icon={CircleAlert} tone={unreviewed.length ? "negative" : "positive"} />
             </div>
