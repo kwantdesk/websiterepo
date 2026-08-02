@@ -1954,7 +1954,7 @@ export async function getOptionsMarketPulse(
   };
 }
 
-export async function getGexMapPanel(
+async function buildGexMapPanel(
   symbolInput: string,
   greekModeInput: GreekMode,
   requestedSessionDate?: string,
@@ -2038,6 +2038,29 @@ export async function getGexMapPanel(
       .filter((value): value is number => value !== null)
       .sort((a, b) => a - b)[0] ?? null,
   };
+}
+
+/**
+ * Completed interval maps are immutable. Persist them in Next's server cache
+ * so each replay-minute request can select its point-in-time frame without
+ * rebuilding the same historical KwantData session in another serverless
+ * invocation. The active session remains uncached and continues to tick live.
+ */
+export async function getGexMapPanel(
+  symbolInput: string,
+  greekModeInput: GreekMode,
+  requestedSessionDate?: string,
+): Promise<GexMapPanelPayload> {
+  const symbol = symbolInput.trim().toUpperCase();
+  const currentSession = getUsOptionsSession();
+  const sessionDate = requestedSessionDate || currentSession.sessionDate;
+  const completedSession = sessionDate !== currentSession.sessionDate || !currentSession.marketOpen;
+  if (!completedSession) return buildGexMapPanel(symbol, greekModeInput, sessionDate);
+  return unstable_cache(
+    () => buildGexMapPanel(symbol, greekModeInput, sessionDate),
+    ["completed-gex-map-panel-v1", symbol, greekModeInput, sessionDate],
+    { revalidate: 6 * 60 * 60 },
+  )();
 }
 
 function gexDeskPressureSource(
@@ -3373,18 +3396,24 @@ export async function getHistoricalReplayChartGammaLevels(
   if (!Number.isFinite(asOf) || asOf > Date.now()) {
     throw new QuantDataError("A valid historical gamma replay timestamp is required.", 400, null);
   }
-  try {
-    return await getHistoricalCashCalibratedChartGammaLevelsAt(root, sourceInput, asOfInput, futuresPrice);
-  } catch (intradayError) {
-    const problem = getQuantDataHttpError(intradayError);
-    if (problem.status !== 404 && problem.status !== 422) throw intradayError;
-    return getHistoricalCashCalibratedChartGammaLevelsAtOrBefore(
-      root,
-      sourceInput,
-      latestCompletedOptionsSessionAt(asOf),
-      futuresPrice,
-    );
+  const requestedSource = sourceInput.trim().toUpperCase();
+  const fallbackSource = root === "NQ"
+    ? requestedSource === "QQQ" ? "NDX" : "QQQ"
+    : requestedSource === "SPY" ? "SPX" : "SPY";
+  for (const source of [...new Set([requestedSource, fallbackSource])]) {
+    try {
+      return await getHistoricalCashCalibratedChartGammaLevelsAt(root, source, asOfInput, futuresPrice);
+    } catch (intradayError) {
+      const problem = getQuantDataHttpError(intradayError);
+      if (problem.status !== 404 && problem.status !== 422) throw intradayError;
+    }
   }
+  return getHistoricalCashCalibratedChartGammaLevelsAtOrBefore(
+    root,
+    requestedSource,
+    latestCompletedOptionsSessionAt(asOf),
+    futuresPrice,
+  );
 }
 
 export function getQuantDataHttpError(error: unknown) {

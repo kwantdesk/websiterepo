@@ -763,7 +763,10 @@ export default function BacktestingWorkspace() {
           `/api/chart-gamma-levels?root=${root}&source=${gammaSource}&calibrated=1&replay=1&sessionDate=${snapshot.sessionDate}&asOf=${encodeURIComponent(snapshot.asOf)}&futuresPrice=${encodeURIComponent(String(futuresPrice))}`,
           {
             cache: "force-cache",
-            timeoutMs: 15_000,
+            // A cold historical interval-map build can take ~25 seconds. Do
+            // not abort a valid point-in-time release before the server has
+            // had enough time to finish and seed its completed-session cache.
+            timeoutMs: 45_000,
             timeoutMessage: "The historical intraday Gamma frame timed out.",
           },
         )
@@ -788,57 +791,81 @@ export default function BacktestingWorkspace() {
             timeoutMessage: "The historical value-area snapshot timed out.",
           },
         );
-    // Attach rejection handlers immediately while still allowing the EOD
-    // Gamma result to paint before the other independent sources finish.
+    // Attach rejection handlers immediately; all independent sources can
+    // paint as soon as their own point-in-time request completes.
     const eodGammaResult = Promise.allSettled([eodGammaRequest]);
     const kwantResult = Promise.allSettled([kwantRequest]);
     const intradayGammaResult = Promise.allSettled([intradayGammaRequest]);
     const valueAreaResult = Promise.allSettled([valueAreaRequest]);
     try {
-      // Paint the completed-session structure first. Do not make it wait for
-      // the heavier intraday map or value-area reconstruction.
-      const [eodGamma] = await eodGammaResult;
-      if (requestId !== levelRequestIdRef.current) return;
-      if (eodGamma.status === "fulfilled") {
-        eodGammaCacheRef.current = { key: eodCacheKey, payload: eodGamma.value };
-        setGammaLevels(gammaSnapshot(eodGamma.value, settings));
-        setGammaPositioning(eodGamma.value);
-      }
-      const [kwant] = await kwantResult;
-      if (requestId !== levelRequestIdRef.current) return;
       if (!snapshot.kwantReleased) {
         setQuantLevels([]);
         setQuantZones([]);
-      } else if (kwant.status === "fulfilled" && kwant.value) {
-        const completedPlan = quantSnapshot(kwant.value, settings);
-        setQuantLevels(completedPlan.levels);
-        setQuantZones(completedPlan.zones);
       }
 
-      const [[intradayGamma], [valueArea]] = await Promise.all([intradayGammaResult, valueAreaResult]);
+      // Each independent source paints as soon as it resolves. Previously the
+      // exact intraday Kwant frame could already be available but remained
+      // invisible while the prior-EOD request was still completing.
+      let intradayApplied = false;
+      const intradayTask = intradayGammaResult.then(([intradayGamma]) => {
+        if (requestId !== levelRequestIdRef.current) return intradayGamma;
+        const eligible = intradayGamma.status === "fulfilled"
+          && intradayGamma.value !== null
+          && intradayGamma.value.snapshotMode === "HISTORICAL_INTRADAY";
+        if (eligible && intradayGamma.status === "fulfilled" && intradayGamma.value) {
+          intradayApplied = true;
+          setGammaLevels(gammaSnapshot(intradayGamma.value, settings));
+          setGammaPositioning(intradayGamma.value);
+          const livePlan = quantSnapshotFromGamma(intradayGamma.value, root, settings);
+          setQuantLevels(livePlan.levels);
+          setQuantZones(livePlan.zones);
+        }
+        return intradayGamma;
+      });
+      const eodTask = eodGammaResult.then(([eodGamma]) => {
+        if (requestId !== levelRequestIdRef.current) return eodGamma;
+        if (eodGamma.status === "fulfilled") {
+          eodGammaCacheRef.current = { key: eodCacheKey, payload: eodGamma.value };
+          if (!intradayApplied) {
+            setGammaLevels(gammaSnapshot(eodGamma.value, settings));
+            setGammaPositioning(eodGamma.value);
+          }
+        }
+        return eodGamma;
+      });
+      const kwantTask = kwantResult.then(([kwant]) => {
+        if (requestId !== levelRequestIdRef.current) return kwant;
+        if (snapshot.kwantReleased && kwant.status === "fulfilled" && kwant.value) {
+          const completedPlan = quantSnapshot(kwant.value, settings);
+          setQuantLevels(completedPlan.levels);
+          setQuantZones(completedPlan.zones);
+        }
+        return kwant;
+      });
+      const valueAreaTask = valueAreaResult.then(([valueArea]) => {
+        if (requestId !== levelRequestIdRef.current) return valueArea;
+        if (valueArea.status === "fulfilled" && valueArea.value) {
+          setValueAreaLevels(valueAreaSnapshot(valueArea.value));
+          setValueAreaSnapshotKey(snapshot.sessionDate);
+        } else if (valueArea.status === "rejected") {
+          setValueAreaLevels([]);
+        }
+        return valueArea;
+      });
+
+      const [eodGamma, , intradayGamma, valueArea] = await Promise.all([
+        eodTask,
+        kwantTask,
+        intradayTask,
+        valueAreaTask,
+      ]);
       if (requestId !== levelRequestIdRef.current) return;
       const eligibleIntraday = intradayGamma.status === "fulfilled"
         && intradayGamma.value !== null
         && intradayGamma.value.snapshotMode === "HISTORICAL_INTRADAY";
-      if (eligibleIntraday && intradayGamma.value) {
+      if (!eligibleIntraday && eodGamma.status === "rejected" && intradayGamma.status === "fulfilled" && intradayGamma.value) {
         setGammaLevels(gammaSnapshot(intradayGamma.value, settings));
         setGammaPositioning(intradayGamma.value);
-        const livePlan = quantSnapshotFromGamma(intradayGamma.value, root, settings);
-        setQuantLevels(livePlan.levels);
-        setQuantZones(livePlan.zones);
-      } else if (
-        eodGamma.status === "rejected"
-        && intradayGamma.status === "fulfilled"
-        && intradayGamma.value
-      ) {
-        setGammaLevels(gammaSnapshot(intradayGamma.value, settings));
-        setGammaPositioning(intradayGamma.value);
-      }
-      if (valueArea.status === "fulfilled" && valueArea.value) {
-        setValueAreaLevels(valueAreaSnapshot(valueArea.value));
-        setValueAreaSnapshotKey(snapshot.sessionDate);
-      } else if (valueArea.status === "rejected") {
-        setValueAreaLevels([]);
       }
 
       const gammaAvailable = eodGamma.status === "fulfilled"
@@ -851,9 +878,11 @@ export default function BacktestingWorkspace() {
             : intradayGamma.status === "rejected" && intradayGamma.reason instanceof Error
               ? intradayGamma.reason.message
               : "Gamma unavailable",
-        // A missing Kwant edition is communicated by the compact release
-        // notice on the chart, not as a disruptive loading/error state.
-        quant: "",
+        quant: snapshot.kwantReleased && snapshot.mode === "INTRADAY" && !eligibleIntraday
+          ? intradayGamma.status === "rejected" && intradayGamma.reason instanceof Error
+            ? intradayGamma.reason.message
+            : "Waiting for the first recorded intraday Kwant edition at this replay clock."
+          : "",
         valueArea: valueArea.status === "rejected"
           ? valueArea.reason instanceof Error ? valueArea.reason.message : "Value area unavailable"
           : "",
@@ -1556,7 +1585,11 @@ export default function BacktestingWorkspace() {
             <div>
               <div className="text-[9px] font-semibold uppercase tracking-[0.1em] text-foreground">Kwant levels not released</div>
               <div className="mt-1 text-[8px] leading-4 text-muted">
-                {activeOptionsSnapshot.kwantReleased
+                {levelLoading && activeOptionsSnapshot.kwantReleased
+                  ? `Loading the exact ${activeOptionsSnapshot.newYorkDate} point-in-time Kwant edition. The replay continues without interruption.`
+                  : levelError.quant
+                    ? levelError.quant
+                    : activeOptionsSnapshot.kwantReleased
                   ? "No validated Kwant edition exists at this replay timestamp yet. It will appear automatically at the first recorded release."
                   : activeOptionsSnapshot.mode === "INTRADAY"
                     ? `The ${activeOptionsSnapshot.newYorkDate} edition is still being established. It normally appears within the first five minutes after New York opens.`
