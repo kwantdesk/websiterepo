@@ -1,13 +1,14 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import {
   Check,
   ChevronDown,
   ChevronLeft,
   Clock3,
   FlaskConical,
+  GripVertical,
   Layers3,
   Loader2,
   Pause,
@@ -53,6 +54,94 @@ const Chart = dynamic(() => import("@/components/Chart"), {
 type ReplayInstrument = "NQ" | "MNQ" | "ES" | "MES";
 type ReplayTimeframe = string;
 type LevelFamily = "gamma" | "quant" | "valueArea";
+type ReplayDockKind = "gex" | "zyon";
+
+const DEFAULT_REPLAY_DOCK_WIDTH = 380;
+const MIN_REPLAY_DOCK_WIDTH = 240;
+const COLLAPSE_REPLAY_DOCK_WIDTH = 150;
+
+function ResizableReplayDock({
+  open,
+  order,
+  width,
+  multiPanel,
+  label,
+  onResize,
+  onCollapse,
+  children,
+}: {
+  open: boolean;
+  order: number;
+  width: number;
+  multiPanel: boolean;
+  label: string;
+  onResize: (width: number) => void;
+  onCollapse: () => void;
+  children: ReactNode;
+}) {
+  const dragRef = useRef<{ startX: number; startWidth: number; latestWidth: number } | null>(null);
+  const [dragging, setDragging] = useState(false);
+
+  const resizeFromPointer = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    const drag = dragRef.current;
+    if (!drag) return;
+    const maximum = Math.max(
+      MIN_REPLAY_DOCK_WIDTH,
+      Math.min(620, window.innerWidth * (multiPanel ? 0.38 : 0.68)),
+    );
+    const nextWidth = Math.max(64, Math.min(maximum, drag.startWidth + drag.startX - event.clientX));
+    drag.latestWidth = nextWidth;
+    onResize(nextWidth);
+  };
+
+  const finishResize = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    const latestWidth = dragRef.current?.latestWidth ?? width;
+    dragRef.current = null;
+    setDragging(false);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+    if (latestWidth <= COLLAPSE_REPLAY_DOCK_WIDTH) {
+      onCollapse();
+      return;
+    }
+    if (latestWidth < MIN_REPLAY_DOCK_WIDTH) onResize(MIN_REPLAY_DOCK_WIDTH);
+  };
+
+  return (
+    <section
+      aria-hidden={!open}
+      className={`relative h-full min-w-0 shrink-0 overflow-visible ${dragging ? "select-none" : ""}`}
+      style={{
+        display: open ? "block" : "none",
+        order,
+        width: `min(${width}px, ${multiPanel ? "38vw" : "68vw"})`,
+      }}
+    >
+      <button
+        type="button"
+        role="separator"
+        aria-label={`Resize ${label}. Drag fully right to collapse.`}
+        aria-orientation="vertical"
+        title={`Resize ${label} · drag closed to collapse`}
+        onPointerDown={(event) => {
+          event.preventDefault();
+          const actualWidth = event.currentTarget.parentElement?.getBoundingClientRect().width ?? width;
+          dragRef.current = { startX: event.clientX, startWidth: actualWidth, latestWidth: actualWidth };
+          setDragging(true);
+          event.currentTarget.setPointerCapture(event.pointerId);
+        }}
+        onPointerMove={resizeFromPointer}
+        onPointerUp={finishResize}
+        onPointerCancel={finishResize}
+        className={`group absolute inset-y-0 left-0 z-[70] w-3 -translate-x-1/2 cursor-col-resize touch-none outline-none ${dragging ? "bg-primary/10" : ""}`}
+      >
+        <span className="absolute left-1/2 top-1/2 flex h-14 w-4 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-border bg-panel text-muted shadow-lg transition group-hover:border-primary/45 group-hover:text-primary">
+          <GripVertical className="h-3 w-3" />
+        </span>
+      </button>
+      {children}
+    </section>
+  );
+}
 
 type SessionPayload = {
   candles: Candle[];
@@ -530,6 +619,11 @@ export default function BacktestingWorkspace() {
   const [gammaPositioning, setGammaPositioning] = useState<ChartGammaLevelsPayload | null>(null);
   const [showGexPanel, setShowGexPanel] = useState(false);
   const [showZyonPanel, setShowZyonPanel] = useState(false);
+  const [replayDockOrder, setReplayDockOrder] = useState<ReplayDockKind[]>([]);
+  const [replayDockWidths, setReplayDockWidths] = useState<Record<ReplayDockKind, number>>({
+    gex: DEFAULT_REPLAY_DOCK_WIDTH,
+    zyon: DEFAULT_REPLAY_DOCK_WIDTH,
+  });
   const [quantLevels, setQuantLevels] = useState<ChartLevel[]>([]);
   const [quantZones, setQuantZones] = useState<ChartZone[]>([]);
   const [valueAreaLevels, setValueAreaLevels] = useState<ChartLevel[]>([]);
@@ -1105,6 +1199,26 @@ export default function BacktestingWorkspace() {
     setShowSetup(true);
   };
 
+  const closeReplayDock = useCallback((kind: ReplayDockKind, resetWidth = false) => {
+    if (kind === "gex") setShowGexPanel(false);
+    else setShowZyonPanel(false);
+    setReplayDockOrder((current) => current.filter((item) => item !== kind));
+    if (resetWidth) {
+      setReplayDockWidths((current) => ({ ...current, [kind]: DEFAULT_REPLAY_DOCK_WIDTH }));
+    }
+  }, []);
+
+  const toggleReplayDock = useCallback((kind: ReplayDockKind) => {
+    const isOpen = kind === "gex" ? showGexPanel : showZyonPanel;
+    if (isOpen) {
+      closeReplayDock(kind);
+      return;
+    }
+    if (kind === "gex") setShowGexPanel(true);
+    else setShowZyonPanel(true);
+    setReplayDockOrder((current) => [...current.filter((item) => item !== kind), kind]);
+  }, [closeReplayDock, showGexPanel, showZyonPanel]);
+
   const toggleLevel = (family: LevelFamily) => {
     setLevelState((current) => ({ ...current, [family]: !current[family] }));
   };
@@ -1180,11 +1294,7 @@ export default function BacktestingWorkspace() {
 
   const zyonDocked = started && showZyonPanel && Boolean(historicalZyonContext);
   const gexDocked = started && showGexPanel;
-  const replayDockWidth = gexDocked && zyonDocked
-    ? "min(780px, 56vw)"
-    : gexDocked || zyonDocked
-      ? "min(430px, 36vw)"
-      : "0px";
+  const openReplayDockCount = Number(gexDocked) + Number(zyonDocked);
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background">
@@ -1214,7 +1324,7 @@ export default function BacktestingWorkspace() {
               </button>
               <button
                 type="button"
-                onClick={() => setShowGexPanel((current) => !current)}
+                onClick={() => toggleReplayDock("gex")}
                 aria-expanded={showGexPanel}
                 className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[9px] font-semibold transition-colors ${showGexPanel ? "border-primary/35 bg-primary/10 text-primary" : "border-border text-muted hover:text-foreground"}`}
               >
@@ -1223,7 +1333,7 @@ export default function BacktestingWorkspace() {
               </button>
               <button
                 type="button"
-                onClick={() => setShowZyonPanel((current) => !current)}
+                onClick={() => toggleReplayDock("zyon")}
                 aria-expanded={showZyonPanel}
                 className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[9px] font-semibold transition-colors ${showZyonPanel ? "border-primary/35 bg-primary/10 text-primary" : "border-border text-muted hover:text-foreground"}`}
               >
@@ -1407,10 +1517,10 @@ export default function BacktestingWorkspace() {
         ) : null}
       </header>
 
-      <div className="relative min-h-0 flex-1 overflow-hidden">
+      <div className="relative flex min-h-0 flex-1 overflow-hidden">
         <div
-          className="relative h-full min-h-0 overflow-hidden transition-[margin-right] duration-200 ease-out"
-          style={{ marginRight: replayDockWidth }}
+          className="relative h-full min-h-0 min-w-0 flex-1 overflow-hidden"
+          style={{ order: 0 }}
         >
           {started ? (
           <Chart
@@ -1575,27 +1685,44 @@ export default function BacktestingWorkspace() {
           ) : null}
         </div>
 
-        {gexDocked ? (
-          <HistoricalGexPanel
-            snapshot={gammaPositioning}
-            loading={levelLoading && !gammaPositioning}
-            error={levelError.gamma}
-            releaseState={activeOptionsSnapshot?.kwantReleased
-              ? "RELEASED"
-              : activeOptionsSnapshot?.mode === "INTRADAY" ? "OPENING" : "PREOPEN"}
-            sessionDate={activeOptionsSnapshot?.newYorkDate ?? date}
-            paired={zyonDocked}
-            onClose={() => setShowGexPanel(false)}
-          />
+        {started ? (
+          <ResizableReplayDock
+            open={gexDocked}
+            order={replayDockOrder.indexOf("gex") + 1}
+            width={replayDockWidths.gex}
+            multiPanel={openReplayDockCount > 1}
+            label="Historical GEX"
+            onResize={(width) => setReplayDockWidths((current) => ({ ...current, gex: width }))}
+            onCollapse={() => closeReplayDock("gex", true)}
+          >
+            <HistoricalGexPanel
+              snapshot={gammaPositioning}
+              loading={levelLoading && !gammaPositioning}
+              error={levelError.gamma}
+              releaseState={activeOptionsSnapshot?.kwantReleased
+                ? "RELEASED"
+                : activeOptionsSnapshot?.mode === "INTRADAY" ? "OPENING" : "PREOPEN"}
+              sessionDate={activeOptionsSnapshot?.newYorkDate ?? date}
+              onClose={() => closeReplayDock("gex")}
+            />
+          </ResizableReplayDock>
         ) : null}
 
         {started && historicalZyonContext ? (
-          <HistoricalZyonPanel
-            context={historicalZyonContext}
-            open={showZyonPanel}
-            paired={gexDocked && showZyonPanel}
-            onClose={() => setShowZyonPanel(false)}
-          />
+          <ResizableReplayDock
+            open={zyonDocked}
+            order={replayDockOrder.indexOf("zyon") + 1}
+            width={replayDockWidths.zyon}
+            multiPanel={openReplayDockCount > 1}
+            label="Historical ZYON"
+            onResize={(width) => setReplayDockWidths((current) => ({ ...current, zyon: width }))}
+            onCollapse={() => closeReplayDock("zyon", true)}
+          >
+            <HistoricalZyonPanel
+              context={historicalZyonContext}
+              onClose={() => closeReplayDock("zyon")}
+            />
+          </ResizableReplayDock>
         ) : null}
       </div>
 

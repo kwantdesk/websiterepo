@@ -56,13 +56,9 @@ function initialMessage(context: HistoricalZyonReplayInput): ReplayMessage {
 
 export default function HistoricalZyonPanel({
   context,
-  open,
-  paired,
   onClose,
 }: {
   context: HistoricalZyonReplayInput;
-  open: boolean;
-  paired: boolean;
   onClose: () => void;
 }) {
   const [model, setModel] = useState<ZyonModelKey>(() => {
@@ -183,11 +179,7 @@ export default function HistoricalZyonPanel({
   );
 
   return (
-    <aside
-      aria-hidden={!open}
-      className={`absolute inset-y-0 z-40 flex flex-col border-l border-border bg-panel/98 backdrop-blur-xl ${open ? "visible" : "pointer-events-none invisible"} ${paired ? "w-[min(390px,28vw)]" : "right-0 w-[min(430px,36vw)]"}`}
-      style={paired ? { right: "min(390px, 28vw)" } : undefined}
-    >
+    <aside className="relative z-40 flex h-full w-full flex-col border-l border-border bg-panel/98 backdrop-blur-xl">
       <header className="flex min-h-14 shrink-0 items-center gap-3 border-b border-border px-3">
         <span className="relative flex h-8 w-8 items-center justify-center rounded-xl border border-primary/25 bg-primary/10 text-primary">
           <Bot className="h-4 w-4" />
