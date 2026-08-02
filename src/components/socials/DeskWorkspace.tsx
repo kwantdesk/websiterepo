@@ -11,6 +11,7 @@ import {
   Clock3,
   Crown,
   DoorOpen,
+  FolderPlus,
   Gauge,
   Globe2,
   Hash,
@@ -56,6 +57,7 @@ import {
   normalizeDeskDeletionConfirmation,
   type CreatedDeskPayload,
   type DeskBadgeIcon,
+  type DeskCategory,
   type DeskChannel,
   type DeskMember,
   type DeskMemberProfile,
@@ -111,9 +113,22 @@ type WorkspaceDraft = {
 
 type ChannelDraft = {
   channelId: string;
+  categoryId: string;
   name: string;
   description: string;
   channelType: "text" | "voice";
+  syncPermissions: boolean;
+  isPrivate: boolean;
+  readOnly: boolean;
+  reactionOnly: boolean;
+  showHistory: boolean;
+  allowedUserIds: string[];
+};
+
+type CategoryDraft = {
+  categoryId: string;
+  name: string;
+  description: string;
   isPrivate: boolean;
   readOnly: boolean;
   reactionOnly: boolean;
@@ -234,12 +249,14 @@ function workspaceDraft(workspace: DeskWorkspaceModel): WorkspaceDraft {
   };
 }
 
-function emptyChannelDraft(): ChannelDraft {
+function emptyChannelDraft(categoryId = ""): ChannelDraft {
   return {
     channelId: "",
+    categoryId,
     name: "",
     description: "",
     channelType: "text",
+    syncPermissions: true,
     isPrivate: false,
     readOnly: false,
     reactionOnly: false,
@@ -251,14 +268,42 @@ function emptyChannelDraft(): ChannelDraft {
 function channelDraft(channel: DeskChannel): ChannelDraft {
   return {
     channelId: channel.id,
+    categoryId: channel.categoryId,
     name: channel.name,
     description: channel.description,
     channelType: channel.channelType,
+    syncPermissions: channel.syncPermissions,
     isPrivate: channel.isPrivate,
     readOnly: channel.readOnly,
     reactionOnly: channel.reactionOnly,
     showHistory: channel.showHistory,
     allowedUserIds: channel.allowedUserIds,
+  };
+}
+
+function emptyCategoryDraft(): CategoryDraft {
+  return {
+    categoryId: "",
+    name: "",
+    description: "",
+    isPrivate: false,
+    readOnly: false,
+    reactionOnly: false,
+    showHistory: true,
+    allowedUserIds: [],
+  };
+}
+
+function categoryDraft(category: DeskCategory): CategoryDraft {
+  return {
+    categoryId: category.id,
+    name: category.name,
+    description: category.description,
+    isPrivate: category.isPrivate,
+    readOnly: category.readOnly,
+    reactionOnly: category.reactionOnly,
+    showHistory: category.showHistory,
+    allowedUserIds: category.allowedUserIds,
   };
 }
 
@@ -849,6 +894,7 @@ export default function DeskWorkspace({
   const [showArchived, setShowArchived] = useState(false);
   const [showMembers, setShowMembers] = useState(false);
   const [selectedMemberId, setSelectedMemberId] = useState("");
+  const [showCategory, setShowCategory] = useState(false);
   const [showChannel, setShowChannel] = useState(false);
   const [lifecycleTarget, setLifecycleTarget] = useState<{
     action: "archive" | "delete";
@@ -856,7 +902,9 @@ export default function DeskWorkspace({
   } | null>(null);
   const [deleteConfirmation, setDeleteConfirmation] = useState("");
   const [deletingDeskId, setDeletingDeskId] = useState("");
+  const [categoryEditor, setCategoryEditor] = useState<CategoryDraft>(emptyCategoryDraft);
   const [channelEditor, setChannelEditor] = useState<ChannelDraft>(emptyChannelDraft);
+  const [collapsedCategoryIds, setCollapsedCategoryIds] = useState<string[]>([]);
   const [message, setMessage] = useState("");
   const [optimisticMessages, setOptimisticMessages] = useState<OptimisticDeskMessage[]>([]);
   const [attachment, setAttachment] = useState<DeskMessageAttachment | null>(null);
@@ -942,6 +990,10 @@ export default function DeskWorkspace({
           ...current.members.filter((member) =>
             member.deskId !== created.member.deskId || member.userId !== created.member.userId),
         ],
+        categories: [
+          ...created.categories,
+          ...current.categories.filter((category) => category.deskId !== created.workspace.deskId),
+        ],
         channels: [
           ...created.channels,
           ...current.channels.filter((channel) => channel.deskId !== created.workspace.deskId),
@@ -965,7 +1017,7 @@ export default function DeskWorkspace({
       }));
       setDiscovering(false);
       setActiveDeskId(created.workspace.deskId);
-      setActiveChannelId(created.channels.find((channel) => channel.name === "general")?.id ?? created.channels[0]?.id ?? "");
+      setActiveChannelId("");
     };
     window.addEventListener(DESK_CREATED_EVENT, handleDeskCreated);
     return () => window.removeEventListener(DESK_CREATED_EVENT, handleDeskCreated);
@@ -1013,7 +1065,10 @@ export default function DeskWorkspace({
   const activeChannels = network.channels
     .filter((channel) => channel.deskId === activeDeskId)
     .sort((left, right) => left.position - right.position);
-  const activeChannel = activeChannels.find((channel) => channel.id === activeChannelId) ?? activeChannels.find((channel) => channel.channelType === "text") ?? null;
+  const activeCategories = network.categories
+    .filter((category) => category.deskId === activeDeskId)
+    .sort((left, right) => left.position - right.position);
+  const activeChannel = activeChannels.find((channel) => channel.id === activeChannelId) ?? null;
   const channelMessages = useMemo(() => {
     const byId = new Map<string, DeskMessage>();
     network.messages
@@ -1083,6 +1138,7 @@ export default function DeskWorkspace({
       .on("postgres_changes", { event: "*", schema: "public", table: "desk_workspaces" }, () => refresh(300))
       .on("postgres_changes", { event: "*", schema: "public", table: "desk_members" }, () => refresh(220))
       .on("postgres_changes", { event: "*", schema: "public", table: "desk_join_requests" }, () => refresh(220))
+      .on("postgres_changes", { event: "*", schema: "public", table: "desk_channel_categories" }, () => refresh(180))
       .on("postgres_changes", { event: "*", schema: "public", table: "desk_channels" }, () => refresh(180))
       .on("postgres_changes", { event: "*", schema: "public", table: "desk_messages" }, () => refresh(120))
       .on("postgres_changes", { event: "*", schema: "public", table: "desk_message_reactions" }, () => refresh(120))
@@ -1117,13 +1173,7 @@ export default function DeskWorkspace({
   }, [activeDeskId, activeMembership]);
 
   useEffect(() => {
-    if (!activeChannels.length) {
-      setActiveChannelId("");
-      return;
-    }
-    if (!activeChannels.some((channel) => channel.id === activeChannelId)) {
-      setActiveChannelId(activeChannels.find((channel) => channel.name === "general")?.id ?? activeChannels[0].id);
-    }
+    if (activeChannelId && !activeChannels.some((channel) => channel.id === activeChannelId)) setActiveChannelId("");
   }, [activeChannelId, activeChannels]);
 
   useEffect(() => {
@@ -1309,6 +1359,7 @@ export default function DeskWorkspace({
       workspaces: current.workspaces.filter((candidate) => candidate.deskId !== workspace.deskId),
       members: current.members.filter((member) => member.deskId !== workspace.deskId),
       requests: current.requests.filter((request) => request.deskId !== workspace.deskId),
+      categories: current.categories.filter((category) => category.deskId !== workspace.deskId),
       channels: current.channels.filter((channel) => channel.deskId !== workspace.deskId),
       messages: current.messages.filter((entry) => entry.deskId !== workspace.deskId),
       focusLocks: current.focusLocks.filter((lock) => lock.deskId !== workspace.deskId),
@@ -1387,8 +1438,26 @@ export default function DeskWorkspace({
     }, `Invitation sent to @${username.replace(/^@/, "")}.`);
   };
 
-  const openChannelEditor = (channel?: DeskChannel) => {
-    setChannelEditor(channel ? channelDraft(channel) : emptyChannelDraft());
+  const openCategoryEditor = (category?: DeskCategory) => {
+    setCategoryEditor(category ? categoryDraft(category) : emptyCategoryDraft());
+    setShowCategory(true);
+  };
+
+  const saveCategory = async () => {
+    if (!activeDesk) return;
+    const saved = await perform({
+      action: categoryEditor.categoryId ? "update-category" : "create-category",
+      deskId: activeDesk.deskId,
+      ...categoryEditor,
+      position: categoryEditor.categoryId
+        ? activeCategories.find((category) => category.id === categoryEditor.categoryId)?.position ?? 100
+        : (activeCategories.at(-1)?.position ?? 0) + 10,
+    }, categoryEditor.categoryId ? "Category settings saved." : "Category created. Add a text or voice channel inside it.");
+    if (saved) setShowCategory(false);
+  };
+
+  const openChannelEditor = (channel?: DeskChannel, categoryId = "") => {
+    setChannelEditor(channel ? channelDraft(channel) : emptyChannelDraft(categoryId));
     setShowChannel(true);
   };
 
@@ -1400,7 +1469,7 @@ export default function DeskWorkspace({
       ...channelEditor,
       position: channelEditor.channelId
         ? activeChannels.find((channel) => channel.id === channelEditor.channelId)?.position ?? 100
-        : (activeChannels.at(-1)?.position ?? 0) + 10,
+        : (activeChannels.filter((channel) => channel.categoryId === channelEditor.categoryId).at(-1)?.position ?? 0) + 10,
     }, channelEditor.channelId ? "Channel settings saved." : "Channel created.");
     if (saved) setShowChannel(false);
   };
@@ -1670,25 +1739,58 @@ export default function DeskWorkspace({
                   </button>
                 </div>
                 <div className="min-h-0 flex-1 overflow-y-auto p-2.5">
-                  <div className="mb-2 flex items-center justify-between px-1.5"><span className="text-[6px] font-semibold uppercase tracking-[0.14em] text-muted">Text channels</span>{leader ? <button type="button" onClick={() => openChannelEditor()} className="text-muted hover:text-primary"><Plus className="h-3 w-3" /></button> : null}</div>
-                  <div className="space-y-0.5">
-                    {activeChannels.filter((channel) => channel.channelType === "text").map((channel) => (
-                      <button key={channel.id} type="button" onClick={() => setActiveChannelId(channel.id)} className={`group flex h-9 w-full items-center gap-2 rounded-xl px-2.5 text-left transition-colors ${activeChannel?.id === channel.id ? "bg-primary/10 text-primary" : "text-muted hover:bg-surface/55 hover:text-foreground"}`}>
-                        {channel.isPrivate ? <LockKeyhole className="h-3.5 w-3.5 shrink-0" /> : <Hash className="h-3.5 w-3.5 shrink-0" />}
-                        <span className="min-w-0 flex-1 truncate text-[8px] font-semibold">{channel.name}</span>
-                        {channel.readOnly ? <ShieldCheck className="h-3 w-3 opacity-55" /> : null}
-                        {leader ? <span onClick={(event) => { event.stopPropagation(); openChannelEditor(channel); }} className="hidden h-6 w-6 items-center justify-center rounded-md hover:bg-background group-hover:flex"><MoreHorizontal className="h-3 w-3" /></span> : null}
-                      </button>
-                    ))}
+                  <button type="button" onClick={() => setActiveChannelId("")} className={`mb-3 flex h-9 w-full items-center gap-2 rounded-xl px-2.5 text-left transition-colors ${!activeChannel ? "bg-primary/10 text-primary" : "text-muted hover:bg-surface/55 hover:text-foreground"}`}>
+                    <Network className="h-3.5 w-3.5" />
+                    <span className="text-[8px] font-semibold">Desk overview</span>
+                    <span className="ml-auto rounded-md border border-border px-1.5 py-0.5 text-[5px] uppercase tracking-[0.1em]">View only</span>
+                  </button>
+                  <div className="mb-2 flex items-center justify-between px-1.5">
+                    <span className="text-[6px] font-semibold uppercase tracking-[0.14em] text-muted">Categories</span>
+                    {leader ? <button type="button" onClick={() => openCategoryEditor()} className="flex items-center gap-1 text-[6px] font-semibold text-muted hover:text-primary"><FolderPlus className="h-3 w-3" />Add category</button> : null}
                   </div>
-                  <div className="mb-2 mt-5 flex items-center justify-between px-1.5"><span className="text-[6px] font-semibold uppercase tracking-[0.14em] text-muted">Voice · later</span>{leader ? <button type="button" onClick={() => { const draft = emptyChannelDraft(); setChannelEditor({ ...draft, channelType: "voice" }); setShowChannel(true); }} className="text-muted hover:text-primary"><Plus className="h-3 w-3" /></button> : null}</div>
-                  <div className="space-y-0.5">
-                    {activeChannels.filter((channel) => channel.channelType === "voice").map((channel) => (
-                      <button key={channel.id} type="button" onClick={() => setActiveChannelId(channel.id)} className={`flex h-9 w-full items-center gap-2 rounded-xl px-2.5 text-left ${activeChannel?.id === channel.id ? "bg-primary/10 text-primary" : "text-muted hover:bg-surface/55 hover:text-foreground"}`}>
-                        <Mic2 className="h-3.5 w-3.5" /><span className="min-w-0 flex-1 truncate text-[8px] font-semibold">{channel.name}</span><span className="rounded-md border border-border px-1.5 py-0.5 text-[5px] uppercase tracking-[0.1em]">Soon</span>
-                      </button>
-                    ))}
-                  </div>
+                  {!network.categoryStructureReady ? (
+                    <div className="rounded-xl border border-warning/25 bg-warning/[0.04] p-3 text-[7px] leading-4 text-warning">Apply the Desk categories migration in Supabase to create categories and channels.</div>
+                  ) : !activeCategories.length ? (
+                    <div className="rounded-xl border border-dashed border-border p-4 text-center">
+                      <FolderPlus className="mx-auto h-5 w-5 text-muted" />
+                      <div className="mt-2 text-[8px] font-semibold">No categories yet</div>
+                      <p className="mt-1 text-[6px] leading-4 text-muted">Create a category first. Text and voice channels can only live inside one.</p>
+                      {leader ? <button type="button" onClick={() => openCategoryEditor()} className="mt-3 h-8 rounded-lg border border-primary/30 bg-primary/[0.06] px-3 text-[7px] font-semibold text-primary">Add first category</button> : null}
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {activeCategories.map((category) => {
+                        const collapsed = collapsedCategoryIds.includes(category.id);
+                        const categoryChannels = activeChannels.filter((channel) => channel.categoryId === category.id);
+                        return (
+                          <div key={category.id}>
+                            <div className="group flex h-8 items-center gap-1 rounded-lg px-1.5 text-muted hover:bg-surface/35 hover:text-foreground">
+                              <button type="button" onClick={() => setCollapsedCategoryIds((current) => current.includes(category.id) ? current.filter((id) => id !== category.id) : [...current, category.id])} className="flex min-w-0 flex-1 items-center gap-1.5 text-left">
+                                <ChevronDown className={`h-3 w-3 shrink-0 transition-transform ${collapsed ? "-rotate-90" : ""}`} />
+                                {category.isPrivate ? <LockKeyhole className="h-3 w-3 shrink-0" /> : null}
+                                <span className="truncate text-[6px] font-bold uppercase tracking-[0.13em]">{category.name}</span>
+                              </button>
+                              {leader ? <button type="button" onClick={() => openChannelEditor(undefined, category.id)} title={`Add a channel to ${category.name}`} className="hidden h-6 w-6 items-center justify-center rounded-md hover:bg-background group-hover:flex"><Plus className="h-3 w-3" /></button> : null}
+                              {leader ? <button type="button" onClick={() => openCategoryEditor(category)} title={`${category.name} settings`} className="hidden h-6 w-6 items-center justify-center rounded-md hover:bg-background group-hover:flex"><MoreHorizontal className="h-3 w-3" /></button> : null}
+                            </div>
+                            {!collapsed ? (
+                              <div className="mt-0.5 space-y-0.5 pl-2">
+                                {categoryChannels.map((channel) => (
+                                  <button key={channel.id} type="button" onClick={() => setActiveChannelId(channel.id)} className={`group flex h-9 w-full items-center gap-2 rounded-xl px-2.5 text-left transition-colors ${activeChannel?.id === channel.id ? "bg-primary/10 text-primary" : "text-muted hover:bg-surface/55 hover:text-foreground"}`}>
+                                    {channel.channelType === "voice" ? <Mic2 className="h-3.5 w-3.5 shrink-0" /> : channel.isPrivate ? <LockKeyhole className="h-3.5 w-3.5 shrink-0" /> : <Hash className="h-3.5 w-3.5 shrink-0" />}
+                                    <span className="min-w-0 flex-1 truncate text-[8px] font-semibold">{channel.name}</span>
+                                    {channel.syncPermissions ? <ShieldCheck className="h-3 w-3 opacity-45" /> : <Settings2 className="h-3 w-3 opacity-45" />}
+                                    {leader ? <span onClick={(event) => { event.stopPropagation(); openChannelEditor(channel); }} className="hidden h-6 w-6 items-center justify-center rounded-md hover:bg-background group-hover:flex"><MoreHorizontal className="h-3 w-3" /></span> : null}
+                                  </button>
+                                ))}
+                                {!categoryChannels.length ? <button type="button" disabled={!leader} onClick={() => openChannelEditor(undefined, category.id)} className="flex h-8 w-full items-center gap-2 rounded-lg border border-dashed border-border px-2.5 text-[6px] text-muted hover:border-primary/30 hover:text-primary disabled:pointer-events-none"><Plus className="h-3 w-3" />Add text or voice channel</button> : null}
+                              </div>
+                            ) : null}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
                 <div className="border-t border-border p-3">
                   <div className="rounded-xl border border-border bg-surface/30 p-2.5">
@@ -1736,12 +1838,21 @@ export default function DeskWorkspace({
                   {owner ? <button type="button" onClick={openSettings} className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-muted"><Settings2 className="h-3.5 w-3.5" /></button> : null}
                 </div>
                 <div className="mt-2 flex gap-1 overflow-x-auto pb-0.5">
-                  {activeChannels.map((channel) => (
-                    <button key={channel.id} type="button" onClick={() => setActiveChannelId(channel.id)} className={`flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-[7px] font-semibold ${activeChannel?.id === channel.id ? "bg-primary/10 text-primary" : "bg-surface/30 text-muted"}`}>
-                      {channel.channelType === "voice" ? <Mic2 className="h-3 w-3" /> : channel.isPrivate ? <LockKeyhole className="h-3 w-3" /> : <Hash className="h-3 w-3" />}{channel.name}
-                    </button>
+                  <button type="button" onClick={() => setActiveChannelId("")} className={`flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-[7px] font-semibold ${!activeChannel ? "bg-primary/10 text-primary" : "bg-surface/30 text-muted"}`}>
+                    <Network className="h-3 w-3" />Overview
+                  </button>
+                  {activeCategories.map((category) => (
+                    <div key={category.id} className="flex shrink-0 items-center gap-1 rounded-lg border border-border/60 bg-background/30 p-0.5 pl-2">
+                      <span className="mr-1 text-[5px] font-bold uppercase tracking-[0.11em] text-muted">{category.name}</span>
+                      {activeChannels.filter((channel) => channel.categoryId === category.id).map((channel) => (
+                        <button key={channel.id} type="button" onClick={() => setActiveChannelId(channel.id)} className={`flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 text-[7px] font-semibold ${activeChannel?.id === channel.id ? "bg-primary/10 text-primary" : "text-muted"}`}>
+                          {channel.channelType === "voice" ? <Mic2 className="h-3 w-3" /> : channel.isPrivate ? <LockKeyhole className="h-3 w-3" /> : <Hash className="h-3 w-3" />}{channel.name}
+                        </button>
+                      ))}
+                      {leader ? <button type="button" onClick={() => openChannelEditor(undefined, category.id)} className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted hover:bg-primary/10 hover:text-primary" title={`Add channel to ${category.name}`}><Plus className="h-3 w-3" /></button> : null}
+                    </div>
                   ))}
-                  {leader ? <button type="button" onClick={() => openChannelEditor()} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-dashed border-primary/30 text-primary"><Plus className="h-3 w-3" /></button> : null}
+                  {leader ? <button type="button" onClick={() => openCategoryEditor()} className="flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-lg border border-dashed border-primary/30 px-2.5 text-[7px] font-semibold text-primary"><FolderPlus className="h-3 w-3" />Category</button> : null}
                 </div>
               </div>
             ) : null}
@@ -1791,7 +1902,26 @@ export default function DeskWorkspace({
                   {!filteredAvailable.length ? <div className="mt-3 rounded-2xl border border-dashed border-border p-12 text-center"><UsersRound className="mx-auto h-7 w-7 text-muted" /><div className="mt-3 text-[10px] font-semibold">No other Desks match this search.</div><div className="mt-1 text-[7px] text-muted">Create one and define the standard you want to trade around.</div></div> : null}
                 </div>
               </div>
-            ) : activeChannel?.channelType === "voice" ? (
+            ) : !activeChannel ? (
+              <div className="min-h-0 flex-1 overflow-y-auto p-4 lg:p-6">
+                <div className="mx-auto max-w-4xl">
+                  <div className="relative overflow-hidden rounded-3xl border border-border bg-panel p-5 lg:p-7">
+                    <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_85%_0%,color-mix(in_srgb,var(--primary)_13%,transparent),transparent_42%)]" />
+                    <div className="relative flex flex-wrap items-start gap-4">
+                      <span className="flex h-12 w-12 items-center justify-center rounded-2xl border border-primary/25 bg-primary/10 text-primary"><Network className="h-5 w-5" /></span>
+                      <div className="min-w-0 flex-1"><div className="text-[7px] font-semibold uppercase tracking-[0.15em] text-primary">Desk overview · view only</div><h2 className="mt-2 text-[17px] font-semibold tracking-[-0.03em]">{activeDesk.name}</h2><p className="mt-2 max-w-2xl text-[8px] leading-5 text-muted">{activeDesk.objective || activeDesk.description || "The shared operating floor for this Desk."}</p></div>
+                      <button type="button" onClick={() => setShowMembers(true)} className="flex h-9 items-center gap-2 rounded-xl border border-border bg-surface/30 px-3 text-[8px] text-muted hover:text-foreground"><UsersRound className="h-3.5 w-3.5" />{activeMembers.length} members</button>
+                    </div>
+                    <div className="relative mt-6 grid gap-3 sm:grid-cols-3">
+                      <div className="rounded-2xl border border-border bg-background/35 p-4"><div className="font-mono text-[16px] font-semibold text-primary">{activeCategories.length}</div><div className="mt-1 text-[6px] uppercase tracking-[0.13em] text-muted">Categories</div></div>
+                      <div className="rounded-2xl border border-border bg-background/35 p-4"><div className="font-mono text-[16px] font-semibold text-primary">{activeChannels.filter((channel) => channel.channelType === "text").length}</div><div className="mt-1 text-[6px] uppercase tracking-[0.13em] text-muted">Text channels</div></div>
+                      <div className="rounded-2xl border border-border bg-background/35 p-4"><div className="font-mono text-[16px] font-semibold text-primary">{activeChannels.filter((channel) => channel.channelType === "voice").length}</div><div className="mt-1 text-[6px] uppercase tracking-[0.13em] text-muted">Voice channels</div></div>
+                    </div>
+                  </div>
+                  {!activeCategories.length ? <div className="mt-4 rounded-2xl border border-dashed border-border p-8 text-center"><FolderPlus className="mx-auto h-6 w-6 text-muted" /><h3 className="mt-3 text-[11px] font-semibold">Build the first category</h3><p className="mx-auto mt-2 max-w-md text-[7px] leading-4 text-muted">Overview never accepts messages. Create a category, then add a text or voice channel inside it to begin.</p>{leader ? <button type="button" onClick={() => openCategoryEditor()} className="mt-4 h-9 rounded-xl bg-primary px-4 text-[8px] font-semibold text-background">Add category</button> : null}</div> : null}
+                </div>
+              </div>
+            ) : activeChannel.channelType === "voice" ? (
               <div className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto p-6 text-center"><div><span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-primary/20 bg-primary/10 text-primary"><Mic2 className="h-6 w-6" /></span><h2 className="mt-4 text-[14px] font-semibold">{activeChannel.name}</h2><p className="mx-auto mt-2 max-w-sm text-[8px] leading-5 text-muted">Voice channels are structured in the Desk now, but live audio is intentionally reserved for the next release. No fake connection state.</p></div></div>
             ) : (
               <div className="flex min-h-0 flex-1 flex-col">
@@ -2207,18 +2337,43 @@ export default function DeskWorkspace({
         </Modal>
       ) : null}
 
+      {showCategory && activeDesk ? (
+        <Modal title={categoryEditor.categoryId ? `Edit ${categoryEditor.name}` : "Create category"} subtitle="Categories organise channels and can supply one permission policy to everything inside." icon={<FolderPlus className="h-4 w-4" />} onClose={() => setShowCategory(false)} wide footer={<><button type="button" onClick={() => setShowCategory(false)} className="h-9 rounded-xl border border-border px-4 text-[8px] font-semibold text-muted">Cancel</button>{categoryEditor.categoryId ? <button type="button" onClick={async () => { const deleted = await perform({ action: "delete-category", deskId: activeDesk.deskId, categoryId: categoryEditor.categoryId }, "Category and its channels were removed."); if (deleted) { setShowCategory(false); setActiveChannelId(""); } }} className="mr-auto flex h-9 items-center gap-2 rounded-xl border border-danger/20 px-4 text-[8px] font-semibold text-danger"><Archive className="h-3.5 w-3.5" />Delete category</button> : null}<button type="button" onClick={() => void saveCategory()} disabled={!categoryEditor.name.trim() || working} className="flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-[8px] font-semibold text-background disabled:opacity-50"><Check className="h-3.5 w-3.5" />Save category</button></>}>
+          <div className="grid gap-4 md:grid-cols-2">
+            <label><span className="mb-1.5 block text-[7px] uppercase tracking-[0.1em] text-muted">Category name</span><input value={categoryEditor.name} onChange={(event) => setCategoryEditor((current) => ({ ...current, name: event.target.value }))} placeholder="New York session" className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[8px] outline-none focus:border-primary/40" /></label>
+            <label><span className="mb-1.5 block text-[7px] uppercase tracking-[0.1em] text-muted">Description</span><input value={categoryEditor.description} onChange={(event) => setCategoryEditor((current) => ({ ...current, description: event.target.value }))} placeholder="Shared permissions for this group" className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[8px] outline-none focus:border-primary/40" /></label>
+            <Toggle checked={categoryEditor.isPrivate} onChange={(checked) => setCategoryEditor((current) => ({ ...current, isPrivate: checked }))} label="Private category" detail="Hidden from members who are not explicitly selected." />
+            <Toggle checked={categoryEditor.showHistory} onChange={(checked) => setCategoryEditor((current) => ({ ...current, showHistory: checked }))} label="Show previous messages" detail="The default history policy for synced channels." />
+            <Toggle checked={categoryEditor.readOnly} onChange={(checked) => setCategoryEditor((current) => ({ ...current, readOnly: checked, reactionOnly: checked ? false : current.reactionOnly }))} label="Read only" detail="The default posting policy for synced channels." />
+            <Toggle checked={categoryEditor.reactionOnly} onChange={(checked) => setCategoryEditor((current) => ({ ...current, reactionOnly: checked, readOnly: checked ? false : current.readOnly }))} label="Reaction only" detail="Members can react but cannot send text in synced channels." />
+          </div>
+          {categoryEditor.isPrivate ? (
+            <div className="mt-5">
+              <div className="text-[7px] font-semibold uppercase tracking-[0.13em] text-muted">Category access</div>
+              <p className="mt-1 text-[7px] text-muted">Owners and moderators retain access. Synced private channels inherit this member list.</p>
+              <div className="mt-3 grid gap-2 md:grid-cols-2">{activeMembers.filter((member) => member.role === "member").map((member) => { const profile = profileFor(member.userId); const selected = categoryEditor.allowedUserIds.includes(member.userId); return <button type="button" key={member.userId} onClick={() => setCategoryEditor((current) => ({ ...current, allowedUserIds: selected ? current.allowedUserIds.filter((id) => id !== member.userId) : [...current.allowedUserIds, member.userId] }))} className={`flex items-center gap-2 rounded-xl border p-2.5 text-left ${selected ? "border-primary/35 bg-primary/[0.06]" : "border-border bg-background/30"}`}><ProfileAvatar profile={profile} size="sm" /><span className="min-w-0 flex-1"><span className="block truncate text-[8px] font-semibold">{profile.displayName}</span><span className="block text-[6px] text-muted">@{profile.handle}</span></span><span className={`flex h-5 w-5 items-center justify-center rounded-md border ${selected ? "border-primary bg-primary text-background" : "border-border"}`}>{selected ? <Check className="h-3 w-3" /> : null}</span></button>; })}</div>
+            </div>
+          ) : null}
+          {categoryEditor.categoryId ? <div className="mt-5 rounded-xl border border-warning/20 bg-warning/[0.04] p-3 text-[7px] leading-4 text-muted">Deleting a category also deletes every channel and message inside it. Moving a channel first keeps that channel.</div> : null}
+        </Modal>
+      ) : null}
+
       {showChannel && activeDesk ? (
-        <Modal title={channelEditor.channelId ? `Edit #${channelEditor.name}` : "Create Desk channel"} subtitle="Control posting, history and exactly who can see this room." icon={channelEditor.channelType === "voice" ? <Mic2 className="h-4 w-4" /> : <Hash className="h-4 w-4" />} onClose={() => setShowChannel(false)} wide footer={<><button type="button" onClick={() => setShowChannel(false)} className="h-9 rounded-xl border border-border px-4 text-[8px] font-semibold text-muted">Cancel</button>{channelEditor.channelId ? <button type="button" onClick={async () => { const deleted = await perform({ action: "delete-channel", deskId: activeDesk.deskId, channelId: channelEditor.channelId }, "Channel removed."); if (deleted) setShowChannel(false); }} className="mr-auto flex h-9 items-center gap-2 rounded-xl border border-danger/20 px-4 text-[8px] font-semibold text-danger"><Archive className="h-3.5 w-3.5" />Delete</button> : null}<button type="button" onClick={() => void saveChannel()} disabled={!channelEditor.name.trim() || working} className="flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-[8px] font-semibold text-background disabled:opacity-50"><Check className="h-3.5 w-3.5" />Save channel</button></>}>
+        <Modal title={channelEditor.channelId ? `Edit #${channelEditor.name}` : "Create Desk channel"} subtitle="Every channel belongs to a category. Inherit its permissions or set a deliberate exception." icon={channelEditor.channelType === "voice" ? <Mic2 className="h-4 w-4" /> : <Hash className="h-4 w-4" />} onClose={() => setShowChannel(false)} wide footer={<><button type="button" onClick={() => setShowChannel(false)} className="h-9 rounded-xl border border-border px-4 text-[8px] font-semibold text-muted">Cancel</button>{channelEditor.channelId ? <button type="button" onClick={async () => { const deleted = await perform({ action: "delete-channel", deskId: activeDesk.deskId, channelId: channelEditor.channelId }, "Channel removed."); if (deleted) setShowChannel(false); }} className="mr-auto flex h-9 items-center gap-2 rounded-xl border border-danger/20 px-4 text-[8px] font-semibold text-danger"><Archive className="h-3.5 w-3.5" />Delete</button> : null}<button type="button" onClick={() => void saveChannel()} disabled={!channelEditor.name.trim() || !channelEditor.categoryId || working} className="flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-[8px] font-semibold text-background disabled:opacity-50"><Check className="h-3.5 w-3.5" />Save channel</button></>}>
           <div className="grid gap-4 md:grid-cols-2">
             <label><span className="mb-1.5 block text-[7px] uppercase tracking-[0.1em] text-muted">Channel name</span><input value={channelEditor.name} onChange={(event) => setChannelEditor((current) => ({ ...current, name: event.target.value }))} placeholder="market-structure" className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[8px] outline-none focus:border-primary/40" /></label>
             <label><span className="mb-1.5 block text-[7px] uppercase tracking-[0.1em] text-muted">Channel type</span><KwantSelect value={channelEditor.channelType} onChange={(event) => setChannelEditor((current) => ({ ...current, channelType: event.target.value as "text" | "voice" }))} className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[8px] outline-none"><option value="text">Text channel</option><option value="voice">Voice · structure now, audio later</option></KwantSelect></label>
+            <label className="md:col-span-2"><span className="mb-1.5 block text-[7px] uppercase tracking-[0.1em] text-muted">Category</span><KwantSelect value={channelEditor.categoryId} onChange={(event) => setChannelEditor((current) => ({ ...current, categoryId: event.target.value }))} className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[8px] outline-none"><option value="">Select a category</option>{activeCategories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</KwantSelect><span className="mt-1.5 block text-[6px] text-muted">Changing this moves the channel and its message history into another category.</span></label>
             <label className="md:col-span-2"><span className="mb-1.5 block text-[7px] uppercase tracking-[0.1em] text-muted">Description</span><input value={channelEditor.description} onChange={(event) => setChannelEditor((current) => ({ ...current, description: event.target.value }))} className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[8px] outline-none focus:border-primary/40" /></label>
-            <Toggle checked={channelEditor.isPrivate} onChange={(checked) => setChannelEditor((current) => ({ ...current, isPrivate: checked }))} label="Private · invitation only" detail="Hidden completely from members who are not explicitly selected." />
-            <Toggle checked={channelEditor.showHistory} onChange={(checked) => setChannelEditor((current) => ({ ...current, showHistory: checked }))} label="Show previous messages" detail="When off, new members only see messages sent after they joined." />
-            <Toggle checked={channelEditor.readOnly} onChange={(checked) => setChannelEditor((current) => ({ ...current, readOnly: checked, reactionOnly: checked ? false : current.reactionOnly }))} label="Read only" detail="Only owners and moderators can publish." />
-            <Toggle checked={channelEditor.reactionOnly} onChange={(checked) => setChannelEditor((current) => ({ ...current, reactionOnly: checked, readOnly: checked ? false : current.readOnly }))} label="Reaction only" detail="Members can react to existing posts but cannot send text." />
+            <div className="md:col-span-2"><Toggle checked={channelEditor.syncPermissions} onChange={(checked) => setChannelEditor((current) => ({ ...current, syncPermissions: checked }))} label="Sync category permissions" detail="Future category permission changes automatically apply to this channel." /></div>
+            {!channelEditor.syncPermissions ? <>
+              <Toggle checked={channelEditor.isPrivate} onChange={(checked) => setChannelEditor((current) => ({ ...current, isPrivate: checked }))} label="Private · invitation only" detail="Hidden completely from members who are not explicitly selected." />
+              <Toggle checked={channelEditor.showHistory} onChange={(checked) => setChannelEditor((current) => ({ ...current, showHistory: checked }))} label="Show previous messages" detail="When off, new members only see messages sent after they joined." />
+              <Toggle checked={channelEditor.readOnly} onChange={(checked) => setChannelEditor((current) => ({ ...current, readOnly: checked, reactionOnly: checked ? false : current.reactionOnly }))} label="Read only" detail="Only owners and moderators can publish." />
+              <Toggle checked={channelEditor.reactionOnly} onChange={(checked) => setChannelEditor((current) => ({ ...current, reactionOnly: checked, readOnly: checked ? false : current.readOnly }))} label="Reaction only" detail="Members can react to existing posts but cannot send text." />
+            </> : <div className="md:col-span-2 rounded-xl border border-primary/20 bg-primary/[0.04] p-3 text-[7px] leading-4 text-muted"><ShieldCheck className="mr-2 inline h-3.5 w-3.5 text-primary" />This channel follows its category visibility, history and posting rules. Turn sync off to customise only this channel.</div>}
           </div>
-          {channelEditor.isPrivate ? (
+          {!channelEditor.syncPermissions && channelEditor.isPrivate ? (
             <div className="mt-5">
               <div className="text-[7px] font-semibold uppercase tracking-[0.13em] text-muted">Private channel access</div>
               <p className="mt-1 text-[7px] text-muted">Owners and moderators always retain access. Selected members cannot request their own way in.</p>

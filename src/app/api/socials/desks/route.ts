@@ -5,6 +5,7 @@ import { getRouteActor } from "@/lib/serverAuth";
 import {
   EMPTY_DESK_NETWORK,
   normalizeDeskDeletionConfirmation,
+  type DeskCategory,
   type DeskChannel,
   type CreatedDeskPayload,
   type DeskFocusLock,
@@ -77,6 +78,24 @@ type ChannelRow = {
   name: string;
   description: string;
   channel_type: "text" | "voice";
+  category_id?: string | null;
+  sync_permissions?: boolean | null;
+  position: number;
+  is_private: boolean;
+  read_only: boolean;
+  reaction_only: boolean;
+  show_history: boolean;
+  allowed_user_ids: string[];
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+};
+
+type CategoryRow = {
+  id: string;
+  desk_id: string;
+  name: string;
+  description: string;
   position: number;
   is_private: boolean;
   read_only: boolean;
@@ -258,6 +277,24 @@ function fromRequest(row: RequestRow): DeskJoinRequest {
   };
 }
 
+function fromCategory(row: CategoryRow): DeskCategory {
+  return {
+    id: row.id,
+    deskId: row.desk_id,
+    name: row.name,
+    description: row.description,
+    position: row.position,
+    isPrivate: row.is_private,
+    readOnly: row.read_only,
+    reactionOnly: row.reaction_only,
+    showHistory: row.show_history,
+    allowedUserIds: row.allowed_user_ids ?? [],
+    createdBy: row.created_by,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
 function fromChannel(row: ChannelRow): DeskChannel {
   return {
     id: row.id,
@@ -265,6 +302,8 @@ function fromChannel(row: ChannelRow): DeskChannel {
     name: row.name,
     description: row.description,
     channelType: row.channel_type,
+    categoryId: row.category_id ?? "",
+    syncPermissions: row.sync_permissions !== false,
     position: row.position,
     isPrivate: row.is_private,
     readOnly: row.read_only,
@@ -382,12 +421,31 @@ export async function GET(request: NextRequest) {
 
   const selectedDeskId = cleanIdentifier(request.nextUrl.searchParams.get("deskId"));
   const channelRequest = selectedDeskId
+    ? (async () => {
+        const enhanced = await supabase
+          .from("desk_channels")
+          .select("id,desk_id,name,description,channel_type,category_id,sync_permissions,position,is_private,read_only,reaction_only,show_history,allowed_user_ids,created_by,created_at,updated_at")
+          .eq("desk_id", selectedDeskId)
+          .order("position", { ascending: true });
+        if (!enhanced.error) return { ...enhanced, categoryStructureReady: true };
+        if (enhanced.error.code !== "42703" && enhanced.error.code !== "PGRST204") {
+          return { ...enhanced, categoryStructureReady: false };
+        }
+        const fallback = await supabase
+          .from("desk_channels")
+          .select("id,desk_id,name,description,channel_type,position,is_private,read_only,reaction_only,show_history,allowed_user_ids,created_by,created_at,updated_at")
+          .eq("desk_id", selectedDeskId)
+          .order("position", { ascending: true });
+        return { ...fallback, categoryStructureReady: false };
+      })()
+    : Promise.resolve({ data: [] as ChannelRow[], error: null, categoryStructureReady: true });
+  const categoryRequest = selectedDeskId
     ? supabase
-      .from("desk_channels")
-      .select("id,desk_id,name,description,channel_type,position,is_private,read_only,reaction_only,show_history,allowed_user_ids,created_by,created_at,updated_at")
+      .from("desk_channel_categories")
+      .select("id,desk_id,name,description,position,is_private,read_only,reaction_only,show_history,allowed_user_ids,created_by,created_at,updated_at")
       .eq("desk_id", selectedDeskId)
       .order("position", { ascending: true })
-    : Promise.resolve({ data: [] as ChannelRow[], error: null });
+    : Promise.resolve({ data: [] as CategoryRow[], error: null });
   const messageRequest = selectedDeskId
     ? supabase
       .from("desk_messages")
@@ -411,7 +469,7 @@ export async function GET(request: NextRequest) {
       .order("joined_at", { ascending: true });
     return { ...fallback, memberRolesReady: false };
   })();
-  const [workspaceResult, archiveStateResult, memberResult, requestResult, focusLockResult, channelResult, messageResult] = await Promise.all([
+  const [workspaceResult, archiveStateResult, memberResult, requestResult, focusLockResult, categoryResult, channelResult, messageResult] = await Promise.all([
     supabase
       .from("desk_workspaces")
       .select("desk_id,owner_id,name,description,objective,weekly_mission,markets,session,timezone,privacy,capacity,allow_member_invites,inactivity_days,avatar_url,accent_color,rules,created_at,updated_at")
@@ -428,6 +486,7 @@ export async function GET(request: NextRequest) {
     supabase
       .from("desk_focus_locks")
       .select("desk_id,locked_by,locked_at"),
+    categoryRequest,
     channelRequest,
     messageRequest,
   ]);
@@ -439,6 +498,7 @@ export async function GET(request: NextRequest) {
   }
 
   const channels = (channelResult.data ?? []) as ChannelRow[];
+  const categories = (categoryResult.data ?? []) as CategoryRow[];
   const messages = ((messageResult.data ?? []) as MessageRow[]).reverse();
   let reactions: ReactionRow[] = [];
   let focusLocks: FocusLockRow[] = [];
@@ -451,6 +511,9 @@ export async function GET(request: NextRequest) {
     });
   }
   if (selectedDeskId) {
+    if (categoryResult.error && !tableUnavailable(categoryResult.error.code)) {
+      return NextResponse.json({ error: "Desk categories could not be loaded." }, { status: 502 });
+    }
     if (channelResult.error && !tableUnavailable(channelResult.error.code)) {
       return NextResponse.json({ error: "Desk channels could not be loaded." }, { status: 502 });
     }
@@ -518,12 +581,14 @@ export async function GET(request: NextRequest) {
     })),
     members: members.map(fromMember),
     requests: requests.map(fromRequest),
+    categories: categories.map(fromCategory),
     channels: channels.map(fromChannel),
     messages: messages.map(fromMessage),
     reactions: reactions.map(fromReaction),
     focusLocks: focusLocks.map(fromFocusLock),
     profiles,
     memberRolesReady: memberResult.memberRolesReady,
+    categoryStructureReady: channelResult.categoryStructureReady && !categoryResult.error,
   };
   return NextResponse.json(payload, {
     headers: { "Cache-Control": "private, no-store, max-age=0" },
@@ -597,6 +662,7 @@ export async function POST(request: NextRequest) {
         const created: CreatedDeskPayload = {
           workspace: fromWorkspace(createdRows.workspace),
           member: fromMember(createdRows.member),
+          categories: [],
           channels: (createdRows.channels ?? []).map(fromChannel),
         };
         return NextResponse.json({ ok: true, deskId: created.workspace.deskId, created }, { status: 201 });
@@ -646,27 +712,6 @@ export async function POST(request: NextRequest) {
       await supabase.from("desk_workspaces").delete().eq("desk_id", createdDeskId);
       return NextResponse.json({ error: ownerResult.error.message }, { status: 502 });
     }
-    const defaults = [
-      ["general", "The Desk floor for structured discussion.", "text", 10, false],
-      ["trade-floor", "Live observations and session coordination.", "text", 20, false],
-      ["desk-rules", "The shared standard and owner announcements.", "text", 30, true],
-      ["voice-lounge", "Voice rooms are reserved for a later release.", "voice", 40, false],
-    ] as const;
-    const channelResult = await supabase.from("desk_channels").insert(
-      defaults.map(([channelName, channelDescription, channelType, position, readOnly]) => ({
-        desk_id: createdDeskId,
-        name: channelName,
-        description: channelDescription,
-        channel_type: channelType,
-        position,
-        read_only: readOnly,
-        created_by: actor.userId,
-      })),
-    ).select("id,desk_id,name,description,channel_type,position,is_private,read_only,reaction_only,show_history,allowed_user_ids,created_by,created_at,updated_at");
-    if (channelResult.error) {
-      await supabase.from("desk_workspaces").delete().eq("desk_id", createdDeskId);
-      return NextResponse.json({ error: channelResult.error.message }, { status: 502 });
-    }
     const now = new Date().toISOString();
     const created: CreatedDeskPayload = {
       workspace: fromWorkspace(workspaceResult.data as WorkspaceRow),
@@ -682,7 +727,8 @@ export async function POST(request: NextRequest) {
         joinedAt: now,
         lastActiveAt: now,
       },
-      channels: ((channelResult.data ?? []) as ChannelRow[]).map(fromChannel),
+      categories: [],
+      channels: [],
     };
     return NextResponse.json({ ok: true, deskId: createdDeskId, created }, { status: 201 });
   }
@@ -724,22 +770,6 @@ export async function POST(request: NextRequest) {
     }
     const { error: ownerError } = await supabase.rpc("desk_request_access", { requested_desk_id: deskId });
     if (ownerError) return NextResponse.json({ error: ownerError.message }, { status: 502 });
-    // The migration's backfill creates defaults for existing Desks. New Desks receive the same set here.
-    const defaults = [
-      ["general", "The Desk floor for structured discussion.", "text", 10, false],
-      ["trade-floor", "Live observations and session coordination.", "text", 20, false],
-      ["desk-rules", "The shared standard and owner announcements.", "text", 30, true],
-      ["voice-lounge", "Voice rooms are reserved for a later release.", "voice", 40, false],
-    ] as const;
-    await supabase.from("desk_channels").upsert(defaults.map(([name, description, channelType, position, readOnly]) => ({
-      desk_id: deskId,
-      name,
-      description,
-      channel_type: channelType,
-      position,
-      read_only: readOnly,
-      created_by: actor.userId,
-    })), { onConflict: "desk_id,name" });
     return NextResponse.json({ ok: true, deskId });
   }
 
@@ -979,22 +1009,91 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: true });
   }
 
+  if (action === "create-category" || action === "update-category") {
+    const categoryId = cleanUuid(body.categoryId);
+    const name = cleanText(body.name, 48);
+    if (!name) return NextResponse.json({ error: "Give the category a name." }, { status: 400 });
+    if (action === "update-category" && !categoryId) return NextResponse.json({ error: "Choose a category to update." }, { status: 400 });
+    const readOnly = Boolean(body.readOnly);
+    const row = {
+      desk_id: deskId,
+      name,
+      description: cleanText(body.description, 240),
+      position: Math.max(0, Math.min(1_000, Math.floor(Number(body.position) || 100))),
+      is_private: Boolean(body.isPrivate),
+      read_only: readOnly,
+      reaction_only: !readOnly && Boolean(body.reactionOnly),
+      show_history: body.showHistory !== false,
+      allowed_user_ids: uuidArray(body.allowedUserIds),
+      created_by: actor.userId,
+      updated_at: new Date().toISOString(),
+    };
+    const query = action === "create-category"
+      ? supabase.from("desk_channel_categories").insert(row)
+      : supabase.from("desk_channel_categories").update({
+          name: row.name,
+          description: row.description,
+          position: row.position,
+          is_private: row.is_private,
+          read_only: row.read_only,
+          reaction_only: row.reaction_only,
+          show_history: row.show_history,
+          allowed_user_ids: row.allowed_user_ids,
+          updated_at: row.updated_at,
+        }).eq("id", categoryId).eq("desk_id", deskId);
+    const { error } = await query;
+    if (error) {
+      const migrationMissing = tableUnavailable(error.code) || error.code === "PGRST204";
+      return NextResponse.json({
+        error: migrationMissing
+          ? "Apply the Desk categories migration in Supabase first."
+          : error.message,
+      }, { status: migrationMissing ? 503 : 403 });
+    }
+    return NextResponse.json({ ok: true });
+  }
+
+  if (action === "delete-category") {
+    const categoryId = cleanUuid(body.categoryId);
+    if (!categoryId) return NextResponse.json({ error: "Choose a category." }, { status: 400 });
+    const { error } = await supabase.from("desk_channel_categories").delete().eq("id", categoryId).eq("desk_id", deskId);
+    if (error) return NextResponse.json({ error: error.message }, { status: 403 });
+    return NextResponse.json({ ok: true });
+  }
+
   if (action === "create-channel" || action === "update-channel") {
     const channelId = cleanUuid(body.channelId);
+    const categoryId = cleanUuid(body.categoryId);
     const name = cleanText(body.name, 40).toLowerCase().replace(/[^a-z0-9 _-]/g, "").replace(/\s+/g, "-");
     if (!name) return NextResponse.json({ error: "Give the channel a name." }, { status: 400 });
+    if (action === "update-channel" && !channelId) return NextResponse.json({ error: "Choose a channel to update." }, { status: 400 });
+    if (!categoryId) return NextResponse.json({ error: "Create or choose a category before adding a channel." }, { status: 400 });
     const channelType = cleanText(body.channelType, 16) === "voice" ? "voice" : "text";
+    const syncPermissions = body.syncPermissions !== false;
+    const categoryResult = await supabase
+      .from("desk_channel_categories")
+      .select("id,is_private,read_only,reaction_only,show_history,allowed_user_ids")
+      .eq("id", categoryId)
+      .eq("desk_id", deskId)
+      .maybeSingle();
+    if (categoryResult.error || !categoryResult.data) {
+      return NextResponse.json({ error: "Choose a category that belongs to this Desk." }, { status: 400 });
+    }
+    const category = categoryResult.data;
+    const readOnly = Boolean(body.readOnly);
     const row = {
       desk_id: deskId,
       name,
       description: cleanText(body.description, 240),
       channel_type: channelType,
+      category_id: categoryId,
+      sync_permissions: syncPermissions,
       position: Math.max(0, Math.min(1_000, Math.floor(Number(body.position) || 100))),
-      is_private: Boolean(body.isPrivate),
-      read_only: Boolean(body.readOnly),
-      reaction_only: Boolean(body.reactionOnly),
-      show_history: body.showHistory !== false,
-      allowed_user_ids: uuidArray(body.allowedUserIds),
+      is_private: syncPermissions ? category.is_private : Boolean(body.isPrivate),
+      read_only: syncPermissions ? category.read_only : readOnly,
+      reaction_only: syncPermissions ? category.reaction_only : !readOnly && Boolean(body.reactionOnly),
+      show_history: syncPermissions ? category.show_history : body.showHistory !== false,
+      allowed_user_ids: syncPermissions ? category.allowed_user_ids ?? [] : uuidArray(body.allowedUserIds),
       created_by: actor.userId,
       updated_at: new Date().toISOString(),
     };
@@ -1004,6 +1103,8 @@ export async function POST(request: NextRequest) {
           name: row.name,
           description: row.description,
           channel_type: row.channel_type,
+          category_id: row.category_id,
+          sync_permissions: row.sync_permissions,
           position: row.position,
           is_private: row.is_private,
           read_only: row.read_only,

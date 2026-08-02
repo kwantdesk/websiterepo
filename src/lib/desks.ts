@@ -51,12 +51,30 @@ export type DeskJoinRequest = {
   updatedAt: string;
 };
 
+export type DeskCategory = {
+  id: string;
+  deskId: string;
+  name: string;
+  description: string;
+  position: number;
+  isPrivate: boolean;
+  readOnly: boolean;
+  reactionOnly: boolean;
+  showHistory: boolean;
+  allowedUserIds: string[];
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type DeskChannel = {
   id: string;
   deskId: string;
   name: string;
   description: string;
   channelType: DeskChannelType;
+  categoryId: string;
+  syncPermissions: boolean;
   position: number;
   isPrivate: boolean;
   readOnly: boolean;
@@ -120,17 +138,20 @@ export type DeskNetworkPayload = {
   workspaces: DeskWorkspace[];
   members: DeskMember[];
   requests: DeskJoinRequest[];
+  categories: DeskCategory[];
   channels: DeskChannel[];
   messages: DeskMessage[];
   reactions: DeskReaction[];
   focusLocks: DeskFocusLock[];
   profiles: DeskMemberProfile[];
   memberRolesReady: boolean;
+  categoryStructureReady: boolean;
 };
 
 export type CreatedDeskPayload = {
   workspace: DeskWorkspace;
   member: DeskMember;
+  categories: DeskCategory[];
   channels: DeskChannel[];
 };
 
@@ -153,10 +174,12 @@ export const EMPTY_DESK_NETWORK: DeskNetworkPayload = {
   workspaces: [],
   members: [],
   requests: [],
+  categories: [],
   channels: [],
   messages: [],
   reactions: [],
   focusLocks: [],
   profiles: [],
   memberRolesReady: false,
+  categoryStructureReady: false,
 };
