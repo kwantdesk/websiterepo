@@ -1589,10 +1589,11 @@ export default function BacktestingWorkspace() {
           />
         ) : null}
 
-        {zyonDocked && historicalZyonContext ? (
+        {started && historicalZyonContext ? (
           <HistoricalZyonPanel
             context={historicalZyonContext}
-            paired={gexDocked}
+            open={showZyonPanel}
+            paired={gexDocked && showZyonPanel}
             onClose={() => setShowZyonPanel(false)}
           />
         ) : null}
