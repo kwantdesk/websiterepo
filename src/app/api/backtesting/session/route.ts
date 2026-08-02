@@ -42,7 +42,7 @@ export async function GET(request: NextRequest) {
 
   const symbol = (request.nextUrl.searchParams.get("symbol") || "").trim();
   const timeframe = (request.nextUrl.searchParams.get("timeframe") || "1m").trim();
-  const start = Date.parse(request.nextUrl.searchParams.get("start") || "");
+  const requestedStart = Date.parse(request.nextUrl.searchParams.get("start") || "");
   const requestedEnd = Date.parse(request.nextUrl.searchParams.get("end") || "");
   const instrument = DATABENTO_FUTURES.find((candidate) =>
     candidate.kind === "future" && candidate.symbol.toUpperCase() === symbol.toUpperCase());
@@ -54,12 +54,12 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "That replay timeframe is not supported." }, { status: 400 });
   }
   const end = Math.min(requestedEnd, Date.now());
-  if (!Number.isFinite(start) || !Number.isFinite(end) || start < EARLIEST_CME_HISTORY_MS || end <= start) {
+  if (!Number.isFinite(requestedStart) || !Number.isFinite(end) || requestedStart < EARLIEST_CME_HISTORY_MS || end <= requestedStart) {
     return NextResponse.json({ error: "A valid historical replay window is required." }, { status: 400 });
   }
-  if (end - start > MAX_REQUEST_MS) {
-    return NextResponse.json({ error: "Replay requests are limited to one week of context plus the replay session." }, { status: 400 });
-  }
+  // A date/time change must never strand the user behind a request-window
+  // error. Keep the newest permitted context and serve the replay normally.
+  const start = Math.max(requestedStart, end - MAX_REQUEST_MS);
 
   try {
     const candles = await getDatabentoBars(

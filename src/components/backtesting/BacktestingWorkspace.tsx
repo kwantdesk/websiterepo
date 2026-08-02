@@ -927,12 +927,19 @@ export default function BacktestingWorkspace() {
     }
   };
 
+  const openReplaySetup = () => {
+    setPlaying(false);
+    setError("");
+    setShowSetup(true);
+  };
+
   const toggleLevel = (family: LevelFamily) => {
     setLevelState((current) => ({ ...current, [family]: !current[family] }));
   };
 
   const changeReplayTimeZone = (nextTimeZone: string) => {
     const normalized = normalizeTimeZone(nextTimeZone);
+    setError("");
     setReplayTimeZone(normalized);
     window.localStorage.setItem(REPLAY_TIME_ZONE_STORAGE_KEY, normalized);
   };
@@ -962,7 +969,7 @@ export default function BacktestingWorkspace() {
       <div className="grid gap-4 p-5 sm:grid-cols-2">
         <label className="space-y-2 sm:col-span-2">
           <span className="text-[9px] font-semibold uppercase tracking-[0.14em] text-muted">Instrument</span>
-          <KwantSelect value={instrument} onChange={(event) => setInstrument(event.target.value as ReplayInstrument)} className="h-11 w-full rounded-xl border border-border bg-background px-3 text-[12px] text-foreground outline-none focus:border-primary/40">
+          <KwantSelect value={instrument} onChange={(event) => { setError(""); setInstrument(event.target.value as ReplayInstrument); }} className="h-11 w-full rounded-xl border border-border bg-background px-3 text-[12px] text-foreground outline-none focus:border-primary/40">
             {INSTRUMENTS.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
           </KwantSelect>
         </label>
@@ -979,14 +986,14 @@ export default function BacktestingWorkspace() {
           <span className="text-[9px] font-semibold uppercase tracking-[0.14em] text-muted">Replay date</span>
           <div className="relative">
             <CalendarDays className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted" />
-            <input type="date" min="2010-06-06" max={new Date().toISOString().slice(0, 10)} value={date} onChange={(event) => setDate(event.target.value)} className="h-11 w-full rounded-xl border border-border bg-background pl-9 pr-3 text-[12px] text-foreground outline-none focus:border-primary/40" />
+            <input type="date" min="2010-06-06" max={new Date().toISOString().slice(0, 10)} value={date} onChange={(event) => { setError(""); setDate(event.target.value); }} className="h-11 w-full rounded-xl border border-border bg-background pl-9 pr-3 text-[12px] text-foreground outline-none focus:border-primary/40" />
           </div>
         </label>
         <label className="space-y-2">
           <span className="text-[9px] font-semibold uppercase tracking-[0.14em] text-muted">Start time · {timeZoneCity(replayTimeZone)}</span>
           <div className="relative">
             <Clock3 className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted" />
-            <input type="time" value={time} onChange={(event) => setTime(event.target.value)} className="h-11 w-full rounded-xl border border-border bg-background pl-9 pr-3 font-mono text-[12px] text-foreground outline-none focus:border-primary/40" />
+            <input type="time" value={time} onChange={(event) => { setError(""); setTime(event.target.value); }} className="h-11 w-full rounded-xl border border-border bg-background pl-9 pr-3 font-mono text-[12px] text-foreground outline-none focus:border-primary/40" />
           </div>
         </label>
         <div className="sm:col-span-2 rounded-2xl border border-border bg-background/45 p-4">
@@ -1063,7 +1070,7 @@ export default function BacktestingWorkspace() {
           {started ? (
             <button
               type="button"
-              onClick={() => setShowSetup(true)}
+              onClick={openReplaySetup}
               className="flex h-9 items-center gap-2 rounded-xl border border-primary/30 bg-primary/10 px-4 text-[11px] font-semibold text-primary transition-colors hover:bg-primary/15"
             >
               <Play className="h-3.5 w-3.5" />
@@ -1365,7 +1372,7 @@ export default function BacktestingWorkspace() {
             <div className="grid gap-4 p-5 sm:grid-cols-2">
               <label className="space-y-2 sm:col-span-2">
                 <span className="text-[9px] font-semibold uppercase tracking-[0.14em] text-muted">Instrument</span>
-                <KwantSelect value={instrument} onChange={(event) => setInstrument(event.target.value as ReplayInstrument)} className="h-11 w-full rounded-xl border border-border bg-background px-3 text-[12px] text-foreground outline-none focus:border-primary/40">
+                <KwantSelect value={instrument} onChange={(event) => { setError(""); setInstrument(event.target.value as ReplayInstrument); }} className="h-11 w-full rounded-xl border border-border bg-background px-3 text-[12px] text-foreground outline-none focus:border-primary/40">
                   {INSTRUMENTS.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
                 </KwantSelect>
               </label>
@@ -1382,14 +1389,14 @@ export default function BacktestingWorkspace() {
                 <span className="text-[9px] font-semibold uppercase tracking-[0.14em] text-muted">Replay date</span>
                 <div className="relative">
                   <CalendarDays className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted" />
-                  <input type="date" min="2010-06-06" max={new Date().toISOString().slice(0, 10)} value={date} onChange={(event) => setDate(event.target.value)} className="h-11 w-full rounded-xl border border-border bg-background pl-9 pr-3 text-[12px] text-foreground outline-none focus:border-primary/40" />
+                  <input type="date" min="2010-06-06" max={new Date().toISOString().slice(0, 10)} value={date} onChange={(event) => { setError(""); setDate(event.target.value); }} className="h-11 w-full rounded-xl border border-border bg-background pl-9 pr-3 text-[12px] text-foreground outline-none focus:border-primary/40" />
                 </div>
               </label>
               <label className="space-y-2">
                 <span className="text-[9px] font-semibold uppercase tracking-[0.14em] text-muted">Start time · {timeZoneCity(replayTimeZone)}</span>
                 <div className="relative">
                   <Clock3 className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted" />
-                  <input type="time" value={time} onChange={(event) => setTime(event.target.value)} className="h-11 w-full rounded-xl border border-border bg-background pl-9 pr-3 font-mono text-[12px] text-foreground outline-none focus:border-primary/40" />
+                  <input type="time" value={time} onChange={(event) => { setError(""); setTime(event.target.value); }} className="h-11 w-full rounded-xl border border-border bg-background pl-9 pr-3 font-mono text-[12px] text-foreground outline-none focus:border-primary/40" />
                 </div>
               </label>
               <div className="sm:col-span-2 rounded-2xl border border-border bg-background/45 p-4">
