@@ -518,6 +518,7 @@ export default function BacktestingWorkspace() {
   const [started, setStarted] = useState(false);
   const [levelState, setLevelState] = useState<Record<LevelFamily, boolean>>({ gamma: false, quant: false, valueArea: false });
   const [levelLoading, setLevelLoading] = useState(false);
+  const [manualLevelLoading, setManualLevelLoading] = useState(false);
   const [levelError, setLevelError] = useState<Record<LevelFamily, string>>({ gamma: "", quant: "", valueArea: "" });
   const [gammaLevels, setGammaLevels] = useState<ChartLevel[]>([]);
   const [gammaPositioning, setGammaPositioning] = useState<ChartGammaLevelsPayload | null>(null);
@@ -1187,12 +1188,17 @@ export default function BacktestingWorkspace() {
               </button>
               <button
                 type="button"
-                onClick={() => replayClock && void loadLevels(replayClock, true, visibleCandles.at(-1)?.close ?? null)}
+                onClick={() => {
+                  if (!replayClock) return;
+                  setManualLevelLoading(true);
+                  void loadLevels(replayClock, true, visibleCandles.at(-1)?.close ?? null)
+                    .finally(() => setManualLevelLoading(false));
+                }}
                 disabled={levelLoading}
                 className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-muted hover:text-primary disabled:opacity-40"
                 title="Rebuild levels from the latest eligible snapshot"
               >
-                <RefreshCw className={`h-3.5 w-3.5 ${levelLoading ? "animate-spin" : ""}`} />
+                <RefreshCw className={`h-3.5 w-3.5 ${manualLevelLoading ? "animate-spin" : ""}`} />
               </button>
             </>
           ) : null}
@@ -1356,12 +1362,14 @@ export default function BacktestingWorkspace() {
             toolbarEnabled
             gammaLevelsEnabled={levelState.gamma}
             gammaLevelsAvailable
-            gammaLevelsLoading={levelLoading}
+            // Point-in-time replacements are always background refreshes in
+            // replay. Never cover or pause the chart while a snapshot swaps.
+            gammaLevelsLoading={false}
             gammaLevelsError={levelError.gamma || null}
             onToggleGammaLevels={() => toggleLevel("gamma")}
             valueAreaLevelsEnabled={levelState.valueArea}
             valueAreaLevelsAvailable
-            valueAreaLevelsLoading={levelLoading}
+            valueAreaLevelsLoading={false}
             valueAreaLevelsError={levelError.valueArea || null}
             valueAreaLevelsDescription="Historical prior-session and prior-week VAH, VAL, POC and VWAP"
             onToggleValueAreaLevels={() => toggleLevel("valueArea")}
@@ -1371,7 +1379,7 @@ export default function BacktestingWorkspace() {
         {started && showGexPanel ? (
           <HistoricalGexPanel
             snapshot={gammaPositioning}
-            loading={levelLoading}
+            loading={levelLoading && !gammaPositioning}
             error={levelError.gamma}
             paired={showZyonPanel}
             onClose={() => setShowGexPanel(false)}
@@ -1495,7 +1503,7 @@ export default function BacktestingWorkspace() {
                   ? `New York intraday snapshot · ${formatReplayClock(replayClock ?? 0, "America/New_York")} NY`
                   : `Snapshot cut-off: ${snapshotDate || "preparing"} New York EOD`}
               </span>
-              <span>{tickerLoading ? "Loading historical ticker…" : playing ? `${speed}× real-time market clock` : levelLoading ? "Refreshing eligible levels…" : "Future candles remain hidden"}</span>
+              <span>{tickerLoading ? "Loading historical ticker…" : playing ? `${speed}× real-time market clock` : manualLevelLoading ? "Refreshing eligible levels…" : "Future candles remain hidden"}</span>
               {tickerError ? <span className="text-danger">ticker: {tickerError}</span> : null}
               {Object.entries(levelError).filter(([, message]) => message).map(([family, message]) => (
                 <span key={family} className="text-danger">{family}: {message}</span>
