@@ -947,6 +947,17 @@ function getTimeframeBucketStart(timestampMs: number, timeframe: string) {
   return Math.floor(timestampMs / timeframeMs) * timeframeMs;
 }
 
+function trimCandlesAfterActiveBucket(
+  candles: Candle[],
+  timeframe: string,
+  now = Date.now(),
+) {
+  if (isEventBasedChartInterval(timeframe)) return candles;
+  const activeBucket = getTimeframeBucketStart(now, timeframe);
+  return candles.filter((candle) =>
+    getTimeframeBucketStart(candle.timestamp, timeframe) <= activeBucket);
+}
+
 function mergeHistoricalWithLiveTail(
   historical: Candle[],
   rendered: Candle[],
@@ -1396,7 +1407,27 @@ function mergeLiveMidIntoCandles(
   }
 
   if (liveBucketStart < lastBucketStart) {
-    return updated;
+    const timeframeMs = getTimeframeMs(timeframe);
+    if (lastBucketStart - liveBucketStart > timeframeMs) return updated;
+
+    // Some cached/provider OHLC tails can label the forming higher-timeframe
+    // bar with its closing boundary. In that case a valid live tick appears to
+    // belong to the previous bucket and was silently ignored, leaving the 1H
+    // (and larger) price label frozen. Drop only that single ahead-of-clock
+    // tail and rebuild the active bucket from the real tick.
+    const currentAndPast = updated.filter((candle) =>
+      getTimeframeBucketStart(candle.timestamp, timeframe) <= liveBucketStart);
+    if (!currentAndPast.length || currentAndPast.length === updated.length) {
+      return updated;
+    }
+    return mergeLiveMidIntoCandles(
+      currentAndPast,
+      mid,
+      symbol,
+      timeframe,
+      tickTimestamp,
+      flow,
+    );
   }
 
   const reference = repairedLast.close || repairedLast.open;
@@ -2475,9 +2506,9 @@ function WorkspaceChartPane({
     const observedTail = pane.broker === "Databento"
       ? readDatabentoLiveTail(pane.symbol)
       : [];
-    const immediateHistory = sanitizeCandles(
-      immediateCache?.candles ?? [],
-      pane.symbol,
+    const immediateHistory = trimCandlesAfterActiveBucket(
+      sanitizeCandles(immediateCache?.candles ?? [], pane.symbol),
+      pane.timeframe,
     ).filter((candle) => candle.timestamp >= requestedFrom);
     const immediateCandles = pane.broker === "Databento"
       ? mergeObservedDatabentoTail(immediateHistory, observedTail, pane.timeframe)
@@ -2505,7 +2536,10 @@ function WorkspaceChartPane({
         ? await readCompatibleChartHistoryCache(pane.symbol, pane.timeframe)
         : null;
       if (cancelled) return;
-      const cachedHistory = sanitizeCandles(cached?.candles ?? [], pane.symbol);
+      const cachedHistory = trimCandlesAfterActiveBucket(
+        sanitizeCandles(cached?.candles ?? [], pane.symbol),
+        pane.timeframe,
+      );
       const cachedBase = cachedHistory.filter((candle) => candle.timestamp >= requestedFrom);
       const latestObservedTail = pane.broker === "Databento"
         ? readDatabentoLiveTail(pane.symbol)
@@ -2569,7 +2603,10 @@ function WorkspaceChartPane({
         const nextMarketTrades = needsOrderFlowHistory
           ? workspaceExecutionTape.get(workspaceOrderFlowKey(pane.symbol, pane.timeframe)) ?? []
           : [];
-        const downloaded = sanitizeCandles(nextCandles, pane.symbol);
+        const downloaded = trimCandlesAfterActiveBucket(
+          sanitizeCandles(nextCandles, pane.symbol),
+          pane.timeframe,
+        );
         const clean = pane.broker === "Databento"
           ? downloaded.filter((candle) => candle.timestamp >= requestedFrom)
           : downloaded;
@@ -2648,7 +2685,10 @@ function WorkspaceChartPane({
       latestFuturesRef.current = {
         ...latestFuturesRef.current,
         price: latest.close,
-        asOfMs: latest.timestamp,
+        // A candle timestamp is a bucket label, not necessarily the precise
+        // market-event time. Never let an ahead-labelled higher-timeframe bar
+        // reject the first real tick as out of order.
+        asOfMs: Math.min(latest.timestamp, Date.now()),
       };
     }
   }, [candles]);
