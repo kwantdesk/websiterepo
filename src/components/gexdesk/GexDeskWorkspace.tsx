@@ -371,7 +371,7 @@ export default function GexDeskWorkspace() {
     const interval = payload?.marketOpen
       ? window.setInterval(() => {
           if (document.visibilityState === "visible") void loadHistory(true);
-        }, 30_000)
+        }, 10_000)
       : null;
     return () => {
       if (interval !== null) window.clearInterval(interval);

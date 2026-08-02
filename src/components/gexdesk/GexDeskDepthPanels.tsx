@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Activity,
   AlertTriangle,
@@ -14,6 +14,7 @@ import {
   Waves,
 } from "lucide-react";
 import KwantLoader from "@/components/KwantLoader";
+import KwantSelect from "@/components/ui/KwantSelect";
 import type { DatabentoLiveStatus } from "@/lib/chartLiveEvents";
 import type {
   GexDeskHistoryPayload,
@@ -26,6 +27,59 @@ import type {
 
 export type GexDeskPanel = "GEX_VIEW" | "MAP" | "HEATMAP" | "EXPIRIES" | "FLOW" | "SOURCES";
 export type GexDeskTapeTick = { price: number; delta: number; timestamp: number };
+export type EvolutionLiveTick = {
+  instrument: GexDeskHistoryInstrument;
+  price: number;
+  timestamp: number;
+};
+
+type EvolutionTimeframe = "1s" | "10s" | "30s" | "1m" | "5m" | "15m" | "30m" | "45m" | "1h" | "4h" | "1D" | "1W";
+
+const EVOLUTION_TIMEFRAMES: EvolutionTimeframe[] = [
+  "1s",
+  "10s",
+  "30s",
+  "1m",
+  "5m",
+  "15m",
+  "30m",
+  "45m",
+  "1h",
+  "4h",
+  "1D",
+  "1W",
+];
+
+const EVOLUTION_FRAME_MS: Record<EvolutionTimeframe, number> = {
+  "1s": 1_000,
+  "10s": 10_000,
+  "30s": 30_000,
+  "1m": 60_000,
+  "5m": 5 * 60_000,
+  "15m": 15 * 60_000,
+  "30m": 30 * 60_000,
+  "45m": 45 * 60_000,
+  "1h": 60 * 60_000,
+  "4h": 4 * 60 * 60_000,
+  "1D": 24 * 60 * 60_000,
+  "1W": 7 * 24 * 60 * 60_000,
+};
+
+function indexAtOrBefore(timestamps: number[], timestamp: number) {
+  let low = 0;
+  let high = timestamps.length - 1;
+  let match = 0;
+  while (low <= high) {
+    const middle = Math.floor((low + high) / 2);
+    if (timestamps[middle] <= timestamp) {
+      match = middle;
+      low = middle + 1;
+    } else {
+      high = middle - 1;
+    }
+  }
+  return match;
+}
 
 type PanelProps = {
   panel: Exclude<GexDeskPanel, "GEX_VIEW" | "MAP" | "HEATMAP">;
@@ -62,6 +116,16 @@ function timeLabel(timestamp: number) {
     timeZone: "America/New_York",
     hour: "2-digit",
     minute: "2-digit",
+    hour12: false,
+  }).format(new Date(timestamp));
+}
+
+function secondTimeLabel(timestamp: number) {
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
     hour12: false,
   }).format(new Date(timestamp));
 }
@@ -197,6 +261,7 @@ export function EvolutionPanel({
   livePrice,
   instrument = "NQ",
   onInstrumentChange,
+  liveTicks = [],
   embedded = false,
 }: {
   history: GexDeskHistoryPayload | null;
@@ -205,10 +270,26 @@ export function EvolutionPanel({
   livePrice: number | null;
   instrument?: GexDeskHistoryInstrument;
   onInstrumentChange?: (instrument: GexDeskHistoryInstrument) => void;
+  liveTicks?: EvolutionLiveTick[];
   embedded?: boolean;
 }) {
   const [mode, setMode] = useState<"EXPOSURE" | "CHANGE">("EXPOSURE");
-  const [hoveredCell, setHoveredCell] = useState<{ columnIndex: number; rowIndex: number; x: number; y: number } | null>(null);
+  const [timeframe, setTimeframe] = useState<EvolutionTimeframe>("1m");
+  const [clock, setClock] = useState(Date.now());
+  const [hoveredCell, setHoveredCell] = useState<{
+    displayIndex: number;
+    rowIndex: number;
+    projected: boolean;
+    projectionStep: number;
+    x: number;
+    y: number;
+  } | null>(null);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => setClock(Date.now()), 1_000);
+    return () => window.clearInterval(interval);
+  }, []);
+
   const summary = useMemo(() => {
     if (!history?.rows.length || !history.timestamps.length) return null;
     const lastIndex = history.timestamps.length - 1;
@@ -223,14 +304,67 @@ export function EvolutionPanel({
       building: [...candidates].sort((left, right) => Math.abs(right.change) - Math.abs(left.change))[0] ?? null,
     };
   }, [history]);
+  const timeline = useMemo(() => {
+    if (!history?.timestamps.length) return null;
+    const historyPrices = history.futuresPrices?.length ? history.futuresPrices : history.nqPrices;
+    const live = history.status === "LIVE";
+    const currentTimestamp = live ? clock : history.timestamps.at(-1)!;
+    const intervalMs = EVOLUTION_FRAME_MS[timeframe];
+    const earliest = history.timestamps[0];
+    const windowStart = Math.max(earliest, currentTimestamp - intervalMs * 119);
+    const sampled = [windowStart];
+    const firstBoundary = Math.ceil(windowStart / intervalMs) * intervalMs;
+    for (let timestamp = firstBoundary; timestamp < currentTimestamp; timestamp += intervalMs) {
+      if (timestamp > sampled.at(-1)!) sampled.push(timestamp);
+    }
+    if (currentTimestamp > sampled.at(-1)!) sampled.push(currentTimestamp);
+
+    const pricePoints = history.timestamps.map((timestamp, index) => ({
+      timestamp,
+      price: historyPrices[index] ?? historyPrices.at(-1) ?? 0,
+    }));
+    for (const tick of liveTicks) {
+      if (tick.timestamp >= earliest && tick.timestamp <= currentTimestamp) {
+        pricePoints.push({ timestamp: tick.timestamp, price: tick.price });
+      }
+    }
+    if (live && livePrice !== null) pricePoints.push({ timestamp: currentTimestamp, price: livePrice });
+    pricePoints.sort((left, right) => left.timestamp - right.timestamp);
+    const priceTimestamps = pricePoints.map((point) => point.timestamp);
+    const frames = sampled.map((timestamp) => {
+      const sourceIndex = indexAtOrBefore(history.timestamps, timestamp);
+      const priceIndex = indexAtOrBefore(priceTimestamps, timestamp);
+      return {
+        timestamp,
+        sourceIndex,
+        price: pricePoints[priceIndex]?.price ?? historyPrices[sourceIndex] ?? null,
+      };
+    });
+    const observedUnits = Math.max(1, frames.length);
+    const viewWidth = observedUnits / 0.875;
+    const projectionWidth = viewWidth - observedUnits;
+    const observedSpan = Math.max(intervalMs, currentTimestamp - windowStart);
+    const futureEnd = currentTimestamp + Math.max(intervalMs, observedSpan / 7);
+    return {
+      frames,
+      currentTimestamp,
+      futureEnd,
+      observedUnits,
+      viewWidth,
+      projectionWidth,
+      intervalMs,
+      live,
+    };
+  }, [clock, history, livePrice, liveTicks, timeframe]);
   const heatScale = useMemo(() => {
-    const magnitudes = history?.rows.flatMap((row) => (
-      mode === "EXPOSURE" ? row.gross : row.change.map(Math.abs)
-    )).filter((value) => Number.isFinite(value) && value > 0) ?? [];
+    const sourceIndices = timeline?.frames.map((frame) => frame.sourceIndex) ?? [];
+    const magnitudes = history?.rows.flatMap((row) => sourceIndices.map((sourceIndex) => (
+      mode === "EXPOSURE" ? row.gross[sourceIndex] ?? 0 : Math.abs(row.change[sourceIndex] ?? 0)
+    ))).filter((value) => Number.isFinite(value) && value > 0) ?? [];
     return {
       maximum: Math.max(...magnitudes, 1),
     };
-  }, [history, mode]);
+  }, [history, mode, timeline]);
 
   if (loading && !history) {
     return <KwantLoader className="min-h-[620px] rounded-2xl border border-border bg-panel" icon={Layers3} title="Building intraday exposure map" detail={`Timestamp-aligning ${instrument === "ES" ? "SPX/SPY" : "NDX/QQQ"} positioning with ${instrument} history.`} />;
@@ -239,35 +373,51 @@ export function EvolutionPanel({
     return <EmptyPanel title="Intraday evolution is unavailable" detail={error || "No timestamp-aligned interval map is available for this source yet."} />;
   }
 
+  if (!timeline) {
+    return <EmptyPanel title="Intraday evolution is unavailable" detail="The selected history does not contain a usable timeline." />;
+  }
+
   const maximum = heatScale.maximum;
   const rowCount = history.rows.length;
-  const columnCount = history.timestamps.length;
   const historyInstrument = history.instrument ?? instrument;
-  const futuresPrices = history.futuresPrices?.length ? history.futuresPrices : history.nqPrices;
-  const live = livePrice ?? futuresPrices.at(-1) ?? null;
-  const yForPrice = (price: number) => rowCount - 1 - (price - history.priceLow) / Math.max(1, history.bucketSize);
-  const primaryPath = futuresPrices.map((price, index) => (
-    `${index ? "L" : "M"}${index.toFixed(2)},${yForPrice(price).toFixed(2)}`
+  const live = timeline.live ? livePrice ?? timeline.frames.at(-1)?.price ?? null : timeline.frames.at(-1)?.price ?? null;
+  const yForPrice = (price: number) => clamp(
+    rowCount - 1 - (price - history.priceLow) / Math.max(1, history.bucketSize),
+    0,
+    rowCount - 1,
+  );
+  const primaryPath = timeline.frames.map((frame, index) => (
+    `${index ? "L" : "M"}${(index === timeline.frames.length - 1 ? timeline.observedUnits : index + 0.5).toFixed(2)},${yForPrice(frame.price ?? history.priceLow).toFixed(2)}`
   )).join(" ");
   const hovered = hoveredCell ? (() => {
     const row = history.rows[hoveredCell.rowIndex];
-    const timestamp = history.timestamps[hoveredCell.columnIndex];
-    if (!row || timestamp === undefined) return null;
-    const call = row.call[hoveredCell.columnIndex] ?? 0;
-    const put = row.put[hoveredCell.columnIndex] ?? 0;
-    const net = row.net[hoveredCell.columnIndex] ?? 0;
-    const gross = row.gross[hoveredCell.columnIndex] ?? 0;
-    const change = row.change[hoveredCell.columnIndex] ?? 0;
-    const heatMagnitude = mode === "EXPOSURE" ? gross : Math.abs(change);
+    const frame = hoveredCell.projected
+      ? timeline.frames.at(-1)
+      : timeline.frames[hoveredCell.displayIndex];
+    if (!row || !frame) return null;
+    const sourceIndex = frame.sourceIndex;
+    const projectionProgress = hoveredCell.projected ? (hoveredCell.projectionStep + 1) / 8 : 0;
+    const persistence = hoveredCell.projected
+      ? mode === "EXPOSURE" ? 1 - projectionProgress * 0.22 : Math.exp(-2 * projectionProgress)
+      : 1;
+    const timestamp = hoveredCell.projected
+      ? timeline.currentTimestamp + (timeline.futureEnd - timeline.currentTimestamp) * projectionProgress
+      : frame.timestamp;
+    const call = row.call[sourceIndex] ?? 0;
+    const put = row.put[sourceIndex] ?? 0;
+    const net = row.net[sourceIndex] ?? 0;
+    const gross = row.gross[sourceIndex] ?? 0;
+    const change = row.change[sourceIndex] ?? 0;
+    const heatMagnitude = (mode === "EXPOSURE" ? gross : Math.abs(change)) * persistence;
     const columnPeak = Math.max(1, ...history.rows.map((candidate) => (
       mode === "EXPOSURE"
-        ? candidate.gross[hoveredCell.columnIndex] ?? 0
-        : Math.abs(candidate.change[hoveredCell.columnIndex] ?? 0)
+        ? candidate.gross[sourceIndex] ?? 0
+        : Math.abs(candidate.change[sourceIndex] ?? 0)
     )));
-    const concentration = clamp(heatMagnitude / columnPeak, 0, 1);
+    const concentration = clamp((mode === "EXPOSURE" ? gross : Math.abs(change)) / columnPeak, 0, 1);
     const heatStrength = clamp(Math.pow(heatMagnitude / maximum, 0.55), 0, 1);
     const underliers = Object.entries(history.underlierPrices ?? {}).flatMap(([symbol, prices]) => {
-      const price = prices?.[hoveredCell.columnIndex];
+      const price = prices?.[sourceIndex];
       return Number.isFinite(price) ? [{ symbol, price: Number(price) }] : [];
     });
     return {
@@ -280,9 +430,11 @@ export function EvolutionPanel({
       gross,
       change,
       concentration,
-      futuresPrice: futuresPrices[hoveredCell.columnIndex] ?? null,
+      futuresPrice: hoveredCell.projected ? timeline.frames.at(-1)?.price ?? null : frame.price,
       underliers,
       heatStrength,
+      persistence,
+      projected: hoveredCell.projected,
       role: evolutionRole(call, put, net, concentration),
     };
   })() : null;
@@ -297,6 +449,19 @@ export function EvolutionPanel({
           detail={`Exposure is remapped with source and ${historyInstrument} prices from the same historical minute.`}
           right={(
             <div className="flex flex-wrap items-center justify-end gap-2">
+              <KwantSelect
+                value={timeframe}
+                onChange={(event) => {
+                  setHoveredCell(null);
+                  setTimeframe(event.target.value as EvolutionTimeframe);
+                }}
+                menuLabel="Evolution timeframe"
+                className="h-8 min-w-20 rounded-xl border border-border bg-background px-2.5 font-mono text-[7px] font-semibold"
+              >
+                {EVOLUTION_TIMEFRAMES.map((value) => (
+                  <option key={value} value={value}>{value}</option>
+                ))}
+              </KwantSelect>
               <div className="flex rounded-xl border border-border bg-background p-1" aria-label="Evolution instrument">
                 {(["NQ", "ES"] as const).map((value) => (
                   <button
@@ -346,14 +511,14 @@ export function EvolutionPanel({
                 <p><span className="block font-semibold text-accent">Accent</span>Amplifying</p>
                 <p><span className="block font-semibold text-foreground">White</span>{historyInstrument} price</p>
               </div>
-              <p className="mt-1 text-[7px] leading-4 text-muted">Use Change to locate exposure building or fading through the session.</p>
+              <p className="mt-1 text-[7px] leading-4 text-muted">Use Change to locate exposure building or fading. Right of LIVE carries the latest measured state forward with confidence decay; it does not invent future trades.</p>
             </div>
             {history.errors.length || error ? <div className="rounded-xl border border-warning/20 bg-warning/[0.04] px-4 py-2 text-[7px] leading-4 text-warning md:col-span-3">{[...history.errors, error].filter(Boolean).join(" · ")}</div> : null}
           </aside>
           <div className={`relative min-w-0 overflow-hidden bg-background/25 p-4 ${embedded ? "flex min-h-0 flex-1 flex-col" : ""}`}>
             <div className="mb-3 flex items-center justify-between gap-3 text-[6px] uppercase tracking-[0.11em] text-muted">
-              <span>{history.source} / {history.expiration || "front expiry"}</span>
-              <span>{history.status} · {percent(history.mappingCoverage)} timestamp coverage</span>
+              <span>{history.source} / {history.expiration || "front expiry"} · {timeframe} view</span>
+              <span>{history.status} · PRICE TICKS LIVE · OPTIONS SOURCE 1M · {percent(history.mappingCoverage)} coverage</span>
             </div>
             <div
               className={`relative overflow-hidden rounded-xl border border-border bg-background ${embedded ? "min-h-[420px] flex-1" : "h-[620px]"}`}
@@ -363,49 +528,105 @@ export function EvolutionPanel({
                 className="absolute bottom-7 left-0 right-[72px] top-0 cursor-crosshair overflow-hidden"
                 onMouseMove={(event) => {
                   const bounds = event.currentTarget.getBoundingClientRect();
-                  if (!bounds.width || !bounds.height || !columnCount || !rowCount) return;
+                  if (!bounds.width || !bounds.height || !timeline.frames.length || !rowCount) return;
                   const xRatio = clamp((event.clientX - bounds.left) / bounds.width, 0, 0.999999);
                   const yRatio = clamp((event.clientY - bounds.top) / bounds.height, 0, 0.999999);
-                  const columnIndex = Math.min(columnCount - 1, Math.floor(xRatio * columnCount));
+                  const xUnit = xRatio * timeline.viewWidth;
+                  const projected = xUnit >= timeline.observedUnits;
+                  const displayIndex = projected
+                    ? timeline.frames.length - 1
+                    : Math.min(timeline.frames.length - 1, Math.floor(xUnit));
+                  const projectionStep = projected
+                    ? clamp(Math.floor((xUnit - timeline.observedUnits) / timeline.projectionWidth * 8), 0, 7)
+                    : 0;
+                  const cellCentre = projected
+                    ? timeline.observedUnits + (projectionStep + 0.5) / 8 * timeline.projectionWidth
+                    : displayIndex + 0.5;
                   const rowIndex = clamp(rowCount - 1 - Math.floor(yRatio * rowCount), 0, rowCount - 1);
                   setHoveredCell((current) => (
-                    current?.columnIndex === columnIndex && current.rowIndex === rowIndex
+                    current?.displayIndex === displayIndex
+                      && current.rowIndex === rowIndex
+                      && current.projected === projected
+                      && current.projectionStep === projectionStep
                       ? current
                       : {
-                          columnIndex,
+                          displayIndex,
                           rowIndex,
-                          x: (columnIndex + 0.5) / columnCount * 100,
+                          projected,
+                          projectionStep,
+                          x: cellCentre / timeline.viewWidth * 100,
                           y: (rowCount - 1 - rowIndex + 0.5) / rowCount * 100,
                         }
                   ));
                 }}
               >
-                <svg className="pointer-events-none h-full w-full" viewBox={`0 0 ${Math.max(1, columnCount)} ${Math.max(1, rowCount)}`} preserveAspectRatio="none" aria-label="Intraday mapped gamma exposure heatmap">
+                <svg className="pointer-events-none h-full w-full" viewBox={`0 0 ${timeline.viewWidth} ${Math.max(1, rowCount)}`} preserveAspectRatio="none" aria-label="Live intraday mapped gamma exposure heatmap with persistence horizon">
+                  <rect
+                    x={timeline.observedUnits}
+                    y="0"
+                    width={timeline.projectionWidth}
+                    height={rowCount}
+                    fill="var(--primary)"
+                    opacity="0.018"
+                  />
                   {history.rows.map((row, rowIndex) => {
                     const y = rowCount - 1 - rowIndex;
-                    return history.timestamps.map((timestamp, columnIndex) => {
-                      const net = mode === "EXPOSURE" ? row.net[columnIndex] ?? 0 : row.change[columnIndex] ?? 0;
-                      const magnitude = mode === "EXPOSURE" ? row.gross[columnIndex] ?? 0 : Math.abs(net);
-                      if (magnitude <= 0) return null;
-                      const opacity = clamp(Math.pow(magnitude / maximum, 0.55), 0.025, 0.92);
-                      return (
-                        <rect
-                          key={`${timestamp}:${row.price}`}
-                          x={columnIndex}
-                          y={y}
-                          width="1.05"
-                          height="1.05"
-                          fill={net >= 0 ? "var(--primary)" : "var(--accent)"}
-                          opacity={opacity}
-                        />
-                      );
-                    });
+                    const latestSourceIndex = timeline.frames.at(-1)?.sourceIndex ?? 0;
+                    const latestNet = mode === "EXPOSURE" ? row.net[latestSourceIndex] ?? 0 : row.change[latestSourceIndex] ?? 0;
+                    const latestMagnitude = mode === "EXPOSURE" ? row.gross[latestSourceIndex] ?? 0 : Math.abs(latestNet);
+                    return (
+                      <g key={row.price}>
+                        {timeline.frames.map((frame, displayIndex) => {
+                          const net = mode === "EXPOSURE" ? row.net[frame.sourceIndex] ?? 0 : row.change[frame.sourceIndex] ?? 0;
+                          const magnitude = mode === "EXPOSURE" ? row.gross[frame.sourceIndex] ?? 0 : Math.abs(net);
+                          if (magnitude <= 0) return null;
+                          const opacity = clamp(Math.pow(magnitude / maximum, 0.55), 0.025, 0.92);
+                          return (
+                            <rect
+                              key={`${frame.timestamp}:${row.price}`}
+                              x={displayIndex}
+                              y={y}
+                              width="1.04"
+                              height="1.05"
+                              fill={net >= 0 ? "var(--primary)" : "var(--accent)"}
+                              opacity={opacity}
+                            />
+                          );
+                        })}
+                        {latestMagnitude > 0 ? Array.from({ length: 8 }, (_, projectionStep) => {
+                          const progress = (projectionStep + 1) / 8;
+                          const persistence = mode === "EXPOSURE" ? 1 - progress * 0.22 : Math.exp(-2 * progress);
+                          const opacity = clamp(Math.pow(latestMagnitude * persistence / maximum, 0.55), 0.018, 0.82);
+                          return (
+                            <rect
+                              key={`projection:${projectionStep}:${row.price}`}
+                              x={timeline.observedUnits + projectionStep / 8 * timeline.projectionWidth}
+                              y={y}
+                              width={timeline.projectionWidth / 8 + 0.02}
+                              height="1.05"
+                              fill={latestNet >= 0 ? "var(--primary)" : "var(--accent)"}
+                              opacity={opacity}
+                            />
+                          );
+                        }) : null}
+                      </g>
+                    );
                   })}
                   <path d={primaryPath} fill="none" stroke="var(--foreground)" strokeWidth="0.22" strokeOpacity="0.86" vectorEffect="non-scaling-stroke" />
+                  <line
+                    x1={timeline.observedUnits}
+                    x2={timeline.observedUnits}
+                    y1="0"
+                    y2={rowCount}
+                    stroke="var(--primary)"
+                    strokeWidth="0.35"
+                    strokeOpacity="0.95"
+                    vectorEffect="non-scaling-stroke"
+                  />
                   {live !== null ? (
                     <line
                       x1="0"
-                      x2={columnCount}
+                      x2={timeline.viewWidth}
                       y1={yForPrice(live)}
                       y2={yForPrice(live)}
                       stroke="var(--primary)"
@@ -415,6 +636,16 @@ export function EvolutionPanel({
                     />
                   ) : null}
                 </svg>
+                <div className="pointer-events-none absolute right-2 top-2 rounded-md border border-primary/20 bg-background/80 px-2 py-1 font-mono text-[6px] uppercase tracking-[0.1em] text-primary/75 backdrop-blur-sm">
+                  Persistence horizon
+                </div>
+                <div
+                  className="pointer-events-none absolute top-2 z-20 -translate-x-1/2 rounded-lg border border-primary/40 bg-panel/95 px-2.5 py-1.5 text-center shadow-[0_0_18px_color-mix(in_srgb,var(--primary)_22%,transparent)] backdrop-blur-md"
+                  style={{ left: "87.5%" }}
+                >
+                  <div className="font-mono text-[7px] font-semibold text-primary">LIVE {historyInstrument} {live?.toFixed(2) ?? "--"}</div>
+                  <div className="mt-0.5 font-mono text-[6px] text-muted">{detailedTimeLabel(timeline.currentTimestamp)}</div>
+                </div>
 
                 {hovered ? (
                   <>
@@ -434,7 +665,7 @@ export function EvolutionPanel({
                     >
                       <div className="flex items-start justify-between gap-3 border-b border-border pb-2">
                         <div>
-                          <div className={`text-[8px] font-semibold uppercase tracking-[0.12em] ${hovered.role.tone}`}>{hovered.role.label}</div>
+                          <div className={`text-[8px] font-semibold uppercase tracking-[0.12em] ${hovered.role.tone}`}>{hovered.projected ? "Persistence projection" : hovered.role.label}</div>
                           <div className="mt-1 font-mono text-[11px] font-semibold text-foreground">{historyInstrument} {hovered.row.price.toFixed(0)}</div>
                         </div>
                         <div className="text-right font-mono text-[7px] text-muted">{detailedTimeLabel(hovered.timestamp)}</div>
@@ -451,8 +682,9 @@ export function EvolutionPanel({
                           <div key={underlier.symbol}><span className="block uppercase tracking-[0.1em] text-muted">{underlier.symbol} at time</span><span className="mt-0.5 block font-mono font-semibold text-foreground">{underlier.price.toFixed(2)}</span></div>
                         ))}
                         <div><span className="block uppercase tracking-[0.1em] text-muted">Heat input</span><span className="mt-0.5 block font-semibold text-foreground">{mode === "EXPOSURE" ? "Gross GEX" : "|Net GEX change|"}</span></div>
+                        {hovered.projected ? <div><span className="block uppercase tracking-[0.1em] text-muted">Persistence</span><span className="mt-0.5 block font-mono font-semibold text-primary">{percent(hovered.persistence, 1)}</span></div> : null}
                       </div>
-                      <p className="mt-2 border-t border-border pt-2 text-[7px] leading-4 text-muted">{hovered.role.detail}</p>
+                      <p className="mt-2 border-t border-border pt-2 text-[7px] leading-4 text-muted">{hovered.projected ? `The latest measured ${mode === "EXPOSURE" ? "gamma structure" : "change impulse"} is carried forward with a visible confidence decay. This is a persistence horizon, not a forecast of future trades.` : hovered.role.detail}</p>
                       <div className="mt-2 flex justify-between gap-3 font-mono text-[6px] uppercase tracking-[0.09em] text-muted"><span>{history.source}</span><span className="truncate">{history.expiration || "Front expiry"}</span></div>
                     </div>
                   </>
@@ -460,11 +692,10 @@ export function EvolutionPanel({
               </div>
 
               <div className="pointer-events-none absolute bottom-0 left-0 right-[72px] h-7 border-t border-border bg-panel/95">
-                <div className="absolute inset-x-3 inset-y-0 flex items-center justify-between font-mono text-[7px] text-foreground/70">
-                  <span>{timeLabel(history.timestamps[0])}</span>
-                  <span>{timeLabel(history.timestamps[Math.floor(history.timestamps.length / 2)])}</span>
-                  <span>{timeLabel(history.timestamps.at(-1)!)}</span>
-                </div>
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 font-mono text-[7px] text-foreground/70">{timeLabel(timeline.frames[0].timestamp)}</span>
+                <span className="absolute left-[44%] top-1/2 -translate-x-1/2 -translate-y-1/2 font-mono text-[7px] text-foreground/70">{timeLabel(timeline.frames[Math.floor(timeline.frames.length / 2)].timestamp)}</span>
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 font-mono text-[7px] text-primary/65">{timeLabel(timeline.futureEnd)}</span>
+                <span className="absolute left-[87.5%] top-1/2 z-10 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-md border border-primary/40 bg-primary px-2 py-1 font-mono text-[7px] font-semibold text-background shadow-[0_0_12px_var(--primary)]">{historyInstrument} {live?.toFixed(2) ?? "--"} · {secondTimeLabel(timeline.currentTimestamp)}</span>
                 {hovered ? <span className="absolute top-1/2 z-20 -translate-x-1/2 -translate-y-1/2 rounded-md border border-primary/40 bg-primary px-2 py-1 font-mono text-[7px] font-semibold text-background shadow-[0_0_12px_var(--primary)]" style={{ left: `clamp(30px, ${hovered.x}%, calc(100% - 30px))` }}>{timeLabel(hovered.timestamp)}</span> : null}
               </div>
 

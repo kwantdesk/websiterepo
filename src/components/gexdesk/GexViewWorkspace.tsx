@@ -22,7 +22,7 @@ import DexWeightedOrderflow, {
   GexWeightedOrderflow,
 } from "@/components/gexdesk/DexWeightedOrderflow";
 import ExpiryOrderflowComparison from "@/components/gexdesk/ExpiryOrderflowComparison";
-import { EvolutionPanel } from "@/components/gexdesk/GexDeskDepthPanels";
+import { EvolutionPanel, type EvolutionLiveTick } from "@/components/gexdesk/GexDeskDepthPanels";
 import LiveExposureFlowStack from "@/components/gexdesk/LiveExposureFlowStack";
 import LookbackPlayback from "@/components/gexdesk/LookbackPlayback";
 import MajorGamma from "@/components/gexdesk/MajorGamma";
@@ -463,7 +463,17 @@ export default function GexViewWorkspace({
   ));
   const [esEvolutionLoading, setEsEvolutionLoading] = useState(false);
   const [esEvolutionError, setEsEvolutionError] = useState("");
+  const [evolutionLiveTicks, setEvolutionLiveTicks] = useState<EvolutionLiveTick[]>([]);
+  const evolutionTicksRef = useRef<EvolutionLiveTick[]>([]);
+  const evolutionTickTimerRef = useRef<number | null>(null);
   const activeChart = charts[activeIndex] ?? DEFAULT_CHART;
+  const selectedEvolutionTicks = useMemo(
+    () => evolutionLiveTicks.filter((tick) => tick.instrument === evolutionInstrument),
+    [evolutionInstrument, evolutionLiveTicks],
+  );
+  const selectedEvolutionLivePrice = selectedEvolutionTicks.at(-1)?.price
+    ?? (evolutionInstrument === "NQ" ? livePrice : esEvolutionHistory?.futuresPrices?.at(-1))
+    ?? null;
   const preloadKey = useMemo(
     () => [...new Set(charts.slice(10).map((chart) => `${chart.instrument}::${chart.timeframe}`))].join("|"),
     [charts],
@@ -472,6 +482,42 @@ export default function GexViewWorkspace({
   useEffect(() => {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(charts));
   }, [charts]);
+
+  useEffect(() => {
+    const receiveEvolutionTick = (event: Event) => {
+      const tick = (event as CustomEvent<LiveTick>).detail;
+      const symbol = String(tick?.instrument ?? "").toUpperCase();
+      const instrument = symbol.startsWith("MNQ") || symbol.startsWith("NQ")
+        ? "NQ"
+        : symbol.startsWith("MES") || symbol.startsWith("ES")
+          ? "ES"
+          : null;
+      const price = Number(tick?.mid);
+      if (!instrument || !Number.isFinite(price) || price <= 0) return;
+      const timestamp = tickTimestamp(tick.timestamp);
+      const nextTick: EvolutionLiveTick = { instrument, price, timestamp };
+      const rows = evolutionTicksRef.current;
+      const latest = rows.at(-1);
+      if (latest && latest.instrument === instrument && Math.floor(latest.timestamp / 100) === Math.floor(timestamp / 100)) {
+        rows[rows.length - 1] = nextTick;
+      } else {
+        rows.push(nextTick);
+      }
+      const cutoff = timestamp - 24 * 60 * 60_000;
+      while (rows.length && rows[0].timestamp < cutoff) rows.shift();
+      if (rows.length > 12_000) rows.splice(0, rows.length - 12_000);
+      if (evolutionTickTimerRef.current !== null) return;
+      evolutionTickTimerRef.current = window.setTimeout(() => {
+        evolutionTickTimerRef.current = null;
+        setEvolutionLiveTicks([...evolutionTicksRef.current]);
+      }, 250);
+    };
+    window.addEventListener(DATABENTO_LIVE_TICK_EVENT, receiveEvolutionTick);
+    return () => {
+      window.removeEventListener(DATABENTO_LIVE_TICK_EVENT, receiveEvolutionTick);
+      if (evolutionTickTimerRef.current !== null) window.clearTimeout(evolutionTickTimerRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     if (activeIndex !== 1 || evolutionInstrument !== "ES") return;
@@ -499,7 +545,7 @@ export default function GexViewWorkspace({
     const interval = payload.marketOpen
       ? window.setInterval(() => {
           if (document.visibilityState === "visible") void loadEvolution(true);
-        }, 30_000)
+        }, 10_000)
       : null;
     return () => {
       cancelled = true;
@@ -605,9 +651,10 @@ export default function GexViewWorkspace({
                 history={evolutionInstrument === "NQ" ? history : esEvolutionHistory}
                 loading={evolutionInstrument === "NQ" ? historyLoading : esEvolutionLoading}
                 error={evolutionInstrument === "NQ" ? historyError : esEvolutionError}
-                livePrice={evolutionInstrument === "NQ" ? livePrice : esEvolutionHistory?.futuresPrices?.at(-1) ?? null}
+                livePrice={selectedEvolutionLivePrice}
                 instrument={evolutionInstrument}
                 onInstrumentChange={setEvolutionInstrument}
+                liveTicks={selectedEvolutionTicks}
                 embedded
               />
             ) : activeIndex === 2 ? (
