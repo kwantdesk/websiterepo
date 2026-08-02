@@ -532,7 +532,9 @@ export default function SocialsWorkspace({
   const [rankingDirectoryState, setRankingDirectoryState] = useState<"idle" | "loading" | "ready" | "unavailable">("idle");
   const [query, setQuery] = useState("");
   const [showPostModal, setShowPostModal] = useState(false);
+  const [showOneLinerModal, setShowOneLinerModal] = useState(false);
   const [editingPostId, setEditingPostId] = useState<string | null>(null);
+  const [oneLinerPublishing, setOneLinerPublishing] = useState(false);
   const [postImagePreparing, setPostImagePreparing] = useState(false);
   const [openPostMenuId, setOpenPostMenuId] = useState<string | null>(null);
   const [showReceiptFor, setShowReceiptFor] = useState<string | null>(null);
@@ -548,6 +550,7 @@ export default function SocialsWorkspace({
   const [assessmentState, setAssessmentState] = useState<"idle" | "reviewing">("idle");
   const [receiptDraft, setReceiptDraft] = useState(EMPTY_RECEIPT);
   const [postDraft, setPostDraft] = useState(EMPTY_POST);
+  const [oneLinerDraft, setOneLinerDraft] = useState({ body: "", scope: "community" as SocialScope });
   const [deskDraft, setDeskDraft] = useState({
     name: "",
     description: "",
@@ -1956,6 +1959,19 @@ export default function SocialsWorkspace({
     setShowPostModal(true);
   };
 
+  const openOneLinerComposer = () => {
+    setEditingPostId(null);
+    setOneLinerDraft({ body: "", scope: "community" });
+    setShowOneLinerModal(true);
+  };
+
+  const closeOneLinerComposer = () => {
+    if (oneLinerPublishing) return;
+    setShowOneLinerModal(false);
+    setEditingPostId(null);
+    setOneLinerDraft({ body: "", scope: "community" });
+  };
+
   const closePostComposer = () => {
     setShowPostModal(false);
     setEditingPostId(null);
@@ -1966,6 +1982,12 @@ export default function SocialsWorkspace({
     const payload = typedPayload<SocialPostPayload>(post);
     if (!payload || post.userId !== resolvedAccountKey) return;
     setEditingPostId(post.id);
+    if (payload.kind === "ONE-LINER") {
+      setOneLinerDraft({ body: payload.body, scope: post.scope });
+      setOpenPostMenuId(null);
+      setShowOneLinerModal(true);
+      return;
+    }
     setPostDraft({
       kind: payload.kind,
       instrument: payload.instrument,
@@ -2004,6 +2026,61 @@ export default function SocialsWorkspace({
     setOpenPostMenuId(null);
     const removed = await removeObject(post);
     setNotice(removed ? "Post deleted from your feed." : "That post could not be deleted.");
+  };
+
+  const publishOneLiner = async () => {
+    const body = oneLinerDraft.body.replace(/\s+/g, " ").trim().slice(0, 280);
+    if (!body) {
+      setNotice("Write your one-liner first.");
+      return;
+    }
+    if (oneLinerDraft.scope === "desk" && !myDesks.length) {
+      setNotice("Create or join a Desk before publishing to Desk visibility.");
+      return;
+    }
+    const existingPost = editingPostId
+      ? posts.find((post) => post.id === editingPostId && post.userId === resolvedAccountKey)
+      : null;
+    setOneLinerPublishing(true);
+    try {
+      let object = buildLocalObject({
+        id: existingPost?.id,
+        userId: resolvedAccountKey,
+        authorLabel: currentProfile.displayName,
+        objectType: "post",
+        scope: oneLinerDraft.scope,
+        deskId: oneLinerDraft.scope === "desk" ? myDesks[0]?.id ?? null : null,
+        payload: {
+          kind: "ONE-LINER",
+          instrument: "",
+          title: "",
+          body,
+          context: "",
+          condition: "",
+          invalidation: "",
+          relatedPrecordId: null,
+          observedAt: existingPost
+            ? typedPayload<SocialPostPayload>(existingPost)?.observedAt ?? existingPost.createdAt
+            : new Date().toISOString(),
+        } satisfies SocialPostPayload,
+      });
+      if (existingPost) {
+        object = {
+          ...object,
+          parentId: existingPost.parentId,
+          createdAt: existingPost.createdAt,
+          updatedAt: new Date().toISOString(),
+        };
+      }
+      await saveObject(object);
+      setShowOneLinerModal(false);
+      setEditingPostId(null);
+      setOneLinerDraft({ body: "", scope: "community" });
+      setTab("feed");
+      setNotice(existingPost ? "One-liner updated." : "One-liner posted to your feed.");
+    } finally {
+      setOneLinerPublishing(false);
+    }
   };
 
   const updateFeedFollow = async (targetUserId: string, currentlyFollowing: boolean) => {
@@ -2161,6 +2238,28 @@ export default function SocialsWorkspace({
       payload: { kind: "SAVED" } satisfies SocialReactionPayload,
     }));
     setNotice("Gameplan saved privately to your account.");
+  };
+
+  const toggleStructuredPostSave = async (post: SocialObject) => {
+    const existing = reactions.find((reaction) =>
+      reaction.userId === resolvedAccountKey
+      && reaction.parentId === post.id
+      && typedPayload<SocialReactionPayload>(reaction)?.kind === "SAVED");
+    if (existing) {
+      await removeObject(existing);
+      setNotice("Removed from your saved posts.");
+      return;
+    }
+    await saveObject(buildLocalObject({
+      id: `reaction:${post.id}:SAVED`,
+      userId: resolvedAccountKey,
+      authorLabel: currentProfile.displayName,
+      objectType: "reaction",
+      scope: "private",
+      parentId: post.id,
+      payload: { kind: "SAVED" } satisfies SocialReactionPayload,
+    }));
+    setNotice("Post saved privately to your account.");
   };
 
   const toggleGameplanRepost = async (record: SocialObject) => {
@@ -2623,7 +2722,9 @@ export default function SocialsWorkspace({
     const objectComments = comments.filter((comment) => comment.parentId === object.id);
     const objectReactions = reactions.filter((reaction) => reaction.parentId === object.id);
     const own = object.userId === resolvedAccountKey;
+    const oneLiner = payload.kind === "ONE-LINER";
     const liked = objectReactions.some((reaction) => reaction.userId === resolvedAccountKey && typedPayload<SocialReactionPayload>(reaction)?.kind === "LIKE");
+    const saved = objectReactions.some((reaction) => reaction.userId === resolvedAccountKey && typedPayload<SocialReactionPayload>(reaction)?.kind === "SAVED");
     const likeCount = objectReactions.filter((reaction) => typedPayload<SocialReactionPayload>(reaction)?.kind === "LIKE").length;
     const reposts = posts.filter((post) => typedPayload<SocialPostPayload>(post)?.repostOfPostId === object.id);
     const reposted = reposts.some((post) => post.userId === resolvedAccountKey);
@@ -2631,6 +2732,8 @@ export default function SocialsWorkspace({
     const profile = profileObject ? normalizeSocialProfile(profileObject.payload, profileObject.authorLabel) : null;
     const kindTone = payload.kind === "MAP"
       ? "text-primary bg-primary/10 border-primary/20"
+      : payload.kind === "ONE-LINER"
+        ? "text-primary bg-primary/10 border-primary/20"
       : payload.kind === "LIVE OBSERVATION"
         ? "text-accent bg-accent/10 border-accent/20"
         : payload.kind === "REVIEW REQUEST"
@@ -2648,9 +2751,9 @@ export default function SocialsWorkspace({
             <div className="flex flex-wrap items-center gap-2">
               <button type="button" onClick={() => profile && onOpenProfile?.(profile.handle)} className="text-[10px] font-semibold hover:text-primary">{object.authorLabel}</button>
               {profile ? <span className="text-[8px] text-muted">@{profile.handle}</span> : null}
-              <span className={`rounded-lg border px-2 py-1 text-[7px] font-semibold ${kindTone}`}>{payload.kind}</span>
+              {oneLiner ? <span className="text-[8px] text-muted">just {payload.isRepost ? "reposted" : "posted"}</span> : <span className={`rounded-lg border px-2 py-1 text-[7px] font-semibold ${kindTone}`}>{payload.kind}</span>}
             </div>
-            <div className="mt-1 text-[7px] text-muted">{formatDate(payload.observedAt, true)} · {payload.instrument}</div>
+            <div className="mt-1 text-[7px] text-muted">{formatDate(payload.observedAt, true)}{payload.instrument ? ` · ${payload.instrument}` : ""}</div>
             {payload.isRepost ? <div className="mt-1 flex items-center gap-1 text-[7px] text-primary"><Repeat2 className="h-3 w-3" />Reposted to this feed</div> : null}
           </div>
           <ScopeBadge scope={object.scope} />
@@ -2662,20 +2765,30 @@ export default function SocialsWorkspace({
           ) : null}
         </div>
         <div className="p-4">
-          {payload.title ? <h3 className="text-[13px] font-semibold tracking-[-0.015em]">{payload.title}</h3> : null}
-          <p className="mt-2 text-[10px] leading-5 text-foreground">{payload.body}</p>
-          {payload.imageDataUrl ? <div className="mt-4 overflow-hidden rounded-2xl border border-border bg-black"><img src={payload.imageDataUrl} alt={payload.imageName || payload.title || "Social post attachment"} className="max-h-[560px] w-full object-contain" /></div> : null}
-          <div className="mt-3 grid gap-2 md:grid-cols-3">
-            <div className="rounded-xl border border-border bg-background/35 p-3"><div className="text-[7px] font-semibold uppercase tracking-[0.12em] text-muted">Context</div><p className="mt-2 text-[8px] leading-4 text-foreground">{payload.context}</p></div>
-            <div className="rounded-xl border border-border bg-background/35 p-3"><div className="text-[7px] font-semibold uppercase tracking-[0.12em] text-muted">Condition / evidence</div><p className="mt-2 text-[8px] leading-4 text-foreground">{payload.condition || "Not required for this update type."}</p></div>
-            <div className="rounded-xl border border-border bg-background/35 p-3"><div className="text-[7px] font-semibold uppercase tracking-[0.12em] text-muted">Invalidation</div><p className="mt-2 text-[8px] leading-4 text-foreground">{payload.invalidation || "No forecast claim attached."}</p></div>
-          </div>
+          {oneLiner ? (
+            <div className="relative overflow-hidden rounded-2xl border border-primary/20 bg-[linear-gradient(135deg,color-mix(in_srgb,var(--primary)_9%,var(--background)),color-mix(in_srgb,var(--panel)_92%,transparent))] px-5 py-6 shadow-[inset_0_1px_0_color-mix(in_srgb,var(--primary)_10%,transparent)]">
+              <div className="pointer-events-none absolute -right-8 -top-10 h-32 w-32 rounded-full bg-primary/[0.08] blur-3xl" />
+              <p className="relative whitespace-pre-wrap break-words text-[14px] font-medium leading-7 tracking-[-0.015em] text-foreground">{payload.body}</p>
+            </div>
+          ) : (
+            <>
+              {payload.title ? <h3 className="text-[13px] font-semibold tracking-[-0.015em]">{payload.title}</h3> : null}
+              <p className="mt-2 text-[10px] leading-5 text-foreground">{payload.body}</p>
+              {payload.imageDataUrl ? <div className="mt-4 overflow-hidden rounded-2xl border border-border bg-black"><img src={payload.imageDataUrl} alt={payload.imageName || payload.title || "Social post attachment"} className="max-h-[560px] w-full object-contain" /></div> : null}
+              <div className="mt-3 grid gap-2 md:grid-cols-3">
+                <div className="rounded-xl border border-border bg-background/35 p-3"><div className="text-[7px] font-semibold uppercase tracking-[0.12em] text-muted">Context</div><p className="mt-2 text-[8px] leading-4 text-foreground">{payload.context}</p></div>
+                <div className="rounded-xl border border-border bg-background/35 p-3"><div className="text-[7px] font-semibold uppercase tracking-[0.12em] text-muted">Condition / evidence</div><p className="mt-2 text-[8px] leading-4 text-foreground">{payload.condition || "Not required for this update type."}</p></div>
+                <div className="rounded-xl border border-border bg-background/35 p-3"><div className="text-[7px] font-semibold uppercase tracking-[0.12em] text-muted">Invalidation</div><p className="mt-2 text-[8px] leading-4 text-foreground">{payload.invalidation || "No forecast claim attached."}</p></div>
+              </div>
+            </>
+          )}
         </div>
         <div className="flex flex-wrap items-center gap-1.5 border-t border-border bg-background/20 px-4 py-2.5">
           <button type="button" onClick={() => void addReaction(object, "LIKE")} className={`flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[8px] font-semibold ${liked ? "bg-primary/10 text-primary" : "text-muted hover:bg-surface hover:text-foreground"}`}><Heart className={`h-3.5 w-3.5 ${liked ? "fill-current" : ""}`} />Like{likeCount ? ` ${likeCount}` : ""}</button>
           <button type="button" onClick={() => document.getElementById(`comment:${object.id}`)?.focus()} className="flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[8px] font-semibold text-muted hover:bg-surface hover:text-foreground"><MessageCircle className="h-3.5 w-3.5" />Comment{objectComments.length ? ` ${objectComments.length}` : ""}</button>
+          <button type="button" onClick={() => shareStructuredPost(object)} className="flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[8px] font-semibold text-muted hover:bg-surface hover:text-foreground"><Share2 className="h-3.5 w-3.5" />Share</button>
           <button type="button" onClick={() => void toggleStructuredPostRepost(object)} className={`flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[8px] font-semibold ${reposted ? "bg-primary/10 text-primary" : "text-muted hover:bg-surface hover:text-foreground"}`}><Repeat2 className="h-3.5 w-3.5" />Repost{reposts.length ? ` ${reposts.length}` : ""}</button>
-          <button type="button" onClick={() => shareStructuredPost(object)} className="ml-auto flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[8px] font-semibold text-muted hover:bg-surface hover:text-foreground"><Share2 className="h-3.5 w-3.5" />Share</button>
+          <button type="button" onClick={() => void toggleStructuredPostSave(object)} className={`ml-auto flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[8px] font-semibold ${saved ? "bg-primary/10 text-primary" : "text-muted hover:bg-surface hover:text-foreground"}`}><Bookmark className={`h-3.5 w-3.5 ${saved ? "fill-current" : ""}`} />{saved ? "Saved" : "Save"}</button>
         </div>
         {objectComments.length ? (
           <div className="space-y-2 border-t border-border px-4 py-3">
@@ -3161,7 +3274,10 @@ export default function SocialsWorkspace({
                     <h2 className="mt-2 text-[24px] font-semibold tracking-[-0.04em]">Gameplans, observations and traders worth following.</h2>
                     <p className="mt-2 max-w-2xl text-[9px] leading-5 text-muted">Following controls this feed only. Friend requests remain separate and unlock private chat and Desk invitations.</p>
                   </div>
-                  <button type="button" onClick={() => openNewPost()} className="flex h-10 items-center gap-2 rounded-xl bg-primary px-4 text-[8px] font-semibold text-background hover:brightness-110"><Plus className="h-3.5 w-3.5" />Create post</button>
+                  <div className="flex flex-wrap gap-2">
+                    <button type="button" onClick={() => openNewPost()} className="flex h-10 items-center gap-2 rounded-xl bg-primary px-4 text-[8px] font-semibold text-background hover:brightness-110"><Plus className="h-3.5 w-3.5" />Create post</button>
+                    <button type="button" onClick={openOneLinerComposer} className="flex h-10 items-center gap-2 rounded-xl border border-primary/25 bg-primary/[0.06] px-4 text-[8px] font-semibold text-primary transition-colors hover:bg-primary/10"><Zap className="h-3.5 w-3.5" />Create one-liner</button>
+                  </div>
                 </div>
                 <div className="relative mt-4 flex gap-1 rounded-xl border border-border bg-background/35 p-1">
                   {(["following", "recommended", "latest"] as SocialFeedMode[]).map((mode) => <button key={mode} type="button" onClick={() => setSocialFeedMode(mode)} className={`flex h-8 flex-1 items-center justify-center rounded-lg px-3 text-[8px] font-semibold capitalize transition-colors ${socialFeedMode === mode ? "bg-primary/12 text-primary shadow-[0_0_18px_color-mix(in_srgb,var(--primary)_10%,transparent)]" : "text-muted hover:bg-surface hover:text-foreground"}`}>{mode}</button>)}
@@ -3747,6 +3863,39 @@ export default function SocialsWorkspace({
                 {avatarCropSaving ? <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-background/30 border-t-background" /> : <Check className="h-3.5 w-3.5" />}
                 {avatarCropSaving ? "Preparing photo…" : "Use this photo"}
               </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {showOneLinerModal ? (
+        <div className="fixed inset-0 z-[1100] flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm" onMouseDown={(event) => { if (event.target === event.currentTarget) closeOneLinerComposer(); }}>
+          <div className="w-full max-w-2xl overflow-hidden rounded-3xl border border-border bg-panel shadow-2xl shadow-black/60">
+            <div className="flex items-start gap-3 border-b border-border p-5">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary"><Zap className="h-4 w-4" /></span>
+              <div className="min-w-0 flex-1"><h2 className="text-[14px] font-semibold">{editingPostId ? "Edit one-liner" : "Create one-liner"}</h2><p className="mt-1 text-[8px] text-muted">One clear thought. No form, chart or extra context required.</p></div>
+              <button type="button" onClick={closeOneLinerComposer} disabled={oneLinerPublishing} className="flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:bg-surface disabled:opacity-40"><X className="h-4 w-4" /></button>
+            </div>
+            <div className="p-5">
+              <div className="flex items-start gap-3">
+                <Avatar label={currentProfile.displayName} avatarUrl={currentProfile.avatarUrl} />
+                <div className="min-w-0 flex-1">
+                  <div className="mb-2 flex items-center gap-2"><span className="text-[9px] font-semibold text-foreground">{currentProfile.displayName}</span><span className="text-[8px] text-muted">@{currentProfile.handle}</span></div>
+                  <div className="relative overflow-hidden rounded-2xl border border-primary/25 bg-[linear-gradient(135deg,color-mix(in_srgb,var(--primary)_8%,var(--background)),var(--background))] shadow-[inset_0_1px_0_color-mix(in_srgb,var(--primary)_10%,transparent)] focus-within:border-primary/50">
+                    <div className="pointer-events-none absolute -right-8 -top-10 h-28 w-28 rounded-full bg-primary/[0.08] blur-3xl" />
+                    <textarea autoFocus value={oneLinerDraft.body} maxLength={280} onChange={(event) => setOneLinerDraft((current) => ({ ...current, body: event.target.value.replace(/[\r\n]+/g, " ") }))} onKeyDown={(event) => { if ((event.metaKey || event.ctrlKey) && event.key === "Enter") void publishOneLiner(); }} rows={4} placeholder="What’s on your mind?" className="relative min-h-28 w-full resize-none bg-transparent px-4 py-4 text-[13px] leading-6 text-foreground outline-none placeholder:text-muted/55" />
+                    <div className="relative flex items-center justify-between border-t border-border/70 px-4 py-2"><span className="text-[7px] text-muted">Ctrl/⌘ + Enter to post</span><span className={`font-mono text-[7px] ${oneLinerDraft.body.length > 250 ? "text-warning" : "text-muted"}`}>{oneLinerDraft.body.length}/280</span></div>
+                  </div>
+                </div>
+              </div>
+              <div className="mt-4 flex flex-wrap items-center gap-3 rounded-xl border border-border bg-background/30 p-3">
+                <div className="min-w-0 flex-1"><div className="text-[8px] font-semibold text-foreground">Who can see this?</div><div className="mt-0.5 text-[7px] text-muted">Community is shown across the public feed.</div></div>
+                <KwantSelect value={oneLinerDraft.scope} onChange={(event) => setOneLinerDraft((current) => ({ ...current, scope: event.target.value as SocialScope }))} className="h-9 min-w-36 rounded-xl border border-border bg-background px-3 text-[8px] outline-none"><option value="community">Community</option><option value="friends">Friends</option><option value="desk">My Desk</option><option value="private">Private</option></KwantSelect>
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-2 border-t border-border bg-background/20 px-5 py-4">
+              <button type="button" onClick={closeOneLinerComposer} disabled={oneLinerPublishing} className="h-9 rounded-xl border border-border px-4 text-[8px] font-semibold text-muted disabled:opacity-40">Cancel</button>
+              <button type="button" onClick={() => void publishOneLiner()} disabled={!oneLinerDraft.body.trim() || oneLinerPublishing} className="flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-[8px] font-semibold text-background disabled:opacity-45">{oneLinerPublishing ? <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-background/30 border-t-background" /> : <Send className="h-3.5 w-3.5" />}{oneLinerPublishing ? "Posting…" : editingPostId ? "Save changes" : "Post one-liner"}</button>
             </div>
           </div>
         </div>

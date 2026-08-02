@@ -247,7 +247,7 @@ export type SocialReasoningCandle = {
 };
 
 export type SocialPostPayload = {
-  kind: "POST" | "MAP" | "LIVE OBSERVATION" | "REVIEW REQUEST" | "LESSON" | "QUESTION";
+  kind: "POST" | "ONE-LINER" | "MAP" | "LIVE OBSERVATION" | "REVIEW REQUEST" | "LESSON" | "QUESTION";
   instrument: string;
   title: string;
   body: string;

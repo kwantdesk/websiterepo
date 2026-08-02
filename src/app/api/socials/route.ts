@@ -289,7 +289,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "A valid reaction target and type are required." }, { status: 400 });
     }
     if (kind === "SAVED" && scope !== "private") {
-      return NextResponse.json({ error: "Saved Gameplans are private." }, { status: 400 });
+      return NextResponse.json({ error: "Saved items are private." }, { status: 400 });
     }
     id = `reaction:${parentId}:${kind}`;
     useUpsert = true;
@@ -302,10 +302,10 @@ export async function POST(request: NextRequest) {
       : "";
     payload = {
       ...payload,
-      kind: ["POST", "MAP", "LIVE OBSERVATION", "REVIEW REQUEST", "LESSON", "QUESTION"].includes(kind) ? kind : "POST",
+      kind: ["POST", "ONE-LINER", "MAP", "LIVE OBSERVATION", "REVIEW REQUEST", "LESSON", "QUESTION"].includes(kind) ? kind : "POST",
       instrument: cleanText(payload.instrument, 16).toUpperCase(),
       title: cleanText(payload.title, 180),
-      body: cleanText(payload.body, 4_000),
+      body: cleanText(payload.body, kind === "ONE-LINER" ? 280 : 4_000),
       context: cleanText(payload.context, 2_000),
       condition: cleanText(payload.condition, 1_500),
       invalidation: cleanText(payload.invalidation, 1_500),
@@ -319,8 +319,8 @@ export async function POST(request: NextRequest) {
         ? new Date(payload.observedAt).toISOString()
         : now,
     };
-    if (!payload.instrument || !payload.body) {
-      return NextResponse.json({ error: "Instrument and post are required." }, { status: 400 });
+    if (!payload.body || (payload.kind !== "ONE-LINER" && !payload.instrument)) {
+      return NextResponse.json({ error: payload.kind === "ONE-LINER" ? "Write your one-liner first." : "Instrument and post are required." }, { status: 400 });
     }
     id = /^post:[a-zA-Z0-9_-]{8,}$/.test(id) || /^repost:[a-zA-Z0-9:_-]{8,}$/.test(id)
       ? id
