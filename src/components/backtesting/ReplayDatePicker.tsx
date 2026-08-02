@@ -66,7 +66,8 @@ export default function ReplayDatePicker({
   const days = useMemo(() => {
     const year = month.getUTCFullYear();
     const monthIndex = month.getUTCMonth();
-    const firstDay = new Date(Date.UTC(year, monthIndex, 1)).getUTCDay();
+    // Calendar columns are ISO-style: Monday first, Saturday and Sunday last.
+    const firstDay = (new Date(Date.UTC(year, monthIndex, 1)).getUTCDay() + 6) % 7;
     const daysInMonth = new Date(Date.UTC(year, monthIndex + 1, 0)).getUTCDate();
     return Array.from({ length: 42 }, (_, index) => {
       const day = index - firstDay + 1;
@@ -197,7 +198,7 @@ export default function ReplayDatePicker({
             {view === "days" ? (
               <>
                 <div className="mt-2 grid grid-cols-7 gap-1 text-center text-[7px] font-semibold uppercase tracking-[0.14em] text-muted/70">
-                  {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, index) => <span key={`${day}-${index}`} className="py-1.5">{day}</span>)}
+                  {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((day, index) => <span key={`${day}-${index}`} className="py-1.5">{day}</span>)}
                 </div>
                 <div className="grid grid-cols-7 gap-1">
                   {days.map((item, index) => item ? (
