@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { type ComponentType, useEffect } from "react";
+import { memo, type ComponentType, useCallback, useEffect, useRef } from "react";
 import {
   BarChart3,
   BookOpen,
@@ -18,8 +18,6 @@ import {
   User,
   UsersRound,
 } from "lucide-react";
-import { preloadWorkspaceData } from "@/lib/workspaceDataCache";
-
 type SidebarKey =
   | "ai"
   | "agent"
@@ -52,6 +50,7 @@ type AppSidebarProps = {
   accountLabel?: string;
   accountTitle?: string;
   onAccountClick?: () => void;
+  onNavigateStart?: (item: SidebarKey) => void;
   orientation?: "vertical" | "horizontal";
 };
 
@@ -109,10 +108,6 @@ function preloadWorkspaceComponent(key: SidebarKey) {
                     : Promise.resolve();
 }
 
-async function preloadWorkspace(key: SidebarKey) {
-  await Promise.allSettled([preloadWorkspaceComponent(key), preloadWorkspaceData(key)]);
-}
-
 function ActiveUnderline() {
   return (
     <span
@@ -122,30 +117,33 @@ function ActiveUnderline() {
   );
 }
 
-export default function AppSidebar({
+function AppSidebar({
   activeItem,
   accountLabel = "Account",
   accountTitle = "Account",
   onAccountClick,
+  onNavigateStart,
   orientation = "vertical",
 }: AppSidebarProps) {
-  useEffect(() => {
-    const warmKeys: SidebarKey[] = [
-      "gamma",
-      "levelz",
-      "gameplan",
-      "gexmap",
-      "gexdesk",
-      "news",
-      "zyon",
-      "journal",
-    ];
-    const timers = warmKeys.map((key, index) => window.setTimeout(
-      () => void preloadWorkspaceComponent(key),
-      1_200 + index * 900,
-    ));
-    return () => timers.forEach((timer) => window.clearTimeout(timer));
+  const intentPreloadTimerRef = useRef<number | null>(null);
+
+  const cancelIntentPreload = useCallback(() => {
+    if (intentPreloadTimerRef.current === null) return;
+    window.clearTimeout(intentPreloadTimerRef.current);
+    intentPreloadTimerRef.current = null;
   }, []);
+
+  const scheduleIntentPreload = useCallback((key: SidebarKey) => {
+    cancelIntentPreload();
+    intentPreloadTimerRef.current = window.setTimeout(() => {
+      intentPreloadTimerRef.current = null;
+      void preloadWorkspaceComponent(key);
+    }, 220);
+  }, [cancelIntentPreload]);
+
+  useEffect(() => {
+    return cancelIntentPreload;
+  }, [cancelIntentPreload]);
 
   if (orientation === "vertical") {
     return (
@@ -165,8 +163,10 @@ export default function AppSidebar({
             <Link
               key={key}
               href={href}
-              onPointerEnter={() => void preloadWorkspace(key)}
-              onFocus={() => void preloadWorkspace(key)}
+              onPointerEnter={() => scheduleIntentPreload(key)}
+              onPointerLeave={cancelIntentPreload}
+              onFocus={() => void preloadWorkspaceComponent(key)}
+              onClick={() => onNavigateStart?.(key)}
               className={activeItem === key ? verticalItemActive : verticalItemInactive}
               title={title}
             >
@@ -200,8 +200,10 @@ export default function AppSidebar({
               key={key}
               href={href}
               prefetch
-              onPointerEnter={() => void preloadWorkspace(key)}
-              onFocus={() => void preloadWorkspace(key)}
+              onPointerEnter={() => scheduleIntentPreload(key)}
+              onPointerLeave={cancelIntentPreload}
+              onFocus={() => void preloadWorkspaceComponent(key)}
+              onClick={() => onNavigateStart?.(key)}
               aria-current={active ? "page" : undefined}
               className={active ? horizontalItemActive : horizontalItemInactive}
               title={title}
@@ -226,6 +228,7 @@ export default function AppSidebar({
       <Link
         href="/settings"
         prefetch
+        onClick={() => onNavigateStart?.("settings")}
         className={activeItem === "settings" ? horizontalItemActive : horizontalItemInactive}
         title="Settings"
       >
@@ -236,3 +239,5 @@ export default function AppSidebar({
     </header>
   );
 }
+
+export default memo(AppSidebar);

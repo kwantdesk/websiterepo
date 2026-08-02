@@ -3656,8 +3656,10 @@ export default function KwantifyWorkspace({
   socialProfileHandle?: string;
 }) {
   const router = useRouter();
-  const activeWorkspaceSectionRef = useRef(section);
-  activeWorkspaceSectionRef.current = section;
+  const activeWorkspaceSectionRef = useRef<PrimaryWorkspaceSection | null>(section);
+  useEffect(() => {
+    activeWorkspaceSectionRef.current = section;
+  }, [section]);
   const supabase = useMemo(() => createClient(), []);
   const [authChecked, setAuthChecked] = useState(false);
   const [preferenceUserId, setPreferenceUserId] = useState("");
@@ -5675,7 +5677,6 @@ export default function KwantifyWorkspace({
         const displayName = usingDatabentoFeed || usingCTraderFeed ? price.instrument : (nameMap[price.instrument] || price.instrument);
         if (usingDatabentoFeed) {
           recordDatabentoLiveTick(price);
-          window.dispatchEvent(new CustomEvent(DATABENTO_LIVE_TICK_EVENT, { detail: price }));
           const previousItem = watchlistRef.current.find(
             (item) => item.broker === "Databento" && item.symbol === displayName,
           );
@@ -5692,6 +5693,7 @@ export default function KwantifyWorkspace({
             }, 5_000);
           }
           if (activeWorkspaceSectionRef.current !== "charts") return;
+          window.dispatchEvent(new CustomEvent(DATABENTO_LIVE_TICK_EVENT, { detail: price }));
         }
         pendingWatchlistPricesRef.current.set(displayName, price);
         if (watchlistLiveFrameRef.current !== null) return;
@@ -6603,13 +6605,19 @@ export default function KwantifyWorkspace({
     };
   }, [isResizingAI]);
 
-  async function signOut() {
+  const signOut = useCallback(async () => {
     await supabase?.auth?.signOut();
     setCurrentUsername("Account");
     setCurrentDisplayName("");
     setShowUsernameModal(false);
     router.replace("/login?returnTo=/");
-  }
+  }, [router, supabase]);
+
+  const handleWorkspaceNavigationStart = useCallback((target: string) => {
+    activeWorkspaceSectionRef.current = BOTTOM_WORKSPACE_SECTIONS.some(({ id }) => id === target)
+      ? target as PrimaryWorkspaceSection
+      : null;
+  }, []);
 
   async function saveUsername() {
     setUsernameError("");
@@ -8293,6 +8301,7 @@ export default function KwantifyWorkspace({
           accountLabel="Account"
           accountTitle={currentUsername ? `Sign out @${currentUsername}` : "Account"}
           onAccountClick={signOut}
+          onNavigateStart={handleWorkspaceNavigationStart}
           orientation="horizontal"
         />
 
