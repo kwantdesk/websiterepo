@@ -49,7 +49,7 @@ export default function CallingCardVisual({
   } as CSSProperties;
 
   return (
-    <div className={`calling-card ${banner ? "calling-card--banner" : ""} ${locked ? "calling-card--locked" : ""} ${className}`} style={style}>
+    <div className={`calling-card ${banner ? "calling-card--banner" : ""} ${locked ? "calling-card--locked" : ""} ${definition.artworkUrl ? "calling-card--illustrated" : ""} ${className}`} style={style}>
       <div className="calling-card__plane">
         {definition.artworkUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
@@ -88,10 +88,8 @@ export default function CallingCardVisual({
         </div>
 
         {locked ? (
-          <div className="calling-card__lock">
+          <div className="calling-card__lock" title={definition.requirement} aria-label={`Locked: ${definition.requirement}`}>
             <span className="calling-card__lock-icon"><LockKeyhole className="h-5 w-5" /></span>
-            <strong>LOCKED</strong>
-            <span>{definition.requirement}</span>
           </div>
         ) : null}
       </div>

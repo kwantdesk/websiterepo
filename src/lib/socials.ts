@@ -406,6 +406,7 @@ export const CALLING_CARD_CATALOG: CallingCardDefinition[] = [
     accent: "gold",
     motif: "record",
     tier: "BRONZE",
+    artworkUrl: "/calling-cards/first-on-record.webp",
   },
   {
     code: "waited-for-permission",
@@ -417,6 +418,7 @@ export const CALLING_CARD_CATALOG: CallingCardDefinition[] = [
     accent: "green",
     motif: "permission",
     tier: "SILVER",
+    artworkUrl: "/calling-cards/waited-for-permission.webp",
   },
   {
     code: "five-straight",
@@ -428,6 +430,7 @@ export const CALLING_CARD_CATALOG: CallingCardDefinition[] = [
     accent: "red",
     motif: "streak",
     tier: "GOLD",
+    artworkUrl: "/calling-cards/five-straight.webp",
   },
   {
     code: "daily-architect",
@@ -439,6 +442,7 @@ export const CALLING_CARD_CATALOG: CallingCardDefinition[] = [
     accent: "blue",
     motif: "architecture",
     tier: "SILVER",
+    artworkUrl: "/calling-cards/daily-architect.webp",
   },
   {
     code: "quiet-consistency",
@@ -450,6 +454,7 @@ export const CALLING_CARD_CATALOG: CallingCardDefinition[] = [
     accent: "white",
     motif: "consistency",
     tier: "GOLD",
+    artworkUrl: "/calling-cards/quiet-consistency.webp",
   },
   {
     code: "plan-reviewer",
@@ -461,6 +466,7 @@ export const CALLING_CARD_CATALOG: CallingCardDefinition[] = [
     accent: "violet",
     motif: "review",
     tier: "SILVER",
+    artworkUrl: "/calling-cards/plan-reviewer.webp",
   },
   {
     code: "tempered-steel",
@@ -472,6 +478,7 @@ export const CALLING_CARD_CATALOG: CallingCardDefinition[] = [
     accent: "white",
     motif: "steel",
     tier: "OBSIDIAN",
+    artworkUrl: "/calling-cards/tempered-steel.webp",
   },
   {
     code: "zero-alpha-decay",
@@ -483,6 +490,7 @@ export const CALLING_CARD_CATALOG: CallingCardDefinition[] = [
     accent: "gold",
     motif: "decay",
     tier: "OBSIDIAN",
+    artworkUrl: "/calling-cards/zero-alpha-decay.webp",
   },
   {
     code: "market-cartographer",
@@ -494,6 +502,7 @@ export const CALLING_CARD_CATALOG: CallingCardDefinition[] = [
     accent: "blue",
     motif: "cartography",
     tier: "GOLD",
+    artworkUrl: "/calling-cards/market-cartographer.webp",
   },
 ];
 

@@ -609,10 +609,15 @@ table,
   width: 100%;
   height: 100%;
   object-fit: cover;
-  opacity: .62;
-  filter: saturate(.85) contrast(1.12);
-  mix-blend-mode: screen;
+  opacity: .88;
+  filter: saturate(.92) contrast(1.08) brightness(.78);
+  transform: scale(1.035);
+  animation: calling-card-art-drift 12s ease-in-out infinite alternate;
 }
+
+.calling-card--illustrated .calling-card__core,
+.calling-card--illustrated .calling-card__circuit { display: none; }
+.calling-card--illustrated .calling-card__grid { opacity: .07; }
 
 .calling-card__grid {
   position: absolute;
@@ -743,26 +748,16 @@ table,
 
 .calling-card__lock {
   position: absolute;
-  inset: 0;
+  right: 16px;
+  top: 42px;
   z-index: 10;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 20px;
-  color: rgba(255,255,255,.82);
-  text-align: center;
-  background: rgba(2,3,4,.6);
-  backdrop-filter: blur(5px) saturate(.55);
+  color: #fff;
 }
 
-.calling-card__lock-icon { display: grid; place-items: center; width: 42px; height: 42px; border: 1px solid rgba(255,255,255,.16); border-radius: 14px; background: rgba(255,255,255,.06); }
-.calling-card__lock strong { font-size: 9px; letter-spacing: .18em; }
-.calling-card__lock > span:last-child { max-width: 230px; color: rgba(255,255,255,.46); font-size: 7px; line-height: 1.5; }
-.calling-card--locked .calling-card__core { filter: grayscale(1); opacity: .45; }
+.calling-card__lock-icon { display: grid; place-items: center; width: 38px; height: 38px; border: 1px solid color-mix(in srgb, var(--calling-primary) 42%, rgba(255,255,255,.18)); border-radius: 13px; background: rgba(2,3,4,.72); color: var(--calling-primary); box-shadow: inset 0 1px 0 rgba(255,255,255,.1), 0 0 22px color-mix(in srgb, var(--calling-primary) 18%, transparent); backdrop-filter: blur(5px); }
 
 @keyframes calling-card-float { 0%, 100% { transform: translateY(0) rotateX(0); } 50% { transform: translateY(-2px) rotateX(.35deg); } }
+@keyframes calling-card-art-drift { 0% { transform: scale(1.035) translate3d(-.35%, 0, 0); } 100% { transform: scale(1.07) translate3d(.55%, -.45%, 0); } }
 @keyframes calling-card-breathe { 0%, 100% { opacity: .55; transform: scale(.86); } 50% { opacity: 1; transform: scale(1.08); } }
 @keyframes calling-card-orbit { to { transform: rotate(360deg); } }
 @keyframes calling-card-scan { to { background-position: 0 92px; } }
@@ -776,6 +771,7 @@ table,
 
 @media (prefers-reduced-motion: reduce) {
   .calling-card__plane,
+  .calling-card__art,
   .calling-card__haze,
   .calling-card__orbit,
   .calling-card__scan,
