@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   CalendarDays,
   Check,
+  ChevronDown,
   ChevronLeft,
   Clock3,
   FlaskConical,
@@ -14,7 +15,10 @@ import {
   Play,
   RefreshCw,
   RotateCcw,
+  Search,
+  Settings2,
   ShieldCheck,
+  Star,
   X,
 } from "lucide-react";
 import type { Candle } from "@/lib/backtester";
@@ -27,6 +31,14 @@ import KwantLoader from "@/components/KwantLoader";
 import KwantSelect from "@/components/ui/KwantSelect";
 import TimeZoneSelect from "@/components/ui/TimeZoneSelect";
 import { browserTimeZone, normalizeTimeZone, timeZoneCity } from "@/lib/timeZones";
+import {
+  CHART_INTERVAL_GROUPS,
+  formatChartInterval,
+  makeCustomChartInterval,
+  parseChartIntervalInput,
+  supportsChartInterval,
+  type ChartIntervalKind,
+} from "@/lib/chartIntervals";
 
 const Chart = dynamic(() => import("@/components/Chart"), {
   ssr: false,
@@ -34,7 +46,7 @@ const Chart = dynamic(() => import("@/components/Chart"), {
 });
 
 type ReplayInstrument = "NQ" | "MNQ" | "ES" | "MES";
-type ReplayTimeframe = "1m" | "5m" | "15m" | "30m" | "1h" | "4h";
+type ReplayTimeframe = string;
 type LevelFamily = "gamma" | "quant" | "valueArea";
 
 type SessionPayload = {
@@ -67,7 +79,7 @@ const INSTRUMENTS: Array<{ id: ReplayInstrument; symbol: string; label: string }
   { id: "ES", symbol: "ES.v.0", label: "ES · E-mini S&P 500" },
   { id: "MES", symbol: "MES.v.0", label: "MES · Micro S&P 500" },
 ];
-const TIMEFRAMES: ReplayTimeframe[] = ["1m", "5m", "15m", "30m", "1h", "4h"];
+const DEFAULT_FAVOURITE_TIMEFRAMES = ["1m", "5m", "15m", "1h", "4h", "1D"];
 const SPEEDS = [1, 2, 8, 10, 20, 40, 100, 200] as const;
 const REPLAY_TIME_ZONE_STORAGE_KEY = "kwantdesk:backtesting-timezone:v1";
 const REPLAY_LOOKBACK_MS = 7 * 24 * 60 * 60_000;
@@ -342,6 +354,33 @@ export default function BacktestingWorkspace() {
   const [speed, setSpeed] = useState<(typeof SPEEDS)[number]>(1);
   const [loading, setLoading] = useState(false);
   const [timeframeLoading, setTimeframeLoading] = useState(false);
+  const [favouriteTimeframes, setFavouriteTimeframes] = useState<string[]>(() => {
+    if (typeof window === "undefined") return DEFAULT_FAVOURITE_TIMEFRAMES;
+    try {
+      const stored = JSON.parse(window.localStorage.getItem("olisa-chart-favourite-intervals") ?? "null") as unknown;
+      return Array.isArray(stored) && stored.every((item) => typeof item === "string")
+        ? stored.filter((item) => supportsChartInterval(item, "Databento"))
+        : DEFAULT_FAVOURITE_TIMEFRAMES;
+    } catch {
+      return DEFAULT_FAVOURITE_TIMEFRAMES;
+    }
+  });
+  const [showAllTimeframes, setShowAllTimeframes] = useState(false);
+  const [intervalDrafts, setIntervalDrafts] = useState<Record<ChartIntervalKind, { primary: number; secondary: number }>>({
+    second: { primary: 1, secondary: 1 },
+    minute: { primary: 1, secondary: 1 },
+    time: { primary: 1, secondary: 1 },
+    "volume-bars": { primary: 4, secondary: 2 },
+    range: { primary: 40, secondary: 1 },
+    volume: { primary: 500, secondary: 1 },
+    trade: { primary: 100, secondary: 1 },
+    renko: { primary: 8, secondary: 1 },
+    "point-figure": { primary: 1, secondary: 27 },
+    delta: { primary: 100, secondary: 1 },
+  });
+  const [intervalCommandOpen, setIntervalCommandOpen] = useState(false);
+  const [intervalCommandDraft, setIntervalCommandDraft] = useState("");
+  const [intervalCommandError, setIntervalCommandError] = useState("");
   const [error, setError] = useState("");
   const [started, setStarted] = useState(false);
   const [levelState, setLevelState] = useState<Record<LevelFamily, boolean>>({ gamma: false, quant: false, valueArea: false });
@@ -359,6 +398,9 @@ export default function BacktestingWorkspace() {
   const pendingLevelRefreshRef = useRef<{ clock: number; futuresPrice: number | null } | null>(null);
   const levelRefreshTimerRef = useRef<number | null>(null);
   const levelRequestIdRef = useRef(0);
+  const intervalCommandInputRef = useRef<HTMLInputElement>(null);
+  const intervalCommandPanelRef = useRef<HTMLDivElement>(null);
+  const timeframeMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const storedSettings = loadStoredChartSettings();
@@ -368,6 +410,10 @@ export default function BacktestingWorkspace() {
       ?? browserTimeZone(),
     ));
   }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem("olisa-chart-favourite-intervals", JSON.stringify(favouriteTimeframes));
+  }, [favouriteTimeframes]);
 
   const selectedDefinition = INSTRUMENTS.find((item) => item.id === instrument) ?? INSTRUMENTS[0];
   const root = instrument === "NQ" || instrument === "MNQ" ? "NQ" : "ES";
@@ -380,6 +426,19 @@ export default function BacktestingWorkspace() {
     ...(levelState.valueArea ? valueAreaLevels : []),
   ], [gammaLevels, levelState, quantLevels, valueAreaLevels]);
   const activeZones = levelState.quant ? quantZones : [];
+  const availableReplayIntervalGroups = useMemo(
+    () => CHART_INTERVAL_GROUPS
+      .map((group) => ({
+        ...group,
+        options: group.options.filter((option) => supportsChartInterval(option.id, "Databento")),
+      }))
+      .filter((group) => group.options.length > 0),
+    [],
+  );
+  const visibleFavouriteTimeframes = useMemo(
+    () => favouriteTimeframes.filter((interval) => supportsChartInterval(interval, "Databento")),
+    [favouriteTimeframes],
+  );
 
   const loadLevels = useCallback(async (clock: number, force = false, futuresPrice: number | null = null) => {
     const snapshot = replayOptionsSnapshot(clock);
@@ -502,6 +561,10 @@ export default function BacktestingWorkspace() {
 
   const changeReplayTimeframe = useCallback(async (nextTimeframe: ReplayTimeframe) => {
     if (!started || !sessionStartAt || nextTimeframe === timeframe || timeframeLoading) return;
+    if (!supportsChartInterval(nextTimeframe, "Databento")) {
+      setError(`${formatChartInterval(nextTimeframe)} is unavailable for historical CME replay.`);
+      return;
+    }
     const targetClock = replayClock ?? sessionStartAt;
     setPlaying(false);
     setTimeframeLoading(true);
@@ -518,6 +581,88 @@ export default function BacktestingWorkspace() {
       setTimeframeLoading(false);
     }
   }, [candleIndexAt, loadReplayCandles, replayClock, sessionStartAt, started, timeframe, timeframeLoading]);
+
+  const toggleFavouriteTimeframe = useCallback((interval: string) => {
+    setFavouriteTimeframes((current) => current.includes(interval)
+      ? current.filter((item) => item !== interval)
+      : [...current, interval]);
+  }, []);
+
+  const applyCustomInterval = useCallback((kind: ChartIntervalKind) => {
+    const draft = intervalDrafts[kind];
+    const interval = makeCustomChartInterval(kind, draft.primary, draft.secondary);
+    if (!supportsChartInterval(interval, "Databento")) return;
+    setShowAllTimeframes(false);
+    void changeReplayTimeframe(interval);
+  }, [changeReplayTimeframe, intervalDrafts]);
+
+  const submitIntervalCommand = useCallback(() => {
+    const interval = parseChartIntervalInput(intervalCommandDraft);
+    if (!interval) {
+      setIntervalCommandError("Try 5m, 5 min, 30s, 2h, 1D, 500v or 40r");
+      return;
+    }
+    if (!supportsChartInterval(interval, "Databento")) {
+      setIntervalCommandError(`${formatChartInterval(interval)} is unavailable for historical CME replay`);
+      return;
+    }
+    setIntervalCommandOpen(false);
+    setIntervalCommandDraft("");
+    setIntervalCommandError("");
+    void changeReplayTimeframe(interval);
+  }, [changeReplayTimeframe, intervalCommandDraft]);
+
+  useEffect(() => {
+    if (!started || showSetup) {
+      setIntervalCommandOpen(false);
+      return;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        if (intervalCommandOpen) {
+          event.preventDefault();
+          setIntervalCommandOpen(false);
+          setIntervalCommandDraft("");
+          setIntervalCommandError("");
+        }
+        if (showAllTimeframes) setShowAllTimeframes(false);
+        return;
+      }
+      const target = event.target as HTMLElement | null;
+      const editingText = target instanceof HTMLInputElement
+        || target instanceof HTMLTextAreaElement
+        || target instanceof HTMLSelectElement
+        || target?.isContentEditable;
+      if (editingText || event.code !== "Space" || event.repeat) return;
+
+      event.preventDefault();
+      setShowAllTimeframes(false);
+      setIntervalCommandOpen(true);
+      setIntervalCommandDraft("");
+      setIntervalCommandError("");
+      window.requestAnimationFrame(() => intervalCommandInputRef.current?.focus());
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [intervalCommandOpen, showAllTimeframes, showSetup, started]);
+
+  useEffect(() => {
+    if (!intervalCommandOpen && !showAllTimeframes) return;
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (intervalCommandOpen && intervalCommandPanelRef.current?.contains(target)) return;
+      if (showAllTimeframes && timeframeMenuRef.current?.contains(target)) return;
+      setIntervalCommandOpen(false);
+      setIntervalCommandDraft("");
+      setIntervalCommandError("");
+      setShowAllTimeframes(false);
+    };
+    document.addEventListener("pointerdown", handlePointerDown, true);
+    return () => document.removeEventListener("pointerdown", handlePointerDown, true);
+  }, [intervalCommandOpen, showAllTimeframes]);
 
   useEffect(() => {
     if (!playing || !candles.length) return;
@@ -649,8 +794,9 @@ export default function BacktestingWorkspace() {
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background">
-      <header className="flex min-h-14 shrink-0 flex-wrap items-center gap-3 border-b border-border bg-panel px-4 py-2">
-        <div className="flex min-w-0 items-center gap-3">
+      <header className="relative z-40 shrink-0 border-b border-border bg-panel">
+        <div className="flex min-h-14 flex-wrap items-center gap-3 px-4 py-2">
+          <div className="flex min-w-0 items-center gap-3">
           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-primary/25 bg-primary/10 text-primary">
             <FlaskConical className="h-4 w-4" />
           </div>
@@ -665,20 +811,6 @@ export default function BacktestingWorkspace() {
               <span className="rounded-lg border border-border bg-background/45 px-2.5 py-1.5 font-mono text-[9px] text-muted">
                 {selectedDefinition.id}
               </span>
-              <div className="flex items-center gap-0.5 rounded-lg border border-border bg-background/45 p-0.5">
-                {TIMEFRAMES.map((option) => (
-                  <button
-                    key={option}
-                    type="button"
-                    onClick={() => void changeReplayTimeframe(option)}
-                    disabled={timeframeLoading}
-                    className={`h-7 min-w-8 rounded-md px-2 font-mono text-[9px] transition-colors disabled:cursor-wait ${timeframe === option ? "bg-primary text-background" : "text-muted hover:bg-surface hover:text-foreground"}`}
-                  >
-                    {option}
-                  </button>
-                ))}
-                {timeframeLoading ? <Loader2 className="mx-1 h-3 w-3 animate-spin text-primary" /> : null}
-              </div>
               <button
                 type="button"
                 onClick={() => toggleLevel("gamma")}
@@ -721,7 +853,141 @@ export default function BacktestingWorkspace() {
               Backtest
             </button>
           ) : null}
+          </div>
         </div>
+
+        {started ? (
+          <div className="flex min-h-[52px] min-w-0 items-center border-t border-border/70 px-3">
+            <div ref={timeframeMenuRef} className="relative flex min-w-0 items-center gap-0.5">
+              <div className="flex min-w-0 items-center gap-0.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                {visibleFavouriteTimeframes.map((option) => (
+                  <button
+                    key={option}
+                    type="button"
+                    onClick={() => void changeReplayTimeframe(option)}
+                    disabled={timeframeLoading}
+                    className={`shrink-0 rounded-lg px-2.5 py-1.5 text-[13px] transition-all disabled:cursor-wait ${timeframe === option ? "bg-surface text-foreground" : "text-muted hover:text-foreground"}`}
+                  >
+                    {formatChartInterval(option)}
+                  </button>
+                ))}
+              </div>
+              <button
+                type="button"
+                aria-label="Historical chart intervals"
+                aria-expanded={showAllTimeframes}
+                onClick={() => setShowAllTimeframes((current) => !current)}
+                className={`ml-1 flex shrink-0 items-center gap-1 rounded-lg border px-2.5 py-1.5 text-[12px] transition-colors ${showAllTimeframes ? "border-primary/30 bg-primary/10 text-primary" : "border-border bg-surface/50 text-muted hover:text-foreground"}`}
+              >
+                <span>{formatChartInterval(timeframe)}</span>
+                <ChevronDown className={`h-3.5 w-3.5 transition-transform ${showAllTimeframes ? "rotate-180" : ""}`} />
+              </button>
+              <button
+                type="button"
+                onClick={() => toggleFavouriteTimeframe(timeframe)}
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-primary"
+                aria-label={`${favouriteTimeframes.includes(timeframe) ? "Remove" : "Add"} ${formatChartInterval(timeframe)} ${favouriteTimeframes.includes(timeframe) ? "from" : "to"} favourites`}
+                title={favouriteTimeframes.includes(timeframe) ? "Remove interval from top bar" : "Pin interval to top bar"}
+              >
+                <Star className={`h-3.5 w-3.5 ${favouriteTimeframes.includes(timeframe) ? "fill-primary text-primary" : ""}`} />
+              </button>
+              {timeframeLoading ? <Loader2 className="ml-1 h-3.5 w-3.5 shrink-0 animate-spin text-primary" /> : null}
+
+              {showAllTimeframes ? (
+                <div className="absolute left-0 top-[40px] z-[90] w-[720px] max-w-[calc(100vw-32px)] overflow-hidden rounded-2xl border border-border bg-panel shadow-2xl shadow-black/50">
+                  <div className="flex items-center justify-between border-b border-border px-4 py-3">
+                    <div>
+                      <div className="text-[12px] font-semibold text-foreground">Chart intervals</div>
+                      <div className="mt-0.5 text-[10px] text-muted">Time, volume and order-flow bars from historical CME market data</div>
+                    </div>
+                    <button type="button" onClick={() => setShowAllTimeframes(false)} className="rounded-lg p-1.5 text-muted hover:bg-surface hover:text-foreground" aria-label="Close chart intervals">
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                  <div className="max-h-[min(560px,calc(100vh-180px))] overflow-y-auto p-2">
+                    {availableReplayIntervalGroups.map((group) => {
+                      const draft = intervalDrafts[group.kind];
+                      return (
+                        <div key={group.kind} className="grid grid-cols-[128px_138px_minmax(0,1fr)] items-center gap-3 rounded-xl px-2 py-2.5 hover:bg-surface/40">
+                          <div className="flex items-center gap-2 text-[12px] font-medium text-foreground">
+                            <Settings2 className="h-4 w-4 text-muted" />
+                            <span>{group.label}</span>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <input
+                              aria-label={`${group.label} interval value`}
+                              type="number"
+                              min={1}
+                              step={1}
+                              value={draft.primary}
+                              onChange={(event) => setIntervalDrafts((current) => ({
+                                ...current,
+                                [group.kind]: { ...current[group.kind], primary: Math.max(1, Number(event.target.value) || 1) },
+                              }))}
+                              className="h-8 min-w-0 flex-1 rounded-lg border border-border bg-background px-2 font-mono text-[12px] text-foreground outline-none focus:border-primary/40"
+                            />
+                            {group.secondaryDefault !== undefined ? (
+                              <input
+                                aria-label={`${group.label} secondary interval value`}
+                                type="number"
+                                min={1}
+                                step={1}
+                                value={draft.secondary}
+                                onChange={(event) => setIntervalDrafts((current) => ({
+                                  ...current,
+                                  [group.kind]: { ...current[group.kind], secondary: Math.max(1, Number(event.target.value) || 1) },
+                                }))}
+                                className="h-8 min-w-0 flex-1 rounded-lg border border-border bg-background px-2 font-mono text-[12px] text-foreground outline-none focus:border-primary/40"
+                              />
+                            ) : null}
+                            <button
+                              type="button"
+                              onClick={() => applyCustomInterval(group.kind)}
+                              disabled={timeframeLoading}
+                              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border bg-surface text-muted hover:border-primary/30 hover:text-primary disabled:cursor-wait disabled:opacity-40"
+                              aria-label={`Apply custom ${group.label} interval`}
+                              title="Apply custom interval"
+                            >
+                              <Check className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                          <div className="flex min-w-0 flex-wrap items-center gap-1">
+                            {group.options.map((option) => (
+                              <div key={option.id} className={`flex items-center rounded-lg border transition-colors ${timeframe === option.id ? "border-primary/30 bg-primary/10" : "border-transparent hover:border-border hover:bg-surface"}`}>
+                                <button
+                                  type="button"
+                                  disabled={timeframeLoading}
+                                  onClick={() => {
+                                    setShowAllTimeframes(false);
+                                    void changeReplayTimeframe(option.id);
+                                  }}
+                                  className={`px-2 py-1.5 font-mono text-[11px] disabled:cursor-wait ${timeframe === option.id ? "text-primary" : "text-foreground"}`}
+                                >
+                                  {option.label}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => toggleFavouriteTimeframe(option.id)}
+                                  className="pr-1.5 text-muted hover:text-primary"
+                                  aria-label={`${favouriteTimeframes.includes(option.id) ? "Remove" : "Add"} ${option.label} ${favouriteTimeframes.includes(option.id) ? "from" : "to"} favourites`}
+                                >
+                                  <Star className={`h-3 w-3 ${favouriteTimeframes.includes(option.id) ? "fill-primary text-primary" : ""}`} />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div className="border-t border-border px-4 py-2.5 text-[10px] leading-4 text-muted">
+                    Range and Renko use the contract tick size. Volume, trade and delta bars use native historical CME executions.
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
       </header>
 
       <div className="relative min-h-0 flex-1 overflow-hidden">
@@ -747,6 +1013,44 @@ export default function BacktestingWorkspace() {
             valueAreaLevelsDescription="Historical prior-session and prior-week VAH, VAL, POC and VWAP"
             onToggleValueAreaLevels={() => toggleLevel("valueArea")}
           />
+        ) : null}
+
+        {started && intervalCommandOpen ? (
+          <div className="pointer-events-none absolute inset-0 z-50 flex items-center justify-center">
+            <div
+              ref={intervalCommandPanelRef}
+              className="pointer-events-auto w-[300px] max-w-[calc(100%-32px)] rounded-2xl border border-border bg-panel/95 p-3 shadow-2xl shadow-black/40 backdrop-blur-xl"
+              onMouseDown={(event) => event.stopPropagation()}
+            >
+              <div className="mb-2 flex items-center gap-2 px-1">
+                <Search className="h-3.5 w-3.5 text-primary" />
+                <span className="text-[11px] font-medium text-foreground">Change interval</span>
+                <span className="ml-auto rounded-md border border-border bg-surface px-1.5 py-0.5 text-[9px] text-muted">ESC</span>
+              </div>
+              <input
+                ref={intervalCommandInputRef}
+                value={intervalCommandDraft}
+                onChange={(event) => {
+                  setIntervalCommandDraft(event.target.value);
+                  setIntervalCommandError("");
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    submitIntervalCommand();
+                  }
+                }}
+                autoFocus
+                spellCheck={false}
+                placeholder="Type 5m, 40 range or 500 volume"
+                aria-label="Historical chart interval"
+                className="h-11 w-full rounded-xl border border-border bg-surface px-3 font-mono text-[15px] text-foreground outline-none transition-colors placeholder:text-muted/55 focus:border-primary/60"
+              />
+              <div className={`mt-2 px-1 text-[10px] ${intervalCommandError ? "text-danger" : "text-muted"}`}>
+                {intervalCommandError || "Seconds · minutes · hours · days · weeks · event bars"}
+              </div>
+            </div>
+          </div>
         ) : null}
 
         {!started && !loading ? (
