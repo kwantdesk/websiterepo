@@ -29,6 +29,7 @@ import {
   Import,
   Layers3,
   LineChart,
+  Mic,
   NotebookPen,
   MoreVertical,
   Paperclip,
@@ -72,6 +73,7 @@ import {
   type JournalQuantAnalysis,
 } from "@/lib/journalAnalysis";
 import KwantSelect from "@/components/ui/KwantSelect";
+import { usePersistentFieldDictation } from "@/hooks/usePersistentFieldDictation";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 type JournalTab = "pulse" | "calendar" | "trades" | "edgebook" | "analysis" | "evidence" | "imports";
@@ -102,6 +104,41 @@ type ManualTradeDraft = {
   improvements: string;
   rating: number | null;
 };
+
+type ManualTradeDictationField = Exclude<keyof ManualTradeDraft, "rating">;
+
+const MANUAL_TRADE_DICTATION_LABELS: Record<ManualTradeDictationField, string> = {
+  name: "Trade / setup name",
+  symbol: "Instrument",
+  side: "Direction",
+  contractClass: "Contract class",
+  quantity: "Contracts",
+  openedAt: "Entry time",
+  closedAt: "Exit time",
+  entryPrice: "Entry price",
+  exitPrice: "Exit price",
+  stopPrice: "Stop price",
+  targetPrice: "Target price",
+  plannedRiskReward: "Planned risk : reward",
+  initialRisk: "Initial risk",
+  netPnl: "Net profit / loss",
+  fees: "Fees",
+  tags: "Tags",
+  notes: "Notes",
+  improvements: "How can I do better next time?",
+};
+
+const MANUAL_TRADE_NUMBER_FIELDS = new Set<ManualTradeDictationField>([
+  "quantity",
+  "entryPrice",
+  "exitPrice",
+  "stopPrice",
+  "targetPrice",
+  "plannedRiskReward",
+  "initialRisk",
+  "netPnl",
+  "fees",
+]);
 
 type ManualExtractionFieldName =
   | "setupName"
@@ -244,6 +281,86 @@ function newManualTradeDraft(): ManualTradeDraft {
     improvements: "",
     rating: null,
   };
+}
+
+function appendDictatedText(current: string, transcript: string, separator = " ") {
+  const spoken = transcript.trim();
+  if (!spoken) return current;
+  const existing = current.trimEnd();
+  return `${existing}${existing ? separator : ""}${spoken}`;
+}
+
+function parseSpokenNumber(transcript: string) {
+  const normalized = transcript
+    .toLowerCase()
+    .replace(/[$,%]/g, "")
+    .replace(/,/g, "")
+    .replace(/\bminus\b/g, "-")
+    .trim();
+  const digitMatch = normalized.match(/-?\d+(?:\.\d+)?/);
+  if (digitMatch) return digitMatch[0];
+
+  const small: Record<string, number> = {
+    zero: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9,
+    ten: 10, eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16,
+    seventeen: 17, eighteen: 18, nineteen: 19, twenty: 20, thirty: 30, forty: 40, fifty: 50,
+    sixty: 60, seventy: 70, eighty: 80, ninety: 90,
+  };
+  const words = normalized.replace(/-/g, " ").split(/\s+/).filter(Boolean);
+  let total = 0;
+  let group = 0;
+  let negative = false;
+  let recognized = false;
+  let decimal = "";
+  let readingDecimal = false;
+
+  for (const word of words) {
+    if (word === "negative" || word === "-") {
+      negative = true;
+      continue;
+    }
+    if (word === "point" || word === "dot") {
+      readingDecimal = true;
+      recognized = true;
+      continue;
+    }
+    const value = small[word];
+    if (readingDecimal) {
+      if (value !== undefined && value >= 0 && value <= 9) decimal += String(value);
+      continue;
+    }
+    if (value !== undefined) {
+      group += value;
+      recognized = true;
+    } else if (word === "hundred") {
+      group = Math.max(1, group) * 100;
+      recognized = true;
+    } else if (word === "thousand") {
+      total += Math.max(1, group) * 1_000;
+      group = 0;
+      recognized = true;
+    } else if (word === "million") {
+      total += Math.max(1, group) * 1_000_000;
+      group = 0;
+      recognized = true;
+    }
+  }
+
+  if (!recognized) return null;
+  const value = (total + group) * (negative ? -1 : 1);
+  return `${value}${decimal ? `.${decimal}` : ""}`;
+}
+
+function parseDictatedDateTime(transcript: string, current: string) {
+  const normalized = transcript
+    .replace(/(\d+)(st|nd|rd|th)\b/gi, "$1")
+    .replace(/\b(at|on)\b/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const hasDate = /\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)|\d{4}|\d{1,2}[/-]\d{1,2}/i.test(normalized);
+  const baseDate = current.slice(0, 10) || localDateTimeInput().slice(0, 10);
+  const parsed = Date.parse(hasDate ? normalized : `${baseDate} ${normalized}`);
+  return Number.isFinite(parsed) ? localDateTimeInput(new Date(parsed)) : null;
 }
 
 async function prepareManualEvidence(file: File) {
@@ -636,6 +753,46 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
   const manualAnalysisRevisionRef = useRef(0);
   const analysisRequestRef = useRef(0);
   const analysisAbortRef = useRef<AbortController | null>(null);
+
+  const applyManualTradeTranscript = useCallback((field: ManualTradeDictationField, transcript: string) => {
+    manualTradeTouchedRef.current.add(field);
+    setManualTrade((current) => {
+      let value = current[field];
+      if (MANUAL_TRADE_NUMBER_FIELDS.has(field)) {
+        const parsed = parseSpokenNumber(transcript);
+        if (parsed === null) return current;
+        value = parsed;
+      } else if (field === "openedAt" || field === "closedAt") {
+        const parsed = parseDictatedDateTime(transcript, current[field]);
+        if (!parsed) return current;
+        value = parsed;
+      } else if (field === "side") {
+        const normalized = transcript.toLowerCase();
+        if (/\b(long|buy|bought)\b/.test(normalized)) value = "LONG";
+        else if (/\b(short|sell|sold)\b/.test(normalized)) value = "SHORT";
+        else return current;
+      } else if (field === "contractClass") {
+        const normalized = transcript.toLowerCase();
+        if (/\bmicro\b/.test(normalized)) value = "MICRO";
+        else if (/\bmini\b/.test(normalized)) value = "MINI";
+        else if (/\bother\b/.test(normalized)) value = "OTHER";
+        else return current;
+      } else if (field === "symbol") {
+        value = transcript.toUpperCase().replace(/[^A-Z0-9._-]/g, "").slice(0, 32);
+      } else if (field === "tags") {
+        value = appendDictatedText(current.tags, transcript, ", ");
+      } else {
+        value = appendDictatedText(current[field], transcript);
+      }
+      return { ...current, [field]: value };
+    });
+  }, []);
+
+  const manualDictation = usePersistentFieldDictation<ManualTradeDictationField>({
+    initialField: "name",
+    onTranscript: applyManualTradeTranscript,
+    disabled: !showManualTrade || manualTradeSaving,
+  });
 
   const resolvedAccountKey = accountKey || "local";
   const zyonJournalSelected = accountFilter === ZYON_JOURNAL_ACCOUNT;
@@ -1033,6 +1190,8 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
   const openManualTrade = () => {
     manualAnalysisRevisionRef.current += 1;
     manualTradeTouchedRef.current.clear();
+    manualDictation.activate("name");
+    manualDictation.clearError();
     setManualTrade(newManualTradeDraft());
     setManualEvidenceFiles([]);
     setManualEvidenceDragging(false);
@@ -1046,6 +1205,11 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
   function updateManualTradeField<K extends keyof ManualTradeDraft>(field: K, value: ManualTradeDraft[K]) {
     manualTradeTouchedRef.current.add(field);
     setManualTrade((current) => ({ ...current, [field]: value }));
+  }
+
+  function toggleManualDictationField(field: ManualTradeDictationField) {
+    if (manualDictation.enabled && manualDictation.activeField === field) manualDictation.stop();
+    else manualDictation.activate(field, true);
   }
 
   const applyImageExtraction = (extraction: ManualImageExtraction) => {
@@ -2304,37 +2468,55 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
       {showManualTrade && selectedAccountIsManual ? (
         <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/72 p-4 backdrop-blur-sm" onMouseDown={(event) => { if (event.target === event.currentTarget && !manualTradeSaving) setShowManualTrade(false); }}>
           <div className="flex max-h-[94vh] w-full max-w-[880px] flex-col overflow-hidden rounded-3xl border border-border bg-panel shadow-2xl shadow-black/65">
-            <div className="flex items-start gap-3 border-b border-border px-5 py-4">
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-primary/25 bg-primary/10 text-primary"><NotebookPen className="h-4 w-4" /></span>
-              <div className="min-w-0"><h2 className="text-[14px] font-semibold text-foreground">Document a trade</h2><p className="mt-1 truncate text-[9px] text-muted">{accountFilter} · native KwantDesk Journal</p></div>
-              <button type="button" disabled={manualTradeSaving} onClick={() => setShowManualTrade(false)} className="ml-auto flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground disabled:opacity-40"><X className="h-4 w-4" /></button>
+            <div className="relative grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 border-b border-border px-5 py-4">
+              <div className="flex min-w-0 items-start gap-3">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-primary/25 bg-primary/10 text-primary"><NotebookPen className="h-4 w-4" /></span>
+                <div className="min-w-0"><h2 className="text-[14px] font-semibold text-foreground">Document a trade</h2><p className="mt-1 truncate text-[9px] text-muted">{accountFilter} · native KwantDesk Journal</p></div>
+              </div>
+              <button
+                type="button"
+                disabled={!manualDictation.supported || manualTradeSaving}
+                onClick={manualDictation.toggle}
+                aria-pressed={manualDictation.enabled}
+                aria-label={manualDictation.enabled ? "Stop persistent trade dictation" : "Start persistent trade dictation"}
+                title={!manualDictation.supported ? "Speech input is not supported by this browser" : manualDictation.enabled ? "Stop dictation" : "Start dictation, then click any field to speak into it"}
+                className={`flex h-9 max-w-[270px] items-center gap-2 rounded-xl border px-3 text-[8px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-35 ${manualDictation.enabled ? "border-primary/40 bg-primary/12 text-primary shadow-[0_0_20px_color-mix(in_srgb,var(--primary)_13%,transparent)]" : "border-border bg-background text-muted hover:border-primary/35 hover:text-primary"}`}
+              >
+                <span className="relative flex h-4 w-4 shrink-0 items-center justify-center">
+                  {manualDictation.listening ? <span className="absolute inset-0 animate-ping rounded-full bg-primary/30" /> : null}
+                  <Mic className="relative h-3.5 w-3.5" />
+                </span>
+                <span className="truncate">{manualDictation.enabled ? `Listening · ${MANUAL_TRADE_DICTATION_LABELS[manualDictation.activeField]}` : "Dictate fields"}</span>
+              </button>
+              <button type="button" disabled={manualTradeSaving} onClick={() => setShowManualTrade(false)} className="flex h-8 w-8 items-center justify-center justify-self-end rounded-lg text-muted hover:bg-surface hover:text-foreground disabled:opacity-40"><X className="h-4 w-4" /></button>
             </div>
+            {manualDictation.enabled || manualDictation.error ? <div className={`border-b px-5 py-2 text-center text-[8px] ${manualDictation.error ? "border-danger/20 bg-danger/[0.06] text-danger" : "border-primary/15 bg-primary/[0.045] text-primary"}`}>{manualDictation.error || `Mic stays on while you move between fields · Speaking into ${MANUAL_TRADE_DICTATION_LABELS[manualDictation.activeField]}`}</div> : null}
             <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-5">
               <section>
                 <div className="mb-3"><h3 className="text-[10px] font-semibold text-foreground">Trade identity</h3><p className="mt-0.5 text-[8px] text-muted">Name the idea and record what was actually traded.</p></div>
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                  <div className="sm:col-span-2"><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Trade / setup name *</label><input value={manualTrade.name} onChange={(event) => updateManualTradeField("name", event.target.value)} placeholder="e.g. New York open reclaim" className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[9px] text-foreground outline-none focus:border-primary/45" /></div>
-                  <div><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Instrument *</label><input value={manualTrade.symbol} onChange={(event) => updateManualTradeField("symbol", event.target.value.toUpperCase())} placeholder="NQ" className="h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] text-foreground outline-none focus:border-primary/45" /></div>
-                  <div><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Direction *</label><KwantSelect value={manualTrade.side} onChange={(event) => updateManualTradeField("side", event.target.value as ManualTradeDraft["side"])} className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[9px] text-foreground outline-none"><option value="" disabled>Select direction</option><option value="LONG">Long</option><option value="SHORT">Short</option></KwantSelect></div>
-                  <div><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Contract class *</label><KwantSelect value={manualTrade.contractClass} onChange={(event) => updateManualTradeField("contractClass", event.target.value as ManualTradeDraft["contractClass"])} className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[9px] text-foreground outline-none"><option value="" disabled>Select class</option><option value="MICRO">Micro</option><option value="MINI">Mini</option><option value="OTHER">Other</option></KwantSelect></div>
-                  <div><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Contracts *</label><input type="number" min="0.01" step="0.01" value={manualTrade.quantity} onChange={(event) => updateManualTradeField("quantity", event.target.value)} className="h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] text-foreground outline-none focus:border-primary/45" /></div>
-                  <div className="sm:col-span-2"><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Tags</label><input value={manualTrade.tags} onChange={(event) => updateManualTradeField("tags", event.target.value)} placeholder="reclaim, patient, New York" className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[9px] text-foreground outline-none focus:border-primary/45" /></div>
+                  <div className="sm:col-span-2"><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Trade / setup name *</label><input value={manualTrade.name} onFocus={() => manualDictation.activate("name")} onChange={(event) => updateManualTradeField("name", event.target.value)} placeholder="e.g. New York open reclaim" className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[9px] text-foreground outline-none focus:border-primary/45" /></div>
+                  <div><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Instrument *</label><input value={manualTrade.symbol} onFocus={() => manualDictation.activate("symbol")} onChange={(event) => updateManualTradeField("symbol", event.target.value.toUpperCase())} placeholder="NQ" className="h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] text-foreground outline-none focus:border-primary/45" /></div>
+                  <div><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Direction *</label><KwantSelect value={manualTrade.side} onFocus={() => manualDictation.activate("side")} onChange={(event) => updateManualTradeField("side", event.target.value as ManualTradeDraft["side"])} className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[9px] text-foreground outline-none"><option value="" disabled>Select direction</option><option value="LONG">Long</option><option value="SHORT">Short</option></KwantSelect></div>
+                  <div><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Contract class *</label><KwantSelect value={manualTrade.contractClass} onFocus={() => manualDictation.activate("contractClass")} onChange={(event) => updateManualTradeField("contractClass", event.target.value as ManualTradeDraft["contractClass"])} className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[9px] text-foreground outline-none"><option value="" disabled>Select class</option><option value="MICRO">Micro</option><option value="MINI">Mini</option><option value="OTHER">Other</option></KwantSelect></div>
+                  <div><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Contracts *</label><input type="number" min="0.01" step="0.01" value={manualTrade.quantity} onFocus={() => manualDictation.activate("quantity")} onChange={(event) => updateManualTradeField("quantity", event.target.value)} className="h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] text-foreground outline-none focus:border-primary/45" /></div>
+                  <div className="sm:col-span-2"><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Tags</label><input value={manualTrade.tags} onFocus={() => manualDictation.activate("tags")} onChange={(event) => updateManualTradeField("tags", event.target.value)} placeholder="reclaim, patient, New York" className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[9px] text-foreground outline-none focus:border-primary/45" /></div>
                 </div>
               </section>
 
               <section className="border-t border-border pt-5">
                 <div className="mb-3"><h3 className="text-[10px] font-semibold text-foreground">Execution and risk</h3><p className="mt-0.5 text-[8px] text-muted">These fields drive the Journal’s P&amp;L, risk-to-reward and performance analysis.</p></div>
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                  <div className="lg:col-span-2"><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Entry time *</label><input type="datetime-local" value={manualTrade.openedAt} onChange={(event) => updateManualTradeField("openedAt", event.target.value)} className="h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] text-foreground outline-none focus:border-primary/45" /></div>
-                  <div className="lg:col-span-2"><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Exit time *</label><input type="datetime-local" value={manualTrade.closedAt} onChange={(event) => updateManualTradeField("closedAt", event.target.value)} className="h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] text-foreground outline-none focus:border-primary/45" /></div>
-                  <div><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Entry price *</label><input type="number" step="any" value={manualTrade.entryPrice} onChange={(event) => updateManualTradeField("entryPrice", event.target.value)} placeholder="0.00" className="h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] text-foreground outline-none focus:border-primary/45" /></div>
-                  <div><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Exit price *</label><input type="number" step="any" value={manualTrade.exitPrice} onChange={(event) => updateManualTradeField("exitPrice", event.target.value)} placeholder="0.00" className="h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] text-foreground outline-none focus:border-primary/45" /></div>
-                  <div><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Stop price</label><input type="number" step="any" value={manualTrade.stopPrice} onChange={(event) => updateManualTradeField("stopPrice", event.target.value)} placeholder="Only if known" className="h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] text-foreground outline-none focus:border-primary/45" /></div>
-                  <div><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Target price</label><input type="number" step="any" value={manualTrade.targetPrice} onChange={(event) => updateManualTradeField("targetPrice", event.target.value)} placeholder="Only if known" className="h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] text-foreground outline-none focus:border-primary/45" /></div>
-                  <div><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Initial risk ($) *</label><input type="number" min="0" step="0.01" value={manualTrade.initialRisk} onChange={(event) => updateManualTradeField("initialRisk", event.target.value)} placeholder="250.00" className="h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] text-foreground outline-none focus:border-primary/45" /></div>
-                  <div><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Net profit / loss ($) *</label><input type="number" step="0.01" value={manualTrade.netPnl} onChange={(event) => updateManualTradeField("netPnl", event.target.value)} placeholder="Use minus for a loss" className="h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] text-foreground outline-none focus:border-primary/45" /></div>
-                  <div><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Fees ($)</label><input type="number" min="0" step="0.01" value={manualTrade.fees} onChange={(event) => updateManualTradeField("fees", event.target.value)} placeholder="Leave blank if unknown" className="h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] text-foreground outline-none focus:border-primary/45" /></div>
-                  <div><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Planned risk : reward</label><div className="flex h-10 items-center rounded-xl border border-border bg-background px-3 focus-within:border-primary/45"><span className="font-mono text-[9px] text-muted">1 :</span><input type="number" min="0" step="0.01" value={manualTrade.plannedRiskReward} onChange={(event) => updateManualTradeField("plannedRiskReward", event.target.value)} placeholder="3.00" className="h-full min-w-0 flex-1 bg-transparent pl-2 font-mono text-[9px] text-foreground outline-none" /></div></div>
+                  <div className="lg:col-span-2"><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Entry time *</label><input type="datetime-local" value={manualTrade.openedAt} onFocus={() => manualDictation.activate("openedAt")} onChange={(event) => updateManualTradeField("openedAt", event.target.value)} className="h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] text-foreground outline-none focus:border-primary/45" /></div>
+                  <div className="lg:col-span-2"><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Exit time *</label><input type="datetime-local" value={manualTrade.closedAt} onFocus={() => manualDictation.activate("closedAt")} onChange={(event) => updateManualTradeField("closedAt", event.target.value)} className="h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] text-foreground outline-none focus:border-primary/45" /></div>
+                  <div><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Entry price *</label><input type="number" step="any" value={manualTrade.entryPrice} onFocus={() => manualDictation.activate("entryPrice")} onChange={(event) => updateManualTradeField("entryPrice", event.target.value)} placeholder="0.00" className="h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] text-foreground outline-none focus:border-primary/45" /></div>
+                  <div><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Exit price *</label><input type="number" step="any" value={manualTrade.exitPrice} onFocus={() => manualDictation.activate("exitPrice")} onChange={(event) => updateManualTradeField("exitPrice", event.target.value)} placeholder="0.00" className="h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] text-foreground outline-none focus:border-primary/45" /></div>
+                  <div><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Stop price</label><input type="number" step="any" value={manualTrade.stopPrice} onFocus={() => manualDictation.activate("stopPrice")} onChange={(event) => updateManualTradeField("stopPrice", event.target.value)} placeholder="Only if known" className="h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] text-foreground outline-none focus:border-primary/45" /></div>
+                  <div><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Target price</label><input type="number" step="any" value={manualTrade.targetPrice} onFocus={() => manualDictation.activate("targetPrice")} onChange={(event) => updateManualTradeField("targetPrice", event.target.value)} placeholder="Only if known" className="h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] text-foreground outline-none focus:border-primary/45" /></div>
+                  <div><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Initial risk ($) *</label><input type="number" min="0" step="0.01" value={manualTrade.initialRisk} onFocus={() => manualDictation.activate("initialRisk")} onChange={(event) => updateManualTradeField("initialRisk", event.target.value)} placeholder="250.00" className="h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] text-foreground outline-none focus:border-primary/45" /></div>
+                  <div><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Net profit / loss ($) *</label><input type="number" step="0.01" value={manualTrade.netPnl} onFocus={() => manualDictation.activate("netPnl")} onChange={(event) => updateManualTradeField("netPnl", event.target.value)} placeholder="Use minus for a loss" className="h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] text-foreground outline-none focus:border-primary/45" /></div>
+                  <div><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Fees ($)</label><input type="number" min="0" step="0.01" value={manualTrade.fees} onFocus={() => manualDictation.activate("fees")} onChange={(event) => updateManualTradeField("fees", event.target.value)} placeholder="Leave blank if unknown" className="h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[9px] text-foreground outline-none focus:border-primary/45" /></div>
+                  <div><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Planned risk : reward</label><div className="flex h-10 items-center rounded-xl border border-border bg-background px-3 focus-within:border-primary/45"><span className="font-mono text-[9px] text-muted">1 :</span><input type="number" min="0" step="0.01" value={manualTrade.plannedRiskReward} onFocus={() => manualDictation.activate("plannedRiskReward")} onChange={(event) => updateManualTradeField("plannedRiskReward", event.target.value)} placeholder="3.00" className="h-full min-w-0 flex-1 bg-transparent pl-2 font-mono text-[9px] text-foreground outline-none" /></div></div>
                   <div className="sm:col-span-2 lg:col-span-4"><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Realized risk : reward</label><div className="flex h-10 items-center rounded-xl border border-border bg-surface/45 px-3 font-mono text-[11px] font-semibold text-primary">{Number(manualTrade.initialRisk) > 0 && Number.isFinite(Number(manualTrade.netPnl)) ? riskReward(Number(manualTrade.netPnl) / Number(manualTrade.initialRisk)) : "1 : —"}</div></div>
                 </div>
               </section>
@@ -2342,8 +2524,14 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
               <section className="border-t border-border pt-5">
                 <div className="mb-3"><h3 className="text-[10px] font-semibold text-foreground">Review notes <span className="font-normal text-muted">· optional</span></h3><p className="mt-0.5 text-[8px] text-muted">Write honestly. Both fields can be left blank and the trade will still submit.</p></div>
                 <div className="grid gap-3 lg:grid-cols-2">
-                  <div><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Notes</label><textarea value={manualTrade.notes} onChange={(event) => updateManualTradeField("notes", event.target.value)} rows={6} placeholder="What happened? What were you thinking? Were you patient, emotional, early or late?" className="w-full resize-y rounded-xl border border-border bg-background p-3 text-[9px] leading-5 text-foreground outline-none focus:border-primary/45" /></div>
-                  <div><label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">How can I do better next time?</label><textarea value={manualTrade.improvements} onChange={(event) => updateManualTradeField("improvements", event.target.value)} rows={6} placeholder="The specific behaviour, rule or preparation you will change next time." className="w-full resize-y rounded-xl border border-border bg-background p-3 text-[9px] leading-5 text-foreground outline-none focus:border-primary/45" /></div>
+                  <div>
+                    <div className="mb-1.5 flex items-center gap-2"><label className="text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Notes</label><button type="button" disabled={!manualDictation.supported || manualTradeSaving} onClick={() => toggleManualDictationField("notes")} aria-label={manualDictation.enabled && manualDictation.activeField === "notes" ? "Stop dictating notes" : "Dictate notes"} aria-pressed={manualDictation.enabled && manualDictation.activeField === "notes"} className={`ml-auto flex h-7 w-7 items-center justify-center rounded-lg border transition disabled:opacity-30 ${manualDictation.enabled && manualDictation.activeField === "notes" ? "border-primary/40 bg-primary/12 text-primary" : "border-border bg-background text-muted hover:border-primary/35 hover:text-primary"}`}><span className="relative flex h-3.5 w-3.5 items-center justify-center">{manualDictation.listening && manualDictation.activeField === "notes" ? <span className="absolute inset-0 animate-ping rounded-full bg-primary/30" /> : null}<Mic className="relative h-3 w-3" /></span></button></div>
+                    <textarea value={manualTrade.notes} onFocus={() => manualDictation.activate("notes")} onChange={(event) => updateManualTradeField("notes", event.target.value)} rows={6} placeholder="What happened? What were you thinking? Were you patient, emotional, early or late?" className="w-full resize-y rounded-xl border border-border bg-background p-3 text-[9px] leading-5 text-foreground outline-none focus:border-primary/45" />
+                  </div>
+                  <div>
+                    <div className="mb-1.5 flex items-center gap-2"><label className="text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">How can I do better next time?</label><button type="button" disabled={!manualDictation.supported || manualTradeSaving} onClick={() => toggleManualDictationField("improvements")} aria-label={manualDictation.enabled && manualDictation.activeField === "improvements" ? "Stop dictating improvements" : "Dictate what to improve"} aria-pressed={manualDictation.enabled && manualDictation.activeField === "improvements"} className={`ml-auto flex h-7 w-7 items-center justify-center rounded-lg border transition disabled:opacity-30 ${manualDictation.enabled && manualDictation.activeField === "improvements" ? "border-primary/40 bg-primary/12 text-primary" : "border-border bg-background text-muted hover:border-primary/35 hover:text-primary"}`}><span className="relative flex h-3.5 w-3.5 items-center justify-center">{manualDictation.listening && manualDictation.activeField === "improvements" ? <span className="absolute inset-0 animate-ping rounded-full bg-primary/30" /> : null}<Mic className="relative h-3 w-3" /></span></button></div>
+                    <textarea value={manualTrade.improvements} onFocus={() => manualDictation.activate("improvements")} onChange={(event) => updateManualTradeField("improvements", event.target.value)} rows={6} placeholder="The specific behaviour, rule or preparation you will change next time." className="w-full resize-y rounded-xl border border-border bg-background p-3 text-[9px] leading-5 text-foreground outline-none focus:border-primary/45" />
+                  </div>
                 </div>
                 <div className="mt-3"><label className="mb-2 block text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Execution quality <span className="font-normal normal-case tracking-normal">· optional</span></label><div className="flex items-center gap-1.5">{[1, 2, 3, 4, 5].map((rating) => <button key={rating} type="button" onClick={() => updateManualTradeField("rating", manualTrade.rating === rating ? null : rating)} className={`flex h-8 w-8 items-center justify-center rounded-lg border ${manualTrade.rating && rating <= manualTrade.rating ? "border-primary/35 bg-primary/10 text-primary" : "border-border bg-background text-muted hover:text-foreground"}`}><Star className={`h-3.5 w-3.5 ${manualTrade.rating && rating <= manualTrade.rating ? "fill-current" : ""}`} /></button>)}</div></div>
               </section>
