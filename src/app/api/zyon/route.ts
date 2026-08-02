@@ -224,20 +224,36 @@ async function providerModelsFor(apiKey: string, modelKey: ZyonModelKey) {
     : modelKey === "sonnet-5"
       ? "sonnet"
       : "opus";
+  const familyModel = (family: "opus" | "sonnet" | "haiku") =>
+    available.find((model) => model.name.includes(family) || model.id.includes(family))?.id;
+  // Keep the requested capability first, but guarantee that the remaining
+  // attempts use different model families. Previously the first three results
+  // could all be slow Opus variants, so a transient Opus problem exhausted the
+  // whole request without ever reaching Sonnet or Haiku.
   const orderedAvailable = [
-    ...available.filter((model) => model.name.includes(preferredFamily) || model.id.includes(preferredFamily)),
-    ...available.filter((model) => model.name.includes("sonnet") || model.id.includes("sonnet")),
-    ...available.filter((model) => model.name.includes("haiku") || model.id.includes("haiku")),
-    ...available,
-  ].map((model) => model.id);
+    familyModel(preferredFamily),
+    familyModel("sonnet"),
+    familyModel("haiku"),
+    familyModel("opus"),
+    ...available.map((model) => model.id),
+  ].filter((model): model is string => Boolean(model));
   const configuredFallbacks = [
     ZYON_MODELS[modelKey].apiId,
-    "claude-opus-4-1-20250805",
     "claude-sonnet-4-20250514",
     "claude-3-5-haiku-20241022",
+    "claude-opus-4-1-20250805",
   ];
   return [...new Set(available.length ? orderedAvailable : configuredFallbacks)]
     .slice(0, PROVIDER_TIMEOUTS_MS.length);
+}
+
+function isPresenceCheck(text: string, attachments: IncomingAttachment[]) {
+  if (attachments.length || text.length > 220) return false;
+  const normalized = text.toLowerCase().replace(/[^a-z0-9\s'?]/g, " ").replace(/\s+/g, " ").trim();
+  if (!/\b(?:hello|hi|hey|good morning|good afternoon|good evening|are you there|you there|ready)\b/.test(normalized)) {
+    return false;
+  }
+  return !/\b(?:analyse|analyze|analysis|chart|price|level|gamma|gex|dex|options|flow|setup|trade|entry|stop|target|why|what|where|when|how|game\s*plan|gameplan)\b/.test(normalized);
 }
 
 function parseDataUrl(value: unknown) {
@@ -1169,13 +1185,51 @@ export async function POST(request: NextRequest) {
     false,
     450,
   );
+
+  if (!historicalReplay && isPresenceCheck(finalUserText, finalAttachments)) {
+    const presenceText = `I'm here and ready for the ${root} session. What do you want to review first—overnight structure, current levels, options positioning, or today's Gameplan?`;
+    const assistantConversationEntry = conversationEntry({
+      id: zyonId("zyon-conversation-assistant"),
+      chatId,
+      sessionDate,
+      folderId: conversationFolder.folderId,
+      root,
+      role: "assistant",
+      text: presenceText,
+      createdAt: new Date().toISOString(),
+    });
+    const assistantConversationCloudSaved = await within(
+      persistJournalEntry(actor.userId, assistantConversationEntry),
+      false,
+      450,
+    );
+    return NextResponse.json({
+      text: presenceText,
+      model: modelKey,
+      gameplanReady: false,
+      gameplanDraft: null,
+      journalEntries: [
+        { ...userConversationEntry, cloudSaved: userConversationCloudSaved },
+        { ...assistantConversationEntry, cloudSaved: assistantConversationCloudSaved },
+      ],
+      folder: {
+        id: conversationFolder.folderId,
+        sessionDate,
+        cloudSaved: conversationFolder.cloudSaved,
+      },
+    }, { headers: { "Cache-Control": "private, no-store, max-age=0" } });
+  }
+
   let authoritativeMarketContext: Awaited<ReturnType<typeof getZyonMarketContext>> | null = null;
   let marketContextError = "";
   if (!historicalReplay) {
-    try {
-      authoritativeMarketContext = await getZyonMarketContext(root, actor.userId);
-    } catch (error) {
-      marketContextError = error instanceof Error ? error.message : "Market context could not be assembled.";
+    authoritativeMarketContext = await within(
+      getZyonMarketContext(root, actor.userId),
+      null,
+      8_000,
+    );
+    if (!authoritativeMarketContext) {
+      marketContextError = "Market context did not finish inside the live-chat budget.";
       console.error("ZYON authoritative market context failed", marketContextError);
     }
   }

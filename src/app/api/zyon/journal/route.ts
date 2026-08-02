@@ -5,6 +5,7 @@ import {
   isZyonMarketRoot,
   ZYON_CHAT_LIMIT,
   ZYON_CHAT_TAG,
+  ZYON_CONVERSATION_TAG,
   ZYON_CUSTOM_FOLDER_LIMIT,
   ZYON_DEFAULT_CHAT_ID,
   ZYON_FOLDER_TAG,
@@ -125,6 +126,48 @@ export async function GET(request: NextRequest) {
   } catch {
     return unavailableResponse();
   }
+
+  const compact = request.nextUrl.searchParams.get("compact") === "1";
+  const requestedChatId = request.nextUrl.searchParams.get("chatId")?.trim() ?? "";
+  const compactChatId = /^[a-zA-Z0-9_-]+$/.test(requestedChatId)
+    ? requestedChatId.slice(0, 160)
+    : ZYON_DEFAULT_CHAT_ID;
+  if (compact) {
+    const { data, error } = await supabase
+      .from("zyon_journal_entries")
+      .select("id,session_date,root,title,summary,body,kind,tags,attachments,created_at,updated_at")
+      .eq("user_id", actor.userId)
+      .contains("tags", [ZYON_CONVERSATION_TAG, zyonChatIdTag(compactChatId)])
+      .order("created_at", { ascending: false })
+      .limit(60);
+    if (error) {
+      if (unavailableTable(error.code)) return unavailableResponse();
+      console.error("ZYON compact conversation load failed", {
+        code: error.code,
+        message: error.message,
+      });
+      return NextResponse.json({ error: "ZYON conversation could not be loaded." }, { status: 502 });
+    }
+
+    const rows = ((data ?? []) as JournalRow[]).reverse();
+    const entries = rows
+      .map(fromRow)
+      .filter((entry): entry is ZyonJournalEntry => Boolean(entry));
+    const now = new Date().toISOString();
+    return NextResponse.json({
+      entries,
+      folders: [],
+      chats: [{
+        id: compactChatId,
+        name: compactChatId === ZYON_DEFAULT_CHAT_ID ? "Primary chat" : "Current chat",
+        createdAt: rows[0]?.created_at ?? now,
+        updatedAt: rows.at(-1)?.updated_at ?? rows.at(-1)?.created_at ?? now,
+      }],
+      activeChatId: compactChatId,
+      cloud: true,
+    }, { headers: { "Cache-Control": "private, no-store, max-age=0" } });
+  }
+
   const loadedRows: JournalRow[] = [];
   for (let offset = 0; offset < 5_000; offset += 1_000) {
     const { data, error } = await supabase
