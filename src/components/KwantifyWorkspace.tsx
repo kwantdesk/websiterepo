@@ -251,6 +251,10 @@ const JournalWorkspace = dynamic(() => import("@/components/journal/JournalWorks
   ssr: false,
   loading: () => workspaceLoader("Opening Journal", "Restoring account records."),
 });
+const BacktestingWorkspace = dynamic(() => import("@/components/backtesting/BacktestingWorkspace"), {
+  ssr: false,
+  loading: () => workspaceLoader("Opening Backtesting", "Preparing the historical replay engine."),
+});
 
 const BOTTOM_PANEL_MIN_HEIGHT = 150;
 const BOTTOM_PANEL_DEFAULT_HEIGHT = 300;
@@ -9042,6 +9046,7 @@ export default function KwantifyWorkspace({
             {bottomWorkspaceSection === "news" ? <NewsWorkspace /> : null}
             {bottomWorkspaceSection === "zyon" ? <ZyonWorkspace interpreter={kwantBotInterpreter} viewerName={currentDisplayName || currentUsername} accountKey={preferenceUserId} /> : null}
             {bottomWorkspaceSection === "journal" ? <JournalWorkspace accountKey={preferenceUserId || currentUsername || "local"} /> : null}
+            {bottomWorkspaceSection === "backtesting" ? <BacktestingWorkspace /> : null}
             {bottomWorkspaceSection === "socials" ? (
               <SocialsWorkspace
                 accountKey={preferenceUserId || currentUsername || "local"}
@@ -9314,7 +9319,7 @@ export default function KwantifyWorkspace({
         </div>
       </div>
 
-      {rightPanel && (
+      {bottomWorkspaceSection !== "backtesting" && rightPanel && (
         <div style={{ width: rightPanelWidth }} className="relative flex shrink-0 flex-col border-l border-border bg-panel">
           <div onMouseDown={startRightPanelResize} className="absolute bottom-0 left-0 top-0 z-10 w-1 cursor-col-resize bg-transparent transition-colors hover:w-1.5 hover:bg-primary/30" />
           {rightPanel === "friends" && (
@@ -9894,7 +9899,7 @@ export default function KwantifyWorkspace({
           )}
         </div>
       )}
-      <div className="relative flex w-[44px] shrink-0 flex-col items-center gap-2 border-l border-border bg-panel py-3">
+      <div className={`relative w-[44px] shrink-0 flex-col items-center gap-2 border-l border-border bg-panel py-3 ${bottomWorkspaceSection === "backtesting" ? "hidden" : "flex"}`}>
         <span aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-14 z-10 h-px -translate-y-px bg-border" />
         {!rightPanel && (
           <button

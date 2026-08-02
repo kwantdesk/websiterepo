@@ -46,15 +46,21 @@ export async function GET(request: NextRequest) {
   }
 
   const rootInput = (request.nextUrl.searchParams.get("root") || "NQ").trim().toUpperCase();
-  const liveSession = currentGameplanSession();
+  const requestedSessionDate = request.nextUrl.searchParams.get("sessionDate")?.trim();
+  const liveSession = requestedSessionDate ? "newyork" as const : currentGameplanSession();
   if (rootInput !== "NQ" && rootInput !== "ES") {
     return NextResponse.json({ error: "Gameplan currently supports NQ and ES." }, { status: 400 });
   }
   try {
     const root = rootInput as "NQ" | "ES";
     const source = rootInput === "NQ" ? "NDX" : "SPX";
-    const options = await getOptionsFlowPayload(source, "FUTURES");
-    const futuresPrice = options.session.marketOpen
+    const historical = Boolean(requestedSessionDate);
+    const options = await getOptionsFlowPayload(
+      source,
+      historical ? "CASH" : "FUTURES",
+      requestedSessionDate,
+    );
+    const futuresPrice = !historical && options.session.marketOpen
       ? await getNativeFuturesSpot(root).catch(() => null)
       : await getNativeFuturesSessionClose(root, options.session.sessionDate).catch(() => null);
     const cashPrice = options.stockPrice;
@@ -70,10 +76,10 @@ export async function GET(request: NextRequest) {
           ...options.marketData,
           mode: "FUTURES" as const,
           provider: "Databento" as const,
-          status: options.session.marketOpen ? "LIVE" as const : "LAST_SESSION" as const,
+          status: !historical && options.session.marketOpen ? "LIVE" as const : "LAST_SESSION" as const,
           symbol: root,
           futuresRoot: root,
-          asOf: options.session.marketOpen
+          asOf: !historical && options.session.marketOpen
             ? new Date().toISOString()
             : newYorkCashCloseIso(options.session.sessionDate),
           lastPrice: futuresPrice,
@@ -81,11 +87,11 @@ export async function GET(request: NextRequest) {
           ask: null,
           basisToOptionsUnderlying: futuresPrice! - cashPrice!,
           levelPriceScale: scale,
-          stale: !options.session.marketOpen,
+          stale: historical || !options.session.marketOpen,
           fallback: false,
-          detail: options.session.marketOpen
+          detail: !historical && options.session.marketOpen
             ? "Live CME futures calibration against the active New York options snapshot."
-            : "Frozen CME futures calibration at the latest completed New York close.",
+            : "Frozen CME futures calibration at the selected completed New York close.",
         },
       }
       : options;

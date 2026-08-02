@@ -129,7 +129,7 @@ async function firstCompleteProfile(
   return null;
 }
 
-async function buildValueAreaPayload(symbol: string, now: number): Promise<ValueAreaPayload> {
+export async function buildValueAreaPayload(symbol: string, now: number): Promise<ValueAreaPayload> {
   const tickSize = futuresTickSize(symbol);
   const dailyWindows = completedCmeDailyWindows(now);
   const weeklyWindows = completedCmeWeeklyWindows(now);
@@ -174,7 +174,8 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "CME market data is not configured." }, { status: 503 });
   }
 
-  const requestedSymbol = new URL(request.url).searchParams.get("symbol")?.trim();
+  const searchParams = new URL(request.url).searchParams;
+  const requestedSymbol = searchParams.get("symbol")?.trim();
   const instrument = requestedSymbol
     ? DATABENTO_FUTURES.find((candidate) =>
         candidate.kind === "future"
@@ -185,7 +186,12 @@ export async function GET(request: Request) {
   }
   const symbol = instrument.symbol;
 
-  const now = Date.now();
+  const asOfInput = searchParams.get("asOf")?.trim();
+  const parsedAsOf = asOfInput ? Date.parse(asOfInput) : Date.now();
+  const now = Number.isFinite(parsedAsOf) ? Math.min(parsedAsOf, Date.now()) : Number.NaN;
+  if (!Number.isFinite(now) || now < Date.parse("2010-06-06T00:00:00.000Z")) {
+    return NextResponse.json({ error: "A valid replay timestamp within CME historical coverage is required." }, { status: 400 });
+  }
   const daily = completedCmeDailyWindows(now)[0];
   const weekly = completedCmeWeeklyWindows(now)[0];
   if (!daily || !weekly) {
@@ -196,7 +202,7 @@ export async function GET(request: Request) {
   if (cached && cached.expiresAt > now) {
     try {
       return NextResponse.json(await cached.promise, {
-        headers: { "Cache-Control": "public, s-maxage=60, stale-while-revalidate=300" },
+        headers: { "Cache-Control": asOfInput ? "private, max-age=300" : "public, s-maxage=60, stale-while-revalidate=300" },
       });
     } catch {
       valueAreaCache.delete(cacheKey);
@@ -211,7 +217,7 @@ export async function GET(request: Request) {
   try {
     const payload = await promise;
     return NextResponse.json(payload, {
-      headers: { "Cache-Control": "public, s-maxage=60, stale-while-revalidate=300" },
+      headers: { "Cache-Control": asOfInput ? "private, max-age=300" : "public, s-maxage=60, stale-while-revalidate=300" },
     });
   } catch (error) {
     if (valueAreaCache.get(cacheKey)?.promise === promise) valueAreaCache.delete(cacheKey);

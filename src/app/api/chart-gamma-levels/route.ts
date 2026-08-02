@@ -36,6 +36,7 @@ async function isAuthenticated(request: NextRequest) {
 export async function GET(request: NextRequest) {
   const root = (request.nextUrl.searchParams.get("root") || "").trim().toUpperCase();
   const source = (request.nextUrl.searchParams.get("source") || "").trim().toUpperCase();
+  const sessionDate = request.nextUrl.searchParams.get("sessionDate")?.trim();
   const calibratedRequest = request.nextUrl.searchParams.get("calibrated") === "1";
   const nativeFuturesRequest = !calibratedRequest && (root === "NQ" || root === "ES") && source === root;
   if (!nativeFuturesRequest && !getConfiguredQuantDataApiKey()) {
@@ -46,8 +47,8 @@ export async function GET(request: NextRequest) {
   }
   try {
     const payload = calibratedRequest && (root === "NQ" || root === "ES")
-      ? await getCashCalibratedChartGammaLevels(root, source)
-      : await getChartGammaLevels(root, source);
+      ? await getCashCalibratedChartGammaLevels(root, source, sessionDate)
+      : await getChartGammaLevels(root, source, sessionDate);
     return NextResponse.json(payload, {
       headers: { "Cache-Control": "private, no-store, max-age=0" },
     });

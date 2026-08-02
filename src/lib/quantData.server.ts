@@ -371,7 +371,11 @@ function parseIvRank(payload: unknown, sessionDate: string) {
   if (!isRecord(payload) || !isRecord(payload.data)) {
     return { ivRank: null, callIv: null, putIv: null, atmIv: null, ivPercentile: null, historySessions: 0, expiration: null, priorAtmIv: null };
   }
-  const ordered = Object.entries(payload.data).sort(([a], [b]) => a.localeCompare(b));
+  // Never let a historical replay borrow an IV observation published after
+  // its selected session. The endpoint can return a long history ending today.
+  const ordered = Object.entries(payload.data)
+    .filter(([date]) => date <= sessionDate)
+    .sort(([a], [b]) => a.localeCompare(b));
   const latest = ordered.at(-1)?.[1];
   if (!isRecord(latest) || !isRecord(latest.contractTypeToIVData)) {
     return { ivRank: null, callIv: null, putIv: null, atmIv: null, ivPercentile: null, historySessions: 0, expiration: null, priorAtmIv: null };
@@ -1532,8 +1536,16 @@ function errorMessage(result: PromiseSettledResult<unknown>, label: string) {
   return `${label}: ${message}`;
 }
 
-async function buildOptionsFlowPayload(symbol: string, requestedPriceMode: OptionsPriceMode): Promise<OptionsFlowPayload> {
-  const session = getUsOptionsSession();
+async function buildOptionsFlowPayload(
+  symbol: string,
+  requestedPriceMode: OptionsPriceMode,
+  requestedSessionDate?: string,
+): Promise<OptionsFlowPayload> {
+  const currentSession = getUsOptionsSession();
+  const historical = Boolean(requestedSessionDate && requestedSessionDate !== currentSession.sessionDate);
+  const session = historical
+    ? { marketOpen: false, sessionDate: requestedSessionDate! }
+    : currentSession;
   const sessionScope = { sessionDate: session.sessionDate };
   const dailyRange = {
     startTime: `${offsetIsoDate(session.sessionDate, -60)}T00:00:00Z`,
@@ -2705,19 +2717,32 @@ export async function getGexDeskReplaySessionDates(limitInput: number = 5): Prom
   return sessionDates;
 }
 
-export async function getOptionsFlowPayload(symbolInput: string, priceModeInput: string = "CASH") {
+export async function getOptionsFlowPayload(
+  symbolInput: string,
+  priceModeInput: string = "CASH",
+  requestedSessionDate?: string,
+) {
   const symbol = symbolInput.trim().toUpperCase();
   const priceMode: OptionsPriceMode = priceModeInput.trim().toUpperCase() === "FUTURES" ? "FUTURES" : "CASH";
-  const session = getUsOptionsSession();
-  const cacheKey = `${symbol}:${priceMode}`;
+  const currentSession = getUsOptionsSession();
+  const sessionDate = requestedSessionDate?.trim() || currentSession.sessionDate;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(sessionDate) || Number.isNaN(Date.parse(`${sessionDate}T00:00:00Z`))) {
+    throw new QuantDataError("A valid historical options session date is required.", 400, null);
+  }
+  if (sessionDate > currentSession.sessionDate) {
+    throw new QuantDataError("Historical options sessions cannot be in the future.", 400, null);
+  }
+  const historical = sessionDate !== currentSession.sessionDate;
+  const session = historical ? { marketOpen: false, sessionDate } : currentSession;
+  const cacheKey = `${symbol}:${priceMode}:${sessionDate}`;
   const cached = requestCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) return cached.promise;
 
   const promise = (session.marketOpen
     ? buildOptionsFlowPayload(symbol, priceMode)
     : unstable_cache(
-      () => buildOptionsFlowPayload(symbol, priceMode),
-      ["completed-new-york-options-flow-v1", symbol, priceMode, session.sessionDate],
+      () => buildOptionsFlowPayload(symbol, priceMode, sessionDate),
+      ["completed-new-york-options-flow-v2", symbol, priceMode, session.sessionDate],
       { revalidate: 6 * 60 * 60 },
     )()
   ).catch((error) => {
@@ -2734,6 +2759,7 @@ export async function getOptionsFlowPayload(symbolInput: string, priceModeInput:
 export async function getChartGammaLevels(
   rootInput: string,
   sourceInput: string,
+  requestedSessionDate?: string,
 ): Promise<ChartGammaLevelsPayload> {
   const root = rootInput.trim().toUpperCase();
   if (root !== "NQ" && root !== "ES") {
@@ -2746,7 +2772,7 @@ export async function getChartGammaLevels(
   // NATIVE futures-options gamma (Databento): the source IS the futures root (NQ/ES).
   // NDX/QQQ/SPX/SPY keep the KwantData cash-conversion path below.
   if (requestedSource === root) {
-    return buildNativeChartGamma(root as NativeGammaRoot);
+    return buildNativeChartGamma(root as NativeGammaRoot, requestedSessionDate);
   }
   if (!new Set<string>(compatibleSymbols).has(requestedSource)) {
     throw new QuantDataError(
@@ -2758,7 +2784,17 @@ export async function getChartGammaLevels(
   const symbols: ChartGammaSourceSnapshot["symbol"][] = [
     requestedSource as ChartGammaSourceSnapshot["symbol"],
   ];
-  const session = getUsOptionsSession();
+  const currentSession = getUsOptionsSession();
+  const sessionDate = requestedSessionDate?.trim() || currentSession.sessionDate;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(sessionDate) || Number.isNaN(Date.parse(`${sessionDate}T00:00:00Z`))) {
+    throw new QuantDataError("A valid historical gamma session date is required.", 400, null);
+  }
+  if (sessionDate > currentSession.sessionDate) {
+    throw new QuantDataError("Historical gamma sessions cannot be in the future.", 400, null);
+  }
+  const session = sessionDate === currentSession.sessionDate
+    ? currentSession
+    : { marketOpen: false, sessionDate };
   const symbol = symbols[0];
   const dailyRange = {
     startTime: `${offsetIsoDate(session.sessionDate, -60)}T00:00:00Z`,
@@ -2832,7 +2868,9 @@ export async function getChartGammaLevels(
   return {
     root,
     requestedSource: symbol,
-    checkedAt: new Date().toISOString(),
+    checkedAt: session.marketOpen
+      ? new Date().toISOString()
+      : newYorkCashCloseIso(session.sessionDate),
     refreshAfterMs: session.marketOpen ? 5_000 : 60_000,
     marketOpen: session.marketOpen,
     snapshotMode: session.marketOpen ? "LIVE" : "NEW_YORK_EOD",
@@ -2881,9 +2919,16 @@ export async function getGexDeskZeroGammaPayload(): Promise<GexDeskZeroGammaPayl
   }
 }
 
-async function buildNativeChartGamma(root: NativeGammaRoot): Promise<ChartGammaLevelsPayload> {
+async function buildNativeChartGamma(
+  root: NativeGammaRoot,
+  requestedSessionDate?: string,
+): Promise<ChartGammaLevelsPayload> {
   try {
-    const session = getUsOptionsSession();
+    const currentSession = getUsOptionsSession();
+    const sessionDate = requestedSessionDate?.trim() || currentSession.sessionDate;
+    const session = sessionDate === currentSession.sessionDate
+      ? currentSession
+      : { marketOpen: false, sessionDate };
     const spot = session.marketOpen
       ? await getNativeFuturesSpot(root)
       : await getNativeFuturesSessionClose(root, session.sessionDate)
@@ -2918,7 +2963,7 @@ async function buildNativeChartGamma(root: NativeGammaRoot): Promise<ChartGammaL
     };
   } catch (nativeError) {
     try {
-      return await getCashCalibratedChartGammaLevels(root);
+      return await getCashCalibratedChartGammaLevels(root, undefined, requestedSessionDate);
     } catch {
       throw nativeError;
     }
@@ -2928,6 +2973,7 @@ async function buildNativeChartGamma(root: NativeGammaRoot): Promise<ChartGammaL
 export async function getCashCalibratedChartGammaLevels(
   root: NativeGammaRoot,
   sourceInput?: string,
+  requestedSessionDate?: string,
 ): Promise<ChartGammaLevelsPayload> {
   const defaultSource = root === "NQ" ? "QQQ" : "SPY";
   const normalizedSource = (sourceInput || defaultSource).trim().toUpperCase();
@@ -2936,7 +2982,7 @@ export async function getCashCalibratedChartGammaLevels(
     throw new QuantDataError(`${normalizedSource || "The requested source"} cannot be calibrated to ${root}.`, 400, null);
   }
   const calibrationSource = normalizedSource as ChartGammaSourceSnapshot["symbol"];
-  const cashPayload = await getChartGammaLevels(root, calibrationSource);
+  const cashPayload = await getChartGammaLevels(root, calibrationSource, requestedSessionDate);
   const cashSource = cashPayload.sources.find((source) => source.symbol === calibrationSource);
   if (!cashSource || !cashSource.levels.length || !Number.isFinite(cashSource.stockPrice) || cashSource.stockPrice <= 0) {
     throw new QuantDataError(`No ${calibrationSource} gamma snapshot is available to calibrate ${root}.`, 422, null);
