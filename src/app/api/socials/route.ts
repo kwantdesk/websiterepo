@@ -165,9 +165,9 @@ export async function GET(request: NextRequest) {
       .from("social_objects")
       .select("user_id,id,author_label,object_type,scope,desk_id,parent_id,payload,created_at,updated_at")
       .eq("user_id", profileRow.user_id)
-      .in("object_type", ["profile", "precord", "receipt", "card"])
+      .in("object_type", ["profile", "precord", "receipt", "card", "post", "reaction"])
       .order("created_at", { ascending: false })
-      .limit(500);
+      .limit(1_000);
     if (objectsError) {
       if (tableUnavailable(objectsError.code)) return unavailableResponse();
       console.error("Social profile records failed", {
@@ -177,7 +177,66 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "This profile could not be loaded." }, { status: 502 });
     }
 
-    const rows = (profileObjects ?? []) as SocialRow[];
+    const requestedProfile = normalizeSocialProfile(profileRow.payload, profileRow.author_label);
+    const viewingOwnProfile = profileRow.user_id === actor.userId;
+    const profileRows = ((profileObjects ?? []) as SocialRow[]).filter((row) => {
+      if (viewingOwnProfile) return true;
+      if (row.object_type === "reaction") {
+        const kind = cleanIdentifier((row.payload as Record<string, unknown>)?.kind, 20);
+        if (kind === "LIKE" && requestedProfile.visibility.likes === "private") return false;
+        if (kind === "SAVED" && requestedProfile.visibility.saves === "private") return false;
+      }
+      if (row.object_type === "post") {
+        const postPayload = row.payload as Record<string, unknown>;
+        if (postPayload?.isRepost === true && requestedProfile.visibility.reposts === "private") return false;
+      }
+      return true;
+    });
+    const referencedIds = [...new Set(profileRows.flatMap((row) => {
+      const rowPayload = row.payload as Record<string, unknown>;
+      return [
+        row.parent_id,
+        cleanIdentifier(rowPayload?.relatedPrecordId, 180),
+        cleanIdentifier(rowPayload?.repostOfPostId, 180),
+      ].filter((value): value is string => Boolean(value));
+    }))].slice(0, 500);
+    let referencedRows: SocialRow[] = [];
+    if (referencedIds.length) {
+      const { data: references, error: referencesError } = await supabase
+        .from("social_objects")
+        .select("user_id,id,author_label,object_type,scope,desk_id,parent_id,payload,created_at,updated_at")
+        .in("id", referencedIds)
+        .in("object_type", ["post", "precord", "receipt"])
+        .limit(500);
+      if (!referencesError) referencedRows = (references ?? []) as SocialRow[];
+    }
+    const contentIds = [...new Set([...profileRows, ...referencedRows]
+      .filter((row) => row.object_type === "post" || row.object_type === "precord")
+      .map((row) => row.id))].slice(0, 500);
+    let interactionRows: SocialRow[] = [];
+    if (contentIds.length) {
+      const { data: interactions, error: interactionsError } = await supabase
+        .from("social_objects")
+        .select("user_id,id,author_label,object_type,scope,desk_id,parent_id,payload,created_at,updated_at")
+        .in("parent_id", contentIds)
+        .in("object_type", ["comment", "reaction", "receipt"])
+        .limit(1_000);
+      if (!interactionsError) interactionRows = (interactions ?? []) as SocialRow[];
+    }
+    const rows = [...new Map([...profileRows, ...referencedRows, ...interactionRows]
+      .map((row) => [`${row.user_id}:${row.id}`, row])).values()].filter((row) => {
+      if (viewingOwnProfile || row.user_id !== profileRow.user_id) return true;
+      if (row.object_type === "reaction") {
+        const kind = cleanIdentifier((row.payload as Record<string, unknown>)?.kind, 20);
+        if (kind === "LIKE" && requestedProfile.visibility.likes === "private") return false;
+        if (kind === "SAVED" && requestedProfile.visibility.saves === "private") return false;
+      }
+      if (row.object_type === "post") {
+        const postPayload = row.payload as Record<string, unknown>;
+        if (postPayload?.isRepost === true && requestedProfile.visibility.reposts === "private") return false;
+      }
+      return true;
+    });
     if (!rows.some((row) => row.object_type === "profile")) rows.unshift(profileRow);
     return NextResponse.json(
       {
@@ -288,8 +347,8 @@ export async function POST(request: NextRequest) {
     if (!parentId || !["LIKE", "USEFUL", "CLEAR", "EVIDENCE", "SAVED", "FIRE", "TARGET", "BRAIN", "APPLAUSE"].includes(kind)) {
       return NextResponse.json({ error: "A valid reaction target and type are required." }, { status: 400 });
     }
-    if (kind === "SAVED" && scope !== "private") {
-      return NextResponse.json({ error: "Saved items are private." }, { status: 400 });
+    if (kind === "SAVED" && scope !== "private" && scope !== "community") {
+      return NextResponse.json({ error: "Saved items can only be private or visible on the profile." }, { status: 400 });
     }
     id = `reaction:${parentId}:${kind}`;
     useUpsert = true;

@@ -143,6 +143,7 @@ import { zyonGameplanLaunchHref } from "@/lib/zyonGameplanLaunch";
 type SocialTab = "today" | "reasoning" | "precords" | "desks" | "feed" | "rankings" | "cards" | "profile";
 type FeedFilter = "all" | "proven" | "mine";
 type SocialFeedMode = "following" | "recommended" | "latest";
+type SocialFeedCollection = "feed" | "posts" | "liked" | "reposts" | "saved";
 type RankingScope = "desk" | "friends" | "season";
 type AvatarCropDraft = {
   sourceUrl: string;
@@ -521,6 +522,7 @@ export default function SocialsWorkspace({
   const [tab, setTab] = useState<SocialTab>(initialProfileHandle ? "profile" : "today");
   const [feedFilter, setFeedFilter] = useState<FeedFilter>("all");
   const [socialFeedMode, setSocialFeedMode] = useState<SocialFeedMode>("following");
+  const [socialFeedCollection, setSocialFeedCollection] = useState<SocialFeedCollection>("feed");
   const [followingUsers, setFollowingUsers] = useState<SocialFollowListItem[]>([]);
   const [followingState, setFollowingState] = useState<"loading" | "ready" | "unavailable">("loading");
   const [followActionUserId, setFollowActionUserId] = useState("");
@@ -940,6 +942,24 @@ export default function SocialsWorkspace({
         && receipts.some((receipt) => receipt.parentId === object.id)
         && ["GAMEPLAN", "ZYON"].includes(typedPayload<SocialPrecordPayload>(object)?.source ?? ""))
     : [];
+  const profileCollectionContent = [...posts, ...precords.filter((record) =>
+    receipts.some((receipt) => receipt.parentId === record.id))];
+  const viewedProfilePosts = viewedProfileObject
+    ? posts.filter((post) => post.userId === viewedProfileObject.userId && !typedPayload<SocialPostPayload>(post)?.isRepost)
+    : [];
+  const viewedProfileReposts = viewedProfileObject
+    ? posts.filter((post) => post.userId === viewedProfileObject.userId && typedPayload<SocialPostPayload>(post)?.isRepost)
+    : [];
+  const viewedReactionCollection = (kind: "LIKE" | "SAVED") => {
+    if (!viewedProfileObject) return [];
+    const targetIds = new Set(reactions
+      .filter((reaction) => reaction.userId === viewedProfileObject.userId && typedPayload<SocialReactionPayload>(reaction)?.kind === kind)
+      .map((reaction) => reaction.parentId)
+      .filter((id): id is string => Boolean(id)));
+    return profileCollectionContent.filter((object) => targetIds.has(object.id));
+  };
+  const viewedProfileLiked = viewedReactionCollection("LIKE");
+  const viewedProfileSaved = viewedReactionCollection("SAVED");
   const savedGameplanIds = new Set(
     reactions
       .filter((reaction) => reaction.userId === resolvedAccountKey && typedPayload<SocialReactionPayload>(reaction)?.kind === "SAVED")
@@ -1331,7 +1351,28 @@ export default function SocialsWorkspace({
   const socialFeedObjects = useMemo(() => {
     const completedGameplans = precords.filter((record) =>
       receipts.some((receipt) => receipt.parentId === record.id));
-    return [...posts, ...completedGameplans]
+    const availableObjects = [...posts, ...completedGameplans];
+    if (socialFeedCollection === "posts") {
+      return availableObjects
+        .filter((object) => object.userId === resolvedAccountKey && (object.objectType !== "post" || !typedPayload<SocialPostPayload>(object)?.isRepost))
+        .sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt));
+    }
+    if (socialFeedCollection === "reposts") {
+      return posts
+        .filter((post) => post.userId === resolvedAccountKey && typedPayload<SocialPostPayload>(post)?.isRepost)
+        .sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt));
+    }
+    if (socialFeedCollection === "liked" || socialFeedCollection === "saved") {
+      const reactionKind = socialFeedCollection === "liked" ? "LIKE" : "SAVED";
+      const selectedIds = new Set(reactions
+        .filter((reaction) => reaction.userId === resolvedAccountKey && typedPayload<SocialReactionPayload>(reaction)?.kind === reactionKind)
+        .map((reaction) => reaction.parentId)
+        .filter((id): id is string => Boolean(id)));
+      return availableObjects
+        .filter((object) => selectedIds.has(object.id))
+        .sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt));
+    }
+    return availableObjects
       .filter((object) => {
         if (object.scope === "private" && object.userId !== resolvedAccountKey) return false;
         if (socialFeedMode === "following") {
@@ -1345,7 +1386,7 @@ export default function SocialsWorkspace({
         return true;
       })
       .sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt));
-  }, [followingUserIds, posts, precords, receipts, resolvedAccountKey, socialFeedMode]);
+  }, [followingUserIds, posts, precords, reactions, receipts, resolvedAccountKey, socialFeedCollection, socialFeedMode]);
   const suggestedProfiles = useMemo(() => profiles
     .filter((object) => object.userId !== resolvedAccountKey && !followingUserIds.has(object.userId))
     .map((object) => ({ object, profile: normalizeSocialProfile(object.payload, object.authorLabel) }))
@@ -1465,7 +1506,7 @@ export default function SocialsWorkspace({
       userId: resolvedAccountKey,
       authorLabel: currentProfile.displayName,
       objectType: "progress",
-      scope: "private",
+      scope: currentProfile.visibility.saves,
       payload,
     }));
   };
@@ -1908,6 +1949,11 @@ export default function SocialsWorkspace({
       setNotice("Profile not saved. Account storage is unavailable, so your editor has stayed open.");
       return;
     }
+    if (profile.visibility.saves !== currentProfile.visibility.saves) {
+      await Promise.all(reactions
+        .filter((reaction) => reaction.userId === resolvedAccountKey && typedPayload<SocialReactionPayload>(reaction)?.kind === "SAVED")
+        .map((reaction) => saveObject({ ...reaction, scope: profile.visibility.saves, updatedAt: new Date().toISOString() })));
+    }
     const remainingFeedbackTime = Math.max(0, 420 - (Date.now() - saveStartedAt));
     if (remainingFeedbackTime) {
       await new Promise((resolve) => window.setTimeout(resolve, remainingFeedbackTime));
@@ -2237,7 +2283,7 @@ export default function SocialsWorkspace({
       parentId: record.id,
       payload: { kind: "SAVED" } satisfies SocialReactionPayload,
     }));
-    setNotice("Gameplan saved privately to your account.");
+    setNotice(currentProfile.visibility.saves === "community" ? "Gameplan saved to your public profile collection." : "Gameplan saved privately to your account.");
   };
 
   const toggleStructuredPostSave = async (post: SocialObject) => {
@@ -2255,11 +2301,37 @@ export default function SocialsWorkspace({
       userId: resolvedAccountKey,
       authorLabel: currentProfile.displayName,
       objectType: "reaction",
-      scope: "private",
+      scope: currentProfile.visibility.saves,
       parentId: post.id,
       payload: { kind: "SAVED" } satisfies SocialReactionPayload,
     }));
-    setNotice("Post saved privately to your account.");
+    setNotice(currentProfile.visibility.saves === "community" ? "Post saved to your public profile collection." : "Post saved privately to your account.");
+  };
+
+  const updateCollectionVisibility = async (
+    key: "likes" | "reposts" | "saves",
+    visibility: "private" | "community",
+  ) => {
+    const nextProfile: SocialProfilePayload = {
+      ...currentProfile,
+      visibility: { ...currentProfile.visibility, [key]: visibility },
+    };
+    setProfileDraft(nextProfile);
+    await saveObject(buildLocalObject({
+      id: "profile",
+      userId: resolvedAccountKey,
+      authorLabel: nextProfile.displayName,
+      objectType: "profile",
+      scope: nextProfile.visibility.profile,
+      payload: nextProfile,
+    }));
+    if (key === "saves") {
+      await Promise.all(reactions
+        .filter((reaction) => reaction.userId === resolvedAccountKey && typedPayload<SocialReactionPayload>(reaction)?.kind === "SAVED")
+        .map((reaction) => saveObject({ ...reaction, scope: visibility, updatedAt: new Date().toISOString() })));
+    }
+    const label = key === "likes" ? "Liked posts" : key === "reposts" ? "Reposts" : "Saved posts";
+    setNotice(`${label} are now ${visibility === "community" ? "visible on your profile" : "private"}.`);
   };
 
   const toggleGameplanRepost = async (record: SocialObject) => {
@@ -3279,9 +3351,35 @@ export default function SocialsWorkspace({
                     <button type="button" onClick={openOneLinerComposer} className="flex h-10 items-center gap-2 rounded-xl border border-primary/25 bg-primary/[0.06] px-4 text-[8px] font-semibold text-primary transition-colors hover:bg-primary/10"><Zap className="h-3.5 w-3.5" />Create one-liner</button>
                   </div>
                 </div>
-                <div className="relative mt-4 flex gap-1 rounded-xl border border-border bg-background/35 p-1">
-                  {(["following", "recommended", "latest"] as SocialFeedMode[]).map((mode) => <button key={mode} type="button" onClick={() => setSocialFeedMode(mode)} className={`flex h-8 flex-1 items-center justify-center rounded-lg px-3 text-[8px] font-semibold capitalize transition-colors ${socialFeedMode === mode ? "bg-primary/12 text-primary shadow-[0_0_18px_color-mix(in_srgb,var(--primary)_10%,transparent)]" : "text-muted hover:bg-surface hover:text-foreground"}`}>{mode}</button>)}
+                <div className="relative mt-4 grid grid-cols-3 gap-1 rounded-xl border border-border bg-background/35 p-1 sm:grid-cols-5">
+                  {([
+                    ["feed", "Feed", Compass],
+                    ["posts", "My posts", MessageCircle],
+                    ["liked", "Liked", Heart],
+                    ["reposts", "Reposts", Repeat2],
+                    ["saved", "Saved", Bookmark],
+                  ] as Array<[SocialFeedCollection, string, typeof Compass]>).map(([collection, label, Icon]) => (
+                    <button key={collection} type="button" onClick={() => setSocialFeedCollection(collection)} className={`flex h-9 items-center justify-center gap-2 rounded-lg px-2 text-[8px] font-semibold transition-colors ${socialFeedCollection === collection ? "bg-primary/12 text-primary shadow-[0_0_18px_color-mix(in_srgb,var(--primary)_12%,transparent)]" : "text-muted hover:bg-surface hover:text-foreground"}`}>
+                      <Icon className={`h-3.5 w-3.5 ${collection === "liked" && socialFeedCollection === collection ? "fill-current" : ""}`} />{label}
+                    </button>
+                  ))}
                 </div>
+                {socialFeedCollection === "feed" ? (
+                  <div className="relative mt-2 flex gap-1 rounded-xl border border-border bg-background/35 p-1">
+                    {(["following", "recommended", "latest"] as SocialFeedMode[]).map((mode) => <button key={mode} type="button" onClick={() => setSocialFeedMode(mode)} className={`flex h-8 flex-1 items-center justify-center rounded-lg px-3 text-[8px] font-semibold capitalize transition-colors ${socialFeedMode === mode ? "bg-primary/12 text-primary shadow-[0_0_18px_color-mix(in_srgb,var(--primary)_10%,transparent)]" : "text-muted hover:bg-surface hover:text-foreground"}`}>{mode}</button>)}
+                  </div>
+                ) : null}
+                {socialFeedCollection === "liked" || socialFeedCollection === "reposts" || socialFeedCollection === "saved" ? (() => {
+                  const visibilityKey: "likes" | "reposts" | "saves" = socialFeedCollection === "liked" ? "likes" : socialFeedCollection === "saved" ? "saves" : "reposts";
+                  const visibility = currentProfile.visibility[visibilityKey];
+                  return (
+                    <div className="relative mt-2 flex items-center gap-3 rounded-xl border border-border bg-background/35 px-3 py-2">
+                      {visibility === "community" ? <Globe2 className="h-3.5 w-3.5 text-primary" /> : <LockKeyhole className="h-3.5 w-3.5 text-muted" />}
+                      <div className="min-w-0 flex-1"><div className="text-[8px] font-semibold text-foreground">Show {socialFeedCollection} on my profile</div><div className="mt-0.5 text-[7px] text-muted">{visibility === "community" ? "Anyone can open this collection." : "Only you can see this collection."}</div></div>
+                      <button type="button" onClick={() => void updateCollectionVisibility(visibilityKey, visibility === "community" ? "private" : "community")} className={`h-8 rounded-lg border px-3 text-[7px] font-semibold transition-colors ${visibility === "community" ? "border-primary/25 bg-primary/10 text-primary" : "border-border bg-surface text-muted hover:text-foreground"}`}>{visibility === "community" ? "Public" : "Only me"}</button>
+                    </div>
+                  );
+                })() : null}
               </Card>
 
               <Card className="flex items-center gap-3 p-3">
@@ -3297,9 +3395,9 @@ export default function SocialsWorkspace({
                 {!socialFeedObjects.length ? (
                   <Card className="border-dashed p-12 text-center">
                     <Heart className="mx-auto h-8 w-8 text-muted" />
-                    <h3 className="mt-4 text-[12px] font-semibold">{socialFeedMode === "following" ? "Your Following feed is ready." : "No posts match this view yet."}</h3>
-                    <p className="mx-auto mt-2 max-w-md text-[8px] leading-4 text-muted">{socialFeedMode === "following" ? "Follow traders from Recommended or open a profile and press Follow. Their new posts and completed Gameplans will appear here automatically." : "Create the first structured market post or return when the network has new activity."}</p>
-                    <div className="mt-5 flex justify-center gap-2"><button type="button" onClick={() => setSocialFeedMode("recommended")} className="rounded-xl border border-primary/25 bg-primary/[0.06] px-4 py-2.5 text-[8px] font-semibold text-primary">Find traders</button><button type="button" onClick={() => openNewPost()} className="rounded-xl bg-primary px-4 py-2.5 text-[8px] font-semibold text-background">Create post</button></div>
+                    <h3 className="mt-4 text-[12px] font-semibold">{socialFeedCollection === "feed" ? (socialFeedMode === "following" ? "Your Following feed is ready." : "No posts match this view yet.") : `Your ${socialFeedCollection} collection is empty.`}</h3>
+                    <p className="mx-auto mt-2 max-w-md text-[8px] leading-4 text-muted">{socialFeedCollection === "feed" ? (socialFeedMode === "following" ? "Follow traders from Recommended or open a profile and press Follow. Their new posts and completed Gameplans will appear here automatically." : "Create the first structured market post or return when the network has new activity.") : `Items appear here automatically when you ${socialFeedCollection === "posts" ? "publish them" : socialFeedCollection === "liked" ? "like them" : socialFeedCollection === "reposts" ? "repost them" : "save them"}.`}</p>
+                    <div className="mt-5 flex justify-center gap-2">{socialFeedCollection === "feed" ? <button type="button" onClick={() => setSocialFeedMode("recommended")} className="rounded-xl border border-primary/25 bg-primary/[0.06] px-4 py-2.5 text-[8px] font-semibold text-primary">Find traders</button> : <button type="button" onClick={() => setSocialFeedCollection("feed")} className="rounded-xl border border-primary/25 bg-primary/[0.06] px-4 py-2.5 text-[8px] font-semibold text-primary">Back to feed</button>}<button type="button" onClick={() => openNewPost()} className="rounded-xl bg-primary px-4 py-2.5 text-[8px] font-semibold text-background">Create post</button></div>
                   </Card>
                 ) : null}
               </div>
@@ -3646,6 +3744,31 @@ export default function SocialsWorkspace({
                     ))}
                     <p className="text-[7px] leading-4 text-muted">Follower and following counts always remain public. These controls only hide the account lists.</p>
                   </div>
+                  <div className="my-4 h-px bg-border" />
+                  <div className="space-y-3">
+                    <div className="text-[7px] font-semibold uppercase tracking-[0.1em] text-muted">Social collections</div>
+                    {([
+                      ["likes", "Liked posts"],
+                      ["reposts", "Reposts"],
+                      ["saves", "Saved posts"],
+                    ] as Array<["likes" | "reposts" | "saves", string]>).map(([key, label]) => (
+                      <div key={key} className="flex items-center gap-3">
+                        <span className="min-w-0 flex-1 text-[8px] text-muted">{label}</span>
+                        <KwantSelect
+                          value={profileDraft.visibility[key]}
+                          onChange={(event) => setProfileDraft((current) => ({
+                            ...current,
+                            visibility: { ...current.visibility, [key]: event.target.value === "community" ? "community" : "private" },
+                          }))}
+                          className="h-8 rounded-lg border border-border bg-surface px-2 text-[8px] outline-none"
+                        >
+                          <option value="community">Public</option>
+                          <option value="private">Only me</option>
+                        </KwantSelect>
+                      </div>
+                    ))}
+                    <p className="text-[7px] leading-4 text-muted">Each collection can be shown on your public profile or kept visible only to you.</p>
+                  </div>
                   <div className="mt-5 rounded-xl border border-primary/20 bg-primary/[0.05] p-3 text-[7px] leading-4 text-muted">
                     <ShieldCheck className="mb-2 h-4 w-4 text-primary" />
                     Evidence remains private unless the record explicitly shares it. Broker credentials are never stored here.
@@ -3714,6 +3837,12 @@ export default function SocialsWorkspace({
               receipts={receipts}
               cards={cards}
               comments={comments}
+              collections={{
+                posts: viewedProfilePosts,
+                liked: viewedProfileLiked,
+                reposts: viewedProfileReposts,
+                saved: viewedProfileSaved,
+              }}
               reasoningScore={reasoningScoreFromReceipts(receipts, viewedProfileObject.userId)}
               isOwnProfile={viewingOwnProfile}
               savedIds={savedGameplanIds}
@@ -3733,6 +3862,7 @@ export default function SocialsWorkspace({
               onShareGameplan={shareGameplan}
               onShareProfile={shareProfile}
               onOpenProfile={onOpenProfile}
+              onCollectionVisibilityChange={(key, visibility) => void updateCollectionVisibility(key, visibility)}
             />
           ) : requestedProfileHandle && requestedProfileState === "error" ? (
             <ProfileOpeningState
