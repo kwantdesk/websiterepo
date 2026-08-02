@@ -124,7 +124,7 @@ import {
   PROCESS_REPUTATION_VERSION,
 } from "@/lib/socialReputation";
 import { encodeCanvasImage, prepareSharedImage } from "@/lib/clientImageProcessing";
-import type { SocialFollowListItem, SocialFollowResponse } from "@/lib/socialFollows";
+import type { SocialFollowListItem, SocialFollowRecommendation, SocialFollowResponse } from "@/lib/socialFollows";
 import { DATABENTO_LIVE_TICK_EVENT } from "@/lib/chartLiveEvents";
 import {
   loadSocialProfilePreview,
@@ -525,6 +525,8 @@ export default function SocialsWorkspace({
   const [socialFeedCollection, setSocialFeedCollection] = useState<SocialFeedCollection>("feed");
   const [followingUsers, setFollowingUsers] = useState<SocialFollowListItem[]>([]);
   const [followingState, setFollowingState] = useState<"loading" | "ready" | "unavailable">("loading");
+  const [followRecommendations, setFollowRecommendations] = useState<SocialFollowRecommendation[]>([]);
+  const [recommendationState, setRecommendationState] = useState<"idle" | "loading" | "ready" | "fallback">("idle");
   const [followActionUserId, setFollowActionUserId] = useState("");
   const [rankingScope, setRankingScope] = useState<RankingScope>("desk");
   const [rankingFriends, setRankingFriends] = useState<FriendSummary[]>([]);
@@ -790,6 +792,25 @@ export default function SocialsWorkspace({
       channel?.close();
     };
   }, [loadFollowingUsers, ready]);
+
+  const loadFollowRecommendations = useCallback(async () => {
+    setRecommendationState("loading");
+    try {
+      const response = await fetch("/api/socials/follows?recommendations=1&limit=8", { cache: "no-store" });
+      const result = await response.json() as SocialFollowResponse;
+      if (!response.ok || !result.recommendations) throw new Error(result.error || "Connections could not be calculated.");
+      setFollowRecommendations(result.recommendations);
+      setRecommendationState("ready");
+    } catch {
+      setFollowRecommendations([]);
+      setRecommendationState("fallback");
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!ready || tab !== "feed" || recommendationState !== "idle") return;
+    void loadFollowRecommendations();
+  }, [loadFollowRecommendations, ready, recommendationState, tab]);
 
   const loadDeskNetwork = useCallback(async (quiet = false) => {
     try {
@@ -1387,11 +1408,46 @@ export default function SocialsWorkspace({
       })
       .sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt));
   }, [followingUserIds, posts, precords, reactions, receipts, resolvedAccountKey, socialFeedCollection, socialFeedMode]);
-  const suggestedProfiles = useMemo(() => profiles
-    .filter((object) => object.userId !== resolvedAccountKey && !followingUserIds.has(object.userId))
-    .map((object) => ({ object, profile: normalizeSocialProfile(object.payload, object.authorLabel) }))
-    .sort((left, right) => profileScoreAverage(right.profile) - profileScoreAverage(left.profile))
-    .slice(0, 5), [followingUserIds, profiles, resolvedAccountKey]);
+  const suggestedProfiles = useMemo<SocialFollowRecommendation[]>(() => {
+    if (recommendationState === "idle" || recommendationState === "loading") return [];
+    if (followRecommendations.length) return followRecommendations.slice(0, 5);
+    const ownDeskIds = new Set(deskNetwork.members
+      .filter((member) => member.userId === resolvedAccountKey)
+      .map((member) => member.deskId));
+    const friendIds = new Set(rankingFriends.map((friend) => friend.userId));
+    const ownMarkets = new Set(currentProfile.markets.map((market) => market.toUpperCase()));
+    return profiles
+      .filter((object) => object.userId !== resolvedAccountKey && !followingUserIds.has(object.userId))
+      .map((object) => {
+        const profile = normalizeSocialProfile(object.payload, object.authorLabel);
+        const marketOverlapCount = profile.markets.filter((market) => ownMarkets.has(market.toUpperCase())).length;
+        const sharedDeskCount = new Set(deskNetwork.members
+          .filter((member) => member.userId === object.userId && ownDeskIds.has(member.deskId))
+          .map((member) => member.deskId)).size;
+        const friend = friendIds.has(object.userId);
+        return {
+          userId: object.userId,
+          displayName: profile.displayName,
+          handle: profile.handle,
+          avatarUrl: profile.avatarUrl ?? "",
+          bio: profile.bio,
+          mutualFollowCount: 0,
+          sharedDeskCount,
+          marketOverlapCount,
+          recentlyViewedAt: null,
+          followsViewer: false,
+          viewerFollows: false,
+          relevanceScore: sharedDeskCount * 30 + marketOverlapCount * 14 + (friend ? 24 : 0) + profileScoreAverage(profile) / 10,
+          reason: sharedDeskCount
+            ? "Trades in your Desk network"
+            : friend
+              ? "A friend active on Socials"
+              : marketOverlapCount ? "Shared markets and trading focus" : "Active in the Kwant Desk network",
+        } satisfies SocialFollowRecommendation;
+      })
+      .sort((left, right) => right.relevanceScore - left.relevanceScore)
+      .slice(0, 5);
+  }, [currentProfile.markets, deskNetwork.members, followRecommendations, followingUserIds, profiles, rankingFriends, recommendationState, resolvedAccountKey]);
 
   const rankingDeskOptions = useMemo(() => {
     const memberDeskIds = new Set(
@@ -2135,6 +2191,20 @@ export default function SocialsWorkspace({
     setFollowActionUserId(targetUserId);
     if (currentlyFollowing) {
       setFollowingUsers((current) => current.filter((item) => item.userId !== targetUserId));
+    } else {
+      const recommendation = suggestedProfiles.find((item) => item.userId === targetUserId);
+      const profile = profileByUserId.get(targetUserId);
+      setFollowingUsers((current) => current.some((item) => item.userId === targetUserId) ? current : [...current, {
+        userId: targetUserId,
+        displayName: recommendation?.displayName || profile?.displayName || "Kwant User",
+        handle: recommendation?.handle || profile?.handle || "",
+        avatarUrl: recommendation?.avatarUrl || profile?.avatarUrl || "",
+        bio: recommendation?.bio || profile?.bio || "",
+        viewerFollows: true,
+        followsViewer: recommendation?.followsViewer ?? false,
+        notificationsEnabled: false,
+        followedAt: new Date().toISOString(),
+      }]);
     }
     try {
       const response = await fetch("/api/socials/follows", {
@@ -2151,6 +2221,11 @@ export default function SocialsWorkspace({
       window.dispatchEvent(new CustomEvent("kwantdesk:social-follow-changed", {
         detail: { targetUserId },
       }));
+      if ("BroadcastChannel" in window) {
+        const channel = new BroadcastChannel("kwantdesk-social-follows");
+        channel.postMessage({ type: "follow-changed", targetUserId });
+        channel.close();
+      }
       setNotice(currentlyFollowing ? "Unfollowed. Their new posts will leave your Following feed." : "Following. Their new posts will now appear in your feed.");
     } catch (reason) {
       setFollowingUsers(previous);
@@ -3405,16 +3480,21 @@ export default function SocialsWorkspace({
 
             <aside className="space-y-3 xl:sticky xl:top-3 xl:self-start">
               <Card className="overflow-hidden">
-                <div className="flex items-center gap-2 border-b border-border px-4 py-3"><UsersRound className="h-4 w-4 text-primary" /><div><h3 className="text-[10px] font-semibold">Recommended traders</h3><p className="mt-0.5 text-[7px] text-muted">Follow shapes your feed. It does not create a private friendship.</p></div></div>
+                <div className="flex items-center gap-2 border-b border-border px-4 py-3"><UsersRound className="h-4 w-4 text-primary" /><div><h3 className="text-[10px] font-semibold">Connections for you</h3><p className="mt-0.5 text-[7px] text-muted">Ranked by mutuals, shared Desks, markets and profiles you revisited.</p></div></div>
                 <div className="divide-y divide-border/60">
-                  {suggestedProfiles.map(({ object, profile }) => (
-                    <div key={objectKey(object)} className="flex items-center gap-2.5 p-3">
-                      <button type="button" onClick={() => onOpenProfile?.(profile.handle)}><Avatar label={profile.displayName} avatarUrl={profile.avatarUrl} size="sm" statusClassName={presenceOption(effectivePresenceStatus(profile.presenceStatus, profile.lastSeenAt)).dotClassName} /></button>
-                      <button type="button" onClick={() => onOpenProfile?.(profile.handle)} className="min-w-0 flex-1 text-left"><span className="block truncate text-[8px] font-semibold text-foreground">{profile.displayName}</span><span className="mt-0.5 block truncate text-[7px] text-muted">@{profile.handle} · {profile.strongestDiscipline || profile.style}</span></button>
-                      <button type="button" onClick={() => void updateFeedFollow(object.userId, false)} disabled={Boolean(followActionUserId)} className="flex h-8 items-center gap-1.5 rounded-lg border border-primary/25 bg-primary/[0.07] px-2.5 text-[7px] font-semibold text-primary disabled:opacity-50">{followActionUserId === object.userId ? <span className="h-3 w-3 animate-spin rounded-full border border-primary/30 border-t-primary" /> : <UserPlus className="h-3 w-3" />}Follow</button>
+                  {suggestedProfiles.map((recommendation) => {
+                    const isFollowing = followingUserIds.has(recommendation.userId);
+                    const profile = profileByUserId.get(recommendation.userId);
+                    return (
+                    <div key={recommendation.userId} className="flex items-center gap-2.5 p-3">
+                      <button type="button" onClick={() => onOpenProfile?.(recommendation.handle)}><Avatar label={recommendation.displayName} avatarUrl={recommendation.avatarUrl} size="sm" statusClassName={profile ? presenceOption(effectivePresenceStatus(profile.presenceStatus, profile.lastSeenAt)).dotClassName : undefined} /></button>
+                      <button type="button" onClick={() => onOpenProfile?.(recommendation.handle)} className="min-w-0 flex-1 text-left"><span className="block truncate text-[8px] font-semibold text-foreground">{recommendation.displayName}</span><span className="mt-0.5 block truncate text-[7px] text-muted">@{recommendation.handle}</span><span className="mt-1 block truncate text-[6.5px] font-medium text-primary/80">{recommendation.reason}</span></button>
+                      <button type="button" onClick={() => void updateFeedFollow(recommendation.userId, isFollowing)} disabled={Boolean(followActionUserId)} className={`flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-[7px] font-semibold transition-colors disabled:opacity-50 ${isFollowing ? "border-border bg-surface text-muted hover:text-foreground" : "border-primary/25 bg-primary/[0.07] text-primary"}`}>{followActionUserId === recommendation.userId ? <span className="h-3 w-3 animate-spin rounded-full border border-primary/30 border-t-primary" /> : isFollowing ? <Check className="h-3 w-3" /> : <UserPlus className="h-3 w-3" />}{isFollowing ? "Following" : "Follow"}</button>
                     </div>
-                  ))}
-                  {!suggestedProfiles.length ? <div className="p-5 text-center text-[8px] leading-4 text-muted">You are following every visible trader. Latest will show the whole network.</div> : null}
+                    );
+                  })}
+                  {recommendationState === "loading" ? <div className="flex items-center justify-center gap-2 p-5 text-[8px] text-muted"><span className="h-3.5 w-3.5 animate-spin rounded-full border border-primary/25 border-t-primary" />Calculating relevant connections…</div> : null}
+                  {recommendationState !== "loading" && !suggestedProfiles.length ? <div className="p-5 text-center text-[8px] leading-4 text-muted">No relevant connection suggestions yet. Mutuals and profile activity will refine this automatically.</div> : null}
                 </div>
               </Card>
               <Card className="p-4">

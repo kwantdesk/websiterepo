@@ -232,6 +232,18 @@ export default function SocialProfileView({
     return () => controller.abort();
   }, [loadFollowSummary]);
 
+  useEffect(() => {
+    if (isOwnProfile) return;
+    const controller = new AbortController();
+    void fetch("/api/socials/follows", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "profile_view", targetUserId: profileObject.userId }),
+      signal: controller.signal,
+    }).catch(() => undefined);
+    return () => controller.abort();
+  }, [isOwnProfile, profileObject.userId]);
+
   const updateFollow = async (
     action: "follow" | "unfollow" | "notifications",
     enabled?: boolean,

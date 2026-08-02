@@ -4,6 +4,7 @@ import { getRouteActor } from "@/lib/serverAuth";
 import type {
   SocialFollowListItem,
   SocialFollowListKind,
+  SocialFollowRecommendation,
   SocialFollowSummary,
 } from "@/lib/socialFollows";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
@@ -30,6 +31,22 @@ type FollowListRow = {
   follows_viewer?: boolean | null;
   notifications_enabled?: boolean | null;
   followed_at?: string | null;
+};
+
+type FollowRecommendationRow = {
+  user_id?: string | null;
+  display_name?: string | null;
+  handle?: string | null;
+  avatar_url?: string | null;
+  bio?: string | null;
+  mutual_follow_count?: number | string | null;
+  shared_desk_count?: number | string | null;
+  market_overlap_count?: number | string | null;
+  recently_viewed_at?: string | null;
+  follows_viewer?: boolean | null;
+  viewer_follows?: boolean | null;
+  relevance_score?: number | string | null;
+  reason?: string | null;
 };
 
 function cleanUuid(value: unknown) {
@@ -95,6 +112,26 @@ function fromListRow(row: FollowListRow): SocialFollowListItem | null {
   };
 }
 
+function fromRecommendationRow(row: FollowRecommendationRow): SocialFollowRecommendation | null {
+  const userId = cleanUuid(row.user_id);
+  if (!userId) return null;
+  return {
+    userId,
+    displayName: row.display_name?.trim() || "Kwant User",
+    handle: row.handle?.trim().replace(/^@/, "") || "",
+    avatarUrl: row.avatar_url?.trim() || "",
+    bio: row.bio?.trim() || "",
+    mutualFollowCount: numberValue(row.mutual_follow_count),
+    sharedDeskCount: numberValue(row.shared_desk_count),
+    marketOverlapCount: numberValue(row.market_overlap_count),
+    recentlyViewedAt: row.recently_viewed_at || null,
+    followsViewer: Boolean(row.follows_viewer),
+    viewerFollows: Boolean(row.viewer_follows),
+    relevanceScore: Number(row.relevance_score ?? 0) || 0,
+    reason: row.reason?.trim() || "Relevant to your Kwant Desk network",
+  };
+}
+
 async function followClient(request: NextRequest) {
   const actor = await getRouteActor(request);
   if (!actor || actor.mode !== "supabase") return { actor: null, supabase: null };
@@ -121,6 +158,28 @@ export async function GET(request: NextRequest) {
   const { actor, supabase } = await followClient(request);
   if (!actor) return NextResponse.json({ error: "Authentication required." }, { status: 401 });
   if (!supabase) return unavailableResponse();
+
+  const wantsRecommendations = request.nextUrl.searchParams.get("recommendations") === "1";
+  if (wantsRecommendations) {
+    try {
+      const limit = Math.max(1, Math.min(20, Math.floor(Number(request.nextUrl.searchParams.get("limit")) || 8)));
+      const result = await supabase.rpc("social_profile_recommendations", { result_limit: limit });
+      if (result.error) throw result.error;
+      const recommendations = (Array.isArray(result.data) ? result.data as FollowRecommendationRow[] : [])
+        .map(fromRecommendationRow)
+        .filter((item): item is SocialFollowRecommendation => item !== null);
+      return NextResponse.json(
+        { recommendations },
+        { headers: { "Cache-Control": "private, no-store, max-age=0" } },
+      );
+    } catch (error) {
+      const code = typeof error === "object" && error && "code" in error
+        ? String((error as { code?: unknown }).code ?? "")
+        : "";
+      if (migrationUnavailable(code)) return unavailableResponse();
+      return NextResponse.json({ error: "Relevant connections could not be calculated." }, { status: 502 });
+    }
+  }
 
   const profileUserId = cleanUuid(request.nextUrl.searchParams.get("profileUserId"));
   if (!profileUserId) {
@@ -209,7 +268,14 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    if (action === "follow") {
+    if (action === "profile_view") {
+      const result = await supabase.rpc("record_social_profile_view", { target_user_id: targetUserId });
+      if (result.error) throw result.error;
+      return NextResponse.json(
+        { recorded: true },
+        { headers: { "Cache-Control": "private, no-store, max-age=0" } },
+      );
+    } else if (action === "follow") {
       const result = await supabase
         .from("social_profile_follows")
         .upsert(
