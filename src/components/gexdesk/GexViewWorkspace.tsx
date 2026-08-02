@@ -42,9 +42,15 @@ import { DEFAULT_CHART_HISTORY_CALENDAR_DAYS } from "@/lib/chartHistoryWindow";
 import { DATABENTO_DEFAULT_SYMBOLS, DATABENTO_FUTURES } from "@/lib/databento";
 import type {
   GexDeskHistoryPayload,
+  GexDeskHistoryInstrument,
   GexDeskPayload,
   GexDeskSourceSymbol,
 } from "@/lib/gexDesk";
+import {
+  fetchWorkspaceData,
+  gexdeskHistoryCacheKey,
+  readWorkspaceData,
+} from "@/lib/workspaceDataCache";
 
 type GexViewChartMode = "CANDLES" | "LINE";
 type GexViewChartConfig = {
@@ -451,6 +457,12 @@ export default function GexViewWorkspace({
 }) {
   const [activeIndex, setActiveIndex] = useState(0);
   const [charts, setCharts] = useState<GexViewChartConfig[]>(initialCharts);
+  const [evolutionInstrument, setEvolutionInstrument] = useState<GexDeskHistoryInstrument>("NQ");
+  const [esEvolutionHistory, setEsEvolutionHistory] = useState<GexDeskHistoryPayload | null>(() => (
+    readWorkspaceData<GexDeskHistoryPayload>(gexdeskHistoryCacheKey("COMBINED", "ES"))
+  ));
+  const [esEvolutionLoading, setEsEvolutionLoading] = useState(false);
+  const [esEvolutionError, setEsEvolutionError] = useState("");
   const activeChart = charts[activeIndex] ?? DEFAULT_CHART;
   const preloadKey = useMemo(
     () => [...new Set(charts.slice(10).map((chart) => `${chart.instrument}::${chart.timeframe}`))].join("|"),
@@ -460,6 +472,40 @@ export default function GexViewWorkspace({
   useEffect(() => {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(charts));
   }, [charts]);
+
+  useEffect(() => {
+    if (activeIndex !== 1 || evolutionInstrument !== "ES") return;
+    let cancelled = false;
+    const cacheKey = gexdeskHistoryCacheKey("COMBINED", "ES");
+    const loadEvolution = async (silent = false) => {
+      if (!silent) setEsEvolutionLoading(true);
+      try {
+        const result = await fetchWorkspaceData<GexDeskHistoryPayload>(
+          cacheKey,
+          "/api/gexdesk/history?instrument=ES&source=COMBINED",
+          { force: true },
+        );
+        if (cancelled) return;
+        setEsEvolutionHistory(result);
+        setEsEvolutionError("");
+      } catch (loadError) {
+        if (cancelled) return;
+        setEsEvolutionError(loadError instanceof Error ? loadError.message : "ES intraday gamma evolution is temporarily unavailable.");
+      } finally {
+        if (!cancelled && !silent) setEsEvolutionLoading(false);
+      }
+    };
+    void loadEvolution(Boolean(readWorkspaceData<GexDeskHistoryPayload>(cacheKey)));
+    const interval = payload.marketOpen
+      ? window.setInterval(() => {
+          if (document.visibilityState === "visible") void loadEvolution(true);
+        }, 30_000)
+      : null;
+    return () => {
+      cancelled = true;
+      if (interval !== null) window.clearInterval(interval);
+    };
+  }, [activeIndex, evolutionInstrument, payload.marketOpen]);
 
   useEffect(() => {
     const uniqueCharts = [...new Map(
@@ -556,10 +602,12 @@ export default function GexViewWorkspace({
               />
             ) : activeIndex === 1 ? (
               <EvolutionPanel
-                history={history}
-                loading={historyLoading}
-                error={historyError}
-                livePrice={livePrice}
+                history={evolutionInstrument === "NQ" ? history : esEvolutionHistory}
+                loading={evolutionInstrument === "NQ" ? historyLoading : esEvolutionLoading}
+                error={evolutionInstrument === "NQ" ? historyError : esEvolutionError}
+                livePrice={evolutionInstrument === "NQ" ? livePrice : esEvolutionHistory?.futuresPrices?.at(-1) ?? null}
+                instrument={evolutionInstrument}
+                onInstrumentChange={setEvolutionInstrument}
                 embedded
               />
             ) : activeIndex === 2 ? (

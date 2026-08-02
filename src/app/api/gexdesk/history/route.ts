@@ -33,12 +33,13 @@ async function isAuthenticated(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   const source = request.nextUrl.searchParams.get("source") ?? "COMBINED";
+  const instrument = request.nextUrl.searchParams.get("instrument") ?? "NQ";
   if (!getConfiguredQuantDataApiKey()) {
     if (
       process.env.KWANTIFY_DEV_AUTH_BYPASS === "1"
       && ["localhost", "127.0.0.1", "::1"].includes(request.nextUrl.hostname)
     ) {
-      return NextResponse.json(createGexDeskHistoryFixture(source), {
+      return NextResponse.json(createGexDeskHistoryFixture(source, instrument), {
         headers: { "Cache-Control": "private, no-store, max-age=0" },
       });
     }
@@ -49,7 +50,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    return NextResponse.json(await getGexDeskHistory(source), {
+    return NextResponse.json(await getGexDeskHistory(source, instrument), {
       headers: { "Cache-Control": "private, no-store, max-age=0" },
     });
   } catch (error) {

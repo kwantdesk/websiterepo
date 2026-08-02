@@ -87,8 +87,8 @@ export function gameplanCacheKey(root: string, session: string) {
   return `gameplan:${root}:${session}`;
 }
 
-export function gexdeskHistoryCacheKey(source: string) {
-  return `gexdesk-history:${source}`;
+export function gexdeskHistoryCacheKey(source: string, instrument = "NQ") {
+  return `gexdesk-history:${instrument}:${source}`;
 }
 
 export async function preloadWorkspaceData(key: string) {

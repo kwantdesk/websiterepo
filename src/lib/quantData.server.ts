@@ -52,6 +52,8 @@ import {
   buildGexDeskPayload,
   emptyGexDeskPressure,
   type GexDeskHistoryPayload,
+  type GexDeskHistoryInstrument,
+  type GexDeskHistorySourceSymbol,
   type GexDeskOptionPrint,
   type GexDeskPayload,
   type GexDeskPressurePoint,
@@ -2523,18 +2525,23 @@ function latestAtOrBefore<T extends { timestamp: number }>(rows: T[], timestamp:
 
 export async function getGexDeskHistory(
   sourceInput: string,
+  instrumentInput: string = "NQ",
 ): Promise<GexDeskHistoryPayload> {
+  const instrument: GexDeskHistoryInstrument = instrumentInput.trim().toUpperCase() === "ES" ? "ES" : "NQ";
+  const compatibleSources: GexDeskHistorySourceSymbol[] = instrument === "ES"
+    ? ["SPX", "SPY"]
+    : ["NDX", "QQQ"];
   const requestedSource = sourceInput.trim().toUpperCase();
-  const source: "COMBINED" | GexDeskSourceSymbol = requestedSource === "NDX" || requestedSource === "QQQ"
-    ? requestedSource
+  const source: "COMBINED" | GexDeskHistorySourceSymbol = compatibleSources.includes(requestedSource as GexDeskHistorySourceSymbol)
+    ? requestedSource as GexDeskHistorySourceSymbol
     : "COMBINED";
-  const symbols: GexDeskSourceSymbol[] = source === "COMBINED" ? ["NDX", "QQQ"] : [source];
+  const symbols: GexDeskHistorySourceSymbol[] = source === "COMBINED" ? compatibleSources : [source];
   const session = getUsOptionsSession();
   const start = `${session.sessionDate}T00:00:00.000Z`;
   const end = new Date().toISOString();
-  const [panelResults, nqResult] = await Promise.all([
+  const [panelResults, futuresResult] = await Promise.all([
     Promise.allSettled(symbols.map((symbol) => getGexMapPanel(symbol, "GAMMA", session.sessionDate))),
-    getDatabentoBars("NQ.v.0", "1m", start, end),
+    getDatabentoBars(`${instrument}.v.0`, "1m", start, end),
   ]);
   const panels = panelResults.flatMap((result, index) => result.status === "fulfilled"
     ? [{ symbol: symbols[index], panel: result.value }]
@@ -2545,8 +2552,8 @@ export async function getGexDeskHistory(
   if (!panels.length) {
     throw new QuantDataError(errors.join(" | ") || "No intraday gamma history is available.", 422, null);
   }
-  if (!nqResult.length) {
-    throw new QuantDataError("NQ history is unavailable for timestamp-aligned gamma mapping.", 422, null);
+  if (!futuresResult.length) {
+    throw new QuantDataError(`${instrument} history is unavailable for timestamp-aligned gamma mapping.`, 422, null);
   }
 
   const allTimestamps = [...new Set(panels.flatMap(({ panel }) => panel.frames.map((frame) => frame.timestamp)))]
@@ -2559,13 +2566,15 @@ export async function getGexDeskHistory(
     throw new QuantDataError("The intraday gamma map has no timestamped frames.", 422, null);
   }
 
-  const latestNq = nqResult.at(-1)?.close ?? null;
-  if (!latestNq) {
-    throw new QuantDataError("NQ history does not contain a valid reference price.", 422, null);
+  const latestFutures = futuresResult.at(-1)?.close ?? null;
+  if (!latestFutures) {
+    throw new QuantDataError(`${instrument} history does not contain a valid reference price.`, 422, null);
   }
-  const bucketSize = Math.max(10, Math.round((latestNq * 0.0007) / 5) * 5);
-  const priceLow = Math.floor((latestNq * 0.965) / bucketSize) * bucketSize;
-  const priceHigh = Math.ceil((latestNq * 1.035) / bucketSize) * bucketSize;
+  const minimumBucket = instrument === "ES" ? 5 : 10;
+  const bucketIncrement = 5;
+  const bucketSize = Math.max(minimumBucket, Math.round((latestFutures * 0.0007) / bucketIncrement) * bucketIncrement);
+  const priceLow = Math.floor((latestFutures * 0.965) / bucketSize) * bucketSize;
+  const priceHigh = Math.ceil((latestFutures * 1.035) / bucketSize) * bucketSize;
   const priceBuckets = Array.from(
     { length: Math.round((priceHigh - priceLow) / bucketSize) + 1 },
     (_, index) => priceLow + index * bucketSize,
@@ -2585,11 +2594,14 @@ export async function getGexDeskHistory(
   }));
   let mappingChecks = 0;
   let mappingMatches = 0;
-  const nqPrices: number[] = [];
+  const futuresPrices: number[] = [];
+  const underlierPrices: GexDeskHistoryPayload["underlierPrices"] = Object.fromEntries(
+    panels.map(({ symbol }) => [symbol, [] as Array<number | null>]),
+  );
 
   for (const timestamp of sampledTimestamps) {
-    const nqBar = latestAtOrBefore(nqResult, timestamp);
-    nqPrices.push(nqBar?.close ?? latestNq);
+    const futuresBar = latestAtOrBefore(futuresResult, timestamp);
+    futuresPrices.push(futuresBar?.close ?? latestFutures);
     const combined = new Map<number, { call: number; put: number; net: number; gross: number }>();
     for (const state of panelState) {
       while (
@@ -2602,13 +2614,14 @@ export async function getGexDeskHistory(
         state.frameIndex += 1;
       }
       const sourceBar = latestAtOrBefore(state.panel.candles, timestamp);
+      underlierPrices[state.symbol]?.push(sourceBar?.close ?? null);
       mappingChecks += 1;
-      if (!nqBar || !sourceBar || timestamp - nqBar.timestamp > 3 * 60_000 || timestamp - sourceBar.timestamp > 3 * 60_000) {
+      if (!futuresBar || !sourceBar || timestamp - futuresBar.timestamp > 3 * 60_000 || timestamp - sourceBar.timestamp > 3 * 60_000) {
         continue;
       }
       mappingMatches += 1;
       for (const strike of state.strikes.values()) {
-        const mapped = nqBar.close * strike.strike / sourceBar.close;
+        const mapped = futuresBar.close * strike.strike / sourceBar.close;
         if (!Number.isFinite(mapped) || mapped < priceLow || mapped > priceHigh) continue;
         const price = Math.round(mapped / bucketSize) * bucketSize;
         const current = combined.get(price) ?? { call: 0, put: 0, net: 0, gross: 0 };
@@ -2641,7 +2654,7 @@ export async function getGexDeskHistory(
         ? "LIVE"
         : "LAST_SESSION";
   return {
-    instrument: "NQ",
+    instrument,
     source,
     sessionDate: session.sessionDate,
     expiration: panels.map(({ panel }) => panel.expiration).filter(Boolean).join(" / ") || null,
@@ -2651,11 +2664,13 @@ export async function getGexDeskHistory(
     priceLow,
     priceHigh,
     timestamps: sampledTimestamps,
-    nqPrices,
+    futuresPrices,
+    underlierPrices,
+    nqPrices: futuresPrices,
     rows,
     mappingCoverage: mappingChecks > 0 ? mappingMatches / mappingChecks : 0,
     errors,
-    disclosure: "Intraday gamma exposure mapped with timestamp-aligned source and NQ prices. Change shows each bucket versus its prior sampled frame.",
+    disclosure: `Intraday gamma exposure mapped with timestamp-aligned source and ${instrument} prices. Change shows each bucket versus its prior sampled frame.`,
   };
 }
 

@@ -17,6 +17,7 @@ import KwantLoader from "@/components/KwantLoader";
 import type { DatabentoLiveStatus } from "@/lib/chartLiveEvents";
 import type {
   GexDeskHistoryPayload,
+  GexDeskHistoryInstrument,
   GexDeskPayload,
   GexDeskPressurePoint,
   GexDeskSourceSymbol,
@@ -194,12 +195,16 @@ export function EvolutionPanel({
   loading,
   error,
   livePrice,
+  instrument = "NQ",
+  onInstrumentChange,
   embedded = false,
 }: {
   history: GexDeskHistoryPayload | null;
   loading: boolean;
   error: string;
   livePrice: number | null;
+  instrument?: GexDeskHistoryInstrument;
+  onInstrumentChange?: (instrument: GexDeskHistoryInstrument) => void;
   embedded?: boolean;
 }) {
   const [mode, setMode] = useState<"EXPOSURE" | "CHANGE">("EXPOSURE");
@@ -218,21 +223,30 @@ export function EvolutionPanel({
       building: [...candidates].sort((left, right) => Math.abs(right.change) - Math.abs(left.change))[0] ?? null,
     };
   }, [history]);
+  const heatScale = useMemo(() => {
+    const magnitudes = history?.rows.flatMap((row) => (
+      mode === "EXPOSURE" ? row.gross : row.change.map(Math.abs)
+    )).filter((value) => Number.isFinite(value) && value > 0) ?? [];
+    return {
+      maximum: Math.max(...magnitudes, 1),
+    };
+  }, [history, mode]);
 
   if (loading && !history) {
-    return <KwantLoader className="min-h-[620px] rounded-2xl border border-border bg-panel" icon={Layers3} title="Building intraday exposure map" detail="Timestamp-aligning NDX/QQQ positioning with NQ history." />;
+    return <KwantLoader className="min-h-[620px] rounded-2xl border border-border bg-panel" icon={Layers3} title="Building intraday exposure map" detail={`Timestamp-aligning ${instrument === "ES" ? "SPX/SPY" : "NDX/QQQ"} positioning with ${instrument} history.`} />;
   }
   if (!history) {
     return <EmptyPanel title="Intraday evolution is unavailable" detail={error || "No timestamp-aligned interval map is available for this source yet."} />;
   }
 
-  const values = history.rows.flatMap((row) => mode === "EXPOSURE" ? row.gross : row.change.map(Math.abs));
-  const maximum = Math.max(...values, 1);
+  const maximum = heatScale.maximum;
   const rowCount = history.rows.length;
   const columnCount = history.timestamps.length;
-  const live = livePrice ?? history.nqPrices.at(-1) ?? null;
+  const historyInstrument = history.instrument ?? instrument;
+  const futuresPrices = history.futuresPrices?.length ? history.futuresPrices : history.nqPrices;
+  const live = livePrice ?? futuresPrices.at(-1) ?? null;
   const yForPrice = (price: number) => rowCount - 1 - (price - history.priceLow) / Math.max(1, history.bucketSize);
-  const primaryPath = history.nqPrices.map((price, index) => (
+  const primaryPath = futuresPrices.map((price, index) => (
     `${index ? "L" : "M"}${index.toFixed(2)},${yForPrice(price).toFixed(2)}`
   )).join(" ");
   const hovered = hoveredCell ? (() => {
@@ -251,6 +265,11 @@ export function EvolutionPanel({
         : Math.abs(candidate.change[hoveredCell.columnIndex] ?? 0)
     )));
     const concentration = clamp(heatMagnitude / columnPeak, 0, 1);
+    const heatStrength = clamp(Math.pow(heatMagnitude / maximum, 0.55), 0, 1);
+    const underliers = Object.entries(history.underlierPrices ?? {}).flatMap(([symbol, prices]) => {
+      const price = prices?.[hoveredCell.columnIndex];
+      return Number.isFinite(price) ? [{ symbol, price: Number(price) }] : [];
+    });
     return {
       ...hoveredCell,
       row,
@@ -261,7 +280,9 @@ export function EvolutionPanel({
       gross,
       change,
       concentration,
-      nqPrice: history.nqPrices[hoveredCell.columnIndex] ?? null,
+      futuresPrice: futuresPrices[hoveredCell.columnIndex] ?? null,
+      underliers,
+      heatStrength,
       role: evolutionRole(call, put, net, concentration),
     };
   })() : null;
@@ -273,19 +294,36 @@ export function EvolutionPanel({
           icon={Layers3}
           eyebrow="MAP CHANGE"
           title="Intraday gamma evolution"
-          detail="Exposure is remapped with source and NQ prices from the same historical minute."
+          detail={`Exposure is remapped with source and ${historyInstrument} prices from the same historical minute.`}
           right={(
-            <div className="flex rounded-xl border border-border bg-background p-1">
-              {(["EXPOSURE", "CHANGE"] as const).map((value) => (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => setMode(value)}
-                  className={`rounded-lg px-3 py-1.5 text-[7px] font-semibold ${mode === value ? "bg-primary text-background" : "text-muted hover:text-foreground"}`}
-                >
-                  {value === "EXPOSURE" ? "Exposure" : "Change"}
-                </button>
-              ))}
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <div className="flex rounded-xl border border-border bg-background p-1" aria-label="Evolution instrument">
+                {(["NQ", "ES"] as const).map((value) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => {
+                      setHoveredCell(null);
+                      onInstrumentChange?.(value);
+                    }}
+                    className={`rounded-lg px-3 py-1.5 font-mono text-[7px] font-semibold transition ${instrument === value ? "bg-primary text-background" : "text-muted hover:text-foreground"}`}
+                  >
+                    {value}
+                  </button>
+                ))}
+              </div>
+              <div className="flex rounded-xl border border-border bg-background p-1">
+                {(["EXPOSURE", "CHANGE"] as const).map((value) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setMode(value)}
+                    className={`rounded-lg px-3 py-1.5 text-[7px] font-semibold ${mode === value ? "bg-primary text-background" : "text-muted hover:text-foreground"}`}
+                  >
+                    {value === "EXPOSURE" ? "Exposure" : "Change"}
+                  </button>
+                ))}
+              </div>
             </div>
           )}
         />
@@ -306,7 +344,7 @@ export function EvolutionPanel({
               <div className="mt-2 grid grid-cols-3 gap-2 text-[7px] leading-4 text-muted">
                 <p><span className="block font-semibold text-primary">Primary</span>Stabilising</p>
                 <p><span className="block font-semibold text-accent">Accent</span>Amplifying</p>
-                <p><span className="block font-semibold text-foreground">White</span>NQ price</p>
+                <p><span className="block font-semibold text-foreground">White</span>{historyInstrument} price</p>
               </div>
               <p className="mt-1 text-[7px] leading-4 text-muted">Use Change to locate exposure building or fading through the session.</p>
             </div>
@@ -397,7 +435,7 @@ export function EvolutionPanel({
                       <div className="flex items-start justify-between gap-3 border-b border-border pb-2">
                         <div>
                           <div className={`text-[8px] font-semibold uppercase tracking-[0.12em] ${hovered.role.tone}`}>{hovered.role.label}</div>
-                          <div className="mt-1 font-mono text-[11px] font-semibold text-foreground">NQ {hovered.row.price.toFixed(0)}</div>
+                          <div className="mt-1 font-mono text-[11px] font-semibold text-foreground">{historyInstrument} {hovered.row.price.toFixed(0)}</div>
                         </div>
                         <div className="text-right font-mono text-[7px] text-muted">{detailedTimeLabel(hovered.timestamp)}</div>
                       </div>
@@ -407,8 +445,11 @@ export function EvolutionPanel({
                         <div><span className="block uppercase tracking-[0.1em] text-muted">Net GEX</span><span className={`mt-0.5 block font-mono font-semibold ${hovered.net >= 0 ? "text-primary" : "text-accent"}`}>{compact(hovered.net)}</span></div>
                         <div><span className="block uppercase tracking-[0.1em] text-muted">Gross exposure</span><span className="mt-0.5 block font-mono font-semibold text-foreground">{compact(hovered.gross)}</span></div>
                         <div><span className="block uppercase tracking-[0.1em] text-muted">Frame change</span><span className={`mt-0.5 block font-mono font-semibold ${hovered.change >= 0 ? "text-primary" : "text-accent"}`}>{compact(hovered.change)}</span></div>
-                        <div><span className="block uppercase tracking-[0.1em] text-muted">Heat strength</span><span className="mt-0.5 block font-mono font-semibold text-foreground">{percent(hovered.concentration, 0)}</span></div>
-                        <div><span className="block uppercase tracking-[0.1em] text-muted">NQ at time</span><span className="mt-0.5 block font-mono font-semibold text-foreground">{hovered.nqPrice?.toFixed(2) ?? "--"}</span></div>
+                        <div><span className="block uppercase tracking-[0.1em] text-muted">Heat strength</span><span className="mt-0.5 block font-mono font-semibold text-foreground">{percent(hovered.heatStrength, 1)}</span></div>
+                        <div><span className="block uppercase tracking-[0.1em] text-muted">{historyInstrument} at time</span><span className="mt-0.5 block font-mono font-semibold text-foreground">{hovered.futuresPrice?.toFixed(2) ?? "--"}</span></div>
+                        {hovered.underliers.map((underlier) => (
+                          <div key={underlier.symbol}><span className="block uppercase tracking-[0.1em] text-muted">{underlier.symbol} at time</span><span className="mt-0.5 block font-mono font-semibold text-foreground">{underlier.price.toFixed(2)}</span></div>
+                        ))}
                         <div><span className="block uppercase tracking-[0.1em] text-muted">Heat input</span><span className="mt-0.5 block font-semibold text-foreground">{mode === "EXPOSURE" ? "Gross GEX" : "|Net GEX change|"}</span></div>
                       </div>
                       <p className="mt-2 border-t border-border pt-2 text-[7px] leading-4 text-muted">{hovered.role.detail}</p>

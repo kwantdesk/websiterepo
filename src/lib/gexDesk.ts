@@ -1,6 +1,8 @@
 import type { ExposureSummary } from "@/lib/optionsFlow";
 
 export type GexDeskSourceSymbol = "NDX" | "QQQ";
+export type GexDeskHistoryInstrument = "NQ" | "ES";
+export type GexDeskHistorySourceSymbol = GexDeskSourceSymbol | "SPX" | "SPY";
 export type GexDeskBehaviour = "STABILISING" | "AMPLIFYING" | "TRANSITION";
 export type GexDeskSourceStatus = "LIVE" | "LAST_GOOD" | "UNAVAILABLE";
 export type GexDeskZoneState = "BUILDING" | "WEAKENING" | "STABLE";
@@ -128,8 +130,8 @@ export type GexDeskHistoryRow = {
 };
 
 export type GexDeskHistoryPayload = {
-  instrument: "NQ";
-  source: "COMBINED" | GexDeskSourceSymbol;
+  instrument: GexDeskHistoryInstrument;
+  source: "COMBINED" | GexDeskHistorySourceSymbol;
   sessionDate: string;
   expiration: string | null;
   asOf: string;
@@ -138,6 +140,9 @@ export type GexDeskHistoryPayload = {
   priceLow: number;
   priceHigh: number;
   timestamps: number[];
+  futuresPrices: number[];
+  underlierPrices: Partial<Record<GexDeskHistorySourceSymbol, Array<number | null>>>;
+  /** Retained for the existing NQ-only Gex Desk studies. Use futuresPrices in new views. */
   nqPrices: number[];
   rows: GexDeskHistoryRow[];
   mappingCoverage: number;
@@ -587,25 +592,33 @@ export function createGexDeskFixture(): GexDeskPayload {
 
 export function createGexDeskHistoryFixture(
   sourceInput: string = "COMBINED",
+  instrumentInput: string = "NQ",
 ): GexDeskHistoryPayload {
-  const source: GexDeskHistoryPayload["source"] = sourceInput === "NDX" || sourceInput === "QQQ"
-    ? sourceInput
+  const instrument: GexDeskHistoryInstrument = instrumentInput.toUpperCase() === "ES" ? "ES" : "NQ";
+  const compatibleSources: GexDeskHistorySourceSymbol[] = instrument === "ES"
+    ? ["SPX", "SPY"]
+    : ["NDX", "QQQ"];
+  const requestedSource = sourceInput.toUpperCase() as GexDeskHistorySourceSymbol;
+  const source: GexDeskHistoryPayload["source"] = compatibleSources.includes(requestedSource)
+    ? requestedSource
     : "COMBINED";
   const now = Date.now();
   const timestamps = Array.from({ length: 56 }, (_, index) => now - (55 - index) * 3 * 60_000);
-  const bucketSize = 20;
-  const priceLow = 27_420;
-  const priceHigh = 28_640;
+  const bucketSize = instrument === "ES" ? 5 : 20;
+  const priceLow = instrument === "ES" ? 6_120 : 27_420;
+  const priceHigh = instrument === "ES" ? 6_430 : 28_640;
+  const centre = instrument === "ES" ? 6_275 : 28_020;
   const prices = Array.from(
     { length: Math.round((priceHigh - priceLow) / bucketSize) + 1 },
     (_, index) => priceLow + index * bucketSize,
   );
   const rows = prices.map((price) => {
     const net = timestamps.map((_, index) => {
-      const movingCenter = 28_020 + Math.sin(index / 10) * 55;
-      const primary = Math.exp(-((price - movingCenter) ** 2) / (2 * 95 ** 2)) * 0.86;
-      const negativePocket = Math.exp(-((price - (27_770 + index * 1.2)) ** 2) / (2 * 70 ** 2)) * -0.68;
-      const upper = Math.exp(-((price - 28_310) ** 2) / (2 * 55 ** 2)) * (0.28 + index / 120);
+      const scale = instrument === "ES" ? 0.22 : 1;
+      const movingCenter = centre + Math.sin(index / 10) * 55 * scale;
+      const primary = Math.exp(-((price - movingCenter) ** 2) / (2 * (95 * scale) ** 2)) * 0.86;
+      const negativePocket = Math.exp(-((price - (centre - 250 * scale + index * 1.2 * scale)) ** 2) / (2 * (70 * scale) ** 2)) * -0.68;
+      const upper = Math.exp(-((price - (centre + 290 * scale)) ** 2) / (2 * (55 * scale) ** 2)) * (0.28 + index / 120);
       return (primary + negativePocket + upper) * 1_000_000_000;
     });
     const gross = net.map((value, index) => Math.abs(value) * (1.18 + (index % 5) * 0.025));
@@ -618,8 +631,22 @@ export function createGexDeskHistoryFixture(
       change: net.map((value, index) => value - (net[index - 1] ?? value)),
     };
   });
+  const futuresPrices = timestamps.map((_, index) => (
+    centre - 150 * (instrument === "ES" ? 0.22 : 1)
+    + index * 3.1 * (instrument === "ES" ? 0.22 : 1)
+    + Math.sin(index / 4.5) * 34 * (instrument === "ES" ? 0.22 : 1)
+  ));
+  const underlierPrices: GexDeskHistoryPayload["underlierPrices"] = instrument === "ES"
+    ? {
+        SPX: futuresPrices.map((price) => price * 0.998),
+        SPY: futuresPrices.map((price) => price / 10.03),
+      }
+    : {
+        NDX: futuresPrices.map((price) => price * 0.996),
+        QQQ: futuresPrices.map((price) => price / 41.2),
+      };
   return {
-    instrument: "NQ",
+    instrument,
     source,
     sessionDate: new Date().toISOString().slice(0, 10),
     expiration: new Date().toISOString().slice(0, 10),
@@ -629,11 +656,13 @@ export function createGexDeskHistoryFixture(
     priceLow,
     priceHigh,
     timestamps,
-    nqPrices: timestamps.map((_, index) => 27_870 + index * 3.1 + Math.sin(index / 4.5) * 34),
+    futuresPrices,
+    underlierPrices,
+    nqPrices: futuresPrices,
     rows,
     mappingCoverage: 0.98,
     errors: [],
-    disclosure: "Intraday gamma exposure mapped with timestamp-aligned source and NQ prices. Change shows each bucket versus its prior sampled frame.",
+    disclosure: `Intraday gamma exposure mapped with timestamp-aligned source and ${instrument} prices. Change shows each bucket versus its prior sampled frame.`,
   };
 }
 
