@@ -9,7 +9,7 @@ export const maxDuration = 300;
 export const preferredRegion = "iad1";
 
 const EARLIEST_CME_HISTORY_MS = Date.parse("2010-06-06T00:00:00.000Z");
-const MAX_REQUEST_MS = 16 * 24 * 60 * 60_000;
+const MAX_REQUEST_MS = 9 * 24 * 60 * 60_000;
 
 async function isAuthenticated(request: NextRequest) {
   const host = request.nextUrl.hostname;
@@ -58,7 +58,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "A valid historical replay window is required." }, { status: 400 });
   }
   if (end - start > MAX_REQUEST_MS) {
-    return NextResponse.json({ error: "Replay requests are limited to 16 calendar days." }, { status: 400 });
+    return NextResponse.json({ error: "Replay requests are limited to one week of context plus the replay session." }, { status: 400 });
   }
 
   try {
@@ -83,7 +83,7 @@ export async function GET(request: NextRequest) {
         note: "Actual availability depends on the Databento account entitlement and selected schema.",
       },
     }, {
-      headers: { "Cache-Control": "private, max-age=300, stale-while-revalidate=3600" },
+      headers: { "Cache-Control": "private, max-age=86400, stale-while-revalidate=604800" },
     });
   } catch (error) {
     return NextResponse.json({

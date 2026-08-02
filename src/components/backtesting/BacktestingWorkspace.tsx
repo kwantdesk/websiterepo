@@ -70,6 +70,9 @@ const INSTRUMENTS: Array<{ id: ReplayInstrument; symbol: string; label: string }
 const TIMEFRAMES: ReplayTimeframe[] = ["1m", "5m", "15m", "30m", "1h", "4h"];
 const SPEEDS = [1, 2, 8, 10, 20, 40, 100, 200] as const;
 const REPLAY_TIME_ZONE_STORAGE_KEY = "kwantdesk:backtesting-timezone:v1";
+const REPLAY_LOOKBACK_MS = 7 * 24 * 60 * 60_000;
+const REPLAY_FORWARD_MS = 24 * 60 * 60_000;
+const REPLAY_LOAD_TIMEOUT_MS = 20_000;
 
 function previousWeekday(date: Date) {
   const value = new Date(date);
@@ -208,11 +211,30 @@ function valueAreaSnapshot(payload: ValueAreaPayload): ChartLevel[] {
   return [...make("PD", payload.daily, "#38BDF8"), ...make("PW", payload.weekly, "#F59E0B")];
 }
 
-async function requestJson<T extends { error?: string }>(url: string) {
-  const response = await fetch(url, { cache: "no-store" });
-  const payload = await response.json() as T;
-  if (!response.ok) throw new Error(payload.error || "Historical data is unavailable.");
-  return payload;
+async function requestJson<T extends { error?: string }>(
+  url: string,
+  options: { timeoutMs?: number; cache?: RequestCache } = {},
+) {
+  const controller = options.timeoutMs ? new AbortController() : null;
+  const timer = options.timeoutMs
+    ? window.setTimeout(() => controller?.abort(), options.timeoutMs)
+    : null;
+  try {
+    const response = await fetch(url, {
+      cache: options.cache ?? "no-store",
+      signal: controller?.signal,
+    });
+    const payload = await response.json() as T;
+    if (!response.ok) throw new Error(payload.error || "Historical data is unavailable.");
+    return payload;
+  } catch (problem) {
+    if (problem instanceof DOMException && problem.name === "AbortError") {
+      throw new Error("Replay candles took longer than 20 seconds. Try again or select a larger timeframe.");
+    }
+    throw problem;
+  } finally {
+    if (timer !== null) window.clearTimeout(timer);
+  }
 }
 
 export default function BacktestingWorkspace() {
@@ -302,10 +324,11 @@ export default function BacktestingWorkspace() {
   }, [root, selectedDefinition.symbol, settings, snapshotDate]);
 
   const loadReplayCandles = useCallback(async (requestedTimeframe: ReplayTimeframe, startAt: number) => {
-    const start = new Date(startAt - 9 * 24 * 60 * 60_000).toISOString();
-    const end = new Date(Math.min(Date.now(), startAt + 30 * 60 * 60_000)).toISOString();
+    const start = new Date(startAt - REPLAY_LOOKBACK_MS).toISOString();
+    const end = new Date(Math.min(Date.now(), startAt + REPLAY_FORWARD_MS)).toISOString();
     const payload = await requestJson<SessionPayload>(
       `/api/backtesting/session?symbol=${encodeURIComponent(selectedDefinition.symbol)}&timeframe=${requestedTimeframe}&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`,
+      { timeoutMs: REPLAY_LOAD_TIMEOUT_MS, cache: "force-cache" },
     );
     const ordered = payload.candles
       .filter((candle) => Number.isFinite(candle.timestamp) && candle.timestamp <= Date.parse(end))
@@ -597,7 +620,7 @@ export default function BacktestingWorkspace() {
 
         {loading ? (
           <div className="absolute inset-0 z-40 bg-background/90">
-            <KwantLoader className="h-full" title="Building replay" detail="Loading CME candles and reconstructing eligible historical levels." />
+            <KwantLoader className="h-full" title="Building replay" detail="Loading one week of CME context and the selected replay session." />
           </div>
         ) : null}
 
