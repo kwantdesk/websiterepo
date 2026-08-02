@@ -196,6 +196,7 @@ type JournalAnalysisResponse = {
   fingerprint?: string;
   cloud?: boolean;
   error?: string;
+  elapsedMs?: number;
 };
 
 const JOURNAL_TABS: Array<{ id: JournalTab; label: string; description: string; icon: typeof Activity }> = [
@@ -598,6 +599,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
   const [analysisLoadedAccount, setAnalysisLoadedAccount] = useState("");
   const [analysisStatus, setAnalysisStatus] = useState<"idle" | "loading" | "generating" | "ready" | "error">("idle");
   const [analysisError, setAnalysisError] = useState("");
+  const [analysisElapsedSeconds, setAnalysisElapsedSeconds] = useState(0);
   const [showImport, setShowImport] = useState(false);
   const [accountCreationMode, setAccountCreationMode] = useState<AccountCreationMode>("manual");
   const [importAccount, setImportAccount] = useState("Imported account");
@@ -633,6 +635,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
   const manualTradeTouchedRef = useRef(new Set<keyof ManualTradeDraft>());
   const manualAnalysisRevisionRef = useRef(0);
   const analysisRequestRef = useRef(0);
+  const analysisAbortRef = useRef<AbortController | null>(null);
 
   const resolvedAccountKey = accountKey || "local";
   const zyonJournalSelected = accountFilter === ZYON_JOURNAL_ACCOUNT;
@@ -849,6 +852,28 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
     : 0;
   const unreviewed = filteredTrades.filter((trade) => !trade.reviewedAt);
   const analysisIsStale = Boolean(journalAnalysis && journalAnalysis.fingerprint !== analysisEvidence.fingerprint);
+  const analysisProgress = analysisElapsedSeconds < 4
+    ? { title: "Validating journal evidence", detail: "Locking the account sample, calculations and data-quality limits" }
+    : analysisElapsedSeconds < 11
+      ? { title: "Testing the performance structure", detail: "Expectancy, payoff shape, drawdown, loss concentration and risk consistency" }
+      : analysisElapsedSeconds < 21
+        ? { title: "Separating edge from concentration", detail: "Comparing setups, symbols, direction, timing and recent-versus-prior behaviour" }
+        : { title: "Writing the mentor report", detail: "Ranking evidence-cited strengths, leaks and measurable interventions" };
+
+  useEffect(() => {
+    if (analysisStatus !== "generating") {
+      setAnalysisElapsedSeconds(0);
+      return;
+    }
+    const startedAt = Date.now();
+    setAnalysisElapsedSeconds(0);
+    const interval = window.setInterval(() => {
+      setAnalysisElapsedSeconds(Math.floor((Date.now() - startedAt) / 1_000));
+    }, 1_000);
+    return () => window.clearInterval(interval);
+  }, [analysisStatus]);
+
+  useEffect(() => () => analysisAbortRef.current?.abort(), []);
 
   useEffect(() => {
     if (tab !== "analysis") return;
@@ -884,9 +909,14 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
     setAnalysisStatus("generating");
     setAnalysisError("");
     const requestId = ++analysisRequestRef.current;
+    analysisAbortRef.current?.abort();
+    const controller = new AbortController();
+    analysisAbortRef.current = controller;
+    const timeout = window.setTimeout(() => controller.abort(), 48_000);
     try {
       const response = await fetch("/api/journal/analysis", {
         method: "POST",
+        signal: controller.signal,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ account: analysisAccount, evidence: analysisEvidence }),
       });
@@ -900,7 +930,12 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
     } catch (error) {
       if (requestId !== analysisRequestRef.current) return;
       setAnalysisStatus("error");
-      setAnalysisError(error instanceof Error ? error.message : "The mentor could not complete this analysis.");
+      setAnalysisError(error instanceof DOMException && error.name === "AbortError"
+        ? "The quantitative mentor exceeded 48 seconds. Your journal is safe; run the analysis again."
+        : error instanceof Error ? error.message : "The mentor could not complete this analysis.");
+    } finally {
+      window.clearTimeout(timeout);
+      if (analysisAbortRef.current === controller) analysisAbortRef.current = null;
     }
   }, [analysisAccount, analysisEvidence]);
 
@@ -1670,6 +1705,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
                     const nextAnalysisAccount = id === "all" ? "Overall Journal" : id;
                     if (nextAnalysisAccount !== analysisLoadedAccount) {
                       analysisRequestRef.current += 1;
+                      analysisAbortRef.current?.abort();
                       setJournalAnalysis(null);
                       setAnalysisLoadedAccount("");
                       setAnalysisStatus("idle");
@@ -1944,10 +1980,24 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
                   className="flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-[9px] font-semibold text-background transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   <RefreshCw className={`h-3.5 w-3.5 ${analysisStatus === "generating" ? "animate-spin" : ""}`} />
-                  {analysisStatus === "generating" ? "Analyzing record" : journalAnalysis ? "Refresh analysis" : "Run analysis"}
+                  {analysisStatus === "generating" ? `Analyzing · ${analysisElapsedSeconds}s` : journalAnalysis ? "Refresh analysis" : "Run analysis"}
                 </button>
               </div>
             </Card>
+
+            {analysisStatus === "generating" ? (
+              <div className="relative overflow-hidden rounded-2xl border border-primary/20 bg-primary/[0.055] px-4 py-3">
+                <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_12%_50%,color-mix(in_srgb,var(--primary)_12%,transparent),transparent_34%)]" />
+                <div className="relative flex items-center gap-3">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-primary/25 bg-primary/10 text-primary"><BrainCircuit className="h-4 w-4 animate-pulse" /></span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between gap-3"><span className="text-[9px] font-semibold text-foreground">{analysisProgress.title}</span><span className="font-mono text-[8px] text-primary">{analysisElapsedSeconds}s</span></div>
+                    <div className="mt-1 text-[8px] leading-4 text-muted">{analysisProgress.detail}</div>
+                    <div className="mt-2 h-0.5 overflow-hidden rounded-full bg-border"><div className="h-full rounded-full bg-primary transition-[width] duration-1000" style={{ width: `${Math.min(94, 10 + analysisElapsedSeconds * 2)}%` }} /></div>
+                  </div>
+                </div>
+              </div>
+            ) : null}
 
             <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
               <MetricCard label="Evidence window" value={`${analysisEvidence.performance.trades}`} detail={`${analysisEvidence.window.tradedDays} traded days · ${formatDate(analysisEvidence.window.firstTradeAt)} to ${formatDate(analysisEvidence.window.lastTradeAt)}`} icon={FileSpreadsheet} />
@@ -1974,7 +2024,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
             ) : null}
 
             {analysisEvidence.performance.trades >= 3 && analysisStatus === "generating" && !journalAnalysis ? (
-              <Card className="min-h-[360px] overflow-hidden"><KwantLoader className="min-h-[360px]" icon={BrainCircuit} title="Analyzing the trading record" detail="Testing expectancy, risk consistency, drawdown, setup concentration, timing and review quality" /></Card>
+              <Card className="min-h-[360px] overflow-hidden"><KwantLoader className="min-h-[360px]" icon={BrainCircuit} title={analysisProgress.title} detail={analysisProgress.detail} /></Card>
             ) : null}
 
             {analysisEvidence.performance.trades >= 3 && analysisStatus !== "loading" && analysisStatus !== "idle" && !journalAnalysis && analysisStatus !== "generating" ? (

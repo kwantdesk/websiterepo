@@ -26,9 +26,13 @@ export async function runClaudeMessage(options: {
   system: string;
   maxTokens: number;
   messages: Array<{ role?: string; content?: string }>;
+  signal?: AbortSignal;
+  timeoutMs?: number;
+  temperature?: number;
 }) {
   const response = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
+    signal: options.signal ?? (options.timeoutMs ? AbortSignal.timeout(options.timeoutMs) : undefined),
     headers: {
       "Content-Type": "application/json",
       "x-api-key": options.apiKey,
@@ -38,6 +42,7 @@ export async function runClaudeMessage(options: {
       model: options.model,
       system: options.system,
       max_tokens: options.maxTokens,
+      temperature: options.temperature,
       messages: toClaudeMessages(options.messages),
     }),
   });
