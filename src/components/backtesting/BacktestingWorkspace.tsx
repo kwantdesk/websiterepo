@@ -18,6 +18,7 @@ import {
   Search,
   Settings2,
   ShieldCheck,
+  Sparkles,
   Star,
   X,
 } from "lucide-react";
@@ -29,9 +30,11 @@ import type { GameplanPayload, GameplanRole } from "@/lib/gameplan";
 import { defaultChartSettings, loadStoredChartSettings, type ChartSettings } from "@/lib/chartSettings";
 import KwantLoader from "@/components/KwantLoader";
 import HistoricalGexPanel from "@/components/backtesting/HistoricalGexPanel";
+import HistoricalZyonPanel from "@/components/backtesting/HistoricalZyonPanel";
 import KwantSelect from "@/components/ui/KwantSelect";
 import TimeZoneSelect from "@/components/ui/TimeZoneSelect";
 import { browserTimeZone, normalizeTimeZone, timeZoneCity } from "@/lib/timeZones";
+import type { HistoricalZyonPriceWindow, HistoricalZyonReplayInput } from "@/lib/historicalZyon";
 import {
   CHART_INTERVAL_GROUPS,
   formatChartInterval,
@@ -177,6 +180,38 @@ function historicalCandlesAtClock(
       volume: 0,
     },
   ];
+}
+
+function historicalPriceWindows(candles: Candle[], clock: number): HistoricalZyonPriceWindow[] {
+  const windows = [
+    ["5M", 5 * 60_000],
+    ["15M", 15 * 60_000],
+    ["30M", 30 * 60_000],
+    ["1H", 60 * 60_000],
+    ["4H", 4 * 60 * 60_000],
+    ["1D", 24 * 60 * 60_000],
+  ] as const;
+  return windows.flatMap(([window, duration]): HistoricalZyonPriceWindow[] => {
+    const rows = candles.filter((candle) => candle.timestamp >= clock - duration && candle.timestamp <= clock);
+    const first = rows[0];
+    const last = rows.at(-1);
+    if (!first || !last) return [];
+    const open = first.open;
+    const close = last.close;
+    return [{
+      window,
+      from: new Date(first.timestamp).toISOString(),
+      to: new Date(clock).toISOString(),
+      bars: rows.length,
+      open,
+      high: Math.max(...rows.map((row) => row.high)),
+      low: Math.min(...rows.map((row) => row.low)),
+      close,
+      change: close - open,
+      changePercent: open ? ((close - open) / open) * 100 : 0,
+      volume: rows.reduce((sum, row) => sum + Math.max(0, row.volume ?? 0), 0),
+    }];
+  });
 }
 
 function previousWeekday(date: Date) {
@@ -487,6 +522,7 @@ export default function BacktestingWorkspace() {
   const [gammaLevels, setGammaLevels] = useState<ChartLevel[]>([]);
   const [gammaPositioning, setGammaPositioning] = useState<ChartGammaLevelsPayload | null>(null);
   const [showGexPanel, setShowGexPanel] = useState(false);
+  const [showZyonPanel, setShowZyonPanel] = useState(false);
   const [quantLevels, setQuantLevels] = useState<ChartLevel[]>([]);
   const [quantZones, setQuantZones] = useState<ChartZone[]>([]);
   const [valueAreaLevels, setValueAreaLevels] = useState<ChartLevel[]>([]);
@@ -524,6 +560,42 @@ export default function BacktestingWorkspace() {
     () => historicalCandlesAtClock(candles, oneSecondBars, timeframe, replayDataClock),
     [candles, oneSecondBars, replayDataClock, timeframe],
   );
+  const historicalZyonContext = useMemo<HistoricalZyonReplayInput | null>(() => {
+    if (replayClock === null || sessionStartAt === null || !visibleCandles.length) return null;
+    const mapLevels = (family: "gamma" | "quant" | "valueArea", rows: ChartLevel[], visible: boolean) => rows.map((row) => ({
+      family,
+      label: row.label,
+      price: row.price,
+      visible,
+    }));
+    return {
+      mode: "HISTORICAL_REPLAY",
+      replayId: `${selectedDefinition.id}-${sessionStartAt}`,
+      root,
+      instrument: selectedDefinition.id,
+      asOf: new Date(replayClock).toISOString(),
+      replayStartedAt: new Date(sessionStartAt).toISOString(),
+      replayTimeZone,
+      timeframe,
+      playing,
+      speed,
+      currentPrice: visibleCandles.at(-1)?.close ?? null,
+      priceWindows: historicalPriceWindows(visibleCandles, replayClock),
+      recentCandles: visibleCandles.slice(-160),
+      levels: [
+        ...mapLevels("gamma", gammaLevels, levelState.gamma),
+        ...mapLevels("quant", quantLevels, levelState.quant),
+        ...mapLevels("valueArea", valueAreaLevels, levelState.valueArea),
+      ],
+      zones: quantZones.map((zone) => ({
+        family: "quant" as const,
+        label: zone.label,
+        low: zone.low,
+        high: zone.high,
+        visible: levelState.quant,
+      })),
+    };
+  }, [gammaLevels, levelState.gamma, levelState.quant, levelState.valueArea, playing, quantLevels, quantZones, replayClock, replayTimeZone, root, selectedDefinition.id, sessionStartAt, speed, timeframe, valueAreaLevels, visibleCandles]);
   const replayEndClock = useMemo(() => {
     if (!candles.length) return null;
     return (candles.at(-1)?.timestamp ?? 0) + (replayIntervalMs(timeframe) ?? 1_000);
@@ -1054,6 +1126,15 @@ export default function BacktestingWorkspace() {
               </button>
               <button
                 type="button"
+                onClick={() => setShowZyonPanel((current) => !current)}
+                aria-expanded={showZyonPanel}
+                className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[9px] font-semibold transition-colors ${showZyonPanel ? "border-primary/35 bg-primary/10 text-primary" : "border-border text-muted hover:text-foreground"}`}
+              >
+                <Sparkles className="h-3 w-3" />
+                ZYON
+              </button>
+              <button
+                type="button"
                 onClick={() => toggleLevel("quant")}
                 className={`rounded-lg border px-2.5 py-1.5 text-[9px] font-semibold ${levelState.quant ? "border-primary/35 bg-primary/10 text-primary" : "border-border text-muted hover:text-foreground"}`}
               >
@@ -1254,7 +1335,16 @@ export default function BacktestingWorkspace() {
             snapshot={gammaPositioning}
             loading={levelLoading}
             error={levelError.gamma}
+            paired={showZyonPanel}
             onClose={() => setShowGexPanel(false)}
+          />
+        ) : null}
+
+        {started && showZyonPanel && historicalZyonContext ? (
+          <HistoricalZyonPanel
+            context={historicalZyonContext}
+            paired={showGexPanel}
+            onClose={() => setShowZyonPanel(false)}
           />
         ) : null}
 
