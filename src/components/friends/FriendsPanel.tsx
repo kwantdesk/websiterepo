@@ -126,7 +126,7 @@ function FriendName({ friend, className = "" }: { friend: FriendSummary; classNa
   return (
     <span className={`flex min-w-0 items-center gap-1.5 ${className}`}>
       <span className="truncate">{friend.displayName}</span>
-      <ActivityStreakBadge streak={friend.activityStreak} compact />
+      <ActivityStreakBadge streak={friend.activityStreak} lastSeenAt={friend.lastSeenAt} timeZone={friend.timeZone} compact />
     </span>
   );
 }

@@ -611,6 +611,11 @@ export function normalizeSocialProfile(value: unknown, label = "Kwant Trader"): 
         }];
       }).slice(0, 4)
     : [];
+  const candidateTimeZone = profileText(candidate.timezone, fallback.timezone, 80);
+  const candidateLastSeenAt = profileText(candidate.lastSeenAt, "", 60);
+  const storedActivityStreak = Number.isFinite(Number(candidate.activityStreak))
+    ? Math.max(0, Math.floor(Number(candidate.activityStreak)))
+    : 0;
   return {
     ...fallback,
     displayName: profileText(candidate.displayName, fallback.displayName, 60) || fallback.displayName,
@@ -626,7 +631,7 @@ export function normalizeSocialProfile(value: unknown, label = "Kwant Trader"): 
       ? [...new Set(candidate.markets.map((market) => profileText(market, "", 12).toUpperCase()).filter(Boolean))].slice(0, 8)
       : fallback.markets,
     session: profileText(candidate.session, fallback.session, 40),
-    timezone: profileText(candidate.timezone, fallback.timezone, 80),
+    timezone: candidateTimeZone,
     experience: profileText(candidate.experience, fallback.experience, 60),
     style: profileText(candidate.style, fallback.style, 100),
     improvementObjective: profileText(candidate.improvementObjective, fallback.improvementObjective, 500),
@@ -662,10 +667,8 @@ export function normalizeSocialProfile(value: unknown, label = "Kwant Trader"): 
         : "",
     presenceStatus,
     presenceMessage: profileText(candidate.presenceMessage, "", 120),
-    lastSeenAt: profileText(candidate.lastSeenAt, "", 60),
-    activityStreak: Number.isFinite(Number(candidate.activityStreak))
-      ? Math.max(0, Math.floor(Number(candidate.activityStreak)))
-      : 0,
+    lastSeenAt: candidateLastSeenAt,
+    activityStreak: storedActivityStreak,
     longestActivityStreak: Number.isFinite(Number(candidate.longestActivityStreak))
       ? Math.max(0, Math.floor(Number(candidate.longestActivityStreak)))
       : 0,

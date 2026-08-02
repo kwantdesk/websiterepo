@@ -913,6 +913,35 @@ export default function SocialsWorkspace({
     return () => window.clearTimeout(timer);
   }, [ready, resolvedAccountKey, state]);
 
+  useEffect(() => {
+    const receiveStreak = (event: Event) => {
+      const detail = (event as CustomEvent<Record<string, unknown>>).detail;
+      if (!detail) return;
+      const currentStreak = Math.max(0, Math.floor(Number(detail.currentStreak) || 0));
+      const longestStreak = Math.max(currentStreak, Math.floor(Number(detail.longestStreak) || 0));
+      const lastActivityDate = typeof detail.lastActivityDate === "string" ? detail.lastActivityDate : "";
+      const lastSeenAt = typeof detail.lastSeenAt === "string" ? detail.lastSeenAt : new Date().toISOString();
+      setState((current) => ({
+        ...current,
+        objects: current.objects.map((object) => object.objectType === "profile" && object.userId === resolvedAccountKey
+          ? {
+              ...object,
+              payload: {
+                ...(object.payload as Record<string, unknown>),
+                activityStreak: currentStreak,
+                longestActivityStreak: longestStreak,
+                lastActivityDate,
+                lastSeenAt,
+              },
+              updatedAt: lastSeenAt,
+            }
+          : object),
+      }));
+    };
+    window.addEventListener("kwantdesk:activity-streak-changed", receiveStreak);
+    return () => window.removeEventListener("kwantdesk:activity-streak-changed", receiveStreak);
+  }, [resolvedAccountKey]);
+
   const profiles = useMemo(() => state.objects.filter((object) => object.objectType === "profile"), [state.objects]);
   const posts = useMemo(() => state.objects.filter((object) => object.objectType === "post").sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt)), [state.objects]);
   const precords = useMemo(() => state.objects.filter((object) => object.objectType === "precord").sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt)), [state.objects]);
@@ -3641,7 +3670,7 @@ export default function SocialsWorkspace({
                         <span className="min-w-0">
                           <span className="flex min-w-0 items-center gap-1.5">
                             <span className="truncate text-[9px] font-semibold text-foreground group-hover:text-primary">{profile.displayName}</span>
-                            <ActivityStreakBadge streak={profile.activityStreak} compact />
+                            <ActivityStreakBadge streak={profile.activityStreak} lastSeenAt={profile.lastSeenAt} timeZone={profile.timezone} compact />
                           </span>
                           <span className="mt-0.5 block truncate text-[7px] text-muted">@{profile.handle} · {profile.markets.join("/")}</span>
                           <span className="mt-0.5 block text-[6px] uppercase tracking-[0.1em] text-muted/70">

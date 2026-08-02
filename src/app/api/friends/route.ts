@@ -14,6 +14,7 @@ import {
   type PresenceStatus,
 } from "@/lib/friends";
 import { isValidProfileHandle, PROFILE_HANDLE_REQUIREMENTS } from "@/lib/profileHandle";
+import { activityStreakLifecycle } from "@/lib/activityStreak";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -366,6 +367,11 @@ function buildPayload(
     const fallbackName = row?.author_label || "Kwant Trader";
     const displayName = cleanText(payload.displayName, 60) || cleanText(fallbackName, 60);
     const fallbackHandle = fallbackName.toLowerCase().replace(/[^a-z0-9]+/g, "").slice(0, 24);
+    const activityStreak = activityStreakLifecycle({
+      streak: Number(payload.activityStreak),
+      lastSeenAt: presence.lastSeenAt,
+      timeZone: cleanText(payload.timezone, 80) || "UTC",
+    }).effectiveStreak;
     return {
       userId,
       displayName,
@@ -374,7 +380,8 @@ function buildPayload(
       presenceStatus: presence.status,
       presenceMessage: cleanText(payload.presenceMessage, 80),
       lastSeenAt: presence.lastSeenAt,
-      activityStreak: Math.max(0, Math.floor(Number(payload.activityStreak) || 0)),
+      timeZone: cleanText(payload.timezone, 80) || "UTC",
+      activityStreak,
       longestActivityStreak: Math.max(0, Math.floor(Number(payload.longestActivityStreak) || 0)),
       lastActivityDate: cleanText(payload.lastActivityDate, 10),
       isOnline: presence.isOnline,

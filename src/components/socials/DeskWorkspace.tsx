@@ -1007,6 +1007,7 @@ export default function DeskWorkspace({
             processStatus: viewerProfile.processStatus,
             score: viewerScore,
             lastSeenAt: viewerProfile.lastSeenAt || null,
+            timeZone: viewerProfile.timezone,
             activityStreak: viewerProfile.activityStreak,
             longestActivityStreak: viewerProfile.longestActivityStreak,
             lastActivityDate: viewerProfile.lastActivityDate,
@@ -1100,6 +1101,7 @@ export default function DeskWorkspace({
     processStatus: userId === viewerId ? viewerProfile.processStatus : "AWAY",
     score: userId === viewerId ? Math.round(Object.values(viewerProfile.scores).reduce((sum, value) => sum + value, 0) / Math.max(1, Object.values(viewerProfile.scores).length)) : 0,
     lastSeenAt: null,
+    timeZone: userId === viewerId ? viewerProfile.timezone : "UTC",
     activityStreak: userId === viewerId ? viewerProfile.activityStreak : 0,
     longestActivityStreak: userId === viewerId ? viewerProfile.longestActivityStreak : 0,
     lastActivityDate: userId === viewerId ? viewerProfile.lastActivityDate : "",
@@ -2047,7 +2049,7 @@ export default function DeskWorkspace({
                   <div className="mt-3 space-y-1">
                     {memberLeaderboard.slice(0, 8).map((member, index) => {
                       const profile = profileFor(member.userId);
-                      return <button type="button" key={member.userId} onClick={() => openMemberCard(member.userId)} className="group flex w-full items-center gap-2 rounded-xl px-2 py-2 text-left transition-colors hover:bg-surface/40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50"><span className={`w-4 font-mono text-[7px] ${index < 3 ? "text-primary" : "text-muted"}`}>{String(index + 1).padStart(2, "0")}</span><ProfileAvatar profile={profile} size="sm" /><span className="min-w-0 flex-1"><span className="flex min-w-0 items-center gap-1"><span className="truncate text-[7px] font-semibold group-hover:text-primary">{profile.displayName}</span><ActivityStreakBadge streak={profile.activityStreak} compact /></span><MemberRoleBadge member={member} compact /></span><span className="font-mono text-[8px] font-semibold text-primary">{profile.score || "—"}</span><MoreHorizontal className="h-3 w-3 text-muted opacity-0 transition-opacity group-hover:opacity-100" /></button>;
+                      return <button type="button" key={member.userId} onClick={() => openMemberCard(member.userId)} className="group flex w-full items-center gap-2 rounded-xl px-2 py-2 text-left transition-colors hover:bg-surface/40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50"><span className={`w-4 font-mono text-[7px] ${index < 3 ? "text-primary" : "text-muted"}`}>{String(index + 1).padStart(2, "0")}</span><ProfileAvatar profile={profile} size="sm" /><span className="min-w-0 flex-1"><span className="flex min-w-0 items-center gap-1"><span className="truncate text-[7px] font-semibold group-hover:text-primary">{profile.displayName}</span><ActivityStreakBadge streak={profile.activityStreak} lastSeenAt={profile.lastSeenAt} timeZone={profile.timeZone} compact /></span><MemberRoleBadge member={member} compact /></span><span className="font-mono text-[8px] font-semibold text-primary">{profile.score || "—"}</span><MoreHorizontal className="h-3 w-3 text-muted opacity-0 transition-opacity group-hover:opacity-100" /></button>;
                     })}
                   </div>
                 </div>
@@ -2093,7 +2095,7 @@ export default function DeskWorkspace({
                       return (
                         <button key={member.userId} type="button" onClick={() => openMemberCard(member.userId)} className="group flex w-full items-center gap-2 rounded-xl px-2 py-2 text-left transition-colors hover:bg-surface/40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50">
                           <ProfileAvatar profile={profile} size="sm" />
-                          <span className="min-w-0 flex-1"><span className="flex min-w-0 items-center gap-1"><span className="truncate text-[7px] font-semibold group-hover:text-primary">{profile.displayName}</span><ActivityStreakBadge streak={profile.activityStreak} compact /></span><MemberRoleBadge member={member} compact /></span>
+                          <span className="min-w-0 flex-1"><span className="flex min-w-0 items-center gap-1"><span className="truncate text-[7px] font-semibold group-hover:text-primary">{profile.displayName}</span><ActivityStreakBadge streak={profile.activityStreak} lastSeenAt={profile.lastSeenAt} timeZone={profile.timeZone} compact /></span><MemberRoleBadge member={member} compact /></span>
                           <span className="text-[5px] uppercase tracking-[0.08em] text-muted">{inactive ? "Inactive" : presence.label}</span>
                           <MoreHorizontal className="h-3 w-3 text-muted opacity-0 transition-opacity group-hover:opacity-100" />
                         </button>

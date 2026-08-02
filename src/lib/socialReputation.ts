@@ -6,6 +6,7 @@ import type {
   SocialProgressPayload,
   SocialReceiptPayload,
 } from "@/lib/socials";
+import { activityStreakLifecycle } from "@/lib/activityStreak";
 
 export const PROCESS_REPUTATION_VERSION = "process-reputation-v1";
 
@@ -98,6 +99,12 @@ export function calculateProcessReputation(
     return completed / 5 * 100;
   });
   const disciplinedNoTriggers = receipts.filter((receipt) => receipt.noTrade && receipt.classification === "DISCIPLINED NO TRIGGER").length;
+  const effectiveActivityStreak = activityStreakLifecycle({
+    streak: profile.activityStreak,
+    lastSeenAt: profile.lastSeenAt,
+    timeZone: profile.timezone,
+    now: now.getTime(),
+  }).effectiveStreak;
 
   const scores: ProcessReputationScores = {
     preparation: clampScore(average(reasoningScores)),
@@ -111,7 +118,7 @@ export function calculateProcessReputation(
       ? average(receipts.map((receipt) => receipt.scores.discipline)) + Math.min(8, disciplinedNoTriggers * 2)
       : 0),
     contribution: clampScore(helpfulReviews * 18 + Math.max(0, reviewComments.length - helpfulReviews) * 4),
-    consistency: clampScore(completionRate * 0.65 + average(completedProgress) * 0.15 + Math.min(20, profile.activityStreak * 2)),
+    consistency: clampScore(completionRate * 0.65 + average(completedProgress) * 0.15 + Math.min(20, effectiveActivityStreak * 2)),
     research: clampScore(average(plans.map(({ value }) => {
       const confluenceDepth = Math.min(12, value.confluences?.length ?? 0) / 12 * 100;
       return value.reasoningScore * 0.8 + confluenceDepth * 0.2;
@@ -147,9 +154,11 @@ export function compareProcessReputation(
   left: { userId: string; reputation: ProcessReputationResult; profile: SocialProfilePayload },
   right: { userId: string; reputation: ProcessReputationResult; profile: SocialProfilePayload },
 ) {
+  const rightStreak = activityStreakLifecycle({ streak: right.profile.activityStreak, lastSeenAt: right.profile.lastSeenAt, timeZone: right.profile.timezone }).effectiveStreak;
+  const leftStreak = activityStreakLifecycle({ streak: left.profile.activityStreak, lastSeenAt: left.profile.lastSeenAt, timeZone: left.profile.timezone }).effectiveStreak;
   return right.reputation.index - left.reputation.index
     || right.reputation.completedRecords - left.reputation.completedRecords
     || right.reputation.evidenceUnits - left.reputation.evidenceUnits
-    || right.profile.activityStreak - left.profile.activityStreak
+    || rightStreak - leftStreak
     || left.userId.localeCompare(right.userId);
 }

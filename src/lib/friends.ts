@@ -13,6 +13,7 @@ export type FriendSummary = {
   presenceStatus: PresenceStatus;
   presenceMessage: string;
   lastSeenAt: string | null;
+  timeZone: string;
   activityStreak: number;
   longestActivityStreak: number;
   lastActivityDate: string;

@@ -126,6 +126,7 @@ export type DeskMemberProfile = {
   processStatus: string;
   score: number;
   lastSeenAt: string | null;
+  timeZone: string;
   activityStreak: number;
   longestActivityStreak: number;
   lastActivityDate: string;

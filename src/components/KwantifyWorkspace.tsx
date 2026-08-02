@@ -4041,7 +4041,7 @@ export default function KwantifyWorkspace({
     const heartbeat = async () => {
       if (document.visibilityState !== "visible") return;
       try {
-        await fetch("/api/friends", {
+        const response = await fetch("/api/friends", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -4050,6 +4050,12 @@ export default function KwantifyWorkspace({
             timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
           }),
         });
+        if (response.ok) {
+          const result = await response.json() as { streak?: Record<string, unknown> | null };
+          if (result.streak) {
+            window.dispatchEvent(new CustomEvent("kwantdesk:activity-streak-changed", { detail: result.streak }));
+          }
+        }
       } catch {
         // Presence catches up on the next heartbeat.
       }
