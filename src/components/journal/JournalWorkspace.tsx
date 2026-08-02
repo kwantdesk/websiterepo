@@ -858,7 +858,9 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
       ? { title: "Testing the performance structure", detail: "Expectancy, payoff shape, drawdown, loss concentration and risk consistency" }
       : analysisElapsedSeconds < 21
         ? { title: "Separating edge from concentration", detail: "Comparing setups, symbols, direction, timing and recent-versus-prior behaviour" }
-        : { title: "Writing the mentor report", detail: "Ranking evidence-cited strengths, leaks and measurable interventions" };
+        : analysisElapsedSeconds < 48
+          ? { title: "Writing the mentor report", detail: "Ranking evidence-cited strengths, leaks and measurable interventions" }
+          : { title: "Verifying every conclusion", detail: "Checking samples, confidence labels and the final structured report before release" };
 
   useEffect(() => {
     if (analysisStatus !== "generating") {
@@ -912,7 +914,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
     analysisAbortRef.current?.abort();
     const controller = new AbortController();
     analysisAbortRef.current = controller;
-    const timeout = window.setTimeout(() => controller.abort(), 48_000);
+    const timeout = window.setTimeout(() => controller.abort(), 88_000);
     try {
       const response = await fetch("/api/journal/analysis", {
         method: "POST",
@@ -931,7 +933,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
       if (requestId !== analysisRequestRef.current) return;
       setAnalysisStatus("error");
       setAnalysisError(error instanceof DOMException && error.name === "AbortError"
-        ? "The quantitative mentor exceeded 48 seconds. Your journal is safe; run the analysis again."
+        ? "The quantitative mentor exceeded 88 seconds. Your journal is safe; run the analysis again."
         : error instanceof Error ? error.message : "The mentor could not complete this analysis.");
     } finally {
       window.clearTimeout(timeout);

@@ -13,7 +13,7 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 const ANALYSIS_KIND = "journal-quant-analysis-v1";
 const MAX_EVIDENCE_BYTES = 90_000;
@@ -241,7 +241,10 @@ export async function POST(request: NextRequest) {
   if (!apiKey) {
     return NextResponse.json({ error: "Journal Analysis is waiting for the Anthropic API key." }, { status: 503 });
   }
-  const model = process.env.ANTHROPIC_JOURNAL_MODEL ?? process.env.ANTHROPIC_MODEL ?? "claude-sonnet-4-6";
+  // Journal analysis is a large structured report. Do not inherit the general
+  // ZYON model setting: an Opus selection there can turn this bounded analysis
+  // into a slow, expensive request and previously caused false timeouts.
+  const model = process.env.ANTHROPIC_JOURNAL_MODEL ?? "claude-sonnet-4-6";
   try {
     const text = await runClaudeMessage({
       apiKey,
@@ -260,15 +263,16 @@ export async function POST(request: NextRequest) {
         "Whenever you present averageR, express it as risk-to-reward notation such as 1 : 4.00, not 4.00R. Preserve a negative sign for negative average reward, such as 1 : -0.50.",
         "Critique directly but constructively. Priorities must be measurable experiments or process controls, not generic advice such as be disciplined, manage risk, or follow your plan.",
         "Do not give personalized financial advice, price targets or trade calls. Do not use markdown.",
+        "Be dense and economical. Target roughly 1,200-1,600 output tokens for the complete JSON response; depth comes from evidence and prioritization, not repetition.",
         "Return strict JSON only with keys confidence, headline, executiveRead, traderProfile, strengths, edges, leaks, priorities, mentorNote, caveats.",
         "confidence is LOW, MODERATE or HIGH.",
         "strengths and edges are arrays of {title,evidence,interpretation,confidence}.",
         "leaks is an array of {title,evidence,interpretation,confidence,correction}.",
         "priorities is an ordered array of {action,measurement,target,rationale}.",
-        "Produce 2-4 strengths, 1-4 edges, 2-4 leaks, and exactly 3 priorities. If evidence cannot support an edge, return an empty edges array and explain that in caveats.",
+        "Produce 2-3 strengths, 1-3 edges, 2-3 leaks, and exactly 3 priorities. If evidence cannot support an edge, return an empty edges array and explain that in caveats.",
       ].join(" "),
-      maxTokens: 2_600,
-      timeoutMs: 42_000,
+      maxTokens: 2_200,
+      timeoutMs: 75_000,
       temperature: 0.15,
       messages: [{
         role: "user",
@@ -327,7 +331,7 @@ export async function POST(request: NextRequest) {
       : error instanceof Error && /timed?\s*out|aborted/i.test(error.message);
     return NextResponse.json({
       error: timedOut
-        ? "The quantitative mentor exceeded 42 seconds. Your journal is safe; run the analysis again."
+        ? "The quantitative mentor exceeded 75 seconds. Your journal is safe; run the analysis again."
         : "The quantitative mentor could not complete this analysis. Try again shortly.",
       elapsedMs: Date.now() - requestStartedAt,
     }, { status: timedOut ? 504 : 502 });
