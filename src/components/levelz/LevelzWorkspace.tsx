@@ -5,6 +5,8 @@ import {
   Activity,
   BookOpenCheck,
   CircleDot,
+  ChevronLeft,
+  ChevronRight,
   Crosshair,
   Layers3,
   Radio,
@@ -122,6 +124,7 @@ type ValueAreaPayload = {
 
 const LEVELZ_LAYOUT_STORAGE_KEY = "kwantdesk:levelz-layout:v1";
 const LEVELZ_SNAPSHOT_STORAGE_KEY = "kwantdesk:levelz-snapshots:v1";
+const LEVELZ_INTELLIGENCE_COLLAPSED_STORAGE_KEY = "kwantdesk:levelz-intelligence-collapsed:v1";
 const FIVE_DAY_HISTORY_DAYS = 8;
 const MARKET_CACHE_MS = 15_000;
 
@@ -991,7 +994,15 @@ function LevelChartCard({
   );
 }
 
-function LevelEducationRail({ config, runtime }: { config: PanelConfig; runtime: PanelRuntime | null }) {
+function LevelEducationRail({
+  config,
+  runtime,
+  onCollapse,
+}: {
+  config: PanelConfig;
+  runtime: PanelRuntime | null;
+  onCollapse: () => void;
+}) {
   const [selectedLevelId, setSelectedLevelId] = useState("");
   const snapshot = runtime?.snapshot ?? emptyStructureSnapshot();
   const sortedLevels = useMemo(() => [...snapshot.levels].sort((left, right) => {
@@ -1026,6 +1037,15 @@ function LevelEducationRail({ config, runtime }: { config: PanelConfig; runtime:
             <Radio className={`h-2.5 w-2.5 ${runtime?.liveStatus === "live" ? "animate-pulse text-primary" : ""}`} />
             {runtime?.liveStatus === "live" ? "LIVE" : "CONTEXT"}
           </span>
+          <button
+            type="button"
+            onClick={onCollapse}
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border bg-background text-muted transition-colors hover:border-primary/30 hover:text-primary"
+            title="Hide level intelligence"
+            aria-label="Hide level intelligence"
+          >
+            <ChevronRight className="h-3.5 w-3.5" />
+          </button>
         </div>
         <div className="mt-3 grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-border bg-border">
           <div className="bg-background px-3 py-2"><div className="text-[7px] uppercase tracking-[0.12em] text-muted">Last</div><div className="mt-1 font-mono text-[12px] font-semibold">{formatPrice(runtime?.price ?? null)}</div></div>
@@ -1094,6 +1114,7 @@ export default function LevelzWorkspace() {
   const [runtimes, setRuntimes] = useState<Record<string, PanelRuntime>>({});
   const [settings, setSettings] = useState<ChartSettings>(defaultChartSettings);
   const [layoutReady, setLayoutReady] = useState(false);
+  const [intelligenceCollapsed, setIntelligenceCollapsed] = useState(false);
 
   useEffect(() => {
     setSettings(loadStoredChartSettings());
@@ -1102,6 +1123,7 @@ export default function LevelzWorkspace() {
       if (Array.isArray(stored) && stored.length === 4) {
         setPanels(DEFAULT_PANELS.map((fallback, index) => ({ ...fallback, ...stored[index], id: fallback.id })));
       }
+      setIntelligenceCollapsed(window.localStorage.getItem(LEVELZ_INTELLIGENCE_COLLAPSED_STORAGE_KEY) === "true");
     } catch {}
     setLayoutReady(true);
     const syncSettings = () => setSettings(loadStoredChartSettings());
@@ -1113,6 +1135,11 @@ export default function LevelzWorkspace() {
     if (!layoutReady) return;
     window.localStorage.setItem(LEVELZ_LAYOUT_STORAGE_KEY, JSON.stringify(panels));
   }, [layoutReady, panels]);
+
+  useEffect(() => {
+    if (!layoutReady) return;
+    window.localStorage.setItem(LEVELZ_INTELLIGENCE_COLLAPSED_STORAGE_KEY, String(intelligenceCollapsed));
+  }, [intelligenceCollapsed, layoutReady]);
 
   const updatePanel = (id: string, patch: Partial<PanelConfig>) => {
     setPanels((current) => current.map((panel) => panel.id === id ? { ...panel, ...patch } : panel));
@@ -1137,7 +1164,7 @@ export default function LevelzWorkspace() {
         </div>
       </div>
 
-      <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_340px] gap-3 p-3">
+      <div className={`grid min-h-0 flex-1 gap-3 p-3 transition-[grid-template-columns] duration-300 ease-out ${intelligenceCollapsed ? "grid-cols-[minmax(0,1fr)_46px]" : "grid-cols-[minmax(0,1fr)_340px]"}`}>
         <div className="grid min-h-0 grid-cols-2 grid-rows-2 gap-2.5">
           {panels.map((panel, index) => (
             <LevelChartCard
@@ -1152,7 +1179,31 @@ export default function LevelzWorkspace() {
             />
           ))}
         </div>
-        <LevelEducationRail config={activeConfig} runtime={runtimes[activeConfig.id] ?? null} />
+        {intelligenceCollapsed ? (
+          <aside className="flex min-h-0 overflow-hidden rounded-2xl border border-border bg-panel">
+            <button
+              type="button"
+              onClick={() => setIntelligenceCollapsed(false)}
+              className="group flex h-full w-full flex-col items-center gap-3 px-1 py-3 text-muted transition-colors hover:border-primary/30 hover:bg-primary/[0.04] hover:text-primary"
+              title="Show level intelligence"
+              aria-label="Show level intelligence"
+            >
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-primary/20 bg-primary/[0.07] text-primary">
+                <ChevronLeft className="h-3.5 w-3.5" />
+              </span>
+              <BookOpenCheck className="h-4 w-4 shrink-0" />
+              <span className="text-[8px] font-semibold uppercase tracking-[0.16em]" style={{ writingMode: "vertical-rl" }}>
+                Level Intelligence
+              </span>
+            </button>
+          </aside>
+        ) : (
+          <LevelEducationRail
+            config={activeConfig}
+            runtime={runtimes[activeConfig.id] ?? null}
+            onCollapse={() => setIntelligenceCollapsed(true)}
+          />
+        )}
       </div>
     </div>
   );
