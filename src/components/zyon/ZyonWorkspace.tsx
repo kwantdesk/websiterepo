@@ -208,11 +208,42 @@ function localSessionDate() {
 
 function mergeJournal(local: ZyonJournalEntry[], remote: ZyonJournalEntry[]) {
   const entries = new Map<string, ZyonJournalEntry>();
-  [...local, ...remote].forEach((entry) => {
+  [...local, ...remote].forEach((candidate) => {
+    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return;
+    const entry = candidate as Partial<ZyonJournalEntry>;
+    if (typeof entry.id !== "string" || !entry.id) return;
+    const normalized: ZyonJournalEntry = {
+      id: entry.id,
+      sessionDate: typeof entry.sessionDate === "string" ? entry.sessionDate : localSessionDate(),
+      root: entry.root === "ES" ? "ES" : "NQ",
+      title: typeof entry.title === "string" ? entry.title : "ZYON note",
+      summary: typeof entry.summary === "string" ? entry.summary : "",
+      body: typeof entry.body === "string" ? entry.body : "",
+      kind: entry.kind === "TRADE" || entry.kind === "SETUP" || entry.kind === "REVIEW" || entry.kind === "LESSON"
+        ? entry.kind
+        : "NOTE",
+      tags: Array.isArray(entry.tags) ? entry.tags.filter((tag): tag is string => typeof tag === "string") : [],
+      attachments: Array.isArray(entry.attachments)
+        ? entry.attachments.flatMap((attachment) => {
+          if (!attachment || typeof attachment !== "object" || Array.isArray(attachment)) return [];
+          const item = attachment as ZyonJournalEntry["attachments"][number];
+          if (typeof item.name !== "string") return [];
+          return [{
+            name: item.name,
+            type: typeof item.type === "string" ? item.type : "application/octet-stream",
+            size: Number.isFinite(item.size) ? Number(item.size) : 0,
+            ...(typeof item.dataUrl === "string" ? { dataUrl: item.dataUrl } : {}),
+            ...(typeof item.storagePath === "string" ? { storagePath: item.storagePath } : {}),
+          }];
+        })
+        : [],
+      createdAt: typeof entry.createdAt === "string" ? entry.createdAt : new Date().toISOString(),
+      cloudSaved: Boolean(entry.cloudSaved),
+    };
     const previous = entries.get(entry.id);
-    entries.set(entry.id, previous
-      ? { ...previous, ...entry, cloudSaved: previous.cloudSaved || entry.cloudSaved }
-      : entry);
+    entries.set(normalized.id, previous
+      ? { ...previous, ...normalized, cloudSaved: previous.cloudSaved || normalized.cloudSaved }
+      : normalized);
   });
   return [...entries.values()]
     .sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt))
@@ -221,20 +252,40 @@ function mergeJournal(local: ZyonJournalEntry[], remote: ZyonJournalEntry[]) {
 
 function mergeFolders(local: ZyonFolder[], remote: ZyonFolder[]) {
   const folders = new Map<string, ZyonFolder>();
-  [...local, ...remote].forEach((folder) => folders.set(folder.id, {
-    ...folders.get(folder.id),
-    ...folder,
-  }));
+  [...local, ...remote].forEach((candidate) => {
+    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return;
+    const folder = candidate as Partial<ZyonFolder>;
+    if (typeof folder.id !== "string" || !folder.id || typeof folder.chatId !== "string") return;
+    const normalized: ZyonFolder = {
+      id: folder.id,
+      chatId: folder.chatId,
+      name: typeof folder.name === "string" ? folder.name : "Folder",
+      parentId: typeof folder.parentId === "string" ? folder.parentId : null,
+      kind: folder.kind === "system" || folder.kind === "daily" ? folder.kind : "custom",
+      sessionDate: typeof folder.sessionDate === "string" ? folder.sessionDate : null,
+      createdAt: typeof folder.createdAt === "string" ? folder.createdAt : "",
+      updatedAt: typeof folder.updatedAt === "string" ? folder.updatedAt : "",
+    };
+    folders.set(normalized.id, { ...folders.get(normalized.id), ...normalized });
+  });
   return [...folders.values()].sort((left, right) =>
     left.createdAt.localeCompare(right.createdAt));
 }
 
 function mergeChats(local: ZyonChat[], remote: ZyonChat[]) {
   const chats = new Map<string, ZyonChat>();
-  [...local, ...remote].forEach((chat) => chats.set(chat.id, {
-    ...chats.get(chat.id),
-    ...chat,
-  }));
+  [...local, ...remote].forEach((candidate) => {
+    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return;
+    const chat = candidate as Partial<ZyonChat>;
+    if (typeof chat.id !== "string" || !chat.id) return;
+    const normalized: ZyonChat = {
+      id: chat.id,
+      name: typeof chat.name === "string" ? chat.name : "Conversation",
+      createdAt: typeof chat.createdAt === "string" ? chat.createdAt : "",
+      updatedAt: typeof chat.updatedAt === "string" ? chat.updatedAt : "",
+    };
+    chats.set(normalized.id, { ...chats.get(normalized.id), ...normalized });
+  });
   return [...chats.values()].sort((left, right) =>
     right.updatedAt.localeCompare(left.updatedAt));
 }
@@ -285,8 +336,45 @@ function messagesByChatFromJournal(entries: ZyonJournalEntry[], chats: ZyonChat[
 }
 
 function mergeMessages(local: ZyonMessage[], cloud: ZyonMessage[]) {
-  const merged = [...local];
-  for (const message of cloud) {
+  const normalize = (candidate: unknown): ZyonMessage | null => {
+    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return null;
+    const message = candidate as Partial<ZyonMessage>;
+    if (
+      typeof message.id !== "string"
+      || (message.role !== "user" && message.role !== "assistant")
+      || typeof message.content !== "string"
+    ) return null;
+    return {
+      id: message.id,
+      role: message.role,
+      content: message.content,
+      createdAt: typeof message.createdAt === "string" ? message.createdAt : "",
+      ...(message.model && isZyonModelKey(message.model) ? { model: message.model } : {}),
+      ...(message.gameplanStatus === "ready" || message.gameplanStatus === "sent"
+        ? { gameplanStatus: message.gameplanStatus }
+        : {}),
+      ...(Array.isArray(message.attachments)
+        ? {
+          attachments: message.attachments.flatMap((attachment) => {
+            if (!attachment || typeof attachment !== "object" || Array.isArray(attachment)) return [];
+            const item = attachment as Partial<ZyonAttachment>;
+            if (typeof item.id !== "string" || typeof item.name !== "string" || typeof item.dataUrl !== "string") return [];
+            return [{
+              id: item.id,
+              name: item.name,
+              type: typeof item.type === "string" ? item.type : "application/octet-stream",
+              size: Number.isFinite(item.size) ? Number(item.size) : 0,
+              dataUrl: item.dataUrl,
+            }];
+          }),
+        }
+        : {}),
+    };
+  };
+  const merged = local.flatMap((message) => normalize(message) ?? []);
+  for (const candidate of cloud) {
+    const message = normalize(candidate);
+    if (!message) continue;
     const duplicate = merged.some((candidate) =>
       candidate.role === message.role
       && candidate.content === message.content
@@ -1174,7 +1262,13 @@ export default function ZyonWorkspace({
   const customFolderCount = displayFolders.filter((folder) => folder.kind === "custom").length;
   const nearestLevels = useMemo(() => {
     if (!context || currentPrice === null) return [];
-    return [...context.levels]
+    const levels = Array.isArray(context.levels) ? context.levels : [];
+    return levels
+      .filter((level) =>
+        level
+        && Array.isArray(level.zone)
+        && Number.isFinite(level.zone[0])
+        && Number.isFinite(level.zone[1]))
       .map((level) => ({
         ...level,
         distance: Math.min(
@@ -1838,7 +1932,7 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
             <div className="px-3 py-2">
               <span className="block uppercase tracking-[0.12em] text-muted">Context</span>
               <span className="mt-1 block truncate text-[9px] font-semibold text-foreground">
-                {context?.options.gammaRegime ?? "Waiting"}
+                {context?.options?.gammaRegime ?? "Waiting"}
               </span>
             </div>
           </div>
@@ -2739,12 +2833,12 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
               <section className="rounded-2xl border border-border bg-background/30 p-3">
                 <CircleGauge className="h-3.5 w-3.5 text-primary" />
                 <div className="mt-2 text-[7px] uppercase tracking-[0.12em] text-muted">Gamma</div>
-                <div className="mt-1 text-[9px] font-semibold text-foreground">{context?.options.gammaStateLabel || "—"}</div>
+                <div className="mt-1 text-[9px] font-semibold text-foreground">{context?.options?.gammaStateLabel || "—"}</div>
               </section>
               <section className="rounded-2xl border border-border bg-background/30 p-3">
                 <Activity className="h-3.5 w-3.5 text-primary" />
                 <div className="mt-2 text-[7px] uppercase tracking-[0.12em] text-muted">Volatility</div>
-                <div className="mt-1 text-[9px] font-semibold text-foreground">{context?.options.volatilityState || "—"}</div>
+                <div className="mt-1 text-[9px] font-semibold text-foreground">{context?.options?.volatilityState || "—"}</div>
               </section>
             </div>
 

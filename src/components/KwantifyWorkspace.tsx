@@ -6629,7 +6629,12 @@ export default function KwantifyWorkspace({
       ? target as PrimaryWorkspaceSection
       : null;
     activeWorkspaceSectionRef.current = nextSection;
-    if (nextSection) setOptimisticWorkspaceSection(nextSection);
+    // Keep the current workspace mounted until Next has committed the route.
+    // Mounting a large lazy workspace during pointer-down used to race the
+    // actual navigation and could escalate a transient ZYON error globally.
+    if (nextSection === "zyon") {
+      setRightPanel((current) => current === "zyon" ? null : current);
+    }
   }, []);
 
   async function saveUsername() {
@@ -9172,7 +9177,18 @@ export default function KwantifyWorkspace({
             {bottomWorkspaceSection === "gameplan" ? <GameplanWorkspace initialInstrument={displayCmeSymbol(selectedInstrument)} /> : null}
             {bottomWorkspaceSection === "kwantbot" ? <KwantBotIntelligenceWorkspace interpreter={kwantBotInterpreter} /> : null}
             {bottomWorkspaceSection === "news" ? <NewsWorkspace /> : null}
-            {bottomWorkspaceSection === "zyon" ? <ZyonWorkspace interpreter={kwantBotInterpreter} viewerName={currentDisplayName || currentUsername} accountKey={preferenceUserId} /> : null}
+            {bottomWorkspaceSection === "zyon" ? (
+              <ZyonPanelBoundary
+                variant="workspace"
+                resetKey={`${preferenceUserId || "anonymous"}:${kwantBotInterpreter.selectedRoot}:${kwantBotInterpreter.contexts[kwantBotInterpreter.selectedRoot]?.generatedAt ?? "pending"}`}
+              >
+                <ZyonWorkspace
+                  interpreter={kwantBotInterpreter}
+                  viewerName={currentDisplayName || currentUsername}
+                  accountKey={preferenceUserId}
+                />
+              </ZyonPanelBoundary>
+            ) : null}
             {bottomWorkspaceSection === "journal" ? <JournalWorkspace accountKey={preferenceUserId || currentUsername || "local"} /> : null}
             {bottomWorkspaceSection === "backtesting" ? <BacktestingWorkspace /> : null}
             {bottomWorkspaceSection === "socials" ? (

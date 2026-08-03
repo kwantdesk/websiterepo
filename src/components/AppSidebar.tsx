@@ -108,6 +108,12 @@ function preloadWorkspaceComponent(key: SidebarKey) {
                     : Promise.resolve();
 }
 
+function warmWorkspaceComponent(key: SidebarKey) {
+  // A speculative chunk request must never become an unhandled rejection.
+  // Navigation can still retry the real import through Next's boundary.
+  return preloadWorkspaceComponent(key).catch(() => undefined);
+}
+
 function ActiveUnderline() {
   return (
     <span
@@ -138,7 +144,7 @@ function AppSidebar({
     cancelIntentPreload();
     intentPreloadTimerRef.current = window.setTimeout(() => {
       intentPreloadTimerRef.current = null;
-      void preloadWorkspaceComponent(key);
+      void warmWorkspaceComponent(key);
     }, 220);
   }, [cancelIntentPreload]);
 
@@ -154,20 +160,33 @@ function AppSidebar({
       return;
     }
 
-    // Next navigation is normally immediate. If the app's main thread was
-    // saturated before the click, guarantee that the user's navigation still
-    // completes instead of leaving a dead header that requires a manual reload.
+    // Keep a last-resort escape for a genuinely stuck router, but do not race a
+    // legitimate lazy workspace load with a hard document navigation.
     navigationFallbackTimerRef.current = window.setTimeout(() => {
       navigationFallbackTimerRef.current = null;
       if (window.location.pathname !== target.pathname || window.location.search !== target.search) {
         window.location.assign(target.href);
       }
-    }, 1_500);
+    }, 8_000);
   }, [onNavigateStart]);
 
   useEffect(() => {
+    const preloadZyon = () => void warmWorkspaceComponent("zyon");
+    const browser = window as unknown as {
+      requestIdleCallback?: (callback: () => void, options?: { timeout: number }) => number;
+      cancelIdleCallback?: (handle: number) => void;
+    };
+    const idleHandle = browser.requestIdleCallback
+      ? browser.requestIdleCallback(preloadZyon, { timeout: 2_500 })
+      : window.setTimeout(preloadZyon, 1_200);
+
     return () => {
       cancelIntentPreload();
+      if (browser.requestIdleCallback && browser.cancelIdleCallback) {
+        browser.cancelIdleCallback(idleHandle);
+      } else {
+        window.clearTimeout(idleHandle);
+      }
       if (navigationFallbackTimerRef.current !== null) {
         window.clearTimeout(navigationFallbackTimerRef.current);
       }
@@ -194,10 +213,10 @@ function AppSidebar({
               href={href}
               onPointerEnter={() => scheduleIntentPreload(key)}
               onPointerLeave={cancelIntentPreload}
-              onFocus={() => void preloadWorkspaceComponent(key)}
+              onFocus={() => void warmWorkspaceComponent(key)}
               onPointerDown={(event) => {
                 if (event.button === 0 && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) {
-                  beginNavigation(key, href);
+                  void warmWorkspaceComponent(key);
                 }
               }}
               onClick={(event) => {
@@ -250,10 +269,10 @@ function AppSidebar({
               prefetch
               onPointerEnter={() => scheduleIntentPreload(key)}
               onPointerLeave={cancelIntentPreload}
-              onFocus={() => void preloadWorkspaceComponent(key)}
+              onFocus={() => void warmWorkspaceComponent(key)}
               onPointerDown={(event) => {
                 if (event.button === 0 && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) {
-                  beginNavigation(key, href);
+                  void warmWorkspaceComponent(key);
                 }
               }}
               onClick={(event) => {
