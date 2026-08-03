@@ -539,9 +539,6 @@ export default function KwantBotInterpreterPanel({
               </div>
             </div>
           </div>
-          <span className="shrink-0 rounded-full border border-border bg-background/50 px-2 py-1 text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">
-            AI chat next
-          </span>
         </div>
       </div>
     </div>
