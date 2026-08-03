@@ -1635,7 +1635,9 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
       createdAt: new Date().toISOString(),
       attachments: outgoingAttachments.length ? outgoingAttachments : undefined,
     };
-    const conversation = [...messages.slice(-23), userMessage];
+    // The API only retains the latest 16 turns. Sending older turns here adds
+    // payload and serialization cost without adding any model context.
+    const conversation = [...messages.slice(-15), userMessage];
     setMessages((current) => [...current.slice(-119), userMessage]);
     setChats((current) => current.map((chat) =>
       chat.id === activeChatId
@@ -1648,15 +1650,8 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
     setAttachmentError("");
     setSendError("");
     setSending(true);
-    const responseController = new AbortController();
-    const responseTimeout = window.setTimeout(() => responseController.abort(), 55_000);
-
     try {
-      const response = await fetch("/api/zyon", {
-        method: "POST",
-        signal: responseController.signal,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const requestBody = JSON.stringify({
           model,
           root: selectedRoot,
           chatId: activeChatId,
@@ -1676,13 +1671,46 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
             currentPrice,
             lastTickAt: interpreter.lastTickAt[selectedRoot],
             feedState: interpreter.feedState,
-            market: context,
-            recentKwantBotMessages: rootMessages.slice(-14),
-            recentMemory: rootMemory.slice(-18),
-            learningReviews: learningReviews.slice(-8),
+            market: context ? {
+              ...context,
+              // The server builds the authoritative live context. A short
+              // browser tail is enough to preserve the newest tape read while
+              // avoiding a large duplicate request on every chat turn.
+              options: {
+                ...context.options,
+                recentFlow: context.options.recentFlow.slice(-12),
+              },
+            } : null,
+            recentKwantBotMessages: rootMessages.slice(-8),
+            recentMemory: rootMemory.slice(-10),
+            learningReviews: learningReviews.slice(-4),
           },
-        }),
       });
+      const requestReply = async () => {
+        const controller = new AbortController();
+        const timeout = window.setTimeout(() => controller.abort(), 55_000);
+        try {
+          return await fetch("/api/zyon", {
+            method: "POST",
+            signal: controller.signal,
+            headers: { "Content-Type": "application/json" },
+            body: requestBody,
+          });
+        } finally {
+          window.clearTimeout(timeout);
+        }
+      };
+      let response: Response;
+      try {
+        response = await requestReply();
+      } catch (firstError) {
+        // A browser-level Failed to fetch means no valid HTTP response made it
+        // back from the edge. Retry once with the same stable user-message ID;
+        // the API upserts that ID, so the retry cannot duplicate the journal.
+        if (!(firstError instanceof TypeError)) throw firstError;
+        await new Promise((resolve) => window.setTimeout(resolve, 350));
+        response = await requestReply();
+      }
       const payload = await response.json().catch(() => null) as {
         text?: unknown;
         error?: unknown;
@@ -1800,11 +1828,12 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
       setSendError(
         error instanceof DOMException && error.name === "AbortError"
           ? "ZYON did not complete within 55 seconds. Your message is saved; retry it."
-          : error instanceof Error ? error.message : "ZYON could not reply.",
+          : error instanceof TypeError
+            ? "ZYON's connection was interrupted twice. Your message is saved; retry it."
+            : error instanceof Error ? error.message : "ZYON could not reply.",
       );
       if (gameplanExchange) setGameplanSendState("unavailable");
     } finally {
-      window.clearTimeout(responseTimeout);
       setSending(false);
       window.requestAnimationFrame(() => composerRef.current?.focus());
     }

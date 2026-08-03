@@ -51,7 +51,7 @@ const MAX_TEXT_LENGTH = 6_000;
 const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 const MAX_TOTAL_ATTACHMENT_BYTES = 20 * 1024 * 1024;
 const MAX_TEXT_ATTACHMENT_LENGTH = 120_000;
-const MAX_CONTEXT_LENGTH = 72_000;
+const MAX_CONTEXT_LENGTH = 42_000;
 // The user must receive a useful answer quickly. A stalled premium model gets a
 // bounded chance before ZYON falls through to a faster family.
 const PROVIDER_TIMEOUTS_MS = [18_000, 10_000, 6_000] as const;
@@ -1197,6 +1197,11 @@ export async function POST(request: NextRequest) {
   const userConversationEntryId = rawUserMessageId
     ? `zyon-conversation-${rawUserMessageId}`
     : zyonId("zyon-conversation-user");
+  // A transport retry must update the same assistant record instead of
+  // producing a second copy after the first response was lost at the edge.
+  const assistantConversationEntryId = rawUserMessageId
+    ? `zyon-conversation-assistant-${rawUserMessageId}`
+    : zyonId("zyon-conversation-assistant");
   const persistedUserAttachments = await within(persistAttachments({
     actorId: actor.userId,
     folderId: conversationFolder.folderId,
@@ -1223,7 +1228,7 @@ export async function POST(request: NextRequest) {
   if (!historicalReplay && isPresenceCheck(finalUserText, finalAttachments)) {
     const presenceText = `I'm here and ready for the ${root} session. What do you want to review first—overnight structure, current levels, options positioning, or today's Gameplan?`;
     const assistantConversationEntry = conversationEntry({
-      id: zyonId("zyon-conversation-assistant"),
+      id: assistantConversationEntryId,
       chatId,
       sessionDate,
       folderId: conversationFolder.folderId,
@@ -1285,7 +1290,7 @@ export async function POST(request: NextRequest) {
   if (existingPendingGameplanId && gameplanSubmitIntent) {
     const pendingText = "Your previous Gameplan is already in the Socials holding page. Review and lock it into Scoring before asking ZYON to send another one.";
     const assistantConversationEntry = conversationEntry({
-      id: zyonId("zyon-conversation-assistant"),
+      id: assistantConversationEntryId,
       chatId,
       sessionDate,
       folderId: conversationFolder.folderId,
@@ -1392,7 +1397,7 @@ export async function POST(request: NextRequest) {
           },
           body: JSON.stringify({
             model: providerModel,
-            max_tokens: usePersistenceTools ? 2_400 : modelIndex === 0 ? 1_800 : 1_400,
+            max_tokens: usePersistenceTools ? (modelIndex === 0 ? 1_800 : 1_500) : modelIndex === 0 ? 1_800 : 1_400,
             temperature: 0.2,
             system,
             metadata: { user_id: actor.userId },
@@ -1638,7 +1643,7 @@ export async function POST(request: NextRequest) {
                 ? text || "Your Gameplan is complete. The Send Gameplan button is now unlocked."
                 : text || "That has been recorded in your trading journal.";
     const assistantConversationEntry = conversationEntry({
-      id: zyonId("zyon-conversation-assistant"),
+      id: assistantConversationEntryId,
       chatId,
       sessionDate,
       folderId: conversationFolder.folderId,
