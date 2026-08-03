@@ -37,6 +37,30 @@ function cmeSessionDateKey(timestamp: number) {
   return sessionDate.toISOString().slice(0, 10);
 }
 
+export function trimToRecentChartSessions(
+  candles: Candle[],
+  sessionCount = MINIMUM_CHART_HISTORY_SESSIONS,
+) {
+  if (!candles.length || sessionCount <= 0) return candles;
+  const sorted = [...candles].sort((left, right) => left.timestamp - right.timestamp);
+  const sessions = new Set<string>();
+  let startIndex = 0;
+
+  for (let index = sorted.length - 1; index >= 0; index -= 1) {
+    const session = cmeSessionDateKey(sorted[index].timestamp);
+    if (session && !sessions.has(session)) {
+      if (sessions.size >= sessionCount) {
+        startIndex = index + 1;
+        break;
+      }
+      sessions.add(session);
+    }
+    startIndex = index;
+  }
+
+  return sorted.slice(startIndex);
+}
+
 function timeframeDurationMs(timeframe: string) {
   const match = timeframe.match(/^(\d+)(s|m|h|D|W|M)$/);
   if (!match) return null;

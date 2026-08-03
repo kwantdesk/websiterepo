@@ -8,7 +8,12 @@ import {
 import type { Candle } from "@/lib/backtester";
 
 const DATABENTO_HISTORICAL_BASE_URL = "https://api.databento.com/v0";
-const MAX_EVENT_BARS = 5_000;
+// Event charts must retain the same five-session history window as time-based
+// charts. The previous 5,000-bar tail was too small for active contracts on
+// 200/500-volume and smaller range intervals, so a fresh selection appeared to
+// begin at the current tick even though Databento returned older executions.
+const MAX_EVENT_BARS = 120_000;
+const EVENT_BAR_FLUSH_SIZE = 16_384;
 const MAX_EVENT_EXECUTIONS = 25_000;
 const EVENT_EXECUTION_LOOKBACK_MS = 6 * 60 * 60_000;
 type EventHistorySchema = "trades" | "ohlcv-1s";
@@ -204,7 +209,7 @@ async function streamEventBars(args: {
           if (trade) batch.push(trade);
         }
       });
-      if (batch.length >= 2_048) flush();
+      if (batch.length >= EVENT_BAR_FLUSH_SIZE) flush();
     } catch {
       malformed += 1;
     }

@@ -194,6 +194,7 @@ import {
 import {
   DEFAULT_CHART_HISTORY_CALENDAR_DAYS,
   hasMinimumChartHistory,
+  trimToRecentChartSessions,
 } from "@/lib/chartHistoryWindow";
 import { readLiveQuoteCache, writeLiveQuoteCache } from "@/lib/liveQuoteCache";
 import {
@@ -957,6 +958,20 @@ function getPeriodConfig(period: string): { from: string; label: string } {
     "1Y": { from: new Date(now - 365 * day).toISOString(), label: "1Y" },
     All: { from: new Date(now - 4 * 365 * day).toISOString(), label: "All" },
   }[period] ?? { from: new Date(now - 365 * day).toISOString(), label: "1Y" };
+}
+
+function requestedChartHistoryStart(period: string) {
+  if (period === "5D") {
+    return Date.now() - DEFAULT_CHART_HISTORY_CALENDAR_DAYS * 24 * 60 * 60_000;
+  }
+  return Date.parse(getPeriodConfig(period).from);
+}
+
+function trimChartHistoryForPeriod(candles: Candle[], period: string, requestedFrom: number) {
+  const withinRequestedWindow = candles.filter((candle) => candle.timestamp >= requestedFrom);
+  return period === "5D"
+    ? trimToRecentChartSessions(withinRequestedWindow)
+    : withinRequestedWindow;
 }
 
 function isTooManyCandles(period: string, timeframe: string) {
@@ -2903,7 +2918,7 @@ function WorkspaceChartPane({
   useEffect(() => {
     let cancelled = false;
     const requestController = new AbortController();
-    const requestedFrom = Date.parse(getPeriodConfig(period).from);
+    const requestedFrom = requestedChartHistoryStart(period);
     const immediateCache = pane.broker === "Databento"
       ? peekCompatibleChartHistoryCache(pane.symbol, pane.timeframe)
       : null;
@@ -2913,11 +2928,16 @@ function WorkspaceChartPane({
     const immediateHistory = trimCandlesAfterActiveBucket(
       sanitizeCandles(immediateCache?.candles ?? [], pane.symbol),
       pane.timeframe,
-    ).filter((candle) => candle.timestamp >= requestedFrom);
+    );
+    const immediateHistoryForPeriod = trimChartHistoryForPeriod(
+      immediateHistory,
+      period,
+      requestedFrom,
+    );
     const immediateCandles = pane.broker === "Databento"
-      ? mergeObservedDatabentoTail(immediateHistory, observedTail, pane.timeframe)
-      : immediateHistory;
-    const hasImmediateHistory = immediateHistory.length > 0;
+      ? mergeObservedDatabentoTail(immediateHistoryForPeriod, observedTail, pane.timeframe)
+      : immediateHistoryForPeriod;
+    const hasImmediateHistory = immediateHistoryForPeriod.length > 0;
     const memoryTape = needsOrderFlowHistory
       ? peekExecutionTapeCache(pane.symbol, pane.timeframe)?.records ?? []
       : [];
@@ -3016,7 +3036,7 @@ function WorkspaceChartPane({
         sanitizeCandles(cached?.candles ?? [], pane.symbol),
         pane.timeframe,
       );
-      const cachedBase = cachedHistory.filter((candle) => candle.timestamp >= requestedFrom);
+      const cachedBase = trimChartHistoryForPeriod(cachedHistory, period, requestedFrom);
       const latestObservedTail = pane.broker === "Databento"
         ? readDatabentoLiveTail(pane.symbol)
         : [];
@@ -3037,8 +3057,7 @@ function WorkspaceChartPane({
             liveTailStartTimestampRef.current,
           )
         : cachedWithObserved;
-      const needsFiveDayBackfill = pane.broker === "Databento"
-        && !isEventBasedChartInterval(pane.timeframe);
+      const needsFiveDayBackfill = pane.broker === "Databento";
       const cachedTailIsFresh = Boolean(
         cached?.updatedAt
         && Date.now() - cached.updatedAt <= (
@@ -3089,7 +3108,7 @@ function WorkspaceChartPane({
           pane.timeframe,
         );
         const clean = pane.broker === "Databento"
-          ? downloaded.filter((candle) => candle.timestamp >= requestedFrom)
+          ? trimChartHistoryForPeriod(downloaded, period, requestedFrom)
           : downloaded;
         const mergedHistory = pane.broker === "Databento"
           ? mergeChartHistory(cachedCandles, clean)

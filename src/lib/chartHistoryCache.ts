@@ -30,11 +30,11 @@ const executionTapeMemoryCache = new Map<string, CachedExecutionTape>();
 let databasePromise: Promise<IDBDatabase> | null = null;
 
 function cacheKey(symbol: string, timeframe: string) {
-  // Event-bar schema v2 rejects discontinuity staircases. Keep the earlier
-  // browser cache isolated so a malformed 40R chain cannot survive a deploy
-  // and be merged back into freshly rebuilt history.
+  // Event-bar schema v3 rejects discontinuity staircases and requires a full
+  // five-session backfill. Keep earlier partial event caches isolated so they
+  // cannot make a newly selected range/volume chart start at the current tick.
   return isEventBasedChartInterval(timeframe)
-    ? `event-v2::${symbol}::${timeframe}`
+    ? `event-v3::${symbol}::${timeframe}`
     : `${symbol}::${timeframe}`;
 }
 
