@@ -1985,10 +1985,12 @@ function GameplanLiveWorkspace({ initialInstrument = "NQ" }: { initialInstrument
           updatedAt: next.generated_at,
         };
       });
-      if (
-        next.current_price !== null
-        && (previousPriceRef.current === null || Date.now() - lastNativeTickAtRef.current > 3_000)
-      ) updateLivePrice(next.current_price);
+      // The Gameplan payload is a structural snapshot and its futures price can
+      // trail the streaming quote. It may seed an empty ladder, but must never
+      // overwrite a price already established by the live market-data path.
+      if (next.current_price !== null && previousPriceRef.current === null) {
+        updateLivePrice(next.current_price);
+      }
       setError(null);
     } catch (loadError) {
       if (requestId !== planRequestRef.current) return;
@@ -2004,6 +2006,9 @@ function GameplanLiveWorkspace({ initialInstrument = "NQ" }: { initialInstrument
     let disposed = false;
     let timer: number | null = null;
     const cached = readWorkspaceData<GameplanPayload>(gameplanCacheKey(root, session));
+    previousPriceRef.current = null;
+    lastNativeTickAtRef.current = 0;
+    setCurrentPrice(null);
     if (cached) {
       setPayload(cached);
       latestPayloadRef.current = cached;
@@ -2079,8 +2084,15 @@ function GameplanLiveWorkspace({ initialInstrument = "NQ" }: { initialInstrument
     lastNativeTickAtRef.current = 0;
     const receiveTick = (event: Event) => {
       try {
-        const tick = (event as CustomEvent<{ instrument?: string; mid?: number }>).detail;
-        if (!String(tick?.instrument ?? "").toUpperCase().startsWith(root)) return;
+        const tick = (event as CustomEvent<{ instrument?: string; mid?: number; cached?: boolean }>).detail;
+        if (tick?.cached) return;
+        const instrument = String(tick?.instrument ?? "").toUpperCase();
+        const tickRoot = instrument.startsWith("NQ") || instrument.startsWith("MNQ")
+          ? "NQ"
+          : instrument.startsWith("ES") || instrument.startsWith("MES")
+            ? "ES"
+            : null;
+        if (tickRoot !== root) return;
         const nextPrice = Number(tick.mid);
         if (!Number.isFinite(nextPrice) || nextPrice <= 0) return;
         lastNativeTickAtRef.current = Date.now();
@@ -2108,10 +2120,29 @@ function GameplanLiveWorkspace({ initialInstrument = "NQ" }: { initialInstrument
     const poll = async () => {
       try {
         const response = await fetch(`/api/options-flow/market-data?symbol=${source}&priceMode=FUTURES`, { cache: "no-store" });
-        const market = await response.json() as { marketData?: { lastPrice?: number | null }; refreshAfterMs?: number };
+        const market = await response.json() as {
+          marketData?: {
+            lastPrice?: number | null;
+            mode?: string;
+            status?: string;
+            asOf?: string;
+            stale?: boolean;
+            fallback?: boolean;
+          };
+          refreshAfterMs?: number;
+        };
+        const quoteTimestamp = Date.parse(market.marketData?.asOf ?? "");
+        const authoritativeFuturesQuote =
+          market.marketData?.mode === "FUTURES"
+          && market.marketData.status === "LIVE"
+          && market.marketData.stale !== true
+          && market.marketData.fallback !== true
+          && Number.isFinite(quoteTimestamp)
+          && Date.now() - quoteTimestamp <= 45_000;
         if (
           !cancelled
           && response.ok
+          && authoritativeFuturesQuote
           && market.marketData?.lastPrice !== null
           && market.marketData?.lastPrice !== undefined
         ) {

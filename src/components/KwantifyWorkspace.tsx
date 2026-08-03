@@ -6390,7 +6390,10 @@ export default function KwantifyWorkspace({
               if (quotes.length) writeLiveQuoteCache(quotes);
             }, 5_000);
           }
-          if (activeWorkspaceSectionRef.current !== "charts") return;
+          // Gameplan's moving Session Ladder consumes the same authoritative
+          // futures stream as Charts. Publishing it here prevents delayed REST
+          // snapshots from briefly displacing the live "You are here" marker.
+          if (activeWorkspaceSectionRef.current !== "charts" && activeWorkspaceSectionRef.current !== "gameplan") return;
           window.dispatchEvent(new CustomEvent(DATABENTO_LIVE_TICK_EVENT, { detail: price }));
         }
         pendingWatchlistPricesRef.current.set(displayName, price);
