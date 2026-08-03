@@ -16,7 +16,7 @@ const CME_SESSION_CLOCK = new Intl.DateTimeFormat("en-CA", {
   hourCycle: "h23",
 });
 
-function cmeSessionDateKey(timestamp: number) {
+export function cmeSessionDateKey(timestamp: number) {
   if (!Number.isFinite(timestamp)) return null;
   const parts = Object.fromEntries(
     CME_SESSION_CLOCK

@@ -1,4 +1,5 @@
 import type { Candle } from "@/lib/backtester";
+import { cmeSessionDateKey } from "@/lib/chartHistoryWindow";
 
 export type StructureRole = "DEMAND" | "SUPPLY" | "SUPPORT" | "RESISTANCE";
 export type StructureEvidence = "HISTORICAL" | "HYBRID_L3" | "LIVE_L3";
@@ -236,11 +237,21 @@ export function buildHistoricalStructureBase(args: {
   tickSize: number;
 }): HistoricalStructureBase {
   const tickSize = Number.isFinite(args.tickSize) && args.tickSize > 0 ? args.tickSize : 0.25;
-  const candles = args.candles
+  const sanitizedCandles = args.candles
     .filter((candle) => [candle.timestamp, candle.open, candle.high, candle.low, candle.close]
       .every((value) => Number.isFinite(Number(value))))
     .sort((left, right) => left.timestamp - right.timestamp)
-    .slice(-3_000);
+    .slice(-5_000);
+  const activeSession = cmeSessionDateKey(Date.now());
+  // Structure is calculated only from completed CME sessions. The active
+  // Globex session is deliberately excluded so a live bar can never drag a
+  // historical supply/demand zone around the chart.
+  const candles = activeSession
+    ? sanitizedCandles.filter((candle) => {
+        const candleSession = cmeSessionDateKey(candle.timestamp);
+        return candleSession !== null && candleSession < activeSession;
+      })
+    : sanitizedCandles;
   const currentPrice = candles.at(-1)?.close ?? null;
   const atr = robustAtr(candles, tickSize);
   if (candles.length < 40 || currentPrice === null) {
@@ -377,7 +388,7 @@ function structureEducation(role: StructureRole, evidence: StructureEvidence, to
     ? " Live resting liquidity is currently concentrated inside the same area, strengthening the location without guaranteeing that those orders will remain."
     : evidence === "LIVE_L3"
       ? " The area is driven by unusually large, persistent resting MBO liquidity and will weaken or disappear if that liquidity is pulled."
-      : " It is derived from five-day price response, volume-at-price, displacement and retest evidence; no historical MBO is claimed.";
+      : " It is derived from completed-session price response, volume-at-price, displacement and retest evidence; no historical MBO is claimed.";
   const base = role === "DEMAND"
     ? "A demand origin where price previously left with upward displacement and meaningful participation."
     : role === "SUPPLY"
@@ -452,10 +463,10 @@ function touchAdjustedScore(candidate: EnrichedStructureCandidate) {
   return candidate.score * touchPenalty;
 }
 
-// Only publish structure locations with a strong evidence score. Applying the
-// floor before consolidation prevents weaker nearby candidates from widening
-// or otherwise influencing the zones that reach the chart.
-const MINIMUM_PUBLISHED_STRUCTURE_SCORE = 0.65;
+// Only publish A-grade historical structure. A literal 100% would imply a
+// certainty the evidence cannot support and would often publish nothing; 80%
+// is a strict, honest floor that removes the lower-quality visual noise.
+const MINIMUM_PUBLISHED_STRUCTURE_SCORE = 0.8;
 
 function consolidateStructureCandidates(args: {
   candidates: EnrichedStructureCandidate[];
@@ -471,9 +482,7 @@ function consolidateStructureCandidates(args: {
     touchAdjustedScore(right) - touchAdjustedScore(left),
   )) {
     const adjustedScore = touchAdjustedScore(rawCandidate);
-    const threshold = rawCandidate.evidence === "LIVE_L3"
-      ? 0.68
-      : MINIMUM_PUBLISHED_STRUCTURE_SCORE;
+    const threshold = MINIMUM_PUBLISHED_STRUCTURE_SCORE;
     if (adjustedScore < threshold) continue;
 
     const candidate = { ...rawCandidate, score: adjustedScore };
@@ -527,11 +536,11 @@ function consolidateStructureCandidates(args: {
   const below = accepted
     .filter((candidate) => candidateMarketSide(candidate, args.currentPrice) === "BELOW")
     .sort((left, right) => right.high - left.high || right.score - left.score)
-    .slice(0, 3);
+    .slice(0, 2);
   const above = accepted
     .filter((candidate) => candidateMarketSide(candidate, args.currentPrice) === "ABOVE")
     .sort((left, right) => left.low - right.low || right.score - left.score)
-    .slice(0, 3);
+    .slice(0, 2);
 
   return [...inPlay, ...below, ...above].sort((left, right) => left.low - right.low);
 }
@@ -551,7 +560,7 @@ export function buildStructureLevelsSnapshot(args: {
       zones: [],
       asOf: base.asOf,
       status: "UNAVAILABLE",
-      source: "Five-day CME structure engine",
+      source: "Completed-session CME structure engine",
       note: "Waiting for enough five-minute CME history to validate structural zones.",
       atr: base.atr || null,
     };
@@ -579,44 +588,18 @@ export function buildStructureLevelsSnapshot(args: {
     const match = matchIndex >= 0 ? liveCandidates[matchIndex] : null;
     if (match) usedLive.add(matchIndex);
     const evidence: StructureEvidence = match ? "HYBRID_L3" : "HISTORICAL";
-    const confirmationPadding = Math.max(base.tickSize * 2, base.atr * 0.04);
     return {
       ...candidate,
-      // L3 confirms a historical area; it must not stretch that area across a
-      // large portion of the chart merely because a nearby order was matched.
-      low: match ? Math.min(candidate.low, Math.max(match.low, candidate.low - confirmationPadding)) : candidate.low,
-      high: match ? Math.max(candidate.high, Math.min(match.high, candidate.high + confirmationPadding)) : candidate.high,
-      score: match ? 0.66 * candidate.score + 0.34 * match.score : candidate.score,
+      // Live L3 is confirmation metadata only. It is never allowed to move,
+      // widen, rescore or originate a historical structure zone.
+      low: candidate.low,
+      high: candidate.high,
+      score: candidate.score,
       liquidityScore: match?.score ?? null,
       evidence,
       historicalScore: candidate.score,
     };
   });
-
-  if (l3Live) {
-    liveCandidates.forEach((live, index) => {
-      if (usedLive.has(index) || live.score < 0.72 || live.observations < 4 || live.persistenceMs < 3_000) return;
-      const role: StructureRole = live.side === "BID" ? "DEMAND" : "SUPPLY";
-      combined.push({
-        id: `structure-l3-${live.side.toLowerCase()}-${Math.round(live.price / base.tickSize)}`,
-        role,
-        originRole: role,
-        low: live.low,
-        high: live.high,
-        score: live.score,
-        volumeScore: 0,
-        reactionScore: 0,
-        departureScore: 0,
-        freshnessScore: 1,
-        touchCount: 0,
-        originAt: Date.parse(args.liquidity?.asOf ?? "") || Date.now(),
-        source: "PRICE_ACTION" as const,
-        liquidityScore: live.score,
-        evidence: "LIVE_L3" as const,
-        historicalScore: 0,
-      });
-    });
-  }
 
   const selected = consolidateStructureCandidates({
     candidates: combined,
@@ -671,10 +654,10 @@ export function buildStructureLevelsSnapshot(args: {
     zones,
     asOf: l3Live ? args.liquidity?.asOf ?? base.asOf : base.asOf,
     status: l3Live ? "LIVE_L3" : "HISTORICAL",
-    source: l3Live ? "Five-day CME structure + live Rithmic MBO" : "Five-day CME price and volume structure",
+    source: l3Live ? "Completed-session CME structure + live Rithmic confirmation" : "Completed-session CME price and volume structure",
     note: l3Live
-      ? "Distinct high-confidence zones blend five-day price response, volume-at-price, displacement and retests with current persistent Rithmic MBO liquidity. Overlapping references are consolidated and heavily retested areas are downgraded. Resting liquidity can be cancelled; acceptance and execution flow remain required confirmation."
-      : "Distinct historical zones use five-day CME bars and volume-at-price. Overlapping references are consolidated and heavily retested areas are downgraded. Live Level 3 confirmation will be added automatically when the private Rithmic MBO gateway is connected; historical MBO is not inferred.",
+      ? "A-grade zones are locked from completed CME sessions using price response, volume-at-price, displacement and retests. Live Rithmic MBO can confirm a location but cannot create, widen, rescore or move it. The map refreshes only when a new CME session begins."
+      : "A-grade zones are locked from completed CME sessions using price response, volume-at-price, displacement and retests. Only locations scoring at least 80% are published, and the map refreshes only when a new CME session begins.",
     atr: base.atr,
   };
 }
@@ -687,7 +670,7 @@ export function emptyStructureLevelsSnapshot(instrument = "") : StructureLevelsS
     zones: [],
     asOf: null,
     status: "UNAVAILABLE",
-    source: "Five-day CME structure engine",
+    source: "Completed-session CME structure engine",
     note: "Waiting for structural data.",
     atr: null,
   };
