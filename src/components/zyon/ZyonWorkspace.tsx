@@ -96,9 +96,28 @@ const PRIMARY_CHAT: ZyonChat = {
   updatedAt: "",
 };
 const ZYON_ACTIVE_CHAT_EVENT = "kwantdesk:zyon-active-chat";
+const ZYON_CONVERSATION_SYNC_EVENT = "kwantdesk:zyon-conversation-sync";
+
+type ZyonActiveChatSyncDetail = {
+  accountKey?: string;
+  chatId?: string;
+  chat?: ZyonChat;
+  messages?: ZyonMessage[];
+  draft?: string;
+};
+
+type ZyonConversationSyncDetail = {
+  accountKey?: string;
+  chatId?: string;
+  messages?: ZyonMessage[];
+};
 
 function activeChatStorageKey(accountKey: string) {
   return `kwantdesk:zyon:active-chat:${accountKey}`;
+}
+
+function chatDraftStorageKey(accountKey: string, chatId: string) {
+  return `kwantdesk:zyon:draft:${accountKey}:${chatId}`;
 }
 
 function validChatId(value: unknown): value is string {
@@ -109,6 +128,11 @@ function storedActiveChatId(accountKey: string) {
   if (typeof window === "undefined" || !accountKey) return null;
   const saved = window.localStorage.getItem(activeChatStorageKey(accountKey));
   return validChatId(saved) ? saved : null;
+}
+
+function storedChatDraft(accountKey: string, chatId: string) {
+  if (typeof window === "undefined" || !accountKey || !validChatId(chatId)) return "";
+  return window.localStorage.getItem(chatDraftStorageKey(accountKey, chatId))?.slice(0, 6_000) ?? "";
 }
 
 const QUICK_PROMPTS = [
@@ -325,6 +349,21 @@ function descendantFolderIds(folders: ZyonFolder[], folderId: string) {
     });
   }
   return ids;
+}
+
+function messagesEquivalent(left: ZyonMessage[], right: ZyonMessage[]) {
+  if (left.length !== right.length) return false;
+  return left.every((message, index) => {
+    const candidate = right[index];
+    if (!candidate) return false;
+    return message.id === candidate.id
+      && message.role === candidate.role
+      && message.content === candidate.content
+      && message.createdAt === candidate.createdAt
+      && message.model === candidate.model
+      && message.gameplanStatus === candidate.gameplanStatus
+      && JSON.stringify(message.attachments ?? []) === JSON.stringify(candidate.attachments ?? []);
+  });
 }
 
 function escapeArchiveHtml(value: string) {
@@ -612,7 +651,11 @@ export default function ZyonWorkspace({
   const [folders, setFolders] = useState<ZyonFolder[]>([]);
   const [storeReady, setStoreReady] = useState(compact);
   const [cloudJournal, setCloudJournal] = useState<"checking" | "synced" | "local">("checking");
-  const [draft, setDraft] = useState("");
+  const [draftsByChat, setDraftsByChat] = useState<Record<string, string>>(() => {
+    const initialChatId = storedActiveChatId(accountKey) ?? ZYON_DEFAULT_CHAT_ID;
+    const initialDraft = storedChatDraft(accountKey, initialChatId);
+    return initialDraft ? { [initialChatId]: initialDraft } : {};
+  });
   const [attachments, setAttachments] = useState<ZyonAttachment[]>([]);
   const [attachmentError, setAttachmentError] = useState("");
   const [sending, setSending] = useState(false);
@@ -651,6 +694,15 @@ export default function ZyonWorkspace({
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const messagesScrollRef = useRef<HTMLDivElement>(null);
   const gameplanLaunchConsumedRef = useRef(false);
+  const draft = draftsByChat[activeChatId] ?? "";
+  const setDraft = useCallback((update: SetStateAction<string>) => {
+    setDraftsByChat((current) => {
+      const previous = current[activeChatId] ?? "";
+      const next = typeof update === "function" ? update(previous) : update;
+      if (next === previous) return current;
+      return { ...current, [activeChatId]: next.slice(0, 6_000) };
+    });
+  }, [activeChatId]);
   const speechDictation = useSpeechDictation({
     value: draft,
     onChange: setDraft,
@@ -664,9 +716,18 @@ export default function ZyonWorkspace({
     setMessagesByChat((current) => {
       const previous = current[activeChatId] ?? [WELCOME_MESSAGE];
       const next = typeof update === "function" ? update(previous) : update;
+      window.queueMicrotask(() => {
+        window.dispatchEvent(new CustomEvent(ZYON_CONVERSATION_SYNC_EVENT, {
+          detail: {
+            accountKey,
+            chatId: activeChatId,
+            messages: next,
+          } satisfies ZyonConversationSyncDetail,
+        }));
+      });
       return { ...current, [activeChatId]: next };
     });
-  }, [activeChatId]);
+  }, [accountKey, activeChatId]);
 
   const resizeComposer = useCallback(() => {
     const composer = composerRef.current;
@@ -733,28 +794,85 @@ export default function ZyonWorkspace({
       return;
     }
     if (activeChatAccountKey === accountKey) return;
-    setActiveChatId(storedActiveChatId(accountKey) ?? ZYON_DEFAULT_CHAT_ID);
+    const nextChatId = storedActiveChatId(accountKey) ?? ZYON_DEFAULT_CHAT_ID;
+    const nextDraft = storedChatDraft(accountKey, nextChatId);
+    setActiveChatId(nextChatId);
+    setDraftsByChat(nextDraft ? { [nextChatId]: nextDraft } : {});
     setActiveChatAccountKey(accountKey);
   }, [accountKey, activeChatAccountKey]);
 
   useEffect(() => {
     if (!accountKey) return;
     const synchronize = (chatId: unknown) => {
-      if (validChatId(chatId)) {
-        setActiveChatId((current) => current === chatId ? current : chatId);
-      }
+      if (!validChatId(chatId)) return;
+      setActiveChatId((current) => current === chatId ? current : chatId);
+    };
+    const synchronizeMessages = (chatId: string, incoming: ZyonMessage[]) => {
+      setMessagesByChat((current) => {
+        const existing = current[chatId] ?? [WELCOME_MESSAGE];
+        const merged = mergeMessages(existing, incoming);
+        return messagesEquivalent(existing, merged)
+          ? current
+          : { ...current, [chatId]: merged };
+      });
     };
     const onActiveChat = (event: Event) => {
-      const detail = (event as CustomEvent<{ accountKey?: string; chatId?: string }>).detail;
-      if (detail?.accountKey === accountKey) synchronize(detail.chatId);
+      const detail = (event as CustomEvent<ZyonActiveChatSyncDetail>).detail;
+      if (detail?.accountKey !== accountKey || !validChatId(detail.chatId)) return;
+      const chatId = detail.chatId;
+      if (detail.chat?.id === chatId) {
+        setChats((current) => {
+          const existing = current.find((chat) => chat.id === chatId);
+          if (
+            existing
+            && existing.name === detail.chat?.name
+            && existing.createdAt === detail.chat?.createdAt
+            && existing.updatedAt === detail.chat?.updatedAt
+          ) return current;
+          return mergeChats(current, [detail.chat!]);
+        });
+      }
+      if (Array.isArray(detail.messages)) {
+        synchronizeMessages(chatId, detail.messages);
+      }
+      if (typeof detail.draft === "string") {
+        const nextDraft = detail.draft.slice(0, 6_000);
+        setDraftsByChat((current) => current[chatId] === nextDraft
+          ? current
+          : { ...current, [chatId]: nextDraft });
+      }
+      synchronize(chatId);
+    };
+    const onConversationSync = (event: Event) => {
+      const detail = (event as CustomEvent<ZyonConversationSyncDetail>).detail;
+      if (
+        detail?.accountKey !== accountKey
+        || !validChatId(detail.chatId)
+        || !Array.isArray(detail.messages)
+      ) return;
+      synchronizeMessages(detail.chatId, detail.messages);
     };
     const onStorage = (event: StorageEvent) => {
-      if (event.key === activeChatStorageKey(accountKey)) synchronize(event.newValue);
+      if (event.key === activeChatStorageKey(accountKey)) {
+        synchronize(event.newValue);
+        return;
+      }
+      const draftPrefix = `kwantdesk:zyon:draft:${accountKey}:`;
+      if (event.key?.startsWith(draftPrefix)) {
+        const chatId = event.key.slice(draftPrefix.length);
+        if (!validChatId(chatId)) return;
+        const nextDraft = (event.newValue ?? "").slice(0, 6_000);
+        setDraftsByChat((current) => current[chatId] === nextDraft
+          ? current
+          : { ...current, [chatId]: nextDraft });
+      }
     };
     window.addEventListener(ZYON_ACTIVE_CHAT_EVENT, onActiveChat);
+    window.addEventListener(ZYON_CONVERSATION_SYNC_EVENT, onConversationSync);
     window.addEventListener("storage", onStorage);
     return () => {
       window.removeEventListener(ZYON_ACTIVE_CHAT_EVENT, onActiveChat);
+      window.removeEventListener(ZYON_CONVERSATION_SYNC_EVENT, onConversationSync);
       window.removeEventListener("storage", onStorage);
     };
   }, [accountKey]);
@@ -792,10 +910,10 @@ export default function ZyonWorkspace({
           });
           return next;
         });
-        if (
-          typeof saved?.activeChatId === "string"
-          && savedChats.some((chat) => chat.id === saved.activeChatId)
-        ) {
+        const sharedActiveChatId = storedActiveChatId(accountKey);
+        if (sharedActiveChatId) {
+          setActiveChatId(sharedActiveChatId);
+        } else if (validChatId(saved?.activeChatId)) {
           setActiveChatId(saved.activeChatId);
         }
         setJournal((current) => mergeJournal(
@@ -838,18 +956,28 @@ export default function ZyonWorkspace({
 
   useEffect(() => {
     if (!accountKey || activeChatAccountKey !== accountKey) return;
+    const activeChat = chats.find((chat) => chat.id === activeChatId);
+    const activeMessages = messagesByChat[activeChatId];
+    const activeDraft = draftsByChat[activeChatId] ?? "";
     window.localStorage.setItem(activeChatStorageKey(accountKey), activeChatId);
+    window.localStorage.setItem(chatDraftStorageKey(accountKey, activeChatId), activeDraft);
     window.dispatchEvent(new CustomEvent(ZYON_ACTIVE_CHAT_EVENT, {
-      detail: { accountKey, chatId: activeChatId },
+      detail: {
+        accountKey,
+        chatId: activeChatId,
+        chat: activeChat,
+        messages: activeMessages,
+        draft: activeDraft,
+      } satisfies ZyonActiveChatSyncDetail,
     }));
-  }, [accountKey, activeChatAccountKey, activeChatId]);
+  }, [accountKey, activeChatAccountKey, activeChatId, chats, draftsByChat, messagesByChat]);
 
   useEffect(() => {
     let active = true;
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), 8_000);
     const journalUrl = compact
-      ? "/api/zyon/journal?compact=1&latest=1"
+      ? `/api/zyon/journal?compact=1&chatId=${encodeURIComponent(cloudJournalChatId)}`
       : "/api/zyon/journal";
     fetch(journalUrl, { cache: "no-store", signal: controller.signal })
       .then(async (response) => {
@@ -885,9 +1013,8 @@ export default function ZyonWorkspace({
         if (Array.isArray(payload.chats)) {
           setChats((current) => mergeChats(current, [PRIMARY_CHAT, ...(payload.chats ?? [])]));
         }
-        if (compact && validChatId(payload.activeChatId)) {
-          setActiveChatId(payload.activeChatId);
-        }
+        // The side panel requests the exact shared chat. Never let a slower
+        // response replace a newer chat selected in the main ZYON workspace.
         if (!compact && Array.isArray(payload.folders)) {
           setFolders((current) => mergeFolders(current, payload.folders ?? []));
         }
@@ -1072,11 +1199,13 @@ export default function ZyonWorkspace({
     setExpandedFolderIds(new Set([rootFolderId, todayFolderId]));
     setSelectedEntryId(null);
     setJournalSearch("");
-    setDraft("");
+    setDraftsByChat((current) => Object.prototype.hasOwnProperty.call(current, chatId)
+      ? current
+      : { ...current, [chatId]: storedChatDraft(accountKey, chatId) });
     setAttachments([]);
     setAttachmentError("");
     setSendError("");
-  }, []);
+  }, [accountKey]);
 
   const createChat = useCallback(async () => {
     if (chatActionBusy || chats.length >= ZYON_CHAT_LIMIT) return;
@@ -1719,7 +1848,7 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
           <div className="flex min-h-full flex-col justify-end">
             <div className="mb-4 flex items-center gap-2 text-[8px] font-semibold uppercase tracking-[0.12em] text-muted/70">
               <span className="h-px flex-1 bg-border" />
-              Shared ZYON conversation
+              Shared · {activeChat.name}
               <span className="h-px flex-1 bg-border" />
             </div>
             <div className="space-y-3">

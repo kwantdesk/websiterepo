@@ -205,14 +205,29 @@ export async function GET(request: NextRequest) {
       .map(fromRow)
       .filter((entry): entry is ZyonJournalEntry => Boolean(entry));
     const now = new Date().toISOString();
+    const { data: compactChatRow } = compactChatId === ZYON_DEFAULT_CHAT_ID
+      ? { data: null }
+      : await supabase
+          .from("zyon_journal_entries")
+          .select("title,created_at,updated_at")
+          .eq("user_id", actor.userId)
+          .eq("id", compactChatId)
+          .contains("tags", [ZYON_CHAT_TAG])
+          .maybeSingle();
     return NextResponse.json({
       entries,
       folders: [],
       chats: [{
         id: compactChatId,
-        name: compactChatId === ZYON_DEFAULT_CHAT_ID ? "Primary chat" : "Current chat",
-        createdAt: rows[0]?.created_at ?? now,
-        updatedAt: rows.at(-1)?.updated_at ?? rows.at(-1)?.created_at ?? now,
+        name: compactChatId === ZYON_DEFAULT_CHAT_ID
+          ? "Primary chat"
+          : compactChatRow?.title || "Current chat",
+        createdAt: compactChatRow?.created_at ?? rows[0]?.created_at ?? now,
+        updatedAt: compactChatRow?.updated_at
+          ?? compactChatRow?.created_at
+          ?? rows.at(-1)?.updated_at
+          ?? rows.at(-1)?.created_at
+          ?? now,
       }],
       activeChatId: compactChatId,
       cloud: true,
