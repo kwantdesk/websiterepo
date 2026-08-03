@@ -95,6 +95,7 @@ import {
   readWorkspaceData,
 } from "@/lib/workspaceDataCache";
 import GameplanRecordsWorkspace, { type GameplanRecordTab } from "@/components/gameplan/GameplanRecordsWorkspace";
+import GameplanHoldingPanel from "@/components/gameplan/GameplanHoldingPanel";
 
 type DetailMode = "beginner" | "standard" | "pro";
 type Level = GameplanEdition["ladder"][number];
@@ -2377,7 +2378,7 @@ function GameplanLiveWorkspace({ initialInstrument = "NQ" }: { initialInstrument
             </div>
           </Panel>
 
-          <div className="mb-3 grid min-h-0 gap-3 xl:grid-cols-[minmax(0,1.65fr)_minmax(300px,.55fr)]">
+          <div className="mb-3 grid min-h-0 gap-3 xl:grid-cols-[minmax(0,1.45fr)_minmax(360px,.7fr)]">
             <Ladder
               plan={plan}
               currentPrice={currentPrice}
@@ -2389,6 +2390,7 @@ function GameplanLiveWorkspace({ initialInstrument = "NQ" }: { initialInstrument
               onGlossary={setGlossaryTerm}
             />
             <div className="space-y-3">
+              <GameplanHoldingPanel />
               <LiveMarketAnalyst
                 root={root}
                 session={session}

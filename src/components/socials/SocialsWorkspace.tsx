@@ -1488,11 +1488,13 @@ export default function SocialsWorkspace({
     };
     void loadDraft(true);
     window.addEventListener("kwantdesk:zyon-gameplan-sent", refreshDraft);
+    window.addEventListener("kwantdesk:zyon-gameplan-draft-updated", refreshDraft);
     window.addEventListener("focus", refreshDraft);
     document.addEventListener("visibilitychange", refreshVisibleDraft);
     return () => {
       active = false;
       window.removeEventListener("kwantdesk:zyon-gameplan-sent", refreshDraft);
+      window.removeEventListener("kwantdesk:zyon-gameplan-draft-updated", refreshDraft);
       window.removeEventListener("focus", refreshDraft);
       document.removeEventListener("visibilitychange", refreshVisibleDraft);
     };

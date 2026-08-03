@@ -590,7 +590,7 @@ export async function POST(request: NextRequest) {
     id = `${objectType}:${crypto.randomUUID()}`;
   }
 
-  if (objectType === "post" || objectType === "comment") {
+  if (objectType === "post" || objectType === "comment" || objectType === "precord") {
     const { data: profileIdentity } = await supabase
       .from("social_objects")
       .select("author_label,payload")
