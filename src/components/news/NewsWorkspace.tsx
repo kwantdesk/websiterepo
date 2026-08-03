@@ -60,8 +60,97 @@ const CURRENCY_COUNTRY: Record<EconomicCurrency, string> = {
   CNY: "China",
 };
 
+function readLocalStorage(key: string) {
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function writeLocalStorage(key: string, value: string) {
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    // Device-local preferences and caches must never be able to crash NEWS.
+  }
+}
+
+function sanitizeCalendarEvent(value: unknown): EconomicCalendarEvent | null {
+  if (!value || typeof value !== "object") return null;
+  const candidate = value as Partial<EconomicCalendarEvent>;
+  const timestamp = typeof candidate.date === "string" ? Date.parse(candidate.date) : Number.NaN;
+  const currency = candidate.currency;
+  const impact = candidate.impact;
+  if (
+    typeof candidate.id !== "string"
+    || !candidate.id
+    || !Number.isFinite(timestamp)
+    || !currency
+    || !ECONOMIC_CALENDAR_CURRENCIES.includes(currency)
+    || (impact !== "High" && impact !== "Medium" && impact !== "Low")
+    || typeof candidate.name !== "string"
+    || !candidate.name
+  ) return null;
+
+  const text = (field: keyof EconomicCalendarEvent) =>
+    typeof candidate[field] === "string" ? candidate[field] as string : "";
+
+  return {
+    id: candidate.id,
+    date: new Date(timestamp).toISOString(),
+    currency,
+    country: text("country") || CURRENCY_COUNTRY[currency],
+    impact,
+    name: candidate.name,
+    category: text("category"),
+    forecast: text("forecast"),
+    previous: text("previous"),
+    actual: text("actual"),
+    revised: text("revised"),
+    reference: text("reference"),
+    source: text("source"),
+    sourceUrl: text("sourceUrl"),
+    unit: text("unit"),
+    status: candidate.status === "released" ? "released" : "scheduled",
+  };
+}
+
+function sanitizeCalendarPayload(value: unknown): EconomicCalendarPayload | null {
+  if (!value || typeof value !== "object") return null;
+  const candidate = value as Partial<EconomicCalendarPayload>;
+  if (
+    !Array.isArray(candidate.events)
+    || typeof candidate.fetchedAt !== "string"
+    || !Number.isFinite(Date.parse(candidate.fetchedAt))
+    || typeof candidate.coverage?.from !== "string"
+    || typeof candidate.coverage?.to !== "string"
+  ) return null;
+
+  const events = candidate.events
+    .map(sanitizeCalendarEvent)
+    .filter((event): event is EconomicCalendarEvent => event !== null);
+
+  return {
+    events,
+    provider: candidate.provider === "Trading Economics" ? "Trading Economics" : "Fair Economy",
+    fetchedAt: new Date(candidate.fetchedAt).toISOString(),
+    refreshAfterMs: Number.isFinite(candidate.refreshAfterMs)
+      ? Math.max(60_000, Number(candidate.refreshAfterMs))
+      : 60_000,
+    coverage: {
+      from: candidate.coverage.from,
+      to: candidate.coverage.to,
+      longRange: candidate.coverage.longRange === true,
+    },
+    partial: candidate.partial === true,
+    note: typeof candidate.note === "string" ? candidate.note : "Economic calendar loaded.",
+  };
+}
+
 function dateKey(date: Date | string, timeZone: string) {
   const value = typeof date === "string" ? new Date(date) : date;
+  if (!Number.isFinite(value.getTime())) return "";
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: normalizeTimeZone(timeZone),
     year: "numeric",
@@ -270,14 +359,14 @@ function EconomicCalendarWorkspace() {
   const [timeZone, setTimeZone] = useState(() => {
     if (typeof window === "undefined") return "UTC";
     return normalizeTimeZone(
-      window.localStorage.getItem(TIME_ZONE_STORAGE_KEY) ?? browserTimeZone(),
+      readLocalStorage(TIME_ZONE_STORAGE_KEY) ?? browserTimeZone(),
     );
   });
   const [selectedDate, setSelectedDate] = useState(() => {
     const initialTimeZone = typeof window === "undefined"
       ? "UTC"
       : normalizeTimeZone(
-          window.localStorage.getItem(TIME_ZONE_STORAGE_KEY) ?? browserTimeZone(),
+          readLocalStorage(TIME_ZONE_STORAGE_KEY) ?? browserTimeZone(),
         );
     return dateKey(new Date(), initialTimeZone);
   });
@@ -296,20 +385,16 @@ function EconomicCalendarWorkspace() {
 
   useEffect(() => {
     try {
-      const currencies = JSON.parse(window.localStorage.getItem(CURRENCIES_STORAGE_KEY) ?? "null") as EconomicCurrency[] | null;
+      const currencies = JSON.parse(readLocalStorage(CURRENCIES_STORAGE_KEY) ?? "null") as EconomicCurrency[] | null;
       if (Array.isArray(currencies)) {
         setSelectedCurrencies(currencies.filter((currency) => ECONOMIC_CALENDAR_CURRENCIES.includes(currency)));
       }
-      const savedAlerts = JSON.parse(window.localStorage.getItem(ALERTS_STORAGE_KEY) ?? "[]") as string[];
+      const savedAlerts = JSON.parse(readLocalStorage(ALERTS_STORAGE_KEY) ?? "[]") as string[];
       if (Array.isArray(savedAlerts)) setAlerts(savedAlerts.filter((id) => typeof id === "string"));
-      const savedCalendar = JSON.parse(window.localStorage.getItem(CALENDAR_CACHE_STORAGE_KEY) ?? "null") as EconomicCalendarPayload | null;
-      if (
-        savedCalendar
-        && Array.isArray(savedCalendar.events)
-        && typeof savedCalendar.fetchedAt === "string"
-        && typeof savedCalendar.coverage?.from === "string"
-        && typeof savedCalendar.coverage?.to === "string"
-      ) {
+      const savedCalendar = sanitizeCalendarPayload(
+        JSON.parse(readLocalStorage(CALENDAR_CACHE_STORAGE_KEY) ?? "null"),
+      );
+      if (savedCalendar) {
         payloadRef.current = savedCalendar;
         setPayload(savedCalendar);
         setLoading(false);
@@ -323,7 +408,7 @@ function EconomicCalendarWorkspace() {
   }, []);
 
   useEffect(() => {
-    window.localStorage.setItem(TIME_ZONE_STORAGE_KEY, timeZone);
+    writeLocalStorage(TIME_ZONE_STORAGE_KEY, timeZone);
     window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
   }, [timeZone]);
 
@@ -335,11 +420,13 @@ function EconomicCalendarWorkspace() {
       const from = shiftDate(today, -CALENDAR_HISTORY_DAYS);
       const to = shiftDate(today, CALENDAR_FORWARD_DAYS);
       const response = await fetch(`/api/economic-calendar?from=${from}&to=${to}`, { cache: "no-store" });
-      const next = await response.json() as EconomicCalendarPayload & { error?: string };
-      if (!response.ok) throw new Error(next.error || "Economic calendar could not be loaded.");
+      const responsePayload = await response.json() as EconomicCalendarPayload & { error?: string };
+      if (!response.ok) throw new Error(responsePayload.error || "Economic calendar could not be loaded.");
+      const next = sanitizeCalendarPayload(responsePayload);
+      if (!next) throw new Error("The economic calendar returned malformed data.");
       payloadRef.current = next;
       setPayload(next);
-      window.localStorage.setItem(CALENDAR_CACHE_STORAGE_KEY, JSON.stringify(next));
+      writeLocalStorage(CALENDAR_CACHE_STORAGE_KEY, JSON.stringify(next));
       setError(null);
     } catch {
       setError(payloadRef.current ? null : "The calendar is reconnecting. It will retry automatically.");
@@ -410,7 +497,7 @@ function EconomicCalendarWorkspace() {
       const next = current.includes(currency)
         ? current.filter((item) => item !== currency)
         : [...current, currency];
-      window.localStorage.setItem(CURRENCIES_STORAGE_KEY, JSON.stringify(next));
+      writeLocalStorage(CURRENCIES_STORAGE_KEY, JSON.stringify(next));
       return next;
     });
   };
@@ -426,7 +513,7 @@ function EconomicCalendarWorkspace() {
     }
     setAlerts((current) => {
       const next = current.includes(event.id) ? current.filter((id) => id !== event.id) : [...current, event.id];
-      window.localStorage.setItem(ALERTS_STORAGE_KEY, JSON.stringify(next));
+      writeLocalStorage(ALERTS_STORAGE_KEY, JSON.stringify(next));
       return next;
     });
   };
@@ -483,7 +570,7 @@ function EconomicCalendarWorkspace() {
           <button type="button" onClick={() => {
             const next = selectedCurrencies.length === ECONOMIC_CALENDAR_CURRENCIES.length ? [] : [...ECONOMIC_CALENDAR_CURRENCIES];
             setSelectedCurrencies(next);
-            window.localStorage.setItem(CURRENCIES_STORAGE_KEY, JSON.stringify(next));
+            writeLocalStorage(CURRENCIES_STORAGE_KEY, JSON.stringify(next));
           }} className="ml-1 h-8 shrink-0 rounded-xl px-2.5 text-[9px] font-semibold text-muted hover:text-foreground">
             {selectedCurrencies.length === ECONOMIC_CALENDAR_CURRENCIES.length ? "Clear" : "All"}
           </button>
