@@ -132,6 +132,10 @@ interface ChartProps {
   gammaLevelsError?: string | null;
   onToggleGammaLevels?: () => void;
   historicalStructureEnabled?: boolean;
+  historicalStructureAvailable?: boolean;
+  historicalStructureLoading?: boolean;
+  historicalStructureError?: string | null;
+  historicalStructureDescription?: string;
   onToggleHistoricalStructure?: () => void;
   valueAreaLevelsEnabled?: boolean;
   valueAreaLevelsAvailable?: boolean;
@@ -1063,6 +1067,10 @@ export default function Chart({
   gammaLevelsError = null,
   onToggleGammaLevels,
   historicalStructureEnabled = false,
+  historicalStructureAvailable = false,
+  historicalStructureLoading = false,
+  historicalStructureError = null,
+  historicalStructureDescription = "",
   onToggleHistoricalStructure,
   valueAreaLevelsEnabled = false,
   valueAreaLevelsAvailable = false,
@@ -4367,21 +4375,27 @@ export default function Chart({
             </button>
             <button
               type="button"
-              disabled={!onToggleHistoricalStructure}
+              disabled={!historicalStructureAvailable || !onToggleHistoricalStructure}
               onClick={(event) => {
                 event.stopPropagation();
                 onToggleHistoricalStructure?.();
               }}
               className={`flex items-center justify-center border backdrop-blur ${
-                onToggleHistoricalStructure
+                historicalStructureAvailable && onToggleHistoricalStructure
                   ? getToolbarButtonTone(historicalStructureEnabled)
                   : "cursor-not-allowed border-transparent bg-panel/45 text-muted/30"
               }`}
               style={toolbarButtonStyle}
               title={
-                historicalStructureEnabled
-                  ? "Hide historical supply, demand, support and resistance"
-                  : "Show historical supply, demand, support and resistance"
+                !historicalStructureAvailable
+                  ? "Supply, demand and S/R zones are available on CME futures"
+                  : historicalStructureError
+                    ? `Structure zones: ${historicalStructureError}`
+                    : historicalStructureLoading
+                      ? "Building five-day supply, demand and S/R zones"
+                      : historicalStructureEnabled
+                        ? `Hide structure zones${historicalStructureDescription ? ` · ${historicalStructureDescription}` : ""}`
+                        : "Show supply, demand, support and resistance zones"
               }
               aria-label={
                 historicalStructureEnabled
@@ -4392,7 +4406,7 @@ export default function Chart({
             >
               <span
                 aria-hidden="true"
-                className={`${toolbarIconClassName} flex items-center justify-center rounded-[4px] border border-current font-mono text-[9px] font-black leading-none`}
+                className={`${toolbarIconClassName} flex items-center justify-center rounded-[4px] border border-current font-mono text-[9px] font-black leading-none ${historicalStructureLoading ? "animate-pulse" : ""}`}
               >
                 S
               </span>

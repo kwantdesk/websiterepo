@@ -242,8 +242,14 @@ export function buildDeepChartsAnnotations(
 ): DeepChartsAnnotation[] {
   const anchors = easternSessionAnchors(exportedAt);
   const nameCounts = new Map<string, number>();
+  const rows = levels.flatMap((level) => level.zoneLow !== level.zoneHigh
+    ? [
+        { ...level, id: `${level.id}:low`, name: `${level.name} LOW`, price: level.zoneLow, zoneHigh: level.zoneLow },
+        { ...level, id: `${level.id}:high`, name: `${level.name} HIGH`, price: level.zoneHigh, zoneLow: level.zoneHigh },
+      ]
+    : [level]);
 
-  return [...levels]
+  return rows
     .filter((level) => Number.isFinite(level.price))
     .sort((left, right) =>
       left.instrument.localeCompare(right.instrument)

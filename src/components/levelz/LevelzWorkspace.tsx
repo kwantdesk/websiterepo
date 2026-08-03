@@ -6,7 +6,6 @@ import {
   BookOpenCheck,
   CircleDot,
   Crosshair,
-  Database,
   Layers3,
   Radio,
   RefreshCw,
@@ -27,6 +26,8 @@ import {
 } from "@/lib/chartLiveEvents";
 import { defaultChartSettings, loadStoredChartSettings, type ChartSettings } from "@/lib/chartSettings";
 import type { GameplanPayload } from "@/lib/gameplan";
+import { useStructureLevels } from "@/hooks/useStructureLevels";
+import type { StructureLevelsSnapshot } from "@/lib/structureLevels";
 
 const Chart = dynamic(() => import("@/components/Chart"), {
   ssr: false,
@@ -51,7 +52,7 @@ type PanelConfig = {
   timeframe: LevelTimeframe;
 };
 
-type LevelEvidence = "OBSERVED" | "CALCULATED" | "DERIVED" | "UNAVAILABLE";
+type LevelEvidence = "OBSERVED" | "CALCULATED" | "DERIVED" | "LIVE_L3" | "UNAVAILABLE";
 
 type IntelligentLevel = ChartLevel & {
   family: LevelFamily;
@@ -617,6 +618,26 @@ function emptyStructureSnapshot(): LevelSnapshot {
   };
 }
 
+function makeStructureSnapshot(payload: StructureLevelsSnapshot): LevelSnapshot {
+  return {
+    levels: payload.levels.map((level) => ({
+      ...level,
+      family: "structure" as const,
+      kind: level.role,
+      evidence: level.evidence === "HISTORICAL" ? "CALCULATED" as const : "LIVE_L3" as const,
+      value: level.confidence,
+    })),
+    zones: payload.zones,
+    asOf: payload.asOf,
+    source: payload.source,
+    status: payload.status === "LIVE_L3" ? "LIVE" : payload.status === "HISTORICAL" ? "READY" : "UNAVAILABLE",
+    regime: payload.status === "LIVE_L3" ? "Hybrid structure · live L3 confirmed" : "Historical structural context",
+    tape: payload.status === "LIVE_L3" ? "Persistent MBO liquidity" : "Awaiting live Rithmic MBO confirmation",
+    flowLean: null,
+    note: payload.note,
+  };
+}
+
 async function requestJson<T extends { error?: string }>(url: string) {
   const response = await fetch(url, { cache: "no-store" });
   const payload = await response.json() as T;
@@ -862,18 +883,37 @@ function LevelChartCard({
 }) {
   const market = useMarketSeries(config);
   const levels = useLevelSnapshot(config, settings);
+  const structure = useStructureLevels({
+    enabled: config.family === "structure",
+    symbol: marketSymbol(config.instrument),
+    instrument: config.instrument,
+    upColor: settings.upColor,
+    downColor: settings.downColor,
+  });
+  const structureLevelSnapshot = useMemo(
+    () => makeStructureSnapshot(structure.snapshot),
+    [structure.snapshot],
+  );
+  const resolvedLevels = config.family === "structure"
+    ? {
+        snapshot: structureLevelSnapshot,
+        loading: structure.loading,
+        error: structure.error,
+        refresh: structure.refresh,
+      }
+    : levels;
   const price = market.candles.at(-1)?.close ?? null;
 
   useEffect(() => {
     onRuntime(config.id, {
       candles: market.candles,
       price,
-      loading: market.loading || levels.loading,
-      error: market.error || levels.error,
+      loading: market.loading || resolvedLevels.loading,
+      error: market.error || resolvedLevels.error,
       liveStatus: market.liveStatus,
-      snapshot: levels.snapshot,
+      snapshot: resolvedLevels.snapshot,
     });
-  }, [levels.error, levels.loading, levels.snapshot, market.candles, market.error, market.liveStatus, market.loading, onRuntime, price]);
+  }, [market.candles, market.error, market.liveStatus, market.loading, onRuntime, price, resolvedLevels.error, resolvedLevels.loading, resolvedLevels.snapshot]);
 
   return (
     <section
@@ -900,11 +940,11 @@ function LevelChartCard({
         </KwantSelect>
         <button
           type="button"
-          onClick={(event) => { event.stopPropagation(); levels.refresh(); }}
+          onClick={(event) => { event.stopPropagation(); resolvedLevels.refresh(); }}
           className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-border bg-background text-muted hover:border-primary/30 hover:text-primary"
           title="Refresh selected levels"
         >
-          <RefreshCw className={`h-3 w-3 ${levels.loading ? "animate-spin" : ""}`} />
+          <RefreshCw className={`h-3 w-3 ${resolvedLevels.loading ? "animate-spin" : ""}`} />
         </button>
         <KwantSelect
           value={config.family}
@@ -924,9 +964,10 @@ function LevelChartCard({
         ) : (
           <Chart
             candles={market.candles}
-            levels={config.family === "gameplan" ? [] : levels.snapshot.levels}
-            backgroundLevels={config.family === "gameplan" ? levels.snapshot.levels : []}
-            backgroundZones={levels.snapshot.zones}
+            levels={config.family === "gameplan" ? [] : resolvedLevels.snapshot.levels}
+            zones={config.family === "structure" ? resolvedLevels.snapshot.zones : []}
+            backgroundLevels={config.family === "gameplan" ? resolvedLevels.snapshot.levels : []}
+            backgroundZones={config.family === "gameplan" ? resolvedLevels.snapshot.zones : []}
             instrument={config.instrument}
             timeframe={config.timeframe}
             marketIsActive={market.liveStatus === "live"}
@@ -935,12 +976,12 @@ function LevelChartCard({
           />
         )}
 
-        {config.family === "structure" ? (
-          <div className="absolute inset-0 z-20 flex items-center justify-center bg-background/72 p-5 backdrop-blur-[1px]">
-            <div className="max-w-[320px] rounded-2xl border border-dashed border-border bg-panel/90 px-5 py-4 text-center shadow-xl">
+        {config.family === "structure" && !resolvedLevels.loading && !resolvedLevels.snapshot.zones.length ? (
+          <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center p-5">
+            <div className="max-w-[320px] rounded-2xl border border-dashed border-border bg-panel/90 px-5 py-4 text-center shadow-xl backdrop-blur">
               <Layers3 className="mx-auto h-5 w-5 text-muted" />
-              <div className="mt-2 text-[10px] font-semibold">Historical structure is being plumbed in</div>
-              <p className="mt-1 text-[8px] leading-4 text-muted">This panel remains deliberately blank until validated supply, demand, support and resistance zones are available.</p>
+              <div className="mt-2 text-[10px] font-semibold">Waiting for structural evidence</div>
+              <p className="mt-1 text-[8px] leading-4 text-muted">Five-day CME history is required before a zone is published. Live Rithmic L3 confirmation joins automatically when connected.</p>
             </div>
           </div>
         ) : null}
@@ -993,15 +1034,7 @@ function LevelEducationRail({ config, runtime }: { config: PanelConfig; runtime:
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {config.family === "structure" ? (
-          <div className="p-4">
-            <div className="rounded-2xl border border-dashed border-border bg-background/35 p-4">
-              <Database className="h-5 w-5 text-muted" />
-              <div className="mt-3 text-[11px] font-semibold">No structural levels published</div>
-              <p className="mt-2 text-[9px] leading-5 text-muted">Supply and demand, support and resistance will appear here only after the historical engine has validated each zone, its origin, retests, and invalidation. Nothing synthetic is displayed.</p>
-            </div>
-          </div>
-        ) : selected ? (
+        {selected ? (
           <>
             <div className="border-b border-border p-4">
               <div className="flex items-start gap-3">

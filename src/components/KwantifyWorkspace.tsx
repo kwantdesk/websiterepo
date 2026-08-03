@@ -15,6 +15,7 @@ import UserAvatar from "@/components/socials/UserAvatar";
 import LevelzWorkspace from "@/components/levelz/LevelzWorkspace";
 import { useKwantBotInterpreter } from "@/hooks/useKwantBotInterpreter";
 import { useSocialNotifications } from "@/hooks/useSocialNotifications";
+import { useStructureLevels } from "@/hooks/useStructureLevels";
 
 import { startTransition, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent as ReactDragEvent } from "react";
 import { createPortal } from "react-dom";
@@ -416,6 +417,15 @@ type ValueAreaLevelExportSnapshot = {
   sourceLabel: string;
   levels: ChartLevel[];
 };
+type StructureLevelExportSnapshot = {
+  checkedAt: string;
+  sourceLabel: string;
+  levels: ChartLevel[];
+  zones: Array<ChartZone & {
+    role: string;
+    confidence: number;
+  }>;
+};
 type GammaLevelExportSnapshot = {
   paneId: string;
   instrument: string;
@@ -426,6 +436,7 @@ type GammaLevelExportSnapshot = {
   sourceLabel: string;
   levels: ChartLevel[];
   valueArea: ValueAreaLevelExportSnapshot | null;
+  structure: StructureLevelExportSnapshot | null;
 };
 type LevelExportRow = {
   levelType: "Gamma Levels" | "Kwant Levels" | "Value Area Levels" | "Historical Supply/Demand + S/R";
@@ -2505,17 +2516,28 @@ function WorkspaceChartPane({
     () => buildGameplanChartDecorations(gameplanOverlay, settings),
     [gameplanOverlay, settings],
   );
+  const structure = useStructureLevels({
+    enabled: pane.broker === "Databento" && (historicalStructureEnabled || levelExportRequested),
+    symbol: pane.symbol,
+    instrument: gammaInstrument,
+    contractSymbol: resolvedContractSymbol,
+    upColor: settings.upColor,
+    downColor: settings.downColor,
+  });
   const chartLevels = useMemo(
     () => [
       ...(gammaLevelsEnabled ? currentGammaOverlay?.levels ?? [] : []),
       ...(valueAreaLevelsEnabled && valueAreaOverlay?.instrument === pane.symbol
         ? valueAreaOverlay.levels
         : []),
+      ...(historicalStructureEnabled ? structure.snapshot.levels : []),
     ],
     [
       currentGammaOverlay,
       gammaLevelsEnabled,
       pane.symbol,
+      historicalStructureEnabled,
+      structure.snapshot.levels,
       valueAreaLevelsEnabled,
       valueAreaOverlay,
     ],
@@ -2611,6 +2633,14 @@ function WorkspaceChartPane({
             levels: valueAreaOverlay.levels,
           }
         : null,
+      structure: structure.snapshot.zones.length
+        ? {
+            checkedAt: structure.snapshot.asOf ?? "",
+            sourceLabel: structure.snapshot.source,
+            levels: structure.snapshot.levels,
+            zones: structure.snapshot.zones,
+          }
+        : null,
     });
     return () => onGammaExportSnapshot(pane.id, null);
   }, [
@@ -2620,6 +2650,7 @@ function WorkspaceChartPane({
     pane.id,
     pane.symbol,
     resolvedContractSymbol,
+    structure.snapshot,
     valueAreaOverlay,
   ]);
 
@@ -3525,6 +3556,7 @@ function WorkspaceChartPane({
           marketTrades={marketTrades}
           trades={trades}
           levels={chartLevels}
+          zones={historicalStructureEnabled ? structure.snapshot.zones : []}
           backgroundLevels={gameplanDecorations.levels}
           backgroundZones={gameplanDecorations.zones}
           instrument={displayCmeSymbol(pane.symbol)}
@@ -3547,6 +3579,10 @@ function WorkspaceChartPane({
           gammaLevelsError={gammaLevelsError}
           onToggleGammaLevels={onToggleGammaLevels}
           historicalStructureEnabled={historicalStructureEnabled}
+          historicalStructureAvailable={pane.broker === "Databento" && isContinuousFuture(pane.symbol)}
+          historicalStructureLoading={structure.loading}
+          historicalStructureError={structure.error}
+          historicalStructureDescription={structure.snapshot.note}
           onToggleHistoricalStructure={onToggleHistoricalStructure}
           valueAreaLevelsEnabled={valueAreaLevelsEnabled}
           valueAreaLevelsAvailable={valueAreaLevelsAvailable}
@@ -4628,6 +4664,7 @@ export default function KwantifyWorkspace({
       gamma: GammaLevelExportSnapshot | null;
       gameplan: GameplanChartOverlay | null;
       valueArea: ValueAreaLevelExportSnapshot | null;
+      structure: StructureLevelExportSnapshot | null;
     }>();
 
     for (const paneId of visibleWorkspacePaneIds) {
@@ -4646,6 +4683,7 @@ export default function KwantifyWorkspace({
           gamma: snapshot,
           gameplan,
           valueArea: snapshot?.valueArea ?? null,
+          structure: snapshot?.structure ?? null,
         });
       } else {
         if ((snapshot?.levels.length ?? 0) > (existing.gamma?.levels.length ?? 0)) {
@@ -4655,6 +4693,9 @@ export default function KwantifyWorkspace({
         if (!existing.gameplan && gameplan) existing.gameplan = gameplan;
         if ((snapshot?.valueArea?.levels.length ?? 0) > (existing.valueArea?.levels.length ?? 0)) {
           existing.valueArea = snapshot?.valueArea ?? existing.valueArea;
+        }
+        if ((snapshot?.structure?.zones.length ?? 0) > (existing.structure?.zones.length ?? 0)) {
+          existing.structure = snapshot?.structure ?? existing.structure;
         }
       }
     }
@@ -4673,7 +4714,8 @@ export default function KwantifyWorkspace({
         total
         + (levelExportTypes.gamma ? option.gamma?.levels.length ?? 0 : 0)
         + (levelExportTypes.gameplan ? option.gameplan?.levels.length ?? 0 : 0)
-        + (levelExportTypes.valueArea ? option.valueArea?.levels.length ?? 0 : 0), 0),
+        + (levelExportTypes.valueArea ? option.valueArea?.levels.length ?? 0 : 0)
+        + (levelExportTypes.historicalStructure ? option.structure?.zones.length ?? 0 : 0), 0),
     [
       availableLevelExportInstruments,
       levelExportTypes,
@@ -8244,14 +8286,42 @@ export default function KwantifyWorkspace({
           });
         }
       }
+
+      if (levelExportTypes.historicalStructure && option.structure) {
+        for (const zone of option.structure.zones) {
+          const centre = (zone.low + zone.high) / 2;
+          const level = option.structure.levels.find((candidate) =>
+            candidate.id === `${zone.id}-centre`
+            || Math.abs(candidate.price - centre) <= futuresTickSize(option.sourceSymbol) / 2,
+          );
+          rows.push({
+            levelType: "Historical Supply/Demand + S/R",
+            instrument: option.instrument,
+            sourceSymbol: option.sourceSymbol,
+            contractSymbol: option.contractSymbol,
+            id: zone.id,
+            name: zone.label,
+            role: zone.role.toLowerCase(),
+            price: centre,
+            zoneLow: zone.low,
+            zoneHigh: zone.high,
+            strength: zone.confidence,
+            color: zone.color,
+            lineStyle: level?.lineStyle ?? "dashed",
+            lineWidth: level?.lineWidth ?? 2,
+            source: option.structure.sourceLabel,
+            asOf: option.structure.checkedAt,
+          });
+        }
+      }
     }
 
     if (!selectedOptions.length) {
       setLevelExportError("Select at least one instrument.");
       return;
     }
-    if (!levelExportTypes.gamma && !levelExportTypes.gameplan && !levelExportTypes.valueArea) {
-      setLevelExportError("Select Gamma Levels, Kwant Levels, or Value Area Levels.");
+    if (!levelExportTypes.gamma && !levelExportTypes.gameplan && !levelExportTypes.valueArea && !levelExportTypes.historicalStructure) {
+      setLevelExportError("Select Gamma Levels, Kwant Levels, Value Area Levels, or Historical Supply/Demand + S/R.");
       return;
     }
     if (levelExportTypes.valueArea) {
@@ -8260,6 +8330,15 @@ export default function KwantifyWorkspace({
         .map((option) => option.instrument);
       if (missingValueArea.length) {
         setLevelExportError(`Value Area levels are still preparing for ${missingValueArea.join(", ")}.`);
+        return;
+      }
+    }
+    if (levelExportTypes.historicalStructure) {
+      const missingStructure = selectedOptions
+        .filter((option) => !(option.structure?.zones.length))
+        .map((option) => option.instrument);
+      if (missingStructure.length) {
+        setLevelExportError(`Historical Supply/Demand + S/R zones are still preparing for ${missingStructure.join(", ")}.`);
         return;
       }
     }
@@ -9115,7 +9194,7 @@ export default function KwantifyWorkspace({
                         ["gamma", "Gamma Levels", "Live options-derived chart levels", false],
                         ["gameplan", "Kwant Levels", "Proprietary named levels and price zones", false],
                         ["valueArea", "Value Area Levels", "Prior-day and prior-week VAH, VAL, POC and VWAP", false],
-                        ["historicalStructure", "Historical Supply/Demand + S/R", "Validated historical structure export is being built", true],
+                        ["historicalStructure", "Historical Supply/Demand + S/R", "Five-day structure zones with live Rithmic MBO confirmation", false],
                       ] as const).map(([type, label, description, disabled]) => {
                         const active = levelExportTypes[type];
                         return (
