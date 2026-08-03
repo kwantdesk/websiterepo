@@ -128,11 +128,36 @@ export async function GET(request: NextRequest) {
   }
 
   const compact = request.nextUrl.searchParams.get("compact") === "1";
+  const preferLatest = request.nextUrl.searchParams.get("latest") === "1";
   const requestedChatId = request.nextUrl.searchParams.get("chatId")?.trim() ?? "";
-  const compactChatId = /^[a-zA-Z0-9_-]+$/.test(requestedChatId)
+  let compactChatId = /^[a-zA-Z0-9_-]+$/.test(requestedChatId)
     ? requestedChatId.slice(0, 160)
     : ZYON_DEFAULT_CHAT_ID;
   if (compact) {
+    if (preferLatest) {
+      const { data: latestRows, error: latestError } = await supabase
+        .from("zyon_journal_entries")
+        .select("tags")
+        .eq("user_id", actor.userId)
+        .contains("tags", [ZYON_CONVERSATION_TAG])
+        .order("created_at", { ascending: false })
+        .limit(1);
+      if (latestError) {
+        if (unavailableTable(latestError.code)) return unavailableResponse();
+        console.error("ZYON latest conversation lookup failed", {
+          code: latestError.code,
+          message: latestError.message,
+        });
+      } else {
+        const latestChatId = zyonTagValue(
+          Array.isArray(latestRows?.[0]?.tags) ? latestRows[0].tags : [],
+          "zyon:chat-id:",
+        );
+        if (latestChatId && /^[a-zA-Z0-9_-]+$/.test(latestChatId)) {
+          compactChatId = latestChatId.slice(0, 160);
+        }
+      }
+    }
     const { data, error } = await supabase
       .from("zyon_journal_entries")
       .select("id,session_date,root,title,summary,body,kind,tags,attachments,created_at,updated_at")

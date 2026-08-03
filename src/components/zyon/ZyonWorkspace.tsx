@@ -95,6 +95,21 @@ const PRIMARY_CHAT: ZyonChat = {
   createdAt: "",
   updatedAt: "",
 };
+const ZYON_ACTIVE_CHAT_EVENT = "kwantdesk:zyon-active-chat";
+
+function activeChatStorageKey(accountKey: string) {
+  return `kwantdesk:zyon:active-chat:${accountKey}`;
+}
+
+function validChatId(value: unknown): value is string {
+  return typeof value === "string" && /^[a-zA-Z0-9_-]+$/.test(value);
+}
+
+function storedActiveChatId(accountKey: string) {
+  if (typeof window === "undefined" || !accountKey) return null;
+  const saved = window.localStorage.getItem(activeChatStorageKey(accountKey));
+  return validChatId(saved) ? saved : null;
+}
 
 const QUICK_PROMPTS = [
   {
@@ -584,11 +599,12 @@ export default function ZyonWorkspace({
   });
   const [online, setOnline] = useState(true);
   const [chats, setChats] = useState<ZyonChat[]>([PRIMARY_CHAT]);
-  const [activeChatId, setActiveChatId] = useState(() => {
-    if (!compact || typeof window === "undefined" || !accountKey) return ZYON_DEFAULT_CHAT_ID;
-    const saved = window.localStorage.getItem(`kwantdesk:zyon:active-chat:${accountKey}`);
-    return saved && /^[a-zA-Z0-9_-]+$/.test(saved) ? saved : ZYON_DEFAULT_CHAT_ID;
-  });
+  const [activeChatId, setActiveChatId] = useState(
+    () => storedActiveChatId(accountKey) ?? ZYON_DEFAULT_CHAT_ID,
+  );
+  const [activeChatAccountKey, setActiveChatAccountKey] = useState(
+    () => typeof window === "undefined" ? "" : accountKey,
+  );
   const [messagesByChat, setMessagesByChat] = useState<Record<string, ZyonMessage[]>>({
     [ZYON_DEFAULT_CHAT_ID]: [WELCOME_MESSAGE],
   });
@@ -705,6 +721,38 @@ export default function ZyonWorkspace({
   const cloudJournalChatId = compact ? activeChatId : ZYON_DEFAULT_CHAT_ID;
 
   useEffect(() => {
+    if (!accountKey) {
+      setActiveChatAccountKey("");
+      return;
+    }
+    if (activeChatAccountKey === accountKey) return;
+    setActiveChatId(storedActiveChatId(accountKey) ?? ZYON_DEFAULT_CHAT_ID);
+    setActiveChatAccountKey(accountKey);
+  }, [accountKey, activeChatAccountKey]);
+
+  useEffect(() => {
+    if (!accountKey) return;
+    const synchronize = (chatId: unknown) => {
+      if (validChatId(chatId)) {
+        setActiveChatId((current) => current === chatId ? current : chatId);
+      }
+    };
+    const onActiveChat = (event: Event) => {
+      const detail = (event as CustomEvent<{ accountKey?: string; chatId?: string }>).detail;
+      if (detail?.accountKey === accountKey) synchronize(detail.chatId);
+    };
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === activeChatStorageKey(accountKey)) synchronize(event.newValue);
+    };
+    window.addEventListener(ZYON_ACTIVE_CHAT_EVENT, onActiveChat);
+    window.addEventListener("storage", onStorage);
+    return () => {
+      window.removeEventListener(ZYON_ACTIVE_CHAT_EVENT, onActiveChat);
+      window.removeEventListener("storage", onStorage);
+    };
+  }, [accountKey]);
+
+  useEffect(() => {
     if (!accountKey) return;
     if (compact) {
       setStoreReady(true);
@@ -782,16 +830,19 @@ export default function ZyonWorkspace({
   }, [accountKey, activeChatId, chats, compact, folders, journal, messages, messagesByChat, storeReady]);
 
   useEffect(() => {
-    if (!accountKey) return;
-    window.localStorage.setItem(`kwantdesk:zyon:active-chat:${accountKey}`, activeChatId);
-  }, [accountKey, activeChatId]);
+    if (!accountKey || activeChatAccountKey !== accountKey) return;
+    window.localStorage.setItem(activeChatStorageKey(accountKey), activeChatId);
+    window.dispatchEvent(new CustomEvent(ZYON_ACTIVE_CHAT_EVENT, {
+      detail: { accountKey, chatId: activeChatId },
+    }));
+  }, [accountKey, activeChatAccountKey, activeChatId]);
 
   useEffect(() => {
     let active = true;
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), 8_000);
     const journalUrl = compact
-      ? `/api/zyon/journal?compact=1&chatId=${encodeURIComponent(cloudJournalChatId)}`
+      ? "/api/zyon/journal?compact=1&latest=1"
       : "/api/zyon/journal";
     fetch(journalUrl, { cache: "no-store", signal: controller.signal })
       .then(async (response) => {
@@ -799,6 +850,7 @@ export default function ZyonWorkspace({
           entries?: ZyonJournalEntry[];
           folders?: ZyonFolder[];
           chats?: ZyonChat[];
+          activeChatId?: string;
           cloud?: boolean;
         };
         if (!response.ok) throw new Error();
@@ -825,6 +877,9 @@ export default function ZyonWorkspace({
         }
         if (Array.isArray(payload.chats)) {
           setChats((current) => mergeChats(current, [PRIMARY_CHAT, ...(payload.chats ?? [])]));
+        }
+        if (compact && validChatId(payload.activeChatId)) {
+          setActiveChatId(payload.activeChatId);
         }
         if (!compact && Array.isArray(payload.folders)) {
           setFolders((current) => mergeFolders(current, payload.folders ?? []));
