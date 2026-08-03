@@ -47,7 +47,7 @@ export default function ReasoningOutcomeChart({
     const chart = createChart(container, {
       width: container.clientWidth,
       height,
-      layout: { background: { color: "transparent" }, textColor: muted, fontSize: 9 },
+      layout: { background: { color: "transparent" }, textColor: muted, fontSize: 9, attributionLogo: false },
       grid: { vertLines: { color: border }, horzLines: { color: border } },
       rightPriceScale: { borderColor: border },
       timeScale: { borderColor: border, timeVisible: true, secondsVisible: false },

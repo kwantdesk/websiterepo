@@ -13,6 +13,8 @@ type Candle = {
 };
 
 const FUTURES_ROOTS = ["MNQ", "MES", "M2K", "MYM", "NQ", "ES", "RTY", "YM", "MCL", "CL", "MGC", "GC", "SIL", "SI", "NG", "HG", "ZB", "ZN", "ZF", "ZT", "6E", "6B", "6J", "6A", "6C"];
+const TRADE_BUY_COLOR = "#22c55e";
+const TRADE_SELL_COLOR = "#ef4444";
 
 function continuousSymbol(value: string) {
   const normalized = value.toUpperCase().replace(/[^A-Z0-9]/g, "");
@@ -45,7 +47,7 @@ export default function TradePostChart({ trade, height = 270 }: { trade: SocialT
     const chart = createChart(container, {
       width: container.clientWidth,
       height,
-      layout: { background: { color: "transparent" }, textColor: muted, fontSize: 9 },
+      layout: { background: { color: "transparent" }, textColor: muted, fontSize: 9, attributionLogo: false },
       grid: { vertLines: { color: border }, horzLines: { color: border } },
       rightPriceScale: { borderColor: border, minimumWidth: 68 },
       timeScale: { borderColor: border, timeVisible: true, secondsVisible: false, rightOffset: 4 },
@@ -66,8 +68,10 @@ export default function TradePostChart({ trade, height = 270 }: { trade: SocialT
       priceLineVisible: false,
       lastValueVisible: true,
     });
-    if (trade.entryPrice !== null) series.createPriceLine({ price: trade.entryPrice, color: primary, lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: "ENTRY" });
-    if (trade.exitPrice !== null) series.createPriceLine({ price: trade.exitPrice, color: trade.netPnl >= 0 ? accent : danger, lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: "EXIT" });
+    const entryColor = trade.side === "SHORT" ? TRADE_SELL_COLOR : trade.side === "LONG" ? TRADE_BUY_COLOR : primary;
+    const exitColor = trade.side === "SHORT" ? TRADE_BUY_COLOR : trade.side === "LONG" ? TRADE_SELL_COLOR : danger;
+    if (trade.entryPrice !== null) series.createPriceLine({ price: trade.entryPrice, color: entryColor, lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: "ENTRY" });
+    if (trade.exitPrice !== null) series.createPriceLine({ price: trade.exitPrice, color: exitColor, lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: "EXIT" });
     chartRef.current = chart;
     seriesRef.current = series;
     const resize = new ResizeObserver(() => chart.applyOptions({ width: container.clientWidth, height }));
@@ -78,7 +82,7 @@ export default function TradePostChart({ trade, height = 270 }: { trade: SocialT
       chartRef.current = null;
       seriesRef.current = null;
     };
-  }, [height, trade.entryPrice, trade.exitPrice, trade.netPnl]);
+  }, [height, trade.entryPrice, trade.exitPrice, trade.side]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -114,14 +118,14 @@ export default function TradePostChart({ trade, height = 270 }: { trade: SocialT
           ...(entryTime ? [{
             time: Math.floor(entryTime / 1_000) as Time,
             position: trade.side === "SHORT" ? "aboveBar" as const : "belowBar" as const,
-            color: primaryColor(),
+            color: trade.side === "SHORT" ? TRADE_SELL_COLOR : trade.side === "LONG" ? TRADE_BUY_COLOR : primaryColor(),
             shape: trade.side === "SHORT" ? "arrowDown" as const : "arrowUp" as const,
             text: "ENTRY",
           }] : []),
           ...(exitTime ? [{
             time: Math.floor(exitTime / 1_000) as Time,
             position: trade.side === "SHORT" ? "belowBar" as const : "aboveBar" as const,
-            color: trade.netPnl >= 0 ? accentColor() : dangerColor(),
+            color: trade.side === "SHORT" ? TRADE_BUY_COLOR : trade.side === "LONG" ? TRADE_SELL_COLOR : dangerColor(),
             shape: trade.side === "SHORT" ? "arrowUp" as const : "arrowDown" as const,
             text: "EXIT",
           }] : []),
@@ -134,7 +138,7 @@ export default function TradePostChart({ trade, height = 270 }: { trade: SocialT
       }
     })();
     return () => controller.abort();
-  }, [symbol, trade.closedAt, trade.netPnl, trade.openedAt, trade.side]);
+  }, [symbol, trade.closedAt, trade.openedAt, trade.side]);
 
   return (
     <div className="relative overflow-hidden rounded-2xl border border-border bg-background/45" style={{ height }}>
@@ -151,5 +155,4 @@ function themeColor(variable: string, fallback: string) {
 }
 
 function primaryColor() { return themeColor("--primary", "#d6ad55"); }
-function accentColor() { return themeColor("--accent", "#65d69a"); }
 function dangerColor() { return themeColor("--danger", "#ff586d"); }
