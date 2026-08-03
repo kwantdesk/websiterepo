@@ -22,6 +22,15 @@ type EventThreshold = {
   secondary: number;
 };
 
+// A range chart may close more than one bar from a single execution during a
+// fast market, but it must not manufacture an unlimited staircase across a
+// missing feed segment, session boundary, contract roll or bad print. Eight
+// consecutive ranges is already far wider than a normal trade-to-trade jump;
+// anything beyond it is treated as a discontinuity and re-anchored at the
+// actual execution price.
+const MAX_RANGE_BARS_PER_EXECUTION = 8;
+const RANGE_DATA_GAP_MS = 15_000;
+
 export function futuresTickSize(symbol: string) {
   const root = symbol.toUpperCase().split(".")[0].replace(/[FGHJKMNQUVXZ]\d{1,2}$/u, "");
   if (["ES", "MES", "NQ", "MNQ"].includes(root)) return 0.25;
@@ -161,12 +170,30 @@ function addRangeTrade(
     return;
   }
 
+  const distanceFromLastTrade = Math.abs(record.price - last.close);
+  const rangesToBridge = Math.floor((distanceFromLastTrade + 1e-10) / threshold.value);
+  const elapsedSinceLastBar = Math.max(0, record.timestamp - last.timestamp);
+  const crossedMissingSegment = elapsedSinceLastBar >= RANGE_DATA_GAP_MS && rangesToBridge >= 2;
+  if (rangesToBridge > MAX_RANGE_BARS_PER_EXECUTION || crossedMissingSegment) {
+    bars.push(makeCandle(
+      record,
+      safeTimestamp(record.timestamp, last),
+      Math.max(0, Number(record.size) || 0),
+      Math.max(1, Number(record.trades) || 1),
+      Number(record.delta) || 0,
+    ));
+    return;
+  }
+
   let guard = 0;
-  while (guard++ < 2_000) {
+  let unassignedVolume = Math.max(0, Number(record.size) || 0);
+  let unassignedTrades = Math.max(1, Number(record.trades) || 1);
+  let unassignedDelta = Number(record.delta) || 0;
+  while (guard++ <= MAX_RANGE_BARS_PER_EXECUTION) {
     const projectedHigh = Math.max(last.high, record.price);
     const projectedLow = Math.min(last.low, record.price);
     if (projectedHigh - projectedLow < threshold.value - 1e-10) {
-      updateCandle(last, record.price, record.size, record.trades ?? 1, record.delta ?? 0);
+      updateCandle(last, record.price, unassignedVolume, unassignedTrades, unassignedDelta);
       return;
     }
 
@@ -174,7 +201,13 @@ function addRangeTrade(
     const boundary = closesUp
       ? projectedLow + threshold.value
       : projectedHigh - threshold.value;
-    updateCandle(last, boundary, record.size, record.trades ?? 1, record.delta ?? 0);
+    // Attribute the execution once. The old implementation copied the same
+    // volume and delta into every synthetic bridge bar, multiplying order flow
+    // whenever a feed gap occurred.
+    updateCandle(last, boundary, unassignedVolume, unassignedTrades, unassignedDelta);
+    unassignedVolume = 0;
+    unassignedTrades = 0;
+    unassignedDelta = 0;
     last.close = boundary;
     last.high = Math.max(last.high, boundary);
     last.low = Math.min(last.low, boundary);

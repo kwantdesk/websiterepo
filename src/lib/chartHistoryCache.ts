@@ -1,4 +1,5 @@
 import type { Candle } from "@/lib/backtester";
+import { isEventBasedChartInterval } from "@/lib/chartIntervals";
 import type { InstitutionalTrade } from "@/lib/institutionalMarketData";
 
 type CachedHistory = {
@@ -29,7 +30,12 @@ const executionTapeMemoryCache = new Map<string, CachedExecutionTape>();
 let databasePromise: Promise<IDBDatabase> | null = null;
 
 function cacheKey(symbol: string, timeframe: string) {
-  return `${symbol}::${timeframe}`;
+  // Event-bar schema v2 rejects discontinuity staircases. Keep the earlier
+  // browser cache isolated so a malformed 40R chain cannot survive a deploy
+  // and be merged back into freshly rebuilt history.
+  return isEventBasedChartInterval(timeframe)
+    ? `event-v2::${symbol}::${timeframe}`
+    : `${symbol}::${timeframe}`;
 }
 
 function executionTapeCacheKey(symbol: string, timeframe: string) {
