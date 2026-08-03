@@ -61,7 +61,12 @@ export async function GET(request: NextRequest) {
               sessionDate,
               Number.isFinite(futuresPrice) && futuresPrice > 0 ? futuresPrice : undefined,
             )
-          : await getCashCalibratedChartGammaLevels(root, source, sessionDate)
+          : await getCashCalibratedChartGammaLevels(
+              root,
+              source,
+              sessionDate,
+              Number.isFinite(futuresPrice) && futuresPrice > 0 ? futuresPrice : undefined,
+            )
       : await getChartGammaLevels(root, source, sessionDate);
     return NextResponse.json(payload, {
       headers: {

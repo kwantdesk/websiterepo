@@ -2010,6 +2010,79 @@ type GammaPayloadCacheEntry = {
   payload?: ChartGammaLevelsPayload;
 };
 
+const LIVE_GEX_STORAGE_PREFIX = "kwantdesk:live-gex:last-good:v1";
+const LIVE_GEX_MAX_STALE_MS = 7 * 24 * 60 * 60 * 1_000;
+
+function isGammaRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function isFiniteGammaNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+function isRenderableGammaStrike(value: unknown) {
+  return isGammaRecord(value)
+    && isFiniteGammaNumber(value.sourceStrike)
+    && value.sourceStrike > 0
+    && isFiniteGammaNumber(value.futuresEquivalent)
+    && value.futuresEquivalent > 0
+    && isFiniteGammaNumber(value.call)
+    && isFiniteGammaNumber(value.put)
+    && isFiniteGammaNumber(value.net);
+}
+
+function isRenderableGammaPositioning(value: unknown) {
+  if (!isGammaRecord(value)) return false;
+  if (typeof value.sourceSymbol !== "string" || typeof value.futuresRoot !== "string") return false;
+  if (typeof value.asOf !== "string" || typeof value.status !== "string") return false;
+  if (!isFiniteGammaNumber(value.sourcePrice) || value.sourcePrice <= 0) return false;
+  if (!isFiniteGammaNumber(value.futuresPrice) || value.futuresPrice <= 0) return false;
+  if (!isFiniteGammaNumber(value.priceScale) || value.priceScale <= 0) return false;
+  if (!isGammaRecord(value.totals)
+    || !isFiniteGammaNumber(value.totals.call)
+    || !isFiniteGammaNumber(value.totals.put)
+    || !isFiniteGammaNumber(value.totals.net)
+    || !isFiniteGammaNumber(value.totals.gross)) return false;
+  if (!Array.isArray(value.strikes) || !value.strikes.every(isRenderableGammaStrike)) return false;
+  return Array.isArray(value.lookbacks) && value.lookbacks.every((lookback) => (
+    isGammaRecord(lookback)
+    && isFiniteGammaNumber(lookback.minutes)
+    && Array.isArray(lookback.strikes)
+    && lookback.strikes.every(isRenderableGammaStrike)
+  ));
+}
+
+function isRenderableGammaPayload(value: unknown): value is ChartGammaLevelsPayload {
+  if (!isGammaRecord(value)) return false;
+  if ((value.root !== "NQ" && value.root !== "ES") || typeof value.requestedSource !== "string") return false;
+  if (typeof value.checkedAt !== "string" || !Number.isFinite(Date.parse(value.checkedAt))) return false;
+  if (typeof value.sessionDate !== "string" || typeof value.revision !== "string") return false;
+  if (!isFiniteGammaNumber(value.refreshAfterMs) || typeof value.marketOpen !== "boolean") return false;
+  if (!isGammaRecord(value.environment) || typeof value.environment.gammaStateLabel !== "string") return false;
+  if (!Array.isArray(value.sources) || !value.sources.length) return false;
+  const sourcesAreSafe = value.sources.every((source) => (
+    isGammaRecord(source)
+    && typeof source.symbol === "string"
+    && isFiniteGammaNumber(source.stockPrice)
+    && source.stockPrice > 0
+    && typeof source.revision === "string"
+    && Array.isArray(source.validationStrikes)
+    && source.validationStrikes.every((strike) => isFiniteGammaNumber(strike) && strike > 0)
+    && Array.isArray(source.levels)
+    && source.levels.every((level) => (
+      isGammaRecord(level)
+      && typeof level.id === "string"
+      && typeof level.kind === "string"
+      && typeof level.label === "string"
+      && isFiniteGammaNumber(level.price)
+      && level.price > 0
+    ))
+  ));
+  if (!sourcesAreSafe) return false;
+  return value.positioning === undefined || isRenderableGammaPositioning(value.positioning);
+}
+
 type CompletedValueAreaProfile = ValueAreaProfile & {
   start: string;
   end: string;
@@ -2290,6 +2363,63 @@ function buildValueAreaChartOverlay(
 
 const gammaPayloadCache = new Map<string, GammaPayloadCacheEntry>();
 
+function gammaPayloadCacheKey(conversion: GammaConversionDefinition, calibrated = false) {
+  return `${conversion.futuresRoot}:${conversion.source}${calibrated ? ":calibrated" : ""}`;
+}
+
+function gammaPayloadStorageKey(conversion: GammaConversionDefinition) {
+  return `${LIVE_GEX_STORAGE_PREFIX}:${gammaPayloadCacheKey(conversion, true)}`;
+}
+
+function readPersistedGammaPayload(conversion: GammaConversionDefinition) {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(gammaPayloadStorageKey(conversion));
+    if (!raw) return null;
+    const parsed: unknown = JSON.parse(raw);
+    if (!isRenderableGammaPayload(parsed) || !parsed.positioning) return null;
+    if (parsed.root !== conversion.futuresRoot || parsed.requestedSource !== conversion.futuresRoot) return null;
+    const checkedAt = Date.parse(parsed.positioning.asOf || parsed.checkedAt);
+    if (!Number.isFinite(checkedAt) || Date.now() - checkedAt > LIVE_GEX_MAX_STALE_MS) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function persistGammaPayload(conversion: GammaConversionDefinition, payload: ChartGammaLevelsPayload) {
+  if (typeof window === "undefined" || !payload.positioning) return;
+  try {
+    window.localStorage.setItem(gammaPayloadStorageKey(conversion), JSON.stringify(payload));
+  } catch {
+    // The in-memory verified frame remains available if browser storage is full.
+  }
+}
+
+function primeGammaPayloadCache(conversion: GammaConversionDefinition) {
+  const cacheKey = gammaPayloadCacheKey(conversion, true);
+  const cached = gammaPayloadCache.get(cacheKey);
+  if (cached) return cached;
+  const persisted = readPersistedGammaPayload(conversion);
+  if (!persisted) return null;
+  const entry: GammaPayloadCacheEntry = {
+    expiresAt: 0,
+    promise: Promise.resolve(persisted),
+    payload: persisted,
+  };
+  gammaPayloadCache.set(cacheKey, entry);
+  return entry;
+}
+
+function lastVerifiedGammaPayload(conversion: GammaConversionDefinition) {
+  const cached = primeGammaPayloadCache(conversion);
+  return cached?.payload?.positioning ? cached.payload : readPersistedGammaPayload(conversion);
+}
+
+function invalidateGammaPayloadCache(conversion: GammaConversionDefinition) {
+  gammaPayloadCache.delete(gammaPayloadCacheKey(conversion, true));
+}
+
 function gammaRefreshDelay(value: unknown) {
   const delay = Number(value);
   return Number.isFinite(delay) && delay > 0
@@ -2299,10 +2429,12 @@ function gammaRefreshDelay(value: unknown) {
 
 function fetchGammaPayload(
   conversion: GammaConversionDefinition,
-  options: { allowStale?: boolean } = {},
+  options: { allowStale?: boolean; calibrated?: boolean; calibrationPrice?: number | null } = {},
 ) {
-  const cacheKey = `${conversion.futuresRoot}:${conversion.source}`;
-  const cached = gammaPayloadCache.get(cacheKey);
+  const cacheKey = gammaPayloadCacheKey(conversion, options.calibrated === true);
+  const cached = options.calibrated
+    ? primeGammaPayloadCache(conversion) ?? undefined
+    : gammaPayloadCache.get(cacheKey);
   const now = Date.now();
   if (options.allowStale && cached?.payload && cached.expiresAt > now) {
     return Promise.resolve(cached.payload);
@@ -2310,18 +2442,30 @@ function fetchGammaPayload(
   if (cached && cached.expiresAt > now) return cached.promise;
 
   const previous = cached;
+  const calibrationPrice = Number(options.calibrationPrice);
+  const calibrationQuery = options.calibrated && Number.isFinite(calibrationPrice) && calibrationPrice > 0
+    ? `&futuresPrice=${encodeURIComponent(calibrationPrice.toFixed(6))}`
+    : "";
   const promise = fetch(
-    `/api/chart-gamma-levels?root=${encodeURIComponent(conversion.futuresRoot)}&source=${encodeURIComponent(conversion.source)}`,
+    `/api/chart-gamma-levels?root=${encodeURIComponent(conversion.futuresRoot)}&source=${encodeURIComponent(conversion.source)}${options.calibrated ? "&calibrated=1" : ""}${calibrationQuery}`,
     { cache: "no-store" },
   )
     .then(async (response) => {
-      const payload = await response.json() as ChartGammaLevelsPayload & { error?: string };
-      if (!response.ok) throw new Error(payload.error || "Gamma levels are unavailable.");
+      const candidate: unknown = await response.json();
+      const errorMessage = isGammaRecord(candidate) && typeof candidate.error === "string"
+        ? candidate.error
+        : "Gamma levels are unavailable.";
+      if (!response.ok) throw new Error(errorMessage);
+      if (!isRenderableGammaPayload(candidate)) {
+        throw new Error("The latest options frame is still synchronising.");
+      }
+      const payload = candidate;
       const current = gammaPayloadCache.get(cacheKey);
       if (current?.promise === promise) {
         current.expiresAt = Date.now() + gammaRefreshDelay(payload.refreshAfterMs);
         current.payload = payload;
       }
+      if (options.calibrated) persistGammaPayload(conversion, payload);
       return payload;
     })
     .catch((error) => {
@@ -4548,6 +4692,8 @@ export default function KwantifyWorkspace({
   const [liveGexSnapshot, setLiveGexSnapshot] = useState<ChartGammaLevelsPayload | null>(null);
   const [liveGexLoading, setLiveGexLoading] = useState(false);
   const [liveGexError, setLiveGexError] = useState("");
+  const [liveGexRecoveryNonce, setLiveGexRecoveryNonce] = useState(0);
+  const liveGexCalibrationPriceRef = useRef<number | null>(null);
   const [historicalStructureEnabled, setHistoricalStructureEnabled] = useState(() => {
     if (typeof window === "undefined") return false;
     return window.localStorage.getItem(HISTORICAL_STRUCTURE_ENABLED_STORAGE_KEY) === "true";
@@ -4827,6 +4973,7 @@ export default function KwantifyWorkspace({
     ask: selectedWatchlistItem?.ask ?? selectedMidPrice,
     mid: selectedMidPrice,
   };
+  liveGexCalibrationPriceRef.current = currentLivePrice.mid > 0 ? currentLivePrice.mid : null;
   const hasSelectedLiveQuote = currentLivePrice.bid > 0 && currentLivePrice.ask > 0;
   const currentSpread = Math.max(0, currentLivePrice.ask - currentLivePrice.bid);
   const orderPanelBidLabel = hasSelectedLiveQuote ? formatPrice(currentLivePrice.bid, selectedInstrument) : "--";
@@ -4862,18 +5009,25 @@ export default function KwantifyWorkspace({
     let cancelled = false;
     let timer: number | null = null;
     const conversion = activeLiveGexConversion;
+    const retainedSnapshot = lastVerifiedGammaPayload(conversion);
     setLiveGexSnapshot((current) => (
-      current?.root === conversion.futuresRoot && current.requestedSource === conversion.source
+      current?.root === conversion.futuresRoot && current.requestedSource === conversion.futuresRoot
         ? current
-        : null
+        : retainedSnapshot
     ));
-    setLiveGexLoading(true);
+    setLiveGexLoading(!retainedSnapshot);
     setLiveGexError("");
 
     const loadLiveGex = async () => {
       try {
-        const payload = await fetchGammaPayload(conversion);
+        const payload = await fetchGammaPayload(conversion, {
+          calibrated: true,
+          calibrationPrice: liveGexCalibrationPriceRef.current,
+        });
         if (cancelled) return;
+        if (!payload.positioning || !isRenderableGammaPositioning(payload.positioning)) {
+          throw new Error("The latest options frame is still synchronising.");
+        }
         setLiveGexSnapshot(payload);
         setLiveGexError("");
         setLiveGexLoading(false);
@@ -4883,9 +5037,11 @@ export default function KwantifyWorkspace({
         );
       } catch (loadError) {
         if (cancelled) return;
-        setLiveGexError(loadError instanceof Error ? loadError.message : "Live GEX is temporarily unavailable.");
+        setLiveGexError(retainedSnapshot
+          ? ""
+          : loadError instanceof Error ? loadError.message : "Live GEX is synchronising.");
         setLiveGexLoading(false);
-        timer = window.setTimeout(() => void loadLiveGex(), 10_000);
+        timer = window.setTimeout(() => void loadLiveGex(), 5_000);
       }
     };
 
@@ -4894,7 +5050,7 @@ export default function KwantifyWorkspace({
       cancelled = true;
       if (timer !== null) window.clearTimeout(timer);
     };
-  }, [activeLiveGexConversion, rightPanel]);
+  }, [activeLiveGexConversion, liveGexRecoveryNonce, rightPanel]);
 
   const activeGameplanRoot = gameplanChartRootForInstrument(activeWorkspacePane.symbol);
   const activeGameplanLevelsAdded = Boolean(
@@ -10352,8 +10508,15 @@ export default function KwantifyWorkspace({
           )}
           {rightPanel === "gex" && (
             <LiveGexPanelBoundary
-              resetKey={`${activeWorkspacePane.symbol}:${liveGexSnapshot?.checkedAt ?? "pending"}`}
+              resetKey={`${activeWorkspacePane.symbol}:${liveGexSnapshot?.checkedAt ?? "pending"}:${liveGexRecoveryNonce}`}
               onClose={() => setRightPanel(null)}
+              onRecover={() => {
+                if (activeLiveGexConversion) invalidateGammaPayloadCache(activeLiveGexConversion);
+                setLiveGexSnapshot(null);
+                setLiveGexError("");
+                setLiveGexLoading(true);
+                setLiveGexRecoveryNonce((current) => current + 1);
+              }}
             >
               <LiveGexPanel
                 snapshot={liveGexSnapshot}

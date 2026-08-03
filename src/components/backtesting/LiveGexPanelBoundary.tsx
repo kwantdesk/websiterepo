@@ -1,12 +1,13 @@
 "use client";
 
 import { Component, type ErrorInfo, type ReactNode } from "react";
-import { Activity, AlertTriangle, RefreshCw, X } from "lucide-react";
+import { Activity, X } from "lucide-react";
 
 type Props = {
   children: ReactNode;
   resetKey: string;
   onClose: () => void;
+  onRecover: () => void;
 };
 
 type State = {
@@ -22,6 +23,7 @@ export default class LiveGexPanelBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, info: ErrorInfo) {
     console.error("Live GEX panel render failed", error, info);
+    this.props.onRecover();
   }
 
   componentDidUpdate(previousProps: Props) {
@@ -29,10 +31,6 @@ export default class LiveGexPanelBoundary extends Component<Props, State> {
       this.setState({ failed: false });
     }
   }
-
-  private retry = () => {
-    this.setState({ failed: false });
-  };
 
   render() {
     if (!this.state.failed) return this.props.children;
@@ -55,19 +53,12 @@ export default class LiveGexPanelBoundary extends Component<Props, State> {
         </div>
         <div className="flex min-h-0 flex-1 items-center justify-center p-6 text-center">
           <div className="max-w-[300px]">
-            <span className="mx-auto flex h-11 w-11 items-center justify-center rounded-2xl border border-warning/20 bg-warning/[0.06] text-warning">
-              <AlertTriangle className="h-4 w-4" />
+            <span className="relative mx-auto flex h-11 w-11 items-center justify-center rounded-2xl border border-primary/25 bg-primary/10 text-primary">
+              <Activity className="h-4 w-4 animate-pulse" />
+              <span className="absolute inset-0 animate-ping rounded-2xl border border-primary/20" />
             </span>
-            <div className="mt-4 text-[11px] font-semibold text-foreground">Live GEX temporarily unavailable</div>
-            <p className="mt-2 text-[9px] leading-4 text-muted">Refreshing the latest options frame.</p>
-            <button
-              type="button"
-              onClick={this.retry}
-              className="mt-4 inline-flex items-center gap-2 rounded-xl border border-primary/25 bg-primary/[0.06] px-4 py-2 text-[8px] font-semibold text-primary transition-colors hover:bg-primary/[0.1]"
-            >
-              <RefreshCw className="h-3 w-3" />
-              Retry Live GEX
-            </button>
+            <div className="mt-4 text-[11px] font-semibold text-foreground">Reconnecting live GEX</div>
+            <p className="mt-2 text-[9px] leading-4 text-muted">The last verified frame is being restored automatically.</p>
           </div>
         </div>
       </aside>
