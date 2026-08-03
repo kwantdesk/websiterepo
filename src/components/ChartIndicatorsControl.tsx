@@ -250,17 +250,15 @@ export default function ChartIndicatorsControl({
                 <div className="text-[12px] font-semibold text-foreground">Chart indicators</div>
                 <div className="mt-0.5 flex items-center gap-2 text-[9px] uppercase tracking-[0.12em] text-muted">
                   <span>{instrument} · {timeframe} · this chart</span>
-                  <span className={`rounded-full border px-1.5 py-0.5 text-[7px] font-semibold ${
-                    rithmicStatus === "connected"
-                      ? "border-primary/25 bg-primary/10 text-primary"
-                      : "border-border bg-background text-muted"
-                  }`}>
-                    {rithmicStatus === "connected"
-                      ? "Rithmic L3"
-                      : rithmicStatus === "checking"
-                        ? "Checking feed"
-                        : "Databento fallback"}
-                  </span>
+                  {rithmicStatus === "connected" ? (
+                    <span className="rounded-full border border-primary/25 bg-primary/10 px-1.5 py-0.5 text-[7px] font-semibold text-primary">
+                      Rithmic L3
+                    </span>
+                  ) : rithmicStatus === "checking" ? (
+                    <span className="rounded-full border border-border bg-background px-1.5 py-0.5 text-[7px] font-semibold text-muted">
+                      Checking feed
+                    </span>
+                  ) : null}
                 </div>
               </div>
               <button
@@ -403,7 +401,7 @@ export default function ChartIndicatorsControl({
                   </button>
                 ))}
                 <div className="mt-4 rounded-xl border border-border bg-surface/35 p-3 text-[9px] leading-4 text-muted">
-                  Favourites appear first. Live studies inherit the chart theme. Rithmic L3 is preferred when connected; Databento remains the historical fallback.
+                  Favourites appear first. Live studies inherit the chart theme.
                 </div>
               </aside>
               <section className="min-w-0 flex-1 overflow-y-auto p-3">
