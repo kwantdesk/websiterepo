@@ -148,73 +148,6 @@ const MANUAL_TRADE_NUMBER_FIELDS = new Set<ManualTradeDictationField>([
   "accountSize",
 ]);
 
-type ManualExtractionFieldName =
-  | "setupName"
-  | "symbol"
-  | "side"
-  | "contractClass"
-  | "quantity"
-  | "openedAt"
-  | "closedAt"
-  | "entryPrice"
-  | "exitPrice"
-  | "stopPrice"
-  | "targetPrice"
-  | "initialRisk"
-  | "netPnl"
-  | "fees"
-  | "plannedRiskReward";
-
-type ManualExtractionField = {
-  value: string | number;
-  confidence: "HIGH" | "MODERATE" | "LOW";
-  evidence: string;
-};
-
-type ManualImageExtraction = {
-  fields: Record<ManualExtractionFieldName, ManualExtractionField | null>;
-  extractedCount: number;
-  summary: string;
-  warnings: string[];
-  model: string;
-};
-
-const EXTRACTION_TO_DRAFT: Record<ManualExtractionFieldName, keyof ManualTradeDraft> = {
-  setupName: "name",
-  symbol: "symbol",
-  side: "side",
-  contractClass: "contractClass",
-  quantity: "quantity",
-  openedAt: "openedAt",
-  closedAt: "closedAt",
-  entryPrice: "entryPrice",
-  exitPrice: "exitPrice",
-  stopPrice: "stopPrice",
-  targetPrice: "targetPrice",
-  initialRisk: "initialRisk",
-  netPnl: "netPnl",
-  fees: "fees",
-  plannedRiskReward: "plannedRiskReward",
-};
-
-const EXTRACTION_LABELS: Record<ManualExtractionFieldName, string> = {
-  setupName: "Setup name",
-  symbol: "Instrument",
-  side: "Direction",
-  contractClass: "Contract class",
-  quantity: "Contracts",
-  openedAt: "Entry time",
-  closedAt: "Exit time",
-  entryPrice: "Entry price",
-  exitPrice: "Exit price",
-  stopPrice: "Stop price",
-  targetPrice: "Target price",
-  initialRisk: "Initial risk",
-  netPnl: "Net P&L",
-  fees: "Fees",
-  plannedRiskReward: "Planned R:R",
-};
-
 type SocialJournalResponse = {
   viewerId?: string;
   objects?: Array<{
@@ -746,9 +679,6 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
   const [manualTrade, setManualTrade] = useState<ManualTradeDraft>(() => newManualTradeDraft());
   const [manualEvidenceFiles, setManualEvidenceFiles] = useState<File[]>([]);
   const [manualEvidenceDragging, setManualEvidenceDragging] = useState(false);
-  const [manualImageExtraction, setManualImageExtraction] = useState<ManualImageExtraction | null>(null);
-  const [manualImageAnalysisStatus, setManualImageAnalysisStatus] = useState<"idle" | "analyzing" | "ready" | "error">("idle");
-  const [manualImageAnalysisMessage, setManualImageAnalysisMessage] = useState("");
   const [manualTradeError, setManualTradeError] = useState("");
   const [manualTradeSaving, setManualTradeSaving] = useState(false);
   const [accountMenu, setAccountMenu] = useState<{ account: string; x: number; y: number } | null>(null);
@@ -768,7 +698,6 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
   const fileInputRef = useRef<HTMLInputElement>(null);
   const manualEvidenceInputRef = useRef<HTMLInputElement>(null);
   const manualTradeTouchedRef = useRef(new Set<keyof ManualTradeDraft>());
-  const manualAnalysisRevisionRef = useRef(0);
   const analysisRequestRef = useRef(0);
   const analysisAbortRef = useRef<AbortController | null>(null);
 
@@ -1213,16 +1142,12 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
   };
 
   const openManualTrade = () => {
-    manualAnalysisRevisionRef.current += 1;
     manualTradeTouchedRef.current.clear();
     manualDictation.activate("name");
     manualDictation.clearError();
     setManualTrade(newManualTradeDraft());
     setManualEvidenceFiles([]);
     setManualEvidenceDragging(false);
-    setManualImageExtraction(null);
-    setManualImageAnalysisStatus("idle");
-    setManualImageAnalysisMessage("");
     setManualTradeError("");
     setShowManualTrade(true);
   };
@@ -1238,81 +1163,6 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
     else manualDictation.activate(field, true);
   }
 
-  const applyImageExtraction = (extraction: ManualImageExtraction) => {
-    setManualTrade((current) => {
-      const next = { ...current };
-      for (const [fieldName, extracted] of Object.entries(extraction.fields) as Array<[ManualExtractionFieldName, ManualExtractionField | null]>) {
-        if (!extracted || extracted.confidence !== "HIGH") continue;
-        const draftField = EXTRACTION_TO_DRAFT[fieldName];
-        if (manualTradeTouchedRef.current.has(draftField)) continue;
-        if (String((next as unknown as Record<string, unknown>)[draftField] ?? "").trim()) continue;
-        const value = fieldName === "openedAt" || fieldName === "closedAt"
-          ? localDateTimeInput(new Date(String(extracted.value)))
-          : String(extracted.value);
-        (next as unknown as Record<string, unknown>)[draftField] = value;
-      }
-      return next;
-    });
-  };
-
-  const analyzeManualEvidence = async (files: File[]) => {
-    const candidates = files.filter((file) => file.type.startsWith("image/")).slice(0, 3);
-    if (!candidates.length) return;
-    const revision = manualAnalysisRevisionRef.current + 1;
-    manualAnalysisRevisionRef.current = revision;
-    setManualImageAnalysisStatus("analyzing");
-    setManualImageAnalysisMessage(`Reading ${candidates.length === 1 ? candidates[0].name : `${candidates.length} screenshots`} without guessing…`);
-    let completed = 0;
-    let verified = 0;
-    let latestError = "";
-    for (const file of candidates) {
-      try {
-        const prepared = await prepareManualEvidence(file);
-        const response = await fetch("/api/journal/extract-trade", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ image: prepared.dataUrl, filename: file.name }),
-        });
-        const result = await response.json() as ManualImageExtraction & { error?: string };
-        if (!response.ok) throw new Error(result.error || `${file.name} could not be analyzed.`);
-        if (revision !== manualAnalysisRevisionRef.current) return;
-        completed += 1;
-        verified += Object.values(result.fields).filter((field) => field?.confidence === "HIGH").length;
-        applyImageExtraction(result);
-        setManualImageExtraction((current) => {
-          if (!current) return result;
-          const fields = { ...current.fields };
-          for (const fieldName of Object.keys(result.fields) as ManualExtractionFieldName[]) {
-            const incoming = result.fields[fieldName];
-            const existing = fields[fieldName];
-            if (incoming && (!existing || incoming.confidence === "HIGH")) fields[fieldName] = incoming;
-          }
-          return {
-            ...result,
-            fields,
-            extractedCount: Object.values(fields).filter(Boolean).length,
-            summary: `${completed} screenshots analyzed.`,
-            warnings: [...new Set([...current.warnings, ...result.warnings])].slice(0, 10),
-          };
-        });
-      } catch (error) {
-        latestError = error instanceof Error ? error.message : `${file.name} could not be analyzed.`;
-      }
-    }
-    if (revision !== manualAnalysisRevisionRef.current) return;
-    if (!completed) {
-      setManualImageAnalysisStatus("error");
-      setManualImageAnalysisMessage(latestError || "The screenshot could not be analyzed.");
-      return;
-    }
-    setManualImageAnalysisStatus("ready");
-    setManualImageAnalysisMessage(
-      verified
-        ? `${verified} high-confidence fields were filled. Review every value before saving.`
-        : "No exact fields were safe to fill. The screenshot remains attached as evidence.",
-    );
-  };
-
   const addManualEvidence = (files: File[]) => {
     const accepted = files
       .filter((file) => file.type.startsWith("image/") && file.size <= MAX_MANUAL_IMAGE_BYTES)
@@ -1323,7 +1173,6 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
     }
     setManualTradeError("");
     setManualEvidenceFiles((current) => [...current, ...accepted].slice(0, 8));
-    void analyzeManualEvidence(accepted);
   };
 
   const persistEvidence = useCallback(async (evidence: JournalEvidence) => {
@@ -2595,7 +2444,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
               </section>
 
               <section className="border-t border-border pt-5">
-                <div className="mb-3"><h3 className="text-[10px] font-semibold text-foreground">Screenshot evidence <span className="font-normal text-muted">· optional</span></h3><p className="mt-0.5 text-[8px] leading-4 text-muted">Drop a TradingView, broker or execution screenshot. AI fills only clearly visible facts; uncertain values remain blank for you to complete.</p></div>
+                <div className="mb-3"><h3 className="text-[10px] font-semibold text-foreground">Screenshot evidence <span className="font-normal text-muted">· optional</span></h3><p className="mt-0.5 text-[8px] leading-4 text-muted">Attach screenshots to this journal entry for future reference. Images are saved as evidence only and never analyzed or used to change your trade details.</p></div>
                 <button
                   type="button"
                   onClick={() => manualEvidenceInputRef.current?.click()}
@@ -2605,34 +2454,12 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
                   onDrop={(event) => { event.preventDefault(); setManualEvidenceDragging(false); addManualEvidence(Array.from(event.dataTransfer.files)); }}
                   className={`flex min-h-[128px] w-full flex-col items-center justify-center rounded-2xl border border-dashed px-5 text-center transition-colors ${manualEvidenceDragging ? "border-primary bg-primary/10" : "border-border bg-background/30 hover:border-primary/40 hover:bg-primary/[0.04]"}`}
                 >
-                  {manualImageAnalysisStatus === "analyzing" ? <Sparkles className="h-5 w-5 animate-pulse text-primary" /> : <Camera className="h-5 w-5 text-primary" />}
+                  <Camera className="h-5 w-5 text-primary" />
                   <span className="mt-2 text-[9px] font-semibold text-foreground">Drop screenshots here or browse</span>
                   <span className="mt-1 text-[8px] text-muted">PNG · JPG · WEBP · GIF · up to 20 MB before private preparation</span>
-                  <span className="mt-2 text-[8px] text-primary/80">Evidence extraction starts automatically</span>
+                  <span className="mt-2 text-[8px] text-primary/80">Saved privately with this trade · no screenshot analysis</span>
                 </button>
                 <input ref={manualEvidenceInputRef} type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple className="hidden" onChange={(event) => { if (event.target.files) addManualEvidence(Array.from(event.target.files)); event.currentTarget.value = ""; }} />
-                {manualImageAnalysisStatus !== "idle" ? (
-                  <div className={`mt-3 rounded-2xl border p-3 ${manualImageAnalysisStatus === "error" ? "border-danger/25 bg-danger/[0.06]" : "border-primary/20 bg-primary/[0.06]"}`}>
-                    <div className="flex items-start gap-2">
-                      {manualImageAnalysisStatus === "analyzing" ? <RefreshCw className="mt-0.5 h-3.5 w-3.5 shrink-0 animate-spin text-primary" /> : manualImageAnalysisStatus === "error" ? <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0 text-danger" /> : <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />}
-                      <div className="min-w-0 flex-1">
-                        <div className={`text-[9px] font-semibold ${manualImageAnalysisStatus === "error" ? "text-danger" : "text-foreground"}`}>{manualImageAnalysisMessage}</div>
-                        {manualImageExtraction && manualImageAnalysisStatus === "ready" ? (
-                          <div className="mt-2 grid gap-1.5 sm:grid-cols-2">
-                            {(Object.entries(manualImageExtraction.fields) as Array<[ManualExtractionFieldName, ManualExtractionField | null]>).filter(([, field]) => field).map(([fieldName, field]) => field ? (
-                              <div key={fieldName} className="rounded-xl border border-border/70 bg-background/45 px-3 py-2">
-                                <div className="flex items-center gap-2"><span className="text-[8px] font-semibold text-foreground">{EXTRACTION_LABELS[fieldName]}</span><span className={`ml-auto rounded-full px-1.5 py-0.5 text-[6px] font-semibold ${field.confidence === "HIGH" ? "bg-primary/12 text-primary" : "bg-warning/12 text-warning"}`}>{field.confidence === "HIGH" ? "FILLED" : "REVIEW"}</span></div>
-                                <div className="mt-1 truncate font-mono text-[9px] text-foreground">{String(field.value)}</div>
-                                <div className="mt-1 line-clamp-2 text-[7px] leading-3 text-muted">{field.evidence}</div>
-                              </div>
-                            ) : null)}
-                          </div>
-                        ) : null}
-                        {Boolean(manualImageExtraction?.warnings.length) && manualImageAnalysisStatus === "ready" ? <div className="mt-2 text-[7px] leading-3 text-muted">{manualImageExtraction?.warnings.join(" · ")}</div> : null}
-                      </div>
-                    </div>
-                  </div>
-                ) : null}
                 {manualEvidenceFiles.length ? <div className="mt-2 grid gap-2 sm:grid-cols-2">{manualEvidenceFiles.map((file) => <div key={`${file.name}:${file.size}:${file.lastModified}`} className="flex items-center gap-2 rounded-xl border border-border bg-background/35 px-3 py-2 text-[8px]"><ImageIcon className="h-3.5 w-3.5 text-primary" /><span className="min-w-0 flex-1 truncate text-foreground">{file.name}</span><span className="font-mono text-muted">{Math.max(1, Math.round(file.size / 1024))} KB</span><button type="button" onClick={() => setManualEvidenceFiles((current) => current.filter((candidate) => candidate !== file))} className="text-muted hover:text-danger"><X className="h-3.5 w-3.5" /></button></div>)}</div> : null}
               </section>
 
@@ -2641,7 +2468,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
             <div className="flex items-center gap-2 border-t border-border bg-background/20 px-5 py-4">
               <span className="mr-auto text-[8px] text-muted">Notes and evidence are optional.</span>
               <button type="button" disabled={manualTradeSaving} onClick={() => setShowManualTrade(false)} className="h-9 rounded-xl border border-border px-4 text-[9px] font-semibold text-muted hover:bg-surface hover:text-foreground disabled:opacity-40">Cancel</button>
-              <button type="button" disabled={manualTradeSaving} onClick={() => void submitManualTrade()} className="flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-[9px] font-semibold text-background disabled:opacity-50">{manualTradeSaving ? <span className="h-3 w-3 animate-spin rounded-full border border-background/30 border-t-background" /> : <Save className="h-3.5 w-3.5" />}{manualTradeSaving ? "Preparing evidence" : "Save trade"}</button>
+              <button type="button" disabled={manualTradeSaving} onClick={() => void submitManualTrade()} className="flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-[9px] font-semibold text-background disabled:opacity-50">{manualTradeSaving ? <span className="h-3 w-3 animate-spin rounded-full border border-background/30 border-t-background" /> : <Save className="h-3.5 w-3.5" />}{manualTradeSaving ? "Saving entry" : "Save trade"}</button>
             </div>
           </div>
         </div>
