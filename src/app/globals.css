@@ -181,20 +181,22 @@ body {
 
 @keyframes gex-current-price-glow {
   0%, 100% {
-    outline-color: color-mix(in srgb, var(--primary) 74%, var(--accent));
+    border-color: rgba(157, 255, 0, .86);
+    outline-color: rgba(157, 255, 0, .56);
     box-shadow:
-      inset 0 0 12px color-mix(in srgb, var(--primary) 16%, transparent),
-      inset 0 0 2px color-mix(in srgb, var(--accent) 58%, transparent),
-      0 0 8px color-mix(in srgb, var(--primary) 42%, transparent),
-      0 0 18px color-mix(in srgb, var(--accent) 16%, transparent);
+      inset 0 0 16px rgba(157, 255, 0, .13),
+      inset 0 0 3px rgba(216, 255, 166, .72),
+      0 0 9px rgba(157, 255, 0, .58),
+      0 0 25px rgba(157, 255, 0, .24);
   }
   50% {
-    outline-color: color-mix(in srgb, var(--accent) 58%, var(--primary));
+    border-color: #b7ff3c;
+    outline-color: rgba(183, 255, 60, .92);
     box-shadow:
-      inset 0 0 24px color-mix(in srgb, var(--primary) 30%, transparent),
-      inset 0 0 5px color-mix(in srgb, var(--accent) 82%, transparent),
-      0 0 14px color-mix(in srgb, var(--primary) 78%, transparent),
-      0 0 34px color-mix(in srgb, var(--accent) 42%, transparent);
+      inset 0 0 24px rgba(157, 255, 0, .22),
+      inset 0 0 6px rgba(235, 255, 207, .94),
+      0 0 14px rgba(157, 255, 0, .92),
+      0 0 38px rgba(157, 255, 0, .46);
   }
 }
 
@@ -202,15 +204,15 @@ body {
   0%, 100% {
     opacity: .78;
     box-shadow:
-      0 0 6px color-mix(in srgb, var(--primary) 72%, transparent),
-      0 0 13px color-mix(in srgb, var(--accent) 28%, transparent);
+      0 0 6px rgba(157, 255, 0, .78),
+      0 0 13px rgba(157, 255, 0, .34);
   }
   50% {
     opacity: 1;
     box-shadow:
-      0 0 10px color-mix(in srgb, var(--accent) 80%, var(--primary)),
-      0 0 24px color-mix(in srgb, var(--primary) 76%, transparent),
-      0 0 38px color-mix(in srgb, var(--accent) 48%, transparent);
+      0 0 10px rgba(239, 255, 215, .96),
+      0 0 24px rgba(157, 255, 0, .86),
+      0 0 38px rgba(157, 255, 0, .52);
   }
 }
 
@@ -232,22 +234,47 @@ body {
 
 .gex-current-price-marker {
   isolation: isolate;
-  outline: 2px solid color-mix(in srgb, var(--primary) 78%, var(--accent));
-  outline-offset: -2px;
+  border: 2px solid #9dff00;
+  border-radius: 12px;
+  outline: 1px solid rgba(157, 255, 0, .62);
+  outline-offset: 2px;
   background-image: linear-gradient(
     90deg,
-    color-mix(in srgb, var(--primary) 30%, transparent),
-    color-mix(in srgb, var(--accent) 12%, transparent) 48%,
-    color-mix(in srgb, var(--primary) 26%, transparent)
+    rgba(157, 255, 0, .24),
+    rgba(157, 255, 0, .06) 48%,
+    rgba(157, 255, 0, .18)
   );
   animation: gex-current-price-glow 3.2s ease-in-out infinite;
-  will-change: outline-color, box-shadow;
+  will-change: border-color, outline-color, box-shadow;
+}
+
+.gex-current-price-pill {
+  display: inline-flex;
+  min-height: 22px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #b7ff3c;
+  border-radius: 999px;
+  padding: 2px 7px;
+  color: #efffd7;
+  background: rgba(8, 20, 2, .94);
+  text-shadow: 0 0 7px rgba(183, 255, 60, .88);
+  box-shadow:
+    inset 0 0 8px rgba(157, 255, 0, .18),
+    0 0 9px rgba(157, 255, 0, .54);
 }
 
 .gex-current-price-dash {
-  background: linear-gradient(180deg, var(--accent), var(--primary));
+  background: linear-gradient(180deg, #efffd7, #9dff00);
   animation: gex-current-price-dash-glow 3.2s ease-in-out infinite;
   will-change: opacity, box-shadow;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gex-current-price-marker,
+  .gex-current-price-dash {
+    animation: none;
+  }
 }
 
 @keyframes kwant-loader-breathe {
