@@ -2010,9 +2010,6 @@ type GammaPayloadCacheEntry = {
   payload?: ChartGammaLevelsPayload;
 };
 
-const LIVE_GEX_STORAGE_PREFIX = "kwantdesk:live-gex:last-good:v1";
-const LIVE_GEX_MAX_STALE_MS = 7 * 24 * 60 * 60 * 1_000;
-
 function isGammaRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
@@ -2367,57 +2364,9 @@ function gammaPayloadCacheKey(conversion: GammaConversionDefinition, calibrated 
   return `${conversion.futuresRoot}:${conversion.source}${calibrated ? ":calibrated" : ""}`;
 }
 
-function gammaPayloadStorageKey(conversion: GammaConversionDefinition) {
-  return `${LIVE_GEX_STORAGE_PREFIX}:${gammaPayloadCacheKey(conversion, true)}`;
-}
-
-function readPersistedGammaPayload(conversion: GammaConversionDefinition) {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = window.localStorage.getItem(gammaPayloadStorageKey(conversion));
-    if (!raw) return null;
-    const parsed: unknown = JSON.parse(raw);
-    if (!isRenderableGammaPayload(parsed) || !parsed.positioning) return null;
-    if (parsed.root !== conversion.futuresRoot || parsed.requestedSource !== conversion.futuresRoot) return null;
-    const checkedAt = Date.parse(parsed.positioning.asOf || parsed.checkedAt);
-    if (!Number.isFinite(checkedAt) || Date.now() - checkedAt > LIVE_GEX_MAX_STALE_MS) return null;
-    return parsed;
-  } catch {
-    return null;
-  }
-}
-
-function persistGammaPayload(conversion: GammaConversionDefinition, payload: ChartGammaLevelsPayload) {
-  if (typeof window === "undefined" || !payload.positioning) return;
-  try {
-    window.localStorage.setItem(gammaPayloadStorageKey(conversion), JSON.stringify(payload));
-  } catch {
-    // The in-memory verified frame remains available if browser storage is full.
-  }
-}
-
-function primeGammaPayloadCache(conversion: GammaConversionDefinition) {
-  const cacheKey = gammaPayloadCacheKey(conversion, true);
-  const cached = gammaPayloadCache.get(cacheKey);
-  if (cached) return cached;
-  const persisted = readPersistedGammaPayload(conversion);
-  if (!persisted) return null;
-  const entry: GammaPayloadCacheEntry = {
-    expiresAt: 0,
-    promise: Promise.resolve(persisted),
-    payload: persisted,
-  };
-  gammaPayloadCache.set(cacheKey, entry);
-  return entry;
-}
-
 function lastVerifiedGammaPayload(conversion: GammaConversionDefinition) {
-  const cached = primeGammaPayloadCache(conversion);
-  return cached?.payload?.positioning ? cached.payload : readPersistedGammaPayload(conversion);
-}
-
-function invalidateGammaPayloadCache(conversion: GammaConversionDefinition) {
-  gammaPayloadCache.delete(gammaPayloadCacheKey(conversion, true));
+  const cached = gammaPayloadCache.get(gammaPayloadCacheKey(conversion, true));
+  return cached?.payload?.positioning ? cached.payload : null;
 }
 
 function gammaRefreshDelay(value: unknown) {
@@ -2432,9 +2381,7 @@ function fetchGammaPayload(
   options: { allowStale?: boolean; calibrated?: boolean; calibrationPrice?: number | null } = {},
 ) {
   const cacheKey = gammaPayloadCacheKey(conversion, options.calibrated === true);
-  const cached = options.calibrated
-    ? primeGammaPayloadCache(conversion) ?? undefined
-    : gammaPayloadCache.get(cacheKey);
+  const cached = gammaPayloadCache.get(cacheKey);
   const now = Date.now();
   if (options.allowStale && cached?.payload && cached.expiresAt > now) {
     return Promise.resolve(cached.payload);
@@ -2465,7 +2412,6 @@ function fetchGammaPayload(
         current.expiresAt = Date.now() + gammaRefreshDelay(payload.refreshAfterMs);
         current.payload = payload;
       }
-      if (options.calibrated) persistGammaPayload(conversion, payload);
       return payload;
     })
     .catch((error) => {
@@ -4692,7 +4638,6 @@ export default function KwantifyWorkspace({
   const [liveGexSnapshot, setLiveGexSnapshot] = useState<ChartGammaLevelsPayload | null>(null);
   const [liveGexLoading, setLiveGexLoading] = useState(false);
   const [liveGexError, setLiveGexError] = useState("");
-  const [liveGexRecoveryNonce, setLiveGexRecoveryNonce] = useState(0);
   const liveGexCalibrationPriceRef = useRef<number | null>(null);
   const [historicalStructureEnabled, setHistoricalStructureEnabled] = useState(() => {
     if (typeof window === "undefined") return false;
@@ -5050,7 +4995,7 @@ export default function KwantifyWorkspace({
       cancelled = true;
       if (timer !== null) window.clearTimeout(timer);
     };
-  }, [activeLiveGexConversion, liveGexRecoveryNonce, rightPanel]);
+  }, [activeLiveGexConversion, rightPanel]);
 
   const activeGameplanRoot = gameplanChartRootForInstrument(activeWorkspacePane.symbol);
   const activeGameplanLevelsAdded = Boolean(
@@ -10508,15 +10453,8 @@ export default function KwantifyWorkspace({
           )}
           {rightPanel === "gex" && (
             <LiveGexPanelBoundary
-              resetKey={`${activeWorkspacePane.symbol}:${liveGexSnapshot?.checkedAt ?? "pending"}:${liveGexRecoveryNonce}`}
+              resetKey={`${activeWorkspacePane.symbol}:${liveGexSnapshot?.checkedAt ?? "pending"}`}
               onClose={() => setRightPanel(null)}
-              onRecover={() => {
-                if (activeLiveGexConversion) invalidateGammaPayloadCache(activeLiveGexConversion);
-                setLiveGexSnapshot(null);
-                setLiveGexError("");
-                setLiveGexLoading(true);
-                setLiveGexRecoveryNonce((current) => current + 1);
-              }}
             >
               <LiveGexPanel
                 snapshot={liveGexSnapshot}

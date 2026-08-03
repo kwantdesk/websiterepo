@@ -7,7 +7,6 @@ type Props = {
   children: ReactNode;
   resetKey: string;
   onClose: () => void;
-  onRecover: () => void;
 };
 
 type State = {
@@ -23,7 +22,6 @@ export default class LiveGexPanelBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, info: ErrorInfo) {
     console.error("Live GEX panel render failed", error, info);
-    this.props.onRecover();
   }
 
   componentDidUpdate(previousProps: Props) {
