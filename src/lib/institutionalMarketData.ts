@@ -829,7 +829,15 @@ export async function fetchInstitutionalVolumeProfile(args: {
       });
       if (!response.ok) return null;
       const payload = await response.json() as InstitutionalVolumeProfile;
-      if (payload.schemaVersion !== "kwantify-volume-profile-v1" || !Array.isArray(payload.levels)) return null;
+      if (
+        payload.schemaVersion !== "kwantify-volume-profile-v1"
+        || !Array.isArray(payload.levels)
+        || payload.levels.length === 0
+        || !Number.isFinite(payload.startMs)
+        || payload.startMs <= 0
+        || !Number.isFinite(payload.endMs)
+        || payload.endMs <= payload.startMs
+      ) return null;
       volumeProfileResponseCache.set(cacheKey, { profile: payload, storedAt: Date.now() });
       void writePersistentIndicatorCache(`volume-profile:${cacheKey}`, payload);
       return payload;

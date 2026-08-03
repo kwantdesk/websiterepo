@@ -4,6 +4,7 @@ import { URL } from "node:url";
 import { loadConfig } from "./config.mjs";
 import { discoverRithmicSystems, RithmicMarketDataClient } from "./rithmic-client.mjs";
 import { RTraderExcelMarketDataClient } from "./rtrader-excel-client.mjs";
+import { resolveVolumeProfileRange } from "./trading-session.mjs";
 
 const config = loadConfig();
 const client = config.sourceMode === "rtrader-excel"
@@ -614,8 +615,7 @@ const server = createServer(async (request, response) => {
       client.subscribe(instrument.exchange, instrument.symbol);
       const snapshot = client.book.snapshot(instrument.exchange, instrument.symbol, 1);
       if (!snapshot) return json(response, 404, { error: "Instrument is not subscribed." });
-      const startMs = Number(url.searchParams.get("startMs") || 0);
-      const endMs = Number(url.searchParams.get("endMs") || Date.now());
+      const { tradingDate, startMs, endMs } = resolveVolumeProfileRange(url.searchParams);
       const groupTicks = Math.max(1, Number(url.searchParams.get("groupTicks") || 1));
       const valueAreaPercent = Math.max(
         1,
@@ -687,6 +687,7 @@ const server = createServer(async (request, response) => {
         root: instrument.symbol.replace(/[FGHJKMNQUVXZ]\d{1,2}$/, ""),
         contractSymbol: instrument.symbol,
         period: String(url.searchParams.get("period") || "daily"),
+        tradingDate,
         startMs,
         endMs,
         tickSize: priceTick,

@@ -2732,6 +2732,7 @@ function WorkspaceChartPane({
       "weekly-volume-profile",
       "ask-bid-volume-profile",
       "delta-profile",
+      "deep-m-effort-nq",
     ].includes(instance.indicatorId));
   const dailyProfileInstance = indicators.find((instance) =>
     instance.enabled
@@ -3725,8 +3726,23 @@ function WorkspaceChartPane({
 
     setVolumeProfiles(provisionalProfiles);
 
-    const replaceExactProfile = (profile: InstitutionalVolumeProfile | null) => {
-      if (!profile || cancelled) return;
+    const replaceExactProfile = (
+      profile: InstitutionalVolumeProfile | null,
+      expectedTradingDate?: string,
+    ) => {
+      if (
+        !profile
+        || cancelled
+        || !Number.isFinite(profile.startMs)
+        || profile.startMs <= 0
+        || !Number.isFinite(profile.endMs)
+        || profile.endMs <= profile.startMs
+        || !profile.levels.length
+        || (
+          expectedTradingDate
+          && chicagoTradingDate(profile.startMs) !== expectedTradingDate
+        )
+      ) return;
       setVolumeProfiles((current) => {
         const next = current.filter((candidate) => {
           if (candidate.period !== profile.period) return true;
@@ -3755,7 +3771,7 @@ function WorkspaceChartPane({
             valueAreaPercent: Number(dailyProfileSettings.valueAreaPercent ?? 70),
             minTradeVolume: Number(dailyProfileSettings.minTradeVolume ?? 0),
             maxTradeVolume: Number(dailyProfileSettings.maxTradeVolume ?? 0),
-          }).then(replaceExactProfile));
+          }).then((profile) => replaceExactProfile(profile, tradingDate)));
         });
       }
       if (weeklyProfileInstance) {

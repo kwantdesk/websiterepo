@@ -16,6 +16,7 @@ function clamp(value: number, min: number, max: number) {
 }
 
 export type NativeVolumeProfileStyle = {
+  mode: "delta-volume" | "bid-ask" | "delta";
   widthPercent: number;
   opacity: number;
   positiveDeltaColor: string;
@@ -259,6 +260,10 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
             .sort((a, b) => a.price - b.price);
         const groupedMaxVolume = Math.max(1, ...levels.map((level) => level.volume));
         const groupedMaxAbsDelta = Math.max(1, ...levels.map((level) => Math.abs(level.delta)));
+        const groupedMaxSideVolume = Math.max(
+          1,
+          ...levels.map((level) => Math.max(level.askVolume, level.bidVolume)),
+        );
         const deltaScaleWidth = profile.period === "weekly" ? profileWidth * 0.5 : profileWidth;
         const deltaScaleMaximum = profile.period === "weekly"
           ? groupedMaxAbsDelta
@@ -298,6 +303,8 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
         const outsideValueAreaPath = new Path2D();
         const positiveDeltaPath = new Path2D();
         const negativeDeltaPath = new Path2D();
+        const askVolumePath = new Path2D();
+        const bidVolumePath = new Path2D();
         const outlinePath = new Path2D();
         const pocPath = new Path2D();
         for (let levelIndex = firstVisible; levelIndex < lastVisible; levelIndex += 1) {
@@ -321,54 +328,98 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
           const deltaWidth = profileWidth <= 0
             ? 0
             : Math.max(0.5, Math.abs(delta) / deltaScaleMaximum * deltaScaleWidth);
+          const askWidth = Math.max(0, level.askVolume / groupedMaxSideVolume * profileWidth);
+          const bidWidth = Math.max(0, level.bidVolume / groupedMaxSideVolume * profileWidth);
           const inValueArea = groupedVah !== null && groupedVal !== null
             && level.price <= groupedVah && level.price >= groupedVal;
           const isPoc = groupedPoc !== null
             && Math.abs(level.price - groupedPoc) < profile.tickSize * groupedTicks / 2;
 
           const valueAreaActive = inValueArea && style.showValueArea;
-          addBar(
-            valueAreaActive ? valueAreaPath : outsideValueAreaPath,
-            pinnedRight ? anchorX - volumeWidth : anchorX,
-            y,
-            volumeWidth,
-            height,
-            pinnedRight ? "left" : "right",
-          );
-          if (style.showProfileOutline && height >= 2.2) {
-            const radius = Math.min(2.25, height / 2, volumeWidth / 2);
-            outlinePath.roundRect(
+          if (style.mode === "delta-volume") {
+            addBar(
+              valueAreaActive ? valueAreaPath : outsideValueAreaPath,
               pinnedRight ? anchorX - volumeWidth : anchorX,
               y,
               volumeWidth,
               height,
-              pinnedRight ? [radius, 0, 0, radius] : [0, radius, radius, 0],
+              pinnedRight ? "left" : "right",
             );
-          }
-
-          if (style.showDelta) {
+            if (style.showProfileOutline && height >= 2.2) {
+              const radius = Math.min(2.25, height / 2, volumeWidth / 2);
+              outlinePath.roundRect(
+                pinnedRight ? anchorX - volumeWidth : anchorX,
+                y,
+                volumeWidth,
+                height,
+                pinnedRight ? [radius, 0, 0, radius] : [0, radius, radius, 0],
+              );
+            }
+            if (style.showDelta) {
+              addBar(
+                delta >= 0 ? positiveDeltaPath : negativeDeltaPath,
+                pinned
+                  ? pinnedRight ? anchorX - deltaWidth : anchorX
+                  : anchorX - deltaWidth,
+                y,
+                deltaWidth,
+                height,
+                pinned ? pinnedRight ? "left" : "right" : "left",
+              );
+            }
+          } else if (style.mode === "bid-ask") {
+            addBar(
+              askVolumePath,
+              pinnedRight ? anchorX - askWidth : anchorX,
+              y,
+              askWidth,
+              height,
+              pinnedRight ? "left" : "right",
+            );
+            addBar(
+              bidVolumePath,
+              pinned
+                ? pinnedRight ? anchorX - bidWidth : anchorX
+                : anchorX - bidWidth,
+              y,
+              bidWidth,
+              height,
+              pinned ? pinnedRight ? "left" : "right" : "left",
+            );
+          } else if (style.showDelta) {
+            const deltaOnRight = delta >= 0 && !pinnedRight;
             addBar(
               delta >= 0 ? positiveDeltaPath : negativeDeltaPath,
               pinned
                 ? pinnedRight ? anchorX - deltaWidth : anchorX
-                : anchorX - deltaWidth,
+                : deltaOnRight ? anchorX : anchorX - deltaWidth,
               y,
               deltaWidth,
               height,
-              pinned ? pinnedRight ? "left" : "right" : "left",
+              pinned ? pinnedRight ? "left" : "right" : deltaOnRight ? "right" : "left",
             );
           }
 
           if (style.showPocHighlight && isPoc) {
+            const leftExtent = style.mode === "bid-ask"
+              ? bidWidth
+              : style.mode === "delta"
+                ? delta < 0 ? deltaWidth : 0
+                : style.showDelta ? deltaWidth : 0;
+            const rightExtent = style.mode === "bid-ask"
+              ? askWidth
+              : style.mode === "delta"
+                ? delta >= 0 ? deltaWidth : 0
+                : volumeWidth;
             addBar(
               pocPath,
               pinned
-                ? pinnedRight ? anchorX - volumeWidth : anchorX
-                : style.showDelta ? anchorX - deltaWidth : anchorX,
+                ? pinnedRight ? anchorX - Math.max(leftExtent, rightExtent) : anchorX
+                : anchorX - leftExtent,
               y,
               pinned
-                ? volumeWidth
-                : (style.showDelta ? deltaWidth : 0) + volumeWidth,
+                ? Math.max(leftExtent, rightExtent)
+                : leftExtent + rightExtent,
               height,
               "both",
             );
@@ -385,6 +436,16 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
           negativeDeltaPath,
           style.negativeDeltaColor,
           Math.min(0.94, style.opacity + 0.14),
+        );
+        fillPath(
+          askVolumePath,
+          style.positiveDeltaColor,
+          Math.min(0.94, style.opacity + 0.08),
+        );
+        fillPath(
+          bidVolumePath,
+          style.negativeDeltaColor,
+          Math.min(0.94, style.opacity + 0.08),
         );
         if (style.showProfileOutline) {
           context.globalAlpha = 0.3;

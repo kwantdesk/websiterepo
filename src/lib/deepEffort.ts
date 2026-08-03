@@ -47,7 +47,7 @@ const clamp = (value: number, minimum: number, maximum: number) =>
   Math.min(maximum, Math.max(minimum, value));
 
 const EFFORT_PROFILES: Record<string, Omit<EffortInstrumentProfile, "root">> = {
-  NQ: { label: "NQ", tickSize: 0.25, averageLength: 21, lookback: 44, cooldown: 8, participationThreshold: 0.42, scoreThreshold: 0.5, minimumThicknessTicks: 4, rangeThicknessFactor: 0.28 },
+  NQ: { label: "NQ", tickSize: 0.25, averageLength: 21, lookback: 40, cooldown: 8, participationThreshold: 0.35, scoreThreshold: 0.48, minimumThicknessTicks: 4, rangeThicknessFactor: 0.28 },
   MNQ: { label: "MNQ", tickSize: 0.25, averageLength: 21, lookback: 40, cooldown: 6, participationThreshold: 0.3, scoreThreshold: 0.45, minimumThicknessTicks: 4, rangeThicknessFactor: 0.28 },
   ES: { label: "ES", tickSize: 0.25, averageLength: 24, lookback: 48, cooldown: 9, participationThreshold: 0.45, scoreThreshold: 0.52, minimumThicknessTicks: 3, rangeThicknessFactor: 0.24 },
   MES: { label: "MES", tickSize: 0.25, averageLength: 24, lookback: 42, cooldown: 7, participationThreshold: 0.32, scoreThreshold: 0.46, minimumThicknessTicks: 3, rangeThicknessFactor: 0.24 },

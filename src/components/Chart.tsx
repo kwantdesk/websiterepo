@@ -3494,6 +3494,12 @@ export default function Chart({
           ? String(profileSettings.snapMode)
           : profile.period === "weekly" ? "left" : "off"
       ) as "off" | "left" | "right";
+      const requestedProfileMode = String(profileSettings.profileMode);
+      const profileMode = (
+        ["delta-volume", "bid-ask", "delta"].includes(requestedProfileMode)
+          ? requestedProfileMode
+          : "delta-volume"
+      ) as "delta-volume" | "bid-ask" | "delta";
       return [{
         id: `${profile.root}:${profile.period}:${profile.startMs}`,
         profile,
@@ -3504,6 +3510,7 @@ export default function Chart({
         lowPrice: profile.levels[0]?.price ?? Number.POSITIVE_INFINITY,
         highPrice: profile.levels[profile.levels.length - 1]?.price ?? Number.NEGATIVE_INFINITY,
         style: {
+          mode: profileMode,
           widthPercent: clamp(Number(profileSettings.profileWidth ?? (profile.period === "weekly" ? 18 : 9)), 0, 100),
           opacity: clamp(Number(profileSettings.opacity ?? (profile.period === "weekly" ? 42 : 68)) / 100, 0.1, 1),
           positiveDeltaColor: useThemeColors ? settings.upColor : String(profileSettings.askColor ?? settings.upColor),
