@@ -44,7 +44,7 @@ import {
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
-export const maxDuration = 120;
+export const maxDuration = 300;
 
 const MAX_MESSAGES = 16;
 const MAX_TEXT_LENGTH = 6_000;
@@ -105,6 +105,16 @@ type ToolUseBlock = {
   name?: string;
   input?: unknown;
 };
+type ClaudeResult = {
+  content?: Array<{ type?: string; text?: string; name?: string; input?: unknown }>;
+  usage?: { input_tokens?: number; output_tokens?: number };
+};
+type ZyonStreamEvent =
+  | { type: "start"; messageId: string }
+  | { type: "heartbeat" }
+  | { type: "delta"; text: string }
+  | { type: "complete"; payload: Record<string, unknown> }
+  | { type: "error"; error: string; retryable: boolean };
 type JournalToolInput = {
   title?: unknown;
   summary?: unknown;
@@ -147,7 +157,81 @@ const JOURNAL_KINDS = new Set<ZyonJournalEntry["kind"]>([
   "LESSON",
   "NOTE",
 ]);
+const ZYON_PROVIDER_TOOLS = [
+  {
+    name: "record_trading_journal",
+    description: "Record a durable ZYON trading-journal entry when the user describes a trade, setup, review, lesson, or explicitly asks to save a note.",
+    input_schema: {
+      type: "object",
+      properties: {
+        title: { type: "string", description: "Short descriptive journal title." },
+        summary: { type: "string", description: "One-sentence summary." },
+        body: { type: "string", description: "Complete factual journal entry including setup, action, reasoning, outcome if known, and next lesson." },
+        kind: { type: "string", enum: ["TRADE", "SETUP", "REVIEW", "LESSON", "NOTE"] },
+        tags: { type: "array", items: { type: "string" }, maxItems: 8 },
+      },
+      required: ["title", "body", "kind"],
+    },
+  },
+  {
+    name: "save_trading_gameplan_draft",
+    description: "Validate and prepare a complete structured Gameplan after every required fact is known. The server only sends it to Socials holding when the trader explicitly asks to send, save, submit, or publish it.",
+    input_schema: {
+      type: "object",
+      properties: {
+        title: { type: "string" },
+        instrument: { type: "string", description: "NQ, MNQ, ES, or MES." },
+        direction: { type: "string", enum: ["LONG", "SHORT"] },
+        session: { type: "string" },
+        entryTime: { type: "string", description: "Optional ISO 8601 timestamp with an explicit UTC offset. Omit for a future conditional setup whose trigger time is not yet known; required for a historical fill." },
+        entryLow: { type: "number" },
+        entryHigh: { type: "number" },
+        stop: { type: "number" },
+        targets: { type: "array", items: { type: "number" }, minItems: 1, maxItems: 8 },
+        riskAmount: { type: "number", exclusiveMinimum: 0 },
+        riskUnit: { type: "string", enum: ["DOLLARS", "POINTS", "TICKS", "PERCENT"] },
+        size: { type: "number" },
+        tradingAccount: {
+          type: "object",
+          properties: {
+            mode: { type: "string", enum: ["LIVE", "SIM", "PROP"] },
+            provider: { type: "string", description: "Broker or prop-firm name. Required for PROP; optional for LIVE or SIM." },
+            program: { type: "string", description: "Optional programme or account product, for example Flex." },
+            phase: { type: "string", enum: ["LIVE", "SIMULATION", "EVALUATION", "FUNDED"] },
+            size: { type: "number", exclusiveMinimum: 0, description: "Nominal account size, for example 50000." },
+            currency: { type: "string", enum: ["USD", "AUD", "GBP", "EUR", "CAD"] },
+          },
+          required: ["mode", "provider", "program", "phase", "size", "currency"],
+        },
+        reasoning: { type: "string" },
+        confluences: { type: "array", items: { type: "string" }, maxItems: 12 },
+        confirmation: { type: "string" },
+        invalidation: { type: "string" },
+        notes: { type: "string", description: "Optional trader notes inferred from the conversation; may be blank and remains editable in holding." },
+        expiryAt: { type: "string", description: "ISO timestamp when known." },
+      },
+      required: [
+        "title",
+        "instrument",
+        "direction",
+        "session",
+        "entryLow",
+        "entryHigh",
+        "stop",
+        "targets",
+        "riskAmount",
+        "riskUnit",
+        "tradingAccount",
+        "reasoning",
+        "confirmation",
+        "invalidation",
+      ],
+    },
+  },
+] as const;
 const ANTHROPIC_MODEL_CACHE_MS = 10 * 60_000;
+const PROVIDER_CONNECT_TIMEOUT_MS = 25_000;
+const PROVIDER_INACTIVITY_TIMEOUT_MS = 60_000;
 type AnthropicModelRecord = {
   id?: unknown;
   display_name?: unknown;
@@ -157,6 +241,147 @@ let anthropicModelCache: {
   expiresAt: number;
   models: Array<{ id: string; name: string; createdAt: number }>;
 } | null = null;
+
+async function consumeAnthropicStream(
+  response: Response,
+  onText: (text: string) => void,
+  onActivity: () => void,
+): Promise<ClaudeResult> {
+  if (!response.body) throw new Error("Anthropic returned an empty stream.");
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let stopped = false;
+  let inputTokens: number | undefined;
+  let outputTokens: number | undefined;
+  const blocks = new Map<number, {
+    type: "text" | "tool_use";
+    text: string;
+    name?: string;
+    inputJson: string;
+    input?: unknown;
+  }>();
+
+  const consumeEvent = (rawEvent: string) => {
+    const data = rawEvent
+      .split(/\r?\n/)
+      .filter((line) => line.startsWith("data:"))
+      .map((line) => line.slice(5).trimStart())
+      .join("\n");
+    if (!data || data === "[DONE]") return;
+    let event: Record<string, unknown>;
+    try {
+      event = JSON.parse(data) as Record<string, unknown>;
+    } catch {
+      return;
+    }
+    onActivity();
+    const eventType = String(event.type ?? "");
+    if (eventType === "error") {
+      const providerError = event.error && typeof event.error === "object"
+        ? event.error as Record<string, unknown>
+        : null;
+      throw new Error(cleanText(providerError?.message, 500) || "Anthropic streaming failed.");
+    }
+    if (eventType === "message_start") {
+      const message = event.message && typeof event.message === "object"
+        ? event.message as Record<string, unknown>
+        : null;
+      const usage = message?.usage && typeof message.usage === "object"
+        ? message.usage as Record<string, unknown>
+        : null;
+      if (typeof usage?.input_tokens === "number") inputTokens = usage.input_tokens;
+      return;
+    }
+    if (eventType === "content_block_start") {
+      const index = typeof event.index === "number" ? event.index : blocks.size;
+      const contentBlock = event.content_block && typeof event.content_block === "object"
+        ? event.content_block as Record<string, unknown>
+        : {};
+      if (contentBlock.type === "tool_use") {
+        blocks.set(index, {
+          type: "tool_use",
+          text: "",
+          name: cleanText(contentBlock.name, 120),
+          inputJson: "",
+          input: contentBlock.input,
+        });
+      } else {
+        const initialText = cleanText(contentBlock.text, 12_000);
+        blocks.set(index, { type: "text", text: initialText, inputJson: "" });
+        if (initialText) onText(initialText);
+      }
+      return;
+    }
+    if (eventType === "content_block_delta") {
+      const index = typeof event.index === "number" ? event.index : 0;
+      const delta = event.delta && typeof event.delta === "object"
+        ? event.delta as Record<string, unknown>
+        : {};
+      const block = blocks.get(index) ?? {
+        type: delta.type === "input_json_delta" ? "tool_use" as const : "text" as const,
+        text: "",
+        inputJson: "",
+      };
+      if (delta.type === "text_delta" && typeof delta.text === "string") {
+        block.text += delta.text;
+        onText(delta.text);
+      } else if (delta.type === "input_json_delta" && typeof delta.partial_json === "string") {
+        block.inputJson += delta.partial_json;
+      }
+      blocks.set(index, block);
+      return;
+    }
+    if (eventType === "message_delta") {
+      const usage = event.usage && typeof event.usage === "object"
+        ? event.usage as Record<string, unknown>
+        : null;
+      if (typeof usage?.output_tokens === "number") outputTokens = usage.output_tokens;
+      return;
+    }
+    if (eventType === "message_stop") stopped = true;
+  };
+
+  while (!stopped) {
+    let inactivityTimer: ReturnType<typeof setTimeout> | null = null;
+    const read = await Promise.race([
+      reader.read(),
+      new Promise<never>((_, reject) => {
+        inactivityTimer = setTimeout(
+          () => reject(new Error("Anthropic stopped producing stream activity.")),
+          PROVIDER_INACTIVITY_TIMEOUT_MS,
+        );
+      }),
+    ]).finally(() => {
+      if (inactivityTimer) clearTimeout(inactivityTimer);
+    });
+    if (read.done) break;
+    buffer += decoder.decode(read.value, { stream: true });
+    const events = buffer.split(/\r?\n\r?\n/);
+    buffer = events.pop() ?? "";
+    for (const event of events) consumeEvent(event);
+  }
+  if (buffer.trim()) consumeEvent(buffer);
+
+  const content = [...blocks.entries()]
+    .sort(([left], [right]) => left - right)
+    .map(([, block]) => {
+      if (block.type === "text") return { type: "text", text: block.text };
+      let input = block.input;
+      if (block.inputJson.trim()) {
+        try {
+          input = JSON.parse(block.inputJson);
+        } catch {
+          input = undefined;
+        }
+      }
+      return { type: "tool_use", name: block.name, input };
+    });
+  return {
+    content,
+    usage: { input_tokens: inputTokens, output_tokens: outputTokens },
+  };
+}
 
 function cleanText(value: unknown, limit: number) {
   return typeof value === "string"
@@ -1380,6 +1605,336 @@ export async function POST(request: NextRequest) {
         `<kwantdesk_market_context>${fallbackContextJson}</kwantdesk_market_context>`,
       );
 
+  const usePersistenceTools = !historicalReplay && needsPersistenceTools(messages);
+  const providerRequestPayload = (
+    providerModel: string,
+    modelIndex: number,
+    streaming = false,
+  ) => ({
+    model: providerModel,
+    max_tokens: usePersistenceTools
+      ? (modelIndex === 0 ? 1_800 : 1_500)
+      : modelIndex === 0 ? 1_800 : 1_400,
+    temperature: 0.2,
+    system: modelIndex === 0 ? system : fallbackSystem,
+    metadata: { user_id: actor.userId },
+    tools: usePersistenceTools ? ZYON_PROVIDER_TOOLS : undefined,
+    messages: modelIndex === 0 ? messages : compactProviderMessages(messages),
+    ...(streaming ? { stream: true } : {}),
+  });
+
+  const finalizeResult = async (
+    result: ClaudeResult,
+    providerRequestId: string | null,
+  ): Promise<Record<string, unknown>> => {
+    const text = extractClaudeText(result);
+    const toolBlock = historicalReplay ? undefined : result.content?.find(
+      (block): block is ToolUseBlock =>
+        block?.type === "tool_use" && block.name === "record_trading_journal",
+    );
+    const gameplanToolBlock = historicalReplay ? undefined : result.content?.find(
+      (block): block is ToolUseBlock =>
+        block?.type === "tool_use" && block.name === "save_trading_gameplan_draft",
+    );
+    let journalEntry = toolBlock?.input && typeof toolBlock.input === "object"
+      ? buildJournalEntry(
+        toolBlock.input as JournalToolInput,
+        root,
+        payload.context,
+        finalAttachments,
+      )
+      : null;
+    if (
+      !historicalReplay
+      && !journalEntry
+      && /\b(?:journal|log|record|save)\b/i.test(finalUserText)
+      && /\b(?:trade|setup|lesson|note|review)\b/i.test(finalUserText)
+    ) {
+      journalEntry = buildJournalEntry({
+        title: `${root} discretionary ${/\btrade\b/i.test(finalUserText) ? "trade" : "note"}`,
+        summary: finalUserText.slice(0, 240),
+        body: [
+          "USER RECORD",
+          finalUserText,
+          text ? `\nZYON REVIEW\n${text}` : "",
+        ].filter(Boolean).join("\n\n"),
+        kind: /\btrade\b/i.test(finalUserText) ? "TRADE" : "NOTE",
+        tags: [root, "discretionary"],
+      }, root, payload.context, finalAttachments);
+    }
+    if (journalEntry && !journalEntry.tags.includes(zyonChatIdTag(chatId))) {
+      journalEntry = {
+        ...journalEntry,
+        tags: [...journalEntry.tags, zyonChatIdTag(chatId)],
+      };
+    }
+    const cloudSaved = journalEntry
+      ? await persistJournalEntry(actor.userId, journalEntry)
+      : false;
+    const gameplanEntryTiming: ZyonGameplanEntryTimingStatus | null =
+      gameplanToolBlock?.input && typeof gameplanToolBlock.input === "object"
+        ? zyonGameplanEntryTimingStatus(
+          (gameplanToolBlock.input as GameplanToolInput).entryTime,
+          requestReceivedAt,
+        )
+        : null;
+    let preparedGameplanDraft = gameplanToolBlock?.input && typeof gameplanToolBlock.input === "object"
+      ? buildGameplanDraft(
+        gameplanToolBlock.input as GameplanToolInput,
+        root,
+        payload.context,
+        rawUserMessageId,
+        requestReceivedAt,
+      )
+      : null;
+    if (preparedGameplanDraft && zyonGameplanMissingFields(preparedGameplanDraft).length) {
+      preparedGameplanDraft = null;
+    }
+    let gameplanDraft = gameplanSubmitIntent ? preparedGameplanDraft : null;
+    const gameplanDraftSave = gameplanDraft
+      ? await persistGameplanDraft(actor.userId, gameplanDraft, rawUserMessageId)
+      : { saved: false, blockedBy: null };
+    if (gameplanDraftSave.blockedBy) gameplanDraft = null;
+    if (gameplanDraft) gameplanDraft = { ...gameplanDraft, cloudSaved: gameplanDraftSave.saved };
+    const gameplanWasSent = Boolean(gameplanDraft?.cloudSaved || gameplanDraftSave.blockedBy);
+    const gameplanReady = Boolean(preparedGameplanDraft && !gameplanWasSent);
+    const unscopedGameplanJournalEntry = gameplanDraft?.cloudSaved
+      ? gameplanJournalEntry(gameplanDraft, conversationFolder.folderId)
+      : null;
+    const savedGameplanJournalEntry = unscopedGameplanJournalEntry
+      ? {
+        ...unscopedGameplanJournalEntry,
+        tags: [...unscopedGameplanJournalEntry.tags, zyonChatIdTag(chatId)],
+      }
+      : null;
+    const savedGameplanJournalCloud = savedGameplanJournalEntry
+      ? await persistJournalEntry(actor.userId, savedGameplanJournalEntry)
+      : false;
+    const liveGameplanSentMessage = "Gameplan sent â€” it's now waiting for you in Socials â†’ Gameplan Holding. Review the pre-filled record, adjust anything you need, then press Lock today's game plan to approve and publish it into Scoring. Nothing is published or scored until you lock it.";
+    const historicalGameplanSentMessage = "Historical Gameplan sent â€” it's now waiting for you in Socials â†’ Gameplan Holding with its original entry timestamp preserved. Review the pre-filled record, adjust anything you need, then press Lock today's game plan to approve and publish it into Scoring. Nothing is published or scored until you lock it.";
+    const responseText = gameplanDraftSave.blockedBy
+      ? "Your previous Gameplan is already in the Socials holding page. Review and lock it into Scoring before asking ZYON to send another one."
+      : gameplanDraft && !gameplanDraftSave.saved
+        ? "I have the complete Gameplan, but the account holding record did not sync. Nothing was posted. Try Send Gameplan again."
+        : gameplanEntryTiming === "TOO_OLD" && gameplanDraft
+          ? historicalGameplanSentMessage
+          : gameplanEntryTiming === "INVALID"
+            ? "That entry time could not be read. Remove it for a future conditional plan, or enter the exact timestamp and timezone for a completed trade."
+            : gameplanDraft
+              ? liveGameplanSentMessage
+              : gameplanReady
+                ? text || "Your Gameplan is complete. The Send Gameplan button is now unlocked."
+                : text || "That has been recorded in your trading journal.";
+    const assistantConversationEntry = conversationEntry({
+      id: assistantConversationEntryId,
+      chatId,
+      sessionDate,
+      folderId: conversationFolder.folderId,
+      root,
+      role: "assistant",
+      text: responseText,
+      gameplanStatus: gameplanWasSent ? "sent" : gameplanReady ? "ready" : undefined,
+      createdAt: new Date().toISOString(),
+    });
+    const assistantConversationCloudSaved = await within(
+      persistJournalEntry(actor.userId, assistantConversationEntry),
+      false,
+      450,
+    );
+
+    if (!responseText && !journalEntry && !gameplanDraft) {
+      throw new Error("ZYON returned an empty reply.");
+    }
+
+    return {
+      text: responseText.slice(0, 12_000),
+      model: modelKey,
+      gameplanReady,
+      journalEntry: journalEntry ? { ...journalEntry, cloudSaved } : null,
+      gameplanDraft,
+      pendingGameplanDraftId: gameplanDraftSave.blockedBy,
+      journalEntries: [
+        { ...userConversationEntry, cloudSaved: userConversationCloudSaved },
+        { ...assistantConversationEntry, cloudSaved: assistantConversationCloudSaved },
+        ...(journalEntry ? [{ ...journalEntry, cloudSaved }] : []),
+        ...(savedGameplanJournalEntry
+          ? [{ ...savedGameplanJournalEntry, cloudSaved: savedGameplanJournalCloud }]
+          : []),
+      ],
+      folder: {
+        id: conversationFolder.folderId,
+        sessionDate,
+        cloudSaved: conversationFolder.cloudSaved,
+      },
+      usage: {
+        inputTokens: result.usage?.input_tokens ?? null,
+        outputTokens: result.usage?.output_tokens ?? null,
+      },
+      requestId: providerRequestId,
+    };
+  };
+
+  const wantsStreaming = !historicalReplay
+    && request.headers.get("accept")?.includes("application/x-ndjson");
+  if (wantsStreaming) {
+    const encoder = new TextEncoder();
+    let clientConnected = true;
+    const responseStream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        const emit = (event: ZyonStreamEvent) => {
+          if (!clientConnected) return;
+          try {
+            controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
+          } catch {
+            clientConnected = false;
+          }
+        };
+        emit({ type: "start", messageId: assistantConversationEntryId });
+
+        void (async () => {
+          let streamedText = "";
+          let providerRequestId: string | null = null;
+          let providerStatus: number | null = null;
+          let providerError = "";
+          let lastPartialPersistAt = 0;
+          let partialPersistChain = Promise.resolve();
+          const persistPartialReply = (force = false) => {
+            if (!streamedText.trim()) return partialPersistChain;
+            const now = Date.now();
+            if (!force && now - lastPartialPersistAt < 4_000) return partialPersistChain;
+            lastPartialPersistAt = now;
+            const partialEntry = conversationEntry({
+              id: assistantConversationEntryId,
+              chatId,
+              sessionDate,
+              folderId: conversationFolder.folderId,
+              root,
+              role: "assistant",
+              text: streamedText.slice(0, 12_000),
+              createdAt: new Date(requestReceivedAt).toISOString(),
+            });
+            partialPersistChain = partialPersistChain
+              .then(async () => {
+                await persistJournalEntry(actor.userId, partialEntry);
+              })
+              .catch((error) => {
+                console.error("ZYON partial reply persistence failed", error);
+              });
+            return partialPersistChain;
+          };
+
+          try {
+            const providerModels = await providerModelsFor(apiKey, modelKey);
+            let result: ClaudeResult | null = null;
+            for (const [modelIndex, providerModel] of providerModels.entries()) {
+              const attemptStartLength = streamedText.length;
+              const connectController = new AbortController();
+              const connectTimeout = setTimeout(
+                () => connectController.abort(),
+                PROVIDER_CONNECT_TIMEOUT_MS,
+              );
+              let providerResponse: Response | null = null;
+              try {
+                providerResponse = await fetch("https://api.anthropic.com/v1/messages", {
+                  method: "POST",
+                  signal: connectController.signal,
+                  headers: {
+                    "Content-Type": "application/json",
+                    "x-api-key": apiKey,
+                    "anthropic-version": ANTHROPIC_VERSION,
+                  },
+                  body: JSON.stringify(providerRequestPayload(providerModel, modelIndex, true)),
+                });
+              } catch (error) {
+                providerError = error instanceof Error ? error.message : "provider connection failed";
+              } finally {
+                clearTimeout(connectTimeout);
+              }
+              if (!providerResponse) continue;
+              providerRequestId = providerResponse.headers.get("request-id")
+                ?? providerResponse.headers.get("x-request-id")
+                ?? providerRequestId;
+              providerStatus = providerResponse.status;
+              if (!providerResponse.ok) {
+                providerError = await providerResponse.text();
+                console.error(
+                  "ZYON streaming provider error",
+                  providerResponse.status,
+                  providerModel,
+                  providerError.slice(0, 800),
+                );
+                if ([401, 403, 429].includes(providerResponse.status)) break;
+                continue;
+              }
+              try {
+                result = await consumeAnthropicStream(
+                  providerResponse,
+                  (delta) => {
+                    streamedText += delta;
+                    emit({ type: "delta", text: delta });
+                    persistPartialReply();
+                  },
+                  () => emit({ type: "heartbeat" }),
+                );
+                break;
+              } catch (error) {
+                providerError = error instanceof Error ? error.message : "provider stream failed";
+                console.error("ZYON provider stream failed", providerModel, providerError);
+                if (streamedText.length > attemptStartLength) throw error;
+              }
+            }
+
+            if (!result) {
+              const rateLimited = providerStatus === 429;
+              const forbidden = providerStatus === 401 || providerStatus === 403;
+              throw new Error(
+                rateLimited
+                  ? "ZYON is temporarily rate-limited. Your message remains saved."
+                  : forbidden
+                    ? "ZYON's Anthropic connection is not authorised. The API key or account access needs attention."
+                    : "ZYON could not establish a model stream. Your message remains saved.",
+              );
+            }
+
+            await partialPersistChain;
+            const finalized = await finalizeResult(result, providerRequestId);
+            emit({ type: "complete", payload: finalized });
+          } catch (error) {
+            await persistPartialReply(true);
+            emit({
+              type: "error",
+              error: error instanceof Error
+                ? error.message
+                : "ZYON's live response was interrupted. Your message remains saved.",
+              retryable: true,
+            });
+          } finally {
+            if (clientConnected) {
+              try {
+                controller.close();
+              } catch {
+                // The account copy remains saved if the browser disconnected.
+              }
+            }
+          }
+        })();
+      },
+      cancel() {
+        // Do not cancel the provider generation. It continues to completion and
+        // persists the reply so another page/device can recover the same answer.
+        clientConnected = false;
+      },
+    });
+
+    return new Response(responseStream, {
+      headers: {
+        "Content-Type": "application/x-ndjson; charset=utf-8",
+        "Cache-Control": "private, no-store, no-transform, max-age=0",
+        "X-Accel-Buffering": "no",
+      },
+    });
+  }
+
   try {
     const providerModels = await providerModelsFor(apiKey, modelKey);
     const providerTimeouts = historicalReplay
@@ -1390,7 +1945,6 @@ export async function POST(request: NextRequest) {
     // smaller and prevents an optional tool-schema rejection from taking the
     // entire analyst offline. The tools remain available throughout an active
     // journal or Gameplan conversation.
-    const usePersistenceTools = !historicalReplay && needsPersistenceTools(messages);
     let response: Response | null = null;
     let providerError = "";
     let providerStatus: number | null = null;
@@ -1398,9 +1952,6 @@ export async function POST(request: NextRequest) {
     let providerRetryAfterMs: number | null = null;
     for (const [modelIndex, providerModel] of providerModels.entries()) {
       try {
-        const providerMessages = modelIndex === 0
-          ? messages
-          : compactProviderMessages(messages);
         response = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
           signal: AbortSignal.timeout(providerTimeouts[modelIndex] ?? 6_000),
@@ -1409,93 +1960,7 @@ export async function POST(request: NextRequest) {
             "x-api-key": apiKey,
             "anthropic-version": ANTHROPIC_VERSION,
           },
-          body: JSON.stringify({
-            model: providerModel,
-            max_tokens: usePersistenceTools ? (modelIndex === 0 ? 1_800 : 1_500) : modelIndex === 0 ? 1_800 : 1_400,
-            temperature: 0.2,
-            system: modelIndex === 0 ? system : fallbackSystem,
-            metadata: { user_id: actor.userId },
-            tools: usePersistenceTools ? [
-          {
-            name: "record_trading_journal",
-            description: "Record a durable ZYON trading-journal entry when the user describes a trade, setup, review, lesson, or explicitly asks to save a note.",
-            input_schema: {
-              type: "object",
-              properties: {
-                title: { type: "string", description: "Short descriptive journal title." },
-                summary: { type: "string", description: "One-sentence summary." },
-                body: { type: "string", description: "Complete factual journal entry including setup, action, reasoning, outcome if known, and next lesson." },
-                kind: {
-                  type: "string",
-                  enum: ["TRADE", "SETUP", "REVIEW", "LESSON", "NOTE"],
-                },
-                tags: {
-                  type: "array",
-                  items: { type: "string" },
-                  maxItems: 8,
-                },
-              },
-              required: ["title", "body", "kind"],
-            },
-          },
-          {
-            name: "save_trading_gameplan_draft",
-            description: "Validate and prepare a complete structured Gameplan after every required fact is known. The server only sends it to Socials holding when the trader explicitly asks to send, save, submit, or publish it.",
-            input_schema: {
-              type: "object",
-              properties: {
-                title: { type: "string" },
-                instrument: { type: "string", description: "NQ, MNQ, ES, or MES." },
-                direction: { type: "string", enum: ["LONG", "SHORT"] },
-                session: { type: "string" },
-                entryTime: { type: "string", description: "Optional ISO 8601 timestamp with an explicit UTC offset. Omit for a future conditional setup whose trigger time is not yet known; required for a historical fill." },
-                entryLow: { type: "number" },
-                entryHigh: { type: "number" },
-                stop: { type: "number" },
-                targets: { type: "array", items: { type: "number" }, minItems: 1, maxItems: 8 },
-                riskAmount: { type: "number", exclusiveMinimum: 0 },
-                riskUnit: { type: "string", enum: ["DOLLARS", "POINTS", "TICKS", "PERCENT"] },
-                size: { type: "number" },
-                tradingAccount: {
-                  type: "object",
-                  properties: {
-                    mode: { type: "string", enum: ["LIVE", "SIM", "PROP"] },
-                    provider: { type: "string", description: "Broker or prop-firm name. Required for PROP; optional for LIVE or SIM." },
-                    program: { type: "string", description: "Optional programme or account product, for example Flex." },
-                    phase: { type: "string", enum: ["LIVE", "SIMULATION", "EVALUATION", "FUNDED"] },
-                    size: { type: "number", exclusiveMinimum: 0, description: "Nominal account size, for example 50000." },
-                    currency: { type: "string", enum: ["USD", "AUD", "GBP", "EUR", "CAD"] },
-                  },
-                  required: ["mode", "provider", "program", "phase", "size", "currency"],
-                },
-                reasoning: { type: "string" },
-                confluences: { type: "array", items: { type: "string" }, maxItems: 12 },
-                confirmation: { type: "string" },
-                invalidation: { type: "string" },
-                notes: { type: "string", description: "Optional trader notes inferred from the conversation; may be blank and remains editable in holding." },
-                expiryAt: { type: "string", description: "ISO timestamp when known." },
-              },
-              required: [
-                "title",
-                "instrument",
-                "direction",
-                "session",
-                "entryLow",
-                "entryHigh",
-                "stop",
-                "targets",
-                "riskAmount",
-                "riskUnit",
-                "tradingAccount",
-                "reasoning",
-                "confirmation",
-                "invalidation"
-              ],
-            },
-          },
-            ] : undefined,
-            messages: providerMessages,
-          }),
+          body: JSON.stringify(providerRequestPayload(providerModel, modelIndex)),
         });
         providerRequestId = response.headers.get("request-id")
           ?? response.headers.get("x-request-id")
@@ -1554,10 +2019,14 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const result = await response.json() as {
-      content?: Array<{ type?: string; text?: string; name?: string; input?: unknown }>;
-      usage?: { input_tokens?: number; output_tokens?: number };
-    };
+    const result = await response.json() as ClaudeResult;
+    const finalized = await finalizeResult(result, providerRequestId);
+    return NextResponse.json(finalized, {
+      headers: { "Cache-Control": "private, no-store, max-age=0" },
+    });
+
+    /* Legacy inline finalization retained temporarily below for type-safe
+       comparison while the streaming path is introduced.
     const text = extractClaudeText(result);
     const toolBlock = historicalReplay ? undefined : result.content?.find(
       (block): block is ToolUseBlock =>
@@ -1705,7 +2174,7 @@ export async function POST(request: NextRequest) {
         requestId: providerRequestId,
       },
       { headers: { "Cache-Control": "private, no-store, max-age=0" } },
-    );
+    ); */
   } catch (error) {
     console.error("ZYON request failed", error);
     if (historicalReplay) {

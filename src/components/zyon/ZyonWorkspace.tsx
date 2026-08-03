@@ -213,6 +213,27 @@ class ZyonTransportError extends Error {
   }
 }
 
+class ZyonResponseError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ZyonResponseError";
+  }
+}
+
+type ZyonResponsePayload = {
+  text?: unknown;
+  error?: unknown;
+  model?: unknown;
+  journalEntry?: ZyonJournalEntry | null;
+  journalEntries?: ZyonJournalEntry[];
+  gameplanDraft?: ZyonGameplanDraft | null;
+  gameplanReady?: boolean;
+  gameplanStatus?: unknown;
+  pendingGameplanDraftId?: string | null;
+  folder?: { id?: string; sessionDate?: string; cloudSaved?: boolean };
+  usage?: { inputTokens?: number | null; outputTokens?: number | null };
+};
+
 function stringifyZyonRequest(value: unknown) {
   const seen = new WeakSet<object>();
   return JSON.stringify(value, (_key, candidate: unknown) => {
@@ -1700,34 +1721,121 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
             learningReviews: learningReviews.slice(-4),
           },
       });
+      const streamedReplyId = zyonId("zyon-assistant");
+      const streamedReplyCreatedAt = new Date().toISOString();
+      let streamedReplyCreated = false;
+      let streamedContent = "";
+      let streamedUpdateFrame: number | null = null;
+      const flushStreamedReplyUpdate = () => {
+        if (streamedUpdateFrame !== null) {
+          window.cancelAnimationFrame(streamedUpdateFrame);
+          streamedUpdateFrame = null;
+        }
+        if (!streamedContent) return;
+        const liveReply: ZyonMessage = {
+          id: streamedReplyId,
+          role: "assistant",
+          content: streamedContent,
+          createdAt: streamedReplyCreatedAt,
+          model,
+        };
+        setMessages((current) => streamedReplyCreated
+          ? current.map((message) => message.id === streamedReplyId ? liveReply : message)
+          : [...current.slice(-119), liveReply]);
+        streamedReplyCreated = true;
+      };
+      const queueStreamedReplyUpdate = () => {
+        if (streamedUpdateFrame !== null) return;
+        streamedUpdateFrame = window.requestAnimationFrame(() => {
+          streamedUpdateFrame = null;
+          flushStreamedReplyUpdate();
+        });
+      };
       const requestReply = async () => {
-        const controller = new AbortController();
-        // The backend has a bounded premium-model attempt plus faster family
-        // fallbacks. Do not abort a valid provider response while that recovery
-        // ladder is still running.
-        const timeout = window.setTimeout(() => controller.abort(), 105_000);
         try {
+          return await fetch("/api/zyon", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Accept: "application/x-ndjson",
+            },
+            body: requestBody,
+          });
+        } catch (error) {
+          throw new ZyonTransportError("ZYON transport failed.", { cause: error });
+        }
+      };
+      const readReply = async (replyResponse: Response): Promise<ZyonResponsePayload | null> => {
+        const contentType = replyResponse.headers.get("content-type") ?? "";
+        if (!contentType.includes("application/x-ndjson")) {
+          return await replyResponse.json().catch(() => null) as ZyonResponsePayload | null;
+        }
+        if (!replyResponse.body) {
+          throw new ZyonTransportError("ZYON response stream was unavailable.");
+        }
+
+        const reader = replyResponse.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        let completedPayload: ZyonResponsePayload | null = null;
+        const processLine = (line: string) => {
+          if (!line.trim()) return;
+          let event: {
+            type?: unknown;
+            text?: unknown;
+            error?: unknown;
+            payload?: unknown;
+          };
           try {
-            return await fetch("/api/zyon", {
-              method: "POST",
-              signal: controller.signal,
-              headers: { "Content-Type": "application/json" },
-              body: requestBody,
-            });
-          } catch (error) {
-            // A browser timeout is also an indeterminate transport result: the
-            // server may have completed and persisted the reply. Route it
-            // through the same recovery path before issuing another model call.
-            throw new ZyonTransportError(
-              error instanceof DOMException && error.name === "AbortError"
-                ? "ZYON transport timed out."
-                : "ZYON transport failed.",
-              { cause: error },
+            event = JSON.parse(line) as typeof event;
+          } catch {
+            throw new ZyonTransportError("ZYON returned an invalid stream frame.");
+          }
+          if (event.type === "delta" && typeof event.text === "string" && event.text) {
+            streamedContent = `${streamedContent}${event.text}`.slice(0, 12_000);
+            queueStreamedReplyUpdate();
+            return;
+          }
+          if (event.type === "complete" && event.payload && typeof event.payload === "object") {
+            completedPayload = event.payload as ZyonResponsePayload;
+            return;
+          }
+          if (event.type === "error") {
+            throw new ZyonResponseError(
+              typeof event.error === "string" && event.error.trim()
+                ? event.error
+                : "ZYON could not complete this reply.",
             );
           }
+        };
+
+        try {
+          while (true) {
+            const { value, done } = await reader.read();
+            buffer += decoder.decode(value, { stream: !done });
+            const lines = buffer.split("\n");
+            buffer = lines.pop() ?? "";
+            for (const line of lines) processLine(line);
+            if (done) break;
+          }
+          if (buffer.trim()) processLine(buffer);
+        } catch (error) {
+          flushStreamedReplyUpdate();
+          if (error instanceof ZyonTransportError || error instanceof ZyonResponseError) {
+            throw error;
+          }
+          throw new ZyonTransportError("ZYON response stream was interrupted.", { cause: error });
         } finally {
-          window.clearTimeout(timeout);
+          reader.releaseLock();
         }
+        if (!completedPayload) {
+          throw new ZyonTransportError("ZYON response stream ended before completion.");
+        }
+        if (streamedUpdateFrame !== null) {
+          window.cancelAnimationFrame(streamedUpdateFrame);
+          streamedUpdateFrame = null;
+        }
+        return completedPayload;
       };
       const recoverPersistedReply = async () => {
         const assistantEntryId = `zyon-conversation-assistant-${userMessage.id}`;
@@ -1794,19 +1902,16 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
           }
         }
       }
-      const payload = await response.json().catch(() => null) as {
-        text?: unknown;
-        error?: unknown;
-        model?: unknown;
-        journalEntry?: ZyonJournalEntry | null;
-        journalEntries?: ZyonJournalEntry[];
-        gameplanDraft?: ZyonGameplanDraft | null;
-        gameplanReady?: boolean;
-        gameplanStatus?: unknown;
-        pendingGameplanDraftId?: string | null;
-        folder?: { id?: string; sessionDate?: string; cloudSaved?: boolean };
-        usage?: { inputTokens?: number | null; outputTokens?: number | null };
-      } | null;
+      let payload: ZyonResponsePayload | null;
+      try {
+        payload = await readReply(response);
+      } catch (streamError) {
+        if (!(streamError instanceof ZyonTransportError)) throw streamError;
+        const recovered = await recoverPersistedReply();
+        if (!recovered) throw streamError;
+        response = recovered;
+        payload = await readReply(recovered);
+      }
       if (!response.ok) {
         throw new Error(
           typeof payload?.error === "string" && payload.error.trim()
@@ -1817,16 +1922,18 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
       const content = typeof payload?.text === "string" ? payload.text.trim() : "";
       if (!content) throw new Error("ZYON returned an empty reply.");
       const reply: ZyonMessage = {
-        id: zyonId("zyon-assistant"),
+        id: streamedReplyId,
         role: "assistant",
         content: content.slice(0, 12_000),
-        createdAt: new Date().toISOString(),
+        createdAt: streamedReplyCreatedAt,
         model: isZyonModelKey(payload?.model) ? payload.model : model,
         gameplanStatus: payload?.gameplanDraft?.cloudSaved || payload?.pendingGameplanDraftId
           ? "sent"
           : payload?.gameplanReady ? "ready" : undefined,
       };
-      setMessages((current) => [...current.slice(-119), reply]);
+      setMessages((current) => streamedReplyCreated
+        ? current.map((message) => message.id === streamedReplyId ? reply : message)
+        : [...current.slice(-119), reply]);
       if (payload?.gameplanDraft?.cloudSaved) {
         setPendingGameplanId(payload.gameplanDraft.id);
         setGameplanSendState("sent");
