@@ -995,6 +995,11 @@ function mergeHistoricalWithLiveTail(
   liveTailStartTimestamp: number | null,
 ) {
   const normalizedHistory = mergeChartHistory([], historical);
+  if (isEventBasedChartInterval(timeframe)) {
+    const historyTail = normalizedHistory.at(-1)?.timestamp ?? Number.NEGATIVE_INFINITY;
+    const liveOnly = rendered.filter((candle) => candle.timestamp > historyTail);
+    return mergeChartHistory(normalizedHistory, liveOnly);
+  }
   if (liveTailStartTimestamp === null) return normalizedHistory;
 
   const liveBucketStart = getTimeframeBucketStart(liveTailStartTimestamp, timeframe);
@@ -1612,7 +1617,7 @@ async function fetchWorkspaceCandles(
           cache: "no-store",
           // Keep a history request alive across rapid timeframe switches. Its
           // result still warms the browser cache for the next selection.
-          signal: AbortSignal.timeout(45_000),
+          signal: AbortSignal.timeout(isEventBasedChartInterval(timeframe) ? 285_000 : 45_000),
         },
       );
       const payload = await response.json();

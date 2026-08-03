@@ -800,7 +800,11 @@ function timeframeToMs(timeframe?: string) {
   return null;
 }
 
-function buildSafeChartData(candles: Candle[]) {
+function buildSafeChartData(
+  candles: Candle[],
+  preserveEventBars = false,
+  sourceTimeByChartTime?: Map<number, number>,
+) {
   const byTime = new Map<number, {
     time: Time;
     open: number;
@@ -809,8 +813,14 @@ function buildSafeChartData(candles: Candle[]) {
     close: number;
   }>();
 
+  let previousChartTime = Number.NEGATIVE_INFINITY;
+  sourceTimeByChartTime?.clear();
+
   for (const candle of candles) {
-    const time = Math.floor(Number(candle.timestamp) / 1_000);
+    const naturalTime = Math.floor(Number(candle.timestamp) / 1_000);
+    const time = preserveEventBars
+      ? Math.max(naturalTime, previousChartTime + 1)
+      : naturalTime;
     const open = Number(candle.open);
     const high = Number(candle.high);
     const low = Number(candle.low);
@@ -819,6 +829,8 @@ function buildSafeChartData(candles: Candle[]) {
       !Number.isFinite(time)
       || ![open, high, low, close].every(Number.isFinite)
     ) continue;
+    previousChartTime = time;
+    sourceTimeByChartTime?.set(time, Number(candle.timestamp));
     byTime.set(time, {
       time: time as Time,
       open,
@@ -1123,6 +1135,10 @@ export default function Chart({
   const lastRenderedCandleTimeRef = useRef<number | null>(
     candles.length ? Math.floor(candles[candles.length - 1].timestamp / 1_000) : null,
   );
+  const lastRenderedSourceTimestampRef = useRef<number | null>(
+    candles.at(-1)?.timestamp ?? null,
+  );
+  const eventSourceTimeByChartTimeRef = useRef(new Map<number, number>());
   const indicatorSampleTimerRef = useRef<number | null>(null);
   const viewportResetFrameRef = useRef<number | null>(null);
   const chartVisualReadyTokenRef = useRef(0);
@@ -1170,7 +1186,14 @@ export default function Chart({
       const candle = pendingCandle;
       pendingCandle = null;
       if (!candle || !candleSeriesRef.current) return;
-      const candleTime = Math.floor(candle.timestamp / 1_000);
+      const eventBased = timeframeToMs(timeframe) === null;
+      const naturalTime = Math.floor(candle.timestamp / 1_000);
+      const sameSourceBar = lastRenderedSourceTimestampRef.current === candle.timestamp;
+      const candleTime = eventBased && lastRenderedCandleTimeRef.current !== null
+        ? sameSourceBar
+          ? lastRenderedCandleTimeRef.current
+          : Math.max(naturalTime, lastRenderedCandleTimeRef.current + 1)
+        : naturalTime;
       if (
         lastRenderedCandleTimeRef.current !== null
         && candleTime < lastRenderedCandleTimeRef.current
@@ -1184,6 +1207,8 @@ export default function Chart({
           close: candle.close,
         });
         lastRenderedCandleTimeRef.current = candleTime;
+        lastRenderedSourceTimestampRef.current = candle.timestamp;
+        if (eventBased) eventSourceTimeByChartTimeRef.current.set(candleTime, candle.timestamp);
       } catch {
         // A late tick from a cancelled timeframe must never take down the chart.
       }
@@ -1200,7 +1225,7 @@ export default function Chart({
       window.removeEventListener(LIVE_CHART_CANDLE_EVENT, receive);
       if (frame !== null) window.cancelAnimationFrame(frame);
     };
-  }, [liveCandleEventKey]);
+  }, [liveCandleEventKey, timeframe]);
 
   useEffect(() => {
     updateIndicatorSettingRef.current = onUpdateIndicatorSetting;
@@ -2961,11 +2986,16 @@ export default function Chart({
       (prevFirstTimestampRef.current !== null && candles[0]?.timestamp !== prevFirstTimestampRef.current);
 
     if (needsFullRedraw) {
-      const chartData = buildSafeChartData(candles);
+      const chartData = buildSafeChartData(
+        candles,
+        timeframeToMs(timeframe) === null,
+        eventSourceTimeByChartTimeRef.current,
+      );
       candleSeriesRef.current.setData(chartData);
       lastRenderedCandleTimeRef.current = chartData.length
         ? Number(chartData[chartData.length - 1].time)
         : null;
+      lastRenderedSourceTimestampRef.current = lastSourceCandle.timestamp;
       const historyExpanded =
         previousCandleCount <= 5
         || candles.length >= Math.max(50, previousCandleCount * 1.5);
@@ -2987,8 +3017,16 @@ export default function Chart({
       return;
     }
 
+    const naturalTime = Math.floor(lastSourceCandle.timestamp / 1_000);
+    const eventBased = timeframeToMs(timeframe) === null;
+    const sameSourceBar = lastRenderedSourceTimestampRef.current === lastSourceCandle.timestamp;
+    const incrementalTime = eventBased && lastRenderedCandleTimeRef.current !== null
+      ? sameSourceBar
+        ? lastRenderedCandleTimeRef.current
+        : Math.max(naturalTime, lastRenderedCandleTimeRef.current + 1)
+      : naturalTime;
     const lastCandle = {
-      time: (lastSourceCandle.timestamp / 1000) as Time,
+      time: incrementalTime as Time,
       open: lastSourceCandle.open,
       high: lastSourceCandle.high,
       low: lastSourceCandle.low,
@@ -3003,6 +3041,10 @@ export default function Chart({
         try {
           candleSeriesRef.current.update(lastCandle);
           lastRenderedCandleTimeRef.current = candleTime;
+          lastRenderedSourceTimestampRef.current = lastSourceCandle.timestamp;
+          if (eventBased) {
+            eventSourceTimeByChartTimeRef.current.set(candleTime, lastSourceCandle.timestamp);
+          }
         } catch {
           // A superseded history request can finish after a timeframe switch.
         }
@@ -3051,6 +3093,12 @@ export default function Chart({
       themeStyles.getPropertyValue("--surface").trim()
       || "#18181B";
     const chartTimeZone = normalizeTimeZone(settings.timezone);
+    const displayEventTime = (time: Time) => {
+      const sourceTimestamp = eventSourceTimeByChartTimeRef.current.get(Number(time));
+      return sourceTimestamp === undefined
+        ? time
+        : (Math.floor(sourceTimestamp / 1_000) as Time);
+    };
 
     const chart = createChart(chartContainerRef.current, {
       layout: {
@@ -3063,7 +3111,7 @@ export default function Chart({
       localization: {
         locale: "en-AU",
         timeFormatter: (time: Time) =>
-          `${formatChartTimestamp(time, chartTimeZone, {
+          `${formatChartTimestamp(displayEventTime(time), chartTimeZone, {
             day: "2-digit",
             month: "short",
             year: "numeric",
@@ -3084,7 +3132,7 @@ export default function Chart({
         timeVisible: true,
         secondsVisible: false,
         tickMarkFormatter: (time: Time) =>
-          formatChartTick(time, chartTimeZone, timeframe),
+          formatChartTick(displayEventTime(time), chartTimeZone, timeframe),
       },
       crosshair: {
         mode: 0,
@@ -3135,12 +3183,17 @@ export default function Chart({
     candleSeries.attachPrimitive(volumeProfilePrimitive);
     volumeProfilePrimitiveRef.current = volumeProfilePrimitive;
 
-    const chartData = buildSafeChartData(candles);
+    const chartData = buildSafeChartData(
+      candles,
+      timeframeToMs(timeframe) === null,
+      eventSourceTimeByChartTimeRef.current,
+    );
 
     candleSeries.setData(chartData);
     lastRenderedCandleTimeRef.current = chartData.length
       ? Number(chartData[chartData.length - 1].time)
       : null;
+    lastRenderedSourceTimestampRef.current = candles.at(-1)?.timestamp ?? null;
     applyMarkers(tradesRef.current);
     applyLevels(levelsRef.current);
     setTimeout(() => {

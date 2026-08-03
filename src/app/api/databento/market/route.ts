@@ -6,10 +6,12 @@ import {
 } from "@/lib/databento";
 import type { Candle } from "@/lib/backtester";
 import { DEFAULT_CHART_HISTORY_CALENDAR_DAYS } from "@/lib/chartHistoryWindow";
+import { isEventBasedChartInterval } from "@/lib/chartIntervals";
+import { getDatabentoEventBars } from "@/lib/databentoEventHistory.server";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 300;
 export const preferredRegion = "iad1";
 
 type HistoryCacheEntry = {
@@ -69,12 +71,18 @@ export async function GET(request: Request) {
   }
 
   try {
-    const history = includeOrderFlow
-      ? await getDatabentoOrderFlowHistory(symbol, timeframe, start, new Date(now).toISOString())
-      : {
-          candles: await getDatabentoBars(symbol, timeframe, start, new Date(now).toISOString()),
+    const end = new Date(now).toISOString();
+    const history = isEventBasedChartInterval(timeframe)
+      ? {
+          candles: await getDatabentoEventBars(symbol, timeframe, start, end),
           executions: [] as DatabentoExecutionTuple[],
-        };
+        }
+      : includeOrderFlow
+        ? await getDatabentoOrderFlowHistory(symbol, timeframe, start, end)
+        : {
+            candles: await getDatabentoBars(symbol, timeframe, start, end),
+            executions: [] as DatabentoExecutionTuple[],
+          };
     const { candles, executions } = history;
     if (candles.length) historyCache.set(cacheKey, { candles, executions, updatedAt: now });
     return NextResponse.json(
