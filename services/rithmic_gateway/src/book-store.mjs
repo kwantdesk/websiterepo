@@ -99,14 +99,16 @@ export class RithmicBookStore {
     if (!Number.isFinite(price) || !Number.isFinite(size) || size <= 0) return null;
     instrument.sequence += 1;
     instrument.sourceSequence = String(
-      payload.exchangeOrderId || payload.aggressorExchangeOrderId || instrument.sequence,
+      payload.sourceTradeId || payload.exchangeOrderId || payload.aggressorExchangeOrderId || instrument.sequence,
     );
     instrument.asOfMs = eventTimestampMs(payload);
     instrument.lastPrice = price;
     const aggressor =
       Number(payload.aggressor) === 1 ? "BUY" : Number(payload.aggressor) === 2 ? "SELL" : "UNKNOWN";
     const trade = {
-      id: `${instrument.exchange}:${instrument.symbol}:${instrument.asOfMs}:${instrument.sequence}`,
+      id: payload.sourceTradeId
+        ? `${instrument.exchange}:${instrument.symbol}:${payload.sourceTradeId}`
+        : `${instrument.exchange}:${instrument.symbol}:${instrument.asOfMs}:${instrument.sequence}`,
       sequence: instrument.sequence,
       sourceSequence: instrument.sourceSequence,
       timestampMs: instrument.asOfMs,

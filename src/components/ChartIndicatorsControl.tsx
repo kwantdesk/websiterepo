@@ -66,6 +66,7 @@ export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "sessions",
   "session-highs-lows",
   "big-trades",
+  "depth-of-market",
   "kwant-stats",
   "deep-m-effort-nq",
   "kwant-profile",

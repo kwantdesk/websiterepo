@@ -29,6 +29,8 @@ export class RTraderExcelMarketDataClient extends EventEmitter {
     };
     this.stopped = true;
     this.watchdog = null;
+    this.seenTradeIds = new Set();
+    this.seenTradeOrder = [];
   }
 
   async start() {
@@ -94,6 +96,57 @@ export class RTraderExcelMarketDataClient extends EventEmitter {
     }
     this.emit("marketData", { type: "depth", instrument: event.instrument });
     return this.book.snapshot(exchange, symbol, 5_000);
+  }
+
+  ingestTrades(payload) {
+    if (this.stopped) throw new Error("RTrader Pro Excel source is stopped.");
+    const exchange = String(payload.exchange || "").trim().toUpperCase();
+    const symbol = String(payload.contractSymbol || payload.symbol || "")
+      .trim()
+      .toUpperCase();
+    if (!exchange || !symbol) throw new Error("Trade batch exchange and contractSymbol are required.");
+    this.subscribe(exchange, symbol);
+    const rows = Array.isArray(payload.trades) ? payload.trades : [];
+    let accepted = 0;
+    for (const row of rows) {
+      const sourceTradeId = String(row.sourceTradeId || "").trim();
+      if (!sourceTradeId || this.seenTradeIds.has(`${exchange}:${symbol}:${sourceTradeId}`)) continue;
+      const timestampMs = Number(row.timestampMs);
+      const aggressorText = String(row.aggressor || row.side || "").trim().toUpperCase();
+      const event = this.book.applyTrade({
+        exchange,
+        symbol,
+        tradePrice: Number(row.price ?? row.tradePrice),
+        tradeSize: Number(row.size ?? row.tradeSize),
+        aggressor: aggressorText === "BUY" || aggressorText === "B" ? 1
+          : aggressorText === "SELL" || aggressorText === "S" ? 2 : 0,
+        sourceSsboe: Number.isFinite(timestampMs) && timestampMs > 0 ? Math.floor(timestampMs / 1_000) : 0,
+        sourceUsecs: Number.isFinite(timestampMs) && timestampMs > 0 ? (timestampMs % 1_000) * 1_000 : 0,
+        sourceTradeId,
+      });
+      if (!event) continue;
+      const dedupeKey = `${exchange}:${symbol}:${sourceTradeId}`;
+      this.seenTradeIds.add(dedupeKey);
+      this.seenTradeOrder.push(dedupeKey);
+      accepted += 1;
+      this.emit("marketData", event);
+    }
+    const maxSeen = Math.max(10_000, this.config.maxTrades * 2);
+    if (this.seenTradeOrder.length > maxSeen) {
+      const removed = this.seenTradeOrder.splice(0, this.seenTradeOrder.length - maxSeen);
+      for (const key of removed) this.seenTradeIds.delete(key);
+    }
+    const now = new Date().toISOString();
+    this.status.connected = true;
+    this.status.authenticated = true;
+    this.status.connectedAt ||= now;
+    this.status.lastMessageAt = now;
+    this.status.lastError = null;
+    return {
+      accepted,
+      received: rows.length,
+      snapshot: this.book.snapshot(exchange, symbol, 1),
+    };
   }
 
   async stop() {

@@ -375,6 +375,26 @@ const server = createServer(async (request, response) => {
         askLevels: snapshot.asks.length,
       });
     }
+    if (
+      request.method === "POST" &&
+      url.pathname === "/v1/bridge/rtrader/trades"
+    ) {
+      if (config.sourceMode !== "rtrader-excel") {
+        return json(response, 409, {
+          error: "RITHMIC_SOURCE_MODE must be rtrader-excel for workbook ingestion.",
+        });
+      }
+      const body = await bodyJson(request);
+      const result = client.ingestTrades(body);
+      return json(response, 202, {
+        accepted: true,
+        acceptedTrades: result.accepted,
+        receivedTrades: result.received,
+        exchange: result.snapshot?.exchange || String(body.exchange || "").toUpperCase(),
+        contractSymbol: result.snapshot?.symbol || String(body.contractSymbol || "").toUpperCase(),
+        asOfMs: result.snapshot?.asOfMs || null,
+      });
+    }
     if (request.method === "POST" && url.pathname === "/v1/rithmic/subscriptions") {
       const body = await bodyJson(request);
       const instrument = requestedInstrument(url, body);

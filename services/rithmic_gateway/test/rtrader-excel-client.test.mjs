@@ -25,3 +25,32 @@ test("Excel client becomes connected only after a real workbook snapshot", async
   assert.equal(snapshot.depthMode, "MBO_AGGREGATED");
   await client.stop();
 });
+
+test("Excel client ingests explicit bought and sold trades once", async () => {
+  const client = new RTraderExcelMarketDataClient({
+    configured: true,
+    excelStaleMs: 10_000,
+    maxTrades: 100,
+    subscriptions: [],
+  });
+  await client.start();
+  const events = [];
+  client.on("marketData", (event) => {
+    if (event.type === "trade") events.push(event);
+  });
+  const payload = {
+    exchange: "CME",
+    contractSymbol: "NQU6",
+    trades: [
+      { sourceTradeId: "a", timestampMs: 1_700_000_000_100, price: 28_100.25, size: 3, aggressor: "B" },
+      { sourceTradeId: "b", timestampMs: 1_700_000_000_200, price: 28_100, size: 2, aggressor: "S" },
+    ],
+  };
+  const first = client.ingestTrades(payload);
+  const duplicate = client.ingestTrades(payload);
+  assert.equal(first.accepted, 2);
+  assert.equal(duplicate.accepted, 0);
+  assert.deepEqual(events.map((event) => event.trade.aggressor), ["BUY", "SELL"]);
+  assert.deepEqual(events.map((event) => event.trade.size), [3, 2]);
+  await client.stop();
+});

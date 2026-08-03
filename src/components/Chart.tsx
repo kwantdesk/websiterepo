@@ -81,6 +81,7 @@ import {
   type CalculatedIndicatorSeries,
 } from "@/lib/chartIndicatorEngine";
 import ChartIndicatorPanes, { type IndicatorPaneGroup } from "@/components/ChartIndicatorPanes";
+import DepthOfMarketPanel from "@/components/DepthOfMarketPanel";
 import KwantLoader from "@/components/KwantLoader";
 import { calculateBigTradePrints, type BigTradePrint } from "@/lib/bigTrades";
 import { calculateDeepEffort } from "@/lib/deepEffort";
@@ -112,6 +113,7 @@ interface ChartProps {
   backgroundLevels?: ChartLevel[];
   backgroundZones?: ChartZone[];
   instrument?: string;
+  contractSymbol?: string | null;
   timeframe?: string;
   marketIsActive?: boolean;
   onOpenSettings?: () => void;
@@ -1047,6 +1049,7 @@ export default function Chart({
   backgroundLevels = EMPTY_CHART_LEVELS,
   backgroundZones = [],
   instrument = "Instrument",
+  contractSymbol = null,
   timeframe,
   marketIsActive,
   onOpenSettings,
@@ -1499,6 +1502,11 @@ export default function Chart({
   const bigTradesIndicator = useMemo(
     () => indicators.find((instance) =>
       instance.enabled && instance.indicatorId === "big-trades") ?? null,
+    [indicatorSignature, indicators],
+  );
+  const depthOfMarketIndicator = useMemo(
+    () => indicators.find((instance) =>
+      instance.enabled && instance.indicatorId === "depth-of-market") ?? null,
     [indicatorSignature, indicators],
   );
   const bigTradePrints = useMemo(
@@ -3782,6 +3790,16 @@ export default function Chart({
         marketIsActive={marketIsActive}
         bottom={56 + indicatorPaneHeight}
       />
+
+      {depthOfMarketIndicator ? (
+        <DepthOfMarketPanel
+          instrument={instrument}
+          contractSymbol={contractSymbol}
+          latestPrice={candles.at(-1)?.close ?? null}
+          indicator={depthOfMarketIndicator}
+          chartSettings={settings}
+        />
+      ) : null}
 
       {(
         positionedSessionWindows.length > 0

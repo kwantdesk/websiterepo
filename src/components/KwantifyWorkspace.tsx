@@ -3560,6 +3560,7 @@ function WorkspaceChartPane({
           backgroundLevels={gameplanDecorations.levels}
           backgroundZones={gameplanDecorations.zones}
           instrument={displayCmeSymbol(pane.symbol)}
+          contractSymbol={resolvedContractSymbol}
           timeframe={pane.timeframe}
           marketIsActive={marketIsActive}
           settings={settings}

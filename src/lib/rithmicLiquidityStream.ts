@@ -40,8 +40,7 @@ type SharedPoll = {
   trackers: Map<string, Tracker>;
   status: RithmicLiquidityStatus;
   timer: number | null;
-  controller: AbortController | null;
-  running: boolean;
+  eventSource: EventSource | null;
   root: string;
   contractSymbol: string;
   exchange: string;
@@ -134,35 +133,37 @@ function updateTrackers(stream: SharedPoll, payload: RawPayload) {
   stream.subscribers.forEach((subscriber) => subscriber.onSnapshot(snapshot));
 }
 
-async function poll(stream: SharedPoll) {
-  if (stream.running || !stream.subscribers.size) return;
-  stream.running = true;
-  stream.controller = new AbortController();
-  const timeout = window.setTimeout(() => stream.controller?.abort(), 5_000);
-  try {
-    const query = new URLSearchParams({
-      exchange: stream.exchange,
-      symbol: stream.root,
-    });
-    if (stream.contractSymbol) query.set("contractSymbol", stream.contractSymbol);
-    const response = await fetch(`/api/institutional-market-data/v1/heatmap/snapshot?${query}`, {
-      cache: "no-store",
-      signal: stream.controller.signal,
-    });
-    const payload = await response.json() as RawPayload;
-    if (!response.ok || !payload.snapshot) throw new Error(payload.error || "Rithmic depth is unavailable.");
-    updateTrackers(stream, payload);
-    publishStatus(stream, payload.status?.connected ? "connected" : "checking");
-  } catch {
-    publishStatus(stream, "unavailable");
-  } finally {
-    window.clearTimeout(timeout);
-    stream.controller = null;
-    stream.running = false;
-    if (stream.subscribers.size) {
-      stream.timer = window.setTimeout(() => void poll(stream), stream.status === "connected" ? 1_000 : 5_000);
+function connectStream(stream: SharedPoll) {
+  if (stream.eventSource || !stream.subscribers.size) return;
+  const query = new URLSearchParams({
+    exchange: stream.exchange,
+    symbol: stream.root,
+    depthTicks: "800",
+  });
+  if (stream.contractSymbol) query.set("contractSymbol", stream.contractSymbol);
+  const source = new EventSource(`/api/institutional-market-data/v1/heatmap/stream?${query}`);
+  stream.eventSource = source;
+  source.addEventListener("depth", (event) => {
+    try {
+      const payload = JSON.parse((event as MessageEvent<string>).data) as RawPayload;
+      updateTrackers(stream, payload);
+      publishStatus(stream, payload.status?.connected ? "connected" : "checking");
+    } catch {
+      publishStatus(stream, "unavailable");
     }
-  }
+  });
+  source.addEventListener("ready", () => publishStatus(stream, "checking"));
+  source.onerror = () => {
+    source.close();
+    if (stream.eventSource === source) stream.eventSource = null;
+    publishStatus(stream, "unavailable");
+    if (stream.subscribers.size && stream.timer === null) {
+      stream.timer = window.setTimeout(() => {
+        stream.timer = null;
+        connectStream(stream);
+      }, 1_500);
+    }
+  };
 }
 
 export function subscribeRithmicLiquidity(args: {
@@ -183,8 +184,7 @@ export function subscribeRithmicLiquidity(args: {
       trackers: new Map(),
       status: "checking",
       timer: null,
-      controller: null,
-      running: false,
+      eventSource: null,
       root,
       contractSymbol,
       exchange,
@@ -194,7 +194,7 @@ export function subscribeRithmicLiquidity(args: {
   const subscriber: Subscriber = { onSnapshot: args.onSnapshot, onStatus: args.onStatus };
   stream.subscribers.add(subscriber);
   subscriber.onStatus?.(stream.status);
-  if (!stream.timer && !stream.running) void poll(stream);
+  connectStream(stream);
 
   return () => {
     const current = streams.get(key);
@@ -202,7 +202,8 @@ export function subscribeRithmicLiquidity(args: {
     current.subscribers.delete(subscriber);
     if (current.subscribers.size) return;
     if (current.timer !== null) window.clearTimeout(current.timer);
-    current.controller?.abort();
+    current.eventSource?.close();
+    current.eventSource = null;
     streams.delete(key);
   };
 }
