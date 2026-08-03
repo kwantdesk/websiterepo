@@ -126,6 +126,7 @@ function AppSidebar({
   orientation = "vertical",
 }: AppSidebarProps) {
   const intentPreloadTimerRef = useRef<number | null>(null);
+  const navigationFallbackTimerRef = useRef<number | null>(null);
 
   const cancelIntentPreload = useCallback(() => {
     if (intentPreloadTimerRef.current === null) return;
@@ -141,8 +142,36 @@ function AppSidebar({
     }, 220);
   }, [cancelIntentPreload]);
 
+  const beginNavigation = useCallback((key: SidebarKey, href: string) => {
+    onNavigateStart?.(key);
+    if (navigationFallbackTimerRef.current !== null) {
+      window.clearTimeout(navigationFallbackTimerRef.current);
+    }
+
+    const target = new URL(href, window.location.href);
+    if (target.pathname === window.location.pathname && target.search === window.location.search) {
+      navigationFallbackTimerRef.current = null;
+      return;
+    }
+
+    // Next navigation is normally immediate. If the app's main thread was
+    // saturated before the click, guarantee that the user's navigation still
+    // completes instead of leaving a dead header that requires a manual reload.
+    navigationFallbackTimerRef.current = window.setTimeout(() => {
+      navigationFallbackTimerRef.current = null;
+      if (window.location.pathname !== target.pathname || window.location.search !== target.search) {
+        window.location.assign(target.href);
+      }
+    }, 1_500);
+  }, [onNavigateStart]);
+
   useEffect(() => {
-    return cancelIntentPreload;
+    return () => {
+      cancelIntentPreload();
+      if (navigationFallbackTimerRef.current !== null) {
+        window.clearTimeout(navigationFallbackTimerRef.current);
+      }
+    };
   }, [cancelIntentPreload]);
 
   if (orientation === "vertical") {
@@ -166,7 +195,16 @@ function AppSidebar({
               onPointerEnter={() => scheduleIntentPreload(key)}
               onPointerLeave={cancelIntentPreload}
               onFocus={() => void preloadWorkspaceComponent(key)}
-              onClick={() => onNavigateStart?.(key)}
+              onPointerDown={(event) => {
+                if (event.button === 0 && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) {
+                  beginNavigation(key, href);
+                }
+              }}
+              onClick={(event) => {
+                if (!event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) {
+                  beginNavigation(key, href);
+                }
+              }}
               className={activeItem === key ? verticalItemActive : verticalItemInactive}
               title={title}
             >
@@ -179,6 +217,16 @@ function AppSidebar({
 
           <Link
             href="/settings"
+            onPointerDown={(event) => {
+              if (event.button === 0 && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) {
+                beginNavigation("settings", "/settings");
+              }
+            }}
+            onClick={(event) => {
+              if (!event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) {
+                beginNavigation("settings", "/settings");
+              }
+            }}
             className={activeItem === "settings" ? verticalItemActive : verticalItemInactive}
             title="Settings"
           >
@@ -203,7 +251,16 @@ function AppSidebar({
               onPointerEnter={() => scheduleIntentPreload(key)}
               onPointerLeave={cancelIntentPreload}
               onFocus={() => void preloadWorkspaceComponent(key)}
-              onClick={() => onNavigateStart?.(key)}
+              onPointerDown={(event) => {
+                if (event.button === 0 && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) {
+                  beginNavigation(key, href);
+                }
+              }}
+              onClick={(event) => {
+                if (!event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) {
+                  beginNavigation(key, href);
+                }
+              }}
               aria-current={active ? "page" : undefined}
               className={active ? horizontalItemActive : horizontalItemInactive}
               title={title}
@@ -228,7 +285,16 @@ function AppSidebar({
       <Link
         href="/settings"
         prefetch
-        onClick={() => onNavigateStart?.("settings")}
+        onPointerDown={(event) => {
+          if (event.button === 0 && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) {
+            beginNavigation("settings", "/settings");
+          }
+        }}
+        onClick={(event) => {
+          if (!event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) {
+            beginNavigation("settings", "/settings");
+          }
+        }}
         className={activeItem === "settings" ? horizontalItemActive : horizontalItemInactive}
         title="Settings"
       >

@@ -3665,9 +3665,11 @@ export default function KwantifyWorkspace({
   socialProfileHandle?: string;
 }) {
   const router = useRouter();
+  const [optimisticWorkspaceSection, setOptimisticWorkspaceSection] = useState(section);
   const activeWorkspaceSectionRef = useRef<PrimaryWorkspaceSection | null>(section);
   useEffect(() => {
     activeWorkspaceSectionRef.current = section;
+    setOptimisticWorkspaceSection(section);
   }, [section]);
   const supabase = useMemo(() => createClient(), []);
   const [authChecked, setAuthChecked] = useState(false);
@@ -3934,7 +3936,7 @@ export default function KwantifyWorkspace({
   const [slType, setSlType] = useState<"price" | "ticks" | "pctPrice" | "riskUsd" | "riskPct">("price");
   const [bottomPanelHeight, setBottomPanelHeight] = useState(BOTTOM_PANEL_DEFAULT_HEIGHT);
   const [bottomMinimized, setBottomMinimized] = useState(true);
-  const bottomWorkspaceSection = section;
+  const bottomWorkspaceSection = optimisticWorkspaceSection;
   const [equityPeriod, setEquityPeriod] = useState("365d");
   const [favTFs, setFavTFs] = useState<string[]>(() => {
     const defaults = ["1m", "5m", "15m", "1h", "4h", "1D"];
@@ -6623,9 +6625,11 @@ export default function KwantifyWorkspace({
   }, [router, supabase]);
 
   const handleWorkspaceNavigationStart = useCallback((target: string) => {
-    activeWorkspaceSectionRef.current = BOTTOM_WORKSPACE_SECTIONS.some(({ id }) => id === target)
+    const nextSection = BOTTOM_WORKSPACE_SECTIONS.some(({ id }) => id === target)
       ? target as PrimaryWorkspaceSection
       : null;
+    activeWorkspaceSectionRef.current = nextSection;
+    if (nextSection) setOptimisticWorkspaceSection(nextSection);
   }, []);
 
   async function saveUsername() {

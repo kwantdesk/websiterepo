@@ -29,7 +29,27 @@ type DatabentoLiveStatusSnapshot = {
 
 let latestDatabentoLiveStatus: DatabentoLiveStatusSnapshot | null = null;
 const LIVE_TAIL_MAX_AGE_MS = 15 * 60_000;
+const LIVE_TAIL_PRUNE_INTERVAL_MS = 5_000;
 const liveSecondsBySymbol = new Map<string, Map<number, Candle>>();
+const liveTailLastPrunedAtBySymbol = new Map<string, number>();
+
+function pruneLiveTail(
+  symbol: string,
+  seconds: Map<number, Candle>,
+  now: number,
+  force = false,
+) {
+  const lastPrunedAt = liveTailLastPrunedAtBySymbol.get(symbol) ?? 0;
+  if (!force && now - lastPrunedAt < LIVE_TAIL_PRUNE_INTERVAL_MS && seconds.size <= 1_200) {
+    return;
+  }
+
+  const cutoff = now - LIVE_TAIL_MAX_AGE_MS;
+  for (const key of seconds.keys()) {
+    if (key < cutoff) seconds.delete(key);
+  }
+  liveTailLastPrunedAtBySymbol.set(symbol, now);
+}
 
 function tickTimestamp(value: unknown) {
   if (typeof value === "string" && /^\d+$/.test(value.trim())) {
@@ -99,20 +119,17 @@ export function recordDatabentoLiveTick(tick: DatabentoLiveTick) {
     });
   }
 
-  const cutoff = now - LIVE_TAIL_MAX_AGE_MS;
-  for (const key of seconds.keys()) {
-    if (key < cutoff) seconds.delete(key);
-  }
+  // CME can deliver many updates per second. Scanning the entire 15-minute
+  // tail on every update made the browser progressively busier as the cache
+  // filled. Prune on a bounded cadence instead; retention remains identical.
+  pruneLiveTail(symbol, seconds, now);
   liveSecondsBySymbol.set(symbol, seconds);
 }
 
 export function readDatabentoLiveTail(symbol: string) {
   const seconds = liveSecondsBySymbol.get(symbol);
   if (!seconds) return [];
-  const cutoff = Date.now() - LIVE_TAIL_MAX_AGE_MS;
-  for (const key of seconds.keys()) {
-    if (key < cutoff) seconds.delete(key);
-  }
+  pruneLiveTail(symbol, seconds, Date.now(), true);
   return [...seconds.values()].sort((left, right) => left.timestamp - right.timestamp);
 }
 
