@@ -3584,7 +3584,7 @@ export default function SocialsWorkspace({
                 </div>
               </Card>
 
-              <Card id="gameplan-holding" className="scroll-mt-3 overflow-hidden border-primary/20">
+              <Card id="gameplan-holding" className="gameplan-holding-editable scroll-mt-3 overflow-hidden border-primary/20">
                 <div className="flex flex-wrap items-center gap-3 border-b border-border bg-background/25 px-4 py-3">
                   <span className="flex h-9 w-9 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary"><Archive className="h-4 w-4" /></span>
                   <div className="min-w-0 flex-1"><h3 className="text-[12px] font-semibold">Gameplan holding page</h3><p className="mt-0.5 text-[8px] text-muted">ZYON fills the complete plan from your conversation. Review or change any field, add optional notes, then lock it into Scoring.</p></div>

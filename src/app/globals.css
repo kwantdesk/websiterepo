@@ -1131,3 +1131,18 @@ table,
   .calling-card__trace-line,
   .calling-card__trace-nodes { animation: none; }
 }
+/* Gameplan holding records are editable forms. Keep every editable label and
+   value bright so muted copy is never mistaken for a disabled field. */
+.gameplan-holding-editable .text-muted,
+.gameplan-holding-editable label,
+.gameplan-holding-editable input,
+.gameplan-holding-editable textarea,
+.gameplan-holding-editable select {
+  color: var(--foreground) !important;
+}
+
+.gameplan-holding-editable input::placeholder,
+.gameplan-holding-editable textarea::placeholder {
+  color: var(--foreground);
+  opacity: 0.58;
+}

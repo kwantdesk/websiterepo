@@ -297,7 +297,7 @@ export default function GameplanHoldingPanel({ onPendingChange }: Props) {
 
   if (state === "loading") {
     return (
-      <section className="overflow-hidden rounded-2xl border border-border bg-panel p-4">
+      <section className="gameplan-holding-editable overflow-hidden rounded-2xl border border-border bg-panel p-4">
         <div className="flex items-center gap-2 text-[8px] text-muted"><Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />Checking your Gameplan holding record</div>
       </section>
     );
@@ -305,7 +305,7 @@ export default function GameplanHoldingPanel({ onPendingChange }: Props) {
 
   if (!draft) {
     return (
-      <section className="overflow-hidden rounded-2xl border border-dashed border-border bg-panel/70 p-4">
+      <section className="gameplan-holding-editable overflow-hidden rounded-2xl border border-dashed border-border bg-panel/70 p-4">
         <div className="flex items-center gap-2"><FilePenLine className="h-4 w-4 text-muted" /><span className="text-[10px] font-semibold">Your Gameplan</span></div>
         <p className="mt-2 text-[8px] leading-4 text-muted">No plan is waiting for approval. Finish one with Zion and it will appear here and in Socials → Record.</p>
         {notice ? <p className="mt-2 text-[8px] text-danger">{notice}</p> : null}
@@ -322,7 +322,7 @@ export default function GameplanHoldingPanel({ onPendingChange }: Props) {
   };
 
   return (
-    <section className="overflow-hidden rounded-2xl border border-primary/25 bg-panel shadow-[0_0_30px_color-mix(in_srgb,var(--primary)_6%,transparent)]">
+    <section className="gameplan-holding-editable overflow-hidden rounded-2xl border border-primary/25 bg-panel shadow-[0_0_30px_color-mix(in_srgb,var(--primary)_6%,transparent)]">
       <button type="button" onClick={() => setExpanded((value) => !value)} className="flex w-full items-center gap-2.5 border-b border-primary/15 bg-primary/[0.035] px-3.5 py-3 text-left">
         <span className="flex h-8 w-8 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary"><FilePenLine className="h-4 w-4" /></span>
         <span className="min-w-0 flex-1"><span className="block text-[10px] font-semibold text-foreground">Your Gameplan</span><span className="mt-0.5 block truncate text-[7px] text-muted">{draft.instrument} · {draft.direction} · waiting for your approval</span></span>
