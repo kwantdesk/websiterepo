@@ -54,6 +54,7 @@ export type JournalAccount = {
   createdAt: string;
   updatedAt: string;
   archivedAt?: string | null;
+  sortOrder?: number | null;
 };
 
 type ZyonSocialRecord = {

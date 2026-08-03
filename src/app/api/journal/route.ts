@@ -21,10 +21,12 @@ type AccountRow = {
 };
 
 type TradeRow = {
+  account_id: string;
   payload: JournalTrade;
 };
 
 type ImportRow = {
+  account_id: string;
   payload: JournalImportBatch;
 };
 
@@ -38,7 +40,13 @@ type AccountStateRow = {
     accountId?: unknown;
     account?: unknown;
     archivedAt?: unknown;
+    sortOrder?: unknown;
   };
+};
+
+type AccountState = {
+  archivedAt: string | null;
+  sortOrder: number | null;
 };
 
 const JOURNAL_EVIDENCE_KIND = "journal-evidence-v1";
@@ -173,14 +181,23 @@ function sanitizeEvidence(value: unknown, account: string): JournalEvidence | nu
   };
 }
 
-function fromAccountRow(row: AccountRow, archivedAt?: string | null): JournalAccount {
+function fromAccountRow(row: AccountRow, state?: AccountState): JournalAccount {
   return {
     id: row.id,
     name: row.name,
     source: row.source,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
-    archivedAt: archivedAt ?? null,
+    archivedAt: state?.archivedAt ?? null,
+    sortOrder: state?.sortOrder ?? null,
+  };
+}
+
+function accountStateFromPayload(payload: AccountStateRow["payload"] | null | undefined): AccountState {
+  const sortOrder = finite(payload?.sortOrder, Number.NaN);
+  return {
+    archivedAt: isoDate(payload?.archivedAt, null),
+    sortOrder: Number.isFinite(sortOrder) && sortOrder >= 0 ? Math.round(sortOrder) : null,
   };
 }
 
@@ -232,13 +249,13 @@ export async function GET(request: NextRequest) {
       .order("created_at", { ascending: true }),
     supabase
       .from("journal_trades")
-      .select("payload")
+      .select("account_id,payload")
       .eq("user_id", actor.userId)
       .order("opened_at", { ascending: false })
       .limit(20_000),
     supabase
       .from("journal_imports")
-      .select("payload")
+      .select("account_id,payload")
       .eq("user_id", actor.userId)
       .order("created_at", { ascending: false })
       .limit(2_000),
@@ -268,20 +285,29 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Journal could not be loaded." }, { status: 502 });
   }
 
-  const archiveStates = new Map<string, string>();
+  const accountStates = new Map<string, AccountState>();
   if (!accountStateResult.error) {
     for (const row of (accountStateResult.data ?? []) as AccountStateRow[]) {
       const id = cleanId(row.payload?.accountId);
-      const archivedAt = isoDate(row.payload?.archivedAt, null);
-      if (id && archivedAt) archiveStates.set(id, archivedAt);
+      if (id) accountStates.set(id, accountStateFromPayload(row.payload));
     }
   }
 
+  const accountRows = ((accountResult.data ?? []) as AccountRow[]).sort((left, right) => {
+    const leftOrder = accountStates.get(left.id)?.sortOrder;
+    const rightOrder = accountStates.get(right.id)?.sortOrder;
+    if (leftOrder !== null && leftOrder !== undefined && rightOrder !== null && rightOrder !== undefined && leftOrder !== rightOrder) return leftOrder - rightOrder;
+    if (leftOrder !== null && leftOrder !== undefined) return -1;
+    if (rightOrder !== null && rightOrder !== undefined) return 1;
+    return Date.parse(left.created_at) - Date.parse(right.created_at);
+  });
+  const accountNames = new Map(accountRows.map((row) => [row.id, row.name]));
+
   return NextResponse.json({
     cloud: true,
-    accounts: ((accountResult.data ?? []) as AccountRow[]).map((row) => fromAccountRow(row, archiveStates.get(row.id))),
-    trades: ((tradeResult.data ?? []) as TradeRow[]).map((row) => row.payload),
-    imports: ((importResult.data ?? []) as ImportRow[]).map((row) => row.payload),
+    accounts: accountRows.map((row) => fromAccountRow(row, accountStates.get(row.id))),
+    trades: ((tradeResult.data ?? []) as TradeRow[]).map((row) => ({ ...row.payload, account: accountNames.get(row.account_id) ?? row.payload.account })),
+    imports: ((importResult.data ?? []) as ImportRow[]).map((row) => ({ ...row.payload, account: accountNames.get(row.account_id) ?? row.payload.account })),
     evidence: evidenceResult.error
       ? []
       : ((evidenceResult.data ?? []) as EvidenceRow[]).map((row) => row.payload),
@@ -293,7 +319,17 @@ export async function POST(request: NextRequest) {
   if (!actor) return NextResponse.json({ error: "Authentication required." }, { status: 401 });
   if (!supabase) return NextResponse.json({ cloud: false, error: "Journal cloud storage is unavailable." }, { status: 503 });
 
-  let body: { action?: unknown; account?: unknown; trades?: unknown; imports?: unknown; trade?: unknown; evidence?: unknown };
+  let body: {
+    action?: unknown;
+    account?: unknown;
+    accountId?: unknown;
+    accountIds?: unknown;
+    newName?: unknown;
+    trades?: unknown;
+    imports?: unknown;
+    trade?: unknown;
+    evidence?: unknown;
+  };
   try {
     body = await request.json();
   } catch {
@@ -301,12 +337,138 @@ export async function POST(request: NextRequest) {
   }
 
   const action = cleanText(body.action, 20);
+  if (action === "reorder-accounts") {
+    const requestedIds = Array.isArray(body.accountIds)
+      ? [...new Set(body.accountIds.map((value) => cleanId(value)).filter(Boolean))].slice(0, 500)
+      : [];
+    if (!requestedIds.length) return NextResponse.json({ error: "Choose Journals to reorder." }, { status: 400 });
+    const { data: ownedRows, error: ownedError } = await supabase
+      .from("journal_accounts")
+      .select("id,name")
+      .eq("user_id", actor.userId)
+      .in("id", requestedIds);
+    if (ownedError) return NextResponse.json({ error: "Journal order could not be checked." }, { status: 502 });
+    const owned = new Map(((ownedRows ?? []) as Array<Pick<AccountRow, "id" | "name">>).map((row) => [row.id, row.name]));
+    if (owned.size !== requestedIds.length) return NextResponse.json({ error: "One or more Journals no longer exist." }, { status: 409 });
+
+    const { data: currentStates, error: stateReadError } = await supabase
+      .from("social_objects")
+      .select("payload")
+      .eq("user_id", actor.userId)
+      .eq("object_type", "progress")
+      .eq("payload->>kind", JOURNAL_ACCOUNT_STATE_KIND)
+      .limit(500);
+    if (stateReadError) return NextResponse.json({ error: "Journal order could not be loaded." }, { status: 502 });
+    const statePayloads = new Map<string, AccountStateRow["payload"]>();
+    for (const row of (currentStates ?? []) as AccountStateRow[]) {
+      const id = cleanId(row.payload?.accountId);
+      if (id) statePayloads.set(id, row.payload);
+    }
+    const now = new Date().toISOString();
+    const rows = requestedIds.map((id, sortOrder) => ({
+      user_id: actor.userId,
+      id: `journal-account-state:${id}`,
+      author_label: actor.label,
+      object_type: "progress",
+      scope: "private",
+      desk_id: null,
+      parent_id: null,
+      payload: {
+        ...statePayloads.get(id),
+        kind: JOURNAL_ACCOUNT_STATE_KIND,
+        accountId: id,
+        account: owned.get(id),
+        sortOrder,
+      },
+      updated_at: now,
+    }));
+    const { error } = await supabase.from("social_objects").upsert(rows, { onConflict: "user_id,id" });
+    if (error) return NextResponse.json({ error: "Journal order could not be saved." }, { status: 502 });
+    return NextResponse.json({ cloud: true, accountIds: requestedIds });
+  }
+
+  if (action === "rename-account") {
+    const id = cleanId(body.accountId);
+    const newName = cleanText(body.newName, 80);
+    if (!id || !newName || isZyonJournalAccountName(newName)) {
+      return NextResponse.json({ error: "Choose a unique Journal name." }, { status: 400 });
+    }
+    const { data: allAccounts, error: accountsError } = await supabase
+      .from("journal_accounts")
+      .select("id,name,source,created_at,updated_at")
+      .eq("user_id", actor.userId)
+      .limit(500);
+    if (accountsError) return NextResponse.json({ error: "Journal names could not be checked." }, { status: 502 });
+    const rows = (allAccounts ?? []) as AccountRow[];
+    const storedAccount = rows.find((row) => row.id === id);
+    if (!storedAccount) return NextResponse.json({ error: "That Journal no longer exists." }, { status: 404 });
+    const normalized = newName.normalize("NFKC").trim().toLowerCase();
+    if (rows.some((row) => row.id !== id && row.name.normalize("NFKC").trim().toLowerCase() === normalized)) {
+      return NextResponse.json({ error: "A Journal with that name already exists." }, { status: 409 });
+    }
+
+    const now = new Date().toISOString();
+    const { data: updatedRow, error: renameError } = await supabase
+      .from("journal_accounts")
+      .update({ name: newName, updated_at: now })
+      .eq("user_id", actor.userId)
+      .eq("id", id)
+      .select("id,name,source,created_at,updated_at")
+      .single();
+    if (renameError) return NextResponse.json({ error: "The Journal could not be renamed." }, { status: 502 });
+
+    const { data: linkedObjects, error: linkedObjectsError } = await supabase
+      .from("social_objects")
+      .select("id,payload")
+      .eq("user_id", actor.userId)
+      .eq("object_type", "progress")
+      .eq("payload->>account", storedAccount.name)
+      .in("payload->>kind", [JOURNAL_EVIDENCE_KIND, JOURNAL_ANALYSIS_KIND])
+      .limit(500);
+    if (!linkedObjectsError && linkedObjects?.length) {
+      const updates = await Promise.all(linkedObjects.map((object) => supabase
+        .from("social_objects")
+        .update({ payload: { ...(object.payload as Record<string, unknown>), account: newName }, updated_at: now })
+        .eq("user_id", actor.userId)
+        .eq("id", object.id)));
+      if (updates.some((result) => result.error)) console.warn("Some linked Journal records could not be renamed", { userId: actor.userId, accountId: id });
+    }
+
+    const stateId = `journal-account-state:${id}`;
+    const { data: existingState } = await supabase
+      .from("social_objects")
+      .select("payload")
+      .eq("user_id", actor.userId)
+      .eq("id", stateId)
+      .maybeSingle();
+    const existingPayload = (existingState?.payload ?? {}) as AccountStateRow["payload"];
+    const { error: stateError } = await supabase.from("social_objects").upsert({
+      user_id: actor.userId,
+      id: stateId,
+      author_label: actor.label,
+      object_type: "progress",
+      scope: "private",
+      desk_id: null,
+      parent_id: null,
+      payload: {
+        ...existingPayload,
+        kind: JOURNAL_ACCOUNT_STATE_KIND,
+        accountId: id,
+        account: newName,
+      },
+      updated_at: now,
+    }, { onConflict: "user_id,id" });
+    if (stateError) console.warn("Journal account state could not be updated after rename", { userId: actor.userId, accountId: id });
+    return NextResponse.json({ cloud: true, account: fromAccountRow(updatedRow as AccountRow, accountStateFromPayload(existingPayload)) });
+  }
+
   if (action === "archive-account" || action === "restore-account" || action === "delete-account") {
     const account = cleanText(body.account, 80);
-    if (!account || isZyonJournalAccountName(account)) {
+    const requestedId = cleanId(body.accountId);
+    if ((!account && !requestedId) || isZyonJournalAccountName(account)) {
       return NextResponse.json({ error: "Choose a custom Journal account." }, { status: 400 });
     }
-    const id = accountId(account);
+    const id = requestedId || accountId(account);
     const { data: accountRow, error: accountError } = await supabase
       .from("journal_accounts")
       .select("id,name,source,created_at,updated_at")
@@ -317,6 +479,13 @@ export async function POST(request: NextRequest) {
     if (!accountRow) return NextResponse.json({ error: "That Journal account no longer exists." }, { status: 404 });
     const storedAccount = accountRow as AccountRow;
     const stateId = `journal-account-state:${id}`;
+    const { data: existingState } = await supabase
+      .from("social_objects")
+      .select("payload")
+      .eq("user_id", actor.userId)
+      .eq("id", stateId)
+      .maybeSingle();
+    const existingPayload = (existingState?.payload ?? {}) as AccountStateRow["payload"];
 
     if (action === "archive-account") {
       const archivedAt = new Date().toISOString();
@@ -329,6 +498,7 @@ export async function POST(request: NextRequest) {
         desk_id: null,
         parent_id: null,
         payload: {
+          ...existingPayload,
           kind: JOURNAL_ACCOUNT_STATE_KIND,
           accountId: id,
           account: storedAccount.name,
@@ -337,17 +507,30 @@ export async function POST(request: NextRequest) {
         updated_at: archivedAt,
       }, { onConflict: "user_id,id" });
       if (error) return NextResponse.json({ error: "The Journal could not be archived." }, { status: 502 });
-      return NextResponse.json({ cloud: true, account: fromAccountRow(storedAccount, archivedAt) });
+      return NextResponse.json({ cloud: true, account: fromAccountRow(storedAccount, { ...accountStateFromPayload(existingPayload), archivedAt }) });
     }
 
     if (action === "restore-account") {
-      const { error } = await supabase
-        .from("social_objects")
-        .delete()
-        .eq("user_id", actor.userId)
-        .eq("id", stateId);
+      const restoredAt = new Date().toISOString();
+      const { error } = await supabase.from("social_objects").upsert({
+        user_id: actor.userId,
+        id: stateId,
+        author_label: actor.label,
+        object_type: "progress",
+        scope: "private",
+        desk_id: null,
+        parent_id: null,
+        payload: {
+          ...existingPayload,
+          kind: JOURNAL_ACCOUNT_STATE_KIND,
+          accountId: id,
+          account: storedAccount.name,
+          archivedAt: null,
+        },
+        updated_at: restoredAt,
+      }, { onConflict: "user_id,id" });
       if (error) return NextResponse.json({ error: "The Journal could not be restored." }, { status: 502 });
-      return NextResponse.json({ cloud: true, account: fromAccountRow(storedAccount, null) });
+      return NextResponse.json({ cloud: true, account: fromAccountRow(storedAccount, { ...accountStateFromPayload(existingPayload), archivedAt: null }) });
     }
 
     const evidenceDelete = await supabase
@@ -411,7 +594,7 @@ export async function POST(request: NextRequest) {
     if (!account || isZyonJournalAccountName(account) || !trade || !trade.sourceImportId.startsWith("manual:")) {
       return NextResponse.json({ error: "Complete the required manual trade details." }, { status: 400 });
     }
-    const accountKey = accountId(account);
+    const accountKey = cleanId(body.accountId) || accountId(account);
     const { data: accountRow, error: accountError } = await supabase
       .from("journal_accounts")
       .select("id,source")
@@ -485,7 +668,7 @@ export async function POST(request: NextRequest) {
   if (action !== "sync") return NextResponse.json({ error: "Unsupported Journal action." }, { status: 400 });
   const account = cleanText(body.account, 80);
   if (!account || isZyonJournalAccountName(account)) return NextResponse.json({ error: "Choose a custom account name." }, { status: 400 });
-  const id = accountId(account);
+  const id = cleanId(body.accountId) || accountId(account);
   const trades = (Array.isArray(body.trades) ? body.trades : [])
     .map((trade) => sanitizeTrade(trade, account))
     .filter((trade): trade is JournalTrade => Boolean(trade))
@@ -497,7 +680,7 @@ export async function POST(request: NextRequest) {
 
   const { data: currentAccount, error: currentAccountError } = await supabase
     .from("journal_accounts")
-    .select("source")
+    .select("source,name")
     .eq("user_id", actor.userId)
     .eq("id", id)
     .maybeSingle();
@@ -508,7 +691,7 @@ export async function POST(request: NextRequest) {
   const source = currentAccount?.source === "manual" ? "manual" : "import";
   const { error: accountError } = await supabase
     .from("journal_accounts")
-    .upsert({ user_id: actor.userId, id, name: account, source }, { onConflict: "user_id,id" });
+    .upsert({ user_id: actor.userId, id, name: currentAccount?.name ?? account, source }, { onConflict: "user_id,id" });
   if (accountError) {
     if (tableUnavailable(accountError.code)) return NextResponse.json({ cloud: false }, { status: 503 });
     return NextResponse.json({ error: "Journal account could not be saved." }, { status: 502 });

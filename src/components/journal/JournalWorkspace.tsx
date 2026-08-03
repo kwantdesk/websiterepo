@@ -25,6 +25,7 @@ import {
   FileText,
   Filter,
   FolderArchive,
+  GripVertical,
   ImageIcon,
   Import,
   Layers3,
@@ -33,6 +34,7 @@ import {
   NotebookPen,
   MoreVertical,
   Paperclip,
+  Pencil,
   Plus,
   RefreshCw,
   Search,
@@ -688,6 +690,10 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
   const [postTradeSaving, setPostTradeSaving] = useState(false);
   const [postTradeError, setPostTradeError] = useState("");
   const [accountMenu, setAccountMenu] = useState<{ account: string; x: number; y: number } | null>(null);
+  const [renameJournalTarget, setRenameJournalTarget] = useState<string | null>(null);
+  const [renameJournalDraft, setRenameJournalDraft] = useState("");
+  const [renameJournalError, setRenameJournalError] = useState("");
+  const [draggedJournal, setDraggedJournal] = useState<string | null>(null);
   const [showArchive, setShowArchive] = useState(false);
   const [deleteJournalTarget, setDeleteJournalTarget] = useState<string | null>(null);
   const [journalLifecycleBusy, setJournalLifecycleBusy] = useState<string | null>(null);
@@ -805,6 +811,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
             body: JSON.stringify({
               action: "sync",
               account,
+              accountId: stored.accounts.find((candidate) => candidate.name === account)?.id,
               trades: stored.trades.filter((trade) => trade.account === account),
               imports: stored.imports.filter((batch) => batch.account === account),
             }),
@@ -861,14 +868,30 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
     () => state.accounts.filter((account) => Boolean(account.archivedAt)).sort((left, right) => Date.parse(right.archivedAt ?? "") - Date.parse(left.archivedAt ?? "")),
     [state.accounts],
   );
-  const customAccounts = useMemo(() => [...new Set([
-    ...state.accounts.map((account) => account.name),
-    ...state.trades.map((trade) => trade.account),
-    ...state.evidence.map((item) => item.account),
-    ...state.imports.map((item) => item.account),
-  ].filter((account) => account && !isZyonJournalAccountName(account) && !archivedAccountNames.has(account)))].sort(), [archivedAccountNames, state]);
+  const customAccounts = useMemo(() => {
+    const activeAccounts = state.accounts
+      .filter((account) => account.name && !isZyonJournalAccountName(account.name) && !account.archivedAt)
+      .map((account, index) => ({ account, index }))
+      .sort((left, right) => {
+        const leftOrder = left.account.sortOrder;
+        const rightOrder = right.account.sortOrder;
+        if (leftOrder !== null && leftOrder !== undefined && rightOrder !== null && rightOrder !== undefined && leftOrder !== rightOrder) return leftOrder - rightOrder;
+        if (leftOrder !== null && leftOrder !== undefined) return -1;
+        if (rightOrder !== null && rightOrder !== undefined) return 1;
+        return left.index - right.index;
+      })
+      .map(({ account }) => account.name);
+    const known = new Set(activeAccounts);
+    const orphaned = [
+      ...state.trades.map((trade) => trade.account),
+      ...state.evidence.map((item) => item.account),
+      ...state.imports.map((item) => item.account),
+    ].filter((account) => account && !known.has(account) && !isZyonJournalAccountName(account) && !archivedAccountNames.has(account));
+    return [...activeAccounts, ...new Set(orphaned)];
+  }, [archivedAccountNames, state.accounts, state.evidence, state.imports, state.trades]);
   const accounts = useMemo(() => [ZYON_JOURNAL_ACCOUNT, ...customAccounts], [customAccounts]);
   const accountSource = useMemo(() => new Map(state.accounts.map((account) => [account.name, account.source])), [state.accounts]);
+  const accountRecord = useMemo(() => new Map(state.accounts.map((account) => [account.name, account])), [state.accounts]);
   const allTrades = useMemo(
     () => [...zyonTrades, ...state.trades.filter((trade) => !isZyonJournalAccountName(trade.account) && !archivedAccountNames.has(trade.account))],
     [archivedAccountNames, state.trades, zyonTrades],
@@ -1099,14 +1122,31 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
           body: JSON.stringify({
             action: "sync",
             account,
+            accountId: accountRecord.get(account)?.id,
             trades: chunks[index],
             imports: index === 0 ? imports : [],
           }),
         });
-        const result = await response.json() as { cloud?: boolean };
+        const result = await response.json() as { cloud?: boolean; accountId?: string };
         if (!response.ok || !result.cloud) {
           setCloudState("local");
           return false;
+        }
+        if (result.accountId) {
+          setState((current) => current.accounts.some((candidate) => candidate.id === result.accountId)
+            ? current
+            : {
+                ...current,
+                accounts: [...current.accounts, {
+                  id: result.accountId as string,
+                  name: account,
+                  source: "import",
+                  createdAt: new Date().toISOString(),
+                  updatedAt: new Date().toISOString(),
+                  archivedAt: null,
+                  sortOrder: null,
+                }],
+              });
         }
       }
       setCloudState("cloud");
@@ -1115,7 +1155,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
       setCloudState("error");
       return false;
     }
-  }, []);
+  }, [accountRecord]);
 
   const createNativeJournal = async () => {
     const account = importAccount.trim().slice(0, 80);
@@ -1381,7 +1421,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
         fetch("/api/journal", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "create-trade", account: accountFilter, trade }),
+          body: JSON.stringify({ action: "create-trade", account: accountFilter, accountId: accountRecord.get(accountFilter)?.id, trade }),
         }).then(async (response) => {
           const result = await response.json() as { cloud?: boolean };
           if (!response.ok || !result.cloud) throw new Error("Trade save failed.");
@@ -1619,14 +1659,102 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
   };
 
   const runJournalLifecycle = async (action: "archive-account" | "restore-account" | "delete-account", account: string) => {
+    const accountId = accountRecord.get(account)?.id;
     const response = await fetch("/api/journal", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action, account }),
+      body: JSON.stringify({ action, account, accountId }),
     });
     const result = await response.json() as { cloud?: boolean; error?: string; account?: JournalAccount };
     if (!response.ok || !result.cloud) throw new Error(result.error || "The Journal could not be updated.");
     return result;
+  };
+
+  const renameJournal = async () => {
+    const account = renameJournalTarget;
+    const nextName = renameJournalDraft.replace(/\s+/g, " ").trim().slice(0, 80);
+    if (!account || journalLifecycleBusy) return;
+    if (!nextName || isZyonJournalAccountName(nextName)) {
+      setRenameJournalError("Choose a valid custom Journal name.");
+      return;
+    }
+    if (nextName === account) {
+      setRenameJournalTarget(null);
+      return;
+    }
+    const normalized = nextName.normalize("NFKC").toLowerCase();
+    if (state.accounts.some((candidate) => candidate.name !== account && candidate.name.normalize("NFKC").toLowerCase() === normalized)) {
+      setRenameJournalError("A Journal with that name already exists.");
+      return;
+    }
+    const target = accountRecord.get(account);
+    if (!target) {
+      setRenameJournalError("That Journal account could not be found.");
+      return;
+    }
+
+    const snapshot = state;
+    setRenameJournalError("");
+    setJournalLifecycleBusy(account);
+    setState((current) => ({
+      ...current,
+      accounts: current.accounts.map((candidate) => candidate.id === target.id ? { ...candidate, name: nextName, updatedAt: new Date().toISOString() } : candidate),
+      trades: current.trades.map((trade) => trade.account === account ? { ...trade, account: nextName } : trade),
+      evidence: current.evidence.map((item) => item.account === account ? { ...item, account: nextName } : item),
+      imports: current.imports.map((item) => item.account === account ? { ...item, account: nextName } : item),
+    }));
+    if (accountFilter === account) setAccountFilter(nextName);
+    try {
+      const response = await fetch("/api/journal", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "rename-account", accountId: target.id, newName: nextName }),
+      });
+      const result = await response.json() as { cloud?: boolean; error?: string; account?: JournalAccount };
+      if (!response.ok || !result.cloud) throw new Error(result.error || "The Journal could not be renamed.");
+      setRenameJournalTarget(null);
+      setJournalLifecycleMessage(`${account} renamed to ${nextName}.`);
+      setCloudState("cloud");
+    } catch (error) {
+      setState(snapshot);
+      if (accountFilter === nextName) setAccountFilter(account);
+      setRenameJournalError(error instanceof Error ? error.message : "The Journal could not be renamed.");
+    } finally {
+      setJournalLifecycleBusy(null);
+    }
+  };
+
+  const reorderJournals = async (source: string, target: string, placeAfter: boolean) => {
+    if (source === target || journalLifecycleBusy) return;
+    const previousAccounts = state.accounts;
+    const nextNames = [...customAccounts];
+    const sourceIndex = nextNames.indexOf(source);
+    if (sourceIndex < 0 || !nextNames.includes(target)) return;
+    nextNames.splice(sourceIndex, 1);
+    const targetIndex = nextNames.indexOf(target);
+    nextNames.splice(targetIndex + (placeAfter ? 1 : 0), 0, source);
+    const order = new Map(nextNames.map((name, index) => [name, index]));
+    const accountIds = nextNames.map((name) => accountRecord.get(name)?.id).filter((id): id is string => Boolean(id));
+    if (accountIds.length !== nextNames.length) return;
+
+    setState((current) => ({
+      ...current,
+      accounts: current.accounts.map((account) => order.has(account.name) ? { ...account, sortOrder: order.get(account.name) } : account),
+    }));
+    setDraggedJournal(null);
+    try {
+      const response = await fetch("/api/journal", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "reorder-accounts", accountIds }),
+      });
+      const result = await response.json() as { cloud?: boolean; error?: string };
+      if (!response.ok || !result.cloud) throw new Error(result.error || "Journal order could not be saved.");
+      setCloudState("cloud");
+    } catch (error) {
+      setState((current) => ({ ...current, accounts: previousAccounts }));
+      setJournalLifecycleMessage(error instanceof Error ? error.message : "Journal order could not be saved.");
+    }
   };
 
   const archiveJournal = async (account: string) => {
@@ -1839,6 +1967,25 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
                   key={id}
                   role="button"
                   tabIndex={0}
+                  draggable={id !== "all" && id !== ZYON_JOURNAL_ACCOUNT}
+                  onDragStart={(event) => {
+                    if (id === "all" || id === ZYON_JOURNAL_ACCOUNT) return;
+                    event.dataTransfer.effectAllowed = "move";
+                    event.dataTransfer.setData("text/plain", id);
+                    setDraggedJournal(id);
+                  }}
+                  onDragOver={(event) => {
+                    if (!draggedJournal || id === "all" || id === ZYON_JOURNAL_ACCOUNT) return;
+                    event.preventDefault();
+                    event.dataTransfer.dropEffect = "move";
+                  }}
+                  onDrop={(event) => {
+                    if (!draggedJournal || id === "all" || id === ZYON_JOURNAL_ACCOUNT) return;
+                    event.preventDefault();
+                    const bounds = event.currentTarget.getBoundingClientRect();
+                    void reorderJournals(draggedJournal, id, event.clientX > bounds.left + bounds.width / 2);
+                  }}
+                  onDragEnd={() => setDraggedJournal(null)}
                   onClick={() => {
                     const nextAnalysisAccount = id === "all" ? "Overall Journal" : id;
                     if (nextAnalysisAccount !== analysisLoadedAccount) {
@@ -1858,18 +2005,19 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
                   onContextMenu={(event) => {
                     if (id === "all" || id === ZYON_JOURNAL_ACCOUNT) return;
                     event.preventDefault();
-                    setAccountMenu({ account: id, x: Math.max(8, Math.min(event.clientX, window.innerWidth - 210)), y: Math.max(8, Math.min(event.clientY, window.innerHeight - 126)) });
+                    setAccountMenu({ account: id, x: Math.max(8, Math.min(event.clientX, window.innerWidth - 210)), y: Math.max(8, Math.min(event.clientY, window.innerHeight - 170)) });
                   }}
-                  className={`group min-w-[190px] shrink-0 rounded-2xl border px-3 py-2.5 text-left transition-all ${active ? "border-primary/45 bg-primary/[0.09] shadow-[0_0_18px_color-mix(in_srgb,var(--primary)_10%,transparent)]" : "border-border bg-background/30 hover:border-primary/25 hover:bg-surface/55"}`}
+                  className={`group min-w-[190px] shrink-0 rounded-2xl border px-3 py-2.5 text-left transition-all ${id !== "all" && id !== ZYON_JOURNAL_ACCOUNT ? "cursor-grab active:cursor-grabbing" : ""} ${draggedJournal === id ? "scale-[0.98] opacity-45" : "opacity-100"} ${active ? "border-primary/45 bg-primary/[0.09] shadow-[0_0_18px_color-mix(in_srgb,var(--primary)_10%,transparent)]" : "border-border bg-background/30 hover:border-primary/25 hover:bg-surface/55"}`}
                 >
                   <div className="flex items-start gap-2.5">
+                    {id !== "all" && id !== ZYON_JOURNAL_ACCOUNT ? <span title="Drag to reorder Journals" className="-ml-1 flex h-8 w-3 shrink-0 items-center justify-center text-muted/50 group-hover:text-muted"><GripVertical className="h-3.5 w-3.5" /></span> : null}
                     <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border ${active ? "border-primary/25 bg-primary/12 text-primary" : "border-border bg-surface text-muted group-hover:text-foreground"}`}><Icon className="h-3.5 w-3.5" /></span>
                     <span className="min-w-0 flex-1">
                       <span className={`block truncate text-[10px] font-semibold ${active ? "text-primary" : "text-foreground"}`}>{label}</span>
                       <span className="mt-0.5 block truncate text-[7px] text-muted">{detail}</span>
                     </span>
                     <span className={`font-mono text-[9px] font-semibold ${accountStats.netPnl > 0 ? "text-primary" : accountStats.netPnl < 0 ? "text-danger" : "text-muted"}`}>{compact(accountStats.netPnl)}</span>
-                    {id !== "all" && id !== ZYON_JOURNAL_ACCOUNT ? <button type="button" aria-label={`Manage ${label}`} onClick={(event) => { event.stopPropagation(); const bounds = event.currentTarget.getBoundingClientRect(); setAccountMenu({ account: id, x: Math.max(8, Math.min(bounds.right, window.innerWidth - 210)), y: Math.max(8, Math.min(bounds.bottom + 4, window.innerHeight - 126)) }); }} className="-mr-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg text-muted opacity-60 hover:bg-surface hover:text-foreground group-hover:opacity-100"><MoreVertical className="h-3.5 w-3.5" /></button> : null}
+                    {id !== "all" && id !== ZYON_JOURNAL_ACCOUNT ? <button type="button" aria-label={`Manage ${label}`} onClick={(event) => { event.stopPropagation(); const bounds = event.currentTarget.getBoundingClientRect(); setAccountMenu({ account: id, x: Math.max(8, Math.min(bounds.right, window.innerWidth - 210)), y: Math.max(8, Math.min(bounds.bottom + 4, window.innerHeight - 170)) }); }} className="-mr-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg text-muted opacity-60 hover:bg-surface hover:text-foreground group-hover:opacity-100"><MoreVertical className="h-3.5 w-3.5" /></button> : null}
                   </div>
                   <div className="mt-2 flex items-center justify-between border-t border-border/50 pt-2 text-[7px] text-muted">
                     <span>{accountStats.tradeCount} outcome{accountStats.tradeCount === 1 ? "" : "s"}</span>
@@ -2322,9 +2470,31 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
         <div className="fixed inset-0 z-[1150]" onMouseDown={() => setAccountMenu(null)} onContextMenu={(event) => { event.preventDefault(); setAccountMenu(null); }}>
           <div className="fixed w-[200px] overflow-hidden rounded-2xl border border-border bg-panel p-1.5 shadow-2xl shadow-black/70" style={{ left: accountMenu.x, top: accountMenu.y }} onMouseDown={(event) => event.stopPropagation()}>
             <div className="truncate border-b border-border px-3 py-2 text-[8px] font-semibold text-foreground">{accountMenu.account}</div>
-            <button type="button" onClick={() => void archiveJournal(accountMenu.account)} disabled={Boolean(journalLifecycleBusy)} className="mt-1 flex h-9 w-full items-center gap-2 rounded-xl px-3 text-left text-[9px] font-semibold text-muted hover:bg-primary/[0.08] hover:text-primary disabled:opacity-40"><FolderArchive className="h-3.5 w-3.5" />Archive Journal</button>
+            <button type="button" onClick={() => { setRenameJournalTarget(accountMenu.account); setRenameJournalDraft(accountMenu.account); setRenameJournalError(""); setAccountMenu(null); }} disabled={Boolean(journalLifecycleBusy)} className="mt-1 flex h-9 w-full items-center gap-2 rounded-xl px-3 text-left text-[9px] font-semibold text-muted hover:bg-primary/[0.08] hover:text-primary disabled:opacity-40"><Pencil className="h-3.5 w-3.5" />Rename Journal</button>
+            <button type="button" onClick={() => void archiveJournal(accountMenu.account)} disabled={Boolean(journalLifecycleBusy)} className="flex h-9 w-full items-center gap-2 rounded-xl px-3 text-left text-[9px] font-semibold text-muted hover:bg-primary/[0.08] hover:text-primary disabled:opacity-40"><FolderArchive className="h-3.5 w-3.5" />Archive Journal</button>
             <button type="button" onClick={() => { setDeleteJournalTarget(accountMenu.account); setAccountMenu(null); }} disabled={Boolean(journalLifecycleBusy)} className="flex h-9 w-full items-center gap-2 rounded-xl px-3 text-left text-[9px] font-semibold text-muted hover:bg-danger/10 hover:text-danger disabled:opacity-40"><Trash2 className="h-3.5 w-3.5" />Delete permanently</button>
           </div>
+        </div>
+      ) : null}
+
+      {renameJournalTarget ? (
+        <div className="fixed inset-0 z-[1160] flex items-center justify-center bg-black/72 p-4 backdrop-blur-sm" onMouseDown={(event) => { if (event.target === event.currentTarget && !journalLifecycleBusy) setRenameJournalTarget(null); }}>
+          <form onSubmit={(event) => { event.preventDefault(); void renameJournal(); }} className="w-full max-w-[440px] overflow-hidden rounded-3xl border border-border bg-panel shadow-2xl shadow-black/70">
+            <div className="flex items-start gap-3 border-b border-border px-5 py-4">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary"><Pencil className="h-4 w-4" /></span>
+              <div className="min-w-0 flex-1"><h2 className="text-[14px] font-semibold text-foreground">Rename Journal</h2><p className="mt-1 text-[9px] leading-4 text-muted">The new name will follow this Journal, its trades and evidence on every device.</p></div>
+              <button type="button" disabled={Boolean(journalLifecycleBusy)} onClick={() => setRenameJournalTarget(null)} className="flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground disabled:opacity-40"><X className="h-4 w-4" /></button>
+            </div>
+            <div className="p-5">
+              <label className="block text-[8px] font-semibold uppercase tracking-[0.14em] text-muted">Journal name</label>
+              <input autoFocus value={renameJournalDraft} maxLength={80} onChange={(event) => { setRenameJournalDraft(event.target.value); setRenameJournalError(""); }} className="mt-2 h-12 w-full rounded-2xl border border-border bg-background px-4 text-[11px] font-semibold text-foreground outline-none transition-colors placeholder:text-muted/55 focus:border-primary/45" placeholder="My KwantDesk Journal" />
+              {renameJournalError ? <div className="mt-3 flex items-start gap-2 rounded-xl border border-danger/20 bg-danger/[0.06] px-3 py-2 text-[8px] leading-4 text-danger"><CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />{renameJournalError}</div> : null}
+            </div>
+            <div className="flex justify-end gap-2 border-t border-border px-5 py-4">
+              <button type="button" disabled={Boolean(journalLifecycleBusy)} onClick={() => setRenameJournalTarget(null)} className="h-10 rounded-xl border border-border px-4 text-[9px] font-semibold text-muted hover:bg-surface hover:text-foreground disabled:opacity-40">Cancel</button>
+              <button type="submit" disabled={Boolean(journalLifecycleBusy) || !renameJournalDraft.trim()} className="flex h-10 items-center gap-2 rounded-xl bg-primary px-4 text-[9px] font-bold text-primary-foreground hover:brightness-110 disabled:opacity-40">{journalLifecycleBusy ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}Save name</button>
+            </div>
+          </form>
         </div>
       ) : null}
 
