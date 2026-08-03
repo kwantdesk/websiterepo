@@ -8,6 +8,7 @@ import LiveGexPanelBoundary from "@/components/backtesting/LiveGexPanelBoundary"
 import ZyonPanelBoundary from "@/components/zyon/ZyonPanelBoundary";
 import UserAvatar from "@/components/socials/UserAvatar";
 import WorkspaceFailureBoundary from "@/components/WorkspaceFailureBoundary";
+import KwantBotInterpreterPanel from "@/components/kwantbot/KwantBotInterpreterPanel";
 import { useKwantBotInterpreter } from "@/hooks/useKwantBotInterpreter";
 import { useSocialNotifications } from "@/hooks/useSocialNotifications";
 import { useStructureLevels } from "@/hooks/useStructureLevels";
@@ -281,10 +282,6 @@ const SocialsWorkspace = dynamic(() => import("@/components/socials/SocialsWorks
 const KwantBotIntelligenceWorkspace = dynamic(() => import("@/components/kwantbot/KwantBotIntelligenceWorkspace"), {
   ssr: false,
   loading: () => workspaceLoader("Opening Kwant Bot", "Restoring market intelligence."),
-});
-const KwantBotInterpreterPanel = dynamic(() => import("@/components/kwantbot/KwantBotInterpreterPanel"), {
-  ssr: false,
-  loading: () => workspaceLoader("Opening Kwant Bot", "Restoring the live interpreter."),
 });
 const OptionsTapePanel = dynamic(() => import("@/components/kwantbot/OptionsTapePanel"), {
   ssr: false,
