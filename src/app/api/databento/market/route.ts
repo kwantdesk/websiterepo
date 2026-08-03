@@ -29,6 +29,7 @@ const historyCache = globalHistoryCache.__kwantdeskCmeHistory
 // builds the current bucket and would leave the intervening closed bars blank.
 // A short process-local cache still deduplicates simultaneous pane requests.
 const FRESH_CACHE_MS = 12_000;
+const EVENT_HISTORY_CACHE_MS = 5 * 60_000;
 const DEFAULT_HISTORY_DAYS = DEFAULT_CHART_HISTORY_CALENDAR_DAYS;
 const MAX_HISTORY_DAYS = 14;
 
@@ -54,8 +55,11 @@ export async function GET(request: Request) {
   const start = new Date(earliest).toISOString();
   const cacheKey = `${symbol}::${timeframe}::${historyDays}d::${includeOrderFlow ? "flow" : "bars"}`;
   const cached = historyCache.get(cacheKey);
+  const cacheLifetime = isEventBasedChartInterval(timeframe)
+    ? EVENT_HISTORY_CACHE_MS
+    : FRESH_CACHE_MS;
 
-  if (cached && now - cached.updatedAt <= FRESH_CACHE_MS) {
+  if (cached && now - cached.updatedAt <= cacheLifetime) {
     return NextResponse.json(
       {
         candles: cached.candles,

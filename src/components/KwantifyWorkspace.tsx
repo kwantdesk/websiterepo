@@ -2723,7 +2723,9 @@ function WorkspaceChartPane({
         && !isEventBasedChartInterval(pane.timeframe);
       const cachedTailIsFresh = Boolean(
         cached?.updatedAt
-        && Date.now() - cached.updatedAt <= 20_000,
+        && Date.now() - cached.updatedAt <= (
+          isEventBasedChartInterval(pane.timeframe) ? 15 * 60_000 : 20_000
+        ),
       );
       const cachedIsHydrated = cachedCandles.length > 0
         && cachedTailIsFresh
@@ -6341,8 +6343,11 @@ export default function KwantifyWorkspace({
           {
             cache: "no-store",
             signal: signal
-              ? AbortSignal.any([signal, AbortSignal.timeout(30_000)])
-              : AbortSignal.timeout(30_000),
+              ? AbortSignal.any([
+                  signal,
+                  AbortSignal.timeout(isEventBasedChartInterval(selectedTimeframe) ? 90_000 : 30_000),
+                ])
+              : AbortSignal.timeout(isEventBasedChartInterval(selectedTimeframe) ? 90_000 : 30_000),
           },
         );
         const payload = await response.json();

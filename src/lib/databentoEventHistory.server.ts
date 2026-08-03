@@ -9,6 +9,7 @@ import type { Candle } from "@/lib/backtester";
 
 const DATABENTO_HISTORICAL_BASE_URL = "https://api.databento.com/v0";
 const MAX_EVENT_BARS = 5_000;
+type EventHistorySchema = "trades" | "ohlcv-1s";
 
 function fixedPrice(value: unknown) {
   const parsed = typeof value === "number" ? value : Number(value);
@@ -45,18 +46,29 @@ function availableEnd(detail: string) {
   }
 }
 
-function adaptiveEventStart(timeframe: string, requestedStart: number, end: number) {
+function eventHistorySchema(timeframe: string): EventHistorySchema {
+  const interval = getChartInterval(timeframe);
+  // Price-, range- and volume-shaped bars do not need millions of individual
+  // executions merely to restore their historical geometry. Databento's
+  // one-second OHLCV stream preserves the complete one-second price envelope
+  // and traded volume, then the live trade stream continues the forming bar.
+  // Trade-count and delta bars still require the native execution tape.
+  return interval?.kind === "trade" || interval?.kind === "delta"
+    ? "trades"
+    : "ohlcv-1s";
+}
+
+function adaptiveEventStart(timeframe: string, requestedStart: number, end: number, schema: EventHistorySchema) {
   const interval = getChartInterval(timeframe);
   if (!interval || !isEventBasedChartInterval(timeframe)) return requestedStart;
+  if (schema === "ohlcv-1s") return requestedStart;
   const hour = 60 * 60_000;
-  const day = 24 * hour;
-  let lookback = 18 * hour;
-  if (interval.kind === "volume") lookback = Math.max(18 * hour, Math.min(10 * day, interval.value / 200 * 18 * hour));
-  else if (interval.kind === "trade") lookback = Math.max(18 * hour, Math.min(10 * day, interval.value / 50 * 18 * hour));
-  else if (["range", "renko", "volume-bars"].includes(interval.kind)) {
-    lookback = Math.max(18 * hour, Math.min(10 * day, interval.value / 4 * 18 * hour));
-  } else if (interval.kind === "delta") lookback = Math.min(10 * day, 3 * day);
-  else lookback = 10 * day;
+  // Native trades are much denser than one-second bars. Keep enough recent
+  // tape to render a useful event chart without making a Vercel request parse
+  // several million JSON records before it can paint its first candle.
+  const lookback = interval.kind === "trade"
+    ? Math.min(24 * hour, Math.max(8 * hour, interval.value / 50 * 8 * hour))
+    : 12 * hour;
   return Math.max(requestedStart, end - lookback);
 }
 
@@ -75,8 +87,41 @@ function decodeTrade(row: Record<string, unknown>): MarketTrade | null {
     price,
     size,
     trades: 1,
-    delta: side === "A" || side === "ASK" ? size : side === "B" || side === "BID" ? -size : 0,
+    // Databento encodes the resting book side: ASK is a sell aggressor and
+    // BID is a buy aggressor.
+    delta: side === "B" || side === "BID" ? size : side === "A" || side === "ASK" ? -size : 0,
   };
+}
+
+function decodeAggregate(row: Record<string, unknown>): MarketTrade[] {
+  const timestamp = eventTime(
+    row.ts_event
+    ?? row.ts_recv
+    ?? (row.hd as Record<string, unknown> | undefined)?.ts_event,
+  );
+  const open = fixedPrice(row.open);
+  const high = fixedPrice(row.high);
+  const low = fixedPrice(row.low);
+  const close = fixedPrice(row.close);
+  const volume = Math.max(0, Number(row.volume ?? 0));
+  if (timestamp <= 0 || open <= 0 || high <= 0 || low <= 0 || close <= 0 || volume <= 0) return [];
+
+  // OHLCV does not expose the exact order of the intrasecond high and low.
+  // Use the conventional direction-aware path while preserving the exact
+  // one-second open, extremes, close and total volume. Repeated prices are
+  // removed so a flat second remains one compact event.
+  const prices = close >= open
+    ? [open, low, high, close]
+    : [open, high, low, close];
+  const path = prices.filter((price, index) => index === 0 || price !== prices[index - 1]);
+  const size = volume / Math.max(1, path.length);
+  return path.map((price, index) => ({
+    timestamp: timestamp + Math.floor(index * 1_000 / Math.max(1, path.length)),
+    price,
+    size,
+    trades: 1,
+    delta: 0,
+  }));
 }
 
 async function streamEventBars(args: {
@@ -88,6 +133,7 @@ async function streamEventBars(args: {
 }): Promise<Candle[]> {
   const key = process.env.DATABENTO_API_KEY?.trim();
   if (!key) throw new Error("CME market data is not configured.");
+  const schema = eventHistorySchema(args.timeframe);
   const form = new URLSearchParams({
     dataset: "GLBX.MDP3",
     encoding: "json",
@@ -96,7 +142,7 @@ async function streamEventBars(args: {
     map_symbols: "false",
     symbols: args.symbol,
     stype_in: isContinuousFuture(args.symbol) ? "continuous" : "raw_symbol",
-    schema: "trades",
+    schema,
     start: new Date(args.start).toISOString(),
     end: new Date(args.end).toISOString(),
   });
@@ -141,8 +187,13 @@ async function streamEventBars(args: {
       const rows = Array.isArray(decoded) ? decoded : [decoded];
       rows.forEach((row) => {
         if (!row || typeof row !== "object" || Array.isArray(row)) return;
-        const trade = decodeTrade(row as Record<string, unknown>);
-        if (trade) batch.push(trade);
+        const record = row as Record<string, unknown>;
+        if (schema === "ohlcv-1s") {
+          batch.push(...decodeAggregate(record));
+        } else {
+          const trade = decodeTrade(record);
+          if (trade) batch.push(trade);
+        }
       });
       if (batch.length >= 2_048) flush();
     } catch {
@@ -180,10 +231,11 @@ export async function getDatabentoEventBars(
     throw new Error("A valid CME event-history window is required.");
   }
   if (!isEventBasedChartInterval(timeframe)) throw new Error(`Unsupported event interval: ${timeframe}`);
+  const schema = eventHistorySchema(timeframe);
   return streamEventBars({
     symbol,
     timeframe,
-    start: adaptiveEventStart(timeframe, requestedStart, requestedEnd),
+    start: adaptiveEventStart(timeframe, requestedStart, requestedEnd, schema),
     end: requestedEnd,
   });
 }
