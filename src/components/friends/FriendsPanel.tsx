@@ -684,16 +684,20 @@ export default function FriendsPanel({ onClose, onUnreadCountChange, initialFrie
           const sender = group?.members.find((member) => member.userId === message.senderUserId);
           const optimisticMessage = isOptimisticFriendMessage(message) ? message : null;
           const deliveryStatus = optimisticMessage?.deliveryStatus ?? null;
+          const sharedOneLiner = !message.sharedTrade
+            && message.body.includes("/socials/")
+            && message.body.includes("?post=");
+          const sharedCard = Boolean(message.sharedTrade || sharedOneLiner);
           return (
             <div key={message.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
-              <div className={`max-w-[84%] rounded-2xl px-3 py-2 ${mine ? `rounded-br-md bg-primary text-background ${deliveryStatus === "failed" ? "ring-1 ring-danger" : ""}` : "rounded-bl-md border border-border bg-surface text-foreground"}`}>
+              <div className={`max-w-[84%] ${sharedCard ? "bg-transparent p-0 text-foreground" : `rounded-2xl px-3 py-2 ${mine ? "rounded-br-md bg-primary text-background" : "rounded-bl-md border border-border bg-surface text-foreground"}`} ${deliveryStatus === "failed" ? "ring-1 ring-danger" : ""}`}>
                 {group && !mine ? (
                   <div className="mb-1 text-[8px] font-semibold text-primary">{sender?.displayName ?? "Group member"}</div>
                 ) : null}
                 <MessageImages attachments={message.attachments} onPreview={setImagePreview} />
                 {message.sharedTrade ? <SharedTradeMessageCard sharedTrade={message.sharedTrade} /> : null}
-                {message.body ? <LinkedMessageBody body={message.body} className="text-[12px] leading-5" /> : null}
-                <div className={`mt-1 flex items-center justify-end gap-1 text-right text-[8px] ${mine ? "text-background/65" : "text-muted"}`}>
+                {message.body ? <LinkedMessageBody body={message.body} className={`${sharedOneLiner ? "rounded-xl border border-primary/25 bg-panel px-3 py-2.5 shadow-[inset_0_0_16px_color-mix(in_srgb,var(--primary)_3%,transparent)]" : ""} text-[12px] leading-5`} /> : null}
+                <div className={`mt-1 flex items-center justify-end gap-1 text-right text-[8px] ${sharedCard ? "px-1 text-muted" : mine ? "text-background/65" : "text-muted"}`}>
                   <span>{messageTime(message.sentAt)}</span>
                   {deliveryStatus === "sending" ? (
                     <span className="inline-flex items-center gap-0.5"><Clock3 className="h-2.5 w-2.5" /> Sending…</span>
@@ -707,7 +711,7 @@ export default function FriendsPanel({ onClose, onUnreadCountChange, initialFrie
                       onClick={() => {
                         if (optimisticMessage) void deliverOptimisticMessage(optimisticMessage);
                       }}
-                      className="font-semibold text-background underline underline-offset-2"
+                      className={`font-semibold underline underline-offset-2 ${sharedCard ? "text-danger" : "text-background"}`}
                     >
                       Not sent · Retry
                     </button>

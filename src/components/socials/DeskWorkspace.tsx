@@ -1970,6 +1970,9 @@ export default function DeskWorkspace({
                         const previous = channelMessages[index - 1];
                         const grouped = previous?.senderUserId === entry.senderUserId && Date.parse(entry.createdAt) - Date.parse(previous.createdAt) < 300_000;
                         const optimistic = isOptimisticDeskMessage(entry) ? entry : null;
+                        const sharedOneLiner = !entry.sharedTrade
+                          && entry.body.includes("/socials/")
+                          && entry.body.includes("?post=");
                         const reactionGroups = REACTIONS.map((emoji) => ({
                           emoji,
                           users: network.reactions.filter((reaction) => reaction.messageId === entry.id && reaction.emoji === emoji),
@@ -1979,7 +1982,7 @@ export default function DeskWorkspace({
                             <div className="w-9 shrink-0">{grouped ? <span className="block pt-1 text-center text-[5px] text-muted opacity-0 group-hover:opacity-100">{formatTime(entry.createdAt)}</span> : <ProfileAvatar profile={profile} />}</div>
                             <div className="min-w-0 flex-1">
                               {!grouped ? <div className="flex flex-wrap items-center gap-2"><button type="button" onClick={() => onOpenProfile?.(profile.handle)} className="text-[8px] font-semibold hover:text-primary">{profile.displayName}</button>{deskMember ? <MemberRoleBadge member={deskMember} compact /> : null}<span className="text-[6px] text-muted">{formatDateTime(entry.createdAt)}</span></div> : null}
-                              {entry.body ? <LinkedMessageBody body={entry.body} className="mt-1 text-[8px] leading-4 text-foreground/90" /> : null}
+                              {entry.body ? <LinkedMessageBody body={entry.body} className={`${sharedOneLiner ? "mt-2 rounded-xl border border-primary/25 bg-panel px-3 py-2.5 shadow-[inset_0_0_16px_color-mix(in_srgb,var(--primary)_3%,transparent)]" : "mt-1"} text-[8px] leading-4 text-foreground/90`} /> : null}
                               {entry.sharedTrade ? <SharedTradeMessageCard sharedTrade={entry.sharedTrade} chartHeight={170} /> : null}
                               {entry.attachments.map((item) => <button key={item.id} type="button" onClick={() => setImagePreview(item)} className="mt-2 block max-w-sm overflow-hidden rounded-xl border border-border bg-background/40"><img src={item.dataUrl} alt={item.name} className="max-h-64 w-full object-contain" /></button>)}
                               {optimistic ? (
