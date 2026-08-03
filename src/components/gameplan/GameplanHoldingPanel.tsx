@@ -17,7 +17,11 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import KwantSelect from "@/components/ui/KwantSelect";
 import {
-  normalizeZyonTradingAccount,
+  buildGameplanScoringRecord,
+  writePendingScoringTransition,
+} from "@/lib/gameplanScoringTransition";
+import type { SocialObject, SocialPrecordPayload } from "@/lib/socials";
+import {
   zyonGameplanMissingFields,
   zyonTradingAccountLabel,
   type ZyonGameplanDraft,
@@ -72,67 +76,6 @@ function accountForMode(
     phase,
     size: current?.size ?? null,
     currency: current?.currency ?? "USD",
-  };
-}
-
-function precordPayload(draft: ZyonGameplanDraft, recordMode: "LIVE" | "HISTORICAL") {
-  const entry = (draft.entryLow + draft.entryHigh) / 2;
-  const riskPoints = Math.abs(entry - draft.stop);
-  const target = draft.targets[0] ?? null;
-  const plannedRiskReward = target !== null && riskPoints > 0
-    ? Number((Math.abs(target - entry) / riskPoints).toFixed(2))
-    : null;
-  const tradingAccount = normalizeZyonTradingAccount(draft.tradingAccount);
-  return {
-    instrument: draft.instrument,
-    session: draft.session,
-    direction: draft.direction,
-    marketContext: draft.reasoning,
-    plannedEntryTime: draft.entryTime || null,
-    plannedEntryLow: draft.entryLow,
-    plannedEntryHigh: draft.entryHigh,
-    plannedStop: draft.stop,
-    plannedTarget: target,
-    plannedTargets: draft.targets,
-    plannedSize: draft.size,
-    maximumRisk: draft.riskAmount,
-    riskUnit: draft.riskUnit,
-    tradingAccount,
-    plannedRiskReward,
-    confluences: draft.confluences,
-    bullCondition: draft.direction === "LONG" ? draft.confirmation : "",
-    bearCondition: draft.direction === "SHORT" ? draft.confirmation : "",
-    confirmation: draft.confirmation,
-    invalidation: draft.invalidation,
-    traderNotes: draft.notes,
-    expiryAt: draft.expiryAt,
-    source: "ZYON",
-    sourceGameplanId: draft.id,
-    sourceGameplanVersion: "zyon-structured-v1",
-    sourceGeneratedAt: draft.updatedAt,
-    recordMode,
-    gameplanSnapshot: {
-      title: draft.title,
-      root: draft.root,
-      sessionDate: draft.sessionDate,
-      instrument: draft.instrument,
-      direction: draft.direction,
-      session: draft.session,
-      entryTime: draft.entryTime,
-      entry: [draft.entryLow, draft.entryHigh],
-      stop: draft.stop,
-      targets: draft.targets,
-      riskAmount: draft.riskAmount,
-      riskUnit: draft.riskUnit,
-      size: draft.size,
-      tradingAccount,
-      reasoning: draft.reasoning,
-      confirmation: draft.confirmation,
-      invalidation: draft.invalidation,
-      confluences: draft.confluences,
-      notes: draft.notes,
-      expiryAt: draft.expiryAt,
-    },
   };
 }
 
@@ -243,31 +186,58 @@ export default function GameplanHoldingPanel({ onPendingChange }: Props) {
 
   const lockIntoScoring = async () => {
     if (!draft || locking) return;
+    const normalizedDraft = {
+      ...draft,
+      entryLow: Math.min(draft.entryLow, draft.entryHigh),
+      entryHigh: Math.max(draft.entryLow, draft.entryHigh),
+      targets: targetsInput.split(",").map((value) => Number(value.trim())).filter(Number.isFinite).slice(0, 8),
+      confluences: confluencesInput.split(/\n|,/).map((value) => value.trim()).filter(Boolean).slice(0, 12),
+    };
+    const missingFields = zyonGameplanMissingFields(normalizedDraft);
+    if (missingFields.length) {
+      setNotice(`Complete: ${missingFields.join(", ")}.`);
+      return;
+    }
+    const optimisticRecord = buildGameplanScoringRecord(normalizedDraft);
     setLocking(true);
     setNotice("");
+    writePendingScoringTransition({ record: optimisticRecord, state: "saving" });
+    window.localStorage.setItem("kwantdesk:gameplan-page-tab", "scoring");
+    window.dispatchEvent(new CustomEvent("kwantdesk:gameplan-lock-started", {
+      detail: { record: optimisticRecord },
+    }));
     try {
       const saved = await persistDraft();
-      if (!saved) return;
+      if (!saved) throw new Error("The completed Gameplan could not be prepared for Scoring.");
       const response = await fetch("/api/socials", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           object: {
+            id: optimisticRecord.id,
             objectType: "precord",
             scope: "community",
             deskId: null,
             parentId: null,
-            payload: precordPayload(saved, saved.recordMode ?? "LIVE"),
+            payload: buildGameplanScoringRecord(saved, {
+              id: optimisticRecord.id,
+              createdAt: optimisticRecord.createdAt,
+              recordMode: saved.recordMode ?? "LIVE",
+            }).payload,
           },
         }),
       });
       const payload = await response.json().catch(() => null) as {
-        object?: { id?: string };
+        object?: SocialObject<SocialPrecordPayload>;
         error?: string;
       } | null;
       if (!response.ok || !payload?.object?.id) {
         throw new Error(payload?.error || "The Gameplan did not reach Scoring.");
       }
+      writePendingScoringTransition({ record: payload.object, state: "saved" });
+      window.dispatchEvent(new CustomEvent("kwantdesk:gameplan-locked", {
+        detail: { recordId: payload.object.id, object: payload.object },
+      }));
       // The route verifies the first completed record before awarding this;
       // upsert semantics make the request harmless for existing holders.
       void fetch("/api/socials", {
@@ -284,12 +254,13 @@ export default function GameplanHoldingPanel({ onPendingChange }: Props) {
       });
       applyDraft(null);
       setState("missing");
-      window.localStorage.setItem("kwantdesk:gameplan-page-tab", "scoring");
-      window.dispatchEvent(new CustomEvent("kwantdesk:gameplan-locked", {
-        detail: { recordId: payload.object.id },
-      }));
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : "The Gameplan remains safely in holding.");
+      const message = error instanceof Error ? error.message : "The Gameplan remains safely in holding.";
+      writePendingScoringTransition({ record: optimisticRecord, state: "failed", error: message });
+      window.dispatchEvent(new CustomEvent("kwantdesk:gameplan-lock-failed", {
+        detail: { record: optimisticRecord, error: message },
+      }));
+      setNotice(message);
     } finally {
       setLocking(false);
     }

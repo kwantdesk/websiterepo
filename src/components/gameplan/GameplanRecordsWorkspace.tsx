@@ -14,6 +14,12 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import KwantLoader from "@/components/KwantLoader";
 import {
+  clearPendingScoringTransition,
+  matchingGameplanSource,
+  readPendingScoringTransition,
+  type PendingScoringTransition,
+} from "@/lib/gameplanScoringTransition";
+import {
   buildAutomaticGameplanReceipt,
   evaluateReasoningPath,
   type SocialReasoningCandle,
@@ -156,6 +162,7 @@ function GameplanRecordCard({ record, complete }: { record: GameplanRecord; comp
 
 export default function GameplanRecordsWorkspace({ tab }: { tab: GameplanRecordTab }) {
   const [objects, setObjects] = useState<SocialObject[]>([]);
+  const [pendingTransition, setPendingTransition] = useState<PendingScoringTransition | null>(() => readPendingScoringTransition());
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [cloud, setCloud] = useState(true);
@@ -169,7 +176,15 @@ export default function GameplanRecordsWorkspace({ tab }: { tab: GameplanRecordT
       const response = await fetch("/api/socials?mine=1&types=precord,receipt", { cache: "no-store" });
       const result = await response.json() as SocialsResponse;
       if (!response.ok) throw new Error(result.error ?? "Game plans could not be loaded.");
-      setObjects(Array.isArray(result.objects) ? result.objects : []);
+      const loadedObjects = Array.isArray(result.objects) ? result.objects : [];
+      setObjects(loadedObjects);
+      const pending = readPendingScoringTransition();
+      if (pending && loadedObjects.some((object) => matchingGameplanSource(pending.record, object))) {
+        clearPendingScoringTransition();
+        setPendingTransition(null);
+      } else {
+        setPendingTransition(pending);
+      }
       setCloud(result.cloud !== false);
       setError(null);
     } catch (loadError) {
@@ -186,22 +201,50 @@ export default function GameplanRecordsWorkspace({ tab }: { tab: GameplanRecordT
 
   useEffect(() => {
     const refresh = () => void loadRecords(false, true);
+    const started = (event: Event) => {
+      const detail = (event as CustomEvent<{ record?: SocialObject<SocialPrecordPayload> }>).detail;
+      const stored = readPendingScoringTransition();
+      setPendingTransition(stored ?? (detail?.record ? { record: detail.record, state: "saving" } : null));
+    };
+    const locked = (event: Event) => {
+      const detail = (event as CustomEvent<{ object?: SocialObject }>).detail;
+      if (detail?.object) {
+        setObjects((current) => [detail.object as SocialObject, ...current.filter((object) => object.id !== detail.object?.id)]);
+        clearPendingScoringTransition();
+        setPendingTransition(null);
+      }
+      void loadRecords(false, true);
+    };
+    const failed = (event: Event) => {
+      const detail = (event as CustomEvent<{ error?: string }>).detail;
+      setPendingTransition(readPendingScoringTransition());
+      setError(detail?.error ?? "The Gameplan is still in holding and could not finish syncing.");
+    };
     const refreshWhenVisible = () => {
       if (document.visibilityState === "visible") refresh();
     };
-    window.addEventListener("kwantdesk:gameplan-locked", refresh);
+    window.addEventListener("kwantdesk:gameplan-lock-started", started);
+    window.addEventListener("kwantdesk:gameplan-locked", locked);
+    window.addEventListener("kwantdesk:gameplan-lock-failed", failed);
     window.addEventListener("kwantdesk:gameplan-scored", refresh);
     document.addEventListener("visibilitychange", refreshWhenVisible);
     return () => {
-      window.removeEventListener("kwantdesk:gameplan-locked", refresh);
+      window.removeEventListener("kwantdesk:gameplan-lock-started", started);
+      window.removeEventListener("kwantdesk:gameplan-locked", locked);
+      window.removeEventListener("kwantdesk:gameplan-lock-failed", failed);
       window.removeEventListener("kwantdesk:gameplan-scored", refresh);
       document.removeEventListener("visibilitychange", refreshWhenVisible);
     };
   }, [loadRecords]);
 
+  const visibleObjects = useMemo(() => {
+    if (!pendingTransition || objects.some((object) => matchingGameplanSource(pendingTransition.record, object))) return objects;
+    return [pendingTransition.record, ...objects];
+  }, [objects, pendingTransition]);
+
   const records = useMemo(() => {
-    const receipts = objects.filter((object) => object.objectType === "receipt");
-    return objects
+    const receipts = visibleObjects.filter((object) => object.objectType === "receipt");
+    return visibleObjects
       .filter((object) => object.objectType === "precord")
       .map((object): GameplanRecord | null => {
         const plan = payloadOf<SocialPrecordPayload>(object);
@@ -217,7 +260,7 @@ export default function GameplanRecordsWorkspace({ tab }: { tab: GameplanRecordT
       .filter((record): record is GameplanRecord => Boolean(record))
       .filter((record) => tab === "previous" ? Boolean(record.receipt) : !record.receipt)
       .sort((left, right) => Date.parse(right.plan.createdAt) - Date.parse(left.plan.createdAt));
-  }, [objects, tab]);
+  }, [tab, visibleObjects]);
 
   const complete = tab === "previous";
 
@@ -323,8 +366,16 @@ export default function GameplanRecordsWorkspace({ tab }: { tab: GameplanRecordT
 
         {!cloud ? <div className="mt-3 rounded-xl border border-warning/20 bg-warning/[0.05] px-4 py-3 text-[9px] text-warning">Account storage is not connected, so cloud game plans are unavailable.</div> : null}
         {error ? <div className="mt-3 rounded-xl border border-danger/20 bg-danger/[0.05] px-4 py-3 text-[9px] text-danger">{error}</div> : null}
+        {pendingTransition ? (
+          <div className={`mt-3 flex items-center gap-2 rounded-xl border px-4 py-3 text-[9px] ${pendingTransition.state === "failed" ? "border-danger/20 bg-danger/[0.05] text-danger" : "border-primary/20 bg-primary/[0.05] text-primary"}`}>
+            {pendingTransition.state === "failed" ? <ShieldCheck className="h-3.5 w-3.5" /> : <RefreshCw className="h-3.5 w-3.5 animate-spin" />}
+            {pendingTransition.state === "failed"
+              ? pendingTransition.error ?? "Account sync needs another attempt; the original plan remains safely in holding."
+              : "Gameplan opened in Scoring. Account storage is syncing quietly in the background."}
+          </div>
+        ) : null}
 
-        {loading ? (
+        {loading && !records.length ? (
           <KwantLoader className="min-h-[420px]" icon={HeadingIcon} title={complete ? "Loading previous game plans" : "Loading scoring queue"} detail="Reading your account-backed gameplan records" />
         ) : records.length ? (
           <div className="mt-4 space-y-3">{records.map((record) => <GameplanRecordCard key={record.plan.id} record={record} complete={complete} />)}</div>

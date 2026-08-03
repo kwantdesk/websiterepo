@@ -72,7 +72,6 @@ import {
   buildDefaultProfile,
   buildAutomaticGameplanReceipt,
   buildExecutionComparison,
-  calculateReasoningScore,
   calculateReceiptClassification,
   calculateReceiptScores,
   CALLING_CARD_CATALOG,
@@ -100,7 +99,6 @@ import {
   type SocialState,
 } from "@/lib/socials";
 import {
-  normalizeZyonTradingAccount,
   zyonGameplanMissingFields,
   zyonTradingAccountLabel,
   type ZyonGameplanDraft,
@@ -146,6 +144,10 @@ import {
   useState,
 } from "react";
 import { zyonGameplanLaunchHref } from "@/lib/zyonGameplanLaunch";
+import {
+  buildGameplanScoringRecord,
+  writePendingScoringTransition,
+} from "@/lib/gameplanScoringTransition";
 
 type SocialTab = "today" | "reasoning" | "precords" | "desks" | "feed" | "rankings" | "cards" | "profile";
 type FeedFilter = "all" | "proven" | "mine";
@@ -646,6 +648,11 @@ export default function SocialsWorkspace({
     originY: number;
   } | null>(null);
   const completingReasoningRef = useRef(new Set<string>());
+
+  useEffect(() => {
+    router.prefetch("/gameplan?tab=scoring");
+    void import("@/components/gameplan/GameplanWorkspace");
+  }, [router]);
 
   const upsertObject = useCallback((object: SocialObject, replaceKey?: string) => {
     setState((current) => ({
@@ -1870,152 +1877,68 @@ export default function SocialsWorkspace({
   };
 
   const lockCurrentGameplan = async () => {
-    if (zyonGameplanDraft) {
-      if (lockedCurrentGameplan) {
-        setNotice("This Gameplan is already locked in Scoring and awaiting its outcome.");
-        return;
-      }
-      const missing = zyonGameplanMissingFields(zyonGameplanDraft);
-      if (missing.length) {
-        setNotice(`Complete the holding Gameplan before locking it: ${missing.join(", ")}.`);
-        return;
-      }
-      const draft = {
-        ...zyonGameplanDraft,
-        entryLow: Math.min(zyonGameplanDraft.entryLow, zyonGameplanDraft.entryHigh),
-        entryHigh: Math.max(zyonGameplanDraft.entryLow, zyonGameplanDraft.entryHigh),
-      };
-      setZyonDraftLocking(true);
-      try {
-        const draftResponse = await fetch("/api/zyon/gameplan-draft", {
+    if (!zyonGameplanDraft) {
+      setNotice("Send a Gameplan from ZYON before locking it into Scoring.");
+      return;
+    }
+    if (lockedCurrentGameplan) {
+      setNotice("This Gameplan is already locked in Scoring and awaiting its outcome.");
+      return;
+    }
+    const missing = zyonGameplanMissingFields(zyonGameplanDraft);
+    if (missing.length) {
+      setNotice(`Complete the holding Gameplan before locking it: ${missing.join(", ")}.`);
+      return;
+    }
+
+    const draft = {
+      ...zyonGameplanDraft,
+      entryLow: Math.min(zyonGameplanDraft.entryLow, zyonGameplanDraft.entryHigh),
+      entryHigh: Math.max(zyonGameplanDraft.entryLow, zyonGameplanDraft.entryHigh),
+    };
+    const optimisticRecord = buildGameplanScoringRecord(draft, {
+      userId: resolvedAccountKey,
+      authorLabel: currentProfile.displayName,
+    });
+
+    setZyonDraftLocking(true);
+    setNotice("");
+    writePendingScoringTransition({ record: optimisticRecord, state: "saving" });
+    window.localStorage.setItem("kwantdesk:gameplan-page-tab", "scoring");
+    onOpenGameplanScoring?.();
+
+    try {
+      const draftResponse = await fetch("/api/zyon/gameplan-draft", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(draft),
-        });
-        const draftPayload = await draftResponse.json().catch(() => null) as { error?: string; recordMode?: "LIVE" | "HISTORICAL" } | null;
-        if (!draftResponse.ok) {
-          setNotice(draftPayload?.error || "The edited holding Gameplan could not be saved.");
-          return;
-        }
-        const recordMode = draftPayload?.recordMode ?? draft.recordMode ?? "LIVE";
-      const entry = (draft.entryLow + draft.entryHigh) / 2;
-      const riskPoints = Math.abs(entry - draft.stop);
-      const target = draft.targets[0] ?? null;
-      const plannedRiskReward = target !== null && riskPoints > 0
-        ? Number((Math.abs(target - entry) / riskPoints).toFixed(2))
-        : null;
-      const tradingAccount = normalizeZyonTradingAccount(draft.tradingAccount);
-      const base = {
-        instrument: draft.instrument,
-        session: draft.session,
-        direction: draft.direction,
-        marketContext: draft.reasoning,
-        plannedEntryTime: draft.entryTime,
-        plannedEntryLow: draft.entryLow,
-        plannedEntryHigh: draft.entryHigh,
-        plannedStop: draft.stop,
-        plannedTarget: target,
-        plannedTargets: draft.targets,
-        plannedSize: draft.size,
-        maximumRisk: draft.riskAmount,
-        riskUnit: draft.riskUnit,
-        tradingAccount,
-        plannedRiskReward,
-        confluences: draft.confluences,
-        bullCondition: draft.direction === "LONG" ? draft.confirmation : "",
-        bearCondition: draft.direction === "SHORT" ? draft.confirmation : "",
-        confirmation: draft.confirmation,
-        invalidation: draft.invalidation,
-        traderNotes: draft.notes,
-        expiryAt: draft.expiryAt,
-        source: "ZYON" as const,
-        sourceGameplanId: draft.id,
-        sourceGameplanVersion: "zyon-structured-v1",
-        sourceGeneratedAt: draft.updatedAt,
-        gameplanSnapshot: {
-          title: draft.title,
-          root: draft.root,
-          sessionDate: draft.sessionDate,
-          instrument: draft.instrument,
-          direction: draft.direction,
-          session: draft.session,
-          entryTime: draft.entryTime,
-          entry: [draft.entryLow, draft.entryHigh],
-          stop: draft.stop,
-          targets: draft.targets,
-          riskAmount: draft.riskAmount,
-          riskUnit: draft.riskUnit,
-          size: draft.size,
-          tradingAccount,
-          reasoning: draft.reasoning,
-          confirmation: draft.confirmation,
-          invalidation: draft.invalidation,
-          confluences: draft.confluences,
-          notes: draft.notes,
-          expiryAt: draft.expiryAt,
-        },
-        scoreModelVersion: SOCIAL_RECORD_RULES.scoreModelVersion,
-        evidenceState: recordMode === "HISTORICAL"
-          ? "SELF REPORTED" as const
-          : "PLATFORM TIMESTAMPED" as const,
-        recordMode,
-      };
-      const now = new Date().toISOString();
-      const object = buildLocalObject({
+      });
+      const draftPayload = await draftResponse.json().catch(() => null) as { error?: string; recordMode?: "LIVE" | "HISTORICAL" } | null;
+      if (!draftResponse.ok) throw new Error(draftPayload?.error || "The edited holding Gameplan could not be saved.");
+
+      const recordMode = draftPayload?.recordMode ?? draft.recordMode ?? "LIVE";
+      const record = buildGameplanScoringRecord(draft, {
+        id: optimisticRecord.id,
         userId: resolvedAccountKey,
         authorLabel: currentProfile.displayName,
-        objectType: "precord",
-        scope: "community",
-        deskId: null,
-        payload: {
-          ...base,
-          lockedAt: now,
-          reasoningScore: calculateReasoningScore(base),
-          status: recordMode === "HISTORICAL" ? "UNDER REVIEW" : "LIVE",
-          lifecycle: [{
-            status: "LOCKED",
-            at: now,
-            source: "ZYON",
-            note: recordMode === "HISTORICAL"
-              ? "Trader reviewed and locked a historical Gameplan for end-to-end scoring."
-              : "Trader reviewed the ZYON holding record and sent it to Scoring.",
-          }],
-        } satisfies SocialPrecordPayload,
+        recordMode,
+        createdAt: optimisticRecord.createdAt,
       });
-      const savedRecord = await saveObject(object);
+      const savedRecord = await saveObject(record);
       if (!savedRecord.cloudSaved) {
         setState((current) => ({
           ...current,
-          objects: current.objects.filter((candidate) => objectKey(candidate) !== objectKey(object)),
+          objects: current.objects.filter((candidate) => objectKey(candidate) !== objectKey(record)),
         }));
-        setNotice("The locked Gameplan did not reach account storage. It remains in holding; try again.");
-        return;
+        throw new Error("The locked Gameplan did not reach account storage. It remains in holding; try again.");
       }
-      if (!cards.some((card) => card.userId === resolvedAccountKey && typedPayload<SocialCardPayload>(card)?.code === "first-on-record")) {
-        const definition = CALLING_CARD_CATALOG.find((card) => card.code === "first-on-record");
-        if (!definition) throw new Error("The First on Record Calling Card is unavailable.");
-        await saveObject(buildLocalObject({
-          id: `card:${definition.code}`,
-          userId: resolvedAccountKey,
-          authorLabel: currentProfile.displayName,
-          objectType: "card",
-          scope: "community",
-          payload: {
-            code: definition.code,
-            name: definition.name,
-            family: definition.family,
-            description: definition.description,
-            earnedAt: now,
-            active: true,
-            equipped: false,
-            public: true,
-          } satisfies SocialCardPayload,
-        }));
-      }
-      await saveProgressPatch({ prepare: true, map: true });
-      window.localStorage.setItem("kwantdesk:gameplan-page-tab", "scoring");
+
+      writePendingScoringTransition({
+        record: savedRecord as SocialObject<SocialPrecordPayload>,
+        state: "saved",
+      });
       window.dispatchEvent(new CustomEvent("kwantdesk:gameplan-locked", {
-        detail: { recordId: savedRecord.id },
+        detail: { recordId: savedRecord.id, object: savedRecord },
       }));
       setZyonGameplanDraft(null);
       setZyonTargetsInput("");
@@ -2024,15 +1947,48 @@ export default function SocialsWorkspace({
       setNotice(recordMode === "HISTORICAL"
         ? `${draft.instrument} historical Gameplan locked and sent to Scoring for outcome review.`
         : `${draft.instrument} Gameplan locked. Live scoring is now in progress.`);
-        onOpenGameplanScoring?.();
-      } catch {
-        setNotice("The edited Gameplan could not be locked. It remains safely in holding; try again.");
-      } finally {
-        setZyonDraftLocking(false);
-      }
-      return;
+
+      void (async () => {
+        try {
+          if (!cards.some((card) => card.userId === resolvedAccountKey && typedPayload<SocialCardPayload>(card)?.code === "first-on-record")) {
+            const definition = CALLING_CARD_CATALOG.find((card) => card.code === "first-on-record");
+            if (definition) {
+              await saveObject(buildLocalObject({
+                id: `card:${definition.code}`,
+                userId: resolvedAccountKey,
+                authorLabel: currentProfile.displayName,
+                objectType: "card",
+                scope: "community",
+                payload: {
+                  code: definition.code,
+                  name: definition.name,
+                  family: definition.family,
+                  description: definition.description,
+                  earnedAt: optimisticRecord.createdAt,
+                  active: true,
+                  equipped: false,
+                  public: true,
+                } satisfies SocialCardPayload,
+              }));
+            }
+          }
+          await saveProgressPatch({ prepare: true, map: true });
+        } catch {
+          // The scoring record is already safe; auxiliary progress can catch up later.
+        }
+      })();
+    } catch (error) {
+      const message = error instanceof Error
+        ? error.message
+        : "The edited Gameplan could not be locked. It remains safely in holding; try again.";
+      writePendingScoringTransition({ record: optimisticRecord, state: "failed", error: message });
+      window.dispatchEvent(new CustomEvent("kwantdesk:gameplan-lock-failed", {
+        detail: { record: optimisticRecord, error: message },
+      }));
+      setNotice(message);
+    } finally {
+      setZyonDraftLocking(false);
     }
-    setNotice("Send a Gameplan from ZYON before locking it into Scoring.");
   };
 
   const submitReceipt = async () => {

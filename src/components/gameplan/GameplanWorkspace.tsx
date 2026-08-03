@@ -2474,8 +2474,12 @@ export default function GameplanWorkspace({ initialInstrument = "NQ" }: { initia
     if (requested === "scoring" || requested === "previous") setPageTab(requested);
     window.localStorage.removeItem("kwantdesk:gameplan-page-tab");
     const openScoring = () => setPageTab("scoring");
+    window.addEventListener("kwantdesk:gameplan-lock-started", openScoring);
     window.addEventListener("kwantdesk:gameplan-locked", openScoring);
-    return () => window.removeEventListener("kwantdesk:gameplan-locked", openScoring);
+    return () => {
+      window.removeEventListener("kwantdesk:gameplan-lock-started", openScoring);
+      window.removeEventListener("kwantdesk:gameplan-locked", openScoring);
+    };
   }, []);
 
   return (
