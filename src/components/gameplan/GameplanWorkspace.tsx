@@ -1102,19 +1102,6 @@ function LiveMarketAnalyst({
     };
   }, [root]);
 
-  const baseSnapshot = useMemo(
-    () => buildLiveAnalystSnapshot({
-      root,
-      session,
-      plan,
-      currentPrice,
-      candles,
-      volatility,
-      now: analystClock,
-    }),
-    [analystClock, candles, currentPrice, plan, root, session, volatility],
-  );
-
   const timeframeCandidates = useMemo(
     () => buildGameplanTimeframeContexts({
       root,
@@ -1124,6 +1111,20 @@ function LiveMarketAnalyst({
       now: analystClock,
     }),
     [analystClock, candles, plan, root, session],
+  );
+
+  const baseSnapshot = useMemo(
+    () => buildLiveAnalystSnapshot({
+      root,
+      session,
+      plan,
+      currentPrice,
+      candles,
+      volatility,
+      timeframeContexts: timeframeCandidates,
+      now: analystClock,
+    }),
+    [analystClock, candles, currentPrice, plan, root, session, timeframeCandidates, volatility],
   );
 
   useEffect(() => {

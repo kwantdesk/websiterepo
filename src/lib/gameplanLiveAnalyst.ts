@@ -7,6 +7,10 @@ import type {
   VolatilityCandle,
   VolatilitySnapshot,
 } from "@/lib/volatilityRegime";
+import type {
+  GameplanTimeframeContext,
+  GameplanTimeframeId,
+} from "@/lib/gameplanTimeframeAnalysis";
 
 export type LiveAnalystControl = "BUYERS" | "SELLERS" | "BALANCED";
 export type LiveAnalystBias = "UP" | "DOWN" | "NEUTRAL";
@@ -114,7 +118,15 @@ function formatZone(zone: [number, number]) {
     : `${formatPrice(zone[0])}–${formatPrice(zone[1])}`;
 }
 
-function normalizeCandles(source: VolatilityCandle[], currentPrice: number) {
+const LIVE_STRUCTURE_WEIGHTS: Partial<Record<GameplanTimeframeId, number>> = {
+  "5m": 0.12,
+  "15m": 0.22,
+  "30m": 0.22,
+  "1h": 0.24,
+  "4h": 0.2,
+};
+
+function normalizeCandles(source: VolatilityCandle[], currentPrice: number, now: number) {
   const rows = new Map<number, VolatilityCandle>();
   for (const candle of source) {
     if (
@@ -135,12 +147,27 @@ function normalizeCandles(source: VolatilityCandle[], currentPrice: number) {
   const normalized = [...rows.values()].sort((left, right) => left.timestamp - right.timestamp);
   if (!normalized.length) return normalized;
   const last = normalized.at(-1)!;
-  normalized[normalized.length - 1] = {
-    ...last,
-    high: Math.max(last.high, currentPrice),
-    low: Math.min(last.low, currentPrice),
-    close: currentPrice,
-  };
+  const fiveMinutes = 5 * 60_000;
+  const currentBucket = Math.floor(now / fiveMinutes) * fiveMinutes;
+  const sourceIsFresh = now - last.timestamp <= 15 * 60_000;
+  if (!sourceIsFresh) return normalized;
+  if (currentBucket > last.timestamp && currentBucket - last.timestamp <= 15 * 60_000) {
+    normalized.push({
+      timestamp: currentBucket,
+      open: last.close,
+      high: Math.max(last.close, currentPrice),
+      low: Math.min(last.close, currentPrice),
+      close: currentPrice,
+      volume: 0,
+    });
+  } else {
+    normalized[normalized.length - 1] = {
+      ...last,
+      high: Math.max(last.high, currentPrice),
+      low: Math.min(last.low, currentPrice),
+      close: currentPrice,
+    };
+  }
   return normalized;
 }
 
@@ -183,6 +210,43 @@ function trendForMomentum(value: number): LiveAnalystTrend {
   if (value >= 0.18) return "UP";
   if (value <= -0.18) return "DOWN";
   return "FLAT";
+}
+
+function trendForContext(context: GameplanTimeframeContext | undefined): LiveAnalystTrend | null {
+  if (!context) return null;
+  if (context.control === "BUYERS") return "UP";
+  if (context.control === "SELLERS") return "DOWN";
+  return "FLAT";
+}
+
+function authoritativeContextScore(contexts: GameplanTimeframeContext[]) {
+  const eligible = contexts.flatMap((context) => {
+    const weight = LIVE_STRUCTURE_WEIGHTS[context.timeframe];
+    return weight ? [{ context, weight }] : [];
+  });
+  const weightTotal = eligible.reduce((sum, item) => sum + item.weight, 0);
+  if (!weightTotal) return null;
+  const score = eligible.reduce(
+    (sum, item) => sum + item.context.controlScore * item.weight,
+    0,
+  ) / weightTotal;
+  const buyerWeight = eligible
+    .filter((item) => item.context.control === "BUYERS")
+    .reduce((sum, item) => sum + item.weight, 0) / weightTotal;
+  const sellerWeight = eligible
+    .filter((item) => item.context.control === "SELLERS")
+    .reduce((sum, item) => sum + item.weight, 0) / weightTotal;
+  const dominantWeight = Math.max(buyerWeight, sellerWeight);
+  const opposingWeight = Math.min(buyerWeight, sellerWeight);
+  return {
+    score: clamp(score, -1, 1),
+    coverage: clamp(weightTotal, 0, 1),
+    buyerWeight,
+    sellerWeight,
+    dominantWeight,
+    opposingWeight,
+    sampleCount: eligible.length,
+  };
 }
 
 function nearestLevel(plan: GameplanEdition, price: number): LiveAnalystLevel {
@@ -374,6 +438,7 @@ export function buildLiveAnalystSnapshot(args: {
   currentPrice: number | null;
   candles: VolatilityCandle[];
   volatility: VolatilitySnapshot | null;
+  timeframeContexts?: GameplanTimeframeContext[];
   now?: number;
 }): LiveAnalystSnapshot | null {
   const { root, session, plan, volatility } = args;
@@ -386,28 +451,56 @@ export function buildLiveAnalystSnapshot(args: {
   ) return null;
 
   const now = args.now ?? Date.now();
-  const candles = normalizeCandles(args.candles, currentPrice);
+  const candles = normalizeCandles(args.candles, currentPrice, now);
   const atr = averageTrueRange(candles) || (root === "NQ" ? 12 : 3);
   const fifteen = momentumForBars(candles, 3, currentPrice, atr);
   const hour = momentumForBars(candles, 12, currentPrice, atr);
   const fourHour = momentumForBars(candles, 48, currentPrice, atr);
-  const fifteenTrend = trendForMomentum(fifteen.normalized);
-  const hourTrend = trendForMomentum(hour.normalized);
-  const fourHourTrend = trendForMomentum(fourHour.normalized);
-  const directionalScore = clamp(
+  const contexts = args.timeframeContexts ?? [];
+  const contextState = authoritativeContextScore(contexts);
+  const fifteenContext = contexts.find((context) => context.timeframe === "15m");
+  const hourContext = contexts.find((context) => context.timeframe === "1h");
+  const fourHourContext = contexts.find((context) => context.timeframe === "4h");
+  const fifteenTrend = trendForContext(fifteenContext) ?? trendForMomentum(fifteen.normalized);
+  const hourTrend = trendForContext(hourContext) ?? trendForMomentum(hour.normalized);
+  const fourHourTrend = trendForContext(fourHourContext) ?? trendForMomentum(fourHour.normalized);
+  const fallbackDirectionalScore = clamp(
     (
       fifteen.normalized * 0.45
       + hour.normalized * 0.35
       + fourHour.normalized * 0.2
-    ) * 72 + plan.environment.flow.lean * 12,
+    ) * 72,
     -100,
     100,
   );
-  const control: LiveAnalystControl = directionalScore >= 18
-    ? "BUYERS"
-    : directionalScore <= -18
-      ? "SELLERS"
-      : "BALANCED";
+  // Price structure is authoritative. Options flow remains useful context, but it
+  // must never flip the displayed control against the visible futures structure.
+  const directionalScore = contextState
+    ? clamp(contextState.score * 100, -100, 100)
+    : fallbackDirectionalScore;
+  const contextBuyerControl = Boolean(
+    contextState
+    && contextState.buyerWeight >= 0.42
+    && contextState.buyerWeight - contextState.sellerWeight >= 0.12
+    && directionalScore >= 16,
+  );
+  const contextSellerControl = Boolean(
+    contextState
+    && contextState.sellerWeight >= 0.42
+    && contextState.sellerWeight - contextState.buyerWeight >= 0.12
+    && directionalScore <= -16,
+  );
+  const control: LiveAnalystControl = contextState
+    ? contextBuyerControl
+      ? "BUYERS"
+      : contextSellerControl
+        ? "SELLERS"
+        : "BALANCED"
+    : directionalScore >= 16
+      ? "BUYERS"
+      : directionalScore <= -16
+        ? "SELLERS"
+        : "BALANCED";
   const bias: LiveAnalystBias = control === "BUYERS" ? "UP" : control === "SELLERS" ? "DOWN" : "NEUTRAL";
   const level = nearestLevel(plan, currentPrice);
   const phase = phaseForSnapshot(root, level, control, fifteenTrend, hourTrend);
@@ -417,23 +510,29 @@ export function buildLiveAnalystSnapshot(args: {
     .filter((trend) => trend !== "FLAT" && trend === (bias === "UP" ? "UP" : bias === "DOWN" ? "DOWN" : "FLAT"))
     .length;
   const dataQuality = Math.round(clamp(
-    44
+    38
     + Math.min(24, candles.length / 4)
     + (volatility ? 12 : 0)
     + (options.coverage === "FULL" ? 10 : 5)
-    + Math.min(10, plan.ladder.length),
+    + Math.min(10, plan.ladder.length)
+    + (contextState ? contextState.coverage * 10 : 0),
     0,
     100,
   ));
-  const confidence = Math.round(clamp(
-    42
-    + Math.abs(directionalScore) * 0.3
-    + trendAlignment * 7
-    + (phase === "TESTING" || phase === "APPROACH" ? 6 : 0)
-    + (dataQuality - 50) * 0.15,
+  const agreement = contextState?.dominantWeight ?? (trendAlignment / 3);
+  const opposingWeight = contextState?.opposingWeight ?? 0;
+  let confidence = Math.round(clamp(
+    38
+    + Math.abs(directionalScore) * 0.22
+    + agreement * 24
+    + (phase === "TESTING" || phase === "APPROACH" ? 4 : 0)
+    + (dataQuality - 50) * 0.12,
     35,
-    92,
+    90,
   ));
+  if (contextState && contextState.sampleCount < 3) confidence = Math.min(confidence, 62);
+  if (opposingWeight >= 0.12) confidence = Math.min(confidence, 68);
+  if (opposingWeight >= 0.25) confidence = Math.min(confidence, 58);
   const recentWindow = candles.slice(-48);
   const recentHigh = recentWindow.length ? Math.max(...recentWindow.map((candle) => candle.high)) : currentPrice;
   const recentLow = recentWindow.length ? Math.min(...recentWindow.map((candle) => candle.low)) : currentPrice;
@@ -443,7 +542,10 @@ export function buildLiveAnalystSnapshot(args: {
     : currentPrice - recentLow <= atr
       ? `Price is also testing the verified four-hour low at ${formatPrice(recentLow)}, so sellers still need acceptance beneath that reference.`
       : `The verified four-hour reference range remains ${formatPrice(recentLow)}–${formatPrice(recentHigh)}.`;
-  const thesis = `${levelContext(root, level, currentPrice)}. ${roleDescription(level.role)} ${controlDescription(control, fifteenTrend, hourTrend)} On the wider map, ${htf}. ${rangeContext} ${options.text}`;
+  const agreementCopy = opposingWeight >= 0.12
+    ? " The completed timeframe evidence is mixed, so confidence is deliberately capped until the conflict resolves."
+    : "";
+  const thesis = `${levelContext(root, level, currentPrice)}. ${roleDescription(level.role)} ${controlDescription(control, fifteenTrend, hourTrend)} On the wider map, ${htf}.${agreementCopy} ${rangeContext} ${options.text}`;
   const volatilityRegime = volatility?.regime ?? "BUILDING";
   const volatilityTrend = volatility?.trend ?? "UNKNOWN";
   const signature = [
@@ -480,9 +582,9 @@ export function buildLiveAnalystSnapshot(args: {
       fifteenMinute: fifteenTrend,
       oneHour: hourTrend,
       fourHour: fourHourTrend,
-      fifteenMinuteMove: round(fifteen.move),
-      oneHourMove: round(hour.move),
-      fourHourMove: round(fourHour.move),
+      fifteenMinuteMove: round(fifteenContext?.move ?? fifteen.move),
+      oneHourMove: round(hourContext?.move ?? hour.move),
+      fourHourMove: round(fourHourContext?.move ?? fourHour.move),
       recentHigh: round(recentHigh),
       recentLow: round(recentLow),
       atr: round(atr),
@@ -566,7 +668,7 @@ function reviewPriceForEntry(
 ) {
   const target = Date.parse(entry.generatedAt) + REVIEW_HORIZON_MS;
   if (now < target) return null;
-  const normalized = normalizeCandles(candles, currentPrice);
+  const normalized = normalizeCandles(candles, currentPrice, now);
   const candle = normalized.find((candidate) => candidate.timestamp >= target);
   return candle?.close ?? currentPrice;
 }

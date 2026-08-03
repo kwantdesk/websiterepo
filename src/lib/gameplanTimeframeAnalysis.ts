@@ -231,11 +231,12 @@ function buildContextForTimeframe(
   const displacement = clamp(move / Math.max(range, atr * Math.sqrt(window.length)), -1, 1);
   const locationScore = (closeLocation - 0.5) * 2;
   const optionsLean = clamp(options.plan.environment.flow.lean, -1, 1);
+  // These cards describe futures price structure. Options flow is narrated below,
+  // but it must not vote the visible candle structure in the opposite direction.
   const controlScore = clamp(
-    displacement * 0.48
-    + locationScore * 0.27
-    + barBalance * 0.17
-    + optionsLean * 0.08,
+    displacement * 0.52
+    + locationScore * 0.3
+    + barBalance * 0.18,
     -1,
     1,
   );
