@@ -19,6 +19,8 @@ type SharedStream = {
 };
 
 const streams = new Map<string, SharedStream>();
+// The seed is deliberately bounded for browser responsiveness; complete
+// session calculations such as Volume Profile stay inside the gateway.
 const MAX_TAPE_RECORDS = 25_000;
 
 function validRecord(value: unknown): value is InstitutionalTrade {

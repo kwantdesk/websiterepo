@@ -427,6 +427,14 @@ const server = createServer(async (request, response) => {
       const instrument = requestedInstrument(url);
       client.subscribe(instrument.exchange, instrument.symbol);
       const snapshot = client.book.snapshot(instrument.exchange, instrument.symbol, 1);
+      // The browser keeps one shared execution stream per instrument.  Seed it
+      // with enough retained prints to restore markers across the visible
+      // session, while keeping the generic book snapshot intentionally small.
+      const indicatorTrades = client.book.trades(
+        instrument.exchange,
+        instrument.symbol,
+        { limit: 25_000 },
+      );
       response.writeHead(200, {
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache, no-transform",
@@ -436,8 +444,8 @@ const server = createServer(async (request, response) => {
       response.write("event: ready\ndata: {}\n\n");
       response.write(
         `event: seed\ndata: ${JSON.stringify({
-          candles: aggregateCandles(snapshot?.trades || [], 1_000, 7_200),
-          records: (snapshot?.trades || []).map(normalizedTradeRecord),
+          candles: aggregateCandles(indicatorTrades, 1_000, 7_200),
+          records: indicatorTrades.map(normalizedTradeRecord),
           historicalAvailable: false,
         })}\n\n`,
       );
@@ -529,11 +537,16 @@ const server = createServer(async (request, response) => {
       client.subscribe(instrument.exchange, instrument.symbol);
       const snapshot = client.book.snapshot(instrument.exchange, instrument.symbol, 500);
       if (!snapshot) return json(response, 404, { error: "Instrument is not subscribed." });
+      const executionTape = client.book.trades(
+        instrument.exchange,
+        instrument.symbol,
+        { limit: 100_000 },
+      );
       const metadata = contractMetadata(instrument.symbol);
       const interval = String(body.interval || "1m");
       const lookbackBars = Math.min(100_000, Math.max(1, Number(body.lookbackBars || 100_000)));
       const candles = aggregateCandles(
-        snapshot.trades,
+        executionTape,
         intervalDurationMs(interval),
         lookbackBars,
       );
@@ -560,13 +573,13 @@ const server = createServer(async (request, response) => {
         bid: snapshot.bestBid?.price ?? null,
         ask: snapshot.bestAsk?.price ?? null,
         tickSize: tickSize(instrument.symbol),
-        orderFlowAvailable: snapshot.trades.length > 0,
+        orderFlowAvailable: executionTape.length > 0,
         status,
         ageMs: snapshot.ageMs,
-        recordCount: snapshot.trades.length,
+        recordCount: executionTape.length,
         candles,
-        records: snapshot.trades.map(normalizedTradeRecord),
-        sourceRecordCount: snapshot.trades.length,
+        records: executionTape.map(normalizedTradeRecord),
+        sourceRecordCount: executionTape.length,
         historicalAvailable: false,
       });
     }
@@ -578,9 +591,7 @@ const server = createServer(async (request, response) => {
       const fromMs = Number(url.searchParams.get("fromMs") || 0);
       const toMs = Number(url.searchParams.get("toMs") || Date.now());
       const interval = String(url.searchParams.get("interval") || "1m");
-      const trades = snapshot.trades.filter(
-        (trade) => trade.timestampMs >= fromMs && trade.timestampMs <= toMs,
-      );
+      const trades = client.book.trades(instrument.exchange, instrument.symbol, { fromMs, toMs });
       return json(response, 200, {
         schemaVersion: "kwantify-market-data-v3",
         provider: "Rithmic",
@@ -610,10 +621,20 @@ const server = createServer(async (request, response) => {
         1,
         Math.min(100, Number(url.searchParams.get("valueAreaPercent") || 70)),
       );
+      const minTradeVolume = Math.max(0, Number(url.searchParams.get("minTradeVolume") || 0));
+      const maxTradeVolume = Math.max(0, Number(url.searchParams.get("maxTradeVolume") || 0));
       const priceTick = tickSize(instrument.symbol);
       const rows = new Map();
-      for (const trade of snapshot.trades) {
-        if (trade.timestampMs < startMs || trade.timestampMs > endMs) continue;
+      const profileTrades = client.book.trades(
+        instrument.exchange,
+        instrument.symbol,
+        { fromMs: startMs, toMs: endMs },
+      );
+      let weightedPrice = 0;
+      let weightedSquaredPrice = 0;
+      let includedTrades = 0;
+      for (const trade of profileTrades) {
+        if (trade.size < minTradeVolume || (maxTradeVolume > 0 && trade.size > maxTradeVolume)) continue;
         const groupedTick =
           Math.floor(Math.round(trade.price / priceTick) / groupTicks) * groupTicks;
         let row = rows.get(groupedTick);
@@ -633,6 +654,9 @@ const server = createServer(async (request, response) => {
         if (trade.aggressor === "BUY") row.askVolume += trade.size;
         if (trade.aggressor === "SELL") row.bidVolume += trade.size;
         row.delta = row.askVolume - row.bidVolume;
+        weightedPrice += trade.price * trade.size;
+        weightedSquaredPrice += trade.price * trade.price * trade.size;
+        includedTrades += 1;
       }
       const levels = [...rows.values()].sort((left, right) => left.price - right.price);
       const total = levels.reduce((sum, row) => sum + row.volume, 0);
@@ -662,18 +686,26 @@ const server = createServer(async (request, response) => {
         source: "Rithmic Ticker Plant trades",
         root: instrument.symbol.replace(/[FGHJKMNQUVXZ]\d{1,2}$/, ""),
         contractSymbol: instrument.symbol,
+        period: String(url.searchParams.get("period") || "daily"),
         startMs,
         endMs,
         tickSize: priceTick,
         groupTicks,
         valueAreaPercent,
+        minTradeVolume,
+        maxTradeVolume,
         totalVolume: total,
         bidVolume: levels.reduce((sum, row) => sum + row.bidVolume, 0),
         askVolume: levels.reduce((sum, row) => sum + row.askVolume, 0),
         delta: levels.reduce((sum, row) => sum + row.delta, 0),
+        trades: includedTrades,
         poc: levels[pocIndex].price,
         vah: levels[high].price,
         val: levels[low].price,
+        vwap: total > 0 ? weightedPrice / total : null,
+        standardDeviation: total > 0
+          ? Math.sqrt(Math.max(0, weightedSquaredPrice / total - (weightedPrice / total) ** 2))
+          : 0,
         levels,
         developingPoc: [],
         historicalAvailable: false,

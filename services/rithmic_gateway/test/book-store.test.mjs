@@ -207,3 +207,29 @@ test("turns positive RTrader cumulative-volume changes into new trade deltas", (
   );
   assert.equal(store.snapshot("CME", "NQU6", 10).lastPrice, 28_100.25);
 });
+
+test("keeps lightweight snapshots bounded while exposing the complete retained indicator tape", () => {
+  const store = new RithmicBookStore({ maxTrades: 5_000 });
+  for (let index = 0; index < 3_000; index += 1) {
+    store.applyTrade({
+      exchange: "CME",
+      symbol: "NQU6",
+      sourceTradeId: `trade-${index}`,
+      tradePrice: 28_000 + index * 0.25,
+      tradeSize: 1 + index % 20,
+      aggressor: index % 2 ? 1 : 2,
+      ssboe: 1_700_000_000 + index,
+      usecs: 0,
+    });
+  }
+
+  assert.equal(store.snapshot("CME", "NQU6", 1).trades.length, 2_500);
+  assert.equal(store.trades("CME", "NQU6").length, 3_000);
+  assert.equal(
+    store.trades("CME", "NQU6", {
+      fromMs: 1_700_002_500_000,
+      toMs: 1_700_002_999_000,
+    }).length,
+    500,
+  );
+});

@@ -370,6 +370,26 @@ export class RithmicBookStore {
     }));
   }
 
+  /**
+   * Return retained executions independently from the lightweight order-book
+   * snapshot.  Snapshot payloads deliberately carry only a small recent tail
+   * so depth/health requests stay cheap; indicator calculations must use the
+   * complete retained tape or session profiles and historical Big Trades are
+   * silently corrupted.
+   */
+  trades(exchange, symbol, { fromMs = 0, toMs = Number.POSITIVE_INFINITY, limit = null } = {}) {
+    const instrument = this.instruments.get(instrumentKey(exchange, symbol));
+    if (!instrument) return [];
+    const lower = Number.isFinite(Number(fromMs)) ? Number(fromMs) : 0;
+    const upper = Number.isFinite(Number(toMs)) ? Number(toMs) : Number.POSITIVE_INFINITY;
+    const filtered = instrument.trades.filter(
+      (trade) => trade.timestampMs >= lower && trade.timestampMs <= upper,
+    );
+    const requestedLimit = Number(limit);
+    if (!Number.isFinite(requestedLimit) || requestedLimit <= 0) return filtered;
+    return filtered.slice(-Math.floor(requestedLimit));
+  }
+
   snapshot(exchange, symbol, depth = 100) {
     const instrument = this.instruments.get(instrumentKey(exchange, symbol));
     if (!instrument) return null;

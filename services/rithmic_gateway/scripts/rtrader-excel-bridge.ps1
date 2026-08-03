@@ -270,11 +270,14 @@ $endpoint = "$($GatewayUrl.TrimEnd('/'))/v1/bridge/rtrader/snapshot"
 $tradeEndpoint = "$($GatewayUrl.TrimEnd('/'))/v1/bridge/rtrader/trades"
 $sequence = 0L
 $lastConnectionNotice = ""
+$depthSheetBinding = $null
 $tradeSheetBinding = $null
 $lastTradeSheetScanAt = [DateTimeOffset]::MinValue
 $seenTradeIds = [Collections.Generic.HashSet[string]]::new()
 $seenTradeOrder = [Collections.Generic.Queue[string]]::new()
 $tradeForwardLive = $false
+$lastProcessedTradeRow = 1
+$maxInitialTradeRows = 250000
 
 Write-Output "RTrader Pro workbook bridge started for $Exchange`:$ContractSymbol."
 Write-Output "Source: $WorkbookName / $SheetName. Poll interval: ${PollIntervalMs}ms."
@@ -282,29 +285,35 @@ Write-Output "This bridge is read-only and never opens an order-entry sheet."
 
 while ($true) {
   try {
-    $excelApplications = @(Get-ExcelApplications)
-    if ($excelApplications.Count -eq 0) {
-      if ($lastConnectionNotice -ne "excel") {
-        Write-Warning "Waiting for Microsoft Excel and the RTrader Pro streaming workbook."
-        $lastConnectionNotice = "excel"
+    $excelApplications = @()
+    if (-not $depthSheetBinding) {
+      $excelApplications = @(Get-ExcelApplications)
+      if ($excelApplications.Count -eq 0) {
+        if ($lastConnectionNotice -ne "excel") {
+          Write-Warning "Waiting for Microsoft Excel and the RTrader Pro streaming workbook."
+          $lastConnectionNotice = "excel"
+        }
+        Start-Sleep -Milliseconds 1000
+        continue
       }
-      Start-Sleep -Milliseconds 1000
-      continue
-    }
-    $depthBinding = Find-StreamingSheetAcrossApplications -Applications $excelApplications `
-      -RequestedWorkbook $WorkbookName `
-      -RequestedSheet $SheetName
-    if (-not $depthBinding) {
-      if ($lastConnectionNotice -ne "sheet") {
-        Write-Warning "Waiting for workbook '$WorkbookName' and sheet '$SheetName'."
-        $lastConnectionNotice = "sheet"
+      $depthSheetBinding = Find-StreamingSheetAcrossApplications -Applications $excelApplications `
+        -RequestedWorkbook $WorkbookName `
+        -RequestedSheet $SheetName
+      if (-not $depthSheetBinding) {
+        if ($lastConnectionNotice -ne "sheet") {
+          Write-Warning "Waiting for workbook '$WorkbookName' and sheet '$SheetName'."
+          $lastConnectionNotice = "sheet"
+        }
+        Start-Sleep -Milliseconds 1000
+        continue
       }
-      Start-Sleep -Milliseconds 1000
-      continue
     }
-    $sheet = $depthBinding.Sheet
+    $sheet = $depthSheetBinding.Sheet
 
-    $lastRow = [Math]::Max(2, [int]$sheet.UsedRange.Rows.Count)
+    # RTrader formats thousands of unused worksheet rows.  Bound the COM read
+    # to the first 1,000 actual ladder rows; that still represents 250 NQ
+    # points across a quarter-point ladder and is far deeper than the UI view.
+    $lastRow = [Math]::Min(1000, [Math]::Max(2, [int]$sheet.UsedRange.Rows.Count))
     $values = $sheet.Range("I1:R$lastRow").Value2
     $bids = [Collections.Generic.List[object]]::new()
     $asks = [Collections.Generic.List[object]]::new()
@@ -361,6 +370,9 @@ while ($true) {
 
     if (-not $tradeSheetBinding -and ([DateTimeOffset]::UtcNow - $lastTradeSheetScanAt).TotalSeconds -ge 5) {
       $lastTradeSheetScanAt = [DateTimeOffset]::UtcNow
+      if ($excelApplications.Count -eq 0) {
+        $excelApplications = @(Get-ExcelApplications)
+      }
       $tradeSheetBinding = Find-TradeStreamingSheetAcrossApplications -Applications $excelApplications
       if ($tradeSheetBinding) {
         Write-Output "Explicit RTrader trade tape found: $($tradeSheetBinding.Workbook) / $($tradeSheetBinding.Worksheet)."
@@ -370,6 +382,28 @@ while ($true) {
       try {
         $tradeSheet = $tradeSheetBinding.Sheet
         $tradeLastRow = [Math]::Max(2, [int]$tradeSheet.UsedRange.Rows.Count)
+        if ($tradeLastRow -lt $lastProcessedTradeRow) {
+          # RTrader cleared or rolled the presentation tape for a new session.
+          $lastProcessedTradeRow = 1
+          $seenTradeIds.Clear()
+          $seenTradeOrder.Clear()
+        }
+        $tradeStartRow = if ($lastProcessedTradeRow -le 1) {
+          [Math]::Max(2, $tradeLastRow - $maxInitialTradeRows + 1)
+        } else {
+          [Math]::Max(2, $lastProcessedTradeRow + 1)
+        }
+        if ($tradeStartRow -gt $tradeLastRow) {
+          # No new execution rows.  Do not marshal the complete tape through
+          # Excel COM again; doing so was stretching a 250 ms poll into tens
+          # of seconds once the session tape became large.
+          if ($lastConnectionNotice -ne "live") {
+            Write-Output "Live full-depth workbook snapshots are reaching the local gateway."
+            $lastConnectionNotice = "live"
+          }
+          Start-Sleep -Milliseconds $PollIntervalMs
+          continue
+        }
         $tradeColumnCount = [Math]::Max(
           $tradeSheetBinding.TimestampColumn,
           [Math]::Max(
@@ -381,7 +415,7 @@ while ($true) {
         for ($readAttempt = 1; $readAttempt -le 3; $readAttempt += 1) {
           try {
             $tradeValues = $tradeSheet.Range(
-              $tradeSheet.Cells.Item(1, 1),
+              $tradeSheet.Cells.Item($tradeStartRow, 1),
               $tradeSheet.Cells.Item($tradeLastRow, $tradeColumnCount)
             ).Value2
             if ($tradeValues -is [System.Array]) { break }
@@ -396,18 +430,20 @@ while ($true) {
         }
         $occurrences = @{}
         $newTrades = [Collections.Generic.List[object]]::new()
-        for ($tradeRow = $tradeLastRow; $tradeRow -ge 2; $tradeRow -= 1) {
-          $tradePrice = Convert-ToNumber $tradeValues[$tradeRow, $tradeSheetBinding.PriceColumn]
-          $tradeSize = Convert-ToNumber $tradeValues[$tradeRow, $tradeSheetBinding.SizeColumn]
-          $rawSide = ([string]$tradeValues[$tradeRow, $tradeSheetBinding.SideColumn]).Trim().ToUpperInvariant()
+        $tradeReadRowCount = $tradeLastRow - $tradeStartRow + 1
+        for ($localTradeRow = $tradeReadRowCount; $localTradeRow -ge 1; $localTradeRow -= 1) {
+          $absoluteTradeRow = $tradeStartRow + $localTradeRow - 1
+          $tradePrice = Convert-ToNumber $tradeValues[$localTradeRow, $tradeSheetBinding.PriceColumn]
+          $tradeSize = Convert-ToNumber $tradeValues[$localTradeRow, $tradeSheetBinding.SizeColumn]
+          $rawSide = ([string]$tradeValues[$localTradeRow, $tradeSheetBinding.SideColumn]).Trim().ToUpperInvariant()
           if ($tradePrice -le 0 -or $tradeSize -le 0 -or $rawSide -notin @("B", "BUY", "S", "SELL")) { continue }
-          $rawTimestamp = [string]$tradeValues[$tradeRow, $tradeSheetBinding.TimestampColumn]
-          $timestampMs = Convert-RTraderTimestampMs $tradeValues[$tradeRow, $tradeSheetBinding.TimestampColumn]
+          $rawTimestamp = [string]$tradeValues[$localTradeRow, $tradeSheetBinding.TimestampColumn]
+          $timestampMs = Convert-RTraderTimestampMs $tradeValues[$localTradeRow, $tradeSheetBinding.TimestampColumn]
           if ($timestampMs -le 0) { continue }
           $baseId = "$rawTimestamp|$tradePrice|$tradeSize|$rawSide"
           $occurrence = 1 + [int]($occurrences[$baseId])
           $occurrences[$baseId] = $occurrence
-          $sourceTradeId = "$baseId|$occurrence"
+          $sourceTradeId = "$baseId|$absoluteTradeRow|$occurrence"
           if (-not $seenTradeIds.Add($sourceTradeId)) { continue }
           $seenTradeOrder.Enqueue($sourceTradeId)
           $newTrades.Add(@{
@@ -439,8 +475,9 @@ while ($true) {
             $tradeForwardLive = $true
           }
         }
+        $lastProcessedTradeRow = $tradeLastRow
       } catch {
-        Write-Warning "Trade tape bridge retry: $($_.Exception.Message)"
+        Write-Warning "Trade tape bridge retry at line $($_.InvocationInfo.ScriptLineNumber): $($_.Exception.Message)"
         if ($_.Exception.Message -notmatch "RPC_E_CALL_REJECTED|Cannot index into a null array") {
           $tradeSheetBinding = $null
         }
@@ -452,9 +489,10 @@ while ($true) {
     }
   } catch {
     if ($lastConnectionNotice -ne "error:$($_.Exception.Message)") {
-      Write-Warning "Bridge retry: $($_.Exception.Message)"
+      Write-Warning "Bridge retry at line $($_.InvocationInfo.ScriptLineNumber): $($_.Exception.Message)"
       $lastConnectionNotice = "error:$($_.Exception.Message)"
     }
+    $depthSheetBinding = $null
     Start-Sleep -Milliseconds 1000
     continue
   }
