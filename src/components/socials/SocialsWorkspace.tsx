@@ -31,6 +31,7 @@ import {
   MessageCircle,
   MoreHorizontal,
   Network,
+  Pencil,
   Plus,
   Pin,
   Radar,
@@ -619,6 +620,10 @@ export default function SocialsWorkspace({
   const [commentKinds, setCommentKinds] = useState<Record<string, SocialCommentPayload["kind"]>>({});
   const [commentPanelPostId, setCommentPanelPostId] = useState<string | null>(null);
   const [commentReplyToId, setCommentReplyToId] = useState<string | null>(null);
+  const [openCommentMenuId, setOpenCommentMenuId] = useState<string | null>(null);
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
+  const [editingCommentDraft, setEditingCommentDraft] = useState("");
+  const [commentEditSaving, setCommentEditSaving] = useState(false);
   const [collapsedCommentThreads, setCollapsedCommentThreads] = useState<Set<string>>(() => new Set());
   const [consensusDraft, setConsensusDraft] = useState({
     instrument: "NQ",
@@ -716,6 +721,28 @@ export default function SocialsWorkspace({
       return false;
     }
   }, [upsertObject]);
+
+  useEffect(() => {
+    if (!openCommentMenuId) return;
+    const closeCommentMenu = (event: PointerEvent | KeyboardEvent) => {
+      if (event instanceof KeyboardEvent) {
+        if (event.key === "Escape") setOpenCommentMenuId(null);
+        return;
+      }
+      const target = event.target;
+      if (target instanceof Element) {
+        const menu = target.closest("[data-comment-menu]");
+        if (menu?.getAttribute("data-comment-menu") === openCommentMenuId) return;
+      }
+      setOpenCommentMenuId(null);
+    };
+    window.addEventListener("pointerdown", closeCommentMenu);
+    window.addEventListener("keydown", closeCommentMenu);
+    return () => {
+      window.removeEventListener("pointerdown", closeCommentMenu);
+      window.removeEventListener("keydown", closeCommentMenu);
+    };
+  }, [openCommentMenuId]);
 
   useEffect(() => {
     let active = true;
@@ -2615,6 +2642,11 @@ export default function SocialsWorkspace({
   };
 
   const deletePostComment = async (post: SocialObject, comment: SocialObject) => {
+    setOpenCommentMenuId(null);
+    if (editingCommentId === comment.id) {
+      setEditingCommentId(null);
+      setEditingCommentDraft("");
+    }
     const previous = state.objects;
     setState((current) => ({
       ...current,
@@ -2654,6 +2686,127 @@ export default function SocialsWorkspace({
       updatedAt: new Date().toISOString(),
     });
     setNotice(typedPayload<SocialPostPayload>(saved)?.pinnedCommentId ? "Comment pinned to the top." : "Comment unpinned.");
+  };
+
+  const beginEditingComment = (comment: SocialObject) => {
+    const payload = typedPayload<SocialCommentPayload>(comment);
+    if (comment.userId !== resolvedAccountKey || !payload) return;
+    setOpenCommentMenuId(null);
+    setEditingCommentId(comment.id);
+    setEditingCommentDraft(payload.body);
+  };
+
+  const cancelEditingComment = () => {
+    if (commentEditSaving) return;
+    setEditingCommentId(null);
+    setEditingCommentDraft("");
+  };
+
+  const saveEditedComment = async (comment: SocialObject) => {
+    const originalPayload = typedPayload<SocialCommentPayload>(comment);
+    const body = editingCommentDraft.trim();
+    if (comment.userId !== resolvedAccountKey || !originalPayload) return;
+    if (!body) {
+      setNotice("A comment cannot be empty.");
+      return;
+    }
+    const objectId = objectKey(comment);
+    const optimisticComment: SocialObject = {
+      ...comment,
+      payload: { ...originalPayload, body },
+      updatedAt: new Date().toISOString(),
+    };
+    setCommentEditSaving(true);
+    setState((current) => ({
+      ...current,
+      objects: current.objects.map((candidate) => objectKey(candidate) === objectId ? optimisticComment : candidate),
+    }));
+    try {
+      const response = await fetch("/api/socials", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          object: {
+            id: optimisticComment.id,
+            objectType: optimisticComment.objectType,
+            scope: optimisticComment.scope,
+            deskId: optimisticComment.deskId,
+            parentId: optimisticComment.parentId,
+            authorLabel: optimisticComment.authorLabel,
+            payload: optimisticComment.payload,
+          },
+        }),
+      });
+      const result = await response.json() as { object?: SocialObject; error?: string };
+      if (!response.ok || !result.object) throw new Error(result.error || "That comment could not be updated.");
+      const saved = { ...result.object, cloudSaved: true };
+      setState((current) => ({
+        ...current,
+        cloud: true,
+        objects: current.objects.map((candidate) => objectKey(candidate) === objectId ? saved : candidate),
+      }));
+      setEditingCommentId(null);
+      setEditingCommentDraft("");
+      setNotice("Comment updated.");
+    } catch (reason) {
+      setState((current) => ({
+        ...current,
+        objects: current.objects.map((candidate) => objectKey(candidate) === objectId ? comment : candidate),
+      }));
+      setNotice(reason instanceof Error ? reason.message : "That comment could not be updated.");
+    } finally {
+      setCommentEditSaving(false);
+    }
+  };
+
+  const renderCommentBody = (comment: SocialObject, className: string) => {
+    const payload = typedPayload<SocialCommentPayload>(comment);
+    if (editingCommentId !== comment.id) {
+      return <p className={className}>{payload?.body}</p>;
+    }
+    return (
+      <div className="mt-2 space-y-2">
+        <textarea
+          autoFocus
+          value={editingCommentDraft}
+          onChange={(event) => setEditingCommentDraft(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") cancelEditingComment();
+            if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) void saveEditedComment(comment);
+          }}
+          rows={3}
+          className="min-h-[68px] w-full resize-y rounded-xl border border-primary/35 bg-background px-3 py-2 text-[8px] leading-4 text-foreground outline-none focus:border-primary"
+        />
+        <div className="flex justify-end gap-2">
+          <button type="button" disabled={commentEditSaving} onClick={cancelEditingComment} className="h-7 rounded-lg px-3 text-[7px] font-semibold text-muted hover:bg-surface hover:text-foreground disabled:opacity-50">Cancel</button>
+          <button type="button" disabled={commentEditSaving || !editingCommentDraft.trim()} onClick={() => void saveEditedComment(comment)} className="h-7 rounded-lg bg-primary px-3 text-[7px] font-semibold text-background hover:brightness-110 disabled:opacity-50">{commentEditSaving ? "Saving..." : "Save edit"}</button>
+        </div>
+      </div>
+    );
+  };
+
+  const renderCommentMenu = (post: SocialObject, comment: SocialObject) => {
+    const ownsComment = comment.userId === resolvedAccountKey;
+    const ownsPost = post.userId === resolvedAccountKey;
+    if (!ownsComment && !ownsPost) return null;
+    return (
+      <div className="relative shrink-0" data-comment-menu={comment.id}>
+        <button
+          type="button"
+          onClick={() => setOpenCommentMenuId((current) => current === comment.id ? null : comment.id)}
+          className="flex h-6 w-6 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground"
+          aria-label="Comment options"
+        >
+          <MoreHorizontal className="h-3.5 w-3.5" />
+        </button>
+        {openCommentMenuId === comment.id ? (
+          <div className="absolute right-0 top-7 z-50 w-36 overflow-hidden rounded-xl border border-border bg-panel p-1 shadow-2xl shadow-black/60">
+            {ownsComment ? <button type="button" onClick={() => beginEditingComment(comment)} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-[8px] text-muted hover:bg-surface hover:text-foreground"><Pencil className="h-3.5 w-3.5" />Edit comment</button> : null}
+            <button type="button" onClick={() => void deletePostComment(post, comment)} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-[8px] text-danger hover:bg-danger/10"><Trash2 className="h-3.5 w-3.5" />{ownsComment ? "Delete comment" : "Remove comment"}</button>
+          </div>
+        ) : null}
+      </div>
+    );
   };
 
   const toggleGameplanSave = async (record: SocialObject) => {
@@ -3162,7 +3315,7 @@ export default function SocialsWorkspace({
             {objectComments.slice(-4).map((comment) => {
               const commentPayload = typedPayload<SocialCommentPayload>(comment);
               const traderNote = commentPayload?.kind === "TRADER NOTE" && comment.userId === object.userId;
-              return <div key={objectKey(comment)} className="flex gap-2"><Avatar label={comment.authorLabel} avatarUrl={profileByUserId.get(comment.userId)?.avatarUrl} size="sm" /><div className={`min-w-0 flex-1 rounded-xl rounded-bl-sm border px-3 py-2 ${traderNote ? "border-primary/25 bg-primary/[0.07]" : "border-border bg-surface/35"}`}><div className="flex items-center gap-2 text-[7px]"><span className="font-semibold text-foreground">{comment.authorLabel}</span><span className="rounded bg-primary/10 px-1.5 py-0.5 text-primary">{commentPayload?.kind}</span><span className="ml-auto text-muted">{formatDate(comment.createdAt, true)}</span></div><p className={`mt-1 text-[8px] leading-4 ${traderNote ? "text-foreground" : "text-muted"}`}>{commentPayload?.body}</p></div></div>;
+              return <div key={objectKey(comment)} className="flex gap-2"><Avatar label={comment.authorLabel} avatarUrl={profileByUserId.get(comment.userId)?.avatarUrl} size="sm" /><div className={`min-w-0 flex-1 rounded-xl rounded-bl-sm border px-3 py-2 ${traderNote ? "border-primary/25 bg-primary/[0.07]" : "border-border bg-surface/35"}`}><div className="flex items-center gap-2 text-[7px]"><span className="font-semibold text-foreground">{comment.authorLabel}</span><span className="rounded bg-primary/10 px-1.5 py-0.5 text-primary">{commentPayload?.kind}</span><span className="ml-auto text-muted">{formatDate(comment.createdAt, true)}</span>{renderCommentMenu(object, comment)}</div>{renderCommentBody(comment, `mt-1 whitespace-pre-wrap break-words text-[8px] leading-4 ${traderNote ? "text-foreground" : "text-muted"}`)}</div></div>;
             })}
           </div>
         ) : null}
@@ -3278,7 +3431,7 @@ export default function SocialsWorkspace({
           <div className="space-y-2 border-t border-border px-4 py-3">
             {objectComments.slice(-3).map((comment) => {
               const payloadComment = typedPayload<SocialCommentPayload>(comment);
-              return <div key={objectKey(comment)} className="flex gap-2"><Avatar label={comment.authorLabel} avatarUrl={profileByUserId.get(comment.userId)?.avatarUrl} size="sm" /><div className="min-w-0 flex-1 rounded-xl border border-border bg-surface/35 px-3 py-2"><div className="flex items-center gap-2 text-[7px]"><span className="font-semibold">{comment.authorLabel}</span><span className="rounded bg-primary/10 px-1.5 py-0.5 text-primary">{payloadComment?.kind}</span></div><p className="mt-1 text-[8px] leading-4 text-muted">{payloadComment?.body}</p></div></div>;
+              return <div key={objectKey(comment)} className="flex gap-2"><Avatar label={comment.authorLabel} avatarUrl={profileByUserId.get(comment.userId)?.avatarUrl} size="sm" /><div className="min-w-0 flex-1 rounded-xl border border-border bg-surface/35 px-3 py-2"><div className="flex items-center gap-2 text-[7px]"><span className="font-semibold">{comment.authorLabel}</span><span className="rounded bg-primary/10 px-1.5 py-0.5 text-primary">{payloadComment?.kind}</span><span className="ml-auto text-muted">{formatDate(comment.createdAt, true)}</span>{renderCommentMenu(object, comment)}</div>{renderCommentBody(comment, "mt-1 whitespace-pre-wrap break-words text-[8px] leading-4 text-muted")}</div></div>;
             })}
           </div>
         ) : null}
@@ -4305,8 +4458,8 @@ export default function SocialsWorkspace({
                 const ownsPost = commentPanelPost.userId === resolvedAccountKey;
                 const pinned = typedPayload<SocialPostPayload>(commentPanelPost)?.pinnedCommentId === comment.id;
                 return <div key={objectKey(comment)} className={`mb-3 rounded-2xl border ${pinned ? "border-primary/35 bg-primary/[0.065]" : "border-border bg-background/30"}`}>
-                  <div className="flex gap-2.5 p-3"><Avatar label={comment.authorLabel} avatarUrl={profileByUserId.get(comment.userId)?.avatarUrl} size="sm" /><div className="min-w-0 flex-1"><div className="flex items-center gap-2"><span className={`text-[8px] font-semibold ${ownComment ? "text-primary" : "text-foreground"}`}>{comment.authorLabel}</span>{pinned ? <span className="flex items-center gap-1 rounded-md bg-primary/10 px-1.5 py-0.5 text-[6px] font-semibold text-primary"><Pin className="h-2.5 w-2.5 fill-current" />PINNED</span> : null}<span className="ml-auto text-[6.5px] text-muted">{formatDate(comment.createdAt, true)}</span></div><p className={`mt-1.5 whitespace-pre-wrap break-words text-[9px] leading-4 ${ownComment ? "text-foreground" : "text-muted"}`}>{payload?.body}</p><div className="mt-2 flex items-center gap-1"><button type="button" onClick={() => setCommentReplyToId(comment.id)} className="flex h-6 items-center gap-1 rounded-lg px-2 text-[7px] font-semibold text-muted hover:bg-surface hover:text-primary"><CornerUpLeft className="h-3 w-3" />Reply</button>{ownsPost ? <button type="button" onClick={() => void togglePinnedComment(commentPanelPost, comment.id)} className={`flex h-6 items-center gap-1 rounded-lg px-2 text-[7px] font-semibold ${pinned ? "bg-primary/10 text-primary" : "text-muted hover:bg-surface hover:text-primary"}`}><Pin className="h-3 w-3" />{pinned ? "Unpin" : "Pin"}</button> : null}{(ownComment || ownsPost) ? <button type="button" onClick={() => void deletePostComment(commentPanelPost, comment)} className="flex h-6 items-center gap-1 rounded-lg px-2 text-[7px] font-semibold text-muted hover:bg-danger/10 hover:text-danger"><Trash2 className="h-3 w-3" />Delete</button> : null}</div></div></div>
-                  {replies.length ? <div className="border-t border-border/70 px-3 py-2"><button type="button" onClick={() => setCollapsedCommentThreads((current) => { const next = new Set(current); if (next.has(comment.id)) next.delete(comment.id); else next.add(comment.id); return next; })} className="flex h-7 items-center gap-1.5 text-[7px] font-semibold text-muted hover:text-primary">{collapsed ? <ChevronDown className="h-3 w-3" /> : <ChevronUp className="h-3 w-3" />}{collapsed ? `Show ${replies.length} repl${replies.length === 1 ? "y" : "ies"}` : `Hide ${replies.length} repl${replies.length === 1 ? "y" : "ies"}`}</button>{!collapsed ? <div className="mt-1 space-y-2 border-l border-primary/15 pl-3">{replies.map((reply) => { const replyPayload = typedPayload<SocialCommentPayload>(reply); const ownReply = reply.userId === resolvedAccountKey; return <div key={objectKey(reply)} className={`rounded-xl border px-3 py-2 ${ownReply ? "border-primary/25 bg-primary/[0.055]" : "border-border bg-surface/35"}`}><div className="flex items-center gap-2"><Avatar label={reply.authorLabel} avatarUrl={profileByUserId.get(reply.userId)?.avatarUrl} size="sm" /><span className={`text-[7px] font-semibold ${ownReply ? "text-primary" : "text-foreground"}`}>{reply.authorLabel}</span><span className="ml-auto text-[6px] text-muted">{formatDate(reply.createdAt, true)}</span></div><p className="mt-1.5 whitespace-pre-wrap break-words text-[8px] leading-4 text-muted">{replyPayload?.body}</p><div className="mt-1.5 flex gap-1"><button type="button" onClick={() => setCommentReplyToId(comment.id)} className="flex h-6 items-center gap-1 rounded-lg px-2 text-[7px] text-muted hover:bg-surface hover:text-primary"><CornerUpLeft className="h-3 w-3" />Reply</button>{(ownReply || ownsPost) ? <button type="button" onClick={() => void deletePostComment(commentPanelPost, reply)} className="flex h-6 items-center gap-1 rounded-lg px-2 text-[7px] text-muted hover:bg-danger/10 hover:text-danger"><Trash2 className="h-3 w-3" />Delete</button> : null}</div></div>; })}</div> : null}</div> : null}
+                  <div className="flex gap-2.5 p-3"><Avatar label={comment.authorLabel} avatarUrl={profileByUserId.get(comment.userId)?.avatarUrl} size="sm" /><div className="min-w-0 flex-1"><div className="flex items-center gap-2"><span className={`text-[8px] font-semibold ${ownComment ? "text-primary" : "text-foreground"}`}>{comment.authorLabel}</span>{pinned ? <span className="flex items-center gap-1 rounded-md bg-primary/10 px-1.5 py-0.5 text-[6px] font-semibold text-primary"><Pin className="h-2.5 w-2.5 fill-current" />PINNED</span> : null}<span className="ml-auto text-[6.5px] text-muted">{formatDate(comment.createdAt, true)}</span>{renderCommentMenu(commentPanelPost, comment)}</div>{renderCommentBody(comment, `mt-1.5 whitespace-pre-wrap break-words text-[9px] leading-4 ${ownComment ? "text-foreground" : "text-muted"}`)}<div className="mt-2 flex items-center gap-1"><button type="button" onClick={() => setCommentReplyToId(comment.id)} className="flex h-6 items-center gap-1 rounded-lg px-2 text-[7px] font-semibold text-muted hover:bg-surface hover:text-primary"><CornerUpLeft className="h-3 w-3" />Reply</button>{ownsPost ? <button type="button" onClick={() => void togglePinnedComment(commentPanelPost, comment.id)} className={`flex h-6 items-center gap-1 rounded-lg px-2 text-[7px] font-semibold ${pinned ? "bg-primary/10 text-primary" : "text-muted hover:bg-surface hover:text-primary"}`}><Pin className="h-3 w-3" />{pinned ? "Unpin" : "Pin"}</button> : null}</div></div></div>
+                  {replies.length ? <div className="border-t border-border/70 px-3 py-2"><button type="button" onClick={() => setCollapsedCommentThreads((current) => { const next = new Set(current); if (next.has(comment.id)) next.delete(comment.id); else next.add(comment.id); return next; })} className="flex h-7 items-center gap-1.5 text-[7px] font-semibold text-muted hover:text-primary">{collapsed ? <ChevronDown className="h-3 w-3" /> : <ChevronUp className="h-3 w-3" />}{collapsed ? `Show ${replies.length} repl${replies.length === 1 ? "y" : "ies"}` : `Hide ${replies.length} repl${replies.length === 1 ? "y" : "ies"}`}</button>{!collapsed ? <div className="mt-1 space-y-2 border-l border-primary/15 pl-3">{replies.map((reply) => { const ownReply = reply.userId === resolvedAccountKey; return <div key={objectKey(reply)} className={`rounded-xl border px-3 py-2 ${ownReply ? "border-primary/25 bg-primary/[0.055]" : "border-border bg-surface/35"}`}><div className="flex items-center gap-2"><Avatar label={reply.authorLabel} avatarUrl={profileByUserId.get(reply.userId)?.avatarUrl} size="sm" /><span className={`text-[7px] font-semibold ${ownReply ? "text-primary" : "text-foreground"}`}>{reply.authorLabel}</span><span className="ml-auto text-[6px] text-muted">{formatDate(reply.createdAt, true)}</span>{renderCommentMenu(commentPanelPost, reply)}</div>{renderCommentBody(reply, "mt-1.5 whitespace-pre-wrap break-words text-[8px] leading-4 text-muted")}<div className="mt-1.5 flex gap-1"><button type="button" onClick={() => setCommentReplyToId(comment.id)} className="flex h-6 items-center gap-1 rounded-lg px-2 text-[7px] text-muted hover:bg-surface hover:text-primary"><CornerUpLeft className="h-3 w-3" />Reply</button></div></div>; })}</div> : null}</div> : null}
                 </div>;
               })}
               {!commentPanelComments.length ? <div className="flex min-h-[320px] flex-col items-center justify-center text-center"><MessageCircle className="h-7 w-7 text-muted" /><h3 className="mt-3 text-[10px] font-semibold text-foreground">Start the conversation</h3><p className="mt-1 max-w-xs text-[8px] leading-4 text-muted">Ask about the execution, leave feedback, or add context to the trade.</p></div> : null}

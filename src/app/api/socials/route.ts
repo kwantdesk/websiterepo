@@ -456,6 +456,10 @@ export async function POST(request: NextRequest) {
       replyToCommentId,
     };
     id = /^comment:[a-zA-Z0-9_-]{8,}$/.test(id) ? id : `comment:${crypto.randomUUID()}`;
+    // Comments use the same authenticated compound key for creation and edits.
+    // A user can therefore update only their own comment; another user's row has
+    // a different user_id and cannot be overwritten by reusing its public id.
+    useUpsert = true;
   } else if (objectType === "follow") {
     const targetUserId = cleanIdentifier(payload.targetUserId, 80);
     if (!targetUserId || targetUserId === actor.userId) {
