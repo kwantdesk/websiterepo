@@ -197,7 +197,9 @@ export default function HistoricalGexPanel({
               <div className="rounded-xl border border-border bg-surface/35 p-3">
                 <div className="text-[7px] font-semibold uppercase tracking-[0.14em] text-muted">Gamma environment</div>
                 <div className={`mt-1 text-[11px] font-semibold ${snapshot?.environment?.gammaRegime === "POSITIVE" ? "text-primary" : snapshot?.environment?.gammaRegime === "NEGATIVE" ? "text-danger" : "text-foreground"}`}>{snapshot?.environment?.gammaStateLabel ?? "—"}</div>
-                <div className="mt-1 font-mono text-[8px] text-muted">strength {(Number.isFinite(Number(snapshot?.environment?.regimeStrength)) ? Number(snapshot?.environment?.regimeStrength) : 0).toLocaleString("en-US", { style: "percent", maximumFractionDigits: 1 })}</div>
+                <div className="mt-1 font-mono text-[8px] text-muted">
+                  {source?.symbol ?? "source"} · {snapshot?.sessionDate ?? sessionDate} · strength {(Number.isFinite(Number(snapshot?.environment?.regimeStrength)) ? Number(snapshot?.environment?.regimeStrength) : 0).toLocaleString("en-US", { style: "percent", maximumFractionDigits: 1 })}
+                </div>
               </div>
               <div className="rounded-xl border border-border bg-surface/35 p-3">
                 <div className="text-[7px] font-semibold uppercase tracking-[0.14em] text-muted">Conversion</div>

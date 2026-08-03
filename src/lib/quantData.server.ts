@@ -3,6 +3,7 @@ import { unstable_cache } from "next/cache";
 
 import {
   OPTIONS_FLOW_TICKERS,
+  canonicalOptionsSourceForRoot,
   classifyGammaEnvironment,
   isOptionsFuturesRatioSane,
   type ExposureExpiry,
@@ -1821,8 +1822,14 @@ async function buildOptionsFlowPayload(
   return {
     symbol,
     source: "KwantData",
-    asOf: new Date().toISOString(),
+    // Outside New York options hours this payload is the last completed
+    // options book, not a new live snapshot. Keep the source timestamp pinned
+    // to that close so an EOD regime can never look freshly updated in Globex.
+    asOf: session.marketOpen
+      ? new Date().toISOString()
+      : newYorkCashCloseIso(session.sessionDate),
     refreshAfterMs: session.marketOpen ? 5_000 : 60_000,
+    snapshotMode: session.marketOpen ? "LIVE" : "NEW_YORK_EOD",
     session,
     stockPrice,
     stockPriceAsOf,
@@ -3014,7 +3021,7 @@ export async function getCashCalibratedChartGammaLevels(
   requestedSessionDate?: string,
   futuresPriceOverride?: number,
 ): Promise<ChartGammaLevelsPayload> {
-  const defaultSource = root === "NQ" ? "QQQ" : "SPY";
+  const defaultSource = canonicalOptionsSourceForRoot(root);
   const normalizedSource = (sourceInput || defaultSource).trim().toUpperCase();
   const compatibleSources = root === "NQ" ? new Set(["NDX", "QQQ"]) : new Set(["SPX", "SPY"]);
   if (!compatibleSources.has(normalizedSource)) {

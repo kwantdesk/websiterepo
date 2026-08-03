@@ -16,6 +16,19 @@ export const OPTIONS_FLOW_TICKERS = [
 export type OptionsFlowTicker = (typeof OPTIONS_FLOW_TICKERS)[number];
 
 export type OptionsFuturesRoot = "ES" | "NQ" | "RTY";
+export type CanonicalOptionsSourceSymbol = "QQQ" | "SPY";
+
+/**
+ * The product must not compare or label different options books as one Gamma
+ * environment. NQ surfaces use QQQ and ES surfaces use SPY everywhere; NDX and
+ * SPX remain selectable research instruments on the Gamma page, but they are
+ * not the canonical futures-facing regime source.
+ */
+export function canonicalOptionsSourceForRoot(
+  root: Extract<OptionsFuturesRoot, "NQ" | "ES">,
+): CanonicalOptionsSourceSymbol {
+  return root === "NQ" ? "QQQ" : "SPY";
+}
 // RATIO/BASIS convert cash-index gamma onto the futures chart. NATIVE computes gamma
 // directly from the futures options chain (Databento) in native futures price terms.
 export type OptionsFuturesLevelTranslation = "BASIS" | "RATIO" | "NATIVE";
@@ -414,6 +427,7 @@ export type OptionsFlowPayload = {
   source: "KwantData";
   asOf: string;
   refreshAfterMs: number;
+  snapshotMode: "LIVE" | "NEW_YORK_EOD";
   session: {
     marketOpen: boolean;
     sessionDate: string;

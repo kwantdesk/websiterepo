@@ -253,6 +253,11 @@ export default function OptionsTapePanel({
                 ? "New York is open. The first validated live positioning frame will appear here automatically."
                 : "Options Tape stays clear outside New York options hours and activates automatically at 09:30 New York time."}
             </p>
+            {!clockOpen && context?.options ? (
+              <div className="mt-3 rounded-lg border border-border bg-surface/35 px-3 py-2 text-[8px] leading-4 text-muted">
+                Latest reference: {context.sourceSymbol} · {context.options.sessionDate} New York EOD. It remains available on Gamma and Live GEX, but is deliberately not presented here as live tape.
+              </div>
+            ) : null}
             <div className="mt-4 inline-flex items-center gap-2 rounded-lg border border-border bg-surface/45 px-3 py-2 font-mono text-[8px] text-muted">
               <span className={`h-1.5 w-1.5 rounded-full ${clockOpen ? "animate-pulse bg-primary" : "bg-muted/60"}`} />
               New York {currentNewYorkClock?.label ?? "--:--:--"}
@@ -277,7 +282,7 @@ export default function OptionsTapePanel({
               <div className="flex items-center gap-1.5">
                 <h3 className="truncate text-[13px] font-semibold text-foreground">Options Tape</h3>
                 <span className="rounded-full border border-primary/20 bg-primary/10 px-1.5 py-0.5 text-[8px] font-semibold uppercase tracking-[0.12em] text-primary">
-                  Positioning
+                  {context?.sourceSymbol ?? selectedRoot} · Live
                 </span>
               </div>
               <div className="mt-0.5 flex items-center gap-1 text-[9px] text-muted">
@@ -406,7 +411,7 @@ export default function OptionsTapePanel({
 
           <div className="mb-4 flex items-center gap-2 text-[8px] font-semibold uppercase tracking-[0.12em] text-muted/70">
             <span className="h-px flex-1 bg-border" />
-            {selectedRoot} options · updated {relativeAge(options?.asOf ?? null, now)}
+            {selectedRoot} options · {context?.sourceSymbol ?? "source pending"} · updated {relativeAge(options?.asOf ?? null, now)}
             <span className="h-px flex-1 bg-border" />
           </div>
 

@@ -1,4 +1,5 @@
 import type { GameplanRole } from "@/lib/gameplan";
+import type { CanonicalOptionsSourceSymbol } from "@/lib/optionsFlow";
 
 export type KwantBotMarketRoot = "NQ" | "ES";
 export type KwantBotFeedState = "connecting" | "live" | "reconnecting";
@@ -27,7 +28,7 @@ export type KwantBotLevel = {
 
 export type KwantBotMarketContext = {
   root: KwantBotMarketRoot;
-  sourceSymbol: "NDX" | "SPX";
+  sourceSymbol: CanonicalOptionsSourceSymbol;
   generatedAt: string;
   sessionDate: string;
   status: "LIVE" | "PARTIAL";
@@ -45,6 +46,7 @@ export type KwantBotMarketContext = {
   }>;
   options: {
     asOf: string;
+    snapshotMode: "LIVE" | "NEW_YORK_EOD";
     marketOpen: boolean;
     sessionDate: string;
     gammaRegime: "POSITIVE" | "NEGATIVE" | "NEUTRAL";

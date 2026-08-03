@@ -2,6 +2,7 @@ import "server-only";
 
 import { buildGameplanPayload } from "@/lib/gameplan";
 import type { KwantBotMarketContext, KwantBotMarketRoot } from "@/lib/kwantBotInterpreter";
+import { canonicalOptionsSourceForRoot } from "@/lib/optionsFlow";
 import {
   getConfiguredQuantDataApiKey,
   getOptionsFlowPayload,
@@ -26,7 +27,7 @@ async function buildContext(root: KwantBotMarketRoot): Promise<KwantBotMarketCon
   if (!getConfiguredQuantDataApiKey()) {
     throw new Error("The KwantBot options feed is not configured.");
   }
-  const source = root === "NQ" ? "NDX" : "SPX";
+  const source = canonicalOptionsSourceForRoot(root);
   const options = await getOptionsFlowPayload(source, "FUTURES");
   const gameplan = buildGameplanPayload(options, root, "newyork");
   const tradeSide = options.positioning.tradeSidePremium;
@@ -61,6 +62,7 @@ async function buildContext(root: KwantBotMarketRoot): Promise<KwantBotMarketCon
     })),
     options: {
       asOf: options.asOf,
+      snapshotMode: options.snapshotMode,
       marketOpen: options.session.marketOpen,
       sessionDate: options.session.sessionDate,
       gammaRegime: options.environment.gammaRegime,

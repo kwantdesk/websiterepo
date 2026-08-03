@@ -122,6 +122,20 @@ function formatClock(value: string | number) {
   return new Date(value).toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
 
+function formatNewYorkSnapshot(value: string | number) {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "unknown close";
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    weekday: "short",
+    month: "short",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZoneName: "short",
+  }).format(parsed);
+}
+
 function formatPulse(value: number) {
   return value < 1_000 ? `${Math.round(value)}ms` : `${Math.max(1, Math.round(value / 1_000))}s`;
 }
@@ -1029,6 +1043,16 @@ export default function GammaWorkspace() {
             className="min-h-0 flex-1 overflow-y-auto bg-background p-3 lg:p-4"
           >
             {error ? <div className="mb-3 flex items-center gap-2 rounded-xl border border-danger/20 bg-danger/10 px-3 py-2 text-[11px] text-danger"><Waves className="h-3.5 w-3.5" /> Refresh delayed: {error}. Showing the last good snapshot.</div> : null}
+            {!data.session.marketOpen ? (
+              <div className="mb-3 flex items-start gap-2 rounded-xl border border-amber-400/25 bg-amber-400/[0.07] px-3 py-2.5 text-[10px] leading-4 text-amber-100/85">
+                <Clock3 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-300" />
+                <span>
+                  <strong className="font-semibold text-amber-200">New York EOD snapshot</strong>
+                  {` · ${data.symbol} · ${data.session.sessionDate} · ${formatNewYorkSnapshot(data.asOf)}. `}
+                  Gamma environment, exposure and levels are frozen from the last completed options session. Futures price may tick in Globex, but this is not Monday live options positioning.
+                </span>
+              </div>
+            ) : null}
             {data.errors.length ? <div className="mb-3 rounded-xl border border-amber-400/20 bg-amber-400/[0.06] px-3 py-2 text-[10px] text-amber-200/80">Some KwantData panels are temporarily partial: {data.errors.join(" · ")}</div> : null}
 
             <>

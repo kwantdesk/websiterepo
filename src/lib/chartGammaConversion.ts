@@ -1,6 +1,10 @@
 import type { Candle } from "@/lib/backtester";
 import type { ChartGammaSourceSnapshot } from "@/lib/chartGammaLevels";
-import { isOptionsFuturesRatioSane, type OptionsFuturesRoot } from "@/lib/optionsFlow";
+import {
+  canonicalOptionsSourceForRoot,
+  isOptionsFuturesRatioSane,
+  type OptionsFuturesRoot,
+} from "@/lib/optionsFlow";
 
 export type GammaSourceSymbol = ChartGammaSourceSnapshot["symbol"];
 export type GammaChartInstrument = "NQ" | "MNQ" | "ES" | "MES";
@@ -90,7 +94,8 @@ export function cashFallbackGammaConversion(
   instrument: string,
 ): GammaConversionDefinition | null {
   if (!isGammaChartInstrument(instrument)) return null;
-  const source = instrument === "NQ" || instrument === "MNQ" ? "QQQ" : "SPY";
+  const root = instrument === "NQ" || instrument === "MNQ" ? "NQ" : "ES";
+  const source = canonicalOptionsSourceForRoot(root);
   return gammaConversionOptions(instrument).find((conversion) => conversion.source === source) ?? null;
 }
 
