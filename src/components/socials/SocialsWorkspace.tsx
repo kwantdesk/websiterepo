@@ -565,6 +565,8 @@ export default function SocialsWorkspace({
   const [tradeSendQuery, setTradeSendQuery] = useState("");
   const [tradeSendState, setTradeSendState] = useState<"idle" | "loading" | "sending" | "error">("idle");
   const [tradeSendError, setTradeSendError] = useState("");
+  const shareRecipientsLoadedRef = useRef(false);
+  const shareRecipientsPromiseRef = useRef<Promise<void> | null>(null);
   const [rankingObjects, setRankingObjects] = useState<SocialObject[]>([]);
   const [rankingDeskId, setRankingDeskId] = useState("");
   const [rankingDirectoryState, setRankingDirectoryState] = useState<"idle" | "loading" | "ready" | "unavailable">("idle");
@@ -734,6 +736,10 @@ export default function SocialsWorkspace({
     });
     setReady(false);
     setSaveState("loading");
+    shareRecipientsLoadedRef.current = false;
+    shareRecipientsPromiseRef.current = null;
+    setTradeSendFriends([]);
+    setTradeSendDeskTargets([]);
     void (async () => {
       const local = await loadSocialState(resolvedAccountKey);
       if (!active) return;
@@ -1107,8 +1113,6 @@ export default function SocialsWorkspace({
   const closeTradeSend = () => {
     if (tradeSendState === "sending") return;
     setTradeSendObject(null);
-    setTradeSendFriends([]);
-    setTradeSendDeskTargets([]);
     setTradeSendFriendIds([]);
     setTradeSendDeskIds([]);
     setTradeSendQuery("");
@@ -1116,60 +1120,97 @@ export default function SocialsWorkspace({
     setTradeSendState("idle");
   };
 
-  const openTradeSend = async (object: SocialObject) => {
+  const loadShareRecipients = useCallback((showLoading = false) => {
+    if (shareRecipientsLoadedRef.current) return Promise.resolve();
+    if (showLoading) setTradeSendState("loading");
+    if (shareRecipientsPromiseRef.current) return shareRecipientsPromiseRef.current;
+
+    const request = (async () => {
+      try {
+        const friendsRequest = fetch("/api/friends", { cache: "no-store" });
+        const desksRequest = fetch("/api/socials/desks", { cache: "no-store" });
+
+        const friendsResponse = await friendsRequest;
+        const friendsBody = await friendsResponse.json() as FriendsPayload & { error?: string };
+        if (!friendsResponse.ok || !friendsBody.cloud) {
+          throw new Error(friendsBody.error || "Friends could not be loaded.");
+        }
+        setTradeSendFriends(friendsBody.friends ?? []);
+        shareRecipientsLoadedRef.current = true;
+        // Friends are the common target. Reveal them before resolving every
+        // Desk channel instead of keeping the whole picker behind a loader.
+        setTradeSendState("idle");
+
+        try {
+          const desksResponse = await desksRequest;
+          const desksBody = await desksResponse.json() as DeskNetworkPayload & { error?: string };
+          if (desksResponse.ok && desksBody.ready) {
+            setDeskNetwork(desksBody);
+            const membershipIds = new Set(desksBody.members.filter((member) => member.userId === resolvedAccountKey).map((member) => member.deskId));
+            const available = desksBody.workspaces.filter((workspace) => !workspace.archivedAt && (workspace.ownerId === resolvedAccountKey || membershipIds.has(workspace.deskId)));
+            const targetResults = await Promise.all(available.map(async (workspace) => {
+              try {
+                const response = await fetch(`/api/socials/desks?deskId=${encodeURIComponent(workspace.deskId)}`, { cache: "no-store" });
+                const detail = await response.json() as DeskNetworkPayload & { error?: string };
+                if (!response.ok || !detail.ready) return null;
+                const role = detail.members.find((member) => member.deskId === workspace.deskId && member.userId === resolvedAccountKey)?.role ?? "member";
+                const canLead = workspace.ownerId === resolvedAccountKey || role === "owner" || role === "moderator";
+                const channel = [...detail.channels]
+                  .filter((candidate) => candidate.deskId === workspace.deskId && candidate.channelType === "text")
+                  .filter((candidate) => canLead || (!candidate.readOnly && !candidate.reactionOnly))
+                  .sort((left, right) => left.position - right.position)[0];
+                return channel ? {
+                  deskId: workspace.deskId,
+                  deskName: workspace.name,
+                  channelId: channel.id,
+                  channelName: channel.name,
+                } : null;
+              } catch {
+                return null;
+              }
+            }));
+            setTradeSendDeskTargets(targetResults.filter((target): target is NonNullable<typeof target> => Boolean(target)));
+          }
+        } catch {
+          // Friends remain immediately usable even if Desk discovery is down.
+        }
+        shareRecipientsLoadedRef.current = true;
+      } catch (reason) {
+        setTradeSendError(reason instanceof Error ? reason.message : "Recipients could not be loaded.");
+        setTradeSendState("error");
+      } finally {
+        shareRecipientsPromiseRef.current = null;
+      }
+    })();
+    shareRecipientsPromiseRef.current = request;
+    return request;
+  }, [resolvedAccountKey]);
+
+  const openTradeSend = (object: SocialObject) => {
     const payload = typedPayload<SocialPostPayload>(object);
-    if (payload?.kind !== "TRADE" || !payload.trade) return;
+    const canSend = (payload?.kind === "TRADE" && payload.trade) || payload?.kind === "ONE-LINER";
+    if (!canSend) return;
     setTradeSendObject(object);
-    setTradeSendFriends([]);
-    setTradeSendDeskTargets([]);
     setTradeSendFriendIds([]);
     setTradeSendDeskIds([]);
     setTradeSendQuery("");
     setTradeSendError("");
-    setTradeSendState("loading");
-    try {
-      const [friendsResponse, desksResponse] = await Promise.all([
-        fetch("/api/friends", { cache: "no-store" }),
-        fetch("/api/socials/desks", { cache: "no-store" }),
-      ]);
-      const friendsBody = await friendsResponse.json() as FriendsPayload & { error?: string };
-      const desksBody = await desksResponse.json() as DeskNetworkPayload & { error?: string };
-      if (!friendsResponse.ok || !friendsBody.cloud) throw new Error(friendsBody.error || "Friends could not be loaded.");
-      setTradeSendFriends(friendsBody.friends ?? []);
-
-      if (desksResponse.ok && desksBody.ready) {
-        setDeskNetwork(desksBody);
-        const membershipIds = new Set(desksBody.members.filter((member) => member.userId === resolvedAccountKey).map((member) => member.deskId));
-        const available = desksBody.workspaces.filter((workspace) => !workspace.archivedAt && (workspace.ownerId === resolvedAccountKey || membershipIds.has(workspace.deskId)));
-        const targetResults = await Promise.all(available.map(async (workspace) => {
-          const response = await fetch(`/api/socials/desks?deskId=${encodeURIComponent(workspace.deskId)}`, { cache: "no-store" });
-          const detail = await response.json() as DeskNetworkPayload & { error?: string };
-          if (!response.ok || !detail.ready) return null;
-          const role = detail.members.find((member) => member.deskId === workspace.deskId && member.userId === resolvedAccountKey)?.role ?? "member";
-          const canLead = workspace.ownerId === resolvedAccountKey || role === "owner" || role === "moderator";
-          const channel = [...detail.channels]
-            .filter((candidate) => candidate.deskId === workspace.deskId && candidate.channelType === "text")
-            .filter((candidate) => canLead || (!candidate.readOnly && !candidate.reactionOnly))
-            .sort((left, right) => left.position - right.position)[0];
-          return channel ? {
-            deskId: workspace.deskId,
-            deskName: workspace.name,
-            channelId: channel.id,
-            channelName: channel.name,
-          } : null;
-        }));
-        setTradeSendDeskTargets(targetResults.filter((target): target is NonNullable<typeof target> => Boolean(target)));
-      }
-      setTradeSendState("idle");
-    } catch (reason) {
-      setTradeSendError(reason instanceof Error ? reason.message : "Recipients could not be loaded.");
-      setTradeSendState("error");
-    }
+    setTradeSendState(shareRecipientsLoadedRef.current ? "idle" : "loading");
+    void loadShareRecipients(true);
   };
+
+  useEffect(() => {
+    if (!ready) return;
+    const timer = window.setTimeout(() => void loadShareRecipients(false), 250);
+    return () => window.clearTimeout(timer);
+  }, [loadShareRecipients, ready]);
 
   const sendTradeToRecipients = async () => {
     const postPayload = typedPayload<SocialPostPayload>(tradeSendObject);
-    if (!tradeSendObject || postPayload?.kind !== "TRADE" || !postPayload.trade) return;
+    if (!tradeSendObject || !postPayload) return;
+    const isTrade = postPayload.kind === "TRADE" && Boolean(postPayload.trade);
+    const isOneLiner = postPayload.kind === "ONE-LINER";
+    if (!isTrade && !isOneLiner) return;
     if (!tradeSendFriendIds.length && !tradeSendDeskIds.length) {
       setTradeSendError("Choose at least one friend or Desk.");
       return;
@@ -1180,19 +1221,22 @@ export default function SocialsWorkspace({
     const ownerProfile = ownerProfileObject
       ? normalizeSocialProfile(ownerProfileObject.payload, ownerProfileObject.authorLabel)
       : normalizeSocialProfile({}, tradeSendObject.authorLabel);
-    const sharedTrade = normalizeSharedTradeMessage({
+    const sharedTrade = isTrade ? normalizeSharedTradeMessage({
       kind: "trade-share",
       version: 1,
       postId: ownerPostId,
       ownerUserId,
       ownerHandle: ownerProfile.handle,
       ownerDisplayName: ownerProfile.displayName,
-      trade: postPayload.trade,
-    });
-    if (!sharedTrade) {
+      trade: postPayload.trade!,
+    }) : null;
+    if (isTrade && !sharedTrade) {
       setTradeSendError("This trade could not be prepared for messaging.");
       return;
     }
+    const sharedBody = isOneLiner
+      ? `${postPayload.body}\n\n${window.location.origin}/socials/${encodeURIComponent(ownerProfile.handle)}?post=${encodeURIComponent(ownerPostId)}`
+      : "";
 
     setTradeSendState("sending");
     setTradeSendError("");
@@ -1203,8 +1247,8 @@ export default function SocialsWorkspace({
         body: JSON.stringify({
           action: "message",
           targetUserId,
-          body: "",
-          sharedTrade,
+          body: sharedBody,
+          sharedTrade: sharedTrade ?? undefined,
           clientMessageId: crypto.randomUUID(),
         }),
       });
@@ -1221,8 +1265,8 @@ export default function SocialsWorkspace({
           action: "send-message",
           deskId: target.deskId,
           channelId: target.channelId,
-          message: "",
-          sharedTrade,
+          message: sharedBody,
+          sharedTrade: sharedTrade ?? undefined,
           clientMessageId: crypto.randomUUID(),
         }),
       });
@@ -1239,7 +1283,7 @@ export default function SocialsWorkspace({
     }
     setTradeSendObject(null);
     setTradeSendState("idle");
-    setNotice(`Trade sent to ${sentCount} ${sentCount === 1 ? "conversation" : "conversations"}${failed.length ? ` · ${failed.length} could not be reached` : ""}.`);
+    setNotice(`${isOneLiner ? "One-liner" : "Trade"} sent to ${sentCount} ${sentCount === 1 ? "conversation" : "conversations"}${failed.length ? ` · ${failed.length} could not be reached` : ""}.`);
     window.dispatchEvent(new CustomEvent(DESK_NETWORK_CHANGED_EVENT));
   };
 
@@ -3190,7 +3234,7 @@ export default function SocialsWorkspace({
         </div>
         <div className="p-4">
           {oneLiner ? (
-            <div className="relative overflow-hidden rounded-2xl border border-primary/20 bg-[linear-gradient(135deg,color-mix(in_srgb,var(--primary)_9%,var(--background)),color-mix(in_srgb,var(--panel)_92%,transparent))] px-5 py-6 shadow-[inset_0_1px_0_color-mix(in_srgb,var(--primary)_10%,transparent)]">
+            <div className="kwant-one-liner-glow relative overflow-hidden rounded-2xl border border-primary/20 bg-[linear-gradient(135deg,color-mix(in_srgb,var(--primary)_9%,var(--background)),color-mix(in_srgb,var(--panel)_92%,transparent))] px-5 py-6 shadow-[inset_0_1px_0_color-mix(in_srgb,var(--primary)_10%,transparent)]">
               <div className="pointer-events-none absolute -right-8 -top-10 h-32 w-32 rounded-full bg-primary/[0.08] blur-3xl" />
               <p className="relative whitespace-pre-wrap break-words text-[14px] font-medium leading-7 tracking-[-0.015em] text-foreground">{payload.body}</p>
             </div>
@@ -3226,7 +3270,7 @@ export default function SocialsWorkspace({
           <button type="button" onClick={() => void addReaction(object, "LIKE")} className={`flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[8px] font-semibold ${liked ? "bg-primary/10 text-primary" : "text-muted hover:bg-surface hover:text-foreground"}`}><Heart className={`h-3.5 w-3.5 ${liked ? "fill-current" : ""}`} />Like{likeCount ? ` ${likeCount}` : ""}</button>
           <button type="button" onClick={() => trade ? (setCommentPanelPostId(object.id), setCommentReplyToId(null)) : document.getElementById(`comment:${object.id}`)?.focus()} className="flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[8px] font-semibold text-muted hover:bg-surface hover:text-foreground"><MessageCircle className="h-3.5 w-3.5" />Comment{objectComments.length ? ` ${objectComments.length}` : ""}</button>
           <button type="button" onClick={() => shareStructuredPost(object)} className="flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[8px] font-semibold text-muted hover:bg-surface hover:text-foreground"><Share2 className="h-3.5 w-3.5" />Share</button>
-          {trade ? <button type="button" onClick={() => void openTradeSend(object)} className="flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[8px] font-semibold text-muted hover:bg-surface hover:text-foreground"><Send className="h-3.5 w-3.5" />Send</button> : null}
+          {trade || oneLiner ? <button type="button" onClick={() => openTradeSend(object)} className="flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[8px] font-semibold text-muted hover:bg-surface hover:text-foreground"><Send className="h-3.5 w-3.5" />Send</button> : null}
           <button type="button" onClick={() => void toggleStructuredPostRepost(object)} className={`flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[8px] font-semibold ${reposted ? "bg-primary/10 text-primary" : "text-muted hover:bg-surface hover:text-foreground"}`}><Repeat2 className="h-3.5 w-3.5" />Repost{reposts.length ? ` ${reposts.length}` : ""}</button>
           <button type="button" onClick={() => void toggleStructuredPostSave(object)} className={`ml-auto flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[8px] font-semibold ${saved ? "bg-primary/10 text-primary" : "text-muted hover:bg-surface hover:text-foreground"}`}><Bookmark className={`h-3.5 w-3.5 ${saved ? "fill-current" : ""}`} />{saved ? "Saved" : "Save"}</button>
         </div>
@@ -4390,6 +4434,8 @@ export default function SocialsWorkspace({
       {tradeSendObject ? (() => {
         const payload = typedPayload<SocialPostPayload>(tradeSendObject);
         const trade = payload?.kind === "TRADE" ? payload.trade ?? null : null;
+        const oneLiner = payload?.kind === "ONE-LINER" ? payload.body : "";
+        const shareLabel = oneLiner ? "one-liner" : "trade";
         const normalizedQuery = tradeSendQuery.trim().toLowerCase();
         const visibleFriends = tradeSendFriends.filter((friend) => !normalizedQuery || `${friend.displayName} ${friend.handle}`.toLowerCase().includes(normalizedQuery));
         const visibleDesks = tradeSendDeskTargets.filter((target) => !normalizedQuery || `${target.deskName} ${target.channelName}`.toLowerCase().includes(normalizedQuery));
@@ -4399,7 +4445,7 @@ export default function SocialsWorkspace({
             <div className="flex max-h-[88vh] w-full max-w-2xl flex-col overflow-hidden rounded-3xl border border-border bg-panel shadow-2xl shadow-black/70">
               <div className="flex items-start gap-3 border-b border-border p-5">
                 <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-primary/25 bg-primary/10 text-primary"><Send className="h-4 w-4" /></span>
-                <div className="min-w-0 flex-1"><h2 className="text-[14px] font-semibold">Send this trade</h2><p className="mt-1 text-[8px] text-muted">Choose multiple friends and Desks. Each conversation receives the complete trade card and interactive chart.</p></div>
+                <div className="min-w-0 flex-1"><h2 className="text-[14px] font-semibold">Send this {shareLabel}</h2><p className="mt-1 text-[8px] text-muted">Choose multiple friends and Desks. Each conversation receives the post with a direct link back to its place in the feed.</p></div>
                 <button type="button" onClick={closeTradeSend} disabled={tradeSendState === "sending"} className="flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground disabled:opacity-40" aria-label="Close"><X className="h-4 w-4" /></button>
               </div>
 
@@ -4410,6 +4456,10 @@ export default function SocialsWorkspace({
                   <span className="text-[7px] text-muted">Entry {trade.entryPrice?.toLocaleString("en-US", { maximumFractionDigits: 6 }) ?? "—"} · Exit {trade.exitPrice?.toLocaleString("en-US", { maximumFractionDigits: 6 }) ?? "—"}</span>
                   <span className={`ml-auto font-mono text-[15px] font-semibold ${trade.netPnl >= 0 ? "text-accent" : "text-danger"}`}>{tradeMoney(trade.netPnl)}</span>
                 </div>
+              ) : oneLiner ? (
+                <div className="kwant-one-liner-glow relative overflow-hidden border-b border-border bg-[linear-gradient(135deg,color-mix(in_srgb,var(--primary)_7%,var(--background)),var(--background))] px-5 py-4">
+                  <p className="relative whitespace-pre-wrap break-words text-[11px] font-medium leading-5 text-foreground">{oneLiner}</p>
+                </div>
               ) : null}
 
               <div className="shrink-0 border-b border-border px-5 py-3">
@@ -4418,7 +4468,7 @@ export default function SocialsWorkspace({
 
               <div className="min-h-0 flex-1 overflow-y-auto p-5">
                 {tradeSendState === "loading" ? (
-                  <KwantLoader compact icon={Send} title="Opening conversations" detail="Loading your friends and available Desk channels." className="min-h-[260px] rounded-2xl border border-border" />
+                  <KwantLoader compact icon={Send} title="Opening conversations" detail="Loading your friends. Desk channels continue resolving in the background." className="min-h-[260px] rounded-2xl border border-border" />
                 ) : (
                   <div className="space-y-5">
                     {tradeSendError ? <div className="rounded-xl border border-danger/25 bg-danger/[0.055] px-3 py-2 text-[8px] text-danger">{tradeSendError}</div> : null}
@@ -4427,7 +4477,7 @@ export default function SocialsWorkspace({
                       {visibleFriends.length ? <div className="grid gap-2 sm:grid-cols-2">{visibleFriends.map((friend) => {
                         const selected = tradeSendFriendIds.includes(friend.userId);
                         return <button key={friend.userId} type="button" onClick={() => setTradeSendFriendIds((current) => selected ? current.filter((id) => id !== friend.userId) : [...current, friend.userId])} className={`flex items-center gap-3 rounded-2xl border p-3 text-left transition ${selected ? "border-primary/45 bg-primary/[0.075] shadow-[0_0_22px_color-mix(in_srgb,var(--primary)_9%,transparent)]" : "border-border bg-background/35 hover:border-primary/25"}`}><Avatar label={friend.displayName} avatarUrl={friend.avatarUrl} statusClassName={presenceOption(friend.presenceStatus).dotClassName} /><span className="min-w-0 flex-1"><span className="block truncate text-[9px] font-semibold text-foreground">{friend.displayName}</span><span className="mt-0.5 block truncate text-[7px] text-muted">@{friend.handle}</span></span><span className={`flex h-5 w-5 items-center justify-center rounded-md border ${selected ? "border-primary bg-primary text-background" : "border-border text-transparent"}`}><Check className="h-3 w-3" /></span></button>;
-                      })}</div> : <div className="rounded-2xl border border-dashed border-border p-5 text-center text-[8px] text-muted">{normalizedQuery ? "No friends match that search." : "Connect with a friend to send trades privately."}</div>}
+                      })}</div> : <div className="rounded-2xl border border-dashed border-border p-5 text-center text-[8px] text-muted">{normalizedQuery ? "No friends match that search." : `Connect with a friend to send this ${shareLabel} privately.`}</div>}
                     </section>
 
                     <section>
@@ -4442,9 +4492,9 @@ export default function SocialsWorkspace({
               </div>
 
               <div className="flex items-center gap-3 border-t border-border bg-background/25 px-5 py-4">
-                <div className="min-w-0 flex-1 text-[8px] text-muted">{selectedCount ? `${selectedCount} ${selectedCount === 1 ? "conversation" : "conversations"} selected` : "Select the conversations that should receive this trade."}</div>
+                <div className="min-w-0 flex-1 text-[8px] text-muted">{selectedCount ? `${selectedCount} ${selectedCount === 1 ? "conversation" : "conversations"} selected` : `Select the conversations that should receive this ${shareLabel}.`}</div>
                 <button type="button" onClick={closeTradeSend} disabled={tradeSendState === "sending"} className="h-9 rounded-xl border border-border px-4 text-[8px] font-semibold text-muted disabled:opacity-40">Cancel</button>
-                <button type="button" onClick={() => void sendTradeToRecipients()} disabled={!selectedCount || tradeSendState === "loading" || tradeSendState === "sending"} className="flex h-9 min-w-[112px] items-center justify-center gap-2 rounded-xl bg-primary px-4 text-[8px] font-semibold text-background shadow-[0_0_24px_color-mix(in_srgb,var(--primary)_18%,transparent)] disabled:opacity-40">{tradeSendState === "sending" ? <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-background/30 border-t-background" /> : <Send className="h-3.5 w-3.5" />}{tradeSendState === "sending" ? "Sending…" : "Send trade"}</button>
+                <button type="button" onClick={() => void sendTradeToRecipients()} disabled={!selectedCount || tradeSendState === "loading" || tradeSendState === "sending"} className="flex h-9 min-w-[112px] items-center justify-center gap-2 rounded-xl bg-primary px-4 text-[8px] font-semibold text-background shadow-[0_0_24px_color-mix(in_srgb,var(--primary)_18%,transparent)] disabled:opacity-40">{tradeSendState === "sending" ? <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-background/30 border-t-background" /> : <Send className="h-3.5 w-3.5" />}{tradeSendState === "sending" ? "Sending…" : `Send ${shareLabel}`}</button>
               </div>
             </div>
           </div>

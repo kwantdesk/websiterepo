@@ -121,6 +121,64 @@ body {
   will-change: border-color, box-shadow;
 }
 
+@keyframes kwant-one-liner-glow {
+  0%, 100% {
+    border-color: color-mix(in srgb, var(--primary) 18%, var(--border));
+    box-shadow:
+      inset 0 0 22px color-mix(in srgb, var(--primary) 3%, transparent),
+      0 0 12px color-mix(in srgb, var(--primary) 4%, transparent);
+  }
+  50% {
+    border-color: color-mix(in srgb, var(--primary) 34%, var(--border));
+    box-shadow:
+      inset 0 0 30px color-mix(in srgb, var(--primary) 7%, transparent),
+      0 0 24px color-mix(in srgb, var(--primary) 10%, transparent);
+  }
+}
+
+@keyframes kwant-one-liner-wipe {
+  0%, 52% { opacity: 0; transform: translate3d(-135%, 0, 0) skewX(-18deg); }
+  60% { opacity: .12; }
+  78% { opacity: .06; }
+  92%, 100% { opacity: 0; transform: translate3d(245%, 0, 0) skewX(-18deg); }
+}
+
+.kwant-one-liner-glow {
+  isolation: isolate;
+  animation: kwant-one-liner-glow 6.8s ease-in-out infinite;
+  will-change: border-color, box-shadow;
+}
+
+.kwant-one-liner-glow::after {
+  content: "";
+  pointer-events: none;
+  position: absolute;
+  inset: -35% auto -35% -28%;
+  z-index: 0;
+  width: 34%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--primary) 42%, transparent),
+    transparent
+  );
+  filter: blur(13px);
+  animation: kwant-one-liner-wipe 10s ease-in-out infinite;
+  will-change: opacity, transform;
+}
+
+.kwant-one-liner-glow > p {
+  position: relative;
+  z-index: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kwant-one-liner-glow,
+  .kwant-one-liner-glow::after {
+    animation: none;
+  }
+}
+
 @keyframes gex-current-price-glow {
   0%, 100% {
     outline-color: color-mix(in srgb, var(--primary) 74%, var(--accent));

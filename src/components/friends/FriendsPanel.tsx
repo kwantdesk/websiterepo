@@ -35,6 +35,7 @@ import KwantLoader from "@/components/KwantLoader";
 import ActivityStreakBadge from "@/components/socials/ActivityStreakBadge";
 import UserAvatar from "@/components/socials/UserAvatar";
 import SharedTradeMessageCard from "@/components/socials/SharedTradeMessageCard";
+import LinkedMessageBody from "@/components/socials/LinkedMessageBody";
 import { useSpeechDictation } from "@/hooks/useSpeechDictation";
 import {
   PRESENCE_OPTIONS,
@@ -691,7 +692,7 @@ export default function FriendsPanel({ onClose, onUnreadCountChange, initialFrie
                 ) : null}
                 <MessageImages attachments={message.attachments} onPreview={setImagePreview} />
                 {message.sharedTrade ? <SharedTradeMessageCard sharedTrade={message.sharedTrade} /> : null}
-                {message.body ? <div className="whitespace-pre-wrap break-words text-[12px] leading-5">{message.body}</div> : null}
+                {message.body ? <LinkedMessageBody body={message.body} className="text-[12px] leading-5" /> : null}
                 <div className={`mt-1 flex items-center justify-end gap-1 text-right text-[8px] ${mine ? "text-background/65" : "text-muted"}`}>
                   <span>{messageTime(message.sentAt)}</span>
                   {deliveryStatus === "sending" ? (

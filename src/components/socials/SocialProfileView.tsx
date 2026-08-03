@@ -697,7 +697,7 @@ export default function SocialProfileView({
                       {post?.body ? <p className="mt-3 line-clamp-3 text-[8px] leading-4 text-muted">{post.body}</p> : null}
                     </div>
                   ) : (
-                    <div className={`relative mt-5 flex flex-1 flex-col ${isOneLiner ? "justify-center rounded-2xl border border-primary/20 bg-primary/[0.04] p-4" : ""}`}>
+                    <div className={`relative mt-5 flex flex-1 flex-col ${isOneLiner ? "kwant-one-liner-glow justify-center overflow-hidden rounded-2xl border border-primary/20 bg-primary/[0.04] p-4" : ""}`}>
                       {!isOneLiner && post?.title ? <div className="text-[10px] font-semibold text-foreground">{post.title}</div> : null}
                       <p className={`${isOneLiner ? "text-[13px] font-medium leading-6 text-foreground" : "mt-2 text-[8px] leading-4 text-muted"}`}>{post?.body || "Social post"}</p>
                     </div>
