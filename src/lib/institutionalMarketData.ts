@@ -1075,6 +1075,126 @@ export function applyInstitutionalTradesToCandles(
   return next.slice(-Math.max(1, limit));
 }
 
+type InstitutionalCandleFlow = {
+  volume: number;
+  askVolume: number;
+  bidVolume: number;
+  askTrades: number;
+  bidTrades: number;
+  trades: number;
+  delta: number;
+  deltaHigh: number;
+  deltaLow: number;
+};
+
+/**
+ * Rebuild the order-flow fields on an existing chart series from the exact
+ * execution tape without altering its OHLC geometry.
+ *
+ * Chart history and live price construction deliberately come from the CME
+ * candle feed, while Rithmic supplies aggressor-side executions. Previously
+ * only Big Trades consumed that tape; CVD, KWANT Effort and the other
+ * candle-based studies kept reading the candle feed's fallback side totals.
+ * This projection gives every order-flow study the same execution source.
+ */
+export function enrichCandlesWithInstitutionalTrades(
+  candles: Candle[],
+  records: InstitutionalTrade[],
+  limit = 1_500,
+) {
+  const base = candles.slice(-Math.max(1, limit));
+  if (!base.length || !records.length) return base;
+
+  const flows = new Map<number, InstitutionalCandleFlow>();
+  const firstTimestamp = base[0].timestamp;
+
+  for (const record of records) {
+    if (
+      !Number.isFinite(record.timestamp)
+      || record.timestamp < firstTimestamp
+      || !Number.isFinite(record.close)
+      || record.close <= 0
+    ) continue;
+
+    // Resolve the latest candle whose opening time is not after this print.
+    // This also works for volume/range/tick bars, whose timestamps need not be
+    // aligned to a wall-clock interval.
+    let low = 0;
+    let high = base.length - 1;
+    let candleIndex = -1;
+    while (low <= high) {
+      const middle = Math.floor((low + high) / 2);
+      if (base[middle].timestamp <= record.timestamp) {
+        candleIndex = middle;
+        low = middle + 1;
+      } else {
+        high = middle - 1;
+      }
+    }
+    if (candleIndex < 0) continue;
+    const nextTimestamp = base[candleIndex + 1]?.timestamp;
+    if (nextTimestamp != null && record.timestamp >= nextTimestamp) continue;
+
+    const volume = Math.max(0, Number(record.volume) || 0);
+    let askVolume = Math.max(0, Number(record.askVolume) || 0);
+    let bidVolume = Math.max(0, Number(record.bidVolume) || 0);
+    if (askVolume + bidVolume <= 0 && volume > 0) {
+      if (record.aggressor === "BUY") askVolume = volume;
+      if (record.aggressor === "SELL") bidVolume = volume;
+    }
+    const tradeCount = Math.max(1, Number(record.trades) || 1);
+    const recordDelta = Number.isFinite(record.delta)
+      ? Number(record.delta)
+      : askVolume - bidVolume;
+    const previous = flows.get(candleIndex) ?? {
+      volume: 0,
+      askVolume: 0,
+      bidVolume: 0,
+      askTrades: 0,
+      bidTrades: 0,
+      trades: 0,
+      delta: 0,
+      deltaHigh: 0,
+      deltaLow: 0,
+    };
+    const delta = previous.delta + recordDelta;
+    flows.set(candleIndex, {
+      volume: previous.volume + volume,
+      askVolume: previous.askVolume + askVolume,
+      bidVolume: previous.bidVolume + bidVolume,
+      askTrades: previous.askTrades + (record.aggressor === "BUY" ? tradeCount : 0),
+      bidTrades: previous.bidTrades + (record.aggressor === "SELL" ? tradeCount : 0),
+      trades: previous.trades + tradeCount,
+      delta,
+      deltaHigh: Math.max(previous.deltaHigh, delta),
+      deltaLow: Math.min(previous.deltaLow, delta),
+    });
+  }
+
+  if (!flows.size) return base;
+  return base.map((candle, index) => {
+    const flow = flows.get(index);
+    if (!flow || flow.askVolume + flow.bidVolume <= 0) return candle;
+    return {
+      ...candle,
+      // Use the execution tape's exact totals wherever that tape covers a
+      // candle. Candles outside the retained tape keep their historical
+      // provider values rather than being presented as zero order flow.
+      volume: flow.volume || flow.askVolume + flow.bidVolume,
+      trades: flow.trades,
+      askVolume: flow.askVolume,
+      bidVolume: flow.bidVolume,
+      askTrades: flow.askTrades,
+      bidTrades: flow.bidTrades,
+      delta: flow.delta,
+      deltaOpen: 0,
+      deltaHigh: flow.deltaHigh,
+      deltaLow: flow.deltaLow,
+      deltaClose: flow.delta,
+    };
+  });
+}
+
 function normalizeInstitutionalTradeRecords(value: unknown): InstitutionalTrade[] {
   if (!Array.isArray(value)) return [];
   return value.flatMap((item) => {

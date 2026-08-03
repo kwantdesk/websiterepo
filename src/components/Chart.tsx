@@ -87,9 +87,10 @@ import { calculateBigTradePrints, type BigTradePrint } from "@/lib/bigTrades";
 import { calculateDeepEffort } from "@/lib/deepEffort";
 import { calculateImbalanceRejectorSignals } from "@/lib/imbalanceRejector";
 import { calculateImbalanceZones } from "@/lib/imbalanceTracker";
-import type {
-  InstitutionalTrade,
-  InstitutionalVolumeProfile,
+import {
+  enrichCandlesWithInstitutionalTrades,
+  type InstitutionalTrade,
+  type InstitutionalVolumeProfile,
 } from "@/lib/institutionalMarketData";
 import {
   NativeVolumeProfilePrimitive,
@@ -1286,8 +1287,12 @@ export default function Chart({
   );
   const indicatorSignature = useMemo(() => JSON.stringify(indicators), [indicators]);
   const indicatorCandles = useMemo(
-    () => sampledIndicatorCandles.slice(-1_500),
-    [sampledIndicatorCandles],
+    () => enrichCandlesWithInstitutionalTrades(
+      sampledIndicatorCandles,
+      sampledIndicatorMarketTrades,
+      1_500,
+    ),
+    [sampledIndicatorCandles, sampledIndicatorMarketTrades],
   );
   const calculatedIndicatorSeries = useMemo(
     () => indicators.flatMap((instance) =>

@@ -222,12 +222,32 @@ function Find-StreamingSheetAcrossApplications(
   [string]$RequestedWorkbook,
   [string]$RequestedSheet
 ) {
+  # Prefer the configured workbook when its name is stable. RTrader creates
+  # unsaved workbooks as Book1, Book2, and so on, so the name can legitimately
+  # change after Excel is closed and the streams are restored. In that case,
+  # bind to the uniquely named full-depth sheet across the visible RTrader
+  # Excel processes instead of leaving the gateway stale until an operator
+  # edits the supervisor arguments.
   foreach ($application in @($Applications)) {
     $sheet = Get-StreamingSheet -Excel $application `
       -RequestedWorkbook $RequestedWorkbook `
       -RequestedSheet $RequestedSheet
     if ($sheet) {
       return [PSCustomObject]@{ Application = $application; Sheet = $sheet }
+    }
+  }
+
+  foreach ($application in @($Applications)) {
+    foreach ($workbook in $application.Workbooks) {
+      try {
+        $sheet = $workbook.Worksheets.Item($RequestedSheet)
+        if ($sheet) {
+          Write-Output "RTrader depth workbook changed from '$RequestedWorkbook' to '$($workbook.Name)'; rebound automatically."
+          return [PSCustomObject]@{ Application = $application; Sheet = $sheet }
+        }
+      } catch {
+        continue
+      }
     }
   }
   return $null
