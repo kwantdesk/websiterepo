@@ -391,7 +391,7 @@ function aPlusSetupForSide(
       return {
         price,
         level: target.name,
-        reason: `Pay into ${target.name}; it is the next verified ${target.role} on the options-derived session ladder.`,
+        reason: `Pay into ${target.name}; it is the next verified ${target.role} on the options-based session ladder.`,
         risk_reward: Number((Math.abs(price - entryReference) / risk).toFixed(2)),
         pay_percent: paySplits[index] ?? 0,
       };

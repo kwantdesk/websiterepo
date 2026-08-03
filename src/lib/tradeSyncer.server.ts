@@ -356,7 +356,7 @@ function deriveFollowerQuantity(args: {
   if (riskType === "balance multiplier" || riskType === "fixed balance multiplier") {
     return {
       requestedQuantity: numericSetting != null ? normalizeContracts(Math.max(1, args.leaderQuantity * numericSetting)) : null,
-      quantityDetail: `Approximate futures-contract preview derived from ${args.follower.riskType} ${args.follower.riskSetting}. Live sizing needs broker-aware balance math.`,
+      quantityDetail: `Approximate futures-contract preview calculated from ${args.follower.riskType} ${args.follower.riskSetting}. Live sizing needs broker-aware balance math.`,
       blocked: numericSetting == null,
       review: true,
     };
@@ -729,7 +729,7 @@ function buildAccountMetrics(snapshot: TradeSyncerStore): TradeSyncerOverviewMet
 
 function buildCopierMetrics(snapshot: TradeSyncerStore): TradeSyncerOverviewMetric[] {
   return [
-    { label: "Copier Health", value: snapshot.syncGroups.some((group) => group.repairState === "manual_review") ? "REVIEW" : "UP", detail: "Derived from group repair state" },
+    { label: "Copier Health", value: snapshot.syncGroups.some((group) => group.repairState === "manual_review") ? "REVIEW" : "UP", detail: "Calculated from group repair state" },
     { label: "Trades Copied Today", value: String(snapshot.logs.filter((log) => log.severity === "success").length), detail: "Successful copy events in the current journal" },
     { label: "Follower Match Rate", value: computeFollowerMatchRate(snapshot.syncGroups), detail: "Healthy or monitored followers versus total attached followers" },
     { label: "Median Copy Lag", value: `${computeMedianLag(snapshot.syncGroups)}ms`, detail: "Average across live sync groups" },

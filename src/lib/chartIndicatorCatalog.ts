@@ -106,7 +106,7 @@ export const CHART_INDICATOR_CATALOG: ChartIndicatorDefinition[] = [
   indicator("Important Levels", "Market Structure", "Session open, high, low and other key references."),
   indicator("Absolute Levels", "Market Structure", "Fixed user-defined price levels."),
   indicator("Pivot Points", "Market Structure", "Traditional pivot support and resistance levels."),
-  indicator("Price Movement Levels", "Market Structure", "Levels derived from measured price movement."),
+  indicator("Price Movement Levels", "Market Structure", "Levels calculated from measured price movement."),
   indicator("FVG Identifier", "Market Structure", "Detects and tracks fair value gaps."),
   indicator("Gap Detector", "Market Structure", "Highlights gaps between chart bars."),
   indicator("Divergence Detector", "Market Structure", "Marks price divergence against volume or delta.", true),

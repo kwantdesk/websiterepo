@@ -47,7 +47,7 @@ function tone(value: number | null) {
   return value > 0 ? "text-primary" : "text-danger";
 }
 
-function SourceBadge({ kind }: { kind: "DIRECT" | "DERIVED" }) {
+function SourceBadge({ kind }: { kind: "DIRECT" | "CALCULATED" }) {
   return (
     <span className={`rounded-md border px-1.5 py-0.5 text-[8px] font-semibold tracking-[0.12em] ${kind === "DIRECT" ? "border-primary/20 bg-primary/[0.07] text-primary" : "border-accent/20 bg-accent/[0.07] text-accent"}`}>
       {kind}
@@ -123,7 +123,7 @@ function SkewReadout({ label, skew }: { label: string; skew: VolatilitySkewSumma
     <div className="rounded-xl border border-border bg-panel/70 p-3">
       <div className="flex items-center justify-between gap-2 text-[8px] font-semibold uppercase tracking-[0.12em] text-muted">
         <span>{label}</span>
-        <SourceBadge kind="DERIVED" />
+        <SourceBadge kind="CALCULATED" />
       </div>
       <div className={`mt-2 text-[16px] font-semibold ${skew?.state === "PUT_BIAS" ? "text-danger" : skew?.state === "CALL_BIAS" ? "text-primary" : "text-foreground"}`}>{title}</div>
       <div className="mt-1 flex items-center justify-between gap-2 text-[8px] text-muted">
@@ -198,7 +198,7 @@ export default function MarketMapIntelligence({ data }: { data: OptionsFlowPaylo
           <p className="mt-0.5 text-[9px] text-muted">Live options structure powered by Kwant Data&apos;s proprietary model</p>
         </div>
         <div className="ml-auto hidden items-center gap-1.5 text-[8px] text-muted sm:flex">
-          <SourceBadge kind="DIRECT" /><span>vendor field</span><SourceBadge kind="DERIVED" /><span>documented formula</span>
+          <SourceBadge kind="DIRECT" /><span>vendor field</span><SourceBadge kind="CALCULATED" /><span>documented formula</span>
         </div>
       </header>
 
@@ -209,7 +209,7 @@ export default function MarketMapIntelligence({ data }: { data: OptionsFlowPaylo
           </div>
           <div className="mt-3 flex items-center justify-between gap-2 text-[9px] text-muted">
             <span>{timeLabel(dealer.lastFrontExpiryGammaFlipAt)}</span>
-            <SourceBadge kind="DERIVED" />
+            <SourceBadge kind="CALCULATED" />
           </div>
           <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-surface">
             <div className={data.environment.gammaRegime === "NEGATIVE" ? "h-full bg-danger" : "h-full bg-primary"} style={{ width: `${Math.max(4, Math.min(100, data.environment.regimeStrength * 100))}%` }} />
@@ -222,7 +222,7 @@ export default function MarketMapIntelligence({ data }: { data: OptionsFlowPaylo
             <>
               <div className="mt-4 flex items-end justify-between gap-4">
                 <div><div className="font-mono text-[25px] font-semibold text-foreground">{percent(expected.movePercent, 2)}</div><div className="mt-1 text-[9px] text-muted">±{price(expected.moveDollars)} points</div></div>
-                <div className="flex items-center gap-1.5"><SourceBadge kind="DERIVED" /><span className="rounded-md border border-warning/20 bg-warning/[0.07] px-1.5 py-0.5 text-[8px] font-semibold tracking-[0.1em] text-warning">{expected.approximate ? "APPROX" : "QD 1σ"}</span></div>
+                <div className="flex items-center gap-1.5"><SourceBadge kind="CALCULATED" /><span className="rounded-md border border-warning/20 bg-warning/[0.07] px-1.5 py-0.5 text-[8px] font-semibold tracking-[0.1em] text-warning">{expected.approximate ? "APPROX" : "QD 1σ"}</span></div>
               </div>
               <div className="relative mt-5 h-1.5 rounded-full bg-surface">
                 <span className="absolute inset-y-0 left-[12%] right-[12%] rounded-full bg-primary/40" />
@@ -279,7 +279,7 @@ export default function MarketMapIntelligence({ data }: { data: OptionsFlowPaylo
             <SkewReadout label="~30D skew" skew={volatility.skew30Dte} />
           </div>
           <div className="mt-3 rounded-xl border border-border bg-panel/70 p-3">
-            <div className="flex items-center justify-between gap-3"><div><div className="text-[8px] font-semibold uppercase tracking-[0.12em] text-muted">Term structure</div><div className={`mt-1 text-[14px] font-semibold ${volatility.termStructureState === "BACKWARDATION" ? "text-danger" : volatility.termStructureState === "CONTANGO" ? "text-primary" : "text-foreground"}`}>{volatility.termStructureState.toLowerCase().replace(/^./, (character) => character.toUpperCase())}</div></div><SourceBadge kind="DERIVED" /></div>
+            <div className="flex items-center justify-between gap-3"><div><div className="text-[8px] font-semibold uppercase tracking-[0.12em] text-muted">Term structure</div><div className={`mt-1 text-[14px] font-semibold ${volatility.termStructureState === "BACKWARDATION" ? "text-danger" : volatility.termStructureState === "CONTANGO" ? "text-primary" : "text-foreground"}`}>{volatility.termStructureState.toLowerCase().replace(/^./, (character) => character.toUpperCase())}</div></div><SourceBadge kind="CALCULATED" /></div>
             <TermStructureChart points={volatility.termStructure} />
           </div>
         </Card>
@@ -288,4 +288,3 @@ export default function MarketMapIntelligence({ data }: { data: OptionsFlowPaylo
     </section>
   );
 }
-

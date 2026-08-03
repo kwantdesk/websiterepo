@@ -9721,7 +9721,7 @@ export default function KwantifyWorkspace({
                     <div className="mb-2.5 text-[9px] font-semibold uppercase tracking-[0.15em] text-muted">Level type</div>
                     <div className="grid gap-2 sm:grid-cols-2">
                       {([
-                        ["gamma", "Gamma Levels", "Live options-derived chart levels", false],
+                        ["gamma", "Gamma Levels", "Live options chart levels", false],
                         ["gameplan", "Kwant Levels", "Proprietary named levels and price zones", false],
                         ["valueArea", "Value Area Levels", "Prior-day and prior-week VAH, VAL, POC and VWAP", false],
                         ["historicalStructure", "Historical Supply/Demand + S/R", "Five-day structure zones with live Rithmic MBO confirmation", false],

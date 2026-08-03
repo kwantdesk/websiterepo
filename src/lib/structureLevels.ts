@@ -388,7 +388,7 @@ function structureEducation(role: StructureRole, evidence: StructureEvidence, to
     ? " Live resting liquidity is currently concentrated inside the same area, strengthening the location without guaranteeing that those orders will remain."
     : evidence === "LIVE_L3"
       ? " The area is driven by unusually large, persistent resting MBO liquidity and will weaken or disappear if that liquidity is pulled."
-      : " It is derived from completed-session price response, volume-at-price, displacement and retest evidence; no historical MBO is claimed.";
+      : " It is calculated from completed-session price response, volume-at-price, displacement and retest evidence; no historical MBO is claimed.";
   const base = role === "DEMAND"
     ? "A demand origin where price previously left with upward displacement and meaningful participation."
     : role === "SUPPLY"

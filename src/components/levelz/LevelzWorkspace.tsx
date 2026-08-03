@@ -58,7 +58,7 @@ type PanelConfig = {
   timeframe: LevelTimeframe;
 };
 
-type LevelEvidence = "OBSERVED" | "CALCULATED" | "DERIVED" | "LIVE_L3" | "UNAVAILABLE";
+type LevelEvidence = "OBSERVED" | "CALCULATED" | "LIVE_L3" | "UNAVAILABLE";
 
 type IntelligentLevel = ChartLevel & {
   family: LevelFamily;
@@ -428,13 +428,13 @@ const GAMMA_EDUCATION: Record<ChartGammaSourceLevelKind, Pick<IntelligentLevel, 
     break: "Acceptance with aligned flow raises the probability of continuation toward the next positioning level.",
   },
   EXPECTED_MOVE_MAX: {
-    explanation: "The upper one-day expected-move boundary derived from the options distribution. It describes a statistical range edge, not a hard ceiling.",
+    explanation: "The upper one-day expected-move boundary calculated from the options distribution. It describes a statistical range edge, not a hard ceiling.",
     firstTouch: "Compare realised volatility and flow. A quiet first test can rotate; an expanding tape can reprice the distribution.",
     hold: "Trading back below preserves the boundary as an upper range reference.",
     break: "Acceptance above signals realised movement is outrunning the earlier implied range and invalidates a blind fade.",
   },
   EXPECTED_MOVE_MIN: {
-    explanation: "The lower one-day expected-move boundary derived from the options distribution. It is a probability reference rather than guaranteed support.",
+    explanation: "The lower one-day expected-move boundary calculated from the options distribution. It is a probability reference rather than guaranteed support.",
     firstTouch: "Check whether selling pressure contracts at the boundary or continues to expand.",
     hold: "Recovery above keeps the lower range edge intact and supports rotation back inward.",
     break: "Acceptance below means realised movement has exceeded the earlier implied range and downside continuation must be respected.",
@@ -534,7 +534,7 @@ function makeGameplanSnapshot(payload: GameplanPayload, settings: ChartSettings,
       axisLabelVisible: true,
       family: "gameplan",
       kind: row.role.toUpperCase(),
-      evidence: "DERIVED",
+      evidence: "CALCULATED",
       value: row.strength,
       explanation: row.why,
       firstTouch: row.if_visit,

@@ -20,7 +20,7 @@ export class RTraderExcelMarketDataClient extends EventEmitter {
       authenticated: false,
       readOnly: true,
       individualOrders: false,
-      infraType: "MBO-derived aggregated full depth",
+      infraType: "MBO aggregated full depth",
       startedAt: null,
       connectedAt: null,
       lastMessageAt: null,

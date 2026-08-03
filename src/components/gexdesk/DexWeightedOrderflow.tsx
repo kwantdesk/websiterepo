@@ -1447,7 +1447,7 @@ export default function DexWeightedOrderflow({
             Model boundary
           </div>
           <p className="mt-2 text-[7px] leading-4 text-muted">
-            DEX = classified contracts × |delta| × 100. It is an options-derived underlying-equivalent estimate, not literal NQ futures volume, audited dealer inventory or proof that a trade opened a position.
+            DEX = classified contracts × |delta| × 100. It is an options-based underlying-equivalent estimate, not literal NQ futures volume, audited dealer inventory or proof that a trade opened a position.
           </p>
           <div className="mt-2 flex flex-wrap gap-1.5 text-[6px]">
             <span className="rounded-lg border border-border bg-surface px-2 py-1 text-muted">{classified.midPrints} midpoint prints excluded</span>
