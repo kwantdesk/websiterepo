@@ -174,7 +174,33 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "ZYON conversation could not be loaded." }, { status: 502 });
     }
 
-    const rows = ((data ?? []) as JournalRow[]).reverse();
+    let rows = ((data ?? []) as JournalRow[]).reverse();
+    const compactStoragePaths = [...new Set(rows.flatMap((row) =>
+      (Array.isArray(row.attachments) ? row.attachments : [])
+        .map((attachment) => attachment.storagePath)
+        .filter((path): path is string => Boolean(path))))];
+    const signedByPath = new Map<string, string>();
+    for (let index = 0; index < compactStoragePaths.length; index += 100) {
+      const { data: signedFiles } = await supabase.storage
+        .from("zyon-attachments")
+        .createSignedUrls(compactStoragePaths.slice(index, index + 100), 60 * 60);
+      (signedFiles ?? [])
+        .filter((file) => file.path && file.signedUrl)
+        .forEach((file) => signedByPath.set(file.path as string, file.signedUrl as string));
+    }
+    rows = rows.map((row) => ({
+      ...row,
+      attachments: (Array.isArray(row.attachments) ? row.attachments : []).map((attachment) => ({
+        name: attachment.name,
+        type: attachment.type,
+        size: attachment.size,
+        storagePath: attachment.storagePath,
+        // Never send archived base64 image bodies into the chart sidebar. A
+        // signed object URL keeps the same attachment available without making
+        // the browser decode an unbounded journal payload during panel mount.
+        dataUrl: attachment.storagePath ? signedByPath.get(attachment.storagePath) : undefined,
+      })),
+    }));
     const entries = rows
       .map(fromRow)
       .filter((entry): entry is ZyonJournalEntry => Boolean(entry));

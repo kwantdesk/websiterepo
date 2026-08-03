@@ -657,7 +657,9 @@ export default function ZyonWorkspace({
     disabled: sending,
     maxLength: 6_000,
   });
-  const messages = messagesByChat[activeChatId] ?? [WELCOME_MESSAGE];
+  const messages = Array.isArray(messagesByChat[activeChatId])
+    ? messagesByChat[activeChatId]
+    : [WELCOME_MESSAGE];
   const setMessages = useCallback((update: SetStateAction<ZyonMessage[]>) => {
     setMessagesByChat((current) => {
       const previous = current[activeChatId] ?? [WELCOME_MESSAGE];
@@ -692,9 +694,14 @@ export default function ZyonWorkspace({
   const context = interpreter.contexts[selectedRoot];
   const currentPrice = interpreter.livePrices[selectedRoot] ?? context?.currentPrice ?? null;
   const contextState = interpreter.contextStates[selectedRoot];
-  const rootMessages = interpreter.messages[selectedRoot];
-  const rootMemory = interpreter.memory[selectedRoot];
-  const learningReviews = interpreter.learningReviews.filter((review) => review.root === selectedRoot);
+  const rootMessages = Array.isArray(interpreter.messages?.[selectedRoot])
+    ? interpreter.messages[selectedRoot]
+    : [];
+  const rootMemory = Array.isArray(interpreter.memory?.[selectedRoot])
+    ? interpreter.memory[selectedRoot]
+    : [];
+  const learningReviews = (Array.isArray(interpreter.learningReviews) ? interpreter.learningReviews : [])
+    .filter((review) => review?.root === selectedRoot);
   const conversationReady = compact ? storeReady : storeReady && cloudJournal !== "checking";
   const conversationStarted = messages.some((message) => message.role === "user");
   const greetingName = viewerName.trim().split(/\s+/)[0] || "Trader";

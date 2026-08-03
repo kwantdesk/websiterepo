@@ -8,6 +8,7 @@ import OptionsTapePanel from "@/components/kwantbot/OptionsTapePanel";
 import FriendsPanel from "@/components/friends/FriendsPanel";
 import KwantLoader from "@/components/KwantLoader";
 import LiveGexPanelBoundary from "@/components/backtesting/LiveGexPanelBoundary";
+import ZyonPanelBoundary from "@/components/zyon/ZyonPanelBoundary";
 import SocialNotificationsPanel from "@/components/socials/SocialNotificationsPanel";
 import UserAvatar from "@/components/socials/UserAvatar";
 import LevelzWorkspace from "@/components/levelz/LevelzWorkspace";
@@ -9716,7 +9717,17 @@ export default function KwantifyWorkspace({
             <KwantBotInterpreterPanel interpreter={kwantBotInterpreter} />
           )}
           {rightPanel === "zyon" && (
-            <ZyonWorkspace interpreter={kwantBotInterpreter} compact viewerName={currentDisplayName || currentUsername} accountKey={preferenceUserId} />
+            <ZyonPanelBoundary
+              resetKey={`${preferenceUserId || "anonymous"}:${activeWorkspacePane.symbol}`}
+              onClose={() => setRightPanel(null)}
+            >
+              <ZyonWorkspace
+                interpreter={kwantBotInterpreter}
+                compact
+                viewerName={currentDisplayName || currentUsername}
+                accountKey={preferenceUserId}
+              />
+            </ZyonPanelBoundary>
           )}
           {rightPanel === "optionstape" && (
             <OptionsTapePanel interpreter={kwantBotInterpreter} />
