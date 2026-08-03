@@ -22,6 +22,7 @@ import {
   type DeskWorkspace,
 } from "@/lib/desks";
 import { normalizeSocialProfile, profileScoreAverage } from "@/lib/socials";
+import { normalizeSharedTradeMessage } from "@/lib/sharedTrades";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -204,6 +205,15 @@ function messageAttachments(value: unknown): DeskMessageAttachment[] {
   });
 }
 
+function messageSharedTrade(value: unknown) {
+  if (!Array.isArray(value)) return normalizeSharedTradeMessage(value);
+  for (const entry of value) {
+    const trade = normalizeSharedTradeMessage(entry);
+    if (trade) return trade;
+  }
+  return null;
+}
+
 function fromWorkspace(row: WorkspaceRow): DeskWorkspace {
   return {
     deskId: row.desk_id,
@@ -317,6 +327,7 @@ function fromChannel(row: ChannelRow): DeskChannel {
 }
 
 function fromMessage(row: MessageRow): DeskMessage {
+  const sharedTrade = messageSharedTrade(row.attachments);
   return {
     id: row.id,
     deskId: row.desk_id,
@@ -324,6 +335,7 @@ function fromMessage(row: MessageRow): DeskMessage {
     senderUserId: row.sender_user_id,
     body: row.body,
     attachments: messageAttachments(row.attachments),
+    sharedTrade: sharedTrade ?? undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -1142,7 +1154,8 @@ export async function POST(request: NextRequest) {
     const channelId = cleanUuid(body.channelId);
     const messageBody = cleanMultiline(body.message, 4_000);
     const attachments = messageAttachments(body.attachments);
-    if (!channelId || (!messageBody && !attachments.length)) {
+    const sharedTrade = normalizeSharedTradeMessage(body.sharedTrade);
+    if (!channelId || (!messageBody && !attachments.length && !sharedTrade)) {
       return NextResponse.json({ error: "Write a message or attach an image." }, { status: 400 });
     }
     const row = {
@@ -1151,7 +1164,7 @@ export async function POST(request: NextRequest) {
       channel_id: channelId,
       sender_user_id: actor.userId,
       body: messageBody,
-      attachments,
+      attachments: [...attachments, ...(sharedTrade ? [sharedTrade] : [])],
     };
     const { error } = await supabase.from("desk_messages").insert(row);
     if (error?.code === "23505") {

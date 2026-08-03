@@ -91,6 +91,7 @@ type SocialProfileViewProps = {
   onShareProfile: () => void;
   onOpenProfile?: (handle: string) => void;
   onCollectionVisibilityChange: (key: "likes" | "reposts" | "saves", visibility: "private" | "community") => void;
+  initialPostId?: string;
 };
 
 type ProfileCollectionTab = "gameplans" | "posts" | "liked" | "reposts" | "saved";
@@ -141,6 +142,7 @@ export default function SocialProfileView({
   onShareProfile,
   onOpenProfile,
   onCollectionVisibilityChange,
+  initialPostId = "",
 }: SocialProfileViewProps) {
   const [profileCollectionTab, setProfileCollectionTab] = useState<ProfileCollectionTab>("gameplans");
   const [followSummary, setFollowSummary] = useState<SocialFollowSummary | null>(null);
@@ -155,6 +157,18 @@ export default function SocialProfileView({
   const [friendState, setFriendState] = useState<"loading" | "friend" | "incoming" | "outgoing" | "none" | "unavailable">("loading");
   const [friendBusy, setFriendBusy] = useState(false);
   const followListRequestRef = useRef(0);
+
+  useEffect(() => {
+    if (!initialPostId) return;
+    setProfileCollectionTab("posts");
+    const timer = window.setTimeout(() => {
+      document.getElementById(`social-profile-post:${initialPostId}`)?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+    }, 120);
+    return () => window.clearTimeout(timer);
+  }, [initialPostId]);
 
   const loadFriendState = useCallback(async (signal?: AbortSignal) => {
     if (isOwnProfile) return;
@@ -651,7 +665,7 @@ export default function SocialProfileView({
               const isOneLiner = post?.kind === "ONE-LINER";
               const trade = post?.kind === "TRADE" ? post.trade : null;
               return (
-                <article key={`${object.userId}:${object.id}`} className="group relative flex min-h-[190px] flex-col overflow-hidden bg-panel p-4">
+                <article id={`social-profile-post:${object.id}`} key={`${object.userId}:${object.id}`} className={`group relative flex min-h-[190px] flex-col overflow-hidden bg-panel p-4 ${initialPostId === object.id ? "z-10 ring-2 ring-inset ring-primary shadow-[0_0_38px_color-mix(in_srgb,var(--primary)_22%,transparent)]" : ""}`}>
                   <div className="pointer-events-none absolute inset-0 opacity-0 transition-opacity group-hover:opacity-100 bg-[radial-gradient(circle_at_85%_0%,color-mix(in_srgb,var(--primary)_13%,transparent),transparent_52%)]" />
                   <div className="relative flex items-center gap-2">
                     <UserAvatar label={object.authorLabel} size="sm" />

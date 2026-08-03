@@ -15,6 +15,7 @@ import {
 } from "@/lib/friends";
 import { isValidProfileHandle, PROFILE_HANDLE_REQUIREMENTS } from "@/lib/profileHandle";
 import { activityStreakLifecycle } from "@/lib/activityStreak";
+import { normalizeSharedTradeMessage } from "@/lib/sharedTrades";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -165,6 +166,17 @@ function messageAttachments(value: unknown): FriendMessageAttachment[] {
       dataUrl,
     }];
   });
+}
+
+function messageSharedTrade(value: unknown) {
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      const trade = normalizeSharedTradeMessage(entry);
+      if (trade) return trade;
+    }
+    return null;
+  }
+  return normalizeSharedTradeMessage(value);
 }
 
 async function socialClient(request: NextRequest) {
@@ -337,7 +349,8 @@ function buildPayload(
     if (!friendId || !friendIds.has(friendId)) continue;
     const body = cleanText(row.payload?.body, 2_000);
     const attachments = messageAttachments(row.payload?.attachments);
-    if (!body && !attachments.length) continue;
+    const sharedTrade = messageSharedTrade(row.payload?.sharedTrade);
+    if (!body && !attachments.length && !sharedTrade) continue;
     const item: FriendMessage = {
       id: row.id,
       senderUserId,
@@ -345,6 +358,7 @@ function buildPayload(
       body,
       sentAt: cleanText(row.payload?.sentAt, 40) || row.created_at,
       attachments: attachments.length ? attachments : undefined,
+      sharedTrade: sharedTrade ?? undefined,
     };
     const list = messagesByFriend.get(friendId) ?? [];
     list.push(item);
@@ -387,7 +401,7 @@ function buildPayload(
       isOnline: presence.isOnline,
       desks: desksByUser.get(userId) ?? [],
       unreadCount,
-      lastMessage: last?.body || (last?.attachments?.length ? "Image" : ""),
+      lastMessage: last?.body || (last?.sharedTrade ? "Shared a trade" : last?.attachments?.length ? "Image" : ""),
       lastMessageAt: last?.sentAt ?? null,
     };
   };
@@ -436,8 +450,9 @@ function buildPayload(
   const chatMessages = new Map<string, FriendMessage[]>();
   for (const row of friendChatRows.messages) {
     const attachments = messageAttachments(row.attachments);
+    const sharedTrade = messageSharedTrade(row.attachments);
     const body = cleanText(row.body, 2_000);
-    if (!body && !attachments.length) continue;
+    if (!body && !attachments.length && !sharedTrade) continue;
     const messages = chatMessages.get(row.chat_id) ?? [];
     messages.push({
       id: row.id,
@@ -447,6 +462,7 @@ function buildPayload(
       body,
       sentAt: row.created_at,
       attachments: attachments.length ? attachments : undefined,
+      sharedTrade: sharedTrade ?? undefined,
     });
     chatMessages.set(row.chat_id, messages);
   }
@@ -472,7 +488,7 @@ function buildPayload(
       unreadCount: messages.filter(
         (message) => message.senderUserId !== actor.userId && Date.parse(message.sentAt) > readTimestamp,
       ).length,
-      lastMessage: last?.body || (last?.attachments?.length ? "Image" : ""),
+      lastMessage: last?.body || (last?.sharedTrade ? "Shared a trade" : last?.attachments?.length ? "Image" : ""),
       lastMessageAt: last?.sentAt ?? null,
     };
   }).sort((a, b) => {
@@ -929,8 +945,9 @@ export async function POST(request: NextRequest) {
   } else if (action === "group-message") {
     const bodyText = cleanText(body.body, 2_000);
     const attachments = messageAttachments(body.attachments);
+    const sharedTrade = normalizeSharedTradeMessage(body.sharedTrade);
     const messageId = clientMessageId(body.clientMessageId);
-    if (!groupId || (!bodyText && !attachments.length)) {
+    if (!groupId || (!bodyText && !attachments.length && !sharedTrade)) {
       return NextResponse.json({ error: "Write a message or attach an image first." }, { status: 400 });
     }
     const { data: membership, error: membershipError } = await supabase
@@ -947,7 +964,7 @@ export async function POST(request: NextRequest) {
       chat_id: groupId,
       sender_user_id: actor.userId,
       body: bodyText,
-      attachments,
+      attachments: [...attachments, ...(sharedTrade ? [sharedTrade] : [])],
       created_at: now,
     }, { onConflict: "id", ignoreDuplicates: true });
     if (error) return NextResponse.json({ error: "The group message could not be sent." }, { status: 502 });
@@ -962,8 +979,9 @@ export async function POST(request: NextRequest) {
   } else if (action === "message") {
     const bodyText = cleanText(body.body, 2_000);
     const attachments = messageAttachments(body.attachments);
+    const sharedTrade = normalizeSharedTradeMessage(body.sharedTrade);
     const messageId = clientMessageId(body.clientMessageId);
-    if (!targetUserId || (!bodyText && !attachments.length)) {
+    if (!targetUserId || (!bodyText && !attachments.length && !sharedTrade)) {
       return NextResponse.json({ error: "Write a message or attach an image first." }, { status: 400 });
     }
     const { rows, error: rowsError } = await loadRows(supabase);
@@ -995,6 +1013,7 @@ export async function POST(request: NextRequest) {
         recipientUserId: targetUserId,
         body: bodyText,
         attachments,
+        sharedTrade,
         sentAt: now,
       },
     }, { onConflict: "user_id,id", ignoreDuplicates: true });

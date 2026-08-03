@@ -44,6 +44,7 @@ export type FriendMessage = {
   sentAt: string;
   groupId?: string;
   attachments?: FriendMessageAttachment[];
+  sharedTrade?: import("@/lib/sharedTrades").SharedTradeMessage;
 };
 
 export type FriendGroupMember = FriendSummary & {

@@ -65,6 +65,7 @@ import TradePostChart from "@/components/socials/TradePostChart";
 import DeskWorkspace from "@/components/socials/DeskWorkspace";
 import UserAvatar from "@/components/socials/UserAvatar";
 import { cacheProfileIdentity } from "@/lib/profileIdentityCache";
+import { normalizeSharedTradeMessage } from "@/lib/sharedTrades";
 import { isValidProfileHandle, PROFILE_HANDLE_REQUIREMENTS } from "@/lib/profileHandle";
 import {
   buildDefaultProfile,
@@ -556,6 +557,14 @@ export default function SocialsWorkspace({
   const [rankingScope, setRankingScope] = useState<RankingScope>("desk");
   const [rankingFriends, setRankingFriends] = useState<FriendSummary[]>([]);
   const [deskNetwork, setDeskNetwork] = useState<DeskNetworkPayload>(EMPTY_DESK_NETWORK);
+  const [tradeSendObject, setTradeSendObject] = useState<SocialObject | null>(null);
+  const [tradeSendFriends, setTradeSendFriends] = useState<FriendSummary[]>([]);
+  const [tradeSendDeskTargets, setTradeSendDeskTargets] = useState<Array<{ deskId: string; deskName: string; channelId: string; channelName: string }>>([]);
+  const [tradeSendFriendIds, setTradeSendFriendIds] = useState<string[]>([]);
+  const [tradeSendDeskIds, setTradeSendDeskIds] = useState<string[]>([]);
+  const [tradeSendQuery, setTradeSendQuery] = useState("");
+  const [tradeSendState, setTradeSendState] = useState<"idle" | "loading" | "sending" | "error">("idle");
+  const [tradeSendError, setTradeSendError] = useState("");
   const [rankingObjects, setRankingObjects] = useState<SocialObject[]>([]);
   const [rankingDeskId, setRankingDeskId] = useState("");
   const [rankingDirectoryState, setRankingDirectoryState] = useState<"idle" | "loading" | "ready" | "unavailable">("idle");
@@ -603,6 +612,7 @@ export default function SocialsWorkspace({
   const [requestedProfilePreview, setRequestedProfilePreview] = useState<SocialProfilePreview | null>(
     () => loadSocialProfilePreview(initialProfileHandle),
   );
+  const [requestedProfilePostId, setRequestedProfilePostId] = useState("");
   const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
   const [commentKinds, setCommentKinds] = useState<Record<string, SocialCommentPayload["kind"]>>({});
   const [commentPanelPostId, setCommentPanelPostId] = useState<string | null>(null);
@@ -1085,6 +1095,153 @@ export default function SocialsWorkspace({
   const todayConsensus = consensus.find((object) =>
     object.userId === resolvedAccountKey
     && typedPayload<SocialConsensusPayload>(object)?.sessionDate === todayKey());
+
+  useEffect(() => {
+    if (!initialProfileHandle || typeof window === "undefined") {
+      setRequestedProfilePostId("");
+      return;
+    }
+    setRequestedProfilePostId(new URLSearchParams(window.location.search).get("post")?.trim() ?? "");
+  }, [initialProfileHandle]);
+
+  const closeTradeSend = () => {
+    if (tradeSendState === "sending") return;
+    setTradeSendObject(null);
+    setTradeSendFriends([]);
+    setTradeSendDeskTargets([]);
+    setTradeSendFriendIds([]);
+    setTradeSendDeskIds([]);
+    setTradeSendQuery("");
+    setTradeSendError("");
+    setTradeSendState("idle");
+  };
+
+  const openTradeSend = async (object: SocialObject) => {
+    const payload = typedPayload<SocialPostPayload>(object);
+    if (payload?.kind !== "TRADE" || !payload.trade) return;
+    setTradeSendObject(object);
+    setTradeSendFriends([]);
+    setTradeSendDeskTargets([]);
+    setTradeSendFriendIds([]);
+    setTradeSendDeskIds([]);
+    setTradeSendQuery("");
+    setTradeSendError("");
+    setTradeSendState("loading");
+    try {
+      const [friendsResponse, desksResponse] = await Promise.all([
+        fetch("/api/friends", { cache: "no-store" }),
+        fetch("/api/socials/desks", { cache: "no-store" }),
+      ]);
+      const friendsBody = await friendsResponse.json() as FriendsPayload & { error?: string };
+      const desksBody = await desksResponse.json() as DeskNetworkPayload & { error?: string };
+      if (!friendsResponse.ok || !friendsBody.cloud) throw new Error(friendsBody.error || "Friends could not be loaded.");
+      setTradeSendFriends(friendsBody.friends ?? []);
+
+      if (desksResponse.ok && desksBody.ready) {
+        setDeskNetwork(desksBody);
+        const membershipIds = new Set(desksBody.members.filter((member) => member.userId === resolvedAccountKey).map((member) => member.deskId));
+        const available = desksBody.workspaces.filter((workspace) => !workspace.archivedAt && (workspace.ownerId === resolvedAccountKey || membershipIds.has(workspace.deskId)));
+        const targetResults = await Promise.all(available.map(async (workspace) => {
+          const response = await fetch(`/api/socials/desks?deskId=${encodeURIComponent(workspace.deskId)}`, { cache: "no-store" });
+          const detail = await response.json() as DeskNetworkPayload & { error?: string };
+          if (!response.ok || !detail.ready) return null;
+          const role = detail.members.find((member) => member.deskId === workspace.deskId && member.userId === resolvedAccountKey)?.role ?? "member";
+          const canLead = workspace.ownerId === resolvedAccountKey || role === "owner" || role === "moderator";
+          const channel = [...detail.channels]
+            .filter((candidate) => candidate.deskId === workspace.deskId && candidate.channelType === "text")
+            .filter((candidate) => canLead || (!candidate.readOnly && !candidate.reactionOnly))
+            .sort((left, right) => left.position - right.position)[0];
+          return channel ? {
+            deskId: workspace.deskId,
+            deskName: workspace.name,
+            channelId: channel.id,
+            channelName: channel.name,
+          } : null;
+        }));
+        setTradeSendDeskTargets(targetResults.filter((target): target is NonNullable<typeof target> => Boolean(target)));
+      }
+      setTradeSendState("idle");
+    } catch (reason) {
+      setTradeSendError(reason instanceof Error ? reason.message : "Recipients could not be loaded.");
+      setTradeSendState("error");
+    }
+  };
+
+  const sendTradeToRecipients = async () => {
+    const postPayload = typedPayload<SocialPostPayload>(tradeSendObject);
+    if (!tradeSendObject || postPayload?.kind !== "TRADE" || !postPayload.trade) return;
+    if (!tradeSendFriendIds.length && !tradeSendDeskIds.length) {
+      setTradeSendError("Choose at least one friend or Desk.");
+      return;
+    }
+    const ownerUserId = postPayload.repostOfUserId || tradeSendObject.userId;
+    const ownerPostId = postPayload.repostOfPostId || tradeSendObject.id;
+    const ownerProfileObject = profiles.find((candidate) => candidate.userId === ownerUserId);
+    const ownerProfile = ownerProfileObject
+      ? normalizeSocialProfile(ownerProfileObject.payload, ownerProfileObject.authorLabel)
+      : normalizeSocialProfile({}, tradeSendObject.authorLabel);
+    const sharedTrade = normalizeSharedTradeMessage({
+      kind: "trade-share",
+      version: 1,
+      postId: ownerPostId,
+      ownerUserId,
+      ownerHandle: ownerProfile.handle,
+      ownerDisplayName: ownerProfile.displayName,
+      trade: postPayload.trade,
+    });
+    if (!sharedTrade) {
+      setTradeSendError("This trade could not be prepared for messaging.");
+      return;
+    }
+
+    setTradeSendState("sending");
+    setTradeSendError("");
+    const friendRequests = tradeSendFriendIds.map(async (targetUserId) => {
+      const response = await fetch("/api/friends", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "message",
+          targetUserId,
+          body: "",
+          sharedTrade,
+          clientMessageId: crypto.randomUUID(),
+        }),
+      });
+      const body = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(body.error || "A friend message could not be sent.");
+    });
+    const deskRequests = tradeSendDeskIds.map(async (deskId) => {
+      const target = tradeSendDeskTargets.find((candidate) => candidate.deskId === deskId);
+      if (!target) throw new Error("A selected Desk no longer has an available text channel.");
+      const response = await fetch("/api/socials/desks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "send-message",
+          deskId: target.deskId,
+          channelId: target.channelId,
+          message: "",
+          sharedTrade,
+          clientMessageId: crypto.randomUUID(),
+        }),
+      });
+      const body = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(body.error || `The trade could not be sent to ${target.deskName}.`);
+    });
+    const results = await Promise.allSettled([...friendRequests, ...deskRequests]);
+    const sentCount = results.filter((result) => result.status === "fulfilled").length;
+    const failed = results.filter((result): result is PromiseRejectedResult => result.status === "rejected");
+    if (!sentCount) {
+      setTradeSendState("error");
+      setTradeSendError(failed[0]?.reason instanceof Error ? failed[0].reason.message : "The trade could not be sent.");
+      return;
+    }
+    setTradeSendObject(null);
+    setTradeSendState("idle");
+    setNotice(`Trade sent to ${sentCount} ${sentCount === 1 ? "conversation" : "conversations"}${failed.length ? ` · ${failed.length} could not be reached` : ""}.`);
+    window.dispatchEvent(new CustomEvent(DESK_NETWORK_CHANGED_EVENT));
+  };
 
   useEffect(() => {
     setProfileDraft(currentProfile);
@@ -3069,6 +3226,7 @@ export default function SocialsWorkspace({
           <button type="button" onClick={() => void addReaction(object, "LIKE")} className={`flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[8px] font-semibold ${liked ? "bg-primary/10 text-primary" : "text-muted hover:bg-surface hover:text-foreground"}`}><Heart className={`h-3.5 w-3.5 ${liked ? "fill-current" : ""}`} />Like{likeCount ? ` ${likeCount}` : ""}</button>
           <button type="button" onClick={() => trade ? (setCommentPanelPostId(object.id), setCommentReplyToId(null)) : document.getElementById(`comment:${object.id}`)?.focus()} className="flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[8px] font-semibold text-muted hover:bg-surface hover:text-foreground"><MessageCircle className="h-3.5 w-3.5" />Comment{objectComments.length ? ` ${objectComments.length}` : ""}</button>
           <button type="button" onClick={() => shareStructuredPost(object)} className="flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[8px] font-semibold text-muted hover:bg-surface hover:text-foreground"><Share2 className="h-3.5 w-3.5" />Share</button>
+          {trade ? <button type="button" onClick={() => void openTradeSend(object)} className="flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[8px] font-semibold text-muted hover:bg-surface hover:text-foreground"><Send className="h-3.5 w-3.5" />Send</button> : null}
           <button type="button" onClick={() => void toggleStructuredPostRepost(object)} className={`flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[8px] font-semibold ${reposted ? "bg-primary/10 text-primary" : "text-muted hover:bg-surface hover:text-foreground"}`}><Repeat2 className="h-3.5 w-3.5" />Repost{reposts.length ? ` ${reposts.length}` : ""}</button>
           <button type="button" onClick={() => void toggleStructuredPostSave(object)} className={`ml-auto flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[8px] font-semibold ${saved ? "bg-primary/10 text-primary" : "text-muted hover:bg-surface hover:text-foreground"}`}><Bookmark className={`h-3.5 w-3.5 ${saved ? "fill-current" : ""}`} />{saved ? "Saved" : "Save"}</button>
         </div>
@@ -4059,6 +4217,7 @@ export default function SocialsWorkspace({
               onShareProfile={shareProfile}
               onOpenProfile={onOpenProfile}
               onCollectionVisibilityChange={(key, visibility) => void updateCollectionVisibility(key, visibility)}
+              initialPostId={requestedProfilePostId}
             />
           ) : requestedProfileHandle && requestedProfileState === "error" ? (
             <ProfileOpeningState
@@ -4227,6 +4386,70 @@ export default function SocialsWorkspace({
           </div>
         </div>
       ) : null}
+
+      {tradeSendObject ? (() => {
+        const payload = typedPayload<SocialPostPayload>(tradeSendObject);
+        const trade = payload?.kind === "TRADE" ? payload.trade ?? null : null;
+        const normalizedQuery = tradeSendQuery.trim().toLowerCase();
+        const visibleFriends = tradeSendFriends.filter((friend) => !normalizedQuery || `${friend.displayName} ${friend.handle}`.toLowerCase().includes(normalizedQuery));
+        const visibleDesks = tradeSendDeskTargets.filter((target) => !normalizedQuery || `${target.deskName} ${target.channelName}`.toLowerCase().includes(normalizedQuery));
+        const selectedCount = tradeSendFriendIds.length + tradeSendDeskIds.length;
+        return (
+          <div className="fixed inset-0 z-[1160] flex items-center justify-center bg-black/80 p-4 backdrop-blur-md" onMouseDown={(event) => { if (event.target === event.currentTarget) closeTradeSend(); }}>
+            <div className="flex max-h-[88vh] w-full max-w-2xl flex-col overflow-hidden rounded-3xl border border-border bg-panel shadow-2xl shadow-black/70">
+              <div className="flex items-start gap-3 border-b border-border p-5">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-primary/25 bg-primary/10 text-primary"><Send className="h-4 w-4" /></span>
+                <div className="min-w-0 flex-1"><h2 className="text-[14px] font-semibold">Send this trade</h2><p className="mt-1 text-[8px] text-muted">Choose multiple friends and Desks. Each conversation receives the complete trade card and interactive chart.</p></div>
+                <button type="button" onClick={closeTradeSend} disabled={tradeSendState === "sending"} className="flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground disabled:opacity-40" aria-label="Close"><X className="h-4 w-4" /></button>
+              </div>
+
+              {trade ? (
+                <div className="flex flex-wrap items-center gap-3 border-b border-border bg-[linear-gradient(135deg,color-mix(in_srgb,var(--primary)_6%,var(--background)),var(--background))] px-5 py-3">
+                  <span className={`rounded-lg px-2 py-1 text-[7px] font-semibold ${trade.side === "SHORT" ? "bg-danger/10 text-danger" : "bg-accent/10 text-accent"}`}>{trade.side}</span>
+                  <span className="font-mono text-[11px] font-semibold text-foreground">{trade.instrument}</span>
+                  <span className="text-[7px] text-muted">Entry {trade.entryPrice?.toLocaleString("en-US", { maximumFractionDigits: 6 }) ?? "—"} · Exit {trade.exitPrice?.toLocaleString("en-US", { maximumFractionDigits: 6 }) ?? "—"}</span>
+                  <span className={`ml-auto font-mono text-[15px] font-semibold ${trade.netPnl >= 0 ? "text-accent" : "text-danger"}`}>{tradeMoney(trade.netPnl)}</span>
+                </div>
+              ) : null}
+
+              <div className="shrink-0 border-b border-border px-5 py-3">
+                <label className="flex h-10 items-center gap-2 rounded-xl border border-border bg-background px-3 focus-within:border-primary/40"><Search className="h-3.5 w-3.5 text-muted" /><input autoFocus value={tradeSendQuery} onChange={(event) => setTradeSendQuery(event.target.value)} placeholder="Search friends or Desks" className="min-w-0 flex-1 bg-transparent text-[9px] text-foreground outline-none placeholder:text-muted/55" /></label>
+              </div>
+
+              <div className="min-h-0 flex-1 overflow-y-auto p-5">
+                {tradeSendState === "loading" ? (
+                  <KwantLoader compact icon={Send} title="Opening conversations" detail="Loading your friends and available Desk channels." className="min-h-[260px] rounded-2xl border border-border" />
+                ) : (
+                  <div className="space-y-5">
+                    {tradeSendError ? <div className="rounded-xl border border-danger/25 bg-danger/[0.055] px-3 py-2 text-[8px] text-danger">{tradeSendError}</div> : null}
+                    <section>
+                      <div className="mb-2 flex items-center gap-2"><UsersRound className="h-3.5 w-3.5 text-primary" /><h3 className="text-[8px] font-semibold uppercase tracking-[0.13em] text-muted">Friends</h3><span className="ml-auto text-[7px] text-muted">{tradeSendFriends.length} available</span></div>
+                      {visibleFriends.length ? <div className="grid gap-2 sm:grid-cols-2">{visibleFriends.map((friend) => {
+                        const selected = tradeSendFriendIds.includes(friend.userId);
+                        return <button key={friend.userId} type="button" onClick={() => setTradeSendFriendIds((current) => selected ? current.filter((id) => id !== friend.userId) : [...current, friend.userId])} className={`flex items-center gap-3 rounded-2xl border p-3 text-left transition ${selected ? "border-primary/45 bg-primary/[0.075] shadow-[0_0_22px_color-mix(in_srgb,var(--primary)_9%,transparent)]" : "border-border bg-background/35 hover:border-primary/25"}`}><Avatar label={friend.displayName} avatarUrl={friend.avatarUrl} statusClassName={presenceOption(friend.presenceStatus).dotClassName} /><span className="min-w-0 flex-1"><span className="block truncate text-[9px] font-semibold text-foreground">{friend.displayName}</span><span className="mt-0.5 block truncate text-[7px] text-muted">@{friend.handle}</span></span><span className={`flex h-5 w-5 items-center justify-center rounded-md border ${selected ? "border-primary bg-primary text-background" : "border-border text-transparent"}`}><Check className="h-3 w-3" /></span></button>;
+                      })}</div> : <div className="rounded-2xl border border-dashed border-border p-5 text-center text-[8px] text-muted">{normalizedQuery ? "No friends match that search." : "Connect with a friend to send trades privately."}</div>}
+                    </section>
+
+                    <section>
+                      <div className="mb-2 flex items-center gap-2"><Network className="h-3.5 w-3.5 text-primary" /><h3 className="text-[8px] font-semibold uppercase tracking-[0.13em] text-muted">Desks</h3><span className="ml-auto text-[7px] text-muted">Posts to the first available text channel</span></div>
+                      {visibleDesks.length ? <div className="grid gap-2 sm:grid-cols-2">{visibleDesks.map((target) => {
+                        const selected = tradeSendDeskIds.includes(target.deskId);
+                        return <button key={target.deskId} type="button" onClick={() => setTradeSendDeskIds((current) => selected ? current.filter((id) => id !== target.deskId) : [...current, target.deskId])} className={`flex items-center gap-3 rounded-2xl border p-3 text-left transition ${selected ? "border-primary/45 bg-primary/[0.075] shadow-[0_0_22px_color-mix(in_srgb,var(--primary)_9%,transparent)]" : "border-border bg-background/35 hover:border-primary/25"}`}><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary"><Network className="h-4 w-4" /></span><span className="min-w-0 flex-1"><span className="block truncate text-[9px] font-semibold text-foreground">{target.deskName}</span><span className="mt-0.5 block truncate text-[7px] text-muted">#{target.channelName}</span></span><span className={`flex h-5 w-5 items-center justify-center rounded-md border ${selected ? "border-primary bg-primary text-background" : "border-border text-transparent"}`}><Check className="h-3 w-3" /></span></button>;
+                      })}</div> : <div className="rounded-2xl border border-dashed border-border p-5 text-center text-[8px] text-muted">{normalizedQuery ? "No Desks match that search." : "No writable Desk text channel is available yet."}</div>}
+                    </section>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex items-center gap-3 border-t border-border bg-background/25 px-5 py-4">
+                <div className="min-w-0 flex-1 text-[8px] text-muted">{selectedCount ? `${selectedCount} ${selectedCount === 1 ? "conversation" : "conversations"} selected` : "Select the conversations that should receive this trade."}</div>
+                <button type="button" onClick={closeTradeSend} disabled={tradeSendState === "sending"} className="h-9 rounded-xl border border-border px-4 text-[8px] font-semibold text-muted disabled:opacity-40">Cancel</button>
+                <button type="button" onClick={() => void sendTradeToRecipients()} disabled={!selectedCount || tradeSendState === "loading" || tradeSendState === "sending"} className="flex h-9 min-w-[112px] items-center justify-center gap-2 rounded-xl bg-primary px-4 text-[8px] font-semibold text-background shadow-[0_0_24px_color-mix(in_srgb,var(--primary)_18%,transparent)] disabled:opacity-40">{tradeSendState === "sending" ? <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-background/30 border-t-background" /> : <Send className="h-3.5 w-3.5" />}{tradeSendState === "sending" ? "Sending…" : "Send trade"}</button>
+              </div>
+            </div>
+          </div>
+        );
+      })() : null}
 
       {showOneLinerModal ? (
         <div className="fixed inset-0 z-[1100] flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm" onMouseDown={(event) => { if (event.target === event.currentTarget) closeOneLinerComposer(); }}>

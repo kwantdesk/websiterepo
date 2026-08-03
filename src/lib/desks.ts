@@ -101,6 +101,7 @@ export type DeskMessage = {
   senderUserId: string;
   body: string;
   attachments: DeskMessageAttachment[];
+  sharedTrade?: import("@/lib/sharedTrades").SharedTradeMessage;
   createdAt: string;
   updatedAt: string;
 };
