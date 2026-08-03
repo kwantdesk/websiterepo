@@ -37,6 +37,7 @@ import {
   RefreshCw,
   Search,
   Save,
+  Share2,
   ShieldCheck,
   Sparkles,
   Star,
@@ -681,6 +682,11 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
   const [manualEvidenceDragging, setManualEvidenceDragging] = useState(false);
   const [manualTradeError, setManualTradeError] = useState("");
   const [manualTradeSaving, setManualTradeSaving] = useState(false);
+  const [showTradePost, setShowTradePost] = useState(false);
+  const [postTradeId, setPostTradeId] = useState("");
+  const [postTradeCaption, setPostTradeCaption] = useState("");
+  const [postTradeSaving, setPostTradeSaving] = useState(false);
+  const [postTradeError, setPostTradeError] = useState("");
   const [accountMenu, setAccountMenu] = useState<{ account: string; x: number; y: number } | null>(null);
   const [showArchive, setShowArchive] = useState(false);
   const [deleteJournalTarget, setDeleteJournalTarget] = useState<string | null>(null);
@@ -924,6 +930,12 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
       return sortDirection === "asc" ? comparison : -comparison;
     });
   }, [accountFilter, allTrades, outcomeFilter, query, sortDirection, sortKey]);
+  const postableTrades = useMemo(
+    () => allTrades
+      .filter((trade) => (accountFilter === "all" || trade.account === accountFilter) && trade.entryPrice !== null && trade.exitPrice !== null)
+      .sort((left, right) => Date.parse(right.closedAt ?? right.openedAt) - Date.parse(left.closedAt ?? left.openedAt)),
+    [accountFilter, allTrades],
+  );
 
   const filteredEvidence = useMemo(
     () => state.evidence.filter((item) => !isZyonJournalAccountName(item.account) && !archivedAccountNames.has(item.account) && (accountFilter === "all" || item.account === accountFilter)),
@@ -948,6 +960,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
   );
   const stats = useMemo(() => calculateJournalStats(filteredTrades, filteredEvidence), [filteredEvidence, filteredTrades]);
   const selectedTrade = allTrades.find((trade) => trade.id === selectedTradeId) ?? null;
+  const postTrade = postableTrades.find((trade) => trade.id === postTradeId) ?? null;
   const selectedTradeIsZyon = Boolean(selectedTrade?.sourceImportId.startsWith("zyon:"));
   const selectedEvidence = state.evidence.find((item) => item.id === selectedEvidenceId) ?? null;
   const selectedAccountIsManual = accountFilter !== "all" && accountSource.get(accountFilter) === "manual";
@@ -1150,6 +1163,66 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
     setManualEvidenceDragging(false);
     setManualTradeError("");
     setShowManualTrade(true);
+  };
+
+  const openTradePost = () => {
+    setPostTradeId(postableTrades[0]?.id ?? "");
+    setPostTradeCaption("");
+    setPostTradeError("");
+    setShowTradePost(true);
+  };
+
+  const publishTradePost = async () => {
+    if (!postTrade || postTradeSaving) return;
+    setPostTradeSaving(true);
+    setPostTradeError("");
+    try {
+      const response = await fetch("/api/socials", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          object: {
+            objectType: "post",
+            scope: "community",
+            authorLabel: "Kwant Trader",
+            payload: {
+              kind: "TRADE",
+              instrument: postTrade.symbol,
+              title: `${postTrade.symbol} trade`,
+              body: postTradeCaption.trim().slice(0, 2_000),
+              context: "",
+              condition: "",
+              invalidation: "",
+              relatedPrecordId: null,
+              observedAt: new Date().toISOString(),
+              trade: {
+                journalTradeId: postTrade.id,
+                instrument: postTrade.symbol,
+                side: postTrade.side,
+                entryPrice: postTrade.entryPrice,
+                exitPrice: postTrade.exitPrice,
+                openedAt: postTrade.openedAt,
+                closedAt: postTrade.closedAt,
+                netPnl: postTrade.netPnl,
+                initialRisk: postTrade.initialRisk,
+                rMultiple: postTrade.rMultiple,
+              },
+            },
+          },
+        }),
+      });
+      const result = await response.json() as { object?: unknown; error?: string };
+      if (!response.ok || !result.object) throw new Error(result.error || "The trade could not be posted.");
+      setShowTradePost(false);
+      setPostTradeId("");
+      setPostTradeCaption("");
+      setJournalLifecycleMessage("Trade posted to Socials. Your private journal notes and screenshots were not shared.");
+      window.dispatchEvent(new CustomEvent("kwantdesk:social-post-created"));
+    } catch (error) {
+      setPostTradeError(error instanceof Error ? error.message : "The trade could not be posted.");
+    } finally {
+      setPostTradeSaving(false);
+    }
   };
 
   function updateManualTradeField<K extends keyof ManualTradeDraft>(field: K, value: ManualTradeDraft[K]) {
@@ -1750,6 +1823,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
               {cloudState === "cloud" ? "Account saved" : cloudState === "loading" ? "Connecting" : cloudState === "error" || saveStatus === "error" ? "Save interrupted" : "Local until connected"}
             </span>
             {selectedAccountIsManual ? <button type="button" onClick={openManualTrade} className="flex h-8 items-center gap-1.5 rounded-xl bg-primary px-3 text-[9px] font-semibold text-background hover:brightness-110"><Plus className="h-3.5 w-3.5" />Add trade</button> : null}
+            <button type="button" onClick={openTradePost} disabled={!postableTrades.length} className="flex h-8 items-center gap-1.5 rounded-xl bg-primary px-3 text-[9px] font-semibold text-background hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-35"><Share2 className="h-3.5 w-3.5" />Post trade</button>
             <button type="button" onClick={() => setShowArchive(true)} className="relative flex h-8 items-center gap-1.5 rounded-xl border border-border bg-surface px-3 text-[9px] font-semibold text-muted hover:text-foreground"><FolderArchive className="h-3.5 w-3.5" />Archive{archivedAccounts.length ? <span className="ml-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 font-mono text-[7px] font-semibold text-background">{archivedAccounts.length}</span> : null}</button>
             <button type="button" onClick={() => exportJournal("json")} disabled={!allTrades.length && !state.evidence.length} className="flex h-8 items-center gap-1.5 rounded-xl border border-border bg-surface px-3 text-[9px] font-semibold text-muted hover:text-foreground disabled:opacity-35"><Download className="h-3.5 w-3.5" />Backup</button>
             <button type="button" onClick={() => { setAccountCreationMode("manual"); setImportAccount("My KwantDesk Journal"); setImportMessage(""); setShowImport(true); }} className="flex h-8 items-center gap-1.5 rounded-xl border border-border bg-surface px-3 text-[9px] font-semibold text-muted hover:text-foreground"><BookPlus className="h-3.5 w-3.5" />Add account</button>
@@ -2359,6 +2433,45 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
               <button type="button" onClick={() => setShowImport(false)} className="h-9 rounded-xl border border-border px-4 text-[9px] font-semibold text-muted hover:bg-surface hover:text-foreground">Close</button>
               <button type="button" onClick={accountCreationMode === "manual" ? createNativeJournal : runImport} disabled={importing || importTargetsZyon || (accountCreationMode === "import" && !pendingFiles.length) || !importAccount.trim()} className="flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-[9px] font-semibold text-background disabled:opacity-40">{importing ? <span className="h-3 w-3 animate-spin rounded-full border border-background/30 border-t-background" /> : accountCreationMode === "manual" ? <BookPlus className="h-3.5 w-3.5" /> : <Upload className="h-3.5 w-3.5" />}{importing ? "Creating account" : accountCreationMode === "manual" ? "Create KwantDesk Journal" : `Create & import ${pendingFiles.length || ""}`}</button>
             </div>
+          </div>
+        </div>
+      ) : null}
+
+      {showTradePost ? (
+        <div className="fixed inset-0 z-[1080] flex items-center justify-center bg-black/74 p-4 backdrop-blur-sm" onMouseDown={(event) => { if (event.target === event.currentTarget && !postTradeSaving) setShowTradePost(false); }}>
+          <div className="flex max-h-[92vh] w-full max-w-[900px] flex-col overflow-hidden rounded-3xl border border-border bg-panel shadow-2xl shadow-black/70">
+            <div className="flex items-start gap-3 border-b border-border px-5 py-4">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-primary/25 bg-primary/10 text-primary"><Share2 className="h-4 w-4" /></span>
+              <div className="min-w-0 flex-1"><h2 className="text-[14px] font-semibold text-foreground">Post a journal trade</h2><p className="mt-1 text-[9px] leading-4 text-muted">Choose a completed trade and add a public caption. Private notes, improvements, screenshots and account details stay inside your Journal.</p></div>
+              <button type="button" disabled={postTradeSaving} onClick={() => setShowTradePost(false)} className="flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground disabled:opacity-40"><X className="h-4 w-4" /></button>
+            </div>
+            <div className="grid min-h-0 flex-1 gap-4 overflow-y-auto p-5 lg:grid-cols-[minmax(0,1.05fr)_minmax(300px,.95fr)]">
+              <section className="min-h-0">
+                <div className="mb-2 flex items-center justify-between"><div><h3 className="text-[10px] font-semibold text-foreground">Trade log</h3><p className="mt-0.5 text-[8px] text-muted">{postableTrades.length} completed trade{postableTrades.length === 1 ? "" : "s"} in this Journal</p></div><span className="rounded-lg border border-border bg-surface px-2 py-1 font-mono text-[7px] text-muted">SELECT ONE</span></div>
+                <div className="max-h-[480px] space-y-1.5 overflow-y-auto pr-1">
+                  {postableTrades.map((trade) => {
+                    const active = trade.id === postTradeId;
+                    return <button key={trade.id} type="button" onClick={() => { setPostTradeId(trade.id); setPostTradeError(""); }} className={`w-full rounded-2xl border p-3 text-left transition ${active ? "border-primary/45 bg-primary/[0.09] shadow-[0_0_18px_color-mix(in_srgb,var(--primary)_10%,transparent)]" : "border-border bg-background/30 hover:border-primary/25 hover:bg-surface/55"}`}>
+                      <div className="flex items-center gap-2"><span className={`flex h-8 w-8 items-center justify-center rounded-xl ${trade.side === "LONG" ? "bg-primary/10 text-primary" : "bg-danger/10 text-danger"}`}>{trade.side === "LONG" ? <ArrowUpRight className="h-3.5 w-3.5" /> : <ArrowDownRight className="h-3.5 w-3.5" />}</span><span className="min-w-0 flex-1"><span className="block truncate text-[9px] font-semibold text-foreground">{trade.symbol} · {trade.setup || "Journal trade"}</span><span className="mt-0.5 block text-[7px] text-muted">{formatDate(trade.openedAt, true)} · {trade.side} · {trade.quantity} contract{trade.quantity === 1 ? "" : "s"}</span></span><span className={`font-mono text-[11px] font-semibold ${trade.netPnl >= 0 ? "text-primary" : "text-danger"}`}>{money(trade.netPnl)}</span></div>
+                    </button>;
+                  })}
+                </div>
+              </section>
+              <section className="flex min-h-[360px] flex-col rounded-2xl border border-border bg-background/30 p-4">
+                {postTrade ? <>
+                  <div className="flex items-start gap-3"><span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${postTrade.side === "LONG" ? "bg-primary/10 text-primary" : "bg-danger/10 text-danger"}`}>{postTrade.side === "LONG" ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}</span><div className="min-w-0"><div className="text-[12px] font-semibold text-foreground">{postTrade.symbol} {postTrade.side}</div><div className="mt-1 truncate text-[8px] text-muted">{postTrade.setup || "Journal trade"}</div></div><div className={`ml-auto font-mono text-[18px] font-semibold ${postTrade.netPnl >= 0 ? "text-primary" : "text-danger"}`}>{money(postTrade.netPnl)}</div></div>
+                  <div className="mt-4 grid grid-cols-2 gap-2">
+                    {[["Entry", postTrade.entryPrice?.toLocaleString("en-US", { maximumFractionDigits: 6 }) ?? "—"], ["Exit", postTrade.exitPrice?.toLocaleString("en-US", { maximumFractionDigits: 6 }) ?? "—"], ["Risk", postTrade.initialRisk === null ? "Not recorded" : money(postTrade.initialRisk, false)], ["Result", postTrade.rMultiple === null ? "Not recorded" : `${postTrade.rMultiple.toFixed(2)}R`]].map(([label, value]) => <div key={label} className="rounded-xl border border-border bg-panel/70 p-3"><div className="text-[7px] uppercase tracking-[0.12em] text-muted">{label}</div><div className="mt-1 font-mono text-[10px] text-foreground">{value}</div></div>)}
+                  </div>
+                  <label className="mt-4 text-[8px] font-semibold uppercase tracking-[0.12em] text-muted">Public caption <span className="font-normal normal-case tracking-normal">· optional</span></label>
+                  <textarea value={postTradeCaption} onChange={(event) => setPostTradeCaption(event.target.value.slice(0, 2_000))} rows={7} placeholder="What do you want people to know about this trade?" className="mt-2 min-h-[130px] w-full resize-y rounded-2xl border border-border bg-panel p-3 text-[10px] leading-5 text-foreground outline-none placeholder:text-muted/55 focus:border-primary/45" />
+                  <div className="mt-1 text-right font-mono text-[7px] text-muted">{postTradeCaption.length}/2000</div>
+                  <div className="mt-auto rounded-xl border border-primary/15 bg-primary/[0.055] p-3 text-[8px] leading-4 text-muted"><strong className="text-foreground">Public snapshot only:</strong> instrument, direction, entry, exit, P&amp;L, recorded risk, timestamps and the caption above.</div>
+                </> : <div className="m-auto text-center"><CircleAlert className="mx-auto h-6 w-6 text-muted" /><div className="mt-3 text-[10px] font-semibold text-foreground">Choose a completed trade</div><p className="mt-1 text-[8px] text-muted">A trade needs recorded entry and exit prices before it can be posted.</p></div>}
+              </section>
+            </div>
+            {postTradeError ? <div className="mx-5 mb-3 flex items-start gap-2 rounded-xl border border-danger/25 bg-danger/[0.07] px-3 py-2 text-[9px] text-danger"><CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />{postTradeError}</div> : null}
+            <div className="flex items-center gap-2 border-t border-border bg-background/20 px-5 py-4"><span className="mr-auto flex items-center gap-1.5 text-[8px] text-muted"><Eye className="h-3.5 w-3.5 text-primary" />Publishes to the Socials community feed</span><button type="button" disabled={postTradeSaving} onClick={() => setShowTradePost(false)} className="h-9 rounded-xl border border-border px-4 text-[9px] font-semibold text-muted hover:bg-surface hover:text-foreground disabled:opacity-40">Cancel</button><button type="button" disabled={!postTrade || postTradeSaving} onClick={() => void publishTradePost()} className="flex h-9 items-center gap-2 rounded-xl bg-primary px-5 text-[9px] font-semibold text-background hover:brightness-110 disabled:opacity-40">{postTradeSaving ? <span className="h-3 w-3 animate-spin rounded-full border border-background/30 border-t-background" /> : <Share2 className="h-3.5 w-3.5" />}{postTradeSaving ? "Posting trade" : "Post trade"}</button></div>
           </div>
         </div>
       ) : null}

@@ -12,9 +12,12 @@ import {
   CalendarDays,
   Check,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   CircleAlert,
   Clock3,
   Compass,
+  CornerUpLeft,
   Eye,
   EyeOff,
   Flame,
@@ -29,6 +32,7 @@ import {
   MoreHorizontal,
   Network,
   Plus,
+  Pin,
   Radar,
   Repeat2,
   Scale,
@@ -57,6 +61,7 @@ import SocialProfileView from "@/components/socials/SocialProfileView";
 import ActivityStreakBadge from "@/components/socials/ActivityStreakBadge";
 import CallingCardVisual from "@/components/socials/CallingCardVisual";
 import ReasoningOutcomeChart from "@/components/socials/ReasoningOutcomeChart";
+import TradePostChart from "@/components/socials/TradePostChart";
 import DeskWorkspace from "@/components/socials/DeskWorkspace";
 import UserAvatar from "@/components/socials/UserAvatar";
 import { cacheProfileIdentity } from "@/lib/profileIdentityCache";
@@ -85,6 +90,7 @@ import {
   type SocialProfilePayload,
   type SocialProgressPayload,
   type SocialReactionPayload,
+  type SocialTradeSnapshot,
   type SocialReceiptPayload,
   type SocialReasoningPathMetrics,
   type SocialReasoningCandle,
@@ -363,6 +369,12 @@ function formatDate(value: string, includeTime = false) {
     : { day: "2-digit", month: "short", year: "numeric" }).format(date);
 }
 
+function tradeMoney(value: number, signed = true) {
+  const absolute = Math.abs(value).toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 });
+  if (!signed || value === 0) return absolute;
+  return `${value > 0 ? "+" : "-"}${absolute}`;
+}
+
 function initials(value: string) {
   return value.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join("") || "KD";
 }
@@ -373,6 +385,20 @@ function objectKey(object: Pick<SocialObject, "userId" | "id">) {
 
 function typedPayload<T>(object: SocialObject | undefined | null) {
   return (object?.payload ?? null) as T | null;
+}
+
+function commentThreadRootId(comment: SocialObject, comments: SocialObject[]) {
+  let current = comment;
+  const visited = new Set<string>();
+  for (let depth = 0; depth < 12; depth += 1) {
+    const replyTo = typedPayload<SocialCommentPayload>(current)?.replyToCommentId;
+    if (!replyTo || visited.has(replyTo)) return current.id;
+    visited.add(replyTo);
+    const parent = comments.find((candidate) => candidate.id === replyTo);
+    if (!parent) return current.id;
+    current = parent;
+  }
+  return current.id;
 }
 
 function Card({ children, className = "", id }: { children: React.ReactNode; className?: string; id?: string }) {
@@ -579,6 +605,9 @@ export default function SocialsWorkspace({
   );
   const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
   const [commentKinds, setCommentKinds] = useState<Record<string, SocialCommentPayload["kind"]>>({});
+  const [commentPanelPostId, setCommentPanelPostId] = useState<string | null>(null);
+  const [commentReplyToId, setCommentReplyToId] = useState<string | null>(null);
+  const [collapsedCommentThreads, setCollapsedCommentThreads] = useState<Set<string>>(() => new Set());
   const [consensusDraft, setConsensusDraft] = useState({
     instrument: "NQ",
     level: "Primary positioning wall",
@@ -957,6 +986,21 @@ export default function SocialsWorkspace({
   const memberships = useMemo(() => state.objects.filter((object) => object.objectType === "desk-member"), [state.objects]);
   const comments = useMemo(() => state.objects.filter((object) => object.objectType === "comment"), [state.objects]);
   const reactions = useMemo(() => state.objects.filter((object) => object.objectType === "reaction"), [state.objects]);
+  const commentPanelPost = useMemo(
+    () => posts.find((post) => post.id === commentPanelPostId) ?? null,
+    [commentPanelPostId, posts],
+  );
+  const commentPanelComments = useMemo(() => {
+    if (!commentPanelPost) return [];
+    const pinnedId = typedPayload<SocialPostPayload>(commentPanelPost)?.pinnedCommentId;
+    return comments
+      .filter((comment) => comment.parentId === commentPanelPost.id)
+      .sort((left, right) => {
+        if (left.id === pinnedId) return -1;
+        if (right.id === pinnedId) return 1;
+        return Date.parse(left.createdAt) - Date.parse(right.createdAt);
+      });
+  }, [commentPanelPost, comments]);
   const cards = useMemo(() => state.objects.filter((object) => object.objectType === "card"), [state.objects]);
   const earnedCardCodes = useMemo(() => new Set([
     "origin-signal",
@@ -2347,7 +2391,7 @@ export default function SocialsWorkspace({
     }));
   };
 
-  const addComment = (precord: SocialObject) => {
+  const addComment = (precord: SocialObject, replyToCommentId: string | null = null) => {
     const body = commentDrafts[precord.id]?.trim() ?? "";
     if (!body) return;
     void saveObject(buildLocalObject({
@@ -2362,9 +2406,53 @@ export default function SocialsWorkspace({
           ?? (precord.userId === resolvedAccountKey ? "TRADER NOTE" : "REVIEW"),
         body,
         helpful: false,
+        replyToCommentId,
       } satisfies SocialCommentPayload,
     }));
     setCommentDrafts((current) => ({ ...current, [precord.id]: "" }));
+    setCommentReplyToId(null);
+  };
+
+  const deletePostComment = async (post: SocialObject, comment: SocialObject) => {
+    const previous = state.objects;
+    setState((current) => ({
+      ...current,
+      objects: current.objects.filter((candidate) => objectKey(candidate) !== objectKey(comment)),
+    }));
+    try {
+      const response = await fetch("/api/socials", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: comment.id, parentId: post.id }),
+      });
+      const result = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(result.error || "That comment could not be deleted.");
+      const postPayload = typedPayload<SocialPostPayload>(post);
+      if (postPayload?.pinnedCommentId === comment.id) {
+        await saveObject({
+          ...post,
+          payload: { ...postPayload, pinnedCommentId: undefined },
+          updatedAt: new Date().toISOString(),
+        });
+      }
+      setNotice("Comment deleted.");
+    } catch (reason) {
+      setState((current) => ({ ...current, objects: previous }));
+      setNotice(reason instanceof Error ? reason.message : "That comment could not be deleted.");
+    }
+  };
+
+  const togglePinnedComment = async (post: SocialObject, commentId: string) => {
+    if (post.userId !== resolvedAccountKey) return;
+    const payload = typedPayload<SocialPostPayload>(post);
+    if (!payload) return;
+    const pinnedCommentId = payload.pinnedCommentId === commentId ? undefined : commentId;
+    const saved = await saveObject({
+      ...post,
+      payload: { ...payload, pinnedCommentId },
+      updatedAt: new Date().toISOString(),
+    });
+    setNotice(typedPayload<SocialPostPayload>(saved)?.pinnedCommentId ? "Comment pinned to the top." : "Comment unpinned.");
   };
 
   const toggleGameplanSave = async (record: SocialObject) => {
@@ -2540,6 +2628,7 @@ export default function SocialsWorkspace({
         isRepost: true,
         repostOfUserId: post.userId,
         repostOfPostId: post.id,
+        pinnedCommentId: undefined,
       } satisfies SocialPostPayload,
     }));
     setNotice("Post shared to your feed.");
@@ -2898,6 +2987,7 @@ export default function SocialsWorkspace({
     const objectReactions = reactions.filter((reaction) => reaction.parentId === object.id);
     const own = object.userId === resolvedAccountKey;
     const oneLiner = payload.kind === "ONE-LINER";
+    const trade = payload.kind === "TRADE" ? payload.trade ?? null : null;
     const liked = objectReactions.some((reaction) => reaction.userId === resolvedAccountKey && typedPayload<SocialReactionPayload>(reaction)?.kind === "LIKE");
     const saved = objectReactions.some((reaction) => reaction.userId === resolvedAccountKey && typedPayload<SocialReactionPayload>(reaction)?.kind === "SAVED");
     const likeCount = objectReactions.filter((reaction) => typedPayload<SocialReactionPayload>(reaction)?.kind === "LIKE").length;
@@ -2905,7 +2995,9 @@ export default function SocialsWorkspace({
     const reposted = reposts.some((post) => post.userId === resolvedAccountKey);
     const profileObject = profiles.find((candidate) => candidate.userId === object.userId);
     const profile = profileObject ? normalizeSocialProfile(profileObject.payload, profileObject.authorLabel) : null;
-    const kindTone = payload.kind === "MAP"
+    const kindTone = payload.kind === "TRADE"
+      ? "text-primary bg-primary/10 border-primary/20"
+      : payload.kind === "MAP"
       ? "text-primary bg-primary/10 border-primary/20"
       : payload.kind === "ONE-LINER"
         ? "text-primary bg-primary/10 border-primary/20"
@@ -2935,7 +3027,7 @@ export default function SocialsWorkspace({
           {own ? (
             <div className="relative">
               <button type="button" onClick={() => setOpenPostMenuId((current) => current === object.id ? null : object.id)} className="flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground" aria-label="Post options"><MoreHorizontal className="h-4 w-4" /></button>
-              {openPostMenuId === object.id ? <div className="absolute right-0 top-9 z-30 w-36 overflow-hidden rounded-xl border border-border bg-panel p-1 shadow-2xl"><button type="button" onClick={() => openPostEditor(object)} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-[8px] text-muted hover:bg-surface hover:text-foreground"><SlidersHorizontal className="h-3.5 w-3.5" />Edit post</button><button type="button" onClick={() => void deleteStructuredPost(object)} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-[8px] text-danger hover:bg-danger/10"><Trash2 className="h-3.5 w-3.5" />Delete post</button></div> : null}
+              {openPostMenuId === object.id ? <div className="absolute right-0 top-9 z-30 w-36 overflow-hidden rounded-xl border border-border bg-panel p-1 shadow-2xl">{payload.kind !== "TRADE" ? <button type="button" onClick={() => openPostEditor(object)} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-[8px] text-muted hover:bg-surface hover:text-foreground"><SlidersHorizontal className="h-3.5 w-3.5" />Edit post</button> : null}<button type="button" onClick={() => void deleteStructuredPost(object)} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-[8px] text-danger hover:bg-danger/10"><Trash2 className="h-3.5 w-3.5" />Delete post</button></div> : null}
             </div>
           ) : null}
         </div>
@@ -2944,6 +3036,21 @@ export default function SocialsWorkspace({
             <div className="relative overflow-hidden rounded-2xl border border-primary/20 bg-[linear-gradient(135deg,color-mix(in_srgb,var(--primary)_9%,var(--background)),color-mix(in_srgb,var(--panel)_92%,transparent))] px-5 py-6 shadow-[inset_0_1px_0_color-mix(in_srgb,var(--primary)_10%,transparent)]">
               <div className="pointer-events-none absolute -right-8 -top-10 h-32 w-32 rounded-full bg-primary/[0.08] blur-3xl" />
               <p className="relative whitespace-pre-wrap break-words text-[14px] font-medium leading-7 tracking-[-0.015em] text-foreground">{payload.body}</p>
+            </div>
+          ) : trade ? (
+            <div className="space-y-4">
+              {payload.body ? <p className="whitespace-pre-wrap break-words text-[11px] leading-6 text-foreground">{payload.body}</p> : null}
+              <div className="relative overflow-hidden rounded-2xl border border-border bg-[linear-gradient(145deg,color-mix(in_srgb,var(--primary)_7%,var(--panel)),var(--background))] p-4">
+                <div className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-primary/[0.07] blur-3xl" />
+                <div className="relative flex flex-wrap items-start gap-3">
+                  <div className="min-w-0 flex-1"><div className="flex items-center gap-2"><span className={`rounded-lg px-2 py-1 text-[7px] font-semibold ${trade.side === "LONG" ? "bg-primary/10 text-primary" : "bg-danger/10 text-danger"}`}>{trade.side}</span><span className="font-mono text-[13px] font-semibold text-foreground">{trade.instrument}</span></div><div className="mt-2 truncate text-[9px] text-muted">Journal trade · {formatDate(trade.openedAt, true)}</div></div>
+                  <div className="text-right"><div className="text-[7px] font-semibold uppercase tracking-[0.14em] text-muted">Net P&amp;L</div><div className={`mt-1 font-mono text-[24px] font-semibold tracking-[-0.04em] ${trade.netPnl >= 0 ? "text-accent" : "text-danger"}`}>{tradeMoney(trade.netPnl)}</div></div>
+                </div>
+                <div className="relative mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  {[["Entry", trade.entryPrice?.toLocaleString("en-US", { maximumFractionDigits: 6 }) ?? "—"], ["Exit", trade.exitPrice?.toLocaleString("en-US", { maximumFractionDigits: 6 }) ?? "—"], ["Risk", trade.initialRisk === null ? "Not recorded" : tradeMoney(trade.initialRisk, false)], ["R : R", trade.rMultiple === null ? "Not recorded" : `${trade.rMultiple.toFixed(2)}R`]].map(([label, value]) => <div key={label} className="rounded-xl border border-border bg-background/55 p-3"><div className="text-[7px] font-semibold uppercase tracking-[0.12em] text-muted">{label}</div><div className="mt-1 font-mono text-[10px] font-semibold text-foreground">{value}</div></div>)}
+                </div>
+              </div>
+              <TradePostChart trade={trade as SocialTradeSnapshot} />
             </div>
           ) : (
             <>
@@ -2960,12 +3067,12 @@ export default function SocialsWorkspace({
         </div>
         <div className="flex flex-wrap items-center gap-1.5 border-t border-border bg-background/20 px-4 py-2.5">
           <button type="button" onClick={() => void addReaction(object, "LIKE")} className={`flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[8px] font-semibold ${liked ? "bg-primary/10 text-primary" : "text-muted hover:bg-surface hover:text-foreground"}`}><Heart className={`h-3.5 w-3.5 ${liked ? "fill-current" : ""}`} />Like{likeCount ? ` ${likeCount}` : ""}</button>
-          <button type="button" onClick={() => document.getElementById(`comment:${object.id}`)?.focus()} className="flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[8px] font-semibold text-muted hover:bg-surface hover:text-foreground"><MessageCircle className="h-3.5 w-3.5" />Comment{objectComments.length ? ` ${objectComments.length}` : ""}</button>
+          <button type="button" onClick={() => trade ? (setCommentPanelPostId(object.id), setCommentReplyToId(null)) : document.getElementById(`comment:${object.id}`)?.focus()} className="flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[8px] font-semibold text-muted hover:bg-surface hover:text-foreground"><MessageCircle className="h-3.5 w-3.5" />Comment{objectComments.length ? ` ${objectComments.length}` : ""}</button>
           <button type="button" onClick={() => shareStructuredPost(object)} className="flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[8px] font-semibold text-muted hover:bg-surface hover:text-foreground"><Share2 className="h-3.5 w-3.5" />Share</button>
           <button type="button" onClick={() => void toggleStructuredPostRepost(object)} className={`flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[8px] font-semibold ${reposted ? "bg-primary/10 text-primary" : "text-muted hover:bg-surface hover:text-foreground"}`}><Repeat2 className="h-3.5 w-3.5" />Repost{reposts.length ? ` ${reposts.length}` : ""}</button>
           <button type="button" onClick={() => void toggleStructuredPostSave(object)} className={`ml-auto flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[8px] font-semibold ${saved ? "bg-primary/10 text-primary" : "text-muted hover:bg-surface hover:text-foreground"}`}><Bookmark className={`h-3.5 w-3.5 ${saved ? "fill-current" : ""}`} />{saved ? "Saved" : "Save"}</button>
         </div>
-        {objectComments.length ? (
+        {!trade && objectComments.length ? (
           <div className="space-y-2 border-t border-border px-4 py-3">
             {objectComments.slice(-3).map((comment) => {
               const payloadComment = typedPayload<SocialCommentPayload>(comment);
@@ -2973,11 +3080,11 @@ export default function SocialsWorkspace({
             })}
           </div>
         ) : null}
-        <div className="grid gap-2 border-t border-border px-4 py-3 sm:grid-cols-[112px_minmax(0,1fr)_34px]">
+        {!trade ? <div className="grid gap-2 border-t border-border px-4 py-3 sm:grid-cols-[112px_minmax(0,1fr)_34px]">
           <KwantSelect value={commentKinds[object.id] ?? "QUESTION"} onChange={(event) => setCommentKinds((current) => ({ ...current, [object.id]: event.target.value as SocialCommentPayload["kind"] }))} className="h-8 rounded-lg border border-border bg-surface px-2 text-[8px] text-muted outline-none"><option value="QUESTION">Question</option><option value="REVIEW">Review</option><option value="COUNTERCASE">Countercase</option><option value="LESSON">Lesson</option></KwantSelect>
           <input id={`comment:${object.id}`} value={commentDrafts[object.id] ?? ""} onChange={(event) => setCommentDrafts((current) => ({ ...current, [object.id]: event.target.value }))} onKeyDown={(event) => { if (event.key === "Enter") addComment(object); }} placeholder="Respond with context, evidence, or a focused question…" className="h-8 rounded-lg border border-border bg-background px-3 text-[8px] outline-none placeholder:text-muted/55 focus:border-primary/40" />
           <button type="button" onClick={() => addComment(object)} className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-background"><Send className="h-3.5 w-3.5" /></button>
-        </div>
+        </div> : null}
       </Card>
     );
   };
@@ -3974,6 +4081,40 @@ export default function SocialsWorkspace({
           )
         ) : null}
       </main>
+
+      {commentPanelPost ? (
+        <div className="fixed inset-0 z-[1170] bg-black/48 backdrop-blur-[2px]" onMouseDown={(event) => { if (event.target === event.currentTarget) { setCommentPanelPostId(null); setCommentReplyToId(null); } }}>
+          <aside className="absolute bottom-0 right-0 top-0 flex w-full max-w-[470px] flex-col border-l border-border bg-panel shadow-2xl shadow-black/70">
+            <div className="flex items-start gap-3 border-b border-border px-4 py-4">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary"><MessageCircle className="h-4 w-4" /></span>
+              <div className="min-w-0 flex-1"><h2 className="text-[12px] font-semibold text-foreground">Trade comments</h2><p className="mt-1 text-[8px] text-muted">{commentPanelComments.length} comment{commentPanelComments.length === 1 ? "" : "s"} · replies stay attached to their thread</p></div>
+              <button type="button" onClick={() => { setCommentPanelPostId(null); setCommentReplyToId(null); }} className="flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground"><X className="h-4 w-4" /></button>
+            </div>
+            <div className="border-b border-border bg-background/25 px-4 py-3">
+              <div className="flex items-center gap-2"><span className="font-mono text-[10px] font-semibold text-foreground">{typedPayload<SocialPostPayload>(commentPanelPost)?.trade?.instrument}</span><span className="text-[8px] text-muted">{typedPayload<SocialPostPayload>(commentPanelPost)?.title}</span><span className={`ml-auto font-mono text-[11px] font-semibold ${(typedPayload<SocialPostPayload>(commentPanelPost)?.trade?.netPnl ?? 0) >= 0 ? "text-accent" : "text-danger"}`}>{tradeMoney(typedPayload<SocialPostPayload>(commentPanelPost)?.trade?.netPnl ?? 0)}</span></div>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+              {commentPanelComments.filter((comment) => !typedPayload<SocialCommentPayload>(comment)?.replyToCommentId).map((comment) => {
+                const payload = typedPayload<SocialCommentPayload>(comment);
+                const replies = commentPanelComments.filter((candidate) => candidate.id !== comment.id && commentThreadRootId(candidate, commentPanelComments) === comment.id);
+                const collapsed = collapsedCommentThreads.has(comment.id);
+                const ownComment = comment.userId === resolvedAccountKey;
+                const ownsPost = commentPanelPost.userId === resolvedAccountKey;
+                const pinned = typedPayload<SocialPostPayload>(commentPanelPost)?.pinnedCommentId === comment.id;
+                return <div key={objectKey(comment)} className={`mb-3 rounded-2xl border ${pinned ? "border-primary/35 bg-primary/[0.065]" : "border-border bg-background/30"}`}>
+                  <div className="flex gap-2.5 p-3"><Avatar label={comment.authorLabel} avatarUrl={profileByUserId.get(comment.userId)?.avatarUrl} size="sm" /><div className="min-w-0 flex-1"><div className="flex items-center gap-2"><span className={`text-[8px] font-semibold ${ownComment ? "text-primary" : "text-foreground"}`}>{comment.authorLabel}</span>{pinned ? <span className="flex items-center gap-1 rounded-md bg-primary/10 px-1.5 py-0.5 text-[6px] font-semibold text-primary"><Pin className="h-2.5 w-2.5 fill-current" />PINNED</span> : null}<span className="ml-auto text-[6.5px] text-muted">{formatDate(comment.createdAt, true)}</span></div><p className={`mt-1.5 whitespace-pre-wrap break-words text-[9px] leading-4 ${ownComment ? "text-foreground" : "text-muted"}`}>{payload?.body}</p><div className="mt-2 flex items-center gap-1"><button type="button" onClick={() => setCommentReplyToId(comment.id)} className="flex h-6 items-center gap-1 rounded-lg px-2 text-[7px] font-semibold text-muted hover:bg-surface hover:text-primary"><CornerUpLeft className="h-3 w-3" />Reply</button>{ownsPost ? <button type="button" onClick={() => void togglePinnedComment(commentPanelPost, comment.id)} className={`flex h-6 items-center gap-1 rounded-lg px-2 text-[7px] font-semibold ${pinned ? "bg-primary/10 text-primary" : "text-muted hover:bg-surface hover:text-primary"}`}><Pin className="h-3 w-3" />{pinned ? "Unpin" : "Pin"}</button> : null}{(ownComment || ownsPost) ? <button type="button" onClick={() => void deletePostComment(commentPanelPost, comment)} className="flex h-6 items-center gap-1 rounded-lg px-2 text-[7px] font-semibold text-muted hover:bg-danger/10 hover:text-danger"><Trash2 className="h-3 w-3" />Delete</button> : null}</div></div></div>
+                  {replies.length ? <div className="border-t border-border/70 px-3 py-2"><button type="button" onClick={() => setCollapsedCommentThreads((current) => { const next = new Set(current); if (next.has(comment.id)) next.delete(comment.id); else next.add(comment.id); return next; })} className="flex h-7 items-center gap-1.5 text-[7px] font-semibold text-muted hover:text-primary">{collapsed ? <ChevronDown className="h-3 w-3" /> : <ChevronUp className="h-3 w-3" />}{collapsed ? `Show ${replies.length} repl${replies.length === 1 ? "y" : "ies"}` : `Hide ${replies.length} repl${replies.length === 1 ? "y" : "ies"}`}</button>{!collapsed ? <div className="mt-1 space-y-2 border-l border-primary/15 pl-3">{replies.map((reply) => { const replyPayload = typedPayload<SocialCommentPayload>(reply); const ownReply = reply.userId === resolvedAccountKey; return <div key={objectKey(reply)} className={`rounded-xl border px-3 py-2 ${ownReply ? "border-primary/25 bg-primary/[0.055]" : "border-border bg-surface/35"}`}><div className="flex items-center gap-2"><Avatar label={reply.authorLabel} avatarUrl={profileByUserId.get(reply.userId)?.avatarUrl} size="sm" /><span className={`text-[7px] font-semibold ${ownReply ? "text-primary" : "text-foreground"}`}>{reply.authorLabel}</span><span className="ml-auto text-[6px] text-muted">{formatDate(reply.createdAt, true)}</span></div><p className="mt-1.5 whitespace-pre-wrap break-words text-[8px] leading-4 text-muted">{replyPayload?.body}</p><div className="mt-1.5 flex gap-1"><button type="button" onClick={() => setCommentReplyToId(comment.id)} className="flex h-6 items-center gap-1 rounded-lg px-2 text-[7px] text-muted hover:bg-surface hover:text-primary"><CornerUpLeft className="h-3 w-3" />Reply</button>{(ownReply || ownsPost) ? <button type="button" onClick={() => void deletePostComment(commentPanelPost, reply)} className="flex h-6 items-center gap-1 rounded-lg px-2 text-[7px] text-muted hover:bg-danger/10 hover:text-danger"><Trash2 className="h-3 w-3" />Delete</button> : null}</div></div>; })}</div> : null}</div> : null}
+                </div>;
+              })}
+              {!commentPanelComments.length ? <div className="flex min-h-[320px] flex-col items-center justify-center text-center"><MessageCircle className="h-7 w-7 text-muted" /><h3 className="mt-3 text-[10px] font-semibold text-foreground">Start the conversation</h3><p className="mt-1 max-w-xs text-[8px] leading-4 text-muted">Ask about the execution, leave feedback, or add context to the trade.</p></div> : null}
+            </div>
+            <div className="border-t border-border bg-background/25 p-4">
+              {commentReplyToId ? <div className="mb-2 flex items-center gap-2 rounded-xl border border-primary/20 bg-primary/[0.055] px-3 py-2 text-[7px] text-muted"><CornerUpLeft className="h-3 w-3 text-primary" /><span>Replying to {commentPanelComments.find((comment) => comment.id === commentReplyToId)?.authorLabel ?? "this thread"}</span><button type="button" onClick={() => setCommentReplyToId(null)} className="ml-auto text-muted hover:text-foreground"><X className="h-3 w-3" /></button></div> : null}
+              <div className="flex items-center gap-2"><input autoFocus value={commentDrafts[commentPanelPost.id] ?? ""} onChange={(event) => setCommentDrafts((current) => ({ ...current, [commentPanelPost.id]: event.target.value }))} onKeyDown={(event) => { if (event.key === "Enter") addComment(commentPanelPost, commentReplyToId); }} placeholder={commentReplyToId ? "Write a reply…" : "Add a comment…"} className="h-10 min-w-0 flex-1 rounded-xl border border-border bg-panel px-3 text-[9px] text-foreground outline-none placeholder:text-muted/55 focus:border-primary/40" /><button type="button" onClick={() => addComment(commentPanelPost, commentReplyToId)} className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-background hover:brightness-110"><Send className="h-4 w-4" /></button></div>
+            </div>
+          </aside>
+        </div>
+      ) : null}
 
       {selectedProfileRecord ? (
         <div className="fixed inset-0 z-[1150] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm" onMouseDown={(event) => { if (event.target === event.currentTarget) setSelectedProfileRecord(null); }}>

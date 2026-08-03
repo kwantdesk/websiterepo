@@ -249,8 +249,21 @@ export type SocialReasoningCandle = {
   close: number;
 };
 
+export type SocialTradeSnapshot = {
+  journalTradeId: string;
+  instrument: string;
+  side: "LONG" | "SHORT" | "UNKNOWN";
+  entryPrice: number | null;
+  exitPrice: number | null;
+  openedAt: string;
+  closedAt: string | null;
+  netPnl: number;
+  initialRisk: number | null;
+  rMultiple: number | null;
+};
+
 export type SocialPostPayload = {
-  kind: "POST" | "ONE-LINER" | "MAP" | "LIVE OBSERVATION" | "REVIEW REQUEST" | "LESSON" | "QUESTION";
+  kind: "POST" | "ONE-LINER" | "TRADE" | "MAP" | "LIVE OBSERVATION" | "REVIEW REQUEST" | "LESSON" | "QUESTION";
   instrument: string;
   title: string;
   body: string;
@@ -264,6 +277,8 @@ export type SocialPostPayload = {
   isRepost?: boolean;
   repostOfUserId?: string;
   repostOfPostId?: string;
+  trade?: SocialTradeSnapshot;
+  pinnedCommentId?: string;
 };
 
 export type SocialDeskPayload = {
@@ -288,6 +303,7 @@ export type SocialCommentPayload = {
   kind: "QUESTION" | "REVIEW" | "COUNTERCASE" | "LESSON" | "TRADER NOTE";
   body: string;
   helpful: boolean;
+  replyToCommentId?: string | null;
 };
 
 export type SocialReactionPayload = {

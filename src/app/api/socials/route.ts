@@ -67,6 +67,17 @@ function cleanAuthorLabel(value: unknown, actor: RouteActor) {
   return cleanText(stem.replace(/[._-]+/g, " "), 48) || "Kwant Trader";
 }
 
+function finiteNumber(value: unknown, fallback: number | null = null) {
+  if (value === null || value === undefined || value === "") return fallback;
+  const number = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(number) ? number : fallback;
+}
+
+function nullablePositiveNumber(value: unknown) {
+  const number = finiteNumber(value);
+  return number !== null && number > 0 ? number : null;
+}
+
 function sanitizeJson(value: unknown, depth = 0): unknown {
   if (depth > 7) return null;
   if (value === null || typeof value === "boolean") return value;
@@ -300,7 +311,7 @@ export async function POST(request: NextRequest) {
   const scope = incoming.scope as SocialScope;
   const deskId = cleanIdentifier(incoming.deskId) || null;
   const parentId = cleanIdentifier(incoming.parentId) || null;
-  const authorLabel = cleanAuthorLabel(incoming.authorLabel, actor);
+  let authorLabel = cleanAuthorLabel(incoming.authorLabel, actor);
   let payload = sanitizeJson(incoming.payload) as Record<string, unknown>;
   if (!payload || typeof payload !== "object") payload = {};
   if (JSON.stringify(payload).length > 3_000_000) {
@@ -354,6 +365,27 @@ export async function POST(request: NextRequest) {
     useUpsert = true;
   } else if (objectType === "post") {
     const kind = cleanText(payload.kind, 24) as SocialPostPayload["kind"];
+    const tradeCandidate = payload.trade && typeof payload.trade === "object"
+      ? payload.trade as Record<string, unknown>
+      : null;
+    const trade = tradeCandidate ? {
+      journalTradeId: cleanIdentifier(tradeCandidate.journalTradeId, 180),
+      instrument: cleanText(tradeCandidate.instrument, 32).toUpperCase(),
+      side: ["LONG", "SHORT", "UNKNOWN"].includes(cleanText(tradeCandidate.side, 12).toUpperCase())
+        ? cleanText(tradeCandidate.side, 12).toUpperCase()
+        : "UNKNOWN",
+      entryPrice: nullablePositiveNumber(tradeCandidate.entryPrice),
+      exitPrice: nullablePositiveNumber(tradeCandidate.exitPrice),
+      openedAt: typeof tradeCandidate.openedAt === "string" && Number.isFinite(Date.parse(tradeCandidate.openedAt))
+        ? new Date(tradeCandidate.openedAt).toISOString()
+        : "",
+      closedAt: typeof tradeCandidate.closedAt === "string" && Number.isFinite(Date.parse(tradeCandidate.closedAt))
+        ? new Date(tradeCandidate.closedAt).toISOString()
+        : null,
+      netPnl: finiteNumber(tradeCandidate.netPnl, 0) ?? 0,
+      initialRisk: nullablePositiveNumber(tradeCandidate.initialRisk),
+      rMultiple: finiteNumber(tradeCandidate.rMultiple),
+    } : null;
     const imageDataUrl = typeof payload.imageDataUrl === "string"
       && /^data:image\/(png|jpe?g|webp|gif);base64,/i.test(payload.imageDataUrl)
       && payload.imageDataUrl.length <= 1_350_000
@@ -361,7 +393,7 @@ export async function POST(request: NextRequest) {
       : "";
     payload = {
       ...payload,
-      kind: ["POST", "ONE-LINER", "MAP", "LIVE OBSERVATION", "REVIEW REQUEST", "LESSON", "QUESTION"].includes(kind) ? kind : "POST",
+      kind: ["POST", "ONE-LINER", "TRADE", "MAP", "LIVE OBSERVATION", "REVIEW REQUEST", "LESSON", "QUESTION"].includes(kind) ? kind : "POST",
       instrument: cleanText(payload.instrument, 16).toUpperCase(),
       title: cleanText(payload.title, 180),
       body: cleanText(payload.body, kind === "ONE-LINER" ? 280 : 4_000),
@@ -374,17 +406,56 @@ export async function POST(request: NextRequest) {
       repostOfUserId: cleanIdentifier(payload.repostOfUserId, 80) || undefined,
       repostOfPostId: cleanIdentifier(payload.repostOfPostId, 180) || undefined,
       isRepost: payload.isRepost === true,
+      trade: kind === "TRADE" ? trade : undefined,
+      pinnedCommentId: cleanIdentifier(payload.pinnedCommentId, 180) || undefined,
       observedAt: typeof payload.observedAt === "string" && Number.isFinite(Date.parse(payload.observedAt))
         ? new Date(payload.observedAt).toISOString()
         : now,
     };
-    if (!payload.body || (payload.kind !== "ONE-LINER" && !payload.instrument)) {
+    if ((payload.kind !== "TRADE" && !payload.body) || (payload.kind !== "ONE-LINER" && !payload.instrument)) {
       return NextResponse.json({ error: payload.kind === "ONE-LINER" ? "Write your one-liner first." : "Instrument and post are required." }, { status: 400 });
+    }
+    if (payload.kind === "TRADE" && (!trade?.journalTradeId || !trade.instrument || !trade.openedAt || trade.entryPrice === null || trade.exitPrice === null)) {
+      return NextResponse.json({ error: "Choose a completed journal trade with entry and exit prices." }, { status: 400 });
     }
     id = /^post:[a-zA-Z0-9_-]{8,}$/.test(id) || /^repost:[a-zA-Z0-9:_-]{8,}$/.test(id)
       ? id
       : `post:${crypto.randomUUID()}`;
+    if (payload.pinnedCommentId) {
+      const { data: pinnedComment } = await supabase
+        .from("social_objects")
+        .select("id")
+        .eq("id", String(payload.pinnedCommentId))
+        .eq("parent_id", id)
+        .eq("object_type", "comment")
+        .maybeSingle();
+      if (!pinnedComment) return NextResponse.json({ error: "That comment can no longer be pinned." }, { status: 409 });
+    }
     useUpsert = true;
+  } else if (objectType === "comment") {
+    if (!parentId) return NextResponse.json({ error: "Choose a post to comment on." }, { status: 400 });
+    const body = cleanText(payload.body, 2_000);
+    if (!body) return NextResponse.json({ error: "Write a comment first." }, { status: 400 });
+    const replyToCommentId = cleanIdentifier(payload.replyToCommentId, 180) || null;
+    if (replyToCommentId) {
+      const { data: replyTarget } = await supabase
+        .from("social_objects")
+        .select("id")
+        .eq("id", replyToCommentId)
+        .eq("parent_id", parentId)
+        .eq("object_type", "comment")
+        .maybeSingle();
+      if (!replyTarget) return NextResponse.json({ error: "That comment thread is no longer available." }, { status: 409 });
+    }
+    payload = {
+      kind: ["QUESTION", "REVIEW", "COUNTERCASE", "LESSON", "TRADER NOTE"].includes(cleanText(payload.kind, 24))
+        ? cleanText(payload.kind, 24)
+        : "REVIEW",
+      body,
+      helpful: payload.helpful === true,
+      replyToCommentId,
+    };
+    id = /^comment:[a-zA-Z0-9_-]{8,}$/.test(id) ? id : `comment:${crypto.randomUUID()}`;
   } else if (objectType === "follow") {
     const targetUserId = cleanIdentifier(payload.targetUserId, 80);
     if (!targetUserId || targetUserId === actor.userId) {
@@ -515,6 +586,22 @@ export async function POST(request: NextRequest) {
     id = `${objectType}:${crypto.randomUUID()}`;
   }
 
+  if (objectType === "post" || objectType === "comment") {
+    const { data: profileIdentity } = await supabase
+      .from("social_objects")
+      .select("author_label,payload")
+      .eq("user_id", actor.userId)
+      .eq("object_type", "profile")
+      .eq("id", "profile")
+      .maybeSingle();
+    const profilePayload = profileIdentity?.payload && typeof profileIdentity.payload === "object"
+      ? profileIdentity.payload as Record<string, unknown>
+      : null;
+    authorLabel = cleanText(profilePayload?.displayName, 48)
+      || cleanText(profileIdentity?.author_label, 48)
+      || authorLabel;
+  }
+
   const row = {
     user_id: actor.userId,
     id,
@@ -588,20 +675,47 @@ export async function DELETE(request: NextRequest) {
   const { actor, supabase } = await socialClient(request);
   if (!actor) return NextResponse.json({ error: "Authentication required." }, { status: 401 });
   if (!supabase) return NextResponse.json({ cloud: false }, { status: 503 });
-  let payload: { id?: unknown };
+  let payload: { id?: unknown; parentId?: unknown };
   try {
     payload = await request.json();
   } catch {
     return NextResponse.json({ error: "Choose an object to remove." }, { status: 400 });
   }
   const id = cleanIdentifier(payload.id);
+  const parentId = cleanIdentifier(payload.parentId);
   if (!id) return NextResponse.json({ error: "Choose an object to remove." }, { status: 400 });
   const { data: existing } = await supabase
     .from("social_objects")
-    .select("object_type")
+    .select("user_id,id,object_type,parent_id")
     .eq("user_id", actor.userId)
     .eq("id", id)
     .maybeSingle();
+  if (!existing && parentId) {
+    const { data: ownedParent } = await supabase
+      .from("social_objects")
+      .select("id")
+      .eq("user_id", actor.userId)
+      .eq("id", parentId)
+      .eq("object_type", "post")
+      .maybeSingle();
+    if (!ownedParent) return NextResponse.json({ error: "Only the author can moderate this post." }, { status: 403 });
+    const { data: moderatedComment } = await supabase
+      .from("social_objects")
+      .select("user_id,id,object_type,parent_id")
+      .eq("id", id)
+      .eq("parent_id", parentId)
+      .eq("object_type", "comment")
+      .maybeSingle();
+    if (!moderatedComment) return NextResponse.json({ error: "That comment no longer exists." }, { status: 404 });
+    const { error: moderationError } = await supabase
+      .from("social_objects")
+      .delete()
+      .eq("user_id", moderatedComment.user_id)
+      .eq("id", id)
+      .eq("parent_id", parentId);
+    if (moderationError) return NextResponse.json({ error: "The comment could not be removed." }, { status: 502 });
+    return NextResponse.json({ deleted: id });
+  }
   if (!existing) return NextResponse.json({ error: "That object no longer exists." }, { status: 404 });
   if (existing.object_type === "precord") {
     return NextResponse.json({ error: "Locked Decision Records cannot be deleted from the record." }, { status: 409 });

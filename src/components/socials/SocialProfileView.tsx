@@ -649,6 +649,7 @@ export default function SocialProfileView({
               const post = object.objectType === "post" ? payloadOf<SocialPostPayload>(object) : null;
               const plan = object.objectType === "precord" ? payloadOf<SocialPrecordPayload>(object) : null;
               const isOneLiner = post?.kind === "ONE-LINER";
+              const trade = post?.kind === "TRADE" ? post.trade : null;
               return (
                 <article key={`${object.userId}:${object.id}`} className="group relative flex min-h-[190px] flex-col overflow-hidden bg-panel p-4">
                   <div className="pointer-events-none absolute inset-0 opacity-0 transition-opacity group-hover:opacity-100 bg-[radial-gradient(circle_at_85%_0%,color-mix(in_srgb,var(--primary)_13%,transparent),transparent_52%)]" />
@@ -663,6 +664,12 @@ export default function SocialProfileView({
                       <div className="mt-3 text-[10px] font-semibold text-foreground">{plan.direction} · {plan.session}</div>
                       <p className="mt-2 line-clamp-3 text-[8px] leading-4 text-muted">{plan.marketContext}</p>
                     </button>
+                  ) : trade ? (
+                    <div className="relative mt-5 flex flex-1 flex-col rounded-2xl border border-primary/15 bg-primary/[0.035] p-4">
+                      <div className="flex items-start gap-2"><span className={`rounded-lg px-2 py-1 text-[7px] font-semibold ${trade.side === "LONG" ? "bg-primary/10 text-primary" : "bg-danger/10 text-danger"}`}>{trade.side}</span><span className="font-mono text-[10px] font-semibold text-foreground">{trade.instrument}</span><span className={`ml-auto font-mono text-[15px] font-semibold ${trade.netPnl >= 0 ? "text-accent" : "text-danger"}`}>{trade.netPnl >= 0 ? "+" : "-"}${Math.abs(trade.netPnl).toLocaleString("en-US", { maximumFractionDigits: 2 })}</span></div>
+                      <div className="mt-3 grid grid-cols-3 gap-1.5">{[["ENTRY", trade.entryPrice?.toLocaleString("en-US", { maximumFractionDigits: 6 }) ?? "—"], ["EXIT", trade.exitPrice?.toLocaleString("en-US", { maximumFractionDigits: 6 }) ?? "—"], ["RISK", trade.initialRisk === null ? "—" : `$${trade.initialRisk.toLocaleString("en-US", { maximumFractionDigits: 2 })}`]].map(([label, value]) => <div key={label} className="rounded-lg border border-border bg-background/40 p-2"><div className="text-[6px] text-muted">{label}</div><div className="mt-1 truncate font-mono text-[7px] text-foreground">{value}</div></div>)}</div>
+                      {post?.body ? <p className="mt-3 line-clamp-3 text-[8px] leading-4 text-muted">{post.body}</p> : null}
+                    </div>
                   ) : (
                     <div className={`relative mt-5 flex flex-1 flex-col ${isOneLiner ? "justify-center rounded-2xl border border-primary/20 bg-primary/[0.04] p-4" : ""}`}>
                       {!isOneLiner && post?.title ? <div className="text-[10px] font-semibold text-foreground">{post.title}</div> : null}
