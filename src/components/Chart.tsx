@@ -86,7 +86,14 @@ import { calculateBigTradePrints, type BigTradePrint } from "@/lib/bigTrades";
 import { calculateDeepEffort } from "@/lib/deepEffort";
 import { calculateImbalanceRejectorSignals } from "@/lib/imbalanceRejector";
 import { calculateImbalanceZones } from "@/lib/imbalanceTracker";
-import type { InstitutionalTrade } from "@/lib/institutionalMarketData";
+import type {
+  InstitutionalTrade,
+  InstitutionalVolumeProfile,
+} from "@/lib/institutionalMarketData";
+import {
+  NativeVolumeProfilePrimitive,
+  type NativeVolumeProfileModel,
+} from "@/lib/nativeVolumeProfilePrimitive";
 import {
   buildMarketSessionWindows,
   buildPreviousSessionHighLowLevels,
@@ -111,6 +118,7 @@ interface ChartProps {
   onCreateAlertAtPrice?: (price: string) => void;
   onRemoveAllIndicators?: () => void;
   indicators?: ChartIndicatorInstance[];
+  volumeProfiles?: InstitutionalVolumeProfile[];
   onUpdateIndicatorSetting?: (instanceId: string, key: string, value: number | string | boolean) => void;
   onOpenIndicatorSettings?: (instanceId: string) => void;
   settings?: ChartSettings;
@@ -1029,6 +1037,7 @@ export default function Chart({
   onCreateAlertAtPrice,
   onRemoveAllIndicators,
   indicators = [],
+  volumeProfiles = [],
   onUpdateIndicatorSetting,
   onOpenIndicatorSettings,
   settings = defaultChartSettings,
@@ -1073,6 +1082,7 @@ export default function Chart({
   const backgroundLevelsRef = useRef<ChartLevel[]>([]);
   const backgroundZonesRef = useRef<ChartZone[]>([]);
   const gameplanUnderlayRef = useRef<GameplanUnderlayPrimitive | null>(null);
+  const volumeProfilePrimitiveRef = useRef<NativeVolumeProfilePrimitive | null>(null);
   const horzLineRef = useRef<HTMLDivElement>(null);
   const priceLabelRef = useRef<HTMLDivElement>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; price: string } | null>(null);
@@ -3121,6 +3131,9 @@ export default function Chart({
     );
     candleSeries.attachPrimitive(gameplanUnderlay);
     gameplanUnderlayRef.current = gameplanUnderlay;
+    const volumeProfilePrimitive = new NativeVolumeProfilePrimitive();
+    candleSeries.attachPrimitive(volumeProfilePrimitive);
+    volumeProfilePrimitiveRef.current = volumeProfilePrimitive;
 
     const chartData = buildSafeChartData(candles);
 
@@ -3325,11 +3338,19 @@ export default function Chart({
             // Chart teardown can detach primitives before React cleanup runs.
           }
         }
+        if (candleSeriesRef.current && volumeProfilePrimitiveRef.current) {
+          try {
+            candleSeriesRef.current.detachPrimitive(volumeProfilePrimitiveRef.current);
+          } catch {
+            // Chart teardown can detach primitives before React cleanup runs.
+          }
+        }
         chartRef.current.remove();
         chartRef.current = null;
       }
       candleSeriesRef.current = null;
       gameplanUnderlayRef.current = null;
+      volumeProfilePrimitiveRef.current = null;
       indicatorSeriesRefs.current = [];
       priceLinesRef.current = [];
       prevCandlesLengthRef.current = 0;
@@ -3338,6 +3359,81 @@ export default function Chart({
       lastRenderedCandleTimeRef.current = null;
     };
   }, [instrument, priceFormat, settings, themeVersion]);
+
+  useEffect(() => {
+    const primitive = volumeProfilePrimitiveRef.current;
+    if (!primitive) return;
+    const dailyInstance = indicators.find((instance) =>
+      instance.enabled
+      && [
+        "daily-volume-profile",
+        "kwant-profile",
+        "ask-bid-volume-profile",
+        "delta-profile",
+      ].includes(instance.indicatorId));
+    const weeklyInstance = indicators.find((instance) =>
+      instance.enabled && instance.indicatorId === "weekly-volume-profile");
+    const lastCandleTime = candles.length
+      ? Math.floor(candles[candles.length - 1].timestamp / 1_000)
+      : null;
+    const intervalSeconds = candleIntervalMs ? candleIntervalMs / 1_000 : null;
+    const models = volumeProfiles.flatMap((profile): NativeVolumeProfileModel[] => {
+      const instance = profile.period === "weekly" ? weeklyInstance : dailyInstance;
+      if (!instance || profile.period === "custom" || profile.levels.length === 0) return [];
+      const profileSettings = instance.settings ?? {};
+      const useThemeColors = profileSettings.useThemeColors !== false;
+      const requestedSnapMode = (
+        ["off", "left", "right"].includes(String(profileSettings.snapMode))
+          ? String(profileSettings.snapMode)
+          : profile.period === "weekly" ? "left" : "off"
+      ) as "off" | "left" | "right";
+      return [{
+        id: `${profile.root}:${profile.period}:${profile.startMs}`,
+        profile,
+        lastCandleTime,
+        intervalSeconds,
+        maxVolume: Math.max(1, ...profile.levels.map((level) => level.volume)),
+        maxAbsDelta: Math.max(1, ...profile.levels.map((level) => Math.abs(level.delta))),
+        lowPrice: profile.levels[0]?.price ?? Number.POSITIVE_INFINITY,
+        highPrice: profile.levels[profile.levels.length - 1]?.price ?? Number.NEGATIVE_INFINITY,
+        style: {
+          widthPercent: clamp(Number(profileSettings.profileWidth ?? (profile.period === "weekly" ? 18 : 9)), 0, 100),
+          opacity: clamp(Number(profileSettings.opacity ?? (profile.period === "weekly" ? 42 : 68)) / 100, 0.1, 1),
+          positiveDeltaColor: useThemeColors ? settings.upColor : String(profileSettings.askColor ?? settings.upColor),
+          negativeDeltaColor: useThemeColors ? settings.downColor : String(profileSettings.bidColor ?? settings.downColor),
+          outsideValueAreaColor: useThemeColors ? settings.borderDownColor : String(profileSettings.volumeColor ?? settings.borderDownColor),
+          valueAreaColor: useThemeColors ? settings.borderUpColor : String(profileSettings.valueAreaColor ?? settings.borderUpColor),
+          pocColor: useThemeColors ? settings.upColor : String(profileSettings.pocColor ?? settings.upColor),
+          showValueArea: profileSettings.showValueArea !== false,
+          showDelta: profileSettings.showDelta !== false,
+          showProfileSpine: profileSettings.showProfileSpine !== false,
+          showPocLine: profileSettings.showPocLine !== false,
+          showValueAreaLines: profileSettings.showValueAreaLines !== false,
+          showText: profileSettings.showText === true,
+          showPocHighlight: profileSettings.showPocHighlight !== false,
+          showProfileOutline: profileSettings.showProfileOutline !== false,
+          automaticGrouping: profileSettings.groupingMode !== "manual",
+          autoGroupFactor: clamp(Number(profileSettings.autoGroupFactor ?? 1), 0.5, 4),
+          valueAreaPercent: clamp(Number(profileSettings.valueAreaPercent ?? 70), 1, 100),
+          snapMode: profile.period === "daily" && requestedSnapMode === "right"
+            ? "off"
+            : requestedSnapMode,
+        },
+      }];
+    });
+    primitive.setModels(models);
+  }, [
+    candleIntervalMs,
+    candles,
+    chartReadyRevision,
+    indicatorSignature,
+    indicators,
+    settings.borderDownColor,
+    settings.borderUpColor,
+    settings.downColor,
+    settings.upColor,
+    volumeProfiles,
+  ]);
 
   useEffect(() => {
     const chart = chartRef.current;

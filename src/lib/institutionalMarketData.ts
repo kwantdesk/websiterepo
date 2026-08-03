@@ -1,3 +1,45 @@
+import type { Candle } from "@/lib/backtester";
+import {
+  calculateVolumeProfileValueArea,
+  volumeProfileBinTick,
+} from "@/lib/volumeProfileMath";
+
+type JsonRecord = Record<string, unknown>;
+
+export type InstitutionalInstrument = {
+  root: string;
+  contractSymbol: string;
+  displayName: string;
+  exchange: "CME" | "CBOT" | "COMEX" | "NYMEX";
+  contractLabel: string;
+  contractMonth: number;
+  contractYear: number;
+  asOf: string | null;
+  lastPrice: number | null;
+  ageMs: number | null;
+  status: "LIVE" | "STALE" | "NOT_OPEN";
+  isPrimary: boolean;
+};
+
+export type InstitutionalSnapshot = {
+  root: string;
+  contractSymbol: string;
+  displayName: string;
+  exchange: InstitutionalInstrument["exchange"];
+  contractLabel: string;
+  asOf: string;
+  asOfMs: number;
+  lastPrice: number;
+  bid: number | null;
+  ask: number | null;
+  tickSize: number | null;
+  orderFlowAvailable: boolean;
+  status: InstitutionalInstrument["status"];
+  ageMs: number;
+  recordCount: number;
+  candles: Candle[];
+};
+
 export type InstitutionalTrade = {
   eventId?: string;
   recordIndex: number;
@@ -14,3 +56,1337 @@ export type InstitutionalTrade = {
   aggressor: "BUY" | "SELL" | "UNKNOWN";
   sideSemanticsVersion?: number;
 };
+
+export type InstitutionalVolumeProfileLevel = {
+  price: number;
+  volume: number;
+  bidVolume: number;
+  askVolume: number;
+  delta: number;
+  trades: number;
+};
+
+export type InstitutionalVolumeProfile = {
+  schemaVersion: "kwantify-volume-profile-v1";
+  provider: "Databento" | "Rithmic" | "Chart";
+  source: string;
+  root: string;
+  contractSymbol: string;
+  period: "daily" | "weekly" | "custom";
+  startMs: number;
+  endMs: number;
+  tickSize: number;
+  groupTicks: number;
+  valueAreaPercent: number;
+  minTradeVolume: number;
+  maxTradeVolume: number;
+  totalVolume: number;
+  bidVolume: number;
+  askVolume: number;
+  delta: number;
+  trades: number;
+  poc: number | null;
+  vah: number | null;
+  val: number | null;
+  vwap: number | null;
+  standardDeviation: number;
+  levels: InstitutionalVolumeProfileLevel[];
+  developingPoc: Array<{ timestamp: number; price: number }>;
+  asOf: string;
+};
+
+const volumeProfileResponseCache = new Map<string, {
+  profile: InstitutionalVolumeProfile;
+  storedAt: number;
+}>();
+const volumeProfileRequests = new Map<string, Promise<InstitutionalVolumeProfile | null>>();
+const VOLUME_PROFILE_RESPONSE_CACHE_MS = 10_000;
+const INDICATOR_CACHE_NAME = "kwantify-indicator-data-v3";
+const INDICATOR_IDB_NAME = "kwantify-indicator-data-v3";
+const INDICATOR_IDB_STORE = "entries";
+const INDICATOR_CACHE_MAX_AGE_MS = 7 * 24 * 60 * 60_000;
+
+function indicatorCacheRequest(key: string) {
+  if (typeof window === "undefined") return null;
+  return new Request(
+    `${window.location.origin}/__kwantify_indicator_cache__/${encodeURIComponent(key)}`,
+  );
+}
+
+type PersistentIndicatorEntry<T = unknown> = {
+  key: string;
+  storedAt: number;
+  value: T;
+};
+
+function openIndicatorDatabase(): Promise<IDBDatabase | null> {
+  if (typeof window === "undefined" || !("indexedDB" in window)) {
+    return Promise.resolve(null);
+  }
+  return new Promise((resolve) => {
+    try {
+      const request = window.indexedDB.open(INDICATOR_IDB_NAME, 1);
+      request.onupgradeneeded = () => {
+        if (!request.result.objectStoreNames.contains(INDICATOR_IDB_STORE)) {
+          request.result.createObjectStore(INDICATOR_IDB_STORE, { keyPath: "key" });
+        }
+      };
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => resolve(null);
+      request.onblocked = () => resolve(null);
+    } catch {
+      resolve(null);
+    }
+  });
+}
+
+async function readIndicatorDatabaseEntry<T>(
+  key: string,
+  maxAgeMs: number,
+): Promise<T | null> {
+  const database = await openIndicatorDatabase();
+  if (!database) return null;
+  return new Promise((resolve) => {
+    try {
+      const transaction = database.transaction(INDICATOR_IDB_STORE, "readwrite");
+      const store = transaction.objectStore(INDICATOR_IDB_STORE);
+      const request = store.get(key);
+      request.onsuccess = () => {
+        const entry = request.result as PersistentIndicatorEntry<T> | undefined;
+        if (
+          !entry
+          || !Number.isFinite(entry.storedAt)
+          || Date.now() - entry.storedAt > maxAgeMs
+        ) {
+          if (entry) store.delete(key);
+          resolve(null);
+          return;
+        }
+        resolve(entry.value ?? null);
+      };
+      request.onerror = () => resolve(null);
+      transaction.oncomplete = () => database.close();
+      transaction.onerror = () => database.close();
+      transaction.onabort = () => database.close();
+    } catch {
+      database.close();
+      resolve(null);
+    }
+  });
+}
+
+async function readIndicatorDatabasePrefix<T>(prefix: string): Promise<T[]> {
+  const database = await openIndicatorDatabase();
+  if (!database) return [];
+  return new Promise((resolve) => {
+    try {
+      const transaction = database.transaction(INDICATOR_IDB_STORE, "readwrite");
+      const store = transaction.objectStore(INDICATOR_IDB_STORE);
+      const request = store.getAll();
+      request.onsuccess = () => {
+        const now = Date.now();
+        const values: T[] = [];
+        for (const entry of request.result as PersistentIndicatorEntry<T>[]) {
+          if (!entry.key.startsWith(prefix)) continue;
+          if (
+            !Number.isFinite(entry.storedAt)
+            || now - entry.storedAt > INDICATOR_CACHE_MAX_AGE_MS
+          ) {
+            store.delete(entry.key);
+            continue;
+          }
+          if (entry.value !== null && entry.value !== undefined) values.push(entry.value);
+        }
+        resolve(values);
+      };
+      request.onerror = () => resolve([]);
+      transaction.oncomplete = () => database.close();
+      transaction.onerror = () => database.close();
+      transaction.onabort = () => database.close();
+    } catch {
+      database.close();
+      resolve([]);
+    }
+  });
+}
+
+async function writeIndicatorDatabaseEntry<T>(key: string, value: T) {
+  const database = await openIndicatorDatabase();
+  if (!database) return;
+  await new Promise<void>((resolve) => {
+    try {
+      const transaction = database.transaction(INDICATOR_IDB_STORE, "readwrite");
+      transaction.objectStore(INDICATOR_IDB_STORE).put({
+        key,
+        storedAt: Date.now(),
+        value,
+      } satisfies PersistentIndicatorEntry<T>);
+      transaction.oncomplete = () => {
+        database.close();
+        resolve();
+      };
+      transaction.onerror = () => {
+        database.close();
+        resolve();
+      };
+      transaction.onabort = () => {
+        database.close();
+        resolve();
+      };
+    } catch {
+      database.close();
+      resolve();
+    }
+  });
+}
+
+async function readPersistentIndicatorCache<T>(
+  key: string,
+  maxAgeMs = INDICATOR_CACHE_MAX_AGE_MS,
+): Promise<T | null> {
+  if (typeof window === "undefined") return null;
+  if ("caches" in window) {
+    try {
+      const request = indicatorCacheRequest(key);
+      if (request) {
+        const cache = await window.caches.open(INDICATOR_CACHE_NAME);
+        const response = await cache.match(request);
+        if (response) {
+          const payload = await response.json() as { storedAt?: number; value?: T };
+          if (
+            !Number.isFinite(payload.storedAt)
+            || Date.now() - Number(payload.storedAt) > maxAgeMs
+          ) {
+            await cache.delete(request);
+          } else {
+            return payload.value ?? null;
+          }
+        }
+      }
+    } catch {
+      // Fall through to IndexedDB, which is supported by more embedded browsers.
+    }
+  }
+  return readIndicatorDatabaseEntry<T>(key, maxAgeMs);
+}
+
+async function readPersistentIndicatorCachePrefix<T>(prefix: string): Promise<T[]> {
+  if (typeof window === "undefined") return [];
+  if ("caches" in window) {
+    try {
+      const cache = await window.caches.open(INDICATOR_CACHE_NAME);
+      const requests = await cache.keys();
+      const matches = requests.filter((request) => {
+        const encodedKey = new URL(request.url).pathname.split("/").at(-1) ?? "";
+        try {
+          return decodeURIComponent(encodedKey).startsWith(prefix);
+        } catch {
+          return false;
+        }
+      });
+      const values = await Promise.all(matches.map(async (request) => {
+        const response = await cache.match(request);
+        if (!response) return null;
+        const payload = await response.json() as { storedAt?: number; value?: T };
+        if (
+          !Number.isFinite(payload.storedAt)
+          || Date.now() - Number(payload.storedAt) > INDICATOR_CACHE_MAX_AGE_MS
+        ) {
+          await cache.delete(request);
+          return null;
+        }
+        return payload.value ?? null;
+      }));
+      const cached = values.filter((value) => value !== null) as T[];
+      if (cached.length > 0) return cached;
+    } catch {
+      // Fall through to IndexedDB, which is supported by more embedded browsers.
+    }
+  }
+  return readIndicatorDatabasePrefix<T>(prefix);
+}
+
+async function writePersistentIndicatorCache<T>(key: string, value: T) {
+  if (typeof window === "undefined") return;
+  if ("caches" in window) {
+    try {
+      const request = indicatorCacheRequest(key);
+      if (request) {
+        const cache = await window.caches.open(INDICATOR_CACHE_NAME);
+        await cache.put(request, new Response(JSON.stringify({
+          storedAt: Date.now(),
+          value,
+        }), {
+          headers: { "Content-Type": "application/json" },
+        }));
+        return;
+      }
+    } catch {
+      // Fall through to IndexedDB, which is supported by more embedded browsers.
+    }
+  }
+  await writeIndicatorDatabaseEntry(key, value);
+}
+
+export async function readCachedInstitutionalVolumeProfiles(
+  symbol: string,
+  period: InstitutionalVolumeProfile["period"],
+) {
+  const normalizedSymbol = symbol.trim().toUpperCase();
+  const profiles = await readPersistentIndicatorCachePrefix<InstitutionalVolumeProfile>(
+    "volume-profile:",
+  );
+  return profiles
+    .filter((profile) => profile.root === normalizedSymbol && profile.period === period)
+    .sort((left, right) => left.startMs - right.startMs);
+}
+
+export function buildChartVolumeProfile(args: {
+  candles: Candle[];
+  root: string;
+  contractSymbol: string;
+  startMs: number;
+  endMs: number;
+  tickSize: number;
+  groupTicks?: number;
+  valueAreaPercent?: number;
+  minTradeVolume?: number;
+  maxTradeVolume?: number;
+}): InstitutionalVolumeProfile | null {
+  const tickSize = Number(args.tickSize);
+  const groupTicks = Math.max(1, Math.round(args.groupTicks ?? 1));
+  const valueAreaPercent = Math.min(100, Math.max(1, Number(args.valueAreaPercent ?? 70)));
+  const minTradeVolume = Math.max(0, Number(args.minTradeVolume ?? 0));
+  const maxTradeVolume = Math.max(0, Number(args.maxTradeVolume ?? 0));
+  if (
+    !Number.isFinite(tickSize)
+    || tickSize <= 0
+    || !Number.isFinite(args.startMs)
+    || !Number.isFinite(args.endMs)
+    || args.endMs <= args.startMs
+  ) return null;
+
+  const rows = new Map<number, InstitutionalVolumeProfileLevel>();
+  let totalVolume = 0;
+  let bidVolume = 0;
+  let askVolume = 0;
+  let totalTrades = 0;
+  let priceVolume = 0;
+  let priceSquaredVolume = 0;
+
+  for (const candle of args.candles) {
+    if (candle.timestamp < args.startMs || candle.timestamp >= args.endMs) continue;
+    const volume = Math.max(0, Number(candle.volume ?? 0));
+    if (
+      volume <= 0
+      || volume < minTradeVolume
+      || (maxTradeVolume > 0 && volume > maxTradeVolume)
+    ) continue;
+
+    const lowTick = Math.round(Math.min(candle.low, candle.high) / tickSize);
+    const highTick = Math.round(Math.max(candle.low, candle.high) / tickSize);
+    const firstBin = volumeProfileBinTick(lowTick, groupTicks);
+    const lastBin = volumeProfileBinTick(highTick, groupTicks);
+    const typicalTick = Math.round(((candle.high + candle.low + candle.close) / 3) / tickSize);
+    const binTicks: number[] = [];
+    const weights: number[] = [];
+    const span = Math.max(groupTicks, lastBin - firstBin);
+    for (let binTick = firstBin; binTick <= lastBin; binTick += groupTicks) {
+      binTicks.push(binTick);
+      // OHLCV does not reveal the exact within-bar execution distribution.
+      // A bounded triangular allocation keeps the fallback stable and close to
+      // the bar's typical traded price without inventing a single-price spike.
+      weights.push(Math.max(0.15, 1 - Math.abs(binTick - typicalTick) / span));
+    }
+    const weightTotal = weights.reduce((sum, weight) => sum + weight, 0);
+    const suppliedBid = Math.max(0, Number(candle.bidVolume ?? 0));
+    const suppliedAsk = Math.max(0, Number(candle.askVolume ?? 0));
+    const suppliedTotal = suppliedBid + suppliedAsk;
+    const boundedDelta = Math.max(-volume, Math.min(volume, Number(candle.delta ?? 0)));
+    const inferredAskShare = suppliedTotal > 0
+      ? suppliedAsk / suppliedTotal
+      : candle.delta !== undefined
+        ? (volume + boundedDelta) / (2 * volume)
+        : candle.close > candle.open
+          ? 0.55
+          : candle.close < candle.open
+            ? 0.45
+            : 0.5;
+    const candleTrades = Math.max(0, Number(candle.trades ?? 1));
+
+    binTicks.forEach((binTick, index) => {
+      const share = weights[index] / weightTotal;
+      const rowVolume = volume * share;
+      const rowAsk = rowVolume * inferredAskShare;
+      const rowBid = rowVolume - rowAsk;
+      const rowTrades = candleTrades * share;
+      const price = Number((binTick * tickSize).toFixed(10));
+      const current = rows.get(binTick) ?? {
+        price,
+        volume: 0,
+        bidVolume: 0,
+        askVolume: 0,
+        delta: 0,
+        trades: 0,
+      };
+      current.volume += rowVolume;
+      current.bidVolume += rowBid;
+      current.askVolume += rowAsk;
+      current.delta = current.askVolume - current.bidVolume;
+      current.trades += rowTrades;
+      rows.set(binTick, current);
+      totalVolume += rowVolume;
+      bidVolume += rowBid;
+      askVolume += rowAsk;
+      totalTrades += rowTrades;
+      priceVolume += price * rowVolume;
+      priceSquaredVolume += price * price * rowVolume;
+    });
+  }
+
+  const levels = [...rows.values()].sort((a, b) => a.price - b.price);
+  if (!levels.length || totalVolume <= 0) return null;
+  const valueArea = calculateVolumeProfileValueArea(
+    levels,
+    tickSize * groupTicks,
+    valueAreaPercent,
+  );
+  const vwap = priceVolume / totalVolume;
+  const variance = Math.max(0, priceSquaredVolume / totalVolume - vwap * vwap);
+  return {
+    schemaVersion: "kwantify-volume-profile-v1",
+    provider: "Chart",
+    source: "Chart OHLCV approximation (execution tape unavailable)",
+    root: args.root,
+    contractSymbol: args.contractSymbol,
+    period: "custom",
+    startMs: args.startMs,
+    endMs: args.endMs,
+    tickSize,
+    groupTicks,
+    valueAreaPercent,
+    minTradeVolume,
+    maxTradeVolume,
+    totalVolume,
+    bidVolume,
+    askVolume,
+    delta: askVolume - bidVolume,
+    trades: totalTrades,
+    poc: valueArea.poc,
+    vah: valueArea.vah,
+    val: valueArea.val,
+    vwap,
+    standardDeviation: Math.sqrt(variance),
+    levels,
+    developingPoc: [],
+    asOf: new Date(Math.min(args.endMs - 1, Date.now())).toISOString(),
+  };
+}
+
+export function clipVolumeProfileToPriceRange(
+  profile: InstitutionalVolumeProfile,
+  firstPrice: number,
+  secondPrice: number,
+): InstitutionalVolumeProfile | null {
+  const low = Math.min(firstPrice, secondPrice);
+  const high = Math.max(firstPrice, secondPrice);
+  if (!Number.isFinite(low) || !Number.isFinite(high) || high <= low) return profile;
+  const levels = profile.levels.filter((level) => level.price >= low && level.price <= high);
+  if (!levels.length) return null;
+  const totalVolume = levels.reduce((sum, level) => sum + level.volume, 0);
+  if (totalVolume <= 0) return null;
+  const bidVolume = levels.reduce((sum, level) => sum + level.bidVolume, 0);
+  const askVolume = levels.reduce((sum, level) => sum + level.askVolume, 0);
+  const trades = levels.reduce((sum, level) => sum + level.trades, 0);
+  const priceVolume = levels.reduce((sum, level) => sum + level.price * level.volume, 0);
+  const priceSquaredVolume = levels.reduce(
+    (sum, level) => sum + level.price * level.price * level.volume,
+    0,
+  );
+  const vwap = priceVolume / totalVolume;
+  const variance = Math.max(0, priceSquaredVolume / totalVolume - vwap * vwap);
+  const valueArea = calculateVolumeProfileValueArea(
+    levels,
+    profile.tickSize * profile.groupTicks,
+    profile.valueAreaPercent,
+  );
+  return {
+    ...profile,
+    totalVolume,
+    bidVolume,
+    askVolume,
+    delta: askVolume - bidVolume,
+    trades,
+    poc: valueArea.poc,
+    vah: valueArea.vah,
+    val: valueArea.val,
+    vwap,
+    standardDeviation: Math.sqrt(variance),
+    levels,
+  };
+}
+
+const LOCAL_GATEWAY_ORIGIN = "/api/institutional-market-data";
+const ORDER_FLOW_CACHE_SCHEMA = "v6";
+const orderFlowRecordCache = new Map<string, InstitutionalTrade[]>();
+const orderFlowCacheMergeQueue = new Map<
+  string,
+  Promise<InstitutionalOrderFlowResult>
+>();
+
+function orderFlowRecordCacheKey(symbol: string, timeframe: string, contractSymbol?: string) {
+  const root = String(symbol || "").trim().toUpperCase();
+  const contract = String(contractSymbol || "").trim().toUpperCase();
+  return `${root}:${contract || "ROOT"}:${String(timeframe || "").trim()}`;
+}
+
+export function getCachedInstitutionalOrderFlowRecords(
+  symbol: string,
+  timeframe: string,
+  contractSymbol?: string,
+) {
+  return orderFlowRecordCache.get(orderFlowRecordCacheKey(symbol, timeframe, contractSymbol)) ?? [];
+}
+
+function isRecord(value: unknown): value is JsonRecord {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function finiteNumber(value: unknown): number | null {
+  const number = typeof value === "number" ? value : typeof value === "string" ? Number(value) : Number.NaN;
+  return Number.isFinite(number) ? number : null;
+}
+
+function timestampMs(value: unknown): number | null {
+  const number = finiteNumber(value);
+  if (number !== null) return number < 10_000_000_000 ? number * 1000 : number;
+  if (typeof value !== "string") return null;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function normalizeExchange(value: unknown): InstitutionalInstrument["exchange"] | null {
+  const exchange = String(value || "").toUpperCase();
+  return exchange === "CME" || exchange === "CBOT" || exchange === "COMEX" || exchange === "NYMEX"
+    ? exchange
+    : null;
+}
+
+export function futuresContractRoot(contractSymbol: string) {
+  return String(contractSymbol || "")
+    .trim()
+    .toUpperCase()
+    .match(/^([A-Z0-9]+?)[FGHJKMNQUVXZ]\d{1,2}$/)?.[1] ?? null;
+}
+
+function normalizeCandles(value: unknown, limit = 600): Candle[] {
+  if (!Array.isArray(value)) return [];
+  const candles = new Map<number, Candle>();
+  for (const item of value) {
+    if (!isRecord(item)) continue;
+    const timestamp = timestampMs(item.timestamp ?? item.time);
+    const open = finiteNumber(item.open);
+    const high = finiteNumber(item.high);
+    const low = finiteNumber(item.low);
+    const close = finiteNumber(item.close);
+    const volume = finiteNumber(item.volume) ?? 0;
+    const trades = finiteNumber(item.trades) ?? 0;
+    const bidVolume = finiteNumber(item.bidVolume) ?? 0;
+    const askVolume = finiteNumber(item.askVolume) ?? 0;
+    const bidTrades = finiteNumber(item.bidTrades);
+    const askTrades = finiteNumber(item.askTrades);
+    const delta = finiteNumber(item.delta) ?? askVolume - bidVolume;
+    const deltaOpen = finiteNumber(item.deltaOpen);
+    const deltaHigh = finiteNumber(item.deltaHigh);
+    const deltaLow = finiteNumber(item.deltaLow);
+    const deltaClose = finiteNumber(item.deltaClose);
+    if (timestamp === null || open === null || high === null || low === null || close === null) continue;
+    if (open <= 0 || low <= 0 || high < Math.max(open, close) || low > Math.min(open, close)) continue;
+    candles.set(timestamp, {
+      timestamp,
+      open,
+      high,
+      low,
+      close,
+      volume,
+      trades,
+      bidVolume,
+      askVolume,
+      ...(bidTrades !== null ? { bidTrades } : {}),
+      ...(askTrades !== null ? { askTrades } : {}),
+      delta,
+      ...(deltaOpen !== null ? { deltaOpen } : {}),
+      ...(deltaHigh !== null ? { deltaHigh } : {}),
+      ...(deltaLow !== null ? { deltaLow } : {}),
+      ...(deltaClose !== null ? { deltaClose } : {}),
+    });
+  }
+  return [...candles.values()].sort((a, b) => a.timestamp - b.timestamp).slice(-Math.max(1, limit));
+}
+
+export async function readCachedInstitutionalChartCandles(
+  symbol: string,
+  timeframe: string,
+  period: string,
+  contractSymbol?: string,
+) {
+  const cached = await readPersistentIndicatorCache<Candle[]>(
+    `chart-candles:${orderFlowRecordCacheKey(symbol, timeframe, contractSymbol)}:${period}`,
+    15 * 60_000,
+  );
+  return repairInstitutionalCandleSeries(normalizeCandles(cached, 500_000), timeframe, symbol);
+}
+
+export function cacheInstitutionalChartCandles(
+  symbol: string,
+  timeframe: string,
+  period: string,
+  candles: Candle[],
+  contractSymbol?: string,
+) {
+  if (!candles.length) return;
+  void writePersistentIndicatorCache(
+    `chart-candles:${orderFlowRecordCacheKey(symbol, timeframe, contractSymbol)}:${period}`,
+    repairInstitutionalCandleSeries(candles, timeframe, symbol).slice(-500_000),
+  );
+}
+
+async function gatewayFetch(path: string, init?: RequestInit, timeoutMs = 4_000) {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(`${LOCAL_GATEWAY_ORIGIN}${path}`, {
+      ...init,
+      cache: "no-store",
+      signal: controller.signal,
+    });
+  } finally {
+    window.clearTimeout(timeout);
+  }
+}
+
+export async function fetchInstitutionalInstruments(): Promise<InstitutionalInstrument[] | null> {
+  try {
+    const response = await gatewayFetch("/v1/market-data/instruments");
+    const payload: unknown = await response.json().catch(() => null);
+    if (!response.ok || !isRecord(payload) || !Array.isArray(payload.instruments)) return null;
+    return payload.instruments.flatMap((item) => {
+      if (!isRecord(item)) return [];
+      const root = String(item.root || "").toUpperCase();
+      const contractSymbol = String(item.symbol || "").toUpperCase();
+      const displayName = String(item.displayName || "").trim();
+      const exchange = normalizeExchange(item.exchange);
+      const contractMonth = finiteNumber(item.contractMonth);
+      const contractYear = finiteNumber(item.contractYear);
+      const asOfMs = timestampMs(item.asOf);
+      const lastPrice = finiteNumber(item.lastPrice);
+      const ageMs = finiteNumber(item.ageMs);
+      const status = item.status === "LIVE" ? "LIVE" : item.status === "STALE" ? "STALE" : "NOT_OPEN";
+      if (
+        !root
+        || !contractSymbol
+        || futuresContractRoot(contractSymbol) !== root
+        || !displayName
+        || !exchange
+        || contractMonth === null
+        || contractYear === null
+        || (status !== "NOT_OPEN" && (asOfMs === null || lastPrice === null || lastPrice <= 0))
+      ) {
+        return [];
+      }
+      return [{
+        root,
+        contractSymbol,
+        displayName,
+        exchange,
+        contractLabel: String(item.contractLabel || "").trim(),
+        contractMonth,
+        contractYear,
+        asOf: asOfMs === null ? null : new Date(asOfMs).toISOString(),
+        lastPrice,
+        ageMs: asOfMs === null ? null : Math.max(0, ageMs ?? Date.now() - asOfMs),
+        status,
+        isPrimary: item.isPrimary === true,
+      } satisfies InstitutionalInstrument];
+    });
+  } catch {
+    return null;
+  }
+}
+
+export async function fetchInstitutionalSnapshot(args: {
+  symbol: string;
+  contractSymbol?: string;
+  timeframe: string;
+  lookbackBars?: number;
+  timeoutMs?: number;
+}): Promise<InstitutionalSnapshot | null> {
+  try {
+    const response = await gatewayFetch("/v1/market-data/snapshot", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        schemaVersion: "kwantify-market-data-v1",
+        operation: "snapshot",
+        root: args.symbol,
+        symbol: args.symbol,
+        contractSymbol: args.contractSymbol,
+        interval: args.timeframe,
+        lookbackBars: Math.min(100_000, Math.max(1, args.lookbackBars ?? 100_000)),
+      }),
+    }, args.timeoutMs ?? 180_000);
+    const payload: unknown = await response.json().catch(() => null);
+    if (!response.ok || !isRecord(payload)) {
+      console.warn("Institutional chart snapshot returned an invalid response.", response.status);
+      return null;
+    }
+    const root = String(payload.root || "").toUpperCase();
+    const contractSymbol = String(payload.symbol || "").toUpperCase();
+    const requestedRoot = String(args.symbol || "").trim().toUpperCase();
+    const requestedContract = String(args.contractSymbol || "").trim().toUpperCase();
+    const displayName = String(payload.displayName || "").trim();
+    const exchange = normalizeExchange(payload.exchange);
+    const asOfMs = timestampMs(payload.asOf);
+    const lastPrice = finiteNumber(payload.lastPrice);
+    if (
+      !root
+      || root !== requestedRoot
+      || !contractSymbol
+      || futuresContractRoot(contractSymbol) !== requestedRoot
+      || (requestedContract && contractSymbol !== requestedContract)
+      || !displayName
+      || !exchange
+      || asOfMs === null
+      || lastPrice === null
+      || lastPrice <= 0
+    ) {
+      return null;
+    }
+    return {
+      root,
+      contractSymbol,
+      displayName,
+      exchange,
+      contractLabel: String(payload.contractLabel || "").trim(),
+      asOf: new Date(asOfMs).toISOString(),
+      asOfMs,
+      lastPrice,
+      bid: finiteNumber(payload.bid),
+      ask: finiteNumber(payload.ask),
+      tickSize: finiteNumber(payload.tickSize),
+      orderFlowAvailable: payload.orderFlowAvailable === true,
+      status: payload.status === "LIVE" ? "LIVE" : payload.status === "STALE" ? "STALE" : "NOT_OPEN",
+      ageMs: Math.max(0, finiteNumber(payload.ageMs) ?? Date.now() - asOfMs),
+      recordCount: Math.max(0, Math.floor(finiteNumber(payload.recordCount) ?? 0)),
+      candles: normalizeCandles(
+        payload.candles ?? payload.bars,
+        Math.min(100_000, Math.max(1, args.lookbackBars ?? 100_000)),
+      ),
+    };
+  } catch (error) {
+    console.warn("Institutional chart snapshot request failed.", error);
+    return null;
+  }
+}
+
+export async function fetchInstitutionalVolumeProfile(args: {
+  symbol: string;
+  contractSymbol?: string;
+  period: InstitutionalVolumeProfile["period"];
+  tradingDate?: string;
+  startMs?: number;
+  endMs?: number;
+  groupTicks?: number;
+  valueAreaPercent?: number;
+  minTradeVolume?: number;
+  maxTradeVolume?: number;
+}): Promise<InstitutionalVolumeProfile | null> {
+  const query = new URLSearchParams({
+    profileSchema: "2",
+    symbol: args.symbol,
+    period: args.period,
+    groupTicks: String(Math.max(1, Math.round(args.groupTicks ?? 1))),
+    valueAreaPercent: String(args.valueAreaPercent ?? 70),
+    minTradeVolume: String(Math.max(0, args.minTradeVolume ?? 0)),
+    maxTradeVolume: String(Math.max(0, args.maxTradeVolume ?? 0)),
+  });
+  if (args.contractSymbol) query.set("contractSymbol", args.contractSymbol);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(args.tradingDate ?? "")) query.set("tradingDate", args.tradingDate!);
+  if (Number.isFinite(args.startMs)) query.set("startMs", String(args.startMs));
+  if (Number.isFinite(args.endMs)) query.set("endMs", String(args.endMs));
+  const cacheKey = query.toString();
+  const cached = volumeProfileResponseCache.get(cacheKey);
+  if (cached && Date.now() - cached.storedAt <= VOLUME_PROFILE_RESPONSE_CACHE_MS) {
+    return cached.profile;
+  }
+  const pending = volumeProfileRequests.get(cacheKey);
+  if (pending) return pending;
+
+  const request = (async () => {
+    try {
+      const response = await fetch(`${LOCAL_GATEWAY_ORIGIN}/v1/market-data/volume-profile?${query}`, {
+        cache: "no-store",
+      });
+      if (!response.ok) return null;
+      const payload = await response.json() as InstitutionalVolumeProfile;
+      if (payload.schemaVersion !== "kwantify-volume-profile-v1" || !Array.isArray(payload.levels)) return null;
+      volumeProfileResponseCache.set(cacheKey, { profile: payload, storedAt: Date.now() });
+      void writePersistentIndicatorCache(`volume-profile:${cacheKey}`, payload);
+      return payload;
+    } catch {
+      return null;
+    } finally {
+      volumeProfileRequests.delete(cacheKey);
+    }
+  })();
+  volumeProfileRequests.set(cacheKey, request);
+  return request;
+}
+
+export function applyInstitutionalTradesToVolumeProfile(
+  profile: InstitutionalVolumeProfile,
+  records: InstitutionalTrade[],
+): InstitutionalVolumeProfile {
+  if (!records.length) return profile;
+  const eligibleRecords = records.filter((record) =>
+    record.timestamp >= profile.startMs
+    && record.timestamp < profile.endMs
+    && record.volume >= profile.minTradeVolume
+    && (profile.maxTradeVolume <= 0 || record.volume <= profile.maxTradeVolume));
+  if (!eligibleRecords.length) return profile;
+  const levels = new Map(
+    profile.levels.map((level) => [Math.round(level.price / profile.tickSize), { ...level }]),
+  );
+  let totalVolume = profile.totalVolume;
+  let bidVolume = profile.bidVolume;
+  let askVolume = profile.askVolume;
+  let trades = profile.trades;
+  let weightedPrice = (profile.vwap ?? 0) * profile.totalVolume;
+  let weightedSquaredPrice = (
+    profile.standardDeviation * profile.standardDeviation + (profile.vwap ?? 0) * (profile.vwap ?? 0)
+  ) * profile.totalVolume;
+  for (const record of eligibleRecords) {
+    const groupedTick = volumeProfileBinTick(
+      Math.round(record.close / profile.tickSize),
+      profile.groupTicks,
+    );
+    const price = Number((groupedTick * profile.tickSize).toFixed(10));
+    const current = levels.get(groupedTick) ?? {
+      price,
+      volume: 0,
+      bidVolume: 0,
+      askVolume: 0,
+      delta: 0,
+      trades: 0,
+    };
+    current.volume += record.volume;
+    current.bidVolume += record.bidVolume;
+    current.askVolume += record.askVolume;
+    current.delta = current.askVolume - current.bidVolume;
+    current.trades += record.trades;
+    levels.set(groupedTick, current);
+    totalVolume += record.volume;
+    bidVolume += record.bidVolume;
+    askVolume += record.askVolume;
+    trades += record.trades;
+    weightedPrice += record.close * record.volume;
+    weightedSquaredPrice += record.close * record.close * record.volume;
+  }
+  const nextLevels = [...levels.values()].sort((a, b) => a.price - b.price);
+  const valueArea = calculateVolumeProfileValueArea(
+    nextLevels,
+    profile.tickSize * profile.groupTicks,
+    profile.valueAreaPercent,
+  );
+  const nextVwap = totalVolume > 0 ? weightedPrice / totalVolume : null;
+  const variance = totalVolume > 0 && nextVwap !== null
+    ? Math.max(0, weightedSquaredPrice / totalVolume - nextVwap * nextVwap)
+    : 0;
+  const latestTimestamp = eligibleRecords.at(-1)?.timestamp ?? profile.endMs;
+  const latestMinute = Math.floor(latestTimestamp / 60_000) * 60_000;
+  const developingPoc = [...profile.developingPoc];
+  if (valueArea.poc !== null) {
+    if (developingPoc.at(-1)?.timestamp === latestMinute) developingPoc[developingPoc.length - 1] = { timestamp: latestMinute, price: valueArea.poc };
+    else developingPoc.push({ timestamp: latestMinute, price: valueArea.poc });
+  }
+  return {
+    ...profile,
+    asOf: new Date(latestTimestamp).toISOString(),
+    totalVolume,
+    bidVolume,
+    askVolume,
+    delta: askVolume - bidVolume,
+    trades,
+    vwap: nextVwap,
+    standardDeviation: Math.sqrt(variance),
+    poc: valueArea.poc,
+    vah: valueArea.vah,
+    val: valueArea.val,
+    levels: nextLevels,
+    developingPoc: developingPoc.slice(-2_000),
+  };
+}
+
+function timeframeMilliseconds(timeframe: string) {
+  const match = timeframe.trim().match(/^(\d+)(s|m|h|D|W)$/);
+  if (!match) return null;
+  const value = Math.max(1, Number(match[1]));
+  const unit = match[2];
+  if (unit === "s") return value * 1_000;
+  if (unit === "m") return value * 60_000;
+  if (unit === "h") return value * 60 * 60_000;
+  if (unit === "D") return value * 24 * 60 * 60_000;
+  return value * 7 * 24 * 60 * 60_000;
+}
+
+function futuresTickSize(symbol: string) {
+  const root = symbol.toUpperCase();
+  if (["MNQ", "NQ", "MES", "ES"].includes(root)) return 0.25;
+  if (["MYM", "YM"].includes(root)) return 1;
+  if (["M2K", "RTY"].includes(root)) return 0.1;
+  if (["MGC", "GC"].includes(root)) return 0.1;
+  if (["SIL", "SI"].includes(root)) return 0.005;
+  if (["MCL", "CL"].includes(root)) return 0.01;
+  return 0.01;
+}
+
+function eventThreshold(timeframe: string, symbol: string) {
+  const match = timeframe.trim().match(/^(\d+)(r|v|t|dv)$/);
+  if (!match) return null;
+  const value = Math.max(1, Number(match[1]));
+  return {
+    kind: match[2],
+    value: match[2] === "r" ? value * futuresTickSize(symbol) : value,
+  };
+}
+
+export function supportsInstitutionalTradeAggregation(timeframe: string) {
+  return timeframeMilliseconds(timeframe) !== null || /^(\d+)(r|v|t|dv)$/.test(timeframe.trim());
+}
+
+export function repairInstitutionalCandleSeries(
+  candles: Candle[],
+  timeframe: string,
+  symbol: string,
+) {
+  const threshold = eventThreshold(timeframe, symbol);
+  if (threshold?.kind !== "r") return candles;
+  const maximumRange = threshold.value + futuresTickSize(symbol) * 0.5;
+  return candles.map((candle) => {
+    const range = candle.high - candle.low;
+    const body = Math.abs(candle.close - candle.open);
+    if (range <= maximumRange && body <= maximumRange) return candle;
+    // A range bar must never bridge a session or contract discontinuity. Keep
+    // the real execution price and its order-flow totals, but start a fresh bar
+    // at that price instead of drawing a hundreds-of-points synthetic candle.
+    return {
+      ...candle,
+      open: candle.close,
+      high: candle.close,
+      low: candle.close,
+    };
+  });
+}
+
+export function applyInstitutionalTradesToCandles(
+  current: Candle[],
+  records: InstitutionalTrade[],
+  timeframe: string,
+  symbol: string,
+  limit = 600,
+) {
+  const bucketMs = timeframeMilliseconds(timeframe);
+  const threshold = eventThreshold(timeframe, symbol);
+  if ((!bucketMs && !threshold) || !records.length) return current;
+  const next = [...repairInstitutionalCandleSeries(current, timeframe, symbol)];
+
+  for (const record of records) {
+    if (!Number.isFinite(record.timestamp) || !Number.isFinite(record.close) || record.close <= 0) continue;
+    const timestamp = bucketMs ? Math.floor(record.timestamp / bucketMs) * bucketMs : record.timestamp;
+    const last = next.at(-1);
+    const recordDelta = Number.isFinite(record.delta)
+      ? record.delta
+      : (record.askVolume || 0) - (record.bidVolume || 0);
+    const lastIsComplete = Boolean(last && threshold && (
+      threshold.kind === "r"
+        ? last.high - last.low >= threshold.value
+        : threshold.kind === "v"
+          ? (last.volume || 0) >= threshold.value
+          : threshold.kind === "t"
+            ? (last.trades || 0) >= threshold.value
+            : Math.abs(last.deltaClose ?? last.delta ?? 0) >= threshold.value
+    ));
+    const rangeWouldOverflow = Boolean(
+      last
+      && threshold?.kind === "r"
+      && Math.max(last.high, record.close) - Math.min(last.low, record.close) > threshold.value,
+    );
+
+    if (!last || (bucketMs ? timestamp > last.timestamp : lastIsComplete || rangeWouldOverflow)) {
+      const eventPrice = threshold ? record.close : null;
+      // CME can publish several executions in the same millisecond. Event
+      // charts still need a strictly increasing time key or the charting
+      // library and merge layer collapse distinct bars into one.
+      const candleTimestamp = threshold && last
+        ? Math.max(timestamp, last.timestamp + 1)
+        : timestamp;
+      next.push({
+        timestamp: candleTimestamp,
+        open: (eventPrice ?? record.open) || record.close,
+        high: eventPrice ?? Math.max(record.high || record.close, record.close),
+        low: eventPrice ?? Math.min(record.low || record.close, record.close),
+        close: record.close,
+        volume: record.volume || 0,
+        trades: record.trades || 0,
+        bidVolume: record.bidVolume || 0,
+        askVolume: record.askVolume || 0,
+        bidTrades: record.aggressor === "SELL" ? record.trades || 0 : 0,
+        askTrades: record.aggressor === "BUY" ? record.trades || 0 : 0,
+        delta: recordDelta,
+        deltaOpen: 0,
+        deltaHigh: Math.max(0, recordDelta),
+        deltaLow: Math.min(0, recordDelta),
+        deltaClose: recordDelta,
+      });
+      continue;
+    }
+    if (bucketMs && timestamp < last.timestamp) continue;
+
+    const deltaClose = (last.deltaClose ?? last.delta ?? 0) + recordDelta;
+    next[next.length - 1] = {
+      ...last,
+      high: Math.max(last.high, record.high || record.close, record.close),
+      low: Math.min(last.low, record.low || record.close, record.close),
+      close: record.close,
+      volume: (last.volume || 0) + (record.volume || 0),
+      trades: (last.trades || 0) + (record.trades || 0),
+      bidVolume: (last.bidVolume || 0) + (record.bidVolume || 0),
+      askVolume: (last.askVolume || 0) + (record.askVolume || 0),
+      bidTrades: (last.bidTrades || 0) + (record.aggressor === "SELL" ? record.trades || 0 : 0),
+      askTrades: (last.askTrades || 0) + (record.aggressor === "BUY" ? record.trades || 0 : 0),
+      delta: deltaClose,
+      deltaOpen: last.deltaOpen ?? 0,
+      deltaHigh: Math.max(last.deltaHigh ?? 0, deltaClose),
+      deltaLow: Math.min(last.deltaLow ?? 0, deltaClose),
+      deltaClose,
+    };
+  }
+
+  return next.slice(-Math.max(1, limit));
+}
+
+function normalizeInstitutionalTradeRecords(value: unknown): InstitutionalTrade[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    if (!isRecord(item)) return [];
+    const recordIndex = finiteNumber(item.recordIndex);
+    const timestamp = timestampMs(item.timestamp);
+    const open = finiteNumber(item.open);
+    const high = finiteNumber(item.high);
+    const low = finiteNumber(item.low);
+    const close = finiteNumber(item.close);
+    if (recordIndex === null || timestamp === null || open === null || high === null || low === null || close === null) {
+      return [];
+    }
+    const rawAggressor = item.aggressor === "BUY" ? "BUY" : item.aggressor === "SELL" ? "SELL" : "UNKNOWN";
+    const sideSemanticsVersion = finiteNumber(item.sideSemanticsVersion);
+    const legacySideSemantics = sideSemanticsVersion === null || sideSemanticsVersion < 2;
+    const rawBidVolume = finiteNumber(item.bidVolume) ?? 0;
+    const rawAskVolume = finiteNumber(item.askVolume) ?? 0;
+    // Version 1/unversioned workers inverted Databento's aggressor side. This
+    // keeps live charts correct while those workers roll forward to version 2.
+    const aggressor = legacySideSemantics
+      ? rawAggressor === "BUY"
+        ? "SELL"
+        : rawAggressor === "SELL"
+          ? "BUY"
+          : "UNKNOWN"
+      : rawAggressor;
+    const bidVolume = legacySideSemantics ? rawAskVolume : rawBidVolume;
+    const askVolume = legacySideSemantics ? rawBidVolume : rawAskVolume;
+    return [{
+      ...(typeof item.eventId === "string" && item.eventId
+        ? { eventId: item.eventId }
+        : {}),
+      recordIndex,
+      timestamp,
+      open,
+      high,
+      low,
+      close,
+      trades: finiteNumber(item.trades) ?? 0,
+      volume: finiteNumber(item.volume) ?? 0,
+      bidVolume,
+      askVolume,
+      delta: askVolume - bidVolume,
+      aggressor,
+      sideSemanticsVersion: 2,
+    } satisfies InstitutionalTrade];
+  });
+}
+
+export function mergeInstitutionalTradeSeries(
+  current: InstitutionalTrade[],
+  incoming: InstitutionalTrade[],
+  limit = 25_000,
+) {
+  if (!incoming.length) return current.slice(-Math.max(1, limit));
+  const merged = new Map<string, InstitutionalTrade>();
+  const identity = (record: InstitutionalTrade) => record.eventId
+    ?? [
+      record.timestamp,
+      record.recordIndex,
+      record.close,
+      record.volume,
+      record.aggressor,
+    ].join(":");
+  for (const record of current) merged.set(identity(record), record);
+  for (const record of incoming) merged.set(identity(record), record);
+  return [...merged.values()]
+    .sort((left, right) => (
+      left.timestamp - right.timestamp
+      || left.recordIndex - right.recordIndex
+    ))
+    .slice(-Math.max(1, limit));
+}
+
+export type InstitutionalOrderFlowResult = {
+  candles: Candle[];
+  records: InstitutionalTrade[];
+  trades: InstitutionalTrade[];
+  sourceRecordCount: number;
+  fromMs: number;
+  toMs: number;
+  truncated: boolean;
+};
+
+function mergeOrderFlowCandles(current: Candle[], incoming: Candle[]) {
+  const merged = new Map<number, Candle>();
+  for (const candle of current) merged.set(candle.timestamp, candle);
+  for (const candle of incoming) merged.set(candle.timestamp, candle);
+  return [...merged.values()]
+    .sort((left, right) => left.timestamp - right.timestamp)
+    .slice(-20_000);
+}
+
+function mergeOrderFlowRecords(
+  current: InstitutionalTrade[],
+  incoming: InstitutionalTrade[],
+  limit: number,
+) {
+  const merged = new Map<string, InstitutionalTrade>();
+  const identity = (record: InstitutionalTrade) => record.eventId
+    ?? [
+      record.timestamp,
+      record.recordIndex,
+      record.close,
+      record.volume,
+      record.aggressor,
+    ].join(":");
+  for (const record of current) merged.set(identity(record), record);
+  for (const record of incoming) merged.set(identity(record), record);
+  return [...merged.values()]
+    .sort((left, right) => (
+      left.timestamp - right.timestamp
+      || left.recordIndex - right.recordIndex
+    ))
+    .slice(-Math.max(1, limit));
+}
+
+export function mergeInstitutionalOrderFlowResults(
+  current: InstitutionalOrderFlowResult | null,
+  incoming: InstitutionalOrderFlowResult,
+): InstitutionalOrderFlowResult {
+  if (!current) return incoming;
+  const rangesAreDisjoint = (
+    incoming.toMs <= current.fromMs
+    || incoming.fromMs >= current.toMs
+  );
+  return {
+    candles: mergeOrderFlowCandles(current.candles, incoming.candles),
+    records: mergeOrderFlowRecords(current.records, incoming.records, 180_000),
+    trades: mergeOrderFlowRecords(current.trades, incoming.trades, 25_000),
+    sourceRecordCount: rangesAreDisjoint
+      ? current.sourceRecordCount + incoming.sourceRecordCount
+      : Math.max(current.sourceRecordCount, incoming.sourceRecordCount),
+    fromMs: Math.min(current.fromMs, incoming.fromMs),
+    toMs: Math.max(current.toMs, incoming.toMs),
+    truncated: current.truncated || incoming.truncated,
+  };
+}
+
+async function persistMergedInstitutionalOrderFlowResult(
+  key: string,
+  incoming: InstitutionalOrderFlowResult,
+) {
+  const pending = orderFlowCacheMergeQueue.get(key);
+  const write = (pending ?? Promise.resolve(null))
+    .catch(() => null)
+    .then(async (queued) => {
+      const cached = queued ?? await readPersistentIndicatorCache<InstitutionalOrderFlowResult>(key);
+      const merged = mergeInstitutionalOrderFlowResults(cached, incoming);
+      await writePersistentIndicatorCache(key, merged);
+      return merged;
+    });
+  orderFlowCacheMergeQueue.set(key, write);
+  void write.finally(() => {
+    if (orderFlowCacheMergeQueue.get(key) === write) {
+      orderFlowCacheMergeQueue.delete(key);
+    }
+  });
+  return write;
+}
+
+export function resolveInstitutionalOrderFlowHistoryWindow(args: {
+  requestedFromMs: number;
+  requestedToMs: number;
+  latestChartTimestamp: number;
+  intervalMs: number;
+  existingStartMs?: number | null;
+  existingEndMs?: number | null;
+  nowMs?: number;
+  maximumChunkMs?: number;
+}) {
+  const intervalMs = Math.max(1, Math.floor(args.intervalMs));
+  const providerAvailabilityCap = Math.min(
+    args.nowMs ?? Date.now(),
+    args.latestChartTimestamp + intervalMs,
+  );
+  const requestedToMs = Math.min(args.requestedToMs, providerAvailabilityCap);
+  if (requestedToMs <= args.requestedFromMs) return null;
+
+  const existingStartMs = Number.isFinite(args.existingStartMs)
+    ? Number(args.existingStartMs)
+    : null;
+  const existingEndMs = Number.isFinite(args.existingEndMs)
+    ? Number(args.existingEndMs)
+    : null;
+  if (
+    existingStartMs !== null
+    && existingEndMs !== null
+    && existingStartMs <= args.requestedFromMs + intervalMs
+    && existingEndMs >= requestedToMs - intervalMs
+  ) {
+    return null;
+  }
+
+  const toMs = existingStartMs !== null && existingStartMs < requestedToMs
+    ? existingStartMs
+    : requestedToMs;
+  const maximumChunkMs = Math.max(
+    intervalMs,
+    args.maximumChunkMs ?? Math.max(intervalMs * 12, 60 * 60_000),
+  );
+  const fromMs = Math.max(args.requestedFromMs, toMs - maximumChunkMs);
+  return toMs > fromMs
+    ? { fromMs, toMs, providerAvailabilityCap }
+    : null;
+}
+
+export async function readCachedInstitutionalOrderFlowResult(
+  symbol: string,
+  timeframe: string,
+  contractSymbol?: string,
+) {
+  return readPersistentIndicatorCache<InstitutionalOrderFlowResult>(
+    `order-flow:${ORDER_FLOW_CACHE_SCHEMA}:${orderFlowRecordCacheKey(symbol, timeframe, contractSymbol)}`,
+  );
+}
+
+export async function fetchInstitutionalOrderFlowLevels(args: {
+  symbol: string;
+  contractSymbol?: string;
+  timeframe: string;
+  fromMs: number;
+  toMs: number;
+  includeTrades?: boolean;
+  timeoutMs?: number;
+}): Promise<InstitutionalOrderFlowResult | null> {
+  const query = new URLSearchParams({
+    symbol: args.symbol,
+    ...(args.contractSymbol ? { contractSymbol: args.contractSymbol } : {}),
+    interval: args.timeframe,
+    fromMs: String(Math.floor(args.fromMs)),
+    toMs: String(Math.ceil(args.toMs)),
+    orderFlowSchema: "6",
+    includeTrades: args.includeTrades ? "true" : "false",
+  });
+  try {
+    const response = await gatewayFetch(
+      `/v1/market-data/order-flow-levels?${query}`,
+      undefined,
+      args.timeoutMs ?? 30_000,
+    );
+    const payload: unknown = await response.json().catch(() => null);
+    if (!response.ok || !isRecord(payload)) {
+      console.warn("Order-flow levels request returned an invalid response.", response.status);
+      return null;
+    }
+    const records = normalizeInstitutionalTradeRecords(payload.records);
+    const candles = normalizeCandles(payload.candles, 20_000);
+    const trades = normalizeInstitutionalTradeRecords(payload.trades);
+    const result: InstitutionalOrderFlowResult = {
+      candles,
+      records,
+      trades,
+      sourceRecordCount: Math.max(0, finiteNumber(payload.sourceRecordCount) ?? 0),
+      fromMs: finiteNumber(payload.fromMs) ?? args.fromMs,
+      toMs: finiteNumber(payload.toMs) ?? args.toMs,
+      truncated: payload.truncated === true,
+    };
+    const persistentKey =
+      `order-flow:${ORDER_FLOW_CACHE_SCHEMA}:${orderFlowRecordCacheKey(args.symbol, args.timeframe, args.contractSymbol)}`;
+    const merged = await persistMergedInstitutionalOrderFlowResult(persistentKey, result);
+    if (merged.records.length) {
+      orderFlowRecordCache.set(
+        orderFlowRecordCacheKey(args.symbol, args.timeframe, args.contractSymbol),
+        merged.records,
+      );
+    }
+    return merged;
+  } catch (error) {
+    console.warn("Order-flow levels request failed.", error);
+    return null;
+  }
+}
+
+export function createInstitutionalTradeStream(args: {
+  symbol: string;
+  contractSymbol?: string;
+  afterRecord?: number;
+  onSeed?: (candles: Candle[], records: InstitutionalTrade[]) => void;
+  onTrades: (records: InstitutionalTrade[], meta: { historicalSeed: boolean }) => void;
+  onOpen?: () => void;
+  onError?: () => void;
+}) {
+  const params = new URLSearchParams({
+    symbol: args.symbol,
+    ...(args.contractSymbol ? { contractSymbol: args.contractSymbol } : {}),
+    ...(Number.isFinite(args.afterRecord) ? { afterRecord: String(args.afterRecord) } : {}),
+  });
+  const stream = new EventSource(`${LOCAL_GATEWAY_ORIGIN}/v1/market-data/trades?${params}`);
+  stream.addEventListener("ready", () => args.onOpen?.());
+  stream.addEventListener("seed", (event) => {
+    try {
+      const payload: unknown = JSON.parse((event as MessageEvent<string>).data);
+      if (!isRecord(payload)) return;
+      const candles = normalizeCandles(payload.candles, 7_200);
+      const records = normalizeInstitutionalTradeRecords(payload.records);
+      if (candles.length || records.length) args.onSeed?.(candles, records);
+    } catch {
+      // The live stream continues even if a historical seed is malformed.
+    }
+  });
+  stream.addEventListener("trades", (event) => {
+    try {
+      const payload: unknown = JSON.parse((event as MessageEvent<string>).data);
+      if (!isRecord(payload) || !Array.isArray(payload.records)) return;
+      const records = normalizeInstitutionalTradeRecords(payload.records);
+      if (records.length) args.onTrades(records, { historicalSeed: payload.historicalSeed === true });
+    } catch {
+      // Ignore a malformed batch and let the next snapshot reconcile it.
+    }
+  });
+  stream.onerror = () => args.onError?.();
+  return () => stream.close();
+}

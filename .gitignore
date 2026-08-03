@@ -6,3 +6,5 @@ data-cache/
 !.env.example
 npm-debug.log*
 *.tsbuildinfo
+services/rithmic_gateway/operator.env
+services/rithmic_gateway/vendor/

@@ -629,7 +629,7 @@ export function calculateIndicatorSeries(
         (["upper", "lower"] as const).forEach((side) => {
           series.push({
             key: `${key}-average-${side}`,
-            label: `${side === "upper" ? "+" : "-"}${deviationMultiplier}Ïƒ`,
+            label: `${side === "upper" ? "+" : "-"}${deviationMultiplier}σ`,
             kind: "line",
             placement: "pane",
             color: deviationColor,
@@ -678,7 +678,7 @@ export function calculateIndicatorSeries(
       return [
         {
           key: `${key}-upper-${index + 1}`,
-          label: `Rolling VWAP +${multiplier}Ïƒ`,
+          label: `Rolling VWAP +${multiplier}σ`,
           kind: "line" as const,
           placement: "overlay" as const,
           color,
@@ -692,7 +692,7 @@ export function calculateIndicatorSeries(
         },
         {
           key: `${key}-lower-${index + 1}`,
-          label: `Rolling VWAP -${multiplier}Ïƒ`,
+          label: `Rolling VWAP -${multiplier}σ`,
           kind: "line" as const,
           placement: "overlay" as const,
           color,
@@ -853,7 +853,7 @@ export function calculateIndicatorSeries(
       },
       {
         key: `${key}-upper`,
-        label: `BB +${multiplier}Ïƒ`,
+        label: `BB +${multiplier}σ`,
         kind: "line",
         placement: "overlay",
         color: theme.secondary,
@@ -862,7 +862,7 @@ export function calculateIndicatorSeries(
       },
       {
         key: `${key}-lower`,
-        label: `BB -${multiplier}Ïƒ`,
+        label: `BB -${multiplier}σ`,
         kind: "line",
         placement: "overlay",
         color: theme.secondary,
@@ -1073,7 +1073,7 @@ export function calculateIndicatorSeries(
         series.push(
           {
             key: `${key}-upper-${multiplier}`,
-            label: `VWAP +${factor}Ïƒ`,
+            label: `VWAP +${factor}σ`,
             kind: "line",
             placement: "overlay",
             color: vwapBandColor(theme, index),
@@ -1087,7 +1087,7 @@ export function calculateIndicatorSeries(
           },
           {
             key: `${key}-lower-${multiplier}`,
-            label: `VWAP -${factor}Ïƒ`,
+            label: `VWAP -${factor}σ`,
             kind: "line",
             placement: "overlay",
             color: vwapBandColor(theme, index),

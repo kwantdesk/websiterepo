@@ -68,6 +68,11 @@ export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "big-trades",
   "kwant-stats",
   "deep-m-effort-nq",
+  "kwant-profile",
+  "daily-volume-profile",
+  "weekly-volume-profile",
+  "ask-bid-volume-profile",
+  "delta-profile",
 ]);
 
 type Props = {
@@ -117,6 +122,7 @@ export default function ChartIndicatorsControl({
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState<"All" | ChartIndicatorCategory>("All");
   const [favourites, setFavourites] = useState<string[]>(readFavourites);
+  const [rithmicStatus, setRithmicStatus] = useState<"checking" | "connected" | "fallback">("checking");
 
   useEffect(() => {
     window.localStorage.setItem(FAVOURITES_STORAGE_KEY, JSON.stringify(favourites));
@@ -140,6 +146,25 @@ export default function ChartIndicatorsControl({
       document.removeEventListener("keydown", escape);
     };
   }, [open]);
+
+  useEffect(() => {
+    if (!open && !libraryOpen) return;
+    let cancelled = false;
+    const check = async () => {
+      setRithmicStatus("checking");
+      try {
+        const response = await fetch("/api/institutional-market-data?path=health", {
+          cache: "no-store",
+          signal: AbortSignal.timeout(5_000),
+        });
+        if (!cancelled) setRithmicStatus(response.ok ? "connected" : "fallback");
+      } catch {
+        if (!cancelled) setRithmicStatus("fallback");
+      }
+    };
+    void check();
+    return () => { cancelled = true; };
+  }, [libraryOpen, open]);
 
   const filtered = useMemo(() => {
     const needle = search.trim().toLowerCase();
@@ -222,8 +247,19 @@ export default function ChartIndicatorsControl({
             <div className="flex items-center justify-between border-b border-border px-4 py-3">
               <div>
                 <div className="text-[12px] font-semibold text-foreground">Chart indicators</div>
-                <div className="mt-0.5 text-[9px] uppercase tracking-[0.12em] text-muted">
-                  {instrument} · {timeframe} · this chart
+                <div className="mt-0.5 flex items-center gap-2 text-[9px] uppercase tracking-[0.12em] text-muted">
+                  <span>{instrument} · {timeframe} · this chart</span>
+                  <span className={`rounded-full border px-1.5 py-0.5 text-[7px] font-semibold ${
+                    rithmicStatus === "connected"
+                      ? "border-primary/25 bg-primary/10 text-primary"
+                      : "border-border bg-background text-muted"
+                  }`}>
+                    {rithmicStatus === "connected"
+                      ? "Rithmic L3"
+                      : rithmicStatus === "checking"
+                        ? "Checking feed"
+                        : "Databento fallback"}
+                  </span>
                 </div>
               </div>
               <button
@@ -366,7 +402,7 @@ export default function ChartIndicatorsControl({
                   </button>
                 ))}
                 <div className="mt-4 rounded-xl border border-border bg-surface/35 p-3 text-[9px] leading-4 text-muted">
-                  Favourites appear first. Live studies use the active CME chart feed and inherit the current theme.
+                  Favourites appear first. Live studies inherit the chart theme. Rithmic L3 is preferred when connected; Databento remains the historical fallback.
                 </div>
               </aside>
               <section className="min-w-0 flex-1 overflow-y-auto p-3">

@@ -2,6 +2,7 @@
 
 import KwantSelect from "@/components/ui/KwantSelect";
 import TimeZoneSelect from "@/components/ui/TimeZoneSelect";
+import ChartIndicatorsControl from "@/components/ChartIndicatorsControl";
 import KwantBotIntelligenceWorkspace from "@/components/kwantbot/KwantBotIntelligenceWorkspace";
 import KwantBotInterpreterPanel from "@/components/kwantbot/KwantBotInterpreterPanel";
 import OptionsTapePanel from "@/components/kwantbot/OptionsTapePanel";
@@ -97,7 +98,13 @@ import {
   normalizePaneIndicatorState,
 } from "@/lib/chartIndicatorConfig";
 import { mergeGammaLevelsAtSamePrice, type ChartGammaLevelsPayload } from "@/lib/chartGammaLevels";
-import type { InstitutionalTrade } from "@/lib/institutionalMarketData";
+import {
+  buildChartVolumeProfile,
+  fetchInstitutionalVolumeProfile,
+  type InstitutionalTrade,
+  type InstitutionalVolumeProfile,
+} from "@/lib/institutionalMarketData";
+import { subscribeRithmicIndicatorTrades } from "@/lib/rithmicIndicatorStream";
 import {
   currentGameplanSession,
   gameplanSessionLabel,
@@ -934,6 +941,27 @@ function getTimeframeMs(timeframe: string) {
   return value * (units[match[2]] ?? 5 * 60_000);
 }
 
+const CHICAGO_TRADING_DATE_FORMATTER = new Intl.DateTimeFormat("en-US", {
+  timeZone: "America/Chicago",
+  year: "numeric",
+  month: "numeric",
+  day: "numeric",
+  hour: "numeric",
+  hourCycle: "h23",
+});
+
+function chicagoTradingDate(timestamp: number) {
+  const parts = Object.fromEntries(
+    CHICAGO_TRADING_DATE_FORMATTER
+      .formatToParts(new Date(timestamp))
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, Number(part.value)]),
+  ) as Record<"year" | "month" | "day" | "hour", number>;
+  const tradingDate = new Date(Date.UTC(parts.year, parts.month - 1, parts.day));
+  if (parts.hour < 17) tradingDate.setUTCDate(tradingDate.getUTCDate() - 1);
+  return tradingDate.toISOString().slice(0, 10);
+}
+
 function getHistoricalCandleLimit(period: string, timeframe: string, fallback = 500) {
   const periodConfig = getPeriodConfig(period);
   const from = Date.parse(periodConfig.from);
@@ -1537,6 +1565,22 @@ function decodeExecutionTape(value: unknown): InstitutionalTrade[] {
       sideSemanticsVersion: 1,
     }];
   });
+}
+
+function mergeInstitutionalTradeTape(
+  current: InstitutionalTrade[],
+  incoming: InstitutionalTrade[],
+) {
+  if (!incoming.length) return current;
+  const records = new Map<string, InstitutionalTrade>();
+  for (const record of [...current, ...incoming]) {
+    const key = record.eventId
+      || `${record.timestamp}:${record.recordIndex}:${record.close}:${record.volume}`;
+    records.set(key, record);
+  }
+  return [...records.values()]
+    .sort((left, right) => left.timestamp - right.timestamp || left.recordIndex - right.recordIndex)
+    .slice(-25_000);
 }
 
 async function fetchWorkspaceCandles(
@@ -2358,6 +2402,7 @@ function WorkspaceChartPane({
 }) {
   const [candles, setCandles] = useState<Candle[]>([]);
   const [marketTrades, setMarketTrades] = useState<InstitutionalTrade[]>([]);
+  const [volumeProfiles, setVolumeProfiles] = useState<InstitutionalVolumeProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [liveFeedError, setLiveFeedError] = useState<string | null>(null);
@@ -2380,6 +2425,7 @@ function WorkspaceChartPane({
   const latestMarketTradesRef = useRef<InstitutionalTrade[]>([]);
   const lastCandleStateSyncRef = useRef(0);
   const lastMarketTradeStateSyncRef = useRef(0);
+  const rithmicConnectedRef = useRef(false);
   const historyHydratedRef = useRef(false);
   const liveTailStartTimestampRef = useRef<number | null>(null);
   const latestFuturesRef = useRef<{
@@ -2407,7 +2453,30 @@ function WorkspaceChartPane({
       "imbalance-tracker",
       "imbalance-rejector",
       "kwant-stats",
+      "kwant-profile",
+      "daily-volume-profile",
+      "weekly-volume-profile",
+      "ask-bid-volume-profile",
+      "delta-profile",
     ].includes(instance.indicatorId));
+  const dailyProfileInstance = indicators.find((instance) =>
+    instance.enabled
+    && [
+      "kwant-profile",
+      "daily-volume-profile",
+      "ask-bid-volume-profile",
+      "delta-profile",
+    ].includes(instance.indicatorId));
+  const weeklyProfileInstance = indicators.find((instance) =>
+    instance.enabled && instance.indicatorId === "weekly-volume-profile");
+  const dailyProfileSettings = dailyProfileInstance?.settings ?? {};
+  const weeklyProfileSettings = weeklyProfileInstance?.settings ?? {};
+  const dailyTradingDates = useMemo(() => {
+    const dates = new Set<string>();
+    candles.forEach((candle) => dates.add(chicagoTradingDate(candle.timestamp)));
+    return [...dates].slice(-6);
+  }, [candles]);
+  const dailyTradingDateSignature = dailyTradingDates.join(",");
   const gammaLevelsAvailable =
     pane.broker === "Databento" && isGammaChartInstrument(gammaInstrument);
   const valueAreaLevelsAvailable =
@@ -2463,12 +2532,56 @@ function WorkspaceChartPane({
 
   useEffect(() => {
     marketActiveRef.current = false;
+    rithmicConnectedRef.current = false;
     setMarketIsActive(false);
     if (marketInactiveTimerRef.current !== null) {
       window.clearTimeout(marketInactiveTimerRef.current);
       marketInactiveTimerRef.current = null;
     }
   }, [pane.broker, pane.symbol, pane.timeframe]);
+
+  useEffect(() => {
+    if (
+      pane.broker !== "Databento"
+      || !needsOrderFlowHistory
+      || !resolvedContractSymbol
+    ) {
+      rithmicConnectedRef.current = false;
+      return;
+    }
+
+    return subscribeRithmicIndicatorTrades({
+      symbol: displayCmeSymbol(pane.symbol),
+      contractSymbol: resolvedContractSymbol,
+      onStatus: (status) => {
+        if (status === "connected") rithmicConnectedRef.current = true;
+        if (status === "unavailable") rithmicConnectedRef.current = false;
+      },
+      onSeed: (records) => {
+        if (!records.length) return;
+        rithmicConnectedRef.current = true;
+        const firstRithmicTimestamp = records[0].timestamp;
+        const historical = latestMarketTradesRef.current.filter(
+          (record) => record.timestamp < firstRithmicTimestamp,
+        );
+        const next = mergeInstitutionalTradeTape(historical, records);
+        latestMarketTradesRef.current = next;
+        workspaceExecutionTape.set(workspaceOrderFlowKey(pane.symbol, pane.timeframe), next);
+        setMarketTrades(next);
+      },
+      onTrades: (records) => {
+        rithmicConnectedRef.current = true;
+        const next = mergeInstitutionalTradeTape(latestMarketTradesRef.current, records);
+        latestMarketTradesRef.current = next;
+        workspaceExecutionTape.set(workspaceOrderFlowKey(pane.symbol, pane.timeframe), next);
+        const now = Date.now();
+        if (now - lastMarketTradeStateSyncRef.current >= 100) {
+          lastMarketTradeStateSyncRef.current = now;
+          setMarketTrades(next);
+        }
+      },
+    });
+  }, [needsOrderFlowHistory, pane.broker, pane.symbol, pane.timeframe, resolvedContractSymbol]);
 
   useEffect(() => () => {
     if (marketInactiveTimerRef.current !== null) {
@@ -3010,7 +3123,7 @@ function WorkspaceChartPane({
               sideSemanticsVersion: 1,
             }];
           });
-          if (liveExecutions.length) {
+          if (liveExecutions.length && !rithmicConnectedRef.current) {
             const nextTape = [...latestMarketTradesRef.current, ...liveExecutions].slice(-10_000);
             latestMarketTradesRef.current = nextTape;
             workspaceExecutionTape.set(workspaceOrderFlowKey(pane.symbol, pane.timeframe), nextTape);
@@ -3145,6 +3258,149 @@ function WorkspaceChartPane({
   }, [markMarketActive, pane.broker, pane.symbol, pane.timeframe]);
 
   useEffect(() => {
+    if (!dailyProfileInstance && !weeklyProfileInstance) {
+      setVolumeProfiles([]);
+      return;
+    }
+    if (!resolvedContractSymbol || candles.length === 0) return;
+
+    let cancelled = false;
+    let refreshTimer: number | null = null;
+    const chartStepMs = Math.max(1, getTimeframeMs(pane.timeframe));
+    const tickSize = futuresTickSize(pane.symbol);
+    const tradingDates = dailyTradingDateSignature
+      ? dailyTradingDateSignature.split(",")
+      : [];
+    const provisionalProfiles: InstitutionalVolumeProfile[] = [];
+
+    if (dailyProfileInstance) {
+      tradingDates.forEach((tradingDate) => {
+        const sessionCandles = candles.filter((candle) =>
+          chicagoTradingDate(candle.timestamp) === tradingDate);
+        if (!sessionCandles.length) return;
+        const profile = buildChartVolumeProfile({
+          candles: sessionCandles,
+          root: displayCmeSymbol(pane.symbol),
+          contractSymbol: resolvedContractSymbol,
+          startMs: sessionCandles[0].timestamp,
+          endMs: sessionCandles[sessionCandles.length - 1].timestamp + chartStepMs,
+          tickSize,
+          groupTicks: dailyProfileSettings.groupingMode === "manual"
+            ? Number(dailyProfileSettings.groupTicks ?? 1)
+            : 1,
+          valueAreaPercent: Number(dailyProfileSettings.valueAreaPercent ?? 70),
+          minTradeVolume: Number(dailyProfileSettings.minTradeVolume ?? 0),
+          maxTradeVolume: Number(dailyProfileSettings.maxTradeVolume ?? 0),
+        });
+        if (profile) provisionalProfiles.push({ ...profile, period: "daily" });
+      });
+    }
+
+    if (weeklyProfileInstance) {
+      const weeklyDates = new Set(tradingDates.slice(-5));
+      const weeklyCandles = candles.filter((candle) =>
+        weeklyDates.has(chicagoTradingDate(candle.timestamp)));
+      if (weeklyCandles.length) {
+        const profile = buildChartVolumeProfile({
+          candles: weeklyCandles,
+          root: displayCmeSymbol(pane.symbol),
+          contractSymbol: resolvedContractSymbol,
+          startMs: weeklyCandles[0].timestamp,
+          endMs: weeklyCandles[weeklyCandles.length - 1].timestamp + chartStepMs,
+          tickSize,
+          groupTicks: weeklyProfileSettings.groupingMode === "manual"
+            ? Number(weeklyProfileSettings.groupTicks ?? 4)
+            : 1,
+          valueAreaPercent: Number(weeklyProfileSettings.valueAreaPercent ?? 70),
+          minTradeVolume: Number(weeklyProfileSettings.minTradeVolume ?? 0),
+          maxTradeVolume: Number(weeklyProfileSettings.maxTradeVolume ?? 0),
+        });
+        if (profile) provisionalProfiles.push({ ...profile, period: "weekly" });
+      }
+    }
+
+    setVolumeProfiles(provisionalProfiles);
+
+    const replaceExactProfile = (profile: InstitutionalVolumeProfile | null) => {
+      if (!profile || cancelled) return;
+      setVolumeProfiles((current) => {
+        const next = current.filter((candidate) => {
+          if (candidate.period !== profile.period) return true;
+          if (profile.period === "daily") {
+            return chicagoTradingDate(candidate.startMs) !== chicagoTradingDate(profile.startMs);
+          }
+          return false;
+        });
+        next.push(profile);
+        return next.sort((left, right) => left.startMs - right.startMs);
+      });
+    };
+
+    const refreshExactProfiles = async () => {
+      const requests: Promise<unknown>[] = [];
+      if (dailyProfileInstance) {
+        tradingDates.forEach((tradingDate) => {
+          requests.push(fetchInstitutionalVolumeProfile({
+            symbol: displayCmeSymbol(pane.symbol),
+            contractSymbol: resolvedContractSymbol,
+            period: "daily",
+            tradingDate,
+            groupTicks: dailyProfileSettings.groupingMode === "manual"
+              ? Number(dailyProfileSettings.groupTicks ?? 1)
+              : 1,
+            valueAreaPercent: Number(dailyProfileSettings.valueAreaPercent ?? 70),
+            minTradeVolume: Number(dailyProfileSettings.minTradeVolume ?? 0),
+            maxTradeVolume: Number(dailyProfileSettings.maxTradeVolume ?? 0),
+          }).then(replaceExactProfile));
+        });
+      }
+      if (weeklyProfileInstance) {
+        const weeklyProfile = provisionalProfiles.find((profile) => profile.period === "weekly");
+        requests.push(fetchInstitutionalVolumeProfile({
+          symbol: displayCmeSymbol(pane.symbol),
+          contractSymbol: resolvedContractSymbol,
+          period: "weekly",
+          startMs: weeklyProfile?.startMs,
+          endMs: weeklyProfile?.endMs,
+          groupTicks: weeklyProfileSettings.groupingMode === "manual"
+            ? Number(weeklyProfileSettings.groupTicks ?? 4)
+            : 1,
+          valueAreaPercent: Number(weeklyProfileSettings.valueAreaPercent ?? 70),
+          minTradeVolume: Number(weeklyProfileSettings.minTradeVolume ?? 0),
+          maxTradeVolume: Number(weeklyProfileSettings.maxTradeVolume ?? 0),
+        }).then(replaceExactProfile));
+      }
+      await Promise.allSettled(requests);
+      if (!cancelled) {
+        refreshTimer = window.setTimeout(() => void refreshExactProfiles(), 15_000);
+      }
+    };
+    void refreshExactProfiles();
+
+    return () => {
+      cancelled = true;
+      if (refreshTimer !== null) window.clearTimeout(refreshTimer);
+    };
+  }, [
+    dailyProfileInstance?.instanceId,
+    dailyProfileSettings.groupTicks,
+    dailyProfileSettings.groupingMode,
+    dailyProfileSettings.maxTradeVolume,
+    dailyProfileSettings.minTradeVolume,
+    dailyProfileSettings.valueAreaPercent,
+    dailyTradingDateSignature,
+    pane.symbol,
+    pane.timeframe,
+    resolvedContractSymbol,
+    weeklyProfileInstance?.instanceId,
+    weeklyProfileSettings.groupTicks,
+    weeklyProfileSettings.groupingMode,
+    weeklyProfileSettings.maxTradeVolume,
+    weeklyProfileSettings.minTradeVolume,
+    weeklyProfileSettings.valueAreaPercent,
+  ]);
+
+  useEffect(() => {
     if (!active) {
       setIntervalCommandOpen(false);
       return;
@@ -3274,6 +3530,7 @@ function WorkspaceChartPane({
           onCreateAlertAtPrice={onCreateAlertAtPrice}
           onRemoveAllIndicators={onRemoveAllIndicators}
           indicators={indicators}
+          volumeProfiles={volumeProfiles}
           onUpdateIndicatorSetting={onUpdateIndicatorSetting}
           toolbarEnabled
           chartDragEnabled={chartDragEnabled}
@@ -6968,6 +7225,17 @@ export default function KwantifyWorkspace({
     window.history.replaceState({}, "", nextUrl);
   }, []);
 
+  const setIndicatorsForPane = useCallback((paneId: string, next: ChartIndicatorInstance[]) => {
+    setChartIndicatorsSuppressed(false);
+    setPaneIndicators((current) => ({
+      ...current,
+      [paneId]: next.map((instance) => ({
+        ...instance,
+        settings: instance.settings ? { ...instance.settings } : undefined,
+      })),
+    }));
+  }, []);
+
   const updatePaneIndicatorSetting = useCallback((
     paneId: string,
     instanceId: string,
@@ -8178,7 +8446,7 @@ export default function KwantifyWorkspace({
         period={pane.period}
         settings={chartSettings}
         trades={activePaneId === pane.id ? chartTrades : []}
-        indicators={[]}
+        indicators={paneIndicators[pane.id] ?? []}
         onActivate={() => activateWorkspacePane(pane.id)}
         onOpenSettings={openChartSettings}
         onCreateAlertAtPrice={openCreateAlert}
@@ -8778,6 +9046,13 @@ export default function KwantifyWorkspace({
                     {activeGameplanLevelsAdded ? "Refresh Kwant Levels" : "Add Kwant Levels"}
                   </span>}
           </button>
+          <ChartIndicatorsControl
+            instrument={displayCmeSymbol(activeWorkspacePane.symbol)}
+            timeframe={formatChartInterval(activeWorkspacePane.timeframe)}
+            indicators={paneIndicators[activePaneId] ?? []}
+            chartSettings={chartSettings}
+            onChange={(next) => setIndicatorsForPane(activePaneId, next)}
+          />
           <TimeZoneSelect
             value={chartSettings.timezone}
             onChange={changeChartTimeZone}
