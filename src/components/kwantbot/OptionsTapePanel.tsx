@@ -86,6 +86,61 @@ function newYorkOptionsClockOpen(timestamp: number) {
   return clock.minutes >= 9 * 60 + 30 && clock.minutes < 16 * 60;
 }
 
+function newYorkLocalTimestamp(year: number, month: number, day: number, hour: number, minute: number) {
+  const targetAsUtc = Date.UTC(year, month - 1, day, hour, minute, 0);
+  let candidate = targetAsUtc;
+  for (let pass = 0; pass < 3; pass += 1) {
+    const parts = Object.fromEntries(
+      NEW_YORK_CLOCK.formatToParts(new Date(candidate))
+        .filter((part) => part.type !== "literal")
+        .map((part) => [part.type, part.value]),
+    );
+    const renderedAsUtc = Date.UTC(
+      Number(parts.year),
+      Number(parts.month) - 1,
+      Number(parts.day),
+      Number(parts.hour),
+      Number(parts.minute),
+      Number(parts.second),
+    );
+    const adjusted = targetAsUtc - (renderedAsUtc - candidate);
+    if (Math.abs(adjusted - candidate) < 1_000) return adjusted;
+    candidate = adjusted;
+  }
+  return candidate;
+}
+
+function nextNewYorkOptionsOpen(timestamp: number) {
+  const clock = newYorkClock(timestamp);
+  if (!clock) return null;
+  const [year, month, day] = clock.date.split("-").map(Number);
+  const localDate = Date.UTC(year, month - 1, day);
+  for (let dayOffset = 0; dayOffset <= 7; dayOffset += 1) {
+    const candidateDate = new Date(localDate + dayOffset * 86_400_000);
+    const weekday = candidateDate.getUTCDay();
+    if (weekday === 0 || weekday === 6) continue;
+    const candidate = newYorkLocalTimestamp(
+      candidateDate.getUTCFullYear(),
+      candidateDate.getUTCMonth() + 1,
+      candidateDate.getUTCDate(),
+      9,
+      30,
+    );
+    if (candidate > timestamp) return candidate;
+  }
+  return null;
+}
+
+function formatSessionCountdown(milliseconds: number) {
+  const totalSeconds = Math.max(0, Math.ceil(milliseconds / 1_000));
+  const days = Math.floor(totalSeconds / 86_400);
+  const hours = Math.floor((totalSeconds % 86_400) / 3_600);
+  const minutes = Math.floor((totalSeconds % 3_600) / 60);
+  const seconds = totalSeconds % 60;
+  const time = [hours, minutes, seconds].map((value) => String(value).padStart(2, "0")).join(":");
+  return days > 0 ? `${days}d ${time}` : time;
+}
+
 function OptionsTapeAvatar({ speaking = false }: { speaking?: boolean }) {
   return (
     <div className="relative h-9 w-9 shrink-0 overflow-hidden rounded-full border border-primary/30 bg-background shadow-[0_0_18px_color-mix(in_srgb,var(--primary)_20%,transparent)]">
@@ -172,7 +227,10 @@ export default function OptionsTapePanel({
   const options = context?.options ?? null;
   const clockOpen = newYorkOptionsClockOpen(now);
   const optionsMarketOpen = clockOpen && options?.marketOpen === true;
-  const currentNewYorkClock = newYorkClock(now);
+  const nextOptionsOpen = clockOpen ? null : nextNewYorkOptionsOpen(now);
+  const optionsOpenCountdown = nextOptionsOpen === null
+    ? "--:--:--"
+    : formatSessionCountdown(nextOptionsOpen - now);
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 1_000);
@@ -260,7 +318,7 @@ export default function OptionsTapePanel({
             ) : null}
             <div className="mt-4 inline-flex items-center gap-2 rounded-lg border border-border bg-surface/45 px-3 py-2 font-mono text-[8px] text-muted">
               <span className={`h-1.5 w-1.5 rounded-full ${clockOpen ? "animate-pulse bg-primary" : "bg-muted/60"}`} />
-              New York {currentNewYorkClock?.label ?? "--:--:--"}
+              {clockOpen ? "New York open · awaiting live tape" : `New York opens in ${optionsOpenCountdown}`}
             </div>
           </div>
         </div>
