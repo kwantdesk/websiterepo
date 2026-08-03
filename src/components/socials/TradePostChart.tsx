@@ -52,6 +52,10 @@ export default function TradePostChart({ trade, height = 270 }: { trade: SocialT
       rightPriceScale: { borderColor: border, minimumWidth: 68 },
       timeScale: { borderColor: border, timeVisible: true, secondsVisible: false, rightOffset: 4 },
       crosshair: {
+        // Lightweight Charts defaults to magnet mode, which snaps the
+        // horizontal crosshair to the nearest candle value. Feed charts
+        // should behave like the main terminal: both axes follow the pointer.
+        mode: 0,
         vertLine: { color: primary, labelBackgroundColor: primary },
         horzLine: { color: primary, labelBackgroundColor: primary },
       },
