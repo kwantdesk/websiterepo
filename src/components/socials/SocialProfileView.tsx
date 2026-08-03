@@ -147,7 +147,6 @@ export default function SocialProfileView({
   const [profileCollectionTab, setProfileCollectionTab] = useState<ProfileCollectionTab>("gameplans");
   const [followSummary, setFollowSummary] = useState<SocialFollowSummary | null>(null);
   const [followLoading, setFollowLoading] = useState(true);
-  const [followBusy, setFollowBusy] = useState(false);
   const [followError, setFollowError] = useState("");
   const [openFollowList, setOpenFollowList] = useState<SocialFollowListKind | null>(null);
   const [followList, setFollowList] = useState<SocialFollowListItem[]>([]);
@@ -156,6 +155,7 @@ export default function SocialProfileView({
   const [followListNextOffset, setFollowListNextOffset] = useState<number | null>(null);
   const [friendState, setFriendState] = useState<"loading" | "friend" | "incoming" | "outgoing" | "none" | "unavailable">("loading");
   const [friendBusy, setFriendBusy] = useState(false);
+  const followMutationRef = useRef(false);
   const followListRequestRef = useRef(0);
 
   useEffect(() => {
@@ -262,30 +262,29 @@ export default function SocialProfileView({
     action: "follow" | "unfollow" | "notifications",
     enabled?: boolean,
   ) => {
-    if (followBusy || isOwnProfile) return;
+    if (followMutationRef.current || isOwnProfile) return;
     const previous = followSummary;
-    setFollowBusy(true);
+    if (!previous) return;
+    followMutationRef.current = true;
     setFollowError("");
-    if (previous) {
-      setFollowSummary({
-        ...previous,
-        viewerFollows: action === "follow"
-          ? true
-          : action === "unfollow"
-            ? false
-            : previous.viewerFollows,
-        followerCount: action === "follow" && !previous.viewerFollows
-          ? previous.followerCount + 1
-          : action === "unfollow" && previous.viewerFollows
-            ? Math.max(0, previous.followerCount - 1)
-            : previous.followerCount,
-        notificationsEnabled: action === "notifications"
-          ? Boolean(enabled)
-          : action === "unfollow"
-            ? false
-            : previous.notificationsEnabled,
-      });
-    }
+    setFollowSummary({
+      ...previous,
+      viewerFollows: action === "follow"
+        ? true
+        : action === "unfollow"
+          ? false
+          : previous.viewerFollows,
+      followerCount: action === "follow" && !previous.viewerFollows
+        ? previous.followerCount + 1
+        : action === "unfollow" && previous.viewerFollows
+          ? Math.max(0, previous.followerCount - 1)
+          : previous.followerCount,
+      notificationsEnabled: action === "notifications"
+        ? Boolean(enabled)
+        : action === "unfollow"
+          ? false
+          : previous.notificationsEnabled,
+    });
     try {
       const response = await fetch("/api/socials/follows", {
         method: "POST",
@@ -306,7 +305,7 @@ export default function SocialProfileView({
       setFollowSummary(previous);
       setFollowError(error instanceof Error ? error.message : "The follow setting could not be saved.");
     } finally {
-      setFollowBusy(false);
+      followMutationRef.current = false;
     }
   };
 
@@ -510,16 +509,14 @@ export default function SocialProfileView({
                   <button
                     type="button"
                     onClick={() => void updateFollow(followSummary?.viewerFollows ? "unfollow" : "follow")}
-                    disabled={followBusy || followLoading || !followSummary}
-                    className={`flex h-9 items-center gap-2 rounded-xl px-4 text-[9px] font-semibold disabled:cursor-wait disabled:opacity-50 ${
+                    disabled={followLoading || !followSummary}
+                    className={`flex h-9 items-center gap-2 rounded-xl px-4 text-[9px] font-semibold transition-colors disabled:cursor-default disabled:opacity-50 ${
                       followSummary?.viewerFollows
                         ? "border border-primary/25 bg-primary/10 text-primary"
                         : "bg-primary text-background"
                     }`}
                   >
-                    {followBusy ? (
-                      <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
-                    ) : followSummary?.viewerFollows ? (
+                    {followSummary?.viewerFollows ? (
                       <UserCheck className="h-3.5 w-3.5" />
                     ) : (
                       <UserPlus className="h-3.5 w-3.5" />
@@ -534,8 +531,7 @@ export default function SocialProfileView({
                     <button
                       type="button"
                       onClick={() => void updateFollow("notifications", !followSummary.notificationsEnabled)}
-                      disabled={followBusy}
-                      className={`flex h-9 w-9 items-center justify-center rounded-xl border transition-colors disabled:cursor-wait disabled:opacity-50 ${
+                      className={`flex h-9 w-9 items-center justify-center rounded-xl border transition-colors ${
                         followSummary.notificationsEnabled
                           ? "border-primary/35 bg-primary/10 text-primary"
                           : "border-border bg-surface text-muted hover:text-foreground"
