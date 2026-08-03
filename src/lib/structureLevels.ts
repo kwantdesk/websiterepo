@@ -452,6 +452,11 @@ function touchAdjustedScore(candidate: EnrichedStructureCandidate) {
   return candidate.score * touchPenalty;
 }
 
+// Only publish structure locations with a strong evidence score. Applying the
+// floor before consolidation prevents weaker nearby candidates from widening
+// or otherwise influencing the zones that reach the chart.
+const MINIMUM_PUBLISHED_STRUCTURE_SCORE = 0.65;
+
 function consolidateStructureCandidates(args: {
   candidates: EnrichedStructureCandidate[];
   currentPrice: number;
@@ -468,9 +473,7 @@ function consolidateStructureCandidates(args: {
     const adjustedScore = touchAdjustedScore(rawCandidate);
     const threshold = rawCandidate.evidence === "LIVE_L3"
       ? 0.68
-      : rawCandidate.evidence === "HYBRID_L3"
-        ? 0.44
-        : 0.47;
+      : MINIMUM_PUBLISHED_STRUCTURE_SCORE;
     if (adjustedScore < threshold) continue;
 
     const candidate = { ...rawCandidate, score: adjustedScore };
