@@ -102,6 +102,12 @@ export type StructureLevelsSnapshot = {
 
 type CandidateDraft = Omit<HistoricalStructureCandidate, "id">;
 
+type EnrichedStructureCandidate = HistoricalStructureCandidate & {
+  liquidityScore: number | null;
+  evidence: StructureEvidence;
+  historicalScore: number;
+};
+
 const clamp01 = (value: number) => Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0));
 
 function median(values: number[]) {
@@ -151,6 +157,10 @@ function roleForLocation(originRole: StructureRole, low: number, high: number, c
   return originRole;
 }
 
+function roleFamily(role: StructureRole) {
+  return role === "DEMAND" || role === "SUPPORT" ? "BID" : "ASK";
+}
+
 function countTouches(candles: Candle[], startIndex: number, low: number, high: number) {
   let touches = 0;
   let lastTouch = -10;
@@ -174,7 +184,10 @@ function mergeHistoricalCandidates(
   for (const candidate of [...candidates].sort((left, right) => right.score - left.score)) {
     const centre = (candidate.low + candidate.high) / 2;
     const existing = accepted.find((item) => {
-      if (item.role !== candidate.role) return false;
+      // Demand/support and supply/resistance are the same directional family.
+      // Keeping them separate was allowing two labels to describe the same
+      // traded area and draw directly on top of one another.
+      if (roleFamily(item.role) !== roleFamily(candidate.role)) return false;
       const itemCentre = (item.low + item.high) / 2;
       const overlap = candidate.low <= item.high && candidate.high >= item.low;
       return overlap || Math.abs(centre - itemCentre) <= mergeDistance;
@@ -186,12 +199,13 @@ function mergeHistoricalCandidates(
     const combinedLow = Math.min(existing.low, candidate.low);
     const combinedHigh = Math.max(existing.high, candidate.high);
     if (combinedHigh - combinedLow > atr * 0.8) continue;
-    const totalWeight = Math.max(0.01, existing.score + candidate.score);
+    const existingScore = existing.score;
+    const totalWeight = Math.max(0.01, existingScore + candidate.score);
     existing.low = roundToTick(combinedLow, tickSize);
     existing.high = roundToTick(combinedHigh, tickSize);
-    existing.score = Math.max(existing.score, candidate.score) * 0.75
-      + ((existing.score + candidate.score) / 2) * 0.25;
-    existing.volumeScore = (existing.volumeScore * existing.score + candidate.volumeScore * candidate.score) / totalWeight;
+    existing.score = Math.max(existingScore, candidate.score) * 0.75
+      + ((existingScore + candidate.score) / 2) * 0.25;
+    existing.volumeScore = (existing.volumeScore * existingScore + candidate.volumeScore * candidate.score) / totalWeight;
     existing.reactionScore = Math.max(existing.reactionScore, candidate.reactionScore);
     existing.departureScore = Math.max(existing.departureScore, candidate.departureScore);
     existing.freshnessScore = Math.max(existing.freshnessScore, candidate.freshnessScore);
@@ -422,6 +436,103 @@ function liquidityCandidates(snapshot: RithmicLiquiditySnapshot, atr: number, ti
   }).sort((left, right) => right.score - left.score);
 }
 
+function candidateMarketSide(candidate: Pick<HistoricalStructureCandidate, "low" | "high">, currentPrice: number) {
+  if (candidate.high < currentPrice) return "BELOW" as const;
+  if (candidate.low > currentPrice) return "ABOVE" as const;
+  return "IN_PLAY" as const;
+}
+
+function touchAdjustedScore(candidate: EnrichedStructureCandidate) {
+  if (candidate.evidence === "LIVE_L3") return candidate.score;
+  // A zone becomes less informative after repeated tests. Previously those
+  // touches increased the reaction score almost as quickly as they reduced
+  // freshness, allowing heavily worked areas to remain on screen.
+  const excessTouches = Math.max(0, candidate.touchCount - 3);
+  const touchPenalty = Math.max(0.68, 1 - excessTouches * 0.055);
+  return candidate.score * touchPenalty;
+}
+
+function consolidateStructureCandidates(args: {
+  candidates: EnrichedStructureCandidate[];
+  currentPrice: number;
+  atr: number;
+  tickSize: number;
+}) {
+  const clusterDistance = Math.max(args.tickSize * 8, args.atr * 0.16);
+  const maximumClusterWidth = Math.max(args.tickSize * 12, args.atr * 0.52);
+  const accepted: EnrichedStructureCandidate[] = [];
+
+  for (const rawCandidate of [...args.candidates].sort((left, right) =>
+    touchAdjustedScore(right) - touchAdjustedScore(left),
+  )) {
+    const adjustedScore = touchAdjustedScore(rawCandidate);
+    const threshold = rawCandidate.evidence === "LIVE_L3"
+      ? 0.68
+      : rawCandidate.evidence === "HYBRID_L3"
+        ? 0.44
+        : 0.47;
+    if (adjustedScore < threshold) continue;
+
+    const candidate = { ...rawCandidate, score: adjustedScore };
+    const candidateSide = candidateMarketSide(candidate, args.currentPrice);
+    const candidateCentre = (candidate.low + candidate.high) / 2;
+    const existing = accepted.find((row) => {
+      if (candidateMarketSide(row, args.currentPrice) !== candidateSide) return false;
+      const rowCentre = (row.low + row.high) / 2;
+      const overlaps = candidate.low <= row.high && candidate.high >= row.low;
+      return overlaps || Math.abs(candidateCentre - rowCentre) <= clusterDistance;
+    });
+
+    if (!existing) {
+      accepted.push(candidate);
+      continue;
+    }
+
+    const combinedLow = Math.min(existing.low, candidate.low);
+    const combinedHigh = Math.max(existing.high, candidate.high);
+    // Do not turn several nearby references into one enormous unusable band.
+    // The stronger candidate already represents this cluster if the union is
+    // wider than a sensible intraday reaction area.
+    if (combinedHigh - combinedLow > maximumClusterWidth) continue;
+
+    existing.low = roundToTick(combinedLow, args.tickSize);
+    existing.high = roundToTick(combinedHigh, args.tickSize);
+    existing.score = Math.max(existing.score, candidate.score);
+    existing.volumeScore = Math.max(existing.volumeScore, candidate.volumeScore);
+    existing.reactionScore = Math.max(existing.reactionScore, candidate.reactionScore);
+    existing.departureScore = Math.max(existing.departureScore, candidate.departureScore);
+    existing.freshnessScore = Math.max(existing.freshnessScore, candidate.freshnessScore);
+    existing.touchCount = Math.max(existing.touchCount, candidate.touchCount);
+    existing.originAt = Math.max(existing.originAt, candidate.originAt);
+    existing.historicalScore = Math.max(existing.historicalScore, candidate.historicalScore);
+    existing.liquidityScore = existing.liquidityScore === null
+      ? candidate.liquidityScore
+      : candidate.liquidityScore === null
+        ? existing.liquidityScore
+        : Math.max(existing.liquidityScore, candidate.liquidityScore);
+    existing.evidence = existing.historicalScore > 0 && existing.liquidityScore !== null
+      ? "HYBRID_L3"
+      : existing.liquidityScore !== null
+        ? "LIVE_L3"
+        : "HISTORICAL";
+  }
+
+  const inPlay = accepted
+    .filter((candidate) => candidateMarketSide(candidate, args.currentPrice) === "IN_PLAY")
+    .sort((left, right) => right.score - left.score)
+    .slice(0, 1);
+  const below = accepted
+    .filter((candidate) => candidateMarketSide(candidate, args.currentPrice) === "BELOW")
+    .sort((left, right) => right.high - left.high || right.score - left.score)
+    .slice(0, 3);
+  const above = accepted
+    .filter((candidate) => candidateMarketSide(candidate, args.currentPrice) === "ABOVE")
+    .sort((left, right) => left.low - right.low || right.score - left.score)
+    .slice(0, 3);
+
+  return [...inPlay, ...below, ...above].sort((left, right) => left.low - right.low);
+}
+
 export function buildStructureLevelsSnapshot(args: {
   base: HistoricalStructureBase;
   liquidity: RithmicLiquiditySnapshot | null;
@@ -453,13 +564,9 @@ export function buildStructureLevelsSnapshot(args: {
     : [];
   const currentPrice = base.currentPrice;
   const usedLive = new Set<number>();
-  const combined: Array<HistoricalStructureCandidate & {
-    liquidityScore: number | null;
-    evidence: StructureEvidence;
-    historicalScore: number;
-  }> = base.candidates.map((candidate) => {
+  const combined: EnrichedStructureCandidate[] = base.candidates.map((candidate) => {
     const desiredSide = candidate.high <= currentPrice ? "BID" : candidate.low >= currentPrice ? "ASK" : null;
-    const tolerance = Math.max(base.tickSize * 12, base.atr * 0.24, candidate.high - candidate.low);
+    const tolerance = Math.max(base.tickSize * 8, base.atr * 0.12, (candidate.high - candidate.low) * 0.5);
     const matchIndex = liveCandidates.findIndex((live, index) =>
       !usedLive.has(index)
       && (!desiredSide || live.side === desiredSide)
@@ -469,10 +576,13 @@ export function buildStructureLevelsSnapshot(args: {
     const match = matchIndex >= 0 ? liveCandidates[matchIndex] : null;
     if (match) usedLive.add(matchIndex);
     const evidence: StructureEvidence = match ? "HYBRID_L3" : "HISTORICAL";
+    const confirmationPadding = Math.max(base.tickSize * 2, base.atr * 0.04);
     return {
       ...candidate,
-      low: match ? Math.min(candidate.low, match.low) : candidate.low,
-      high: match ? Math.max(candidate.high, match.high) : candidate.high,
+      // L3 confirms a historical area; it must not stretch that area across a
+      // large portion of the chart merely because a nearby order was matched.
+      low: match ? Math.min(candidate.low, Math.max(match.low, candidate.low - confirmationPadding)) : candidate.low,
+      high: match ? Math.max(candidate.high, Math.min(match.high, candidate.high + confirmationPadding)) : candidate.high,
       score: match ? 0.66 * candidate.score + 0.34 * match.score : candidate.score,
       liquidityScore: match?.score ?? null,
       evidence,
@@ -505,15 +615,12 @@ export function buildStructureLevelsSnapshot(args: {
     });
   }
 
-  const selected = combined
-    .filter((candidate) => candidate.score >= 0.42)
-    .sort((left, right) => {
-      const leftDistance = Math.abs((left.low + left.high) / 2 - currentPrice);
-      const rightDistance = Math.abs((right.low + right.high) / 2 - currentPrice);
-      return leftDistance - rightDistance || right.score - left.score;
-    })
-    .slice(0, 10)
-    .sort((left, right) => left.low - right.low);
+  const selected = consolidateStructureCandidates({
+    candidates: combined,
+    currentPrice,
+    atr: base.atr,
+    tickSize: base.tickSize,
+  });
 
   const zones = selected.map((candidate, index): StructureChartZone => {
     const confidence = Math.round(clamp01(candidate.score) * 100);
@@ -563,8 +670,8 @@ export function buildStructureLevelsSnapshot(args: {
     status: l3Live ? "LIVE_L3" : "HISTORICAL",
     source: l3Live ? "Five-day CME structure + live Rithmic MBO" : "Five-day CME price and volume structure",
     note: l3Live
-      ? "Zones blend five-day price response, volume-at-price, displacement and retests with current persistent Rithmic MBO liquidity. Resting liquidity can be cancelled; acceptance and execution flow remain required confirmation."
-      : "Historical zones use five-day CME bars and volume-at-price. Live Level 3 confirmation will be added automatically when the private Rithmic MBO gateway is connected; historical MBO is not inferred.",
+      ? "Distinct high-confidence zones blend five-day price response, volume-at-price, displacement and retests with current persistent Rithmic MBO liquidity. Overlapping references are consolidated and heavily retested areas are downgraded. Resting liquidity can be cancelled; acceptance and execution flow remain required confirmation."
+      : "Distinct historical zones use five-day CME bars and volume-at-price. Overlapping references are consolidated and heavily retested areas are downgraded. Live Level 3 confirmation will be added automatically when the private Rithmic MBO gateway is connected; historical MBO is not inferred.",
     atr: base.atr,
   };
 }
