@@ -700,7 +700,7 @@ function buildGameplanDraft(
     || !tradingAccount
     || tradingAccount.size === null
     || (tradingAccount.mode === "PROP" && !tradingAccount.provider)
-    || (entryTiming !== "VALID" && entryTiming !== "TOO_OLD")
+    || entryTiming === "INVALID"
     || !reasoning
     || !confirmation
     || !invalidation
@@ -762,7 +762,7 @@ function gameplanJournalEntry(
       `Instrument: ${draft.instrument}`,
       `Direction: ${draft.direction}`,
       `Session: ${draft.session}`,
-      `Entry time: ${draft.entryTime}`,
+      `Entry timing: ${draft.entryTime || "Conditional setup — awaiting a future trigger"}`,
       `Entry: ${entry}`,
       `Stop: ${draft.stop}`,
       `Targets: ${draft.targets.join(", ")}`,
@@ -1346,12 +1346,13 @@ export async function POST(request: NextRequest) {
     ...(!historicalReplay ? [
       "When the user recounts a trade, shares a meaningful setup, records a lesson, or asks to journal something, also call record_trading_journal. Always provide a normal text response as well.",
       "Build the Gameplan conversationally. Reconstruct it from the full conversation and gather only the required facts that are still missing.",
-      "A Gameplan requires: instrument, explicit LONG or SHORT direction, entry time, entry price or zone, stop, at least one planned exit/take-profit price, maximum risk amount and unit, the trading account, reasoning, confirmation, and invalidation. Reasoning should faithfully synthesise the conversation; never invent a missing fact or price.",
+      "A Gameplan requires: instrument, explicit LONG or SHORT direction, entry price or zone, stop, at least one planned exit/take-profit price, maximum risk amount and unit, the trading account, reasoning, confirmation, and invalidation. Reasoning should faithfully synthesise the conversation; never invent a missing fact or price.",
       "Trading-account data must identify the environment (personal live, simulator, or prop firm), nominal account size and currency, and phase. For prop accounts also collect the provider and optional programme, for example Traderify Flex, USD 50K, Evaluation. Never request or store a broker login or private account number.",
-      "If any required Gameplan fact is missing, DO NOT call save_trading_gameplan_draft. Ask one short, direct question for the most important missing fact, such as 'WHAT'S YOUR ENTRY TIME?' Continue this collection loop until every required fact is known. The Send Gameplan button must remain locked while anything is missing.",
+      "If any required Gameplan fact is missing, DO NOT call save_trading_gameplan_draft. Ask one short, direct question for the most important missing fact. Continue this collection loop until every required fact is known. The Send Gameplan button must remain locked while anything required is missing.",
+      "For a future or conditional Gameplan, entryTime is optional. Do not ask the trader to predict when the setup will trigger. Save the plan using its entry zone, confirmation trigger, invalidation, stop and targets, and omit entryTime until an actual fill exists.",
       "Historical testing mode is enabled. An entry or fill older than five minutes may be saved, but it must preserve the trader's exact original timestamp and will be labelled HISTORICAL rather than represented as a live call.",
       "For historical Gameplans, collect the same complete facts as a live Gameplan: instrument, direction, entry time and timezone, entry or zone, stop, targets, risk, trading account, reasoning, confirmation, and invalidation. Never invent or move a timestamp.",
-      "Future entry timestamps are valid for planned limit orders. Ask for the trader's timezone when it is not known, then convert entryTime to an ISO 8601 timestamp with an explicit offset.",
+      "If the trader voluntarily supplies a future entry timestamp for a planned limit order, preserve it with an explicit timezone offset. Never require or invent one.",
       "Once every required fact is known, call save_trading_gameplan_draft to validate and prepare the complete structured plan, even if the trader has not pressed Send Gameplan yet. The server will only persist it to the holding page when the latest user message explicitly asks to send, save, submit, or publish the Gameplan.",
       "When the trader explicitly presses or asks for Send Gameplan and every fact is known, call save_trading_gameplan_draft again. Only then will the server send the pre-filled editable record to Socials holding and today's ZYON journal. Tell the trader to review it, adjust anything needed, then lock it into Scoring.",
     ] : []),
@@ -1428,7 +1429,7 @@ export async function POST(request: NextRequest) {
                 instrument: { type: "string", description: "NQ, MNQ, ES, or MES." },
                 direction: { type: "string", enum: ["LONG", "SHORT"] },
                 session: { type: "string" },
-                entryTime: { type: "string", description: "ISO 8601 planned or actual entry timestamp with an explicit UTC offset." },
+                entryTime: { type: "string", description: "Optional ISO 8601 timestamp with an explicit UTC offset. Omit for a future conditional setup whose trigger time is not yet known; required for a historical fill." },
                 entryLow: { type: "number" },
                 entryHigh: { type: "number" },
                 stop: { type: "number" },
@@ -1460,7 +1461,6 @@ export async function POST(request: NextRequest) {
                 "instrument",
                 "direction",
                 "session",
-                "entryTime",
                 "entryLow",
                 "entryHigh",
                 "stop",
@@ -1630,8 +1630,8 @@ export async function POST(request: NextRequest) {
         ? "I have the complete Gameplan, but the account holding record did not sync. Nothing was posted. Try Send Gameplan again."
         : gameplanEntryTiming === "TOO_OLD" && gameplanDraft
           ? historicalGameplanSentMessage
-          : gameplanEntryTiming === "INVALID" || gameplanEntryTiming === "MISSING"
-            ? "I need an exact entry time and timezone before I can send this Gameplan. What was your entry time?"
+          : gameplanEntryTiming === "INVALID"
+            ? "That entry time could not be read. Remove it for a future conditional plan, or enter the exact timestamp and timezone for a completed trade."
             : gameplanDraft
               ? liveGameplanSentMessage
               : gameplanReady

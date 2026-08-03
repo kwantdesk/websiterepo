@@ -140,7 +140,6 @@ export type ZyonGameplanDraft = {
 export type ZyonGameplanRequiredField =
   | "instrument"
   | "direction"
-  | "entryTime"
   | "entry"
   | "stop"
   | "targets"
@@ -239,7 +238,6 @@ export function zyonGameplanMissingFields(
     return [
       "instrument",
       "direction",
-      "entryTime",
       "entry",
       "stop",
       "targets",
@@ -253,11 +251,6 @@ export function zyonGameplanMissingFields(
   const missing: ZyonGameplanRequiredField[] = [];
   if (!draft.instrument?.trim()) missing.push("instrument");
   if (draft.direction !== "LONG" && draft.direction !== "SHORT") missing.push("direction");
-  if (
-    typeof draft.entryTime !== "string"
-    || !draft.entryTime.trim()
-    || !Number.isFinite(Date.parse(draft.entryTime))
-  ) missing.push("entryTime");
   if (!Number.isFinite(draft.entryLow) || !Number.isFinite(draft.entryHigh)) missing.push("entry");
   if (!Number.isFinite(draft.stop)) missing.push("stop");
   if (!draft.targets?.some(Number.isFinite)) missing.push("targets");

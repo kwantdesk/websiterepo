@@ -176,9 +176,12 @@ export async function PUT(request: NextRequest) {
     if (loadError) throw loadError;
     if (!existing) return NextResponse.json({ error: "That holding Gameplan no longer exists." }, { status: 404 });
     const entryTiming = zyonGameplanEntryTimingStatus(draft.entryTime, existing.created_at);
-    if (entryTiming !== "VALID" && entryTiming !== "TOO_OLD") {
+    const historicalWithoutTime = draft.recordMode === "HISTORICAL" && entryTiming === "MISSING";
+    if (entryTiming === "INVALID" || historicalWithoutTime) {
       return NextResponse.json({
-        error: "Enter an exact entry time with a timezone before posting this Gameplan.",
+        error: historicalWithoutTime
+          ? "Historical trades require their exact original entry time and timezone."
+          : "Remove the entry time for a future conditional plan, or enter a valid timestamp with a timezone.",
         code: "ENTRY_TIME_INVALID",
       }, { status: 400 });
     }
