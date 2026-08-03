@@ -1631,7 +1631,7 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
     setSendError("");
     setSending(true);
     const responseController = new AbortController();
-    const responseTimeout = window.setTimeout(() => responseController.abort(), 110_000);
+    const responseTimeout = window.setTimeout(() => responseController.abort(), 55_000);
 
     try {
       const response = await fetch("/api/zyon", {
@@ -1642,11 +1642,13 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
           model,
           root: selectedRoot,
           chatId: activeChatId,
-          messages: conversation.map((message) => ({
+          messages: conversation.map((message, index) => ({
             id: message.id,
             role: message.role,
             content: message.content,
-            attachments: message.attachments,
+            // Only the attachment on the message being sent needs to cross the
+            // network again. Older images remain in the account journal and UI.
+            attachments: index === conversation.length - 1 ? message.attachments : undefined,
           })),
           localDate: localSessionDate(),
           clientTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
@@ -1779,7 +1781,7 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
     } catch (error) {
       setSendError(
         error instanceof DOMException && error.name === "AbortError"
-          ? "ZYON did not complete within 110 seconds. Your message is saved; retry it."
+          ? "ZYON did not complete within 55 seconds. Your message is saved; retry it."
           : error instanceof Error ? error.message : "ZYON could not reply.",
       );
       if (gameplanExchange) setGameplanSendState("unavailable");

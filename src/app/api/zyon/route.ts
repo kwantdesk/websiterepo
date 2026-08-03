@@ -46,15 +46,15 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 export const maxDuration = 120;
 
-const MAX_MESSAGES = 24;
+const MAX_MESSAGES = 16;
 const MAX_TEXT_LENGTH = 6_000;
 const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 const MAX_TOTAL_ATTACHMENT_BYTES = 20 * 1024 * 1024;
 const MAX_TEXT_ATTACHMENT_LENGTH = 120_000;
-const MAX_CONTEXT_LENGTH = 120_000;
-// Image analysis, tool use and deep reasoning can legitimately exceed a short
-// chat timeout. These attempts stay inside the route's 120-second ceiling.
-const PROVIDER_TIMEOUTS_MS = [50_000, 25_000, 15_000] as const;
+const MAX_CONTEXT_LENGTH = 72_000;
+// The user must receive a useful answer quickly. A stalled premium model gets a
+// bounded chance before ZYON falls through to a faster family.
+const PROVIDER_TIMEOUTS_MS = [18_000, 10_000, 6_000] as const;
 // Historical questions carry a larger point-in-time context than ordinary
 // chat. Give the primary model enough time to reason over it while retaining
 // bounded fallbacks inside the client's 50-second request window.
@@ -186,7 +186,7 @@ async function availableAnthropicModels(apiKey: string) {
   try {
     const response = await fetch("https://api.anthropic.com/v1/models?limit=100", {
       cache: "no-store",
-      signal: AbortSignal.timeout(5_000),
+      signal: AbortSignal.timeout(2_500),
       headers: {
         "x-api-key": apiKey,
         "anthropic-version": ANTHROPIC_VERSION,
@@ -205,12 +205,10 @@ async function availableAnthropicModels(apiKey: string) {
         }];
       })
       .sort((left, right) => right.createdAt - left.createdAt);
-    if (models.length) {
-      anthropicModelCache = {
-        expiresAt: Date.now() + ANTHROPIC_MODEL_CACHE_MS,
-        models,
-      };
-    }
+    anthropicModelCache = {
+      expiresAt: Date.now() + (models.length ? ANTHROPIC_MODEL_CACHE_MS : 60_000),
+      models,
+    };
     return models;
   } catch {
     return [];
@@ -368,12 +366,16 @@ function makeUserContent(
 function normalizeMessages(value: unknown): ClaudeMessage[] {
   if (!Array.isArray(value)) return [];
   const attachmentBudget = { used: 0 };
-  const normalized = value.slice(-MAX_MESSAGES).flatMap((entry): ClaudeMessage[] => {
+  const recent = value.slice(-MAX_MESSAGES);
+  const normalized = recent.flatMap((entry, index): ClaudeMessage[] => {
     if (!entry || typeof entry !== "object") return [];
     const message = entry as IncomingMessage;
     const role = message.role === "assistant" ? "assistant" : "user";
     const content = cleanText(message.content, MAX_TEXT_LENGTH);
-    const attachments = Array.isArray(message.attachments)
+    // Older chart images are already represented by the surrounding discussion
+    // and durable journal. Re-sending their base64 payload on every text turn can
+    // add tens of megabytes and make an ordinary question time out.
+    const attachments = index === recent.length - 1 && Array.isArray(message.attachments)
       ? message.attachments.filter(
         (attachment): attachment is IncomingAttachment =>
           Boolean(attachment && typeof attachment === "object"),
@@ -409,10 +411,22 @@ function normalizeMessages(value: unknown): ClaudeMessage[] {
 function safeContext(value: unknown) {
   if (!value || typeof value !== "object") return "{}";
   try {
-    return JSON.stringify(value).slice(0, MAX_CONTEXT_LENGTH);
+    const serialized = JSON.stringify(value);
+    if (serialized.length <= MAX_CONTEXT_LENGTH) return serialized;
+    return JSON.stringify({
+      truncated: true,
+      note: "Context was compacted to keep the live response inside its latency budget.",
+      excerpt: serialized.slice(0, MAX_CONTEXT_LENGTH - 180),
+    });
   } catch {
     return "{}";
   }
+}
+
+function compactProviderMessages(messages: ClaudeMessage[], maximum = 8) {
+  const recent = messages.slice(-maximum);
+  while (recent[0]?.role === "assistant") recent.shift();
+  return recent.length ? recent : messages.slice(-1);
 }
 
 function retryAfterMilliseconds(value: string | null) {
@@ -1246,7 +1260,7 @@ export async function POST(request: NextRequest) {
     authoritativeMarketContext = await within(
       getZyonMarketContext(root, actor.userId),
       null,
-      8_000,
+      6_000,
     );
     if (!authoritativeMarketContext) {
       marketContextError = "Market context did not finish inside the live-chat budget.";
@@ -1364,6 +1378,9 @@ export async function POST(request: NextRequest) {
     let providerRetryAfterMs: number | null = null;
     for (const [modelIndex, providerModel] of providerModels.entries()) {
       try {
+        const providerMessages = modelIndex === 0
+          ? messages
+          : compactProviderMessages(messages);
         response = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
           signal: AbortSignal.timeout(providerTimeouts[modelIndex] ?? 6_000),
@@ -1374,7 +1391,7 @@ export async function POST(request: NextRequest) {
           },
           body: JSON.stringify({
             model: providerModel,
-            max_tokens: 2_400,
+            max_tokens: usePersistenceTools ? 2_400 : modelIndex === 0 ? 1_800 : 1_400,
             temperature: 0.2,
             system,
             metadata: { user_id: actor.userId },
@@ -1458,7 +1475,7 @@ export async function POST(request: NextRequest) {
             },
           },
             ] : undefined,
-            messages,
+            messages: providerMessages,
           }),
         });
         providerRequestId = response.headers.get("request-id")

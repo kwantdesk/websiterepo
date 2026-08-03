@@ -244,14 +244,14 @@ export async function getZyonMarketContext(
 ) {
   const now = Date.now();
   const results = await Promise.allSettled([
-    timeout(getKwantBotMarketContext(root), 12_000, "options context"),
-    marketHistory(root),
-    timeout(archivedMarketMemory(actorId, root), 4_000, "market memory"),
-    timeout(fetchMarketIndexSnapshots(root === "NQ" ? ["VXN", "VIX"] : ["VIX", "VXN"]), 8_000, "market indices"),
+    timeout(getKwantBotMarketContext(root), 5_500, "options context"),
+    timeout(marketHistory(root), 5_500, "CME history"),
+    timeout(archivedMarketMemory(actorId, root), 2_500, "market memory"),
+    timeout(fetchMarketIndexSnapshots(root === "NQ" ? ["VXN", "VIX"] : ["VIX", "VXN"]), 4_000, "market indices"),
     timeout(getEconomicCalendar(
       calendarDate(now - 12 * 60 * 60_000),
       calendarDate(now + 48 * 60 * 60_000),
-    ), 8_000, "economic calendar"),
+    ), 4_000, "economic calendar"),
   ] as const);
 
   const warnings: string[] = [];
