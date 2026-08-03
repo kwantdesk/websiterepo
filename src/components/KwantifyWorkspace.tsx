@@ -2031,6 +2031,7 @@ type ValueAreaPayload = {
 type ValueAreaChartOverlay = {
   instrument: string;
   levels: ChartLevel[];
+  currentLabel: string | null;
   dailyLabel: string;
   weeklyLabel: string;
   generatedAt: string;
@@ -2184,10 +2185,28 @@ function validValueAreaProfile(profile: CompletedValueAreaProfile) {
     && profile.tradeRecords > 0;
 }
 
+function validDevelopingValueAreaProfile(
+  profile: InstitutionalVolumeProfile | null,
+): profile is InstitutionalVolumeProfile & {
+  vah: number;
+  val: number;
+  poc: number;
+  vwap: number;
+} {
+  return Boolean(profile)
+    && [profile?.vah, profile?.val, profile?.poc, profile?.vwap, profile?.totalVolume, profile?.trades]
+      .every((value) => Number.isFinite(value))
+    && Number(profile?.val) <= Number(profile?.poc)
+    && Number(profile?.poc) <= Number(profile?.vah)
+    && Number(profile?.totalVolume) > 0
+    && Number(profile?.trades) > 0;
+}
+
 function buildValueAreaChartOverlay(
   payload: ValueAreaPayload,
   instrument: string,
   settings: ChartSettings,
+  developing: InstitutionalVolumeProfile | null = null,
 ): ValueAreaChartOverlay | null {
   if (
     payload.symbol.toUpperCase() !== instrument.toUpperCase()
@@ -2200,10 +2219,12 @@ function buildValueAreaChartOverlay(
 
   const dailyColor = mixChartColor(settings.upColor, "#38BDF8", 0.56);
   const weeklyColor = mixChartColor(settings.upColor, "#F59E0B", 0.68);
+  const currentColor = settings.upColor;
   const periodLevels = (
-    prefix: "PD" | "PW",
-    profile: CompletedValueAreaProfile,
+    prefix: "CUR" | "PD" | "PW",
+    profile: Pick<CompletedValueAreaProfile, "vah" | "val" | "poc" | "vwap" | "end">,
     color: string,
+    current = false,
   ): ChartLevel[] => [
     {
       id: `${prefix.toLowerCase()}-vah-${profile.end}`,
@@ -2211,7 +2232,7 @@ function buildValueAreaChartOverlay(
       color,
       label: `${prefix} VAH`,
       lineStyle: "dashed",
-      lineWidth: 1,
+      lineWidth: current ? 2 : 1,
       axisLabelVisible: true,
     },
     {
@@ -2220,7 +2241,7 @@ function buildValueAreaChartOverlay(
       color,
       label: `${prefix} VAL`,
       lineStyle: "dashed",
-      lineWidth: 1,
+      lineWidth: current ? 2 : 1,
       axisLabelVisible: true,
     },
     {
@@ -2243,12 +2264,24 @@ function buildValueAreaChartOverlay(
     },
   ];
 
+  const currentProfile = validDevelopingValueAreaProfile(developing)
+    ? {
+        vah: developing.vah,
+        val: developing.val,
+        poc: developing.poc,
+        vwap: developing.vwap,
+        end: developing.asOf,
+      }
+    : null;
+
   return {
     instrument,
     levels: [
+      ...(currentProfile ? periodLevels("CUR", currentProfile, currentColor, true) : []),
       ...periodLevels("PD", payload.daily, dailyColor),
       ...periodLevels("PW", payload.weekly, weeklyColor),
     ],
+    currentLabel: currentProfile ? "Current developing session" : null,
     dailyLabel: payload.daily.label,
     weeklyLabel: payload.weekly.label,
     generatedAt: payload.generatedAt,
@@ -2752,7 +2785,7 @@ function WorkspaceChartPane({
       valueArea: valueAreaOverlay
         ? {
             checkedAt: valueAreaOverlay.generatedAt,
-            sourceLabel: `CME trade-by-trade value area · ${valueAreaOverlay.dailyLabel} · ${valueAreaOverlay.weeklyLabel}`,
+            sourceLabel: `CME trade-by-trade value area${valueAreaOverlay.currentLabel ? " · current developing session" : ""} · ${valueAreaOverlay.dailyLabel} · ${valueAreaOverlay.weeklyLabel}`,
             levels: valueAreaOverlay.levels,
           }
         : null,
@@ -3217,19 +3250,27 @@ function WorkspaceChartPane({
     const loadValueArea = async () => {
       setValueAreaLevelsLoading((current) => current || !valueAreaOverlay);
       try {
-        const payload = await fetchValueAreaPayload(pane.symbol);
+        const [payload, developing] = await Promise.all([
+          fetchValueAreaPayload(pane.symbol),
+          resolvedContractSymbol
+            ? fetchInstitutionalVolumeProfile({
+                symbol: displayCmeSymbol(pane.symbol),
+                contractSymbol: resolvedContractSymbol,
+                period: "daily",
+                tradingDate: chicagoTradingDate(Date.now()),
+                groupTicks: 1,
+                valueAreaPercent: 70,
+              })
+            : Promise.resolve(null),
+        ]);
         if (cancelled) return;
-        const overlay = buildValueAreaChartOverlay(payload, pane.symbol, settings);
+        const overlay = buildValueAreaChartOverlay(payload, pane.symbol, settings, developing);
         if (!overlay) throw new Error("CME returned an invalid completed-period profile.");
         setValueAreaOverlay(overlay);
         setValueAreaLevelsError(null);
         setValueAreaLevelsLoading(false);
 
-        const refreshAt = Date.parse(payload.nextRefreshAt);
-        const delay = Number.isFinite(refreshAt)
-          ? Math.max(30_000, refreshAt - Date.now())
-          : 60 * 60_000;
-        timer = window.setTimeout(() => void loadValueArea(), delay);
+        timer = window.setTimeout(() => void loadValueArea(), 15_000);
       } catch (loadError) {
         if (cancelled) return;
         setValueAreaLevelsError(
@@ -3250,6 +3291,7 @@ function WorkspaceChartPane({
   }, [
     pane.symbol,
     levelExportRequested,
+    resolvedContractSymbol,
     settings.upColor,
     valueAreaLevelsAvailable,
     valueAreaLevelsEnabled,
@@ -3811,7 +3853,7 @@ function WorkspaceChartPane({
           valueAreaLevelsError={valueAreaLevelsError}
           valueAreaLevelsDescription={
             valueAreaOverlay
-              ? `Prior session ${valueAreaOverlay.dailyLabel} · Prior week ${valueAreaOverlay.weeklyLabel}`
+              ? `${valueAreaOverlay.currentLabel ? `${valueAreaOverlay.currentLabel} · ` : ""}Prior session ${valueAreaOverlay.dailyLabel} · Prior week ${valueAreaOverlay.weeklyLabel}`
               : ""
           }
           onToggleValueAreaLevels={onToggleValueAreaLevels}

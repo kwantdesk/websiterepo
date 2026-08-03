@@ -28,6 +28,10 @@ import {
 } from "@/lib/chartLiveEvents";
 import { defaultChartSettings, loadStoredChartSettings, type ChartSettings } from "@/lib/chartSettings";
 import type { GameplanPayload } from "@/lib/gameplan";
+import {
+  fetchInstitutionalVolumeProfile,
+  type InstitutionalVolumeProfile,
+} from "@/lib/institutionalMarketData";
 import { useStructureLevels } from "@/hooks/useStructureLevels";
 import type { StructureLevelsSnapshot } from "@/lib/structureLevels";
 
@@ -146,6 +150,26 @@ const marketCache = new Map<string, { candles: Candle[]; updatedAt: number }>();
 const marketRequests = new Map<string, Promise<Candle[]>>();
 const levelCache = new Map<string, { snapshot: LevelSnapshot; updatedAt: number }>();
 const levelRequests = new Map<string, Promise<LevelSnapshot>>();
+const CHICAGO_TRADING_DATE_FORMATTER = new Intl.DateTimeFormat("en-US", {
+  timeZone: "America/Chicago",
+  year: "numeric",
+  month: "numeric",
+  day: "numeric",
+  hour: "numeric",
+  hourCycle: "h23",
+});
+
+function chicagoTradingDate(timestamp: number) {
+  const parts = Object.fromEntries(
+    CHICAGO_TRADING_DATE_FORMATTER
+      .formatToParts(new Date(timestamp))
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, Number(part.value)]),
+  ) as Record<"year" | "month" | "day" | "hour", number>;
+  const tradingDate = new Date(Date.UTC(parts.year, parts.month - 1, parts.day));
+  if (parts.hour < 17) tradingDate.setUTCDate(tradingDate.getUTCDate() - 1);
+  return tradingDate.toISOString().slice(0, 10);
+}
 
 function isNewYorkOptionsOpen(now = new Date()) {
   const parts = new Intl.DateTimeFormat("en-US", {
@@ -544,8 +568,12 @@ function makeGameplanSnapshot(payload: GameplanPayload, settings: ChartSettings,
   };
 }
 
-function valueAreaEducation(prefix: "PD" | "PW", kind: "VAH" | "VAL" | "POC" | "VWAP") {
-  const horizon = prefix === "PD" ? "previous completed session" : "previous completed week";
+function valueAreaEducation(prefix: "CUR" | "PD" | "PW", kind: "VAH" | "VAL" | "POC" | "VWAP") {
+  const horizon = prefix === "CUR"
+    ? "current developing CME session"
+    : prefix === "PD"
+      ? "previous completed session"
+      : "previous completed week";
   if (kind === "VAH") return {
     explanation: `The value-area high is the upper boundary containing the central 70% of traded volume during the ${horizon}. It marks where auction acceptance previously began to thin.`,
     firstTouch: "Approach from below: test for responsive selling. Approach from above: test whether buyers defend it as reclaimed value.",
@@ -572,8 +600,12 @@ function valueAreaEducation(prefix: "PD" | "PW", kind: "VAH" | "VAL" | "POC" | "
   };
 }
 
-function makeValueAreaSnapshot(payload: ValueAreaPayload, settings: ChartSettings): LevelSnapshot {
-  const build = (prefix: "PD" | "PW", profile: CompletedProfile, color: string) =>
+function makeValueAreaSnapshot(
+  payload: ValueAreaPayload,
+  settings: ChartSettings,
+  developing: InstitutionalVolumeProfile | null,
+): LevelSnapshot {
+  const build = (prefix: "CUR" | "PD" | "PW", profile: CompletedProfile, color: string) =>
     (["VAH", "VAL", "POC", "VWAP"] as const).map((kind): IntelligentLevel => {
       const price = kind === "VAH" ? profile.vah : kind === "VAL" ? profile.val : kind === "POC" ? profile.poc : profile.vwap;
       return {
@@ -582,7 +614,7 @@ function makeValueAreaSnapshot(payload: ValueAreaPayload, settings: ChartSetting
         color,
         label: `${prefix} ${kind}`,
         lineStyle: kind === "POC" ? "solid" : kind === "VWAP" ? "dotted" : "dashed",
-        lineWidth: kind === "POC" || kind === "VWAP" ? 2 : 1,
+        lineWidth: prefix === "CUR" || kind === "POC" || kind === "VWAP" ? 2 : 1,
         axisLabelVisible: true,
         family: "value-area",
         kind: `${prefix}_${kind}`,
@@ -591,19 +623,42 @@ function makeValueAreaSnapshot(payload: ValueAreaPayload, settings: ChartSetting
         ...valueAreaEducation(prefix, kind),
       };
     });
+  const current = developing
+    && Number.isFinite(developing.vah)
+    && Number.isFinite(developing.val)
+    && Number.isFinite(developing.poc)
+    && Number.isFinite(developing.vwap)
+    && Number(developing.val) <= Number(developing.poc)
+    && Number(developing.poc) <= Number(developing.vah)
+    && developing.totalVolume > 0
+    ? {
+        vah: Number(developing.vah),
+        val: Number(developing.val),
+        poc: Number(developing.poc),
+        vwap: Number(developing.vwap),
+        start: new Date(developing.startMs).toISOString(),
+        end: developing.asOf,
+        label: "Current developing session",
+        totalVolume: developing.totalVolume,
+        tradeRecords: developing.trades,
+      }
+    : null;
   return {
     levels: [
+      ...(current ? build("CUR", current, settings.upColor) : []),
       ...build("PD", payload.daily, "#38BDF8"),
       ...build("PW", payload.weekly, "#F59E0B"),
     ],
     zones: [],
     asOf: payload.generatedAt,
     source: "CME trade-by-trade volume profile",
-    status: "READY",
-    regime: "Prior accepted value",
-    tape: "Observed completed periods",
+    status: current ? "LIVE" : "READY",
+    regime: current ? "Developing value and prior accepted value" : "Prior accepted value",
+    tape: current ? "Current CME session updating" : "Observed completed periods",
     flowLean: null,
-    note: `${payload.daily.label} and ${payload.weekly.label}. These profiles update only after their source period is complete.`,
+    note: current
+      ? `Current VAH, POC, VWAP and VAL develop from the active CME trade profile. ${payload.daily.label} and ${payload.weekly.label} remain fixed completed-period references.`
+      : `${payload.daily.label} and ${payload.weekly.label}. Completed profiles remain fixed; current-session value will join when the live trade profile is available.`,
   };
 }
 
@@ -670,14 +725,23 @@ async function buildLevelSnapshot(config: PanelConfig, settings: ChartSettings) 
     const payload = await requestJson<GameplanPayload & { error?: string }>(`/api/gameplan?root=${root}&session=newyork`);
     return makeGameplanSnapshot(payload, settings, isNewYorkOptionsOpen());
   }
-  const payload = await requestJson<ValueAreaPayload>(`/api/databento/value-area?symbol=${encodeURIComponent(marketSymbol(config.instrument))}`);
-  return makeValueAreaSnapshot(payload, settings);
+  const [payload, developing] = await Promise.all([
+    requestJson<ValueAreaPayload>(`/api/databento/value-area?symbol=${encodeURIComponent(marketSymbol(config.instrument))}`),
+    fetchInstitutionalVolumeProfile({
+      symbol: config.instrument,
+      period: "daily",
+      tradingDate: chicagoTradingDate(Date.now()),
+      groupTicks: 1,
+      valueAreaPercent: 70,
+    }),
+  ]);
+  return makeValueAreaSnapshot(payload, settings, developing);
 }
 
 function levelCacheMs(family: LevelFamily) {
   if (family === "gamma") return 5_000;
   if (family === "gameplan") return 60_000;
-  if (family === "value-area") return 30 * 60_000;
+  if (family === "value-area") return 15_000;
   return 60_000;
 }
 
@@ -813,7 +877,7 @@ function useLevelSnapshot(config: PanelConfig, settings: ChartSettings) {
       : config.family === "gameplan"
         ? newYorkOpen ? 15_000 : 5 * 60_000
         : config.family === "value-area"
-          ? 5 * 60_000
+          ? 15_000
           : null;
     if (refreshMs === null) return;
     const timer = window.setInterval(() => setRefreshNonce((value) => value + 1), refreshMs);
