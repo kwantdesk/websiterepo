@@ -371,15 +371,33 @@ function mergeMessages(local: ZyonMessage[], cloud: ZyonMessage[]) {
         : {}),
     };
   };
-  const merged = local.flatMap((message) => normalize(message) ?? []);
-  for (const candidate of cloud) {
+  const merged: ZyonMessage[] = [];
+  for (const candidate of [...local, ...cloud]) {
     const message = normalize(candidate);
     if (!message) continue;
-    const duplicate = merged.some((candidate) =>
-      candidate.role === message.role
-      && candidate.content === message.content
-      && Math.abs(Date.parse(candidate.createdAt) - Date.parse(message.createdAt)) < 15_000);
-    if (!duplicate) merged.push(message);
+    const messageTime = Date.parse(message.createdAt);
+    const duplicateIndex = merged.findIndex((existing) => {
+      if (existing.id === message.id) return true;
+      if (existing.role !== message.role || existing.content !== message.content) return false;
+      const existingTime = Date.parse(existing.createdAt);
+      // UI-only messages such as the ZYON welcome card intentionally have no
+      // timestamp. Matching role + content still represents the same message.
+      if (!Number.isFinite(existingTime) && !Number.isFinite(messageTime)) return true;
+      return Number.isFinite(existingTime)
+        && Number.isFinite(messageTime)
+        && Math.abs(existingTime - messageTime) < 15_000;
+    });
+    if (duplicateIndex === -1) {
+      merged.push(message);
+      continue;
+    }
+    const existing = merged[duplicateIndex];
+    merged[duplicateIndex] = {
+      ...existing,
+      ...(message.model ? { model: message.model } : {}),
+      ...(message.gameplanStatus ? { gameplanStatus: message.gameplanStatus } : {}),
+      ...(message.attachments?.length ? { attachments: message.attachments } : {}),
+    };
   }
   return merged
     .sort((left, right) => {
