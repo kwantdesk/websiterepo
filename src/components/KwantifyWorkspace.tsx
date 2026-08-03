@@ -7,6 +7,7 @@ import KwantBotInterpreterPanel from "@/components/kwantbot/KwantBotInterpreterP
 import OptionsTapePanel from "@/components/kwantbot/OptionsTapePanel";
 import FriendsPanel from "@/components/friends/FriendsPanel";
 import KwantLoader from "@/components/KwantLoader";
+import LiveGexPanelBoundary from "@/components/backtesting/LiveGexPanelBoundary";
 import SocialNotificationsPanel from "@/components/socials/SocialNotificationsPanel";
 import UserAvatar from "@/components/socials/UserAvatar";
 import LevelzWorkspace from "@/components/levelz/LevelzWorkspace";
@@ -2072,6 +2073,13 @@ function buildValueAreaChartOverlay(
 
 const gammaPayloadCache = new Map<string, GammaPayloadCacheEntry>();
 
+function gammaRefreshDelay(value: unknown) {
+  const delay = Number(value);
+  return Number.isFinite(delay) && delay > 0
+    ? Math.max(5_000, Math.min(60_000, delay))
+    : 15_000;
+}
+
 function fetchGammaPayload(
   conversion: GammaConversionDefinition,
   options: { allowStale?: boolean } = {},
@@ -2094,7 +2102,7 @@ function fetchGammaPayload(
       if (!response.ok) throw new Error(payload.error || "Gamma levels are unavailable.");
       const current = gammaPayloadCache.get(cacheKey);
       if (current?.promise === promise) {
-        current.expiresAt = Date.now() + Math.min(60_000, Math.max(5_000, payload.refreshAfterMs));
+        current.expiresAt = Date.now() + gammaRefreshDelay(payload.refreshAfterMs);
         current.payload = payload;
       }
       return payload;
@@ -4307,7 +4315,7 @@ export default function KwantifyWorkspace({
         setLiveGexLoading(false);
         timer = window.setTimeout(
           () => void loadLiveGex(),
-          Math.max(5_000, Math.min(60_000, payload.refreshAfterMs)),
+          gammaRefreshDelay(payload.refreshAfterMs),
         );
       } catch (loadError) {
         if (cancelled) return;
@@ -9685,19 +9693,24 @@ export default function KwantifyWorkspace({
             </div>
           )}
           {rightPanel === "gex" && (
-            <LiveGexPanel
-              snapshot={liveGexSnapshot}
-              loading={liveGexLoading}
-              error={liveGexError}
-              releaseState={liveGexError
-                ? "RELEASED"
-                : liveGexSnapshot?.positioning
-                  ? "RELEASED"
-                  : liveGexSnapshot?.marketOpen ? "OPENING" : "PREOPEN"}
-              sessionDate={liveGexSnapshot?.sessionDate ?? "Current session"}
-              variant="live"
+            <LiveGexPanelBoundary
+              resetKey={`${activeWorkspacePane.symbol}:${liveGexSnapshot?.checkedAt ?? "pending"}`}
               onClose={() => setRightPanel(null)}
-            />
+            >
+              <LiveGexPanel
+                snapshot={liveGexSnapshot}
+                loading={liveGexLoading}
+                error={liveGexError}
+                releaseState={liveGexError
+                  ? "RELEASED"
+                  : liveGexSnapshot?.positioning
+                    ? "RELEASED"
+                    : liveGexSnapshot?.marketOpen ? "OPENING" : "PREOPEN"}
+                sessionDate={liveGexSnapshot?.sessionDate ?? "Current session"}
+                variant="live"
+                onClose={() => setRightPanel(null)}
+              />
+            </LiveGexPanelBoundary>
           )}
           {rightPanel === "kwantbot" && (
             <KwantBotInterpreterPanel interpreter={kwantBotInterpreter} />

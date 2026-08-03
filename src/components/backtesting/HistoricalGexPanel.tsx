@@ -4,6 +4,7 @@ import { useMemo, useRef, useEffect } from "react";
 import { Activity, Clock3, Crosshair, Layers3, ShieldCheck, X } from "lucide-react";
 import type {
   ChartGammaLevelsPayload,
+  ChartGammaPositioningSnapshot,
   ChartGammaPositioningStrike,
   ChartGammaSourceLevelKind,
 } from "@/lib/chartGammaLevels";
@@ -36,15 +37,46 @@ function price(value: number | null | undefined) {
 
 function clock(value: string | undefined) {
   if (!value) return "—";
-  return new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/New_York",
-    month: "short",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hourCycle: "h23",
-  }).format(new Date(value));
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  try {
+    return new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/New_York",
+      month: "short",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hourCycle: "h23",
+    }).format(date);
+  } catch {
+    return "—";
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object";
+}
+
+function validStrike(value: unknown): value is ChartGammaPositioningStrike {
+  if (!isRecord(value)) return false;
+  return Number.isFinite(value.sourceStrike)
+    && Number.isFinite(value.futuresEquivalent)
+    && Number.isFinite(value.call)
+    && Number.isFinite(value.put)
+    && Number.isFinite(value.net);
+}
+
+function validPositioning(value: unknown): value is ChartGammaPositioningSnapshot {
+  if (!isRecord(value) || !Number.isFinite(value.futuresPrice) || Number(value.futuresPrice) <= 0) return false;
+  if (!Number.isFinite(value.sourcePrice) || Number(value.sourcePrice) <= 0) return false;
+  if (!Number.isFinite(value.priceScale) || Number(value.priceScale) <= 0) return false;
+  if (!isRecord(value.totals) || !Array.isArray(value.strikes) || !Array.isArray(value.lookbacks)) return false;
+  return value.strikes.every(validStrike) && value.lookbacks.every((lookback) => (
+    isRecord(lookback)
+    && Array.isArray(lookback.strikes)
+    && lookback.strikes.every(validStrike)
+  ));
 }
 
 function nearestStrike(rows: ChartGammaPositioningStrike[], futuresPrice: number) {
@@ -75,16 +107,18 @@ export default function HistoricalGexPanel({
 }) {
   const live = variant === "live";
   const scrollRef = useRef<HTMLDivElement>(null);
-  const positioning = snapshot?.positioning ?? null;
-  const source = snapshot?.sources.find((candidate) => candidate.symbol === positioning?.sourceSymbol)
-    ?? snapshot?.sources[0]
+  const positioning = validPositioning(snapshot?.positioning) ? snapshot.positioning : null;
+  const sources = Array.isArray(snapshot?.sources) ? snapshot.sources : [];
+  const source = sources.find((candidate) => candidate.symbol === positioning?.sourceSymbol)
+    ?? sources[0]
     ?? null;
-  const levels = useMemo(() => (source?.levels ?? [])
+  const sourceLevels = Array.isArray(source?.levels) ? source.levels : [];
+  const levels = useMemo(() => sourceLevels
     .filter((level) => IMPORTANT_LEVELS.has(level.kind))
     .sort((left, right) => Math.abs(left.price - (positioning?.futuresPrice ?? source?.stockPrice ?? 0)) - Math.abs(right.price - (positioning?.futuresPrice ?? source?.stockPrice ?? 0)))
-    .slice(0, 8), [positioning?.futuresPrice, source]);
+    .slice(0, 8), [positioning?.futuresPrice, source?.stockPrice, sourceLevels]);
   const visibleStrikes = useMemo(() => {
-    if (!positioning?.strikes.length) return [];
+    if (!positioning || !positioning.strikes.length) return [];
     const ordered = [...positioning.strikes].sort((left, right) => right.sourceStrike - left.sourceStrike);
     const nearest = nearestStrike(ordered, positioning.futuresPrice);
     const centre = nearest ? ordered.findIndex((row) => row.sourceStrike === nearest.sourceStrike) : 0;
@@ -94,7 +128,7 @@ export default function HistoricalGexPanel({
   const maximum = Math.max(1, ...visibleStrikes.flatMap((row) => [Math.abs(row.call), Math.abs(row.put)]));
   const lookbacks = useMemo(() => (positioning?.lookbacks ?? []).map((lookback) => ({
     minutes: lookback.minutes,
-    strikes: new Map(lookback.strikes.map((row) => [row.sourceStrike, row])),
+    strikes: new Map((Array.isArray(lookback.strikes) ? lookback.strikes : []).map((row) => [row.sourceStrike, row])),
   })), [positioning?.lookbacks]);
 
   useEffect(() => {
@@ -162,8 +196,8 @@ export default function HistoricalGexPanel({
             <div className="grid grid-cols-2 gap-2">
               <div className="rounded-xl border border-border bg-surface/35 p-3">
                 <div className="text-[7px] font-semibold uppercase tracking-[0.14em] text-muted">Gamma environment</div>
-                <div className={`mt-1 text-[11px] font-semibold ${snapshot?.environment.gammaRegime === "POSITIVE" ? "text-primary" : snapshot?.environment.gammaRegime === "NEGATIVE" ? "text-danger" : "text-foreground"}`}>{snapshot?.environment.gammaStateLabel ?? "—"}</div>
-                <div className="mt-1 font-mono text-[8px] text-muted">strength {(snapshot?.environment.regimeStrength ?? 0).toLocaleString("en-US", { style: "percent", maximumFractionDigits: 1 })}</div>
+                <div className={`mt-1 text-[11px] font-semibold ${snapshot?.environment?.gammaRegime === "POSITIVE" ? "text-primary" : snapshot?.environment?.gammaRegime === "NEGATIVE" ? "text-danger" : "text-foreground"}`}>{snapshot?.environment?.gammaStateLabel ?? "—"}</div>
+                <div className="mt-1 font-mono text-[8px] text-muted">strength {(Number.isFinite(Number(snapshot?.environment?.regimeStrength)) ? Number(snapshot?.environment?.regimeStrength) : 0).toLocaleString("en-US", { style: "percent", maximumFractionDigits: 1 })}</div>
               </div>
               <div className="rounded-xl border border-border bg-surface/35 p-3">
                 <div className="text-[7px] font-semibold uppercase tracking-[0.14em] text-muted">Conversion</div>
