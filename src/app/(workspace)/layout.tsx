@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import KwantifyWorkspace, {
   type PrimaryWorkspaceSection,
 } from "@/components/KwantifyWorkspace";
+import WorkspaceFailureBoundary from "@/components/WorkspaceFailureBoundary";
 
 const SECTION_BY_PATH: Record<string, PrimaryWorkspaceSection> = {
   "/charts": "charts",
@@ -47,9 +48,15 @@ export default function PersistentWorkspaceLayout({
   const location = useMemo(() => workspaceLocation(pathname), [pathname]);
 
   return (
-    <KwantifyWorkspace
-      section={location.section}
-      socialProfileHandle={location.socialProfileHandle}
-    />
+    <WorkspaceFailureBoundary
+      variant="shell"
+      resetKey={pathname}
+      label={location.section.toUpperCase()}
+    >
+      <KwantifyWorkspace
+        section={location.section}
+        socialProfileHandle={location.socialProfileHandle}
+      />
+    </WorkspaceFailureBoundary>
   );
 }

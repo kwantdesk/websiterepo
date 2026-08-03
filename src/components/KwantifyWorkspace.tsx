@@ -3,16 +3,11 @@
 import KwantSelect from "@/components/ui/KwantSelect";
 import TimeZoneSelect from "@/components/ui/TimeZoneSelect";
 import ChartIndicatorsControl from "@/components/ChartIndicatorsControl";
-import KwantBotIntelligenceWorkspace from "@/components/kwantbot/KwantBotIntelligenceWorkspace";
-import KwantBotInterpreterPanel from "@/components/kwantbot/KwantBotInterpreterPanel";
-import OptionsTapePanel from "@/components/kwantbot/OptionsTapePanel";
-import FriendsPanel from "@/components/friends/FriendsPanel";
 import KwantLoader from "@/components/KwantLoader";
 import LiveGexPanelBoundary from "@/components/backtesting/LiveGexPanelBoundary";
 import ZyonPanelBoundary from "@/components/zyon/ZyonPanelBoundary";
-import SocialNotificationsPanel from "@/components/socials/SocialNotificationsPanel";
 import UserAvatar from "@/components/socials/UserAvatar";
-import LevelzWorkspace from "@/components/levelz/LevelzWorkspace";
+import WorkspaceFailureBoundary from "@/components/WorkspaceFailureBoundary";
 import { useKwantBotInterpreter } from "@/hooks/useKwantBotInterpreter";
 import { useSocialNotifications } from "@/hooks/useSocialNotifications";
 import { useStructureLevels } from "@/hooks/useStructureLevels";
@@ -201,7 +196,6 @@ import {
 } from "@/lib/kwantBotChatStore";
 import AppSidebar from "@/components/AppSidebar";
 import ChartCreateAlertModal from "@/components/alerts/ChartCreateAlertModal";
-import SocialsWorkspace from "@/components/socials/SocialsWorkspace";
 import {
   getExpirationLabel,
   getTriggerModeLabel,
@@ -268,6 +262,34 @@ const JournalWorkspace = dynamic(() => import("@/components/journal/JournalWorks
 const BacktestingWorkspace = dynamic(() => import("@/components/backtesting/BacktestingWorkspace"), {
   ssr: false,
   loading: () => workspaceLoader("Opening Backtesting", "Preparing the historical replay engine."),
+});
+const LevelzWorkspace = dynamic(() => import("@/components/levelz/LevelzWorkspace"), {
+  ssr: false,
+  loading: () => workspaceLoader("Opening LEVELZ", "Restoring the level workspaces."),
+});
+const SocialsWorkspace = dynamic(() => import("@/components/socials/SocialsWorkspace"), {
+  ssr: false,
+  loading: () => workspaceLoader("Opening Socials", "Restoring the latest record and feed."),
+});
+const KwantBotIntelligenceWorkspace = dynamic(() => import("@/components/kwantbot/KwantBotIntelligenceWorkspace"), {
+  ssr: false,
+  loading: () => workspaceLoader("Opening Kwant Bot", "Restoring market intelligence."),
+});
+const KwantBotInterpreterPanel = dynamic(() => import("@/components/kwantbot/KwantBotInterpreterPanel"), {
+  ssr: false,
+  loading: () => workspaceLoader("Opening Kwant Bot", "Restoring the live interpreter."),
+});
+const OptionsTapePanel = dynamic(() => import("@/components/kwantbot/OptionsTapePanel"), {
+  ssr: false,
+  loading: () => workspaceLoader("Opening Options Tape", "Restoring the New York tape."),
+});
+const FriendsPanel = dynamic(() => import("@/components/friends/FriendsPanel"), {
+  ssr: false,
+  loading: () => workspaceLoader("Opening Friends", "Restoring conversations."),
+});
+const SocialNotificationsPanel = dynamic(() => import("@/components/socials/SocialNotificationsPanel"), {
+  ssr: false,
+  loading: () => workspaceLoader("Opening activity", "Restoring social notifications."),
 });
 
 const BOTTOM_PANEL_MIN_HEIGHT = 150;
@@ -6938,12 +6960,15 @@ export default function KwantifyWorkspace({
     const nextSection = BOTTOM_WORKSPACE_SECTIONS.some(({ id }) => id === target)
       ? target as PrimaryWorkspaceSection
       : null;
+    const previousSection = activeWorkspaceSectionRef.current;
     activeWorkspaceSectionRef.current = nextSection;
-    // Keep the current workspace mounted until Next has committed the route.
-    // Mounting a large lazy workspace during pointer-down used to race the
-    // actual navigation and could escalate a transient ZYON error globally.
-    if (nextSection === "zyon") {
-      setRightPanel((current) => current === "zyon" ? null : current);
+
+    if (nextSection && nextSection !== previousSection) {
+      // A primary navigation should never keep a chart-side workspace alive
+      // while another full workspace mounts. Unload it immediately, then make
+      // the selected tab respond optimistically while Next commits the URL.
+      setRightPanel(null);
+      startTransition(() => setOptimisticWorkspaceSection(nextSection));
     }
   }, []);
 
@@ -9380,6 +9405,7 @@ export default function KwantifyWorkspace({
           : null}
 
         {bottomWorkspaceSection === "charts" ? (
+        <WorkspaceFailureBoundary resetKey="charts" label="Charts">
         <div className="min-h-0 flex-1 overflow-hidden">
           <div ref={workspaceAreaRef} className="relative h-full min-w-0">
             {renderWorkspaceNode(workspaceTree)}
@@ -9530,11 +9556,16 @@ export default function KwantifyWorkspace({
             })}
           </div>
         </div>
+        </WorkspaceFailureBoundary>
         ) : (
           <section
             className="min-h-0 flex-1 overflow-hidden bg-panel"
             aria-label={`${BOTTOM_WORKSPACE_SECTIONS.find((section) => section.id === bottomWorkspaceSection)?.label ?? "Workspace"} workspace`}
           >
+            <WorkspaceFailureBoundary
+              resetKey={bottomWorkspaceSection}
+              label={BOTTOM_WORKSPACE_SECTIONS.find((section) => section.id === bottomWorkspaceSection)?.label ?? "Workspace"}
+            >
             {bottomWorkspaceSection === "gamma" ? <GammaWorkspace /> : null}
             {bottomWorkspaceSection === "levelz" ? <LevelzWorkspace /> : null}
             {bottomWorkspaceSection === "gexmap" ? <GexMapWorkspace /> : null}
@@ -9570,6 +9601,7 @@ export default function KwantifyWorkspace({
                 onOpenGameplanScoring={() => router.push("/gameplan?tab=scoring")}
               />
             ) : null}
+            </WorkspaceFailureBoundary>
           </section>
         )}
 

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { memo, type ComponentType, useCallback, useEffect, useRef } from "react";
+import { memo, type ComponentType } from "react";
 import {
   BarChart3,
   BookOpen,
@@ -86,34 +86,6 @@ const navItems: Array<{
   { key: "backtesting", href: "/backtesting", label: "Backtesting", title: "Backtesting", icon: History },
 ];
 
-function preloadWorkspaceComponent(key: SidebarKey) {
-  return key === "gamma"
-    ? import("@/components/options-flow/GammaWorkspace")
-    : key === "levelz"
-      ? import("@/components/levelz/LevelzWorkspace")
-      : key === "gexmap"
-        ? import("@/components/gex-map/GexMapWorkspace")
-        : key === "gexdesk"
-          ? import("@/components/gexdesk/GexDeskWorkspace")
-          : key === "gameplan"
-            ? import("@/components/gameplan/GameplanWorkspace")
-            : key === "kwantbot"
-              ? import("@/components/kwantbot/KwantBotIntelligenceWorkspace")
-              : key === "news"
-                ? import("@/components/news/NewsWorkspace")
-                : key === "zyon"
-                  ? import("@/components/zyon/ZyonWorkspace")
-                  : key === "journal"
-                    ? import("@/components/journal/JournalWorkspace")
-                    : Promise.resolve();
-}
-
-function warmWorkspaceComponent(key: SidebarKey) {
-  // A speculative chunk request must never become an unhandled rejection.
-  // Navigation can still retry the real import through Next's boundary.
-  return preloadWorkspaceComponent(key).catch(() => undefined);
-}
-
 function ActiveUnderline() {
   return (
     <span
@@ -131,67 +103,9 @@ function AppSidebar({
   onNavigateStart,
   orientation = "vertical",
 }: AppSidebarProps) {
-  const intentPreloadTimerRef = useRef<number | null>(null);
-  const navigationFallbackTimerRef = useRef<number | null>(null);
-
-  const cancelIntentPreload = useCallback(() => {
-    if (intentPreloadTimerRef.current === null) return;
-    window.clearTimeout(intentPreloadTimerRef.current);
-    intentPreloadTimerRef.current = null;
-  }, []);
-
-  const scheduleIntentPreload = useCallback((key: SidebarKey) => {
-    cancelIntentPreload();
-    intentPreloadTimerRef.current = window.setTimeout(() => {
-      intentPreloadTimerRef.current = null;
-      void warmWorkspaceComponent(key);
-    }, 220);
-  }, [cancelIntentPreload]);
-
-  const beginNavigation = useCallback((key: SidebarKey, href: string) => {
+  const beginNavigation = (key: SidebarKey) => {
     onNavigateStart?.(key);
-    if (navigationFallbackTimerRef.current !== null) {
-      window.clearTimeout(navigationFallbackTimerRef.current);
-    }
-
-    const target = new URL(href, window.location.href);
-    if (target.pathname === window.location.pathname && target.search === window.location.search) {
-      navigationFallbackTimerRef.current = null;
-      return;
-    }
-
-    // Keep a last-resort escape for a genuinely stuck router, but do not race a
-    // legitimate lazy workspace load with a hard document navigation.
-    navigationFallbackTimerRef.current = window.setTimeout(() => {
-      navigationFallbackTimerRef.current = null;
-      if (window.location.pathname !== target.pathname || window.location.search !== target.search) {
-        window.location.assign(target.href);
-      }
-    }, 8_000);
-  }, [onNavigateStart]);
-
-  useEffect(() => {
-    const preloadZyon = () => void warmWorkspaceComponent("zyon");
-    const browser = window as unknown as {
-      requestIdleCallback?: (callback: () => void, options?: { timeout: number }) => number;
-      cancelIdleCallback?: (handle: number) => void;
-    };
-    const idleHandle = browser.requestIdleCallback
-      ? browser.requestIdleCallback(preloadZyon, { timeout: 2_500 })
-      : window.setTimeout(preloadZyon, 1_200);
-
-    return () => {
-      cancelIntentPreload();
-      if (browser.requestIdleCallback && browser.cancelIdleCallback) {
-        browser.cancelIdleCallback(idleHandle);
-      } else {
-        window.clearTimeout(idleHandle);
-      }
-      if (navigationFallbackTimerRef.current !== null) {
-        window.clearTimeout(navigationFallbackTimerRef.current);
-      }
-    };
-  }, [cancelIntentPreload]);
+  };
 
   if (orientation === "vertical") {
     return (
@@ -211,17 +125,9 @@ function AppSidebar({
             <Link
               key={key}
               href={href}
-              onPointerEnter={() => scheduleIntentPreload(key)}
-              onPointerLeave={cancelIntentPreload}
-              onFocus={() => void warmWorkspaceComponent(key)}
-              onPointerDown={(event) => {
-                if (event.button === 0 && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) {
-                  void warmWorkspaceComponent(key);
-                }
-              }}
               onClick={(event) => {
                 if (!event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) {
-                  beginNavigation(key, href);
+                  beginNavigation(key);
                 }
               }}
               className={activeItem === key ? verticalItemActive : verticalItemInactive}
@@ -236,14 +142,9 @@ function AppSidebar({
 
           <Link
             href="/settings"
-            onPointerDown={(event) => {
-              if (event.button === 0 && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) {
-                beginNavigation("settings", "/settings");
-              }
-            }}
             onClick={(event) => {
               if (!event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) {
-                beginNavigation("settings", "/settings");
+                beginNavigation("settings");
               }
             }}
             className={activeItem === "settings" ? verticalItemActive : verticalItemInactive}
@@ -267,17 +168,9 @@ function AppSidebar({
               key={key}
               href={href}
               prefetch
-              onPointerEnter={() => scheduleIntentPreload(key)}
-              onPointerLeave={cancelIntentPreload}
-              onFocus={() => void warmWorkspaceComponent(key)}
-              onPointerDown={(event) => {
-                if (event.button === 0 && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) {
-                  void warmWorkspaceComponent(key);
-                }
-              }}
               onClick={(event) => {
                 if (!event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) {
-                  beginNavigation(key, href);
+                  beginNavigation(key);
                 }
               }}
               aria-current={active ? "page" : undefined}
@@ -304,14 +197,9 @@ function AppSidebar({
       <Link
         href="/settings"
         prefetch
-        onPointerDown={(event) => {
-          if (event.button === 0 && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) {
-            beginNavigation("settings", "/settings");
-          }
-        }}
         onClick={(event) => {
           if (!event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) {
-            beginNavigation("settings", "/settings");
+            beginNavigation("settings");
           }
         }}
         className={activeItem === "settings" ? horizontalItemActive : horizontalItemInactive}
