@@ -2418,7 +2418,7 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
                     <ZyonAvatar size="md" speaking />
                     <div className="flex items-center gap-2 rounded-2xl border border-border bg-panel/80 px-4 py-3 text-[10px] text-muted">
                       <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
-                      {ZYON_MODELS[model].label} is checking your read against live context
+                      Zion is thinking.
                     </div>
                   </div>
                 ) : null}
