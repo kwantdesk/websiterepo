@@ -2003,13 +2003,18 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
                       <span className="mt-1"><ZyonAvatar size="sm" /></span>
                     ) : null}
                     <div className="max-w-[84%]">
-                      <div className={`overflow-hidden rounded-[17px] border px-3 py-2.5 ${
+                      <div className={`zyon-message-copyable overflow-hidden rounded-[17px] border px-3 py-2.5 ${
                         assistant
                           ? "rounded-bl-[6px] border-border bg-panel/85"
                           : "rounded-br-[6px] border-primary/20 bg-primary/[0.09]"
                       }`}>
                         {messageAttachments(message.attachments, setImagePreview)}
-                        <p className="whitespace-pre-wrap text-[10px] leading-[1.65] text-foreground">{message.content}</p>
+                        <p
+                          className="zyon-message-copyable whitespace-pre-wrap text-[10px] leading-[1.65] text-foreground"
+                          onContextMenu={(event) => event.stopPropagation()}
+                        >
+                          {message.content}
+                        </p>
                       </div>
                       <div className={`mt-1 flex items-center gap-1.5 px-1 text-[7px] uppercase tracking-[0.08em] text-muted ${assistant ? "" : "justify-end"}`}>
                         <span>{assistant ? "ZYON" : "YOU"}</span>
@@ -2730,13 +2735,18 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
                         <span className="mt-1"><ZyonAvatar size="md" /></span>
                       ) : null}
                       <div className={`max-w-[84%] ${assistant ? "" : "order-first"}`}>
-                        <div className={`overflow-hidden rounded-2xl border px-4 py-3 ${
+                        <div className={`zyon-message-copyable overflow-hidden rounded-2xl border px-4 py-3 ${
                           assistant
                             ? "border-border bg-panel/80 shadow-[0_12px_36px_rgba(0,0,0,.1)]"
                             : "border-primary/20 bg-primary/[0.09]"
                         }`}>
                           {messageAttachments(message.attachments, setImagePreview)}
-                          <p className="whitespace-pre-wrap text-[11px] leading-[1.75] text-foreground">{message.content}</p>
+                          <p
+                            className="zyon-message-copyable whitespace-pre-wrap text-[11px] leading-[1.75] text-foreground"
+                            onContextMenu={(event) => event.stopPropagation()}
+                          >
+                            {message.content}
+                          </p>
                         </div>
                         <div className={`mt-1.5 flex items-center gap-2 px-1 text-[8px] text-muted ${assistant ? "" : "justify-end"}`}>
                           <span>{assistant ? "ZYON" : "YOU"}</span>

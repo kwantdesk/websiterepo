@@ -541,6 +541,15 @@ body {
   animation: zyon-chat-enter 420ms cubic-bezier(.2,.8,.2,1) both;
 }
 
+/* The terminal shell intentionally disables selection around chart controls.
+   ZYON conversations are documents, so restore native selection and the
+   browser's normal right-click Copy menu inside every message surface. */
+.zyon-message-copyable {
+  -webkit-user-select: text !important;
+  user-select: text !important;
+  cursor: text;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .kwantbot-avatar-float,
   .kwantbot-avatar-speaking,
