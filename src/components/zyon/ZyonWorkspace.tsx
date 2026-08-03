@@ -206,6 +206,26 @@ function localSessionDate() {
   return `${year}-${month}-${day}`;
 }
 
+class ZyonTransportError extends Error {
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = "ZyonTransportError";
+  }
+}
+
+function stringifyZyonRequest(value: unknown) {
+  const seen = new WeakSet<object>();
+  return JSON.stringify(value, (_key, candidate: unknown) => {
+    if (typeof candidate === "bigint") return candidate.toString();
+    if (typeof candidate === "number" && !Number.isFinite(candidate)) return null;
+    if (candidate && typeof candidate === "object") {
+      if (seen.has(candidate)) return undefined;
+      seen.add(candidate);
+    }
+    return candidate;
+  }) ?? "{}";
+}
+
 function mergeJournal(local: ZyonJournalEntry[], remote: ZyonJournalEntry[]) {
   const entries = new Map<string, ZyonJournalEntry>();
   [...local, ...remote].forEach((candidate) => {
@@ -1651,7 +1671,7 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
     setSendError("");
     setSending(true);
     try {
-      const requestBody = JSON.stringify({
+      const requestBody = stringifyZyonRequest({
           model,
           root: selectedRoot,
           chatId: activeChatId,
@@ -1671,16 +1691,10 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
             currentPrice,
             lastTickAt: interpreter.lastTickAt[selectedRoot],
             feedState: interpreter.feedState,
-            market: context ? {
-              ...context,
-              // The server builds the authoritative live context. A short
-              // browser tail is enough to preserve the newest tape read while
-              // avoiding a large duplicate request on every chat turn.
-              options: {
-                ...context.options,
-                recentFlow: context.options.recentFlow.slice(-12),
-              },
-            } : null,
+            // The server assembles the complete authoritative market context.
+            // Only send the newest browser tick and the unsaved local tails;
+            // serializing the full live context here made an incomplete frame
+            // capable of aborting the chat before the request was even sent.
             recentKwantBotMessages: rootMessages.slice(-8),
             recentMemory: rootMemory.slice(-10),
             learningReviews: learningReviews.slice(-4),
@@ -1690,26 +1704,85 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
         const controller = new AbortController();
         const timeout = window.setTimeout(() => controller.abort(), 55_000);
         try {
-          return await fetch("/api/zyon", {
-            method: "POST",
-            signal: controller.signal,
-            headers: { "Content-Type": "application/json" },
-            body: requestBody,
-          });
+          try {
+            return await fetch("/api/zyon", {
+              method: "POST",
+              signal: controller.signal,
+              headers: { "Content-Type": "application/json" },
+              body: requestBody,
+            });
+          } catch (error) {
+            if (error instanceof DOMException && error.name === "AbortError") throw error;
+            throw new ZyonTransportError("ZYON transport failed.", { cause: error });
+          }
         } finally {
           window.clearTimeout(timeout);
         }
+      };
+      const recoverPersistedReply = async () => {
+        const assistantEntryId = `zyon-conversation-assistant-${userMessage.id}`;
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+          if (attempt > 0) {
+            await new Promise((resolve) => window.setTimeout(resolve, 650 * attempt));
+          }
+          try {
+            const recoveryController = new AbortController();
+            const recoveryTimeout = window.setTimeout(() => recoveryController.abort(), 6_000);
+            const recoveryResponse = await fetch(
+              `/api/zyon/journal?compact=1&chatId=${encodeURIComponent(activeChatId)}`,
+              {
+                cache: "no-store",
+                signal: recoveryController.signal,
+              },
+            ).finally(() => window.clearTimeout(recoveryTimeout));
+            if (!recoveryResponse.ok) continue;
+            const recoveryPayload = await recoveryResponse.json().catch(() => null) as {
+              entries?: ZyonJournalEntry[];
+            } | null;
+            const recoveredEntry = recoveryPayload?.entries?.find((entry) =>
+              entry.id === assistantEntryId && entry.body.trim());
+            if (!recoveredEntry) continue;
+            return new Response(JSON.stringify({
+              text: recoveredEntry.body,
+              model,
+              journalEntries: [recoveredEntry],
+              gameplanReady: recoveredEntry.tags.includes(ZYON_GAMEPLAN_READY_TAG),
+              gameplanStatus: recoveredEntry.tags.includes(ZYON_GAMEPLAN_SENT_TAG)
+                ? "sent"
+                : recoveredEntry.tags.includes(ZYON_GAMEPLAN_READY_TAG) ? "ready" : null,
+            }), {
+              status: 200,
+              headers: { "Content-Type": "application/json" },
+            });
+          } catch {
+            // The normal retry below remains available when recovery is not yet
+            // persisted or the lightweight journal read is also interrupted.
+          }
+        }
+        return null;
       };
       let response: Response;
       try {
         response = await requestReply();
       } catch (firstError) {
-        // A browser-level Failed to fetch means no valid HTTP response made it
-        // back from the edge. Retry once with the same stable user-message ID;
-        // the API upserts that ID, so the retry cannot duplicate the journal.
-        if (!(firstError instanceof TypeError)) throw firstError;
-        await new Promise((resolve) => window.setTimeout(resolve, 350));
-        response = await requestReply();
+        if (!(firstError instanceof ZyonTransportError)) throw firstError;
+        // The server may already have completed and saved the answer even when
+        // the browser lost the response. Recover that exact answer before ever
+        // starting a second model request.
+        const recovered = await recoverPersistedReply();
+        if (recovered) {
+          response = recovered;
+        } else {
+          await new Promise((resolve) => window.setTimeout(resolve, 500));
+          try {
+            response = await requestReply();
+          } catch (secondError) {
+            if (!(secondError instanceof ZyonTransportError)) throw secondError;
+            const lateRecovery = await recoverPersistedReply();
+            if (!lateRecovery) throw secondError;
+            response = lateRecovery;
+          }
+        }
       }
       const payload = await response.json().catch(() => null) as {
         text?: unknown;
@@ -1719,6 +1792,7 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
         journalEntries?: ZyonJournalEntry[];
         gameplanDraft?: ZyonGameplanDraft | null;
         gameplanReady?: boolean;
+        gameplanStatus?: unknown;
         pendingGameplanDraftId?: string | null;
         folder?: { id?: string; sessionDate?: string; cloudSaved?: boolean };
         usage?: { inputTokens?: number | null; outputTokens?: number | null };
@@ -1756,6 +1830,9 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
         window.dispatchEvent(new CustomEvent("kwantdesk:zyon-gameplan-sent", {
           detail: { draftId: payload.pendingGameplanDraftId },
         }));
+      } else if (payload?.gameplanStatus === "sent") {
+        setGameplanSendState("sent");
+        void refreshGameplanStatus();
       } else if (payload?.gameplanReady) {
         setGameplanSendState("ready");
       } else if (gameplanExchange) {
@@ -1828,8 +1905,8 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
       setSendError(
         error instanceof DOMException && error.name === "AbortError"
           ? "ZYON did not complete within 55 seconds. Your message is saved; retry it."
-          : error instanceof TypeError
-            ? "ZYON's connection was interrupted twice. Your message is saved; retry it."
+          : error instanceof ZyonTransportError
+            ? "ZYON's connection was interrupted. Your message is saved; retry it."
             : error instanceof Error ? error.message : "ZYON could not reply.",
       );
       if (gameplanExchange) setGameplanSendState("unavailable");
