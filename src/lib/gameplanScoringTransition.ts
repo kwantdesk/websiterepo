@@ -140,6 +140,42 @@ export function writePendingScoringTransition(value: PendingScoringTransition) {
   window.sessionStorage.setItem(PENDING_SCORING_KEY, JSON.stringify(value));
 }
 
+export async function persistGameplanScoringRecord(
+  record: SocialObject<SocialPrecordPayload>,
+): Promise<SocialObject<SocialPrecordPayload>> {
+  let lastError: Error | null = null;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      const response = await fetch("/api/socials", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          object: {
+            id: record.id,
+            objectType: "precord",
+            scope: record.scope,
+            deskId: record.deskId,
+            parentId: record.parentId,
+            authorLabel: record.authorLabel,
+            payload: record.payload,
+          },
+        }),
+      });
+      const result = await response.json().catch(() => null) as {
+        object?: SocialObject<SocialPrecordPayload>;
+        error?: string;
+      } | null;
+      if (response.ok && result?.object) return { ...result.object, cloudSaved: true };
+      lastError = new Error(result?.error || "The Gameplan did not reach account storage.");
+      if (response.status < 500 && response.status !== 429) break;
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error("The Gameplan did not reach account storage.");
+    }
+    if (attempt < 2) await new Promise((resolve) => window.setTimeout(resolve, attempt === 0 ? 350 : 900));
+  }
+  throw lastError ?? new Error("The Gameplan did not reach account storage.");
+}
+
 export function clearPendingScoringTransition() {
   if (typeof window === "undefined") return;
   window.sessionStorage.removeItem(PENDING_SCORING_KEY);

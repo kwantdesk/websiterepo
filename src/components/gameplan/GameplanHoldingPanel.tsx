@@ -18,9 +18,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import KwantSelect from "@/components/ui/KwantSelect";
 import {
   buildGameplanScoringRecord,
+  persistGameplanScoringRecord,
   writePendingScoringTransition,
 } from "@/lib/gameplanScoringTransition";
-import type { SocialObject, SocialPrecordPayload } from "@/lib/socials";
 import {
   zyonGameplanMissingFields,
   zyonTradingAccountLabel,
@@ -209,34 +209,15 @@ export default function GameplanHoldingPanel({ onPendingChange }: Props) {
     try {
       const saved = await persistDraft();
       if (!saved) throw new Error("The completed Gameplan could not be prepared for Scoring.");
-      const response = await fetch("/api/socials", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          object: {
-            id: optimisticRecord.id,
-            objectType: "precord",
-            scope: "community",
-            deskId: null,
-            parentId: null,
-            payload: buildGameplanScoringRecord(saved, {
-              id: optimisticRecord.id,
-              createdAt: optimisticRecord.createdAt,
-              recordMode: saved.recordMode ?? "LIVE",
-            }).payload,
-          },
-        }),
+      const record = buildGameplanScoringRecord(saved, {
+        id: optimisticRecord.id,
+        createdAt: optimisticRecord.createdAt,
+        recordMode: saved.recordMode ?? "LIVE",
       });
-      const payload = await response.json().catch(() => null) as {
-        object?: SocialObject<SocialPrecordPayload>;
-        error?: string;
-      } | null;
-      if (!response.ok || !payload?.object?.id) {
-        throw new Error(payload?.error || "The Gameplan did not reach Scoring.");
-      }
-      writePendingScoringTransition({ record: payload.object, state: "saved" });
+      const savedRecord = await persistGameplanScoringRecord(record);
+      writePendingScoringTransition({ record: savedRecord, state: "saved" });
       window.dispatchEvent(new CustomEvent("kwantdesk:gameplan-locked", {
-        detail: { recordId: payload.object.id, object: payload.object },
+        detail: { recordId: savedRecord.id, object: savedRecord },
       }));
       // The route verifies the first completed record before awarding this;
       // upsert semantics make the request harmless for existing holders.

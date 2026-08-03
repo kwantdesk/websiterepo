@@ -146,6 +146,7 @@ import {
 import { zyonGameplanLaunchHref } from "@/lib/zyonGameplanLaunch";
 import {
   buildGameplanScoringRecord,
+  persistGameplanScoringRecord,
   writePendingScoringTransition,
 } from "@/lib/gameplanScoringTransition";
 
@@ -1924,14 +1925,7 @@ export default function SocialsWorkspace({
         recordMode,
         createdAt: optimisticRecord.createdAt,
       });
-      const savedRecord = await saveObject(record);
-      if (!savedRecord.cloudSaved) {
-        setState((current) => ({
-          ...current,
-          objects: current.objects.filter((candidate) => objectKey(candidate) !== objectKey(record)),
-        }));
-        throw new Error("The locked Gameplan did not reach account storage. It remains in holding; try again.");
-      }
+      const savedRecord = await persistGameplanScoringRecord(record);
 
       writePendingScoringTransition({
         record: savedRecord as SocialObject<SocialPrecordPayload>,

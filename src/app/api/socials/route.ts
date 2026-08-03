@@ -606,6 +606,29 @@ export async function POST(request: NextRequest) {
       || authorLabel;
   }
 
+  if (objectType === "precord") {
+    const { data: existing, error: existingError } = await supabase
+      .from("social_objects")
+      .select("user_id,id,author_label,object_type,scope,desk_id,parent_id,payload,created_at,updated_at")
+      .eq("user_id", actor.userId)
+      .eq("id", id)
+      .eq("object_type", "precord")
+      .maybeSingle();
+    if (existingError) {
+      if (tableUnavailable(existingError.code)) return NextResponse.json({ cloud: false }, { status: 503 });
+      return NextResponse.json({ error: existingError.message || "The existing Gameplan could not be checked." }, { status: 502 });
+    }
+    if (existing) {
+      const existingPayload = existing.payload && typeof existing.payload === "object"
+        ? existing.payload as Record<string, unknown>
+        : {};
+      if (!payload.sourceGameplanId || existingPayload.sourceGameplanId === payload.sourceGameplanId) {
+        return NextResponse.json({ cloud: true, object: fromRow(existing as SocialRow), idempotent: true });
+      }
+      return NextResponse.json({ error: "That scoring record ID already belongs to another Gameplan." }, { status: 409 });
+    }
+  }
+
   const row = {
     user_id: actor.userId,
     id,
