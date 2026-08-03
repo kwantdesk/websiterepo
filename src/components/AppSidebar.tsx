@@ -50,6 +50,7 @@ type AppSidebarProps = {
   accountLabel?: string;
   accountTitle?: string;
   onAccountClick?: () => void;
+  onNavigateIntent?: (item: SidebarKey) => void;
   onNavigateStart?: (item: SidebarKey) => void;
   orientation?: "vertical" | "horizontal";
 };
@@ -100,6 +101,7 @@ function AppSidebar({
   accountLabel = "Account",
   accountTitle = "Account",
   onAccountClick,
+  onNavigateIntent,
   onNavigateStart,
   orientation = "vertical",
 }: AppSidebarProps) {
@@ -125,6 +127,8 @@ function AppSidebar({
             <Link
               key={key}
               href={href}
+              onPointerEnter={() => onNavigateIntent?.(key)}
+              onFocus={() => onNavigateIntent?.(key)}
               onClick={(event) => {
                 if (!event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) {
                   beginNavigation(key);
@@ -142,6 +146,8 @@ function AppSidebar({
 
           <Link
             href="/settings"
+            onPointerEnter={() => onNavigateIntent?.("settings")}
+            onFocus={() => onNavigateIntent?.("settings")}
             onClick={(event) => {
               if (!event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) {
                 beginNavigation("settings");
@@ -168,6 +174,8 @@ function AppSidebar({
               key={key}
               href={href}
               prefetch
+              onPointerEnter={() => onNavigateIntent?.(key)}
+              onFocus={() => onNavigateIntent?.(key)}
               onClick={(event) => {
                 if (!event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) {
                   beginNavigation(key);
@@ -197,6 +205,8 @@ function AppSidebar({
       <Link
         href="/settings"
         prefetch
+        onPointerEnter={() => onNavigateIntent?.("settings")}
+        onFocus={() => onNavigateIntent?.("settings")}
         onClick={(event) => {
           if (!event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) {
             beginNavigation("settings");

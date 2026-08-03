@@ -94,8 +94,8 @@ export function gexdeskHistoryCacheKey(source: string, instrument = "NQ") {
 export async function preloadWorkspaceData(key: string) {
   if (key === "gamma") {
     return fetchWorkspaceData(
-      optionsFlowCacheKey("SPX", "CASH"),
-      "/api/options-flow?symbol=SPX&priceMode=CASH",
+      optionsFlowCacheKey("QQQ", "CASH"),
+      "/api/options-flow?symbol=QQQ&priceMode=CASH",
     );
   }
 
@@ -115,7 +115,13 @@ export async function preloadWorkspaceData(key: string) {
   }
 
   if (key === "gexdesk") {
-    return fetchWorkspaceData("gexdesk:map", "/api/gexdesk");
+    return Promise.all([
+      fetchWorkspaceData("gexdesk:map", "/api/gexdesk"),
+      fetchWorkspaceData(
+        gexdeskHistoryCacheKey("COMBINED", "NQ"),
+        "/api/gexdesk/history?instrument=NQ&source=COMBINED",
+      ),
+    ]);
   }
 
   if (key === "gameplan") {

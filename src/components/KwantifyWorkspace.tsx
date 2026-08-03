@@ -14,7 +14,7 @@ import { useSocialNotifications } from "@/hooks/useSocialNotifications";
 import { useStructureLevels } from "@/hooks/useStructureLevels";
 
 import { startTransition, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent as ReactDragEvent } from "react";
-import { createPortal, flushSync } from "react-dom";
+import { createPortal } from "react-dom";
 import dynamic from "next/dynamic";
 import Image from "next/image";
 import Link from "next/link";
@@ -115,6 +115,7 @@ import {
 import {
   fetchWorkspaceData,
   gameplanCacheKey,
+  preloadWorkspaceData,
   readWorkspaceData,
 } from "@/lib/workspaceDataCache";
 import {
@@ -229,31 +230,63 @@ function workspaceLoader(title: string, detail: string) {
   );
 }
 
-const Chart = dynamic(() => import("@/components/Chart"), {
+const loadChartWorkspace = () => import("@/components/Chart");
+const loadGammaWorkspace = () => import("@/components/options-flow/GammaWorkspace");
+const loadGexMapWorkspace = () => import("@/components/gex-map/GexMapWorkspace");
+const loadGexDeskWorkspace = () => import("@/components/gexdesk/GexDeskWorkspace");
+const loadGameplanWorkspace = () => import("@/components/gameplan/GameplanWorkspace");
+const loadNewsWorkspace = () => import("@/components/news/NewsWorkspace");
+const loadZyonWorkspace = () => import("@/components/zyon/ZyonWorkspace");
+const loadJournalWorkspace = () => import("@/components/journal/JournalWorkspace");
+const loadBacktestingWorkspace = () => import("@/components/backtesting/BacktestingWorkspace");
+const loadLevelzWorkspace = () => import("@/components/levelz/LevelzWorkspace");
+const loadSocialsWorkspace = () => import("@/components/socials/SocialsWorkspace");
+const loadKwantBotWorkspace = () => import("@/components/kwantbot/KwantBotIntelligenceWorkspace");
+
+const workspaceModulePreloaders: Record<string, () => Promise<unknown>> = {
+  charts: loadChartWorkspace,
+  gamma: loadGammaWorkspace,
+  gexmap: loadGexMapWorkspace,
+  gexdesk: loadGexDeskWorkspace,
+  gameplan: loadGameplanWorkspace,
+  news: loadNewsWorkspace,
+  zyon: loadZyonWorkspace,
+  journal: loadJournalWorkspace,
+  backtesting: loadBacktestingWorkspace,
+  levelz: loadLevelzWorkspace,
+  socials: loadSocialsWorkspace,
+  kwantbot: loadKwantBotWorkspace,
+};
+
+function preloadWorkspaceModule(section: string) {
+  return workspaceModulePreloaders[section]?.() ?? Promise.resolve(null);
+}
+
+const Chart = dynamic(loadChartWorkspace, {
   ssr: false,
   loading: () => workspaceLoader("Loading chart", "Restoring cached candles and layout."),
 });
-const GammaWorkspace = dynamic(() => import("@/components/options-flow/GammaWorkspace"), {
+const GammaWorkspace = dynamic(loadGammaWorkspace, {
   ssr: false,
   loading: () => workspaceLoader("Opening Gamma", "Restoring the latest options view."),
 });
-const GexMapWorkspace = dynamic(() => import("@/components/gex-map/GexMapWorkspace"), {
+const GexMapWorkspace = dynamic(loadGexMapWorkspace, {
   ssr: false,
   loading: () => workspaceLoader("Opening GEXMAP", "Restoring exposure panels."),
 });
-const GexDeskWorkspace = dynamic(() => import("@/components/gexdesk/GexDeskWorkspace"), {
+const GexDeskWorkspace = dynamic(loadGexDeskWorkspace, {
   ssr: false,
   loading: () => workspaceLoader("Opening Gexdesk", "Mapping options positioning onto live NQ."),
 });
-const GameplanWorkspace = dynamic(() => import("@/components/gameplan/GameplanWorkspace"), {
+const GameplanWorkspace = dynamic(loadGameplanWorkspace, {
   ssr: false,
   loading: () => workspaceLoader("Opening Gameplan", "Loading the active session map."),
 });
-const NewsWorkspace = dynamic(() => import("@/components/news/NewsWorkspace"), {
+const NewsWorkspace = dynamic(loadNewsWorkspace, {
   ssr: false,
   loading: () => workspaceLoader("Opening News", "Loading the economic calendar."),
 });
-const ZyonWorkspace = dynamic(() => import("@/components/zyon/ZyonWorkspace"), {
+const ZyonWorkspace = dynamic(loadZyonWorkspace, {
   ssr: false,
   loading: () => (
     <KwantLoader
@@ -269,23 +302,23 @@ const LiveGexPanel = dynamic(() => import("@/components/backtesting/HistoricalGe
   ssr: false,
   loading: () => workspaceLoader("Opening live GEX", "Synchronising the latest options structure."),
 });
-const JournalWorkspace = dynamic(() => import("@/components/journal/JournalWorkspace"), {
+const JournalWorkspace = dynamic(loadJournalWorkspace, {
   ssr: false,
   loading: () => workspaceLoader("Opening Journal", "Restoring account records."),
 });
-const BacktestingWorkspace = dynamic(() => import("@/components/backtesting/BacktestingWorkspace"), {
+const BacktestingWorkspace = dynamic(loadBacktestingWorkspace, {
   ssr: false,
   loading: () => workspaceLoader("Opening Backtesting", "Preparing the historical replay engine."),
 });
-const LevelzWorkspace = dynamic(() => import("@/components/levelz/LevelzWorkspace"), {
+const LevelzWorkspace = dynamic(loadLevelzWorkspace, {
   ssr: false,
   loading: () => workspaceLoader("Opening LEVELZ", "Restoring the level workspaces."),
 });
-const SocialsWorkspace = dynamic(() => import("@/components/socials/SocialsWorkspace"), {
+const SocialsWorkspace = dynamic(loadSocialsWorkspace, {
   ssr: false,
   loading: () => workspaceLoader("Opening Socials", "Restoring the latest record and feed."),
 });
-const KwantBotIntelligenceWorkspace = dynamic(() => import("@/components/kwantbot/KwantBotIntelligenceWorkspace"), {
+const KwantBotIntelligenceWorkspace = dynamic(loadKwantBotWorkspace, {
   ssr: false,
   loading: () => workspaceLoader("Opening Kwant Bot", "Restoring market intelligence."),
 });
@@ -4384,11 +4417,26 @@ export default function KwantifyWorkspace({
   const [optimisticWorkspaceSection, setOptimisticWorkspaceSection] = useState(section);
   const activeWorkspaceSectionRef = useRef<PrimaryWorkspaceSection | null>(section);
   useEffect(() => {
-    activeWorkspaceSectionRef.current = section;
-    setOptimisticWorkspaceSection(section);
+    let cancelled = false;
+    // Keep the current workspace usable until the destination bundle exists.
+    // Nested dynamic imports are not covered by Next's route prefetch alone.
+    void preloadWorkspaceModule(section)
+      .catch(() => null)
+      .finally(() => {
+        if (cancelled) return;
+        activeWorkspaceSectionRef.current = section;
+        setOptimisticWorkspaceSection(section);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [section]);
   const supabase = useMemo(() => createClient(), []);
   const [authChecked, setAuthChecked] = useState(false);
+  const warmWorkspaceSection = useCallback((target: string) => {
+    void preloadWorkspaceModule(target).catch(() => null);
+    void preloadWorkspaceData(target).catch(() => null);
+  }, []);
   const [preferenceUserId, setPreferenceUserId] = useState("");
   const [preferencesReady, setPreferencesReady] = useState(false);
   useAccountPreferenceSync({
@@ -6033,6 +6081,16 @@ export default function KwantifyWorkspace({
 
   useEffect(() => {
     if (!authChecked) return;
+    const timers = [
+      window.setTimeout(() => warmWorkspaceSection("charts"), 100),
+      window.setTimeout(() => warmWorkspaceSection("gamma"), 650),
+      window.setTimeout(() => warmWorkspaceSection("gexdesk"), 1_300),
+    ];
+    return () => timers.forEach((timer) => window.clearTimeout(timer));
+  }, [authChecked, warmWorkspaceSection]);
+
+  useEffect(() => {
+    if (!authChecked) return;
     let cancelled = false;
     let warmupTimer: number | null = null;
     const visiblePaneIds = collectWorkspacePaneIds(workspaceTree);
@@ -7402,18 +7460,15 @@ export default function KwantifyWorkspace({
       ? target as PrimaryWorkspaceSection
       : null;
     const previousSection = activeWorkspaceSectionRef.current;
-    activeWorkspaceSectionRef.current = nextSection;
 
     if (nextSection && nextSection !== previousSection) {
-      // A primary navigation should never keep a chart-side workspace alive
-      // while another full workspace mounts. This update must be urgent: a
-      // transition can be starved forever by a busy live chart/order-flow feed.
-      flushSync(() => {
-        setRightPanel(null);
-        setOptimisticWorkspaceSection(nextSection);
-      });
+      warmWorkspaceSection(nextSection);
+      // Close chart-side panels immediately, but leave the current workspace
+      // visible until the destination module is ready. This removes the blank
+      // loader gap without keeping multiple live workspaces mounted.
+      setRightPanel(null);
     }
-  }, []);
+  }, [warmWorkspaceSection]);
 
   async function saveUsername() {
     setUsernameError("");
@@ -9145,6 +9200,7 @@ export default function KwantifyWorkspace({
           accountLabel="Account"
           accountTitle={currentUsername ? `Sign out @${currentUsername}` : "Account"}
           onAccountClick={signOut}
+          onNavigateIntent={warmWorkspaceSection}
           onNavigateStart={handleWorkspaceNavigationStart}
           orientation="horizontal"
         />
