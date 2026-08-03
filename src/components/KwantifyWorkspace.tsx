@@ -4417,19 +4417,13 @@ export default function KwantifyWorkspace({
   const [optimisticWorkspaceSection, setOptimisticWorkspaceSection] = useState(section);
   const activeWorkspaceSectionRef = useRef<PrimaryWorkspaceSection | null>(section);
   useEffect(() => {
-    let cancelled = false;
-    // Keep the current workspace usable until the destination bundle exists.
-    // Nested dynamic imports are not covered by Next's route prefetch alone.
-    void preloadWorkspaceModule(section)
-      .catch(() => null)
-      .finally(() => {
-        if (cancelled) return;
-        activeWorkspaceSectionRef.current = section;
-        setOptimisticWorkspaceSection(section);
-      });
-    return () => {
-      cancelled = true;
-    };
+    // Route state must never wait behind a dynamic import. On a busy live
+    // chart the order-flow engine can occupy the main thread in short bursts;
+    // waiting for a bundle here made a valid navigation look like a dead
+    // button. Switch first so the chart unmounts, then warm the destination.
+    activeWorkspaceSectionRef.current = section;
+    setOptimisticWorkspaceSection(section);
+    void preloadWorkspaceModule(section).catch(() => null);
   }, [section]);
   const supabase = useMemo(() => createClient(), []);
   const [authChecked, setAuthChecked] = useState(false);
@@ -6347,7 +6341,10 @@ export default function KwantifyWorkspace({
   }, [watchlistPanelContextMenu]);
 
   useEffect(() => {
-    if (!usingDatabentoFeed) return;
+    if (
+      !usingDatabentoFeed
+      || (bottomWorkspaceSection !== "charts" && bottomWorkspaceSection !== "gameplan")
+    ) return;
     let cancelled = false;
     let animationFrame: number | null = null;
 
@@ -6414,9 +6411,10 @@ export default function KwantifyWorkspace({
       cancelled = true;
       if (animationFrame !== null) window.cancelAnimationFrame(animationFrame);
     };
-  }, [usingDatabentoFeed, watchlistSymbolsCsv]);
+  }, [bottomWorkspaceSection, usingDatabentoFeed, watchlistSymbolsCsv]);
 
   useEffect(() => {
+    if (bottomWorkspaceSection !== "charts" && bottomWorkspaceSection !== "gameplan") return;
     if (activeChartBrokerLabel === "Market Index" || activeChartBrokerLabel === "Massive") return;
     const nameMap: Record<string, string> = {
       EUR_USD: "EURUSD",
@@ -6640,7 +6638,7 @@ export default function KwantifyWorkspace({
         watchlistFlashTimerRef.current = null;
       }
     };
-  }, [activeChartBrokerLabel, streamReconnectNonce, usingCTraderFeed, usingDatabentoFeed, watchlistSymbolsCsv]);
+  }, [activeChartBrokerLabel, bottomWorkspaceSection, streamReconnectNonce, usingCTraderFeed, usingDatabentoFeed, watchlistSymbolsCsv]);
 
   useEffect(() => {
     if (section !== "charts") return;
@@ -7462,11 +7460,14 @@ export default function KwantifyWorkspace({
     const previousSection = activeWorkspaceSectionRef.current;
 
     if (nextSection && nextSection !== previousSection) {
-      warmWorkspaceSection(nextSection);
-      // Close chart-side panels immediately, but leave the current workspace
-      // visible until the destination module is ready. This removes the blank
-      // loader gap without keeping multiple live workspaces mounted.
+      // Treat a navigation click as urgent UI work. Updating the visible
+      // section and active ref synchronously unmounts Charts and closes its
+      // streams before Next's route transition or a lazy bundle can be
+      // delayed by accumulated order-flow calculations.
+      activeWorkspaceSectionRef.current = nextSection;
+      setOptimisticWorkspaceSection(nextSection);
       setRightPanel(null);
+      warmWorkspaceSection(nextSection);
     }
   }, [warmWorkspaceSection]);
 

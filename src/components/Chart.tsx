@@ -1297,13 +1297,33 @@ export default function Chart({
     [backgroundLevels, levels, priceFormat.minMove],
   );
   const indicatorSignature = useMemo(() => JSON.stringify(indicators), [indicators]);
+  const indicatorWindowCandles = useMemo(
+    () => sampledIndicatorCandles.slice(-1_500),
+    [sampledIndicatorCandles],
+  );
+  const indicatorMarketTrades = useMemo(() => {
+    if (!indicatorWindowCandles.length || !sampledIndicatorMarketTrades.length) return [];
+    const firstTimestamp = indicatorWindowCandles[0].timestamp;
+    // Execution tapes can contain tens of thousands of prints after Charts
+    // has been open for a while. Every study only needs prints that can map to
+    // the retained indicator candles, so discard the unreachable prefix with
+    // one binary search before running Big Trades, CVD, imbalances and stats.
+    let low = 0;
+    let high = sampledIndicatorMarketTrades.length;
+    while (low < high) {
+      const middle = Math.floor((low + high) / 2);
+      if (sampledIndicatorMarketTrades[middle].timestamp < firstTimestamp) low = middle + 1;
+      else high = middle;
+    }
+    return sampledIndicatorMarketTrades.slice(low);
+  }, [indicatorWindowCandles, sampledIndicatorMarketTrades]);
   const indicatorCandles = useMemo(
     () => enrichCandlesWithInstitutionalTrades(
-      sampledIndicatorCandles,
-      sampledIndicatorMarketTrades,
+      indicatorWindowCandles,
+      indicatorMarketTrades,
       1_500,
     ),
-    [sampledIndicatorCandles, sampledIndicatorMarketTrades],
+    [indicatorMarketTrades, indicatorWindowCandles],
   );
   const calculatedIndicatorSeries = useMemo(
     () => indicators.flatMap((instance) =>
@@ -1344,7 +1364,7 @@ export default function Chart({
           stats: indicatorCandles.length
             ? calculateKwantStats(
               indicatorCandles,
-              sampledIndicatorMarketTrades,
+              indicatorMarketTrades,
               instance,
               priceFormat.minMove,
               {
@@ -1393,7 +1413,7 @@ export default function Chart({
     indicatorSignature,
     indicators,
     priceFormat.minMove,
-    sampledIndicatorMarketTrades,
+    indicatorMarketTrades,
     settings.borderUpColor,
     settings.downColor,
     settings.gridColor,
@@ -1542,11 +1562,11 @@ export default function Chart({
     () => bigTradesIndicator
       ? calculateBigTradePrints(
           indicatorCandles,
-          sampledIndicatorMarketTrades,
+          indicatorMarketTrades,
           { ...(bigTradesIndicator.settings ?? {}), tickSize: priceFormat.minMove },
         )
       : [],
-    [bigTradesIndicator, indicatorCandles, priceFormat.minMove, sampledIndicatorMarketTrades],
+    [bigTradesIndicator, indicatorCandles, indicatorMarketTrades, priceFormat.minMove],
   );
   const anchoredBigTradePrints = useMemo(() => {
     if (!indicatorCandles.length || !bigTradePrints.length) return [];
@@ -1714,7 +1734,7 @@ export default function Chart({
       instance,
       zones: calculateImbalanceZones(
         indicatorCandles,
-        sampledIndicatorMarketTrades,
+        indicatorMarketTrades,
         instance,
         priceFormat.minMove,
       ),
@@ -1724,7 +1744,7 @@ export default function Chart({
     indicatorSignature,
     indicators,
     priceFormat.minMove,
-    sampledIndicatorMarketTrades,
+    indicatorMarketTrades,
   ]);
   const imbalanceRejector = useMemo(() => {
     const instance = indicators.find((candidate) =>
@@ -1734,7 +1754,7 @@ export default function Chart({
       instance,
       signals: calculateImbalanceRejectorSignals(
         indicatorCandles,
-        sampledIndicatorMarketTrades,
+        indicatorMarketTrades,
         instance,
         priceFormat.minMove,
       ),
@@ -1744,7 +1764,7 @@ export default function Chart({
     indicatorSignature,
     indicators,
     priceFormat.minMove,
-    sampledIndicatorMarketTrades,
+    indicatorMarketTrades,
   ]);
   const positionedImbalanceZones = useMemo(() =>
     (imbalanceTracker?.zones ?? []).flatMap((zone) => {
