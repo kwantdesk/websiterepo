@@ -612,7 +612,7 @@ function makeValueAreaSnapshot(
         id: `levelz-${prefix.toLowerCase()}-${kind.toLowerCase()}-${profile.end}`,
         price,
         color,
-        label: `${prefix} ${kind}`,
+        label: prefix === "CUR" ? kind : `${prefix} ${kind}`,
         lineStyle: kind === "POC" ? "solid" : kind === "VWAP" ? "dotted" : "dashed",
         lineWidth: prefix === "CUR" || kind === "POC" || kind === "VWAP" ? 2 : 1,
         axisLabelVisible: true,
