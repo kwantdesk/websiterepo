@@ -1702,7 +1702,10 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
       });
       const requestReply = async () => {
         const controller = new AbortController();
-        const timeout = window.setTimeout(() => controller.abort(), 55_000);
+        // The backend has a bounded premium-model attempt plus faster family
+        // fallbacks. Do not abort a valid provider response while that recovery
+        // ladder is still running.
+        const timeout = window.setTimeout(() => controller.abort(), 105_000);
         try {
           try {
             return await fetch("/api/zyon", {
@@ -1712,8 +1715,15 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
               body: requestBody,
             });
           } catch (error) {
-            if (error instanceof DOMException && error.name === "AbortError") throw error;
-            throw new ZyonTransportError("ZYON transport failed.", { cause: error });
+            // A browser timeout is also an indeterminate transport result: the
+            // server may have completed and persisted the reply. Route it
+            // through the same recovery path before issuing another model call.
+            throw new ZyonTransportError(
+              error instanceof DOMException && error.name === "AbortError"
+                ? "ZYON transport timed out."
+                : "ZYON transport failed.",
+              { cause: error },
+            );
           }
         } finally {
           window.clearTimeout(timeout);
@@ -1903,9 +1913,7 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
       });
     } catch (error) {
       setSendError(
-        error instanceof DOMException && error.name === "AbortError"
-          ? "ZYON did not complete within 55 seconds. Your message is saved; retry it."
-          : error instanceof ZyonTransportError
+        error instanceof ZyonTransportError
             ? "ZYON's connection was interrupted. Your message is saved; retry it."
             : error instanceof Error ? error.message : "ZYON could not reply.",
       );

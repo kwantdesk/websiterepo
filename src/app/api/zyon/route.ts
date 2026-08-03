@@ -52,9 +52,12 @@ const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 const MAX_TOTAL_ATTACHMENT_BYTES = 20 * 1024 * 1024;
 const MAX_TEXT_ATTACHMENT_LENGTH = 120_000;
 const MAX_CONTEXT_LENGTH = 42_000;
-// The user must receive a useful answer quickly. A stalled premium model gets a
-// bounded chance before ZYON falls through to a faster family.
-const PROVIDER_TIMEOUTS_MS = [18_000, 10_000, 6_000] as const;
+// Opus regularly needs more than 18 seconds once live market context is
+// attached. The former 18/10/6-second ladder aborted three healthy generations
+// in succession and surfaced a false "analysis service did not complete"
+// error. Keep the full request bounded by the route ceiling, but give the
+// selected model and its faster fallbacks enough time to actually answer.
+const PROVIDER_TIMEOUTS_MS = [40_000, 25_000, 15_000] as const;
 // Historical questions carry a larger point-in-time context than ordinary
 // chat. Give the primary model enough time to reason over it while retaining
 // bounded fallbacks inside the client's 50-second request window.
@@ -408,15 +411,15 @@ function normalizeMessages(value: unknown): ClaudeMessage[] {
   return merged;
 }
 
-function safeContext(value: unknown) {
+function safeContext(value: unknown, maximumLength = MAX_CONTEXT_LENGTH) {
   if (!value || typeof value !== "object") return "{}";
   try {
     const serialized = JSON.stringify(value);
-    if (serialized.length <= MAX_CONTEXT_LENGTH) return serialized;
+    if (serialized.length <= maximumLength) return serialized;
     return JSON.stringify({
       truncated: true,
       note: "Context was compacted to keep the live response inside its latency budget.",
-      excerpt: serialized.slice(0, MAX_CONTEXT_LENGTH - 180),
+      excerpt: serialized.slice(0, Math.max(0, maximumLength - 180)),
     });
   } catch {
     return "{}";
@@ -1272,13 +1275,18 @@ export async function POST(request: NextRequest) {
       console.error("ZYON authoritative market context failed", marketContextError);
     }
   }
-  const contextJson = safeContext(historicalReplay
+  const contextPayload = historicalReplay
     ? { authoritativeHistoricalReplay: historicalReplay }
     : {
         authoritative: authoritativeMarketContext,
         browserSupplement: payload.context,
         assemblyError: marketContextError || null,
-      });
+      };
+  const contextJson = safeContext(contextPayload);
+  // The primary model receives the complete bounded context. If it genuinely
+  // stalls, faster fallback families receive a smaller evidence pack rather
+  // than being asked to parse the same large payload inside a shorter window.
+  const fallbackContextJson = safeContext(contextPayload, 16_000);
   const gameplanSubmitIntent = !historicalReplay && (
     /\b(?:send|save|submit|publish)\b[\s\S]{0,40}\bgame\s*plan\b/i.test(finalUserText)
     || /\bgame\s*plan\b[\s\S]{0,40}\b(?:send|save|submit|publish)\b/i.test(finalUserText)
@@ -1365,6 +1373,12 @@ export async function POST(request: NextRequest) {
     `Selected market: ${root}.`,
     `<kwantdesk_market_context>${contextJson}</kwantdesk_market_context>`,
   ].join("\n");
+  const fallbackSystem = contextJson === fallbackContextJson
+    ? system
+    : system.replace(
+        `<kwantdesk_market_context>${contextJson}</kwantdesk_market_context>`,
+        `<kwantdesk_market_context>${fallbackContextJson}</kwantdesk_market_context>`,
+      );
 
   try {
     const providerModels = await providerModelsFor(apiKey, modelKey);
@@ -1399,7 +1413,7 @@ export async function POST(request: NextRequest) {
             model: providerModel,
             max_tokens: usePersistenceTools ? (modelIndex === 0 ? 1_800 : 1_500) : modelIndex === 0 ? 1_800 : 1_400,
             temperature: 0.2,
-            system,
+            system: modelIndex === 0 ? system : fallbackSystem,
             metadata: { user_id: actor.userId },
             tools: usePersistenceTools ? [
           {
