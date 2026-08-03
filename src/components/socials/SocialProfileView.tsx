@@ -385,6 +385,22 @@ export default function SocialProfileView({
             if (followerId === profileObject.userId || followingId === profileObject.userId) refresh();
           },
         )
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "social_objects" },
+          (payload) => {
+            const next = payload.new as Record<string, unknown>;
+            const previous = payload.old as Record<string, unknown>;
+            const row = Object.keys(next).length ? next : previous;
+            const rowPayload = row.payload && typeof row.payload === "object"
+              ? row.payload as Record<string, unknown>
+              : {};
+            if (row.object_type !== "reaction" || rowPayload.kind !== "PROFILE_FOLLOW") return;
+            const followerId = String(row.user_id ?? "");
+            const followingId = String(rowPayload.targetUserId ?? "");
+            if (followerId === profileObject.userId || followingId === profileObject.userId) refresh();
+          },
+        )
         .subscribe();
     } catch {
       // Focus, visibility and cross-tab events remain as the no-realtime fallback.

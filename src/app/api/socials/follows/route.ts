@@ -49,6 +49,22 @@ type FollowRecommendationRow = {
   reason?: string | null;
 };
 
+type FollowStorage = "dedicated" | "social-objects";
+
+type SocialFollowFallbackRow = {
+  user_id?: string | null;
+  payload?: Record<string, unknown> | null;
+  created_at?: string | null;
+};
+
+type SocialProfileFallbackRow = {
+  user_id?: string | null;
+  author_label?: string | null;
+  payload?: Record<string, unknown> | null;
+};
+
+const FALLBACK_FOLLOW_KIND = "PROFILE_FOLLOW";
+
 function cleanUuid(value: unknown) {
   const candidate = typeof value === "string" ? value.trim().toLowerCase() : "";
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(candidate)
@@ -142,16 +158,243 @@ async function followClient(request: NextRequest) {
   }
 }
 
+function fallbackFollowId(targetUserId: string) {
+  return `profile-follow:${targetUserId}`;
+}
+
+function profileVisibility(payload: Record<string, unknown> | null | undefined, key: "followers" | "following") {
+  const visibility = payload?.visibility;
+  if (!visibility || typeof visibility !== "object" || Array.isArray(visibility)) return "community";
+  return (visibility as Record<string, unknown>)[key] === "private" ? "private" : "community";
+}
+
+async function loadFallbackSummary(
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+  actorUserId: string,
+  profileUserId: string,
+): Promise<SocialFollowSummary> {
+  const [followersResult, followingResult, viewerResult, reverseResult, profileResult] = await Promise.all([
+    supabase
+      .from("social_objects")
+      .select("id", { count: "exact", head: true })
+      .eq("object_type", "reaction")
+      .eq("payload->>kind", FALLBACK_FOLLOW_KIND)
+      .eq("payload->>targetUserId", profileUserId),
+    supabase
+      .from("social_objects")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", profileUserId)
+      .eq("object_type", "reaction")
+      .eq("payload->>kind", FALLBACK_FOLLOW_KIND),
+    supabase
+      .from("social_objects")
+      .select("payload")
+      .eq("user_id", actorUserId)
+      .eq("id", fallbackFollowId(profileUserId))
+      .eq("object_type", "reaction")
+      .maybeSingle(),
+    supabase
+      .from("social_objects")
+      .select("id")
+      .eq("user_id", profileUserId)
+      .eq("id", fallbackFollowId(actorUserId))
+      .eq("object_type", "reaction")
+      .maybeSingle(),
+    supabase
+      .from("social_objects")
+      .select("payload")
+      .eq("user_id", profileUserId)
+      .eq("object_type", "profile")
+      .maybeSingle(),
+  ]);
+  const error = followersResult.error
+    || followingResult.error
+    || viewerResult.error
+    || reverseResult.error
+    || profileResult.error;
+  if (error) throw error;
+  const profilePayload = profileResult.data?.payload as Record<string, unknown> | undefined;
+  const viewerPayload = viewerResult.data?.payload as Record<string, unknown> | undefined;
+  const viewingOwnProfile = actorUserId === profileUserId;
+  return {
+    configured: true,
+    profileUserId,
+    followerCount: numberValue(followersResult.count),
+    followingCount: numberValue(followingResult.count),
+    viewerFollows: Boolean(viewerResult.data),
+    followsViewer: Boolean(reverseResult.data),
+    notificationsEnabled: Boolean(viewerPayload?.notifyPosts),
+    canViewFollowers: viewingOwnProfile || profileVisibility(profilePayload, "followers") !== "private",
+    canViewFollowing: viewingOwnProfile || profileVisibility(profilePayload, "following") !== "private",
+  };
+}
+
+async function loadFallbackList(
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+  actorUserId: string,
+  profileUserId: string,
+  listKind: SocialFollowListKind,
+  offset: number,
+  limit: number,
+): Promise<SocialFollowListItem[]> {
+  let query = supabase
+    .from("social_objects")
+    .select("user_id,payload,created_at")
+    .eq("object_type", "reaction")
+    .eq("payload->>kind", FALLBACK_FOLLOW_KIND)
+    .order("created_at", { ascending: false })
+    .range(offset, offset + limit - 1);
+  query = listKind === "followers"
+    ? query.eq("payload->>targetUserId", profileUserId)
+    : query.eq("user_id", profileUserId);
+  const relationsResult = await query;
+  if (relationsResult.error) throw relationsResult.error;
+  const relations = (relationsResult.data ?? []) as SocialFollowFallbackRow[];
+  const relationUserIds = relations
+    .map((row) => listKind === "followers"
+      ? cleanUuid(row.user_id)
+      : cleanUuid(row.payload?.targetUserId))
+    .filter(Boolean);
+  if (!relationUserIds.length) return [];
+
+  const [profilesResult, viewerRelationsResult, reverseRelationsResult] = await Promise.all([
+    supabase
+      .from("social_objects")
+      .select("user_id,author_label,payload")
+      .eq("object_type", "profile")
+      .in("user_id", relationUserIds),
+    supabase
+      .from("social_objects")
+      .select("payload")
+      .eq("user_id", actorUserId)
+      .eq("object_type", "reaction")
+      .eq("payload->>kind", FALLBACK_FOLLOW_KIND)
+      .in("payload->>targetUserId", relationUserIds),
+    supabase
+      .from("social_objects")
+      .select("user_id")
+      .eq("object_type", "reaction")
+      .eq("payload->>kind", FALLBACK_FOLLOW_KIND)
+      .eq("payload->>targetUserId", actorUserId)
+      .in("user_id", relationUserIds),
+  ]);
+  const error = profilesResult.error || viewerRelationsResult.error || reverseRelationsResult.error;
+  if (error) throw error;
+  const profiles = new Map(
+    ((profilesResult.data ?? []) as SocialProfileFallbackRow[])
+      .map((row) => [cleanUuid(row.user_id), row] as const)
+      .filter(([userId]) => Boolean(userId)),
+  );
+  const viewerRelations = new Map(
+    ((viewerRelationsResult.data ?? []) as Array<{ payload?: Record<string, unknown> | null }>).map((row) => [
+      cleanUuid(row.payload?.targetUserId),
+      row.payload ?? {},
+    ]),
+  );
+  const followsViewer = new Set(
+    ((reverseRelationsResult.data ?? []) as Array<{ user_id?: string | null }>)
+      .map((row) => cleanUuid(row.user_id))
+      .filter(Boolean),
+  );
+  return relations.flatMap((relation): SocialFollowListItem[] => {
+    const userId = listKind === "followers"
+      ? cleanUuid(relation.user_id)
+      : cleanUuid(relation.payload?.targetUserId);
+    if (!userId) return [];
+    const profile = profiles.get(userId);
+    const payload = profile?.payload ?? {};
+    const viewerRelation = viewerRelations.get(userId);
+    return [{
+      userId,
+      displayName: typeof payload.displayName === "string" && payload.displayName.trim()
+        ? payload.displayName.trim()
+        : profile?.author_label?.trim() || "Kwant User",
+      handle: typeof payload.handle === "string" ? payload.handle.trim().replace(/^@/, "") : "",
+      avatarUrl: typeof payload.avatarUrl === "string" ? payload.avatarUrl.trim() : "",
+      bio: typeof payload.bio === "string" ? payload.bio.trim().slice(0, 240) : "",
+      viewerFollows: Boolean(viewerRelation),
+      followsViewer: followsViewer.has(userId),
+      notificationsEnabled: Boolean(viewerRelation?.notifyPosts),
+      followedAt: relation.created_at || new Date(0).toISOString(),
+    }];
+  });
+}
+
+async function saveFallbackFollow(
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+  actorUserId: string,
+  actorLabel: string,
+  targetUserId: string,
+  notifyPosts = false,
+) {
+  const now = new Date().toISOString();
+  const result = await supabase.from("social_objects").upsert({
+    user_id: actorUserId,
+    id: fallbackFollowId(targetUserId),
+    author_label: actorLabel,
+    object_type: "reaction",
+    scope: "community",
+    desk_id: null,
+    parent_id: `profile:${targetUserId}`,
+    payload: { kind: FALLBACK_FOLLOW_KIND, targetUserId, notifyPosts },
+    created_at: now,
+    updated_at: now,
+  }, { onConflict: "user_id,id" });
+  if (result.error) throw result.error;
+}
+
+async function removeFallbackFollow(
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+  actorUserId: string,
+  targetUserId: string,
+) {
+  const result = await supabase
+    .from("social_objects")
+    .delete()
+    .eq("user_id", actorUserId)
+    .eq("id", fallbackFollowId(targetUserId))
+    .eq("object_type", "reaction");
+  if (result.error) throw result.error;
+}
+
+async function updateFallbackNotifications(
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+  actorUserId: string,
+  targetUserId: string,
+  notifyPosts: boolean,
+) {
+  const result = await supabase
+    .from("social_objects")
+    .update({
+      payload: { kind: FALLBACK_FOLLOW_KIND, targetUserId, notifyPosts },
+      updated_at: new Date().toISOString(),
+    })
+    .eq("user_id", actorUserId)
+    .eq("id", fallbackFollowId(targetUserId))
+    .eq("object_type", "reaction")
+    .select("id")
+    .maybeSingle();
+  if (result.error) throw result.error;
+  if (!result.data) throw new Error("Follow this profile before turning on notifications.");
+}
+
 async function loadSummary(
   supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+  actorUserId: string,
   profileUserId: string,
-) {
+): Promise<{ summary: SocialFollowSummary; storage: FollowStorage }> {
   const result = await supabase.rpc("social_profile_follow_summary", {
     target_user_id: profileUserId,
   });
-  if (result.error) throw result.error;
+  if (result.error) {
+    if (!migrationUnavailable(result.error.code)) throw result.error;
+    return {
+      summary: await loadFallbackSummary(supabase, actorUserId, profileUserId),
+      storage: "social-objects",
+    };
+  }
   const rows = Array.isArray(result.data) ? result.data as FollowSummaryRow[] : [];
-  return fromSummaryRow(profileUserId, rows[0] ?? null);
+  return { summary: fromSummaryRow(profileUserId, rows[0] ?? null), storage: "dedicated" };
 }
 
 export async function GET(request: NextRequest) {
@@ -161,8 +404,8 @@ export async function GET(request: NextRequest) {
 
   const wantsRecommendations = request.nextUrl.searchParams.get("recommendations") === "1";
   if (wantsRecommendations) {
+    const limit = Math.max(1, Math.min(20, Math.floor(Number(request.nextUrl.searchParams.get("limit")) || 8)));
     try {
-      const limit = Math.max(1, Math.min(20, Math.floor(Number(request.nextUrl.searchParams.get("limit")) || 8)));
       const result = await supabase.rpc("social_profile_recommendations", { result_limit: limit });
       if (result.error) throw result.error;
       const recommendations = (Array.isArray(result.data) ? result.data as FollowRecommendationRow[] : [])
@@ -176,7 +419,67 @@ export async function GET(request: NextRequest) {
       const code = typeof error === "object" && error && "code" in error
         ? String((error as { code?: unknown }).code ?? "")
         : "";
-      if (migrationUnavailable(code)) return unavailableResponse();
+      if (migrationUnavailable(code)) {
+        const profilesResult = await supabase
+          .from("social_objects")
+          .select("user_id,author_label,payload")
+          .eq("object_type", "profile")
+          .neq("user_id", actor.userId)
+          .order("updated_at", { ascending: false })
+          .limit(Math.max(20, limit * 4));
+        if (profilesResult.error) return unavailableResponse();
+        const followingResult = await supabase
+          .from("social_objects")
+          .select("payload")
+          .eq("user_id", actor.userId)
+          .eq("object_type", "reaction")
+          .eq("payload->>kind", FALLBACK_FOLLOW_KIND);
+        const incomingResult = await supabase
+          .from("social_objects")
+          .select("user_id")
+          .eq("object_type", "reaction")
+          .eq("payload->>kind", FALLBACK_FOLLOW_KIND)
+          .eq("payload->>targetUserId", actor.userId);
+        if (followingResult.error || incomingResult.error) return unavailableResponse();
+        const alreadyFollowing = new Set(
+          ((followingResult.data ?? []) as Array<{ payload?: Record<string, unknown> | null }>)
+            .map((row) => cleanUuid(row.payload?.targetUserId))
+            .filter(Boolean),
+        );
+        const followsViewer = new Set(
+          ((incomingResult.data ?? []) as Array<{ user_id?: string | null }>)
+            .map((row) => cleanUuid(row.user_id))
+            .filter(Boolean),
+        );
+        const recommendations = ((profilesResult.data ?? []) as SocialProfileFallbackRow[])
+          .flatMap((row, index): SocialFollowRecommendation[] => {
+            const userId = cleanUuid(row.user_id);
+            if (!userId || alreadyFollowing.has(userId)) return [];
+            const payload = row.payload ?? {};
+            return [{
+              userId,
+              displayName: typeof payload.displayName === "string" && payload.displayName.trim()
+                ? payload.displayName.trim()
+                : row.author_label?.trim() || "Kwant User",
+              handle: typeof payload.handle === "string" ? payload.handle.trim().replace(/^@/, "") : "",
+              avatarUrl: typeof payload.avatarUrl === "string" ? payload.avatarUrl.trim() : "",
+              bio: typeof payload.bio === "string" ? payload.bio.trim().slice(0, 240) : "",
+              mutualFollowCount: 0,
+              sharedDeskCount: 0,
+              marketOverlapCount: 0,
+              recentlyViewedAt: null,
+              followsViewer: followsViewer.has(userId),
+              viewerFollows: false,
+              relevanceScore: Math.max(1, 100 - index),
+              reason: followsViewer.has(userId) ? "Follows you" : "Active in the Kwant Desk network",
+            }];
+          })
+          .slice(0, limit);
+        return NextResponse.json(
+          { recommendations },
+          { headers: { "Cache-Control": "private, no-store, max-age=0" } },
+        );
+      }
       return NextResponse.json({ error: "Relevant connections could not be calculated." }, { status: 502 });
     }
   }
@@ -195,7 +498,8 @@ export async function GET(request: NextRequest) {
   const limit = Math.max(1, Math.min(100, Math.floor(Number(request.nextUrl.searchParams.get("limit")) || 50)));
 
   try {
-    const summary = await loadSummary(supabase, profileUserId);
+    const loaded = await loadSummary(supabase, actor.userId, profileUserId);
+    const summary = loaded.summary;
     if (!listKind) {
       return NextResponse.json(
         { summary },
@@ -216,16 +520,21 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const result = await supabase.rpc("social_profile_follow_list", {
-      target_user_id: profileUserId,
-      list_kind: listKind,
-      result_limit: limit,
-      result_offset: offset,
-    });
-    if (result.error) throw result.error;
-    const items = (Array.isArray(result.data) ? result.data as FollowListRow[] : [])
-      .map(fromListRow)
-      .filter((item): item is SocialFollowListItem => item !== null);
+    let items: SocialFollowListItem[];
+    if (loaded.storage === "social-objects") {
+      items = await loadFallbackList(supabase, actor.userId, profileUserId, listKind, offset, limit);
+    } else {
+      const result = await supabase.rpc("social_profile_follow_list", {
+        target_user_id: profileUserId,
+        list_kind: listKind,
+        result_limit: limit,
+        result_offset: offset,
+      });
+      if (result.error) throw result.error;
+      items = (Array.isArray(result.data) ? result.data as FollowListRow[] : [])
+        .map(fromListRow)
+        .filter((item): item is SocialFollowListItem => item !== null);
+    }
     const total = listKind === "followers" ? summary.followerCount : summary.followingCount;
     const nextOffset = offset + items.length < total ? offset + items.length : null;
 
@@ -270,11 +579,16 @@ export async function POST(request: NextRequest) {
   try {
     if (action === "profile_view") {
       const result = await supabase.rpc("record_social_profile_view", { target_user_id: targetUserId });
-      if (result.error) throw result.error;
+      if (result.error && !migrationUnavailable(result.error.code)) throw result.error;
       return NextResponse.json(
         { recorded: true },
         { headers: { "Cache-Control": "private, no-store, max-age=0" } },
       );
+    }
+
+    const loaded = await loadSummary(supabase, actor.userId, targetUserId);
+    if (action === "follow" && loaded.storage === "social-objects") {
+      await saveFallbackFollow(supabase, actor.userId, actor.label, targetUserId);
     } else if (action === "follow") {
       const result = await supabase
         .from("social_profile_follows")
@@ -287,6 +601,8 @@ export async function POST(request: NextRequest) {
           { onConflict: "follower_id,following_id" },
         );
       if (result.error) throw result.error;
+    } else if (action === "unfollow" && loaded.storage === "social-objects") {
+      await removeFallbackFollow(supabase, actor.userId, targetUserId);
     } else if (action === "unfollow") {
       const result = await supabase
         .from("social_profile_follows")
@@ -294,6 +610,14 @@ export async function POST(request: NextRequest) {
         .eq("follower_id", actor.userId)
         .eq("following_id", targetUserId);
       if (result.error) throw result.error;
+    } else if (action === "notifications" && loaded.storage === "social-objects") {
+      if (!loaded.summary.viewerFollows) {
+        return NextResponse.json(
+          { error: "Follow this profile before turning on notifications." },
+          { status: 409 },
+        );
+      }
+      await updateFallbackNotifications(supabase, actor.userId, targetUserId, Boolean(body.enabled));
     } else if (action === "notifications") {
       const result = await supabase
         .from("social_profile_follows")
@@ -316,7 +640,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unsupported follow action." }, { status: 400 });
     }
 
-    const summary = await loadSummary(supabase, targetUserId);
+    const summary = loaded.storage === "social-objects"
+      ? await loadFallbackSummary(supabase, actor.userId, targetUserId)
+      : (await loadSummary(supabase, actor.userId, targetUserId)).summary;
     return NextResponse.json(
       { summary },
       { headers: { "Cache-Control": "private, no-store, max-age=0" } },
