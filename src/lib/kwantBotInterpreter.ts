@@ -45,6 +45,8 @@ export type KwantBotMarketContext = {
   }>;
   options: {
     asOf: string;
+    marketOpen: boolean;
+    sessionDate: string;
     gammaRegime: "POSITIVE" | "NEGATIVE" | "NEUTRAL";
     gammaStrength: string;
     gammaStateLabel: string;
@@ -405,6 +407,10 @@ export function buildContextChangeMessage(
       { price: next.currentPrice ?? undefined, levelId: nearest?.id },
     );
   }
+
+  // Options Tape is an intraday New York feed. Completed-session snapshots
+  // remain useful elsewhere, but must never generate fresh tape messages.
+  if (!next.options.marketOpen) return null;
 
   const changes: string[] = [];
   if (previous.options.gammaRegime !== next.options.gammaRegime) {

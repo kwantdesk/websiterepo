@@ -50,6 +50,42 @@ function formatPremium(value: number) {
   return `${sign}$${absolute.toFixed(0)}`;
 }
 
+const NEW_YORK_CLOCK = new Intl.DateTimeFormat("en-US", {
+  timeZone: "America/New_York",
+  weekday: "short",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hourCycle: "h23",
+});
+
+function newYorkClock(timestamp: number | string) {
+  const parsed = typeof timestamp === "number" ? timestamp : Date.parse(timestamp);
+  if (!Number.isFinite(parsed)) return null;
+  const parts = Object.fromEntries(
+    NEW_YORK_CLOCK.formatToParts(new Date(parsed))
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, part.value]),
+  );
+  const hour = Number(parts.hour);
+  const minute = Number(parts.minute);
+  return {
+    weekday: parts.weekday ?? "",
+    date: `${parts.year}-${parts.month}-${parts.day}`,
+    minutes: hour * 60 + minute,
+    label: `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}:${parts.second ?? "00"}`,
+  };
+}
+
+function newYorkOptionsClockOpen(timestamp: number) {
+  const clock = newYorkClock(timestamp);
+  if (!clock || !new Set(["Mon", "Tue", "Wed", "Thu", "Fri"]).has(clock.weekday)) return false;
+  return clock.minutes >= 9 * 60 + 30 && clock.minutes < 16 * 60;
+}
+
 function OptionsTapeAvatar({ speaking = false }: { speaking?: boolean }) {
   return (
     <div className="relative h-9 w-9 shrink-0 overflow-hidden rounded-full border border-primary/30 bg-background shadow-[0_0_18px_color-mix(in_srgb,var(--primary)_20%,transparent)]">
@@ -107,12 +143,19 @@ export default function OptionsTapePanel({
   const [pausedMessages, setPausedMessages] = useState<Record<KwantBotMarketRoot, KwantBotInterpreterMessage[]> | null>(null);
   const feedScrollRef = useRef<HTMLDivElement | null>(null);
   const endRef = useRef<HTMLDivElement | null>(null);
+  const openingRefreshAtRef = useRef(0);
   const optionsMessages = useMemo(
-    () => ({
-      NQ: messages.NQ.filter((message) => message.kind === "options"),
-      ES: messages.ES.filter((message) => message.kind === "options"),
-    }),
-    [messages],
+    () => (Object.fromEntries((["NQ", "ES"] as KwantBotMarketRoot[]).map((root) => {
+      const sessionDate = contexts[root]?.options?.sessionDate;
+      const sessionMessages = !sessionDate
+        ? []
+        : messages[root].filter((message) => (
+          message.kind === "options"
+          && newYorkClock(message.createdAt)?.date === sessionDate
+        ));
+      return [root, sessionMessages];
+    })) as Record<KwantBotMarketRoot, KwantBotInterpreterMessage[]>),
+    [contexts, messages],
   );
   const currentRootMessages = optionsMessages[selectedRoot];
   const rootMessages = feedPaused
@@ -127,11 +170,21 @@ export default function OptionsTapePanel({
   const context = contexts[selectedRoot];
   const price = livePrices[selectedRoot] ?? context?.currentPrice ?? null;
   const options = context?.options ?? null;
+  const clockOpen = newYorkOptionsClockOpen(now);
+  const optionsMarketOpen = clockOpen && options?.marketOpen === true;
+  const currentNewYorkClock = newYorkClock(now);
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 1_000);
     return () => window.clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    if (!clockOpen || options?.marketOpen === true) return;
+    if (now - openingRefreshAtRef.current < 5_000) return;
+    openingRefreshAtRef.current = now;
+    void refreshContext(selectedRoot);
+  }, [clockOpen, now, options?.marketOpen, refreshContext, selectedRoot]);
 
   useLayoutEffect(() => {
     if (feedPaused) return;
@@ -166,6 +219,53 @@ export default function OptionsTapePanel({
       setRefreshing(false);
     }
   };
+
+  if (!optionsMarketOpen) {
+    return (
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
+        <div className="flex h-14 shrink-0 items-center gap-2.5 border-b border-border bg-panel px-3">
+          <OptionsTapeAvatar />
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-1.5">
+              <h3 className="truncate text-[13px] font-semibold text-foreground">Options Tape</h3>
+              <span className="rounded-full border border-border bg-surface/70 px-1.5 py-0.5 text-[8px] font-semibold uppercase tracking-[0.12em] text-muted">
+                Closed
+              </span>
+            </div>
+            <div className="mt-0.5 flex items-center gap-1.5 text-[9px] text-muted">
+              <span className="h-1.5 w-1.5 rounded-full bg-muted/60" />
+              Waiting for New York options
+            </div>
+          </div>
+        </div>
+
+        <div className="flex min-h-0 flex-1 items-center justify-center px-6 text-center">
+          <div className="max-w-[280px]">
+            <span className="relative mx-auto flex h-12 w-12 items-center justify-center rounded-2xl border border-primary/20 bg-primary/[0.07] text-primary">
+              <Clock3 className="h-5 w-5" />
+              {clockOpen ? <span className="absolute inset-0 animate-ping rounded-2xl border border-primary/20" /> : null}
+            </span>
+            <div className="mt-4 text-[12px] font-semibold text-foreground">
+              {clockOpen ? "Opening Options Tape" : "Waiting for New York session to open"}
+            </div>
+            <p className="mt-2 text-[9px] leading-4 text-muted">
+              {clockOpen
+                ? "New York is open. The first validated live positioning frame will appear here automatically."
+                : "Options Tape stays clear outside New York options hours and activates automatically at 09:30 New York time."}
+            </p>
+            <div className="mt-4 inline-flex items-center gap-2 rounded-lg border border-border bg-surface/45 px-3 py-2 font-mono text-[8px] text-muted">
+              <span className={`h-1.5 w-1.5 rounded-full ${clockOpen ? "animate-pulse bg-primary" : "bg-muted/60"}`} />
+              New York {currentNewYorkClock?.label ?? "--:--:--"}
+            </div>
+          </div>
+        </div>
+
+        <div className="shrink-0 border-t border-border bg-panel px-3 py-3 text-center text-[8px] text-muted">
+          No completed-session or stale positioning updates are shown here.
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">

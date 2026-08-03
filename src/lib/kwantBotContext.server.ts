@@ -61,6 +61,8 @@ async function buildContext(root: KwantBotMarketRoot): Promise<KwantBotMarketCon
     })),
     options: {
       asOf: options.asOf,
+      marketOpen: options.session.marketOpen,
+      sessionDate: options.session.sessionDate,
       gammaRegime: options.environment.gammaRegime,
       gammaStrength: options.environment.gammaStrength,
       gammaStateLabel: options.environment.gammaStateLabel,
