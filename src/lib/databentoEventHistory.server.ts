@@ -9,7 +9,16 @@ import type { Candle } from "@/lib/backtester";
 
 const DATABENTO_HISTORICAL_BASE_URL = "https://api.databento.com/v0";
 const MAX_EVENT_BARS = 5_000;
+const MAX_EVENT_EXECUTIONS = 25_000;
+const EVENT_EXECUTION_LOOKBACK_MS = 6 * 60 * 60_000;
 type EventHistorySchema = "trades" | "ohlcv-1s";
+
+export type DatabentoEventExecutionTuple = [
+  timestamp: number,
+  price: number,
+  size: number,
+  delta: number,
+];
 
 function fixedPrice(value: unknown) {
   const parsed = typeof value === "number" ? value : Number(value);
@@ -219,6 +228,120 @@ async function streamEventBars(args: {
   return bars;
 }
 
+/**
+ * Fetch the recent native execution tape alongside event-built candles.
+ *
+ * Range/Renko/volume history is reconstructed efficiently from one-second
+ * OHLCV. That is sufficient for bar geometry, but it cannot power execution
+ * studies: it has no aggressor side and no individual prints. Keep a bounded
+ * native trade tape so Big Trades stays attached to the bar where each print
+ * happened and KWANT Effort receives real ask/bid participation immediately.
+ */
+async function streamEventExecutions(args: {
+  symbol: string;
+  start: number;
+  end: number;
+  canRetryEnd?: boolean;
+}): Promise<DatabentoEventExecutionTuple[]> {
+  const key = process.env.DATABENTO_API_KEY?.trim();
+  if (!key) throw new Error("CME market data is not configured.");
+  const boundedStart = Math.max(args.start, args.end - EVENT_EXECUTION_LOOKBACK_MS);
+  const form = new URLSearchParams({
+    dataset: "GLBX.MDP3",
+    encoding: "json",
+    pretty_px: "false",
+    pretty_ts: "false",
+    map_symbols: "false",
+    symbols: args.symbol,
+    stype_in: isContinuousFuture(args.symbol) ? "continuous" : "raw_symbol",
+    schema: "trades",
+    start: new Date(boundedStart).toISOString(),
+    end: new Date(args.end).toISOString(),
+  });
+  const response = await fetch(`${DATABENTO_HISTORICAL_BASE_URL}/timeseries.get_range`, {
+    method: "POST",
+    headers: {
+      Authorization: `Basic ${Buffer.from(`${key}:`).toString("base64")}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: form,
+    cache: "no-store",
+    signal: AbortSignal.timeout(280_000),
+  });
+  if (!response.ok) {
+    const detail = await response.text();
+    const completedEnd = response.status === 422 && args.canRetryEnd !== false
+      ? availableEnd(detail)
+      : null;
+    if (completedEnd && completedEnd > boundedStart && completedEnd < args.end) {
+      return streamEventExecutions({
+        ...args,
+        start: boundedStart,
+        end: completedEnd - 1,
+        canRetryEnd: false,
+      });
+    }
+    throw new Error(`CME execution history failed (${response.status}): ${detail.slice(0, 180)}`);
+  }
+  if (!response.body) return [];
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  const executions: DatabentoEventExecutionTuple[] = [];
+  let buffer = "";
+  const append = (row: Record<string, unknown>) => {
+    const timestamp = eventTime(
+      row.ts_event
+      ?? row.ts_recv
+      ?? (row.hd as Record<string, unknown> | undefined)?.ts_event,
+    );
+    const tradePrice = fixedPrice(row.price);
+    const size = Math.max(0, Number(row.size ?? 0));
+    const side = String(row.side ?? "").toUpperCase();
+    // Databento's trade side is the aggressor: Bid is a buyer and Ask a seller.
+    const delta = side === "B" || side === "BID"
+      ? size
+      : side === "A" || side === "ASK"
+        ? -size
+        : 0;
+    if (timestamp <= 0 || tradePrice <= 0 || size <= 0 || delta === 0) return;
+    executions.push([timestamp, tradePrice, size, delta]);
+    if (executions.length > MAX_EVENT_EXECUTIONS * 2) {
+      executions.splice(0, executions.length - MAX_EVENT_EXECUTIONS);
+    }
+  };
+  const consume = (line: string) => {
+    const text = line.trim();
+    if (!text) return;
+    try {
+      const decoded = JSON.parse(text) as unknown;
+      const rows = Array.isArray(decoded) ? decoded : [decoded];
+      rows.forEach((row) => {
+        if (row && typeof row === "object" && !Array.isArray(row)) {
+          append(row as Record<string, unknown>);
+        }
+      });
+    } catch {
+      // One malformed line must not discard the valid tape around it.
+    }
+  };
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let newline = buffer.indexOf("\n");
+    while (newline >= 0) {
+      consume(buffer.slice(0, newline));
+      buffer = buffer.slice(newline + 1);
+      newline = buffer.indexOf("\n");
+    }
+  }
+  buffer += decoder.decode();
+  consume(buffer);
+  return executions.slice(-MAX_EVENT_EXECUTIONS);
+}
+
 export async function getDatabentoEventBars(
   symbol: string,
   timeframe: string,
@@ -238,4 +361,28 @@ export async function getDatabentoEventBars(
     start: adaptiveEventStart(timeframe, requestedStart, requestedEnd, schema),
     end: requestedEnd,
   });
+}
+
+export async function getDatabentoEventHistory(
+  symbol: string,
+  timeframe: string,
+  start: string,
+  end: string,
+) {
+  const requestedStart = Date.parse(start);
+  const requestedEnd = Date.parse(end);
+  if (!Number.isFinite(requestedStart) || !Number.isFinite(requestedEnd) || requestedEnd <= requestedStart) {
+    throw new Error("A valid CME event-history window is required.");
+  }
+  if (!isEventBasedChartInterval(timeframe)) throw new Error(`Unsupported event interval: ${timeframe}`);
+
+  const [candles, executions] = await Promise.all([
+    getDatabentoEventBars(symbol, timeframe, start, end),
+    streamEventExecutions({
+      symbol,
+      start: requestedStart,
+      end: requestedEnd,
+    }).catch(() => [] as DatabentoEventExecutionTuple[]),
+  ]);
+  return { candles, executions };
 }

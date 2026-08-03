@@ -1,4 +1,5 @@
 import type { Candle } from "@/lib/backtester";
+import type { InstitutionalTrade } from "@/lib/institutionalMarketData";
 
 type CachedHistory = {
   key: string;
@@ -8,16 +9,31 @@ type CachedHistory = {
   updatedAt: number;
 };
 
+type CachedExecutionTape = {
+  key: string;
+  symbol: string;
+  timeframe: string;
+  records: InstitutionalTrade[];
+  updatedAt: number;
+  kind: "execution-tape";
+};
+
 const DATABASE_NAME = "kwantdesk-market-data";
 const DATABASE_VERSION = 1;
 const STORE_NAME = "cme-history";
 const MAX_CACHE_AGE_MS = 12 * 24 * 60 * 60_000;
 const MAX_CANDLES_PER_SERIES = 120_000;
+const MAX_EXECUTIONS_PER_SERIES = 25_000;
 const memoryCache = new Map<string, CachedHistory>();
+const executionTapeMemoryCache = new Map<string, CachedExecutionTape>();
 let databasePromise: Promise<IDBDatabase> | null = null;
 
 function cacheKey(symbol: string, timeframe: string) {
   return `${symbol}::${timeframe}`;
+}
+
+function executionTapeCacheKey(symbol: string, timeframe: string) {
+  return `tape::${symbol}::${timeframe}`;
 }
 
 function timeframeDurationMs(timeframe: string) {
@@ -52,19 +68,83 @@ function normalizeCandles(candles: Candle[]) {
     ) {
       continue;
     }
-    byTimestamp.set(timestamp, {
+    const normalized: Candle = {
       timestamp,
       open,
       high: Math.max(open, high, low, close),
       low: Math.min(open, high, low, close),
       close,
       volume: Number.isFinite(Number(candle.volume)) ? Number(candle.volume) : undefined,
+    };
+    // Order-flow fields are part of chart history, not disposable rendering
+    // metadata. Keeping them makes KWANT Effort/CVD available on the first
+    // paint instead of forcing a fresh execution download after every reload.
+    const flowKeys = [
+      "trades",
+      "bidVolume",
+      "askVolume",
+      "bidTrades",
+      "askTrades",
+      "delta",
+      "deltaOpen",
+      "deltaHigh",
+      "deltaLow",
+      "deltaClose",
+    ] as const;
+    flowKeys.forEach((key) => {
+      const value = Number(candle[key]);
+      if (Number.isFinite(value)) normalized[key] = value;
     });
+    byTimestamp.set(timestamp, normalized);
   }
 
   return [...byTimestamp.values()]
     .sort((a, b) => a.timestamp - b.timestamp)
     .slice(-MAX_CANDLES_PER_SERIES);
+}
+
+function normalizeExecutionTape(records: InstitutionalTrade[]) {
+  const byId = new Map<string, InstitutionalTrade>();
+  records.forEach((record, index) => {
+    const timestamp = Number(record.timestamp);
+    const close = Number(record.close);
+    const volume = Number(record.volume);
+    if (
+      !Number.isFinite(timestamp)
+      || !Number.isFinite(close)
+      || !Number.isFinite(volume)
+      || timestamp <= 0
+      || close <= 0
+      || volume <= 0
+    ) return;
+    const normalized: InstitutionalTrade = {
+      ...record,
+      eventId: record.eventId ? String(record.eventId) : undefined,
+      recordIndex: Number.isFinite(Number(record.recordIndex)) ? Number(record.recordIndex) : index,
+      timestamp,
+      open: Number.isFinite(Number(record.open)) ? Number(record.open) : close,
+      high: Number.isFinite(Number(record.high)) ? Number(record.high) : close,
+      low: Number.isFinite(Number(record.low)) ? Number(record.low) : close,
+      close,
+      trades: Math.max(1, Number(record.trades) || 1),
+      volume,
+      bidVolume: Math.max(0, Number(record.bidVolume) || 0),
+      askVolume: Math.max(0, Number(record.askVolume) || 0),
+      delta: Number.isFinite(Number(record.delta))
+        ? Number(record.delta)
+        : Number(record.askVolume ?? 0) - Number(record.bidVolume ?? 0),
+      aggressor: record.aggressor === "BUY" || record.aggressor === "SELL"
+        ? record.aggressor
+        : "UNKNOWN",
+      sideSemanticsVersion: Number(record.sideSemanticsVersion ?? 2),
+    };
+    const key = normalized.eventId
+      || `${normalized.timestamp}:${normalized.recordIndex}:${normalized.close}:${normalized.volume}`;
+    byId.set(key, normalized);
+  });
+  return [...byId.values()]
+    .sort((left, right) => left.timestamp - right.timestamp || left.recordIndex - right.recordIndex)
+    .slice(-MAX_EXECUTIONS_PER_SERIES);
 }
 
 function resampleCandles(candles: Candle[], timeframe: string) {
@@ -83,6 +163,24 @@ function resampleCandles(candles: Candle[], timeframe: string) {
     existing.low = Math.min(existing.low, candle.low);
     existing.close = candle.close;
     existing.volume = Number(existing.volume ?? 0) + Number(candle.volume ?? 0);
+    existing.trades = Number(existing.trades ?? 0) + Number(candle.trades ?? 0);
+    existing.bidVolume = Number(existing.bidVolume ?? 0) + Number(candle.bidVolume ?? 0);
+    existing.askVolume = Number(existing.askVolume ?? 0) + Number(candle.askVolume ?? 0);
+    existing.bidTrades = Number(existing.bidTrades ?? 0) + Number(candle.bidTrades ?? 0);
+    existing.askTrades = Number(existing.askTrades ?? 0) + Number(candle.askTrades ?? 0);
+    const previousDelta = Number(existing.delta ?? 0);
+    const candleDelta = Number(candle.delta ?? candle.deltaClose ?? 0);
+    existing.delta = previousDelta + candleDelta;
+    existing.deltaOpen = 0;
+    existing.deltaHigh = Math.max(
+      Number(existing.deltaHigh ?? previousDelta),
+      previousDelta + Number(candle.deltaHigh ?? candleDelta),
+    );
+    existing.deltaLow = Math.min(
+      Number(existing.deltaLow ?? previousDelta),
+      previousDelta + Number(candle.deltaLow ?? candleDelta),
+    );
+    existing.deltaClose = existing.delta;
   }
   return [...buckets.values()].sort((left, right) => left.timestamp - right.timestamp);
 }
@@ -135,14 +233,18 @@ async function readAllCachedHistory() {
   const records = new Map<string, CachedHistory>(memoryCache);
   try {
     const database = await openDatabase();
-    const storedRecords = await new Promise<CachedHistory[]>((resolve, reject) => {
+    const storedRecords = await new Promise<Array<CachedHistory | CachedExecutionTape>>((resolve, reject) => {
       const transaction = database.transaction(STORE_NAME, "readonly");
       const request = transaction.objectStore(STORE_NAME).getAll();
-      request.onsuccess = () => resolve((request.result as CachedHistory[] | undefined) ?? []);
+      request.onsuccess = () => resolve(
+        (request.result as Array<CachedHistory | CachedExecutionTape> | undefined) ?? [],
+      );
       request.onerror = () => reject(request.error ?? new Error("Unable to read cached market data."));
     });
     for (const record of storedRecords) {
-      records.set(record.key, record);
+      if ("candles" in record && Array.isArray(record.candles)) {
+        records.set(record.key, record);
+      }
     }
   } catch {
     // The in-memory records can still supply a compatible timeframe.
@@ -249,6 +351,64 @@ export async function writeChartHistoryCache(symbol: string, timeframe: string, 
     // The in-memory cache still keeps the chart stable for this browser session.
   }
 
+  return record;
+}
+
+export function peekExecutionTapeCache(symbol: string, timeframe: string) {
+  return executionTapeMemoryCache.get(executionTapeCacheKey(symbol, timeframe)) ?? null;
+}
+
+export async function readExecutionTapeCache(symbol: string, timeframe: string) {
+  const key = executionTapeCacheKey(symbol, timeframe);
+  const memoryRecord = executionTapeMemoryCache.get(key);
+  if (memoryRecord?.records.length) return memoryRecord;
+  try {
+    const database = await openDatabase();
+    const record = await new Promise<CachedExecutionTape | null>((resolve, reject) => {
+      const transaction = database.transaction(STORE_NAME, "readonly");
+      const request = transaction.objectStore(STORE_NAME).get(key);
+      request.onsuccess = () => resolve((request.result as CachedExecutionTape | undefined) ?? null);
+      request.onerror = () => reject(request.error ?? new Error("Unable to read cached executions."));
+    });
+    if (!record || record.kind !== "execution-tape") return null;
+    const normalized = { ...record, records: normalizeExecutionTape(record.records ?? []) };
+    if (!normalized.records.length) return null;
+    executionTapeMemoryCache.set(key, normalized);
+    return normalized;
+  } catch {
+    return memoryRecord ?? null;
+  }
+}
+
+export async function writeExecutionTapeCache(
+  symbol: string,
+  timeframe: string,
+  records: InstitutionalTrade[],
+) {
+  const key = executionTapeCacheKey(symbol, timeframe);
+  const previous = await readExecutionTapeCache(symbol, timeframe);
+  const normalizedRecords = normalizeExecutionTape([...(previous?.records ?? []), ...records]);
+  if (!normalizedRecords.length) return null;
+  const record: CachedExecutionTape = {
+    key,
+    symbol,
+    timeframe,
+    records: normalizedRecords,
+    updatedAt: Date.now(),
+    kind: "execution-tape",
+  };
+  executionTapeMemoryCache.set(key, record);
+  try {
+    const database = await openDatabase();
+    await new Promise<void>((resolve, reject) => {
+      const transaction = database.transaction(STORE_NAME, "readwrite");
+      transaction.objectStore(STORE_NAME).put(record);
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error ?? new Error("Unable to cache executions."));
+    });
+  } catch {
+    // Memory cache still prevents duplicate downloads during this session.
+  }
   return record;
 }
 

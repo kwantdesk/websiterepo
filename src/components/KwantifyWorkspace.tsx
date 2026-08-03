@@ -96,7 +96,10 @@ import {
 import { mergeGammaLevelsAtSamePrice, type ChartGammaLevelsPayload } from "@/lib/chartGammaLevels";
 import {
   buildChartVolumeProfile,
+  enrichCandlesWithInstitutionalTrades,
+  fetchInstitutionalOrderFlowLevels,
   fetchInstitutionalVolumeProfile,
+  type InstitutionalOrderFlowResult,
   type InstitutionalTrade,
   type InstitutionalVolumeProfile,
 } from "@/lib/institutionalMarketData";
@@ -180,10 +183,13 @@ import {
 } from "@/lib/chartLiveEvents";
 import {
   mergeChartHistory,
+  peekExecutionTapeCache,
   peekCompatibleChartHistoryCache,
   readCompatibleChartHistoryCache,
   readChartHistoryCache,
+  readExecutionTapeCache,
   writeChartHistoryCache,
+  writeExecutionTapeCache,
 } from "@/lib/chartHistoryCache";
 import {
   DEFAULT_CHART_HISTORY_CALENDAR_DAYS,
@@ -1563,16 +1569,51 @@ function reanchorLiveMidIntoCandles(candles: Candle[], mid: number, symbol: stri
 
 const workspaceCandleRequests = new Map<string, Promise<Candle[]>>();
 const workspaceExecutionTape = new Map<string, InstitutionalTrade[]>();
+const workspaceOrderFlowRequests = new Map<string, Promise<InstitutionalOrderFlowResult | null>>();
 
 function workspaceOrderFlowKey(symbol: string, timeframe: string) {
   return `${symbol}::${timeframe}::flow`;
+}
+
+function fetchWorkspaceOrderFlow(
+  symbol: string,
+  timeframe: string,
+  contractSymbol: string,
+) {
+  const key = `${symbol}::${contractSymbol}::${timeframe}`;
+  const pending = workspaceOrderFlowRequests.get(key);
+  if (pending) return pending;
+  const request = fetchInstitutionalOrderFlowLevels({
+    symbol: displayCmeSymbol(symbol),
+    contractSymbol,
+    timeframe,
+    fromMs: Date.now() - 6 * 60 * 60_000,
+    toMs: Date.now(),
+    includeTrades: true,
+    timeoutMs: 25_000,
+  }).finally(() => {
+    if (workspaceOrderFlowRequests.get(key) === request) {
+      workspaceOrderFlowRequests.delete(key);
+    }
+  });
+  workspaceOrderFlowRequests.set(key, request);
+  return request;
+}
+
+function normalizeExecutionTimestamp(value: unknown) {
+  let timestamp = Number(value);
+  if (!Number.isFinite(timestamp)) return Number.NaN;
+  if (timestamp > 100_000_000_000_000_000) timestamp /= 1_000_000;
+  else if (timestamp > 100_000_000_000_000) timestamp /= 1_000;
+  else if (timestamp > 0 && timestamp < 100_000_000_000) timestamp *= 1_000;
+  return Math.round(timestamp);
 }
 
 function decodeExecutionTape(value: unknown): InstitutionalTrade[] {
   if (!Array.isArray(value)) return [];
   return value.flatMap((entry, index) => {
     if (!Array.isArray(entry) || entry.length < 4) return [];
-    const timestamp = Number(entry[0]);
+    const timestamp = normalizeExecutionTimestamp(entry[0]);
     const price = Number(entry[1]);
     const volume = Number(entry[2]);
     const delta = Number(entry[3]);
@@ -1602,7 +1643,7 @@ function decodeExecutionTape(value: unknown): InstitutionalTrade[] {
       aggressor: delta > 0 ? "BUY" as const : "SELL" as const,
       sideSemanticsVersion: 1,
     }];
-  });
+  }).sort((left, right) => left.timestamp - right.timestamp || left.recordIndex - right.recordIndex);
 }
 
 function mergeInstitutionalTradeTape(
@@ -1665,6 +1706,11 @@ async function fetchWorkspaceCandles(
     if (pending) return pending;
 
     const request = (async () => {
+      const eventBased = isEventBasedChartInterval(timeframe);
+      const contractSymbol = currentCmeContract(symbol);
+      const orderFlowRequest = includeOrderFlow && contractSymbol
+        ? fetchWorkspaceOrderFlow(symbol, timeframe, contractSymbol)
+        : Promise.resolve(null);
       const response = await fetch(
         `/api/databento/market?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}&days=${DEFAULT_CHART_HISTORY_CALENDAR_DAYS}${includeOrderFlow ? "&orderFlow=1" : ""}`,
         {
@@ -1674,16 +1720,50 @@ async function fetchWorkspaceCandles(
           signal: AbortSignal.timeout(isEventBasedChartInterval(timeframe) ? 285_000 : 45_000),
         },
       );
-      const payload = await response.json();
+      const [payload, institutionalOrderFlow] = await Promise.all([
+        response.json(),
+        orderFlowRequest,
+      ]);
       if (!response.ok) throw new Error(payload.error ?? `CME did not return candles for ${displayCmeSymbol(symbol)}.`);
-      const downloaded = sanitizeCandles((payload.candles ?? []) as Candle[], symbol);
+      const providerCandles = sanitizeCandles((payload.candles ?? []) as Candle[], symbol);
+      const exactOrderFlowCandles = eventBased
+        ? sanitizeCandles(institutionalOrderFlow?.candles ?? [], symbol)
+        : [];
+      const rawDownloaded = exactOrderFlowCandles.length
+        ? sanitizeCandles([
+            ...providerCandles.filter((candle) => candle.timestamp < exactOrderFlowCandles[0].timestamp),
+            ...exactOrderFlowCandles,
+          ], symbol)
+        : providerCandles;
+      const providerExecutionTape = includeOrderFlow
+        ? decodeExecutionTape(payload.executions)
+        : [];
+      const privateExecutionTape = institutionalOrderFlow
+        ? institutionalOrderFlow.trades.length
+          ? institutionalOrderFlow.trades
+          : institutionalOrderFlow.records
+        : [];
+      const executionTape = mergeInstitutionalTradeTape(
+        providerExecutionTape,
+        privateExecutionTape,
+      );
       if (includeOrderFlow) {
         workspaceExecutionTape.set(
           workspaceOrderFlowKey(symbol, timeframe),
-          decodeExecutionTape(payload.executions),
+          executionTape,
         );
       }
-      if (downloaded.length) await writeChartHistoryCache(symbol, timeframe, downloaded);
+      const downloaded = includeOrderFlow && eventBased && !exactOrderFlowCandles.length && executionTape.length
+        ? enrichCandlesWithInstitutionalTrades(rawDownloaded, executionTape, rawDownloaded.length)
+        : rawDownloaded;
+      await Promise.all([
+        downloaded.length
+          ? writeChartHistoryCache(symbol, timeframe, downloaded)
+          : Promise.resolve(null),
+        executionTape.length
+          ? writeExecutionTapeCache(symbol, timeframe, executionTape)
+          : Promise.resolve(null),
+      ]);
       return downloaded;
     })();
 
@@ -2715,9 +2795,18 @@ function WorkspaceChartPane({
       ? mergeObservedDatabentoTail(immediateHistory, observedTail, pane.timeframe)
       : immediateHistory;
     const hasImmediateHistory = immediateHistory.length > 0;
-    const immediateMarketTrades = needsOrderFlowHistory
-      ? workspaceExecutionTape.get(workspaceOrderFlowKey(pane.symbol, pane.timeframe)) ?? []
+    const memoryTape = needsOrderFlowHistory
+      ? peekExecutionTapeCache(pane.symbol, pane.timeframe)?.records ?? []
       : [];
+    const immediateMarketTrades = needsOrderFlowHistory
+      ? workspaceExecutionTape.get(workspaceOrderFlowKey(pane.symbol, pane.timeframe)) ?? memoryTape
+      : [];
+    if (immediateMarketTrades.length) {
+      workspaceExecutionTape.set(
+        workspaceOrderFlowKey(pane.symbol, pane.timeframe),
+        immediateMarketTrades,
+      );
+    }
     setLoading(!hasImmediateHistory);
     setError(null);
     setCandles(hasImmediateHistory ? immediateCandles : []);
@@ -2732,11 +2821,74 @@ function WorkspaceChartPane({
       liveFrameRef.current = null;
     }
 
+    // Paint the exact recent Rithmic event bars as soon as the private bridge
+    // answers. The longer five-day CME backfill continues below and merges in
+    // silently, so selecting 40 Range is useful in seconds rather than being
+    // held behind the complete historical download.
+    if (
+      pane.broker === "Databento"
+      && needsOrderFlowHistory
+      && resolvedContractSymbol
+      && isEventBasedChartInterval(pane.timeframe)
+    ) {
+      void fetchWorkspaceOrderFlow(
+        pane.symbol,
+        pane.timeframe,
+        resolvedContractSymbol,
+      ).then((result) => {
+        if (cancelled || !result?.candles.length) return;
+        const exactCandles = sanitizeCandles(result.candles, pane.symbol);
+        if (!exactCandles.length) return;
+        const cutoff = exactCandles[0].timestamp;
+        const mergedCandles = sanitizeCandles([
+          ...latestCandlesRef.current.filter((candle) => candle.timestamp < cutoff),
+          ...exactCandles,
+        ], pane.symbol);
+        const exactTape = result.trades.length ? result.trades : result.records;
+        const mergedTape = mergeInstitutionalTradeTape(
+          latestMarketTradesRef.current,
+          exactTape,
+        );
+        latestCandlesRef.current = mergedCandles;
+        latestMarketTradesRef.current = mergedTape;
+        workspaceExecutionTape.set(
+          workspaceOrderFlowKey(pane.symbol, pane.timeframe),
+          mergedTape,
+        );
+        historyHydratedRef.current = true;
+        setCandles(mergedCandles);
+        setMarketTrades(mergedTape);
+        setLoading(false);
+        setError(null);
+        void writeChartHistoryCache(pane.symbol, pane.timeframe, mergedCandles);
+        void writeExecutionTapeCache(pane.symbol, pane.timeframe, mergedTape);
+      });
+    }
+
     const loadHistory = async () => {
-      const cached = pane.broker === "Databento"
-        ? await readCompatibleChartHistoryCache(pane.symbol, pane.timeframe)
-        : null;
+      const [cached, storedTape] = await Promise.all([
+        pane.broker === "Databento"
+          ? readCompatibleChartHistoryCache(pane.symbol, pane.timeframe)
+          : Promise.resolve(null),
+        pane.broker === "Databento" && needsOrderFlowHistory
+          ? readExecutionTapeCache(pane.symbol, pane.timeframe)
+          : Promise.resolve(null),
+      ]);
       if (cancelled) return;
+      const cachedMarketTrades = needsOrderFlowHistory
+        ? mergeInstitutionalTradeTape(
+            latestMarketTradesRef.current,
+            storedTape?.records ?? [],
+          )
+        : [];
+      if (cachedMarketTrades.length) {
+        latestMarketTradesRef.current = cachedMarketTrades;
+        workspaceExecutionTape.set(
+          workspaceOrderFlowKey(pane.symbol, pane.timeframe),
+          cachedMarketTrades,
+        );
+        setMarketTrades(cachedMarketTrades);
+      }
       const cachedHistory = trimCandlesAfterActiveBucket(
         sanitizeCandles(cached?.candles ?? [], pane.symbol),
         pane.timeframe,
@@ -2778,7 +2930,7 @@ function WorkspaceChartPane({
           || cachedCandles.some((candle) =>
             Number(candle.askVolume ?? 0) + Number(candle.bidVolume ?? 0) > 0)
         )
-        && (!needsExecutionTape || immediateMarketTrades.length > 0);
+        && (!needsExecutionTape || cachedMarketTrades.length > 0);
       if (cachedBase.length) {
         latestCandlesRef.current = cachedCandles;
         historyHydratedRef.current = true;
@@ -2803,8 +2955,11 @@ function WorkspaceChartPane({
           requestController.signal,
         );
         if (cancelled) return;
-        const nextMarketTrades = needsOrderFlowHistory
+        const downloadedMarketTrades = needsOrderFlowHistory
           ? workspaceExecutionTape.get(workspaceOrderFlowKey(pane.symbol, pane.timeframe)) ?? []
+          : [];
+        const nextMarketTrades = needsOrderFlowHistory
+          ? mergeInstitutionalTradeTape(latestMarketTradesRef.current, downloadedMarketTrades)
           : [];
         const downloaded = trimCandlesAfterActiveBucket(
           sanitizeCandles(nextCandles, pane.symbol),
@@ -2839,6 +2994,12 @@ function WorkspaceChartPane({
           : clean;
         latestCandlesRef.current = merged;
         latestMarketTradesRef.current = nextMarketTrades;
+        if (nextMarketTrades.length) {
+          workspaceExecutionTape.set(
+            workspaceOrderFlowKey(pane.symbol, pane.timeframe),
+            nextMarketTrades,
+          );
+        }
         historyHydratedRef.current = true;
         setCandles(merged);
         setMarketTrades(nextMarketTrades);
@@ -2861,7 +3022,15 @@ function WorkspaceChartPane({
       cancelled = true;
       requestController.abort();
     };
-  }, [needsExecutionTape, needsOrderFlowHistory, pane.broker, pane.symbol, pane.timeframe, period]);
+  }, [
+    needsExecutionTape,
+    needsOrderFlowHistory,
+    pane.broker,
+    pane.symbol,
+    pane.timeframe,
+    period,
+    resolvedContractSymbol,
+  ]);
 
   useEffect(() => {
     if (pane.broker !== "Databento") return;
@@ -2869,11 +3038,17 @@ function WorkspaceChartPane({
       if (latestCandlesRef.current.length) {
         void writeChartHistoryCache(pane.symbol, pane.timeframe, latestCandlesRef.current);
       }
+      if (latestMarketTradesRef.current.length) {
+        void writeExecutionTapeCache(pane.symbol, pane.timeframe, latestMarketTradesRef.current);
+      }
     }, 30_000);
     return () => {
       window.clearInterval(interval);
       if (latestCandlesRef.current.length) {
         void writeChartHistoryCache(pane.symbol, pane.timeframe, latestCandlesRef.current);
+      }
+      if (latestMarketTradesRef.current.length) {
+        void writeExecutionTapeCache(pane.symbol, pane.timeframe, latestMarketTradesRef.current);
       }
     };
   }, [pane.broker, pane.symbol, pane.timeframe]);

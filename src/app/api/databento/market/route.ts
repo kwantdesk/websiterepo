@@ -7,7 +7,10 @@ import {
 import type { Candle } from "@/lib/backtester";
 import { DEFAULT_CHART_HISTORY_CALENDAR_DAYS } from "@/lib/chartHistoryWindow";
 import { isEventBasedChartInterval } from "@/lib/chartIntervals";
-import { getDatabentoEventBars } from "@/lib/databentoEventHistory.server";
+import {
+  getDatabentoEventBars,
+  getDatabentoEventHistory,
+} from "@/lib/databentoEventHistory.server";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -77,10 +80,12 @@ export async function GET(request: Request) {
   try {
     const end = new Date(now).toISOString();
     const history = isEventBasedChartInterval(timeframe)
-      ? {
-          candles: await getDatabentoEventBars(symbol, timeframe, start, end),
-          executions: [] as DatabentoExecutionTuple[],
-        }
+      ? includeOrderFlow
+        ? await getDatabentoEventHistory(symbol, timeframe, start, end)
+        : {
+            candles: await getDatabentoEventBars(symbol, timeframe, start, end),
+            executions: [] as DatabentoExecutionTuple[],
+          }
       : includeOrderFlow
         ? await getDatabentoOrderFlowHistory(symbol, timeframe, start, end)
         : {

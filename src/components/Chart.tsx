@@ -102,6 +102,7 @@ import {
 } from "@/lib/marketSessions";
 import { calculateKwantStats } from "@/lib/kwantStats";
 import { defaultChartSettings, type ChartSettings } from "@/lib/chartSettings";
+import { isEventBasedChartInterval } from "@/lib/chartIntervals";
 import { compactTimeZoneLabel, normalizeTimeZone } from "@/lib/timeZones";
 import { resolveChartLevelOverlaps } from "@/lib/chartLevelOverlap";
 
@@ -811,6 +812,7 @@ function buildSafeChartData(
   candles: Candle[],
   preserveEventBars = false,
   sourceTimeByChartTime?: Map<number, number>,
+  chartTimeBySourceTime?: Map<number, number>,
 ) {
   const byTime = new Map<number, {
     time: Time;
@@ -822,6 +824,7 @@ function buildSafeChartData(
 
   let previousChartTime = Number.NEGATIVE_INFINITY;
   sourceTimeByChartTime?.clear();
+  chartTimeBySourceTime?.clear();
 
   for (const candle of candles) {
     const naturalTime = Math.floor(Number(candle.timestamp) / 1_000);
@@ -838,6 +841,7 @@ function buildSafeChartData(
     ) continue;
     previousChartTime = time;
     sourceTimeByChartTime?.set(time, Number(candle.timestamp));
+    chartTimeBySourceTime?.set(Number(candle.timestamp), time);
     byTime.set(time, {
       time: time as Time,
       open,
@@ -1151,6 +1155,7 @@ export default function Chart({
     candles.at(-1)?.timestamp ?? null,
   );
   const eventSourceTimeByChartTimeRef = useRef(new Map<number, number>());
+  const eventChartTimeBySourceTimeRef = useRef(new Map<number, number>());
   const indicatorSampleTimerRef = useRef<number | null>(null);
   const viewportResetFrameRef = useRef<number | null>(null);
   const chartVisualReadyTokenRef = useRef(0);
@@ -1220,7 +1225,10 @@ export default function Chart({
         });
         lastRenderedCandleTimeRef.current = candleTime;
         lastRenderedSourceTimestampRef.current = candle.timestamp;
-        if (eventBased) eventSourceTimeByChartTimeRef.current.set(candleTime, candle.timestamp);
+        if (eventBased) {
+          eventSourceTimeByChartTimeRef.current.set(candleTime, candle.timestamp);
+          eventChartTimeBySourceTimeRef.current.set(candle.timestamp, candleTime);
+        }
       } catch {
         // A late tick from a cancelled timeframe must never take down the chart.
       }
@@ -1421,6 +1429,14 @@ export default function Chart({
     (time: number) => chartRef.current?.timeScale().timeToCoordinate(time as Time) ?? null,
     [],
   );
+  const indicatorTimestampToX = useCallback(
+    (timestamp: number) => {
+      const eventChartTime = eventChartTimeBySourceTimeRef.current.get(timestamp);
+      const chartTime = eventChartTime ?? Math.floor(timestamp / 1_000);
+      return chartRef.current?.timeScale().timeToCoordinate(chartTime as Time) ?? null;
+    },
+    [],
+  );
   const deltaHighlightInstance = useMemo(
     () => indicators.find((instance) =>
       instance.enabled && instance.indicatorId === "delta-highlight") ?? null,
@@ -1491,7 +1507,12 @@ export default function Chart({
     (instanceId: string) => openIndicatorSettingsRef.current?.(instanceId),
     [],
   );
-  const candleIntervalMs = useMemo(() => timeframeToMs(timeframe) ?? inferCandleIntervalMs(candles), [candles, timeframe]);
+  const candleIntervalMs = useMemo(
+    () => timeframe && isEventBasedChartInterval(timeframe)
+      ? null
+      : timeframeToMs(timeframe) ?? inferCandleIntervalMs(candles),
+    [candles, timeframe],
+  );
   const deepEffortIndicator = useMemo(
     () => indicators.find((instance) =>
       instance.enabled && instance.indicatorId === "deep-m-effort-nq") ?? null,
@@ -1547,7 +1568,13 @@ export default function Chart({
       return [{ ...print, chartTimestamp: indicatorCandles[anchorIndex].timestamp }];
     });
     const indicatorSettings = bigTradesIndicator?.settings ?? {};
-    if (indicatorSettings.combineByCandle === false) {
+    const combineByCandle = indicatorSettings.combineByCandle !== false;
+    const isTimeAggregation = combineByCandle && candleIntervalMs != null && candleIntervalMs >= 60_000;
+    // Kwantify's execution view never collapses a range/volume/Renko bar into
+    // one same-side bubble. Those bars are defined by market events rather
+    // than clock time, so preserving their strongest individual prints is the
+    // visual behaviour traders expect from 40 Range.
+    if (!isTimeAggregation) {
       const maxPerBar = Math.max(1, Math.min(50, Number(indicatorSettings.maxMarkersPerBar ?? 6)));
       const byBar = new Map<number, AnchoredBigTradePrint[]>();
       anchored.forEach((print) => {
@@ -1574,7 +1601,7 @@ export default function Chart({
       // price. Later same-side executions grow it without sliding it.
     });
     const aggregates = Array.from(grouped.values());
-    const intervalMinutes = (candleIntervalMs ?? 60_000) / 60_000;
+    const intervalMinutes = candleIntervalMs / 60_000;
     const historical = aggregates.filter((print) =>
       print.chartTimestamp !== indicatorCandles.at(-1)?.timestamp);
     let adaptiveThreshold = 0;
@@ -1627,7 +1654,7 @@ export default function Chart({
     }).sort((left, right) => left.timestamp - right.timestamp);
   }, [bigTradePrints, bigTradesIndicator?.settings, candleIntervalMs, indicatorCandles]);
   const positionedBigTradePrints = useMemo(() => anchoredBigTradePrints.flatMap((print) => {
-    const x = indicatorTimeToX(Math.floor(print.chartTimestamp / 1_000));
+    const x = indicatorTimestampToX(print.chartTimestamp);
     const y = candleSeriesRef.current?.priceToCoordinate(print.price) ?? null;
     if (
       x === null
@@ -1639,7 +1666,7 @@ export default function Chart({
   }), [
     anchoredBigTradePrints,
     chartReadyRevision,
-    indicatorTimeToX,
+    indicatorTimestampToX,
     overlaySize.width,
     viewportVersion,
   ]);
@@ -1649,9 +1676,9 @@ export default function Chart({
       const startCandle = indicatorCandles[zone.startIndex];
       if (!startCandle) return [];
       const endCandle = indicatorCandles[Math.min(zone.endIndex, indicatorCandles.length - 1)];
-      const startX = indicatorTimeToX(Math.floor(startCandle.timestamp / 1_000));
+      const startX = indicatorTimestampToX(startCandle.timestamp);
       const endX = endCandle
-        ? indicatorTimeToX(Math.floor(endCandle.timestamp / 1_000))
+        ? indicatorTimestampToX(endCandle.timestamp)
         : null;
       const topY = candleSeriesRef.current?.priceToCoordinate(zone.top) ?? null;
       const bottomY = candleSeriesRef.current?.priceToCoordinate(zone.bottom) ?? null;
@@ -1675,7 +1702,7 @@ export default function Chart({
     deepEffort,
     deepEffortIndicator?.settings?.showZones,
     indicatorCandles,
-    indicatorTimeToX,
+    indicatorTimestampToX,
     overlaySize.width,
     viewportVersion,
   ]);
@@ -3014,6 +3041,7 @@ export default function Chart({
         candles,
         timeframeToMs(timeframe) === null,
         eventSourceTimeByChartTimeRef.current,
+        eventChartTimeBySourceTimeRef.current,
       );
       candleSeriesRef.current.setData(chartData);
       lastRenderedCandleTimeRef.current = chartData.length
@@ -3068,6 +3096,7 @@ export default function Chart({
           lastRenderedSourceTimestampRef.current = lastSourceCandle.timestamp;
           if (eventBased) {
             eventSourceTimeByChartTimeRef.current.set(candleTime, lastSourceCandle.timestamp);
+            eventChartTimeBySourceTimeRef.current.set(lastSourceCandle.timestamp, candleTime);
           }
         } catch {
           // A superseded history request can finish after a timeframe switch.
@@ -3211,6 +3240,7 @@ export default function Chart({
       candles,
       timeframeToMs(timeframe) === null,
       eventSourceTimeByChartTimeRef.current,
+      eventChartTimeBySourceTimeRef.current,
     );
 
     candleSeries.setData(chartData);
