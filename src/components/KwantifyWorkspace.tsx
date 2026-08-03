@@ -421,7 +421,7 @@ type GammaLevelExportSnapshot = {
   valueArea: ValueAreaLevelExportSnapshot | null;
 };
 type LevelExportRow = {
-  levelType: "Gamma Levels" | "Quant Levels" | "Value Area Levels" | "Historical Supply/Demand + S/R";
+  levelType: "Gamma Levels" | "Kwant Levels" | "Value Area Levels" | "Historical Supply/Demand + S/R";
   instrument: string;
   sourceSymbol: string;
   contractSymbol: string;
@@ -4659,14 +4659,14 @@ export default function KwantifyWorkspace({
     if (quickGameplanLoading) return;
     const root = gameplanChartRootForInstrument(activeWorkspacePane.symbol);
     if (!root) {
-      showReportToast("error", "Quant levels are available for NQ, MNQ, ES and MES charts.", 3_000);
+      showReportToast("error", "Kwant levels are available for NQ, MNQ, ES and MES charts.", 3_000);
       return;
     }
 
     const session = currentGameplanSession();
     setQuickGameplanLoading(true);
     setQuickGameplanUpdatedRoot(null);
-    showReportToast("loading", `Refreshing the latest ${root} Quant levels…`);
+    showReportToast("loading", `Refreshing the latest ${root} Kwant levels…`);
 
     try {
       const response = await fetch(
@@ -4688,14 +4688,14 @@ export default function KwantifyWorkspace({
       setQuickGameplanUpdatedRoot(root);
       showReportToast(
         "success",
-        `${root} ${gameplanSessionLabel(session)} Quant levels replaced with the latest edition.`,
+        `${root} ${gameplanSessionLabel(session)} Kwant levels replaced with the latest edition.`,
         2_800,
       );
       window.setTimeout(() => setQuickGameplanUpdatedRoot((current) => current === root ? null : current), 2_800);
     } catch (reason) {
       showReportToast(
         "error",
-        reason instanceof Error ? reason.message : "The latest Quant levels could not be loaded.",
+        reason instanceof Error ? reason.message : "The latest Kwant levels could not be loaded.",
         4_000,
       );
     } finally {
@@ -7920,7 +7920,7 @@ export default function KwantifyWorkspace({
       if (levelExportTypes.gameplan && option.gameplan) {
         for (const level of option.gameplan.levels) {
           rows.push({
-            levelType: "Quant Levels",
+            levelType: "Kwant Levels",
             instrument: option.instrument,
             sourceSymbol: option.sourceSymbol,
             contractSymbol: option.contractSymbol,
@@ -7969,7 +7969,7 @@ export default function KwantifyWorkspace({
       return;
     }
     if (!levelExportTypes.gamma && !levelExportTypes.gameplan && !levelExportTypes.valueArea) {
-      setLevelExportError("Select Gamma Levels, Quant Levels, or Value Area Levels.");
+      setLevelExportError("Select Gamma Levels, Kwant Levels, or Value Area Levels.");
       return;
     }
     if (levelExportTypes.valueArea) {
@@ -8747,9 +8747,9 @@ export default function KwantifyWorkspace({
             disabled={!activeGameplanRoot || quickGameplanLoading}
             title={activeGameplanRoot
               ? activeGameplanLevelsAdded
-                ? `Refresh this chart with the latest ${activeGameplanRoot} Quant levels`
-                : `Add the latest ${activeGameplanRoot} Quant levels to this chart`
-              : "Quant levels are available for NQ, MNQ, ES and MES charts"}
+                ? `Refresh this chart with the latest ${activeGameplanRoot} Kwant levels`
+                : `Add the latest ${activeGameplanRoot} Kwant levels to this chart`
+              : "Kwant levels are available for NQ, MNQ, ES and MES charts"}
             className={`flex h-8 shrink-0 items-center gap-1.5 rounded-xl border px-3 text-[9px] font-bold uppercase tracking-[0.08em] transition-colors disabled:cursor-not-allowed disabled:opacity-35 ${
               activeGameplanRoot && quickGameplanUpdatedRoot === activeGameplanRoot
                 ? "border-primary/40 bg-primary/15 text-primary"
@@ -8766,7 +8766,7 @@ export default function KwantifyWorkspace({
               : activeGameplanRoot && quickGameplanUpdatedRoot === activeGameplanRoot
                 ? <span className="hidden xl:inline">{`${activeGameplanRoot} Levels Updated`}</span>
                 : <span className="hidden xl:inline">
-                    {activeGameplanLevelsAdded ? "Refresh Quant Levels" : "Add Quant Levels"}
+                    {activeGameplanLevelsAdded ? "Refresh Kwant Levels" : "Add Kwant Levels"}
                   </span>}
           </button>
           <TimeZoneSelect
@@ -8824,7 +8824,7 @@ export default function KwantifyWorkspace({
                     <div className="grid gap-2 sm:grid-cols-2">
                       {([
                         ["gamma", "Gamma Levels", "Live options-derived chart levels", false],
-                        ["gameplan", "Quant Levels", "Proprietary named levels and price zones", false],
+                        ["gameplan", "Kwant Levels", "Proprietary named levels and price zones", false],
                         ["valueArea", "Value Area Levels", "Prior-day and prior-week VAH, VAL, POC and VWAP", false],
                         ["historicalStructure", "Historical Supply/Demand + S/R", "Validated historical structure export is being built", true],
                       ] as const).map(([type, label, description, disabled]) => {

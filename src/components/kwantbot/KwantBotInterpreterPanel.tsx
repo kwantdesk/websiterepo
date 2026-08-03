@@ -423,7 +423,7 @@ export default function KwantBotInterpreterPanel({
                     Building the {selectedRoot} market read
                   </div>
                   <p className="mt-1 text-[10px] leading-4 text-muted">
-                    Loading live CME price, Quant levels, options positioning, and the first memory samples.
+                    Loading live CME price, Kwant levels, options positioning, and the first memory samples.
                   </p>
                 </div>
               ) : rootMessages.map((item, index) => (

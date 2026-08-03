@@ -396,7 +396,7 @@ export default function KwantBotIntelligenceWorkspace({
       return {
         label: "Building evidence",
         headline: "Waiting for a complete market state",
-        thesis: "KwantBot will form a conditional view after live price, Quant levels, and options positioning are all present.",
+        thesis: "KwantBot will form a conditional view after live price, Kwant levels, and options positioning are all present.",
         validation: "No decision is valid until the required feeds agree.",
         invalidation: "No active hypothesis.",
       };
@@ -1396,7 +1396,7 @@ export default function KwantBotIntelligenceWorkspace({
                 icon={Waypoints}
                 eyebrow="Level memory"
                 title={`${selectedRoot} historical decision areas`}
-                detail="Current Quant levels matched against stored touches, reactions, and reviewed outcomes."
+                detail="Current Kwant levels matched against stored touches, reactions, and reviewed outcomes."
               />
               <div className="grid grid-cols-1 gap-3 p-4 md:grid-cols-2 xl:grid-cols-4">
                 {visibleLevels.map((level, index) => {

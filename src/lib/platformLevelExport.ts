@@ -1,5 +1,5 @@
 export type PlatformLevelInput = {
-  levelType: "Gamma Levels" | "Quant Levels" | "Value Area Levels" | "Historical Supply/Demand + S/R";
+  levelType: "Gamma Levels" | "Kwant Levels" | "Value Area Levels" | "Historical Supply/Demand + S/R";
   instrument: string;
   contractSymbol: string;
   id: string;

@@ -133,7 +133,7 @@ const DEFAULT_PANELS: PanelConfig[] = [
 
 const FAMILY_LABELS: Record<LevelFamily, string> = {
   gamma: "Gamma levels",
-  gameplan: "Quant levels",
+  gameplan: "Kwant levels",
   structure: "Supply / demand + S/R",
   "value-area": "Value area + prior periods",
 };
