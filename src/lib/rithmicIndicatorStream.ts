@@ -54,11 +54,36 @@ function decodeRecords(value: unknown) {
 
 function mergeRecords(current: InstitutionalTrade[], incoming: InstitutionalTrade[]) {
   if (!incoming.length) return current;
+  const recordKey = (record: InstitutionalTrade) => record.eventId
+    || `${record.timestamp}:${record.recordIndex}:${record.close}:${record.volume}`;
+
+  // Live batches are already chronological. Avoid rebuilding and sorting a
+  // 25,000-row map for every SSE message; only compare against the recent tail
+  // where a reconnect can repeat records.
+  const recentKeys = new Set(
+    current
+      .slice(-Math.max(512, incoming.length * 4))
+      .map(recordKey),
+  );
+  const additions = incoming.filter((record) => !recentKeys.has(recordKey(record)));
+  if (!additions.length) return current;
+  const currentTail = current.at(-1);
+  const additionsAreOrdered = additions.every((record, index) => (
+    index === 0
+      ? !currentTail
+        || record.timestamp > currentTail.timestamp
+        || (record.timestamp === currentTail.timestamp && record.recordIndex >= currentTail.recordIndex)
+      : record.timestamp > additions[index - 1].timestamp
+        || (record.timestamp === additions[index - 1].timestamp
+          && record.recordIndex >= additions[index - 1].recordIndex)
+  ));
+  if (additionsAreOrdered) {
+    return current.concat(additions).slice(-MAX_TAPE_RECORDS);
+  }
+
   const byId = new Map<string, InstitutionalTrade>();
-  for (const record of [...current, ...incoming]) {
-    const key = record.eventId
-      || `${record.timestamp}:${record.recordIndex}:${record.close}:${record.volume}`;
-    byId.set(key, record);
+  for (const record of [...current, ...additions]) {
+    byId.set(recordKey(record), record);
   }
   return [...byId.values()]
     .sort((left, right) => left.timestamp - right.timestamp || left.recordIndex - right.recordIndex)

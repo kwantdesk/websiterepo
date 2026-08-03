@@ -24,9 +24,13 @@ export function useAccountPreferenceSync({
     let active = true;
     let saving = false;
     let pending = false;
+    let consecutiveFailures = 0;
+    let retryAfter = 0;
+    let eventTimer: number | null = null;
 
-    const persist = async () => {
+    const persist = async (force = false) => {
       if (!active) return;
+      if (!force && Date.now() < retryAfter) return;
       if (saving) {
         pending = true;
         return;
@@ -38,9 +42,19 @@ export function useAccountPreferenceSync({
       saving = true;
       try {
         await saveUserPreferences(supabase, userId, snapshot);
-        if (active) lastSavedFingerprintRef.current = fingerprint;
+        if (active) {
+          lastSavedFingerprintRef.current = fingerprint;
+          consecutiveFailures = 0;
+          retryAfter = 0;
+        }
       } catch {
-        if (active) lastSavedFingerprintRef.current = "";
+        if (active) {
+          consecutiveFailures += 1;
+          retryAfter = Date.now() + Math.min(
+            60_000,
+            5_000 * (2 ** Math.min(consecutiveFailures - 1, 4)),
+          );
+        }
       } finally {
         saving = false;
         if (pending && active) {
@@ -51,16 +65,26 @@ export function useAccountPreferenceSync({
     };
 
     lastSavedFingerprintRef.current = preferenceSnapshotFingerprint(captureBrowserPreferences());
-    const interval = window.setInterval(() => void persist(), 1_500);
-    const handlePreferenceChange = () => void persist();
+    // Preference writes are event-driven. The old 1.5-second poll repeatedly
+    // enumerated and serialised all localStorage chart state even when nothing
+    // changed, and a failed Supabase write could turn it into a retry storm.
+    const interval = window.setInterval(() => void persist(), 60_000);
+    const handlePreferenceChange = () => {
+      if (eventTimer !== null) window.clearTimeout(eventTimer);
+      eventTimer = window.setTimeout(() => {
+        eventTimer = null;
+        void persist();
+      }, 750);
+    };
     const handleVisibilityChange = () => {
-      if (document.visibilityState === "hidden") void persist();
+      if (document.visibilityState === "hidden") void persist(true);
     };
     window.addEventListener("kwantdesk:preferences-changed", handlePreferenceChange);
     document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
-      void persist();
+      if (eventTimer !== null) window.clearTimeout(eventTimer);
+      void persist(true);
       active = false;
       window.clearInterval(interval);
       window.removeEventListener("kwantdesk:preferences-changed", handlePreferenceChange);

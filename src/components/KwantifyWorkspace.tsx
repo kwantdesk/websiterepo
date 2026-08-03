@@ -13,7 +13,7 @@ import { useSocialNotifications } from "@/hooks/useSocialNotifications";
 import { useStructureLevels } from "@/hooks/useStructureLevels";
 
 import { startTransition, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent as ReactDragEvent } from "react";
-import { createPortal } from "react-dom";
+import { createPortal, flushSync } from "react-dom";
 import dynamic from "next/dynamic";
 import Image from "next/image";
 import Link from "next/link";
@@ -1610,11 +1610,32 @@ function mergeInstitutionalTradeTape(
   incoming: InstitutionalTrade[],
 ) {
   if (!incoming.length) return current;
+  const recordKey = (record: InstitutionalTrade) => record.eventId
+    || `${record.timestamp}:${record.recordIndex}:${record.close}:${record.volume}`;
+  const recentKeys = new Set(
+    current
+      .slice(-Math.max(512, incoming.length * 4))
+      .map(recordKey),
+  );
+  const additions = incoming.filter((record) => !recentKeys.has(recordKey(record)));
+  if (!additions.length) return current;
+  const currentTail = current.at(-1);
+  const additionsAreOrdered = additions.every((record, index) => (
+    index === 0
+      ? !currentTail
+        || record.timestamp > currentTail.timestamp
+        || (record.timestamp === currentTail.timestamp && record.recordIndex >= currentTail.recordIndex)
+      : record.timestamp > additions[index - 1].timestamp
+        || (record.timestamp === additions[index - 1].timestamp
+          && record.recordIndex >= additions[index - 1].recordIndex)
+  ));
+  if (additionsAreOrdered) {
+    return current.concat(additions).slice(-25_000);
+  }
+
   const records = new Map<string, InstitutionalTrade>();
-  for (const record of [...current, ...incoming]) {
-    const key = record.eventId
-      || `${record.timestamp}:${record.recordIndex}:${record.close}:${record.volume}`;
-    records.set(key, record);
+  for (const record of [...current, ...additions]) {
+    records.set(recordKey(record), record);
   }
   return [...records.values()]
     .sort((left, right) => left.timestamp - right.timestamp || left.recordIndex - right.recordIndex)
@@ -2624,7 +2645,7 @@ function WorkspaceChartPane({
         latestMarketTradesRef.current = next;
         workspaceExecutionTape.set(workspaceOrderFlowKey(pane.symbol, pane.timeframe), next);
         const now = Date.now();
-        if (now - lastMarketTradeStateSyncRef.current >= 100) {
+        if (now - lastMarketTradeStateSyncRef.current >= 400) {
           lastMarketTradeStateSyncRef.current = now;
           setMarketTrades(next);
         }
@@ -6965,10 +6986,12 @@ export default function KwantifyWorkspace({
 
     if (nextSection && nextSection !== previousSection) {
       // A primary navigation should never keep a chart-side workspace alive
-      // while another full workspace mounts. Unload it immediately, then make
-      // the selected tab respond optimistically while Next commits the URL.
-      setRightPanel(null);
-      startTransition(() => setOptimisticWorkspaceSection(nextSection));
+      // while another full workspace mounts. This update must be urgent: a
+      // transition can be starved forever by a busy live chart/order-flow feed.
+      flushSync(() => {
+        setRightPanel(null);
+        setOptimisticWorkspaceSection(nextSection);
+      });
     }
   }, []);
 

@@ -1252,7 +1252,10 @@ export default function Chart({
       indicatorSampleTimerRef.current = null;
       setSampledIndicatorCandles(pendingIndicatorCandlesRef.current);
       setSampledIndicatorMarketTrades(pendingIndicatorMarketTradesRef.current);
-    }, 120);
+    // The candle itself continues to render tick-by-tick. Expensive order-flow
+    // studies only need a smooth sub-second sample; recalculating every 120 ms
+    // across a growing execution tape eventually monopolises navigation.
+    }, 400);
   }, [candles, marketTrades]);
 
   useEffect(() => () => {
