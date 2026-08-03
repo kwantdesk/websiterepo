@@ -3,10 +3,21 @@ param(
   [ValidatePattern("^https://")]
   [string]$GatewayUrl,
   [string]$ProjectName = "websiterepo-yfmi",
-  [string]$EnvPath = (Join-Path $PSScriptRoot "..\operator.env")
+  [string]$TeamSlug = "kwant-desk",
+  [string]$GlobalConfigPath = "",
+  [string]$EnvPath = ""
 )
 
 $ErrorActionPreference = "Stop"
+$nodeOptions = @($env:NODE_OPTIONS, "--use-system-ca") |
+  Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+$env:NODE_OPTIONS = ($nodeOptions -join " ").Trim()
+if ([string]::IsNullOrWhiteSpace($GlobalConfigPath)) {
+  $GlobalConfigPath = Join-Path $env:LOCALAPPDATA "KwantDesk\vercel-cli"
+}
+if ([string]::IsNullOrWhiteSpace($EnvPath)) {
+  $EnvPath = Join-Path $PSScriptRoot "..\operator.env"
+}
 $resolvedEnv = (Resolve-Path -LiteralPath $EnvPath).Path
 $gatewayOrigin = $GatewayUrl.TrimEnd("/")
 
@@ -28,7 +39,10 @@ function Set-VercelValue(
   try {
     Set-Content -LiteralPath $temporaryPath -Value $Value -NoNewline -Encoding utf8
     $arguments = @(
-      "--yes", "vercel@latest", "env", "add", $Name, $Environment,
+      "--yes", "vercel@latest",
+      "-Q", $GlobalConfigPath,
+      "--scope", $TeamSlug,
+      "env", "add", $Name, $Environment,
       "--force", "--yes"
     )
     if ($Sensitive) { $arguments += "--sensitive" }
@@ -52,7 +66,10 @@ if (-not $health.configured) {
   throw "The public gateway URL responded but the gateway is not configured."
 }
 
-& npx --yes vercel@latest link --yes --project $ProjectName | Out-Null
+& npx --yes vercel@latest `
+  -Q $GlobalConfigPath `
+  --scope $TeamSlug `
+  link --yes --project $ProjectName | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "Could not link Vercel project $ProjectName." }
 
 foreach ($environment in @("production", "preview")) {
