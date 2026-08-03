@@ -49,12 +49,21 @@ export function resolveProtoDirectory(env = process.env) {
 }
 
 export function loadConfig(env = process.env) {
+  const sourceMode = String(env.RITHMIC_SOURCE_MODE || "protocol")
+    .trim()
+    .toLowerCase();
+  if (!["protocol", "rtrader-excel"].includes(sourceMode)) {
+    throw new Error(
+      `Invalid RITHMIC_SOURCE_MODE "${sourceMode}". Use protocol or rtrader-excel.`,
+    );
+  }
   const user = String(env.RITHMIC_USER || "").trim();
   const password = String(env.RITHMIC_PASSWORD || "").trim();
   const gatewayToken = String(env.KWANTIFY_MARKET_DATA_GATEWAY_TOKEN || "").trim();
   return {
     serviceRoot: SERVICE_ROOT,
-    protoDir: resolveProtoDirectory(env),
+    protoDir: sourceMode === "protocol" ? resolveProtoDirectory(env) : null,
+    sourceMode,
     url: String(
       env.RITHMIC_WS_URL || "wss://rituz00100.rithmic.com:443",
     ).trim(),
@@ -66,7 +75,10 @@ export function loadConfig(env = process.env) {
     port: positiveInteger(env.RITHMIC_GATEWAY_PORT, 8793),
     host: String(env.RITHMIC_GATEWAY_HOST || "127.0.0.1").trim(),
     gatewayToken,
-    configured: Boolean(user && password),
+    configured:
+      sourceMode === "rtrader-excel"
+        ? Boolean(gatewayToken)
+        : Boolean(user && password),
     subscriptions: parseSubscriptions(env.RITHMIC_SUBSCRIPTIONS),
     enableDepthByOrder:
       String(env.RITHMIC_ENABLE_DEPTH_BY_ORDER || "true").toLowerCase() !==
@@ -74,6 +86,7 @@ export function loadConfig(env = process.env) {
     maxTrades: positiveInteger(env.RITHMIC_MAX_TRADES, 250_000),
     reconnectMinMs: positiveInteger(env.RITHMIC_RECONNECT_MIN_MS, 1_000),
     reconnectMaxMs: positiveInteger(env.RITHMIC_RECONNECT_MAX_MS, 30_000),
+    excelStaleMs: positiveInteger(env.RITHMIC_EXCEL_STALE_MS, 3_000),
   };
 }
 

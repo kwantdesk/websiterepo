@@ -37,8 +37,9 @@ function Set-EnvEntry([string]$Path, [string]$Name, [string]$Value) {
   Set-Content -LiteralPath $Path -Value $lines -Encoding utf8
 }
 
+$sourceMode = Get-EnvEntry -Path $resolvedEnv -Name "RITHMIC_SOURCE_MODE"
 $password = Get-EnvEntry -Path $resolvedEnv -Name "RITHMIC_PASSWORD"
-if ([string]::IsNullOrWhiteSpace($password)) {
+if ($sourceMode -ne "rtrader-excel" -and [string]::IsNullOrWhiteSpace($password)) {
   throw "RITHMIC_PASSWORD is missing from $resolvedEnv"
 }
 

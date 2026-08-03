@@ -30,6 +30,7 @@ function makeInstrument(exchange, symbol, maxTrades) {
     bids: new Map(),
     asks: new Map(),
     orders: new Map(),
+    volumeByPrice: new Map(),
     trades: [],
     sequence: 0,
     sourceSequence: "0",
@@ -39,6 +40,7 @@ function makeInstrument(exchange, symbol, maxTrades) {
     bestAsk: null,
     bookValid: false,
     depthMode: "TRADES",
+    individualOrders: false,
     maxTrades,
   };
 }
@@ -61,6 +63,7 @@ function rebuildDepthByOrder(instrument) {
     orderCounts.set(order.price, Number(orderCounts.get(order.price) || 0) + 1);
   }
   instrument.depthMode = "L3";
+  instrument.individualOrders = true;
   instrument.bookValid = instrument.bids.size > 0 || instrument.asks.size > 0;
 }
 
@@ -174,8 +177,107 @@ export class RithmicBookStore {
     instrument.asOfMs = eventTimestampMs(payload);
     instrument.sequence += 1;
     instrument.depthMode = "L2";
+    instrument.individualOrders = false;
     instrument.bookValid = instrument.bids.size > 0 || instrument.asks.size > 0;
     return { type: "depth", instrument: instrumentKey(instrument.exchange, instrument.symbol) };
+  }
+
+  applyAggregatedSnapshot(payload) {
+    const instrument = this.ensure(payload.exchange, payload.symbol);
+    const bids = Array.isArray(payload.bids) ? payload.bids : [];
+    const asks = Array.isArray(payload.asks) ? payload.asks : [];
+    const tradeVolumes = Array.isArray(payload.tradeVolumes)
+      ? payload.tradeVolumes
+      : [];
+    const nextBids = new Map();
+    const nextAsks = new Map();
+    for (const row of bids) {
+      addLevel(nextBids, row.price, row.size, row.orders);
+    }
+    for (const row of asks) {
+      addLevel(nextAsks, row.price, row.size, row.orders);
+    }
+
+    const timestampMs = Number(payload.timestampMs);
+    const asOfMs = Number.isFinite(timestampMs) && timestampMs > 0
+      ? Math.floor(timestampMs)
+      : Date.now();
+    const firstVolumeSnapshot = instrument.volumeByPrice.size === 0;
+    const nextVolumeByPrice = new Map();
+    const inferredTrades = [];
+    const bestBidPrice = [...nextBids.keys()].reduce(
+      (best, candidate) => Math.max(best, candidate),
+      Number.NEGATIVE_INFINITY,
+    );
+    const bestAskPrice = [...nextAsks.keys()].reduce(
+      (best, candidate) => Math.min(best, candidate),
+      Number.POSITIVE_INFINITY,
+    );
+    for (const row of tradeVolumes) {
+      const price = Number(row.price);
+      const volume = Number(row.volume);
+      if (!Number.isFinite(price) || price <= 0 || !Number.isFinite(volume) || volume < 0) {
+        continue;
+      }
+      nextVolumeByPrice.set(price, volume);
+      if (firstVolumeSnapshot) continue;
+      const previous = Number(instrument.volumeByPrice.get(price) || 0);
+      const delta = volume - previous;
+      if (delta <= 0) continue;
+      const aggressor = price >= bestAskPrice
+        ? "BUY"
+        : price <= bestBidPrice
+          ? "SELL"
+          : "UNKNOWN";
+      instrument.sequence += 1;
+      const trade = {
+        id: `${instrument.exchange}:${instrument.symbol}:${asOfMs}:${instrument.sequence}`,
+        sequence: instrument.sequence,
+        sourceSequence: String(payload.sequence || instrument.sequence),
+        timestampMs: asOfMs,
+        price,
+        size: delta,
+        aggressor,
+      };
+      instrument.trades.push(trade);
+      inferredTrades.push(trade);
+    }
+    if (instrument.trades.length > instrument.maxTrades) {
+      instrument.trades.splice(0, instrument.trades.length - instrument.maxTrades);
+    }
+
+    instrument.bids = nextBids;
+    instrument.asks = nextAsks;
+    instrument.volumeByPrice = nextVolumeByPrice;
+    instrument.orders.clear();
+    instrument.asOfMs = asOfMs;
+    instrument.sequence += 1;
+    instrument.sourceSequence = String(payload.sequence || instrument.sequence);
+    instrument.depthMode = "MBO_AGGREGATED";
+    instrument.individualOrders = false;
+    instrument.bookValid = nextBids.size > 0 || nextAsks.size > 0;
+    const sortedBids = [...nextBids.values()].sort((left, right) => right.price - left.price);
+    const sortedAsks = [...nextAsks.values()].sort((left, right) => left.price - right.price);
+    instrument.bestBid = sortedBids[0] || null;
+    instrument.bestAsk = sortedAsks[0] || null;
+    const explicitLast = Number(payload.lastPrice);
+    instrument.lastPrice = Number.isFinite(explicitLast) && explicitLast > 0
+      ? explicitLast
+      : inferredTrades.at(-1)?.price ??
+        instrument.lastPrice ??
+        (Number.isFinite(bestBidPrice) && Number.isFinite(bestAskPrice)
+          ? (bestBidPrice + bestAskPrice) / 2
+          : Number.isFinite(bestBidPrice)
+            ? bestBidPrice
+            : Number.isFinite(bestAskPrice)
+              ? bestAskPrice
+              : null);
+
+    return {
+      type: "depth",
+      instrument: instrumentKey(instrument.exchange, instrument.symbol),
+      inferredTrades,
+    };
   }
 
   applyDepthSnapshot(payload) {
@@ -290,7 +392,10 @@ export class RithmicBookStore {
       asks,
       trades: instrument.trades.slice(-2_500),
       depthMode: instrument.depthMode,
-      fullDepth: instrument.depthMode === "L3" && instrument.bookValid,
+      fullDepth:
+        ["L3", "MBO_AGGREGATED"].includes(instrument.depthMode) &&
+        instrument.bookValid,
+      individualOrders: instrument.individualOrders,
       bookValid: instrument.bookValid,
       orderCount: instrument.orders.size,
     };

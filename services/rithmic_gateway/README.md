@@ -10,6 +10,47 @@ gateway token. Vercel talks to this service through a private bearer-protected
 origin. The Rithmic Test credentials and personal-use market data must not be
 redistributed to other users.
 
+## Temporary RTrader Pro bridge (no Dev Kit required)
+
+Until the Dev Kit is available, the gateway can ingest RTrader Pro's native
+Excel live stream. This route does not use Bookmap and does not log in through
+R|Protocol. RTrader Pro remains the entitled session and the bridge only reads
+its exported full Order Book workbook.
+
+The workbook includes the complete displayed price ladder, aggregate bid/ask
+size, bid/ask order count, and cumulative traded volume at price. It does not
+expose individual exchange order IDs or queue priorities, so the gateway labels
+the source `MBO_AGGREGATED` rather than claiming raw order-by-order Level 3.
+
+One-time setup:
+
+1. Keep RTrader Pro open and logged in.
+2. Open an **Order Book** for the contract, such as `NQU6.CME`.
+3. Use the Order Book export menu and choose **Create Live Streaming Spreadsheet**.
+4. Keep the generated Excel workbook open (`Book1`, sheet `Order Book-Full`).
+5. Run:
+
+```powershell
+cd services\rithmic_gateway
+powershell -ExecutionPolicy Bypass -File .\scripts\configure-rtrader-excel.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\start-background.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\start-excel-bridge-background.ps1 `
+  -WorkbookName Book1 -SheetName "Order Book-Full" `
+  -Exchange CME -ContractSymbol NQU6
+```
+
+The local bridge polls the live workbook every 250 ms, posts only to the
+bearer-protected local gateway, and never reads or writes the Place Orders or
+Manage Orders sheets. Stop it with:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\stop-excel-bridge.ps1
+```
+
+Create one RTrader live-stream workbook and one bridge process per contract.
+The local source still needs a secure reachable transport before a hosted
+Vercel deployment can consume it; `127.0.0.1` is intentionally not public.
+
 ## One-time SDK installation
 
 Do not commit the licensed Rithmic archive or proto files. Install them into the

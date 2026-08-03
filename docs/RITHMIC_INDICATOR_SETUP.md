@@ -1,23 +1,27 @@
 # Kwant Desk Rithmic indicator feed
 
-Kwant Desk uses a private, read-only R|Protocol gateway for live executions,
-Bid/Ask classification and Level 3 depth. Databento remains the historical
-fallback, so closing the Rithmic gateway does not remove stored chart history.
+Kwant Desk uses a private, read-only gateway for live executions and full-depth
+liquidity. Databento remains the historical fallback, so closing the Rithmic
+gateway does not remove stored chart history.
+
+During the RTrader Pro trial, the supported source is RTrader Pro's native
+Excel live-stream workbook. It supplies the full displayed price ladder,
+aggregate bid/ask size, order count and traded volume. It does not expose raw
+exchange order IDs, so the backend calls it `MBO_AGGREGATED`. When the Dev Kit
+arrives, `RITHMIC_SOURCE_MODE=protocol` enables the independent R|Protocol path.
 
 ## What is required
 
 Keep these values private. Do not paste the username, password, SDK or gateway
 token into a chat, browser form or client-side environment variable.
 
-1. The licensed `RProtocolAPI` SDK ZIP supplied by Rithmic.
-2. The exact system/environment shown on the R|Trader login screen, such as
-   `Rithmic Test`, plus its websocket endpoint if Rithmic supplied a non-default
-   endpoint.
-3. The Rithmic username and password.
-4. Confirmation that the account is entitled for CME market data and, for true
-   Level 3 studies, Depth by Order/MBO.
-5. The active futures contracts to subscribe to, for example NQ, MNQ, ES and
-   MES front-month contracts.
+1. RTrader Pro open and logged into the entitled CME trial.
+2. An Order Book for each active contract.
+3. **Create Live Streaming Spreadsheet** from each Order Book export menu.
+4. Excel kept open with the generated `Order Book-Full` sheet.
+
+The licensed R|Protocol SDK, API username/password and Dev Kit are not required
+for this temporary workbook source.
 
 ## Credential location
 
@@ -33,19 +37,15 @@ secret shared between the private gateway and the Kwant Desk server.
 ```powershell
 cd services\rithmic_gateway
 npm ci
-powershell -ExecutionPolicy Bypass -File .\scripts\install-rithmic-sdk.ps1 `
-  -ZipPath "C:\path\to\RProtocolAPI.zip"
-Copy-Item operator.env.template operator.env
-# Fill operator.env locally, then:
-npm run discover
-powershell -ExecutionPolicy Bypass -File .\scripts\test-login-local.ps1
-powershell -ExecutionPolicy Bypass -File .\scripts\configure-local.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\configure-rtrader-excel.ps1
 powershell -ExecutionPolicy Bypass -File .\scripts\start-background.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\start-excel-bridge-background.ps1 `
+  -WorkbookName Book1 -SheetName "Order Book-Full" `
+  -Exchange CME -ContractSymbol NQU6
 ```
 
-Before the first API login, open R|Trader or R|Trader Pro once using the same
-system and accept every agreement presented by Rithmic. R|Trader does not need
-to remain open after the independent gateway is authenticated.
+RTrader Pro and Excel must remain open for this source. The bridge is strictly
+read-only and never reads or writes the Place Orders or Manage Orders sheets.
 
 ## Production connection
 

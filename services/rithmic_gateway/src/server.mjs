@@ -3,9 +3,12 @@ import { URL } from "node:url";
 
 import { loadConfig } from "./config.mjs";
 import { discoverRithmicSystems, RithmicMarketDataClient } from "./rithmic-client.mjs";
+import { RTraderExcelMarketDataClient } from "./rtrader-excel-client.mjs";
 
 const config = loadConfig();
-const client = new RithmicMarketDataClient(config);
+const client = config.sourceMode === "rtrader-excel"
+  ? new RTraderExcelMarketDataClient(config)
+  : new RithmicMarketDataClient(config);
 const rawSseClients = new Set();
 const tradeSseClients = new Set();
 const heatmapSseClients = new Set();
@@ -29,7 +32,7 @@ async function bodyJson(request) {
   let size = 0;
   for await (const chunk of request) {
     size += chunk.length;
-    if (size > 64 * 1024) throw new Error("Request body is too large.");
+    if (size > 1024 * 1024) throw new Error("Request body is too large.");
     chunks.push(chunk);
   }
   if (!chunks.length) return {};
@@ -258,6 +261,7 @@ function heatmapPayload(snapshot) {
       environment: config.systemName,
       depthMode: snapshot.depthMode,
       fullDepth: snapshot.fullDepth,
+      individualOrders: snapshot.individualOrders,
       contractSymbol: snapshot.symbol,
       bookValid: snapshot.bookValid,
     },
@@ -274,8 +278,13 @@ function heatmapPayload(snapshot) {
       midTick: bestBid && bestAsk ? (bestBid + bestAsk) / 2 : 0,
       lastTick: snapshot.lastPrice ? Math.round(snapshot.lastPrice / tick) : 0,
       trades,
-      source: snapshot.fullDepth ? "rithmic-depth-by-order" : "rithmic-order-book",
+      source: snapshot.depthMode === "MBO_AGGREGATED"
+        ? "rtrader-excel-mbo-aggregate"
+        : snapshot.fullDepth
+          ? "rithmic-depth-by-order"
+          : "rithmic-order-book",
       fullDepth: snapshot.fullDepth,
+      individualOrders: snapshot.individualOrders,
       bookValid: snapshot.bookValid,
       orderCount: snapshot.orderCount,
       latencyMs: snapshot.ageMs,
@@ -335,12 +344,36 @@ const server = createServer(async (request, response) => {
   }
   try {
     if (request.method === "GET" && url.pathname === "/v1/rithmic/systems") {
+      if (config.sourceMode === "rtrader-excel") {
+        return json(response, 200, { provider: "Rithmic", systems: ["RTrader Pro Excel"] });
+      }
       const systems = await discoverRithmicSystems(config);
       return json(response, 200, { provider: "Rithmic", systems });
     }
     if (request.method === "POST" && url.pathname === "/v1/rithmic/connect") {
       await client.start();
       return json(response, 202, client.health());
+    }
+    if (
+      request.method === "POST" &&
+      url.pathname === "/v1/bridge/rtrader/snapshot"
+    ) {
+      if (config.sourceMode !== "rtrader-excel") {
+        return json(response, 409, {
+          error: "RITHMIC_SOURCE_MODE must be rtrader-excel for workbook ingestion.",
+        });
+      }
+      const body = await bodyJson(request);
+      const snapshot = client.ingestSnapshot(body);
+      return json(response, 202, {
+        accepted: true,
+        exchange: snapshot.exchange,
+        contractSymbol: snapshot.symbol,
+        asOfMs: snapshot.asOfMs,
+        depthMode: snapshot.depthMode,
+        bidLevels: snapshot.bids.length,
+        askLevels: snapshot.asks.length,
+      });
     }
     if (request.method === "POST" && url.pathname === "/v1/rithmic/subscriptions") {
       const body = await bodyJson(request);

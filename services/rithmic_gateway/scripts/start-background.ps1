@@ -24,7 +24,10 @@ foreach ($rawLine in Get-Content -LiteralPath $resolvedEnv) {
   )
 }
 
-if ([string]::IsNullOrWhiteSpace($env:RITHMIC_PASSWORD)) {
+if (
+  $env:RITHMIC_SOURCE_MODE -ne "rtrader-excel" -and
+  [string]::IsNullOrWhiteSpace($env:RITHMIC_PASSWORD)
+) {
   throw "RITHMIC_PASSWORD is not configured."
 }
 if ([string]::IsNullOrWhiteSpace($env:KWANTIFY_MARKET_DATA_GATEWAY_TOKEN)) {

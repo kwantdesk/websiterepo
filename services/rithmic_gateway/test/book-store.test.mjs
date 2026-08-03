@@ -147,3 +147,63 @@ test("marks a depth book invalid when source sequence moves backwards", () => {
   assert.equal(event.receivedSequence, "21");
   assert.equal(store.snapshot("CME", "NQU6", 10).bookValid, false);
 });
+
+test("ingests the RTrader Pro full ladder without pretending it contains order ids", () => {
+  const store = new RithmicBookStore({ maxTrades: 10 });
+  store.applyAggregatedSnapshot({
+    exchange: "CME",
+    symbol: "NQU6",
+    timestampMs: 1_700_000_000_000,
+    sequence: 1,
+    bids: [
+      { price: 28_100, size: 12, orders: 3 },
+      { price: 28_099.75, size: 8, orders: 2 },
+    ],
+    asks: [{ price: 28_100.25, size: 9, orders: 2 }],
+    tradeVolumes: [{ price: 28_100, volume: 40 }],
+  });
+  const snapshot = store.snapshot("CME", "NQU6", 10);
+  assert.equal(snapshot.depthMode, "MBO_AGGREGATED");
+  assert.equal(snapshot.fullDepth, true);
+  assert.equal(snapshot.individualOrders, false);
+  assert.equal(snapshot.orderCount, 0);
+  assert.equal(snapshot.trades.length, 0, "initial cumulative volume must only seed state");
+  assert.equal(snapshot.lastPrice, 28_100.125);
+});
+
+test("turns positive RTrader cumulative-volume changes into new trade deltas", () => {
+  const store = new RithmicBookStore({ maxTrades: 10 });
+  const base = {
+    exchange: "CME",
+    symbol: "NQU6",
+    bids: [{ price: 28_100, size: 12, orders: 3 }],
+    asks: [{ price: 28_100.25, size: 9, orders: 2 }],
+  };
+  store.applyAggregatedSnapshot({
+    ...base,
+    timestampMs: 1_700_000_000_000,
+    sequence: 1,
+    tradeVolumes: [
+      { price: 28_100, volume: 40 },
+      { price: 28_100.25, volume: 22 },
+    ],
+  });
+  const event = store.applyAggregatedSnapshot({
+    ...base,
+    timestampMs: 1_700_000_000_250,
+    sequence: 2,
+    tradeVolumes: [
+      { price: 28_100, volume: 43 },
+      { price: 28_100.25, volume: 27 },
+    ],
+  });
+  assert.equal(event.inferredTrades.length, 2);
+  assert.deepEqual(
+    event.inferredTrades.map((trade) => [trade.price, trade.size, trade.aggressor]),
+    [
+      [28_100, 3, "SELL"],
+      [28_100.25, 5, "BUY"],
+    ],
+  );
+  assert.equal(store.snapshot("CME", "NQU6", 10).lastPrice, 28_100.25);
+});
