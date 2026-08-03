@@ -856,16 +856,19 @@ function CandleCountdownBadge({
   candleIntervalMs,
   hasCandles,
   latestCandleRef,
+  chartRef,
   marketIsActive,
   bottom = 56,
 }: {
   candleIntervalMs: number | null;
   hasCandles: boolean;
   latestCandleRef: RefObject<Candle | null>;
+  chartRef: RefObject<IChartApi | null>;
   marketIsActive?: boolean;
   bottom?: number;
 }) {
   const [label, setLabel] = useState<string | null>(null);
+  const [rightInset, setRightInset] = useState(76);
 
   useEffect(() => {
     if (!candleIntervalMs || candleIntervalMs <= 0 || !hasCandles) {
@@ -886,20 +889,24 @@ function CandleCountdownBadge({
         now <= nextFromLastCandle + candleIntervalMs
           ? Math.max(0, nextFromLastCandle - now)
           : candleIntervalMs - (now % candleIntervalMs || candleIntervalMs);
+      const priceScaleWidth = chartRef.current?.priceScale("right").width() ?? 64;
+      // Match the range selector's `left-3` inset: keep twelve pixels of
+      // breathing room between this badge and the live right price scale.
+      setRightInset(Math.max(76, Math.ceil(priceScaleWidth) + 12));
       setLabel(marketIsActive === false ? "-" : formatCountdown(remainingMs));
     };
 
     updateCountdown();
     const timer = window.setInterval(updateCountdown, 1_000);
     return () => window.clearInterval(timer);
-  }, [candleIntervalMs, hasCandles, latestCandleRef, marketIsActive]);
+  }, [candleIntervalMs, chartRef, hasCandles, latestCandleRef, marketIsActive]);
 
   if (!label) return null;
 
   return (
     <div
-      className="pointer-events-none absolute right-[76px] z-10 flex h-7 w-[54px] items-center justify-center rounded-lg bg-primary px-1.5 font-mono text-[10px] font-semibold leading-none text-background shadow-lg shadow-black/25"
-      style={{ bottom }}
+      className="pointer-events-none absolute z-10 flex h-7 w-[54px] items-center justify-center rounded-lg bg-primary px-1.5 font-mono text-[10px] font-semibold leading-none text-background shadow-lg shadow-black/25"
+      style={{ bottom, right: rightInset }}
       title="Time until next candle opens"
     >
       {label}
@@ -3614,6 +3621,7 @@ export default function Chart({
         candleIntervalMs={candleIntervalMs}
         hasCandles={hasCandles}
         latestCandleRef={latestCandleRef}
+        chartRef={chartRef}
         marketIsActive={marketIsActive}
         bottom={56 + indicatorPaneHeight}
       />
