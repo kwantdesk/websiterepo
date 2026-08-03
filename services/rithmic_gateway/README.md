@@ -51,6 +51,30 @@ Create one RTrader live-stream workbook and one bridge process per contract.
 The local source still needs a secure reachable transport before a hosted
 Vercel deployment can consume it; `127.0.0.1` is intentionally not public.
 
+### Persistent website relay
+
+Tailscale Funnel is the supported temporary relay for the RTrader trial. After
+signing into the installed Tailscale Windows client once, run:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\configure-tailscale-funnel.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\install-market-data-autostart.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\start-supervisor-background.ps1
+```
+
+The Funnel command creates a stable TLS URL and persists across Tailscale or
+Windows restarts. The gateway still requires its bearer token for every market
+data route. Configure the returned HTTPS origin and the existing gateway token
+as server-only Vercel environment variables, then redeploy once.
+
+After Funnel prints its HTTPS URL, the included helper configures Production
+and Preview without printing the gateway token:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\configure-vercel-market-data.ps1 `
+  -GatewayUrl "https://this-device.your-tailnet.ts.net"
+```
+
 ## One-time SDK installation
 
 Do not commit the licensed Rithmic archive or proto files. Install them into the
