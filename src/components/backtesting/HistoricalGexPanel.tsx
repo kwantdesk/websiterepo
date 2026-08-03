@@ -67,6 +67,16 @@ function validStrike(value: unknown): value is ChartGammaPositioningStrike {
     && Number.isFinite(value.net);
 }
 
+function validSourceLevel(value: unknown): value is ChartGammaLevelsPayload["sources"][number]["levels"][number] {
+  if (!isRecord(value)) return false;
+  return typeof value.id === "string"
+    && typeof value.label === "string"
+    && typeof value.kind === "string"
+    && IMPORTANT_LEVELS.has(value.kind as ChartGammaSourceLevelKind)
+    && Number.isFinite(value.price)
+    && Number(value.price) > 0;
+}
+
 function validPositioning(value: unknown): value is ChartGammaPositioningSnapshot {
   if (!isRecord(value) || !Number.isFinite(value.futuresPrice) || Number(value.futuresPrice) <= 0) return false;
   if (!Number.isFinite(value.sourcePrice) || Number(value.sourcePrice) <= 0) return false;
@@ -108,13 +118,14 @@ export default function HistoricalGexPanel({
   const live = variant === "live";
   const scrollRef = useRef<HTMLDivElement>(null);
   const positioning = validPositioning(snapshot?.positioning) ? snapshot.positioning : null;
-  const sources = Array.isArray(snapshot?.sources) ? snapshot.sources : [];
+  const sources = Array.isArray(snapshot?.sources)
+    ? snapshot.sources.filter((candidate) => isRecord(candidate)) as ChartGammaLevelsPayload["sources"]
+    : [];
   const source = sources.find((candidate) => candidate.symbol === positioning?.sourceSymbol)
     ?? sources[0]
     ?? null;
-  const sourceLevels = Array.isArray(source?.levels) ? source.levels : [];
+  const sourceLevels = Array.isArray(source?.levels) ? source.levels.filter(validSourceLevel) : [];
   const levels = useMemo(() => sourceLevels
-    .filter((level) => IMPORTANT_LEVELS.has(level.kind))
     .sort((left, right) => Math.abs(left.price - (positioning?.futuresPrice ?? source?.stockPrice ?? 0)) - Math.abs(right.price - (positioning?.futuresPrice ?? source?.stockPrice ?? 0)))
     .slice(0, 8), [positioning?.futuresPrice, source?.stockPrice, sourceLevels]);
   const visibleStrikes = useMemo(() => {
@@ -196,7 +207,7 @@ export default function HistoricalGexPanel({
             <div className="grid grid-cols-2 gap-2">
               <div className="rounded-xl border border-border bg-surface/35 p-3">
                 <div className="text-[7px] font-semibold uppercase tracking-[0.14em] text-muted">Gamma environment</div>
-                <div className={`mt-1 text-[11px] font-semibold ${snapshot?.environment?.gammaRegime === "POSITIVE" ? "text-primary" : snapshot?.environment?.gammaRegime === "NEGATIVE" ? "text-danger" : "text-foreground"}`}>{snapshot?.environment?.gammaStateLabel ?? "—"}</div>
+                <div className={`mt-1 text-[11px] font-semibold ${snapshot?.environment?.gammaRegime === "POSITIVE" ? "text-primary" : snapshot?.environment?.gammaRegime === "NEGATIVE" ? "text-danger" : "text-foreground"}`}>{typeof snapshot?.environment?.gammaStateLabel === "string" ? snapshot.environment.gammaStateLabel : "—"}</div>
                 <div className="mt-1 font-mono text-[8px] text-muted">
                   {source?.symbol ?? "source"} · {snapshot?.sessionDate ?? sessionDate} · strength {(Number.isFinite(Number(snapshot?.environment?.regimeStrength)) ? Number(snapshot?.environment?.regimeStrength) : 0).toLocaleString("en-US", { style: "percent", maximumFractionDigits: 1 })}
                 </div>

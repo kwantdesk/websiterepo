@@ -58,10 +58,8 @@ export default class LiveGexPanelBoundary extends Component<Props, State> {
             <span className="mx-auto flex h-11 w-11 items-center justify-center rounded-2xl border border-warning/20 bg-warning/[0.06] text-warning">
               <AlertTriangle className="h-4 w-4" />
             </span>
-            <div className="mt-4 text-[11px] font-semibold text-foreground">Live GEX recovered safely</div>
-            <p className="mt-2 text-[9px] leading-4 text-muted">
-              A malformed options update was isolated before it could interrupt your chart.
-            </p>
+            <div className="mt-4 text-[11px] font-semibold text-foreground">Live GEX temporarily unavailable</div>
+            <p className="mt-2 text-[9px] leading-4 text-muted">Refreshing the latest options frame.</p>
             <button
               type="button"
               onClick={this.retry}
