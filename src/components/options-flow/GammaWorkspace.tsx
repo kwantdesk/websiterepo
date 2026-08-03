@@ -47,6 +47,8 @@ import {
 
 const LOCAL_FUTURES_PULSE_MS = 250;
 const LEVEL_REFRESH_MS = 5_000;
+const FULL_POSITIONING_REFRESH_MS = 30_000;
+const LIVE_OPTIONS_PAYLOAD_MAX_AGE_MS = 15_000;
 const OPTIONS_CHART_HISTORY_BARS = 10_500;
 const OPTIONS_CHART_BOOTSTRAP_BARS = 600;
 const OPTIONS_CHART_READY_BARS = 20;
@@ -138,6 +140,101 @@ function formatNewYorkSnapshot(value: string | number) {
 
 function formatPulse(value: number) {
   return value < 1_000 ? `${Math.round(value)}ms` : `${Math.max(1, Math.round(value / 1_000))}s`;
+}
+
+function getNewYorkOptionsClock(now = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(now);
+  const read = (type: Intl.DateTimeFormatPartTypes) => Number(parts.find((part) => part.type === type)?.value ?? 0);
+  const easternDate = new Date(Date.UTC(read("year"), read("month") - 1, read("day")));
+  const weekday = easternDate.getUTCDay();
+  const minutes = read("hour") * 60 + read("minute");
+  return {
+    marketOpen: weekday >= 1 && weekday <= 5 && minutes >= 9 * 60 + 30 && minutes < 16 * 60,
+    sessionDate: easternDate.toISOString().slice(0, 10),
+  };
+}
+
+function isFreshLiveOptionsPayload(payload: OptionsFlowPayload | null, now = Date.now()) {
+  const clock = getNewYorkOptionsClock(new Date(now));
+  if (!clock.marketOpen) return Boolean(payload);
+  if (
+    !payload
+    || !payload.session.marketOpen
+    || payload.snapshotMode !== "LIVE"
+    || payload.session.sessionDate !== clock.sessionDate
+    || !payload.exposures.GAMMA?.strikes.length
+  ) return false;
+  const asOf = Date.parse(payload.asOf);
+  return Number.isFinite(asOf) && now - asOf <= LIVE_OPTIONS_PAYLOAD_MAX_AGE_MS;
+}
+
+function canRenderOptionsPayload(payload: OptionsFlowPayload | null, now = Date.now()) {
+  return getNewYorkOptionsClock(new Date(now)).marketOpen
+    ? isFreshLiveOptionsPayload(payload, now)
+    : Boolean(payload);
+}
+
+function mergeCoreOptionsPayload(current: OptionsFlowPayload, incoming: OptionsFlowPayload) {
+  if (
+    current.symbol !== incoming.symbol
+    || current.session.sessionDate !== incoming.session.sessionDate
+    || current.snapshotMode !== incoming.snapshotMode
+  ) return incoming;
+
+  return {
+    ...incoming,
+    environment: {
+      ...incoming.environment,
+      ivRank: current.environment.ivRank,
+      callIv: current.environment.callIv,
+      putIv: current.environment.putIv,
+    },
+    levels: {
+      ...incoming.levels,
+      majorPositiveOi: incoming.levels.majorPositiveOi ?? current.levels.majorPositiveOi,
+      zeroDteMaxPain: incoming.levels.zeroDteMaxPain ?? current.levels.zeroDteMaxPain,
+      putSupport: incoming.levels.putSupport.length ? incoming.levels.putSupport : current.levels.putSupport,
+      zeroDtePutSupport: incoming.levels.zeroDtePutSupport.length
+        ? incoming.levels.zeroDtePutSupport
+        : current.levels.zeroDtePutSupport,
+    },
+    exposures: {
+      ...incoming.exposures,
+      VANNA: incoming.exposures.VANNA ?? current.exposures.VANNA,
+      CHARM: incoming.exposures.CHARM ?? current.exposures.CHARM,
+    },
+    openInterest: incoming.openInterest.length ? incoming.openInterest : current.openInterest,
+    zeroDteOpenInterest: incoming.zeroDteOpenInterest.length
+      ? incoming.zeroDteOpenInterest
+      : current.zeroDteOpenInterest,
+    positioning: current.positioning,
+    marketMap: {
+      ...incoming.marketMap,
+      expectedMove: incoming.marketMap.expectedMove ?? current.marketMap.expectedMove,
+      dealerPositioning: {
+        ...incoming.marketMap.dealerPositioning,
+        frontExpiryNetGex: current.marketMap.dealerPositioning.frontExpiryNetGex,
+        frontExpiryNetDex: current.marketMap.dealerPositioning.frontExpiryNetDex,
+        frontExpiryGexChange1h: current.marketMap.dealerPositioning.frontExpiryGexChange1h,
+        frontExpiryDexChange1h: current.marketMap.dealerPositioning.frontExpiryDexChange1h,
+        lastFrontExpiryGammaFlipAt: current.marketMap.dealerPositioning.lastFrontExpiryGammaFlipAt,
+        dteGamma: incoming.marketMap.dealerPositioning.dteGamma.length
+          ? incoming.marketMap.dealerPositioning.dteGamma
+          : current.marketMap.dealerPositioning.dteGamma,
+      },
+      putCallVolume: incoming.marketMap.putCallVolume ?? current.marketMap.putCallVolume,
+      volatility: current.marketMap.volatility,
+    },
+    flowBoard: incoming.flowBoard.length ? incoming.flowBoard : current.flowBoard,
+  } satisfies OptionsFlowPayload;
 }
 
 function mergeCandles(current: OptionsCandle[], incoming: OptionsCandle[]) {
@@ -721,7 +818,8 @@ function LoadingScreen() {
 
 
 export default function GammaWorkspace() {
-  const initialData = readWorkspaceData<OptionsFlowPayload>(optionsFlowCacheKey("QQQ", "CASH"));
+  const cachedInitialData = readWorkspaceData<OptionsFlowPayload>(optionsFlowCacheKey("QQQ", "CASH"));
+  const initialData = canRenderOptionsPayload(cachedInitialData) ? cachedInitialData : null;
   const pageScrollRef = useRef<HTMLDivElement | null>(null);
   const [symbol, setSymbol] = useState("QQQ");
   const [priceMode, setPriceMode] = useState<OptionsPriceMode>("CASH");
@@ -759,7 +857,7 @@ export default function GammaWorkspace() {
   const instrumentMenuRef = useRef<HTMLDivElement>(null);
   const livePriceRef = useRef<HTMLSpanElement>(null);
   const previousPriceRef = useRef<number | null>(null);
-  const requestIdRef = useRef(0);
+  const requestIdRef = useRef<Record<"CORE" | "FULL", number>>({ CORE: 0, FULL: 0 });
   const dataRef = useRef<OptionsFlowPayload | null>(initialData);
 
   useEffect(() => {
@@ -783,32 +881,59 @@ export default function GammaWorkspace() {
     nextPriceMode: OptionsPriceMode,
     manual = false,
     background = false,
+    detailMode: "CORE" | "FULL" = "FULL",
   ) => {
-    const requestId = ++requestIdRef.current;
+    const requestId = ++requestIdRef.current[detailMode];
+    let keepLoading = false;
     if (manual) setRefreshing(true);
     else if (!background) setLoading(true);
     try {
       const payload = await fetchWorkspaceData<OptionsFlowPayload>(
-        optionsFlowCacheKey(nextSymbol, nextPriceMode),
-        `/api/options-flow?symbol=${encodeURIComponent(nextSymbol)}&priceMode=${nextPriceMode}`,
+        `${optionsFlowCacheKey(nextSymbol, nextPriceMode)}:${detailMode}`,
+        `/api/options-flow?symbol=${encodeURIComponent(nextSymbol)}&priceMode=${nextPriceMode}&detail=${detailMode}`,
         { force: true },
       );
-      if (requestId !== requestIdRef.current) return;
-      dataRef.current = payload;
-      setData(payload);
+      if (requestId !== requestIdRef.current[detailMode]) return;
+      if (!canRenderOptionsPayload(payload)) {
+        const active = dataRef.current;
+        if (!isFreshLiveOptionsPayload(active)) {
+          dataRef.current = null;
+          setData(null);
+          setError(null);
+          setLoading(true);
+          keepLoading = true;
+        }
+        return;
+      }
+      const active = dataRef.current;
+      const nextPayload = detailMode === "CORE" && active
+        ? mergeCoreOptionsPayload(active, payload)
+        : payload;
+      dataRef.current = nextPayload;
+      setData(nextPayload);
+      writeWorkspaceData(optionsFlowCacheKey(nextSymbol, nextPriceMode), nextPayload);
       setError(null);
     } catch (loadError) {
-      if (requestId !== requestIdRef.current) return;
-      setError(loadError instanceof Error ? loadError.message : "Options Flow could not be loaded.");
+      if (requestId !== requestIdRef.current[detailMode]) return;
+      const active = dataRef.current;
+      if (getNewYorkOptionsClock().marketOpen && !isFreshLiveOptionsPayload(active)) {
+        dataRef.current = null;
+        setData(null);
+        setLoading(true);
+        keepLoading = true;
+      } else {
+        setError(loadError instanceof Error ? loadError.message : "Options Flow could not be loaded.");
+      }
     } finally {
-      if (requestId !== requestIdRef.current) return;
-      setLoading(false);
+      if (requestId !== requestIdRef.current[detailMode]) return;
+      if (!keepLoading) setLoading(false);
       setRefreshing(false);
     }
   }, []);
 
   useEffect(() => {
-    const cached = readWorkspaceData<OptionsFlowPayload>(optionsFlowCacheKey(symbol, priceMode));
+    const cachedCandidate = readWorkspaceData<OptionsFlowPayload>(optionsFlowCacheKey(symbol, priceMode));
+    const cached = canRenderOptionsPayload(cachedCandidate) ? cachedCandidate : null;
     if (cached) {
       dataRef.current = cached;
       setData(cached);
@@ -817,21 +942,49 @@ export default function GammaWorkspace() {
     } else {
       dataRef.current = null;
       setData(null);
+      setLoading(true);
     }
-    const timeout = window.setTimeout(
-      () => void loadData(symbol, priceMode, false, Boolean(cached)),
-      0,
-    );
+    const timeout = window.setTimeout(() => {
+      void (async () => {
+        if (!cached) await loadData(symbol, priceMode, false, false, "CORE");
+        await loadData(symbol, priceMode, false, true, "FULL");
+      })();
+    }, 0);
     return () => window.clearTimeout(timeout);
   }, [loadData, priceMode, symbol]);
 
   useEffect(() => {
+    const enforceLiveSession = () => {
+      const current = dataRef.current;
+      if (!getNewYorkOptionsClock().marketOpen || loading || !current || isFreshLiveOptionsPayload(current)) return;
+      dataRef.current = null;
+      setData(null);
+      setError(null);
+      setLoading(true);
+      void (async () => {
+        await loadData(symbol, priceMode, false, false, "CORE");
+        await loadData(symbol, priceMode, false, true, "FULL");
+      })();
+    };
+    const interval = window.setInterval(enforceLiveSession, 2_000);
+    return () => window.clearInterval(interval);
+  }, [loadData, loading, priceMode, symbol]);
+
+  useEffect(() => {
     const interval = window.setInterval(
-      () => void loadData(symbol, priceMode, false, true),
+      () => void loadData(symbol, priceMode, false, true, "CORE"),
       data?.refreshAfterMs ?? LEVEL_REFRESH_MS,
     );
     return () => window.clearInterval(interval);
   }, [data?.refreshAfterMs, loadData, priceMode, symbol]);
+
+  useEffect(() => {
+    const interval = window.setInterval(
+      () => void loadData(symbol, priceMode, false, true, "FULL"),
+      data?.session.marketOpen ? FULL_POSITIONING_REFRESH_MS : 5 * 60_000,
+    );
+    return () => window.clearInterval(interval);
+  }, [data?.session.marketOpen, loadData, priceMode, symbol]);
 
   useEffect(() => {
     let cancelled = false;
@@ -923,9 +1076,12 @@ export default function GammaWorkspace() {
   );
 
   const changeSymbol = (nextSymbol: string) => {
+    requestIdRef.current.CORE += 1;
+    requestIdRef.current.FULL += 1;
     setInstrumentMenuOpen(false);
     setData(null);
     dataRef.current = null;
+    setLoading(true);
     setChartMarketPreview(null);
     setError(null);
     setSymbol(nextSymbol);

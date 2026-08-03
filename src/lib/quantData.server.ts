@@ -1542,6 +1542,7 @@ async function buildOptionsFlowPayload(
   symbol: string,
   requestedPriceMode: OptionsPriceMode,
   requestedSessionDate?: string,
+  detailMode: "CORE" | "FULL" = "FULL",
 ): Promise<OptionsFlowPayload> {
   const currentSession = getUsOptionsSession();
   const historical = Boolean(requestedSessionDate && requestedSessionDate !== currentSession.sessionDate);
@@ -1554,13 +1555,17 @@ async function buildOptionsFlowPayload(
     endTime: `${offsetIsoDate(session.sessionDate, 1)}T23:59:59Z`,
   };
   const exposureModes: GreekMode[] = ["GAMMA", "DELTA", "VANNA", "CHARM"];
+  const fullDetail = detailMode === "FULL";
+  const skippedRequest = () => Promise.resolve({ payload: null as unknown, remaining: null as number | null });
   const exposureRequests = exposureModes.map((greekMode) =>
-    quantDataPost("/options/tool/exposure-by-strike", {
-      ...sessionScope,
-      greekMode,
-      representationMode: "PER_ONE_PERCENT_MOVE",
-      filter: { ticker: symbol },
-    }, greekMode === "GAMMA" ? 4_000 : greekMode === "DELTA" ? 15_000 : 60_000),
+    fullDetail || greekMode === "GAMMA" || greekMode === "DELTA"
+      ? quantDataPost("/options/tool/exposure-by-strike", {
+        ...sessionScope,
+        greekMode,
+        representationMode: "PER_ONE_PERCENT_MOVE",
+        filter: { ticker: symbol },
+      }, greekMode === "GAMMA" ? 4_000 : greekMode === "DELTA" ? 15_000 : 60_000)
+      : skippedRequest(),
   );
 
   const requests = await Promise.allSettled([
@@ -1571,52 +1576,52 @@ async function buildOptionsFlowPayload(
       representationMode: "PER_ONE_PERCENT_MOVE",
       filter: { ticker: symbol, expirationDate: session.sessionDate },
     }, 4_000),
-    quantDataPost("/options/tool/open-interest-by-strike", {
+    fullDetail ? quantDataPost("/options/tool/open-interest-by-strike", {
       sessionDate: session.sessionDate,
       filter: { ticker: symbol },
-    }, 60_000),
-    quantDataPost("/options/tool/open-interest-by-strike", {
+    }, 60_000) : skippedRequest(),
+    fullDetail ? quantDataPost("/options/tool/open-interest-by-strike", {
       sessionDate: session.sessionDate,
       filter: { ticker: symbol, expirationDate: session.sessionDate },
-    }, 60_000),
-    quantDataPost("/options/tool/max-pain", {
+    }, 60_000) : skippedRequest(),
+    fullDetail ? quantDataPost("/options/tool/max-pain", {
       sessionDate: session.sessionDate,
       filter: { ticker: symbol, expirationDate: session.sessionDate },
-    }, 60_000),
+    }, 60_000) : skippedRequest(),
     quantDataPost("/options/tool/order-flow/consolidated", {
       ...sessionScope,
       filter: { ticker: symbol },
       size: 36,
       sort: { field: "tradeTime", direction: "DESCENDING" },
     }, 4_000),
-    quantDataPost("/options/tool/gainers-losers", {
+    fullDetail ? quantDataPost("/options/tool/gainers-losers", {
       ...sessionScope,
       filter: { tickers: OPTIONS_FLOW_TICKERS },
-    }, 60_000),
+    }, 60_000) : skippedRequest(),
     quantDataPost("/options/tool/net-drift", {
       ...sessionScope,
       aggregationPeriod: "5m",
       filter: { ticker: symbol },
     }, 5_000),
-    quantDataPost("/options/tool/iv-rank", {
+    fullDetail ? quantDataPost("/options/tool/iv-rank", {
       filter: { ticker: symbol },
       lookBackPeriod: 252,
       maturity: 30,
-    }, 300_000),
+    }, 300_000) : skippedRequest(),
     quantDataPost("/equities/tool/stock-price-over-time", {
       ...sessionScope,
       aggregationPeriod: "1m",
       filter: { ticker: symbol },
     }, 1_000),
-    quantDataPost("/options/tool/contract-statistics", {
+    fullDetail ? quantDataPost("/options/tool/contract-statistics", {
       ...sessionScope,
       filter: { ticker: symbol },
-    }, 30_000),
-    quantDataPost("/equities/tool/stock-price-over-time", {
+    }, 30_000) : skippedRequest(),
+    fullDetail ? quantDataPost("/equities/tool/stock-price-over-time", {
       timeRange: dailyRange,
       aggregationPeriod: "1d",
       filter: { ticker: symbol },
-    }, 300_000),
+    }, 300_000) : skippedRequest(),
   ]);
 
   const resultPayload = (index: number) => requests[index].status === "fulfilled" ? requests[index].value.payload : null;
@@ -1674,7 +1679,7 @@ async function buildOptionsFlowPayload(
     min: Math.floor(stockPrice * 0.93 * 100) / 100,
     max: Math.ceil(stockPrice * 1.07 * 100) / 100,
   };
-  const positioningRequests = frontExpiration ? await Promise.allSettled([
+  const positioningRequests = fullDetail && frontExpiration ? await Promise.allSettled([
     ...exposureModes.map((greekMode) => quantDataPost("/options/tool/interval-map", {
       ...sessionScope,
       aggregationPeriod: "1m",
@@ -2752,6 +2757,7 @@ export async function getOptionsFlowPayload(
   symbolInput: string,
   priceModeInput: string = "CASH",
   requestedSessionDate?: string,
+  detailModeInput: string = "FULL",
 ) {
   const symbol = symbolInput.trim().toUpperCase();
   const priceMode: OptionsPriceMode = priceModeInput.trim().toUpperCase() === "FUTURES" ? "FUTURES" : "CASH";
@@ -2765,15 +2771,16 @@ export async function getOptionsFlowPayload(
   }
   const historical = sessionDate !== currentSession.sessionDate;
   const session = historical ? { marketOpen: false, sessionDate } : currentSession;
-  const cacheKey = `${symbol}:${priceMode}:${sessionDate}`;
+  const detailMode = detailModeInput.trim().toUpperCase() === "CORE" ? "CORE" : "FULL";
+  const cacheKey = `${symbol}:${priceMode}:${sessionDate}:${detailMode}`;
   const cached = requestCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) return cached.promise;
 
   const promise = (session.marketOpen
-    ? buildOptionsFlowPayload(symbol, priceMode)
+    ? buildOptionsFlowPayload(symbol, priceMode, undefined, detailMode)
     : unstable_cache(
-      () => buildOptionsFlowPayload(symbol, priceMode, sessionDate),
-      ["completed-new-york-options-flow-v2", symbol, priceMode, session.sessionDate],
+      () => buildOptionsFlowPayload(symbol, priceMode, sessionDate, detailMode),
+      ["completed-new-york-options-flow-v2", symbol, priceMode, session.sessionDate, detailMode],
       { revalidate: 6 * 60 * 60 },
     )()
   ).catch((error) => {

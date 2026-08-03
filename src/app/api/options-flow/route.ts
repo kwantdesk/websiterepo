@@ -41,15 +41,19 @@ export async function GET(request: NextRequest) {
 
   const symbol = (request.nextUrl.searchParams.get("symbol") || "SPX").trim().toUpperCase();
   const priceMode = (request.nextUrl.searchParams.get("priceMode") || "CASH").trim().toUpperCase();
+  const detailMode = (request.nextUrl.searchParams.get("detail") || "FULL").trim().toUpperCase();
   if (!SYMBOL_PATTERN.test(symbol)) {
     return NextResponse.json({ error: "Invalid ticker symbol." }, { status: 400 });
   }
   if (priceMode !== "CASH" && priceMode !== "FUTURES") {
     return NextResponse.json({ error: "Invalid price mode." }, { status: 400 });
   }
+  if (detailMode !== "CORE" && detailMode !== "FULL") {
+    return NextResponse.json({ error: "Invalid options-flow detail mode." }, { status: 400 });
+  }
 
   try {
-    const payload = await getOptionsFlowPayload(symbol, priceMode);
+    const payload = await getOptionsFlowPayload(symbol, priceMode, undefined, detailMode);
     return NextResponse.json(payload, {
       headers: {
         "Cache-Control": "private, no-store, max-age=0",
@@ -63,4 +67,3 @@ export async function GET(request: NextRequest) {
     );
   }
 }
-
