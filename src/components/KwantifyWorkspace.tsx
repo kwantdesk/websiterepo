@@ -113,6 +113,11 @@ import {
   type GameplanSession,
 } from "@/lib/gameplan";
 import {
+  fetchWorkspaceData,
+  gameplanCacheKey,
+  readWorkspaceData,
+} from "@/lib/workspaceDataCache";
+import {
   GAMEPLAN_CHART_OVERLAYS_EVENT,
   GAMEPLAN_CHART_OVERLAYS_STORAGE_KEY,
   createGameplanChartOverlay,
@@ -4722,6 +4727,7 @@ export default function KwantifyWorkspace({
     loadGameplanChartOverlays());
   const [quickGameplanLoading, setQuickGameplanLoading] = useState(false);
   const [quickGameplanUpdatedRoot, setQuickGameplanUpdatedRoot] = useState<"NQ" | "ES" | null>(null);
+  const quickGameplanRequestRef = useRef(false);
   const [selectedStrategy, setSelectedStrategy] = useState<string | null>(demoStrategies[0].id);
   const [activeStrategyId, setActiveStrategyId] = useState(demoStrategies[0].id);
   const [selectedVersion, setSelectedVersion] = useState<number | null>(null);
@@ -5058,10 +5064,23 @@ export default function KwantifyWorkspace({
   }, [activeLiveGexConversion, rightPanel]);
 
   const activeGameplanRoot = gameplanChartRootForInstrument(activeWorkspacePane.symbol);
+  const activeGameplanDisplaySymbol = displayCmeSymbol(activeWorkspacePane.symbol);
   const activeGameplanLevelsAdded = Boolean(
     activeGameplanRoot
     && gameplanChartOverlays[activeGameplanRoot]?.levels.length,
   );
+
+  useEffect(() => {
+    if (!activeGameplanRoot) return;
+    const session = currentGameplanSession();
+    const cacheKey = gameplanCacheKey(activeGameplanRoot, session);
+    readWorkspaceData<GameplanPayload>(cacheKey);
+    void fetchWorkspaceData<GameplanPayload>(
+      cacheKey,
+      `/api/gameplan?root=${activeGameplanRoot}&session=${session}`,
+      { maxAgeMs: 15_000 },
+    ).catch(() => undefined);
+  }, [activeGameplanRoot]);
   const visibleWorkspacePaneIds = useMemo(
     () => collectWorkspacePaneIds(workspaceTree),
     [workspaceTree],
@@ -5386,29 +5405,46 @@ export default function KwantifyWorkspace({
   };
 
   async function refreshActiveGameplanLevels() {
-    if (quickGameplanLoading) return;
+    if (quickGameplanRequestRef.current) return;
     const root = gameplanChartRootForInstrument(activeWorkspacePane.symbol);
+    const displaySymbol = displayCmeSymbol(activeWorkspacePane.symbol);
     if (!root) {
       showReportToast("error", "Kwant levels are available for NQ, MNQ, ES and MES charts.", 3_000);
       return;
     }
 
     const session = currentGameplanSession();
-    setQuickGameplanLoading(true);
+    const cacheKey = gameplanCacheKey(root, session);
+    const cachedPayload = readWorkspaceData<GameplanPayload>(cacheKey);
+    const cachedPlanMatches = Boolean(
+      cachedPayload
+      && cachedPayload.instrument === root
+      && cachedPayload.plan.edition.session === session
+      && cachedPayload.plan.ladder.length,
+    );
+    quickGameplanRequestRef.current = true;
+    setQuickGameplanLoading(!cachedPlanMatches);
     setQuickGameplanUpdatedRoot(null);
-    showReportToast("loading", `Refreshing the latest ${root} Kwant levels…`);
+
+    if (cachedPlanMatches && cachedPayload) {
+      const nextStore = saveGameplanChartOverlay(createGameplanChartOverlay(root, cachedPayload.plan));
+      setGameplanChartOverlays(nextStore);
+      setQuickGameplanUpdatedRoot(root);
+      showReportToast(
+        "success",
+        `${displaySymbol} ${gameplanSessionLabel(session)} Kwant levels added. Refreshing quietly…`,
+        2_000,
+      );
+    } else {
+      showReportToast("loading", `Loading the latest ${displaySymbol} Kwant levels…`);
+    }
 
     try {
-      const response = await fetch(
-        `/api/gameplan?root=${root}&session=${session}&refresh=${Date.now()}`,
-        {
-          cache: "no-store",
-          credentials: "same-origin",
-          signal: AbortSignal.timeout(45_000),
-        },
+      const payload = await fetchWorkspaceData<GameplanPayload & { error?: string }>(
+        cacheKey,
+        `/api/gameplan?root=${root}&session=${session}`,
+        { force: true },
       );
-      const payload = await response.json() as GameplanPayload & { error?: string };
-      if (!response.ok) throw new Error(payload.error || "The latest Gameplan could not be loaded.");
       if (payload.instrument !== root || payload.plan.edition.session !== session || !payload.plan.ladder.length) {
         throw new Error("The latest Gameplan response did not match this chart.");
       }
@@ -5418,17 +5454,20 @@ export default function KwantifyWorkspace({
       setQuickGameplanUpdatedRoot(root);
       showReportToast(
         "success",
-        `${root} ${gameplanSessionLabel(session)} Kwant levels replaced with the latest edition.`,
+        `${displaySymbol} ${gameplanSessionLabel(session)} Kwant levels replaced with the latest edition.`,
         2_800,
       );
       window.setTimeout(() => setQuickGameplanUpdatedRoot((current) => current === root ? null : current), 2_800);
     } catch (reason) {
-      showReportToast(
-        "error",
-        reason instanceof Error ? reason.message : "The latest Kwant levels could not be loaded.",
-        4_000,
-      );
+      if (!cachedPlanMatches) {
+        showReportToast(
+          "error",
+          reason instanceof Error ? reason.message : "The latest Kwant levels could not be loaded.",
+          4_000,
+        );
+      }
     } finally {
+      quickGameplanRequestRef.current = false;
       setQuickGameplanLoading(false);
     }
   }
@@ -9543,8 +9582,8 @@ export default function KwantifyWorkspace({
             disabled={!activeGameplanRoot || quickGameplanLoading}
             title={activeGameplanRoot
               ? activeGameplanLevelsAdded
-                ? `Refresh this chart with the latest ${activeGameplanRoot} Kwant levels`
-                : `Add the latest ${activeGameplanRoot} Kwant levels to this chart`
+                ? `Refresh this chart with the latest ${activeGameplanDisplaySymbol} Kwant levels`
+                : `Add the latest ${activeGameplanDisplaySymbol} Kwant levels to this chart`
               : "Kwant levels are available for NQ, MNQ, ES and MES charts"}
             className={`flex h-8 shrink-0 items-center gap-1.5 rounded-xl border px-3 text-[9px] font-bold uppercase tracking-[0.08em] transition-colors disabled:cursor-not-allowed disabled:opacity-35 ${
               activeGameplanRoot && quickGameplanUpdatedRoot === activeGameplanRoot
@@ -9558,9 +9597,9 @@ export default function KwantifyWorkspace({
                 ? <Check className="h-3.5 w-3.5" />
                 : <Layers3 className="h-3.5 w-3.5" />}
             {quickGameplanLoading
-              ? <span className="hidden xl:inline">{`Updating ${activeGameplanRoot ?? ""}`}</span>
+              ? <span className="hidden xl:inline">{`Updating ${activeGameplanDisplaySymbol}`}</span>
               : activeGameplanRoot && quickGameplanUpdatedRoot === activeGameplanRoot
-                ? <span className="hidden xl:inline">{`${activeGameplanRoot} Levels Updated`}</span>
+                ? <span className="hidden xl:inline">{`${activeGameplanDisplaySymbol} Levels Updated`}</span>
                 : <span className="hidden xl:inline">
                     {activeGameplanLevelsAdded ? "Refresh Kwant Levels" : "Add Kwant Levels"}
                   </span>}
