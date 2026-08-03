@@ -73,8 +73,11 @@ export type InstitutionalVolumeProfile = {
   root: string;
   contractSymbol: string;
   period: "daily" | "weekly" | "custom";
+  tradingDate?: string | null;
   startMs: number;
   endMs: number;
+  coverageStartMs?: number | null;
+  coverageEndMs?: number | null;
   tickSize: number;
   groupTicks: number;
   valueAreaPercent: number;
@@ -1081,6 +1084,77 @@ export function applyInstitutionalTradesToCandles(
   }
 
   return next.slice(-Math.max(1, limit));
+}
+
+export function mergeInstitutionalVolumeProfiles(
+  historical: InstitutionalVolumeProfile,
+  exact: InstitutionalVolumeProfile,
+): InstitutionalVolumeProfile {
+  const tickSize = exact.tickSize;
+  const groupTicks = exact.groupTicks;
+  const levels = new Map<number, InstitutionalVolumeProfileLevel>();
+  for (const level of [...historical.levels, ...exact.levels]) {
+    const groupedTick = volumeProfileBinTick(Math.round(level.price / tickSize), groupTicks);
+    const current = levels.get(groupedTick) ?? {
+      price: Number((groupedTick * tickSize).toFixed(10)),
+      volume: 0,
+      bidVolume: 0,
+      askVolume: 0,
+      delta: 0,
+      trades: 0,
+    };
+    current.volume += level.volume;
+    current.bidVolume += level.bidVolume;
+    current.askVolume += level.askVolume;
+    current.delta = current.askVolume - current.bidVolume;
+    current.trades += level.trades;
+    levels.set(groupedTick, current);
+  }
+
+  const nextLevels = [...levels.values()].sort((left, right) => left.price - right.price);
+  const totalVolume = nextLevels.reduce((sum, level) => sum + level.volume, 0);
+  const bidVolume = nextLevels.reduce((sum, level) => sum + level.bidVolume, 0);
+  const askVolume = nextLevels.reduce((sum, level) => sum + level.askVolume, 0);
+  const trades = nextLevels.reduce((sum, level) => sum + level.trades, 0);
+  const weightedPrice = nextLevels.reduce(
+    (sum, level) => sum + level.price * level.volume,
+    0,
+  );
+  const weightedSquaredPrice = nextLevels.reduce(
+    (sum, level) => sum + level.price * level.price * level.volume,
+    0,
+  );
+  const vwap = totalVolume > 0 ? weightedPrice / totalVolume : null;
+  const variance = totalVolume > 0 && vwap !== null
+    ? Math.max(0, weightedSquaredPrice / totalVolume - vwap * vwap)
+    : 0;
+  const valueArea = calculateVolumeProfileValueArea(
+    nextLevels,
+    tickSize * groupTicks,
+    exact.valueAreaPercent,
+  );
+
+  return {
+    ...exact,
+    source: `${exact.source} + earlier-session CME bars`,
+    startMs: Math.min(historical.startMs, exact.startMs),
+    endMs: Math.max(historical.endMs, exact.endMs),
+    totalVolume,
+    bidVolume,
+    askVolume,
+    delta: askVolume - bidVolume,
+    trades,
+    poc: valueArea.poc,
+    vah: valueArea.vah,
+    val: valueArea.val,
+    vwap,
+    standardDeviation: Math.sqrt(variance),
+    levels: nextLevels,
+    developingPoc: [
+      ...historical.developingPoc,
+      ...exact.developingPoc,
+    ].slice(-2_000),
+  };
 }
 
 type InstitutionalCandleFlow = {

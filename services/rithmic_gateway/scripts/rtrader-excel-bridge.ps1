@@ -116,7 +116,11 @@ function Get-ExcelApplications {
 
 function Get-StreamingSheet($Excel, [string]$RequestedWorkbook, [string]$RequestedSheet) {
   $workbook = $Excel.Workbooks |
-    Where-Object { $_.Name -eq $RequestedWorkbook } |
+    Where-Object {
+      $_.Name -eq $RequestedWorkbook -or
+      [IO.Path]::GetFileNameWithoutExtension([string]$_.Name) -eq
+        [IO.Path]::GetFileNameWithoutExtension($RequestedWorkbook)
+    } |
     Select-Object -First 1
   if (-not $workbook) { return $null }
   try {
@@ -140,12 +144,37 @@ function Convert-ToNumber($Value) {
   return 0.0
 }
 
-function Find-TradeStreamingSheet($Excel) {
+function Find-TradeStreamingSheet($Excel, [string]$PreferredWorkbookName = "") {
   # RTrader Pro's Market Data Trade History stream deliberately exposes its
   # raw link sheet without text headers. The fixed layout is:
   # A timestamp, B trade price, C trade size, D cumulative volume, E B/S.
   # Prefer RTrader's presentation sheet. It mirrors the exact source tape but
   # is considerably less prone to Excel RPC rejections than TradeTape-Full.
+  if ($PreferredWorkbookName) {
+    $preferredWorkbook = $Excel.Workbooks |
+      Where-Object {
+        $_.Name -eq $PreferredWorkbookName -or
+        [IO.Path]::GetFileNameWithoutExtension([string]$_.Name) -eq
+          [IO.Path]::GetFileNameWithoutExtension($PreferredWorkbookName)
+      } |
+      Select-Object -First 1
+    if ($preferredWorkbook) {
+      foreach ($worksheet in $preferredWorkbook.Worksheets) {
+        if ($worksheet.Name -match "(?i)^TradeTape$") {
+          return [PSCustomObject]@{
+            Workbook = $preferredWorkbook.Name
+            Worksheet = $worksheet.Name
+            Sheet = $worksheet
+            TimestampColumn = 1
+            PriceColumn = 2
+            SizeColumn = 3
+            SideColumn = 5
+            FillIdColumn = 0
+          }
+        }
+      }
+    }
+  }
   foreach ($workbook in $Excel.Workbooks) {
     foreach ($worksheet in $workbook.Worksheets) {
       if ($worksheet.Name -match "(?i)^TradeTape$") {
@@ -253,12 +282,54 @@ function Find-StreamingSheetAcrossApplications(
   return $null
 }
 
-function Find-TradeStreamingSheetAcrossApplications($Applications) {
+function Find-TradeStreamingSheetAcrossApplications(
+  $Applications,
+  $PreferredApplication = $null,
+  [string]$PreferredWorkbookName = ""
+) {
+  # RTrader can export depth and Market Data Trade History into different
+  # Excel workbooks. Saved workbooks can also retain an older TradeTape sheet,
+  # so selecting the first matching name can silently bind a frozen tape.
+  # Rank every presentation tape by its newest OLE timestamp instead.
+  $candidates = [Collections.Generic.List[object]]::new()
   foreach ($application in @($Applications)) {
-    $binding = Find-TradeStreamingSheet -Excel $application
-    if ($binding) { return $binding }
+    foreach ($workbook in $application.Workbooks) {
+      foreach ($worksheet in $workbook.Worksheets) {
+        if ($worksheet.Name -notmatch "(?i)^TradeTape$") { continue }
+        try {
+          $freshness = 0.0
+          $probeEnd = [Math]::Min(64, [Math]::Max(2, [int]$worksheet.UsedRange.Rows.Count))
+          for ($row = 2; $row -le $probeEnd; $row += 1) {
+            $value = 0.0
+            if ([double]::TryParse(
+              [string]$worksheet.Cells.Item($row, 1).Value2,
+              [Globalization.NumberStyles]::Any,
+              [Globalization.CultureInfo]::InvariantCulture,
+              [ref]$value
+            )) {
+              $freshness = [Math]::Max($freshness, $value)
+            }
+          }
+          $candidates.Add([PSCustomObject]@{
+            Freshness = $freshness
+            Binding = [PSCustomObject]@{
+              Workbook = $workbook.Name
+              Worksheet = $worksheet.Name
+              Sheet = $worksheet
+              TimestampColumn = 1
+              PriceColumn = 2
+              SizeColumn = 3
+              SideColumn = 5
+              FillIdColumn = 0
+            }
+          })
+        } catch {
+          continue
+        }
+      }
+    }
   }
-  return $null
+  return ($candidates | Sort-Object Freshness -Descending | Select-Object -First 1).Binding
 }
 
 function Convert-RTraderTimestampMs($Value) {
@@ -296,8 +367,9 @@ $lastTradeSheetScanAt = [DateTimeOffset]::MinValue
 $seenTradeIds = [Collections.Generic.HashSet[string]]::new()
 $seenTradeOrder = [Collections.Generic.Queue[string]]::new()
 $tradeForwardLive = $false
-$lastProcessedTradeRow = 1
-$maxInitialTradeRows = 250000
+$tradeSeedComplete = $false
+$maxInitialTradeRows = 50064
+$liveTradeScanRows = 4096
 
 Write-Output "RTrader Pro workbook bridge started for $Exchange`:$ContractSymbol."
 Write-Output "Source: $WorkbookName / $SheetName. Poll interval: ${PollIntervalMs}ms."
@@ -393,36 +465,29 @@ while ($true) {
       if ($excelApplications.Count -eq 0) {
         $excelApplications = @(Get-ExcelApplications)
       }
-      $tradeSheetBinding = Find-TradeStreamingSheetAcrossApplications -Applications $excelApplications
+      $tradeSheetBinding = Find-TradeStreamingSheetAcrossApplications `
+        -Applications $excelApplications `
+        -PreferredApplication $depthSheetBinding.Application `
+        -PreferredWorkbookName $depthSheetBinding.Sheet.Parent.Name
       if ($tradeSheetBinding) {
         Write-Output "Explicit RTrader trade tape found: $($tradeSheetBinding.Workbook) / $($tradeSheetBinding.Worksheet)."
+        $tradeSeedComplete = $false
       }
     }
     if ($tradeSheetBinding) {
       try {
         $tradeSheet = $tradeSheetBinding.Sheet
         $tradeLastRow = [Math]::Max(2, [int]$tradeSheet.UsedRange.Rows.Count)
-        if ($tradeLastRow -lt $lastProcessedTradeRow) {
-          # RTrader cleared or rolled the presentation tape for a new session.
-          $lastProcessedTradeRow = 1
-          $seenTradeIds.Clear()
-          $seenTradeOrder.Clear()
-        }
-        $tradeStartRow = if ($lastProcessedTradeRow -le 1) {
-          [Math]::Max(2, $tradeLastRow - $maxInitialTradeRows + 1)
+        # Market Data Trade History is a fixed-size newest-first tape: new
+        # executions are inserted at row 2 while UsedRange stays constant.
+        # An append-only row cursor therefore freezes after the first read.
+        # Seed the retained session once, then rescan a bounded live head and
+        # deduplicate by the execution's stable content identity.
+        $tradeStartRow = 2
+        $tradeEndRow = if ($tradeSeedComplete) {
+          [Math]::Min($tradeLastRow, 1 + $liveTradeScanRows)
         } else {
-          [Math]::Max(2, $lastProcessedTradeRow + 1)
-        }
-        if ($tradeStartRow -gt $tradeLastRow) {
-          # No new execution rows.  Do not marshal the complete tape through
-          # Excel COM again; doing so was stretching a 250 ms poll into tens
-          # of seconds once the session tape became large.
-          if ($lastConnectionNotice -ne "live") {
-            Write-Output "Live full-depth workbook snapshots are reaching the local gateway."
-            $lastConnectionNotice = "live"
-          }
-          Start-Sleep -Milliseconds $PollIntervalMs
-          continue
+          [Math]::Min($tradeLastRow, 1 + $maxInitialTradeRows)
         }
         $tradeColumnCount = [Math]::Max(
           $tradeSheetBinding.TimestampColumn,
@@ -436,7 +501,7 @@ while ($true) {
           try {
             $tradeValues = $tradeSheet.Range(
               $tradeSheet.Cells.Item($tradeStartRow, 1),
-              $tradeSheet.Cells.Item($tradeLastRow, $tradeColumnCount)
+              $tradeSheet.Cells.Item($tradeEndRow, $tradeColumnCount)
             ).Value2
             if ($tradeValues -is [System.Array]) { break }
           } catch {
@@ -450,9 +515,8 @@ while ($true) {
         }
         $occurrences = @{}
         $newTrades = [Collections.Generic.List[object]]::new()
-        $tradeReadRowCount = $tradeLastRow - $tradeStartRow + 1
+        $tradeReadRowCount = $tradeEndRow - $tradeStartRow + 1
         for ($localTradeRow = $tradeReadRowCount; $localTradeRow -ge 1; $localTradeRow -= 1) {
-          $absoluteTradeRow = $tradeStartRow + $localTradeRow - 1
           $tradePrice = Convert-ToNumber $tradeValues[$localTradeRow, $tradeSheetBinding.PriceColumn]
           $tradeSize = Convert-ToNumber $tradeValues[$localTradeRow, $tradeSheetBinding.SizeColumn]
           $rawSide = ([string]$tradeValues[$localTradeRow, $tradeSheetBinding.SideColumn]).Trim().ToUpperInvariant()
@@ -463,7 +527,7 @@ while ($true) {
           $baseId = "$rawTimestamp|$tradePrice|$tradeSize|$rawSide"
           $occurrence = 1 + [int]($occurrences[$baseId])
           $occurrences[$baseId] = $occurrence
-          $sourceTradeId = "$baseId|$absoluteTradeRow|$occurrence"
+          $sourceTradeId = "$baseId|$occurrence"
           if (-not $seenTradeIds.Add($sourceTradeId)) { continue }
           $seenTradeOrder.Enqueue($sourceTradeId)
           $newTrades.Add(@{
@@ -478,28 +542,37 @@ while ($true) {
           [void]$seenTradeIds.Remove($seenTradeOrder.Dequeue())
         }
         if ($newTrades.Count -gt 0) {
-          $tradePayload = @{
-            source = "RTrader Pro Market Data Trade History Excel live stream"
-            exchange = $Exchange.ToUpperInvariant()
-            contractSymbol = $ContractSymbol.ToUpperInvariant()
-            trades = @($newTrades | Sort-Object timestampMs)
-          } | ConvertTo-Json -Depth 5 -Compress
-          $tradeResult = Invoke-RestMethod `
-            -Method Post `
-            -Uri $tradeEndpoint `
-            -Headers $headers `
-            -ContentType "application/json" `
-            -Body $tradePayload
-          if (-not $tradeForwardLive -and [int]$tradeResult.acceptedTrades -gt 0) {
+          # Keep every bridge request below the gateway's safety body limit.
+          # A complete 50k-row seed can contain tens of thousands of prints.
+          $orderedTrades = @($newTrades | Sort-Object timestampMs)
+          $acceptedTrades = 0
+          for ($offset = 0; $offset -lt $orderedTrades.Count; $offset += 1000) {
+            $last = [Math]::Min($orderedTrades.Count - 1, $offset + 999)
+            $tradePayload = @{
+              source = "RTrader Pro Market Data Trade History Excel live stream"
+              exchange = $Exchange.ToUpperInvariant()
+              contractSymbol = $ContractSymbol.ToUpperInvariant()
+              trades = @($orderedTrades[$offset..$last])
+            } | ConvertTo-Json -Depth 5 -Compress
+            $tradeResult = Invoke-RestMethod `
+              -Method Post `
+              -Uri $tradeEndpoint `
+              -Headers $headers `
+              -ContentType "application/json" `
+              -Body $tradePayload
+            $acceptedTrades += [int]$tradeResult.acceptedTrades
+          }
+          if (-not $tradeForwardLive -and $acceptedTrades -gt 0) {
             Write-Output "Exact RTrader B/S executions are reaching the local gateway."
             $tradeForwardLive = $true
           }
         }
-        $lastProcessedTradeRow = $tradeLastRow
+        $tradeSeedComplete = $true
       } catch {
         Write-Warning "Trade tape bridge retry at line $($_.InvocationInfo.ScriptLineNumber): $($_.Exception.Message)"
         if ($_.Exception.Message -notmatch "RPC_E_CALL_REJECTED|Cannot index into a null array") {
           $tradeSheetBinding = $null
+          $tradeSeedComplete = $false
         }
       }
     }

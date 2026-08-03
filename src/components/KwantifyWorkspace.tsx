@@ -100,6 +100,7 @@ import {
   enrichCandlesWithInstitutionalTrades,
   fetchInstitutionalOrderFlowLevels,
   fetchInstitutionalVolumeProfile,
+  mergeInstitutionalVolumeProfiles,
   type InstitutionalOrderFlowResult,
   type InstitutionalTrade,
   type InstitutionalVolumeProfile,
@@ -3743,15 +3744,42 @@ function WorkspaceChartPane({
           && chicagoTradingDate(profile.startMs) !== expectedTradingDate
         )
       ) return;
+      let replacement = profile;
+      const coverageStartMs = Number(profile.coverageStartMs);
+      if (
+        profile.period === "daily"
+        && expectedTradingDate
+        && Number.isFinite(coverageStartMs)
+        && coverageStartMs > profile.startMs + 60_000
+      ) {
+        const earlierSessionCandles = candles.filter((candle) =>
+          chicagoTradingDate(candle.timestamp) === expectedTradingDate
+          && candle.timestamp < coverageStartMs);
+        const historicalHead = buildChartVolumeProfile({
+          candles: earlierSessionCandles,
+          root: profile.root,
+          contractSymbol: profile.contractSymbol,
+          startMs: profile.startMs,
+          endMs: coverageStartMs,
+          tickSize: profile.tickSize,
+          groupTicks: profile.groupTicks,
+          valueAreaPercent: profile.valueAreaPercent,
+          minTradeVolume: profile.minTradeVolume,
+          maxTradeVolume: profile.maxTradeVolume,
+        });
+        if (historicalHead) {
+          replacement = mergeInstitutionalVolumeProfiles(historicalHead, profile);
+        }
+      }
       setVolumeProfiles((current) => {
         const next = current.filter((candidate) => {
-          if (candidate.period !== profile.period) return true;
-          if (profile.period === "daily") {
-            return chicagoTradingDate(candidate.startMs) !== chicagoTradingDate(profile.startMs);
+          if (candidate.period !== replacement.period) return true;
+          if (replacement.period === "daily") {
+            return chicagoTradingDate(candidate.startMs) !== chicagoTradingDate(replacement.startMs);
           }
           return false;
         });
-        next.push(profile);
+        next.push(replacement);
         return next.sort((left, right) => left.startMs - right.startMs);
       });
     };

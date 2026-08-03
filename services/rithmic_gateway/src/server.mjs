@@ -630,6 +630,8 @@ const server = createServer(async (request, response) => {
         instrument.symbol,
         { fromMs: startMs, toMs: endMs },
       );
+      const coverageStartMs = profileTrades[0]?.timestampMs ?? null;
+      const coverageEndMs = profileTrades.at(-1)?.timestampMs ?? null;
       let weightedPrice = 0;
       let weightedSquaredPrice = 0;
       let includedTrades = 0;
@@ -690,6 +692,8 @@ const server = createServer(async (request, response) => {
         tradingDate,
         startMs,
         endMs,
+        coverageStartMs,
+        coverageEndMs,
         tickSize: priceTick,
         groupTicks,
         valueAreaPercent,
