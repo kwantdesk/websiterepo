@@ -1,7 +1,12 @@
 "use client";
 
-import { Component, type ErrorInfo, type ReactNode } from "react";
-import { AlertTriangle, RefreshCw, Sparkles, X } from "lucide-react";
+import { Component, Fragment, type ErrorInfo, type ReactNode } from "react";
+import { AlertTriangle, Loader2, RefreshCw, Sparkles, X } from "lucide-react";
+import {
+  isDeploymentAssetFailure,
+  recordClientRenderFailure,
+  reloadForDeploymentAssetFailureOnce,
+} from "@/lib/clientFailureRecovery";
 
 type Props = {
   children: ReactNode;
@@ -12,31 +17,73 @@ type Props = {
 
 type State = {
   failed: boolean;
+  recoveryKey: number;
+  attempts: number;
+  errorCode: string;
 };
 
 export default class ZyonPanelBoundary extends Component<Props, State> {
-  state: State = { failed: false };
+  state: State = { failed: false, recoveryKey: 0, attempts: 0, errorCode: "" };
+  private recoveryTimer: number | null = null;
 
-  static getDerivedStateFromError(): State {
+  static getDerivedStateFromError(): Partial<State> {
     return { failed: true };
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
+    const failure = recordClientRenderFailure("ZYON", error, info.componentStack ?? "");
+    this.setState({ errorCode: failure.code });
     console.error("ZYON render failed", error, info);
+    if (isDeploymentAssetFailure(error) && reloadForDeploymentAssetFailureOnce()) return;
+    if (this.state.attempts < 2) {
+      this.recoveryTimer = window.setTimeout(() => {
+        this.recoveryTimer = null;
+        this.setState((current) => ({
+          failed: false,
+          recoveryKey: current.recoveryKey + 1,
+          attempts: current.attempts + 1,
+          errorCode: "",
+        }));
+      }, this.state.attempts === 0 ? 80 : 300);
+    }
   }
 
   componentDidUpdate(previousProps: Props) {
     if (this.state.failed && previousProps.resetKey !== this.props.resetKey) {
-      this.setState({ failed: false });
+      this.setState((current) => ({
+        failed: false,
+        recoveryKey: current.recoveryKey + 1,
+        attempts: 0,
+        errorCode: "",
+      }));
     }
   }
 
+  componentWillUnmount() {
+    if (this.recoveryTimer !== null) window.clearTimeout(this.recoveryTimer);
+  }
+
   private retry = () => {
-    this.setState({ failed: false });
+    this.setState((current) => ({
+      failed: false,
+      recoveryKey: current.recoveryKey + 1,
+      attempts: 0,
+      errorCode: "",
+    }));
   };
 
   render() {
-    if (!this.state.failed) return this.props.children;
+    if (!this.state.failed) {
+      return <Fragment key={this.state.recoveryKey}>{this.props.children}</Fragment>;
+    }
+
+    if (this.state.attempts < 2) {
+      return (
+        <aside className="relative z-40 flex h-full w-full items-center justify-center bg-panel/98">
+          <Loader2 className="h-5 w-5 animate-spin text-primary" />
+        </aside>
+      );
+    }
 
     const workspace = this.props.variant === "workspace";
 
@@ -69,6 +116,7 @@ export default class ZyonPanelBoundary extends Component<Props, State> {
                 ? "The workspace was isolated before it could interrupt the rest of Kwant Desk."
                 : "The conversation panel was isolated before it could interrupt your chart."}
             </p>
+            {this.state.errorCode ? <p className="mt-2 font-mono text-[8px] text-muted">{this.state.errorCode}</p> : null}
             <button
               type="button"
               onClick={this.retry}

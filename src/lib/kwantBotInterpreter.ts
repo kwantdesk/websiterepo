@@ -155,6 +155,245 @@ export type KwantBotTickResult = {
   memory: KwantBotMemoryEvent[];
 };
 
+const MESSAGE_KINDS = new Set<KwantBotMessageKind>([
+  "system",
+  "briefing",
+  "approach",
+  "touch",
+  "rejection",
+  "acceptance",
+  "outcome",
+  "options",
+]);
+const MEMORY_TYPES = new Set<KwantBotMemoryEvent["type"]>([
+  "price",
+  "context",
+  "approach",
+  "touch",
+  "rejection",
+  "acceptance",
+  "outcome",
+]);
+const GAMEPLAN_ROLES = new Set<GameplanRole>(["magnet", "wall", "accelerant", "decision"]);
+
+function objectValue(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function finiteNumber(value: unknown): number | null {
+  const parsed = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function optionalFiniteNumber(value: unknown): number | null {
+  return value === null || value === undefined ? null : finiteNumber(value);
+}
+
+function normalizedZone(value: unknown): [number, number] | null {
+  if (!Array.isArray(value) || value.length < 2) return null;
+  const first = finiteNumber(value[0]);
+  const second = finiteNumber(value[1]);
+  if (first === null || second === null) return null;
+  return first <= second ? [first, second] : [second, first];
+}
+
+function validIsoString(value: unknown, fallback: string) {
+  if (typeof value !== "string" || !Number.isFinite(Date.parse(value))) return fallback;
+  return value;
+}
+
+export function normalizeKwantBotInterpreterMessage(value: unknown): KwantBotInterpreterMessage | null {
+  const item = objectValue(value);
+  if (!item) return null;
+  if (
+    typeof item.id !== "string"
+    || (item.root !== "NQ" && item.root !== "ES")
+    || typeof item.kind !== "string"
+    || !MESSAGE_KINDS.has(item.kind as KwantBotMessageKind)
+    || typeof item.text !== "string"
+    || typeof item.createdAt !== "string"
+    || !Number.isFinite(Date.parse(item.createdAt))
+    || typeof item.dedupeKey !== "string"
+  ) return null;
+  const price = optionalFiniteNumber(item.price);
+  return {
+    id: item.id,
+    root: item.root,
+    kind: item.kind as KwantBotMessageKind,
+    text: item.text,
+    createdAt: item.createdAt,
+    dedupeKey: item.dedupeKey,
+    ...(price !== null ? { price } : {}),
+    ...(typeof item.levelId === "string" ? { levelId: item.levelId } : {}),
+  };
+}
+
+export function normalizeKwantBotMemoryEvent(value: unknown): KwantBotMemoryEvent | null {
+  const item = objectValue(value);
+  if (!item) return null;
+  if (
+    typeof item.id !== "string"
+    || (item.root !== "NQ" && item.root !== "ES")
+    || typeof item.type !== "string"
+    || !MEMORY_TYPES.has(item.type as KwantBotMemoryEvent["type"])
+    || typeof item.createdAt !== "string"
+    || !Number.isFinite(Date.parse(item.createdAt))
+  ) return null;
+  const price = optionalFiniteNumber(item.price);
+  const zone = normalizedZone(item.zone);
+  return {
+    id: item.id,
+    root: item.root,
+    type: item.type as KwantBotMemoryEvent["type"],
+    createdAt: item.createdAt,
+    ...(price !== null ? { price } : {}),
+    ...(typeof item.levelId === "string" ? { levelId: item.levelId } : {}),
+    ...(typeof item.levelName === "string" ? { levelName: item.levelName } : {}),
+    ...(zone ? { zone } : {}),
+    ...(typeof item.reasoning === "string" ? { reasoning: item.reasoning } : {}),
+    ...(typeof item.detail === "string" ? { detail: item.detail } : {}),
+  };
+}
+
+/**
+ * Live and archived market context is an external input. Never let a partial
+ * provider response replace the last valid context: several UI panels read
+ * nested options fields synchronously, so an unchecked payload can otherwise
+ * trip a React error boundary and strand the whole section on its fallback.
+ */
+export function normalizeKwantBotMarketContext(
+  value: unknown,
+  expectedRoot?: KwantBotMarketRoot,
+): KwantBotMarketContext | null {
+  const item = objectValue(value);
+  if (!item || (item.root !== "NQ" && item.root !== "ES")) return null;
+  if (expectedRoot && item.root !== expectedRoot) return null;
+  const options = objectValue(item.options);
+  if (!options) return null;
+
+  const root = item.root;
+  const now = new Date().toISOString();
+  const levels = (Array.isArray(item.levels) ? item.levels : []).flatMap((candidate, index) => {
+    const level = objectValue(candidate);
+    const zone = normalizedZone(level?.zone);
+    if (!level || !zone) return [];
+    const strength = finiteNumber(level.strength) ?? 0;
+    const role = typeof level.role === "string" && GAMEPLAN_ROLES.has(level.role as GameplanRole)
+      ? level.role as GameplanRole
+      : "decision";
+    return [{
+      id: typeof level.id === "string" ? level.id : `${root}:level:${zone[0]}:${index}`,
+      name: typeof level.name === "string" ? level.name : "Market level",
+      role,
+      strength,
+      zone,
+      why: typeof level.why === "string" ? level.why : "",
+      ifVisit: typeof level.ifVisit === "string" ? level.ifVisit : "",
+      ifHold: typeof level.ifHold === "string" ? level.ifHold : "",
+      ifBreak: typeof level.ifBreak === "string" ? level.ifBreak : "",
+    } satisfies KwantBotLevel];
+  });
+  const scenarios = (Array.isArray(item.scenarios) ? item.scenarios : []).flatMap((candidate) => {
+    const scenario = objectValue(candidate);
+    if (!scenario) return [];
+    return [{
+      name: typeof scenario.name === "string" ? scenario.name : "Scenario",
+      trigger: typeof scenario.trigger === "string" ? scenario.trigger : "",
+      path: (Array.isArray(scenario.path) ? scenario.path : [])
+        .map(finiteNumber)
+        .filter((price): price is number => price !== null),
+      kill: typeof scenario.kill === "string" ? scenario.kill : "",
+      weight: finiteNumber(scenario.weight) ?? 0,
+    }];
+  });
+  const gammaChange = (Array.isArray(options.gammaChange) ? options.gammaChange : []).flatMap((candidate) => {
+    const row = objectValue(candidate);
+    const minutes = finiteNumber(row?.minutes);
+    const strike = finiteNumber(row?.strike);
+    const change = finiteNumber(row?.change);
+    if (!row || minutes === null || strike === null || change === null) return [];
+    return [{ minutes, strike, change, state: typeof row.state === "string" ? row.state : "" }];
+  });
+  const recentFlow = (Array.isArray(options.recentFlow) ? options.recentFlow : []).flatMap((candidate, index) => {
+    const row = objectValue(candidate);
+    const tradeTime = finiteNumber(row?.tradeTime);
+    const premium = finiteNumber(row?.premium);
+    if (!row || tradeTime === null || premium === null) return [];
+    const contractType: "CALL" | "PUT" | "UNKNOWN" = row.contractType === "CALL" || row.contractType === "PUT" ? row.contractType : "UNKNOWN";
+    const sentiment: "BULLISH" | "BEARISH" | "NEUTRAL" = row.sentiment === "BULLISH" || row.sentiment === "BEARISH" ? row.sentiment : "NEUTRAL";
+    return [{
+      id: typeof row.id === "string" ? row.id : `${root}:flow:${tradeTime}:${index}`,
+      tradeTime,
+      contractType,
+      strikePrice: optionalFiniteNumber(row.strikePrice),
+      expirationDate: typeof row.expirationDate === "string" ? row.expirationDate : null,
+      premium,
+      size: optionalFiniteNumber(row.size),
+      sentiment,
+      unusual: row.unusual === true,
+      opening: row.opening === true,
+      side: typeof row.side === "string" ? row.side : "",
+    }];
+  });
+  const gammaPoint = (candidate: unknown) => {
+    const row = objectValue(candidate);
+    const strike = finiteNumber(row?.strike);
+    const pointValue = finiteNumber(row?.value);
+    return row && strike !== null && pointValue !== null ? { strike, value: pointValue } : null;
+  };
+  const tradeSide = objectValue(options.tradeSidePremium);
+  const sourceSymbol = typeof item.sourceSymbol === "string"
+    ? item.sourceSymbol as CanonicalOptionsSourceSymbol
+    : (root === "NQ" ? "QQQ" : "SPY") as CanonicalOptionsSourceSymbol;
+
+  return {
+    root,
+    sourceSymbol,
+    generatedAt: validIsoString(item.generatedAt, now),
+    sessionDate: typeof item.sessionDate === "string" ? item.sessionDate : now.slice(0, 10),
+    status: item.status === "LIVE" ? "LIVE" : "PARTIAL",
+    refreshAfterMs: Math.max(5_000, finiteNumber(item.refreshAfterMs) ?? 20_000),
+    currentPrice: optionalFiniteNumber(item.currentPrice),
+    futuresStatus: item.futuresStatus === "LIVE" || item.futuresStatus === "DELAYED" || item.futuresStatus === "LAST_SESSION"
+      ? item.futuresStatus
+      : "UNAVAILABLE",
+    oneLiner: typeof item.oneLiner === "string" ? item.oneLiner : "Market context is reconnecting.",
+    levels,
+    scenarios,
+    options: {
+      asOf: validIsoString(options.asOf, validIsoString(item.generatedAt, now)),
+      snapshotMode: options.snapshotMode === "LIVE" ? "LIVE" : "NEW_YORK_EOD",
+      marketOpen: options.marketOpen === true,
+      sessionDate: typeof options.sessionDate === "string" ? options.sessionDate : now.slice(0, 10),
+      gammaRegime: options.gammaRegime === "POSITIVE" || options.gammaRegime === "NEGATIVE" ? options.gammaRegime : "NEUTRAL",
+      gammaStrength: typeof options.gammaStrength === "string" ? options.gammaStrength : "",
+      gammaStateLabel: typeof options.gammaStateLabel === "string" ? options.gammaStateLabel : "Gamma context reconnecting",
+      volatilityState: options.volatilityState === "COMPRESSION" || options.volatilityState === "EXPANSION RISK"
+        ? options.volatilityState
+        : "BALANCED",
+      netPremium: finiteNumber(options.netPremium) ?? 0,
+      bullishShare: optionalFiniteNumber(options.bullishShare),
+      frontExpiration: typeof options.frontExpiration === "string" ? options.frontExpiration : null,
+      zeroDteAvailable: options.zeroDteAvailable === true,
+      majorPositiveGamma: gammaPoint(options.majorPositiveGamma),
+      majorNegativeGamma: gammaPoint(options.majorNegativeGamma),
+      gammaChange,
+      tradeSidePremium: tradeSide ? {
+        netLongPremium: finiteNumber(tradeSide.netLongPremium) ?? 0,
+        longShare: optionalFiniteNumber(tradeSide.longShare),
+        callBought: finiteNumber(tradeSide.callBought) ?? 0,
+        callSold: finiteNumber(tradeSide.callSold) ?? 0,
+        putBought: finiteNumber(tradeSide.putBought) ?? 0,
+        putSold: finiteNumber(tradeSide.putSold) ?? 0,
+      } : null,
+      recentFlow,
+      errors: (Array.isArray(options.errors) ? options.errors : []).filter((error): error is string => typeof error === "string"),
+    },
+  };
+}
+
 const FIFTEEN_MINUTES_MS = 15 * 60_000;
 export const KWANTBOT_TOUCH_COOLDOWN_MS = 5 * 60_000;
 export const KWANTBOT_RESPONSE_COOLDOWN_MS = 10 * 60_000;

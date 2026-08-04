@@ -9,6 +9,9 @@ import {
   KWANTBOT_RESPONSE_COOLDOWN_MS,
   KWANTBOT_TOUCH_COOLDOWN_MS,
   kwantBotInterpreterId,
+  normalizeKwantBotInterpreterMessage,
+  normalizeKwantBotMarketContext,
+  normalizeKwantBotMemoryEvent,
   pruneKwantBotMemory,
   type KwantBotContextState,
   type KwantBotFeedState,
@@ -60,6 +63,24 @@ type RootRecord<T> = Record<KwantBotMarketRoot, T>;
 
 const emptyMessages = (): RootRecord<KwantBotInterpreterMessage[]> => ({ NQ: [], ES: [] });
 const emptyMemory = (): RootRecord<KwantBotMemoryEvent[]> => ({ NQ: [], ES: [] });
+
+function objectErrorMessage(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return "";
+  const message = (value as { error?: unknown }).error;
+  return typeof message === "string" ? message : "";
+}
+
+function normalizedMessages(value: unknown, root: KwantBotMarketRoot) {
+  return (Array.isArray(value) ? value : [])
+    .map(normalizeKwantBotInterpreterMessage)
+    .filter((item): item is KwantBotInterpreterMessage => item?.root === root);
+}
+
+function normalizedMemory(value: unknown, root: KwantBotMarketRoot) {
+  return (Array.isArray(value) ? value : [])
+    .map(normalizeKwantBotMemoryEvent)
+    .filter((item): item is KwantBotMemoryEvent => item?.root === root);
+}
 
 function mergeById<T extends { id: string; createdAt: string }>(
   local: T[],
@@ -297,24 +318,24 @@ export function useKwantBotInterpreter(args: {
         if (cancelled || !stored || stored.version !== 1) return;
         const restoredMessages = {
           NQ: mergeById(
-            Array.isArray(stored.messages?.NQ) ? stored.messages.NQ : [],
+            normalizedMessages(stored.messages?.NQ, "NQ"),
             messagesRef.current.NQ,
             INITIAL_LOCAL_MESSAGE_LIMIT,
           ),
           ES: mergeById(
-            Array.isArray(stored.messages?.ES) ? stored.messages.ES : [],
+            normalizedMessages(stored.messages?.ES, "ES"),
             messagesRef.current.ES,
             INITIAL_LOCAL_MESSAGE_LIMIT,
           ),
         };
         const restoredMemory = {
           NQ: pruneKwantBotMemory(mergeById(
-            Array.isArray(stored.memory?.NQ) ? stored.memory.NQ : [],
+            normalizedMemory(stored.memory?.NQ, "NQ"),
             memoryRef.current.NQ,
             INITIAL_LOCAL_MEMORY_LIMIT,
           )).slice(-INITIAL_LOCAL_MEMORY_LIMIT),
           ES: pruneKwantBotMemory(mergeById(
-            Array.isArray(stored.memory?.ES) ? stored.memory.ES : [],
+            normalizedMemory(stored.memory?.ES, "ES"),
             memoryRef.current.ES,
             INITIAL_LOCAL_MEMORY_LIMIT,
           )).slice(-INITIAL_LOCAL_MEMORY_LIMIT),
@@ -371,9 +392,15 @@ export function useKwantBotInterpreter(args: {
   }, [learningReviews, memory, messages, runtimeEnabled, selectedRoot, storeReady]);
 
   const mergeArchivePage = useCallback((body: ArchivePayload) => {
-    const remoteMessages = Array.isArray(body.messages) ? body.messages : [];
-    const remoteMemory = Array.isArray(body.memory) ? body.memory : [];
-    const remoteContexts = Array.isArray(body.contexts) ? body.contexts : [];
+    const remoteMessages = (Array.isArray(body.messages) ? body.messages : [])
+      .map(normalizeKwantBotInterpreterMessage)
+      .filter((item): item is KwantBotInterpreterMessage => item !== null);
+    const remoteMemory = (Array.isArray(body.memory) ? body.memory : [])
+      .map(normalizeKwantBotMemoryEvent)
+      .filter((item): item is KwantBotMemoryEvent => item !== null);
+    const remoteContexts = (Array.isArray(body.contexts) ? body.contexts : [])
+      .map((context) => normalizeKwantBotMarketContext(context))
+      .filter((context): context is KwantBotMarketContext => context !== null);
     remoteMessages.forEach((item) => archivedMessageIdsRef.current.add(item.id));
     remoteMemory.forEach((item) => archivedMemoryIdsRef.current.add(item.id));
     remoteContexts.forEach((item) => archivedContextKeysRef.current.add(contextSnapshotKey(item)));
@@ -669,8 +696,11 @@ export function useKwantBotInterpreter(args: {
         cache: "no-store",
         credentials: "same-origin",
       });
-      const body = await response.json() as KwantBotMarketContext & { error?: string };
-      if (!response.ok) throw new Error(body.error || `Unable to load ${root} market context.`);
+      const rawBody = await response.json() as unknown;
+      const errorMessage = objectErrorMessage(rawBody);
+      if (!response.ok) throw new Error(errorMessage || `Unable to load ${root} market context.`);
+      const body = normalizeKwantBotMarketContext(rawBody, root);
+      if (!body) throw new Error(`Invalid ${root} market context was ignored while the feed reconnects.`);
 
       const previous = contextsRef.current[root];
       const nextContexts = { ...contextsRef.current, [root]: body };

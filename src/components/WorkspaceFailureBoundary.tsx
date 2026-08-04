@@ -1,7 +1,12 @@
 "use client";
 
-import { Component, type ErrorInfo, type ReactNode } from "react";
-import { AlertTriangle, RefreshCw } from "lucide-react";
+import { Component, Fragment, type ErrorInfo, type ReactNode } from "react";
+import { AlertTriangle, Loader2, RefreshCw } from "lucide-react";
+import {
+  isDeploymentAssetFailure,
+  recordClientRenderFailure,
+  reloadForDeploymentAssetFailureOnce,
+} from "@/lib/clientFailureRecovery";
 
 type Props = {
   children: ReactNode;
@@ -12,35 +17,81 @@ type Props = {
 
 type State = {
   failed: boolean;
+  recoveryKey: number;
+  attempts: number;
+  errorCode: string;
 };
 
 export default class WorkspaceFailureBoundary extends Component<Props, State> {
-  state: State = { failed: false };
+  state: State = { failed: false, recoveryKey: 0, attempts: 0, errorCode: "" };
+  private recoveryTimer: number | null = null;
 
-  static getDerivedStateFromError(): State {
+  static getDerivedStateFromError(): Partial<State> {
     return { failed: true };
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
+    const failure = recordClientRenderFailure(
+      this.props.label ?? "Workspace",
+      error,
+      info.componentStack ?? "",
+    );
+    this.setState({ errorCode: failure.code });
     console.error("Kwant Desk workspace render failed", {
       workspace: this.props.label,
       error,
       componentStack: info.componentStack,
     });
+    if (isDeploymentAssetFailure(error) && reloadForDeploymentAssetFailureOnce()) return;
+    if (this.state.attempts < 2) {
+      this.recoveryTimer = window.setTimeout(() => {
+        this.recoveryTimer = null;
+        this.setState((current) => ({
+          failed: false,
+          recoveryKey: current.recoveryKey + 1,
+          attempts: current.attempts + 1,
+          errorCode: "",
+        }));
+      }, this.state.attempts === 0 ? 80 : 300);
+    }
   }
 
   componentDidUpdate(previousProps: Props) {
     if (this.state.failed && previousProps.resetKey !== this.props.resetKey) {
-      this.setState({ failed: false });
+      this.setState((current) => ({
+        failed: false,
+        recoveryKey: current.recoveryKey + 1,
+        attempts: 0,
+        errorCode: "",
+      }));
     }
   }
 
+  componentWillUnmount() {
+    if (this.recoveryTimer !== null) window.clearTimeout(this.recoveryTimer);
+  }
+
   private retry = () => {
-    this.setState({ failed: false });
+    this.setState((current) => ({
+      failed: false,
+      recoveryKey: current.recoveryKey + 1,
+      attempts: 0,
+      errorCode: "",
+    }));
   };
 
   render() {
-    if (!this.state.failed) return this.props.children;
+    if (!this.state.failed) {
+      return <Fragment key={this.state.recoveryKey}>{this.props.children}</Fragment>;
+    }
+
+    if (this.state.attempts < 2) {
+      return (
+        <div className="flex h-full min-h-0 w-full flex-1 items-center justify-center bg-panel">
+          <Loader2 className="h-5 w-5 animate-spin text-primary" />
+        </div>
+      );
+    }
 
     const shell = this.props.variant === "shell";
     return (
@@ -53,8 +104,9 @@ export default class WorkspaceFailureBoundary extends Component<Props, State> {
             {this.props.label ? `${this.props.label} paused safely` : "Workspace paused safely"}
           </h2>
           <p className="mt-2 text-[10px] leading-5 text-muted">
-            This section was contained before it could interrupt the rest of Kwant Desk.
+            The section could not recover after two clean remounts.
           </p>
+          {this.state.errorCode ? <p className="mt-2 font-mono text-[9px] text-muted">{this.state.errorCode}</p> : null}
           <button
             type="button"
             onClick={this.retry}
