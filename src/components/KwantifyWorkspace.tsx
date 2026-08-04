@@ -5,6 +5,7 @@ import TimeZoneSelect from "@/components/ui/TimeZoneSelect";
 import ChartIndicatorsControl from "@/components/ChartIndicatorsControl";
 import KwantLoader from "@/components/KwantLoader";
 import LiveGexPanelBoundary from "@/components/backtesting/LiveGexPanelBoundary";
+import LiveGexPanel from "@/components/backtesting/HistoricalGexPanel";
 import ZyonPanelBoundary from "@/components/zyon/ZyonPanelBoundary";
 import UserAvatar from "@/components/socials/UserAvatar";
 import WorkspaceFailureBoundary from "@/components/WorkspaceFailureBoundary";
@@ -297,10 +298,6 @@ const ZyonWorkspace = dynamic(loadZyonWorkspace, {
       detail="Loading the latest conversation."
     />
   ),
-});
-const LiveGexPanel = dynamic(() => import("@/components/backtesting/HistoricalGexPanel"), {
-  ssr: false,
-  loading: () => workspaceLoader("Opening live GEX", "Synchronising the latest options structure."),
 });
 const JournalWorkspace = dynamic(loadJournalWorkspace, {
   ssr: false,
@@ -2498,7 +2495,13 @@ function warmGammaPayloadCache() {
       resolveGammaConversion(undefined, instrument),
     ])
     .filter((conversion): conversion is GammaConversionDefinition => Boolean(conversion));
-  return Promise.allSettled(conversions.map((conversion) => fetchGammaPayload(conversion)));
+  const cashConversions = (["NQ", "ES"] as const)
+    .map((instrument) => cashFallbackGammaConversion(instrument))
+    .filter((conversion): conversion is GammaConversionDefinition => Boolean(conversion));
+  return Promise.allSettled([
+    ...conversions.map((conversion) => fetchGammaPayload(conversion)),
+    ...cashConversions.map((conversion) => fetchGammaPayload(conversion, { calibrated: true })),
+  ]);
 }
 
 function gammaLevelColor(kind: string, settings: ChartSettings) {
@@ -5074,6 +5077,7 @@ export default function KwantifyWorkspace({
     const loadLiveGex = async () => {
       try {
         const payload = await fetchGammaPayload(conversion, {
+          allowStale: true,
           calibrated: true,
           calibrationPrice: liveGexCalibrationPriceRef.current,
         });

@@ -1,4 +1,5 @@
 import { createServerClient } from "@supabase/ssr";
+import { unstable_cache } from "next/cache";
 import { NextRequest, NextResponse } from "next/server";
 
 // Native gamma cold-builds a session's options chain (~25s of Databento pulls); the
@@ -11,7 +12,16 @@ import {
   getHistoricalCashCalibratedChartGammaLevelsAtOrBefore,
   getHistoricalReplayChartGammaLevels,
   getQuantDataHttpError,
+  getUsOptionsSessionDate,
+  isUsOptionsMarketOpen,
 } from "@/lib/quantData.server";
+
+const getCompletedCashCalibratedGamma = unstable_cache(
+  async (root: "NQ" | "ES", source: string, sessionDate: string) =>
+    getCashCalibratedChartGammaLevels(root, source, sessionDate),
+  ["completed-cash-calibrated-chart-gamma-v1"],
+  { revalidate: 6 * 60 * 60 },
+);
 
 async function isAuthenticated(request: NextRequest) {
   const host = request.nextUrl.hostname;
@@ -51,6 +61,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Authentication required." }, { status: 401 });
   }
   try {
+    const currentOptionsSession = getUsOptionsSessionDate();
+    const effectiveSessionDate = sessionDate || currentOptionsSession;
+    const completedOptionsSession = effectiveSessionDate !== currentOptionsSession || !isUsOptionsMarketOpen();
     const payload = calibratedRequest && (root === "NQ" || root === "ES")
       ? asOf
         ? await getHistoricalReplayChartGammaLevels(root, source, asOf, futuresPrice)
@@ -61,12 +74,14 @@ export async function GET(request: NextRequest) {
               sessionDate,
               Number.isFinite(futuresPrice) && futuresPrice > 0 ? futuresPrice : undefined,
             )
-          : await getCashCalibratedChartGammaLevels(
-              root,
-              source,
-              sessionDate,
-              Number.isFinite(futuresPrice) && futuresPrice > 0 ? futuresPrice : undefined,
-            )
+          : completedOptionsSession
+            ? await getCompletedCashCalibratedGamma(root, source, effectiveSessionDate)
+            : await getCashCalibratedChartGammaLevels(
+                root,
+                source,
+                sessionDate,
+                Number.isFinite(futuresPrice) && futuresPrice > 0 ? futuresPrice : undefined,
+              )
       : await getChartGammaLevels(root, source, sessionDate);
     return NextResponse.json(payload, {
       headers: {

@@ -2939,6 +2939,11 @@ export function getUsOptionsSessionDate(): string {
   return getUsOptionsSession().sessionDate;
 }
 
+/** True only while the regular New York options session is trading. */
+export function isUsOptionsMarketOpen(): boolean {
+  return getUsOptionsSession().marketOpen;
+}
+
 export async function getGexDeskZeroGammaPayload(): Promise<GexDeskZeroGammaPayload> {
   const session = getUsOptionsSession();
   try {

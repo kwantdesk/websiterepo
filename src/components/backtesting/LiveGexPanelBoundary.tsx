@@ -11,27 +11,39 @@ type Props = {
 
 type State = {
   failed: boolean;
+  retryKey: number;
 };
 
 export default class LiveGexPanelBoundary extends Component<Props, State> {
-  state: State = { failed: false };
+  state: State = { failed: false, retryKey: 0 };
+  private retryTimer: ReturnType<typeof setTimeout> | null = null;
 
-  static getDerivedStateFromError(): State {
+  static getDerivedStateFromError(): Partial<State> {
     return { failed: true };
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
     console.error("Live GEX panel render failed", error, info);
+    if (this.retryTimer === null && this.state.retryKey < 1) {
+      this.retryTimer = setTimeout(() => {
+        this.retryTimer = null;
+        this.setState((state) => ({ failed: false, retryKey: state.retryKey + 1 }));
+      }, 500);
+    }
   }
 
   componentDidUpdate(previousProps: Props) {
     if (this.state.failed && previousProps.resetKey !== this.props.resetKey) {
-      this.setState({ failed: false });
+      this.setState({ failed: false, retryKey: 0 });
     }
   }
 
+  componentWillUnmount() {
+    if (this.retryTimer !== null) clearTimeout(this.retryTimer);
+  }
+
   render() {
-    if (!this.state.failed) return this.props.children;
+    if (!this.state.failed) return <div key={this.state.retryKey} className="contents">{this.props.children}</div>;
 
     return (
       <aside className="relative z-40 flex h-full w-full flex-col border-l border-border bg-panel/98 backdrop-blur-xl">
@@ -55,8 +67,8 @@ export default class LiveGexPanelBoundary extends Component<Props, State> {
               <Activity className="h-4 w-4 animate-pulse" />
               <span className="absolute inset-0 animate-ping rounded-2xl border border-primary/20" />
             </span>
-            <div className="mt-4 text-[11px] font-semibold text-foreground">Reconnecting live GEX</div>
-            <p className="mt-2 text-[9px] leading-4 text-muted">The last verified frame is being restored automatically.</p>
+            <div className="mt-4 text-[11px] font-semibold text-foreground">Restoring GEX panel</div>
+            <p className="mt-2 text-[9px] leading-4 text-muted">The verified New York snapshot remains protected while the panel recovers.</p>
           </div>
         </div>
       </aside>
