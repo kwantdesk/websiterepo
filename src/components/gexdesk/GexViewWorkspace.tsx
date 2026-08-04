@@ -510,7 +510,7 @@ export default function GexViewWorkspace({
       evolutionTickTimerRef.current = window.setTimeout(() => {
         evolutionTickTimerRef.current = null;
         setEvolutionLiveTicks([...evolutionTicksRef.current]);
-      }, 250);
+      }, 100);
     };
     window.addEventListener(DATABENTO_LIVE_TICK_EVENT, receiveEvolutionTick);
     return () => {

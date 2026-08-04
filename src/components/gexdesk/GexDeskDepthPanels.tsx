@@ -143,6 +143,20 @@ function detailedTimeLabel(timestamp: number) {
   }).format(new Date(timestamp));
 }
 
+function axisTimeLabel(timestamp: number, timeframe: EvolutionTimeframe) {
+  const options: Intl.DateTimeFormatOptions = timeframe === "1s" || timeframe === "10s" || timeframe === "30s"
+    ? { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }
+    : timeframe === "1D" || timeframe === "1W"
+      ? { month: "short", day: "2-digit" }
+      : timeframe === "1h" || timeframe === "4h"
+        ? { month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }
+        : { hour: "2-digit", minute: "2-digit", hour12: false };
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    ...options,
+  }).format(new Date(timestamp));
+}
+
 function evolutionRole(call: number, put: number, net: number, concentration: number) {
   const callMagnitude = Math.abs(call);
   const putMagnitude = Math.abs(put);
@@ -307,8 +321,18 @@ export function EvolutionPanel({
   const timeline = useMemo(() => {
     if (!history?.timestamps.length) return null;
     const historyPrices = history.futuresPrices?.length ? history.futuresPrices : history.nqPrices;
-    const live = history.status === "LIVE";
-    const currentTimestamp = live ? clock : history.timestamps.at(-1)!;
+    const latestLiveTick = liveTicks.at(-1);
+    const hasRecentPriceTick = Boolean(
+      latestLiveTick
+      && latestLiveTick.instrument === instrument
+      && Math.abs(clock - latestLiveTick.timestamp) <= 30_000,
+    );
+    const live = history.status === "LIVE" || hasRecentPriceTick;
+    const currentTimestamp = hasRecentPriceTick
+      ? Math.max(history.timestamps.at(-1)!, latestLiveTick!.timestamp, clock)
+      : history.status === "LIVE"
+        ? clock
+        : history.timestamps.at(-1)!;
     const intervalMs = EVOLUTION_FRAME_MS[timeframe];
     const earliest = history.timestamps[0];
     const windowStart = Math.max(earliest, currentTimestamp - intervalMs * 119);
@@ -354,8 +378,9 @@ export function EvolutionPanel({
       projectionWidth,
       intervalMs,
       live,
+      hasRecentPriceTick,
     };
-  }, [clock, history, livePrice, liveTicks, timeframe]);
+  }, [clock, history, instrument, livePrice, liveTicks, timeframe]);
   const heatScale = useMemo(() => {
     const sourceIndices = timeline?.frames.map((frame) => frame.sourceIndex) ?? [];
     const magnitudes = history?.rows.flatMap((row) => sourceIndices.map((sourceIndex) => (
@@ -389,6 +414,38 @@ export function EvolutionPanel({
   const primaryPath = timeline.frames.map((frame, index) => (
     `${index ? "L" : "M"}${(index === timeline.frames.length - 1 ? timeline.observedUnits : index + 0.5).toFixed(2)},${yForPrice(frame.price ?? history.priceLow).toFixed(2)}`
   )).join(" ");
+  const priceAxisTicks = Array.from({ length: 9 }, (_, index) => {
+    const ratio = index / 8;
+    return {
+      y: ratio * Math.max(1, rowCount - 1),
+      percentage: ratio * 100,
+      price: history.priceHigh - (history.priceHigh - history.priceLow) * ratio,
+    };
+  });
+  const timeAxisTicks = Array.from({ length: 8 }, (_, index) => {
+    const ratio = index / 7;
+    const x = ratio * timeline.viewWidth;
+    let timestamp: number;
+    if (x <= timeline.observedUnits) {
+      const frameRatio = clamp(x / Math.max(1, timeline.observedUnits), 0, 1);
+      const frameIndex = Math.min(
+        timeline.frames.length - 1,
+        Math.round(frameRatio * Math.max(0, timeline.frames.length - 1)),
+      );
+      timestamp = timeline.frames[frameIndex]?.timestamp ?? timeline.currentTimestamp;
+    } else {
+      const futureRatio = clamp(
+        (x - timeline.observedUnits) / Math.max(0.0001, timeline.projectionWidth),
+        0,
+        1,
+      );
+      timestamp = timeline.currentTimestamp + (timeline.futureEnd - timeline.currentTimestamp) * futureRatio;
+    }
+    return { x, percentage: ratio * 100, timestamp };
+  });
+  const liveYPercentage = live === null
+    ? null
+    : yForPrice(live) / Math.max(1, rowCount - 1) * 100;
   const hovered = hoveredCell ? (() => {
     const row = history.rows[hoveredCell.rowIndex];
     const frame = hoveredCell.projected
@@ -518,14 +575,14 @@ export function EvolutionPanel({
           <div className={`relative min-w-0 overflow-hidden bg-background/25 p-4 ${embedded ? "flex min-h-0 flex-1 flex-col" : ""}`}>
             <div className="mb-3 flex items-center justify-between gap-3 text-[6px] uppercase tracking-[0.11em] text-muted">
               <span>{history.source} / {history.expiration || "front expiry"} · {timeframe} view</span>
-              <span>{history.status} · PRICE TICKS LIVE · OPTIONS SOURCE 1M · {percent(history.mappingCoverage)} coverage</span>
+              <span>{timeline.hasRecentPriceTick ? "LIVE TICK" : history.status} · PRICE {timeline.hasRecentPriceTick ? "STREAMING" : "LAST"} · OPTIONS SOURCE 1M · {percent(history.mappingCoverage)} coverage</span>
             </div>
             <div
               className={`relative overflow-hidden rounded-xl border border-border bg-background ${embedded ? "min-h-[420px] flex-1" : "h-[620px]"}`}
               onMouseLeave={() => setHoveredCell(null)}
             >
               <div
-                className="absolute bottom-7 left-0 right-[72px] top-0 cursor-crosshair overflow-hidden"
+                className="absolute bottom-8 left-0 right-[88px] top-0 cursor-crosshair overflow-hidden"
                 onMouseMove={(event) => {
                   const bounds = event.currentTarget.getBoundingClientRect();
                   if (!bounds.width || !bounds.height || !timeline.frames.length || !rowCount) return;
@@ -569,6 +626,32 @@ export function EvolutionPanel({
                     fill="var(--primary)"
                     opacity="0.018"
                   />
+                  {priceAxisTicks.map((tick) => (
+                    <line
+                      key={`price-grid:${tick.price}`}
+                      x1="0"
+                      x2={timeline.viewWidth}
+                      y1={tick.y}
+                      y2={tick.y}
+                      stroke="var(--foreground)"
+                      strokeWidth="0.55"
+                      strokeOpacity="0.075"
+                      vectorEffect="non-scaling-stroke"
+                    />
+                  ))}
+                  {timeAxisTicks.map((tick) => (
+                    <line
+                      key={`time-grid:${tick.timestamp}:${tick.x}`}
+                      x1={tick.x}
+                      x2={tick.x}
+                      y1="0"
+                      y2={rowCount}
+                      stroke="var(--foreground)"
+                      strokeWidth="0.55"
+                      strokeOpacity="0.07"
+                      vectorEffect="non-scaling-stroke"
+                    />
+                  ))}
                   {history.rows.map((row, rowIndex) => {
                     const y = rowCount - 1 - rowIndex;
                     const latestSourceIndex = timeline.frames.at(-1)?.sourceIndex ?? 0;
@@ -612,7 +695,37 @@ export function EvolutionPanel({
                       </g>
                     );
                   })}
-                  <path d={primaryPath} fill="none" stroke="var(--foreground)" strokeWidth="0.22" strokeOpacity="0.86" vectorEffect="non-scaling-stroke" />
+                  <path
+                    d={primaryPath}
+                    fill="none"
+                    stroke="var(--background)"
+                    strokeWidth="4.8"
+                    strokeOpacity="0.72"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    vectorEffect="non-scaling-stroke"
+                  />
+                  <path
+                    d={primaryPath}
+                    fill="none"
+                    stroke="#ffffff"
+                    strokeWidth="2.35"
+                    strokeOpacity="1"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    vectorEffect="non-scaling-stroke"
+                  />
+                  {live !== null ? (
+                    <circle
+                      cx={timeline.observedUnits}
+                      cy={yForPrice(live)}
+                      r="4.25"
+                      fill="#ffffff"
+                      stroke="var(--background)"
+                      strokeWidth="2.25"
+                      vectorEffect="non-scaling-stroke"
+                    />
+                  ) : null}
                   <line
                     x1={timeline.observedUnits}
                     x2={timeline.observedUnits}
@@ -691,21 +804,42 @@ export function EvolutionPanel({
                 ) : null}
               </div>
 
-              <div className="pointer-events-none absolute bottom-0 left-0 right-[72px] h-7 border-t border-border bg-panel/95">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 font-mono text-[7px] text-foreground/70">{timeLabel(timeline.frames[0].timestamp)}</span>
-                <span className="absolute left-[44%] top-1/2 -translate-x-1/2 -translate-y-1/2 font-mono text-[7px] text-foreground/70">{timeLabel(timeline.frames[Math.floor(timeline.frames.length / 2)].timestamp)}</span>
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 font-mono text-[7px] text-primary/65">{timeLabel(timeline.futureEnd)}</span>
+              <div className="pointer-events-none absolute bottom-0 left-0 right-[88px] h-8 border-t border-border bg-panel/95">
+                {timeAxisTicks.map((tick, index) => (
+                  <span
+                    key={`time-axis:${tick.timestamp}:${index}`}
+                    className="absolute top-1/2 whitespace-nowrap font-mono text-[6px] text-foreground/65"
+                    style={{
+                      left: `${tick.percentage}%`,
+                      transform: `translate(${index === 0 ? "8px" : index === timeAxisTicks.length - 1 ? "calc(-100% - 8px)" : "-50%"}, -50%)`,
+                    }}
+                  >
+                    {axisTimeLabel(tick.timestamp, timeframe)}
+                  </span>
+                ))}
                 <span className="absolute left-[87.5%] top-1/2 z-10 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-md border border-primary/40 bg-primary px-2 py-1 font-mono text-[7px] font-semibold text-background shadow-[0_0_12px_var(--primary)]">{historyInstrument} {live?.toFixed(2) ?? "--"} · {secondTimeLabel(timeline.currentTimestamp)}</span>
                 {hovered ? <span className="absolute top-1/2 z-20 -translate-x-1/2 -translate-y-1/2 rounded-md border border-primary/40 bg-primary px-2 py-1 font-mono text-[7px] font-semibold text-background shadow-[0_0_12px_var(--primary)]" style={{ left: `clamp(30px, ${hovered.x}%, calc(100% - 30px))` }}>{timeLabel(hovered.timestamp)}</span> : null}
               </div>
 
-              <div className="pointer-events-none absolute bottom-0 right-0 top-0 w-[72px] border-l border-border bg-panel/95">
-                <div className="absolute bottom-7 inset-x-0 top-0">
-                  <div className="absolute inset-x-0 inset-y-2 flex flex-col items-center justify-between font-mono text-[7px] text-foreground/75">
-                    <span>{history.priceHigh.toFixed(0)}</span>
-                    <span>{((history.priceHigh + history.priceLow) / 2).toFixed(0)}</span>
-                    <span>{history.priceLow.toFixed(0)}</span>
-                  </div>
+              <div className="pointer-events-none absolute bottom-0 right-0 top-0 w-[88px] border-l border-border bg-panel/95">
+                <div className="absolute bottom-8 inset-x-0 top-0">
+                  {priceAxisTicks.map((tick, index) => (
+                    <span
+                      key={`price-axis:${tick.price}`}
+                      className="absolute left-1/2 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap font-mono text-[7px] text-foreground/75"
+                      style={{ top: `${index === 0 ? 2 : index === priceAxisTicks.length - 1 ? 98 : tick.percentage}%` }}
+                    >
+                      {tick.price.toFixed(2)}
+                    </span>
+                  ))}
+                  {liveYPercentage !== null ? (
+                    <span
+                      className="absolute left-1/2 z-10 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-md border border-white/70 bg-white px-2 py-1 font-mono text-[7px] font-bold text-black shadow-[0_0_14px_rgba(255,255,255,0.45)]"
+                      style={{ top: `clamp(14px, ${liveYPercentage}%, calc(100% - 14px))` }}
+                    >
+                      {live?.toFixed(2)}
+                    </span>
+                  ) : null}
                   {hovered ? <span className="absolute left-1/2 z-20 -translate-x-1/2 -translate-y-1/2 rounded-md border border-primary/40 bg-primary px-2 py-1 font-mono text-[7px] font-semibold text-background shadow-[0_0_12px_var(--primary)]" style={{ top: `clamp(12px, ${hovered.y}%, calc(100% - 12px))` }}>{hovered.row.price.toFixed(0)}</span> : null}
                 </div>
               </div>
