@@ -2676,6 +2676,10 @@ function WorkspaceChartPane({
   onChartDragEnd,
   gammaLevelsEnabled,
   onToggleGammaLevels,
+  kwantLevelsEnabled,
+  kwantLevelsAvailable,
+  kwantLevelsLoading,
+  onToggleKwantLevels,
   historicalStructureEnabled,
   onToggleHistoricalStructure,
   valueAreaLevelsEnabled,
@@ -2706,6 +2710,10 @@ function WorkspaceChartPane({
   onChartDragEnd?: () => void;
   gammaLevelsEnabled: boolean;
   onToggleGammaLevels: () => void;
+  kwantLevelsEnabled: boolean;
+  kwantLevelsAvailable: boolean;
+  kwantLevelsLoading: boolean;
+  onToggleKwantLevels: () => void;
   historicalStructureEnabled: boolean;
   onToggleHistoricalStructure: () => void;
   valueAreaLevelsEnabled: boolean;
@@ -4032,6 +4040,10 @@ function WorkspaceChartPane({
           gammaLevelsLoading={gammaLevelsLoading}
           gammaLevelsError={gammaLevelsError}
           onToggleGammaLevels={onToggleGammaLevels}
+          kwantLevelsEnabled={kwantLevelsEnabled}
+          kwantLevelsAvailable={kwantLevelsAvailable}
+          kwantLevelsLoading={kwantLevelsLoading}
+          onToggleKwantLevels={onToggleKwantLevels}
           historicalStructureEnabled={historicalStructureEnabled}
           historicalStructureAvailable={pane.broker === "Databento" && isContinuousFuture(pane.symbol)}
           historicalStructureLoading={structure.loading}
@@ -4780,7 +4792,7 @@ export default function KwantifyWorkspace({
   const [gameplanChartOverlays, setGameplanChartOverlays] = useState<GameplanChartOverlayStore>(() =>
     loadGameplanChartOverlays());
   const [quickGameplanLoading, setQuickGameplanLoading] = useState(false);
-  const [quickGameplanUpdatedRoot, setQuickGameplanUpdatedRoot] = useState<"NQ" | "ES" | null>(null);
+  const [quickGameplanLoadingRoot, setQuickGameplanLoadingRoot] = useState<"NQ" | "ES" | null>(null);
   const quickGameplanRequestRef = useRef(false);
   const [selectedStrategy, setSelectedStrategy] = useState<string | null>(demoStrategies[0].id);
   const [activeStrategyId, setActiveStrategyId] = useState(demoStrategies[0].id);
@@ -5119,11 +5131,10 @@ export default function KwantifyWorkspace({
   }, [activeLiveGexConversion, rightPanel]);
 
   const activeGameplanRoot = gameplanChartRootForInstrument(activeWorkspacePane.symbol);
-  const activeGameplanDisplaySymbol = displayCmeSymbol(activeWorkspacePane.symbol);
-  const activeGameplanLevelsAdded = Boolean(
-    activeGameplanRoot
-    && gameplanChartOverlays[activeGameplanRoot]?.levels.length,
-  );
+  const enabledKwantRootKey = [
+    gameplanChartOverlays.NQ ? "NQ" : "",
+    gameplanChartOverlays.ES ? "ES" : "",
+  ].filter(Boolean).join("|");
 
   useEffect(() => {
     if (!activeGameplanRoot) return;
@@ -5459,12 +5470,12 @@ export default function KwantifyWorkspace({
     }
   };
 
-  async function refreshActiveGameplanLevels() {
+  async function refreshKwantLevelsForInstrument(instrument: string, silent = false) {
     if (quickGameplanRequestRef.current) return;
-    const root = gameplanChartRootForInstrument(activeWorkspacePane.symbol);
-    const displaySymbol = displayCmeSymbol(activeWorkspacePane.symbol);
+    const root = gameplanChartRootForInstrument(instrument);
+    const displaySymbol = displayCmeSymbol(instrument);
     if (!root) {
-      showReportToast("error", "Kwant levels are available for NQ, MNQ, ES and MES charts.", 3_000);
+      if (!silent) showReportToast("error", "KWANT levels are available for NQ, MNQ, ES and MES charts.", 3_000);
       return;
     }
 
@@ -5479,19 +5490,18 @@ export default function KwantifyWorkspace({
     );
     quickGameplanRequestRef.current = true;
     setQuickGameplanLoading(!cachedPlanMatches);
-    setQuickGameplanUpdatedRoot(null);
+    setQuickGameplanLoadingRoot(root);
 
     if (cachedPlanMatches && cachedPayload) {
       const nextStore = saveGameplanChartOverlay(createGameplanChartOverlay(root, cachedPayload.plan));
       setGameplanChartOverlays(nextStore);
-      setQuickGameplanUpdatedRoot(root);
-      showReportToast(
+      if (!silent) showReportToast(
         "success",
-        `${displaySymbol} ${gameplanSessionLabel(session)} Kwant levels added. Refreshing quietly…`,
+        `${displaySymbol} ${gameplanSessionLabel(session)} KWANT levels added. Refreshing quietly…`,
         2_000,
       );
-    } else {
-      showReportToast("loading", `Loading the latest ${displaySymbol} Kwant levels…`);
+    } else if (!silent) {
+      showReportToast("loading", `Loading the latest ${displaySymbol} KWANT levels…`);
     }
 
     try {
@@ -5506,24 +5516,23 @@ export default function KwantifyWorkspace({
 
       const nextStore = saveGameplanChartOverlay(createGameplanChartOverlay(root, payload.plan));
       setGameplanChartOverlays(nextStore);
-      setQuickGameplanUpdatedRoot(root);
-      showReportToast(
+      if (!silent) showReportToast(
         "success",
-        `${displaySymbol} ${gameplanSessionLabel(session)} Kwant levels replaced with the latest edition.`,
+        `${displaySymbol} ${gameplanSessionLabel(session)} KWANT levels replaced with the latest edition.`,
         2_800,
       );
-      window.setTimeout(() => setQuickGameplanUpdatedRoot((current) => current === root ? null : current), 2_800);
     } catch (reason) {
-      if (!cachedPlanMatches) {
+      if (!cachedPlanMatches && !silent) {
         showReportToast(
           "error",
-          reason instanceof Error ? reason.message : "The latest Kwant levels could not be loaded.",
+          reason instanceof Error ? reason.message : "The latest KWANT levels could not be loaded.",
           4_000,
         );
       }
     } finally {
       quickGameplanRequestRef.current = false;
       setQuickGameplanLoading(false);
+      setQuickGameplanLoadingRoot((current) => current === root ? null : current);
     }
   }
 
@@ -6324,6 +6333,84 @@ export default function KwantifyWorkspace({
       window.removeEventListener("storage", syncStorage);
     };
   }, []);
+
+  useEffect(() => {
+    const roots = enabledKwantRootKey
+      .split("|")
+      .filter((root): root is "NQ" | "ES" => root === "NQ" || root === "ES");
+    if (!roots.length) return;
+
+    let cancelled = false;
+    let running = false;
+    let timer: number | null = null;
+
+    const schedule = (delay: number) => {
+      if (cancelled) return;
+      if (timer !== null) window.clearTimeout(timer);
+      timer = window.setTimeout(() => void refresh(), delay);
+    };
+    const refresh = async () => {
+      if (cancelled || running) return;
+      if (document.visibilityState !== "visible") {
+        schedule(20_000);
+        return;
+      }
+
+      running = true;
+      let nextDelay = 20_000;
+      try {
+        for (const root of roots) {
+          const session = currentGameplanSession();
+          const cacheKey = gameplanCacheKey(root, session);
+          try {
+            const payload = await fetchWorkspaceData<GameplanPayload & { error?: string }>(
+              cacheKey,
+              `/api/gameplan?root=${root}&session=${session}`,
+              { force: true },
+            );
+            if (cancelled) return;
+            if (
+              payload.instrument !== root
+              || payload.plan.edition.session !== session
+              || !payload.plan.ladder.length
+            ) {
+              throw new Error("The refreshed KWANT levels did not match the enabled chart.");
+            }
+            const nextOverlay = createGameplanChartOverlay(root, payload.plan);
+            const currentOverlay = loadGameplanChartOverlays()[root];
+            if (
+              currentOverlay?.publishedAt !== nextOverlay.publishedAt
+              || currentOverlay.session !== nextOverlay.session
+              || currentOverlay.editionDate !== nextOverlay.editionDate
+            ) {
+              setGameplanChartOverlays(saveGameplanChartOverlay(nextOverlay));
+            }
+          } catch {
+            nextDelay = 5_000;
+          }
+        }
+      } finally {
+        running = false;
+        schedule(nextDelay);
+      }
+    };
+    const refreshWhenVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      if (timer !== null) window.clearTimeout(timer);
+      timer = null;
+      void refresh();
+    };
+
+    schedule(1_000);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    window.addEventListener("online", refreshWhenVisible);
+    return () => {
+      cancelled = true;
+      if (timer !== null) window.clearTimeout(timer);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+      window.removeEventListener("online", refreshWhenVisible);
+    };
+  }, [enabledKwantRootKey]);
 
   useEffect(() => {
     if (!authChecked || !currentUsername || !gammaLevelsEnabled) return;
@@ -9095,6 +9182,17 @@ export default function KwantifyWorkspace({
         chartDragEnabled={!workspaceLocked && visibleWorkspacePaneIds.length > 1}
         gammaLevelsEnabled={gammaLevelsEnabled}
         onToggleGammaLevels={() => setGammaLevelsEnabled((current) => !current)}
+        kwantLevelsEnabled={Boolean(gameplanRoot && gameplanChartOverlays[gameplanRoot]?.levels.length)}
+        kwantLevelsAvailable={Boolean(gameplanRoot)}
+        kwantLevelsLoading={Boolean(gameplanRoot && quickGameplanLoading && quickGameplanLoadingRoot === gameplanRoot)}
+        onToggleKwantLevels={() => {
+          if (!gameplanRoot) return;
+          if (gameplanChartOverlays[gameplanRoot]?.levels.length) {
+            setGameplanChartOverlays(removeGameplanChartOverlay(gameplanRoot));
+            return;
+          }
+          void refreshKwantLevelsForInstrument(pane.symbol);
+        }}
         historicalStructureEnabled={historicalStructureEnabled}
         onToggleHistoricalStructure={() => setHistoricalStructureEnabled((current) => !current)}
         valueAreaLevelsEnabled={valueAreaLevelsEnabled}
@@ -9654,34 +9752,6 @@ export default function KwantifyWorkspace({
           </div>
           </div>
           <div className="col-start-2 row-start-2 flex min-w-0 items-center justify-end gap-2 px-3">
-          <button
-            type="button"
-            onClick={() => void refreshActiveGameplanLevels()}
-            disabled={!activeGameplanRoot || quickGameplanLoading}
-            title={activeGameplanRoot
-              ? activeGameplanLevelsAdded
-                ? `Refresh this chart with the latest ${activeGameplanDisplaySymbol} Kwant levels`
-                : `Add the latest ${activeGameplanDisplaySymbol} Kwant levels to this chart`
-              : "Kwant levels are available for NQ, MNQ, ES and MES charts"}
-            className={`flex h-8 shrink-0 items-center gap-1.5 rounded-xl border px-3 text-[9px] font-bold uppercase tracking-[0.08em] transition-colors disabled:cursor-not-allowed disabled:opacity-35 ${
-              activeGameplanRoot && quickGameplanUpdatedRoot === activeGameplanRoot
-                ? "border-primary/40 bg-primary/15 text-primary"
-                : "border-primary/25 bg-primary/10 text-primary hover:border-primary/45 hover:bg-primary/15"
-            }`}
-          >
-            {quickGameplanLoading
-              ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              : activeGameplanRoot && quickGameplanUpdatedRoot === activeGameplanRoot
-                ? <Check className="h-3.5 w-3.5" />
-                : <Layers3 className="h-3.5 w-3.5" />}
-            {quickGameplanLoading
-              ? <span className="hidden xl:inline">{`Updating ${activeGameplanDisplaySymbol}`}</span>
-              : activeGameplanRoot && quickGameplanUpdatedRoot === activeGameplanRoot
-                ? <span className="hidden xl:inline">{`${activeGameplanDisplaySymbol} Levels Updated`}</span>
-                : <span className="hidden xl:inline">
-                    {activeGameplanLevelsAdded ? "Refresh Kwant Levels" : "Add Kwant Levels"}
-                  </span>}
-          </button>
           <ChartIndicatorsControl
             instrument={displayCmeSymbol(activeWorkspacePane.symbol)}
             timeframe={formatChartInterval(activeWorkspacePane.timeframe)}

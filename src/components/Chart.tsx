@@ -135,6 +135,10 @@ interface ChartProps {
   gammaLevelsLoading?: boolean;
   gammaLevelsError?: string | null;
   onToggleGammaLevels?: () => void;
+  kwantLevelsEnabled?: boolean;
+  kwantLevelsAvailable?: boolean;
+  kwantLevelsLoading?: boolean;
+  onToggleKwantLevels?: () => void;
   historicalStructureEnabled?: boolean;
   historicalStructureAvailable?: boolean;
   historicalStructureLoading?: boolean;
@@ -1074,6 +1078,10 @@ export default function Chart({
   gammaLevelsLoading = false,
   gammaLevelsError = null,
   onToggleGammaLevels,
+  kwantLevelsEnabled = false,
+  kwantLevelsAvailable = false,
+  kwantLevelsLoading = false,
+  onToggleKwantLevels,
   historicalStructureEnabled = false,
   historicalStructureAvailable = false,
   historicalStructureLoading = false,
@@ -4455,6 +4463,38 @@ export default function Chart({
               aria-pressed={gammaLevelsEnabled}
             >
               <ScanLine className={`${toolbarIconClassName} ${gammaLevelsLoading ? "animate-pulse" : ""}`} />
+            </button>
+            <button
+              type="button"
+              disabled={!kwantLevelsAvailable || !onToggleKwantLevels}
+              onClick={(event) => {
+                event.stopPropagation();
+                onToggleKwantLevels?.();
+              }}
+              className={`flex items-center justify-center border backdrop-blur ${
+                kwantLevelsAvailable && onToggleKwantLevels
+                  ? getToolbarButtonTone(kwantLevelsEnabled)
+                  : "cursor-not-allowed border-transparent bg-panel/45 text-muted/30"
+              }`}
+              style={toolbarButtonStyle}
+              title={
+                !kwantLevelsAvailable
+                  ? "KWANT levels are available on NQ, MNQ, ES and MES"
+                  : kwantLevelsLoading
+                    ? `Loading the latest ${instrument} KWANT levels`
+                    : kwantLevelsEnabled
+                      ? "Hide KWANT levels · updates refresh automatically"
+                      : "Show KWANT levels"
+              }
+              aria-label={kwantLevelsEnabled ? "Hide KWANT levels" : "Show KWANT levels"}
+              aria-pressed={kwantLevelsEnabled}
+            >
+              <span
+                aria-hidden="true"
+                className={`${toolbarIconClassName} flex items-center justify-center rounded-[4px] border border-current font-mono text-[9px] font-black leading-none ${kwantLevelsLoading ? "animate-pulse" : ""}`}
+              >
+                K
+              </span>
             </button>
             <button
               type="button"
