@@ -219,6 +219,145 @@ export type GameplanPayload = {
   plan: GameplanEdition;
 };
 
+function record(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function finiteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+function nullableFiniteNumber(value: unknown): value is number | null {
+  return value === null || finiteNumber(value);
+}
+
+function numberZone(value: unknown): value is [number, number] {
+  return Array.isArray(value)
+    && value.length === 2
+    && finiteNumber(value[0])
+    && finiteNumber(value[1]);
+}
+
+function stringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === "string");
+}
+
+function numberArray(value: unknown): value is number[] {
+  return Array.isArray(value) && value.every(finiteNumber);
+}
+
+function isAPlusSetup(value: unknown): value is GameplanAPlusSetup {
+  if (!record(value)) return false;
+  return (value.side === "LONG" || value.side === "SHORT")
+    && finiteNumber(value.quality_score)
+    && ["A+", "A", "B+", "WAIT"].includes(String(value.quality_grade))
+    && typeof value.setup_name === "string"
+    && numberZone(value.zone)
+    && typeof value.level_name === "string"
+    && ["magnet", "wall", "accelerant", "decision"].includes(String(value.level_role))
+    && typeof value.permission === "string"
+    && typeof value.options_alignment === "string"
+    && stringArray(value.reasoning)
+    && finiteNumber(value.entry_reference)
+    && finiteNumber(value.stop)
+    && numberArray(value.targets)
+    && Array.isArray(value.target_details)
+    && value.target_details.every((target) => record(target)
+      && finiteNumber(target.price)
+      && typeof target.level === "string"
+      && typeof target.reason === "string"
+      && finiteNumber(target.risk_reward)
+      && finiteNumber(target.pay_percent))
+    && finiteNumber(value.best_risk_reward)
+    && typeof value.invalidation === "string";
+}
+
+/**
+ * Runtime contract for data that is allowed to reach the Game Plan renderer.
+ * Game Plan data is cached between navigations and its schema has evolved; a
+ * TypeScript cast cannot protect a running browser from an old or partial
+ * record. Rejecting that record keeps the last complete edition on screen.
+ */
+export function isGameplanPayload(value: unknown): value is GameplanPayload {
+  if (!record(value) || !record(value.plan)) return false;
+  const plan = value.plan;
+  if (!record(plan.edition) || !record(plan.environment)) return false;
+  const edition = plan.edition;
+  const environment = plan.environment;
+  if (!record(environment.tape) || !record(environment.fear)
+    || !record(environment.flow) || !record(environment.expiry)) return false;
+
+  const ladderValid = Array.isArray(plan.ladder) && plan.ladder.every((level) => (
+    record(level)
+    && numberZone(level.zone)
+    && typeof level.name === "string"
+    && ["magnet", "wall", "accelerant", "decision"].includes(String(level.role))
+    && finiteNumber(level.strength)
+    && Array.isArray(level.sources)
+    && level.sources.every((source) => ["positioning", "dated", "tape-memory", "em-math"].includes(String(source)))
+    && typeof level.why === "string"
+    && typeof level.if_visit === "string"
+    && typeof level.if_hold === "string"
+    && typeof level.if_break === "string"
+    && record(level.order_character)
+    && finiteNumber(level.order_character.balance)
+    && typeof level.order_character.plain === "string"
+    && (level.terrain === "sticky" || level.terrain === "air")
+    && typeof level.history === "string"
+    && stringArray(level.career)
+  ));
+  const scenariosValid = Array.isArray(plan.scenarios) && plan.scenarios.every((scenario) => (
+    record(scenario)
+    && typeof scenario.name === "string"
+    && typeof scenario.trigger === "string"
+    && numberArray(scenario.path)
+    && typeof scenario.kill === "string"
+    && finiteNumber(scenario.weight)
+  ));
+  if (!record(plan.one_trade) || !record(plan.receipts) || !record(plan.downloads)) return false;
+  const receipts = plan.receipts;
+
+  return (value.instrument === "NQ" || value.instrument === "ES")
+    && (value.source_symbol === "NDX" || value.source_symbol === "SPX")
+    && nullableFiniteNumber(value.current_price)
+    && (value.status === "LIVE" || value.status === "PARTIAL")
+    && typeof value.generated_at === "string"
+    && finiteNumber(value.refresh_after_ms)
+    && isGameplanSession(edition.session)
+    && typeof edition.date === "string"
+    && typeof edition.published_at === "string"
+    && typeof edition.data_basis === "string"
+    && typeof edition.freshness_note === "string"
+    && ["calm", "snowball", "mixed"].includes(String(environment.tape.state))
+    && nullableFiniteNumber(environment.tape.flip_price)
+    && typeof environment.tape.plain === "string"
+    && finiteNumber(environment.fear.ratio)
+    && typeof environment.fear.plain === "string"
+    && finiteNumber(environment.flow.lean)
+    && typeof environment.flow.plain === "string"
+    && typeof environment.expiry.relevant === "boolean"
+    && typeof environment.expiry.plain === "string"
+    && typeof plan.one_liner === "string"
+    && ladderValid
+    && Array.isArray(plan.belly_zones)
+    && plan.belly_zones.every(numberZone)
+    && scenariosValid
+    && numberZone(plan.one_trade.zone)
+    && isAPlusSetup(plan.one_trade.long_side)
+    && isAPlusSetup(plan.one_trade.short_side)
+    && typeof plan.one_trade.not_a_trade_if === "string"
+    && typeof receipts.date === "string"
+    && Array.isArray(receipts.levels)
+    && receipts.levels.every((level) => record(level)
+      && numberZone(level.zone)
+      && ["held", "broke", "untested"].includes(String(level.verdict))
+      && typeof level.note === "string")
+    && typeof receipts.one_trade_outcome === "string"
+    && typeof receipts.honest_note === "string"
+    && typeof plan.downloads.deepchart_xml === "string"
+    && typeof plan.downloads.sierra_csv === "string";
+}
+
 function roundToTick(value: number, root: "NQ" | "ES") {
   const tick = root === "NQ" ? 0.25 : 0.25;
   return Math.round(value / tick) * tick;

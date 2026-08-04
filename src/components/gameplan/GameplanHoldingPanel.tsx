@@ -22,6 +22,7 @@ import {
   writePendingScoringTransition,
 } from "@/lib/gameplanScoringTransition";
 import {
+  normalizeZyonGameplanDraft,
   zyonGameplanMissingFields,
   zyonTradingAccountLabel,
   type ZyonGameplanDraft,
@@ -93,11 +94,13 @@ export default function GameplanHoldingPanel({ onPendingChange }: Props) {
   const [locking, setLocking] = useState(false);
   const [notice, setNotice] = useState("");
 
-  const applyDraft = useCallback((next: ZyonGameplanDraft | null) => {
+  const applyDraft = useCallback((value: unknown) => {
+    const next = value === null ? null : normalizeZyonGameplanDraft(value);
     setDraft(next);
-    setTargetsInput(next?.targets.join(", ") ?? "");
-    setConfluencesInput(next?.confluences.join("\n") ?? "");
+    setTargetsInput(next ? next.targets.join(", ") : "");
+    setConfluencesInput(next ? next.confluences.join("\n") : "");
     onPendingChange?.(Boolean(next));
+    return next;
   }, [onPendingChange]);
 
   const loadDraft = useCallback(async (showLoading = false) => {
@@ -109,8 +112,9 @@ export default function GameplanHoldingPanel({ onPendingChange }: Props) {
       const payload = await response.json().catch(() => null) as DraftResponse | null;
       if (!response.ok) throw new Error(payload?.error || "The holding Gameplan could not be loaded.");
       if (payload?.migrationRequired) throw new Error("Gameplan storage is not connected.");
-      applyDraft(payload?.draft ?? null);
-      setState(payload?.draft ? "ready" : "missing");
+      const next = applyDraft(payload?.draft ?? null);
+      if (payload?.draft && !next) throw new Error("The holding Gameplan record was incomplete.");
+      setState(next ? "ready" : "missing");
       setNotice("");
     } catch (error) {
       setState("error");

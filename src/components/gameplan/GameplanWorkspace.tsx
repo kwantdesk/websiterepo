@@ -45,6 +45,7 @@ import KwantLoader from "@/components/KwantLoader";
 import {
   currentGameplanSession,
   gameplanSessionLabel,
+  isGameplanPayload,
   resolveGameplanSessionTarget,
   type GameplanEdition,
   type GameplanPayload,
@@ -90,6 +91,7 @@ import {
 } from "@/lib/chartLiveEvents";
 import { zyonGameplanLaunchHref } from "@/lib/zyonGameplanLaunch";
 import {
+  clearWorkspaceData,
   fetchWorkspaceData,
   gameplanCacheKey,
   readWorkspaceData,
@@ -109,6 +111,14 @@ type OneLinerSnapshot = {
 
 const ONE_LINER_REFRESH_MS = 5 * 60_000;
 const LIVE_FEED_FAILURE_GRACE_MS = 60_000;
+
+function readCachedGameplan(key: string) {
+  const cached = readWorkspaceData<unknown>(key);
+  if (cached === null) return null;
+  if (isGameplanPayload(cached)) return cached;
+  clearWorkspaceData(key);
+  return null;
+}
 
 const ROLE_COPY: Record<GameplanRole, string> = {
   magnet: "Price is pulled here and can stick. Consolidation is more likely than immediate travel.",
@@ -1865,7 +1875,7 @@ function GameplanLiveWorkspace({ initialInstrument = "NQ" }: { initialInstrument
   const initialRoot = initialInstrument.toUpperCase().startsWith("ES") || initialInstrument.toUpperCase().startsWith("MES") ? "ES" : "NQ";
   const initialSessionRef = useRef<GameplanSession>(currentGameplanSession());
   const initialPayloadRef = useRef(
-    readWorkspaceData<GameplanPayload>(gameplanCacheKey(initialRoot, initialSessionRef.current)),
+    readCachedGameplan(gameplanCacheKey(initialRoot, initialSessionRef.current)),
   );
   const initialPayload = initialPayloadRef.current;
   const [root, setRoot] = useState<"NQ" | "ES">(initialRoot);
@@ -1963,7 +1973,11 @@ function GameplanLiveWorkspace({ initialInstrument = "NQ" }: { initialInstrument
       const next = await fetchWorkspaceData<GameplanPayload>(
         gameplanCacheKey(root, session),
         `/api/gameplan?root=${root}`,
-        { force: true },
+        {
+          force: true,
+          validate: isGameplanPayload,
+          invalidMessage: "The Gameplan update was incomplete. Keeping the last good edition.",
+        },
       );
       if (requestId !== planRequestRef.current) return;
       setPayload(next);
@@ -2006,7 +2020,7 @@ function GameplanLiveWorkspace({ initialInstrument = "NQ" }: { initialInstrument
   useEffect(() => {
     let disposed = false;
     let timer: number | null = null;
-    const cached = readWorkspaceData<GameplanPayload>(gameplanCacheKey(root, session));
+    const cached = readCachedGameplan(gameplanCacheKey(root, session));
     previousPriceRef.current = null;
     lastNativeTickAtRef.current = 0;
     setCurrentPrice(null);

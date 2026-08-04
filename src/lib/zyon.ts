@@ -173,6 +173,71 @@ export type ZyonGameplanDraft = {
   cloudSaved?: boolean;
 };
 
+function zyonDraftText(value: unknown, maximum: number) {
+  return typeof value === "string"
+    ? value.replace(/\u0000/g, "").trim().slice(0, maximum)
+    : "";
+}
+
+function zyonDraftFinite(value: unknown, fallback = 0) {
+  const parsed = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function zyonDraftOptionalFinite(value: unknown) {
+  if (value === null || value === undefined || value === "") return null;
+  const parsed = zyonDraftFinite(value, Number.NaN);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+/** Normalises database and legacy ZYON drafts before a React form can use them. */
+export function normalizeZyonGameplanDraft(value: unknown): ZyonGameplanDraft | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const draft = value as Record<string, unknown>;
+  const id = zyonDraftText(draft.id, 220);
+  const root = isZyonMarketRoot(draft.root) ? draft.root : null;
+  if (!id || !root) return null;
+  const entryLow = zyonDraftFinite(draft.entryLow);
+  const entryHigh = zyonDraftFinite(draft.entryHigh, entryLow);
+  const riskUnit = ["DOLLARS", "POINTS", "TICKS", "PERCENT"].includes(String(draft.riskUnit))
+    ? draft.riskUnit as ZyonGameplanRiskUnit
+    : "DOLLARS";
+  return {
+    id,
+    sessionDate: /^\d{4}-\d{2}-\d{2}$/.test(String(draft.sessionDate))
+      ? String(draft.sessionDate)
+      : new Date().toISOString().slice(0, 10),
+    root,
+    instrument: zyonDraftText(draft.instrument, 16).toUpperCase() || root,
+    title: zyonDraftText(draft.title, 120) || `${root} Gameplan`,
+    direction: draft.direction === "SHORT" ? "SHORT" : "LONG",
+    session: zyonDraftText(draft.session, 60) || "New York",
+    entryTime: zyonDraftText(draft.entryTime, 80),
+    entryLow: Math.min(entryLow, entryHigh),
+    entryHigh: Math.max(entryLow, entryHigh),
+    stop: zyonDraftFinite(draft.stop),
+    targets: Array.isArray(draft.targets)
+      ? draft.targets.map((target) => zyonDraftFinite(target, Number.NaN)).filter(Number.isFinite).slice(0, 8)
+      : [],
+    riskAmount: zyonDraftOptionalFinite(draft.riskAmount),
+    riskUnit,
+    size: zyonDraftOptionalFinite(draft.size),
+    tradingAccount: normalizeZyonTradingAccount(draft.tradingAccount),
+    reasoning: zyonDraftText(draft.reasoning, 5_000),
+    confluences: Array.isArray(draft.confluences)
+      ? draft.confluences.map((item) => zyonDraftText(item, 300)).filter(Boolean).slice(0, 12)
+      : [],
+    confirmation: zyonDraftText(draft.confirmation, 2_000),
+    invalidation: zyonDraftText(draft.invalidation, 2_000),
+    notes: zyonDraftText(draft.notes, 4_000),
+    expiryAt: zyonDraftText(draft.expiryAt, 60) || null,
+    createdAt: zyonDraftText(draft.createdAt, 80) || new Date().toISOString(),
+    updatedAt: zyonDraftText(draft.updatedAt, 80) || new Date().toISOString(),
+    recordMode: draft.recordMode === "HISTORICAL" ? "HISTORICAL" : "LIVE",
+    cloudSaved: draft.cloudSaved === true,
+  };
+}
+
 export type ZyonGameplanRequiredField =
   | "instrument"
   | "direction"

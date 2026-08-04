@@ -29,6 +29,15 @@ export function readWorkspaceData<T>(key: string): T | null {
   }
 }
 
+export function clearWorkspaceData(key: string) {
+  workspaceDataCache.delete(key);
+  workspaceDataRequests.delete(key);
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.removeItem(`${SESSION_CACHE_PREFIX}${key}`);
+  } catch {}
+}
+
 export function writeWorkspaceData<T>(key: string, value: T) {
   const entry = {
     value,
@@ -47,12 +56,18 @@ export function writeWorkspaceData<T>(key: string, value: T) {
 export async function fetchWorkspaceData<T>(
   key: string,
   url: string,
-  options: { force?: boolean; maxAgeMs?: number } = {},
+  options: {
+    force?: boolean;
+    maxAgeMs?: number;
+    validate?: (value: unknown) => boolean;
+    invalidMessage?: string;
+  } = {},
 ): Promise<T> {
   const cached = workspaceDataCache.get(key);
   const maxAgeMs = options.maxAgeMs ?? 15_000;
   if (!options.force && cached && Date.now() - cached.updatedAt <= maxAgeMs) {
-    return cached.value as T;
+    if (!options.validate || options.validate(cached.value)) return cached.value as T;
+    clearWorkspaceData(key);
   }
 
   const existing = workspaceDataRequests.get(key);
@@ -60,12 +75,19 @@ export async function fetchWorkspaceData<T>(
 
   const request = fetch(url, { cache: "no-store" })
     .then(async (response) => {
-      const payload = await response.json() as T & { error?: string };
+      const payload = await response.json() as unknown;
       if (!response.ok) {
-        throw new Error(payload.error || "Workspace data could not be loaded.");
+        const message = payload && typeof payload === "object" && "error" in payload
+          && typeof (payload as { error?: unknown }).error === "string"
+          ? (payload as { error: string }).error
+          : "Workspace data could not be loaded.";
+        throw new Error(message);
+      }
+      if (options.validate && !options.validate(payload)) {
+        throw new Error(options.invalidMessage || "Workspace data was incomplete.");
       }
       writeWorkspaceData(key, payload);
-      return payload;
+      return payload as T;
     })
     .finally(() => {
       workspaceDataRequests.delete(key);
@@ -84,7 +106,7 @@ export function gexMapCacheKey(symbol: string, greekMode: string, sessionDate = 
 }
 
 export function gameplanCacheKey(root: string, session: string) {
-  return `gameplan:${root}:${session}`;
+  return `gameplan:v2:${root}:${session}`;
 }
 
 export function gexdeskHistoryCacheKey(source: string, instrument = "NQ") {
