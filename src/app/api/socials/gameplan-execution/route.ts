@@ -168,7 +168,7 @@ export async function POST(request: NextRequest) {
     }
     const fills = normalizeFills(body.fills, now.getTime());
     if (!fills) {
-      return NextResponse.json({ error: "Each fill needs a valid price and time reported within 10 minutes of entry." }, { status: 409 });
+      return NextResponse.json({ error: "Each reported fill must have occurred within the previous 10 minutes of real server time." }, { status: 409 });
     }
     const lockedAt = Date.parse(plan.lockedAt || planRow.created_at);
     if (fills.some((fill) => Date.parse(fill.time as string) < lockedAt)) {
@@ -211,7 +211,7 @@ export async function POST(request: NextRequest) {
   }
 
   if (!existingRow) {
-    return NextResponse.json({ error: "Record the entry first, within 10 minutes of taking the trade." }, { status: 409 });
+    return NextResponse.json({ error: "Record the entry first. At submission, the fill cannot be more than 10 minutes old." }, { status: 409 });
   }
   const existing = existingRow.payload as unknown as SocialGameplanExecutionPayload;
   if (existing.kind !== "GAMEPLAN_EXECUTION") {

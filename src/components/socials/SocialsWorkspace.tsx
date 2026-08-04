@@ -1817,7 +1817,7 @@ export default function SocialsWorkspace({
       setZyonDraftState("missing");
       setNotice(recordMode === "HISTORICAL"
         ? `${draft.instrument} historical Gameplan locked and sent to Scoring for outcome review.`
-        : `${draft.instrument} Gameplan locked. Add the real entry in Scoring within 10 minutes of taking it.`);
+        : `${draft.instrument} Gameplan locked. When a trade is logged in Scoring, its fill can be no more than 10 minutes old.`);
 
       void (async () => {
         try {

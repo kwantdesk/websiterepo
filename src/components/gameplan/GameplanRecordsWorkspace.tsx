@@ -218,7 +218,7 @@ function EntryReportForm({
       <div className="flex flex-wrap items-start gap-3">
         <div>
           <div className="text-[9px] font-semibold text-foreground">Record the actual entry</div>
-          <p className="mt-1 text-[8px] leading-4 text-muted">Timestamp each fill within 10 minutes. Once saved, the entry cannot be rewritten.</p>
+          <p className="mt-1 text-[8px] leading-4 text-muted">At submission, each fill must have happened within the previous 10 minutes of real time. This is not measured from when the plan was locked.</p>
         </div>
         <label className="ml-auto min-w-[150px]">
           <span className="mb-1 block text-[7px] uppercase tracking-[0.13em] text-muted">Direction traded</span>
@@ -362,14 +362,14 @@ function GameplanRecordCard({
           ) : execution ? (
             <><div className="flex items-center gap-2 text-[8px] font-semibold uppercase tracking-[0.12em] text-primary"><CheckCircle2 className="h-3.5 w-3.5" />Entry timestamped</div><div className="mt-2 grid grid-cols-2 gap-2 text-[8px] text-muted"><span>Average <b className="ml-1 font-mono text-foreground">{numberLabel(execution.payload.actualEntry)}</b></span><span>Fills <b className="ml-1 font-mono text-foreground">{execution.payload.fills.length}</b></span><span className="col-span-2">Reported <b className="ml-1 font-mono text-foreground">{execution.payload.claimDelaySeconds}s after latest fill</b></span></div></>
           ) : (
-            <><div className="flex items-center gap-2 text-[8px] font-semibold uppercase tracking-[0.12em] text-warning"><Activity className="h-3.5 w-3.5" />Waiting for trade info</div><p className="mt-2 text-[9px] leading-4 text-muted">No score is produced from market movement alone. Record the real entry within 10 minutes of taking it.</p></>
+            <><div className="flex items-center gap-2 text-[8px] font-semibold uppercase tracking-[0.12em] text-warning"><Activity className="h-3.5 w-3.5" />Waiting for trade info</div><p className="mt-2 text-[9px] leading-4 text-muted">No score is produced from market movement alone. When logging a trade, its fill must be no more than 10 minutes old.</p></>
           )}
         </div>
       </div>
 
       {!complete ? (
         <div className="flex items-center justify-between gap-3 border-t border-border bg-background/20 px-4 py-3">
-          <div className="text-[8px] text-muted">{waitingForEntry ? "10-minute anti-lookahead entry window" : "Entry is locked; complete the outcome when the trade closes"}</div>
+          <div className="text-[8px] text-muted">{waitingForEntry ? "Fill must be from the previous 10 minutes of real time" : "Entry is locked; complete the outcome when the trade closes"}</div>
           <button type="button" onClick={() => setExpanded((current) => !current)} className="flex h-9 items-center gap-2 rounded-xl border border-primary/25 bg-primary/[0.07] px-4 text-[8px] font-semibold text-primary hover:bg-primary/10">{waitingForEntry ? "Add trade entry" : execution?.payload.stage === "CLOSED" ? "Finish scoring" : "Complete trade"}<ChevronDown className={`h-3.5 w-3.5 transition-transform ${expanded ? "rotate-180" : ""}`} /></button>
         </div>
       ) : null}
@@ -636,7 +636,7 @@ export default function GameplanRecordsWorkspace({ tab }: { tab: GameplanRecordT
           </div>
         </section>
 
-        {!complete ? <div className="mt-3 grid gap-2 md:grid-cols-3"><div className="rounded-xl border border-warning/20 bg-warning/[0.04] px-4 py-3"><div className="font-mono text-[8px] font-semibold text-warning">1 · LOCKED PLAN</div><p className="mt-1 text-[8px] text-muted">The approved holding record cannot change.</p></div><div className="rounded-xl border border-primary/20 bg-primary/[0.04] px-4 py-3"><div className="font-mono text-[8px] font-semibold text-primary">2 · ACTUAL EXECUTION</div><p className="mt-1 text-[8px] text-muted">Entry is claimed within 10 minutes; outcome can follow later.</p></div><div className="rounded-xl border border-accent/20 bg-accent/[0.04] px-4 py-3"><div className="font-mono text-[8px] font-semibold text-accent">3 · REASONING SCORE</div><p className="mt-1 text-[8px] text-muted">Discipline is graded against the original plan.</p></div></div> : null}
+        {!complete ? <div className="mt-3 grid gap-2 md:grid-cols-3"><div className="rounded-xl border border-warning/20 bg-warning/[0.04] px-4 py-3"><div className="font-mono text-[8px] font-semibold text-warning">1 · LOCKED PLAN</div><p className="mt-1 text-[8px] text-muted">The approved holding record cannot change.</p></div><div className="rounded-xl border border-primary/20 bg-primary/[0.04] px-4 py-3"><div className="font-mono text-[8px] font-semibold text-primary">2 · ACTUAL EXECUTION</div><p className="mt-1 text-[8px] text-muted">At submission, the real fill must be no more than 10 minutes old. The outcome can follow later.</p></div><div className="rounded-xl border border-accent/20 bg-accent/[0.04] px-4 py-3"><div className="font-mono text-[8px] font-semibold text-accent">3 · REASONING SCORE</div><p className="mt-1 text-[8px] text-muted">Discipline is graded against the original plan.</p></div></div> : null}
         {!cloud ? <div className="mt-3 rounded-xl border border-warning/20 bg-warning/[0.05] px-4 py-3 text-[9px] text-warning">Account storage is not connected, so cloud game plans are unavailable.</div> : null}
         {error ? <div className="mt-3 rounded-xl border border-danger/20 bg-danger/[0.05] px-4 py-3 text-[9px] text-danger">{error}</div> : null}
         {pendingTransition ? <div className={`mt-3 flex items-center gap-2 rounded-xl border px-4 py-3 text-[9px] ${pendingTransition.state === "failed" ? "border-danger/20 bg-danger/[0.05] text-danger" : "border-primary/20 bg-primary/[0.05] text-primary"}`}>{pendingTransition.state === "failed" ? <ShieldCheck className="h-3.5 w-3.5" /> : <RefreshCw className="h-3.5 w-3.5 animate-spin" />}{pendingTransition.state === "failed" ? pendingTransition.error ?? "Account sync needs another attempt; the original plan remains safely in holding." : "Gameplan opened in Scoring. Account storage is syncing quietly in the background."}</div> : null}
