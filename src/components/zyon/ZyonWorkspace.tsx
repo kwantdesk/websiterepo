@@ -239,6 +239,8 @@ class ZyonResponseError extends Error {
 }
 
 type ZyonResponsePayload = {
+  accepted?: unknown;
+  messageId?: unknown;
   text?: unknown;
   error?: unknown;
   model?: unknown;
@@ -1767,7 +1769,8 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              Accept: "application/x-ndjson",
+              Accept: "application/json",
+              Prefer: "respond-async",
             },
             body: requestBody,
           });
@@ -1889,6 +1892,49 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
         }
         return null;
       };
+      const responseFromPersistedEntry = (entry: ZyonJournalEntry) => new Response(JSON.stringify({
+        text: entry.body,
+        model,
+        journalEntries: [entry],
+        gameplanReady: entry.tags.includes(ZYON_GAMEPLAN_READY_TAG),
+        gameplanStatus: entry.tags.includes(ZYON_GAMEPLAN_SENT_TAG)
+          ? "sent"
+          : entry.tags.includes(ZYON_GAMEPLAN_READY_TAG) ? "ready" : null,
+      }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+      const waitForDurableReply = async (messageId: string) => {
+        const deadline = Date.now() + 285_000;
+        while (Date.now() < deadline) {
+          const pollController = new AbortController();
+          const pollTimeout = window.setTimeout(() => pollController.abort(), 10_000);
+          try {
+            const pollResponse = await fetch(
+              `/api/zyon/journal?responseId=${encodeURIComponent(messageId)}`,
+              {
+                cache: "no-store",
+                signal: pollController.signal,
+              },
+            );
+            if (pollResponse.ok && pollResponse.status !== 202) {
+              const pollPayload = await pollResponse.json().catch(() => null) as {
+                entry?: ZyonJournalEntry | null;
+              } | null;
+              if (pollPayload?.entry?.body?.trim()) {
+                return responseFromPersistedEntry(pollPayload.entry);
+              }
+            }
+          } catch {
+            // A polling request is disposable. The durable generation continues
+            // on the server and the next poll resumes from the same message id.
+          } finally {
+            window.clearTimeout(pollTimeout);
+          }
+          await new Promise((resolve) => window.setTimeout(resolve, 1_250));
+        }
+        return null;
+      };
       let response: Response;
       try {
         response = await requestReply();
@@ -1911,6 +1957,22 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
             response = lateRecovery;
           }
         }
+      }
+      if (response.status === 202) {
+        const acknowledgement = await response.json().catch(() => null) as ZyonResponsePayload | null;
+        const durableMessageId = typeof acknowledgement?.messageId === "string"
+          ? acknowledgement.messageId
+          : "";
+        if (!durableMessageId) {
+          throw new ZyonResponseError("ZYON did not acknowledge this message correctly.");
+        }
+        const durableResponse = await waitForDurableReply(durableMessageId);
+        if (!durableResponse) {
+          throw new ZyonResponseError(
+            "ZYON could not complete this analysis inside the five-minute processing window. Your message remains saved.",
+          );
+        }
+        response = durableResponse;
       }
       let payload: ZyonResponsePayload | null;
       try {

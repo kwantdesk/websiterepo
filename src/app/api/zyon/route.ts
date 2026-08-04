@@ -1,4 +1,5 @@
-import { NextResponse, type NextRequest } from "next/server";
+import { after, NextResponse, type NextRequest } from "next/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   ANTHROPIC_VERSION,
   extractClaudeText,
@@ -109,12 +110,6 @@ type ClaudeResult = {
   content?: Array<{ type?: string; text?: string; name?: string; input?: unknown }>;
   usage?: { input_tokens?: number; output_tokens?: number };
 };
-type ZyonStreamEvent =
-  | { type: "start"; messageId: string }
-  | { type: "heartbeat" }
-  | { type: "delta"; text: string }
-  | { type: "complete"; payload: Record<string, unknown> }
-  | { type: "error"; error: string; retryable: boolean };
 type JournalToolInput = {
   title?: unknown;
   summary?: unknown;
@@ -342,26 +337,33 @@ async function consumeAnthropicStream(
     if (eventType === "message_stop") stopped = true;
   };
 
-  while (!stopped) {
-    let inactivityTimer: ReturnType<typeof setTimeout> | null = null;
-    const read = await Promise.race([
-      reader.read(),
-      new Promise<never>((_, reject) => {
-        inactivityTimer = setTimeout(
-          () => reject(new Error("Anthropic stopped producing stream activity.")),
-          PROVIDER_INACTIVITY_TIMEOUT_MS,
-        );
-      }),
-    ]).finally(() => {
-      if (inactivityTimer) clearTimeout(inactivityTimer);
-    });
-    if (read.done) break;
-    buffer += decoder.decode(read.value, { stream: true });
-    const events = buffer.split(/\r?\n\r?\n/);
-    buffer = events.pop() ?? "";
-    for (const event of events) consumeEvent(event);
+  try {
+    while (!stopped) {
+      let inactivityTimer: ReturnType<typeof setTimeout> | null = null;
+      const read = await Promise.race([
+        reader.read(),
+        new Promise<never>((_, reject) => {
+          inactivityTimer = setTimeout(
+            () => reject(new Error("Anthropic stopped producing stream activity.")),
+            PROVIDER_INACTIVITY_TIMEOUT_MS,
+          );
+        }),
+      ]).finally(() => {
+        if (inactivityTimer) clearTimeout(inactivityTimer);
+      });
+      if (read.done) break;
+      buffer += decoder.decode(read.value, { stream: true });
+      const events = buffer.split(/\r?\n\r?\n/);
+      buffer = events.pop() ?? "";
+      for (const event of events) consumeEvent(event);
+    }
+    if (buffer.trim()) consumeEvent(buffer);
+  } finally {
+    if (!stopped) {
+      await reader.cancel().catch(() => undefined);
+    }
+    reader.releaseLock();
   }
-  if (buffer.trim()) consumeEvent(buffer);
 
   const content = [...blocks.entries()]
     .sort(([left], [right]) => left - right)
@@ -1219,9 +1221,10 @@ async function ensureConversationFolders(args: {
 async function persistJournalEntry(
   actorId: string,
   entry: ZyonJournalEntry,
+  persistenceClient?: SupabaseClient,
 ) {
   try {
-    const supabase = await createSupabaseServerClient();
+    const supabase = persistenceClient ?? await createSupabaseServerClient();
     const { error } = await supabase.from("zyon_journal_entries").upsert({
       user_id: actorId,
       id: entry.id,
@@ -1257,13 +1260,14 @@ async function persistGameplanDraft(
   actorId: string,
   draft: ZyonGameplanDraft,
   sourceMessageId: string,
+  persistenceClient?: SupabaseClient,
 ) {
-  const pendingId = await pendingGameplanDraftId(actorId);
+  const pendingId = await pendingGameplanDraftId(actorId, persistenceClient);
   if (pendingId && pendingId !== draft.id) {
     return { saved: false, blockedBy: pendingId };
   }
   try {
-    const supabase = await createSupabaseServerClient();
+    const supabase = persistenceClient ?? await createSupabaseServerClient();
     const { error } = await supabase.from("zyon_gameplan_drafts").upsert({
       user_id: actorId,
       id: draft.id,
@@ -1308,9 +1312,9 @@ async function persistGameplanDraft(
   }
 }
 
-async function pendingGameplanDraftId(actorId: string) {
+async function pendingGameplanDraftId(actorId: string, persistenceClient?: SupabaseClient) {
   try {
-    const supabase = await createSupabaseServerClient();
+    const supabase = persistenceClient ?? await createSupabaseServerClient();
     const [{ data: draftRows, error: draftError }, { data: recordRows, error: recordError }] = await Promise.all([
       supabase
         .from("zyon_gameplan_drafts")
@@ -1626,6 +1630,7 @@ export async function POST(request: NextRequest) {
   const finalizeResult = async (
     result: ClaudeResult,
     providerRequestId: string | null,
+    persistenceClient?: SupabaseClient,
   ): Promise<Record<string, unknown>> => {
     const text = extractClaudeText(result);
     const toolBlock = historicalReplay ? undefined : result.content?.find(
@@ -1669,7 +1674,7 @@ export async function POST(request: NextRequest) {
       };
     }
     const cloudSaved = journalEntry
-      ? await persistJournalEntry(actor.userId, journalEntry)
+      ? await persistJournalEntry(actor.userId, journalEntry, persistenceClient)
       : false;
     const gameplanEntryTiming: ZyonGameplanEntryTimingStatus | null =
       gameplanToolBlock?.input && typeof gameplanToolBlock.input === "object"
@@ -1692,7 +1697,7 @@ export async function POST(request: NextRequest) {
     }
     let gameplanDraft = gameplanSubmitIntent ? preparedGameplanDraft : null;
     const gameplanDraftSave = gameplanDraft
-      ? await persistGameplanDraft(actor.userId, gameplanDraft, rawUserMessageId)
+      ? await persistGameplanDraft(actor.userId, gameplanDraft, rawUserMessageId, persistenceClient)
       : { saved: false, blockedBy: null };
     if (gameplanDraftSave.blockedBy) gameplanDraft = null;
     if (gameplanDraft) gameplanDraft = { ...gameplanDraft, cloudSaved: gameplanDraftSave.saved };
@@ -1708,7 +1713,7 @@ export async function POST(request: NextRequest) {
       }
       : null;
     const savedGameplanJournalCloud = savedGameplanJournalEntry
-      ? await persistJournalEntry(actor.userId, savedGameplanJournalEntry)
+      ? await persistJournalEntry(actor.userId, savedGameplanJournalEntry, persistenceClient)
       : false;
     const liveGameplanSentMessage = "Gameplan sent â€” it's now waiting for you in Socials â†’ Gameplan Holding. Review the pre-filled record, adjust anything you need, then press Lock today's game plan to approve and publish it into Scoring. Nothing is published or scored until you lock it.";
     const historicalGameplanSentMessage = "Historical Gameplan sent â€” it's now waiting for you in Socials â†’ Gameplan Holding with its original entry timestamp preserved. Review the pre-filled record, adjust anything you need, then press Lock today's game plan to approve and publish it into Scoring. Nothing is published or scored until you lock it.";
@@ -1737,9 +1742,9 @@ export async function POST(request: NextRequest) {
       createdAt: new Date().toISOString(),
     });
     const assistantConversationCloudSaved = await within(
-      persistJournalEntry(actor.userId, assistantConversationEntry),
+      persistJournalEntry(actor.userId, assistantConversationEntry, persistenceClient),
       false,
-      450,
+      persistenceClient ? 5_000 : 450,
     );
 
     if (!responseText && !journalEntry && !gameplanDraft) {
@@ -1774,164 +1779,114 @@ export async function POST(request: NextRequest) {
     };
   };
 
-  const wantsStreaming = !historicalReplay
-    && request.headers.get("accept")?.includes("application/x-ndjson");
-  if (wantsStreaming) {
-    const encoder = new TextEncoder();
-    let clientConnected = true;
-    const responseStream = new ReadableStream<Uint8Array>({
-      start(controller) {
-        const emit = (event: ZyonStreamEvent) => {
-          if (!clientConnected) return;
+  const wantsDurableReply = !historicalReplay
+    && request.headers.get("prefer")?.includes("respond-async");
+  if (wantsDurableReply) {
+    // The browser used to own one long-lived response stream for the entire
+    // model generation. A tab/network/proxy interruption therefore destroyed
+    // the delivery path even though the request and conversation were valid.
+    // Capture the authenticated database client while the request is active,
+    // finish generation after the acknowledgement, and let every client/device
+    // read the deterministic assistant record from account storage.
+    const persistenceClient = await createSupabaseServerClient();
+    after(async () => {
+      let providerRequestId: string | null = null;
+      let providerStatus: number | null = null;
+      let providerError = "";
+      try {
+        const providerModels = await providerModelsFor(apiKey, modelKey);
+        let result: ClaudeResult | null = null;
+        for (const [modelIndex, providerModel] of providerModels.entries()) {
+          const connectController = new AbortController();
+          const connectTimeout = setTimeout(
+            () => connectController.abort(),
+            PROVIDER_CONNECT_TIMEOUT_MS,
+          );
+          let providerResponse: Response | null = null;
           try {
-            controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
-          } catch {
-            clientConnected = false;
-          }
-        };
-        emit({ type: "start", messageId: assistantConversationEntryId });
-
-        void (async () => {
-          let streamedText = "";
-          let providerRequestId: string | null = null;
-          let providerStatus: number | null = null;
-          let providerError = "";
-          let lastPartialPersistAt = 0;
-          let partialPersistChain = Promise.resolve();
-          const persistPartialReply = (force = false) => {
-            if (!streamedText.trim()) return partialPersistChain;
-            const now = Date.now();
-            if (!force && now - lastPartialPersistAt < 4_000) return partialPersistChain;
-            lastPartialPersistAt = now;
-            const partialEntry = conversationEntry({
-              id: assistantConversationEntryId,
-              chatId,
-              sessionDate,
-              folderId: conversationFolder.folderId,
-              root,
-              role: "assistant",
-              text: streamedText.slice(0, 12_000),
-              createdAt: new Date(requestReceivedAt).toISOString(),
+            providerResponse = await fetch("https://api.anthropic.com/v1/messages", {
+              method: "POST",
+              signal: connectController.signal,
+              headers: {
+                "Content-Type": "application/json",
+                "x-api-key": apiKey,
+                "anthropic-version": ANTHROPIC_VERSION,
+              },
+              body: JSON.stringify(providerRequestPayload(providerModel, modelIndex, true)),
             });
-            partialPersistChain = partialPersistChain
-              .then(async () => {
-                await persistJournalEntry(actor.userId, partialEntry);
-              })
-              .catch((error) => {
-                console.error("ZYON partial reply persistence failed", error);
-              });
-            return partialPersistChain;
-          };
-
-          try {
-            const providerModels = await providerModelsFor(apiKey, modelKey);
-            let result: ClaudeResult | null = null;
-            for (const [modelIndex, providerModel] of providerModels.entries()) {
-              const attemptStartLength = streamedText.length;
-              const connectController = new AbortController();
-              const connectTimeout = setTimeout(
-                () => connectController.abort(),
-                PROVIDER_CONNECT_TIMEOUT_MS,
-              );
-              let providerResponse: Response | null = null;
-              try {
-                providerResponse = await fetch("https://api.anthropic.com/v1/messages", {
-                  method: "POST",
-                  signal: connectController.signal,
-                  headers: {
-                    "Content-Type": "application/json",
-                    "x-api-key": apiKey,
-                    "anthropic-version": ANTHROPIC_VERSION,
-                  },
-                  body: JSON.stringify(providerRequestPayload(providerModel, modelIndex, true)),
-                });
-              } catch (error) {
-                providerError = error instanceof Error ? error.message : "provider connection failed";
-              } finally {
-                clearTimeout(connectTimeout);
-              }
-              if (!providerResponse) continue;
-              providerRequestId = providerResponse.headers.get("request-id")
-                ?? providerResponse.headers.get("x-request-id")
-                ?? providerRequestId;
-              providerStatus = providerResponse.status;
-              if (!providerResponse.ok) {
-                providerError = await providerResponse.text();
-                console.error(
-                  "ZYON streaming provider error",
-                  providerResponse.status,
-                  providerModel,
-                  providerError.slice(0, 800),
-                );
-                if ([401, 403, 429].includes(providerResponse.status)) break;
-                continue;
-              }
-              try {
-                result = await consumeAnthropicStream(
-                  providerResponse,
-                  (delta) => {
-                    streamedText += delta;
-                    emit({ type: "delta", text: delta });
-                    persistPartialReply();
-                  },
-                  () => emit({ type: "heartbeat" }),
-                );
-                break;
-              } catch (error) {
-                providerError = error instanceof Error ? error.message : "provider stream failed";
-                console.error("ZYON provider stream failed", providerModel, providerError);
-                if (streamedText.length > attemptStartLength) throw error;
-              }
-            }
-
-            if (!result) {
-              const rateLimited = providerStatus === 429;
-              const forbidden = providerStatus === 401 || providerStatus === 403;
-              throw new Error(
-                rateLimited
-                  ? "ZYON is temporarily rate-limited. Your message remains saved."
-                  : forbidden
-                    ? "ZYON's Anthropic connection is not authorised. The API key or account access needs attention."
-                    : "ZYON could not establish a model stream. Your message remains saved.",
-              );
-            }
-
-            await partialPersistChain;
-            const finalized = await finalizeResult(result, providerRequestId);
-            emit({ type: "complete", payload: finalized });
           } catch (error) {
-            await persistPartialReply(true);
-            emit({
-              type: "error",
-              error: error instanceof Error
-                ? error.message
-                : "ZYON's live response was interrupted. Your message remains saved.",
-              retryable: true,
-            });
+            providerError = error instanceof Error ? error.message : "provider connection failed";
           } finally {
-            if (clientConnected) {
-              try {
-                controller.close();
-              } catch {
-                // The account copy remains saved if the browser disconnected.
-              }
-            }
+            clearTimeout(connectTimeout);
           }
-        })();
-      },
-      cancel() {
-        // Do not cancel the provider generation. It continues to completion and
-        // persists the reply so another page/device can recover the same answer.
-        clientConnected = false;
-      },
+          if (!providerResponse) continue;
+          providerRequestId = providerResponse.headers.get("request-id")
+            ?? providerResponse.headers.get("x-request-id")
+            ?? providerRequestId;
+          providerStatus = providerResponse.status;
+          if (!providerResponse.ok) {
+            providerError = await providerResponse.text();
+            console.error(
+              "ZYON durable provider error",
+              providerResponse.status,
+              providerModel,
+              providerError.slice(0, 800),
+            );
+            if ([401, 403, 429].includes(providerResponse.status)) break;
+            continue;
+          }
+          try {
+            result = await consumeAnthropicStream(providerResponse, () => undefined, () => undefined);
+            if (extractClaudeText(result) || result.content?.some((block) => block.type === "tool_use")) {
+              break;
+            }
+            result = null;
+            providerError = "provider returned an empty response";
+          } catch (error) {
+            providerError = error instanceof Error ? error.message : "provider stream failed";
+            console.error("ZYON durable provider stream failed", providerModel, providerError);
+            result = null;
+          }
+        }
+
+        if (!result) {
+          throw new Error(
+            providerStatus === 429
+              ? "Anthropic rate limit reached."
+              : providerStatus === 401 || providerStatus === 403
+                ? "Anthropic authorization failed."
+                : providerError || "No model completed the request.",
+          );
+        }
+        await finalizeResult(result, providerRequestId, persistenceClient);
+      } catch (error) {
+        console.error("ZYON durable generation failed", {
+          message: error instanceof Error ? error.message : String(error),
+          providerStatus,
+          providerRequestId,
+        });
+        const failureEntry = conversationEntry({
+          id: assistantConversationEntryId,
+          chatId,
+          sessionDate,
+          folderId: conversationFolder.folderId,
+          root,
+          role: "assistant",
+          text: "I couldn't complete that analysis because the model provider did not return a usable answer. Your message is saved. Press retry and I will continue from this conversation.",
+          createdAt: new Date().toISOString(),
+        });
+        await persistJournalEntry(actor.userId, failureEntry, persistenceClient);
+      }
     });
 
-    return new Response(responseStream, {
-      headers: {
-        "Content-Type": "application/x-ndjson; charset=utf-8",
-        "Cache-Control": "private, no-store, no-transform, max-age=0",
-        "X-Accel-Buffering": "no",
-      },
+    return NextResponse.json({
+      accepted: true,
+      messageId: assistantConversationEntryId,
+      chatId,
+      model: modelKey,
+    }, {
+      status: 202,
+      headers: { "Cache-Control": "private, no-store, max-age=0" },
     });
   }
 

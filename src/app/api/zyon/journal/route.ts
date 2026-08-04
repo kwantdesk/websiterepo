@@ -131,6 +131,39 @@ export async function GET(request: NextRequest) {
     return unavailableResponse();
   }
 
+  const responseId = request.nextUrl.searchParams.get("responseId")?.trim() ?? "";
+  if (responseId) {
+    if (!/^zyon-conversation-assistant-[a-zA-Z0-9_-]{1,180}$/.test(responseId)) {
+      return NextResponse.json({ error: "Invalid ZYON response id." }, { status: 400 });
+    }
+    const { data, error } = await supabase
+      .from("zyon_journal_entries")
+      .select("id,session_date,root,title,summary,body,kind,tags,attachments,created_at,updated_at")
+      .eq("user_id", actor.userId)
+      .eq("id", responseId)
+      .contains("tags", [ZYON_CONVERSATION_TAG])
+      .maybeSingle();
+    if (error) {
+      if (unavailableTable(error.code)) return unavailableResponse();
+      console.error("ZYON response lookup failed", {
+        code: error.code,
+        message: error.message,
+      });
+      return NextResponse.json({ error: "ZYON response could not be checked." }, { status: 502 });
+    }
+    const entry = data ? fromRow(data as JournalRow) : null;
+    return NextResponse.json({
+      pending: !entry || !entry.body.trim(),
+      entry,
+    }, {
+      status: entry?.body.trim() ? 200 : 202,
+      headers: {
+        "Cache-Control": "private, no-store, max-age=0",
+        "Retry-After": "1",
+      },
+    });
+  }
+
   const compact = request.nextUrl.searchParams.get("compact") === "1";
   const preferLatest = request.nextUrl.searchParams.get("latest") === "1";
   const requestedChatId = request.nextUrl.searchParams.get("chatId")?.trim() ?? "";
