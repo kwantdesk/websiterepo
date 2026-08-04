@@ -340,8 +340,7 @@ async function fetchMarketCandles(instrument: LevelInstrument, timeframe: LevelT
     `/api/databento/market?symbol=${encodeURIComponent(symbol)}&timeframe=${timeframe}&days=${FIVE_DAY_HISTORY_DAYS}`,
     { cache: "no-store" },
   ).then(async (response) => {
-    const payload = await response.json() as MarketPayload;
-    if (!response.ok) throw new Error(payload.error || "CME chart history is unavailable.");
+    const payload = await parseJsonResponse<MarketPayload>(response, "CME chart history is unavailable.");
     const candles = sanitizeCandles(payload.candles);
     if (!candles.length) throw new Error("CME returned no chart history.");
     marketCache.set(key, { candles, updatedAt: Date.now() });
@@ -696,11 +695,33 @@ function makeStructureSnapshot(payload: StructureLevelsSnapshot): LevelSnapshot 
   };
 }
 
+async function parseJsonResponse<T extends { error?: string }>(response: Response, fallbackMessage: string) {
+  const body = await response.text();
+  let payload: T | null = null;
+  try {
+    payload = JSON.parse(body) as T;
+  } catch {
+    const redirectedPath = (() => {
+      try {
+        return new URL(response.url, window.location.origin).pathname;
+      } catch {
+        return "";
+      }
+    })();
+    if (response.redirected && (redirectedPath === "/" || redirectedPath === "/login")) {
+      throw new Error("Your session has expired. Sign in again.");
+    }
+    throw new Error(response.status >= 500
+      ? `${fallbackMessage} The data service returned an invalid response.`
+      : fallbackMessage);
+  }
+  if (!response.ok) throw new Error(payload?.error || fallbackMessage);
+  return payload;
+}
+
 async function requestJson<T extends { error?: string }>(url: string) {
   const response = await fetch(url, { cache: "no-store" });
-  const payload = await response.json() as T;
-  if (!response.ok) throw new Error(payload.error || "Level data is unavailable.");
-  return payload;
+  return parseJsonResponse<T>(response, "Level data is unavailable.");
 }
 
 async function buildLevelSnapshot(config: PanelConfig, settings: ChartSettings) {

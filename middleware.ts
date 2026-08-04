@@ -13,6 +13,7 @@ function allowed(email?: string | null) {
 export async function middleware(request: NextRequest) {
   const response = NextResponse.next({ request });
   const pathname = request.nextUrl.pathname;
+  const apiRequest = pathname.startsWith("/api/");
 
   if (
     pathname === "/" ||
@@ -29,6 +30,12 @@ export async function middleware(request: NextRequest) {
     : true;
 
   if (siteAccessConfigured && !siteAccessGranted) {
+    if (apiRequest) {
+      return NextResponse.json(
+        { error: "Site access is required.", code: "SITE_ACCESS_REQUIRED" },
+        { status: 401, headers: { "Cache-Control": "private, no-store, max-age=0" } },
+      );
+    }
     const holdingPage = new URL("/", request.url);
     holdingPage.searchParams.set("returnTo", pathname);
     return NextResponse.redirect(holdingPage);
@@ -39,7 +46,15 @@ export async function middleware(request: NextRequest) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-  if (!url || !key) return NextResponse.redirect(new URL("/login?error=configuration", request.url));
+  if (!url || !key) {
+    if (apiRequest) {
+      return NextResponse.json(
+        { error: "Authentication is not configured.", code: "AUTH_CONFIGURATION_REQUIRED" },
+        { status: 503, headers: { "Cache-Control": "private, no-store, max-age=0" } },
+      );
+    }
+    return NextResponse.redirect(new URL("/login?error=configuration", request.url));
+  }
 
   const supabase = createServerClient(url, key, {
     cookies: {
@@ -50,6 +65,12 @@ export async function middleware(request: NextRequest) {
   const { data } = await supabase.auth.getUser();
 
   if (!data.user || !allowed(data.user.email)) {
+    if (apiRequest) {
+      return NextResponse.json(
+        { error: "Your session has expired. Sign in again.", code: "AUTHENTICATION_REQUIRED" },
+        { status: 401, headers: { "Cache-Control": "private, no-store, max-age=0" } },
+      );
+    }
     const login = new URL("/login", request.url);
     login.searchParams.set("returnTo", request.nextUrl.pathname);
     return NextResponse.redirect(login);
