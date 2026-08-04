@@ -70,7 +70,6 @@ import { normalizeSharedTradeMessage } from "@/lib/sharedTrades";
 import { isValidProfileHandle, PROFILE_HANDLE_REQUIREMENTS } from "@/lib/profileHandle";
 import {
   buildDefaultProfile,
-  buildAutomaticGameplanReceipt,
   buildExecutionComparison,
   calculateReceiptClassification,
   calculateReceiptScores,
@@ -93,8 +92,6 @@ import {
   type SocialReactionPayload,
   type SocialTradeSnapshot,
   type SocialReceiptPayload,
-  type SocialReasoningPathMetrics,
-  type SocialReasoningCandle,
   type SocialScope,
   type SocialState,
 } from "@/lib/socials";
@@ -106,7 +103,6 @@ import {
   type ZyonTradingAccountMode,
   type ZyonTradingAccountPhase,
 } from "@/lib/zyon";
-import { evaluateReasoningPath } from "@/lib/socials";
 import { SOCIAL_RECORD_COPY, SOCIAL_RECORD_RULES } from "@/lib/socialRecordConfig";
 import {
   effectivePresenceStatus,
@@ -130,7 +126,6 @@ import {
 } from "@/lib/socialReputation";
 import { encodeCanvasImage, prepareSharedImage } from "@/lib/clientImageProcessing";
 import type { SocialFollowListItem, SocialFollowRecommendation, SocialFollowResponse } from "@/lib/socialFollows";
-import { DATABENTO_LIVE_TICK_EVENT } from "@/lib/chartLiveEvents";
 import {
   loadSocialProfilePreview,
   type SocialProfilePreview,
@@ -291,7 +286,7 @@ const GAMEPLAN_PROCESS_STEPS: Array<{
 }> = [
   { label: "Make Gameplan", detail: "Build the structured plan with ZYON.", icon: BrainCircuit },
   { label: "Publish Gameplan", detail: "Review the holding record and lock it in.", icon: Send },
-  { label: "Awaiting Gameplan scoring", detail: "Price action is evaluating the published plan.", icon: Clock3 },
+  { label: "Waiting for trade info", detail: "The locked plan stays here until the real execution is reported.", icon: Clock3 },
   { label: "Gameplan finalised", detail: "The outcome and Reasoning Score are preserved.", icon: CheckCircle2 },
 ];
 
@@ -590,7 +585,6 @@ export default function SocialsWorkspace({
   const [zyonDraftLocking, setZyonDraftLocking] = useState(false);
   const [zyonTargetsInput, setZyonTargetsInput] = useState("");
   const [zyonConfluencesInput, setZyonConfluencesInput] = useState("");
-  const [reasoningPaths, setReasoningPaths] = useState<Record<string, SocialReasoningPathMetrics>>({});
   const [assessmentState, setAssessmentState] = useState<"idle" | "reviewing">("idle");
   const [receiptDraft, setReceiptDraft] = useState(EMPTY_RECEIPT);
   const [postDraft, setPostDraft] = useState(EMPTY_POST);
@@ -648,7 +642,6 @@ export default function SocialsWorkspace({
     originX: number;
     originY: number;
   } | null>(null);
-  const completingReasoningRef = useRef(new Set<string>());
 
   useEffect(() => {
     router.prefetch("/gameplan?tab=scoring");
@@ -1538,122 +1531,6 @@ export default function SocialsWorkspace({
     ?? gameplanProcessPlan?.lockedAt
     ?? "";
 
-  useEffect(() => {
-    const activeRecords = myReasoningRecords.filter((record) => {
-      const plan = typedPayload<SocialPrecordPayload>(record);
-      return plan
-        && ["LONG", "SHORT"].includes(plan.direction)
-        && !receipts.some((receipt) => receipt.parentId === record.id);
-    });
-    if (!activeRecords.length) return;
-    let cancelled = false;
-    const candlesByRoot = new Map<"NQ" | "ES", SocialReasoningCandle[]>();
-
-    const completeRecord = async (
-      record: SocialObject,
-      plan: SocialPrecordPayload,
-      metrics: SocialReasoningPathMetrics,
-    ) => {
-      if (
-        completingReasoningRef.current.has(record.id)
-        || metrics.status === "IN PROGRESS"
-      ) return;
-      completingReasoningRef.current.add(record.id);
-      const savedReceipt = await saveObject(buildLocalObject({
-        id: `receipt:${record.id}`,
-        userId: resolvedAccountKey,
-        authorLabel: currentProfile.displayName,
-        objectType: "receipt",
-        scope: record.scope,
-        deskId: record.deskId,
-        parentId: record.id,
-        payload: buildAutomaticGameplanReceipt(plan, metrics),
-      }));
-      if (savedReceipt.cloudSaved) {
-        window.dispatchEvent(new CustomEvent("kwantdesk:gameplan-scored", {
-          detail: { recordId: record.id, score: metrics.outcomeScore },
-        }));
-      } else {
-        completingReasoningRef.current.delete(record.id);
-      }
-      setNotice(`${plan.instrument} Gameplan completed. Its Reasoning Score is ${metrics.outcomeScore}%.`);
-    };
-
-    const evaluate = async () => {
-      const byRoot = new Map<"NQ" | "ES", SocialObject[]>();
-      for (const record of activeRecords) {
-        const plan = typedPayload<SocialPrecordPayload>(record);
-        if (!plan) continue;
-        const root = plan.instrument.toUpperCase().includes("NQ") ? "NQ" : "ES";
-        byRoot.set(root, [...(byRoot.get(root) ?? []), record]);
-      }
-      await Promise.all([...byRoot.entries()].map(async ([root, records]) => {
-        try {
-          const response = await fetch(`/api/databento/market?symbol=${root}.v.0&timeframe=5m&days=14`, { cache: "no-store" });
-          const body = await response.json() as { candles?: SocialReasoningCandle[] };
-          if (!response.ok || !Array.isArray(body.candles) || cancelled) return;
-          candlesByRoot.set(root, body.candles);
-          for (const record of records) {
-            const plan = typedPayload<SocialPrecordPayload>(record);
-            if (!plan) continue;
-            const metrics = evaluateReasoningPath(plan, body.candles);
-            if (!metrics || cancelled) continue;
-            setReasoningPaths((current) => ({ ...current, [record.id]: metrics }));
-            await completeRecord(record, plan, metrics);
-          }
-        } catch {}
-      }));
-    };
-
-    void evaluate();
-    const timer = window.setInterval(() => void evaluate(), 20_000);
-    const receiveLiveTick = (event: Event) => {
-      try {
-        const tick = (event as CustomEvent<{
-          instrument?: string;
-          mid?: number;
-          timestamp?: string | number;
-        }>).detail;
-        const instrument = String(tick.instrument ?? "").toUpperCase();
-        const root: "NQ" | "ES" | null = instrument.startsWith("NQ")
-          ? "NQ"
-          : instrument.startsWith("ES") ? "ES" : null;
-        const price = Number(tick.mid);
-        if (!root || !Number.isFinite(price) || price <= 0 || cancelled) return;
-        const baseCandles = candlesByRoot.get(root);
-        if (!baseCandles?.length) return;
-        let timestamp = typeof tick.timestamp === "number"
-          ? tick.timestamp
-          : Date.parse(String(tick.timestamp ?? "")) || Date.now();
-        if (timestamp > 10_000_000_000_000_000) timestamp = Math.floor(timestamp / 1_000_000);
-        else if (timestamp > 10_000_000_000_000) timestamp = Math.floor(timestamp / 1_000);
-        const nextCandles = [...baseCandles.slice(-4_500), {
-          timestamp,
-          open: price,
-          high: price,
-          low: price,
-          close: price,
-        }];
-        candlesByRoot.set(root, nextCandles);
-        for (const record of activeRecords) {
-          const plan = typedPayload<SocialPrecordPayload>(record);
-          const recordRoot = plan?.instrument.toUpperCase().includes("NQ") ? "NQ" : "ES";
-          if (!plan || recordRoot !== root) continue;
-          const metrics = evaluateReasoningPath(plan, nextCandles);
-          if (!metrics) continue;
-          setReasoningPaths((current) => ({ ...current, [record.id]: metrics }));
-          void completeRecord(record, plan, metrics);
-        }
-      } catch {}
-    };
-    window.addEventListener(DATABENTO_LIVE_TICK_EVENT, receiveLiveTick);
-    return () => {
-      cancelled = true;
-      window.removeEventListener(DATABENTO_LIVE_TICK_EVENT, receiveLiveTick);
-      window.clearInterval(timer);
-    };
-  }, [currentProfile.displayName, myReasoningRecords, receipts, resolvedAccountKey, saveObject]);
-
   const visiblePrecords = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
     return precords.filter((object) => {
@@ -1848,8 +1725,8 @@ export default function SocialsWorkspace({
     return [
       ...openReceipts.slice(0, 2).map((precord) => ({
         id: `receipt:${precord.id}`,
-        title: `${typedPayload<SocialPrecordPayload>(precord)?.instrument ?? "Plan"} is waiting for its receipt`,
-        detail: "Complete the outcome or record No Trigger.",
+        title: `${typedPayload<SocialPrecordPayload>(precord)?.instrument ?? "Plan"} is waiting for trade info`,
+        detail: "Open Game Plan → Scoring to timestamp the real entry and outcome.",
       })),
       ...reviewComments.slice(0, 2).map((comment) => ({
         id: comment.id,
@@ -1883,7 +1760,7 @@ export default function SocialsWorkspace({
       return;
     }
     if (lockedCurrentGameplan) {
-      setNotice("This Gameplan is already locked in Scoring and awaiting its outcome.");
+      setNotice("This Gameplan is already locked in Scoring and waiting for trade information.");
       return;
     }
     const missing = zyonGameplanMissingFields(zyonGameplanDraft);
@@ -1940,7 +1817,7 @@ export default function SocialsWorkspace({
       setZyonDraftState("missing");
       setNotice(recordMode === "HISTORICAL"
         ? `${draft.instrument} historical Gameplan locked and sent to Scoring for outcome review.`
-        : `${draft.instrument} Gameplan locked. Live scoring is now in progress.`);
+        : `${draft.instrument} Gameplan locked. Add the real entry in Scoring within 10 minutes of taking it.`);
 
       void (async () => {
         try {
@@ -3238,7 +3115,7 @@ export default function SocialsWorkspace({
               </div>
             </div>
           ) : own ? (
-            <button type="button" onClick={() => setShowReceiptFor(object.id)} className="mt-4 flex h-9 items-center gap-2 rounded-xl border border-primary/25 bg-primary/[0.06] px-3 text-[9px] font-semibold text-primary hover:bg-primary/10"><Plus className="h-3.5 w-3.5" />Add Actual Execution</button>
+            <button type="button" onClick={() => { window.localStorage.setItem("kwantdesk:gameplan-page-tab", "scoring"); router.push("/gameplan?tab=scoring"); }} className="mt-4 flex h-9 items-center gap-2 rounded-xl border border-primary/25 bg-primary/[0.06] px-3 text-[9px] font-semibold text-primary hover:bg-primary/10"><Plus className="h-3.5 w-3.5" />Open Scoring to add execution</button>
           ) : null}
         </div>
         <div className="flex flex-wrap items-center gap-1.5 border-t border-border bg-background/20 px-4 py-2.5">
@@ -3488,7 +3365,7 @@ export default function SocialsWorkspace({
                         : gameplanProcessIndex === 1
                           ? `Waiting for your review in holding${gameplanProcessTimestamp ? ` · ${formatDate(gameplanProcessTimestamp, true)}` : ""}.`
                           : gameplanProcessIndex === 2
-                            ? `Published and awaiting its outcome${gameplanProcessTimestamp ? ` · ${formatDate(gameplanProcessTimestamp, true)}` : ""}.`
+                            ? `Published and waiting for trade info${gameplanProcessTimestamp ? ` · ${formatDate(gameplanProcessTimestamp, true)}` : ""}.`
                             : `${gameplanProcessReceipt?.scores.final !== undefined ? `Final score ${gameplanProcessReceipt.scores.final}/100` : "Final scoring saved"}${gameplanProcessTimestamp ? ` · ${formatDate(gameplanProcessTimestamp, true)}` : ""}.`}
                     </div>
                   </div>
@@ -3778,7 +3655,7 @@ export default function SocialsWorkspace({
             {myReasoningRecords.length ? myReasoningRecords.map((record) => {
               const plan = typedPayload<SocialPrecordPayload>(record);
               const receipt = typedPayload<SocialReceiptPayload>(receipts.find((candidate) => candidate.parentId === record.id));
-              const metrics = receipt?.pathMetrics ?? reasoningPaths[record.id];
+              const metrics = receipt?.pathMetrics;
               if (!plan) return null;
               return (
                 <div key={`reasoning:${objectKey(record)}`} className={`rounded-2xl border ${receipt ? "border-accent/25 shadow-[0_0_24px_color-mix(in_srgb,var(--accent)_7%,transparent)]" : "border-warning/25 shadow-[0_0_24px_color-mix(in_srgb,var(--warning)_6%,transparent)]"}`}>

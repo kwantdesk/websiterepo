@@ -221,6 +221,35 @@ export type SocialReceiptPayload = {
     createdAt: string;
   };
   pathMetrics?: SocialReasoningPathMetrics;
+  realisedPnl?: number | null;
+  outcome?: "TARGET HIT" | "STOP HIT" | "MANUAL EXIT" | "BREAKEVEN";
+};
+
+export type SocialGameplanExecutionPayload = {
+  kind: "GAMEPLAN_EXECUTION";
+  stage: "ENTRY RECORDED" | "CLOSED";
+  actualDirection: "LONG" | "SHORT";
+  fills: SocialExecutionFill[];
+  actualEntry: number;
+  entryTime: string;
+  actualStop: number | null;
+  size: number | null;
+  maximumActualRisk: number | null;
+  claimedAt: string;
+  claimDelaySeconds: number;
+  outcome?: "TARGET HIT" | "STOP HIT" | "MANUAL EXIT" | "BREAKEVEN";
+  actualExit?: number | null;
+  exitTime?: string | null;
+  realisedPnl?: number | null;
+  fees?: number | null;
+  confirmationsAppeared?: string;
+  deviationReason?: string;
+  deviationDetail?: string;
+  outcomeReview?: string;
+  nextTimeRule?: string;
+  partialExits?: string;
+  closedAt?: string;
+  updatedAt: string;
 };
 
 export type SocialReasoningPathMetrics = {
@@ -333,6 +362,7 @@ export type SocialProgressPayload = {
 };
 
 export type SocialConsensusPayload = {
+  kind?: "SESSION_CONSENSUS";
   sessionDate: string;
   instrument: string;
   level: string;
@@ -343,6 +373,17 @@ export type SocialConsensusPayload = {
   enoughEvidence: boolean;
   committedAt: string;
 };
+
+export function isGameplanExecutionPayload(value: unknown): value is SocialGameplanExecutionPayload {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Partial<SocialGameplanExecutionPayload>;
+  return candidate.kind === "GAMEPLAN_EXECUTION"
+    && (candidate.stage === "ENTRY RECORDED" || candidate.stage === "CLOSED")
+    && (candidate.actualDirection === "LONG" || candidate.actualDirection === "SHORT")
+    && typeof candidate.actualEntry === "number"
+    && Number.isFinite(candidate.actualEntry)
+    && typeof candidate.entryTime === "string";
+}
 
 export type SocialState = {
   version: 1;

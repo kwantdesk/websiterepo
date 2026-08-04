@@ -2475,7 +2475,7 @@ const GAMEPLAN_PAGE_TABS: Array<{
   icon: LucideIcon;
 }> = [
   { id: "gameplan", label: "Game Plan", description: "Live session map", icon: Map },
-  { id: "scoring", label: "Scoring", description: "Plans awaiting outcome", icon: Scale },
+  { id: "scoring", label: "Scoring", description: "Plans waiting for actual trade info", icon: Scale },
   { id: "previous", label: "Previous Game Plans", description: "Finalised plan archive", icon: History },
 ];
 

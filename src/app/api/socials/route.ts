@@ -323,6 +323,10 @@ export async function POST(request: NextRequest) {
   let useUpsert = false;
   let privateEvidence: { name: string; dataUrl: string } | null = null;
 
+  if (objectType === "consensus" && (id.startsWith("gameplan-execution:") || payload.kind === "GAMEPLAN_EXECUTION")) {
+    return NextResponse.json({ error: "Gameplan executions must use the timestamped Scoring workflow." }, { status: 403 });
+  }
+
   if (objectType === "receipt-evidence") {
     return NextResponse.json({ error: "Receipt evidence is managed by the receipt workflow." }, { status: 403 });
   } else if (objectType === "profile") {
@@ -475,13 +479,31 @@ export async function POST(request: NextRequest) {
     if (!parentId) return NextResponse.json({ error: "Choose a locked Decision Record." }, { status: 400 });
     const { data: parent, error: parentError } = await supabase
       .from("social_objects")
-      .select("id")
+      .select("id,payload")
       .eq("user_id", actor.userId)
       .eq("id", parentId)
       .eq("object_type", "precord")
       .maybeSingle();
     if (parentError || !parent) {
       return NextResponse.json({ error: "Only the owner can complete this Decision Record." }, { status: 403 });
+    }
+    const parentPayload = parent.payload && typeof parent.payload === "object"
+      ? parent.payload as Partial<SocialPrecordPayload>
+      : {};
+    if (parentPayload.recordMode !== "HISTORICAL") {
+      const { data: execution } = await supabase
+        .from("social_objects")
+        .select("payload")
+        .eq("user_id", actor.userId)
+        .eq("id", `gameplan-execution:${parentId}`)
+        .eq("object_type", "consensus")
+        .maybeSingle();
+      const executionPayload = execution?.payload && typeof execution.payload === "object"
+        ? execution.payload as Record<string, unknown>
+        : null;
+      if (executionPayload?.kind !== "GAMEPLAN_EXECUTION" || executionPayload.stage !== "CLOSED") {
+        return NextResponse.json({ error: "Record the timestamped entry and completed trade in Game Plan → Scoring before scoring it." }, { status: 409 });
+      }
     }
     const evidenceDataUrl = typeof payload.evidenceDataUrl === "string" && payload.evidenceDataUrl.startsWith("data:image/")
       ? payload.evidenceDataUrl.slice(0, 2_800_000)
