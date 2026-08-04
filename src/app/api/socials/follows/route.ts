@@ -575,6 +575,10 @@ export async function POST(request: NextRequest) {
   if (!targetUserId || targetUserId === actor.userId) {
     return NextResponse.json({ error: "Choose another Kwant Desk profile." }, { status: 400 });
   }
+  if (action === "notifications" && typeof body.enabled !== "boolean") {
+    return NextResponse.json({ error: "Choose whether profile notifications are on or off." }, { status: 400 });
+  }
+  const notificationPreference = action === "notifications" ? body.enabled as boolean : false;
 
   try {
     if (action === "profile_view") {
@@ -617,12 +621,12 @@ export async function POST(request: NextRequest) {
           { status: 409 },
         );
       }
-      await updateFallbackNotifications(supabase, actor.userId, targetUserId, Boolean(body.enabled));
+      await updateFallbackNotifications(supabase, actor.userId, targetUserId, notificationPreference);
     } else if (action === "notifications") {
       const result = await supabase
         .from("social_profile_follows")
         .update({
-          notify_posts: Boolean(body.enabled),
+          notify_posts: notificationPreference,
           updated_at: new Date().toISOString(),
         })
         .eq("follower_id", actor.userId)
@@ -640,9 +644,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unsupported follow action." }, { status: 400 });
     }
 
-    const summary = loaded.storage === "social-objects"
+    const storedSummary = loaded.storage === "social-objects"
       ? await loadFallbackSummary(supabase, actor.userId, targetUserId)
       : (await loadSummary(supabase, actor.userId, targetUserId)).summary;
+    const summary = action === "notifications"
+      ? { ...storedSummary, notificationsEnabled: notificationPreference }
+      : storedSummary;
     return NextResponse.json(
       { summary },
       { headers: { "Cache-Control": "private, no-store, max-age=0" } },

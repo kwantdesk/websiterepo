@@ -156,6 +156,7 @@ export default function SocialProfileView({
   const [friendState, setFriendState] = useState<"loading" | "friend" | "incoming" | "outgoing" | "none" | "unavailable">("loading");
   const [friendBusy, setFriendBusy] = useState(false);
   const followMutationRef = useRef(false);
+  const followSummaryRequestRef = useRef(0);
   const followListRequestRef = useRef(0);
 
   useEffect(() => {
@@ -218,6 +219,8 @@ export default function SocialProfileView({
   };
 
   const loadFollowSummary = useCallback(async (signal?: AbortSignal) => {
+    if (followMutationRef.current) return;
+    const requestId = ++followSummaryRequestRef.current;
     setFollowLoading(true);
     setFollowError("");
     try {
@@ -229,12 +232,13 @@ export default function SocialProfileView({
       if (!response.ok || !result.summary) {
         throw new Error(result.error || "Follow information could not be loaded.");
       }
+      if (requestId !== followSummaryRequestRef.current || followMutationRef.current) return;
       setFollowSummary(result.summary);
     } catch (error) {
-      if (signal?.aborted) return;
+      if (signal?.aborted || requestId !== followSummaryRequestRef.current) return;
       setFollowError(error instanceof Error ? error.message : "Follow information could not be loaded.");
     } finally {
-      if (!signal?.aborted) setFollowLoading(false);
+      if (!signal?.aborted && requestId === followSummaryRequestRef.current) setFollowLoading(false);
     }
   }, [profileObject.userId]);
 
@@ -266,6 +270,7 @@ export default function SocialProfileView({
     const previous = followSummary;
     if (!previous) return;
     followMutationRef.current = true;
+    followSummaryRequestRef.current += 1;
     setFollowError("");
     setFollowSummary({
       ...previous,
@@ -306,6 +311,7 @@ export default function SocialProfileView({
       setFollowError(error instanceof Error ? error.message : "The follow setting could not be saved.");
     } finally {
       followMutationRef.current = false;
+      setFollowLoading(false);
     }
   };
 
