@@ -108,6 +108,42 @@ export type ZyonJournalEntry = {
   cloudSaved?: boolean;
 };
 
+export function normalizeZyonTags(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((tag): tag is string => typeof tag === "string")
+    .map((tag) => tag.replace(/\u0000/g, "").trim())
+    .filter(Boolean)
+    .slice(0, 80);
+}
+
+export function normalizeZyonJournalAttachments(
+  value: unknown,
+): ZyonJournalEntry["attachments"] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((candidate) => {
+    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return [];
+    const attachment = candidate as Record<string, unknown>;
+    if (typeof attachment.name !== "string" || !attachment.name.trim()) return [];
+    const rawSize = typeof attachment.size === "number"
+      ? attachment.size
+      : Number(attachment.size);
+    return [{
+      name: attachment.name.replace(/\u0000/g, "").trim().slice(0, 240),
+      type: typeof attachment.type === "string" && attachment.type.trim()
+        ? attachment.type.replace(/\u0000/g, "").trim().slice(0, 160)
+        : "application/octet-stream",
+      size: Number.isFinite(rawSize) && rawSize >= 0 ? rawSize : 0,
+      ...(typeof attachment.dataUrl === "string" && attachment.dataUrl
+        ? { dataUrl: attachment.dataUrl }
+        : {}),
+      ...(typeof attachment.storagePath === "string" && attachment.storagePath
+        ? { storagePath: attachment.storagePath }
+        : {}),
+    }];
+  }).slice(0, 20);
+}
+
 export type ZyonGameplanDraft = {
   id: string;
   sessionDate: string;
@@ -303,8 +339,11 @@ export function zyonChatIdTag(chatId: string) {
   return `zyon:chat-id:${chatId}`;
 }
 
-export function zyonTagValue(tags: string[], prefix: string) {
-  return tags.find((tag) => tag.startsWith(prefix))?.slice(prefix.length) ?? null;
+export function zyonTagValue(tags: unknown, prefix: string) {
+  if (!Array.isArray(tags) || typeof prefix !== "string") return null;
+  const match = tags.find((tag): tag is string =>
+    typeof tag === "string" && tag.startsWith(prefix));
+  return match?.slice(prefix.length) ?? null;
 }
 
 export function zyonEntryFolderId(entry: Pick<ZyonJournalEntry, "tags">) {

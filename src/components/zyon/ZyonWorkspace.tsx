@@ -52,6 +52,8 @@ import { useSpeechDictation } from "@/hooks/useSpeechDictation";
 import { formatKwantBotPrice } from "@/lib/kwantBotInterpreter";
 import {
   isZyonModelKey,
+  normalizeZyonJournalAttachments,
+  normalizeZyonTags,
   ZYON_CHAT_LIMIT,
   ZYON_CONVERSATION_TAG,
   ZYON_CUSTOM_FOLDER_LIMIT,
@@ -126,13 +128,29 @@ function validChatId(value: unknown): value is string {
 
 function storedActiveChatId(accountKey: string) {
   if (typeof window === "undefined" || !accountKey) return null;
-  const saved = window.localStorage.getItem(activeChatStorageKey(accountKey));
-  return validChatId(saved) ? saved : null;
+  try {
+    const saved = window.localStorage.getItem(activeChatStorageKey(accountKey));
+    return validChatId(saved) ? saved : null;
+  } catch {
+    return null;
+  }
 }
 
 function storedChatDraft(accountKey: string, chatId: string) {
   if (typeof window === "undefined" || !accountKey || !validChatId(chatId)) return "";
-  return window.localStorage.getItem(chatDraftStorageKey(accountKey, chatId))?.slice(0, 6_000) ?? "";
+  try {
+    return window.localStorage.getItem(chatDraftStorageKey(accountKey, chatId))?.slice(0, 6_000) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function storeLocalValue(key: string, value: string) {
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    // Account-backed chat remains usable when browser storage is unavailable.
+  }
 }
 
 const QUICK_PROMPTS = [
@@ -263,21 +281,8 @@ function mergeJournal(local: ZyonJournalEntry[], remote: ZyonJournalEntry[]) {
       kind: entry.kind === "TRADE" || entry.kind === "SETUP" || entry.kind === "REVIEW" || entry.kind === "LESSON"
         ? entry.kind
         : "NOTE",
-      tags: Array.isArray(entry.tags) ? entry.tags.filter((tag): tag is string => typeof tag === "string") : [],
-      attachments: Array.isArray(entry.attachments)
-        ? entry.attachments.flatMap((attachment) => {
-          if (!attachment || typeof attachment !== "object" || Array.isArray(attachment)) return [];
-          const item = attachment as ZyonJournalEntry["attachments"][number];
-          if (typeof item.name !== "string") return [];
-          return [{
-            name: item.name,
-            type: typeof item.type === "string" ? item.type : "application/octet-stream",
-            size: Number.isFinite(item.size) ? Number(item.size) : 0,
-            ...(typeof item.dataUrl === "string" ? { dataUrl: item.dataUrl } : {}),
-            ...(typeof item.storagePath === "string" ? { storagePath: item.storagePath } : {}),
-          }];
-        })
-        : [],
+      tags: normalizeZyonTags(entry.tags),
+      attachments: normalizeZyonJournalAttachments(entry.attachments),
       createdAt: typeof entry.createdAt === "string" ? entry.createdAt : new Date().toISOString(),
       cloudSaved: Boolean(entry.cloudSaved),
     };
@@ -332,7 +337,7 @@ function mergeChats(local: ZyonChat[], remote: ZyonChat[]) {
 }
 
 function messagesFromJournal(entries: ZyonJournalEntry[], chatId: string) {
-  return entries
+  return mergeJournal([], Array.isArray(entries) ? entries : [])
     .filter((entry) =>
       entry.tags.includes(ZYON_CONVERSATION_TAG)
       && zyonEntryChatId(entry) === chatId)
@@ -780,8 +785,12 @@ export default function ZyonWorkspace({
 }) {
   const [model, setModel] = useState<ZyonModelKey>(() => {
     if (typeof window === "undefined") return "opus-5";
-    const saved = window.localStorage.getItem("kwantdesk:zyon:model");
-    return isZyonModelKey(saved) ? saved : "opus-5";
+    try {
+      const saved = window.localStorage.getItem("kwantdesk:zyon:model");
+      return isZyonModelKey(saved) ? saved : "opus-5";
+    } catch {
+      return "opus-5";
+    }
   });
   const [online, setOnline] = useState(true);
   const [chats, setChats] = useState<ZyonChat[]>([PRIMARY_CHAT]);
@@ -1106,8 +1115,8 @@ export default function ZyonWorkspace({
     const activeChat = chats.find((chat) => chat.id === activeChatId);
     const activeMessages = messagesByChat[activeChatId];
     const activeDraft = draftsByChat[activeChatId] ?? "";
-    window.localStorage.setItem(activeChatStorageKey(accountKey), activeChatId);
-    window.localStorage.setItem(chatDraftStorageKey(accountKey, activeChatId), activeDraft);
+    storeLocalValue(activeChatStorageKey(accountKey), activeChatId);
+    storeLocalValue(chatDraftStorageKey(accountKey, activeChatId), activeDraft);
     window.dispatchEvent(new CustomEvent(ZYON_ACTIVE_CHAT_EVENT, {
       detail: {
         accountKey,
@@ -1138,15 +1147,16 @@ export default function ZyonWorkspace({
         if (!response.ok) throw new Error();
         if (!active) return;
         if (Array.isArray(payload.entries)) {
+          const normalizedEntries = mergeJournal([], payload.entries);
           if (!compact) {
-            setJournal((current) => mergeJournal(current, payload.entries ?? []));
+            setJournal((current) => mergeJournal(current, normalizedEntries));
           }
           const remoteChats = mergeChats(
             [PRIMARY_CHAT],
             Array.isArray(payload.chats) ? payload.chats : [],
           );
           const cloudMessagesByChat = messagesByChatFromJournal(
-            payload.entries ?? [],
+            normalizedEntries,
             remoteChats,
           );
           setMessagesByChat((current) => {
@@ -1181,7 +1191,7 @@ export default function ZyonWorkspace({
   }, [cloudJournalChatId, compact]);
 
   useEffect(() => {
-    window.localStorage.setItem("kwantdesk:zyon:model", model);
+    storeLocalValue("kwantdesk:zyon:model", model);
   }, [model]);
 
   useEffect(() => {

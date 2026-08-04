@@ -6077,6 +6077,10 @@ export default function KwantifyWorkspace({
     if (!authChecked) return;
     const timers = [
       window.setTimeout(() => warmWorkspaceSection("charts"), 100),
+      // ZYON is also a chart-side panel. Fetch its module while this deployment
+      // is known-good so a long-lived trading tab never requests it lazily
+      // across a later production rollout.
+      window.setTimeout(() => warmWorkspaceSection("zyon"), 300),
       window.setTimeout(() => warmWorkspaceSection("gamma"), 650),
       window.setTimeout(() => warmWorkspaceSection("gexdesk"), 1_300),
     ];
@@ -11006,7 +11010,18 @@ export default function KwantifyWorkspace({
           const Icon = item.icon;
           const active = rightPanel === item.id;
           return (
-            <button key={item.id} title={item.id === "friends" ? `${friendsOnlineCount} friends online` : item.title} onClick={() => toggleRightPanel(item.id)} className={`relative flex h-9 w-9 items-center justify-center rounded-lg transition-colors ${active ? "bg-surface text-foreground" : "text-muted hover:bg-surface hover:text-foreground"}`}>
+            <button
+              key={item.id}
+              title={item.id === "friends" ? `${friendsOnlineCount} friends online` : item.title}
+              onPointerEnter={() => {
+                if (item.id === "zyon") warmWorkspaceSection("zyon");
+              }}
+              onFocus={() => {
+                if (item.id === "zyon") warmWorkspaceSection("zyon");
+              }}
+              onClick={() => toggleRightPanel(item.id)}
+              className={`relative flex h-9 w-9 items-center justify-center rounded-lg transition-colors ${active ? "bg-surface text-foreground" : "text-muted hover:bg-surface hover:text-foreground"}`}
+            >
               <Icon className="h-[18px] w-[18px]" />
               {item.id === "kwantbot" && kwantBotInterpreter.unreadTotal > 0 && <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-semibold text-background">{Math.min(99, kwantBotInterpreter.unreadTotal)}</span>}
               {item.id === "optionstape" && kwantBotInterpreter.optionsUnreadTotal > 0 && <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-semibold text-background">{Math.min(99, kwantBotInterpreter.optionsUnreadTotal)}</span>}

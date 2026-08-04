@@ -16,6 +16,8 @@ import {
   zyonId,
   zyonParentFolderTag,
   zyonTagValue,
+  normalizeZyonJournalAttachments,
+  normalizeZyonTags,
   type ZyonChat,
   type ZyonFolder,
   type ZyonJournalEntry,
@@ -46,21 +48,23 @@ function fromRow(row: JournalRow): ZyonJournalEntry | null {
   if (!isZyonMarketRoot(row.root)) return null;
   return {
     id: row.id,
-    sessionDate: row.session_date,
+    sessionDate: typeof row.session_date === "string" ? row.session_date : new Date().toISOString().slice(0, 10),
     root: row.root,
-    title: row.title,
-    summary: row.summary,
-    body: row.body,
-    kind: row.kind,
-    tags: Array.isArray(row.tags) ? row.tags : [],
-    attachments: Array.isArray(row.attachments) ? row.attachments : [],
-    createdAt: row.created_at,
+    title: typeof row.title === "string" ? row.title : "ZYON note",
+    summary: typeof row.summary === "string" ? row.summary : "",
+    body: typeof row.body === "string" ? row.body : "",
+    kind: row.kind === "TRADE" || row.kind === "SETUP" || row.kind === "REVIEW" || row.kind === "LESSON"
+      ? row.kind
+      : "NOTE",
+    tags: normalizeZyonTags(row.tags),
+    attachments: normalizeZyonJournalAttachments(row.attachments),
+    createdAt: typeof row.created_at === "string" ? row.created_at : new Date().toISOString(),
     cloudSaved: true,
   };
 }
 
 function folderFromRow(row: JournalRow): ZyonFolder | null {
-  const tags = Array.isArray(row.tags) ? row.tags : [];
+  const tags = normalizeZyonTags(row.tags);
   if (!tags.includes(ZYON_FOLDER_TAG)) return null;
   const kind = zyonTagValue(tags, "zyon:folder-kind:");
   if (kind !== "system" && kind !== "daily" && kind !== "custom") return null;
@@ -78,7 +82,7 @@ function folderFromRow(row: JournalRow): ZyonFolder | null {
 }
 
 function chatFromRow(row: JournalRow): ZyonChat | null {
-  const tags = Array.isArray(row.tags) ? row.tags : [];
+  const tags = normalizeZyonTags(row.tags);
   if (!tags.includes(ZYON_CHAT_TAG)) return null;
   const chatId = zyonTagValue(tags, "zyon:chat-id:");
   if (!chatId) return null;
