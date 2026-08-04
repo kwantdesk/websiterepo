@@ -4419,11 +4419,20 @@ export default function KwantifyWorkspace({
   const router = useRouter();
   const [optimisticWorkspaceSection, setOptimisticWorkspaceSection] = useState(section);
   const activeWorkspaceSectionRef = useRef<PrimaryWorkspaceSection | null>(section);
+  const pendingWorkspaceNavigationRef = useRef<PrimaryWorkspaceSection | null>(null);
   useEffect(() => {
     // Route state must never wait behind a dynamic import. On a busy live
     // chart the order-flow engine can occupy the main thread in short bursts;
     // waiting for a bundle here made a valid navigation look like a dead
     // button. Switch first so the chart unmounts, then warm the destination.
+    const pendingSection = pendingWorkspaceNavigationRef.current;
+    if (pendingSection && section !== pendingSection) {
+      // A passive route effect from initial hydration can arrive after a fast
+      // user click. It represents the page we are leaving, so it must never
+      // overwrite the newer optimistic destination.
+      return;
+    }
+    pendingWorkspaceNavigationRef.current = null;
     activeWorkspaceSectionRef.current = section;
     setOptimisticWorkspaceSection(section);
     void preloadWorkspaceModule(section).catch(() => null);
@@ -7466,6 +7475,10 @@ export default function KwantifyWorkspace({
       ? target as PrimaryWorkspaceSection
       : null;
     const previousSection = activeWorkspaceSectionRef.current;
+
+    if (nextSection) {
+      pendingWorkspaceNavigationRef.current = nextSection;
+    }
 
     if (nextSection && nextSection !== previousSection) {
       // Treat a navigation click as urgent UI work. Updating the visible
