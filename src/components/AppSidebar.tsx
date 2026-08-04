@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { memo, type ComponentType } from "react";
+import { memo, type ComponentType, type MouseEvent as ReactMouseEvent } from "react";
 import {
   BarChart3,
   BookOpen,
@@ -87,6 +87,20 @@ const navItems: Array<{
   { key: "backtesting", href: "/backtesting", label: "Backtesting", title: "Backtesting", icon: History },
 ];
 
+const PERSISTENT_WORKSPACE_KEYS = new Set<SidebarKey>([
+  "charts",
+  "zyon",
+  "gameplan",
+  "gamma",
+  "gexmap",
+  "gexdesk",
+  "levelz",
+  "news",
+  "socials",
+  "journal",
+  "backtesting",
+]);
+
 function ActiveUnderline() {
   return (
     <span
@@ -109,6 +123,26 @@ function AppSidebar({
     onNavigateStart?.(key);
   };
 
+  const navigate = (
+    event: ReactMouseEvent<HTMLAnchorElement>,
+    key: SidebarKey,
+    href: string,
+  ) => {
+    if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey || event.button !== 0) return;
+    beginNavigation(key);
+    if (!PERSISTENT_WORKSPACE_KEYS.has(key)) return;
+
+    // Every primary workspace lives inside the same persistent client shell;
+    // its route page intentionally renders null. Asking Next for a new RSC
+    // document on every tab click adds a network/deployment failure point for
+    // no UI benefit. The native history API is integrated with App Router, so
+    // usePathname still updates while the already-mounted shell switches
+    // sections immediately and remains usable during feed or deploy churn.
+    event.preventDefault();
+    const current = `${window.location.pathname}${window.location.search}`;
+    if (current !== href) window.history.pushState(null, "", href);
+  };
+
   if (orientation === "vertical") {
     return (
       <div className="relative z-[70] w-[52px] shrink-0 self-stretch">
@@ -127,13 +161,10 @@ function AppSidebar({
             <Link
               key={key}
               href={href}
+              prefetch={false}
               onPointerEnter={() => onNavigateIntent?.(key)}
               onFocus={() => onNavigateIntent?.(key)}
-              onClick={(event) => {
-                if (!event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) {
-                  beginNavigation(key);
-                }
-              }}
+              onClick={(event) => navigate(event, key, href)}
               className={activeItem === key ? verticalItemActive : verticalItemInactive}
               title={title}
             >
@@ -173,14 +204,10 @@ function AppSidebar({
             <Link
               key={key}
               href={href}
-              prefetch
+              prefetch={false}
               onPointerEnter={() => onNavigateIntent?.(key)}
               onFocus={() => onNavigateIntent?.(key)}
-              onClick={(event) => {
-                if (!event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) {
-                  beginNavigation(key);
-                }
-              }}
+              onClick={(event) => navigate(event, key, href)}
               aria-current={active ? "page" : undefined}
               className={active ? horizontalItemActive : horizontalItemInactive}
               title={title}
