@@ -585,11 +585,16 @@ function ZyonAvatar({
     >
       <span className="zyon-avatar-halo pointer-events-none absolute inset-0 z-10 rounded-full" />
       <Image
-        src="/images/zyon-avatar.jpg"
+        src="/images/zyon-avatar.jpg?v=zyon-robot-1"
         alt="ZYON, AI Quant Analyst"
         fill
+        priority
+        unoptimized
         sizes={imageSize}
         className="zyon-avatar-image object-cover"
+        onError={(event) => {
+          event.currentTarget.src = "/images/kwantbot-avatar.png?v=zyon-robot-fallback-1";
+        }}
       />
       <span className="pointer-events-none absolute inset-0 z-20 rounded-full ring-1 ring-inset ring-white/[0.08]" />
       {online ? (
