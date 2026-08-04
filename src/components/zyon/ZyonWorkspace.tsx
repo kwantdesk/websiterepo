@@ -122,6 +122,18 @@ function chatDraftStorageKey(accountKey: string, chatId: string) {
   return `kwantdesk:zyon:draft:${accountKey}:${chatId}`;
 }
 
+const ZYON_ROOT_STORAGE_KEY = "kwantdesk:zyon:root";
+const ZYON_ROOT_SYNC_EVENT = "kwantdesk:zyon-root-changed";
+
+function storedZyonRoot(): ZyonMarketRoot {
+  if (typeof window === "undefined") return "NQ";
+  try {
+    return window.localStorage.getItem(ZYON_ROOT_STORAGE_KEY) === "ES" ? "ES" : "NQ";
+  } catch {
+    return "NQ";
+  }
+}
+
 function validChatId(value: unknown): value is string {
   return typeof value === "string" && /^[a-zA-Z0-9_-]+$/.test(value);
 }
@@ -800,6 +812,7 @@ export default function ZyonWorkspace({
     }
   });
   const [online, setOnline] = useState(true);
+  const [selectedRoot, setSelectedRoot] = useState<ZyonMarketRoot>(storedZyonRoot);
   const [chats, setChats] = useState<ZyonChat[]>([PRIMARY_CHAT]);
   const [activeChatId, setActiveChatId] = useState(
     () => storedActiveChatId(accountKey) ?? ZYON_DEFAULT_CHAT_ID,
@@ -914,7 +927,6 @@ export default function ZyonWorkspace({
     }
   }, [compact]);
 
-  const selectedRoot = interpreter.selectedRoot;
   const context = interpreter.contexts[selectedRoot];
   const currentPrice = interpreter.livePrices[selectedRoot] ?? context?.currentPrice ?? null;
   const contextState = interpreter.contextStates[selectedRoot];
@@ -929,6 +941,42 @@ export default function ZyonWorkspace({
   const conversationReady = compact ? storeReady : storeReady && cloudJournal !== "checking";
   const conversationStarted = messages.some((message) => message.role === "user");
   const greetingName = viewerName.trim().split(/\s+/)[0] || "Trader";
+
+  const selectZyonRoot = useCallback((root: ZyonMarketRoot) => {
+    setSelectedRoot(root);
+    interpreter.selectRoot(root);
+    try {
+      window.localStorage.setItem(ZYON_ROOT_STORAGE_KEY, root);
+    } catch {
+      // The in-memory selection still works when browser storage is unavailable.
+    }
+    window.dispatchEvent(new CustomEvent(ZYON_ROOT_SYNC_EVENT, { detail: root }));
+    window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
+  }, [interpreter.selectRoot]);
+
+  useEffect(() => {
+    const syncRoot = (event: Event) => {
+      const root = (event as CustomEvent<unknown>).detail;
+      if (root !== "NQ" && root !== "ES") return;
+      setSelectedRoot(root);
+    };
+    const syncStorage = (event: StorageEvent) => {
+      if (event.key !== ZYON_ROOT_STORAGE_KEY) return;
+      const root = event.newValue;
+      if (root !== "NQ" && root !== "ES") return;
+      setSelectedRoot(root);
+      interpreter.selectRoot(root);
+    };
+    window.addEventListener(ZYON_ROOT_SYNC_EVENT, syncRoot);
+    window.addEventListener("storage", syncStorage);
+    const initialRoot = storedZyonRoot();
+    setSelectedRoot(initialRoot);
+    interpreter.selectRoot(initialRoot);
+    return () => {
+      window.removeEventListener(ZYON_ROOT_SYNC_EVENT, syncRoot);
+      window.removeEventListener("storage", syncStorage);
+    };
+  }, [accountKey, interpreter.selectRoot]);
 
   const refreshGameplanStatus = useCallback(async () => {
     try {
@@ -2183,7 +2231,7 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
                 <button
                   key={root}
                   type="button"
-                  onClick={() => interpreter.selectRoot(root)}
+                  onClick={() => selectZyonRoot(root)}
                   className={`rounded-lg px-2.5 py-1.5 font-mono text-[9px] font-semibold transition ${
                     selectedRoot === root ? "bg-primary/12 text-primary" : "text-muted hover:text-foreground"
                   }`}
@@ -2451,7 +2499,7 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
               <button
                 key={root}
                 type="button"
-                onClick={() => interpreter.selectRoot(root)}
+                onClick={() => selectZyonRoot(root)}
                 className={`rounded-lg px-3 py-1.5 font-mono text-[10px] font-semibold transition ${
                   selectedRoot === root
                     ? "bg-primary/12 text-primary shadow-[0_0_12px_color-mix(in_srgb,var(--primary)_9%,transparent)]"

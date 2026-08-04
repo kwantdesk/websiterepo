@@ -40,6 +40,7 @@ const TRACKED_STORAGE_KEYS = new Set([
   "kwantdesk:economic-calendar-timezone:v1",
   "kwantdesk-kwantbot-messages",
   "kwantdesk:zyon:model",
+  "kwantdesk:zyon:root",
   "kwantify-chart-alerts",
   "kwantify-chart-tool-favorites",
   "kwantify-chart-toolbar-dock",
@@ -66,6 +67,7 @@ const METADATA_FALLBACK_KEYS = new Set([
   "kwantdesk-settings-toggles",
   "kwantdesk-settings-font-size",
   "kwantdesk:economic-calendar-timezone:v1",
+  "kwantdesk:zyon:root",
 ]);
 
 export type UserPreferenceSnapshot = {
