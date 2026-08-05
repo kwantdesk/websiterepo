@@ -14,6 +14,11 @@ export async function middleware(request: NextRequest) {
   const response = NextResponse.next({ request });
   const pathname = request.nextUrl.pathname;
   const apiRequest = pathname.startsWith("/api/");
+  const localPreviewBypass =
+    process.env.KWANTIFY_DEV_AUTH_BYPASS === "1"
+    && ["localhost", "127.0.0.1", "::1"].includes(request.nextUrl.hostname);
+
+  if (localPreviewBypass) return response;
 
   if (
     pathname === "/" ||

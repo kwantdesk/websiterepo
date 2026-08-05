@@ -7,6 +7,7 @@ import {
   BookOpen,
   CalendarDays,
   Crosshair,
+  Flame,
   History,
   Home,
   Layers3,
@@ -26,6 +27,7 @@ type SidebarKey =
   | "gamma"
   | "levelz"
   | "gexmap"
+  | "heatmap"
   | "gexdesk"
   | "gameplan"
   | "kwantbot"
@@ -79,6 +81,7 @@ const navItems: Array<{
   { key: "gameplan", href: "/gameplan", label: "Gameplan", title: "Gameplan", icon: CalendarDays },
   { key: "gamma", href: "/gamma", label: "GAMMA", title: "Gamma", icon: BarChart3 },
   { key: "gexmap", href: "/gexmap", label: "GEX MAP", title: "GEX Map", icon: ScanLine },
+  { key: "heatmap", href: "/heatmap", label: "HEAT MAP", title: "Options Positioning Heat Map", icon: Flame },
   { key: "gexdesk", href: "/gexdesk", label: "GEX DESK", title: "GEX Desk", icon: Layers3 },
   { key: "levelz", href: "/levelz", label: "LEVELZ", title: "LEVELZ", icon: Crosshair },
   { key: "news", href: "/news", label: "News", title: "News", icon: BookOpen },
@@ -93,6 +96,7 @@ const PERSISTENT_WORKSPACE_KEYS = new Set<SidebarKey>([
   "gameplan",
   "gamma",
   "gexmap",
+  "heatmap",
   "gexdesk",
   "levelz",
   "news",
@@ -187,22 +191,14 @@ function AppSidebar({
 
           <div className="flex-1" />
 
-          <Link
+          <a
             href="/settings"
-            onPointerEnter={() => onNavigateIntent?.("settings")}
-            onPointerDown={(event) => beginPointerNavigation(event, "settings")}
-            onFocus={() => onNavigateIntent?.("settings")}
-            onClick={(event) => {
-              if (!event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) {
-                beginNavigation("settings");
-              }
-            }}
             className={activeItem === "settings" ? verticalItemActive : verticalItemInactive}
             title="Settings"
           >
             <Settings className="h-[18px] w-[18px] shrink-0" />
             <span className={verticalItemLabel}>Settings</span>
-          </Link>
+          </a>
         </aside>
       </div>
     );
@@ -243,24 +239,15 @@ function AppSidebar({
         <User className="h-4 w-4 shrink-0" />
         <span>{accountLabel}</span>
       </button>
-      <Link
+      <a
         href="/settings"
-        prefetch
-        onPointerEnter={() => onNavigateIntent?.("settings")}
-        onPointerDown={(event) => beginPointerNavigation(event, "settings")}
-        onFocus={() => onNavigateIntent?.("settings")}
-        onClick={(event) => {
-          if (!event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) {
-            beginNavigation("settings");
-          }
-        }}
         className={activeItem === "settings" ? horizontalItemActive : horizontalItemInactive}
         title="Settings"
       >
         <Settings className="h-4 w-4 shrink-0" />
         <span>Settings</span>
         {activeItem === "settings" ? <ActiveUnderline /> : null}
-      </Link>
+      </a>
     </header>
   );
 }

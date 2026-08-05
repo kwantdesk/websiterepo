@@ -236,6 +236,7 @@ function workspaceLoader(title: string, detail: string) {
 const loadChartWorkspace = () => import("@/components/Chart");
 const loadGammaWorkspace = () => import("@/components/options-flow/GammaWorkspace");
 const loadGexMapWorkspace = () => import("@/components/gex-map/GexMapWorkspace");
+const loadOptionsHeatmapWorkspace = () => import("@/components/heatmap/OptionsHeatmapWorkspace");
 const loadGexDeskWorkspace = () => import("@/components/gexdesk/GexDeskWorkspace");
 const loadGameplanWorkspace = () => import("@/components/gameplan/GameplanWorkspace");
 const loadNewsWorkspace = () => import("@/components/news/NewsWorkspace");
@@ -250,6 +251,7 @@ const workspaceModulePreloaders: Record<string, () => Promise<unknown>> = {
   charts: loadChartWorkspace,
   gamma: loadGammaWorkspace,
   gexmap: loadGexMapWorkspace,
+  heatmap: loadOptionsHeatmapWorkspace,
   gexdesk: loadGexDeskWorkspace,
   gameplan: loadGameplanWorkspace,
   news: loadNewsWorkspace,
@@ -276,6 +278,10 @@ const GammaWorkspace = dynamic(loadGammaWorkspace, {
 const GexMapWorkspace = dynamic(loadGexMapWorkspace, {
   ssr: false,
   loading: () => workspaceLoader("Opening GEXMAP", "Restoring exposure panels."),
+});
+const OptionsHeatmapWorkspace = dynamic(loadOptionsHeatmapWorkspace, {
+  ssr: false,
+  loading: () => workspaceLoader("Opening Heat Map", "Restoring options positioning and the shared NQ tape."),
 });
 const GexDeskWorkspace = dynamic(loadGexDeskWorkspace, {
   ssr: false,
@@ -582,7 +588,7 @@ type LevelExportRow = {
   source: string;
   asOf: string;
 };
-export type PrimaryWorkspaceSection = "charts" | "gamma" | "levelz" | "gexmap" | "gexdesk" | "gameplan" | "kwantbot" | "news" | "zyon" | "journal" | "socials" | "backtesting";
+export type PrimaryWorkspaceSection = "charts" | "gamma" | "levelz" | "gexmap" | "heatmap" | "gexdesk" | "gameplan" | "kwantbot" | "news" | "zyon" | "journal" | "socials" | "backtesting";
 
 const WORKSPACE_PRESETS_STORAGE_KEY = "kwantdesk-chart-workspace-presets";
 const ACTIVE_WORKSPACE_PRESET_STORAGE_KEY = "kwantdesk-chart-workspace-active-preset";
@@ -597,6 +603,7 @@ const BOTTOM_WORKSPACE_SECTIONS = [
   { id: "gamma" as const, label: "Gamma" },
   { id: "levelz" as const, label: "LEVELZ" },
   { id: "gexmap" as const, label: "GEXMAP" },
+  { id: "heatmap" as const, label: "Heat Map" },
   { id: "gexdesk" as const, label: "Gexdesk" },
   { id: "gameplan" as const, label: "Gameplan" },
   { id: "kwantbot" as const, label: "KwantBot" },
@@ -6691,7 +6698,7 @@ export default function KwantifyWorkspace({
   useEffect(() => {
     if (
       !usingDatabentoFeed
-      || (bottomWorkspaceSection !== "charts" && bottomWorkspaceSection !== "gameplan")
+      || (bottomWorkspaceSection !== "charts" && bottomWorkspaceSection !== "gameplan" && bottomWorkspaceSection !== "heatmap")
     ) return;
     let cancelled = false;
     let animationFrame: number | null = null;
@@ -6762,7 +6769,7 @@ export default function KwantifyWorkspace({
   }, [bottomWorkspaceSection, usingDatabentoFeed, watchlistSymbolsCsv]);
 
   useEffect(() => {
-    if (bottomWorkspaceSection !== "charts" && bottomWorkspaceSection !== "gameplan") return;
+    if (bottomWorkspaceSection !== "charts" && bottomWorkspaceSection !== "gameplan" && bottomWorkspaceSection !== "heatmap") return;
     if (activeChartBrokerLabel === "Market Index" || activeChartBrokerLabel === "Massive") return;
     const priorityLiveSymbols = new Set(priorityLiveSymbolsCsv.split(",").filter(Boolean));
     const nameMap: Record<string, string> = {
@@ -6895,7 +6902,7 @@ export default function KwantifyWorkspace({
           // Gameplan's moving Session Ladder consumes the same authoritative
           // futures stream as Charts. Publishing it here prevents delayed REST
           // snapshots from briefly displacing the live "You are here" marker.
-          if (activeWorkspaceSectionRef.current !== "charts" && activeWorkspaceSectionRef.current !== "gameplan") return;
+          if (activeWorkspaceSectionRef.current !== "charts" && activeWorkspaceSectionRef.current !== "gameplan" && activeWorkspaceSectionRef.current !== "heatmap") return;
           if (priorityLiveSymbols.has(displayName)) {
             window.dispatchEvent(new CustomEvent(DATABENTO_LIVE_TICK_EVENT, { detail: price }));
           }
@@ -10429,6 +10436,13 @@ export default function KwantifyWorkspace({
               <ReactActivity mode={bottomWorkspaceSection === "gexmap" ? "visible" : "hidden"}>
                 <WorkspaceFailureBoundary resetKey="gexmap" label="GEX Map">
                   <GexMapWorkspace />
+                </WorkspaceFailureBoundary>
+              </ReactActivity>
+            ) : null}
+            {visitedWorkspaceSections.has("heatmap") ? (
+              <ReactActivity mode={bottomWorkspaceSection === "heatmap" ? "visible" : "hidden"}>
+                <WorkspaceFailureBoundary resetKey="heatmap" label="Heat Map">
+                  <OptionsHeatmapWorkspace />
                 </WorkspaceFailureBoundary>
               </ReactActivity>
             ) : null}

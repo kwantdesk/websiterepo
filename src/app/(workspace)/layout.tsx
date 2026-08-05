@@ -13,6 +13,7 @@ const SECTION_BY_PATH: Record<string, PrimaryWorkspaceSection> = {
   "/gamma": "gamma",
   "/levelz": "levelz",
   "/gexmap": "gexmap",
+  "/heatmap": "heatmap",
   "/gexdesk": "gexdesk",
   "/gameplan": "gameplan",
   "/kwantbot": "kwantbot",

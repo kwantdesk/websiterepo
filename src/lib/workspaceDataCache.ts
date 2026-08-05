@@ -146,6 +146,16 @@ export async function preloadWorkspaceData(key: string) {
     ]);
   }
 
+  if (key === "heatmap") {
+    return Promise.all([
+      fetchWorkspaceData("gexdesk:map", "/api/gexdesk"),
+      fetchWorkspaceData(
+        gexdeskHistoryCacheKey("COMBINED", "NQ"),
+        "/api/gexdesk/history?instrument=NQ&source=COMBINED",
+      ),
+    ]);
+  }
+
   if (key === "gameplan") {
     return fetchWorkspaceData(
       gameplanCacheKey("NQ", "newyork"),
