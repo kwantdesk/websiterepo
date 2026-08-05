@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   CalendarDays,
@@ -323,15 +323,41 @@ function ExposurePanel({
   const net = rows.reduce((sum, row) => sum + row.net, 0);
   const greek = GEX_MAP_GREEKS.find((item) => item.mode === config.greekMode) ?? GEX_MAP_GREEKS[0];
 
-  useEffect(() => {
+  const centerLiveStrike = useCallback(() => {
     const container = scrollRef.current;
     const target = container?.querySelector<HTMLElement>("[data-near-spot='true']");
     if (!container || !target) return;
-    container.scrollTop = Math.max(
-      0,
-      target.offsetTop - container.offsetTop - container.clientHeight / 2 + target.clientHeight / 2,
-    );
-  }, [config.symbol, config.greekMode, payload?.sessionDate, selectedTimestamp, spotStrike]);
+
+    const containerRect = container.getBoundingClientRect();
+    const targetRect = target.getBoundingClientRect();
+    const targetCentre = targetRect.top + targetRect.height / 2;
+    const viewportCentre = containerRect.top + containerRect.height / 2;
+    const maximumScroll = Math.max(0, container.scrollHeight - container.clientHeight);
+    const nextScroll = Math.max(0, Math.min(maximumScroll, container.scrollTop + targetCentre - viewportCentre));
+
+    if (Math.abs(nextScroll - container.scrollTop) > 0.5) container.scrollTop = nextScroll;
+  }, []);
+
+  useLayoutEffect(() => {
+    const frame = window.requestAnimationFrame(centerLiveStrike);
+    return () => window.cancelAnimationFrame(frame);
+  }, [centerLiveStrike, config.symbol, config.greekMode, payload?.asOf, payload?.sessionDate, selectedTimestamp, spotStrike]);
+
+  useEffect(() => {
+    const container = scrollRef.current;
+    if (!container || typeof ResizeObserver === "undefined") return;
+
+    let frame = 0;
+    const observer = new ResizeObserver(() => {
+      window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(centerLiveStrike);
+    });
+    observer.observe(container);
+    return () => {
+      observer.disconnect();
+      window.cancelAnimationFrame(frame);
+    };
+  }, [centerLiveStrike]);
 
   return (
     <section className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-border bg-panel">
