@@ -3171,6 +3171,16 @@ export default function SocialsWorkspace({
     const own = object.userId === resolvedAccountKey;
     const oneLiner = payload.kind === "ONE-LINER";
     const trade = payload.kind === "TRADE" ? payload.trade ?? null : null;
+    const tradeOpenedAt = trade ? Date.parse(trade.openedAt) : Number.NaN;
+    const tradeClosedAt = trade?.closedAt ? Date.parse(trade.closedAt) : Number.NaN;
+    const tradeHasExactTimes = Boolean(
+      trade
+      && trade.entryTimeKnown !== false
+      && trade.exitTimeKnown !== false
+      && Number.isFinite(tradeOpenedAt)
+      && Number.isFinite(tradeClosedAt)
+      && tradeClosedAt >= tradeOpenedAt,
+    );
     const liked = objectReactions.some((reaction) => reaction.userId === resolvedAccountKey && typedPayload<SocialReactionPayload>(reaction)?.kind === "LIKE");
     const saved = objectReactions.some((reaction) => reaction.userId === resolvedAccountKey && typedPayload<SocialReactionPayload>(reaction)?.kind === "SAVED");
     const likeCount = objectReactions.filter((reaction) => typedPayload<SocialReactionPayload>(reaction)?.kind === "LIKE").length;
@@ -3226,14 +3236,14 @@ export default function SocialsWorkspace({
               <div className="relative overflow-hidden rounded-2xl border border-border bg-[linear-gradient(145deg,color-mix(in_srgb,var(--primary)_7%,var(--panel)),var(--background))] p-4">
                 <div className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-primary/[0.07] blur-3xl" />
                 <div className="relative flex flex-wrap items-start gap-3">
-                  <div className="min-w-0 flex-1"><div className="flex items-center gap-2"><span className={`rounded-lg px-2 py-1 text-[7px] font-semibold ${trade.side === "LONG" ? "bg-primary/10 text-primary" : "bg-danger/10 text-danger"}`}>{trade.side}</span><span className="font-mono text-[13px] font-semibold text-foreground">{trade.instrument}</span></div><div className="mt-2 truncate text-[9px] text-muted">Journal trade · {formatDate(trade.openedAt, true)}</div></div>
+                  <div className="min-w-0 flex-1"><div className="flex items-center gap-2"><span className={`rounded-lg px-2 py-1 text-[7px] font-semibold ${trade.side === "LONG" ? "bg-primary/10 text-primary" : "bg-danger/10 text-danger"}`}>{trade.side}</span><span className="font-mono text-[13px] font-semibold text-foreground">{trade.instrument}</span></div><div className="mt-2 truncate text-[9px] text-muted">Journal trade · {trade.entryTimeKnown !== false && Number.isFinite(tradeOpenedAt) ? formatDate(trade.openedAt, true) : "Entry time not recorded"}</div></div>
                   <div className="text-right"><div className="text-[7px] font-semibold uppercase tracking-[0.14em] text-muted">Net P&amp;L</div><div className={`mt-1 font-mono text-[24px] font-semibold tracking-[-0.04em] ${trade.netPnl >= 0 ? "text-accent" : "text-danger"}`}>{tradeMoney(trade.netPnl)}</div></div>
                 </div>
                 <div className="relative mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
                   {[["Entry", trade.entryPrice?.toLocaleString("en-US", { maximumFractionDigits: 6 }) ?? "—"], ["Exit", trade.exitPrice?.toLocaleString("en-US", { maximumFractionDigits: 6 }) ?? "—"], ["Risk", trade.initialRisk === null ? "Not recorded" : tradeMoney(trade.initialRisk, false)], ["R : R", trade.rMultiple === null ? "Not recorded" : `${trade.rMultiple.toFixed(2)}R`]].map(([label, value]) => <div key={label} className="rounded-xl border border-border bg-background/55 p-3"><div className="text-[7px] font-semibold uppercase tracking-[0.12em] text-muted">{label}</div><div className="mt-1 font-mono text-[10px] font-semibold text-foreground">{value}</div></div>)}
                 </div>
               </div>
-              <TradePostChart trade={trade as SocialTradeSnapshot} />
+              {tradeHasExactTimes ? <TradePostChart trade={trade as SocialTradeSnapshot} /> : null}
             </div>
           ) : (
             <>

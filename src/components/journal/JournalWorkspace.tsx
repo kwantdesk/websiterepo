@@ -230,6 +230,39 @@ function newManualTradeDraft(): ManualTradeDraft {
   };
 }
 
+function manualTradeDraftFromTrade(trade: JournalTrade): ManualTradeDraft {
+  const numberText = (value: number | null | undefined) => value === null || value === undefined ? "" : String(value);
+  const validLocalTime = (value: string | null, known: boolean | undefined) => {
+    if (!value || known === false) return "";
+    const timestamp = Date.parse(value);
+    return Number.isFinite(timestamp) ? localDateTimeInput(new Date(timestamp)) : "";
+  };
+  return {
+    name: trade.setup,
+    symbol: trade.symbol,
+    side: trade.side === "LONG" || trade.side === "SHORT" ? trade.side : "",
+    contractClass: trade.contractClass ?? "",
+    quantity: numberText(trade.quantity),
+    openedAt: validLocalTime(trade.openedAt, trade.entryTimeKnown),
+    closedAt: validLocalTime(trade.closedAt, trade.exitTimeKnown),
+    entryPrice: numberText(trade.entryPrice),
+    exitPrice: numberText(trade.exitPrice),
+    stopPrice: numberText(trade.stopPrice),
+    targetPrice: numberText(trade.targetPrice),
+    plannedRiskReward: numberText(trade.plannedRiskReward),
+    initialRisk: numberText(trade.initialRisk),
+    netPnl: numberText(trade.netPnl),
+    fees: trade.feesKnown === false ? "" : numberText(trade.fees),
+    tags: trade.tags.join(", "),
+    notes: trade.notes,
+    improvements: trade.improvements ?? "",
+    tradingAccountName: trade.tradingAccountName ?? "",
+    tradingAccountType: trade.tradingAccountType ?? "",
+    accountSize: numberText(trade.accountSize),
+    rating: trade.rating,
+  };
+}
+
 function appendDictatedText(current: string, transcript: string, separator = " ") {
   const spoken = transcript.trim();
   if (!spoken) return current;
@@ -684,6 +717,10 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
   const [manualEvidenceDragging, setManualEvidenceDragging] = useState(false);
   const [manualTradeError, setManualTradeError] = useState("");
   const [manualTradeSaving, setManualTradeSaving] = useState(false);
+  const [editingTradeId, setEditingTradeId] = useState<string | null>(null);
+  const [tradeMenuId, setTradeMenuId] = useState<{ tradeId: string; x: number; y: number } | null>(null);
+  const [deleteTradeTargetId, setDeleteTradeTargetId] = useState<string | null>(null);
+  const [tradeMutationError, setTradeMutationError] = useState("");
   const [showTradePost, setShowTradePost] = useState(false);
   const [postTradeId, setPostTradeId] = useState("");
   const [postTradeCaption, setPostTradeCaption] = useState("");
@@ -983,6 +1020,9 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
   );
   const stats = useMemo(() => calculateJournalStats(filteredTrades, filteredEvidence), [filteredEvidence, filteredTrades]);
   const selectedTrade = allTrades.find((trade) => trade.id === selectedTradeId) ?? null;
+  const editingTrade = allTrades.find((trade) => trade.id === editingTradeId) ?? null;
+  const deleteTradeTarget = allTrades.find((trade) => trade.id === deleteTradeTargetId) ?? null;
+  const tradeMenuTarget = allTrades.find((trade) => trade.id === tradeMenuId?.tradeId) ?? null;
   const postTrade = postableTrades.find((trade) => trade.id === postTradeId) ?? null;
   const selectedTradeIsZyon = Boolean(selectedTrade?.sourceImportId.startsWith("zyon:"));
   const selectedEvidence = state.evidence.find((item) => item.id === selectedEvidenceId) ?? null;
@@ -1023,6 +1063,13 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
   }, [analysisStatus]);
 
   useEffect(() => () => analysisAbortRef.current?.abort(), []);
+
+  useEffect(() => {
+    if (!tradeMenuId) return;
+    const close = () => setTradeMenuId(null);
+    window.addEventListener("pointerdown", close);
+    return () => window.removeEventListener("pointerdown", close);
+  }, [tradeMenuId]);
 
   useEffect(() => {
     if (tab !== "analysis") return;
@@ -1198,10 +1245,37 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
     manualTradeTouchedRef.current.clear();
     manualDictation.activate("name");
     manualDictation.clearError();
+    setEditingTradeId(null);
     setManualTrade(newManualTradeDraft());
     setManualEvidenceFiles([]);
     setManualEvidenceDragging(false);
     setManualTradeError("");
+    setShowManualTrade(true);
+  };
+
+  const closeManualTrade = () => {
+    if (manualTradeSaving) return;
+    manualDictation.stop();
+    setShowManualTrade(false);
+    setEditingTradeId(null);
+    setManualEvidenceFiles([]);
+    setManualTradeError("");
+  };
+
+  const openTradeEditor = (trade: JournalTrade) => {
+    if (isZyonJournalAccountName(trade.account) || trade.sourceImportId.startsWith("zyon:")) return;
+    manualTradeTouchedRef.current.clear();
+    manualDictation.stop();
+    manualDictation.activate("name");
+    manualDictation.clearError();
+    setEditingTradeId(trade.id);
+    setManualTrade(manualTradeDraftFromTrade(trade));
+    setManualEvidenceFiles([]);
+    setManualEvidenceDragging(false);
+    setManualTradeError("");
+    setTradeMutationError("");
+    setTradeMenuId(null);
+    setSelectedTradeId(null);
     setShowManualTrade(true);
   };
 
@@ -1243,6 +1317,8 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
                 exitPrice: postTrade.exitPrice,
                 openedAt: postTrade.openedAt,
                 closedAt: postTrade.closedAt,
+                entryTimeKnown: postTrade.entryTimeKnown !== false,
+                exitTimeKnown: postTrade.exitTimeKnown !== false && Boolean(postTrade.closedAt),
                 netPnl: postTrade.netPnl,
                 initialRisk: postTrade.initialRisk,
                 rMultiple: postTrade.rMultiple,
@@ -1306,9 +1382,11 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
   }, []);
 
   const submitManualTrade = async () => {
-    if (!selectedAccountIsManual || manualTradeSaving) return;
-    const openedAt = manualTrade.openedAt.trim() ? Date.parse(manualTrade.openedAt) : Date.now();
-    const closedAt = manualTrade.closedAt.trim() ? Date.parse(manualTrade.closedAt) : null;
+    if ((!selectedAccountIsManual && !editingTrade) || manualTradeSaving) return;
+    const entryTimeKnown = Boolean(manualTrade.openedAt.trim());
+    const exitTimeKnown = Boolean(manualTrade.closedAt.trim());
+    const openedAt = entryTimeKnown ? Date.parse(manualTrade.openedAt) : Date.now();
+    const closedAt = exitTimeKnown ? Date.parse(manualTrade.closedAt) : null;
     const quantity = manualTrade.quantity.trim() ? Number(manualTrade.quantity) : 1;
     const entryPrice = manualTrade.entryPrice.trim() ? Number(manualTrade.entryPrice) : null;
     const exitPrice = manualTrade.exitPrice.trim() ? Number(manualTrade.exitPrice) : null;
@@ -1358,14 +1436,17 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
     setManualTradeError("");
     try {
       const preparedEvidence = await Promise.all(manualEvidenceFiles.map(prepareManualEvidence));
-      const id = crypto.randomUUID();
-      const sourceImportId = `manual:${id}`;
+      const id = editingTrade?.id ?? crypto.randomUUID();
+      const sourceImportId = editingTrade?.sourceImportId ?? `manual:${id}`;
+      const tradeAccount = editingTrade?.account ?? accountFilter;
       const now = new Date().toISOString();
       const trade: JournalTrade = {
         id,
-        account: accountFilter,
+        account: tradeAccount,
         openedAt: new Date(openedAt).toISOString(),
         closedAt: closedAt === null ? null : new Date(closedAt).toISOString(),
+        entryTimeKnown,
+        exitTimeKnown,
         symbol: manualTrade.symbol.trim().toUpperCase().slice(0, 32),
         side: manualTrade.side === "LONG" ? "LONG" : "SHORT",
         quantity,
@@ -1390,15 +1471,16 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
         tradingAccountType: manualTrade.tradingAccountType || undefined,
         accountSize,
         rating: manualTrade.rating,
-        reviewedAt: manualTrade.notes.trim() || manualTrade.improvements.trim() || manualTrade.rating ? now : null,
+        reviewedAt: manualTrade.notes.trim() || manualTrade.improvements.trim() || manualTrade.rating ? editingTrade?.reviewedAt ?? now : null,
         sourceImportId,
-        sourceFile: "KwantDesk Manual",
-        sourceRows: [],
-        fingerprint: sourceImportId,
+        sourceFile: editingTrade?.sourceFile ?? "KwantDesk Manual",
+        sourceSheet: editingTrade?.sourceSheet,
+        sourceRows: editingTrade?.sourceRows ?? [],
+        fingerprint: editingTrade?.fingerprint ?? sourceImportId,
       };
       const evidence: JournalEvidence[] = preparedEvidence.map((item) => ({
         id: crypto.randomUUID(),
-        account: accountFilter,
+        account: tradeAccount,
         name: item.name,
         mimeType: item.mimeType,
         size: item.size,
@@ -1408,30 +1490,38 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
         dataUrl: item.dataUrl,
         caption: "",
       }));
+      const response = await fetch("/api/journal", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(editingTrade
+            ? { action: "update", trade }
+            : { action: "create-trade", account: tradeAccount, accountId: accountRecord.get(tradeAccount)?.id, trade }),
+        });
+      const result = await response.json() as { cloud?: boolean; error?: string; linkedPostsUpdated?: number };
+      if (!response.ok || !result.cloud) throw new Error(result.error || "Trade save failed.");
+      await Promise.all(evidence.map(async (item) => {
+          if (!await persistEvidence(item)) throw new Error("Evidence save failed.");
+          return true;
+        }));
       setState((current) => ({
         ...current,
-        trades: [...current.trades, trade].slice(-50_000),
+        trades: editingTrade
+          ? current.trades.map((candidate) => candidate.id === trade.id ? trade : candidate)
+          : [...current.trades, trade].slice(-50_000),
         evidence: [...evidence, ...current.evidence].slice(0, 500),
       }));
+      setCloudState("cloud");
       setShowManualTrade(false);
+      setEditingTradeId(null);
       setSelectedTradeId(id);
       setManualEvidenceFiles([]);
       setManualTrade(newManualTradeDraft());
-      void Promise.all([
-        fetch("/api/journal", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "create-trade", account: accountFilter, accountId: accountRecord.get(accountFilter)?.id, trade }),
-        }).then(async (response) => {
-          const result = await response.json() as { cloud?: boolean };
-          if (!response.ok || !result.cloud) throw new Error("Trade save failed.");
-          return true;
-        }),
-        ...evidence.map(async (item) => {
-          if (!await persistEvidence(item)) throw new Error("Evidence save failed.");
-          return true;
-        }),
-      ]).then(() => setCloudState("cloud")).catch(() => setCloudState("local"));
+      if (editingTrade) {
+        setJournalLifecycleMessage(result.linkedPostsUpdated
+          ? `Trade updated. ${result.linkedPostsUpdated} linked Socials post${result.linkedPostsUpdated === 1 ? "" : "s"} refreshed automatically.`
+          : "Trade updated.");
+        window.dispatchEvent(new CustomEvent("kwantdesk:social-post-created"));
+      }
     } catch (error) {
       setManualTradeError(error instanceof Error ? error.message : "The manual trade could not be prepared.");
     } finally {
@@ -1882,6 +1972,33 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
     }).catch(() => setCloudState("error"));
   };
 
+  const deleteTrade = async (trade: JournalTrade) => {
+    if (isZyonJournalAccountName(trade.account) || trade.sourceImportId.startsWith("zyon:") || manualTradeSaving) return;
+    const snapshot = state;
+    setDeleteTradeTargetId(null);
+    setTradeMenuId(null);
+    setTradeMutationError("");
+    setState((current) => ({
+      ...current,
+      trades: current.trades.filter((candidate) => candidate.id !== trade.id),
+    }));
+    if (selectedTradeId === trade.id) setSelectedTradeId(null);
+    try {
+      const response = await fetch(`/api/journal?tradeId=${encodeURIComponent(trade.id)}`, { method: "DELETE" });
+      const result = await response.json() as { cloud?: boolean; error?: string; linkedPostsDeleted?: number };
+      if (!response.ok || !result.cloud) throw new Error(result.error || "The trade could not be deleted.");
+      setCloudState("cloud");
+      setJournalLifecycleMessage(result.linkedPostsDeleted
+        ? `Trade deleted with ${result.linkedPostsDeleted} linked Socials post${result.linkedPostsDeleted === 1 ? "" : "s"}.`
+        : "Trade deleted.");
+      window.dispatchEvent(new CustomEvent("kwantdesk:social-post-created"));
+    } catch (error) {
+      setState(snapshot);
+      setCloudState("error");
+      setTradeMutationError(error instanceof Error ? error.message : "The trade could not be deleted.");
+    }
+  };
+
   const exportJournal = (format: "csv" | "json") => {
     if (format === "csv") {
       downloadBlob("kwantdesk-journal-trades.csv", new Blob([journalTradesToCsv(filteredTrades)], { type: "text/csv;charset=utf-8" }));
@@ -2196,11 +2313,12 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
               <button type="button" onClick={() => setSortDirection((current) => current === "desc" ? "asc" : "desc")} className="flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-background text-muted hover:text-foreground" title="Reverse sort">{sortDirection === "desc" ? <ArrowDownRight className="h-4 w-4" /> : <ArrowUpRight className="h-4 w-4" />}</button>
               <button type="button" onClick={() => exportJournal("csv")} className="flex h-9 items-center gap-1.5 rounded-xl border border-border bg-background px-3 text-[9px] font-semibold text-muted hover:text-foreground"><Download className="h-3.5 w-3.5" />CSV</button>
             </Card>
+            {tradeMutationError ? <div className="flex items-start gap-2 rounded-xl border border-danger/25 bg-danger/[0.07] px-3 py-2 text-[9px] text-danger"><CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />{tradeMutationError}</div> : null}
             <Card className="overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[1080px] border-collapse text-[9px]">
                   <thead className="bg-surface/45 text-muted">
-                    <tr>{["Date / time", "Account", "Symbol", "Side", "Qty", "Entry", "Exit", "Net P&L", "R", "Duration", "Setup / tags", "Review"].map((header) => <th key={header} className="border-b border-border px-3 py-2.5 text-left font-semibold uppercase tracking-[0.08em]">{header}</th>)}</tr>
+                    <tr>{["Date / time", "Account", "Symbol", "Side", "Qty", "Entry", "Exit", "Net P&L", "R", "Duration", "Setup / tags", "Review", ""].map((header, index) => <th key={`${header}:${index}`} className="border-b border-border px-3 py-2.5 text-left font-semibold uppercase tracking-[0.08em]">{header}</th>)}</tr>
                   </thead>
                   <tbody>
                     {filteredTrades.map((trade) => (
@@ -2217,6 +2335,9 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
                         <td className="px-3 py-2.5 text-muted">{formatDuration(trade.durationMs)}</td>
                         <td className="max-w-[220px] truncate px-3 py-2.5 text-muted">{trade.setup || trade.tags.join(", ") || "—"}</td>
                         <td className="px-3 py-2.5">{trade.reviewedAt ? <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-1 text-primary"><Check className="h-2.5 w-2.5" />Reviewed</span> : <span className="rounded-full bg-warning/10 px-2 py-1 text-warning">Pending</span>}</td>
+                        <td className="relative w-12 px-2 py-2.5 text-right" onClick={(event) => event.stopPropagation()}>
+                          <button type="button" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { const bounds = event.currentTarget.getBoundingClientRect(); setTradeMenuId((current) => current?.tradeId === trade.id ? null : { tradeId: trade.id, x: Math.max(12, Math.min(window.innerWidth - 172, bounds.right - 160)), y: Math.max(12, Math.min(window.innerHeight - 134, bounds.bottom + 6)) }); }} className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground" aria-label={`${trade.symbol} trade options`}><MoreVertical className="h-4 w-4" /></button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -2607,6 +2728,18 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
         </div>
       ) : null}
 
+      {tradeMenuId && tradeMenuTarget ? (
+        <div
+          onPointerDown={(event) => event.stopPropagation()}
+          className="fixed z-[1180] w-40 overflow-hidden rounded-xl border border-border bg-panel p-1 text-left shadow-2xl shadow-black/60"
+          style={{ left: tradeMenuId.x, top: tradeMenuId.y }}
+        >
+          <button type="button" onClick={() => { setTradeMenuId(null); setSelectedTradeId(tradeMenuTarget.id); }} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-[8px] text-muted hover:bg-surface hover:text-foreground"><Eye className="h-3.5 w-3.5" />View details</button>
+          {!isZyonJournalAccountName(tradeMenuTarget.account) && !tradeMenuTarget.sourceImportId.startsWith("zyon:") ? <button type="button" onClick={() => openTradeEditor(tradeMenuTarget)} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-[8px] text-muted hover:bg-surface hover:text-foreground"><Pencil className="h-3.5 w-3.5" />Edit trade</button> : null}
+          {!isZyonJournalAccountName(tradeMenuTarget.account) && !tradeMenuTarget.sourceImportId.startsWith("zyon:") ? <button type="button" onClick={() => { setTradeMenuId(null); setDeleteTradeTargetId(tradeMenuTarget.id); }} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-[8px] text-danger hover:bg-danger/10"><Trash2 className="h-3.5 w-3.5" />Delete trade</button> : null}
+        </div>
+      ) : null}
+
       {showTradePost ? (
         <div className="fixed inset-0 z-[1080] flex items-center justify-center bg-black/74 p-4 backdrop-blur-sm" onMouseDown={(event) => { if (event.target === event.currentTarget && !postTradeSaving) setShowTradePost(false); }}>
           <div className="flex max-h-[92vh] w-full max-w-[900px] flex-col overflow-hidden rounded-3xl border border-border bg-panel shadow-2xl shadow-black/70">
@@ -2646,13 +2779,13 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
         </div>
       ) : null}
 
-      {showManualTrade && selectedAccountIsManual ? (
-        <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/72 p-4 backdrop-blur-sm" onMouseDown={(event) => { if (event.target === event.currentTarget && !manualTradeSaving) setShowManualTrade(false); }}>
+      {showManualTrade && (selectedAccountIsManual || editingTrade) ? (
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/72 p-4 backdrop-blur-sm" onMouseDown={(event) => { if (event.target === event.currentTarget) closeManualTrade(); }}>
           <div className="flex max-h-[94vh] w-full max-w-[880px] flex-col overflow-hidden rounded-3xl border border-border bg-panel shadow-2xl shadow-black/65">
             <div className="relative grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 border-b border-border px-5 py-4">
               <div className="flex min-w-0 items-start gap-3">
                 <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-primary/25 bg-primary/10 text-primary"><NotebookPen className="h-4 w-4" /></span>
-                <div className="min-w-0"><h2 className="text-[14px] font-semibold text-foreground">Document a trade</h2><p className="mt-1 truncate text-[9px] text-muted">{accountFilter} · native KwantDesk Journal</p></div>
+                <div className="min-w-0"><h2 className="text-[14px] font-semibold text-foreground">{editingTrade ? "Edit trade" : "Document a trade"}</h2><p className="mt-1 truncate text-[9px] text-muted">{editingTrade?.account ?? accountFilter} · {editingTrade ? "linked posts update automatically" : "native KwantDesk Journal"}</p></div>
               </div>
               <button
                 type="button"
@@ -2669,7 +2802,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
                 </span>
                 <span className="truncate">{manualDictation.enabled ? `Listening · ${MANUAL_TRADE_DICTATION_LABELS[manualDictation.activeField]}` : "Dictate fields"}</span>
               </button>
-              <button type="button" disabled={manualTradeSaving} onClick={() => setShowManualTrade(false)} className="flex h-8 w-8 items-center justify-center justify-self-end rounded-lg text-muted hover:bg-surface hover:text-foreground disabled:opacity-40"><X className="h-4 w-4" /></button>
+              <button type="button" disabled={manualTradeSaving} onClick={closeManualTrade} className="flex h-8 w-8 items-center justify-center justify-self-end rounded-lg text-muted hover:bg-surface hover:text-foreground disabled:opacity-40"><X className="h-4 w-4" /></button>
             </div>
             {manualDictation.enabled || manualDictation.error ? <div className={`border-b px-5 py-2 text-center text-[8px] ${manualDictation.error ? "border-danger/20 bg-danger/[0.06] text-danger" : "border-primary/15 bg-primary/[0.045] text-primary"}`}>{manualDictation.error || `Mic stays on while you move between fields · Speaking into ${MANUAL_TRADE_DICTATION_LABELS[manualDictation.activeField]}`}</div> : null}
             <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-5">
@@ -2750,8 +2883,24 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
             </div>
             <div className="flex items-center gap-2 border-t border-border bg-background/20 px-5 py-4">
               <span className="mr-auto text-[8px] text-muted">Notes and evidence are optional.</span>
-              <button type="button" disabled={manualTradeSaving} onClick={() => setShowManualTrade(false)} className="h-9 rounded-xl border border-border px-4 text-[9px] font-semibold text-muted hover:bg-surface hover:text-foreground disabled:opacity-40">Cancel</button>
-              <button type="button" disabled={manualTradeSaving} onClick={() => void submitManualTrade()} className="flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-[9px] font-semibold text-background disabled:opacity-50">{manualTradeSaving ? <span className="h-3 w-3 animate-spin rounded-full border border-background/30 border-t-background" /> : <Save className="h-3.5 w-3.5" />}{manualTradeSaving ? "Saving entry" : "Save trade"}</button>
+              <button type="button" disabled={manualTradeSaving} onClick={closeManualTrade} className="h-9 rounded-xl border border-border px-4 text-[9px] font-semibold text-muted hover:bg-surface hover:text-foreground disabled:opacity-40">Cancel</button>
+              <button type="button" disabled={manualTradeSaving} onClick={() => void submitManualTrade()} className="flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-[9px] font-semibold text-background disabled:opacity-50">{manualTradeSaving ? <span className="h-3 w-3 animate-spin rounded-full border border-background/30 border-t-background" /> : <Save className="h-3.5 w-3.5" />}{manualTradeSaving ? "Saving entry" : editingTrade ? "Save changes" : "Save trade"}</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {deleteTradeTarget ? (
+        <div className="fixed inset-0 z-[1050] flex items-center justify-center bg-black/78 p-4 backdrop-blur-sm" onMouseDown={(event) => { if (event.target === event.currentTarget) setDeleteTradeTargetId(null); }}>
+          <div className="w-full max-w-[460px] overflow-hidden rounded-3xl border border-danger/25 bg-panel shadow-2xl shadow-black/80">
+            <div className="p-5">
+              <span className="flex h-11 w-11 items-center justify-center rounded-2xl border border-danger/25 bg-danger/10 text-danger"><Trash2 className="h-5 w-5" /></span>
+              <h2 className="mt-5 text-[16px] font-semibold text-foreground">Delete {deleteTradeTarget.symbol} trade?</h2>
+              <p className="mt-2 text-[9px] leading-5 text-muted">This removes the Journal record. If you already posted this trade, its linked Socials post and activity are removed too, so the public record cannot drift away from the Journal.</p>
+            </div>
+            <div className="flex items-center justify-end gap-2 border-t border-border bg-background/20 px-5 py-4">
+              <button type="button" onClick={() => setDeleteTradeTargetId(null)} className="h-9 rounded-xl border border-border px-4 text-[9px] font-semibold text-muted hover:bg-surface hover:text-foreground">Cancel</button>
+              <button type="button" onClick={() => void deleteTrade(deleteTradeTarget)} className="flex h-9 items-center gap-2 rounded-xl bg-danger px-4 text-[9px] font-semibold text-white hover:brightness-110"><Trash2 className="h-3.5 w-3.5" />Delete trade</button>
             </div>
           </div>
         </div>

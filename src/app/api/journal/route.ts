@@ -34,6 +34,11 @@ type EvidenceRow = {
   payload: JournalEvidence & { kind?: string };
 };
 
+type LinkedTradePostRow = {
+  id: string;
+  payload: Record<string, unknown>;
+};
+
 type AccountStateRow = {
   payload: {
     kind?: unknown;
@@ -53,6 +58,73 @@ const JOURNAL_EVIDENCE_KIND = "journal-evidence-v1";
 const JOURNAL_ACCOUNT_STATE_KIND = "journal-account-state-v1";
 const JOURNAL_ANALYSIS_KIND = "journal-quant-analysis-v1";
 const MAX_CLOUD_EVIDENCE_DATA_URL = 2_500_000;
+
+function publicTradeSnapshot(trade: JournalTrade) {
+  return {
+    journalTradeId: trade.id,
+    instrument: trade.symbol,
+    side: trade.side,
+    entryPrice: trade.entryPrice,
+    exitPrice: trade.exitPrice,
+    openedAt: trade.openedAt,
+    closedAt: trade.closedAt,
+    entryTimeKnown: trade.entryTimeKnown !== false,
+    exitTimeKnown: trade.exitTimeKnown !== false && Boolean(trade.closedAt),
+    netPnl: trade.netPnl,
+    initialRisk: trade.initialRisk,
+    rMultiple: trade.rMultiple,
+  };
+}
+
+function publicTradeSnapshotChanged(previous: JournalTrade | null, next: JournalTrade) {
+  return !previous || JSON.stringify(publicTradeSnapshot(previous)) !== JSON.stringify(publicTradeSnapshot(next));
+}
+
+async function findLinkedTradePosts(
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+  userId: string,
+  tradeId: string,
+) {
+  const { data, error } = await supabase
+    .from("social_objects")
+    .select("id,payload")
+    .eq("user_id", userId)
+    .eq("object_type", "post")
+    .eq("payload->>kind", "TRADE")
+    .eq("payload->trade->>journalTradeId", tradeId)
+    .limit(250);
+  return { rows: (data ?? []) as LinkedTradePostRow[], error };
+}
+
+async function syncLinkedTradePosts(
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+  userId: string,
+  trade: JournalTrade,
+) {
+  const linked = await findLinkedTradePosts(supabase, userId, trade.id);
+  if (linked.error) return { count: 0, error: linked.error };
+  const snapshot = publicTradeSnapshot(trade);
+  const updatedAt = new Date().toISOString();
+  const updates = await Promise.all(linked.rows.map((row) => {
+    const currentTrade = row.payload.trade && typeof row.payload.trade === "object"
+      ? row.payload.trade as Record<string, unknown>
+      : {};
+    return supabase
+      .from("social_objects")
+      .update({
+        payload: {
+          ...row.payload,
+          instrument: trade.symbol,
+          title: `${trade.symbol} trade`,
+          trade: { ...currentTrade, ...snapshot },
+        },
+        updated_at: updatedAt,
+      })
+      .eq("user_id", userId)
+      .eq("id", row.id);
+  }));
+  return { count: linked.rows.length, error: updates.find((result) => result.error)?.error ?? null };
+}
 
 function tableUnavailable(code?: string) {
   return code === "42P01" || code === "PGRST205";
@@ -117,12 +189,15 @@ function sanitizeTrade(value: unknown, account: string): JournalTrade | null {
   const symbol = cleanText(trade.symbol, 32).toUpperCase();
   if (!id || !openedAt || !symbol) return null;
   const side = trade.side === "LONG" || trade.side === "SHORT" ? trade.side : "UNKNOWN";
+  const closedAt = isoDate(trade.closedAt, null);
   const accountSize = nullableFinite(trade.accountSize);
   return {
     id,
     account,
     openedAt,
-    closedAt: isoDate(trade.closedAt, null),
+    closedAt,
+    entryTimeKnown: typeof trade.entryTimeKnown === "boolean" ? trade.entryTimeKnown : true,
+    exitTimeKnown: typeof trade.exitTimeKnown === "boolean" ? trade.exitTimeKnown : Boolean(closedAt),
     symbol,
     side,
     quantity: Math.max(0, finite(trade.quantity, 1)),
@@ -649,6 +724,15 @@ export async function POST(request: NextRequest) {
     if (!account || isZyonJournalAccountName(account) || !trade || trade.sourceImportId.startsWith("zyon:")) {
       return NextResponse.json({ error: "Choose a custom Journal trade." }, { status: 400 });
     }
+    const { data: existingRow, error: existingError } = await supabase
+      .from("journal_trades")
+      .select("payload")
+      .eq("user_id", actor.userId)
+      .eq("id", trade.id)
+      .maybeSingle();
+    if (existingError) return NextResponse.json({ error: "Journal trade could not be checked." }, { status: 502 });
+    if (!existingRow) return NextResponse.json({ error: "That Journal trade no longer exists." }, { status: 404 });
+    const previousTrade = sanitizeTrade(existingRow.payload, account);
     const { error } = await supabase
       .from("journal_trades")
       .update({
@@ -662,7 +746,22 @@ export async function POST(request: NextRequest) {
       if (tableUnavailable(error.code)) return NextResponse.json({ cloud: false }, { status: 503 });
       return NextResponse.json({ error: "Journal trade could not be updated." }, { status: 502 });
     }
-    return NextResponse.json({ cloud: true });
+    let linkedPostsUpdated = 0;
+    if (publicTradeSnapshotChanged(previousTrade, trade)) {
+      const linked = await syncLinkedTradePosts(supabase, actor.userId, trade);
+      if (linked.error) {
+        if (previousTrade) {
+          await supabase
+            .from("journal_trades")
+            .update({ opened_at: previousTrade.openedAt, closed_at: previousTrade.closedAt, payload: previousTrade })
+            .eq("user_id", actor.userId)
+            .eq("id", trade.id);
+        }
+        return NextResponse.json({ error: "The linked Socials post could not be refreshed, so the Journal edit was not applied. Try saving again." }, { status: 502 });
+      }
+      linkedPostsUpdated = linked.count;
+    }
+    return NextResponse.json({ cloud: true, linkedPostsUpdated });
   }
 
   if (action !== "sync") return NextResponse.json({ error: "Unsupported Journal action." }, { status: 400 });
@@ -739,6 +838,45 @@ export async function DELETE(request: NextRequest) {
       .eq("id", `journal-evidence:${evidenceId}`);
     if (error) return NextResponse.json({ error: "Journal evidence could not be removed." }, { status: 502 });
     return NextResponse.json({ cloud: true });
+  }
+  const tradeId = cleanId(request.nextUrl.searchParams.get("tradeId"));
+  if (tradeId) {
+    const { data: tradeRow, error: tradeError } = await supabase
+      .from("journal_trades")
+      .select("payload")
+      .eq("user_id", actor.userId)
+      .eq("id", tradeId)
+      .maybeSingle();
+    if (tradeError) return NextResponse.json({ error: "Journal trade could not be checked." }, { status: 502 });
+    if (!tradeRow) return NextResponse.json({ cloud: true, deleted: false });
+    const storedTrade = tradeRow.payload as Partial<JournalTrade>;
+    if (isZyonJournalAccountName(storedTrade.account) || String(storedTrade.sourceImportId ?? "").startsWith("zyon:")) {
+      return NextResponse.json({ error: "Verified ZYON outcomes stay read-only." }, { status: 400 });
+    }
+    const linked = await findLinkedTradePosts(supabase, actor.userId, tradeId);
+    if (linked.error) return NextResponse.json({ error: "Linked Socials posts could not be checked." }, { status: 502 });
+    const linkedIds = linked.rows.map((row) => row.id);
+    if (linkedIds.length) {
+      const childDelete = await supabase
+        .from("social_objects")
+        .delete()
+        .eq("user_id", actor.userId)
+        .in("parent_id", linkedIds);
+      if (childDelete.error) return NextResponse.json({ error: "Linked post activity could not be removed." }, { status: 502 });
+      const postDelete = await supabase
+        .from("social_objects")
+        .delete()
+        .eq("user_id", actor.userId)
+        .in("id", linkedIds);
+      if (postDelete.error) return NextResponse.json({ error: "Linked Socials posts could not be removed." }, { status: 502 });
+    }
+    const journalDelete = await supabase
+      .from("journal_trades")
+      .delete()
+      .eq("user_id", actor.userId)
+      .eq("id", tradeId);
+    if (journalDelete.error) return NextResponse.json({ error: "Journal trade could not be removed." }, { status: 502 });
+    return NextResponse.json({ cloud: true, deleted: true, linkedPostsDeleted: linkedIds.length });
   }
   const importId = cleanId(request.nextUrl.searchParams.get("importId"));
   if (!importId) return NextResponse.json({ error: "Choose an import to remove." }, { status: 400 });

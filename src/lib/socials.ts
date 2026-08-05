@@ -286,6 +286,8 @@ export type SocialTradeSnapshot = {
   exitPrice: number | null;
   openedAt: string;
   closedAt: string | null;
+  entryTimeKnown?: boolean;
+  exitTimeKnown?: boolean;
   netPnl: number;
   initialRisk: number | null;
   rMultiple: number | null;

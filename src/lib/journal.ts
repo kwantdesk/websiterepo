@@ -15,6 +15,8 @@ export type JournalTrade = {
   account: string;
   openedAt: string;
   closedAt: string | null;
+  entryTimeKnown?: boolean;
+  exitTimeKnown?: boolean;
   symbol: string;
   side: JournalSide;
   quantity: number;

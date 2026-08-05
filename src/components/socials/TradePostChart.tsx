@@ -33,6 +33,15 @@ export default function TradePostChart({ trade, height = 270 }: { trade: SocialT
   const seriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
   const symbol = useMemo(() => continuousSymbol(trade.instrument), [trade.instrument]);
+  const exactTimesAvailable = useMemo(() => {
+    const openedAt = Date.parse(trade.openedAt);
+    const closedAt = trade.closedAt ? Date.parse(trade.closedAt) : Number.NaN;
+    return trade.entryTimeKnown !== false
+      && trade.exitTimeKnown !== false
+      && Number.isFinite(openedAt)
+      && Number.isFinite(closedAt)
+      && closedAt >= openedAt;
+  }, [trade.closedAt, trade.entryTimeKnown, trade.exitTimeKnown, trade.openedAt]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -94,8 +103,9 @@ export default function TradePostChart({ trade, height = 270 }: { trade: SocialT
     void (async () => {
       try {
         if (!symbol) throw new Error("Unsupported historical instrument");
+        if (!exactTimesAvailable || !trade.closedAt) throw new Error("Exact entry and exit times are required");
         const openedAt = Date.parse(trade.openedAt);
-        const closedAt = trade.closedAt ? Date.parse(trade.closedAt) : openedAt + 60 * 60_000;
+        const closedAt = Date.parse(trade.closedAt);
         if (!Number.isFinite(openedAt) || !Number.isFinite(closedAt)) throw new Error("Invalid trade time");
         const start = new Date(openedAt - 60 * 60_000).toISOString();
         const end = new Date(Math.min(Date.now(), Math.max(openedAt, closedAt) + 60 * 60_000)).toISOString();
@@ -142,7 +152,7 @@ export default function TradePostChart({ trade, height = 270 }: { trade: SocialT
       }
     })();
     return () => controller.abort();
-  }, [symbol, trade.closedAt, trade.openedAt, trade.side]);
+  }, [exactTimesAvailable, symbol, trade.closedAt, trade.openedAt, trade.side]);
 
   return (
     <div className="relative overflow-hidden rounded-2xl border border-border bg-background/45" style={{ height }}>

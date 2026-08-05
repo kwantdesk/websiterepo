@@ -386,6 +386,12 @@ export async function POST(request: NextRequest) {
       closedAt: typeof tradeCandidate.closedAt === "string" && Number.isFinite(Date.parse(tradeCandidate.closedAt))
         ? new Date(tradeCandidate.closedAt).toISOString()
         : null,
+      entryTimeKnown: tradeCandidate.entryTimeKnown !== false
+        && typeof tradeCandidate.openedAt === "string"
+        && Number.isFinite(Date.parse(tradeCandidate.openedAt)),
+      exitTimeKnown: tradeCandidate.exitTimeKnown !== false
+        && typeof tradeCandidate.closedAt === "string"
+        && Number.isFinite(Date.parse(tradeCandidate.closedAt)),
       netPnl: finiteNumber(tradeCandidate.netPnl, 0) ?? 0,
       initialRisk: nullablePositiveNumber(tradeCandidate.initialRisk),
       rMultiple: finiteNumber(tradeCandidate.rMultiple),
