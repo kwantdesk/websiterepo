@@ -175,7 +175,7 @@ export function macroTopic(value: string): MacroTopic {
   const text = value.toLowerCase();
   if (/fomc|federal reserve|central bank|interest rate|powell|ecb|boe|boj|monetary policy/.test(text)) return "CENTRAL BANK";
   if (/cpi|pce|ppi|inflation|prices|deflator/.test(text)) return "INFLATION";
-  if (/payroll|employment|unemployment|jobless|labour|labor|wage|earnings/.test(text)) return "LABOUR";
+  if (/payroll|employment|unemployment|jobless|labour|labor|wage|average hourly earnings/.test(text)) return "LABOUR";
   if (/gdp|retail sales|industrial production|pmi|ism|durable|consumer confidence|growth/.test(text)) return "GROWTH";
   if (/treasury funding|debt ceiling|government shutdown|budget|fiscal|auction/.test(text)) return "FISCAL";
   if (/oil|gas|opec|energy|hormuz|pipeline|shipping/.test(text)) return "ENERGY";
@@ -545,7 +545,8 @@ async function buildZyonOvernightMacroBrief(): Promise<ZyonOvernightMacroBrief> 
     .sort((left, right) => Date.parse(right.publishedAt) - Date.parse(left.publishedAt))
     .filter((source, index, rows) => index === rows.findIndex((item) => item.url === source.url))
     .map((source) => ({ source, item: development(source) }))
-    .filter(({ item }) => item.topic !== "OTHER")
+    .filter(({ source, item }) => item.topic !== "OTHER"
+      || /earnings|revenue|guidance|quarterly results|nasdaq|technology shares/i.test(`${source.title} ${source.summary}`))
     .slice(0, 14)
     .map(({ source, item }) => ({
       title: item.title,
