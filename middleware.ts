@@ -19,7 +19,8 @@ export async function middleware(request: NextRequest) {
     pathname === "/" ||
     pathname === "/api/site-access" ||
     pathname === "/api/waitlist" ||
-    pathname === "/api/databento/health"
+    pathname === "/api/databento/health" ||
+    pathname === "/api/macro-memory/ingest"
   ) {
     return response;
   }
