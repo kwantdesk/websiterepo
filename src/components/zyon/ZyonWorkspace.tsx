@@ -1777,6 +1777,20 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
             currentPrice,
             lastTickAt: interpreter.lastTickAt[selectedRoot],
             feedState: interpreter.feedState,
+            // ZYON's server remains authoritative, but this bounded live frame
+            // gives it a verified Gamma fallback immediately when a cold server
+            // instance is still rebuilding the shared options snapshot.
+            liveMarketContext: context ? {
+              generatedAt: context.generatedAt,
+              sessionDate: context.sessionDate,
+              status: context.status,
+              currentPrice: context.currentPrice,
+              futuresStatus: context.futuresStatus,
+              oneLiner: context.oneLiner,
+              levels: context.levels,
+              scenarios: context.scenarios,
+              options: context.options,
+            } : null,
             // The server assembles the complete authoritative market context.
             // Only send the newest browser tick and the unsaved local tails;
             // serializing the full live context here made an incomplete frame

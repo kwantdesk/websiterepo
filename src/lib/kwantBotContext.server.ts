@@ -17,6 +17,7 @@ type ContextCacheEntry = {
 
 const CACHE_MS = 15_000;
 const STALE_MS = 5 * 60_000;
+const FAST_STALE_MS = 45_000;
 const contextGlobal = globalThis as typeof globalThis & {
   __kwantdeskKwantBotContext?: Map<KwantBotMarketRoot, ContextCacheEntry>;
 };
@@ -138,5 +139,12 @@ export async function getKwantBotMarketContext(root: KwantBotMarketRoot) {
     });
   entry.promise = request;
   contextCache.set(root, entry);
+  // A live options refresh must not hold an interactive ZYON request open.
+  // Serve the last verified frame while a single background refresh updates it;
+  // its generatedAt/asOf fields remain intact so freshness is never fabricated.
+  if (entry.value && entry.expiresAt + FAST_STALE_MS > now) {
+    void request.catch(() => undefined);
+    return entry.value;
+  }
   return request;
 }

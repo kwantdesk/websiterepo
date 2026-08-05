@@ -225,7 +225,11 @@ const ZYON_PROVIDER_TOOLS = [
   },
 ] as const;
 const ANTHROPIC_MODEL_CACHE_MS = 10 * 60_000;
-const PROVIDER_CONNECT_TIMEOUT_MS = 25_000;
+// This only bounds the connection handshake. Once Anthropic has accepted the
+// streamed request, the separate inactivity budget below allows deep analysis
+// to continue. A dead first model must not leave the UI spinning for 25 seconds
+// before the known-good faster family is attempted.
+const PROVIDER_CONNECT_TIMEOUTS_MS = [12_000, 8_000, 6_000] as const;
 const PROVIDER_INACTIVITY_TIMEOUT_MS = 60_000;
 type AnthropicModelRecord = {
   id?: unknown;
@@ -1376,6 +1380,10 @@ export async function POST(request: NextRequest) {
   }
 
   const modelKey = isZyonModelKey(payload.model) ? payload.model : "opus-5";
+  // Resolve the provider family in parallel with persistence and live-context
+  // assembly. It used to run afterwards, adding another cold-start delay before
+  // the response stream could connect to Anthropic.
+  const providerModelsPromise = providerModelsFor(apiKey, modelKey);
   const root = isZyonMarketRoot(payload.root) ? payload.root : "NQ";
   const requestedChatId = cleanText(payload.chatId, 160);
   const chatId = /^[a-zA-Z0-9_-]+$/.test(requestedChatId)
@@ -1396,6 +1404,8 @@ export async function POST(request: NextRequest) {
     )
     : [];
   const finalUserText = cleanText(finalRawMessage?.content, MAX_TEXT_LENGTH);
+  const gammaFocusedRequest = /\b(?:gamma|gex|dex|vex|chex|vanna|charm|call\s*wall|put\s*support|hvl|zero\s*gamma|options\s*(?:environment|positioning|flow))\b/i
+    .test(finalUserText);
   let historicalReplay: Awaited<ReturnType<typeof getHistoricalZyonContext>> | null = null;
   let validatedHistoricalReplay: ReturnType<typeof validateHistoricalZyonReplay> | null = null;
   if (payload.historicalReplay !== undefined) {
@@ -1495,9 +1505,9 @@ export async function POST(request: NextRequest) {
   let marketContextError = "";
   if (!historicalReplay) {
     authoritativeMarketContext = await within(
-      getZyonMarketContext(root, actor.userId),
+      getZyonMarketContext(root, actor.userId, gammaFocusedRequest ? "GAMMA" : "FULL"),
       null,
-      6_000,
+      gammaFocusedRequest ? 3_000 : 4_750,
     );
     if (!authoritativeMarketContext) {
       marketContextError = "Market context did not finish inside the live-chat budget.";
@@ -1511,11 +1521,11 @@ export async function POST(request: NextRequest) {
         browserSupplement: payload.context,
         assemblyError: marketContextError || null,
       };
-  const contextJson = safeContext(contextPayload);
+  const contextJson = safeContext(contextPayload, gammaFocusedRequest ? 26_000 : MAX_CONTEXT_LENGTH);
   // The primary model receives the complete bounded context. If it genuinely
   // stalls, faster fallback families receive a smaller evidence pack rather
   // than being asked to parse the same large payload inside a shorter window.
-  const fallbackContextJson = safeContext(contextPayload, 16_000);
+  const fallbackContextJson = safeContext(contextPayload, gammaFocusedRequest ? 12_000 : 16_000);
   const gameplanSubmitIntent = !historicalReplay && (
     /\b(?:send|save|submit|publish)\b[\s\S]{0,40}\bgame\s*plan\b/i.test(finalUserText)
     || /\bgame\s*plan\b[\s\S]{0,40}\b(?:send|save|submit|publish)\b/i.test(finalUserText)
@@ -1807,13 +1817,13 @@ export async function POST(request: NextRequest) {
           let providerStatus: number | null = null;
           let providerError = "";
           try {
-            const providerModels = await providerModelsFor(apiKey, modelKey);
+            const providerModels = await providerModelsPromise;
             let result: ClaudeResult | null = null;
             for (const [modelIndex, providerModel] of providerModels.entries()) {
               const connectController = new AbortController();
               const connectTimeout = setTimeout(
                 () => connectController.abort(),
-                PROVIDER_CONNECT_TIMEOUT_MS,
+                PROVIDER_CONNECT_TIMEOUTS_MS[modelIndex] ?? 6_000,
               );
               let providerResponse: Response | null = null;
               try {
@@ -1928,13 +1938,13 @@ export async function POST(request: NextRequest) {
       let providerStatus: number | null = null;
       let providerError = "";
       try {
-        const providerModels = await providerModelsFor(apiKey, modelKey);
+        const providerModels = await providerModelsPromise;
         let result: ClaudeResult | null = null;
         for (const [modelIndex, providerModel] of providerModels.entries()) {
           const connectController = new AbortController();
           const connectTimeout = setTimeout(
             () => connectController.abort(),
-            PROVIDER_CONNECT_TIMEOUT_MS,
+            PROVIDER_CONNECT_TIMEOUTS_MS[modelIndex] ?? 6_000,
           );
           let providerResponse: Response | null = null;
           try {
@@ -2025,7 +2035,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const providerModels = await providerModelsFor(apiKey, modelKey);
+    const providerModels = await providerModelsPromise;
     const providerTimeouts = historicalReplay
       ? HISTORICAL_PROVIDER_TIMEOUTS_MS
       : PROVIDER_TIMEOUTS_MS;

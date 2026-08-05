@@ -13,6 +13,7 @@ import { fetchMarketIndexSnapshots } from "@/lib/marketIndices.server";
 import { createClient } from "@/lib/supabase/server";
 
 type WindowName = "1H" | "1D" | "1W";
+export type ZyonMarketContextFocus = "FULL" | "GAMMA";
 
 export type ZyonMarketWindow = {
   window: WindowName;
@@ -110,6 +111,13 @@ async function marketHistory(root: KwantBotMarketRoot) {
     });
   entry.promise = request;
   historyCache.set(root, entry);
+  // Price windows are supporting evidence for chat. Keep serving the last
+  // verified bars while the one shared refresh runs instead of blocking every
+  // market question on a ten-day historical request.
+  if (entry.value?.length && entry.staleUntil > now) {
+    void request.catch(() => undefined);
+    return entry.value;
+  }
   return request;
 }
 
@@ -241,17 +249,25 @@ function calendarDate(timestamp: number) {
 export async function getZyonMarketContext(
   root: KwantBotMarketRoot,
   actorId: string,
+  focus: ZyonMarketContextFocus = "FULL",
 ) {
   const now = Date.now();
+  const gammaFocused = focus === "GAMMA";
   const results = await Promise.allSettled([
-    timeout(getKwantBotMarketContext(root), 5_500, "options context"),
-    timeout(marketHistory(root), 5_500, "CME history"),
-    timeout(archivedMarketMemory(actorId, root), 2_500, "market memory"),
-    timeout(fetchMarketIndexSnapshots(root === "NQ" ? ["VXN", "VIX"] : ["VIX", "VXN"]), 4_000, "market indices"),
-    timeout(getEconomicCalendar(
-      calendarDate(now - 12 * 60 * 60_000),
-      calendarDate(now + 48 * 60 * 60_000),
-    ), 4_000, "economic calendar"),
+    timeout(getKwantBotMarketContext(root), gammaFocused ? 2_600 : 4_500, "options context"),
+    timeout(marketHistory(root), gammaFocused ? 2_600 : 4_500, "CME history"),
+    gammaFocused
+      ? Promise.resolve(null)
+      : timeout(archivedMarketMemory(actorId, root), 2_500, "market memory"),
+    gammaFocused
+      ? Promise.resolve([])
+      : timeout(fetchMarketIndexSnapshots(root === "NQ" ? ["VXN", "VIX"] : ["VIX", "VXN"]), 3_500, "market indices"),
+    gammaFocused
+      ? Promise.resolve(null)
+      : timeout(getEconomicCalendar(
+        calendarDate(now - 12 * 60 * 60_000),
+        calendarDate(now + 48 * 60 * 60_000),
+      ), 3_500, "economic calendar"),
   ] as const);
 
   const warnings: string[] = [];
@@ -279,6 +295,7 @@ export async function getZyonMarketContext(
   const latestBar = bars.at(-1) ?? null;
   return {
     authority: "KWANT_DESK_SERVER",
+    focus,
     root,
     generatedAt: new Date(now).toISOString(),
     current,
