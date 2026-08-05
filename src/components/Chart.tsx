@@ -178,6 +178,131 @@ const EMPTY_CHART_LEVELS: ChartLevel[] = [];
 
 type CandleSeriesApi = ReturnType<IChartApi["addCandlestickSeries"]>;
 
+type SessionHighLowRenderLevel = {
+  id: string;
+  startTime: Time;
+  price: number;
+  label: string;
+  color: string;
+  opacity: number;
+  lineWidth: number;
+  lineStyle: "solid" | "dashed" | "dotted";
+  fontSize: number;
+  precision: number;
+};
+
+class SessionHighLowRenderer implements ISeriesPrimitivePaneRenderer {
+  constructor(private readonly primitive: SessionHighLowPrimitive) {}
+
+  draw(target: Parameters<ISeriesPrimitivePaneRenderer["draw"]>[0]) {
+    const chart = this.primitive.chart();
+    const series = this.primitive.series();
+    if (!chart || !series) return;
+
+    target.useMediaCoordinateSpace(({ context, mediaSize }) => {
+      context.save();
+      context.textBaseline = "alphabetic";
+
+      for (const level of this.primitive.levels()) {
+        const rawX = chart.timeScale().timeToCoordinate(level.startTime);
+        const y = series.priceToCoordinate(level.price);
+        if (rawX === null || y === null) continue;
+
+        const startX = Math.max(-2, rawX);
+        context.save();
+        context.globalAlpha = level.opacity;
+        context.strokeStyle = level.color;
+        context.lineWidth = level.lineWidth;
+        context.setLineDash(
+          level.lineStyle === "dotted"
+            ? [1, 4]
+            : level.lineStyle === "dashed"
+              ? [6, 5]
+              : [],
+        );
+        context.beginPath();
+        context.moveTo(startX, y + 0.5);
+        context.lineTo(mediaSize.width, y + 0.5);
+        context.stroke();
+
+        if (level.label) {
+          const labelX = Math.min(startX + 7, Math.max(4, mediaSize.width - 210));
+          const labelY = Math.max(10, y - 4);
+          context.setLineDash([]);
+          context.fillStyle = level.color;
+          context.font = `700 ${level.fontSize}px 'JetBrains Mono', monospace`;
+          context.fillText(
+            `${level.label} ${level.price.toFixed(level.precision)}`,
+            labelX,
+            labelY,
+            Math.max(40, mediaSize.width - labelX - 6),
+          );
+        }
+        context.restore();
+      }
+
+      context.restore();
+    });
+  }
+}
+
+class SessionHighLowView implements ISeriesPrimitivePaneView {
+  private readonly sessionRenderer: SessionHighLowRenderer;
+
+  constructor(primitive: SessionHighLowPrimitive) {
+    this.sessionRenderer = new SessionHighLowRenderer(primitive);
+  }
+
+  zOrder() {
+    return "top" as const;
+  }
+
+  renderer() {
+    return this.sessionRenderer;
+  }
+}
+
+class SessionHighLowPrimitive implements ISeriesPrimitive<Time> {
+  private chartApi: IChartApi | null = null;
+  private candleSeries: CandleSeriesApi | null = null;
+  private requestRedraw: (() => void) | null = null;
+  private renderLevels: SessionHighLowRenderLevel[] = [];
+  private readonly sessionView = new SessionHighLowView(this);
+
+  attached(param: SeriesAttachedParameter<Time, "Candlestick">) {
+    this.chartApi = param.chart as IChartApi;
+    this.candleSeries = param.series as CandleSeriesApi;
+    this.requestRedraw = param.requestUpdate;
+  }
+
+  detached() {
+    this.chartApi = null;
+    this.candleSeries = null;
+    this.requestRedraw = null;
+  }
+
+  update(levels: SessionHighLowRenderLevel[]) {
+    this.renderLevels = levels;
+    this.requestRedraw?.();
+  }
+
+  chart() {
+    return this.chartApi;
+  }
+
+  series() {
+    return this.candleSeries;
+  }
+
+  levels() {
+    return this.renderLevels;
+  }
+
+  paneViews() {
+    return [this.sessionView];
+  }
+}
+
 class GameplanUnderlayRenderer implements ISeriesPrimitivePaneRenderer {
   constructor(private readonly primitive: GameplanUnderlayPrimitive) {}
 
@@ -1118,6 +1243,8 @@ export default function Chart({
   const backgroundLevelsRef = useRef<ChartLevel[]>([]);
   const backgroundZonesRef = useRef<ChartZone[]>([]);
   const gameplanUnderlayRef = useRef<GameplanUnderlayPrimitive | null>(null);
+  const sessionHighLowPrimitiveRef = useRef<SessionHighLowPrimitive | null>(null);
+  const sessionHighLowRenderDataRef = useRef<SessionHighLowRenderLevel[]>([]);
   const volumeProfilePrimitiveRef = useRef<NativeVolumeProfilePrimitive | null>(null);
   const horzLineRef = useRef<HTMLDivElement>(null);
   const priceLabelRef = useRef<HTMLDivElement>(null);
@@ -1856,6 +1983,44 @@ export default function Chart({
       : [],
     [candleIntervalMs, indicatorCandles, sessionHighLowIndicator, sessionHighLowSettings],
   );
+  const sessionHighLowRenderData = useMemo<SessionHighLowRenderLevel[]>(() => {
+    const useSessionColors = sessionHighLowSettings.useSessionColors !== false;
+    const opacity = clamp(Number(sessionHighLowSettings.lineOpacity ?? 82) / 100, 0.05, 1);
+    const labelSize = String(sessionHighLowSettings.labelSize ?? "small");
+    const fontSize = labelSize === "tiny" ? 8 : labelSize === "normal" ? 11 : 9;
+    const requestedStyle = String(sessionHighLowSettings.lineStyle ?? "dashed");
+    const lineStyle = requestedStyle === "dotted" || requestedStyle === "solid"
+      ? requestedStyle
+      : "dashed";
+
+    return previousSessionLevels.map((level) => ({
+      id: level.id,
+      startTime: (
+        eventChartTimeBySourceTimeRef.current.get(level.startTimestamp)
+        ?? Math.floor(level.startTimestamp / 1_000)
+      ) as Time,
+      price: level.price,
+      label: sessionHighLowSettings.showLabels === false ? "" : level.label,
+      color: useSessionColors
+        ? level.session.color
+        : level.side === "high"
+          ? String(sessionHighLowSettings.highColor ?? settings.upColor)
+          : String(sessionHighLowSettings.lowColor ?? settings.downColor),
+      opacity,
+      lineWidth: clamp(Number(sessionHighLowSettings.lineWidth ?? 1), 1, 4),
+      lineStyle,
+      fontSize,
+      precision: priceFormat.precision,
+    }));
+  }, [
+    chartReadyRevision,
+    previousSessionLevels,
+    priceFormat.precision,
+    sessionHighLowSettings,
+    settings.downColor,
+    settings.upColor,
+  ]);
+  sessionHighLowRenderDataRef.current = sessionHighLowRenderData;
   const positionedSessionWindows = useMemo(() => marketSessionWindows.flatMap((session) => {
     const startX = indicatorTimeToX(Math.floor(session.startTimestamp / 1_000));
     const endX = indicatorTimeToX(Math.floor(session.endTimestamp / 1_000));
@@ -1873,23 +2038,6 @@ export default function Chart({
     chartReadyRevision,
     indicatorTimeToX,
     marketSessionWindows,
-    viewportVersion,
-  ]);
-  const positionedSessionLevels = useMemo(() => previousSessionLevels.flatMap((level) => {
-    const startX = indicatorTimeToX(Math.floor(level.startTimestamp / 1_000));
-    const y = candleSeriesRef.current?.priceToCoordinate(level.price) ?? null;
-    if (startX === null || y === null) return [];
-    return [{
-      ...level,
-      x: Math.max(-2, startX),
-      width: Math.max(2, Math.max(overlaySize.width - 58, 0) - Math.max(-2, startX)),
-      y,
-    }];
-  }), [
-    chartReadyRevision,
-    indicatorTimeToX,
-    overlaySize.width,
-    previousSessionLevels,
     viewportVersion,
   ]);
   const toolbarMetrics = useMemo(() => {
@@ -3159,6 +3307,10 @@ export default function Chart({
   }, [backgroundZones, resolvedLevelLayers.background, settings.backgroundColor]);
 
   useEffect(() => {
+    sessionHighLowPrimitiveRef.current?.update(sessionHighLowRenderData);
+  }, [sessionHighLowRenderData]);
+
+  useEffect(() => {
     if (!chartContainerRef.current || candles.length === 0) return;
 
     if (chartRef.current) {
@@ -3260,6 +3412,10 @@ export default function Chart({
     );
     candleSeries.attachPrimitive(gameplanUnderlay);
     gameplanUnderlayRef.current = gameplanUnderlay;
+    const sessionHighLowPrimitive = new SessionHighLowPrimitive();
+    sessionHighLowPrimitive.update(sessionHighLowRenderDataRef.current);
+    candleSeries.attachPrimitive(sessionHighLowPrimitive);
+    sessionHighLowPrimitiveRef.current = sessionHighLowPrimitive;
     const volumeProfilePrimitive = new NativeVolumeProfilePrimitive();
     candleSeries.attachPrimitive(volumeProfilePrimitive);
     volumeProfilePrimitiveRef.current = volumeProfilePrimitive;
@@ -3480,11 +3636,19 @@ export default function Chart({
             // Chart teardown can detach primitives before React cleanup runs.
           }
         }
+        if (candleSeriesRef.current && sessionHighLowPrimitiveRef.current) {
+          try {
+            candleSeriesRef.current.detachPrimitive(sessionHighLowPrimitiveRef.current);
+          } catch {
+            // Chart teardown can detach primitives before React cleanup runs.
+          }
+        }
         chartRef.current.remove();
         chartRef.current = null;
       }
       candleSeriesRef.current = null;
       gameplanUnderlayRef.current = null;
+      sessionHighLowPrimitiveRef.current = null;
       volumeProfilePrimitiveRef.current = null;
       indicatorSeriesRefs.current = [];
       priceLinesRef.current = [];
@@ -3876,7 +4040,6 @@ export default function Chart({
 
       {(
         positionedSessionWindows.length > 0
-        || positionedSessionLevels.length > 0
         || positionedEffortZones.length > 0
         || positionedImbalanceZones.length > 0
         || positionedImbalanceSignals.length > 0
@@ -3956,45 +4119,6 @@ export default function Chart({
                     fontWeight={700}
                   >
                     {session.label}{suffix}
-                  </text>
-                ) : null}
-              </g>
-            );
-          })}
-          {positionedSessionLevels.map((level) => {
-            const levelSettings = sessionHighLowSettings;
-            const useSessionColors = levelSettings.useSessionColors !== false;
-            const color = useSessionColors
-              ? level.session.color
-              : level.side === "high"
-                ? String(levelSettings.highColor ?? settings.upColor)
-                : String(levelSettings.lowColor ?? settings.downColor);
-            const opacity = clamp(Number(levelSettings.lineOpacity ?? 82) / 100, 0.05, 1);
-            const labelSize = String(levelSettings.labelSize ?? "small");
-            const fontSize = labelSize === "tiny" ? 8 : labelSize === "normal" ? 11 : 9;
-            return (
-              <g key={level.id} opacity={opacity}>
-                <line
-                  x1={level.x}
-                  x2={level.x + level.width}
-                  y1={level.y}
-                  y2={level.y}
-                  stroke={color}
-                  strokeWidth={clamp(Number(levelSettings.lineWidth ?? 1), 1, 4)}
-                  strokeDasharray={String(levelSettings.lineStyle ?? "dashed") === "dotted"
-                    ? "1 4"
-                    : String(levelSettings.lineStyle ?? "dashed") === "solid" ? undefined : "6 5"}
-                />
-                {levelSettings.showLabels !== false ? (
-                  <text
-                    x={Math.min(level.x + 7, Math.max(4, overlaySize.width - 210))}
-                    y={Math.max(10, level.y - 4)}
-                    fill={color}
-                    fontFamily="'JetBrains Mono', monospace"
-                    fontSize={fontSize}
-                    fontWeight={700}
-                  >
-                    {level.label} {level.price.toFixed(priceFormat.precision)}
                   </text>
                 ) : null}
               </g>
