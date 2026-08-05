@@ -14,7 +14,7 @@ import { useKwantBotInterpreter } from "@/hooks/useKwantBotInterpreter";
 import { useSocialNotifications } from "@/hooks/useSocialNotifications";
 import { useStructureLevels } from "@/hooks/useStructureLevels";
 
-import { memo, startTransition, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent as ReactDragEvent } from "react";
+import { Activity as ReactActivity, memo, startTransition, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent as ReactDragEvent } from "react";
 import { createPortal } from "react-dom";
 import dynamic from "next/dynamic";
 import Image from "next/image";
@@ -4616,6 +4616,9 @@ export default function KwantifyWorkspace({
 }) {
   const router = useRouter();
   const [optimisticWorkspaceSection, setOptimisticWorkspaceSection] = useState(section);
+  const [visitedWorkspaceSections, setVisitedWorkspaceSections] = useState<Set<PrimaryWorkspaceSection>>(
+    () => new Set([section]),
+  );
   const activeWorkspaceSectionRef = useRef<PrimaryWorkspaceSection | null>(section);
   const pendingWorkspaceNavigationRef = useRef<PrimaryWorkspaceSection | null>(null);
   useEffect(() => {
@@ -4633,6 +4636,12 @@ export default function KwantifyWorkspace({
     pendingWorkspaceNavigationRef.current = null;
     activeWorkspaceSectionRef.current = section;
     setOptimisticWorkspaceSection(section);
+    setVisitedWorkspaceSections((current) => {
+      if (current.has(section)) return current;
+      const next = new Set(current);
+      next.add(section);
+      return next;
+    });
     void preloadWorkspaceModule(section).catch(() => null);
   }, [section]);
   const supabase = useMemo(() => createClient(), []);
@@ -7813,6 +7822,12 @@ export default function KwantifyWorkspace({
       // delayed by accumulated order-flow calculations.
       activeWorkspaceSectionRef.current = nextSection;
       setOptimisticWorkspaceSection(nextSection);
+      setVisitedWorkspaceSections((current) => {
+        if (current.has(nextSection)) return current;
+        const next = new Set(current);
+        next.add(nextSection);
+        return next;
+      });
       setRightPanel(null);
       warmWorkspaceSection(nextSection);
     }
@@ -10234,7 +10249,8 @@ export default function KwantifyWorkspace({
           )
           : null}
 
-        {bottomWorkspaceSection === "charts" ? (
+        {visitedWorkspaceSections.has("charts") ? (
+        <ReactActivity mode={bottomWorkspaceSection === "charts" ? "visible" : "hidden"}>
         <WorkspaceFailureBoundary resetKey="charts" label="Charts">
         <div className="min-h-0 flex-1 overflow-hidden">
           <div ref={workspaceAreaRef} className="relative h-full min-w-0">
@@ -10387,23 +10403,65 @@ export default function KwantifyWorkspace({
           </div>
         </div>
         </WorkspaceFailureBoundary>
-        ) : (
+        </ReactActivity>
+        ) : null}
+        <ReactActivity mode={bottomWorkspaceSection === "charts" ? "hidden" : "visible"}>
           <section
             className="min-h-0 flex-1 overflow-hidden bg-panel"
             aria-label={`${BOTTOM_WORKSPACE_SECTIONS.find((section) => section.id === bottomWorkspaceSection)?.label ?? "Workspace"} workspace`}
           >
-            <WorkspaceFailureBoundary
-              resetKey={bottomWorkspaceSection}
-              label={BOTTOM_WORKSPACE_SECTIONS.find((section) => section.id === bottomWorkspaceSection)?.label ?? "Workspace"}
-            >
-            {bottomWorkspaceSection === "gamma" ? <GammaWorkspace /> : null}
-            {bottomWorkspaceSection === "levelz" ? <LevelzWorkspace /> : null}
-            {bottomWorkspaceSection === "gexmap" ? <GexMapWorkspace /> : null}
-            {bottomWorkspaceSection === "gexdesk" ? <GexDeskWorkspace /> : null}
-            {bottomWorkspaceSection === "gameplan" ? <GameplanWorkspace initialInstrument={displayCmeSymbol(selectedInstrument)} /> : null}
-            {bottomWorkspaceSection === "kwantbot" ? <KwantBotIntelligenceWorkspace interpreter={kwantBotInterpreter} /> : null}
-            {bottomWorkspaceSection === "news" ? <NewsWorkspace /> : null}
-            {bottomWorkspaceSection === "zyon" ? (
+            {visitedWorkspaceSections.has("gamma") ? (
+              <ReactActivity mode={bottomWorkspaceSection === "gamma" ? "visible" : "hidden"}>
+                <WorkspaceFailureBoundary resetKey="gamma" label="Gamma">
+                  <GammaWorkspace />
+                </WorkspaceFailureBoundary>
+              </ReactActivity>
+            ) : null}
+            {visitedWorkspaceSections.has("levelz") ? (
+              <ReactActivity mode={bottomWorkspaceSection === "levelz" ? "visible" : "hidden"}>
+                <WorkspaceFailureBoundary resetKey="levelz" label="Levelz">
+                  <LevelzWorkspace />
+                </WorkspaceFailureBoundary>
+              </ReactActivity>
+            ) : null}
+            {visitedWorkspaceSections.has("gexmap") ? (
+              <ReactActivity mode={bottomWorkspaceSection === "gexmap" ? "visible" : "hidden"}>
+                <WorkspaceFailureBoundary resetKey="gexmap" label="GEX Map">
+                  <GexMapWorkspace />
+                </WorkspaceFailureBoundary>
+              </ReactActivity>
+            ) : null}
+            {visitedWorkspaceSections.has("gexdesk") ? (
+              <ReactActivity mode={bottomWorkspaceSection === "gexdesk" ? "visible" : "hidden"}>
+                <WorkspaceFailureBoundary resetKey="gexdesk" label="GEX Desk">
+                  <GexDeskWorkspace />
+                </WorkspaceFailureBoundary>
+              </ReactActivity>
+            ) : null}
+            {visitedWorkspaceSections.has("gameplan") ? (
+              <ReactActivity mode={bottomWorkspaceSection === "gameplan" ? "visible" : "hidden"}>
+                <WorkspaceFailureBoundary resetKey="gameplan" label="Game Plan">
+                  <GameplanWorkspace initialInstrument={displayCmeSymbol(selectedInstrument)} />
+                </WorkspaceFailureBoundary>
+              </ReactActivity>
+            ) : null}
+            {visitedWorkspaceSections.has("kwantbot") ? (
+              <ReactActivity mode={bottomWorkspaceSection === "kwantbot" ? "visible" : "hidden"}>
+                <WorkspaceFailureBoundary resetKey="kwantbot" label="KwantBot">
+                  <KwantBotIntelligenceWorkspace interpreter={kwantBotInterpreter} />
+                </WorkspaceFailureBoundary>
+              </ReactActivity>
+            ) : null}
+            {visitedWorkspaceSections.has("news") ? (
+              <ReactActivity mode={bottomWorkspaceSection === "news" ? "visible" : "hidden"}>
+                <WorkspaceFailureBoundary resetKey="news" label="News">
+                  <NewsWorkspace />
+                </WorkspaceFailureBoundary>
+              </ReactActivity>
+            ) : null}
+            {visitedWorkspaceSections.has("zyon") ? (
+              <ReactActivity mode={bottomWorkspaceSection === "zyon" ? "visible" : "hidden"}>
+              <WorkspaceFailureBoundary resetKey="zyon" label="Zyon">
               <ZyonPanelBoundary
                 variant="workspace"
                 resetKey={`${preferenceUserId || "anonymous"}:${kwantBotInterpreter.selectedRoot}:${kwantBotInterpreter.contexts[kwantBotInterpreter.selectedRoot]?.generatedAt ?? "pending"}`}
@@ -10414,10 +10472,26 @@ export default function KwantifyWorkspace({
                   accountKey={preferenceUserId}
                 />
               </ZyonPanelBoundary>
+              </WorkspaceFailureBoundary>
+              </ReactActivity>
             ) : null}
-            {bottomWorkspaceSection === "journal" ? <JournalWorkspace accountKey={preferenceUserId || currentUsername || "local"} /> : null}
-            {bottomWorkspaceSection === "backtesting" ? <BacktestingWorkspace /> : null}
-            {bottomWorkspaceSection === "socials" ? (
+            {visitedWorkspaceSections.has("journal") ? (
+              <ReactActivity mode={bottomWorkspaceSection === "journal" ? "visible" : "hidden"}>
+                <WorkspaceFailureBoundary resetKey="journal" label="Journal">
+                  <JournalWorkspace accountKey={preferenceUserId || currentUsername || "local"} />
+                </WorkspaceFailureBoundary>
+              </ReactActivity>
+            ) : null}
+            {visitedWorkspaceSections.has("backtesting") ? (
+              <ReactActivity mode={bottomWorkspaceSection === "backtesting" ? "visible" : "hidden"}>
+                <WorkspaceFailureBoundary resetKey="backtesting" label="Backtesting">
+                  <BacktestingWorkspace />
+                </WorkspaceFailureBoundary>
+              </ReactActivity>
+            ) : null}
+            {visitedWorkspaceSections.has("socials") ? (
+              <ReactActivity mode={bottomWorkspaceSection === "socials" ? "visible" : "hidden"}>
+              <WorkspaceFailureBoundary resetKey="socials" label="Socials">
               <SocialsWorkspace
                 accountKey={preferenceUserId || currentUsername || "local"}
                 accountLabel={currentUsername || "Kwant Trader"}
@@ -10430,10 +10504,11 @@ export default function KwantifyWorkspace({
                 }}
                 onOpenGameplanScoring={() => router.push("/gameplan?tab=scoring")}
               />
+              </WorkspaceFailureBoundary>
+              </ReactActivity>
             ) : null}
-            </WorkspaceFailureBoundary>
           </section>
-        )}
+        </ReactActivity>
 
         {false && !bottomMinimized && (
           <div onMouseDown={startBottomResize} className="relative h-4 flex-shrink-0 cursor-row-resize bg-transparent">

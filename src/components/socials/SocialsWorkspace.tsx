@@ -131,6 +131,7 @@ import {
   type SocialProfilePreview,
 } from "@/lib/socialProfilePreview";
 import {
+  Activity as ReactActivity,
   type PointerEvent as ReactPointerEvent,
   useCallback,
   useEffect,
@@ -3815,7 +3816,7 @@ export default function SocialsWorkspace({
           </div>
         ) : null}
 
-        {tab === "desks" ? (
+        <ReactActivity mode={tab === "desks" ? "visible" : "hidden"}>
           <div className="h-full min-h-0 p-3">
             <DeskWorkspace
               viewerId={resolvedAccountKey}
@@ -3826,7 +3827,7 @@ export default function SocialsWorkspace({
               onMessageProfile={onMessageProfile}
             />
           </div>
-        ) : null}
+        </ReactActivity>
 
         {false ? (
           <div className="mx-auto max-w-6xl space-y-3 p-3">
