@@ -2242,20 +2242,60 @@ function buildGameplanChartDecorations(
 }
 
 const valueAreaPayloadCache = new Map<string, ValueAreaPayloadCacheEntry>();
+const VALUE_AREA_SESSION_CACHE_PREFIX = "kwantdesk:value-area:last-good:v1:";
+
+function readValueAreaSessionPayload(cacheKey: string) {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.sessionStorage.getItem(`${VALUE_AREA_SESSION_CACHE_PREFIX}${cacheKey}`);
+    if (!raw) return null;
+    const payload = JSON.parse(raw) as ValueAreaPayload;
+    return payload.symbol.toUpperCase() === cacheKey
+      && payload.method === "TRADE_BY_TRADE"
+      && validValueAreaProfile(payload.daily)
+      && validValueAreaProfile(payload.weekly)
+      ? payload
+      : null;
+  } catch {
+    return null;
+  }
+}
 
 function fetchValueAreaPayload(symbol: string) {
   const cacheKey = symbol.toUpperCase();
-  const cached = valueAreaPayloadCache.get(cacheKey);
   const now = Date.now();
+  const restored = valueAreaPayloadCache.has(cacheKey)
+    ? null
+    : readValueAreaSessionPayload(cacheKey);
+  if (restored) {
+    const refreshAt = Date.parse(restored.nextRefreshAt);
+    valueAreaPayloadCache.set(cacheKey, {
+      expiresAt: Number.isFinite(refreshAt) && refreshAt > now
+        ? refreshAt
+        : now + 5_000,
+      promise: Promise.resolve(restored),
+      payload: restored,
+    });
+  }
+
+  const cached = valueAreaPayloadCache.get(cacheKey);
   if (cached && cached.expiresAt > now) return cached.promise;
 
   const previous = cached;
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 20_000);
   const promise = fetch(
     `/api/databento/value-area?symbol=${encodeURIComponent(symbol)}`,
-    { cache: "no-store" },
+    { cache: "no-store", signal: controller.signal },
   )
     .then(async (response) => {
-      const payload = await response.json() as ValueAreaPayload & { error?: string };
+      const raw = await response.text();
+      let payload: ValueAreaPayload & { error?: string };
+      try {
+        payload = JSON.parse(raw) as ValueAreaPayload & { error?: string };
+      } catch {
+        throw new Error("CME value-area service returned an invalid response.");
+      }
       if (!response.ok) throw new Error(payload.error || "CME value-area levels are unavailable.");
       const refreshAt = Date.parse(payload.nextRefreshAt);
       const current = valueAreaPayloadCache.get(cacheKey);
@@ -2265,6 +2305,12 @@ function fetchValueAreaPayload(symbol: string) {
           : Date.now() + 60 * 60_000;
         current.payload = payload;
       }
+      try {
+        window.sessionStorage.setItem(
+          `${VALUE_AREA_SESSION_CACHE_PREFIX}${cacheKey}`,
+          JSON.stringify(payload),
+        );
+      } catch {}
       return payload;
     })
     .catch((error) => {
@@ -2278,8 +2324,11 @@ function fetchValueAreaPayload(symbol: string) {
           valueAreaPayloadCache.delete(cacheKey);
         }
       }
-      throw error;
-    });
+      throw error instanceof Error && error.name === "AbortError"
+        ? new Error("CME value-area calculation is still preparing.")
+        : error;
+    })
+    .finally(() => window.clearTimeout(timeout));
 
   valueAreaPayloadCache.set(cacheKey, {
     expiresAt: Date.now() + 30_000,
@@ -3405,43 +3454,91 @@ function WorkspaceChartPane({
 
     let cancelled = false;
     let timer: number | null = null;
+    let running = false;
+    let developingRunning = false;
+    let failureStreak = 0;
+    let retainedDeveloping: InstitutionalVolumeProfile | null = null;
+    let retainedOverlay = valueAreaOverlay;
+
+    const schedule = (delay: number) => {
+      if (cancelled) return;
+      if (timer !== null) window.clearTimeout(timer);
+      timer = window.setTimeout(() => void loadValueArea(), delay);
+    };
+
     const loadValueArea = async () => {
-      setValueAreaLevelsLoading((current) => current || !valueAreaOverlay);
+      if (cancelled || running) return;
+      running = true;
+      setValueAreaLevelsLoading(!retainedOverlay);
+      let nextDelay = 15_000;
       try {
-        const [payload, developing] = await Promise.all([
-          fetchValueAreaPayload(pane.symbol),
-          resolvedContractSymbol
-            ? fetchInstitutionalVolumeProfile({
-                symbol: displayCmeSymbol(pane.symbol),
-                contractSymbol: resolvedContractSymbol,
-                period: "daily",
-                tradingDate: chicagoTradingDate(Date.now()),
-                groupTicks: 1,
-                valueAreaPercent: 70,
-              })
-            : Promise.resolve(null),
-        ]);
+        const payload = await fetchValueAreaPayload(pane.symbol);
         if (cancelled) return;
-        const overlay = buildValueAreaChartOverlay(payload, pane.symbol, settings, developing);
+        const overlay = buildValueAreaChartOverlay(
+          payload,
+          pane.symbol,
+          settings,
+          retainedDeveloping,
+        );
         if (!overlay) throw new Error("CME returned an invalid completed-period profile.");
+        retainedOverlay = overlay;
         setValueAreaOverlay(overlay);
         setValueAreaLevelsError(null);
         setValueAreaLevelsLoading(false);
+        failureStreak = 0;
 
-        timer = window.setTimeout(() => void loadValueArea(), 15_000);
+        // The developing profile is useful, but it is not allowed to hold the
+        // completed prior-session/prior-week levels hostage. Fetch it in the
+        // background and merge it when ready.
+        if (resolvedContractSymbol && !developingRunning) {
+          developingRunning = true;
+          void fetchInstitutionalVolumeProfile({
+            symbol: displayCmeSymbol(pane.symbol),
+            contractSymbol: resolvedContractSymbol,
+            period: "daily",
+            tradingDate: chicagoTradingDate(Date.now()),
+            groupTicks: 1,
+            valueAreaPercent: 70,
+          })
+            .then((developing) => {
+              if (cancelled || !developing) return;
+              const updated = buildValueAreaChartOverlay(
+                payload,
+                pane.symbol,
+                settings,
+                developing,
+              );
+              if (!updated) return;
+              retainedDeveloping = developing;
+              retainedOverlay = updated;
+              setValueAreaOverlay(updated);
+            })
+            .catch(() => undefined)
+            .finally(() => {
+              developingRunning = false;
+            });
+        }
       } catch (loadError) {
         if (cancelled) return;
-        setValueAreaLevelsError(
-          loadError instanceof Error
-            ? loadError.message
-            : "CME value-area levels are unavailable.",
-        );
+        failureStreak += 1;
+        if (!retainedOverlay) {
+          setValueAreaLevelsError(
+            loadError instanceof Error
+              ? loadError.message
+              : "CME value-area levels are unavailable.",
+          );
+        }
         setValueAreaLevelsLoading(false);
-        timer = window.setTimeout(() => void loadValueArea(), 60_000);
+        // A reload used to appear to fix this because the first failure waited
+        // a full minute. Recover here instead: 2s, 4s, 8s, 16s, then cap.
+        nextDelay = Math.min(60_000, 2_000 * (2 ** Math.min(5, failureStreak - 1)));
+      } finally {
+        running = false;
+        schedule(nextDelay);
       }
     };
 
-    timer = window.setTimeout(() => void loadValueArea(), 25);
+    schedule(25);
     return () => {
       cancelled = true;
       if (timer !== null) window.clearTimeout(timer);
