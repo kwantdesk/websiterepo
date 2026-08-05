@@ -506,6 +506,20 @@ function isPresenceCheck(text: string, attachments: IncomingAttachment[]) {
   return !/\b(?:analyse|analyze|analysis|chart|price|level|gamma|gex|dex|options|flow|setup|trade|entry|stop|target|support|resistance|exposure|positioning|game\s*plan|gameplan)\b/.test(normalized);
 }
 
+function isMacroResearchRequest(text: string) {
+  const normalized = text.toLowerCase().replace(/[^a-z0-9%&+\-\s'?]/g, " ").replace(/\s+/g, " ").trim();
+  if (!normalized) return false;
+
+  const explicitMacroEvidence = /\b(?:macro(?:economic|economics)?|economy|economic|fundamental(?:s)?|overnight|news|headline|catalyst|data\s*release|economic\s*(?:calendar|event|data)|fed(?:eral reserve)?|fomc|powell|cpi|pce|ppi|inflation|payroll|employment|unemployment|jolts|jobless|earnings|treasury|yield|rates?|tariff|sanction|war|ceasefire|geopolitic|oil|hormuz|government shutdown|debt ceiling)\b/.test(normalized);
+  if (explicitMacroEvidence) return true;
+
+  const namedMarket = /\b(?:nasdaq|nq|mnq|qqq|ndx|s&p|sp500|es|mes|spy|equities|stocks?|market|index|price)\b/.test(normalized);
+  const materialMove = /\b(?:bullish|bearish|rally|rallied|rallying|fell|falling|selloff|sold off|drop|dropped|dropping|pullback|pulled back|surge|surged|rip|ripped|dump|dumped|move|moved|moving|rotation|rotated|breakout|reversal)\b/.test(normalized);
+  const causalQuestion = /\b(?:why|what caused|what drove|what is driving|what's driving|reason for|reason behind|because of|catalyst for|behind the move)\b/.test(normalized);
+
+  return namedMarket && materialMove && causalQuestion;
+}
+
 function needsPersistenceTools(messages: ClaudeMessage[]) {
   const recentConversation = messages
     .slice(-10)
@@ -1665,10 +1679,7 @@ export async function POST(request: NextRequest) {
   const finalUserText = cleanText(finalRawMessage?.content, MAX_TEXT_LENGTH);
   const gammaFocusedRequest = /\b(?:gamma|gex|dex|vex|chex|vanna|charm|call\s*wall|put\s*support|hvl|zero\s*gamma|options\s*(?:environment|positioning|flow))\b/i
     .test(finalUserText);
-  const macroResearchRequest = /\b(?:macro(?:economic|economics)?|overnight|news|headline|catalyst|fed(?:eral reserve)?|fomc|powell|cpi|pce|ppi|inflation|payroll|employment|unemployment|jobless|earnings|treasury|yield|rates?|tariff|sanction|war|ceasefire|geopolitic|oil|hormuz|government shutdown|debt ceiling)\b/i
-    .test(finalUserText)
-    || /\bwhy\b[\s\S]{0,80}\b(?:nasdaq|nq|s&p|es|market|price)\b[\s\S]{0,80}\b(?:rall(?:y|ied)|fell|sold|drop(?:ped)?|pull(?:ed)? back|moved?)\b/i
-      .test(finalUserText);
+  const macroResearchRequest = isMacroResearchRequest(finalUserText);
   let historicalReplay: Awaited<ReturnType<typeof getHistoricalZyonContext>> | null = null;
   let validatedHistoricalReplay: ReturnType<typeof validateHistoricalZyonReplay> | null = null;
   if (payload.historicalReplay !== undefined) {
@@ -1881,6 +1892,8 @@ export async function POST(request: NextRequest) {
       "Do not force a causal story. A scheduled release or headline is a verified fact; claiming it caused the rally or selloff requires timing and price/cross-asset confirmation. If the exact catalyst cannot be verified, say that plainly, distinguish observation from inference, and still provide the measured price path.",
       ...(macroResearchRequest ? [
         "CURRENT MACRO RESEARCH IS ENABLED FOR THIS TURN through the web_search server tool. Use it to verify current or overnight releases, official statements, earnings and geopolitical developments before answering. Prefer primary sources and cite the sources returned by the tool.",
+        "A market-causality question requires an evidence pass before the answer: retrieve the actual release values and revisions where applicable, the publication time, contemporaneous market reporting, the measured futures path, and any available confirmation from Treasury yields, USD or volatility. Do not substitute calendar forecasts for released actuals.",
+        "Answer the trader's causal question yourself. Never ask the trader to research the release, provide the price path, or identify the catalyst. If evidence supports multiple drivers, rank them by timing and strength and label confirmed facts separately from inference.",
         "Never tell the trader that you cannot access news, economic events, current research or live price context on this turn. You have web research plus Kwant Desk's timestamped market evidence. If a specific source returns no result, state that narrow limitation and continue from the remaining evidence.",
         "Join the research timeline to the measured futures path. State which event preceded which move, but only call an event causal when the timing and cross-asset response support it.",
       ] : []),
@@ -1950,6 +1963,9 @@ export async function POST(request: NextRequest) {
       tools: selectedTools.length ? selectedTools : undefined,
       messages: modelIndex === 0 ? messages : compactProviderMessages(messages),
       ...(streaming ? { stream: true } : {}),
+      ...(webSearchEnabled && macroResearchRequest && !usePersistenceTools
+        ? { tool_choice: { type: "tool", name: "web_search" } }
+        : {}),
     };
   };
 
