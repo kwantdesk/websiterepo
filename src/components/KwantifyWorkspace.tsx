@@ -14,7 +14,7 @@ import { useKwantBotInterpreter } from "@/hooks/useKwantBotInterpreter";
 import { useSocialNotifications } from "@/hooks/useSocialNotifications";
 import { useStructureLevels } from "@/hooks/useStructureLevels";
 
-import { startTransition, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent as ReactDragEvent } from "react";
+import { memo, startTransition, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent as ReactDragEvent } from "react";
 import { createPortal } from "react-dom";
 import dynamic from "next/dynamic";
 import Image from "next/image";
@@ -367,6 +367,10 @@ type WatchlistItem = {
   changePercent: number;
   flash: "up" | "down" | null;
 };
+type LiveWatchlistSnapshot = Pick<
+  WatchlistItem,
+  "lastPrice" | "openPrice" | "bid" | "ask" | "mid" | "change" | "changePercent" | "flash"
+>;
 type LiveFeedPrice = {
   error?: string;
   instrument: string;
@@ -382,6 +386,64 @@ type LiveFeedPrice = {
   timestamp?: string | number;
   cached?: boolean;
 };
+
+const liveWatchlistSnapshots = new Map<string, LiveWatchlistSnapshot>();
+const liveWatchlistSubscribers = new Map<string, Set<() => void>>();
+const liveWatchlistNotifyTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const liveWatchlistFlashTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+function publishLiveWatchlistQuote(
+  key: string,
+  quote: LiveFeedPrice,
+  fallbackOpenPrice = 0,
+) {
+  const previous = liveWatchlistSnapshots.get(key);
+  const mid = Number(quote.mid);
+  if (!Number.isFinite(mid) || mid <= 0) return;
+  const previousMid = previous?.mid || mid;
+  const openPrice = previous?.openPrice || fallbackOpenPrice || mid;
+  const change = mid - openPrice;
+  liveWatchlistSnapshots.set(key, {
+    lastPrice: mid,
+    openPrice,
+    bid: Number.isFinite(Number(quote.bid)) ? Number(quote.bid) : mid,
+    ask: Number.isFinite(Number(quote.ask)) ? Number(quote.ask) : mid,
+    mid,
+    change,
+    changePercent: openPrice ? (change / openPrice) * 100 : 0,
+    flash: mid > previousMid ? "up" : mid < previousMid ? "down" : previous?.flash ?? null,
+  });
+
+  const previousFlashTimer = liveWatchlistFlashTimers.get(key);
+  if (previousFlashTimer) clearTimeout(previousFlashTimer);
+  liveWatchlistFlashTimers.set(key, setTimeout(() => {
+    liveWatchlistFlashTimers.delete(key);
+    const current = liveWatchlistSnapshots.get(key);
+    if (!current?.flash) return;
+    liveWatchlistSnapshots.set(key, { ...current, flash: null });
+    liveWatchlistSubscribers.get(key)?.forEach((notify) => notify());
+  }, 600));
+
+  // Paint the small watchlist cells independently of the enormous workspace
+  // shell. Quotes are coalesced to 10fps so a burst of CME packets cannot make
+  // React rebuild every chart pane or starve primary navigation.
+  if (liveWatchlistNotifyTimers.has(key)) return;
+  liveWatchlistNotifyTimers.set(key, setTimeout(() => {
+    liveWatchlistNotifyTimers.delete(key);
+    liveWatchlistSubscribers.get(key)?.forEach((notify) => notify());
+  }, 100));
+}
+
+function subscribeLiveWatchlistQuote(key: string, notify: () => void) {
+  const subscribers = liveWatchlistSubscribers.get(key) ?? new Set<() => void>();
+  subscribers.add(notify);
+  liveWatchlistSubscribers.set(key, subscribers);
+  notify();
+  return () => {
+    subscribers.delete(notify);
+    if (!subscribers.size) liveWatchlistSubscribers.delete(key);
+  };
+}
 type QueuedLiveTick = {
   mid: number;
   timestamp: number;
@@ -1253,6 +1315,34 @@ function formatPrice(price: number, symbol: string): string {
   if (oneDecimal.includes(root)) return price.toFixed(1);
   return price.toFixed(2);
 }
+
+const LiveWatchlistNumbers = memo(function LiveWatchlistNumbers({ row }: { row: WatchlistItem }) {
+  const [snapshot, setSnapshot] = useState<LiveWatchlistSnapshot | null>(() =>
+    liveWatchlistSnapshots.get(row.key) ?? null);
+
+  useEffect(() => subscribeLiveWatchlistQuote(row.key, () => {
+    setSnapshot(liveWatchlistSnapshots.get(row.key) ?? null);
+  }), [row.key]);
+
+  const quote = snapshot ?? row;
+  const priceColor = quote.flash === "up" ? "#22C55E" : quote.flash === "down" ? "#EF4444" : "#A1A1AA";
+  const changeColor = quote.change > 0 ? "#22C55E" : quote.change < 0 ? "#EF4444" : "#A1A1AA";
+  const percentColor = quote.changePercent > 0 ? "#22C55E" : quote.changePercent < 0 ? "#EF4444" : "#A1A1AA";
+
+  return (
+    <>
+      <span className="text-right font-mono text-[12px] transition-colors duration-300" style={{ color: priceColor }}>
+        {formatPrice(quote.mid, row.symbol)}
+      </span>
+      <span className="text-right font-mono text-[11px]" style={{ color: changeColor }}>
+        {quote.change > 0 ? "+" : quote.change < 0 ? "-" : ""}{Math.abs(quote.change).toFixed(2)}
+      </span>
+      <span className="text-right font-mono text-[11px]" style={{ color: percentColor }}>
+        {quote.changePercent > 0 ? "+" : ""}{quote.changePercent.toFixed(2)}%
+      </span>
+    </>
+  );
+});
 
 function isPositiveFinite(value: number) {
   return Number.isFinite(value) && value > 0;
@@ -4960,7 +5050,6 @@ export default function KwantifyWorkspace({
   const pendingWatchlistPricesRef = useRef<Map<string, LiveFeedPrice>>(new Map());
   const pendingLiveQuoteCacheRef = useRef<Map<string, LiveFeedPrice & { openPrice?: number }>>(new Map());
   const watchlistLiveFrameRef = useRef<number | null>(null);
-  const watchlistFlashTimerRef = useRef<number | null>(null);
   const liveQuoteCacheTimerRef = useRef<number | null>(null);
   const watchlistRef = useRef(watchlist);
 
@@ -6777,15 +6866,21 @@ export default function KwantifyWorkspace({
         }
 
         const displayName = usingDatabentoFeed || usingCTraderFeed ? price.instrument : (nameMap[price.instrument] || price.instrument);
+        const previousItem = watchlistRef.current.find(
+          (item) => item.broker === activeChartBrokerLabel && item.symbol === displayName,
+        );
+        publishLiveWatchlistQuote(
+          makeWatchlistKey(displayName, activeChartBrokerLabel),
+          price,
+          previousItem?.openPrice,
+        );
+        lastStreamTickAtByBrokerRef.current[activeChartBrokerLabel] = Date.now();
         if (priorityLiveSymbols.has(displayName)) {
           lastPriceMessageAt = Date.now();
           receivedPriceMessage = true;
         }
         if (usingDatabentoFeed) {
           recordDatabentoLiveTick(price);
-          const previousItem = watchlistRef.current.find(
-            (item) => item.broker === "Databento" && item.symbol === displayName,
-          );
           pendingLiveQuoteCacheRef.current.set(displayName, {
             ...price,
             openPrice: previousItem?.openPrice || price.mid,
@@ -6815,8 +6910,6 @@ export default function KwantifyWorkspace({
           watchlistLiveFrameRef.current = null;
 
           startTransition(() => {
-            const now = Date.now();
-            lastStreamTickAtByBrokerRef.current[activeChartBrokerLabel] = now;
             setWatchlist((current) => {
               let changed = false;
               const next = current.map((item) => {
@@ -6831,8 +6924,6 @@ export default function KwantifyWorkspace({
                 const nextContractSymbol = nextPrice.contractSymbol || item.contractSymbol;
                 const nextChange = nextPrice.mid - openPrice;
                 const nextChangePercent = openPrice ? (nextChange / openPrice) * 100 : 0;
-                const nextFlash: WatchlistItem["flash"] =
-                  nextPrice.mid > prevMid ? "up" : nextPrice.mid < prevMid ? "down" : null;
                 if (
                   item.broker === nextBroker
                   && item.contractSymbol === nextContractSymbol
@@ -6843,7 +6934,7 @@ export default function KwantifyWorkspace({
                   && item.mid === nextPrice.mid
                   && item.change === nextChange
                   && item.changePercent === nextChangePercent
-                  && item.flash === nextFlash
+                  && item.flash === null
                 ) {
                   return item;
                 }
@@ -6859,25 +6950,16 @@ export default function KwantifyWorkspace({
                   mid: nextPrice.mid,
                   change: nextChange,
                   changePercent: nextChangePercent,
-                  flash: nextFlash,
+                  // Fast up/down painting is isolated in LiveWatchlistNumbers;
+                  // keeping it out of parent state avoids a second shell render.
+                  flash: null,
                 };
               });
               return changed ? next : current;
             });
           });
 
-          if (watchlistFlashTimerRef.current === null) {
-            watchlistFlashTimerRef.current = window.setTimeout(() => {
-              watchlistFlashTimerRef.current = null;
-              startTransition(() => {
-                setWatchlist((current) => current.some((item) => item.flash)
-                  ? current.map((item) => item.flash ? { ...item, flash: null } : item)
-                  : current);
-              });
-            }, 300);
-          }
-
-        }, 250);
+        }, 1_000);
       } catch {}
     };
 
@@ -6906,10 +6988,6 @@ export default function KwantifyWorkspace({
       if (watchlistLiveFrameRef.current !== null) {
         window.clearTimeout(watchlistLiveFrameRef.current);
         watchlistLiveFrameRef.current = null;
-      }
-      if (watchlistFlashTimerRef.current !== null) {
-        window.clearTimeout(watchlistFlashTimerRef.current);
-        watchlistFlashTimerRef.current = null;
       }
     };
   }, [activeChartBrokerLabel, bottomWorkspaceSection, priorityLiveSymbolsCsv, streamReconnectNonce, usingCTraderFeed, usingDatabentoFeed, watchlistSymbolsCsv]);
@@ -7737,6 +7815,15 @@ export default function KwantifyWorkspace({
       pendingWorkspaceNavigationRef.current = nextSection;
     }
 
+    if (!nextSection) {
+      // Settings/Home leave the persistent shell. Stop publishing live ticks
+      // as soon as the pointer goes down so the Next route transition is never
+      // competing with chart reconciliation while it starts.
+      activeWorkspaceSectionRef.current = null;
+      setRightPanel(null);
+      return;
+    }
+
     if (nextSection && nextSection !== previousSection) {
       // Treat a navigation click as urgent UI work. Updating the visible
       // section and active ref synchronously unmounts Charts and closes its
@@ -8289,10 +8376,6 @@ export default function KwantifyWorkspace({
   };
 
   const renderWatchlistRow = (row: WatchlistItem, section: WatchlistSection) => {
-    const displayPrice = formatPrice(row.mid, row.symbol);
-    const priceColor = row.flash === "up" ? "#22C55E" : row.flash === "down" ? "#EF4444" : "#A1A1AA";
-    const changeColor = row.change > 0 ? "#22C55E" : row.change < 0 ? "#EF4444" : "#A1A1AA";
-    const percentColor = row.changePercent > 0 ? "#22C55E" : row.changePercent < 0 ? "#EF4444" : "#A1A1AA";
     const isDropTarget = watchlistDropTarget?.sectionId === section.id && watchlistDropTarget.symbol === row.key;
     const isFavorite = watchlistFavorites.includes(row.key);
     return (
@@ -8356,9 +8439,7 @@ export default function KwantifyWorkspace({
             )}
           </span>
         </span>
-        <span className="text-right font-mono text-[12px] transition-colors duration-500" style={{ color: priceColor }}>{displayPrice}</span>
-        <span className="text-right font-mono text-[11px]" style={{ color: changeColor }}>{row.change > 0 ? "+" : row.change < 0 ? "-" : ""}{Math.abs(row.change).toFixed(2)}</span>
-        <span className="text-right font-mono text-[11px]" style={{ color: percentColor }}>{row.changePercent > 0 ? "+" : ""}{row.changePercent.toFixed(2)}%</span>
+        <LiveWatchlistNumbers row={row} />
       </button>
     );
   };

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { memo, type ComponentType, type MouseEvent as ReactMouseEvent } from "react";
+import { memo, type ComponentType, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import {
   BarChart3,
   BookOpen,
@@ -123,6 +123,17 @@ function AppSidebar({
     onNavigateStart?.(key);
   };
 
+  const beginPointerNavigation = (
+    event: ReactPointerEvent<HTMLAnchorElement>,
+    key: SidebarKey,
+  ) => {
+    if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+    // Stop chart/feed work on pointer-down, before the browser waits for the
+    // subsequent click. The click still owns the URL update and keyboard users
+    // retain the same path through navigate().
+    beginNavigation(key);
+  };
+
   const navigate = (
     event: ReactMouseEvent<HTMLAnchorElement>,
     key: SidebarKey,
@@ -163,6 +174,7 @@ function AppSidebar({
               href={href}
               prefetch={false}
               onPointerEnter={() => onNavigateIntent?.(key)}
+              onPointerDown={(event) => beginPointerNavigation(event, key)}
               onFocus={() => onNavigateIntent?.(key)}
               onClick={(event) => navigate(event, key, href)}
               className={activeItem === key ? verticalItemActive : verticalItemInactive}
@@ -178,6 +190,7 @@ function AppSidebar({
           <Link
             href="/settings"
             onPointerEnter={() => onNavigateIntent?.("settings")}
+            onPointerDown={(event) => beginPointerNavigation(event, "settings")}
             onFocus={() => onNavigateIntent?.("settings")}
             onClick={(event) => {
               if (!event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) {
@@ -206,6 +219,7 @@ function AppSidebar({
               href={href}
               prefetch={false}
               onPointerEnter={() => onNavigateIntent?.(key)}
+              onPointerDown={(event) => beginPointerNavigation(event, key)}
               onFocus={() => onNavigateIntent?.(key)}
               onClick={(event) => navigate(event, key, href)}
               aria-current={active ? "page" : undefined}
@@ -233,6 +247,7 @@ function AppSidebar({
         href="/settings"
         prefetch
         onPointerEnter={() => onNavigateIntent?.("settings")}
+        onPointerDown={(event) => beginPointerNavigation(event, "settings")}
         onFocus={() => onNavigateIntent?.("settings")}
         onClick={(event) => {
           if (!event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) {
