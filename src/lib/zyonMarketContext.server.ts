@@ -2,6 +2,8 @@ import "server-only";
 
 import { getDatabentoBars, type DatabentoBar } from "@/lib/databento";
 import { getEconomicCalendar } from "@/lib/economicCalendar.server";
+import { getZyonOvernightMacroBrief } from "@/lib/macroIntelligence.server";
+import { buildMarketSessionWindows } from "@/lib/marketSessions";
 import { getKwantBotMarketContext } from "@/lib/kwantBotContext.server";
 import type {
   KwantBotInterpreterMessage,
@@ -40,10 +42,15 @@ export type ZyonMarketWindow = {
 };
 
 type HistoryCacheEntry = {
-  value: DatabentoBar[] | null;
+  value: ZyonPriceHistory | null;
   expiresAt: number;
   staleUntil: number;
-  promise: Promise<DatabentoBar[]> | null;
+  promise: Promise<ZyonPriceHistory> | null;
+};
+
+type ZyonPriceHistory = {
+  intraday: DatabentoBar[];
+  daily: DatabentoBar[];
 };
 
 const historyGlobal = globalThis as typeof globalThis & {
@@ -79,17 +86,29 @@ async function marketHistory(root: KwantBotMarketRoot) {
     promise: null,
   };
   const request = timeout(
-    getDatabentoBars(
-      `${root}.v.0`,
-      "1m",
-      new Date(now - 10 * 24 * 60 * 60_000).toISOString(),
-      new Date(now).toISOString(),
-    ),
+    Promise.all([
+      getDatabentoBars(
+        `${root}.v.0`,
+        "5m",
+        new Date(now - 7 * 24 * 60 * 60_000).toISOString(),
+        new Date(now).toISOString(),
+      ),
+      timeout(
+        getDatabentoBars(
+          `${root}.v.0`,
+          "1D",
+          new Date(now - 14 * 24 * 60 * 60_000).toISOString(),
+          new Date(now).toISOString(),
+        ),
+        3_500,
+        "CME daily history",
+      ).catch(() => [] as DatabentoBar[]),
+    ]).then(([intraday, daily]) => ({ intraday, daily })),
     15_000,
     "CME history",
   )
-    .then((rawBars) => {
-      const bars: DatabentoBar[] = rawBars.map((bar) => ({
+    .then((rawHistory) => {
+      const normalizeBars = (rawBars: DatabentoBar[]) => rawBars.map((bar) => ({
         timestamp: bar.timestamp,
         open: bar.open,
         high: bar.high,
@@ -97,13 +116,17 @@ async function marketHistory(root: KwantBotMarketRoot) {
         close: bar.close,
         volume: Number(bar.volume ?? 0),
       }));
-      entry.value = bars;
+      const history = {
+        intraday: normalizeBars(rawHistory.intraday),
+        daily: normalizeBars(rawHistory.daily),
+      };
+      entry.value = history;
       entry.expiresAt = Date.now() + 30_000;
       entry.staleUntil = Date.now() + 30 * 60_000;
-      return bars;
+      return history;
     })
     .catch((error) => {
-      if (entry.value?.length && entry.staleUntil > Date.now()) return entry.value;
+      if (entry.value?.intraday.length && entry.staleUntil > Date.now()) return entry.value;
       throw error;
     })
     .finally(() => {
@@ -114,11 +137,56 @@ async function marketHistory(root: KwantBotMarketRoot) {
   // Price windows are supporting evidence for chat. Keep serving the last
   // verified bars while the one shared refresh runs instead of blocking every
   // market question on a ten-day historical request.
-  if (entry.value?.length && entry.staleUntil > now) {
+  if (entry.value?.intraday.length && entry.staleUntil > now) {
     void request.catch(() => undefined);
     return entry.value;
   }
   return request;
+}
+
+function summarizePricePath(allBars: DatabentoBar[], now: number) {
+  const latest = allBars.at(-1);
+  if (!latest) return null;
+  const bars = allBars.filter((bar) => bar.timestamp >= latest.timestamp - 24 * 60 * 60_000);
+  const first = bars[0] ?? latest;
+  const highBar = bars.reduce((best, bar) => bar.high > best.high ? bar : best, first);
+  const lowBar = bars.reduce((best, bar) => bar.low < best.low ? bar : best, first);
+  const current = latest.close;
+  const sequence = highBar.timestamp <= lowBar.timestamp
+    ? `Opened near ${first.open}, rallied to ${highBar.high}, pulled back to ${lowBar.low}, and is now ${current}.`
+    : `Opened near ${first.open}, sold to ${lowBar.low}, rallied to ${highBar.high}, and is now ${current}.`;
+  const sessions = buildMarketSessionWindows(bars, { lookbackDays: 3 })
+    .filter((session) => session.endTimestamp >= latest.timestamp - 36 * 60 * 60_000)
+    .sort((left, right) => left.startTimestamp - right.startTimestamp)
+    .slice(-8)
+    .map((session) => ({
+      name: session.label,
+      from: new Date(session.startTimestamp).toISOString(),
+      to: new Date(session.endTimestamp).toISOString(),
+      open: session.open,
+      high: session.high,
+      highAt: new Date(session.highTimestamp).toISOString(),
+      low: session.low,
+      lowAt: new Date(session.lowTimestamp).toISOString(),
+      close: session.close,
+      change: session.close - session.open,
+    }));
+  return {
+    basis: "LATEST_24H_CME_5M" as const,
+    asOf: new Date(latest.timestamp).toISOString(),
+    ageMs: Math.max(0, now - latest.timestamp),
+    open: first.open,
+    high: highBar.high,
+    highAt: new Date(highBar.timestamp).toISOString(),
+    low: lowBar.low,
+    lowAt: new Date(lowBar.timestamp).toISOString(),
+    current,
+    change: current - first.open,
+    pullbackFromHigh: current - highBar.high,
+    recoveryFromLow: current - lowBar.low,
+    sequence,
+    sessions,
+  };
 }
 
 function summarizeWindow(
@@ -129,7 +197,7 @@ function summarizeWindow(
 ): ZyonMarketWindow | null {
   const latest = allBars.at(-1);
   if (!latest) return null;
-  const end = latest.timestamp + 60_000;
+  const end = latest.timestamp + (name === "1W" ? 24 * 60 * 60_000 : 5 * 60_000);
   const start = end - durationMs;
   const bars = allBars.filter((bar) => bar.timestamp >= start && bar.timestamp < end);
   if (!bars.length) return null;
@@ -268,19 +336,27 @@ export async function getZyonMarketContext(
         calendarDate(now - 12 * 60 * 60_000),
         calendarDate(now + 48 * 60 * 60_000),
       ), 3_500, "economic calendar"),
+    gammaFocused
+      ? Promise.resolve(null)
+      : timeout(getZyonOvernightMacroBrief(), 4_000, "overnight macro brief"),
   ] as const);
 
   const warnings: string[] = [];
   const current = results[0].status === "fulfilled" ? results[0].value : null;
-  const bars = results[1].status === "fulfilled" ? results[1].value : [];
+  const history = results[1].status === "fulfilled"
+    ? results[1].value
+    : { intraday: [], daily: [] };
+  const bars = history.intraday;
   const archive = results[2].status === "fulfilled" ? results[2].value : null;
   const indices = results[3].status === "fulfilled" ? results[3].value : [];
   const calendar = results[4].status === "fulfilled" ? results[4].value : null;
+  const overnightMacro = results[5].status === "fulfilled" ? results[5].value : null;
   if (results[0].status === "rejected") warnings.push(`Options/Gameplan: ${messageOf(results[0].reason)}`);
   if (results[1].status === "rejected") warnings.push(`CME history: ${messageOf(results[1].reason)}`);
   if (results[2].status === "rejected") warnings.push(`Account market memory: ${messageOf(results[2].reason)}`);
   if (results[3].status === "rejected") warnings.push(`Market indices: ${messageOf(results[3].reason)}`);
   if (results[4].status === "rejected") warnings.push(`Economic calendar: ${messageOf(results[4].reason)}`);
+  if (results[5].status === "rejected") warnings.push(`Overnight macro: ${messageOf(results[5].reason)}`);
   if (current?.options.errors.length) {
     warnings.push(...current.options.errors.map((error: string) => `Options context: ${error}`));
   }
@@ -303,10 +379,13 @@ export async function getZyonMarketContext(
       symbol: `${root}.v.0`,
       source: "CME",
       latestBarAt: latestBar ? new Date(latestBar.timestamp).toISOString() : null,
+      latestPrice: latestBar?.close ?? null,
+      latestPriceAgeMs: latestBar ? Math.max(0, now - latestBar.timestamp) : null,
+      path: summarizePricePath(bars, now),
       windows: {
         oneHour: summarizeWindow(bars, "1H", 60 * 60_000, now),
         oneDay: summarizeWindow(bars, "1D", 24 * 60 * 60_000, now),
-        oneWeek: summarizeWindow(bars, "1W", 7 * 24 * 60 * 60_000, now),
+        oneWeek: summarizeWindow(history.daily, "1W", 7 * 24 * 60 * 60_000, now),
       },
     },
     marketMemory: archive,
@@ -318,6 +397,7 @@ export async function getZyonMarketContext(
       note: calendar.note,
       usdEvents,
     } : null,
+    overnightMacro,
     warnings,
   };
 }

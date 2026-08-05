@@ -25,13 +25,56 @@ const OFFICIAL_FEEDS = [
 ] as const;
 
 const CACHE_MS = 5 * 60_000;
+const ZYON_MACRO_WINDOW_MS = 24 * 60 * 60_000;
+
+export type ZyonOvernightMacroBrief = {
+  generatedAt: string;
+  windowFrom: string;
+  windowTo: string;
+  releasedUsdEvents: Array<{
+    name: string;
+    releasedAt: string;
+    impact: EconomicCalendarEvent["impact"];
+    topic: MacroTopic;
+    actual: string;
+    forecast: string;
+    previous: string;
+    source: string;
+    sourceUrl: string;
+  }>;
+  developments: Array<{
+    title: string;
+    topic: MacroTopic;
+    publishedAt: string;
+    publisher: string;
+    official: boolean;
+    status: MacroDevelopment["status"];
+    economicChannel: string;
+    potentialReaction: string;
+    url: string;
+  }>;
+  evidenceNote: string;
+};
+
 const macroGlobal = globalThis as typeof globalThis & {
   __kwantdeskMacroCache?: { payload: MacroIntelligencePayload; storedAt: number };
   __kwantdeskMacroRequest?: Promise<MacroIntelligencePayload>;
+  __kwantdeskZyonMacroCache?: { payload: ZyonOvernightMacroBrief; storedAt: number };
+  __kwantdeskZyonMacroRequest?: Promise<ZyonOvernightMacroBrief>;
 };
 
 function dateOffset(days: number) {
   return new Date(Date.now() + days * 86_400_000).toISOString().slice(0, 10);
+}
+
+function within<T>(promise: Promise<T>, milliseconds: number, fallback: T) {
+  return Promise.race([
+    promise,
+    new Promise<T>((resolve) => {
+      const timer = setTimeout(() => resolve(fallback), milliseconds);
+      timer.unref?.();
+    }),
+  ]);
 }
 
 function hash(value: string) {
@@ -90,7 +133,7 @@ async function fetchOfficialFeed(feed: (typeof OFFICIAL_FEEDS)[number]) {
 }
 
 async function fetchLiveNews() {
-  const query = '("Strait of Hormuz" OR tariff OR sanctions OR ceasefire OR "government shutdown" OR "debt ceiling" OR "Treasury funding" OR "energy infrastructure" OR "central bank") sourcelang:english';
+  const query = '(FOMC OR "Federal Reserve" OR payrolls OR inflation OR earnings OR Nasdaq OR "Strait of Hormuz" OR tariff OR sanctions OR ceasefire OR "government shutdown" OR "debt ceiling" OR "Treasury funding" OR "energy infrastructure" OR "central bank") sourcelang:english';
   const url = new URL("https://api.gdeltproject.org/api/v2/doc/doc");
   url.searchParams.set("query", query);
   url.searchParams.set("mode", "artlist");
@@ -464,6 +507,87 @@ function development(source: CollectedSource): MacroDevelopment {
       official: source.official,
     }],
   };
+}
+
+async function buildZyonOvernightMacroBrief(): Promise<ZyonOvernightMacroBrief> {
+  const now = Date.now();
+  const windowFrom = now - ZYON_MACRO_WINDOW_MS;
+  const [calendar, officialRows, newsRows] = await Promise.all([
+    within(getEconomicCalendar(dateOffset(-2), dateOffset(1)).catch(() => null), 3_200, null),
+    within(Promise.all(OFFICIAL_FEEDS.map(fetchOfficialFeed)).then((rows) => rows.flat()), 3_200, [] as CollectedSource[]),
+    within(fetchLiveNews(), 3_200, [] as CollectedSource[]),
+  ]);
+  const releasedUsdEvents = (calendar?.events ?? [])
+    .filter((event) => event.currency === "USD" && event.status === "released")
+    .filter((event) => {
+      const timestamp = Date.parse(event.date);
+      return Number.isFinite(timestamp) && timestamp >= windowFrom && timestamp <= now;
+    })
+    .filter((event) => event.impact === "High" || event.impact === "Medium")
+    .sort((left, right) => Date.parse(right.date) - Date.parse(left.date))
+    .slice(0, 12)
+    .map((event) => ({
+      name: event.name,
+      releasedAt: event.date,
+      impact: event.impact,
+      topic: macroTopic(`${event.name} ${event.category}`),
+      actual: event.actual,
+      forecast: event.forecast,
+      previous: event.revised || event.previous,
+      source: event.source || calendar?.provider || "Economic calendar",
+      sourceUrl: event.sourceUrl,
+    }));
+  const developments = [...officialRows, ...newsRows]
+    .filter((source) => {
+      const timestamp = Date.parse(source.publishedAt);
+      return Number.isFinite(timestamp) && timestamp >= windowFrom && timestamp <= now;
+    })
+    .sort((left, right) => Date.parse(right.publishedAt) - Date.parse(left.publishedAt))
+    .filter((source, index, rows) => index === rows.findIndex((item) => item.url === source.url))
+    .map((source) => ({ source, item: development(source) }))
+    .filter(({ item }) => item.topic !== "OTHER")
+    .slice(0, 14)
+    .map(({ source, item }) => ({
+      title: item.title,
+      topic: item.topic,
+      publishedAt: item.publishedAt,
+      publisher: source.publisher,
+      official: source.official,
+      status: item.status,
+      economicChannel: item.economicChannel,
+      potentialReaction: item.potentialReaction,
+      url: source.url,
+    }));
+  return {
+    generatedAt: new Date(now).toISOString(),
+    windowFrom: new Date(windowFrom).toISOString(),
+    windowTo: new Date(now).toISOString(),
+    releasedUsdEvents,
+    developments,
+    evidenceNote: "Released events and timestamped developments are verified evidence. A headline is not automatically the cause of a futures move; causal attribution still requires timing and cross-asset confirmation.",
+  };
+}
+
+export async function getZyonOvernightMacroBrief() {
+  if (macroGlobal.__kwantdeskZyonMacroCache
+    && Date.now() - macroGlobal.__kwantdeskZyonMacroCache.storedAt < CACHE_MS) {
+    return macroGlobal.__kwantdeskZyonMacroCache.payload;
+  }
+  if (macroGlobal.__kwantdeskZyonMacroRequest) return macroGlobal.__kwantdeskZyonMacroRequest;
+  const request = buildZyonOvernightMacroBrief()
+    .then((payload) => {
+      macroGlobal.__kwantdeskZyonMacroCache = { payload, storedAt: Date.now() };
+      return payload;
+    })
+    .catch((error) => {
+      if (macroGlobal.__kwantdeskZyonMacroCache) return macroGlobal.__kwantdeskZyonMacroCache.payload;
+      throw error;
+    })
+    .finally(() => {
+      macroGlobal.__kwantdeskZyonMacroRequest = undefined;
+    });
+  macroGlobal.__kwantdeskZyonMacroRequest = request;
+  return request;
 }
 
 async function buildMacroPayload(): Promise<MacroIntelligencePayload> {
