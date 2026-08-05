@@ -107,7 +107,14 @@ type ToolUseBlock = {
   input?: unknown;
 };
 type ClaudeResult = {
-  content?: Array<{ type?: string; text?: string; name?: string; input?: unknown }>;
+  content?: Array<{
+    type?: string;
+    text?: string;
+    name?: string;
+    input?: unknown;
+    [key: string]: unknown;
+  }>;
+  stop_reason?: string;
   usage?: { input_tokens?: number; output_tokens?: number };
 };
 type JournalToolInput = {
@@ -224,6 +231,11 @@ const ZYON_PROVIDER_TOOLS = [
     },
   },
 ] as const;
+const ZYON_WEB_SEARCH_TOOL = {
+  type: "web_search_20250305",
+  name: "web_search",
+  max_uses: 4,
+} as const;
 const ANTHROPIC_MODEL_CACHE_MS = 10 * 60_000;
 // This only bounds the connection handshake. Once Anthropic has accepted the
 // streamed request, the separate inactivity budget below allows deep analysis
@@ -659,6 +671,23 @@ function contextTimestamp(value: unknown) {
   if (typeof value !== "string" || !value.trim()) return null;
   const parsed = Date.parse(value);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function researchSources(result: ClaudeResult) {
+  const rows = (result.content ?? []).flatMap((block) => {
+    const citations = Array.isArray(block.citations) ? block.citations : [];
+    return citations.flatMap((citation) => {
+      const item = recordValue(citation);
+      const url = cleanText(item?.url, 1_000);
+      if (!url) return [];
+      return [{
+        title: cleanText(item?.title, 240) || url,
+        url,
+      }];
+    });
+  });
+  return rows.filter((source, index) =>
+    index === rows.findIndex((candidate) => candidate.url === source.url)).slice(0, 8);
 }
 
 function zonedClock(timestamp: number, requestedTimeZone: string) {
@@ -1632,6 +1661,10 @@ export async function POST(request: NextRequest) {
   const finalUserText = cleanText(finalRawMessage?.content, MAX_TEXT_LENGTH);
   const gammaFocusedRequest = /\b(?:gamma|gex|dex|vex|chex|vanna|charm|call\s*wall|put\s*support|hvl|zero\s*gamma|options\s*(?:environment|positioning|flow))\b/i
     .test(finalUserText);
+  const macroResearchRequest = /\b(?:macro(?:economic|economics)?|overnight|news|headline|catalyst|fed(?:eral reserve)?|fomc|powell|cpi|pce|ppi|inflation|payroll|employment|unemployment|jobless|earnings|treasury|yield|rates?|tariff|sanction|war|ceasefire|geopolitic|oil|hormuz|government shutdown|debt ceiling)\b/i
+    .test(finalUserText)
+    || /\bwhy\b[\s\S]{0,80}\b(?:nasdaq|nq|s&p|es|market|price)\b[\s\S]{0,80}\b(?:rall(?:y|ied)|fell|sold|drop(?:ped)?|pull(?:ed)? back|moved?)\b/i
+      .test(finalUserText);
   let historicalReplay: Awaited<ReturnType<typeof getHistoricalZyonContext>> | null = null;
   let validatedHistoricalReplay: ReturnType<typeof validateHistoricalZyonReplay> | null = null;
   if (payload.historicalReplay !== undefined) {
@@ -1825,6 +1858,11 @@ export async function POST(request: NextRequest) {
       "For live-market questions, check timestamps and warnings first. Do not describe stale or last-session data as live. State material freshness limitations plainly and use the 1-hour, 1-day, and 1-week windows to distinguish immediate action from broader context.",
       "When asked what happened overnight or what price has done, answer directly in this order: verified macro events/developments; the measured price path with its actual high, low, pullback/recovery and session sequence; then current futures price and the current Australia/Brisbane date and time. Never ask the trader for these inputs when priorityEvidence contains them.",
       "Do not force a causal story. A scheduled release or headline is a verified fact; claiming it caused the rally or selloff requires timing and price/cross-asset confirmation. If the exact catalyst cannot be verified, say that plainly, distinguish observation from inference, and still provide the measured price path.",
+      ...(macroResearchRequest ? [
+        "CURRENT MACRO RESEARCH IS ENABLED FOR THIS TURN through the web_search server tool. Use it to verify current or overnight releases, official statements, earnings and geopolitical developments before answering. Prefer primary sources and cite the sources returned by the tool.",
+        "Never tell the trader that you cannot access news, economic events, current research or live price context on this turn. You have web research plus Kwant Desk's timestamped market evidence. If a specific source returns no result, state that narrow limitation and continue from the remaining evidence.",
+        "Join the research timeline to the measured futures path. State which event preceded which move, but only call an event causal when the timing and cross-asset response support it.",
+      ] : []),
     ]),
     "Never say that you will respond later, soon, in the background, or after more processing. Complete the useful analysis in this response. If a source is unavailable, say which source is unavailable and continue from the remaining evidence.",
     "Adapt the explanation to the trader's language: make it understandable for a beginner without removing the numerical evidence, conditions, and invalidation an advanced trader needs.",
@@ -1856,29 +1894,111 @@ export async function POST(request: NextRequest) {
       );
 
   const usePersistenceTools = !historicalReplay && needsPersistenceTools(messages);
+  const providerTools = [
+    ...(usePersistenceTools ? ZYON_PROVIDER_TOOLS : []),
+    ...(!historicalReplay && macroResearchRequest ? [ZYON_WEB_SEARCH_TOOL] : []),
+  ];
   const providerRequestPayload = (
     providerModel: string,
     modelIndex: number,
     streaming = false,
-  ) => ({
-    model: providerModel,
-    max_tokens: usePersistenceTools
-      ? (modelIndex === 0 ? 1_800 : 1_500)
-      : modelIndex === 0 ? 1_800 : 1_400,
-    temperature: 0.2,
-    system: modelIndex === 0 ? system : fallbackSystem,
-    metadata: { user_id: actor.userId },
-    tools: usePersistenceTools ? ZYON_PROVIDER_TOOLS : undefined,
-    messages: modelIndex === 0 ? messages : compactProviderMessages(messages),
-    ...(streaming ? { stream: true } : {}),
-  });
+    webSearchEnabled = macroResearchRequest,
+  ) => {
+    const selectedTools = providerTools.filter((tool) =>
+      webSearchEnabled || tool.name !== "web_search");
+    const selectedSystem = modelIndex === 0 ? system : fallbackSystem;
+    const boundedResearchSystem = selectedSystem
+      .replace(
+        "CURRENT MACRO RESEARCH IS ENABLED FOR THIS TURN through the web_search server tool. Use it to verify current or overnight releases, official statements, earnings and geopolitical developments before answering. Prefer primary sources and cite the sources returned by the tool.",
+        "CURRENT MACRO WEB RESEARCH WAS UNAVAILABLE FOR THIS FALLBACK TURN. Use only the timestamped Kwant Desk evidence snapshot and label any remaining current fact as unverified.",
+      )
+      .replace(
+        "Never tell the trader that you cannot access news, economic events, current research or live price context on this turn. You have web research plus Kwant Desk's timestamped market evidence. If a specific source returns no result, state that narrow limitation and continue from the remaining evidence.",
+        "You still have Kwant Desk's timestamped price, calendar and macro evidence. State only the narrow web-research limitation and continue from the supplied evidence instead of asking the trader to provide it again.",
+      );
+    return {
+      model: providerModel,
+      max_tokens: usePersistenceTools
+        ? (modelIndex === 0 ? 1_800 : 1_500)
+        : modelIndex === 0 ? 1_800 : 1_400,
+      temperature: 0.2,
+      system: !webSearchEnabled && macroResearchRequest
+        ? boundedResearchSystem
+        : selectedSystem,
+      metadata: { user_id: actor.userId },
+      tools: selectedTools.length ? selectedTools : undefined,
+      messages: modelIndex === 0 ? messages : compactProviderMessages(messages),
+      ...(streaming ? { stream: true } : {}),
+    };
+  };
+
+  const runJsonProvider = async (args: {
+    providerModel: string;
+    modelIndex: number;
+    timeoutMs: number;
+    webSearchEnabled: boolean;
+  }) => {
+    const basePayload = providerRequestPayload(
+      args.providerModel,
+      args.modelIndex,
+      false,
+      args.webSearchEnabled,
+    );
+    let continuationMessages: unknown[] = [...basePayload.messages];
+    let lastResponse: Response | null = null;
+    let requestId: string | null = null;
+    for (let continuation = 0; continuation < 3; continuation += 1) {
+      lastResponse = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        signal: AbortSignal.timeout(args.timeoutMs),
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": apiKey,
+          "anthropic-version": ANTHROPIC_VERSION,
+        },
+        body: JSON.stringify({
+          ...basePayload,
+          messages: continuationMessages,
+        }),
+      });
+      requestId = lastResponse.headers.get("request-id")
+        ?? lastResponse.headers.get("x-request-id")
+        ?? requestId;
+      if (!lastResponse.ok) {
+        return {
+          response: lastResponse,
+          result: null,
+          requestId,
+          errorText: await lastResponse.text(),
+        };
+      }
+      const result = await lastResponse.json() as ClaudeResult;
+      if (result.stop_reason !== "pause_turn") {
+        return { response: lastResponse, result, requestId, errorText: "" };
+      }
+      continuationMessages = [
+        ...continuationMessages,
+        { role: "assistant", content: result.content ?? [] },
+      ];
+    }
+    return {
+      response: lastResponse,
+      result: null,
+      requestId,
+      errorText: "Anthropic web research did not finish after three continuation turns.",
+    };
+  };
 
   const finalizeResult = async (
     result: ClaudeResult,
     providerRequestId: string | null,
     persistenceClient?: SupabaseClient,
   ): Promise<Record<string, unknown>> => {
-    const text = extractClaudeText(result);
+    const answerText = extractClaudeText(result);
+    const sources = macroResearchRequest ? researchSources(result) : [];
+    const text = sources.length
+      ? `${answerText}\n\nSources\n${sources.map((source) => `- [${source.title}](${source.url})`).join("\n")}`
+      : answerText;
     const toolBlock = historicalReplay ? undefined : result.content?.find(
       (block): block is ToolUseBlock =>
         block?.type === "tool_use" && block.name === "record_trading_journal",
@@ -2025,7 +2145,11 @@ export async function POST(request: NextRequest) {
     };
   };
 
-  const wantsClientStream = request.headers.get("accept")?.includes("application/x-ndjson");
+  // Anthropic's server-side web search can return pause_turn and must be
+  // continued with the complete assistant content. Keep research turns on the
+  // bounded JSON path below; ordinary ZYON chat remains streamed.
+  const wantsClientStream = request.headers.get("accept")?.includes("application/x-ndjson")
+    && !macroResearchRequest;
   if (wantsClientStream) {
     const encoder = new TextEncoder();
     const stream = new ReadableStream<Uint8Array>({
@@ -2160,6 +2284,7 @@ export async function POST(request: NextRequest) {
   }
 
   const wantsDurableReply = !historicalReplay
+    && !macroResearchRequest
     && request.headers.get("prefer")?.includes("respond-async");
   if (wantsDurableReply) {
     // The browser used to own one long-lived response stream for the entire
@@ -2280,45 +2405,58 @@ export async function POST(request: NextRequest) {
     // smaller and prevents an optional tool-schema rejection from taking the
     // entire analyst offline. The tools remain available throughout an active
     // journal or Gameplan conversation.
+    let result: ClaudeResult | null = null;
     let response: Response | null = null;
     let providerError = "";
     let providerStatus: number | null = null;
     let providerRequestId: string | null = null;
     let providerRetryAfterMs: number | null = null;
     for (const [modelIndex, providerModel] of providerModels.entries()) {
-      try {
-        response = await fetch("https://api.anthropic.com/v1/messages", {
-          method: "POST",
-          signal: AbortSignal.timeout(providerTimeouts[modelIndex] ?? 6_000),
-          headers: {
-            "Content-Type": "application/json",
-            "x-api-key": apiKey,
-            "anthropic-version": ANTHROPIC_VERSION,
-          },
-          body: JSON.stringify(providerRequestPayload(providerModel, modelIndex)),
-        });
-        providerRequestId = response.headers.get("request-id")
-          ?? response.headers.get("x-request-id")
-          ?? providerRequestId;
-        providerRetryAfterMs = retryAfterMilliseconds(response.headers.get("retry-after"));
-        if (response.ok) break;
-        providerStatus = response.status;
-        providerError = await response.text();
-        console.error(
-          "ZYON provider error",
-          response.status,
-          providerModel,
-          providerError.slice(0, 800),
-        );
-        if (response.status === 401 || response.status === 403 || response.status === 429) break;
-      } catch (modelError) {
-        providerError = modelError instanceof Error ? modelError.message : "provider request failed";
-        console.error("ZYON provider request failed", providerModel, providerError);
-        response = null;
+      let webSearchEnabled = macroResearchRequest;
+      for (let capabilityAttempt = 0; capabilityAttempt < (macroResearchRequest ? 2 : 1); capabilityAttempt += 1) {
+        try {
+          const attempt = await runJsonProvider({
+            providerModel,
+            modelIndex,
+            timeoutMs: macroResearchRequest
+              ? 80_000
+              : providerTimeouts[modelIndex] ?? 6_000,
+            webSearchEnabled,
+          });
+          response = attempt.response;
+          result = attempt.result;
+          providerRequestId = attempt.requestId ?? providerRequestId;
+          providerRetryAfterMs = retryAfterMilliseconds(response?.headers.get("retry-after") ?? null);
+          if (result) break;
+          providerStatus = response?.status ?? null;
+          providerError = attempt.errorText;
+          console.error(
+            "ZYON provider error",
+            providerStatus,
+            providerModel,
+            providerError.slice(0, 800),
+          );
+          if (webSearchEnabled && (providerStatus === 400 || providerStatus === 404)) {
+            // A provider/model capability mismatch must not take ZYON offline.
+            // Retry the same evidence-rich answer without live search and be
+            // explicit in the prompt about the bounded snapshot limitation.
+            webSearchEnabled = false;
+            continue;
+          }
+          break;
+        } catch (modelError) {
+          providerError = modelError instanceof Error ? modelError.message : "provider request failed";
+          console.error("ZYON provider request failed", providerModel, providerError);
+          response = null;
+          result = null;
+          break;
+        }
       }
+      if (result) break;
+      if (providerStatus === 401 || providerStatus === 403 || providerStatus === 429) break;
     }
 
-    if (!response?.ok) {
+    if (!result) {
       if (historicalReplay) {
         return NextResponse.json({
           text: historicalReplayFallbackText(historicalReplay, finalUserText),
@@ -2354,7 +2492,6 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const result = await response.json() as ClaudeResult;
     const finalized = await finalizeResult(result, providerRequestId);
     return NextResponse.json(finalized, {
       headers: { "Cache-Control": "private, no-store, max-age=0" },
