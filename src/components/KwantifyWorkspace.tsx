@@ -2920,19 +2920,6 @@ function WorkspaceChartPane({
   const gammaInstrument = displayCmeSymbol(pane.symbol);
   const needsOrderFlowHistory = indicators.some((instance) =>
     instance.enabled && CHART_INDICATOR_BY_ID.get(instance.indicatorId)?.requiresOrderFlow);
-  const needsExecutionTape = indicators.some((instance) =>
-    instance.enabled && [
-      "big-trades",
-      "imbalance-tracker",
-      "imbalance-rejector",
-      "kwant-stats",
-      "kwant-profile",
-      "daily-volume-profile",
-      "weekly-volume-profile",
-      "ask-bid-volume-profile",
-      "delta-profile",
-      "deep-m-effort-nq",
-    ].includes(instance.indicatorId));
   const dailyProfileInstance = indicators.find((instance) =>
     instance.enabled
     && [
@@ -3161,22 +3148,40 @@ function WorkspaceChartPane({
       liveFrameRef.current = null;
     }
 
-    // Paint the exact recent Rithmic event bars as soon as the private bridge
-    // answers. The longer five-day CME backfill continues below and merges in
-    // silently, so selecting 40 Range is useful in seconds rather than being
-    // held behind the complete historical download.
+    // Order-flow is an enrichment, never a prerequisite for drawing ordinary
+    // CME history. Fetch it independently so a slow local bridge cannot leave
+    // a newly selected 1m/5m chart empty. Exact event bars can still paint as
+    // soon as the bridge answers while their longer CME backfill runs below.
     if (
       pane.broker === "Databento"
       && needsOrderFlowHistory
       && resolvedContractSymbol
-      && isEventBasedChartInterval(pane.timeframe)
     ) {
       void fetchWorkspaceOrderFlow(
         pane.symbol,
         pane.timeframe,
         resolvedContractSymbol,
       ).then((result) => {
-        if (cancelled || !result?.candles.length) return;
+        if (cancelled || !result) return;
+        const exactTape = result.trades.length ? result.trades : result.records;
+        const mergedTape = mergeInstitutionalTradeTape(
+          latestMarketTradesRef.current,
+          exactTape,
+        );
+        latestMarketTradesRef.current = mergedTape;
+        if (mergedTape.length) {
+          workspaceExecutionTape.set(
+            workspaceOrderFlowKey(pane.symbol, pane.timeframe),
+            mergedTape,
+          );
+          setMarketTrades(mergedTape);
+          void writeExecutionTapeCache(pane.symbol, pane.timeframe, mergedTape);
+        }
+
+        // Time-based candles come from the complete CME history request. Only
+        // event-based intervals use the bridge's exact reconstructed candles;
+        // otherwise a six-hour enrichment could overwrite a full week view.
+        if (!isEventBasedChartInterval(pane.timeframe) || !result.candles.length) return;
         const exactCandles = sanitizeCandles(result.candles, pane.symbol);
         if (!exactCandles.length) return;
         const cutoff = exactCandles[0].timestamp;
@@ -3184,24 +3189,15 @@ function WorkspaceChartPane({
           ...latestCandlesRef.current.filter((candle) => candle.timestamp < cutoff),
           ...exactCandles,
         ], pane.symbol);
-        const exactTape = result.trades.length ? result.trades : result.records;
-        const mergedTape = mergeInstitutionalTradeTape(
-          latestMarketTradesRef.current,
-          exactTape,
-        );
         latestCandlesRef.current = mergedCandles;
-        latestMarketTradesRef.current = mergedTape;
-        workspaceExecutionTape.set(
-          workspaceOrderFlowKey(pane.symbol, pane.timeframe),
-          mergedTape,
-        );
         historyHydratedRef.current = true;
         setCandles(mergedCandles);
         setMarketTrades(mergedTape);
         setLoading(false);
         setError(null);
         void writeChartHistoryCache(pane.symbol, pane.timeframe, mergedCandles);
-        void writeExecutionTapeCache(pane.symbol, pane.timeframe, mergedTape);
+      }).catch(() => {
+        // Base OHLC history remains usable if optional order-flow is offline.
       });
     }
 
@@ -3263,13 +3259,7 @@ function WorkspaceChartPane({
       );
       const cachedIsHydrated = cachedCandles.length > 0
         && cachedTailIsFresh
-        && (!needsFiveDayBackfill || hasFiveDayHistory(cachedHistory, pane.timeframe))
-        && (
-          !needsOrderFlowHistory
-          || cachedCandles.some((candle) =>
-            Number(candle.askVolume ?? 0) + Number(candle.bidVolume ?? 0) > 0)
-        )
-        && (!needsExecutionTape || cachedMarketTrades.length > 0);
+        && (!needsFiveDayBackfill || hasFiveDayHistory(cachedHistory, pane.timeframe));
       if (cachedBase.length) {
         latestCandlesRef.current = cachedCandles;
         historyHydratedRef.current = true;
@@ -3290,7 +3280,7 @@ function WorkspaceChartPane({
           pane.broker,
           period,
           500,
-          needsOrderFlowHistory,
+          false,
           requestController.signal,
         );
         if (cancelled) return;
@@ -3362,7 +3352,6 @@ function WorkspaceChartPane({
       requestController.abort();
     };
   }, [
-    needsExecutionTape,
     needsOrderFlowHistory,
     pane.broker,
     pane.symbol,
@@ -7206,25 +7195,18 @@ export default function KwantifyWorkspace({
     const historicalLimit = getHistoricalCandleLimit(period, selectedTimeframe, outputsize);
 
     if (activeChartBrokerLabel === "Databento") {
-      const cached = await readChartHistoryCache(selectedInstrument, selectedTimeframe);
+      const cached = await readCompatibleChartHistoryCache(selectedInstrument, selectedTimeframe);
       if (signal?.aborted) throw new DOMException("Chart request cancelled.", "AbortError");
       try {
-        const response = await fetch(
-          `/api/databento/market?symbol=${encodeURIComponent(selectedInstrument)}&timeframe=${encodeURIComponent(selectedTimeframe)}&days=${DEFAULT_CHART_HISTORY_CALENDAR_DAYS}`,
-          {
-            cache: "no-store",
-            signal: signal
-              ? AbortSignal.any([
-                  signal,
-                  AbortSignal.timeout(isEventBasedChartInterval(selectedTimeframe) ? 90_000 : 30_000),
-                ])
-              : AbortSignal.timeout(isEventBasedChartInterval(selectedTimeframe) ? 90_000 : 30_000),
-          },
+        const downloaded = await fetchWorkspaceCandles(
+          selectedInstrument,
+          selectedTimeframe,
+          "Databento",
+          period,
+          outputsize,
+          false,
+          signal,
         );
-        const payload = await response.json();
-        if (!response.ok) throw new Error(payload.error ?? `CME did not return candles for ${displayCmeSymbol(selectedInstrument)}.`);
-        const downloaded = sanitizeCandles((payload.candles ?? []) as Candle[], selectedInstrument);
-        if (downloaded.length) await writeChartHistoryCache(selectedInstrument, selectedTimeframe, downloaded);
         const merged = mergeChartHistory(cached?.candles ?? [], downloaded);
         return merged.filter((candle) => candle.timestamp >= from);
       } catch (error) {
@@ -9340,6 +9322,9 @@ export default function KwantifyWorkspace({
 
   const selectTimeframe = (timeframe: string) => {
     clearBacktest();
+    if (activeWorkspacePane.broker === "Databento") {
+      void warmDatabentoChartHistory(activeWorkspacePane.symbol, timeframe);
+    }
     updateWorkspacePane(activePaneId, { timeframe });
     setSelectedTimeframe(timeframe);
   };
@@ -9348,6 +9333,9 @@ export default function KwantifyWorkspace({
     const pane = workspacePanes.find((candidate) => candidate.id === paneId);
     if (!pane || !supportsChartInterval(timeframe, pane.broker)) return false;
     clearBacktest();
+    if (pane.broker === "Databento") {
+      void warmDatabentoChartHistory(pane.symbol, timeframe);
+    }
     updateWorkspacePane(paneId, { timeframe });
     if (paneId === activePaneId) setSelectedTimeframe(timeframe);
     return true;
