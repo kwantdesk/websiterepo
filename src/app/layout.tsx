@@ -12,6 +12,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
+        <meta name="theme-color" content="#000000" />
         <script dangerouslySetInnerHTML={{ __html: themeBootstrapScript() }} />
       </head>
       <body><ThemeProvider>{children}</ThemeProvider></body>

@@ -4,6 +4,7 @@ import { applyTheme } from "@/lib/theme";
 const USER_PREFERENCES_TABLE = "user_preferences";
 const USER_PREFERENCES_METADATA_KEY = "kwantdesk_preferences";
 const LEGACY_PREFERENCES_OWNER_KEY = "kwantdesk:legacy-preferences-owner:v1";
+const ACTIVE_PREFERENCES_OWNER_KEY = "kwantdesk:active-preferences-owner:v1";
 const SOCIAL_OBJECTS_TABLE = "social_objects";
 const SOCIAL_PREFERENCES_ID = "account-preferences";
 
@@ -257,6 +258,15 @@ export async function hydrateUserPreferences(
 ) {
   const current = captureBrowserPreferences();
   const themeAtHydrationStart = current.values["olisa-theme"];
+  const activePreferenceOwner = window.localStorage.getItem(ACTIVE_PREFERENCES_OWNER_KEY);
+  const legacyPreferenceOwner = window.localStorage.getItem(LEGACY_PREFERENCES_OWNER_KEY);
+  const localThemeBelongsToUser = Boolean(
+    themeAtHydrationStart
+    && (
+      activePreferenceOwner === user.id
+      || (!activePreferenceOwner && legacyPreferenceOwner === user.id)
+    ),
+  );
   const cloud = await loadCloudPreferences(supabase, user);
   const scoped = readScopedPreferences(user.id);
   let selected = cloud;
@@ -317,11 +327,23 @@ export async function hydrateUserPreferences(
           : {}),
       },
     };
+  } else if (localThemeBelongsToUser && themeAtHydrationStart) {
+    // The already-painted local theme is the last skin this same account used
+    // on this browser. Do not let an older cloud snapshot repaint it during
+    // every refresh; new browsers still receive the account-backed theme.
+    selected = {
+      ...selected,
+      values: {
+        ...selected.values,
+        "olisa-theme": themeAtHydrationStart,
+      },
+    };
   }
 
   const changed = preferenceSnapshotFingerprint(current) !== preferenceSnapshotFingerprint(selected);
   applyBrowserPreferences(selected);
   applyTheme();
+  window.localStorage.setItem(ACTIVE_PREFERENCES_OWNER_KEY, user.id);
   saveScopedPreferences(user.id, selected);
   return { changed, snapshot: selected };
 }
