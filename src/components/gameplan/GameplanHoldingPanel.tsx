@@ -263,7 +263,7 @@ export default function GameplanHoldingPanel({ onPendingChange }: Props) {
     return (
       <section className="gameplan-holding-editable overflow-hidden rounded-2xl border border-dashed border-border bg-panel/70 p-4">
         <div className="flex items-center gap-2"><FilePenLine className="h-4 w-4 text-muted" /><span className="text-[10px] font-semibold">Your Gameplan</span></div>
-        <p className="mt-2 text-[8px] leading-4 text-muted">No plan is waiting for approval. Finish one with Zion and it will appear here and in Socials → Record.</p>
+        <p className="mt-2 text-[8px] leading-4 text-muted">No plan is waiting for approval. Finish one with Zyon and it will appear here and in Socials → Record.</p>
         {notice ? <p className="mt-2 text-[8px] text-danger">{notice}</p> : null}
         <button type="button" onClick={() => router.push(zyonGameplanLaunchHref())} className="mt-3 flex h-8 items-center gap-2 rounded-lg border border-primary/25 bg-primary/[0.07] px-3 text-[8px] font-semibold text-primary hover:bg-primary/10"><Sparkles className="h-3.5 w-3.5" />Make Gameplan</button>
       </section>
