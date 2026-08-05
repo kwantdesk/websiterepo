@@ -74,6 +74,7 @@ export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "weekly-volume-profile",
   "ask-bid-volume-profile",
   "delta-profile",
+  "source-code-indicator",
 ]);
 
 type Props = {
@@ -170,6 +171,7 @@ export default function ChartIndicatorsControl({
   const filtered = useMemo(() => {
     const needle = search.trim().toLowerCase();
     return CHART_INDICATOR_CATALOG
+      .filter((definition) => definition.id !== "source-code-indicator")
       .filter((definition) => category === "All" || definition.category === category)
       .filter((definition) =>
         !needle
@@ -278,6 +280,9 @@ export default function ChartIndicatorsControl({
                 {indicators.map((instance) => {
                   const definition = CHART_INDICATOR_BY_ID.get(instance.indicatorId);
                   if (!definition) return null;
+                  const displayName = instance.indicatorId === "source-code-indicator"
+                    ? String(instance.settings?.scriptName ?? definition.name)
+                    : definition.name;
                   return (
                     <div key={instance.instanceId} className="flex items-center gap-2 rounded-xl px-2 py-2 hover:bg-surface/60">
                       <button
@@ -294,7 +299,7 @@ export default function ChartIndicatorsControl({
                       </button>
                       <div className="min-w-0 flex-1">
                         <div className={`truncate text-[11px] font-medium ${instance.enabled ? "text-foreground" : "text-muted"}`}>
-                          {definition.name}
+                          {displayName}
                         </div>
                         <div className="mt-0.5 truncate text-[8px] uppercase tracking-[0.12em] text-muted/70">
                           {definition.category} · live
@@ -478,7 +483,7 @@ export default function ChartIndicatorsControl({
           >
             <div className="flex items-center justify-between border-b border-border px-5 py-4">
               <div>
-                <div className="text-[15px] font-semibold text-foreground">{settingsDefinition.name}</div>
+                <div className="text-[15px] font-semibold text-foreground">{settingsInstance.indicatorId === "source-code-indicator" ? String(settingsInstance.settings?.scriptName ?? settingsDefinition.name) : settingsDefinition.name}</div>
                 <div className="mt-0.5 text-[9px] uppercase tracking-[0.12em] text-muted">{settingsDefinition.category} · live calculation</div>
               </div>
               <button type="button" onClick={() => setSettingsInstanceId(null)} className="flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground">

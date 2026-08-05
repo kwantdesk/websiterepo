@@ -157,6 +157,7 @@ export const CHART_INDICATOR_CATALOG: ChartIndicatorDefinition[] = [
   indicator("Overlay Timeframe Highlight", "Overlays", "Highlights higher-timeframe candle boundaries."),
   indicator("Annotations Overlay", "Overlays", "Displays structured annotations over price."),
   indicator("Text on Chart", "Overlays", "Data-driven text labels on the chart."),
+  indicator("Source Code Indicator", "Overlays", "A sandboxed Pine Script v5/v6 compatibility indicator authored or imported in Kwant Desk.", false, "Kwantify"),
 
   indicator("KWANT Stats", "KWANT Systems", "Per-bar bid/ask volume, delta, trade pace, exhaustion and effort statistics.", true, "Kwantify"),
   indicator("KWANT-M IVB", "KWANT Systems", "Opening-range and initial-value breakout structure.", true, "Reference", "Deep-M IVB"),

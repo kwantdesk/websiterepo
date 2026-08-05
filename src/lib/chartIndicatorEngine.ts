@@ -1,6 +1,7 @@
 import type { Candle } from "@/lib/backtester";
 import type { ChartIndicatorInstance } from "@/lib/chartIndicatorCatalog";
 import { calculateDeepEffort } from "@/lib/deepEffort";
+import { runPineScript } from "@/lib/pineScriptRuntime";
 
 export type CalculatedIndicatorSeries = {
   key: string;
@@ -312,6 +313,12 @@ export function calculateIndicatorSeries(
 ): CalculatedIndicatorSeries[] {
   if (!instance.enabled || candles.length === 0) return [];
   const key = instance.indicatorId;
+
+  if (key === "source-code-indicator") {
+    const source = settingString(instance, "source", "");
+    if (!source) return [];
+    return runPineScript(source, candles, theme, instance.instanceId).series;
+  }
 
   if (key === "deep-m-effort-nq") {
     const useThemeColors = settingBoolean(instance, "useThemeColors", true);

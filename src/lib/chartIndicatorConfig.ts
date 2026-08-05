@@ -43,6 +43,7 @@ export const LIVE_CHART_INDICATOR_IDS = new Set([
   "depth-of-market",
   "kwant-stats",
   "gamma-levels",
+  "source-code-indicator",
 ]);
 export const VOLUME_PROFILE_INDICATOR_IDS = new Set([
   "kwant-profile",

@@ -3,6 +3,7 @@
 import KwantSelect from "@/components/ui/KwantSelect";
 import TimeZoneSelect from "@/components/ui/TimeZoneSelect";
 import ChartIndicatorsControl from "@/components/ChartIndicatorsControl";
+import SourceCodeIndicatorsControl from "@/components/SourceCodeIndicatorsControl";
 import KwantLoader from "@/components/KwantLoader";
 import LiveGexPanelBoundary from "@/components/backtesting/LiveGexPanelBoundary";
 import LiveGexPanel from "@/components/backtesting/HistoricalGexPanel";
@@ -10019,6 +10020,12 @@ export default function KwantifyWorkspace({
             timeframe={formatChartInterval(activeWorkspacePane.timeframe)}
             indicators={paneIndicators[activePaneId] ?? []}
             chartSettings={chartSettings}
+            onChange={(next) => setIndicatorsForPane(activePaneId, next)}
+          />
+          <SourceCodeIndicatorsControl
+            instrument={displayCmeSymbol(activeWorkspacePane.symbol)}
+            timeframe={formatChartInterval(activeWorkspacePane.timeframe)}
+            indicators={paneIndicators[activePaneId] ?? []}
             onChange={(next) => setIndicatorsForPane(activePaneId, next)}
           />
           <TimeZoneSelect
