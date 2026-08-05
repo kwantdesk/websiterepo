@@ -13,8 +13,9 @@ import type {
 } from "@/lib/kwantBotInterpreter";
 import { fetchMarketIndexSnapshots } from "@/lib/marketIndices.server";
 import { createClient } from "@/lib/supabase/server";
+import { buildZyonPriceAnalytics } from "@/lib/zyonPriceContext";
 
-type WindowName = "1H" | "1D" | "1W";
+type WindowName = "1H" | "4H" | "1D" | "1W";
 export type ZyonMarketContextFocus = "FULL" | "GAMMA";
 
 export type ZyonMarketWindow = {
@@ -121,8 +122,8 @@ async function marketHistory(root: KwantBotMarketRoot) {
         daily: normalizeBars(rawHistory.daily),
       };
       entry.value = history;
-      entry.expiresAt = Date.now() + 30_000;
-      entry.staleUntil = Date.now() + 30 * 60_000;
+      entry.expiresAt = Date.now() + 60_000;
+      entry.staleUntil = Date.now() + 6 * 60 * 60_000;
       return history;
     })
     .catch((error) => {
@@ -323,7 +324,7 @@ export async function getZyonMarketContext(
   const gammaFocused = focus === "GAMMA";
   const results = await Promise.allSettled([
     timeout(getKwantBotMarketContext(root), gammaFocused ? 2_600 : 4_500, "options context"),
-    timeout(marketHistory(root), gammaFocused ? 2_600 : 4_500, "CME history"),
+    timeout(marketHistory(root), gammaFocused ? 3_500 : 8_500, "CME history"),
     gammaFocused
       ? Promise.resolve(null)
       : timeout(archivedMarketMemory(actorId, root), 2_500, "market memory"),
@@ -369,6 +370,7 @@ export async function getZyonMarketContext(
     .sort((left, right) => Date.parse(left.date) - Date.parse(right.date))
     .slice(0, 30);
   const latestBar = bars.at(-1) ?? null;
+  const priceAnalytics = buildZyonPriceAnalytics(bars);
   return {
     authority: "KWANT_DESK_SERVER",
     focus,
@@ -382,8 +384,11 @@ export async function getZyonMarketContext(
       latestPrice: latestBar?.close ?? null,
       latestPriceAgeMs: latestBar ? Math.max(0, now - latestBar.timestamp) : null,
       path: summarizePricePath(bars, now),
+      sessions: priceAnalytics.sessions,
+      structure: priceAnalytics.structure,
       windows: {
         oneHour: summarizeWindow(bars, "1H", 60 * 60_000, now),
+        fourHour: summarizeWindow(bars, "4H", 4 * 60 * 60_000, now),
         oneDay: summarizeWindow(bars, "1D", 24 * 60 * 60_000, now),
         oneWeek: summarizeWindow(history.daily, "1W", 7 * 24 * 60 * 60_000, now),
       },

@@ -24,10 +24,21 @@ export async function GET(request: NextRequest) {
   try {
     const context = await getZyonMarketContext(root, actor.userId);
     const priceWindows = context.priceHistory.windows;
+    const priceSessions = context.priceHistory.sessions;
+    const marketStructure = context.priceHistory.structure;
     const sources = {
       modelProvider: providerConfigured,
       optionsAndGameplan: Boolean(context.current),
-      cmeHistory: Boolean(priceWindows.oneHour && priceWindows.oneDay && priceWindows.oneWeek),
+      cmeHistory: Boolean(
+        priceWindows.oneHour
+        && priceWindows.fourHour
+        && priceWindows.oneDay
+        && priceWindows.oneWeek
+        && priceSessions.current
+        && priceSessions.previous
+        && marketStructure.oneHour
+        && marketStructure.fourHour
+      ),
       accountMarketMemory: Boolean(context.marketMemory),
       economicCalendar: Boolean(context.economicCalendar),
       relatedMarkets: context.relatedMarkets.length > 0,
