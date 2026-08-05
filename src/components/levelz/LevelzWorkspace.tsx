@@ -30,6 +30,7 @@ import { defaultChartSettings, loadStoredChartSettings, type ChartSettings } fro
 import type { GameplanPayload } from "@/lib/gameplan";
 import {
   fetchInstitutionalVolumeProfile,
+  readCachedInstitutionalVolumeProfiles,
   type InstitutionalVolumeProfile,
 } from "@/lib/institutionalMarketData";
 import { useStructureLevels } from "@/hooks/useStructureLevels";
@@ -129,6 +130,7 @@ type ValueAreaPayload = {
 const LEVELZ_LAYOUT_STORAGE_KEY = "kwantdesk:levelz-layout:v1";
 const LEVELZ_SNAPSHOT_STORAGE_KEY = "kwantdesk:levelz-snapshots:v1";
 const LEVELZ_INTELLIGENCE_COLLAPSED_STORAGE_KEY = "kwantdesk:levelz-intelligence-collapsed:v1";
+const VALUE_AREA_SESSION_CACHE_PREFIX = "kwantdesk:value-area:last-good:v1:";
 const FIVE_DAY_HISTORY_DAYS = 8;
 const MARKET_CACHE_MS = 15_000;
 
@@ -209,6 +211,19 @@ function rethemeSnapshot(snapshot: LevelSnapshot, family: LevelFamily, settings:
       })),
     };
   }
+  if (family === "value-area") {
+    return {
+      ...snapshot,
+      levels: snapshot.levels.map((level) => ({
+        ...level,
+        color: level.kind.startsWith("CUR_")
+          ? settings.upColor
+          : level.kind.startsWith("PW_")
+            ? "#F59E0B"
+            : "#38BDF8",
+      })),
+    };
+  }
   if (family !== "gameplan") return snapshot;
   const roleColors: Record<string, string> = {
     MAGNET: settings.upColor,
@@ -228,18 +243,42 @@ function rethemeSnapshot(snapshot: LevelSnapshot, family: LevelFamily, settings:
 }
 
 function readStoredLevelSnapshot(config: PanelConfig, settings: ChartSettings) {
-  if (typeof window === "undefined" || (config.family !== "gamma" && config.family !== "gameplan")) return null;
+  if (typeof window === "undefined" || config.family === "structure") return null;
   try {
     const stored = JSON.parse(window.localStorage.getItem(LEVELZ_SNAPSHOT_STORAGE_KEY) ?? "{}") as Record<string, unknown>;
     const snapshot = stored[storedSnapshotKey(config)];
-    return isStoredLevelSnapshot(snapshot) ? rethemeSnapshot(snapshot, config.family, settings) : null;
+    if (isStoredLevelSnapshot(snapshot)) return rethemeSnapshot(snapshot, config.family, settings);
+
+    // Charts and LEVELZ share the same validated prior-period payload. If the
+    // main chart already restored it during this browser session, LEVELZ can
+    // draw PD/PW levels immediately instead of repeating a cold CME request.
+    if (config.family === "value-area") {
+      const cacheKey = marketSymbol(config.instrument).toUpperCase();
+      const raw = window.sessionStorage.getItem(`${VALUE_AREA_SESSION_CACHE_PREFIX}${cacheKey}`);
+      if (raw) {
+        const payload = JSON.parse(raw) as ValueAreaPayload;
+        const profiles = [payload.daily, payload.weekly];
+        const valid = payload.symbol?.toUpperCase() === cacheKey
+          && payload.method === "TRADE_BY_TRADE"
+          && profiles.every((profile) => [
+            profile.vah,
+            profile.val,
+            profile.poc,
+            profile.vwap,
+            profile.totalVolume,
+            profile.tradeRecords,
+          ].every(Number.isFinite) && profile.val <= profile.poc && profile.poc <= profile.vah);
+        if (valid) return makeValueAreaSnapshot(payload, settings, null);
+      }
+    }
+    return null;
   } catch {
     return null;
   }
 }
 
 function storeLevelSnapshot(config: PanelConfig, snapshot: LevelSnapshot) {
-  if (typeof window === "undefined" || !snapshot.levels.length || (config.family !== "gamma" && config.family !== "gameplan")) return;
+  if (typeof window === "undefined" || !snapshot.levels.length || config.family === "structure") return;
   try {
     const stored = JSON.parse(window.localStorage.getItem(LEVELZ_SNAPSHOT_STORAGE_KEY) ?? "{}") as Record<string, unknown>;
     stored[storedSnapshotKey(config)] = snapshot;
@@ -719,9 +758,23 @@ async function parseJsonResponse<T extends { error?: string }>(response: Respons
   return payload;
 }
 
-async function requestJson<T extends { error?: string }>(url: string) {
-  const response = await fetch(url, { cache: "no-store" });
+async function requestJson<T extends { error?: string }>(url: string, init: RequestInit = { cache: "no-store" }) {
+  const response = await fetch(url, init);
   return parseJsonResponse<T>(response, "Level data is unavailable.");
+}
+
+async function readCachedDevelopingProfile(config: PanelConfig) {
+  try {
+    const tradingDate = chicagoTradingDate(Date.now());
+    const profiles = await readCachedInstitutionalVolumeProfiles(config.instrument, "daily");
+    for (let index = profiles.length - 1; index >= 0; index -= 1) {
+      const profile = profiles[index];
+      if (profile.tradingDate === tradingDate) return profile;
+    }
+  } catch {
+    // A missing browser cache is normal on the first visit.
+  }
+  return null;
 }
 
 async function buildLevelSnapshot(config: PanelConfig, settings: ChartSettings) {
@@ -746,16 +799,31 @@ async function buildLevelSnapshot(config: PanelConfig, settings: ChartSettings) 
     const payload = await requestJson<GameplanPayload & { error?: string }>(`/api/gameplan?root=${root}&session=newyork`);
     return makeGameplanSnapshot(payload, settings, isNewYorkOptionsOpen());
   }
-  const [payload, developing] = await Promise.all([
-    requestJson<ValueAreaPayload>(`/api/databento/value-area?symbol=${encodeURIComponent(marketSymbol(config.instrument))}`),
-    fetchInstitutionalVolumeProfile({
-      symbol: config.instrument,
-      period: "daily",
-      tradingDate: chicagoTradingDate(Date.now()),
-      groupTicks: 1,
-      valueAreaPercent: 70,
-    }),
+  const profileRequest = fetchInstitutionalVolumeProfile({
+    symbol: config.instrument,
+    period: "daily",
+    tradingDate: chicagoTradingDate(Date.now()),
+    groupTicks: 1,
+    valueAreaPercent: 70,
+  });
+  const [payload, cachedDeveloping] = await Promise.all([
+    requestJson<ValueAreaPayload>(
+      `/api/databento/value-area?symbol=${encodeURIComponent(marketSymbol(config.instrument))}`,
+      { cache: "force-cache" },
+    ),
+    readCachedDevelopingProfile(config),
   ]);
+  let developing = cachedDeveloping;
+  if (!developing) {
+    developing = await Promise.race([
+      profileRequest,
+      new Promise<null>((resolve) => window.setTimeout(() => resolve(null), 450)),
+    ]);
+  } else {
+    // Refresh the developing profile for the next lightweight LEVELZ pass,
+    // but never make prior-period levels wait for the local data bridge.
+    void profileRequest;
+  }
   return makeValueAreaSnapshot(payload, settings, developing);
 }
 
