@@ -24,6 +24,9 @@ import { normalizeSharedTradeMessage } from "@/lib/sharedTrades";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
+const OWNER_STREAK_CORRECTION_EMAIL = "kwantdesk@gmail.com";
+const OWNER_STREAK_CORRECTION_VERSION = "2026-08-05-five-day";
+
 type SocialRow = {
   user_id: string;
   id: string;
@@ -674,12 +677,22 @@ export async function POST(request: NextRequest) {
       const storedActivity = activityProfile?.payload && typeof activityProfile.payload === "object"
         ? activityProfile.payload as Record<string, unknown>
         : {};
-      const applicationStreak = calculateActivityStreakUpdate({
+      const calculatedStreak = calculateActivityStreakUpdate({
         currentStreak: Number(storedActivity.activityStreak),
         longestStreak: Number(storedActivity.longestActivityStreak),
         lastActivityDate: cleanText(storedActivity.lastActivityDate, 10),
         lastSeenAt: cleanText(storedActivity.lastSeenAt, 60),
       });
+      const applyOwnerCorrection = actor.label.trim().toLowerCase() === OWNER_STREAK_CORRECTION_EMAIL
+        && cleanText(storedActivity.activityStreakCorrection, 40) !== OWNER_STREAK_CORRECTION_VERSION
+        && calculatedStreak.currentStreak < 5;
+      const applicationStreak = applyOwnerCorrection
+        ? {
+            ...calculatedStreak,
+            currentStreak: 5,
+            longestStreak: Math.max(5, calculatedStreak.longestStreak),
+          }
+        : calculatedStreak;
       const { data: streakData, error: streakError } = await supabase.rpc("record_user_activity", {
         requested_time_zone: ACTIVITY_STREAK_TIME_ZONE,
       });
@@ -704,6 +717,9 @@ export async function POST(request: NextRequest) {
       changes.activityStreak = applicationStreak.currentStreak;
       changes.longestActivityStreak = applicationStreak.longestStreak;
       changes.lastActivityDate = applicationStreak.lastActivityDate;
+      if (applyOwnerCorrection) {
+        changes.activityStreakCorrection = OWNER_STREAK_CORRECTION_VERSION;
+      }
       if (streakError && streakError.code !== "42883" && streakError.code !== "PGRST202") {
         console.warn("Activity streak update failed", {
           code: streakError.code,
