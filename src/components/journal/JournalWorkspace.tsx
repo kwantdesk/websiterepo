@@ -87,6 +87,17 @@ type SortKey = "closedAt" | "netPnl" | "rMultiple" | "quantity" | "symbol";
 type JournalCloudState = "loading" | "cloud" | "local" | "error";
 type AccountCreationMode = "manual" | "import";
 
+type JournalMemoryCacheEntry = {
+  state: JournalState;
+  zyonTrades: JournalTrade[];
+  cloudState: JournalCloudState;
+  tab: JournalTab;
+  accountFilter: string;
+  updatedAt: number;
+};
+
+const JOURNAL_MEMORY_CACHE = new Map<string, JournalMemoryCacheEntry>();
+
 type ManualTradeDraft = {
   name: string;
   symbol: string;
@@ -692,13 +703,15 @@ function AnalysisFindingCard({
   );
 }
 export default function JournalWorkspace({ accountKey }: { accountKey: string }) {
-  const [state, setState] = useState<JournalState>(EMPTY_JOURNAL_STATE);
-  const [zyonTrades, setZyonTrades] = useState<JournalTrade[]>([]);
-  const [zyonLoading, setZyonLoading] = useState(true);
-  const [ready, setReady] = useState(false);
-  const [saveStatus, setSaveStatus] = useState<"loading" | "saved" | "error">("loading");
-  const [cloudState, setCloudState] = useState<JournalCloudState>("loading");
-  const [tab, setTab] = useState<JournalTab>("pulse");
+  const resolvedAccountKey = accountKey || "local";
+  const initialMemory = JOURNAL_MEMORY_CACHE.get(resolvedAccountKey);
+  const [state, setState] = useState<JournalState>(() => initialMemory?.state ?? EMPTY_JOURNAL_STATE);
+  const [zyonTrades, setZyonTrades] = useState<JournalTrade[]>(() => initialMemory?.zyonTrades ?? []);
+  const [zyonLoading, setZyonLoading] = useState(() => !initialMemory);
+  const [ready, setReady] = useState(() => Boolean(initialMemory));
+  const [saveStatus, setSaveStatus] = useState<"loading" | "saved" | "error">(() => initialMemory ? "saved" : "loading");
+  const [cloudState, setCloudState] = useState<JournalCloudState>(() => initialMemory?.cloudState ?? "loading");
+  const [tab, setTab] = useState<JournalTab>(() => initialMemory?.tab ?? "pulse");
   const [journalAnalysis, setJournalAnalysis] = useState<JournalQuantAnalysis | null>(null);
   const [analysisLoadedAccount, setAnalysisLoadedAccount] = useState("");
   const [analysisStatus, setAnalysisStatus] = useState<"idle" | "loading" | "generating" | "ready" | "error">("idle");
@@ -736,7 +749,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
   const [journalLifecycleBusy, setJournalLifecycleBusy] = useState<string | null>(null);
   const [journalLifecycleMessage, setJournalLifecycleMessage] = useState("");
   const [query, setQuery] = useState("");
-  const [accountFilter, setAccountFilter] = useState("all");
+  const [accountFilter, setAccountFilter] = useState(() => initialMemory?.accountFilter ?? "all");
   const [outcomeFilter, setOutcomeFilter] = useState<OutcomeFilter>("all");
   const [sortKey, setSortKey] = useState<SortKey>("closedAt");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
@@ -797,14 +810,25 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
     disabled: !showManualTrade || manualTradeSaving,
   });
 
-  const resolvedAccountKey = accountKey || "local";
   const zyonJournalSelected = accountFilter === ZYON_JOURNAL_ACCOUNT;
   const importTargetsZyon = isZyonJournalAccountName(importAccount);
 
   useEffect(() => {
     let active = true;
-    setReady(false);
-    setSaveStatus("loading");
+    const memory = JOURNAL_MEMORY_CACHE.get(resolvedAccountKey);
+    if (memory) {
+      setState(memory.state);
+      setZyonTrades(memory.zyonTrades);
+      setZyonLoading(false);
+      setCloudState(memory.cloudState);
+      setTab(memory.tab);
+      setAccountFilter(memory.accountFilter);
+      setReady(true);
+      setSaveStatus("saved");
+    } else {
+      setReady(false);
+      setSaveStatus("loading");
+    }
     Promise.all([
       loadJournalState(resolvedAccountKey),
       fetch("/api/journal", { cache: "no-store" })
@@ -817,12 +841,16 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
       const cloudImports = Array.isArray(cloud.imports) ? cloud.imports : [];
       const cloudEvidence = Array.isArray(cloud.evidence) ? cloud.evidence : [];
       const accounts = new Map(stored.accounts.map((account) => [account.id, account]));
+      memory?.state.accounts.forEach((account) => accounts.set(account.id, account));
       cloudAccounts.forEach((account) => accounts.set(account.id, account));
       const trades = new Map(stored.trades.map((trade) => [trade.id, trade]));
+      memory?.state.trades.forEach((trade) => trades.set(trade.id, trade));
       cloudTrades.forEach((trade) => trades.set(trade.id, trade));
       const imports = new Map(stored.imports.map((batch) => [batch.id, batch]));
+      memory?.state.imports.forEach((batch) => imports.set(batch.id, batch));
       cloudImports.forEach((batch) => imports.set(batch.id, batch));
       const evidence = new Map(stored.evidence.map((item) => [item.id, item]));
+      memory?.state.evidence.forEach((item) => evidence.set(item.id, item));
       cloudEvidence.forEach((item) => evidence.set(item.id, item));
       const merged = {
         ...stored,
@@ -835,6 +863,14 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
       setCloudState(cloud.cloud ? "cloud" : "local");
       setReady(true);
       setSaveStatus("saved");
+      JOURNAL_MEMORY_CACHE.set(resolvedAccountKey, {
+        state: merged,
+        zyonTrades: memory?.zyonTrades ?? [],
+        cloudState: cloud.cloud ? "cloud" : "local",
+        tab: memory?.tab ?? "pulse",
+        accountFilter: memory?.accountFilter ?? "all",
+        updatedAt: Date.now(),
+      });
 
       if (cloud.cloud && (stored.trades.length || stored.imports.length)) {
         const accountNames = [...new Set([
@@ -855,11 +891,28 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
           });
         });
       }
+    }).catch(() => {
+      if (!active) return;
+      setReady(true);
+      setSaveStatus("error");
+      if (!memory) setCloudState("local");
     });
     return () => {
       active = false;
     };
   }, [resolvedAccountKey]);
+
+  useEffect(() => {
+    if (!ready) return;
+    JOURNAL_MEMORY_CACHE.set(resolvedAccountKey, {
+      state,
+      zyonTrades,
+      cloudState,
+      tab,
+      accountFilter,
+      updatedAt: Date.now(),
+    });
+  }, [accountFilter, cloudState, ready, resolvedAccountKey, state, tab, zyonTrades]);
 
   const loadZyonOutcomes = useCallback(async () => {
     try {
