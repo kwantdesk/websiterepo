@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { after, NextRequest, NextResponse } from "next/server";
 import {
   ANTHROPIC_VERSION,
   getClaudeApiKey,
@@ -6,6 +6,7 @@ import {
 } from "@/lib/claude.server";
 import type { MacroChatResponse } from "@/lib/macroIntelligence";
 import { getMacroIntelligence } from "@/lib/macroIntelligence.server";
+import { ingestMacroMemory } from "@/lib/macroMemory.server";
 import { getRouteActor } from "@/lib/serverAuth";
 
 export const dynamic = "force-dynamic";
@@ -21,6 +22,13 @@ export async function GET(request: NextRequest) {
   if (!(await getRouteActor(request))) {
     return NextResponse.json({ error: "Authentication required." }, { status: 401 });
   }
+  after(async () => {
+    try {
+      await ingestMacroMemory(false);
+    } catch (error) {
+      console.error("Macro dashboard memory refresh failed", error);
+    }
+  });
   try {
     const payload = await getMacroIntelligence(request.nextUrl.searchParams.get("refresh") === "1");
     return NextResponse.json(payload, {

@@ -133,6 +133,50 @@ async function fetchOfficialFeed(feed: (typeof OFFICIAL_FEEDS)[number]) {
 }
 
 async function fetchLiveNews() {
+  const massiveApiKey = process.env.MASSIVE_API_KEY?.trim() || process.env.POLYGON_API_KEY?.trim();
+  if (massiveApiKey) {
+    const massiveUrl = new URL("https://api.massive.com/v2/reference/news");
+    massiveUrl.searchParams.set("published_utc.gte", new Date(Date.now() - 72 * 60 * 60_000).toISOString());
+    massiveUrl.searchParams.set("order", "desc");
+    massiveUrl.searchParams.set("sort", "published_utc");
+    massiveUrl.searchParams.set("limit", "100");
+    massiveUrl.searchParams.set("apiKey", massiveApiKey);
+    try {
+      const response = await fetch(massiveUrl, {
+        next: { revalidate: 300 },
+        signal: AbortSignal.timeout(14_000),
+      });
+      if (response.ok) {
+        const payload = await response.json() as {
+          results?: Array<{
+            title?: string;
+            article_url?: string;
+            publisher?: { name?: string };
+            published_utc?: string;
+            description?: string;
+            tickers?: string[];
+          }>;
+        };
+        const rows = (payload.results ?? []).flatMap((article): CollectedSource[] => {
+          const title = String(article.title ?? "").trim();
+          const articleUrl = String(article.article_url ?? "").trim();
+          if (!title || !articleUrl) return [];
+          return [{
+            title,
+            url: articleUrl,
+            publisher: String(article.publisher?.name ?? "Massive market news"),
+            publishedAt: article.published_utc || new Date().toISOString(),
+            official: false,
+            summary: String(article.description ?? title).trim(),
+          }];
+        });
+        const relevantRows = rows.filter((row) => /fomc|federal reserve|powell|cpi|pce|ppi|inflation|payroll|employment|unemployment|jobless|earnings|revenue|guidance|nasdaq|treasury|yield|rates?|tariff|sanction|war|ceasefire|geopolit|oil|hormuz|government shutdown|debt ceiling|central bank/i.test(`${row.title} ${row.summary}`));
+        if (relevantRows.length) return relevantRows;
+      }
+    } catch {
+      // GDELT below is the public resilience path when Massive is unavailable.
+    }
+  }
   const query = '(FOMC OR "Federal Reserve" OR payrolls OR inflation OR earnings OR Nasdaq OR "Strait of Hormuz" OR tariff OR sanctions OR ceasefire OR "government shutdown" OR "debt ceiling" OR "Treasury funding" OR "energy infrastructure" OR "central bank") sourcelang:english';
   const url = new URL("https://api.gdeltproject.org/api/v2/doc/doc");
   url.searchParams.set("query", query);
