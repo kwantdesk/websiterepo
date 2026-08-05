@@ -14,7 +14,11 @@ import {
   type PresenceStatus,
 } from "@/lib/friends";
 import { isValidProfileHandle, PROFILE_HANDLE_REQUIREMENTS } from "@/lib/profileHandle";
-import { activityStreakLifecycle } from "@/lib/activityStreak";
+import {
+  ACTIVITY_STREAK_TIME_ZONE,
+  activityStreakLifecycle,
+  calculateActivityStreakUpdate,
+} from "@/lib/activityStreak";
 import { normalizeSharedTradeMessage } from "@/lib/sharedTrades";
 
 export const dynamic = "force-dynamic";
@@ -661,15 +665,46 @@ export async function POST(request: NextRequest) {
     }
     let streakPayload: Record<string, unknown> | null = null;
     if (action === "heartbeat") {
-      const { data: streakData, error: streakError } = await supabase.rpc("record_user_activity", {
-        requested_time_zone: cleanText(body.timeZone, 80) || "UTC",
+      const { data: activityProfile } = await supabase
+        .from("social_objects")
+        .select("payload")
+        .eq("user_id", actor.userId)
+        .eq("id", "profile")
+        .maybeSingle();
+      const storedActivity = activityProfile?.payload && typeof activityProfile.payload === "object"
+        ? activityProfile.payload as Record<string, unknown>
+        : {};
+      const applicationStreak = calculateActivityStreakUpdate({
+        currentStreak: Number(storedActivity.activityStreak),
+        longestStreak: Number(storedActivity.longestActivityStreak),
+        lastActivityDate: cleanText(storedActivity.lastActivityDate, 10),
+        lastSeenAt: cleanText(storedActivity.lastSeenAt, 60),
       });
-      if (!streakError && streakData && typeof streakData === "object" && !Array.isArray(streakData)) {
-        streakPayload = streakData as Record<string, unknown>;
-        changes.activityStreak = Math.max(0, Math.floor(Number(streakPayload.currentStreak) || 0));
-        changes.longestActivityStreak = Math.max(0, Math.floor(Number(streakPayload.longestStreak) || 0));
-        changes.lastActivityDate = cleanText(streakPayload.lastActivityDate, 10);
-      } else if (streakError && streakError.code !== "42883" && streakError.code !== "PGRST202") {
+      const { data: streakData, error: streakError } = await supabase.rpc("record_user_activity", {
+        requested_time_zone: ACTIVITY_STREAK_TIME_ZONE,
+      });
+      // The application calculation keeps activity reliable during a missing
+      // or stale migration. The RPC remains the durable day ledger, but an
+      // older SQL function can no longer force local time or a +5 weekend.
+      streakPayload = {
+        ...(streakData && typeof streakData === "object" && !Array.isArray(streakData)
+          ? streakData as Record<string, unknown>
+          : {}),
+        currentStreak: applicationStreak.currentStreak,
+        longestStreak: applicationStreak.longestStreak,
+        lastActivityDate: applicationStreak.lastActivityDate,
+        activityDate: applicationStreak.activityDate,
+        counted: applicationStreak.counted,
+        reset: applicationStreak.reset,
+        weekend: applicationStreak.weekend,
+        weekdayElapsedSeconds: applicationStreak.weekdayElapsedSeconds,
+        lastSeenAt: applicationStreak.lastSeenAt,
+        timeZone: ACTIVITY_STREAK_TIME_ZONE,
+      };
+      changes.activityStreak = applicationStreak.currentStreak;
+      changes.longestActivityStreak = applicationStreak.longestStreak;
+      changes.lastActivityDate = applicationStreak.lastActivityDate;
+      if (streakError && streakError.code !== "42883" && streakError.code !== "PGRST202") {
         console.warn("Activity streak update failed", {
           code: streakError.code,
           message: streakError.message,

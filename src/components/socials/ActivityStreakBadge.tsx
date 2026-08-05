@@ -39,21 +39,21 @@ export default function ActivityStreakBadge({
   const days = lifecycle.effectiveStreak;
   const baseLabel = compact ? `${days}D` : `${days} DAY${days === 1 ? "" : "S"}`;
   const label = lifecycle.state === "recovery"
-    ? showTimer ? `RECOVER · ${countdown(lifecycle.secondsUntilReset)}` : "RECOVER"
+    ? showTimer ? `${baseLabel} · ${countdown(lifecycle.secondsUntilReset)}` : baseLabel
     : lifecycle.state === "expired"
       ? "STREAK RESET"
       : lifecycle.state === "weekend"
-        ? showTimer ? `${baseLabel} · WEEKEND +5` : baseLabel
+        ? showTimer ? `${baseLabel} · WEEKEND` : baseLabel
         : showTimer && lifecycle.state === "active"
-          ? `${baseLabel} · ${countdown(lifecycle.secondsUntilRisk)}`
+          ? `${baseLabel} · ${countdown(lifecycle.secondsUntilReset)}`
           : baseLabel;
   const title = lifecycle.state === "recovery"
-    ? `The streak is hidden. Return within ${countdown(lifecycle.secondsUntilReset)} to restore it.`
+    ? `${days}-day streak remains active. Return within ${countdown(lifecycle.secondsUntilReset)} to continue it.`
     : lifecycle.state === "expired"
-      ? "The 48-hour weekday recovery window has expired. The next login starts a new streak."
+      ? "More than 48 weekday hours passed without activity. The next login starts a new streak."
       : lifecycle.state === "weekend"
-        ? `${days}-day streak. Weekend logins award +5 and weekends never break the streak.`
-        : `${days}-day activity streak. ${countdown(lifecycle.secondsUntilRisk)} remains before the recovery window begins.`;
+        ? `${days}-day streak. A weekend login adds one day; missing the weekend never breaks it.`
+        : `${days}-day activity streak. ${countdown(lifecycle.secondsUntilReset)} remains before the 48-hour weekday window expires.`;
 
   return (
     <span

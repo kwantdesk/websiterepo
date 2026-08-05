@@ -13,6 +13,7 @@ import KwantBotInterpreterPanel from "@/components/kwantbot/KwantBotInterpreterP
 import { useKwantBotInterpreter } from "@/hooks/useKwantBotInterpreter";
 import { useSocialNotifications } from "@/hooks/useSocialNotifications";
 import { useStructureLevels } from "@/hooks/useStructureLevels";
+import { ACTIVITY_STREAK_TIME_ZONE } from "@/lib/activityStreak";
 
 import { Activity as ReactActivity, memo, startTransition, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent as ReactDragEvent } from "react";
 import { createPortal } from "react-dom";
@@ -5091,7 +5092,7 @@ export default function KwantifyWorkspace({
           body: JSON.stringify({
             action: "heartbeat",
             lightweight: true,
-            timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+            timeZone: ACTIVITY_STREAK_TIME_ZONE,
           }),
         });
         if (response.ok) {

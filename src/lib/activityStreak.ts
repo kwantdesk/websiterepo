@@ -1,5 +1,8 @@
 export type ActivityStreakState = "active" | "weekend" | "recovery" | "expired" | "inactive";
 
+export const ACTIVITY_STREAK_TIME_ZONE = "America/New_York";
+export const ACTIVITY_STREAK_RESET_SECONDS = 48 * 60 * 60;
+
 export type ActivityStreakLifecycle = {
   state: ActivityStreakState;
   effectiveStreak: number;
@@ -86,6 +89,62 @@ function addLocalDays(year: number, month: number, day: number, amount: number) 
   };
 }
 
+export function activityDateKey(
+  timestamp: string | number | Date = Date.now(),
+  requestedTimeZone = ACTIVITY_STREAK_TIME_ZONE,
+) {
+  const value = timestamp instanceof Date
+    ? timestamp.getTime()
+    : typeof timestamp === "number"
+      ? timestamp
+      : Date.parse(timestamp);
+  const parts = zonedParts(Number.isFinite(value) ? value : Date.now(), safeTimeZone(requestedTimeZone));
+  return `${String(parts.year).padStart(4, "0")}-${String(parts.month).padStart(2, "0")}-${String(parts.day).padStart(2, "0")}`;
+}
+
+export function calculateActivityStreakUpdate({
+  currentStreak,
+  longestStreak,
+  lastActivityDate,
+  lastSeenAt,
+  now = Date.now(),
+}: {
+  currentStreak: number | null | undefined;
+  longestStreak: number | null | undefined;
+  lastActivityDate: string | null | undefined;
+  lastSeenAt: string | null | undefined;
+  now?: number;
+}) {
+  const storedCurrent = Number.isFinite(Number(currentStreak)) ? Math.max(0, Math.floor(Number(currentStreak))) : 0;
+  const storedLongest = Number.isFinite(Number(longestStreak)) ? Math.max(0, Math.floor(Number(longestStreak))) : 0;
+  const activityDate = activityDateKey(now);
+  const previousDate = /^\d{4}-\d{2}-\d{2}$/.test(lastActivityDate ?? "") ? String(lastActivityDate) : "";
+  const alreadyCounted = previousDate === activityDate && storedCurrent > 0;
+  const parsedLastSeen = lastSeenAt ? Date.parse(lastSeenAt) : Number.NaN;
+  const elapsedWeekdaySeconds = Number.isFinite(parsedLastSeen)
+    ? weekdayElapsedSeconds(parsedLastSeen, now, ACTIVITY_STREAK_TIME_ZONE)
+    : 0;
+  const reset = Boolean(previousDate && !alreadyCounted && elapsedWeekdaySeconds > ACTIVITY_STREAK_RESET_SECONDS);
+  const nextCurrent = alreadyCounted
+    ? storedCurrent
+    : reset || storedCurrent === 0
+      ? 1
+      : storedCurrent + 1;
+
+  return {
+    currentStreak: nextCurrent,
+    longestStreak: Math.max(storedLongest, nextCurrent),
+    lastActivityDate: activityDate,
+    activityDate,
+    counted: !alreadyCounted,
+    reset,
+    weekend: [6, 7].includes(zonedParts(now, ACTIVITY_STREAK_TIME_ZONE).weekday),
+    weekdayElapsedSeconds: elapsedWeekdaySeconds,
+    lastSeenAt: new Date(now).toISOString(),
+    timeZone: ACTIVITY_STREAK_TIME_ZONE,
+  };
+}
+
 export function weekdayElapsedSeconds(
   startedAt: string | number | Date,
   endedAt: string | number | Date = Date.now(),
@@ -125,25 +184,27 @@ export function activityStreakLifecycle({
 }): ActivityStreakLifecycle {
   const storedStreak = Number.isFinite(Number(streak)) ? Math.max(0, Math.floor(Number(streak))) : 0;
   const lastSeen = lastSeenAt ? Date.parse(lastSeenAt) : Number.NaN;
-  const zone = safeTimeZone(timeZone);
+  // Streaks use one platform-wide trading day. A profile or chart timezone
+  // must never change when a user's activity day rolls over.
+  const zone = ACTIVITY_STREAK_TIME_ZONE;
   const currentParts = zonedParts(now, zone);
   const weekend = currentParts.weekday === 6 || currentParts.weekday === 7;
   if (!storedStreak || !Number.isFinite(lastSeen)) {
     return { state: "inactive", effectiveStreak: storedStreak, weekdayElapsedSeconds: 0, secondsUntilRisk: 0, secondsUntilReset: 0, weekend };
   }
   const elapsed = weekdayElapsedSeconds(lastSeen, now, zone);
-  if (elapsed >= 172_800) {
+  if (elapsed > ACTIVITY_STREAK_RESET_SECONDS) {
     return { state: "expired", effectiveStreak: 0, weekdayElapsedSeconds: elapsed, secondsUntilRisk: 0, secondsUntilReset: 0, weekend };
   }
   if (elapsed >= 86_400) {
-    return { state: "recovery", effectiveStreak: 0, weekdayElapsedSeconds: elapsed, secondsUntilRisk: 0, secondsUntilReset: Math.max(0, 172_800 - elapsed), weekend };
+    return { state: "recovery", effectiveStreak: storedStreak, weekdayElapsedSeconds: elapsed, secondsUntilRisk: 0, secondsUntilReset: Math.max(0, ACTIVITY_STREAK_RESET_SECONDS - elapsed), weekend };
   }
   return {
     state: weekend ? "weekend" : "active",
     effectiveStreak: storedStreak,
     weekdayElapsedSeconds: elapsed,
     secondsUntilRisk: Math.max(0, 86_400 - elapsed),
-    secondsUntilReset: Math.max(0, 172_800 - elapsed),
+    secondsUntilReset: Math.max(0, ACTIVITY_STREAK_RESET_SECONDS - elapsed),
     weekend,
   };
 }
