@@ -33,6 +33,7 @@ export type KwantBotMarketContext = {
   sessionDate: string;
   status: "LIVE" | "PARTIAL";
   refreshAfterMs: number;
+  priceDomain: "FUTURES" | "OPTIONS_UNDERLYING";
   currentPrice: number | null;
   futuresStatus: "LIVE" | "DELAYED" | "LAST_SESSION" | "UNAVAILABLE";
   oneLiner: string;
@@ -355,6 +356,7 @@ export function normalizeKwantBotMarketContext(
     sessionDate: typeof item.sessionDate === "string" ? item.sessionDate : now.slice(0, 10),
     status: item.status === "LIVE" ? "LIVE" : "PARTIAL",
     refreshAfterMs: Math.max(5_000, finiteNumber(item.refreshAfterMs) ?? 20_000),
+    priceDomain: item.priceDomain === "FUTURES" ? "FUTURES" : "OPTIONS_UNDERLYING",
     currentPrice: optionalFiniteNumber(item.currentPrice),
     futuresStatus: item.futuresStatus === "LIVE" || item.futuresStatus === "DELAYED" || item.futuresStatus === "LAST_SESSION"
       ? item.futuresStatus

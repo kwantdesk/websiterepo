@@ -40,6 +40,9 @@ async function buildContext(root: KwantBotMarketRoot): Promise<KwantBotMarketCon
     sessionDate: gameplan.plan.edition.date,
     status: gameplan.status,
     refreshAfterMs: Math.max(15_000, gameplan.refresh_after_ms),
+    priceDomain: options.marketData.mode === "FUTURES" && !options.marketData.fallback
+      ? "FUTURES"
+      : "OPTIONS_UNDERLYING",
     currentPrice: gameplan.current_price,
     futuresStatus: options.marketData.status,
     oneLiner: gameplan.plan.one_liner,

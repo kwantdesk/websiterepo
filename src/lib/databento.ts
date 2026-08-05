@@ -300,6 +300,7 @@ export async function getDatabentoValueAreaProfile(
 function sourceSchema(timeframe: string) {
   const match = timeframe.match(/^(\d+)(s|m|h|D|W|M)$/);
   if (match?.[2] === "s") return "ohlcv-1s";
+  if (match?.[2] === "h") return "ohlcv-1h";
   if (match && ["D", "W", "M"].includes(match[2])) return "ohlcv-1d";
   return "ohlcv-1m";
 }
@@ -321,7 +322,14 @@ function timeframeMs(timeframe: string) {
 
 function resample(rows: DatabentoBar[], timeframe: string) {
   const size = timeframeMs(timeframe);
-  const sourceSize = sourceSchema(timeframe) === "ohlcv-1s" ? 1_000 : sourceSchema(timeframe) === "ohlcv-1m" ? 60_000 : 86_400_000;
+  const schema = sourceSchema(timeframe);
+  const sourceSize = schema === "ohlcv-1s"
+    ? 1_000
+    : schema === "ohlcv-1m"
+      ? 60_000
+      : schema === "ohlcv-1h"
+        ? 60 * 60_000
+        : 86_400_000;
   if (size < sourceSize) return rows;
   const buckets = new Map<number, DatabentoBar>();
   for (const row of rows) {

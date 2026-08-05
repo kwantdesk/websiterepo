@@ -90,10 +90,20 @@ async function marketHistory(root: KwantBotMarketRoot) {
     Promise.all([
       getDatabentoBars(
         `${root}.v.0`,
-        "5m",
-        new Date(now - 7 * 24 * 60 * 60_000).toISOString(),
+        "1h",
+        new Date(now - 8 * 24 * 60 * 60_000).toISOString(),
         new Date(now).toISOString(),
       ),
+      timeout(
+        getDatabentoBars(
+          `${root}.v.0`,
+          "1m",
+          new Date(now - 3 * 60 * 60_000).toISOString(),
+          new Date(now).toISOString(),
+        ),
+        4_000,
+        "CME recent minute history",
+      ).catch(() => [] as DatabentoBar[]),
       timeout(
         getDatabentoBars(
           `${root}.v.0`,
@@ -104,7 +114,17 @@ async function marketHistory(root: KwantBotMarketRoot) {
         3_500,
         "CME daily history",
       ).catch(() => [] as DatabentoBar[]),
-    ]).then(([intraday, daily]) => ({ intraday, daily })),
+    ]).then(([hourly, recentMinutes, daily]) => {
+      const firstRecentMinute = recentMinutes[0]?.timestamp ?? null;
+      const recentHour = firstRecentMinute === null
+        ? null
+        : Math.floor(firstRecentMinute / (60 * 60_000)) * 60 * 60_000;
+      const intraday = [
+        ...hourly.filter((bar) => recentHour === null || bar.timestamp < recentHour),
+        ...recentMinutes,
+      ].sort((left, right) => left.timestamp - right.timestamp);
+      return { intraday, daily };
+    }),
     15_000,
     "CME history",
   )
@@ -173,7 +193,7 @@ function summarizePricePath(allBars: DatabentoBar[], now: number) {
       change: session.close - session.open,
     }));
   return {
-    basis: "LATEST_24H_CME_5M" as const,
+    basis: "LATEST_24H_CME_1H_PLUS_RECENT_1M" as const,
     asOf: new Date(latest.timestamp).toISOString(),
     ageMs: Math.max(0, now - latest.timestamp),
     open: first.open,
@@ -343,7 +363,17 @@ export async function getZyonMarketContext(
   ] as const);
 
   const warnings: string[] = [];
-  const current = results[0].status === "fulfilled" ? results[0].value : null;
+  const rawCurrent = results[0].status === "fulfilled" ? results[0].value : null;
+  const current = rawCurrent?.priceDomain === "OPTIONS_UNDERLYING"
+    ? {
+        ...rawCurrent,
+        optionsUnderlyingPrice: rawCurrent.currentPrice,
+        currentPrice: null,
+        levels: [],
+        scenarios: [],
+        oneLiner: `${rawCurrent.sourceSymbol} options positioning is available, but no verified ${root} futures calibration is attached to this frame.`,
+      }
+    : rawCurrent;
   const history = results[1].status === "fulfilled"
     ? results[1].value
     : { intraday: [], daily: [] };
@@ -384,6 +414,7 @@ export async function getZyonMarketContext(
       latestPrice: latestBar?.close ?? null,
       latestPriceAgeMs: latestBar ? Math.max(0, now - latestBar.timestamp) : null,
       path: summarizePricePath(bars, now),
+      basis: "CME_1H_PLUS_RECENT_1M" as const,
       sessions: priceAnalytics.sessions,
       structure: priceAnalytics.structure,
       windows: {

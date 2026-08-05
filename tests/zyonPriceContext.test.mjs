@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   buildZyonPriceAnalytics,
   cmeTradingDateKey,
+  selectZyonFuturesPrice,
   summarizeCmeSessions,
   summarizeTimeframeStructure,
 } from "../src/lib/zyonPriceContext.ts";
@@ -16,6 +17,24 @@ test("assigns Sunday evening CME bars to Monday's trading date", () => {
   assert.equal(cmeTradingDateKey(Date.parse("2026-08-02T22:00:00.000Z")), "2026-08-03");
   assert.equal(cmeTradingDateKey(Date.parse("2026-08-03T21:00:00.000Z")), "2026-08-03");
   assert.equal(cmeTradingDateKey(Date.parse("2026-08-03T22:00:00.000Z")), "2026-08-04");
+});
+
+test("never promotes an options-underlying quote into the NQ futures price", () => {
+  const selected = selectZyonFuturesPrice({
+    browserTick: {
+      price: 723.33,
+      timestamp: Date.parse("2026-08-05T13:34:00.000Z"),
+      source: "BROWSER_FUTURES_TICK",
+    },
+    history: {
+      price: 29_733.25,
+      timestamp: Date.parse("2026-08-05T13:30:00.000Z"),
+      source: "CME_HISTORY",
+    },
+  });
+
+  assert.equal(selected?.price, 29_733.25);
+  assert.equal(selected?.source, "CME_HISTORY");
 });
 
 test("returns exact previous and developing current CME session OHLC", () => {

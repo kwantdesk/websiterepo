@@ -781,9 +781,9 @@ export function useKwantBotInterpreter(args: {
       }>).detail;
       if (!tick) return;
       const instrument = String(tick.instrument ?? "").toUpperCase();
-      const root: KwantBotMarketRoot | null = instrument.startsWith("NQ")
+      const root: KwantBotMarketRoot | null = instrument.startsWith("NQ") || instrument.startsWith("MNQ")
         ? "NQ"
-        : instrument.startsWith("ES")
+        : instrument.startsWith("ES") || instrument.startsWith("MES")
           ? "ES"
           : null;
       const price = Number(tick.mid ?? (Number(tick.bid) + Number(tick.ask)) / 2);

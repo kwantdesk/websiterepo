@@ -49,6 +49,12 @@ export type ZyonTimeframeStructure = {
   }>;
 };
 
+export type ZyonFuturesPriceCandidate = {
+  price: number | null;
+  timestamp: number | null;
+  source: "BROWSER_FUTURES_TICK" | "CME_HISTORY";
+};
+
 const NEW_YORK_TIME_ZONE = "America/New_York";
 const zonedFormatter = new Intl.DateTimeFormat("en-CA", {
   timeZone: NEW_YORK_TIME_ZONE,
@@ -59,6 +65,29 @@ const zonedFormatter = new Intl.DateTimeFormat("en-CA", {
   minute: "2-digit",
   hourCycle: "h23",
 });
+
+/**
+ * Pick the newest verified futures-domain price. A browser tick is accepted
+ * only when it is a plausible continuation of the CME history reference.
+ * This prevents a fresh QQQ/SPY options quote from outranking a slightly older
+ * NQ/ES bar merely because both values arrived in the same market context.
+ */
+export function selectZyonFuturesPrice(args: {
+  browserTick: ZyonFuturesPriceCandidate;
+  history: ZyonFuturesPriceCandidate;
+}) {
+  const historyPrice = finite(args.history.price);
+  return [args.browserTick, args.history]
+    .filter((candidate): candidate is ZyonFuturesPriceCandidate & { price: number; timestamp: number } =>
+      finite(candidate.price) !== null
+      && finite(candidate.timestamp) !== null
+      && Number(candidate.price) > 0
+      && Number(candidate.timestamp) > 0)
+    .filter((candidate) => candidate.source === "CME_HISTORY"
+      || historyPrice === null
+      || Math.abs(candidate.price / historyPrice - 1) <= 0.2)
+    .sort((left, right) => right.timestamp - left.timestamp)[0] ?? null;
+}
 
 function finite(value: unknown) {
   const parsed = Number(value);

@@ -8,6 +8,7 @@ import {
 import { getRouteActor } from "@/lib/serverAuth";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { getZyonMarketContext } from "@/lib/zyonMarketContext.server";
+import { selectZyonFuturesPrice } from "@/lib/zyonPriceContext";
 import { ingestMacroMemory, searchMacroMemory } from "@/lib/macroMemory.server";
 import {
   getHistoricalZyonContext,
@@ -47,6 +48,7 @@ import {
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 export const maxDuration = 300;
+export const preferredRegion = "iad1";
 
 const MAX_MESSAGES = 16;
 const MAX_TEXT_LENGTH = 6_000;
@@ -733,35 +735,22 @@ function buildLivePriorityEvidence(args: {
   macroMemory: Awaited<ReturnType<typeof searchMacroMemory>>;
 }) {
   const browser = recordValue(args.browserSupplement);
-  const browserMarket = recordValue(browser?.liveMarketContext);
   const authoritative = recordValue(args.authoritative);
   const priceHistory = recordValue(authoritative?.priceHistory);
   const current = recordValue(authoritative?.current);
-  const candidates = [
-    {
+  const historyPrice = finiteContextNumber(priceHistory?.latestPrice);
+  const latest = selectZyonFuturesPrice({
+    browserTick: {
       price: finiteContextNumber(browser?.currentPrice),
       timestamp: contextTimestamp(browser?.lastTickAt),
-      source: "Kwant Desk browser live futures stream",
+      source: "BROWSER_FUTURES_TICK",
     },
-    {
-      price: finiteContextNumber(browserMarket?.currentPrice),
-      timestamp: contextTimestamp(browserMarket?.generatedAt),
-      source: "Kwant Desk browser market context",
-    },
-    {
-      price: finiteContextNumber(priceHistory?.latestPrice),
+    history: {
+      price: historyPrice,
       timestamp: contextTimestamp(priceHistory?.latestBarAt),
-      source: "Kwant Desk server CME history",
+      source: "CME_HISTORY",
     },
-    {
-      price: finiteContextNumber(current?.currentPrice),
-      timestamp: contextTimestamp(current?.generatedAt ?? authoritative?.generatedAt),
-      source: "Kwant Desk server futures context",
-    },
-  ].filter((candidate): candidate is { price: number; timestamp: number; source: string } =>
-    candidate.price !== null && candidate.timestamp !== null);
-  candidates.sort((left, right) => right.timestamp - left.timestamp);
-  const latest = candidates[0] ?? null;
+  });
   const ageMs = latest ? Math.max(0, args.requestReceivedAt - latest.timestamp) : null;
   const freshness = ageMs === null
     ? "UNAVAILABLE"
@@ -804,7 +793,9 @@ function buildLivePriorityEvidence(args: {
       asOfBrisbane: zonedClock(latest.timestamp, "Australia/Brisbane").display,
       ageMs,
       freshness,
-      source: latest.source,
+      source: latest.source === "BROWSER_FUTURES_TICK"
+        ? "Kwant Desk browser live futures stream"
+        : "Kwant Desk server CME history",
     } : {
       symbol: `${args.root} futures`,
       price: null,
@@ -822,6 +813,16 @@ function buildLivePriorityEvidence(args: {
       current: liveSession,
     },
     marketStructure: priceHistory?.structure ?? null,
+    optionsPriceReference: current ? {
+      symbol: current.sourceSymbol ?? null,
+      price: current.priceDomain === "FUTURES"
+        ? current.currentPrice ?? null
+        : current.optionsUnderlyingPrice ?? null,
+      domain: current.priceDomain === "FUTURES" ? "FUTURES_CALIBRATED" : "OPTIONS_UNDERLYING",
+      warning: current.priceDomain === "FUTURES"
+        ? null
+        : "This is an options-underlying price or strike domain. It is not the NQ/ES futures price and must never be labelled as one.",
+    } : null,
     overnightMacro: authoritative?.overnightMacro ?? null,
     persistentMacroMemory: args.macroMemory,
     scheduledAndReleasedUsdEvents: recordValue(authoritative?.economicCalendar)?.usdEvents ?? [],
@@ -829,6 +830,7 @@ function buildLivePriorityEvidence(args: {
       "Report the latest futures price together with its source timestamp and Brisbane time.",
       "Use sessionOhlc.previous for the prior CME session high, low and close, and sessionOhlc.current for today's open, developing high, developing low and current price.",
       "Use marketStructure.oneHour and marketStructure.fourHour, including their recentBars, to describe higher-timeframe structure without asking the trader for a screenshot.",
+      "Never label QQQ, NDX, SPY or SPX prices or strikes as NQ or ES futures. Use only livePrice and sessionOhlc for futures prices unless an explicit futures calibration is supplied.",
       "Use the actual path high, low, their timestamps, pullback and recovery values; do not invent a narrative from the last price alone.",
       "Search persistentMacroMemory first for timestamped releases, developments, prior reasoning receipts and measured market reactions. Use fresh web research to fill gaps, not to erase stored evidence.",
       "Treat released economic data and timestamped headlines as facts. Describe a catalyst as causal only when its timing and market response support that conclusion; otherwise label it a plausible influence or say no verified catalyst was found.",
@@ -865,7 +867,9 @@ function safeContext(value: unknown, maximumLength = MAX_CONTEXT_LENGTH) {
           generatedAt: current.generatedAt,
           sessionDate: current.sessionDate,
           status: current.status,
+          priceDomain: current.priceDomain,
           currentPrice: current.currentPrice,
+          optionsUnderlyingPrice: current.optionsUnderlyingPrice,
           futuresStatus: current.futuresStatus,
           oneLiner: current.oneLiner,
           levels: Array.isArray(current.levels) ? current.levels.slice(0, 14) : [],
@@ -1913,6 +1917,9 @@ export async function POST(request: NextRequest) {
       "For live-market questions, check timestamps and warnings first. Do not describe stale or last-session data as live. State material freshness limitations plainly and use the 1-hour, 4-hour, 1-day, and 1-week windows to distinguish immediate action from broader context.",
       "When asked what happened overnight or what price has done, answer directly in this order: verified macro events/developments; the measured price path with its actual high, low, pullback/recovery and session sequence; then current futures price and the current Australia/Brisbane date and time. Never ask the trader for these inputs when priorityEvidence contains them.",
       "Never ask the trader for yesterday's high, low or close, today's open, developing high or low, current NQ/ES price, or a 1-hour/4-hour chart when those values exist in priorityEvidence. Read and answer from sessionOhlc and marketStructure instead.",
+      "For a New York open or session-context request, give the analysis before asking questions: state the verified clock/session, prior and developing session OHLC, overnight path, 1-hour and 4-hour structure, correctly-labelled options context, then a base case, bullish alternative, bearish alternative, invalidation and no-trade condition. The opening minutes are developing evidence, not a reason to ask the trader for a chart.",
+      "Do not ask for account size, risk tolerance or directional bias merely to explain the market. Those details are needed only when converting the completed context into a personal executable trade plan.",
+      "Keep price domains separate. QQQ/NDX and SPY/SPX option strikes are not NQ/ES futures prices. Only state a futures-equivalent Gamma or Kwant level when the context explicitly supplies a verified futures calibration; otherwise state the options-underlying strike and label it clearly.",
       "For macro questions, consult priorityEvidence.persistentMacroMemory before web search. Use its event times, source authority, reaction records and reasoning receipts as durable memory; use web search only for developments newer than the stored retrieval timestamp or facts absent from memory.",
       "Do not force a causal story. A scheduled release or headline is a verified fact; claiming it caused the rally or selloff requires timing and price/cross-asset confirmation. If the exact catalyst cannot be verified, say that plainly, distinguish observation from inference, and still provide the measured price path.",
       ...(macroResearchRequest ? [
