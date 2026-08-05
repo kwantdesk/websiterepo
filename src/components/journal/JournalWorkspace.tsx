@@ -1279,8 +1279,9 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
     setShowManualTrade(true);
   };
 
-  const openTradePost = () => {
-    setPostTradeId(postableTrades[0]?.id ?? "");
+  const openTradePost = (tradeId?: string) => {
+    const requestedTrade = tradeId ? postableTrades.find((trade) => trade.id === tradeId) : null;
+    setPostTradeId(requestedTrade?.id ?? postableTrades[0]?.id ?? "");
     setPostTradeCaption("");
     setPostTradeError("");
     setShowTradePost(true);
@@ -2068,7 +2069,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
               {cloudState === "cloud" ? "Account saved" : cloudState === "loading" ? "Connecting" : cloudState === "error" || saveStatus === "error" ? "Save interrupted" : "Local until connected"}
             </span>
             {selectedAccountIsManual ? <button type="button" onClick={openManualTrade} className="flex h-8 items-center gap-1.5 rounded-xl bg-primary px-3 text-[9px] font-semibold text-background hover:brightness-110"><Plus className="h-3.5 w-3.5" />Add trade</button> : null}
-            <button type="button" onClick={openTradePost} disabled={!postableTrades.length} className="flex h-8 items-center gap-1.5 rounded-xl bg-primary px-3 text-[9px] font-semibold text-background hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-35"><Share2 className="h-3.5 w-3.5" />Post trade</button>
+            <button type="button" onClick={() => openTradePost()} disabled={!postableTrades.length} className="flex h-8 items-center gap-1.5 rounded-xl bg-primary px-3 text-[9px] font-semibold text-background hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-35"><Share2 className="h-3.5 w-3.5" />Post trade</button>
             <button type="button" onClick={() => setShowArchive(true)} className="relative flex h-8 items-center gap-1.5 rounded-xl border border-border bg-surface px-3 text-[9px] font-semibold text-muted hover:text-foreground"><FolderArchive className="h-3.5 w-3.5" />Archive{archivedAccounts.length ? <span className="ml-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 font-mono text-[7px] font-semibold text-background">{archivedAccounts.length}</span> : null}</button>
             <button type="button" onClick={() => exportJournal("json")} disabled={!allTrades.length && !state.evidence.length} className="flex h-8 items-center gap-1.5 rounded-xl border border-border bg-surface px-3 text-[9px] font-semibold text-muted hover:text-foreground disabled:opacity-35"><Download className="h-3.5 w-3.5" />Backup</button>
             <button type="button" onClick={() => { setAccountCreationMode("manual"); setImportAccount("My KwantDesk Journal"); setImportMessage(""); setShowImport(true); }} className="flex h-8 items-center gap-1.5 rounded-xl border border-border bg-surface px-3 text-[9px] font-semibold text-muted hover:text-foreground"><BookPlus className="h-3.5 w-3.5" />Add account</button>
@@ -2967,6 +2968,15 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
             </div>
             <div className="flex items-center gap-3 border-t border-border bg-background/20 px-5 py-4">
               <div className="mr-auto text-[8px] text-muted">{selectedTrade.reviewedAt ? `Reviewed ${formatDate(selectedTrade.reviewedAt, true)}` : "Review remains open"}</div>
+              <button
+                type="button"
+                disabled={selectedTrade.entryPrice === null || selectedTrade.exitPrice === null}
+                onClick={() => { setSelectedTradeId(null); openTradePost(selectedTrade.id); }}
+                title={selectedTrade.entryPrice === null || selectedTrade.exitPrice === null ? "Add entry and exit prices before posting this trade" : "Post this trade to your Socials feed"}
+                className="flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-[9px] font-semibold text-background hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-35"
+              >
+                <Share2 className="h-3.5 w-3.5" />Post this trade
+              </button>
               {selectedTradeIsZyon ? <span className="flex h-9 items-center gap-2 rounded-xl border border-primary/20 bg-primary/[0.07] px-4 text-[9px] font-semibold text-primary"><ShieldCheck className="h-3.5 w-3.5" />ZYON reviewed</span> : <button type="button" onClick={() => updateTrade(selectedTrade.id, { reviewedAt: selectedTrade.reviewedAt ? null : new Date().toISOString() })} className={`flex h-9 items-center gap-2 rounded-xl px-4 text-[9px] font-semibold ${selectedTrade.reviewedAt ? "border border-border bg-surface text-muted hover:text-foreground" : "bg-primary text-background"}`}>{selectedTrade.reviewedAt ? <CircleAlert className="h-3.5 w-3.5" /> : <Check className="h-3.5 w-3.5" />}{selectedTrade.reviewedAt ? "Reopen review" : "Mark reviewed"}</button>}
             </div>
           </aside>
