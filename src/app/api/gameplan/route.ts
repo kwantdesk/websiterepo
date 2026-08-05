@@ -59,6 +59,7 @@ export async function GET(request: NextRequest) {
       source,
       historical ? "CASH" : "FUTURES",
       requestedSessionDate,
+      "GAMEPLAN",
     );
     const futuresPrice = !historical && options.session.marketOpen
       ? await getNativeFuturesSpot(root).catch(() => null)

@@ -110,6 +110,7 @@ import { subscribeRithmicIndicatorTrades } from "@/lib/rithmicIndicatorStream";
 import {
   currentGameplanSession,
   gameplanSessionLabel,
+  isGameplanPayload,
   type GameplanPayload,
   type GameplanSession,
 } from "@/lib/gameplan";
@@ -5141,11 +5142,10 @@ export default function KwantifyWorkspace({
     const session = currentGameplanSession();
     const cacheKey = gameplanCacheKey(activeGameplanRoot, session);
     readWorkspaceData<GameplanPayload>(cacheKey);
-    void fetchWorkspaceData<GameplanPayload>(
-      cacheKey,
-      `/api/gameplan?root=${activeGameplanRoot}&session=${session}`,
-      { maxAgeMs: 15_000 },
-    ).catch(() => undefined);
+    void requestKwantGameplan(activeGameplanRoot, session, {
+      force: false,
+      attempts: 1,
+    }).catch(() => undefined);
   }, [activeGameplanRoot]);
   const visibleWorkspacePaneIds = useMemo(
     () => collectWorkspacePaneIds(workspaceTree),
@@ -5470,6 +5470,37 @@ export default function KwantifyWorkspace({
     }
   };
 
+  async function requestKwantGameplan(
+    root: "NQ" | "ES",
+    session: GameplanSession,
+    options: { force: boolean; attempts?: number },
+  ) {
+    const attempts = Math.max(1, options.attempts ?? 1);
+    const cacheKey = gameplanCacheKey(root, session);
+    let lastError: unknown = new Error("The latest KWANT levels could not be loaded.");
+
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      try {
+        return await fetchWorkspaceData<GameplanPayload>(
+          cacheKey,
+          `/api/gameplan?root=${root}&session=${session}`,
+          {
+            force: options.force || attempt > 0,
+            validate: isGameplanPayload,
+            invalidMessage: "The latest KWANT level edition was incomplete.",
+          },
+        );
+      } catch (reason) {
+        lastError = reason;
+        if (attempt + 1 < attempts) {
+          await new Promise((resolve) => window.setTimeout(resolve, 650 * (attempt + 1)));
+        }
+      }
+    }
+
+    throw lastError;
+  }
+
   async function refreshKwantLevelsForInstrument(instrument: string, silent = false) {
     if (quickGameplanRequestRef.current) return;
     const root = gameplanChartRootForInstrument(instrument);
@@ -5505,11 +5536,10 @@ export default function KwantifyWorkspace({
     }
 
     try {
-      const payload = await fetchWorkspaceData<GameplanPayload & { error?: string }>(
-        cacheKey,
-        `/api/gameplan?root=${root}&session=${session}`,
-        { force: true },
-      );
+      const payload = await requestKwantGameplan(root, session, {
+        force: true,
+        attempts: cachedPlanMatches ? 1 : 3,
+      });
       if (payload.instrument !== root || payload.plan.edition.session !== session || !payload.plan.ladder.length) {
         throw new Error("The latest Gameplan response did not match this chart.");
       }
@@ -6343,6 +6373,7 @@ export default function KwantifyWorkspace({
     let cancelled = false;
     let running = false;
     let timer: number | null = null;
+    let consecutiveFailures = 0;
 
     const schedule = (delay: number) => {
       if (cancelled) return;
@@ -6358,16 +6389,15 @@ export default function KwantifyWorkspace({
 
       running = true;
       let nextDelay = 20_000;
+      let refreshedAny = false;
       try {
         for (const root of roots) {
           const session = currentGameplanSession();
-          const cacheKey = gameplanCacheKey(root, session);
           try {
-            const payload = await fetchWorkspaceData<GameplanPayload & { error?: string }>(
-              cacheKey,
-              `/api/gameplan?root=${root}&session=${session}`,
-              { force: true },
-            );
+            const payload = await requestKwantGameplan(root, session, {
+              force: true,
+              attempts: 1,
+            });
             if (cancelled) return;
             if (
               payload.instrument !== root
@@ -6385,9 +6415,19 @@ export default function KwantifyWorkspace({
             ) {
               setGameplanChartOverlays(saveGameplanChartOverlay(nextOverlay));
             }
+            refreshedAny = true;
+            nextDelay = Math.max(nextDelay, Math.min(60_000, payload.refresh_after_ms));
           } catch {
-            nextDelay = 5_000;
+            // Keep the last verified overlay visible and retry with bounded
+            // backoff. A provider interruption must not create a 5-second
+            // request storm across every open chart.
           }
+        }
+        if (refreshedAny) {
+          consecutiveFailures = 0;
+        } else {
+          consecutiveFailures += 1;
+          nextDelay = Math.min(120_000, 5_000 * (2 ** Math.min(4, consecutiveFailures - 1)));
         }
       } finally {
         running = false;
@@ -6401,7 +6441,9 @@ export default function KwantifyWorkspace({
       void refresh();
     };
 
-    schedule(1_000);
+    // The explicit add action has just fetched this exact edition. Do not
+    // immediately duplicate that expensive options request one second later.
+    schedule(20_000);
     document.addEventListener("visibilitychange", refreshWhenVisible);
     window.addEventListener("online", refreshWhenVisible);
     return () => {

@@ -1779,6 +1779,140 @@ export async function POST(request: NextRequest) {
     };
   };
 
+  const wantsClientStream = request.headers.get("accept")?.includes("application/x-ndjson");
+  if (wantsClientStream) {
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        let clientConnected = true;
+        const emit = (event: Record<string, unknown>) => {
+          if (!clientConnected) return;
+          try {
+            controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
+          } catch {
+            clientConnected = false;
+          }
+        };
+        const close = () => {
+          if (!clientConnected) return;
+          try {
+            controller.close();
+          } catch {
+            clientConnected = false;
+          }
+        };
+
+        void (async () => {
+          let providerRequestId: string | null = null;
+          let providerStatus: number | null = null;
+          let providerError = "";
+          try {
+            const providerModels = await providerModelsFor(apiKey, modelKey);
+            let result: ClaudeResult | null = null;
+            for (const [modelIndex, providerModel] of providerModels.entries()) {
+              const connectController = new AbortController();
+              const connectTimeout = setTimeout(
+                () => connectController.abort(),
+                PROVIDER_CONNECT_TIMEOUT_MS,
+              );
+              let providerResponse: Response | null = null;
+              try {
+                providerResponse = await fetch("https://api.anthropic.com/v1/messages", {
+                  method: "POST",
+                  signal: connectController.signal,
+                  headers: {
+                    "Content-Type": "application/json",
+                    "x-api-key": apiKey,
+                    "anthropic-version": ANTHROPIC_VERSION,
+                  },
+                  body: JSON.stringify(providerRequestPayload(providerModel, modelIndex, true)),
+                });
+              } catch (error) {
+                providerError = error instanceof Error ? error.message : "provider connection failed";
+              } finally {
+                clearTimeout(connectTimeout);
+              }
+              if (!providerResponse) continue;
+              providerRequestId = providerResponse.headers.get("request-id")
+                ?? providerResponse.headers.get("x-request-id")
+                ?? providerRequestId;
+              providerStatus = providerResponse.status;
+              if (!providerResponse.ok) {
+                providerError = await providerResponse.text();
+                console.error(
+                  "ZYON streaming provider error",
+                  providerResponse.status,
+                  providerModel,
+                  providerError.slice(0, 800),
+                );
+                if ([401, 403, 429].includes(providerResponse.status)) break;
+                continue;
+              }
+
+              let emittedText = false;
+              try {
+                result = await consumeAnthropicStream(
+                  providerResponse,
+                  (text) => {
+                    if (!text) return;
+                    emittedText = true;
+                    emit({ type: "delta", text });
+                  },
+                  () => undefined,
+                );
+                if (extractClaudeText(result) || result.content?.some((block) => block.type === "tool_use")) {
+                  break;
+                }
+                result = null;
+                providerError = "provider returned an empty response";
+              } catch (error) {
+                providerError = error instanceof Error ? error.message : "provider stream failed";
+                console.error("ZYON provider stream failed", providerModel, providerError);
+                result = null;
+              }
+              if (emittedText && !result) emit({ type: "reset" });
+            }
+
+            if (!result) {
+              throw new Error(
+                providerStatus === 429
+                  ? "ZYON is temporarily rate-limited. Please retry shortly."
+                  : providerStatus === 401 || providerStatus === 403
+                    ? "ZYON's model connection is not authorised."
+                    : providerError || "No model completed the request.",
+              );
+            }
+            const finalized = await finalizeResult(result, providerRequestId);
+            emit({ type: "complete", payload: finalized });
+          } catch (error) {
+            console.error("ZYON live stream failed", {
+              message: error instanceof Error ? error.message : String(error),
+              providerStatus,
+              providerRequestId,
+            });
+            emit({
+              type: "error",
+              error: error instanceof Error && error.message.trim()
+                ? error.message
+                : "ZYON could not complete this response.",
+            });
+          } finally {
+            close();
+          }
+        })();
+      },
+    });
+
+    return new Response(stream, {
+      status: 200,
+      headers: {
+        "Content-Type": "application/x-ndjson; charset=utf-8",
+        "Cache-Control": "private, no-store, max-age=0",
+        "X-Accel-Buffering": "no",
+      },
+    });
+  }
+
   const wantsDurableReply = !historicalReplay
     && request.headers.get("prefer")?.includes("respond-async");
   if (wantsDurableReply) {

@@ -1822,8 +1822,7 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              Accept: "application/json",
-              Prefer: "respond-async",
+              Accept: "application/x-ndjson",
             },
             body: requestBody,
           });
@@ -1860,6 +1859,18 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
           if (event.type === "delta" && typeof event.text === "string" && event.text) {
             streamedContent = `${streamedContent}${event.text}`.slice(0, 12_000);
             queueStreamedReplyUpdate();
+            return;
+          }
+          if (event.type === "reset") {
+            streamedContent = "";
+            if (streamedUpdateFrame !== null) {
+              window.cancelAnimationFrame(streamedUpdateFrame);
+              streamedUpdateFrame = null;
+            }
+            if (streamedReplyCreated) {
+              setMessages((current) => current.filter((message) => message.id !== streamedReplyId));
+              streamedReplyCreated = false;
+            }
             return;
           }
           if (event.type === "complete" && event.payload && typeof event.payload === "object") {
@@ -3074,7 +3085,7 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
                     </div>
                   );
                 })}
-                {sending ? (
+                {sending && messages.at(-1)?.role !== "assistant" ? (
                   <div className="flex items-center gap-3">
                     <ZyonAvatar size="md" speaking />
                     <div className="flex items-center gap-2 rounded-2xl border border-border bg-panel/80 px-4 py-3 text-[10px] text-muted">

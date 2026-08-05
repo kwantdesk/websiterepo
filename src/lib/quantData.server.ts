@@ -1542,7 +1542,7 @@ async function buildOptionsFlowPayload(
   symbol: string,
   requestedPriceMode: OptionsPriceMode,
   requestedSessionDate?: string,
-  detailMode: "CORE" | "FULL" = "FULL",
+  detailMode: "CORE" | "GAMEPLAN" | "FULL" = "FULL",
 ): Promise<OptionsFlowPayload> {
   const currentSession = getUsOptionsSession();
   const historical = Boolean(requestedSessionDate && requestedSessionDate !== currentSession.sessionDate);
@@ -1556,6 +1556,12 @@ async function buildOptionsFlowPayload(
   };
   const exposureModes: GreekMode[] = ["GAMMA", "DELTA", "VANNA", "CHARM"];
   const fullDetail = detailMode === "FULL";
+  // Gameplan/KWANT levels need the structural inputs that create the ladder,
+  // but not the seven heavy interval-map, skew and term-structure panels used
+  // by the full Gamma workspace. Keeping this as a dedicated mode prevents a
+  // single level refresh from rebuilding the entire options dashboard.
+  const gameplanDetail = detailMode === "GAMEPLAN";
+  const structuralDetail = fullDetail || gameplanDetail;
   const skippedRequest = () => Promise.resolve({ payload: null as unknown, remaining: null as number | null });
   const exposureRequests = exposureModes.map((greekMode) =>
     fullDetail || greekMode === "GAMMA" || greekMode === "DELTA"
@@ -1576,15 +1582,15 @@ async function buildOptionsFlowPayload(
       representationMode: "PER_ONE_PERCENT_MOVE",
       filter: { ticker: symbol, expirationDate: session.sessionDate },
     }, 4_000),
-    fullDetail ? quantDataPost("/options/tool/open-interest-by-strike", {
+    structuralDetail ? quantDataPost("/options/tool/open-interest-by-strike", {
       sessionDate: session.sessionDate,
       filter: { ticker: symbol },
     }, 60_000) : skippedRequest(),
-    fullDetail ? quantDataPost("/options/tool/open-interest-by-strike", {
+    structuralDetail ? quantDataPost("/options/tool/open-interest-by-strike", {
       sessionDate: session.sessionDate,
       filter: { ticker: symbol, expirationDate: session.sessionDate },
     }, 60_000) : skippedRequest(),
-    fullDetail ? quantDataPost("/options/tool/max-pain", {
+    structuralDetail ? quantDataPost("/options/tool/max-pain", {
       sessionDate: session.sessionDate,
       filter: { ticker: symbol, expirationDate: session.sessionDate },
     }, 60_000) : skippedRequest(),
@@ -1603,7 +1609,7 @@ async function buildOptionsFlowPayload(
       aggregationPeriod: "5m",
       filter: { ticker: symbol },
     }, 5_000),
-    fullDetail ? quantDataPost("/options/tool/iv-rank", {
+    structuralDetail ? quantDataPost("/options/tool/iv-rank", {
       filter: { ticker: symbol },
       lookBackPeriod: 252,
       maturity: 30,
@@ -1617,7 +1623,7 @@ async function buildOptionsFlowPayload(
       ...sessionScope,
       filter: { ticker: symbol },
     }, 30_000) : skippedRequest(),
-    fullDetail ? quantDataPost("/equities/tool/stock-price-over-time", {
+    structuralDetail ? quantDataPost("/equities/tool/stock-price-over-time", {
       timeRange: dailyRange,
       aggregationPeriod: "1d",
       filter: { ticker: symbol },
@@ -2771,7 +2777,12 @@ export async function getOptionsFlowPayload(
   }
   const historical = sessionDate !== currentSession.sessionDate;
   const session = historical ? { marketOpen: false, sessionDate } : currentSession;
-  const detailMode = detailModeInput.trim().toUpperCase() === "CORE" ? "CORE" : "FULL";
+  const requestedDetailMode = detailModeInput.trim().toUpperCase();
+  const detailMode: "CORE" | "GAMEPLAN" | "FULL" = requestedDetailMode === "CORE"
+    ? "CORE"
+    : requestedDetailMode === "GAMEPLAN"
+      ? "GAMEPLAN"
+      : "FULL";
   const cacheKey = `${symbol}:${priceMode}:${sessionDate}:${detailMode}`;
   const cached = requestCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) return cached.promise;
