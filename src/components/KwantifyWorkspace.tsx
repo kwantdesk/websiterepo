@@ -1190,12 +1190,21 @@ function marketTimestamp(value: unknown) {
     if (Number.isFinite(numeric)) return marketTimestamp(numeric);
   }
   if (typeof value === "number") {
-    if (value > 10_000_000_000_000_000) return Math.floor(value / 1_000_000);
-    if (value > 10_000_000_000_000) return Math.floor(value / 1_000);
-    return value;
+    const timestamp = value > 10_000_000_000_000_000
+      ? Math.floor(value / 1_000_000)
+      : value > 10_000_000_000_000
+        ? Math.floor(value / 1_000)
+        : value < 10_000_000_000
+          ? Math.floor(value * 1_000)
+          : value;
+    const now = Date.now();
+    return timestamp > now + 60_000 || timestamp < now - 15 * 60_000 ? now : timestamp;
   }
   const parsed = Date.parse(String(value ?? ""));
-  return Number.isFinite(parsed) ? parsed : Date.now();
+  const now = Date.now();
+  return Number.isFinite(parsed) && parsed <= now + 60_000 && parsed >= now - 15 * 60_000
+    ? parsed
+    : now;
 }
 
 function compactTimeBasedTicks(ticks: QueuedLiveTick[], timeframe: string) {
@@ -5103,6 +5112,14 @@ export default function KwantifyWorkspace({
       .forEach((item) => unique.add(item.symbol));
     return Array.from(unique).join(",");
   }, [activeChartBrokerLabel, selectedInstrument, watchlist, workspacePanes]);
+  const priorityLiveSymbolsCsv = useMemo(() => {
+    const unique = new Set<string>();
+    if (selectedInstrument) unique.add(selectedInstrument);
+    workspacePanes
+      .filter((pane) => pane.broker === activeChartBrokerLabel)
+      .forEach((pane) => unique.add(pane.symbol));
+    return Array.from(unique).join(",");
+  }, [activeChartBrokerLabel, selectedInstrument, workspacePanes]);
   const instrumentCategories = [
     {
       category: "CME Futures",
@@ -6659,6 +6676,7 @@ export default function KwantifyWorkspace({
   useEffect(() => {
     if (bottomWorkspaceSection !== "charts" && bottomWorkspaceSection !== "gameplan") return;
     if (activeChartBrokerLabel === "Market Index" || activeChartBrokerLabel === "Massive") return;
+    const priorityLiveSymbols = new Set(priorityLiveSymbolsCsv.split(",").filter(Boolean));
     const nameMap: Record<string, string> = {
       EUR_USD: "EURUSD",
       GBP_USD: "GBPUSD",
@@ -6679,12 +6697,14 @@ export default function KwantifyWorkspace({
 
     const eventSource = new EventSource(
       usingDatabentoFeed
-        ? `/api/databento/live?symbols=${encodeURIComponent(watchlistSymbolsCsv)}`
+        ? `/api/databento/live?symbols=${encodeURIComponent(watchlistSymbolsCsv)}&priority=${encodeURIComponent(priorityLiveSymbolsCsv)}`
         : usingCTraderFeed
         ? `/api/ctrader/stream?broker=${encodeURIComponent(activeChartBrokerLabel)}&symbols=${encodeURIComponent(watchlistSymbolsCsv)}`
         : "/api/oanda/stream",
     );
-    let lastMessageAt = Date.now();
+    let lastServerSignalAt = Date.now();
+    let lastPriceMessageAt = Date.now();
+    let receivedPriceMessage = false;
     let reconnecting = false;
     let streamMarkedHealthy = false;
     let reconnectTimer: number | null = null;
@@ -6693,7 +6713,7 @@ export default function KwantifyWorkspace({
       publishDatabentoLiveStatus(status);
     };
     const markStreamAlive = () => {
-      lastMessageAt = Date.now();
+      lastServerSignalAt = Date.now();
       publishDatabentoStatus("live");
       if (streamMarkedHealthy) return;
       streamMarkedHealthy = true;
@@ -6720,12 +6740,17 @@ export default function KwantifyWorkspace({
       reconnectTimer = window.setTimeout(() => setStreamReconnectNonce((value) => value + 1), 1_200);
     };
     const healthTimer = window.setInterval(() => {
-      if (usingDatabentoFeed && Date.now() - lastMessageAt > 18_000) reconnect();
+      if (!usingDatabentoFeed || document.visibilityState !== "visible") return;
+      const now = Date.now();
+      if (
+        now - lastServerSignalAt > 18_000
+        || (receivedPriceMessage && now - lastPriceMessageAt > 24_000)
+      ) reconnect();
     }, 3_000);
     const handleStatus = () => markStreamAlive();
     const handleHeartbeat = () => markStreamAlive();
     const handleFeedError = (event: Event) => {
-      lastMessageAt = Date.now();
+      lastServerSignalAt = Date.now();
       try {
         const payload = JSON.parse((event as MessageEvent<string>).data) as { error?: string };
         if (payload.error) {
@@ -6752,6 +6777,10 @@ export default function KwantifyWorkspace({
         }
 
         const displayName = usingDatabentoFeed || usingCTraderFeed ? price.instrument : (nameMap[price.instrument] || price.instrument);
+        if (priorityLiveSymbols.has(displayName)) {
+          lastPriceMessageAt = Date.now();
+          receivedPriceMessage = true;
+        }
         if (usingDatabentoFeed) {
           recordDatabentoLiveTick(price);
           const previousItem = watchlistRef.current.find(
@@ -6773,7 +6802,9 @@ export default function KwantifyWorkspace({
           // futures stream as Charts. Publishing it here prevents delayed REST
           // snapshots from briefly displacing the live "You are here" marker.
           if (activeWorkspaceSectionRef.current !== "charts" && activeWorkspaceSectionRef.current !== "gameplan") return;
-          window.dispatchEvent(new CustomEvent(DATABENTO_LIVE_TICK_EVENT, { detail: price }));
+          if (priorityLiveSymbols.has(displayName)) {
+            window.dispatchEvent(new CustomEvent(DATABENTO_LIVE_TICK_EVENT, { detail: price }));
+          }
         }
         pendingWatchlistPricesRef.current.set(displayName, price);
         if (watchlistLiveFrameRef.current !== null) return;
@@ -6881,7 +6912,7 @@ export default function KwantifyWorkspace({
         watchlistFlashTimerRef.current = null;
       }
     };
-  }, [activeChartBrokerLabel, bottomWorkspaceSection, streamReconnectNonce, usingCTraderFeed, usingDatabentoFeed, watchlistSymbolsCsv]);
+  }, [activeChartBrokerLabel, bottomWorkspaceSection, priorityLiveSymbolsCsv, streamReconnectNonce, usingCTraderFeed, usingDatabentoFeed, watchlistSymbolsCsv]);
 
   useEffect(() => {
     if (section !== "charts") return;

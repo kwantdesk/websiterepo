@@ -47,6 +47,13 @@ export async function GET(request: Request) {
     .filter(Boolean)
     .slice(0, 40);
   if (!symbols.length) return new Response("Select at least one instrument.", { status: 400 });
+  const symbolSet = new Set(symbols);
+  const prioritySymbols = new Set(
+    (url.searchParams.get("priority") ?? "")
+      .split(",")
+      .map((symbol) => symbol.trim())
+      .filter((symbol) => symbolSet.has(symbol)),
+  );
 
   const encoder = new TextEncoder();
   let socket: ReturnType<typeof createConnection> | null = null;
@@ -59,11 +66,15 @@ export async function GET(request: Request) {
       const instrumentContracts = new Map<number, string>();
       let buffer = "";
       let authenticated = false;
+      let authenticatedAt = 0;
       let lastUpstreamMessageAt = Date.now();
+      let lastMarketPayloadAt = 0;
+      let lastPriorityMarketPayloadAt = 0;
       let downstreamHeartbeat: ReturnType<typeof setInterval> | null = null;
       let downstreamFlush: ReturnType<typeof setInterval> | null = null;
       let upstreamHealthCheck: ReturnType<typeof setInterval> | null = null;
       const pendingPayloads = new Map<string, CachedLivePayload["payload"]>();
+      const lastPublishedAtBySymbol = new Map<string, number>();
 
       const send = (value: string) => {
         if (closed) return;
@@ -84,13 +95,25 @@ export async function GET(request: Request) {
       };
       const flushPendingPayloads = () => {
         if (closed || pendingPayloads.size === 0) return;
-        const payloads = [...pendingPayloads.values()];
-        pendingPayloads.clear();
-        for (const payload of payloads) {
+        const now = Date.now();
+        for (const [symbol, payload] of pendingPayloads) {
+          // Active chart symbols retain the fluid 32 ms path. Watchlist-only
+          // symbols update four times per second, which is visually live without
+          // flooding every mounted chart with thousands of unused events.
+          if (
+            !prioritySymbols.has(symbol)
+            && now - (lastPublishedAtBySymbol.get(symbol) ?? 0) < 250
+          ) continue;
+          pendingPayloads.delete(symbol);
+          lastPublishedAtBySymbol.set(symbol, now);
           send(`data: ${JSON.stringify(payload)}\n\n`);
         }
       };
       const queuePayload = (payload: CachedLivePayload["payload"]) => {
+        lastMarketPayloadAt = Date.now();
+        if (prioritySymbols.has(payload.instrument)) {
+          lastPriorityMarketPayloadAt = lastMarketPayloadAt;
+        }
         const previous = pendingPayloads.get(payload.instrument);
         const previousTrades = previous?.isTrade ? Number(previous.trades ?? 1) : 0;
         const nextTrades = payload.isTrade ? Number(payload.trades ?? 1) : 0;
@@ -117,7 +140,10 @@ export async function GET(request: Request) {
         }
       }
       downstreamHeartbeat = setInterval(
-        () => send(`event: heartbeat\ndata: ${JSON.stringify({ timestamp: Date.now() })}\n\n`),
+        () => send(`event: heartbeat\ndata: ${JSON.stringify({
+          timestamp: Date.now(),
+          lastMarketPayloadAt: lastMarketPayloadAt || null,
+        })}\n\n`),
         8_000,
       );
       // Raw CME MBP can deliver thousands of updates per second. A 32 ms
@@ -125,7 +151,12 @@ export async function GET(request: Request) {
       // the browser main thread from being flooded by redundant book changes.
       downstreamFlush = setInterval(flushPendingPayloads, 32);
       upstreamHealthCheck = setInterval(() => {
-        if (authenticated && Date.now() - lastUpstreamMessageAt > 22_000) {
+        const now = Date.now();
+        const upstreamSilent = authenticated && now - lastUpstreamMessageAt > 22_000;
+        const marketSilent = authenticated
+          && prioritySymbols.size > 0
+          && now - (lastPriorityMarketPayloadAt || authenticatedAt) > 30_000;
+        if (upstreamSilent || marketSilent) {
           close();
         }
       }, 4_000);
@@ -152,6 +183,7 @@ export async function GET(request: Request) {
             }
             if (line.startsWith("success=1")) {
               authenticated = true;
+              authenticatedAt = Date.now();
               const continuous = symbols.filter(isContinuousFuture);
               const raw = symbols.filter((symbol) => !isContinuousFuture(symbol));
               if (continuous.length) {
