@@ -51,6 +51,7 @@ type AppSidebarProps = {
   activeItem: SidebarKey;
   accountLabel?: string;
   accountTitle?: string;
+  navigationMode?: "native" | "persistent";
   onAccountClick?: () => void;
   onNavigateIntent?: (item: SidebarKey) => void;
   onNavigateStart?: (item: SidebarKey) => void;
@@ -118,6 +119,7 @@ function AppSidebar({
   activeItem,
   accountLabel = "Account",
   accountTitle = "Account",
+  navigationMode = "native",
   onAccountClick,
   onNavigateIntent,
   onNavigateStart,
@@ -145,7 +147,7 @@ function AppSidebar({
   ) => {
     if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey || event.button !== 0) return;
     beginNavigation(key);
-    if (!PERSISTENT_WORKSPACE_KEYS.has(key)) return;
+    if (navigationMode !== "persistent" || !PERSISTENT_WORKSPACE_KEYS.has(key)) return;
 
     // Every primary workspace lives inside the same persistent client shell;
     // its route page intentionally renders null. Asking Next for a new RSC

@@ -9582,6 +9582,7 @@ export default function KwantifyWorkspace({
           activeItem={bottomWorkspaceSection}
           accountLabel="Account"
           accountTitle={currentUsername ? `Sign out @${currentUsername}` : "Account"}
+          navigationMode="persistent"
           onAccountClick={signOut}
           onNavigateIntent={warmWorkspaceSection}
           onNavigateStart={handleWorkspaceNavigationStart}
