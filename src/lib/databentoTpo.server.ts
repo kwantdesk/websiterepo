@@ -6,6 +6,13 @@ import {
 
 const DATABENTO_HISTORICAL_BASE_URL = "https://hist.databento.com/v0";
 
+type CachedTpoSession = { promise: Promise<TpoSessionInput> };
+const globalTpoSessionCache = globalThis as typeof globalThis & {
+  __kwantdeskTpoSessions?: Map<string, CachedTpoSession>;
+};
+const tpoSessionCache = globalTpoSessionCache.__kwantdeskTpoSessions
+  ?? (globalTpoSessionCache.__kwantdeskTpoSessions = new Map<string, CachedTpoSession>());
+
 export class DatabentoTpoAuthError extends Error {
   constructor() {
     super("TPO Levels: data source needs re-authentication");
@@ -197,6 +204,39 @@ async function getNqSessionTrades(
   };
 }
 
+function cachedNqSessionTrades(
+  definition: NqInstrumentDefinition,
+  window: { date: string; start: number; end: number },
+) {
+  const key = `${definition.rawSymbol}:${window.start}:${window.end}`;
+  const cached = tpoSessionCache.get(key);
+  if (cached) return cached.promise;
+  const promise = getNqSessionTrades(definition, window);
+  tpoSessionCache.set(key, { promise });
+  void promise.catch(() => {
+    if (tpoSessionCache.get(key)?.promise === promise) tpoSessionCache.delete(key);
+  });
+  return promise;
+}
+
+async function mapWithConcurrency<T, R>(
+  values: T[],
+  concurrency: number,
+  worker: (value: T, index: number) => Promise<R>,
+) {
+  const results = new Array<R>(values.length);
+  let cursor = 0;
+  const run = async () => {
+    while (cursor < values.length) {
+      const index = cursor;
+      cursor += 1;
+      results[index] = await worker(values[index], index);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(concurrency, values.length) }, run));
+  return results;
+}
+
 export async function getDatabentoTpoSessions(
   windowsNewestFirst: Array<{ date: string; start: number; end: number }>,
 ) {
@@ -207,14 +247,14 @@ export async function getDatabentoTpoSessions(
     windows.at(-1)!.end + 24 * 60 * 60_000,
   );
   if (!definitions.length) throw new Error("Databento returned no NQ outright definitions.");
-  const sessions: TpoSessionInput[] = [];
-  for (const window of windows) {
+  // Completed RTH sessions never mutate. Keep each session promise on the warm
+  // server and pull cold-cache sessions in a small parallel pool rather than
+  // making ten large historical requests serially.
+  return mapWithConcurrency(windows, 3, async (window) => {
     const front = resolveFrontMonthDefinition(definitions, window.end);
     if (!front) {
-      sessions.push({ ...window, trades: [], contract: null });
-      continue;
+      return { ...window, trades: [], contract: null };
     }
-    sessions.push(await getNqSessionTrades(front, window));
-  }
-  return sessions;
+    return cachedNqSessionTrades(front, window);
+  });
 }

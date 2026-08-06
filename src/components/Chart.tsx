@@ -1969,6 +1969,16 @@ export default function Chart({
     [indicatorSignature, indicators],
   );
   const tpoSettingsSignature = JSON.stringify(tpoIndicator?.settings ?? {});
+  const tpoDataSignature = useMemo(() => {
+    const params = new URLSearchParams();
+    const settingsForTpo = tpoIndicator?.settings ?? {};
+    TPO_LEVEL_QUERY_KEYS.forEach((key) => {
+      const value = Number(settingsForTpo[key]);
+      if (Number.isFinite(value)) params.set(key, String(value));
+    });
+    return params.toString();
+  }, [tpoSettingsSignature, tpoIndicator]);
+  const tpoSupportsInstrument = /(^|[^A-Z])M?NQ([^A-Z]|$)/.test(instrument.trim().toUpperCase());
 
   useEffect(() => {
     if (!tpoIndicator) {
@@ -1978,8 +1988,7 @@ export default function Chart({
       setTpoTooltip(null);
       return;
     }
-    const normalizedInstrument = instrument.trim().toUpperCase();
-    if (!/(^|[^A-Z])M?NQ([^A-Z]|$)/.test(normalizedInstrument)) {
+    if (!tpoSupportsInstrument) {
       setTpoPayload(null);
       setTpoLoading(false);
       setTpoError("TPO Levels are calculated on NQ and displayed identically on MNQ.");
@@ -1988,37 +1997,46 @@ export default function Chart({
     let cancelled = false;
     let timer: number | null = null;
     const controller = new AbortController();
-    const storageKey = `kwantdesk:tpo-levels:last-good:v1:${tpoSettingsSignature}`;
-    const settingsForTpo = tpoIndicator.settings ?? {};
-    const params = new URLSearchParams();
-    TPO_LEVEL_QUERY_KEYS.forEach((key) => {
-      const value = Number(settingsForTpo[key]);
-      if (Number.isFinite(value)) params.set(key, String(value));
-    });
+    const params = new URLSearchParams(tpoDataSignature);
+    const storageKey = `kwantdesk:tpo-levels:last-good:v2:${tpoDataSignature || "default"}`;
+    const latestStorageKey = "kwantdesk:tpo-levels:last-good:v2:latest";
     const schedule = (payload: TpoLevelsPayload | null, fallbackMs = 60_000) => {
       if (cancelled) return;
-      const target = payload ? Date.parse(payload.nextRefreshAt) + 1_000 : Date.now() + fallbackMs;
+      const target = payload && !payload.stale
+        ? Date.parse(payload.nextRefreshAt) + 1_000
+        : Date.now() + fallbackMs;
       const delay = Math.max(30_000, Math.min(24 * 60 * 60_000, target - Date.now()));
       timer = window.setTimeout(load, delay);
     };
-    const cachedFallback = (message: string) => {
-      try {
-        const raw = window.localStorage.getItem(storageKey);
-        if (!raw) return null;
-        const cached = JSON.parse(raw) as TpoLevelsPayload;
-        if (!Array.isArray(cached.zones) || !cached.generatedAt) return null;
-        return {
-          ...cached,
-          stale: true,
-          dataAge: Math.max(0, Date.now() - Date.parse(cached.generatedAt)),
-        } satisfies TpoLevelsPayload;
-      } catch {
-        setTpoError(message);
-        return null;
+    const readCachedPayload = () => {
+      const legacyKeys = Object.keys(window.localStorage)
+        .filter((key) => key.startsWith("kwantdesk:tpo-levels:last-good:v1:"));
+      for (const key of [storageKey, latestStorageKey, ...legacyKeys]) {
+        try {
+          const raw = window.localStorage.getItem(key);
+          if (!raw) continue;
+          const cached = JSON.parse(raw) as TpoLevelsPayload;
+          if (!Array.isArray(cached.zones) || !cached.generatedAt) continue;
+          const refreshAt = Date.parse(cached.nextRefreshAt);
+          const stale = cached.stale || !Number.isFinite(refreshAt) || refreshAt <= Date.now();
+          return {
+            ...cached,
+            stale,
+            dataAge: stale ? Math.max(0, Date.now() - Date.parse(cached.generatedAt)) : cached.dataAge,
+          } satisfies TpoLevelsPayload;
+        } catch {
+          // A single malformed legacy cache must not hide another valid copy.
+        }
       }
+      return null;
     };
+    let retainedPayload = readCachedPayload() ?? tpoPayload;
+    if (retainedPayload) {
+      setTpoPayload(retainedPayload);
+      setTpoLoading(false);
+    }
     async function load() {
-      setTpoLoading((current) => current || !tpoPayload);
+      setTpoLoading(!retainedPayload);
       try {
         const response = await fetch(`/api/databento/tpo-levels?${params.toString()}`, {
           cache: "no-store",
@@ -2035,15 +2053,27 @@ export default function Chart({
           throw new Error(candidate?.error || "TPO Levels are unavailable.");
         }
         if (cancelled) return;
+        retainedPayload = candidate;
         setTpoPayload(candidate);
         setTpoError(null);
-        if (!candidate.stale) window.localStorage.setItem(storageKey, JSON.stringify(candidate));
+        if (!candidate.stale) {
+          const serialized = JSON.stringify(candidate);
+          window.localStorage.setItem(storageKey, serialized);
+          window.localStorage.setItem(latestStorageKey, serialized);
+        }
         schedule(candidate, candidate.stale ? 60_000 : 5 * 60_000);
       } catch (error) {
         if (cancelled || (error instanceof DOMException && error.name === "AbortError")) return;
         const message = error instanceof Error ? error.message : "TPO Levels are unavailable.";
-        const fallback = cachedFallback(message);
+        const cached = readCachedPayload();
+        const fallbackSource = cached ?? retainedPayload;
+        const fallback = fallbackSource ? {
+          ...fallbackSource,
+          stale: true,
+          dataAge: Math.max(0, Date.now() - Date.parse(fallbackSource.generatedAt)),
+        } satisfies TpoLevelsPayload : null;
         if (fallback) {
+          retainedPayload = fallback;
           setTpoPayload(fallback);
           setTpoError(message);
         } else {
@@ -2061,10 +2091,10 @@ export default function Chart({
       controller.abort();
       if (timer !== null) window.clearTimeout(timer);
     };
-  // The serialized settings deliberately make each threshold configuration a
-  // separate completed-session cache key without refetching on chart ticks.
+  // Only calculation settings belong in the data signature. Visual changes
+  // must never abort a completed-session request or discard a valid profile.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [instrument, tpoIndicator?.instanceId, tpoSettingsSignature]);
+  }, [tpoDataSignature, tpoIndicator?.instanceId, tpoSupportsInstrument]);
 
   const tpoOverlay = useMemo(() => {
     if (!tpoIndicator || !tpoPayload || !candleSeriesRef.current || !chartRef.current) return null;
@@ -2104,6 +2134,16 @@ export default function Chart({
     };
     const maxOpacity = clamp(Number(settingsForTpo.fillOpacity ?? 15) / 100, 0.03, 0.35);
     const borderOpacity = clamp(Number(settingsForTpo.borderOpacity ?? 58) / 100, 0.1, 1);
+    const latestCandle = candles.at(-1) ?? null;
+    const latestChartTime = latestCandle
+      ? eventChartTimeBySourceTimeRef.current.get(latestCandle.timestamp) ?? Math.floor(latestCandle.timestamp / 1_000)
+      : null;
+    const latestCandleX = latestChartTime == null
+      ? null
+      : chartRef.current.timeScale().timeToCoordinate(latestChartTime as Time);
+    const zoneRightEdge = latestCandleX == null
+      ? plotWidth
+      : Math.max(4, Math.min(plotWidth, latestCandleX));
     const positioned = displayed.flatMap((zone) => {
       const highY = candleSeriesRef.current?.priceToCoordinate(zone.high) ?? null;
       const lowY = candleSeriesRef.current?.priceToCoordinate(zone.low) ?? null;
@@ -2111,8 +2151,6 @@ export default function Chart({
       const rawTop = Math.min(highY, lowY);
       const rawBottom = Math.max(highY, lowY);
       if (rawBottom < 0 || rawTop > plotHeight) return [];
-      const formationTime = Math.floor(Date.parse(zone.formationStart) / 1_000) as Time;
-      const formationX = chartRef.current?.timeScale().timeToCoordinate(formationTime) ?? 0;
       const top = Math.max(0, rawTop);
       const bottom = Math.min(plotHeight, rawBottom);
       const color = zone.side === "SUPPORT" ? colors.support
@@ -2120,13 +2158,13 @@ export default function Chart({
           : colors.neutral;
       return [{
         zone,
-        x: Math.max(0, Math.min(plotWidth - 4, formationX)),
+        x: 0,
         y: top,
-        width: Math.max(4, plotWidth - Math.max(0, formationX)),
+        width: zoneRightEdge,
         height: Math.max(3, bottom - top),
         centreY: (top + bottom) / 2,
         color,
-        opacity: maxOpacity * (0.35 + 0.65 * zone.strength / 100) * (tpoPayload.stale ? 0.55 : 1),
+        opacity: maxOpacity * (0.35 + 0.65 * zone.strength / 100),
       }];
     });
     const labelY = new Map<string, number>();
@@ -4784,7 +4822,7 @@ export default function Chart({
                 fill={item.color}
                 fillOpacity={item.opacity}
                 stroke={item.color}
-                strokeOpacity={tpoOverlay.borderOpacity * (tpoPayload?.stale ? 0.55 : 1)}
+                strokeOpacity={tpoOverlay.borderOpacity}
                 strokeWidth={1}
                 style={{ pointerEvents: "all", cursor: "crosshair" }}
                 onMouseMove={(event) => {
