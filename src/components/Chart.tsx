@@ -130,6 +130,15 @@ import {
   type ExpectedMoveBand,
   type ExpectedMoveSourceSymbol,
 } from "@/lib/expectedMove";
+import {
+  hedgeFreshnessPill,
+  hedgeLevelMovement,
+  renderableHedgeLevels,
+  staggerHedgeLabels,
+  staleHedgeLevelsPayload,
+  type HedgeChartLevel,
+  type HedgeLevelsPayload,
+} from "@/lib/hedgeLevels";
 
 interface ChartProps {
   candles: Candle[];
@@ -218,6 +227,14 @@ export interface ChartZone {
   label: string;
   labelAlign?: "left" | "right";
 }
+
+const HEDGE_LEVEL_COLORS: Record<HedgeChartLevel["kind"], string> = {
+  MAJOR_CALL: "#B4233B",
+  ACCELERATOR: "#14B8A6",
+  MAGNET: "#D946EF",
+  FLIP: "#E5E7EB",
+  MAJOR_PUT: "#22C55E",
+};
 
 const EMPTY_CHART_LEVELS: ChartLevel[] = [];
 
@@ -1378,6 +1395,13 @@ export default function Chart({
   const [expectedMoveNow, setExpectedMoveNow] = useState(() => Date.now());
   const [expectedMoveLiveAnchor, setExpectedMoveLiveAnchor] = useState<number | null>(() => candles.at(-1)?.close ?? null);
   const [expectedMoveTooltip, setExpectedMoveTooltip] = useState<{ x: number; y: number; band: ExpectedMoveBand } | null>(null);
+  const [hedgeLevelsPayload, setHedgeLevelsPayload] = useState<HedgeLevelsPayload | null>(null);
+  const [hedgeLevelsLoading, setHedgeLevelsLoading] = useState(false);
+  const [hedgeLevelsError, setHedgeLevelsError] = useState<string | null>(null);
+  const [hedgeLevelsNow, setHedgeLevelsNow] = useState(() => Date.now());
+  const [hedgeLevelsPulseIds, setHedgeLevelsPulseIds] = useState<string[]>([]);
+  const [hedgeLevelsTooltip, setHedgeLevelsTooltip] = useState<{ x: number; y: number; level: HedgeChartLevel } | null>(null);
+  const previousHedgeLevelsRef = useRef<HedgeChartLevel[] | null>(null);
   const [chartReadyRevision, setChartReadyRevision] = useState(0);
   const [sampledIndicatorCandles, setSampledIndicatorCandles] = useState(candles);
   const [sampledIndicatorMarketTrades, setSampledIndicatorMarketTrades] = useState(marketTrades);
@@ -1990,6 +2014,168 @@ export default function Chart({
     resolvedLevelLayers.background,
     resolvedLevelLayers.foreground,
     settings.borderUpColor,
+    viewportVersion,
+  ]);
+  const hedgeLevelsIndicator = useMemo(
+    () => indicators.find((instance) => instance.enabled && instance.indicatorId === "hedge-levels") ?? null,
+    [indicatorSignature, indicators],
+  );
+  const hedgeLevelsInstrument = instrument.trim().toUpperCase().includes("MNQ")
+    ? "MNQ" as const
+    : instrument.trim().toUpperCase().includes("NQ")
+      ? "NQ" as const
+      : null;
+
+  useEffect(() => {
+    if (!hedgeLevelsIndicator) {
+      setHedgeLevelsPayload(null);
+      setHedgeLevelsLoading(false);
+      setHedgeLevelsError(null);
+      setHedgeLevelsTooltip(null);
+      setHedgeLevelsPulseIds([]);
+      previousHedgeLevelsRef.current = null;
+      return;
+    }
+    if (!hedgeLevelsInstrument) {
+      setHedgeLevelsPayload(null);
+      setHedgeLevelsLoading(false);
+      setHedgeLevelsError("Hedge Levels is available on NQ and MNQ.");
+      return;
+    }
+
+    let cancelled = false;
+    let timer: number | null = null;
+    let pulseTimer: number | null = null;
+    let controller: AbortController | null = null;
+    const storageKey = `kwantdesk:hedge-levels:last-good:v1:${hedgeLevelsInstrument}`;
+    const readCached = () => {
+      try {
+        const raw = window.localStorage.getItem(storageKey);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw) as HedgeLevelsPayload;
+        if (!Array.isArray(parsed.levels) || !parsed.generatedAt || parsed.instrument !== hedgeLevelsInstrument) return null;
+        return staleHedgeLevelsPayload(parsed, Date.now());
+      } catch {
+        return null;
+      }
+    };
+    let retained = readCached() ?? hedgeLevelsPayload;
+    if (retained) {
+      setHedgeLevelsPayload(retained);
+      previousHedgeLevelsRef.current = retained.levels;
+      setHedgeLevelsLoading(false);
+    }
+    const schedule = (payload: HedgeLevelsPayload | null, fallbackMs = 60_000) => {
+      if (cancelled) return;
+      const delay = Math.max(30_000, Math.min(5 * 60_000, payload?.refreshAfterMs ?? fallbackMs));
+      timer = window.setTimeout(load, delay);
+    };
+    async function load() {
+      if (cancelled) return;
+      controller?.abort();
+      controller = new AbortController();
+      setHedgeLevelsLoading(!retained);
+      try {
+        const response = await fetch(`/api/hedge-levels?instrument=${hedgeLevelsInstrument}`, {
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        const text = await response.text();
+        let candidate: (HedgeLevelsPayload & { error?: string }) | null = null;
+        try {
+          candidate = JSON.parse(text) as HedgeLevelsPayload & { error?: string };
+        } catch {
+          throw new Error("Hedge Levels received a non-JSON data-source response.");
+        }
+        if (!response.ok || !candidate || !Array.isArray(candidate.levels)) {
+          throw new Error(candidate?.error || "Hedge Levels is temporarily unavailable.");
+        }
+        if (cancelled) return;
+        const movement = hedgeLevelMovement(
+          previousHedgeLevelsRef.current,
+          candidate.levels,
+          candidate.strikeInterval > 0 ? candidate.strikeInterval : 25,
+        );
+        previousHedgeLevelsRef.current = movement.levels;
+        if (movement.pulseIds.length) {
+          setHedgeLevelsPulseIds(movement.pulseIds);
+          if (pulseTimer !== null) window.clearTimeout(pulseTimer);
+          pulseTimer = window.setTimeout(() => setHedgeLevelsPulseIds([]), 900);
+        }
+        retained = candidate;
+        setHedgeLevelsPayload(candidate);
+        setHedgeLevelsError(null);
+        if (!candidate.stale) window.localStorage.setItem(storageKey, JSON.stringify(candidate));
+        schedule(candidate);
+      } catch (error) {
+        if (cancelled || (error instanceof DOMException && error.name === "AbortError")) return;
+        const message = error instanceof Error ? error.message : "Hedge Levels is temporarily unavailable.";
+        const fallbackSource = readCached() ?? retained;
+        const fallback = fallbackSource ? staleHedgeLevelsPayload(fallbackSource, Date.now()) : null;
+        retained = fallback;
+        setHedgeLevelsPayload(fallback);
+        setHedgeLevelsError(message);
+        schedule(fallback);
+      } finally {
+        if (!cancelled) setHedgeLevelsLoading(false);
+      }
+    }
+    void load();
+    const ageTimer = window.setInterval(() => setHedgeLevelsNow(Date.now()), 1_000);
+    return () => {
+      cancelled = true;
+      controller?.abort();
+      if (timer !== null) window.clearTimeout(timer);
+      if (pulseTimer !== null) window.clearTimeout(pulseTimer);
+      window.clearInterval(ageTimer);
+    };
+  // A display setting never restarts the network request.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hedgeLevelsIndicator?.instanceId, hedgeLevelsInstrument]);
+
+  const hedgeLevelsOverlay = useMemo(() => {
+    if (!hedgeLevelsIndicator || !hedgeLevelsPayload || !candleSeriesRef.current) return null;
+    const plotWidth = Math.max(0, overlaySize.width - 64);
+    const plotHeight = Math.max(0, overlaySize.height - 26 - indicatorPaneHeight);
+    if (plotWidth < 160 || plotHeight < 80) return null;
+    const positioned = renderableHedgeLevels(true, hedgeLevelsPayload.levels).flatMap((level) => {
+      const centreY = candleSeriesRef.current?.priceToCoordinate(level.price) ?? null;
+      if (centreY === null || centreY < -16 || centreY > plotHeight + 16) return [];
+      if (level.kind === "FLIP") {
+        return [{ level, centreY: Number(centreY), y: Number(centreY), height: 1 }];
+      }
+      const highY = candleSeriesRef.current?.priceToCoordinate(level.zoneHigh) ?? null;
+      const lowY = candleSeriesRef.current?.priceToCoordinate(level.zoneLow) ?? null;
+      if (highY === null || lowY === null) return [];
+      return [{
+        level,
+        centreY: Number(centreY),
+        y: Math.min(Number(highY), Number(lowY)),
+        height: Math.max(2, Math.abs(Number(lowY) - Number(highY))),
+      }];
+    });
+    const labelRows = staggerHedgeLabels(positioned.map(({ level, centreY }) => ({ id: level.id, y: centreY })), 14);
+    const labelY = new Map(labelRows.map((row) => [row.id, Math.max(10, Math.min(plotHeight - 5, row.labelY))]));
+    const flip = positioned.find((row) => row.level.kind === "FLIP") ?? null;
+    const indicatorSettings = hedgeLevelsIndicator.settings ?? {};
+    return {
+      positioned,
+      labelY,
+      flipY: flip?.centreY ?? null,
+      plotWidth,
+      plotHeight,
+      showBelowFlip: indicatorSettings.showBelowFlip !== false,
+      showLabels: indicatorSettings.showLabels !== false,
+      fillOpacity: Math.max(0.01, Math.min(0.1, Number(indicatorSettings.fillOpacity ?? 5) / 100)),
+      lineOpacity: Math.max(0.1, Math.min(1, Number(indicatorSettings.lineOpacity ?? 62) / 100)),
+    };
+  }, [
+    chartReadyRevision,
+    hedgeLevelsIndicator,
+    hedgeLevelsPayload,
+    indicatorPaneHeight,
+    overlaySize.height,
+    overlaySize.width,
     viewportVersion,
   ]);
   const tpoIndicator = useMemo(
@@ -4771,6 +4957,133 @@ export default function Chart({
         marketIsActive={marketIsActive}
         bottom={56 + indicatorPaneHeight}
       />
+
+      {hedgeLevelsIndicator ? (
+        <div className="pointer-events-none absolute right-[70px] top-3 z-[18] flex max-w-[370px] items-center gap-1.5 rounded-full border border-border bg-panel/92 px-2.5 py-1 font-mono text-[8px] uppercase tracking-[0.1em] text-muted shadow-lg backdrop-blur">
+          <span className="font-semibold text-foreground">Hedge Levels</span>
+          {hedgeLevelsLoading && !hedgeLevelsPayload ? <span className="text-primary">Loading</span> : null}
+          {hedgeLevelsPayload ? (
+            <span className={hedgeLevelsPayload.stale ? "text-warning" : hedgeLevelsPayload.frozen ? "text-muted" : "text-primary"}>
+              {hedgeFreshnessPill(hedgeLevelsPayload, hedgeLevelsNow)}
+            </span>
+          ) : null}
+          {hedgeLevelsPayload?.contested ? <span className="text-warning">Contested</span> : null}
+          {hedgeLevelsError && !hedgeLevelsPayload ? (
+            <span className="max-w-[255px] truncate text-danger">{hedgeLevelsError}</span>
+          ) : null}
+        </div>
+      ) : null}
+
+      {hedgeLevelsOverlay && hedgeLevelsPayload ? (
+        <div
+          className="pointer-events-none absolute inset-0 z-[13] overflow-hidden"
+          aria-label="Hedge Levels dealer-hedging bands"
+          style={{ opacity: hedgeLevelsPayload.stale ? 0.52 : 1 }}
+        >
+          {hedgeLevelsOverlay.showBelowFlip && hedgeLevelsOverlay.flipY !== null ? (
+            <div
+              className="absolute left-0"
+              style={{
+                top: Math.max(0, hedgeLevelsOverlay.flipY),
+                width: hedgeLevelsOverlay.plotWidth,
+                height: Math.max(0, hedgeLevelsOverlay.plotHeight - hedgeLevelsOverlay.flipY),
+                backgroundColor: "#000000",
+                opacity: 0.045,
+              }}
+            />
+          ) : null}
+          {hedgeLevelsOverlay.positioned.map((item) => {
+            const color = HEDGE_LEVEL_COLORS[item.level.kind];
+            const pulse = hedgeLevelsPulseIds.includes(item.level.id);
+            const flip = item.level.kind === "FLIP";
+            return (
+              <div key={item.level.id}>
+                <div
+                  className={pulse ? "animate-pulse" : ""}
+                  style={{
+                    position: "absolute",
+                    left: 0,
+                    top: item.y,
+                    width: hedgeLevelsOverlay.plotWidth,
+                    height: flip ? 1 : item.height,
+                    backgroundColor: flip
+                      ? "transparent"
+                      : `color-mix(in srgb, ${color} ${hedgeLevelsOverlay.fillOpacity * 100}%, transparent)`,
+                    borderTop: `1px ${flip ? "dashed" : "solid"} color-mix(in srgb, ${color} ${hedgeLevelsOverlay.lineOpacity * 100}%, transparent)`,
+                    borderBottom: flip
+                      ? "none"
+                      : `1px solid color-mix(in srgb, ${color} ${hedgeLevelsOverlay.lineOpacity * 100}%, transparent)`,
+                    boxShadow: pulse ? `0 0 16px ${color}99` : "none",
+                    transition: "top 220ms ease, height 220ms ease, box-shadow 220ms ease",
+                    pointerEvents: "auto",
+                    cursor: "crosshair",
+                  }}
+                  onMouseMove={(event) => {
+                    const rect = chartContainerRef.current?.getBoundingClientRect();
+                    if (!rect) return;
+                    setHedgeLevelsTooltip({
+                      x: event.clientX - rect.left,
+                      y: event.clientY - rect.top,
+                      level: item.level,
+                    });
+                  }}
+                  onMouseLeave={() => setHedgeLevelsTooltip(null)}
+                />
+                {hedgeLevelsOverlay.showLabels ? (
+                  <div
+                    className="absolute -translate-y-1/2 rounded bg-panel/86 px-1.5 py-0.5 font-mono text-[8px] font-semibold lowercase tracking-[0.02em] backdrop-blur-sm"
+                    style={{
+                      right: Math.max(66, overlaySize.width - hedgeLevelsOverlay.plotWidth + 5),
+                      top: hedgeLevelsOverlay.labelY.get(item.level.id) ?? item.centreY,
+                      color,
+                      border: `1px solid ${color}55`,
+                      transition: "top 220ms ease",
+                    }}
+                  >
+                    {item.level.label}
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
+
+      {hedgeLevelsTooltip && hedgeLevelsPayload ? (
+        <div
+          className="pointer-events-none absolute z-[84] w-[316px] rounded-xl border border-border bg-panel/97 p-3 font-mono text-[9px] leading-4 text-muted shadow-2xl backdrop-blur"
+          style={{
+            left: Math.max(8, Math.min(overlaySize.width - 326, hedgeLevelsTooltip.x + 14)),
+            top: Math.max(8, Math.min(overlaySize.height - 300, hedgeLevelsTooltip.y + 12)),
+          }}
+        >
+          <div className="mb-2 flex items-center justify-between gap-3 text-foreground">
+            <span className="font-semibold">{hedgeLevelsTooltip.level.kind.replace(/_/g, " ")}</span>
+            <span>{hedgeLevelsTooltip.level.price.toFixed(priceFormat.precision)}</span>
+          </div>
+          <div className="grid grid-cols-[1fr_auto] gap-x-3">
+            <span>Band</span><span className="text-foreground">{hedgeLevelsTooltip.level.zoneLow.toFixed(priceFormat.precision)} - {hedgeLevelsTooltip.level.zoneHigh.toFixed(priceFormat.precision)}</span>
+            <span>Net gamma</span><span className="text-foreground">{hedgeLevelsTooltip.level.net.toLocaleString("en-US", { maximumFractionDigits: 0 })}</span>
+            <span>Regime</span><span className="text-foreground">{hedgeLevelsPayload.regime}</span>
+            <span>Expiry scope</span><span className="text-foreground">{hedgeLevelsPayload.expiryScope}</span>
+            <span>Dominant expiry</span><span className="text-foreground">{hedgeLevelsTooltip.level.dominantExpiry ?? "Not available"}</span>
+            <span>Conversion</span><span className="text-foreground">converted · live-calibrated</span>
+            <span>Generated at</span><span className="text-foreground">{new Date(hedgeLevelsPayload.generatedAt).toLocaleString()}</span>
+            <span>Data age</span><span className="text-foreground">{formatTpoAge(Math.max(hedgeLevelsPayload.dataAge, hedgeLevelsNow - Date.parse(hedgeLevelsPayload.generatedAt)))}</span>
+          </div>
+          <div className="mt-2 border-t border-border pt-2 text-[8px] leading-3.5 text-foreground/85">
+            {hedgeLevelsTooltip.level.signLine}
+          </div>
+          {hedgeLevelsTooltip.level.kind === "FLIP" && hedgeLevelsPayload.contested ? (
+            <div className="mt-2 border-t border-border pt-2 text-[8px] leading-3.5">
+              Crossings: {hedgeLevelsPayload.allCrossings.map((price) => price.toFixed(priceFormat.precision)).join(" · ")}
+            </div>
+          ) : null}
+          <div className="mt-2 border-t border-border pt-2 text-[8px] leading-3.5">
+            {hedgeLevelsPayload.signConvention}
+          </div>
+        </div>
+      ) : null}
 
       {expectedMoveIndicator ? (
         <div className="pointer-events-none absolute right-[70px] top-[70px] z-[17] flex max-w-[330px] items-center gap-1.5 rounded-full border border-border bg-panel/90 px-2.5 py-1 font-mono text-[8px] uppercase tracking-[0.1em] text-muted shadow-lg backdrop-blur">

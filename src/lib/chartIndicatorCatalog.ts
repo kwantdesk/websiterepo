@@ -163,6 +163,7 @@ export const CHART_INDICATOR_CATALOG: ChartIndicatorDefinition[] = [
   indicator("Source Code Indicator", "Overlays", "A sandboxed Pine Script v5/v6 compatibility indicator authored or imported in Kwant Desk.", false, "Kwantify"),
 
   indicator("KWANT Stats", "KWANT Systems", "Per-bar bid/ask volume, delta, trade pace, exhaustion and effort statistics.", true, "Kwantify"),
+  indicator("Hedge Levels", "KWANT Systems", "The five dealer-hedging levels - cage ceiling and floor, magnet, accelerator and the flip - as simple full-width bands with plain-language labels.", false, "Kwantify"),
   indicator("KWANT-M IVB", "KWANT Systems", "Opening-range and initial-value breakout structure.", true, "Reference", "Deep-M IVB"),
   indicator("KWANT Pattern Builder", "KWANT Systems", "Composable market-pattern rules.", true, "Reference", "Deep Pattern Builder"),
   indicator("KWANT-M Effort", "KWANT Systems", "Instrument-adaptive futures effort-versus-result model.", true, "Reference", "Deep-M Effort NQ"),

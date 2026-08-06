@@ -85,6 +85,7 @@ import {
   gammaCageLabel,
   type GammaCageExpiryScope,
 } from "@/lib/gammaCage";
+import type { HedgeExposureSurface } from "@/lib/hedgeLevels";
 
 const API_BASE = "https://api.quantdata.us/v1";
 const CACHE_TTL_MS = 4_000;
@@ -3086,6 +3087,67 @@ export function getUsOptionsSessionDate(): string {
 /** True only while the regular New York options session is trading. */
 export function isUsOptionsMarketOpen(): boolean {
   return getUsOptionsSession().marketOpen;
+}
+
+export type HedgeLevelsExposureInput = {
+  root: "NQ";
+  sourceSymbol: "NDX";
+  sessionDate: string;
+  marketOpen: boolean;
+  checkedAt: string;
+  sourceSpot: number;
+  futuresSpot: number;
+  surface: HedgeExposureSurface;
+};
+
+/**
+ * The standalone Hedge Levels route reuses the same cached KwantData gamma
+ * request as the rest of the options workspace, but receives the unranked
+ * surface. No Kwant Levels or Gameplan derivation is imported into that
+ * indicator.
+ */
+export async function getHedgeLevelsExposureInput(
+  futuresPriceOverride?: number,
+): Promise<HedgeLevelsExposureInput> {
+  const session = getUsOptionsSession();
+  const sourceSymbol = "NDX" as const;
+  const response = await quantDataPost("/options/tool/exposure-by-strike", {
+    sessionDate: session.sessionDate,
+    greekMode: "GAMMA",
+    representationMode: "PER_ONE_PERCENT_MOVE",
+    filter: { ticker: sourceSymbol },
+  }, session.marketOpen ? 60_000 : 6 * 60 * 60_000);
+  const exposure = parseExposure(response.payload, sourceSymbol, "GAMMA");
+  const sourceSpot = readStockPrice(response.payload, sourceSymbol);
+  if (!exposure?.strikes.length || !sourceSpot || sourceSpot <= 0) {
+    throw new QuantDataError("No NDX gamma exposure is available for Hedge Levels.", 422, response.remaining);
+  }
+
+  const override = Number.isFinite(futuresPriceOverride) && (futuresPriceOverride ?? 0) > 0
+    ? futuresPriceOverride ?? null
+    : null;
+  const futuresSpot = override
+    ?? (session.marketOpen
+      ? await getNativeFuturesSpot("NQ")
+      : await getNativeFuturesSessionClose("NQ", session.sessionDate)
+        ?? await getNativeFuturesSpot("NQ"));
+  if (!futuresSpot || futuresSpot <= 0) {
+    throw new QuantDataError("No current or completed-session NQ price is available for Hedge Levels.", 503, response.remaining);
+  }
+
+  return {
+    root: "NQ",
+    sourceSymbol,
+    sessionDate: session.sessionDate,
+    marketOpen: session.marketOpen,
+    checkedAt: session.marketOpen ? new Date().toISOString() : newYorkCashCloseIso(session.sessionDate),
+    sourceSpot,
+    futuresSpot,
+    surface: {
+      strikes: exposure.strikes,
+      expiryStrikes: exposure.expiryStrikes,
+    },
+  };
 }
 
 export async function getGexDeskZeroGammaPayload(): Promise<GexDeskZeroGammaPayload> {

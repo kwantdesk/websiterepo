@@ -46,6 +46,7 @@ export const LIVE_CHART_INDICATOR_IDS = new Set([
   "classic-gex-profile",
   "tpo-levels",
   "expected-move",
+  "hedge-levels",
   "source-code-indicator",
 ]);
 export const VOLUME_PROFILE_INDICATOR_IDS = new Set([
@@ -231,6 +232,10 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
   "expected-move": [
     { key: "lineOpacity", label: "Rail opacity (%)", defaultValue: 72, min: 15, max: 100, step: 1 },
     { key: "fillOpacity", label: "Band fill opacity (%)", defaultValue: 3, min: 0, max: 4, step: 0.5 },
+  ],
+  "hedge-levels": [
+    { key: "fillOpacity", label: "Band opacity (%)", defaultValue: 5, min: 1, max: 10, step: 1 },
+    { key: "lineOpacity", label: "Border opacity (%)", defaultValue: 62, min: 10, max: 100, step: 1 },
   ],
   "tpo-levels": [
     { key: "rowSize", label: "NQ row size (points)", defaultValue: 1, min: 0.25, max: 10, step: 0.25 },
@@ -593,6 +598,11 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
     useThemeColors: false,
     neutralColor: "#D6A84B",
     expectedMoveSettingsVersion: 1,
+  } : {}),
+  ...(indicatorId === "hedge-levels" ? {
+    showBelowFlip: true,
+    showLabels: true,
+    hedgeLevelsSettingsVersion: 1,
   } : {}),
   ...(indicatorId === "tpo-levels" ? {
     useThemeColors: true,
