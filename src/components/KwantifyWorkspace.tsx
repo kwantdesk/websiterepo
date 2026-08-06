@@ -7063,6 +7063,11 @@ export default function KwantifyWorkspace({
     }, 3_000);
     const handleStatus = () => markStreamAlive();
     const handleHeartbeat = () => markStreamAlive();
+    const handleStreamRotation = () => {
+      if (reconnecting) return;
+      publishDatabentoStatus("connecting");
+      setStreamReconnectNonce((value) => value + 1);
+    };
     const handleFeedError = (event: Event) => {
       lastServerSignalAt = Date.now();
       try {
@@ -7079,6 +7084,7 @@ export default function KwantifyWorkspace({
     eventSource.addEventListener("open", handleStatus);
     eventSource.addEventListener("status", handleStatus);
     eventSource.addEventListener("heartbeat", handleHeartbeat);
+    eventSource.addEventListener("rotate", handleStreamRotation);
     eventSource.addEventListener("feed-error", handleFeedError);
 
     eventSource.onmessage = (event) => {
@@ -7198,6 +7204,7 @@ export default function KwantifyWorkspace({
       eventSource.removeEventListener("open", handleStatus);
       eventSource.removeEventListener("status", handleStatus);
       eventSource.removeEventListener("heartbeat", handleHeartbeat);
+      eventSource.removeEventListener("rotate", handleStreamRotation);
       eventSource.removeEventListener("feed-error", handleFeedError);
       window.clearInterval(healthTimer);
       if (reconnectTimer !== null) window.clearTimeout(reconnectTimer);

@@ -29,6 +29,10 @@ const globalLiveQuoteCache = globalThis as typeof globalThis & {
 const liveQuoteCache = globalLiveQuoteCache.__kwantdeskCmeLiveQuotes
   ?? (globalLiveQuoteCache.__kwantdeskCmeLiveQuotes = new Map<string, CachedLivePayload>());
 const LIVE_REPLAY_MAX_AGE_MS = 2 * 60_000;
+// Vercel terminates this streaming function after its configured five-minute
+// lifetime. End the lease cleanly beforehand so the browser can resubscribe
+// while the connection is still healthy instead of discovering a dead feed.
+const LIVE_STREAM_LEASE_MS = 3 * 60_000;
 
 function numericPrice(value: unknown) {
   const parsed = typeof value === "number" ? value : Number(value);
@@ -73,6 +77,7 @@ export async function GET(request: Request) {
       let downstreamHeartbeat: ReturnType<typeof setInterval> | null = null;
       let downstreamFlush: ReturnType<typeof setInterval> | null = null;
       let upstreamHealthCheck: ReturnType<typeof setInterval> | null = null;
+      let downstreamLease: ReturnType<typeof setTimeout> | null = null;
       const pendingPayloads = new Map<string, CachedLivePayload["payload"]>();
       const lastPublishedAtBySymbol = new Map<string, number>();
 
@@ -90,6 +95,7 @@ export async function GET(request: Request) {
         if (downstreamHeartbeat) clearInterval(downstreamHeartbeat);
         if (downstreamFlush) clearInterval(downstreamFlush);
         if (upstreamHealthCheck) clearInterval(upstreamHealthCheck);
+        if (downstreamLease) clearTimeout(downstreamLease);
         socket?.destroy();
         try { controller.close(); } catch {}
       };
@@ -150,6 +156,10 @@ export async function GET(request: Request) {
       // per-symbol coalescing window preserves a fluid tape while preventing
       // the browser main thread from being flooded by redundant book changes.
       downstreamFlush = setInterval(flushPendingPayloads, 32);
+      downstreamLease = setTimeout(() => {
+        send(`event: rotate\ndata: ${JSON.stringify({ reason: "stream-lease", timestamp: Date.now() })}\n\n`);
+        close();
+      }, LIVE_STREAM_LEASE_MS);
       upstreamHealthCheck = setInterval(() => {
         const now = Date.now();
         const upstreamSilent = authenticated && now - lastUpstreamMessageAt > 22_000;
