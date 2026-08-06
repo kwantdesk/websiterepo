@@ -29,6 +29,11 @@ import {
 import { defaultChartSettings, loadStoredChartSettings, type ChartSettings } from "@/lib/chartSettings";
 import type { GameplanPayload } from "@/lib/gameplan";
 import {
+  nativeGammaStatusLabel,
+  shouldNativeOutrankConverted,
+  type NativeGammaPayload,
+} from "@/lib/nativeGamma";
+import {
   fetchInstitutionalVolumeProfile,
   readCachedInstitutionalVolumeProfiles,
   type InstitutionalVolumeProfile,
@@ -81,11 +86,19 @@ type LevelSnapshot = {
   zones: ChartZone[];
   asOf: string | null;
   source: string;
-  status: "LIVE" | "EOD" | "READY" | "UNAVAILABLE";
+  status: "LIVE" | "EOD" | "READY" | "UNAVAILABLE" | "NATIVE_LIVE" | "NATIVE_STALE" | "MARKET_CLOSED";
   regime: string;
   tape: string;
   flowLean: number | null;
   note: string;
+  native?: {
+    state: NativeGammaPayload["state"];
+    statusLabel: string;
+    spotAge: number | null;
+    oiAsOf: string | null;
+    oiStale: boolean;
+    matchingBand: number;
+  };
 };
 
 type PanelRuntime = {
@@ -292,6 +305,9 @@ function storeLevelSnapshot(config: PanelConfig, snapshot: LevelSnapshot) {
 
 function retainedNewYorkSnapshot(snapshot: LevelSnapshot, family: LevelFamily, marketOpen: boolean) {
   if (family !== "gamma" && family !== "gameplan") return snapshot;
+  if (snapshot.status === "NATIVE_LIVE" || snapshot.status === "NATIVE_STALE" || snapshot.status === "MARKET_CLOSED") {
+    return snapshot;
+  }
   return {
     ...snapshot,
     status: "EOD" as const,
@@ -593,18 +609,119 @@ function makeGammaSnapshot(payload: ChartGammaLevelsPayload, settings: ChartSett
   };
 }
 
-function mergeNativeGammaTransitions(base: LevelSnapshot, native: LevelSnapshot): LevelSnapshot {
-  const nativeFlip = native.levels.find((level) => level.kind === "ZERO_GAMMA");
-  if (!nativeFlip) return base;
+const NATIVE_CAGE_KINDS = new Set<ChartGammaSourceLevelKind>([
+  "CALL_WALL",
+  "PUT_WALL",
+  "GAMMA_MAGNET",
+  "GAMMA_ACCELERATOR",
+  "ZERO_GAMMA",
+]);
+
+function makeNativeGammaSnapshot(payload: NativeGammaPayload, settings: ChartSettings): LevelSnapshot {
+  const effectiveState = shouldNativeOutrankConverted(payload) ? payload.state : "STALE";
+  const levels = mergeGammaLevelsAtSamePrice(
+    (payload.levels ?? []).filter((level) =>
+      NATIVE_CAGE_KINDS.has(level.kind)
+      && Number.isFinite(level.price)
+      && level.price > 0,
+    ),
+    0.25,
+  ).map((level): IntelligentLevel => ({
+    id: `levelz-native-nq-${level.id}`,
+    price: level.price,
+    color: gammaColor(level.kind, settings),
+    label: level.label,
+    lineStyle: level.kind === "CALL_WALL" || level.kind === "PUT_WALL" ? "solid" : "dashed",
+    lineWidth: level.kind === "CALL_WALL" || level.kind === "PUT_WALL" ? 2 : 1,
+    axisLabelVisible: true,
+    axisTitleVisible: false,
+    family: "gamma",
+    kind: level.kind,
+    evidence: "CALCULATED",
+    value: level.value,
+    expiryScope: level.expiryScope ?? "NEAR_TERM_7D",
+    dominantExpiry: level.dominantExpiry ?? payload.dominantExpiry,
+    regime: level.regime ?? payload.regime ?? "UNKNOWN",
+    signConvention: level.signConvention
+      ?? payload.signConventionDetail
+      ?? "Assumed dealer convention: calls positive, puts negative.",
+    ...gammaEducationForLevel(level.kind, level.label),
+  }));
+  const statusLabel = nativeGammaStatusLabel({
+    ...payload,
+    state: effectiveState,
+    stale: effectiveState === "STALE" ? true : payload.stale,
+  });
+  return {
+    levels,
+    // Native CME strikes are exact lines. Converted cash-index references keep
+    // their volatility-scaled zones when no agreeing native strike replaces them.
+    zones: [],
+    asOf: payload.generatedAt,
+    source: "Native NQ CME options OI",
+    status: effectiveState === "LIVE"
+      ? "NATIVE_LIVE"
+      : effectiveState === "MARKET_CLOSED"
+        ? "MARKET_CLOSED"
+        : "NATIVE_STALE",
+    regime: payload.regime ? `${payload.regime} native NQ gamma` : "Native NQ gamma",
+    tape: statusLabel,
+    flowLean: null,
+    note: `${statusLabel}. Open interest as of ${payload.oiAsOf ?? "unavailable"}; spot age ${payload.spotAge == null ? "unavailable" : `${Math.round(payload.spotAge)} seconds`}.`,
+    native: {
+      state: effectiveState,
+      statusLabel,
+      spotAge: payload.spotAge,
+      oiAsOf: payload.oiAsOf,
+      oiStale: payload.oiStale,
+      matchingBand: Math.max(0.25, Number(payload.matchingBand) || 0.25),
+    },
+  };
+}
+
+function mergeNativeGammaCage(base: LevelSnapshot, native: LevelSnapshot): LevelSnapshot {
+  if (!native.native) return base;
+  const nativeStatus = native.native;
+  if (native.status === "NATIVE_STALE" || !native.levels.length) {
+    return {
+      ...base,
+      status: "NATIVE_STALE",
+      source: `${base.source} · native NQ unavailable`,
+      note: `${nativeStatus.statusLabel}. The converted cash-index map remains authoritative until the native futures spot stream recovers. ${base.note}`,
+      native: nativeStatus,
+    };
+  }
+
+  if (native.status !== "NATIVE_LIVE" && native.status !== "MARKET_CLOSED") return base;
+  const band = nativeStatus.matchingBand;
+  const removedIds = new Set<string>();
+  for (const converted of base.levels) {
+    if (!NATIVE_CAGE_KINDS.has(converted.kind as ChartGammaSourceLevelKind)) continue;
+    const agrees = native.levels.some((candidate) =>
+      candidate.kind === converted.kind
+      && Math.abs(candidate.price - converted.price) <= band,
+    );
+    if (agrees) removedIds.add(converted.id);
+  }
+
+  const levels = [
+    ...base.levels.filter((level) => !removedIds.has(level.id)),
+    ...native.levels,
+  ].sort((left, right) => left.price - right.price || left.kind.localeCompare(right.kind));
+  const timestamps = [base.asOf, native.asOf]
+    .filter((value): value is string => typeof value === "string" && Number.isFinite(Date.parse(value)))
+    .sort((left, right) => Date.parse(right) - Date.parse(left));
   return {
     ...base,
-    levels: [...base.levels.filter((level) => level.kind !== "ZERO_GAMMA"), nativeFlip],
-    zones: [
-      ...base.zones.filter((zone) => !zone.id.includes("gamma-flip") && !zone.label.toLowerCase().includes("zero gamma")),
-      ...native.zones.filter((zone) => zone.id === `${nativeFlip.id}-band`),
-    ],
-    asOf: base.asOf && native.asOf && Date.parse(base.asOf) > Date.parse(native.asOf) ? base.asOf : native.asOf,
-    source: `${base.source} · native Zero Gamma`,
+    levels,
+    zones: base.zones.filter((zone) => ![...removedIds].some((id) => zone.id === `${id}-band`)),
+    asOf: timestamps[0] ?? null,
+    source: `${base.source} · native NQ CME OI`,
+    status: native.status,
+    regime: native.regime,
+    tape: native.tape,
+    note: `${nativeStatus.statusLabel}. Native futures levels outrank agreeing converted references inside a ${band.toFixed(2)}-point volatility-scaled band; non-agreeing converted zones remain visible.`,
+    native: nativeStatus,
   };
 }
 
@@ -838,13 +955,17 @@ async function buildLevelSnapshot(config: PanelConfig, settings: ChartSettings) 
   const root = levelRoot(config.instrument);
   if (config.family === "gamma") {
     const gammaSource = root === "NQ" ? "QQQ" : "SPY";
-    const [gamma, gameplan] = await Promise.all([
+    const [gamma, gameplan, nativeGamma] = await Promise.all([
       requestJson<ChartGammaLevelsPayload & { error?: string }>(
         `/api/chart-gamma-levels?root=${root}&source=${gammaSource}&calibrated=1`,
       ),
       requestJson<GameplanPayload & { error?: string }>(`/api/gameplan?root=${root}&session=newyork`).catch(() => null),
+      root === "NQ"
+        ? requestJson<NativeGammaPayload & { error?: string }>("/api/native-gamma?root=NQ").catch(() => null)
+        : Promise.resolve(null),
     ]);
-    const snapshot = makeGammaSnapshot(gamma, settings);
+    let snapshot = makeGammaSnapshot(gamma, settings);
+    if (nativeGamma) snapshot = mergeNativeGammaCage(snapshot, makeNativeGammaSnapshot(nativeGamma, settings));
     if (gameplan) {
       snapshot.tape = gameplan.plan.environment.tape.plain;
       snapshot.flowLean = gameplan.plan.environment.flow.lean;
@@ -987,21 +1108,6 @@ function useLevelSnapshot(config: PanelConfig, settings: ChartSettings) {
         if (cancelled) return;
         setSnapshot(next);
         setLoading(false);
-        if (config.family === "gamma") {
-          const root = levelRoot(config.instrument);
-          void requestJson<ChartGammaLevelsPayload & { error?: string }>(
-            `/api/chart-gamma-levels?root=${root}&source=${root}`,
-          ).then((nativePayload) => {
-            if (cancelled) return;
-            const merged = mergeNativeGammaTransitions(next, makeGammaSnapshot(nativePayload, settings));
-            const key = `${config.instrument}:${config.family}:${settings.upColor}:${settings.downColor}`;
-            levelCache.set(key, { snapshot: merged, updatedAt: Date.now() });
-            storeLevelSnapshot(config, merged);
-            setSnapshot(merged);
-          }).catch(() => {
-            // The calibrated cash map remains usable while native transition levels warm.
-          });
-        }
       })
       .catch((problem) => {
         if (cancelled) return;
@@ -1018,7 +1124,7 @@ function useLevelSnapshot(config: PanelConfig, settings: ChartSettings) {
 
   useEffect(() => {
     const refreshMs = config.family === "gamma"
-      ? newYorkOpen ? 15_000 : 5 * 60_000
+      ? 15_000
       : config.family === "gameplan"
         ? newYorkOpen ? 15_000 : 5 * 60_000
         : config.family === "value-area"
@@ -1188,9 +1294,15 @@ function LevelChartCard({
           />
         )}
 
-        {config.family === "gamma" && resolvedLevels.snapshot.status === "EOD" ? (
-          <span className="pointer-events-none absolute bottom-3 left-3 z-20 rounded-full border border-border bg-panel/90 px-2.5 py-1 text-[7px] font-semibold tracking-[0.08em] text-muted shadow-lg backdrop-blur">
-            EOD — frozen from last NY edition
+        {config.family === "gamma" && (resolvedLevels.snapshot.native || resolvedLevels.snapshot.status === "EOD") ? (
+          <span className={`pointer-events-none absolute bottom-3 left-3 z-20 rounded-full border bg-panel/90 px-2.5 py-1 text-[7px] font-semibold tracking-[0.08em] shadow-lg backdrop-blur ${
+            resolvedLevels.snapshot.status === "NATIVE_LIVE"
+              ? "border-primary/35 text-primary"
+              : resolvedLevels.snapshot.status === "NATIVE_STALE"
+                ? "border-danger/35 text-danger"
+                : "border-border text-muted"
+          }`}>
+            {resolvedLevels.snapshot.native?.statusLabel ?? "EOD — frozen from last NY edition"}
           </span>
         ) : null}
 
@@ -1298,6 +1410,9 @@ function LevelEducationRail({
                 <div className="flex justify-between gap-3"><span className="text-muted">Tape context</span><span className="text-right font-medium text-foreground">{snapshot.tape}</span></div>
                 <div className="flex justify-between gap-3"><span className="text-muted">Directional pressure</span><span className="text-right font-medium text-foreground">{flowText}</span></div>
                 <div className="flex justify-between gap-3"><span className="text-muted">Source</span><span className="text-right font-medium text-foreground">{snapshot.source}</span></div>
+                {snapshot.native ? <div className="flex justify-between gap-3"><span className="text-muted">Native state</span><span className="text-right font-medium text-foreground">{snapshot.native.statusLabel}</span></div> : null}
+                {snapshot.native?.oiAsOf ? <div className="flex justify-between gap-3"><span className="text-muted">OI as of</span><span className="text-right font-medium text-foreground">{snapshot.native.oiAsOf}{snapshot.native.oiStale ? " · stale" : ""}</span></div> : null}
+                {snapshot.native ? <div className="flex justify-between gap-3"><span className="text-muted">Native spot age</span><span className="text-right font-medium text-foreground">{snapshot.native.spotAge == null ? "Unavailable" : `${Math.round(snapshot.native.spotAge)}s`}</span></div> : null}
                 {selected.expiryScope ? <div className="flex justify-between gap-3"><span className="text-muted">Expiry scope</span><span className="text-right font-medium text-foreground">{selected.expiryScope === "NEAR_TERM_7D" ? "0–7 calendar days" : selected.expiryScope.replaceAll("_", " ")}</span></div> : null}
                 {selected.dominantExpiry ? <div className="flex justify-between gap-3"><span className="text-muted">Dominant expiry</span><span className="text-right font-medium text-foreground">{selected.dominantExpiry}</span></div> : null}
                 {selected.value !== null ? <div className="flex justify-between gap-3"><span className="text-muted">Net GEX value</span><span className="text-right font-mono font-medium text-foreground">{selected.value.toLocaleString("en-US", { maximumFractionDigits: 0 })}</span></div> : null}
