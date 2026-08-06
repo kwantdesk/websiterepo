@@ -13,7 +13,9 @@ import type {
 
 type View = "classic" | "state" | "orderflow";
 
-const API_ROOT = "https://api.gex.bot/v2";
+// Classic, State, Orderflow, and their signed historical archives are served
+// by the primary API. api.gex.bot/v2 is the separate gbR research surface.
+const API_ROOT = "https://api.gexbot.com";
 const LIVE_TTL_MS = 2_000;
 const CLOSED_TTL_MS = 60_000;
 const STALE_IF_ERROR_MS = 18 * 60 * 60_000;
