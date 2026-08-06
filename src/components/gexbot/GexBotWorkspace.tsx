@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { ProfessionalOrderflowChart, ProfessionalProfileChart } from "@/components/gexbot/GexBotCharts";
 import KwantSelect from "@/components/ui/KwantSelect";
 import type {
   GexBotMaxChangeFrame,
@@ -622,7 +623,6 @@ export default function GexBotWorkspace() {
   const [showSettings, setShowSettings] = useState(true);
   const [spotTape, setSpotTape] = useState<SpotSample[]>([]);
   const [orderflowTape, setOrderflowTape] = useState<GexBotOrderflowFrame[]>([]);
-  const [orderflowHover, setOrderflowHover] = useState<number | null>(null);
   const category = categoryFor(view, expiry, stateMetric);
   const requestSequence = useRef(0);
 
@@ -762,14 +762,17 @@ export default function GexBotWorkspace() {
           {!frame ? <EmptyState envelope={envelope} loading={loading} /> : view === "orderflow" ? (
             !envelope?.marketOpen && orderflowTape.length < 2
               ? <OrderflowSnapshot frame={frame as GexBotOrderflowFrame} visibleMetrics={visibleMetrics} />
-              : <div className="mx-auto w-full max-w-[1680px]">
-                  {visibleMetrics.length ? ORDERFLOW_METRICS.filter((metric) => visibleMetrics.includes(metric.id)).map((metric) => (
-                    <OrderflowPanel key={metric.id} metric={metric} points={orderflowTape.length ? orderflowTape : [frame as GexBotOrderflowFrame]} hoverIndex={orderflowHover} setHoverIndex={setOrderflowHover} />
-                  )) : <div className="flex min-h-[420px] items-center justify-center text-[10px] text-muted">Choose at least one orderflow panel from Adjustments.</div>}
+              : <div className="mx-auto w-full max-w-[1680px] overflow-x-auto px-3 py-3">
+                  {visibleMetrics.length ? (
+                    <ProfessionalOrderflowChart
+                      metrics={ORDERFLOW_METRICS.filter((metric) => visibleMetrics.includes(metric.id))}
+                      points={orderflowTape.length ? orderflowTape : [frame as GexBotOrderflowFrame]}
+                    />
+                  ) : <div className="flex min-h-[420px] items-center justify-center text-[10px] text-muted">Choose at least one orderflow panel from Adjustments.</div>}
                 </div>
           ) : (
             <div className="flex min-h-[560px] flex-1 items-start overflow-auto">
-              <div className="mx-auto min-w-0 flex-1 p-2"><ProfileChart frame={frame as GexBotProfileFrame} dataset={dataset} appearance={appearance} spotTape={spotTape} priorIndex={priorIndex} onHover={setHover} /></div>
+              <div className="mx-auto min-w-0 flex-1 p-2"><ProfessionalProfileChart frame={frame as GexBotProfileFrame} dataset={dataset} appearance={appearance} spotTape={spotTape} priorIndex={priorIndex} onHover={setHover} /></div>
               <aside className="hidden w-56 shrink-0 overflow-y-auto border-l border-border bg-panel/65 p-4 xl:block"><ProfileSummary envelope={envelope!} dataset={dataset} hover={hover} /></aside>
             </div>
           )}
