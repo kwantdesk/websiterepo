@@ -93,3 +93,23 @@ Plot1(Average(Close, Length), "Average");`;
   assert.ok(prepareSourceIndicator(thinkScript, "thinkscript").diagnostics.some((item) => item.severity === "error"));
   assert.ok(prepareSourceIndicator(easyLanguage, "easylanguage").diagnostics.some((item) => item.severity === "error"));
 });
+
+test("routes advanced Pine volume profiles to the native chart renderer", () => {
+  const source = `//@version=5
+indicator("Volume Profile and Indicator by DGT", overlay=true, max_boxes_count=500)
+pointOfControl = input.bool(true, "Point of Control")
+isValueArea = input.float(68, "Value Area Volume %") / 100
+valueAreaHigh = input.bool(true, "VAH")
+valueAreaLow = input.bool(true, "VAL")
+bullBearStr = input.bool(true, "Bull/Bear Dominance")
+profileLevels = input.int(100, "Number of Rows")
+volumeStorageT = array.new_float(profileLevels + 1, 0.)
+volumeStorageB = array.new_float(profileLevels + 1, 0.)
+var a_profile = array.new_box()
+var a_histogram = array.new_line()`;
+  const prepared = prepareSourceIndicator(source, "auto");
+  assert.equal(prepared.nativeAdapter?.indicatorId, "kwant-profile");
+  assert.equal(prepared.nativeAdapter?.settings.valueAreaPercent, 68);
+  assert.equal(prepared.nativeAdapter?.settings.showDelta, true);
+  assert.equal(prepared.diagnostics.some((item) => item.severity === "error"), false);
+});

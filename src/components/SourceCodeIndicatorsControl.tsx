@@ -122,7 +122,8 @@ export default function SourceCodeIndicatorsControl({
   const program = prepared.program;
   const errors = prepared.diagnostics.filter((diagnostic) => diagnostic.severity === "error");
   const selectedIsOnChart = draft
-    ? indicators.some((instance) => instance.indicatorId === SOURCE_INDICATOR_ID && instance.settings?.scriptId === draft.id)
+    ? indicators.some((instance) =>
+        instance.settings?.scriptId === draft.id || instance.settings?.sourceScriptId === draft.id)
     : false;
 
   useEffect(() => {
@@ -164,34 +165,43 @@ export default function SourceCodeIndicatorsControl({
     const script = persistDraft();
     if (!script) return;
     const existing = indicators.find((instance) =>
-      instance.indicatorId === SOURCE_INDICATOR_ID && instance.settings?.scriptId === script.id);
-    const settings = {
-      source: script.source,
-      scriptId: script.id,
-      scriptName: script.name,
-      sourceLanguage: prepared.language,
-      pineVersion: program.version,
-      overlay: program.overlay,
+      instance.settings?.scriptId === script.id || instance.settings?.sourceScriptId === script.id);
+    const nextInstance: ChartIndicatorInstance = prepared.nativeAdapter ? {
+      instanceId: existing?.instanceId ?? `${prepared.nativeAdapter.indicatorId}-${crypto.randomUUID()}`,
+      indicatorId: prepared.nativeAdapter.indicatorId,
+      enabled: true,
+      settings: {
+        ...prepared.nativeAdapter.settings,
+        sourceScriptId: script.id,
+        sourceScriptName: script.name,
+        sourceLanguage: prepared.language,
+        sourceAdapter: prepared.nativeAdapter.id,
+      },
+    } : {
+      instanceId: existing?.instanceId ?? `${SOURCE_INDICATOR_ID}-${crypto.randomUUID()}`,
+      indicatorId: SOURCE_INDICATOR_ID,
+      enabled: true,
+      settings: {
+        source: script.source,
+        scriptId: script.id,
+        scriptName: script.name,
+        sourceLanguage: prepared.language,
+        pineVersion: program.version,
+        overlay: program.overlay,
+      },
     };
-    if (existing) {
-      onChange(indicators.map((instance) => instance.instanceId === existing.instanceId
-        ? { ...instance, enabled: true, settings }
-        : instance));
-    } else {
-      onChange([...indicators, {
-        instanceId: `${SOURCE_INDICATOR_ID}-${crypto.randomUUID()}`,
-        indicatorId: SOURCE_INDICATOR_ID,
-        enabled: true,
-        settings,
-      }]);
-    }
+    onChange([
+      ...indicators.filter((instance) =>
+        instance.settings?.scriptId !== script.id && instance.settings?.sourceScriptId !== script.id),
+      nextInstance,
+    ]);
   };
 
   const removeScript = () => {
     if (!draft) return;
     const nextScripts = scripts.filter((script) => script.id !== draft.id);
     const nextIndicators = indicators.filter((instance) =>
-      !(instance.indicatorId === SOURCE_INDICATOR_ID && instance.settings?.scriptId === draft.id));
+      instance.settings?.scriptId !== draft.id && instance.settings?.sourceScriptId !== draft.id);
     setScripts(nextScripts);
     saveScripts(nextScripts);
     onChange(nextIndicators);
@@ -259,7 +269,8 @@ export default function SourceCodeIndicatorsControl({
                 <div className="min-h-0 flex-1 space-y-1 overflow-y-auto p-2">
                   {scripts.length ? scripts.map((script) => {
                     const active = selectedId === script.id;
-                    const onChart = indicators.some((instance) => instance.indicatorId === SOURCE_INDICATOR_ID && instance.settings?.scriptId === script.id);
+                    const onChart = indicators.some((instance) =>
+                      instance.settings?.scriptId === script.id || instance.settings?.sourceScriptId === script.id);
                     return (
                       <button key={script.id} type="button" onClick={() => selectScript(script)} className={`w-full rounded-xl border px-3 py-3 text-left transition-colors ${active ? "border-primary/25 bg-primary/10" : "border-transparent hover:border-border hover:bg-surface/50"}`}>
                         <div className={`truncate text-[10px] font-semibold ${active ? "text-primary" : "text-foreground"}`}>{script.name}</div>
@@ -300,7 +311,11 @@ export default function SourceCodeIndicatorsControl({
                   </div>
                   <div className={`flex items-center gap-1.5 rounded-full border px-2 py-1 text-[8px] font-semibold ${errors.length ? "border-danger/20 bg-danger/10 text-danger" : "border-primary/20 bg-primary/10 text-primary"}`}>
                     {errors.length ? <AlertTriangle className="h-3 w-3" /> : <Check className="h-3 w-3" />}
-                    {errors.length ? `${errors.length} error${errors.length === 1 ? "" : "s"}` : `${sourceIndicatorLanguageLabel(prepared.language)} ready`}
+                    {errors.length
+                      ? `${errors.length} error${errors.length === 1 ? "" : "s"}`
+                      : prepared.nativeAdapter
+                        ? "Native profile ready"
+                        : `${sourceIndicatorLanguageLabel(prepared.language)} ready`}
                   </div>
                 </div>
                 <textarea
@@ -337,7 +352,11 @@ export default function SourceCodeIndicatorsControl({
                   </button>
                   <button type="button" disabled={!draft || errors.length > 0} onClick={addToChart} className="flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-primary text-[10px] font-semibold text-background disabled:cursor-not-allowed disabled:opacity-40">
                     {selectedIsOnChart ? <Copy className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
-                    {selectedIsOnChart ? "Update chart indicator" : "Save & add to chart"}
+                    {selectedIsOnChart
+                      ? "Update chart indicator"
+                      : prepared.nativeAdapter
+                        ? "Save & add native profile"
+                        : "Save & add to chart"}
                   </button>
                   <button type="button" disabled={!draft} onClick={removeScript} className="flex h-8 w-full items-center justify-center gap-2 rounded-lg text-[9px] text-muted hover:bg-danger/10 hover:text-danger disabled:opacity-40">
                     <Trash2 className="h-3.5 w-3.5" /> Delete script

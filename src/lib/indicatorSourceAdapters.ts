@@ -16,6 +16,15 @@ export type PreparedSourceIndicator = {
   pineSource: string;
   program: PineProgram;
   diagnostics: PineDiagnostic[];
+  nativeAdapter: NativeIndicatorAdapter | null;
+};
+
+export type NativeIndicatorAdapter = {
+  id: string;
+  indicatorId: string;
+  name: string;
+  description: string;
+  settings: Record<string, number | string | boolean>;
 };
 
 const LANGUAGE_LABELS: Record<ResolvedSourceIndicatorLanguage, string> = {
@@ -89,6 +98,78 @@ const COLOR_MAP: Record<string, string> = {
 
 function diagnostic(line: number, severity: PineDiagnostic["severity"], message: string): PineDiagnostic {
   return { line, severity, message };
+}
+
+function pineInputNumber(source: string, variable: string, fallback: number) {
+  const match = source.match(new RegExp(`\\b${variable}\\s*=\\s*input\\.(?:int|float)\\(\\s*(-?\\d+(?:\\.\\d+)?)`, "i"));
+  const value = Number(match?.[1]);
+  return Number.isFinite(value) ? value : fallback;
+}
+
+function pineInputBoolean(source: string, variable: string, fallback: boolean) {
+  const match = source.match(new RegExp(`\\b${variable}\\s*=\\s*input\\.bool\\(\\s*(true|false)`, "i"));
+  return match ? match[1].toLowerCase() === "true" : fallback;
+}
+
+function detectNativePineAdapter(source: string): NativeIndicatorAdapter | null {
+  const isPriceVolumeProfile = [
+    /\barray\.new_(?:float|box|line)\s*\(/i,
+    /\bvolumeStorageT\b/i,
+    /\bprofileLevels\b/i,
+    /\bpointOfControl\b/i,
+    /\bvalueAreaHigh\b/i,
+    /\bvalueAreaLow\b/i,
+  ].every((pattern) => pattern.test(source));
+  if (!isPriceVolumeProfile) return null;
+
+  return {
+    id: "pine-price-volume-profile-v1",
+    indicatorId: "kwant-profile",
+    name: "Volume Profile / Price by Volume",
+    description: "Advanced Pine profile mapped to Kwant Desk's native trade-by-trade volume-profile renderer.",
+    settings: {
+      profileMode: "delta-volume",
+      groupingMode: "automatic",
+      snapMode: "off",
+      align: "session",
+      useThemeColors: true,
+      showText: true,
+      showValueArea: pineInputBoolean(source, "valueAreaHigh", true) || pineInputBoolean(source, "valueAreaLow", true),
+      showPocLine: pineInputBoolean(source, "pointOfControl", true),
+      showValueAreaLines: true,
+      showDelta: pineInputBoolean(source, "bullBearStr", true),
+      showProfileSpine: true,
+      showDevelopingPoc: true,
+      showPocHighlight: true,
+      showProfileOutline: true,
+      showVwapLine: false,
+      showVwapBands: false,
+      showSummary: true,
+      valueAreaPercent: Math.max(1, Math.min(100, pineInputNumber(source, "isValueArea", 68))),
+      profileWidth: 24,
+      opacity: 76,
+      minTradeVolume: 0,
+      maxTradeVolume: 0,
+      autoGroupFactor: 1,
+      profileSettingsVersion: 4,
+    },
+  };
+}
+
+function compactDiagnostics(items: PineDiagnostic[], limit = 28) {
+  const unique: PineDiagnostic[] = [];
+  const seen = new Set<string>();
+  for (const item of items) {
+    const key = `${item.line}:${item.severity}:${item.message}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(item);
+  }
+  if (unique.length <= limit) return unique;
+  return [
+    ...unique.slice(0, limit),
+    diagnostic(1, "warning", `${unique.length - limit} additional diagnostics were condensed. Fix the first errors and compile again.`),
+  ];
 }
 
 export function sourceIndicatorLanguageLabel(language: ResolvedSourceIndicatorLanguage) {
@@ -378,6 +459,7 @@ export function prepareSourceIndicator(
       pineSource,
       program,
       diagnostics: [diagnostic(1, "error", "NinjaScript is compiled C# with NinjaTrader lifecycle and data APIs. It cannot be executed safely in the browser; migrate its calculations into Pine, thinkScript or EasyLanguage study form first.")],
+      nativeAdapter: null,
     };
   }
   if (detected === "unknown") {
@@ -389,6 +471,24 @@ export function prepareSourceIndicator(
       pineSource,
       program,
       diagnostics: [diagnostic(1, "error", "Language could not be detected. Choose Pine Script, thinkScript or EasyLanguage above the editor.")],
+      nativeAdapter: null,
+    };
+  }
+
+  const nativeAdapter = detected === "pine" ? detectNativePineAdapter(source) : null;
+  if (nativeAdapter) {
+    const pineSource = `//@version=6\nindicator("${nativeAdapter.name}", overlay=true)\nplot(close, title="Native profile anchor")`;
+    const program = compilePineScript(pineSource);
+    return {
+      requestedLanguage,
+      language: "pine",
+      pineSource,
+      program: { ...program, name: nativeAdapter.name },
+      diagnostics: [
+        diagnostic(1, "info", `${nativeAdapter.name} recognised. It will use Kwant Desk's native volume-at-price renderer with live bid/ask delta, POC and value area.`),
+        diagnostic(1, "warning", "TradingView-only labels, tables, alerts and bar recolouring are excluded; the core volume-at-price structure is mapped to the native profile."),
+      ],
+      nativeAdapter,
     };
   }
 
@@ -402,8 +502,8 @@ export function prepareSourceIndicator(
     ...item,
     message: `${LANGUAGE_LABELS[detected]} adapter: ${item.message}`,
   }));
-  const diagnostics = [...translated.diagnostics, ...compilerDiagnostics];
-  return { requestedLanguage, language: detected, pineSource: translated.pineSource, program, diagnostics };
+  const diagnostics = compactDiagnostics([...translated.diagnostics, ...compilerDiagnostics]);
+  return { requestedLanguage, language: detected, pineSource: translated.pineSource, program, diagnostics, nativeAdapter: null };
 }
 
 export function runSourceIndicator(
@@ -415,6 +515,7 @@ export function runSourceIndicator(
 ): { prepared: PreparedSourceIndicator; series: CalculatedIndicatorSeries[]; runtimeError: string | null } {
   const prepared = prepareSourceIndicator(source, requestedLanguage);
   if (prepared.diagnostics.some((item) => item.severity === "error")) return { prepared, series: [], runtimeError: null };
+  if (prepared.nativeAdapter) return { prepared, series: [], runtimeError: null };
   const result = runPineScript(prepared.pineSource, candles, theme, instanceKey);
   return { prepared, series: result.series, runtimeError: result.runtimeError };
 }
