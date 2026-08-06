@@ -674,16 +674,18 @@ class GameplanUnderlayRenderer implements ISeriesPrimitivePaneRenderer {
         context.font = "700 9px 'JetBrains Mono', monospace";
         const labelWidth = Math.min(240, Math.max(82, context.measureText(label).width + 18));
         const labelTop = y - 11;
+        const labelRightGap = 12;
+        const labelLeft = Math.max(4, mediaSize.width - labelWidth - labelRightGap);
         context.setLineDash([]);
         context.fillStyle = this.primitive.backgroundColor();
         context.strokeStyle = level.color;
         context.lineWidth = 0.8;
         context.beginPath();
-        context.roundRect(10, labelTop, labelWidth, 20, 7);
+        context.roundRect(labelLeft, labelTop, labelWidth, 20, 7);
         context.fill();
         context.stroke();
         context.fillStyle = level.color;
-        context.fillText(label, 19, labelTop + 13.5, labelWidth - 18);
+        context.fillText(label, labelLeft + 9, labelTop + 13.5, labelWidth - 18);
       }
 
       context.restore();
