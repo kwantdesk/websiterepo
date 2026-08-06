@@ -37,6 +37,7 @@ echarts.use([
 type SpotSample = { timestamp: number; spot: number; zeroGamma?: number | null };
 type Dataset = "volume" | "oi" | "both";
 type LineStyle = "solid" | "short" | "dash" | "dot";
+export type GexBotStateMetric = "gex" | "gamma" | "delta" | "vanna" | "charm";
 
 type Appearance = {
   positive: string;
@@ -397,6 +398,176 @@ export function ProfessionalProfileChart({
   );
 }
 
+const STATE_PALETTES: Record<GexBotStateMetric, { primary: string; secondary: string; call: string; put: string }> = {
+  gex: { primary: "#42df84", secondary: "#ff5268", call: "#42df84", put: "#ff5268" },
+  gamma: { primary: "#f0a52c", secondary: "#8c61ff", call: "#52df91", put: "#ff5f72" },
+  delta: { primary: "#38d3ee", secondary: "#ff667a", call: "#38d3ee", put: "#ff667a" },
+  vanna: { primary: "#87ed58", secondary: "#cb72ff", call: "#87ed58", put: "#cb72ff" },
+  charm: { primary: "#ffc557", secondary: "#778bff", call: "#ffc557", put: "#778bff" },
+};
+
+/** State has its own strike-state grammar; it is not a recoloured Classic chart. */
+export function ProfessionalStateChart({
+  frame,
+  metric,
+  appearance,
+  spotTape,
+  priorIndex,
+  onHover,
+}: {
+  frame: GexBotProfileFrame;
+  metric: GexBotStateMetric;
+  appearance: Appearance;
+  spotTape: SpotSample[];
+  priorIndex: number;
+  onHover: (strike: GexBotStrike | null) => void;
+}) {
+  const strikes = useMemo(() => {
+    const ordered = [...frame.strikes].sort((a, b) => a[0] - b[0]);
+    if (ordered.length <= 76) return ordered;
+    const center = ordered.reduce((best, entry, index) => (
+      Math.abs(entry[0] - frame.spot) < Math.abs(ordered[best][0] - frame.spot) ? index : best
+    ), 0);
+    const start = Math.max(0, Math.min(ordered.length - 76, center - 38));
+    return ordered.slice(start, start + 76);
+  }, [frame.spot, frame.strikes]);
+  const palette = STATE_PALETTES[metric];
+
+  const option = useMemo<EChartsCoreOption>(() => {
+    const minStrike = strikes[0]?.[0] ?? frame.spot - 1;
+    const maxStrike = strikes.at(-1)?.[0] ?? frame.spot + 1;
+    const step = Math.max(1, strikes.length > 1 ? Math.abs(strikes[1][0] - strikes[0][0]) : 1);
+    const magnitude = Math.max(1, ...strikes.flatMap((entry) => [Math.abs(entry[1]), Math.abs(entry[2])])) * appearance.multiplier;
+    const exposureMax = magnitude * 1.18;
+    const priceData = spotTape
+      .filter((entry) => entry.spot >= minStrike && entry.spot <= maxStrike)
+      .slice(-520)
+      .map((entry) => [entry.timestamp, entry.spot]);
+    if (!priceData.length) priceData.push([frame.timestamp, frame.spot]);
+    const firstTime = finite(priceData[0]?.[0]) ?? frame.timestamp - 3 * 60 * 60 * 1000;
+    const lastTime = finite(priceData.at(-1)?.[0]) ?? frame.timestamp;
+    const elapsed = Math.max(60 * 60 * 1000, lastTime - firstTime);
+    const series: Record<string, unknown>[] = [
+      {
+        name: "Underlying",
+        type: "line",
+        xAxisIndex: 0,
+        yAxisIndex: 0,
+        data: priceData,
+        showSymbol: false,
+        smooth: 0.025,
+        sampling: "lttb",
+        lineStyle: { color: "#f5f7fa", width: 1.65, shadowBlur: 6, shadowColor: "rgba(255,255,255,.3)" },
+        markLine: { silent: true, symbol: "none", animation: false, data: levelLines(frame, "both", appearance) },
+        z: 10,
+      },
+      {
+        name: `${metric.toUpperCase()} volume state`,
+        type: "custom",
+        xAxisIndex: 1,
+        yAxisIndex: 0,
+        renderItem: exposureRenderer(palette.primary, palette.secondary, 0.54, 0.78),
+        data: strikes.map((entry, index) => [entry[1] * appearance.multiplier, entry[0], 1, index, step]),
+        z: 5,
+      },
+      {
+        name: `${metric.toUpperCase()} open-interest state`,
+        type: "custom",
+        xAxisIndex: 1,
+        yAxisIndex: 0,
+        renderItem: exposureRenderer(palette.call, palette.put, 0.24, 0.48),
+        data: strikes.map((entry, index) => [entry[2] * appearance.multiplier, entry[0], 2, index, step]),
+        z: 6,
+      },
+      {
+        name: "Volume contour",
+        type: "line",
+        xAxisIndex: 1,
+        yAxisIndex: 0,
+        data: strikes.map((entry) => [entry[1] * appearance.multiplier, entry[0]]),
+        showSymbol: true,
+        symbol: "circle",
+        symbolSize: 3.2,
+        smooth: 0.16,
+        lineStyle: { color: palette.primary, width: 1, opacity: 0.74 },
+        itemStyle: { color: palette.primary, borderColor: "#050607", borderWidth: 1 },
+        z: 8,
+      },
+      {
+        name: "Open-interest contour",
+        type: "line",
+        xAxisIndex: 1,
+        yAxisIndex: 0,
+        data: strikes.map((entry) => [entry[2] * appearance.multiplier, entry[0]]),
+        showSymbol: true,
+        symbol: "circle",
+        symbolSize: 2.8,
+        smooth: 0.16,
+        lineStyle: { color: palette.secondary, width: 1, opacity: 0.68 },
+        itemStyle: { color: palette.secondary, borderColor: "#050607", borderWidth: 1 },
+        z: 8,
+      },
+    ];
+
+    if (appearance.showPriors) {
+      const priorCount = Math.max(0, ...strikes.map((entry) => entry[3].length));
+      for (let index = 0; index < priorCount; index += 1) {
+        const active = index === priorIndex;
+        series.push({
+          name: `Prior ${index + 1}`,
+          type: "scatter",
+          xAxisIndex: 1,
+          yAxisIndex: 0,
+          data: strikes.flatMap((entry) => entry[3][index] === undefined ? [] : [[entry[3][index] * appearance.multiplier, entry[0]]]),
+          symbolSize: active ? appearance.dotSize + 1 : Math.max(1.8, appearance.dotSize - 1),
+          itemStyle: { color: appearance.prior, opacity: active ? 0.92 : 0.25 },
+          z: active ? 9 : 3,
+        });
+      }
+    }
+
+    return {
+      backgroundColor: "#050607",
+      animationDuration: 180,
+      animationDurationUpdate: 100,
+      textStyle: { color: TEXT, fontFamily: UI },
+      title: {
+        text: `${metric.toUpperCase()} STATE`,
+        subtext: "VOLUME STATE  /  OPEN-INTEREST STATE",
+        left: 18,
+        top: 14,
+        textStyle: { color: palette.primary, fontFamily: UI, fontSize: 11, fontWeight: 800 },
+        subtextStyle: { color: MUTED, fontFamily: MONO, fontSize: 8, lineHeight: 18 },
+      },
+      grid: { left: 48, right: 70, top: 70, bottom: 42, show: true, borderColor: GRID_STRONG, backgroundColor: "#050607" },
+      tooltip: { trigger: "item", confine: true, backgroundColor: TOOLTIP_BG, borderColor: GRID_STRONG, borderWidth: 1, padding: [10, 12], textStyle: { color: TEXT, fontFamily: UI, fontSize: 10 }, extraCssText: "box-shadow:0 18px 60px rgba(0,0,0,.45);border-radius:8px", formatter: profileTooltip },
+      axisPointer: { label: { show: true, color: "#080a0d", backgroundColor: "#e9edf3", fontFamily: MONO, fontSize: 9 }, lineStyle: { color: "rgba(226,232,240,.52)", type: "dashed" } },
+      xAxis: [
+        { gridIndex: 0, type: "time", min: firstTime, max: lastTime + elapsed, position: "bottom", boundaryGap: false, axisLine: { lineStyle: { color: GRID_STRONG } }, axisTick: { show: false }, axisLabel: { color: MUTED, fontFamily: MONO, fontSize: 9, hideOverlap: true, formatter: (value: number) => new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(value)) }, splitLine: { show: true, lineStyle: { color: GRID } } },
+        { gridIndex: 0, type: "value", min: -exposureMax, max: exposureMax, position: "top", axisLine: { show: true, onZero: true, lineStyle: { color: GRID_STRONG } }, axisTick: { show: false }, axisLabel: { color: MUTED, fontFamily: MONO, fontSize: 9, formatter: (value: number) => value === 0 ? "NOW / 0" : compact(value) }, splitLine: { show: false } },
+      ],
+      yAxis: { gridIndex: 0, type: "value", min: minStrike - step, max: maxStrike + step, scale: true, position: "right", axisLine: { show: true, lineStyle: { color: GRID_STRONG } }, axisTick: { show: false }, axisLabel: { color: "#a5adba", fontFamily: MONO, fontSize: 9, formatter: (value: number) => value.toFixed(0) }, splitLine: { show: true, lineStyle: { color: GRID } } },
+      dataZoom: [{ type: "inside", yAxisIndex: 0, filterMode: "none", zoomOnMouseWheel: "shift", moveOnMouseWheel: true, moveOnMouseMove: true }],
+      series,
+    };
+  }, [appearance, frame, metric, palette, priorIndex, spotTape, strikes]);
+
+  return (
+    <EChartSurface
+      option={option}
+      height="clamp(600px, calc(100vh - 235px), 860px)"
+      className="min-h-[600px]"
+      onMouseOver={(event) => {
+        const source = Array.isArray(event.data) ? event.data : event.data?.value ?? event.value;
+        if (event.seriesName === "Underlying") return;
+        const strike = finite(source?.[1]);
+        if (strike !== null) onHover(strikes.find((entry) => entry[0] === strike) ?? null);
+      }}
+      onMouseOut={() => onHover(null)}
+    />
+  );
+}
+
 function orderflowTooltip(raw: unknown) {
   const params = (Array.isArray(raw) ? raw : [raw]) as Array<{ seriesName?: string; axisValue?: number; value?: unknown[]; color?: string }>;
   const timestamp = finite(params[0]?.axisValue ?? params[0]?.value?.[0]);
@@ -498,4 +669,207 @@ export function ProfessionalOrderflowChart({
   }, [metrics, points]);
 
   return <EChartSurface option={option} height={height} className="min-w-[720px]" />;
+}
+
+/**
+ * Metric-specific Orderflow terminal. Aggregate DEX, state ratios, signed
+ * event flow and convexity intentionally use different visual recipes.
+ */
+export function ProfessionalOrderflowTerminal({
+  metrics,
+  points,
+}: {
+  metrics: readonly OrderflowMetricConfig[];
+  points: GexBotOrderflowFrame[];
+}) {
+  const height = Math.max(460, metrics.length * 218 + 24);
+  const option = useMemo<EChartsCoreOption>(() => {
+    const panelHeight = 188;
+    const panelGap = 30;
+    const grids: Record<string, unknown>[] = [];
+    const titles: Record<string, unknown>[] = [];
+    const xAxes: Record<string, unknown>[] = [];
+    const yAxes: Record<string, unknown>[] = [];
+    const series: Record<string, unknown>[] = [];
+    const value = (point: GexBotOrderflowFrame, field: string) => finite(point[field as keyof GexBotOrderflowFrame]);
+    const lineData = (field: string) => points.flatMap((point) => {
+      const next = value(point, field);
+      return next === null ? [] : [[point.timestamp, next]];
+    });
+
+    metrics.forEach((metric, index) => {
+      const top = 18 + index * (panelHeight + panelGap);
+      const latest = points.at(-1);
+      const current = latest ? value(latest, metric.id) : null;
+      const oneCurrent = latest ? value(latest, metric.one) : null;
+      grids.push({ left: 76, right: 72, top, height: panelHeight, containLabel: false, show: true, borderColor: GRID_STRONG, backgroundColor: "#050607" });
+      titles.push({
+        text: metric.label.toUpperCase(),
+        subtext: `0DTE  ${current === null ? "—" : compact(current)}     1DTE  ${oneCurrent === null ? "—" : compact(oneCurrent)}`,
+        left: 80,
+        top: top + 7,
+        textStyle: { color: metric.color, fontFamily: UI, fontSize: 10, fontWeight: 800, letterSpacing: 1.2 },
+        subtextStyle: { color: MUTED, fontFamily: MONO, fontSize: 8, lineHeight: 17 },
+      });
+      xAxes.push({
+        gridIndex: index,
+        type: "time",
+        boundaryGap: true,
+        axisLine: { lineStyle: { color: GRID_STRONG } },
+        axisTick: { show: false },
+        axisLabel: { color: MUTED, fontFamily: MONO, fontSize: 8, hideOverlap: true, formatter: (next: number) => new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(next)) },
+        splitLine: { show: true, lineStyle: { color: GRID } },
+        axisPointer: { show: true },
+      });
+      yAxes.push({
+        gridIndex: index,
+        type: "value",
+        scale: true,
+        position: "left",
+        axisLine: { show: true, lineStyle: { color: GRID_STRONG } },
+        axisTick: { show: false },
+        axisLabel: { color: MUTED, fontFamily: MONO, fontSize: 8, formatter: (next: number) => compact(next) },
+        splitLine: { show: true, lineStyle: { color: GRID } },
+        axisPointer: { show: true },
+      });
+      yAxes.push({
+        gridIndex: index,
+        type: "value",
+        scale: true,
+        position: "right",
+        axisLine: { show: true, lineStyle: { color: GRID_STRONG } },
+        axisTick: { show: false },
+        axisLabel: { color: "rgba(230,234,241,.56)", fontFamily: MONO, fontSize: 8, formatter: (next: number) => next.toFixed(0) },
+        splitLine: { show: false },
+        axisPointer: { show: false },
+      });
+
+      if (metric.id === "agg_dex") {
+        [
+          { field: "agg_call_dex", name: "CALL DEX", color: "#4be0a1", width: 1.5, dash: false },
+          { field: "agg_put_dex", name: "PUT DEX", color: "#ff5e72", width: 1.5, dash: false },
+          { field: "net_dex", name: "NET DEX", color: "#72c9ff", width: 2, dash: false },
+          { field: "one_net_dex", name: "1DTE NET", color: "#d8b6ff", width: 1.1, dash: true },
+        ].forEach((item) => series.push({
+          name: item.name,
+          type: "line",
+          xAxisIndex: index,
+          yAxisIndex: index * 2,
+          data: lineData(item.field),
+          showSymbol: false,
+          smooth: 0.035,
+          connectNulls: false,
+          sampling: "lttb",
+          lineStyle: { color: item.color, width: item.width, type: item.dash ? "dashed" : "solid", opacity: item.dash ? 0.7 : 0.94, shadowBlur: 4, shadowColor: `${item.color}42` },
+          markLine: item.field === "net_dex" ? { silent: true, symbol: "none", data: [{ yAxis: 0, lineStyle: { color: "rgba(236,240,246,.28)", width: 1 }, label: { show: false } }] } : undefined,
+          z: item.field === "net_dex" ? 8 : 6,
+        }));
+      } else if (metric.id === "zgr" || metric.id === "zcvr") {
+        series.push({
+          name: `${metric.label} · 0DTE`,
+          type: "line",
+          xAxisIndex: index,
+          yAxisIndex: index * 2,
+          data: lineData(metric.id),
+          showSymbol: false,
+          smooth: 0.08,
+          connectNulls: false,
+          sampling: "lttb",
+          lineStyle: { color: metric.color, width: 2, shadowBlur: 5, shadowColor: `${metric.color}50` },
+          areaStyle: { color: `${metric.color}16`, opacity: 1 },
+          markLine: { silent: true, symbol: "none", data: [{ yAxis: 0, lineStyle: { color: "rgba(236,240,246,.30)", width: 1 }, label: { show: false } }] },
+          z: 7,
+        });
+        series.push({
+          name: `${metric.label} · 1DTE`,
+          type: "line",
+          xAxisIndex: index,
+          yAxisIndex: index * 2,
+          data: lineData(metric.one),
+          showSymbol: false,
+          smooth: 0.08,
+          connectNulls: false,
+          sampling: "lttb",
+          lineStyle: { color: "#d8b6ff", width: 1.15, type: "dashed", opacity: 0.82 },
+          z: 8,
+        });
+      } else if (metric.id === "cvroflow") {
+        series.push({
+          name: "CONVEXITY · 0DTE",
+          type: "line",
+          xAxisIndex: index,
+          yAxisIndex: index * 2,
+          data: lineData(metric.id),
+          showSymbol: true,
+          symbol: "circle",
+          symbolSize: 3.5,
+          smooth: false,
+          connectNulls: false,
+          lineStyle: { color: metric.color, width: 1, opacity: 0.68 },
+          itemStyle: { color: metric.color, shadowBlur: 6, shadowColor: `${metric.color}70` },
+          markLine: { silent: true, symbol: "none", data: [{ yAxis: 0, lineStyle: { color: "rgba(236,240,246,.30)", width: 1 }, label: { show: false } }] },
+          z: 7,
+        });
+        series.push({ name: "CONVEXITY · 1DTE", type: "scatter", xAxisIndex: index, yAxisIndex: index * 2, data: lineData(metric.one), symbolSize: 2.6, itemStyle: { color: "#d8b6ff", opacity: 0.72 }, z: 8 });
+      } else {
+        const positive = metric.id === "dexoflow" ? "#4ddfb0" : "#8cef66";
+        const negative = "#ff5d72";
+        series.push({
+          name: `${metric.label} · 0DTE`,
+          type: "bar",
+          xAxisIndex: index,
+          yAxisIndex: index * 2,
+          data: lineData(metric.id),
+          barWidth: 2,
+          barGap: "-100%",
+          itemStyle: { color: (params: { value?: unknown[] }) => (finite(params.value?.[1]) ?? 0) >= 0 ? positive : negative, opacity: 0.94 },
+          markLine: { silent: true, symbol: "none", data: [{ yAxis: 0, lineStyle: { color: "rgba(236,240,246,.34)", width: 1 }, label: { show: false } }] },
+          z: 7,
+        });
+        series.push({
+          name: `${metric.label} · 1DTE`,
+          type: "bar",
+          xAxisIndex: index,
+          yAxisIndex: index * 2,
+          data: lineData(metric.one),
+          barWidth: 1,
+          barGap: "-100%",
+          itemStyle: { color: "#d8b6ff", opacity: 0.5 },
+          z: 8,
+        });
+      }
+
+      series.push({
+        name: "UNDERLYING",
+        type: "line",
+        xAxisIndex: index,
+        yAxisIndex: index * 2 + 1,
+        data: points.map((point) => [point.timestamp, point.spot]),
+        showSymbol: false,
+        smooth: 0.02,
+        lineStyle: { color: "rgba(247,249,252,.9)", width: 1.2, shadowBlur: 3, shadowColor: "rgba(255,255,255,.22)" },
+        emphasis: { disabled: true },
+        silent: true,
+        z: 4,
+      });
+    });
+
+    return {
+      backgroundColor: "#050607",
+      animationDuration: 180,
+      animationDurationUpdate: 100,
+      animationEasingUpdate: "cubicOut",
+      textStyle: { color: TEXT, fontFamily: UI },
+      title: titles,
+      grid: grids,
+      xAxis: xAxes,
+      yAxis: yAxes,
+      tooltip: { trigger: "axis", confine: true, axisPointer: { type: "cross" }, backgroundColor: TOOLTIP_BG, borderColor: GRID_STRONG, borderWidth: 1, padding: [10, 12], textStyle: { color: TEXT, fontFamily: UI, fontSize: 10 }, extraCssText: "box-shadow:0 18px 60px rgba(0,0,0,.45);border-radius:10px", formatter: orderflowTooltip },
+      axisPointer: { link: [{ xAxisIndex: "all" }], label: { show: true, color: "#080a0d", backgroundColor: "#e9edf3", fontFamily: MONO, fontSize: 9 }, lineStyle: { color: "rgba(226,232,240,.58)", width: 1, type: "dashed" } },
+      dataZoom: [{ type: "inside", xAxisIndex: metrics.map((_, index) => index), filterMode: "none", zoomOnMouseWheel: true, moveOnMouseWheel: true, moveOnMouseMove: true }],
+      series,
+    };
+  }, [metrics, points]);
+
+  return <EChartSurface option={option} height={height} className="min-w-[820px]" />;
 }

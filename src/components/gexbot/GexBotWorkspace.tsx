@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { ProfessionalOrderflowChart, ProfessionalProfileChart } from "@/components/gexbot/GexBotCharts";
+import { ProfessionalOrderflowTerminal, ProfessionalProfileChart, ProfessionalStateChart } from "@/components/gexbot/GexBotCharts";
 import KwantSelect from "@/components/ui/KwantSelect";
 import type {
   GexBotMaxChangeFrame,
@@ -764,7 +764,7 @@ export default function GexBotWorkspace() {
               ? <OrderflowSnapshot frame={frame as GexBotOrderflowFrame} visibleMetrics={visibleMetrics} />
               : <div className="mx-auto w-full max-w-[1680px] overflow-x-auto px-3 py-3">
                   {visibleMetrics.length ? (
-                    <ProfessionalOrderflowChart
+                    <ProfessionalOrderflowTerminal
                       metrics={ORDERFLOW_METRICS.filter((metric) => visibleMetrics.includes(metric.id))}
                       points={orderflowTape.length ? orderflowTape : [frame as GexBotOrderflowFrame]}
                     />
@@ -772,7 +772,13 @@ export default function GexBotWorkspace() {
                 </div>
           ) : (
             <div className="flex min-h-[560px] flex-1 items-start overflow-auto">
-              <div className="mx-auto min-w-0 flex-1 p-2"><ProfessionalProfileChart frame={frame as GexBotProfileFrame} dataset={dataset} appearance={appearance} spotTape={spotTape} priorIndex={priorIndex} onHover={setHover} /></div>
+              <div className="mx-auto min-w-0 flex-1 p-2">
+                {view === "state" ? (
+                  <ProfessionalStateChart frame={frame as GexBotProfileFrame} metric={stateMetric} appearance={appearance} spotTape={spotTape} priorIndex={priorIndex} onHover={setHover} />
+                ) : (
+                  <ProfessionalProfileChart frame={frame as GexBotProfileFrame} dataset={dataset} appearance={appearance} spotTape={spotTape} priorIndex={priorIndex} onHover={setHover} />
+                )}
+              </div>
             </div>
           )}
         </main>
