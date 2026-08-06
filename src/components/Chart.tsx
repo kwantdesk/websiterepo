@@ -5207,16 +5207,6 @@ export default function Chart({
         </div>
       ) : null}
 
-      {tpoIndicator ? (
-        <div className="pointer-events-none absolute right-[70px] top-11 z-[16] flex items-center gap-1.5 rounded-full border border-border bg-panel/90 px-2.5 py-1 font-mono text-[8px] uppercase tracking-[0.1em] text-muted shadow-lg backdrop-blur">
-          <span className="font-semibold text-foreground">TPO Levels</span>
-          {tpoLoading && !tpoPayload ? <span className="text-primary">Loading</span> : null}
-          {tpoPayload?.stale ? <span className="text-warning">TPO Stale {formatTpoAge(tpoPayload.dataAge)}</span> : null}
-          {tpoError && !tpoPayload ? <span className="max-w-[250px] truncate text-danger">{tpoError}</span> : null}
-          {tpoPayload && !tpoPayload.stale ? <span>{tpoPayload.sourceSessions.length} RTH</span> : null}
-        </div>
-      ) : null}
-
       {tpoOverlay ? (
         <svg
           className="pointer-events-none absolute inset-0 z-[10] h-full w-full overflow-hidden"
@@ -5294,21 +5284,6 @@ export default function Chart({
               {tpoTooltip.zone.confluenceReasons.join(" · ")}
             </div>
           ) : null}
-        </div>
-      ) : null}
-
-      {classicGexIndicator ? (
-        <div
-          className="pointer-events-none absolute top-11 z-[14] flex items-center gap-1.5 rounded-full border border-border bg-panel/88 px-2.5 py-1 font-mono text-[8px] uppercase tracking-[0.1em] text-muted shadow-lg backdrop-blur"
-          style={classicGexOverlay?.right === false ? { left: 8 } : { right: 70 }}
-        >
-          <span className="font-semibold text-foreground">Classic GEX</span>
-          <span>{classicGexProfile?.sourceSymbol ?? "QQQ"}</span>
-          <span>{classicGexProfile?.profileSource === "OPEN_INTEREST" ? "OI" : "VOL"}</span>
-          {classicGexLoading && !classicGexProfile ? <span className="text-primary">Loading</span> : null}
-          {classicGexProfile?.status === "EOD" ? <span>EOD</span> : null}
-          {classicGexProfile?.stale ? <span className="text-warning">Stale</span> : null}
-          {classicGexError && !classicGexProfile ? <span className="text-danger">Unavailable</span> : null}
         </div>
       ) : null}
 
