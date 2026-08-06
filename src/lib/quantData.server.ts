@@ -1324,7 +1324,7 @@ function createKeyLevels(args: {
       derived: true,
       explanation: args.expectedMove.approximate
         ? "Approximate 1D maximum from the prior realized range because prior-session KwantData IV was unavailable."
-        : "One-sigma 1D maximum from prior-session KwantData 30-day ATM IV divided by sqrt(365), anchored to the session open.",
+        : "One-sigma 1D maximum from prior-session KwantData 30-day ATM IV divided by sqrt(252), anchored to the session open.",
     },
     args.expectedMove === null ? null : {
       id: "expected-move-min",
@@ -1338,7 +1338,7 @@ function createKeyLevels(args: {
       derived: true,
       explanation: args.expectedMove.approximate
         ? "Approximate 1D minimum from the prior realized range because prior-session KwantData IV was unavailable."
-        : "One-sigma 1D minimum from prior-session KwantData 30-day ATM IV divided by sqrt(365), anchored to the session open.",
+        : "One-sigma 1D minimum from prior-session KwantData 30-day ATM IV divided by sqrt(252), anchored to the session open.",
     },
     ...args.gexClusters.map((row, index) => ({
       id: `gex-cluster-${index + 1}`,

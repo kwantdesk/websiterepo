@@ -1785,7 +1785,9 @@ export default function Chart({
     let controller: AbortController | null = null;
     const schedule = (payload: ExpectedMoveApiPayload | null, fallbackMs = 60_000) => {
       if (cancelled) return;
-      const target = payload ? Date.parse(payload.nextRefreshAt) + 1_000 : Date.now() + fallbackMs;
+      const target = payload && !payload.stale
+        ? Date.parse(payload.nextRefreshAt) + 1_000
+        : Date.now() + fallbackMs;
       const delay = Math.max(30_000, Math.min(24 * 60 * 60_000, target - Date.now()));
       timer = window.setTimeout(load, delay);
     };
@@ -1800,11 +1802,16 @@ export default function Chart({
         return null;
       }
     };
+    let retainedPayload = cachedFallback() ?? expectedMovePayload;
+    if (retainedPayload) {
+      setExpectedMovePayload(retainedPayload);
+      setExpectedMoveLoading(false);
+    }
     async function load() {
       if (cancelled) return;
       controller?.abort();
       controller = new AbortController();
-      setExpectedMoveLoading((current) => current || !expectedMovePayload);
+      setExpectedMoveLoading(!retainedPayload);
       try {
         const response = await fetch(`/api/expected-move?source=${source}`, {
           cache: "no-store",
@@ -1821,6 +1828,7 @@ export default function Chart({
           throw new Error(candidate?.error || "Expected Move is unavailable.");
         }
         if (cancelled) return;
+        retainedPayload = candidate;
         setExpectedMovePayload(candidate);
         setExpectedMoveError(null);
         if (!candidate.stale) window.localStorage.setItem(storageKey, JSON.stringify(candidate));
@@ -1828,7 +1836,9 @@ export default function Chart({
       } catch (error) {
         if (cancelled || (error instanceof DOMException && error.name === "AbortError")) return;
         const message = error instanceof Error ? error.message : "Expected Move is unavailable.";
-        const fallback = cachedFallback();
+        const fallbackSource = cachedFallback() ?? retainedPayload;
+        const fallback = fallbackSource ? staleExpectedMovePayload(fallbackSource, Date.now()) : null;
+        retainedPayload = fallback;
         setExpectedMovePayload(fallback);
         setExpectedMoveError(message);
         schedule(fallback, 60_000);

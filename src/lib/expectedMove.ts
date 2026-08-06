@@ -174,7 +174,10 @@ export function chartSessionExpectedMove(args: {
   fallbackPrice: number | null;
 }) {
   return expectedMoveRange({
-    priorAtmIv: args.iv.priorAtmIv ?? args.iv.atmIv,
+    // Expected Move is a morning map built from the prior-session volatility
+    // snapshot. A live/current ATM IV must not silently replace a missing
+    // prior value; the documented fallback is the prior realized range.
+    priorAtmIv: args.iv.priorAtmIv,
     expiration: args.iv.expiration,
     dailyCandles: args.dailyCandles,
     sessionDate: args.sessionDate,

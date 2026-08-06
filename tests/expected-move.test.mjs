@@ -127,6 +127,18 @@ test("missing IV is explicitly approximate and uses prior realized half-range", 
   assert.equal(range.approximate, true);
   assert.equal(range.movePercent, (104 - 96) / (2 * 100));
   assert.equal(expectedMoveLabel({ approximate: true, side: "high", sigma: 1 }), "~EM high");
+
+  const chartFallback = chartSessionExpectedMove({
+    sessionDate: "2026-08-05",
+    marketOpen: true,
+    iv: { priorAtmIv: null, atmIv: 0.99, expiration: "2026-08-05" },
+    dailyCandles: candles,
+    fallbackPrice: null,
+  });
+  assert.ok(chartFallback);
+  assert.equal(chartFallback.method, "PRIOR_REALIZED_RANGE");
+  assert.equal(chartFallback.approximate, true);
+  assert.equal(chartFallback.movePercent, range.movePercent);
 });
 
 test("live calibration accepts sane NQ mapping and rejects insane or stale mappings", () => {
@@ -166,7 +178,7 @@ test("two sigma rails are exactly twice the one-sigma offset", () => {
   const rails = expectedMoveSigmaRails(band, 2);
   assert.ok(Math.abs((rails.high - band.anchor) - band.movePoints * 2) < 1e-9);
   assert.ok(Math.abs((band.anchor - rails.low) - band.movePoints * 2) < 1e-9);
-  assert.match(expectedMoveLabel({ approximate: false, side: "high", sigma: 2 }), /^EM 2/);
+  assert.equal(expectedMoveLabel({ approximate: false, side: "high", sigma: 2 }), "EM 2σ high");
 });
 
 test("failed pull fallback is retained with an explicit stale flag and age", () => {
