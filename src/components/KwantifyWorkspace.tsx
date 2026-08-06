@@ -7009,19 +7009,23 @@ export default function KwantifyWorkspace({
       NZD_USD: "NZDUSD",
     };
 
-    const eventSource = new EventSource(
-      usingDatabentoFeed
-        ? `/api/databento/live?symbols=${encodeURIComponent(watchlistSymbolsCsv)}&priority=${encodeURIComponent(priorityLiveSymbolsCsv)}`
-        : usingCTraderFeed
-        ? `/api/ctrader/stream?broker=${encodeURIComponent(activeChartBrokerLabel)}&symbols=${encodeURIComponent(watchlistSymbolsCsv)}`
-        : "/api/oanda/stream",
-    );
+    const streamUrl = usingDatabentoFeed
+      ? `/api/databento/live?symbols=${encodeURIComponent(watchlistSymbolsCsv)}&priority=${encodeURIComponent(priorityLiveSymbolsCsv)}`
+      : usingCTraderFeed
+      ? `/api/ctrader/stream?broker=${encodeURIComponent(activeChartBrokerLabel)}&symbols=${encodeURIComponent(watchlistSymbolsCsv)}`
+      : "/api/oanda/stream";
+    let activeEventSource: EventSource | null = null;
+    let warmingEventSource: EventSource | null = null;
+    let disposed = false;
     let lastServerSignalAt = Date.now();
     let lastPriceMessageAt = Date.now();
     let receivedPriceMessage = false;
     let reconnecting = false;
     let streamMarkedHealthy = false;
     let reconnectTimer: number | null = null;
+    let warmHandoffTimer: number | null = null;
+    let warmReadyTimer: number | null = null;
+    let warmingAuthenticated = false;
     const publishDatabentoStatus = (status: DatabentoLiveStatus) => {
       if (!usingDatabentoFeed) return;
       publishDatabentoLiveStatus(status);
@@ -7042,9 +7046,14 @@ export default function KwantifyWorkspace({
       });
     };
     const reconnect = () => {
-      if (reconnecting) return;
+      if (reconnecting || disposed) return;
       reconnecting = true;
-      eventSource.close();
+      activeEventSource?.close();
+      warmingEventSource?.close();
+      activeEventSource = null;
+      warmingEventSource = null;
+      if (warmHandoffTimer !== null) window.clearTimeout(warmHandoffTimer);
+      if (warmReadyTimer !== null) window.clearTimeout(warmReadyTimer);
       publishDatabentoStatus("reconnecting");
       setStreamHealthyByBroker((current) => ({ ...current, [activeChartBrokerLabel]: false }));
       setFeedErrorByBroker((current) => ({
@@ -7061,33 +7070,7 @@ export default function KwantifyWorkspace({
         || (receivedPriceMessage && now - lastPriceMessageAt > 24_000)
       ) reconnect();
     }, 3_000);
-    const handleStatus = () => markStreamAlive();
-    const handleHeartbeat = () => markStreamAlive();
-    const handleStreamRotation = () => {
-      if (reconnecting) return;
-      publishDatabentoStatus("connecting");
-      setStreamReconnectNonce((value) => value + 1);
-    };
-    const handleFeedError = (event: Event) => {
-      lastServerSignalAt = Date.now();
-      try {
-        const payload = JSON.parse((event as MessageEvent<string>).data) as { error?: string };
-        if (payload.error) {
-          streamMarkedHealthy = false;
-          setFeedErrorByBroker((current) => ({ ...current, [activeChartBrokerLabel]: payload.error as string }));
-        }
-      } catch {
-        // The EventSource error handler reconnects malformed failures.
-      }
-    };
-    publishDatabentoStatus("connecting");
-    eventSource.addEventListener("open", handleStatus);
-    eventSource.addEventListener("status", handleStatus);
-    eventSource.addEventListener("heartbeat", handleHeartbeat);
-    eventSource.addEventListener("rotate", handleStreamRotation);
-    eventSource.addEventListener("feed-error", handleFeedError);
-
-    eventSource.onmessage = (event) => {
+    const handlePriceMessage = (event: MessageEvent<string>) => {
       try {
         const price = JSON.parse(event.data) as LiveFeedPrice;
         markStreamAlive();
@@ -7194,20 +7177,121 @@ export default function KwantifyWorkspace({
       } catch {}
     };
 
-    eventSource.onerror = () => {
-      reconnect();
-      console.log(`${activeChartBrokerLabel} stream disconnected, reconnecting...`);
+    const scheduleWarmHandoff = (delayMs = 210_000) => {
+      if (!usingDatabentoFeed || disposed || reconnecting) return;
+      if (warmHandoffTimer !== null) window.clearTimeout(warmHandoffTimer);
+      warmHandoffTimer = window.setTimeout(() => {
+        warmHandoffTimer = null;
+        if (!warmingEventSource && activeEventSource) openEventSource(true);
+      }, delayMs);
     };
 
+    const discardWarmingSource = (source: EventSource, retry = true) => {
+      if (warmingEventSource !== source) return;
+      source.close();
+      warmingEventSource = null;
+      warmingAuthenticated = false;
+      if (warmReadyTimer !== null) {
+        window.clearTimeout(warmReadyTimer);
+        warmReadyTimer = null;
+      }
+      if (retry && activeEventSource && !disposed) scheduleWarmHandoff(5_000);
+    };
+
+    const promoteWarmingSource = (source: EventSource) => {
+      if (warmingEventSource !== source || disposed) return;
+      const previousSource = activeEventSource;
+      activeEventSource = source;
+      warmingEventSource = null;
+      warmingAuthenticated = false;
+      if (warmReadyTimer !== null) {
+        window.clearTimeout(warmReadyTimer);
+        warmReadyTimer = null;
+      }
+      previousSource?.close();
+      markStreamAlive();
+      scheduleWarmHandoff();
+    };
+
+    function openEventSource(warming: boolean) {
+      if (disposed || reconnecting) return;
+      const source = new EventSource(streamUrl);
+      if (warming) {
+        warmingEventSource?.close();
+        warmingEventSource = source;
+        warmingAuthenticated = false;
+        warmReadyTimer = window.setTimeout(() => discardWarmingSource(source), 20_000);
+      } else {
+        activeEventSource?.close();
+        activeEventSource = source;
+      }
+
+      source.addEventListener("open", () => {
+        if (source === activeEventSource) lastServerSignalAt = Date.now();
+      });
+      source.addEventListener("status", () => {
+        if (source === warmingEventSource) warmingAuthenticated = true;
+        else if (source === activeEventSource) markStreamAlive();
+      });
+      source.addEventListener("heartbeat", () => {
+        if (source === activeEventSource) markStreamAlive();
+      });
+      source.addEventListener("rotate", () => {
+        if (source !== activeEventSource) return;
+        // A warm replacement should normally already have been promoted. If it
+        // has not, force a clean retry rather than leaving a dead chart stream.
+        reconnect();
+      });
+      source.addEventListener("feed-error", (event) => {
+        if (source === warmingEventSource) {
+          discardWarmingSource(source);
+          return;
+        }
+        if (source !== activeEventSource) return;
+        lastServerSignalAt = Date.now();
+        try {
+          const payload = JSON.parse((event as MessageEvent<string>).data) as { error?: string };
+          if (payload.error) {
+            streamMarkedHealthy = false;
+            setFeedErrorByBroker((current) => ({ ...current, [activeChartBrokerLabel]: payload.error as string }));
+          }
+        } catch {
+          // The EventSource error handler reconnects malformed failures.
+        }
+      });
+      source.onmessage = (event) => {
+        if (source === warmingEventSource) {
+          // The route can replay one cached quote before Databento has
+          // authenticated. Only promote after status + a subsequent market
+          // payload prove that the replacement is genuinely producing ticks.
+          if (!warmingAuthenticated) return;
+          promoteWarmingSource(source);
+        }
+        if (source === activeEventSource) handlePriceMessage(event);
+      };
+      source.onerror = () => {
+        if (source === warmingEventSource) {
+          discardWarmingSource(source);
+          return;
+        }
+        if (source !== activeEventSource) return;
+        reconnect();
+        console.log(`${activeChartBrokerLabel} stream disconnected, reconnecting...`);
+      };
+    }
+
+    publishDatabentoStatus("connecting");
+    openEventSource(false);
+    scheduleWarmHandoff();
+
     return () => {
-      eventSource.close();
-      eventSource.removeEventListener("open", handleStatus);
-      eventSource.removeEventListener("status", handleStatus);
-      eventSource.removeEventListener("heartbeat", handleHeartbeat);
-      eventSource.removeEventListener("rotate", handleStreamRotation);
-      eventSource.removeEventListener("feed-error", handleFeedError);
+      disposed = true;
+      activeEventSource?.close();
+      warmingEventSource?.close();
       window.clearInterval(healthTimer);
       if (reconnectTimer !== null) window.clearTimeout(reconnectTimer);
+      if (warmHandoffTimer !== null) window.clearTimeout(warmHandoffTimer);
+      if (warmReadyTimer !== null) window.clearTimeout(warmReadyTimer);
       pendingWatchlistPricesRef.current.clear();
       if (liveQuoteCacheTimerRef.current !== null) {
         window.clearTimeout(liveQuoteCacheTimerRef.current);

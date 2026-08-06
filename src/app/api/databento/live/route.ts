@@ -30,9 +30,9 @@ const liveQuoteCache = globalLiveQuoteCache.__kwantdeskCmeLiveQuotes
   ?? (globalLiveQuoteCache.__kwantdeskCmeLiveQuotes = new Map<string, CachedLivePayload>());
 const LIVE_REPLAY_MAX_AGE_MS = 2 * 60_000;
 // Vercel terminates this streaming function after its configured five-minute
-// lifetime. End the lease cleanly beforehand so the browser can resubscribe
-// while the connection is still healthy instead of discovering a dead feed.
-const LIVE_STREAM_LEASE_MS = 3 * 60_000;
+// lifetime. The browser warms a replacement connection at 3.5 minutes and
+// promotes it only after authentication, so this lease is only a final guard.
+const LIVE_STREAM_LEASE_MS = 4.5 * 60_000;
 
 function numericPrice(value: unknown) {
   const parsed = typeof value === "number" ? value : Number(value);
