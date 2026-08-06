@@ -140,6 +140,7 @@ export type ExposureSummary = {
   gross: number;
   strikes: ExposureStrike[];
   expiries: ExposureExpiry[];
+  expiryStrikes?: Array<ExposureStrike & { expiration: string }>;
 };
 
 export type OpenInterestStrike = {
@@ -153,6 +154,7 @@ export type OptionsLevelKind =
   | "CALL_WALL"
   | "PUT_WALL"
   | "GAMMA_MAGNET"
+  | "GAMMA_ACCELERATOR"
   | "GAMMA_CENTRE"
   | "HIGH_VOL_LEVEL"
   | "ZERO_GAMMA"
@@ -173,12 +175,16 @@ export type OptionsKeyLevel = {
   kind: OptionsLevelKind;
   label: string;
   price: number;
-  scope: "FULL_CHAIN" | "ZERO_DTE" | "SESSION";
+  scope: "FULL_CHAIN" | "NEAR_TERM_7D" | "ZERO_DTE" | "SESSION";
   metric: "GEX" | "GEX_AND_OPEN_INTEREST" | "OPEN_INTEREST_MAX_PAIN" | "EXPECTED_MOVE_1SIGMA" | "GEX_DEX_COMPOSITE";
   value: number | null;
   rank: number;
   derived: boolean;
   explanation: string;
+  expiryScope?: "FULL_CHAIN" | "NEAR_TERM_7D" | "ZERO_DTE";
+  dominantExpiry?: string | null;
+  regime?: "POSITIVE" | "NEGATIVE" | "UNKNOWN";
+  signConvention?: string;
 };
 
 export type OptionsFlowPrint = {
@@ -439,6 +445,20 @@ export type OptionsFlowPayload = {
     putWall: number | null;
     gammaHvl: number | null;
     gammaMagnet: number | null;
+    gammaAccelerator: number | null;
+    gammaFlip: number | null;
+    gammaCrossings: number[];
+    flipNote: string | null;
+    regime: "POSITIVE" | "NEGATIVE" | "UNKNOWN";
+    expiryScope: "NEAR_TERM_7D";
+    signConvention: string;
+    structural: {
+      gammaMagnet: number | null;
+      gammaAccelerator: number | null;
+      gammaFlip: number | null;
+      gammaCrossings: number[];
+      expiryScope: "FULL_CHAIN";
+    };
     gammaCenter: number | null;
     majorPositiveOi: number | null;
     majorPositiveVolume: number | null;

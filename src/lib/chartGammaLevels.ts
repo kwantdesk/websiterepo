@@ -8,6 +8,7 @@ export type ChartGammaSourceLevelKind =
   | "CALL_WALL"
   | "PUT_WALL"
   | "GAMMA_MAGNET"
+  | "GAMMA_ACCELERATOR"
   | "GAMMA_CENTRE"
   | "HIGH_VOL_LEVEL"
   | "ZERO_GAMMA"
@@ -25,6 +26,10 @@ export type ChartGammaSourceLevel = {
   price: number;
   value: number | null;
   rank: number;
+  expiryScope?: "NEAR_TERM_7D" | "FULL_CHAIN" | "ZERO_DTE";
+  dominantExpiry?: string | null;
+  regime?: "POSITIVE" | "NEGATIVE" | "UNKNOWN";
+  signConvention?: string;
 };
 
 const GAMMA_LEVEL_KIND_PRIORITY: Record<ChartGammaSourceLevelKind, number> = {
@@ -40,6 +45,7 @@ const GAMMA_LEVEL_KIND_PRIORITY: Record<ChartGammaSourceLevelKind, number> = {
   POSITIVE_GEX: 20,
   NEGATIVE_GEX: 20,
   GAMMA_MAGNET: 10,
+  GAMMA_ACCELERATOR: 96,
 };
 
 /**
@@ -94,6 +100,14 @@ export type ChartGammaSourceSnapshot = {
   revision: string;
   validationStrikes: number[];
   levels: ChartGammaSourceLevel[];
+  cage?: {
+    regime: "POSITIVE" | "NEGATIVE" | "UNKNOWN";
+    flip: number | null;
+    crossings: number[];
+    flipNote: string | null;
+    expiryScope: "NEAR_TERM_7D" | "FULL_CHAIN" | "ZERO_DTE";
+    signConvention: string;
+  };
 };
 
 export type ChartGammaPositioningStrike = {

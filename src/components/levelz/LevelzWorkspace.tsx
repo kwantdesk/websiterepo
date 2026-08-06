@@ -70,6 +70,10 @@ type IntelligentLevel = ChartLevel & {
   firstTouch: string;
   hold: string;
   break: string;
+  expiryScope?: "NEAR_TERM_7D" | "FULL_CHAIN" | "ZERO_DTE";
+  dominantExpiry?: string | null;
+  regime?: "POSITIVE" | "NEGATIVE" | "UNKNOWN";
+  signConvention?: string;
 };
 
 type LevelSnapshot = {
@@ -397,6 +401,7 @@ function gammaColor(kind: ChartGammaSourceLevelKind, settings: ChartSettings) {
     || kind === "MAJOR_POSITIVE_VOLUME"
   ) return settings.upColor;
   if (kind === "PUT_WALL" || kind === "NEGATIVE_GEX") return settings.downColor;
+  if (kind === "GAMMA_ACCELERATOR") return "#F97316";
   if (kind === "GAMMA_CENTRE") return "#22D3EE";
   if (kind === "ZERO_GAMMA") return "#F8FAFC";
   if (kind === "HIGH_VOL_LEVEL") return "#F59E0B";
@@ -422,6 +427,12 @@ const GAMMA_EDUCATION: Record<ChartGammaSourceLevelKind, Pick<IntelligentLevel, 
     firstTouch: "Expect two-way trade and test whether price can leave the level with expanding range and confirming flow.",
     hold: "Continued rotation around the strike confirms magnet behaviour and reduces the quality of breakout entries inside the area.",
     break: "A decisive departure with sustained tape imbalance suggests the pin has weakened and the next concentration matters more.",
+  },
+  GAMMA_ACCELERATOR: {
+    explanation: "The most negative net-gamma strike within the near-term cage. Dealer-short-gamma hedge adjustments can move with price here, so this is an acceleration rail rather than a level to fade blindly.",
+    firstTouch: "Measure continuation and range expansion. Do not assume the first touch will reverse.",
+    hold: "Acceptance beyond the accelerator keeps pro-cyclical hedge pressure active toward the next positioning strike.",
+    break: "A failed acceleration matters only after price reclaims the strike and holds back inside the prior range.",
   },
   GAMMA_CENTRE: {
     explanation: "The centre of the active gamma complex. It separates the nearest concentrations and is a decision reference for whether price is trading in the upper or lower half of positioning.",
@@ -504,7 +515,12 @@ function makeGammaSnapshot(payload: ChartGammaLevelsPayload, settings: ChartSett
   const source = payload.sources.find((item) => item.symbol === payload.requestedSource && item.levels.length)
     ?? payload.sources.find((item) => item.levels.length);
   const validLevels = mergeGammaLevelsAtSamePrice((source?.levels ?? []).filter((level) =>
-    Number.isFinite(level.price) && level.price > 0 && typeof level.label === "string" && level.label.length > 0,
+    level.kind !== "EXPECTED_MOVE_MAX"
+    && level.kind !== "EXPECTED_MOVE_MIN"
+    && Number.isFinite(level.price)
+    && level.price > 0
+    && typeof level.label === "string"
+    && level.label.length > 0,
   ), 0.25);
   if (!source || !validLevels.length) {
     throw new Error(`No usable ${payload.root} gamma levels were returned.`);
@@ -517,15 +533,52 @@ function makeGammaSnapshot(payload: ChartGammaLevelsPayload, settings: ChartSett
     lineStyle: level.kind === "CALL_WALL" || level.kind === "PUT_WALL" || level.kind === "MAJOR_POSITIVE_VOLUME" || /(^| \/ )MPV($| \/ )/.test(level.label) ? "solid" : "dashed",
     lineWidth: level.kind === "CALL_WALL" || level.kind === "PUT_WALL" || level.kind === "MAJOR_POSITIVE_VOLUME" || /(^| \/ )MPV($| \/ )/.test(level.label) ? 2 : 1,
     axisLabelVisible: true,
+    axisTitleVisible: false,
     family: "gamma",
     kind: level.kind,
     evidence: "CALCULATED",
     value: level.value,
+    expiryScope: level.expiryScope,
+    dominantExpiry: level.dominantExpiry,
+    regime: level.regime,
+    signConvention: level.signConvention,
     ...gammaEducationForLevel(level.kind, level.label),
   }));
+  const cageKinds = new Set([
+    "CALL_WALL",
+    "PUT_WALL",
+    "GAMMA_MAGNET",
+    "GAMMA_ACCELERATOR",
+    "ZERO_GAMMA",
+  ]);
+  const maxValue = Math.max(1, ...levels.map((level) => Math.abs(level.value ?? 0)));
+  const halfWidth = payload.root === "NQ" ? 2 : 0.5;
+  const zones = levels
+    .filter((level) => cageKinds.has(level.kind))
+    .map((level): ChartZone => {
+      const strength = Math.min(1, Math.abs(level.value ?? 0) / maxValue);
+      const alpha = Math.round(14 + strength * 18).toString(16).padStart(2, "0");
+      return {
+        id: `${level.id}-band`,
+        low: level.price - halfWidth,
+        high: level.price + halfWidth,
+        color: level.color,
+        fillColor: `${level.color}${alpha}`,
+        label: level.kind === "CALL_WALL"
+          ? "Major call"
+          : level.kind === "PUT_WALL"
+            ? "Major put"
+            : level.kind === "GAMMA_MAGNET"
+              ? "Magnet"
+              : level.kind === "GAMMA_ACCELERATOR"
+                ? "Accelerator"
+                : "Flip",
+        labelAlign: "right",
+      };
+    });
   return {
     levels,
-    zones: [],
+    zones,
     asOf: payload.checkedAt,
     source: payload.dataOrigin === "CASH_CALIBRATED_FALLBACK"
       ? `KwantData ${payload.calibrationSource ?? "cash-index"} gamma · CME calibrated`
@@ -536,19 +589,22 @@ function makeGammaSnapshot(payload: ChartGammaLevelsPayload, settings: ChartSett
     flowLean: null,
     note: payload.marketOpen
       ? "Gamma levels refresh from the active options snapshot."
-      : "New York is closed; the completed New York snapshot remains the structural reference.",
+      : "EOD — frozen from last NY edition",
   };
 }
 
 function mergeNativeGammaTransitions(base: LevelSnapshot, native: LevelSnapshot): LevelSnapshot {
-  const isTransition = (level: IntelligentLevel) => level.kind === "ZERO_GAMMA" || level.kind === "HIGH_VOL_LEVEL";
-  const transitions = native.levels.filter(isTransition);
-  if (!transitions.length) return base;
+  const nativeFlip = native.levels.find((level) => level.kind === "ZERO_GAMMA");
+  if (!nativeFlip) return base;
   return {
     ...base,
-    levels: [...base.levels.filter((level) => !isTransition(level)), ...transitions],
+    levels: [...base.levels.filter((level) => level.kind !== "ZERO_GAMMA"), nativeFlip],
+    zones: [
+      ...base.zones.filter((zone) => !zone.id.includes("gamma-flip") && !zone.label.toLowerCase().includes("zero gamma")),
+      ...native.zones.filter((zone) => zone.id === `${nativeFlip.id}-band`),
+    ],
     asOf: base.asOf && native.asOf && Date.parse(base.asOf) > Date.parse(native.asOf) ? base.asOf : native.asOf,
-    source: `${base.source} · native Zero Gamma/HVL`,
+    source: `${base.source} · native Zero Gamma`,
   };
 }
 
@@ -1121,7 +1177,7 @@ function LevelChartCard({
           <Chart
             candles={market.candles}
             levels={config.family === "gameplan" ? [] : resolvedLevels.snapshot.levels}
-            zones={config.family === "structure" ? resolvedLevels.snapshot.zones : []}
+            zones={config.family === "structure" || config.family === "gamma" ? resolvedLevels.snapshot.zones : []}
             backgroundLevels={config.family === "gameplan" ? resolvedLevels.snapshot.levels : []}
             backgroundZones={config.family === "gameplan" ? resolvedLevels.snapshot.zones : []}
             instrument={config.instrument}
@@ -1131,6 +1187,12 @@ function LevelChartCard({
             toolbarEnabled={false}
           />
         )}
+
+        {config.family === "gamma" && resolvedLevels.snapshot.status === "EOD" ? (
+          <span className="pointer-events-none absolute bottom-3 left-3 z-20 rounded-full border border-border bg-panel/90 px-2.5 py-1 text-[7px] font-semibold tracking-[0.08em] text-muted shadow-lg backdrop-blur">
+            EOD — frozen from last NY edition
+          </span>
+        ) : null}
 
         {config.family === "structure" && !resolvedLevels.loading && !resolvedLevels.snapshot.zones.length ? (
           <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center p-5">
@@ -1236,6 +1298,12 @@ function LevelEducationRail({
                 <div className="flex justify-between gap-3"><span className="text-muted">Tape context</span><span className="text-right font-medium text-foreground">{snapshot.tape}</span></div>
                 <div className="flex justify-between gap-3"><span className="text-muted">Directional pressure</span><span className="text-right font-medium text-foreground">{flowText}</span></div>
                 <div className="flex justify-between gap-3"><span className="text-muted">Source</span><span className="text-right font-medium text-foreground">{snapshot.source}</span></div>
+                {selected.expiryScope ? <div className="flex justify-between gap-3"><span className="text-muted">Expiry scope</span><span className="text-right font-medium text-foreground">{selected.expiryScope === "NEAR_TERM_7D" ? "0–7 calendar days" : selected.expiryScope.replaceAll("_", " ")}</span></div> : null}
+                {selected.dominantExpiry ? <div className="flex justify-between gap-3"><span className="text-muted">Dominant expiry</span><span className="text-right font-medium text-foreground">{selected.dominantExpiry}</span></div> : null}
+                {selected.value !== null ? <div className="flex justify-between gap-3"><span className="text-muted">Net GEX value</span><span className="text-right font-mono font-medium text-foreground">{selected.value.toLocaleString("en-US", { maximumFractionDigits: 0 })}</span></div> : null}
+                <div className="flex justify-between gap-3"><span className="text-muted">Generated</span><span className="text-right font-medium text-foreground">{snapshot.asOf ? new Date(snapshot.asOf).toLocaleString() : "Unavailable"}</span></div>
+                <div className="flex justify-between gap-3"><span className="text-muted">Data age</span><span className="text-right font-medium text-foreground">{formatAge(snapshot.asOf)}</span></div>
+                {selected.signConvention ? <div className="flex justify-between gap-3"><span className="text-muted">Sign convention</span><span className="max-w-[65%] text-right font-medium leading-4 text-foreground">{selected.signConvention}</span></div> : null}
               </div>
               <div className="mt-3 flex items-start gap-2 rounded-xl border border-border bg-background/35 p-3 text-[8px] leading-4 text-muted"><ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" /><span>{snapshot.note}</span></div>
             </div>

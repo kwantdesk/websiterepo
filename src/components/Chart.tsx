@@ -191,6 +191,7 @@ export interface ChartLevel {
   lineStyle?: "solid" | "dashed" | "dotted";
   lineWidth?: 1 | 2 | 3 | 4;
   axisLabelVisible?: boolean;
+  axisTitleVisible?: boolean;
 }
 
 export interface ChartZone {
@@ -200,6 +201,7 @@ export interface ChartZone {
   color: string;
   fillColor: string;
   label: string;
+  labelAlign?: "left" | "right";
 }
 
 const EMPTY_CHART_LEVELS: ChartLevel[] = [];
@@ -2963,7 +2965,7 @@ export default function Chart({
               ? LineStyle.Dotted
               : LineStyle.Solid,
         axisLabelVisible: level.axisLabelVisible ?? true,
-        title: level.label,
+        title: level.axisTitleVisible === false ? "" : level.label,
       });
 
       if (line) {
@@ -3442,7 +3444,17 @@ export default function Chart({
     const top = Math.min(highY, lowY);
     const height = Math.max(4, Math.abs(lowY - highY));
     const plotWidth = Math.max(0, overlaySize.width - 64);
-    const labelY = Math.max(13, Math.min(overlaySize.height - 8, top + Math.min(height / 2, 14)));
+    const naturalLabelY = Math.max(13, Math.min(overlaySize.height - 8, top + Math.min(height / 2, 14)));
+    const rawRightAlignedLabelY = (highY + lowY) / 2;
+    const rightAlignedLabelY = rightAlignedZoneLabelYs.get(zone.id)
+      ?? (rawRightAlignedLabelY >= 14 && rawRightAlignedLabelY <= overlaySize.height - 36
+        ? rawRightAlignedLabelY
+        : undefined);
+    const labelY = rightAlignedLabelY ?? naturalLabelY;
+    const labelWidth = Math.min(300, Math.max(82, zone.label.length * 6.4 + 18));
+    const rightAligned = zone.labelAlign === "right";
+    const showLabel = !rightAligned || rightAlignedLabelY != null;
+    const labelX = rightAligned ? Math.max(10, plotWidth - labelWidth - 10) : 10;
 
     return (
       <g key={`chart-zone-${zone.id}`} aria-label={zone.label}>
@@ -3456,26 +3468,31 @@ export default function Chart({
           strokeWidth={1}
           strokeDasharray="6 4"
         />
-        <rect
-          x={10}
-          y={labelY - 11}
-          width={Math.min(210, Math.max(82, zone.label.length * 6.4 + 18))}
-          height={20}
-          rx={7}
-          fill="var(--panel)"
-          stroke={zone.color}
-          strokeWidth={0.8}
-        />
-        <text
-          x={19}
-          y={labelY + 3}
-          fill={zone.color}
-          fontSize="9"
-          fontFamily="'JetBrains Mono', monospace"
-          fontWeight="700"
-        >
-          {zone.label}
-        </text>
+        {showLabel ? (
+          <>
+            <rect
+              x={labelX}
+              y={labelY - 11}
+              width={labelWidth}
+              height={20}
+              rx={7}
+              fill="var(--panel)"
+              stroke={zone.color}
+              strokeWidth={0.8}
+            />
+            <text
+              x={rightAligned ? labelX + labelWidth - 9 : labelX + 9}
+              y={labelY + 3}
+              fill={zone.color}
+              fontSize="9"
+              fontFamily="'JetBrains Mono', monospace"
+              fontWeight="700"
+              textAnchor={rightAligned ? "end" : "start"}
+            >
+              {zone.label}
+            </text>
+          </>
+        ) : null}
       </g>
     );
   }
@@ -4615,6 +4632,49 @@ export default function Chart({
       window.removeEventListener("pointerup", onPointerUp);
     };
   }, []);
+
+  const rightAlignedZoneLabelYs = new Map<string, number>();
+  const rightAlignedZoneLabels = zones
+    .filter((zone) => zone.labelAlign === "right")
+    .map((zone) => {
+      const highY = priceToY(zone.high);
+      const lowY = priceToY(zone.low);
+      if (highY == null || lowY == null) return null;
+      const naturalY = (highY + lowY) / 2;
+      return {
+        id: zone.id,
+        naturalY,
+      };
+    })
+    .filter((item): item is { id: string; naturalY: number } => item !== null)
+    .sort((a, b) => a.naturalY - b.naturalY);
+
+  if (rightAlignedZoneLabels.length > 0) {
+    const minY = 14;
+    // Reserve the lower status rail so the final cage caption cannot collide
+    // with freshness/source badges on compact Levelz charts.
+    const maxY = Math.max(minY, overlaySize.height - 36);
+    const gap = rightAlignedZoneLabels.length > 1
+      ? Math.min(24, (maxY - minY) / (rightAlignedZoneLabels.length - 1))
+      : 0;
+    const laidOut = rightAlignedZoneLabels
+      .filter((item) => item.naturalY >= minY && item.naturalY <= maxY)
+      .map((item) => ({
+      ...item,
+      y: item.naturalY,
+    }));
+
+    for (let index = 1; index < laidOut.length; index += 1) {
+      laidOut[index].y = Math.max(laidOut[index].y, laidOut[index - 1].y + gap);
+    }
+    if (laidOut.at(-1)!.y > maxY) {
+      laidOut[laidOut.length - 1].y = maxY;
+      for (let index = laidOut.length - 2; index >= 0; index -= 1) {
+        laidOut[index].y = Math.min(laidOut[index].y, laidOut[index + 1].y - gap);
+      }
+    }
+    for (const item of laidOut) rightAlignedZoneLabelYs.set(item.id, item.y);
+  }
 
   return (
     <div ref={chartContainerRef} className="relative h-full w-full overflow-hidden">

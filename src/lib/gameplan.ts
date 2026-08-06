@@ -1,4 +1,10 @@
 import type { OptionsFlowPayload, OptionsKeyLevel } from "@/lib/optionsFlow";
+import {
+  gammaCageLabel,
+  gammaCageNarrative,
+  isGammaCageGameplanLevel,
+  type GammaCageRegime,
+} from "@/lib/gammaCage";
 
 export const GAMEPLAN_SESSIONS = [
   { id: "globex", label: "Globex", timeZone: "America/New_York", openHour: 18, openMinute: 0 },
@@ -369,19 +375,25 @@ function translatedPrice(level: OptionsKeyLevel, data: OptionsFlowPayload, root:
 }
 
 function roleForLevel(level: OptionsKeyLevel): GameplanRole {
+  if (level.kind === "GAMMA_ACCELERATOR") return "accelerant";
   if (level.kind.includes("MAGNET")) return "magnet";
-  if (level.kind.includes("EXPECTED_MOVE")) return "accelerant";
-  if (level.kind.includes("CENTRE") || level.kind.includes("MAX_PAIN")) return "decision";
+  if (level.kind === "ZERO_GAMMA" || level.kind.includes("CENTRE") || level.kind.includes("MAX_PAIN")) return "decision";
   return "wall";
 }
 
-function nameForLevel(level: OptionsKeyLevel) {
-  if (level.kind.includes("CALL_WALL")) return "THE CEILING";
-  if (level.kind.includes("PUT_WALL")) return "THE FORTRESS";
-  if (level.kind.includes("MAGNET")) return "THE MAGNET";
+function cageKindForLevel(level: OptionsKeyLevel) {
+  if (level.kind.includes("CALL_WALL")) return "CALL_WALL" as const;
+  if (level.kind.includes("PUT_WALL")) return "PUT_WALL" as const;
+  if (level.kind.includes("MAGNET")) return "GAMMA_MAGNET" as const;
+  if (level.kind === "GAMMA_ACCELERATOR") return "GAMMA_ACCELERATOR" as const;
+  if (level.kind === "ZERO_GAMMA") return "ZERO_GAMMA" as const;
+  return null;
+}
+
+function nameForLevel(level: OptionsKeyLevel, regime: GammaCageRegime) {
+  const cageKind = cageKindForLevel(level);
+  if (cageKind) return gammaCageLabel(cageKind, regime);
   if (level.kind.includes("CENTRE") || level.kind.includes("MAX_PAIN")) return "THE HINGE";
-  if (level.kind === "EXPECTED_MOVE_MAX") return "THE UPPER EDGE";
-  if (level.kind === "EXPECTED_MOVE_MIN") return "THE TRAPDOOR";
   if (level.kind.includes("PUT_SUPPORT")) return "BUYER DEFENCE";
   return "POSITIONING WALL";
 }
@@ -402,15 +414,16 @@ function formatLevel(value: number) {
 }
 
 function tapeFromData(data: OptionsFlowPayload): GameplanTapeState {
-  if (data.environment.gammaRegime === "POSITIVE") return "calm";
-  if (data.environment.gammaRegime === "NEGATIVE") return "snowball";
+  if (data.levels.regime === "POSITIVE") return "calm";
+  if (data.levels.regime === "NEGATIVE") return "snowball";
   return "mixed";
 }
 
-function createLevelRows(data: OptionsFlowPayload, root: "NQ" | "ES") {
+export function createLevelRows(data: OptionsFlowPayload, root: "NQ" | "ES") {
   const currentPrice = data.marketData.lastPrice;
+  const regime = data.levels.regime;
   const unique = new Map<number, OptionsKeyLevel>();
-  for (const level of data.levels.keyLevels) {
+  for (const level of gameplanEligibleKeyLevels(data.levels.keyLevels)) {
     const price = translatedPrice(level, data, root);
     const existing = unique.get(price);
     if (!existing || level.rank < existing.rank) unique.set(price, level);
@@ -423,6 +436,8 @@ function createLevelRows(data: OptionsFlowPayload, root: "NQ" | "ES") {
 
   return selected.map(([price, level], index) => {
     const role = roleForLevel(level);
+    const cageKind = cageKindForLevel(level);
+    const cageNarrative = cageKind ? gammaCageNarrative(cageKind, regime) : null;
     const width = root === "NQ" ? (role === "magnet" ? 12 : 6) : (role === "magnet" ? 3 : 1.5);
     const above = selected[Math.max(0, index - 1)]?.[0] ?? price + width * 4;
     const below = selected[Math.min(selected.length - 1, index + 1)]?.[0] ?? price - width * 4;
@@ -433,7 +448,7 @@ function createLevelRows(data: OptionsFlowPayload, root: "NQ" | "ES") {
 
     return {
       zone: [roundToTick(price - width, root), roundToTick(price + width, root)] as [number, number],
-      name: nameForLevel(level),
+      name: nameForLevel(level, regime),
       role,
       strength: strengthForLevel(level),
       sources: sourceForLevel(level),
@@ -442,11 +457,9 @@ function createLevelRows(data: OptionsFlowPayload, root: "NQ" | "ES") {
           ? "The board’s positioning is concentrated here, so hedging flows can repeatedly pull price back toward it."
           : "A measurable concentration of options positioning sits here, so the firms carrying the other side are more likely to trade when price arrives."
       ),
-      if_visit: role === "accelerant"
-        ? "Slow down at the first touch. This edge only becomes useful after price proves it can stay through it."
-        : "Watch the first reaction. A useful defence leaves the level quickly; repeated small bounces mean the orders may be getting used up.",
-      if_hold: `A clean defence keeps rotation toward ${formatLevel(above)} in play. Let price leave the zone before treating the reaction as real.`,
-      if_break: `Acceptance through the zone opens the path toward ${formatLevel(below)}. Broken support can become resistance on the retest, and vice versa.`,
+      if_visit: cageNarrative?.visit ?? "Watch the first reaction. A useful defence leaves the level quickly; repeated small bounces mean the orders may be getting used up.",
+      if_hold: cageNarrative?.hold ?? `A clean defence keeps rotation toward ${formatLevel(above)} in play. Let price leave the zone before treating the reaction as real.`,
+      if_break: cageNarrative?.break ?? `Acceptance through the zone opens the path toward ${formatLevel(below)}. Broken support can become resistance on the retest, and vice versa.`,
       order_character: {
         balance,
         plain: balance > 0
@@ -460,6 +473,10 @@ function createLevelRows(data: OptionsFlowPayload, root: "NQ" | "ES") {
       career: [],
     };
   });
+}
+
+export function gameplanEligibleKeyLevels(levels: OptionsKeyLevel[]) {
+  return levels.filter((level) => isGammaCageGameplanLevel(level.kind));
 }
 
 function nearestLevels(levels: GameplanEdition["ladder"], current: number | null) {

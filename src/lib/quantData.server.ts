@@ -78,10 +78,13 @@ import {
   type ClassicGexProfileRow,
   type ClassicGexSource,
 } from "@/lib/classicGexProfile";
+import { expectedMoveRange } from "@/lib/expectedMove";
 import {
-  chartSessionExpectedMove,
-  expectedMoveRange,
-} from "@/lib/expectedMove";
+  deriveGammaCage,
+  filterGammaExposureHorizon,
+  gammaCageLabel,
+  type GammaCageExpiryScope,
+} from "@/lib/gammaCage";
 
 const API_BASE = "https://api.quantdata.us/v1";
 const CACHE_TTL_MS = 4_000;
@@ -224,16 +227,23 @@ function quantDataPost(path: string, body: JsonRecord, ttlMs = 0) {
   return promise;
 }
 
-function parseExposure(payload: unknown, symbol: string, mode: GreekMode, expirationFilter?: string): ExposureSummary | null {
+function parseExposure(
+  payload: unknown,
+  symbol: string,
+  mode: GreekMode,
+  expirationFilter?: string | ((expiration: string) => boolean),
+): ExposureSummary | null {
   if (!isRecord(payload) || !isRecord(payload.data)) return null;
   const tickerNode = payload.data[symbol] ?? payload.data[symbol.toUpperCase()];
   if (!isRecord(tickerNode) || !isRecord(tickerNode.exposureMap)) return null;
 
   const byStrike = new Map<number, ExposureStrike>();
   const expiries: ExposureExpiry[] = [];
+  const expiryStrikes: Array<ExposureStrike & { expiration: string }> = [];
 
   for (const [expiration, strikeMap] of Object.entries(tickerNode.exposureMap)) {
-    if (expirationFilter && expiration !== expirationFilter) continue;
+    if (typeof expirationFilter === "string" && expiration !== expirationFilter) continue;
+    if (typeof expirationFilter === "function" && !expirationFilter(expiration)) continue;
     if (!isRecord(strikeMap)) continue;
     let expiryCall = 0;
     let expiryPut = 0;
@@ -249,6 +259,7 @@ function parseExposure(payload: unknown, symbol: string, mode: GreekMode, expira
       existing.put += put;
       existing.net = existing.call + existing.put;
       byStrike.set(strike, existing);
+      expiryStrikes.push({ expiration, strike, call, put, net: call + put });
       expiryCall += call;
       expiryPut += put;
     }
@@ -268,6 +279,7 @@ function parseExposure(payload: unknown, symbol: string, mode: GreekMode, expira
     gross,
     strikes,
     expiries: expiries.sort((a, b) => a.expiration.localeCompare(b.expiration)),
+    expiryStrikes,
   };
 }
 
@@ -875,58 +887,12 @@ function parseMaxPain(payload: unknown) {
   return isRecord(payload) ? finiteNumber(payload.maxPainStrikePrice) : null;
 }
 
-function deriveGammaLevels(gamma: ExposureSummary | null, spot: number | null) {
-  if (!gamma || !gamma.strikes.length) {
-    return { callWall: null, putWall: null, gammaHvl: null, gammaMagnet: null, gammaCenter: null, majorPositiveOi: null };
-  }
-  const relevant = spot === null
-    ? gamma.strikes
-    : gamma.strikes.filter((strike) => strike.strike >= spot * 0.97 && strike.strike <= spot * 1.03);
-  if (!relevant.length) return { callWall: null, putWall: null, gammaHvl: null, gammaMagnet: null, gammaCenter: null, majorPositiveOi: null };
-  const callWall = relevant.reduce((best, strike) => strike.call > best.call ? strike : best).strike;
-  const putWall = relevant.reduce((best, strike) => Math.abs(strike.put) > Math.abs(best.put) ? strike : best).strike;
-  const gammaMagnet = relevant.reduce((best, strike) => Math.abs(strike.net) > Math.abs(best.net) ? strike : best).strike;
-  const hvlRows = gamma.strikes
-    .filter((strike) => Number.isFinite(strike.net))
-    .sort((left, right) => left.strike - right.strike);
-  const smoothed = hvlRows.map((row, index) => {
-    const from = Math.max(0, index - 1);
-    const to = Math.min(hvlRows.length - 1, index + 1);
-    let total = 0;
-    for (let offset = from; offset <= to; offset += 1) total += hvlRows[offset].net;
-    return { strike: row.strike, net: total / (to - from + 1) };
-  });
-  const slopes = smoothed.slice(1, -1).map((row, index) => {
-    const left = smoothed[index];
-    const right = smoothed[index + 2];
-    return {
-      strike: row.strike,
-      slope: (right.net - left.net) / Math.max(right.strike - left.strike, 1e-9),
-    };
-  });
-  const hvlCandidates = slopes.filter((row, index) => {
-    if (index === 0 || index === slopes.length - 1) return false;
-    if (spot !== null && Math.abs(row.strike - spot) / spot > 0.03) return false;
-    const magnitude = Math.abs(row.slope);
-    return magnitude >= Math.abs(slopes[index - 1].slope)
-      && magnitude >= Math.abs(slopes[index + 1].slope);
-  });
-  const rankedHvlCandidates = (hvlCandidates.length ? hvlCandidates : slopes)
-    .filter((row) => spot === null || Math.abs(row.strike - spot) / spot <= 0.03)
-    .sort((left, right) => Math.abs(right.slope) - Math.abs(left.slope)
-      || (spot === null ? 0 : Math.abs(left.strike - spot) - Math.abs(right.strike - spot)));
-  const gammaHvl = Math.abs(rankedHvlCandidates[0]?.slope ?? 0) > 0
-    ? rankedHvlCandidates[0].strike
-    : null;
-  const totalWeight = relevant.reduce((sum, strike) => sum + Math.abs(strike.net), 0);
-  const gammaCenter = totalWeight > 0
-    ? relevant.reduce((sum, strike) => sum + strike.strike * Math.abs(strike.net), 0) / totalWeight
-    : null;
-  const positiveOiRows = gamma.strikes.filter((strike) => strike.net > 0);
-  const majorPositiveOi = positiveOiRows.length
-    ? positiveOiRows.reduce((best, strike) => strike.net > best.net ? strike : best)
-    : null;
-  return { callWall, putWall, gammaHvl, gammaMagnet, gammaCenter, majorPositiveOi };
+export function deriveGammaLevels(
+  gamma: ExposureSummary | null,
+  spot: number | null,
+  expiryScope: GammaCageExpiryScope = "NEAR_TERM_7D",
+) {
+  return deriveGammaCage(gamma, spot, expiryScope);
 }
 
 /**
@@ -1007,14 +973,14 @@ function majorPositiveGamma(exposure: ExposureSummary | null) {
 function chartGammaSourceLevels(
   gamma: ExposureSummary,
   spot: number,
-  expectedMove: MarketMapIntelligence["expectedMove"] = null,
   delta: ExposureSummary | null = null,
   sessionVolumeGamma: ExposureSummary | null = null,
+  expiryScope: GammaCageExpiryScope = "NEAR_TERM_7D",
 ): ChartGammaSourceLevel[] {
-  const key = deriveGammaLevels(gamma, spot);
+  const key = deriveGammaCage(gamma, spot, expiryScope);
   const majorPositiveVolume = majorPositiveGamma(sessionVolumeGamma);
-  const lowerBound = expectedMove?.min ?? spot * 0.97;
-  const upperBound = expectedMove?.max ?? spot * 1.03;
+  const lowerBound = spot * 0.97;
+  const upperBound = spot * 1.03;
   const deltaByStrike = new Map(delta?.strikes.map((row) => [row.strike, row.net]) ?? []);
   const candidates = gamma.strikes.filter((row) =>
     row.strike >= lowerBound
@@ -1040,18 +1006,26 @@ function chartGammaSourceLevels(
     key.callWall === null ? null : {
       id: "call-wall",
       kind: "CALL_WALL",
-      label: "Call wall",
+      label: gammaCageLabel("CALL_WALL", key.regime),
       price: key.callWall,
       value: strikeMetric(gamma, key.callWall, "call"),
       rank: 1,
+      expiryScope,
+      dominantExpiry: key.dominantExpiry.callWall,
+      regime: key.regime,
+      signConvention: key.signConvention,
     },
     key.putWall === null ? null : {
       id: "put-wall",
       kind: "PUT_WALL",
-      label: "Put wall",
+      label: gammaCageLabel("PUT_WALL", key.regime),
       price: key.putWall,
       value: strikeMetric(gamma, key.putWall, "put"),
       rank: 1,
+      expiryScope,
+      dominantExpiry: key.dominantExpiry.putWall,
+      regime: key.regime,
+      signConvention: key.signConvention,
     },
     key.gammaHvl === null ? null : {
       id: "hvl",
@@ -1060,14 +1034,46 @@ function chartGammaSourceLevels(
       price: key.gammaHvl,
       value: null,
       rank: 1,
+      expiryScope,
+      dominantExpiry: key.dominantExpiry.gammaHvl,
+      regime: key.regime,
+      signConvention: key.signConvention,
     },
     key.gammaMagnet === null ? null : {
       id: "gamma-magnet",
       kind: "GAMMA_MAGNET",
-      label: "Gamma magnet",
+      label: gammaCageLabel("GAMMA_MAGNET", key.regime),
       price: key.gammaMagnet,
       value: strikeMetric(gamma, key.gammaMagnet, "net"),
       rank: 1,
+      expiryScope,
+      dominantExpiry: key.dominantExpiry.gammaMagnet,
+      regime: key.regime,
+      signConvention: key.signConvention,
+    },
+    key.gammaAccelerator === null ? null : {
+      id: "gamma-accelerator",
+      kind: "GAMMA_ACCELERATOR",
+      label: gammaCageLabel("GAMMA_ACCELERATOR", key.regime),
+      price: key.gammaAccelerator,
+      value: strikeMetric(gamma, key.gammaAccelerator, "net"),
+      rank: 1,
+      expiryScope,
+      dominantExpiry: key.dominantExpiry.gammaAccelerator,
+      regime: key.regime,
+      signConvention: key.signConvention,
+    },
+    key.gammaFlip === null ? null : {
+      id: "gamma-flip",
+      kind: "ZERO_GAMMA",
+      label: gammaCageLabel("ZERO_GAMMA", key.regime),
+      price: key.gammaFlip,
+      value: null,
+      rank: 1,
+      expiryScope,
+      dominantExpiry: key.dominantExpiry.gammaFlip,
+      regime: key.regime,
+      signConvention: key.signConvention,
     },
     key.gammaCenter === null ? null : {
       id: "gamma-centre",
@@ -1092,22 +1098,6 @@ function chartGammaSourceLevels(
       price: majorPositiveVolume.strike,
       value: majorPositiveVolume.net,
       rank: 0,
-    },
-    expectedMove === null ? null : {
-      id: "expected-move-max",
-      kind: "EXPECTED_MOVE_MAX",
-      label: "1D Max",
-      price: expectedMove.max,
-      value: expectedMove.movePercent,
-      rank: 1,
-    },
-    expectedMove === null ? null : {
-      id: "expected-move-min",
-      kind: "EXPECTED_MOVE_MIN",
-      label: "1D Min",
-      price: expectedMove.min,
-      value: -expectedMove.movePercent,
-      rank: 1,
     },
     ...rankedGex.map((row, index) => ({
       id: `gex-${index + 1}`,
@@ -1141,15 +1131,18 @@ function chartGammaSourceLevels(
 function chartGammaSourceSnapshot(
   symbol: ChartGammaSourceSnapshot["symbol"],
   payload: unknown,
-  expectedMove: MarketMapIntelligence["expectedMove"] = null,
+  sessionDate: string,
   delta: ExposureSummary | null = null,
   flowPayload: unknown = null,
 ): ChartGammaSourceSnapshot | null {
-  const gamma = parseExposure(payload, symbol, "GAMMA");
+  const structuralGamma = parseExposure(payload, symbol, "GAMMA");
+  const gamma = filterGammaExposureHorizon(structuralGamma, sessionDate, 7);
   const stockPrice = readStockPrice(payload, symbol);
   if (!gamma || stockPrice === null || stockPrice <= 0) return null;
+  const nearTermDelta = filterGammaExposureHorizon(delta, sessionDate, 7);
   const sessionVolumeGamma = deriveSessionVolumeGamma(gamma, parseFlow(flowPayload));
-  const levels = chartGammaSourceLevels(gamma, stockPrice, expectedMove, delta, sessionVolumeGamma);
+  const cage = deriveGammaCage(gamma, stockPrice, "NEAR_TERM_7D");
+  const levels = chartGammaSourceLevels(gamma, stockPrice, nearTermDelta, sessionVolumeGamma, "NEAR_TERM_7D");
   const validationStrikes = gamma.strikes
     .map((row) => row.strike)
     .filter((strike) => strike >= stockPrice * 0.97 && strike <= stockPrice * 1.03);
@@ -1163,6 +1156,14 @@ function chartGammaSourceSnapshot(
     }),
     validationStrikes,
     levels,
+    cage: {
+      regime: cage.regime,
+      flip: cage.gammaFlip,
+      crossings: cage.gammaCrossings,
+      flipNote: cage.flipNote,
+      expiryScope: cage.expiryScope,
+      signConvention: cage.signConvention,
+    },
   };
 }
 
@@ -1223,7 +1224,6 @@ function createKeyLevels(args: {
   zeroDteLevels: ReturnType<typeof deriveGammaLevels>;
   putSupport: ReturnType<typeof derivePutSupportLevels>;
   zeroDtePutSupport: ReturnType<typeof derivePutSupportLevels>;
-  expectedMove: MarketMapIntelligence["expectedMove"];
   gexClusters: ReturnType<typeof deriveGexClusters>;
 }) {
   const sessionMajorPositive = majorPositiveGamma(args.sessionVolumeGamma);
@@ -1231,74 +1231,129 @@ function createKeyLevels(args: {
     args.fullLevels.callWall === null ? null : {
       id: "call-wall",
       kind: "CALL_WALL",
-      label: "Call wall",
+      label: gammaCageLabel("CALL_WALL", args.fullLevels.regime),
       price: args.fullLevels.callWall,
-      scope: "FULL_CHAIN",
+      scope: "NEAR_TERM_7D",
       metric: "GEX",
       value: strikeMetric(args.gamma, args.fullLevels.callWall, "call"),
       rank: 1,
       derived: true,
-      explanation: "Strike with the largest positive call gamma exposure across all expirations.",
+      explanation: "The strongest near-term call-side cage object. Positive net exposure means dealer-long-gamma hedging opposes price movement; in negative regime the same strike becomes a rail rather than an automatic fade.",
+      expiryScope: "NEAR_TERM_7D",
+      dominantExpiry: args.fullLevels.dominantExpiry.callWall,
+      regime: args.fullLevels.regime,
+      signConvention: args.fullLevels.signConvention,
     },
     args.fullLevels.putWall === null ? null : {
       id: "put-wall",
       kind: "PUT_WALL",
-      label: "Put wall",
+      label: gammaCageLabel("PUT_WALL", args.fullLevels.regime),
       price: args.fullLevels.putWall,
-      scope: "FULL_CHAIN",
+      scope: "NEAR_TERM_7D",
       metric: "GEX",
       value: strikeMetric(args.gamma, args.fullLevels.putWall, "put"),
       rank: 1,
       derived: true,
-      explanation: "Strike with the largest absolute put gamma exposure across all expirations.",
+      explanation: "The strongest near-term put-side cage object. Its holding language is valid only while the cumulative gamma regime at spot is positive.",
+      expiryScope: "NEAR_TERM_7D",
+      dominantExpiry: args.fullLevels.dominantExpiry.putWall,
+      regime: args.fullLevels.regime,
+      signConvention: args.fullLevels.signConvention,
     },
     args.fullLevels.gammaHvl === null ? null : {
       id: "hvl",
       kind: "HIGH_VOL_LEVEL",
       label: "HVL",
       price: args.fullLevels.gammaHvl,
-      scope: "FULL_CHAIN",
+      scope: "NEAR_TERM_7D",
       metric: "GEX",
       value: strikeMetric(args.gamma, args.fullLevels.gammaHvl, "net"),
       rank: 1,
       derived: true,
       explanation: "High Volatility Level: the strongest nearby inflection or steepest transition in the smoothed gamma-exposure profile. It is separate from the scenario-repriced Zero Gamma crossing.",
+      expiryScope: "NEAR_TERM_7D",
+      dominantExpiry: args.fullLevels.dominantExpiry.gammaHvl,
+      regime: args.fullLevels.regime,
+      signConvention: args.fullLevels.signConvention,
     },
     args.fullLevels.gammaMagnet === null ? null : {
       id: "gamma-magnet",
       kind: "GAMMA_MAGNET",
-      label: "Gamma magnet",
+      label: gammaCageLabel("GAMMA_MAGNET", args.fullLevels.regime),
       price: args.fullLevels.gammaMagnet,
-      scope: "FULL_CHAIN",
+      scope: "NEAR_TERM_7D",
       metric: "GEX",
       value: strikeMetric(args.gamma, args.fullLevels.gammaMagnet, "net"),
       rank: 1,
       derived: true,
-      explanation: "Strike with the largest absolute net gamma concentration.",
+      explanation: "Largest positive net gamma strike within three percent of spot. Dealers are long gamma here, so mechanical hedging opposes price and can create glue.",
+      expiryScope: "NEAR_TERM_7D",
+      dominantExpiry: args.fullLevels.dominantExpiry.gammaMagnet,
+      regime: args.fullLevels.regime,
+      signConvention: args.fullLevels.signConvention,
+    },
+    args.fullLevels.gammaAccelerator === null ? null : {
+      id: "gamma-accelerator",
+      kind: "GAMMA_ACCELERATOR",
+      label: gammaCageLabel("GAMMA_ACCELERATOR", args.fullLevels.regime),
+      price: args.fullLevels.gammaAccelerator,
+      scope: "NEAR_TERM_7D",
+      metric: "GEX",
+      value: strikeMetric(args.gamma, args.fullLevels.gammaAccelerator, "net"),
+      rank: 1,
+      derived: true,
+      explanation: "Most negative net gamma strike within three percent of spot. Dealers are short gamma here, so hedge flows chase price; do not fade it or hide stops immediately behind it.",
+      expiryScope: "NEAR_TERM_7D",
+      dominantExpiry: args.fullLevels.dominantExpiry.gammaAccelerator,
+      regime: args.fullLevels.regime,
+      signConvention: args.fullLevels.signConvention,
+    },
+    args.fullLevels.gammaFlip === null ? null : {
+      id: "gamma-flip",
+      kind: "ZERO_GAMMA",
+      label: gammaCageLabel("ZERO_GAMMA", args.fullLevels.regime),
+      price: args.fullLevels.gammaFlip,
+      scope: "NEAR_TERM_7D",
+      metric: "GEX",
+      value: null,
+      rank: 1,
+      derived: true,
+      explanation: args.fullLevels.flipNote ?? "Nearest cumulative signed-gamma zero crossing. It is the operational cage switch, not the HVL gradient shelf.",
+      expiryScope: "NEAR_TERM_7D",
+      dominantExpiry: args.fullLevels.dominantExpiry.gammaFlip,
+      regime: args.fullLevels.regime,
+      signConvention: args.fullLevels.signConvention,
     },
     args.fullLevels.gammaCenter === null ? null : {
       id: "gamma-centre",
       kind: "GAMMA_CENTRE",
       label: "GEX centre",
       price: args.fullLevels.gammaCenter,
-      scope: "FULL_CHAIN",
+      scope: "NEAR_TERM_7D",
       metric: "GEX",
       value: null,
       rank: 1,
       derived: true,
-      explanation: "Absolute-net-GEX weighted average strike across the full chain.",
+      explanation: "Absolute-net-GEX weighted average strike across the near-term cage horizon.",
+      expiryScope: "NEAR_TERM_7D",
+      regime: args.fullLevels.regime,
+      signConvention: args.fullLevels.signConvention,
     },
     args.fullLevels.majorPositiveOi === null ? null : {
       id: "major-positive-oi",
       kind: "MAJOR_POSITIVE_OI",
       label: "MPO",
       price: args.fullLevels.majorPositiveOi.strike,
-      scope: "FULL_CHAIN",
+      scope: "NEAR_TERM_7D",
       metric: "GEX",
       value: args.fullLevels.majorPositiveOi.net,
       rank: 1,
       derived: true,
       explanation: "Major Positive Open Interest: the strike with the largest positive net gamma exposure in the open-interest structure.",
+      expiryScope: "NEAR_TERM_7D",
+      dominantExpiry: args.fullLevels.majorPositiveOi.dominantExpiry,
+      regime: args.fullLevels.regime,
+      signConvention: args.fullLevels.signConvention,
     },
     sessionMajorPositive === null ? null : {
       id: "major-positive-volume",
@@ -1311,34 +1366,6 @@ function createKeyLevels(args: {
       rank: 1,
       derived: true,
       explanation: "Major Positive Volume: the strike with the largest positive current-session volume GEX estimate. It is more responsive than the open-interest structure.",
-    },
-    args.expectedMove === null ? null : {
-      id: "expected-move-max",
-      kind: "EXPECTED_MOVE_MAX",
-      label: "1D Max",
-      price: args.expectedMove.max,
-      scope: "SESSION",
-      metric: "EXPECTED_MOVE_1SIGMA",
-      value: args.expectedMove.movePercent,
-      rank: 1,
-      derived: true,
-      explanation: args.expectedMove.approximate
-        ? "Approximate 1D maximum from the prior realized range because prior-session KwantData IV was unavailable."
-        : "One-sigma 1D maximum from prior-session KwantData 30-day ATM IV divided by sqrt(252), anchored to the session open.",
-    },
-    args.expectedMove === null ? null : {
-      id: "expected-move-min",
-      kind: "EXPECTED_MOVE_MIN",
-      label: "1D Min",
-      price: args.expectedMove.min,
-      scope: "SESSION",
-      metric: "EXPECTED_MOVE_1SIGMA",
-      value: -args.expectedMove.movePercent,
-      rank: 1,
-      derived: true,
-      explanation: args.expectedMove.approximate
-        ? "Approximate 1D minimum from the prior realized range because prior-session KwantData IV was unavailable."
-        : "One-sigma 1D minimum from prior-session KwantData 30-day ATM IV divided by sqrt(252), anchored to the session open.",
     },
     ...args.gexClusters.map((row, index) => ({
       id: `gex-cluster-${index + 1}`,
@@ -1398,7 +1425,27 @@ function createKeyLevels(args: {
       value: strikeMetric(args.zeroDteGamma, args.zeroDteLevels.gammaMagnet, "net"),
       rank: 1,
       derived: true,
-      explanation: "Largest absolute net GEX strike for the same-day expiration only.",
+      explanation: "Largest positive net GEX strike for the same-day expiration only; negative net is never mislabeled as a magnet.",
+      expiryScope: "ZERO_DTE",
+      dominantExpiry: args.zeroDteLevels.dominantExpiry.gammaMagnet,
+      regime: args.zeroDteLevels.regime,
+      signConvention: args.zeroDteLevels.signConvention,
+    },
+    args.zeroDteLevels.gammaAccelerator === null ? null : {
+      id: "zero-dte-accelerator",
+      kind: "GAMMA_ACCELERATOR",
+      label: "0DTE accelerator — grease, no fades",
+      price: args.zeroDteLevels.gammaAccelerator,
+      scope: "ZERO_DTE",
+      metric: "GEX",
+      value: strikeMetric(args.zeroDteGamma, args.zeroDteLevels.gammaAccelerator, "net"),
+      rank: 1,
+      derived: true,
+      explanation: "Most negative same-day net GEX strike near spot. Dealer-short-gamma hedging can accelerate price through it.",
+      expiryScope: "ZERO_DTE",
+      dominantExpiry: args.zeroDteLevels.dominantExpiry.gammaAccelerator,
+      regime: args.zeroDteLevels.regime,
+      signConvention: args.zeroDteLevels.signConvention,
     },
     ...args.zeroDtePutSupport.map((row, index) => ({
       id: `zero-dte-put-support-${index + 1}`,
@@ -1612,9 +1659,18 @@ async function buildOptionsFlowPayload(
       : candles.length
         ? new Date(candles.at(-1)!.timestamp).toISOString()
         : null;
-  const fullLevels = deriveGammaLevels(gamma, stockPrice);
+  const cageGamma = filterGammaExposureHorizon(gamma, session.sessionDate, 7);
+  const fullLevels = deriveGammaCage(cageGamma, stockPrice, "NEAR_TERM_7D");
+  const structuralLevels = deriveGammaCage(gamma, stockPrice, "FULL_CHAIN");
+  const effectiveGammaEnvironment = fullLevels.regime === "UNKNOWN"
+    ? gammaEnvironment
+    : {
+        ...gammaEnvironment,
+        gammaRegime: fullLevels.regime,
+        gammaStateLabel: `${fullLevels.regime} GAMMA · ${gammaEnvironment.gammaStrength}`,
+      };
   const sessionVolumeGamma = deriveSessionVolumeGamma(gamma, flow);
-  const zeroDteLevels = deriveGammaLevels(zeroDteGamma, stockPrice);
+  const zeroDteLevels = deriveGammaCage(zeroDteGamma, stockPrice, "ZERO_DTE");
   const frontExpiration = gamma?.expiries[0]?.expiration ?? null;
   const strikeRange = stockPrice === null ? null : {
     min: Math.floor(stockPrice * 0.93 * 100) / 100,
@@ -1692,9 +1748,9 @@ async function buildOptionsFlowPayload(
       : normalizedVrp < -0.1
         ? "DISCOUNTED"
         : "FAIR";
-  const gexClusters = deriveGexClusters(gamma, exposures.DELTA, stockPrice);
+  const gexClusters = deriveGexClusters(cageGamma, exposures.DELTA, stockPrice);
   const keyLevels = createKeyLevels({
-    gamma,
+    gamma: cageGamma,
     sessionVolumeGamma,
     zeroDteGamma,
     zeroDteMaxPain,
@@ -1702,7 +1758,6 @@ async function buildOptionsFlowPayload(
     zeroDteLevels,
     putSupport: putSupportRows,
     zeroDtePutSupport: zeroDtePutSupportRows,
-    expectedMove,
     gexClusters,
   });
   const marketMap: MarketMapIntelligence = {
@@ -1780,7 +1835,7 @@ async function buildOptionsFlowPayload(
     stockPrice,
     stockPriceAsOf,
     environment: {
-      ...gammaEnvironment,
+      ...effectiveGammaEnvironment,
       volatilityState,
       ivRank: iv.ivRank,
       callIv: iv.callIv,
@@ -1793,6 +1848,20 @@ async function buildOptionsFlowPayload(
       putWall: fullLevels.putWall,
       gammaHvl: fullLevels.gammaHvl,
       gammaMagnet: fullLevels.gammaMagnet,
+      gammaAccelerator: fullLevels.gammaAccelerator,
+      gammaFlip: fullLevels.gammaFlip,
+      gammaCrossings: fullLevels.gammaCrossings,
+      flipNote: fullLevels.flipNote,
+      regime: fullLevels.regime,
+      expiryScope: "NEAR_TERM_7D",
+      signConvention: fullLevels.signConvention,
+      structural: {
+        gammaMagnet: structuralLevels.gammaMagnet,
+        gammaAccelerator: structuralLevels.gammaAccelerator,
+        gammaFlip: structuralLevels.gammaFlip,
+        gammaCrossings: structuralLevels.gammaCrossings,
+        expiryScope: "FULL_CHAIN",
+      },
       gammaCenter: fullLevels.gammaCenter,
       majorPositiveOi: fullLevels.majorPositiveOi?.strike ?? null,
       majorPositiveVolume: majorPositiveGamma(sessionVolumeGamma)?.strike ?? null,
@@ -2924,11 +2993,7 @@ export async function getChartGammaLevels(
     ? currentSession
     : { marketOpen: false, sessionDate };
   const symbol = symbols[0];
-  const dailyRange = {
-    startTime: `${offsetIsoDate(session.sessionDate, -60)}T00:00:00Z`,
-    endTime: `${offsetIsoDate(session.sessionDate, 1)}T23:59:59Z`,
-  };
-  const [exposureResult, deltaResult, flowResult, ivResult, dailyResult] = await Promise.allSettled([
+  const [exposureResult, deltaResult, flowResult] = await Promise.allSettled([
     quantDataPost("/options/tool/exposure-by-strike", {
       sessionDate: session.sessionDate,
       greekMode: "GAMMA",
@@ -2947,16 +3012,6 @@ export async function getChartGammaLevels(
       size: 100,
       sort: { field: "tradeTime", direction: "DESCENDING" },
     }, session.marketOpen ? CHART_GAMMA_CACHE_TTL_MS : 300_000),
-    quantDataPost("/options/tool/iv-rank", {
-      filter: { ticker: symbol },
-      lookBackPeriod: 252,
-      maturity: 30,
-    }, 300_000),
-    quantDataPost("/equities/tool/stock-price-over-time", {
-      timeRange: dailyRange,
-      aggregationPeriod: "1d",
-      filter: { ticker: symbol },
-    }, 300_000),
   ]);
   const exposurePayload = exposureResult.status === "fulfilled" ? exposureResult.value.payload : null;
   const parsedGamma = parseExposure(exposurePayload, symbol, "GAMMA");
@@ -2966,19 +3021,10 @@ export async function getChartGammaLevels(
     "DELTA",
   );
   const stockPrice = readStockPrice(exposurePayload, symbol);
-  const iv = parseIvRank(ivResult.status === "fulfilled" ? ivResult.value.payload : null, session.sessionDate);
-  const dailyCandles = parseCandles(dailyResult.status === "fulfilled" ? dailyResult.value.payload : null);
-  const expectedMove = chartSessionExpectedMove({
-    sessionDate: session.sessionDate,
-    marketOpen: session.marketOpen,
-    iv,
-    dailyCandles,
-    fallbackPrice: stockPrice,
-  });
   const parsedSource = chartGammaSourceSnapshot(
     symbol,
     exposurePayload,
-    expectedMove,
+    session.sessionDate,
     parsedDelta,
     flowResult.status === "fulfilled" ? flowResult.value.payload : null,
   );
@@ -2990,7 +3036,15 @@ export async function getChartGammaLevels(
     throw new QuantDataError(`No current gamma exposure is available for ${root}.`, 422, null);
   }
 
-  const environment = classifyGammaEnvironment(parsedGamma?.net ?? null, parsedGamma?.gross ?? null);
+  const classifiedEnvironment = classifyGammaEnvironment(parsedGamma?.net ?? null, parsedGamma?.gross ?? null);
+  const cageRegime = parsedSource?.cage?.regime ?? "UNKNOWN";
+  const environment = cageRegime === "UNKNOWN"
+    ? classifiedEnvironment
+    : {
+        ...classifiedEnvironment,
+        gammaRegime: cageRegime,
+        gammaStateLabel: `${cageRegime} GAMMA · ${classifiedEnvironment.gammaStrength}`,
+      };
   const revision = JSON.stringify(sources.map((source) => [source.symbol, source.revision]));
   const checkedAt = session.marketOpen
     ? new Date().toISOString()
@@ -3093,7 +3147,7 @@ async function buildNativeChartGamma(
       stockPrice: snap.spot,
       revision: snap.revision,
       validationStrikes: snap.validationStrikes,
-      levels: snap.levels,
+      levels: snap.levels.filter((level) => level.kind !== "EXPECTED_MOVE_MAX" && level.kind !== "EXPECTED_MOVE_MIN"),
     };
     return {
       root,
@@ -3155,6 +3209,7 @@ export async function getCashCalibratedChartGammaLevels(
     stockPrice: futuresPrice,
     revision,
     validationStrikes: cashSource.validationStrikes.map(toFuturesPrice),
+    cage: cashSource.cage,
     levels: mergeGammaLevelsAtSamePrice(cashSource.levels.map((level) => ({
       ...level,
       id: `calibrated-${calibrationSource.toLowerCase()}-${level.id}`,
