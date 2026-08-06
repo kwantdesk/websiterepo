@@ -1,7 +1,7 @@
 import type { Candle } from "@/lib/backtester";
 import type { ChartIndicatorInstance } from "@/lib/chartIndicatorCatalog";
 import { calculateDeepEffort } from "@/lib/deepEffort";
-import { runPineScript } from "@/lib/pineScriptRuntime";
+import { runSourceIndicator, type SourceIndicatorLanguage } from "@/lib/indicatorSourceAdapters";
 
 export type CalculatedIndicatorSeries = {
   key: string;
@@ -317,7 +317,8 @@ export function calculateIndicatorSeries(
   if (key === "source-code-indicator") {
     const source = settingString(instance, "source", "");
     if (!source) return [];
-    return runPineScript(source, candles, theme, instance.instanceId).series;
+    const sourceLanguage = settingString(instance, "sourceLanguage", "auto") as SourceIndicatorLanguage;
+    return runSourceIndicator(source, sourceLanguage, candles, theme, instance.instanceId).series;
   }
 
   if (key === "deep-m-effort-nq") {

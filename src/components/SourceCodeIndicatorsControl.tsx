@@ -15,10 +15,21 @@ import {
   X,
 } from "lucide-react";
 import type { ChartIndicatorInstance } from "@/lib/chartIndicatorCatalog";
-import { compilePineScript } from "@/lib/pineScriptRuntime";
+import {
+  inferSourceLanguageFromFileName,
+  prepareSourceIndicator,
+  sourceIndicatorLanguageLabel,
+  type SourceIndicatorLanguage,
+} from "@/lib/indicatorSourceAdapters";
 
 const SOURCE_INDICATOR_STORAGE_KEY = "kwantdesk-source-code-indicators:v1";
 const SOURCE_INDICATOR_ID = "source-code-indicator";
+const LANGUAGE_OPTIONS: Array<{ value: SourceIndicatorLanguage; label: string }> = [
+  { value: "auto", label: "Auto detect" },
+  { value: "pine", label: "Pine" },
+  { value: "thinkscript", label: "thinkScript" },
+  { value: "easylanguage", label: "EasyLanguage" },
+];
 const STARTER_SOURCE = `//@version=6
 indicator("EMA Ribbon", overlay=true)
 
@@ -35,6 +46,7 @@ type SavedSourceIndicator = {
   id: string;
   name: string;
   source: string;
+  language: SourceIndicatorLanguage;
   createdAt: string;
   updatedAt: string;
 };
@@ -46,13 +58,18 @@ type Props = {
   onChange: (next: ChartIndicatorInstance[]) => void;
 };
 
-function newScript(source = STARTER_SOURCE): SavedSourceIndicator {
+function newScript(
+  source = STARTER_SOURCE,
+  language: SourceIndicatorLanguage = "auto",
+  importedName?: string,
+): SavedSourceIndicator {
   const now = new Date().toISOString();
-  const program = compilePineScript(source);
+  const prepared = prepareSourceIndicator(source, language);
   return {
     id: crypto.randomUUID(),
-    name: program.name || "Untitled indicator",
+    name: importedName || prepared.program.name || "Untitled indicator",
     source,
+    language,
     createdAt: now,
     updatedAt: now,
   };
@@ -63,13 +80,19 @@ function readScripts() {
   try {
     const parsed = JSON.parse(window.localStorage.getItem(SOURCE_INDICATOR_STORAGE_KEY) ?? "[]");
     if (!Array.isArray(parsed)) return [];
-    return parsed.filter((value): value is SavedSourceIndicator => Boolean(
-      value
-      && typeof value === "object"
-      && typeof value.id === "string"
-      && typeof value.name === "string"
-      && typeof value.source === "string",
-    ));
+    return parsed.flatMap((value): SavedSourceIndicator[] => {
+      if (!value || typeof value !== "object") return [];
+      const record = value as Partial<SavedSourceIndicator>;
+      if (typeof record.id !== "string" || typeof record.name !== "string" || typeof record.source !== "string") return [];
+      return [{
+        id: record.id,
+        name: record.name,
+        source: record.source,
+        language: record.language === "pine" || record.language === "thinkscript" || record.language === "easylanguage" ? record.language : "auto",
+        createdAt: typeof record.createdAt === "string" ? record.createdAt : new Date().toISOString(),
+        updatedAt: typeof record.updatedAt === "string" ? record.updatedAt : new Date().toISOString(),
+      }];
+    });
   } catch {
     return [];
   }
@@ -92,8 +115,12 @@ export default function SourceCodeIndicatorsControl({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [draft, setDraft] = useState<SavedSourceIndicator | null>(null);
   const [dragging, setDragging] = useState(false);
-  const program = useMemo(() => compilePineScript(draft?.source ?? ""), [draft?.source]);
-  const errors = program.diagnostics.filter((diagnostic) => diagnostic.severity === "error");
+  const prepared = useMemo(
+    () => prepareSourceIndicator(draft?.source ?? "", draft?.language ?? "auto"),
+    [draft?.language, draft?.source],
+  );
+  const program = prepared.program;
+  const errors = prepared.diagnostics.filter((diagnostic) => diagnostic.severity === "error");
   const selectedIsOnChart = draft
     ? indicators.some((instance) => instance.indicatorId === SOURCE_INDICATOR_ID && instance.settings?.scriptId === draft.id)
     : false;
@@ -142,6 +169,7 @@ export default function SourceCodeIndicatorsControl({
       source: script.source,
       scriptId: script.id,
       scriptName: script.name,
+      sourceLanguage: prepared.language,
       pineVersion: program.version,
       overlay: program.overlay,
     };
@@ -175,7 +203,9 @@ export default function SourceCodeIndicatorsControl({
   const importFile = async (file: File | undefined) => {
     if (!file) return;
     const source = await file.text();
-    const imported = newScript(source);
+    const language = inferSourceLanguageFromFileName(file.name);
+    const fileName = file.name.replace(/\.[^.]+$/, "");
+    const imported = newScript(source, language, fileName);
     setSelectedId(imported.id);
     setDraft(imported);
     setDragging(false);
@@ -188,7 +218,7 @@ export default function SourceCodeIndicatorsControl({
         type="button"
         onClick={() => setOpen(true)}
         className="flex h-8 items-center gap-2 rounded-lg border border-border bg-surface/50 px-3 text-[11px] font-medium text-muted transition-colors hover:border-primary/25 hover:text-foreground"
-        title="Create or import Pine source-code indicators"
+        title="Create or import Pine, thinkScript and EasyLanguage indicators"
       >
         <Code2 className="h-3.5 w-3.5" />
         <span className="hidden xl:inline">Source Code Indicators</span>
@@ -207,16 +237,16 @@ export default function SourceCodeIndicatorsControl({
               </span>
               <div>
                 <div className="text-[14px] font-semibold text-foreground">Source Code Indicators</div>
-                <div className="mt-0.5 text-[9px] uppercase tracking-[0.14em] text-muted">Pine Script v5/v6 compatibility sandbox · {instrument} · {timeframe}</div>
+                <div className="mt-0.5 text-[9px] uppercase tracking-[0.14em] text-muted">Multi-language compatibility sandbox · {instrument} · {timeframe}</div>
               </div>
               <div className="ml-auto flex items-center gap-2">
                 <button type="button" onClick={createScript} className="flex h-8 items-center gap-1.5 rounded-lg border border-border bg-surface px-3 text-[10px] text-foreground hover:border-primary/30">
                   <Plus className="h-3.5 w-3.5" /> New
                 </button>
                 <button type="button" onClick={() => fileInputRef.current?.click()} className="flex h-8 items-center gap-1.5 rounded-lg border border-border bg-surface px-3 text-[10px] text-foreground hover:border-primary/30">
-                  <Upload className="h-3.5 w-3.5" /> Import .pine
+                  <Upload className="h-3.5 w-3.5" /> Import code
                 </button>
-                <input ref={fileInputRef} type="file" accept=".pine,.txt,text/plain" className="hidden" onChange={(event) => void importFile(event.target.files?.[0])} />
+                <input ref={fileInputRef} type="file" accept=".pine,.thinkscript,.think,.ts,.eld,.els,.el,.txt,text/plain" className="hidden" onChange={(event) => void importFile(event.target.files?.[0])} />
                 <button type="button" onClick={() => setOpen(false)} className="flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground" aria-label="Close source indicators">
                   <X className="h-4 w-4" />
                 </button>
@@ -234,13 +264,13 @@ export default function SourceCodeIndicatorsControl({
                       <button key={script.id} type="button" onClick={() => selectScript(script)} className={`w-full rounded-xl border px-3 py-3 text-left transition-colors ${active ? "border-primary/25 bg-primary/10" : "border-transparent hover:border-border hover:bg-surface/50"}`}>
                         <div className={`truncate text-[10px] font-semibold ${active ? "text-primary" : "text-foreground"}`}>{script.name}</div>
                         <div className="mt-1 flex items-center justify-between text-[8px] text-muted">
-                          <span>{new Date(script.updatedAt).toLocaleDateString()}</span>
+                          <span>{script.language === "auto" ? "AUTO" : script.language === "thinkscript" ? "THINK" : script.language === "easylanguage" ? "EASY" : "PINE"} · {new Date(script.updatedAt).toLocaleDateString()}</span>
                           {onChart ? <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-primary">ON CHART</span> : null}
                         </div>
                       </button>
                     );
                   }) : (
-                    <div className="px-3 py-8 text-center text-[9px] leading-4 text-muted">Create or import your first Pine indicator.</div>
+                    <div className="px-3 py-8 text-center text-[9px] leading-4 text-muted">Create or import a Pine, thinkScript or EasyLanguage indicator.</div>
                   )}
                 </div>
                 <div className="border-t border-border p-3 text-[8px] leading-4 text-muted">
@@ -255,11 +285,22 @@ export default function SourceCodeIndicatorsControl({
                 onDragLeave={(event) => { if (event.currentTarget === event.target) setDragging(false); }}
                 onDrop={(event) => { event.preventDefault(); void importFile(event.dataTransfer.files?.[0]); }}
               >
-                <div className="flex h-11 shrink-0 items-center border-b border-border px-4">
-                  <div className="min-w-0 flex-1 truncate font-mono text-[10px] text-muted">{draft?.name ?? "Untitled indicator"}.pine</div>
+                <div className="flex min-h-[54px] shrink-0 items-center gap-3 border-b border-border px-4">
+                  <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto py-2">
+                    {LANGUAGE_OPTIONS.map((option) => (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => setDraft((current) => current ? { ...current, language: option.value } : current)}
+                        className={`h-7 shrink-0 rounded-lg border px-2.5 text-[8px] font-semibold transition-colors ${draft?.language === option.value ? "border-primary/30 bg-primary/10 text-primary" : "border-border bg-surface/35 text-muted hover:text-foreground"}`}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
                   <div className={`flex items-center gap-1.5 rounded-full border px-2 py-1 text-[8px] font-semibold ${errors.length ? "border-danger/20 bg-danger/10 text-danger" : "border-primary/20 bg-primary/10 text-primary"}`}>
                     {errors.length ? <AlertTriangle className="h-3 w-3" /> : <Check className="h-3 w-3" />}
-                    {errors.length ? `${errors.length} error${errors.length === 1 ? "" : "s"}` : `Pine v${program.version} ready`}
+                    {errors.length ? `${errors.length} error${errors.length === 1 ? "" : "s"}` : `${sourceIndicatorLanguageLabel(prepared.language)} ready`}
                   </div>
                 </div>
                 <textarea
@@ -267,10 +308,10 @@ export default function SourceCodeIndicatorsControl({
                   value={draft?.source ?? ""}
                   onChange={(event) => setDraft((current) => current ? { ...current, source: event.target.value } : newScript(event.target.value))}
                   className="min-h-0 flex-1 resize-none bg-[#050606] px-5 py-4 font-mono text-[12px] leading-6 text-[#edf7ef] outline-none selection:bg-primary/25"
-                  aria-label="Pine Script source editor"
+                  aria-label="Indicator source code editor"
                 />
                 {dragging ? (
-                  <div className="pointer-events-none absolute inset-20 z-10 flex items-center justify-center rounded-3xl border border-dashed border-primary bg-background/85 text-[12px] font-semibold text-primary backdrop-blur-sm">Drop Pine source to import</div>
+                  <div className="pointer-events-none absolute inset-20 z-10 flex items-center justify-center rounded-3xl border border-dashed border-primary bg-background/85 text-[12px] font-semibold text-primary backdrop-blur-sm">Drop indicator source to import</div>
                 ) : null}
               </main>
 
@@ -280,14 +321,14 @@ export default function SourceCodeIndicatorsControl({
                   <div className="mt-1 text-[8px] text-muted">Bar-by-bar · no lookahead · maximum 8 plots</div>
                 </div>
                 <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
-                  {program.diagnostics.map((diagnostic, index) => (
+                  {prepared.diagnostics.map((diagnostic, index) => (
                     <div key={`${diagnostic.line}-${index}`} className={`rounded-xl border p-3 ${diagnostic.severity === "error" ? "border-danger/20 bg-danger/[0.07]" : diagnostic.severity === "warning" ? "border-amber-400/20 bg-amber-400/[0.07]" : "border-primary/20 bg-primary/[0.06]"}`}>
                       <div className={`text-[8px] font-semibold uppercase tracking-[0.12em] ${diagnostic.severity === "error" ? "text-danger" : diagnostic.severity === "warning" ? "text-amber-300" : "text-primary"}`}>{diagnostic.severity} · line {diagnostic.line}</div>
                       <div className="mt-1.5 text-[9px] leading-4 text-foreground">{diagnostic.message}</div>
                     </div>
                   ))}
                   <div className="rounded-xl border border-border bg-surface/35 p-3 text-[8px] leading-4 text-muted">
-                    Supported now: OHLCV, history references, arithmetic, ternaries, inputs, plot(), SMA, EMA, RMA, WMA, VWMA, RSI, ATR, highest/lowest, stdev, ROC, change, crossovers and basic math. TradingView libraries, request.security, strategies and drawing objects require manual migration.
+                    Supported across adapters: OHLCV, history references, inputs, arithmetic, conditional expressions, plots, SMA, EMA, Wilder/RMA, WMA, RSI, ATR, highest/lowest, standard deviation, ROC and basic math. Orders, external data, platform libraries, arbitrary C#/JavaScript and complex drawing objects are never executed.
                   </div>
                 </div>
                 <div className="space-y-2 border-t border-border p-3">
