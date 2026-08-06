@@ -152,6 +152,149 @@ function completedNewYorkTradingDates(now = new Date(), count = 4) {
   return dates;
 }
 
+function seedFromText(value: string) {
+  let seed = 0x811c9dc5;
+  for (let index = 0; index < value.length; index += 1) {
+    seed ^= value.charCodeAt(index);
+    seed = Math.imul(seed, 0x01000193);
+  }
+  return seed >>> 0;
+}
+
+function seededRandom(seedValue: number) {
+  let seed = seedValue || 0x6d2b79f5;
+  return () => {
+    seed += 0x6d2b79f5;
+    let value = seed;
+    value = Math.imul(value ^ (value >>> 15), value | 1);
+    value ^= value + Math.imul(value ^ (value >>> 7), value | 61);
+    return ((value ^ (value >>> 14)) >>> 0) / 4_294_967_296;
+  };
+}
+
+function newYorkLocalTimestamp(date: string, hour: number, minute: number) {
+  const [year, month, day] = date.split("-").map(Number);
+  const guess = Date.UTC(year, month - 1, day, hour, minute);
+  const represented = nyParts(new Date(guess));
+  const representedUtc = Date.UTC(
+    Number(represented.year),
+    Number(represented.month) - 1,
+    Number(represented.day),
+    Number(represented.hour),
+    Number(represented.minute),
+  );
+  return guess - (representedUtc - guess);
+}
+
+function generateSimulatedOrderflowHistory(
+  ticker: string,
+  date: string,
+  anchor: GexBotOrderflowFrame,
+) {
+  const random = seededRandom(seedFromText(`${ticker}:${date}:kwantdesk-orderflow-preview-v1`));
+  const start = newYorkLocalTimestamp(date, 9, 30);
+  const points = 391;
+  const baseSpot = Math.max(1, anchor.spot);
+  const rawSpot: number[] = [];
+  let spot = baseSpot * (0.996 + random() * 0.008);
+  let velocity = 0;
+
+  for (let index = 0; index < points; index += 1) {
+    const progress = index / (points - 1);
+    const openCloseEnergy = 0.44 + 1.55 * Math.abs(progress - 0.5) ** 1.55;
+    const cycle = Math.sin(progress * Math.PI * 4.6 + 0.7) * baseSpot * 0.000055;
+    velocity = velocity * 0.78 + (random() - 0.5) * baseSpot * 0.00017 * openCloseEnergy + cycle;
+    spot = Math.max(1, spot + velocity);
+    rawSpot.push(spot);
+  }
+
+  const endingDifference = baseSpot - rawSpot[rawSpot.length - 1];
+  const sessionSpots = rawSpot.map((value, index) => value + endingDifference * (index / (points - 1)));
+  let callDex = 1_150_000_000 * (0.88 + random() * 0.24);
+  let putDex = -980_000_000 * (0.88 + random() * 0.24);
+  let netGexVolume = 160_000_000 * (random() > 0.42 ? 1 : -1);
+  let netGexOi = 1_050_000_000 * (random() > 0.32 ? 1 : -1);
+  let convexityState = 45_000_000 * (random() > 0.5 ? 1 : -1);
+
+  return sessionSpots.map((nextSpot, index): GexBotOrderflowFrame => {
+    const progress = index / (points - 1);
+    const openCloseEnergy = 0.52 + 1.65 * Math.abs(progress - 0.5) ** 1.7;
+    const priceChange = index === 0 ? 0 : nextSpot - sessionSpots[index - 1];
+    const directional = Math.tanh((priceChange / baseSpot) * 7_500);
+    const burst = random() > 0.965 ? (random() - 0.5) * 2.8 : 0;
+    const impulse = (directional * 0.72 + (random() - 0.5) * 0.72 + burst) * openCloseEnergy;
+    const dexFlow = impulse * 29_000_000;
+    const gexFlow = (impulse * 0.66 + Math.sin(progress * Math.PI * 7) * 0.24) * 21_000_000;
+    const convexityFlow = ((random() - 0.5) * 0.86 + directional * 0.46 + burst * 0.35) * openCloseEnergy * 14_000_000;
+
+    callDex += Math.max(-18_000_000, dexFlow * 0.74 + (random() - 0.48) * 6_000_000);
+    putDex += Math.min(18_000_000, dexFlow * 0.51 + (random() - 0.52) * 6_000_000);
+    netGexVolume = netGexVolume * 0.988 + gexFlow * 0.82;
+    netGexOi += gexFlow * 0.045;
+    convexityState = convexityState * 0.982 + convexityFlow * 0.62;
+
+    const oneScale = 0.27 + 0.08 * Math.sin(progress * Math.PI * 2.4);
+    const netDex = callDex + putDex;
+    const oneCallDex = callDex * oneScale;
+    const onePutDex = putDex * oneScale * 0.91;
+    const timestamp = start + index * 60_000;
+    const strikeStep = ticker.startsWith("NQ") ? 25 : ticker.startsWith("ES") ? 5 : 1;
+    const centreStrike = Math.round(nextSpot / strikeStep) * strikeStep;
+
+    return {
+      timestamp,
+      ticker,
+      min_dte: 0,
+      sec_min_dte: 1,
+      spot: nextSpot,
+      zero_gamma: centreStrike - strikeStep * (1 + Math.round(Math.sin(progress * Math.PI * 2))),
+      major_pos_vol: centreStrike + strikeStep * 2,
+      major_pos_oi: centreStrike + strikeStep * 4,
+      major_neg_vol: centreStrike - strikeStep * 2,
+      major_neg_oi: centreStrike - strikeStep * 4,
+      strikes: [],
+      sum_gex_vol: netGexVolume,
+      sum_gex_oi: netGexOi,
+      delta_risk_reversal: directional * 0.14,
+      max_priors: [],
+      z_mlgamma: Math.max(0, netGexVolume),
+      z_msgamma: Math.min(0, netGexVolume),
+      o_mlgamma: Math.max(0, netGexOi * oneScale),
+      o_msgamma: Math.min(0, netGexOi * oneScale),
+      zero_mcall: callDex * 0.22,
+      zero_mput: putDex * 0.22,
+      one_mcall: oneCallDex * 0.2,
+      one_mput: onePutDex * 0.2,
+      zcvr: convexityState,
+      ocvr: convexityState * oneScale,
+      zgr: netGexVolume,
+      ogr: netGexOi * oneScale,
+      zvanna: dexFlow * 0.34,
+      ovanna: dexFlow * oneScale * 0.3,
+      zcharm: -dexFlow * 0.18,
+      ocharm: -dexFlow * oneScale * 0.15,
+      agg_dex: netDex,
+      one_agg_dex: oneCallDex + onePutDex,
+      agg_call_dex: callDex,
+      one_agg_call_dex: oneCallDex,
+      agg_put_dex: putDex,
+      one_agg_put_dex: onePutDex,
+      net_dex: netDex,
+      one_net_dex: oneCallDex + onePutDex,
+      net_call_dex: callDex,
+      one_net_call_dex: oneCallDex,
+      net_put_dex: putDex,
+      one_net_put_dex: onePutDex,
+      dexoflow: dexFlow,
+      one_dexoflow: dexFlow * oneScale * 0.7,
+      gexoflow: gexFlow,
+      one_gexoflow: gexFlow * oneScale * 0.62,
+      cvroflow: convexityFlow,
+      one_cvroflow: convexityFlow * oneScale * 0.64,
+    };
+  });
+}
+
 export function isNewYorkRth(now = new Date()) {
   const parts = nyParts(now);
   if (parts.weekday === "Sat" || parts.weekday === "Sun") return false;
@@ -380,6 +523,20 @@ export async function fetchGexBotTerminal(
     const frame = view === "orderflow"
       ? normalizeOrderflow(frameResult.value)
       : normalizeProfile(frameResult.value);
+    const realHistory = historyResult.status === "fulfilled"
+      ? sampleCompleteSession(historyResult.value.rows.flatMap((entry) => {
+          try { return [view === "orderflow" ? normalizeOrderflow(entry) : normalizeProfile(entry)]; }
+          catch { return []; }
+        }))
+      : [];
+    const simulationDate = completedNewYorkTradingDates()[0] ?? null;
+    const useSimulatedHistory = includeHistory
+      && view === "orderflow"
+      && realHistory.length === 0
+      && simulationDate !== null;
+    const history = useSimulatedHistory
+      ? generateSimulatedOrderflowHistory(ticker, simulationDate, frame as GexBotOrderflowFrame)
+      : realHistory;
     return {
       ok: true,
       view,
@@ -389,18 +546,18 @@ export async function fetchGexBotTerminal(
       marketOpen,
       checkedAt: Date.now(),
       frame,
-      history: historyResult.status === "fulfilled"
-        ? sampleCompleteSession(historyResult.value.rows.flatMap((entry) => {
-            try { return [view === "orderflow" ? normalizeOrderflow(entry) : normalizeProfile(entry)]; }
-            catch { return []; }
-          }))
-        : null,
-      historyDate: historyResult.status === "fulfilled" ? historyResult.value.date : null,
+      history,
+      historyDate: useSimulatedHistory
+        ? simulationDate
+        : historyResult.status === "fulfilled" ? historyResult.value.date : null,
       historyStatus: !includeHistory
         ? "NOT_REQUESTED"
-        : historyResult.status === "fulfilled" && historyResult.value.rows.length
-          ? "LOADED"
-          : "UNAVAILABLE",
+        : useSimulatedHistory
+          ? "SIMULATED"
+          : realHistory.length
+            ? "LOADED"
+            : "UNAVAILABLE",
+      historySimulated: useSimulatedHistory,
       historyError: historyResult.status === "fulfilled" ? historyResult.value.error : "GEXBot history request failed.",
       majors: majorsResult.status === "fulfilled" && majorsResult.value
         ? normalizeMajors(majorsResult.value)
