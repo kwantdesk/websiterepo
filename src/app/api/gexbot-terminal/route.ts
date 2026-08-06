@@ -19,6 +19,9 @@ export async function GET(request: NextRequest) {
   const ticker = request.nextUrl.searchParams.get("ticker")?.toUpperCase() ?? "NQ_NDX";
   const categoryParam = request.nextUrl.searchParams.get("category")?.toLowerCase();
   const includeHistory = request.nextUrl.searchParams.get("history") === "1";
+  // Fabricated preview frames require an explicit opt-in; they are never a
+  // default fallback for missing archive data.
+  const allowSimulatedPreview = request.nextUrl.searchParams.get("preview") === "simulated";
   if (viewParam !== "classic" && viewParam !== "state" && viewParam !== "orderflow") {
     return NextResponse.json({ error: "Unsupported GEXBot view." }, { status: 400 });
   }
@@ -38,7 +41,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Unsupported GEXBot category." }, { status: 400 });
   }
 
-  const payload = await fetchGexBotTerminal(viewParam, ticker, category, includeHistory);
+  const payload = await fetchGexBotTerminal(viewParam, ticker, category, includeHistory, allowSimulatedPreview);
   return NextResponse.json(payload, {
     status: payload.ok ? 200 : payload.entitlementRequired ? 403 : 503,
     headers: {

@@ -509,6 +509,10 @@ export async function fetchGexBotTerminal(
   ticker: string,
   category: string,
   includeHistory = false,
+  // Simulated history is a visual preview only. It must be requested
+  // explicitly; a trading surface must never receive fabricated frames by
+  // default when the real archive is unavailable.
+  allowSimulatedPreview = false,
 ): Promise<GexBotTerminalEnvelope<GexBotProfileFrame | GexBotOrderflowFrame>> {
   const marketOpen = isNewYorkRth();
   const base = `/${encodeURIComponent(ticker)}/${view}`;
@@ -538,6 +542,7 @@ export async function fetchGexBotTerminal(
       : [];
     const simulationDate = completedNewYorkTradingDates()[0] ?? null;
     const useSimulatedHistory = includeHistory
+      && allowSimulatedPreview
       && view === "orderflow"
       && realHistory.length === 0
       && simulationDate !== null;

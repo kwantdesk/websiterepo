@@ -86,6 +86,7 @@ import {
   type GammaCageExpiryScope,
 } from "@/lib/gammaCage";
 import type { HedgeExposureSurface } from "@/lib/hedgeLevels";
+import { getGexBotFlowSnapshot } from "@/lib/gexBotFlow.server";
 
 const API_BASE = "https://api.quantdata.us/v1";
 const CACHE_TTL_MS = 4_000;
@@ -3106,6 +3107,29 @@ export type HedgeLevelsExposureInput = {
  * surface. No Kwant Levels or Gameplan derivation is imported into that
  * indicator.
  */
+const LIVE_FLOW_SPOT_MAX_AGE_MS = 180_000;
+
+async function getLiveNqSpotFromFlow(): Promise<number | null> {
+  try {
+    const flow = await getGexBotFlowSnapshot();
+    const spot = flow.sample?.spot;
+    const age = flow.dataAgeMs ?? Number.POSITIVE_INFINITY;
+    if (
+      flow.status === "LIVE"
+      && typeof spot === "number"
+      && Number.isFinite(spot)
+      && spot > 0
+      && age <= LIVE_FLOW_SPOT_MAX_AGE_MS
+    ) {
+      return spot;
+    }
+  } catch {
+    // The flow poller failing must never take Hedge Levels down with it;
+    // the Databento fallback path below still applies.
+  }
+  return null;
+}
+
 export async function getHedgeLevelsExposureInput(
   futuresPriceOverride?: number,
 ): Promise<HedgeLevelsExposureInput> {
@@ -3126,9 +3150,14 @@ export async function getHedgeLevelsExposureInput(
   const override = Number.isFinite(futuresPriceOverride) && (futuresPriceOverride ?? 0) > 0
     ? futuresPriceOverride ?? null
     : null;
+  // Live-session spot preference: the GEX Bot flow sample is a genuinely live
+  // NQ-basis price with its own freshness gate. The Databento historical API
+  // trails real time by 15-30 minutes and can require a very large fallback
+  // pull that risks the route's execution limit, so it is the fallback here,
+  // never the primary live leg.
   const futuresSpot = override
     ?? (session.marketOpen
-      ? await getNativeFuturesSpot("NQ")
+      ? await getLiveNqSpotFromFlow() ?? await getNativeFuturesSpot("NQ")
       : await getNativeFuturesSessionClose("NQ", session.sessionDate)
         ?? await getNativeFuturesSpot("NQ"));
   if (!futuresSpot || futuresSpot <= 0) {
