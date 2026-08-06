@@ -1,5 +1,7 @@
 import "server-only";
 
+import { gunzipSync } from "node:zlib";
+
 import type {
   GexBotMajorsFrame,
   GexBotMaxChangeFrame,
@@ -18,6 +20,8 @@ const STALE_IF_ERROR_MS = 18 * 60 * 60_000;
 
 const responseCache = new Map<string, { value: unknown; receivedAt: number }>();
 const inFlight = new Map<string, Promise<unknown>>();
+const historyCache = new Map<string, { value: unknown[]; receivedAt: number }>();
+const historyInFlight = new Map<string, Promise<unknown[]>>();
 
 function apiKey() {
   return process.env.GEXBOT_API_KEY?.trim() ?? "";
@@ -104,11 +108,28 @@ function nyParts(now = new Date()) {
   const formatter = new Intl.DateTimeFormat("en-US", {
     timeZone: "America/New_York",
     weekday: "short",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
     hourCycle: "h23",
   });
   return Object.fromEntries(formatter.formatToParts(now).map((part) => [part.type, part.value]));
+}
+
+function recentNewYorkTradingDate(now = new Date()) {
+  const cursor = new Date(now);
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const parts = nyParts(cursor);
+    const minutes = Number(parts.hour) * 60 + Number(parts.minute);
+    const weekday = parts.weekday;
+    if (weekday !== "Sat" && weekday !== "Sun" && (attempt > 0 || minutes >= 9 * 60 + 30)) {
+      return `${parts.year}-${parts.month}-${parts.day}`;
+    }
+    cursor.setUTCDate(cursor.getUTCDate() - 1);
+  }
+  return "";
 }
 
 export function isNewYorkRth(now = new Date()) {
@@ -159,6 +180,49 @@ async function requestJson(path: string, marketOpen: boolean): Promise<unknown> 
   return request;
 }
 
+async function requestHistory(ticker: string, view: View, category: string, marketOpen: boolean) {
+  const date = recentNewYorkTradingDate();
+  if (!date) return [];
+  const cacheKey = `${ticker}:${view}:${category}:${date}`;
+  const cached = historyCache.get(cacheKey);
+  const ttl = marketOpen ? 60_000 : 10 * 60_000;
+  if (cached && Date.now() - cached.receivedAt <= ttl) return cached.value;
+  const pending = historyInFlight.get(cacheKey);
+  if (pending) return pending;
+  const key = apiKey();
+  if (!key) return [];
+
+  const request = (async () => {
+    const path = `${API_ROOT}/hist/${encodeURIComponent(ticker)}/${view}/${encodeURIComponent(category)}/${date}?noredirect=true`;
+    const getSignedUrl = async (scheme: "Basic" | "Bearer") => fetch(path, {
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        "Accept-Encoding": "gzip",
+        Authorization: `${scheme} ${key}`,
+        "User-Agent": "KwantDesk/1.0",
+      },
+      cache: "no-store",
+      signal: AbortSignal.timeout(8_000),
+    });
+    let signedResponse = await getSignedUrl("Basic");
+    if (signedResponse.status === 401) signedResponse = await getSignedUrl("Bearer");
+    if (!signedResponse.ok) return [];
+    const signedPayload = await signedResponse.json().catch(() => ({})) as { url?: unknown };
+    if (typeof signedPayload.url !== "string" || !signedPayload.url.startsWith("https://")) return [];
+    const fileResponse = await fetch(signedPayload.url, { cache: "no-store", signal: AbortSignal.timeout(12_000) });
+    if (!fileResponse.ok) return [];
+    let bytes = Buffer.from(await fileResponse.arrayBuffer());
+    if (bytes.length >= 2 && bytes[0] === 0x1f && bytes[1] === 0x8b) bytes = gunzipSync(bytes);
+    const parsed = JSON.parse(bytes.toString("utf8")) as unknown;
+    const rows = Array.isArray(parsed) ? parsed : [];
+    historyCache.set(cacheKey, { value: rows, receivedAt: Date.now() });
+    return rows;
+  })().catch(() => [] as unknown[]).finally(() => historyInFlight.delete(cacheKey));
+  historyInFlight.set(cacheKey, request);
+  return request;
+}
+
 function normalizeMajors(payload: unknown): GexBotMajorsFrame {
   const source = payload && typeof payload === "object" ? payload as Record<string, unknown> : {};
   return {
@@ -205,14 +269,16 @@ export async function fetchGexBotTerminal(
   view: View,
   ticker: string,
   category: string,
+  includeHistory = false,
 ): Promise<GexBotTerminalEnvelope<GexBotProfileFrame | GexBotOrderflowFrame>> {
   const marketOpen = isNewYorkRth();
   const base = `/${encodeURIComponent(ticker)}/${view}`;
   try {
-    const [frameResult, majorsResult, maxChangeResult] = await Promise.allSettled([
+    const [frameResult, majorsResult, maxChangeResult, historyResult] = await Promise.allSettled([
       requestJson(`${base}/${encodeURIComponent(category)}`, marketOpen),
       view === "orderflow" ? Promise.resolve(null) : requestJson(`${base}/majors`, marketOpen),
       view === "orderflow" ? Promise.resolve(null) : requestJson(`${base}/maxchange`, marketOpen),
+      includeHistory ? requestHistory(ticker, view, category, marketOpen) : Promise.resolve([]),
     ]);
     if (frameResult.status === "rejected") throw frameResult.reason;
     const frame = view === "orderflow"
@@ -227,6 +293,12 @@ export async function fetchGexBotTerminal(
       marketOpen,
       checkedAt: Date.now(),
       frame,
+      history: historyResult.status === "fulfilled"
+        ? historyResult.value.flatMap((entry) => {
+            try { return [view === "orderflow" ? normalizeOrderflow(entry) : normalizeProfile(entry)]; }
+            catch { return []; }
+          }).slice(-1_500)
+        : null,
       majors: majorsResult.status === "fulfilled" && majorsResult.value
         ? normalizeMajors(majorsResult.value)
         : null,
@@ -245,6 +317,7 @@ export async function fetchGexBotTerminal(
       marketOpen,
       checkedAt: Date.now(),
       frame: null,
+      history: null,
       majors: null,
       maxChange: null,
       entitlementRequired: status === 401 || status === 403,

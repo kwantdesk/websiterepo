@@ -93,6 +93,7 @@ export type GexBotTerminalEnvelope<TFrame> = {
   marketOpen: boolean;
   checkedAt: number;
   frame: TFrame | null;
+  history?: TFrame[] | null;
   majors: GexBotMajorsFrame | null;
   maxChange: GexBotMaxChangeFrame | null;
   error?: string;

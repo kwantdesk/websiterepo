@@ -590,9 +590,12 @@ export default function GexBotWorkspace() {
   const applyEnvelope = useCallback((next: ProfileEnvelope) => {
     setEnvelope(next);
     if (!next.ok || !next.frame) return;
+    const historicalFrames = Array.isArray(next.history) ? next.history : [];
+    const historicalSamples = historicalFrames.map((entry) => ({ timestamp: entry.timestamp, spot: entry.spot }));
     const sample = { timestamp: next.frame.timestamp, spot: next.frame.spot };
     setSpotTape((current) => {
-      const merged = current.at(-1)?.timestamp === sample.timestamp ? [...current.slice(0, -1), sample] : [...current, sample];
+      const source = historicalSamples.length ? historicalSamples : current;
+      const merged = source.at(-1)?.timestamp === sample.timestamp ? [...source.slice(0, -1), sample] : [...source, sample];
       const limited = merged.slice(-480);
       try {
         const stored = JSON.parse(sessionStorage.getItem(SPOT_STORAGE_KEY) ?? "{}") as Record<string, SpotSample[]>;
@@ -604,7 +607,9 @@ export default function GexBotWorkspace() {
     if (next.view === "orderflow") {
       const frame = next.frame as GexBotOrderflowFrame;
       setOrderflowTape((current) => {
-        const merged = current.at(-1)?.timestamp === frame.timestamp ? [...current.slice(0, -1), frame] : [...current, frame];
+        const historicalOrderflow = historicalFrames as GexBotOrderflowFrame[];
+        const source = historicalOrderflow.length ? historicalOrderflow : current;
+        const merged = source.at(-1)?.timestamp === frame.timestamp ? [...source.slice(0, -1), frame] : [...source, frame];
         const limited = merged.slice(-900);
         try {
           const stored = JSON.parse(sessionStorage.getItem(ORDERFLOW_STORAGE_KEY) ?? "{}") as Record<string, GexBotOrderflowFrame[]>;
@@ -624,7 +629,7 @@ export default function GexBotWorkspace() {
     if (cached) { applyEnvelope(cached); setLoading(false); } else setLoading(true);
     const poll = async () => {
       try {
-        const query = new URLSearchParams({ view, ticker, category });
+        const query = new URLSearchParams({ view, ticker, category, history: "1" });
         const response = await fetch(`/api/gexbot-terminal?${query}`, { cache: "no-store" });
         const payload = await response.json() as ProfileEnvelope;
         if (disposed || requestSequence.current !== sequence) return;
