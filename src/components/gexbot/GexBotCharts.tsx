@@ -1,6 +1,6 @@
 "use client";
 
-import { CustomChart, LineChart, ScatterChart } from "echarts/charts";
+import { BarChart, CustomChart, LineChart, ScatterChart } from "echarts/charts";
 import {
   AxisPointerComponent,
   DataZoomComponent,
@@ -16,12 +16,13 @@ import type {
   EChartsCoreOption,
   EChartsType,
 } from "echarts";
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
 
 import type { GexBotOrderflowFrame, GexBotProfileFrame, GexBotStrike } from "@/lib/gexBotTypes";
 
 echarts.use([
   AxisPointerComponent,
+  BarChart,
   CanvasRenderer,
   CustomChart,
   DataZoomComponent,
@@ -33,7 +34,7 @@ echarts.use([
   TooltipComponent,
 ]);
 
-type SpotSample = { timestamp: number; spot: number };
+type SpotSample = { timestamp: number; spot: number; zeroGamma?: number | null };
 type Dataset = "volume" | "oi" | "both";
 type LineStyle = "solid" | "short" | "dash" | "dot";
 
@@ -116,7 +117,7 @@ function EChartSurface({
   const handlersRef = useRef({ onMouseOver, onMouseOut });
   handlersRef.current = { onMouseOver, onMouseOut };
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!elementRef.current) return;
     const chart = echarts.init(elementRef.current, undefined, {
       renderer: "canvas",
@@ -249,11 +250,17 @@ export function ProfessionalProfileChart({
     const exposureMax = Math.max(1, ...sourceValues.map((value) => Math.abs(value * appearance.multiplier))) * 1.12;
     const priceData = spotTape
       .filter((entry) => entry.spot >= minStrike && entry.spot <= maxStrike)
-      .slice(-420)
+      .slice(-480)
       .map((entry) => [entry.timestamp, entry.spot]);
     if (!priceData.length) priceData.push([frame.timestamp, frame.spot]);
+
+    const firstTime = finite(priceData[0]?.[0]) ?? frame.timestamp - 3 * 60 * 60 * 1000;
+    const lastTime = finite(priceData.at(-1)?.[0]) ?? frame.timestamp;
+    const elapsed = Math.max(60 * 60 * 1000, lastTime - firstTime);
+    const futureEdge = lastTime + elapsed;
     const lines = levelLines(frame, dataset, appearance);
     const series: Record<string, unknown>[] = [];
+
     series.push({
       name: "Price",
       type: "line",
@@ -261,39 +268,55 @@ export function ProfessionalProfileChart({
       yAxisIndex: 0,
       data: priceData,
       showSymbol: priceData.length < 2,
-      symbolSize: 5,
-      smooth: 0.12,
+      symbolSize: 4,
+      smooth: 0.04,
       sampling: "lttb",
-      lineStyle: { color: "#d8e6f1", width: 1.7, shadowBlur: 7, shadowColor: "rgba(160,220,255,.28)" },
-      areaStyle: { color: { type: "linear", x: 0, y: 0, x2: 0, y2: 1, colorStops: [{ offset: 0, color: "rgba(126,220,255,.13)" }, { offset: 1, color: "rgba(126,220,255,0)" }] } },
+      lineStyle: { color: "#f4f6f8", width: 1.65, shadowBlur: 5, shadowColor: "rgba(255,255,255,.32)" },
       markLine: { silent: true, symbol: "none", animation: false, data: lines },
       emphasis: { focus: "series" },
+      z: 9,
     });
+    const zeroGammaPath = spotTape.flatMap((entry) => finite(entry.zeroGamma) === null ? [] : [[entry.timestamp, entry.zeroGamma]]);
+    if (appearance.showZero && zeroGammaPath.length > 1) series.push({
+      name: "Zero gamma path",
+      type: "line",
+      xAxisIndex: 0,
+      yAxisIndex: 0,
+      data: zeroGammaPath,
+      showSymbol: false,
+      smooth: 0.03,
+      connectNulls: false,
+      lineStyle: { color: "#d4ad45", width: 1.05, opacity: 0.86 },
+      z: 7,
+    });
+
     const exposureData = (field: 1 | 2) => strikes
       .filter((entry) => (entry[field] >= 0 ? appearance.showPositive : appearance.showNegative))
       .map((entry, index) => ({ name: price(entry[0]), value: [entry[field] * appearance.multiplier, entry[0], field, index, step] }));
+
     if (dataset === "volume" || dataset === "both") series.push({
       name: "Volume GEX",
       type: "custom",
       xAxisIndex: 1,
-      yAxisIndex: 1,
-      renderItem: exposureRenderer(appearance.positive, appearance.negative, 0.52, 0.94),
+      yAxisIndex: 0,
+      renderItem: exposureRenderer(appearance.positive, appearance.negative, dataset === "both" ? 0.48 : 0.64, 0.95),
       data: exposureData(1),
       encode: { x: 0, y: 1, tooltip: [1, 0] },
       clip: true,
-      z: 4,
+      z: 5,
     });
     if (dataset === "oi" || dataset === "both") series.push({
       name: "Open interest GEX",
       type: "custom",
       xAxisIndex: 1,
-      yAxisIndex: 1,
-      renderItem: exposureRenderer(appearance.positive, appearance.negative, dataset === "both" ? 0.2 : 0.52, dataset === "both" ? 0.38 : 0.94),
+      yAxisIndex: 0,
+      renderItem: exposureRenderer(appearance.positive, appearance.negative, dataset === "both" ? 0.18 : 0.64, dataset === "both" ? 0.44 : 0.95),
       data: exposureData(2),
       encode: { x: 0, y: 1, tooltip: [1, 0] },
       clip: true,
-      z: dataset === "both" ? 3 : 4,
+      z: dataset === "both" ? 4 : 5,
     });
+
     if (appearance.showPriors) {
       const priorCount = Math.max(0, ...strikes.map((entry) => entry[3].length));
       for (let index = 0; index < priorCount; index += 1) {
@@ -301,60 +324,58 @@ export function ProfessionalProfileChart({
           name: `Lookback ${index + 1}`,
           type: "scatter",
           xAxisIndex: 1,
-          yAxisIndex: 1,
+          yAxisIndex: 0,
           data: strikes.flatMap((entry, strikeIndex) => entry[3][index] === undefined ? [] : [{ name: price(entry[0]), value: [entry[3][index] * appearance.multiplier, entry[0], index, strikeIndex] }]),
           symbol: "circle",
-          symbolSize: index === priorIndex ? appearance.dotSize * 2.4 : appearance.dotSize * 1.7,
-          itemStyle: { color: index === priorIndex ? "#ffffff" : appearance.prior, opacity: index === priorIndex ? 1 : Math.max(0.2, 0.7 - index * 0.08), shadowBlur: index === priorIndex ? 9 : 2, shadowColor: appearance.prior },
-          z: index === priorIndex ? 8 : 5,
+          symbolSize: index === priorIndex ? appearance.dotSize * 2.2 : appearance.dotSize * 1.5,
+          itemStyle: { color: index === priorIndex ? "#ffffff" : appearance.prior, opacity: index === priorIndex ? 1 : Math.max(0.18, 0.62 - index * 0.08), shadowBlur: index === priorIndex ? 8 : 2, shadowColor: appearance.prior },
+          z: index === priorIndex ? 8 : 6,
         });
       }
     }
+
     series.push({
-      name: "Reference levels",
+      name: "Exposure origin",
       type: "line",
       xAxisIndex: 1,
-      yAxisIndex: 1,
-      data: [[-exposureMax, minStrike], [exposureMax, maxStrike]],
-      lineStyle: { opacity: 0 },
+      yAxisIndex: 0,
+      data: [[0, minStrike], [0, maxStrike]],
       symbol: "none",
       silent: true,
-      markLine: {
-        silent: true,
-        symbol: "none",
-        animation: false,
-        data: [{ xAxis: 0, lineStyle: { color: GRID_STRONG, type: "dashed", width: 1 }, label: { show: false } }, ...lines],
-      },
-      z: 2,
+      lineStyle: { color: "rgba(242,245,249,.56)", width: 1.1 },
+      z: 3,
     });
+
     return {
-      backgroundColor: "transparent",
-      animationDuration: 260,
-      animationDurationUpdate: 180,
+      backgroundColor: "#050607",
+      animationDuration: 220,
+      animationDurationUpdate: 140,
       animationEasingUpdate: "cubicOut",
       textStyle: { fontFamily: UI, color: TEXT },
-      title: [
-        { text: "UNDERLYING PATH", left: "3.5%", top: 9, textStyle: { color: MUTED, fontFamily: UI, fontSize: 10, fontWeight: 700, letterSpacing: 2 } },
-        { text: "EXPOSURE BY STRIKE", left: "51%", top: 9, textStyle: { color: MUTED, fontFamily: UI, fontSize: 10, fontWeight: 700, letterSpacing: 2 } },
-      ],
-      grid: [
-        { left: "3.5%", right: "54%", top: 42, bottom: 50, containLabel: true, show: true, borderColor: GRID_STRONG, backgroundColor: "rgba(4,6,9,.28)" },
-        { left: "50%", right: 56, top: 42, bottom: 50, containLabel: false, show: true, borderColor: GRID_STRONG, backgroundColor: "rgba(4,6,9,.38)" },
-      ],
-      tooltip: { trigger: "item", confine: true, backgroundColor: TOOLTIP_BG, borderColor: GRID_STRONG, borderWidth: 1, padding: [10, 12], textStyle: { color: TEXT, fontFamily: UI, fontSize: 10 }, extraCssText: "box-shadow:0 18px 60px rgba(0,0,0,.45);backdrop-filter:blur(12px);border-radius:10px", formatter: profileTooltip },
-      axisPointer: { link: [{ yAxisIndex: [0, 1] }], label: { show: true, color: "#080a0d", backgroundColor: "#e9edf3", fontFamily: MONO, fontSize: 9 }, lineStyle: { color: "rgba(226,232,240,.62)", width: 1, type: "dashed" } },
+      grid: { left: 54, right: 18, top: 48, bottom: 44, containLabel: false, show: true, borderColor: GRID_STRONG, backgroundColor: "#050607" },
+      tooltip: { trigger: "item", confine: true, backgroundColor: TOOLTIP_BG, borderColor: GRID_STRONG, borderWidth: 1, padding: [10, 12], textStyle: { color: TEXT, fontFamily: UI, fontSize: 10 }, extraCssText: "box-shadow:0 18px 60px rgba(0,0,0,.45);backdrop-filter:blur(12px);border-radius:8px", formatter: profileTooltip },
+      axisPointer: { label: { show: true, color: "#080a0d", backgroundColor: "#e9edf3", fontFamily: MONO, fontSize: 9 }, lineStyle: { color: "rgba(226,232,240,.56)", width: 1, type: "dashed" } },
       xAxis: [
-        { gridIndex: 0, type: "time", boundaryGap: false, axisLine: { lineStyle: { color: GRID_STRONG } }, axisTick: { show: false }, axisLabel: { color: MUTED, fontFamily: MONO, fontSize: 9, hideOverlap: true }, splitLine: { show: true, lineStyle: { color: GRID } }, axisPointer: { show: true, snap: false } },
-        { gridIndex: 1, type: "value", min: -exposureMax, max: exposureMax, axisLine: { show: true, onZero: true, lineStyle: { color: GRID_STRONG } }, axisTick: { show: false }, axisLabel: { color: MUTED, fontFamily: MONO, fontSize: 9, formatter: (value: number) => compact(value) }, splitLine: { show: true, lineStyle: { color: GRID } }, axisPointer: { show: true, snap: false } },
+        {
+          gridIndex: 0, type: "time", min: firstTime, max: futureEdge, position: "bottom", boundaryGap: false,
+          axisLine: { show: true, lineStyle: { color: GRID_STRONG } }, axisTick: { show: false },
+          axisLabel: { color: MUTED, fontFamily: MONO, fontSize: 9, hideOverlap: true, formatter: (value: number) => new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(value)) },
+          splitLine: { show: true, lineStyle: { color: GRID } }, axisPointer: { show: true, snap: false },
+        },
+        {
+          gridIndex: 0, type: "value", min: -exposureMax, max: exposureMax, position: "top",
+          axisLine: { show: true, onZero: true, lineStyle: { color: GRID_STRONG } }, axisTick: { show: false },
+          axisLabel: { color: MUTED, fontFamily: MONO, fontSize: 9, formatter: (value: number) => value === 0 ? "NOW / 0" : compact(value) },
+          splitLine: { show: false }, axisPointer: { show: true, snap: false },
+        },
       ],
-      yAxis: [
-        { gridIndex: 0, type: "value", min: minStrike - step, max: maxStrike + step, scale: true, position: "left", axisLine: { show: false }, axisTick: { show: false }, axisLabel: { color: MUTED, fontFamily: MONO, fontSize: 9, formatter: (value: number) => value.toFixed(0) }, splitLine: { show: true, lineStyle: { color: GRID } }, axisPointer: { show: true, snap: false } },
-        { gridIndex: 1, type: "value", min: minStrike - step, max: maxStrike + step, scale: true, position: "right", axisLine: { show: false }, axisTick: { show: false }, axisLabel: { color: MUTED, fontFamily: MONO, fontSize: 9, margin: 9, formatter: (value: number) => value.toFixed(0) }, splitLine: { show: true, lineStyle: { color: GRID } }, axisPointer: { show: true, snap: false } },
-      ],
-      dataZoom: [
-        { type: "inside", yAxisIndex: [0, 1], filterMode: "none", zoomOnMouseWheel: "shift", moveOnMouseWheel: true, moveOnMouseMove: true },
-        { type: "slider", yAxisIndex: [0, 1], orient: "vertical", right: 4, top: 42, bottom: 50, width: 8, showDetail: false, borderColor: GRID_STRONG, backgroundColor: "rgba(0,0,0,.25)", fillerColor: "rgba(255,255,255,.09)", handleStyle: { color: TEXT, borderColor: TEXT }, moveHandleStyle: { color: TEXT } },
-      ],
+      yAxis: {
+        gridIndex: 0, type: "value", min: minStrike - step, max: maxStrike + step, scale: true, position: "right",
+        axisLine: { show: true, lineStyle: { color: GRID_STRONG } }, axisTick: { show: false },
+        axisLabel: { color: "#9ba4b2", fontFamily: MONO, fontSize: 9, margin: 8, formatter: (value: number) => value.toFixed(0) },
+        splitLine: { show: true, lineStyle: { color: GRID } }, axisPointer: { show: true, snap: false },
+      },
+      dataZoom: [{ type: "inside", yAxisIndex: 0, filterMode: "none", zoomOnMouseWheel: "shift", moveOnMouseWheel: true, moveOnMouseMove: true }],
       series,
     };
   }, [appearance, dataset, frame, priorIndex, spotTape, strikes]);
@@ -366,6 +387,7 @@ export function ProfessionalProfileChart({
       className="min-h-[600px]"
       onMouseOver={(event) => {
         const source = Array.isArray(event.data) ? event.data : event.data?.value ?? event.value;
+        if (event.seriesName === "Price" || event.seriesName === "Exposure origin") return;
         const strike = finite(source?.[1]);
         if (strike === null) return;
         onHover(strikes.find((entry) => entry[0] === strike) ?? null);
@@ -393,48 +415,75 @@ export function ProfessionalOrderflowChart({
   metrics: readonly OrderflowMetricConfig[];
   points: GexBotOrderflowFrame[];
 }) {
-  const height = Math.max(430, metrics.length * 224 + 52);
+  const height = Math.max(430, metrics.length * 204 + 32);
   const option = useMemo<EChartsCoreOption>(() => {
-    const panelHeight = 150;
-    const panelGap = 72;
+    const panelHeight = 164;
+    const panelGap = 40;
     const grids: Record<string, unknown>[] = [];
     const titles: Record<string, unknown>[] = [];
     const xAxes: Record<string, unknown>[] = [];
     const yAxes: Record<string, unknown>[] = [];
     const series: Record<string, unknown>[] = [];
     metrics.forEach((metric, index) => {
-      const top = 43 + index * (panelHeight + panelGap);
-      grids.push({ left: 80, right: 70, top, height: panelHeight, containLabel: false, show: true, borderColor: GRID_STRONG, backgroundColor: "rgba(4,6,9,.3)" });
-      titles.push({ text: metric.label.toUpperCase(), subtext: metric.description, left: 80, top: top - 34, textStyle: { color: metric.color, fontFamily: UI, fontSize: 10, fontWeight: 700, letterSpacing: 1.5 }, subtextStyle: { color: MUTED, fontFamily: UI, fontSize: 9, lineHeight: 14 } });
-      xAxes.push({ gridIndex: index, type: "time", boundaryGap: false, axisLine: { lineStyle: { color: GRID_STRONG } }, axisTick: { show: false }, axisLabel: { show: index === metrics.length - 1, color: MUTED, fontFamily: MONO, fontSize: 9, hideOverlap: true }, splitLine: { show: true, lineStyle: { color: GRID } }, axisPointer: { show: true } });
-      yAxes.push({ gridIndex: index, type: "value", scale: true, position: "left", axisLine: { show: false }, axisTick: { show: false }, axisLabel: { color: MUTED, fontFamily: MONO, fontSize: 9, formatter: (value: number) => compact(value) }, splitLine: { show: true, lineStyle: { color: GRID } }, axisPointer: { show: true } });
-      yAxes.push({ gridIndex: index, type: "value", scale: true, position: "right", axisLine: { show: false }, axisTick: { show: false }, axisLabel: { color: "rgba(220,226,235,.45)", fontFamily: MONO, fontSize: 8, formatter: (value: number) => value.toFixed(0) }, splitLine: { show: false }, axisPointer: { show: false } });
+      const top = 24 + index * (panelHeight + panelGap);
+      grids.push({ left: 64, right: 58, top, height: panelHeight, containLabel: false, show: true, borderColor: GRID_STRONG, backgroundColor: "#050607" });
+      titles.push({ text: metric.label.toUpperCase(), left: 66, top: top + 7, textStyle: { color: metric.color, fontFamily: UI, fontSize: 10, fontWeight: 700, letterSpacing: 1.3 } });
+      xAxes.push({ gridIndex: index, type: "time", boundaryGap: true, axisLine: { lineStyle: { color: GRID_STRONG } }, axisTick: { show: false }, axisLabel: { show: true, color: MUTED, fontFamily: MONO, fontSize: 8, hideOverlap: true, formatter: (value: number) => new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(value)) }, splitLine: { show: true, lineStyle: { color: GRID } }, axisPointer: { show: true } });
+      yAxes.push({ gridIndex: index, type: "value", scale: true, position: "left", axisLine: { show: true, lineStyle: { color: GRID_STRONG } }, axisTick: { show: false }, axisLabel: { color: MUTED, fontFamily: MONO, fontSize: 8, formatter: (value: number) => compact(value) }, splitLine: { show: true, lineStyle: { color: GRID } }, axisPointer: { show: true } });
+      yAxes.push({ gridIndex: index, type: "value", scale: true, position: "right", axisLine: { show: true, lineStyle: { color: GRID_STRONG } }, axisTick: { show: false }, axisLabel: { color: "rgba(230,234,241,.56)", fontFamily: MONO, fontSize: 8, formatter: (value: number) => value.toFixed(0) }, splitLine: { show: false }, axisPointer: { show: false } });
       const value = (point: GexBotOrderflowFrame, field: string) => finite(point[field as keyof GexBotOrderflowFrame]);
-      series.push({
-        name: `${metric.label} · 0DTE`, type: "line", xAxisIndex: index, yAxisIndex: index * 2,
-        data: points.flatMap((point) => { const next = value(point, metric.id); return next === null ? [] : [[point.timestamp, next]]; }),
-        showSymbol: false, smooth: 0.08, connectNulls: false, sampling: "lttb",
-        lineStyle: { color: metric.color, width: 2, shadowBlur: 7, shadowColor: `${metric.color}50` },
-        areaStyle: { color: { type: "linear", x: 0, y: 0, x2: 0, y2: 1, colorStops: [{ offset: 0, color: `${metric.color}20` }, { offset: 1, color: `${metric.color}00` }] } },
-        markLine: { silent: true, symbol: "none", data: [{ yAxis: 0, lineStyle: { color: GRID_STRONG, width: 1 }, label: { show: false } }] },
-        emphasis: { focus: "series" }, z: 4,
-      });
-      series.push({
-        name: `${metric.label} · 1DTE`, type: "line", xAxisIndex: index, yAxisIndex: index * 2,
-        data: points.flatMap((point) => { const next = value(point, metric.one); return next === null ? [] : [[point.timestamp, next]]; }),
-        showSymbol: false, smooth: 0.08, connectNulls: false, sampling: "lttb",
-        lineStyle: { color: "#d6b4ff", width: 1.35, type: "dashed", opacity: 0.82 }, emphasis: { focus: "series" }, z: 5,
-      });
+      const eventBars = metric.id === "dexoflow" || metric.id === "gexoflow" || metric.id === "cvroflow";
+      if (eventBars) {
+        series.push({
+          name: `${metric.label} · 0DTE`, type: "bar", xAxisIndex: index, yAxisIndex: index * 2,
+          data: points.flatMap((point) => { const next = value(point, metric.id); return next === null ? [] : [[point.timestamp, next]]; }),
+          barWidth: 2, barGap: "-100%", itemStyle: { color: metric.color, opacity: 0.92, shadowBlur: 3, shadowColor: `${metric.color}48` },
+          markLine: { silent: true, symbol: "none", data: [{ yAxis: 0, lineStyle: { color: "rgba(236,240,246,.34)", width: 1 }, label: { show: false } }] },
+          emphasis: { itemStyle: { opacity: 1, shadowBlur: 7 } }, z: 5,
+        });
+        series.push({
+          name: `${metric.label} · 1DTE`, type: "bar", xAxisIndex: index, yAxisIndex: index * 2,
+          data: points.flatMap((point) => { const next = value(point, metric.one); return next === null ? [] : [[point.timestamp, next]]; }),
+          barWidth: 1, barGap: "-100%", itemStyle: { color: "#e0baff", opacity: 0.52 }, z: 6,
+        });
+      } else {
+        series.push({
+          name: `${metric.label} · 0DTE`, type: "line", xAxisIndex: index, yAxisIndex: index * 2,
+          data: points.flatMap((point) => { const next = value(point, metric.id); return next === null ? [] : [[point.timestamp, next]]; }),
+          showSymbol: false, smooth: false, connectNulls: false, sampling: "lttb",
+          lineStyle: { color: metric.color, width: 1.5, shadowBlur: 4, shadowColor: `${metric.color}46` },
+          markLine: { silent: true, symbol: "none", data: [{ yAxis: 0, lineStyle: { color: "rgba(236,240,246,.30)", width: 1 }, label: { show: false } }] },
+          emphasis: { focus: "series" }, z: 5,
+        });
+        series.push({
+          name: `${metric.label} · 1DTE`, type: "line", xAxisIndex: index, yAxisIndex: index * 2,
+          data: points.flatMap((point) => { const next = value(point, metric.one); return next === null ? [] : [[point.timestamp, next]]; }),
+          showSymbol: false, smooth: false, connectNulls: false, sampling: "lttb",
+          lineStyle: { color: "#e0baff", width: 1.05, type: "dashed", opacity: 0.74 }, emphasis: { focus: "series" }, z: 6,
+        });
+      }
+      if (metric.id === "agg_dex") {
+        [
+          { field: "agg_call_dex", name: "Call DEX", color: "#63e6be" },
+          { field: "agg_put_dex", name: "Put DEX", color: "#ff6b81" },
+          { field: "net_dex", name: "Net DEX", color: "#ffffff" },
+        ].forEach((item) => series.push({
+          name: item.name, type: "line", xAxisIndex: index, yAxisIndex: index * 2,
+          data: points.flatMap((point) => { const next = value(point, item.field); return next === null ? [] : [[point.timestamp, next]]; }),
+          showSymbol: false, smooth: false, connectNulls: false,
+          lineStyle: { color: item.color, width: item.field === "net_dex" ? 1.25 : 1, opacity: 0.8 }, z: 6,
+        }));
+      }
       series.push({
         name: "Underlying", type: "line", xAxisIndex: index, yAxisIndex: index * 2 + 1,
-        data: points.map((point) => [point.timestamp, point.spot]), showSymbol: false, smooth: 0.05,
-        lineStyle: { color: "rgba(238,242,247,.48)", width: 1 }, emphasis: { disabled: true }, silent: true, z: 2,
+        data: points.map((point) => [point.timestamp, point.spot]), showSymbol: false, smooth: false,
+        lineStyle: { color: "rgba(247,249,252,.78)", width: 1.15, shadowBlur: 3, shadowColor: "rgba(255,255,255,.22)" }, emphasis: { disabled: true }, silent: true, z: 3,
       });
     });
     return {
-      backgroundColor: "transparent",
-      animationDuration: 240,
-      animationDurationUpdate: 160,
+      backgroundColor: "#050607",
+      animationDuration: 200,
+      animationDurationUpdate: 120,
       animationEasingUpdate: "cubicOut",
       textStyle: { color: TEXT, fontFamily: UI },
       title: titles,
@@ -443,10 +492,7 @@ export function ProfessionalOrderflowChart({
       yAxis: yAxes,
       tooltip: { trigger: "axis", confine: true, axisPointer: { type: "cross" }, backgroundColor: TOOLTIP_BG, borderColor: GRID_STRONG, borderWidth: 1, padding: [10, 12], textStyle: { color: TEXT, fontFamily: UI, fontSize: 10 }, extraCssText: "box-shadow:0 18px 60px rgba(0,0,0,.45);backdrop-filter:blur(12px);border-radius:10px", formatter: orderflowTooltip },
       axisPointer: { link: [{ xAxisIndex: "all" }], label: { show: true, color: "#080a0d", backgroundColor: "#e9edf3", fontFamily: MONO, fontSize: 9 }, lineStyle: { color: "rgba(226,232,240,.58)", width: 1, type: "dashed" } },
-      dataZoom: [
-        { type: "inside", xAxisIndex: metrics.map((_, index) => index), filterMode: "none", zoomOnMouseWheel: true, moveOnMouseWheel: true, moveOnMouseMove: true },
-        { type: "slider", xAxisIndex: metrics.map((_, index) => index), left: 80, right: 70, bottom: 10, height: 14, showDetail: false, borderColor: GRID_STRONG, backgroundColor: "rgba(0,0,0,.28)", fillerColor: "rgba(255,255,255,.08)", handleStyle: { color: TEXT, borderColor: TEXT }, moveHandleStyle: { color: TEXT } },
-      ],
+      dataZoom: [{ type: "inside", xAxisIndex: metrics.map((_, index) => index), filterMode: "none", zoomOnMouseWheel: true, moveOnMouseWheel: true, moveOnMouseMove: true }],
       series,
     };
   }, [metrics, points]);

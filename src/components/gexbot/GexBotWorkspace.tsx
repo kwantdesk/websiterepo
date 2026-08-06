@@ -51,7 +51,7 @@ type Appearance = {
   multiplier: number;
 };
 
-type SpotSample = { timestamp: number; spot: number };
+type SpotSample = { timestamp: number; spot: number; zeroGamma?: number | null };
 
 const STORAGE_KEY = "kwantdesk:gexbot:workspace:v2";
 const SPOT_STORAGE_KEY = "kwantdesk:gexbot:spot-tape:v1";
@@ -648,8 +648,8 @@ export default function GexBotWorkspace() {
       localStorage.setItem(`${FRAME_STORAGE_PREFIX}${cacheKey(next.view, next.ticker, next.category)}`, JSON.stringify(next));
     } catch {}
     const historicalFrames = Array.isArray(next.history) ? next.history : [];
-    const historicalSamples = historicalFrames.map((entry) => ({ timestamp: entry.timestamp, spot: entry.spot }));
-    const sample = { timestamp: next.frame.timestamp, spot: next.frame.spot };
+    const historicalSamples = historicalFrames.map((entry) => ({ timestamp: entry.timestamp, spot: entry.spot, zeroGamma: entry.zero_gamma }));
+    const sample = { timestamp: next.frame.timestamp, spot: next.frame.spot, zeroGamma: next.frame.zero_gamma };
     setSpotTape((current) => {
       const source = historicalSamples.length ? historicalSamples : current;
       const merged = source.at(-1)?.timestamp === sample.timestamp ? [...source.slice(0, -1), sample] : [...source, sample];
@@ -773,11 +773,10 @@ export default function GexBotWorkspace() {
           ) : (
             <div className="flex min-h-[560px] flex-1 items-start overflow-auto">
               <div className="mx-auto min-w-0 flex-1 p-2"><ProfessionalProfileChart frame={frame as GexBotProfileFrame} dataset={dataset} appearance={appearance} spotTape={spotTape} priorIndex={priorIndex} onHover={setHover} /></div>
-              <aside className="hidden w-56 shrink-0 overflow-y-auto border-l border-border bg-panel/65 p-4 xl:block"><ProfileSummary envelope={envelope!} dataset={dataset} hover={hover} /></aside>
             </div>
           )}
         </main>
-        {showSettings ? <aside className="w-[272px] shrink-0 overflow-y-auto border-l border-border bg-panel p-4"><SettingsRail view={view} expiry={expiry} setExpiry={setExpiry} metric={stateMetric} setMetric={setStateMetric} dataset={dataset} setDataset={setDataset} appearance={appearance} setAppearance={setAppearance} visibleMetrics={visibleMetrics} setVisibleMetrics={setVisibleMetrics} /></aside> : null}
+        {showSettings ? <aside className="w-[272px] shrink-0 overflow-y-auto border-l border-border bg-panel p-4">{isProfile ? <><ProfileSummary envelope={envelope!} dataset={dataset} hover={hover} /><div className="my-4 border-t border-border" /></> : null}<SettingsRail view={view} expiry={expiry} setExpiry={setExpiry} metric={stateMetric} setMetric={setStateMetric} dataset={dataset} setDataset={setDataset} appearance={appearance} setAppearance={setAppearance} visibleMetrics={visibleMetrics} setVisibleMetrics={setVisibleMetrics} /></aside> : null}
       </div>
       <footer className="flex min-h-8 shrink-0 items-center justify-between gap-4 border-t border-border bg-panel px-4 text-[8px] uppercase tracking-[.13em] text-muted">
         <span className="flex items-center gap-2"><Gauge className="h-3 w-3 text-primary" />Values are rendered directly from GEXBot API frames; classified-flow methodology remains provider-calculated.</span>
