@@ -43,6 +43,7 @@ export const LIVE_CHART_INDICATOR_IDS = new Set([
   "depth-of-market",
   "kwant-stats",
   "gamma-levels",
+  "classic-gex-profile",
   "source-code-indicator",
 ]);
 export const VOLUME_PROFILE_INDICATOR_IDS = new Set([
@@ -216,6 +217,14 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
   "gamma-levels": [
     { key: "maxLevels", label: "Maximum displayed levels", defaultValue: 14, min: 4, max: 24, step: 1 },
     { key: "lineWidth", label: "Base line width", defaultValue: 1, min: 1, max: 4, step: 1 },
+  ],
+  "classic-gex-profile": [
+    { key: "refreshIntervalMs", label: "Refresh interval (milliseconds)", defaultValue: 1000, min: 1000, max: 10000, step: 250 },
+    { key: "manualMultiplier", label: "Manual mapping multiplier", defaultValue: 1, min: 0.000001, max: 100, step: 0.01 },
+    { key: "premiumOffset", label: "Manual premium offset", defaultValue: 0, min: -5000, max: 5000, step: 0.25 },
+    { key: "profileWidth", label: "Maximum profile width (% of chart)", defaultValue: 24, min: 8, max: 45, step: 1 },
+    { key: "minBarWidth", label: "Minimum visible bar width (pixels)", defaultValue: 5, min: 1, max: 20, step: 1 },
+    { key: "contrast", label: "Profile contrast (%)", defaultValue: 70, min: 15, max: 100, step: 1 },
   ],
   "moving-average": [{ key: "length", label: "Length", defaultValue: 20, min: 1, max: 1000 }],
   "rolling-vwap": [
@@ -525,6 +534,27 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
     magnetColor: "#8B5CF6",
     centreColor: "#06B6D4",
     gammaSettingsVersion: 2,
+  } : {}),
+  ...(indicatorId === "classic-gex-profile" ? {
+    mappingSource: "QQQ",
+    profileMode: "CLASSIC_GEX",
+    expiry: "ZERO_DTE",
+    profileSource: "VOLUME",
+    panelPosition: "RIGHT",
+    mappingMode: "AUTO",
+    logarithmicScaling: false,
+    showLookbackDots: true,
+    showMajorPositiveVolume: true,
+    showMajorNegativeVolume: true,
+    showMajorPositiveOpenInterest: true,
+    showMajorNegativeOpenInterest: true,
+    showZeroGamma: true,
+    showLabels: true,
+    useThemeColors: false,
+    positiveColor: "#22C55E",
+    negativeColor: "#EF4444",
+    zeroGammaColor: "#F4F4F5",
+    classicGexSettingsVersion: 1,
   } : {}),
   ...(["kwant-profile", "daily-volume-profile", "weekly-volume-profile", "custom-draw-on-volume-profile", "ask-bid-volume-profile", "delta-profile"].includes(indicatorId) ? {
     profileMode: indicatorId === "ask-bid-volume-profile"

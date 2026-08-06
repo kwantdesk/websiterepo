@@ -105,6 +105,11 @@ import { defaultChartSettings, type ChartSettings } from "@/lib/chartSettings";
 import { isEventBasedChartInterval } from "@/lib/chartIntervals";
 import { compactTimeZoneLabel, normalizeTimeZone } from "@/lib/timeZones";
 import { resolveChartLevelOverlaps } from "@/lib/chartLevelOverlap";
+import type {
+  ClassicGexHistorySnapshot,
+  ClassicGexProfilePayload,
+  ClassicGexProfileRow,
+} from "@/lib/classicGexProfile";
 
 interface ChartProps {
   candles: Candle[];
@@ -122,6 +127,10 @@ interface ChartProps {
   onCreateAlertAtPrice?: (price: string) => void;
   onRemoveAllIndicators?: () => void;
   indicators?: ChartIndicatorInstance[];
+  classicGexProfile?: ClassicGexProfilePayload | null;
+  classicGexHistory?: ClassicGexHistorySnapshot[];
+  classicGexLoading?: boolean;
+  classicGexError?: string | null;
   volumeProfiles?: InstitutionalVolumeProfile[];
   onUpdateIndicatorSetting?: (instanceId: string, key: string, value: number | string | boolean) => void;
   onOpenIndicatorSettings?: (instanceId: string) => void;
@@ -177,6 +186,16 @@ export interface ChartZone {
 const EMPTY_CHART_LEVELS: ChartLevel[] = [];
 
 type CandleSeriesApi = ReturnType<IChartApi["addCandlestickSeries"]>;
+
+function formatClassicGexValue(value: number | null) {
+  if (value === null || !Number.isFinite(value)) return "n/a";
+  const absolute = Math.abs(value);
+  const sign = value < 0 ? "-" : value > 0 ? "+" : "";
+  if (absolute >= 1_000_000_000) return `${sign}${(absolute / 1_000_000_000).toFixed(2)}B`;
+  if (absolute >= 1_000_000) return `${sign}${(absolute / 1_000_000).toFixed(2)}M`;
+  if (absolute >= 1_000) return `${sign}${(absolute / 1_000).toFixed(1)}K`;
+  return `${sign}${absolute.toFixed(0)}`;
+}
 
 type SessionHighLowRenderLevel = {
   id: string;
@@ -1190,6 +1209,10 @@ export default function Chart({
   onCreateAlertAtPrice,
   onRemoveAllIndicators,
   indicators = [],
+  classicGexProfile = null,
+  classicGexHistory = [],
+  classicGexLoading = false,
+  classicGexError = null,
   volumeProfiles = [],
   onUpdateIndicatorSetting,
   onOpenIndicatorSettings,
@@ -1271,6 +1294,11 @@ export default function Chart({
   const [viewportVersion, setViewportVersion] = useState(0);
   const [chartVisualReady, setChartVisualReady] = useState(false);
   const [themeVersion, setThemeVersion] = useState(0);
+  const [classicGexTooltip, setClassicGexTooltip] = useState<{
+    x: number;
+    y: number;
+    row: ClassicGexProfileRow;
+  } | null>(null);
   const [chartReadyRevision, setChartReadyRevision] = useState(0);
   const [sampledIndicatorCandles, setSampledIndicatorCandles] = useState(candles);
   const [sampledIndicatorMarketTrades, setSampledIndicatorMarketTrades] = useState(marketTrades);
@@ -1571,6 +1599,101 @@ export default function Chart({
     ),
     [calculatedIndicatorPanes, collapsedIndicatorPanes, resolvedIndicatorPaneHeights],
   );
+  const classicGexIndicator = useMemo(
+    () => indicators.find((instance) => instance.enabled && instance.indicatorId === "classic-gex-profile") ?? null,
+    [indicatorSignature, indicators],
+  );
+  const classicGexOverlay = useMemo(() => {
+    if (!classicGexIndicator || !classicGexProfile || !candleSeriesRef.current) return null;
+    const profileSettings = classicGexIndicator.settings ?? {};
+    const plotWidth = Math.max(0, overlaySize.width - 64);
+    const plotHeight = Math.max(0, overlaySize.height - 26 - indicatorPaneHeight);
+    if (plotWidth < 160 || plotHeight < 80) return null;
+    const profileWidth = Math.min(
+      plotWidth * 0.45,
+      Math.max(90, plotWidth * Math.max(8, Math.min(45, Number(profileSettings.profileWidth ?? 24))) / 100),
+    );
+    const halfWidth = Math.max(42, profileWidth / 2);
+    const right = String(profileSettings.panelPosition ?? "RIGHT") !== "LEFT";
+    const spineX = right ? plotWidth - halfWidth - 5 : halfWidth + 5;
+    const logarithmic = profileSettings.logarithmicScaling === true;
+    const minBarWidth = Math.max(1, Number(profileSettings.minBarWidth ?? 5));
+    const contrast = Math.max(0.15, Math.min(1, Number(profileSettings.contrast ?? 70) / 100));
+    const maxMagnitude = Math.max(
+      1,
+      ...classicGexProfile.rows.flatMap((row) => [Math.abs(row.call), Math.abs(row.put)]),
+      ...classicGexHistory.flatMap((snapshot) => snapshot.rows.map((row) => Math.abs(row.net))),
+    );
+    const scale = (value: number) => {
+      if (!value) return 0;
+      const ratio = logarithmic
+        ? Math.log1p(Math.abs(value)) / Math.log1p(maxMagnitude)
+        : Math.abs(value) / maxMagnitude;
+      return Math.max(minBarWidth, ratio * halfWidth);
+    };
+    const positioned = classicGexProfile.rows.flatMap((row) => {
+      const y = candleSeriesRef.current?.priceToCoordinate(row.mappedPrice) ?? null;
+      return y === null || y < 2 || y > plotHeight ? [] : [{ row, y }];
+    }).sort((left, rightRow) => left.y - rightRow.y);
+    const minimumGap = positioned.reduce((gap, row, index) => {
+      if (!index) return gap;
+      return Math.min(gap, Math.abs(row.y - positioned[index - 1].y));
+    }, 12);
+    const rowHeight = Math.max(2, Math.min(10, minimumGap * 0.68));
+    const historyTargets = [1, 5, 15, 30].map((minutes) => {
+      const target = Date.parse(classicGexProfile.asOf) - minutes * 60_000;
+      const snapshot = classicGexHistory.reduce<ClassicGexHistorySnapshot | null>((best, candidate) => (
+        !best || Math.abs(candidate.timestamp - target) < Math.abs(best.timestamp - target) ? candidate : best
+      ), null);
+      return snapshot && Math.abs(snapshot.timestamp - target) <= 90_000 ? { minutes, snapshot } : null;
+    }).filter((value): value is { minutes: number; snapshot: ClassicGexHistorySnapshot } => Boolean(value));
+    const lines = [
+      profileSettings.showMajorPositiveVolume !== false && classicGexProfile.majors.positiveVolume
+        ? { ...classicGexProfile.majors.positiveVolume, label: "Major + Vol", color: "#22C55E", dash: "7 5" }
+        : null,
+      profileSettings.showMajorNegativeVolume !== false && classicGexProfile.majors.negativeVolume
+        ? { ...classicGexProfile.majors.negativeVolume, label: "Major - Vol", color: "#EF4444", dash: "7 5" }
+        : null,
+      profileSettings.showMajorPositiveOpenInterest !== false && classicGexProfile.majors.positiveOpenInterest
+        ? { ...classicGexProfile.majors.positiveOpenInterest, label: "Major + OI", color: "#4ADE80", dash: "2 4" }
+        : null,
+      profileSettings.showMajorNegativeOpenInterest !== false && classicGexProfile.majors.negativeOpenInterest
+        ? { ...classicGexProfile.majors.negativeOpenInterest, label: "Major - OI", color: "#FB7185", dash: "2 4" }
+        : null,
+      profileSettings.showZeroGamma !== false && classicGexProfile.zeroGamma
+        ? { ...classicGexProfile.zeroGamma, label: "Zero Gamma", color: String(profileSettings.zeroGammaColor ?? "#F4F4F5"), dash: "9 5" }
+        : null,
+    ].filter((line): line is NonNullable<typeof line> => Boolean(line)).flatMap((line) => {
+      const y = candleSeriesRef.current?.priceToCoordinate(line.mappedPrice) ?? null;
+      return y === null || y < 2 || y > plotHeight ? [] : [{ ...line, y }];
+    });
+    return {
+      plotWidth,
+      plotHeight,
+      spineX,
+      halfWidth,
+      rowHeight,
+      positioned,
+      historyTargets,
+      lines,
+      scale,
+      contrast,
+      right,
+      showLookbackDots: profileSettings.showLookbackDots !== false,
+      showLabels: profileSettings.showLabels !== false,
+      positiveColor: String(profileSettings.positiveColor ?? "#22C55E"),
+      negativeColor: String(profileSettings.negativeColor ?? "#EF4444"),
+    };
+  }, [
+    chartReadyRevision,
+    classicGexHistory,
+    classicGexIndicator,
+    classicGexProfile,
+    indicatorPaneHeight,
+    overlaySize.height,
+    overlaySize.width,
+    viewportVersion,
+  ]);
   const resizeIndicatorPane = useCallback((key: string, nextHeight: number) => {
     setIndicatorPaneHeights((current) => ({
       ...current,
@@ -4027,6 +4150,161 @@ export default function Chart({
         marketIsActive={marketIsActive}
         bottom={56 + indicatorPaneHeight}
       />
+
+      {classicGexIndicator ? (
+        <div
+          className="pointer-events-none absolute top-11 z-[14] flex items-center gap-1.5 rounded-full border border-border bg-panel/88 px-2.5 py-1 font-mono text-[8px] uppercase tracking-[0.1em] text-muted shadow-lg backdrop-blur"
+          style={classicGexOverlay?.right === false ? { left: 8 } : { right: 70 }}
+        >
+          <span className="font-semibold text-foreground">Classic GEX</span>
+          <span>{classicGexProfile?.sourceSymbol ?? "QQQ"}</span>
+          <span>{classicGexProfile?.profileSource === "OPEN_INTEREST" ? "OI" : "VOL"}</span>
+          {classicGexLoading && !classicGexProfile ? <span className="text-primary">Loading</span> : null}
+          {classicGexProfile?.status === "EOD" ? <span>EOD</span> : null}
+          {classicGexProfile?.stale ? <span className="text-warning">Stale</span> : null}
+          {classicGexError && !classicGexProfile ? <span className="text-danger">Unavailable</span> : null}
+        </div>
+      ) : null}
+
+      {classicGexOverlay ? (
+        <svg
+          className="pointer-events-none absolute inset-0 z-[11] h-full w-full overflow-hidden"
+          viewBox={`0 0 ${Math.max(overlaySize.width, 1)} ${Math.max(overlaySize.height, 1)}`}
+          preserveAspectRatio="none"
+          aria-label="Classic GEX profile"
+          style={{ opacity: classicGexProfile?.stale ? 0.42 : 1 }}
+        >
+          <line
+            x1={classicGexOverlay.spineX}
+            x2={classicGexOverlay.spineX}
+            y1={0}
+            y2={classicGexOverlay.plotHeight}
+            stroke="var(--muted)"
+            strokeOpacity={0.34}
+            strokeWidth={1}
+          />
+          {classicGexOverlay.lines.map((line) => (
+            <g key={`${line.label}-${line.mappedPrice}`}>
+              <line
+                x1={0}
+                x2={classicGexOverlay.plotWidth}
+                y1={line.y}
+                y2={line.y}
+                stroke={line.color}
+                strokeOpacity={0.72}
+                strokeWidth={1.2}
+                strokeDasharray={line.dash}
+              />
+              {classicGexOverlay.showLabels ? (
+                <text
+                  x={classicGexOverlay.right ? 7 : classicGexOverlay.plotWidth - 7}
+                  y={Math.max(10, line.y - 4)}
+                  fill={line.color}
+                  fontFamily="'JetBrains Mono', monospace"
+                  fontSize={8}
+                  fontWeight={800}
+                  textAnchor={classicGexOverlay.right ? "start" : "end"}
+                  paintOrder="stroke"
+                  stroke={settings.backgroundColor}
+                  strokeWidth={3}
+                >
+                  {line.label} {line.mappedPrice.toFixed(priceFormat.precision)}
+                </text>
+              ) : null}
+            </g>
+          ))}
+          {classicGexOverlay.positioned.map(({ row, y }) => {
+            const callWidth = classicGexOverlay.scale(row.call);
+            const putWidth = classicGexOverlay.scale(row.put);
+            return (
+              <g key={row.strike}>
+                {row.put !== 0 ? (
+                  <rect
+                    x={classicGexOverlay.spineX - putWidth}
+                    y={y - classicGexOverlay.rowHeight / 2}
+                    width={putWidth}
+                    height={classicGexOverlay.rowHeight}
+                    rx={1}
+                    fill={classicGexOverlay.negativeColor}
+                    fillOpacity={classicGexOverlay.contrast}
+                    style={{ pointerEvents: "all", cursor: "crosshair" }}
+                    onMouseMove={(event) => {
+                      const rect = chartContainerRef.current?.getBoundingClientRect();
+                      if (!rect) return;
+                      setClassicGexTooltip({ x: event.clientX - rect.left, y: event.clientY - rect.top, row });
+                    }}
+                    onMouseLeave={() => setClassicGexTooltip(null)}
+                  />
+                ) : null}
+                {row.call !== 0 ? (
+                  <rect
+                    x={classicGexOverlay.spineX}
+                    y={y - classicGexOverlay.rowHeight / 2}
+                    width={callWidth}
+                    height={classicGexOverlay.rowHeight}
+                    rx={1}
+                    fill={classicGexOverlay.positiveColor}
+                    fillOpacity={classicGexOverlay.contrast}
+                    style={{ pointerEvents: "all", cursor: "crosshair" }}
+                    onMouseMove={(event) => {
+                      const rect = chartContainerRef.current?.getBoundingClientRect();
+                      if (!rect) return;
+                      setClassicGexTooltip({ x: event.clientX - rect.left, y: event.clientY - rect.top, row });
+                    }}
+                    onMouseLeave={() => setClassicGexTooltip(null)}
+                  />
+                ) : null}
+                {classicGexOverlay.showLookbackDots ? classicGexOverlay.historyTargets.map(({ minutes, snapshot }) => {
+                  const historical = snapshot.rows.find((candidate) => candidate.strike === row.strike);
+                  if (!historical?.net) return null;
+                  const x = classicGexOverlay.spineX
+                    + (historical.net > 0 ? 1 : -1) * classicGexOverlay.scale(historical.net);
+                  return (
+                    <circle
+                      key={`${row.strike}-${minutes}`}
+                      cx={x}
+                      cy={y}
+                      r={minutes === 1 ? 2.1 : 1.55}
+                      fill="var(--foreground)"
+                      fillOpacity={minutes === 1 ? 0.9 : 0.52}
+                      stroke={settings.backgroundColor}
+                      strokeWidth={0.8}
+                    />
+                  );
+                }) : null}
+              </g>
+            );
+          })}
+        </svg>
+      ) : null}
+
+      {classicGexTooltip && classicGexProfile ? (
+        <div
+          className="pointer-events-none absolute z-[80] w-[248px] rounded-xl border border-border bg-panel/96 p-3 font-mono text-[9px] leading-4 text-muted shadow-2xl backdrop-blur"
+          style={{
+            left: Math.max(8, Math.min(overlaySize.width - 258, classicGexTooltip.x + 14)),
+            top: Math.max(8, Math.min(overlaySize.height - 196, classicGexTooltip.y + 12)),
+          }}
+        >
+          <div className="mb-2 flex items-center justify-between text-foreground">
+            <span className="font-semibold">Classic GEX</span>
+            <span>{classicGexProfile.status}</span>
+          </div>
+          <div className="grid grid-cols-[1fr_auto] gap-x-3">
+            <span>Mapping</span><span className="text-foreground">NQ / {classicGexProfile.sourceSymbol}</span>
+            <span>Source strike</span><span className="text-foreground">{classicGexTooltip.row.strike.toFixed(2)}</span>
+            <span>Mapped NQ</span><span className="text-foreground">{classicGexTooltip.row.mappedPrice.toFixed(priceFormat.precision)}</span>
+            <span>Expiry</span><span className="text-foreground">{classicGexProfile.expiration ?? "All"}</span>
+            <span>Call GEX / 1%</span><span style={{ color: classicGexOverlay?.positiveColor }}>{formatClassicGexValue(classicGexTooltip.row.call)}</span>
+            <span>Put GEX / 1%</span><span style={{ color: classicGexOverlay?.negativeColor }}>{formatClassicGexValue(classicGexTooltip.row.put)}</span>
+            <span>Net GEX / 1%</span><span className="text-foreground">{formatClassicGexValue(classicGexTooltip.row.net)}</span>
+            <span>Contracts C / P</span><span className="text-foreground">{classicGexTooltip.row.callContracts ?? "—"} / {classicGexTooltip.row.putContracts ?? "—"}</span>
+            <span>Gamma</span><span className="text-foreground">{classicGexTooltip.row.gamma ?? "provider aggregate"}</span>
+            <span>Timestamp</span><span className="text-foreground">{new Date(classicGexProfile.asOf).toLocaleTimeString()}</span>
+            <span>Data age</span><span className="text-foreground">{Math.round(classicGexProfile.dataAgeMs / 1000)}s</span>
+          </div>
+        </div>
+      ) : null}
 
       {depthOfMarketIndicator ? (
         <DepthOfMarketPanel

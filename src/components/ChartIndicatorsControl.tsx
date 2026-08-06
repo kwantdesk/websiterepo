@@ -28,6 +28,7 @@ import {
   defaultIndicatorSettings,
 } from "@/lib/chartIndicatorConfig";
 import type { ChartSettings } from "@/lib/chartSettings";
+import KwantSelect from "@/components/ui/KwantSelect";
 
 const FAVOURITES_STORAGE_KEY = "kwantdesk-chart-indicator-favourites";
 
@@ -74,6 +75,7 @@ export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "weekly-volume-profile",
   "ask-bid-volume-profile",
   "delta-profile",
+  "classic-gex-profile",
   "source-code-indicator",
 ]);
 
@@ -558,6 +560,38 @@ export default function ChartIndicatorsControl({
                   <span className={`absolute top-1 h-4 w-4 rounded-full bg-white transition-all ${settingsInstance.enabled ? "left-6" : "left-1"}`} />
                 </button>
               </label>
+
+              {settingsDefinition.id === "classic-gex-profile" ? (
+                <div className="grid gap-3 rounded-xl border border-primary/15 bg-primary/[0.035] p-3 sm:grid-cols-2">
+                  {[
+                    ["Mapping", "mappingSource", [["QQQ", "NQ / QQQ"], ["NDX", "NQ / NDX"]]],
+                    ["Expiry", "expiry", [["ZERO_DTE", "0DTE"], ["NEXT_EXPIRY", "Next expiry"], ["ALL", "All expiries"]]],
+                    ["Classic source", "profileSource", [["VOLUME", "Session volume"], ["OPEN_INTEREST", "Open interest"]]],
+                    ["Position", "panelPosition", [["RIGHT", "Right edge"], ["LEFT", "Left edge"]]],
+                    ["Price mapping", "mappingMode", [["AUTO", "Automatic"], ["MANUAL", "Manual"]]],
+                  ].map(([label, key, options]) => (
+                    <label key={String(key)} className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                      <span>{String(label)}</span>
+                      <KwantSelect
+                        value={String(settingsInstance.settings?.[String(key)] ?? "")}
+                        onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                          ...current,
+                          settings: { ...(current.settings ?? {}), [String(key)]: event.target.value },
+                        }))}
+                        className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground"
+                        menuLabel={String(label)}
+                      >
+                        {(options as string[][]).map(([value, optionLabel]) => (
+                          <option key={value} value={value}>{optionLabel}</option>
+                        ))}
+                      </KwantSelect>
+                    </label>
+                  ))}
+                  <div className="rounded-lg border border-border bg-background/55 px-3 py-2 text-[9px] leading-4 text-muted sm:col-span-2">
+                    Classic GEX stays independent from Estimated Flow Convexity. Calls extend inward in green; puts extend inward in red from the chart edge.
+                  </div>
+                </div>
+              ) : null}
 
               {(INDICATOR_NUMERIC_SETTINGS[settingsDefinition.id] ?? []).map((setting) => {
                 const value = Number(settingsInstance.settings?.[setting.key] ?? setting.defaultValue);

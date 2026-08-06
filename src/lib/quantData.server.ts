@@ -66,6 +66,18 @@ import {
   type GexDeskZeroGammaPayload,
 } from "@/lib/gexDesk";
 import { getDatabentoBars } from "@/lib/databento";
+import {
+  classicGexMajor,
+  classicGexStatus,
+  mapClassicGexPrice,
+  normalizeClassicGexRow,
+  selectClassicGexRows,
+  type ClassicGexExpiry,
+  type ClassicGexMappingSource,
+  type ClassicGexProfilePayload,
+  type ClassicGexProfileRow,
+  type ClassicGexSource,
+} from "@/lib/classicGexProfile";
 
 const API_BASE = "https://api.quantdata.us/v1";
 const CACHE_TTL_MS = 4_000;
@@ -1000,7 +1012,7 @@ function deriveGammaLevels(gamma: ExposureSummary | null, spot: number | null) {
  * one contract, while `volume` and `openInterest` are contract snapshots, so
  * only the largest observed snapshot is retained before rolling up by strike.
  */
-function deriveSessionVolumeGamma(
+export function deriveSessionVolumeGamma(
   gamma: ExposureSummary | null,
   flow: OptionsFlowPrint[],
 ): ExposureSummary | null {
@@ -2803,6 +2815,150 @@ export async function getOptionsFlowPayload(
     promise,
   });
   return promise;
+}
+
+export async function getClassicGexProfilePayload(args: {
+  sourceSymbol: ClassicGexMappingSource;
+  expiry: ClassicGexExpiry;
+  profileSource: ClassicGexSource;
+  mappingMode: "AUTO" | "MANUAL";
+  manualMultiplier: number;
+  premiumOffset: number;
+  futuresPrice?: number | null;
+}): Promise<ClassicGexProfilePayload> {
+  const base = await getOptionsFlowPayload(args.sourceSymbol, "FUTURES", undefined, "GAMEPLAN");
+  const allGamma = base.exposures.GAMMA;
+  const orderedExpirations = [...new Set(allGamma?.expiries.map((row) => row.expiration) ?? [])]
+    .filter((expiration) => /^\d{4}-\d{2}-\d{2}$/.test(expiration))
+    .sort();
+  const expiration = args.expiry === "ALL"
+    ? null
+    : args.expiry === "ZERO_DTE"
+      ? base.session.sessionDate
+      : orderedExpirations.find((candidate) => candidate > base.session.sessionDate)
+        ?? orderedExpirations[0]
+        ?? null;
+
+  let openInterestGamma = args.expiry === "ALL"
+    ? allGamma
+    : args.expiry === "ZERO_DTE"
+      ? base.zeroDteGamma
+      : null;
+  let contractRows = args.expiry === "ALL"
+    ? base.openInterest
+    : args.expiry === "ZERO_DTE"
+      ? base.zeroDteOpenInterest
+      : [];
+
+  if (args.expiry === "NEXT_EXPIRY" && expiration) {
+    const [gammaResult, openInterestResult] = await Promise.all([
+      quantDataPost("/options/tool/exposure-by-strike", {
+        sessionDate: base.session.sessionDate,
+        greekMode: "GAMMA",
+        representationMode: "PER_ONE_PERCENT_MOVE",
+        filter: { ticker: args.sourceSymbol, expirationDate: expiration },
+      }, base.session.marketOpen ? 4_000 : 300_000),
+      quantDataPost("/options/tool/open-interest-by-strike", {
+        sessionDate: base.session.sessionDate,
+        filter: { ticker: args.sourceSymbol, expirationDate: expiration },
+      }, 60_000),
+    ]);
+    openInterestGamma = parseExposure(gammaResult.payload, args.sourceSymbol, "GAMMA", expiration);
+    contractRows = parseOpenInterest(openInterestResult.payload);
+  }
+
+  const flow = expiration
+    ? base.flow.filter((row) => row.expirationDate === expiration)
+    : base.flow;
+  const volumeGamma = deriveSessionVolumeGamma(openInterestGamma, flow);
+  const sourcePrice = base.stockPrice;
+  const requestedFuturesPrice = args.futuresPrice && Number.isFinite(args.futuresPrice) && args.futuresPrice > 0
+    ? args.futuresPrice
+    : null;
+  const futuresPrice = requestedFuturesPrice ?? base.marketData.lastPrice;
+  const providerScale = Number(base.marketData.levelPriceScale);
+  const liveRatio = sourcePrice && futuresPrice ? futuresPrice / sourcePrice : Number.NaN;
+  const autoScale = Number.isFinite(liveRatio) && liveRatio > 0
+    ? liveRatio
+    : Number.isFinite(providerScale) && providerScale > 0
+      ? providerScale
+      : 1;
+  const mapping = {
+    mode: args.mappingMode,
+    scale: args.mappingMode === "MANUAL" ? Math.max(0.000001, args.manualMultiplier) : autoScale,
+    offset: args.mappingMode === "MANUAL" ? args.premiumOffset : 0,
+  } as const;
+  const oiByStrike = new Map(contractRows.map((row) => [row.strike, row]));
+  const volumeByStrike = new Map<number, { call: number; put: number }>();
+  for (const row of flow) {
+    if (!row.strikePrice || !row.volume) continue;
+    const current = volumeByStrike.get(row.strikePrice) ?? { call: 0, put: 0 };
+    if (row.contractType === "CALL") current.call = Math.max(current.call, row.volume);
+    if (row.contractType === "PUT") current.put = Math.max(current.put, row.volume);
+    volumeByStrike.set(row.strikePrice, current);
+  }
+  const toRows = (exposure: ExposureSummary | null, contractsSource: ClassicGexSource): ClassicGexProfileRow[] => (
+    exposure?.strikes.map((row) => {
+      const oi = oiByStrike.get(row.strike);
+      const volume = volumeByStrike.get(row.strike);
+      return normalizeClassicGexRow({
+        strike: row.strike,
+        mappedPrice: mapClassicGexPrice(row.strike, mapping),
+        call: row.call,
+        put: row.put,
+        callContracts: contractsSource === "VOLUME" ? volume?.call ?? null : oi?.callOpenInterest ?? null,
+        putContracts: contractsSource === "VOLUME" ? volume?.put ?? null : oi?.putOpenInterest ?? null,
+        gamma: null,
+      });
+    }).filter((row) => row.call !== 0 || row.put !== 0) ?? []
+  );
+  const volumeRows = toRows(volumeGamma, "VOLUME");
+  const openInterestRows = toRows(openInterestGamma, "OPEN_INTEREST");
+  const rows = selectClassicGexRows(args.profileSource, volumeRows, openInterestRows);
+  const asOfMs = Date.parse(base.asOf);
+  const dataAgeMs = Number.isFinite(asOfMs) ? Math.max(0, Date.now() - asOfMs) : 0;
+  const status = classicGexStatus({
+    marketOpen: base.session.marketOpen,
+    providerStale: base.marketData.stale,
+    dataAgeMs,
+  });
+  const stale = status === "STALE";
+
+  return {
+    instrument: "NQ",
+    sourceSymbol: args.sourceSymbol,
+    sessionDate: base.session.sessionDate,
+    expiration,
+    expiry: args.expiry,
+    profileSource: args.profileSource,
+    representation: "PER_ONE_PERCENT_MOVE",
+    status,
+    snapshotMode: base.snapshotMode,
+    asOf: base.asOf,
+    refreshAfterMs: Math.max(1_000, base.refreshAfterMs),
+    dataAgeMs,
+    stale,
+    sourcePrice,
+    futuresPrice,
+    mapping,
+    rows,
+    majors: {
+      positiveVolume: classicGexMajor(volumeRows, "POSITIVE"),
+      negativeVolume: classicGexMajor(volumeRows, "NEGATIVE"),
+      positiveOpenInterest: classicGexMajor(openInterestRows, "POSITIVE"),
+      negativeOpenInterest: classicGexMajor(openInterestRows, "NEGATIVE"),
+    },
+    // Zero Gamma is deliberately not inferred from a sign change between
+    // adjacent strikes. A scenario-repriced root can be supplied by the native
+    // gamma engine when that calculation is available without delaying bars.
+    zeroGamma: null,
+    methodology: {
+      exposureSource: `KwantData ${args.sourceSymbol} PER_ONE_PERCENT_MOVE`,
+      contractSource: args.profileSource === "VOLUME" ? "KwantData consolidated session flow" : "KwantData dated open interest",
+      volumeMethod: "Current-session contract volume/open-interest ratio applied to the matching structural strike GEX.",
+      version: "classic-gex-profile-v1",
+    },
+  };
 }
 
 export async function getChartGammaLevels(
