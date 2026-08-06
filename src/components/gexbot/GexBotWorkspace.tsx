@@ -692,7 +692,12 @@ export default function GexBotWorkspace() {
     if (cached ?? retained) { applyEnvelope((cached ?? retained)!); setLoading(false); } else setLoading(true);
     const poll = async () => {
       try {
-        const query = new URLSearchParams({ view, ticker, category, history: "1" });
+        const query = new URLSearchParams({
+          view,
+          ticker,
+          category,
+          history: view === "orderflow" ? "1" : "0",
+        });
         const response = await fetch(`/api/gexbot-terminal?${query}`, { cache: "no-store" });
         const payload = await response.json() as ProfileEnvelope;
         if (disposed || requestSequence.current !== sequence) return;

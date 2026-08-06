@@ -517,7 +517,14 @@ export async function fetchGexBotTerminal(
       requestJson(`${base}/${encodeURIComponent(category)}`, marketOpen),
       view === "orderflow" ? Promise.resolve(null) : requestJson(`${base}/majors`, marketOpen),
       view === "orderflow" ? Promise.resolve(null) : requestJson(`${base}/maxchange`, marketOpen),
-      includeHistory ? requestHistory(ticker, view, category, marketOpen) : Promise.resolve<HistoryResult>({ rows: [], date: null, attemptedDates: [] }),
+      // Archive access is deliberately disconnected. Failed archive requests are
+      // not retried from the polling route and cannot consume the provider cache.
+      Promise.resolve<HistoryResult>({
+        rows: [],
+        date: null,
+        attemptedDates: [],
+        error: "GEXBot archive access is disabled.",
+      }),
     ]);
     if (frameResult.status === "rejected") throw frameResult.reason;
     const frame = view === "orderflow"
