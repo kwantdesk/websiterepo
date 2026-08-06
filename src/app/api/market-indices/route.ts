@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import {
   fetchMarketIndexCandles,
   fetchMarketIndexSnapshots,
-  hasLiveMarketIndexAccess,
+  hasIntradayMarketIndexHistoryAccess,
 } from "@/lib/marketIndices.server";
 import { getMarketIndexDefinition } from "@/lib/marketIndices";
 
@@ -27,10 +27,11 @@ export async function GET(request: Request) {
     }
     try {
       const snapshots = await fetchMarketIndexSnapshots(symbols);
+      const source = [...new Set(snapshots.map((snapshot) => snapshot.provider))].join(" + ") || "UNAVAILABLE";
       return NextResponse.json(
         {
           snapshots,
-          source: hasLiveMarketIndexAccess() ? "CBOE" : "CBOE EOD",
+          source,
           asOf: new Date().toISOString(),
         },
         { headers: { "Cache-Control": "private, no-store, max-age=0" } },
@@ -51,7 +52,7 @@ export async function GET(request: Request) {
   const now = Date.now();
   const requestedFrom = Number(url.searchParams.get("from"));
   const requestedTo = Number(url.searchParams.get("to"));
-  const usingCboeVixArchive = symbol === "VIX" && !hasLiveMarketIndexAccess();
+  const usingCboeVixArchive = symbol === "VIX" && !hasIntradayMarketIndexHistoryAccess();
   const earliest = usingCboeVixArchive
     ? CBOE_VIX_HISTORY_START
     : now - MAX_HISTORY_DAYS * 24 * 60 * 60_000;
@@ -64,7 +65,7 @@ export async function GET(request: Request) {
       {
         candles,
         symbol,
-        source: hasLiveMarketIndexAccess() ? "CBOE" : "CBOE EOD",
+        source: hasIntradayMarketIndexHistoryAccess() ? "CBOE" : "CBOE EOD",
         from,
         to,
       },

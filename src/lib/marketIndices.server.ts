@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { Candle } from "@/lib/backtester";
+import { fetchGexBotVixSpot, hasGexBotVixAccess } from "@/lib/gexBotVix.server";
 import { getMarketIndexDefinition } from "@/lib/marketIndices";
 import { parseMassiveCashLevelOne } from "@/lib/optionsLevelOne";
 
@@ -17,6 +18,7 @@ export type MarketIndexSnapshot = {
   timestamp: number;
   delayed: boolean;
   marketOpen: boolean;
+  provider: "GEXBot" | "Massive" | "CBOE EOD";
 };
 
 const MASSIVE_API_BASE = "https://api.massive.com";
@@ -38,6 +40,10 @@ function requireMassiveApiKey() {
 }
 
 export function hasLiveMarketIndexAccess() {
+  return Boolean(getMassiveApiKey()) || hasGexBotVixAccess();
+}
+
+export function hasIntradayMarketIndexHistoryAccess() {
   return Boolean(getMassiveApiKey());
 }
 
@@ -152,7 +158,53 @@ async function fetchCboeVixEodSnapshots(symbols: string[]): Promise<MarketIndexS
     timestamp: latest.timestamp,
     delayed: true,
     marketOpen: false,
+    provider: "CBOE EOD",
   }];
+}
+
+function newYorkMarketOpen(timestamp = Date.now()) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    weekday: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(new Date(timestamp));
+  const part = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((item) => item.type === type)?.value ?? "";
+  const weekday = part("weekday");
+  const minute = Number(part("hour")) * 60 + Number(part("minute"));
+  return weekday !== "Sat" && weekday !== "Sun" && minute >= 9 * 60 + 30 && minute < 16 * 60;
+}
+
+async function fetchGexBotVixSnapshot(): Promise<MarketIndexSnapshot> {
+  const spot = await fetchGexBotVixSpot();
+  let previousClose = spot.price;
+  try {
+    const daily = await fetchCboeVixDailyCandles();
+    const latest = daily.at(-1);
+    const today = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+    const latestDate = latest ? new Date(latest.timestamp).toISOString().slice(0, 10) : "";
+    previousClose = latestDate === today
+      ? daily.at(-2)?.close ?? latest?.open ?? spot.price
+      : latest?.close ?? spot.price;
+  } catch {
+    // The live VIX remains usable when the official EOD archive is temporarily unavailable.
+  }
+  const change = spot.price - previousClose;
+  return {
+    symbol: "VIX",
+    broker: "Market Index",
+    exchange: "CBOE",
+    lastPrice: spot.price,
+    openPrice: previousClose,
+    change,
+    changePercent: previousClose ? change / previousClose * 100 : 0,
+    timestamp: spot.timestamp,
+    delayed: spot.stale,
+    marketOpen: newYorkMarketOpen() && !spot.stale,
+    provider: "GEXBot",
+  };
 }
 
 async function fetchMassiveJson(url: string) {
@@ -178,7 +230,7 @@ export async function fetchMarketIndexCandles(options: {
 }): Promise<Candle[]> {
   const definition = getMarketIndexDefinition(options.symbol);
   if (!definition) throw new Error(`${options.symbol} is not a supported market index.`);
-  if (!hasLiveMarketIndexAccess()) {
+  if (!hasIntradayMarketIndexHistoryAccess()) {
     if (definition.symbol !== "VIX") {
       throw new Error(`${definition.symbol} requires an indices-entitled MASSIVE_API_KEY.`);
     }
@@ -216,10 +268,24 @@ export async function fetchMarketIndexCandles(options: {
 }
 
 export async function fetchMarketIndexSnapshots(symbols: string[]) {
-  if (!hasLiveMarketIndexAccess()) {
-    return fetchCboeVixEodSnapshots(symbols);
+  const requested = [...new Set(symbols.map((symbol) => symbol.trim().toUpperCase()))];
+  const snapshots: MarketIndexSnapshot[] = [];
+  if (requested.includes("VIX") && hasGexBotVixAccess()) {
+    try {
+      snapshots.push(await fetchGexBotVixSnapshot());
+    } catch {
+      // Massive and then the official Cboe EOD archive remain the resilience path.
+    }
   }
-  const results = await Promise.allSettled(symbols.map(async (symbol): Promise<MarketIndexSnapshot | null> => {
+
+  const resolved = new Set(snapshots.map((snapshot) => snapshot.symbol));
+  const unresolved = requested.filter((symbol) => !resolved.has(symbol));
+  if (!unresolved.length) return snapshots;
+  if (!getMassiveApiKey()) {
+    return [...snapshots, ...await fetchCboeVixEodSnapshots(unresolved)];
+  }
+
+  const results = await Promise.allSettled(unresolved.map(async (symbol): Promise<MarketIndexSnapshot | null> => {
     const definition = getMarketIndexDefinition(symbol);
     if (!definition) return null;
     const endpoint = `${MASSIVE_API_BASE}/v3/snapshot/indices?ticker=${encodeURIComponent(definition.providerTicker)}`;
@@ -259,13 +325,12 @@ export async function fetchMarketIndexSnapshots(symbols: string[]) {
       timestamp: quote.asOfMs,
       delayed: quote.delayed,
       marketOpen: quote.marketOpen,
+      provider: "Massive",
     };
   }));
 
-  const snapshots = results.flatMap((result) =>
-    result.status === "fulfilled" && result.value ? [result.value] : []);
-  if (snapshots.length || !symbols.some((symbol) => symbol.trim().toUpperCase() === "VIX")) {
-    return snapshots;
-  }
-  return fetchCboeVixEodSnapshots(symbols);
+  snapshots.push(...results.flatMap((result) =>
+    result.status === "fulfilled" && result.value ? [result.value] : []));
+  if (snapshots.some((snapshot) => snapshot.symbol === "VIX") || !requested.includes("VIX")) return snapshots;
+  return [...snapshots, ...await fetchCboeVixEodSnapshots(["VIX"])];
 }
