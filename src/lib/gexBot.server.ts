@@ -33,6 +33,10 @@ function finite(value: unknown): number | null {
 }
 
 function timestampMs(value: unknown): number {
+  if (typeof value === "string" && value.trim() && !Number.isFinite(Number(value))) {
+    const parsedDate = Date.parse(value);
+    if (Number.isFinite(parsedDate)) return parsedDate;
+  }
   const parsed = finite(value);
   if (parsed === null || parsed <= 0) return Date.now();
   return parsed < 10_000_000_000 ? parsed * 1_000 : parsed;
@@ -206,7 +210,7 @@ async function requestHistory(ticker: string, view: View, category: string, mark
       signal: AbortSignal.timeout(8_000),
     });
     let signedResponse = await getSignedUrl("Basic");
-    if (signedResponse.status === 401) signedResponse = await getSignedUrl("Bearer");
+    if (!signedResponse.ok) signedResponse = await getSignedUrl("Bearer");
     if (!signedResponse.ok) return [];
     const signedPayload = await signedResponse.json().catch(() => ({})) as { url?: unknown };
     if (typeof signedPayload.url !== "string" || !signedPayload.url.startsWith("https://")) return [];

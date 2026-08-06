@@ -158,8 +158,8 @@ export async function preloadWorkspaceData(key: string) {
 
   if (key === "gexbot") {
     return fetchWorkspaceData(
-      "gexbot:classic:NDX:gex_full",
-      "/api/gexbot-terminal?view=classic&ticker=NDX&category=gex_full",
+      "gexbot:classic:NQ_NDX:gex_full",
+      "/api/gexbot-terminal?view=classic&ticker=NQ_NDX&category=gex_full&history=1",
     );
   }
 

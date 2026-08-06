@@ -5,7 +5,7 @@ import { fetchGexBotTerminal } from "@/lib/gexBot.server";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-const TICKERS = new Set(["NDX", "QQQ", "SPX", "SPY", "RUT", "IWM", "VIX"]);
+const TICKERS = new Set(["NQ_NDX", "ES_SPX", "NDX", "QQQ", "SPX", "SPY", "RUT", "IWM", "VIX"]);
 const CLASSIC_CATEGORIES = new Set(["full", "gex_full", "zero", "gex_zero", "one", "gex_one"]);
 const STATE_CATEGORIES = new Set([
   "gex_full", "gex_one", "gex_zero",
@@ -16,7 +16,7 @@ const STATE_CATEGORIES = new Set([
 
 export async function GET(request: NextRequest) {
   const viewParam = request.nextUrl.searchParams.get("view")?.toLowerCase() ?? "classic";
-  const ticker = request.nextUrl.searchParams.get("ticker")?.toUpperCase() ?? "NDX";
+  const ticker = request.nextUrl.searchParams.get("ticker")?.toUpperCase() ?? "NQ_NDX";
   const categoryParam = request.nextUrl.searchParams.get("category")?.toLowerCase();
   const includeHistory = request.nextUrl.searchParams.get("history") === "1";
   if (viewParam !== "classic" && viewParam !== "state" && viewParam !== "orderflow") {

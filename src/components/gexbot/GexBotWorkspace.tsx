@@ -52,9 +52,10 @@ type Appearance = {
 
 type SpotSample = { timestamp: number; spot: number };
 
-const STORAGE_KEY = "kwantdesk:gexbot:workspace:v1";
+const STORAGE_KEY = "kwantdesk:gexbot:workspace:v2";
 const SPOT_STORAGE_KEY = "kwantdesk:gexbot:spot-tape:v1";
 const ORDERFLOW_STORAGE_KEY = "kwantdesk:gexbot:orderflow-tape:v1";
+const FRAME_STORAGE_PREFIX = "kwantdesk:gexbot:last-verified:v1:";
 const DEFAULT_APPEARANCE: Appearance = {
   positive: "#6fe36a",
   negative: "#ff4f62",
@@ -71,7 +72,7 @@ const DEFAULT_APPEARANCE: Appearance = {
   multiplier: 1,
 };
 
-const TICKERS = ["NDX", "QQQ", "SPX", "SPY", "RUT", "IWM"];
+const TICKERS = ["NQ_NDX", "ES_SPX", "NDX", "QQQ", "SPX", "SPY", "RUT", "IWM"];
 const VIEW_META = {
   classic: { label: "Classic", icon: BarChart3, detail: "GEX profile by strike" },
   state: { label: "State", icon: Layers3, detail: "Classified exposure state" },
@@ -96,6 +97,12 @@ function categoryFor(view: View, expiry: Expiry, metric: StateMetric) {
 
 function cacheKey(view: View, ticker: string, category: string) {
   return `gexbot:${view}:${ticker}:${category}`;
+}
+
+function tickerLabel(ticker: string) {
+  if (ticker === "NQ_NDX") return "NQ / NDX";
+  if (ticker === "ES_SPX") return "ES / SPX";
+  return ticker;
 }
 
 function number(value: unknown) {
@@ -230,7 +237,7 @@ function ProfileChart({
   const negMajor = dataset === "oi" ? frame.major_neg_oi : frame.major_neg_vol;
 
   return (
-    <svg viewBox="0 0 1200 760" className="h-full min-h-[520px] w-full select-none" preserveAspectRatio="none">
+    <svg viewBox="0 0 1200 760" className="block h-auto w-full select-none" preserveAspectRatio="xMidYMid meet">
       <defs>
         <filter id="gexbot-glow" x="-40%" y="-40%" width="180%" height="180%">
           <feGaussianBlur stdDeviation="4" result="blur" />
@@ -421,7 +428,7 @@ function OrderflowPanel({
         <p className="text-[10px] font-semibold uppercase tracking-[.16em]" style={{ color: metric.color }}>{metric.label}</p>
         <p className="mt-1 max-w-sm text-[9px] text-muted">{metric.description}</p>
       </div>
-      <svg viewBox="0 0 1140 220" className="h-[230px] w-full" preserveAspectRatio="none">
+      <svg viewBox="0 0 1140 220" className="block h-auto w-full" preserveAspectRatio="xMidYMid meet">
         <rect width="1140" height="220" fill="color-mix(in srgb, var(--background) 94%, black)" />
         {Array.from({ length: 12 }).map((_, index) => <line key={index} x1={index * 104} x2={index * 104} y1="0" y2="220" stroke="var(--border)" opacity=".35" />)}
         <line x1="0" x2="1140" y1="110" y2="110" stroke="var(--border)" opacity=".85" />
@@ -439,6 +446,52 @@ function OrderflowPanel({
       <div className="pointer-events-none absolute bottom-3 right-4 flex gap-4 text-[9px]">
         <span style={{ color: metric.color }}>0DTE {compact(active ? number(active[metric.id]) : number(points.at(-1)?.[metric.id]))}</span>
         <span className="text-primary">1DTE {compact(active ? number(active[metric.one]) : number(points.at(-1)?.[metric.one]))}</span>
+      </div>
+    </div>
+  );
+}
+
+function OrderflowSnapshot({ frame, visibleMetrics }: { frame: GexBotOrderflowFrame; visibleMetrics: string[] }) {
+  const metrics = ORDERFLOW_METRICS.filter((metric) => visibleMetrics.includes(metric.id));
+  const values = metrics.flatMap((metric) => [number(frame[metric.id]), number(frame[metric.one])]).filter((value): value is number => value !== null);
+  const maximum = Math.max(1, ...values.map(Math.abs));
+  return (
+    <div className="mx-auto flex min-h-[620px] w-full max-w-[1500px] flex-col justify-center px-5 py-8">
+      <div className="mb-6 flex items-end justify-between gap-4 border-b border-border pb-4">
+        <div>
+          <p className="text-[9px] font-semibold uppercase tracking-[.2em] text-primary">New York close</p>
+          <h2 className="mt-1 text-lg font-semibold tracking-[-.02em] text-foreground">Final exposure state</h2>
+          <p className="mt-1 text-[10px] text-muted">The completed RTH frame remains fixed until the next live New York session.</p>
+        </div>
+        <div className="rounded-xl border border-border bg-panel px-3 py-2 text-right">
+          <p className="text-[8px] uppercase tracking-[.14em] text-muted">Underlying close</p>
+          <p className="mt-1 font-mono text-sm font-semibold text-foreground">{price(frame.spot)}</p>
+        </div>
+      </div>
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+        {metrics.map((metric) => {
+          const zero = number(frame[metric.id]) ?? 0;
+          const one = number(frame[metric.one]) ?? 0;
+          const zeroWidth = Math.min(48, Math.abs(zero) / maximum * 48);
+          const oneWidth = Math.min(48, Math.abs(one) / maximum * 48);
+          return (
+            <div key={metric.id} className="rounded-2xl border border-border bg-panel/70 p-4 shadow-[0_18px_50px_rgba(0,0,0,.18)]">
+              <div className="flex items-start justify-between gap-3">
+                <div><p className="text-[10px] font-semibold uppercase tracking-[.14em]" style={{ color: metric.color }}>{metric.label}</p><p className="mt-1 text-[9px] leading-4 text-muted">{metric.description}</p></div>
+                <Activity className="h-4 w-4 shrink-0 text-muted" />
+              </div>
+              <div className="relative mt-5 h-10 rounded-xl border border-border bg-background/65">
+                <span className="absolute inset-y-0 left-1/2 w-px bg-border" />
+                <span className="absolute top-2 h-2 rounded-full" style={{ background: metric.color, left: zero >= 0 ? "50%" : `${50 - zeroWidth}%`, width: `${zeroWidth}%`, boxShadow: `0 0 12px ${metric.color}55` }} />
+                <span className="absolute bottom-2 h-1.5 rounded-full bg-primary/75" style={{ left: one >= 0 ? "50%" : `${50 - oneWidth}%`, width: `${oneWidth}%` }} />
+              </div>
+              <div className="mt-3 grid grid-cols-2 gap-3 text-[9px]">
+                <span className="text-muted">0DTE <b className="ml-1 font-mono text-foreground">{compact(zero)}</b></span>
+                <span className="text-right text-muted">1DTE <b className="ml-1 font-mono text-primary">{compact(one)}</b></span>
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -555,7 +608,7 @@ export default function GexBotWorkspace() {
     try { return JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "null") as Record<string, unknown> | null; } catch { return null; }
   }, []);
   const [view, setView] = useState<View>((restored?.view as View) || "classic");
-  const [ticker, setTicker] = useState<string>(typeof restored?.ticker === "string" ? restored.ticker : "NDX");
+  const [ticker, setTicker] = useState<string>(typeof restored?.ticker === "string" ? restored.ticker : "NQ_NDX");
   const [expiry, setExpiry] = useState<Expiry>((restored?.expiry as Expiry) || "full");
   const [stateMetric, setStateMetric] = useState<StateMetric>((restored?.stateMetric as StateMetric) || "gamma");
   const [dataset, setDataset] = useState<Dataset>((restored?.dataset as Dataset) || "both");
@@ -591,6 +644,9 @@ export default function GexBotWorkspace() {
   const applyEnvelope = useCallback((next: ProfileEnvelope) => {
     setEnvelope(next);
     if (!next.ok || !next.frame) return;
+    try {
+      localStorage.setItem(`${FRAME_STORAGE_PREFIX}${cacheKey(next.view, next.ticker, next.category)}`, JSON.stringify(next));
+    } catch {}
     const historicalFrames = Array.isArray(next.history) ? next.history : [];
     const historicalSamples = historicalFrames.map((entry) => ({ timestamp: entry.timestamp, spot: entry.spot }));
     const sample = { timestamp: next.frame.timestamp, spot: next.frame.spot };
@@ -627,7 +683,13 @@ export default function GexBotWorkspace() {
     let timer: ReturnType<typeof setTimeout> | undefined;
     const sequence = ++requestSequence.current;
     const cached = readWorkspaceData<ProfileEnvelope>(cacheKey(view, ticker, category));
-    if (cached) { applyEnvelope(cached); setLoading(false); } else setLoading(true);
+    let retained: ProfileEnvelope | null = null;
+    if (!cached) {
+      try {
+        retained = JSON.parse(localStorage.getItem(`${FRAME_STORAGE_PREFIX}${cacheKey(view, ticker, category)}`) ?? "null") as ProfileEnvelope | null;
+      } catch {}
+    }
+    if (cached ?? retained) { applyEnvelope((cached ?? retained)!); setLoading(false); } else setLoading(true);
     const poll = async () => {
       try {
         const query = new URLSearchParams({ view, ticker, category, history: "1" });
@@ -675,7 +737,7 @@ export default function GexBotWorkspace() {
           </div>
           <div className="flex flex-wrap items-center justify-end gap-2">
             <KwantSelect value={ticker} onChange={(event) => setTicker(event.target.value)} className="h-9 min-w-[112px] rounded-xl border border-border bg-background px-3 font-mono text-[10px] font-semibold" menuLabel="Options underlying">
-              {TICKERS.map((item) => <option key={item} value={item}>{item}</option>)}
+              {TICKERS.map((item) => <option key={item} value={item}>{tickerLabel(item)}</option>)}
             </KwantSelect>
             <div className={`flex h-9 items-center gap-2 rounded-xl border px-3 text-[9px] font-semibold uppercase tracking-[.12em] ${envelope?.session === "LIVE_RTH" ? "border-emerald-400/25 bg-emerald-400/[.07] text-emerald-400" : "border-border bg-background text-muted"}`}>
               {envelope?.session === "LIVE_RTH" ? <Radio className="h-3 w-3 animate-pulse" /> : <Pause className="h-3 w-3" />}{sessionLabel}
@@ -694,18 +756,20 @@ export default function GexBotWorkspace() {
       <div className="flex min-h-0 flex-1 overflow-hidden">
         <main className="flex min-w-0 flex-1 flex-col overflow-auto bg-[radial-gradient(circle_at_55%_30%,color-mix(in_srgb,var(--primary)_3%,transparent),transparent_42%)]">
           <div className="flex min-h-11 shrink-0 items-center justify-between gap-3 border-b border-border px-4">
-            <div className="flex items-center gap-3 text-[9px] text-muted"><span className="font-semibold uppercase tracking-[.15em] text-foreground">{ticker} · {VIEW_META[view].label}</span><span>{timeLabel(frame?.timestamp)}</span>{loading && envelope ? <RefreshCw className="h-3 w-3 animate-spin text-primary" /> : null}</div>
+            <div className="flex items-center gap-3 text-[9px] text-muted"><span className="font-semibold uppercase tracking-[.15em] text-foreground">{tickerLabel(ticker)} · {VIEW_META[view].label}</span><span>{timeLabel(frame?.timestamp)}</span>{loading && envelope ? <RefreshCw className="h-3 w-3 animate-spin text-primary" /> : null}</div>
             {view !== "orderflow" ? <div className="flex items-center gap-2"><button type="button" onClick={() => setPlayingHistory((value) => !value)} className="flex h-7 items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 text-[8px] font-semibold uppercase text-muted hover:text-foreground">{playingHistory ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3" />}Playback</button><span className="font-mono text-[9px] text-primary">Lookback {priorIndex === 0 ? "now" : `-${priorIndex}`}</span></div> : <div className="flex items-center gap-3 text-[8px] uppercase tracking-[.14em] text-muted"><span className="text-primary">0DTE</span><span>1DTE dashed</span></div>}
           </div>
           {!frame ? <EmptyState envelope={envelope} loading={loading} /> : view === "orderflow" ? (
-            <div className="min-w-[720px]">
-              {visibleMetrics.length ? ORDERFLOW_METRICS.filter((metric) => visibleMetrics.includes(metric.id)).map((metric) => (
-                <OrderflowPanel key={metric.id} metric={metric} points={orderflowTape.length ? orderflowTape : [frame as GexBotOrderflowFrame]} hoverIndex={orderflowHover} setHoverIndex={setOrderflowHover} />
-              )) : <div className="flex min-h-[420px] items-center justify-center text-[10px] text-muted">Choose at least one orderflow panel from Adjustments.</div>}
-            </div>
+            !envelope?.marketOpen && orderflowTape.length < 2
+              ? <OrderflowSnapshot frame={frame as GexBotOrderflowFrame} visibleMetrics={visibleMetrics} />
+              : <div className="mx-auto w-full max-w-[1680px]">
+                  {visibleMetrics.length ? ORDERFLOW_METRICS.filter((metric) => visibleMetrics.includes(metric.id)).map((metric) => (
+                    <OrderflowPanel key={metric.id} metric={metric} points={orderflowTape.length ? orderflowTape : [frame as GexBotOrderflowFrame]} hoverIndex={orderflowHover} setHoverIndex={setOrderflowHover} />
+                  )) : <div className="flex min-h-[420px] items-center justify-center text-[10px] text-muted">Choose at least one orderflow panel from Adjustments.</div>}
+                </div>
           ) : (
-            <div className="flex min-h-[560px] flex-1 overflow-hidden">
-              <div className="min-w-[760px] flex-1"><ProfileChart frame={frame as GexBotProfileFrame} dataset={dataset} appearance={appearance} spotTape={spotTape} priorIndex={priorIndex} onHover={setHover} /></div>
+            <div className="flex min-h-[560px] flex-1 items-start overflow-auto">
+              <div className="mx-auto min-w-0 flex-1 p-2"><ProfileChart frame={frame as GexBotProfileFrame} dataset={dataset} appearance={appearance} spotTape={spotTape} priorIndex={priorIndex} onHover={setHover} /></div>
               <aside className="hidden w-56 shrink-0 overflow-y-auto border-l border-border bg-panel/65 p-4 xl:block"><ProfileSummary envelope={envelope!} dataset={dataset} hover={hover} /></aside>
             </div>
           )}
