@@ -667,10 +667,10 @@ export default function GexBotWorkspace() {
         const historicalOrderflow = historicalFrames as GexBotOrderflowFrame[];
         const source = historicalOrderflow.length ? historicalOrderflow : current;
         const merged = source.at(-1)?.timestamp === frame.timestamp ? [...source.slice(0, -1), frame] : [...source, frame];
-        const limited = merged.slice(-900);
+        const limited = merged.slice(-6_000);
         try {
           const stored = JSON.parse(sessionStorage.getItem(ORDERFLOW_STORAGE_KEY) ?? "{}") as Record<string, GexBotOrderflowFrame[]>;
-          stored[ticker] = limited;
+          stored[ticker] = limited.slice(-900);
           sessionStorage.setItem(ORDERFLOW_STORAGE_KEY, JSON.stringify(stored));
         } catch {}
         return limited;
@@ -757,15 +757,18 @@ export default function GexBotWorkspace() {
         <main className="flex min-w-0 flex-1 flex-col overflow-auto bg-[radial-gradient(circle_at_55%_30%,color-mix(in_srgb,var(--primary)_3%,transparent),transparent_42%)]">
           <div className="flex min-h-11 shrink-0 items-center justify-between gap-3 border-b border-border px-4">
             <div className="flex items-center gap-3 text-[9px] text-muted"><span className="font-semibold uppercase tracking-[.15em] text-foreground">{tickerLabel(ticker)} · {VIEW_META[view].label}</span><span>{timeLabel(frame?.timestamp)}</span>{loading && envelope ? <RefreshCw className="h-3 w-3 animate-spin text-primary" /> : null}</div>
-            {view !== "orderflow" ? <div className="flex items-center gap-2"><button type="button" onClick={() => setPlayingHistory((value) => !value)} className="flex h-7 items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 text-[8px] font-semibold uppercase text-muted hover:text-foreground">{playingHistory ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3" />}Playback</button><span className="font-mono text-[9px] text-primary">Lookback {priorIndex === 0 ? "now" : `-${priorIndex}`}</span></div> : <div className="flex items-center gap-3 text-[8px] uppercase tracking-[.14em] text-muted"><span className="text-primary">0DTE</span><span>1DTE dashed</span></div>}
+            {view !== "orderflow" ? <div className="flex items-center gap-2"><button type="button" onClick={() => setPlayingHistory((value) => !value)} className="flex h-7 items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 text-[8px] font-semibold uppercase text-muted hover:text-foreground">{playingHistory ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3" />}Playback</button><span className="font-mono text-[9px] text-primary">Lookback {priorIndex === 0 ? "now" : `-${priorIndex}`}</span></div> : <div className="flex items-center gap-3 text-[8px] uppercase tracking-[.14em] text-muted"><span className={envelope?.historyStatus === "LOADED" ? "text-primary" : "text-amber-400"}>{envelope?.historyStatus === "LOADED" && envelope.historyDate ? `Replay · ${envelope.historyDate}` : "Previous session loading"}</span><span>0DTE</span><span>1DTE dashed</span></div>}
           </div>
           {!frame ? <EmptyState envelope={envelope} loading={loading} /> : view === "orderflow" ? (
             <div className="mx-auto w-full max-w-[1680px] overflow-x-auto px-3 py-3">
               {visibleMetrics.length ? (
-                <ProfessionalOrderflowDesk
-                  metrics={ORDERFLOW_METRICS.filter((metric) => visibleMetrics.includes(metric.id))}
-                  points={orderflowTape.length ? orderflowTape : [frame as GexBotOrderflowFrame]}
-                />
+                <div className="relative">
+                  <ProfessionalOrderflowDesk
+                    metrics={ORDERFLOW_METRICS.filter((metric) => visibleMetrics.includes(metric.id))}
+                    points={orderflowTape.length ? orderflowTape : [frame as GexBotOrderflowFrame]}
+                  />
+                  {envelope?.historyStatus === "UNAVAILABLE" && orderflowTape.length < 2 ? <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-background/72 backdrop-blur-[2px]"><div className="rounded-xl border border-amber-400/25 bg-panel px-5 py-4 text-center shadow-2xl"><p className="text-[10px] font-semibold uppercase tracking-[.16em] text-amber-400">Previous session unavailable</p><p className="mt-1 max-w-sm text-[9px] text-muted">The live frame is connected, but GEXBot did not return an entitled archive for the last completed New York sessions.</p></div></div> : null}
+                </div>
               ) : <div className="flex min-h-[420px] items-center justify-center text-[10px] text-muted">Choose at least one orderflow panel from Adjustments.</div>}
             </div>
           ) : (

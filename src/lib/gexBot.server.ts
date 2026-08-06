@@ -23,6 +23,13 @@ const inFlight = new Map<string, Promise<unknown>>();
 const historyCache = new Map<string, { value: unknown[]; receivedAt: number }>();
 const historyInFlight = new Map<string, Promise<unknown[]>>();
 
+type HistoryResult = {
+  rows: unknown[];
+  date: string | null;
+  attemptedDates: string[];
+  error?: string;
+};
+
 function apiKey() {
   return process.env.GEXBOT_API_KEY?.trim() ?? "";
 }
@@ -122,18 +129,25 @@ function nyParts(now = new Date()) {
   return Object.fromEntries(formatter.formatToParts(now).map((part) => [part.type, part.value]));
 }
 
-function recentNewYorkTradingDate(now = new Date()) {
-  const cursor = new Date(now);
-  for (let attempt = 0; attempt < 5; attempt += 1) {
+function completedNewYorkTradingDates(now = new Date(), count = 4) {
+  const current = nyParts(now);
+  const currentMinutes = Number(current.hour) * 60 + Number(current.minute);
+  const currentIsWeekday = current.weekday !== "Sat" && current.weekday !== "Sun";
+  const cursor = new Date(Date.UTC(Number(current.year), Number(current.month) - 1, Number(current.day), 17));
+
+  // An archive is a completed New York session. Before the close, begin with the
+  // preceding trading day rather than asking for an archive that cannot exist yet.
+  if (!currentIsWeekday || currentMinutes < 16 * 60) cursor.setUTCDate(cursor.getUTCDate() - 1);
+
+  const dates: string[] = [];
+  for (let attempt = 0; attempt < 12 && dates.length < count; attempt += 1) {
     const parts = nyParts(cursor);
-    const minutes = Number(parts.hour) * 60 + Number(parts.minute);
-    const weekday = parts.weekday;
-    if (weekday !== "Sat" && weekday !== "Sun" && (attempt > 0 || minutes >= 9 * 60 + 30)) {
-      return `${parts.year}-${parts.month}-${parts.day}`;
+    if (parts.weekday !== "Sat" && parts.weekday !== "Sun") {
+      dates.push(`${parts.year}-${parts.month}-${parts.day}`);
     }
     cursor.setUTCDate(cursor.getUTCDate() - 1);
   }
-  return "";
+  return dates;
 }
 
 export function isNewYorkRth(now = new Date()) {
@@ -184,9 +198,61 @@ async function requestJson(path: string, marketOpen: boolean): Promise<unknown> 
   return request;
 }
 
-async function requestHistory(ticker: string, view: View, category: string, marketOpen: boolean) {
-  const date = recentNewYorkTradingDate();
-  if (!date) return [];
+function rowsFromHistoryPayload(payload: unknown): unknown[] | null {
+  if (Array.isArray(payload)) {
+    if (payload.length === 0 || typeof payload[0] !== "string") return payload;
+    return null;
+  }
+  if (!payload || typeof payload !== "object") return null;
+  const source = payload as Record<string, unknown>;
+  for (const key of ["data", "history", "frames", "results"]) {
+    if (Array.isArray(source[key])) return source[key] as unknown[];
+  }
+  return null;
+}
+
+function signedHistoryUrl(payload: unknown) {
+  if (Array.isArray(payload)) {
+    const candidate = payload.find((value) => typeof value === "string" && value.startsWith("https://"));
+    return typeof candidate === "string" ? candidate : null;
+  }
+  if (!payload || typeof payload !== "object") return null;
+  const source = payload as Record<string, unknown>;
+  for (const key of ["url", "download_url", "signed_url"]) {
+    if (typeof source[key] === "string" && source[key].startsWith("https://")) return source[key] as string;
+  }
+  return null;
+}
+
+function parseHistoryBytes(input: Buffer) {
+  let bytes = input;
+  if (bytes.length >= 2 && bytes[0] === 0x1f && bytes[1] === 0x8b) bytes = gunzipSync(bytes);
+  const text = bytes.toString("utf8").replace(/^\uFEFF/, "").trim();
+  if (!text) return [];
+  try {
+    const parsed = JSON.parse(text) as unknown;
+    return rowsFromHistoryPayload(parsed) ?? [];
+  } catch {
+    // Some archive builds are newline-delimited JSON rather than one JSON array.
+    return text.split(/\r?\n/).flatMap((line) => {
+      const trimmed = line.trim();
+      if (!trimmed) return [];
+      try { return [JSON.parse(trimmed) as unknown]; } catch { return []; }
+    });
+  }
+}
+
+function sampleCompleteSession<T>(items: T[], maximum = 6_000) {
+  if (items.length <= maximum) return items;
+  const sampled: T[] = [];
+  const finalIndex = items.length - 1;
+  for (let index = 0; index < maximum; index += 1) {
+    sampled.push(items[Math.round((index * finalIndex) / (maximum - 1))]);
+  }
+  return sampled;
+}
+
+async function requestHistoryDate(ticker: string, view: View, category: string, date: string, marketOpen: boolean) {
   const cacheKey = `${ticker}:${view}:${category}:${date}`;
   const cached = historyCache.get(cacheKey);
   const ttl = marketOpen ? 60_000 : 10 * 60_000;
@@ -194,37 +260,61 @@ async function requestHistory(ticker: string, view: View, category: string, mark
   const pending = historyInFlight.get(cacheKey);
   if (pending) return pending;
   const key = apiKey();
-  if (!key) return [];
+  if (!key) throw new Error("GEXBot is not configured on this deployment.");
 
   const request = (async () => {
-    const path = `${API_ROOT}/hist/${encodeURIComponent(ticker)}/${view}/${encodeURIComponent(category)}/${date}?noredirect=true`;
-    const getSignedUrl = async (scheme: "Basic" | "Bearer") => fetch(path, {
+    const path = `${API_ROOT}/hist/${encodeURIComponent(ticker)}/${view}/${encodeURIComponent(category)}/${date}?noredirect`;
+    const signedResponse = await fetch(path, {
       headers: {
         Accept: "application/json",
         "Content-Type": "application/json",
         "Accept-Encoding": "gzip",
-        Authorization: `${scheme} ${key}`,
+        Authorization: `Bearer ${key}`,
         "User-Agent": "KwantDesk/1.0",
       },
       cache: "no-store",
       signal: AbortSignal.timeout(8_000),
     });
-    let signedResponse = await getSignedUrl("Basic");
-    if (!signedResponse.ok) signedResponse = await getSignedUrl("Bearer");
-    if (!signedResponse.ok) return [];
-    const signedPayload = await signedResponse.json().catch(() => ({})) as { url?: unknown };
-    if (typeof signedPayload.url !== "string" || !signedPayload.url.startsWith("https://")) return [];
-    const fileResponse = await fetch(signedPayload.url, { cache: "no-store", signal: AbortSignal.timeout(12_000) });
-    if (!fileResponse.ok) return [];
-    let bytes = Buffer.from(await fileResponse.arrayBuffer());
-    if (bytes.length >= 2 && bytes[0] === 0x1f && bytes[1] === 0x8b) bytes = gunzipSync(bytes);
-    const parsed = JSON.parse(bytes.toString("utf8")) as unknown;
-    const rows = Array.isArray(parsed) ? parsed : [];
+    const signedPayload = await signedResponse.json().catch(() => null) as unknown;
+    if (!signedResponse.ok) {
+      const detail = signedPayload && typeof signedPayload === "object"
+        ? stringValue((signedPayload as Record<string, unknown>).detail)
+          || stringValue((signedPayload as Record<string, unknown>).message)
+        : "";
+      throw new Error(detail || `GEXBot history request failed (${signedResponse.status}) for ${date}.`);
+    }
+
+    const directRows = rowsFromHistoryPayload(signedPayload);
+    let rows: unknown[];
+    if (directRows) {
+      rows = directRows;
+    } else {
+      const downloadUrl = signedHistoryUrl(signedPayload);
+      if (!downloadUrl) throw new Error(`GEXBot did not return a history archive for ${date}.`);
+      const fileResponse = await fetch(downloadUrl, { cache: "no-store", signal: AbortSignal.timeout(15_000) });
+      if (!fileResponse.ok) throw new Error(`GEXBot history archive failed (${fileResponse.status}) for ${date}.`);
+      rows = parseHistoryBytes(Buffer.from(await fileResponse.arrayBuffer()));
+    }
+    if (!rows.length) throw new Error(`GEXBot history archive was empty for ${date}.`);
     historyCache.set(cacheKey, { value: rows, receivedAt: Date.now() });
     return rows;
-  })().catch(() => [] as unknown[]).finally(() => historyInFlight.delete(cacheKey));
+  })().finally(() => historyInFlight.delete(cacheKey));
   historyInFlight.set(cacheKey, request);
   return request;
+}
+
+async function requestHistory(ticker: string, view: View, category: string, marketOpen: boolean): Promise<HistoryResult> {
+  const attemptedDates = completedNewYorkTradingDates();
+  let lastError = "No completed New York trading session was available.";
+  for (const date of attemptedDates) {
+    try {
+      const rows = await requestHistoryDate(ticker, view, category, date, marketOpen);
+      if (rows.length) return { rows, date, attemptedDates };
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : `GEXBot history was unavailable for ${date}.`;
+    }
+  }
+  return { rows: [], date: null, attemptedDates, error: lastError };
 }
 
 function normalizeMajors(payload: unknown): GexBotMajorsFrame {
@@ -282,7 +372,7 @@ export async function fetchGexBotTerminal(
       requestJson(`${base}/${encodeURIComponent(category)}`, marketOpen),
       view === "orderflow" ? Promise.resolve(null) : requestJson(`${base}/majors`, marketOpen),
       view === "orderflow" ? Promise.resolve(null) : requestJson(`${base}/maxchange`, marketOpen),
-      includeHistory ? requestHistory(ticker, view, category, marketOpen) : Promise.resolve([]),
+      includeHistory ? requestHistory(ticker, view, category, marketOpen) : Promise.resolve<HistoryResult>({ rows: [], date: null, attemptedDates: [] }),
     ]);
     if (frameResult.status === "rejected") throw frameResult.reason;
     const frame = view === "orderflow"
@@ -298,11 +388,18 @@ export async function fetchGexBotTerminal(
       checkedAt: Date.now(),
       frame,
       history: historyResult.status === "fulfilled"
-        ? historyResult.value.flatMap((entry) => {
+        ? sampleCompleteSession(historyResult.value.rows.flatMap((entry) => {
             try { return [view === "orderflow" ? normalizeOrderflow(entry) : normalizeProfile(entry)]; }
             catch { return []; }
-          }).slice(-1_500)
+          }))
         : null,
+      historyDate: historyResult.status === "fulfilled" ? historyResult.value.date : null,
+      historyStatus: !includeHistory
+        ? "NOT_REQUESTED"
+        : historyResult.status === "fulfilled" && historyResult.value.rows.length
+          ? "LOADED"
+          : "UNAVAILABLE",
+      historyError: historyResult.status === "fulfilled" ? historyResult.value.error : "GEXBot history request failed.",
       majors: majorsResult.status === "fulfilled" && majorsResult.value
         ? normalizeMajors(majorsResult.value)
         : null,
@@ -322,6 +419,8 @@ export async function fetchGexBotTerminal(
       checkedAt: Date.now(),
       frame: null,
       history: null,
+      historyDate: null,
+      historyStatus: includeHistory ? "UNAVAILABLE" : "NOT_REQUESTED",
       majors: null,
       maxChange: null,
       entitlementRequired: status === 401 || status === 403,

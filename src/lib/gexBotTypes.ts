@@ -94,6 +94,9 @@ export type GexBotTerminalEnvelope<TFrame> = {
   checkedAt: number;
   frame: TFrame | null;
   history?: TFrame[] | null;
+  historyDate?: string | null;
+  historyStatus?: "LOADED" | "UNAVAILABLE" | "NOT_REQUESTED";
+  historyError?: string;
   majors: GexBotMajorsFrame | null;
   maxChange: GexBotMaxChangeFrame | null;
   error?: string;
