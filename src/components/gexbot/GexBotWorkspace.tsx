@@ -30,7 +30,7 @@ import { readWorkspaceData, writeWorkspaceData } from "@/lib/workspaceDataCache"
 type View = "classic" | "state" | "orderflow";
 type Expiry = "full" | "zero" | "one";
 type Dataset = "volume" | "oi" | "both";
-type StateMetric = "gamma" | "delta" | "vanna" | "charm";
+type StateMetric = "gex" | "gamma" | "delta" | "vanna" | "charm";
 type LineStyle = "solid" | "short" | "dash" | "dot";
 type ProfileEnvelope = GexBotTerminalEnvelope<GexBotProfileFrame | GexBotOrderflowFrame>;
 
@@ -90,6 +90,7 @@ const ORDERFLOW_METRICS = [
 function categoryFor(view: View, expiry: Expiry, metric: StateMetric) {
   if (view === "orderflow") return "orderflow";
   if (view === "classic") return expiry === "full" ? "gex_full" : expiry === "zero" ? "gex_zero" : "gex_one";
+  if (metric === "gex") return `gex_${expiry}`;
   return expiry === "full" ? metric : `${metric}_${expiry}`;
 }
 
@@ -491,7 +492,7 @@ function SettingsRail({
             <div>
               <label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[.16em] text-muted">State profile</label>
               <KwantSelect value={metric} onChange={(event) => setMetric(event.target.value as StateMetric)} className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[10px] text-foreground" menuLabel="State profile">
-                <option value="gamma">Gamma</option><option value="delta">Delta</option><option value="vanna">Vanna</option><option value="charm">Charm</option>
+                <option value="gex">GEX profile</option><option value="gamma">Gamma</option><option value="delta">Delta</option><option value="vanna">Vanna</option><option value="charm">Charm</option>
               </KwantSelect>
             </div>
           ) : (

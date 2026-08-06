@@ -8,6 +8,7 @@ export const revalidate = 0;
 const TICKERS = new Set(["NDX", "QQQ", "SPX", "SPY", "RUT", "IWM", "VIX"]);
 const CLASSIC_CATEGORIES = new Set(["full", "gex_full", "zero", "gex_zero", "one", "gex_one"]);
 const STATE_CATEGORIES = new Set([
+  "gex_full", "gex_one", "gex_zero",
   "charm", "charm_one", "charm_zero", "delta", "delta_one", "delta_zero",
   "gamma", "gamma_one", "gamma_zero", "onecharm", "onedelta", "onegamma",
   "onevanna", "vanna", "vanna_one", "vanna_zero",
