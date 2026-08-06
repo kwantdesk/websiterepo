@@ -406,6 +406,224 @@ class SessionHighLowPrimitive implements ISeriesPrimitive<Time> {
   }
 }
 
+type HedgeLevelsPrimitiveOptions = {
+  showBelowFlip: boolean;
+  showLabels: boolean;
+  fillOpacity: number;
+  lineOpacity: number;
+  stale: boolean;
+  pulseIds: string[];
+  backgroundColor: string;
+};
+
+const DEFAULT_HEDGE_LEVELS_PRIMITIVE_OPTIONS: HedgeLevelsPrimitiveOptions = {
+  showBelowFlip: true,
+  showLabels: true,
+  fillOpacity: 0.05,
+  lineOpacity: 0.62,
+  stale: false,
+  pulseIds: [],
+  backgroundColor: "#050505",
+};
+
+class HedgeLevelsRenderer implements ISeriesPrimitivePaneRenderer {
+  constructor(private readonly primitive: HedgeLevelsPrimitive) {}
+
+  draw(target: Parameters<ISeriesPrimitivePaneRenderer["draw"]>[0]) {
+    const series = this.primitive.series();
+    if (!series) return;
+
+    target.useMediaCoordinateSpace(({ context, mediaSize }) => {
+      const options = this.primitive.options();
+      const opacityScale = options.stale ? 0.52 : 1;
+      const positioned = this.primitive.levels().flatMap((level) => {
+        const price = this.primitive.displayPrice(level);
+        const centreY = series.priceToCoordinate(price);
+        if (centreY === null || centreY < -16 || centreY > mediaSize.height + 16) return [];
+        if (level.kind === "FLIP") {
+          return [{ level, centreY, y: centreY, height: 1 }];
+        }
+        const offsetLow = level.zoneLow - level.price;
+        const offsetHigh = level.zoneHigh - level.price;
+        const highY = series.priceToCoordinate(price + offsetHigh);
+        const lowY = series.priceToCoordinate(price + offsetLow);
+        if (highY === null || lowY === null) return [];
+        return [{
+          level,
+          centreY,
+          y: Math.min(highY, lowY),
+          height: Math.max(2, Math.abs(lowY - highY)),
+        }];
+      });
+
+      const flip = positioned.find((item) => item.level.kind === "FLIP") ?? null;
+      context.save();
+      if (options.showBelowFlip && flip) {
+        context.globalAlpha = 0.045 * opacityScale;
+        context.fillStyle = "#000000";
+        context.fillRect(0, Math.max(0, flip.centreY), mediaSize.width, Math.max(0, mediaSize.height - flip.centreY));
+      }
+
+      for (const item of positioned) {
+        const color = HEDGE_LEVEL_COLORS[item.level.kind];
+        const isFlip = item.level.kind === "FLIP";
+        const pulse = options.pulseIds.includes(item.level.id);
+        context.save();
+        if (!isFlip) {
+          context.globalAlpha = options.fillOpacity * opacityScale;
+          context.fillStyle = color;
+          if (pulse) {
+            context.shadowColor = color;
+            context.shadowBlur = 16;
+          }
+          context.fillRect(0, item.y, mediaSize.width, item.height);
+        }
+        context.globalAlpha = options.lineOpacity * opacityScale;
+        context.strokeStyle = color;
+        context.lineWidth = 1;
+        context.setLineDash(isFlip ? [4, 4] : []);
+        context.beginPath();
+        context.moveTo(0, item.y + 0.5);
+        context.lineTo(mediaSize.width, item.y + 0.5);
+        context.stroke();
+        if (!isFlip) {
+          context.beginPath();
+          context.moveTo(0, item.y + item.height - 0.5);
+          context.lineTo(mediaSize.width, item.y + item.height - 0.5);
+          context.stroke();
+        }
+        context.restore();
+      }
+
+      if (options.showLabels) {
+        const labelRows = staggerHedgeLabels(
+          positioned.map((item) => ({ id: item.level.id, y: item.centreY })),
+          14,
+        );
+        const labelY = new Map(labelRows.map((row) => [row.id, Math.max(9, Math.min(mediaSize.height - 7, row.labelY))]));
+        context.font = "700 8px 'JetBrains Mono', monospace";
+        context.textBaseline = "middle";
+        for (const item of positioned) {
+          const color = HEDGE_LEVEL_COLORS[item.level.kind];
+          const text = item.level.label;
+          const width = Math.min(150, Math.max(28, context.measureText(text).width + 12));
+          const x = Math.max(3, mediaSize.width - width - 5);
+          const y = labelY.get(item.level.id) ?? item.centreY;
+          context.save();
+          context.globalAlpha = 0.86 * opacityScale;
+          context.fillStyle = options.backgroundColor;
+          context.beginPath();
+          context.roundRect(x, y - 7, width, 14, 4);
+          context.fill();
+          context.globalAlpha = 0.34 * opacityScale;
+          context.strokeStyle = color;
+          context.lineWidth = 1;
+          context.stroke();
+          context.globalAlpha = 0.9 * opacityScale;
+          context.fillStyle = color;
+          context.fillText(text, x + 6, y, width - 12);
+          context.restore();
+        }
+      }
+      context.restore();
+    });
+  }
+}
+
+class HedgeLevelsView implements ISeriesPrimitivePaneView {
+  private readonly hedgeRenderer: HedgeLevelsRenderer;
+
+  constructor(primitive: HedgeLevelsPrimitive) {
+    this.hedgeRenderer = new HedgeLevelsRenderer(primitive);
+  }
+
+  zOrder() {
+    return "top" as const;
+  }
+
+  renderer() {
+    return this.hedgeRenderer;
+  }
+}
+
+class HedgeLevelsPrimitive implements ISeriesPrimitive<Time> {
+  private candleSeries: CandleSeriesApi | null = null;
+  private requestRedraw: (() => void) | null = null;
+  private renderLevels: HedgeChartLevel[] = [];
+  private renderOptions = DEFAULT_HEDGE_LEVELS_PRIMITIVE_OPTIONS;
+  private previousPrices = new Map<string, number>();
+  private animationStartedAt = 0;
+  private animationFrame: number | null = null;
+  private readonly hedgeView = new HedgeLevelsView(this);
+
+  attached(param: SeriesAttachedParameter<Time, "Candlestick">) {
+    this.candleSeries = param.series as CandleSeriesApi;
+    this.requestRedraw = param.requestUpdate;
+    this.requestRedraw();
+  }
+
+  detached() {
+    if (this.animationFrame !== null) window.cancelAnimationFrame(this.animationFrame);
+    this.animationFrame = null;
+    this.candleSeries = null;
+    this.requestRedraw = null;
+  }
+
+  update(levels: HedgeChartLevel[], options: HedgeLevelsPrimitiveOptions) {
+    const oldPrices = new Map(this.renderLevels.map((level) => [level.id, this.displayPrice(level)]));
+    const moved = levels.some((level) => {
+      const previous = oldPrices.get(level.id);
+      return previous !== undefined && Math.abs(previous - level.price) > 0.0001;
+    });
+    this.previousPrices = oldPrices;
+    this.renderLevels = levels;
+    this.renderOptions = options;
+    if (moved) {
+      this.animationStartedAt = performance.now();
+      this.scheduleAnimation();
+    }
+    this.requestRedraw?.();
+  }
+
+  private scheduleAnimation() {
+    if (this.animationFrame !== null) window.cancelAnimationFrame(this.animationFrame);
+    const tick = () => {
+      this.requestRedraw?.();
+      if (performance.now() - this.animationStartedAt < 220) {
+        this.animationFrame = window.requestAnimationFrame(tick);
+      } else {
+        this.animationFrame = null;
+        this.previousPrices.clear();
+      }
+    };
+    this.animationFrame = window.requestAnimationFrame(tick);
+  }
+
+  displayPrice(level: HedgeChartLevel) {
+    const previous = this.previousPrices.get(level.id);
+    if (previous === undefined || this.animationStartedAt <= 0) return level.price;
+    const progress = Math.max(0, Math.min(1, (performance.now() - this.animationStartedAt) / 220));
+    const eased = 1 - (1 - progress) ** 3;
+    return previous + (level.price - previous) * eased;
+  }
+
+  series() {
+    return this.candleSeries;
+  }
+
+  levels() {
+    return this.renderLevels;
+  }
+
+  options() {
+    return this.renderOptions;
+  }
+
+  paneViews() {
+    return [this.hedgeView];
+  }
+}
+
 class GameplanUnderlayRenderer implements ISeriesPrimitivePaneRenderer {
   constructor(private readonly primitive: GameplanUnderlayPrimitive) {}
 
@@ -1353,6 +1571,7 @@ export default function Chart({
   const backgroundZonesRef = useRef<ChartZone[]>([]);
   const gameplanUnderlayRef = useRef<GameplanUnderlayPrimitive | null>(null);
   const sessionHighLowPrimitiveRef = useRef<SessionHighLowPrimitive | null>(null);
+  const hedgeLevelsPrimitiveRef = useRef<HedgeLevelsPrimitive | null>(null);
   const sessionHighLowRenderDataRef = useRef<SessionHighLowRenderLevel[]>([]);
   const volumeProfilePrimitiveRef = useRef<NativeVolumeProfilePrimitive | null>(null);
   const horzLineRef = useRef<HTMLDivElement>(null);
@@ -2177,6 +2396,32 @@ export default function Chart({
     overlaySize.height,
     overlaySize.width,
     viewportVersion,
+  ]);
+
+  useEffect(() => {
+    const primitive = hedgeLevelsPrimitiveRef.current;
+    if (!primitive) return;
+    const indicatorSettings = hedgeLevelsIndicator?.settings ?? {};
+    primitive.update(
+      hedgeLevelsIndicator && hedgeLevelsPayload
+        ? renderableHedgeLevels(true, hedgeLevelsPayload.levels)
+        : [],
+      {
+        showBelowFlip: indicatorSettings.showBelowFlip !== false,
+        showLabels: indicatorSettings.showLabels !== false,
+        fillOpacity: Math.max(0.01, Math.min(0.1, Number(indicatorSettings.fillOpacity ?? 5) / 100)),
+        lineOpacity: Math.max(0.1, Math.min(1, Number(indicatorSettings.lineOpacity ?? 62) / 100)),
+        stale: hedgeLevelsPayload?.stale ?? false,
+        pulseIds: hedgeLevelsPulseIds,
+        backgroundColor: settings.backgroundColor,
+      },
+    );
+  }, [
+    chartReadyRevision,
+    hedgeLevelsIndicator,
+    hedgeLevelsPayload,
+    hedgeLevelsPulseIds,
+    settings.backgroundColor,
   ]);
   const tpoIndicator = useMemo(
     () => indicators.find((instance) => instance.enabled && instance.indicatorId === "tpo-levels") ?? null,
@@ -4289,6 +4534,9 @@ export default function Chart({
     sessionHighLowPrimitive.update(sessionHighLowRenderDataRef.current);
     candleSeries.attachPrimitive(sessionHighLowPrimitive);
     sessionHighLowPrimitiveRef.current = sessionHighLowPrimitive;
+    const hedgeLevelsPrimitive = new HedgeLevelsPrimitive();
+    candleSeries.attachPrimitive(hedgeLevelsPrimitive);
+    hedgeLevelsPrimitiveRef.current = hedgeLevelsPrimitive;
     const volumeProfilePrimitive = new NativeVolumeProfilePrimitive();
     candleSeries.attachPrimitive(volumeProfilePrimitive);
     volumeProfilePrimitiveRef.current = volumeProfilePrimitive;
@@ -4516,12 +4764,20 @@ export default function Chart({
             // Chart teardown can detach primitives before React cleanup runs.
           }
         }
+        if (candleSeriesRef.current && hedgeLevelsPrimitiveRef.current) {
+          try {
+            candleSeriesRef.current.detachPrimitive(hedgeLevelsPrimitiveRef.current);
+          } catch {
+            // Chart teardown can detach primitives before React cleanup runs.
+          }
+        }
         chartRef.current.remove();
         chartRef.current = null;
       }
       candleSeriesRef.current = null;
       gameplanUnderlayRef.current = null;
       sessionHighLowPrimitiveRef.current = null;
+      hedgeLevelsPrimitiveRef.current = null;
       volumeProfilePrimitiveRef.current = null;
       indicatorSeriesRefs.current = [];
       priceLinesRef.current = [];
@@ -4978,7 +5234,10 @@ export default function Chart({
         <div
           className="pointer-events-none absolute inset-0 z-[13] overflow-hidden"
           aria-label="Hedge Levels dealer-hedging bands"
-          style={{ opacity: hedgeLevelsPayload.stale ? 0.52 : 1 }}
+          // The chart primitive owns all visible pixels so bands share the
+          // candle renderer's exact price-scale frame. This transparent layer
+          // remains only for pointer hit-testing and tooltip positioning.
+          style={{ opacity: 0 }}
         >
           {hedgeLevelsOverlay.showBelowFlip && hedgeLevelsOverlay.flipY !== null ? (
             <div
