@@ -943,11 +943,16 @@ function loadLocalWorkspacePresets(): WorkspacePreset[] {
 
 function normalizeWorkspacePane(pane: Partial<WorkspacePane>, fallback: WorkspacePane): WorkspacePane {
   if (pane.broker !== "Databento" && pane.broker !== "Market Index") return fallback;
+  const broker = pane.broker ?? fallback.broker;
+  const requestedTimeframe = pane.timeframe ?? fallback.timeframe;
+  const timeframe = broker === "Market Index" && !supportsChartInterval(requestedTimeframe, broker)
+    ? "1D"
+    : requestedTimeframe;
   return {
     id: pane.id ?? fallback.id,
     symbol: pane.symbol ?? fallback.symbol,
-    broker: pane.broker ?? fallback.broker,
-    timeframe: pane.timeframe ?? fallback.timeframe,
+    broker,
+    timeframe,
     period: pane.period ?? "5D",
     watchlistKey: pane.watchlistKey ?? makeWatchlistKey(pane.symbol ?? fallback.symbol, pane.broker ?? fallback.broker),
   };
@@ -9324,6 +9329,9 @@ export default function KwantifyWorkspace({
   const selectInstrument = (symbol: string, broker?: string, watchlistKey?: string) => {
     clearBacktest();
     const nextBroker = broker ?? connectedBroker ?? "OANDA";
+    const nextTimeframe = nextBroker === "Market Index" && !supportsChartInterval(selectedTimeframe, nextBroker)
+      ? "1D"
+      : selectedTimeframe;
     if (nextBroker === "Databento") {
       void warmDatabentoChartHistory(symbol, "1m");
       if (selectedTimeframe !== "1m") {
@@ -9333,9 +9341,11 @@ export default function KwantifyWorkspace({
     updateWorkspacePane(activePaneId, {
       symbol,
       broker: nextBroker,
+      timeframe: nextTimeframe,
       watchlistKey: watchlistKey ?? makeWatchlistKey(symbol, nextBroker),
     });
     setSelectedInstrument(symbol);
+    if (nextTimeframe !== selectedTimeframe) setSelectedTimeframe(nextTimeframe);
     if (watchlistKey) setSelectedWatchlistKey(watchlistKey);
     if (broker && broker !== connectedBroker) {
       setConnectedBroker(broker);

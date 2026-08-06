@@ -223,6 +223,13 @@ export function supportsChartInterval(value: string, broker: string) {
   const option = getChartInterval(value);
   if (!option) return false;
   if (broker === "Databento") return true;
+  // The reliable Market Index history path is the official Cboe daily
+  // archive. Live index snapshots update the active daily candle, but they do
+  // not constitute an intraday OHLC archive. Do not offer minute/hour views
+  // that would either fail or imply made-up historical bars.
+  if (broker === "Market Index") {
+    return ["1D", "1W", "1M"].includes(value);
+  }
   if (option.futuresOnly) return false;
   if (!CHART_INTERVAL_OPTIONS.some((configured) => configured.id === value)) return false;
   if (option.kind !== "second") return true;

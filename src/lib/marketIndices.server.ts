@@ -230,6 +230,8 @@ export async function fetchMarketIndexCandles(options: {
 }): Promise<Candle[]> {
   const definition = getMarketIndexDefinition(options.symbol);
   if (!definition) throw new Error(`${options.symbol} is not a supported market index.`);
+  const canUseOfficialVixArchive = definition.symbol === "VIX"
+    && ["1D", "1W", "1M"].includes(options.timeframe);
   if (!hasIntradayMarketIndexHistoryAccess()) {
     if (definition.symbol !== "VIX") {
       throw new Error(`${definition.symbol} requires an indices-entitled MASSIVE_API_KEY.`);
@@ -246,25 +248,34 @@ export async function fetchMarketIndexCandles(options: {
   endpoint.searchParams.set("sort", "asc");
   endpoint.searchParams.set("limit", "50000");
 
-  const payload = await fetchMassiveJson(endpoint.toString());
-  const rows = Array.isArray(payload.results) ? payload.results : [];
-  return rows.flatMap((value) => {
-    if (!isRecord(value)) return [];
-    const timestamp = finiteNumber(value.t ?? value.timestamp);
-    const open = finiteNumber(value.o ?? value.open);
-    const high = finiteNumber(value.h ?? value.high);
-    const low = finiteNumber(value.l ?? value.low);
-    const close = finiteNumber(value.c ?? value.close);
-    if (timestamp === null || open === null || high === null || low === null || close === null) return [];
-    return [{
-      timestamp,
-      open,
-      high,
-      low,
-      close,
-      volume: finiteNumber(value.v ?? value.volume) ?? 0,
-    }];
-  });
+  try {
+    const payload = await fetchMassiveJson(endpoint.toString());
+    const rows = Array.isArray(payload.results) ? payload.results : [];
+    const candles = rows.flatMap((value) => {
+      if (!isRecord(value)) return [];
+      const timestamp = finiteNumber(value.t ?? value.timestamp);
+      const open = finiteNumber(value.o ?? value.open);
+      const high = finiteNumber(value.h ?? value.high);
+      const low = finiteNumber(value.l ?? value.low);
+      const close = finiteNumber(value.c ?? value.close);
+      if (timestamp === null || open === null || high === null || low === null || close === null) return [];
+      return [{
+        timestamp,
+        open,
+        high,
+        low,
+        close,
+        volume: finiteNumber(value.v ?? value.volume) ?? 0,
+      }];
+    });
+    if (candles.length || !canUseOfficialVixArchive) return candles;
+  } catch (error) {
+    if (!canUseOfficialVixArchive) throw error;
+  }
+
+  // A configured Massive key may still lack the indices entitlement. VIX
+  // daily/weekly/monthly charts must remain usable in that case.
+  return fetchCboeVixEodCandles(options);
 }
 
 export async function fetchMarketIndexSnapshots(symbols: string[]) {
