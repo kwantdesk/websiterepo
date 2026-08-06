@@ -9,7 +9,9 @@ import {
   isGexBotFlowRth,
   newYorkSessionKey,
   nextGexBotFlowBackoffMs,
+  normalizeGexBotFlowMajors,
   normalizeGexBotFlowSample,
+  type GexBotFlowMajors,
   type GexBotFlowPayload,
   type GexBotFlowSample,
   type GexBotRestrikeNotice,
@@ -17,11 +19,14 @@ import {
 } from "@/lib/gexBotFlow";
 
 const GEXBOT_FLOW_URL = `https://api.gex.bot/v2/${GEXBOT_FLOW_TICKER}/orderflow/orderflow`;
+const GEXBOT_MAJORS_URL = `https://api.gex.bot/v2/${GEXBOT_FLOW_TICKER}/classic/gex_zero/majors`;
 const DEFAULT_STRIKE_INTERVAL = 25;
+const MAJORS_FRESH_MS = 5 * 60_000;
 
 type PollerState = {
   sessionKey: string | null;
   sample: GexBotFlowSample | null;
+  majors: GexBotFlowMajors | null;
   window: GexBotFlowSample[];
   verdicts: GexBotSponsorshipVerdict[];
   restrikes: GexBotRestrikeNotice[];
@@ -36,6 +41,7 @@ type PollerState = {
 const state: PollerState = {
   sessionKey: null,
   sample: null,
+  majors: null,
   window: [],
   verdicts: [],
   restrikes: [],
@@ -80,6 +86,11 @@ function resetForSession(sessionKey: string) {
   state.nextAttemptAt = 0;
 }
 
+function freshMajors(now: number, marketOpen: boolean): GexBotFlowMajors | null {
+  if (!marketOpen || !state.majors) return null;
+  return now - state.majors.fetchedAtMs <= MAJORS_FRESH_MS ? state.majors : null;
+}
+
 function currentPayload(now: number, marketOpen: boolean) {
   return buildGexBotFlowPayload({
     sample: state.sample,
@@ -91,6 +102,7 @@ function currentPayload(now: number, marketOpen: boolean) {
     requestFailed: state.lastRequestFailed,
     error: state.lastError ?? undefined,
     sponsorship: sponsorshipConfig(),
+    majors: freshMajors(now, marketOpen),
   });
 }
 
@@ -141,8 +153,28 @@ async function requestFlowSample(now: number) {
   return normalizeGexBotFlowSample(payload, now);
 }
 
+async function requestMajors(now: number) {
+  const key = configuredApiKey();
+  if (!key) return null;
+  const response = await fetch(GEXBOT_MAJORS_URL, {
+    headers: {
+      Accept: "application/json",
+      Authorization: `Bearer ${key}`,
+      "User-Agent": "KwantDesk/1.0",
+    },
+    cache: "no-store",
+    signal: AbortSignal.timeout(8_000),
+  });
+  if (!response.ok) return null;
+  const payload = await response.json().catch(() => null) as Record<string, unknown> | null;
+  return payload ? normalizeGexBotFlowMajors(payload, now) : null;
+}
+
 async function poll(now: number, marketOpen: boolean) {
   state.lastAttemptAt = now;
+  // Majors ride the same cadence but must never take the flow sample down
+  // with them; a failed majors request just keeps the previous fresh value.
+  const majorsRequest = requestMajors(now).catch(() => null);
   try {
     const sample = await requestFlowSample(now);
     appendSample(sample, now);
@@ -156,6 +188,8 @@ async function poll(now: number, marketOpen: boolean) {
     state.lastError = error instanceof Error ? error.message : "GEX Bot flow request failed.";
     state.nextAttemptAt = now + nextGexBotFlowBackoffMs(state.consecutiveFailures);
   }
+  const majors = await majorsRequest;
+  if (majors) state.majors = majors;
   return currentPayload(Date.now(), marketOpen);
 }
 

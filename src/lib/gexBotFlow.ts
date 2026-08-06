@@ -49,6 +49,15 @@ export type GexBotRestrikeNotice = {
   label: string;
 };
 
+export type GexBotFlowMajors = {
+  volPositive: number | null;
+  volNegative: number | null;
+  oiPositive: number | null;
+  oiNegative: number | null;
+  zeroGamma: number | null;
+  fetchedAtMs: number;
+};
+
 export type GexBotFlowPayload = {
   ok: boolean;
   ticker: typeof GEXBOT_FLOW_TICKER;
@@ -57,6 +66,10 @@ export type GexBotFlowPayload = {
   generatedAt: string;
   checkedAt: string;
   sample: GexBotFlowSample | null;
+  // Live majors from the provider's majors endpoint, already NQ basis — the
+  // chart's "Major ± Vol/OI" lines prefer these over any mapped book so the
+  // on-chart values always match GEX Bot in real time. Null when not fresh.
+  majors: GexBotFlowMajors | null;
   dataAgeMs: number | null;
   freezeTime: string | null;
   cadenceMs: number;
@@ -333,6 +346,30 @@ export function mergeOneFamilyPositioning<T extends FlowComparableLevel>(
   return next;
 }
 
+export function normalizeGexBotFlowMajors(
+  payload: Record<string, unknown>,
+  now: number,
+): GexBotFlowMajors | null {
+  const read = (key: string): number | null => {
+    const value = Number(payload[key]);
+    return Number.isFinite(value) && value > 0 ? value : null;
+  };
+  const majors: GexBotFlowMajors = {
+    volPositive: read("mpos_vol"),
+    volNegative: read("mneg_vol"),
+    oiPositive: read("mpos_oi"),
+    oiNegative: read("mneg_oi"),
+    zeroGamma: read("zero_gamma"),
+    fetchedAtMs: now,
+  };
+  const hasAny = majors.volPositive !== null
+    || majors.volNegative !== null
+    || majors.oiPositive !== null
+    || majors.oiNegative !== null
+    || majors.zeroGamma !== null;
+  return hasAny ? majors : null;
+}
+
 export function buildGexBotFlowPayload(args: {
   sample: GexBotFlowSample | null;
   window: GexBotFlowSample[];
@@ -343,6 +380,7 @@ export function buildGexBotFlowPayload(args: {
   requestFailed?: boolean;
   error?: string;
   sponsorship?: SponsorshipConfig;
+  majors?: GexBotFlowMajors | null;
 }): GexBotFlowPayload {
   const now = args.now ?? Date.now();
   const sample = args.sample;
@@ -371,6 +409,7 @@ export function buildGexBotFlowPayload(args: {
     generatedAt,
     checkedAt: new Date(now).toISOString(),
     sample,
+    majors: args.majors ?? null,
     dataAgeMs,
     freezeTime: status === "FROZEN" && sample ? new Date(sample.timestamp).toISOString() : null,
     cadenceMs: GEXBOT_FLOW_POLL_MS,

@@ -1971,22 +1971,37 @@ export default function Chart({
       ), null);
       return snapshot && Math.abs(snapshot.timestamp - target) <= 90_000 ? { minutes, snapshot } : null;
     }).filter((value): value is { minutes: number; snapshot: ClassicGexHistorySnapshot } => Boolean(value));
+    // Majors policy: the live GEX Bot values (already NQ basis, no mapping)
+    // are the source of truth for these lines whenever they are fresh, so the
+    // chart always matches the provider in real time. The QuantData-mapped
+    // majors are the fallback only, and they are labelled as such. A mapping
+    // that degenerated to scale 1 would draw raw index strikes on a futures
+    // chart, so that fallback is suppressed entirely.
+    const liveMajors = gexBotFlow?.status === "LIVE" ? gexBotFlow.majors : null;
+    const mappingDegenerate = classicGexProfile.mapping.mode === "AUTO"
+      && classicGexProfile.mapping.scale === 1
+      && (classicGexProfile.sourceSymbol === "NDX" || classicGexProfile.sourceSymbol === "QQQ");
+    const majorLine = (
+      show: boolean,
+      livePrice: number | null | undefined,
+      mapped: { strike: number; mappedPrice: number; value: number } | null,
+      label: string,
+      color: string,
+      dash: string,
+    ) => {
+      if (!show) return null;
+      if (typeof livePrice === "number" && Number.isFinite(livePrice) && livePrice > 0) {
+        return { strike: livePrice, mappedPrice: livePrice, value: livePrice, label: `${label} · GB live`, color, dash };
+      }
+      if (!mapped || mappingDegenerate) return null;
+      return { ...mapped, label: `${label} · QD map`, color, dash };
+    };
     const lines = [
-      profileSettings.showMajorPositiveVolume !== false && classicGexProfile.majors.positiveVolume
-        ? { ...classicGexProfile.majors.positiveVolume, label: "Major + Vol", color: "#22C55E", dash: "7 5" }
-        : null,
-      profileSettings.showMajorNegativeVolume !== false && classicGexProfile.majors.negativeVolume
-        ? { ...classicGexProfile.majors.negativeVolume, label: "Major - Vol", color: "#EF4444", dash: "7 5" }
-        : null,
-      profileSettings.showMajorPositiveOpenInterest !== false && classicGexProfile.majors.positiveOpenInterest
-        ? { ...classicGexProfile.majors.positiveOpenInterest, label: "Major + OI", color: "#4ADE80", dash: "2 4" }
-        : null,
-      profileSettings.showMajorNegativeOpenInterest !== false && classicGexProfile.majors.negativeOpenInterest
-        ? { ...classicGexProfile.majors.negativeOpenInterest, label: "Major - OI", color: "#FB7185", dash: "2 4" }
-        : null,
-      profileSettings.showZeroGamma !== false && classicGexProfile.zeroGamma
-        ? { ...classicGexProfile.zeroGamma, label: "Zero Gamma", color: String(profileSettings.zeroGammaColor ?? "#F4F4F5"), dash: "9 5" }
-        : null,
+      majorLine(profileSettings.showMajorPositiveVolume !== false, liveMajors?.volPositive, classicGexProfile.majors.positiveVolume, "Major + Vol", "#22C55E", "7 5"),
+      majorLine(profileSettings.showMajorNegativeVolume !== false, liveMajors?.volNegative, classicGexProfile.majors.negativeVolume, "Major - Vol", "#EF4444", "7 5"),
+      majorLine(profileSettings.showMajorPositiveOpenInterest !== false, liveMajors?.oiPositive, classicGexProfile.majors.positiveOpenInterest, "Major + OI", "#4ADE80", "2 4"),
+      majorLine(profileSettings.showMajorNegativeOpenInterest !== false, liveMajors?.oiNegative, classicGexProfile.majors.negativeOpenInterest, "Major - OI", "#FB7185", "2 4"),
+      majorLine(profileSettings.showZeroGamma !== false, liveMajors?.zeroGamma, classicGexProfile.zeroGamma, "Zero Gamma", String(profileSettings.zeroGammaColor ?? "#F4F4F5"), "9 5"),
     ].filter((line): line is NonNullable<typeof line> => Boolean(line)).flatMap((line) => {
       const y = candleSeriesRef.current?.priceToCoordinate(line.mappedPrice) ?? null;
       return y === null || y < 2 || y > plotHeight ? [] : [{ ...line, y }];
@@ -2013,6 +2028,7 @@ export default function Chart({
     classicGexHistory,
     classicGexIndicator,
     classicGexProfile,
+    gexBotFlow,
     indicatorPaneHeight,
     overlaySize.height,
     overlaySize.width,
