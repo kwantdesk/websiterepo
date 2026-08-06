@@ -73,6 +73,31 @@ function durablePayload(now: number, generationKey: string, config: Partial<TpoE
   )();
 }
 
+async function previousDurablePayload(
+  windows: Array<{ date: string; start: number; end: number }>,
+  configKey: string,
+  config: Partial<TpoEngineConfig>,
+) {
+  // Vercel's incremental cache is shared across serverless instances. Probe
+  // both keys a completed RTH profile can have (before and after the Chicago
+  // daily completion) so a cold instance can still recover the prior good
+  // generation during a data-source outage.
+  for (const window of windows.slice(1, 3)) {
+    const anchors = [window.end + 1_000, window.end + 2 * 60 * 60_000];
+    for (const anchor of anchors) {
+      const key = `${window.date}:${nextCmeDailyCompletion(anchor)}:${configKey}`;
+      try {
+        const payload = await durablePayload(anchor, key, config);
+        if (payload?.zones && payload.sourceSessions.includes(window.date)) return payload;
+      } catch {
+        // A cache miss may attempt a historical rebuild and fail with the same
+        // upstream outage. Continue probing the other retained generation.
+      }
+    }
+  }
+  return null;
+}
+
 async function durableOrDirect(now: number, generationKey: string, config: Partial<TpoEngineConfig>) {
   try {
     return await durablePayload(now, generationKey, config);
@@ -154,7 +179,8 @@ export async function GET(request: Request) {
     });
   } catch (error) {
     if (memoryCache.get(completionKey)?.promise === promise) memoryCache.delete(completionKey);
-    const lastGood = globalTpoCache.__kwantdeskTpoLastGood;
+    const lastGood = globalTpoCache.__kwantdeskTpoLastGood
+      ?? await previousDurablePayload(windows, configKey, config);
     if (lastGood) {
       return NextResponse.json(staleTpoPayload(lastGood, now), {
         headers: { "Cache-Control": "no-store" },
