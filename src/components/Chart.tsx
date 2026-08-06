@@ -110,6 +110,11 @@ import type {
   ClassicGexProfilePayload,
   ClassicGexProfileRow,
 } from "@/lib/classicGexProfile";
+import {
+  applyTpoDisplayCap,
+  type TpoLevelsPayload,
+  type TpoZone,
+} from "@/lib/tpoLevels";
 
 interface ChartProps {
   candles: Candle[];
@@ -196,6 +201,37 @@ function formatClassicGexValue(value: number | null) {
   if (absolute >= 1_000) return `${sign}${(absolute / 1_000).toFixed(1)}K`;
   return `${sign}${absolute.toFixed(0)}`;
 }
+
+function formatTpoAge(milliseconds: number) {
+  const seconds = Math.max(0, Math.floor(milliseconds / 1_000));
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 48) return `${hours}h`;
+  return `${Math.floor(hours / 24)}d`;
+}
+
+const TPO_LEVEL_QUERY_KEYS = [
+  "rowSize",
+  "minimumTrades",
+  "tailMinimumRows",
+  "singlePrintMinimumRows",
+  "ledgeMinimumBrackets",
+  "ledgeToleranceRows",
+  "failedAuctionMinimumRows",
+  "failedAuctionMaximumTpo",
+  "edgeSmoothingRows",
+  "edgeDropPercent",
+  "edgeMaximumWidthRows",
+  "acceptedBasePercent",
+  "seamTroughPercent",
+  "volumeLvnPercent",
+  "acceptanceBrackets",
+  "partialFillPercent",
+  "expireAfterSessions",
+  "expireStrength",
+] as const;
 
 type SessionHighLowRenderLevel = {
   id: string;
@@ -1299,6 +1335,10 @@ export default function Chart({
     y: number;
     row: ClassicGexProfileRow;
   } | null>(null);
+  const [tpoPayload, setTpoPayload] = useState<TpoLevelsPayload | null>(null);
+  const [tpoLoading, setTpoLoading] = useState(false);
+  const [tpoError, setTpoError] = useState<string | null>(null);
+  const [tpoTooltip, setTpoTooltip] = useState<{ x: number; y: number; zone: TpoZone } | null>(null);
   const [chartReadyRevision, setChartReadyRevision] = useState(0);
   const [sampledIndicatorCandles, setSampledIndicatorCandles] = useState(candles);
   const [sampledIndicatorMarketTrades, setSampledIndicatorMarketTrades] = useState(marketTrades);
@@ -1692,6 +1732,219 @@ export default function Chart({
     indicatorPaneHeight,
     overlaySize.height,
     overlaySize.width,
+    viewportVersion,
+  ]);
+  const tpoIndicator = useMemo(
+    () => indicators.find((instance) => instance.enabled && instance.indicatorId === "tpo-levels") ?? null,
+    [indicatorSignature, indicators],
+  );
+  const tpoSettingsSignature = JSON.stringify(tpoIndicator?.settings ?? {});
+
+  useEffect(() => {
+    if (!tpoIndicator) {
+      setTpoPayload(null);
+      setTpoLoading(false);
+      setTpoError(null);
+      setTpoTooltip(null);
+      return;
+    }
+    const normalizedInstrument = instrument.trim().toUpperCase();
+    if (!/(^|[^A-Z])M?NQ([^A-Z]|$)/.test(normalizedInstrument)) {
+      setTpoPayload(null);
+      setTpoLoading(false);
+      setTpoError("TPO Levels are calculated on NQ and displayed identically on MNQ.");
+      return;
+    }
+    let cancelled = false;
+    let timer: number | null = null;
+    const controller = new AbortController();
+    const storageKey = `kwantdesk:tpo-levels:last-good:v1:${tpoSettingsSignature}`;
+    const settingsForTpo = tpoIndicator.settings ?? {};
+    const params = new URLSearchParams();
+    TPO_LEVEL_QUERY_KEYS.forEach((key) => {
+      const value = Number(settingsForTpo[key]);
+      if (Number.isFinite(value)) params.set(key, String(value));
+    });
+    const schedule = (payload: TpoLevelsPayload | null, fallbackMs = 60_000) => {
+      if (cancelled) return;
+      const target = payload ? Date.parse(payload.nextRefreshAt) + 1_000 : Date.now() + fallbackMs;
+      const delay = Math.max(30_000, Math.min(24 * 60 * 60_000, target - Date.now()));
+      timer = window.setTimeout(load, delay);
+    };
+    const cachedFallback = (message: string) => {
+      try {
+        const raw = window.localStorage.getItem(storageKey);
+        if (!raw) return null;
+        const cached = JSON.parse(raw) as TpoLevelsPayload;
+        if (!Array.isArray(cached.zones) || !cached.generatedAt) return null;
+        return {
+          ...cached,
+          stale: true,
+          dataAge: Math.max(0, Date.now() - Date.parse(cached.generatedAt)),
+        } satisfies TpoLevelsPayload;
+      } catch {
+        setTpoError(message);
+        return null;
+      }
+    };
+    async function load() {
+      setTpoLoading((current) => current || !tpoPayload);
+      try {
+        const response = await fetch(`/api/databento/tpo-levels?${params.toString()}`, {
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        const text = await response.text();
+        let candidate: (TpoLevelsPayload & { error?: string }) | null = null;
+        try {
+          candidate = JSON.parse(text) as TpoLevelsPayload & { error?: string };
+        } catch {
+          throw new Error("TPO Levels received a non-JSON data-source response.");
+        }
+        if (!response.ok || !candidate || !Array.isArray(candidate.zones)) {
+          throw new Error(candidate?.error || "TPO Levels are unavailable.");
+        }
+        if (cancelled) return;
+        setTpoPayload(candidate);
+        setTpoError(null);
+        if (!candidate.stale) window.localStorage.setItem(storageKey, JSON.stringify(candidate));
+        schedule(candidate, candidate.stale ? 60_000 : 5 * 60_000);
+      } catch (error) {
+        if (cancelled || (error instanceof DOMException && error.name === "AbortError")) return;
+        const message = error instanceof Error ? error.message : "TPO Levels are unavailable.";
+        const fallback = cachedFallback(message);
+        if (fallback) {
+          setTpoPayload(fallback);
+          setTpoError(message);
+        } else {
+          setTpoPayload(null);
+          setTpoError(message);
+        }
+        schedule(fallback, 60_000);
+      } finally {
+        if (!cancelled) setTpoLoading(false);
+      }
+    }
+    void load();
+    return () => {
+      cancelled = true;
+      controller.abort();
+      if (timer !== null) window.clearTimeout(timer);
+    };
+  // The serialized settings deliberately make each threshold configuration a
+  // separate completed-session cache key without refetching on chart ticks.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [instrument, tpoIndicator?.instanceId, tpoSettingsSignature]);
+
+  const tpoOverlay = useMemo(() => {
+    if (!tpoIndicator || !tpoPayload || !candleSeriesRef.current || !chartRef.current) return null;
+    const plotWidth = Math.max(0, overlaySize.width - 64);
+    const plotHeight = Math.max(0, overlaySize.height - 26 - indicatorPaneHeight);
+    if (plotWidth < 160 || plotHeight < 80) return null;
+    const latestPrice = candles.at(-1)?.close ?? tpoPayload.currentPrice;
+    const settingsForTpo = tpoIndicator.settings ?? {};
+    const existingLevels = levels ?? [];
+    const prioritized = tpoPayload.zones.map((zone) => {
+      const centre = (zone.low + zone.high) / 2;
+      const distanceRows = latestPrice == null
+        ? 0
+        : Math.abs(latestPrice - centre) / Math.max(0.25, tpoPayload.source.rowSize);
+      const confluence = existingLevels.filter((level) => level.price >= zone.low && level.price <= zone.high);
+      const boostedStrength = Math.min(100, zone.strength + Math.min(15, confluence.length * 5));
+      const priority = boostedStrength
+        * (0.8 ** zone.touches)
+        * (0.92 ** zone.ageSessions)
+        / (1 + distanceRows / 100);
+      return {
+        ...zone,
+        strength: boostedStrength,
+        currentPriority: priority,
+        confluenceReasons: [...new Set([
+          ...zone.confluenceReasons,
+          ...confluence.map((level) => `Automatic level: ${level.label}`),
+        ])],
+      };
+    });
+    const displayed = applyTpoDisplayCap(prioritized, latestPrice, 3).filter((zone) => zone.displayed && zone.active);
+    const useThemeColors = settingsForTpo.useThemeColors !== false;
+    const colors = {
+      support: useThemeColors ? settings.upColor : String(settingsForTpo.supportColor ?? settings.upColor),
+      resistance: useThemeColors ? settings.downColor : String(settingsForTpo.resistanceColor ?? settings.downColor),
+      neutral: useThemeColors ? settings.borderUpColor : String(settingsForTpo.neutralColor ?? settings.borderUpColor),
+    };
+    const maxOpacity = clamp(Number(settingsForTpo.fillOpacity ?? 15) / 100, 0.03, 0.35);
+    const borderOpacity = clamp(Number(settingsForTpo.borderOpacity ?? 58) / 100, 0.1, 1);
+    const positioned = displayed.flatMap((zone) => {
+      const highY = candleSeriesRef.current?.priceToCoordinate(zone.high) ?? null;
+      const lowY = candleSeriesRef.current?.priceToCoordinate(zone.low) ?? null;
+      if (highY === null || lowY === null) return [];
+      const rawTop = Math.min(highY, lowY);
+      const rawBottom = Math.max(highY, lowY);
+      if (rawBottom < 0 || rawTop > plotHeight) return [];
+      const formationTime = Math.floor(Date.parse(zone.formationStart) / 1_000) as Time;
+      const formationX = chartRef.current?.timeScale().timeToCoordinate(formationTime) ?? 0;
+      const top = Math.max(0, rawTop);
+      const bottom = Math.min(plotHeight, rawBottom);
+      const color = zone.side === "SUPPORT" ? colors.support
+        : zone.side === "RESISTANCE" ? colors.resistance
+          : colors.neutral;
+      return [{
+        zone,
+        x: Math.max(0, Math.min(plotWidth - 4, formationX)),
+        y: top,
+        width: Math.max(4, plotWidth - Math.max(0, formationX)),
+        height: Math.max(3, bottom - top),
+        centreY: (top + bottom) / 2,
+        color,
+        opacity: maxOpacity * (0.35 + 0.65 * zone.strength / 100) * (tpoPayload.stale ? 0.55 : 1),
+      }];
+    });
+    const labelY = new Map<string, number>();
+    const orderedLabels = positioned.slice().sort((left, right) => left.centreY - right.centreY);
+    const minimumY = 9;
+    const maximumY = plotHeight - 4;
+    const labelGap = orderedLabels.length > 1
+      ? Math.min(13, (maximumY - minimumY) / (orderedLabels.length - 1))
+      : 13;
+    const resolvedLabels = orderedLabels.map((item) => ({
+      item,
+      y: Math.max(minimumY, Math.min(maximumY, item.centreY + 3)),
+    }));
+    for (let index = 1; index < resolvedLabels.length; index += 1) {
+      resolvedLabels[index].y = Math.max(resolvedLabels[index].y, resolvedLabels[index - 1].y + labelGap);
+    }
+    for (let index = resolvedLabels.length - 2; index >= 0; index -= 1) {
+      resolvedLabels[index].y = Math.min(resolvedLabels[index].y, resolvedLabels[index + 1].y - labelGap);
+    }
+    if (resolvedLabels.length && resolvedLabels[0].y < minimumY) {
+      const shift = minimumY - resolvedLabels[0].y;
+      resolvedLabels.forEach((entry) => { entry.y += shift; });
+    }
+    if (resolvedLabels.length && resolvedLabels.at(-1)!.y > maximumY) {
+      const shift = resolvedLabels.at(-1)!.y - maximumY;
+      resolvedLabels.forEach((entry) => { entry.y -= shift; });
+    }
+    resolvedLabels.forEach(({ item, y }) => labelY.set(item.zone.id, y));
+    return {
+      plotWidth,
+      plotHeight,
+      positioned,
+      labelY,
+      showLabels: settingsForTpo.showLabels !== false,
+      borderOpacity,
+    };
+  }, [
+    candles,
+    chartReadyRevision,
+    indicatorPaneHeight,
+    levels,
+    overlaySize.height,
+    overlaySize.width,
+    settings.borderUpColor,
+    settings.downColor,
+    settings.upColor,
+    tpoIndicator,
+    tpoPayload,
     viewportVersion,
   ]);
   const resizeIndicatorPane = useCallback((key: string, nextHeight: number) => {
@@ -4150,6 +4403,96 @@ export default function Chart({
         marketIsActive={marketIsActive}
         bottom={56 + indicatorPaneHeight}
       />
+
+      {tpoIndicator ? (
+        <div className="pointer-events-none absolute right-[70px] top-11 z-[16] flex items-center gap-1.5 rounded-full border border-border bg-panel/90 px-2.5 py-1 font-mono text-[8px] uppercase tracking-[0.1em] text-muted shadow-lg backdrop-blur">
+          <span className="font-semibold text-foreground">TPO Levels</span>
+          {tpoLoading && !tpoPayload ? <span className="text-primary">Loading</span> : null}
+          {tpoPayload?.stale ? <span className="text-warning">TPO Stale {formatTpoAge(tpoPayload.dataAge)}</span> : null}
+          {tpoError && !tpoPayload ? <span className="max-w-[250px] truncate text-danger">{tpoError}</span> : null}
+          {tpoPayload && !tpoPayload.stale ? <span>{tpoPayload.sourceSessions.length} RTH</span> : null}
+        </div>
+      ) : null}
+
+      {tpoOverlay ? (
+        <svg
+          className="pointer-events-none absolute inset-0 z-[10] h-full w-full overflow-hidden"
+          viewBox={`0 0 ${Math.max(overlaySize.width, 1)} ${Math.max(overlaySize.height, 1)}`}
+          preserveAspectRatio="none"
+          aria-label="TPO Levels zones"
+        >
+          {tpoOverlay.positioned.map((item) => (
+            <g key={item.zone.id}>
+              <rect
+                x={item.x}
+                y={item.y}
+                width={item.width}
+                height={item.height}
+                rx={2}
+                fill={item.color}
+                fillOpacity={item.opacity}
+                stroke={item.color}
+                strokeOpacity={tpoOverlay.borderOpacity * (tpoPayload?.stale ? 0.55 : 1)}
+                strokeWidth={1}
+                style={{ pointerEvents: "all", cursor: "crosshair" }}
+                onMouseMove={(event) => {
+                  const rect = chartContainerRef.current?.getBoundingClientRect();
+                  if (!rect) return;
+                  setTpoTooltip({ x: event.clientX - rect.left, y: event.clientY - rect.top, zone: item.zone });
+                }}
+                onMouseLeave={() => setTpoTooltip(null)}
+              />
+              {tpoOverlay.showLabels ? (
+                <text
+                  x={tpoOverlay.plotWidth - 6}
+                  y={tpoOverlay.labelY.get(item.zone.id) ?? item.centreY}
+                  textAnchor="end"
+                  fill={item.color}
+                  fontFamily="'JetBrains Mono', monospace"
+                  fontSize={8}
+                  fontWeight={800}
+                  paintOrder="stroke"
+                  stroke={settings.backgroundColor}
+                  strokeWidth={3}
+                >
+                  {item.zone.label}{item.zone.state === "VIRGIN" ? "*" : ""}
+                </text>
+              ) : null}
+            </g>
+          ))}
+        </svg>
+      ) : null}
+
+      {tpoTooltip && tpoPayload ? (
+        <div
+          className="pointer-events-none absolute z-[82] w-[272px] rounded-xl border border-border bg-panel/96 p-3 font-mono text-[9px] leading-4 text-muted shadow-2xl backdrop-blur"
+          style={{
+            left: Math.max(8, Math.min(overlaySize.width - 282, tpoTooltip.x + 14)),
+            top: Math.max(8, Math.min(overlaySize.height - 250, tpoTooltip.y + 12)),
+          }}
+        >
+          <div className="mb-2 flex items-center justify-between gap-3 text-foreground">
+            <span className="font-semibold">{tpoTooltip.zone.label}</span>
+            <span>{tpoTooltip.zone.state}</span>
+          </div>
+          <div className="grid grid-cols-[1fr_auto] gap-x-3">
+            <span>Formation</span><span className="text-foreground">{tpoTooltip.zone.formationSession}</span>
+            <span>Price range</span><span className="text-foreground">{tpoTooltip.zone.low.toFixed(priceFormat.precision)} - {tpoTooltip.zone.high.toFixed(priceFormat.precision)}</span>
+            <span>TPO count</span><span className="text-foreground">{tpoTooltip.zone.tpoCount}</span>
+            <span>Volume confirmation</span><span className="text-foreground">{tpoTooltip.zone.volumeConfirmation ? `Yes · LVN ${tpoTooltip.zone.lvnValue?.toFixed(0) ?? "n/a"}` : "No"}</span>
+            <span>Touches</span><span className="text-foreground">{tpoTooltip.zone.touches}</span>
+            <span>Fill</span><span className="text-foreground">{tpoTooltip.zone.fillPercent}%</span>
+            <span>Strength</span><span className="text-foreground">{tpoTooltip.zone.strength}</span>
+            <span>Current priority</span><span className="text-foreground">{tpoTooltip.zone.currentPriority.toFixed(1)}</span>
+            <span>Data age</span><span className="text-foreground">{formatTpoAge(tpoPayload.stale ? tpoPayload.dataAge : Date.now() - Date.parse(tpoPayload.generatedAt))}</span>
+          </div>
+          {tpoTooltip.zone.confluenceReasons.length > 1 ? (
+            <div className="mt-2 border-t border-border pt-2 text-[8px] leading-3.5">
+              {tpoTooltip.zone.confluenceReasons.join(" · ")}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
 
       {classicGexIndicator ? (
         <div

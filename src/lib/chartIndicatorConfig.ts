@@ -44,6 +44,7 @@ export const LIVE_CHART_INDICATOR_IDS = new Set([
   "kwant-stats",
   "gamma-levels",
   "classic-gex-profile",
+  "tpo-levels",
   "source-code-indicator",
 ]);
 export const VOLUME_PROFILE_INDICATOR_IDS = new Set([
@@ -225,6 +226,28 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
     { key: "profileWidth", label: "Maximum profile width (% of chart)", defaultValue: 24, min: 8, max: 45, step: 1 },
     { key: "minBarWidth", label: "Minimum visible bar width (pixels)", defaultValue: 5, min: 1, max: 20, step: 1 },
     { key: "contrast", label: "Profile contrast (%)", defaultValue: 70, min: 15, max: 100, step: 1 },
+  ],
+  "tpo-levels": [
+    { key: "rowSize", label: "NQ row size (points)", defaultValue: 1, min: 0.25, max: 10, step: 0.25 },
+    { key: "minimumTrades", label: "Minimum trades per session", defaultValue: 500, min: 100, max: 10000, step: 100 },
+    { key: "tailMinimumRows", label: "Tail minimum rows", defaultValue: 3, min: 2, max: 20, step: 1 },
+    { key: "singlePrintMinimumRows", label: "Single-print minimum rows", defaultValue: 4, min: 2, max: 30, step: 1 },
+    { key: "ledgeMinimumBrackets", label: "Ledge minimum bracket extremes", defaultValue: 3, min: 2, max: 13, step: 1 },
+    { key: "ledgeToleranceRows", label: "Ledge tolerance (rows)", defaultValue: 1, min: 0, max: 5, step: 1 },
+    { key: "failedAuctionMinimumRows", label: "Failed-auction extension (rows)", defaultValue: 5, min: 2, max: 30, step: 1 },
+    { key: "failedAuctionMaximumTpo", label: "Failed-auction maximum TPO", defaultValue: 2, min: 1, max: 5, step: 1 },
+    { key: "edgeSmoothingRows", label: "Profile-edge smoothing rows", defaultValue: 5, min: 3, max: 11, step: 2 },
+    { key: "edgeDropPercent", label: "Profile-edge drop (%)", defaultValue: 50, min: 20, max: 80, step: 5 },
+    { key: "edgeMaximumWidthRows", label: "Profile-edge maximum width", defaultValue: 3, min: 1, max: 10, step: 1 },
+    { key: "acceptedBasePercent", label: "Accepted-base threshold (%)", defaultValue: 60, min: 30, max: 90, step: 5 },
+    { key: "seamTroughPercent", label: "Low-time seam trough (%)", defaultValue: 50, min: 20, max: 80, step: 5 },
+    { key: "volumeLvnPercent", label: "Volume LVN threshold (%)", defaultValue: 50, min: 10, max: 90, step: 5 },
+    { key: "acceptanceBrackets", label: "Acceptance brackets", defaultValue: 2, min: 1, max: 5, step: 1 },
+    { key: "partialFillPercent", label: "Partial-fill threshold (%)", defaultValue: 50, min: 10, max: 90, step: 5 },
+    { key: "expireAfterSessions", label: "Expire after completed sessions", defaultValue: 10, min: 5, max: 30, step: 1 },
+    { key: "expireStrength", label: "Expire below effective strength", defaultValue: 20, min: 0, max: 60, step: 1 },
+    { key: "fillOpacity", label: "Maximum zone opacity (%)", defaultValue: 15, min: 3, max: 35, step: 1 },
+    { key: "borderOpacity", label: "Zone border opacity (%)", defaultValue: 58, min: 10, max: 100, step: 1 },
   ],
   "moving-average": [{ key: "length", label: "Length", defaultValue: 20, min: 1, max: 1000 }],
   "rolling-vwap": [
@@ -555,6 +578,14 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
     negativeColor: "#EF4444",
     zeroGammaColor: "#F4F4F5",
     classicGexSettingsVersion: 1,
+  } : {}),
+  ...(indicatorId === "tpo-levels" ? {
+    useThemeColors: true,
+    showLabels: true,
+    supportColor: theme?.upColor ?? "#22C55E",
+    resistanceColor: theme?.downColor ?? "#EF4444",
+    neutralColor: theme?.borderUpColor ?? "#94A3B8",
+    tpoLevelsSettingsVersion: 1,
   } : {}),
   ...(["kwant-profile", "daily-volume-profile", "weekly-volume-profile", "custom-draw-on-volume-profile", "ask-bid-volume-profile", "delta-profile"].includes(indicatorId) ? {
     profileMode: indicatorId === "ask-bid-volume-profile"

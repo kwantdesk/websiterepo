@@ -1,0 +1,220 @@
+import {
+  resolveFrontMonthDefinition,
+  type NqInstrumentDefinition,
+  type TpoSessionInput,
+} from "@/lib/tpoLevels";
+
+const DATABENTO_HISTORICAL_BASE_URL = "https://hist.databento.com/v0";
+
+export class DatabentoTpoAuthError extends Error {
+  constructor() {
+    super("TPO Levels: data source needs re-authentication");
+    this.name = "DatabentoTpoAuthError";
+  }
+}
+
+function exactInteger(line: string, key: string) {
+  const match = new RegExp(`"${key}"\\s*:\\s*"?(-?\\d+)"?`).exec(line);
+  if (!match) return null;
+  try {
+    return BigInt(match[1]);
+  } catch {
+    return null;
+  }
+}
+
+function millisecondsFromNanoseconds(value: unknown, exact: bigint | null = null) {
+  if (exact !== null) return Number(exact / 1_000_000n);
+  if (typeof value === "string" && /^\d+$/.test(value)) {
+    try {
+      return Number(BigInt(value) / 1_000_000n);
+    } catch {
+      return 0;
+    }
+  }
+  const numeric = Number(value);
+  if (Number.isFinite(numeric)) {
+    if (numeric > 10_000_000_000_000_000) return Math.floor(numeric / 1_000_000);
+    if (numeric > 10_000_000_000_000) return Math.floor(numeric / 1_000);
+    return numeric;
+  }
+  const parsed = Date.parse(String(value ?? ""));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function fixedPointPrice(value: unknown, exact: bigint | null = null) {
+  if (exact !== null) return Number(exact) / 1_000_000_000;
+  if (typeof value === "string" && /^-?\d+$/.test(value)) {
+    try {
+      return Number(BigInt(value)) / 1_000_000_000;
+    } catch {
+      return 0;
+    }
+  }
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return 0;
+  return Math.abs(numeric) >= 100_000_000 ? numeric / 1_000_000_000 : numeric;
+}
+
+async function databentoStream(
+  params: Record<string, string>,
+  onRecord: (record: Record<string, unknown>, rawLine: string) => void,
+) {
+  const key = process.env.DATABENTO_API_KEY?.trim();
+  if (!key) throw new DatabentoTpoAuthError();
+  const response = await fetch(`${DATABENTO_HISTORICAL_BASE_URL}/timeseries.get_range`, {
+    method: "POST",
+    headers: {
+      Authorization: `Basic ${Buffer.from(`${key}:`).toString("base64")}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: new URLSearchParams({
+      dataset: "GLBX.MDP3",
+      encoding: "json",
+      pretty_px: "false",
+      pretty_ts: "false",
+      map_symbols: "false",
+      ...params,
+    }),
+    cache: "no-store",
+  });
+  if (response.status === 401 || response.status === 403) throw new DatabentoTpoAuthError();
+  if (!response.ok) {
+    const detail = await response.text();
+    throw new Error(`Databento TPO request failed (${response.status}): ${detail.slice(0, 240)}`);
+  }
+  if (!response.body) throw new Error("Databento returned an empty TPO stream.");
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let malformed = 0;
+  const processLine = (rawLine: string) => {
+    const line = rawLine.trim();
+    if (!line) return;
+    try {
+      const decoded = JSON.parse(line) as unknown;
+      const records = Array.isArray(decoded) ? decoded : [decoded];
+      records.forEach((record) => {
+        if (record && typeof record === "object" && !Array.isArray(record)) {
+          onRecord(record as Record<string, unknown>, line);
+        }
+      });
+    } catch {
+      malformed += 1;
+    }
+  };
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let newline = buffer.indexOf("\n");
+    while (newline >= 0) {
+      processLine(buffer.slice(0, newline));
+      buffer = buffer.slice(newline + 1);
+      newline = buffer.indexOf("\n");
+    }
+  }
+  buffer += decoder.decode();
+  processLine(buffer);
+  if (malformed) throw new Error("Databento returned malformed TPO records; the pull was rejected.");
+}
+
+function header(record: Record<string, unknown>) {
+  return record.hd && typeof record.hd === "object"
+    ? record.hd as Record<string, unknown>
+    : {};
+}
+
+export async function getNqOutrightDefinitions(start: number, end: number) {
+  const definitions = new Map<string, NqInstrumentDefinition>();
+  await databentoStream({
+    symbols: "NQ.FUT",
+    stype_in: "parent",
+    schema: "definition",
+    start: new Date(start).toISOString(),
+    end: new Date(end).toISOString(),
+  }, (record, line) => {
+    const hd = header(record);
+    const instrumentId = record.instrument_id ?? hd.instrument_id;
+    const rawSymbol = String(record.raw_symbol ?? record.symbol ?? "").trim();
+    const expiration = millisecondsFromNanoseconds(
+      record.expiration,
+      exactInteger(line, "expiration"),
+    );
+    if (instrumentId == null || !rawSymbol || !expiration) return;
+    const activation = millisecondsFromNanoseconds(
+      record.activation,
+      exactInteger(line, "activation"),
+    );
+    const key = `${instrumentId}:${rawSymbol}:${expiration}`;
+    definitions.set(key, {
+      instrumentId: String(instrumentId),
+      rawSymbol,
+      expiration,
+      activation: activation || null,
+      instrumentClass: String(record.instrument_class ?? ""),
+    });
+  });
+  return [...definitions.values()];
+}
+
+async function getNqSessionTrades(
+  definition: NqInstrumentDefinition,
+  window: { date: string; start: number; end: number },
+): Promise<TpoSessionInput> {
+  const trades: TpoSessionInput["trades"] = [];
+  await databentoStream({
+    symbols: definition.rawSymbol,
+    stype_in: "raw_symbol",
+    schema: "trades",
+    start: new Date(window.start).toISOString(),
+    // End is deliberately exact and the engine is also end-exclusive. A CME
+    // print stamped 16:00:00 New York must never become a clamped 14th bracket.
+    end: new Date(window.end).toISOString(),
+  }, (record, line) => {
+    const hd = header(record);
+    const timestamp = millisecondsFromNanoseconds(
+      record.ts_event ?? hd.ts_event ?? record.ts_recv,
+      exactInteger(line, "ts_event") ?? exactInteger(line, "ts_recv"),
+    );
+    const price = fixedPointPrice(record.price, exactInteger(line, "price"));
+    const size = Math.max(0, Number(record.size ?? 0));
+    const instrumentId = record.instrument_id ?? hd.instrument_id ?? definition.instrumentId;
+    if (timestamp < window.start || timestamp >= window.end || price <= 0 || size <= 0) return;
+    trades.push({
+      timestamp,
+      price,
+      size,
+      instrumentId: instrumentId == null ? null : String(instrumentId),
+      symbol: definition.rawSymbol,
+    });
+  });
+  trades.sort((left, right) => left.timestamp - right.timestamp || left.price - right.price);
+  return {
+    ...window,
+    trades,
+    contract: definition.rawSymbol,
+  };
+}
+
+export async function getDatabentoTpoSessions(
+  windowsNewestFirst: Array<{ date: string; start: number; end: number }>,
+) {
+  if (!windowsNewestFirst.length) return [];
+  const windows = windowsNewestFirst.slice().sort((left, right) => left.start - right.start);
+  const definitions = await getNqOutrightDefinitions(
+    windows[0].start - 24 * 60 * 60_000,
+    windows.at(-1)!.end + 24 * 60 * 60_000,
+  );
+  if (!definitions.length) throw new Error("Databento returned no NQ outright definitions.");
+  const sessions: TpoSessionInput[] = [];
+  for (const window of windows) {
+    const front = resolveFrontMonthDefinition(definitions, window.end);
+    if (!front) {
+      sessions.push({ ...window, trades: [], contract: null });
+      continue;
+    }
+    sessions.push(await getNqSessionTrades(front, window));
+  }
+  return sessions;
+}

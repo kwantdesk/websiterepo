@@ -76,6 +76,7 @@ export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "ask-bid-volume-profile",
   "delta-profile",
   "classic-gex-profile",
+  "tpo-levels",
   "source-code-indicator",
 ]);
 

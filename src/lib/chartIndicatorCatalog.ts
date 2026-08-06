@@ -96,6 +96,7 @@ export const CHART_INDICATOR_CATALOG: ChartIndicatorDefinition[] = [
   indicator("KWANT Profile Swing", "Volume & Profiles", "Automatically anchors profiles to price swings.", true, "Reference", "Deep Profile Swing"),
   indicator("KWANT Profile Values", "Volume & Profiles", "POC, value area, VWAP, peaks and valleys without profile bars.", true, "Reference", "Deep Profile Values"),
   indicator("Market Profile (TPO)", "Volume & Profiles", "Time-price-opportunity profile and value area.", false),
+  indicator("TPO Levels", "Volume & Profiles", "Automated TPO rejection zones - tails, single prints, ledges, failed auctions, profile edges and low-time seams from completed RTH sessions.", false, "Kwantify"),
   indicator("VWAP", "Volume & Profiles", "Session volume-weighted average price.", false, "Kwantify"),
   indicator("VWAP Envelopes", "Volume & Profiles", "VWAP with configurable standard-deviation envelopes."),
   indicator("Anchored VWAP", "Volume & Profiles", "VWAP anchored to a selected chart point.", true, "Kwantify"),
