@@ -238,6 +238,7 @@ const loadChartWorkspace = () => import("@/components/Chart");
 const loadGammaWorkspace = () => import("@/components/options-flow/GammaWorkspace");
 const loadGexMapWorkspace = () => import("@/components/gex-map/GexMapWorkspace");
 const loadOptionsHeatmapWorkspace = () => import("@/components/heatmap/OptionsHeatmapWorkspace");
+const loadGexBotWorkspace = () => import("@/components/gexbot/GexBotWorkspace");
 const loadGexDeskWorkspace = () => import("@/components/gexdesk/GexDeskWorkspace");
 const loadGameplanWorkspace = () => import("@/components/gameplan/GameplanWorkspace");
 const loadNewsWorkspace = () => import("@/components/news/NewsWorkspace");
@@ -253,6 +254,7 @@ const workspaceModulePreloaders: Record<string, () => Promise<unknown>> = {
   gamma: loadGammaWorkspace,
   gexmap: loadGexMapWorkspace,
   heatmap: loadOptionsHeatmapWorkspace,
+  gexbot: loadGexBotWorkspace,
   gexdesk: loadGexDeskWorkspace,
   gameplan: loadGameplanWorkspace,
   news: loadNewsWorkspace,
@@ -283,6 +285,10 @@ const GexMapWorkspace = dynamic(loadGexMapWorkspace, {
 const OptionsHeatmapWorkspace = dynamic(loadOptionsHeatmapWorkspace, {
   ssr: false,
   loading: () => workspaceLoader("Opening Heat Map", "Restoring options positioning and the shared NQ tape."),
+});
+const GexBotWorkspace = dynamic(loadGexBotWorkspace, {
+  ssr: false,
+  loading: () => workspaceLoader("Opening GEX BOT", "Restoring the latest New York options frame."),
 });
 const GexDeskWorkspace = dynamic(loadGexDeskWorkspace, {
   ssr: false,
@@ -589,7 +595,7 @@ type LevelExportRow = {
   source: string;
   asOf: string;
 };
-export type PrimaryWorkspaceSection = "charts" | "gamma" | "levelz" | "gexmap" | "heatmap" | "gexdesk" | "gameplan" | "kwantbot" | "news" | "zyon" | "journal" | "socials" | "backtesting";
+export type PrimaryWorkspaceSection = "charts" | "gamma" | "levelz" | "gexmap" | "heatmap" | "gexbot" | "gexdesk" | "gameplan" | "kwantbot" | "news" | "zyon" | "journal" | "socials" | "backtesting";
 
 const WORKSPACE_PRESETS_STORAGE_KEY = "kwantdesk-chart-workspace-presets";
 const ACTIVE_WORKSPACE_PRESET_STORAGE_KEY = "kwantdesk-chart-workspace-active-preset";
@@ -605,6 +611,7 @@ const BOTTOM_WORKSPACE_SECTIONS = [
   { id: "levelz" as const, label: "LEVELZ" },
   { id: "gexmap" as const, label: "GEXMAP" },
   { id: "heatmap" as const, label: "Heat Map" },
+  { id: "gexbot" as const, label: "GEX Bot" },
   { id: "gexdesk" as const, label: "Gexdesk" },
   { id: "gameplan" as const, label: "Gameplan" },
   { id: "kwantbot" as const, label: "KwantBot" },
@@ -10516,6 +10523,13 @@ export default function KwantifyWorkspace({
               <ReactActivity mode={bottomWorkspaceSection === "heatmap" ? "visible" : "hidden"}>
                 <WorkspaceFailureBoundary resetKey="heatmap" label="Heat Map">
                   <OptionsHeatmapWorkspace />
+                </WorkspaceFailureBoundary>
+              </ReactActivity>
+            ) : null}
+            {visitedWorkspaceSections.has("gexbot") ? (
+              <ReactActivity mode={bottomWorkspaceSection === "gexbot" ? "visible" : "hidden"}>
+                <WorkspaceFailureBoundary resetKey="gexbot" label="GEX Bot">
+                  <GexBotWorkspace />
                 </WorkspaceFailureBoundary>
               </ReactActivity>
             ) : null}

@@ -1,0 +1,254 @@
+import "server-only";
+
+import type {
+  GexBotMajorsFrame,
+  GexBotMaxChangeFrame,
+  GexBotOrderflowFrame,
+  GexBotProfileFrame,
+  GexBotStrike,
+  GexBotTerminalEnvelope,
+} from "@/lib/gexBotTypes";
+
+type View = "classic" | "state" | "orderflow";
+
+const API_ROOT = "https://api.gex.bot/v2";
+const LIVE_TTL_MS = 2_000;
+const CLOSED_TTL_MS = 60_000;
+const STALE_IF_ERROR_MS = 18 * 60 * 60_000;
+
+const responseCache = new Map<string, { value: unknown; receivedAt: number }>();
+const inFlight = new Map<string, Promise<unknown>>();
+
+function apiKey() {
+  return process.env.GEXBOT_API_KEY?.trim() ?? "";
+}
+
+function finite(value: unknown): number | null {
+  const parsed = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function timestampMs(value: unknown): number {
+  const parsed = finite(value);
+  if (parsed === null || parsed <= 0) return Date.now();
+  return parsed < 10_000_000_000 ? parsed * 1_000 : parsed;
+}
+
+function stringValue(value: unknown, fallback = "") {
+  return typeof value === "string" && value.trim() ? value.trim() : fallback;
+}
+
+function normalizePriors(value: unknown): number[] {
+  if (!Array.isArray(value)) return [];
+  return value.map(finite).filter((item): item is number => item !== null);
+}
+
+function normalizeStrikes(value: unknown): GexBotStrike[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((entry) => {
+    if (!Array.isArray(entry) || entry.length < 3) return [];
+    const strike = finite(entry[0]);
+    const volume = finite(entry[1]);
+    const oi = finite(entry[2]);
+    if (strike === null || volume === null || oi === null) return [];
+    return [[strike, volume, oi, normalizePriors(entry[3])] as GexBotStrike];
+  });
+}
+
+function normalizeProfile(payload: unknown): GexBotProfileFrame {
+  const source = payload && typeof payload === "object" ? payload as Record<string, unknown> : {};
+  const spot = finite(source.spot);
+  if (spot === null || spot <= 0) throw new Error("GEXBot returned a frame without a valid spot price.");
+  return {
+    timestamp: timestampMs(source.timestamp),
+    ticker: stringValue(source.ticker, "UNKNOWN"),
+    min_dte: source.min_dte as string | number | null | undefined,
+    sec_min_dte: source.sec_min_dte as string | number | null | undefined,
+    spot,
+    zero_gamma: finite(source.zero_gamma),
+    major_pos_vol: finite(source.major_pos_vol),
+    major_pos_oi: finite(source.major_pos_oi),
+    major_neg_vol: finite(source.major_neg_vol),
+    major_neg_oi: finite(source.major_neg_oi),
+    strikes: normalizeStrikes(source.strikes),
+    sum_gex_vol: finite(source.sum_gex_vol),
+    sum_gex_oi: finite(source.sum_gex_oi),
+    delta_risk_reversal: finite(source.delta_risk_reversal),
+    max_priors: Array.isArray(source.max_priors)
+      ? source.max_priors.flatMap((entry) => {
+          if (!Array.isArray(entry)) return [];
+          const strike = finite(entry[0]);
+          const exposure = finite(entry[1]);
+          return strike === null || exposure === null ? [] : [[strike, exposure] as [number, number]];
+        })
+      : [],
+  };
+}
+
+function normalizeOrderflow(payload: unknown): GexBotOrderflowFrame {
+  const source = payload && typeof payload === "object" ? payload as Record<string, unknown> : {};
+  const profile = normalizeProfile(source);
+  const fields = [
+    "z_mlgamma", "z_msgamma", "o_mlgamma", "o_msgamma", "zero_mcall", "zero_mput",
+    "one_mcall", "one_mput", "zcvr", "ocvr", "zgr", "ogr", "zvanna", "ovanna",
+    "zcharm", "ocharm", "agg_dex", "one_agg_dex", "agg_call_dex", "one_agg_call_dex",
+    "agg_put_dex", "one_agg_put_dex", "net_dex", "one_net_dex", "net_call_dex",
+    "one_net_call_dex", "net_put_dex", "one_net_put_dex", "dexoflow", "gexoflow",
+    "cvroflow", "one_dexoflow", "one_gexoflow", "one_cvroflow",
+  ] as const;
+  const extras = Object.fromEntries(fields.map((field) => [field, finite(source[field])])) as Partial<GexBotOrderflowFrame>;
+  return { ...profile, ...extras };
+}
+
+function nyParts(now = new Date()) {
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    weekday: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  });
+  return Object.fromEntries(formatter.formatToParts(now).map((part) => [part.type, part.value]));
+}
+
+export function isNewYorkRth(now = new Date()) {
+  const parts = nyParts(now);
+  if (parts.weekday === "Sat" || parts.weekday === "Sun") return false;
+  const minutes = Number(parts.hour) * 60 + Number(parts.minute);
+  return minutes >= 9 * 60 + 30 && minutes < 16 * 60;
+}
+
+async function requestJson(path: string, marketOpen: boolean): Promise<unknown> {
+  const key = apiKey();
+  if (!key) throw new Error("GEXBot is not configured on this deployment.");
+  const now = Date.now();
+  const cached = responseCache.get(path);
+  const ttl = marketOpen ? LIVE_TTL_MS : CLOSED_TTL_MS;
+  if (cached && now - cached.receivedAt <= ttl) return cached.value;
+  const pending = inFlight.get(path);
+  if (pending) return pending;
+
+  const request = fetch(`${API_ROOT}${path}`, {
+    headers: {
+      Accept: "application/json",
+      Authorization: `Bearer ${key}`,
+      "User-Agent": "KwantDesk/1.0",
+    },
+    cache: "no-store",
+    signal: AbortSignal.timeout(8_000),
+  })
+    .then(async (response) => {
+      const payload = await response.json().catch(() => ({})) as Record<string, unknown>;
+      if (!response.ok) {
+        const message = [payload.detail, payload.error, payload.message]
+          .find((value) => typeof value === "string" && value.trim());
+        const error = new Error(typeof message === "string" ? message : `GEXBot request failed (${response.status}).`);
+        Object.assign(error, { status: response.status });
+        throw error;
+      }
+      responseCache.set(path, { value: payload, receivedAt: Date.now() });
+      return payload;
+    })
+    .catch((error) => {
+      if (cached && now - cached.receivedAt <= STALE_IF_ERROR_MS) return cached.value;
+      throw error;
+    })
+    .finally(() => inFlight.delete(path));
+
+  inFlight.set(path, request);
+  return request;
+}
+
+function normalizeMajors(payload: unknown): GexBotMajorsFrame {
+  const source = payload && typeof payload === "object" ? payload as Record<string, unknown> : {};
+  return {
+    timestamp: timestampMs(source.timestamp),
+    ticker: stringValue(source.ticker),
+    spot: finite(source.spot) ?? undefined,
+    zero_gamma: finite(source.zero_gamma),
+    mpos_vol: finite(source.mpos_vol),
+    mpos_oi: finite(source.mpos_oi),
+    mneg_vol: finite(source.mneg_vol),
+    mneg_oi: finite(source.mneg_oi),
+    net_gex_vol: finite(source.net_gex_vol),
+    net_gex_oi: finite(source.net_gex_oi),
+  };
+}
+
+function pair(value: unknown): [number, number] | null {
+  if (!Array.isArray(value)) return null;
+  const first = finite(value[0]);
+  const second = finite(value[1]);
+  return first === null || second === null ? null : [first, second];
+}
+
+function normalizeMaxChange(payload: unknown): GexBotMaxChangeFrame {
+  const source = payload && typeof payload === "object" ? payload as Record<string, unknown> : {};
+  return {
+    timestamp: timestampMs(source.timestamp),
+    ticker: stringValue(source.ticker),
+    current: pair(source.current),
+    one: pair(source.one),
+    five: pair(source.five),
+    ten: pair(source.ten),
+    fifteen: pair(source.fifteen),
+    thirty: pair(source.thirty),
+  };
+}
+
+function frameSession(frameTimestamp: number, marketOpen: boolean) {
+  if (!marketOpen) return "FROZEN_NEW_YORK_CLOSE" as const;
+  return Date.now() - frameTimestamp > 5 * 60_000 ? "DELAYED" as const : "LIVE_RTH" as const;
+}
+
+export async function fetchGexBotTerminal(
+  view: View,
+  ticker: string,
+  category: string,
+): Promise<GexBotTerminalEnvelope<GexBotProfileFrame | GexBotOrderflowFrame>> {
+  const marketOpen = isNewYorkRth();
+  const base = `/${encodeURIComponent(ticker)}/${view}`;
+  try {
+    const [frameResult, majorsResult, maxChangeResult] = await Promise.allSettled([
+      requestJson(`${base}/${encodeURIComponent(category)}`, marketOpen),
+      view === "orderflow" ? Promise.resolve(null) : requestJson(`${base}/majors`, marketOpen),
+      view === "orderflow" ? Promise.resolve(null) : requestJson(`${base}/maxchange`, marketOpen),
+    ]);
+    if (frameResult.status === "rejected") throw frameResult.reason;
+    const frame = view === "orderflow"
+      ? normalizeOrderflow(frameResult.value)
+      : normalizeProfile(frameResult.value);
+    return {
+      ok: true,
+      view,
+      ticker,
+      category,
+      session: frameSession(frame.timestamp, marketOpen),
+      marketOpen,
+      checkedAt: Date.now(),
+      frame,
+      majors: majorsResult.status === "fulfilled" && majorsResult.value
+        ? normalizeMajors(majorsResult.value)
+        : null,
+      maxChange: maxChangeResult.status === "fulfilled" && maxChangeResult.value
+        ? normalizeMaxChange(maxChangeResult.value)
+        : null,
+    };
+  } catch (error) {
+    const status = Number((error as { status?: unknown })?.status);
+    return {
+      ok: false,
+      view,
+      ticker,
+      category,
+      session: marketOpen ? "DELAYED" : "FROZEN_NEW_YORK_CLOSE",
+      marketOpen,
+      checkedAt: Date.now(),
+      frame: null,
+      majors: null,
+      maxChange: null,
+      entitlementRequired: status === 401 || status === 403,
+      error: error instanceof Error ? error.message : "GEXBot could not be reached.",
+    };
+  }
+}

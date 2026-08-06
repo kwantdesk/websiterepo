@@ -7,6 +7,7 @@ import {
   BookOpen,
   CalendarDays,
   Crosshair,
+  Dna,
   Flame,
   History,
   Home,
@@ -28,6 +29,7 @@ type SidebarKey =
   | "levelz"
   | "gexmap"
   | "heatmap"
+  | "gexbot"
   | "gexdesk"
   | "gameplan"
   | "kwantbot"
@@ -83,6 +85,7 @@ const navItems: Array<{
   { key: "gamma", href: "/gamma", label: "GAMMA", title: "Gamma", icon: BarChart3 },
   { key: "gexmap", href: "/gexmap", label: "GEX MAP", title: "GEX Map", icon: ScanLine },
   { key: "heatmap", href: "/heatmap", label: "HEAT MAP", title: "Options Positioning Heat Map", icon: Flame },
+  { key: "gexbot", href: "/gexbot", label: "GEX BOT", title: "GEXBot Terminal", icon: Dna },
   { key: "gexdesk", href: "/gexdesk", label: "GEX DESK", title: "GEX Desk", icon: Layers3 },
   { key: "levelz", href: "/levelz", label: "LEVELZ", title: "LEVELZ", icon: Crosshair },
   { key: "news", href: "/news", label: "News", title: "News", icon: BookOpen },
@@ -98,6 +101,7 @@ const PERSISTENT_WORKSPACE_KEYS = new Set<SidebarKey>([
   "gamma",
   "gexmap",
   "heatmap",
+  "gexbot",
   "gexdesk",
   "levelz",
   "news",
