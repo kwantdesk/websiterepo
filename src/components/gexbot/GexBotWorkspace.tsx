@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { ProfessionalOrderflowTerminal, ProfessionalProfileChart, ProfessionalStateChart } from "@/components/gexbot/GexBotCharts";
+import { ProfessionalOrderflowDesk, ProfessionalProfileChart, ProfessionalStateChart } from "@/components/gexbot/GexBotCharts";
 import KwantSelect from "@/components/ui/KwantSelect";
 import type {
   GexBotMaxChangeFrame,
@@ -760,16 +760,14 @@ export default function GexBotWorkspace() {
             {view !== "orderflow" ? <div className="flex items-center gap-2"><button type="button" onClick={() => setPlayingHistory((value) => !value)} className="flex h-7 items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 text-[8px] font-semibold uppercase text-muted hover:text-foreground">{playingHistory ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3" />}Playback</button><span className="font-mono text-[9px] text-primary">Lookback {priorIndex === 0 ? "now" : `-${priorIndex}`}</span></div> : <div className="flex items-center gap-3 text-[8px] uppercase tracking-[.14em] text-muted"><span className="text-primary">0DTE</span><span>1DTE dashed</span></div>}
           </div>
           {!frame ? <EmptyState envelope={envelope} loading={loading} /> : view === "orderflow" ? (
-            !envelope?.marketOpen && orderflowTape.length < 2
-              ? <OrderflowSnapshot frame={frame as GexBotOrderflowFrame} visibleMetrics={visibleMetrics} />
-              : <div className="mx-auto w-full max-w-[1680px] overflow-x-auto px-3 py-3">
-                  {visibleMetrics.length ? (
-                    <ProfessionalOrderflowTerminal
-                      metrics={ORDERFLOW_METRICS.filter((metric) => visibleMetrics.includes(metric.id))}
-                      points={orderflowTape.length ? orderflowTape : [frame as GexBotOrderflowFrame]}
-                    />
-                  ) : <div className="flex min-h-[420px] items-center justify-center text-[10px] text-muted">Choose at least one orderflow panel from Adjustments.</div>}
-                </div>
+            <div className="mx-auto w-full max-w-[1680px] overflow-x-auto px-3 py-3">
+              {visibleMetrics.length ? (
+                <ProfessionalOrderflowDesk
+                  metrics={ORDERFLOW_METRICS.filter((metric) => visibleMetrics.includes(metric.id))}
+                  points={orderflowTape.length ? orderflowTape : [frame as GexBotOrderflowFrame]}
+                />
+              ) : <div className="flex min-h-[420px] items-center justify-center text-[10px] text-muted">Choose at least one orderflow panel from Adjustments.</div>}
+            </div>
           ) : (
             <div className="flex min-h-[560px] flex-1 items-start overflow-auto">
               <div className="mx-auto min-w-0 flex-1 p-2">

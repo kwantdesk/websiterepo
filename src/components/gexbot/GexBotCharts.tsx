@@ -873,3 +873,201 @@ export function ProfessionalOrderflowTerminal({
 
   return <EChartSurface option={option} height={height} className="min-w-[820px]" />;
 }
+
+type OrderflowDeskPanel = "aggregate" | "gex" | "convexity";
+
+const ORDERFLOW_DESK_META: Record<OrderflowDeskPanel, { title: string; accent: string; metric: string; one: string }> = {
+  aggregate: { title: "Aggregate DEX", accent: "#48d9cf", metric: "net_dex", one: "one_net_dex" },
+  gex: { title: "Net GEX", accent: "#7ee35c", metric: "gexoflow", one: "one_gexoflow" },
+  convexity: { title: "Convexity Orderflow", accent: "#6bb9e8", metric: "cvroflow", one: "one_cvroflow" },
+};
+
+function deskPanelOption(panel: OrderflowDeskPanel, points: GexBotOrderflowFrame[]): EChartsCoreOption {
+  const field = (name: string) => points.flatMap((point) => {
+    const next = finite(point[name as keyof GexBotOrderflowFrame]);
+    return next === null ? [] : [[point.timestamp, next]];
+  });
+  const spot = points.map((point) => [point.timestamp, point.spot]);
+  const zeroLine = { silent: true, symbol: "none", data: [{ yAxis: 0, lineStyle: { color: "rgba(220,228,238,.24)", width: 1 }, label: { show: false } }] };
+  const series: Record<string, unknown>[] = [];
+
+  if (panel === "aggregate") {
+    [
+      { name: "CALL DEX", field: "agg_call_dex", color: "#4ed7d0", width: 1.35 },
+      { name: "PUT DEX", field: "agg_put_dex", color: "#e55c70", width: 1.25 },
+      { name: "NET DEX", field: "net_dex", color: "#7ee35c", width: 1.65 },
+      { name: "1DTE NET", field: "one_net_dex", color: "#8193a7", width: 1.0 },
+    ].forEach((item) => series.push({
+      name: item.name,
+      type: "line",
+      data: field(item.field),
+      showSymbol: false,
+      smooth: false,
+      sampling: "lttb",
+      connectNulls: false,
+      lineStyle: { color: item.color, width: item.width, type: item.name === "1DTE NET" ? "dashed" : "solid", opacity: item.name === "1DTE NET" ? 0.72 : 0.96 },
+      markLine: item.name === "NET DEX" ? zeroLine : undefined,
+      z: item.name === "NET DEX" ? 8 : 6,
+    }));
+  } else if (panel === "gex") {
+    series.push({
+      name: "NET GEX · VOLUME",
+      type: "line",
+      data: field("sum_gex_vol"),
+      showSymbol: false,
+      smooth: false,
+      sampling: "lttb",
+      lineStyle: { color: "#7ee35c", width: 1.65 },
+      markLine: zeroLine,
+      z: 7,
+    });
+    series.push({
+      name: "NET GEX · OI",
+      type: "line",
+      data: field("sum_gex_oi"),
+      showSymbol: false,
+      smooth: false,
+      sampling: "lttb",
+      lineStyle: { color: "#3e7650", width: 1.05, opacity: 0.78 },
+      z: 6,
+    });
+    series.push({
+      name: "GEX FLOW · 0DTE",
+      type: "bar",
+      data: field("gexoflow"),
+      barWidth: 1.5,
+      itemStyle: { color: (params: { value?: unknown[] }) => (finite(params.value?.[1]) ?? 0) >= 0 ? "#e4d65e" : "#ca5c72", opacity: 0.86 },
+      z: 8,
+    });
+    series.push({
+      name: "GEX FLOW · 1DTE",
+      type: "scatter",
+      data: field("one_gexoflow"),
+      symbolSize: 2.2,
+      itemStyle: { color: "#a9b7c6", opacity: 0.58 },
+      z: 9,
+    });
+  } else {
+    series.push({
+      name: "CONVEXITY STATE",
+      type: "line",
+      data: field("zcvr"),
+      showSymbol: false,
+      smooth: false,
+      sampling: "lttb",
+      lineStyle: { color: "#4e8eb9", width: 1.35 },
+      markLine: zeroLine,
+      z: 6,
+    });
+    series.push({
+      name: "CONVEXITY FLOW · 0DTE",
+      type: "line",
+      data: field("cvroflow"),
+      showSymbol: true,
+      symbol: "circle",
+      symbolSize: 2.4,
+      smooth: false,
+      lineStyle: { color: "#73d9de", width: 0.8, opacity: 0.72 },
+      itemStyle: { color: "#73d9de", opacity: 0.92 },
+      z: 8,
+    });
+    series.push({
+      name: "CONVEXITY FLOW · 1DTE",
+      type: "scatter",
+      data: field("one_cvroflow"),
+      symbolSize: 2,
+      itemStyle: { color: "#7f8fa4", opacity: 0.62 },
+      z: 9,
+    });
+  }
+
+  series.push({
+    name: "SPOT",
+    type: "line",
+    yAxisIndex: 1,
+    data: spot,
+    showSymbol: false,
+    smooth: false,
+    sampling: "lttb",
+    lineStyle: { color: "rgba(247,249,252,.92)", width: 1.15 },
+    silent: true,
+    z: 5,
+  });
+
+  return {
+    backgroundColor: "#070809",
+    animationDuration: 140,
+    animationDurationUpdate: 80,
+    textStyle: { color: TEXT, fontFamily: UI },
+    grid: { left: 62, right: 56, top: 16, bottom: 34, containLabel: false, show: true, borderColor: "rgba(116,128,145,.2)", backgroundColor: "#070809" },
+    xAxis: {
+      type: "time",
+      boundaryGap: false,
+      axisLine: { show: true, lineStyle: { color: "rgba(116,128,145,.32)" } },
+      axisTick: { show: false },
+      axisLabel: { color: "#798391", fontFamily: MONO, fontSize: 8, hideOverlap: true, formatter: (next: number) => new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", hour: "numeric", minute: "2-digit", hour12: true }).format(new Date(next)).toLowerCase() },
+      splitLine: { show: true, lineStyle: { color: "rgba(116,128,145,.11)" } },
+      axisPointer: { show: true },
+    },
+    yAxis: [
+      { type: "value", scale: true, position: "left", axisLine: { show: true, lineStyle: { color: "rgba(116,128,145,.28)" } }, axisTick: { show: false }, axisLabel: { color: "#778291", fontFamily: MONO, fontSize: 8, formatter: (next: number) => compact(next) }, splitLine: { show: true, lineStyle: { color: "rgba(116,128,145,.11)" } }, axisPointer: { show: true } },
+      { type: "value", scale: true, position: "right", axisLine: { show: true, lineStyle: { color: "rgba(116,128,145,.28)" } }, axisTick: { show: false }, axisLabel: { color: "#aab2bd", fontFamily: MONO, fontSize: 8, formatter: (next: number) => next.toFixed(0) }, splitLine: { show: false }, axisPointer: { show: false } },
+    ],
+    tooltip: { trigger: "axis", confine: true, axisPointer: { type: "cross" }, backgroundColor: TOOLTIP_BG, borderColor: GRID_STRONG, borderWidth: 1, padding: [9, 11], textStyle: { color: TEXT, fontFamily: UI, fontSize: 9 }, extraCssText: "box-shadow:0 14px 45px rgba(0,0,0,.48);border-radius:7px", formatter: orderflowTooltip },
+    dataZoom: [{ type: "inside", filterMode: "none", zoomOnMouseWheel: true, moveOnMouseWheel: true, moveOnMouseMove: true }],
+    series,
+  };
+}
+
+function OrderflowMetricRail({ panel, frame }: { panel: OrderflowDeskPanel; frame: GexBotOrderflowFrame | undefined }) {
+  const meta = ORDERFLOW_DESK_META[panel];
+  const current = frame ? finite(frame[meta.metric as keyof GexBotOrderflowFrame]) : null;
+  const one = frame ? finite(frame[meta.one as keyof GexBotOrderflowFrame]) : null;
+  return (
+    <aside className="flex w-[168px] shrink-0 flex-col border-l border-[#24282e] bg-[#0b0c0e] px-3 py-3">
+      <div className="flex items-start justify-between gap-2">
+        <div><p className="text-[7px] uppercase tracking-[.18em] text-[#6f7782]">Metric</p><h3 className="mt-1 text-[10px] font-semibold text-[#d9dee5]">{meta.title}</h3></div>
+        <span className="mt-0.5 h-1.5 w-1.5 rounded-full" style={{ backgroundColor: meta.accent, boxShadow: `0 0 9px ${meta.accent}` }} />
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-px overflow-hidden rounded-md border border-[#252a31] bg-[#252a31]">
+        <div className="bg-[#0d0f12] px-2 py-2"><p className="text-[6px] uppercase tracking-wider text-[#606975]">0DTE</p><b className="mt-1 block truncate font-mono text-[8px] text-[#dce2e9]">{current === null ? "—" : compact(current)}</b></div>
+        <div className="bg-[#0d0f12] px-2 py-2"><p className="text-[6px] uppercase tracking-wider text-[#606975]">1DTE</p><b className="mt-1 block truncate font-mono text-[8px] text-[#aab3bf]">{one === null ? "—" : compact(one)}</b></div>
+      </div>
+      <div className="mt-3 space-y-2 text-[7px] uppercase tracking-[.12em] text-[#737c88]">
+        <div className="flex items-center justify-between"><span>Spot overlay</span><span className="h-1.5 w-1.5 rounded-full bg-white shadow-[0_0_5px_rgba(255,255,255,.65)]" /></div>
+        <div className="flex items-center justify-between"><span>Expiry split</span><span className="text-[#b8c0ca]">Combined</span></div>
+        <div className="flex items-center justify-between"><span>Window</span><span className="text-[#b8c0ca]">Full day</span></div>
+      </div>
+      <div className="mt-auto pt-3">
+        <div className="h-px w-full bg-[#252a31]" />
+        <p className="mt-2 font-mono text-[6px] uppercase tracking-[.12em] text-[#535c67]">Eastern time · live frame</p>
+      </div>
+    </aside>
+  );
+}
+
+export function ProfessionalOrderflowDesk({
+  metrics,
+  points,
+}: {
+  metrics: readonly OrderflowMetricConfig[];
+  points: GexBotOrderflowFrame[];
+}) {
+  const enabled = new Set(metrics.map((metric) => metric.id));
+  const panels: OrderflowDeskPanel[] = [];
+  if (enabled.has("agg_dex") || enabled.has("dexoflow")) panels.push("aggregate");
+  if (enabled.has("gexoflow") || enabled.has("zgr")) panels.push("gex");
+  if (enabled.has("cvroflow") || enabled.has("zcvr")) panels.push("convexity");
+  const visiblePanels: OrderflowDeskPanel[] = panels.length ? panels : ["aggregate", "gex", "convexity"];
+  const frame = points.at(-1);
+  return (
+    <div className="min-w-[900px] overflow-hidden rounded-sm border border-[#25292f] bg-[#070809] shadow-[0_20px_70px_rgba(0,0,0,.34)]">
+      {visiblePanels.map((panel, index) => (
+        <section key={panel} className={`flex h-[224px] min-w-0 ${index ? "border-t border-[#25292f]" : ""}`}>
+          <div className="min-w-0 flex-1"><EChartSurface option={deskPanelOption(panel, points)} height={223} /></div>
+          <OrderflowMetricRail panel={panel} frame={frame} />
+        </section>
+      ))}
+    </div>
+  );
+}
