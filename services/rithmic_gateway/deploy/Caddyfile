@@ -1,0 +1,45 @@
+# Public TLS edge for the Rithmic collector.
+#
+# Replace feed.kwantdesk.com with the hostname whose A record points at this
+# VM. Caddy provisions and renews the certificate automatically.
+#
+# Auth is NOT handled here: every market-data route in the gateway already
+# requires the KWANTIFY_MARKET_DATA_GATEWAY_TOKEN bearer. Caddy only adds
+# TLS, sane timeouts and a health probe that never leaves the box.
+
+feed.kwantdesk.com {
+	encode zstd gzip
+
+	# /health is intentionally public and carries no market data or account
+	# information — it is what uptime monitoring reads.
+	@health path /health
+	handle @health {
+		reverse_proxy gateway:8793
+	}
+
+	handle {
+		reverse_proxy gateway:8793 {
+			# Server-sent events must not be buffered or the chart stream
+			# arrives in bursts instead of live.
+			flush_interval -1
+			transport http {
+				read_timeout 0
+				write_timeout 0
+			}
+		}
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "no-referrer"
+		-Server
+	}
+
+	log {
+		output file /data/access.log {
+			roll_size 10mb
+			roll_keep 3
+		}
+	}
+}

@@ -1,0 +1,8 @@
+node_modules
+.vercel
+.env.local
+operator.env
+operator.env.bak
+deploy
+test
+*.log

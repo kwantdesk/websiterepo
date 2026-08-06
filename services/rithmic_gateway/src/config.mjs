@@ -80,10 +80,26 @@ export function loadConfig(env = process.env) {
         ? Boolean(gatewayToken)
         : Boolean(user && password),
     subscriptions: parseSubscriptions(env.RITHMIC_SUBSCRIPTIONS),
+    // Hard ceiling on what may ever be subscribed upstream. Read endpoints
+    // subscribe on demand, so without this a single unexpected symbol in a
+    // query string opens a brand new Rithmic subscription that never expires
+    // — which is how provider usage limits get exceeded. Defaults to exactly
+    // the configured subscription set; widen it deliberately or not at all.
+    allowedInstruments: parseSubscriptions(
+      env.RITHMIC_ALLOWED_INSTRUMENTS || env.RITHMIC_SUBSCRIPTIONS,
+    ),
     enableDepthByOrder:
       String(env.RITHMIC_ENABLE_DEPTH_BY_ORDER || "true").toLowerCase() !==
       "false",
     maxTrades: positiveInteger(env.RITHMIC_MAX_TRADES, 250_000),
+    // Append-only capture of the raw stream. Rithmic can replay bars but has
+    // no depth-by-order replay, so unrecorded L3 is lost permanently — this
+    // is on by default and should stay on.
+    recordEnabled:
+      String(env.RITHMIC_RECORD_ENABLED || "true").toLowerCase() !== "false",
+    recordDir: String(
+      env.RITHMIC_RECORD_DIR || join(SERVICE_ROOT, "recordings"),
+    ).trim(),
     reconnectMinMs: positiveInteger(env.RITHMIC_RECONNECT_MIN_MS, 1_000),
     reconnectMaxMs: positiveInteger(env.RITHMIC_RECONNECT_MAX_MS, 30_000),
     excelStaleMs: positiveInteger(env.RITHMIC_EXCEL_STALE_MS, 3_000),

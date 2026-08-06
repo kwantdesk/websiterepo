@@ -1,0 +1,99 @@
+# Always-on Rithmic market-data collector.
+#
+# ONE collector owns the Rithmic session. Never run this while the local
+# gateway is also running with the same credentials — Rithmic permits a
+# limited number of concurrent logins per user and two sessions will
+# force-logout each other in a loop. That failure looks exactly like
+# "the feed keeps randomly dropping".
+#
+# Build ON the VM. The image contains the licensed Rithmic proto files and
+# must never be pushed to a public registry.
+
+services:
+  gateway:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    image: kwantify-rithmic-gateway:local
+    restart: always
+    env_file:
+      - ../operator.env
+    environment:
+      # Inside the container the service must bind all interfaces so Caddy
+      # can reach it. 127.0.0.1 is correct for local dev and wrong here.
+      RITHMIC_GATEWAY_HOST: 0.0.0.0
+      RITHMIC_GATEWAY_PORT: 8793
+      RITHMIC_SOURCE_MODE: protocol
+      NODE_OPTIONS: --use-system-ca
+      # Archive lives on a mounted volume, never inside the container layer —
+      # a rebuild must never destroy captured sessions. Rithmic has no
+      # depth-by-order replay, so a lost recording cannot be re-pulled.
+      RITHMIC_RECORD_ENABLED: "true"
+      RITHMIC_RECORD_DIR: /recordings
+    volumes:
+      - recordings:/recordings
+    expose:
+      - "8793"
+    labels:
+      # Opt this container in to autoheal restarts.
+      autoheal: "true"
+    healthcheck:
+      # Unhealthy means the Rithmic session is genuinely down, not merely
+      # that the HTTP server is up. start_period + retries give the client's
+      # own exponential backoff ~10 minutes to recover before we bounce the
+      # process, so Rithmic's daily maintenance window never triggers a
+      # restart storm.
+      test:
+        - CMD
+        - node
+        - -e
+        - >-
+          fetch('http://127.0.0.1:8793/health')
+          .then(r=>r.json())
+          .then(h=>process.exit(h.connected&&h.authenticated?0:1))
+          .catch(()=>process.exit(1))
+      interval: 30s
+      timeout: 10s
+      retries: 20
+      start_period: 120s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  caddy:
+    image: caddy:2
+    restart: always
+    depends_on:
+      - gateway
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  autoheal:
+    # Backstop only. The gateway reconnects on its own; this restarts the
+    # container if it ever wedges in a state its own backoff cannot escape.
+    image: willfarrell/autoheal
+    restart: always
+    environment:
+      AUTOHEAL_CONTAINER_LABEL: autoheal
+      AUTOHEAL_INTERVAL: 60
+      AUTOHEAL_START_PERIOD: 300
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+
+volumes:
+  caddy_data:
+  caddy_config:
+  # Back this up off-box. It is the one asset here that cannot be recreated.
+  recordings:

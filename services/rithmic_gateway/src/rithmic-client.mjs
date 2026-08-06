@@ -95,6 +95,14 @@ export class RithmicMarketDataClient extends EventEmitter {
     this.subscriptions = new Map(
       config.subscriptions.map((row) => [instrumentKey(row.exchange, row.symbol), row]),
     );
+    // The complete set of instruments this collector may ever ask Rithmic
+    // for. Empty means "no restriction configured" and is treated as
+    // allow-configured-only by subscribe().
+    this.allowedInstruments = new Set(
+      (config.allowedInstruments ?? config.subscriptions ?? []).map((row) =>
+        instrumentKey(row.exchange, row.symbol),
+      ),
+    );
     this.status = {
       provider: "Rithmic",
       environment: config.systemName,
@@ -217,8 +225,22 @@ export class RithmicMarketDataClient extends EventEmitter {
     const key = instrumentKey(row.exchange, row.symbol);
     const existing = this.subscriptions.get(key);
     if (existing) {
+      // Already subscribed: serve from the local book and transmit nothing.
+      // This is the path every website read takes, so reads cost Rithmic
+      // zero requests no matter how many clients or tabs are open.
       this.book.ensure(existing.exchange, existing.symbol);
       return existing;
+    }
+    // Not subscribed: this would open a NEW upstream subscription that never
+    // expires. Refuse anything outside the configured allowlist rather than
+    // silently consuming provider capacity on a stray query string.
+    if (this.allowedInstruments.size && !this.allowedInstruments.has(key)) {
+      const error = new Error(
+        `${row.exchange}:${row.symbol} is not an allowed instrument on this collector. `
+          + `Add it to RITHMIC_SUBSCRIPTIONS (or RITHMIC_ALLOWED_INSTRUMENTS) and restart.`,
+      );
+      error.code = "RITHMIC_INSTRUMENT_NOT_ALLOWED";
+      throw error;
     }
     this.subscriptions.set(key, row);
     this.book.ensure(row.exchange, row.symbol);

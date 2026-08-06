@@ -4,12 +4,20 @@ import { URL } from "node:url";
 import { loadConfig } from "./config.mjs";
 import { discoverRithmicSystems, RithmicMarketDataClient } from "./rithmic-client.mjs";
 import { RTraderExcelMarketDataClient } from "./rtrader-excel-client.mjs";
+import { MarketDataRecorder } from "./recorder.mjs";
 import { resolveVolumeProfileRange } from "./trading-session.mjs";
 
 const config = loadConfig();
 const client = config.sourceMode === "rtrader-excel"
   ? new RTraderExcelMarketDataClient(config)
   : new RithmicMarketDataClient(config);
+// Capture every observed message. Rithmic has no depth-by-order replay, so a
+// session that is not recorded as it happens cannot be recovered later.
+const recorder = new MarketDataRecorder({
+  dir: config.recordDir,
+  enabled: config.recordEnabled,
+});
+recorder.attach(client);
 const rawSseClients = new Set();
 const tradeSseClients = new Set();
 const heatmapSseClients = new Set();
@@ -334,7 +342,12 @@ client.on("gatewayError", (error) => {
 const server = createServer(async (request, response) => {
   const url = new URL(request.url || "/", `http://${request.headers.host || "localhost"}`);
   if (request.method === "GET" && url.pathname === "/health") {
-    return json(response, config.configured ? 200 : 503, client.health());
+    // Recording state rides on /health so "are we archiving?" is answerable
+    // without shell access, and a silently stopped recorder is visible.
+    return json(response, config.configured ? 200 : 503, {
+      ...client.health(),
+      recorder: recorder.status(),
+    });
   }
   if (!authorized(request)) {
     return json(response, config.gatewayToken ? 401 : 503, {
@@ -727,6 +740,12 @@ const server = createServer(async (request, response) => {
     }
     return json(response, 404, { error: "Not found." });
   } catch (error) {
+    // Asking for an instrument this collector is not allowed to subscribe is
+    // a caller mistake, not a server fault. Answer 400 so it is obvious in
+    // the website logs instead of hiding inside a generic 500.
+    if (error?.code === "RITHMIC_INSTRUMENT_NOT_ALLOWED") {
+      return json(response, 400, { error: error.message, code: error.code });
+    }
     return json(response, 500, {
       error: error instanceof Error ? error.message : String(error),
     });
@@ -737,12 +756,25 @@ server.listen(config.port, config.host, () => {
   process.stdout.write(
     `Olisa Labs Platform Rithmic gateway listening on http://${config.host}:${config.port}\n`,
   );
+  if (recorder.enabled) {
+    process.stdout.write(`[recorder] capturing raw stream to ${config.recordDir}\n`);
+  } else {
+    process.stdout.write("[recorder] DISABLED - live data is not being archived\n");
+  }
   if (config.configured) {
     client.start().catch((error) => {
       process.stderr.write(`[rithmic] initial connection failed: ${error.message}\n`);
     });
   }
 });
+
+// Flush the manifest and close files cleanly on shutdown so a restart never
+// leaves a session file without its completeness record.
+for (const signal of ["SIGINT", "SIGTERM"]) {
+  process.on(signal, () => {
+    void recorder.close().finally(() => process.exit(0));
+  });
+}
 
 async function shutdown() {
   await client.stop();
