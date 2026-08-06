@@ -179,6 +179,7 @@ function newYorkMarketOpen(timestamp = Date.now()) {
 
 async function fetchGexBotVixSnapshot(): Promise<MarketIndexSnapshot> {
   const spot = await fetchGexBotVixSpot();
+  const marketSessionOpen = newYorkMarketOpen();
   let previousClose = spot.price;
   try {
     const daily = await fetchCboeVixDailyCandles();
@@ -201,8 +202,11 @@ async function fetchGexBotVixSnapshot(): Promise<MarketIndexSnapshot> {
     change,
     changePercent: previousClose ? change / previousClose * 100 : 0,
     timestamp: spot.timestamp,
-    delayed: spot.stale,
-    marketOpen: newYorkMarketOpen() && !spot.stale,
+    // VIX is intentionally marked delayed while New York is closed. At the
+    // open, the warning clears only after GEXBot has supplied a fresh frame,
+    // so an overnight close can never be presented as a live print.
+    delayed: !marketSessionOpen || spot.stale,
+    marketOpen: marketSessionOpen && !spot.stale,
     provider: "GEXBot",
   };
 }

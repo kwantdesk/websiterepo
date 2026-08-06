@@ -3882,8 +3882,11 @@ function WorkspaceChartPane({
     if (!usingMassivePaneFeed && !usingMarketIndexPaneFeed) return;
 
     let cancelled = false;
+    let requestInFlight = false;
 
     const loadSnapshots = async () => {
+      if (requestInFlight) return;
+      requestInFlight = true;
       try {
         const response = await fetch(usingMarketIndexPaneFeed
           ? `/api/market-indices?snapshot=1&symbols=${encodeURIComponent(pane.symbol)}`
@@ -3893,14 +3896,32 @@ function WorkspaceChartPane({
         const payload = await response.json();
         const snapshot = Array.isArray(payload.snapshots) ? payload.snapshots[0] : null;
         if (cancelled || !snapshot || typeof snapshot.lastPrice !== "number") return;
+        setLiveFeedError(null);
+        if (usingMarketIndexPaneFeed && snapshot.marketOpen !== true) return;
+        const tickTimestamp = marketTimestamp(snapshot.timestamp);
+        const previousTimestamp = latestFuturesRef.current.asOfMs;
+        if (previousTimestamp !== null && tickTimestamp < previousTimestamp) return;
+        latestFuturesRef.current = {
+          ...latestFuturesRef.current,
+          price: snapshot.lastPrice,
+          asOfMs: tickTimestamp,
+        };
         markMarketActive();
-        setCandles((prev) => mergeLiveMidIntoCandles(prev, snapshot.lastPrice, pane.symbol, pane.timeframe));
+        setCandles((prev) => mergeLiveMidIntoCandles(
+          prev,
+          snapshot.lastPrice,
+          pane.symbol,
+          pane.timeframe,
+          tickTimestamp,
+        ));
       } catch {
         if (!cancelled) {
           setLiveFeedError(usingMarketIndexPaneFeed
             ? "Cboe index snapshot is unavailable right now."
             : "Massive delayed futures snapshot is unavailable right now.");
         }
+      } finally {
+        requestInFlight = false;
       }
     };
 
@@ -7028,7 +7049,11 @@ export default function KwantifyWorkspace({
       NZD_USD: "NZDUSD",
     };
 
+    let requestInFlight = false;
+
     const fetchPrices = async () => {
+      if (requestInFlight) return;
+      requestInFlight = true;
       try {
         if (usingCTraderFeed) {
           const lastTickAt = lastStreamTickAtByBrokerRef.current[activeChartBrokerLabel] ?? 0;
@@ -7043,6 +7068,7 @@ export default function KwantifyWorkspace({
             : usingCTraderFeed
               ? `/api/ctrader?action=pricing&broker=${encodeURIComponent(activeChartBrokerLabel)}&symbols=${encodeURIComponent(watchlistSymbolsCsv)}`
               : "/api/oanda?action=pricing",
+          { cache: "no-store" },
         );
         const data = await res.json();
         const usingSnapshotPrices = activeChartBrokerLabel === "Massive" || activeChartBrokerLabel === "Market Index";
@@ -7062,7 +7088,7 @@ export default function KwantifyWorkspace({
           return next;
         });
 
-        prices.forEach((price: { instrument?: string; symbol?: string; bid?: number; ask?: number; mid?: number; broker?: string; lastPrice?: number; openPrice?: number; delayed?: boolean }) => {
+        prices.forEach((price: { instrument?: string; symbol?: string; bid?: number; ask?: number; mid?: number; broker?: string; lastPrice?: number; openPrice?: number; timestamp?: number; delayed?: boolean; marketOpen?: boolean }) => {
           const displayName =
             usingSnapshotPrices
               ? price.symbol || ""
@@ -7095,8 +7121,18 @@ export default function KwantifyWorkspace({
             };
           }));
 
-          if (displayName === selectedInstrument && chartTrades.length === 0) {
-            setChartCandles((prev) => mergeLiveMidIntoCandles(prev, mid, selectedInstrument, selectedTimeframe));
+          if (
+            displayName === selectedInstrument
+            && chartTrades.length === 0
+            && (activeChartBrokerLabel !== "Market Index" || price.marketOpen === true)
+          ) {
+            setChartCandles((prev) => mergeLiveMidIntoCandles(
+              prev,
+              mid,
+              selectedInstrument,
+              selectedTimeframe,
+              marketTimestamp(price.timestamp),
+            ));
           }
         });
 
@@ -7107,6 +7143,8 @@ export default function KwantifyWorkspace({
         }, 300);
       } catch (err) {
         console.error("Price fetch error:", err);
+      } finally {
+        requestInFlight = false;
       }
     };
 
@@ -7312,7 +7350,11 @@ export default function KwantifyWorkspace({
     if (!selectedInstrument) return;
     if (chartTrades.length > 0) return;
 
+    let requestInFlight = false;
+
     const checkNewCandle = async () => {
+      if (requestInFlight) return;
+      requestInFlight = true;
       try {
         const oandaInst = OANDA_INSTRUMENT_MAP[selectedInstrument];
         const oandaGran = OANDA_GRANULARITY_MAP[selectedTimeframe] || "M5";
@@ -7330,10 +7372,19 @@ export default function KwantifyWorkspace({
 
         if (!url) return;
 
-        const res = await fetch(url);
+        const res = await fetch(url, { cache: "no-store" });
         const data = await res.json();
         if ((activeChartBrokerLabel === "Massive" || activeChartBrokerLabel === "Market Index") && Array.isArray(data.snapshots) && data.snapshots[0]?.lastPrice) {
-          setChartCandles((prev) => mergeLiveMidIntoCandles(prev, Number(data.snapshots[0].lastPrice), selectedInstrument, selectedTimeframe));
+          const snapshot = data.snapshots[0];
+          if (activeChartBrokerLabel !== "Market Index" || snapshot.marketOpen === true) {
+            setChartCandles((prev) => mergeLiveMidIntoCandles(
+              prev,
+              Number(snapshot.lastPrice),
+              selectedInstrument,
+              selectedTimeframe,
+              marketTimestamp(snapshot.timestamp),
+            ));
+          }
           return;
         }
 
@@ -7360,7 +7411,11 @@ export default function KwantifyWorkspace({
             return prev;
           });
         }
-      } catch {}
+      } catch {
+        // Keep the last valid bar until the next scheduled snapshot retry.
+      } finally {
+        requestInFlight = false;
+      }
     };
 
     const interval = window.setInterval(checkNewCandle, 5000);
