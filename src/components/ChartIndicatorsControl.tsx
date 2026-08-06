@@ -77,6 +77,7 @@ export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "delta-profile",
   "classic-gex-profile",
   "tpo-levels",
+  "expected-move",
   "source-code-indicator",
 ]);
 
@@ -591,6 +592,32 @@ export default function ChartIndicatorsControl({
                   <div className="rounded-lg border border-border bg-background/55 px-3 py-2 text-[9px] leading-4 text-muted sm:col-span-2">
                     Classic GEX stays independent from Estimated Flow Convexity. Calls extend inward in green; puts extend inward in red from the chart edge.
                   </div>
+                </div>
+              ) : null}
+
+              {settingsDefinition.id === "expected-move" ? (
+                <div className="grid gap-3 rounded-xl border border-primary/15 bg-primary/[0.035] p-3 sm:grid-cols-2">
+                  {[
+                    ["Mode", "mode", [["SESSION", "Session · fixed rails"], ["LIVE", "Live · time-decaying"]]],
+                    ["Options source", "mappingSource", [["QQQ", "QQQ → NQ / MNQ"], ["NDX", "NDX → NQ / MNQ"]]],
+                  ].map(([label, key, options]) => (
+                    <label key={String(key)} className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                      <span>{String(label)}</span>
+                      <KwantSelect
+                        value={String(settingsInstance.settings?.[String(key)] ?? "")}
+                        onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                          ...current,
+                          settings: { ...(current.settings ?? {}), [String(key)]: event.target.value },
+                        }))}
+                        className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground"
+                        menuLabel={String(label)}
+                      >
+                        {(options as string[][]).map(([value, optionLabel]) => (
+                          <option key={value} value={value}>{optionLabel}</option>
+                        ))}
+                      </KwantSelect>
+                    </label>
+                  ))}
                 </div>
               ) : null}
 

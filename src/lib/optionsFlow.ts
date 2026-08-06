@@ -17,6 +17,8 @@ export type OptionsFlowTicker = (typeof OPTIONS_FLOW_TICKERS)[number];
 
 export type OptionsFuturesRoot = "ES" | "NQ" | "RTY";
 export type CanonicalOptionsSourceSymbol = "QQQ" | "SPY";
+export type { ExpectedMoveRange } from "@/lib/expectedMove";
+import type { ExpectedMoveRange } from "@/lib/expectedMove";
 
 /**
  * The product must not compare or label different options books as one Gamma
@@ -282,20 +284,6 @@ export type TradeSidePremiumSummary = {
   shortOptionPremium: number;
   netLongPremium: number;
   longShare: number | null;
-};
-
-export type ExpectedMoveRange = {
-  method: "QD_PRIOR_IV_ONE_SIGMA" | "PRIOR_REALIZED_RANGE";
-  anchorPrice: number;
-  anchorLabel: "SESSION_OPEN" | "LATEST_PRICE";
-  annualizedIv: number;
-  movePercent: number;
-  moveDollars: number;
-  min: number;
-  max: number;
-  sourceExpiration: string | null;
-  approximate: boolean;
-  exactMenthorQEquivalent: false;
 };
 
 export type DteGammaBucket = {

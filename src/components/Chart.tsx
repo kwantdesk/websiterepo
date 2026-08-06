@@ -115,6 +115,19 @@ import {
   type TpoLevelsPayload,
   type TpoZone,
 } from "@/lib/tpoLevels";
+import type { ChartGammaCalibration } from "@/lib/chartGammaConversion";
+import { isOptionsFuturesRatioSane } from "@/lib/optionsFlow";
+import {
+  EXPECTED_MOVE_SEMANTICS,
+  buildExpectedMoveBand,
+  expectedMoveLabel,
+  expectedMoveSigmaRails,
+  isExpectedMoveCalibrationUsable,
+  staleExpectedMovePayload,
+  type ExpectedMoveApiPayload,
+  type ExpectedMoveBand,
+  type ExpectedMoveSourceSymbol,
+} from "@/lib/expectedMove";
 
 interface ChartProps {
   candles: Candle[];
@@ -136,6 +149,7 @@ interface ChartProps {
   classicGexHistory?: ClassicGexHistorySnapshot[];
   classicGexLoading?: boolean;
   classicGexError?: string | null;
+  expectedMoveCalibration?: ChartGammaCalibration | null;
   volumeProfiles?: InstitutionalVolumeProfile[];
   onUpdateIndicatorSetting?: (instanceId: string, key: string, value: number | string | boolean) => void;
   onOpenIndicatorSettings?: (instanceId: string) => void;
@@ -1249,6 +1263,7 @@ export default function Chart({
   classicGexHistory = [],
   classicGexLoading = false,
   classicGexError = null,
+  expectedMoveCalibration = null,
   volumeProfiles = [],
   onUpdateIndicatorSetting,
   onOpenIndicatorSettings,
@@ -1339,6 +1354,12 @@ export default function Chart({
   const [tpoLoading, setTpoLoading] = useState(false);
   const [tpoError, setTpoError] = useState<string | null>(null);
   const [tpoTooltip, setTpoTooltip] = useState<{ x: number; y: number; zone: TpoZone } | null>(null);
+  const [expectedMovePayload, setExpectedMovePayload] = useState<ExpectedMoveApiPayload | null>(null);
+  const [expectedMoveLoading, setExpectedMoveLoading] = useState(false);
+  const [expectedMoveError, setExpectedMoveError] = useState<string | null>(null);
+  const [expectedMoveNow, setExpectedMoveNow] = useState(() => Date.now());
+  const [expectedMoveLiveAnchor, setExpectedMoveLiveAnchor] = useState<number | null>(() => candles.at(-1)?.close ?? null);
+  const [expectedMoveTooltip, setExpectedMoveTooltip] = useState<{ x: number; y: number; band: ExpectedMoveBand } | null>(null);
   const [chartReadyRevision, setChartReadyRevision] = useState(0);
   const [sampledIndicatorCandles, setSampledIndicatorCandles] = useState(candles);
   const [sampledIndicatorMarketTrades, setSampledIndicatorMarketTrades] = useState(marketTrades);
@@ -1732,6 +1753,215 @@ export default function Chart({
     indicatorPaneHeight,
     overlaySize.height,
     overlaySize.width,
+    viewportVersion,
+  ]);
+  const expectedMoveIndicator = useMemo(
+    () => indicators.find((instance) => instance.enabled && instance.indicatorId === "expected-move") ?? null,
+    [indicatorSignature, indicators],
+  );
+  const expectedMoveSource = String(expectedMoveIndicator?.settings?.mappingSource ?? "QQQ") === "NDX"
+    ? "NDX"
+    : "QQQ";
+
+  useEffect(() => {
+    if (!expectedMoveIndicator) {
+      setExpectedMovePayload(null);
+      setExpectedMoveLoading(false);
+      setExpectedMoveError(null);
+      setExpectedMoveTooltip(null);
+      return;
+    }
+    const normalizedInstrument = instrument.trim().toUpperCase();
+    if (normalizedInstrument !== "NQ" && normalizedInstrument !== "MNQ") {
+      setExpectedMovePayload(null);
+      setExpectedMoveLoading(false);
+      setExpectedMoveError("Expected Move is calibrated for NQ and MNQ.");
+      return;
+    }
+    const source = expectedMoveSource;
+    const storageKey = `kwantdesk:expected-move:last-good:v1:${source}`;
+    let cancelled = false;
+    let timer: number | null = null;
+    let controller: AbortController | null = null;
+    const schedule = (payload: ExpectedMoveApiPayload | null, fallbackMs = 60_000) => {
+      if (cancelled) return;
+      const target = payload ? Date.parse(payload.nextRefreshAt) + 1_000 : Date.now() + fallbackMs;
+      const delay = Math.max(30_000, Math.min(24 * 60 * 60_000, target - Date.now()));
+      timer = window.setTimeout(load, delay);
+    };
+    const cachedFallback = () => {
+      try {
+        const raw = window.localStorage.getItem(storageKey);
+        if (!raw) return null;
+        const cached = JSON.parse(raw) as ExpectedMoveApiPayload;
+        if (!cached.generatedAt || !cached.range || cached.sourceSymbol !== source) return null;
+        return staleExpectedMovePayload(cached, Date.now());
+      } catch {
+        return null;
+      }
+    };
+    async function load() {
+      if (cancelled) return;
+      controller?.abort();
+      controller = new AbortController();
+      setExpectedMoveLoading((current) => current || !expectedMovePayload);
+      try {
+        const response = await fetch(`/api/expected-move?source=${source}`, {
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        const text = await response.text();
+        let candidate: (ExpectedMoveApiPayload & { error?: string }) | null = null;
+        try {
+          candidate = JSON.parse(text) as ExpectedMoveApiPayload & { error?: string };
+        } catch {
+          throw new Error("Expected Move received a non-JSON data-source response.");
+        }
+        if (!response.ok || !candidate?.range || candidate.sourceSymbol !== source) {
+          throw new Error(candidate?.error || "Expected Move is unavailable.");
+        }
+        if (cancelled) return;
+        setExpectedMovePayload(candidate);
+        setExpectedMoveError(null);
+        if (!candidate.stale) window.localStorage.setItem(storageKey, JSON.stringify(candidate));
+        schedule(candidate, candidate.stale ? 60_000 : 5 * 60_000);
+      } catch (error) {
+        if (cancelled || (error instanceof DOMException && error.name === "AbortError")) return;
+        const message = error instanceof Error ? error.message : "Expected Move is unavailable.";
+        const fallback = cachedFallback();
+        setExpectedMovePayload(fallback);
+        setExpectedMoveError(message);
+        schedule(fallback, 60_000);
+      } finally {
+        if (!cancelled) setExpectedMoveLoading(false);
+      }
+    }
+    void load();
+    return () => {
+      cancelled = true;
+      controller?.abort();
+      if (timer !== null) window.clearTimeout(timer);
+    };
+  // Only the selected options book restarts the request, never chart ticks or
+  // display-only settings.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [expectedMoveIndicator?.instanceId, expectedMoveSource, instrument]);
+
+  useEffect(() => {
+    if (!expectedMoveIndicator) return;
+    const sample = () => {
+      setExpectedMoveNow(Date.now());
+      setExpectedMoveLiveAnchor(latestCandleRef.current?.close ?? candles.at(-1)?.close ?? null);
+    };
+    sample();
+    const timer = window.setInterval(sample, 30_000);
+    return () => window.clearInterval(timer);
+  }, [expectedMoveIndicator?.instanceId]);
+
+  const expectedMoveOverlay = useMemo(() => {
+    if (!expectedMoveIndicator || !expectedMovePayload || !expectedMoveCalibration || !candleSeriesRef.current) return null;
+    const normalizedInstrument = instrument.trim().toUpperCase();
+    if (normalizedInstrument !== "NQ" && normalizedInstrument !== "MNQ") return null;
+    const source = expectedMovePayload.sourceSymbol as ExpectedMoveSourceSymbol;
+    const calibration = {
+      sourceSymbol: source,
+      targetInstrument: normalizedInstrument,
+      sessionDate: expectedMoveCalibration.sessionDate,
+      scale: expectedMoveCalibration.scale,
+      calibratedAtMs: expectedMoveCalibration.calibratedAtMs,
+    } as const;
+    if (!isExpectedMoveCalibrationUsable({
+      calibration,
+      sourceSymbol: source,
+      targetInstrument: normalizedInstrument,
+      sessionDate: expectedMovePayload.sessionDate,
+      marketOpen: expectedMovePayload.marketOpen,
+      now: expectedMoveNow,
+      ratioIsSane: isOptionsFuturesRatioSane(source, expectedMoveCalibration.scale),
+    })) return null;
+    const mode = String(expectedMoveIndicator.settings?.mode ?? "SESSION") === "LIVE" ? "LIVE" : "SESSION";
+    const currentPrice = expectedMoveLiveAnchor ?? candles.at(-1)?.close ?? 0;
+    const band = buildExpectedMoveBand({
+      mode,
+      range: expectedMovePayload.range,
+      scale: expectedMoveCalibration.scale,
+      currentPrice,
+      now: expectedMoveNow,
+      sessionDate: expectedMovePayload.sessionDate,
+      tickSize: priceFormat.minMove,
+    });
+    if (!band) return null;
+    const plotWidth = Math.max(0, overlaySize.width - 64);
+    const plotHeight = Math.max(0, overlaySize.height - 26 - indicatorPaneHeight);
+    if (plotWidth < 160 || plotHeight < 80) return null;
+    const showTwoSigma = expectedMoveIndicator.settings?.showTwoSigma === true;
+    const rails = [
+      { key: "high", sigma: 1 as const, price: band.high },
+      { key: "low", sigma: 1 as const, price: band.low },
+      ...(showTwoSigma
+        ? [
+            { key: "high-2", sigma: 2 as const, price: expectedMoveSigmaRails(band, 2).high },
+            { key: "low-2", sigma: 2 as const, price: expectedMoveSigmaRails(band, 2).low },
+          ]
+        : []),
+    ].flatMap((rail) => {
+      const y = candleSeriesRef.current?.priceToCoordinate(rail.price) ?? null;
+      return y === null || y < 0 || y > plotHeight
+        ? []
+        : [{ ...rail, y: Number(y), labelY: Number(y) + 3 }];
+    });
+    const occupied: number[] = [
+      ...resolvedLevelLayers.foreground,
+      ...resolvedLevelLayers.background,
+    ].flatMap((level) => {
+      const y = candleSeriesRef.current?.priceToCoordinate(level.price) ?? null;
+      return y === null ? [] : [y];
+    });
+    const ordered = rails.slice().sort((left, right) => left.y - right.y);
+    const minimumGap = 11;
+    ordered.forEach((rail, index) => {
+      let labelY = Math.max(9, Math.min(plotHeight - 4, rail.labelY));
+      while (occupied.some((y) => Math.abs(y - labelY) < minimumGap)) labelY += minimumGap;
+      if (index && labelY - ordered[index - 1].labelY < minimumGap) {
+        labelY = ordered[index - 1].labelY + minimumGap;
+      }
+      rail.labelY = Math.max(9, Math.min(plotHeight - 4, labelY));
+      occupied.push(rail.labelY);
+    });
+    const oneHighY = candleSeriesRef.current?.priceToCoordinate(band.high) ?? null;
+    const oneLowY = candleSeriesRef.current?.priceToCoordinate(band.low) ?? null;
+    const settingsForExpectedMove = expectedMoveIndicator.settings ?? {};
+    return {
+      band,
+      rails,
+      plotWidth,
+      plotHeight,
+      oneHighY,
+      oneLowY,
+      showLabels: settingsForExpectedMove.showLabels !== false,
+      showBandFill: settingsForExpectedMove.showBandFill === true,
+      fillOpacity: Math.min(0.04, Math.max(0, Number(settingsForExpectedMove.fillOpacity ?? 3) / 100)),
+      lineOpacity: Math.max(0.15, Math.min(1, Number(settingsForExpectedMove.lineOpacity ?? 72) / 100)),
+      color: settingsForExpectedMove.useThemeColors === true
+        ? settings.borderUpColor
+        : String(settingsForExpectedMove.neutralColor ?? "#D6A84B"),
+    };
+  }, [
+    candles,
+    chartReadyRevision,
+    expectedMoveCalibration,
+    expectedMoveIndicator,
+    expectedMoveLiveAnchor,
+    expectedMoveNow,
+    expectedMovePayload,
+    indicatorPaneHeight,
+    instrument,
+    overlaySize.height,
+    overlaySize.width,
+    priceFormat.minMove,
+    resolvedLevelLayers.background,
+    resolvedLevelLayers.foreground,
+    settings.borderUpColor,
     viewportVersion,
   ]);
   const tpoIndicator = useMemo(
@@ -4403,6 +4633,128 @@ export default function Chart({
         marketIsActive={marketIsActive}
         bottom={56 + indicatorPaneHeight}
       />
+
+      {expectedMoveIndicator ? (
+        <div className="pointer-events-none absolute right-[70px] top-[70px] z-[17] flex max-w-[330px] items-center gap-1.5 rounded-full border border-border bg-panel/90 px-2.5 py-1 font-mono text-[8px] uppercase tracking-[0.1em] text-muted shadow-lg backdrop-blur">
+          <span className="font-semibold text-foreground">Expected Move</span>
+          {expectedMoveLoading && !expectedMovePayload ? <span className="text-primary">Loading</span> : null}
+          {expectedMovePayload?.stale ? (
+            <span className="text-warning">EM STALE {formatTpoAge(Math.max(expectedMovePayload.dataAge, expectedMoveNow - Date.parse(expectedMovePayload.generatedAt)))}</span>
+          ) : null}
+          {expectedMoveError && !expectedMovePayload ? (
+            <span className="max-w-[240px] truncate text-danger">{expectedMoveError}</span>
+          ) : null}
+          {expectedMovePayload && !expectedMovePayload.stale && !expectedMoveOverlay ? (
+            <span>Calibrating {expectedMovePayload.sourceSymbol}</span>
+          ) : null}
+        </div>
+      ) : null}
+
+      {expectedMoveOverlay ? (
+        <svg
+          className="pointer-events-none absolute inset-0 z-[12] h-full w-full overflow-hidden"
+          viewBox={`0 0 ${Math.max(overlaySize.width, 1)} ${Math.max(overlaySize.height, 1)}`}
+          preserveAspectRatio="none"
+          aria-label="Expected Move one-sigma rails"
+          style={{ opacity: expectedMovePayload?.stale ? 0.55 : 1 }}
+        >
+          {expectedMoveOverlay.showBandFill
+            && expectedMoveOverlay.oneHighY !== null
+            && expectedMoveOverlay.oneLowY !== null ? (
+              <rect
+                x={0}
+                y={Math.min(expectedMoveOverlay.oneHighY, expectedMoveOverlay.oneLowY)}
+                width={expectedMoveOverlay.plotWidth}
+                height={Math.abs(expectedMoveOverlay.oneLowY - expectedMoveOverlay.oneHighY)}
+                fill={expectedMoveOverlay.color}
+                fillOpacity={expectedMoveOverlay.fillOpacity}
+              />
+            ) : null}
+          {expectedMoveOverlay.rails.map((rail) => (
+            <g key={rail.key}>
+              <line
+                x1={0}
+                x2={expectedMoveOverlay.plotWidth}
+                y1={rail.y}
+                y2={rail.y}
+                stroke={expectedMoveOverlay.color}
+                strokeOpacity={expectedMoveOverlay.lineOpacity * (rail.sigma === 2 ? 0.55 : 1)}
+                strokeWidth={1}
+                strokeDasharray={rail.sigma === 2 ? "2 5" : "6 5"}
+              />
+              <line
+                x1={0}
+                x2={expectedMoveOverlay.plotWidth}
+                y1={rail.y}
+                y2={rail.y}
+                stroke="transparent"
+                strokeWidth={12}
+                style={{ pointerEvents: "stroke", cursor: "crosshair" }}
+                onMouseMove={(event) => {
+                  const rect = chartContainerRef.current?.getBoundingClientRect();
+                  if (!rect) return;
+                  setExpectedMoveTooltip({
+                    x: event.clientX - rect.left,
+                    y: event.clientY - rect.top,
+                    band: expectedMoveOverlay.band,
+                  });
+                }}
+                onMouseLeave={() => setExpectedMoveTooltip(null)}
+              />
+              {expectedMoveOverlay.showLabels ? (
+                <text
+                  x={expectedMoveOverlay.plotWidth - 7}
+                  y={rail.labelY}
+                  textAnchor="end"
+                  fill={expectedMoveOverlay.color}
+                  fillOpacity={rail.sigma === 2 ? 0.7 : 1}
+                  fontFamily="'JetBrains Mono', monospace"
+                  fontSize={8}
+                  fontWeight={800}
+                  paintOrder="stroke"
+                  stroke={settings.backgroundColor}
+                  strokeWidth={3}
+                >
+                  {expectedMoveLabel({
+                    approximate: expectedMoveOverlay.band.approximate,
+                    side: rail.key.startsWith("high") ? "high" : "low",
+                    sigma: rail.sigma,
+                  })}
+                </text>
+              ) : null}
+            </g>
+          ))}
+        </svg>
+      ) : null}
+
+      {expectedMoveTooltip && expectedMovePayload ? (
+        <div
+          className="pointer-events-none absolute z-[83] w-[310px] rounded-xl border border-border bg-panel/96 p-3 font-mono text-[9px] leading-4 text-muted shadow-2xl backdrop-blur"
+          style={{
+            left: Math.max(8, Math.min(overlaySize.width - 320, expectedMoveTooltip.x + 14)),
+            top: Math.max(8, Math.min(overlaySize.height - 282, expectedMoveTooltip.y + 12)),
+          }}
+        >
+          <div className="mb-2 flex items-center justify-between text-foreground">
+            <span className="font-semibold">Expected Move</span>
+            <span>{expectedMoveTooltip.band.mode}</span>
+          </div>
+          <div className="grid grid-cols-[1fr_auto] gap-x-3">
+            <span>Anchor</span><span className="text-foreground">{expectedMoveTooltip.band.anchor.toFixed(priceFormat.precision)}</span>
+            <span>Anchor label</span><span className="text-foreground">{expectedMoveTooltip.band.anchorLabel}</span>
+            <span>IV used</span><span className="text-foreground">{expectedMovePayload.range.approximate ? `Unavailable (~${(expectedMovePayload.range.annualizedIv * 100).toFixed(2)}% realized)` : `${(expectedMovePayload.range.annualizedIv * 100).toFixed(2)}%`}</span>
+            <span>Expiry</span><span className="text-foreground">{expectedMovePayload.range.sourceExpiration ?? "Nearest available"}</span>
+            <span>Method</span><span className="text-foreground">{expectedMovePayload.range.method}</span>
+            <span>Move percent</span><span className="text-foreground">{(expectedMoveTooltip.band.movePercent * 100).toFixed(3)}%</span>
+            <span>Move in points</span><span className="text-foreground">{expectedMoveTooltip.band.movePoints.toFixed(priceFormat.precision)}</span>
+            <span>Generated at</span><span className="text-foreground">{new Date(expectedMovePayload.generatedAt).toLocaleString()}</span>
+            <span>Data age</span><span className="text-foreground">{formatTpoAge(Math.max(expectedMovePayload.dataAge, expectedMoveNow - Date.parse(expectedMovePayload.generatedAt)))}</span>
+          </div>
+          <div className="mt-2 border-t border-border pt-2 text-[8px] leading-3.5 text-foreground/80">
+            {EXPECTED_MOVE_SEMANTICS}
+          </div>
+        </div>
+      ) : null}
 
       {tpoIndicator ? (
         <div className="pointer-events-none absolute right-[70px] top-11 z-[16] flex items-center gap-1.5 rounded-full border border-border bg-panel/90 px-2.5 py-1 font-mono text-[8px] uppercase tracking-[0.1em] text-muted shadow-lg backdrop-blur">

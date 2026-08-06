@@ -151,6 +151,7 @@ export const CHART_INDICATOR_CATALOG: ChartIndicatorDefinition[] = [
 
   indicator("Standard Deviation", "Volatility", "Rolling price dispersion."),
   indicator("Average True Range (ATR)", "Volatility", "Average true trading range."),
+  indicator("Expected Move", "Volatility", "The options market's priced one-sigma travel for the session - a top and bottom rail from ATM implied volatility, anchored at the session open.", false, "Kwantify"),
 
   indicator("Candlestick Bar", "Overlays", "Alternative candlestick rendering layer."),
   indicator("Overlay Chart", "Overlays", "Overlays a secondary chart series."),

@@ -150,6 +150,7 @@ import {
   resolveGammaConversion,
   roundedGammaPrice,
   saveChartGammaCalibration,
+  type ChartGammaCalibration,
   type GammaConversionDefinition,
 } from "@/lib/chartGammaConversion";
 import {
@@ -2172,6 +2173,7 @@ function EquityChart({
 type GammaChartOverlay = {
   instrument: string;
   levels: ChartLevel[];
+  calibration: ChartGammaCalibration;
   label: string;
   regime: "POSITIVE" | "NEGATIVE" | "NEUTRAL";
   checkedAt: string;
@@ -2797,6 +2799,7 @@ function buildGammaChartOverlay(args: {
   return {
     instrument: conversion.target,
     levels,
+    calibration,
     label: payload.environment.gammaStateLabel,
     regime: payload.environment.gammaRegime,
     checkedAt: payload.checkedAt,
@@ -2914,6 +2917,7 @@ function WorkspaceChartPane({
   const [intervalCommandDraft, setIntervalCommandDraft] = useState("");
   const [intervalCommandError, setIntervalCommandError] = useState("");
   const [gammaOverlay, setGammaOverlay] = useState<GammaChartOverlay | null>(null);
+  const [expectedMoveCalibration, setExpectedMoveCalibration] = useState<ChartGammaCalibration | null>(null);
   const [gammaLevelsLoading, setGammaLevelsLoading] = useState(false);
   const [gammaLevelsError, setGammaLevelsError] = useState<string | null>(null);
   const [classicGexProfile, setClassicGexProfile] = useState<ClassicGexProfilePayload | null>(null);
@@ -2952,6 +2956,8 @@ function WorkspaceChartPane({
   const gammaInstrument = displayCmeSymbol(pane.symbol);
   const classicGexIndicator = indicators.find((instance) =>
     instance.enabled && instance.indicatorId === "classic-gex-profile") ?? null;
+  const expectedMoveIndicator = indicators.find((instance) =>
+    instance.enabled && instance.indicatorId === "expected-move") ?? null;
   const classicGexSettings = classicGexIndicator?.settings ?? {};
   const classicGexSettingsSignature = classicGexIndicator
     ? JSON.stringify(classicGexSettings)
@@ -2985,6 +2991,12 @@ function WorkspaceChartPane({
     : null;
   const fallbackGammaConversion = gammaLevelsAvailable
     ? resolveGammaConversion(undefined, gammaInstrument)
+    : null;
+  const expectedMoveSource = String(expectedMoveIndicator?.settings?.mappingSource ?? "QQQ") === "NDX"
+    ? "NDX"
+    : "QQQ";
+  const expectedMoveConversion = expectedMoveIndicator && (gammaInstrument === "NQ" || gammaInstrument === "MNQ")
+    ? resolveGammaConversion(`${expectedMoveSource}-${gammaInstrument}`, gammaInstrument)
     : null;
   const expectedGammaContract =
     pane.broker === "Databento" ? currentCmeContract(pane.symbol) : null;
@@ -3023,7 +3035,10 @@ function WorkspaceChartPane({
   });
   const chartLevels = useMemo(
     () => [
-      ...(gammaLevelsEnabled ? currentGammaOverlay?.levels ?? [] : []),
+      ...(gammaLevelsEnabled
+        ? (currentGammaOverlay?.levels ?? []).filter((level) =>
+            !expectedMoveIndicator || !level.id.toLowerCase().includes("expected-move"))
+        : []),
       ...(valueAreaLevelsEnabled && valueAreaOverlay?.instrument === pane.symbol
         ? valueAreaOverlay.levels
         : []),
@@ -3031,6 +3046,7 @@ function WorkspaceChartPane({
     ],
     [
       currentGammaOverlay,
+      expectedMoveIndicator,
       gammaLevelsEnabled,
       pane.symbol,
       historicalStructureEnabled,
@@ -3579,10 +3595,11 @@ function WorkspaceChartPane({
   }, [classicGexIndicator?.instanceId, classicGexSettingsSignature, gammaInstrument, pane.broker]);
 
   useEffect(() => {
-    if ((!gammaLevelsEnabled && !levelExportRequested && !classicGexIndicator) || !gammaLevelsAvailable || !primaryGammaConversion) {
+    if ((!gammaLevelsEnabled && !levelExportRequested && !classicGexIndicator && !expectedMoveIndicator) || !gammaLevelsAvailable || !primaryGammaConversion) {
       setGammaLevelsLoading(false);
       setGammaLevelsError(null);
       if (!gammaLevelsAvailable) setGammaOverlay(null);
+      if (!expectedMoveIndicator || !expectedMoveConversion) setExpectedMoveCalibration(null);
       return;
     }
     if (!gammaDataReady) {
@@ -3618,6 +3635,9 @@ function WorkspaceChartPane({
       );
       const isPrimary = conversion.id === primaryGammaConversion.id;
       const isNative = isNativeGammaConversion(conversion);
+      const isExpectedMove = conversion.id === expectedMoveConversion?.id;
+      if (isExpectedMove) setExpectedMoveCalibration(overlay.calibration);
+      if (!isPrimary && !isNative) return payload;
       if (isNative) nativeTransitionOverlay = overlay;
       if (isPrimary) primaryApplied = true;
       const nextOverlay = isPrimary
@@ -3637,7 +3657,9 @@ function WorkspaceChartPane({
       const conversions = [
         fallbackGammaConversion,
         primaryGammaConversion,
-      ].filter((conversion): conversion is GammaConversionDefinition => Boolean(conversion));
+        expectedMoveConversion,
+      ].filter((conversion): conversion is GammaConversionDefinition => Boolean(conversion))
+        .filter((conversion, index, rows) => rows.findIndex((candidate) => candidate.id === conversion.id) === index);
       const results = await Promise.allSettled(conversions.map((conversion) => applyConversion(conversion)));
       if (cancelled) return;
 
@@ -3672,6 +3694,8 @@ function WorkspaceChartPane({
     gammaLevelsAvailable,
     gammaLevelsEnabled,
     classicGexIndicator?.instanceId,
+    expectedMoveConversion?.id,
+    expectedMoveIndicator?.instanceId,
     levelExportRequested,
     primaryGammaConversion?.id,
     pane.symbol,
@@ -4388,6 +4412,7 @@ function WorkspaceChartPane({
           classicGexHistory={classicGexHistory}
           classicGexLoading={classicGexLoading}
           classicGexError={classicGexError}
+          expectedMoveCalibration={expectedMoveCalibration}
           volumeProfiles={volumeProfiles}
           onUpdateIndicatorSetting={onUpdateIndicatorSetting}
           toolbarEnabled

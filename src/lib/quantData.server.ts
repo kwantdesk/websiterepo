@@ -78,6 +78,10 @@ import {
   type ClassicGexProfileRow,
   type ClassicGexSource,
 } from "@/lib/classicGexProfile";
+import {
+  chartSessionExpectedMove,
+  expectedMoveRange,
+} from "@/lib/expectedMove";
 
 const API_BASE = "https://api.quantdata.us/v1";
 const CACHE_TTL_MS = 4_000;
@@ -828,87 +832,6 @@ function historicalVolatility21d(candles: OptionsCandle[], sessionDate: string, 
   const mean = returns.reduce((sum, value) => sum + value, 0) / returns.length;
   const variance = returns.reduce((sum, value) => sum + (value - mean) ** 2, 0) / Math.max(1, returns.length - 1);
   return Math.sqrt(variance) * Math.sqrt(252);
-}
-
-function expectedMoveRange(args: {
-  priorAtmIv: number | null;
-  expiration: string | null;
-  dailyCandles: OptionsCandle[];
-  sessionDate: string;
-  fallbackPrice: number | null;
-}): MarketMapIntelligence["expectedMove"] {
-  const ordered = [...args.dailyCandles].sort((a, b) => a.timestamp - b.timestamp);
-  const sessionIndex = ordered.findIndex((candle) => new Date(candle.timestamp).toISOString().slice(0, 10) === args.sessionDate);
-  const sessionCandle = sessionIndex >= 0 ? ordered[sessionIndex] : null;
-  const anchorPrice = sessionCandle?.open ?? args.fallbackPrice;
-  const anchorLabel: "SESSION_OPEN" | "LATEST_PRICE" = sessionCandle ? "SESSION_OPEN" : "LATEST_PRICE";
-  if (anchorPrice === null || anchorPrice <= 0) return null;
-  const priorCandle = ordered.filter((candle) => new Date(candle.timestamp).toISOString().slice(0, 10) < args.sessionDate).at(-1) ?? null;
-  const approximate = args.priorAtmIv === null || args.priorAtmIv <= 0;
-  const movePercent = !approximate
-    ? args.priorAtmIv! / Math.sqrt(365)
-    : priorCandle && priorCandle.close > 0
-      ? (priorCandle.high - priorCandle.low) / (2 * priorCandle.close)
-      : 0;
-  if (movePercent <= 0) return null;
-  const moveDollars = anchorPrice * movePercent;
-  return {
-    method: approximate ? "PRIOR_REALIZED_RANGE" : "QD_PRIOR_IV_ONE_SIGMA",
-    anchorPrice,
-    anchorLabel,
-    annualizedIv: approximate ? movePercent * Math.sqrt(365) : args.priorAtmIv!,
-    movePercent,
-    moveDollars,
-    min: anchorPrice - moveDollars,
-    max: anchorPrice + moveDollars,
-    sourceExpiration: args.expiration,
-    approximate,
-    exactMenthorQEquivalent: false,
-  };
-}
-
-function chartSessionExpectedMove(args: {
-  sessionDate: string;
-  marketOpen: boolean;
-  iv: ReturnType<typeof parseIvRank>;
-  dailyCandles: OptionsCandle[];
-  fallbackPrice: number | null;
-}): MarketMapIntelligence["expectedMove"] {
-  const ordered = [...args.dailyCandles].sort((left, right) => left.timestamp - right.timestamp);
-  const completed = ordered.filter((candle) => {
-    const date = new Date(candle.timestamp).toISOString().slice(0, 10);
-    return args.marketOpen ? date < args.sessionDate : date <= args.sessionDate;
-  });
-  const anchorCandle = completed.at(-1) ?? null;
-  const anchorPrice = anchorCandle?.close ?? args.fallbackPrice;
-  if (anchorPrice === null || anchorPrice <= 0) return null;
-
-  const annualizedIv = args.marketOpen
-    ? args.iv.priorAtmIv
-    : args.iv.atmIv ?? args.iv.priorAtmIv;
-  const priorCandle = completed.at(-2) ?? null;
-  const approximate = annualizedIv === null || annualizedIv <= 0;
-  const movePercent = !approximate
-    ? annualizedIv! / Math.sqrt(252)
-    : priorCandle && priorCandle.close > 0
-      ? (priorCandle.high - priorCandle.low) / (2 * priorCandle.close)
-      : 0;
-  if (!Number.isFinite(movePercent) || movePercent <= 0) return null;
-
-  const moveDollars = anchorPrice * movePercent;
-  return {
-    method: approximate ? "PRIOR_REALIZED_RANGE" : "QD_PRIOR_IV_ONE_SIGMA",
-    anchorPrice,
-    anchorLabel: "LATEST_PRICE",
-    annualizedIv: approximate ? movePercent * Math.sqrt(252) : annualizedIv!,
-    movePercent,
-    moveDollars,
-    min: anchorPrice - moveDollars,
-    max: anchorPrice + moveDollars,
-    sourceExpiration: args.iv.expiration,
-    approximate,
-    exactMenthorQEquivalent: false,
-  };
 }
 
 function deriveDteGamma(gamma: ExposureSummary | null, sessionDate: string): MarketMapIntelligence["dealerPositioning"]["dteGamma"] {

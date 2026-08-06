@@ -45,6 +45,7 @@ export const LIVE_CHART_INDICATOR_IDS = new Set([
   "gamma-levels",
   "classic-gex-profile",
   "tpo-levels",
+  "expected-move",
   "source-code-indicator",
 ]);
 export const VOLUME_PROFILE_INDICATOR_IDS = new Set([
@@ -226,6 +227,10 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
     { key: "profileWidth", label: "Maximum profile width (% of chart)", defaultValue: 24, min: 8, max: 45, step: 1 },
     { key: "minBarWidth", label: "Minimum visible bar width (pixels)", defaultValue: 5, min: 1, max: 20, step: 1 },
     { key: "contrast", label: "Profile contrast (%)", defaultValue: 70, min: 15, max: 100, step: 1 },
+  ],
+  "expected-move": [
+    { key: "lineOpacity", label: "Rail opacity (%)", defaultValue: 72, min: 15, max: 100, step: 1 },
+    { key: "fillOpacity", label: "Band fill opacity (%)", defaultValue: 3, min: 0, max: 4, step: 0.5 },
   ],
   "tpo-levels": [
     { key: "rowSize", label: "NQ row size (points)", defaultValue: 1, min: 0.25, max: 10, step: 0.25 },
@@ -578,6 +583,16 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
     negativeColor: "#EF4444",
     zeroGammaColor: "#F4F4F5",
     classicGexSettingsVersion: 1,
+  } : {}),
+  ...(indicatorId === "expected-move" ? {
+    mode: "SESSION",
+    mappingSource: "QQQ",
+    showTwoSigma: false,
+    showBandFill: false,
+    showLabels: true,
+    useThemeColors: false,
+    neutralColor: "#D6A84B",
+    expectedMoveSettingsVersion: 1,
   } : {}),
   ...(indicatorId === "tpo-levels" ? {
     useThemeColors: true,
