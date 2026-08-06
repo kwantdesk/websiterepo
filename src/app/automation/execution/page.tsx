@@ -182,6 +182,7 @@ export default function AutomationExecutionPage() {
     if (backtestSnapshot) {
       badges.push(`Backtest ${backtestSnapshot.totalTrades} trades`);
       badges.push(backtestSnapshot.strategyName);
+      badges.push("Simulated data");
     } else {
       badges.push("Execution overlays");
     }
@@ -309,11 +310,11 @@ export default function AutomationExecutionPage() {
         time: snapshot.ranAt,
         bot: strategy.name,
         action: "AUTOMATION BACKTEST",
-        reason: `${snapshot.totalTrades} trades on ${selectedInstrument} / ${selectedTimeframe} / ${backtestDays}d sample`,
+        reason: `${snapshot.totalTrades} trades on SIMULATED random-walk data (${selectedInstrument}-style costs) / ${selectedTimeframe} / ${backtestDays}d — not market history`,
         level: "success",
       });
 
-      setToast(`Backtest complete for ${strategy.name}`);
+      setToast(`Backtest complete for ${strategy.name} (simulated data)`);
       window.setTimeout(() => setToast(""), 2200);
     } catch (nextError) {
       setBacktestError((nextError as Error).message);
@@ -689,6 +690,9 @@ export default function AutomationExecutionPage() {
               </div>
               {backtestSnapshot ? (
                 <div className="space-y-3 text-[13px]">
+                  <div className="rounded-lg border border-amber-400/40 bg-amber-950/40 px-3 py-2 font-mono text-[11px] uppercase tracking-[0.1em] text-amber-300">
+                    Simulated price data — random-walk preview, not market history
+                  </div>
                   <div className="flex items-center justify-between gap-3 border-b border-border pb-3">
                     <span className="text-muted">Strategy</span>
                     <span className="font-medium text-foreground">{backtestSnapshot.strategyName}</span>

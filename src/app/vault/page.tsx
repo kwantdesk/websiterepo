@@ -14,7 +14,6 @@ import {
   Bot,
   BrainCircuit,
   CalendarDays,
-  Check,
   Copy,
   Eye,
   FlaskConical,
@@ -118,7 +117,8 @@ function Author({ strategy }: { strategy: Strategy }) {
     <div className="flex items-center gap-2">
       <div className="flex h-6 w-6 items-center justify-center rounded-full bg-surface text-[10px] font-semibold">{strategy.author.slice(1, 3).toUpperCase()}</div>
       <span className="text-[12px] text-muted">{strategy.author}</span>
-      {strategy.verified && <span className="flex h-4 w-4 items-center justify-center rounded-full bg-blue-500 text-background"><Check className="h-2.5 w-2.5" /></span>}
+      {/* No fabricated verification marks: the catalog below is illustrative
+          placeholder content, so a "verified author" badge would be a lie. */}
     </div>
   );
 }
@@ -177,6 +177,10 @@ export default function VaultPage() {
         </header>
 
         <div className="space-y-6 p-6">
+          <div className="rounded-2xl border border-amber-400/40 bg-amber-950/30 px-4 py-3 text-[13px] text-amber-200">
+            <span className="font-semibold uppercase tracking-[0.08em]">Preview catalog</span>
+            {" — the strategies, authors, performance figures, ratings and engagement counts on this page are illustrative placeholders, not a live marketplace."}
+          </div>
           <section className="space-y-3 rounded-2xl border border-border bg-panel p-4">
             {[
               ["Category", "All", "Free", "Paid", "Most Popular", "Newest", "Top Rated", "Most Cloned"],

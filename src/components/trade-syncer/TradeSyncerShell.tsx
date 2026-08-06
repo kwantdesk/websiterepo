@@ -64,7 +64,16 @@ export default function TradeSyncerShell({ children }: { children: ReactNode }) 
           </div>
         </header>
 
-        <div className="space-y-6 p-6">{children}</div>
+        <div className="space-y-6 p-6">
+          {/* The copier backend is not a live broker-copy engine yet: every
+              account, balance, position and log on these pages comes from the
+              seeded demonstration store. That must be visible on every tab. */}
+          <div className="rounded-2xl border border-amber-400/40 bg-amber-950/30 px-4 py-3 text-[13px] text-amber-200">
+            <span className="font-semibold uppercase tracking-[0.08em]">Seeded preview</span>
+            {" — accounts, balances, positions and copier activity shown here are demonstration data. No live broker connection is active."}
+          </div>
+          {children}
+        </div>
       </main>
     </div>
   );

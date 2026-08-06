@@ -2,6 +2,11 @@ import "server-only";
 
 import { gunzipSync } from "node:zlib";
 
+import {
+  isOrderflowArchiveConfigured,
+  latestArchivedSessionKey,
+  readArchivedSessionFrames,
+} from "@/lib/gexBotOrderflowArchive.server";
 import type {
   GexBotMajorsFrame,
   GexBotMaxChangeFrame,
@@ -504,6 +509,44 @@ function frameSession(frameTimestamp: number, marketOpen: boolean) {
   return Date.now() - frameTimestamp > 5 * 60_000 ? "DELAYED" as const : "LIVE_RTH" as const;
 }
 
+// Serves orderflow history from the desk's own archive of flow-poller frames.
+// Every failure mode returns an explicit reason; none of them invents rows.
+async function readOrderflowArchiveHistory(ticker: string): Promise<HistoryResult> {
+  try {
+    if (!isOrderflowArchiveConfigured()) {
+      return {
+        rows: [],
+        date: null,
+        attemptedDates: [],
+        error: "Orderflow archive is not configured on this deployment.",
+      };
+    }
+    const sessionKey = await latestArchivedSessionKey(ticker);
+    if (!sessionKey) {
+      return {
+        rows: [],
+        date: null,
+        attemptedDates: [],
+        error: `Orderflow archive holds no sessions for ${ticker} yet.`,
+      };
+    }
+    const rows = await readArchivedSessionFrames({ ticker, sessionKey });
+    return {
+      rows,
+      date: sessionKey,
+      attemptedDates: [sessionKey],
+      error: rows.length ? undefined : `Orderflow archive session ${sessionKey} holds no frames.`,
+    };
+  } catch (error) {
+    return {
+      rows: [],
+      date: null,
+      attemptedDates: [],
+      error: error instanceof Error ? error.message : "Orderflow archive read failed.",
+    };
+  }
+}
+
 export async function fetchGexBotTerminal(
   view: View,
   ticker: string,
@@ -521,14 +564,17 @@ export async function fetchGexBotTerminal(
       requestJson(`${base}/${encodeURIComponent(category)}`, marketOpen),
       view === "orderflow" ? Promise.resolve(null) : requestJson(`${base}/majors`, marketOpen),
       view === "orderflow" ? Promise.resolve(null) : requestJson(`${base}/maxchange`, marketOpen),
-      // Archive access is deliberately disconnected. Failed archive requests are
-      // not retried from the polling route and cannot consume the provider cache.
-      Promise.resolve<HistoryResult>({
-        rows: [],
-        date: null,
-        attemptedDates: [],
-        error: "GEXBot archive access is disabled.",
-      }),
+      // History comes from the desk's own archive: raw frames persisted by the
+      // 60s flow poller. The provider archive stays disconnected; an empty or
+      // unconfigured archive is reported honestly, never simulated over.
+      includeHistory && view === "orderflow"
+        ? readOrderflowArchiveHistory(ticker)
+        : Promise.resolve<HistoryResult>({
+            rows: [],
+            date: null,
+            attemptedDates: [],
+            error: includeHistory ? "History is archived for the orderflow view only." : undefined,
+          }),
     ]);
     if (frameResult.status === "rejected") throw frameResult.reason;
     const frame = view === "orderflow"

@@ -1994,7 +1994,8 @@ export default function Chart({
         return { strike: livePrice, mappedPrice: livePrice, value: livePrice, label: `${label} · GB live`, color, dash };
       }
       if (!mapped || mappingDegenerate) return null;
-      return { ...mapped, label: `${label} · QD map`, color, dash };
+      const mappingChip = classicGexProfile.mapping.mode === "MANUAL" ? "QD manual map" : "QD map";
+      return { ...mapped, label: `${label} · ${mappingChip}`, color, dash };
     };
     const lines = [
       majorLine(profileSettings.showMajorPositiveVolume !== false, liveMajors?.volPositive, classicGexProfile.majors.positiveVolume, "Major + Vol", "#22C55E", "7 5"),
@@ -2034,6 +2035,21 @@ export default function Chart({
     overlaySize.width,
     viewportVersion,
   ]);
+  // D9: a MANUAL mapping is a user-frozen ratio with no staleness of its own,
+  // so it is compared against the live-implied ratio on every payload and
+  // badged with the drift in NQ points. It never renders as a verified map.
+  const classicGexManualBadge = useMemo(() => {
+    if (!classicGexProfile || classicGexProfile.mapping.mode !== "MANUAL") return null;
+    const { scale, referenceScale } = classicGexProfile.mapping;
+    const shortScale = scale.toFixed(6);
+    if (!referenceScale || !classicGexProfile.sourcePrice) {
+      return { tone: "danger" as const, text: `Manual map ×${shortScale} · no live ratio to verify` };
+    }
+    const pointsOff = Math.abs(scale - referenceScale) * classicGexProfile.sourcePrice;
+    return pointsOff <= 15
+      ? { tone: "warning" as const, text: `Manual map ×${shortScale} · ~${pointsOff.toFixed(0)}pt vs live` }
+      : { tone: "danger" as const, text: `Manual map ×${shortScale} · ${pointsOff.toFixed(0)}pt OFF LIVE` };
+  }, [classicGexProfile]);
   const expectedMoveIndicator = useMemo(
     () => indicators.find((instance) => instance.enabled && instance.indicatorId === "expected-move") ?? null,
     [indicatorSignature, indicators],
@@ -5375,6 +5391,44 @@ export default function Chart({
           {expectedMovePayload && !expectedMovePayload.stale && !expectedMoveOverlay ? (
             <span>Calibrating {expectedMovePayload.sourceSymbol}</span>
           ) : null}
+        </div>
+      ) : null}
+
+      {classicGexIndicator ? (
+        <div className="pointer-events-none absolute right-[70px] top-[104px] z-[16] flex max-w-[430px] items-center gap-1.5 rounded-full border border-border bg-panel/90 px-2.5 py-1 font-mono text-[8px] uppercase tracking-[0.1em] text-muted shadow-lg backdrop-blur">
+          <span className="font-semibold text-foreground">Classic GEX</span>
+          {classicGexProfile ? (
+            <span className={classicGexProfile.stale ? "text-warning" : "text-primary"}>
+              {classicGexProfile.stale
+                ? `Stale ${formatTpoAge(classicGexProfile.dataAgeMs)}`
+                : classicGexProfile.status}
+            </span>
+          ) : null}
+          {classicGexManualBadge ? (
+            <span className={classicGexManualBadge.tone === "danger" ? "text-danger" : "text-warning"}>
+              {classicGexManualBadge.text}
+            </span>
+          ) : null}
+          {classicGexError && !classicGexProfile ? (
+            <span className="max-w-[250px] truncate text-danger">{classicGexError}</span>
+          ) : null}
+        </div>
+      ) : null}
+
+      {(gammaLevelsError || valueAreaLevelsError || historicalStructureError) ? (
+        <div className="pointer-events-none absolute right-[70px] top-[138px] z-[15] flex max-w-[430px] flex-col items-end gap-1">
+          {[
+            gammaLevelsError ? `Kwant Levels · ${gammaLevelsError}` : null,
+            valueAreaLevelsError ? `Value Area · ${valueAreaLevelsError}` : null,
+            historicalStructureError ? `Structure · ${historicalStructureError}` : null,
+          ].filter((message): message is string => Boolean(message)).map((message) => (
+            <span
+              key={message}
+              className="max-w-full truncate rounded-full border border-border bg-panel/92 px-2.5 py-1 font-mono text-[8px] uppercase tracking-[0.1em] text-danger shadow-lg backdrop-blur"
+            >
+              {message}
+            </span>
+          ))}
         </div>
       ) : null}
 

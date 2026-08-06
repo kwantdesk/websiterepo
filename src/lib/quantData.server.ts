@@ -2881,6 +2881,7 @@ export async function getClassicGexProfilePayload(args: {
     mode: args.mappingMode,
     scale: args.mappingMode === "MANUAL" ? Math.max(0.000001, args.manualMultiplier) : autoScale,
     offset: args.mappingMode === "MANUAL" ? args.premiumOffset : 0,
+    referenceScale: Number.isFinite(liveRatio) && liveRatio > 0 ? liveRatio : null,
   } as const;
   const oiByStrike = new Map(contractRows.map((row) => [row.strike, row]));
   const volumeByStrike = new Map<number, { call: number; put: number }>();

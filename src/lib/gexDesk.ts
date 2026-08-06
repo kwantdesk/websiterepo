@@ -533,7 +533,7 @@ export function createGexDeskFixture(): GexDeskPayload {
       error: null,
     };
   };
-  return buildGexDeskPayload({
+  const payload = buildGexDeskPayload({
     sessionDate,
     marketOpen: true,
     nqPrice,
@@ -588,6 +588,13 @@ export function createGexDeskFixture(): GexDeskPayload {
     optionsTape,
     refreshAfterMs: 60_000,
   });
+  // A fixture must announce itself in the payload, not rely on the caller's
+  // gate. Everything above is invented preview data.
+  return {
+    ...payload,
+    errors: ["DEV FIXTURE: every value on this desk is fabricated preview data (auth-bypass mode, no data key)."],
+    disclosure: "DEV FIXTURE — fabricated preview data rendered because the deployment runs with the local auth bypass and no data key. Not market data.",
+  };
 }
 
 export function createGexDeskHistoryFixture(
@@ -661,8 +668,8 @@ export function createGexDeskHistoryFixture(
     nqPrices: futuresPrices,
     rows,
     mappingCoverage: 0.98,
-    errors: [],
-    disclosure: `Intraday gamma exposure mapped with timestamp-aligned source and ${instrument} prices. Change shows each bucket versus its prior sampled frame.`,
+    errors: ["DEV FIXTURE: this gamma history is fabricated preview data (auth-bypass mode, no data key)."],
+    disclosure: "DEV FIXTURE — fabricated intraday gamma history rendered because the deployment runs with the local auth bypass and no data key. Not market data.",
   };
 }
 
@@ -689,6 +696,6 @@ export function createGexDeskZeroGammaFixture(): GexDeskZeroGammaPayload {
     grossGex: 8_760_000_000,
     curve,
     method: "TRUE_OI_SCENARIO",
-    disclosure: "True open-interest gamma flip from the included native CME NQ structural and current-session 0DTE chains. Every included option is repriced across hypothetical NQ futures prices using Black-76 gamma; the crossing nearest live NQ is selected and linearly interpolated.",
+    disclosure: "DEV FIXTURE — fabricated zero-gamma curve rendered because the deployment runs with the local auth bypass and no Databento key. Not derived from any option chain. Not market data.",
   };
 }

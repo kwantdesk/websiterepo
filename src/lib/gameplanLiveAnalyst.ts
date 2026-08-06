@@ -452,7 +452,12 @@ export function buildLiveAnalystSnapshot(args: {
 
   const now = args.now ?? Date.now();
   const candles = normalizeCandles(args.candles, currentPrice, now);
-  const atr = averageTrueRange(candles) || (root === "NQ" ? 12 : 3);
+  // With no computable ATR the instrument default is only a normalization
+  // scale for momentum math — it is an assumption, not a measurement, and the
+  // prose below must not quote "verified" ranges built on it.
+  const measuredAtr = averageTrueRange(candles);
+  const atrMeasured = Number.isFinite(measuredAtr) && measuredAtr > 0;
+  const atr = atrMeasured ? measuredAtr : (root === "NQ" ? 12 : 3);
   const fifteen = momentumForBars(candles, 3, currentPrice, atr);
   const hour = momentumForBars(candles, 12, currentPrice, atr);
   const fourHour = momentumForBars(candles, 48, currentPrice, atr);
@@ -537,16 +542,20 @@ export function buildLiveAnalystSnapshot(args: {
   const recentHigh = recentWindow.length ? Math.max(...recentWindow.map((candle) => candle.high)) : currentPrice;
   const recentLow = recentWindow.length ? Math.min(...recentWindow.map((candle) => candle.low)) : currentPrice;
   const htf = higherTimeframeDescription(fifteenTrend, hourTrend, fourHourTrend);
-  const rangeContext = recentHigh - currentPrice <= atr
-    ? `Price is also pressing the verified four-hour high at ${formatPrice(recentHigh)}, so continuation still has to prove it can hold above that reference.`
-    : currentPrice - recentLow <= atr
-      ? `Price is also testing the verified four-hour low at ${formatPrice(recentLow)}, so sellers still need acceptance beneath that reference.`
-      : `The verified four-hour reference range remains ${formatPrice(recentLow)}–${formatPrice(recentHigh)}.`;
+  const rangeContext = !atrMeasured
+    ? "The four-hour reference range is unavailable until enough candle history arrives — no range claim is made."
+    : recentHigh - currentPrice <= atr
+      ? `Price is also pressing the verified four-hour high at ${formatPrice(recentHigh)}, so continuation still has to prove it can hold above that reference.`
+      : currentPrice - recentLow <= atr
+        ? `Price is also testing the verified four-hour low at ${formatPrice(recentLow)}, so sellers still need acceptance beneath that reference.`
+        : `The verified four-hour reference range remains ${formatPrice(recentLow)}–${formatPrice(recentHigh)}.`;
   const agreementCopy = opposingWeight >= 0.12
     ? " The completed timeframe evidence is mixed, so confidence is deliberately capped until the conflict resolves."
     : "";
   const thesis = `${levelContext(root, level, currentPrice)}. ${roleDescription(level.role)} ${controlDescription(control, fifteenTrend, hourTrend)} On the wider map, ${htf}.${agreementCopy} ${rangeContext} ${options.text}`;
-  const volatilityRegime = volatility?.regime ?? "BUILDING";
+  // A missing volatility snapshot is reported as unknown, never dressed up as
+  // a real regime reading.
+  const volatilityRegime = volatility?.regime ?? "UNKNOWN";
   const volatilityTrend = volatility?.trend ?? "UNKNOWN";
   const signature = [
     plan.edition.date,

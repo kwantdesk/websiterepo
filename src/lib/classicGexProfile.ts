@@ -45,6 +45,10 @@ export type ClassicGexProfilePayload = {
     mode: "AUTO" | "MANUAL";
     scale: number;
     offset: number;
+    // Live-implied source→futures ratio at build time. A MANUAL multiplier is
+    // user-frozen, so the renderer compares it against this to badge a stale
+    // or insane manual ratio.
+    referenceScale: number | null;
   };
   rows: ClassicGexProfileRow[];
   majors: {

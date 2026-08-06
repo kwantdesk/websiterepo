@@ -406,15 +406,14 @@ export function buildChartVolumeProfile(args: {
     const suppliedAsk = Math.max(0, Number(candle.askVolume ?? 0));
     const suppliedTotal = suppliedBid + suppliedAsk;
     const boundedDelta = Math.max(-volume, Math.min(volume, Number(candle.delta ?? 0)));
+    // Without a supplied bid/ask split or a real delta there is no buy/sell
+    // information in an OHLCV bar. The split stays neutral (delta 0) — candle
+    // direction must never be dressed up as order-flow aggression.
     const inferredAskShare = suppliedTotal > 0
       ? suppliedAsk / suppliedTotal
       : candle.delta !== undefined
         ? (volume + boundedDelta) / (2 * volume)
-        : candle.close > candle.open
-          ? 0.55
-          : candle.close < candle.open
-            ? 0.45
-            : 0.5;
+        : 0.5;
     const candleTrades = Math.max(0, Number(candle.trades ?? 1));
 
     binTicks.forEach((binTick, index) => {

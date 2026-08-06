@@ -510,6 +510,23 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
           drawLevel(groupedVah, style.valueAreaColor, [3, 3], "VAH");
           drawLevel(groupedVal, style.valueAreaColor, [3, 3], "VAL");
         }
+
+        // Provenance is not optional: a profile distributed from OHLCV bars is
+        // an approximation of the tape and must say so on the canvas itself,
+        // regardless of the text toggle.
+        if (profile.provider === "Chart" && top != null && bottom != null) {
+          context.globalAlpha = 0.75;
+          context.fillStyle = style.valueAreaColor;
+          context.font = "600 8px 'JetBrains Mono', monospace";
+          context.textAlign = "left";
+          context.textBaseline = "bottom";
+          context.setLineDash([]);
+          context.fillText(
+            "APPROX · OHLCV",
+            clamp(Math.min(anchorX, endX) + 3, 2, mediaSize.width - 70),
+            Math.max(9, Math.min(top, bottom) - 3),
+          );
+        }
       }
 
       context.restore();

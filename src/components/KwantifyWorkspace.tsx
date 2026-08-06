@@ -80,7 +80,6 @@ import {
   Zap,
 } from "lucide-react";
 import { runBacktest, runStrategyCode, type BacktestConfig, type BacktestResult, type Candle, type Trade } from "@/lib/backtester";
-import { generateSampleData } from "@/lib/sampleData";
 import { createClient } from "@/lib/supabase";
 import type { FriendsPayload } from "@/lib/friends";
 import { cacheProfileIdentity, readProfileIdentityCache } from "@/lib/profileIdentityCache";
@@ -2284,6 +2283,9 @@ type ValueAreaChartOverlay = {
   dailyLabel: string;
   weeklyLabel: string;
   generatedAt: string;
+  // Set when a refresh fails while last-good levels stay on the chart. The
+  // painter must render them visibly stale, never fresh-looking.
+  stale?: boolean;
 };
 
 type ValueAreaPayloadCacheEntry = {
@@ -2322,6 +2324,24 @@ function mixChartColor(base: string, accent: string, accentWeight: number) {
 function colorWithAlpha(color: string, alpha: number) {
   const rgb = parseHexColor(color);
   return rgb ? `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${alpha})` : `color-mix(in srgb, ${color} ${Math.round(alpha * 100)}%, transparent)`;
+}
+
+function levelAsOfLabel(asOf: string | number | null | undefined) {
+  const ms = typeof asOf === "number" ? asOf : asOf ? Date.parse(asOf) : Number.NaN;
+  if (!Number.isFinite(ms)) return null;
+  return new Date(ms).toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit" });
+}
+
+// Failure never gets to keep painting fresh-looking lines. When a feed dies,
+// its last-good levels stay visible only washed out and tagged STALE with the
+// as-of time of the data they were built from.
+function markLevelsStale(levels: ChartLevel[], asOf: string | number | null | undefined): ChartLevel[] {
+  const asOfLabel = levelAsOfLabel(asOf);
+  return levels.map((level) => ({
+    ...level,
+    color: colorWithAlpha(level.color, 0.42),
+    label: `${level.label} · STALE${asOfLabel ? ` ${asOfLabel}` : ""}`,
+  }));
 }
 
 function formatGameplanZone(low: number, high: number) {
@@ -2518,6 +2538,8 @@ function buildValueAreaChartOverlay(
   const dailyColor = mixChartColor(settings.upColor, "#38BDF8", 0.56);
   const weeklyColor = mixChartColor(settings.upColor, "#F59E0B", 0.68);
   const currentColor = settings.upColor;
+  // Every line carries its book: these levels come from the CME
+  // trade-by-trade tape, and the axis label says so.
   const periodLevels = (
     prefix: "CUR" | "PD" | "PW",
     profile: Pick<CompletedValueAreaProfile, "vah" | "val" | "poc" | "vwap" | "end">,
@@ -2528,7 +2550,7 @@ function buildValueAreaChartOverlay(
       id: `${prefix.toLowerCase()}-vah-${profile.end}`,
       price: profile.vah,
       color,
-      label: current ? "VAH" : `${prefix} VAH`,
+      label: `${current ? "VAH" : `${prefix} VAH`} · CME`,
       lineStyle: "dashed",
       lineWidth: current ? 2 : 1,
       axisLabelVisible: true,
@@ -2537,7 +2559,7 @@ function buildValueAreaChartOverlay(
       id: `${prefix.toLowerCase()}-val-${profile.end}`,
       price: profile.val,
       color,
-      label: current ? "VAL" : `${prefix} VAL`,
+      label: `${current ? "VAL" : `${prefix} VAL`} · CME`,
       lineStyle: "dashed",
       lineWidth: current ? 2 : 1,
       axisLabelVisible: true,
@@ -2546,7 +2568,7 @@ function buildValueAreaChartOverlay(
       id: `${prefix.toLowerCase()}-poc-${profile.end}`,
       price: profile.poc,
       color,
-      label: current ? "POC" : `${prefix} POC`,
+      label: `${current ? "POC" : `${prefix} POC`} · CME`,
       lineStyle: "solid",
       lineWidth: 2,
       axisLabelVisible: true,
@@ -2555,7 +2577,7 @@ function buildValueAreaChartOverlay(
       id: `${prefix.toLowerCase()}-vwap-${profile.end}`,
       price: profile.vwap,
       color,
-      label: current ? "VWAP" : `${prefix} VWAP`,
+      label: `${current ? "VWAP" : `${prefix} VWAP`} · CME`,
       lineStyle: "dotted",
       lineWidth: 2,
       axisLabelVisible: true,
@@ -3061,16 +3083,24 @@ function WorkspaceChartPane({
     downColor: settings.downColor,
   });
   const chartLevels = useMemo(
-    () => [
-      ...(gammaLevelsEnabled
+    () => {
+      const gammaLevels = gammaLevelsEnabled
         ? flowConfirmedGammaLevels.filter((level) =>
             !expectedMoveIndicator || !level.id.toLowerCase().includes("expected-move"))
-        : []),
-      ...(valueAreaLevelsEnabled && valueAreaOverlay?.instrument === pane.symbol
+        : [];
+      const valueAreaLevels = valueAreaLevelsEnabled && valueAreaOverlay?.instrument === pane.symbol
         ? valueAreaOverlay.levels
-        : []),
-      ...(historicalStructureEnabled ? structure.snapshot.levels : []),
-    ],
+        : [];
+      return [
+        ...(currentGammaOverlay?.stale
+          ? markLevelsStale(gammaLevels, currentGammaOverlay.checkedAt)
+          : gammaLevels),
+        ...(valueAreaOverlay?.stale
+          ? markLevelsStale(valueAreaLevels, valueAreaOverlay.generatedAt)
+          : valueAreaLevels),
+        ...(historicalStructureEnabled ? structure.snapshot.levels : []),
+      ];
+    },
     [
       currentGammaOverlay,
       expectedMoveIndicator,
@@ -3815,6 +3845,12 @@ function WorkspaceChartPane({
               ? loadError.message
               : "CME value-area levels are unavailable.",
           );
+        } else if (!retainedOverlay.stale) {
+          // Last-good levels may stay on the chart only with an explicit
+          // stale badge — a failed refresh must never keep painting them
+          // fresh-looking.
+          retainedOverlay = { ...retainedOverlay, stale: true };
+          setValueAreaOverlay(retainedOverlay);
         }
         setValueAreaLevelsLoading(false);
         // A reload used to appear to fix this because the first failure waited
@@ -7741,28 +7777,14 @@ export default function KwantifyWorkspace({
           showReportToast("success", `Report updated — ${displayCmeSymbol(selectedInstrument)} ${selectedTimeframe}`, 2000);
           setChartLoadingMessage(`Loaded ${candles.length.toLocaleString()} candles`);
         } else {
-          const fallback = activeChartBrokerLabel === "Databento" || activeChartBrokerLabel === "Market Index"
-            ? []
-            : generateSampleData(60);
-          if (fallback.length) setChartCandles(fallback);
-          if (backtestResult && !backtestResult.error) {
-            const config: BacktestConfig = {
-              initialBalance: 10000,
-              broker: { spread: 1.5, slippage: 0.5, commission: 0 },
-              maxPositions: 1,
-            };
-            const result = runBacktest(fallback, config);
-            setBacktestResult(result);
-            setChartTrades(result.trades);
-          }
-          showReportToast("success", `Report updated — ${displayCmeSymbol(selectedInstrument)} ${selectedTimeframe}`, 2000);
+          // Never substitute fabricated candles for a feed that returned
+          // nothing. An empty feed is reported as exactly that; whatever real
+          // candles are already on screen stay untouched.
+          setChartLoadingMessage(`${activeChartBrokerLabel} returned no ${selectedTimeframe} candles for this window.`);
+          showReportToast("error", `No candles from ${activeChartBrokerLabel} — chart not updated`, 3000);
         }
       } catch (loadError) {
         if (cancelled || (loadError instanceof DOMException && loadError.name === "AbortError")) return;
-        if (!usingCTraderFeed && activeChartBrokerLabel !== "Databento" && activeChartBrokerLabel !== "Market Index") {
-          const fallback = generateSampleData(60);
-          setChartCandles(fallback);
-        }
         setChartLoadingMessage(activeChartBrokerLabel === "Databento" ? "Connecting to CME history…" : "");
         showReportToast("error", activeChartBrokerLabel === "Databento" ? "CME history is reconnecting" : "Failed to update report", 3000);
       } finally {

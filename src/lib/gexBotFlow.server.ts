@@ -1,5 +1,6 @@
 import "server-only";
 
+import { persistOrderflowFrame } from "@/lib/gexBotOrderflowArchive.server";
 import {
   GEXBOT_FLOW_POLL_MS,
   GEXBOT_FLOW_TICKER,
@@ -11,6 +12,7 @@ import {
   nextGexBotFlowBackoffMs,
   normalizeGexBotFlowMajors,
   normalizeGexBotFlowSample,
+  unwrapGexBotFlowFrame,
   type GexBotFlowMajors,
   type GexBotFlowPayload,
   type GexBotFlowSample,
@@ -150,7 +152,7 @@ async function requestFlowSample(now: number) {
       .find((value) => typeof value === "string" && value.trim());
     throw new Error(typeof detail === "string" ? detail : `GEX Bot flow request failed (${response.status}).`);
   }
-  return normalizeGexBotFlowSample(payload, now);
+  return { sample: normalizeGexBotFlowSample(payload, now), raw: payload };
 }
 
 async function requestMajors(now: number) {
@@ -176,8 +178,18 @@ async function poll(now: number, marketOpen: boolean) {
   // with them; a failed majors request just keeps the previous fresh value.
   const majorsRequest = requestMajors(now).catch(() => null);
   try {
-    const sample = await requestFlowSample(now);
+    const { sample, raw } = await requestFlowSample(now);
     appendSample(sample, now);
+    // Every accepted frame is archived so orderflow history is real data.
+    // The frame is unwrapped before storage so history readers can normalize
+    // it directly. Best-effort: an archive outage must never take the live
+    // poller down, and the read side reports an empty archive honestly.
+    void persistOrderflowFrame({
+      ticker: GEXBOT_FLOW_TICKER,
+      sessionKey: state.sessionKey ?? newYorkSessionKey(now),
+      frameTimestamp: sample.timestamp,
+      payload: unwrapGexBotFlowFrame(raw),
+    }).catch(() => undefined);
     state.consecutiveFailures = 0;
     state.lastRequestFailed = false;
     state.lastError = null;

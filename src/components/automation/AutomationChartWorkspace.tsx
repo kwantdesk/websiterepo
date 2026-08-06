@@ -104,9 +104,17 @@ export default function AutomationChartWorkspace({
     setLocalTimeframe(value);
   }
 
+  const usingFallbackCandles = !candles || candles.length === 0;
   const chartTrades = trades ?? fallbackTrades;
-  const chartCandles = candles && candles.length > 0 ? candles : fallbackCandles;
-  const badges = statusBadges ?? [instrument, timeframe, "Tradovate Sim", "Bracket Auto", "Live Overlays On"];
+  const chartCandles = usingFallbackCandles ? fallbackCandles : candles;
+  // Fabricated preview data must never sit under badges that assert liveness.
+  const badges = statusBadges ?? [
+    instrument,
+    timeframe,
+    "Tradovate Sim",
+    "Bracket Auto",
+    usingFallbackCandles ? "Simulated preview" : "Live Overlays On",
+  ];
 
   return (
     <SectionCard
@@ -155,7 +163,7 @@ export default function AutomationChartWorkspace({
           ))}
         </div>
 
-        <div className={`overflow-hidden rounded-2xl border border-border bg-chart-background ${compact ? "h-[420px]" : "h-[560px]"}`}>
+        <div className={`relative overflow-hidden rounded-2xl border border-border bg-chart-background ${compact ? "h-[420px]" : "h-[560px]"}`}>
           <Chart
             candles={chartCandles}
             trades={chartTrades}
@@ -164,6 +172,13 @@ export default function AutomationChartWorkspace({
             timeframe={timeframe}
             settings={defaultChartSettings}
           />
+          {usingFallbackCandles ? (
+            <div className="pointer-events-none absolute inset-x-0 top-3 z-[30] flex justify-center">
+              <span className="rounded-full border border-amber-400/50 bg-amber-950/70 px-3 py-1 font-mono text-[10px] uppercase tracking-[0.14em] text-amber-300 backdrop-blur">
+                Simulated preview · Not market data
+              </span>
+            </div>
+          ) : null}
         </div>
       </div>
     </SectionCard>

@@ -169,20 +169,21 @@ export function isGexBotFlowRth(now: Date | number = Date.now()) {
   return minutes >= 9 * 60 + 30 && minutes < 16 * 60;
 }
 
+export function unwrapGexBotFlowFrame(value: unknown): Record<string, unknown> {
+  if (Array.isArray(value)) {
+    const row = [...value].reverse().find((item) => item && typeof item === "object");
+    return row && typeof row === "object" ? row as Record<string, unknown> : {};
+  }
+  if (!value || typeof value !== "object") return {};
+  const source = value as Record<string, unknown>;
+  for (const key of ["data", "result", "frame"]) {
+    if (source[key] && typeof source[key] === "object") return unwrapGexBotFlowFrame(source[key]);
+  }
+  return source;
+}
+
 export function normalizeGexBotFlowSample(payload: unknown, fallbackNow = Date.now()): GexBotFlowSample {
-  const unwrap = (value: unknown): Record<string, unknown> => {
-    if (Array.isArray(value)) {
-      const row = [...value].reverse().find((item) => item && typeof item === "object");
-      return row && typeof row === "object" ? row as Record<string, unknown> : {};
-    }
-    if (!value || typeof value !== "object") return {};
-    const source = value as Record<string, unknown>;
-    for (const key of ["data", "result", "frame"]) {
-      if (source[key] && typeof source[key] === "object") return unwrap(source[key]);
-    }
-    return source;
-  };
-  const source = unwrap(payload);
+  const source = unwrapGexBotFlowFrame(payload);
   const required = (key: string) => {
     const value = finite(source[key]);
     if (value === null) throw new Error(`GEX Bot flow frame is missing ${key}.`);

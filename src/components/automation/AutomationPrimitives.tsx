@@ -54,25 +54,35 @@ export function SectionCard({
 }
 
 export function AutomationMetricsRow() {
+  // Illustrative placeholders only. No live automation runtime is wired to
+  // this row yet, so it must say so — invented account state presented as
+  // real is never acceptable.
   const metrics = [
-    { icon: Workflow, label: "Active Bots", value: "3", detail: "2 armed, 1 paused" },
-    { icon: Wallet, label: "Connected Venues", value: "3", detail: "OANDA, Tradovate, demo" },
-    { icon: Activity, label: "Live Positions", value: "2", detail: "Chart-synced and bracketed" },
-    { icon: Zap, label: "Signal to Route", value: "18ms", detail: "Current median dispatch latency" },
-    { icon: Activity, label: "Today P&L", value: "+$160.20", detail: "Net across active runtimes" },
+    { icon: Workflow, label: "Active Bots", value: "3", detail: "Illustrative preview" },
+    { icon: Wallet, label: "Connected Venues", value: "3", detail: "Illustrative preview" },
+    { icon: Activity, label: "Live Positions", value: "2", detail: "Illustrative preview" },
+    { icon: Zap, label: "Signal to Route", value: "18ms", detail: "Illustrative preview" },
+    { icon: Activity, label: "Today P&L", value: "+$160.20", detail: "Illustrative preview" },
   ];
 
   return (
-    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-      {metrics.map((metric) => (
-        <MetricCard
-          key={metric.label}
-          icon={metric.icon}
-          label={metric.label}
-          value={metric.value}
-          detail={metric.detail}
-        />
-      ))}
+    <div className="space-y-2">
+      <div className="flex justify-end">
+        <span className="rounded-full border border-amber-400/40 bg-amber-950/40 px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.12em] text-amber-300">
+          Illustrative preview · Not live account data
+        </span>
+      </div>
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+        {metrics.map((metric) => (
+          <MetricCard
+            key={metric.label}
+            icon={metric.icon}
+            label={metric.label}
+            value={metric.value}
+            detail={metric.detail}
+          />
+        ))}
+      </div>
     </div>
   );
 }
