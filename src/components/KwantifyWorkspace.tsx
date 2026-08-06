@@ -10093,6 +10093,55 @@ export default function KwantifyWorkspace({
             timeframe={formatChartInterval(activeWorkspacePane.timeframe)}
             indicators={paneIndicators[activePaneId] ?? []}
             chartSettings={chartSettings}
+            levelControls={[
+              {
+                id: "gamma",
+                label: "Gamma levels",
+                description: "Live options positioning levels",
+                badge: "Γ",
+                enabled: gammaLevelsEnabled,
+                available: activeWorkspacePane.broker === "Databento"
+                  && isGammaChartInstrument(displayCmeSymbol(activeWorkspacePane.symbol)),
+                onToggle: () => setGammaLevelsEnabled((current) => !current),
+              },
+              {
+                id: "kwant",
+                label: "Kwant levels",
+                description: "Proprietary session levels and zones",
+                badge: "K",
+                enabled: Boolean(activeGameplanRoot && gameplanChartOverlays[activeGameplanRoot]?.levels.length),
+                available: Boolean(activeGameplanRoot),
+                loading: Boolean(activeGameplanRoot && quickGameplanLoading && quickGameplanLoadingRoot === activeGameplanRoot),
+                onToggle: () => {
+                  if (!activeGameplanRoot) return;
+                  if (gameplanChartOverlays[activeGameplanRoot]?.levels.length) {
+                    setGameplanChartOverlays(removeGameplanChartOverlay(activeGameplanRoot));
+                    return;
+                  }
+                  void refreshKwantLevelsForInstrument(activeWorkspacePane.symbol);
+                },
+              },
+              {
+                id: "structure",
+                label: "Structure zones",
+                description: "Supply, demand, support and resistance",
+                badge: "S",
+                enabled: historicalStructureEnabled,
+                available: activeWorkspacePane.broker === "Databento"
+                  && isContinuousFuture(activeWorkspacePane.symbol),
+                onToggle: () => setHistoricalStructureEnabled((current) => !current),
+              },
+              {
+                id: "value-area",
+                label: "Value area",
+                description: "VAH, VAL, POC and VWAP levels",
+                badge: "VA",
+                enabled: valueAreaLevelsEnabled,
+                available: activeWorkspacePane.broker === "Databento"
+                  && isContinuousFuture(activeWorkspacePane.symbol),
+                onToggle: () => setValueAreaLevelsEnabled((current) => !current),
+              },
+            ]}
             onChange={(next) => setIndicatorsForPane(activePaneId, next)}
           />
           <SourceCodeIndicatorsControl

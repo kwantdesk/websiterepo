@@ -82,7 +82,19 @@ type Props = {
   timeframe: string;
   indicators: ChartIndicatorInstance[];
   chartSettings: ChartSettings;
+  levelControls?: ChartLevelControl[];
   onChange: (next: ChartIndicatorInstance[]) => void;
+};
+
+export type ChartLevelControl = {
+  id: "gamma" | "kwant" | "structure" | "value-area";
+  label: string;
+  description: string;
+  badge: string;
+  enabled: boolean;
+  available: boolean;
+  loading?: boolean;
+  onToggle: () => void;
 };
 
 function readFavourites() {
@@ -115,6 +127,7 @@ export default function ChartIndicatorsControl({
   timeframe,
   indicators,
   chartSettings,
+  levelControls = [],
   onChange,
 }: Props) {
   const rootRef = useRef<HTMLDivElement>(null);
@@ -191,6 +204,7 @@ export default function ChartIndicatorsControl({
   const settingsDefinition = settingsInstance
     ? CHART_INDICATOR_BY_ID.get(settingsInstance.indicatorId) ?? null
     : null;
+  const activeLayerCount = indicators.length + levelControls.filter((control) => control.enabled).length;
 
   const replace = (instanceId: string, update: (current: ChartIndicatorInstance) => ChartIndicatorInstance) => {
     onChange(indicators.map((instance) => instance.instanceId === instanceId ? update(instance) : instance));
@@ -237,9 +251,9 @@ export default function ChartIndicatorsControl({
         >
           <BarChart3 className="h-3.5 w-3.5" />
           <span className="hidden sm:inline">Indicators</span>
-          {indicators.length > 0 ? (
+          {activeLayerCount > 0 ? (
             <span className="rounded-full bg-primary/15 px-1.5 py-0.5 font-mono text-[9px] text-primary">
-              {indicators.length}
+              {activeLayerCount}
             </span>
           ) : null}
           <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? "rotate-180" : ""}`} />
@@ -275,8 +289,47 @@ export default function ChartIndicatorsControl({
                 Add
               </button>
             </div>
-            {indicators.length ? (
-              <div className="max-h-[420px] overflow-y-auto p-2">
+            <div className="max-h-[480px] overflow-y-auto">
+              {levelControls.length ? (
+                <section className="border-b border-border p-3">
+                  <div className="mb-2 flex items-center justify-between px-1">
+                    <span className="text-[8px] font-semibold uppercase tracking-[0.15em] text-muted">KwantDesk levels</span>
+                    <span className="text-[8px] text-muted">{levelControls.filter((control) => control.enabled).length} active</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    {levelControls.map((control) => (
+                      <button
+                        key={control.id}
+                        type="button"
+                        disabled={!control.available}
+                        aria-pressed={control.enabled}
+                        onClick={control.onToggle}
+                        className={`flex min-h-[68px] items-start gap-2 rounded-xl border p-2.5 text-left transition-colors ${
+                          !control.available
+                            ? "cursor-not-allowed border-border bg-background/35 opacity-40"
+                            : control.enabled
+                              ? "border-primary/35 bg-primary/[0.09] text-foreground"
+                              : "border-border bg-surface/35 text-muted hover:border-primary/25 hover:text-foreground"
+                        }`}
+                      >
+                        <span className={`flex h-7 min-w-7 items-center justify-center rounded-lg border font-mono text-[9px] font-black ${
+                          control.enabled
+                            ? "border-primary/35 bg-primary/15 text-primary"
+                            : "border-border bg-background text-muted"
+                        } ${control.loading ? "animate-pulse" : ""}`}>
+                          {control.badge}
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-[10px] font-semibold">{control.label}</span>
+                          <span className="mt-1 block line-clamp-2 text-[8px] leading-3 text-muted">{control.loading ? "Loading latest levels…" : control.description}</span>
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </section>
+              ) : null}
+              {indicators.length ? (
+              <div className="p-2">
                 {indicators.map((instance) => {
                   const definition = CHART_INDICATOR_BY_ID.get(instance.indicatorId);
                   if (!definition) return null;
@@ -337,20 +390,21 @@ export default function ChartIndicatorsControl({
                 })}
               </div>
             ) : (
-              <div className="p-4">
+              <div className="p-3">
                 <button
                   type="button"
                   onClick={() => {
                     setLibraryOpen(true);
                     setOpen(false);
                   }}
-                  className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-border bg-surface/30 px-4 py-8 text-[11px] font-medium text-muted hover:border-primary/30 hover:text-foreground"
+                  className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-border bg-surface/30 px-4 py-5 text-[11px] font-medium text-muted hover:border-primary/30 hover:text-foreground"
                 >
                   <Plus className="h-4 w-4 text-primary" />
                   Add an indicator
                 </button>
               </div>
-            )}
+              )}
+            </div>
           </div>
         ) : null}
       </div>
