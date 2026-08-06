@@ -82,6 +82,7 @@ import {
 } from "@/lib/chartIndicatorEngine";
 import ChartIndicatorPanes, { type IndicatorPaneGroup } from "@/components/ChartIndicatorPanes";
 import DepthOfMarketPanel from "@/components/DepthOfMarketPanel";
+import GexBotFlowStrip from "@/components/GexBotFlowStrip";
 import KwantLoader from "@/components/KwantLoader";
 import { calculateBigTradePrints, type BigTradePrint } from "@/lib/bigTrades";
 import { calculateDeepEffort } from "@/lib/deepEffort";
@@ -117,6 +118,7 @@ import {
 } from "@/lib/tpoLevels";
 import type { ChartGammaCalibration } from "@/lib/chartGammaConversion";
 import { isOptionsFuturesRatioSane } from "@/lib/optionsFlow";
+import type { GexBotFlowPayload } from "@/lib/gexBotFlow";
 import {
   EXPECTED_MOVE_SEMANTICS,
   buildExpectedMoveBand,
@@ -181,6 +183,7 @@ interface ChartProps {
   onToggleValueAreaLevels?: () => void;
   onRemoveGameplanOverlay?: () => void;
   liveCandleEventKey?: string | null;
+  gexBotFlow?: GexBotFlowPayload | null;
 }
 
 export interface ChartLevel {
@@ -192,6 +195,18 @@ export interface ChartLevel {
   lineWidth?: 1 | 2 | 3 | 4;
   axisLabelVisible?: boolean;
   axisTitleVisible?: boolean;
+  kind?: string;
+  crossConfirmed?: boolean;
+  contested?: boolean;
+  confidenceBoost?: number;
+  flowComparison?: {
+    object: string;
+    kwantPrice: number;
+    gexBotPrice: number;
+    distance: number;
+    matchingBand: number;
+    sources: ["Kwant", "GEX Bot"];
+  };
 }
 
 export interface ChartZone {
@@ -1297,6 +1312,7 @@ export default function Chart({
   onToggleValueAreaLevels,
   onRemoveGameplanOverlay,
   liveCandleEventKey,
+  gexBotFlow = null,
 }: ChartProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
@@ -4676,6 +4692,10 @@ export default function Chart({
     for (const item of laidOut) rightAlignedZoneLabelYs.set(item.id, item.y);
   }
 
+  const flowVerdictY = gexBotFlow?.status === "LIVE" && gexBotFlow.sponsorship.active
+    ? candleSeriesRef.current?.priceToCoordinate(candles.at(-1)?.close ?? gexBotFlow.sample?.spot ?? 0) ?? null
+    : null;
+
   return (
     <div ref={chartContainerRef} className="relative h-full w-full overflow-hidden">
       {!chartVisualReady ? (
@@ -4687,6 +4707,16 @@ export default function Chart({
             title="Loading chart"
             detail={`${instrument} · fitting history and price scale`}
           />
+        </div>
+      ) : null}
+      {gexBotFlow ? <GexBotFlowStrip payload={gexBotFlow} /> : null}
+      {flowVerdictY !== null && gexBotFlow?.sponsorship.active ? (
+        <div
+          className={`pointer-events-none absolute right-[70px] z-[25] rounded-md border bg-panel/94 px-2 py-1 font-mono text-[8px] font-semibold shadow-lg backdrop-blur ${gexBotFlow.sponsorship.active.state === "SPONSORED" ? "border-primary/40 text-primary" : "border-warning/40 text-warning"}`}
+          style={{ top: Math.max(8, Math.min(overlaySize.height - 64, flowVerdictY - 12)) }}
+          title={`Price ${(gexBotFlow.sponsorship.active.priceChangePercent * 100).toFixed(3)}% · ΔDEX ${gexBotFlow.sponsorship.active.dexChange.toLocaleString("en-US", { maximumFractionDigits: 0 })} · age ${Math.round((gexBotFlow.dataAgeMs ?? 0) / 1_000)}s`}
+        >
+          {gexBotFlow.sponsorship.active.label}
         </div>
       ) : null}
       {gammaLevelsEnabled && gammaLevelsLoading ? (

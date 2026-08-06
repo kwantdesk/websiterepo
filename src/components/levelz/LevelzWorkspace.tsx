@@ -39,7 +39,12 @@ import {
   type InstitutionalVolumeProfile,
 } from "@/lib/institutionalMarketData";
 import { useStructureLevels } from "@/hooks/useStructureLevels";
+import { useGexBotFlow } from "@/hooks/useGexBotFlow";
 import type { StructureLevelsSnapshot } from "@/lib/structureLevels";
+import {
+  mergeOneFamilyPositioning,
+  type GexBotFlowPayload,
+} from "@/lib/gexBotFlow";
 
 const Chart = dynamic(() => import("@/components/Chart"), {
   ssr: false,
@@ -725,6 +730,41 @@ function mergeNativeGammaCage(base: LevelSnapshot, native: LevelSnapshot): Level
   };
 }
 
+function mergeGexBotFlowFamily(base: LevelSnapshot, flow: GexBotFlowPayload | null): LevelSnapshot {
+  if (flow?.status !== "LIVE" || !flow.sample) return base;
+  const levels = mergeOneFamilyPositioning(
+    base.levels,
+    flow.sample,
+    flow.matchingBand,
+    (object, nearest): IntelligentLevel => ({
+      ...nearest,
+      id: `gexbot-flow-${object.kind.toLowerCase()}-${object.price}`,
+      price: object.price,
+      label: `GEX Bot ${object.name} · contested`,
+      lineStyle: "dotted",
+      lineWidth: 1,
+      axisLabelVisible: true,
+      family: "gamma",
+      kind: object.kind,
+      evidence: "OBSERVED",
+      value: null,
+      explanation: `GEX Bot's ${object.name} is outside the Kwant matching band. Both references remain visible because the same options-positioning object is contested across providers.`,
+      firstTouch: "Treat the disagreement as map uncertainty. Require live price and flow confirmation before assigning the strike a support, resistance, magnet or acceleration role.",
+      hold: "A clean reaction can validate this provider reference, but it does not create an independent confluence count.",
+      break: "Acceptance through the strike weakens this provider reference; compare the response at the Kwant value before acting.",
+      signConvention: flow.signConvention,
+    }),
+  );
+  const confirmed = levels.filter((level) => level.crossConfirmed).length;
+  const contested = levels.filter((level) => level.contested).length;
+  return {
+    ...base,
+    levels: [...levels].sort((left, right) => left.price - right.price || left.id.localeCompare(right.id)),
+    source: `${base.source} · GEX Bot flow family`,
+    note: `${base.note} GEX Bot is treated as the same options-positioning family: ${confirmed} cross-confirmed and ${contested} contested reference${contested === 1 ? "" : "s"}; no independent confluence is added.`,
+  };
+}
+
 function makeGameplanSnapshot(payload: GameplanPayload, settings: ChartSettings, marketOpen: boolean): LevelSnapshot {
   const roleColors = {
     magnet: settings.upColor,
@@ -955,7 +995,7 @@ async function buildLevelSnapshot(config: PanelConfig, settings: ChartSettings) 
   const root = levelRoot(config.instrument);
   if (config.family === "gamma") {
     const gammaSource = root === "NQ" ? "QQQ" : "SPY";
-    const [gamma, gameplan, nativeGamma] = await Promise.all([
+    const [gamma, gameplan, nativeGamma, flow] = await Promise.all([
       requestJson<ChartGammaLevelsPayload & { error?: string }>(
         `/api/chart-gamma-levels?root=${root}&source=${gammaSource}&calibrated=1`,
       ),
@@ -963,9 +1003,13 @@ async function buildLevelSnapshot(config: PanelConfig, settings: ChartSettings) 
       root === "NQ"
         ? requestJson<NativeGammaPayload & { error?: string }>("/api/native-gamma?root=NQ").catch(() => null)
         : Promise.resolve(null),
+      root === "NQ"
+        ? requestJson<GexBotFlowPayload & { error?: string }>("/api/gexbot-flow").catch(() => null)
+        : Promise.resolve(null),
     ]);
     let snapshot = makeGammaSnapshot(gamma, settings);
     if (nativeGamma) snapshot = mergeNativeGammaCage(snapshot, makeNativeGammaSnapshot(nativeGamma, settings));
+    snapshot = mergeGexBotFlowFamily(snapshot, flow);
     if (gameplan) {
       snapshot.tape = gameplan.plan.environment.tape.plain;
       snapshot.flowLean = gameplan.plan.environment.flow.lean;
@@ -1190,6 +1234,7 @@ function LevelChartCard({
   onActivate,
   onChange,
   onRuntime,
+  flowPayload,
 }: {
   config: PanelConfig;
   index: number;
@@ -1198,6 +1243,7 @@ function LevelChartCard({
   onActivate: () => void;
   onChange: (patch: Partial<PanelConfig>) => void;
   onRuntime: (panelId: string, runtime: PanelRuntime) => void;
+  flowPayload: GexBotFlowPayload | null;
 }) {
   const market = useMarketSeries(config);
   const levels = useLevelSnapshot(config, settings);
@@ -1291,6 +1337,7 @@ function LevelChartCard({
             marketIsActive={market.liveStatus === "live"}
             settings={settings}
             toolbarEnabled={false}
+            gexBotFlow={levelRoot(config.instrument) === "NQ" ? flowPayload : null}
           />
         )}
 
@@ -1410,6 +1457,9 @@ function LevelEducationRail({
                 <div className="flex justify-between gap-3"><span className="text-muted">Tape context</span><span className="text-right font-medium text-foreground">{snapshot.tape}</span></div>
                 <div className="flex justify-between gap-3"><span className="text-muted">Directional pressure</span><span className="text-right font-medium text-foreground">{flowText}</span></div>
                 <div className="flex justify-between gap-3"><span className="text-muted">Source</span><span className="text-right font-medium text-foreground">{snapshot.source}</span></div>
+                {selected.crossConfirmed ? <div className="flex justify-between gap-3"><span className="text-muted">Family check</span><span className="text-right font-medium text-primary">Cross-confirmed · +5% data-quality score</span></div> : null}
+                {selected.contested ? <div className="flex justify-between gap-3"><span className="text-muted">Family check</span><span className="text-right font-medium text-warning">Contested · both provider values retained</span></div> : null}
+                {selected.flowComparison ? <div className="flex justify-between gap-3"><span className="text-muted">Provider comparison</span><span className="max-w-[65%] text-right font-medium leading-4 text-foreground">Kwant {formatPrice(selected.flowComparison.kwantPrice)} · GEX Bot {formatPrice(selected.flowComparison.gexBotPrice)} · Δ {selected.flowComparison.distance.toFixed(2)}</span></div> : null}
                 {snapshot.native ? <div className="flex justify-between gap-3"><span className="text-muted">Native state</span><span className="text-right font-medium text-foreground">{snapshot.native.statusLabel}</span></div> : null}
                 {snapshot.native?.oiAsOf ? <div className="flex justify-between gap-3"><span className="text-muted">OI as of</span><span className="text-right font-medium text-foreground">{snapshot.native.oiAsOf}{snapshot.native.oiStale ? " · stale" : ""}</span></div> : null}
                 {snapshot.native ? <div className="flex justify-between gap-3"><span className="text-muted">Native spot age</span><span className="text-right font-medium text-foreground">{snapshot.native.spotAge == null ? "Unavailable" : `${Math.round(snapshot.native.spotAge)}s`}</span></div> : null}
@@ -1451,6 +1501,7 @@ export default function LevelzWorkspace() {
   const [settings, setSettings] = useState<ChartSettings>(defaultChartSettings);
   const [layoutReady, setLayoutReady] = useState(false);
   const [intelligenceCollapsed, setIntelligenceCollapsed] = useState(false);
+  const gexBotFlow = useGexBotFlow(true).payload;
 
   useEffect(() => {
     setSettings(loadStoredChartSettings());
@@ -1512,6 +1563,7 @@ export default function LevelzWorkspace() {
               onActivate={() => setActivePanelId(panel.id)}
               onChange={(patch) => updatePanel(panel.id, patch)}
               onRuntime={updateRuntime}
+              flowPayload={gexBotFlow}
             />
           ))}
         </div>

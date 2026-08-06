@@ -14,6 +14,7 @@ import KwantBotInterpreterPanel from "@/components/kwantbot/KwantBotInterpreterP
 import { useKwantBotInterpreter } from "@/hooks/useKwantBotInterpreter";
 import { useSocialNotifications } from "@/hooks/useSocialNotifications";
 import { useStructureLevels } from "@/hooks/useStructureLevels";
+import { useGexBotFlow } from "@/hooks/useGexBotFlow";
 import { ACTIVITY_STREAK_TIME_ZONE } from "@/lib/activityStreak";
 
 import { Activity as ReactActivity, memo, startTransition, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent as ReactDragEvent } from "react";
@@ -229,6 +230,7 @@ import {
   type ClassicGexHistorySnapshot,
   type ClassicGexProfilePayload,
 } from "@/lib/classicGexProfile";
+import { mergeOneFamilyPositioning } from "@/lib/gexBotFlow";
 
 function workspaceLoader(title: string, detail: string) {
   return (
@@ -2786,6 +2788,7 @@ function buildGammaChartOverlay(args: {
       price: level.price,
       color: gammaLevelColor(level.kind, args.settings),
       label: `${level.label} · ${conversion.source}→${conversion.target}`,
+      kind: level.kind,
       lineStyle: level.kind === "MAJOR_POSITIVE_VOLUME" || /(^| \/ )MPV($| \/ )/.test(level.label)
         ? "solid"
         : level.kind === "POSITIVE_GEX" || level.kind === "NEGATIVE_GEX"
@@ -2954,6 +2957,9 @@ function WorkspaceChartPane({
   const marketActiveRef = useRef(false);
   const marketInactiveTimerRef = useRef<number | null>(null);
   const gammaInstrument = displayCmeSymbol(pane.symbol);
+  const gexBotFlow = useGexBotFlow(
+    gammaInstrument === "NQ" || gammaInstrument === "MNQ",
+  ).payload;
   const classicGexIndicator = indicators.find((instance) =>
     instance.enabled && instance.indicatorId === "classic-gex-profile") ?? null;
   const expectedMoveIndicator = indicators.find((instance) =>
@@ -3007,6 +3013,27 @@ function WorkspaceChartPane({
   );
   const currentGammaOverlay =
     gammaOverlay?.instrument === gammaInstrument ? gammaOverlay : null;
+  const flowConfirmedGammaLevels = useMemo(() => {
+    const base = currentGammaOverlay?.levels ?? [];
+    if (gexBotFlow?.status !== "LIVE" || !gexBotFlow.sample) return base;
+    const comparable = base.filter((level): level is ChartLevel & { kind: string } => Boolean(level.kind));
+    const merged = mergeOneFamilyPositioning(
+      comparable,
+      gexBotFlow.sample,
+      gexBotFlow.matchingBand,
+      (object, nearest) => ({
+        ...nearest,
+        id: `gexbot-flow-${object.kind.toLowerCase()}-${object.price}`,
+        price: object.price,
+        label: `GEX Bot ${object.name} · contested`,
+        lineStyle: "dotted" as const,
+        lineWidth: 1 as const,
+        axisLabelVisible: true,
+      }),
+    );
+    const untouched = base.filter((level) => !level.kind);
+    return [...untouched, ...merged].sort((left, right) => left.price - right.price || left.id.localeCompare(right.id));
+  }, [currentGammaOverlay?.levels, gexBotFlow]);
   const classicGexProfileWithZero = useMemo(() => {
     if (!classicGexProfile || classicGexProfile.zeroGamma) return classicGexProfile;
     const zero = currentGammaOverlay?.levels.find((level) => level.label.startsWith("Zero Gamma"));
@@ -3036,7 +3063,7 @@ function WorkspaceChartPane({
   const chartLevels = useMemo(
     () => [
       ...(gammaLevelsEnabled
-        ? (currentGammaOverlay?.levels ?? []).filter((level) =>
+        ? flowConfirmedGammaLevels.filter((level) =>
             !expectedMoveIndicator || !level.id.toLowerCase().includes("expected-move"))
         : []),
       ...(valueAreaLevelsEnabled && valueAreaOverlay?.instrument === pane.symbol
@@ -3047,6 +3074,7 @@ function WorkspaceChartPane({
     [
       currentGammaOverlay,
       expectedMoveIndicator,
+      flowConfirmedGammaLevels,
       gammaLevelsEnabled,
       pane.symbol,
       historicalStructureEnabled,
@@ -4446,6 +4474,7 @@ function WorkspaceChartPane({
           onToggleValueAreaLevels={onToggleValueAreaLevels}
           onRemoveGameplanOverlay={gameplanOverlay ? onRemoveGameplanOverlay : undefined}
           liveCandleEventKey={pane.id}
+          gexBotFlow={gammaInstrument === "NQ" || gammaInstrument === "MNQ" ? gexBotFlow : null}
         />
       )}
       <div className="pointer-events-none absolute bottom-14 left-1/2 z-20 inline-flex -translate-x-1/2 items-center gap-1.5 whitespace-nowrap rounded-full border border-border bg-panel/90 px-2.5 py-1 text-[10px] uppercase tracking-[0.12em] text-muted shadow-lg shadow-black/25 backdrop-blur">
