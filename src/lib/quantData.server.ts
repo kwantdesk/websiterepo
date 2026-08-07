@@ -109,6 +109,11 @@ type CachedEndpoint = {
 
 const requestCache = new Map<string, CachedRequest>();
 const endpointCache = new Map<string, CachedEndpoint>();
+// Last AUTO-mapping ratio formed while both legs (live futures, live cash
+// source) were fresh, per source symbol. Used to pin the scale overnight so
+// mapped levels stop tracking the futures price. Per-lambda: a cold instance
+// falls back to the provider's frozen close pair, which is also pinned.
+const lastLiveAutoScaleBySource = new Map<string, number>();
 let gexDeskCache: { expiresAt: number; promise: Promise<GexDeskPayload> } | null = null;
 
 class QuantDataError extends Error {
@@ -2871,17 +2876,44 @@ export async function getClassicGexProfilePayload(args: {
     : null;
   const futuresPrice = requestedFuturesPrice ?? base.marketData.lastPrice;
   const providerScale = Number(base.marketData.levelPriceScale);
-  const liveRatio = sourcePrice && futuresPrice ? futuresPrice / sourcePrice : Number.NaN;
+  // The AUTO scale is only a basis when BOTH legs are fresh. Overnight the
+  // cash source freezes at the close while the client keeps sending the live
+  // futures price - recomputing the ratio then makes every mapped line move
+  // in lockstep with the tape (strike x ratio tracks the futures tick for
+  // tick), so levels can never be approached. When the cash leg is frozen,
+  // pin the scale: last live-verified ratio first, then the frozen PAIR the
+  // provider captured together at the close (consistent snapshot), then the
+  // provider's own scale.
+  const sourceLive = base.session.marketOpen && !base.marketData.stale;
+  const liveRatio = sourceLive && sourcePrice && futuresPrice
+    ? futuresPrice / sourcePrice
+    : Number.NaN;
+  if (Number.isFinite(liveRatio) && liveRatio > 0) {
+    lastLiveAutoScaleBySource.set(args.sourceSymbol, liveRatio);
+  }
+  const pinnedRatio = lastLiveAutoScaleBySource.get(args.sourceSymbol) ?? Number.NaN;
+  const frozenPairRatio = sourcePrice && base.marketData.lastPrice
+    ? base.marketData.lastPrice / sourcePrice
+    : Number.NaN;
   const autoScale = Number.isFinite(liveRatio) && liveRatio > 0
     ? liveRatio
-    : Number.isFinite(providerScale) && providerScale > 0
-      ? providerScale
-      : 1;
+    : Number.isFinite(pinnedRatio) && pinnedRatio > 0
+      ? pinnedRatio
+      : Number.isFinite(frozenPairRatio) && frozenPairRatio > 0
+        ? frozenPairRatio
+        : Number.isFinite(providerScale) && providerScale > 0
+          ? providerScale
+          : 1;
   const mapping = {
     mode: args.mappingMode,
     scale: args.mappingMode === "MANUAL" ? Math.max(0.000001, args.manualMultiplier) : autoScale,
     offset: args.mappingMode === "MANUAL" ? args.premiumOffset : 0,
-    referenceScale: Number.isFinite(liveRatio) && liveRatio > 0 ? liveRatio : null,
+    referenceScale: Number.isFinite(liveRatio) && liveRatio > 0
+      ? liveRatio
+      : Number.isFinite(pinnedRatio) && pinnedRatio > 0
+        ? pinnedRatio
+        : null,
+    basis: (Number.isFinite(liveRatio) && liveRatio > 0 ? "LIVE" : "PINNED") as "LIVE" | "PINNED",
   } as const;
   const oiByStrike = new Map(contractRows.map((row) => [row.strike, row]));
   const volumeByStrike = new Map<number, { call: number; put: number }>();

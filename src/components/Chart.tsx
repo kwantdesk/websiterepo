@@ -1994,7 +1994,11 @@ export default function Chart({
         return { strike: livePrice, mappedPrice: livePrice, value: livePrice, label: `${label} · GB live`, color, dash };
       }
       if (!mapped || mappingDegenerate) return null;
-      const mappingChip = classicGexProfile.mapping.mode === "MANUAL" ? "QD manual map" : "QD map";
+      const mappingChip = classicGexProfile.mapping.mode === "MANUAL"
+        ? "QD manual map"
+        : classicGexProfile.mapping.basis === "PINNED"
+          ? "QD map · frozen basis"
+          : "QD map";
       return { ...mapped, label: `${label} · ${mappingChip}`, color, dash };
     };
     const lines = [

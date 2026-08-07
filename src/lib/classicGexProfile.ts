@@ -49,6 +49,12 @@ export type ClassicGexProfilePayload = {
     // user-frozen, so the renderer compares it against this to badge a stale
     // or insane manual ratio.
     referenceScale: number | null;
+    // LIVE: both ratio legs (futures and cash source) were fresh when the
+    // scale was formed. PINNED: the cash leg was frozen (overnight / provider
+    // stale), so the scale is held at the last live-verified basis instead of
+    // being recomputed — a live numerator over a frozen denominator makes
+    // every mapped line track the futures tick for tick.
+    basis: "LIVE" | "PINNED";
   };
   rows: ClassicGexProfileRow[];
   majors: {
