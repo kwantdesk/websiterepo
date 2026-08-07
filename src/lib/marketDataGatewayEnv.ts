@@ -39,9 +39,27 @@ function firstConfigured(keys: readonly string[]): string {
   return "";
 }
 
+// A serverless function cannot reach the operator's machine, so a loopback
+// gateway URL is definitionally wrong on Vercel. This happened for real: the
+// project carried a stale KWANTIFY_MARKET_DATA_GATEWAY_URL=http://127.0.0.1:8793
+// from the laptop era, it outranked the freshly added variable pointing at
+// the real collector, every proxy fetch failed, and the charts silently sat
+// on the APPROX fallback. Treat loopback values as unset in that environment
+// so a newer, reachable variable can win; local dev keeps loopback support.
+function usableInDeployment(url: string): boolean {
+  if (!process.env.VERCEL) return true;
+  return !/^https?:\/\/(127\.0\.0\.1|localhost|\[?::1\]?)(:|\/|$)/i.test(url);
+}
+
 /** Origin of the private collector, with any trailing slash removed. */
 export function marketDataGatewayUrl(): string {
-  return firstConfigured(GATEWAY_URL_KEYS).replace(/\/+$/, "");
+  for (const key of GATEWAY_URL_KEYS) {
+    const value = process.env[key];
+    if (typeof value === "string" && value.trim() && usableInDeployment(value.trim())) {
+      return value.trim().replace(/\/+$/, "");
+    }
+  }
+  return "";
 }
 
 /** Bearer token every collector route requires. Never expose to the browser. */

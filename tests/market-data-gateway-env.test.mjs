@@ -64,6 +64,39 @@ test("an empty or whitespace value is treated as unset, not as a value", () => {
   clear();
 });
 
+// The production incident: a stale localhost URL under the higher-precedence
+// legacy name shadowed the real collector URL added later under a new name.
+// Every proxy fetch hit 127.0.0.1 inside Vercel, failed, and the charts sat
+// on the APPROX fallback with no error anywhere.
+test("on Vercel, a stale loopback URL cannot shadow the real collector", () => {
+  clear();
+  const hadVercel = process.env.VERCEL;
+  process.env.VERCEL = "1";
+  process.env.KWANTIFY_MARKET_DATA_GATEWAY_URL = "http://127.0.0.1:8793";
+  process.env.KWANTIFY_MARKET_GATEWAY_URL = "https://feed.kwantdesk.com";
+
+  assert.equal(marketDataGatewayUrl(), "https://feed.kwantdesk.com");
+
+  // Nothing reachable configured at all -> honest empty, not the loopback.
+  delete process.env.KWANTIFY_MARKET_GATEWAY_URL;
+  assert.equal(marketDataGatewayUrl(), "");
+
+  if (hadVercel === undefined) delete process.env.VERCEL; else process.env.VERCEL = hadVercel;
+  clear();
+});
+
+test("off Vercel, loopback URLs still work for local development", () => {
+  clear();
+  const hadVercel = process.env.VERCEL;
+  delete process.env.VERCEL;
+  process.env.KWANTIFY_MARKET_DATA_GATEWAY_URL = "http://127.0.0.1:8793";
+
+  assert.equal(marketDataGatewayUrl(), "http://127.0.0.1:8793");
+
+  if (hadVercel !== undefined) process.env.VERCEL = hadVercel;
+  clear();
+});
+
 test("provider defaults to Rithmic when nothing is set", () => {
   clear();
   assert.equal(marketDataProvider(), "Rithmic");
