@@ -46,7 +46,15 @@ async function proxy(request: NextRequest, context: RouteContext) {
         body,
         headers: { "Content-Type": request.headers.get("content-type") || "application/json" },
       },
-      path.endsWith("/trades") || path.endsWith("/stream") ? 295_000 : 30_000,
+      // Streams hold open for the request's lifetime. A full-session
+      // order-flow backfill is a large payload and needs far more than the
+      // 30s default — a server budget below the client's simply aborts the
+      // backfill and leaves the earlier session with no executions.
+      path.endsWith("/trades") || path.endsWith("/stream")
+        ? 295_000
+        : path.endsWith("/order-flow-levels")
+          ? 150_000
+          : 30_000,
     );
     const headers = new Headers({
       "Content-Type": upstream.headers.get("content-type") || "application/json",

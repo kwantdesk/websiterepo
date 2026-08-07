@@ -206,6 +206,7 @@ import {
   writeExecutionTapeCache,
 } from "@/lib/chartHistoryCache";
 import {
+  cmeSessionStartMs,
   DEFAULT_CHART_HISTORY_CALENDAR_DAYS,
   hasMinimumChartHistory,
   trimToRecentChartSessions,
@@ -1761,14 +1762,27 @@ function fetchWorkspaceOrderFlow(
   const key = `${symbol}::${contractSymbol}::${timeframe}`;
   const pending = workspaceOrderFlowRequests.get(key);
   if (pending) return pending;
+  // Anchor to the CME session open, not a rolling 6-hour window. A rolling
+  // window leaves the earlier part of the session with no executions, so the
+  // volume profile carries real delta only for the recent hours and a
+  // delta-free block for everything before it — visible as a profile whose
+  // delta bars simply stop partway up. Two sessions of headroom keeps the
+  // weekly profile and an overnight chart covered.
+  const now = Date.now();
+  const sessionStartMs = cmeSessionStartMs(now);
+  const fromMs = sessionStartMs !== null
+    ? Math.min(sessionStartMs, now - 6 * 60 * 60_000) - 24 * 60 * 60_000
+    : now - 30 * 60 * 60_000;
   const request = fetchInstitutionalOrderFlowLevels({
     symbol: displayCmeSymbol(symbol),
     contractSymbol,
     timeframe,
-    fromMs: Date.now() - 6 * 60 * 60_000,
-    toMs: Date.now(),
+    fromMs,
+    toMs: now,
     includeTrades: true,
-    timeoutMs: 25_000,
+    // A full session of executions is a much larger payload than six hours;
+    // 25s was tuned for the smaller window and would abort the backfill.
+    timeoutMs: 120_000,
   }).finally(() => {
     if (workspaceOrderFlowRequests.get(key) === request) {
       workspaceOrderFlowRequests.delete(key);

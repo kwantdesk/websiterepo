@@ -37,6 +37,40 @@ export function cmeSessionDateKey(timestamp: number) {
   return sessionDate.toISOString().slice(0, 10);
 }
 
+// Start of the CME Globex session that `timestamp` belongs to (17:00 Chicago,
+// DST-aware). Order-flow backfill must be anchored here rather than to a fixed
+// lookback: a rolling window leaves the earlier part of the session with no
+// execution data, so a volume profile shows real delta only for the recent
+// hours and a flat, delta-free block for everything before it.
+export function cmeSessionStartMs(timestamp: number): number | null {
+  if (!Number.isFinite(timestamp)) return null;
+  const sessionDate = cmeSessionDateKey(timestamp);
+  if (!sessionDate) return null;
+  const [year, month, day] = sessionDate.split("-").map(Number);
+  // The session opens at 17:00 Chicago on the day BEFORE the session label.
+  const previousDay = new Date(Date.UTC(year, month - 1, day));
+  previousDay.setUTCDate(previousDay.getUTCDate() - 1);
+
+  // Chicago is UTC-5 or UTC-6; resolve which by probing both candidates and
+  // keeping the one whose Chicago wall clock actually reads 17:00.
+  for (const offsetHours of [5, 6]) {
+    const candidate = Date.UTC(
+      previousDay.getUTCFullYear(),
+      previousDay.getUTCMonth(),
+      previousDay.getUTCDate(),
+      17 + offsetHours,
+    );
+    const parts = Object.fromEntries(
+      CME_SESSION_CLOCK
+        .formatToParts(new Date(candidate))
+        .filter((part) => part.type !== "literal")
+        .map((part) => [part.type, part.value]),
+    );
+    if (Number(parts.hour) === 17) return candidate;
+  }
+  return null;
+}
+
 export function trimToRecentChartSessions(
   candles: Candle[],
   sessionCount = MINIMUM_CHART_HISTORY_SESSIONS,
