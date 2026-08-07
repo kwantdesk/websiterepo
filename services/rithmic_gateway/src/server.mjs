@@ -59,7 +59,7 @@ function requestedInstrument(url, body = {}) {
       url.searchParams.get("root") ||
       "",
   ).toUpperCase();
-  const requestedRoot = contractRoot(String(body.root || requestedSymbol).toUpperCase());
+  const requestedRoot = parentRoot(contractRoot(String(body.root || requestedSymbol).toUpperCase()));
   const requestedExchange = String(
     body.exchange || url.searchParams.get("exchange") || "",
   ).toUpperCase();
@@ -72,10 +72,14 @@ function requestedInstrument(url, body = {}) {
     });
   const exact = candidates.find((row) => row.symbol === requestedSymbol);
   const resolved = exact || candidates[0];
+  // On an empty book, resolve micro requests through the PARENT root as well
+  // — otherwise a cold-started collector asked for MNQU6 would try to
+  // subscribe the micro itself and be refused by the instrument allowlist.
+  const requestedIsAliased = contractRoot(requestedSymbol) !== requestedRoot;
   return {
     exchange: requestedExchange || resolved?.exchange || exchangeForRoot(requestedRoot),
     symbol: resolved?.symbol || (
-      requestedSymbol && requestedSymbol !== requestedRoot
+      requestedSymbol && requestedSymbol !== requestedRoot && !requestedIsAliased
         ? requestedSymbol
         : activeContractSymbol(requestedRoot)
     ),
@@ -115,6 +119,19 @@ const FUTURES_DISPLAY_NAMES = {
 
 function contractRoot(symbol) {
   return String(symbol || "").toUpperCase().replace(/[FGHJKMNQUVXZ]\d{1,2}$/, "");
+}
+
+// Micro contracts trade the same underlying at the same prices as their
+// e-mini parent but generate comparable message volume for a tenth of the
+// information. Ingesting all four saturated the collector's event loop at
+// European open (health and profile requests timing out at 30s), which
+// silently degraded every chart to the APPROX fallback. Micros are therefore
+// served from the parent book, and the response carries the PARENT contract
+// symbol so the provenance is honest: an MNQ chart reading NQ tape says so.
+const MICRO_PARENT_ROOTS = { MNQ: "NQ", MES: "ES", MYM: "YM", M2K: "RTY", MGC: "GC", MCL: "CL" };
+
+function parentRoot(root) {
+  return MICRO_PARENT_ROOTS[root] || root;
 }
 
 function exchangeForRoot(root) {
