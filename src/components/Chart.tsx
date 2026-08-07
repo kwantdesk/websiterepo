@@ -674,8 +674,9 @@ class GameplanUnderlayRenderer implements ISeriesPrimitivePaneRenderer {
         context.font = "700 9px 'JetBrains Mono', monospace";
         const labelWidth = Math.min(240, Math.max(82, context.measureText(label).width + 18));
         const labelTop = y - 11;
-        const labelRightGap = 12;
-        const labelLeft = Math.max(4, mediaSize.width - labelWidth - labelRightGap);
+        // Chips anchor to the left edge of the pane; on the right they sat on
+        // top of the price axis and the Classic GEX profile panel.
+        const labelLeft = Math.max(4, Math.min(12, mediaSize.width - labelWidth - 4));
         context.setLineDash([]);
         context.fillStyle = this.primitive.backgroundColor();
         context.strokeStyle = level.color;
