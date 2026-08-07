@@ -100,6 +100,7 @@ import {
 import { mergeGammaLevelsAtSamePrice, type ChartGammaLevelsPayload } from "@/lib/chartGammaLevels";
 import {
   buildChartVolumeProfile,
+  applyInstitutionalTradesToVolumeProfile,
   enrichCandlesWithInstitutionalTrades,
   fetchInstitutionalOrderFlowLevels,
   fetchInstitutionalVolumeProfile,
@@ -3177,6 +3178,17 @@ function WorkspaceChartPane({
           lastMarketTradeStateSyncRef.current = now;
           setMarketTrades(next);
         }
+        // Keep the exact profiles live between refetches, as the original
+        // Kwantify build did: each print batch is folded straight into the
+        // gateway-built profiles, so the POC/VA develop in real time instead
+        // of stepping every 15 seconds. Client-approximated profiles are
+        // left alone — their bars already contain this volume, and the
+        // authoritative refetch replaces them anyway.
+        setVolumeProfiles((current) => current.length
+          ? current.map((profile) => profile.provider === "Chart"
+              ? profile
+              : applyInstitutionalTradesToVolumeProfile(profile, records))
+          : current);
       },
     });
   }, [needsOrderFlowHistory, pane.broker, pane.symbol, pane.timeframe, resolvedContractSymbol]);
