@@ -17,6 +17,21 @@ if ! docker compose version >/dev/null 2>&1; then
   exit 1
 fi
 
+# Vultr (and several other) Ubuntu images ship with ufw active, only port 22
+# open, and DEFAULT_FORWARD_POLICY=DROP. The dropped FORWARD chain silently
+# kills container-to-container traffic on the Docker bridge: Caddy accepts the
+# TLS connection, then hangs forever trying to reach the gateway. It presents
+# as "the site loads but never responds", which is a miserable thing to debug.
+if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q "Status: active"; then
+  echo "==> opening 80/443 and allowing forwarding for Docker"
+  ufw allow 80/tcp >/dev/null 2>&1 || true
+  ufw allow 443/tcp >/dev/null 2>&1 || true
+  if grep -q '^DEFAULT_FORWARD_POLICY="DROP"' /etc/default/ufw 2>/dev/null; then
+    sed -i 's/^DEFAULT_FORWARD_POLICY=.*/DEFAULT_FORWARD_POLICY="ACCEPT"/' /etc/default/ufw
+  fi
+  ufw reload >/dev/null 2>&1 || true
+fi
+
 # Restart Docker itself on boot, so a VM reboot brings the collector back
 # without anyone logging in.
 systemctl enable docker >/dev/null 2>&1 || true
