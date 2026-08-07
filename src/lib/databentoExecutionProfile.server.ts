@@ -45,7 +45,12 @@ function numeric(value: unknown): number | null {
 }
 
 function eventMs(row: Record<string, unknown>): number | null {
-  const raw = row.ts_event ?? row.tsEvent ?? row.hd_ts_event;
+  // Databento nests the event timestamp inside the record header:
+  //   { hd: { ts_event, instrument_id, ... }, side, price, size }
+  // Reading only a top-level ts_event silently rejected every single row,
+  // which presented as an empty profile rather than an error.
+  const header = row.hd as Record<string, unknown> | undefined;
+  const raw = header?.ts_event ?? row.ts_event ?? row.tsEvent ?? row.ts_recv;
   if (typeof raw === "string") {
     const parsed = Date.parse(raw);
     if (Number.isFinite(parsed)) return parsed;
