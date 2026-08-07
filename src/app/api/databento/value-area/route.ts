@@ -6,7 +6,11 @@ import {
   nextCmeDailyCompletion,
   type CmeProfileWindow,
 } from "@/lib/cmeProfileWindows";
-import { DATABENTO_FUTURES, getDatabentoValueAreaProfile } from "@/lib/databento";
+import {
+  DATABENTO_FUTURES,
+  getDatabentoValueAreaProfile,
+  getDatabentoValueAreaProfiles,
+} from "@/lib/databento";
 import { futuresTickSize } from "@/lib/eventBars";
 import type { ValueAreaProfile } from "@/lib/valueArea";
 
@@ -74,6 +78,57 @@ function durableWindowProfile(
   )();
 }
 
+function durableNestedWindowProfiles(
+  symbol: string,
+  dailyWindow: CmeProfileWindow,
+  weeklyWindow: CmeProfileWindow,
+  tickSize: number,
+) {
+  return unstable_cache(
+    () => getDatabentoValueAreaProfiles(
+      symbol,
+      [dailyWindow, weeklyWindow].map((window) => ({
+        start: new Date(window.start).toISOString(),
+        end: new Date(window.end).toISOString(),
+      })),
+      tickSize,
+    ),
+    [
+      "cme-value-area-nested-v1",
+      symbol,
+      String(dailyWindow.start),
+      String(dailyWindow.end),
+      String(weeklyWindow.start),
+      String(weeklyWindow.end),
+      String(tickSize),
+    ],
+    { revalidate: 8 * 24 * 60 * 60 },
+  )();
+}
+
+async function nestedWindowProfiles(
+  symbol: string,
+  dailyWindow: CmeProfileWindow,
+  weeklyWindow: CmeProfileWindow,
+  tickSize: number,
+) {
+  try {
+    return await durableNestedWindowProfiles(symbol, dailyWindow, weeklyWindow, tickSize);
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("incrementalCache")) {
+      return getDatabentoValueAreaProfiles(
+        symbol,
+        [dailyWindow, weeklyWindow].map((window) => ({
+          start: new Date(window.start).toISOString(),
+          end: new Date(window.end).toISOString(),
+        })),
+        tickSize,
+      );
+    }
+    throw error;
+  }
+}
+
 async function durableOrDirectWindowProfile(
   symbol: string,
   window: CmeProfileWindow,
@@ -137,10 +192,39 @@ export async function buildValueAreaPayload(symbol: string, now: number): Promis
     throw new Error("No completed CME profile window is available.");
   }
 
-  const [daily, weekly] = await Promise.all([
-    firstCompleteProfile(symbol, tickSize, dailyWindows, MINIMUM_DAILY_TRADES),
-    firstCompleteProfile(symbol, tickSize, weeklyWindows, MINIMUM_WEEKLY_TRADES),
-  ]);
+  let daily: { profile: ValueAreaProfile; window: CmeProfileWindow } | null = null;
+  let weekly: { profile: ValueAreaProfile; window: CmeProfileWindow } | null = null;
+  const latestDaily = dailyWindows[0];
+  const latestWeekly = weeklyWindows[0];
+  const dailyInsideWeekly = latestDaily.start >= latestWeekly.start
+    && latestDaily.end <= latestWeekly.end;
+
+  // On the Sunday/Monday reopen, Friday's completed daily session is already
+  // contained by the completed weekly profile. Build both accumulators during
+  // one exact tick pass instead of downloading Friday twice.
+  if (dailyInsideWeekly) {
+    const [dailyProfile, weeklyProfile] = await nestedWindowProfiles(
+      symbol,
+      latestDaily,
+      latestWeekly,
+      tickSize,
+    );
+    if (dailyProfile && dailyProfile.tradeRecords >= MINIMUM_DAILY_TRADES) {
+      daily = { profile: dailyProfile, window: latestDaily };
+    }
+    if (weeklyProfile && weeklyProfile.tradeRecords >= MINIMUM_WEEKLY_TRADES) {
+      weekly = { profile: weeklyProfile, window: latestWeekly };
+    }
+  }
+
+  if (!daily || !weekly) {
+    const [dailyFallback, weeklyFallback] = await Promise.all([
+      daily ? Promise.resolve(daily) : firstCompleteProfile(symbol, tickSize, dailyWindows, MINIMUM_DAILY_TRADES),
+      weekly ? Promise.resolve(weekly) : firstCompleteProfile(symbol, tickSize, weeklyWindows, MINIMUM_WEEKLY_TRADES),
+    ]);
+    daily = dailyFallback;
+    weekly = weeklyFallback;
+  }
   if (!daily || !weekly) {
     throw new Error("CME did not return a complete prior-session and prior-week trade profile.");
   }

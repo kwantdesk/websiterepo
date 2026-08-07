@@ -1,0 +1,23 @@
+▲ Next.js 16.2.6 (Turbopack)
+- Local:         http://localhost:3100
+- Network:       http://169.254.83.107:3100
+- Environments: .env.local
+✓ Ready in 992ms
+
+ GET /login?returnTo=%2Fcharts 200 in 3.1s (next.js: 2.2s, application-code: 825ms)
+ GET /settings 200 in 565ms (next.js: 293ms, application-code: 272ms)
+ GET /gameplan 200 in 972ms (next.js: 847ms, application-code: 125ms)
+ GET /api/socials/notifications?offset=0&limit=30 401 in 456ms (next.js: 410ms, application-code: 46ms)
+ GET /api/gameplan?root=ES&session=tokyo 503 in 711ms (next.js: 701ms, application-code: 10ms)
+ GET /api/databento/live?symbols=ES.v.0%2CNQ.v.0%2CCL.v.0%2CGC.v.0%2CMES.v.0%2CMNQ.v.0%2CYM.v.0%2CRTY.v.0%2CZN.v.0%2C10Y.v.0%2C6E.v.0&priority=ES.v.0%2CNQ.v.0%2CCL.v.0%2CGC.v.0 503 in 387ms (next.js: 378ms, application-code: 9ms)
+ GET /api/databento/market?symbol=ES.v.0&timeframe=5m&days=10 503 in 94ms (next.js: 87ms, application-code: 7ms)
+ GET /api/databento/market?symbol=ES.v.0&timeframe=5m&days=10 503 in 69ms (next.js: 65ms, application-code: 5ms)
+ GET /api/options-flow?symbol=QQQ&priceMode=CASH 503 in 136ms (next.js: 130ms, application-code: 6ms)
+ GET /login?returnTo=%2Fgameplan 200 in 1185ms (next.js: 706ms, application-code: 479ms)
+ GET /api/databento/market?symbol=ES.v.0&timeframe=1m&days=10 503 in 13ms (next.js: 8ms, application-code: 5ms)
+ GET /login?returnTo=%2Fgameplan 200 in 67ms (next.js: 9ms, application-code: 59ms)
+ GET /api/ctrader?action=status 404 in 766ms (next.js: 433ms, application-code: 333ms)
+ GET /api/ctrader?action=status 404 in 780ms (next.js: 482ms, application-code: 298ms)
+ GET /api/gexdesk 200 in 117ms (next.js: 100ms, application-code: 17ms)
+ GET /api/gexdesk/history?instrument=NQ&source=COMBINED 200 in 194ms (next.js: 181ms, application-code: 13ms)
+[?25h

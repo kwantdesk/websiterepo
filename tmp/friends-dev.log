@@ -1,0 +1,104 @@
+▲ Next.js 16.2.6 (webpack)
+- Local:         http://localhost:3112
+- Network:       http://169.254.83.107:3112
+✓ Ready in 994ms
+
+○ Compiling /settings ...
+⨯ Error: Supabase environment variables are not configured.
+    at createClient (src\lib\supabase\server.ts:18:11)
+    at async SettingsPage (src\app\settings\page.tsx:9:20)
+  16 |
+  17 |   if (!url || !key) {
+> 18 |     throw new Error("Supabase environment variables are not configured.");
+     |           ^
+  19 |   }
+  20 |
+  21 |   return createServerClient(url, key, { {
+  digest: '871310113'
+}
+ GET /settings 500 in 9.9s (next.js: 9.4s, application-code: 422ms)
+[browser] Uncaught Error: Supabase environment variables are not configured.
+    at createClient (src\lib\supabase\server.ts:18:11)
+    at  SettingsPage (src\app\settings\page.tsx:9:20)
+  16 |
+  17 |   if (!url || !key) {
+> 18 |     throw new Error("Supabase environment variables are not configured.");
+     |           ^
+  19 |   }
+  20 |
+  21 |   return createServerClient(url, key, {
+○ Compiling /charts ...
+⚠ Fast Refresh had to perform a full reload due to a runtime error.
+ GET /charts 200 in 9.1s (next.js: 8.2s, application-code: 917ms)
+○ Compiling /api/chart-gamma-levels ...
+ GET /api/databento/live?symbols=ES.v.0%2CNQ.v.0%2CCL.v.0%2CGC.v.0%2CMES.v.0%2CMNQ.v.0%2CYM.v.0%2CRTY.v.0%2CZN.v.0%2C6E.v.0 503 in 6.4s (next.js: 6.3s, application-code: 157ms)
+ GET /api/chart-gamma-levels?root=ES&source=SPY 503 in 5.9s (next.js: 5.7s, application-code: 155ms)
+ GET /api/databento/options 503 in 6.4s (next.js: 6.3s, application-code: 151ms)
+ GET /api/chart-gamma-levels?root=ES&source=ES 500 in 5.9s (next.js: 5.7s, application-code: 154ms)
+ GET /login?returnTo=%2Fcharts 200 in 6.7s (next.js: 6.3s, application-code: 427ms)
+ GET /api/ctrader?action=status 404 in 6.9s (next.js: 6.6s, application-code: 269ms)
+ GET /api/databento/market?symbol=ES.v.0&timeframe=5m&start=2026-07-24T11%3A42%3A53.272Z 503 in 2.2s (next.js: 2.1s, application-code: 152ms)
+ GET /api/databento/market?symbol=ES.v.0&timeframe=5m 503 in 2.2s (next.js: 2.1s, application-code: 152ms)
+ GET /api/kwantbot/learning-reviews 401 in 2.2s (next.js: 2.0s, application-code: 153ms)
+ GET /api/kwantbot/context?root=NQ 503 in 2.2s (next.js: 2.0s, application-code: 154ms)
+ GET /api/kwantbot/context?root=ES 503 in 2.1s (next.js: 1996ms, application-code: 154ms)
+ GET /api/kwantbot/archive 401 in 2.2s (next.js: 2.1s, application-code: 154ms)
+ GET /api/databento/live?symbols=NQ.v.0%2CES.v.0 503 in 41ms (next.js: 21ms, application-code: 21ms)
+ GET /api/databento/live?symbols=ES.v.0%2CNQ.v.0%2CCL.v.0%2CGC.v.0%2CMES.v.0%2CMNQ.v.0%2CYM.v.0%2CRTY.v.0%2CZN.v.0%2C6E.v.0 503 in 18ms (next.js: 7ms, application-code: 11ms)
+ GET /login?returnTo=%2Fcharts 200 in 337ms (next.js: 114ms, application-code: 223ms)
+ POST /api/friends 503 in 1428ms (next.js: 1402ms, application-code: 26ms)
+ POST /api/friends 503 in 1455ms (next.js: 1426ms, application-code: 29ms)
+ GET /login?returnTo=%2Fcharts 200 in 146ms (next.js: 37ms, application-code: 109ms)
+ GET /login?returnTo=%2Fcharts 200 in 102ms (next.js: 54ms, application-code: 48ms)
+⨯ Error: Event handlers cannot be passed to Client Component props.
+  <... onClose={function onClose}>
+               ^^^^^^^^^^^^^^^^^^
+If you need interactivity, consider converting part of this to a Client Component.
+    at stringify (<anonymous>)
+    at stringify (<anonymous>) {
+  digest: '914969940'
+}
+⚠ Fast Refresh had to perform a full reload. Read more: https://nextjs.org/docs/messages/fast-refresh-reload
+ GET /friends-preview 500 in 2.1s (next.js: 1214ms, application-code: 872ms)
+[browser] Uncaught Error: Event handlers cannot be passed to Client Component props.
+  <... onClose={function onClose}>
+               ^^^^^^^^^^^^^^^^^^
+If you need interactivity, consider converting part of this to a Client Component.
+    at stringify (<anonymous>:1:18)
+    at stringify (<anonymous>:1:18)
+⨯ Error: Event handlers cannot be passed to Client Component props.
+  <... onClose={function onClose}>
+               ^^^^^^^^^^^^^^^^^^
+If you need interactivity, consider converting part of this to a Client Component.
+    at stringify (<anonymous>)
+    at stringify (<anonymous>) {
+  digest: '3957862779'
+}
+ GET /friends-preview 500 in 510ms (next.js: 5ms, application-code: 505ms)
+⚠ Fast Refresh had to perform a full reload due to a runtime error.
+[browser] Uncaught Error: Event handlers cannot be passed to Client Component props.
+  <... onClose={function onClose}>
+               ^^^^^^^^^^^^^^^^^^
+If you need interactivity, consider converting part of this to a Client Component.
+    at stringify (<anonymous>:1:18)
+    at stringify (<anonymous>:1:18)
+⚠ Fast Refresh had to perform a full reload due to a runtime error.
+⚠ Fast Refresh had to perform a full reload due to a runtime error.
+ GET /friends-preview 200 in 1465ms (next.js: 1305ms, application-code: 160ms)
+ POST /api/friends 503 in 94ms (next.js: 80ms, application-code: 14ms)
+ GET /api/friends 200 in 13ms (next.js: 2ms, application-code: 11ms)
+ GET /friends-preview 200 in 45ms (next.js: 3ms, application-code: 42ms)
+ POST /api/friends 503 in 18ms (next.js: 2ms, application-code: 15ms)
+ GET /api/friends 200 in 10ms (next.js: 2ms, application-code: 8ms)
+ POST /api/friends 503 in 1051ms (next.js: 1034ms, application-code: 17ms)
+ GET /api/friends 200 in 8ms (next.js: 2ms, application-code: 6ms)
+ GET /friends-preview 200 in 134ms (next.js: 57ms, application-code: 77ms)
+ GET /friends-preview 200 in 145ms (next.js: 90ms, application-code: 55ms)
+ GET /settings 200 in 269ms (next.js: 25ms, application-code: 245ms)
+ GET /settings 200 in 139ms (next.js: 62ms, application-code: 77ms)
+ GET /settings 200 in 217ms (next.js: 3ms, application-code: 213ms)
+ GET /settings 200 in 47ms (next.js: 5ms, application-code: 42ms)
+ GET /settings 200 in 180ms (next.js: 6ms, application-code: 174ms)
+ GET /settings 200 in 315ms (next.js: 210ms, application-code: 105ms)
+ GET /settings 200 in 73ms (next.js: 4ms, application-code: 69ms)
+[?25h

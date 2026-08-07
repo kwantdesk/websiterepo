@@ -275,19 +275,75 @@ function intervalDurationMs(value) {
   return Math.max(1, Math.round(quantity * multiplier));
 }
 
-function heatmapPayload(snapshot) {
+// Mirrors the payload Kwantify's collector served the heatmap app
+// (services/market_data/app/main.py). Two things were wrong here.
+//
+// First, `after`: Kwantify sent a subscriber only the trades it had not seen,
+// tracked by the book's monotonic sequence. We resent the whole retained
+// 2,500-trade window on every frame, and the app stamps `frame.trades` onto
+// the column it draws - so all 1,800 columns carried the entire session's
+// executions and the heatmap rendered a wall of volume dots across every price
+// the session had traded, instead of a trail of where it traded just then.
+//
+// Second, the derived fields below - cvd, delta, volume, totalVolume,
+// imbalance, microTick, maxDepth, wallCount, tradeRate, eventsSince - were
+// absent entirely. The app reads each through `finite(raw.x)`, so every one
+// silently resolved to 0: no CVD, dead metrics row, and an event counter that
+// only ever advanced by the trade count.
+function heatmapPayload(snapshot, after = 0) {
   const tick = tickSize(snapshot.symbol);
   const bids = snapshot.bids.map((row) => [Math.round(row.price / tick), row.size, row.orders]);
   const asks = snapshot.asks.map((row) => [Math.round(row.price / tick), row.size, row.orders]);
-  const trades = snapshot.trades.map((trade) => ({
-    id: trade.sequence,
-    timestamp: trade.timestampMs,
-    tick: Math.round(trade.price / tick),
-    size: trade.size,
-    side: trade.aggressor === "BUY" ? "buy" : "sell",
-  }));
+  const sequence = Number(snapshot.sequence) || 0;
+  const trades = snapshot.trades
+    .filter((trade) => Number(trade.sequence) > after)
+    .map((trade) => ({
+      id: trade.sequence,
+      timestamp: trade.timestampMs,
+      tick: Math.round(trade.price / tick),
+      size: trade.size,
+      side: trade.aggressor === "BUY" ? "buy" : "sell",
+    }));
+
+  // Session running totals span the whole retained window; the per-frame delta
+  // and volume cover only what this frame is delivering. That split is what
+  // makes CVD a session line and delta a per-column bar.
+  let askVolume = 0;
+  let bidVolume = 0;
+  for (const trade of snapshot.trades) {
+    if (trade.aggressor === "BUY") askVolume += trade.size;
+    else bidVolume += trade.size;
+  }
+  let delta = 0;
+  let volume = 0;
+  for (const trade of trades) {
+    volume += trade.size;
+    delta += trade.side === "buy" ? trade.size : -trade.size;
+  }
+
   const bestBid = bids[0]?.[0] || 0;
   const bestAsk = asks[0]?.[0] || 0;
+  const bidTop = bids[0]?.[1] || 0;
+  const askTop = asks[0]?.[1] || 0;
+  const topTotal = bidTop + askTop;
+  let bidDepth = 0;
+  let askDepth = 0;
+  let maxDepth = 0;
+  for (const row of bids) {
+    bidDepth += row[1];
+    if (row[1] > maxDepth) maxDepth = row[1];
+  }
+  for (const row of asks) {
+    askDepth += row[1];
+    if (row[1] > maxDepth) maxDepth = row[1];
+  }
+  const depthTotal = bidDepth + askDepth;
+  const wallThreshold = maxDepth * 0.6;
+  let wallCount = 0;
+  if (maxDepth) {
+    for (const row of bids) if (row[1] >= wallThreshold) wallCount += 1;
+    for (const row of asks) if (row[1] >= wallThreshold) wallCount += 1;
+  }
   return {
     status: {
       connected: client.status.connected,
@@ -314,6 +370,25 @@ function heatmapPayload(snapshot) {
       midTick: bestBid && bestAsk ? (bestBid + bestAsk) / 2 : 0,
       lastTick: snapshot.lastPrice ? Math.round(snapshot.lastPrice / tick) : 0,
       trades,
+      cvd: askVolume - bidVolume,
+      delta,
+      volume,
+      totalVolume: askVolume + bidVolume,
+      imbalance: {
+        bid: bidDepth,
+        ask: askDepth,
+        ratio: depthTotal ? bidDepth / depthTotal : 0.5,
+      },
+      microTick: topTotal
+        ? (bestAsk * bidTop + bestBid * askTop) / topTotal
+        : (bestBid + bestAsk) / 2,
+      maxDepth,
+      wallCount,
+      tradeRate: trades.length,
+      sweepScore: 0,
+      absorptionScore: 0,
+      changeTicks: 0,
+      eventsSince: Math.max(0, sequence - after),
       source: snapshot.depthMode === "MBO_AGGREGATED"
         ? "rtrader-excel-mbo-aggregate"
         : snapshot.fullDepth
@@ -362,9 +437,9 @@ client.on("marketData", (event) => {
     );
     if (!snapshot) continue;
     subscriber.lastEmitAt = now;
-    subscriber.response.write(
-      `event: depth\ndata: ${JSON.stringify(heatmapPayload(snapshot))}\n\n`,
-    );
+    const frame = heatmapPayload(snapshot, subscriber.lastSequence);
+    subscriber.lastSequence = Number(snapshot.sequence) || subscriber.lastSequence;
+    subscriber.response.write(`event: depth\ndata: ${JSON.stringify(frame)}\n\n`);
   }
 });
 client.on("status", (status) => emitRawSse("status", status));
@@ -526,8 +601,18 @@ const server = createServer(async (request, response) => {
           environment: config.systemName,
         })}\n\n`,
       );
+      // Seed the cursor just behind the tape's 35-row capacity. Starting at 0
+      // would put every retained trade in the session on the first column;
+      // starting at the head would leave the tape blank until the next print.
+      const seedTrades = snapshot?.trades?.slice(-40) || [];
+      let lastSequence = seedTrades.length
+        ? Math.max(0, (Number(seedTrades[0].sequence) || 0) - 1)
+        : Number(snapshot?.sequence) || 0;
       if (snapshot) {
-        response.write(`event: depth\ndata: ${JSON.stringify(heatmapPayload(snapshot))}\n\n`);
+        response.write(
+          `event: depth\ndata: ${JSON.stringify(heatmapPayload(snapshot, lastSequence))}\n\n`,
+        );
+        lastSequence = Number(snapshot.sequence) || lastSequence;
       }
       const subscriber = {
         key: `${instrument.exchange}:${instrument.symbol}`,
@@ -535,6 +620,7 @@ const server = createServer(async (request, response) => {
         symbol: instrument.symbol,
         depth,
         lastEmitAt: 0,
+        lastSequence,
         response,
       };
       heatmapSseClients.add(subscriber);

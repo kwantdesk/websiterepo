@@ -1,0 +1,8 @@
+⨯ Another next dev server is already running.
+
+- Local:        http://localhost:3001
+- PID:          30392
+- Dir:          C:\Users\Karen\Documents\QUANT DESK\kwantdesk-websiterepo
+- Log:          .next\dev\logs\next-development.log
+
+Run taskkill /PID 30392 /F to stop it.

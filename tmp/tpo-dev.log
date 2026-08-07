@@ -1,0 +1,18 @@
+
+> kwantdesk-websiterepo@0.1.0 dev
+> next dev -p 3103
+
+▲ Next.js 16.2.6 (Turbopack)
+- Local:         http://localhost:3103
+- Network:       http://169.254.83.107:3103
+- Environments: .env.local
+✓ Ready in 764ms
+⨯ Another next dev server is already running.
+
+- Local:        http://localhost:3017
+- PID:          35592
+- Dir:          C:\Users\Karen\Documents\QUANT DESK\kwantdesk-websiterepo
+- Log:          .next\dev\logs\next-development.log
+
+Run taskkill /PID 35592 /F to stop it.
+[?25h

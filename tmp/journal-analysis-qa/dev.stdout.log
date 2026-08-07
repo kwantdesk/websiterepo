@@ -1,0 +1,20 @@
+
+> kwantdesk-websiterepo@0.1.0 dev
+> next dev -p 3010
+
+▲ Next.js 16.2.6 (Turbopack)
+- Local:         http://localhost:3010
+- Network:       http://100.123.188.98:3010
+✓ Ready in 653ms
+
+○ Compiling /journal ...
+ GET /journal 200 in 4.8s (next.js: 4.1s, application-code: 620ms)
+ GET /api/databento/live?symbols=ES.v.0%2CNQ.v.0%2CCL.v.0%2CGC.v.0%2CMES.v.0%2CMNQ.v.0%2CYM.v.0%2CRTY.v.0%2CZN.v.0%2C6E.v.0 503 in 294ms (next.js: 266ms, application-code: 28ms)
+ GET /api/socials/notifications?offset=0&limit=30 401 in 670ms (next.js: 662ms, application-code: 7ms)
+ GET /api/socials?mine=1&types=precord,receipt 200 in 573ms (next.js: 453ms, application-code: 119ms)
+ GET /api/journal 200 in 576ms (next.js: 497ms, application-code: 79ms)
+ GET /api/journal 200 in 308ms (next.js: 236ms, application-code: 73ms)
+ GET /api/socials?mine=1&types=precord,receipt 200 in 14ms (next.js: 6ms, application-code: 7ms)
+ GET /login?returnTo=%2Fjournal 200 in 788ms (next.js: 666ms, application-code: 121ms)
+ GET /api/ctrader?action=status 404 in 855ms (next.js: 785ms, application-code: 71ms)
+[?25h

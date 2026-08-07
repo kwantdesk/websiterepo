@@ -1,0 +1,15 @@
+
+> kwantdesk-websiterepo@0.1.0 dev
+> next dev --port 3001
+
+▲ Next.js 16.2.6 (Turbopack)
+- Local:         http://localhost:3001
+- Network:       http://100.123.188.98:3001
+✓ Ready in 882ms
+
+ GET /backtesting 200 in 3.2s (next.js: 2.5s, application-code: 703ms)
+ GET /api/socials/notifications?offset=0&limit=30 401 in 156ms (next.js: 135ms, application-code: 21ms)
+ GET /api/databento/live?symbols=ES.v.0%2CNQ.v.0%2CCL.v.0%2CGC.v.0%2CMES.v.0%2CMNQ.v.0%2CYM.v.0%2CRTY.v.0%2CZN.v.0%2C10Y.v.0%2C6E.v.0 503 in 152ms (next.js: 145ms, application-code: 7ms)
+ GET /login?returnTo=%2Fbacktesting 200 in 251ms (next.js: 71ms, application-code: 180ms)
+ GET /api/ctrader?action=status 404 in 260ms (next.js: 190ms, application-code: 71ms)
+[?25h
