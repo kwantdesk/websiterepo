@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { buildValueAreaPayload } from "@/app/api/databento/value-area/route";
 import { buildDatabentoExecutionProfile } from "@/lib/databentoExecutionProfile.server";
 
 import {
@@ -18,9 +19,57 @@ export const dynamic = "force-dynamic";
 // this answers "what is production actually reading?" without dashboard
 // access. It exposes no secrets: variable NAMES, the gateway HOST, the
 // deployed commit, and an upstream reachability probe. Never the token.
-export async function GET() {
+export async function GET(request: Request) {
   const url = marketDataGatewayUrl();
   const names = marketDataGatewayEnvNames();
+
+  // Optional deep probe: run the real value-area build server-side and report
+  // the outcome. The route itself sits behind site access, so its failures are
+  // invisible to an unauthenticated probe — this is the only way to read the
+  // actual error from outside. Opt-in via query because the build downloads a
+  // full prior-session/prior-week tick history and can run for minutes.
+  const probeTarget = new URL(request.url).searchParams.get("probe");
+  if (probeTarget === "value-area") {
+    const symbol = new URL(request.url).searchParams.get("symbol")?.trim() || "NQ";
+    const startedAt = Date.now();
+    try {
+      const payload = await buildValueAreaPayload(symbol, startedAt);
+      return NextResponse.json(
+        {
+          probe: "value-area",
+          symbol,
+          ok: true,
+          tookMs: Date.now() - startedAt,
+          daily: {
+            label: payload.daily.label,
+            poc: payload.daily.poc,
+            vah: payload.daily.vah,
+            val: payload.daily.val,
+            trades: payload.daily.tradeRecords,
+          },
+          weekly: {
+            label: payload.weekly.label,
+            poc: payload.weekly.poc,
+            vah: payload.weekly.vah,
+            val: payload.weekly.val,
+            trades: payload.weekly.tradeRecords,
+          },
+        },
+        { headers: { "Cache-Control": "no-store" } },
+      );
+    } catch (error) {
+      return NextResponse.json(
+        {
+          probe: "value-area",
+          symbol,
+          ok: false,
+          tookMs: Date.now() - startedAt,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        { headers: { "Cache-Control": "no-store" } },
+      );
+    }
+  }
 
   // Probe every configured origin, not just the first: the incident was a
   // dead host under the highest-precedence name shadowing a live one, which
