@@ -4,6 +4,11 @@ import WebSocket from "ws";
 import { loadProtocol, TEMPLATE_IDS } from "./protocol.mjs";
 import { RithmicBookStore, instrumentKey } from "./book-store.mjs";
 
+// Templates that carry market data worth archiving: last trade, BBO, order
+// book, depth-by-order snapshot and depth-by-order update. Login, heartbeat
+// and subscription-response traffic is deliberately excluded.
+const MARKET_DATA_TEMPLATE_IDS = new Set([150, 151, 156, 116, 160]);
+
 function openSocket(url, timeoutMs = 10_000) {
   return new Promise((resolve, reject) => {
     const socket = new WebSocket(url, {
@@ -103,6 +108,9 @@ export class RithmicMarketDataClient extends EventEmitter {
         instrumentKey(row.exchange, row.symbol),
       ),
     );
+    // Minimum interval between depth-by-order resync requests per instrument.
+    this.lastDepthResyncAt = new Map();
+    this.depthResyncMinMs = config.depthResyncMinMs ?? 30_000;
     this.status = {
       provider: "Rithmic",
       environment: config.systemName,
@@ -309,6 +317,20 @@ export class RithmicMarketDataClient extends EventEmitter {
     this.status.lastMessageAt = new Date().toISOString();
     this.status.templateCounts[decoded.templateId] =
       Number(this.status.templateCounts[decoded.templateId] || 0) + 1;
+    // Archive tap. The book-store events below carry only {type, instrument}
+    // for depth and BBO because the values land in the book itself — writing
+    // those to disk would archive the fact that an update happened without
+    // what it contained. The decoded wire payload is the only faithful
+    // record, and L3 depth cannot be re-requested from Rithmic later.
+    if (MARKET_DATA_TEMPLATE_IDS.has(decoded.templateId)) {
+      this.emit("rawMessage", {
+        templateId: decoded.templateId,
+        exchange: decoded.payload?.exchange,
+        symbol: decoded.payload?.symbol,
+        payload: decoded.payload,
+        receivedAt: this.status.lastMessageAt,
+      });
+    }
     let event = null;
     switch (decoded.templateId) {
       case 150:
@@ -343,16 +365,34 @@ export class RithmicMarketDataClient extends EventEmitter {
     }
     if (event) {
       if (event.sequenceRegression && decoded.payload?.exchange && decoded.payload?.symbol) {
+        // Rithmic depth sequence numbers are exchange-wide, so they routinely
+        // move backwards for any single instrument. Resyncing on every such
+        // regression produces a snapshot storm: each full-book snapshot is
+        // large, arrives as another sequenced message, and triggers the next
+        // resync. Measured at 186,530 snapshot requests against 29,864 real
+        // depth updates before this throttle existed - it saturated the event
+        // loop and burned provider request quota for nothing.
+        const key = instrumentKey(decoded.payload.exchange, decoded.payload.symbol);
+        const now = Date.now();
+        const lastResync = this.lastDepthResyncAt.get(key) ?? 0;
         this.status.lastError =
           `Depth sequence regression for ${decoded.payload.exchange}:${decoded.payload.symbol}; ` +
-          `previous ${event.previousSequence}, received ${event.receivedSequence}. Requesting a fresh snapshot.`;
-        this.book.resetDepth(decoded.payload.exchange, decoded.payload.symbol);
-        this.send("RequestDepthByOrderSnapshot", {
-          templateId: TEMPLATE_IDS.DEPTH_SNAPSHOT_REQUEST,
-          userMsg: [`dbo-resync:${decoded.payload.exchange}:${decoded.payload.symbol}`],
-          symbol: decoded.payload.symbol,
-          exchange: decoded.payload.exchange,
-        });
+          `previous ${event.previousSequence}, received ${event.receivedSequence}.`;
+        if (now - lastResync >= this.depthResyncMinMs) {
+          this.lastDepthResyncAt.set(key, now);
+          this.book.resetDepth(decoded.payload.exchange, decoded.payload.symbol);
+          this.send("RequestDepthByOrderSnapshot", {
+            templateId: TEMPLATE_IDS.DEPTH_SNAPSHOT_REQUEST,
+            userMsg: [`dbo-resync:${decoded.payload.exchange}:${decoded.payload.symbol}`],
+            symbol: decoded.payload.symbol,
+            exchange: decoded.payload.exchange,
+          });
+        } else {
+          // Suppressed, not ignored: the count is reported on /health so a
+          // genuinely broken book is still visible.
+          this.status.suppressedDepthResyncs =
+            Number(this.status.suppressedDepthResyncs || 0) + 1;
+        }
       }
       this.emit("marketData", {
         ...event,

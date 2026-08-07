@@ -12,23 +12,63 @@ import { chicagoTradingDate } from "./trading-session.mjs";
 // depth-by-order replay — L3 order-book history cannot be bought back after
 // the fact at any price. Every session not recorded is permanently gone.
 //
-// Integrity rules, matching the desk's: a gap is written down as a gap. The
-// recorder never interpolates across a disconnect and never lets a reader
-// assume continuity it did not observe.
+// Throughput matters here. Full L3 on four CME instruments produces thousands
+// of messages a second, and writing each one individually saturates the event
+// loop and buffers without bound. Records are therefore batched and flushed
+// on a timer, and a saturated stream drops with an explicit counted marker
+// rather than silently losing data or exhausting memory.
+
+const DEFAULT_FLUSH_MS = 250;
+const DEFAULT_MAX_PENDING_BYTES = 32 * 1024 * 1024;
 
 function instrumentFileName(exchange, symbol) {
   return `${String(exchange).toUpperCase()}-${String(symbol).toUpperCase()}.ndjson`;
+}
+
+// The collector emits `instrument: "CME:NQU6"` as a single key on book events
+// and explicit exchange/symbol fields on raw wire messages. Accept both.
+function resolveInstrument(record) {
+  if (record.exchange && record.symbol) {
+    return {
+      exchange: String(record.exchange).toUpperCase(),
+      symbol: String(record.symbol).toUpperCase(),
+    };
+  }
+  const key = String(record.instrument || "");
+  const separator = key.indexOf(":");
+  if (separator > 0) {
+    return {
+      exchange: key.slice(0, separator).toUpperCase(),
+      symbol: key.slice(separator + 1).toUpperCase(),
+    };
+  }
+  return { exchange: "UNKNOWN", symbol: "UNKNOWN" };
+}
+
+// receivedAt arrives as an ISO string; a bare Number() cast yields NaN and
+// would silently file every record under the wrong trading date.
+function toEpochMs(value) {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : Date.now();
 }
 
 export class MarketDataRecorder {
   constructor(options = {}) {
     this.dir = options.dir || null;
     this.enabled = Boolean(options.enabled && this.dir);
+    this.flushMs = Number(options.flushMs) > 0 ? Number(options.flushMs) : DEFAULT_FLUSH_MS;
+    this.maxPendingBytes = Number(options.maxPendingBytes) > 0
+      ? Number(options.maxPendingBytes)
+      : DEFAULT_MAX_PENDING_BYTES;
     this.streams = new Map();
+    this.buffers = new Map();
     this.counts = new Map();
+    this.dropped = new Map();
     this.tradingDate = null;
     this.lastError = null;
     this.detach = null;
+    this.flushTimer = null;
     this.startedAt = null;
   }
 
@@ -39,6 +79,9 @@ export class MarketDataRecorder {
       tradingDate: this.tradingDate,
       startedAt: this.startedAt,
       recorded: Object.fromEntries(this.counts),
+      // Non-zero means the disk could not keep up and the loss is known and
+      // counted, never silent.
+      dropped: Object.fromEntries(this.dropped),
       lastError: this.lastError,
     };
   }
@@ -49,6 +92,7 @@ export class MarketDataRecorder {
   streamFor(exchange, symbol, timestampMs) {
     const tradingDate = chicagoTradingDate(timestampMs);
     if (tradingDate !== this.tradingDate) {
+      this.flush();
       this.closeStreams();
       this.tradingDate = tradingDate;
     }
@@ -70,16 +114,51 @@ export class MarketDataRecorder {
 
   write(record) {
     if (!this.enabled) return;
-    const exchange = record.exchange || "UNKNOWN";
-    const symbol = record.symbol || "UNKNOWN";
-    const timestampMs = Number(record.receivedAt) || Date.now();
+    const { exchange, symbol } = resolveInstrument(record);
+    const key = `${exchange}:${symbol}`;
     try {
-      const stream = this.streamFor(exchange, symbol, timestampMs);
-      stream.write(`${JSON.stringify(record)}\n`);
-      const key = `${exchange}:${symbol}`;
+      const stream = this.streamFor(exchange, symbol, toEpochMs(record.receivedAt));
+      // Respect backpressure. If the OS write buffer is already saturated,
+      // count the loss instead of growing the heap until the process dies.
+      if (stream.writableLength > this.maxPendingBytes) {
+        this.dropped.set(key, (this.dropped.get(key) ?? 0) + 1);
+        return;
+      }
+      const buffer = this.buffers.get(key);
+      if (buffer) buffer.push(JSON.stringify(record));
+      else this.buffers.set(key, [JSON.stringify(record)]);
       this.counts.set(key, (this.counts.get(key) ?? 0) + 1);
     } catch (error) {
       this.lastError = error instanceof Error ? error.message : String(error);
+    }
+  }
+
+  // One write per instrument per tick of the flush timer rather than one per
+  // message. This is what keeps the event loop responsive enough for /health
+  // to answer while several thousand messages a second are arriving.
+  flush() {
+    if (!this.enabled || !this.buffers.size) return;
+    for (const [key, lines] of this.buffers) {
+      if (!lines.length) continue;
+      const stream = this.streams.get(key);
+      if (!stream) continue;
+      const dropped = this.dropped.get(key) ?? 0;
+      if (dropped && !this.reportedDropped?.get?.(key)) {
+        // Surface the discontinuity in the file itself, not only in /health.
+        lines.unshift(
+          JSON.stringify({
+            type: "DROPPED",
+            instrument: key,
+            droppedMessages: dropped,
+            receivedAt: new Date().toISOString(),
+            note: "Writer could not keep up. Messages in this interval were not recorded.",
+          }),
+        );
+        this.reportedDropped = this.reportedDropped ?? new Map();
+        this.reportedDropped.set(key, dropped);
+      }
+      stream.write(`${lines.join("\n")}\n`);
+      lines.length = 0;
     }
   }
 
@@ -88,19 +167,21 @@ export class MarketDataRecorder {
   // silently joining two sides of a hole.
   writeGapMarker(reason, timestampMs = Date.now()) {
     if (!this.enabled || !this.streams.size) return;
-    for (const [key, stream] of this.streams) {
+    for (const key of this.streams.keys()) {
       const [exchange, symbol] = key.split(":");
-      stream.write(
-        `${JSON.stringify({
-          type: "GAP",
-          exchange,
-          symbol,
-          reason,
-          receivedAt: timestampMs,
-          note: "Stream interrupted. Data between this marker and the next record was not observed.",
-        })}\n`,
-      );
+      const line = JSON.stringify({
+        type: "GAP",
+        exchange,
+        symbol,
+        reason,
+        receivedAt: timestampMs,
+        note: "Stream interrupted. Data between this marker and the next record was not observed.",
+      });
+      const buffer = this.buffers.get(key);
+      if (buffer) buffer.push(line);
+      else this.buffers.set(key, [line]);
     }
+    this.flush();
   }
 
   attach(client) {
@@ -108,20 +189,37 @@ export class MarketDataRecorder {
     this.startedAt = new Date().toISOString();
     let connected = false;
 
-    const onMarketData = (event) => this.write(event);
+    // Prefer the decoded wire message: it is the only stream that carries the
+    // actual depth and quote values. Fall back to the book-store event for
+    // sources that do not emit rawMessage (the RTrader Excel client).
+    let sawRawMessage = false;
+    const onRawMessage = (record) => {
+      sawRawMessage = true;
+      this.write(record);
+    };
+    const onMarketData = (event) => {
+      if (sawRawMessage) return;
+      this.write(event);
+    };
     const onStatus = (health) => {
-      // Only the transition matters; status fires on every heartbeat.
       if (connected && !health.connected) {
         this.writeGapMarker(health.lastError || "connection lost");
       }
       connected = Boolean(health.connected);
     };
 
+    client.on("rawMessage", onRawMessage);
     client.on("marketData", onMarketData);
     client.on("status", onStatus);
+    this.flushTimer = setInterval(() => this.flush(), this.flushMs);
+    if (typeof this.flushTimer.unref === "function") this.flushTimer.unref();
+
     this.detach = () => {
+      client.off("rawMessage", onRawMessage);
       client.off("marketData", onMarketData);
       client.off("status", onStatus);
+      if (this.flushTimer) clearInterval(this.flushTimer);
+      this.flushTimer = null;
     };
     return this.detach;
   }
@@ -133,8 +231,9 @@ export class MarketDataRecorder {
       tradingDate: this.tradingDate,
       writtenAt: new Date().toISOString(),
       provider: "Rithmic",
-      note: "Raw normalized Rithmic stream, append-only. GAP records mark observed discontinuities.",
+      note: "Raw decoded Rithmic wire messages, append-only. GAP marks observed disconnects; DROPPED marks writer saturation.",
       recorded: Object.fromEntries(this.counts),
+      dropped: Object.fromEntries(this.dropped),
     };
     try {
       await writeFile(
@@ -150,11 +249,13 @@ export class MarketDataRecorder {
   closeStreams() {
     for (const stream of this.streams.values()) stream.end();
     this.streams.clear();
+    this.buffers.clear();
   }
 
   async close() {
     if (this.detach) this.detach();
     this.detach = null;
+    this.flush();
     await this.writeManifest();
     this.closeStreams();
   }

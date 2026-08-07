@@ -100,6 +100,10 @@ export function loadConfig(env = process.env) {
     recordDir: String(
       env.RITHMIC_RECORD_DIR || join(SERVICE_ROOT, "recordings"),
     ).trim(),
+    // Floor on depth-by-order resync requests per instrument. Rithmic depth
+    // sequences are exchange-wide and regress constantly for one symbol, so
+    // an unthrottled resync becomes a snapshot storm against the provider.
+    depthResyncMinMs: positiveInteger(env.RITHMIC_DEPTH_RESYNC_MIN_MS, 30_000),
     reconnectMinMs: positiveInteger(env.RITHMIC_RECONNECT_MIN_MS, 1_000),
     reconnectMaxMs: positiveInteger(env.RITHMIC_RECONNECT_MAX_MS, 30_000),
     excelStaleMs: positiveInteger(env.RITHMIC_EXCEL_STALE_MS, 3_000),
