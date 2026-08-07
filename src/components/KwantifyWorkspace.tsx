@@ -2448,7 +2448,12 @@ function fetchValueAreaPayload(symbol: string) {
 
   const previous = cached;
   const controller = new AbortController();
-  const timeout = window.setTimeout(() => controller.abort(), 20_000);
+  // A cold value-area build streams the whole prior-week tick tape and takes
+  // 15-120s (measured NQ/ES). Aborting at 20s guaranteed the daily post-roll
+  // rebuild always looked like "failing to fetch" even though the server was
+  // mid-build. The retry loop still polls every 15-30s, so a generous ceiling
+  // costs nothing when the cache is warm (those answers arrive in <100ms).
+  const timeout = window.setTimeout(() => controller.abort(), 150_000);
   const promise = fetch(
     `/api/databento/value-area?symbol=${encodeURIComponent(symbol)}`,
     { cache: "no-store", signal: controller.signal },

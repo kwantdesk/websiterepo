@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { unstable_cache } from "next/cache";
 import {
   completedCmeDailyWindows,
@@ -298,6 +298,15 @@ export async function GET(request: Request) {
     expiresAt: nextCmeDailyCompletion(now) + 60_000,
     promise,
   });
+  // Detach the build from this request's lifetime. A cold build streams the
+  // full prior-session and prior-week tick tape (measured: NQ ~15s, ES ~118s)
+  // while chart clients abort at their own timeout - and an aborted invocation
+  // used to die with the client, before the durable cache was ever written.
+  // Every retry then started from zero: the cache stayed cold for 11 hours
+  // after a session roll until one caller waited the build out. after() keeps
+  // the invocation alive to completion, so the first request - even an
+  // abandoned one - warms the cache and the next poll answers instantly.
+  after(promise.catch(() => {}));
   try {
     const payload = await promise;
     return NextResponse.json(payload, {

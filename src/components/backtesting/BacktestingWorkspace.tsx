@@ -787,7 +787,9 @@ export default function BacktestingWorkspace() {
           `/api/databento/value-area?symbol=${encodeURIComponent(selectedDefinition.symbol)}&asOf=${encodeURIComponent(new Date(clock).toISOString())}`,
           {
             cache: "force-cache",
-            timeoutMs: 15_000,
+            // Cold replay windows rebuild from the full tick tape server-side
+            // (15-120s measured); the old 15s abort could never see one finish.
+            timeoutMs: 150_000,
             timeoutMessage: "The historical value-area snapshot timed out.",
           },
         );
