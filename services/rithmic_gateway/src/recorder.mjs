@@ -1,6 +1,7 @@
 import { createWriteStream, mkdirSync, existsSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { createGzip } from "node:zlib";
 
 import { chicagoTradingDate } from "./trading-session.mjs";
 
@@ -19,10 +20,13 @@ import { chicagoTradingDate } from "./trading-session.mjs";
 // rather than silently losing data or exhausting memory.
 
 const DEFAULT_FLUSH_MS = 250;
-const DEFAULT_MAX_PENDING_BYTES = 32 * 1024 * 1024;
+// Headroom for the gzip transform to absorb bursts before the drop guard
+// engages. Raised from 32 MB after measuring real drops on a 2-vCPU box.
+const DEFAULT_MAX_PENDING_BYTES = 128 * 1024 * 1024;
 
-function instrumentFileName(exchange, symbol) {
-  return `${String(exchange).toUpperCase()}-${String(symbol).toUpperCase()}.ndjson`;
+function instrumentFileName(exchange, symbol, compress) {
+  const base = `${String(exchange).toUpperCase()}-${String(symbol).toUpperCase()}.ndjson`;
+  return compress ? `${base}.gz` : base;
 }
 
 // The collector emits `instrument: "CME:NQU6"` as a single key on book events
@@ -57,6 +61,8 @@ export class MarketDataRecorder {
   constructor(options = {}) {
     this.dir = options.dir || null;
     this.enabled = Boolean(options.enabled && this.dir);
+    this.compress = options.compress !== false;
+    this.gzipLevel = Number.isFinite(Number(options.gzipLevel)) ? Number(options.gzipLevel) : 1;
     this.flushMs = Number(options.flushMs) > 0 ? Number(options.flushMs) : DEFAULT_FLUSH_MS;
     this.maxPendingBytes = Number(options.maxPendingBytes) > 0
       ? Number(options.maxPendingBytes)
@@ -76,6 +82,7 @@ export class MarketDataRecorder {
     return {
       enabled: this.enabled,
       dir: this.dir,
+      compress: this.compress,
       tradingDate: this.tradingDate,
       startedAt: this.startedAt,
       recorded: Object.fromEntries(this.counts),
@@ -102,12 +109,32 @@ export class MarketDataRecorder {
 
     const dayDir = join(this.dir, tradingDate);
     if (!existsSync(dayDir)) mkdirSync(dayDir, { recursive: true });
-    const stream = createWriteStream(join(dayDir, instrumentFileName(exchange, symbol)), {
-      flags: "a",
-    });
-    stream.on("error", (error) => {
+    const file = createWriteStream(
+      join(dayDir, instrumentFileName(exchange, symbol, this.compress)),
+      { flags: "a" },
+    );
+    file.on("error", (error) => {
       this.lastError = error.message;
     });
+    // Raw L3 measured at ~93 GB/day uncompressed across four instruments,
+    // which fills a modest VM disk in hours. This text is extremely
+    // repetitive and compresses roughly an order of magnitude. Appending
+    // produces a multi-member gzip file, which gunzip/zcat read normally.
+    let stream = file;
+    if (this.compress) {
+      // Level 1, not the default 6. Measured on a 2-vCPU box at full L3 on
+      // four instruments, level 6 could not keep up and the backpressure
+      // guard dropped ~45% of the busiest instrument. This data is hugely
+      // repetitive, so level 1 still compresses about an order of magnitude
+      // for a fraction of the CPU. Throughput beats ratio: a smaller file
+      // with holes in it is worth less than a slightly larger complete one.
+      const gzip = createGzip({ level: this.gzipLevel });
+      gzip.on("error", (error) => {
+        this.lastError = error.message;
+      });
+      gzip.pipe(file);
+      stream = gzip;
+    }
     this.streams.set(key, stream);
     return stream;
   }

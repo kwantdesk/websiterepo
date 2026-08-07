@@ -1,10 +1,11 @@
-import assert from "node:assert/strict";
+﻿import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import { mkdtempSync, readFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
+import { gunzipSync } from "node:zlib";
 
 import { MarketDataRecorder } from "../src/recorder.mjs";
 import { chicagoTradingDate } from "../src/trading-session.mjs";
@@ -21,12 +22,12 @@ async function settle(recorder) {
   await delay(30);
 }
 
+// Files are gzip by default; appending yields a multi-member archive, which
+// gunzipSync handles the same way gunzip/zcat do.
 function readSession(dir, timestampMs, file) {
-  return readFileSync(join(dir, chicagoTradingDate(timestampMs), file), "utf8")
-    .trim()
-    .split("\n")
-    .filter(Boolean)
-    .map((line) => JSON.parse(line));
+  const path = join(dir, chicagoTradingDate(timestampMs), `${file}.gz`);
+  const text = gunzipSync(readFileSync(path)).toString("utf8");
+  return text.trim().split("\n").filter(Boolean).map((line) => JSON.parse(line));
 }
 
 test("captures the raw stream into a CME-session file", async () => {
@@ -68,7 +69,7 @@ test("handles the real collector event shape: instrument key + ISO timestamp", a
   assert.equal(rows.length, 1, "must not land in UNKNOWN-UNKNOWN");
   assert.equal(rows[0].trade.price, 29591.25);
   assert.ok(
-    existsSync(join(dir, chicagoTradingDate(Date.parse(iso)), "CME-ESU6.ndjson")),
+    existsSync(join(dir, chicagoTradingDate(Date.parse(iso)), "CME-ESU6.ndjson.gz")),
     "the second instrument is split out by its own key",
   );
 });
@@ -136,7 +137,7 @@ test("separate instruments get separate files", async () => {
 
   const day = chicagoTradingDate(receivedAt);
   for (const symbol of ["NQU6", "ESU6", "MNQU6", "MESU6"]) {
-    assert.ok(existsSync(join(dir, day, `CME-${symbol}.ndjson`)), `${symbol} file exists`);
+    assert.ok(existsSync(join(dir, day, `CME-${symbol}.ndjson.gz`)), `${symbol} file exists`);
   }
   assert.equal(counted, 1);
 });
