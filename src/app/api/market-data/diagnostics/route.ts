@@ -1,0 +1,63 @@
+import { NextResponse } from "next/server";
+
+import {
+  marketDataGatewayEnvNames,
+  marketDataGatewayToken,
+  marketDataGatewayUrl,
+  marketDataProvider,
+} from "@/lib/marketDataGatewayEnv";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+// Deliberately public (middleware allowlists it): when the charts silently
+// fall back to the APPROX profile, the cause is invisible from the outside —
+// this answers "what is production actually reading?" without dashboard
+// access. It exposes no secrets: variable NAMES, the gateway HOST, the
+// deployed commit, and an upstream reachability probe. Never the token.
+export async function GET() {
+  const url = marketDataGatewayUrl();
+  const names = marketDataGatewayEnvNames();
+
+  let upstream: Record<string, unknown> = { probed: false };
+  if (url) {
+    try {
+      const response = await fetch(`${url}/health`, {
+        cache: "no-store",
+        signal: AbortSignal.timeout(8_000),
+      });
+      const health = await response.json().catch(() => null) as Record<string, unknown> | null;
+      upstream = {
+        probed: true,
+        reachable: true,
+        status: response.status,
+        connected: health?.connected ?? null,
+        authenticated: health?.authenticated ?? null,
+        lastMessageAt: health?.lastMessageAt ?? null,
+      };
+    } catch (error) {
+      upstream = {
+        probed: true,
+        reachable: false,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+
+  return NextResponse.json(
+    {
+      commit: process.env.VERCEL_GIT_COMMIT_SHA ?? null,
+      onVercel: Boolean(process.env.VERCEL),
+      provider: marketDataProvider(),
+      resolvedFrom: {
+        url: names.url,
+        token: names.token,
+        provider: names.provider,
+      },
+      gatewayHost: url ? new URL(url).host : null,
+      gatewayConfigured: Boolean(url && marketDataGatewayToken()),
+      upstream,
+    },
+    { headers: { "Cache-Control": "no-store" } },
+  );
+}
