@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import KwantSelect from "@/components/ui/KwantSelect";
 import TimeZoneSelect from "@/components/ui/TimeZoneSelect";
@@ -632,7 +632,7 @@ const BOTTOM_WORKSPACE_SECTIONS = [
 const DEFAULT_KWANTBOT_MESSAGES: KwantBotMessage[] = [
   {
     id: "kwantbot-welcome",
-    text: "I’m online. Send me a message, chart screenshot, photo, or research file whenever you’re ready.",
+    text: "Iâ€™m online. Send me a message, chart screenshot, photo, or research file whenever youâ€™re ready.",
     receivedAt: "",
     sender: "bot",
   },
@@ -1546,7 +1546,7 @@ function sanitizeCandles(candles: Candle[], symbol: string) {
     const next = rows[index + 1];
     const reference = previous.close;
     // Only the recent volatility window is used by getSingleTickMoveLimit.
-    // Slicing the entire history for every candle made this pass O(n²) and
+    // Slicing the entire history for every candle made this pass O(nÂ²) and
     // blocked the chart thread on multi-day intraday histories.
     const recentHistory = rows.slice(Math.max(0, index - 20), index);
     const moveLimit = getSingleTickMoveLimit(recentHistory, symbol, reference);
@@ -2340,7 +2340,7 @@ function markLevelsStale(levels: ChartLevel[], asOf: string | number | null | un
   return levels.map((level) => ({
     ...level,
     color: colorWithAlpha(level.color, 0.42),
-    label: `${level.label} · STALE${asOfLabel ? ` ${asOfLabel}` : ""}`,
+    label: `${level.label} Â· STALE${asOfLabel ? ` ${asOfLabel}` : ""}`,
   }));
 }
 
@@ -2349,7 +2349,7 @@ function formatGameplanZone(low: number, high: number) {
     minimumFractionDigits: value % 1 ? 2 : 0,
     maximumFractionDigits: 2,
   });
-  return low === high ? format(low) : `${format(low)}–${format(high)}`;
+  return low === high ? format(low) : `${format(low)}â€“${format(high)}`;
 }
 
 function buildGameplanChartDecorations(
@@ -2371,7 +2371,7 @@ function buildGameplanChartDecorations(
         id: `gameplan-line-${level.id}`,
         price: (level.zone[0] + level.zone[1]) / 2,
         color,
-        label: `${level.name} · ${level.role.toUpperCase()}`,
+        label: `${level.name} Â· ${level.role.toUpperCase()}`,
         lineStyle: level.role === "decision" ? "solid" : level.role === "accelerant" ? "dotted" : "dashed",
         lineWidth: level.strength >= 4 || level.role === "decision" ? 2 : 1,
         axisLabelVisible: true,
@@ -2385,7 +2385,7 @@ function buildGameplanChartDecorations(
         high: level.zone[1],
         color,
         fillColor: colorWithAlpha(color, level.role === "decision" ? 0.14 : 0.09),
-        label: `${level.name} · ${formatGameplanZone(level.zone[0], level.zone[1])}`,
+        label: `${level.name} Â· ${formatGameplanZone(level.zone[0], level.zone[1])}`,
       };
     }),
   };
@@ -2550,7 +2550,7 @@ function buildValueAreaChartOverlay(
       id: `${prefix.toLowerCase()}-vah-${profile.end}`,
       price: profile.vah,
       color,
-      label: `${current ? "VAH" : `${prefix} VAH`} · CME`,
+      label: `${current ? "VAH" : `${prefix} VAH`} Â· CME`,
       lineStyle: "dashed",
       lineWidth: current ? 2 : 1,
       axisLabelVisible: true,
@@ -2559,7 +2559,7 @@ function buildValueAreaChartOverlay(
       id: `${prefix.toLowerCase()}-val-${profile.end}`,
       price: profile.val,
       color,
-      label: `${current ? "VAL" : `${prefix} VAL`} · CME`,
+      label: `${current ? "VAL" : `${prefix} VAL`} Â· CME`,
       lineStyle: "dashed",
       lineWidth: current ? 2 : 1,
       axisLabelVisible: true,
@@ -2568,7 +2568,7 @@ function buildValueAreaChartOverlay(
       id: `${prefix.toLowerCase()}-poc-${profile.end}`,
       price: profile.poc,
       color,
-      label: `${current ? "POC" : `${prefix} POC`} · CME`,
+      label: `${current ? "POC" : `${prefix} POC`} Â· CME`,
       lineStyle: "solid",
       lineWidth: 2,
       axisLabelVisible: true,
@@ -2577,7 +2577,7 @@ function buildValueAreaChartOverlay(
       id: `${prefix.toLowerCase()}-vwap-${profile.end}`,
       price: profile.vwap,
       color,
-      label: `${current ? "VWAP" : `${prefix} VWAP`} · CME`,
+      label: `${current ? "VWAP" : `${prefix} VWAP`} Â· CME`,
       lineStyle: "dotted",
       lineWidth: 2,
       axisLabelVisible: true,
@@ -2809,7 +2809,7 @@ function buildGammaChartOverlay(args: {
       id: `gamma-${conversion.id}-${level.id}`,
       price: level.price,
       color: gammaLevelColor(level.kind, args.settings),
-      label: `${level.label} · ${conversion.source}→${conversion.target}`,
+      label: `${level.label} Â· ${conversion.source}â†’${conversion.target}`,
       kind: level.kind,
       lineStyle: level.kind === "MAJOR_POSITIVE_VOLUME" || /(^| \/ )MPV($| \/ )/.test(level.label)
         ? "solid"
@@ -2829,8 +2829,8 @@ function buildGammaChartOverlay(args: {
     regime: payload.environment.gammaRegime,
     checkedAt: payload.checkedAt,
     sourceLabel: isNativeGammaConversion(conversion)
-      ? `${conversion.label} · Databento futures options`
-      : `${conversion.label} · ${payload.marketOpen ? "LIVE NY OPTIONS" : "NEW YORK EOD"} · ${calibration.scale.toFixed(6)}×`,
+      ? `${conversion.label} Â· Databento futures options`
+      : `${conversion.label} Â· ${payload.marketOpen ? "LIVE NY OPTIONS" : "NEW YORK EOD"} Â· ${calibration.scale.toFixed(6)}Ã—`,
     stale: false,
   };
 }
@@ -2855,7 +2855,7 @@ function mergeNativeGammaTransitions(
     checkedAt: Date.parse(native.checkedAt) > Date.parse(base.checkedAt)
       ? native.checkedAt
       : base.checkedAt,
-    sourceLabel: `${base.sourceLabel} · native Zero Gamma/HVL`,
+    sourceLabel: `${base.sourceLabel} Â· native Zero Gamma/HVL`,
   };
 }
 
@@ -3047,7 +3047,7 @@ function WorkspaceChartPane({
         ...nearest,
         id: `gexbot-flow-${object.kind.toLowerCase()}-${object.price}`,
         price: object.price,
-        label: `GEX Bot ${object.name} · contested`,
+        label: `GEX Bot ${object.name} Â· contested`,
         lineStyle: "dotted" as const,
         lineWidth: 1 as const,
         axisLabelVisible: true,
@@ -3200,7 +3200,7 @@ function WorkspaceChartPane({
       valueArea: valueAreaOverlay
         ? {
             checkedAt: valueAreaOverlay.generatedAt,
-            sourceLabel: `CME trade-by-trade value area${valueAreaOverlay.currentLabel ? " · current developing session" : ""} · ${valueAreaOverlay.dailyLabel} · ${valueAreaOverlay.weeklyLabel}`,
+            sourceLabel: `CME trade-by-trade value area${valueAreaOverlay.currentLabel ? " Â· current developing session" : ""} Â· ${valueAreaOverlay.dailyLabel} Â· ${valueAreaOverlay.weeklyLabel}`,
             levels: valueAreaOverlay.levels,
           }
         : null,
@@ -3847,7 +3847,7 @@ function WorkspaceChartPane({
           );
         } else if (!retainedOverlay.stale) {
           // Last-good levels may stay on the chart only with an explicit
-          // stale badge — a failed refresh must never keep painting them
+          // stale badge â€” a failed refresh must never keep painting them
           // fresh-looking.
           retainedOverlay = { ...retainedOverlay, stale: true };
           setValueAreaOverlay(retainedOverlay);
@@ -4166,6 +4166,16 @@ function WorkspaceChartPane({
     let refreshTimer: number | null = null;
     const chartStepMs = Math.max(1, getTimeframeMs(pane.timeframe));
     const tickSize = futuresTickSize(pane.symbol);
+    // Fold the live execution tape onto the bars before building the profile.
+    // An OHLCV bar carries no buy/sell information at all, so a profile built
+    // straight from candles has bidVolume === askVolume and every level's
+    // delta is exactly zero â€” the delta bars then clamp to a half-pixel
+    // sliver and read as "not rendering". The tape has a real aggressor per
+    // print, so this makes the delta genuine rather than inferred from candle
+    // direction, which is a guess dressed up as order flow.
+    const profileCandles = marketTrades.length
+      ? enrichCandlesWithInstitutionalTrades(candles, marketTrades, candles.length)
+      : candles;
     const tradingDates = dailyTradingDateSignature
       ? dailyTradingDateSignature.split(",")
       : [];
@@ -4173,7 +4183,7 @@ function WorkspaceChartPane({
 
     if (dailyProfileInstance) {
       tradingDates.forEach((tradingDate) => {
-        const sessionCandles = candles.filter((candle) =>
+        const sessionCandles = profileCandles.filter((candle) =>
           chicagoTradingDate(candle.timestamp) === tradingDate);
         if (!sessionCandles.length) return;
         const profile = buildChartVolumeProfile({
@@ -4196,7 +4206,7 @@ function WorkspaceChartPane({
 
     if (weeklyProfileInstance) {
       const weeklyDates = new Set(tradingDates.slice(-5));
-      const weeklyCandles = candles.filter((candle) =>
+      const weeklyCandles = profileCandles.filter((candle) =>
         weeklyDates.has(chicagoTradingDate(candle.timestamp)));
       if (weeklyCandles.length) {
         const profile = buildChartVolumeProfile({
@@ -4329,6 +4339,10 @@ function WorkspaceChartPane({
     dailyProfileSettings.minTradeVolume,
     dailyProfileSettings.valueAreaPercent,
     dailyTradingDateSignature,
+    // Coarse tape signal: rebuild the provisional profile as executions
+    // accumulate so its delta fills in, without re-running this effect (and
+    // its 15s refresh loop) on every print.
+    Math.floor(marketTrades.length / 250),
     pane.symbol,
     pane.timeframe,
     resolvedContractSymbol,
@@ -4407,7 +4421,7 @@ function WorkspaceChartPane({
     : marketIsActive
       ? "Live"
       : liveFeedError && candles.length
-        ? "History · reconnecting"
+        ? "History Â· reconnecting"
         : liveFeedError
           ? "Connecting"
           : candles.length
@@ -4449,7 +4463,7 @@ function WorkspaceChartPane({
             style={{ backgroundColor: settings.backgroundColor }}
             icon={BarChart3}
             title="Loading chart"
-            detail={`${displayCmeSymbol(pane.symbol)} · restoring ${formatChartInterval(pane.timeframe)} candles`}
+            detail={`${displayCmeSymbol(pane.symbol)} Â· restoring ${formatChartInterval(pane.timeframe)} candles`}
           />
         </div>
       ) : error ? (
@@ -4504,7 +4518,7 @@ function WorkspaceChartPane({
           valueAreaLevelsError={valueAreaLevelsError}
           valueAreaLevelsDescription={
             valueAreaOverlay
-              ? `${valueAreaOverlay.currentLabel ? `${valueAreaOverlay.currentLabel} · ` : ""}Prior session ${valueAreaOverlay.dailyLabel} · Prior week ${valueAreaOverlay.weeklyLabel}`
+              ? `${valueAreaOverlay.currentLabel ? `${valueAreaOverlay.currentLabel} Â· ` : ""}Prior session ${valueAreaOverlay.dailyLabel} Â· Prior week ${valueAreaOverlay.weeklyLabel}`
               : ""
           }
           onToggleValueAreaLevels={onToggleValueAreaLevels}
@@ -4574,7 +4588,7 @@ function WorkspaceChartPane({
               className="h-11 w-full rounded-xl border border-border bg-surface px-3 font-mono text-[15px] text-foreground outline-none transition-colors placeholder:text-muted/55 focus:border-primary/60"
             />
             <div className={`mt-2 px-1 text-[10px] ${intervalCommandError ? "text-danger" : "text-muted"}`}>
-              {intervalCommandError || "Seconds · minutes · hours · days · weeks · event bars"}
+              {intervalCommandError || "Seconds Â· minutes Â· hours Â· days Â· weeks Â· event bars"}
             </div>
           </div>
         </div>
@@ -5474,17 +5488,17 @@ export default function KwantifyWorkspace({
     {
       category: "CME Futures",
       broker: "Databento",
-      items: DATABENTO_FUTURES.map((instrument) => [instrument.symbol, `${instrument.label} · ${instrument.venue}`]),
+      items: DATABENTO_FUTURES.map((instrument) => [instrument.symbol, `${instrument.label} Â· ${instrument.venue}`]),
     },
     {
       category: "CME Options",
       broker: "Databento",
-      items: databentoOptions.map((instrument) => [instrument.symbol, `${instrument.label} · ${instrument.group}`]),
+      items: databentoOptions.map((instrument) => [instrument.symbol, `${instrument.label} Â· ${instrument.group}`]),
     },
     {
       category: "Volatility Indices",
       broker: "Market Index",
-      items: MARKET_INDEX_DEFINITIONS.map((index) => [index.symbol, `${index.displayName} · ${index.exchange}`]),
+      items: MARKET_INDEX_DEFINITIONS.map((index) => [index.symbol, `${index.displayName} Â· ${index.exchange}`]),
     },
   ];
   const watchlistDetails: Record<string, { price: string; change: string; up: boolean }> = {
@@ -5992,11 +6006,11 @@ export default function KwantifyWorkspace({
       setGameplanChartOverlays(nextStore);
       if (!silent) showReportToast(
         "success",
-        `${displaySymbol} ${gameplanSessionLabel(session)} KWANT levels added. Refreshing quietly…`,
+        `${displaySymbol} ${gameplanSessionLabel(session)} KWANT levels added. Refreshing quietlyâ€¦`,
         2_000,
       );
     } else if (!silent) {
-      showReportToast("loading", `Loading the latest ${displaySymbol} KWANT levels…`);
+      showReportToast("loading", `Loading the latest ${displaySymbol} KWANT levelsâ€¦`);
     }
 
     try {
@@ -7774,18 +7788,18 @@ export default function KwantifyWorkspace({
             setBacktestResult(result);
             setChartTrades(result.trades);
           }
-          showReportToast("success", `Report updated — ${displayCmeSymbol(selectedInstrument)} ${selectedTimeframe}`, 2000);
+          showReportToast("success", `Report updated â€” ${displayCmeSymbol(selectedInstrument)} ${selectedTimeframe}`, 2000);
           setChartLoadingMessage(`Loaded ${candles.length.toLocaleString()} candles`);
         } else {
           // Never substitute fabricated candles for a feed that returned
           // nothing. An empty feed is reported as exactly that; whatever real
           // candles are already on screen stay untouched.
           setChartLoadingMessage(`${activeChartBrokerLabel} returned no ${selectedTimeframe} candles for this window.`);
-          showReportToast("error", `No candles from ${activeChartBrokerLabel} — chart not updated`, 3000);
+          showReportToast("error", `No candles from ${activeChartBrokerLabel} â€” chart not updated`, 3000);
         }
       } catch (loadError) {
         if (cancelled || (loadError instanceof DOMException && loadError.name === "AbortError")) return;
-        setChartLoadingMessage(activeChartBrokerLabel === "Databento" ? "Connecting to CME history…" : "");
+        setChartLoadingMessage(activeChartBrokerLabel === "Databento" ? "Connecting to CME historyâ€¦" : "");
         showReportToast("error", activeChartBrokerLabel === "Databento" ? "CME history is reconnecting" : "Failed to update report", 3000);
       } finally {
         if (!cancelled) {
@@ -7804,7 +7818,7 @@ export default function KwantifyWorkspace({
   useEffect(() => {
     if (!backtestResult || backtestResult.error) {
       showReportToast("loading", "Updating report...");
-      window.setTimeout(() => showReportToast("success", `Report updated — ${displayCmeSymbol(selectedInstrument)} ${selectedTimeframe}`, 2000), 300);
+      window.setTimeout(() => showReportToast("success", `Report updated â€” ${displayCmeSymbol(selectedInstrument)} ${selectedTimeframe}`, 2000), 300);
       return;
     }
 
@@ -7827,7 +7841,7 @@ export default function KwantifyWorkspace({
           setChartCandles(cleanCandles);
           setBacktestResult(result);
           setChartTrades(result.trades);
-          showReportToast("success", `Report updated — ${displayCmeSymbol(selectedInstrument)} ${selectedTimeframe}`, 2000);
+          showReportToast("success", `Report updated â€” ${displayCmeSymbol(selectedInstrument)} ${selectedTimeframe}`, 2000);
         }
       } catch {
         showReportToast("error", "Failed to update report", 3000);
@@ -8413,7 +8427,7 @@ export default function KwantifyWorkspace({
   const money = (value: number) => `${value >= 0 ? "+" : "-"}${formatDollar(value)}`;
   const plainMoney = (value: number) => `${value < 0 ? "-" : ""}${formatDollar(value)}`;
   const percent = (value: number) => `${Number.isFinite(value) ? value.toFixed(2) : "0.00"}%`;
-  const ratio = (value: number) => value === Infinity || value >= 999 ? "∞" : value.toFixed(2);
+  const ratio = (value: number) => value === Infinity || value >= 999 ? "âˆž" : value.toFixed(2);
   const formatTradeDate = (timestamp: number) => new Date(timestamp).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false });
   const sortedTrades = [...filteredTrades].sort((a, b) => {
     const valueFor = (trade: typeof filteredTrades[number]) => {
@@ -9518,7 +9532,7 @@ export default function KwantifyWorkspace({
             color: gameplanColors[level.role],
             lineStyle: level.role === "decision" ? "solid" : level.role === "accelerant" ? "dotted" : "dashed",
             lineWidth: level.strength >= 4 || level.role === "decision" ? 3 : 2,
-            source: `Kwant Desk Gameplan · ${option.gameplan.session} · ${option.gameplan.editionDate}`,
+            source: `Kwant Desk Gameplan Â· ${option.gameplan.session} Â· ${option.gameplan.editionDate}`,
             asOf: option.gameplan.publishedAt,
           });
         }
@@ -10266,8 +10280,8 @@ export default function KwantifyWorkspace({
                         >
                           <div className="truncate text-[12px] font-medium text-foreground">{preset.name}</div>
                           <div className="mt-0.5 text-[9px] text-muted">
-                            {activeWorkspacePresetId === preset.id ? "Active · " : ""}
-                            {collectWorkspacePaneIds(preset.layout).length} charts · {new Date(preset.updatedAt).toLocaleDateString()}
+                            {activeWorkspacePresetId === preset.id ? "Active Â· " : ""}
+                            {collectWorkspacePaneIds(preset.layout).length} charts Â· {new Date(preset.updatedAt).toLocaleDateString()}
                           </div>
                         </button>
                         <button
@@ -10396,7 +10410,7 @@ export default function KwantifyWorkspace({
                 id: "gamma",
                 label: "Gamma levels",
                 description: "Live options positioning levels",
-                badge: "Γ",
+                badge: "Î“",
                 enabled: gammaLevelsEnabled,
                 available: activeWorkspacePane.broker === "Databento"
                   && isGammaChartInstrument(displayCmeSymbol(activeWorkspacePane.symbol)),
@@ -10596,8 +10610,8 @@ export default function KwantifyWorkspace({
                               </span>
                               <span className="mt-0.5 block text-[9px] text-muted">
                                 {gammaPreparing ? "Preparing Gamma" : `${gammaCount} Gamma`}
-                                {" · "}{gameplanCount} Gameplan
-                                {" · "}{valueAreaPreparing ? "Preparing Value Area" : `${valueAreaCount} Value Area`}
+                                {" Â· "}{gameplanCount} Gameplan
+                                {" Â· "}{valueAreaPreparing ? "Preparing Value Area" : `${valueAreaCount} Value Area`}
                               </span>
                             </span>
                             <span className="font-mono text-[10px] text-muted">{gammaCount + gameplanCount + valueAreaCount}</span>
@@ -10633,7 +10647,7 @@ export default function KwantifyWorkspace({
                               <span className={`text-[10px] font-semibold ${active ? "text-primary" : "text-foreground"}`}>{option.label}</span>
                               <span className="ml-auto rounded-md border border-border bg-background/50 px-1.5 py-0.5 text-[7px] uppercase tracking-[0.08em] text-muted">{option.delivery}</span>
                             </span>
-                            <span className="mt-1 block text-[8px] text-muted">{option.detail} Â· .{option.extension}</span>
+                            <span className="mt-1 block text-[8px] text-muted">{option.detail} Ã‚Â· .{option.extension}</span>
                           </button>
                         );
                       })}
@@ -11068,7 +11082,7 @@ export default function KwantifyWorkspace({
                         <div className="text-center">
                           <div className="text-[10px] uppercase tracking-wider text-muted">Profit factor</div>
                           <div className="font-mono text-[14px] font-semibold" style={{ color: profitFactor >= 1 ? "#22C55E" : "#EF4444" }}>
-                            {profitFactor === Infinity ? "∞" : profitFactor.toFixed(2)}
+                            {profitFactor === Infinity ? "âˆž" : profitFactor.toFixed(2)}
                           </div>
                         </div>
                       </div>
@@ -11209,7 +11223,7 @@ export default function KwantifyWorkspace({
               ["Run-up", "runUp", "text-right"],
               ["Drawdown", "drawdown", "text-right"],
               ["Duration (bars)", "durationBars", "text-right"],
-            ].map(([label, key, align]) => <th key={key} onClick={() => updateTradeSort(key)} className={`cursor-pointer px-4 py-2.5 text-[10px] font-medium uppercase tracking-wider hover:text-foreground ${align}`}>{label}{tradeSort.key === key ? (tradeSort.direction === "asc" ? " ↑" : " ↓") : ""}</th>)}</tr></thead><tbody>{sortedTrades.map((trade, i) => <tr key={`${trade.entryTime}-${trade.exitTime}-${i}`} className="border-b border-border/50 hover:bg-surface/30"><td className="px-4 py-2 font-mono text-muted">{i + 1}</td><td className="px-4 py-2 font-semibold" style={{ color: trade.direction === "LONG" ? "#22C55E" : "#EF4444" }}>{trade.direction}</td><td className="px-4 py-2 font-mono text-muted">{formatTradeDate(trade.entryTime)}</td><td className="px-4 py-2 text-right font-mono">{formatPrice(trade.entryPrice, selectedInstrument)}</td><td className="px-4 py-2 font-mono text-muted">{formatTradeDate(trade.exitTime)}</td><td className="px-4 py-2 text-right font-mono">{formatPrice(trade.exitPrice, selectedInstrument)}</td><td className="px-4 py-2 text-right font-mono font-semibold" style={{ color: trade.pnlPoints >= 0 ? "#22C55E" : "#EF4444" }}>{money(trade.pnlPoints)}</td><td className="px-4 py-2 text-right font-mono" style={{ color: trade.pnlPercent >= 0 ? "#22C55E" : "#EF4444" }}>{trade.pnlPercent >= 0 ? "+" : ""}{trade.pnlPercent.toFixed(2)}%</td><td className="px-4 py-2 text-right font-mono">{formatPrice(trade.runUp ?? 0, selectedInstrument)}</td><td className="px-4 py-2 text-right font-mono">{formatPrice(trade.drawdown ?? 0, selectedInstrument)}</td><td className="px-4 py-2 text-right font-mono">{trade.durationBars ?? 0}</td></tr>)}</tbody><tfoot className="sticky bottom-0 bg-panel"><tr className="border-t border-border font-mono text-[12px]"><td className="px-4 py-2 text-muted" colSpan={6}>Total</td><td className="px-4 py-2 text-right font-semibold" style={{ color: totalPnl >= 0 ? "#22C55E" : "#EF4444" }}>{money(totalPnl)}</td><td className="px-4 py-2 text-right" style={{ color: pnlPercent >= 0 ? "#22C55E" : "#EF4444" }}>{pnlPercent >= 0 ? "+" : ""}{pnlPercent.toFixed(2)}%</td><td className="px-4 py-2 text-right">{formatPrice(filteredTrades.reduce((sum, trade) => sum + (trade.runUp ?? 0), 0), selectedInstrument)}</td><td className="px-4 py-2 text-right">{formatPrice(filteredTrades.reduce((sum, trade) => sum + (trade.drawdown ?? 0), 0), selectedInstrument)}</td><td className="px-4 py-2 text-right">{allStats.avgBars.toFixed(1)}</td></tr></tfoot></table> : backtestResult && backtestResult.trades.length === 0 ? <div className="flex h-full min-h-[200px] flex-col items-center justify-center gap-3"><div className="flex h-12 w-12 items-center justify-center rounded-full bg-surface"><FileText className="h-6 w-6 text-muted" /></div><span className="text-[14px] font-medium text-muted">No trades to display</span><span className="text-[12px] text-muted/60">No trades were generated during the backtest period</span></div> : <div className="flex h-full min-h-[200px] flex-col items-center justify-center gap-3"><div className="flex h-12 w-12 items-center justify-center rounded-full bg-surface"><Play className="h-6 w-6 text-muted" /></div><span className="text-[14px] font-medium text-muted">Run a backtest to see results</span><span className="text-[12px] text-muted/60">Select a strategy and click "Run Backtest"</span></div>}</div>}
+            ].map(([label, key, align]) => <th key={key} onClick={() => updateTradeSort(key)} className={`cursor-pointer px-4 py-2.5 text-[10px] font-medium uppercase tracking-wider hover:text-foreground ${align}`}>{label}{tradeSort.key === key ? (tradeSort.direction === "asc" ? " â†‘" : " â†“") : ""}</th>)}</tr></thead><tbody>{sortedTrades.map((trade, i) => <tr key={`${trade.entryTime}-${trade.exitTime}-${i}`} className="border-b border-border/50 hover:bg-surface/30"><td className="px-4 py-2 font-mono text-muted">{i + 1}</td><td className="px-4 py-2 font-semibold" style={{ color: trade.direction === "LONG" ? "#22C55E" : "#EF4444" }}>{trade.direction}</td><td className="px-4 py-2 font-mono text-muted">{formatTradeDate(trade.entryTime)}</td><td className="px-4 py-2 text-right font-mono">{formatPrice(trade.entryPrice, selectedInstrument)}</td><td className="px-4 py-2 font-mono text-muted">{formatTradeDate(trade.exitTime)}</td><td className="px-4 py-2 text-right font-mono">{formatPrice(trade.exitPrice, selectedInstrument)}</td><td className="px-4 py-2 text-right font-mono font-semibold" style={{ color: trade.pnlPoints >= 0 ? "#22C55E" : "#EF4444" }}>{money(trade.pnlPoints)}</td><td className="px-4 py-2 text-right font-mono" style={{ color: trade.pnlPercent >= 0 ? "#22C55E" : "#EF4444" }}>{trade.pnlPercent >= 0 ? "+" : ""}{trade.pnlPercent.toFixed(2)}%</td><td className="px-4 py-2 text-right font-mono">{formatPrice(trade.runUp ?? 0, selectedInstrument)}</td><td className="px-4 py-2 text-right font-mono">{formatPrice(trade.drawdown ?? 0, selectedInstrument)}</td><td className="px-4 py-2 text-right font-mono">{trade.durationBars ?? 0}</td></tr>)}</tbody><tfoot className="sticky bottom-0 bg-panel"><tr className="border-t border-border font-mono text-[12px]"><td className="px-4 py-2 text-muted" colSpan={6}>Total</td><td className="px-4 py-2 text-right font-semibold" style={{ color: totalPnl >= 0 ? "#22C55E" : "#EF4444" }}>{money(totalPnl)}</td><td className="px-4 py-2 text-right" style={{ color: pnlPercent >= 0 ? "#22C55E" : "#EF4444" }}>{pnlPercent >= 0 ? "+" : ""}{pnlPercent.toFixed(2)}%</td><td className="px-4 py-2 text-right">{formatPrice(filteredTrades.reduce((sum, trade) => sum + (trade.runUp ?? 0), 0), selectedInstrument)}</td><td className="px-4 py-2 text-right">{formatPrice(filteredTrades.reduce((sum, trade) => sum + (trade.drawdown ?? 0), 0), selectedInstrument)}</td><td className="px-4 py-2 text-right">{allStats.avgBars.toFixed(1)}</td></tr></tfoot></table> : backtestResult && backtestResult.trades.length === 0 ? <div className="flex h-full min-h-[200px] flex-col items-center justify-center gap-3"><div className="flex h-12 w-12 items-center justify-center rounded-full bg-surface"><FileText className="h-6 w-6 text-muted" /></div><span className="text-[14px] font-medium text-muted">No trades to display</span><span className="text-[12px] text-muted/60">No trades were generated during the backtest period</span></div> : <div className="flex h-full min-h-[200px] flex-col items-center justify-center gap-3"><div className="flex h-12 w-12 items-center justify-center rounded-full bg-surface"><Play className="h-6 w-6 text-muted" /></div><span className="text-[14px] font-medium text-muted">Run a backtest to see results</span><span className="text-[12px] text-muted/60">Select a strategy and click "Run Backtest"</span></div>}</div>}
           </div>
         </div>
       </div>
@@ -11665,7 +11679,7 @@ export default function KwantifyWorkspace({
                 </div>
                 <div className="mt-1.5 flex items-center gap-1.5 px-2 text-[9px] text-muted/75">
                   <span className="h-1.5 w-1.5 rounded-full bg-primary shadow-[0_0_7px_var(--primary)]" />
-                  Enter to send · Shift+Enter for a new line
+                  Enter to send Â· Shift+Enter for a new line
                 </div>
               </div>
             </div>
@@ -12072,7 +12086,7 @@ export default function KwantifyWorkspace({
                   {selectedBroker.type === "binance" && (
                     <div className="space-y-3"><input type="password" placeholder="API Key" className="w-full rounded-xl border border-border bg-surface px-4 py-3 text-[13px] outline-none focus:border-primary/40" /><input type="password" placeholder="API Secret" className="w-full rounded-xl border border-border bg-surface px-4 py-3 text-[13px] outline-none focus:border-primary/40" /></div>
                   )}
-                  {selectedBroker.type === "soon" && <div className="rounded-2xl border border-border bg-surface/50 p-5 text-[13px] text-muted">Coming soon — we're working on connecting this broker.</div>}
+                  {selectedBroker.type === "soon" && <div className="rounded-2xl border border-border bg-surface/50 p-5 text-[13px] text-muted">Coming soon â€” we're working on connecting this broker.</div>}
                 </div>
                 <div className="flex items-center justify-between border-t border-border p-5">
                   <button className="rounded-xl border border-border bg-surface px-4 py-2 text-[13px] text-muted hover:text-foreground">Test Connection</button>
@@ -12572,3 +12586,4 @@ export default function KwantifyWorkspace({
     </div>
   );
 }
+

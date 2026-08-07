@@ -1,7 +1,7 @@
 import { createWriteStream, mkdirSync, existsSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { createGzip } from "node:zlib";
+import { constants as zlibConstants, createGzip } from "node:zlib";
 
 import { chicagoTradingDate } from "./trading-session.mjs";
 
@@ -189,6 +189,15 @@ export class MarketDataRecorder {
       }
       stream.write(`${lines.join("\n")}\n`);
       lines.length = 0;
+      // Finish the deflate block on every flush. Without this the gzip stream
+      // is only decodable once cleanly ended, so a container kill left a
+      // truncated member and the next start appended a fresh member behind
+      // it — producing "invalid block type" and an archive that could not be
+      // read back at all. Sync-flushing costs a little ratio and makes the
+      // file readable up to the last flush no matter how the process dies.
+      if (this.compress && typeof stream.flush === "function") {
+        stream.flush(zlibConstants.Z_SYNC_FLUSH);
+      }
     }
   }
 

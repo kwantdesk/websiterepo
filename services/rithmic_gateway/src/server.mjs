@@ -1,6 +1,7 @@
 import { createServer } from "node:http";
 import { URL } from "node:url";
 
+import { replayArchiveIntoBook } from "./archive-replay.mjs";
 import { loadConfig } from "./config.mjs";
 import { discoverRithmicSystems, RithmicMarketDataClient } from "./rithmic-client.mjs";
 import { RTraderExcelMarketDataClient } from "./rtrader-excel-client.mjs";
@@ -762,9 +763,29 @@ server.listen(config.port, config.host, () => {
     process.stdout.write("[recorder] DISABLED - live data is not being archived\n");
   }
   if (config.configured) {
-    client.start().catch((error) => {
-      process.stderr.write(`[rithmic] initial connection failed: ${error.message}\n`);
-    });
+    // Rebuild this session's tape from our own archive before going live, so
+    // a restart does not leave the volume profile and effort indicators
+    // holding only the minutes since the process started.
+    replayArchiveIntoBook({
+      dir: config.recordDir,
+      book: client.book,
+      log: (line) => process.stdout.write(`${line}\n`),
+    })
+      .then((result) => {
+        process.stdout.write(
+          result.reason
+            ? `[replay] skipped: ${result.reason}\n`
+            : `[replay] restored ${result.replayed} trades from ${result.files} file(s) for ${result.tradingDate}\n`,
+        );
+      })
+      .catch((error) => {
+        process.stderr.write(`[replay] failed: ${error.message}\n`);
+      })
+      .finally(() => {
+        client.start().catch((error) => {
+          process.stderr.write(`[rithmic] initial connection failed: ${error.message}\n`);
+        });
+      });
   }
 });
 
