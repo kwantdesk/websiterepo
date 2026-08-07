@@ -247,7 +247,15 @@ async function streamHistoricalRows(
       && availableEnd > requestedStart
       && (!Number.isFinite(requestedEnd) || availableEnd < requestedEnd)
     ) {
-      throw new Error("Databento has not completed the requested CME profile window yet.");
+      // Carry the available edge as data, not prose. Rewriting it into a
+      // sentence made it unrecoverable: callers that could simply retry
+      // against the edge had nothing to parse, so a live-session profile
+      // failed permanently instead of returning the data that does exist.
+      const incomplete = new Error(
+        "Databento has not completed the requested CME profile window yet.",
+      ) as Error & { availableEndMs?: number };
+      incomplete.availableEndMs = availableEnd;
+      throw incomplete;
     }
     throw new Error(`Databento request failed (${response.status}): ${detail.slice(0, 180)}`);
   }

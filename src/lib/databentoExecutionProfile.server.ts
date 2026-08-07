@@ -117,9 +117,17 @@ export async function buildDatabentoExecutionProfile(
           onRow,
         );
       } catch (error) {
+        // Databento's live edge trails real time. Prefer the edge it reports
+        // as a value; fall back to parsing the raw message for the case where
+        // the error was not normalized.
+        const carried = (error as { availableEndMs?: number })?.availableEndMs;
         const message = error instanceof Error ? error.message : String(error);
-        const available = /data available up to '([^']+)'/.exec(message)?.[1];
-        const availableMs = available ? Date.parse(available.replace(" ", "T")) : Number.NaN;
+        const parsed = /data available up to '([^']+)'/.exec(message)?.[1];
+        const availableMs = Number.isFinite(carried)
+          ? Number(carried)
+          : parsed
+            ? Date.parse(parsed.replace(" ", "T"))
+            : Number.NaN;
         if (allowRetry && Number.isFinite(availableMs) && availableMs > args.startMs) {
           await streamWindow(availableMs, false);
           return;
