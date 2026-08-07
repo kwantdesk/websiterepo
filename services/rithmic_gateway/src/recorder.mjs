@@ -21,8 +21,11 @@ import { chicagoTradingDate } from "./trading-session.mjs";
 
 const DEFAULT_FLUSH_MS = 250;
 // Headroom for the gzip transform to absorb bursts before the drop guard
-// engages. Raised from 32 MB after measuring real drops on a 2-vCPU box.
-const DEFAULT_MAX_PENDING_BYTES = 128 * 1024 * 1024;
+// engages. NQ arrives in bursts an order of magnitude above its average, so
+// this needs to cover a burst rather than the mean. On a 4 GB box a few
+// hundred MB of transient buffer is far cheaper than losing depth messages
+// that cannot be re-requested from Rithmic.
+const DEFAULT_MAX_PENDING_BYTES = 384 * 1024 * 1024;
 
 function instrumentFileName(exchange, symbol, compress) {
   const base = `${String(exchange).toUpperCase()}-${String(symbol).toUpperCase()}.ndjson`;

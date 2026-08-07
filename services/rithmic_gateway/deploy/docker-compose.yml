@@ -30,6 +30,11 @@ services:
       # depth-by-order replay, so a lost recording cannot be re-pulled.
       RITHMIC_RECORD_ENABLED: "true"
       RITHMIC_RECORD_DIR: /recordings
+      # zlib compression runs on the libuv threadpool, not the main thread.
+      # The default of 4 workers is the archive's real ceiling during NQ
+      # bursts; raising it lets compression keep pace instead of backing up
+      # into the drop guard.
+      UV_THREADPOOL_SIZE: "16"
     volumes:
       - recordings:/recordings
     expose:
