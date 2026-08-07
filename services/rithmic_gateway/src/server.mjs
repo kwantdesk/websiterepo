@@ -130,6 +130,15 @@ function contractRoot(symbol) {
 // symbol so the provenance is honest: an MNQ chart reading NQ tape says so.
 const MICRO_PARENT_ROOTS = { MNQ: "NQ", MES: "ES", MYM: "YM", M2K: "RTY", MGC: "GC", MCL: "CL" };
 
+// One heatmap column per frame. 100ms gives ~3 minutes across the app's
+// 1,800-column history, which is the horizon a liquidity map is read over.
+// Faster than this and resting orders cannot be distinguished from noise;
+// the book simply cannot change meaningfully between consecutive frames.
+const HEATMAP_FRAME_MS = Math.max(
+  20,
+  Number(process.env.RITHMIC_HEATMAP_FRAME_MS) || 100,
+);
+
 function parentRoot(root) {
   return MICRO_PARENT_ROOTS[root] || root;
 }
@@ -339,7 +348,13 @@ client.on("marketData", (event) => {
   for (const subscriber of heatmapSseClients) {
     if (subscriber.key !== event.instrument) continue;
     const now = Date.now();
-    if (now - subscriber.lastEmitAt < 50 && event.type !== "trade") continue;
+    // Uniform cadence for every event type. Trades used to bypass this
+    // throttle, so each of the hundreds of NQ prints per second pushed a full
+    // 1,800-level book. The heatmap appends one column per snapshot, so its
+    // history window burned through in seconds and every price level rendered
+    // as a continuous horizontal smear instead of a time series. Trades ride
+    // inside the snapshot regardless, so batching them costs nothing.
+    if (now - subscriber.lastEmitAt < HEATMAP_FRAME_MS) continue;
     const snapshot = client.book.snapshot(
       subscriber.exchange,
       subscriber.symbol,
