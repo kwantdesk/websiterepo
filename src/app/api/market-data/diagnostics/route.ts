@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 
+import { buildDatabentoExecutionProfile } from "@/lib/databentoExecutionProfile.server";
+
 import {
   marketDataGatewayEnvNames,
   marketDataGatewayToken,
@@ -49,11 +51,43 @@ export async function GET() {
     }),
   );
 
+  // The execution-accurate profile is what removes the APPROX watermark. It
+  // silently declines when Databento is unconfigured, so report that state
+  // explicitly rather than leaving it to be inferred from a blank chart.
+  let executionProfile: Record<string, unknown> = {
+    databentoConfigured: Boolean(process.env.DATABENTO_API_KEY?.trim()),
+  };
+  if (process.env.DATABENTO_API_KEY?.trim()) {
+    try {
+      const probe = await buildDatabentoExecutionProfile({
+        symbol: "NQ",
+        contractSymbol: "NQU6",
+        startMs: Date.now() - 3 * 60 * 60_000,
+        endMs: Date.now(),
+        tickSize: 0.25,
+      });
+      executionProfile = {
+        ...executionProfile,
+        usable: Boolean(probe && probe.levels.length > 0),
+        levels: probe?.levels.length ?? 0,
+        totalVolume: probe?.totalVolume ?? 0,
+        provider: probe?.provider ?? null,
+      };
+    } catch (error) {
+      executionProfile = {
+        ...executionProfile,
+        usable: false,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+
   return NextResponse.json(
     {
       commit: process.env.VERCEL_GIT_COMMIT_SHA ?? null,
       onVercel: Boolean(process.env.VERCEL),
       provider: marketDataProvider(),
+      executionProfile,
       resolvedFrom: {
         url: names.url,
         token: names.token,
