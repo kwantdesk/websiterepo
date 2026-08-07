@@ -101,14 +101,35 @@ export async function buildDatabentoExecutionProfile(
     let coverageStartMs: number | null = null;
     let coverageEndMs: number | null = null;
 
-    await streamHistoricalTradeRows(
-      {
-        symbols: contractSymbol || args.symbol,
-        stype_in: contractSymbol ? "raw_symbol" : "continuous",
-        start: new Date(args.startMs).toISOString(),
-        end: new Date(args.endMs).toISOString(),
-      },
-      (row) => {
+    // Databento's live edge trails real time by minutes and it rejects the
+    // WHOLE request with 422 when `end` runs past it, rather than returning
+    // what exists. Retry once against the edge it reports, so the current
+    // session still produces a profile instead of silently falling back.
+    const streamWindow = async (endMs: number, allowRetry: boolean): Promise<void> => {
+      try {
+        await streamHistoricalTradeRows(
+          {
+            symbols: contractSymbol || args.symbol,
+            stype_in: contractSymbol ? "raw_symbol" : "continuous",
+            start: new Date(args.startMs).toISOString(),
+            end: new Date(endMs).toISOString(),
+          },
+          onRow,
+        );
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        const available = /data available up to '([^']+)'/.exec(message)?.[1];
+        const availableMs = available ? Date.parse(available.replace(" ", "T")) : Number.NaN;
+        if (allowRetry && Number.isFinite(availableMs) && availableMs > args.startMs) {
+          await streamWindow(availableMs, false);
+          return;
+        }
+        throw error;
+      }
+    };
+
+    const onRow =
+      (row: Record<string, unknown>) => {
         const timestampMs = eventMs(row);
         const price = numeric(row.price ?? row.pretty_price);
         const size = numeric(row.size);
@@ -138,8 +159,9 @@ export async function buildDatabentoExecutionProfile(
         priceSquaredVolume += price * price * size;
         if (coverageStartMs === null || timestampMs < coverageStartMs) coverageStartMs = timestampMs;
         if (coverageEndMs === null || timestampMs > coverageEndMs) coverageEndMs = timestampMs;
-      },
-    );
+      };
+
+    await streamWindow(args.endMs, true);
 
     const levels = [...rows.values()].sort((left, right) => left.price - right.price);
     if (!levels.length || totalVolume <= 0) return null;

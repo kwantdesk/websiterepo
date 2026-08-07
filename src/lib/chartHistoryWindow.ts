@@ -71,6 +71,28 @@ export function cmeSessionStartMs(timestamp: number): number | null {
   return null;
 }
 
+/**
+ * The [start, end) window of the CME session labelled `tradingDate`
+ * ("YYYY-MM-DD"), i.e. 17:00 Chicago the previous day through 17:00 Chicago
+ * on the date itself. Needed to build an execution-accurate profile for a
+ * PAST session: without it, a request carrying only a trading date resolves
+ * to the current session, gets rejected downstream as a date mismatch, and
+ * the chart silently keeps the OHLCV approximation for every prior day.
+ */
+export function cmeSessionWindowForDate(
+  tradingDate: string,
+): { startMs: number; endMs: number } | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(tradingDate)) return null;
+  const [year, month, day] = tradingDate.split("-").map(Number);
+  // Midday UTC on the trading date is early morning in Chicago, which always
+  // falls inside the session bearing that date.
+  const insideSession = Date.UTC(year, month - 1, day, 12);
+  const startMs = cmeSessionStartMs(insideSession);
+  const endMs = cmeSessionStartMs(insideSession + 24 * 60 * 60_000);
+  if (startMs === null || endMs === null || endMs <= startMs) return null;
+  return { startMs, endMs };
+}
+
 export function trimToRecentChartSessions(
   candles: Candle[],
   sessionCount = MINIMUM_CHART_HISTORY_SESSIONS,

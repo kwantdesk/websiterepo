@@ -6,7 +6,7 @@ import {
   fetchInstitutionalMarketData,
   isInstitutionalMarketDataConfigured,
 } from "@/lib/institutionalMarketData.server";
-import { cmeSessionStartMs } from "@/lib/chartHistoryWindow";
+import { cmeSessionStartMs, cmeSessionWindowForDate } from "@/lib/chartHistoryWindow";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -40,13 +40,31 @@ async function executionProfileResponse(request: NextRequest) {
   const now = Date.now();
   const explicitStart = Number(params.get("startMs"));
   const explicitEnd = Number(params.get("endMs"));
+  const tradingDate = params.get("tradingDate");
   const sessionStart = cmeSessionStartMs(now);
+
+  // A daily request identifies its session by tradingDate, not by timestamps.
+  // Resolving that to the session's own window is what lets PRIOR days get a
+  // real profile; ignoring it silently returned today's data for every day.
+  const dateWindow = period === "daily" && tradingDate
+    ? cmeSessionWindowForDate(tradingDate)
+    : null;
+
   const startMs = Number.isFinite(explicitStart) && explicitStart > 0
     ? explicitStart
-    : period === "weekly"
-      ? (sessionStart ?? now) - 5 * 24 * 60 * 60_000
-      : sessionStart ?? now - 24 * 60 * 60_000;
-  const endMs = Number.isFinite(explicitEnd) && explicitEnd > startMs ? explicitEnd : now;
+    : dateWindow
+      ? dateWindow.startMs
+      : period === "weekly"
+        ? (sessionStart ?? now) - 5 * 24 * 60 * 60_000
+        : sessionStart ?? now - 24 * 60 * 60_000;
+  const requestedEnd = Number.isFinite(explicitEnd) && explicitEnd > startMs
+    ? explicitEnd
+    : dateWindow
+      ? dateWindow.endMs
+      : now;
+  // Databento rejects the whole request if `end` runs past the dataset's
+  // available edge, which is minutes behind live. Never ask beyond it.
+  const endMs = Math.min(requestedEnd, now);
 
   try {
     const profile = await buildDatabentoExecutionProfile({
