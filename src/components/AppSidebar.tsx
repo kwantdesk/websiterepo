@@ -15,6 +15,7 @@ import {
   LineChart,
   NotebookPen,
   ScanLine,
+  Waves,
   Settings,
   Sparkles,
   User,
@@ -28,6 +29,7 @@ type SidebarKey =
   | "gamma"
   | "levelz"
   | "gexmap"
+  | "liqmap"
   | "heatmap"
   | "gexbot"
   | "gexdesk"
@@ -84,6 +86,7 @@ const navItems: Array<{
   { key: "gameplan", href: "/gameplan", label: "Gameplan", title: "Gameplan", icon: CalendarDays },
   { key: "gamma", href: "/gamma", label: "GAMMA", title: "Gamma", icon: BarChart3 },
   { key: "gexmap", href: "/gexmap", label: "GEX MAP", title: "GEX Map", icon: ScanLine },
+  { key: "liqmap", href: "/liqmap", label: "LIQ MAP", title: "Liquidity Heatmap", icon: Waves },
   { key: "heatmap", href: "/heatmap", label: "HEAT MAP", title: "Options Positioning Heat Map", icon: Flame },
   { key: "gexbot", href: "/gexbot", label: "GEX BOT", title: "GEXBot Terminal", icon: Dna },
   { key: "gexdesk", href: "/gexdesk", label: "GEX DESK", title: "GEX Desk", icon: Layers3 },
