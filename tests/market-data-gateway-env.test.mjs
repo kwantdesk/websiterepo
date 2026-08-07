@@ -5,6 +5,7 @@ import {
   marketDataGatewayEnvNames,
   marketDataGatewayToken,
   marketDataGatewayUrl,
+  marketDataGatewayUrlCandidates,
   marketDataProvider,
 } from "../src/lib/marketDataGatewayEnv.ts";
 
@@ -94,6 +95,23 @@ test("off Vercel, loopback URLs still work for local development", () => {
   assert.equal(marketDataGatewayUrl(), "http://127.0.0.1:8793");
 
   if (hadVercel !== undefined) process.env.VERCEL = hadVercel;
+  clear();
+});
+
+// The second production incident: a DEAD but real-looking host (an old
+// Tailscale funnel to a desktop PC) under the highest-precedence name.
+// Precedence cannot know which host is alive, so every configured origin
+// must be exposed for failover, in order, deduplicated.
+test("all configured origins are exposed as failover candidates", () => {
+  clear();
+  process.env.KWANTDESK_MARKET_DATA_GATEWAY_URL = "https://desktop-dead.tailnet.ts.net";
+  process.env.KWANTIFY_MARKET_GATEWAY_URL = "https://feed.kwantdesk.com/";
+  process.env.KWANTDESK_MARKET_GATEWAY_URL = "https://feed.kwantdesk.com";
+
+  assert.deepEqual(marketDataGatewayUrlCandidates(), [
+    "https://desktop-dead.tailnet.ts.net",
+    "https://feed.kwantdesk.com",
+  ], "ordered by precedence, trailing slashes normalized, duplicates collapsed");
   clear();
 });
 

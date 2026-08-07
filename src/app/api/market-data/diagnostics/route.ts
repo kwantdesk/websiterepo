@@ -4,6 +4,7 @@ import {
   marketDataGatewayEnvNames,
   marketDataGatewayToken,
   marketDataGatewayUrl,
+  marketDataGatewayUrlCandidates,
   marketDataProvider,
 } from "@/lib/marketDataGatewayEnv";
 
@@ -19,30 +20,34 @@ export async function GET() {
   const url = marketDataGatewayUrl();
   const names = marketDataGatewayEnvNames();
 
-  let upstream: Record<string, unknown> = { probed: false };
-  if (url) {
-    try {
-      const response = await fetch(`${url}/health`, {
-        cache: "no-store",
-        signal: AbortSignal.timeout(8_000),
-      });
-      const health = await response.json().catch(() => null) as Record<string, unknown> | null;
-      upstream = {
-        probed: true,
-        reachable: true,
-        status: response.status,
-        connected: health?.connected ?? null,
-        authenticated: health?.authenticated ?? null,
-        lastMessageAt: health?.lastMessageAt ?? null,
-      };
-    } catch (error) {
-      upstream = {
-        probed: true,
-        reachable: false,
-        error: error instanceof Error ? error.message : String(error),
-      };
-    }
-  }
+  // Probe every configured origin, not just the first: the incident was a
+  // dead host under the highest-precedence name shadowing a live one, which
+  // a single probe of "the" URL can never reveal.
+  const candidates = await Promise.all(
+    marketDataGatewayUrlCandidates().map(async (origin) => {
+      try {
+        const response = await fetch(`${origin}/health`, {
+          cache: "no-store",
+          signal: AbortSignal.timeout(8_000),
+        });
+        const health = await response.json().catch(() => null) as Record<string, unknown> | null;
+        return {
+          host: new URL(origin).host,
+          reachable: true,
+          status: response.status,
+          connected: health?.connected ?? null,
+          authenticated: health?.authenticated ?? null,
+          lastMessageAt: health?.lastMessageAt ?? null,
+        };
+      } catch (error) {
+        return {
+          host: new URL(origin).host,
+          reachable: false,
+          error: error instanceof Error ? error.message : String(error),
+        };
+      }
+    }),
+  );
 
   return NextResponse.json(
     {
@@ -56,7 +61,7 @@ export async function GET() {
       },
       gatewayHost: url ? new URL(url).host : null,
       gatewayConfigured: Boolean(url && marketDataGatewayToken()),
-      upstream,
+      candidates,
     },
     { headers: { "Cache-Control": "no-store" } },
   );

@@ -53,13 +53,32 @@ function usableInDeployment(url: string): boolean {
 
 /** Origin of the private collector, with any trailing slash removed. */
 export function marketDataGatewayUrl(): string {
+  return marketDataGatewayUrlCandidates()[0] ?? "";
+}
+
+/**
+ * Every configured, deployment-usable gateway origin in precedence order,
+ * deduplicated. Callers that talk to the gateway should fail over through
+ * this list rather than trusting the first name blindly: the production
+ * incident was a years-of-cruft variable set — a dead Tailscale-funnel URL
+ * under the highest-precedence name shadowing the live collector configured
+ * under a newer one. Precedence cannot know which host is alive; only a
+ * request can.
+ */
+export function marketDataGatewayUrlCandidates(): string[] {
+  const seen = new Set<string>();
+  const candidates: string[] = [];
   for (const key of GATEWAY_URL_KEYS) {
     const value = process.env[key];
-    if (typeof value === "string" && value.trim() && usableInDeployment(value.trim())) {
-      return value.trim().replace(/\/+$/, "");
-    }
+    if (typeof value !== "string" || !value.trim()) continue;
+    const trimmed = value.trim();
+    if (!usableInDeployment(trimmed)) continue;
+    const normalized = trimmed.replace(/\/+$/, "");
+    if (seen.has(normalized)) continue;
+    seen.add(normalized);
+    candidates.push(normalized);
   }
-  return "";
+  return candidates;
 }
 
 /** Bearer token every collector route requires. Never expose to the browser. */
