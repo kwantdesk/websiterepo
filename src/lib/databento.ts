@@ -120,10 +120,15 @@ function price(value: unknown) {
 }
 
 function time(value: unknown) {
-  if (typeof value === "number") {
-    if (value > 10_000_000_000_000_000) return Math.floor(value / 1_000_000);
-    if (value > 10_000_000_000_000) return Math.floor(value / 1_000);
-    return value;
+  const numeric = typeof value === "number"
+    ? value
+    : /^\d+$/.test(String(value ?? "").trim())
+      ? Number(value)
+      : Number.NaN;
+  if (Number.isFinite(numeric)) {
+    if (numeric > 10_000_000_000_000_000) return Math.floor(numeric / 1_000_000);
+    if (numeric > 10_000_000_000_000) return Math.floor(numeric / 1_000);
+    return numeric;
   }
   const parsed = Date.parse(String(value ?? ""));
   return Number.isFinite(parsed) ? parsed : 0;
@@ -191,6 +196,18 @@ async function historicalRequest(params: Record<string, string>, canRetryAvailab
     throw new Error(`Databento request failed (${response.status}): ${detail.slice(0, 180)}`);
   }
   return parseRows(await response.text());
+}
+
+/**
+ * Stream the raw `trades` schema for an arbitrary window. Exposed so the
+ * execution-accurate volume profile can aggregate every real print at every
+ * real price, rather than reconstructing a profile from OHLCV bars.
+ */
+export async function streamHistoricalTradeRows(
+  params: Record<string, string>,
+  onRow: (row: Record<string, unknown>) => void,
+): Promise<void> {
+  return streamHistoricalRows({ schema: "trades", ...params }, onRow);
 }
 
 async function streamHistoricalRows(
@@ -280,21 +297,72 @@ export async function getDatabentoValueAreaProfile(
   end: string,
   tickSize: number,
 ): Promise<ValueAreaProfile | null> {
-  const accumulator = createValueAreaAccumulator(tickSize);
+  return (await getDatabentoValueAreaProfiles(
+    symbol,
+    [{ start, end }],
+    tickSize,
+  ))[0] ?? null;
+}
+
+/**
+ * Build several exact trade-by-trade profiles from one Databento stream.
+ *
+ * This matters at the Sunday/Monday reopen: the prior daily session (Friday)
+ * sits completely inside the prior weekly window. Downloading both windows
+ * separately duplicated Friday's full tick tape and made a cold chart wait.
+ */
+export async function getDatabentoValueAreaProfiles(
+  symbol: string,
+  windows: Array<{ start: string; end: string }>,
+  tickSize: number,
+): Promise<Array<ValueAreaProfile | null>> {
+  const parsedWindows = windows.map((window) => ({
+    start: Date.parse(window.start),
+    end: Date.parse(window.end),
+  }));
+  if (
+    parsedWindows.length === 0
+    || parsedWindows.some((window) =>
+      !Number.isFinite(window.start)
+      || !Number.isFinite(window.end)
+      || window.end <= window.start)
+  ) {
+    throw new Error("A valid CME value-area window is required.");
+  }
+
+  const accumulators = parsedWindows.map(() => createValueAreaAccumulator(tickSize));
+  const requestStart = Math.min(...parsedWindows.map((window) => window.start));
+  const requestEnd = Math.max(...parsedWindows.map((window) => window.end));
   await streamHistoricalRows({
     symbols: symbol,
     stype_in: isContinuousFuture(symbol) ? "continuous" : "raw_symbol",
     schema: "trades",
-    start,
-    end,
+    start: new Date(requestStart).toISOString(),
+    end: new Date(requestEnd).toISOString(),
+    // Price and timestamp formatting plus symbol mapping add substantial JSON
+    // weight to a weekly tick stream. Raw numeric fields retain the exact same
+    // CME trades while transferring and parsing much faster.
+    pretty_px: "false",
+    pretty_ts: "false",
+    map_symbols: "false",
   }, (row) => {
-    addValueAreaTrade(accumulator, {
-      timestamp: time(row.ts_event ?? row.ts_recv ?? (row.hd as Record<string, unknown> | undefined)?.ts_event),
+    const timestamp = time(
+      row.ts_event
+      ?? row.ts_recv
+      ?? (row.hd as Record<string, unknown> | undefined)?.ts_event,
+    );
+    const trade = {
+      timestamp,
       price: price(row.price),
       size: Math.max(0, Number(row.size ?? 0)),
+    };
+    parsedWindows.forEach((window, index) => {
+      if (timestamp >= window.start && timestamp < window.end) {
+        addValueAreaTrade(accumulators[index], trade);
+      }
     });
   });
-  return finalizeValueAreaProfile(accumulator);
+  return accumulators.map((accumulator) => finalizeValueAreaProfile(accumulator));
 }
 
 function sourceSchema(timeframe: string) {
