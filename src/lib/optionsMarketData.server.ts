@@ -1,5 +1,10 @@
-import "server-only";
+﻿import "server-only";
 
+import {
+  marketDataGatewayToken,
+  marketDataGatewayUrl,
+  marketDataProvider,
+} from "@/lib/marketDataGatewayEnv";
 import {
   isOptionsFuturesRatioSane,
   OPTIONS_FLOW_INSTRUMENTS,
@@ -56,10 +61,8 @@ function normalizeCandles(value: unknown): OptionsCandle[] {
 
 function getGatewayConfig() {
   const requested = process.env.OPTIONS_FUTURES_FEED_PROVIDER?.trim().toLowerCase();
-  const institutionalProvider = process.env.KWANTIFY_MARKET_DATA_PROVIDER?.trim().toLowerCase();
-  const institutionalOrigin = process.env.KWANTIFY_MARKET_DATA_GATEWAY_URL
-    ?.trim()
-    .replace(/\/+$/, "") || null;
+  const institutionalProvider = marketDataProvider().toLowerCase();
+  const institutionalOrigin = marketDataGatewayUrl() || null;
   const inferred = process.env.RITHMIC_MARKET_DATA_URL?.trim()
     ? "rithmic"
     : process.env.DXFEED_MARKET_DATA_URL?.trim()
@@ -77,7 +80,7 @@ function getGatewayConfig() {
       : null;
   const token = provider === "Rithmic"
     ? process.env.RITHMIC_MARKET_DATA_TOKEN?.trim()
-      || process.env.KWANTIFY_MARKET_DATA_GATEWAY_TOKEN?.trim()
+      || marketDataGatewayToken()
       || null
     : provider === "dxFeed"
       ? process.env.DXFEED_MARKET_DATA_TOKEN?.trim() || null
@@ -276,5 +279,6 @@ export async function resolveOptionsMarketData(args: {
     });
   }
 }
+
 
 

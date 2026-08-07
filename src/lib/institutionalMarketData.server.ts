@@ -1,31 +1,17 @@
+import {
+  marketDataGatewayToken,
+  marketDataGatewayUrl,
+  marketDataProvider,
+} from "@/lib/marketDataGatewayEnv";
+
 const DEFAULT_TIMEOUT_MS = 15_000;
 
 function gatewayConfiguration() {
-  const origin = String(
-    process.env.KWANTDESK_MARKET_DATA_GATEWAY_URL
-      || process.env.KWANTIFY_MARKET_DATA_GATEWAY_URL
-      || "",
-  )
-    .trim()
-    .replace(/\/+$/, "");
-  const token = String(
-    process.env.KWANTDESK_MARKET_DATA_GATEWAY_TOKEN
-      || process.env.KWANTIFY_MARKET_DATA_GATEWAY_TOKEN
-      || "",
-  ).trim();
-  return { origin, token };
+  return { origin: marketDataGatewayUrl(), token: marketDataGatewayToken() };
 }
 
 export function configuredInstitutionalProvider(): "Databento" | "Rithmic" {
-  return String(
-    process.env.KWANTDESK_MARKET_DATA_PROVIDER
-      || process.env.KWANTIFY_MARKET_DATA_PROVIDER
-      || "Rithmic",
-  )
-    .trim()
-    .toLowerCase() === "rithmic"
-    ? "Rithmic"
-    : "Databento";
+  return marketDataProvider();
 }
 
 export function isInstitutionalMarketDataConfigured() {
