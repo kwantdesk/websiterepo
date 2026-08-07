@@ -54,10 +54,26 @@ export function snapshotBookToken(snapshot) {
 // an aggregated ladder, a partial book - is refused rather than drawn, because
 // a heatmap that silently renders L2 as if it were L3 is worse than a blank
 // one: the shape looks authoritative and the queue detail simply is not there.
-const FULL_DEPTH_SOURCES = new Set([
+export const FULL_DEPTH_SOURCES = new Set([
   'databento-mbo',
   'rithmic-depth-by-order',
 ]);
+
+export function isFullDepthSource(source) {
+  return FULL_DEPTH_SOURCES.has(source);
+}
+
+// Micro contracts trade the same underlying as their e-mini parent, so the
+// collector serves MNQ from the NQ book and answers with the parent root.
+// Comparing roots literally would reject every snapshot on a micro tab.
+const MICRO_PARENT_ROOTS = { MNQ: 'NQ', MES: 'ES', MYM: 'YM', M2K: 'RTY', MGC: 'GC', MCL: 'CL' };
+
+export function symbolMatchesSnapshot(requested, snapshotRoot) {
+  const want = String(requested || '').toUpperCase();
+  const got = String(snapshotRoot || '').toUpperCase();
+  if (!want || !got) return false;
+  return got === want || got === (MICRO_PARENT_ROOTS[want] || want);
+}
 
 export function normalizeLiveSnapshot(raw) {
   if (!raw || !FULL_DEPTH_SOURCES.has(raw.source) || raw.readOnly !== true || raw.fullDepth !== true) return null;
@@ -106,13 +122,13 @@ export function normalizeLiveSnapshot(raw) {
     changeTicks: finite(raw.changeTicks),
     latencyMs: finite(raw.latencyMs),
     eventsSince: finite(raw.eventsSince, 1),
-    source: 'databento-mbo',
+    source: raw.source,
     fullDepth: true,
     readOnly: true,
   };
 }
 
-export class DatabentoDepthMarket {
+export class DepthMarketFeed {
   constructor({ symbol = 'MNQ', contractSymbol = '', onSnapshot, onStatus, eventSourceFactory } = {}) {
     this.symbol = symbol;
     this.contractSymbol = contractSymbol;
@@ -189,7 +205,7 @@ export class DatabentoDepthMarket {
       this.status = {
         ...this.status,
         connected: false,
-        message: 'Databento depth stream reconnecting',
+        message: 'Depth stream reconnecting',
       };
       this.onStatus?.(this.status);
     };

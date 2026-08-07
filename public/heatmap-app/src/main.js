@@ -1,7 +1,7 @@
 import { SYMBOLS } from './market-simulator.js';
 import { BOOKMAP_VISUAL_DEFAULTS, RollingDepthEngine } from './depth-engine.js';
 import { DepthRenderer, priceLabel, timeLabel } from './renderer.js';
-import { DatabentoDepthMarket } from './live-market.js';
+import { DepthMarketFeed, isFullDepthSource, symbolMatchesSnapshot } from './live-market.js';
 import { DEFAULT_PALETTE, paletteCssGradient } from './palettes.js';
 import {
   DEFAULT_INDICATOR_SETTINGS,
@@ -94,9 +94,9 @@ class DepthForgeApp {
     this.resizeObserver = new ResizeObserver(() => this.requestRender());
     this.resizeObserver.observe($('chartArea'));
     requestAnimationFrame(timestamp => this.#loop(timestamp));
-    this.liveFeed = new DatabentoDepthMarket({
+    this.liveFeed = new DepthMarketFeed({
       symbol: this.symbol,
-      onSnapshot: snapshot => this.#ingestDatabentoSnapshot(snapshot),
+      onSnapshot: snapshot => this.#ingestDepthSnapshot(snapshot),
       onStatus: status => this.#setLiveStatus(status),
     });
     this.liveFeed.start();
@@ -337,7 +337,9 @@ class DepthForgeApp {
 
   #updateSymbolUi() {
     const config = SYMBOLS[this.symbol];
-    const isDatabentoLive = this.sourceMode === 'databento' && this.liveStatus.fullDepth === true;
+    const isLiveDepth = this.sourceMode === 'live' && this.liveStatus.fullDepth === true;
+    // Name the provider the feed actually reports rather than hard-coding one.
+    const provider = String(this.liveStatus.provider || 'RITHMIC').toUpperCase();
     all('.instrument-tab').forEach(button => button.classList.toggle('active', button.dataset.symbol === this.symbol));
     $('symbolLabel').textContent = this.currentContractSymbol || config.contract;
     $('depthSymbol').textContent = this.currentContractSymbol || config.contract;
@@ -345,16 +347,16 @@ class DepthForgeApp {
     $('symbolIcon').textContent = config.key[0];
     const tabLabel = $('mnqTabLabel');
     if (tabLabel) tabLabel.textContent = `${this.currentContractSymbol || config.contract}.CME@DEPTH`;
-    if ($('modeStatus')) $('modeStatus').lastChild.textContent = isDatabentoLive ? ' LIVE L3' : ' CONNECTING';
-    if ($('footerModeStatus')) $('footerModeStatus').textContent = isDatabentoLive ? 'DATABENTO L3 · READ-ONLY' : 'CONNECTING TO DATABENTO';
-    if (isDatabentoLive) {
+    if ($('modeStatus')) $('modeStatus').lastChild.textContent = isLiveDepth ? ' LIVE L3' : ' CONNECTING';
+    if ($('footerModeStatus')) $('footerModeStatus').textContent = isLiveDepth ? `${provider} L3 · READ-ONLY` : `CONNECTING TO ${provider}`;
+    if (isLiveDepth) {
       const condition = this.liveStatus.connected ? 'LIVE' : 'STALE';
-      $('feedStatus').textContent = `DATABENTO L3 · ${condition} · ${this.liveStatus.levels || 0} LEVELS · READ-ONLY`;
-      if ($('sourceBanner')) $('sourceBanner').textContent = `Live Databento MBO depth ${condition.toLowerCase()} · full resting book · trading disabled`;
+      $('feedStatus').textContent = `${provider} L3 · ${condition} · ${this.liveStatus.levels || 0} LEVELS · READ-ONLY`;
+      if ($('sourceBanner')) $('sourceBanner').textContent = `Live ${provider} depth-by-order ${condition.toLowerCase()} · full resting book · trading disabled`;
     } else {
       const state = this.liveStatus.connected ? 'BUILDING L3 BOOK' : 'CONNECTING';
-      $('feedStatus').textContent = `${state} · DATABENTO`;
-      if ($('sourceBanner')) $('sourceBanner').textContent = this.liveStatus.message || `Connecting to live Databento MBO for ${this.symbol}`;
+      $('feedStatus').textContent = `${state} · ${provider}`;
+      if ($('sourceBanner')) $('sourceBanner').textContent = this.liveStatus.message || `Connecting to live ${provider} depth-by-order for ${this.symbol}`;
     }
   }
 
@@ -509,11 +511,19 @@ class DepthForgeApp {
     this.#updateSymbolUi();
   }
 
-  #ingestDatabentoSnapshot(snapshot) {
-    if (snapshot.symbol !== this.symbol || snapshot.source !== 'databento-mbo' || snapshot.readOnly !== true) return;
+  #ingestDepthSnapshot(snapshot) {
+    // Two separate gates rejected the Rithmic feed here. The source check was
+    // pinned to Databento, and the symbol had to match literally - but the
+    // collector serves micros from the parent book and answers with the
+    // parent root, so an MNQ tab never matched an NQ snapshot.
+    if (
+      !symbolMatchesSnapshot(this.symbol, snapshot.symbol)
+      || !isFullDepthSource(snapshot.source)
+      || snapshot.readOnly !== true
+    ) return;
     this.currentContractSymbol = snapshot.contractSymbol || this.currentContractSymbol;
-    if (this.sourceMode !== 'databento') {
-      this.sourceMode = 'databento';
+    if (this.sourceMode !== 'live') {
+      this.sourceMode = 'live';
       this.depthEngine.reset();
       this.history = this.depthEngine.frames;
       this.tape = [];
@@ -564,7 +574,7 @@ class DepthForgeApp {
           this.renderRequested = true;
           if (this.viewEnd >= this.history.length - 1) this.goLive();
         }
-        this.accumulator = this.sourceMode === 'databento' && this.atLive ? 0 : this.accumulator - interval;
+        this.accumulator = this.sourceMode === 'live' && this.atLive ? 0 : this.accumulator - interval;
         guard += 1;
       }
     } else {
@@ -794,7 +804,7 @@ class DepthForgeApp {
 
   togglePlayback() {
     this.playing = !this.playing;
-    if (this.sourceMode === 'databento' && !this.playing) this.atLive = false;
+    if (this.sourceMode === 'live' && !this.playing) this.atLive = false;
     this.accumulator = 0;
     this.#updatePlaybackUi();
   }
