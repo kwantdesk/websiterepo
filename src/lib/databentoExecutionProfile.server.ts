@@ -2,6 +2,7 @@ import "server-only";
 
 import { streamHistoricalTradeRows } from "@/lib/databento";
 import { calculateVolumeProfileValueArea, volumeProfileBinTick } from "@/lib/volumeProfileMath";
+import { databentoTradeAggressor } from "@/lib/tradeAggressor";
 import type {
   InstitutionalVolumeProfile,
   InstitutionalVolumeProfileLevel,
@@ -18,8 +19,8 @@ import type {
 // node is: it smears a concentration into a plateau, and it cannot produce
 // delta at all because an OHLCV bar contains no buy/sell information.
 //
-// Databento side semantics: 'A'/'S' = aggressor lifted the ask (buy),
-// 'B' = aggressor hit the bid (sell), 'N' = none. Matches the Python source.
+// Databento Trade semantics: 'A'/'S' = seller aggressor,
+// 'B' = buyer aggressor, 'N' = none. Matches the Python source.
 
 type ProfileArgs = {
   symbol: string;
@@ -61,16 +62,6 @@ function eventMs(row: Record<string, unknown>): number | null {
   if (nanos === null) return null;
   // Databento sends nanoseconds since epoch unless pretty_ts rewrote it.
   return nanos > 1e15 ? Math.floor(nanos / 1_000_000) : nanos;
-}
-
-function aggressorSide(row: Record<string, unknown>): "BUY" | "SELL" | "NONE" {
-  const raw = row.side ?? row.aggressor_side;
-  const side = String(typeof raw === "object" && raw !== null ? (raw as { value?: unknown }).value ?? "" : raw ?? "")
-    .toUpperCase()
-    .slice(0, 1);
-  if (side === "A" || side === "S") return "BUY";
-  if (side === "B") return "SELL";
-  return "NONE";
 }
 
 export async function buildDatabentoExecutionProfile(
@@ -156,7 +147,7 @@ export async function buildDatabentoExecutionProfile(
         const level = rows.get(groupedTick) ?? {
           price: levelPrice, volume: 0, bidVolume: 0, askVolume: 0, delta: 0, trades: 0,
         };
-        const side = aggressorSide(row);
+        const side = databentoTradeAggressor(row.side ?? row.aggressor_side);
         level.volume += size;
         level.trades += 1;
         if (side === "BUY") level.askVolume += size;

@@ -858,9 +858,17 @@ export function applyInstitutionalTradesToVolumeProfile(
   records: InstitutionalTrade[],
 ): InstitutionalVolumeProfile {
   if (!records.length) return profile;
+  // The server profile already includes every execution through its coverage
+  // watermark. Rithmic's first batches overlap that window after a reconnect
+  // or profile refresh; applying them again doubles volume and distorts the
+  // rear delta profile. Fold in genuinely newer prints only.
+  const coverageEndMs = Number.isFinite(profile.coverageEndMs)
+    ? Number(profile.coverageEndMs)
+    : profile.startMs - 1;
   const eligibleRecords = records.filter((record) =>
     record.timestamp >= profile.startMs
     && record.timestamp < profile.endMs
+    && record.timestamp > coverageEndMs
     && record.volume >= profile.minTradeVolume
     && (profile.maxTradeVolume <= 0 || record.volume <= profile.maxTradeVolume));
   if (!eligibleRecords.length) return profile;
@@ -922,6 +930,7 @@ export function applyInstitutionalTradesToVolumeProfile(
   return {
     ...profile,
     asOf: new Date(latestTimestamp).toISOString(),
+    coverageEndMs: Math.max(coverageEndMs, latestTimestamp),
     totalVolume,
     bidVolume,
     askVolume,

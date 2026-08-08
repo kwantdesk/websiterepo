@@ -154,7 +154,7 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
     { key: "autoGroupFactor", label: "Automatic grouping factor", defaultValue: 1, min: 0.5, max: 4, step: 0.25 },
     { key: "valueAreaPercent", label: "Value area", defaultValue: 70, min: 1, max: 100 },
     { key: "profileWidth", label: "Profile width (% of chart)", defaultValue: 24, min: 0, max: 60, step: 0.5 },
-    { key: "opacity", label: "Profile opacity (%)", defaultValue: 82, min: 10, max: 100 },
+    { key: "opacity", label: "Profile opacity (%)", defaultValue: 72, min: 10, max: 100 },
     { key: "minTradeVolume", label: "Minimum execution size", defaultValue: 0, min: 0, max: 100000 },
     { key: "maxTradeVolume", label: "Maximum execution size (0 = no maximum)", defaultValue: 0, min: 0, max: 1000000 },
   ],
@@ -162,8 +162,8 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
     { key: "groupTicks", label: "Price grouping (ticks)", defaultValue: 1, min: 1, max: 500 },
     { key: "autoGroupFactor", label: "Automatic grouping factor", defaultValue: 1, min: 0.5, max: 4, step: 0.25 },
     { key: "valueAreaPercent", label: "Value area", defaultValue: 70, min: 1, max: 100 },
-    { key: "profileWidth", label: "Profile width (% of session)", defaultValue: 18, min: 0, max: 36, step: 0.5 },
-    { key: "opacity", label: "Profile opacity (%)", defaultValue: 82, min: 10, max: 100 },
+    { key: "profileWidth", label: "Profile width (% of session)", defaultValue: 9, min: 0, max: 24, step: 0.5 },
+    { key: "opacity", label: "Profile opacity (%)", defaultValue: 68, min: 10, max: 100 },
     { key: "minTradeVolume", label: "Minimum execution size", defaultValue: 0, min: 0, max: 100000 },
     { key: "maxTradeVolume", label: "Maximum execution size (0 = no maximum)", defaultValue: 0, min: 0, max: 1000000 },
   ],
@@ -633,7 +633,7 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
     showVwapLine: false,
     showVwapBands: false,
     showSummary: false,
-    profileSettingsVersion: 4,
+    profileSettingsVersion: 5,
     align: ["daily-volume-profile", "kwant-profile"].includes(indicatorId)
       ? "session"
       : indicatorId === "weekly-volume-profile" ? "left" : "right",
@@ -655,7 +655,7 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
         : instance;
   if (
     ["daily-volume-profile", "kwant-profile"].includes(normalizedInstance.indicatorId)
-    && Number(normalizedInstance.settings?.profileSettingsVersion) < 4
+    && Number(normalizedInstance.settings?.profileSettingsVersion) < 5
   ) {
     return {
       ...normalizedInstance,
@@ -671,9 +671,9 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
         showSummary: false,
         showDelta: true,
         showProfileSpine: true,
-        profileWidth: normalizedInstance.indicatorId === "kwant-profile" ? 24 : 18,
-        opacity: 82,
-        profileSettingsVersion: 4,
+        profileWidth: normalizedInstance.indicatorId === "kwant-profile" ? 24 : 9,
+        opacity: normalizedInstance.indicatorId === "kwant-profile" ? 72 : 68,
+        profileSettingsVersion: 5,
       },
     };
   }
