@@ -206,6 +206,7 @@ import {
   writeExecutionTapeCache,
 } from "@/lib/chartHistoryCache";
 import {
+  cmeSessionDateKey,
   cmeSessionStartMs,
   DEFAULT_CHART_HISTORY_CALENDAR_DAYS,
   hasMinimumChartHistory,
@@ -1122,25 +1123,8 @@ function getTimeframeMs(timeframe: string) {
   return value * (units[match[2]] ?? 5 * 60_000);
 }
 
-const CHICAGO_TRADING_DATE_FORMATTER = new Intl.DateTimeFormat("en-US", {
-  timeZone: "America/Chicago",
-  year: "numeric",
-  month: "numeric",
-  day: "numeric",
-  hour: "numeric",
-  hourCycle: "h23",
-});
-
 function chicagoTradingDate(timestamp: number) {
-  const parts = Object.fromEntries(
-    CHICAGO_TRADING_DATE_FORMATTER
-      .formatToParts(new Date(timestamp))
-      .filter((part) => part.type !== "literal")
-      .map((part) => [part.type, Number(part.value)]),
-  ) as Record<"year" | "month" | "day" | "hour", number>;
-  const tradingDate = new Date(Date.UTC(parts.year, parts.month - 1, parts.day));
-  if (parts.hour < 17) tradingDate.setUTCDate(tradingDate.getUTCDate() - 1);
-  return tradingDate.toISOString().slice(0, 10);
+  return cmeSessionDateKey(timestamp) ?? new Date(timestamp).toISOString().slice(0, 10);
 }
 
 function getHistoricalCandleLimit(period: string, timeframe: string, fallback = 500) {
