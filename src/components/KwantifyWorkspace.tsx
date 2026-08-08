@@ -1860,7 +1860,7 @@ function decodeExecutionTape(value: unknown): InstitutionalTrade[] {
       askVolume: delta > 0 ? volume : 0,
       delta,
       aggressor: delta > 0 ? "BUY" as const : "SELL" as const,
-      sideSemanticsVersion: 1,
+      sideSemanticsVersion: 2,
     }];
   }).sort((left, right) => left.timestamp - right.timestamp || left.recordIndex - right.recordIndex);
 }
@@ -4078,7 +4078,7 @@ function WorkspaceChartPane({
               askVolume: delta > 0 ? volume : 0,
               delta,
               aggressor: delta > 0 ? "BUY" : "SELL",
-              sideSemanticsVersion: 1,
+              sideSemanticsVersion: 2,
             }];
           });
           if (liveExecutions.length && !rithmicConnectedRef.current) {

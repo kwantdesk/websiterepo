@@ -97,7 +97,6 @@ import { calculateDeepEffort } from "@/lib/deepEffort";
 import { calculateImbalanceRejectorSignals } from "@/lib/imbalanceRejector";
 import { calculateImbalanceZones } from "@/lib/imbalanceTracker";
 import {
-  enrichCandlesWithInstitutionalTrades,
   type InstitutionalTrade,
   type InstitutionalVolumeProfile,
 } from "@/lib/institutionalMarketData";
@@ -1822,14 +1821,12 @@ export default function Chart({
     }
     return sampledIndicatorMarketTrades.slice(low);
   }, [indicatorWindowCandles, sampledIndicatorMarketTrades]);
-  const indicatorCandles = useMemo(
-    () => enrichCandlesWithInstitutionalTrades(
-      indicatorWindowCandles,
-      indicatorMarketTrades,
-      indicatorHistoryLimit,
-    ),
-    [indicatorHistoryLimit, indicatorMarketTrades, indicatorWindowCandles],
-  );
+  // Time bars arrive with exact aggressor-volume fields and are updated from
+  // every live execution by the workspace feed. The separate execution tape
+  // is intentionally sampled for print-based studies such as Big Trades; it
+  // must never be folded back into CVD or it will replace exact history with a
+  // biased subset of large prints.
+  const indicatorCandles = indicatorWindowCandles;
   const calculatedIndicatorSeries = useMemo(
     () => indicators.flatMap((instance) =>
       calculateIndicatorSeries(

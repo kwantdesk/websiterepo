@@ -814,7 +814,11 @@ const server = createServer(async (request, response) => {
       const fromMs = Number(url.searchParams.get("fromMs") || 0);
       const toMs = Number(url.searchParams.get("toMs") || Date.now());
       const interval = String(url.searchParams.get("interval") || "1m");
+      const intervalMs = intervalDurationMs(interval);
       const trades = client.book.trades(instrument.exchange, instrument.symbol, { fromMs, toMs });
+      const compactFlowCandles = intervalMs >= 60_000
+        ? client.book.flowCandles(instrument.exchange, instrument.symbol, { fromMs, toMs, intervalMs })
+        : [];
       return json(response, 200, {
         schemaVersion: "kwantify-market-data-v3",
         provider: "Rithmic",
@@ -822,7 +826,10 @@ const server = createServer(async (request, response) => {
         root: instrument.symbol.replace(/[FGHJKMNQUVXZ]\d{1,2}$/, ""),
         contractSymbol: instrument.symbol,
         interval,
-        candles: aggregateCandles(trades, intervalDurationMs(interval)),
+        // Minute-and-higher bars come from the lossless compact flow store.
+        // Raw prints remain in the response for Big Trades and live studies,
+        // but pruning that tape can no longer truncate or rebase CVD.
+        candles: compactFlowCandles.length ? compactFlowCandles : aggregateCandles(trades, intervalMs),
         records: trades.map(normalizedTradeRecord),
         trades: trades.map(normalizedTradeRecord),
         sourceRecordCount: trades.length,

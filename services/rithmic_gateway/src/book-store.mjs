@@ -53,6 +53,11 @@ function makeInstrument(exchange, symbol, maxTrades) {
     orders: new Map(),
     volumeByPrice: new Map(),
     trades: [],
+    // Exact one-minute aggressor-flow bars are retained independently from
+    // the raw execution ring. A busy CME session can exceed maxTrades; CVD
+    // must not lose its session open merely because older raw prints were
+    // compacted out of memory.
+    flowCandles: new Map(),
     sequence: 0,
     sourceSequence: "0",
     asOfMs: 0,
@@ -65,6 +70,98 @@ function makeInstrument(exchange, symbol, maxTrades) {
     pendingDepthSnapshot: null,
     maxTrades,
   };
+}
+
+const FLOW_BUCKET_MS = 60_000;
+const MAX_FLOW_CANDLES = 20_000;
+
+function tradeDelta(trade) {
+  if (trade.aggressor === "BUY") return trade.size;
+  if (trade.aggressor === "SELL") return -trade.size;
+  return 0;
+}
+
+function recordTradeFlow(instrument, trade) {
+  const timestamp = trade.timestampMs - (trade.timestampMs % FLOW_BUCKET_MS);
+  const askVolume = trade.aggressor === "BUY" ? trade.size : 0;
+  const bidVolume = trade.aggressor === "SELL" ? trade.size : 0;
+  const delta = tradeDelta(trade);
+  let candle = instrument.flowCandles.get(timestamp);
+  if (!candle) {
+    candle = {
+      timestamp,
+      open: trade.price,
+      high: trade.price,
+      low: trade.price,
+      close: trade.price,
+      volume: 0,
+      trades: 0,
+      askVolume: 0,
+      bidVolume: 0,
+      askTrades: 0,
+      bidTrades: 0,
+      delta: 0,
+      deltaOpen: 0,
+      deltaHigh: 0,
+      deltaLow: 0,
+      deltaClose: 0,
+    };
+    instrument.flowCandles.set(timestamp, candle);
+  }
+  candle.high = Math.max(candle.high, trade.price);
+  candle.low = Math.min(candle.low, trade.price);
+  candle.close = trade.price;
+  candle.volume += trade.size;
+  candle.trades += 1;
+  candle.askVolume += askVolume;
+  candle.bidVolume += bidVolume;
+  candle.askTrades += trade.aggressor === "BUY" ? 1 : 0;
+  candle.bidTrades += trade.aggressor === "SELL" ? 1 : 0;
+  candle.delta += delta;
+  candle.deltaHigh = Math.max(candle.deltaHigh, candle.delta);
+  candle.deltaLow = Math.min(candle.deltaLow, candle.delta);
+  candle.deltaClose = candle.delta;
+
+  while (instrument.flowCandles.size > MAX_FLOW_CANDLES) {
+    const oldest = instrument.flowCandles.keys().next().value;
+    if (oldest == null) break;
+    instrument.flowCandles.delete(oldest);
+  }
+}
+
+function aggregateFlowCandles(candles, intervalMs) {
+  const aggregated = new Map();
+  for (const source of candles) {
+    const timestamp = source.timestamp - (source.timestamp % intervalMs);
+    let target = aggregated.get(timestamp);
+    if (!target) {
+      target = {
+        ...source,
+        timestamp,
+        deltaOpen: 0,
+        deltaHigh: source.deltaHigh,
+        deltaLow: source.deltaLow,
+        deltaClose: source.delta,
+      };
+      aggregated.set(timestamp, target);
+      continue;
+    }
+    const deltaBase = target.delta;
+    target.high = Math.max(target.high, source.high);
+    target.low = Math.min(target.low, source.low);
+    target.close = source.close;
+    target.volume += source.volume;
+    target.trades += source.trades;
+    target.askVolume += source.askVolume;
+    target.bidVolume += source.bidVolume;
+    target.askTrades += source.askTrades;
+    target.bidTrades += source.bidTrades;
+    target.deltaHigh = Math.max(target.deltaHigh, deltaBase + source.deltaHigh);
+    target.deltaLow = Math.min(target.deltaLow, deltaBase + source.deltaLow);
+    target.delta += source.delta;
+    target.deltaClose = target.delta;
+  }
+  return [...aggregated.values()].sort((left, right) => left.timestamp - right.timestamp);
 }
 
 function rebuildDepthByOrder(instrument) {
@@ -140,6 +237,7 @@ export class RithmicBookStore {
       aggressor,
     };
     instrument.trades.push(trade);
+    recordTradeFlow(instrument, trade);
     if (instrument.trades.length > instrument.maxTrades) {
       instrument.trades.splice(0, instrument.trades.length - instrument.maxTrades);
     }
@@ -270,6 +368,7 @@ export class RithmicBookStore {
         aggressor,
       };
       instrument.trades.push(trade);
+      recordTradeFlow(instrument, trade);
       inferredTrades.push(trade);
     }
     if (instrument.trades.length > instrument.maxTrades) {
@@ -454,6 +553,26 @@ export class RithmicBookStore {
     return filtered.slice(-Math.floor(requestedLimit));
   }
 
+  /**
+   * Return lossless, pre-aggregated aggressor flow. This survives raw-tape
+   * compaction and is the authoritative historical input for CVD on time bars.
+   */
+  flowCandles(
+    exchange,
+    symbol,
+    { fromMs = 0, toMs = Number.POSITIVE_INFINITY, intervalMs = FLOW_BUCKET_MS, limit = 20_000 } = {},
+  ) {
+    const instrument = this.instruments.get(instrumentKey(exchange, symbol));
+    if (!instrument) return [];
+    const lower = Number.isFinite(Number(fromMs)) ? Number(fromMs) : 0;
+    const upper = Number.isFinite(Number(toMs)) ? Number(toMs) : Number.POSITIVE_INFINITY;
+    const duration = Math.max(FLOW_BUCKET_MS, Math.floor(Number(intervalMs) || FLOW_BUCKET_MS));
+    const source = [...instrument.flowCandles.values()].filter(
+      (candle) => candle.timestamp >= lower - duration && candle.timestamp <= upper,
+    );
+    return aggregateFlowCandles(source, duration).slice(-Math.max(1, Math.floor(Number(limit) || 20_000)));
+  }
+
   snapshot(exchange, symbol, depth = 100) {
     const instrument = this.instruments.get(instrumentKey(exchange, symbol));
     if (!instrument) return null;
@@ -488,4 +607,4 @@ export class RithmicBookStore {
   }
 }
 
-export { eventTimestampMs, instrumentKey };
+export { aggregateFlowCandles, eventTimestampMs, instrumentKey };

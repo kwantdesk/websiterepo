@@ -3,6 +3,35 @@ import test from "node:test";
 
 import { RithmicBookStore } from "../src/book-store.mjs";
 
+test("retains exact CVD flow after the raw trade ring is compacted", () => {
+  const store = new RithmicBookStore({ maxTrades: 2 });
+  const trade = (seconds, size, aggressor, price) => store.applyTrade({
+    exchange: "CME",
+    symbol: "NQU6",
+    tradePrice: price,
+    tradeSize: size,
+    aggressor,
+    ssboe: seconds,
+    usecs: 0,
+  });
+  trade(1_700_000_100, 100, 1, 28_100);
+  trade(1_700_000_110, 10, 2, 28_099.75);
+  trade(1_700_000_160, 27, 1, 28_100.25);
+  trade(1_700_000_220, 50, 2, 28_100);
+
+  assert.equal(store.trades("CME", "NQU6").length, 2, "the raw ring should be pruned");
+  const [flow] = store.flowCandles("CME", "NQU6", {
+    fromMs: 1_700_000_100_000,
+    toMs: 1_700_000_280_000,
+    intervalMs: 5 * 60_000,
+  });
+  assert.equal(flow.askVolume, 127);
+  assert.equal(flow.bidVolume, 60);
+  assert.equal(flow.deltaClose, 67);
+  assert.equal(flow.deltaHigh, 117);
+  assert.equal(flow.deltaLow, 0);
+});
+
 test("normalizes trades and aggregated depth without fabricating levels", () => {
   const store = new RithmicBookStore({ maxTrades: 10 });
   store.applyOrderBook({

@@ -517,7 +517,11 @@ export function calculateIndicatorSeries(
       showZeroLine,
       zeroLineColor,
       zeroLineWidth,
-      includeZeroInScale: true,
+      // Bookmap exposes a Compact scale specifically so a large cumulative
+      // offset does not flatten the visible CVD. Keep the zero reference line,
+      // but scale to the visible cumulative range rather than forcing zero
+      // into every pane domain.
+      includeZeroInScale: false,
       data: cvd,
     }];
     if (showBidAsk) {

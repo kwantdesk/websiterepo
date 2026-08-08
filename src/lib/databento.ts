@@ -526,7 +526,9 @@ export async function getDatabentoOrderFlowHistory(
     schema: "trades",
     start: flowStart,
     end: new Date(flowEndMs).toISOString(),
-    limit: "200000",
+    // No record limit: Databento documents an omitted limit as unbounded.
+    // A hard 200k cap silently cut off busy NQ/ES windows and produced a
+    // partial CVD that looked like it began mid-session.
   });
   const flowByBucket = new Map<number, {
     volume: number;
