@@ -88,6 +88,11 @@ import DepthOfMarketPanel from "@/components/DepthOfMarketPanel";
 import GexBotFlowStrip from "@/components/GexBotFlowStrip";
 import KwantLoader from "@/components/KwantLoader";
 import { calculateBigTradePrints, type BigTradePrint } from "@/lib/bigTrades";
+import {
+  BigTradesPrimitive,
+  type BigTradePrimitiveMarker,
+  type BigTradesPrimitiveOptions,
+} from "@/lib/bigTradesPrimitive";
 import { calculateDeepEffort } from "@/lib/deepEffort";
 import { calculateImbalanceRejectorSignals } from "@/lib/imbalanceRejector";
 import { calculateImbalanceZones } from "@/lib/imbalanceTracker";
@@ -1581,6 +1586,7 @@ export default function Chart({
   const hedgeLevelsPrimitiveRef = useRef<HedgeLevelsPrimitive | null>(null);
   const sessionHighLowRenderDataRef = useRef<SessionHighLowRenderLevel[]>([]);
   const volumeProfilePrimitiveRef = useRef<NativeVolumeProfilePrimitive | null>(null);
+  const bigTradesPrimitiveRef = useRef<BigTradesPrimitive | null>(null);
   const horzLineRef = useRef<HTMLDivElement>(null);
   const priceLabelRef = useRef<HTMLDivElement>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; price: string } | null>(null);
@@ -2961,22 +2967,59 @@ export default function Chart({
       };
     }).sort((left, right) => left.timestamp - right.timestamp);
   }, [bigTradePrints, bigTradesIndicator?.settings, candleIntervalMs, indicatorCandles]);
-  const positionedBigTradePrints = useMemo(() => anchoredBigTradePrints.flatMap((print) => {
-    const x = indicatorTimestampToX(print.chartTimestamp);
-    const y = candleSeriesRef.current?.priceToCoordinate(print.price) ?? null;
-    if (
-      x === null
-      || y === null
-      || x + print.radius < 0
-      || x - print.radius > Math.max(overlaySize.width - 58, 0)
-    ) return [];
-    return [{ ...print, x, y }];
-  }), [
-    anchoredBigTradePrints,
+  const bigTradePrimitiveMarkers = useMemo<BigTradePrimitiveMarker[]>(() =>
+    anchoredBigTradePrints.map((print) => ({
+      ...print,
+      time: (
+        eventChartTimeBySourceTimeRef.current.get(print.chartTimestamp)
+        ?? Math.floor(print.chartTimestamp / 1_000)
+      ) as Time,
+    })), [anchoredBigTradePrints, chartReadyRevision]);
+
+  useEffect(() => {
+    const primitive = bigTradesPrimitiveRef.current;
+    if (!primitive) return;
+    const tradeSettings = bigTradesIndicator?.settings ?? {};
+    const useThemeColors = tradeSettings.useThemeColors !== false;
+    const rawMarkerType = String(tradeSettings.markerType ?? "circle");
+    const markerType: BigTradesPrimitiveOptions["markerType"] =
+      rawMarkerType === "square" || rawMarkerType === "diamond" || rawMarkerType === "text"
+        ? rawMarkerType
+        : "circle";
+    const rawInformationMode = String(tradeSettings.informationMode ?? "volume");
+    const informationMode: BigTradesPrimitiveOptions["informationMode"] =
+      rawInformationMode === "side-volume"
+      || rawInformationMode === "executions"
+      || rawInformationMode === "full"
+        ? rawInformationMode
+        : "volume";
+    const themeStyles = window.getComputedStyle(document.documentElement);
+    primitive.update(
+      bigTradesIndicator ? bigTradePrimitiveMarkers : [],
+      {
+        askColor: useThemeColors
+          ? settings.upColor
+          : String(tradeSettings.askColor ?? settings.upColor),
+        bidColor: useThemeColors
+          ? settings.downColor
+          : String(tradeSettings.bidColor ?? settings.downColor),
+        markerType,
+        hollowFill: tradeSettings.hollowFill === true,
+        informationMode,
+        showLabels: tradeSettings.showLabels !== false,
+        labelMinSize: Number(tradeSettings.labelMinSize ?? 14),
+        textColor: themeStyles.getPropertyValue("--foreground").trim() || "#F5F5F5",
+        backgroundColor: settings.backgroundColor,
+      },
+    );
+  }, [
+    bigTradePrimitiveMarkers,
+    bigTradesIndicator,
     chartReadyRevision,
-    indicatorTimestampToX,
-    overlaySize.width,
-    viewportVersion,
+    settings.backgroundColor,
+    settings.downColor,
+    settings.upColor,
+    themeVersion,
   ]);
   const positionedEffortZones = useMemo(() => {
     if (!deepEffort || deepEffortIndicator?.settings?.showZones === false) return [];
@@ -4590,6 +4633,9 @@ export default function Chart({
     const volumeProfilePrimitive = new NativeVolumeProfilePrimitive();
     candleSeries.attachPrimitive(volumeProfilePrimitive);
     volumeProfilePrimitiveRef.current = volumeProfilePrimitive;
+    const bigTradesPrimitive = new BigTradesPrimitive();
+    candleSeries.attachPrimitive(bigTradesPrimitive);
+    bigTradesPrimitiveRef.current = bigTradesPrimitive;
 
     const chartData = buildSafeChartData(
       candles,
@@ -4821,6 +4867,13 @@ export default function Chart({
             // Chart teardown can detach primitives before React cleanup runs.
           }
         }
+        if (candleSeriesRef.current && bigTradesPrimitiveRef.current) {
+          try {
+            candleSeriesRef.current.detachPrimitive(bigTradesPrimitiveRef.current);
+          } catch {
+            // Chart teardown can detach primitives before React cleanup runs.
+          }
+        }
         chartRef.current.remove();
         chartRef.current = null;
       }
@@ -4829,6 +4882,7 @@ export default function Chart({
       sessionHighLowPrimitiveRef.current = null;
       hedgeLevelsPrimitiveRef.current = null;
       volumeProfilePrimitiveRef.current = null;
+      bigTradesPrimitiveRef.current = null;
       indicatorSeriesRefs.current = [];
       priceLinesRef.current = [];
       prevCandlesLengthRef.current = 0;
@@ -5794,7 +5848,6 @@ export default function Chart({
         || positionedEffortZones.length > 0
         || positionedImbalanceZones.length > 0
         || positionedImbalanceSignals.length > 0
-        || positionedBigTradePrints.length > 0
       ) ? (
         <svg
           aria-hidden="true"
@@ -5947,91 +6000,6 @@ export default function Chart({
                 strokeOpacity={opacity}
                 strokeWidth={clamp(Number(rejectorSettings.markerThickness ?? 2), 0.5, 6)}
               />
-            );
-          })}
-          {positionedBigTradePrints.map((print) => {
-            const tradeSettings = bigTradesIndicator?.settings ?? {};
-            const useThemeColors = tradeSettings.useThemeColors !== false;
-            const color = print.side === "ASK"
-              ? useThemeColors ? settings.upColor : String(tradeSettings.askColor ?? settings.upColor)
-              : useThemeColors ? settings.downColor : String(tradeSettings.bidColor ?? settings.downColor);
-            const markerType = String(tradeSettings.markerType ?? "circle");
-            const hollowFill = tradeSettings.hollowFill === true;
-            const informationMode = String(tradeSettings.informationMode ?? "volume");
-            const volumeLabel = print.volume >= 1_000
-              ? `${(print.volume / 1_000).toFixed(print.volume >= 10_000 ? 0 : 1)}K`
-              : String(Math.round(print.volume));
-            const label = informationMode === "side-volume"
-              ? `${print.side} ${volumeLabel}`
-              : informationMode === "executions"
-                ? `${print.executions}x`
-                : informationMode === "full"
-                  ? `${print.side} ${volumeLabel} · ${print.executions}x`
-                  : volumeLabel;
-            const showLabel = markerType === "text" || (
-              tradeSettings.showLabels !== false
-              && print.radius >= Number(tradeSettings.labelMinSize ?? 14)
-            );
-            const strokeWidth = Math.max(1, print.radius * 0.065);
-            return (
-              <g key={print.id} opacity={print.opacity}>
-                {!hollowFill && markerType !== "text" ? (
-                  <circle
-                    cx={print.x}
-                    cy={print.y}
-                    r={print.radius * 1.22}
-                    fill={color}
-                    fillOpacity={0.13}
-                  />
-                ) : null}
-                {markerType === "square" ? (
-                  <rect
-                    x={print.x - print.radius}
-                    y={print.y - print.radius}
-                    width={print.radius * 2}
-                    height={print.radius * 2}
-                    rx={Math.max(1.5, print.radius * 0.15)}
-                    fill={hollowFill ? "none" : color}
-                    fillOpacity={hollowFill ? 0 : 0.6}
-                    stroke={color}
-                    strokeWidth={strokeWidth}
-                  />
-                ) : markerType === "diamond" ? (
-                  <polygon
-                    points={`${print.x},${print.y - print.radius} ${print.x + print.radius},${print.y} ${print.x},${print.y + print.radius} ${print.x - print.radius},${print.y}`}
-                    fill={hollowFill ? "none" : color}
-                    fillOpacity={hollowFill ? 0 : 0.6}
-                    stroke={color}
-                    strokeWidth={strokeWidth}
-                  />
-                ) : markerType === "text" ? null : (
-                  <circle
-                    cx={print.x}
-                    cy={print.y}
-                    r={print.radius}
-                    fill={hollowFill ? "none" : color}
-                    fillOpacity={hollowFill ? 0 : 0.58}
-                    stroke={color}
-                    strokeWidth={strokeWidth}
-                  />
-                )}
-                {showLabel ? (
-                  <text
-                    x={print.x}
-                    y={print.y + 3}
-                    fill="var(--foreground)"
-                    fontFamily="'JetBrains Mono', monospace"
-                    fontSize={Math.max(7, Math.min(11, print.radius * 0.48))}
-                    fontWeight={800}
-                    textAnchor="middle"
-                    paintOrder="stroke"
-                    stroke="var(--background)"
-                    strokeWidth={2.5}
-                  >
-                    {label}
-                  </text>
-                ) : null}
-              </g>
             );
           })}
         </svg>
