@@ -187,8 +187,12 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
         const customWidth = Math.max(120, rawCustomRight - rawCustomLeft);
         const customLeft = clamp(customCenterX - customWidth / 2, 2, Math.max(2, mediaSize.width - 122));
         const customRight = Math.min(mediaSize.width - 2, customLeft + customWidth);
+        // Keep the newest daily execution profile visible when its Globex
+        // open has moved off the left edge. The old renderer only pinned once
+        // the *entire* session was off-screen, so a cash-session viewport had
+        // real profile data loaded but drew every bar beyond the canvas.
         const autoPinnedDailyLeft = profile.period === "daily"
-          && sessionEndX < 0
+          && sessionAnchorX < 2
           && profile.endMs === latestDailyEndMs;
         const pinnedDailyLeft = profile.period === "daily" && autoPinnedDailyLeft;
         if (pinnedDailyLeft && weeklyProfileOccupiesLeftEdge) continue;

@@ -5178,7 +5178,12 @@ export default function Chart({
     : null;
 
   return (
-    <div ref={chartContainerRef} className="relative h-full w-full overflow-hidden">
+    <div
+      ref={chartContainerRef}
+      className="relative h-full w-full overflow-hidden"
+      data-volume-profile-count={volumeProfiles.length}
+      data-volume-profile-provider={volumeProfiles.at(-1)?.provider ?? "none"}
+    >
       {!chartVisualReady ? (
         <div className="pointer-events-auto absolute inset-0 z-[90]" style={{ backgroundColor: settings.backgroundColor }}>
           <KwantLoader
