@@ -830,13 +830,11 @@ export async function fetchInstitutionalVolumeProfile(args: {
         cache: "no-store",
       });
       if (!response.ok) {
-        console.warn("Exact volume profile request failed.", {
-          status: response.status,
-          symbol: args.symbol,
-          contractSymbol: args.contractSymbol,
-          period: args.period,
-          tradingDate: args.tradingDate,
-        });
+        console.warn(
+          `Exact volume profile request failed: HTTP ${response.status} · ${args.symbol}`
+          + ` · ${args.contractSymbol ?? "continuous"} · ${args.period}`
+          + ` · ${args.tradingDate ?? "current"}`,
+        );
         return null;
       }
       const payload = await response.json() as InstitutionalVolumeProfile;
@@ -849,27 +847,24 @@ export async function fetchInstitutionalVolumeProfile(args: {
         || !Number.isFinite(payload.endMs)
         || payload.endMs <= payload.startMs
       ) {
-        console.warn("Exact volume profile response was incomplete.", {
-          provider: payload.provider,
-          symbol: args.symbol,
-          contractSymbol: args.contractSymbol,
-          period: args.period,
-          tradingDate: args.tradingDate,
-          levels: Array.isArray(payload.levels) ? payload.levels.length : 0,
-        });
+        console.warn(
+          `Exact volume profile response was incomplete: ${payload.provider ?? "unknown"}`
+          + ` · ${args.symbol} · ${args.contractSymbol ?? "continuous"}`
+          + ` · ${args.period} · ${args.tradingDate ?? "current"}`
+          + ` · ${Array.isArray(payload.levels) ? payload.levels.length : 0} levels`,
+        );
         return null;
       }
       volumeProfileResponseCache.set(cacheKey, { profile: payload, storedAt: Date.now() });
       void writePersistentIndicatorCache(`volume-profile:${cacheKey}`, payload);
       return payload;
     } catch (error) {
-      console.warn("Exact volume profile request could not complete.", {
-        symbol: args.symbol,
-        contractSymbol: args.contractSymbol,
-        period: args.period,
-        tradingDate: args.tradingDate,
-        message: error instanceof Error ? error.message : String(error),
-      });
+      console.warn(
+        `Exact volume profile request could not complete: ${args.symbol}`
+        + ` · ${args.contractSymbol ?? "continuous"} · ${args.period}`
+        + ` · ${args.tradingDate ?? "current"}`
+        + ` · ${error instanceof Error ? error.message : String(error)}`,
+      );
       return null;
     } finally {
       volumeProfileRequests.delete(cacheKey);
