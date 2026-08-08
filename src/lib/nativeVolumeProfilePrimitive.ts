@@ -201,7 +201,7 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
           ? profile.period !== "daily" || autoPinnedDailyLeft
           : pinnedDailyLeft;
         const pinned = pinnedLeft || pinnedRight;
-        const anchorX = customProfile
+        const rawAnchorX = customProfile
           ? (customLeft + customRight) / 2
           : pinned
           ? pinnedRight ? mediaSize.width - 2 : 2
@@ -220,6 +220,14 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
               Math.max(64, viewportWidthLimit),
               Math.max(0, sessionWidth * style.widthPercent / 100),
             );
+        // A daily profile has two independent halves: volume/ask to the right
+        // of its spine and signed delta/bid to the left. When the session open
+        // scrolls away, reserve one profile width before the spine instead of
+        // putting the spine at x=2 and clipping (or stacking) the rear half.
+        const splitPinnedDaily = pinnedLeft && !pinnedRight && profile.period === "daily";
+        const anchorX = splitPinnedDaily
+          ? Math.min(mediaSize.width - 2, profileWidth + 2)
+          : rawAnchorX;
         if (!pinned && (
           Math.max(anchorX, endX) + profileWidth < 0
           || Math.min(anchorX, endX) - profileWidth > mediaSize.width
@@ -271,7 +279,7 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
         const deltaScaleWidth = profile.period === "weekly" ? profileWidth * 0.5 : profileWidth;
         const deltaScaleMaximum = profile.period === "weekly"
           ? groupedMaxAbsDelta
-          : pinned
+          : pinned && !splitPinnedDaily
             ? groupedMaxVolume
             : groupedMaxAbsDelta;
         const valueArea = calculateVolumeProfileValueArea(
@@ -362,13 +370,15 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
             if (style.showDelta) {
               addBar(
                 delta >= 0 ? positiveDeltaPath : negativeDeltaPath,
-                pinned
+                pinned && !splitPinnedDaily
                   ? pinnedRight ? anchorX - deltaWidth : anchorX
                   : anchorX - deltaWidth,
                 y,
                 deltaWidth,
                 height,
-                pinned ? pinnedRight ? "left" : "right" : "left",
+                pinned && !splitPinnedDaily
+                  ? pinnedRight ? "left" : "right"
+                  : "left",
               );
             }
           } else if (style.mode === "bid-ask") {
@@ -382,25 +392,29 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
             );
             addBar(
               bidVolumePath,
-              pinned
+              pinned && !splitPinnedDaily
                 ? pinnedRight ? anchorX - bidWidth : anchorX
                 : anchorX - bidWidth,
               y,
               bidWidth,
               height,
-              pinned ? pinnedRight ? "left" : "right" : "left",
+              pinned && !splitPinnedDaily
+                ? pinnedRight ? "left" : "right"
+                : "left",
             );
           } else if (style.showDelta) {
             const deltaOnRight = delta >= 0 && !pinnedRight;
             addBar(
               delta >= 0 ? positiveDeltaPath : negativeDeltaPath,
-              pinned
+              pinned && !splitPinnedDaily
                 ? pinnedRight ? anchorX - deltaWidth : anchorX
                 : deltaOnRight ? anchorX : anchorX - deltaWidth,
               y,
               deltaWidth,
               height,
-              pinned ? pinnedRight ? "left" : "right" : deltaOnRight ? "right" : "left",
+              pinned && !splitPinnedDaily
+                ? pinnedRight ? "left" : "right"
+                : deltaOnRight ? "right" : "left",
             );
           }
 
