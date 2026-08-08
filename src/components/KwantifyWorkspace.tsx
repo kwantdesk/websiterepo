@@ -1897,6 +1897,15 @@ function mergeInstitutionalTradeTape(
     : current;
   const recordKey = (record: InstitutionalTrade) => record.eventId
     || `${record.timestamp}:${record.recordIndex}:${record.close}:${record.volume}`;
+  const boundTape = (records: InstitutionalTrade[]) => {
+    // Historical one-second flow and exact execution prints serve different
+    // studies. A single tail slice let an old 50k print cache evict every CVD
+    // bucket that had just arrived. Reserve capacity for both instead.
+    const flow = records.filter((record) => record.flowOnly).slice(-30_000);
+    const exact = records.filter((record) => !record.flowOnly).slice(-25_000);
+    return [...flow, ...exact].sort((left, right) =>
+      left.timestamp - right.timestamp || left.recordIndex - right.recordIndex);
+  };
   const recentKeys = new Set(
     baseCurrent
       .slice(-Math.max(512, incoming.length * 4))
@@ -1915,16 +1924,14 @@ function mergeInstitutionalTradeTape(
           && record.recordIndex >= additions[index - 1].recordIndex)
   ));
   if (additionsAreOrdered) {
-    return baseCurrent.concat(additions).slice(-50_000);
+    return boundTape(baseCurrent.concat(additions));
   }
 
   const records = new Map<string, InstitutionalTrade>();
   for (const record of [...baseCurrent, ...additions]) {
     records.set(recordKey(record), record);
   }
-  return [...records.values()]
-    .sort((left, right) => left.timestamp - right.timestamp || left.recordIndex - right.recordIndex)
-    .slice(-50_000);
+  return boundTape([...records.values()]);
 }
 
 async function fetchWorkspaceCandles(
