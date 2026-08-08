@@ -427,6 +427,15 @@ function heatmapPayload(snapshot, after = 0) {
   };
 }
 
+function isEventBasedInterval(value) {
+  // Workspace event intervals use suffixes such as 40r, 500v, 200t, 1R,
+  // 500dv, 12/4VB and 10PF. They have no clock duration and therefore cannot
+  // be represented by the gateway's compact minute buckets.
+  return /^\d+(?:\.\d+)?(?:\/\d+(?:\.\d+)?)?(?:r|v|t|dv|vb|pf)$/i.test(
+    String(value || "").trim(),
+  );
+}
+
 function acceptMonotonicHeatmapFrame(subscriber, frame) {
   const timestamp = Number(frame?.snapshot?.timestamp);
   if (!Number.isFinite(timestamp) || timestamp <= 0) return false;
@@ -815,8 +824,9 @@ const server = createServer(async (request, response) => {
       const toMs = Number(url.searchParams.get("toMs") || Date.now());
       const interval = String(url.searchParams.get("interval") || "1m");
       const intervalMs = intervalDurationMs(interval);
+      const eventBased = isEventBasedInterval(interval);
       const trades = client.book.trades(instrument.exchange, instrument.symbol, { fromMs, toMs });
-      const compactFlowCandles = intervalMs >= 60_000
+      const compactFlowCandles = !eventBased && intervalMs >= 60_000
         ? client.book.flowCandles(instrument.exchange, instrument.symbol, { fromMs, toMs, intervalMs })
         : [];
       return json(response, 200, {
@@ -829,7 +839,14 @@ const server = createServer(async (request, response) => {
         // Minute-and-higher bars come from the lossless compact flow store.
         // Raw prints remain in the response for Big Trades and live studies,
         // but pruning that tape can no longer truncate or rebase CVD.
-        candles: compactFlowCandles.length ? compactFlowCandles : aggregateCandles(trades, intervalMs),
+        // Event bars are built by the chart history provider. Returning a
+        // minute-shaped fallback under a 40R/500V label corrupts their OHLC
+        // geometry, so event requests carry executions only.
+        candles: eventBased
+          ? []
+          : compactFlowCandles.length
+            ? compactFlowCandles
+            : aggregateCandles(trades, intervalMs),
         records: trades.map(normalizedTradeRecord),
         trades: trades.map(normalizedTradeRecord),
         sourceRecordCount: trades.length,

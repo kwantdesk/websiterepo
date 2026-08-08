@@ -1945,15 +1945,12 @@ async function fetchWorkspaceCandles(
       ]);
       if (!response.ok) throw new Error(payload.error ?? `CME did not return candles for ${displayCmeSymbol(symbol)}.`);
       const providerCandles = sanitizeCandles((payload.candles ?? []) as Candle[], symbol);
-      const exactOrderFlowCandles = eventBased
-        ? sanitizeCandles(institutionalOrderFlow?.candles ?? [], symbol)
-        : [];
-      const rawDownloaded = exactOrderFlowCandles.length
-        ? sanitizeCandles([
-            ...providerCandles.filter((candle) => candle.timestamp < exactOrderFlowCandles[0].timestamp),
-            ...exactOrderFlowCandles,
-          ], symbol)
-        : providerCandles;
+      // The history provider owns event-bar geometry. A gateway candle is a
+      // clock bucket and must never replace range, volume, trade, delta or
+      // Renko bars: doing so collapsed a five-day 40R chart to one 1-minute
+      // candle. CVD then received a single point, which is invisible in line
+      // mode. Keep the real event bars and apply executions to them below.
+      const rawDownloaded = providerCandles;
       const providerExecutionTape = includeOrderFlow
         ? decodeExecutionTape(payload.executions)
         : [];
@@ -1972,7 +1969,7 @@ async function fetchWorkspaceCandles(
           executionTape,
         );
       }
-      const downloaded = includeOrderFlow && eventBased && !exactOrderFlowCandles.length && executionTape.length
+      const downloaded = includeOrderFlow && eventBased && executionTape.length
         ? enrichCandlesWithInstitutionalTrades(rawDownloaded, executionTape, rawDownloaded.length)
         : rawDownloaded;
       await Promise.all([
