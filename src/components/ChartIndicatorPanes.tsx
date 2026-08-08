@@ -644,7 +644,7 @@ function ChartIndicatorPanes({
                 aria-expanded={openMenu === periodMenuKey}
                 data-testid={`cvd-period-${group.key}`}
                 onClick={() => setOpenMenu((current) => current === periodMenuKey ? null : periodMenuKey)}
-                className="flex h-6 min-w-[116px] items-center justify-between gap-2 rounded-lg border border-border bg-panel/95 px-2 font-mono text-[9px] text-muted shadow-sm outline-none transition hover:border-foreground/15 hover:text-foreground focus:border-primary/60"
+                className="flex h-6 min-w-[116px] items-center justify-between gap-2 rounded-lg border border-border bg-panel/95 px-2 text-[9px] text-muted shadow-sm outline-none transition hover:border-foreground/15 hover:text-foreground focus:border-primary/60"
                 title={`CVD uses the active chart interval (${timeframe ?? "chart"})`}
               >
                 <span>{selectedPeriod?.label ?? `${periodValue} ${periodMode}`}</span>
