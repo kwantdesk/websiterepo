@@ -402,12 +402,10 @@ export function calculateIndicatorSeries(
     const dedicatedCandlestick = key === "delta-cumulative-candlestick";
     const dedicatedHistogram = key === "delta-cumulative-histogram";
     const dedicatedStudy = dedicatedCandlestick || dedicatedHistogram;
-    const startHour = settingNumber(instance, "sessionStartHour", 17);
-    const resetToSession = settingBoolean(instance, "resetToSession", true);
-    const periodMode = dedicatedStudy
-      ? resetToSession ? "Days" : "Continuous"
-      : settingString(instance, "periodMode", "Days");
-    const periodValue = Math.max(1, Math.round(settingNumber(instance, "periodValue", 1)));
+    // One canonical CME-session CVD: always reset at the 17:00 Chicago
+    // futures-session boundary. Rolling and arbitrary time windows are not
+    // alternate CVD calculations in KwantDesk.
+    const startHour = 17;
     const displayStyle = settingString(instance, "displayStyle", dedicatedHistogram ? "bars" : "candles");
     const inputData = settingString(instance, "inputData", "Volumes");
     const useTradeCounts = inputData === "Aggregate Trades" || inputData === "Orders";
@@ -431,12 +429,10 @@ export function calculateIndicatorSeries(
     let cumulativeAsk = 0;
     let cumulativeBid = 0;
     let cumulativeFiltered = 0;
-    let orderCounter = 0;
     const cvd: CalculatedIndicatorSeries["data"] = [];
     const askVolume: Array<{ time: number; value: number }> = [];
     const bidVolume: Array<{ time: number; value: number }> = [];
     const filtered: Array<{ time: number; value: number; color: string }> = [];
-    const rollingQueue: Array<{ delta: number; ask: number; bid: number; filtered: number }> = [];
 
     candles.forEach((candle) => {
       // Saved OHLCV-only bars have no aggressor-side split. They must not be
@@ -445,21 +441,7 @@ export function calculateIndicatorSeries(
       const session = sessionKey(candle.timestamp, startHour);
       if (!sessionOrdinals.has(session)) sessionOrdinals.set(session, nextSessionOrdinal++);
       const sessionOrdinal = sessionOrdinals.get(session) ?? 0;
-      const trades = Math.max(1, Math.round(finite(candle.trades, 1)));
-      let nextPeriod = "";
-      if (periodMode === "Rolling") {
-        nextPeriod = "rolling";
-      } else if (periodMode === "Minutes") {
-        nextPeriod = `m:${Math.floor(candle.timestamp / (periodValue * 60_000))}`;
-      } else if (periodMode === "Seconds") {
-        nextPeriod = `s:${Math.floor(candle.timestamp / (periodValue * 1_000))}`;
-      } else if (periodMode === "Order") {
-        nextPeriod = `o:${Math.floor(orderCounter / periodValue)}`;
-      } else if (periodMode === "Continuous") {
-        nextPeriod = "continuous";
-      } else {
-        nextPeriod = `d:${Math.floor(sessionOrdinal / periodValue)}`;
-      }
+      const nextPeriod = `d:${sessionOrdinal}`;
       const periodChanged = nextPeriod !== activePeriod;
       if (periodChanged) {
         activePeriod = nextPeriod;
@@ -485,13 +467,6 @@ export function calculateIndicatorSeries(
       const passesFilter = total >= filterMin && (filterMax === 0 || total <= filterMax);
       const filteredDelta = passesFilter ? delta : 0;
       const plottedDelta = dedicatedStudy ? filteredDelta : delta;
-      if (periodMode === "Rolling" && rollingQueue.length >= periodValue) {
-        const removed = rollingQueue.shift()!;
-        cumulative -= removed.delta;
-        cumulativeAsk -= removed.ask;
-        cumulativeBid -= removed.bid;
-        cumulativeFiltered -= removed.filtered;
-      }
       const cumulativeBase = cumulative;
       const cumulativeOpen = cumulativeBase + relativeOpen;
       const cumulativeHigh = cumulativeBase + (passesFilter || !dedicatedStudy ? relativeHigh : 0);
@@ -500,9 +475,6 @@ export function calculateIndicatorSeries(
       cumulativeAsk += ask;
       cumulativeBid += bid;
       cumulativeFiltered += filteredDelta;
-      if (periodMode === "Rolling") {
-        rollingQueue.push({ delta: plottedDelta, ask, bid, filtered: filteredDelta });
-      }
       const time = candle.timestamp / 1000;
       cvd.push({
         time,
@@ -512,9 +484,7 @@ export function calculateIndicatorSeries(
         low: Math.min(cumulativeOpen, cumulativeLow, cumulative),
         close: cumulative,
         color: displayStyle === "line" ? undefined : cumulative >= cumulativeOpen ? askColor : bidColor,
-        // Seconds mode has one aggregate point per reset bucket. Breaking at
-        // every bucket would leave line mode with no drawable segments.
-        breakBefore: periodChanged && periodMode !== "Seconds",
+        breakBefore: periodChanged,
       });
       askVolume.push({ time, value: cumulativeAsk });
       bidVolume.push({ time, value: cumulativeBid });
@@ -525,7 +495,6 @@ export function calculateIndicatorSeries(
           ? (useThemeColors ? theme.positive : settingString(instance, "filteredAskColor", askColor))
           : (useThemeColors ? theme.negative : settingString(instance, "filteredBidColor", bidColor)),
       });
-      orderCounter += trades;
     });
 
     const series: CalculatedIndicatorSeries[] = [{
@@ -536,7 +505,7 @@ export function calculateIndicatorSeries(
             "customName",
             dedicatedCandlestick ? "Cumulative Delta Candlestick" : "Cumulative Delta Histogram",
           )
-        : periodMode === "Rolling" ? `CVD · rolling ${periodValue}` : `CVD · ${periodValue} ${periodMode}`,
+        : "CVD",
       kind: displayStyle === "candles" ? "candlestick" : displayStyle === "bars" ? "histogram" : "line",
       placement: "pane",
       color: displayStyle === "line" ? lineColor : theme.primary,

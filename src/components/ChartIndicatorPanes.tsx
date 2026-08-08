@@ -109,7 +109,6 @@ function ChartIndicatorPanes({
   width,
   height,
   bottom,
-  timeframe,
   viewportVersion,
   paneHeights,
   collapsedPanes,
@@ -123,7 +122,6 @@ function ChartIndicatorPanes({
   width: number;
   height: number;
   bottom: number;
-  timeframe?: string;
   viewportVersion: number;
   paneHeights: Record<string, number>;
   collapsedPanes: Record<string, boolean>;
@@ -591,39 +589,13 @@ function ChartIndicatorPanes({
       {groups.map((group, groupIndex) => {
         if (group.indicatorId !== "cumulative-volume-delta" || paneLayouts[groupIndex].collapsed) return null;
         const top = paneLayouts[groupIndex].top + 5;
-        const periodMode = String(group.settings?.periodMode ?? "Days");
-        const periodValue = Number(group.settings?.periodValue ?? 1);
         const displayStyle = String(group.settings?.displayStyle ?? "candles");
-        const periodSelection = `${periodMode}:${periodValue}`;
-        const periodMenuKey = `${group.key}:period`;
         const styleMenuKey = `${group.key}:style`;
-        const periodOptions = [
-          { mode: "Days", value: 1, label: "Session CVD" },
-          { mode: "Minutes", value: 30, label: "30-minute CVD" },
-          { mode: "Minutes", value: 15, label: "15-minute CVD" },
-          { mode: "Minutes", value: 5, label: "5-minute CVD" },
-          { mode: "Minutes", value: 1, label: "1-minute CVD" },
-          { mode: "Seconds", value: 30, label: "30-second CVD" },
-          { mode: "Seconds", value: 10, label: "10-second CVD" },
-          { mode: "Seconds", value: 5, label: "5-second CVD" },
-          { mode: "Seconds", value: 1, label: "1-second CVD" },
-          { mode: "Order", value: 1_000, label: "1,000-trade CVD" },
-          { mode: "Order", value: 500, label: "500-trade CVD" },
-          { mode: "Order", value: 100, label: "100-trade CVD" },
-        ];
         const styleOptions = [
           { value: "candles", label: "CVD candles" },
           { value: "line", label: "CVD line" },
           { value: "bars", label: "CVD bars" },
         ];
-        const selectedPeriod = periodOptions.find(
-          (option) => `${option.mode}:${option.value}` === periodSelection,
-        );
-        const choosePeriod = (mode: string, value: number) => {
-          onUpdateSetting?.(group.key, "periodMode", mode);
-          onUpdateSetting?.(group.key, "periodValue", value);
-          setOpenMenu(null);
-        };
         return (
           <div
             key={`controls-${group.key}`}
@@ -637,48 +609,6 @@ function ChartIndicatorPanes({
             onWheel={(event) => event.stopPropagation()}
           >
             <span className="mr-1 font-mono text-[10px] font-semibold text-foreground">CVD</span>
-            <div className="relative">
-              <button
-                type="button"
-                aria-label="CVD rolling calculation"
-                aria-expanded={openMenu === periodMenuKey}
-                data-testid={`cvd-period-${group.key}`}
-                onClick={() => setOpenMenu((current) => current === periodMenuKey ? null : periodMenuKey)}
-                className="flex h-6 min-w-[116px] items-center justify-between gap-2 rounded-lg border border-border bg-panel/95 px-2 text-[9px] text-muted shadow-sm outline-none transition hover:border-foreground/15 hover:text-foreground focus:border-primary/60"
-                title={`CVD uses the active chart interval (${timeframe ?? "chart"})`}
-              >
-                <span>{selectedPeriod?.label ?? `${periodValue} ${periodMode}`}</span>
-                <ChevronDown className={`h-3 w-3 transition-transform ${openMenu === periodMenuKey ? "rotate-180" : ""}`} />
-              </button>
-              {openMenu === periodMenuKey ? (
-                <div
-                  role="menu"
-                  aria-label="CVD calculation choices"
-                  className="absolute bottom-full left-0 z-50 mb-1 max-h-80 w-52 overflow-y-auto rounded-xl border border-border bg-panel/98 p-1 shadow-2xl shadow-black/50 backdrop-blur-xl"
-                >
-                  {periodOptions.map((option) => (
-                    <button
-                      key={`${option.mode}:${option.value}`}
-                      type="button"
-                      role="menuitemradio"
-                      aria-checked={periodSelection === `${option.mode}:${option.value}`}
-                      onClick={() => choosePeriod(option.mode, option.value)}
-                      className={`flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left text-[10px] transition ${
-                        periodSelection === `${option.mode}:${option.value}`
-                          ? "bg-primary/10 text-foreground"
-                          : "text-muted hover:bg-foreground/[0.04] hover:text-foreground"
-                      }`}
-                    >
-                      <span>{option.label}</span>
-                      {periodSelection === `${option.mode}:${option.value}` ? <Check className="h-3 w-3 text-primary" /> : null}
-                    </button>
-                  ))}
-                </div>
-              ) : null}
-            </div>
-            <span className="hidden text-[8px] uppercase tracking-[0.12em] text-muted/70 sm:inline">
-              {timeframe ?? "chart"} tape
-            </span>
             <div className="ml-auto flex items-center gap-1">
               <div className="relative">
                 <button

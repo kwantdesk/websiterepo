@@ -199,8 +199,6 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
     { key: "maxTradeVolume", label: "Maximum execution size (0 = no maximum)", defaultValue: 0, min: 0, max: 1000000 },
   ],
   "cumulative-volume-delta": [
-    { key: "periodValue", label: "Rolling bars / period value", defaultValue: 100, min: 1, max: 100000 },
-    { key: "sessionStartHour", label: "Futures session start hour (America/Chicago)", defaultValue: 17, min: 0, max: 23 },
     { key: "lineWidth", label: "Line width", defaultValue: 2, min: 1, max: 4 },
     { key: "filterMinVolume", label: "Filtered CVD minimum bar volume", defaultValue: 0, min: 0, max: 10000000 },
     { key: "filterMaxVolume", label: "Filtered CVD maximum bar volume (0 = no maximum)", defaultValue: 0, min: 0, max: 10000000 },
@@ -399,11 +397,9 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
     cumulativeHistogramSettingsVersion: 1,
   } : {}),
   ...(indicatorId === "cumulative-volume-delta" ? {
-    periodMode: "Days",
-    periodValue: 1,
     displayStyle: "candles",
     useThemeColors: true,
-    cvdSettingsVersion: 3,
+    cvdSettingsVersion: 4,
     showBidAskVolumes: false,
     filteredEnabled: false,
     filteredSeparateAxis: false,
@@ -730,16 +726,23 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
   }
   if (normalizedInstance.indicatorId !== "cumulative-volume-delta") return normalizedInstance;
   const settings = normalizedInstance.settings ?? {};
-  if (Number(settings.cvdSettingsVersion) >= 3) return normalizedInstance;
+  if (
+    Number(settings.cvdSettingsVersion) >= 4
+    && !("periodMode" in settings)
+    && !("periodValue" in settings)
+    && !("sessionStartHour" in settings)
+  ) return normalizedInstance;
+  const standardSettings = { ...settings };
+  delete standardSettings.periodMode;
+  delete standardSettings.periodValue;
+  delete standardSettings.sessionStartHour;
   return {
     ...normalizedInstance,
     settings: {
-      ...settings,
-      periodMode: "Days",
-      periodValue: 1,
-      displayStyle: "candles",
-      useThemeColors: true,
-      cvdSettingsVersion: 3,
+      ...standardSettings,
+      displayStyle: typeof settings.displayStyle === "string" ? settings.displayStyle : "candles",
+      useThemeColors: typeof settings.useThemeColors === "boolean" ? settings.useThemeColors : true,
+      cvdSettingsVersion: 4,
     },
   };
 };

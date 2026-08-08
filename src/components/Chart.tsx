@@ -6042,7 +6042,6 @@ export default function Chart({
         width={overlaySize.width}
         height={indicatorPaneHeight}
         bottom={24}
-        timeframe={timeframe}
         viewportVersion={viewportVersion}
         paneHeights={resolvedIndicatorPaneHeights}
         collapsedPanes={collapsedIndicatorPanes}
