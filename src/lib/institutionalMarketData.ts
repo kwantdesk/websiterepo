@@ -829,7 +829,16 @@ export async function fetchInstitutionalVolumeProfile(args: {
       const response = await fetch(`${LOCAL_GATEWAY_ORIGIN}/v1/market-data/volume-profile?${query}`, {
         cache: "no-store",
       });
-      if (!response.ok) return null;
+      if (!response.ok) {
+        console.warn("Exact volume profile request failed.", {
+          status: response.status,
+          symbol: args.symbol,
+          contractSymbol: args.contractSymbol,
+          period: args.period,
+          tradingDate: args.tradingDate,
+        });
+        return null;
+      }
       const payload = await response.json() as InstitutionalVolumeProfile;
       if (
         payload.schemaVersion !== "kwantify-volume-profile-v1"
@@ -839,11 +848,28 @@ export async function fetchInstitutionalVolumeProfile(args: {
         || payload.startMs <= 0
         || !Number.isFinite(payload.endMs)
         || payload.endMs <= payload.startMs
-      ) return null;
+      ) {
+        console.warn("Exact volume profile response was incomplete.", {
+          provider: payload.provider,
+          symbol: args.symbol,
+          contractSymbol: args.contractSymbol,
+          period: args.period,
+          tradingDate: args.tradingDate,
+          levels: Array.isArray(payload.levels) ? payload.levels.length : 0,
+        });
+        return null;
+      }
       volumeProfileResponseCache.set(cacheKey, { profile: payload, storedAt: Date.now() });
       void writePersistentIndicatorCache(`volume-profile:${cacheKey}`, payload);
       return payload;
-    } catch {
+    } catch (error) {
+      console.warn("Exact volume profile request could not complete.", {
+        symbol: args.symbol,
+        contractSymbol: args.contractSymbol,
+        period: args.period,
+        tradingDate: args.tradingDate,
+        message: error instanceof Error ? error.message : String(error),
+      });
       return null;
     } finally {
       volumeProfileRequests.delete(cacheKey);
