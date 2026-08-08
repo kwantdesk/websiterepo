@@ -535,7 +535,7 @@ export function clipVolumeProfileToPriceRange(
 }
 
 const LOCAL_GATEWAY_ORIGIN = "/api/institutional-market-data";
-const ORDER_FLOW_CACHE_SCHEMA = "v7";
+const ORDER_FLOW_CACHE_SCHEMA = "v6";
 const orderFlowRecordCache = new Map<string, InstitutionalTrade[]>();
 const orderFlowCacheMergeQueue = new Map<
   string,

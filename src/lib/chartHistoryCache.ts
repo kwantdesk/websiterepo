@@ -43,11 +43,12 @@ function cacheKey(symbol: string, timeframe: string) {
 }
 
 function executionTapeCacheKey(symbol: string, timeframe: string) {
-  // Tape v3 keeps compact historical flow separately from exact executions
-  // and discards tapes that may contain post-halt subscription snapshots.
+  // Tape v2 keeps compact historical flow separately from exact executions.
+  // Post-halt subscription snapshots are retained in the raw tape for audit,
+  // then rejected by the event-bar execution boundary during enrichment.
   // Ignore older tail-only records, otherwise a returning browser can restore
   // the broken cache and make CVD appear only on the newest candle again.
-  return `tape-v3::${symbol}::${timeframe}`;
+  return `tape-v2::${symbol}::${timeframe}`;
 }
 
 function timeframeDurationMs(timeframe: string) {
