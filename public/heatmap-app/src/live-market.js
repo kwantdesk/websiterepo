@@ -190,9 +190,43 @@ export class DepthMarketFeed {
       this.status = { ...this.status, ...JSON.parse(event.data || '{}') };
       this.onStatus?.(this.status);
     });
+    stream.addEventListener('history', event => {
+      const payload = JSON.parse(event.data || '{}');
+      const payloadStatus = payload.status || {};
+      this.status = {
+        ...this.status,
+        ...payloadStatus,
+        connected: typeof payloadStatus.connected === 'boolean'
+          ? payloadStatus.connected
+          : true,
+        historyFrames: Array.isArray(payload.snapshots) ? payload.snapshots.length : 0,
+      };
+      this.onStatus?.(this.status);
+      // Replay the real server-side Rithmic window through the exact same
+      // append path as a live frame. This restores the polished map instantly
+      // after page navigation without inventing or interpolating liquidity.
+      for (const rawSnapshot of payload.snapshots || []) {
+        const snapshot = normalizeLiveSnapshot(rawSnapshot);
+        const token = snapshotBookToken(snapshot);
+        if (snapshot && token !== this.lastSnapshotToken) {
+          this.lastSnapshotToken = token;
+          this.onSnapshot?.(snapshot);
+        }
+      }
+    });
     stream.addEventListener('depth', event => {
       const payload = JSON.parse(event.data || '{}');
-      this.status = { ...this.status, ...(payload.status || {}), connected: true };
+      const payloadStatus = payload.status || {};
+      this.status = {
+        ...this.status,
+        ...payloadStatus,
+        // An open SSE socket is not proof that the exchange book is fresh.
+        // Preserve the gateway's explicit stale state for weekends, halts and
+        // interrupted market data instead of relabelling every frame LIVE.
+        connected: typeof payloadStatus.connected === 'boolean'
+          ? payloadStatus.connected
+          : true,
+      };
       this.onStatus?.(this.status);
       const snapshot = normalizeLiveSnapshot(payload.snapshot);
       const token = snapshotBookToken(snapshot);

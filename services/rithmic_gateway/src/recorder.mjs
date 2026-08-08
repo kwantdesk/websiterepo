@@ -35,11 +35,27 @@ function instrumentFileName(exchange, symbol, compress) {
 // The collector emits `instrument: "CME:NQU6"` as a single key on book events
 // and explicit exchange/symbol fields on raw wire messages. Accept both.
 function resolveInstrument(record) {
-  if (record.exchange && record.symbol) {
+  const payload = record.payload || record;
+  const exchange = Array.isArray(record.exchange)
+    ? record.exchange[0]
+    : record.exchange || (Array.isArray(payload.exchange) ? payload.exchange[0] : payload.exchange);
+  const symbol = Array.isArray(record.symbol)
+    ? record.symbol[0]
+    : record.symbol || (Array.isArray(payload.symbol) ? payload.symbol[0] : payload.symbol);
+  if (exchange && symbol) {
     return {
-      exchange: String(record.exchange).toUpperCase(),
-      symbol: String(record.symbol).toUpperCase(),
+      exchange: String(exchange).toUpperCase(),
+      symbol: String(symbol).toUpperCase(),
     };
+  }
+  // The final DBO snapshot packet deliberately omits exchange/symbol and
+  // identifies the request through user_msg. Filing those completions under
+  // UNKNOWN separated the atomic boundary from the snapshot it completed.
+  for (const message of payload.userMsg || []) {
+    const match = String(message).match(/^dbo-(?:snapshot|resync):([^:]+):(.+)$/i);
+    if (match) {
+      return { exchange: match[1].toUpperCase(), symbol: match[2].toUpperCase() };
+    }
   }
   const key = String(record.instrument || "");
   const separator = key.indexOf(":");

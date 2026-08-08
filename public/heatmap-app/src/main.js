@@ -352,7 +352,11 @@ class DepthForgeApp {
     if (isLiveDepth) {
       const condition = this.liveStatus.connected ? 'LIVE' : 'STALE';
       $('feedStatus').textContent = `${provider} L3 · ${condition} · ${this.liveStatus.levels || 0} LEVELS · READ-ONLY`;
-      if ($('sourceBanner')) $('sourceBanner').textContent = `Live ${provider} depth-by-order ${condition.toLowerCase()} · full resting book · trading disabled`;
+      if ($('sourceBanner')) {
+        $('sourceBanner').textContent = this.liveStatus.connected
+          ? `Live ${provider} depth-by-order · full resting book · trading disabled`
+          : `${provider} depth-by-order frozen at the last exchange book · trading disabled`;
+      }
     } else {
       const state = this.liveStatus.connected ? 'BUILDING L3 BOOK' : 'CONNECTING';
       $('feedStatus').textContent = `${state} · ${provider}`;
@@ -636,7 +640,9 @@ class DepthForgeApp {
     $('spreadValue').textContent = `${snapshot.bestAsk - snapshot.bestBid} TICK`;
     $('volumeValue').textContent = snapshot.totalVolume.toLocaleString();
     $('cvdValue').textContent = `${snapshot.cvd >= 0 ? '+' : ''}${Math.round(snapshot.cvd).toLocaleString()}`;
-    $('latencyLabel').textContent = `${Math.round(snapshot.latencyMs ?? (10 + (snapshot.id % 9)))} ms`;
+    $('latencyLabel').textContent = this.liveStatus.connected
+      ? `${Math.round(snapshot.latencyMs ?? (10 + (snapshot.id % 9)))} ms`
+      : 'STALE';
     $('eventCount').textContent = this.#compactNumber(this.eventCount);
     $('utcClock').innerHTML = `${new Date().toISOString().slice(11, 19)} <small>UTC</small>`;
     $('replayTime').textContent = timeLabel(snapshot.timestamp, true);

@@ -22,6 +22,7 @@ recorder.attach(client);
 const rawSseClients = new Set();
 const tradeSseClients = new Set();
 const heatmapSseClients = new Set();
+const heatmapHistoryByInstrument = new Map();
 
 function json(response, status, body) {
   response.writeHead(status, {
@@ -137,6 +138,19 @@ const MICRO_PARENT_ROOTS = { MNQ: "NQ", MES: "ES", MYM: "YM", M2K: "RTY", MGC: "
 const HEATMAP_FRAME_MS = Math.max(
   20,
   Number(process.env.RITHMIC_HEATMAP_FRAME_MS) || 100,
+);
+// A fresh browser used to begin with a single vertical sliver even when the
+// collector had been running all session. Keep a compact, server-side warm
+// window so page navigation does not throw away the liquidity map that the
+// original long-running Kwantify tab had already accumulated. 360 frames is
+// 36 seconds at the default cadence and remains small enough for one SSE seed.
+const HEATMAP_HISTORY_LIMIT = Math.max(
+  60,
+  Math.min(900, Number(process.env.RITHMIC_HEATMAP_HISTORY_FRAMES) || 360),
+);
+const HEATMAP_CACHE_DEPTH = Math.max(
+  100,
+  Math.min(5_000, Number(process.env.RITHMIC_HEATMAP_CACHE_DEPTH) || 1_000),
 );
 
 function parentRoot(root) {
@@ -344,9 +358,15 @@ function heatmapPayload(snapshot, after = 0) {
     for (const row of bids) if (row[1] >= wallThreshold) wallCount += 1;
     for (const row of asks) if (row[1] >= wallThreshold) wallCount += 1;
   }
+  const ageMs = Number.isFinite(Number(snapshot.ageMs)) ? Math.max(0, Number(snapshot.ageMs)) : null;
+  const fresh = ageMs !== null && ageMs <= 15_000;
   return {
     status: {
-      connected: client.status.connected,
+      // Socket connectivity is not market freshness. During the weekend the
+      // Rithmic session remains authenticated while the last exchange book is
+      // hours old; calling that LIVE made the heatmap confidently animate a
+      // frozen close. Keep the completed book visible, but label it stale.
+      connected: Boolean(client.status.connected && fresh),
       readOnly: true,
       trading: false,
       provider: "Rithmic",
@@ -356,6 +376,9 @@ function heatmapPayload(snapshot, after = 0) {
       individualOrders: snapshot.individualOrders,
       contractSymbol: snapshot.symbol,
       bookValid: snapshot.bookValid,
+      levels: bids.length + asks.length,
+      ageMs,
+      stale: !fresh,
     },
     snapshot: {
       id: snapshot.sequence,
@@ -398,10 +421,63 @@ function heatmapPayload(snapshot, after = 0) {
       individualOrders: snapshot.individualOrders,
       bookValid: snapshot.bookValid,
       orderCount: snapshot.orderCount,
-      latencyMs: snapshot.ageMs,
+      latencyMs: ageMs,
       readOnly: true,
     },
   };
+}
+
+function acceptMonotonicHeatmapFrame(subscriber, frame) {
+  const timestamp = Number(frame?.snapshot?.timestamp);
+  if (!Number.isFinite(timestamp) || timestamp <= 0) return false;
+  const previous = Number(subscriber.lastMarketTimestampMs || 0);
+  // A late packet may arrive marginally out of order; a packet that jumps
+  // materially backwards belongs to an older market state and must never
+  // stretch the chart's time axis. Small same-millisecond collisions are
+  // nudged forward by one millisecond without changing visual cadence.
+  if (previous > 0 && timestamp < previous - 1_000) return false;
+  frame.snapshot.timestamp = previous > 0 ? Math.max(timestamp, previous + 1) : timestamp;
+  subscriber.lastMarketTimestampMs = frame.snapshot.timestamp;
+  return true;
+}
+
+function heatmapHistoryState(key) {
+  let state = heatmapHistoryByInstrument.get(key);
+  if (!state) {
+    state = {
+      frames: [],
+      lastEmitAt: 0,
+      lastMarketTimestampMs: 0,
+      lastSequence: 0,
+    };
+    heatmapHistoryByInstrument.set(key, state);
+  }
+  return state;
+}
+
+function captureHeatmapFrame(instrumentKey, now = Date.now()) {
+  const state = heatmapHistoryState(instrumentKey);
+  if (now - state.lastEmitAt < HEATMAP_FRAME_MS) return null;
+  const separator = instrumentKey.indexOf(":");
+  if (separator < 1) return null;
+  const exchange = instrumentKey.slice(0, separator);
+  const symbol = instrumentKey.slice(separator + 1);
+  const snapshot = client.book.snapshot(exchange, symbol, HEATMAP_CACHE_DEPTH);
+  if (!snapshot) return null;
+  const frame = heatmapPayload(snapshot, state.lastSequence);
+  if (!acceptMonotonicHeatmapFrame(state, frame)) return null;
+  state.lastEmitAt = now;
+  state.lastSequence = Number(snapshot.sequence) || state.lastSequence;
+  // Only retain genuine moving-market frames. A completed Friday close stays
+  // inspectable on Saturday, but repeatedly caching it would manufacture a
+  // false horizontal history and imply liquidity existed after the session.
+  if (frame.status.connected) {
+    state.frames.push(frame);
+    if (state.frames.length > HEATMAP_HISTORY_LIMIT) {
+      state.frames.splice(0, state.frames.length - HEATMAP_HISTORY_LIMIT);
+    }
+  }
+  return frame;
 }
 
 function emitRawSse(eventName, payload) {
@@ -420,26 +496,19 @@ client.on("marketData", (event) => {
       })}\n\n`,
     );
   }
+  const capturedHeatmapFrame = event.instrument
+    ? captureHeatmapFrame(event.instrument)
+    : null;
   for (const subscriber of heatmapSseClients) {
     if (subscriber.key !== event.instrument) continue;
-    const now = Date.now();
-    // Uniform cadence for every event type. Trades used to bypass this
-    // throttle, so each of the hundreds of NQ prints per second pushed a full
-    // 1,800-level book. The heatmap appends one column per snapshot, so its
-    // history window burned through in seconds and every price level rendered
-    // as a continuous horizontal smear instead of a time series. Trades ride
-    // inside the snapshot regardless, so batching them costs nothing.
-    if (now - subscriber.lastEmitAt < HEATMAP_FRAME_MS) continue;
-    const snapshot = client.book.snapshot(
-      subscriber.exchange,
-      subscriber.symbol,
-      subscriber.depth,
+    if (!capturedHeatmapFrame) continue;
+    subscriber.lastEmitAt = Date.now();
+    subscriber.lastMarketTimestampMs = capturedHeatmapFrame.snapshot.timestamp;
+    subscriber.lastSequence = Number(capturedHeatmapFrame.snapshot.id)
+      || subscriber.lastSequence;
+    subscriber.response.write(
+      `event: depth\ndata: ${JSON.stringify(capturedHeatmapFrame)}\n\n`,
     );
-    if (!snapshot) continue;
-    subscriber.lastEmitAt = now;
-    const frame = heatmapPayload(snapshot, subscriber.lastSequence);
-    subscriber.lastSequence = Number(snapshot.sequence) || subscriber.lastSequence;
-    subscriber.response.write(`event: depth\ndata: ${JSON.stringify(frame)}\n\n`);
   }
 });
 client.on("status", (status) => emitRawSse("status", status));
@@ -608,10 +677,30 @@ const server = createServer(async (request, response) => {
       let lastSequence = seedTrades.length
         ? Math.max(0, (Number(seedTrades[0].sequence) || 0) - 1)
         : Number(snapshot?.sequence) || 0;
+      let initialMarketTimestampMs = 0;
       if (snapshot) {
-        response.write(
-          `event: depth\ndata: ${JSON.stringify(heatmapPayload(snapshot, lastSequence))}\n\n`,
+        const initialFrame = heatmapPayload(snapshot, lastSequence);
+        const historyState = heatmapHistoryState(
+          `${instrument.exchange}:${instrument.symbol}`,
         );
+        if (historyState.frames.length > 1) {
+          response.write(
+            `event: history\ndata: ${JSON.stringify({
+              status: initialFrame.status,
+              snapshots: historyState.frames.map((frame) => frame.snapshot),
+            })}\n\n`,
+          );
+          initialMarketTimestampMs = historyState.lastMarketTimestampMs;
+          lastSequence = historyState.lastSequence;
+        } else {
+          const initialCursor = { lastMarketTimestampMs: 0 };
+          if (acceptMonotonicHeatmapFrame(initialCursor, initialFrame)) {
+            response.write(
+              `event: depth\ndata: ${JSON.stringify(initialFrame)}\n\n`,
+            );
+            initialMarketTimestampMs = initialCursor.lastMarketTimestampMs;
+          }
+        }
         lastSequence = Number(snapshot.sequence) || lastSequence;
       }
       const subscriber = {
@@ -620,6 +709,7 @@ const server = createServer(async (request, response) => {
         symbol: instrument.symbol,
         depth,
         lastEmitAt: 0,
+        lastMarketTimestampMs: initialMarketTimestampMs,
         lastSequence,
         response,
       };

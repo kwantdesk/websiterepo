@@ -104,6 +104,31 @@ test("archives the decoded payload, not just an event notification", async () =>
   assert.equal(rows[0].templateId, 160);
 });
 
+test("files a symbol-less DBO completion packet with the snapshot it completes", async () => {
+  const { dir, recorder } = newRecorder();
+  const client = new EventEmitter();
+  recorder.attach(client);
+  const iso = "2026-08-07T14:00:00.000Z";
+
+  client.emit("rawMessage", {
+    templateId: 116,
+    payload: {
+      userMsg: ["dbo-snapshot:CME:NQU6"],
+      rpCode: ["0"],
+    },
+    receivedAt: iso,
+  });
+  await settle(recorder);
+
+  const rows = readSession(dir, Date.parse(iso), "CME-NQU6.ndjson");
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].payload.userMsg[0], "dbo-snapshot:CME:NQU6");
+  assert.equal(
+    existsSync(join(dir, chicagoTradingDate(Date.parse(iso)), "UNKNOWN-UNKNOWN.ndjson.gz")),
+    false,
+  );
+});
+
 test("a disconnect is written down as a GAP, never smoothed over", async () => {
   const { dir, recorder } = newRecorder();
   const client = new EventEmitter();

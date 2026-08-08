@@ -7,7 +7,7 @@ import { RithmicBookStore, instrumentKey } from "./book-store.mjs";
 // Templates that carry market data worth archiving: last trade, BBO, order
 // book, depth-by-order snapshot and depth-by-order update. Login, heartbeat
 // and subscription-response traffic is deliberately excluded.
-const MARKET_DATA_TEMPLATE_IDS = new Set([150, 151, 156, 116, 160]);
+const MARKET_DATA_TEMPLATE_IDS = new Set([150, 151, 156, 116, 160, 161]);
 
 function openSocket(url, timeoutMs = 10_000) {
   return new Promise((resolve, reject) => {
@@ -108,9 +108,6 @@ export class RithmicMarketDataClient extends EventEmitter {
         instrumentKey(row.exchange, row.symbol),
       ),
     );
-    // Minimum interval between depth-by-order resync requests per instrument.
-    this.lastDepthResyncAt = new Map();
-    this.depthResyncMinMs = config.depthResyncMinMs ?? 30_000;
     this.status = {
       provider: "Rithmic",
       environment: config.systemName,
@@ -349,6 +346,12 @@ export class RithmicMarketDataClient extends EventEmitter {
       case 160:
         event = this.book.applyDepthUpdate(decoded.payload);
         break;
+      case 161:
+        // Some Rithmic systems terminate a DBO snapshot with the dedicated end
+        // event instead of the empty ResponseDepthByOrderSnapshot packet.
+        // Both paths must commit the staged book exactly once.
+        event = this.book.applyDepthSnapshot(decoded.payload);
+        break;
       case 101:
       case 118:
         this.recordSubscriptionResponse(decoded);
@@ -365,34 +368,16 @@ export class RithmicMarketDataClient extends EventEmitter {
     }
     if (event) {
       if (event.sequenceRegression && decoded.payload?.exchange && decoded.payload?.symbol) {
-        // Rithmic depth sequence numbers are exchange-wide, so they routinely
-        // move backwards for any single instrument. Resyncing on every such
-        // regression produces a snapshot storm: each full-book snapshot is
-        // large, arrives as another sequenced message, and triggers the next
-        // resync. Measured at 186,530 snapshot requests against 29,864 real
-        // depth updates before this throttle existed - it saturated the event
-        // loop and burned provider request quota for nothing.
-        const key = instrumentKey(decoded.payload.exchange, decoded.payload.symbol);
-        const now = Date.now();
-        const lastResync = this.lastDepthResyncAt.get(key) ?? 0;
-        this.status.lastError =
-          `Depth sequence regression for ${decoded.payload.exchange}:${decoded.payload.symbol}; ` +
-          `previous ${event.previousSequence}, received ${event.receivedSequence}.`;
-        if (now - lastResync >= this.depthResyncMinMs) {
-          this.lastDepthResyncAt.set(key, now);
-          this.book.resetDepth(decoded.payload.exchange, decoded.payload.symbol);
-          this.send("RequestDepthByOrderSnapshot", {
-            templateId: TEMPLATE_IDS.DEPTH_SNAPSHOT_REQUEST,
-            userMsg: [`dbo-resync:${decoded.payload.exchange}:${decoded.payload.symbol}`],
-            symbol: decoded.payload.symbol,
-            exchange: decoded.payload.exchange,
-          });
-        } else {
-          // Suppressed, not ignored: the count is reported on /health so a
-          // genuinely broken book is still visible.
-          this.status.suppressedDepthResyncs =
-            Number(this.status.suppressedDepthResyncs || 0) + 1;
-        }
+        // Rithmic's DBO sequence is exchange/channel scoped, not a monotonic
+        // per-instrument cursor. A lower value therefore does not prove that
+        // this instrument lost data. The former implementation invalidated
+        // the live book and requested a new 1,000+ row snapshot every time;
+        // production recorded millions of snapshot rows and the heatmap kept
+        // painting partial rebuilds. Count the observation for diagnostics,
+        // but preserve the atomic book. Reconnect/login still obtains a fresh
+        // baseline snapshot.
+        this.status.observedDepthSequenceRegressions =
+          Number(this.status.observedDepthSequenceRegressions || 0) + 1;
       }
       this.emit("marketData", {
         ...event,

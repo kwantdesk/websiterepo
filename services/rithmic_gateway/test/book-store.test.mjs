@@ -79,7 +79,7 @@ test("does not downgrade an active L3 book when aggregated L2 updates arrive", (
     depthSize: [5],
     exchangeOrderId: ["L3-A"],
   });
-  store.applyOrderBook({
+  const duplicate = store.applyOrderBook({
     exchange: "CME",
     symbol: "MNQU6",
     updateType: 7,
@@ -88,6 +88,7 @@ test("does not downgrade an active L3 book when aggregated L2 updates arrive", (
     bidOrders: [10],
   });
   const snapshot = store.snapshot("CME", "MNQU6", 10);
+  assert.equal(duplicate, null, "the redundant L2 packet must not publish a heatmap frame");
   assert.equal(snapshot.depthMode, "L3");
   assert.equal(snapshot.fullDepth, true);
   assert.deepEqual(snapshot.bids[0], { price: 29000, size: 5, orders: 1 });
@@ -120,7 +121,7 @@ test("accepts forward sequence jumps because Rithmic sequences can be exchange-w
   assert.equal(snapshot.bookValid, true);
 });
 
-test("marks a depth book invalid when source sequence moves backwards", () => {
+test("observes an exchange-wide sequence regression without invalidating the L3 book", () => {
   const store = new RithmicBookStore();
   store.applyDepthUpdate({
     exchange: "CME",
@@ -145,7 +146,83 @@ test("marks a depth book invalid when source sequence moves backwards", () => {
   assert.equal(event.sequenceRegression, true);
   assert.equal(event.previousSequence, "22");
   assert.equal(event.receivedSequence, "21");
-  assert.equal(store.snapshot("CME", "NQU6", 10).bookValid, false);
+  assert.equal(store.snapshot("CME", "NQU6", 10).bookValid, true);
+});
+
+test("publishes a DBO snapshot atomically only after its completion packet", () => {
+  const store = new RithmicBookStore();
+  assert.equal(store.applyDepthSnapshot({
+    exchange: "CME",
+    symbol: "NQU6",
+    sequenceNumber: "500",
+    depthSide: 1,
+    depthPrice: 29_800,
+    depthSize: [3, 7],
+    depthOrderPriority: ["1", "2"],
+    exchangeOrderId: ["BID-A", "BID-B"],
+  }), null);
+  assert.equal(store.applyDepthSnapshot({
+    exchange: "CME",
+    symbol: "NQU6",
+    sequenceNumber: "500",
+    depthSide: 2,
+    depthPrice: 29_800.25,
+    depthSize: [5],
+    depthOrderPriority: ["3"],
+    exchangeOrderId: ["ASK-A"],
+  }), null);
+
+  let snapshot = store.snapshot("CME", "NQU6", 10);
+  assert.equal(snapshot.bookValid, false, "partial snapshot rows must stay off the live book");
+  assert.equal(snapshot.bids.length, 0);
+  assert.equal(snapshot.asks.length, 0);
+
+  const completed = store.applyDepthSnapshot({
+    userMsg: ["dbo-snapshot:CME:NQU6"],
+    rpCode: ["0"],
+  });
+  assert.equal(completed.snapshotComplete, true);
+  snapshot = store.snapshot("CME", "NQU6", 10);
+  assert.equal(snapshot.depthMode, "L3");
+  assert.equal(snapshot.bookValid, true);
+  assert.deepEqual(snapshot.bids[0], { price: 29_800, size: 10, orders: 2 });
+  assert.deepEqual(snapshot.asks[0], { price: 29_800.25, size: 5, orders: 1 });
+});
+
+test("a replacement DBO snapshot does not leak stale orders or partial rows", () => {
+  const store = new RithmicBookStore();
+  const complete = (sequence, bidPrice, bidId) => {
+    store.applyDepthSnapshot({
+      exchange: "CME",
+      symbol: "NQU6",
+      sequenceNumber: String(sequence),
+      depthSide: 1,
+      depthPrice: bidPrice,
+      depthSize: [2],
+      depthOrderPriority: ["1"],
+      exchangeOrderId: [bidId],
+    });
+    return store.applyDepthSnapshot({
+      userMsg: ["dbo-resync:CME:NQU6"],
+      rpCode: ["0"],
+    });
+  };
+  complete(1, 29_700, "OLD");
+  store.applyDepthSnapshot({
+    exchange: "CME",
+    symbol: "NQU6",
+    sequenceNumber: "2",
+    depthSide: 1,
+    depthPrice: 29_900,
+    depthSize: [4],
+    depthOrderPriority: ["1"],
+    exchangeOrderId: ["NEW"],
+  });
+  assert.equal(store.snapshot("CME", "NQU6", 10).bids[0].price, 29_700);
+  complete(2, 29_900, "NEW");
+  const snapshot = store.snapshot("CME", "NQU6", 10);
+  assert.equal(snapshot.orderCount, 1);
+  assert.equal(snapshot.bids[0].price, 29_900);
 });
 
 test("ingests the RTrader Pro full ladder without pretending it contains order ids", () => {
