@@ -273,11 +273,9 @@ function ChartIndicatorPanes({
             <rect x="0" y={top} width={width} height={paneHeight} fill="var(--chart-background)" fillOpacity="0.97" />
             <line x1="0" y1={top + 0.5} x2={width} y2={top + 0.5} stroke="var(--grid-color)" strokeWidth="1" />
             <line x1={plotWidth + 0.5} y1={top} x2={plotWidth + 0.5} y2={top + paneHeight} stroke="var(--grid-color)" strokeWidth="1" />
-            {group.indicatorId !== "cumulative-volume-delta" || collapsed ? (
-              <text x="10" y={top + 15} fill="var(--foreground)" fontSize="10" fontWeight="600" fontFamily="monospace">
-                {group.title}
-              </text>
-            ) : null}
+            <text x="10" y={top + 15} fill="var(--foreground)" fontSize="10" fontWeight="600" fontFamily="monospace">
+              {group.title}
+            </text>
             {!collapsed && group.unavailableReason ? (
               <text x="10" y={top + 34} fill="var(--muted)" fontSize="9" fontFamily="monospace">
                 {group.unavailableReason}
@@ -608,7 +606,6 @@ function ChartIndicatorPanes({
             onDoubleClick={(event) => event.stopPropagation()}
             onWheel={(event) => event.stopPropagation()}
           >
-            <span className="mr-1 font-mono text-[10px] font-semibold text-foreground">CVD</span>
             <div className="ml-auto flex items-center gap-1">
               <div className="relative">
                 <button

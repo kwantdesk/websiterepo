@@ -2,9 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  cmeEventTailCutoffMs,
   cmeSessionDateKey,
   cmeSessionStartMs,
   cmeSessionWindowForDate,
+  cmeTradingCloseMsForDate,
 } from "../src/lib/chartHistoryWindow.ts";
 
 function chicagoHour(ms) {
@@ -29,6 +31,32 @@ test("session start is 17:00 Chicago during CST", () => {
   const start = cmeSessionStartMs(Date.parse("2026-01-15T14:00:00Z"));
   assert.ok(start !== null);
   assert.equal(chicagoHour(start), 17, "must survive the DST offset change");
+});
+
+test("Friday event bars stop accepting executions at the maintenance halt", () => {
+  assert.equal(
+    cmeTradingCloseMsForDate("2026-08-07"),
+    Date.parse("2026-08-07T21:00:00.000Z"),
+  );
+  const candles = [
+    { timestamp: Date.parse("2026-08-07T20:57:13.500Z"), open: 1, high: 2, low: 1, close: 2 },
+    { timestamp: Date.parse("2026-08-07T20:59:33.500Z"), open: 2, high: 3, low: 2, close: 3 },
+  ];
+  assert.equal(
+    cmeEventTailCutoffMs(candles, Date.parse("2026-08-08T12:00:00.000Z")),
+    Date.parse("2026-08-07T21:00:00.000Z"),
+  );
+});
+
+test("the live event bar remains open until the real CME trading halt", () => {
+  const candles = [
+    { timestamp: Date.parse("2026-08-07T20:57:13.500Z"), open: 1, high: 2, low: 1, close: 2 },
+    { timestamp: Date.parse("2026-08-07T20:59:33.500Z"), open: 2, high: 3, low: 2, close: 3 },
+  ];
+  assert.equal(
+    cmeEventTailCutoffMs(candles, Date.parse("2026-08-07T20:59:50.000Z")),
+    Date.parse("2026-08-07T21:00:00.000Z"),
+  );
 });
 
 test("the start belongs to the same trading session as the timestamp", () => {

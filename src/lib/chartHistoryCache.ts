@@ -38,15 +38,16 @@ function cacheKey(symbol: string, timeframe: string) {
   // five-session backfill. Keep earlier partial event caches isolated so they
   // cannot make a newly selected range/volume chart start at the current tick.
   return isEventBasedChartInterval(timeframe)
-    ? `event-v3::${symbol}::${timeframe}`
+    ? `event-v4::${symbol}::${timeframe}`
     : `${symbol}::${timeframe}`;
 }
 
 function executionTapeCacheKey(symbol: string, timeframe: string) {
-  // Tape v2 keeps compact historical flow separately from exact executions.
+  // Tape v3 keeps compact historical flow separately from exact executions
+  // and discards tapes that may contain post-halt subscription snapshots.
   // Ignore older tail-only records, otherwise a returning browser can restore
   // the broken cache and make CVD appear only on the newest candle again.
-  return `tape-v2::${symbol}::${timeframe}`;
+  return `tape-v3::${symbol}::${timeframe}`;
 }
 
 function timeframeDurationMs(timeframe: string) {

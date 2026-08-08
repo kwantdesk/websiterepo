@@ -123,6 +123,52 @@ export function cmeSessionWindowForDate(
   return { startMs, endMs };
 }
 
+/**
+ * The daily equity-futures trading halt begins at 16:00 Chicago, one hour
+ * before the next Globex session label rolls at 17:00. Feed snapshots received
+ * during that maintenance hour are not executions in the final chart bar.
+ */
+export function cmeTradingCloseMsForDate(tradingDate: string): number | null {
+  const window = cmeSessionWindowForDate(tradingDate);
+  return window ? window.endMs - 60 * 60_000 : null;
+}
+
+/**
+ * Upper execution boundary for the final event bar in a downloaded series.
+ * During the active session the forming range/volume bar may legitimately
+ * remain open for a long time, so it can receive flow until the venue halt.
+ * For completed sessions, cap the tail using recent bar cadence as well; this
+ * prevents a delayed subscription snapshot from being swallowed by the last
+ * historical bar and rendered as a giant Volume/CVD candle.
+ */
+export function cmeEventTailCutoffMs(candles: Candle[], now = Date.now()) {
+  const last = candles.at(-1);
+  if (!last || !Number.isFinite(last.timestamp)) return null;
+  const tradingDate = cmeSessionDateKey(last.timestamp);
+  const tradingClose = tradingDate ? cmeTradingCloseMsForDate(tradingDate) : null;
+  const sessionStart = cmeSessionStartMs(now);
+  const isActiveSession = Boolean(
+    tradingDate
+    && tradingDate === cmeSessionDateKey(now)
+    && sessionStart !== null
+    && now >= sessionStart
+    && (tradingClose === null || now < tradingClose),
+  );
+  if (isActiveSession) return tradingClose ?? Number.POSITIVE_INFINITY;
+
+  const gaps = candles
+    .slice(-17)
+    .map((candle, index, tail) => index ? candle.timestamp - tail[index - 1].timestamp : 0)
+    .filter((gap) => Number.isFinite(gap) && gap > 0)
+    .sort((left, right) => left - right);
+  const medianGap = gaps.length ? gaps[Math.floor(gaps.length / 2)] : 60_000;
+  const cadenceCutoff = last.timestamp + Math.max(
+    5 * 60_000,
+    Math.min(60 * 60_000, medianGap * 4),
+  );
+  return tradingClose === null ? cadenceCutoff : Math.min(tradingClose, cadenceCutoff);
+}
+
 export function trimToRecentChartSessions(
   candles: Candle[],
   sessionCount = MINIMUM_CHART_HISTORY_SESSIONS,

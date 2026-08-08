@@ -1,4 +1,5 @@
 import type { Candle } from "@/lib/backtester";
+import { cmeEventTailCutoffMs } from "@/lib/chartHistoryWindow";
 import {
   calculateVolumeProfileValueArea,
   STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT,
@@ -534,7 +535,7 @@ export function clipVolumeProfileToPriceRange(
 }
 
 const LOCAL_GATEWAY_ORIGIN = "/api/institutional-market-data";
-const ORDER_FLOW_CACHE_SCHEMA = "v6";
+const ORDER_FLOW_CACHE_SCHEMA = "v7";
 const orderFlowRecordCache = new Map<string, InstitutionalTrade[]>();
 const orderFlowCacheMergeQueue = new Map<
   string,
@@ -1237,6 +1238,8 @@ export function enrichCandlesWithInstitutionalTrades(
 
   const flows = new Map<number, InstitutionalCandleFlow>();
   const firstTimestamp = base[0].timestamp;
+  const finalCandleIndex = base.length - 1;
+  const finalCandleCutoff = cmeEventTailCutoffMs(base);
 
   for (const record of records) {
     if (
@@ -1264,6 +1267,11 @@ export function enrichCandlesWithInstitutionalTrades(
     if (candleIndex < 0) continue;
     const nextTimestamp = base[candleIndex + 1]?.timestamp;
     if (nextTimestamp != null && record.timestamp >= nextTimestamp) continue;
+    if (
+      candleIndex === finalCandleIndex
+      && finalCandleCutoff !== null
+      && record.timestamp >= finalCandleCutoff
+    ) continue;
 
     const volume = Math.max(0, Number(record.volume) || 0);
     let askVolume = Math.max(0, Number(record.askVolume) || 0);
