@@ -6,6 +6,10 @@ import {
   type MarketTrade,
 } from "@/lib/eventBars";
 import type { Candle } from "@/lib/backtester";
+import {
+  databentoEventTimestampMs,
+  databentoTradeAggressor,
+} from "@/lib/tradeAggressor";
 
 const DATABENTO_HISTORICAL_BASE_URL = "https://api.databento.com/v0";
 // Event charts must retain the same five-session history window as time-based
@@ -32,15 +36,7 @@ function fixedPrice(value: unknown) {
 }
 
 function eventTime(value: unknown) {
-  const text = String(value ?? "").trim();
-  const numeric = typeof value === "number" || /^\d+$/.test(text) ? Number(value) : Number.NaN;
-  if (Number.isFinite(numeric)) {
-    if (numeric > 10_000_000_000_000_000) return Math.floor(numeric / 1_000_000);
-    if (numeric > 10_000_000_000_000) return Math.floor(numeric / 1_000);
-    return numeric;
-  }
-  const parsed = Date.parse(text);
-  return Number.isFinite(parsed) ? parsed : 0;
+  return databentoEventTimestampMs(value) ?? 0;
 }
 
 function isContinuousFuture(symbol: string) {
@@ -88,7 +84,7 @@ function adaptiveEventStart(timeframe: string, requestedStart: number, end: numb
 
 function decodeTrade(row: Record<string, unknown>): MarketTrade | null {
   const size = Math.max(0, Number(row.size ?? 0));
-  const side = String(row.side ?? "").toUpperCase();
+  const aggressor = databentoTradeAggressor(row.side ?? row.aggressor_side);
   const timestamp = eventTime(
     row.ts_event
     ?? row.ts_recv
@@ -103,7 +99,7 @@ function decodeTrade(row: Record<string, unknown>): MarketTrade | null {
     trades: 1,
     // Databento encodes the resting book side: ASK is a sell aggressor and
     // BID is a buy aggressor.
-    delta: side === "B" || side === "BID" ? size : side === "A" || side === "ASK" ? -size : 0,
+    delta: aggressor === "BUY" ? size : aggressor === "SELL" ? -size : 0,
   };
 }
 
@@ -302,13 +298,9 @@ async function streamEventExecutions(args: {
     );
     const tradePrice = fixedPrice(row.price);
     const size = Math.max(0, Number(row.size ?? 0));
-    const side = String(row.side ?? "").toUpperCase();
+    const aggressor = databentoTradeAggressor(row.side ?? row.aggressor_side);
     // Databento's trade side is the aggressor: Bid is a buyer and Ask a seller.
-    const delta = side === "B" || side === "BID"
-      ? size
-      : side === "A" || side === "ASK"
-        ? -size
-        : 0;
+    const delta = aggressor === "BUY" ? size : aggressor === "SELL" ? -size : 0;
     if (timestamp <= 0 || tradePrice <= 0 || size <= 0 || delta === 0) return;
     executions.push([timestamp, tradePrice, size, delta]);
     if (executions.length > MAX_EVENT_EXECUTIONS * 2) {

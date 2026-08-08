@@ -7,6 +7,10 @@ import {
   finalizeValueAreaProfile,
   type ValueAreaProfile,
 } from "@/lib/valueArea";
+import {
+  databentoEventTimestampMs,
+  databentoTradeAggressor,
+} from "@/lib/tradeAggressor";
 
 export const DATABENTO_HISTORICAL_BASE_URL = "https://api.databento.com/v0";
 
@@ -120,18 +124,7 @@ function price(value: unknown) {
 }
 
 function time(value: unknown) {
-  const numeric = typeof value === "number"
-    ? value
-    : /^\d+$/.test(String(value ?? "").trim())
-      ? Number(value)
-      : Number.NaN;
-  if (Number.isFinite(numeric)) {
-    if (numeric > 10_000_000_000_000_000) return Math.floor(numeric / 1_000_000);
-    if (numeric > 10_000_000_000_000) return Math.floor(numeric / 1_000);
-    return numeric;
-  }
-  const parsed = Date.parse(String(value ?? ""));
-  return Number.isFinite(parsed) ? parsed : 0;
+  return databentoEventTimestampMs(value) ?? 0;
 }
 
 function availableEndFromError(detail: string) {
@@ -457,13 +450,13 @@ export async function getDatabentoBars(symbol: string, timeframe: string, start:
     const trades: MarketTrade[] = tradeRows
       .map((row) => {
         const size = Math.max(0, Number(row.size ?? 0));
-        const side = String(row.side ?? "").toUpperCase();
+        const aggressor = databentoTradeAggressor(row.side ?? row.aggressor_side);
         return {
           timestamp: time(row.ts_event ?? row.ts_recv ?? (row.hd as Record<string, unknown> | undefined)?.ts_event),
           price: price(row.price),
           size,
           trades: 1,
-          delta: side === "A" || side === "ASK" ? size : side === "B" || side === "BID" ? -size : 0,
+          delta: aggressor === "BUY" ? size : aggressor === "SELL" ? -size : 0,
         };
       })
       .filter((row) => row.timestamp > 0 && row.price > 0)
@@ -516,19 +509,25 @@ export async function getDatabentoOrderFlowHistory(
   const requestedStart = Date.parse(start);
   const requestedEnd = Date.parse(end);
   const safeEnd = Number.isFinite(requestedEnd) ? requestedEnd : Date.now();
+  // During Globex pauses and weekends, wall-clock "last six hours" contains
+  // no executions even though the chart correctly ends at Friday's close.
+  // Anchor flow history to the newest returned CME bar so the last completed
+  // session still hydrates CVD, Big Trades and KWANT Effort.
+  const size = timeframeMs(timeframe);
+  const latestBarEnd = (bars.at(-1)?.timestamp ?? safeEnd) + size;
+  const flowEndMs = Math.min(safeEnd, latestBarEnd);
   const flowStart = new Date(Math.max(
     Number.isFinite(requestedStart) ? requestedStart : 0,
-    safeEnd - 6 * 60 * 60_000,
+    flowEndMs - 6 * 60 * 60_000,
   )).toISOString();
   const tradeRows = await historicalRequest({
     symbols: symbol,
     stype_in: isContinuousFuture(symbol) ? "continuous" : "raw_symbol",
     schema: "trades",
     start: flowStart,
-    end,
+    end: new Date(flowEndMs).toISOString(),
     limit: "200000",
   });
-  const size = timeframeMs(timeframe);
   const flowByBucket = new Map<number, {
     volume: number;
     trades: number;
@@ -544,12 +543,10 @@ export async function getDatabentoOrderFlowHistory(
       const timestamp = time(row.ts_event ?? row.ts_recv ?? (row.hd as Record<string, unknown> | undefined)?.ts_event);
       const tradePrice = price(row.price);
       const tradeSize = Math.max(0, Number(row.size ?? 0));
-      const side = String(row.side ?? "").toUpperCase();
-      const delta = side === "A" || side === "ASK"
+      const aggressor = databentoTradeAggressor(row.side ?? row.aggressor_side);
+      const delta = aggressor === "BUY"
         ? tradeSize
-        : side === "B" || side === "BID"
-          ? -tradeSize
-          : 0;
+        : aggressor === "SELL" ? -tradeSize : 0;
       return { timestamp, price: tradePrice, tradeSize, delta };
     })
     .filter((row) => row.timestamp > 0 && row.price > 0 && row.tradeSize > 0 && row.delta !== 0)
