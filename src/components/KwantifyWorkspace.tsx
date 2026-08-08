@@ -1836,6 +1836,10 @@ function decodeExecutionTape(value: unknown): InstitutionalTrade[] {
     const price = Number(entry[1]);
     const volume = Number(entry[2]);
     const delta = Number(entry[3]);
+    const flowOnly = entry[7] === "flow";
+    const askVolume = flowOnly ? Number(entry[4]) : delta > 0 ? volume : 0;
+    const bidVolume = flowOnly ? Number(entry[5]) : delta < 0 ? volume : 0;
+    const trades = flowOnly ? Number(entry[6]) : 1;
     if (
       !Number.isFinite(timestamp)
       || !Number.isFinite(price)
@@ -1844,7 +1848,9 @@ function decodeExecutionTape(value: unknown): InstitutionalTrade[] {
       || timestamp <= 0
       || price <= 0
       || volume <= 0
-      || delta === 0
+      || !Number.isFinite(askVolume)
+      || !Number.isFinite(bidVolume)
+      || askVolume + bidVolume <= 0
     ) return [];
     return [{
       eventId: `cme-${timestamp}-${index}`,
@@ -1854,13 +1860,18 @@ function decodeExecutionTape(value: unknown): InstitutionalTrade[] {
       high: price,
       low: price,
       close: price,
-      trades: 1,
-      volume,
-      bidVolume: delta < 0 ? volume : 0,
-      askVolume: delta > 0 ? volume : 0,
+      trades: Math.max(1, trades),
+      volume: askVolume + bidVolume,
+      bidVolume,
+      askVolume,
       delta,
-      aggressor: delta > 0 ? "BUY" as const : "SELL" as const,
+      aggressor: delta > 0
+        ? "BUY" as const
+        : delta < 0
+          ? "SELL" as const
+          : "UNKNOWN" as const,
       sideSemanticsVersion: 2,
+      flowOnly,
     }];
   }).sort((left, right) => left.timestamp - right.timestamp || left.recordIndex - right.recordIndex);
 }
@@ -1870,16 +1881,30 @@ function mergeInstitutionalTradeTape(
   incoming: InstitutionalTrade[],
 ) {
   if (!incoming.length) return current;
+  // Exact Rithmic executions supersede a Databento one-second flow bucket
+  // covering the same instant. Keeping both would double-count live CVD at
+  // the historical/live seam.
+  const exactSecondBuckets = new Set(
+    incoming
+      .filter((record) => !record.flowOnly)
+      .map((record) => Math.floor(record.timestamp / 1_000)),
+  );
+  const baseCurrent = exactSecondBuckets.size
+    ? current.filter((record) => !(
+        record.flowOnly
+        && exactSecondBuckets.has(Math.floor(record.timestamp / 1_000))
+      ))
+    : current;
   const recordKey = (record: InstitutionalTrade) => record.eventId
     || `${record.timestamp}:${record.recordIndex}:${record.close}:${record.volume}`;
   const recentKeys = new Set(
-    current
+    baseCurrent
       .slice(-Math.max(512, incoming.length * 4))
       .map(recordKey),
   );
   const additions = incoming.filter((record) => !recentKeys.has(recordKey(record)));
-  if (!additions.length) return current;
-  const currentTail = current.at(-1);
+  if (!additions.length) return baseCurrent;
+  const currentTail = baseCurrent.at(-1);
   const additionsAreOrdered = additions.every((record, index) => (
     index === 0
       ? !currentTail
@@ -1890,11 +1915,11 @@ function mergeInstitutionalTradeTape(
           && record.recordIndex >= additions[index - 1].recordIndex)
   ));
   if (additionsAreOrdered) {
-    return current.concat(additions).slice(-50_000);
+    return baseCurrent.concat(additions).slice(-50_000);
   }
 
   const records = new Map<string, InstitutionalTrade>();
-  for (const record of [...current, ...additions]) {
+  for (const record of [...baseCurrent, ...additions]) {
     records.set(recordKey(record), record);
   }
   return [...records.values()]

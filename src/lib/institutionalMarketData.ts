@@ -56,6 +56,9 @@ export type InstitutionalTrade = {
   delta: number;
   aggressor: "BUY" | "SELL" | "UNKNOWN";
   sideSemanticsVersion?: number;
+  // Historical CVD buckets preserve signed flow but are not individual
+  // prints. Execution-marker studies must not present them as block trades.
+  flowOnly?: boolean;
 };
 
 export type InstitutionalVolumeProfileLevel = {

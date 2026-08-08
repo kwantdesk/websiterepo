@@ -10,6 +10,7 @@ import { isEventBasedChartInterval } from "@/lib/chartIntervals";
 import {
   getDatabentoEventBars,
   getDatabentoEventHistory,
+  type DatabentoEventExecutionTuple,
 } from "@/lib/databentoEventHistory.server";
 
 export const dynamic = "force-dynamic";
@@ -19,7 +20,7 @@ export const preferredRegion = "iad1";
 
 type HistoryCacheEntry = {
   candles: Candle[];
-  executions: DatabentoExecutionTuple[];
+  executions: Array<DatabentoExecutionTuple | DatabentoEventExecutionTuple>;
   updatedAt: number;
 };
 

@@ -18,7 +18,13 @@ const DATABENTO_HISTORICAL_BASE_URL = "https://api.databento.com/v0";
 // begin at the current tick even though Databento returned older executions.
 const MAX_EVENT_BARS = 120_000;
 const EVENT_BAR_FLUSH_SIZE = 16_384;
-const MAX_EVENT_EXECUTIONS = 25_000;
+// Keep one exact aggressor-flow bucket per second instead of retaining only
+// the final 25,000 raw prints. NQ can exhaust 25,000 executions in minutes,
+// leaving a historical CVD line visible only at the far-right edge. A
+// one-second bucket preserves total ask volume, bid volume and net delta for
+// the complete requested window while staying small enough for the browser.
+const MAX_EVENT_FLOW_BUCKETS = 30_000;
+const EVENT_FLOW_BUCKET_MS = 1_000;
 const EVENT_EXECUTION_LOOKBACK_MS = 6 * 60 * 60_000;
 type EventHistorySchema = "trades" | "ohlcv-1s";
 
@@ -27,6 +33,10 @@ export type DatabentoEventExecutionTuple = [
   price: number,
   size: number,
   delta: number,
+  askVolume?: number,
+  bidVolume?: number,
+  trades?: number,
+  kind?: "flow",
 ];
 
 function fixedPrice(value: unknown) {
@@ -300,11 +310,33 @@ async function streamEventExecutions(args: {
     const size = Math.max(0, Number(row.size ?? 0));
     const aggressor = databentoTradeAggressor(row.side ?? row.aggressor_side);
     // Databento's trade side is the aggressor: Bid is a buyer and Ask a seller.
-    const delta = aggressor === "BUY" ? size : aggressor === "SELL" ? -size : 0;
+    const askVolume = aggressor === "BUY" ? size : 0;
+    const bidVolume = aggressor === "SELL" ? size : 0;
+    const delta = askVolume - bidVolume;
     if (timestamp <= 0 || tradePrice <= 0 || size <= 0 || delta === 0) return;
-    executions.push([timestamp, tradePrice, size, delta]);
-    if (executions.length > MAX_EVENT_EXECUTIONS * 2) {
-      executions.splice(0, executions.length - MAX_EVENT_EXECUTIONS);
+    const bucketTimestamp = Math.floor(timestamp / EVENT_FLOW_BUCKET_MS) * EVENT_FLOW_BUCKET_MS;
+    const previous = executions.at(-1);
+    if (previous?.[0] === bucketTimestamp) {
+      previous[1] = tradePrice;
+      previous[2] += size;
+      previous[3] += delta;
+      previous[4] = Number(previous[4] ?? 0) + askVolume;
+      previous[5] = Number(previous[5] ?? 0) + bidVolume;
+      previous[6] = Number(previous[6] ?? 0) + 1;
+      return;
+    }
+    executions.push([
+      bucketTimestamp,
+      tradePrice,
+      size,
+      delta,
+      askVolume,
+      bidVolume,
+      1,
+      "flow",
+    ]);
+    if (executions.length > MAX_EVENT_FLOW_BUCKETS) {
+      executions.splice(0, executions.length - MAX_EVENT_FLOW_BUCKETS);
     }
   };
   const consume = (line: string) => {
@@ -336,7 +368,7 @@ async function streamEventExecutions(args: {
   }
   buffer += decoder.decode();
   consume(buffer);
-  return executions.slice(-MAX_EVENT_EXECUTIONS);
+  return executions;
 }
 
 export async function getDatabentoEventBars(

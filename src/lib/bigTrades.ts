@@ -45,7 +45,12 @@ function tradeCandidates(
   // This is an execution-tape study. Candle volume is never treated as one
   // large order; only real CME trade records are eligible.
   const liveCandidates = marketTrades.flatMap((trade) => {
-    if (trade.timestamp < cutoff || trade.volume <= 0 || trade.aggressor === "UNKNOWN") return [];
+    if (
+      trade.flowOnly
+      || trade.timestamp < cutoff
+      || trade.volume <= 0
+      || trade.aggressor === "UNKNOWN"
+    ) return [];
     return [{
       id: trade.eventId ?? `record-${trade.recordIndex}`,
       timestamp: trade.timestamp,
