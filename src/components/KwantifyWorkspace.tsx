@@ -4261,16 +4261,21 @@ function WorkspaceChartPane({
     // An approximation must never overwrite an execution-accurate profile.
     // This effect re-runs whenever its inputs change (settings, trading-date
     // window, accumulated tape), and a blind replace made the chart visibly
-    // flip back to the APPROX-OHLCV render every time � losing a good profile
-    // that had already arrived. Provisional profiles now only fill sessions
-    // that have no exact profile yet.
-    const sessionKeyOf = (profile: InstitutionalVolumeProfile) =>
-      `${profile.period}:${profile.period === "daily" ? chicagoTradingDate(profile.startMs) : ""}`;
+    // flip back to the APPROX-OHLCV render every time, losing a good profile
+    // that had already arrived. Do not render a provisional candle profile at
+    // all: blank/loading is preferable to presenting invented order flow.
+    const activeRoot = displayCmeSymbol(pane.symbol);
+    const activeTradingDates = new Set(tradingDates);
     setVolumeProfiles((current) => {
-      const exact = current.filter((profile) => profile.provider !== "Chart");
-      const covered = new Set(exact.map(sessionKeyOf));
-      const filler = provisionalProfiles.filter((profile) => !covered.has(sessionKeyOf(profile)));
-      return [...exact, ...filler].sort((left, right) => left.startMs - right.startMs);
+      return current
+        .filter((profile) =>
+          profile.provider !== "Chart"
+          && profile.root === activeRoot
+          && (
+            profile.period !== "daily"
+            || activeTradingDates.has(chicagoTradingDate(profile.startMs))
+          ))
+        .sort((left, right) => left.startMs - right.startMs);
     });
 
     const replaceExactProfile = (
@@ -12630,4 +12635,3 @@ export default function KwantifyWorkspace({
     </div>
   );
 }
-

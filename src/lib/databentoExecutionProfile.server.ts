@@ -2,7 +2,10 @@ import "server-only";
 
 import { streamHistoricalTradeRows } from "@/lib/databento";
 import { calculateVolumeProfileValueArea, volumeProfileBinTick } from "@/lib/volumeProfileMath";
-import { databentoTradeAggressor } from "@/lib/tradeAggressor";
+import {
+  databentoEventTimestampMs,
+  databentoTradeAggressor,
+} from "@/lib/tradeAggressor";
 import type {
   InstitutionalVolumeProfile,
   InstitutionalVolumeProfileLevel,
@@ -52,16 +55,7 @@ function eventMs(row: Record<string, unknown>): number | null {
   // which presented as an empty profile rather than an error.
   const header = row.hd as Record<string, unknown> | undefined;
   const raw = header?.ts_event ?? row.ts_event ?? row.tsEvent ?? row.ts_recv;
-  if (typeof raw === "string") {
-    const parsed = Date.parse(raw);
-    if (Number.isFinite(parsed)) return parsed;
-    const nanos = Number(raw);
-    return Number.isFinite(nanos) ? Math.floor(nanos / 1_000_000) : null;
-  }
-  const nanos = numeric(raw);
-  if (nanos === null) return null;
-  // Databento sends nanoseconds since epoch unless pretty_ts rewrote it.
-  return nanos > 1e15 ? Math.floor(nanos / 1_000_000) : nanos;
+  return databentoEventTimestampMs(raw);
 }
 
 export async function buildDatabentoExecutionProfile(

@@ -82,7 +82,14 @@ async function executionProfileResponse(request: NextRequest) {
     });
     if (!profile) return null;
     return NextResponse.json(profile, { headers: { "Cache-Control": "no-store" } });
-  } catch {
+  } catch (error) {
+    console.error("Exact Databento volume profile failed.", {
+      symbol,
+      contractSymbol,
+      period,
+      tradingDate,
+      message: error instanceof Error ? error.message : String(error),
+    });
     // Fall through to the collector rather than failing the request.
     return null;
   }
