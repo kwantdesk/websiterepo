@@ -34,6 +34,16 @@ export function cmeSessionDateKey(timestamp: number) {
   // with the following business date.
   const sessionDate = new Date(Date.UTC(year, month - 1, day));
   if (hour >= 17) sessionDate.setUTCDate(sessionDate.getUTCDate() + 1);
+
+  // There is no Saturday or Sunday CME trading date. Quotes can retain a
+  // current timestamp while the venue is in its Friday-close maintenance
+  // window; allowing that timestamp to manufacture a weekend session makes
+  // every historical execution request target an empty day. Keep the last
+  // completed Friday session until Globex genuinely reopens Sunday at 17:00
+  // Chicago, at which point the normal rule above labels it Monday.
+  const weekday = sessionDate.getUTCDay();
+  if (weekday === 6) sessionDate.setUTCDate(sessionDate.getUTCDate() - 1);
+  if (weekday === 0) sessionDate.setUTCDate(sessionDate.getUTCDate() - 2);
   return sessionDate.toISOString().slice(0, 10);
 }
 

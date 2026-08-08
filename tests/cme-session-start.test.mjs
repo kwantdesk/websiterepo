@@ -44,6 +44,16 @@ test("the start belongs to the same trading session as the timestamp", () => {
   }
 });
 
+test("the closed weekend remains on Friday's completed CME trading date", () => {
+  assert.equal(cmeSessionDateKey(Date.parse("2026-08-07T23:00:00Z")), "2026-08-07");
+  assert.equal(cmeSessionDateKey(Date.parse("2026-08-08T15:00:00Z")), "2026-08-07");
+  assert.equal(cmeSessionDateKey(Date.parse("2026-08-09T15:00:00Z")), "2026-08-07");
+});
+
+test("Sunday Globex reopen advances to Monday's CME trading date", () => {
+  assert.equal(cmeSessionDateKey(Date.parse("2026-08-09T22:00:00Z")), "2026-08-10");
+});
+
 test("a full session is longer than the old six-hour window", () => {
   // The regression this fixes: at NY midday a rolling 6h window misses most
   // of a session that opened at 17:00 the previous day.
