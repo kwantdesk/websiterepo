@@ -405,13 +405,22 @@ export async function getDatabentoEventHistory(
   }
   if (!isEventBasedChartInterval(timeframe)) throw new Error(`Unsupported event interval: ${timeframe}`);
 
-  const [candles, executions] = await Promise.all([
-    getDatabentoEventBars(symbol, timeframe, start, end),
-    streamEventExecutions({
-      symbol,
-      start: requestedStart,
-      end: requestedEnd,
-    }).catch(() => [] as DatabentoEventExecutionTuple[]),
-  ]);
+  const candles = await getDatabentoEventBars(symbol, timeframe, start, end);
+  const latestCandleTimestamp = Number(candles.at(-1)?.timestamp ?? 0);
+  // On weekends and exchange closures, `requestedEnd` can sit days after the
+  // final traded event. Looking back six hours from wall-clock now therefore
+  // returns no executions even though the chart correctly contains Friday's
+  // event bars. Anchor the flow window to the latest actual candle whenever
+  // the market tail is stale; during a live session retain the real request
+  // end so the forming bar receives the freshest executions.
+  const executionEnd = latestCandleTimestamp > 0
+    && requestedEnd - latestCandleTimestamp > 10 * 60_000
+      ? Math.min(requestedEnd, latestCandleTimestamp + 60_000)
+      : requestedEnd;
+  const executions = await streamEventExecutions({
+    symbol,
+    start: requestedStart,
+    end: executionEnd,
+  }).catch(() => [] as DatabentoEventExecutionTuple[]);
   return { candles, executions };
 }

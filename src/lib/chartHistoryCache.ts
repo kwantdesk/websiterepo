@@ -27,7 +27,8 @@ const MAX_CANDLES_PER_SERIES = 120_000;
 // Historical Big Trades is a time-distributed, server-compacted tape. Retain
 // enough of it to cover the loaded chart instead of silently reducing it to
 // only the most recent minutes.
-const MAX_EXECUTIONS_PER_SERIES = 50_000;
+const MAX_FLOW_BUCKETS_PER_SERIES = 30_000;
+const MAX_EXACT_EXECUTIONS_PER_SERIES = 25_000;
 const memoryCache = new Map<string, CachedHistory>();
 const executionTapeMemoryCache = new Map<string, CachedExecutionTape>();
 let databasePromise: Promise<IDBDatabase> | null = null;
@@ -42,7 +43,10 @@ function cacheKey(symbol: string, timeframe: string) {
 }
 
 function executionTapeCacheKey(symbol: string, timeframe: string) {
-  return `tape::${symbol}::${timeframe}`;
+  // Tape v2 keeps compact historical flow separately from exact executions.
+  // Ignore older tail-only records, otherwise a returning browser can restore
+  // the broken cache and make CVD appear only on the newest candle again.
+  return `tape-v2::${symbol}::${timeframe}`;
 }
 
 function timeframeDurationMs(timeframe: string) {
@@ -151,9 +155,19 @@ function normalizeExecutionTape(records: InstitutionalTrade[]) {
       || `${normalized.timestamp}:${normalized.recordIndex}:${normalized.close}:${normalized.volume}`;
     byId.set(key, normalized);
   });
-  return [...byId.values()]
-    .sort((left, right) => left.timestamp - right.timestamp || left.recordIndex - right.recordIndex)
-    .slice(-MAX_EXECUTIONS_PER_SERIES);
+  const ordered = [...byId.values()]
+    .sort((left, right) => left.timestamp - right.timestamp || left.recordIndex - right.recordIndex);
+  // A global tail slice lets a dense exact-print tape evict every compact
+  // historical CVD bucket. Preserve independent capacity for the two record
+  // classes, matching the in-memory merger used by the chart workspace.
+  const flow = ordered
+    .filter((record) => record.flowOnly)
+    .slice(-MAX_FLOW_BUCKETS_PER_SERIES);
+  const exact = ordered
+    .filter((record) => !record.flowOnly)
+    .slice(-MAX_EXACT_EXECUTIONS_PER_SERIES);
+  return [...flow, ...exact]
+    .sort((left, right) => left.timestamp - right.timestamp || left.recordIndex - right.recordIndex);
 }
 
 function resampleCandles(candles: Candle[], timeframe: string) {
