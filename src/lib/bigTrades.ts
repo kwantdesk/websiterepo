@@ -128,7 +128,11 @@ export function calculateBigTradePrints(
   );
   const visualRange = Math.max(1, visualCeiling - threshold);
 
-  return qualified.slice(-2_500).map((candidate) => {
+  // Keep the qualified history across the loaded chart. The former 2,500
+  // tail cap made older bars lose their prints even though the execution tape
+  // was present; 12,000 remains bounded while covering the adaptive top decile
+  // of the retained, time-distributed execution history.
+  return qualified.slice(-12_000).map((candidate) => {
     const significance = clamp((candidate.volume - threshold) / visualRange, 0, 1);
     const visualWeight = Math.sqrt(significance);
     return {

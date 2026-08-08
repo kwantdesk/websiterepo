@@ -24,7 +24,10 @@ const DATABASE_VERSION = 1;
 const STORE_NAME = "cme-history";
 const MAX_CACHE_AGE_MS = 12 * 24 * 60 * 60_000;
 const MAX_CANDLES_PER_SERIES = 120_000;
-const MAX_EXECUTIONS_PER_SERIES = 25_000;
+// Historical Big Trades is a time-distributed, server-compacted tape. Retain
+// enough of it to cover the loaded chart instead of silently reducing it to
+// only the most recent minutes.
+const MAX_EXECUTIONS_PER_SERIES = 50_000;
 const memoryCache = new Map<string, CachedHistory>();
 const executionTapeMemoryCache = new Map<string, CachedExecutionTape>();
 let databasePromise: Promise<IDBDatabase> | null = null;

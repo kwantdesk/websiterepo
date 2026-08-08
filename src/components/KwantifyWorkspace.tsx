@@ -102,6 +102,7 @@ import { mergeGammaLevelsAtSamePrice, type ChartGammaLevelsPayload } from "@/lib
 import {
   buildChartVolumeProfile,
   applyInstitutionalTradesToVolumeProfile,
+  enrichCandlesWithInstitutionalCandleFlow,
   enrichCandlesWithInstitutionalTrades,
   fetchInstitutionalOrderFlowLevels,
   fetchInstitutionalVolumeProfile,
@@ -1707,6 +1708,20 @@ function hasFiveDayHistory(candles: Candle[], timeframe: string) {
   return hasMinimumChartHistory(candles, timeframe);
 }
 
+function hasUsableOrderFlowHistory(candles: Candle[]) {
+  const verified = candles.filter((candle) =>
+    Number(candle.askVolume ?? 0) + Number(candle.bidVolume ?? 0) > 0);
+  // A five-day 1m chart should carry a meaningful run of flow candles, while
+  // a 4h/daily chart may legitimately contain only a handful. Scale the
+  // requirement to the chart rather than forcing every interval to have 60
+  // populated bars (which made higher timeframes re-download forever).
+  const minimumVerified = Math.min(60, Math.max(2, Math.floor(candles.length * 0.05)));
+  if (verified.length < minimumVerified) return false;
+  const first = verified[0]?.timestamp ?? 0;
+  const last = verified.at(-1)?.timestamp ?? 0;
+  return last > first;
+}
+
 function reanchorLiveMidIntoCandles(candles: Candle[], mid: number, symbol: string) {
   if (!isPositiveFinite(mid) || candles.length === 0) return candles;
 
@@ -1739,6 +1754,33 @@ function workspaceOrderFlowKey(symbol: string, timeframe: string) {
   return `${symbol}::${timeframe}::flow`;
 }
 
+function compactIndicatorExecutionHistory(records: InstitutionalTrade[]) {
+  if (records.length <= 50_000) return records;
+  const ordered = [...records].sort((left, right) =>
+    left.timestamp - right.timestamp || left.recordIndex - right.recordIndex);
+  const recentCutoff = (ordered.at(-1)?.timestamp ?? Date.now()) - 15 * 60_000;
+  const strongestByMinute = new Map<number, InstitutionalTrade[]>();
+  const recent: InstitutionalTrade[] = [];
+  ordered.forEach((record) => {
+    if (record.timestamp >= recentCutoff) {
+      recent.push(record);
+      return;
+    }
+    const minute = Math.floor(record.timestamp / 60_000) * 60_000;
+    const bucket = strongestByMinute.get(minute) ?? [];
+    bucket.push(record);
+    bucket.sort((left, right) => right.volume - left.volume || left.timestamp - right.timestamp);
+    if (bucket.length > 12) bucket.length = 12;
+    strongestByMinute.set(minute, bucket);
+  });
+  return [
+    ...[...strongestByMinute.values()].flat(),
+    ...recent.slice(-25_000),
+  ]
+    .sort((left, right) => left.timestamp - right.timestamp || left.recordIndex - right.recordIndex)
+    .slice(-50_000);
+}
+
 function fetchWorkspaceOrderFlow(
   symbol: string,
   timeframe: string,
@@ -1750,8 +1792,8 @@ function fetchWorkspaceOrderFlow(
   // Anchor to the CME session open, not a rolling 6-hour window. A rolling
   // window leaves the earlier part of the session with no executions, so the
   // volume profile carries real delta only for the recent hours and a
-  // delta-free block for everything before it � visible as a profile whose
-  // delta bars simply stop partway up. Two sessions of headroom keeps the
+  // delta-free block before it. That appears as a profile whose delta bars
+  // simply stop partway up. Two sessions of headroom keeps the
   // weekly profile and an overnight chart covered.
   const now = Date.now();
   const sessionStartMs = cmeSessionStartMs(now);
@@ -1848,7 +1890,7 @@ function mergeInstitutionalTradeTape(
           && record.recordIndex >= additions[index - 1].recordIndex)
   ));
   if (additionsAreOrdered) {
-    return current.concat(additions).slice(-25_000);
+    return current.concat(additions).slice(-50_000);
   }
 
   const records = new Map<string, InstitutionalTrade>();
@@ -1857,7 +1899,7 @@ function mergeInstitutionalTradeTape(
   }
   return [...records.values()]
     .sort((left, right) => left.timestamp - right.timestamp || left.recordIndex - right.recordIndex)
-    .slice(-25_000);
+    .slice(-50_000);
 }
 
 async function fetchWorkspaceCandles(
@@ -1916,13 +1958,13 @@ async function fetchWorkspaceCandles(
         ? decodeExecutionTape(payload.executions)
         : [];
       const privateExecutionTape = institutionalOrderFlow
-        ? institutionalOrderFlow.trades.length
-          ? institutionalOrderFlow.trades
-          : institutionalOrderFlow.records
+        ? institutionalOrderFlow.records.length
+          ? institutionalOrderFlow.records
+          : institutionalOrderFlow.trades
         : [];
       const executionTape = mergeInstitutionalTradeTape(
         providerExecutionTape,
-        privateExecutionTape,
+        compactIndicatorExecutionHistory(privateExecutionTape),
       );
       if (includeOrderFlow) {
         workspaceExecutionTape.set(
@@ -2961,6 +3003,7 @@ function WorkspaceChartPane({
   const intervalCommandPanelRef = useRef<HTMLDivElement>(null);
   const latestCandlesRef = useRef<Candle[]>([]);
   const latestMarketTradesRef = useRef<InstitutionalTrade[]>([]);
+  const latestOrderFlowCandlesRef = useRef<Candle[]>([]);
   const lastCandleStateSyncRef = useRef(0);
   const lastMarketTradeStateSyncRef = useRef(0);
   const classicGexHistoryRef = useRef<ClassicGexHistorySnapshot[]>([]);
@@ -3282,6 +3325,7 @@ function WorkspaceChartPane({
     setMarketTrades(immediateMarketTrades);
     latestCandlesRef.current = hasImmediateHistory ? immediateCandles : [];
     latestMarketTradesRef.current = immediateMarketTrades;
+    latestOrderFlowCandlesRef.current = [];
     historyHydratedRef.current = hasImmediateHistory;
     liveTailStartTimestampRef.current = observedTail[0]?.timestamp ?? null;
     pendingLiveTicksRef.current = [];
@@ -3305,7 +3349,9 @@ function WorkspaceChartPane({
         resolvedContractSymbol,
       ).then((result) => {
         if (cancelled || !result) return;
-        const exactTape = result.trades.length ? result.trades : result.records;
+        const exactTape = compactIndicatorExecutionHistory(
+          result.records.length ? result.records : result.trades,
+        );
         const mergedTape = mergeInstitutionalTradeTape(
           latestMarketTradesRef.current,
           exactTape,
@@ -3320,17 +3366,23 @@ function WorkspaceChartPane({
           void writeExecutionTapeCache(pane.symbol, pane.timeframe, mergedTape);
         }
 
-        // Time-based candles come from the complete CME history request. Only
-        // event-based intervals use the bridge's exact reconstructed candles;
-        // otherwise a six-hour enrichment could overwrite a full week view.
-        if (!isEventBasedChartInterval(pane.timeframe) || !result.candles.length) return;
-        const exactCandles = sanitizeCandles(result.candles, pane.symbol);
-        if (!exactCandles.length) return;
-        const cutoff = exactCandles[0].timestamp;
-        const mergedCandles = sanitizeCandles([
-          ...latestCandlesRef.current.filter((candle) => candle.timestamp < cutoff),
-          ...exactCandles,
-        ], pane.symbol);
+        const orderFlowCandles = sanitizeCandles(result.candles, pane.symbol);
+        latestOrderFlowCandlesRef.current = orderFlowCandles;
+        if (!latestCandlesRef.current.length) return;
+        // Preserve the authoritative chart OHLC. Time bars receive the
+        // gateway's aggregated bid/ask fields; event bars are enriched from
+        // the exact execution tape because a clock bucket cannot replace a
+        // range/volume/Renko bar without corrupting its geometry.
+        const mergedCandles = isEventBasedChartInterval(pane.timeframe)
+          ? enrichCandlesWithInstitutionalTrades(
+              latestCandlesRef.current,
+              mergedTape,
+              latestCandlesRef.current.length,
+            )
+          : enrichCandlesWithInstitutionalCandleFlow(
+              latestCandlesRef.current,
+              orderFlowCandles,
+            );
         latestCandlesRef.current = mergedCandles;
         historyHydratedRef.current = true;
         setCandles(mergedCandles);
@@ -3401,7 +3453,8 @@ function WorkspaceChartPane({
       );
       const cachedIsHydrated = cachedCandles.length > 0
         && cachedTailIsFresh
-        && (!needsFiveDayBackfill || hasFiveDayHistory(cachedHistory, pane.timeframe));
+        && (!needsFiveDayBackfill || hasFiveDayHistory(cachedHistory, pane.timeframe))
+        && (!needsOrderFlowHistory || hasUsableOrderFlowHistory(cachedCandles));
       if (cachedBase.length) {
         latestCandlesRef.current = cachedCandles;
         historyHydratedRef.current = true;
@@ -3422,7 +3475,7 @@ function WorkspaceChartPane({
           pane.broker,
           period,
           500,
-          false,
+          needsOrderFlowHistory,
           requestController.signal,
         );
         if (cancelled) return;
@@ -3455,7 +3508,7 @@ function WorkspaceChartPane({
         const historyWithObserved = pane.broker === "Databento"
           ? mergeObservedDatabentoTail(mergedHistory, latestObserved, pane.timeframe)
           : mergedHistory;
-        const merged = pane.broker === "Databento"
+        const mergedBase = pane.broker === "Databento"
           ? mergeHistoricalWithLiveTail(
               historyWithObserved,
               latestCandlesRef.current,
@@ -3463,6 +3516,18 @@ function WorkspaceChartPane({
               liveTailStartTimestampRef.current,
             )
           : clean;
+        const merged = needsOrderFlowHistory
+          ? isEventBasedChartInterval(pane.timeframe)
+            ? enrichCandlesWithInstitutionalTrades(
+                mergedBase,
+                nextMarketTrades,
+                mergedBase.length,
+              )
+            : enrichCandlesWithInstitutionalCandleFlow(
+                mergedBase,
+                latestOrderFlowCandlesRef.current,
+              )
+          : mergedBase;
         latestCandlesRef.current = merged;
         latestMarketTradesRef.current = nextMarketTrades;
         if (nextMarketTrades.length) {
@@ -4017,7 +4082,7 @@ function WorkspaceChartPane({
             }];
           });
           if (liveExecutions.length && !rithmicConnectedRef.current) {
-            const nextTape = [...latestMarketTradesRef.current, ...liveExecutions].slice(-10_000);
+            const nextTape = [...latestMarketTradesRef.current, ...liveExecutions].slice(-50_000);
             latestMarketTradesRef.current = nextTape;
             workspaceExecutionTape.set(workspaceOrderFlowKey(pane.symbol, pane.timeframe), nextTape);
             const now = Date.now();

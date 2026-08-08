@@ -593,12 +593,25 @@ export async function getDatabentoOrderFlowHistory(
     };
   });
 
-  // Raw GLBX trades can be extremely dense. Ten thousand recent prints are
-  // enough to establish adaptive thresholds and then continue seamlessly with
-  // the live tape without turning every chart response into a multi-megabyte
-  // object payload.
-  const compactExecutions = executions
-    .slice(-10_000)
+  // Raw GLBX trades are extremely dense. Keeping only the latest prints made
+  // Big Trades appear to begin at the moment the indicator was enabled. Keep
+  // the strongest executions from every minute instead: the full tape still
+  // builds exact CVD/effort candles above, while this compact, time-distributed
+  // sample preserves historical large prints without shipping millions of
+  // ordinary executions to the browser.
+  const strongestByMinute = new Map<number, typeof executions>();
+  executions.forEach((trade) => {
+    const minute = Math.floor(trade.timestamp / 60_000) * 60_000;
+    const bucket = strongestByMinute.get(minute) ?? [];
+    bucket.push(trade);
+    bucket.sort((left, right) => right.tradeSize - left.tradeSize || left.timestamp - right.timestamp);
+    if (bucket.length > 12) bucket.length = 12;
+    strongestByMinute.set(minute, bucket);
+  });
+  const compactExecutions = [...strongestByMinute.values()]
+    .flat()
+    .sort((left, right) => left.timestamp - right.timestamp)
+    .slice(-50_000)
     .map((trade): DatabentoExecutionTuple => [
       trade.timestamp,
       trade.price,

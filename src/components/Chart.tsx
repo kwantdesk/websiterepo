@@ -74,7 +74,10 @@ import {
   LIVE_CHART_CANDLE_EVENT,
   type LiveChartCandleDetail,
 } from "@/lib/chartLiveEvents";
-import type { ChartIndicatorInstance } from "@/lib/chartIndicatorCatalog";
+import {
+  CHART_INDICATOR_BY_ID,
+  type ChartIndicatorInstance,
+} from "@/lib/chartIndicatorCatalog";
 import {
   calculateDeltaPercentHighlights,
   calculateIndicatorSeries,
@@ -1786,9 +1789,16 @@ export default function Chart({
     [backgroundLevels, levels, priceFormat.minMove],
   );
   const indicatorSignature = useMemo(() => JSON.stringify(indicators), [indicators]);
+  const indicatorHistoryLimit = useMemo(
+    () => indicators.some((instance) =>
+      instance.enabled && CHART_INDICATOR_BY_ID.get(instance.indicatorId)?.requiresOrderFlow)
+      ? 10_000
+      : 1_500,
+    [indicatorSignature, indicators],
+  );
   const indicatorWindowCandles = useMemo(
-    () => sampledIndicatorCandles.slice(-1_500),
-    [sampledIndicatorCandles],
+    () => sampledIndicatorCandles.slice(-indicatorHistoryLimit),
+    [indicatorHistoryLimit, sampledIndicatorCandles],
   );
   const indicatorMarketTrades = useMemo(() => {
     if (!indicatorWindowCandles.length || !sampledIndicatorMarketTrades.length) return [];
@@ -1810,9 +1820,9 @@ export default function Chart({
     () => enrichCandlesWithInstitutionalTrades(
       indicatorWindowCandles,
       indicatorMarketTrades,
-      1_500,
+      indicatorHistoryLimit,
     ),
-    [indicatorMarketTrades, indicatorWindowCandles],
+    [indicatorHistoryLimit, indicatorMarketTrades, indicatorWindowCandles],
   );
   const calculatedIndicatorSeries = useMemo(
     () => indicators.flatMap((instance) =>

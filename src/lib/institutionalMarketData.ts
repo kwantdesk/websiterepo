@@ -1322,6 +1322,58 @@ export function enrichCandlesWithInstitutionalTrades(
   });
 }
 
+/**
+ * Overlay an already aggregated execution history onto the matching chart
+ * candles without replacing their provider OHLC geometry.
+ *
+ * Rithmic reports delta OHLC on a running-session basis. Chart indicators
+ * consume bar-relative delta, so normalize each source candle back to a zero
+ * open before CVD accumulates it. Without this conversion CVD double-counts
+ * the running total on every historical bar.
+ */
+export function enrichCandlesWithInstitutionalCandleFlow(
+  candles: Candle[],
+  flowCandles: Candle[],
+) {
+  if (!candles.length || !flowCandles.length) return candles;
+  const flowByTimestamp = new Map(
+    flowCandles
+      .filter((candle) => Number(candle.askVolume ?? 0) + Number(candle.bidVolume ?? 0) > 0)
+      .map((candle) => [candle.timestamp, candle] as const),
+  );
+  if (!flowByTimestamp.size) return candles;
+  return candles.map((candle) => {
+    const flow = flowByTimestamp.get(candle.timestamp);
+    if (!flow) return candle;
+    const askVolume = Math.max(0, Number(flow.askVolume ?? 0));
+    const bidVolume = Math.max(0, Number(flow.bidVolume ?? 0));
+    const delta = Number.isFinite(Number(flow.delta))
+      ? Number(flow.delta)
+      : askVolume - bidVolume;
+    const sourceOpen = Number.isFinite(Number(flow.deltaOpen)) ? Number(flow.deltaOpen) : 0;
+    const sourceHigh = Number.isFinite(Number(flow.deltaHigh))
+      ? Number(flow.deltaHigh)
+      : sourceOpen + Math.max(0, delta);
+    const sourceLow = Number.isFinite(Number(flow.deltaLow))
+      ? Number(flow.deltaLow)
+      : sourceOpen + Math.min(0, delta);
+    return {
+      ...candle,
+      volume: Math.max(Number(candle.volume ?? 0), askVolume + bidVolume),
+      trades: Math.max(1, Number(flow.trades ?? candle.trades ?? 1)),
+      askVolume,
+      bidVolume,
+      askTrades: Math.max(0, Number(flow.askTrades ?? 0)),
+      bidTrades: Math.max(0, Number(flow.bidTrades ?? 0)),
+      delta,
+      deltaOpen: 0,
+      deltaHigh: sourceHigh - sourceOpen,
+      deltaLow: sourceLow - sourceOpen,
+      deltaClose: delta,
+    };
+  });
+}
+
 function normalizeInstitutionalTradeRecords(value: unknown): InstitutionalTrade[] {
   if (!Array.isArray(value)) return [];
   return value.flatMap((item) => {
