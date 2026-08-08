@@ -16,6 +16,34 @@ const CME_SESSION_CLOCK = new Intl.DateTimeFormat("en-CA", {
   hourCycle: "h23",
 });
 
+function chicagoWallClockMs(
+  year: number,
+  month: number,
+  day: number,
+  hour: number,
+) {
+  // Chicago is UTC-5 or UTC-6. Probe both offsets and keep the instant whose
+  // formatted wall clock matches the requested date and hour. Resolving the
+  // wall clock directly matters for Friday's session close: the next *open*
+  // is Sunday, but Friday's profile still ends at Friday 17:00 Chicago.
+  for (const offsetHours of [5, 6]) {
+    const candidate = Date.UTC(year, month - 1, day, hour + offsetHours);
+    const parts = Object.fromEntries(
+      CME_SESSION_CLOCK
+        .formatToParts(new Date(candidate))
+        .filter((part) => part.type !== "literal")
+        .map((part) => [part.type, part.value]),
+    );
+    if (
+      Number(parts.year) === year
+      && Number(parts.month) === month
+      && Number(parts.day) === day
+      && Number(parts.hour) === hour
+    ) return candidate;
+  }
+  return null;
+}
+
 export function cmeSessionDateKey(timestamp: number) {
   if (!Number.isFinite(timestamp)) return null;
   const parts = Object.fromEntries(
@@ -61,24 +89,12 @@ export function cmeSessionStartMs(timestamp: number): number | null {
   const previousDay = new Date(Date.UTC(year, month - 1, day));
   previousDay.setUTCDate(previousDay.getUTCDate() - 1);
 
-  // Chicago is UTC-5 or UTC-6; resolve which by probing both candidates and
-  // keeping the one whose Chicago wall clock actually reads 17:00.
-  for (const offsetHours of [5, 6]) {
-    const candidate = Date.UTC(
-      previousDay.getUTCFullYear(),
-      previousDay.getUTCMonth(),
-      previousDay.getUTCDate(),
-      17 + offsetHours,
-    );
-    const parts = Object.fromEntries(
-      CME_SESSION_CLOCK
-        .formatToParts(new Date(candidate))
-        .filter((part) => part.type !== "literal")
-        .map((part) => [part.type, part.value]),
-    );
-    if (Number(parts.hour) === 17) return candidate;
-  }
-  return null;
+  return chicagoWallClockMs(
+    previousDay.getUTCFullYear(),
+    previousDay.getUTCMonth() + 1,
+    previousDay.getUTCDate(),
+    17,
+  );
 }
 
 /**
@@ -94,11 +110,15 @@ export function cmeSessionWindowForDate(
 ): { startMs: number; endMs: number } | null {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(tradingDate)) return null;
   const [year, month, day] = tradingDate.split("-").map(Number);
-  // Midday UTC on the trading date is early morning in Chicago, which always
-  // falls inside the session bearing that date.
-  const insideSession = Date.UTC(year, month - 1, day, 12);
-  const startMs = cmeSessionStartMs(insideSession);
-  const endMs = cmeSessionStartMs(insideSession + 24 * 60 * 60_000);
+  const previousDay = new Date(Date.UTC(year, month - 1, day));
+  previousDay.setUTCDate(previousDay.getUTCDate() - 1);
+  const startMs = chicagoWallClockMs(
+    previousDay.getUTCFullYear(),
+    previousDay.getUTCMonth() + 1,
+    previousDay.getUTCDate(),
+    17,
+  );
+  const endMs = chicagoWallClockMs(year, month, day, 17);
   if (startMs === null || endMs === null || endMs <= startMs) return null;
   return { startMs, endMs };
 }

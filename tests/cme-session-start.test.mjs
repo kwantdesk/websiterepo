@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { cmeSessionDateKey, cmeSessionStartMs } from "../src/lib/chartHistoryWindow.ts";
+import {
+  cmeSessionDateKey,
+  cmeSessionStartMs,
+  cmeSessionWindowForDate,
+} from "../src/lib/chartHistoryWindow.ts";
 
 function chicagoHour(ms) {
   return Number(
@@ -52,6 +56,20 @@ test("the closed weekend remains on Friday's completed CME trading date", () => 
 
 test("Sunday Globex reopen advances to Monday's CME trading date", () => {
   assert.equal(cmeSessionDateKey(Date.parse("2026-08-09T22:00:00Z")), "2026-08-10");
+});
+
+test("Friday execution profiles end at Friday close rather than extending into the weekend", () => {
+  assert.deepEqual(cmeSessionWindowForDate("2026-08-07"), {
+    startMs: Date.parse("2026-08-06T22:00:00.000Z"),
+    endMs: Date.parse("2026-08-07T22:00:00.000Z"),
+  });
+});
+
+test("Monday execution profiles retain their Sunday-to-Monday window", () => {
+  assert.deepEqual(cmeSessionWindowForDate("2026-08-10"), {
+    startMs: Date.parse("2026-08-09T22:00:00.000Z"),
+    endMs: Date.parse("2026-08-10T22:00:00.000Z"),
+  });
 });
 
 test("a full session is longer than the old six-hour window", () => {
