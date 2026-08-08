@@ -1,5 +1,6 @@
 import type { Candle } from "@/lib/backtester";
 import type { CalculatedIndicatorSeries, IndicatorTheme } from "@/lib/chartIndicatorEngine";
+import { STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT } from "./volumeProfileMath.ts";
 import {
   compilePineScript,
   runPineScript,
@@ -100,12 +101,6 @@ function diagnostic(line: number, severity: PineDiagnostic["severity"], message:
   return { line, severity, message };
 }
 
-function pineInputNumber(source: string, variable: string, fallback: number) {
-  const match = source.match(new RegExp(`\\b${variable}\\s*=\\s*input\\.(?:int|float)\\(\\s*(-?\\d+(?:\\.\\d+)?)`, "i"));
-  const value = Number(match?.[1]);
-  return Number.isFinite(value) ? value : fallback;
-}
-
 function pineInputBoolean(source: string, variable: string, fallback: boolean) {
   const match = source.match(new RegExp(`\\b${variable}\\s*=\\s*input\\.bool\\(\\s*(true|false)`, "i"));
   return match ? match[1].toLowerCase() === "true" : fallback;
@@ -145,7 +140,7 @@ function detectNativePineAdapter(source: string): NativeIndicatorAdapter | null 
       showVwapLine: false,
       showVwapBands: false,
       showSummary: true,
-      valueAreaPercent: Math.max(1, Math.min(100, pineInputNumber(source, "isValueArea", 68))),
+      valueAreaPercent: STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT,
       profileWidth: 24,
       opacity: 76,
       minTradeVolume: 0,

@@ -8,6 +8,7 @@ import type {
 import type { InstitutionalVolumeProfile } from "@/lib/institutionalMarketData";
 import {
   calculateVolumeProfileValueArea,
+  STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT,
   volumeProfileBinTick,
 } from "@/lib/volumeProfileMath";
 
@@ -285,7 +286,7 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
         const valueArea = calculateVolumeProfileValueArea(
           levels,
           profile.tickSize * groupedTicks,
-          style.valueAreaPercent,
+          STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT,
         );
         const groupedPoc = valueArea.poc ?? profile.poc;
         const groupedVah = valueArea.vah ?? profile.vah;

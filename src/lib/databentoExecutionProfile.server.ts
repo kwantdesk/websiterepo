@@ -1,7 +1,11 @@
 import "server-only";
 
 import { streamHistoricalTradeRows } from "@/lib/databento";
-import { calculateVolumeProfileValueArea, volumeProfileBinTick } from "@/lib/volumeProfileMath";
+import {
+  calculateVolumeProfileValueArea,
+  STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT,
+  volumeProfileBinTick,
+} from "@/lib/volumeProfileMath";
 import {
   databentoEventTimestampMs,
   databentoTradeAggressor,
@@ -62,7 +66,7 @@ export async function buildDatabentoExecutionProfile(
   args: ProfileArgs,
 ): Promise<InstitutionalVolumeProfile | null> {
   const groupTicks = Math.max(1, Math.round(args.groupTicks ?? 1));
-  const valueAreaPercent = Math.min(100, Math.max(1, args.valueAreaPercent ?? 70));
+  const valueAreaPercent = STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT;
   const minTradeVolume = Math.max(0, args.minTradeVolume ?? 0);
   const maxTradeVolume = Math.max(0, args.maxTradeVolume ?? 0);
   const contractSymbol = (args.contractSymbol ?? "").trim().toUpperCase();

@@ -9,6 +9,10 @@ export type VolumeProfileValueArea = {
   val: number | null;
 };
 
+// Market-standard volume profiles use a fixed 70% value area around POC.
+// This is a measurement convention, not a visual preference.
+export const STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT = 70;
+
 export function volumeProfileBinTick(tick: number, groupTicks: number) {
   const size = Math.max(1, Math.round(groupTicks));
   return Math.floor(tick / size) * size;

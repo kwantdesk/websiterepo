@@ -109,7 +109,7 @@ var a_profile = array.new_box()
 var a_histogram = array.new_line()`;
   const prepared = prepareSourceIndicator(source, "auto");
   assert.equal(prepared.nativeAdapter?.indicatorId, "kwant-profile");
-  assert.equal(prepared.nativeAdapter?.settings.valueAreaPercent, 68);
+  assert.equal(prepared.nativeAdapter?.settings.valueAreaPercent, 70);
   assert.equal(prepared.nativeAdapter?.settings.showDelta, true);
   assert.equal(prepared.diagnostics.some((item) => item.severity === "error"), false);
 });

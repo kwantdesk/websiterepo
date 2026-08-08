@@ -1,6 +1,7 @@
 import type { Candle } from "@/lib/backtester";
 import {
   calculateVolumeProfileValueArea,
+  STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT,
   volumeProfileBinTick,
 } from "@/lib/volumeProfileMath";
 
@@ -358,7 +359,7 @@ export function buildChartVolumeProfile(args: {
 }): InstitutionalVolumeProfile | null {
   const tickSize = Number(args.tickSize);
   const groupTicks = Math.max(1, Math.round(args.groupTicks ?? 1));
-  const valueAreaPercent = Math.min(100, Math.max(1, Number(args.valueAreaPercent ?? 70)));
+  const valueAreaPercent = STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT;
   const minTradeVolume = Math.max(0, Number(args.minTradeVolume ?? 0));
   const maxTradeVolume = Math.max(0, Number(args.maxTradeVolume ?? 0));
   if (
@@ -510,10 +511,11 @@ export function clipVolumeProfileToPriceRange(
   const valueArea = calculateVolumeProfileValueArea(
     levels,
     profile.tickSize * profile.groupTicks,
-    profile.valueAreaPercent,
+    STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT,
   );
   return {
     ...profile,
+    valueAreaPercent: STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT,
     totalVolume,
     bidVolume,
     askVolume,
@@ -808,7 +810,7 @@ export async function fetchInstitutionalVolumeProfile(args: {
     symbol: args.symbol,
     period: args.period,
     groupTicks: String(Math.max(1, Math.round(args.groupTicks ?? 1))),
-    valueAreaPercent: String(args.valueAreaPercent ?? 70),
+    valueAreaPercent: String(STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT),
     minTradeVolume: String(Math.max(0, args.minTradeVolume ?? 0)),
     maxTradeVolume: String(Math.max(0, args.maxTradeVolume ?? 0)),
   });
@@ -855,9 +857,21 @@ export async function fetchInstitutionalVolumeProfile(args: {
         );
         return null;
       }
-      volumeProfileResponseCache.set(cacheKey, { profile: payload, storedAt: Date.now() });
-      void writePersistentIndicatorCache(`volume-profile:${cacheKey}`, payload);
-      return payload;
+      const valueArea = calculateVolumeProfileValueArea(
+        payload.levels,
+        payload.tickSize * payload.groupTicks,
+        STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT,
+      );
+      const normalizedPayload = {
+        ...payload,
+        valueAreaPercent: STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT,
+        poc: valueArea.poc,
+        vah: valueArea.vah,
+        val: valueArea.val,
+      };
+      volumeProfileResponseCache.set(cacheKey, { profile: normalizedPayload, storedAt: Date.now() });
+      void writePersistentIndicatorCache(`volume-profile:${cacheKey}`, normalizedPayload);
+      return normalizedPayload;
     } catch (error) {
       console.warn(
         `Exact volume profile request could not complete: ${args.symbol}`
@@ -935,7 +949,7 @@ export function applyInstitutionalTradesToVolumeProfile(
   const valueArea = calculateVolumeProfileValueArea(
     nextLevels,
     profile.tickSize * profile.groupTicks,
-    profile.valueAreaPercent,
+    STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT,
   );
   const nextVwap = totalVolume > 0 ? weightedPrice / totalVolume : null;
   const variance = totalVolume > 0 && nextVwap !== null
@@ -950,6 +964,7 @@ export function applyInstitutionalTradesToVolumeProfile(
   }
   return {
     ...profile,
+    valueAreaPercent: STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT,
     asOf: new Date(latestTimestamp).toISOString(),
     coverageEndMs: Math.max(coverageEndMs, latestTimestamp),
     totalVolume,
@@ -1160,11 +1175,12 @@ export function mergeInstitutionalVolumeProfiles(
   const valueArea = calculateVolumeProfileValueArea(
     nextLevels,
     tickSize * groupTicks,
-    exact.valueAreaPercent,
+    STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT,
   );
 
   return {
     ...exact,
+    valueAreaPercent: STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT,
     source: `${exact.source} + earlier-session CME bars`,
     startMs: Math.min(historical.startMs, exact.startMs),
     endMs: Math.max(historical.endMs, exact.endMs),

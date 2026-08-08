@@ -7,6 +7,7 @@ import {
   isInstitutionalMarketDataConfigured,
 } from "@/lib/institutionalMarketData.server";
 import { cmeSessionStartMs, cmeSessionWindowForDate } from "@/lib/chartHistoryWindow";
+import { STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT } from "@/lib/volumeProfileMath";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -74,7 +75,7 @@ async function executionProfileResponse(request: NextRequest) {
       endMs,
       tickSize: futuresTickSize(contractSymbol || symbol),
       groupTicks: Number(params.get("groupTicks") ?? 1),
-      valueAreaPercent: Number(params.get("valueAreaPercent") ?? 70),
+      valueAreaPercent: STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT,
       minTradeVolume: Number(params.get("minTradeVolume") ?? 0),
       maxTradeVolume: Number(params.get("maxTradeVolume") ?? 0),
       period,

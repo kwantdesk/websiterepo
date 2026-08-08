@@ -97,6 +97,7 @@ import {
   NativeVolumeProfilePrimitive,
   type NativeVolumeProfileModel,
 } from "@/lib/nativeVolumeProfilePrimitive";
+import { STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT } from "@/lib/volumeProfileMath";
 import {
   buildMarketSessionWindows,
   buildPreviousSessionHighLowLevels,
@@ -4888,7 +4889,7 @@ export default function Chart({
           showProfileOutline: profileSettings.showProfileOutline !== false,
           automaticGrouping: profileSettings.groupingMode !== "manual",
           autoGroupFactor: clamp(Number(profileSettings.autoGroupFactor ?? 1), 0.5, 4),
-          valueAreaPercent: clamp(Number(profileSettings.valueAreaPercent ?? 70), 1, 100),
+          valueAreaPercent: STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT,
           snapMode: profile.period === "daily" && requestedSnapMode === "right"
             ? "off"
             : requestedSnapMode,

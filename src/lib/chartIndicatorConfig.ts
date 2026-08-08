@@ -1,5 +1,6 @@
 import type { ChartSettings } from "@/lib/chartSettings";
 import type { ChartIndicatorInstance } from "@/lib/chartIndicatorCatalog";
+import { STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT } from "@/lib/volumeProfileMath";
 
 export const LIVE_CHART_INDICATOR_IDS = new Set([
   "volume",
@@ -152,7 +153,6 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
   "kwant-profile": [
     { key: "groupTicks", label: "Price grouping (ticks)", defaultValue: 1, min: 1, max: 500 },
     { key: "autoGroupFactor", label: "Automatic grouping factor", defaultValue: 1, min: 0.5, max: 4, step: 0.25 },
-    { key: "valueAreaPercent", label: "Value area", defaultValue: 70, min: 1, max: 100 },
     { key: "profileWidth", label: "Profile width (% of chart)", defaultValue: 24, min: 0, max: 60, step: 0.5 },
     { key: "opacity", label: "Profile opacity (%)", defaultValue: 72, min: 10, max: 100 },
     { key: "minTradeVolume", label: "Minimum execution size", defaultValue: 0, min: 0, max: 100000 },
@@ -161,7 +161,6 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
   "daily-volume-profile": [
     { key: "groupTicks", label: "Price grouping (ticks)", defaultValue: 1, min: 1, max: 500 },
     { key: "autoGroupFactor", label: "Automatic grouping factor", defaultValue: 1, min: 0.5, max: 4, step: 0.25 },
-    { key: "valueAreaPercent", label: "Value area", defaultValue: 70, min: 1, max: 100 },
     { key: "profileWidth", label: "Profile width (% of session)", defaultValue: 9, min: 0, max: 24, step: 0.5 },
     { key: "opacity", label: "Profile opacity (%)", defaultValue: 68, min: 10, max: 100 },
     { key: "minTradeVolume", label: "Minimum execution size", defaultValue: 0, min: 0, max: 100000 },
@@ -170,7 +169,6 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
   "weekly-volume-profile": [
     { key: "groupTicks", label: "Price grouping (ticks)", defaultValue: 4, min: 1, max: 500 },
     { key: "autoGroupFactor", label: "Automatic grouping factor", defaultValue: 1, min: 0.5, max: 4, step: 0.25 },
-    { key: "valueAreaPercent", label: "Value area", defaultValue: 70, min: 1, max: 100 },
     { key: "profileWidth", label: "Profile width (% of chart)", defaultValue: 18, min: 0, max: 60, step: 0.5 },
     { key: "opacity", label: "Profile opacity (%)", defaultValue: 42, min: 10, max: 100 },
     { key: "minTradeVolume", label: "Minimum execution size", defaultValue: 0, min: 0, max: 100000 },
@@ -179,7 +177,6 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
   "custom-draw-on-volume-profile": [
     { key: "groupTicks", label: "Price grouping (ticks)", defaultValue: 1, min: 1, max: 500 },
     { key: "autoGroupFactor", label: "Automatic grouping factor", defaultValue: 1, min: 0.5, max: 4, step: 0.25 },
-    { key: "valueAreaPercent", label: "Value area", defaultValue: 70, min: 1, max: 100 },
     { key: "profileWidth", label: "Profile width (% of selected range)", defaultValue: 45, min: 0, max: 100, step: 0.5 },
     { key: "opacity", label: "Profile opacity (%)", defaultValue: 76, min: 10, max: 100 },
     { key: "minTradeVolume", label: "Minimum execution size", defaultValue: 0, min: 0, max: 100000 },
@@ -188,7 +185,6 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
   "ask-bid-volume-profile": [
     { key: "groupTicks", label: "Price grouping (ticks)", defaultValue: 1, min: 1, max: 500 },
     { key: "autoGroupFactor", label: "Automatic grouping factor", defaultValue: 1, min: 0.5, max: 4, step: 0.25 },
-    { key: "valueAreaPercent", label: "Value area", defaultValue: 70, min: 1, max: 100 },
     { key: "profileWidth", label: "Profile width (% of chart)", defaultValue: 28, min: 0, max: 60, step: 0.5 },
     { key: "opacity", label: "Profile opacity (%)", defaultValue: 78, min: 10, max: 100 },
     { key: "minTradeVolume", label: "Minimum execution size", defaultValue: 0, min: 0, max: 100000 },
@@ -197,7 +193,6 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
   "delta-profile": [
     { key: "groupTicks", label: "Price grouping (ticks)", defaultValue: 1, min: 1, max: 500 },
     { key: "autoGroupFactor", label: "Automatic grouping factor", defaultValue: 1, min: 0.5, max: 4, step: 0.25 },
-    { key: "valueAreaPercent", label: "Value area", defaultValue: 70, min: 1, max: 100 },
     { key: "profileWidth", label: "Profile width (% of chart)", defaultValue: 24, min: 0, max: 60, step: 0.5 },
     { key: "opacity", label: "Profile opacity (%)", defaultValue: 78, min: 10, max: 100 },
     { key: "minTradeVolume", label: "Minimum execution size", defaultValue: 0, min: 0, max: 100000 },
@@ -613,6 +608,7 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
     tpoLevelsSettingsVersion: 1,
   } : {}),
   ...(["kwant-profile", "daily-volume-profile", "weekly-volume-profile", "custom-draw-on-volume-profile", "ask-bid-volume-profile", "delta-profile"].includes(indicatorId) ? {
+    valueAreaPercent: STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT,
     profileMode: indicatorId === "ask-bid-volume-profile"
       ? "bid-ask"
       : indicatorId === "delta-profile"
@@ -646,13 +642,25 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
 });
 
 export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): ChartIndicatorInstance => {
-  const normalizedInstance = instance.indicatorId === "deep-profile"
+  let normalizedInstance = instance.indicatorId === "deep-profile"
     ? { ...instance, indicatorId: "kwant-profile" }
     : instance.indicatorId === "deep-stats"
       ? { ...instance, indicatorId: "kwant-stats" }
       : instance.indicatorId === "deep-m-effort"
         ? { ...instance, indicatorId: "deep-m-effort-nq" }
-        : instance;
+      : instance;
+  if (
+    ["kwant-profile", "daily-volume-profile", "weekly-volume-profile", "custom-draw-on-volume-profile", "ask-bid-volume-profile", "delta-profile"]
+      .includes(normalizedInstance.indicatorId)
+  ) {
+    normalizedInstance = {
+      ...normalizedInstance,
+      settings: {
+        ...(normalizedInstance.settings ?? {}),
+        valueAreaPercent: STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT,
+      },
+    };
+  }
   if (
     ["daily-volume-profile", "kwant-profile"].includes(normalizedInstance.indicatorId)
     && Number(normalizedInstance.settings?.profileSettingsVersion) < 5

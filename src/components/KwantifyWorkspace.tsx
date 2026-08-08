@@ -16,6 +16,7 @@ import { useSocialNotifications } from "@/hooks/useSocialNotifications";
 import { useStructureLevels } from "@/hooks/useStructureLevels";
 import { useGexBotFlow } from "@/hooks/useGexBotFlow";
 import { ACTIVITY_STREAK_TIME_ZONE } from "@/lib/activityStreak";
+import { STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT } from "@/lib/volumeProfileMath";
 
 import { Activity as ReactActivity, memo, startTransition, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent as ReactDragEvent } from "react";
 import { createPortal } from "react-dom";
@@ -3831,7 +3832,7 @@ function WorkspaceChartPane({
             period: "daily",
             tradingDate: chicagoTradingDate(Date.now()),
             groupTicks: 1,
-            valueAreaPercent: 70,
+            valueAreaPercent: STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT,
           })
             .then((developing) => {
               if (cancelled || !developing) return;
@@ -4211,7 +4212,7 @@ function WorkspaceChartPane({
           groupTicks: dailyProfileSettings.groupingMode === "manual"
             ? Number(dailyProfileSettings.groupTicks ?? 1)
             : 1,
-          valueAreaPercent: Number(dailyProfileSettings.valueAreaPercent ?? 70),
+          valueAreaPercent: STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT,
           minTradeVolume: Number(dailyProfileSettings.minTradeVolume ?? 0),
           maxTradeVolume: Number(dailyProfileSettings.maxTradeVolume ?? 0),
         });
@@ -4234,7 +4235,7 @@ function WorkspaceChartPane({
           groupTicks: weeklyProfileSettings.groupingMode === "manual"
             ? Number(weeklyProfileSettings.groupTicks ?? 4)
             : 1,
-          valueAreaPercent: Number(weeklyProfileSettings.valueAreaPercent ?? 70),
+          valueAreaPercent: STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT,
           minTradeVolume: Number(weeklyProfileSettings.minTradeVolume ?? 0),
           maxTradeVolume: Number(weeklyProfileSettings.maxTradeVolume ?? 0),
         });
@@ -4298,7 +4299,7 @@ function WorkspaceChartPane({
           endMs: coverageStartMs,
           tickSize: profile.tickSize,
           groupTicks: profile.groupTicks,
-          valueAreaPercent: profile.valueAreaPercent,
+          valueAreaPercent: STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT,
           minTradeVolume: profile.minTradeVolume,
           maxTradeVolume: profile.maxTradeVolume,
         });
@@ -4331,7 +4332,7 @@ function WorkspaceChartPane({
             groupTicks: dailyProfileSettings.groupingMode === "manual"
               ? Number(dailyProfileSettings.groupTicks ?? 1)
               : 1,
-            valueAreaPercent: Number(dailyProfileSettings.valueAreaPercent ?? 70),
+            valueAreaPercent: STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT,
             minTradeVolume: Number(dailyProfileSettings.minTradeVolume ?? 0),
             maxTradeVolume: Number(dailyProfileSettings.maxTradeVolume ?? 0),
           }).then((profile) => replaceExactProfile(profile, tradingDate)));
@@ -4348,7 +4349,7 @@ function WorkspaceChartPane({
           groupTicks: weeklyProfileSettings.groupingMode === "manual"
             ? Number(weeklyProfileSettings.groupTicks ?? 4)
             : 1,
-          valueAreaPercent: Number(weeklyProfileSettings.valueAreaPercent ?? 70),
+          valueAreaPercent: STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT,
           minTradeVolume: Number(weeklyProfileSettings.minTradeVolume ?? 0),
           maxTradeVolume: Number(weeklyProfileSettings.maxTradeVolume ?? 0),
         }).then(replaceExactProfile));
@@ -4370,7 +4371,6 @@ function WorkspaceChartPane({
     dailyProfileSettings.groupingMode,
     dailyProfileSettings.maxTradeVolume,
     dailyProfileSettings.minTradeVolume,
-    dailyProfileSettings.valueAreaPercent,
     dailyTradingDateSignature,
     // Coarse tape signal: rebuild the provisional profile as executions
     // accumulate so its delta fills in, without re-running this effect (and
@@ -4384,7 +4384,6 @@ function WorkspaceChartPane({
     weeklyProfileSettings.groupingMode,
     weeklyProfileSettings.maxTradeVolume,
     weeklyProfileSettings.minTradeVolume,
-    weeklyProfileSettings.valueAreaPercent,
   ]);
 
   useEffect(() => {
