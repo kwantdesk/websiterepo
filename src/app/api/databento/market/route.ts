@@ -41,6 +41,17 @@ const MAX_HISTORY_DAYS = 14;
 const DURABLE_EVENT_HISTORY_REVALIDATE_SECONDS = 5 * 60;
 
 type EventHistoryPayload = Awaited<ReturnType<typeof getDatabentoEventHistory>>;
+type TimeHistoryPayload = Awaited<ReturnType<typeof getDatabentoOrderFlowHistory>>;
+
+function encodeHistory(history: EventHistoryPayload | TimeHistoryPayload) {
+  return gzipSync(Buffer.from(JSON.stringify(history))).toString("base64");
+}
+
+function decodeHistory<T extends EventHistoryPayload | TimeHistoryPayload>(encoded: string) {
+  return JSON.parse(
+    gunzipSync(Buffer.from(encoded, "base64")).toString("utf8"),
+  ) as T;
+}
 
 /**
  * Event CVD is expensive because exact aggressor flow has to be folded into
@@ -63,14 +74,34 @@ async function getDurableEventHistory(
         Number(candle.askVolume ?? 0) + Number(candle.bidVolume ?? 0) > 0)) {
         throw new Error("CME event flow returned no aggressor history.");
       }
-      return gzipSync(Buffer.from(JSON.stringify(history))).toString("base64");
+      return encodeHistory(history);
     },
     ["cme-event-flow-v1", symbol, timeframe, `${historyDays}d`],
     { revalidate: DURABLE_EVENT_HISTORY_REVALIDATE_SECONDS },
   )();
-  return JSON.parse(
-    gunzipSync(Buffer.from(encoded, "base64")).toString("utf8"),
-  ) as EventHistoryPayload;
+  return decodeHistory<EventHistoryPayload>(encoded);
+}
+
+async function getDurableTimeHistory(
+  symbol: string,
+  timeframe: string,
+  historyDays: number,
+  start: string,
+  end: string,
+): Promise<TimeHistoryPayload> {
+  const encoded = await unstable_cache(
+    async () => {
+      const history = await getDatabentoOrderFlowHistory(symbol, timeframe, start, end);
+      if (!history.candles.some((candle) =>
+        Number(candle.askVolume ?? 0) + Number(candle.bidVolume ?? 0) > 0)) {
+        throw new Error("CME timed flow returned no aggressor history.");
+      }
+      return encodeHistory(history);
+    },
+    ["cme-time-flow-v1", symbol, timeframe, `${historyDays}d`],
+    { revalidate: DURABLE_EVENT_HISTORY_REVALIDATE_SECONDS },
+  )();
+  return decodeHistory<TimeHistoryPayload>(encoded);
 }
 
 async function durableEventHistoryOrDirect(
@@ -88,6 +119,23 @@ async function durableEventHistoryOrDirect(
     // the cross-instance durable cache above.
     if (error instanceof Error && error.message.includes("incrementalCache")) {
       return getDatabentoEventHistory(symbol, timeframe, start, end);
+    }
+    throw error;
+  }
+}
+
+async function durableTimeHistoryOrDirect(
+  symbol: string,
+  timeframe: string,
+  historyDays: number,
+  start: string,
+  end: string,
+) {
+  try {
+    return await getDurableTimeHistory(symbol, timeframe, historyDays, start, end);
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("incrementalCache")) {
+      return getDatabentoOrderFlowHistory(symbol, timeframe, start, end);
     }
     throw error;
   }
@@ -150,7 +198,13 @@ export async function GET(request: Request) {
             executions: [] as DatabentoExecutionTuple[],
           }
       : includeOrderFlow
-        ? await getDatabentoOrderFlowHistory(symbol, timeframe, start, end)
+        ? await durableTimeHistoryOrDirect(
+            symbol,
+            timeframe,
+            historyDays,
+            start,
+            end,
+          )
         : {
             candles: await getDatabentoBars(symbol, timeframe, start, end),
             executions: [] as DatabentoExecutionTuple[],

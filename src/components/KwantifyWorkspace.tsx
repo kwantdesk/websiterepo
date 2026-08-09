@@ -3497,15 +3497,14 @@ function WorkspaceChartPane({
         return;
       }
 
-      // Event-chart geometry and ordinary Volume are available from compact
-      // one-second OHLCV history; exact CVD enrichment is the expensive part.
-      // Paint the base chart first instead of holding both indicator panes
-      // behind a seven-day aggressor-tape reconstruction. The durable flow
-      // request below then merges into these exact event-bar boundaries.
+      // Ordinary Volume is available from base OHLCV history; exact CVD
+      // enrichment is the expensive part. Paint the chart and Volume first
+      // on every CME interval instead of holding both panes behind the
+      // aggressor-tape reconstruction. The durable flow request below then
+      // merges into the same chart-bar boundaries.
       if (
         pane.broker === "Databento"
         && needsOrderFlowHistory
-        && isEventBasedChartInterval(pane.timeframe)
         && !cachedBase.length
       ) {
         try {
