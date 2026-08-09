@@ -86,6 +86,7 @@ type SortKey = "closedAt" | "netPnl" | "rMultiple" | "quantity" | "symbol";
 
 type JournalCloudState = "loading" | "cloud" | "local" | "error";
 type AccountCreationMode = "manual" | "import";
+type ImportDialogPurpose = "add-account" | "append-trades";
 
 type JournalMemoryCacheEntry = {
   state: JournalState;
@@ -719,6 +720,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
   const [analysisElapsedSeconds, setAnalysisElapsedSeconds] = useState(0);
   const [showImport, setShowImport] = useState(false);
   const [accountCreationMode, setAccountCreationMode] = useState<AccountCreationMode>("manual");
+  const [importDialogPurpose, setImportDialogPurpose] = useState<ImportDialogPurpose>("add-account");
   const [importAccount, setImportAccount] = useState("Imported account");
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [importing, setImporting] = useState(false);
@@ -1188,10 +1190,43 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
     }
   }, [analysisAccount, analysisEvidence]);
 
+  const openAddAccountDialog = useCallback(() => {
+    setImportDialogPurpose("add-account");
+    setAccountCreationMode("manual");
+    setImportAccount("My KwantDesk Journal");
+    setPendingFiles([]);
+    setImportMessage("");
+    setShowImport(true);
+  }, []);
+
+  const openImportIntoJournal = useCallback((account: string) => {
+    const target = account.trim();
+    if (!target || target === "all" || isZyonJournalAccountName(target)) return;
+    setImportDialogPurpose("append-trades");
+    setAccountCreationMode("import");
+    setImportAccount(target);
+    setPendingFiles([]);
+    setImportMessage("");
+    setShowImport(true);
+  }, []);
+
+  const openImportDialog = useCallback(() => {
+    if (accountFilter !== "all" && !isZyonJournalAccountName(accountFilter)) {
+      openImportIntoJournal(accountFilter);
+      return;
+    }
+    setImportDialogPurpose("add-account");
+    setAccountCreationMode("import");
+    setImportAccount("Imported account");
+    setPendingFiles([]);
+    setImportMessage("");
+    setShowImport(true);
+  }, [accountFilter, openImportIntoJournal]);
+
   const addFiles = useCallback((files: FileList | File[]) => {
     const selected = [...files];
     const firstFileName = selected[0]?.name.trim() ?? "";
-    if (firstFileName) {
+    if (firstFileName && importDialogPurpose === "add-account") {
       const extensionIndex = firstFileName.lastIndexOf(".");
       const accountName = (
         extensionIndex > 0 ? firstFileName.slice(0, extensionIndex) : firstFileName
@@ -1203,7 +1238,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
       return [...current, ...selected.filter((file) => !known.has(`${file.name}:${file.size}:${file.lastModified}`))].slice(0, 30);
     });
     setImportMessage("");
-  }, []);
+  }, [importDialogPurpose]);
 
   const syncCloudAccount = useCallback(async (
     account: string,
@@ -1586,6 +1621,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
   const runImport = async () => {
     if (!pendingFiles.length || importing) return;
     const account = importAccount.trim() || "Imported account";
+    const appendingToExistingJournal = importDialogPurpose === "append-trades";
     if (isZyonJournalAccountName(account)) {
       setImportMessage("ZYON Journal is automatic-only. Choose a different account name for imports.");
       return;
@@ -1794,11 +1830,20 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
     setPendingFiles([]);
     setImporting(false);
     setImportMessage(`${newTrades.length} trade${newTrades.length === 1 ? "" : "s"} and ${newEvidence.length} evidence file${newEvidence.length === 1 ? "" : "s"} imported${duplicates ? ` · ${duplicates} duplicate${duplicates === 1 ? "" : "s"} skipped` : ""}.`);
-    if (newTrades.length || newImports.length) {
+    if (newTrades.length || newEvidence.length) {
       setAccountFilter(account);
-      setTab("pulse");
+      setTab(appendingToExistingJournal ? "trades" : "pulse");
       setShowImport(false);
+      if (appendingToExistingJournal) {
+        setJournalLifecycleMessage(
+          `${newTrades.length} trade${newTrades.length === 1 ? "" : "s"} imported into ${account}${duplicates ? ` · ${duplicates} duplicate${duplicates === 1 ? "" : "s"} skipped` : ""}. Open any trade to add risk, contract class, notes, screenshots, or corrections.`,
+        );
+      }
       void syncCloudAccount(account, newTrades, newImports);
+    } else if (newImports.length) {
+      const firstWarning = newImports.flatMap((batch) => batch.warnings)[0];
+      setImportMessage(`No trades were added.${firstWarning ? ` ${firstWarning}` : " Check that the file includes a date, instrument, and either P&L or entry/exit prices."}`);
+      void syncCloudAccount(account, [], newImports);
     }
   };
 
@@ -2122,10 +2167,11 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
               {cloudState === "cloud" ? "Account saved" : cloudState === "loading" ? "Connecting" : cloudState === "error" || saveStatus === "error" ? "Save interrupted" : "Local until connected"}
             </span>
             {selectedAccountIsManual ? <button type="button" onClick={openManualTrade} className="flex h-8 items-center gap-1.5 rounded-xl bg-primary px-3 text-[9px] font-semibold text-background hover:brightness-110"><Plus className="h-3.5 w-3.5" />Add trade</button> : null}
+            {accountFilter !== "all" && !isZyonJournalAccountName(accountFilter) ? <button type="button" onClick={() => openImportIntoJournal(accountFilter)} className="flex h-8 items-center gap-1.5 rounded-xl border border-primary/30 bg-primary/[0.06] px-3 text-[9px] font-semibold text-primary hover:bg-primary/[0.11]"><Upload className="h-3.5 w-3.5" />Import</button> : null}
             <button type="button" onClick={() => openTradePost()} disabled={!postableTrades.length} className="flex h-8 items-center gap-1.5 rounded-xl bg-primary px-3 text-[9px] font-semibold text-background hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-35"><Share2 className="h-3.5 w-3.5" />Post trade</button>
             <button type="button" onClick={() => setShowArchive(true)} className="relative flex h-8 items-center gap-1.5 rounded-xl border border-border bg-surface px-3 text-[9px] font-semibold text-muted hover:text-foreground"><FolderArchive className="h-3.5 w-3.5" />Archive{archivedAccounts.length ? <span className="ml-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 font-mono text-[7px] font-semibold text-background">{archivedAccounts.length}</span> : null}</button>
             <button type="button" onClick={() => exportJournal("json")} disabled={!allTrades.length && !state.evidence.length} className="flex h-8 items-center gap-1.5 rounded-xl border border-border bg-surface px-3 text-[9px] font-semibold text-muted hover:text-foreground disabled:opacity-35"><Download className="h-3.5 w-3.5" />Backup</button>
-            <button type="button" onClick={() => { setAccountCreationMode("manual"); setImportAccount("My KwantDesk Journal"); setImportMessage(""); setShowImport(true); }} className="flex h-8 items-center gap-1.5 rounded-xl border border-border bg-surface px-3 text-[9px] font-semibold text-muted hover:text-foreground"><BookPlus className="h-3.5 w-3.5" />Add account</button>
+            <button type="button" onClick={openAddAccountDialog} className="flex h-8 items-center gap-1.5 rounded-xl border border-border bg-surface px-3 text-[9px] font-semibold text-muted hover:text-foreground"><BookPlus className="h-3.5 w-3.5" />Add account</button>
           </div>
         </div>
         {journalLifecycleMessage ? <div className="mx-4 mb-2 flex items-center gap-2 rounded-xl border border-primary/20 bg-primary/[0.06] px-3 py-2 text-[8px] text-muted"><Check className="h-3.5 w-3.5 shrink-0 text-primary" /><span className="min-w-0 flex-1 truncate">{journalLifecycleMessage}</span><button type="button" onClick={() => setJournalLifecycleMessage("")} className="text-muted hover:text-foreground"><X className="h-3.5 w-3.5" /></button></div> : null}
@@ -2197,7 +2243,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
                 </div>
               );
             })}
-            <button type="button" onClick={() => { setAccountCreationMode("manual"); setImportAccount("My KwantDesk Journal"); setImportMessage(""); setShowImport(true); }} className="flex min-w-[150px] shrink-0 items-center justify-center gap-2 rounded-2xl border border-dashed border-border bg-background/20 px-4 text-[9px] font-semibold text-muted transition-colors hover:border-primary/35 hover:bg-primary/[0.05] hover:text-primary"><Plus className="h-3.5 w-3.5" />Add account</button>
+            <button type="button" onClick={openAddAccountDialog} className="flex min-w-[150px] shrink-0 items-center justify-center gap-2 rounded-2xl border border-dashed border-border bg-background/20 px-4 text-[9px] font-semibold text-muted transition-colors hover:border-primary/35 hover:bg-primary/[0.05] hover:text-primary"><Plus className="h-3.5 w-3.5" />Add account</button>
           </div>
         </div>
         <WorkspaceSubnav
@@ -2220,7 +2266,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
                 ? <button type="button" onClick={() => { window.location.href = "/zyon"; }} className="relative mt-6 inline-flex h-10 items-center gap-2 rounded-xl bg-primary px-5 text-[10px] font-semibold text-background"><Bot className="h-4 w-4" />Open ZYON</button>
                 : selectedAccountIsManual
                   ? <button type="button" onClick={openManualTrade} className="relative mt-6 inline-flex h-10 items-center gap-2 rounded-xl bg-primary px-5 text-[10px] font-semibold text-background"><Plus className="h-4 w-4" />Add manual trade</button>
-                  : <button type="button" onClick={() => { setAccountCreationMode("manual"); setImportAccount("My KwantDesk Journal"); setImportMessage(""); setShowImport(true); }} className="relative mt-6 inline-flex h-10 items-center gap-2 rounded-xl bg-primary px-5 text-[10px] font-semibold text-background"><Plus className="h-4 w-4" />Add account</button>}
+                  : <button type="button" onClick={openAddAccountDialog} className="relative mt-6 inline-flex h-10 items-center gap-2 rounded-xl bg-primary px-5 text-[10px] font-semibold text-background"><Plus className="h-4 w-4" />Add account</button>}
               <div className="relative mx-auto mt-7 grid max-w-3xl gap-2 sm:grid-cols-3">
                 {[
                   [FileSpreadsheet, "Trades", "TradingView XLSX, broker workbooks, CSV, TSV and JSON exports"],
@@ -2582,7 +2628,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
               <div><h2 className="text-[11px] font-semibold text-foreground">Evidence library</h2><p className="mt-0.5 text-[8px] text-muted">{filteredEvidence.length} screenshots and notes · attach evidence inside any trade review</p></div>
               {zyonJournalSelected
                 ? <span className="ml-auto rounded-xl border border-primary/20 bg-primary/[0.07] px-3 py-2 text-[8px] font-semibold text-primary">Automatic from ZYON</span>
-                : <button type="button" onClick={() => setShowImport(true)} className="ml-auto flex h-8 items-center gap-1.5 rounded-xl border border-border bg-surface px-3 text-[9px] font-semibold text-muted hover:text-foreground"><Upload className="h-3.5 w-3.5" />Add evidence</button>}
+                : <button type="button" onClick={openImportDialog} className="ml-auto flex h-8 items-center gap-1.5 rounded-xl border border-border bg-surface px-3 text-[9px] font-semibold text-muted hover:text-foreground"><Upload className="h-3.5 w-3.5" />Add evidence</button>}
             </Card>
             {filteredEvidence.length ? (
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5">
@@ -2613,7 +2659,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
             <Card className="flex flex-wrap items-center gap-3 p-4">
               <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary"><FolderArchive className="h-4 w-4" /></span>
               <div><h2 className="text-[11px] font-semibold text-foreground">Import lineage</h2><p className="mt-0.5 text-[8px] text-muted">Every source stays visible, including rejected rows, duplicates, and parsing warnings</p></div>
-              <button type="button" onClick={() => setShowImport(true)} className="ml-auto flex h-8 items-center gap-1.5 rounded-xl bg-primary px-3 text-[9px] font-semibold text-background"><Upload className="h-3.5 w-3.5" />New import</button>
+              <button type="button" onClick={openImportDialog} className="ml-auto flex h-8 items-center gap-1.5 rounded-xl bg-primary px-3 text-[9px] font-semibold text-background"><Upload className="h-3.5 w-3.5" />New import</button>
             </Card>
             <div className="space-y-2">
               {filteredImports.map((batch) => (
@@ -2717,12 +2763,12 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
         <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm" onMouseDown={(event) => { if (event.target === event.currentTarget) setShowImport(false); }}>
           <div className="w-full max-w-[650px] overflow-hidden rounded-3xl border border-border bg-panel shadow-2xl shadow-black/60">
             <div className="flex items-start gap-3 border-b border-border px-5 py-4">
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"><BookPlus className="h-4 w-4" /></span>
-              <div><h2 className="text-[14px] font-semibold text-foreground">Add journal account</h2><p className="mt-1 text-[9px] leading-4 text-muted">Create a native KwantDesk Journal for manual documentation, or connect an account from exported trade files.</p></div>
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">{importDialogPurpose === "append-trades" ? <Upload className="h-4 w-4" /> : <BookPlus className="h-4 w-4" />}</span>
+              <div><h2 className="text-[14px] font-semibold text-foreground">{importDialogPurpose === "append-trades" ? `Import into ${importAccount}` : "Add journal account"}</h2><p className="mt-1 text-[9px] leading-4 text-muted">{importDialogPurpose === "append-trades" ? "Add closed trades or executions to this Journal. Imported records flow into Trade Log, Calendar, Pulse, Edgebook and Analysis, and remain fully editable." : "Create a native KwantDesk Journal for manual documentation, or connect an account from exported trade files."}</p></div>
               <button type="button" onClick={() => setShowImport(false)} className="ml-auto flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground"><X className="h-4 w-4" /></button>
             </div>
             <div className="space-y-4 p-5">
-              <div className="grid gap-2 sm:grid-cols-2">
+              {importDialogPurpose === "add-account" ? <div className="grid gap-2 sm:grid-cols-2">
                 <button type="button" onClick={() => { setAccountCreationMode("manual"); setImportAccount("My KwantDesk Journal"); setPendingFiles([]); setImportMessage(""); }} className={`rounded-2xl border p-4 text-left transition-all ${accountCreationMode === "manual" ? "border-primary/45 bg-primary/[0.08] shadow-[0_0_18px_color-mix(in_srgb,var(--primary)_8%,transparent)]" : "border-border bg-background/30 hover:border-primary/25"}`}>
                   <BookPlus className={`h-5 w-5 ${accountCreationMode === "manual" ? "text-primary" : "text-muted"}`} />
                   <div className="mt-3 text-[10px] font-semibold text-foreground">KwantDesk Journal</div>
@@ -2733,12 +2779,17 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
                   <div className="mt-3 text-[10px] font-semibold text-foreground">Import account</div>
                   <div className="mt-1 text-[8px] leading-4 text-muted">Upload broker, TradingView, spreadsheet, CSV, JSON and evidence exports.</div>
                 </button>
-              </div>
-              <div>
+              </div> : (
+                <div className="flex items-center gap-3 rounded-2xl border border-primary/25 bg-primary/[0.06] p-4">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-primary/25 bg-primary/10 text-primary"><FileSpreadsheet className="h-4 w-4" /></span>
+                  <div className="min-w-0"><div className="truncate text-[10px] font-semibold text-foreground">{importAccount}</div><div className="mt-1 text-[8px] leading-4 text-muted">Trades are appended to this existing Journal. The source filename and row numbers remain attached to every record.</div></div>
+                </div>
+              )}
+              {importDialogPurpose === "add-account" ? <div>
                 <label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[0.12em] text-muted">{accountCreationMode === "manual" ? "KwantDesk Journal name" : "Imported account name"}</label>
                 <input value={importAccount} onChange={(event) => { setImportAccount(event.target.value); setImportMessage(""); }} aria-invalid={importTargetsZyon} className={`h-10 w-full rounded-xl border bg-background px-3 text-[10px] text-foreground outline-none ${importTargetsZyon ? "border-danger/70 focus:border-danger" : "border-border focus:border-primary/45"}`} placeholder="e.g. Apex NQ Evaluation" />
                 {importTargetsZyon ? <p className="mt-1.5 text-[8px] leading-4 text-danger">ZYON Journal is automatic-only and cannot receive imported trades, files, or evidence.</p> : null}
-              </div>
+              </div> : null}
               {accountCreationMode === "import" ? (
                 <>
                   <button
@@ -2776,7 +2827,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
             </div>
             <div className="flex items-center justify-end gap-2 border-t border-border bg-background/20 px-5 py-4">
               <button type="button" onClick={() => setShowImport(false)} className="h-9 rounded-xl border border-border px-4 text-[9px] font-semibold text-muted hover:bg-surface hover:text-foreground">Close</button>
-              <button type="button" onClick={accountCreationMode === "manual" ? createNativeJournal : runImport} disabled={importing || importTargetsZyon || (accountCreationMode === "import" && !pendingFiles.length) || !importAccount.trim()} className="flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-[9px] font-semibold text-background disabled:opacity-40">{importing ? <span className="h-3 w-3 animate-spin rounded-full border border-background/30 border-t-background" /> : accountCreationMode === "manual" ? <BookPlus className="h-3.5 w-3.5" /> : <Upload className="h-3.5 w-3.5" />}{importing ? "Creating account" : accountCreationMode === "manual" ? "Create KwantDesk Journal" : `Create & import ${pendingFiles.length || ""}`}</button>
+              <button type="button" onClick={accountCreationMode === "manual" ? createNativeJournal : runImport} disabled={importing || importTargetsZyon || (accountCreationMode === "import" && !pendingFiles.length) || !importAccount.trim()} className="flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-[9px] font-semibold text-background disabled:opacity-40">{importing ? <span className="h-3 w-3 animate-spin rounded-full border border-background/30 border-t-background" /> : accountCreationMode === "manual" ? <BookPlus className="h-3.5 w-3.5" /> : <Upload className="h-3.5 w-3.5" />}{importing ? (importDialogPurpose === "append-trades" ? "Importing trades" : "Creating account") : accountCreationMode === "manual" ? "Create KwantDesk Journal" : importDialogPurpose === "append-trades" ? `Import ${pendingFiles.length || ""}` : `Create & import ${pendingFiles.length || ""}`}</button>
             </div>
           </div>
         </div>

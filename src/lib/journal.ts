@@ -1,4 +1,4 @@
-import { zyonTradingAccountLabel } from "@/lib/zyon";
+import { zyonTradingAccountLabel } from "./zyon.ts";
 
 export const ZYON_JOURNAL_ACCOUNT = "ZYON Journal";
 
@@ -152,6 +152,13 @@ const HEADER_ALIASES = {
   fees: ["fees", "fee", "commission", "commissions", "totalfees", "brokerage"],
   initialRisk: ["initialrisk", "risk", "riskamount", "plannedrisk"],
   rMultiple: ["rmultiple", "realizedr", "r", "resultinr"],
+  stopPrice: ["stopprice", "stoploss", "stop", "sl"],
+  targetPrice: ["targetprice", "takeprofit", "profittarget", "target", "tp"],
+  plannedRiskReward: ["plannedriskreward", "riskreward", "risktoreward", "rr"],
+  contractClass: ["contractclass", "contracttype", "productclass"],
+  tradingAccountName: ["tradingaccount", "accountname", "brokeraccount", "provider", "propfirm"],
+  tradingAccountType: ["accounttype", "fundingstatus", "accountstatus"],
+  accountSize: ["accountsize", "startingbalance", "capital", "buyingpower"],
   setup: ["setup", "strategy", "playbook", "tradetype", "pattern", "signal"],
   tags: ["tags", "tag", "mistakes", "labels"],
   notes: ["notes", "note", "comment", "comments", "description"],
@@ -293,6 +300,13 @@ function symbolRoot(symbol: string) {
 
 function contractMultiplier(symbol: string) {
   return FUTURES_MULTIPLIERS[symbolRoot(symbol)] ?? 1;
+}
+
+function inferredContractClass(symbol: string): JournalTrade["contractClass"] {
+  const root = symbolRoot(symbol);
+  if (["MES", "MNQ", "M2K", "MYM", "MCL", "MGC", "SIL"].includes(root)) return "MICRO";
+  if (["ES", "NQ", "RTY", "YM", "CL", "GC", "SI", "HG", "NG", "ZB", "ZN", "ZF", "ZT"].includes(root)) return "MINI";
+  return "OTHER";
 }
 
 function finiteNumber(value: unknown) {
@@ -535,6 +549,22 @@ function parseClosedTrades(
     const explicitR = parseNumber(valueFor(row, HEADER_ALIASES.rMultiple));
     const rMultiple = explicitR ?? (initialRisk && initialRisk > 0 ? netPnl / initialRisk : null);
     const ratingValue = parseNumber(valueFor(row, HEADER_ALIASES.rating));
+    const contractClassText = String(valueFor(row, HEADER_ALIASES.contractClass) ?? "").trim().toUpperCase();
+    const contractClass = contractClassText.includes("MICRO")
+      ? "MICRO"
+      : contractClassText.includes("MINI")
+        ? "MINI"
+        : inferredContractClass(symbol);
+    const accountTypeText = String(valueFor(row, HEADER_ALIASES.tradingAccountType) ?? "").trim().toUpperCase();
+    const tradingAccountType: JournalTradingAccountType | undefined = /EVAL|CHALLENGE/.test(accountTypeText)
+      ? "EVALUATION"
+      : /FUND/.test(accountTypeText)
+        ? "FUNDED"
+        : /LIVE|PERSONAL|CAPITAL/.test(accountTypeText)
+          ? "LIVE_CAPITAL"
+          : undefined;
+    const plannedRiskReward = parseNumber(valueFor(row, HEADER_ALIASES.plannedRiskReward));
+    const accountSize = parseNumber(valueFor(row, HEADER_ALIASES.accountSize));
 
     const base: Omit<JournalTrade, "id" | "fingerprint"> = {
       account,
@@ -545,6 +575,9 @@ function parseClosedTrades(
       quantity,
       entryPrice,
       exitPrice,
+      stopPrice: parseNumber(valueFor(row, HEADER_ALIASES.stopPrice)),
+      targetPrice: parseNumber(valueFor(row, HEADER_ALIASES.targetPrice)),
+      plannedRiskReward,
       grossPnl,
       fees,
       netPnl,
@@ -554,6 +587,10 @@ function parseClosedTrades(
       setup: String(valueFor(row, HEADER_ALIASES.setup) ?? "").trim(),
       tags: parseTags(valueFor(row, HEADER_ALIASES.tags)),
       notes: String(valueFor(row, HEADER_ALIASES.notes) ?? "").trim(),
+      contractClass,
+      tradingAccountName: String(valueFor(row, HEADER_ALIASES.tradingAccountName) ?? "").trim() || undefined,
+      tradingAccountType,
+      accountSize: accountSize !== null && accountSize >= 0 ? accountSize : null,
       rating: ratingValue === null ? null : Math.min(5, Math.max(1, Math.round(ratingValue))),
       reviewedAt: null,
       sourceImportId: importId,
@@ -660,6 +697,7 @@ function parseExecutions(
           setup: "",
           tags: [],
           notes: "",
+          contractClass: inferredContractClass(execution.symbol),
           rating: null,
           reviewedAt: null,
           sourceImportId: importId,
@@ -768,6 +806,7 @@ function parseTradingViewStrategyRows(
       setup: String(valueFor(entry.row, TRADINGVIEW_ALIASES.signal) ?? valueFor(exit.row, TRADINGVIEW_ALIASES.signal) ?? "").trim(),
       tags: ["TradingView"],
       notes: `TradingView strategy trade ${tradeNumber}`,
+      contractClass: inferredContractClass(symbol),
       rating: null,
       reviewedAt: null,
       sourceImportId: importId,
