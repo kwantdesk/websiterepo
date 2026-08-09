@@ -38,7 +38,7 @@ function cacheKey(symbol: string, timeframe: string) {
   // five-session backfill. Keep earlier partial event caches isolated so they
   // cannot make a newly selected range/volume chart start at the current tick.
   return isEventBasedChartInterval(timeframe)
-    ? `event-v4::${symbol}::${timeframe}`
+    ? `event-v5::${symbol}::${timeframe}`
     : `${symbol}::${timeframe}`;
 }
 

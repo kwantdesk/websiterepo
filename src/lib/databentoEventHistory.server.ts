@@ -6,6 +6,7 @@ import {
   type MarketTrade,
 } from "@/lib/eventBars";
 import type { Candle } from "@/lib/backtester";
+import { cmeEventTailCutoffMs } from "@/lib/chartHistoryWindow";
 import {
   databentoEventTimestampMs,
   databentoTradeAggressor,
@@ -248,15 +249,15 @@ async function streamEventBars(args: {
  * native trade tape so Big Trades stays attached to the bar where each print
  * happened and KWANT Effort receives real ask/bid participation immediately.
  */
-async function streamEventExecutions(args: {
+async function streamEventFlow(args: {
   symbol: string;
+  candles: Candle[];
   start: number;
   end: number;
   canRetryEnd?: boolean;
-}): Promise<DatabentoEventExecutionTuple[]> {
+}): Promise<{ candles: Candle[]; executions: DatabentoEventExecutionTuple[] }> {
   const key = process.env.DATABENTO_API_KEY?.trim();
   if (!key) throw new Error("CME market data is not configured.");
-  const boundedStart = Math.max(args.start, args.end - EVENT_EXECUTION_LOOKBACK_MS);
   const form = new URLSearchParams({
     dataset: "GLBX.MDP3",
     encoding: "json",
@@ -266,7 +267,10 @@ async function streamEventExecutions(args: {
     symbols: args.symbol,
     stype_in: isContinuousFuture(args.symbol) ? "continuous" : "raw_symbol",
     schema: "trades",
-    start: new Date(boundedStart).toISOString(),
+    // CVD must cover the same requested history as the chart. Aggregate the
+    // complete raw tape into its event-bar boundaries on the server instead
+    // of returning hundreds of thousands of one-second flow buckets.
+    start: new Date(args.start).toISOString(),
     end: new Date(args.end).toISOString(),
   });
   const response = await fetch(`${DATABENTO_HISTORICAL_BASE_URL}/timeseries.get_range`, {
@@ -284,21 +288,33 @@ async function streamEventExecutions(args: {
     const completedEnd = response.status === 422 && args.canRetryEnd !== false
       ? availableEnd(detail)
       : null;
-    if (completedEnd && completedEnd > boundedStart && completedEnd < args.end) {
-      return streamEventExecutions({
+    if (completedEnd && completedEnd > args.start && completedEnd < args.end) {
+      return streamEventFlow({
         ...args,
-        start: boundedStart,
         end: completedEnd - 1,
         canRetryEnd: false,
       });
     }
     throw new Error(`CME execution history failed (${response.status}): ${detail.slice(0, 180)}`);
   }
-  if (!response.body) return [];
+  if (!response.body) return { candles: args.candles, executions: [] };
 
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   const executions: DatabentoEventExecutionTuple[] = [];
+  const flows = Array.from({ length: args.candles.length }, () => ({
+    volume: 0,
+    trades: 0,
+    askVolume: 0,
+    bidVolume: 0,
+    askTrades: 0,
+    bidTrades: 0,
+    delta: 0,
+    deltaHigh: 0,
+    deltaLow: 0,
+  }));
+  const recentExecutionStart = args.end - EVENT_EXECUTION_LOOKBACK_MS;
+  let candleIndex = 0;
   let buffer = "";
   const append = (row: Record<string, unknown>) => {
     const timestamp = eventTime(
@@ -313,7 +329,35 @@ async function streamEventExecutions(args: {
     const askVolume = aggressor === "BUY" ? size : 0;
     const bidVolume = aggressor === "SELL" ? size : 0;
     const delta = askVolume - bidVolume;
-    if (timestamp <= 0 || tradePrice <= 0 || size <= 0 || delta === 0) return;
+    if (timestamp <= 0 || tradePrice <= 0 || size <= 0 || delta === 0 || !args.candles.length) return;
+
+    while (
+      candleIndex + 1 < args.candles.length
+      && args.candles[candleIndex + 1].timestamp <= timestamp
+    ) {
+      candleIndex += 1;
+    }
+    const candle = args.candles[candleIndex];
+    const nextTimestamp = args.candles[candleIndex + 1]?.timestamp;
+    if (
+      !candle
+      || timestamp < candle.timestamp
+      || (nextTimestamp !== undefined && timestamp >= nextTimestamp)
+    ) return;
+    const flow = flows[candleIndex];
+    flow.volume += size;
+    flow.trades += 1;
+    flow.askVolume += askVolume;
+    flow.bidVolume += bidVolume;
+    if (askVolume > 0) flow.askTrades += 1;
+    if (bidVolume > 0) flow.bidTrades += 1;
+    flow.delta += delta;
+    flow.deltaHigh = Math.max(flow.deltaHigh, flow.delta);
+    flow.deltaLow = Math.min(flow.deltaLow, flow.delta);
+
+    // Big Trades and live seam repair only need the recent compact tape. CVD
+    // has already received the full-history flow above.
+    if (timestamp < recentExecutionStart) return;
     const bucketTimestamp = Math.floor(timestamp / EVENT_FLOW_BUCKET_MS) * EVENT_FLOW_BUCKET_MS;
     const previous = executions.at(-1);
     if (previous?.[0] === bucketTimestamp) {
@@ -368,7 +412,27 @@ async function streamEventExecutions(args: {
   }
   buffer += decoder.decode();
   consume(buffer);
-  return executions;
+  return {
+    candles: args.candles.map((candle, index) => {
+      const flow = flows[index];
+      if (!flow || flow.askVolume + flow.bidVolume <= 0) return candle;
+      return {
+        ...candle,
+        volume: flow.volume,
+        trades: flow.trades,
+        askVolume: flow.askVolume,
+        bidVolume: flow.bidVolume,
+        askTrades: flow.askTrades,
+        bidTrades: flow.bidTrades,
+        delta: flow.delta,
+        deltaOpen: 0,
+        deltaHigh: flow.deltaHigh,
+        deltaLow: flow.deltaLow,
+        deltaClose: flow.delta,
+      };
+    }),
+    executions,
+  };
 }
 
 export async function getDatabentoEventBars(
@@ -413,14 +477,19 @@ export async function getDatabentoEventHistory(
   // event bars. Anchor the flow window to the latest actual candle whenever
   // the market tail is stale; during a live session retain the real request
   // end so the forming bar receives the freshest executions.
-  const executionEnd = latestCandleTimestamp > 0
+  const requestedExecutionEnd = latestCandleTimestamp > 0
     && requestedEnd - latestCandleTimestamp > 10 * 60_000
       ? Math.min(requestedEnd, latestCandleTimestamp + 60_000)
       : requestedEnd;
-  const executions = await streamEventExecutions({
+  const finalBarCutoff = cmeEventTailCutoffMs(candles, requestedEnd);
+  const executionEnd = finalBarCutoff === null
+    ? requestedExecutionEnd
+    : Math.min(requestedExecutionEnd, finalBarCutoff);
+  const flow = await streamEventFlow({
     symbol,
+    candles,
     start: requestedStart,
     end: executionEnd,
-  }).catch(() => [] as DatabentoEventExecutionTuple[]);
-  return { candles, executions };
+  }).catch(() => ({ candles, executions: [] as DatabentoEventExecutionTuple[] }));
+  return flow;
 }
