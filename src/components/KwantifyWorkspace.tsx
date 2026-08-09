@@ -2354,6 +2354,7 @@ type ValueAreaChartOverlay = {
   dailyLabel: string;
   weeklyLabel: string;
   generatedAt: string;
+  nextRefreshAt: string;
   // Set when a refresh fails while last-good levels stay on the chart. The
   // painter must render them visibly stale, never fresh-looking.
   stale?: boolean;
@@ -2463,21 +2464,34 @@ function buildGameplanChartDecorations(
 }
 
 const valueAreaPayloadCache = new Map<string, ValueAreaPayloadCacheEntry>();
-const VALUE_AREA_SESSION_CACHE_PREFIX = "kwantdesk:value-area:last-good:v1:";
+const VALUE_AREA_SESSION_CACHE_PREFIX = "kwantdesk:value-area:last-good:v2:";
+
+function valueAreaPayloadIsCurrent(payload: Pick<ValueAreaPayload, "nextRefreshAt">, now = Date.now()) {
+  const refreshAt = Date.parse(payload.nextRefreshAt);
+  return Number.isFinite(refreshAt) && refreshAt > now;
+}
 
 function readValueAreaSessionPayload(cacheKey: string) {
   if (typeof window === "undefined") return null;
+  const storageKey = `${VALUE_AREA_SESSION_CACHE_PREFIX}${cacheKey}`;
   try {
-    const raw = window.sessionStorage.getItem(`${VALUE_AREA_SESSION_CACHE_PREFIX}${cacheKey}`);
+    const raw = window.sessionStorage.getItem(storageKey);
     if (!raw) return null;
     const payload = JSON.parse(raw) as ValueAreaPayload;
-    return payload.symbol.toUpperCase() === cacheKey
+    const valid = payload.symbol.toUpperCase() === cacheKey
       && payload.method === "TRADE_BY_TRADE"
       && validValueAreaProfile(payload.daily)
       && validValueAreaProfile(payload.weekly)
-      ? payload
-      : null;
+      && valueAreaPayloadIsCurrent(payload);
+    if (!valid) {
+      window.sessionStorage.removeItem(storageKey);
+      return null;
+    }
+    return payload;
   } catch {
+    try {
+      window.sessionStorage.removeItem(storageKey);
+    } catch {}
     return null;
   }
 }
@@ -2499,7 +2513,15 @@ function fetchValueAreaPayload(symbol: string) {
     });
   }
 
-  const cached = valueAreaPayloadCache.get(cacheKey);
+  let cached = valueAreaPayloadCache.get(cacheKey);
+  // Do not keep an expired prior-session payload around while a new profile is
+  // being built. This was most visible on the Sunday/Monday reopen: a Thursday
+  // profile restored from Friday morning could stay painted while Friday's
+  // authoritative profile streamed in.
+  if (cached?.payload && !valueAreaPayloadIsCurrent(cached.payload, now)) {
+    valueAreaPayloadCache.delete(cacheKey);
+    cached = undefined;
+  }
   if (cached && cached.expiresAt > now) return cached.promise;
 
   const previous = cached;
@@ -2681,6 +2703,7 @@ function buildValueAreaChartOverlay(
     dailyLabel: payload.daily.label,
     weeklyLabel: payload.weekly.label,
     generatedAt: payload.generatedAt,
+    nextRefreshAt: payload.nextRefreshAt,
   };
 }
 
@@ -3934,7 +3957,15 @@ function WorkspaceChartPane({
     let developingRunning = false;
     let failureStreak = 0;
     let retainedDeveloping: InstitutionalVolumeProfile | null = null;
-    let retainedOverlay = valueAreaOverlay;
+    let retainedOverlay = valueAreaOverlay && valueAreaPayloadIsCurrent(valueAreaOverlay)
+      ? valueAreaOverlay
+      : null;
+    if (valueAreaOverlay && !retainedOverlay) {
+      // A completed-session level set stops being authoritative at the next
+      // CME profile close. Clear it before requesting the replacement so an
+      // old Thursday profile can never remain visible as Monday's "PD" set.
+      setValueAreaOverlay(null);
+    }
 
     const schedule = (delay: number) => {
       if (cancelled) return;
@@ -3944,6 +3975,11 @@ function WorkspaceChartPane({
 
     const loadValueArea = async () => {
       if (cancelled || running) return;
+      if (retainedOverlay && !valueAreaPayloadIsCurrent(retainedOverlay)) {
+        retainedOverlay = null;
+        retainedDeveloping = null;
+        setValueAreaOverlay(null);
+      }
       running = true;
       setValueAreaLevelsLoading(!retainedOverlay);
       let nextDelay = 15_000;
