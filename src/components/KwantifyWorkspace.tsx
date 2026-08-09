@@ -85,7 +85,7 @@ import { createClient } from "@/lib/supabase";
 import type { FriendsPayload } from "@/lib/friends";
 import { cacheProfileIdentity, readProfileIdentityCache } from "@/lib/profileIdentityCache";
 import { useAccountPreferenceSync } from "@/hooks/useAccountPreferenceSync";
-import { hydrateUserPreferences, preferenceSnapshotFingerprint } from "@/lib/userPreferences";
+import { hydrateUserPreferences } from "@/lib/userPreferences";
 import { normalizeTimeZone } from "@/lib/timeZones";
 import { clearSavedStrategiesRaw, loadSavedStrategiesRaw, saveSavedStrategiesRaw } from "@/lib/automation";
 import { defaultChartSettings, extractUserChartSettings, loadStoredChartSettings, saveStoredChartSettings, type ChartSettings } from "@/lib/chartSettings";
@@ -8171,15 +8171,82 @@ export default function KwantifyWorkspace({
       try {
         hydrated = await hydrateUserPreferences(supabase, user);
         if (hydrated.changed) {
-          const reloadKey = `kwantdesk:preference-hydration-reload:${user.id}`;
-          const hydratedFingerprint = preferenceSnapshotFingerprint(hydrated.snapshot);
-          if (window.sessionStorage.getItem(reloadKey) !== hydratedFingerprint) {
-            window.sessionStorage.setItem(reloadKey, hydratedFingerprint);
-            window.location.reload();
-            return;
+          // Account preferences are applied to localStorage by the hydrator.
+          // Reconcile the chart shell in place before it is allowed to mount.
+          // The previous hard reload mounted the chart with stale local state,
+          // downloaded its history, then tore everything down and repeated the
+          // entire load once the cloud snapshot arrived.
+          const nextLayoutValue = window.localStorage.getItem("olisa-chart-workspace-layout");
+          const nextLayout: WorkspaceLayout = nextLayoutValue === "split-vertical"
+            || nextLayoutValue === "split-horizontal"
+            || nextLayoutValue === "quad"
+            || nextLayoutValue === "custom"
+            || nextLayoutValue === "single"
+            ? nextLayoutValue
+            : "single";
+
+          let nextPanes = DEFAULT_WORKSPACE_PANES;
+          try {
+            const parsed = JSON.parse(window.localStorage.getItem("olisa-chart-workspace-panes") ?? "null") as Partial<WorkspacePane>[] | null;
+            if (parsed?.length) {
+              nextPanes = parsed.map((pane, index) =>
+                normalizeWorkspacePane(pane, DEFAULT_WORKSPACE_PANES[index] ?? DEFAULT_WORKSPACE_PANES[0]));
+            }
+          } catch {
+            nextPanes = DEFAULT_WORKSPACE_PANES;
           }
-        } else {
-          window.sessionStorage.removeItem(`kwantdesk:preference-hydration-reload:${user.id}`);
+
+          let nextTree: WorkspaceLayoutNode;
+          try {
+            nextTree = normalizeWorkspaceLayoutNode(
+              JSON.parse(window.localStorage.getItem("olisa-chart-workspace-tree") ?? "null"),
+              new Set(nextPanes.map((pane) => pane.id)),
+            ) ?? createWorkspaceLayoutTree(nextLayout === "custom" ? "single" : nextLayout, nextPanes);
+          } catch {
+            nextTree = createWorkspaceLayoutTree(nextLayout === "custom" ? "single" : nextLayout, nextPanes);
+          }
+
+          const requestedActivePaneId = window.localStorage.getItem("olisa-chart-workspace-active-pane");
+          const nextActivePane = nextPanes.find((pane) => pane.id === requestedActivePaneId)
+            ?? nextPanes[0]
+            ?? DEFAULT_WORKSPACE_PANES[0];
+
+          setWorkspaceLayout(nextLayout);
+          setWorkspacePanes(nextPanes);
+          setWorkspaceTree(nextTree);
+          setActivePaneId(nextActivePane.id);
+          setSelectedInstrument(nextActivePane.symbol);
+          setSelectedTimeframe(nextActivePane.timeframe);
+          setSelectedPeriod(nextActivePane.period);
+          setSelectedWatchlistKey(nextActivePane.watchlistKey);
+          setConnectedBroker(nextActivePane.broker);
+
+          const nextChartSettings = loadStoredChartSettings();
+          setChartSettings(nextChartSettings);
+          setDraftChartSettings(nextChartSettings);
+          setChartSettingsSnapshot(nextChartSettings);
+
+          try {
+            const current = window.localStorage.getItem(CHART_INDICATORS_STORAGE_KEY);
+            const legacy = window.localStorage.getItem("olisa-chart-pane-indicators");
+            setPaneIndicators(normalizePaneIndicatorState(JSON.parse(current ?? legacy ?? "{}")));
+          } catch {
+            setPaneIndicators({});
+          }
+
+          try {
+            const savedIntervals = JSON.parse(window.localStorage.getItem("olisa-chart-favourite-intervals") ?? "null");
+            if (Array.isArray(savedIntervals) && savedIntervals.every((item) => typeof item === "string")) {
+              setFavTFs(savedIntervals);
+            }
+          } catch {
+            // Keep the already-normalized interval defaults.
+          }
+
+          setGammaLevelsEnabled(window.localStorage.getItem(GAMMA_LEVELS_ENABLED_STORAGE_KEY) === "true");
+          setHistoricalStructureEnabled(window.localStorage.getItem(HISTORICAL_STRUCTURE_ENABLED_STORAGE_KEY) === "true");
+          setValueAreaLevelsEnabled(window.localStorage.getItem(VALUE_AREA_LEVELS_ENABLED_STORAGE_KEY) === "true");
+          setGameplanChartOverlays(loadGameplanChartOverlays());
         }
       } catch {
         // Keep the authenticated workspace available if preference sync is temporarily offline.
@@ -10911,7 +10978,9 @@ export default function KwantifyWorkspace({
         {visitedWorkspaceSections.has("charts") ? (
         <ReactActivity mode={bottomWorkspaceSection === "charts" ? "visible" : "hidden"}>
         <WorkspaceFailureBoundary resetKey="charts" label="Charts">
-        <div className="min-h-0 flex-1 overflow-hidden">
+        {!preferencesReady ? (
+          workspaceLoader("Opening charts", "Restoring your saved workspace before the market feed starts.")
+        ) : <div className="min-h-0 flex-1 overflow-hidden">
           <div ref={workspaceAreaRef} className="relative h-full min-w-0">
             {renderWorkspaceNode(workspaceTree)}
           </div>
@@ -11060,7 +11129,7 @@ export default function KwantifyWorkspace({
               );
             })}
           </div>
-        </div>
+        </div>}
         </WorkspaceFailureBoundary>
         </ReactActivity>
         ) : null}
