@@ -17,10 +17,17 @@ type RawPayload = {
     contractSymbol?: string;
   };
   snapshot?: {
+    id?: number;
     timestamp?: number;
     tickSize?: number;
     bids?: unknown;
     asks?: unknown;
+    bestBid?: number;
+    bestAsk?: number;
+    lastTick?: number;
+    microTick?: number;
+    imbalance?: { bid?: number; ask?: number; ratio?: number };
+    trades?: unknown;
     latencyMs?: number | null;
     fullDepth?: boolean;
     bookValid?: boolean;
@@ -119,6 +126,31 @@ function updateTrackers(stream: SharedPoll, payload: RawPayload) {
   }
 
   const timestamp = Number(payload.snapshot?.timestamp ?? now);
+  const decodeTrade = (value: unknown) => {
+    if (!value || typeof value !== "object") return null;
+    const trade = value as Record<string, unknown>;
+    const tick = Number(trade.tick);
+    const size = Number(trade.size);
+    const tradeTimestamp = Number(trade.timestamp ?? timestamp);
+    if (![tick, size, tradeTimestamp].every(Number.isFinite) || size <= 0) return null;
+    return {
+      id: Number(trade.id ?? tradeTimestamp),
+      timestamp: tradeTimestamp,
+      price: tick * tickSize,
+      size,
+      side: trade.side === "sell" ? "SELL" as const : "BUY" as const,
+    };
+  };
+  const trades = Array.isArray(payload.snapshot?.trades)
+    ? payload.snapshot.trades.flatMap((trade) => {
+        const decoded = decodeTrade(trade);
+        return decoded ? [decoded] : [];
+      })
+    : [];
+  const bestBidTick = Number(payload.snapshot?.bestBid);
+  const bestAskTick = Number(payload.snapshot?.bestAsk);
+  const lastTick = Number(payload.snapshot?.lastTick);
+  const microTick = Number(payload.snapshot?.microTick);
   const snapshot: RithmicLiquiditySnapshot = {
     asOf: new Date(Number.isFinite(timestamp) ? timestamp : now).toISOString(),
     contractSymbol: String(payload.status?.contractSymbol || payload.snapshot?.contractSymbol || stream.contractSymbol || stream.root),
@@ -126,6 +158,13 @@ function updateTrackers(stream: SharedPoll, payload: RawPayload) {
     fullDepth: Boolean(payload.status?.fullDepth ?? payload.snapshot?.fullDepth),
     bookValid: Boolean(payload.status?.bookValid ?? payload.snapshot?.bookValid),
     ageMs: payload.snapshot?.latencyMs == null ? null : Number(payload.snapshot.latencyMs),
+    bestBid: Number.isFinite(bestBidTick) && bestBidTick > 0 ? bestBidTick * tickSize : null,
+    bestAsk: Number.isFinite(bestAskTick) && bestAskTick > 0 ? bestAskTick * tickSize : null,
+    lastPrice: Number.isFinite(lastTick) && lastTick > 0 ? lastTick * tickSize : null,
+    microPrice: Number.isFinite(microTick) && microTick > 0 ? microTick * tickSize : null,
+    bidDepth: Number(payload.snapshot?.imbalance?.bid ?? 0) || 0,
+    askDepth: Number(payload.snapshot?.imbalance?.ask ?? 0) || 0,
+    trades,
     levels: [...stream.trackers.values()]
       .filter((tracker) => tracker.size > 0)
       .map(({ firstSeenAt: _firstSeenAt, lastSeenAt: _lastSeenAt, lastSize: _lastSize, ...tracker }) => tracker),

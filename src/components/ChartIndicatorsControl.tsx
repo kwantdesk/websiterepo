@@ -661,6 +661,32 @@ export default function ChartIndicatorsControl({
                 </div>
               ) : null}
 
+              {settingsDefinition.id === "depth-of-market" ? (
+                <div className="space-y-3 rounded-xl border border-primary/15 bg-primary/[0.035] p-3">
+                  <div>
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-foreground">Professional Rithmic DOM</div>
+                    <p className="mt-1 text-[9px] leading-4 text-muted">
+                      A read-only full-book ladder docked to the chart. Drag its left edge to resize it, use the mouse wheel to inspect nearby prices, and click PRICE to recenter.
+                    </p>
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-3">
+                    {[
+                      ["Depth", "Resting bid and ask liquidity at each exchange price."],
+                      ["Hit / Lift", "Recent sell-at-bid and buy-at-ask executions."],
+                      ["Pull / Stack", "Net liquidity added or removed from each price."],
+                    ].map(([title, description]) => (
+                      <div key={title} className="rounded-lg border border-border bg-background/55 px-3 py-2">
+                        <div className="text-[9px] font-semibold text-foreground">{title}</div>
+                        <div className="mt-1 text-[8px] leading-3 text-muted">{description}</div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="rounded-lg border border-border bg-background/55 px-3 py-2 text-[8px] leading-3 text-muted">
+                    The ladder is display-only: it never places, modifies or cancels an order.
+                  </div>
+                </div>
+              ) : null}
+
               {(INDICATOR_NUMERIC_SETTINGS[settingsDefinition.id] ?? []).map((setting) => {
                 const value = Number(settingsInstance.settings?.[setting.key] ?? setting.defaultValue);
                 return (

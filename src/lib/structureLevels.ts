@@ -26,6 +26,19 @@ export type RithmicLiquiditySnapshot = {
   bookValid: boolean;
   ageMs: number | null;
   levels: TrackedLiquidityLevel[];
+  bestBid?: number | null;
+  bestAsk?: number | null;
+  lastPrice?: number | null;
+  microPrice?: number | null;
+  bidDepth?: number;
+  askDepth?: number;
+  trades?: Array<{
+    id: number;
+    timestamp: number;
+    price: number;
+    size: number;
+    side: "BUY" | "SELL";
+  }>;
 };
 
 export type HistoricalStructureCandidate = {

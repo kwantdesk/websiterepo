@@ -5461,12 +5461,13 @@ export default function Chart({
     : null;
 
   return (
-    <div
-      ref={chartContainerRef}
-      className="relative h-full w-full overflow-hidden"
-      data-volume-profile-count={volumeProfiles.length}
-      data-volume-profile-provider={volumeProfiles.at(-1)?.provider ?? "none"}
-    >
+    <div className="flex h-full w-full min-w-0 overflow-hidden">
+      <div
+        ref={chartContainerRef}
+        className="relative h-full min-w-0 flex-1 overflow-hidden"
+        data-volume-profile-count={volumeProfiles.length}
+        data-volume-profile-provider={volumeProfiles.at(-1)?.provider ?? "none"}
+      >
       {!chartVisualReady ? (
         <div className="pointer-events-auto absolute inset-0 z-[90]" style={{ backgroundColor: settings.backgroundColor }}>
           <KwantLoader
@@ -6049,16 +6050,6 @@ export default function Chart({
             <span>Data age</span><span className="text-foreground">{Math.round(classicGexProfile.dataAgeMs / 1000)}s</span>
           </div>
         </div>
-      ) : null}
-
-      {depthOfMarketIndicator ? (
-        <DepthOfMarketPanel
-          instrument={instrument}
-          contractSymbol={contractSymbol}
-          latestPrice={candles.at(-1)?.close ?? null}
-          indicator={depthOfMarketIndicator}
-          chartSettings={settings}
-        />
       ) : null}
 
       {(
@@ -6955,6 +6946,18 @@ export default function Chart({
           </div>
         </div>
       )}
+      </div>
+      {depthOfMarketIndicator ? (
+        <DepthOfMarketPanel
+          instrument={instrument}
+          contractSymbol={contractSymbol}
+          latestPrice={candles.at(-1)?.close ?? null}
+          indicator={depthOfMarketIndicator}
+          chartSettings={settings}
+          onUpdateSetting={(key, value) =>
+            onUpdateIndicatorSetting?.(depthOfMarketIndicator.instanceId, key, value)}
+        />
+      ) : null}
     </div>
   );
 }

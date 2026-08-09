@@ -117,9 +117,14 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
     { key: "zeroLineWidth", label: "Zero-line width", defaultValue: 1, min: 1, max: 4 },
   ],
   "depth-of-market": [
-    { key: "width", label: "Ladder width (pixels)", defaultValue: 244, min: 176, max: 420 },
+    { key: "width", label: "Dock width (pixels)", defaultValue: 360, min: 196, max: 560 },
     { key: "rows", label: "Maximum visible price rows", defaultValue: 41, min: 11, max: 101, step: 2 },
     { key: "groupTicks", label: "Price grouping (ticks)", defaultValue: 1, min: 1, max: 100 },
+    { key: "refreshRateMs", label: "Display refresh rate (milliseconds)", defaultValue: 50, min: 16, max: 1000, step: 1 },
+    { key: "recentWindowMs", label: "Recent traded volume retention (milliseconds)", defaultValue: 8000, min: 250, max: 60000, step: 250 },
+    { key: "depthScaleCap", label: "Depth histogram cap · 0 = automatic", defaultValue: 0, min: 0, max: 100000, step: 10 },
+    { key: "highlightThreshold", label: "High-liquidity threshold · 0 = automatic", defaultValue: 0, min: 0, max: 100000, step: 10 },
+    { key: "fontSize", label: "Ladder font size", defaultValue: 9, min: 7, max: 13, step: 1 },
   ],
   "deep-print-footprint": [
     { key: "barWidth", label: "Footprint bar width (pixels)", defaultValue: 88, min: 44, max: 180, step: 2 },
@@ -560,10 +565,18 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
   ...(indicatorId === "depth-of-market" ? {
     showCumulative: false,
     showOrderCount: false,
+    showPullStack: true,
+    showRecentTrades: true,
+    showDepthHistogram: true,
+    showHeaderStats: true,
+    showImbalance: true,
+    autoCenter: true,
+    compactNumbers: true,
     useThemeColors: true,
     bidColor: theme?.upColor ?? "#22C55E",
     askColor: theme?.downColor ?? "#EF4444",
-    domSettingsVersion: 1,
+    lastTradeColor: theme?.borderUpColor ?? theme?.upColor ?? "#FDE047",
+    domSettingsVersion: 2,
   } : {}),
   ...(indicatorId === "deep-print-footprint" ? {
     type: "ask-bid",
@@ -699,6 +712,20 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
       : instance.indicatorId === "deep-m-effort"
         ? { ...instance, indicatorId: "deep-m-effort-nq" }
       : instance;
+  if (
+    normalizedInstance.indicatorId === "depth-of-market"
+    && Number(normalizedInstance.settings?.domSettingsVersion) < 2
+  ) {
+    normalizedInstance = {
+      ...normalizedInstance,
+      settings: {
+        ...defaultIndicatorSettings("depth-of-market"),
+        ...(normalizedInstance.settings ?? {}),
+        width: Math.max(280, Number(normalizedInstance.settings?.width ?? 360)),
+        domSettingsVersion: 2,
+      },
+    };
+  }
   if (
     ["kwant-profile", "daily-volume-profile", "weekly-volume-profile", "custom-draw-on-volume-profile", "ask-bid-volume-profile", "delta-profile"]
       .includes(normalizedInstance.indicatorId)
