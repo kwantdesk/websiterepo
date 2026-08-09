@@ -117,7 +117,7 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
     { key: "zeroLineWidth", label: "Zero-line width", defaultValue: 1, min: 1, max: 4 },
   ],
   "depth-of-market": [
-    { key: "width", label: "Dock width (pixels)", defaultValue: 360, min: 196, max: 560 },
+    { key: "width", label: "Dock width (pixels)", defaultValue: 440, min: 196, max: 640 },
     { key: "rows", label: "Maximum visible price rows", defaultValue: 41, min: 11, max: 101, step: 2 },
     { key: "groupTicks", label: "Price grouping (ticks)", defaultValue: 1, min: 1, max: 100 },
     { key: "refreshRateMs", label: "Display refresh rate (milliseconds)", defaultValue: 50, min: 16, max: 1000, step: 1 },
@@ -576,7 +576,7 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
     bidColor: theme?.upColor ?? "#22C55E",
     askColor: theme?.downColor ?? "#EF4444",
     lastTradeColor: theme?.borderUpColor ?? theme?.upColor ?? "#FDE047",
-    domSettingsVersion: 2,
+    domSettingsVersion: 3,
   } : {}),
   ...(indicatorId === "deep-print-footprint" ? {
     type: "ask-bid",
@@ -714,15 +714,15 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
       : instance;
   if (
     normalizedInstance.indicatorId === "depth-of-market"
-    && Number(normalizedInstance.settings?.domSettingsVersion) < 2
+    && Number(normalizedInstance.settings?.domSettingsVersion) < 3
   ) {
     normalizedInstance = {
       ...normalizedInstance,
       settings: {
         ...defaultIndicatorSettings("depth-of-market"),
         ...(normalizedInstance.settings ?? {}),
-        width: Math.max(280, Number(normalizedInstance.settings?.width ?? 360)),
-        domSettingsVersion: 2,
+        width: Math.max(440, Number(normalizedInstance.settings?.width ?? 440)),
+        domSettingsVersion: 3,
       },
     };
   }

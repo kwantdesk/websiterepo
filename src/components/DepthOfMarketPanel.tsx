@@ -79,7 +79,7 @@ export default function DepthOfMarketPanel({
   onUpdateSetting,
 }: Props) {
   const settings = indicator.settings ?? {};
-  const configuredWidth = Math.max(196, Math.min(560, finite(settings.width, 360)));
+  const configuredWidth = Math.max(196, Math.min(640, finite(settings.width, 440)));
   const [runtimeWidth, setRuntimeWidth] = useState(configuredWidth);
   const [collapsed, setCollapsed] = useState(false);
   const [centreOffsetTicks, setCentreOffsetTicks] = useState(0);
@@ -218,7 +218,7 @@ export default function DepthOfMarketPanel({
   };
 
   const persistWidth = useCallback((nextWidth: number) => {
-    const width = Math.max(196, Math.min(560, Math.round(nextWidth)));
+    const width = Math.max(196, Math.min(640, Math.round(nextWidth)));
     setRuntimeWidth(width);
     onUpdateSetting?.("width", width);
   }, [onUpdateSetting]);
@@ -230,7 +230,7 @@ export default function DepthOfMarketPanel({
     const onMove = (moveEvent: PointerEvent) => {
       if (!dragRef.current) return;
       const nextWidth = dragRef.current.startWidth + (dragRef.current.startX - moveEvent.clientX);
-      const width = Math.max(196, Math.min(560, Math.round(nextWidth)));
+      const width = Math.max(196, Math.min(640, Math.round(nextWidth)));
       dragRef.current.currentWidth = width;
       setRuntimeWidth(width);
     };
