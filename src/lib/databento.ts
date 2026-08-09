@@ -503,33 +503,19 @@ export async function getDatabentoOrderFlowHistory(
     return { candles: bars, executions: [] };
   }
 
-  // Raw CME executions are deliberately bounded to the latest six hours.
-  // This is enough to hydrate order-flow studies immediately without making
-  // each chart load download an unbounded multi-day trade tape.
   const requestedStart = Date.parse(start);
   const requestedEnd = Date.parse(end);
   const safeEnd = Number.isFinite(requestedEnd) ? requestedEnd : Date.now();
-  // During Globex pauses and weekends, wall-clock "last six hours" contains
-  // no executions even though the chart correctly ends at Friday's close.
-  // Anchor flow history to the newest returned CME bar so the last completed
-  // session still hydrates CVD, Big Trades and KWANT Effort.
   const size = timeframeMs(timeframe);
   const latestBarEnd = (bars.at(-1)?.timestamp ?? safeEnd) + size;
   const flowEndMs = Math.min(safeEnd, latestBarEnd);
-  const flowStart = new Date(Math.max(
+  const flowStartMs = Math.max(
     Number.isFinite(requestedStart) ? requestedStart : 0,
-    flowEndMs - 6 * 60 * 60_000,
-  )).toISOString();
-  const tradeRows = await historicalRequest({
-    symbols: symbol,
-    stype_in: isContinuousFuture(symbol) ? "continuous" : "raw_symbol",
-    schema: "trades",
-    start: flowStart,
-    end: new Date(flowEndMs).toISOString(),
-    // No record limit: Databento documents an omitted limit as unbounded.
-    // A hard 200k cap silently cut off busy NQ/ES windows and produced a
-    // partial CVD that looked like it began mid-session.
-  });
+    bars[0]?.timestamp ?? 0,
+  );
+  if (flowEndMs <= flowStartMs) {
+    return { candles: bars, executions: [] };
+  }
   const flowByBucket = new Map<number, {
     volume: number;
     trades: number;
@@ -539,41 +525,73 @@ export async function getDatabentoOrderFlowHistory(
     deltaHigh: number;
     deltaLow: number;
   }>();
+  type CompactExecution = {
+    timestamp: number;
+    price: number;
+    tradeSize: number;
+    delta: number;
+  };
+  const strongestByMinute = new Map<number, CompactExecution[]>();
+  const consumeTrade = (row: Record<string, unknown>) => {
+    const timestamp = time(
+      row.ts_event
+      ?? row.ts_recv
+      ?? (row.hd as Record<string, unknown> | undefined)?.ts_event,
+    );
+    const tradePrice = price(row.price);
+    const tradeSize = Math.max(0, Number(row.size ?? 0));
+    const aggressor = databentoTradeAggressor(row.side ?? row.aggressor_side);
+    const delta = aggressor === "BUY"
+      ? tradeSize
+      : aggressor === "SELL" ? -tradeSize : 0;
+    if (
+      timestamp < flowStartMs
+      || timestamp >= flowEndMs
+      || tradePrice <= 0
+      || tradeSize <= 0
+      || delta === 0
+    ) return;
 
-  const executions = tradeRows
-    .map((row) => {
-      const timestamp = time(row.ts_event ?? row.ts_recv ?? (row.hd as Record<string, unknown> | undefined)?.ts_event);
-      const tradePrice = price(row.price);
-      const tradeSize = Math.max(0, Number(row.size ?? 0));
-      const aggressor = databentoTradeAggressor(row.side ?? row.aggressor_side);
-      const delta = aggressor === "BUY"
-        ? tradeSize
-        : aggressor === "SELL" ? -tradeSize : 0;
-      return { timestamp, price: tradePrice, tradeSize, delta };
-    })
-    .filter((row) => row.timestamp > 0 && row.price > 0 && row.tradeSize > 0 && row.delta !== 0)
-    .sort((left, right) => left.timestamp - right.timestamp);
+    const bucket = Math.floor(timestamp / size) * size;
+    const current = flowByBucket.get(bucket) ?? {
+      volume: 0,
+      trades: 0,
+      askVolume: 0,
+      bidVolume: 0,
+      delta: 0,
+      deltaHigh: 0,
+      deltaLow: 0,
+    };
+    current.volume += tradeSize;
+    current.trades += 1;
+    if (delta > 0) current.askVolume += tradeSize;
+    if (delta < 0) current.bidVolume += tradeSize;
+    current.delta += delta;
+    current.deltaHigh = Math.max(current.deltaHigh, current.delta);
+    current.deltaLow = Math.min(current.deltaLow, current.delta);
+    flowByBucket.set(bucket, current);
 
-  executions.forEach((trade) => {
-      const bucket = Math.floor(trade.timestamp / size) * size;
-      const current = flowByBucket.get(bucket) ?? {
-        volume: 0,
-        trades: 0,
-        askVolume: 0,
-        bidVolume: 0,
-        delta: 0,
-        deltaHigh: 0,
-        deltaLow: 0,
-      };
-      current.volume += trade.tradeSize;
-      current.trades += 1;
-      if (trade.delta > 0) current.askVolume += trade.tradeSize;
-      if (trade.delta < 0) current.bidVolume += trade.tradeSize;
-      current.delta += trade.delta;
-      current.deltaHigh = Math.max(current.deltaHigh, current.delta);
-      current.deltaLow = Math.min(current.deltaLow, current.delta);
-      flowByBucket.set(bucket, current);
-    });
+    const minute = Math.floor(timestamp / 60_000) * 60_000;
+    const strongest = strongestByMinute.get(minute) ?? [];
+    strongest.push({ timestamp, price: tradePrice, tradeSize, delta });
+    strongest.sort((left, right) =>
+      right.tradeSize - left.tradeSize || left.timestamp - right.timestamp);
+    if (strongest.length > 12) strongest.length = 12;
+    strongestByMinute.set(minute, strongest);
+  };
+  const streamFlow = (availableEndMs: number) => streamHistoricalTradeRows({
+    symbols: symbol,
+    stype_in: isContinuousFuture(symbol) ? "continuous" : "raw_symbol",
+    start: new Date(flowStartMs).toISOString(),
+    end: new Date(availableEndMs).toISOString(),
+  }, consumeTrade);
+  try {
+    await streamFlow(flowEndMs);
+  } catch (error) {
+    const availableEndMs = Number((error as Error & { availableEndMs?: number }).availableEndMs);
+    if (!Number.isFinite(availableEndMs) || availableEndMs <= flowStartMs) throw error;
+    await streamFlow(Math.min(flowEndMs, availableEndMs - 1));
+  }
 
   const candles = bars.map((bar) => {
     const flow = flowByBucket.get(Math.floor(bar.timestamp / size) * size);
@@ -598,15 +616,6 @@ export async function getDatabentoOrderFlowHistory(
   // builds exact CVD/effort candles above, while this compact, time-distributed
   // sample preserves historical large prints without shipping millions of
   // ordinary executions to the browser.
-  const strongestByMinute = new Map<number, typeof executions>();
-  executions.forEach((trade) => {
-    const minute = Math.floor(trade.timestamp / 60_000) * 60_000;
-    const bucket = strongestByMinute.get(minute) ?? [];
-    bucket.push(trade);
-    bucket.sort((left, right) => right.tradeSize - left.tradeSize || left.timestamp - right.timestamp);
-    if (bucket.length > 12) bucket.length = 12;
-    strongestByMinute.set(minute, bucket);
-  });
   const compactExecutions = [...strongestByMinute.values()]
     .flat()
     .sort((left, right) => left.timestamp - right.timestamp)

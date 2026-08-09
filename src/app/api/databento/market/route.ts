@@ -98,7 +98,7 @@ async function getDurableTimeHistory(
       }
       return encodeHistory(history);
     },
-    ["cme-time-flow-v1", symbol, timeframe, `${historyDays}d`],
+    ["cme-time-flow-v2", symbol, timeframe, `${historyDays}d`],
     { revalidate: DURABLE_EVENT_HISTORY_REVALIDATE_SECONDS },
   )();
   return decodeHistory<TimeHistoryPayload>(encoded);

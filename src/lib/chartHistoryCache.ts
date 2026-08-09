@@ -39,7 +39,10 @@ function cacheKey(symbol: string, timeframe: string) {
   // cannot make a newly selected range/volume chart start at the current tick.
   return isEventBasedChartInterval(timeframe)
     ? `event-v5::${symbol}::${timeframe}`
-    : `${symbol}::${timeframe}`;
+    // Time-flow v2 replaces the old six-hour-only aggressor enrichment. Keep
+    // the partial cache isolated so returning browsers cannot restore a CVD
+    // line that begins in the middle of the visible chart.
+    : `time-v2::${symbol}::${timeframe}`;
 }
 
 function executionTapeCacheKey(symbol: string, timeframe: string) {
