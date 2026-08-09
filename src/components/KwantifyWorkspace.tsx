@@ -3465,7 +3465,7 @@ function WorkspaceChartPane({
       const cachedWithObserved = pane.broker === "Databento"
         ? mergeObservedDatabentoTail(cachedBase, latestObservedTail, pane.timeframe)
         : cachedBase;
-      const cachedCandles = pane.broker === "Databento"
+      let cachedCandles = pane.broker === "Databento"
         ? mergeHistoricalWithLiveTail(
             cachedWithObserved,
             latestCandlesRef.current,
@@ -3495,6 +3495,55 @@ function WorkspaceChartPane({
         historyHydratedRef.current = true;
         setLoading(false);
         return;
+      }
+
+      // Event-chart geometry and ordinary Volume are available from compact
+      // one-second OHLCV history; exact CVD enrichment is the expensive part.
+      // Paint the base chart first instead of holding both indicator panes
+      // behind a seven-day aggressor-tape reconstruction. The durable flow
+      // request below then merges into these exact event-bar boundaries.
+      if (
+        pane.broker === "Databento"
+        && needsOrderFlowHistory
+        && isEventBasedChartInterval(pane.timeframe)
+        && !cachedBase.length
+      ) {
+        try {
+          const baseHistory = await fetchWorkspaceCandles(
+            pane.symbol,
+            pane.timeframe,
+            pane.broker,
+            period,
+            500,
+            false,
+            requestController.signal,
+          );
+          if (cancelled) return;
+          const baseCandles = trimChartHistoryForPeriod(
+            trimCandlesAfterActiveBucket(
+              sanitizeCandles(baseHistory, pane.symbol),
+              pane.timeframe,
+            ),
+            period,
+            requestedFrom,
+          );
+          if (baseCandles.length) {
+            cachedCandles = mergeHistoricalWithLiveTail(
+              mergeChartHistory(cachedCandles, baseCandles),
+              latestCandlesRef.current,
+              pane.timeframe,
+              liveTailStartTimestampRef.current,
+            );
+            latestCandlesRef.current = cachedCandles;
+            historyHydratedRef.current = true;
+            setCandles(cachedCandles);
+            setLoading(false);
+            setError(null);
+          }
+        } catch (baseError) {
+          if (baseError instanceof DOMException && baseError.name === "AbortError") return;
+          // The enriched request below remains the authoritative fallback.
+        }
       }
 
       try {

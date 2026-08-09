@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { unstable_cache } from "next/cache";
+import { gzipSync, gunzipSync } from "node:zlib";
 import {
   getDatabentoBars,
   getDatabentoOrderFlowHistory,
@@ -36,6 +38,60 @@ const FRESH_CACHE_MS = 12_000;
 const EVENT_HISTORY_CACHE_MS = 5 * 60_000;
 const DEFAULT_HISTORY_DAYS = DEFAULT_CHART_HISTORY_CALENDAR_DAYS;
 const MAX_HISTORY_DAYS = 14;
+const DURABLE_EVENT_HISTORY_REVALIDATE_SECONDS = 5 * 60;
+
+type EventHistoryPayload = Awaited<ReturnType<typeof getDatabentoEventHistory>>;
+
+/**
+ * Event CVD is expensive because exact aggressor flow has to be folded into
+ * range/volume/Renko boundaries. Store the compressed enriched result in
+ * Next/Vercel's durable data cache so a cold serverless instance reuses work
+ * completed by another instance instead of replaying the raw seven-day tape.
+ * Compression keeps the cache record compact even for dense 40R charts.
+ */
+async function getDurableEventHistory(
+  symbol: string,
+  timeframe: string,
+  historyDays: number,
+  start: string,
+  end: string,
+): Promise<EventHistoryPayload> {
+  const encoded = await unstable_cache(
+    async () => {
+      const history = await getDatabentoEventHistory(symbol, timeframe, start, end);
+      if (!history.candles.some((candle) =>
+        Number(candle.askVolume ?? 0) + Number(candle.bidVolume ?? 0) > 0)) {
+        throw new Error("CME event flow returned no aggressor history.");
+      }
+      return gzipSync(Buffer.from(JSON.stringify(history))).toString("base64");
+    },
+    ["cme-event-flow-v1", symbol, timeframe, `${historyDays}d`],
+    { revalidate: DURABLE_EVENT_HISTORY_REVALIDATE_SECONDS },
+  )();
+  return JSON.parse(
+    gunzipSync(Buffer.from(encoded, "base64")).toString("utf8"),
+  ) as EventHistoryPayload;
+}
+
+async function durableEventHistoryOrDirect(
+  symbol: string,
+  timeframe: string,
+  historyDays: number,
+  start: string,
+  end: string,
+) {
+  try {
+    return await getDurableEventHistory(symbol, timeframe, historyDays, start, end);
+  } catch (error) {
+    // Local scripts and unusual runtimes can lack Next's incremental cache.
+    // The data path must remain available there, while production still gains
+    // the cross-instance durable cache above.
+    if (error instanceof Error && error.message.includes("incrementalCache")) {
+      return getDatabentoEventHistory(symbol, timeframe, start, end);
+    }
+    throw error;
+  }
+}
 
 export async function GET(request: Request) {
   if (!process.env.DATABENTO_API_KEY) {
@@ -82,7 +138,13 @@ export async function GET(request: Request) {
     const end = new Date(now).toISOString();
     const history = isEventBasedChartInterval(timeframe)
       ? includeOrderFlow
-        ? await getDatabentoEventHistory(symbol, timeframe, start, end)
+        ? await durableEventHistoryOrDirect(
+            symbol,
+            timeframe,
+            historyDays,
+            start,
+            end,
+          )
         : {
             candles: await getDatabentoEventBars(symbol, timeframe, start, end),
             executions: [] as DatabentoExecutionTuple[],

@@ -1,6 +1,6 @@
-import type { Candle } from "@/lib/backtester";
-import { isEventBasedChartInterval } from "@/lib/chartIntervals";
-import type { InstitutionalTrade } from "@/lib/institutionalMarketData";
+import type { Candle } from "./backtester.ts";
+import { isEventBasedChartInterval } from "./chartIntervals.ts";
+import type { InstitutionalTrade } from "./institutionalMarketData.ts";
 
 type CachedHistory = {
   key: string;
@@ -110,6 +110,23 @@ function normalizeCandles(candles: Candle[]) {
       const value = Number(candle[key]);
       if (Number.isFinite(value)) normalized[key] = value;
     });
+
+    // A fast OHLC/volume refresh and the slower aggressor-flow enrichment are
+    // deliberately loaded on separate clocks. Never let the fast base candle
+    // erase bid/ask metadata that is already persisted for the same event bar;
+    // doing so forced CVD to redownload seven days of trades after an ordinary
+    // chart refresh. New flow values still win whenever they are present.
+    const existing = byTimestamp.get(timestamp);
+    if (existing) {
+      flowKeys.forEach((key) => {
+        if (
+          !Number.isFinite(Number(normalized[key]))
+          && Number.isFinite(Number(existing[key]))
+        ) {
+          normalized[key] = existing[key];
+        }
+      });
+    }
     byTimestamp.set(timestamp, normalized);
   }
 
