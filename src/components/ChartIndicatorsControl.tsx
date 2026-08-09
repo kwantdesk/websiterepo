@@ -68,6 +68,7 @@ export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "session-highs-lows",
   "big-trades",
   "depth-of-market",
+  "deep-print-footprint",
   "kwant-stats",
   "deep-m-effort-nq",
   "kwant-profile",
@@ -619,6 +620,44 @@ export default function ChartIndicatorsControl({
                       </KwantSelect>
                     </label>
                   ))}
+                </div>
+              ) : null}
+
+              {settingsDefinition.id === "deep-print-footprint" ? (
+                <div className="grid gap-3 rounded-xl border border-primary/15 bg-primary/[0.035] p-3 sm:grid-cols-2">
+                  {[
+                    ["Cell data", "type", [["ask-bid", "Bid × Ask"], ["volume", "Total volume"], ["delta", "Delta"], ["delta-total", "Delta + total volume"]]],
+                    ["Render mode", "mode", [["profile", "Profile"], ["box", "Box"]]],
+                    ["Input", "inputType", [["volume", "Executed volume"], ["num-trades", "Number of trades"]]],
+                    ["Tick grouping", "groupingMode", [["automatic", "Automatic"], ["manual", "Manual"]]],
+                    ["Grouping mode", "groupMode", [["fixed", "Fixed"], ["open-close", "Based on open / close"]]],
+                    ["Imbalance", "imbalanceMode", [["diagonal", "Diagonal"], ["horizontal", "Horizontal"], ["delta-percent", "Delta percentage"]]],
+                    ["Background", "colorMode", [["none", "None"], ["fixed", "Fixed"], ["fading", "Fading intensity"]]],
+                    ["Colour calculation", "colorCalculation", [["volume", "Volume"], ["delta", "Delta"], ["imbalance", "Imbalance"], ["dominant", "Dominant volume"], ["dominant-delta", "Dominant volume delta"]]],
+                    ["Number format", "textFormat", [["automatic", "Automatic"], ["normal", "Full values"], ["thousands", "Thousands (K)"]]],
+                    ["Outer bar", "outsideBarStyle", [["bar", "Full high / low"], ["body", "Open / close body"]]],
+                    ["Marker alignment", "markerAlignment", [["center", "Centre"], ["right", "Right edge"]]],
+                  ].map(([label, key, options]) => (
+                    <label key={String(key)} className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                      <span>{String(label)}</span>
+                      <KwantSelect
+                        value={String(settingsInstance.settings?.[String(key)] ?? "")}
+                        onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                          ...current,
+                          settings: { ...(current.settings ?? {}), [String(key)]: event.target.value },
+                        }))}
+                        className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground"
+                        menuLabel={String(label)}
+                      >
+                        {(options as string[][]).map(([value, optionLabel]) => (
+                          <option key={value} value={value}>{optionLabel}</option>
+                        ))}
+                      </KwantSelect>
+                    </label>
+                  ))}
+                  <div className="rounded-lg border border-border bg-background/55 px-3 py-2 text-[9px] leading-4 text-muted sm:col-span-2">
+                    Bid × Ask uses classified executions from the Rithmic / CME tape. Per-bar value area is fixed to the market-standard 70%; it is intentionally not adjustable.
+                  </div>
                 </div>
               ) : null}
 

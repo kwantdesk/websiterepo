@@ -75,7 +75,7 @@ export const CHART_INDICATOR_CATALOG: ChartIndicatorDefinition[] = [
   indicator("Cumulative Iceberg/Stop", "Order Flow", "Accumulates inferred iceberg and stop activity.", true),
   indicator("Book Speed", "Order Flow", "Measures order-book update velocity.", true),
   indicator("Depth of Market", "Order Flow", "Docked Level 2 price ladder with resting bid/ask liquidity and inside-market context.", true, "Kwantify"),
-  indicator("KWANT Print (Footprint)", "Order Flow", "Bid/ask footprint at every traded price.", true, "Reference", "Deep Print (Footprint)"),
+  indicator("Footprint", "Order Flow", "Native bid × ask, volume and delta footprint bars at every traded price.", true, "Kwantify", "Deep Print (Footprint)"),
   indicator("KWANT Delta", "Order Flow", "Enhanced delta-bar and aggression analysis.", true, "Reference", "Deep Delta"),
   indicator("KWANT Wall", "Order Flow", "Tracks significant resting-liquidity walls.", true, "Reference", "Deep Wall"),
   indicator("KWANT V-Tracker", "Order Flow", "Tracks volume behaviour and participation shifts.", true, "Reference", "Deep V-Tracker"),

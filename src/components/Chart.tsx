@@ -93,6 +93,15 @@ import {
   type BigTradePrimitiveMarker,
   type BigTradesPrimitiveOptions,
 } from "@/lib/bigTradesPrimitive";
+import {
+  buildFootprintBars,
+  type FootprintImbalanceMode,
+} from "@/lib/footprint";
+import {
+  FootprintPrimitive,
+  type FootprintPrimitiveOptions,
+  type FootprintRenderBar,
+} from "@/lib/footprintPrimitive";
 import { calculateDeepEffort } from "@/lib/deepEffort";
 import { calculateImbalanceRejectorSignals } from "@/lib/imbalanceRejector";
 import { calculateImbalanceZones } from "@/lib/imbalanceTracker";
@@ -1586,6 +1595,9 @@ export default function Chart({
   const sessionHighLowRenderDataRef = useRef<SessionHighLowRenderLevel[]>([]);
   const volumeProfilePrimitiveRef = useRef<NativeVolumeProfilePrimitive | null>(null);
   const bigTradesPrimitiveRef = useRef<BigTradesPrimitive | null>(null);
+  const footprintPrimitiveRef = useRef<FootprintPrimitive | null>(null);
+  const footprintActiveRef = useRef(false);
+  const footprintBarWidthRef = useRef<number | null>(null);
   const horzLineRef = useRef<HTMLDivElement>(null);
   const priceLabelRef = useRef<HTMLDivElement>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; price: string } | null>(null);
@@ -1827,6 +1839,202 @@ export default function Chart({
   // must never be folded back into CVD or it will replace exact history with a
   // biased subset of large prints.
   const indicatorCandles = indicatorWindowCandles;
+  const footprintIndicator = useMemo(
+    () => indicators.find((instance) =>
+      instance.enabled && instance.indicatorId === "deep-print-footprint") ?? null,
+    [indicatorSignature, indicators],
+  );
+  const footprintSettings = footprintIndicator?.settings ?? {};
+  const footprintVisibleCandles = useMemo(() => {
+    if (!footprintIndicator || !indicatorCandles.length) return [];
+    const logical = chartRef.current?.timeScale().getVisibleLogicalRange();
+    if (!logical) return indicatorCandles.slice(-160);
+    const sourceOffset = candles.length - indicatorCandles.length;
+    const first = Math.max(0, Math.floor(Number(logical.from)) - sourceOffset - 8);
+    const last = Math.min(indicatorCandles.length, Math.ceil(Number(logical.to)) - sourceOffset + 9);
+    return first < last ? indicatorCandles.slice(first, last) : indicatorCandles.slice(-160);
+  }, [candles.length, footprintIndicator, indicatorCandles, viewportVersion]);
+  const resolvedFootprintGroupTicks = useMemo(() => {
+    const manual = Math.max(1, Math.round(Number(footprintSettings.manualTicks ?? 1)));
+    if (footprintSettings.groupingMode === "manual") return manual;
+    const series = candleSeriesRef.current;
+    const reference = footprintVisibleCandles.at(-1)?.close;
+    if (!series || !reference || !Number.isFinite(reference)) return manual;
+    const firstY = series.priceToCoordinate(reference);
+    const secondY = series.priceToCoordinate(reference + priceFormat.minMove);
+    if (firstY === null || secondY === null) return manual;
+    const pixelsPerTick = Math.max(0.01, Math.abs(secondY - firstY));
+    const targetPixels = Math.max(8, Number(footprintSettings.fontSize ?? 10) * 1.05);
+    const factor = Math.max(0.5, Math.min(4, Number(footprintSettings.autoGroupFactor ?? 1)));
+    let grouped = Math.max(1, Math.ceil(targetPixels / pixelsPerTick * factor));
+    if (footprintSettings.groupMode === "open-close") {
+      const latest = footprintVisibleCandles.at(-1);
+      if (latest) {
+        const bodyTicks = Math.abs(latest.close - latest.open) / Math.max(priceFormat.minMove, 0.000001);
+        grouped = Math.max(grouped, Math.ceil(bodyTicks / 18));
+      }
+    }
+    return Math.min(100, grouped);
+  }, [
+    chartReadyRevision,
+    footprintSettings.autoGroupFactor,
+    footprintSettings.fontSize,
+    footprintSettings.groupMode,
+    footprintSettings.groupingMode,
+    footprintSettings.manualTicks,
+    footprintVisibleCandles,
+    priceFormat.minMove,
+    viewportVersion,
+  ]);
+  const footprintBars = useMemo(() => {
+    if (!footprintIndicator || !footprintVisibleCandles.length) return [];
+    const start = footprintVisibleCandles[0].timestamp;
+    const finalCandle = footprintVisibleCandles.at(-1)!;
+    const approximateInterval = timeframeToMs(timeframe)
+      ?? Math.max(1, finalCandle.timestamp - (footprintVisibleCandles.at(-2)?.timestamp ?? finalCandle.timestamp - 60_000));
+    const end = finalCandle.timestamp + approximateInterval;
+    const visibleTrades = indicatorMarketTrades.filter((record) =>
+      record.timestamp >= start && record.timestamp < end);
+    return buildFootprintBars(footprintVisibleCandles, visibleTrades, {
+      tickSize: priceFormat.minMove,
+      groupTicks: resolvedFootprintGroupTicks,
+      minimumTradeVolume: Number(footprintSettings.minimumTradeVolume ?? 0),
+      maximumTradeVolume: Number(footprintSettings.maximumTradeVolume ?? 0),
+      imbalanceMode: (["diagonal", "horizontal", "delta-percent"].includes(String(footprintSettings.imbalanceMode))
+        ? String(footprintSettings.imbalanceMode)
+        : "diagonal") as FootprintImbalanceMode,
+      minimumImbalancePercent: Number(footprintSettings.minimumImbalancePercent ?? 300),
+      minimumDelta: Number(footprintSettings.minimumDelta ?? 10),
+      includeZero: footprintSettings.includeZero === true,
+    });
+  }, [
+    footprintIndicator,
+    footprintSettings.imbalanceMode,
+    footprintSettings.includeZero,
+    footprintSettings.maximumTradeVolume,
+    footprintSettings.minimumDelta,
+    footprintSettings.minimumImbalancePercent,
+    footprintSettings.minimumTradeVolume,
+    footprintVisibleCandles,
+    indicatorMarketTrades,
+    priceFormat.minMove,
+    resolvedFootprintGroupTicks,
+    timeframe,
+  ]);
+  const footprintRenderBars = useMemo((): FootprintRenderBar[] =>
+    footprintBars.map((bar) => ({
+      ...bar,
+      time: (eventChartTimeBySourceTimeRef.current.get(bar.timestamp)
+        ?? Math.floor(bar.timestamp / 1_000)) as Time,
+    })), [footprintBars]);
+  const footprintPrimitiveOptions = useMemo((): FootprintPrimitiveOptions => {
+    const useThemeColors = footprintSettings.useThemeColors !== false;
+    const option = <T extends string>(value: unknown, allowed: readonly T[], fallback: T) =>
+      allowed.includes(String(value) as T) ? String(value) as T : fallback;
+    return {
+      type: option(footprintSettings.type, ["ask-bid", "volume", "delta", "delta-total"], "ask-bid"),
+      mode: option(footprintSettings.mode, ["profile", "box"], "profile"),
+      inputType: option(footprintSettings.inputType, ["volume", "num-trades"], "volume"),
+      textFormat: option(footprintSettings.textFormat, ["automatic", "normal", "thousands"], "automatic"),
+      colorMode: option(footprintSettings.colorMode, ["none", "fixed", "fading"], "fading"),
+      colorCalculation: option(
+        footprintSettings.colorCalculation,
+        ["volume", "delta", "imbalance", "dominant", "dominant-delta"],
+        "imbalance",
+      ),
+      barWidth: clamp(Number(footprintSettings.barWidth ?? 88), 44, 180),
+      borderWidth: clamp(Number(footprintSettings.borderWidth ?? 1), 0.5, 4),
+      opacity: clamp(Number(footprintSettings.backgroundOpacity ?? 74) / 100, 0, 1),
+      fontSize: clamp(Number(footprintSettings.fontSize ?? 10), 6, 16),
+      dynamicTextSize: footprintSettings.dynamicTextSize !== false,
+      dynamicTextIncrease: clamp(Number(footprintSettings.dynamicTextIncrease ?? 1), 0, 2),
+      showZeros: footprintSettings.showZeros === true,
+      colorOnlyDominantSide: footprintSettings.colorOnlyDominantSide === true,
+      showVolumePoc: footprintSettings.showVolumePoc !== false,
+      showDeltaPoc: footprintSettings.showDeltaPoc === true,
+      showValueArea: footprintSettings.showValueArea !== false,
+      showSinglePrints: footprintSettings.showSinglePrints === true,
+      singlePrintMaximum: Math.max(1, Number(footprintSettings.singlePrintMaximum ?? 1)),
+      singlePrintExtremesOnly: footprintSettings.singlePrintExtremesOnly !== false,
+      showRatio: footprintSettings.showRatio === true,
+      minimumRatio: Math.max(0, Number(footprintSettings.minimumRatio ?? 1.5)),
+      maximumRatio: Math.max(1, Number(footprintSettings.maximumRatio ?? 100)),
+      showVolumeClusters: footprintSettings.showVolumeClusters === true,
+      clusterMinimumVolume: Math.max(1, Number(footprintSettings.clusterMinimumVolume ?? 100)),
+      showBarDelta: footprintSettings.showBarDelta !== false,
+      outsideBarStyle: option(footprintSettings.outsideBarStyle, ["bar", "body"], "bar"),
+      markerAlignment: option(footprintSettings.markerAlignment, ["center", "right"], "center"),
+      outerEdgeMode: footprintSettings.outerEdgeMode !== false,
+      askColor: useThemeColors ? settings.upColor : String(footprintSettings.askColor ?? settings.upColor),
+      bidColor: useThemeColors ? settings.downColor : String(footprintSettings.bidColor ?? settings.downColor),
+      neutralColor: useThemeColors ? settings.gridColor : String(footprintSettings.neutralColor ?? settings.gridColor),
+      textColor: String(footprintSettings.textColor ?? "#F5F5F5"),
+      pocColor: useThemeColors ? settings.borderUpColor : String(footprintSettings.pocColor ?? settings.borderUpColor),
+      deltaPocColor: useThemeColors ? settings.borderDownColor : String(footprintSettings.deltaPocColor ?? settings.borderDownColor),
+      clusterColor: String(footprintSettings.clusterColor ?? "#F59E0B"),
+      singlePrintColor: String(footprintSettings.singlePrintColor ?? "#F4F4F5"),
+      backgroundColor: settings.backgroundColor,
+    };
+  }, [footprintSettings, settings]);
+  const footprintHasPriceLevelFlow = footprintRenderBars.some((bar) => bar.hasPriceLevelFlow);
+
+  useEffect(() => {
+    const primitive = footprintPrimitiveRef.current;
+    const series = candleSeriesRef.current;
+    const chart = chartRef.current;
+    if (!primitive || !series || !chart) return;
+    primitive.update(
+      footprintIndicator && footprintHasPriceLevelFlow ? footprintRenderBars : [],
+      footprintPrimitiveOptions,
+    );
+
+    const replaceCandles = Boolean(footprintIndicator && footprintHasPriceLevelFlow);
+    series.applyOptions(replaceCandles ? {
+      upColor: "rgba(0,0,0,0)",
+      downColor: "rgba(0,0,0,0)",
+      borderUpColor: "rgba(0,0,0,0)",
+      borderDownColor: "rgba(0,0,0,0)",
+      wickUpColor: "rgba(0,0,0,0)",
+      wickDownColor: "rgba(0,0,0,0)",
+    } : {
+      upColor: settings.upColor,
+      downColor: settings.downColor,
+      borderUpColor: settings.borderUpColor,
+      borderDownColor: settings.borderDownColor,
+      wickUpColor: settings.wickUpColor,
+      wickDownColor: settings.wickDownColor,
+    });
+
+    if (footprintIndicator) {
+      if (
+        !footprintActiveRef.current
+        || footprintBarWidthRef.current !== footprintPrimitiveOptions.barWidth
+      ) {
+        chart.timeScale().applyOptions({
+          barSpacing: footprintPrimitiveOptions.barWidth,
+          minBarSpacing: 12,
+        });
+        footprintActiveRef.current = true;
+        footprintBarWidthRef.current = footprintPrimitiveOptions.barWidth;
+      }
+    } else if (footprintActiveRef.current) {
+      chart.timeScale().applyOptions({ barSpacing: 6, minBarSpacing: 0.5 });
+      footprintActiveRef.current = false;
+      footprintBarWidthRef.current = null;
+    }
+  }, [
+    chartReadyRevision,
+    footprintHasPriceLevelFlow,
+    footprintIndicator,
+    footprintPrimitiveOptions,
+    footprintRenderBars,
+    settings.borderDownColor,
+    settings.borderUpColor,
+    settings.downColor,
+    settings.upColor,
+    settings.wickDownColor,
+    settings.wickUpColor,
+  ]);
   const calculatedIndicatorSeries = useMemo(
     () => indicators.flatMap((instance) =>
       calculateIndicatorSeries(
@@ -4633,6 +4841,9 @@ export default function Chart({
     const bigTradesPrimitive = new BigTradesPrimitive();
     candleSeries.attachPrimitive(bigTradesPrimitive);
     bigTradesPrimitiveRef.current = bigTradesPrimitive;
+    const footprintPrimitive = new FootprintPrimitive();
+    candleSeries.attachPrimitive(footprintPrimitive);
+    footprintPrimitiveRef.current = footprintPrimitive;
 
     const chartData = buildSafeChartData(
       candles,
@@ -4871,6 +5082,13 @@ export default function Chart({
             // Chart teardown can detach primitives before React cleanup runs.
           }
         }
+        if (candleSeriesRef.current && footprintPrimitiveRef.current) {
+          try {
+            candleSeriesRef.current.detachPrimitive(footprintPrimitiveRef.current);
+          } catch {
+            // Chart teardown can detach primitives before React cleanup runs.
+          }
+        }
         chartRef.current.remove();
         chartRef.current = null;
       }
@@ -4880,6 +5098,9 @@ export default function Chart({
       hedgeLevelsPrimitiveRef.current = null;
       volumeProfilePrimitiveRef.current = null;
       bigTradesPrimitiveRef.current = null;
+      footprintPrimitiveRef.current = null;
+      footprintActiveRef.current = false;
+      footprintBarWidthRef.current = null;
       indicatorSeriesRefs.current = [];
       priceLinesRef.current = [];
       prevCandlesLengthRef.current = 0;
