@@ -69,10 +69,8 @@
   <div class="terminal-shell" id="terminalShell">
     <header class="app-bar">
       <nav class="instrument-tabs" aria-label="Instrument tabs">
-        <button class="instrument-tab active" data-symbol="MNQ"><strong id="mnqTabLabel">MNQU6.CME@SIM</strong><span>×</span></button>
-        <button class="instrument-tab" data-symbol="ES"><strong>ESU6.CME@SIM</strong><span>×</span></button>
-        <button class="instrument-tab" data-symbol="BTC"><strong>BTCUSD@SIM</strong><span>×</span></button>
-        <button class="new-tab" id="newTab" title="Cycle research symbol" aria-label="Add research symbol">＋</button>
+        <div class="instrument-tab-list" id="instrumentTabList" role="tablist" aria-label="Open liquidity instruments"></div>
+        <button class="new-tab" id="newTab" title="Add instrument" aria-label="Add instrument">＋</button>
       </nav>
       <div class="header-context"><span>Workspace</span><strong>MNQ liquidity map</strong></div>
       <div class="theme-switcher" role="group" aria-label="Website appearance">
@@ -289,6 +287,21 @@
   </div>
 
   <dialog class="modal" id="helpModal"><div class="modal-header"><strong>Kwantify heatmap shortcuts</strong><button id="closeHelp" aria-label="Close shortcuts">×</button></div><div class="shortcut-grid"><kbd>Wheel</kbd><span>Zoom price and time</span><kbd>Shift + wheel</kbd><span>Zoom time only</span><kbd>Ctrl + wheel</kbd><span>Zoom price only</span><kbd>Space</kbd><span>Play or pause</span><kbd>L</kbd><span>Return to live edge</span><kbd>H</kbd><span>Toggle heatmap</span><kbd>T</kbd><span>Toggle volume dots</span><kbd>R</kbd><span>Reset chart</span></div></dialog>
+
+  <dialog class="modal instrument-picker" id="instrumentPicker" aria-labelledby="instrumentPickerTitle">
+    <div class="modal-header">
+      <div><small>LIQ MAP</small><strong id="instrumentPickerTitle">Add instrument</strong></div>
+      <button id="closeInstrumentPicker" aria-label="Close instrument picker">×</button>
+    </div>
+    <div class="instrument-search-wrap">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"></circle><path d="m16 16 4 4"></path></svg>
+      <input id="instrumentSearch" type="search" autocomplete="off" spellcheck="false" placeholder="Search symbol or market…" aria-label="Search instruments">
+      <kbd>ESC</kbd>
+    </div>
+    <div class="instrument-picker-copy"><span>AVAILABLE INSTRUMENTS</span><small>Selecting an instrument adds it to your live tab bar.</small></div>
+    <div class="instrument-results" id="instrumentResults" role="listbox" aria-label="Available liquidity instruments"></div>
+    <div class="instrument-empty hidden" id="instrumentEmpty">No matching instrument.</div>
+  </dialog>
 
   <script type="module" src="src/main.js"></script>
 </body>

@@ -20,6 +20,9 @@ import {
 const MAX_HISTORY = 1800;
 const SPEEDS = [0.25, 0.5, 1, 2, 4];
 const LIQUIDITY_MAP_SETTINGS_KEY = 'kwantdesk:liquidity-map-settings:v1';
+const LIQUIDITY_MAP_TABS_KEY = 'kwantdesk:liquidity-map-tabs:v1';
+const DEFAULT_INSTRUMENT_TABS = ['MNQ', 'ES', 'BTC'];
+const INSTRUMENT_ORDER = ['MNQ', 'NQ', 'MES', 'ES', 'MYM', 'YM', 'M2K', 'RTY', 'MGC', 'GC', 'MCL', 'CL', 'BTC'];
 const INDICATOR_ANALYSIS_INTERVAL_MS = 250;
 
 const $ = id => document.getElementById(id);
@@ -29,7 +32,9 @@ class DepthForgeApp {
   constructor() {
     this.uiTheme = DEFAULT_UI_THEME;
     applyUiTheme(this.uiTheme);
-    this.symbol = 'MNQ';
+    const restoredInstrumentTabs = this.#restoreInstrumentTabs();
+    this.instrumentTabs = restoredInstrumentTabs.tabs;
+    this.symbol = restoredInstrumentTabs.active;
     this.currentContractSymbol = SYMBOLS[this.symbol].contract;
     this.market = { intervalMs: 100 };
     this.sourceMode = 'connecting';
@@ -116,14 +121,26 @@ class DepthForgeApp {
       if (event.key === WEBSITE_THEME_STORAGE_KEY) this.#setUiTheme(DEFAULT_UI_THEME);
     });
     window.addEventListener('pageshow', () => this.#setUiTheme(DEFAULT_UI_THEME));
-    all('.instrument-tab').forEach(button => button.addEventListener('click', () => this.switchSymbol(button.dataset.symbol)));
-    $('newTab').addEventListener('click', () => {
-      const next = this.symbol === 'MNQ' ? 'ES' : this.symbol === 'ES' ? 'BTC' : 'MNQ';
-      this.switchSymbol(next);
+    $('instrumentTabList').addEventListener('click', event => {
+      const tab = event.target.closest('.instrument-tab');
+      if (!tab) return;
+      if (event.target.closest('[data-close-instrument]')) {
+        this.#closeInstrumentTab(tab.dataset.symbol);
+        return;
+      }
+      this.switchSymbol(tab.dataset.symbol);
     });
-    $('symbolMenu').addEventListener('click', () => {
-      const next = this.symbol === 'MNQ' ? 'ES' : this.symbol === 'ES' ? 'BTC' : 'MNQ';
-      this.switchSymbol(next);
+    $('newTab').addEventListener('click', () => this.#openInstrumentPicker());
+    $('symbolMenu').addEventListener('click', () => this.#openInstrumentPicker());
+    $('closeInstrumentPicker').addEventListener('click', () => $('instrumentPicker').close());
+    $('instrumentSearch').addEventListener('input', event => this.#renderInstrumentResults(event.target.value));
+    $('instrumentResults').addEventListener('click', event => {
+      const result = event.target.closest('[data-instrument-result]');
+      if (!result) return;
+      this.#addInstrumentTab(result.dataset.instrumentResult);
+    });
+    $('instrumentPicker').addEventListener('click', event => {
+      if (event.target === $('instrumentPicker')) $('instrumentPicker').close();
     });
 
     all('.rail-button[data-tool]').forEach(button => button.addEventListener('click', () => this.#selectTool(button.dataset.tool)));
@@ -236,11 +253,13 @@ class DepthForgeApp {
       if (event.data?.type === 'kwantdesk:liquidity-map-symbol') {
         const requested = String(event.data.symbol || '').toUpperCase().replace(/\.[VNC]\.\d+$/i, '');
         const symbol = requested === 'NQ' || requested === 'MNQ'
-          ? 'MNQ'
+          ? requested
           : requested === 'ES' || requested === 'MES'
-            ? 'ES'
-            : '';
-        if (symbol) this.switchSymbol(symbol);
+            ? requested
+            : SYMBOLS[requested]
+              ? requested
+              : '';
+        if (symbol) this.#addInstrumentTab(symbol, false);
         return;
       }
       if (event.data?.type === 'kwantify:heatmap-workspace-settings') {
@@ -343,6 +362,126 @@ class DepthForgeApp {
     });
   }
 
+  #restoreInstrumentTabs() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(LIQUIDITY_MAP_TABS_KEY) || 'null');
+      const savedTabs = Array.isArray(saved) ? saved : saved?.tabs;
+      const tabs = [...new Set((savedTabs || DEFAULT_INSTRUMENT_TABS)
+        .map(value => String(value || '').toUpperCase())
+        .filter(symbol => SYMBOLS[symbol]))];
+      const active = String(saved?.active || '').toUpperCase();
+      return {
+        tabs: tabs.length ? tabs : ['MNQ'],
+        active: tabs.includes(active) ? active : (tabs[0] || 'MNQ'),
+      };
+    } catch {
+      return { tabs: [...DEFAULT_INSTRUMENT_TABS], active: 'MNQ' };
+    }
+  }
+
+  #persistInstrumentTabs() {
+    try {
+      localStorage.setItem(LIQUIDITY_MAP_TABS_KEY, JSON.stringify({
+        tabs: this.instrumentTabs,
+        active: this.symbol,
+      }));
+    } catch {
+      // The live tabs still work for this session if browser storage is unavailable.
+    }
+  }
+
+  #renderInstrumentTabs() {
+    const tabList = $('instrumentTabList');
+    if (!tabList) return;
+    tabList.replaceChildren(...this.instrumentTabs.map(symbol => {
+      const config = SYMBOLS[symbol];
+      const tab = document.createElement('button');
+      tab.type = 'button';
+      tab.className = `instrument-tab${symbol === this.symbol ? ' active' : ''}`;
+      tab.dataset.symbol = symbol;
+      tab.setAttribute('role', 'tab');
+      tab.setAttribute('aria-selected', String(symbol === this.symbol));
+      tab.title = `${config.description} · ${config.venue}`;
+
+      const label = document.createElement('strong');
+      const contract = symbol === this.symbol
+        ? (this.currentContractSymbol || config.contract)
+        : config.contract;
+      label.textContent = `${contract} · ${config.venue}`;
+      tab.append(label);
+
+      if (this.instrumentTabs.length > 1) {
+        const close = document.createElement('span');
+        close.dataset.closeInstrument = symbol;
+        close.setAttribute('role', 'button');
+        close.setAttribute('aria-label', `Close ${symbol}`);
+        close.textContent = '×';
+        tab.append(close);
+      }
+      return tab;
+    }));
+    tabList.querySelector('.instrument-tab.active')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }
+
+  #renderInstrumentResults(query = '') {
+    const normalizedQuery = String(query || '').trim().toUpperCase();
+    const matches = INSTRUMENT_ORDER
+      .filter(symbol => SYMBOLS[symbol])
+      .filter(symbol => {
+        const config = SYMBOLS[symbol];
+        return !normalizedQuery || `${symbol} ${config.description} ${config.venue}`.toUpperCase().includes(normalizedQuery);
+      });
+    const results = $('instrumentResults');
+    results.replaceChildren(...matches.map(symbol => {
+      const config = SYMBOLS[symbol];
+      const isOpen = this.instrumentTabs.includes(symbol);
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = `instrument-result${isOpen ? ' is-open' : ''}`;
+      button.dataset.instrumentResult = symbol;
+      button.setAttribute('role', 'option');
+      button.innerHTML = `<span class="instrument-result-symbol">${symbol}</span><span class="instrument-result-copy"><strong>${config.description}</strong><small>${config.venue} · FULL DEPTH</small></span><span class="instrument-result-action">${isOpen ? 'OPEN' : 'ADD'}</span>`;
+      return button;
+    }));
+    $('instrumentEmpty').classList.toggle('hidden', matches.length > 0);
+  }
+
+  #openInstrumentPicker() {
+    const picker = $('instrumentPicker');
+    const search = $('instrumentSearch');
+    search.value = '';
+    this.#renderInstrumentResults();
+    if (!picker.open) picker.showModal();
+    requestAnimationFrame(() => search.focus());
+  }
+
+  #addInstrumentTab(symbol, closePicker = true) {
+    const normalized = String(symbol || '').toUpperCase();
+    if (!SYMBOLS[normalized]) return;
+    if (!this.instrumentTabs.includes(normalized)) this.instrumentTabs.push(normalized);
+    if (closePicker && $('instrumentPicker').open) $('instrumentPicker').close();
+    if (normalized === this.symbol) {
+      this.#persistInstrumentTabs();
+      this.#renderInstrumentTabs();
+      return;
+    }
+    this.switchSymbol(normalized);
+  }
+
+  #closeInstrumentTab(symbol) {
+    if (this.instrumentTabs.length <= 1) return;
+    const index = this.instrumentTabs.indexOf(symbol);
+    if (index < 0) return;
+    this.instrumentTabs.splice(index, 1);
+    if (symbol === this.symbol) {
+      const next = this.instrumentTabs[Math.min(index, this.instrumentTabs.length - 1)];
+      this.switchSymbol(next);
+      return;
+    }
+    this.#persistInstrumentTabs();
+    this.#renderInstrumentTabs();
+  }
+
   switchSymbol(symbol) {
     if (!SYMBOLS[symbol] || symbol === this.symbol) return;
     this.symbol = symbol;
@@ -358,6 +497,7 @@ class DepthForgeApp {
     this.atLive = true;
     this.playing = true;
     this.liveFeed.setSymbol(symbol);
+    this.#persistInstrumentTabs();
     this.#updateSymbolUi();
     this.#renderTape();
     this.#updatePlaybackUi();
@@ -370,13 +510,11 @@ class DepthForgeApp {
     const isLiveDepth = this.sourceMode === 'live' && this.liveStatus.fullDepth === true;
     // Name the provider the feed actually reports rather than hard-coding one.
     const provider = String(this.liveStatus.provider || 'RITHMIC').toUpperCase();
-    all('.instrument-tab').forEach(button => button.classList.toggle('active', button.dataset.symbol === this.symbol));
+    this.#renderInstrumentTabs();
     $('symbolLabel').textContent = this.currentContractSymbol || config.contract;
     $('depthSymbol').textContent = this.currentContractSymbol || config.contract;
     $('symbolDescription').textContent = config.description;
     $('symbolIcon').textContent = config.key[0];
-    const tabLabel = $('mnqTabLabel');
-    if (tabLabel) tabLabel.textContent = `${this.currentContractSymbol || config.contract}.CME@DEPTH`;
     if ($('modeStatus')) $('modeStatus').lastChild.textContent = isLiveDepth ? ' LIVE L3' : ' CONNECTING';
     if ($('footerModeStatus')) $('footerModeStatus').textContent = isLiveDepth ? `${provider} L3 · READ-ONLY` : `CONNECTING TO ${provider}`;
     if (isLiveDepth) {

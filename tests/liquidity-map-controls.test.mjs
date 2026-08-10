@@ -49,6 +49,21 @@ test("liquidity-map choices persist between visits", async () => {
   assert.match(source, /#saveSettings\(\)/);
 });
 
+test("liquidity instruments use a searchable persistent tab picker", async () => {
+  const [html, source] = await Promise.all([
+    readFile(htmlPath, "utf8"),
+    readFile(mainPath, "utf8"),
+  ]);
+
+  assert.match(html, /id=["']instrumentPicker["']/);
+  assert.match(html, /id=["']instrumentSearch["']/);
+  assert.match(html, /id=["']instrumentTabList["']/);
+  assert.match(source, /kwantdesk:liquidity-map-tabs:v1/);
+  assert.match(source, /#addInstrumentTab\(/);
+  assert.match(source, /#closeInstrumentTab\(/);
+  assert.doesNotMatch(source, /const next = this\.symbol === 'MNQ'/);
+});
+
 test("Ctrl plus mouse wheel pans the liquidity timeline horizontally", async () => {
   const source = await readFile(mainPath, "utf8");
 

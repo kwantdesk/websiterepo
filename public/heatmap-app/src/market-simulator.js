@@ -12,6 +12,47 @@ export const SYMBOLS = {
     key: 'BTC', contract: 'BTC-USD', venue: 'CRYPTO', description: 'Bitcoin / U.S. Dollar',
     tickSize: 1, decimals: 0, startPrice: 118420, baseDepth: 13, volatility: 0.31, seed: 0x425443,
   },
+  NQ: {
+    key: 'NQ', contract: 'NQ', venue: 'CME', description: 'E-mini Nasdaq-100',
+    tickSize: 0.25, decimals: 2, startPrice: 22486.25, baseDepth: 70, volatility: 0.19, seed: 0x4e51,
+    depthRangePoints: 100,
+  },
+  MES: {
+    key: 'MES', contract: 'MES', venue: 'CME', description: 'Micro E-mini S&P 500',
+    tickSize: 0.25, decimals: 2, startPrice: 6387.50, baseDepth: 60, volatility: 0.13, seed: 0x4d4553,
+  },
+  MYM: {
+    key: 'MYM', contract: 'MYM', venue: 'CBOT', description: 'Micro E-mini Dow',
+    tickSize: 1, decimals: 0, startPrice: 44500, baseDepth: 45, volatility: 0.12, seed: 0x4d594d,
+  },
+  YM: {
+    key: 'YM', contract: 'YM', venue: 'CBOT', description: 'E-mini Dow',
+    tickSize: 1, decimals: 0, startPrice: 44500, baseDepth: 65, volatility: 0.12, seed: 0x594d,
+  },
+  M2K: {
+    key: 'M2K', contract: 'M2K', venue: 'CME', description: 'Micro E-mini Russell 2000',
+    tickSize: 0.1, decimals: 1, startPrice: 2250, baseDepth: 42, volatility: 0.16, seed: 0x4d324b,
+  },
+  RTY: {
+    key: 'RTY', contract: 'RTY', venue: 'CME', description: 'E-mini Russell 2000',
+    tickSize: 0.1, decimals: 1, startPrice: 2250, baseDepth: 64, volatility: 0.16, seed: 0x525459,
+  },
+  MGC: {
+    key: 'MGC', contract: 'MGC', venue: 'COMEX', description: 'Micro Gold',
+    tickSize: 0.1, decimals: 1, startPrice: 3400, baseDepth: 38, volatility: 0.17, seed: 0x4d4743,
+  },
+  GC: {
+    key: 'GC', contract: 'GC', venue: 'COMEX', description: 'Gold',
+    tickSize: 0.1, decimals: 1, startPrice: 3400, baseDepth: 60, volatility: 0.17, seed: 0x4743,
+  },
+  MCL: {
+    key: 'MCL', contract: 'MCL', venue: 'NYMEX', description: 'Micro WTI Crude Oil',
+    tickSize: 0.01, decimals: 2, startPrice: 70, baseDepth: 38, volatility: 0.2, seed: 0x4d434c,
+  },
+  CL: {
+    key: 'CL', contract: 'CL', venue: 'NYMEX', description: 'WTI Crude Oil',
+    tickSize: 0.01, decimals: 2, startPrice: 70, baseDepth: 62, volatility: 0.2, seed: 0x434c,
+  },
 };
 
 class DeterministicRandom {
