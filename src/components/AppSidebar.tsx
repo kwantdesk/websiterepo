@@ -103,6 +103,7 @@ const PERSISTENT_WORKSPACE_KEYS = new Set<SidebarKey>([
   "gameplan",
   "gamma",
   "gexmap",
+  "liqmap",
   "heatmap",
   "gexbot",
   "gexdesk",

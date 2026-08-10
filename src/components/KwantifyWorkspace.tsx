@@ -250,6 +250,7 @@ function workspaceLoader(title: string, detail: string) {
 const loadChartWorkspace = () => import("@/components/Chart");
 const loadGammaWorkspace = () => import("@/components/options-flow/GammaWorkspace");
 const loadGexMapWorkspace = () => import("@/components/gex-map/GexMapWorkspace");
+const loadLiquidityMapWorkspace = () => import("@/components/liquidity-map/LiquidityMapWorkspace");
 const loadOptionsHeatmapWorkspace = () => import("@/components/heatmap/OptionsHeatmapWorkspace");
 const loadGexBotWorkspace = () => import("@/components/gexbot/GexBotWorkspace");
 const loadGexDeskWorkspace = () => import("@/components/gexdesk/GexDeskWorkspace");
@@ -266,6 +267,7 @@ const workspaceModulePreloaders: Record<string, () => Promise<unknown>> = {
   charts: loadChartWorkspace,
   gamma: loadGammaWorkspace,
   gexmap: loadGexMapWorkspace,
+  liqmap: loadLiquidityMapWorkspace,
   heatmap: loadOptionsHeatmapWorkspace,
   gexbot: loadGexBotWorkspace,
   gexdesk: loadGexDeskWorkspace,
@@ -294,6 +296,10 @@ const GammaWorkspace = dynamic(loadGammaWorkspace, {
 const GexMapWorkspace = dynamic(loadGexMapWorkspace, {
   ssr: false,
   loading: () => workspaceLoader("Opening GEXMAP", "Restoring exposure panels."),
+});
+const LiquidityMapWorkspace = dynamic(loadLiquidityMapWorkspace, {
+  ssr: false,
+  loading: () => workspaceLoader("Opening LIQ MAP", "Connecting the liquidity map."),
 });
 const OptionsHeatmapWorkspace = dynamic(loadOptionsHeatmapWorkspace, {
   ssr: false,
@@ -608,7 +614,7 @@ type LevelExportRow = {
   source: string;
   asOf: string;
 };
-export type PrimaryWorkspaceSection = "charts" | "gamma" | "levelz" | "gexmap" | "heatmap" | "gexbot" | "gexdesk" | "gameplan" | "kwantbot" | "news" | "zyon" | "journal" | "socials" | "backtesting";
+export type PrimaryWorkspaceSection = "charts" | "gamma" | "levelz" | "gexmap" | "liqmap" | "heatmap" | "gexbot" | "gexdesk" | "gameplan" | "kwantbot" | "news" | "zyon" | "journal" | "socials" | "backtesting";
 
 const WORKSPACE_PRESETS_STORAGE_KEY = "kwantdesk-chart-workspace-presets";
 const ACTIVE_WORKSPACE_PRESET_STORAGE_KEY = "kwantdesk-chart-workspace-active-preset";
@@ -623,6 +629,7 @@ const BOTTOM_WORKSPACE_SECTIONS = [
   { id: "gamma" as const, label: "Gamma" },
   { id: "levelz" as const, label: "LEVELZ" },
   { id: "gexmap" as const, label: "GEXMAP" },
+  { id: "liqmap" as const, label: "LIQ MAP" },
   { id: "heatmap" as const, label: "Heat Map" },
   { id: "gexbot" as const, label: "GEX Bot" },
   { id: "gexdesk" as const, label: "Gexdesk" },
@@ -11158,6 +11165,11 @@ export default function KwantifyWorkspace({
                   <GexMapWorkspace />
                 </WorkspaceFailureBoundary>
               </ReactActivity>
+            ) : null}
+            {bottomWorkspaceSection === "liqmap" ? (
+              <WorkspaceFailureBoundary resetKey="liqmap" label="Liquidity Map">
+                <LiquidityMapWorkspace />
+              </WorkspaceFailureBoundary>
             ) : null}
             {visitedWorkspaceSections.has("heatmap") ? (
               <ReactActivity mode={bottomWorkspaceSection === "heatmap" ? "visible" : "hidden"}>
