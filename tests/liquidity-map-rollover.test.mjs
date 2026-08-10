@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { RollingDepthEngine } from "../public/heatmap-app/src/depth-engine.js";
+import { AdaptiveContrast, RollingDepthEngine } from "../public/heatmap-app/src/depth-engine.js";
 
 const frame = (id, size) => ({
   id,
@@ -35,4 +35,23 @@ test("heatmap remains intact when half-step display frames roll past capacity", 
   assert.equal(rolled.updateStart, 3);
   assert.equal(rolled.width, 4);
   assert.ok(rolled.intensities.some((value) => value > 0));
+});
+
+test("live columns do not periodically recalibrate or dim a chosen heat scale", () => {
+  const contrast = new AdaptiveContrast();
+  const initial = [Float64Array.from([0, 10, 20, 40])];
+  assert.equal(contrast.update(initial, 1), true);
+  const established = contrast.describe();
+
+  // This token is beyond the old 105-column refresh boundary and contains a
+  // much larger wall. It must not trigger an implicit full-raster repaint.
+  const changed = contrast.update([Float64Array.from([0, 10, 20, 400])], 106);
+  assert.equal(changed, false);
+  assert.deepEqual(contrast.describe(), established);
+
+  assert.equal(contrast.update([Float64Array.from([0, 10, 20, 400])], 106, true), true);
+  assert.ok(contrast.describe().maximum > established.maximum);
+
+  contrast.reset();
+  assert.equal(contrast.update(initial, 1), true, "a symbol/reset establishes a fresh scale");
 });

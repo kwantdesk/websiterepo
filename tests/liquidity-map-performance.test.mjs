@@ -18,7 +18,7 @@ test("live map rendering avoids full-history analysis and repeated DOM replaceme
   assert.match(runtime, /INDICATOR_ANALYSIS_INTERVAL_MS = 250/);
   assert.match(runtime, /nextHtml !== this\.depthLadderHtml/);
   assert.match(runtime, /nextHtml !== this\.tapeHtml/);
-  assert.match(depthEngine, /newestMaximum <= this\.maximum \* 1\.2/);
+  assert.match(depthEngine, /if \(!force && this\.version > 0\) return false/);
   assert.match(runtime, /this\.renderRequested = false;\s+this\.frames \+= 1;/);
   assert.match(runtime, /snapshot\.eventsSince \?\?/);
   assert.match(runtime, /finally \{\s+requestAnimationFrame\(next => this\.#loop\(next\)\);/);

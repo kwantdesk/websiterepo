@@ -198,7 +198,6 @@ export class AdaptiveContrast {
     splitX = 0.60,
     splitY = 0.70,
     colorMapSplit = 0.90,
-    refreshColumns = 105,
   } = {}) {
     this.blackPercentile = blackPercentile;
     this.whitePercentile = whitePercentile;
@@ -206,7 +205,6 @@ export class AdaptiveContrast {
     this.splitX = splitX;
     this.splitY = splitY;
     this.colorMapSplit = colorMapSplit;
-    this.refreshColumns = refreshColumns;
     this.black = 0;
     this.white = 1;
     this.maximum = 1;
@@ -221,22 +219,19 @@ export class AdaptiveContrast {
     this.white = 1;
     this.maximum = 1;
     this.lastToken = -Infinity;
-    this.version += 1;
+    this.version = 0;
   }
 
   update(columns, token, force = false) {
-    const expired = token - this.lastToken >= this.refreshColumns;
-    if (!force && this.version > 0 && !expired) {
-      const newest = columns.at(-1);
-      let newestMaximum = 0;
-      for (let index = 0; index < (newest?.length || 0); index += 1) {
-        newestMaximum = Math.max(newestMaximum, newest[index]);
-      }
-      // The retained history still contains the previous maximum. Unless a
-      // genuinely larger wall arrives, there is no reason to rescan and sort
-      // every visible depth cell merely to rediscover the same contrast.
-      if (newestMaximum <= this.maximum * 1.2) return false;
-    }
+    // Establish contrast from the restored session once, then keep that scale
+    // fixed while live columns append. The old 105-column refresh landed every
+    // ~5.25 seconds at 20 FPS: it visibly changed brightness and forced a full
+    // 1,800-column raster rewrite, freezing lower-powered browsers. User heat
+    // sensitivity and dimming are display controls; incoming depth must not
+    // periodically override how those settings look. A symbol/reset creates a
+    // fresh contrast instance, and an explicit force remains available for a
+    // deliberate recalibration action.
+    if (!force && this.version > 0) return false;
 
     const values = [];
     let maximum = 0;
@@ -255,9 +250,6 @@ export class AdaptiveContrast {
     }
 
     if (!values.length) return false;
-    const rangeChange = Math.abs(maximum - this.maximum) / Math.max(1, this.maximum);
-    if (!force && this.version > 0 && !expired && rangeChange <= 0.2) return false;
-
     values.sort((left, right) => left - right);
     const black = quantile(values, this.blackPercentile);
     let white = quantile(values, this.whitePercentile);
