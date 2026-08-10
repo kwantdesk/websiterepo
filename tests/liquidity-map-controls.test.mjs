@@ -5,6 +5,7 @@ import test from "node:test";
 const htmlPath = new URL("../public/heatmap-app/index.html", import.meta.url);
 const embedCssPath = new URL("../public/heatmap-app/embed.css", import.meta.url);
 const mainPath = new URL("../public/heatmap-app/src/main.js", import.meta.url);
+const rendererPath = new URL("../public/heatmap-app/src/renderer.js", import.meta.url);
 
 test("restores the full Kwantify liquidity-map control surface", async () => {
   const html = await readFile(htmlPath, "utf8");
@@ -62,6 +63,18 @@ test("liquidity instruments use a searchable persistent tab picker", async () =>
   assert.match(source, /#addInstrumentTab\(/);
   assert.match(source, /#closeInstrumentTab\(/);
   assert.doesNotMatch(source, /const next = this\.symbol === 'MNQ'/);
+});
+
+test("CVD is labelled and horizontally synchronized with the liquidity map", async () => {
+  const [html, renderer] = await Promise.all([
+    readFile(htmlPath, "utf8"),
+    readFile(rendererPath, "utf8"),
+  ]);
+
+  assert.match(html, /> Cumulative Volume Delta<\/strong>/);
+  assert.doesNotMatch(html, /Scroll or drag to explore history/);
+  assert.match(renderer, /this\.layout\?\.dataWidth/);
+  assert.match(renderer, /const xForIndex = index => \(\(index - start\) \/ \(count - 1\)\) \* dataWidth/);
 });
 
 test("Ctrl plus mouse wheel pans the liquidity timeline horizontally", async () => {

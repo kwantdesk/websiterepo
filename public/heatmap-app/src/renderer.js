@@ -954,6 +954,10 @@ export class DepthRenderer {
     const count = end - start + 1;
     const points = analysis?.cvd?.points || [];
     if (count <= 1 || !points.length || width <= 0 || height <= 0) return;
+    // Use the exact horizontal geometry of the liquidity map. The CVD is a
+    // synchronized lower pane, not a separate chart with its own time scale.
+    const dataWidth = Math.min(width, Math.max(1, this.layout?.dataWidth || width));
+    const plotWidth = Math.min(width, Math.max(dataWidth, this.layout?.plotWidth || dataWidth));
     const baseline = settings.cvdRange === 'visible' && start > 0
       ? points[start - 1] || { value: 0, buy: 0, sell: 0 }
       : { value: 0, buy: 0, sell: 0 };
@@ -988,7 +992,7 @@ export class DepthRenderer {
     const padding = Math.max(1, (maximum - minimum) * .1);
     minimum -= padding;
     maximum += padding;
-    const xForIndex = index => ((index - start) / (count - 1)) * width;
+    const xForIndex = index => ((index - start) / (count - 1)) * dataWidth;
     const yForValue = value => height - 7 - ((value - minimum) / Math.max(1, maximum - minimum)) * (height - 14);
     ctx.strokeStyle = `rgba(${this.chrome.grid},.12)`;
     ctx.lineWidth = 1;
@@ -996,14 +1000,14 @@ export class DepthRenderer {
       const y = (line / 4) * height;
       ctx.beginPath();
       ctx.moveTo(0, Math.round(y) + .5);
-      ctx.lineTo(width, Math.round(y) + .5);
+      ctx.lineTo(plotWidth, Math.round(y) + .5);
       ctx.stroke();
     }
     if (minimum <= 0 && maximum >= 0) {
       const zeroY = Math.round(yForValue(0)) + .5;
       ctx.beginPath();
       ctx.moveTo(0, zeroY);
-      ctx.lineTo(width, zeroY);
+      ctx.lineTo(plotWidth, zeroY);
       ctx.strokeStyle = `rgba(${this.chrome.grid},.3)`;
       ctx.setLineDash([3, 4]);
       ctx.stroke();
@@ -1013,7 +1017,7 @@ export class DepthRenderer {
     for (let index = start; index <= end; index += 1) {
       const snapshot = history[index];
       const x = xForIndex(index);
-      const barWidth = Math.max(1, width / count);
+      const barWidth = Math.max(1, dataWidth / count);
       const barHeight = (snapshot.volume / maxVolume) * volumeBand;
       ctx.fillStyle = snapshot.delta >= 0 ? colorCss(accents.bid, .13) : colorCss(accents.ask, .13);
       ctx.fillRect(x, height - barHeight, barWidth, barHeight);
@@ -1059,9 +1063,9 @@ export class DepthRenderer {
     ctx.font = this.#font(7, 500, true);
     ctx.textAlign = 'right';
     ctx.textBaseline = 'top';
-    ctx.fillText(Math.round(maximum).toLocaleString(), width - 5, 4);
+    ctx.fillText(Math.round(maximum).toLocaleString(), plotWidth - 5, 4);
     ctx.textBaseline = 'bottom';
-    ctx.fillText(Math.round(minimum).toLocaleString(), width - 5, height - 4);
+    ctx.fillText(Math.round(minimum).toLocaleString(), plotWidth - 5, height - 4);
   }
 
   hitTest(x, y) {
