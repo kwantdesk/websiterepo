@@ -114,6 +114,12 @@ type ZyonConversationSyncDetail = {
   messages?: ZyonMessage[];
 };
 
+type ZyonActivityEvent = {
+  id: string;
+  label: string;
+  status: "active" | "complete";
+};
+
 function activeChatStorageKey(accountKey: string) {
   return `kwantdesk:zyon:active-chat:${accountKey}`;
 }
@@ -835,6 +841,7 @@ export default function ZyonWorkspace({
   const [attachments, setAttachments] = useState<ZyonAttachment[]>([]);
   const [attachmentError, setAttachmentError] = useState("");
   const [sending, setSending] = useState(false);
+  const [zyonActivity, setZyonActivity] = useState<ZyonActivityEvent[]>([]);
   const [sendError, setSendError] = useState("");
   const [journalSearch, setJournalSearch] = useState("");
   const [selectedDay, setSelectedDay] = useState(localSessionDate);
@@ -1755,6 +1762,11 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
     }
     setAttachmentError("");
     setSendError("");
+    setZyonActivity([{
+      id: "request",
+      label: "Connecting Zyon to the current market context",
+      status: "active",
+    }]);
     setSending(true);
     try {
       const requestBody = stringifyZyonRequest({
@@ -1861,6 +1873,9 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
           if (!line.trim()) return;
           let event: {
             type?: unknown;
+            id?: unknown;
+            label?: unknown;
+            status?: unknown;
             text?: unknown;
             error?: unknown;
             payload?: unknown;
@@ -1869,6 +1884,25 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
             event = JSON.parse(line) as typeof event;
           } catch {
             throw new ZyonTransportError("ZYON returned an invalid stream frame.");
+          }
+          if (
+            event.type === "activity"
+            && typeof event.id === "string"
+            && typeof event.label === "string"
+            && (event.status === "active" || event.status === "complete")
+          ) {
+            const nextActivity: ZyonActivityEvent = {
+              id: event.id,
+              label: event.label,
+              status: event.status,
+            };
+            setZyonActivity((current) => {
+              const withoutPlaceholder = current.filter((item) => item.id !== "request");
+              const existingIndex = withoutPlaceholder.findIndex((item) => item.id === nextActivity.id);
+              if (existingIndex < 0) return [...withoutPlaceholder, nextActivity].slice(-4);
+              return withoutPlaceholder.map((item, index) => index === existingIndex ? nextActivity : item);
+            });
+            return;
           }
           if (event.type === "delta" && typeof event.text === "string" && event.text) {
             streamedContent = `${streamedContent}${event.text}`.slice(0, 12_000);
@@ -2177,6 +2211,7 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
       if (gameplanExchange) setGameplanSendState("unavailable");
     } finally {
       setSending(false);
+      setZyonActivity([]);
       window.requestAnimationFrame(() => composerRef.current?.focus());
     }
   };
@@ -3100,11 +3135,33 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
                   );
                 })}
                 {sending && messages.at(-1)?.role !== "assistant" ? (
-                  <div className="flex items-center gap-3">
-                    <ZyonAvatar size="md" speaking />
-                    <div className="flex items-center gap-2 rounded-2xl border border-border bg-panel/80 px-4 py-3 text-[10px] text-muted">
-                      <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
-                      Zyon is thinking.
+                  <div className="flex items-start gap-3">
+                    <span className="mt-1"><ZyonAvatar size="md" speaking /></span>
+                    <div className="min-w-[260px] rounded-2xl border border-border bg-panel/80 px-4 py-3 shadow-[0_12px_36px_rgba(0,0,0,.1)]">
+                      <div className="mb-2 flex items-center gap-2 text-[10px] font-medium text-foreground">
+                        <Sparkles className="h-3.5 w-3.5 text-primary" />
+                        Zyon is working
+                      </div>
+                      <div className="space-y-1.5">
+                        {zyonActivity.map((activity) => (
+                          <div
+                            key={activity.id}
+                            className={`flex items-center gap-2 text-[9px] transition-colors ${
+                              activity.status === "active" ? "text-foreground" : "text-muted"
+                            }`}
+                          >
+                            {activity.status === "complete" ? (
+                              <CheckCircle2 className="h-3 w-3 shrink-0 text-primary" />
+                            ) : (
+                              <Loader2 className="h-3 w-3 shrink-0 animate-spin text-primary" />
+                            )}
+                            <span>{activity.label}</span>
+                            {activity.status === "active" ? (
+                              <span className="animate-pulse text-primary">•••</span>
+                            ) : null}
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   </div>
                 ) : null}

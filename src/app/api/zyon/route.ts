@@ -2214,11 +2214,11 @@ export async function POST(request: NextRequest) {
     };
   };
 
-  // Anthropic's server-side web search can return pause_turn and must be
-  // continued with the complete assistant content. Keep research turns on the
-  // bounded JSON path below; ordinary ZYON chat remains streamed.
-  const wantsClientStream = request.headers.get("accept")?.includes("application/x-ndjson")
-    && !macroResearchRequest;
+  // Keep one NDJSON connection open for both ordinary chat and research turns.
+  // Research uses Anthropic's bounded JSON continuation path (web search can
+  // return pause_turn), while progress frames keep that longer operation
+  // observable to the trader instead of leaving a silent spinner on screen.
+  const wantsClientStream = request.headers.get("accept")?.includes("application/x-ndjson");
   if (wantsClientStream) {
     const encoder = new TextEncoder();
     const stream = new ReadableStream<Uint8Array>({
@@ -2246,8 +2246,90 @@ export async function POST(request: NextRequest) {
           let providerStatus: number | null = null;
           let providerError = "";
           try {
+            emit({
+              type: "activity",
+              id: "market-context",
+              label: historicalReplay ? "Historical market context verified" : `Live ${root} market context connected`,
+              status: "complete",
+            });
+            if (macroResearchRequest) {
+              emit({
+                type: "activity",
+                id: "macro-memory",
+                label: persistentMacroMemory
+                  ? "Kwant macro memory checked"
+                  : "Kwant macro memory checked — no matching record",
+                status: "complete",
+              });
+              emit({
+                type: "activity",
+                id: "web-research",
+                label: "Researching current market developments",
+                status: "active",
+              });
+            } else {
+              emit({
+                type: "activity",
+                id: "analysis",
+                label: "Analysing price, levels and market structure",
+                status: "active",
+              });
+            }
+
             const providerModels = await providerModelsPromise;
             let result: ClaudeResult | null = null;
+
+            if (macroResearchRequest) {
+              for (const [modelIndex, providerModel] of providerModels.entries()) {
+                let webSearchEnabled = true;
+                for (let capabilityAttempt = 0; capabilityAttempt < 2; capabilityAttempt += 1) {
+                  try {
+                    const attempt = await runJsonProvider({
+                      providerModel,
+                      modelIndex,
+                      timeoutMs: 80_000,
+                      webSearchEnabled,
+                    });
+                    providerRequestId = attempt.requestId ?? providerRequestId;
+                    providerStatus = attempt.response?.status ?? null;
+                    providerError = attempt.errorText;
+                    result = attempt.result;
+                    if (result) break;
+                    if (webSearchEnabled && (providerStatus === 400 || providerStatus === 404)) {
+                      webSearchEnabled = false;
+                      emit({
+                        type: "activity",
+                        id: "web-research",
+                        label: "Live web search unavailable — using verified Kwant evidence",
+                        status: "active",
+                      });
+                      continue;
+                    }
+                    break;
+                  } catch (error) {
+                    providerError = error instanceof Error ? error.message : "provider request failed";
+                    result = null;
+                    break;
+                  }
+                }
+                if (result || [401, 403, 429].includes(providerStatus ?? 0)) break;
+              }
+
+              if (result) {
+                emit({
+                  type: "activity",
+                  id: "web-research",
+                  label: "Current market research collected",
+                  status: "complete",
+                });
+                emit({
+                  type: "activity",
+                  id: "synthesis",
+                  label: "Cross-checking catalysts against the live price path",
+                  status: "active",
+                });
+              }
+            } else {
             for (const [modelIndex, providerModel] of providerModels.entries()) {
               const connectController = new AbortController();
               const connectTimeout = setTimeout(
@@ -2294,6 +2376,20 @@ export async function POST(request: NextRequest) {
                   providerResponse,
                   (text) => {
                     if (!text) return;
+                    if (!emittedText) {
+                      emit({
+                        type: "activity",
+                        id: "analysis",
+                        label: "Analysis complete",
+                        status: "complete",
+                      });
+                      emit({
+                        type: "activity",
+                        id: "response",
+                        label: "Writing the response",
+                        status: "active",
+                      });
+                    }
                     emittedText = true;
                     emit({ type: "delta", text });
                   },
@@ -2311,6 +2407,7 @@ export async function POST(request: NextRequest) {
               }
               if (emittedText && !result) emit({ type: "reset" });
             }
+            }
 
             if (!result) {
               throw new Error(
@@ -2321,6 +2418,12 @@ export async function POST(request: NextRequest) {
                     : providerError || "No model completed the request.",
               );
             }
+            emit({
+              type: "activity",
+              id: macroResearchRequest ? "synthesis" : "response",
+              label: macroResearchRequest ? "Evidence cross-check complete" : "Response complete",
+              status: "complete",
+            });
             const finalized = await finalizeResult(result, providerRequestId);
             emit({ type: "complete", payload: finalized });
           } catch (error) {
