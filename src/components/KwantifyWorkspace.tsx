@@ -2723,9 +2723,56 @@ function buildValueAreaChartOverlay(
 }
 
 const gammaPayloadCache = new Map<string, GammaPayloadCacheEntry>();
+const GAMMA_SESSION_CACHE_PREFIX = "kwantdesk:gamma-levels:last-good:v1:";
+const GAMMA_SESSION_CACHE_MAX_AGE_MS = 96 * 60 * 60_000;
 
 function gammaPayloadCacheKey(conversion: GammaConversionDefinition, calibrated = false) {
   return `${conversion.futuresRoot}:${conversion.source}${calibrated ? ":calibrated" : ""}`;
+}
+
+function readGammaSessionPayload(
+  conversion: GammaConversionDefinition,
+  calibrated = false,
+) {
+  if (typeof window === "undefined") return null;
+  const cacheKey = gammaPayloadCacheKey(conversion, calibrated);
+  try {
+    const raw = window.sessionStorage.getItem(`${GAMMA_SESSION_CACHE_PREFIX}${cacheKey}`);
+    if (!raw) return null;
+    const record = JSON.parse(raw) as { savedAt?: number; payload?: unknown };
+    const savedAt = Number(record.savedAt);
+    const payload = record.payload;
+    const valid = Number.isFinite(savedAt)
+      && Date.now() - savedAt <= GAMMA_SESSION_CACHE_MAX_AGE_MS
+      && isRenderableGammaPayload(payload)
+      && payload.root === conversion.futuresRoot
+      && payload.requestedSource === conversion.source;
+    if (!valid) {
+      window.sessionStorage.removeItem(`${GAMMA_SESSION_CACHE_PREFIX}${cacheKey}`);
+      return null;
+    }
+    return payload;
+  } catch {
+    try {
+      window.sessionStorage.removeItem(`${GAMMA_SESSION_CACHE_PREFIX}${cacheKey}`);
+    } catch {}
+    return null;
+  }
+}
+
+function writeGammaSessionPayload(
+  conversion: GammaConversionDefinition,
+  calibrated: boolean,
+  payload: ChartGammaLevelsPayload,
+) {
+  if (typeof window === "undefined") return;
+  const cacheKey = gammaPayloadCacheKey(conversion, calibrated);
+  try {
+    window.sessionStorage.setItem(
+      `${GAMMA_SESSION_CACHE_PREFIX}${cacheKey}`,
+      JSON.stringify({ savedAt: Date.now(), payload }),
+    );
+  } catch {}
 }
 
 function lastVerifiedGammaPayload(conversion: GammaConversionDefinition) {
@@ -2745,8 +2792,21 @@ function fetchGammaPayload(
   options: { allowStale?: boolean; calibrated?: boolean; calibrationPrice?: number | null } = {},
 ) {
   const cacheKey = gammaPayloadCacheKey(conversion, options.calibrated === true);
-  const cached = gammaPayloadCache.get(cacheKey);
   const now = Date.now();
+  let cached = gammaPayloadCache.get(cacheKey);
+  if (!cached) {
+    const restored = readGammaSessionPayload(conversion, options.calibrated === true);
+    if (restored) {
+      cached = {
+        // Paint immediately, then revalidate almost at once rather than
+        // treating browser storage as an authoritative live feed.
+        expiresAt: now + 1_000,
+        promise: Promise.resolve(restored),
+        payload: restored,
+      };
+      gammaPayloadCache.set(cacheKey, cached);
+    }
+  }
   if (options.allowStale && cached?.payload && cached.expiresAt > now) {
     return Promise.resolve(cached.payload);
   }
@@ -2776,6 +2836,7 @@ function fetchGammaPayload(
         current.expiresAt = Date.now() + gammaRefreshDelay(payload.refreshAfterMs);
         current.payload = payload;
       }
+      writeGammaSessionPayload(conversion, options.calibrated === true, payload);
       return payload;
     })
     .catch((error) => {
@@ -3731,12 +3792,45 @@ function WorkspaceChartPane({
       tickSize: futuresTickSize(pane.symbol),
     };
     liveOutlierCandidateRef.current = null;
-    setGammaOverlay(null);
+    const cachedGammaPayload = primaryGammaConversion
+      ? readGammaSessionPayload(primaryGammaConversion)
+      : null;
+    const restoredGammaOverlay = cachedGammaPayload && primaryGammaConversion
+      ? buildGammaChartOverlay({
+          payload: cachedGammaPayload,
+          conversion: primaryGammaConversion,
+          candles: latestCandlesRef.current,
+          futuresPrice: latestFuturesRef.current.price,
+          futuresAsOfMs: latestFuturesRef.current.asOfMs,
+          futuresContract: contractSymbol ?? primaryGammaConversion.futuresRoot,
+          tickSize: futuresTickSize(pane.symbol),
+          settings,
+        })
+      : null;
+    const cachedGammaCheckedAt = cachedGammaPayload
+      ? Date.parse(cachedGammaPayload.checkedAt)
+      : Number.NaN;
+    const cachedGammaOverlay = restoredGammaOverlay
+      ? {
+          ...restoredGammaOverlay,
+          // A stored frame is an immediate visual bridge, not permission to
+          // label old options data live. Fresh responses replace it silently.
+          stale: !Number.isFinite(cachedGammaCheckedAt)
+            || Date.now() - cachedGammaCheckedAt > Math.max(60_000, gammaRefreshDelay(cachedGammaPayload?.refreshAfterMs) * 2),
+        }
+      : null;
+    setGammaOverlay(cachedGammaOverlay);
     setGammaLevelsError(null);
-    setGammaLevelsLoading(gammaLevelsEnabled && gammaLevelsAvailable);
-    setValueAreaOverlay(null);
+    setGammaLevelsLoading(gammaLevelsEnabled && gammaLevelsAvailable && !cachedGammaOverlay);
+    const cachedValueAreaPayload = valueAreaLevelsAvailable
+      ? readValueAreaSessionPayload(pane.symbol.toUpperCase())
+      : null;
+    const cachedValueAreaOverlay = cachedValueAreaPayload
+      ? buildValueAreaChartOverlay(cachedValueAreaPayload, pane.symbol, settings)
+      : null;
+    setValueAreaOverlay(cachedValueAreaOverlay);
     setValueAreaLevelsError(null);
-    setValueAreaLevelsLoading(valueAreaLevelsEnabled && valueAreaLevelsAvailable);
+    setValueAreaLevelsLoading(valueAreaLevelsEnabled && valueAreaLevelsAvailable && !cachedValueAreaOverlay);
   }, [pane.broker, pane.symbol]);
 
   useEffect(() => {
