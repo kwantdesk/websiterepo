@@ -109,6 +109,36 @@ test("replays the real gateway history through the original Kwantify append path
   assert.equal(statuses.at(-1).historyFrames, 3);
 });
 
+test("does not replay the full history window again after an SSE reconnect", () => {
+  const listeners = new Map();
+  const source = {
+    close() {},
+    addEventListener(name, listener) { listeners.set(name, listener); },
+  };
+  const snapshots = [];
+  const feed = new DepthMarketFeed({
+    symbol: "MNQ",
+    eventSourceFactory: () => source,
+    onSnapshot: (snapshot) => snapshots.push(snapshot),
+  });
+  feed.start();
+  const history = {
+    data: JSON.stringify({
+      status: { connected: true, fullDepth: true, provider: "Rithmic" },
+      snapshots: [
+        rawSnapshot({ id: 1, timestamp: 1_786_100_000_000 }),
+        rawSnapshot({ id: 2, timestamp: 1_786_100_000_100 }),
+        rawSnapshot({ id: 3, timestamp: 1_786_100_000_200 }),
+      ],
+    }),
+  };
+
+  listeners.get("history")(history);
+  listeners.get("history")(history);
+
+  assert.deepEqual(snapshots.map((snapshot) => snapshot.id), [1, 2, 3]);
+});
+
 test("paces a 100ms book into a truthful 20 FPS display without duplicating trades", async () => {
   const listeners = new Map();
   const source = {

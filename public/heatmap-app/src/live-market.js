@@ -141,6 +141,8 @@ export class DepthMarketFeed {
     this.lastRealFrameAt = 0;
     this.observedRealFrameMs = 100;
     this.lastSnapshotToken = '';
+    this.seenSnapshotIdentities = new Set();
+    this.snapshotIdentityQueue = [];
     this.running = false;
     this.status = {
       connected: false,
@@ -173,6 +175,8 @@ export class DepthMarketFeed {
     this.symbol = symbol;
     this.contractSymbol = contractSymbol;
     this.lastSnapshotToken = '';
+    this.seenSnapshotIdentities.clear();
+    this.snapshotIdentityQueue = [];
     clearTimeout(this.displayFrameTimer);
     this.displayFrameTimer = null;
     this.lastRealFrameAt = 0;
@@ -219,10 +223,17 @@ export class DepthMarketFeed {
       // after page navigation without inventing or interpolating liquidity.
       const snapshots = [];
       for (const rawSnapshot of payload.snapshots || []) {
+        // Vercel rotates long-running proxy requests. EventSource then opens a
+        // fresh request and the gateway sends its history window again. Do not
+        // normalise and append the same (potentially thousands of) frames on
+        // every reconnect: that synchronous replay blocks the browser and made
+        // the whole liquidity map appear frozen after a few minutes.
+        if (this.#hasSeenRawSnapshot(rawSnapshot)) continue;
         const snapshot = normalizeLiveSnapshot(rawSnapshot);
         const token = snapshotBookToken(snapshot);
         if (snapshot && token !== this.lastSnapshotToken) {
           this.lastSnapshotToken = token;
+          this.#rememberSnapshot(snapshot);
           snapshots.push(snapshot);
         }
       }
@@ -251,6 +262,7 @@ export class DepthMarketFeed {
       const token = snapshotBookToken(snapshot);
       if (snapshot && token !== this.lastSnapshotToken) {
         this.lastSnapshotToken = token;
+        this.#rememberSnapshot(snapshot);
         const arrivedAt = performance.now();
         if (this.lastRealFrameAt > 0) {
           const interval = arrivedAt - this.lastRealFrameAt;
@@ -269,6 +281,37 @@ export class DepthMarketFeed {
       };
       this.onStatus?.(this.status);
     };
+  }
+
+  #rawSnapshotIdentity(raw) {
+    if (!raw) return '';
+    const id = finite(raw.id, Number.NaN);
+    const timestamp = finite(raw.timestamp, Number.NaN);
+    if (!Number.isFinite(id) || !Number.isFinite(timestamp)) return '';
+    return `${id}:${timestamp}`;
+  }
+
+  #snapshotIdentity(snapshot) {
+    if (!snapshot) return '';
+    return `${snapshot.id}:${snapshot.timestamp}`;
+  }
+
+  #hasSeenRawSnapshot(raw) {
+    const identity = this.#rawSnapshotIdentity(raw);
+    return Boolean(identity && this.seenSnapshotIdentities.has(identity));
+  }
+
+  #rememberSnapshot(snapshot) {
+    const identity = this.#snapshotIdentity(snapshot);
+    if (!identity || this.seenSnapshotIdentities.has(identity)) return;
+    this.seenSnapshotIdentities.add(identity);
+    this.snapshotIdentityQueue.push(identity);
+    // Keep enough identities to span several gateway history windows without
+    // allowing a permanently open map tab to grow memory without bound.
+    while (this.snapshotIdentityQueue.length > 10_000) {
+      const expired = this.snapshotIdentityQueue.shift();
+      if (expired) this.seenSnapshotIdentities.delete(expired);
+    }
   }
 
   #paceDisplay(snapshot) {

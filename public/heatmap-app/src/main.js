@@ -98,6 +98,7 @@ class DepthForgeApp {
     this.indicatorAnalysisAt = 0;
     this.depthLadderHtml = '';
     this.tapeHtml = '';
+    this.lastRenderFailureAt = 0;
     this.#bindControls();
     this.#syncPaletteControls();
     this.#syncHeatmapControls();
@@ -800,59 +801,71 @@ class DepthForgeApp {
   }
 
   #loop(timestamp) {
-    const elapsed = Math.min(120, timestamp - this.lastFrameTime);
-    this.lastFrameTime = timestamp;
-    this.accumulator += elapsed;
+    try {
+      const elapsed = Math.min(120, timestamp - this.lastFrameTime);
+      this.lastFrameTime = timestamp;
+      this.accumulator += elapsed;
 
-    if (this.playing) {
-      const interval = this.market.intervalMs / this.speed;
-      let guard = 0;
-      while (this.accumulator >= interval && guard < 8) {
-        if (!this.atLive && this.viewEnd < this.history.length - 1) {
-          this.viewEnd += 1;
-          this.renderRequested = true;
-          if (this.viewEnd >= this.history.length - 1) this.goLive();
+      if (this.playing) {
+        const interval = this.market.intervalMs / this.speed;
+        let guard = 0;
+        while (this.accumulator >= interval && guard < 8) {
+          if (!this.atLive && this.viewEnd < this.history.length - 1) {
+            this.viewEnd += 1;
+            this.renderRequested = true;
+            if (this.viewEnd >= this.history.length - 1) this.goLive();
+          }
+          this.accumulator = this.sourceMode === 'live' && this.atLive ? 0 : this.accumulator - interval;
+          guard += 1;
         }
-        this.accumulator = this.sourceMode === 'live' && this.atLive ? 0 : this.accumulator - interval;
-        guard += 1;
+      } else {
+        this.accumulator = Math.min(this.accumulator, this.market.intervalMs);
       }
-    } else {
-      this.accumulator = Math.min(this.accumulator, this.market.intervalMs);
-    }
 
-    if (this.renderRequested) {
-      const current = this.history[this.viewEnd];
-      if (current) {
-        if (this.settings.autoCenter && this.atLive && this.view.centerTick == null) this.view.centerTick = current.midTick;
-        const indicatorAnalysis = this.#getIndicatorAnalysis();
-        this.renderer.render(this.history, this.viewEnd, this.view, this.settings, SYMBOLS[this.symbol], indicatorAnalysis);
-        this.#positionCurrentPrice(current);
-        if (this.pendingReadySymbol === this.symbol && this.readySymbol !== this.symbol) {
-          this.readySymbol = this.symbol;
-          this.pendingReadySymbol = '';
-          if (window.parent !== window) {
-            window.parent.postMessage(
-              { type: 'kwantdesk:liquidity-map-ready', symbol: this.symbol },
-              window.location.origin,
-            );
+      if (this.renderRequested) {
+        const current = this.history[this.viewEnd];
+        if (current) {
+          if (this.settings.autoCenter && this.atLive && this.view.centerTick == null) this.view.centerTick = current.midTick;
+          const indicatorAnalysis = this.#getIndicatorAnalysis();
+          this.renderer.render(this.history, this.viewEnd, this.view, this.settings, SYMBOLS[this.symbol], indicatorAnalysis);
+          this.#positionCurrentPrice(current);
+          if (this.pendingReadySymbol === this.symbol && this.readySymbol !== this.symbol) {
+            this.readySymbol = this.symbol;
+            this.pendingReadySymbol = '';
+            if (window.parent !== window) {
+              window.parent.postMessage(
+                { type: 'kwantdesk:liquidity-map-ready', symbol: this.symbol },
+                window.location.origin,
+              );
+            }
           }
         }
+        this.renderRequested = false;
+        this.frames += 1;
       }
+
+      if (timestamp - this.lastUiUpdate > 180) {
+        this.#updateUi(false);
+        this.lastUiUpdate = timestamp;
+      }
+
+      if (timestamp - this.fpsTimer >= 1000) {
+        $('fpsValue').textContent = `${Math.round(this.frames * 1000 / (timestamp - this.fpsTimer))} FPS`;
+        this.frames = 0;
+        this.fpsTimer = timestamp;
+      }
+    } catch (error) {
+      // A single malformed or oversized frame must never permanently stop the
+      // requestAnimationFrame chain. Drop only that paint and allow the next
+      // genuine Rithmic frame (and all pointer controls) to keep running.
       this.renderRequested = false;
-      this.frames += 1;
+      if (timestamp - this.lastRenderFailureAt > 5_000) {
+        this.lastRenderFailureAt = timestamp;
+        console.error('Liquidity map frame was skipped.', error);
+      }
+    } finally {
+      requestAnimationFrame(next => this.#loop(next));
     }
-
-    if (timestamp - this.lastUiUpdate > 180) {
-      this.#updateUi(false);
-      this.lastUiUpdate = timestamp;
-    }
-
-    if (timestamp - this.fpsTimer >= 1000) {
-      $('fpsValue').textContent = `${Math.round(this.frames * 1000 / (timestamp - this.fpsTimer))} FPS`;
-      this.frames = 0;
-      this.fpsTimer = timestamp;
-    }
-    requestAnimationFrame(next => this.#loop(next));
   }
 
   requestRender() { this.renderRequested = true; }
