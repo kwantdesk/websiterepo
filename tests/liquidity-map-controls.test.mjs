@@ -48,3 +48,11 @@ test("liquidity-map choices persist between visits", async () => {
   assert.match(source, /#restoreSettings\(\)/);
   assert.match(source, /#saveSettings\(\)/);
 });
+
+test("embedded map omits intrusive feed and latency overlays", async () => {
+  const html = await readFile(htmlPath, "utf8");
+
+  assert.doesNotMatch(html, /id=["']sourceBanner["']/);
+  assert.doesNotMatch(html, /id=["']latencyLabel["']/);
+  assert.doesNotMatch(html, /Live .*depth-by-order.*full resting book.*trading disabled/i);
+});

@@ -676,9 +676,6 @@ class DepthForgeApp {
     $('spreadValue').textContent = `${snapshot.bestAsk - snapshot.bestBid} TICK`;
     $('volumeValue').textContent = snapshot.totalVolume.toLocaleString();
     $('cvdValue').textContent = `${snapshot.cvd >= 0 ? '+' : ''}${Math.round(snapshot.cvd).toLocaleString()}`;
-    $('latencyLabel').textContent = this.liveStatus.connected
-      ? `${Math.round(snapshot.latencyMs ?? (10 + (snapshot.id % 9)))} ms`
-      : 'STALE';
     $('eventCount').textContent = this.#compactNumber(this.eventCount);
     $('utcClock').innerHTML = `${new Date().toISOString().slice(11, 19)} <small>UTC</small>`;
     $('replayTime').textContent = timeLabel(snapshot.timestamp, true);
