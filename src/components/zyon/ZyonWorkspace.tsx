@@ -42,6 +42,7 @@ import {
   useState,
   type ChangeEvent,
   type FormEvent,
+  type ReactNode,
   type SetStateAction,
 } from "react";
 import { createPortal } from "react-dom";
@@ -682,6 +683,118 @@ function ZyonSpeechButton({
 }
 
 type ZyonImagePreview = Pick<ZyonAttachment, "name" | "dataUrl">;
+
+function zyonInlineMarkdown(value: string, keyPrefix: string): ReactNode[] {
+  const parts = value.split(/(\*\*[^*]+\*\*|`[^`]+`|\[[^\]]+\]\(https?:\/\/[^)]+\))/g);
+  return parts.filter(Boolean).map((part, index) => {
+    const key = `${keyPrefix}-${index}`;
+    if (part.startsWith("**") && part.endsWith("**")) {
+      return <strong key={key} className="font-semibold text-foreground">{part.slice(2, -2)}</strong>;
+    }
+    if (part.startsWith("`") && part.endsWith("`")) {
+      return (
+        <code key={key} className="rounded bg-primary/[0.08] px-1 py-0.5 font-mono text-[0.92em] text-primary">
+          {part.slice(1, -1)}
+        </code>
+      );
+    }
+    const link = part.match(/^\[([^\]]+)\]\((https?:\/\/[^)]+)\)$/);
+    if (link) {
+      return (
+        <a
+          key={key}
+          href={link[2]}
+          target="_blank"
+          rel="noreferrer"
+          className="font-medium text-primary underline decoration-primary/30 underline-offset-2 hover:decoration-primary"
+        >
+          {link[1]}
+        </a>
+      );
+    }
+    return part;
+  });
+}
+
+function ZyonMarkdown({ content, compact = false }: { content: string; compact?: boolean }) {
+  const lines = content.replace(/\r\n?/g, "\n").split("\n");
+  const blocks: ReactNode[] = [];
+  const bodyClass = compact ? "text-[10px] leading-[1.65]" : "text-[11px] leading-[1.75]";
+  let index = 0;
+
+  while (index < lines.length) {
+    const line = lines[index].trim();
+    if (!line) {
+      index += 1;
+      continue;
+    }
+    if (/^---+$/.test(line)) {
+      blocks.push(<hr key={`rule-${index}`} className="my-3 border-0 border-t border-border/70" />);
+      index += 1;
+      continue;
+    }
+    const heading = line.match(/^(#{1,6})\s+(.+)$/);
+    if (heading) {
+      const level = heading[1].length;
+      const className = level <= 2
+        ? "mb-2 mt-4 text-[12px] font-semibold uppercase tracking-[0.08em] text-foreground first:mt-0"
+        : "mb-1.5 mt-3 text-[11px] font-semibold text-foreground first:mt-0";
+      blocks.push(
+        <div key={`heading-${index}`} className={className}>
+          {zyonInlineMarkdown(heading[2], `heading-${index}`)}
+        </div>,
+      );
+      index += 1;
+      continue;
+    }
+    if (/^[-*]\s+/.test(line)) {
+      const items: ReactNode[] = [];
+      while (index < lines.length && /^\s*[-*]\s+/.test(lines[index])) {
+        const item = lines[index].replace(/^\s*[-*]\s+/, "");
+        items.push(<li key={`bullet-${index}`}>{zyonInlineMarkdown(item, `bullet-${index}`)}</li>);
+        index += 1;
+      }
+      blocks.push(
+        <ul key={`list-${index}`} className={`my-2 space-y-1 pl-4 marker:text-primary ${bodyClass}`}>
+          {items}
+        </ul>,
+      );
+      continue;
+    }
+    if (/^\d+\.\s+/.test(line)) {
+      const items: ReactNode[] = [];
+      while (index < lines.length && /^\s*\d+\.\s+/.test(lines[index])) {
+        const item = lines[index].replace(/^\s*\d+\.\s+/, "");
+        items.push(<li key={`number-${index}`}>{zyonInlineMarkdown(item, `number-${index}`)}</li>);
+        index += 1;
+      }
+      blocks.push(
+        <ol key={`ordered-${index}`} className={`my-2 list-decimal space-y-1 pl-5 marker:text-primary ${bodyClass}`}>
+          {items}
+        </ol>,
+      );
+      continue;
+    }
+
+    const paragraph: string[] = [line];
+    index += 1;
+    while (
+      index < lines.length
+      && lines[index].trim()
+      && !/^(?:#{1,6}\s+|---+$|[-*]\s+|\d+\.\s+)/.test(lines[index].trim())
+    ) {
+      paragraph.push(lines[index].trim());
+      index += 1;
+    }
+    blocks.push(
+      <p key={`paragraph-${index}`} className={`my-2 text-foreground/90 first:mt-0 last:mb-0 ${bodyClass}`}>
+        {zyonInlineMarkdown(paragraph.join(" "), `paragraph-${index}`)}
+      </p>,
+    );
+  }
+
+  return <div className="zyon-message-copyable select-text">{blocks}</div>;
+}
 
 function messageAttachments(
   attachments: ZyonAttachment[] | undefined,
@@ -2386,12 +2499,11 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
                           : "rounded-br-[6px] border-primary/20 bg-primary/[0.09]"
                       }`}>
                         {messageAttachments(message.attachments, setImagePreview)}
-                        <p
-                          className="zyon-message-copyable whitespace-pre-wrap text-[10px] leading-[1.65] text-foreground"
-                          onContextMenu={(event) => event.stopPropagation()}
-                        >
-                          {message.content}
-                        </p>
+                        <div onContextMenu={(event) => event.stopPropagation()}>
+                          {assistant
+                            ? <ZyonMarkdown content={message.content} compact />
+                            : <p className="zyon-message-copyable whitespace-pre-wrap text-[10px] leading-[1.65] text-foreground">{message.content}</p>}
+                        </div>
                       </div>
                       <div className={`mt-1 flex items-center gap-1.5 px-1 text-[7px] uppercase tracking-[0.08em] text-muted ${assistant ? "" : "justify-end"}`}>
                         <span>{assistant ? "ZYON" : "YOU"}</span>
@@ -3118,12 +3230,11 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
                             : "border-primary/20 bg-primary/[0.09]"
                         }`}>
                           {messageAttachments(message.attachments, setImagePreview)}
-                          <p
-                            className="zyon-message-copyable whitespace-pre-wrap text-[11px] leading-[1.75] text-foreground"
-                            onContextMenu={(event) => event.stopPropagation()}
-                          >
-                            {message.content}
-                          </p>
+                          <div onContextMenu={(event) => event.stopPropagation()}>
+                            {assistant
+                              ? <ZyonMarkdown content={message.content} />
+                              : <p className="zyon-message-copyable whitespace-pre-wrap text-[11px] leading-[1.75] text-foreground">{message.content}</p>}
+                          </div>
                         </div>
                         <div className={`mt-1.5 flex items-center gap-2 px-1 text-[8px] text-muted ${assistant ? "" : "justify-end"}`}>
                           <span>{assistant ? "ZYON" : "YOU"}</span>

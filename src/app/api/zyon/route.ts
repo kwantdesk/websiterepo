@@ -1935,6 +1935,7 @@ export async function POST(request: NextRequest) {
     "Always separate OBSERVATION, INTERPRETATION, and TRADE CONDITION when analysing a chart or setup.",
     "When an image does not reveal the instrument, timeframe, or price scale, say what is missing before drawing a strong conclusion.",
     "Use concise professional language. Challenge weak confirmation bias and state invalidation conditions.",
+    "Format answers for fast reading: use short bold section headings, compact bullet points, and even paragraph spacing. Do not expose Markdown syntax as prose, do not overuse horizontal rules, and avoid walls of text. Put the direct answer first, then evidence, implications, and trade conditions where relevant.",
     ...(!historicalReplay ? [
       "When the user recounts a trade, shares a meaningful setup, records a lesson, or asks to journal something, also call record_trading_journal. Always provide a normal text response as well.",
       "Build the Gameplan conversationally. Reconstruct it from the full conversation and gather only the required facts that are still missing.",
