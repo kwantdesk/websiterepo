@@ -988,6 +988,7 @@ class DepthForgeApp {
   requestRender() { this.renderRequested = true; }
 
   #getIndicatorAnalysis() {
+    if (this.drag && this.indicatorAnalysis) return this.indicatorAnalysis;
     const current = this.history[this.viewEnd];
     const first = this.history[0];
     const indicatorSettings = Object.fromEntries(
@@ -1405,11 +1406,13 @@ class DepthForgeApp {
       this.#setChartCursor(point, true);
     } else if (pricePan) {
       this.drag = { mode: 'price-pan', lastY: point.y };
+      this.renderer.beginInteraction('price-pan');
       this.renderer.setHover(null);
       $('chartTooltip').classList.add('hidden');
       this.#setChartCursor(point, true);
     } else if (chartPan) {
       this.drag = { mode: 'pan', last: point };
+      this.renderer.beginInteraction('pan');
       this.#setChartCursor(point, true);
     } else if (measurement) {
       this.drag = { mode: 'measure', start: point, end: point };
@@ -1423,6 +1426,7 @@ class DepthForgeApp {
     const completedDrag = this.drag;
     try { $('heatmapCanvas').releasePointerCapture(event.pointerId); } catch { /* pointer already released */ }
     this.drag = null;
+    this.renderer.endInteraction();
     if (completedDrag.mode === 'dom-resize' && window.parent !== window) {
       window.parent.postMessage({
         type: 'kwantify:heatmap-dom-width',
@@ -1430,6 +1434,7 @@ class DepthForgeApp {
       }, window.location.origin);
     }
     this.#setChartCursor(event.type === 'pointercancel' ? null : this.#canvasPoint(event));
+    this.requestRender();
   }
 
   #showTooltip(point) {

@@ -115,11 +115,26 @@ export class DepthRenderer {
     this.measurement = null;
     this.paletteCache = new Map();
     this.sphereSprites = new Map();
+    this.interaction = null;
     this.fontFamilies = { mono: 'Consolas, monospace', ui: '"Arial Narrow", sans-serif' };
   }
 
   setHover(point) { this.hover = point; }
   setMeasurement(measurement) { this.measurement = measurement; }
+
+  beginInteraction(mode) {
+    if (!['pan', 'price-pan'].includes(mode) || !this.layout) return;
+    this.interaction = {
+      mode,
+      end: this.layout.end,
+      centerTick: this.layout.centerTick,
+      columnPixels: this.layout.columnPixels,
+    };
+  }
+
+  endInteraction() {
+    this.interaction = null;
+  }
 
   #font(size, weight = 500, mono = true) {
     const family = mono ? this.fontFamilies.mono : this.fontFamilies.ui;
@@ -179,7 +194,7 @@ export class DepthRenderer {
       priceLabelWidth, restingBookWidth, depthColumnWidth, timeAxisHeight,
       rightHeaderHeight, domVisible,
       domWidth,
-      bottomTick, topTick, visibleTickSpan, rowTicks, columnPixels,
+      bottomTick, topTick, centerTick, visibleTickSpan, rowTicks, columnPixels,
       start, end, count, xForIndex, yForTick, tickForY,
       config, history,
     };
@@ -190,10 +205,10 @@ export class DepthRenderer {
     if (settings.heatmap) this.#drawHeatmap(ctx, history, start, end, current, settings);
     this.#drawGrid(ctx, history, settings);
     if (settings.trails) this.#drawInsideMarket(ctx, history, accents);
-    if (settings.trades) this.#drawTrades(ctx, history, settings, accents);
-    this.#drawBottomVolume(ctx, history, accents);
-    this.#drawIndicatorMarks(ctx, indicatorAnalysis, settings, accents);
-    if (settings.profile) {
+    if (settings.trades && !this.interaction) this.#drawTrades(ctx, history, settings, accents);
+    if (!this.interaction) this.#drawBottomVolume(ctx, history, accents);
+    if (!this.interaction) this.#drawIndicatorMarks(ctx, indicatorAnalysis, settings, accents);
+    if (settings.profile && !this.interaction) {
       this.#drawBidAskVolumeProfile(ctx, history, accents);
       this.#drawVolumeProfile(ctx, history, accents);
     }
@@ -208,6 +223,43 @@ export class DepthRenderer {
 
   #drawHeatmap(ctx, history, start, end, current, settings) {
     const layout = this.layout;
+    if (this.interaction && this.heatBuffer.width > 0 && this.heatBuffer.height > 0) {
+      const horizontalOffset = (this.interaction.end - layout.end) * layout.columnPixels;
+      const verticalOffset = (
+        (layout.centerTick - this.interaction.centerTick)
+        / Math.max(1, layout.visibleTickSpan)
+      ) * layout.plotHeight;
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(0, 0, layout.plotWidth, layout.plotHeight);
+      ctx.clip();
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(
+        this.heatBuffer,
+        0,
+        0,
+        this.heatBuffer.width,
+        this.heatBuffer.height,
+        horizontalOffset,
+        verticalOffset,
+        layout.dataWidth,
+        layout.plotHeight,
+      );
+      // Continue the most recent genuine column through Bookmap's live gap.
+      ctx.drawImage(
+        this.heatBuffer,
+        Math.max(0, this.heatBuffer.width - 1),
+        0,
+        1,
+        this.heatBuffer.height,
+        layout.dataWidth + horizontalOffset,
+        verticalOffset,
+        layout.liveGap,
+        layout.plotHeight,
+      );
+      ctx.restore();
+      return;
+    }
     const columns = end - start + 1;
     const paletteKey = `${paletteRenderKey(settings.palette)}:${settings.heatmapDimming}`;
     const paletteChanged = this.heatPalette !== paletteKey;
