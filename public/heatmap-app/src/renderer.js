@@ -468,7 +468,11 @@ export class DepthRenderer {
         image.data[offset] = color[0] * intensity;
         image.data[offset + 1] = color[1] * intensity;
         image.data[offset + 2] = color[2] * intensity;
-        image.data[offset + 3] = 191;
+        // The user's transparency control is applied once when the cluster is
+        // drawn. Baking a second 75% alpha into the sphere made even the zero
+        // transparency position look washed out. Keep the sphere itself fully
+        // opaque so slider-left produces solid bid/ask balls.
+        image.data[offset + 3] = 255;
       }
     }
     spriteContext.putImageData(image, 0, 0);
