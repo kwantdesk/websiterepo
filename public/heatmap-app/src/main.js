@@ -1147,12 +1147,21 @@ class DepthForgeApp {
 
   #wheel(event) {
     event.preventDefault();
+    const layout = this.renderer.layout;
+    if (!layout) return;
+    if (event.ctrlKey || event.metaKey) {
+      this.#panHistory(wheelColumnShift({
+        deltaX: event.deltaX,
+        deltaY: event.deltaY,
+        visibleColumns: layout.count,
+        fast: event.shiftKey,
+      }));
+      return;
+    }
     const factor = event.deltaY > 0 ? 1.12 : 0.88;
     const axes = event.shiftKey
       ? { price: false, time: true }
-      : event.ctrlKey
-        ? { price: true, time: false }
-        : { price: true, time: true };
+      : { price: true, time: true };
     this.#zoom(factor, this.#canvasPoint(event), axes);
   }
 
@@ -1179,18 +1188,11 @@ class DepthForgeApp {
     event.preventDefault();
     const layout = this.renderer.layout;
     if (!layout) return;
-    if (event.ctrlKey) {
-      const rect = $('cvdCanvas').getBoundingClientRect();
-      const fraction = Math.max(0, Math.min(1, (event.clientX - rect.left) / Math.max(1, rect.width)));
-      const factor = event.deltaY > 0 ? 1.14 : 0.88;
-      this.#zoom(factor, { x: fraction * layout.dataWidth, y: layout.plotHeight / 2 }, { price: false, time: true });
-      return;
-    }
     this.#panHistory(wheelColumnShift({
       deltaX: event.deltaX,
       deltaY: event.deltaY,
       visibleColumns: layout.count,
-      fast: event.shiftKey,
+      fast: event.shiftKey && !(event.ctrlKey || event.metaKey),
     }));
   }
 

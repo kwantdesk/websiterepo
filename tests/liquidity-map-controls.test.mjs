@@ -49,6 +49,13 @@ test("liquidity-map choices persist between visits", async () => {
   assert.match(source, /#saveSettings\(\)/);
 });
 
+test("Ctrl plus mouse wheel pans the liquidity timeline horizontally", async () => {
+  const source = await readFile(mainPath, "utf8");
+
+  assert.match(source, /if \(event\.ctrlKey \|\| event\.metaKey\) \{[\s\S]*?this\.#panHistory\(wheelColumnShift\(/);
+  assert.doesNotMatch(source, /event\.ctrlKey\s*\?\s*\{ price: true, time: false \}/);
+});
+
 test("embedded map omits intrusive feed and latency overlays", async () => {
   const html = await readFile(htmlPath, "utf8");
 
