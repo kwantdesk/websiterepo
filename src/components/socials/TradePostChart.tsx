@@ -28,6 +28,22 @@ function nearestCandleTime(candles: Candle[], timestamp: number) {
   return candles.reduce((best, candle) => Math.abs(candle.timestamp - timestamp) < Math.abs(best.timestamp - timestamp) ? candle : best).timestamp;
 }
 
+function validCandles(value: unknown): Candle[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((candidate): candidate is Candle => {
+    if (!candidate || typeof candidate !== "object") return false;
+    const candle = candidate as Record<string, unknown>;
+    return ["timestamp", "open", "high", "low", "close"]
+      .every((key) => Number.isFinite(Number(candle[key])));
+  }).map((candle) => ({
+    timestamp: Number(candle.timestamp),
+    open: Number(candle.open),
+    high: Number(candle.high),
+    low: Number(candle.low),
+    close: Number(candle.close),
+  }));
+}
+
 function newYorkSessionDate(timestamp: number) {
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: "America/New_York",
@@ -177,14 +193,35 @@ export default function TradePostChart({ trade, height = 270 }: { trade: SocialT
           : openedAt - 60 * 60_000;
         const start = new Date(startAt).toISOString();
         const end = new Date(Math.min(Date.now(), Math.max(openedAt, closedAt) + 60 * 60_000)).toISOString();
-        const response = await fetch(`/api/backtesting/session?symbol=${encodeURIComponent(symbol)}&timeframe=1m&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`, {
-          cache: "force-cache",
-          signal: controller.signal,
-        });
-        const body = await response.json() as { candles?: Candle[]; error?: string };
-        if (!response.ok || !Array.isArray(body.candles) || !body.candles.length) throw new Error(body.error || "No historical bars");
-        const candles = body.candles
-          .filter((candle) => [candle.open, candle.high, candle.low, candle.close, candle.timestamp].every(Number.isFinite))
+        let sourceCandles: Candle[] = [];
+        try {
+          const response = await fetch(`/api/backtesting/session?symbol=${encodeURIComponent(symbol)}&timeframe=1m&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`, {
+            cache: "no-store",
+            signal: controller.signal,
+          });
+          const body = await response.json().catch(() => null) as { candles?: unknown } | null;
+          if (response.ok) sourceCandles = validCandles(body?.candles);
+        } catch (error) {
+          if (error instanceof DOMException && error.name === "AbortError") throw error;
+        }
+
+        // A just-completed trade can be newer than the historical archive.
+        // The normal chart-history route includes its retained live tail, so
+        // use that before declaring a social trade chart unavailable.
+        if (!sourceCandles.length) {
+          const fallback = await fetch(`/api/cme-history?symbol=${encodeURIComponent(symbol)}&timeframe=1m&days=5`, {
+            cache: "no-store",
+            signal: controller.signal,
+          });
+          const fallbackBody = await fallback.json().catch(() => null) as { candles?: unknown } | null;
+          const recentCandles = fallback.ok ? validCandles(fallbackBody?.candles) : [];
+          const windowStart = Date.parse(start);
+          const windowEnd = Date.parse(end);
+          const windowCandles = recentCandles.filter((candle) => candle.timestamp >= windowStart && candle.timestamp <= windowEnd);
+          sourceCandles = windowCandles.length ? windowCandles : recentCandles.slice(-180);
+        }
+        if (!sourceCandles.length) throw new Error("No historical bars");
+        const candles = sourceCandles
           .map((candle) => ({
             time: Math.floor(candle.timestamp / 1_000) as Time,
             open: candle.open,
@@ -194,8 +231,8 @@ export default function TradePostChart({ trade, height = 270 }: { trade: SocialT
           }));
         if (!candles.length) throw new Error("No historical bars");
         seriesRef.current?.setData(candles);
-        const entryTime = nearestCandleTime(body.candles, openedAt);
-        const exitTime = nearestCandleTime(body.candles, closedAt);
+        const entryTime = nearestCandleTime(sourceCandles, openedAt);
+        const exitTime = nearestCandleTime(sourceCandles, closedAt);
         markerTimesRef.current = {
           entry: entryTime ? Math.floor(entryTime / 1_000) as Time : null,
           exit: exitTime ? Math.floor(exitTime / 1_000) as Time : null,
@@ -251,7 +288,7 @@ export default function TradePostChart({ trade, height = 270 }: { trade: SocialT
         );
       })}
       {state !== "ready" ? <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-background/76 backdrop-blur-[2px]">{state === "loading" ? <div className="flex items-center gap-2 text-[8px] text-muted"><span className="h-4 w-4 animate-spin rounded-full border border-primary/20 border-t-primary" />Loading the recorded market path</div> : <span className="text-[8px] text-muted">Historical bars are unavailable for this instrument or date.</span>}</div> : null}
-      <div className="pointer-events-none absolute left-2 top-2 rounded-lg border border-border bg-background/85 px-2 py-1 text-[6px] font-semibold uppercase tracking-[0.12em] text-muted">1m · one hour each side · drag + scroll</div>
+      <div className="pointer-events-none absolute left-2 top-2 rounded-lg border border-border bg-background/85 px-2 py-1 text-[6px] font-semibold uppercase tracking-[0.12em] text-muted">1m · available session bars · drag + scroll</div>
     </div>
   );
 }
