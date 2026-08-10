@@ -54,3 +54,30 @@ test("LIQ MAP renders one standard loader until a real depth frame has painted",
   assert.match(liveMarket, /historical: true/);
   assert.match(liveMarket, /final: index === snapshots\.length - 1/);
 });
+
+test("LIQ MAP instrument changes never restore the blocking full-screen loader", () => {
+  const liquidityMap = read("src/components/liquidity-map/LiquidityMapWorkspace.tsx");
+  const mapRuntime = read("public/heatmap-app/src/main.js");
+
+  assert.doesNotMatch(
+    liquidityMap,
+    /useEffect\(\(\) => \{\s*setIsReady\(false\);\s*syncInstrument\(\)/,
+  );
+  assert.match(
+    mapRuntime,
+    /normalized === this\.symbol[\s\S]*kwantdesk:liquidity-map-ready/,
+  );
+});
+
+test("LIQ MAP receives every active website theme, including new custom colours", () => {
+  const liquidityMap = read("src/components/liquidity-map/LiquidityMapWorkspace.tsx");
+  const mapRuntime = read("public/heatmap-app/src/main.js");
+  const mapThemes = read("public/heatmap-app/src/ui-themes.js");
+
+  assert.match(liquidityMap, /kwantdesk:liquidity-map-theme/);
+  assert.match(liquidityMap, /kwantdesk:theme-change/);
+  assert.match(liquidityMap, /readStoredTheme\(\)/);
+  assert.match(mapRuntime, /kwantdesk:liquidity-map-theme/);
+  assert.match(mapRuntime, /setWebsiteThemeColors\(event\.data\.theme\)/);
+  assert.match(mapThemes, /websiteThemeOverride/);
+});

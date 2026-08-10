@@ -19,6 +19,14 @@ const WEBSITE_DEFAULTS = Object.freeze({
   candleDown: '#ef4444',
 });
 
+let websiteThemeOverride = null;
+
+export function setWebsiteThemeColors(value) {
+  websiteThemeOverride = value && typeof value === 'object' && !Array.isArray(value)
+    ? { ...value }
+    : null;
+}
+
 export const UI_THEMES = Object.freeze([
   Object.freeze({
     id: DEFAULT_UI_THEME,
@@ -57,7 +65,8 @@ export function websiteThemeColors() {
   let saved = null;
   try { saved = JSON.parse(localStorage.getItem(WEBSITE_THEME_STORAGE_KEY) || 'null'); }
   catch { saved = null; }
-  const source = saved && typeof saved === 'object' ? saved : {};
+  const source = websiteThemeOverride
+    || (saved && typeof saved === 'object' ? saved : {});
   return Object.fromEntries(
     Object.entries(WEBSITE_DEFAULTS).map(([key, fallback]) => [key, color(source[key], fallback)]),
   );

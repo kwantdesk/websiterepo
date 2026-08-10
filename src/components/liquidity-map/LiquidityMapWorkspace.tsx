@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import KwantLoader from "@/components/KwantLoader";
+import { readStoredTheme, THEME_STORAGE_KEY } from "@/lib/theme";
 
 type LiquidityMapWorkspaceProps = {
   instrument: string;
@@ -16,11 +17,30 @@ export default function LiquidityMapWorkspace({ instrument }: LiquidityMapWorksp
       window.location.origin,
     );
   }, [instrument]);
+  const syncTheme = useCallback(() => {
+    iframeRef.current?.contentWindow?.postMessage(
+      { type: "kwantdesk:liquidity-map-theme", theme: readStoredTheme() },
+      window.location.origin,
+    );
+  }, []);
 
   useEffect(() => {
-    setIsReady(false);
     syncInstrument();
   }, [syncInstrument]);
+
+  useEffect(() => {
+    const handleThemeChange = () => syncTheme();
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key === THEME_STORAGE_KEY) syncTheme();
+    };
+    window.addEventListener("kwantdesk:theme-change", handleThemeChange);
+    window.addEventListener("storage", handleStorage);
+    syncTheme();
+    return () => {
+      window.removeEventListener("kwantdesk:theme-change", handleThemeChange);
+      window.removeEventListener("storage", handleStorage);
+    };
+  }, [syncTheme]);
 
   useEffect(() => {
     const handleMapReady = (event: MessageEvent) => {
@@ -43,6 +63,7 @@ export default function LiquidityMapWorkspace({ instrument }: LiquidityMapWorksp
         title="Kwant Desk liquidity heatmap"
         onLoad={() => {
           setIsReady(false);
+          syncTheme();
           syncInstrument();
         }}
       />

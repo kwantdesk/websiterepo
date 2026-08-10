@@ -14,6 +14,7 @@ import {
   DEFAULT_UI_THEME,
   WEBSITE_THEME_STORAGE_KEY,
   applyUiTheme,
+  setWebsiteThemeColors,
 } from './ui-themes.js';
 
 const MAX_HISTORY = 1800;
@@ -255,6 +256,11 @@ class DepthForgeApp {
         if (symbol) this.#addInstrumentTab(symbol, false);
         return;
       }
+      if (event.data?.type === 'kwantdesk:liquidity-map-theme') {
+        setWebsiteThemeColors(event.data.theme);
+        this.#setUiTheme(DEFAULT_UI_THEME);
+        return;
+      }
       if (event.data?.type === 'kwantify:heatmap-workspace-settings') {
         this.settings.domVisible = event.data.domVisible !== false;
         const domWidth = Number(event.data.domWidth);
@@ -474,6 +480,12 @@ class DepthForgeApp {
     if (normalized === this.symbol) {
       this.#persistInstrumentTabs();
       this.#renderInstrumentTabs();
+      if (window.parent !== window) {
+        window.parent.postMessage(
+          { type: 'kwantdesk:liquidity-map-ready', symbol: this.symbol },
+          window.location.origin,
+        );
+      }
       return;
     }
     this.switchSymbol(normalized);
