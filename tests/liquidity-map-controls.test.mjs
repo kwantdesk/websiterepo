@@ -75,7 +75,10 @@ test("CVD is labelled and horizontally synchronized with the liquidity map", asy
 
   assert.match(html, /> Cumulative Volume Delta<\/strong>/);
   assert.doesNotMatch(html, /Scroll or drag to explore history/);
-  assert.match(renderer, /this\.layout\?\.dataWidth/);
+  assert.match(html, /data-cvd-style="candles"/);
+  assert.match(html, /data-cvd-style="line"/);
+  assert.match(html, /data-cvd-style="bars"/);
+  assert.match(renderer, /const dataWidth = width/);
   assert.match(renderer, /const xForIndex = index => \(\(index - start\) \/ \(count - 1\)\) \* dataWidth/);
 });
 

@@ -169,7 +169,22 @@
             <div class="measurement-label hidden" id="measurementLabel">—</div>
           </div>
           <section class="cvd-panel" id="cvdPanel" aria-label="Cumulative volume delta panel">
-            <header><strong><b></b> Cumulative Volume Delta</strong><span><button class="active" id="cvdGoLive" aria-label="Return chart to live">Live</button><i id="cvdLegend">NET 0 · LOADED</i></span></header>
+            <header>
+              <strong><b></b> Cumulative Volume Delta</strong>
+              <span class="cvd-header-controls">
+                <span class="cvd-style-picker">
+                  <button id="cvdStyleButton" aria-haspopup="menu" aria-expanded="false"><span id="cvdStyleLabel">CVD candles</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5"></path></svg></button>
+                  <span class="cvd-style-menu hidden" id="cvdStyleMenu" role="menu" aria-label="CVD display choices">
+                    <button type="button" role="menuitemradio" data-cvd-style="candles">Candles <i>✓</i></button>
+                    <button type="button" role="menuitemradio" data-cvd-style="line">Line <i>✓</i></button>
+                    <button type="button" role="menuitemradio" data-cvd-style="bars">Bars <i>✓</i></button>
+                  </span>
+                </span>
+                <button class="cvd-settings-button" id="cvdSettingsButton" title="CVD settings" aria-label="Open CVD settings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h7M15 6h5M4 12h3M11 12h9M4 18h9M17 18h3"></path><circle cx="13" cy="6" r="2"></circle><circle cx="9" cy="12" r="2"></circle><circle cx="15" cy="18" r="2"></circle></svg></button>
+                <button class="active" id="cvdGoLive" aria-label="Return chart to live">Live</button>
+                <i id="cvdLegend">NET 0 · LOADED</i>
+              </span>
+            </header>
             <canvas id="cvdCanvas" title="Cumulative volume delta synchronized to the liquidity-map viewport" aria-label="Cumulative volume delta synchronized to the liquidity-map viewport"></canvas>
           </section>
         </section>

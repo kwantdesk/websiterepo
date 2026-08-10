@@ -3,6 +3,7 @@ const finite = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(
 export const DEFAULT_INDICATOR_SETTINGS = Object.freeze({
   cvdEnabled: true,
   cvdPanel: true,
+  cvdDisplayStyle: 'candles',
   cvdMinimumTradeSize: 1,
   cvdMaximumTradeSize: 0,
   cvdRange: 'loaded',
@@ -74,12 +75,19 @@ export function computeCvdSeries(history, {
       points.push({ frameIndex, value: 0, buy: 0, sell: 0 });
       return;
     }
+    const open = buy + sell;
+    let high = open;
+    let low = open;
     for (const trade of frame.trades || []) {
       if (!tradeAllowed(trade, minimumTradeSize, maximumTradeSize)) continue;
       if (trade.side === 'buy') buy += finite(trade.size);
       if (trade.side === 'sell') sell -= finite(trade.size);
+      const running = buy + sell;
+      high = Math.max(high, running);
+      low = Math.min(low, running);
     }
-    points.push({ frameIndex, value: buy + sell, buy, sell });
+    const close = buy + sell;
+    points.push({ frameIndex, value: close, open, high, low, close, buy, sell });
   });
   return { points, buy, sell, value: buy + sell };
 }

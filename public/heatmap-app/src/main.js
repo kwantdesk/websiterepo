@@ -294,6 +294,24 @@ class DepthForgeApp {
     cvdCanvas.addEventListener('wheel', event => this.#cvdWheel(event), { passive: false });
     cvdCanvas.addEventListener('dblclick', () => this.goLive());
     $('cvdGoLive').addEventListener('click', () => this.goLive());
+    $('cvdSettingsButton').addEventListener('click', () => this.#openPanel('signals'));
+    $('cvdStyleButton').addEventListener('click', event => {
+      event.stopPropagation();
+      const menu = $('cvdStyleMenu');
+      const opening = menu.classList.contains('hidden');
+      menu.classList.toggle('hidden', !opening);
+      $('cvdStyleButton').setAttribute('aria-expanded', String(opening));
+    });
+    $('cvdStyleMenu').addEventListener('click', event => {
+      const option = event.target.closest('[data-cvd-style]');
+      if (!option) return;
+      this.#setCvdDisplayStyle(option.dataset.cvdStyle);
+    });
+    document.addEventListener('pointerdown', event => {
+      if (event.target.closest('.cvd-style-picker')) return;
+      $('cvdStyleMenu').classList.add('hidden');
+      $('cvdStyleButton').setAttribute('aria-expanded', 'false');
+    });
 
     $('helpButton').addEventListener('click', () => $('helpModal').showModal());
     $('closeHelp').addEventListener('click', () => $('helpModal').close());
@@ -655,6 +673,7 @@ class DepthForgeApp {
     for (const [id, setting] of Object.entries(checkboxSettings)) $(id).checked = Boolean(this.settings[setting]);
     $('cvdRangeSelect').value = this.settings.cvdRange;
     $('cvdScaleSelect').value = this.settings.cvdScale;
+    this.#syncCvdDisplayStyle();
     const numberSettings = {
       cvdMinimumTradeSize: 'cvdMinimumTradeSize',
       cvdMaximumTradeSize: 'cvdMaximumTradeSize',
@@ -669,6 +688,29 @@ class DepthForgeApp {
     };
     for (const [id, setting] of Object.entries(numberSettings)) $(id).value = String(this.settings[setting]);
     this.#syncIndicatorLayout();
+  }
+
+  #setCvdDisplayStyle(value) {
+    const style = ['candles', 'line', 'bars'].includes(value) ? value : 'candles';
+    this.settings.cvdDisplayStyle = style;
+    this.#syncCvdDisplayStyle();
+    this.#saveSettings();
+    this.requestRender();
+  }
+
+  #syncCvdDisplayStyle() {
+    const style = ['candles', 'line', 'bars'].includes(this.settings.cvdDisplayStyle)
+      ? this.settings.cvdDisplayStyle
+      : 'candles';
+    const labels = { candles: 'CVD candles', line: 'CVD line', bars: 'CVD bars' };
+    $('cvdStyleLabel').textContent = labels[style];
+    all('[data-cvd-style]').forEach(option => {
+      const selected = option.dataset.cvdStyle === style;
+      option.classList.toggle('active', selected);
+      option.setAttribute('aria-checked', String(selected));
+    });
+    $('cvdStyleMenu').classList.add('hidden');
+    $('cvdStyleButton').setAttribute('aria-expanded', 'false');
   }
 
   #syncIndicatorLayout() {

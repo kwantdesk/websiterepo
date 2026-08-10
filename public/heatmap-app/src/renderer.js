@@ -954,10 +954,13 @@ export class DepthRenderer {
     const count = end - start + 1;
     const points = analysis?.cvd?.points || [];
     if (count <= 1 || !points.length || width <= 0 || height <= 0) return;
-    // Use the exact horizontal geometry of the liquidity map. The CVD is a
-    // synchronized lower pane, not a separate chart with its own time scale.
-    const dataWidth = Math.min(width, Math.max(1, this.layout?.dataWidth || width));
-    const plotWidth = Math.min(width, Math.max(dataWidth, this.layout?.plotWidth || dataWidth));
+    // Share the map's start/end indices but use the full pane width, matching
+    // the Charts CVD while leaving the liquidity map's DOM/profile untouched.
+    const dataWidth = width;
+    const plotWidth = width;
+    const displayStyle = ['candles', 'line', 'bars'].includes(settings.cvdDisplayStyle)
+      ? settings.cvdDisplayStyle
+      : 'candles';
     const baseline = settings.cvdRange === 'visible' && start > 0
       ? points[start - 1] || { value: 0, buy: 0, sell: 0 }
       : { value: 0, buy: 0, sell: 0 };
@@ -965,6 +968,10 @@ export class DepthRenderer {
       const point = points[index] || points.at(-1) || baseline;
       return {
         value: point.value - baseline.value,
+        open: (point.open ?? point.value) - baseline.value,
+        high: (point.high ?? point.value) - baseline.value,
+        low: (point.low ?? point.value) - baseline.value,
+        close: (point.close ?? point.value) - baseline.value,
         buy: point.buy - baseline.buy,
         sell: point.sell - baseline.sell,
       };
@@ -972,7 +979,7 @@ export class DepthRenderer {
     const values = [];
     for (let index = start; index <= end; index += 1) {
       const point = adjusted(index);
-      values.push(point.value);
+      values.push(point.value, point.high, point.low);
       if (settings.cvdSplit) values.push(point.buy, point.sell);
     }
     let minimum = Math.min(...values);
@@ -984,10 +991,6 @@ export class DepthRenderer {
       const extent = Math.max(1, Math.abs(minimum), Math.abs(maximum));
       minimum = -extent;
       maximum = extent;
-    }
-    let maxVolume = 1;
-    for (let index = start; index <= end; index += 1) {
-      maxVolume = Math.max(maxVolume, history[index].volume);
     }
     const padding = Math.max(1, (maximum - minimum) * .1);
     minimum -= padding;
@@ -1013,33 +1016,8 @@ export class DepthRenderer {
       ctx.stroke();
       ctx.setLineDash([]);
     }
-    const volumeBand = Math.min(26, height * .27);
-    for (let index = start; index <= end; index += 1) {
-      const snapshot = history[index];
-      const x = xForIndex(index);
-      const barWidth = Math.max(1, dataWidth / count);
-      const barHeight = (snapshot.volume / maxVolume) * volumeBand;
-      ctx.fillStyle = snapshot.delta >= 0 ? colorCss(accents.bid, .13) : colorCss(accents.ask, .13);
-      ctx.fillRect(x, height - barHeight, barWidth, barHeight);
-    }
     const lastValue = adjusted(end).value;
     const firstValue = adjusted(start).value;
-    const baselineY = yForValue(firstValue);
-    const gradient = ctx.createLinearGradient(0, 0, 0, height);
-    if (lastValue >= firstValue) {
-      gradient.addColorStop(0, colorCss(accents.bid, .18));
-      gradient.addColorStop(1, colorCss(accents.bid, 0));
-    } else {
-      gradient.addColorStop(0, colorCss(accents.ask, .02));
-      gradient.addColorStop(1, colorCss(accents.ask, .18));
-    }
-    ctx.beginPath();
-    ctx.moveTo(xForIndex(start), baselineY);
-    for (let index = start; index <= end; index += 1) ctx.lineTo(xForIndex(index), yForValue(adjusted(index).value));
-    ctx.lineTo(xForIndex(end), baselineY);
-    ctx.closePath();
-    ctx.fillStyle = gradient;
-    ctx.fill();
     const drawSeries = (field, color, widthValue, shadow = 0) => {
       ctx.beginPath();
       for (let index = start; index <= end; index += 1) {
@@ -1054,11 +1032,41 @@ export class DepthRenderer {
       ctx.stroke();
       ctx.shadowBlur = 0;
     };
-    if (settings.cvdSplit) {
-      drawSeries('buy', colorCss(accents.bid, .82), 1);
-      drawSeries('sell', colorCss(accents.ask, .82), 1);
+    if (displayStyle === 'candles') {
+      const barWidth = Math.max(2, Math.min(10, dataWidth / Math.max(1, count) * .64));
+      for (let index = start; index <= end; index += 1) {
+        const point = adjusted(index);
+        const x = xForIndex(index);
+        const positive = point.close >= point.open;
+        const color = colorCss(positive ? accents.bid : accents.ask);
+        const openY = yForValue(point.open);
+        const closeY = yForValue(point.close);
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(x, yForValue(point.high));
+        ctx.lineTo(x, yForValue(point.low));
+        ctx.stroke();
+        ctx.fillStyle = color;
+        ctx.fillRect(x - barWidth / 2, Math.min(openY, closeY), barWidth, Math.max(2, Math.abs(openY - closeY)));
+      }
+    } else if (displayStyle === 'bars') {
+      const zero = Math.max(7, Math.min(height - 7, yForValue(0)));
+      const barWidth = Math.max(1, Math.min(12, dataWidth / Math.max(1, count) * .72));
+      for (let index = start; index <= end; index += 1) {
+        const point = adjusted(index);
+        const x = xForIndex(index);
+        const y = yForValue(point.value);
+        ctx.fillStyle = colorCss(point.value >= 0 ? accents.bid : accents.ask, .9);
+        ctx.fillRect(x - barWidth / 2, Math.min(y, zero), barWidth, Math.max(1, Math.abs(zero - y)));
+      }
+    } else {
+      if (settings.cvdSplit) {
+        drawSeries('buy', colorCss(accents.bid, .82), 1);
+        drawSeries('sell', colorCss(accents.ask, .82), 1);
+      }
+      drawSeries('value', lastValue >= firstValue ? colorCss(accents.bid) : colorCss(accents.ask), 1.5, 4);
     }
-    drawSeries('value', lastValue >= firstValue ? colorCss(accents.bid) : colorCss(accents.ask), 1.5, 4);
     ctx.fillStyle = this.chrome.muted;
     ctx.font = this.#font(7, 500, true);
     ctx.textAlign = 'right';
