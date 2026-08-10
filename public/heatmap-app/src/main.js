@@ -98,6 +98,8 @@ class DepthForgeApp {
     this.#restoreSettings();
 
     this.indicatorAnalysis = null;
+    this.cvdHistory = [];
+    this.cvdTradingDate = '';
     this.indicatorAnalysisKey = '';
     this.indicatorAnalysisSettingsKey = '';
     this.indicatorAnalysisAt = 0;
@@ -118,6 +120,7 @@ class DepthForgeApp {
       symbol: this.symbol,
       onSnapshot: (snapshot, metadata) => this.#ingestDepthSnapshot(snapshot, metadata),
       onStatus: status => this.#setLiveStatus(status),
+      onCvdHistory: (points, tradingDate) => this.#replaceCvdHistory(points, tradingDate),
     });
     this.liveFeed.start();
   }
@@ -527,6 +530,8 @@ class DepthForgeApp {
     this.sourceMode = 'connecting';
     this.depthEngine.reset();
     this.history = this.depthEngine.frames;
+    this.cvdHistory = [];
+    this.cvdTradingDate = '';
     this.tape = [];
     this.view.centerTick = null;
     this.accumulator = 0;
@@ -829,6 +834,9 @@ class DepthForgeApp {
       );
     }
     const { shifted } = this.depthEngine.append(snapshot);
+    if (!metadata.historical && !metadata.visualHold) {
+      this.#appendLiveCvd(snapshot.timestamp, snapshot.delta);
+    }
     this.#appendTrades(snapshot.trades);
     this.eventCount += snapshot.eventsSince ?? snapshot.trades.length + snapshot.bids.size + snapshot.asks.size;
     if (wasAtLive) {
@@ -847,6 +855,53 @@ class DepthForgeApp {
       this.pendingReadySymbol = this.symbol;
       this.renderRequested = true;
     }
+  }
+
+  #replaceCvdHistory(points, tradingDate) {
+    this.cvdHistory = (points || []).map(point => ({
+      timestamp: Number(point.timestamp),
+      open: Number(point.open || 0),
+      high: Number(point.high || 0),
+      low: Number(point.low || 0),
+      close: Number(point.close ?? point.value ?? 0),
+      value: Number(point.value ?? point.close ?? 0),
+      buy: Number(point.buy || 0),
+      sell: Number(point.sell || 0),
+    })).sort((left, right) => left.timestamp - right.timestamp);
+    this.cvdTradingDate = String(tradingDate || '');
+    this.indicatorAnalysisKey = '';
+    this.requestRender();
+  }
+
+  #appendLiveCvd(timestamp, delta) {
+    const time = Number(timestamp);
+    const change = Number(delta);
+    if (!Number.isFinite(time) || !Number.isFinite(change) || change === 0) return;
+    const bucket = time - (time % 60_000);
+    const previous = this.cvdHistory.at(-1);
+    if (previous?.timestamp === bucket) {
+      const next = previous.value + change;
+      previous.high = Math.max(previous.high, next);
+      previous.low = Math.min(previous.low, next);
+      previous.value = next;
+      previous.close = next;
+      previous.buy += Math.max(0, change);
+      previous.sell += Math.min(0, change);
+    } else {
+      const open = Number(previous?.value || 0);
+      const close = open + change;
+      this.cvdHistory.push({
+        timestamp: bucket,
+        open,
+        high: Math.max(open, close),
+        low: Math.min(open, close),
+        close,
+        value: close,
+        buy: Number(previous?.buy || 0) + Math.max(0, change),
+        sell: Number(previous?.sell || 0) + Math.min(0, change),
+      });
+    }
+    if (this.cvdHistory.length > 2_000) this.cvdHistory.splice(0, this.cvdHistory.length - 2_000);
   }
 
   #appendTrades(trades) {
@@ -882,6 +937,7 @@ class DepthForgeApp {
         if (current) {
           if (this.settings.autoCenter && this.atLive && this.view.centerTick == null) this.view.centerTick = current.midTick;
           const indicatorAnalysis = this.#getIndicatorAnalysis();
+          indicatorAnalysis.sessionCvd = { points: this.cvdHistory };
           this.renderer.render(this.history, this.viewEnd, this.view, this.settings, SYMBOLS[this.symbol], indicatorAnalysis);
           this.#positionCurrentPrice(current);
           if (this.pendingReadySymbol === this.symbol && this.readySymbol !== this.symbol) {

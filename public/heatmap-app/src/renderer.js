@@ -957,33 +957,50 @@ export class DepthRenderer {
     ctx.clearRect(0, 0, width, height);
     ctx.fillStyle = this.chrome.axis;
     ctx.fillRect(0, 0, width, height);
-    const count = end - start + 1;
-    const points = analysis?.cvd?.points || [];
-    if (count <= 1 || !points.length || width <= 0 || height <= 0) return;
-    // Share the map's start/end indices but use the full pane width, matching
-    // the Charts CVD while leaving the liquidity map's DOM/profile untouched.
+    const currentTimestamp = Number(history[end]?.timestamp || Number.POSITIVE_INFINITY);
+    const visibleStartTimestamp = Number(history[start]?.timestamp || 0);
+    const sessionPoints = (analysis?.sessionCvd?.points || [])
+      .filter(point => Number(point.timestamp) <= currentTimestamp);
+    let points = sessionPoints;
+    let baseline = { value: 0, buy: 0, sell: 0 };
+    if (settings.cvdRange === 'visible' && sessionPoints.length) {
+      const firstVisibleIndex = sessionPoints.findIndex(
+        point => Number(point.timestamp) >= visibleStartTimestamp,
+      );
+      if (firstVisibleIndex > 0) baseline = sessionPoints[firstVisibleIndex - 1];
+      points = firstVisibleIndex >= 0 ? sessionPoints.slice(firstVisibleIndex) : sessionPoints.slice(-2);
+    }
+    // A cold gateway may not yet have compact session buckets. Retain the
+    // short in-memory calculation as a truthful fallback, never as the normal
+    // loaded-history source.
+    if (points.length < 2) {
+      const fallback = analysis?.cvd?.points || [];
+      points = fallback.slice(Math.max(0, settings.cvdRange === 'visible' ? start : 0), end + 1);
+      baseline = settings.cvdRange === 'visible' && start > 0
+        ? fallback[start - 1] || baseline
+        : { value: 0, buy: 0, sell: 0 };
+    }
+    const count = points.length;
+    if (count <= 1 || width <= 0 || height <= 0) return;
     const dataWidth = width;
     const plotWidth = width;
     const displayStyle = ['candles', 'line', 'bars'].includes(settings.cvdDisplayStyle)
       ? settings.cvdDisplayStyle
       : 'candles';
-    const baseline = settings.cvdRange === 'visible' && start > 0
-      ? points[start - 1] || { value: 0, buy: 0, sell: 0 }
-      : { value: 0, buy: 0, sell: 0 };
     const adjusted = index => {
       const point = points[index] || points.at(-1) || baseline;
       return {
-        value: point.value - baseline.value,
-        open: (point.open ?? point.value) - baseline.value,
-        high: (point.high ?? point.value) - baseline.value,
-        low: (point.low ?? point.value) - baseline.value,
-        close: (point.close ?? point.value) - baseline.value,
-        buy: point.buy - baseline.buy,
-        sell: point.sell - baseline.sell,
+        value: Number(point.value ?? point.close ?? 0) - Number(baseline.value || 0),
+        open: Number(point.open ?? point.value ?? 0) - Number(baseline.value || 0),
+        high: Number(point.high ?? point.value ?? 0) - Number(baseline.value || 0),
+        low: Number(point.low ?? point.value ?? 0) - Number(baseline.value || 0),
+        close: Number(point.close ?? point.value ?? 0) - Number(baseline.value || 0),
+        buy: Number(point.buy || 0) - Number(baseline.buy || 0),
+        sell: Number(point.sell || 0) - Number(baseline.sell || 0),
       };
     };
     const values = [];
-    for (let index = start; index <= end; index += 1) {
+    for (let index = 0; index < count; index += 1) {
       const point = adjusted(index);
       values.push(point.value, point.high, point.low);
       if (settings.cvdSplit) values.push(point.buy, point.sell);
@@ -1001,7 +1018,7 @@ export class DepthRenderer {
     const padding = Math.max(1, (maximum - minimum) * .1);
     minimum -= padding;
     maximum += padding;
-    const xForIndex = index => ((index - start) / (count - 1)) * dataWidth;
+    const xForIndex = index => (index / (count - 1)) * dataWidth;
     const yForValue = value => height - 7 - ((value - minimum) / Math.max(1, maximum - minimum)) * (height - 14);
     ctx.strokeStyle = `rgba(${this.chrome.grid},.12)`;
     ctx.lineWidth = 1;
@@ -1022,14 +1039,14 @@ export class DepthRenderer {
       ctx.stroke();
       ctx.setLineDash([]);
     }
-    const lastValue = adjusted(end).value;
-    const firstValue = adjusted(start).value;
+    const lastValue = adjusted(count - 1).value;
+    const firstValue = adjusted(0).value;
     const drawSeries = (field, color, widthValue, shadow = 0) => {
       ctx.beginPath();
-      for (let index = start; index <= end; index += 1) {
+      for (let index = 0; index < count; index += 1) {
         const x = xForIndex(index);
         const y = yForValue(adjusted(index)[field]);
-        if (index === start) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        if (index === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
       }
       ctx.strokeStyle = color;
       ctx.lineWidth = widthValue;
@@ -1040,7 +1057,7 @@ export class DepthRenderer {
     };
     if (displayStyle === 'candles') {
       const barWidth = Math.max(2, Math.min(10, dataWidth / Math.max(1, count) * .64));
-      for (let index = start; index <= end; index += 1) {
+      for (let index = 0; index < count; index += 1) {
         const point = adjusted(index);
         const x = xForIndex(index);
         const positive = point.close >= point.open;
@@ -1059,7 +1076,7 @@ export class DepthRenderer {
     } else if (displayStyle === 'bars') {
       const zero = Math.max(7, Math.min(height - 7, yForValue(0)));
       const barWidth = Math.max(1, Math.min(12, dataWidth / Math.max(1, count) * .72));
-      for (let index = start; index <= end; index += 1) {
+      for (let index = 0; index < count; index += 1) {
         const point = adjusted(index);
         const x = xForIndex(index);
         const y = yForValue(point.value);

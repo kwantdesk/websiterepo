@@ -134,11 +134,12 @@ export function normalizeLiveSnapshot(raw) {
 }
 
 export class DepthMarketFeed {
-  constructor({ symbol = 'MNQ', contractSymbol = '', onSnapshot, onStatus, eventSourceFactory } = {}) {
+  constructor({ symbol = 'MNQ', contractSymbol = '', onSnapshot, onStatus, onCvdHistory, eventSourceFactory } = {}) {
     this.symbol = symbol;
     this.contractSymbol = contractSymbol;
     this.onSnapshot = onSnapshot;
     this.onStatus = onStatus;
+    this.onCvdHistory = onCvdHistory;
     this.eventSourceFactory = eventSourceFactory || (url => new EventSource(url));
     this.stream = null;
     this.displayFrameTimer = null;
@@ -256,6 +257,13 @@ export class DepthMarketFeed {
           final: index === snapshots.length - 1,
         });
       });
+    });
+    stream.addEventListener('cvd-history', event => {
+      const payload = JSON.parse(event.data || '{}');
+      const points = Array.isArray(payload.points)
+        ? payload.points.filter(point => Number.isFinite(Number(point?.timestamp)))
+        : [];
+      this.onCvdHistory?.(points, payload.tradingDate || '');
     });
     stream.addEventListener('depth', event => {
       const payload = JSON.parse(event.data || '{}');

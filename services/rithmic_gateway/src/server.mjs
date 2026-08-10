@@ -6,7 +6,11 @@ import { loadConfig } from "./config.mjs";
 import { discoverRithmicSystems, RithmicMarketDataClient } from "./rithmic-client.mjs";
 import { RTraderExcelMarketDataClient } from "./rtrader-excel-client.mjs";
 import { MarketDataRecorder } from "./recorder.mjs";
-import { resolveVolumeProfileRange } from "./trading-session.mjs";
+import {
+  chicagoTradingDate,
+  cmeSessionBounds,
+  resolveVolumeProfileRange,
+} from "./trading-session.mjs";
 
 const config = loadConfig();
 const client = config.sourceMode === "rtrader-excel"
@@ -464,6 +468,38 @@ function heatmapHistoryState(key) {
   return state;
 }
 
+function sessionCvdHistory(exchange, symbol, nowMs = Date.now()) {
+  const bounds = cmeSessionBounds(chicagoTradingDate(nowMs));
+  const candles = client.book.flowCandles(exchange, symbol, {
+    fromMs: bounds?.startMs || nowMs - 24 * 60 * 60 * 1_000,
+    toMs: Math.min(nowMs, bounds?.endMs || nowMs),
+    intervalMs: 60_000,
+    limit: 2_000,
+  });
+  let value = 0;
+  let buy = 0;
+  let sell = 0;
+  return candles.map((candle) => {
+    const open = value;
+    const high = open + Number(candle.deltaHigh || 0);
+    const low = open + Number(candle.deltaLow || 0);
+    value = open + Number(candle.deltaClose || candle.delta || 0);
+    buy += Number(candle.askVolume || 0);
+    sell -= Number(candle.bidVolume || 0);
+    return {
+      timestamp: Number(candle.timestamp),
+      open,
+      high,
+      low,
+      close: value,
+      value,
+      buy,
+      sell,
+      volume: Number(candle.volume || 0),
+    };
+  });
+}
+
 function captureHeatmapFrame(instrumentKey, now = Date.now()) {
   const state = heatmapHistoryState(instrumentKey);
   if (now - state.lastEmitAt < HEATMAP_FRAME_MS) return null;
@@ -702,6 +738,16 @@ const server = createServer(async (request, response) => {
       let initialMarketTimestampMs = 0;
       if (snapshot) {
         const initialFrame = heatmapPayload(snapshot, lastSequence);
+        response.write(
+          `event: cvd-history\ndata: ${JSON.stringify({
+            tradingDate: chicagoTradingDate(snapshot.asOfMs || Date.now()),
+            points: sessionCvdHistory(
+              instrument.exchange,
+              instrument.symbol,
+              snapshot.asOfMs || Date.now(),
+            ),
+          })}\n\n`,
+        );
         const historyState = heatmapHistoryState(
           `${instrument.exchange}:${instrument.symbol}`,
         );
