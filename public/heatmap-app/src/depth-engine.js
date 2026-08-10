@@ -506,8 +506,9 @@ export class RollingDepthEngine {
     const contrastChanged = this.contrast.update(rawColumns, token, forceContrast);
     const width = rawColumns.length;
     const height = rawColumns[0]?.length || 0;
-    const startId = this.frames[safeStart].id ?? safeStart;
-    const endId = this.frames[safeEnd].id ?? safeEnd;
+    const visibleFrames = this.frames.slice(safeStart, safeEnd + 1);
+    const startFrame = visibleFrames[0];
+    const endFrame = visibleFrames[visibleFrames.length - 1];
     const styleKey = [geometryKey(geometry), sensitivity.toFixed(4), temporalEnhancement.toFixed(4), this.contrast.version].join('|');
     const previous = this.lastHeatmap;
     let shiftColumns = 0;
@@ -517,13 +518,18 @@ export class RollingDepthEngine {
     let intensities = new Uint8ClampedArray(width * height);
 
     if (!contrastChanged && previous && previous.styleKey === styleKey && previous.width === width && previous.height === height) {
-      const advance = startId - previous.startId;
-      if (advance === 0 && endId === previous.endId) {
+      // Display-held frames intentionally use half-step sequence ids. Numeric
+      // id subtraction therefore cannot describe how many raster columns
+      // rolled off once the fixed-capacity buffer fills. Track the exact frame
+      // overlap instead so every shift is an integer column count.
+      const advance = previous.frames?.indexOf(startFrame) ?? -1;
+      const sameEndFrame = previous.frames?.[previous.frames.length - 1] === endFrame;
+      if (advance === 0 && sameEndFrame) {
         base = previous.base;
         intensities = previous.intensities;
         updateStart = width;
         reusedColumns = width;
-      } else if (advance > 0 && advance < width && endId > previous.endId) {
+      } else if (advance > 0 && advance < width && !sameEndFrame) {
         shiftColumns = advance;
         updateStart = width - advance;
         reusedColumns = updateStart;
@@ -550,7 +556,7 @@ export class RollingDepthEngine {
     }
 
     this.lastHeatmap = {
-      width, height, startId, endId, styleKey, base, intensities,
+      width, height, frames: visibleFrames, styleKey, base, intensities,
     };
     return {
       width,
