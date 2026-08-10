@@ -115,15 +115,14 @@ export class DepthRenderer {
     this.measurement = null;
     this.paletteCache = new Map();
     this.sphereSprites = new Map();
+    this.fontFamilies = { mono: 'Consolas, monospace', ui: '"Arial Narrow", sans-serif' };
   }
 
   setHover(point) { this.hover = point; }
   setMeasurement(measurement) { this.measurement = measurement; }
 
   #font(size, weight = 500, mono = true) {
-    const property = mono ? '--font-mono' : '--font-ui';
-    const fallback = mono ? 'Consolas, monospace' : '"Arial Narrow", sans-serif';
-    const family = getComputedStyle(this.canvas).getPropertyValue(property).trim() || fallback;
+    const family = mono ? this.fontFamilies.mono : this.fontFamilies.ui;
     return `${weight} ${size}px ${family}`;
   }
 
@@ -134,6 +133,11 @@ export class DepthRenderer {
     const current = history[end];
     const accents = paletteAccents(settings.palette);
     this.chrome = canvasUiTheme(settings.uiTheme);
+    const canvasStyles = getComputedStyle(this.canvas);
+    this.fontFamilies = {
+      mono: canvasStyles.getPropertyValue('--font-mono').trim() || 'Consolas, monospace',
+      ui: canvasStyles.getPropertyValue('--font-ui').trim() || '"Arial Narrow", sans-serif',
+    };
     // Keep the right rail aligned with the standard Charts workspace while
     // separating price, the live resting book, COB, execution flow and SVP.
     const domVisible = settings.domVisible !== false;

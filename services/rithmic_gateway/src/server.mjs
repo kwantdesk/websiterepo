@@ -131,13 +131,13 @@ function contractRoot(symbol) {
 // symbol so the provenance is honest: an MNQ chart reading NQ tape says so.
 const MICRO_PARENT_ROOTS = { MNQ: "NQ", MES: "ES", MYM: "YM", M2K: "RTY", MGC: "GC", MCL: "CL" };
 
-// One heatmap column per frame. 100ms gives ~3 minutes across the app's
-// 1,800-column history, which is the horizon a liquidity map is read over.
-// Faster than this and resting orders cannot be distinguished from noise;
-// the book simply cannot change meaningfully between consecutive frames.
+// One truthful book snapshot every 50ms gives the browser a 20 FPS live
+// surface without inventing intermediate liquidity. The browser still
+// coalesces paints on requestAnimationFrame, so exchange bursts cannot queue
+// an unbounded render backlog.
 const HEATMAP_FRAME_MS = Math.max(
   20,
-  Number(process.env.RITHMIC_HEATMAP_FRAME_MS) || 100,
+  Number(process.env.RITHMIC_HEATMAP_FRAME_MS) || 50,
 );
 // A fresh browser used to begin with a single vertical sliver even when the
 // collector had been running all session. Keep a compact, server-side warm

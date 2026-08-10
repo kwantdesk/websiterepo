@@ -108,3 +108,33 @@ test("replays the real gateway history through the original Kwantify append path
   assert.equal(statuses.at(-1).connected, true);
   assert.equal(statuses.at(-1).historyFrames, 3);
 });
+
+test("paces a 100ms book into a truthful 20 FPS display without duplicating trades", async () => {
+  const listeners = new Map();
+  const source = {
+    close() {},
+    addEventListener(name, listener) { listeners.set(name, listener); },
+  };
+  const snapshots = [];
+  const feed = new DepthMarketFeed({
+    symbol: "MNQ",
+    eventSourceFactory: () => source,
+    onSnapshot: (snapshot, details) => snapshots.push({ snapshot, details }),
+  });
+  feed.start();
+  listeners.get("depth")({
+    data: JSON.stringify({
+      status: { connected: true, fullDepth: true, provider: "Rithmic" },
+      snapshot: rawSnapshot({ trades: [{ id: 1, timestamp: 1_786_100_000_000, tick: 119_201, size: 4, side: "buy" }] }),
+    }),
+  });
+  await new Promise((resolve) => setTimeout(resolve, 70));
+  feed.stop();
+
+  assert.equal(snapshots.length, 2);
+  assert.equal(snapshots[0].snapshot.trades.length, 1);
+  assert.equal(snapshots[1].details.visualHold, true);
+  assert.equal(snapshots[1].snapshot.trades.length, 0);
+  assert.equal(snapshots[1].snapshot.volume, 0);
+  assert.equal(snapshots[1].snapshot.eventsSince, 0);
+});

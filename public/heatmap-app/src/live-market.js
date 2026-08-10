@@ -1,4 +1,5 @@
 const REQUESTED_DEPTH_TICKS = 1000;
+const DISPLAY_FRAME_MS = 50;
 export const INSTITUTIONAL_MARKET_DATA_ORIGIN = '/api/institutional-market-data';
 
 const finite = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
@@ -136,6 +137,7 @@ export class DepthMarketFeed {
     this.onStatus = onStatus;
     this.eventSourceFactory = eventSourceFactory || (url => new EventSource(url));
     this.stream = null;
+    this.displayFrameTimer = null;
     this.lastSnapshotToken = '';
     this.running = false;
     this.status = {
@@ -156,6 +158,8 @@ export class DepthMarketFeed {
 
   stop() {
     this.running = false;
+    clearTimeout(this.displayFrameTimer);
+    this.displayFrameTimer = null;
     this.stream?.close();
     this.stream = null;
   }
@@ -165,6 +169,8 @@ export class DepthMarketFeed {
     this.symbol = symbol;
     this.contractSymbol = contractSymbol;
     this.lastSnapshotToken = '';
+    clearTimeout(this.displayFrameTimer);
+    this.displayFrameTimer = null;
     this.stream?.close();
     this.stream = null;
     this.status = {
@@ -240,6 +246,7 @@ export class DepthMarketFeed {
       if (snapshot && token !== this.lastSnapshotToken) {
         this.lastSnapshotToken = token;
         this.onSnapshot?.(snapshot);
+        this.#paceDisplay(snapshot);
       }
     });
     stream.onerror = () => {
@@ -250,5 +257,25 @@ export class DepthMarketFeed {
       };
       this.onStatus?.(this.status);
     };
+  }
+
+  #paceDisplay(snapshot) {
+    clearTimeout(this.displayFrameTimer);
+    this.displayFrameTimer = setTimeout(() => {
+      if (!this.running || !this.status.connected) return;
+      // Zero-order hold: the exchange book remains at its last known state
+      // until the next genuine snapshot. Trades, volume and event counts are
+      // deliberately empty so visual pacing can never duplicate market data.
+      this.onSnapshot?.({
+        ...snapshot,
+        id: snapshot.id + 0.5,
+        timestamp: snapshot.timestamp + DISPLAY_FRAME_MS,
+        trades: [],
+        volume: 0,
+        delta: 0,
+        eventsSince: 0,
+        visualHold: true,
+      }, { visualHold: true });
+    }, DISPLAY_FRAME_MS);
   }
 }

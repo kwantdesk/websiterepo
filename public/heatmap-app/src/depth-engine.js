@@ -225,6 +225,19 @@ export class AdaptiveContrast {
   }
 
   update(columns, token, force = false) {
+    const expired = token - this.lastToken >= this.refreshColumns;
+    if (!force && this.version > 0 && !expired) {
+      const newest = columns.at(-1);
+      let newestMaximum = 0;
+      for (let index = 0; index < (newest?.length || 0); index += 1) {
+        newestMaximum = Math.max(newestMaximum, newest[index]);
+      }
+      // The retained history still contains the previous maximum. Unless a
+      // genuinely larger wall arrives, there is no reason to rescan and sort
+      // every visible depth cell merely to rediscover the same contrast.
+      if (newestMaximum <= this.maximum * 1.2) return false;
+    }
+
     const values = [];
     let maximum = 0;
     let population = 0;
@@ -243,7 +256,6 @@ export class AdaptiveContrast {
 
     if (!values.length) return false;
     const rangeChange = Math.abs(maximum - this.maximum) / Math.max(1, this.maximum);
-    const expired = token - this.lastToken >= this.refreshColumns;
     if (!force && this.version > 0 && !expired && rangeChange <= 0.2) return false;
 
     values.sort((left, right) => left - right);

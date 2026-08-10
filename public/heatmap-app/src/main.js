@@ -20,6 +20,7 @@ import {
 const MAX_HISTORY = 1800;
 const SPEEDS = [0.25, 0.5, 1, 2, 4];
 const LIQUIDITY_MAP_SETTINGS_KEY = 'kwantdesk:liquidity-map-settings:v1';
+const INDICATOR_ANALYSIS_INTERVAL_MS = 250;
 
 const $ = id => document.getElementById(id);
 const all = selector => [...document.querySelectorAll(selector)];
@@ -87,6 +88,10 @@ class DepthForgeApp {
 
     this.indicatorAnalysis = null;
     this.indicatorAnalysisKey = '';
+    this.indicatorAnalysisSettingsKey = '';
+    this.indicatorAnalysisAt = 0;
+    this.depthLadderHtml = '';
+    this.tapeHtml = '';
     this.#bindControls();
     this.#syncPaletteControls();
     this.#syncHeatmapControls();
@@ -593,7 +598,7 @@ class DepthForgeApp {
     const wasAtLive = this.atLive && this.playing;
     const { shifted } = this.depthEngine.append(snapshot);
     this.#appendTrades(snapshot.trades);
-    this.eventCount += snapshot.eventsSince || snapshot.trades.length + snapshot.bids.size + snapshot.asks.size;
+    this.eventCount += snapshot.eventsSince ?? snapshot.trades.length + snapshot.bids.size + snapshot.asks.size;
     if (wasAtLive) {
       this.viewEnd = this.history.length - 1;
     } else if (shifted) {
@@ -658,6 +663,7 @@ class DepthForgeApp {
         }
       }
       this.renderRequested = false;
+      this.frames += 1;
     }
 
     if (timestamp - this.lastUiUpdate > 180) {
@@ -665,7 +671,6 @@ class DepthForgeApp {
       this.lastUiUpdate = timestamp;
     }
 
-    this.frames += 1;
     if (timestamp - this.fpsTimer >= 1000) {
       $('fpsValue').textContent = `${Math.round(this.frames * 1000 / (timestamp - this.fpsTimer))} FPS`;
       this.frames = 0;
@@ -682,10 +687,20 @@ class DepthForgeApp {
     const indicatorSettings = Object.fromEntries(
       Object.keys(DEFAULT_INDICATOR_SETTINGS).map(key => [key, this.settings[key]]),
     );
-    const key = `${first?.id ?? 0}:${current?.id ?? 0}:${this.viewEnd}:${JSON.stringify(indicatorSettings)}`;
-    if (key !== this.indicatorAnalysisKey) {
+    const settingsKey = JSON.stringify(indicatorSettings);
+    const key = `${first?.id ?? 0}:${current?.id ?? 0}:${this.viewEnd}`;
+    const now = performance.now();
+    const settingsChanged = settingsKey !== this.indicatorAnalysisSettingsKey;
+    const dataChanged = key !== this.indicatorAnalysisKey;
+    if (
+      !this.indicatorAnalysis
+      || settingsChanged
+      || (dataChanged && now - this.indicatorAnalysisAt >= INDICATOR_ANALYSIS_INTERVAL_MS)
+    ) {
       this.indicatorAnalysis = analyzeOrderFlow(this.history.slice(0, this.viewEnd + 1), indicatorSettings);
       this.indicatorAnalysisKey = key;
+      this.indicatorAnalysisSettingsKey = settingsKey;
+      this.indicatorAnalysisAt = now;
     }
     return this.indicatorAnalysis;
   }
@@ -731,7 +746,11 @@ class DepthForgeApp {
       const bar = Math.round(Math.max(bid, ask) / maximum * 100);
       html.push(`<div class="depth-row ${side}${bestClass}" style="--bar:${bar}%"><span class="bid-size">${bid || ''}</span><span class="depth-price">${priceLabel(tick, config)}</span><span class="ask-size">${ask || ''}</span></div>`);
     }
-    $('depthLadder').innerHTML = html.join('');
+    const nextHtml = html.join('');
+    if (nextHtml !== this.depthLadderHtml) {
+      this.depthLadderHtml = nextHtml;
+      $('depthLadder').innerHTML = nextHtml;
+    }
   }
 
   #updateMetrics(snapshot, config) {
@@ -851,12 +870,16 @@ class DepthForgeApp {
 
   #renderTape() {
     const config = SYMBOLS[this.symbol];
-    $('tapeList').innerHTML = this.tape.slice(0, 18).map((trade, index) => `
+    const nextHtml = this.tape.slice(0, 18).map((trade, index) => `
       <div class="tape-row ${trade.side}${index === 0 ? ' flash' : ''}">
         <span>${timeLabel(trade.timestamp, true).slice(0, 12)}</span>
         <span class="price">${priceLabel(trade.tick, config)}</span>
         <span class="size">${trade.size}</span>
       </div>`).join('');
+    if (nextHtml !== this.tapeHtml) {
+      this.tapeHtml = nextHtml;
+      $('tapeList').innerHTML = nextHtml;
+    }
   }
 
   #positionCurrentPrice(snapshot) {
