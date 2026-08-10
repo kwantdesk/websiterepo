@@ -167,6 +167,17 @@
               <dl><dt>Price</dt><dd id="tooltipPrice">—</dd><dt>Liquidity</dt><dd id="tooltipLiquidity">—</dd><dt>Volume</dt><dd id="tooltipVolume">—</dd><dt>Side</dt><dd id="tooltipSide">—</dd></dl>
             </div>
             <div class="measurement-label hidden" id="measurementLabel">—</div>
+            <div class="symbol-loading-overlay hidden" id="symbolLoadingOverlay" aria-live="polite" aria-busy="true">
+              <div class="symbol-loading-card">
+                <span class="symbol-loading-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+                <strong id="symbolLoadingTitle">Loading liquidity map</strong>
+                <small id="symbolLoadingStage">Opening market-depth feed</small>
+                <div class="symbol-loading-track" id="symbolLoadingTrack" role="progressbar" aria-label="Liquidity map loading progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="8">
+                  <span id="symbolLoadingBar"></span>
+                </div>
+                <b id="symbolLoadingPercent">8%</b>
+              </div>
+            </div>
             <button class="return-live-button hidden" id="returnToLive" type="button" aria-label="Return to live market" title="Return to live market">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5 18 12 8 18.5Z"></path></svg>
             </button>

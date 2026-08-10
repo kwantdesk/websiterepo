@@ -60,6 +60,8 @@ class DepthForgeApp {
     this.eventCount = 0;
     this.readySymbol = '';
     this.pendingReadySymbol = '';
+    this.symbolLoadActive = false;
+    this.symbolLoadHideTimer = 0;
     this.view = {
       centerTick: null,
       visibleRows: 112,
@@ -516,6 +518,7 @@ class DepthForgeApp {
 
   switchSymbol(symbol) {
     if (!SYMBOLS[symbol] || !LIQUIDITY_MAP_SYMBOLS.has(symbol) || symbol === this.symbol) return;
+    this.#beginSymbolLoad(symbol);
     this.symbol = symbol;
     this.currentContractSymbol = SYMBOLS[symbol].contract;
     this.sourceMode = 'connecting';
@@ -535,6 +538,34 @@ class DepthForgeApp {
     this.#updatePlaybackUi();
     this.#updateUi(true);
     this.requestRender();
+  }
+
+  #beginSymbolLoad(symbol) {
+    clearTimeout(this.symbolLoadHideTimer);
+    this.symbolLoadActive = true;
+    $('symbolLoadingTitle').textContent = `Loading ${symbol} liquidity map`;
+    $('symbolLoadingOverlay').classList.remove('hidden');
+    this.#setSymbolLoadProgress(8, 'Opening market-depth feed');
+  }
+
+  #setSymbolLoadProgress(progress, stage) {
+    if (!this.symbolLoadActive) return;
+    const value = Math.max(0, Math.min(100, Math.round(progress)));
+    $('symbolLoadingStage').textContent = stage;
+    $('symbolLoadingBar').style.width = `${value}%`;
+    $('symbolLoadingPercent').textContent = `${value}%`;
+    $('symbolLoadingTrack').setAttribute('aria-valuenow', String(value));
+  }
+
+  #finishSymbolLoad(symbol) {
+    if (!this.symbolLoadActive || symbol !== this.symbol) return;
+    this.#setSymbolLoadProgress(100, 'Live depth frame painted');
+    clearTimeout(this.symbolLoadHideTimer);
+    this.symbolLoadHideTimer = window.setTimeout(() => {
+      if (symbol !== this.symbol) return;
+      this.symbolLoadActive = false;
+      $('symbolLoadingOverlay').classList.add('hidden');
+    }, 180);
   }
 
   #updateSymbolUi() {
@@ -753,6 +784,13 @@ class DepthForgeApp {
   #setLiveStatus(status) {
     this.liveStatus = { ...this.liveStatus, ...status };
     if (status.contractSymbol) this.currentContractSymbol = status.contractSymbol;
+    if (this.symbolLoadActive) {
+      if (Number(status.historyFrames) > 0) {
+        this.#setSymbolLoadProgress(58, `Restoring ${Number(status.historyFrames).toLocaleString()} depth frames`);
+      } else if (status.connected) {
+        this.#setSymbolLoadProgress(32, 'Rithmic depth stream connected');
+      }
+    }
     this.#updateSymbolUi();
   }
 
@@ -781,6 +819,12 @@ class DepthForgeApp {
       this.#updateSymbolUi();
     }
     const wasAtLive = this.atLive && this.playing;
+    if (this.symbolLoadActive) {
+      this.#setSymbolLoadProgress(
+        metadata.historical ? (metadata.final ? 88 : 72) : 88,
+        metadata.historical ? 'Building historical liquidity columns' : 'Processing first live depth frame',
+      );
+    }
     const { shifted } = this.depthEngine.append(snapshot);
     this.#appendTrades(snapshot.trades);
     this.eventCount += snapshot.eventsSince ?? snapshot.trades.length + snapshot.bids.size + snapshot.asks.size;
@@ -840,6 +884,7 @@ class DepthForgeApp {
           if (this.pendingReadySymbol === this.symbol && this.readySymbol !== this.symbol) {
             this.readySymbol = this.symbol;
             this.pendingReadySymbol = '';
+            this.#finishSymbolLoad(this.symbol);
             if (window.parent !== window) {
               window.parent.postMessage(
                 { type: 'kwantdesk:liquidity-map-ready', symbol: this.symbol },

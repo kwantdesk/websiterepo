@@ -107,6 +107,17 @@ test("signals and display inspector closes when the user clicks away", async () 
   assert.match(source, /document\.addEventListener\('pointerdown', event => \{[\s\S]*?inspector\.classList\.contains\('open'\)[\s\S]*?event\.target\.closest\('#inspector, \[data-panel-shortcut\], #settingsButton, #cvdSettingsButton'\)[\s\S]*?inspector\.classList\.remove\('open'\)/);
 });
 
+test("instrument changes show staged loading progress until the first new frame paints", async () => {
+  const html = await readFile(htmlPath, "utf8");
+  const source = await readFile(mainPath, "utf8");
+
+  assert.match(html, /id="symbolLoadingOverlay"[\s\S]*?role="progressbar"[\s\S]*?id="symbolLoadingBar"/);
+  assert.match(source, /#beginSymbolLoad\(symbol\);[\s\S]*?this\.liveFeed\.setSymbol\(symbol\)/);
+  assert.match(source, /status\.historyFrames[\s\S]*?#setSymbolLoadProgress\(58/);
+  assert.match(source, /metadata\.historical \? \(metadata\.final \? 88 : 72\) : 88/);
+  assert.match(source, /this\.renderer\.render[\s\S]*?this\.#finishSymbolLoad\(this\.symbol\)/);
+});
+
 test("embedded map omits intrusive feed and latency overlays", async () => {
   const html = await readFile(htmlPath, "utf8");
 
