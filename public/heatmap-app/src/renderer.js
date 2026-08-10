@@ -185,7 +185,7 @@ export class DepthRenderer {
     this.#drawGrid(ctx, history, settings);
     if (settings.trails) this.#drawInsideMarket(ctx, history, accents);
     if (settings.trades) this.#drawTrades(ctx, history, settings, accents);
-    this.#drawBottomVolume(ctx, history);
+    this.#drawBottomVolume(ctx, history, accents);
     this.#drawIndicatorMarks(ctx, indicatorAnalysis, settings, accents);
     if (settings.profile) {
       this.#drawBidAskVolumeProfile(ctx, history, accents);
@@ -535,7 +535,7 @@ export class DepthRenderer {
     ctx.restore();
   }
 
-  #drawBottomVolume(ctx, history) {
+  #drawBottomVolume(ctx, history, accents) {
     const layout = this.layout;
     const bandHeight = Math.max(42, Math.min(82, layout.plotHeight * 0.12));
     let maximum = 1;
@@ -550,7 +550,12 @@ export class DepthRenderer {
       const frame = history[index];
       const height = frame.volume / maximum * (bandHeight - 5);
       const x = layout.xForIndex(index) - barWidth / 2;
-      ctx.fillStyle = frame.delta >= 0 ? 'rgba(0,245,160,.78)' : 'rgba(239,68,68,.78)';
+      // Use the exact execution palette as the trade bubbles: positive delta
+      // is buyer/ask-side aggression and negative delta is seller/bid-side.
+      // This also keeps both visuals synchronized when the website theme changes.
+      ctx.fillStyle = frame.delta >= 0
+        ? colorCss(accents.bid, .78)
+        : colorCss(accents.ask, .78);
       ctx.fillRect(x, layout.plotHeight - height, Math.max(1, barWidth - .4), height);
     }
     ctx.restore();
