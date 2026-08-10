@@ -3326,7 +3326,7 @@ function WorkspaceChartPane({
       valueArea: valueAreaOverlay
         ? {
             checkedAt: valueAreaOverlay.generatedAt,
-            sourceLabel: `CME trade-by-trade value area${valueAreaOverlay.currentLabel ? " · current developing session" : ""} · ${valueAreaOverlay.dailyLabel} · ${valueAreaOverlay.weeklyLabel}`,
+            sourceLabel: `Value Area${valueAreaOverlay.currentLabel ? " · current session" : ""} · Previous Day Value Area · ${valueAreaOverlay.weeklyLabel}`,
             levels: valueAreaOverlay.levels,
           }
         : null,

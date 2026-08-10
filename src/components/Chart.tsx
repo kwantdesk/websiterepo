@@ -773,6 +773,111 @@ class GameplanUnderlayPrimitive implements ISeriesPrimitive<Time> {
   }
 }
 
+class FixedPriceLevelLabelsRenderer implements ISeriesPrimitivePaneRenderer {
+  constructor(private readonly primitive: FixedPriceLevelLabelsPrimitive) {}
+
+  draw(target: Parameters<ISeriesPrimitivePaneRenderer["draw"]>[0]) {
+    const series = this.primitive.series();
+    if (!series) return;
+
+    target.useMediaCoordinateSpace(({ context, mediaSize }) => {
+      context.save();
+      context.font = "700 9px 'JetBrains Mono', monospace";
+      context.textBaseline = "middle";
+
+      for (const level of this.primitive.levels()) {
+        if (level.axisLabelVisible === false) continue;
+        const y = series.priceToCoordinate(level.price);
+        if (y === null || y < 10 || y > mediaSize.height - 10) continue;
+
+        const price = level.price.toFixed(this.primitive.precision());
+        const label = level.axisTitleVisible === false
+          ? price
+          : `${level.label}  ${price}`;
+        const width = Math.min(360, Math.max(68, context.measureText(label).width + 18));
+        const left = Math.max(4, mediaSize.width - width - 5);
+
+        // Deliberately draw at the exact price coordinate. Native price-axis
+        // labels are collision-resolved by moving the level chip whenever the
+        // live-price marker crosses it, which makes fixed GEX levels wobble.
+        context.fillStyle = this.primitive.backgroundColor();
+        context.strokeStyle = level.color;
+        context.lineWidth = 0.9;
+        context.beginPath();
+        context.roundRect(left, y - 9, width, 18, 5);
+        context.fill();
+        context.stroke();
+        context.fillStyle = level.color;
+        context.fillText(label, left + 9, y, width - 18);
+      }
+
+      context.restore();
+    });
+  }
+}
+
+class FixedPriceLevelLabelsView implements ISeriesPrimitivePaneView {
+  private readonly levelRenderer: FixedPriceLevelLabelsRenderer;
+
+  constructor(primitive: FixedPriceLevelLabelsPrimitive) {
+    this.levelRenderer = new FixedPriceLevelLabelsRenderer(primitive);
+  }
+
+  zOrder() {
+    return "top" as const;
+  }
+
+  renderer() {
+    return this.levelRenderer;
+  }
+}
+
+class FixedPriceLevelLabelsPrimitive implements ISeriesPrimitive<Time> {
+  private candleSeries: CandleSeriesApi | null = null;
+  private requestRedraw: (() => void) | null = null;
+  private renderLevels: ChartLevel[] = [];
+  private chartBackground = "rgba(8, 10, 12, 0.94)";
+  private pricePrecision = 2;
+  private readonly levelView = new FixedPriceLevelLabelsView(this);
+
+  attached(param: SeriesAttachedParameter<Time, "Candlestick">) {
+    this.candleSeries = param.series as CandleSeriesApi;
+    this.requestRedraw = param.requestUpdate;
+  }
+
+  detached() {
+    this.candleSeries = null;
+    this.requestRedraw = null;
+  }
+
+  update(levels: ChartLevel[], backgroundColor: string, precision: number) {
+    this.renderLevels = levels;
+    this.chartBackground = backgroundColor;
+    this.pricePrecision = precision;
+    this.requestRedraw?.();
+  }
+
+  series() {
+    return this.candleSeries;
+  }
+
+  levels() {
+    return this.renderLevels;
+  }
+
+  backgroundColor() {
+    return this.chartBackground;
+  }
+
+  precision() {
+    return this.pricePrecision;
+  }
+
+  paneViews() {
+    return [this.levelView];
+  }
+}
+
 type DrawingToolId =
   | "cursor"
   | "dot"
@@ -1590,6 +1695,7 @@ export default function Chart({
   const backgroundLevelsRef = useRef<ChartLevel[]>([]);
   const backgroundZonesRef = useRef<ChartZone[]>([]);
   const gameplanUnderlayRef = useRef<GameplanUnderlayPrimitive | null>(null);
+  const fixedPriceLevelLabelsRef = useRef<FixedPriceLevelLabelsPrimitive | null>(null);
   const sessionHighLowPrimitiveRef = useRef<SessionHighLowPrimitive | null>(null);
   const hedgeLevelsPrimitiveRef = useRef<HedgeLevelsPrimitive | null>(null);
   const sessionHighLowRenderDataRef = useRef<SessionHighLowRenderLevel[]>([]);
@@ -3709,8 +3815,11 @@ export default function Chart({
             : level.lineStyle === "dotted"
               ? LineStyle.Dotted
               : LineStyle.Solid,
-        axisLabelVisible: level.axisLabelVisible ?? true,
-        title: level.axisTitleVisible === false ? "" : level.label,
+        // The native chart library moves price-line labels to avoid its live
+        // price marker. Fixed market levels must never change screen position,
+        // so their labels are rendered by FixedPriceLevelLabelsPrimitive.
+        axisLabelVisible: false,
+        title: "",
       });
 
       if (line) {
@@ -4710,7 +4819,12 @@ export default function Chart({
   useEffect(() => {
     levelsRef.current = resolvedLevelLayers.foreground;
     applyLevels(levelsRef.current);
-  }, [resolvedLevelLayers.foreground]);
+    fixedPriceLevelLabelsRef.current?.update(
+      levelsRef.current,
+      settings.backgroundColor,
+      priceFormat.precision,
+    );
+  }, [priceFormat.precision, resolvedLevelLayers.foreground, settings.backgroundColor]);
 
   useEffect(() => {
     backgroundLevelsRef.current = resolvedLevelLayers.background;
@@ -4828,6 +4942,14 @@ export default function Chart({
     );
     candleSeries.attachPrimitive(gameplanUnderlay);
     gameplanUnderlayRef.current = gameplanUnderlay;
+    const fixedPriceLevelLabels = new FixedPriceLevelLabelsPrimitive();
+    fixedPriceLevelLabels.update(
+      levelsRef.current,
+      settings.backgroundColor,
+      priceFormat.precision,
+    );
+    candleSeries.attachPrimitive(fixedPriceLevelLabels);
+    fixedPriceLevelLabelsRef.current = fixedPriceLevelLabels;
     const sessionHighLowPrimitive = new SessionHighLowPrimitive();
     sessionHighLowPrimitive.update(sessionHighLowRenderDataRef.current);
     candleSeries.attachPrimitive(sessionHighLowPrimitive);
@@ -5054,6 +5176,13 @@ export default function Chart({
             // Chart teardown can detach primitives before React cleanup runs.
           }
         }
+        if (candleSeriesRef.current && fixedPriceLevelLabelsRef.current) {
+          try {
+            candleSeriesRef.current.detachPrimitive(fixedPriceLevelLabelsRef.current);
+          } catch {
+            // Chart teardown can detach primitives before React cleanup runs.
+          }
+        }
         if (candleSeriesRef.current && volumeProfilePrimitiveRef.current) {
           try {
             candleSeriesRef.current.detachPrimitive(volumeProfilePrimitiveRef.current);
@@ -5094,6 +5223,7 @@ export default function Chart({
       }
       candleSeriesRef.current = null;
       gameplanUnderlayRef.current = null;
+      fixedPriceLevelLabelsRef.current = null;
       sessionHighLowPrimitiveRef.current = null;
       hedgeLevelsPrimitiveRef.current = null;
       volumeProfilePrimitiveRef.current = null;
