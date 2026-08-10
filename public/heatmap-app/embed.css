@@ -64,7 +64,7 @@ html[data-embed="true"] .app-bar {
   grid-column: 1;
   grid-row: 1;
   display: grid;
-  grid-template-columns: minmax(280px, 1fr) auto auto;
+  grid-template-columns: minmax(280px, 1fr) auto;
   height: 46px;
   min-height: 46px;
   padding: 0 12px;

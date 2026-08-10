@@ -12,7 +12,6 @@ import {
 import { panHistoryEnd, panPriceCenter, wheelColumnShift } from './history-navigation.js';
 import {
   DEFAULT_UI_THEME,
-  UI_THEMES,
   WEBSITE_THEME_STORAGE_KEY,
   applyUiTheme,
 } from './ui-themes.js';
@@ -102,7 +101,6 @@ class DepthForgeApp {
     this.#syncHeatmapControls();
     this.#syncVolumeDotControls();
     this.#syncIndicatorControls();
-    this.#syncUiThemeControls();
     this.#updateSymbolUi();
     this.#updateUi(true);
     this.resizeObserver = new ResizeObserver(() => this.requestRender());
@@ -688,19 +686,10 @@ class DepthForgeApp {
     const theme = applyUiTheme(value);
     this.uiTheme = theme.id;
     this.settings.uiTheme = theme.id;
-    this.#syncUiThemeControls();
     this.#syncPaletteControls();
     const themeMeta = document.querySelector('meta[name="theme-color"]');
     if (themeMeta) themeMeta.content = theme.css['--ui-chrome'];
     this.requestRender();
-  }
-
-  #syncUiThemeControls() {
-    const theme = UI_THEMES.find(candidate => candidate.id === this.uiTheme) || UI_THEMES[0];
-    $('themeCurrent').dataset.theme = theme.id;
-    $('themeCode').textContent = theme.code;
-    $('themeName').textContent = theme.name.toUpperCase();
-    if ($('uiThemeSelect')) $('uiThemeSelect').value = this.uiTheme;
   }
 
   #setLiveStatus(status) {
