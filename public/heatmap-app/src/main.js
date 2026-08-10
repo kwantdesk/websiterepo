@@ -17,7 +17,9 @@ import {
   setWebsiteThemeColors,
 } from './ui-themes.js';
 
-const MAX_HISTORY = 1800;
+// Preserve roughly the same on-screen time window as the old 20 FPS / 1,800
+// frame buffer while the presentation layer runs at 72 FPS.
+const MAX_HISTORY = 6500;
 const SPEEDS = [0.25, 0.5, 1, 2, 4];
 const LIQUIDITY_MAP_SETTINGS_KEY = 'kwantdesk:liquidity-map-settings:v1';
 const LIQUIDITY_MAP_TABS_KEY = 'kwantdesk:liquidity-map-tabs:v1';

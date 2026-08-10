@@ -139,7 +139,7 @@ test("does not replay the full history window again after an SSE reconnect", () 
   assert.deepEqual(snapshots.map((snapshot) => snapshot.id), [1, 2, 3]);
 });
 
-test("paces a 100ms book into a truthful 20 FPS display without duplicating trades", async () => {
+test("paces a sparse book smoothly without duplicating trades", async () => {
   const listeners = new Map();
   const source = {
     close() {},
@@ -161,10 +161,39 @@ test("paces a 100ms book into a truthful 20 FPS display without duplicating trad
   await new Promise((resolve) => setTimeout(resolve, 70));
   feed.stop();
 
-  assert.equal(snapshots.length, 2);
+  assert.ok(snapshots.length >= 4, "presentation continues between genuine market frames");
   assert.equal(snapshots[0].snapshot.trades.length, 1);
-  assert.equal(snapshots[1].details.visualHold, true);
-  assert.equal(snapshots[1].snapshot.trades.length, 0);
-  assert.equal(snapshots[1].snapshot.volume, 0);
-  assert.equal(snapshots[1].snapshot.eventsSince, 0);
+  for (const held of snapshots.slice(1)) {
+    assert.equal(held.details.visualHold, true);
+    assert.equal(held.snapshot.trades.length, 0);
+    assert.equal(held.snapshot.volume, 0);
+    assert.equal(held.snapshot.eventsSince, 0);
+  }
+});
+
+test("a lightweight execution tick reaches the next presentation frame", async () => {
+  const listeners = new Map();
+  const source = {
+    close() {},
+    addEventListener(name, listener) { listeners.set(name, listener); },
+  };
+  const snapshots = [];
+  const feed = new DepthMarketFeed({
+    symbol: "MNQ",
+    eventSourceFactory: () => source,
+    onSnapshot: (snapshot, details) => snapshots.push({ snapshot, details }),
+  });
+  feed.start();
+  listeners.get("depth")({
+    data: JSON.stringify({
+      status: { connected: true, fullDepth: true, provider: "Rithmic" },
+      snapshot: rawSnapshot({ lastTick: 119_201 }),
+    }),
+  });
+  listeners.get("tick")({ data: JSON.stringify({ tick: 119_205 }) });
+  await new Promise((resolve) => setTimeout(resolve, 25));
+  feed.stop();
+
+  assert.equal(snapshots.at(-1).snapshot.lastTick, 119_205);
+  assert.equal(snapshots.at(-1).details.visualHold, true);
 });

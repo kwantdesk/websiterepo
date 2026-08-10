@@ -510,6 +510,19 @@ client.on("marketData", (event) => {
     : null;
   for (const subscriber of heatmapSseClients) {
     if (subscriber.key !== event.instrument) continue;
+    // Price can change much faster than a full 23 KB depth snapshot should be
+    // serialized and proxied. Send the genuine execution tick separately so
+    // high-refresh clients can move the live marker immediately without
+    // multiplying full-book bandwidth or inventing trades.
+    if (event.type === "trade" && Number.isFinite(Number(event.trade?.price))) {
+      subscriber.response.write(
+        `event: tick\ndata: ${JSON.stringify({
+          timestamp: Number(event.trade.timestampMs) || Date.now(),
+          tick: Math.round(Number(event.trade.price) / tickSize(subscriber.symbol)),
+          contractSymbol: subscriber.symbol,
+        })}\n\n`,
+      );
+    }
     if (!capturedHeatmapFrame) continue;
     subscriber.lastEmitAt = Date.now();
     subscriber.lastMarketTimestampMs = capturedHeatmapFrame.snapshot.timestamp;

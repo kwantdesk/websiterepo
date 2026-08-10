@@ -1,5 +1,9 @@
 const REQUESTED_DEPTH_TICKS = 1000;
-const DISPLAY_FRAME_MS = 50;
+// 72 presentation frames per second lands on every second refresh of a
+// 144 Hz panel (and naturally coalesces to one paint per refresh on 60 Hz
+// panels). Full 23 KB order-book snapshots remain bounded upstream; these
+// in-between columns are zero-order holds with no duplicated trades/events.
+const DISPLAY_FRAME_MS = 1000 / 72;
 export const INSTITUTIONAL_MARKET_DATA_ORIGIN = '/api/institutional-market-data';
 
 const finite = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
@@ -138,6 +142,9 @@ export class DepthMarketFeed {
     this.eventSourceFactory = eventSourceFactory || (url => new EventSource(url));
     this.stream = null;
     this.displayFrameTimer = null;
+    this.presentationSnapshot = null;
+    this.presentationHoldCount = 0;
+    this.latestTradeTick = null;
     this.lastRealFrameAt = 0;
     this.observedRealFrameMs = 100;
     this.lastSnapshotToken = '';
@@ -164,6 +171,9 @@ export class DepthMarketFeed {
     this.running = false;
     clearTimeout(this.displayFrameTimer);
     this.displayFrameTimer = null;
+    this.presentationSnapshot = null;
+    this.presentationHoldCount = 0;
+    this.latestTradeTick = null;
     this.lastRealFrameAt = 0;
     this.observedRealFrameMs = 100;
     this.stream?.close();
@@ -179,6 +189,9 @@ export class DepthMarketFeed {
     this.snapshotIdentityQueue = [];
     clearTimeout(this.displayFrameTimer);
     this.displayFrameTimer = null;
+    this.presentationSnapshot = null;
+    this.presentationHoldCount = 0;
+    this.latestTradeTick = null;
     this.lastRealFrameAt = 0;
     this.observedRealFrameMs = 100;
     this.stream?.close();
@@ -261,6 +274,7 @@ export class DepthMarketFeed {
       const snapshot = normalizeLiveSnapshot(payload.snapshot);
       const token = snapshotBookToken(snapshot);
       if (snapshot && token !== this.lastSnapshotToken) {
+        this.latestTradeTick = snapshot.lastTick;
         this.lastSnapshotToken = token;
         this.#rememberSnapshot(snapshot);
         const arrivedAt = performance.now();
@@ -271,6 +285,18 @@ export class DepthMarketFeed {
         this.lastRealFrameAt = arrivedAt;
         this.onSnapshot?.(snapshot);
         this.#paceDisplay(snapshot);
+      }
+    });
+    stream.addEventListener('tick', event => {
+      const payload = JSON.parse(event.data || '{}');
+      const tick = finite(payload.tick, Number.NaN);
+      if (!Number.isFinite(tick)) return;
+      this.latestTradeTick = tick;
+      if (this.presentationSnapshot) {
+        this.presentationSnapshot = {
+          ...this.presentationSnapshot,
+          lastTick: tick,
+        };
       }
     });
     stream.onerror = () => {
@@ -316,25 +342,38 @@ export class DepthMarketFeed {
 
   #paceDisplay(snapshot) {
     clearTimeout(this.displayFrameTimer);
-    // Once the gateway itself is delivering near 20 FPS, it becomes the
-    // pacer. This prevents a held column landing immediately beside a real
-    // frame after the collector's 50ms deployment rolls out.
-    if (this.observedRealFrameMs <= 70) return;
-    this.displayFrameTimer = setTimeout(() => {
-      if (!this.running || !this.status.connected) return;
+    this.presentationSnapshot = snapshot;
+    this.presentationHoldCount = 0;
+    const emitHold = () => {
+      if (!this.running || !this.status.connected || !this.presentationSnapshot) return;
+      // Do not burn CPU in a background tab. The genuine stream remains open;
+      // presentation resumes from the newest real frame when the tab returns.
+      if (typeof document !== 'undefined' && document.hidden) {
+        this.displayFrameTimer = setTimeout(emitHold, 120);
+        return;
+      }
+      this.presentationHoldCount += 1;
+      const elapsed = Math.max(
+        DISPLAY_FRAME_MS,
+        performance.now() - this.lastRealFrameAt,
+      );
+      const held = this.presentationSnapshot;
       // Zero-order hold: the exchange book remains at its last known state
       // until the next genuine snapshot. Trades, volume and event counts are
       // deliberately empty so visual pacing can never duplicate market data.
       this.onSnapshot?.({
-        ...snapshot,
-        id: snapshot.id + 0.5,
-        timestamp: snapshot.timestamp + DISPLAY_FRAME_MS,
+        ...held,
+        id: held.id + Math.min(0.9999, this.presentationHoldCount / 10_000),
+        timestamp: Math.min(Date.now(), held.timestamp + elapsed),
+        lastTick: this.latestTradeTick ?? held.lastTick,
         trades: [],
         volume: 0,
         delta: 0,
         eventsSince: 0,
         visualHold: true,
       }, { visualHold: true });
-    }, DISPLAY_FRAME_MS);
+      this.displayFrameTimer = setTimeout(emitHold, DISPLAY_FRAME_MS);
+    };
+    this.displayFrameTimer = setTimeout(emitHold, DISPLAY_FRAME_MS);
   }
 }
