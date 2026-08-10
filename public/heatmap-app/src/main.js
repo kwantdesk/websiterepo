@@ -939,6 +939,11 @@ class DepthForgeApp {
           const indicatorAnalysis = this.#getIndicatorAnalysis();
           indicatorAnalysis.sessionCvd = { points: this.cvdHistory };
           this.renderer.render(this.history, this.viewEnd, this.view, this.settings, SYMBOLS[this.symbol], indicatorAnalysis);
+          const rightMarketRailWidth = Math.max(
+            0,
+            Number(this.renderer.layout?.width || 0) - Number(this.renderer.layout?.plotWidth || 0),
+          );
+          $('chartModule').style.setProperty('--cvd-right-rail-width', `${rightMarketRailWidth}px`);
           this.#positionCurrentPrice(current);
           if (this.pendingReadySymbol === this.symbol && this.readySymbol !== this.symbol) {
             this.readySymbol = this.symbol;

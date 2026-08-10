@@ -1932,3 +1932,25 @@ html[data-ui-theme="paper"] .inspector { box-shadow: 0 16px 40px rgba(17,24,39,.
   .loading-strip { top: 42px; left: 8px; max-width: calc(100% - 16px); }
   .status-bar > div:nth-child(2), .status-bar > div:nth-child(3), .status-right span { display: none; }
 }
+
+/* Keep order-flow subcharts out from underneath the chart's right market
+   rail. The price/DOM/profile rail remains visually continuous to the floor. */
+.chart-module.cvd-open {
+  --cvd-right-rail-width: 0px;
+}
+.chart-module.cvd-open .cvd-panel {
+  margin-right: var(--cvd-right-rail-width);
+}
+.chart-module.cvd-open::after {
+  content: "";
+  position: absolute;
+  z-index: 3;
+  right: 0;
+  bottom: 0;
+  width: var(--cvd-right-rail-width);
+  height: 118px;
+  border-top: 1px solid var(--ui-line);
+  border-left: 1px solid var(--ui-line);
+  background: var(--ui-panel);
+  pointer-events: none;
+}
