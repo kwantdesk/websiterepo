@@ -162,7 +162,9 @@ export class DepthRenderer {
     const centerTick = view.centerTick ?? current.midTick;
     const bottomTick = centerTick - visibleTickSpan / 2;
     const topTick = centerTick + visibleTickSpan / 2;
-    const columnPixels = Math.max(0.6, view.columnPixels || 1.25);
+    // Main owns the data-aware zoom floor. Keep only a tiny renderer safety
+    // floor here so it never silently overrides horizontal zoom.
+    const columnPixels = Math.max(0.12, view.columnPixels || 1.25);
     const liveGap = Math.min(108, Math.max(52, plotWidth * 0.085));
     const dataWidth = plotWidth - liveGap;
     const visibleColumns = Math.max(30, Math.floor(dataWidth / columnPixels));

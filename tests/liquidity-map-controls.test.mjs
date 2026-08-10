@@ -83,11 +83,18 @@ test("CVD is labelled and horizontally synchronized with the liquidity map", asy
 });
 
 test("Ctrl plus mouse wheel compresses the liquidity timeline without changing price scale", async () => {
-  const source = await readFile(mainPath, "utf8");
+  const [source, renderer] = await Promise.all([
+    readFile(mainPath, "utf8"),
+    readFile(rendererPath, "utf8"),
+  ]);
 
   assert.match(source, /if \(event\.ctrlKey \|\| event\.metaKey\) \{[\s\S]*?this\.#zoom\(factor, point, \{ price: false, time: true \}\)/);
   assert.match(source, /#cvdWheel\(event\)[\s\S]*?if \(event\.ctrlKey \|\| event\.metaKey\)[\s\S]*?\{ price: false, time: true \}/);
   assert.doesNotMatch(source, /event\.ctrlKey\s*\?\s*\{ price: true, time: false \}/);
+  assert.match(source, /fitLoadedHistory = layout\.dataWidth \/ Math\.max\(30, this\.history\.length\)/);
+  assert.match(source, /ABSOLUTE_MIN_TIME_COLUMN_PIXELS = 0\.12/);
+  assert.match(renderer, /Math\.max\(0\.12, view\.columnPixels/);
+  assert.doesNotMatch(renderer, /Math\.max\(0\.6, view\.columnPixels/);
 });
 
 test("historical navigation exposes a bottom-right return-to-live control", async () => {

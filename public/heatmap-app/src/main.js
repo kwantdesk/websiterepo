@@ -20,6 +20,7 @@ import {
 // Preserve roughly the same on-screen time window as the old 20 FPS / 1,800
 // frame buffer while the presentation layer runs at 72 FPS.
 const MAX_HISTORY = 6500;
+const ABSOLUTE_MIN_TIME_COLUMN_PIXELS = 0.12;
 const SPEEDS = [0.25, 0.5, 1, 2, 4];
 const LIQUIDITY_MAP_SETTINGS_KEY = 'kwantdesk:liquidity-map-settings:v1';
 const LIQUIDITY_MAP_TABS_KEY = 'kwantdesk:liquidity-map-tabs:v1';
@@ -1508,7 +1509,18 @@ class DepthForgeApp {
     }
 
     if (time) {
-      const nextColumnPixels = Math.max(.45, Math.min(8, this.view.columnPixels / factor));
+      // Allow compression until all retained history fits. The former .45px
+      // floor (combined with a .60px renderer floor) created a false barrier
+      // even while thousands of loaded columns were still off-screen.
+      const fitLoadedHistory = layout.dataWidth / Math.max(30, this.history.length);
+      const minimumColumnPixels = Math.max(
+        ABSOLUTE_MIN_TIME_COLUMN_PIXELS,
+        Math.min(.45, fitLoadedHistory),
+      );
+      const nextColumnPixels = Math.max(
+        minimumColumnPixels,
+        Math.min(8, this.view.columnPixels / factor),
+      );
       if (!this.atLive && anchor.x <= layout.dataWidth) {
         const fractionFromLeft = Math.max(0, Math.min(1, anchor.x / Math.max(1, layout.dataWidth)));
         const anchorIndex = layout.start + fractionFromLeft * Math.max(0, layout.count - 1);
