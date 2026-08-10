@@ -138,6 +138,8 @@ export class DepthMarketFeed {
     this.eventSourceFactory = eventSourceFactory || (url => new EventSource(url));
     this.stream = null;
     this.displayFrameTimer = null;
+    this.lastRealFrameAt = 0;
+    this.observedRealFrameMs = 100;
     this.lastSnapshotToken = '';
     this.running = false;
     this.status = {
@@ -160,6 +162,8 @@ export class DepthMarketFeed {
     this.running = false;
     clearTimeout(this.displayFrameTimer);
     this.displayFrameTimer = null;
+    this.lastRealFrameAt = 0;
+    this.observedRealFrameMs = 100;
     this.stream?.close();
     this.stream = null;
   }
@@ -171,6 +175,8 @@ export class DepthMarketFeed {
     this.lastSnapshotToken = '';
     clearTimeout(this.displayFrameTimer);
     this.displayFrameTimer = null;
+    this.lastRealFrameAt = 0;
+    this.observedRealFrameMs = 100;
     this.stream?.close();
     this.stream = null;
     this.status = {
@@ -245,6 +251,12 @@ export class DepthMarketFeed {
       const token = snapshotBookToken(snapshot);
       if (snapshot && token !== this.lastSnapshotToken) {
         this.lastSnapshotToken = token;
+        const arrivedAt = performance.now();
+        if (this.lastRealFrameAt > 0) {
+          const interval = arrivedAt - this.lastRealFrameAt;
+          this.observedRealFrameMs = this.observedRealFrameMs * 0.65 + interval * 0.35;
+        }
+        this.lastRealFrameAt = arrivedAt;
         this.onSnapshot?.(snapshot);
         this.#paceDisplay(snapshot);
       }
@@ -261,6 +273,10 @@ export class DepthMarketFeed {
 
   #paceDisplay(snapshot) {
     clearTimeout(this.displayFrameTimer);
+    // Once the gateway itself is delivering near 20 FPS, it becomes the
+    // pacer. This prevents a held column landing immediately beside a real
+    // frame after the collector's 50ms deployment rolls out.
+    if (this.observedRealFrameMs <= 70) return;
     this.displayFrameTimer = setTimeout(() => {
       if (!this.running || !this.status.connected) return;
       // Zero-order hold: the exchange book remains at its last known state
