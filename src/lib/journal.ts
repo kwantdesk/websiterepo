@@ -137,8 +137,8 @@ export type JournalStats = {
 };
 
 const HEADER_ALIASES = {
-  openedAt: ["openedat", "opentime", "entrytime", "datetime", "dateandtime", "timestamp", "timeopened", "entrydate"],
-  closedAt: ["closedat", "closetime", "exittime", "timeclosed", "exitdate"],
+  openedAt: ["openedat", "opentime", "entrytime", "entrydt", "datetime", "dateandtime", "timestamp", "timeopened", "entrydate"],
+  closedAt: ["closedat", "closetime", "exittime", "exitdt", "timeclosed", "exitdate"],
   date: ["date", "tradedate", "filldate", "executedate"],
   time: ["time", "tradetime", "filltime", "executiontime", "updatedatetimee", "updatedatetimel"],
   symbol: ["symbol", "instrument", "ticker", "contract", "market", "tradingsymbol"],
@@ -526,8 +526,16 @@ function parseClosedTrades(
     const openedAt = dateFromRow(row, HEADER_ALIASES.openedAt);
     const closedAt = dateFromRow(row, HEADER_ALIASES.closedAt, false);
     const symbol = String(valueFor(row, HEADER_ALIASES.symbol) ?? options.symbolFallback ?? "").trim().toUpperCase();
-    const side = parseSide(valueFor(row, HEADER_ALIASES.side));
-    const quantity = Math.abs(parseNumber(valueFor(row, HEADER_ALIASES.quantity)) ?? 1);
+    const signedQuantity = parseNumber(valueFor(row, HEADER_ALIASES.quantity));
+    const explicitSide = parseSide(valueFor(row, HEADER_ALIASES.side));
+    // Deep Charts closed-trade exports encode direction in signed Quantity
+    // and do not include a separate Side column.
+    const side: JournalSide = explicitSide !== "UNKNOWN"
+      ? explicitSide
+      : signedQuantity !== null && signedQuantity !== 0
+        ? signedQuantity < 0 ? "SHORT" : "LONG"
+        : "UNKNOWN";
+    const quantity = Math.abs(signedQuantity ?? 1);
     const entryPrice = parseNumber(valueFor(row, HEADER_ALIASES.entryPrice));
     const exitPrice = parseNumber(valueFor(row, HEADER_ALIASES.exitPrice));
     const explicitGross = parseNumber(valueFor(row, HEADER_ALIASES.grossPnl));

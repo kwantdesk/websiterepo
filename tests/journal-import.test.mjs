@@ -42,3 +42,24 @@ test("an execution CSV pairs fills into editable closed trades", () => {
   assert.deepEqual(result.trades.map((trade) => trade.sourceRows), [[2, 3], [4, 5]]);
   assert.ok(result.trades.every((trade) => trade.contractClass === "MICRO"));
 });
+
+test("a semicolon-delimited Deep Charts closed-trade export imports signed quantities", () => {
+  const csv = [
+    "Symbol;Quantity;Entry DT;Entry Price;Exit DT;Exit Price;ProfitLoss",
+    "NQ;-2;2026-08-10 08:00:35;29876;2026-08-10 08:12:23.000;29834.75;1650",
+    "NQ;2;2026-08-10 08:18:51;29816.25;2026-08-10 08:28:16.000;29848;1270",
+    "NQ;-2;2026-08-10 08:31:20;29834.5;2026-08-10 08:37:33.000;29827;300",
+    "NQ;-1;2026-08-10 08:49:20;29836.25;2026-08-10 08:50:11.000;29843.25;-140",
+  ].join("\n");
+
+  const result = parseJournalTextFile("10.08 globex.csv", csv, "My KwantDesk Journal", "import-deepcharts");
+
+  assert.equal(result.detectedSchema, "closed-trades");
+  assert.equal(result.trades.length, 4);
+  assert.equal(result.rejectedRows, 0);
+  assert.deepEqual(result.trades.map((trade) => trade.side), ["SHORT", "LONG", "SHORT", "SHORT"]);
+  assert.deepEqual(result.trades.map((trade) => trade.quantity), [2, 2, 2, 1]);
+  assert.deepEqual(result.trades.map((trade) => trade.netPnl), [1650, 1270, 300, -140]);
+  assert.deepEqual(result.trades.map((trade) => trade.sourceRows), [[2], [3], [4], [5]]);
+  assert.ok(result.trades.every((trade) => trade.openedAt && trade.closedAt));
+});
