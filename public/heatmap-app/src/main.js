@@ -1,7 +1,12 @@
 import { SYMBOLS } from './market-simulator.js';
 import { BOOKMAP_VISUAL_DEFAULTS, RollingDepthEngine } from './depth-engine.js';
 import { DepthRenderer, priceLabel, timeLabel } from './renderer.js';
-import { DepthMarketFeed, isFullDepthSource, symbolMatchesSnapshot } from './live-market.js';
+import {
+  DepthMarketFeed,
+  isFullDepthSource,
+  normalizeLiquidityMapSymbol,
+  symbolMatchesSnapshot,
+} from './live-market.js';
 import { DEFAULT_PALETTE, paletteCssGradient } from './palettes.js';
 import {
   DEFAULT_INDICATOR_SETTINGS,
@@ -260,8 +265,7 @@ class DepthForgeApp {
     window.addEventListener('message', event => {
       if (event.origin !== window.location.origin) return;
       if (event.data?.type === 'kwantdesk:liquidity-map-symbol') {
-        const requested = String(event.data.symbol || '').toUpperCase().replace(/\.[VNC]\.\d+$/i, '');
-        const symbol = LIQUIDITY_MAP_SYMBOLS.has(requested) ? requested : '';
+        const symbol = normalizeLiquidityMapSymbol(event.data.symbol);
         if (symbol) this.#addInstrumentTab(symbol, false);
         return;
       }
@@ -401,9 +405,9 @@ class DepthForgeApp {
       const saved = JSON.parse(localStorage.getItem(LIQUIDITY_MAP_TABS_KEY) || 'null');
       const savedTabs = Array.isArray(saved) ? saved : saved?.tabs;
       const tabs = [...new Set((savedTabs || DEFAULT_INSTRUMENT_TABS)
-        .map(value => String(value || '').toUpperCase())
+        .map(value => normalizeLiquidityMapSymbol(value))
         .filter(symbol => SYMBOLS[symbol] && LIQUIDITY_MAP_SYMBOLS.has(symbol)))];
-      const active = String(saved?.active || '').toUpperCase();
+      const active = normalizeLiquidityMapSymbol(saved?.active);
       return {
         tabs: tabs.length ? tabs : ['NQ'],
         active: tabs.includes(active) ? active : (tabs[0] || 'NQ'),
@@ -490,7 +494,7 @@ class DepthForgeApp {
   }
 
   #addInstrumentTab(symbol, closePicker = true) {
-    const normalized = String(symbol || '').toUpperCase();
+    const normalized = normalizeLiquidityMapSymbol(symbol);
     if (!SYMBOLS[normalized] || !LIQUIDITY_MAP_SYMBOLS.has(normalized)) return;
     if (!this.instrumentTabs.includes(normalized)) this.instrumentTabs.push(normalized);
     if (closePicker && $('instrumentPicker').open) $('instrumentPicker').close();
@@ -523,7 +527,9 @@ class DepthForgeApp {
   }
 
   switchSymbol(symbol) {
-    if (!SYMBOLS[symbol] || !LIQUIDITY_MAP_SYMBOLS.has(symbol) || symbol === this.symbol) return;
+    const normalized = normalizeLiquidityMapSymbol(symbol);
+    if (!SYMBOLS[normalized] || !LIQUIDITY_MAP_SYMBOLS.has(normalized) || normalized === this.symbol) return;
+    symbol = normalized;
     this.#beginSymbolLoad(symbol);
     this.symbol = symbol;
     this.currentContractSymbol = SYMBOLS[symbol].contract;

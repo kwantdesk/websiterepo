@@ -37,9 +37,9 @@ test("LIQ MAP watchlist selection is saved and sent into the iframe", () => {
   assert.match(liquidityMap, /kwantdesk:liquidity-map-symbol/);
   assert.match(mapRuntime, /kwantdesk:liquidity-map-symbol/);
   assert.match(mapRuntime, /LIQUIDITY_MAP_SYMBOLS = new Set\(\['NQ', 'ES'\]\)/);
-  assert.match(workspace, /if \(root === "NQ"\) return "NQ\.v\.0"/);
-  assert.match(workspace, /if \(root === "ES"\) return "ES\.v\.0"/);
-  assert.doesNotMatch(workspace, /root === "NQ" \|\| root === "MNQ"/);
+  assert.match(workspace, /contractRoot === "NQ" \|\| contractRoot === "MNQ"/);
+  assert.match(workspace, /contractRoot === "ES" \|\| contractRoot === "MES"/);
+  assert.match(mapRuntime, /normalizeLiquidityMapSymbol/);
 });
 
 test("LIQ MAP renders one standard loader until a real depth frame has painted", () => {

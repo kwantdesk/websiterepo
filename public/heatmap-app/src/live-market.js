@@ -73,6 +73,16 @@ export function isFullDepthSource(source) {
 // Comparing roots literally would reject every snapshot on a micro tab.
 const MICRO_PARENT_ROOTS = { MNQ: 'NQ', MES: 'ES', MYM: 'YM', M2K: 'RTY', MGC: 'GC', MCL: 'CL' };
 
+export function normalizeLiquidityMapSymbol(value) {
+  const root = String(value || '')
+    .trim()
+    .toUpperCase()
+    .replace(/\.[VNC]\.\d+$/i, '')
+    .replace(/[FGHJKMNQUVXZ]\d{1,2}$/i, '');
+  const parent = MICRO_PARENT_ROOTS[root] || root;
+  return parent === 'NQ' || parent === 'ES' ? parent : '';
+}
+
 export function symbolMatchesSnapshot(requested, snapshotRoot) {
   const want = String(requested || '').toUpperCase();
   const got = String(snapshotRoot || '').toUpperCase();
@@ -151,6 +161,7 @@ export class DepthMarketFeed {
     this.lastSnapshotToken = '';
     this.seenSnapshotIdentities = new Set();
     this.snapshotIdentityQueue = [];
+    this.connectionGeneration = 0;
     this.running = false;
     this.status = {
       connected: false,
@@ -170,6 +181,7 @@ export class DepthMarketFeed {
 
   stop() {
     this.running = false;
+    this.connectionGeneration += 1;
     clearTimeout(this.displayFrameTimer);
     this.displayFrameTimer = null;
     this.presentationSnapshot = null;
@@ -185,6 +197,7 @@ export class DepthMarketFeed {
     if (symbol === this.symbol && contractSymbol === this.contractSymbol) return;
     this.symbol = symbol;
     this.contractSymbol = contractSymbol;
+    this.connectionGeneration += 1;
     this.lastSnapshotToken = '';
     this.seenSnapshotIdentities.clear();
     this.snapshotIdentityQueue = [];
@@ -210,17 +223,29 @@ export class DepthMarketFeed {
   }
 
   #connect() {
-    const stream = this.eventSourceFactory(liveDepthStreamUrl(this.symbol, this.contractSymbol));
+    const symbol = this.symbol;
+    const contractSymbol = this.contractSymbol;
+    const generation = ++this.connectionGeneration;
+    const stream = this.eventSourceFactory(liveDepthStreamUrl(symbol, contractSymbol));
+    const isCurrentConnection = () => (
+      this.running
+      && this.stream === stream
+      && this.connectionGeneration === generation
+      && this.symbol === symbol
+    );
     this.stream = stream;
     stream.onopen = () => {
+      if (!isCurrentConnection()) return;
       this.status = { ...this.status, connected: true };
       this.onStatus?.(this.status);
     };
     stream.addEventListener('status', event => {
+      if (!isCurrentConnection()) return;
       this.status = { ...this.status, ...JSON.parse(event.data || '{}') };
       this.onStatus?.(this.status);
     });
     stream.addEventListener('history', event => {
+      if (!isCurrentConnection()) return;
       const payload = JSON.parse(event.data || '{}');
       const payloadStatus = payload.status || {};
       this.status = {
@@ -252,6 +277,7 @@ export class DepthMarketFeed {
         }
       }
       snapshots.forEach((snapshot, index) => {
+        if (!isCurrentConnection()) return;
         this.onSnapshot?.(snapshot, {
           historical: true,
           final: index === snapshots.length - 1,
@@ -259,6 +285,7 @@ export class DepthMarketFeed {
       });
     });
     stream.addEventListener('cvd-history', event => {
+      if (!isCurrentConnection()) return;
       const payload = JSON.parse(event.data || '{}');
       const points = Array.isArray(payload.points)
         ? payload.points.filter(point => Number.isFinite(Number(point?.timestamp)))
@@ -266,6 +293,7 @@ export class DepthMarketFeed {
       this.onCvdHistory?.(points, payload.tradingDate || '');
     });
     stream.addEventListener('depth', event => {
+      if (!isCurrentConnection()) return;
       const payload = JSON.parse(event.data || '{}');
       const payloadStatus = payload.status || {};
       this.status = {
@@ -292,10 +320,11 @@ export class DepthMarketFeed {
         }
         this.lastRealFrameAt = arrivedAt;
         this.onSnapshot?.(snapshot);
-        this.#paceDisplay(snapshot);
+        this.#paceDisplay(snapshot, generation);
       }
     });
     stream.addEventListener('tick', event => {
+      if (!isCurrentConnection()) return;
       const payload = JSON.parse(event.data || '{}');
       const tick = finite(payload.tick, Number.NaN);
       if (!Number.isFinite(tick)) return;
@@ -308,6 +337,7 @@ export class DepthMarketFeed {
       }
     });
     stream.onerror = () => {
+      if (!isCurrentConnection()) return;
       this.status = {
         ...this.status,
         connected: false,
@@ -348,12 +378,17 @@ export class DepthMarketFeed {
     }
   }
 
-  #paceDisplay(snapshot) {
+  #paceDisplay(snapshot, generation = this.connectionGeneration) {
     clearTimeout(this.displayFrameTimer);
     this.presentationSnapshot = snapshot;
     this.presentationHoldCount = 0;
     const emitHold = () => {
-      if (!this.running || !this.status.connected || !this.presentationSnapshot) return;
+      if (
+        !this.running
+        || generation !== this.connectionGeneration
+        || !this.status.connected
+        || !this.presentationSnapshot
+      ) return;
       // Do not burn CPU in a background tab. The genuine stream remains open;
       // presentation resumes from the newest real frame when the tab returns.
       if (typeof document !== 'undefined' && document.hidden) {

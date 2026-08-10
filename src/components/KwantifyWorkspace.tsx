@@ -707,9 +707,11 @@ function displayCmeSymbol(symbol: string) {
 }
 
 function liquidityMapInstrument(symbol: string) {
-  const root = displayCmeSymbol(symbol).toUpperCase();
-  if (root === "NQ") return "NQ.v.0";
-  if (root === "ES") return "ES.v.0";
+  const contractRoot = displayCmeSymbol(symbol)
+    .toUpperCase()
+    .replace(/[FGHJKMNQUVXZ]\d{1,2}$/i, "");
+  if (contractRoot === "NQ" || contractRoot === "MNQ") return "NQ.v.0";
+  if (contractRoot === "ES" || contractRoot === "MES") return "ES.v.0";
   return "";
 }
 

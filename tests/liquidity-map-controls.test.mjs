@@ -79,7 +79,7 @@ test("CVD is labelled and horizontally synchronized with the liquidity map", asy
   assert.match(html, /data-cvd-style="line"/);
   assert.match(html, /data-cvd-style="bars"/);
   assert.match(renderer, /const dataWidth = width/);
-  assert.match(renderer, /const xForIndex = index => \(\(index - start\) \/ \(count - 1\)\) \* dataWidth/);
+  assert.match(renderer, /const xForIndex = index => count <= 1 \? dataWidth : \(\(index - start\) \/ \(count - 1\)\) \* dataWidth/);
 });
 
 test("Ctrl plus mouse wheel compresses the liquidity timeline without changing price scale", async () => {

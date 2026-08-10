@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   DepthMarketFeed,
+  normalizeLiquidityMapSymbol,
   normalizeLiveSnapshot,
   symbolMatchesSnapshot,
 } from "../public/heatmap-app/src/live-market.js";
@@ -35,6 +36,69 @@ test("accepts the Rithmic DBO contract without changing the Kwantify frame shape
   assert.equal(snapshot.bids.get(119_200), 12);
   assert.equal(snapshot.bidOrders.get(119_200), 3);
   assert.equal(symbolMatchesSnapshot("MNQ", snapshot.symbol), true);
+});
+
+test("normalizes e-mini, micro, continuous, and dated contracts onto the two map books", () => {
+  assert.equal(normalizeLiquidityMapSymbol("NQ.v.0"), "NQ");
+  assert.equal(normalizeLiquidityMapSymbol("MNQU6"), "NQ");
+  assert.equal(normalizeLiquidityMapSymbol("ESU6"), "ES");
+  assert.equal(normalizeLiquidityMapSymbol("MES.v.0"), "ES");
+  assert.equal(normalizeLiquidityMapSymbol("CLV6"), "");
+});
+
+test("late events from the previous book cannot overwrite the newly selected book", () => {
+  const sources = [];
+  const statuses = [];
+  const snapshots = [];
+  const cvdWindows = [];
+  const feed = new DepthMarketFeed({
+    symbol: "NQ",
+    eventSourceFactory: () => {
+      const listeners = new Map();
+      const source = {
+        listeners,
+        close() {},
+        addEventListener(name, listener) { listeners.set(name, listener); },
+      };
+      sources.push(source);
+      return source;
+    },
+    onStatus: (status) => statuses.push(status),
+    onSnapshot: (snapshot) => snapshots.push(snapshot),
+    onCvdHistory: (points) => cvdWindows.push(points),
+  });
+  feed.start();
+  feed.setSymbol("ES");
+
+  sources[0].listeners.get("history")({
+    data: JSON.stringify({
+      status: { connected: true, contractSymbol: "NQU6" },
+      snapshots: [rawSnapshot({ root: "NQ", contractSymbol: "NQU6" })],
+    }),
+  });
+  sources[0].listeners.get("cvd-history")({
+    data: JSON.stringify({ points: [{ timestamp: 1_786_100_000_000, value: 99 }] }),
+  });
+  sources[1].listeners.get("history")({
+    data: JSON.stringify({
+      status: { connected: true, contractSymbol: "ESU6" },
+      snapshots: [rawSnapshot({
+        root: "ES",
+        contractSymbol: "ESU6",
+        bids: [[31_150, 20, 5]],
+        asks: [[31_151, 18, 4]],
+        bestBid: 31_150,
+        bestAsk: 31_151,
+        midTick: 31_150.5,
+        lastTick: 31_151,
+      })],
+    }),
+  });
+
+  assert.deepEqual(snapshots.map((snapshot) => snapshot.symbol), ["ES"]);
+  assert.equal(cvdWindows.length, 0, "the NQ CVD callback is ignored after switching to ES");
+  assert.equal(statuses.at(-1).contractSymbol, "ESU6");
+  feed.stop();
 });
 
 test("does not present an aggregated or partial ladder as true DBO", () => {

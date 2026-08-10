@@ -5,8 +5,9 @@ export const SYMBOLS = {
     depthRangePoints: 100,
   },
   ES: {
-    key: 'ES', contract: 'ESU6', venue: 'CME', description: 'E-mini S&P 500',
+    key: 'ES', contract: 'ES', venue: 'CME', description: 'E-mini S&P 500',
     tickSize: 0.25, decimals: 2, startPrice: 6387.50, baseDepth: 86, volatility: 0.13, seed: 0x455355,
+    depthRangePoints: 100,
   },
   BTC: {
     key: 'BTC', contract: 'BTC-USD', venue: 'CRYPTO', description: 'Bitcoin / U.S. Dollar',
@@ -20,6 +21,7 @@ export const SYMBOLS = {
   MES: {
     key: 'MES', contract: 'MES', venue: 'CME', description: 'Micro E-mini S&P 500',
     tickSize: 0.25, decimals: 2, startPrice: 6387.50, baseDepth: 60, volatility: 0.13, seed: 0x4d4553,
+    depthRangePoints: 100,
   },
   MYM: {
     key: 'MYM', contract: 'MYM', venue: 'CBOT', description: 'Micro E-mini Dow',
