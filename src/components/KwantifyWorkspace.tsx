@@ -2651,8 +2651,8 @@ function buildValueAreaChartOverlay(
   const dailyColor = mixChartColor(settings.upColor, "#38BDF8", 0.56);
   const weeklyColor = mixChartColor(settings.upColor, "#F59E0B", 0.68);
   const currentColor = settings.upColor;
-  // Every line carries its book: these levels come from the CME
-  // trade-by-trade tape, and the axis label says so.
+  // Keep the visible chart labels concise. The data-source detail belongs in
+  // diagnostics, not beside every fixed value-area level.
   const periodLevels = (
     prefix: "CUR" | "PD" | "PW",
     profile: Pick<CompletedValueAreaProfile, "vah" | "val" | "poc" | "vwap" | "end">,
@@ -2663,7 +2663,7 @@ function buildValueAreaChartOverlay(
       id: `${prefix.toLowerCase()}-vah-${profile.end}`,
       price: profile.vah,
       color,
-      label: `${current ? "VAH" : `${prefix} VAH`} · CME`,
+      label: current ? "VAH" : `${prefix} VAH`,
       lineStyle: "dashed",
       lineWidth: current ? 2 : 1,
       axisLabelVisible: true,
@@ -2672,7 +2672,7 @@ function buildValueAreaChartOverlay(
       id: `${prefix.toLowerCase()}-val-${profile.end}`,
       price: profile.val,
       color,
-      label: `${current ? "VAL" : `${prefix} VAL`} · CME`,
+      label: current ? "VAL" : `${prefix} VAL`,
       lineStyle: "dashed",
       lineWidth: current ? 2 : 1,
       axisLabelVisible: true,
@@ -2681,7 +2681,7 @@ function buildValueAreaChartOverlay(
       id: `${prefix.toLowerCase()}-poc-${profile.end}`,
       price: profile.poc,
       color,
-      label: `${current ? "POC" : `${prefix} POC`} · CME`,
+      label: current ? "POC" : `${prefix} POC`,
       lineStyle: "solid",
       lineWidth: 2,
       axisLabelVisible: true,
@@ -2690,7 +2690,7 @@ function buildValueAreaChartOverlay(
       id: `${prefix.toLowerCase()}-vwap-${profile.end}`,
       price: profile.vwap,
       color,
-      label: `${current ? "VWAP" : `${prefix} VWAP`} · CME`,
+      label: current ? "VWAP" : `${prefix} VWAP`,
       lineStyle: "dotted",
       lineWidth: 2,
       axisLabelVisible: true,
