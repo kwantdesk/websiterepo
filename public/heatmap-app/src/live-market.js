@@ -205,14 +205,21 @@ export class DepthMarketFeed {
       // Replay the real server-side Rithmic window through the exact same
       // append path as a live frame. This restores the polished map instantly
       // after page navigation without inventing or interpolating liquidity.
+      const snapshots = [];
       for (const rawSnapshot of payload.snapshots || []) {
         const snapshot = normalizeLiveSnapshot(rawSnapshot);
         const token = snapshotBookToken(snapshot);
         if (snapshot && token !== this.lastSnapshotToken) {
           this.lastSnapshotToken = token;
-          this.onSnapshot?.(snapshot);
+          snapshots.push(snapshot);
         }
       }
+      snapshots.forEach((snapshot, index) => {
+        this.onSnapshot?.(snapshot, {
+          historical: true,
+          final: index === snapshots.length - 1,
+        });
+      });
     });
     stream.addEventListener('depth', event => {
       const payload = JSON.parse(event.data || '{}');

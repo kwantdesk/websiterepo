@@ -77,11 +77,15 @@ test("replays the real gateway history through the original Kwantify append path
   };
   const statuses = [];
   const snapshots = [];
+  const metadata = [];
   const feed = new DepthMarketFeed({
     symbol: "MNQ",
     eventSourceFactory: () => source,
     onStatus: (status) => statuses.push(status),
-    onSnapshot: (snapshot) => snapshots.push(snapshot),
+    onSnapshot: (snapshot, details) => {
+      snapshots.push(snapshot);
+      metadata.push(details);
+    },
   });
   feed.start();
   listeners.get("history")({
@@ -96,6 +100,11 @@ test("replays the real gateway history through the original Kwantify append path
   });
 
   assert.deepEqual(snapshots.map((snapshot) => snapshot.id), [1, 2, 3]);
+  assert.deepEqual(metadata, [
+    { historical: true, final: false },
+    { historical: true, final: false },
+    { historical: true, final: true },
+  ]);
   assert.equal(statuses.at(-1).connected, true);
   assert.equal(statuses.at(-1).historyFrames, 3);
 });

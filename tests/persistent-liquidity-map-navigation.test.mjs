@@ -39,3 +39,16 @@ test("LIQ MAP watchlist selection is saved and sent into the iframe", () => {
   assert.match(mapRuntime, /requested === 'NQ' \|\| requested === 'MNQ'/);
   assert.match(mapRuntime, /requested === 'ES' \|\| requested === 'MES'/);
 });
+
+test("LIQ MAP renders one standard loader until a real depth frame has painted", () => {
+  const liquidityMap = read("src/components/liquidity-map/LiquidityMapWorkspace.tsx");
+  const mapRuntime = read("public/heatmap-app/src/main.js");
+  const liveMarket = read("public/heatmap-app/src/live-market.js");
+
+  assert.match(liquidityMap, /KwantLoader/);
+  assert.match(liquidityMap, /Loading LIQ MAP/);
+  assert.match(liquidityMap, /kwantdesk:liquidity-map-ready/);
+  assert.match(mapRuntime, /kwantdesk:liquidity-map-ready/);
+  assert.match(liveMarket, /historical: true/);
+  assert.match(liveMarket, /final: index === snapshots\.length - 1/);
+});

@@ -51,6 +51,8 @@ class DepthForgeApp {
     this.frames = 0;
     this.fpsTimer = performance.now();
     this.eventCount = 0;
+    this.readySymbol = '';
+    this.pendingReadySymbol = '';
     this.view = {
       centerTick: null,
       visibleRows: 112,
@@ -98,7 +100,7 @@ class DepthForgeApp {
     requestAnimationFrame(timestamp => this.#loop(timestamp));
     this.liveFeed = new DepthMarketFeed({
       symbol: this.symbol,
-      onSnapshot: snapshot => this.#ingestDepthSnapshot(snapshot),
+      onSnapshot: (snapshot, metadata) => this.#ingestDepthSnapshot(snapshot, metadata),
       onStatus: status => this.#setLiveStatus(status),
     });
     this.liveFeed.start();
@@ -346,6 +348,8 @@ class DepthForgeApp {
     this.tape = [];
     this.view.centerTick = null;
     this.accumulator = 0;
+    this.readySymbol = '';
+    this.pendingReadySymbol = '';
     this.atLive = true;
     this.playing = true;
     this.liveFeed.setSymbol(symbol);
@@ -562,7 +566,7 @@ class DepthForgeApp {
     this.#updateSymbolUi();
   }
 
-  #ingestDepthSnapshot(snapshot) {
+  #ingestDepthSnapshot(snapshot, metadata = {}) {
     // Two separate gates rejected the Rithmic feed here. The source check was
     // pinned to Databento, and the symbol had to match literally - but the
     // collector serves micros from the parent book and answers with the
@@ -601,8 +605,11 @@ class DepthForgeApp {
       const recenterThreshold = Math.max(8, this.view.visibleRows * 0.16);
       if (Math.abs(drift) > recenterThreshold) this.view.centerTick = center + drift * 0.42;
     }
-    this.#updateUi(false);
-    this.renderRequested = true;
+    if (!metadata.historical || metadata.final) {
+      this.#updateUi(false);
+      this.pendingReadySymbol = this.symbol;
+      this.renderRequested = true;
+    }
   }
 
   #appendTrades(trades) {
@@ -639,6 +646,16 @@ class DepthForgeApp {
         const indicatorAnalysis = this.#getIndicatorAnalysis();
         this.renderer.render(this.history, this.viewEnd, this.view, this.settings, SYMBOLS[this.symbol], indicatorAnalysis);
         this.#positionCurrentPrice(current);
+        if (this.pendingReadySymbol === this.symbol && this.readySymbol !== this.symbol) {
+          this.readySymbol = this.symbol;
+          this.pendingReadySymbol = '';
+          if (window.parent !== window) {
+            window.parent.postMessage(
+              { type: 'kwantdesk:liquidity-map-ready', symbol: this.symbol },
+              window.location.origin,
+            );
+          }
+        }
       }
       this.renderRequested = false;
     }
