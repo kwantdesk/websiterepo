@@ -708,8 +708,8 @@ function displayCmeSymbol(symbol: string) {
 
 function liquidityMapInstrument(symbol: string) {
   const root = displayCmeSymbol(symbol).toUpperCase();
-  if (root === "NQ" || root === "MNQ") return "MNQ.v.0";
-  if (root === "ES" || root === "MES") return "ES.v.0";
+  if (root === "NQ") return "NQ.v.0";
+  if (root === "ES") return "ES.v.0";
   return "";
 }
 
@@ -5182,9 +5182,9 @@ export default function KwantifyWorkspace({
   const [bottomTab, setBottomTab] = useState<"strategies" | "metrics" | "trades">("metrics");
   const [selectedInstrument, setSelectedInstrument] = useState("ES.v.0");
   const [selectedLiquidityMapInstrument, setSelectedLiquidityMapInstrument] = useState(() => {
-    if (typeof window === "undefined") return "MNQ.v.0";
-    const saved = window.localStorage.getItem(LIQUIDITY_MAP_INSTRUMENT_STORAGE_KEY) || "MNQ.v.0";
-    return liquidityMapInstrument(saved) || "MNQ.v.0";
+    if (typeof window === "undefined") return "NQ.v.0";
+    const saved = window.localStorage.getItem(LIQUIDITY_MAP_INSTRUMENT_STORAGE_KEY) || "NQ.v.0";
+    return liquidityMapInstrument(saved) || "NQ.v.0";
   });
   const [workspaceLayout, setWorkspaceLayout] = useState<WorkspaceLayout>(() => {
     if (typeof window === "undefined") return "single";

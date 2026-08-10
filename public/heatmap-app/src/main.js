@@ -20,8 +20,9 @@ const MAX_HISTORY = 1800;
 const SPEEDS = [0.25, 0.5, 1, 2, 4];
 const LIQUIDITY_MAP_SETTINGS_KEY = 'kwantdesk:liquidity-map-settings:v1';
 const LIQUIDITY_MAP_TABS_KEY = 'kwantdesk:liquidity-map-tabs:v1';
-const DEFAULT_INSTRUMENT_TABS = ['MNQ', 'ES', 'BTC'];
-const INSTRUMENT_ORDER = ['MNQ', 'NQ', 'MES', 'ES', 'MYM', 'YM', 'M2K', 'RTY', 'MGC', 'GC', 'MCL', 'CL', 'BTC'];
+const LIQUIDITY_MAP_SYMBOLS = new Set(['NQ', 'ES']);
+const DEFAULT_INSTRUMENT_TABS = ['NQ', 'ES'];
+const INSTRUMENT_ORDER = ['NQ', 'ES'];
 const INDICATOR_ANALYSIS_INTERVAL_MS = 250;
 
 const $ = id => document.getElementById(id);
@@ -250,13 +251,7 @@ class DepthForgeApp {
       if (event.origin !== window.location.origin) return;
       if (event.data?.type === 'kwantdesk:liquidity-map-symbol') {
         const requested = String(event.data.symbol || '').toUpperCase().replace(/\.[VNC]\.\d+$/i, '');
-        const symbol = requested === 'NQ' || requested === 'MNQ'
-          ? requested
-          : requested === 'ES' || requested === 'MES'
-            ? requested
-            : SYMBOLS[requested]
-              ? requested
-              : '';
+        const symbol = LIQUIDITY_MAP_SYMBOLS.has(requested) ? requested : '';
         if (symbol) this.#addInstrumentTab(symbol, false);
         return;
       }
@@ -366,14 +361,14 @@ class DepthForgeApp {
       const savedTabs = Array.isArray(saved) ? saved : saved?.tabs;
       const tabs = [...new Set((savedTabs || DEFAULT_INSTRUMENT_TABS)
         .map(value => String(value || '').toUpperCase())
-        .filter(symbol => SYMBOLS[symbol]))];
+        .filter(symbol => SYMBOLS[symbol] && LIQUIDITY_MAP_SYMBOLS.has(symbol)))];
       const active = String(saved?.active || '').toUpperCase();
       return {
-        tabs: tabs.length ? tabs : ['MNQ'],
-        active: tabs.includes(active) ? active : (tabs[0] || 'MNQ'),
+        tabs: tabs.length ? tabs : ['NQ'],
+        active: tabs.includes(active) ? active : (tabs[0] || 'NQ'),
       };
     } catch {
-      return { tabs: [...DEFAULT_INSTRUMENT_TABS], active: 'MNQ' };
+      return { tabs: [...DEFAULT_INSTRUMENT_TABS], active: 'NQ' };
     }
   }
 
@@ -455,7 +450,7 @@ class DepthForgeApp {
 
   #addInstrumentTab(symbol, closePicker = true) {
     const normalized = String(symbol || '').toUpperCase();
-    if (!SYMBOLS[normalized]) return;
+    if (!SYMBOLS[normalized] || !LIQUIDITY_MAP_SYMBOLS.has(normalized)) return;
     if (!this.instrumentTabs.includes(normalized)) this.instrumentTabs.push(normalized);
     if (closePicker && $('instrumentPicker').open) $('instrumentPicker').close();
     if (normalized === this.symbol) {
@@ -481,7 +476,7 @@ class DepthForgeApp {
   }
 
   switchSymbol(symbol) {
-    if (!SYMBOLS[symbol] || symbol === this.symbol) return;
+    if (!SYMBOLS[symbol] || !LIQUIDITY_MAP_SYMBOLS.has(symbol) || symbol === this.symbol) return;
     this.symbol = symbol;
     this.currentContractSymbol = SYMBOLS[symbol].contract;
     this.sourceMode = 'connecting';

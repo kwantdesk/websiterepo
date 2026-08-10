@@ -60,6 +60,8 @@ test("liquidity instruments use a searchable persistent tab picker", async () =>
   assert.match(html, /id=["']instrumentSearch["']/);
   assert.match(html, /id=["']instrumentTabList["']/);
   assert.match(source, /kwantdesk:liquidity-map-tabs:v1/);
+  assert.match(source, /DEFAULT_INSTRUMENT_TABS = \['NQ', 'ES'\]/);
+  assert.match(source, /INSTRUMENT_ORDER = \['NQ', 'ES'\]/);
   assert.match(source, /#addInstrumentTab\(/);
   assert.match(source, /#closeInstrumentTab\(/);
   assert.doesNotMatch(source, /const next = this\.symbol === 'MNQ'/);
