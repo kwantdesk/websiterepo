@@ -93,6 +93,14 @@ export class RithmicMarketDataClient extends EventEmitter {
     this.protocol = loadProtocol(config.protoDir);
     this.book = new RithmicBookStore({ maxTrades: config.maxTrades });
     this.socket = null;
+    // Startup can be requested both by the server boot path and the manual
+    // connect endpoint. Until the login response arrives `this.socket` is
+    // still null, so checking only readyState allows two simultaneous Rithmic
+    // sessions to be opened with the same credentials. Rithmic rejects the
+    // second session and that rejection can overwrite the healthy first
+    // session's shared status. Keep both operations single-flight.
+    this.startPromise = null;
+    this.connectPromise = null;
     this.heartbeatTimer = null;
     this.reconnectTimer = null;
     this.reconnectAttempt = 0;
@@ -129,6 +137,24 @@ export class RithmicMarketDataClient extends EventEmitter {
   }
 
   async start() {
+    if (this.startPromise) return this.startPromise;
+    if (
+      !this.stopped &&
+      this.status.authenticated &&
+      this.socket?.readyState === WebSocket.OPEN
+    ) {
+      return;
+    }
+
+    this.startPromise = this.startOnce();
+    try {
+      return await this.startPromise;
+    } finally {
+      this.startPromise = null;
+    }
+  }
+
+  async startOnce() {
     this.stopped = false;
     this.status.startedAt ||= new Date().toISOString();
     if (!this.config.configured) {
@@ -146,9 +172,24 @@ export class RithmicMarketDataClient extends EventEmitter {
   }
 
   async connect() {
+    if (this.connectPromise) return this.connectPromise;
     if (this.stopped || this.socket?.readyState === WebSocket.OPEN) return;
+
+    this.connectPromise = this.connectOnce();
+    try {
+      return await this.connectPromise;
+    } finally {
+      this.connectPromise = null;
+    }
+  }
+
+  async connectOnce() {
     try {
       const socket = await openSocket(this.config.url);
+      if (this.stopped) {
+        socket.close(1000, "connection cancelled");
+        return;
+      }
       const loginPromise = waitForTemplate(socket, this.protocol, TEMPLATE_IDS.LOGIN_RESPONSE);
       socket.send(
         this.protocol.encode("RequestLogin", {

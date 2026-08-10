@@ -78,7 +78,28 @@ export function marketDataGatewayUrlCandidates(): string[] {
     seen.add(normalized);
     candidates.push(normalized);
   }
-  return candidates;
+  if (!process.env.VERCEL) return candidates;
+
+  // The always-on public collector is the production route. A legacy
+  // Tailscale Funnel may remain configured as an emergency fallback, but it
+  // points at an operator desktop and can spend five seconds timing out on
+  // every cold serverless invocation. Keep it available without putting it
+  // in front of the VPS.
+  return candidates
+    .map((candidate, index) => ({ candidate, index }))
+    .sort((left, right) => {
+      const isTailnet = (value: string) => {
+        try {
+          const host = new URL(value).hostname.toLowerCase();
+          return host.endsWith(".ts.net") || host.endsWith(".tailscale.net");
+        } catch {
+          return false;
+        }
+      };
+      const priority = Number(isTailnet(left.candidate)) - Number(isTailnet(right.candidate));
+      return priority || left.index - right.index;
+    })
+    .map(({ candidate }) => candidate);
 }
 
 /** Bearer token every collector route requires. Never expose to the browser. */

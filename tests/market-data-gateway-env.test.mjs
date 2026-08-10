@@ -104,6 +104,8 @@ test("off Vercel, loopback URLs still work for local development", () => {
 // must be exposed for failover, in order, deduplicated.
 test("all configured origins are exposed as failover candidates", () => {
   clear();
+  const hadVercel = process.env.VERCEL;
+  delete process.env.VERCEL;
   process.env.KWANTDESK_MARKET_DATA_GATEWAY_URL = "https://desktop-dead.tailnet.ts.net";
   process.env.KWANTIFY_MARKET_GATEWAY_URL = "https://feed.kwantdesk.com/";
   process.env.KWANTDESK_MARKET_GATEWAY_URL = "https://feed.kwantdesk.com";
@@ -112,6 +114,23 @@ test("all configured origins are exposed as failover candidates", () => {
     "https://desktop-dead.tailnet.ts.net",
     "https://feed.kwantdesk.com",
   ], "ordered by precedence, trailing slashes normalized, duplicates collapsed");
+  if (hadVercel !== undefined) process.env.VERCEL = hadVercel;
+  clear();
+});
+
+test("on Vercel, an old Tailscale desktop is retained only as fallback", () => {
+  clear();
+  const hadVercel = process.env.VERCEL;
+  process.env.VERCEL = "1";
+  process.env.KWANTDESK_MARKET_DATA_GATEWAY_URL = "https://desktop-dead.tailnet.ts.net";
+  process.env.KWANTIFY_MARKET_GATEWAY_URL = "https://feed.kwantdesk.com";
+
+  assert.deepEqual(marketDataGatewayUrlCandidates(), [
+    "https://feed.kwantdesk.com",
+    "https://desktop-dead.tailnet.ts.net",
+  ]);
+
+  if (hadVercel === undefined) delete process.env.VERCEL; else process.env.VERCEL = hadVercel;
   clear();
 });
 
