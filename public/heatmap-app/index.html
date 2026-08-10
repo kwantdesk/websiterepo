@@ -167,6 +167,9 @@
               <dl><dt>Price</dt><dd id="tooltipPrice">—</dd><dt>Liquidity</dt><dd id="tooltipLiquidity">—</dd><dt>Volume</dt><dd id="tooltipVolume">—</dd><dt>Side</dt><dd id="tooltipSide">—</dd></dl>
             </div>
             <div class="measurement-label hidden" id="measurementLabel">—</div>
+            <button class="return-live-button hidden" id="returnToLive" type="button" aria-label="Return to live market" title="Return to live market">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5 18 12 8 18.5Z"></path></svg>
+            </button>
           </div>
           <section class="cvd-panel" id="cvdPanel" aria-label="Cumulative volume delta panel">
             <header>
@@ -293,7 +296,7 @@
     <button id="stepBack">−1</button><input id="timeline" type="range" min="0" max="1000" value="1000"><button id="stepForward">+1</button><button id="speedButton">1×</button><button id="goLive">LIVE</button>
   </div>
 
-  <dialog class="modal" id="helpModal"><div class="modal-header"><strong>Kwantify heatmap shortcuts</strong><button id="closeHelp" aria-label="Close shortcuts">×</button></div><div class="shortcut-grid"><kbd>Wheel</kbd><span>Zoom price and time</span><kbd>Shift + wheel</kbd><span>Zoom time only</span><kbd>Ctrl + wheel</kbd><span>Zoom price only</span><kbd>Space</kbd><span>Play or pause</span><kbd>L</kbd><span>Return to live edge</span><kbd>H</kbd><span>Toggle heatmap</span><kbd>T</kbd><span>Toggle volume dots</span><kbd>R</kbd><span>Reset chart</span></div></dialog>
+  <dialog class="modal" id="helpModal"><div class="modal-header"><strong>Kwantify heatmap shortcuts</strong><button id="closeHelp" aria-label="Close shortcuts">×</button></div><div class="shortcut-grid"><kbd>Wheel</kbd><span>Zoom price and time</span><kbd>Shift + wheel</kbd><span>Zoom time only</span><kbd>Ctrl + wheel</kbd><span>Compress or expand time</span><kbd>Space</kbd><span>Play or pause</span><kbd>L</kbd><span>Return to live edge</span><kbd>H</kbd><span>Toggle heatmap</span><kbd>T</kbd><span>Toggle volume dots</span><kbd>R</kbd><span>Reset chart</span></div></dialog>
 
   <dialog class="modal instrument-picker" id="instrumentPicker" aria-labelledby="instrumentPickerTitle">
     <div class="modal-header">

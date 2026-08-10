@@ -149,6 +149,32 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 1px s
 .chart-tooltip dl { display: grid; grid-template-columns: 1fr auto; gap: 4px 8px; margin: 0; }
 .chart-tooltip dt { color: #9cb0b4; }.chart-tooltip dd { margin: 0; color: #fff; }
 .measurement-label { position: absolute; z-index: 5; padding: 4px 7px; background: #04a9df; color: #09232b; font: 700 10px var(--font-mono); pointer-events: none; }
+.return-live-button {
+  position: absolute;
+  z-index: 12;
+  right: 18px;
+  bottom: 18px;
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  padding: 0;
+  border: 1px solid color-mix(in srgb,var(--ui-accent) 70%,white 12%);
+  border-radius: 50%;
+  background: color-mix(in srgb,var(--ui-bg) 76%,var(--ui-accent) 24%);
+  color: var(--ui-accent);
+  box-shadow: 0 0 0 1px rgba(255,255,255,.04),0 0 24px rgba(var(--ui-accent-rgb),.24),0 10px 28px rgba(0,0,0,.48);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  transition: transform 140ms ease,background 140ms ease,box-shadow 140ms ease;
+}
+.return-live-button:hover {
+  transform: scale(1.06);
+  background: color-mix(in srgb,var(--ui-bg) 62%,var(--ui-accent) 38%);
+  box-shadow: 0 0 0 1px rgba(255,255,255,.08),0 0 30px rgba(var(--ui-accent-rgb),.34),0 12px 30px rgba(0,0,0,.5);
+}
+.return-live-button:active { transform: scale(.96); }
+.return-live-button svg { width: 19px; height: 19px; fill: currentColor; stroke: none; transform: translateX(1px); }
 
 .inspector { position: fixed; z-index: 20; top: 108px; right: 8px; display: none; width: 300px; max-height: calc(100vh - 140px); overflow: auto; border: 1px solid #6b858c; background: #354b51; box-shadow: 0 12px 35px rgba(0,0,0,.45); }
 .inspector.open { display: block; }

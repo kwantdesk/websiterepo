@@ -90,6 +90,17 @@ test("Ctrl plus mouse wheel compresses the liquidity timeline without changing p
   assert.doesNotMatch(source, /event\.ctrlKey\s*\?\s*\{ price: true, time: false \}/);
 });
 
+test("historical navigation exposes a bottom-right return-to-live control", async () => {
+  const html = await readFile(htmlPath, "utf8");
+  const source = await readFile(mainPath, "utf8");
+  const styles = await readFile(new URL("../public/heatmap-app/styles.css", import.meta.url), "utf8");
+
+  assert.match(html, /id="returnToLive"[^>]*aria-label="Return to live market"/);
+  assert.match(source, /\$\('returnToLive'\)\.addEventListener\('click', \(\) => this\.goLive\(\)\)/);
+  assert.match(source, /\$\('returnToLive'\)\.classList\.toggle\('hidden', this\.atLive\)/);
+  assert.match(styles, /\.return-live-button\s*\{[\s\S]*?right:\s*18px;[\s\S]*?bottom:\s*18px;/);
+});
+
 test("embedded map omits intrusive feed and latency overlays", async () => {
   const html = await readFile(htmlPath, "utf8");
 

@@ -273,6 +273,7 @@ class DepthForgeApp {
 
     $('playPause').addEventListener('click', () => this.togglePlayback());
     $('goLive').addEventListener('click', () => this.goLive());
+    $('returnToLive').addEventListener('click', () => this.goLive());
     $('stepBack').addEventListener('click', () => this.#stepReplay(-1));
     $('stepForward').addEventListener('click', () => this.#stepReplay(1));
     $('speedButton').addEventListener('click', () => this.#cycleSpeed());
@@ -1093,6 +1094,7 @@ class DepthForgeApp {
     $('playPause').querySelector('.play-icon').classList.toggle('hidden', this.playing);
     $('playPause').setAttribute('aria-label', this.playing ? 'Pause replay' : 'Play replay');
     $('goLive').classList.toggle('active', this.atLive);
+    $('returnToLive').classList.toggle('hidden', this.atLive);
     $('cvdGoLive').classList.toggle('active', this.atLive);
     $('cvdGoLive').textContent = this.atLive ? 'LIVE' : 'GO LIVE';
   }
