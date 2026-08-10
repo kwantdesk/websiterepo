@@ -25,3 +25,17 @@ test("LIQ MAP iframe is owned by the persistent shell and unmounts when inactive
   assert.match(liquidityMap, /src="\/heatmap-app\/index\.html"/);
   assert.doesNotMatch(workspace, /visitedWorkspaceSections\.has\("liqmap"\)/);
 });
+
+test("LIQ MAP watchlist selection is saved and sent into the iframe", () => {
+  const workspace = read("src/components/KwantifyWorkspace.tsx");
+  const liquidityMap = read("src/components/liquidity-map/LiquidityMapWorkspace.tsx");
+  const mapRuntime = read("public/heatmap-app/src/main.js");
+
+  assert.match(workspace, /LIQUIDITY_MAP_INSTRUMENT_STORAGE_KEY/);
+  assert.match(workspace, /bottomWorkspaceSection === "liqmap"/);
+  assert.match(workspace, /setSelectedLiquidityMapInstrument/);
+  assert.match(liquidityMap, /kwantdesk:liquidity-map-symbol/);
+  assert.match(mapRuntime, /kwantdesk:liquidity-map-symbol/);
+  assert.match(mapRuntime, /requested === 'NQ' \|\| requested === 'MNQ'/);
+  assert.match(mapRuntime, /requested === 'ES' \|\| requested === 'MES'/);
+});

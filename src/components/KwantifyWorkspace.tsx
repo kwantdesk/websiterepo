@@ -624,6 +624,7 @@ const GAMMA_LEVELS_ENABLED_STORAGE_KEY = "kwantdesk:chart-gamma-levels-enabled:v
 const HISTORICAL_STRUCTURE_ENABLED_STORAGE_KEY = "kwantdesk:chart-historical-structure-enabled:v1";
 const VALUE_AREA_LEVELS_ENABLED_STORAGE_KEY = "kwantdesk:chart-value-area-levels-enabled:v1";
 const KWANTBOT_MESSAGES_STORAGE_KEY = "kwantdesk-kwantbot-messages";
+const LIQUIDITY_MAP_INSTRUMENT_STORAGE_KEY = "kwantdesk:liquidity-map-instrument:v1";
 const BOTTOM_WORKSPACE_SECTIONS = [
   { id: "charts" as const, label: "Charts" },
   { id: "gamma" as const, label: "Gamma" },
@@ -703,6 +704,13 @@ const DEFAULT_WORKSPACE_PANES: WorkspacePane[] = [
 
 function displayCmeSymbol(symbol: string) {
   return symbol.replace(/\.[vnc]\.\d+$/i, "");
+}
+
+function liquidityMapInstrument(symbol: string) {
+  const root = displayCmeSymbol(symbol).toUpperCase();
+  if (root === "NQ" || root === "MNQ") return "MNQ.v.0";
+  if (root === "ES" || root === "MES") return "ES.v.0";
+  return "";
 }
 
 function displayCmeText(value: string) {
@@ -5173,6 +5181,11 @@ export default function KwantifyWorkspace({
   const [isResizingAI, setIsResizingAI] = useState(false);
   const [bottomTab, setBottomTab] = useState<"strategies" | "metrics" | "trades">("metrics");
   const [selectedInstrument, setSelectedInstrument] = useState("ES.v.0");
+  const [selectedLiquidityMapInstrument, setSelectedLiquidityMapInstrument] = useState(() => {
+    if (typeof window === "undefined") return "MNQ.v.0";
+    const saved = window.localStorage.getItem(LIQUIDITY_MAP_INSTRUMENT_STORAGE_KEY) || "MNQ.v.0";
+    return liquidityMapInstrument(saved) || "MNQ.v.0";
+  });
   const [workspaceLayout, setWorkspaceLayout] = useState<WorkspaceLayout>(() => {
     if (typeof window === "undefined") return "single";
     try {
@@ -9047,6 +9060,9 @@ export default function KwantifyWorkspace({
   const renderWatchlistRow = (row: WatchlistItem, section: WatchlistSection) => {
     const isDropTarget = watchlistDropTarget?.sectionId === section.id && watchlistDropTarget.symbol === row.key;
     const isFavorite = watchlistFavorites.includes(row.key);
+    const isSelected = bottomWorkspaceSection === "liqmap"
+      ? liquidityMapInstrument(row.symbol) === selectedLiquidityMapInstrument
+      : selectedWatchlistKey === row.key;
     return (
       <button
         key={row.key}
@@ -9072,7 +9088,7 @@ export default function KwantifyWorkspace({
           if (draggedWatchlistItem) moveWatchlistSymbol(draggedWatchlistItem.symbol, section.id, row.key);
           setDraggedWatchlistItem(null);
         }}
-        className={`grid w-full grid-cols-[minmax(92px,1fr)_74px_54px_54px] items-center gap-2 border-t-2 px-3 py-2 text-left transition-colors hover:bg-surface/60 ${isDropTarget ? "border-blue-500" : "border-transparent"} ${selectedWatchlistKey === row.key ? "bg-surface" : ""}`}
+        className={`grid w-full grid-cols-[minmax(92px,1fr)_74px_54px_54px] items-center gap-2 border-t-2 px-3 py-2 text-left transition-colors hover:bg-surface/60 ${isDropTarget ? "border-blue-500" : "border-transparent"} ${isSelected ? "bg-surface" : ""}`}
       >
         <span className="min-w-0">
           <span className="flex items-center gap-1.5">
@@ -9985,6 +10001,14 @@ export default function KwantifyWorkspace({
   };
 
   const selectInstrument = (symbol: string, broker?: string, watchlistKey?: string) => {
+    if (bottomWorkspaceSection === "liqmap") {
+      const nextLiquidityInstrument = liquidityMapInstrument(symbol);
+      if (!nextLiquidityInstrument) return;
+      setSelectedLiquidityMapInstrument(nextLiquidityInstrument);
+      window.localStorage.setItem(LIQUIDITY_MAP_INSTRUMENT_STORAGE_KEY, nextLiquidityInstrument);
+      if (watchlistKey) setSelectedWatchlistKey(watchlistKey);
+      return;
+    }
     clearBacktest();
     const nextBroker = broker ?? connectedBroker ?? "OANDA";
     const nextTimeframe = nextBroker === "Market Index" && !supportsChartInterval(selectedTimeframe, nextBroker)
@@ -11168,7 +11192,7 @@ export default function KwantifyWorkspace({
             ) : null}
             {bottomWorkspaceSection === "liqmap" ? (
               <WorkspaceFailureBoundary resetKey="liqmap" label="Liquidity Map">
-                <LiquidityMapWorkspace />
+                <LiquidityMapWorkspace instrument={selectedLiquidityMapInstrument} />
               </WorkspaceFailureBoundary>
             ) : null}
             {visitedWorkspaceSections.has("heatmap") ? (
@@ -11690,7 +11714,10 @@ export default function KwantifyWorkspace({
               <div className="grid grid-cols-[minmax(92px,1fr)_74px_54px_54px] gap-2 border-b border-border px-3 py-2 text-[10px] uppercase tracking-wider text-muted"><span>Symbol</span><span className="text-right">Last</span><span className="text-right">Chg</span><span className="text-right">Chg%</span></div>
               <div className="flex-1 overflow-y-auto">
                 {watchlistSections.map((section) => {
-                  const symbols = sortSectionSymbols(section.symbols);
+                  const symbols = sortSectionSymbols(section.symbols).filter((symbol) => (
+                    bottomWorkspaceSection !== "liqmap"
+                    || Boolean(liquidityMapInstrument(watchlistBySymbol.get(symbol)?.symbol || symbol))
+                  ));
                   const sectionDropTarget = watchlistDropTarget?.sectionId === section.id && !watchlistDropTarget.symbol;
                   return (
                     <div key={section.id}>

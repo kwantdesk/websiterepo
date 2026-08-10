@@ -226,12 +226,23 @@ class DepthForgeApp {
     $('resetSettings').addEventListener('click', () => this.#resetSettings());
     window.addEventListener('message', event => {
       if (event.origin !== window.location.origin) return;
-      if (event.data?.type !== 'kwantify:heatmap-workspace-settings') return;
-      this.settings.domVisible = event.data.domVisible !== false;
-      const domWidth = Number(event.data.domWidth);
-      if (Number.isFinite(domWidth)) this.settings.domWidth = Math.min(260, Math.max(30, domWidth));
-      $('showDom').checked = this.settings.domVisible;
-      this.requestRender();
+      if (event.data?.type === 'kwantdesk:liquidity-map-symbol') {
+        const requested = String(event.data.symbol || '').toUpperCase().replace(/\.[VNC]\.\d+$/i, '');
+        const symbol = requested === 'NQ' || requested === 'MNQ'
+          ? 'MNQ'
+          : requested === 'ES' || requested === 'MES'
+            ? 'ES'
+            : '';
+        if (symbol) this.switchSymbol(symbol);
+        return;
+      }
+      if (event.data?.type === 'kwantify:heatmap-workspace-settings') {
+        this.settings.domVisible = event.data.domVisible !== false;
+        const domWidth = Number(event.data.domWidth);
+        if (Number.isFinite(domWidth)) this.settings.domWidth = Math.min(260, Math.max(30, domWidth));
+        $('showDom').checked = this.settings.domVisible;
+        this.requestRender();
+      }
     });
 
     $('playPause').addEventListener('click', () => this.togglePlayback());
