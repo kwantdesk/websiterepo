@@ -101,6 +101,12 @@ test("historical navigation exposes a bottom-right return-to-live control", asyn
   assert.match(styles, /\.return-live-button\s*\{[\s\S]*?right:\s*18px;[\s\S]*?bottom:\s*18px;/);
 });
 
+test("signals and display inspector closes when the user clicks away", async () => {
+  const source = await readFile(mainPath, "utf8");
+
+  assert.match(source, /document\.addEventListener\('pointerdown', event => \{[\s\S]*?inspector\.classList\.contains\('open'\)[\s\S]*?event\.target\.closest\('#inspector, \[data-panel-shortcut\], #settingsButton, #cvdSettingsButton'\)[\s\S]*?inspector\.classList\.remove\('open'\)/);
+});
+
 test("embedded map omits intrusive feed and latency overlays", async () => {
   const html = await readFile(htmlPath, "utf8");
 

@@ -320,6 +320,13 @@ class DepthForgeApp {
       $('cvdStyleMenu').classList.add('hidden');
       $('cvdStyleButton').setAttribute('aria-expanded', 'false');
     });
+    document.addEventListener('pointerdown', event => {
+      const inspector = $('inspector');
+      if (!inspector.classList.contains('open')) return;
+      if (event.target.closest('#inspector, [data-panel-shortcut], #settingsButton, #cvdSettingsButton')) return;
+      inspector.classList.remove('open');
+      all('[data-panel-shortcut]').forEach(button => button.classList.remove('active'));
+    });
 
     $('helpButton').addEventListener('click', () => $('helpModal').showModal());
     $('closeHelp').addEventListener('click', () => $('helpModal').close());
