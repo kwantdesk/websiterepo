@@ -17,17 +17,12 @@ type LayeredLevel<T extends MergeableChartLevel> = {
 };
 
 const REFERENCE_LABELS: Array<[RegExp, string]> = [
-  [/\bPD VAH\b/gi, "Previous Day VAH"],
-  [/\bPD VAL\b/gi, "Previous Day VAL"],
-  [/\bPD POC\b/gi, "Previous Day POC"],
-  [/\bPD VWAP\b/gi, "Previous Day VWAP"],
-  [/\bPW VAH\b/gi, "Previous Week VAH"],
-  [/\bPW VAL\b/gi, "Previous Week VAL"],
-  [/\bPW POC\b/gi, "Previous Week POC"],
-  [/\bPW VWAP\b/gi, "Previous Week VWAP"],
-  [/\bHVL\b/gi, "High Volatility Level"],
-  [/\bMPO\b/gi, "Major Positive Open Interest"],
-  [/\bMPV\b/gi, "Major Positive Volume"],
+  [/^Major call\s*[—–-].*$/gi, "Major Call"],
+  [/^Major put\s*[—–-].*$/gi, "Major Put"],
+  [/^Magnet\s*[—–-].*$/gi, "Gamma Magnet"],
+  [/\bMajor Positive Open Interest\b/gi, "MPO"],
+  [/\bMajor Positive Volume\b/gi, "MPV"],
+  [/\bHigh Volatility Level\b/gi, "HVL"],
 ];
 
 function readableLevelLabel(label: string) {
@@ -52,7 +47,9 @@ function combinedLabel<T extends MergeableChartLevel>(group: LayeredLevel<T>[]) 
       if (!labels.has(key)) labels.set(key, label);
     }
   }
-  return [...labels.values()].join(" + ");
+  const visible = [...labels.values()];
+  if (visible.length <= 2) return visible.join(" + ");
+  return `${visible.slice(0, 2).join(" + ")} +${visible.length - 2}`;
 }
 
 function lineStyleStrength(style: MergeableChartLevel["lineStyle"]) {
@@ -107,7 +104,7 @@ export function resolveChartLevelOverlaps<T extends MergeableChartLevel>(
         ? representative.id
         : `combined-${group.map((entry) => entry.level.id).sort().join("--")}`,
       price: tick * safeTick,
-      label: combinedLabel(group),
+      label: combinedLabel(ranked),
       lineWidth: Math.max(...group.map((entry) => entry.level.lineWidth ?? 1)) as 1 | 2 | 3 | 4,
       lineStyle: ranked[0].level.lineStyle,
       axisLabelVisible: group.some((entry) => entry.level.axisLabelVisible !== false),
