@@ -82,10 +82,11 @@ test("CVD is labelled and horizontally synchronized with the liquidity map", asy
   assert.match(renderer, /const xForIndex = index => \(\(index - start\) \/ \(count - 1\)\) \* dataWidth/);
 });
 
-test("Ctrl plus mouse wheel pans the liquidity timeline horizontally", async () => {
+test("Ctrl plus mouse wheel compresses the liquidity timeline without changing price scale", async () => {
   const source = await readFile(mainPath, "utf8");
 
-  assert.match(source, /if \(event\.ctrlKey \|\| event\.metaKey\) \{[\s\S]*?this\.#panHistory\(wheelColumnShift\(/);
+  assert.match(source, /if \(event\.ctrlKey \|\| event\.metaKey\) \{[\s\S]*?this\.#zoom\(factor, this\.#canvasPoint\(event\), \{ price: false, time: true \}\)/);
+  assert.match(source, /#cvdWheel\(event\)[\s\S]*?if \(event\.ctrlKey \|\| event\.metaKey\)[\s\S]*?\{ price: false, time: true \}/);
   assert.doesNotMatch(source, /event\.ctrlKey\s*\?\s*\{ price: true, time: false \}/);
 });
 

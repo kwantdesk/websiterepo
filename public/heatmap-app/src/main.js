@@ -1339,12 +1339,11 @@ class DepthForgeApp {
     const layout = this.renderer.layout;
     if (!layout) return;
     if (event.ctrlKey || event.metaKey) {
-      this.#panHistory(wheelColumnShift({
-        deltaX: event.deltaX,
-        deltaY: event.deltaY,
-        visibleColumns: layout.count,
-        fast: event.shiftKey,
-      }));
+      // Ctrl/Cmd + wheel is a horizontal density zoom: compress the time
+      // columns to reveal more history on the left, or expand them to inspect
+      // fewer columns. It must not pan the window or alter the price axis.
+      const factor = event.deltaY > 0 ? 1.16 : 0.86;
+      this.#zoom(factor, this.#canvasPoint(event), { price: false, time: true });
       return;
     }
     const factor = event.deltaY > 0 ? 1.12 : 0.88;
@@ -1377,11 +1376,20 @@ class DepthForgeApp {
     event.preventDefault();
     const layout = this.renderer.layout;
     if (!layout) return;
+    if (event.ctrlKey || event.metaKey) {
+      const factor = event.deltaY > 0 ? 1.16 : 0.86;
+      const rect = $('cvdCanvas').getBoundingClientRect();
+      this.#zoom(factor, {
+        x: event.clientX - rect.left,
+        y: layout.plotHeight / 2,
+      }, { price: false, time: true });
+      return;
+    }
     this.#panHistory(wheelColumnShift({
       deltaX: event.deltaX,
       deltaY: event.deltaY,
       visibleColumns: layout.count,
-      fast: event.shiftKey && !(event.ctrlKey || event.metaKey),
+      fast: event.shiftKey,
     }));
   }
 
