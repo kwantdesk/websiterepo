@@ -49,29 +49,66 @@ html[data-embed="true"] * {
 }
 
 html[data-embed="true"] .terminal-shell {
-  grid-template-columns: 52px minmax(0, 1fr);
-  grid-template-rows: minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: 46px 52px minmax(0, 1fr);
   width: 100%;
   height: 100%;
 }
 
-html[data-embed="true"] .app-bar,
 html[data-embed="true"] .status-bar,
 html[data-embed="true"] .trading-panel {
   display: none !important;
 }
 
-html[data-embed="true"] .top-deck {
+html[data-embed="true"] .app-bar {
   grid-column: 1;
   grid-row: 1;
-  border-right: 1px solid var(--ui-line);
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr) auto auto;
+  height: 46px;
+  min-height: 46px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--ui-line);
+  background: var(--ui-chrome);
+}
+
+html[data-embed="true"] .instrument-tabs,
+html[data-embed="true"] .brand,
+html[data-embed="true"] .app-actions {
+  height: 46px;
+}
+
+html[data-embed="true"] .instrument-tab {
+  min-width: 148px;
+}
+
+html[data-embed="true"] .top-deck {
+  grid-column: 1;
+  grid-row: 2;
+  display: block;
+  width: 100%;
+  height: 52px;
+  border-right: 0;
+  border-bottom: 1px solid var(--ui-line);
   background: linear-gradient(180deg, var(--ui-panel), color-mix(in srgb, var(--ui-panel) 88%, #000));
   box-shadow: none;
+  overflow: hidden;
 }
 
 html[data-embed="true"] .tool-rail {
-  gap: 3px;
-  padding: 8px 7px;
+  flex-direction: row;
+  align-items: center;
+  width: 100%;
+  height: 51px;
+  gap: 4px;
+  padding: 7px 12px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+html[data-embed="true"] .tool-rail::-webkit-scrollbar {
+  display: none;
 }
 
 html[data-embed="true"] .theme-step {
@@ -84,11 +121,31 @@ html[data-embed="true"] .theme-current:disabled {
 }
 
 html[data-embed="true"] .rail-button {
+  flex: 0 0 36px;
+  width: 36px;
+  height: 36px;
   border: 1px solid transparent;
   border-radius: 9px;
   color: var(--ui-muted);
   background: transparent;
   box-shadow: none;
+}
+
+html[data-embed="true"] .rail-button.labelled-control {
+  display: inline-flex;
+  flex-basis: auto;
+  gap: 7px;
+  width: auto;
+  min-width: 76px;
+  padding: 0 10px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+html[data-embed="true"] .rail-button.labelled-control svg {
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
 }
 
 html[data-embed="true"] .rail-button svg {
@@ -116,14 +173,77 @@ html[data-embed="true"] .rail-button.active-toggle:not(.active) {
 }
 
 html[data-embed="true"] .toolbar-separator {
-  width: 24px;
-  margin: 4px 0;
+  flex: 0 0 1px;
+  width: 1px;
+  height: 26px;
+  margin: 0 4px;
   background: var(--ui-line);
 }
 
+html[data-embed="true"] .heat-control {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 7px;
+  min-width: 116px;
+  color: var(--ui-accent);
+}
+
+html[data-embed="true"] .heat-control input {
+  width: 92px;
+  accent-color: var(--ui-accent);
+}
+
+html[data-embed="true"] .heat-palette {
+  display: block;
+  flex: 0 0 116px;
+  width: 116px;
+  height: 24px;
+  padding: 3px;
+  border: 1px solid var(--ui-line);
+  border-radius: 6px;
+  background: var(--ui-surface);
+}
+
+html[data-embed="true"] .heat-palette span {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 3px;
+}
+
+html[data-embed="true"] .toolbar-panel-shortcuts {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 3px;
+  margin-left: auto;
+  padding: 3px;
+  border: 1px solid var(--ui-line);
+  border-radius: 9px;
+  background: var(--ui-surface);
+}
+
+html[data-embed="true"] .toolbar-panel-shortcuts button {
+  height: 28px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ui-muted);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+html[data-embed="true"] .toolbar-panel-shortcuts button:hover,
+html[data-embed="true"] .toolbar-panel-shortcuts button.active {
+  background: rgba(var(--ui-accent-rgb), .11);
+  color: var(--ui-accent);
+}
+
 html[data-embed="true"] .workspace {
-  grid-column: 2;
-  grid-row: 1;
+  grid-column: 1;
+  grid-row: 3;
   grid-template-columns: minmax(0, 1fr);
   background: var(--ui-bg);
 }
@@ -205,9 +325,9 @@ html[data-embed="true"] .cvd-panel header button {
 }
 
 html[data-embed="true"] .inspector {
-  top: 12px;
+  top: 110px;
   right: 12px;
-  max-height: calc(100vh - 24px);
+  max-height: calc(100vh - 122px);
   border: 1px solid var(--ui-line);
   border-radius: 16px;
   background: color-mix(in srgb, var(--ui-panel) 96%, transparent);
@@ -308,6 +428,40 @@ html[data-embed="true"] .modal {
 
 @media (max-width: 620px) {
   html[data-embed="true"] .terminal-shell {
-    grid-template-columns: 44px minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: 44px 48px minmax(0, 1fr);
+  }
+
+  html[data-embed="true"] .app-bar {
+    grid-template-columns: minmax(0, 1fr) auto;
+    height: 44px;
+    min-height: 44px;
+    padding: 0 8px;
+  }
+
+  html[data-embed="true"] .instrument-tabs,
+  html[data-embed="true"] .app-actions { height: 44px; }
+
+  html[data-embed="true"] .top-deck,
+  html[data-embed="true"] .tool-rail { height: 48px; }
+
+  html[data-embed="true"] .tool-rail { padding: 6px 8px; }
+
+  html[data-embed="true"] .rail-button.labelled-control {
+    min-width: 36px;
+    padding: 0 9px;
+  }
+
+  html[data-embed="true"] .rail-button.labelled-control span,
+  html[data-embed="true"] .heat-control,
+  html[data-embed="true"] .heat-palette { display: none; }
+
+  html[data-embed="true"] .toolbar-panel-shortcuts { margin-left: 4px; }
+
+  html[data-embed="true"] .workspace { grid-row: 3; }
+
+  html[data-embed="true"] .inspector {
+    top: 100px;
+    max-height: calc(100vh - 112px);
   }
 }

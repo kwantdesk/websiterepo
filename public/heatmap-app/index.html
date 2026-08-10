@@ -90,17 +90,17 @@
       </div>
     </header>
 
-    <section class="top-deck" aria-label="Chart toolbar">
+    <section class="top-deck" id="topDeck" aria-label="Liquidity map controls">
       <div class="command-label"><small>Live research</small><strong>Order flow</strong></div>
       <div class="tool-rail" aria-label="Chart tools">
         <button class="rail-button active" data-tool="crosshair" title="Crosshair" aria-label="Crosshair tool"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M12 2v4M12 18v4M2 12h4M18 12h4"></path></svg></button>
         <button class="rail-button" data-tool="pan" title="Pan chart" aria-label="Pan tool"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 2 3 3-3 3M12 2v6M22 12l-3-3-3 3M22 12h-6M12 22l-3-3 3-3M12 22v-6M2 12l3 3 3-3M2 12h6"></path></svg></button>
         <button class="rail-button" data-tool="measure" title="Measure" aria-label="Measure tool"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 17 14-14 4 4L7 21H3zM14 6l4 4M11 9l2 2M8 12l2 2M5 15l2 2"></path></svg></button>
         <span class="toolbar-separator"></span>
-        <button class="rail-button active-toggle" id="toggleHeatmap" title="Toggle heatmap" aria-label="Toggle heatmap"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16M4 9h16M4 13h16M4 17h16"></path><path d="M7 3v16M17 3v16" opacity=".45"></path></svg></button>
-        <button class="rail-button active-toggle" id="toggleTrades" title="Toggle volume dots" aria-label="Toggle trade bubbles"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="5"></circle><circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none"></circle></svg></button>
-        <button class="rail-button active-toggle" id="toggleProfile" title="Toggle volume profile" aria-label="Toggle volume profile"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5v14M5 7h6M5 11h11M5 15h8M5 19h4"></path></svg></button>
-        <button class="rail-button active-toggle" id="toggleCvd" title="Toggle CVD subchart" aria-label="Toggle cumulative volume delta"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 15c3-8 5 4 8-3s5-1 10-7"></path><path d="M3 20h18" opacity=".45"></path></svg></button>
+        <button class="rail-button active-toggle labelled-control" id="toggleHeatmap" title="Toggle heatmap" aria-label="Toggle heatmap"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16M4 9h16M4 13h16M4 17h16"></path><path d="M7 3v16M17 3v16" opacity=".45"></path></svg><span>Heatmap</span></button>
+        <button class="rail-button active-toggle labelled-control" id="toggleTrades" title="Toggle volume dots" aria-label="Toggle trade bubbles"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="5"></circle><circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none"></circle></svg><span>Trades</span></button>
+        <button class="rail-button active-toggle labelled-control" id="toggleProfile" title="Toggle volume profile" aria-label="Toggle volume profile"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5v14M5 7h6M5 11h11M5 15h8M5 19h4"></path></svg><span>Profile</span></button>
+        <button class="rail-button active-toggle labelled-control" id="toggleCvd" title="Toggle CVD subchart" aria-label="Toggle cumulative volume delta"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 15c3-8 5 4 8-3s5-1 10-7"></path><path d="M3 20h18" opacity=".45"></path></svg><span>CVD</span></button>
         <button class="rail-button" id="zoomIn" title="Zoom in price and time" aria-label="Zoom in"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"></circle><path d="M15.5 15.5 21 21M10.5 7.5v6M7.5 10.5h6"></path></svg></button>
         <button class="rail-button" id="zoomOut" title="Zoom out price and time" aria-label="Zoom out"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"></circle><path d="M15.5 15.5 21 21M7.5 10.5h6"></path></svg></button>
         <button class="rail-button" id="resetView" title="Reset view" aria-label="Reset view"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"></path><path d="M3 3v5h5"></path></svg></button>
@@ -111,6 +111,11 @@
           <span>☀</span><input id="quickHeatRange" type="range" min="0.4" max="2.5" step="0.05" value="1" aria-label="Quick heat sensitivity">
         </label>
         <div class="heat-palette" aria-label="Liquidity color scale"><span id="heatPalettePreview"></span></div>
+        <div class="toolbar-panel-shortcuts" role="group" aria-label="Liquidity map configuration">
+          <button type="button" data-panel-shortcut="depth">Depth</button>
+          <button type="button" data-panel-shortcut="signals">Signals</button>
+          <button type="button" data-panel-shortcut="settings">Display</button>
+        </div>
       </div>
     </section>
 

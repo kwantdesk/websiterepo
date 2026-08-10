@@ -19,6 +19,7 @@ import {
 
 const MAX_HISTORY = 1800;
 const SPEEDS = [0.25, 0.5, 1, 2, 4];
+const LIQUIDITY_MAP_SETTINGS_KEY = 'kwantdesk:liquidity-map-settings:v1';
 
 const $ = id => document.getElementById(id);
 const all = selector => [...document.querySelectorAll(selector)];
@@ -80,6 +81,7 @@ class DepthForgeApp {
       uiTheme: this.uiTheme,
       ...DEFAULT_INDICATOR_SETTINGS,
     };
+    this.#restoreSettings();
 
     this.indicatorAnalysis = null;
     this.indicatorAnalysisKey = '';
@@ -136,6 +138,7 @@ class DepthForgeApp {
     });
 
     all('.inspector-tabs button').forEach(button => button.addEventListener('click', () => this.#openPanel(button.dataset.panel)));
+    all('[data-panel-shortcut]').forEach(button => button.addEventListener('click', () => this.#openPanel(button.dataset.panelShortcut)));
     $('settingsButton').addEventListener('click', () => this.#openPanel('settings'));
 
     $('paletteSelect').addEventListener('change', event => {
@@ -269,6 +272,13 @@ class DepthForgeApp {
     });
 
     document.addEventListener('keydown', event => this.#keyDown(event));
+    const persistControlChange = event => {
+      if (!event.target.closest('#topDeck, #inspector')) return;
+      queueMicrotask(() => this.#saveSettings());
+    };
+    document.addEventListener('input', persistControlChange);
+    document.addEventListener('change', persistControlChange);
+    document.addEventListener('click', persistControlChange);
   }
 
   #bindToggle(id, setting) {
@@ -384,7 +394,33 @@ class DepthForgeApp {
     }
     const mapping = { depth: 'depthPanel', signals: 'signalsPanel', settings: 'settingsPanel' };
     all('.inspector-tabs button').forEach(button => button.classList.toggle('active', button.dataset.panel === panel));
+    all('[data-panel-shortcut]').forEach(button => button.classList.toggle('active', button.dataset.panelShortcut === panel));
     all('.inspector-panel').forEach(candidate => candidate.classList.toggle('active', candidate.id === mapping[panel]));
+  }
+
+  #restoreSettings() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(LIQUIDITY_MAP_SETTINGS_KEY) || 'null');
+      if (!saved || typeof saved !== 'object' || Array.isArray(saved)) return;
+      const allowed = new Set(Object.keys(this.settings));
+      allowed.delete('uiTheme');
+      for (const [key, value] of Object.entries(saved)) {
+        if (!allowed.has(key) || value === null || !['string', 'number', 'boolean'].includes(typeof value)) continue;
+        this.settings[key] = value;
+      }
+    } catch {
+      localStorage.removeItem(LIQUIDITY_MAP_SETTINGS_KEY);
+    }
+  }
+
+  #saveSettings() {
+    try {
+      const saved = { ...this.settings };
+      delete saved.uiTheme;
+      localStorage.setItem(LIQUIDITY_MAP_SETTINGS_KEY, JSON.stringify(saved));
+    } catch {
+      // Browser storage is optional; the live map remains usable without it.
+    }
   }
 
   #resetSettings() {
