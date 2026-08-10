@@ -85,7 +85,7 @@ test("CVD is labelled and horizontally synchronized with the liquidity map", asy
 test("Ctrl plus mouse wheel compresses the liquidity timeline without changing price scale", async () => {
   const source = await readFile(mainPath, "utf8");
 
-  assert.match(source, /if \(event\.ctrlKey \|\| event\.metaKey\) \{[\s\S]*?this\.#zoom\(factor, this\.#canvasPoint\(event\), \{ price: false, time: true \}\)/);
+  assert.match(source, /if \(event\.ctrlKey \|\| event\.metaKey\) \{[\s\S]*?this\.#zoom\(factor, point, \{ price: false, time: true \}\)/);
   assert.match(source, /#cvdWheel\(event\)[\s\S]*?if \(event\.ctrlKey \|\| event\.metaKey\)[\s\S]*?\{ price: false, time: true \}/);
   assert.doesNotMatch(source, /event\.ctrlKey\s*\?\s*\{ price: true, time: false \}/);
 });
@@ -116,6 +116,15 @@ test("instrument changes show staged loading progress until the first new frame 
   assert.match(source, /status\.historyFrames[\s\S]*?#setSymbolLoadProgress\(58/);
   assert.match(source, /metadata\.historical \? \(metadata\.final \? 88 : 72\) : 88/);
   assert.match(source, /this\.renderer\.render[\s\S]*?this\.#finishSymbolLoad\(this\.symbol\)/);
+});
+
+test("wheel input over the price rail stretches only the vertical price axis", async () => {
+  const html = await readFile(htmlPath, "utf8");
+  const source = await readFile(mainPath, "utf8");
+
+  assert.match(source, /const point = this\.#canvasPoint\(event\);[\s\S]*?this\.#isPriceRailPoint\(point\)[\s\S]*?\{ price: true, time: false \}/);
+  assert.match(source, /y: layout\.plotHeight \/ 2/);
+  assert.match(html, /Price scale \+ wheel<\/kbd><span>Stretch price axis only/);
 });
 
 test("embedded map omits intrusive feed and latency overlays", async () => {

@@ -1392,19 +1392,31 @@ class DepthForgeApp {
     event.preventDefault();
     const layout = this.renderer.layout;
     if (!layout) return;
+    const point = this.#canvasPoint(event);
+    if (this.#isPriceRailPoint(point)) {
+      // The right price rail behaves like a dedicated vertical scale. Wheel
+      // input here stretches/compresses price spacing around the chart centre
+      // and must never alter horizontal history density or position.
+      const factor = event.deltaY > 0 ? 1.12 : 0.88;
+      this.#zoom(factor, {
+        x: layout.plotWidth,
+        y: layout.plotHeight / 2,
+      }, { price: true, time: false });
+      return;
+    }
     if (event.ctrlKey || event.metaKey) {
       // Ctrl/Cmd + wheel is a horizontal density zoom: compress the time
       // columns to reveal more history on the left, or expand them to inspect
       // fewer columns. It must not pan the window or alter the price axis.
       const factor = event.deltaY > 0 ? 1.16 : 0.86;
-      this.#zoom(factor, this.#canvasPoint(event), { price: false, time: true });
+      this.#zoom(factor, point, { price: false, time: true });
       return;
     }
     const factor = event.deltaY > 0 ? 1.12 : 0.88;
     const axes = event.shiftKey
       ? { price: false, time: true }
       : { price: true, time: true };
-    this.#zoom(factor, this.#canvasPoint(event), axes);
+    this.#zoom(factor, point, axes);
   }
 
   #panHistory(columnShift) {
