@@ -93,3 +93,39 @@ test("a Claude CSV with qualified date-time headers imports cleanly", () => {
   assert.equal(result.trades[0].symbol, "MNQ");
   assert.equal(result.trades[0].netPnl, 80);
 });
+
+test("a generated CSV can include prose, a code fence, and common alternate headers", () => {
+  const csv = [
+    "Here is the completed trade export for KwantDesk:",
+    "```csv",
+    "Trade Open,Trade Close,Ticker,Market Position,Lots,Entry,Exit,Result ($)",
+    "2026-08-11 09:35:00,2026-08-11 09:42:00,MNQ,Long (Buy),2,23800,23820,80",
+    "2026-08-11 10:04:00,2026-08-11 10:11:00,NQ,Short (Sell),1,23840,23820,400",
+    "```",
+  ].join("\n");
+
+  const result = parseJournalTextFile("generated-trades.csv", csv, "Friend Journal", "import-generated");
+
+  assert.equal(result.detectedSchema, "closed-trades");
+  assert.equal(result.trades.length, 2);
+  assert.equal(result.rejectedRows, 0);
+  assert.deepEqual(result.trades.map((trade) => trade.side), ["LONG", "SHORT"]);
+  assert.deepEqual(result.trades.map((trade) => trade.netPnl), [80, 400]);
+});
+
+test("rejected CSV rows explain the fields that were actually missing", () => {
+  const csv = [
+    "Trade Open,Ticker,Result ($)",
+    ",MNQ,80",
+    "2026-08-11 10:04:00,,400",
+    "2026-08-11 10:20:00,NQ,",
+  ].join("\n");
+
+  const result = parseJournalTextFile("incomplete.csv", csv, "Friend Journal", "import-incomplete");
+
+  assert.equal(result.trades.length, 0);
+  assert.equal(result.rejectedRows, 3);
+  assert.match(result.warnings[0], /1 missing a valid entry date\/time/);
+  assert.match(result.warnings[0], /1 missing an instrument/);
+  assert.match(result.warnings[0], /1 missing P&L or an entry\/exit price pair/);
+});

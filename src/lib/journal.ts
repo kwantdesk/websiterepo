@@ -137,18 +137,18 @@ export type JournalStats = {
 };
 
 const HEADER_ALIASES = {
-  openedAt: ["openedat", "entrydatetime", "entrytimestamp", "opendatetime", "opentimestamp", "entrydt", "opentime", "entrytime", "datetime", "dateandtime", "timestamp", "timeopened", "entrydate", "opendate"],
-  closedAt: ["closedat", "exitdatetime", "exittimestamp", "closedatetime", "closetimestamp", "exitdt", "closetime", "exittime", "timeclosed", "exitdate", "closedate"],
+  openedAt: ["openedat", "entrydatetime", "entrytimestamp", "opendatetime", "opentimestamp", "entrydt", "opentime", "entrytime", "datetime", "dateandtime", "timestamp", "timeopened", "entrydate", "opendate", "tradeopen", "tradeopened", "tradeopentime", "positionopened", "dateopened"],
+  closedAt: ["closedat", "exitdatetime", "exittimestamp", "closedatetime", "closetimestamp", "exitdt", "closetime", "exittime", "timeclosed", "exitdate", "closedate", "tradeclose", "tradeclosed", "tradeclosetime", "positionclosed", "dateclosed"],
   date: ["date", "tradedate", "dateoftrade", "sessiondate", "filldate", "executedate"],
   time: ["time", "tradetime", "filltime", "executiontime", "updatedatetimee", "updatedatetimel"],
   symbol: ["symbol", "contractsymbol", "instrumentsymbol", "instrument", "ticker", "contract", "market", "tradingsymbol"],
-  side: ["side", "tradedirection", "positiondirection", "direction", "buysell", "action", "actiontype", "type", "ordertype"],
-  quantity: ["quantity", "numberofcontracts", "contractquantity", "qty", "qtyfilled", "filledqty", "size", "positionsize", "positionqty", "contracts", "volume", "shares"],
+  side: ["side", "tradedirection", "positiondirection", "marketposition", "position", "direction", "buysell", "action", "actiontype", "type", "ordertype"],
+  quantity: ["quantity", "numberofcontracts", "contractquantity", "qty", "qtyfilled", "filledqty", "size", "positionsize", "positionqty", "contracts", "lots", "lot", "units", "volume", "shares"],
   entryPrice: ["entryprice", "entry", "openprice", "averageentryprice", "avgentryprice", "buyprice"],
   exitPrice: ["exitprice", "exit", "closeprice", "averageexitprice", "avgexitprice", "sellprice"],
   price: ["price", "fillprice", "executionprice", "averageprice", "avgprice"],
-  grossPnl: ["grosspnl", "grosspnlusd", "grossprofit", "grossprofitusd", "profitloss", "pnl", "pnlusd", "pl", "realizedpnl", "realizedpnlusd", "realizedpl", "profit", "profitusd"],
-  netPnl: ["netpnl", "netpnlusd", "netprofit", "netprofitusd", "netpl", "netplusd", "netprofitloss"],
+  grossPnl: ["grosspnl", "grosspnlusd", "grossprofit", "grossprofitusd", "profitloss", "profitandloss", "pnl", "pnlusd", "pl", "result", "tradepnl", "tradeprofit", "realizedpnl", "realisedpnl", "realizedpnlusd", "realizedpl", "realisedpl", "profit", "profitusd"],
+  netPnl: ["netpnl", "netpnlusd", "netprofit", "netprofitusd", "netpl", "netplusd", "netprofitloss", "netresult", "netrealizedpnl", "netrealisedpnl"],
   fees: ["fees", "fee", "commission", "commissions", "totalfees", "brokerage"],
   initialRisk: ["initialrisk", "risk", "riskamount", "plannedrisk"],
   rMultiple: ["rmultiple", "realizedr", "r", "resultinr"],
@@ -328,8 +328,8 @@ function dateFromRow(
 
 function parseSide(value: unknown): JournalSide {
   const normalized = String(value ?? "").trim().toUpperCase();
-  if (["LONG", "BUY", "B", "BOT", "BUYTOOPEN", "BUY TO OPEN"].includes(normalized)) return "LONG";
-  if (["SHORT", "SELL", "S", "SLD", "SELLTOOPEN", "SELL TO OPEN"].includes(normalized)) return "SHORT";
+  if (["LONG", "BUY", "B", "BOT", "BUYTOOPEN", "BUY TO OPEN"].includes(normalized) || /\b(?:LONG|BUY)\b/.test(normalized)) return "LONG";
+  if (["SHORT", "SELL", "S", "SLD", "SELLTOOPEN", "SELL TO OPEN"].includes(normalized) || /\b(?:SHORT|SELL)\b/.test(normalized)) return "SHORT";
   return "UNKNOWN";
 }
 
@@ -498,12 +498,15 @@ function normalizeRows(rows: Array<Record<string, unknown>>) {
 }
 
 export function parseDelimited(text: string, delimiter?: string) {
-  const clean = text.replace(/^\uFEFF/, "");
-  const firstLine = clean.split(/\r?\n/, 1)[0] ?? "";
+  const clean = text
+    .replace(/^\uFEFF/, "")
+    .replace(/^\s*```(?:csv|tsv|text)?\s*$/gim, "")
+    .replace(/^\s*```\s*$/gim, "");
+  const sampleLines = clean.split(/\r?\n/).slice(0, 25);
   const selectedDelimiter = delimiter ?? [
-    { delimiter: "\t", score: (firstLine.match(/\t/g) ?? []).length },
-    { delimiter: ",", score: (firstLine.match(/,/g) ?? []).length },
-    { delimiter: ";", score: (firstLine.match(/;/g) ?? []).length },
+    { delimiter: "\t", score: Math.max(...sampleLines.map((line) => (line.match(/\t/g) ?? []).length)) },
+    { delimiter: ",", score: Math.max(...sampleLines.map((line) => (line.match(/,/g) ?? []).length)) },
+    { delimiter: ";", score: Math.max(...sampleLines.map((line) => (line.match(/;/g) ?? []).length)) },
   ].sort((left, right) => right.score - left.score)[0].delimiter;
 
   const rows: string[][] = [];
@@ -543,10 +546,23 @@ export function parseDelimited(text: string, delimiter?: string) {
   if (row.some((cell) => cell !== "")) rows.push(row);
   if (rows.length < 2) return [];
 
-  const headers = rows[0];
-  return rows.slice(1).map((cells) => Object.fromEntries(
+  // AI-generated exports often contain a title or explanatory sentence above
+  // the real CSV. Find the strongest trade-header row instead of assuming row 1.
+  const candidates = rows.slice(0, Math.min(rows.length - 1, 25));
+  let headerIndex = 0;
+  let bestScore = journalHeaderScore(candidates[0] ?? []);
+  candidates.forEach((cells, index) => {
+    const score = journalHeaderScore(cells);
+    if (score > bestScore) {
+      headerIndex = index;
+      bestScore = score;
+    }
+  });
+
+  const headers = rows[headerIndex];
+  return rows.slice(headerIndex + 1).map((cells) => Object.fromEntries(
     headers.map((header, index) => [header || `column_${index + 1}`, cells[index] ?? ""]),
-  ));
+  )).filter((row) => Object.values(row).some((value) => String(value ?? "").trim() !== ""));
 }
 
 export type JournalParseOptions = {
@@ -569,6 +585,7 @@ function parseClosedTrades(
   const trades: JournalTrade[] = [];
   const warnings: string[] = [];
   let rejectedRows = 0;
+  const missing = { date: 0, instrument: 0, economics: 0 };
 
   rows.forEach((row, index) => {
     const openedAt = dateFromRow(row, HEADER_ALIASES.openedAt, true, "entry");
@@ -590,8 +607,12 @@ function parseClosedTrades(
     const explicitNet = parseNumber(valueFor(row, HEADER_ALIASES.netPnl));
     const fees = Math.abs(parseNumber(valueFor(row, HEADER_ALIASES.fees)) ?? 0);
 
-    if (!openedAt || !symbol || (explicitGross === null && explicitNet === null && (entryPrice === null || exitPrice === null))) {
+    const missingEconomics = explicitGross === null && explicitNet === null && (entryPrice === null || exitPrice === null);
+    if (!openedAt || !symbol || missingEconomics) {
       rejectedRows += 1;
+      if (!openedAt) missing.date += 1;
+      if (!symbol) missing.instrument += 1;
+      if (missingEconomics) missing.economics += 1;
       return;
     }
 
@@ -658,7 +679,14 @@ function parseClosedTrades(
     trades.push({ ...base, id: `${importId}-${index + 1}-${fingerprint}`, fingerprint });
   });
 
-  if (rejectedRows) warnings.push(`${rejectedRows} row${rejectedRows === 1 ? "" : "s"} could not be converted because required trade fields were missing.`);
+  if (rejectedRows) {
+    const details = [
+      missing.date ? `${missing.date} missing a valid entry date/time` : "",
+      missing.instrument ? `${missing.instrument} missing an instrument` : "",
+      missing.economics ? `${missing.economics} missing P&L or an entry/exit price pair` : "",
+    ].filter(Boolean).join("; ");
+    warnings.push(`${rejectedRows} row${rejectedRows === 1 ? "" : "s"} could not be converted${details ? `: ${details}.` : "."}`);
+  }
   return { trades, rejectedRows, warnings };
 }
 
