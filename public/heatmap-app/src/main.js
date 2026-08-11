@@ -279,7 +279,11 @@ class DepthForgeApp {
       if (event.origin !== window.location.origin) return;
       if (event.data?.type === 'kwantdesk:liquidity-map-symbol') {
         const symbol = normalizeLiquidityMapSymbol(event.data.symbol);
-        if (symbol) this.#addInstrumentTab(symbol, false);
+        // The parent sends the active symbol once the iframe reports ready.
+        // Treating that acknowledgement as another user tab selection wrote
+        // the same preference back to the parent and created a ready/sync
+        // echo. Same-symbol messages are deliberately no-ops.
+        if (symbol && symbol !== this.symbol) this.#addInstrumentTab(symbol, false);
         return;
       }
       if (event.data?.type === 'kwantdesk:liquidity-map-theme') {

@@ -132,6 +132,7 @@ test("liquidity-map tab deletion keeps the outer workspace instrument in sync", 
   assert.match(workspace, /event\.data\.active[\s\S]*?kwantdesk:liquidity-map-instrument:v1/);
   assert.match(workspace, /if \(isReady\) syncInstrument\(\)/);
   assert.doesNotMatch(workspace, /onLoad=\{\(\) => \{[\s\S]{0,180}syncInstrument\(\)/);
+  assert.match(source, /if \(symbol && symbol !== this\.symbol\) this\.#addInstrumentTab\(symbol, false\)/);
 });
 
 test("liquidity instruments use a searchable persistent tab picker", async () => {

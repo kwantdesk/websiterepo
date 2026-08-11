@@ -4,6 +4,7 @@ import test from "node:test";
 
 import {
   DepthMarketFeed,
+  isPlausiblePresentationTick,
   normalizeLiquidityMapSymbol,
   normalizeLiveSnapshot,
   symbolMatchesSnapshot,
@@ -282,6 +283,36 @@ test("a lightweight execution tick reaches the next presentation frame", async (
   feed.stop();
 
   assert.equal(snapshots.at(-1).snapshot.lastTick, 119_205);
+  assert.equal(snapshots.at(-1).details.visualHold, true);
+});
+
+test("a malformed lightweight tick cannot throw the live camera away from the book", async () => {
+  assert.equal(isPlausiblePresentationTick(119_205, { lastTick: 119_201 }), true);
+  assert.equal(isPlausiblePresentationTick(29_801.25, { lastTick: 119_201 }), false);
+
+  const listeners = new Map();
+  const source = {
+    close() {},
+    addEventListener(name, listener) { listeners.set(name, listener); },
+  };
+  const snapshots = [];
+  const feed = new DepthMarketFeed({
+    symbol: "NQ",
+    eventSourceFactory: () => source,
+    onSnapshot: (snapshot, details) => snapshots.push({ snapshot, details }),
+  });
+  feed.start();
+  listeners.get("depth")({
+    data: JSON.stringify({
+      status: { connected: true, fullDepth: true, provider: "Rithmic" },
+      snapshot: rawSnapshot({ lastTick: 119_201 }),
+    }),
+  });
+  listeners.get("tick")({ data: JSON.stringify({ tick: 29_801.25 }) });
+  await new Promise((resolve) => setTimeout(resolve, 25));
+  feed.stop();
+
+  assert.equal(snapshots.at(-1).snapshot.lastTick, 119_201);
   assert.equal(snapshots.at(-1).details.visualHold, true);
 });
 

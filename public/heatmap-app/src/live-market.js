@@ -6,9 +6,23 @@ const REQUESTED_DEPTH_TICKS = 1000;
 const DISPLAY_FRAME_MS = 1000 / 72;
 const STREAM_WATCHDOG_INTERVAL_MS = 2_000;
 const STREAM_SILENCE_RECONNECT_MS = 13_000;
+// The lightweight tick channel is only a presentation aid between complete
+// order-book frames. A malformed tick (for example, a price instead of a tick
+// index or a late event from another contract) must never be allowed to throw
+// the camera hundreds of points away and then snap it back on the next book.
+const MAX_PRESENTATION_TICK_JUMP = 128;
 export const INSTITUTIONAL_MARKET_DATA_ORIGIN = '/api/institutional-market-data';
 
 const finite = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
+
+export function isPlausiblePresentationTick(value, snapshot) {
+  const tick = finite(value, Number.NaN);
+  const reference = finite(snapshot?.lastTick, finite(snapshot?.midTick, Number.NaN));
+  return Number.isFinite(tick)
+    && tick > 0
+    && Number.isFinite(reference)
+    && Math.abs(tick - reference) <= MAX_PRESENTATION_TICK_JUMP;
+}
 
 export function liveDepthStreamUrl(symbol = 'MNQ', contractSymbol = '') {
   const query = new URLSearchParams({
@@ -365,7 +379,7 @@ export class DepthMarketFeed {
       this.#markStreamActivity();
       const payload = JSON.parse(event.data || '{}');
       const tick = finite(payload.tick, Number.NaN);
-      if (!Number.isFinite(tick)) return;
+      if (!isPlausiblePresentationTick(tick, this.presentationSnapshot)) return;
       this.latestTradeTick = tick;
       if (this.presentationSnapshot) {
         this.presentationSnapshot = {

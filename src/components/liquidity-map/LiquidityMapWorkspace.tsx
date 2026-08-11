@@ -52,9 +52,11 @@ export default function LiquidityMapWorkspace({ instrument, onInstrumentChange }
           ? event.data.symbol.trim().toUpperCase()
           : "";
         if (activeSymbol === "NQ" || activeSymbol === "ES") {
-          const instrument = `${activeSymbol}.v.0`;
-          window.localStorage.setItem("kwantdesk:liquidity-map-instrument:v1", instrument);
-          onInstrumentChange?.(instrument);
+          const nextInstrument = `${activeSymbol}.v.0`;
+          if (nextInstrument !== instrument) {
+            window.localStorage.setItem("kwantdesk:liquidity-map-instrument:v1", nextInstrument);
+            onInstrumentChange?.(nextInstrument);
+          }
         }
         setIsReady(true);
         return;
@@ -64,9 +66,11 @@ export default function LiquidityMapWorkspace({ instrument, onInstrumentChange }
           ? event.data.active.trim().toUpperCase()
           : "";
         if (activeSymbol === "NQ" || activeSymbol === "ES") {
-          const instrument = `${activeSymbol}.v.0`;
-          window.localStorage.setItem("kwantdesk:liquidity-map-instrument:v1", instrument);
-          onInstrumentChange?.(instrument);
+          const nextInstrument = `${activeSymbol}.v.0`;
+          if (nextInstrument !== instrument) {
+            window.localStorage.setItem("kwantdesk:liquidity-map-instrument:v1", nextInstrument);
+            onInstrumentChange?.(nextInstrument);
+          }
         }
         window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
       }
@@ -74,7 +78,7 @@ export default function LiquidityMapWorkspace({ instrument, onInstrumentChange }
 
     window.addEventListener("message", handleMapReady);
     return () => window.removeEventListener("message", handleMapReady);
-  }, [onInstrumentChange]);
+  }, [instrument, onInstrumentChange]);
 
   return (
     <div className="relative h-full min-h-0 w-full overflow-hidden bg-chart-background">
