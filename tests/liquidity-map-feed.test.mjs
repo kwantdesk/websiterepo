@@ -354,12 +354,17 @@ test("a single consumer paint failure cannot freeze subsequent genuine frames", 
   assert.equal(calls, 2, "the next genuine map frame survives an isolated callback failure");
 });
 
-test("the live stream has an application heartbeat and silent-connection watchdog", () => {
+test("the live stream distinguishes socket heartbeats from genuine market frames", () => {
   const source = readFileSync(new URL("../public/heatmap-app/src/live-market.js", import.meta.url), "utf8");
   const gateway = readFileSync(new URL("../services/rithmic_gateway/src/server.mjs", import.meta.url), "utf8");
 
   assert.match(source, /STREAM_SILENCE_RECONNECT_MS = 13_000/);
+  assert.match(source, /MARKET_FRAME_SILENCE_RECONNECT_MS = 13_000/);
+  assert.match(source, /STREAM_LEASE_MS = 240_000/);
   assert.match(source, /stream\.addEventListener\('heartbeat'/);
+  assert.match(source, /#markMarketFrame\(\)/);
+  assert.match(source, /\['L3', 'MBO_AGGREGATED', 'LIVE'\]\.includes\(liveDepthMode\)/);
+  assert.match(source, /scheduled stream rotation/);
   assert.match(source, /#restartSilentStream\(\)/);
   assert.match(gateway, /event: heartbeat/);
 });

@@ -1,6 +1,11 @@
 const REQUESTED_DEPTH_TICKS = 1000;
 const STREAM_WATCHDOG_INTERVAL_MS = 2_000;
 const STREAM_SILENCE_RECONNECT_MS = 13_000;
+const MARKET_FRAME_SILENCE_RECONNECT_MS = 13_000;
+// Vercel terminates the same-origin SSE proxy after roughly five minutes.
+// Rotate before that hard edge so the replacement connection is deliberate
+// instead of waiting for a half-closed EventSource to notice the failure.
+const STREAM_LEASE_MS = 240_000;
 // The lightweight tick channel is only a presentation aid between complete
 // order-book frames. A malformed tick (for example, a price instead of a tick
 // index or a late event from another contract) must never be allowed to throw
@@ -184,7 +189,9 @@ export class DepthMarketFeed {
     this.stream = null;
     this.watchdogTimer = null;
     this.reconnectTimer = null;
+    this.streamLeaseTimer = null;
     this.lastStreamActivityAt = 0;
+    this.lastMarketFrameAt = 0;
     this.presentationSnapshot = null;
     this.latestTradeTick = null;
     this.lastRealFrameAt = 0;
@@ -209,7 +216,9 @@ export class DepthMarketFeed {
     if (this.running) return;
     this.running = true;
     this.lastStreamActivityAt = Date.now();
+    this.lastMarketFrameAt = Date.now();
     this.#startWatchdog();
+    this.#bindRecoveryEvents();
     this.#connect();
   }
 
@@ -218,15 +227,19 @@ export class DepthMarketFeed {
     this.connectionGeneration += 1;
     clearInterval(this.watchdogTimer);
     clearTimeout(this.reconnectTimer);
+    clearTimeout(this.streamLeaseTimer);
     this.watchdogTimer = null;
     this.reconnectTimer = null;
+    this.streamLeaseTimer = null;
     this.presentationSnapshot = null;
     this.latestTradeTick = null;
     this.lastRealFrameAt = 0;
     this.lastStreamActivityAt = 0;
+    this.lastMarketFrameAt = 0;
     this.observedRealFrameMs = 100;
     this.stream?.close();
     this.stream = null;
+    this.#unbindRecoveryEvents();
   }
 
   setSymbol(symbol, contractSymbol = '') {
@@ -244,9 +257,12 @@ export class DepthMarketFeed {
     this.latestTradeTick = null;
     this.lastRealFrameAt = 0;
     this.lastStreamActivityAt = Date.now();
+    this.lastMarketFrameAt = Date.now();
     this.observedRealFrameMs = 100;
     this.stream?.close();
     this.stream = null;
+    clearTimeout(this.streamLeaseTimer);
+    this.streamLeaseTimer = null;
     this.status = {
       ...this.status,
       connected: false,
@@ -274,6 +290,11 @@ export class DepthMarketFeed {
     stream.onopen = () => {
       if (!isCurrentConnection()) return;
       this.#markStreamActivity();
+      clearTimeout(this.streamLeaseTimer);
+      this.streamLeaseTimer = setTimeout(() => {
+        if (isCurrentConnection()) this.#restartSilentStream('scheduled stream rotation');
+      }, STREAM_LEASE_MS);
+      this.streamLeaseTimer?.unref?.();
       this.status = { ...this.status, connected: true };
       this.onStatus?.(this.status);
     };
@@ -324,6 +345,7 @@ export class DepthMarketFeed {
           final: index === snapshots.length - 1,
         });
       });
+      if (snapshots.length) this.#markMarketFrame();
     });
     stream.addEventListener('cvd-history', event => {
       if (!isCurrentConnection()) return;
@@ -337,6 +359,7 @@ export class DepthMarketFeed {
     stream.addEventListener('depth', event => {
       if (!isCurrentConnection()) return;
       this.#markStreamActivity();
+      this.#markMarketFrame();
       const payload = JSON.parse(event.data || '{}');
       const payloadStatus = payload.status || {};
       this.status = {
@@ -370,6 +393,7 @@ export class DepthMarketFeed {
     stream.addEventListener('tick', event => {
       if (!isCurrentConnection()) return;
       this.#markStreamActivity();
+      this.#markMarketFrame();
       const payload = JSON.parse(event.data || '{}');
       const tick = finite(payload.tick, Number.NaN);
       if (!isPlausiblePresentationTick(tick, this.presentationSnapshot)) return;
@@ -399,36 +423,83 @@ export class DepthMarketFeed {
     this.lastStreamActivityAt = Date.now();
   }
 
+  #markMarketFrame() {
+    this.lastMarketFrameAt = Date.now();
+  }
+
   #startWatchdog() {
     if (this.watchdogTimer) return;
     this.watchdogTimer = setInterval(() => {
       if (!this.running || this.reconnectTimer) return;
       if (typeof document !== 'undefined' && document.hidden) return;
       if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
-      if (Date.now() - this.lastStreamActivityAt <= STREAM_SILENCE_RECONNECT_MS) return;
-      this.#restartSilentStream();
+      const now = Date.now();
+      if (now - this.lastStreamActivityAt > STREAM_SILENCE_RECONNECT_MS) {
+        this.#restartSilentStream('socket silence');
+        return;
+      }
+      // Heartbeats prove only that the HTTP connection is alive. They used to
+      // keep the watchdog satisfied even when real depth frames had stopped,
+      // leaving a frozen map labelled LIVE indefinitely.
+      const liveDepthMode = String(this.status.depthMode || '').toUpperCase();
+      const expectsLiveFrames = this.status.connected === true
+        && this.status.fullDepth === true
+        && this.status.stale !== true
+        && ['L3', 'MBO_AGGREGATED', 'LIVE'].includes(liveDepthMode);
+      if (expectsLiveFrames && now - this.lastMarketFrameAt > MARKET_FRAME_SILENCE_RECONNECT_MS) {
+        this.#restartSilentStream('market-frame silence');
+      }
     }, STREAM_WATCHDOG_INTERVAL_MS);
     this.watchdogTimer?.unref?.();
   }
 
-  #restartSilentStream() {
+  #restartSilentStream(reason = 'stream interruption') {
     if (!this.running || this.reconnectTimer) return;
     this.connectionGeneration += 1;
+    clearTimeout(this.streamLeaseTimer);
+    this.streamLeaseTimer = null;
     this.stream?.close();
     this.stream = null;
     this.status = {
       ...this.status,
       connected: false,
-      message: 'Depth stream reconnecting',
+      message: `Depth stream reconnecting: ${reason}`,
     };
     this.onStatus?.(this.status);
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
       if (!this.running) return;
       this.lastStreamActivityAt = Date.now();
+      this.lastMarketFrameAt = Date.now();
       this.#connect();
     }, 180);
     this.reconnectTimer?.unref?.();
+  }
+
+  #bindRecoveryEvents() {
+    if (this.recoveryEventsBound || typeof window === 'undefined') return;
+    this.recoveryEventsBound = true;
+    this.handleVisibilityRecovery = () => {
+      if (typeof document !== 'undefined' && document.hidden) return;
+      if (!this.running || Date.now() - this.lastMarketFrameAt <= MARKET_FRAME_SILENCE_RECONNECT_MS) return;
+      this.#restartSilentStream('page resumed');
+    };
+    this.handleOnlineRecovery = () => {
+      if (this.running) this.#restartSilentStream('network restored');
+    };
+    window.addEventListener('focus', this.handleVisibilityRecovery);
+    window.addEventListener('online', this.handleOnlineRecovery);
+    document?.addEventListener?.('visibilitychange', this.handleVisibilityRecovery);
+  }
+
+  #unbindRecoveryEvents() {
+    if (!this.recoveryEventsBound || typeof window === 'undefined') return;
+    window.removeEventListener('focus', this.handleVisibilityRecovery);
+    window.removeEventListener('online', this.handleOnlineRecovery);
+    document?.removeEventListener?.('visibilitychange', this.handleVisibilityRecovery);
+    this.recoveryEventsBound = false;
+    this.handleVisibilityRecovery = null;
+    this.handleOnlineRecovery = null;
   }
 
   #emitSnapshot(snapshot, metadata) {
