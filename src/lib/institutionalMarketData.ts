@@ -587,6 +587,20 @@ export function futuresContractRoot(contractSymbol: string) {
     .match(/^([A-Z0-9]+?)[FGHJKMNQUVXZ]\d{1,2}$/)?.[1] ?? null;
 }
 
+const INSTITUTIONAL_PARENT_ROOTS: Record<string, string> = {
+  MNQ: "NQ",
+  MES: "ES",
+  MYM: "YM",
+  M2K: "RTY",
+  MGC: "GC",
+  MCL: "CL",
+};
+
+function institutionalParentRoot(root: string | null) {
+  const normalized = String(root || "").trim().toUpperCase();
+  return INSTITUTIONAL_PARENT_ROOTS[normalized] || normalized;
+}
+
 function normalizeCandles(value: unknown, limit = 600): Candle[] {
   if (!Array.isArray(value)) return [];
   const candles = new Map<number, Candle>();
@@ -756,11 +770,12 @@ export async function fetchInstitutionalSnapshot(args: {
     const exchange = normalizeExchange(payload.exchange);
     const asOfMs = timestampMs(payload.asOf);
     const lastPrice = finiteNumber(payload.lastPrice);
+    const requestedParentRoot = institutionalParentRoot(requestedRoot);
     if (
       !root
-      || root !== requestedRoot
+      || institutionalParentRoot(root) !== requestedParentRoot
       || !contractSymbol
-      || futuresContractRoot(contractSymbol) !== requestedRoot
+      || institutionalParentRoot(futuresContractRoot(contractSymbol)) !== requestedParentRoot
       || (requestedContract && contractSymbol !== requestedContract)
       || !displayName
       || !exchange
@@ -771,7 +786,9 @@ export async function fetchInstitutionalSnapshot(args: {
       return null;
     }
     return {
-      root,
+      // The gateway intentionally serves micro charts from the price-identical
+      // e-mini parent tape. Keep the user's requested root in chart state.
+      root: requestedRoot,
       contractSymbol,
       displayName,
       exchange,

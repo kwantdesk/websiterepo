@@ -1184,6 +1184,32 @@ function trimCandlesAfterActiveBucket(
     getTimeframeBucketStart(candle.timestamp, timeframe) <= activeBucket);
 }
 
+function trimDisconnectedActiveTail(
+  candles: Candle[],
+  timeframe: string,
+  now = Date.now(),
+) {
+  if (isEventBasedChartInterval(timeframe) || candles.length < 2) return candles;
+  const durationMs = getTimeframeMs(timeframe);
+  if (!Number.isFinite(durationMs) || durationMs >= 24 * 60 * 60_000) return candles;
+  const normalized = mergeChartHistory([], candles);
+  const activeBucket = getTimeframeBucketStart(now, timeframe);
+  if (getTimeframeBucketStart(normalized.at(-1)?.timestamp ?? 0, timeframe) !== activeBucket) {
+    return normalized;
+  }
+  // A browser tick can arrive before the gateway seam. Never retain that
+  // isolated active tail in memory/cache or it appears as a candle floating
+  // several minutes to the right of history. The subsequent seam merge adds
+  // these buckets back from authoritative executions.
+  const lowerBound = Math.max(1, normalized.length - 12);
+  for (let index = normalized.length - 1; index >= lowerBound; index -= 1) {
+    const current = getTimeframeBucketStart(normalized[index].timestamp, timeframe);
+    const previous = getTimeframeBucketStart(normalized[index - 1].timestamp, timeframe);
+    if (current - previous > durationMs) return normalized.slice(0, index);
+  }
+  return normalized;
+}
+
 function mergeHistoricalWithLiveTail(
   historical: Candle[],
   rendered: Candle[],
@@ -3487,8 +3513,11 @@ function WorkspaceChartPane({
     const observedTail = pane.broker === "Databento"
       ? readDatabentoLiveTail(pane.symbol)
       : [];
-    const immediateHistory = trimCandlesAfterActiveBucket(
-      sanitizeCandles(immediateCache?.candles ?? [], pane.symbol),
+    const immediateHistory = trimDisconnectedActiveTail(
+      trimCandlesAfterActiveBucket(
+        sanitizeCandles(immediateCache?.candles ?? [], pane.symbol),
+        pane.timeframe,
+      ),
       pane.timeframe,
     );
     const immediateHistoryForPeriod = trimChartHistoryForPeriod(
@@ -3623,10 +3652,13 @@ function WorkspaceChartPane({
         );
         setMarketTrades(cachedMarketTrades);
       }
-      const cachedHistory = trimCandlesAfterActiveBucket(
-        sanitizeCandles(
-          mergeChartHistory(cached?.candles ?? [], liveSeam),
-          pane.symbol,
+      const cachedHistory = trimDisconnectedActiveTail(
+        trimCandlesAfterActiveBucket(
+          sanitizeCandles(
+            mergeChartHistory(cached?.candles ?? [], liveSeam),
+            pane.symbol,
+          ),
+          pane.timeframe,
         ),
         pane.timeframe,
       );
@@ -4455,6 +4487,18 @@ function WorkspaceChartPane({
         if (ticks.some((tick) => !tick.cached)) markMarketActive();
         setLiveFeedError(null);
         const previous = latestCandlesRef.current;
+        if (
+          usingDatabentoPaneFeed
+          && !isEventBasedChartInterval(pane.timeframe)
+          && cmeChartTailNeedsReconciliation(previous, pane.timeframe)
+        ) {
+          // Do not append the current live bucket across a missing history
+          // seam. Keep the live quote state current while the background seam
+          // request supplies the intervening candles; the next tick then
+          // attaches normally to a continuous series.
+          historyHydratedRef.current = false;
+          return;
+        }
         const next = usingDatabentoPaneFeed && isEventBasedChartInterval(pane.timeframe)
           ? (() => {
               const trades = ticks
