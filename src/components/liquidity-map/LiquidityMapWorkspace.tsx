@@ -46,8 +46,13 @@ export default function LiquidityMapWorkspace({ instrument }: LiquidityMapWorksp
     const handleMapReady = (event: MessageEvent) => {
       if (event.origin !== window.location.origin) return;
       if (event.source !== iframeRef.current?.contentWindow) return;
-      if (event.data?.type !== "kwantdesk:liquidity-map-ready") return;
-      setIsReady(true);
+      if (event.data?.type === "kwantdesk:liquidity-map-ready") {
+        setIsReady(true);
+        return;
+      }
+      if (event.data?.type === "kwantdesk:liquidity-map-preferences-changed") {
+        window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
+      }
     };
 
     window.addEventListener("message", handleMapReady);

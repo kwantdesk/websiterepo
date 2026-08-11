@@ -428,6 +428,12 @@ class DepthForgeApp {
         tabs: this.instrumentTabs,
         active: this.symbol,
       }));
+      if (window.parent !== window) {
+        window.parent.postMessage(
+          { type: 'kwantdesk:liquidity-map-preferences-changed' },
+          window.location.origin,
+        );
+      }
     } catch {
       // The live tabs still work for this session if browser storage is unavailable.
     }
@@ -662,6 +668,12 @@ class DepthForgeApp {
       delete saved.uiTheme;
       delete saved.autoCenter;
       localStorage.setItem(LIQUIDITY_MAP_SETTINGS_KEY, JSON.stringify(saved));
+      if (window.parent !== window) {
+        window.parent.postMessage(
+          { type: 'kwantdesk:liquidity-map-preferences-changed' },
+          window.location.origin,
+        );
+      }
     } catch {
       // Browser storage is optional; the live map remains usable without it.
     }

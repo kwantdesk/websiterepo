@@ -6,6 +6,8 @@ const htmlPath = new URL("../public/heatmap-app/index.html", import.meta.url);
 const embedCssPath = new URL("../public/heatmap-app/embed.css", import.meta.url);
 const mainPath = new URL("../public/heatmap-app/src/main.js", import.meta.url);
 const rendererPath = new URL("../public/heatmap-app/src/renderer.js", import.meta.url);
+const workspacePath = new URL("../src/components/liquidity-map/LiquidityMapWorkspace.tsx", import.meta.url);
+const preferencesPath = new URL("../src/lib/userPreferences.ts", import.meta.url);
 
 test("restores the full Kwantify liquidity-map control surface", async () => {
   const html = await readFile(htmlPath, "utf8");
@@ -61,6 +63,19 @@ test("liquidity-map choices persist between visits", async () => {
   assert.match(source, /kwantdesk:liquidity-map-settings:v1/);
   assert.match(source, /#restoreSettings\(\)/);
   assert.match(source, /#saveSettings\(\)/);
+});
+
+test("liquidity-map display and bubble settings follow the signed-in account", async () => {
+  const [source, workspace, preferences] = await Promise.all([
+    readFile(mainPath, "utf8"),
+    readFile(workspacePath, "utf8"),
+    readFile(preferencesPath, "utf8"),
+  ]);
+
+  assert.match(preferences, /"kwantdesk:liquidity-map-settings:v1"/);
+  assert.match(preferences, /"kwantdesk:liquidity-map-tabs:v1"/);
+  assert.match(source, /kwantdesk:liquidity-map-preferences-changed/);
+  assert.match(workspace, /kwantdesk:liquidity-map-preferences-changed[\s\S]*?kwantdesk:preferences-changed/);
 });
 
 test("liquidity instruments use a searchable persistent tab picker", async () => {
