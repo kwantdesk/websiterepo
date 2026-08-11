@@ -189,7 +189,7 @@ test("auto-center keeps live price at the true viewport midpoint", async () => {
   assert.match(source, /if \(this\.settings\.autoCenter && wasAtLive\) this\.view\.centerTick = null;/);
   assert.match(source, /if \(this\.settings\.autoCenter && this\.atLive\) this\.view\.centerTick = null;/);
   assert.doesNotMatch(source, /recenterThreshold|drift \* 0\.42/);
-  assert.match(renderer, /const centerTick = view\.centerTick \?\? current\.midTick;/);
+  assert.match(renderer, /const liveTick = Number\(current\.lastTick\);[\s\S]*?const centerTick = view\.centerTick \?\? \(Number\.isFinite\(liveTick\) && liveTick > 0[\s\S]*?liveTick[\s\S]*?: current\.midTick\);/);
   assert.match(renderer, /const bottomTick = centerTick - visibleTickSpan \/ 2;[\s\S]*?const topTick = centerTick \+ visibleTickSpan \/ 2;/);
 });
 

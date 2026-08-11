@@ -174,7 +174,17 @@ export class DepthRenderer {
     const rowTicks = Math.max(1, view.aggregation || 1);
     const baseRows = Math.max(45, view.visibleRows || 112);
     const visibleTickSpan = baseRows * rowTicks;
-    const centerTick = view.centerTick ?? current.midTick;
+    // Auto-centre must follow the price the user is actually watching.  The
+    // inside-market midpoint can temporarily diverge from the last traded
+    // price when the restored depth book is stale or still catching up.  That
+    // previously put the live-price marker near an edge on some aspect ratios.
+    // Resolve the unlocked centre from lastTick on every render so the price
+    // always lands at the midpoint of the *current visible plot height*; retain
+    // midTick only as a defensive fallback for snapshots without a trade.
+    const liveTick = Number(current.lastTick);
+    const centerTick = view.centerTick ?? (Number.isFinite(liveTick) && liveTick > 0
+      ? liveTick
+      : current.midTick);
     const bottomTick = centerTick - visibleTickSpan / 2;
     const topTick = centerTick + visibleTickSpan / 2;
     // Main owns the data-aware zoom floor. Keep only a tiny renderer safety
