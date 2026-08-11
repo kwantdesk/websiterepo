@@ -195,22 +195,22 @@ html[data-theme-updating="true"] *::after {
 
 @keyframes gex-current-price-glow {
   0%, 100% {
-    border-color: rgba(157, 255, 0, .86);
-    outline-color: rgba(157, 255, 0, .56);
+    border-color: color-mix(in srgb, var(--gex-live-fluor) 86%, transparent);
+    outline-color: color-mix(in srgb, var(--gex-live-fluor) 56%, transparent);
     box-shadow:
-      inset 0 0 16px rgba(157, 255, 0, .13),
-      inset 0 0 3px rgba(216, 255, 166, .72),
-      0 0 9px rgba(157, 255, 0, .58),
-      0 0 25px rgba(157, 255, 0, .24);
+      inset 0 0 16px color-mix(in srgb, var(--gex-live-fluor) 13%, transparent),
+      inset 0 0 3px color-mix(in srgb, var(--gex-live-fluor) 72%, white 28%),
+      0 0 9px color-mix(in srgb, var(--gex-live-fluor) 58%, transparent),
+      0 0 25px color-mix(in srgb, var(--gex-live-fluor) 24%, transparent);
   }
   50% {
-    border-color: #b7ff3c;
-    outline-color: rgba(183, 255, 60, .92);
+    border-color: var(--gex-live-fluor);
+    outline-color: color-mix(in srgb, var(--gex-live-fluor) 92%, transparent);
     box-shadow:
-      inset 0 0 24px rgba(157, 255, 0, .22),
-      inset 0 0 6px rgba(235, 255, 207, .94),
-      0 0 14px rgba(157, 255, 0, .92),
-      0 0 38px rgba(157, 255, 0, .46);
+      inset 0 0 24px color-mix(in srgb, var(--gex-live-fluor) 22%, transparent),
+      inset 0 0 6px color-mix(in srgb, var(--gex-live-fluor) 72%, white 28%),
+      0 0 14px color-mix(in srgb, var(--gex-live-fluor) 92%, transparent),
+      0 0 38px color-mix(in srgb, var(--gex-live-fluor) 46%, transparent);
   }
 }
 
@@ -218,15 +218,15 @@ html[data-theme-updating="true"] *::after {
   0%, 100% {
     opacity: .78;
     box-shadow:
-      0 0 6px rgba(157, 255, 0, .78),
-      0 0 13px rgba(157, 255, 0, .34);
+      0 0 6px color-mix(in srgb, var(--gex-live-fluor) 78%, transparent),
+      0 0 13px color-mix(in srgb, var(--gex-live-fluor) 34%, transparent);
   }
   50% {
     opacity: 1;
     box-shadow:
-      0 0 10px rgba(239, 255, 215, .96),
-      0 0 24px rgba(157, 255, 0, .86),
-      0 0 38px rgba(157, 255, 0, .52);
+      0 0 10px color-mix(in srgb, var(--gex-live-fluor) 72%, white 28%),
+      0 0 24px color-mix(in srgb, var(--gex-live-fluor) 86%, transparent),
+      0 0 38px color-mix(in srgb, var(--gex-live-fluor) 52%, transparent);
   }
 }
 
@@ -247,16 +247,17 @@ html[data-theme-updating="true"] *::after {
 }
 
 .gex-current-price-marker {
+  --gex-live-fluor: color-mix(in srgb, var(--primary) 84%, white 16%);
   isolation: isolate;
-  border: 2px solid #9dff00;
+  border: 2px solid var(--gex-live-fluor);
   border-radius: 12px;
-  outline: 1px solid rgba(157, 255, 0, .62);
+  outline: 1px solid color-mix(in srgb, var(--gex-live-fluor) 62%, transparent);
   outline-offset: 2px;
   background-image: linear-gradient(
     90deg,
-    rgba(157, 255, 0, .24),
-    rgba(157, 255, 0, .06) 48%,
-    rgba(157, 255, 0, .18)
+    color-mix(in srgb, var(--gex-live-fluor) 24%, transparent),
+    color-mix(in srgb, var(--gex-live-fluor) 6%, transparent) 48%,
+    color-mix(in srgb, var(--gex-live-fluor) 18%, transparent)
   );
   animation: gex-current-price-glow 3.2s ease-in-out infinite;
   will-change: border-color, outline-color, box-shadow;
@@ -267,19 +268,19 @@ html[data-theme-updating="true"] *::after {
   min-height: 22px;
   align-items: center;
   justify-content: center;
-  border: 1px solid #b7ff3c;
+  border: 1px solid var(--gex-live-fluor);
   border-radius: 999px;
   padding: 2px 7px;
-  color: #efffd7;
-  background: rgba(8, 20, 2, .94);
-  text-shadow: 0 0 7px rgba(183, 255, 60, .88);
+  color: color-mix(in srgb, var(--foreground) 82%, var(--gex-live-fluor) 18%);
+  background: color-mix(in srgb, var(--background) 90%, var(--gex-live-fluor) 10%);
+  text-shadow: 0 0 7px color-mix(in srgb, var(--gex-live-fluor) 88%, transparent);
   box-shadow:
-    inset 0 0 8px rgba(157, 255, 0, .18),
-    0 0 9px rgba(157, 255, 0, .54);
+    inset 0 0 8px color-mix(in srgb, var(--gex-live-fluor) 18%, transparent),
+    0 0 9px color-mix(in srgb, var(--gex-live-fluor) 54%, transparent);
 }
 
 .gex-current-price-dash {
-  background: linear-gradient(180deg, #efffd7, #9dff00);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--gex-live-fluor) 65%, white 35%), var(--gex-live-fluor));
   animation: gex-current-price-dash-glow 3.2s ease-in-out infinite;
   will-change: opacity, box-shadow;
 }
