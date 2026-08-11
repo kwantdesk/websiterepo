@@ -167,6 +167,7 @@ class DepthForgeApp {
 
     all('.rail-button[data-tool]').forEach(button => button.addEventListener('click', () => this.#selectTool(button.dataset.tool)));
     this.#bindToggle('toggleHeatmap', 'heatmap');
+    this.#bindToggle('toggleDom', 'domVisible');
     this.#bindToggle('toggleTrades', 'trades');
     this.#bindToggle('toggleProfile', 'profile');
     this.#bindToggle('toggleCvd', 'cvdPanel');
@@ -286,7 +287,7 @@ class DepthForgeApp {
         this.settings.domVisible = event.data.domVisible !== false;
         const domWidth = Number(event.data.domWidth);
         if (Number.isFinite(domWidth)) this.settings.domWidth = Math.min(260, Math.max(30, domWidth));
-        $('showDom').checked = this.settings.domVisible;
+        this.#syncDomVisibilityControls();
         this.requestRender();
       }
     });
@@ -369,6 +370,7 @@ class DepthForgeApp {
       this.settings[setting] = !this.settings[setting];
       event.currentTarget.classList.toggle('active-toggle', this.settings[setting]);
       if (setting === 'cvdPanel') this.#syncIndicatorLayout();
+      if (setting === 'domVisible') this.#syncDomVisibilityControls(true);
       this.requestRender();
     });
   }
@@ -378,14 +380,21 @@ class DepthForgeApp {
       this.settings[setting] = event.target.checked;
       if (setting === 'autoCenter' && event.target.checked) this.view.centerTick = null;
       if (setting === 'cvdEnabled') this.#syncIndicatorLayout();
-      if (setting === 'domVisible' && window.parent !== window) {
-        window.parent.postMessage({
-          type: 'kwantify:heatmap-dom-visibility',
-          visible: this.settings.domVisible,
-        }, window.location.origin);
-      }
+      if (setting === 'domVisible') this.#syncDomVisibilityControls(true);
       this.requestRender();
     });
+  }
+
+  #syncDomVisibilityControls(notifyParent = false) {
+    const visible = this.settings.domVisible !== false;
+    $('showDom').checked = visible;
+    $('toggleDom').classList.toggle('active-toggle', visible);
+    if (notifyParent && window.parent !== window) {
+      window.parent.postMessage({
+        type: 'kwantify:heatmap-dom-visibility',
+        visible,
+      }, window.location.origin);
+    }
   }
 
   #bindSelect(id, setting) {
@@ -703,16 +712,11 @@ class DepthForgeApp {
     $('autoCenter').checked = true;
     $('showTrails').checked = true;
     $('showGrid').checked = true;
-    $('showDom').checked = true;
-    if (window.parent !== window) {
-      window.parent.postMessage({
-        type: 'kwantify:heatmap-dom-visibility',
-        visible: true,
-      }, window.location.origin);
-    }
+    this.#syncDomVisibilityControls(true);
     $('aggregateDepth').checked = false;
     $('bubbleDifferential').checked = true;
     $('toggleHeatmap').classList.add('active-toggle');
+    $('toggleDom').classList.add('active-toggle');
     $('toggleTrades').classList.add('active-toggle');
     $('toggleProfile').classList.add('active-toggle');
     $('toggleCvd').classList.add('active-toggle');
@@ -741,6 +745,7 @@ class DepthForgeApp {
 
   #syncHeatmapControls() {
     $('autoCenter').checked = Boolean(this.settings.autoCenter);
+    this.#syncDomVisibilityControls();
     $('sensitivityRange').value = String(this.settings.sensitivity);
     $('quickHeatRange').value = String(this.settings.sensitivity);
     $('sensitivityOutput').value = this.settings.sensitivity.toFixed(2);

@@ -14,6 +14,7 @@ test("restores the full Kwantify liquidity-map control surface", async () => {
 
   for (const id of [
     "toggleHeatmap",
+    "toggleDom",
     "toggleTrades",
     "toggleProfile",
     "toggleCvd",
@@ -33,6 +34,20 @@ test("restores the full Kwantify liquidity-map control surface", async () => {
   assert.match(html, /data-panel-shortcut="depth"/);
   assert.match(html, /data-panel-shortcut="signals"/);
   assert.match(html, /data-panel-shortcut="settings"/);
+});
+
+test("toolbar DOM control sits between heatmap and trades and removes the full rail", async () => {
+  const [html, source, renderer] = await Promise.all([
+    readFile(htmlPath, "utf8"),
+    readFile(mainPath, "utf8"),
+    readFile(rendererPath, "utf8"),
+  ]);
+
+  assert.match(html, /id="toggleHeatmap"[\s\S]*?id="toggleDom"[\s\S]*?id="toggleTrades"/);
+  assert.match(source, /#bindToggle\('toggleDom', 'domVisible'\)/);
+  assert.match(source, /#syncDomVisibilityControls\(notifyParent = false\)/);
+  assert.match(renderer, /const priceAxisWidth = domVisible \? priceLabelWidth \+ restingBookWidth \+ depthColumnWidth : 0/);
+  assert.match(renderer, /if \(domVisible\) this\.#drawPriceAxis\(ctx, current, accents\)/);
 });
 
 test("heat sensitivity can dim substantially below the old minimum", async () => {

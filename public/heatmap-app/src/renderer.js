@@ -164,7 +164,9 @@ export class DepthRenderer {
       : 0;
     const restingBookWidth = domVisible ? Math.round(domWidth * .66) : 0;
     const depthColumnWidth = domVisible ? domWidth - restingBookWidth : 0;
-    const priceAxisWidth = priceLabelWidth + restingBookWidth + depthColumnWidth;
+    // The toolbar DOM toggle owns the complete market ladder. When disabled,
+    // collapse the price/book rail entirely so the heatmap and CVD reclaim it.
+    const priceAxisWidth = domVisible ? priceLabelWidth + restingBookWidth + depthColumnWidth : 0;
     const volumeRatioWidth = settings.profile ? (width < 700 ? 72 : width < 900 ? 92 : 112) : 0;
     const profileWidth = settings.profile ? (width < 700 ? 72 : width < 900 ? 92 : 112) : 0;
     const timeAxisHeight = 28;
@@ -222,7 +224,7 @@ export class DepthRenderer {
       this.#drawBidAskVolumeProfile(ctx, history, accents);
       this.#drawVolumeProfile(ctx, history, accents);
     }
-    this.#drawPriceAxis(ctx, current, accents);
+    if (domVisible) this.#drawPriceAxis(ctx, current, accents);
     this.#drawTimeAxis(ctx, history);
     this.#drawCrosshair(ctx);
     this.#drawMeasurement(ctx);
