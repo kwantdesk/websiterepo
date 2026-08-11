@@ -227,7 +227,7 @@ test("does not replay the full history window again after an SSE reconnect", () 
   assert.deepEqual(snapshots.map((snapshot) => snapshot.id), [1, 2, 3]);
 });
 
-test("paces a sparse book smoothly without duplicating trades", async () => {
+test("does not synthesize duplicate full-map frames between genuine books", async () => {
   const listeners = new Map();
   const source = {
     close() {},
@@ -249,27 +249,23 @@ test("paces a sparse book smoothly without duplicating trades", async () => {
   await new Promise((resolve) => setTimeout(resolve, 70));
   feed.stop();
 
-  assert.ok(snapshots.length >= 4, "presentation continues between genuine market frames");
+  assert.equal(snapshots.length, 1);
   assert.equal(snapshots[0].snapshot.trades.length, 1);
-  for (const held of snapshots.slice(1)) {
-    assert.equal(held.details.visualHold, true);
-    assert.equal(held.snapshot.trades.length, 0);
-    assert.equal(held.snapshot.volume, 0);
-    assert.equal(held.snapshot.eventsSince, 0);
-  }
 });
 
-test("a lightweight execution tick reaches the next presentation frame", async () => {
+test("a lightweight execution tick reaches the marker callback without repainting the map", async () => {
   const listeners = new Map();
   const source = {
     close() {},
     addEventListener(name, listener) { listeners.set(name, listener); },
   };
   const snapshots = [];
+  const ticks = [];
   const feed = new DepthMarketFeed({
     symbol: "MNQ",
     eventSourceFactory: () => source,
     onSnapshot: (snapshot, details) => snapshots.push({ snapshot, details }),
+    onPresentationTick: (tick, timestamp) => ticks.push({ tick, timestamp }),
   });
   feed.start();
   listeners.get("depth")({
@@ -282,8 +278,8 @@ test("a lightweight execution tick reaches the next presentation frame", async (
   await new Promise((resolve) => setTimeout(resolve, 25));
   feed.stop();
 
-  assert.equal(snapshots.at(-1).snapshot.lastTick, 119_205);
-  assert.equal(snapshots.at(-1).details.visualHold, true);
+  assert.equal(snapshots.length, 1);
+  assert.equal(ticks.at(-1).tick, 119_205);
 });
 
 test("a malformed lightweight tick cannot throw the live camera away from the book", async () => {
@@ -296,10 +292,12 @@ test("a malformed lightweight tick cannot throw the live camera away from the bo
     addEventListener(name, listener) { listeners.set(name, listener); },
   };
   const snapshots = [];
+  const ticks = [];
   const feed = new DepthMarketFeed({
     symbol: "NQ",
     eventSourceFactory: () => source,
     onSnapshot: (snapshot, details) => snapshots.push({ snapshot, details }),
+    onPresentationTick: (tick) => ticks.push(tick),
   });
   feed.start();
   listeners.get("depth")({
@@ -313,10 +311,10 @@ test("a malformed lightweight tick cannot throw the live camera away from the bo
   feed.stop();
 
   assert.equal(snapshots.at(-1).snapshot.lastTick, 119_201);
-  assert.equal(snapshots.at(-1).details.visualHold, true);
+  assert.equal(ticks.length, 0);
 });
 
-test("a single consumer paint failure cannot freeze subsequent presentation frames", async () => {
+test("a single consumer paint failure cannot freeze subsequent genuine frames", async () => {
   const listeners = new Map();
   const source = {
     close() {},
@@ -342,13 +340,18 @@ test("a single consumer paint failure cannot freeze subsequent presentation fram
         snapshot: rawSnapshot(),
       }),
     });
-    await new Promise((resolve) => setTimeout(resolve, 45));
+    listeners.get("depth")({
+      data: JSON.stringify({
+        status: { connected: true, fullDepth: true, provider: "Rithmic" },
+        snapshot: rawSnapshot({ id: 2, timestamp: 1_786_100_000_100 }),
+      }),
+    });
   } finally {
     feed.stop();
     console.error = originalError;
   }
 
-  assert.ok(calls >= 2, "the paced map continues after an isolated callback failure");
+  assert.equal(calls, 2, "the next genuine map frame survives an isolated callback failure");
 });
 
 test("the live stream has an application heartbeat and silent-connection watchdog", () => {

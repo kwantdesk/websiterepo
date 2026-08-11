@@ -885,6 +885,7 @@ const server = createServer(async (request, response) => {
       const instrument = requestedInstrument(url);
       client.subscribe(instrument.exchange, instrument.symbol);
       const depth = Math.min(5_000, Math.max(20, Number(url.searchParams.get("depthTicks") || 400)));
+      const afterTimestamp = Math.max(0, Number(url.searchParams.get("afterTimestamp") || 0));
       const snapshot = client.book.snapshot(instrument.exchange, instrument.symbol, depth);
       response.writeHead(200, {
         "Content-Type": "text/event-stream",
@@ -922,14 +923,17 @@ const server = createServer(async (request, response) => {
         const historyState = heatmapHistoryState(
           `${instrument.exchange}:${instrument.symbol}`,
         );
-        if (historyState.frames.length > 1) {
+        const replayFrames = afterTimestamp > 0
+          ? historyState.frames.filter((frame) => Number(frame.snapshot?.timestamp) > afterTimestamp)
+          : historyState.frames;
+        if (replayFrames.length > 1) {
           response.write(
             `event: history\ndata: ${JSON.stringify({
               status: initialFrame.status,
-              snapshots: historyState.frames.map((frame) => frame.snapshot),
+              snapshots: replayFrames.map((frame) => frame.snapshot),
             })}\n\n`,
           );
-          initialMarketTimestampMs = historyState.lastMarketTimestampMs;
+          initialMarketTimestampMs = Math.max(afterTimestamp, historyState.lastMarketTimestampMs);
           lastSequence = historyState.lastSequence;
         } else {
           const initialCursor = { lastMarketTimestampMs: 0 };

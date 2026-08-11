@@ -134,6 +134,7 @@ class DepthForgeApp {
     this.liveFeed = new DepthMarketFeed({
       symbol: this.symbol,
       onSnapshot: (snapshot, metadata) => this.#ingestDepthSnapshot(snapshot, metadata),
+      onPresentationTick: (tick, timestamp) => this.#ingestPresentationTick(tick, timestamp),
       onStatus: status => this.#setLiveStatus(status),
       onCvdHistory: (points, tradingDate) => this.#replaceCvdHistory(points, tradingDate),
     });
@@ -1037,6 +1038,19 @@ class DepthForgeApp {
       this.pendingReadySymbol = this.symbol;
       this.renderRequested = true;
     }
+  }
+
+  #ingestPresentationTick(tick, timestamp) {
+    if (!this.atLive || !this.history.length) return;
+    updateLivePresentationEdge(this.history, { lastTick: tick, timestamp });
+    this.viewEnd = this.history.length - 1;
+    if (this.settings.autoCenter) this.view.centerTick = null;
+    const current = this.history[this.viewEnd];
+    // A trade tick only changes the price marker. Repainting the complete
+    // heatmap, bubbles, profiles, DOM and CVD for every trade saturated the
+    // browser main thread. Genuine full-book frames continue to redraw every
+    // market layer at the gateway's steady 20 FPS cadence.
+    if (this.renderer.layout && current) this.#positionCurrentPrice(current);
   }
 
   #replaceCvdHistory(points, tradingDate) {

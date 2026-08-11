@@ -10,12 +10,24 @@ test("the Rithmic map publishes truthful depth at a 20 FPS cadence", () => {
   assert.match(gateway, /capturedHeatmapFrame/);
 });
 
-test("the high-refresh presentation uses lightweight ticks and zero-order holds", () => {
+test("the high-refresh presentation uses lightweight ticks without synthetic full-map paints", () => {
   const gateway = read("services/rithmic_gateway/src/server.mjs");
   const feed = read("public/heatmap-app/src/live-market.js");
+  const runtime = read("public/heatmap-app/src/main.js");
   assert.match(gateway, /event: tick/);
-  assert.match(feed, /DISPLAY_FRAME_MS = 1000 \/ 72/);
-  assert.match(feed, /visualHold: true/);
+  assert.match(feed, /onPresentationTick/);
+  assert.doesNotMatch(feed, /visualHold: true/);
+  assert.match(runtime, /#ingestPresentationTick/);
+  assert.match(runtime, /this\.#positionCurrentPrice\(current\)/);
+});
+
+test("stream reconnects request only history newer than the accepted cursor", () => {
+  const gateway = read("services/rithmic_gateway/src/server.mjs");
+  const feed = read("public/heatmap-app/src/live-market.js");
+  assert.match(feed, /afterTimestamp/);
+  assert.match(feed, /this\.lastAcceptedTimestamp/);
+  assert.match(feed, /this\.#restartSilentStream\(\)/);
+  assert.match(gateway, /frame\.snapshot\?\.timestamp\) > afterTimestamp/);
 });
 
 test("live map rendering avoids full-history analysis and repeated DOM replacement on every frame", () => {
