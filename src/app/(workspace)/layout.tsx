@@ -1,19 +1,12 @@
 "use client";
 
-import dynamic from "next/dynamic";
 import { useMemo } from "react";
 import { usePathname } from "next/navigation";
 
-import type { PrimaryWorkspaceSection } from "@/components/KwantifyWorkspace";
+import KwantifyWorkspace, {
+  type PrimaryWorkspaceSection,
+} from "@/components/KwantifyWorkspace";
 import WorkspaceFailureBoundary from "@/components/WorkspaceFailureBoundary";
-
-// The terminal restores a large amount of account-backed browser state. It is
-// intentionally client-only: rendering server defaults and then hydrating with
-// saved tabs, instruments and layouts caused React to discard the first tree
-// (error 418), producing a visible flash before LIQ MAP initialized.
-const KwantifyWorkspace = dynamic(() => import("@/components/KwantifyWorkspace"), {
-  ssr: false,
-});
 
 const SECTION_BY_PATH: Record<string, PrimaryWorkspaceSection> = {
   "/charts": "charts",
