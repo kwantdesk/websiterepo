@@ -4,9 +4,13 @@ import test from "node:test";
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 
-test("the Rithmic map publishes truthful depth at a 20 FPS cadence", () => {
+test("the Rithmic map publishes bounded truthful depth at a sustainable cadence", () => {
   const gateway = read("services/rithmic_gateway/src/server.mjs");
-  assert.match(gateway, /RITHMIC_HEATMAP_FRAME_MS\) \|\| 50/);
+  const feed = read("public/heatmap-app/src/live-market.js");
+  assert.match(gateway, /RITHMIC_HEATMAP_FRAME_MS\) \|\| 100/);
+  assert.match(gateway, /RITHMIC_HEATMAP_HISTORY_FRAMES\) \|\| 180/);
+  assert.match(gateway, /HEATMAP_HISTORY_CHUNK_SIZE = 24/);
+  assert.match(feed, /REQUESTED_DEPTH_TICKS = 320/);
   assert.match(gateway, /capturedHeatmapFrame/);
 });
 

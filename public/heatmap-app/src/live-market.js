@@ -1,4 +1,8 @@
-const REQUESTED_DEPTH_TICKS = 1000;
+// The rendered viewport normally exposes roughly 100-180 price rows. Asking
+// the proxy for 1,000 rows per frame flooded a browser with more than 1 MB/s
+// and a 9 MB synchronous history event. Keep a generous off-screen buffer
+// without transporting levels the user cannot display.
+const REQUESTED_DEPTH_TICKS = 320;
 const STREAM_WATCHDOG_INTERVAL_MS = 2_000;
 const STREAM_SILENCE_RECONNECT_MS = 13_000;
 const MARKET_FRAME_PROBE_MS = 8_000;
@@ -330,7 +334,8 @@ export class DepthMarketFeed {
         connected: typeof payloadStatus.connected === 'boolean'
           ? payloadStatus.connected
           : true,
-        historyFrames: Array.isArray(payload.snapshots) ? payload.snapshots.length : 0,
+        historyFrames: Number(payload.totalFrames)
+          || (Array.isArray(payload.snapshots) ? payload.snapshots.length : 0),
       };
       this.onStatus?.(this.status);
       // Replay the real server-side Rithmic window through the exact same
@@ -357,7 +362,7 @@ export class DepthMarketFeed {
         if (!isCurrentConnection()) return;
         this.#emitSnapshot(snapshot, {
           historical: true,
-          final: index === snapshots.length - 1,
+          final: payload.final !== false && index === snapshots.length - 1,
         });
       });
       if (snapshots.length) this.#markMarketFrame();

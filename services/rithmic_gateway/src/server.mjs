@@ -271,27 +271,29 @@ quoteFlush.unref();
 // symbol so the provenance is honest: an MNQ chart reading NQ tape says so.
 const MICRO_PARENT_ROOTS = { MNQ: "NQ", MES: "ES", MYM: "YM", M2K: "RTY", MGC: "GC", MCL: "CL" };
 
-// Depth frames are materially heavier than trade ticks. Twenty truthful depth
-// frames per second support smooth browser interpolation while trade ticks move
-// the live marker immediately. Most importantly, depth snapshots are only
-// built while a real heatmap client is attached.
+// Full depth frames are materially heavier than trade ticks. Ten truthful book
+// frames per second preserve responsive liquidity changes while lightweight
+// trade ticks move the price marker immediately between them.
 const HEATMAP_FRAME_MS = Math.max(
-  20,
-  Number(process.env.RITHMIC_HEATMAP_FRAME_MS) || 50,
+  50,
+  Number(process.env.RITHMIC_HEATMAP_FRAME_MS) || 100,
 );
 // A fresh browser used to begin with a single vertical sliver even when the
 // collector had been running all session. Keep a compact, server-side warm
 // window so page navigation does not throw away the liquidity map that the
-// original long-running Kwantify tab had already accumulated. 360 frames is
-// 36 seconds at the default cadence and remains small enough for one SSE seed.
+// original long-running Kwantify tab had already accumulated. 180 frames is
+// 18 seconds at the default cadence. History is sent in small SSE chunks so
+// the browser can paint progressively instead of parsing one multi-megabyte
+// object on its main thread.
 const HEATMAP_HISTORY_LIMIT = Math.max(
   60,
-  Math.min(900, Number(process.env.RITHMIC_HEATMAP_HISTORY_FRAMES) || 360),
+  Math.min(450, Number(process.env.RITHMIC_HEATMAP_HISTORY_FRAMES) || 180),
 );
 const HEATMAP_CACHE_DEPTH = Math.max(
   100,
-  Math.min(5_000, Number(process.env.RITHMIC_HEATMAP_CACHE_DEPTH) || 1_000),
+  Math.min(1_000, Number(process.env.RITHMIC_HEATMAP_CACHE_DEPTH) || 400),
 );
+const HEATMAP_HISTORY_CHUNK_SIZE = 24;
 
 function parentRoot(root) {
   return MICRO_PARENT_ROOTS[root] || root;
@@ -1029,12 +1031,17 @@ const server = createServer(async (request, response) => {
           ? historyState.frames.filter((frame) => Number(frame.snapshot?.timestamp) > afterTimestamp)
           : historyState.frames;
         if (replayFrames.length > 1) {
-          response.write(
-            `event: history\ndata: ${JSON.stringify({
-              status: initialFrame.status,
-              snapshots: replayFrames.map((frame) => frame.snapshot),
-            })}\n\n`,
-          );
+          for (let offset = 0; offset < replayFrames.length; offset += HEATMAP_HISTORY_CHUNK_SIZE) {
+            const chunk = replayFrames.slice(offset, offset + HEATMAP_HISTORY_CHUNK_SIZE);
+            response.write(
+              `event: history\ndata: ${JSON.stringify({
+                status: initialFrame.status,
+                snapshots: chunk.map((frame) => frame.snapshot),
+                totalFrames: replayFrames.length,
+                final: offset + chunk.length >= replayFrames.length,
+              })}\n\n`,
+            );
+          }
           initialMarketTimestampMs = Math.max(afterTimestamp, historyState.lastMarketTimestampMs);
           lastSequence = historyState.lastSequence;
         } else {
