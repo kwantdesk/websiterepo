@@ -58,6 +58,8 @@ function makeInstrument(exchange, symbol, maxTrades) {
     // must not lose its session open merely because older raw prints were
     // compacted out of memory.
     flowCandles: new Map(),
+    askVolumeTotal: 0,
+    bidVolumeTotal: 0,
     sequence: 0,
     sourceSequence: "0",
     asOfMs: 0,
@@ -86,6 +88,8 @@ function recordTradeFlow(instrument, trade) {
   const askVolume = trade.aggressor === "BUY" ? trade.size : 0;
   const bidVolume = trade.aggressor === "SELL" ? trade.size : 0;
   const delta = tradeDelta(trade);
+  instrument.askVolumeTotal += askVolume;
+  instrument.bidVolumeTotal += bidVolume;
   let candle = instrument.flowCandles.get(timestamp);
   if (!candle) {
     candle = {
@@ -613,7 +617,7 @@ export class RithmicBookStore {
     return aggregateFlowCandles(source, duration).slice(-Math.max(1, Math.floor(Number(limit) || 20_000)));
   }
 
-  snapshot(exchange, symbol, depth = 100) {
+  snapshot(exchange, symbol, depth = 100, options = {}) {
     const instrument = this.instruments.get(instrumentKey(exchange, symbol));
     if (!instrument) return null;
     const bids = [...instrument.bids.values()]
@@ -622,6 +626,12 @@ export class RithmicBookStore {
     const asks = [...instrument.asks.values()]
       .sort((left, right) => left.price - right.price)
       .slice(0, depth);
+    const afterSequence = Math.max(0, Number(options.afterSequence) || 0);
+    const tradeLimit = Math.max(0, Math.floor(Number(options.tradeLimit ?? 2_500) || 0));
+    const matchingTrades = afterSequence > 0
+      ? instrument.trades.filter((trade) => Number(trade.sequence) > afterSequence)
+      : instrument.trades;
+    const trades = tradeLimit > 0 ? matchingTrades.slice(-tradeLimit) : [];
     return {
       provider: "Rithmic",
       exchange: instrument.exchange,
@@ -635,7 +645,11 @@ export class RithmicBookStore {
       bestAsk: instrument.bestAsk || asks[0] || null,
       bids,
       asks,
-      trades: instrument.trades.slice(-2_500),
+      trades,
+      flowTotals: {
+        askVolume: instrument.askVolumeTotal,
+        bidVolume: instrument.bidVolumeTotal,
+      },
       depthMode: instrument.depthMode,
       fullDepth:
         ["L3", "MBO_AGGREGATED"].includes(instrument.depthMode) &&

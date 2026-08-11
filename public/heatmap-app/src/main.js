@@ -1165,7 +1165,10 @@ class DepthForgeApp {
         this.frames += 1;
       }
 
-      if (timestamp - this.lastUiUpdate > 180) {
+      // The ladder used to refresh every 180 ms, which is only 5.5 Hz and was
+      // the most obvious source of the map's low-frame-rate feel. DOM writes
+      // are already diffed, so a 50 ms presentation cadence is sustainable.
+      if (timestamp - this.lastUiUpdate > 50) {
         this.#updateUi(false);
         this.lastUiUpdate = timestamp;
       }

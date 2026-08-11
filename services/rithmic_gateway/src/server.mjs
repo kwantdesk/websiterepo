@@ -152,7 +152,10 @@ function requestedQuoteInstrument(requestedSymbol) {
 }
 
 function quotePayload(alias, instrument, event = null) {
-  const snapshot = client.book.snapshot(instrument.exchange, instrument.symbol, 1);
+  // Quotes need the current touch, not the retained execution ring. Copying
+  // and scanning 2,500 trades on every 32 ms quote flush starved the gateway
+  // under L3 load and made downstream heatmap frames arrive in bursts.
+  const snapshot = client.book.snapshot(instrument.exchange, instrument.symbol, 1, { tradeLimit: 1 });
   if (!snapshot) return null;
   const trade = event?.type === "trade" ? event.trade : null;
   const bid = Number(snapshot.bestBid?.price || 0);
@@ -271,12 +274,12 @@ quoteFlush.unref();
 // symbol so the provenance is honest: an MNQ chart reading NQ tape says so.
 const MICRO_PARENT_ROOTS = { MNQ: "NQ", MES: "ES", MYM: "YM", M2K: "RTY", MGC: "GC", MCL: "CL" };
 
-// Full depth frames are materially heavier than trade ticks. Ten truthful book
-// frames per second preserve responsive liquidity changes while lightweight
-// trade ticks move the price marker immediately between them.
+// Full depth frames are materially heavier than trade ticks. The heatmap
+// snapshot path is now bounded to only trades newer than the last frame, so a
+// truthful 20 FPS book no longer rescans the retained execution ring.
 const HEATMAP_FRAME_MS = Math.max(
   50,
-  Number(process.env.RITHMIC_HEATMAP_FRAME_MS) || 100,
+  Number(process.env.RITHMIC_HEATMAP_FRAME_MS) || 50,
 );
 // A fresh browser used to begin with a single vertical sliver even when the
 // collector had been running all session. Keep a compact, server-side warm
@@ -464,12 +467,11 @@ function heatmapPayload(snapshot, after = 0) {
   // Session running totals span the whole retained window; the per-frame delta
   // and volume cover only what this frame is delivering. That split is what
   // makes CVD a session line and delta a per-column bar.
-  let askVolume = 0;
-  let bidVolume = 0;
-  for (const trade of snapshot.trades) {
-    if (trade.aggressor === "BUY") askVolume += trade.size;
-    else bidVolume += trade.size;
-  }
+  // The book store maintains these totals as trades arrive. Recomputing them
+  // from the retained ring for every heatmap frame was O(2,500) work at the
+  // hottest point in the gateway.
+  const askVolume = Math.max(0, Number(snapshot.flowTotals?.askVolume) || 0);
+  const bidVolume = Math.max(0, Number(snapshot.flowTotals?.bidVolume) || 0);
   let delta = 0;
   let volume = 0;
   for (const trade of trades) {
@@ -667,6 +669,7 @@ function captureHeatmapFrame(instrumentKey, now = Date.now()) {
     exchange,
     symbol,
     Math.min(HEATMAP_CACHE_DEPTH, requestedDepth),
+    { afterSequence: state.lastSequence, tradeLimit: 256 },
   );
   if (!snapshot) return null;
   const frame = heatmapPayload(snapshot, state.lastSequence);

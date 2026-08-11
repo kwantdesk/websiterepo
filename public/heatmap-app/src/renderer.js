@@ -23,9 +23,13 @@ function dimPalette(palette, level) {
 
 function fitCanvas(canvas) {
   const rect = canvas.getBoundingClientRect();
-  const ratio = Math.min(2, window.devicePixelRatio || 1);
   const width = Math.max(1, Math.round(rect.width));
   const height = Math.max(1, Math.round(rect.height));
+  // A 2x backing store quadruples the pixels painted on high-DPI and wide
+  // trading screens. Keep text crisp while bounding the canvas to roughly
+  // five million device pixels, which removes the severe laptop/4K slowdown.
+  const areaRatio = Math.sqrt(5_000_000 / Math.max(1, width * height));
+  const ratio = Math.max(1, Math.min(1.5, window.devicePixelRatio || 1, areaRatio));
   const pixelWidth = Math.max(1, Math.round(width * ratio));
   const pixelHeight = Math.max(1, Math.round(height * ratio));
   if (canvas.width !== pixelWidth || canvas.height !== pixelHeight) {
@@ -119,6 +123,7 @@ export class DepthRenderer {
     this.cameraCenterTick = null;
     this.cameraFrameAt = 0;
     this.cameraInMotion = false;
+    this.tradeClusterCache = { key: '', value: [] };
     this.fontFamilies = { mono: 'Consolas, monospace', ui: '"Arial Narrow", sans-serif' };
   }
 
@@ -457,7 +462,7 @@ export class DepthRenderer {
 
   #drawTrades(ctx, history, settings, accents) {
     const layout = this.layout;
-    const clusters = this.depthEngine.clusterTrades({
+    const clusterOptions = {
       start: layout.start,
       end: layout.end,
       rowTicks: layout.rowTicks,
@@ -469,7 +474,28 @@ export class DepthRenderer {
       differential: settings.bubbleDifferential,
       minimumTradeSize: settings.minimumTradeSize,
       minimumPixelVolume: settings.minimumPixelVolume,
-    });
+    };
+    const clusterKey = [
+      this.depthEngine.revision,
+      clusterOptions.start,
+      clusterOptions.end,
+      clusterOptions.rowTicks,
+      clusterOptions.rowPixels.toFixed(3),
+      clusterOptions.columnPixels.toFixed(3),
+      clusterOptions.circleSize,
+      clusterOptions.circleTransparency,
+      clusterOptions.smartClustering,
+      clusterOptions.differential,
+      clusterOptions.minimumTradeSize,
+      clusterOptions.minimumPixelVolume,
+    ].join('|');
+    if (this.tradeClusterCache.key !== clusterKey) {
+      this.tradeClusterCache = {
+        key: clusterKey,
+        value: this.depthEngine.clusterTrades(clusterOptions),
+      };
+    }
+    const clusters = this.tradeClusterCache.value;
     ctx.save();
     for (const cluster of clusters) {
       const x = layout.xForIndex(cluster.index);
