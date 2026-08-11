@@ -5,6 +5,7 @@ import { getDatabentoBars } from "@/lib/databento";
 import {
   vendorMarketDataConfigured,
   vendorMarketDataFetch,
+  vendorMarketDataTransport,
 } from "@/lib/vendorMarketData.server";
 
 export const dynamic = "force-dynamic";
@@ -191,7 +192,10 @@ async function deepHealth(apiKey: string | null): Promise<DeepHealth> {
 }
 
 export async function GET() {
-  const directKey = process.env.DATABENTO_API_KEY?.trim() || null;
+  const transport = vendorMarketDataTransport("databento");
+  const directKey = transport === "direct"
+    ? process.env.DATABENTO_API_KEY?.trim() || null
+    : null;
   if (!vendorMarketDataConfigured("databento")) {
     return NextResponse.json(
       {
@@ -229,7 +233,7 @@ export async function GET() {
     return NextResponse.json(
       {
         configured: true,
-        transport: directKey ? "direct" : "vps-market-data-edge",
+        transport,
         keyFormatValid,
         historical: {
           ok: response.ok,

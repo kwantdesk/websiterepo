@@ -28,7 +28,9 @@ const vendorDataEdge = new VendorDataEdge(config);
 const rawSseClients = new Set();
 const tradeSseClients = new Set();
 const heatmapSseClients = new Set();
+const quoteSseClients = new Set();
 const heatmapHistoryByInstrument = new Map();
+const liveQuoteCache = new Map();
 
 function json(response, status, body) {
   response.writeHead(status, {
@@ -126,6 +128,55 @@ const FUTURES_DISPLAY_NAMES = {
 
 function contractRoot(symbol) {
   return String(symbol || "").toUpperCase().replace(/[FGHJKMNQUVXZ]\d{1,2}$/, "");
+}
+
+function requestedQuoteInstrument(requestedSymbol) {
+  const alias = String(requestedSymbol || "").trim();
+  const raw = alias.toUpperCase().replace(/\.[VNC]\.\d+$/i, "");
+  const root = parentRoot(contractRoot(raw));
+  const candidates = client.book
+    .list()
+    .filter((row) => parentRoot(contractRoot(row.symbol)) === root)
+    .sort((left, right) => {
+      const statusRank = (value) => value === "LIVE" ? 2 : value === "STALE" ? 1 : 0;
+      return statusRank(right.status) - statusRank(left.status);
+    });
+  const exact = candidates.find((row) => row.symbol === raw);
+  const resolved = exact || candidates[0];
+  return {
+    alias,
+    exchange: resolved?.exchange || exchangeForRoot(root),
+    symbol: resolved?.symbol || (raw !== root ? raw : activeContractSymbol(root)),
+  };
+}
+
+function quotePayload(alias, instrument, event = null) {
+  const snapshot = client.book.snapshot(instrument.exchange, instrument.symbol, 1);
+  if (!snapshot) return null;
+  const trade = event?.type === "trade" ? event.trade : null;
+  const bid = Number(snapshot.bestBid?.price || 0);
+  const ask = Number(snapshot.bestAsk?.price || 0);
+  const tradePrice = Number(trade?.price || 0);
+  const mid = bid && ask ? (bid + ask) / 2 : tradePrice || Number(snapshot.lastPrice || 0) || bid || ask;
+  if (!Number.isFinite(mid) || mid <= 0) return null;
+  const size = Math.max(0, Number(trade?.size || 0));
+  const isTrade = Boolean(tradePrice && size);
+  return {
+    instrument: alias,
+    contractSymbol: instrument.symbol,
+    bid: bid || mid,
+    ask: ask || mid,
+    mid: tradePrice || mid,
+    isTrade,
+    size: isTrade ? size : undefined,
+    trades: isTrade ? 1 : undefined,
+    delta: isTrade
+      ? trade.aggressor === "BUY" ? size : trade.aggressor === "SELL" ? -size : 0
+      : undefined,
+    timestamp: Number(trade?.timestampMs || snapshot.asOfMs || Date.now()),
+    broker: "Databento",
+    transport: "vps-rithmic",
+  };
 }
 
 // Micro contracts trade the same underlying at the same prices as their
@@ -534,6 +585,28 @@ function emitRawSse(eventName, payload) {
 
 client.on("marketData", (event) => {
   emitRawSse(event.type, event);
+  for (const subscriber of quoteSseClients) {
+    const aliases = subscriber.aliasesByKey.get(event.instrument);
+    if (!aliases?.length) continue;
+    const instrument = subscriber.instrumentsByKey.get(event.instrument);
+    if (!instrument) continue;
+    for (const alias of aliases) {
+      const payload = quotePayload(alias, instrument, event);
+      if (!payload) continue;
+      liveQuoteCache.set(alias, { payload, updatedAt: Date.now() });
+      const previous = subscriber.pending.get(alias);
+      const previousTrades = previous?.isTrade ? Number(previous.trades || 1) : 0;
+      const nextTrades = payload.isTrade ? Number(payload.trades || 1) : 0;
+      const trades = previousTrades + nextTrades;
+      subscriber.pending.set(alias, {
+        ...payload,
+        isTrade: trades > 0,
+        size: trades > 0 ? Number(previous?.size || 0) + Number(payload.size || 0) : undefined,
+        trades: trades > 0 ? trades : undefined,
+        delta: trades > 0 ? Number(previous?.delta || 0) + Number(payload.delta || 0) : undefined,
+      });
+    }
+  }
   for (const subscriber of tradeSseClients) {
     if (event.type !== "trade" || subscriber.key !== event.instrument) continue;
     subscriber.response.write(
@@ -676,6 +749,97 @@ const server = createServer(async (request, response) => {
       request.on("close", () => {
         clearInterval(keepalive);
         rawSseClients.delete(response);
+      });
+      return;
+    }
+    if (request.method === "GET" && url.pathname === "/v1/market-data/quotes") {
+      const symbols = String(url.searchParams.get("symbols") || "")
+        .split(",")
+        .map((symbol) => symbol.trim())
+        .filter(Boolean)
+        .slice(0, 40);
+      if (!symbols.length) return json(response, 400, { error: "Select at least one instrument." });
+      const symbolSet = new Set(symbols);
+      const priority = new Set(
+        String(url.searchParams.get("priority") || "")
+          .split(",")
+          .map((symbol) => symbol.trim())
+          .filter((symbol) => symbolSet.has(symbol)),
+      );
+      const aliasesByKey = new Map();
+      const instrumentsByKey = new Map();
+      const rejected = [];
+      for (const alias of symbols) {
+        try {
+          const instrument = requestedQuoteInstrument(alias);
+          client.subscribe(instrument.exchange, instrument.symbol);
+          const key = `${instrument.exchange}:${instrument.symbol}`;
+          const aliases = aliasesByKey.get(key) || [];
+          aliases.push(alias);
+          aliasesByKey.set(key, aliases);
+          instrumentsByKey.set(key, instrument);
+        } catch (error) {
+          rejected.push({ alias, error: error instanceof Error ? error.message : String(error) });
+        }
+      }
+      if (!aliasesByKey.size) {
+        return json(response, 422, { error: "None of the requested instruments are available.", rejected });
+      }
+      response.writeHead(200, {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache, no-transform",
+        Connection: "keep-alive",
+        "X-Accel-Buffering": "no",
+      });
+      response.write("retry: 1500\n\n");
+      response.write(`event: status\ndata: ${JSON.stringify({
+        connected: Boolean(client.status.connected && client.status.authenticated),
+        source: "CME",
+        dataset: "Rithmic Ticker Plant",
+        transport: "vps-rithmic",
+        rejected,
+      })}\n\n`);
+
+      const subscriber = {
+        response,
+        aliasesByKey,
+        instrumentsByKey,
+        priority,
+        pending: new Map(),
+        lastPublishedAt: new Map(),
+      };
+      for (const [key, aliases] of aliasesByKey) {
+        const instrument = instrumentsByKey.get(key);
+        for (const alias of aliases) {
+          const cached = liveQuoteCache.get(alias);
+          const payload = cached && Date.now() - cached.updatedAt <= 120_000
+            ? { ...cached.payload, cached: true }
+            : quotePayload(alias, instrument);
+          if (payload) response.write(`data: ${JSON.stringify(payload)}\n\n`);
+        }
+      }
+      quoteSseClients.add(subscriber);
+      const flush = setInterval(() => {
+        const now = Date.now();
+        for (const [alias, payload] of subscriber.pending) {
+          if (!priority.has(alias) && now - (subscriber.lastPublishedAt.get(alias) || 0) < 250) continue;
+          subscriber.pending.delete(alias);
+          subscriber.lastPublishedAt.set(alias, now);
+          response.write(`data: ${JSON.stringify(payload)}\n\n`);
+        }
+      }, 32);
+      const keepalive = setInterval(() => response.write(
+        `event: heartbeat\ndata: ${JSON.stringify({ timestamp: Date.now() })}\n\n`,
+      ), 8_000);
+      const lease = setTimeout(() => {
+        response.write(`event: rotate\ndata: ${JSON.stringify({ reason: "stream-lease", timestamp: Date.now() })}\n\n`);
+        response.end();
+      }, 4.5 * 60_000);
+      request.on("close", () => {
+        clearInterval(flush);
+        clearInterval(keepalive);
+        clearTimeout(lease);
+        quoteSseClients.delete(subscriber);
       });
       return;
     }

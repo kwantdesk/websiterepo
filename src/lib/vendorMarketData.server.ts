@@ -16,11 +16,21 @@ function directKey(provider: VendorMarketDataProvider) {
     : process.env.QUANTDATA_API_KEY?.trim() || "";
 }
 
+export function directVendorFallbackAllowed() {
+  if (process.env.KWANTDESK_ALLOW_DIRECT_VENDOR_FALLBACK === "1") return true;
+  return !process.env.VERCEL && process.env.NODE_ENV !== "production";
+}
+
+export function vendorMarketDataTransport(provider: VendorMarketDataProvider) {
+  if (marketDataGatewayToken() && marketDataGatewayUrlCandidates().length) {
+    return "vps-market-data-edge" as const;
+  }
+  if (directVendorFallbackAllowed() && directKey(provider)) return "direct" as const;
+  return "unconfigured" as const;
+}
+
 export function vendorMarketDataConfigured(provider: VendorMarketDataProvider) {
-  return Boolean(
-    (marketDataGatewayToken() && marketDataGatewayUrlCandidates().length)
-      || directKey(provider),
-  );
+  return vendorMarketDataTransport(provider) !== "unconfigured";
 }
 
 function directHeaders(
@@ -46,8 +56,8 @@ function gatewayHeaders(token: string, headers: HeadersInit | undefined) {
 
 /**
  * Server-only vendor transport. Production prefers the always-on VPS edge;
- * direct credentials remain a temporary migration fallback and can be removed
- * from Vercel once the VPS health check confirms both vendors are configured.
+ * direct credentials are disabled on Vercel by default. They are available
+ * only as an explicit emergency rollback switch.
  */
 export async function vendorMarketDataFetch(
   provider: VendorMarketDataProvider,
@@ -74,7 +84,7 @@ export async function vendorMarketDataFetch(
   }
 
   const key = directKey(provider);
-  if (key) {
+  if (directVendorFallbackAllowed() && key) {
     return fetch(`${DIRECT_ORIGINS[provider]}${normalizedPath}`, {
       ...init,
       headers: directHeaders(provider, key, init.headers),
