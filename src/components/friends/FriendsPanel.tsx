@@ -76,8 +76,11 @@ const MAX_CHAT_IMAGE_BYTES = 900_000;
 type FriendsPanelProps = {
   onClose: () => void;
   onUnreadCountChange?: (count: number) => void;
+  onMessageUnreadCountChange?: (count: number) => void;
   initialFriendId?: string;
+  onInitialFriendConsumed?: () => void;
   onViewProfile?: (handle: string) => void;
+  mode?: "friends" | "messages";
 };
 
 type OptimisticFriendMessage = FriendMessage & {
@@ -216,7 +219,7 @@ function MessageImages({
   );
 }
 
-export default function FriendsPanel({ onClose, onUnreadCountChange, initialFriendId = "", onViewProfile }: FriendsPanelProps) {
+export default function FriendsPanel({ onClose, onUnreadCountChange, onMessageUnreadCountChange, initialFriendId = "", onInitialFriendConsumed, onViewProfile, mode = "friends" }: FriendsPanelProps) {
   const [payload, setPayload] = useState<FriendsPayload>(EMPTY);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState("");
@@ -366,10 +369,19 @@ export default function FriendsPanel({ onClose, onUnreadCountChange, initialFrie
       + payload.groups.reduce((total, group) => total + (group.muted ? 0 : group.unreadCount), 0),
     [payload.friends, payload.groups, payload.incoming.length],
   );
+  const messageUnreadTotal = useMemo(
+    () => payload.friends.reduce((total, friend) => total + friend.unreadCount, 0)
+      + payload.groups.reduce((total, group) => total + (group.muted ? 0 : group.unreadCount), 0),
+    [payload.friends, payload.groups],
+  );
 
   useEffect(() => {
     onUnreadCountChange?.(unreadTotal);
   }, [onUnreadCountChange, unreadTotal]);
+
+  useEffect(() => {
+    onMessageUnreadCountChange?.(messageUnreadTotal);
+  }, [messageUnreadTotal, onMessageUnreadCountChange]);
 
   const activeFriend = payload.friends.find((friend) => friend.userId === activeFriendId) ?? null;
   const activeGroup = payload.groups.find((group) => group.id === activeGroupId) ?? null;
@@ -384,8 +396,9 @@ export default function FriendsPanel({ onClose, onUnreadCountChange, initialFrie
     setActiveFriendId(friend.userId);
     setAttachments([]);
     setShowEmoji(false);
+    onInitialFriendConsumed?.();
     void load(friend.userId, true).finally(() => setChatLoading(false));
-  }, [activeFriendId, initialFriendId, load, payload.friends]);
+  }, [activeFriendId, initialFriendId, load, onInitialFriendConsumed, payload.friends]);
 
   useEffect(() => {
     if (!activeFriendId) {
@@ -394,6 +407,10 @@ export default function FriendsPanel({ onClose, onUnreadCountChange, initialFrie
     }
     let cancelled = false;
     setChatLoading(true);
+    setPayload((current) => ({
+      ...current,
+      friends: current.friends.map((friend) => friend.userId === activeFriendId ? { ...friend, unreadCount: 0 } : friend),
+    }));
     void load(activeFriendId, true).finally(() => {
       if (!cancelled) setChatLoading(false);
     });
@@ -407,6 +424,10 @@ export default function FriendsPanel({ onClose, onUnreadCountChange, initialFrie
     if (!activeGroupId) return;
     let cancelled = false;
     setChatLoading(true);
+    setPayload((current) => ({
+      ...current,
+      groups: current.groups.map((group) => group.id === activeGroupId ? { ...group, unreadCount: 0 } : group),
+    }));
     void load("", true, activeGroupId).finally(() => {
       if (!cancelled) setChatLoading(false);
     });
@@ -1113,8 +1134,12 @@ export default function FriendsPanel({ onClose, onUnreadCountChange, initialFrie
     <div className="flex h-full min-h-0 flex-col">
       <div className="relative flex h-14 shrink-0 items-center justify-between border-b border-border px-4">
         <div>
-          <div className="text-[14px] font-semibold">Friends</div>
-          <div className="text-[10px] text-muted">{onlineFriends.length} online · {payload.friends.length} connected</div>
+          <div className="text-[14px] font-semibold">{mode === "messages" ? "Messages" : "Friends"}</div>
+          <div className="text-[10px] text-muted">
+            {mode === "messages"
+              ? `${messageUnreadTotal} unread · ${payload.friends.length + payload.groups.length} conversations`
+              : `${onlineFriends.length} online · ${payload.friends.length} connected`}
+          </div>
         </div>
         <div className="flex items-center gap-1">
           <button

@@ -55,6 +55,7 @@ import {
   Loader2,
   Lock,
   Maximize2,
+  MessageCircle,
   Minus,
   MoreHorizontal,
   Pause,
@@ -375,7 +376,16 @@ const RIGHT_PANEL_MIN_WIDTH = 240;
 const RIGHT_PANEL_MAX_WIDTH = 500;
 const RIGHT_PANEL_DEFAULT_WIDTH = 280;
 const RIGHT_PANEL_COLLAPSE_SNAP_WIDTH = 120;
-type RightPanel = "order" | "watchlist" | "gex" | "zyon" | "kwantbot" | "optionstape" | "alerts" | "alertslog" | "friends";
+type RightPanel = "order" | "watchlist" | "gex" | "zyon" | "kwantbot" | "optionstape" | "alerts" | "alertslog" | "friends" | "messages";
+
+type FriendMessageToast = {
+  id: string;
+  senderUserId: string;
+  senderName: string;
+  senderHandle: string;
+  avatarUrl: string;
+  preview: string;
+};
 type AlertsPanelTab = "social" | "market";
 const CHART_INDICATORS_STORAGE_KEY = "kwantdesk-chart-indicators";
 
@@ -5428,6 +5438,7 @@ export default function KwantifyWorkspace({
       || saved === "alerts"
       || saved === "alertslog"
       || saved === "friends"
+      || saved === "messages"
       ? saved
       : saved === ""
         ? null
@@ -5446,6 +5457,7 @@ export default function KwantifyWorkspace({
       || saved === "alerts"
       || saved === "alertslog"
       || saved === "friends"
+      || saved === "messages"
       ? saved
       : "watchlist";
   });
@@ -5489,7 +5501,9 @@ export default function KwantifyWorkspace({
   const [alertsPanelTab, setAlertsPanelTab] = useState<AlertsPanelTab>("social");
   const socialNotifications = useSocialNotifications();
   const [friendsUnreadCount, setFriendsUnreadCount] = useState(0);
+  const [friendMessageUnreadCount, setFriendMessageUnreadCount] = useState(0);
   const [friendsOnlineCount, setFriendsOnlineCount] = useState(0);
+  const [friendMessageToast, setFriendMessageToast] = useState<FriendMessageToast | null>(null);
   const [showBrokerModal, setShowBrokerModal] = useState(false);
   const [brokerSearch, setBrokerSearch] = useState("");
   const [brokerFavourites, setBrokerFavourites] = useState<string[]>([]);
@@ -5643,6 +5657,8 @@ export default function KwantifyWorkspace({
   const aiDragRef = useRef<{ startX: number; startWidth: number } | null>(null);
   const mainRef = useRef<HTMLDivElement>(null);
   const updateToastTimeoutRef = useRef<number | null>(null);
+  const friendMessageToastTimeoutRef = useRef<number | null>(null);
+  const seenIncomingFriendMessageIdsRef = useRef(new Set<string>());
   const chartLaunchAppliedRef = useRef(false);
   const chartLaunchRunRef = useRef(false);
   const kwantBotMessagesEndRef = useRef<HTMLDivElement>(null);
@@ -5666,6 +5682,7 @@ export default function KwantifyWorkspace({
     let presenceTimer: number | null = null;
 
     let friendIds = new Set<string>();
+    let friendProfiles = new Map<string, FriendsPayload["friends"][number]>();
 
     const refreshFriendBadge = async () => {
       try {
@@ -5673,11 +5690,15 @@ export default function KwantifyWorkspace({
         if (!response.ok || cancelled) return;
         const next = await response.json() as FriendsPayload;
         friendIds = new Set(next.friends.map((friend) => friend.userId));
+        friendProfiles = new Map(next.friends.map((friend) => [friend.userId, friend]));
+        const messageUnread = next.friends.reduce((total, friend) => total + friend.unreadCount, 0)
+          + next.groups.reduce((total, group) => total + (group.muted ? 0 : group.unreadCount), 0);
         const unread = next.incoming.length
-          + next.friends.reduce((total, friend) => total + friend.unreadCount, 0);
+          + messageUnread;
         const online = next.friends.filter((friend) => friend.isOnline).length;
         if (!cancelled) {
           setFriendsUnreadCount(unread);
+          setFriendMessageUnreadCount(messageUnread);
           setFriendsOnlineCount(online);
         }
       } catch {
@@ -5724,8 +5745,8 @@ export default function KwantifyWorkspace({
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "social_objects" },
-        (event: { new: Record<string, unknown>; old: Record<string, unknown> }) => {
-          const nextRow = event.new as { user_id?: string; payload?: Record<string, unknown> };
+        (event: { eventType?: string; new: Record<string, unknown>; old: Record<string, unknown> }) => {
+          const nextRow = event.new as { id?: string; user_id?: string; author_label?: string; object_type?: string; payload?: Record<string, unknown> };
           const previousRow = event.old as { user_id?: string; payload?: Record<string, unknown> };
           const row = nextRow.user_id ? nextRow : previousRow;
           const rowPayload = row.payload ?? {};
@@ -5739,6 +5760,34 @@ export default function KwantifyWorkspace({
             )
           );
           if (!relevant) return;
+          const messageId = String(nextRow.id ?? "");
+          const isIncomingFriendMessage = event.eventType === "INSERT"
+            && nextRow.object_type === "comment"
+            && rowPayload.kind === "friend-message"
+            && rowPayload.recipientUserId === viewerId
+            && nextRow.user_id !== viewerId
+            && messageId.length > 0;
+          if (isIncomingFriendMessage && !seenIncomingFriendMessageIdsRef.current.has(messageId)) {
+            seenIncomingFriendMessageIdsRef.current.add(messageId);
+            const sender = friendProfiles.get(nextRow.user_id ?? "");
+            const body = String(rowPayload.body ?? "").trim();
+            const attachments = Array.isArray(rowPayload.attachments) ? rowPayload.attachments : [];
+            const preview = body
+              || (attachments.length > 0 ? "Sent you a photo" : rowPayload.sharedTrade ? "Shared a trade" : "Sent you a message");
+            setFriendMessageToast({
+              id: messageId,
+              senderUserId: nextRow.user_id ?? "",
+              senderName: sender?.displayName || nextRow.author_label || "A friend",
+              senderHandle: sender?.handle ?? "",
+              avatarUrl: sender?.avatarUrl ?? "",
+              preview,
+            });
+            if (friendMessageToastTimeoutRef.current) window.clearTimeout(friendMessageToastTimeoutRef.current);
+            friendMessageToastTimeoutRef.current = window.setTimeout(() => {
+              setFriendMessageToast(null);
+              friendMessageToastTimeoutRef.current = null;
+            }, 6_500);
+          }
           if (refreshTimer) window.clearTimeout(refreshTimer);
           refreshTimer = window.setTimeout(() => void refreshFriendBadge(), 300);
         },
@@ -5749,6 +5798,7 @@ export default function KwantifyWorkspace({
       cancelled = true;
       if (refreshTimer) window.clearTimeout(refreshTimer);
       if (presenceTimer) window.clearInterval(presenceTimer);
+      if (friendMessageToastTimeoutRef.current) window.clearTimeout(friendMessageToastTimeoutRef.current);
       void supabase.removeChannel(channel);
     };
   }, [supabase]);
@@ -9656,6 +9706,7 @@ export default function KwantifyWorkspace({
     if (panel === "gex") {
       setRightPanelWidth((current) => Math.max(360, current));
     }
+    if (panel === "messages") setFriendsInitialFriendId("");
     setRightPanel((current) => current === panel ? null : panel);
   };
 
@@ -11374,7 +11425,7 @@ export default function KwantifyWorkspace({
                 onCloseProfile={() => router.push("/socials")}
                 onMessageProfile={(userId) => {
                   setFriendsInitialFriendId(userId);
-                  setRightPanel("friends");
+                  setRightPanel("messages");
                 }}
                 onOpenGameplanScoring={() => router.push("/gameplan?tab=scoring")}
               />
@@ -11642,11 +11693,14 @@ export default function KwantifyWorkspace({
       {bottomWorkspaceSection !== "backtesting" && rightPanel && (
         <div style={{ width: rightPanelWidth }} className="relative flex shrink-0 flex-col border-l border-border bg-panel">
           <div onMouseDown={startRightPanelResize} className="absolute bottom-0 left-0 top-0 z-10 w-1 cursor-col-resize bg-transparent transition-colors hover:w-1.5 hover:bg-primary/30" />
-          {rightPanel === "friends" && (
+          {(rightPanel === "friends" || rightPanel === "messages") && (
             <FriendsPanel
+              mode={rightPanel === "messages" ? "messages" : "friends"}
               onClose={() => setRightPanel(null)}
               onUnreadCountChange={setFriendsUnreadCount}
+              onMessageUnreadCountChange={setFriendMessageUnreadCount}
               initialFriendId={friendsInitialFriendId}
+              onInitialFriendConsumed={() => setFriendsInitialFriendId("")}
               onViewProfile={(handle) => {
                 setRightPanel(null);
                 router.push(`/socials/${encodeURIComponent(handle)}`);
@@ -12269,6 +12323,8 @@ export default function KwantifyWorkspace({
                     ? "Options Tape"
                   : lastOpenRightPanel === "friends"
                     ? "Friends"
+                  : lastOpenRightPanel === "messages"
+                    ? "Messages"
                   : lastOpenRightPanel.charAt(0).toUpperCase() + lastOpenRightPanel.slice(1)
             }`}
             onClick={reopenRightPanel}
@@ -12284,13 +12340,18 @@ export default function KwantifyWorkspace({
           { id: "kwantbot" as const, title: "Kwant Bot", icon: Bot },
           { id: "optionstape" as const, title: "Options Tape", icon: FileText },
           { id: "friends" as const, title: "Friends", icon: UsersRound },
+          { id: "messages" as const, title: "Messages", icon: MessageCircle },
         ].map((item) => {
           const Icon = item.icon;
           const active = rightPanel === item.id;
           return (
             <button
               key={item.id}
-              title={item.id === "friends" ? `${friendsOnlineCount} friends online` : item.title}
+              title={item.id === "friends"
+                ? `${friendsOnlineCount} friends online`
+                : item.id === "messages"
+                  ? `${friendMessageUnreadCount} unread messages`
+                  : item.title}
               onPointerEnter={() => {
                 if (item.id === "zyon") warmWorkspaceSection("zyon");
               }}
@@ -12305,10 +12366,52 @@ export default function KwantifyWorkspace({
               {item.id === "optionstape" && kwantBotInterpreter.optionsUnreadTotal > 0 && <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-semibold text-background">{Math.min(99, kwantBotInterpreter.optionsUnreadTotal)}</span>}
               {item.id === "friends" && friendsOnlineCount > 0 && <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full border border-background bg-primary px-1 text-[9px] font-semibold text-background shadow-[0_0_10px_color-mix(in_srgb,var(--primary)_45%,transparent)]" aria-label={`${friendsOnlineCount} friends online`}>{Math.min(99, friendsOnlineCount)}</span>}
               {item.id === "friends" && friendsUnreadCount > 0 && <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-background bg-danger" aria-label={`${friendsUnreadCount} unread friend notifications`} />}
+              {item.id === "messages" && friendMessageUnreadCount > 0 && <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full border border-background bg-primary px-1 text-[9px] font-semibold text-background shadow-[0_0_10px_color-mix(in_srgb,var(--primary)_45%,transparent)]" aria-label={`${friendMessageUnreadCount} unread messages`}>{Math.min(99, friendMessageUnreadCount)}</span>}
             </button>
           );
         })}
       </div>
+
+      {friendMessageToast && (
+        <div className="fixed bottom-6 right-[60px] z-[80] flex w-[min(360px,calc(100vw-84px))] items-center gap-2 rounded-2xl border border-primary/25 bg-panel/95 p-2 shadow-[0_18px_60px_rgba(0,0,0,0.45),0_0_28px_color-mix(in_srgb,var(--primary)_12%,transparent)] backdrop-blur-xl">
+          <button
+            type="button"
+            onClick={() => {
+              setFriendsInitialFriendId(friendMessageToast.senderUserId);
+              setRightPanel("messages");
+              setFriendMessageToast(null);
+              if (friendMessageToastTimeoutRef.current) window.clearTimeout(friendMessageToastTimeoutRef.current);
+              friendMessageToastTimeoutRef.current = null;
+            }}
+            className="flex min-w-0 flex-1 items-center gap-3 rounded-xl px-2 py-1.5 text-left transition-colors hover:bg-surface"
+          >
+            <UserAvatar
+              avatarUrl={friendMessageToast.avatarUrl}
+              label={friendMessageToast.senderName}
+              className="h-10 w-10 shrink-0"
+            />
+            <span className="min-w-0 flex-1">
+              <span className="flex items-center gap-2">
+                <span className="truncate text-[12px] font-semibold text-foreground">{friendMessageToast.senderName}</span>
+                {friendMessageToast.senderHandle && <span className="truncate text-[10px] text-muted">@{friendMessageToast.senderHandle}</span>}
+              </span>
+              <span className="mt-0.5 block truncate text-[11px] text-muted">{friendMessageToast.preview}</span>
+            </span>
+          </button>
+          <button
+            type="button"
+            title="Dismiss message notification"
+            onClick={() => {
+              setFriendMessageToast(null);
+              if (friendMessageToastTimeoutRef.current) window.clearTimeout(friendMessageToastTimeoutRef.current);
+              friendMessageToastTimeoutRef.current = null;
+            }}
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted transition-colors hover:bg-surface hover:text-foreground"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
 
       <div className={`fixed bottom-6 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-xl border border-border bg-panel px-5 py-3 shadow-xl transition-all duration-300 ${showUpdateToast ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-2 opacity-0"}`}>
         {updateToast.status === "loading" && <Loader2 className="h-4 w-4 animate-spin text-primary" />}
