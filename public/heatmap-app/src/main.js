@@ -1655,12 +1655,18 @@ class DepthForgeApp {
   }
 
   #keyDown(event) {
-    if (event.target instanceof HTMLInputElement || event.target instanceof HTMLSelectElement) return;
+    if (event.target instanceof HTMLInputElement
+      || event.target instanceof HTMLSelectElement
+      || event.target instanceof HTMLTextAreaElement
+      || event.target?.isContentEditable) return;
     if (event.key === ' ') { event.preventDefault(); this.togglePlayback(); }
     if (event.key.toLowerCase() === 'l') this.goLive();
     if (event.key.toLowerCase() === 'r') this.resetView();
     if (event.key.toLowerCase() === 'h') $('toggleHeatmap').click();
+    if (event.key.toLowerCase() === 'd') $('toggleDom').click();
     if (event.key.toLowerCase() === 't') $('toggleTrades').click();
+    if (event.key.toLowerCase() === 'p') $('toggleProfile').click();
+    if (event.key.toLowerCase() === 'c') $('toggleCvd').click();
     if (event.key === 'Escape' && $('helpModal').open) $('helpModal').close();
   }
 

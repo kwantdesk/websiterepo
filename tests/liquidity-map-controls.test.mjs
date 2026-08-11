@@ -9,7 +9,7 @@ const rendererPath = new URL("../public/heatmap-app/src/renderer.js", import.met
 const workspacePath = new URL("../src/components/liquidity-map/LiquidityMapWorkspace.tsx", import.meta.url);
 const preferencesPath = new URL("../src/lib/userPreferences.ts", import.meta.url);
 
-test("restores the full Kwantify liquidity-map control surface", async () => {
+test("restores the full Kwant Desk liquidity-map control surface", async () => {
   const html = await readFile(htmlPath, "utf8");
 
   for (const id of [
@@ -48,6 +48,21 @@ test("toolbar DOM control sits between heatmap and trades and removes the full r
   assert.match(source, /#syncDomVisibilityControls\(notifyParent = false\)/);
   assert.match(renderer, /const priceAxisWidth = domVisible \? priceLabelWidth \+ restingBookWidth \+ depthColumnWidth : 0/);
   assert.match(renderer, /if \(domVisible\) this\.#drawPriceAxis\(ctx, current, accents\)/);
+});
+
+test("LIQ MAP display buttons have documented keyboard shortcuts", async () => {
+  const [html, source] = await Promise.all([
+    readFile(htmlPath, "utf8"),
+    readFile(mainPath, "utf8"),
+  ]);
+
+  assert.match(html, /Kwant Desk LIQ MAP shortcuts/);
+  assert.match(html, /<kbd>D<\/kbd><span>Show or hide full DOM<\/span>/);
+  assert.match(html, /<kbd>P<\/kbd><span>Show or hide volume profile<\/span>/);
+  assert.match(html, /<kbd>C<\/kbd><span>Show or hide CVD<\/span>/);
+  assert.match(source, /event\.key\.toLowerCase\(\) === 'd'\) \$\('toggleDom'\)\.click\(\)/);
+  assert.match(source, /event\.key\.toLowerCase\(\) === 'p'\) \$\('toggleProfile'\)\.click\(\)/);
+  assert.match(source, /event\.key\.toLowerCase\(\) === 'c'\) \$\('toggleCvd'\)\.click\(\)/);
 });
 
 test("heat sensitivity can dim substantially below the old minimum", async () => {
