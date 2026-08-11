@@ -78,7 +78,7 @@ import {
 } from "@/lib/journalAnalysis";
 import KwantSelect from "@/components/ui/KwantSelect";
 import { usePersistentFieldDictation } from "@/hooks/usePersistentFieldDictation";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 
 type JournalTab = "pulse" | "calendar" | "trades" | "edgebook" | "analysis" | "evidence" | "imports";
 type OutcomeFilter = "all" | "wins" | "losses" | "breakeven" | "needs-review";
@@ -554,48 +554,139 @@ function MetricCard({
   );
 }
 function EquityCurve({ trades }: { trades: JournalTrade[] }) {
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const geometry = useMemo(() => {
     const ordered = [...trades].sort((left, right) => Date.parse(left.closedAt ?? left.openedAt) - Date.parse(right.closedAt ?? right.openedAt));
-    let equity = 0;
-    const values = [0, ...ordered.map((trade) => {
-      equity += trade.netPnl;
-      return equity;
+    const oneAccount = new Set(ordered.map((trade) => trade.account)).size === 1;
+    const recordedStartingBalance = oneAccount
+      ? ordered.find((trade) => typeof trade.accountSize === "number" && trade.accountSize > 0)?.accountSize ?? null
+      : null;
+    const startingValue = recordedStartingBalance ?? 0;
+    let cumulativePnl = 0;
+    const points = [{
+      index: 0,
+      trade: null as JournalTrade | null,
+      value: startingValue,
+      cumulativePnl: 0,
+      timestamp: ordered[0]?.openedAt ?? "",
+    }, ...ordered.map((trade, index) => {
+      cumulativePnl += trade.netPnl;
+      return {
+        index: index + 1,
+        trade,
+        value: startingValue + cumulativePnl,
+        cumulativePnl,
+        timestamp: trade.closedAt ?? trade.openedAt,
+      };
     })];
     const width = 860;
-    const height = 230;
+    const height = 260;
+    const left = 72;
+    const right = 18;
     const top = 18;
-    const bottom = 24;
+    const bottom = 40;
+    const values = points.map((point) => point.value);
     const minimum = Math.min(0, ...values);
     const maximum = Math.max(0, ...values);
-    const span = Math.max(1, maximum - minimum);
-    const x = (index: number) => 8 + index / Math.max(1, values.length - 1) * (width - 16);
-    const y = (value: number) => top + (maximum - value) / span * (height - top - bottom);
+    const rawSpan = Math.max(1, maximum - minimum);
+    const padding = Math.max(rawSpan * 0.08, recordedStartingBalance ? recordedStartingBalance * 0.002 : 1);
+    const chartMinimum = minimum - padding;
+    const chartMaximum = maximum + padding;
+    const span = chartMaximum - chartMinimum;
+    const x = (index: number) => left + index / Math.max(1, points.length - 1) * (width - left - right);
+    const y = (value: number) => top + (chartMaximum - value) / span * (height - top - bottom);
+    const plottedPoints = points.map((point) => ({ ...point, x: x(point.index), y: y(point.value) }));
+    const path = plottedPoints.map((point, index) => `${index ? "L" : "M"}${point.x.toFixed(1)},${point.y.toFixed(1)}`).join(" ");
+    const yTicks = Array.from({ length: 5 }, (_, index) => {
+      const ratio = index / 4;
+      const value = chartMaximum - ratio * span;
+      return { value, y: top + ratio * (height - top - bottom) };
+    });
+    const xTickCount = Math.min(6, Math.max(2, plottedPoints.length));
+    const xTickIndexes = [...new Set(Array.from({ length: xTickCount }, (_, index) => (
+      Math.round(index / Math.max(1, xTickCount - 1) * (plottedPoints.length - 1))
+    )))];
+    const xTicks = xTickIndexes.map((index) => plottedPoints[index]);
     return {
       width,
       height,
-      path: values.map((value, index) => `${index ? "L" : "M"}${x(index).toFixed(1)},${y(value).toFixed(1)}`).join(" "),
-      area: `${values.map((value, index) => `${index ? "L" : "M"}${x(index).toFixed(1)},${y(value).toFixed(1)}`).join(" ")} L${width - 8},${height - bottom} L8,${height - bottom} Z`,
+      left,
+      right,
+      top,
+      bottom,
+      path,
+      area: `${path} L${width - right},${height - bottom} L${left},${height - bottom} Z`,
       zeroY: y(0),
-      final: values.at(-1) ?? 0,
+      final: points.at(-1)?.value ?? 0,
+      finalPnl: points.at(-1)?.cumulativePnl ?? 0,
+      points: plottedPoints,
+      xTicks,
+      yTicks,
+      hasStartingBalance: recordedStartingBalance !== null,
     };
   }, [trades]);
 
-  if (!trades.length) return <div className="flex h-[230px] items-center justify-center text-[10px] text-muted">Import trades to build the equity curve.</div>;
+  useEffect(() => setHoveredIndex(null), [trades]);
+
+  if (!trades.length) return <div className="flex h-[260px] items-center justify-center text-[10px] text-muted">Import trades to build the equity curve.</div>;
+  const hovered = hoveredIndex === null ? null : geometry.points[hoveredIndex] ?? null;
+  const onPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const plotLeft = geometry.left / geometry.width * rect.width;
+    const plotRight = geometry.right / geometry.width * rect.width;
+    const plotWidth = Math.max(1, rect.width - plotLeft - plotRight);
+    const relativeX = Math.max(0, Math.min(plotWidth, event.clientX - rect.left - plotLeft));
+    setHoveredIndex(Math.round(relativeX / plotWidth * Math.max(0, geometry.points.length - 1)));
+  };
   return (
-    <div className="relative h-[230px]">
-      <svg viewBox={`0 0 ${geometry.width} ${geometry.height}`} className="h-full w-full" preserveAspectRatio="none" role="img" aria-label="Cumulative imported net profit and loss">
+    <div
+      className="relative h-[260px] touch-none select-none"
+      onPointerMove={onPointerMove}
+      onPointerLeave={() => setHoveredIndex(null)}
+      role="figure"
+      aria-label="Interactive trade-by-trade equity curve"
+    >
+      <svg viewBox={`0 0 ${geometry.width} ${geometry.height}`} className="h-full w-full" preserveAspectRatio="none" role="img" aria-label="Cumulative imported net profit and loss by trade">
         <defs>
           <linearGradient id="journal-equity-fill" x1="0" x2="0" y1="0" y2="1">
             <stop offset="0%" stopColor="var(--primary)" stopOpacity=".24" />
             <stop offset="100%" stopColor="var(--primary)" stopOpacity="0" />
           </linearGradient>
         </defs>
-        {[0.25, 0.5, 0.75].map((line) => <line key={line} x1="0" x2={geometry.width} y1={geometry.height * line} y2={geometry.height * line} stroke="var(--grid-color)" strokeWidth="1" />)}
-        <line x1="0" x2={geometry.width} y1={geometry.zeroY} y2={geometry.zeroY} stroke="var(--muted)" strokeOpacity=".45" strokeDasharray="4 5" />
+        {geometry.yTicks.map((tick) => <line key={tick.y} x1={geometry.left} x2={geometry.width - geometry.right} y1={tick.y} y2={tick.y} stroke="var(--grid-color)" strokeWidth="1" vectorEffect="non-scaling-stroke" />)}
+        {geometry.xTicks.map((tick) => <line key={tick.index} x1={tick.x} x2={tick.x} y1={geometry.top} y2={geometry.height - geometry.bottom} stroke="var(--grid-color)" strokeOpacity=".5" strokeWidth="1" vectorEffect="non-scaling-stroke" />)}
+        <line x1={geometry.left} x2={geometry.width - geometry.right} y1={geometry.height - geometry.bottom} y2={geometry.height - geometry.bottom} stroke="var(--border)" strokeWidth="1" vectorEffect="non-scaling-stroke" />
+        <line x1={geometry.left} x2={geometry.left} y1={geometry.top} y2={geometry.height - geometry.bottom} stroke="var(--border)" strokeWidth="1" vectorEffect="non-scaling-stroke" />
+        {!geometry.hasStartingBalance ? <line x1={geometry.left} x2={geometry.width - geometry.right} y1={geometry.zeroY} y2={geometry.zeroY} stroke="var(--muted)" strokeOpacity=".45" strokeDasharray="4 5" vectorEffect="non-scaling-stroke" /> : null}
         <path d={geometry.area} fill="url(#journal-equity-fill)" />
         <path d={geometry.path} fill="none" stroke={geometry.final >= 0 ? "var(--primary)" : "var(--danger)"} strokeWidth="2.25" vectorEffect="non-scaling-stroke" />
+        {hovered ? <>
+          <line x1={hovered.x} x2={hovered.x} y1={geometry.top} y2={geometry.height - geometry.bottom} stroke="var(--foreground)" strokeOpacity=".45" strokeDasharray="3 4" vectorEffect="non-scaling-stroke" />
+          <line x1={geometry.left} x2={geometry.width - geometry.right} y1={hovered.y} y2={hovered.y} stroke="var(--foreground)" strokeOpacity=".28" strokeDasharray="3 4" vectorEffect="non-scaling-stroke" />
+          <circle cx={hovered.x} cy={hovered.y} r="4.5" fill="var(--background)" stroke="var(--primary)" strokeWidth="2" vectorEffect="non-scaling-stroke" />
+        </> : null}
       </svg>
-      <span className={`absolute right-2 top-2 rounded-lg border border-border bg-background/75 px-2 py-1 font-mono text-[10px] ${geometry.final >= 0 ? "text-primary" : "text-danger"}`}>{compact(geometry.final)}</span>
+      {geometry.yTicks.map((tick) => <span key={tick.y} className="pointer-events-none absolute left-0 w-[64px] -translate-y-1/2 text-right font-mono text-[7px] text-muted" style={{ top: `${tick.y / geometry.height * 100}%` }}>{compact(tick.value)}</span>)}
+      {geometry.xTicks.map((tick) => <span key={tick.index} className="pointer-events-none absolute -translate-x-1/2 whitespace-nowrap font-mono text-[7px] text-muted" style={{ left: `${tick.x / geometry.width * 100}%`, bottom: 3 }}>{tick.index === 0 ? "START" : new Date(tick.timestamp).toLocaleDateString("en-AU", { day: "2-digit", month: "short" })}</span>)}
+      <span className="pointer-events-none absolute bottom-0 left-1/2 -translate-x-1/2 text-[7px] font-semibold uppercase tracking-[0.12em] text-muted">Trade sequence / close date</span>
+      <span className="pointer-events-none absolute left-[-17px] top-1/2 -rotate-90 text-[7px] font-semibold uppercase tracking-[0.12em] text-muted">{geometry.hasStartingBalance ? "Account equity" : "Cumulative P&L"}</span>
+      <span className={`absolute right-2 top-2 rounded-lg border border-border bg-background/85 px-2 py-1 font-mono text-[10px] backdrop-blur ${geometry.finalPnl >= 0 ? "text-primary" : "text-danger"}`}>{geometry.hasStartingBalance ? money(geometry.final) : compact(geometry.finalPnl)}</span>
+      {hovered ? <div
+        className="pointer-events-none absolute z-10 min-w-[188px] rounded-xl border border-border bg-background/95 p-3 shadow-2xl backdrop-blur-xl"
+        style={{
+          left: `${hovered.x / geometry.width * 100}%`,
+          top: `${Math.max(8, Math.min(66, hovered.y / geometry.height * 100))}%`,
+          transform: hovered.x > geometry.width * 0.7 ? "translate(-105%, -50%)" : "translate(12px, -50%)",
+        }}
+      >
+        {hovered.trade ? <>
+          <div className="flex items-center justify-between gap-3"><span className="text-[8px] font-semibold uppercase tracking-[0.12em] text-muted">Trade #{hovered.index}</span><span className={`font-mono text-[10px] font-semibold ${hovered.trade.netPnl >= 0 ? "text-primary" : "text-danger"}`}>{money(hovered.trade.netPnl)}</span></div>
+          <div className="mt-2 text-[10px] font-semibold text-foreground">{hovered.trade.symbol} · {hovered.trade.side} · {hovered.trade.quantity} contract{hovered.trade.quantity === 1 ? "" : "s"}</div>
+          <div className="mt-1 font-mono text-[8px] text-muted">{hovered.trade.entryPrice ?? "—"} → {hovered.trade.exitPrice ?? "—"}</div>
+          <div className="mt-1 text-[8px] text-muted">{new Date(hovered.timestamp).toLocaleString("en-AU", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</div>
+          <div className="mt-2 border-t border-border pt-2 text-[8px] text-muted"><span>{geometry.hasStartingBalance ? "Account equity" : "Cumulative P&L"}</span><span className="float-right font-mono text-foreground">{money(hovered.value)}</span></div>
+        </> : <><div className="text-[8px] font-semibold uppercase tracking-[0.12em] text-muted">Starting point</div><div className="mt-2 font-mono text-[11px] font-semibold text-foreground">{money(hovered.value)}</div></>}
+      </div> : null}
     </div>
   );
 }
