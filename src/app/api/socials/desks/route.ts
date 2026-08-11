@@ -1029,6 +1029,7 @@ export async function POST(request: NextRequest) {
     if (action === "update-category" && !categoryId) return NextResponse.json({ error: "Choose a category to update." }, { status: 400 });
     const readOnly = Boolean(body.readOnly);
     const row = {
+      id: categoryId || randomUUID(),
       desk_id: deskId,
       name,
       description: cleanText(body.description, 240),
@@ -1095,6 +1096,7 @@ export async function POST(request: NextRequest) {
     const category = categoryResult.data;
     const readOnly = Boolean(body.readOnly);
     const row = {
+      id: channelId || randomUUID(),
       desk_id: deskId,
       name,
       description: cleanText(body.description, 240),

@@ -1194,6 +1194,7 @@ export default function DeskWorkspace({
     body: Record<string, unknown>,
     success?: string,
     onFailure?: (message: string) => void,
+    refreshMode: "await" | "background" = "await",
   ) => {
     setWorking(true);
     try {
@@ -1205,7 +1206,9 @@ export default function DeskWorkspace({
       const payload = await response.json() as { error?: string; result?: string };
       if (!response.ok) throw new Error(payload.error || "That Desk action could not be completed.");
       if (success) onNotice(success);
-      await loadNetwork(true, selectedDeskRef.current || body.deskId as string | undefined);
+      const refresh = loadNetwork(true, selectedDeskRef.current || body.deskId as string | undefined);
+      if (refreshMode === "await") await refresh;
+      else void refresh;
       window.dispatchEvent(new CustomEvent(DESK_NETWORK_CHANGED_EVENT));
       return true;
     } catch (reason) {
@@ -1457,19 +1460,55 @@ export default function DeskWorkspace({
 
   const saveCategory = async () => {
     if (!activeDesk) return;
+    const draft = categoryEditor;
+    const now = new Date().toISOString();
+    const categoryId = draft.categoryId || crypto.randomUUID();
+    const position = draft.categoryId
+      ? activeCategories.find((category) => category.id === draft.categoryId)?.position ?? 100
+      : (activeCategories.at(-1)?.position ?? 0) + 10;
+    const previousCategory = network.categories.find((category) => category.id === categoryId) ?? null;
+    const optimisticCategory: DeskCategory = {
+      id: categoryId,
+      deskId: activeDesk.deskId,
+      name: draft.name.trim(),
+      description: draft.description.trim(),
+      position,
+      isPrivate: draft.isPrivate,
+      readOnly: draft.readOnly,
+      reactionOnly: !draft.readOnly && draft.reactionOnly,
+      showHistory: draft.showHistory,
+      allowedUserIds: draft.allowedUserIds,
+      createdBy: previousCategory?.createdBy ?? viewerId,
+      createdAt: previousCategory?.createdAt ?? now,
+      updatedAt: now,
+    };
     setCategorySaveError("");
     setShowCategory(false);
+    suppressRefreshUntilRef.current = Date.now() + 2_500;
+    setNetwork((current) => ({
+      ...current,
+      categories: [
+        ...current.categories.filter((category) => category.id !== categoryId),
+        optimisticCategory,
+      ],
+    }));
     const saved = await perform({
-      action: categoryEditor.categoryId ? "update-category" : "create-category",
+      action: draft.categoryId ? "update-category" : "create-category",
       deskId: activeDesk.deskId,
-      ...categoryEditor,
-      position: categoryEditor.categoryId
-        ? activeCategories.find((category) => category.id === categoryEditor.categoryId)?.position ?? 100
-        : (activeCategories.at(-1)?.position ?? 0) + 10,
-    }, categoryEditor.categoryId ? "Category settings saved." : "Category created. Add a text or voice channel inside it.", (message) => {
+      ...draft,
+      categoryId,
+      position,
+    }, draft.categoryId ? "Category settings saved." : "Category created. Add a text or voice channel inside it.", (message) => {
+      suppressRefreshUntilRef.current = Date.now() + 500;
+      setNetwork((current) => ({
+        ...current,
+        categories: previousCategory
+          ? [...current.categories.filter((category) => category.id !== categoryId), previousCategory]
+          : current.categories.filter((category) => category.id !== categoryId),
+      }));
       setCategorySaveError(message);
       setShowCategory(true);
-    });
+    }, "background");
     if (saved) setCategoryEditor(emptyCategoryDraft());
   };
 
@@ -1480,15 +1519,60 @@ export default function DeskWorkspace({
 
   const saveChannel = async () => {
     if (!activeDesk) return;
-    const saved = await perform({
-      action: channelEditor.channelId ? "update-channel" : "create-channel",
+    const draft = channelEditor;
+    const now = new Date().toISOString();
+    const channelId = draft.channelId || crypto.randomUUID();
+    const position = draft.channelId
+      ? activeChannels.find((channel) => channel.id === draft.channelId)?.position ?? 100
+      : (activeChannels.filter((channel) => channel.categoryId === draft.categoryId).at(-1)?.position ?? 0) + 10;
+    const category = activeCategories.find((candidate) => candidate.id === draft.categoryId);
+    const previousChannel = network.channels.find((channel) => channel.id === channelId) ?? null;
+    const optimisticChannel: DeskChannel = {
+      id: channelId,
       deskId: activeDesk.deskId,
-      ...channelEditor,
-      position: channelEditor.channelId
-        ? activeChannels.find((channel) => channel.id === channelEditor.channelId)?.position ?? 100
-        : (activeChannels.filter((channel) => channel.categoryId === channelEditor.categoryId).at(-1)?.position ?? 0) + 10,
-    }, channelEditor.channelId ? "Channel settings saved." : "Channel created.");
-    if (saved) setShowChannel(false);
+      name: draft.name.trim().toLowerCase().replace(/[^a-z0-9 _-]/g, "").replace(/\s+/g, "-"),
+      description: draft.description.trim(),
+      channelType: draft.channelType,
+      categoryId: draft.categoryId,
+      syncPermissions: draft.syncPermissions,
+      position,
+      isPrivate: draft.syncPermissions ? category?.isPrivate ?? false : draft.isPrivate,
+      readOnly: draft.syncPermissions ? category?.readOnly ?? false : draft.readOnly,
+      reactionOnly: draft.syncPermissions ? category?.reactionOnly ?? false : !draft.readOnly && draft.reactionOnly,
+      showHistory: draft.syncPermissions ? category?.showHistory ?? true : draft.showHistory,
+      allowedUserIds: draft.syncPermissions ? category?.allowedUserIds ?? [] : draft.allowedUserIds,
+      createdBy: previousChannel?.createdBy ?? viewerId,
+      createdAt: previousChannel?.createdAt ?? now,
+      updatedAt: now,
+    };
+    setShowChannel(false);
+    suppressRefreshUntilRef.current = Date.now() + 2_500;
+    setNetwork((current) => ({
+      ...current,
+      channels: [
+        ...current.channels.filter((channel) => channel.id !== channelId),
+        optimisticChannel,
+      ],
+    }));
+    if (!draft.channelId && draft.channelType === "text") setActiveChannelId(channelId);
+    const saved = await perform({
+      action: draft.channelId ? "update-channel" : "create-channel",
+      deskId: activeDesk.deskId,
+      ...draft,
+      channelId,
+      position,
+    }, draft.channelId ? "Channel settings saved." : "Channel created.", () => {
+      suppressRefreshUntilRef.current = Date.now() + 500;
+      setNetwork((current) => ({
+        ...current,
+        channels: previousChannel
+          ? [...current.channels.filter((channel) => channel.id !== channelId), previousChannel]
+          : current.channels.filter((channel) => channel.id !== channelId),
+      }));
+      if (!draft.channelId && activeChannelId === channelId) setActiveChannelId("");
+      setShowChannel(true);
+    }, "background");
+    if (saved) setChannelEditor(emptyChannelDraft(""));
   };
 
   const deliverDeskMessage = useCallback(async (outgoing: OptimisticDeskMessage) => {
