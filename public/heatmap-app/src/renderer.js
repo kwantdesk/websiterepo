@@ -291,10 +291,15 @@ export class DepthRenderer {
     if (settings.heatmap) this.#drawHeatmap(ctx, history, start, end, current, settings);
     this.#drawGrid(ctx, history, settings);
     if (settings.trails) this.#drawInsideMarket(ctx, history, accents);
-    if (settings.trades && !this.interaction) this.#drawTrades(ctx, history, settings, accents);
+    // Viewport interaction must never change what market data is visible.
+    // The heat raster itself is cached while the user drags, but executions
+    // and the right-side bid/ask profiles are inexpensive overlays and must
+    // stay painted. Hiding them on pointer-down made a harmless grab look like
+    // the live trade feed and resting book had disappeared.
+    if (settings.trades) this.#drawTrades(ctx, history, settings, accents);
     if (!this.interaction) this.#drawBottomVolume(ctx, history, accents);
     if (!this.interaction) this.#drawIndicatorMarks(ctx, indicatorAnalysis, settings, accents);
-    if (settings.profile && !this.interaction) {
+    if (settings.profile) {
       this.#drawBidAskVolumeProfile(ctx, history, accents);
       this.#drawVolumeProfile(ctx, history, accents);
     }
