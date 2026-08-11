@@ -5620,15 +5620,12 @@ export default function Chart({
         </div>
       ) : null}
       {gammaLevelsEnabled && gammaLevelsLoading ? (
-        <div className="pointer-events-none absolute inset-0 z-[19]" style={{ backgroundColor: settings.backgroundColor }}>
-          <KwantLoader
-            className="h-full w-full"
-            compact
-            style={{ backgroundColor: settings.backgroundColor }}
-            icon={ScanLine}
-            title={`Loading ${instrument} gamma levels`}
-            detail="Syncing current levels"
-          />
+        <div
+          className="pointer-events-none absolute right-[76px] top-3 z-[19] flex items-center gap-2 rounded-full border border-border/70 bg-background/88 px-3 py-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground shadow-lg backdrop-blur"
+          role="status"
+        >
+          <ScanLine className="h-3.5 w-3.5 animate-pulse text-primary" />
+          <span>Syncing {instrument} Gamma</span>
         </div>
       ) : null}
       <div

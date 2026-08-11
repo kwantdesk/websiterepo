@@ -2827,8 +2827,8 @@ function lastVerifiedGammaPayload(conversion: GammaConversionDefinition) {
 function gammaRefreshDelay(value: unknown) {
   const delay = Number(value);
   return Number.isFinite(delay) && delay > 0
-    ? Math.max(5_000, Math.min(60_000, delay))
-    : 15_000;
+    ? Math.max(60_000, Math.min(5 * 60_000, delay))
+    : 60_000;
 }
 
 function fetchGammaPayload(
@@ -2861,15 +2861,25 @@ function fetchGammaPayload(
   const calibrationQuery = options.calibrated && Number.isFinite(calibrationPrice) && calibrationPrice > 0
     ? `&futuresPrice=${encodeURIComponent(calibrationPrice.toFixed(6))}`
     : "";
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 35_000);
   const promise = fetch(
     `/api/chart-gamma-levels?root=${encodeURIComponent(conversion.futuresRoot)}&source=${encodeURIComponent(conversion.source)}${options.calibrated ? "&calibrated=1" : ""}${calibrationQuery}`,
-    { cache: "no-store" },
+    { cache: "no-store", signal: controller.signal },
   )
     .then(async (response) => {
-      const candidate: unknown = await response.json();
+      const raw = await response.text();
+      let candidate: unknown = null;
+      try {
+        candidate = JSON.parse(raw);
+      } catch {
+        candidate = null;
+      }
       const errorMessage = isGammaRecord(candidate) && typeof candidate.error === "string"
         ? candidate.error
-        : "Gamma levels are unavailable.";
+        : response.ok
+          ? "The Gamma service returned an invalid response."
+          : `Gamma levels are unavailable (${response.status}).`;
       if (!response.ok) throw new Error(errorMessage);
       if (!isRenderableGammaPayload(candidate)) {
         throw new Error("The latest options frame is still synchronising.");
@@ -2895,7 +2905,8 @@ function fetchGammaPayload(
         }
       }
       throw error;
-    });
+    })
+    .finally(() => window.clearTimeout(timeout));
 
   gammaPayloadCache.set(cacheKey, {
     expiresAt: Date.now() + 5_000,
@@ -2907,22 +2918,6 @@ function fetchGammaPayload(
     return Promise.resolve(previous.payload);
   }
   return promise;
-}
-
-function warmGammaPayloadCache() {
-  const conversions = (["NQ", "ES"] as const)
-    .flatMap((instrument) => [
-      cashFallbackGammaConversion(instrument),
-      resolveGammaConversion(undefined, instrument),
-    ])
-    .filter((conversion): conversion is GammaConversionDefinition => Boolean(conversion));
-  const cashConversions = (["NQ", "ES"] as const)
-    .map((instrument) => cashFallbackGammaConversion(instrument))
-    .filter((conversion): conversion is GammaConversionDefinition => Boolean(conversion));
-  return Promise.allSettled([
-    ...conversions.map((conversion) => fetchGammaPayload(conversion)),
-    ...cashConversions.map((conversion) => fetchGammaPayload(conversion, { calibrated: true })),
-  ]);
 }
 
 function gammaLevelColor(kind: string, settings: ChartSettings) {
@@ -3890,20 +3885,6 @@ function WorkspaceChartPane({
   }, [pane.broker, pane.symbol]);
 
   useEffect(() => {
-    if (!gammaLevelsAvailable || !primaryGammaConversion) return;
-    const timer = window.setTimeout(() => {
-      const conversions = [fallbackGammaConversion, primaryGammaConversion]
-        .filter((conversion): conversion is GammaConversionDefinition => Boolean(conversion));
-      void Promise.allSettled(conversions.map((conversion) => fetchGammaPayload(conversion)));
-    }, 250);
-    return () => window.clearTimeout(timer);
-  }, [
-    fallbackGammaConversion?.id,
-    gammaLevelsAvailable,
-    primaryGammaConversion?.id,
-  ]);
-
-  useEffect(() => {
     const supported = pane.broker === "Databento" && (gammaInstrument === "NQ" || gammaInstrument === "MNQ");
     if (!classicGexIndicator || !supported) {
       setClassicGexLoading(false);
@@ -4084,7 +4065,7 @@ function WorkspaceChartPane({
       const refreshAfterMs = fulfilled.length
         ? Math.min(...fulfilled.map((payload) => payload.refreshAfterMs))
         : 10_000;
-      timer = window.setTimeout(() => void loadGamma(), Math.max(5_000, refreshAfterMs));
+      timer = window.setTimeout(() => void loadGamma(), gammaRefreshDelay(refreshAfterMs));
     };
 
     timer = window.setTimeout(() => void loadGamma(), 50);
@@ -7351,11 +7332,6 @@ export default function KwantifyWorkspace({
       window.removeEventListener("online", refreshWhenVisible);
     };
   }, [enabledKwantRootKey]);
-
-  useEffect(() => {
-    if (!authChecked || !currentUsername || !gammaLevelsEnabled) return;
-    void warmGammaPayloadCache();
-  }, [authChecked, currentUsername, gammaLevelsEnabled]);
 
   useEffect(() => {
     setChartAlerts(loadChartAlerts());
