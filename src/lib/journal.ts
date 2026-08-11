@@ -137,19 +137,19 @@ export type JournalStats = {
 };
 
 const HEADER_ALIASES = {
-  openedAt: ["openedat", "entrydatetime", "entrytimestamp", "opendatetime", "opentimestamp", "entrydt", "opentime", "entrytime", "datetime", "dateandtime", "timestamp", "timeopened", "entrydate", "opendate", "tradeopen", "tradeopened", "tradeopentime", "positionopened", "dateopened"],
-  closedAt: ["closedat", "exitdatetime", "exittimestamp", "closedatetime", "closetimestamp", "exitdt", "closetime", "exittime", "timeclosed", "exitdate", "closedate", "tradeclose", "tradeclosed", "tradeclosetime", "positionclosed", "dateclosed"],
-  date: ["date", "tradedate", "dateoftrade", "sessiondate", "filldate", "executedate"],
-  time: ["time", "tradetime", "filltime", "executiontime", "updatedatetimee", "updatedatetimel"],
-  symbol: ["symbol", "contractsymbol", "instrumentsymbol", "instrument", "ticker", "contract", "market", "tradingsymbol"],
-  side: ["side", "tradedirection", "positiondirection", "marketposition", "position", "direction", "buysell", "action", "actiontype", "type", "ordertype"],
-  quantity: ["quantity", "numberofcontracts", "contractquantity", "qty", "qtyfilled", "filledqty", "size", "positionsize", "positionqty", "contracts", "lots", "lot", "units", "volume", "shares"],
-  entryPrice: ["entryprice", "entry", "openprice", "averageentryprice", "avgentryprice", "buyprice"],
-  exitPrice: ["exitprice", "exit", "closeprice", "averageexitprice", "avgexitprice", "sellprice"],
-  price: ["price", "fillprice", "executionprice", "averageprice", "avgprice"],
+  openedAt: ["openedat", "entrydatetime", "entrytimestamp", "opendatetime", "opentimestamp", "entrydt", "opentime", "entrytime", "datetime", "dateandtime", "timestamp", "timeopened", "entrydate", "opendate", "tradeopen", "tradeopened", "tradeopentime", "positionopened", "dateopened", "entryfilledat", "firstfilltime", "openeddatetime", "entrydateandtime"],
+  closedAt: ["closedat", "exitdatetime", "exittimestamp", "closedatetime", "closetimestamp", "exitdt", "closetime", "exittime", "timeclosed", "exitdate", "closedate", "tradeclose", "tradeclosed", "tradeclosetime", "positionclosed", "dateclosed", "exitfilledat", "lastfilltime", "closeddatetime", "exitdateandtime"],
+  date: ["date", "tradedate", "dateoftrade", "sessiondate", "filldate", "executedate", "transactiondate", "businessdate"],
+  time: ["time", "tradetime", "filltime", "executiontime", "transactiontime", "ordertime", "updatedatetimee", "updatedatetimel", "ssboe"],
+  symbol: ["symbol", "contractsymbol", "instrumentsymbol", "instrument", "ticker", "contract", "market", "tradingsymbol", "product", "security", "underlying", "symbolcontract", "instrumentname"],
+  side: ["side", "tradedirection", "positiondirection", "marketposition", "marketpos", "position", "direction", "buysell", "bs", "action", "actiontype", "type", "ordertype", "transactiontype"],
+  quantity: ["quantity", "numberofcontracts", "contractquantity", "qty", "qtyfilled", "filledqty", "filledquantity", "fillqty", "executedqty", "executedquantity", "size", "positionsize", "positionqty", "contracts", "lots", "lot", "units", "volume", "shares"],
+  entryPrice: ["entryprice", "entry", "openprice", "averageentryprice", "avgentryprice", "averageopenprice", "avgopenprice", "buyprice", "entryfillprice"],
+  exitPrice: ["exitprice", "exit", "closeprice", "averageexitprice", "avgexitprice", "averagecloseprice", "avgcloseprice", "sellprice", "exitfillprice"],
+  price: ["price", "fillprice", "filledprice", "executionprice", "executedprice", "tradeprice", "transactionprice", "averageprice", "avgprice", "avgfillprice", "averagefillprice", "tprice"],
   grossPnl: ["grosspnl", "grosspnlusd", "grossprofit", "grossprofitusd", "profitloss", "profitandloss", "pnl", "pnlusd", "pl", "result", "tradepnl", "tradeprofit", "realizedpnl", "realisedpnl", "realizedpnlusd", "realizedpl", "realisedpl", "profit", "profitusd"],
   netPnl: ["netpnl", "netpnlusd", "netprofit", "netprofitusd", "netpl", "netplusd", "netprofitloss", "netresult", "netrealizedpnl", "netrealisedpnl"],
-  fees: ["fees", "fee", "commission", "commissions", "totalfees", "brokerage"],
+  fees: ["fees", "fee", "commission", "commissions", "totalfees", "totalcommission", "commfee", "commissionfee", "brokerage", "costs", "transactioncosts"],
   initialRisk: ["initialrisk", "risk", "riskamount", "plannedrisk"],
   rMultiple: ["rmultiple", "realizedr", "r", "resultinr"],
   stopPrice: ["stopprice", "stoploss", "stop", "sl"],
@@ -212,11 +212,31 @@ function normalizeHeader(value: string) {
 }
 
 function headerMatches(header: string, aliases: readonly string[]) {
-  return aliases.some((alias) => header === alias || header.startsWith(`${alias}usd`) || header.startsWith(`${alias}aud`));
+  const qualifiers = ["usd", "aud", "cad", "gbp", "eur", "dollar", "dollars", "accountcurrency", "currency", "points", "ticks"];
+  return aliases.some((alias) => header === alias || qualifiers.some((qualifier) => header === `${alias}${qualifier}`));
+}
+
+function inferredHeader(value: string) {
+  const header = normalizeHeader(value);
+  if (!header) return header;
+  if (Object.values(HEADER_ALIASES).some((aliases) => aliases.includes(header as never))) return header;
+
+  if (/(?:entry|open).*(?:date|time|timestamp)|(?:date|time).*(?:entry|open)/.test(header)) return "entrydatetime";
+  if (/(?:exit|close).*(?:date|time|timestamp)|(?:date|time).*(?:exit|close)/.test(header)) return "exitdatetime";
+  if (/(?:net).*(?:pnl|profit|loss|result)|(?:pnl|profit|loss|result).*net/.test(header)) return "netpnl";
+  if (/(?:pnl|profitandloss|profitloss|realizedprofit|realisedprofit|traderesult|closedpnl)/.test(header)) return "grosspnl";
+  if (/(?:entry|open|buy).*(?:price|fill)|(?:price|fill).*(?:entry|open)/.test(header)) return "entryprice";
+  if (/(?:exit|close|sell).*(?:price|fill)|(?:price|fill).*(?:exit|close)/.test(header)) return "exitprice";
+  if (/(?:avg|average|execution|executed|transaction|trade|fill|filled).*price|price.*(?:avg|average|execution|executed|transaction|trade|fill|filled)/.test(header)) return "fillprice";
+  if (/(?:instrument|symbol|ticker|contract|security|product|underlying)/.test(header)) return "symbol";
+  if (/(?:quantity|filledqty|fillqty|positionqty|contracts|lots|shares|units)/.test(header)) return "quantity";
+  if (/(?:buysell|marketpos|positiondirection|tradedirection|transactiontype)/.test(header)) return "side";
+  if (/(?:commission|brokerage|transactioncost|totalfee)/.test(header)) return "fees";
+  return header;
 }
 
 export function journalHeaderScore(cells: unknown[]) {
-  const headers = cells.map((cell) => normalizeHeader(String(cell ?? ""))).filter(Boolean);
+  const headers = cells.map((cell) => inferredHeader(String(cell ?? ""))).filter(Boolean);
   const has = (aliases: readonly string[]) => headers.some((header) => headerMatches(header, aliases));
   let score = 0;
   if (has(HEADER_ALIASES.symbol)) score += 3;
@@ -231,39 +251,57 @@ export function journalHeaderScore(cells: unknown[]) {
 
 function parseNumber(value: unknown) {
   if (typeof value === "number") return Number.isFinite(value) ? value : null;
-  const text = String(value ?? "").trim();
+  const rawText = String(value ?? "")
+    .trim()
+    .replace(/[−–—]/g, "-");
+  const text = rawText
+    .replace(/\b(?:USD|AUD|CAD|GBP|EUR|JPY|NZD|CHF|DR|CR|DEBIT|CREDIT|PROFIT|LOSS)\b/gi, "");
   if (!text) return null;
-  const negative = /^\(.*\)$/.test(text);
+  const negative = /^\(.*\)$/.test(rawText) || /-$/.test(rawText) || /\b(?:DR|DEBIT|LOSS)\b/i.test(rawText);
   const normalized = text.replace(/[,$£€¥%\s()]/g, "");
   const number = Number(normalized);
   if (!Number.isFinite(number)) return null;
-  return negative ? -number : number;
+  return negative ? -Math.abs(number) : number;
 }
 
 function parseDateValue(value: unknown) {
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value.toISOString();
+  if (typeof value === "number" && value >= 1_000_000_000) {
+    const milliseconds = value >= 1_000_000_000_000_000
+      ? value / 1_000
+      : value >= 1_000_000_000_000
+        ? value
+        : value * 1_000;
+    const unixDate = new Date(milliseconds);
+    return Number.isNaN(unixDate.getTime()) ? null : unixDate.toISOString();
+  }
   if (typeof value === "number" && value > 20_000 && value < 100_000) {
     const excelDate = new Date(Math.round((value - 25_569) * 86_400_000));
     return Number.isNaN(excelDate.getTime()) ? null : excelDate.toISOString();
   }
   const text = String(value ?? "").trim();
   if (!text) return null;
-  const parsed = Date.parse(text);
-  if (!Number.isNaN(parsed)) return new Date(parsed).toISOString();
-
   const dayFirst = text.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})(?:\s+(.+))?$/);
-  if (!dayFirst) return null;
-  const year = dayFirst[3].length === 2 ? 2_000 + Number(dayFirst[3]) : Number(dayFirst[3]);
-  const first = Number(dayFirst[1]);
-  const second = Number(dayFirst[2]);
-  const month = first > 12 ? second : first;
-  const day = first > 12 ? first : second;
-  const fallback = Date.parse(`${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}T${dayFirst[4] || "00:00:00"}`);
-  return Number.isNaN(fallback) ? null : new Date(fallback).toISOString();
+  if (dayFirst) {
+    const year = dayFirst[3].length === 2 ? 2_000 + Number(dayFirst[3]) : Number(dayFirst[3]);
+    const first = Number(dayFirst[1]);
+    const second = Number(dayFirst[2]);
+    const month = first > 12 ? second : second > 12 ? first : second;
+    const day = first > 12 ? first : second > 12 ? second : first;
+    const fallback = Date.parse(`${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}T${dayFirst[4] || "00:00:00"}`);
+    if (!Number.isNaN(fallback)) return new Date(fallback).toISOString();
+  }
+  if (/^\d{10,16}$/.test(text)) return parseDateValue(Number(text));
+  const parsed = Date.parse(text);
+  return Number.isNaN(parsed) ? null : new Date(parsed).toISOString();
 }
 
 function valueFor(row: Record<string, unknown>, aliases: readonly string[]) {
   for (const alias of aliases) {
     if (alias in row && String(row[alias] ?? "").trim() !== "") return row[alias];
+  }
+  for (const [header, value] of Object.entries(row)) {
+    if (headerMatches(header, aliases) && String(value ?? "").trim() !== "") return value;
   }
   return null;
 }
@@ -296,6 +334,16 @@ function combinedDateAndTime(
   const date = qualifiedValuesFor(row, dateAliases)[0];
   const time = qualifiedValuesFor(row, timeAliases)[0];
   if (date === undefined || time === undefined) return null;
+  if (date instanceof Date && time instanceof Date) {
+    const combined = new Date(date);
+    combined.setHours(time.getHours(), time.getMinutes(), time.getSeconds(), time.getMilliseconds());
+    return Number.isNaN(combined.getTime()) ? null : combined.toISOString();
+  }
+  if (typeof time === "number" && time >= 0 && time < 1) {
+    const dateOnly = parseDateValue(date);
+    if (!dateOnly) return null;
+    return new Date(new Date(dateOnly).getTime() + Math.round(time * 86_400_000)).toISOString();
+  }
   return parseDateValue(`${String(date)} ${String(time)}`);
 }
 
@@ -492,9 +540,16 @@ export function zyonOutcomesToJournalTrades(records: ZyonSocialRecord[], viewerI
 }
 
 function normalizeRows(rows: Array<Record<string, unknown>>) {
-  return rows.map((source) => Object.fromEntries(
-    Object.entries(source).map(([key, value]) => [normalizeHeader(key), value]),
-  ));
+  return rows.map((source) => {
+    const normalized: Record<string, unknown> = {};
+    Object.entries(source).forEach(([key, value]) => {
+      const original = normalizeHeader(key);
+      if (original && !(original in normalized)) normalized[original] = value;
+      const inferred = inferredHeader(key);
+      if (inferred && !(inferred in normalized)) normalized[inferred] = value;
+    });
+    return normalized;
+  });
 }
 
 export function parseDelimited(text: string, delimiter?: string) {
@@ -962,12 +1017,26 @@ export function parseJournalTextFile(
   if (extension === "json") {
     try {
       const parsed = JSON.parse(text) as unknown;
+      const container = parsed && typeof parsed === "object" && !Array.isArray(parsed)
+        ? parsed as Record<string, unknown>
+        : null;
+      const preferredCollections = ["trades", "executions", "fills", "orders", "transactions", "records", "data", "results", "closedtrades"];
+      const nestedRows = container
+        ? Object.entries(container).find(([key, value]) => preferredCollections.includes(normalizeHeader(key)) && Array.isArray(value))?.[1]
+        : null;
       const rows = Array.isArray(parsed)
         ? parsed
-        : parsed && typeof parsed === "object" && Array.isArray((parsed as { trades?: unknown[] }).trades)
-          ? (parsed as { trades: Array<Record<string, unknown>> }).trades
-          : [];
-      sourceRows = rows.filter((row): row is Record<string, unknown> => Boolean(row && typeof row === "object"));
+        : Array.isArray(nestedRows)
+          ? nestedRows
+          : container && journalHeaderScore(Object.keys(container)) >= 4
+            ? [container]
+            : [];
+      sourceRows = rows
+        .filter((row): row is Record<string, unknown> => Boolean(row && typeof row === "object" && !Array.isArray(row)))
+        .map((row) => Object.fromEntries(Object.entries(row).flatMap(([key, value]) => {
+          if (!value || typeof value !== "object" || Array.isArray(value) || value instanceof Date) return [[key, value]];
+          return Object.entries(value as Record<string, unknown>).map(([nestedKey, nestedValue]) => [`${key} ${nestedKey}`, nestedValue]);
+        })));
     } catch {
       return { trades: [], detectedSchema: "unknown", sourceRows: 0, rejectedRows: 0, warnings: ["The JSON file could not be parsed."] };
     }

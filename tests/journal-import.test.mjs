@@ -129,3 +129,50 @@ test("rejected CSV rows explain the fields that were actually missing", () => {
   assert.match(result.warnings[0], /1 missing an instrument/);
   assert.match(result.warnings[0], /1 missing P&L or an entry\/exit price pair/);
 });
+
+test("source-agnostic inference imports unfamiliar closed-trade column wording", () => {
+  const csv = [
+    "Opened Date & Time,Closed Date & Time,Product Name,Market Pos.,Number Lots,Price Entered,Price Closed,Realised Profit/Loss (GBP)",
+    "2026-08-11 09:35:00,2026-08-11 09:42:00,MNQ,Long,2,23800,23820,80",
+  ].join("\n");
+
+  const result = parseJournalTextFile("unknown-platform.csv", csv, "Universal Journal", "import-unfamiliar");
+
+  assert.equal(result.trades.length, 1);
+  assert.equal(result.trades[0].symbol, "MNQ");
+  assert.equal(result.trades[0].side, "LONG");
+  assert.equal(result.trades[0].quantity, 2);
+  assert.equal(result.trades[0].netPnl, 80);
+});
+
+test("generic broker fill logs pair B/S executions into a closed trade", () => {
+  const csv = [
+    "Date/Time,Product,B/S,Filled Quantity,Avg Fill Price,Commission/Fee",
+    "2026-08-11 09:35:00,MNQ,Buy,2,23800,1.20",
+    "2026-08-11 09:42:00,MNQ,Sell,2,23820,1.20",
+  ].join("\n");
+
+  const result = parseJournalTextFile("broker-fills.csv", csv, "Universal Journal", "import-broker-fills");
+
+  assert.equal(result.detectedSchema, "executions");
+  assert.equal(result.trades.length, 1);
+  assert.equal(result.trades[0].side, "LONG");
+  assert.equal(result.trades[0].netPnl, 77.6);
+});
+
+test("nested JSON collections and row objects import without a platform adapter", () => {
+  const json = JSON.stringify({
+    data: [{
+      timing: { "Entry Time": "2026-08-11T09:35:00+10:00", "Exit Time": "2026-08-11T09:42:00+10:00" },
+      trade: { Instrument: "MNQ", Direction: "Long", Contracts: 2 },
+      prices: { "Entry Price": 23800, "Exit Price": 23820 },
+      result: { "Net P&L": 80 },
+    }],
+  });
+
+  const result = parseJournalTextFile("portable.json", json, "Universal Journal", "import-json-nested");
+
+  assert.equal(result.detectedSchema, "json");
+  assert.equal(result.trades.length, 1);
+  assert.equal(result.trades[0].netPnl, 80);
+});

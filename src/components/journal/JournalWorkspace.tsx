@@ -1878,10 +1878,10 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
           continue;
         }
         const text = await file.text();
-        const firstLine = text.split(/\r?\n/, 1)[0]?.toLowerCase() ?? "";
-        const looksLikeTradeTable = /[,;\t]/.test(firstLine)
-          && /(symbol|instrument|ticker|contract|trade)/.test(firstLine)
-          && /(pnl|profit|price|entry|exit|side|direction|action|type)/.test(firstLine);
+        const importSample = text.split(/\r?\n/).slice(0, 25).join("\n").toLowerCase();
+        const looksLikeTradeTable = /[,;\t]/.test(importSample)
+          && /(symbol|instrument|ticker|contract|market|product|trade)/.test(importSample)
+          && /(pnl|p\/l|profit|result|price|entry|exit|fill|side|direction|action|type)/.test(importSample);
         const isNote = extension === "md" || (extension === "txt" && !looksLikeTradeTable);
         if (isNote) {
           const dataUrl = `data:text/plain;charset=utf-8,${encodeURIComponent(text)}`;
