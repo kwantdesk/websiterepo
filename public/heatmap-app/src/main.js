@@ -850,12 +850,10 @@ class DepthForgeApp {
     } else if (shifted) {
       this.viewEnd = Math.max(0, this.viewEnd - shifted);
     }
-    if (this.settings.autoCenter && wasAtLive) {
-      const center = this.view.centerTick ?? snapshot.midTick;
-      const drift = snapshot.midTick - center;
-      const recenterThreshold = Math.max(8, this.view.visibleRows * 0.16);
-      if (Math.abs(drift) > recenterThreshold) this.view.centerTick = center + drift * 0.42;
-    }
+    // Auto-center is an exact live viewport rule, not a lagging price chase.
+    // Keep the centre unpinned so Renderer resolves it from the newest
+    // snapshot against the current canvas dimensions on every paint.
+    if (this.settings.autoCenter && wasAtLive) this.view.centerTick = null;
     if (!metadata.historical || metadata.final) {
       this.#updateUi(false);
       this.pendingReadySymbol = this.symbol;
@@ -941,7 +939,7 @@ class DepthForgeApp {
       if (this.renderRequested) {
         const current = this.history[this.viewEnd];
         if (current) {
-          if (this.settings.autoCenter && this.atLive && this.view.centerTick == null) this.view.centerTick = current.midTick;
+          if (this.settings.autoCenter && this.atLive) this.view.centerTick = null;
           const indicatorAnalysis = this.#getIndicatorAnalysis();
           indicatorAnalysis.sessionCvd = { points: this.cvdHistory };
           this.renderer.render(this.history, this.viewEnd, this.view, this.settings, SYMBOLS[this.symbol], indicatorAnalysis);

@@ -156,6 +156,19 @@ test("wheel input over the price rail stretches only the vertical price axis", a
   assert.match(html, /Price scale \+ wheel<\/kbd><span>Stretch price axis only/);
 });
 
+test("auto-center keeps live price at the true viewport midpoint", async () => {
+  const [source, renderer] = await Promise.all([
+    readFile(mainPath, "utf8"),
+    readFile(rendererPath, "utf8"),
+  ]);
+
+  assert.match(source, /if \(this\.settings\.autoCenter && wasAtLive\) this\.view\.centerTick = null;/);
+  assert.match(source, /if \(this\.settings\.autoCenter && this\.atLive\) this\.view\.centerTick = null;/);
+  assert.doesNotMatch(source, /recenterThreshold|drift \* 0\.42/);
+  assert.match(renderer, /const centerTick = view\.centerTick \?\? current\.midTick;/);
+  assert.match(renderer, /const bottomTick = centerTick - visibleTickSpan \/ 2;[\s\S]*?const topTick = centerTick \+ visibleTickSpan \/ 2;/);
+});
+
 test("embedded map omits intrusive feed and latency overlays", async () => {
   const html = await readFile(htmlPath, "utf8");
 
