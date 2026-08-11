@@ -31,6 +31,7 @@ const heatmapSseClients = new Set();
 const quoteSseClients = new Set();
 const heatmapHistoryByInstrument = new Map();
 const liveQuoteCache = new Map();
+const quoteBatchesByInstrument = new Map();
 
 function json(response, status, body) {
   response.writeHead(status, {
@@ -159,8 +160,10 @@ function quotePayload(alias, instrument, event = null) {
   const tradePrice = Number(trade?.price || 0);
   const mid = bid && ask ? (bid + ask) / 2 : tradePrice || Number(snapshot.lastPrice || 0) || bid || ask;
   if (!Number.isFinite(mid) || mid <= 0) return null;
-  const size = Math.max(0, Number(trade?.size || 0));
+  const size = Math.max(0, Number(event?.quoteSize ?? trade?.size ?? 0));
   const isTrade = Boolean(tradePrice && size);
+  const tradeCount = Math.max(1, Number(event?.quoteTrades ?? 1));
+  const classifiedDelta = Number(event?.quoteDelta);
   return {
     instrument: alias,
     contractSymbol: instrument.symbol,
@@ -169,15 +172,95 @@ function quotePayload(alias, instrument, event = null) {
     mid: tradePrice || mid,
     isTrade,
     size: isTrade ? size : undefined,
-    trades: isTrade ? 1 : undefined,
+    trades: isTrade ? tradeCount : undefined,
     delta: isTrade
-      ? trade.aggressor === "BUY" ? size : trade.aggressor === "SELL" ? -size : 0
+      ? Number.isFinite(classifiedDelta)
+        ? classifiedDelta
+        : trade.aggressor === "BUY" ? size : trade.aggressor === "SELL" ? -size : 0
       : undefined,
     timestamp: Number(trade?.timestampMs || snapshot.asOfMs || Date.now()),
     broker: "Databento",
     transport: "vps-rithmic",
   };
 }
+
+function queueQuoteBatch(event) {
+  if (!event?.instrument || !quoteSseClients.size) return;
+  const current = quoteBatchesByInstrument.get(event.instrument) || {
+    latestEvent: event,
+    lastTrade: null,
+    size: 0,
+    trades: 0,
+    delta: 0,
+  };
+  current.latestEvent = event;
+  if (event.type === "trade" && event.trade) {
+    const size = Math.max(0, Number(event.trade.size || 0));
+    current.lastTrade = event.trade;
+    current.size += size;
+    current.trades += 1;
+    current.delta += event.trade.aggressor === "BUY"
+      ? size
+      : event.trade.aggressor === "SELL"
+        ? -size
+        : 0;
+  }
+  quoteBatchesByInstrument.set(event.instrument, current);
+}
+
+// Depth-by-order can produce thousands of messages per second. Building a
+// complete book snapshot inside the raw market-data callback multiplied that
+// work by every browser stream and eventually starved /health and heatmap
+// rendering. Fold all messages received during one UI frame into one quote
+// snapshot per instrument, then fan that compact result out to subscribers.
+const quoteFlush = setInterval(() => {
+  const batches = [...quoteBatchesByInstrument.entries()];
+  quoteBatchesByInstrument.clear();
+  for (const [instrumentKey, batch] of batches) {
+    const subscribers = [...quoteSseClients].filter((subscriber) => (
+      subscriber.aliasesByKey.has(instrumentKey)
+      && !subscriber.response.destroyed
+      && !subscriber.response.writableEnded
+    ));
+    if (!subscribers.length) continue;
+    const instrument = subscribers[0].instrumentsByKey.get(instrumentKey);
+    if (!instrument) continue;
+    const event = batch.lastTrade
+      ? {
+          ...batch.latestEvent,
+          type: "trade",
+          trade: batch.lastTrade,
+          quoteSize: batch.size,
+          quoteTrades: batch.trades,
+          quoteDelta: batch.delta,
+        }
+      : batch.latestEvent;
+    const basePayload = quotePayload("", instrument, event);
+    if (!basePayload) continue;
+    for (const subscriber of subscribers) {
+      for (const alias of subscriber.aliasesByKey.get(instrumentKey) || []) {
+        const payload = { ...basePayload, instrument: alias };
+        liveQuoteCache.set(alias, { payload, updatedAt: Date.now() });
+        subscriber.pending.set(alias, payload);
+      }
+    }
+  }
+
+  const now = Date.now();
+  for (const subscriber of [...quoteSseClients]) {
+    if (subscriber.response.destroyed || subscriber.response.writableEnded) {
+      quoteSseClients.delete(subscriber);
+      continue;
+    }
+    for (const [alias, payload] of subscriber.pending) {
+      if (!subscriber.priority.has(alias) && now - (subscriber.lastPublishedAt.get(alias) || 0) < 250) continue;
+      subscriber.pending.delete(alias);
+      subscriber.lastPublishedAt.set(alias, now);
+      subscriber.response.write(`data: ${JSON.stringify(payload)}\n\n`);
+    }
+  }
+}, 32);
+quoteFlush.unref();
 
 // Micro contracts trade the same underlying at the same prices as their
 // e-mini parent but generate comparable message volume for a tenth of the
@@ -585,28 +668,7 @@ function emitRawSse(eventName, payload) {
 
 client.on("marketData", (event) => {
   emitRawSse(event.type, event);
-  for (const subscriber of quoteSseClients) {
-    const aliases = subscriber.aliasesByKey.get(event.instrument);
-    if (!aliases?.length) continue;
-    const instrument = subscriber.instrumentsByKey.get(event.instrument);
-    if (!instrument) continue;
-    for (const alias of aliases) {
-      const payload = quotePayload(alias, instrument, event);
-      if (!payload) continue;
-      liveQuoteCache.set(alias, { payload, updatedAt: Date.now() });
-      const previous = subscriber.pending.get(alias);
-      const previousTrades = previous?.isTrade ? Number(previous.trades || 1) : 0;
-      const nextTrades = payload.isTrade ? Number(payload.trades || 1) : 0;
-      const trades = previousTrades + nextTrades;
-      subscriber.pending.set(alias, {
-        ...payload,
-        isTrade: trades > 0,
-        size: trades > 0 ? Number(previous?.size || 0) + Number(payload.size || 0) : undefined,
-        trades: trades > 0 ? trades : undefined,
-        delta: trades > 0 ? Number(previous?.delta || 0) + Number(payload.delta || 0) : undefined,
-      });
-    }
-  }
+  queueQuoteBatch(event);
   for (const subscriber of tradeSseClients) {
     if (event.type !== "trade" || subscriber.key !== event.instrument) continue;
     subscriber.response.write(
@@ -819,15 +881,6 @@ const server = createServer(async (request, response) => {
         }
       }
       quoteSseClients.add(subscriber);
-      const flush = setInterval(() => {
-        const now = Date.now();
-        for (const [alias, payload] of subscriber.pending) {
-          if (!priority.has(alias) && now - (subscriber.lastPublishedAt.get(alias) || 0) < 250) continue;
-          subscriber.pending.delete(alias);
-          subscriber.lastPublishedAt.set(alias, now);
-          response.write(`data: ${JSON.stringify(payload)}\n\n`);
-        }
-      }, 32);
       const keepalive = setInterval(() => response.write(
         `event: heartbeat\ndata: ${JSON.stringify({ timestamp: Date.now() })}\n\n`,
       ), 8_000);
@@ -835,12 +888,17 @@ const server = createServer(async (request, response) => {
         response.write(`event: rotate\ndata: ${JSON.stringify({ reason: "stream-lease", timestamp: Date.now() })}\n\n`);
         response.end();
       }, 4.5 * 60_000);
-      request.on("close", () => {
-        clearInterval(flush);
+      let cleanedUp = false;
+      const cleanup = () => {
+        if (cleanedUp) return;
+        cleanedUp = true;
         clearInterval(keepalive);
         clearTimeout(lease);
         quoteSseClients.delete(subscriber);
-      });
+      };
+      request.on("close", cleanup);
+      response.on("close", cleanup);
+      response.on("error", cleanup);
       return;
     }
     if (request.method === "GET" && url.pathname === "/v1/market-data/trades") {
