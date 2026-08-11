@@ -116,7 +116,7 @@ export const CHART_INDICATOR_CATALOG: ChartIndicatorDefinition[] = [
   indicator("Average Daily Range Target", "Market Structure", "Projects daily range targets."),
   indicator("Sessions", "Market Structure", "DST-aware Tokyo, London, New York and Sydney session boxes, levels and labels.", false, "Kwantify"),
   indicator("Session Highs & Lows", "Market Structure", "Extends the high and low of the three most recently completed enabled sessions to the live edge.", false, "Kwantify"),
-  indicator("Gamma Levels", "Market Structure", "Session-anchored KwantData gamma walls with selectable QQQ/NDX-to-NQ/MNQ and SPY/SPX-to-ES/MES conversion.", false, "Kwantify"),
+  indicator("Kwant Levels", "Market Structure", "Session-anchored KwantData gamma walls with selectable QQQ/NDX-to-NQ/MNQ and SPY/SPX-to-ES/MES conversion.", false, "Kwantify", "Gamma Levels"),
   indicator("Classic GEX Profile", "Market Structure", "Live call and put gamma exposure ladder anchored to the NQ/MNQ chart price scale.", false, "Kwantify"),
   indicator("Session Marker", "Market Structure", "Marks configurable market sessions."),
   indicator("Shift Candle", "Market Structure", "Offsets candle reference and comparison logic."),

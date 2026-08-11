@@ -11020,8 +11020,8 @@ export default function KwantifyWorkspace({
             levelControls={[
               {
                 id: "gamma",
-                label: "Gamma levels",
-                description: "Live options positioning levels",
+                label: "Kwant levels",
+                description: "Live options positioning and gamma levels",
                 badge: "Γ",
                 enabled: gammaLevelsEnabled,
                 available: activeWorkspacePane.broker === "Databento"
@@ -11030,8 +11030,8 @@ export default function KwantifyWorkspace({
               },
               {
                 id: "kwant",
-                label: "Kwant levels",
-                description: "Proprietary session levels and zones",
+                label: "Kwant zones",
+                description: "Proprietary session zones from the Gameplan engine",
                 badge: "K",
                 enabled: Boolean(activeGameplanRoot && gameplanChartOverlays[activeGameplanRoot]?.levels.length),
                 available: Boolean(activeGameplanRoot),
