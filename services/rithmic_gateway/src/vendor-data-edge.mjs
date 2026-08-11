@@ -1,10 +1,10 @@
 import { createHash } from "node:crypto";
 import { Readable } from "node:stream";
-import { gzipSync } from "node:zlib";
 
 const DATABENTO_ORIGIN = "https://api.databento.com";
 const QUANTDATA_ORIGIN = "https://api.quantdata.us";
 const MAX_BODY_BYTES = 8 * 1024 * 1024;
+const ROLLING_DATABENTO_CACHE_MS = 12_000;
 const SAFE_DATABENTO_PATH = /^\/v0\/(timeseries\.get_range|metadata\.[A-Za-z0-9_.-]+)$/;
 const SAFE_QUANTDATA_PATH = /^\/v1\/[A-Za-z0-9_./-]+$/;
 
@@ -141,26 +141,10 @@ export class VendorDataEdge {
     const cacheKey = request.method === "POST" ? rollingDatabentoCacheKey(path, body) : null;
     if (cacheKey) {
       const cached = this.databentoCache.get(cacheKey);
-      if (cached && Date.now() - cached.updatedAt <= 6 * 60 * 60_000) {
+      if (cached && Date.now() - cached.updatedAt <= ROLLING_DATABENTO_CACHE_MS) {
         this.metrics.databentoCacheHits += 1;
         response.writeHead(cached.status, cached.headers);
         response.end(cached.body);
-        if (Date.now() - cached.updatedAt > 60_000 && !this.databentoInFlight.has(cacheKey)) {
-          const refresh = this.#fetchBufferedDatabento(path, url.search, request.headers, body)
-            .then((entry) => {
-              if (entry.status >= 200 && entry.status < 300) {
-                this.databentoCache.set(cacheKey, entry);
-              }
-            })
-            .catch((error) => {
-              this.metrics.lastError = {
-                at: new Date().toISOString(),
-                message: error instanceof Error ? error.message : String(error),
-              };
-            })
-            .finally(() => this.databentoInFlight.delete(cacheKey));
-          this.databentoInFlight.set(cacheKey, refresh);
-        }
         return;
       }
       let pending = this.databentoInFlight.get(cacheKey);
@@ -225,21 +209,19 @@ export class VendorDataEdge {
       clearTimeout(timeout);
     }
     const payload = Buffer.from(await upstream.arrayBuffer());
-    const compressed = payload.length >= 64 * 1024
-      ? gzipSync(payload, { level: 4 })
-      : payload;
     this.metrics.databentoRequests += 1;
     this.metrics.lastDatabentoAt = new Date().toISOString();
     const headers = bufferedResponseHeaders(upstream, { "X-KwantDesk-Data-Edge": "Databento" });
-    if (compressed !== payload) {
-      headers["Content-Encoding"] = "gzip";
-      headers.Vary = "Accept-Encoding";
-      headers["Content-Length"] = String(compressed.length);
-    }
+    // DBN/OHLCV responses are already compact binary data. Synchronously
+    // gzipping a multi-day response pinned the single Node event loop above
+    // 100% CPU, which stopped health checks and live Rithmic ticks while a
+    // chart restored. Preserve the upstream bytes and let the live feed keep
+    // its latency budget.
+    headers["Content-Length"] = String(payload.length);
     return {
       status: upstream.status,
       headers,
-      body: compressed,
+      body: payload,
       updatedAt: Date.now(),
     };
   }
