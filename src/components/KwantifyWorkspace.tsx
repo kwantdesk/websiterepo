@@ -3454,6 +3454,7 @@ function WorkspaceChartPane({
   useEffect(() => {
     let cancelled = false;
     const requestController = new AbortController();
+    let reconciliationTimer: number | null = null;
     const requestedFrom = requestedChartHistoryStart(period);
     const immediateCache = pane.broker === "Databento"
       ? peekCompatibleChartHistoryCache(pane.symbol, pane.timeframe)
@@ -3757,6 +3758,8 @@ function WorkspaceChartPane({
                 latestOrderFlowCandlesRef.current,
               )
           : mergedBase;
+        const tailNeedsReconciliation = pane.broker === "Databento"
+          && cmeChartTailNeedsReconciliation(merged, pane.timeframe);
         latestCandlesRef.current = merged;
         latestMarketTradesRef.current = nextMarketTrades;
         if (nextMarketTrades.length) {
@@ -3765,11 +3768,14 @@ function WorkspaceChartPane({
             nextMarketTrades,
           );
         }
-        historyHydratedRef.current = !cmeChartTailNeedsReconciliation(merged, pane.timeframe);
+        historyHydratedRef.current = !tailNeedsReconciliation;
         setCandles(merged);
         setMarketTrades(nextMarketTrades);
         setError(null);
-        setLoading(cmeChartTailNeedsReconciliation(merged, pane.timeframe));
+        setLoading(tailNeedsReconciliation);
+        if (tailNeedsReconciliation && !isEventBasedChartInterval(pane.timeframe)) {
+          reconciliationTimer = window.setTimeout(() => void reconcileTail(), 15_000);
+        }
       } catch (loadError) {
         if (cancelled) return;
         if (loadError instanceof DOMException && loadError.name === "AbortError") return;
@@ -3777,10 +3783,64 @@ function WorkspaceChartPane({
           historyHydratedRef.current = false;
           setError("CME history is temporarily unavailable.");
         }
-        setLoading(cmeChartTailNeedsReconciliation(
+        const tailNeedsReconciliation = cmeChartTailNeedsReconciliation(
           latestCandlesRef.current.length ? latestCandlesRef.current : cachedCandles,
           pane.timeframe,
-        ));
+        );
+        setLoading(tailNeedsReconciliation);
+        if (tailNeedsReconciliation && !isEventBasedChartInterval(pane.timeframe)) {
+          reconciliationTimer = window.setTimeout(() => void reconcileTail(), 15_000);
+        }
+      }
+    };
+
+    const reconcileTail = async () => {
+      if (cancelled || historyHydratedRef.current || pane.broker !== "Databento") return;
+      try {
+        const [historical, seam] = await Promise.all([
+          fetchWorkspaceCandles(
+            pane.symbol,
+            pane.timeframe,
+            pane.broker,
+            period,
+            500,
+            false,
+            requestController.signal,
+          ),
+          resolvedContractSymbol
+            ? fetchWorkspaceLiveSeam(pane.symbol, pane.timeframe, resolvedContractSymbol)
+            : Promise.resolve([] as Candle[]),
+        ]);
+        if (cancelled) return;
+        const repaired = trimChartHistoryForPeriod(
+          trimCandlesAfterActiveBucket(
+            sanitizeCandles(
+              mergeChartHistory(
+                mergeChartHistory(latestCandlesRef.current, historical),
+                seam,
+              ),
+              pane.symbol,
+            ),
+            pane.timeframe,
+          ),
+          period,
+          requestedFrom,
+        );
+        const stillBroken = cmeChartTailNeedsReconciliation(repaired, pane.timeframe);
+        latestCandlesRef.current = repaired;
+        historyHydratedRef.current = !stillBroken;
+        if (!stillBroken) {
+          setCandles(repaired);
+          setLoading(false);
+          setError(null);
+          void writeChartHistoryCache(pane.symbol, pane.timeframe, repaired);
+          return;
+        }
+      } catch (error) {
+        if (cancelled || (error instanceof DOMException && error.name === "AbortError")) return;
+      }
+      if (!cancelled) {
+        reconciliationTimer = window.setTimeout(() => void reconcileTail(), 15_000);
       }
     };
 
@@ -3789,6 +3849,7 @@ function WorkspaceChartPane({
     return () => {
       cancelled = true;
       requestController.abort();
+      if (reconciliationTimer !== null) window.clearTimeout(reconciliationTimer);
     };
   }, [
     needsOrderFlowHistory,

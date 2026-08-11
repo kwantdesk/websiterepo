@@ -423,10 +423,12 @@ export function isContinuousFuture(symbol: string) {
 function completedHistoricalEnd(end: string) {
   const requested = Date.parse(end);
   if (!Number.isFinite(requested)) return end;
-  // Historical GLBX files trail the live venue by several minutes. Asking
-  // for `now` first produces a slow 422 and then repeats the multi-megabyte
-  // request. Rithmic owns this newest seam, so stop at a completed minute.
-  const safeLiveEdge = Date.now() - 20 * 60_000;
+  // Historical GLBX files trail the live venue, but the API reports its exact
+  // available_end and historicalRequest already retries against that value.
+  // A fixed twenty-minute cut-off manufactured a much larger seam than the
+  // provider actually had. Ask through the last completed minute and let the
+  // precise availability response trim it when necessary.
+  const safeLiveEdge = Date.now() - 60_000;
   if (requested <= safeLiveEdge) return end;
   return new Date(Math.floor(safeLiveEdge / 60_000) * 60_000).toISOString();
 }
