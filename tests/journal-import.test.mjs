@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { parseJournalTextFile } from "../src/lib/journal.ts";
+import { mergeJournalImportTrades, parseJournalTextFile } from "../src/lib/journal.ts";
 
 test("a three-trade CSV imports into one existing journal with complete economics", () => {
   const csv = [
@@ -23,6 +23,37 @@ test("a three-trade CSV imports into one existing journal with complete economic
   assert.ok(result.trades.every((trade) => trade.tradingAccountType === "FUNDED"));
   assert.ok(result.trades.every((trade) => trade.accountSize === 50_000));
   assert.equal(new Set(result.trades.map((trade) => trade.fingerprint)).size, 3);
+});
+
+test("an updated export skips existing rows and adds only genuinely new trades", () => {
+  const header = "Entry Time,Exit Time,Instrument,Direction,Contracts,Entry Price,Exit Price,Net P&L";
+  const firstRows = [
+    "2026-08-10T13:31:00Z,2026-08-10T13:38:00Z,MNQ,Long,2,23000,23020,80",
+    "2026-08-10T14:02:00Z,2026-08-10T14:09:00Z,MNQ,Short,1,23040,23025,30",
+  ];
+  const addedRow = "2026-08-10T14:44:00Z,2026-08-10T14:51:00Z,MNQ,Long,3,23010,23005,-30";
+  const first = parseJournalTextFile("trades.csv", [header, ...firstRows].join("\n"), "Main", "first");
+  const updated = parseJournalTextFile("trades.csv", [header, ...firstRows, addedRow].join("\n"), "Main", "updated");
+
+  const merged = mergeJournalImportTrades(first.trades, updated.trades, "Main");
+
+  assert.equal(merged.duplicateTrades, 2);
+  assert.equal(merged.added.length, 1);
+  assert.equal(merged.added[0].netPnl, -30);
+});
+
+test("duplicate detection is scoped to the selected journal account", () => {
+  const csv = [
+    "Entry Time,Exit Time,Instrument,Direction,Contracts,Entry Price,Exit Price,Net P&L",
+    "2026-08-10T13:31:00Z,2026-08-10T13:38:00Z,MNQ,Long,2,23000,23020,80",
+  ].join("\n");
+  const accountA = parseJournalTextFile("trades.csv", csv, "Account A", "a");
+  const accountB = parseJournalTextFile("trades.csv", csv, "Account B", "b");
+
+  const merged = mergeJournalImportTrades(accountA.trades, accountB.trades, "Account B");
+
+  assert.equal(merged.duplicateTrades, 0);
+  assert.equal(merged.added.length, 1);
 });
 
 test("an execution CSV pairs fills into editable closed trades", () => {

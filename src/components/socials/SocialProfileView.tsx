@@ -119,6 +119,20 @@ function zoneLabel(payload: SocialPrecordPayload) {
   return low === high ? low : `${low}–${high}`;
 }
 
+function emptyFollowSummary(profileUserId: string): SocialFollowSummary {
+  return {
+    configured: true,
+    profileUserId,
+    followerCount: 0,
+    followingCount: 0,
+    viewerFollows: false,
+    followsViewer: false,
+    notificationsEnabled: false,
+    canViewFollowers: true,
+    canViewFollowing: true,
+  };
+}
+
 export default function SocialProfileView({
   profileObject,
   profile,
@@ -158,6 +172,7 @@ export default function SocialProfileView({
   const followMutationRef = useRef(false);
   const followSummaryRequestRef = useRef(0);
   const followListRequestRef = useRef(0);
+  const visibleFollowSummary = followSummary ?? emptyFollowSummary(profileObject.userId);
 
   useEffect(() => {
     if (!initialPostId) return;
@@ -246,6 +261,7 @@ export default function SocialProfileView({
     const controller = new AbortController();
     setOpenFollowList(null);
     setFollowList([]);
+    setFollowSummary(null);
     void loadFollowSummary(controller.signal);
     return () => controller.abort();
   }, [loadFollowSummary]);
@@ -267,8 +283,7 @@ export default function SocialProfileView({
     enabled?: boolean,
   ) => {
     if (followMutationRef.current || isOwnProfile) return;
-    const previous = followSummary;
-    if (!previous) return;
+    const previous = followSummary ?? emptyFollowSummary(profileObject.userId);
     followMutationRef.current = true;
     followSummaryRequestRef.current += 1;
     setFollowError("");
@@ -514,45 +529,44 @@ export default function SocialProfileView({
                 <>
                   <button
                     type="button"
-                    onClick={() => void updateFollow(followSummary?.viewerFollows ? "unfollow" : "follow")}
-                    disabled={followLoading || !followSummary}
-                    className={`flex h-9 items-center gap-2 rounded-xl px-4 text-[9px] font-semibold transition-colors disabled:cursor-default disabled:opacity-50 ${
-                      followSummary?.viewerFollows
+                    onClick={() => void updateFollow(visibleFollowSummary.viewerFollows ? "unfollow" : "follow")}
+                    className={`flex h-9 items-center gap-2 rounded-xl px-4 text-[9px] font-semibold transition-[transform,background-color,color,border-color] active:scale-[0.96] ${
+                      visibleFollowSummary.viewerFollows
                         ? "border border-primary/25 bg-primary/10 text-primary"
                         : "bg-primary text-background"
                     }`}
                   >
-                    {followSummary?.viewerFollows ? (
+                    {visibleFollowSummary.viewerFollows ? (
                       <UserCheck className="h-3.5 w-3.5" />
                     ) : (
                       <UserPlus className="h-3.5 w-3.5" />
                     )}
-                    {followSummary?.viewerFollows
+                    {visibleFollowSummary.viewerFollows
                       ? "Following"
-                      : followSummary?.followsViewer
+                      : visibleFollowSummary.followsViewer
                         ? "Follow back"
                         : "Follow"}
                   </button>
-                  {followSummary?.viewerFollows ? (
+                  {visibleFollowSummary.viewerFollows ? (
                     <button
                       type="button"
-                      onClick={() => void updateFollow("notifications", !followSummary.notificationsEnabled)}
-                      className={`flex h-9 w-9 items-center justify-center rounded-xl border transition-colors ${
-                        followSummary.notificationsEnabled
+                      onClick={() => void updateFollow("notifications", !visibleFollowSummary.notificationsEnabled)}
+                      className={`flex h-9 w-9 items-center justify-center rounded-xl border transition-[transform,background-color,color,border-color] active:scale-[0.92] ${
+                        visibleFollowSummary.notificationsEnabled
                           ? "border-primary/35 bg-primary/10 text-primary"
                           : "border-border bg-surface text-muted hover:text-foreground"
                       }`}
-                      title={followSummary.notificationsEnabled ? "Turn off profile notifications" : "Turn on profile notifications"}
-                      aria-label={followSummary.notificationsEnabled ? "Turn off profile notifications" : "Turn on profile notifications"}
+                      title={visibleFollowSummary.notificationsEnabled ? "Turn off profile notifications" : "Turn on profile notifications"}
+                      aria-label={visibleFollowSummary.notificationsEnabled ? "Turn off profile notifications" : "Turn on profile notifications"}
                     >
-                      {followSummary.notificationsEnabled ? <BellRing className="h-4 w-4" /> : <Bell className="h-4 w-4" />}
+                      {visibleFollowSummary.notificationsEnabled ? <BellRing className="h-4 w-4" /> : <Bell className="h-4 w-4" />}
                     </button>
                   ) : null}
                   <button type="button" onClick={() => void updateFriend()} disabled={friendBusy || friendState === "loading" || friendState === "outgoing" || friendState === "friend" || friendState === "unavailable"} className={`flex h-9 items-center gap-2 rounded-xl border px-3 text-[9px] font-semibold disabled:cursor-default ${friendState === "friend" ? "border-primary/25 bg-primary/10 text-primary" : "border-border bg-surface text-muted hover:text-foreground disabled:opacity-60"}`}><UsersRound className="h-3.5 w-3.5" />{friendBusy ? "Saving…" : friendState === "friend" ? "Friends" : friendState === "incoming" ? "Accept friend" : friendState === "outgoing" ? "Request sent" : "Add friend"}</button>
-                  {friendState === "friend" ? <button type="button" onClick={onMessage} className="flex h-9 items-center gap-2 rounded-xl border border-border bg-surface px-4 text-[9px] font-semibold text-muted hover:text-foreground"><Send className="h-3.5 w-3.5" />Message</button> : null}
+                  {friendState === "friend" || friendState === "loading" ? <button type="button" onClick={onMessage} className="flex h-9 items-center gap-2 rounded-xl border border-border bg-surface px-4 text-[9px] font-semibold text-muted transition-transform hover:text-foreground active:scale-[0.96]"><Send className="h-3.5 w-3.5" />Message</button> : null}
                 </>
               )}
-              <button type="button" onClick={onShareProfile} className="flex h-9 items-center gap-2 rounded-xl border border-border bg-surface px-4 text-[9px] font-semibold text-muted hover:text-foreground"><Share2 className="h-3.5 w-3.5" />Share profile</button>
+              <button type="button" onClick={onShareProfile} className="flex h-9 items-center gap-2 rounded-xl border border-border bg-surface px-4 text-[9px] font-semibold text-muted transition-transform hover:text-foreground active:scale-[0.96]"><Share2 className="h-3.5 w-3.5" />Share profile</button>
             </div>
           </div>
           {followError ? <div className="mt-3 text-[7px] text-danger">{followError}</div> : null}

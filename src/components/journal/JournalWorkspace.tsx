@@ -54,10 +54,12 @@ import {
 import KwantLoader from "@/components/KwantLoader";
 import WorkspaceSubnav from "@/components/ui/WorkspaceSubnav";
 import {
+  calculateJournalAdvancedStats,
   calculateJournalStats,
   EMPTY_JOURNAL_STATE,
   isZyonJournalAccountName,
   journalTradesToCsv,
+  mergeJournalImportTrades,
   parseJournalTextFile,
   ZYON_JOURNAL_ACCOUNT,
   zyonOutcomesToJournalTrades,
@@ -1200,6 +1202,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
     [analysisAccount, analysisEvidenceItems, analysisTrades],
   );
   const stats = useMemo(() => calculateJournalStats(filteredTrades, filteredEvidence), [filteredEvidence, filteredTrades]);
+  const advancedStats = useMemo(() => calculateJournalAdvancedStats(filteredTrades), [filteredTrades]);
   const selectedTrade = allTrades.find((trade) => trade.id === selectedTradeId) ?? null;
   const editingTrade = allTrades.find((trade) => trade.id === editingTradeId) ?? null;
   const deleteTradeTarget = allTrades.find((trade) => trade.id === deleteTradeTargetId) ?? null;
@@ -1754,7 +1757,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
     }
     setImporting(true);
     setImportMessage("");
-    const existingFingerprints = new Set(state.trades.map((trade) => trade.fingerprint));
+    const acceptedFingerprints = new Set<string>();
     const newTrades: JournalTrade[] = [];
     const newEvidence: JournalEvidence[] = [];
     const newImports: JournalImportBatch[] = [];
@@ -1918,15 +1921,14 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
         parsed = parseJournalTextFile(file.name, text, account, importId);
       }
 
-      let fileDuplicates = 0;
-      const accepted = parsed.trades.filter((trade) => {
-        if (existingFingerprints.has(trade.fingerprint)) {
-          fileDuplicates += 1;
-          return false;
-        }
-        existingFingerprints.add(trade.fingerprint);
+      const candidateTrades = parsed.trades.filter((trade) => {
+        if (acceptedFingerprints.has(trade.fingerprint)) return false;
+        acceptedFingerprints.add(trade.fingerprint);
         return true;
       });
+      const merged = mergeJournalImportTrades(state.trades, candidateTrades, account);
+      const fileDuplicates = parsed.trades.length - candidateTrades.length + merged.duplicateTrades;
+      const accepted = merged.added;
       duplicates += fileDuplicates;
       newTrades.push(...accepted);
       newImports.push({
@@ -1968,7 +1970,9 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
       void syncCloudAccount(account, newTrades, newImports);
     } else if (newImports.length) {
       const firstWarning = newImports.flatMap((batch) => batch.warnings)[0];
-      setImportMessage(`No trades were added.${firstWarning ? ` ${firstWarning}` : " Check that the file includes a date, instrument, and either P&L or entry/exit prices."}`);
+      setImportMessage(duplicates
+        ? `No new trades found · ${duplicates} existing trade${duplicates === 1 ? " was" : "s were"} already synced. Nothing was removed or duplicated.`
+        : `No trades were added.${firstWarning ? ` ${firstWarning}` : " Check that the file includes a date, instrument, and either P&L or entry/exit prices."}`);
       void syncCloudAccount(account, [], newImports);
     }
   };
@@ -2421,6 +2425,17 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
               <MetricCard label="Max drawdown" value={money(-stats.maxDrawdown)} compactValue={compact(-stats.maxDrawdown)} detail="Peak-to-trough imported P&L" icon={TrendingDown} tone="negative" />
               <MetricCard label="Review integrity" value={`${reviewIntegrity}%`} detail="Source 45% · review 40% · evidence 15%" icon={ShieldCheck} tone={reviewIntegrity >= 80 ? "positive" : "neutral"} />
               <MetricCard label="Open reviews" value={String(unreviewed.length)} detail={`${stats.reviewedCount} marked reviewed`} icon={CircleAlert} tone={unreviewed.length ? "negative" : "positive"} />
+            </div>
+
+            <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-8">
+              <MetricCard label="Winning days rate" value={percent(advancedStats.winningDayRate)} detail={`${advancedStats.winningDays} winning · ${advancedStats.losingDays} losing days`} icon={CalendarDays} tone={(advancedStats.winningDayRate ?? 0) >= 0.5 ? "positive" : "negative"} />
+              <MetricCard label="Avg winning day" value={money(advancedStats.averageWinningDay)} compactValue={advancedStats.averageWinningDay === null ? undefined : compact(advancedStats.averageWinningDay)} detail="Mean P&L across green days" icon={TrendingUp} tone="positive" />
+              <MetricCard label="Avg losing day" value={money(advancedStats.averageLosingDay)} compactValue={advancedStats.averageLosingDay === null ? undefined : compact(advancedStats.averageLosingDay)} detail="Mean P&L across red days" icon={TrendingDown} tone="negative" />
+              <MetricCard label="Best day" value={money(advancedStats.bestDay)} compactValue={advancedStats.bestDay === null ? undefined : compact(advancedStats.bestDay)} detail={`Across ${advancedStats.tradedDays} traded days`} icon={Star} tone="positive" />
+              <MetricCard label="Worst day" value={money(advancedStats.worstDay)} compactValue={advancedStats.worstDay === null ? undefined : compact(advancedStats.worstDay)} detail="Largest daily loss" icon={CircleAlert} tone="negative" />
+              <MetricCard label="Payoff ratio" value={ratio(advancedStats.payoffRatio)} detail="Average winner / average loser" icon={Target} tone={(advancedStats.payoffRatio ?? 0) >= 1 ? "positive" : "negative"} />
+              <MetricCard label="Current streak" value={stats.currentStreak ? `${stats.currentStreak}${stats.currentStreakKind === "WIN" ? "W" : "L"}` : "—"} detail="Consecutive non-breakeven trades" icon={Activity} tone={stats.currentStreakKind === "WIN" ? "positive" : stats.currentStreakKind === "LOSS" ? "negative" : "neutral"} />
+              <MetricCard label="Recovery factor" value={ratio(advancedStats.recoveryFactor)} detail="Net P&L / max drawdown" icon={ShieldCheck} tone={(advancedStats.recoveryFactor ?? 0) >= 1 ? "positive" : "neutral"} />
             </div>
 
             <div className="grid gap-3 xl:grid-cols-[minmax(0,1.65fr)_minmax(320px,.75fr)]">

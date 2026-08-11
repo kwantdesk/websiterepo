@@ -136,6 +136,19 @@ export type JournalStats = {
   currentStreakKind: "WIN" | "LOSS" | "NONE";
 };
 
+export type JournalAdvancedStats = {
+  tradedDays: number;
+  winningDays: number;
+  losingDays: number;
+  winningDayRate: number | null;
+  averageWinningDay: number | null;
+  averageLosingDay: number | null;
+  bestDay: number | null;
+  worstDay: number | null;
+  payoffRatio: number | null;
+  recoveryFactor: number | null;
+};
+
 const HEADER_ALIASES = {
   openedAt: ["openedat", "entrydatetime", "entrytimestamp", "opendatetime", "opentimestamp", "entrydt", "opentime", "entrytime", "datetime", "dateandtime", "timestamp", "timeopened", "entrydate", "opendate", "tradeopen", "tradeopened", "tradeopentime", "positionopened", "dateopened", "entryfilledat", "firstfilltime", "openeddatetime", "entrydateandtime"],
   closedAt: ["closedat", "exitdatetime", "exittimestamp", "closedatetime", "closetimestamp", "exitdt", "closetime", "exittime", "timeclosed", "exitdate", "closedate", "tradeclose", "tradeclosed", "tradeclosetime", "positionclosed", "dateclosed", "exitfilledat", "lastfilltime", "closeddatetime", "exitdateandtime"],
@@ -478,6 +491,27 @@ export function journalTradeFingerprint(trade: Pick<JournalTrade, "openedAt" | "
     trade.exitPrice?.toFixed(8) ?? "",
     trade.netPnl.toFixed(8),
   ].join("|"));
+}
+
+export function mergeJournalImportTrades(existing: JournalTrade[], incoming: JournalTrade[], account: string) {
+  const known = new Set(
+    existing
+      .filter((trade) => trade.account === account)
+      .map((trade) => trade.fingerprint),
+  );
+  const added: JournalTrade[] = [];
+  let duplicateTrades = 0;
+
+  for (const trade of incoming) {
+    if (known.has(trade.fingerprint)) {
+      duplicateTrades += 1;
+      continue;
+    }
+    known.add(trade.fingerprint);
+    added.push(trade);
+  }
+
+  return { added, duplicateTrades };
 }
 
 export function zyonOutcomesToJournalTrades(records: ZyonSocialRecord[], viewerId: string) {
@@ -1143,6 +1177,37 @@ export function calculateJournalStats(trades: JournalTrade[], evidence: JournalE
     worstTrade: ordered.length ? Math.min(...ordered.map((trade) => trade.netPnl)) : null,
     currentStreak,
     currentStreakKind,
+  };
+}
+
+export function calculateJournalAdvancedStats(trades: JournalTrade[]): JournalAdvancedStats {
+  const byDay = new Map<string, number>();
+  for (const trade of trades) {
+    const timestamp = trade.closedAt ?? trade.openedAt;
+    const date = new Date(timestamp);
+    if (Number.isNaN(date.getTime())) continue;
+    const dayKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+    byDay.set(dayKey, (byDay.get(dayKey) ?? 0) + trade.netPnl);
+  }
+
+  const dailyResults = [...byDay.values()];
+  const winningDays = dailyResults.filter((value) => value > 0);
+  const losingDays = dailyResults.filter((value) => value < 0);
+  const averageWin = trades.filter((trade) => trade.netPnl > 0).reduce((sum, trade) => sum + trade.netPnl, 0) / Math.max(1, trades.filter((trade) => trade.netPnl > 0).length);
+  const averageLoss = Math.abs(trades.filter((trade) => trade.netPnl < 0).reduce((sum, trade) => sum + trade.netPnl, 0)) / Math.max(1, trades.filter((trade) => trade.netPnl < 0).length);
+  const stats = calculateJournalStats(trades);
+
+  return {
+    tradedDays: dailyResults.length,
+    winningDays: winningDays.length,
+    losingDays: losingDays.length,
+    winningDayRate: dailyResults.length ? winningDays.length / dailyResults.length : null,
+    averageWinningDay: winningDays.length ? winningDays.reduce((sum, value) => sum + value, 0) / winningDays.length : null,
+    averageLosingDay: losingDays.length ? losingDays.reduce((sum, value) => sum + value, 0) / losingDays.length : null,
+    bestDay: dailyResults.length ? Math.max(...dailyResults) : null,
+    worstDay: dailyResults.length ? Math.min(...dailyResults) : null,
+    payoffRatio: averageLoss > 0 ? averageWin / averageLoss : averageWin > 0 ? Number.POSITIVE_INFINITY : null,
+    recoveryFactor: stats.maxDrawdown > 0 ? stats.netPnl / stats.maxDrawdown : stats.netPnl > 0 ? Number.POSITIVE_INFINITY : null,
   };
 }
 
