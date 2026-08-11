@@ -3496,7 +3496,9 @@ function WorkspaceChartPane({
         immediateMarketTrades,
       );
     }
-    setLoading(!hasImmediateHistory || immediateTailNeedsReconciliation);
+    // Paint any cached chart immediately. A stale live seam is repaired below
+    // without hiding usable candles behind the full-screen loader.
+    setLoading(!hasImmediateHistory);
     setError(null);
     setCandles(hasImmediateHistory ? immediateCandles : []);
     setMarketTrades(immediateMarketTrades);
@@ -3564,7 +3566,7 @@ function WorkspaceChartPane({
         historyHydratedRef.current = !cmeChartTailNeedsReconciliation(mergedCandles, pane.timeframe);
         setCandles(mergedCandles);
         setMarketTrades(mergedTape);
-        setLoading(cmeChartTailNeedsReconciliation(mergedCandles, pane.timeframe));
+        setLoading(false);
         setError(null);
         void writeChartHistoryCache(pane.symbol, pane.timeframe, mergedCandles);
       }).catch(() => {
@@ -3641,7 +3643,7 @@ function WorkspaceChartPane({
         latestCandlesRef.current = cachedCandles;
         historyHydratedRef.current = !cmeChartTailNeedsReconciliation(cachedCandles, pane.timeframe);
         setCandles(cachedCandles);
-        setLoading(cmeChartTailNeedsReconciliation(cachedCandles, pane.timeframe));
+        setLoading(false);
         setError(null);
       }
       if (cachedIsHydrated) {
@@ -3689,7 +3691,7 @@ function WorkspaceChartPane({
             latestCandlesRef.current = cachedCandles;
             historyHydratedRef.current = !cmeChartTailNeedsReconciliation(cachedCandles, pane.timeframe);
             setCandles(cachedCandles);
-            setLoading(cmeChartTailNeedsReconciliation(cachedCandles, pane.timeframe));
+            setLoading(false);
             setError(null);
           }
         } catch (baseError) {
@@ -3770,7 +3772,7 @@ function WorkspaceChartPane({
         setCandles(merged);
         setMarketTrades(nextMarketTrades);
         setError(null);
-        setLoading(cmeChartTailNeedsReconciliation(merged, pane.timeframe));
+        setLoading(false);
       } catch (loadError) {
         if (cancelled) return;
         if (loadError instanceof DOMException && loadError.name === "AbortError") return;
@@ -3778,10 +3780,7 @@ function WorkspaceChartPane({
           historyHydratedRef.current = false;
           setError("CME history is temporarily unavailable.");
         }
-        setLoading(cmeChartTailNeedsReconciliation(
-          latestCandlesRef.current.length ? latestCandlesRef.current : cachedCandles,
-          pane.timeframe,
-        ));
+        setLoading(!(latestCandlesRef.current.length || cachedCandles.length));
       }
     };
 

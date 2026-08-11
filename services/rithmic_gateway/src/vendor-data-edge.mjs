@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { Readable } from "node:stream";
+import { gzipSync } from "node:zlib";
 
 const DATABENTO_ORIGIN = "https://api.databento.com";
 const QUANTDATA_ORIGIN = "https://api.quantdata.us";
@@ -39,14 +40,50 @@ function copyResponseHeaders(upstream, response, extra = {}) {
   response.writeHead(upstream.status, headers);
 }
 
+function bufferedResponseHeaders(upstream, extra = {}) {
+  const headers = {
+    "Content-Type": upstream.headers.get("content-type") || "application/octet-stream",
+    "Cache-Control": "no-store",
+    ...extra,
+  };
+  for (const name of ["x-ratelimit-limit", "x-ratelimit-remaining", "x-ratelimit-reset", "retry-after"]) {
+    const value = upstream.headers.get(name);
+    if (value) headers[name] = value;
+  }
+  return headers;
+}
+
+export function rollingDatabentoCacheKey(path, body) {
+  if (path !== "/v0/timeseries.get_range" || !body?.length) return null;
+  const params = new URLSearchParams(body.toString("utf8"));
+  const schema = String(params.get("schema") || "");
+  if (!schema.startsWith("ohlcv-")) return null;
+  const start = Date.parse(params.get("start") || "");
+  const end = Date.parse(params.get("end") || "");
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return null;
+  if (Math.abs(Date.now() - end) > 60 * 60_000) return null;
+  const durationDays = Math.max(1, Math.round((end - start) / (24 * 60 * 60_000)));
+  return createHash("sha256").update(JSON.stringify({
+    dataset: params.get("dataset"),
+    symbols: params.get("symbols"),
+    stypeIn: params.get("stype_in"),
+    schema,
+    durationDays,
+  })).digest("hex");
+}
+
 export class VendorDataEdge {
   constructor(config, fetchImpl = fetch) {
     this.config = config;
     this.fetch = fetchImpl;
+    this.databentoCache = new Map();
+    this.databentoInFlight = new Map();
     this.quantDataCache = new Map();
     this.quantDataNextStartAt = 0;
     this.metrics = {
       databentoRequests: 0,
+      databentoCacheHits: 0,
+      databentoCoalescedRequests: 0,
       quantDataRequests: 0,
       quantDataCacheHits: 0,
       lastDatabentoAt: null,
@@ -101,6 +138,50 @@ export class VendorDataEdge {
     if (!['GET', 'POST'].includes(request.method || "")) throw Object.assign(new Error("Method not allowed."), { status: 405 });
     const path = gatewayPath(url.pathname, "/v1/vendors/databento", SAFE_DATABENTO_PATH);
     const body = request.method === "POST" ? await requestBody(request) : undefined;
+    const cacheKey = request.method === "POST" ? rollingDatabentoCacheKey(path, body) : null;
+    if (cacheKey) {
+      const cached = this.databentoCache.get(cacheKey);
+      if (cached && Date.now() - cached.updatedAt <= 6 * 60 * 60_000) {
+        this.metrics.databentoCacheHits += 1;
+        response.writeHead(cached.status, cached.headers);
+        response.end(cached.body);
+        if (Date.now() - cached.updatedAt > 60_000 && !this.databentoInFlight.has(cacheKey)) {
+          const refresh = this.#fetchBufferedDatabento(path, url.search, request.headers, body)
+            .then((entry) => {
+              if (entry.status >= 200 && entry.status < 300) {
+                this.databentoCache.set(cacheKey, entry);
+              }
+            })
+            .catch((error) => {
+              this.metrics.lastError = {
+                at: new Date().toISOString(),
+                message: error instanceof Error ? error.message : String(error),
+              };
+            })
+            .finally(() => this.databentoInFlight.delete(cacheKey));
+          this.databentoInFlight.set(cacheKey, refresh);
+        }
+        return;
+      }
+      let pending = this.databentoInFlight.get(cacheKey);
+      if (!pending) {
+        pending = this.#fetchBufferedDatabento(path, url.search, request.headers, body)
+          .then((entry) => {
+            if (entry.status >= 200 && entry.status < 300) {
+              this.databentoCache.set(cacheKey, entry);
+            }
+            return entry;
+          })
+          .finally(() => this.databentoInFlight.delete(cacheKey));
+        this.databentoInFlight.set(cacheKey, pending);
+      } else {
+        this.metrics.databentoCoalescedRequests += 1;
+      }
+      const entry = await pending;
+      response.writeHead(entry.status, entry.headers);
+      response.end(entry.body);
+      return;
+    }
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), this.config.vendorRequestTimeoutMs);
     let upstream;
@@ -123,6 +204,44 @@ export class VendorDataEdge {
     copyResponseHeaders(upstream, response, { "X-KwantDesk-Data-Edge": "Databento" });
     if (!upstream.body) return response.end();
     Readable.fromWeb(upstream.body).pipe(response);
+  }
+
+  async #fetchBufferedDatabento(path, search, requestHeaders, body) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), this.config.vendorRequestTimeoutMs);
+    let upstream;
+    try {
+      upstream = await this.fetch(`${DATABENTO_ORIGIN}${path}${search}`, {
+        method: "POST",
+        headers: {
+          Authorization: `Basic ${Buffer.from(`${this.config.databentoApiKey}:`).toString("base64")}`,
+          "Content-Type": requestHeaders["content-type"] || "application/x-www-form-urlencoded",
+          Accept: requestHeaders.accept || "*/*",
+        },
+        body,
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
+    const payload = Buffer.from(await upstream.arrayBuffer());
+    const compressed = payload.length >= 64 * 1024
+      ? gzipSync(payload, { level: 4 })
+      : payload;
+    this.metrics.databentoRequests += 1;
+    this.metrics.lastDatabentoAt = new Date().toISOString();
+    const headers = bufferedResponseHeaders(upstream, { "X-KwantDesk-Data-Edge": "Databento" });
+    if (compressed !== payload) {
+      headers["Content-Encoding"] = "gzip";
+      headers.Vary = "Accept-Encoding";
+      headers["Content-Length"] = String(compressed.length);
+    }
+    return {
+      status: upstream.status,
+      headers,
+      body: compressed,
+      updatedAt: Date.now(),
+    };
   }
 
   async #quantData(request, response, url) {

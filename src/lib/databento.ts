@@ -420,6 +420,17 @@ export function isContinuousFuture(symbol: string) {
   return /\.[vnc]\.\d+$/.test(symbol);
 }
 
+function completedHistoricalEnd(end: string) {
+  const requested = Date.parse(end);
+  if (!Number.isFinite(requested)) return end;
+  // Historical GLBX files trail the live venue by several minutes. Asking
+  // for `now` first produces a slow 422 and then repeats the multi-megabyte
+  // request. Rithmic owns this newest seam, so stop at a completed minute.
+  const safeLiveEdge = Date.now() - 20 * 60_000;
+  if (requested <= safeLiveEdge) return end;
+  return new Date(Math.floor(safeLiveEdge / 60_000) * 60_000).toISOString();
+}
+
 export async function getDatabentoBars(symbol: string, timeframe: string, start: string, end: string): Promise<DatabentoBar[]> {
   if (!getChartInterval(timeframe)) throw new Error(`Unsupported chart interval: ${timeframe}`);
   if (isEventBasedChartInterval(timeframe)) {
@@ -476,7 +487,7 @@ export async function getDatabentoBars(symbol: string, timeframe: string, start:
     stype_in: isContinuousFuture(symbol) ? "continuous" : "raw_symbol",
     schema: sourceSchema(timeframe),
     start,
-    end,
+    end: completedHistoricalEnd(end),
   });
   const bars = rows
     .map((row) => ({

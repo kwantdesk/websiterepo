@@ -91,6 +91,41 @@ test("Databento history is streamed and the browser-facing request never supplie
   assert.match(capture.body(), /"close":"100"/);
 });
 
+test("rolling Databento chart restores coalesce behind the VPS cache", async () => {
+  let calls = 0;
+  const edge = new VendorDataEdge(config, async () => {
+    calls += 1;
+    return new Response('{"close":"100"}\n', {
+      status: 200,
+      headers: { "content-type": "application/jsonl" },
+    });
+  });
+  const end = new Date(Date.now() - 20 * 60_000);
+  const makeBody = (offsetMs) => new URLSearchParams({
+    dataset: "GLBX.MDP3",
+    symbols: "NQ.v.0",
+    stype_in: "continuous",
+    schema: "ohlcv-1m",
+    start: new Date(end.getTime() - 10 * 24 * 60 * 60_000 + offsetMs).toISOString(),
+    end: new Date(end.getTime() + offsetMs).toISOString(),
+  }).toString();
+
+  for (const offsetMs of [0, 2_000]) {
+    const req = request(makeBody(offsetMs));
+    req.headers["content-type"] = "application/x-www-form-urlencoded";
+    const capture = responseCapture();
+    await edge.handle(
+      req,
+      capture.stream,
+      new URL("http://gateway/v1/vendors/databento/v0/timeseries.get_range"),
+    );
+    await capture.finished;
+    assert.equal(capture.stream.statusCode, 200);
+  }
+  assert.equal(calls, 1);
+  assert.equal(edge.health().databentoCacheHits, 1);
+});
+
 test("unknown vendor paths are rejected instead of becoming an open proxy", async () => {
   const edge = new VendorDataEdge(config, async () => {
     throw new Error("must not run");
