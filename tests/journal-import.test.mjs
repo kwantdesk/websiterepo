@@ -80,6 +80,26 @@ test("a Claude CSV with separate entry and exit date/time columns imports cleanl
   assert.ok(result.trades.every((trade) => trade.openedAt && trade.closedAt));
 });
 
+test("a compact generated trade list preserves Entry/Exit points and infers exit time from Hold", () => {
+  const csv = [
+    "Date,Time,Session,Account,Symbol,Direction,Entry Points,Exit Points,Points,Profit and Loss,Hold,MAE",
+    "2026-08-11,09:35:00,New York,Funded 50K,NQ,Short,29840.25,29820.25,20,400,7m 30s,-6.25",
+    "2026-08-11,10:04:00,New York,Funded 50K,MNQ,Long,29780,29795.5,15.5,62,00:04:15,-4.5",
+  ].join("\n");
+
+  const result = parseJournalTextFile("friend-generated.csv", csv, "Friend Journal", "import-friend-generated");
+
+  assert.equal(result.detectedSchema, "closed-trades");
+  assert.equal(result.trades.length, 2);
+  assert.equal(result.rejectedRows, 0);
+  assert.deepEqual(result.trades.map((trade) => trade.entryPrice), [29840.25, 29780]);
+  assert.deepEqual(result.trades.map((trade) => trade.exitPrice), [29820.25, 29795.5]);
+  assert.deepEqual(result.trades.map((trade) => trade.durationMs), [450_000, 255_000]);
+  assert.ok(result.trades.every((trade) => trade.entryTimeKnown === true));
+  assert.ok(result.trades.every((trade) => trade.exitTimeKnown === true));
+  assert.ok(result.trades.every((trade) => trade.openedAt && trade.closedAt));
+});
+
 test("a Claude CSV with qualified date-time headers imports cleanly", () => {
   const csv = [
     "Entry Date/Time (Brisbane),Exit Date/Time (Brisbane),Instrument Symbol,Position Direction,Contract Quantity,Entry Price,Exit Price,Net P&L (AUD)",

@@ -144,8 +144,8 @@ const HEADER_ALIASES = {
   symbol: ["symbol", "contractsymbol", "instrumentsymbol", "instrument", "ticker", "contract", "market", "tradingsymbol", "product", "security", "underlying", "symbolcontract", "instrumentname"],
   side: ["side", "tradedirection", "positiondirection", "marketposition", "marketpos", "position", "direction", "buysell", "bs", "action", "actiontype", "type", "ordertype", "transactiontype"],
   quantity: ["quantity", "numberofcontracts", "contractquantity", "qty", "qtyfilled", "filledqty", "filledquantity", "fillqty", "executedqty", "executedquantity", "size", "positionsize", "positionqty", "contracts", "lots", "lot", "units", "volume", "shares"],
-  entryPrice: ["entryprice", "entry", "openprice", "averageentryprice", "avgentryprice", "averageopenprice", "avgopenprice", "buyprice", "entryfillprice"],
-  exitPrice: ["exitprice", "exit", "closeprice", "averageexitprice", "avgexitprice", "averagecloseprice", "avgcloseprice", "sellprice", "exitfillprice"],
+  entryPrice: ["entryprice", "entry", "entrypoint", "entrypoints", "entrylevel", "entryvalue", "entryfill", "openprice", "averageentryprice", "avgentryprice", "averageopenprice", "avgopenprice", "buyprice", "entryfillprice"],
+  exitPrice: ["exitprice", "exit", "exitpoint", "exitpoints", "exitlevel", "exitvalue", "exitfill", "closeprice", "averageexitprice", "avgexitprice", "averagecloseprice", "avgcloseprice", "sellprice", "exitfillprice"],
   price: ["price", "fillprice", "filledprice", "executionprice", "executedprice", "tradeprice", "transactionprice", "averageprice", "avgprice", "avgfillprice", "averagefillprice", "tprice"],
   grossPnl: ["grosspnl", "grosspnlusd", "grossprofit", "grossprofitusd", "profitloss", "profitandloss", "pnl", "pnlusd", "pl", "result", "tradepnl", "tradeprofit", "realizedpnl", "realisedpnl", "realizedpnlusd", "realizedpl", "realisedpl", "profit", "profitusd"],
   netPnl: ["netpnl", "netpnlusd", "netprofit", "netprofitusd", "netpl", "netplusd", "netprofitloss", "netresult", "netrealizedpnl", "netrealisedpnl"],
@@ -163,6 +163,7 @@ const HEADER_ALIASES = {
   tags: ["tags", "tag", "mistakes", "labels"],
   notes: ["notes", "note", "comment", "comments", "description"],
   rating: ["rating", "traderating", "grade"],
+  duration: ["hold", "holdtime", "holdingtime", "duration", "tradeduration", "timetraded", "timeintrade", "elapsedtime"],
 } as const;
 
 const TRADINGVIEW_ALIASES = {
@@ -225,13 +226,14 @@ function inferredHeader(value: string) {
   if (/(?:exit|close).*(?:date|time|timestamp)|(?:date|time).*(?:exit|close)/.test(header)) return "exitdatetime";
   if (/(?:net).*(?:pnl|profit|loss|result)|(?:pnl|profit|loss|result).*net/.test(header)) return "netpnl";
   if (/(?:pnl|profitandloss|profitloss|realizedprofit|realisedprofit|traderesult|closedpnl)/.test(header)) return "grosspnl";
-  if (/(?:entry|open|buy).*(?:price|fill)|(?:price|fill).*(?:entry|open)/.test(header)) return "entryprice";
-  if (/(?:exit|close|sell).*(?:price|fill)|(?:price|fill).*(?:exit|close)/.test(header)) return "exitprice";
+  if (/(?:entry|open|buy).*(?:price|fill|point|level|value)|(?:price|fill|point|level|value).*(?:entry|open)/.test(header)) return "entryprice";
+  if (/(?:exit|close|sell).*(?:price|fill|point|level|value)|(?:price|fill|point|level|value).*(?:exit|close)/.test(header)) return "exitprice";
   if (/(?:avg|average|execution|executed|transaction|trade|fill|filled).*price|price.*(?:avg|average|execution|executed|transaction|trade|fill|filled)/.test(header)) return "fillprice";
   if (/(?:instrument|symbol|ticker|contract|security|product|underlying)/.test(header)) return "symbol";
   if (/(?:quantity|filledqty|fillqty|positionqty|contracts|lots|shares|units)/.test(header)) return "quantity";
   if (/(?:buysell|marketpos|positiondirection|tradedirection|transactiontype)/.test(header)) return "side";
   if (/(?:commission|brokerage|transactioncost|totalfee)/.test(header)) return "fees";
+  if (/(?:holdtime|holdingtime|duration|timeintrade|elapsedtime)/.test(header)) return "duration";
   return header;
 }
 
@@ -372,6 +374,45 @@ function dateFromRow(
   const time = valueFor(row, HEADER_ALIASES.time);
   if (date === null) return null;
   return parseDateValue(`${String(date)}${time === null ? "" : ` ${String(time)}`}`);
+}
+
+function durationMillisecondsFromRow(row: Record<string, unknown>) {
+  let matchedHeader = "";
+  let matchedValue: unknown = null;
+  for (const [header, value] of Object.entries(row)) {
+    const baseMatch = HEADER_ALIASES.duration.some((alias) => header === alias || header.startsWith(alias));
+    if (baseMatch && String(value ?? "").trim() !== "") {
+      matchedHeader = header;
+      matchedValue = value;
+      break;
+    }
+  }
+  if (matchedValue === null) return null;
+  const text = String(matchedValue).trim().toLowerCase();
+  if (!text) return null;
+
+  const colonParts = text.split(":").map(Number);
+  if ((colonParts.length === 2 || colonParts.length === 3) && colonParts.every(Number.isFinite)) {
+    const [hours, minutes, seconds] = colonParts.length === 3
+      ? colonParts
+      : [0, colonParts[0], colonParts[1]];
+    return Math.max(0, Math.round((hours * 3_600 + minutes * 60 + seconds) * 1_000));
+  }
+
+  const hours = Number(text.match(/(-?\d+(?:\.\d+)?)\s*(?:h|hr|hrs|hour|hours)\b/)?.[1] ?? 0);
+  const minutes = Number(text.match(/(-?\d+(?:\.\d+)?)\s*(?:m|min|mins|minute|minutes)\b/)?.[1] ?? 0);
+  const seconds = Number(text.match(/(-?\d+(?:\.\d+)?)\s*(?:s|sec|secs|second|seconds)\b/)?.[1] ?? 0);
+  if (hours || minutes || seconds) {
+    return Math.max(0, Math.round((hours * 3_600 + minutes * 60 + seconds) * 1_000));
+  }
+
+  const numeric = parseNumber(matchedValue);
+  if (numeric === null || numeric < 0) return null;
+  if (/(?:millisecond|milliseconds|msec|ms)$/.test(matchedHeader)) return Math.round(numeric);
+  if (/(?:second|seconds|secs|sec)$/.test(matchedHeader)) return Math.round(numeric * 1_000);
+  if (/(?:hour|hours|hrs|hr)$/.test(matchedHeader)) return Math.round(numeric * 3_600_000);
+  // A bare Hold/Duration column in generated journal CSVs conventionally means minutes.
+  return Math.round(numeric * 60_000);
 }
 
 function parseSide(value: unknown): JournalSide {
@@ -644,7 +685,11 @@ function parseClosedTrades(
 
   rows.forEach((row, index) => {
     const openedAt = dateFromRow(row, HEADER_ALIASES.openedAt, true, "entry");
-    const closedAt = dateFromRow(row, HEADER_ALIASES.closedAt, false, "exit");
+    const holdDurationMs = durationMillisecondsFromRow(row);
+    const explicitClosedAt = dateFromRow(row, HEADER_ALIASES.closedAt, false, "exit");
+    const closedAt = explicitClosedAt ?? (openedAt && holdDurationMs !== null
+      ? new Date(Date.parse(openedAt) + holdDurationMs).toISOString()
+      : null);
     const symbol = String(valueFor(row, HEADER_ALIASES.symbol) ?? options.symbolFallback ?? "").trim().toUpperCase();
     const signedQuantity = parseNumber(valueFor(row, HEADER_ALIASES.quantity));
     const explicitSide = parseSide(valueFor(row, HEADER_ALIASES.side));
@@ -702,6 +747,8 @@ function parseClosedTrades(
       account,
       openedAt,
       closedAt,
+      entryTimeKnown: true,
+      exitTimeKnown: Boolean(closedAt),
       symbol,
       side,
       quantity,
@@ -715,7 +762,7 @@ function parseClosedTrades(
       netPnl,
       initialRisk: initialRisk !== null && initialRisk > 0 ? initialRisk : null,
       rMultiple,
-      durationMs: closedAt ? Math.max(0, Date.parse(closedAt) - Date.parse(openedAt)) : null,
+      durationMs: closedAt ? Math.max(0, Date.parse(closedAt) - Date.parse(openedAt)) : holdDurationMs,
       setup: String(valueFor(row, HEADER_ALIASES.setup) ?? "").trim(),
       tags: parseTags(valueFor(row, HEADER_ALIASES.tags)),
       notes: String(valueFor(row, HEADER_ALIASES.notes) ?? "").trim(),
