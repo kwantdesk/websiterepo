@@ -8,6 +8,10 @@ export const SYMBOLS = {
     key: 'ES', contract: 'ES', venue: 'CME', description: 'E-mini S&P 500',
     tickSize: 0.25, decimals: 2, startPrice: 6387.50, baseDepth: 86, volatility: 0.13, seed: 0x455355,
     depthRangePoints: 100,
+    // ES normally travels far fewer points than NQ over the same clock
+    // window. A shared 28-point viewport made a real ES path look almost
+    // horizontal, especially immediately after restoring a short L3 seed.
+    defaultVisibleRows: 56,
   },
   BTC: {
     key: 'BTC', contract: 'BTC-USD', venue: 'CRYPTO', description: 'Bitcoin / U.S. Dollar',
@@ -17,6 +21,7 @@ export const SYMBOLS = {
     key: 'NQ', contract: 'NQ', venue: 'CME', description: 'E-mini Nasdaq-100',
     tickSize: 0.25, decimals: 2, startPrice: 22486.25, baseDepth: 70, volatility: 0.19, seed: 0x4e51,
     depthRangePoints: 100,
+    defaultVisibleRows: 112,
   },
   MES: {
     key: 'MES', contract: 'MES', venue: 'CME', description: 'Micro E-mini S&P 500',

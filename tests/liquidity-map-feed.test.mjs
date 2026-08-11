@@ -7,6 +7,7 @@ import {
   normalizeLiquidityMapSymbol,
   normalizeLiveSnapshot,
   symbolMatchesSnapshot,
+  updateLivePresentationEdge,
 } from "../public/heatmap-app/src/live-market.js";
 
 function rawSnapshot(overrides = {}) {
@@ -37,6 +38,27 @@ test("accepts the Rithmic DBO contract without changing the Kwantify frame shape
   assert.equal(snapshot.bids.get(119_200), 12);
   assert.equal(snapshot.bidOrders.get(119_200), 3);
   assert.equal(symbolMatchesSnapshot("MNQ", snapshot.symbol), true);
+});
+
+test("presentation holds move only the live edge and never create synthetic history", () => {
+  const frame = normalizeLiveSnapshot(rawSnapshot({
+    timestamp: 1_786_420_440_000,
+    lastTick: 31_149,
+    trades: [{ id: 1, timestamp: 1_786_420_440_000, tick: 31_149, size: 4, side: "buy" }],
+  }));
+  const history = [frame];
+  const originalTrades = frame.trades;
+  const originalBids = frame.bids;
+
+  assert.equal(updateLivePresentationEdge(history, {
+    timestamp: 1_786_420_440_014,
+    lastTick: 31_151,
+  }), true);
+  assert.equal(history.length, 1);
+  assert.equal(history[0].lastTick, 31_151);
+  assert.equal(history[0].timestamp, 1_786_420_440_014);
+  assert.equal(history[0].trades, originalTrades);
+  assert.equal(history[0].bids, originalBids);
 });
 
 test("normalizes e-mini, micro, continuous, and dated contracts onto the two map books", () => {

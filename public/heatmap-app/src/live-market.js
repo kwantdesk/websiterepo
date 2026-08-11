@@ -145,6 +145,23 @@ export function normalizeLiveSnapshot(raw) {
   };
 }
 
+export function updateLivePresentationEdge(history, snapshot) {
+  if (!Array.isArray(history) || !history.length || !snapshot) return false;
+  const current = history[history.length - 1];
+  const liveTick = finite(snapshot.lastTick, Number.NaN);
+  const liveTimestamp = finite(snapshot.timestamp, Number.NaN);
+  let changed = false;
+  if (Number.isFinite(liveTick) && liveTick > 0 && liveTick !== current.lastTick) {
+    current.lastTick = liveTick;
+    changed = true;
+  }
+  if (Number.isFinite(liveTimestamp) && liveTimestamp > current.timestamp) {
+    current.timestamp = liveTimestamp;
+    changed = true;
+  }
+  return changed;
+}
+
 export class DepthMarketFeed {
   constructor({ symbol = 'MNQ', contractSymbol = '', onSnapshot, onStatus, onCvdHistory, eventSourceFactory } = {}) {
     this.symbol = symbol;

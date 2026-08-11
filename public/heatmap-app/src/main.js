@@ -6,6 +6,7 @@ import {
   isFullDepthSource,
   normalizeLiquidityMapSymbol,
   symbolMatchesSnapshot,
+  updateLivePresentationEdge,
 } from './live-market.js';
 import { DEFAULT_PALETTE, paletteCssGradient } from './palettes.js';
 import {
@@ -94,7 +95,7 @@ class DepthForgeApp {
     this.symbolLoadHideTimer = 0;
     this.view = {
       centerTick: null,
-      visibleRows: 112,
+      visibleRows: SYMBOLS[this.symbol].defaultVisibleRows || 112,
       aggregation: 1,
       columnPixels: 1.24,
     };
@@ -568,6 +569,7 @@ class DepthForgeApp {
     this.settings.autoCenter = true;
     $('autoCenter').checked = true;
     this.view.centerTick = null;
+    this.view.visibleRows = SYMBOLS[symbol].defaultVisibleRows || 112;
     this.renderer.resetCamera();
     this.accumulator = 0;
     this.readySymbol = '';
@@ -843,13 +845,28 @@ class DepthForgeApp {
       || !isFullDepthSource(snapshot.source)
       || snapshot.readOnly !== true
     ) return;
+
+    // Presentation holds exist only to move the last-price marker smoothly
+    // between genuine full-book frames. They are not market events and must
+    // never become historical columns. Appending them at 72 FPS previously
+    // exhausted the 1,800-frame window in about 25 seconds, leaving ES with a
+    // nearly horizontal trail made from repeated prices. Update the live edge
+    // in place while preserving the genuine depth/trades in that final frame.
+    if (metadata.visualHold) {
+      if (!this.atLive || !this.history.length) return;
+      updateLivePresentationEdge(this.history, snapshot);
+      this.viewEnd = this.history.length - 1;
+      if (this.settings.autoCenter) this.view.centerTick = null;
+      this.renderRequested = true;
+      return;
+    }
     this.currentContractSymbol = snapshot.contractSymbol || this.currentContractSymbol;
     if (this.sourceMode !== 'live') {
       this.sourceMode = 'live';
       this.depthEngine.reset();
       this.history = this.depthEngine.frames;
       this.tape = [];
-      this.view.centerTick = snapshot.midTick;
+      this.view.centerTick = null;
       this.viewEnd = 0;
       this.eventCount = 0;
       this.atLive = true;
@@ -1280,7 +1297,7 @@ class DepthForgeApp {
   }
 
   resetView() {
-    this.view.visibleRows = 112;
+    this.view.visibleRows = SYMBOLS[this.symbol].defaultVisibleRows || 112;
     this.view.columnPixels = 1.24;
     this.view.centerTick = this.settings.autoCenter ? null : this.history[this.viewEnd]?.midTick;
     this.renderer.setMeasurement(null);

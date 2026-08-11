@@ -153,6 +153,17 @@ test("CVD is labelled and horizontally synchronized with the liquidity map", asy
   assert.match(renderer, /const xForIndex = index => count <= 1 \? dataWidth : \(\(index - start\) \/ \(count - 1\)\) \* dataWidth/);
 });
 
+test("ES uses its own tighter price viewport and visual holds do not enter history", async () => {
+  const [symbols, source] = await Promise.all([
+    readFile(new URL("../public/heatmap-app/src/market-simulator.js", import.meta.url), "utf8"),
+    readFile(new URL("../public/heatmap-app/src/main.js", import.meta.url), "utf8"),
+  ]);
+  assert.match(symbols, /key: 'ES'[\s\S]*?defaultVisibleRows: 56/);
+  assert.match(symbols, /key: 'NQ'[\s\S]*?defaultVisibleRows: 112/);
+  assert.match(source, /if \(metadata\.visualHold\)[\s\S]*?updateLivePresentationEdge/);
+  assert.match(source, /this\.view\.visibleRows = SYMBOLS\[symbol\]\.defaultVisibleRows \|\| 112/);
+});
+
 test("CVD header controls remain contained beside the live market rail", async () => {
   const css = await readFile(embedCssPath, "utf8");
 
