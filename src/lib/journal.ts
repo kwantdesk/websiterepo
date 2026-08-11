@@ -137,13 +137,13 @@ export type JournalStats = {
 };
 
 const HEADER_ALIASES = {
-  openedAt: ["openedat", "opentime", "entrytime", "entrydt", "datetime", "dateandtime", "timestamp", "timeopened", "entrydate"],
-  closedAt: ["closedat", "closetime", "exittime", "exitdt", "timeclosed", "exitdate"],
-  date: ["date", "tradedate", "filldate", "executedate"],
+  openedAt: ["openedat", "entrydatetime", "entrytimestamp", "opendatetime", "opentimestamp", "entrydt", "opentime", "entrytime", "datetime", "dateandtime", "timestamp", "timeopened", "entrydate", "opendate"],
+  closedAt: ["closedat", "exitdatetime", "exittimestamp", "closedatetime", "closetimestamp", "exitdt", "closetime", "exittime", "timeclosed", "exitdate", "closedate"],
+  date: ["date", "tradedate", "dateoftrade", "sessiondate", "filldate", "executedate"],
   time: ["time", "tradetime", "filltime", "executiontime", "updatedatetimee", "updatedatetimel"],
-  symbol: ["symbol", "instrument", "ticker", "contract", "market", "tradingsymbol"],
-  side: ["side", "direction", "buysell", "action", "actiontype", "type", "ordertype"],
-  quantity: ["quantity", "qty", "qtyfilled", "filledqty", "size", "positionsize", "positionqty", "contracts", "volume", "shares"],
+  symbol: ["symbol", "contractsymbol", "instrumentsymbol", "instrument", "ticker", "contract", "market", "tradingsymbol"],
+  side: ["side", "tradedirection", "positiondirection", "direction", "buysell", "action", "actiontype", "type", "ordertype"],
+  quantity: ["quantity", "numberofcontracts", "contractquantity", "qty", "qtyfilled", "filledqty", "size", "positionsize", "positionqty", "contracts", "volume", "shares"],
   entryPrice: ["entryprice", "entry", "openprice", "averageentryprice", "avgentryprice", "buyprice"],
   exitPrice: ["exitprice", "exit", "closeprice", "averageexitprice", "avgexitprice", "sellprice"],
   price: ["price", "fillprice", "executionprice", "averageprice", "avgprice"],
@@ -268,9 +268,57 @@ function valueFor(row: Record<string, unknown>, aliases: readonly string[]) {
   return null;
 }
 
-function dateFromRow(row: Record<string, unknown>, directAliases: readonly string[], fallbackToDate = true) {
-  const direct = valueFor(row, directAliases);
-  if (direct !== null) return parseDateValue(direct);
+const ENTRY_DATE_ALIASES = ["entrydate", "opendate", "dateentered", "openeddate"] as const;
+const ENTRY_TIME_ALIASES = ["entrytime", "opentime", "timeentered", "timeopened"] as const;
+const EXIT_DATE_ALIASES = ["exitdate", "closedate", "dateexited", "dateclosed"] as const;
+const EXIT_TIME_ALIASES = ["exittime", "closetime", "timeexited", "timeclosed"] as const;
+
+function qualifiedValuesFor(row: Record<string, unknown>, aliases: readonly string[]) {
+  const values: unknown[] = [];
+  const orderedAliases = [...aliases].sort((left, right) => right.length - left.length);
+  for (const alias of orderedAliases) {
+    for (const [key, value] of Object.entries(row)) {
+      // Claude and broker exports often append a timezone/currency qualifier,
+      // e.g. `Entry Date/Time (Brisbane)` -> `entrydatetimebrisbane`.
+      if ((key === alias || (alias.length >= 5 && key.startsWith(alias))) && String(value ?? "").trim() !== "") {
+        values.push(value);
+      }
+    }
+  }
+  return values;
+}
+
+function combinedDateAndTime(
+  row: Record<string, unknown>,
+  dateAliases: readonly string[],
+  timeAliases: readonly string[],
+) {
+  const date = qualifiedValuesFor(row, dateAliases)[0];
+  const time = qualifiedValuesFor(row, timeAliases)[0];
+  if (date === undefined || time === undefined) return null;
+  return parseDateValue(`${String(date)} ${String(time)}`);
+}
+
+function dateFromRow(
+  row: Record<string, unknown>,
+  directAliases: readonly string[],
+  fallbackToDate = true,
+  phase?: "entry" | "exit",
+) {
+  if (phase === "entry") {
+    const combined = combinedDateAndTime(row, ENTRY_DATE_ALIASES, ENTRY_TIME_ALIASES)
+      ?? combinedDateAndTime(row, HEADER_ALIASES.date, ENTRY_TIME_ALIASES);
+    if (combined) return combined;
+  } else if (phase === "exit") {
+    const combined = combinedDateAndTime(row, EXIT_DATE_ALIASES, EXIT_TIME_ALIASES)
+      ?? combinedDateAndTime(row, HEADER_ALIASES.date, EXIT_TIME_ALIASES);
+    if (combined) return combined;
+  }
+
+  for (const direct of qualifiedValuesFor(row, directAliases)) {
+    const parsed = parseDateValue(direct);
+    if (parsed) return parsed;
+  }
   if (!fallbackToDate) return null;
   const date = valueFor(row, HEADER_ALIASES.date);
   const time = valueFor(row, HEADER_ALIASES.time);
@@ -523,8 +571,8 @@ function parseClosedTrades(
   let rejectedRows = 0;
 
   rows.forEach((row, index) => {
-    const openedAt = dateFromRow(row, HEADER_ALIASES.openedAt);
-    const closedAt = dateFromRow(row, HEADER_ALIASES.closedAt, false);
+    const openedAt = dateFromRow(row, HEADER_ALIASES.openedAt, true, "entry");
+    const closedAt = dateFromRow(row, HEADER_ALIASES.closedAt, false, "exit");
     const symbol = String(valueFor(row, HEADER_ALIASES.symbol) ?? options.symbolFallback ?? "").trim().toUpperCase();
     const signedQuantity = parseNumber(valueFor(row, HEADER_ALIASES.quantity));
     const explicitSide = parseSide(valueFor(row, HEADER_ALIASES.side));

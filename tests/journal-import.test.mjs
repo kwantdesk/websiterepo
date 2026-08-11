@@ -63,3 +63,33 @@ test("a semicolon-delimited Deep Charts closed-trade export imports signed quant
   assert.deepEqual(result.trades.map((trade) => trade.sourceRows), [[2], [3], [4], [5]]);
   assert.ok(result.trades.every((trade) => trade.openedAt && trade.closedAt));
 });
+
+test("a Claude CSV with separate entry and exit date/time columns imports cleanly", () => {
+  const csv = [
+    "Trade Date,Entry Time,Exit Time,Contract Symbol,Trade Direction,Number of Contracts,Entry Price,Exit Price,Profit/Loss ($)",
+    "2026-08-11,09:35:00,09:42:00,MNQ,Long,2,23800,23820,80",
+    "2026-08-11,10:04:00,10:11:00,NQ,Short,1,23840,23820,400",
+  ].join("\n");
+
+  const result = parseJournalTextFile("claude-trades.csv", csv, "Friend Journal", "import-claude-split");
+
+  assert.equal(result.trades.length, 2);
+  assert.equal(result.rejectedRows, 0);
+  assert.deepEqual(result.trades.map((trade) => trade.side), ["LONG", "SHORT"]);
+  assert.deepEqual(result.trades.map((trade) => trade.quantity), [2, 1]);
+  assert.ok(result.trades.every((trade) => trade.openedAt && trade.closedAt));
+});
+
+test("a Claude CSV with qualified date-time headers imports cleanly", () => {
+  const csv = [
+    "Entry Date/Time (Brisbane),Exit Date/Time (Brisbane),Instrument Symbol,Position Direction,Contract Quantity,Entry Price,Exit Price,Net P&L (AUD)",
+    "2026-08-11T09:35:00+10:00,2026-08-11T09:42:00+10:00,MNQ,Long,2,23800,23820,80",
+  ].join("\n");
+
+  const result = parseJournalTextFile("claude-qualified.csv", csv, "Friend Journal", "import-claude-qualified");
+
+  assert.equal(result.trades.length, 1);
+  assert.equal(result.rejectedRows, 0);
+  assert.equal(result.trades[0].symbol, "MNQ");
+  assert.equal(result.trades[0].netPnl, 80);
+});
