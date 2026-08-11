@@ -1793,16 +1793,40 @@ function fetchWorkspaceLiveSeam(
   const key = `${symbol}::${contractSymbol}::${timeframe}`;
   const pending = workspaceLiveSeamRequests.get(key);
   if (pending) return pending;
-  const request = fetchInstitutionalSnapshot({
-    symbol: displayCmeSymbol(symbol),
-    contractSymbol,
-    timeframe,
-    // This is only the history/live seam. The normal CME request still owns
-    // the five-session backfill, while the live gateway supplies the recent
-    // bars that a delayed historical edge cannot contain yet.
-    lookbackBars: 240,
-    timeoutMs: 12_000,
-  }).then((snapshot) => sanitizeCandles(snapshot?.candles ?? [], symbol))
+  const now = Date.now();
+  const recentFlowRequest = Promise.race([
+    fetchInstitutionalOrderFlowLevels({
+      symbol: displayCmeSymbol(symbol),
+      contractSymbol,
+      timeframe,
+      fromMs: now - 2 * 60 * 60_000,
+      toMs: now,
+      includeTrades: false,
+      timeoutMs: 12_000,
+    }),
+    // The execution archive is extra seam insurance, not permission to hold
+    // a usable snapshot behind a slow optional endpoint.
+    new Promise<null>((resolve) => window.setTimeout(() => resolve(null), 1_500)),
+  ]);
+  const request = Promise.all([
+    fetchInstitutionalSnapshot({
+      symbol: displayCmeSymbol(symbol),
+      contractSymbol,
+      timeframe,
+      // This is only the history/live seam. The normal CME request still owns
+      // the five-session backfill, while the live gateway supplies the recent
+      // bars that a delayed historical edge cannot contain yet.
+      lookbackBars: 480,
+      timeoutMs: 12_000,
+    }),
+    // A collector snapshot can begin at the moment its current process was
+    // started. The short execution archive is independent of that chart
+    // snapshot and closes the exact few-minute hole left after a restart.
+    recentFlowRequest,
+  ]).then(([snapshot, recentFlow]) => sanitizeCandles(
+    mergeChartHistory(snapshot?.candles ?? [], recentFlow?.candles ?? []),
+    symbol,
+  ))
     .catch(() => [] as Candle[])
     .finally(() => {
       if (workspaceLiveSeamRequests.get(key) === request) {
@@ -2001,6 +2025,7 @@ async function fetchWorkspaceCandles(
   outputsize = 500,
   includeOrderFlow = false,
   signal?: AbortSignal,
+  forceFresh = false,
 ) {
   const periodConfig = getPeriodConfig(period);
   const usingCTraderFeed = FALLBACK_CTRADER_BROKER_NAMES.includes(broker as (typeof FALLBACK_CTRADER_BROKER_NAMES)[number]);
@@ -2011,7 +2036,7 @@ async function fetchWorkspaceCandles(
   const historicalLimit = getHistoricalCandleLimit(period, timeframe, outputsize);
 
   if (broker === "Databento") {
-    const requestKey = `${symbol}::${timeframe}::${includeOrderFlow ? "flow" : "bars"}`;
+    const requestKey = `${symbol}::${timeframe}::${includeOrderFlow ? "flow" : "bars"}${forceFresh ? "::fresh" : ""}`;
     const pending = workspaceCandleRequests.get(requestKey);
     if (pending) return pending;
 
@@ -2022,7 +2047,7 @@ async function fetchWorkspaceCandles(
         ? fetchWorkspaceOrderFlow(symbol, timeframe, contractSymbol)
         : Promise.resolve(null);
       const response = await fetch(
-        `/api/cme-history?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}&days=${DEFAULT_CHART_HISTORY_CALENDAR_DAYS}${includeOrderFlow ? "&orderFlow=1" : ""}`,
+        `/api/cme-history?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}&days=${DEFAULT_CHART_HISTORY_CALENDAR_DAYS}${includeOrderFlow ? "&orderFlow=1" : ""}${forceFresh ? `&fresh=1&t=${Date.now()}` : ""}`,
         {
           cache: "no-store",
           // Keep a history request alive across rapid timeframe switches. Its
@@ -3774,7 +3799,7 @@ function WorkspaceChartPane({
         setError(null);
         setLoading(tailNeedsReconciliation);
         if (tailNeedsReconciliation && !isEventBasedChartInterval(pane.timeframe)) {
-          reconciliationTimer = window.setTimeout(() => void reconcileTail(), 15_000);
+          reconciliationTimer = window.setTimeout(() => void reconcileTail(), 2_000);
         }
       } catch (loadError) {
         if (cancelled) return;
@@ -3789,7 +3814,7 @@ function WorkspaceChartPane({
         );
         setLoading(tailNeedsReconciliation);
         if (tailNeedsReconciliation && !isEventBasedChartInterval(pane.timeframe)) {
-          reconciliationTimer = window.setTimeout(() => void reconcileTail(), 15_000);
+          reconciliationTimer = window.setTimeout(() => void reconcileTail(), 2_000);
         }
       }
     };
@@ -3806,6 +3831,7 @@ function WorkspaceChartPane({
             500,
             false,
             requestController.signal,
+            true,
           ),
           resolvedContractSymbol
             ? fetchWorkspaceLiveSeam(pane.symbol, pane.timeframe, resolvedContractSymbol)
@@ -3840,7 +3866,7 @@ function WorkspaceChartPane({
         if (cancelled || (error instanceof DOMException && error.name === "AbortError")) return;
       }
       if (!cancelled) {
-        reconciliationTimer = window.setTimeout(() => void reconcileTail(), 15_000);
+        reconciliationTimer = window.setTimeout(() => void reconcileTail(), 2_000);
       }
     };
 

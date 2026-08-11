@@ -253,6 +253,25 @@ export function cmeChartTailNeedsReconciliation(
     .filter((timestamp) => timestamp >= recentStart && timestamp <= activeBucket))]
     .sort((left, right) => left - right);
   if (!recentBuckets.length) return true;
+
+  // Presence at the right edge is not enough. A response containing only the
+  // newly-created live bucket used to pass this function because there was no
+  // adjacent pair to compare. Require the active bucket and its two immediate
+  // predecessors. The wider pairwise scan below still catches older internal
+  // holes without requiring an arbitrary full half-hour on a newly-opened
+  // chart.
+  const availableBuckets = new Set(recentBuckets);
+  const firstExpectedBucket = Math.max(
+    Math.ceil(recentStart / durationMs) * durationMs,
+    activeBucket - durationMs * 2,
+  );
+  for (
+    let expectedBucket = firstExpectedBucket;
+    expectedBucket <= activeBucket;
+    expectedBucket += durationMs
+  ) {
+    if (!availableBuckets.has(expectedBucket)) return true;
+  }
   for (let index = 1; index < recentBuckets.length; index += 1) {
     if (recentBuckets[index] - recentBuckets[index - 1] > durationMs) return true;
   }

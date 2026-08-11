@@ -135,6 +135,15 @@ test("an active chart rejects a fresh cache with missing recent candles", () => 
     candle("2026-08-11T14:06:00.000Z"),
     candle("2026-08-11T14:07:00.000Z"),
   ], "1m", now), false);
+  assert.equal(cmeChartTailNeedsReconciliation([
+    candle("2026-08-11T14:07:00.000Z"),
+  ], "1m", now), true, "a lone live candle must not qualify as a complete seam");
+  assert.equal(cmeChartTailNeedsReconciliation([
+    candle("2026-08-11T13:55:00.000Z"),
+    candle("2026-08-11T14:00:00.000Z"),
+    candle("2026-08-11T14:05:00.000Z"),
+    candle("2026-08-11T14:10:00.000Z"),
+  ], "5m", Date.parse("2026-08-11T14:12:00.000Z")), false);
 });
 
 test("the scheduled weekend closure is not reported as a chart-data hole", () => {

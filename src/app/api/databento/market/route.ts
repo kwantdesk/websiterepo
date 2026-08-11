@@ -156,6 +156,7 @@ export async function GET(request: Request) {
   const symbol = url.searchParams.get("symbol")?.trim();
   const timeframe = url.searchParams.get("timeframe")?.trim() || "5m";
   const includeOrderFlow = url.searchParams.get("orderFlow") === "1";
+  const forceFresh = url.searchParams.get("fresh") === "1";
   const requestedDays = Number(url.searchParams.get("days") ?? DEFAULT_HISTORY_DAYS);
   const historyDays = Number.isFinite(requestedDays)
     ? Math.max(DEFAULT_HISTORY_DAYS, Math.min(MAX_HISTORY_DAYS, Math.round(requestedDays)))
@@ -173,7 +174,7 @@ export async function GET(request: Request) {
     ? EVENT_HISTORY_CACHE_MS
     : FRESH_CACHE_MS;
 
-  if (cached && now - cached.updatedAt <= cacheLifetime) {
+  if (!forceFresh && cached && now - cached.updatedAt <= cacheLifetime) {
     return NextResponse.json(
       {
         candles: cached.candles,
@@ -203,7 +204,7 @@ export async function GET(request: Request) {
             candles: await getDatabentoEventBars(symbol, timeframe, start, end),
             executions: [] as DatabentoExecutionTuple[],
           }
-      : includeOrderFlow
+      : includeOrderFlow && !forceFresh
         ? await durableTimeHistoryOrDirect(
             symbol,
             timeframe,
