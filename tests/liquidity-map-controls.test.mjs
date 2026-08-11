@@ -40,6 +40,8 @@ test("embedded liquidity map uses the restored horizontal toolbar", async () => 
   assert.match(css, /\.tool-rail\s*\{[\s\S]*?flex-direction:\s*row/);
   assert.match(css, /\.workspace\s*\{[\s\S]*?grid-row:\s*3/);
   assert.doesNotMatch(css, /\.app-bar,\s*\nhtml\[data-embed="true"\] \.status-bar/);
+  assert.match(css, /\.toolbar-panel-shortcuts\s*\{[\s\S]*?position:\s*sticky;[\s\S]*?right:\s*0;/);
+  assert.match(css, /\.tool-rail\s*\{[\s\S]*?scroll-padding-right:\s*190px;/);
 });
 
 test("liquidity-map choices persist between visits", async () => {
