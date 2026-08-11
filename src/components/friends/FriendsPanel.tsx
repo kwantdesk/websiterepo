@@ -718,7 +718,7 @@ export default function FriendsPanel({ onClose, onUnreadCountChange, onMessageUn
                 <MessageImages attachments={message.attachments} onPreview={setImagePreview} />
                 {message.sharedTrade ? <SharedTradeMessageCard sharedTrade={message.sharedTrade} /> : null}
                 {message.body ? standaloneEmoji
-                  ? <div className="select-text px-1 py-1 text-[44px] leading-none" aria-label={message.body.trim()}>{message.body.trim()}</div>
+                  ? <div className="select-text px-1 py-1 text-[56px] leading-none" aria-label={message.body.trim()}>{message.body.trim()}</div>
                   : <LinkedMessageBody body={message.body} className={`${sharedOneLiner ? "rounded-xl border border-primary/25 bg-panel px-3 py-2.5 shadow-[inset_0_0_16px_color-mix(in_srgb,var(--primary)_3%,transparent)]" : ""} text-[12px] leading-5`} />
                   : null}
                 <div className={`mt-1 flex items-center justify-end gap-1 text-right text-[8px] ${sharedCard || standaloneEmoji ? "px-1 text-muted" : mine ? "text-background/65" : "text-muted"}`}>

@@ -2181,7 +2181,7 @@ export default function DeskWorkspace({
                             <div className="min-w-0 flex-1">
                               {!grouped ? <div className="flex flex-wrap items-center gap-2"><button type="button" onClick={() => onOpenProfile?.(profile.handle)} className="text-[10px] font-semibold hover:text-primary">{profile.displayName}</button>{deskMember ? <MemberRoleBadge member={deskMember} compact /> : null}<span className="text-[7px] text-muted">{formatDateTime(entry.createdAt)}</span></div> : null}
                               {entry.body ? standaloneEmoji
-                                ? <div className="select-text py-1 text-[44px] leading-none">{entry.body.trim()}</div>
+                                ? <div className="select-text py-1 text-[56px] leading-none" aria-label={entry.body.trim()}>{entry.body.trim()}</div>
                                 : <LinkedMessageBody body={entry.body} className={`${sharedOneLiner ? "mt-2 rounded-xl border border-primary/25 bg-panel px-3 py-2.5 shadow-[inset_0_0_16px_color-mix(in_srgb,var(--primary)_3%,transparent)]" : "mt-1"} text-[11px] leading-5 text-foreground/90`} />
                                 : null}
                               {entry.sharedTrade ? <SharedTradeMessageCard sharedTrade={entry.sharedTrade} chartHeight={170} /> : null}
