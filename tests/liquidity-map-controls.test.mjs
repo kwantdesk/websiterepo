@@ -36,10 +36,11 @@ test("restores the full Kwant Desk liquidity-map control surface", async () => {
   assert.match(html, /data-panel-shortcut="settings"/);
 });
 
-test("the second chart tool is an explicitly labelled grab hand", async () => {
+test("the second chart tool is an icon-only grab hand matching the crosshair", async () => {
   const html = await readFile(htmlPath, "utf8");
 
-  assert.match(html, /data-tool="crosshair"[\s\S]*?data-tool="pan"[^>]*title="Grab and move chart"[^>]*aria-label="Grab and move chart"[\s\S]*?<span>Grab<\/span>[\s\S]*?data-tool="measure"/);
+  assert.match(html, /data-tool="crosshair"[\s\S]*?<\/button>[\s\S]*?<button class="rail-button" data-tool="pan"[^>]*title="Grab and move chart"[^>]*aria-label="Grab and move chart"[\s\S]*?<\/button>[\s\S]*?data-tool="measure"/);
+  assert.doesNotMatch(html, /data-tool="pan"[^>]*>[\s\S]*?<span>Grab<\/span>/);
   assert.doesNotMatch(html, /data-tool="pan"[^>]*title="Pan chart"/);
 });
 
