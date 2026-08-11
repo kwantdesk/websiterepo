@@ -24,7 +24,7 @@ import {
 } from './ui-themes.js';
 
 // Preserve roughly the same on-screen time window as the old 20 FPS / 1,800
-// frame buffer while the presentation layer runs at 72 FPS.
+// frame buffer while the presentation layer follows the monitor refresh rate.
 const MAX_HISTORY = 6500;
 const ABSOLUTE_MIN_TIME_COLUMN_PIXELS = 0.12;
 const SPEEDS = [0.25, 0.5, 1, 2, 4];
@@ -84,6 +84,9 @@ class DepthForgeApp {
     this.lastCanvasPaintAt = 0;
     this.renderRequested = true;
     this.lastUiUpdate = 0;
+    this.presentationCameraY = 0;
+    this.presentationCameraAt = performance.now();
+    this.presentationFrames = 0;
     this.tool = 'crosshair';
     this.drag = null;
     this.cvdDrag = null;
@@ -1112,8 +1115,49 @@ class DepthForgeApp {
     if (this.tape.length > 35) this.tape.length = 35;
   }
 
+  #presentLiveCamera(timestamp) {
+    const canvas = this.renderer.canvas;
+    const layout = this.renderer.layout;
+    const current = this.history[this.viewEnd];
+    const enabled = Boolean(
+      canvas
+      && layout
+      && current
+      && this.settings.autoCenter
+      && this.atLive
+      && !this.drag
+      && this.renderer.interaction == null
+    );
+    if (!enabled) {
+      this.presentationCameraY = 0;
+      this.presentationCameraAt = timestamp;
+      if (canvas?.style.transform) canvas.style.transform = '';
+      return;
+    }
+
+    const liveTick = Number(current.lastTick);
+    const renderedCenterTick = Number(layout.centerTick);
+    const pixelsPerTick = Number(layout.plotHeight) / Math.max(1, Number(layout.visibleTickSpan));
+    if (!Number.isFinite(liveTick) || !Number.isFinite(renderedCenterTick) || !Number.isFinite(pixelsPerTick)) return;
+    const targetY = Math.max(-96, Math.min(96, (liveTick - renderedCenterTick) * pixelsPerTick));
+    const elapsed = Math.max(1, Math.min(40, timestamp - this.presentationCameraAt || 7));
+    this.presentationCameraAt = timestamp;
+    // The full depth canvas remains a truthful, bounded market-data paint.
+    // Between those heavier frames, move its already-rasterized surface on
+    // the compositor thread. requestAnimationFrame naturally follows 60,
+    // 120 and 144 Hz displays without rebuilding the L3 book at that rate.
+    const blend = 1 - Math.exp(-elapsed / 34);
+    this.presentationCameraY += (targetY - this.presentationCameraY) * blend;
+    if (Math.abs(targetY - this.presentationCameraY) < 0.04) this.presentationCameraY = targetY;
+    const transform = Math.abs(this.presentationCameraY) < 0.02
+      ? ''
+      : `translate3d(0, ${this.presentationCameraY.toFixed(3)}px, 0)`;
+    if (canvas.style.transform !== transform) canvas.style.transform = transform;
+  }
+
   #loop(timestamp) {
     try {
+      this.presentationFrames += 1;
       const elapsed = Math.min(120, timestamp - this.lastFrameTime);
       this.lastFrameTime = timestamp;
       this.accumulator += elapsed;
@@ -1134,14 +1178,26 @@ class DepthForgeApp {
         this.accumulator = Math.min(this.accumulator, this.market.intervalMs);
       }
 
-      const cameraPaintDue = !this.renderer.cameraInMotion || timestamp - this.lastCanvasPaintAt >= 1000 / 30;
-      if (this.renderRequested && cameraPaintDue) {
+      if (this.renderRequested) {
         const current = this.history[this.viewEnd];
         if (current) {
           if (this.settings.autoCenter && this.atLive) this.view.centerTick = null;
           const indicatorAnalysis = this.#getIndicatorAnalysis();
           indicatorAnalysis.sessionCvd = { points: this.cvdHistory };
+          const previousCenterTick = Number(this.renderer.layout?.centerTick);
+          const previousPixelsPerTick = Number(this.renderer.layout?.plotHeight)
+            / Math.max(1, Number(this.renderer.layout?.visibleTickSpan));
           this.renderer.render(this.history, this.viewEnd, this.view, this.settings, SYMBOLS[this.symbol], indicatorAnalysis);
+          const nextCenterTick = Number(this.renderer.layout?.centerTick);
+          if (
+            Number.isFinite(previousCenterTick)
+            && Number.isFinite(nextCenterTick)
+            && Number.isFinite(previousPixelsPerTick)
+          ) {
+            // Preserve the exact visual position across a truthful full-canvas
+            // repaint; the compositor then eases the remaining offset away.
+            this.presentationCameraY -= (nextCenterTick - previousCenterTick) * previousPixelsPerTick;
+          }
           this.lastCanvasPaintAt = timestamp;
           const rightMarketRailWidth = Math.max(
             0,
@@ -1161,9 +1217,11 @@ class DepthForgeApp {
             }
           }
         }
-        this.renderRequested = this.renderer.cameraInMotion;
+        this.renderRequested = false;
         this.frames += 1;
       }
+
+      this.#presentLiveCamera(timestamp);
 
       // The ladder used to refresh every 180 ms, which is only 5.5 Hz and was
       // the most obvious source of the map's low-frame-rate feel. DOM writes
@@ -1174,8 +1232,9 @@ class DepthForgeApp {
       }
 
       if (timestamp - this.fpsTimer >= 1000) {
-        $('fpsValue').textContent = `${Math.round(this.frames * 1000 / (timestamp - this.fpsTimer))} FPS`;
+        $('fpsValue').textContent = `${Math.round(this.presentationFrames * 1000 / (timestamp - this.fpsTimer))} FPS`;
         this.frames = 0;
+        this.presentationFrames = 0;
         this.fpsTimer = timestamp;
       }
     } catch (error) {

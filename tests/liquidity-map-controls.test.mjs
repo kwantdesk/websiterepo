@@ -297,9 +297,10 @@ test("auto-center keeps the marker fixed while the price plane follows smoothly"
 
   assert.match(renderer, /\? this\.#smoothCameraCenter\(targetCenterTick, true\)/);
   assert.match(source, /const lockedCenterY = this\.settings\.autoCenter && this\.atLive[\s\S]*?plotHeight[\s\S]*?\/ 2/);
-  assert.match(source, /timestamp - this\.lastCanvasPaintAt >= 1000 \/ 30/);
+  assert.match(source, /#presentLiveCamera\(timestamp\)[\s\S]*?requestAnimationFrame naturally follows 60,[\s\S]*?120 and 144 Hz displays/);
+  assert.match(source, /this\.presentationCameraY \+= \(targetY - this\.presentationCameraY\) \* blend/);
   assert.match(source, /switchSymbol\(symbol\)[\s\S]*?this\.renderer\.resetCamera\(\)/);
-  assert.match(source, /this\.renderRequested = this\.renderer\.cameraInMotion/);
+  assert.doesNotMatch(source, /timestamp - this\.lastCanvasPaintAt >= 1000 \/ 30/);
 });
 
 test("every liquidity-map load and instrument switch starts auto-centered", async () => {

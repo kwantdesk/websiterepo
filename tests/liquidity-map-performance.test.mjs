@@ -25,6 +25,9 @@ test("the high-refresh presentation uses lightweight ticks without synthetic ful
   assert.doesNotMatch(feed, /visualHold: true/);
   assert.match(runtime, /#ingestPresentationTick/);
   assert.match(runtime, /this\.#positionCurrentPrice\(current\)/);
+  assert.match(runtime, /#presentLiveCamera\(timestamp\)/);
+  assert.match(runtime, /translate3d\(0, \$\{this\.presentationCameraY\.toFixed\(3\)\}px, 0\)/);
+  assert.match(runtime, /this\.presentationFrames \+= 1/);
 });
 
 test("stream reconnects request only history newer than the accepted cursor", () => {
@@ -44,7 +47,7 @@ test("live map rendering avoids full-history analysis and repeated DOM replaceme
   assert.match(runtime, /nextHtml !== this\.depthLadderHtml/);
   assert.match(runtime, /nextHtml !== this\.tapeHtml/);
   assert.match(depthEngine, /if \(!force && this\.version > 0\) return false/);
-  assert.match(runtime, /this\.renderRequested = this\.renderer\.cameraInMotion;\s+this\.frames \+= 1;/);
+  assert.match(runtime, /this\.renderRequested = false;\s+this\.frames \+= 1;/);
   assert.match(runtime, /timestamp - this\.lastUiUpdate > 50/);
   assert.match(runtime, /snapshot\.eventsSince \?\?/);
   assert.match(runtime, /finally \{\s+requestAnimationFrame\(next => this\.#loop\(next\)\);/);
