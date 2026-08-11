@@ -565,6 +565,7 @@ class DepthForgeApp {
     this.settings.autoCenter = true;
     $('autoCenter').checked = true;
     this.view.centerTick = null;
+    this.renderer.resetCamera();
     this.accumulator = 0;
     this.readySymbol = '';
     this.pendingReadySymbol = '';
@@ -991,7 +992,7 @@ class DepthForgeApp {
             }
           }
         }
-        this.renderRequested = false;
+        this.renderRequested = this.renderer.cameraInMotion;
         this.frames += 1;
       }
 

@@ -116,11 +116,48 @@ export class DepthRenderer {
     this.paletteCache = new Map();
     this.sphereSprites = new Map();
     this.interaction = null;
+    this.cameraCenterTick = null;
+    this.cameraFrameAt = 0;
+    this.cameraInMotion = false;
     this.fontFamilies = { mono: 'Consolas, monospace', ui: '"Arial Narrow", sans-serif' };
   }
 
   setHover(point) { this.hover = point; }
   setMeasurement(measurement) { this.measurement = measurement; }
+
+  resetCamera() {
+    this.cameraCenterTick = null;
+    this.cameraFrameAt = 0;
+    this.cameraInMotion = false;
+  }
+
+  #smoothCameraCenter(targetTick, enabled) {
+    const target = Number(targetTick);
+    if (!Number.isFinite(target)) return targetTick;
+    if (!enabled || !Number.isFinite(this.cameraCenterTick)) {
+      this.cameraCenterTick = target;
+      this.cameraFrameAt = performance.now();
+      this.cameraInMotion = false;
+      return target;
+    }
+
+    const now = performance.now();
+    const elapsed = Math.max(8, Math.min(80, now - this.cameraFrameAt || 16));
+    this.cameraFrameAt = now;
+    const distance = target - this.cameraCenterTick;
+    if (Math.abs(distance) <= 0.025) {
+      this.cameraCenterTick = target;
+      this.cameraInMotion = false;
+      return target;
+    }
+
+    // Exponential damping gives the price camera a quiet dolly movement while
+    // remaining frame-rate independent on 60 Hz, 120 Hz and 144 Hz displays.
+    const blend = 1 - Math.exp(-elapsed / 190);
+    this.cameraCenterTick += distance * blend;
+    this.cameraInMotion = true;
+    return this.cameraCenterTick;
+  }
 
   beginInteraction(mode) {
     if (!['pan', 'price-pan'].includes(mode) || !this.layout) return;
@@ -184,9 +221,13 @@ export class DepthRenderer {
     // always lands at the midpoint of the *current visible plot height*; retain
     // midTick only as a defensive fallback for snapshots without a trade.
     const liveTick = Number(current.lastTick);
-    const centerTick = view.centerTick ?? (Number.isFinite(liveTick) && liveTick > 0
+    const targetCenterTick = view.centerTick ?? (Number.isFinite(liveTick) && liveTick > 0
       ? liveTick
       : current.midTick);
+    const centerTick = this.#smoothCameraCenter(
+      targetCenterTick,
+      settings.autoCenter && view.centerTick == null && this.interaction == null,
+    );
     const bottomTick = centerTick - visibleTickSpan / 2;
     const topTick = centerTick + visibleTickSpan / 2;
     // Main owns the data-aware zoom floor. Keep only a tiny renderer safety

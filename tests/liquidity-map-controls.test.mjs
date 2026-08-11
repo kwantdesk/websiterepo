@@ -210,7 +210,7 @@ test("wheel input over the price rail stretches only the vertical price axis", a
   assert.match(html, /Price scale \+ wheel<\/kbd><span>Stretch price axis only/);
 });
 
-test("auto-center keeps live price at the true viewport midpoint", async () => {
+test("auto-center keeps live price as the true viewport target", async () => {
   const [source, renderer] = await Promise.all([
     readFile(mainPath, "utf8"),
     readFile(rendererPath, "utf8"),
@@ -219,8 +219,22 @@ test("auto-center keeps live price at the true viewport midpoint", async () => {
   assert.match(source, /if \(this\.settings\.autoCenter && wasAtLive\) this\.view\.centerTick = null;/);
   assert.match(source, /if \(this\.settings\.autoCenter && this\.atLive\) this\.view\.centerTick = null;/);
   assert.doesNotMatch(source, /recenterThreshold|drift \* 0\.42/);
-  assert.match(renderer, /const liveTick = Number\(current\.lastTick\);[\s\S]*?const centerTick = view\.centerTick \?\? \(Number\.isFinite\(liveTick\) && liveTick > 0[\s\S]*?liveTick[\s\S]*?: current\.midTick\);/);
+  assert.match(renderer, /const liveTick = Number\(current\.lastTick\);[\s\S]*?const targetCenterTick = view\.centerTick \?\? \(Number\.isFinite\(liveTick\) && liveTick > 0[\s\S]*?liveTick[\s\S]*?: current\.midTick\);/);
+  assert.match(renderer, /const centerTick = this\.#smoothCameraCenter\([\s\S]*?targetCenterTick/);
   assert.match(renderer, /const bottomTick = centerTick - visibleTickSpan \/ 2;[\s\S]*?const topTick = centerTick \+ visibleTickSpan \/ 2;/);
+});
+
+test("auto-center follows live price with a frame-rate independent camera dolly", async () => {
+  const [source, renderer] = await Promise.all([
+    readFile(mainPath, "utf8"),
+    readFile(rendererPath, "utf8"),
+  ]);
+
+  assert.match(renderer, /#smoothCameraCenter\(targetTick, enabled\)/);
+  assert.match(renderer, /const blend = 1 - Math\.exp\(-elapsed \/ 190\)/);
+  assert.match(renderer, /settings\.autoCenter && view\.centerTick == null && this\.interaction == null/);
+  assert.match(source, /switchSymbol\(symbol\)[\s\S]*?this\.renderer\.resetCamera\(\)/);
+  assert.match(source, /this\.renderRequested = this\.renderer\.cameraInMotion/);
 });
 
 test("every liquidity-map load and instrument switch starts auto-centered", async () => {
