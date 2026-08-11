@@ -571,6 +571,8 @@ export default function SocialsWorkspace({
   const [rankingObjects, setRankingObjects] = useState<SocialObject[]>([]);
   const [rankingDeskId, setRankingDeskId] = useState("");
   const [rankingDirectoryState, setRankingDirectoryState] = useState<"idle" | "loading" | "ready" | "unavailable">("idle");
+  const rankingRefreshPromiseRef = useRef<Promise<void> | null>(null);
+  const rankingLastLoadedAtRef = useRef(0);
   const [query, setQuery] = useState("");
   const [showPostModal, setShowPostModal] = useState(false);
   const [showOneLinerModal, setShowOneLinerModal] = useState(false);
@@ -945,28 +947,47 @@ export default function SocialsWorkspace({
   }, [loadDeskNetwork, ready]);
 
   const loadRankingDirectory = useCallback(async (quiet = false) => {
+    if (rankingRefreshPromiseRef.current) return rankingRefreshPromiseRef.current;
+    if (quiet && Date.now() - rankingLastLoadedAtRef.current < 1_500) return;
     if (!quiet) setRankingDirectoryState("loading");
-    let loadedSource = false;
-    try {
-      const response = await fetch("/api/friends", { cache: "no-store" });
-      const result = await response.json() as FriendsPayload & { error?: string };
-      if (!response.ok || !result.cloud) throw new Error(result.error || "Friends could not be loaded.");
-      setRankingFriends(result.friends ?? []);
-      loadedSource = true;
-    } catch {
-      if (!quiet) setRankingFriends([]);
-    }
-    if (await loadDeskNetwork(quiet)) loadedSource = true;
-    try {
-      const response = await fetch("/api/socials?types=profile,precord,receipt,comment,progress", { cache: "no-store" });
-      const result = await response.json() as { objects?: SocialObject[]; cloud?: boolean; error?: string };
-      if (!response.ok || !result.cloud) throw new Error(result.error || "Reputation evidence could not be loaded.");
-      setRankingObjects(result.objects ?? []);
-      loadedSource = true;
-    } catch {
-      if (!quiet) setRankingObjects([]);
-    }
-    setRankingDirectoryState(loadedSource ? "ready" : "unavailable");
+
+    const refresh = (async () => {
+      const [friendsLoaded, desksLoaded, evidenceLoaded] = await Promise.all([
+        (async () => {
+          try {
+            const response = await fetch("/api/friends", { cache: "no-store" });
+            const result = await response.json() as FriendsPayload & { error?: string };
+            if (!response.ok || !result.cloud) throw new Error(result.error || "Friends could not be loaded.");
+            setRankingFriends(result.friends ?? []);
+            return true;
+          } catch {
+            if (!quiet) setRankingFriends([]);
+            return false;
+          }
+        })(),
+        loadDeskNetwork(quiet),
+        (async () => {
+          try {
+            const response = await fetch("/api/socials?types=profile,precord,receipt,comment,progress", { cache: "no-store" });
+            const result = await response.json() as { objects?: SocialObject[]; cloud?: boolean; error?: string };
+            if (!response.ok || !result.cloud) throw new Error(result.error || "Reputation evidence could not be loaded.");
+            setRankingObjects(result.objects ?? []);
+            return true;
+          } catch {
+            if (!quiet) setRankingObjects([]);
+            return false;
+          }
+        })(),
+      ]);
+      const loadedSource = friendsLoaded || desksLoaded || evidenceLoaded;
+      if (loadedSource) rankingLastLoadedAtRef.current = Date.now();
+      setRankingDirectoryState(loadedSource ? "ready" : "unavailable");
+    })().finally(() => {
+      rankingRefreshPromiseRef.current = null;
+    });
+
+    rankingRefreshPromiseRef.current = refresh;
+    return refresh;
   }, [loadDeskNetwork]);
 
   useEffect(() => {
@@ -976,15 +997,25 @@ export default function SocialsWorkspace({
     const refreshVisible = () => {
       if (document.visibilityState === "visible") refresh();
     };
-    const timer = window.setInterval(refresh, 20_000);
+    const timer = window.setInterval(refresh, 7_500);
     window.addEventListener("focus", refresh);
     window.addEventListener(DESK_CREATED_EVENT, refresh);
+    window.addEventListener(DESK_NETWORK_CHANGED_EVENT, refresh);
+    window.addEventListener("kwantdesk:social-follow-changed", refresh);
     document.addEventListener("visibilitychange", refreshVisible);
+    const followChannel = "BroadcastChannel" in window
+      ? new BroadcastChannel("kwantdesk-social-follows")
+      : null;
+    followChannel?.addEventListener("message", refresh);
     return () => {
       window.clearInterval(timer);
       window.removeEventListener("focus", refresh);
       window.removeEventListener(DESK_CREATED_EVENT, refresh);
+      window.removeEventListener(DESK_NETWORK_CHANGED_EVENT, refresh);
+      window.removeEventListener("kwantdesk:social-follow-changed", refresh);
       document.removeEventListener("visibilitychange", refreshVisible);
+      followChannel?.removeEventListener("message", refresh);
+      followChannel?.close();
     };
   }, [loadRankingDirectory, ready, tab]);
 
