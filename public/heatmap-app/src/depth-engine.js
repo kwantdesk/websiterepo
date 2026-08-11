@@ -296,7 +296,7 @@ export class AdaptiveContrast {
     const equalized = this.cdf[Math.min(255, Math.floor(linear * 255))];
     const blended = linear * (1 - this.equalization) + equalized * this.equalization;
     const curved = shapeBrightness(blended, this.splitX, this.splitY);
-    const sensitive = Math.pow(clamp(curved, 0, 1), 1 / clamp(sensitivity, 0.2, 4));
+    const sensitive = Math.pow(clamp(curved, 0, 1), 1 / clamp(sensitivity, 0.1, 4));
     const paletteSpan = this.maximum > this.white ? this.colorMapSplit : 1;
     return Math.round(sensitive * paletteSpan * 255);
   }

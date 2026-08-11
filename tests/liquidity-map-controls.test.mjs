@@ -33,6 +33,17 @@ test("restores the full Kwantify liquidity-map control surface", async () => {
   assert.match(html, /data-panel-shortcut="settings"/);
 });
 
+test("heat sensitivity can dim substantially below the old minimum", async () => {
+  const [html, engine] = await Promise.all([
+    readFile(htmlPath, "utf8"),
+    readFile(new URL("../public/heatmap-app/src/depth-engine.js", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(html, /id="quickHeatRange"[^>]*min="0\.1"/);
+  assert.match(html, /id="sensitivityRange"[^>]*min="0\.1"/);
+  assert.match(engine, /clamp\(sensitivity, 0\.1, 4\)/);
+});
+
 test("embedded liquidity map uses the restored horizontal toolbar", async () => {
   const css = await readFile(embedCssPath, "utf8");
 
