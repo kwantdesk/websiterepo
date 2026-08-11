@@ -691,6 +691,7 @@ function EquityCurve({ trades }: { trades: JournalTrade[] }) {
   );
 }
 function DailyBars({ trades }: { trades: JournalTrade[] }) {
+  const [hoveredDate, setHoveredDate] = useState<string | null>(null);
   const days = useMemo(() => {
     const grouped = new Map<string, number>();
     trades.forEach((trade) => {
@@ -700,20 +701,54 @@ function DailyBars({ trades }: { trades: JournalTrade[] }) {
     return [...grouped.entries()].sort(([left], [right]) => left.localeCompare(right)).slice(-18);
   }, [trades]);
   const maximum = Math.max(1, ...days.map(([, value]) => Math.abs(value)));
+  const hovered = hoveredDate ? days.find(([date]) => date === hoveredDate) ?? null : null;
   if (!days.length) return <div className="flex h-[176px] items-center justify-center text-[10px] text-muted">Daily performance appears after import.</div>;
   return (
-    <div className="flex h-[176px] items-center gap-1.5 pt-4">
-      {days.map(([date, value]) => {
-        const height = Math.max(5, Math.abs(value) / maximum * 68);
-        return (
-          <div key={date} className="flex h-full min-w-0 flex-1 flex-col items-center justify-center" title={`${date}: ${money(value)}`}>
-            <div className="flex h-[140px] w-full flex-col items-center justify-center">
-              <span className={`w-[70%] max-w-5 rounded-sm ${value >= 0 ? "bg-primary/80" : "bg-danger/80"}`} style={{ height }} />
-            </div>
-            <span className="mt-1 -rotate-45 whitespace-nowrap font-mono text-[7px] text-muted">{date.slice(5)}</span>
-          </div>
-        );
-      })}
+    <div
+      className="relative h-[196px] select-none pt-4"
+      role="figure"
+      aria-label="Daily profit and loss around a zero-dollar baseline"
+      onPointerLeave={() => setHoveredDate(null)}
+    >
+      <div className="pointer-events-none absolute right-2 top-2 z-10 rounded-lg border border-border bg-background/90 px-2 py-1 font-mono text-[8px] shadow-lg backdrop-blur">
+        {hovered
+          ? <><span className="mr-2 text-muted">{new Date(`${hovered[0]}T12:00:00`).toLocaleDateString("en-AU", { day: "2-digit", month: "short", year: "numeric" })}</span><span className={hovered[1] >= 0 ? "text-primary" : "text-danger"}>{money(hovered[1])}</span></>
+          : <span className="text-muted">Hover a traded day</span>}
+      </div>
+
+      <div className="absolute inset-x-2 bottom-7 top-7 pl-12">
+        <div className="pointer-events-none absolute bottom-1/2 left-12 right-0 border-t border-foreground/35" />
+        <div className="pointer-events-none absolute left-12 right-0 top-0 border-t border-border/35" />
+        <div className="pointer-events-none absolute bottom-0 left-12 right-0 border-t border-border/35" />
+        <span className="pointer-events-none absolute left-0 top-0 -translate-y-1/2 font-mono text-[7px] text-primary">{compact(maximum)}</span>
+        <span className="pointer-events-none absolute left-0 top-1/2 -translate-y-1/2 font-mono text-[7px] text-foreground/70">$0</span>
+        <span className="pointer-events-none absolute bottom-0 left-0 translate-y-1/2 font-mono text-[7px] text-danger">{compact(-maximum)}</span>
+
+        <div className="absolute inset-y-0 left-12 right-0 grid items-stretch gap-1.5" style={{ gridTemplateColumns: `repeat(${days.length}, minmax(0, 1fr))` }}>
+          {days.map(([date, value]) => {
+            const magnitude = Math.abs(value) / maximum * 50;
+            const isPositive = value >= 0;
+            return (
+              <button
+                key={date}
+                type="button"
+                className="group relative min-w-0 outline-none"
+                title={`${date}: ${money(value)}`}
+                aria-label={`${date}: ${money(value)}`}
+                onPointerEnter={() => setHoveredDate(date)}
+                onFocus={() => setHoveredDate(date)}
+                onBlur={() => setHoveredDate(null)}
+              >
+                <span
+                  className={`absolute left-1/2 w-[72%] max-w-6 -translate-x-1/2 transition-[filter,opacity] duration-150 group-hover:brightness-125 group-focus-visible:ring-1 group-focus-visible:ring-foreground ${isPositive ? "bottom-1/2 rounded-t-md bg-primary" : "top-1/2 rounded-b-md bg-danger"}`}
+                  style={{ height: `${Math.max(value === 0 ? 1.5 : 3, magnitude)}%` }}
+                />
+                <span className="pointer-events-none absolute left-1/2 top-full mt-2 -translate-x-1/2 -rotate-45 whitespace-nowrap font-mono text-[7px] text-muted group-hover:text-foreground">{date.slice(5)}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }
