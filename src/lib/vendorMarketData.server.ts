@@ -84,7 +84,12 @@ export async function vendorMarketDataFetch(
   }
 
   const key = directKey(provider);
-  if (directVendorFallbackAllowed() && key) {
+  // The VPS remains the primary/only steady-state vendor connection. If its
+  // vendor edge explicitly fails, use the still server-only Vercel credential
+  // as an emergency bridge rather than taking charts and Gamma offline. The
+  // fallback is never reached while the edge answers normally and is never
+  // exposed to the browser.
+  if (key && (directVendorFallbackAllowed() || lastGatewayError)) {
     return fetch(`${DIRECT_ORIGINS[provider]}${normalizedPath}`, {
       ...init,
       headers: directHeaders(provider, key, init.headers),
