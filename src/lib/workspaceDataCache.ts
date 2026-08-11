@@ -8,6 +8,36 @@ const workspaceDataRequests = new Map<string, Promise<unknown>>();
 const SESSION_CACHE_PREFIX = "kwantdesk:workspace-view:v1:";
 const SESSION_CACHE_MAX_AGE_MS = 6 * 60 * 60 * 1_000;
 const SESSION_CACHE_MAX_CHARS = 1_500_000;
+const WORKSPACE_REQUEST_TIMEOUT_MS = 20_000;
+const WORKSPACE_RETRY_DELAY_MS = 350;
+
+function sleep(ms: number) {
+  return new Promise<void>((resolve) => setTimeout(resolve, ms));
+}
+
+function retryableWorkspaceStatus(status: number) {
+  return status === 429 || status === 502 || status === 503 || status === 504;
+}
+
+async function fetchWorkspaceResponse(url: string) {
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), WORKSPACE_REQUEST_TIMEOUT_MS);
+    try {
+      const response = await fetch(url, { cache: "no-store", signal: controller.signal });
+      if (!retryableWorkspaceStatus(response.status) || attempt === 1) return response;
+      lastError = new Error(`Workspace request returned ${response.status}.`);
+    } catch (error) {
+      lastError = error;
+      if (attempt === 1) throw error;
+    } finally {
+      clearTimeout(timeout);
+    }
+    await sleep(WORKSPACE_RETRY_DELAY_MS);
+  }
+  throw lastError instanceof Error ? lastError : new Error("Workspace data could not be loaded.");
+}
 
 export function readWorkspaceData<T>(key: string): T | null {
   const memoryEntry = workspaceDataCache.get(key);
@@ -73,7 +103,7 @@ export async function fetchWorkspaceData<T>(
   const existing = workspaceDataRequests.get(key);
   if (existing) return existing as Promise<T>;
 
-  const request = fetch(url, { cache: "no-store" })
+  const request = fetchWorkspaceResponse(url)
     .then(async (response) => {
       const payload = await response.json() as unknown;
       if (!response.ok) {

@@ -1904,8 +1904,9 @@ function GameplanLiveWorkspace({ initialInstrument = "NQ" }: { initialInstrument
   const feedFailureTimerRef = useRef<number | null>(null);
   const priceTickTimerRef = useRef<number | null>(null);
   const planRequestRef = useRef(0);
-  const planRefreshDelayRef = useRef(5_000);
+  const planRefreshDelayRef = useRef(60_000);
   const latestPayloadRef = useRef<GameplanPayload | null>(initialPayload);
+  const consecutivePlanFailuresRef = useRef(0);
 
   useEffect(() => {
     const syncLiveSession = () => {
@@ -1985,7 +1986,11 @@ function GameplanLiveWorkspace({ initialInstrument = "NQ" }: { initialInstrument
         ? current
         : next.plan.edition.session);
       latestPayloadRef.current = next;
-      planRefreshDelayRef.current = Math.max(5_000, Math.min(60_000, next.refresh_after_ms));
+      // Live price has its own streaming path. Rebuilding the full options
+      // structure every five seconds only creates duplicate provider pressure
+      // and can stall navigation; the structural plan refreshes once a minute.
+      planRefreshDelayRef.current = Math.max(60_000, Math.min(5 * 60_000, next.refresh_after_ms));
+      consecutivePlanFailuresRef.current = 0;
       setOneLinerSnapshot((current) => {
         if (
           !manual
@@ -2009,7 +2014,12 @@ function GameplanLiveWorkspace({ initialInstrument = "NQ" }: { initialInstrument
       setError(null);
     } catch (loadError) {
       if (requestId !== planRequestRef.current) return;
-      setError(loadError instanceof Error ? loadError.message : "Gameplan could not be loaded.");
+      consecutivePlanFailuresRef.current += 1;
+      // A cached plan remains usable while one background request retries.
+      // Only surface a genuine sustained outage, never a single network blip.
+      if (!latestPayloadRef.current || manual || consecutivePlanFailuresRef.current >= 3) {
+        setError(loadError instanceof Error ? loadError.message : "Gameplan could not be loaded.");
+      }
     } finally {
       if (requestId !== planRequestRef.current) return;
       setLoading(false);

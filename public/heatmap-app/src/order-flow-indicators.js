@@ -3,7 +3,8 @@ const finite = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(
 export const DEFAULT_INDICATOR_SETTINGS = Object.freeze({
   cvdEnabled: true,
   cvdPanel: true,
-  cvdDisplayStyle: 'candles',
+  cvdPresentationVersion: 2,
+  cvdDisplayStyle: 'line',
   cvdMinimumTradeSize: 1,
   cvdMaximumTradeSize: 0,
   cvdRange: 'loaded',

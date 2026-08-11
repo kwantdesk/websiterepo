@@ -1076,16 +1076,24 @@ export class DepthRenderer {
     ctx.fillRect(0, 0, width, height);
     const currentTimestamp = Number(history[end]?.timestamp || Number.POSITIVE_INFINITY);
     const visibleStartTimestamp = Number(history[start]?.timestamp || 0);
-    const sessionPoints = (analysis?.sessionCvd?.points || [])
+    const allSessionPoints = (analysis?.sessionCvd?.points || [])
       .filter(point => Number(point.timestamp) <= currentTimestamp);
-    let points = sessionPoints;
+    let points = allSessionPoints;
     let baseline = { value: 0, buy: 0, sell: 0 };
-    if (settings.cvdRange === 'visible' && sessionPoints.length) {
-      const firstVisibleIndex = sessionPoints.findIndex(
+    if (allSessionPoints.length) {
+      const firstVisibleIndex = allSessionPoints.findIndex(
         point => Number(point.timestamp) >= visibleStartTimestamp,
       );
-      if (firstVisibleIndex > 0) baseline = sessionPoints[firstVisibleIndex - 1];
-      points = firstVisibleIndex >= 0 ? sessionPoints.slice(firstVisibleIndex) : sessionPoints.slice(-2);
+      const continuityIndex = firstVisibleIndex > 0 ? firstVisibleIndex - 1 : Math.max(0, firstVisibleIndex);
+      points = firstVisibleIndex >= 0
+        ? allSessionPoints.slice(continuityIndex)
+        : allSessionPoints.slice(-2);
+      // "Visible" rebases the value at the left edge. "Loaded" retains the
+      // true session cumulative value while still drawing only the same time
+      // window as the liquidity map, which makes price/CVD divergence legible.
+      if (settings.cvdRange === 'visible' && continuityIndex >= 0) {
+        baseline = allSessionPoints[continuityIndex] || baseline;
+      }
     }
     // A cold gateway may not yet have compact session buckets. Retain the
     // short in-memory calculation as a truthful fallback, never as the normal
@@ -1135,7 +1143,23 @@ export class DepthRenderer {
     const padding = Math.max(1, (maximum - minimum) * .1);
     minimum -= padding;
     maximum += padding;
-    const xForIndex = index => (index / (count - 1)) * dataWidth;
+    const xForTimestamp = timestamp => {
+      const target = Number(timestamp);
+      if (target <= Number(history[start]?.timestamp || 0)) return 0;
+      if (target >= Number(history[end]?.timestamp || 0)) return dataWidth;
+      let low = start;
+      let high = end;
+      while (low + 1 < high) {
+        const middle = Math.floor((low + high) / 2);
+        if (Number(history[middle]?.timestamp || 0) <= target) low = middle;
+        else high = middle;
+      }
+      const leftTime = Number(history[low]?.timestamp || target);
+      const rightTime = Number(history[high]?.timestamp || leftTime);
+      const fraction = rightTime > leftTime ? (target - leftTime) / (rightTime - leftTime) : 0;
+      return this.layout.xForIndex(low)
+        + (this.layout.xForIndex(high) - this.layout.xForIndex(low)) * Math.max(0, Math.min(1, fraction));
+    };
     const yForValue = value => height - 7 - ((value - minimum) / Math.max(1, maximum - minimum)) * (height - 14);
     ctx.strokeStyle = `rgba(${this.chrome.grid},.12)`;
     ctx.lineWidth = 1;
@@ -1161,7 +1185,7 @@ export class DepthRenderer {
     const drawSeries = (field, color, widthValue, shadow = 0) => {
       ctx.beginPath();
       for (let index = 0; index < count; index += 1) {
-        const x = xForIndex(index);
+        const x = xForTimestamp(points[index]?.timestamp);
         const y = yForValue(adjusted(index)[field]);
         if (index === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
       }
@@ -1176,7 +1200,7 @@ export class DepthRenderer {
       const barWidth = Math.max(2, Math.min(10, dataWidth / Math.max(1, count) * .64));
       for (let index = 0; index < count; index += 1) {
         const point = adjusted(index);
-        const x = xForIndex(index);
+        const x = xForTimestamp(points[index]?.timestamp);
         const positive = point.close >= point.open;
         const color = colorCss(positive ? accents.bid : accents.ask);
         const openY = yForValue(point.open);
@@ -1195,7 +1219,7 @@ export class DepthRenderer {
       const barWidth = Math.max(1, Math.min(12, dataWidth / Math.max(1, count) * .72));
       for (let index = 0; index < count; index += 1) {
         const point = adjusted(index);
-        const x = xForIndex(index);
+        const x = xForTimestamp(points[index]?.timestamp);
         const y = yForValue(point.value);
         ctx.fillStyle = colorCss(point.value >= 0 ? accents.bid : accents.ask, .9);
         ctx.fillRect(x - barWidth / 2, Math.min(y, zero), barWidth, Math.max(1, Math.abs(zero - y)));

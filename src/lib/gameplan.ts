@@ -796,7 +796,10 @@ export function buildGameplanPayload(
     current_price: current,
     status: data.errors.length || data.marketData.stale || data.marketData.fallback || data.marketData.status !== "LIVE" ? "PARTIAL" : "LIVE",
     generated_at: new Date().toISOString(),
-    refresh_after_ms: Math.max(5_000, data.refreshAfterMs),
+    // Price is streamed independently. The Gameplan is a structural options
+    // snapshot and should not rebuild its upstream request fan-out every five
+    // seconds.
+    refresh_after_ms: data.session.marketOpen ? 60_000 : 5 * 60_000,
     plan,
   };
 }

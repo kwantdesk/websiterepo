@@ -800,6 +800,13 @@ class DepthForgeApp {
         if (!allowed.has(key) || value === null || !['string', 'number', 'boolean'].includes(typeof value)) continue;
         this.settings[key] = value;
       }
+      // Move legacy installs from the old visually compressed candle default
+      // to the live Bookmap-style line once. The user can still select candles
+      // or bars afterwards and that explicit choice remains saved.
+      if (Number(saved.cvdPresentationVersion || 0) < 2) {
+        this.settings.cvdDisplayStyle = 'line';
+        this.settings.cvdPresentationVersion = 2;
+      }
     } catch {
       localStorage.removeItem(LIQUIDITY_MAP_SETTINGS_KEY);
     }
@@ -1051,10 +1058,14 @@ class DepthForgeApp {
   #appendLiveCvd(timestamp, delta) {
     const time = Number(timestamp);
     const change = Number(delta);
-    if (!Number.isFinite(time) || !Number.isFinite(change) || change === 0) return;
-    const bucket = time - (time % 60_000);
+    if (!Number.isFinite(time) || !Number.isFinite(change)) return;
     const previous = this.cvdHistory.at(-1);
-    if (previous?.timestamp === bucket) {
+    // Bookmap-style CVD is a continuously moving execution tape. Historical
+    // seed points can remain one-minute OHLC buckets, but the live edge must
+    // advance at market cadence rather than sitting on one x-coordinate for
+    // an entire minute. Coalesce only sub-frame updates to keep the canvas
+    // light while preserving visible bursts and reversals.
+    if (previous && time - previous.timestamp < 100) {
       const next = previous.value + change;
       previous.high = Math.max(previous.high, next);
       previous.low = Math.min(previous.low, next);
@@ -1062,11 +1073,12 @@ class DepthForgeApp {
       previous.close = next;
       previous.buy += Math.max(0, change);
       previous.sell += Math.min(0, change);
+      previous.timestamp = Math.max(previous.timestamp, time);
     } else {
       const open = Number(previous?.value || 0);
       const close = open + change;
       this.cvdHistory.push({
-        timestamp: bucket,
+        timestamp: time,
         open,
         high: Math.max(open, close),
         low: Math.min(open, close),
@@ -1076,7 +1088,7 @@ class DepthForgeApp {
         sell: Number(previous?.sell || 0) + Math.min(0, change),
       });
     }
-    if (this.cvdHistory.length > 2_000) this.cvdHistory.splice(0, this.cvdHistory.length - 2_000);
+    if (this.cvdHistory.length > 30_000) this.cvdHistory.splice(0, this.cvdHistory.length - 30_000);
   }
 
   #appendTrades(trades) {
