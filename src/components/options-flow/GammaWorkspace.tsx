@@ -859,6 +859,7 @@ export default function GammaWorkspace() {
   const previousPriceRef = useRef<number | null>(null);
   const requestIdRef = useRef<Record<"CORE" | "FULL", number>>({ CORE: 0, FULL: 0 });
   const dataRef = useRef<OptionsFlowPayload | null>(initialData);
+  const liveRecoveryAttemptRef = useRef(0);
 
   useEffect(() => {
     if (!instrumentMenuOpen) return;
@@ -896,13 +897,9 @@ export default function GammaWorkspace() {
       if (requestId !== requestIdRef.current[detailMode]) return;
       if (!canRenderOptionsPayload(payload)) {
         const active = dataRef.current;
-        if (!isFreshLiveOptionsPayload(active)) {
-          dataRef.current = null;
-          setData(null);
-          setError(null);
-          setLoading(true);
-          keepLoading = true;
-        }
+        setError(active
+          ? "The live Gamma refresh returned no usable frame. Holding the last verified snapshot."
+          : "KwantData returned no usable Gamma frame.");
         return;
       }
       const active = dataRef.current;
@@ -916,14 +913,10 @@ export default function GammaWorkspace() {
     } catch (loadError) {
       if (requestId !== requestIdRef.current[detailMode]) return;
       const active = dataRef.current;
-      if (getNewYorkOptionsClock().marketOpen && !isFreshLiveOptionsPayload(active)) {
-        dataRef.current = null;
-        setData(null);
-        setLoading(true);
-        keepLoading = true;
-      } else {
-        setError(loadError instanceof Error ? loadError.message : "Options Flow could not be loaded.");
-      }
+      setError(loadError instanceof Error ? loadError.message : "Options Flow could not be loaded.");
+      // Keep any verified frame already on screen. A live refresh failure is a
+      // stale-data condition, not permission to destroy the workspace.
+      if (active) keepLoading = false;
     } finally {
       if (requestId !== requestIdRef.current[detailMode]) return;
       if (!keepLoading) setLoading(false);
@@ -957,12 +950,11 @@ export default function GammaWorkspace() {
     const enforceLiveSession = () => {
       const current = dataRef.current;
       if (!getNewYorkOptionsClock().marketOpen || loading || !current || isFreshLiveOptionsPayload(current)) return;
-      dataRef.current = null;
-      setData(null);
-      setError(null);
-      setLoading(true);
+      const now = Date.now();
+      if (now - liveRecoveryAttemptRef.current < 10_000) return;
+      liveRecoveryAttemptRef.current = now;
       void (async () => {
-        await loadData(symbol, priceMode, false, false, "CORE");
+        await loadData(symbol, priceMode, false, true, "CORE");
         await loadData(symbol, priceMode, false, true, "FULL");
       })();
     };

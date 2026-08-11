@@ -109,6 +109,11 @@ type CachedEndpoint = {
 
 const requestCache = new Map<string, CachedRequest>();
 const endpointCache = new Map<string, CachedEndpoint>();
+// A provider refresh must never erase the most recent verified Gamma frame.
+// This survives warm server invocations and complements the browser workspace
+// cache, so transient entitlement/network responses degrade to stale data
+// instead of a blank Gamma workspace.
+const lastGoodOptionsFlowByInstrument = new Map<string, OptionsFlowPayload>();
 // Last AUTO-mapping ratio formed while both legs (live futures, live cash
 // source) were fresh, per source symbol. Used to pin the scale overnight so
 // mapped levels stop tracking the futures price. Per-lambda: a cold instance
@@ -2795,6 +2800,7 @@ export async function getOptionsFlowPayload(
       ? "GAMEPLAN"
       : "FULL";
   const cacheKey = `${symbol}:${priceMode}:${sessionDate}:${detailMode}`;
+  const lastGoodKey = `${symbol}:${priceMode}:${detailMode}`;
   const cached = requestCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) return cached.promise;
 
@@ -2805,9 +2811,22 @@ export async function getOptionsFlowPayload(
       ["completed-new-york-options-flow-v2", symbol, priceMode, session.sessionDate, detailMode],
       { revalidate: 6 * 60 * 60 },
     )()
-  ).catch((error) => {
+  ).then((payload) => {
+    lastGoodOptionsFlowByInstrument.set(lastGoodKey, payload);
+    return payload;
+  }).catch((error) => {
     requestCache.delete(cacheKey);
-    throw error;
+    const lastGood = historical ? null : lastGoodOptionsFlowByInstrument.get(lastGoodKey);
+    if (!lastGood) throw error;
+    const problem = getQuantDataHttpError(error);
+    return {
+      ...lastGood,
+      refreshAfterMs: 15_000,
+      errors: [
+        ...lastGood.errors.filter((message) => !message.startsWith("Live Gamma refresh:")),
+        `Live Gamma refresh: ${problem.message}. Holding the last verified snapshot.`,
+      ],
+    };
   });
   requestCache.set(cacheKey, {
     expiresAt: Date.now() + (session.marketOpen ? CACHE_TTL_MS : 5 * 60_000),
