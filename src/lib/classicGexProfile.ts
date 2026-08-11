@@ -173,6 +173,6 @@ export function classicGexStatus(args: {
   dataAgeMs: number;
   staleAfterMs?: number;
 }): ClassicGexStatus {
-  if (!args.marketOpen) return "EOD";
+  if (!args.marketOpen) return "STALE";
   return args.providerStale || args.dataAgeMs > (args.staleAfterMs ?? 20_000) ? "STALE" : "LIVE";
 }

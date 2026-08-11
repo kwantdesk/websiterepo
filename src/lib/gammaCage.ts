@@ -180,7 +180,7 @@ export function gammaCageLabel(
   kind: "CALL_WALL" | "PUT_WALL" | "GAMMA_MAGNET" | "GAMMA_ACCELERATOR" | "ZERO_GAMMA",
   regime: GammaCageRegime,
 ) {
-  if (kind === "GAMMA_ACCELERATOR") return "Accelerator — grease, no fades";
+  if (kind === "GAMMA_ACCELERATOR") return "Accelerator";
   if (kind === "ZERO_GAMMA") return "Flip — cage switch";
   if (kind === "GAMMA_MAGNET") return regime === "NEGATIVE" ? "Magnet — weak glue" : "Magnet — glue, exits only";
   if (kind === "CALL_WALL") return regime === "NEGATIVE" ? "Major call — rail" : "Major call — cage ceiling";

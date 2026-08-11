@@ -17,7 +17,7 @@ test("dense gamma confluence uses concise canonical labels", () => {
     level("magnet", "Magnet — weak glue", 2),
     level("mpo", "MPO"),
     level("mpv", "Major Positive Volume"),
-    level("gex", "GEX 1"),
+    level("gex", "KWANT 1"),
   ], []);
 
   assert.equal(resolved.foreground.length, 1);
@@ -26,9 +26,9 @@ test("dense gamma confluence uses concise canonical labels", () => {
 
 test("two coincident references remain fully visible and abbreviated", () => {
   const resolved = resolveChartLevelOverlaps([
-    level("gex", "GEX 4", 2),
+    level("gex", "KWANT 4", 2),
     level("vah", "PD VAH"),
   ], []);
 
-  assert.equal(resolved.foreground[0].label, "GEX 4 + PD VAH");
+  assert.equal(resolved.foreground[0].label, "KWANT 4 + PD VAH");
 });

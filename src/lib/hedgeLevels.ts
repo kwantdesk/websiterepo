@@ -138,7 +138,7 @@ function dominantExpiry(rows: ReturnType<typeof normalizedRows>, strike: number)
 }
 
 export function hedgeLevelLabel(kind: HedgeLevelKind, regime: HedgeRegime) {
-  if (kind === "ACCELERATOR") return "grease — no fades";
+  if (kind === "ACCELERATOR") return "accelerator";
   if (kind === "FLIP") return "cage switch";
   if (kind === "MAGNET") return regime === "NEGATIVE" ? "weak glue" : "glue — exits only";
   if (kind === "MAJOR_CALL") return regime === "NEGATIVE" ? "rail" : "cage ceiling";

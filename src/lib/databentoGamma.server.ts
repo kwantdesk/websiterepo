@@ -601,7 +601,7 @@ export async function getNativeGammaSnapshot(root: NativeGammaRoot, tradeIso: st
   const levels: ChartGammaSourceLevel[] = [];
   ev.walls.slice(0, 8).forEach(([k, v], i) => {
     const kind: ChartGammaSourceLevelKind = k > liveSpot ? "POSITIVE_GEX" : "NEGATIVE_GEX";
-    levels.push(level(kind, `GEX ${i + 1}`, k, v, i + 1));
+    levels.push(level(kind, `KWANT ${i + 1}`, k, v, i + 1));
   });
   if (ev.callRes) levels.push(level("CALL_WALL", "Call Resistance", ev.callRes, ev.callG.get(ev.callRes) ?? null, 0));
   if (ev.putSup) levels.push(level("PUT_WALL", "Put Support", ev.putSup, ev.putG.get(ev.putSup) ?? null, 0));

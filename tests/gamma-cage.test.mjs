@@ -72,6 +72,7 @@ test("5. regime inversion changes labels and narratives without mutating career 
   const record = { career: structuredClone(career) };
   assert.equal(gammaCageLabel("CALL_WALL", "POSITIVE"), "Major call — cage ceiling");
   assert.equal(gammaCageLabel("CALL_WALL", "NEGATIVE"), "Major call — rail");
+  assert.equal(gammaCageLabel("GAMMA_ACCELERATOR", "NEGATIVE"), "Accelerator");
   assert.match(gammaCageNarrative("CALL_WALL", "NEGATIVE").visit, /rail/i);
   assert.deepEqual(record.career, career);
 });

@@ -667,7 +667,7 @@ function chartLevelLabel(level: OptionsKeyLevel) {
     case "ZERO_DTE_MAX_PAIN": return "0DTE max pain";
     case "ZERO_DTE_PUT_SUPPORT": return "0DTE support";
     case "GAMMA_MAGNET": return "Magnet";
-    case "GAMMA_CENTRE": return "GEX centre";
+    case "GAMMA_CENTRE": return "KWANT center";
     case "HIGH_VOL_LEVEL": return "HVL";
     case "ZERO_GAMMA": return "Zero Gamma";
     case "MAJOR_POSITIVE_OI": return "MPO";

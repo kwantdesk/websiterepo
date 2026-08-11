@@ -19,6 +19,7 @@ test("1. sign-correct selection never mistakes the largest negative magnitude fo
     strikes: [row(98, 15, -5), row(100, 20, -120), row(102, 50, -10)],
   }, 100, sessionDate);
   assert.equal(result.levels.find((level) => level.kind === "ACCELERATOR")?.sourcePrice, 100);
+  assert.equal(result.levels.find((level) => level.kind === "ACCELERATOR")?.label, "accelerator");
   assert.equal(result.levels.find((level) => level.kind === "MAGNET")?.sourcePrice, 102);
 });
 

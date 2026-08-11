@@ -72,5 +72,5 @@ test("keeps lookback history bounded and monotonic", () => {
 test("freezes stale data and recovers to live when freshness returns", () => {
   assert.equal(classicGexStatus({ marketOpen: true, providerStale: true, dataAgeMs: 1_000 }), "STALE");
   assert.equal(classicGexStatus({ marketOpen: true, providerStale: false, dataAgeMs: 1_000 }), "LIVE");
-  assert.equal(classicGexStatus({ marketOpen: false, providerStale: true, dataAgeMs: 999_999 }), "EOD");
+  assert.equal(classicGexStatus({ marketOpen: false, providerStale: true, dataAgeMs: 999_999 }), "STALE");
 });

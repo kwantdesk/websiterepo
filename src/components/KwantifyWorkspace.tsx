@@ -3074,7 +3074,7 @@ function buildGammaChartOverlay(args: {
       id: `gamma-${conversion.id}-${level.id}`,
       price: level.price,
       color: gammaLevelColor(level.kind, args.settings),
-      label: `${level.label} · ${conversion.source}→${conversion.target}`,
+      label: level.label,
       kind: level.kind,
       lineStyle: level.kind === "MAJOR_POSITIVE_VOLUME" || /(^| \/ )MPV($| \/ )/.test(level.label)
         ? "solid"
@@ -3094,9 +3094,9 @@ function buildGammaChartOverlay(args: {
     regime: payload.environment.gammaRegime,
     checkedAt: payload.checkedAt,
     sourceLabel: isNativeGammaConversion(conversion)
-      ? `${conversion.label} · Databento futures options`
-      : `${conversion.label} · ${payload.marketOpen ? "LIVE NY OPTIONS" : "NEW YORK EOD"} · ${calibration.scale.toFixed(6)}×`,
-    stale: false,
+      ? `Kwant levels · Databento futures options · ${payload.marketOpen ? "LIVE NY OPTIONS" : "STALE"}`
+      : `Kwant levels · ${payload.marketOpen ? "LIVE NY OPTIONS" : "STALE"} · ${calibration.scale.toFixed(6)}×`,
+    stale: !payload.marketOpen,
   };
 }
 
