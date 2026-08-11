@@ -42,6 +42,7 @@ const TRACKED_STORAGE_KEYS = new Set([
   "kwantdesk:economic-calendar-timezone:v1",
   "kwantdesk:liquidity-map-settings:v1",
   "kwantdesk:liquidity-map-tabs:v1",
+  "kwantdesk:liquidity-map-instrument:v1",
   "kwantdesk-kwantbot-messages",
   "kwantdesk:zyon:model",
   "kwantdesk:zyon:root",
@@ -73,6 +74,7 @@ const METADATA_FALLBACK_KEYS = new Set([
   "kwantdesk:economic-calendar-timezone:v1",
   "kwantdesk:liquidity-map-settings:v1",
   "kwantdesk:liquidity-map-tabs:v1",
+  "kwantdesk:liquidity-map-instrument:v1",
   "kwantdesk:zyon:root",
 ]);
 

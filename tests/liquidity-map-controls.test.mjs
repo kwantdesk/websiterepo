@@ -117,8 +117,21 @@ test("liquidity-map display and bubble settings follow the signed-in account", a
 
   assert.match(preferences, /"kwantdesk:liquidity-map-settings:v1"/);
   assert.match(preferences, /"kwantdesk:liquidity-map-tabs:v1"/);
+  assert.match(preferences, /"kwantdesk:liquidity-map-instrument:v1"/);
   assert.match(source, /kwantdesk:liquidity-map-preferences-changed/);
   assert.match(workspace, /kwantdesk:liquidity-map-preferences-changed[\s\S]*?kwantdesk:preferences-changed/);
+});
+
+test("liquidity-map tab deletion keeps the outer workspace instrument in sync", async () => {
+  const [source, workspace] = await Promise.all([
+    readFile(mainPath, "utf8"),
+    readFile(workspacePath, "utf8"),
+  ]);
+
+  assert.match(source, /type:\s*'kwantdesk:liquidity-map-preferences-changed'[\s\S]*?active:\s*this\.symbol/);
+  assert.match(workspace, /event\.data\.active[\s\S]*?kwantdesk:liquidity-map-instrument:v1/);
+  assert.match(workspace, /if \(isReady\) syncInstrument\(\)/);
+  assert.doesNotMatch(workspace, /onLoad=\{\(\) => \{[\s\S]{0,180}syncInstrument\(\)/);
 });
 
 test("liquidity instruments use a searchable persistent tab picker", async () => {

@@ -11384,7 +11384,10 @@ export default function KwantifyWorkspace({
             ) : null}
             {bottomWorkspaceSection === "liqmap" ? (
               <WorkspaceFailureBoundary resetKey="liqmap" label="Liquidity Map">
-                <LiquidityMapWorkspace instrument={selectedLiquidityMapInstrument} />
+                <LiquidityMapWorkspace
+                  instrument={selectedLiquidityMapInstrument}
+                  onInstrumentChange={setSelectedLiquidityMapInstrument}
+                />
               </WorkspaceFailureBoundary>
             ) : null}
             {visitedWorkspaceSections.has("heatmap") ? (

@@ -446,7 +446,11 @@ class DepthForgeApp {
       }));
       if (window.parent !== window) {
         window.parent.postMessage(
-          { type: 'kwantdesk:liquidity-map-preferences-changed' },
+          {
+            type: 'kwantdesk:liquidity-map-preferences-changed',
+            tabs: [...this.instrumentTabs],
+            active: this.symbol,
+          },
           window.location.origin,
         );
       }
