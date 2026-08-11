@@ -782,7 +782,9 @@ const server = createServer(async (request, response) => {
         response,
       };
       heatmapSseClients.add(subscriber);
-      const keepalive = setInterval(() => response.write(": keepalive\n\n"), 10_000);
+      const keepalive = setInterval(() => response.write(
+        `event: heartbeat\ndata: ${JSON.stringify({ timestamp: Date.now() })}\n\n`,
+      ), 5_000);
       request.on("close", () => {
         clearInterval(keepalive);
         heatmapSseClients.delete(subscriber);

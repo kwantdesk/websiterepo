@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
@@ -260,4 +261,49 @@ test("a lightweight execution tick reaches the next presentation frame", async (
 
   assert.equal(snapshots.at(-1).snapshot.lastTick, 119_205);
   assert.equal(snapshots.at(-1).details.visualHold, true);
+});
+
+test("a single consumer paint failure cannot freeze subsequent presentation frames", async () => {
+  const listeners = new Map();
+  const source = {
+    close() {},
+    addEventListener(name, listener) { listeners.set(name, listener); },
+  };
+  let calls = 0;
+  const originalError = console.error;
+  console.error = () => {};
+  const feed = new DepthMarketFeed({
+    symbol: "NQ",
+    eventSourceFactory: () => source,
+    onSnapshot: () => {
+      calls += 1;
+      if (calls === 1) throw new Error("synthetic paint failure");
+    },
+  });
+
+  try {
+    feed.start();
+    listeners.get("depth")({
+      data: JSON.stringify({
+        status: { connected: true, fullDepth: true, provider: "Rithmic" },
+        snapshot: rawSnapshot(),
+      }),
+    });
+    await new Promise((resolve) => setTimeout(resolve, 45));
+  } finally {
+    feed.stop();
+    console.error = originalError;
+  }
+
+  assert.ok(calls >= 2, "the paced map continues after an isolated callback failure");
+});
+
+test("the live stream has an application heartbeat and silent-connection watchdog", () => {
+  const source = readFileSync(new URL("../public/heatmap-app/src/live-market.js", import.meta.url), "utf8");
+  const gateway = readFileSync(new URL("../services/rithmic_gateway/src/server.mjs", import.meta.url), "utf8");
+
+  assert.match(source, /STREAM_SILENCE_RECONNECT_MS = 13_000/);
+  assert.match(source, /stream\.addEventListener\('heartbeat'/);
+  assert.match(source, /#restartSilentStream\(\)/);
+  assert.match(gateway, /event: heartbeat/);
 });

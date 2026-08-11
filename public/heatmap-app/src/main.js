@@ -33,6 +33,28 @@ const LIQUIDITY_MAP_SYMBOLS = new Set(['NQ', 'ES']);
 const DEFAULT_INSTRUMENT_TABS = ['NQ', 'ES'];
 const INSTRUMENT_ORDER = ['NQ', 'ES'];
 const INDICATOR_ANALYSIS_INTERVAL_MS = 250;
+const LIQUIDITY_MAP_DISPLAY_DEFAULTS = Object.freeze({
+  palette: DEFAULT_PALETTE,
+  sensitivity: 0.1,
+  heatmapDimming: BOOKMAP_VISUAL_DEFAULTS.heatmapDimming,
+  heatmapFilter: 'auto',
+  gaussianSigma: BOOKMAP_VISUAL_DEFAULTS.gaussianSigma,
+  aggregateDepth: false,
+  circleSize: BOOKMAP_VISUAL_DEFAULTS.circleSize,
+  circleTransparency: BOOKMAP_VISUAL_DEFAULTS.circleTransparency,
+  smartClustering: BOOKMAP_VISUAL_DEFAULTS.smartClustering,
+  minimumTradeSize: BOOKMAP_VISUAL_DEFAULTS.minimumTradeSize,
+  minimumPixelVolume: BOOKMAP_VISUAL_DEFAULTS.minimumPixelVolume,
+  bubbleDifferential: true,
+  autoCenter: true,
+  trails: true,
+  grid: true,
+  domVisible: true,
+  domWidth: null,
+  heatmap: true,
+  trades: true,
+  profile: true,
+});
 
 const $ = id => document.getElementById(id);
 const all = selector => [...document.querySelectorAll(selector)];
@@ -77,26 +99,7 @@ class DepthForgeApp {
       columnPixels: 1.24,
     };
     this.settings = {
-      palette: DEFAULT_PALETTE,
-      sensitivity: 1,
-      heatmapDimming: BOOKMAP_VISUAL_DEFAULTS.heatmapDimming,
-      heatmapFilter: 'auto',
-      gaussianSigma: BOOKMAP_VISUAL_DEFAULTS.gaussianSigma,
-      aggregateDepth: false,
-      circleSize: BOOKMAP_VISUAL_DEFAULTS.circleSize,
-      circleTransparency: BOOKMAP_VISUAL_DEFAULTS.circleTransparency,
-      smartClustering: BOOKMAP_VISUAL_DEFAULTS.smartClustering,
-      minimumTradeSize: BOOKMAP_VISUAL_DEFAULTS.minimumTradeSize,
-      minimumPixelVolume: BOOKMAP_VISUAL_DEFAULTS.minimumPixelVolume,
-      bubbleDifferential: true,
-      autoCenter: true,
-      trails: true,
-      grid: true,
-      domVisible: true,
-      domWidth: null,
-      heatmap: true,
-      trades: true,
-      profile: true,
+      ...LIQUIDITY_MAP_DISPLAY_DEFAULTS,
       uiTheme: this.uiTheme,
       ...DEFAULT_INDICATOR_SETTINGS,
     };
@@ -694,16 +697,7 @@ class DepthForgeApp {
 
   #resetSettings() {
     Object.assign(this.settings, {
-      palette: DEFAULT_PALETTE, sensitivity: 1,
-      heatmapDimming: BOOKMAP_VISUAL_DEFAULTS.heatmapDimming,
-      heatmapFilter: 'auto', gaussianSigma: BOOKMAP_VISUAL_DEFAULTS.gaussianSigma,
-      aggregateDepth: false, circleSize: BOOKMAP_VISUAL_DEFAULTS.circleSize,
-      circleTransparency: BOOKMAP_VISUAL_DEFAULTS.circleTransparency,
-      smartClustering: BOOKMAP_VISUAL_DEFAULTS.smartClustering,
-      minimumTradeSize: BOOKMAP_VISUAL_DEFAULTS.minimumTradeSize,
-      minimumPixelVolume: BOOKMAP_VISUAL_DEFAULTS.minimumPixelVolume,
-      bubbleDifferential: true, autoCenter: true,
-      trails: true, grid: true, domVisible: true, heatmap: true, trades: true, profile: true,
+      ...LIQUIDITY_MAP_DISPLAY_DEFAULTS,
       ...DEFAULT_INDICATOR_SETTINGS,
     });
     this.#syncPaletteControls();

@@ -4,6 +4,8 @@ const REQUESTED_DEPTH_TICKS = 1000;
 // panels). Full 23 KB order-book snapshots remain bounded upstream; these
 // in-between columns are zero-order holds with no duplicated trades/events.
 const DISPLAY_FRAME_MS = 1000 / 72;
+const STREAM_WATCHDOG_INTERVAL_MS = 2_000;
+const STREAM_SILENCE_RECONNECT_MS = 13_000;
 export const INSTITUTIONAL_MARKET_DATA_ORIGIN = '/api/institutional-market-data';
 
 const finite = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
@@ -153,6 +155,9 @@ export class DepthMarketFeed {
     this.eventSourceFactory = eventSourceFactory || (url => new EventSource(url));
     this.stream = null;
     this.displayFrameTimer = null;
+    this.watchdogTimer = null;
+    this.reconnectTimer = null;
+    this.lastStreamActivityAt = 0;
     this.presentationSnapshot = null;
     this.presentationHoldCount = 0;
     this.latestTradeTick = null;
@@ -176,6 +181,8 @@ export class DepthMarketFeed {
   start() {
     if (this.running) return;
     this.running = true;
+    this.lastStreamActivityAt = Date.now();
+    this.#startWatchdog();
     this.#connect();
   }
 
@@ -183,11 +190,16 @@ export class DepthMarketFeed {
     this.running = false;
     this.connectionGeneration += 1;
     clearTimeout(this.displayFrameTimer);
+    clearInterval(this.watchdogTimer);
+    clearTimeout(this.reconnectTimer);
     this.displayFrameTimer = null;
+    this.watchdogTimer = null;
+    this.reconnectTimer = null;
     this.presentationSnapshot = null;
     this.presentationHoldCount = 0;
     this.latestTradeTick = null;
     this.lastRealFrameAt = 0;
+    this.lastStreamActivityAt = 0;
     this.observedRealFrameMs = 100;
     this.stream?.close();
     this.stream = null;
@@ -198,6 +210,8 @@ export class DepthMarketFeed {
     this.symbol = symbol;
     this.contractSymbol = contractSymbol;
     this.connectionGeneration += 1;
+    clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = null;
     this.lastSnapshotToken = '';
     this.seenSnapshotIdentities.clear();
     this.snapshotIdentityQueue = [];
@@ -207,6 +221,7 @@ export class DepthMarketFeed {
     this.presentationHoldCount = 0;
     this.latestTradeTick = null;
     this.lastRealFrameAt = 0;
+    this.lastStreamActivityAt = Date.now();
     this.observedRealFrameMs = 100;
     this.stream?.close();
     this.stream = null;
@@ -236,16 +251,19 @@ export class DepthMarketFeed {
     this.stream = stream;
     stream.onopen = () => {
       if (!isCurrentConnection()) return;
+      this.#markStreamActivity();
       this.status = { ...this.status, connected: true };
       this.onStatus?.(this.status);
     };
     stream.addEventListener('status', event => {
       if (!isCurrentConnection()) return;
+      this.#markStreamActivity();
       this.status = { ...this.status, ...JSON.parse(event.data || '{}') };
       this.onStatus?.(this.status);
     });
     stream.addEventListener('history', event => {
       if (!isCurrentConnection()) return;
+      this.#markStreamActivity();
       const payload = JSON.parse(event.data || '{}');
       const payloadStatus = payload.status || {};
       this.status = {
@@ -278,7 +296,7 @@ export class DepthMarketFeed {
       }
       snapshots.forEach((snapshot, index) => {
         if (!isCurrentConnection()) return;
-        this.onSnapshot?.(snapshot, {
+        this.#emitSnapshot(snapshot, {
           historical: true,
           final: index === snapshots.length - 1,
         });
@@ -286,6 +304,7 @@ export class DepthMarketFeed {
     });
     stream.addEventListener('cvd-history', event => {
       if (!isCurrentConnection()) return;
+      this.#markStreamActivity();
       const payload = JSON.parse(event.data || '{}');
       const points = Array.isArray(payload.points)
         ? payload.points.filter(point => Number.isFinite(Number(point?.timestamp)))
@@ -294,6 +313,7 @@ export class DepthMarketFeed {
     });
     stream.addEventListener('depth', event => {
       if (!isCurrentConnection()) return;
+      this.#markStreamActivity();
       const payload = JSON.parse(event.data || '{}');
       const payloadStatus = payload.status || {};
       this.status = {
@@ -319,12 +339,13 @@ export class DepthMarketFeed {
           this.observedRealFrameMs = this.observedRealFrameMs * 0.65 + interval * 0.35;
         }
         this.lastRealFrameAt = arrivedAt;
-        this.onSnapshot?.(snapshot);
+        this.#emitSnapshot(snapshot);
         this.#paceDisplay(snapshot, generation);
       }
     });
     stream.addEventListener('tick', event => {
       if (!isCurrentConnection()) return;
+      this.#markStreamActivity();
       const payload = JSON.parse(event.data || '{}');
       const tick = finite(payload.tick, Number.NaN);
       if (!Number.isFinite(tick)) return;
@@ -336,6 +357,10 @@ export class DepthMarketFeed {
         };
       }
     });
+    stream.addEventListener('heartbeat', () => {
+      if (!isCurrentConnection()) return;
+      this.#markStreamActivity();
+    });
     stream.onerror = () => {
       if (!isCurrentConnection()) return;
       this.status = {
@@ -345,6 +370,52 @@ export class DepthMarketFeed {
       };
       this.onStatus?.(this.status);
     };
+  }
+
+  #markStreamActivity() {
+    this.lastStreamActivityAt = Date.now();
+  }
+
+  #startWatchdog() {
+    if (this.watchdogTimer) return;
+    this.watchdogTimer = setInterval(() => {
+      if (!this.running || this.reconnectTimer) return;
+      if (typeof document !== 'undefined' && document.hidden) return;
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
+      if (Date.now() - this.lastStreamActivityAt <= STREAM_SILENCE_RECONNECT_MS) return;
+      this.#restartSilentStream();
+    }, STREAM_WATCHDOG_INTERVAL_MS);
+    this.watchdogTimer?.unref?.();
+  }
+
+  #restartSilentStream() {
+    if (!this.running || this.reconnectTimer) return;
+    this.connectionGeneration += 1;
+    this.stream?.close();
+    this.stream = null;
+    this.status = {
+      ...this.status,
+      connected: false,
+      message: 'Depth stream reconnecting',
+    };
+    this.onStatus?.(this.status);
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      if (!this.running) return;
+      this.lastStreamActivityAt = Date.now();
+      this.#connect();
+    }, 180);
+    this.reconnectTimer?.unref?.();
+  }
+
+  #emitSnapshot(snapshot, metadata) {
+    try {
+      this.onSnapshot?.(snapshot, metadata);
+    } catch (error) {
+      // A consumer paint failure must never break the live presentation timer
+      // or stop subsequent genuine Rithmic frames from reaching the map.
+      console.error('Liquidity map snapshot callback was isolated.', error);
+    }
   }
 
   #rawSnapshotIdentity(raw) {
@@ -404,7 +475,7 @@ export class DepthMarketFeed {
       // Zero-order hold: the exchange book remains at its last known state
       // until the next genuine snapshot. Trades, volume and event counts are
       // deliberately empty so visual pacing can never duplicate market data.
-      this.onSnapshot?.({
+      this.#emitSnapshot({
         ...held,
         id: held.id + Math.min(0.9999, this.presentationHoldCount / 10_000),
         timestamp: Math.min(Date.now(), held.timestamp + elapsed),

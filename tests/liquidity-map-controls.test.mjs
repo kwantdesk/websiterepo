@@ -71,9 +71,22 @@ test("heat sensitivity can dim substantially below the old minimum", async () =>
     readFile(new URL("../public/heatmap-app/src/depth-engine.js", import.meta.url), "utf8"),
   ]);
 
-  assert.match(html, /id="quickHeatRange"[^>]*min="0\.1"/);
-  assert.match(html, /id="sensitivityRange"[^>]*min="0\.1"/);
+  assert.match(html, /id="quickHeatRange"[^>]*min="0\.1"[^>]*value="0\.1"/);
+  assert.match(html, /id="sensitivityRange"[^>]*min="0\.1"[^>]*value="0\.1"/);
   assert.match(engine, /clamp\(sensitivity, 0\.1, 4\)/);
+  assert.match(await readFile(mainPath, "utf8"), /LIQUIDITY_MAP_DISPLAY_DEFAULTS = Object\.freeze\([\s\S]*?sensitivity: 0\.1/);
+});
+
+test("new users and reset share the canonical account-backed display defaults", async () => {
+  const [source, preferences] = await Promise.all([
+    readFile(mainPath, "utf8"),
+    readFile(preferencesPath, "utf8"),
+  ]);
+
+  assert.match(source, /this\.settings = \{[\s\S]*?\.\.\.LIQUIDITY_MAP_DISPLAY_DEFAULTS/);
+  assert.match(source, /#resetSettings\(\)[\s\S]*?\.\.\.LIQUIDITY_MAP_DISPLAY_DEFAULTS/);
+  assert.match(preferences, /"kwantdesk:liquidity-map-settings:v1"/);
+  assert.match(source, /kwantdesk:liquidity-map-preferences-changed/);
 });
 
 test("embedded liquidity map uses the restored horizontal toolbar", async () => {
