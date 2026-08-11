@@ -365,6 +365,7 @@ test("the live stream distinguishes socket heartbeats from genuine market frames
   assert.match(source, /#markMarketFrame\(\)/);
   assert.match(source, /\['L3', 'MBO_AGGREGATED', 'LIVE'\]\.includes\(liveDepthMode\)/);
   assert.match(source, /#probeLatestSnapshot\(\)/);
+  assert.match(source, /#probeLatestSnapshot\(true\)/);
   assert.match(source, /snapshot\.trades = \[\]/);
   assert.match(source, /scheduled stream rotation/);
   assert.match(source, /#restartSilentStream\(\)/);

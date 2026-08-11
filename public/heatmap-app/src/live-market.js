@@ -437,6 +437,10 @@ export class DepthMarketFeed {
       // rotation cannot freeze the main thread parsing duplicate history.
       this.#restartSilentStream();
     };
+    // Do not make the first visible map depend on a long-running SSE request
+    // clearing the hosting proxy. A small current-book request paints the
+    // chart immediately; the stream then appends history and live changes.
+    void this.#probeLatestSnapshot(true);
   }
 
   #markStreamActivity() {
@@ -499,12 +503,12 @@ export class DepthMarketFeed {
     this.reconnectTimer?.unref?.();
   }
 
-  async #probeLatestSnapshot() {
+  async #probeLatestSnapshot(force = false) {
     const now = Date.now();
     if (
       !this.running
       || this.snapshotProbeInFlight
-      || now - this.lastSnapshotProbeAt < MARKET_FRAME_PROBE_MS
+      || (!force && now - this.lastSnapshotProbeAt < MARKET_FRAME_PROBE_MS)
     ) return;
     this.snapshotProbeInFlight = true;
     this.lastSnapshotProbeAt = now;
