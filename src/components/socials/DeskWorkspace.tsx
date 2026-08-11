@@ -905,6 +905,7 @@ export default function DeskWorkspace({
   const [deleteConfirmation, setDeleteConfirmation] = useState("");
   const [deletingDeskId, setDeletingDeskId] = useState("");
   const [categoryEditor, setCategoryEditor] = useState<CategoryDraft>(emptyCategoryDraft);
+  const [categorySaveError, setCategorySaveError] = useState("");
   const [channelEditor, setChannelEditor] = useState<ChannelDraft>(emptyChannelDraft);
   const [collapsedCategoryIds, setCollapsedCategoryIds] = useState<string[]>([]);
   const [message, setMessage] = useState("");
@@ -1189,7 +1190,11 @@ export default function DeskWorkspace({
     deliveryTimersRef.current.clear();
   }, []);
 
-  const perform = useCallback(async (body: Record<string, unknown>, success?: string) => {
+  const perform = useCallback(async (
+    body: Record<string, unknown>,
+    success?: string,
+    onFailure?: (message: string) => void,
+  ) => {
     setWorking(true);
     try {
       const response = await fetch("/api/socials/desks", {
@@ -1204,7 +1209,9 @@ export default function DeskWorkspace({
       window.dispatchEvent(new CustomEvent(DESK_NETWORK_CHANGED_EVENT));
       return true;
     } catch (reason) {
-      onNotice(reason instanceof Error ? reason.message : "That Desk action could not be completed.");
+      const message = reason instanceof Error ? reason.message : "That Desk action could not be completed.";
+      onNotice(message);
+      onFailure?.(message);
       return false;
     } finally {
       setWorking(false);
@@ -1443,12 +1450,15 @@ export default function DeskWorkspace({
   };
 
   const openCategoryEditor = (category?: DeskCategory) => {
+    setCategorySaveError("");
     setCategoryEditor(category ? categoryDraft(category) : emptyCategoryDraft());
     setShowCategory(true);
   };
 
   const saveCategory = async () => {
     if (!activeDesk) return;
+    setCategorySaveError("");
+    setShowCategory(false);
     const saved = await perform({
       action: categoryEditor.categoryId ? "update-category" : "create-category",
       deskId: activeDesk.deskId,
@@ -1456,8 +1466,11 @@ export default function DeskWorkspace({
       position: categoryEditor.categoryId
         ? activeCategories.find((category) => category.id === categoryEditor.categoryId)?.position ?? 100
         : (activeCategories.at(-1)?.position ?? 0) + 10,
-    }, categoryEditor.categoryId ? "Category settings saved." : "Category created. Add a text or voice channel inside it.");
-    if (saved) setShowCategory(false);
+    }, categoryEditor.categoryId ? "Category settings saved." : "Category created. Add a text or voice channel inside it.", (message) => {
+      setCategorySaveError(message);
+      setShowCategory(true);
+    });
+    if (saved) setCategoryEditor(emptyCategoryDraft());
   };
 
   const openChannelEditor = (channel?: DeskChannel, categoryId = "") => {
@@ -1753,7 +1766,7 @@ export default function DeskWorkspace({
                     {leader ? <button type="button" onClick={() => openCategoryEditor()} className="flex items-center gap-1 text-[6px] font-semibold text-muted hover:text-primary"><FolderPlus className="h-3 w-3" />Add category</button> : null}
                   </div>
                   {!network.categoryStructureReady ? (
-                    <div className="rounded-xl border border-warning/25 bg-warning/[0.04] p-3 text-[7px] leading-4 text-warning">Apply the Desk categories migration in Supabase to create categories and channels.</div>
+                    <div className="rounded-xl border border-warning/25 bg-warning/[0.04] p-3 text-[7px] leading-4 text-warning">Desk category storage is not installed in this Supabase project. Run <span className="font-mono text-foreground">202608020002_create_desk_channel_categories.sql</span> once to enable categories and channels.</div>
                   ) : !activeCategories.length ? (
                     <div className="rounded-xl border border-dashed border-border p-4 text-center">
                       <FolderPlus className="mx-auto h-5 w-5 text-muted" />
@@ -2346,7 +2359,9 @@ export default function DeskWorkspace({
       ) : null}
 
       {showCategory && activeDesk ? (
-        <Modal title={categoryEditor.categoryId ? `Edit ${categoryEditor.name}` : "Create category"} subtitle="Categories organise channels and can supply one permission policy to everything inside." icon={<FolderPlus className="h-4 w-4" />} onClose={() => setShowCategory(false)} wide footer={<><button type="button" onClick={() => setShowCategory(false)} className="h-9 rounded-xl border border-border px-4 text-[8px] font-semibold text-muted">Cancel</button>{categoryEditor.categoryId ? <button type="button" onClick={async () => { const deleted = await perform({ action: "delete-category", deskId: activeDesk.deskId, categoryId: categoryEditor.categoryId }, "Category and its channels were removed."); if (deleted) { setShowCategory(false); setActiveChannelId(""); } }} className="mr-auto flex h-9 items-center gap-2 rounded-xl border border-danger/20 px-4 text-[8px] font-semibold text-danger"><Archive className="h-3.5 w-3.5" />Delete category</button> : null}<button type="button" onClick={() => void saveCategory()} disabled={!categoryEditor.name.trim() || working} className="flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-[8px] font-semibold text-background disabled:opacity-50"><Check className="h-3.5 w-3.5" />Save category</button></>}>
+        <Modal title={categoryEditor.categoryId ? `Edit ${categoryEditor.name}` : "Create category"} subtitle="Categories organise channels and can supply one permission policy to everything inside." icon={<FolderPlus className="h-4 w-4" />} onClose={() => setShowCategory(false)} wide footer={<><button type="button" onClick={() => setShowCategory(false)} className="h-9 rounded-xl border border-border px-4 text-[8px] font-semibold text-muted">Cancel</button>{categoryEditor.categoryId ? <button type="button" onClick={async () => { const deleted = await perform({ action: "delete-category", deskId: activeDesk.deskId, categoryId: categoryEditor.categoryId }, "Category and its channels were removed."); if (deleted) { setShowCategory(false); setActiveChannelId(""); } }} className="mr-auto flex h-9 items-center gap-2 rounded-xl border border-danger/20 px-4 text-[8px] font-semibold text-danger"><Archive className="h-3.5 w-3.5" />Delete category</button> : null}<button type="button" onClick={() => void saveCategory()} disabled={!categoryEditor.name.trim() || working || !network.categoryStructureReady} className="flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-[8px] font-semibold text-background disabled:opacity-50"><Check className="h-3.5 w-3.5" />{network.categoryStructureReady ? "Save category" : "Database setup required"}</button></>}>
+          {!network.categoryStructureReady ? <div className="mb-4 rounded-xl border border-warning/25 bg-warning/[0.05] p-3 text-[8px] leading-5 text-warning">Run <span className="font-mono text-foreground">202608020002_create_desk_channel_categories.sql</span> in the Supabase SQL Editor, then reload this page.</div> : null}
+          {categorySaveError ? <div role="alert" className="mb-4 rounded-xl border border-danger/25 bg-danger/[0.05] p-3 text-[8px] leading-5 text-danger">{categorySaveError}</div> : null}
           <div className="grid gap-4 md:grid-cols-2">
             <label><span className="mb-1.5 block text-[7px] uppercase tracking-[0.1em] text-muted">Category name</span><input value={categoryEditor.name} onChange={(event) => setCategoryEditor((current) => ({ ...current, name: event.target.value }))} placeholder="New York session" className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[8px] outline-none focus:border-primary/40" /></label>
             <label><span className="mb-1.5 block text-[7px] uppercase tracking-[0.1em] text-muted">Description</span><input value={categoryEditor.description} onChange={(event) => setCategoryEditor((current) => ({ ...current, description: event.target.value }))} placeholder="Shared permissions for this group" className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[8px] outline-none focus:border-primary/40" /></label>

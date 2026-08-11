@@ -1059,7 +1059,7 @@ export async function POST(request: NextRequest) {
       const migrationMissing = tableUnavailable(error.code) || error.code === "PGRST204";
       return NextResponse.json({
         error: migrationMissing
-          ? "Apply the Desk categories migration in Supabase first."
+          ? "Run 202608020002_create_desk_channel_categories.sql in the Supabase SQL Editor first."
           : error.message,
       }, { status: migrationMissing ? 503 : 403 });
     }
