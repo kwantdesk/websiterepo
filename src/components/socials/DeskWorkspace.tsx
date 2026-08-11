@@ -47,8 +47,10 @@ import ActivityStreakBadge from "@/components/socials/ActivityStreakBadge";
 import UserAvatar from "@/components/socials/UserAvatar";
 import SharedTradeMessageCard from "@/components/socials/SharedTradeMessageCard";
 import LinkedMessageBody from "@/components/socials/LinkedMessageBody";
+import EmojiPicker from "@/components/ui/EmojiPicker";
 import { createClient as createSupabaseBrowserClient } from "@/lib/supabase";
 import { useSpeechDictation } from "@/hooks/useSpeechDictation";
+import { useFrequentEmojis } from "@/hooks/useFrequentEmojis";
 import { isSingleEmojiMessage } from "@/lib/messageText";
 import {
   prepareSharedImage,
@@ -156,18 +158,6 @@ type OptimisticDeskMessage = DeskMessage & {
 function isOptimisticDeskMessage(message: DeskMessage): message is OptimisticDeskMessage {
   return "deliveryStatus" in message;
 }
-
-const REACTIONS = ["👍", "🔥", "🎯", "🧠", "✅"];
-const DESK_CHAT_EMOJIS = [
-  "👍", "🔥", "😂", "❤️", "👀", "📈", "📉", "🎯", "✅", "⚡",
-  "🧠", "💎", "🚀", "🤝", "🙏", "😅", "🤔", "😮", "🥳", "🫡",
-  "😀", "😃", "😄", "😁", "🤣", "😉", "😊", "😎", "🤩", "🥰",
-  "😍", "😘", "😜", "🤪", "🧐", "😐", "🙄", "😬", "😔", "😭",
-  "😤", "😡", "🤬", "😱", "🥵", "🥶", "💪", "👏", "🙌", "🤞",
-  "👌", "👊", "✊", "🫶", "💯", "💥", "💫", "✨", "🌟", "💡",
-  "🔔", "💰", "💸", "🏆", "🥇", "👑", "🦅", "🦁", "🐻", "🐂",
-  "🌙", "☀️", "☕", "🍺", "🎉", "🎵", "🎮", "⚠️", "🚨", "❗",
-] as const;
 
 const DESK_ACCENTS = [
   { label: "Onyx Gold", value: "#d8b45c" },
@@ -925,6 +915,7 @@ export default function DeskWorkspace({
   const [optimisticMessages, setOptimisticMessages] = useState<OptimisticDeskMessage[]>([]);
   const [attachment, setAttachment] = useState<DeskMessageAttachment | null>(null);
   const [showDeskEmoji, setShowDeskEmoji] = useState(false);
+  const [reactionPickerMessageId, setReactionPickerMessageId] = useState("");
   const [voiceRecording, setVoiceRecording] = useState(false);
   const [voiceElapsed, setVoiceElapsed] = useState(0);
   const [imagePreview, setImagePreview] = useState<DeskMessageAttachment | null>(null);
@@ -947,6 +938,7 @@ export default function DeskWorkspace({
   const voiceChunksRef = useRef<Blob[]>([]);
   const voiceTimerRef = useRef<number | null>(null);
   const voiceElapsedRef = useRef(0);
+  const { frequentEmojis, recordEmojiUse } = useFrequentEmojis(viewerId);
 
   selectedDeskRef.current = activeDeskId;
 
@@ -2177,10 +2169,12 @@ export default function DeskWorkspace({
                           && !sharedOneLiner
                           && entry.attachments.length === 0
                           && isSingleEmojiMessage(entry.body);
-                        const reactionGroups = REACTIONS.map((emoji) => ({
+                        const reactionGroups = Array.from(new Set(network.reactions
+                          .filter((reaction) => reaction.messageId === entry.id)
+                          .map((reaction) => reaction.emoji))).map((emoji) => ({
                           emoji,
                           users: network.reactions.filter((reaction) => reaction.messageId === entry.id && reaction.emoji === emoji),
-                        })).filter((group) => group.users.length);
+                        }));
                         return (
                           <div key={entry.id} className={`group relative flex gap-3 rounded-xl px-2 py-2 hover:bg-surface/25 ${grouped ? "mt-0" : "mt-3"}`}>
                             <div className="w-9 shrink-0">{grouped ? <span className="block pt-1 text-center text-[5px] text-muted opacity-0 group-hover:opacity-100">{formatTime(entry.createdAt)}</span> : <ProfileAvatar profile={profile} />}</div>
@@ -2201,9 +2195,10 @@ export default function DeskWorkspace({
                                   {optimistic.deliveryStatus === "failed" ? <button type="button" onClick={() => void deliverDeskMessage(optimistic)} className="font-semibold underline underline-offset-2">Not sent Â· Retry</button> : null}
                                 </div>
                               ) : null}
-                              {reactionGroups.length ? <div className="mt-2 flex flex-wrap gap-1">{reactionGroups.map((group) => <button key={group.emoji} type="button" disabled={Boolean(activeFocusLock)} onClick={() => void perform({ action: "react", deskId: activeDesk.deskId, messageId: entry.id, emoji: group.emoji })} className={`flex items-center gap-1 rounded-lg border px-2 py-1 text-[7px] disabled:cursor-default ${group.users.some((reaction) => reaction.userId === viewerId) ? "border-primary/35 bg-primary/10 text-primary" : "border-border bg-surface/30 text-muted"}`}><span>{group.emoji}</span><span className="font-mono">{group.users.length}</span></button>)}</div> : null}
+                              {reactionGroups.length ? <div className="mt-2 flex flex-wrap gap-1">{reactionGroups.map((group) => { const mine = group.users.some((reaction) => reaction.userId === viewerId); return <button key={group.emoji} type="button" disabled={Boolean(activeFocusLock)} onClick={() => { if (!mine) recordEmojiUse(group.emoji); void perform({ action: "react", deskId: activeDesk.deskId, messageId: entry.id, emoji: group.emoji }); }} className={`flex items-center gap-1 rounded-lg border px-2 py-1 text-[7px] disabled:cursor-default ${mine ? "border-primary/35 bg-primary/10 text-primary" : "border-border bg-surface/30 text-muted"}`}><span>{group.emoji}</span><span className="font-mono">{group.users.length}</span></button>; })}</div> : null}
                             </div>
-                            {!activeFocusLock ? <div className="absolute -top-4 right-2 hidden rounded-xl border border-border bg-panel p-1 shadow-xl group-hover:flex">{REACTIONS.map((emoji) => <button key={emoji} type="button" onClick={() => void perform({ action: "react", deskId: activeDesk.deskId, messageId: entry.id, emoji })} className="flex h-7 w-7 items-center justify-center rounded-lg text-[12px] hover:bg-surface">{emoji}</button>)}</div> : null}
+                            {!activeFocusLock ? <div className="absolute -top-4 right-2 hidden rounded-xl border border-border bg-panel p-1 shadow-xl group-hover:flex">{frequentEmojis.slice(0, 5).map((emoji) => <button key={emoji} type="button" onClick={() => { recordEmojiUse(emoji); void perform({ action: "react", deskId: activeDesk.deskId, messageId: entry.id, emoji }); }} className="flex h-7 w-7 items-center justify-center rounded-lg text-[12px] hover:bg-surface">{emoji}</button>)}<button type="button" onClick={() => setReactionPickerMessageId((current) => current === entry.id ? "" : entry.id)} className="flex h-7 w-7 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-primary" title="More reactions"><Plus className="h-3.5 w-3.5" /></button></div> : null}
+                            {reactionPickerMessageId === entry.id ? <EmojiPicker frequentEmojis={frequentEmojis} onSelect={(emoji) => { recordEmojiUse(emoji); void perform({ action: "react", deskId: activeDesk.deskId, messageId: entry.id, emoji }); setReactionPickerMessageId(""); }} className="absolute bottom-8 right-2 z-50" /> : null}
                           </div>
                         );
                       })}
@@ -2225,7 +2220,7 @@ export default function DeskWorkspace({
                       <button type="button" onClick={() => attachmentInputRef.current?.click()} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-primary" title="Attach image"><Plus className="h-4 w-4" /></button>
                       <div className="relative">
                         <button type="button" onClick={() => setShowDeskEmoji((current) => !current)} className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${showDeskEmoji ? "bg-primary/10 text-primary" : "text-muted hover:bg-surface hover:text-primary"}`} title="Add emoji"><SmilePlus className="h-4 w-4" /></button>
-                        {showDeskEmoji ? <div className="absolute bottom-10 left-0 z-50 w-64 overflow-hidden rounded-2xl border border-border bg-panel shadow-2xl"><div className="border-b border-border px-3 py-2 text-[8px] font-semibold uppercase tracking-[0.14em] text-muted">Emojis</div><div className="grid max-h-60 grid-cols-6 gap-1 overflow-y-auto overscroll-contain p-2 [scrollbar-color:var(--primary)_transparent] [scrollbar-width:thin]">{DESK_CHAT_EMOJIS.map((emoji, index) => <button key={`${emoji}-${index}`} type="button" onClick={() => setMessage((current) => `${current}${emoji}`)} className="flex h-9 items-center justify-center rounded-lg text-[19px] hover:bg-surface">{emoji}</button>)}</div></div> : null}
+                        {showDeskEmoji ? <EmojiPicker frequentEmojis={frequentEmojis} onSelect={(emoji) => { recordEmojiUse(emoji); setMessage((current) => `${current}${emoji}`); }} className="absolute bottom-10 left-0 z-50" /> : null}
                       </div>
                       <textarea value={message} maxLength={4_000} onChange={(event) => setMessage(event.target.value)} onKeyDown={handleMessageKey} rows={1} placeholder={`Message #${activeChannel?.name ?? "desk"}`} className="max-h-28 min-h-8 flex-1 resize-none bg-transparent px-1 py-2 text-[11px] leading-5 outline-none placeholder:text-muted" />
                       <button
