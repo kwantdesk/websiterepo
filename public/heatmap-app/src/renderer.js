@@ -99,6 +99,28 @@ function timeLabel(timestamp, withMilliseconds = false) {
   return withMilliseconds ? `${base}.${String(date.getUTCMilliseconds()).padStart(3, '0')}` : base.slice(0, 5);
 }
 
+function timestampLowerBound(points, target, high = points.length) {
+  let low = 0;
+  let upper = Math.max(0, Math.min(points.length, high));
+  while (low < upper) {
+    const middle = (low + upper) >>> 1;
+    if (Number(points[middle]?.timestamp) < target) low = middle + 1;
+    else upper = middle;
+  }
+  return low;
+}
+
+function timestampUpperBound(points, target) {
+  let low = 0;
+  let upper = points.length;
+  while (low < upper) {
+    const middle = (low + upper) >>> 1;
+    if (Number(points[middle]?.timestamp) <= target) low = middle + 1;
+    else upper = middle;
+  }
+  return low;
+}
+
 function niceTickStep(totalTicks) {
   const raw = Math.max(1, totalTicks / 10);
   const magnitude = 10 ** Math.floor(Math.log10(raw));
@@ -1112,23 +1134,19 @@ export class DepthRenderer {
     ctx.fillRect(0, 0, width, height);
     const currentTimestamp = Number(history[end]?.timestamp || Number.POSITIVE_INFINITY);
     const visibleStartTimestamp = Number(history[start]?.timestamp || 0);
-    const allSessionPoints = (analysis?.sessionCvd?.points || [])
-      .filter(point => Number(point.timestamp) <= currentTimestamp);
-    let points = allSessionPoints;
+    const sessionPoints = analysis?.sessionCvd?.points || [];
+    const sessionEnd = timestampUpperBound(sessionPoints, currentTimestamp);
+    const firstVisibleIndex = timestampLowerBound(sessionPoints, visibleStartTimestamp, sessionEnd);
+    const continuityIndex = firstVisibleIndex > 0 ? firstVisibleIndex - 1 : firstVisibleIndex;
+    let points = sessionPoints.slice(Math.max(0, continuityIndex), sessionEnd);
     let baseline = { value: 0, buy: 0, sell: 0 };
-    if (allSessionPoints.length) {
-      const firstVisibleIndex = allSessionPoints.findIndex(
-        point => Number(point.timestamp) >= visibleStartTimestamp,
-      );
-      const continuityIndex = firstVisibleIndex > 0 ? firstVisibleIndex - 1 : Math.max(0, firstVisibleIndex);
-      points = firstVisibleIndex >= 0
-        ? allSessionPoints.slice(continuityIndex)
-        : allSessionPoints.slice(-2);
+    if (sessionEnd > 0) {
+      if (!points.length) points = sessionPoints.slice(Math.max(0, sessionEnd - 2), sessionEnd);
       // "Visible" rebases the value at the left edge. "Loaded" retains the
       // true session cumulative value while still drawing only the same time
       // window as the liquidity map, which makes price/CVD divergence legible.
       if (settings.cvdRange === 'visible' && continuityIndex >= 0) {
-        baseline = allSessionPoints[continuityIndex] || baseline;
+        baseline = sessionPoints[continuityIndex] || baseline;
       }
     }
     // A cold gateway may not yet have compact session buckets. Retain the
@@ -1148,9 +1166,7 @@ export class DepthRenderer {
     const displayStyle = ['candles', 'line', 'bars'].includes(settings.cvdDisplayStyle)
       ? settings.cvdDisplayStyle
       : 'candles';
-    const adjusted = index => {
-      const point = points[index] || points.at(-1) || baseline;
-      return {
+    const adjustedPoints = points.map(point => ({
         value: Number(point.value ?? point.close ?? 0) - Number(baseline.value || 0),
         open: Number(point.open ?? point.value ?? 0) - Number(baseline.value || 0),
         high: Number(point.high ?? point.value ?? 0) - Number(baseline.value || 0),
@@ -1158,16 +1174,18 @@ export class DepthRenderer {
         close: Number(point.close ?? point.value ?? 0) - Number(baseline.value || 0),
         buy: Number(point.buy || 0) - Number(baseline.buy || 0),
         sell: Number(point.sell || 0) - Number(baseline.sell || 0),
-      };
-    };
-    const values = [];
+      }));
+    let minimum = Number.POSITIVE_INFINITY;
+    let maximum = Number.NEGATIVE_INFINITY;
     for (let index = 0; index < count; index += 1) {
-      const point = adjusted(index);
-      values.push(point.value, point.high, point.low);
-      if (settings.cvdSplit) values.push(point.buy, point.sell);
+      const point = adjustedPoints[index];
+      minimum = Math.min(minimum, point.value, point.high, point.low);
+      maximum = Math.max(maximum, point.value, point.high, point.low);
+      if (settings.cvdSplit) {
+        minimum = Math.min(minimum, point.buy, point.sell);
+        maximum = Math.max(maximum, point.buy, point.sell);
+      }
     }
-    let minimum = Math.min(...values);
-    let maximum = Math.max(...values);
     if (settings.cvdScale === 'include-zero') {
       minimum = Math.min(0, minimum);
       maximum = Math.max(0, maximum);
@@ -1216,13 +1234,13 @@ export class DepthRenderer {
       ctx.stroke();
       ctx.setLineDash([]);
     }
-    const lastValue = adjusted(count - 1).value;
-    const firstValue = adjusted(0).value;
+    const lastValue = adjustedPoints[count - 1].value;
+    const firstValue = adjustedPoints[0].value;
     const drawSeries = (field, color, widthValue, shadow = 0) => {
       ctx.beginPath();
       for (let index = 0; index < count; index += 1) {
         const x = xForTimestamp(points[index]?.timestamp);
-        const y = yForValue(adjusted(index)[field]);
+        const y = yForValue(adjustedPoints[index][field]);
         if (index === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
       }
       ctx.strokeStyle = color;
@@ -1235,7 +1253,7 @@ export class DepthRenderer {
     if (displayStyle === 'candles') {
       const barWidth = Math.max(2, Math.min(10, dataWidth / Math.max(1, count) * .64));
       for (let index = 0; index < count; index += 1) {
-        const point = adjusted(index);
+        const point = adjustedPoints[index];
         const x = xForTimestamp(points[index]?.timestamp);
         const positive = point.close >= point.open;
         const color = colorCss(positive ? accents.bid : accents.ask);
@@ -1254,7 +1272,7 @@ export class DepthRenderer {
       const zero = Math.max(7, Math.min(height - 7, yForValue(0)));
       const barWidth = Math.max(1, Math.min(12, dataWidth / Math.max(1, count) * .72));
       for (let index = 0; index < count; index += 1) {
-        const point = adjusted(index);
+        const point = adjustedPoints[index];
         const x = xForTimestamp(points[index]?.timestamp);
         const y = yForValue(point.value);
         ctx.fillStyle = colorCss(point.value >= 0 ? accents.bid : accents.ask, .9);

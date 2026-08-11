@@ -69,4 +69,8 @@ test("wide and high-DPI screens use bounded canvas work and cached trade cluster
   assert.match(renderer, /const heatmapAnchor = Math\.max\(layout\.rowTicks, layout\.rowTicks \* 4\)/);
   assert.match(renderer, /bottomTick: heatmapBottomTick,[\s\S]*?topTick: heatmapTopTick/);
   assert.match(renderer, /0, heatmapYOffset, layout\.dataWidth, layout\.plotHeight/);
+  assert.match(renderer, /function timestampLowerBound\(points, target, high = points\.length\)/);
+  assert.match(renderer, /function timestampUpperBound\(points, target\)/);
+  assert.match(renderer, /const sessionEnd = timestampUpperBound\(sessionPoints, currentTimestamp\)/);
+  assert.doesNotMatch(renderer, /sessionCvd\?\.points \|\| \[\]\)\s*\.filter/);
 });
