@@ -313,8 +313,61 @@ html[data-embed="true"] .cvd-panel {
 }
 
 html[data-embed="true"] .cvd-panel header {
+  display: flex;
+  gap: 10px;
+  min-width: 0;
   border-bottom: 1px solid var(--ui-line);
   background: var(--ui-panel);
+}
+
+html[data-embed="true"] .cvd-panel header > strong {
+  flex: 1 1 auto;
+  min-width: 118px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+html[data-embed="true"] .cvd-panel header .cvd-header-controls {
+  display: flex;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: calc(100% - 128px);
+  white-space: nowrap;
+}
+
+html[data-embed="true"] .cvd-panel header .cvd-style-picker {
+  display: block;
+  flex: 1 1 104px;
+  min-width: 76px;
+}
+
+html[data-embed="true"] .cvd-panel header #cvdStyleButton {
+  width: 100%;
+  min-width: 0;
+}
+
+html[data-embed="true"] #cvdStyleLabel {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+html[data-embed="true"] #cvdLegend {
+  display: block;
+  flex: 1 1 112px;
+  min-width: 54px;
+  max-width: 132px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+html[data-embed="true"] #cvdGoLive,
+html[data-embed="true"] .cvd-settings-button {
+  flex: 0 0 auto;
 }
 
 html[data-embed="true"] .cvd-panel header strong,

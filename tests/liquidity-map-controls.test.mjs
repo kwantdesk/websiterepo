@@ -110,6 +110,15 @@ test("CVD is labelled and horizontally synchronized with the liquidity map", asy
   assert.match(renderer, /const xForIndex = index => count <= 1 \? dataWidth : \(\(index - start\) \/ \(count - 1\)\) \* dataWidth/);
 });
 
+test("CVD header controls remain contained beside the live market rail", async () => {
+  const css = await readFile(embedCssPath, "utf8");
+
+  assert.match(css, /\.cvd-panel header\s*\{[\s\S]*?min-width:\s*0;/);
+  assert.match(css, /\.cvd-header-controls\s*\{[\s\S]*?max-width:\s*calc\(100% - 128px\);/);
+  assert.match(css, /#cvdStyleButton\s*\{[\s\S]*?width:\s*100%;[\s\S]*?min-width:\s*0;/);
+  assert.match(css, /#cvdLegend\s*\{[\s\S]*?overflow:\s*hidden;[\s\S]*?text-overflow:\s*ellipsis;/);
+});
+
 test("Ctrl plus mouse wheel compresses the liquidity timeline without changing price scale", async () => {
   const [source, renderer] = await Promise.all([
     readFile(mainPath, "utf8"),
