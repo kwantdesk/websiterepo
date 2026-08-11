@@ -169,6 +169,15 @@ test("auto-center keeps live price at the true viewport midpoint", async () => {
   assert.match(renderer, /const bottomTick = centerTick - visibleTickSpan \/ 2;[\s\S]*?const topTick = centerTick \+ visibleTickSpan \/ 2;/);
 });
 
+test("every liquidity-map load and instrument switch starts auto-centered", async () => {
+  const source = await readFile(mainPath, "utf8");
+
+  assert.match(source, /this\.#restoreSettings\(\);[\s\S]*?this\.settings\.autoCenter = true;[\s\S]*?this\.view\.centerTick = null;/);
+  assert.match(source, /switchSymbol\(symbol\)[\s\S]*?this\.settings\.autoCenter = true;[\s\S]*?\$\('autoCenter'\)\.checked = true;[\s\S]*?this\.view\.centerTick = null;/);
+  assert.match(source, /allowed\.delete\('autoCenter'\)/);
+  assert.match(source, /delete saved\.autoCenter/);
+});
+
 test("embedded map omits intrusive feed and latency overlays", async () => {
   const html = await readFile(htmlPath, "utf8");
 

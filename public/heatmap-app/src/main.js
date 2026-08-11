@@ -101,6 +101,11 @@ class DepthForgeApp {
       ...DEFAULT_INDICATOR_SETTINGS,
     };
     this.#restoreSettings();
+    // Every liquidity-map session starts live and centred. Auto-centre is a
+    // safe viewport default, not a durable user preference that an old pan
+    // gesture should be able to disable on future visits.
+    this.settings.autoCenter = true;
+    this.view.centerTick = null;
 
     this.indicatorAnalysis = null;
     this.cvdHistory = [];
@@ -539,6 +544,8 @@ class DepthForgeApp {
     this.cvdHistory = [];
     this.cvdTradingDate = '';
     this.tape = [];
+    this.settings.autoCenter = true;
+    $('autoCenter').checked = true;
     this.view.centerTick = null;
     this.accumulator = 0;
     this.readySymbol = '';
@@ -639,6 +646,7 @@ class DepthForgeApp {
       if (!saved || typeof saved !== 'object' || Array.isArray(saved)) return;
       const allowed = new Set(Object.keys(this.settings));
       allowed.delete('uiTheme');
+      allowed.delete('autoCenter');
       for (const [key, value] of Object.entries(saved)) {
         if (!allowed.has(key) || value === null || !['string', 'number', 'boolean'].includes(typeof value)) continue;
         this.settings[key] = value;
@@ -652,6 +660,7 @@ class DepthForgeApp {
     try {
       const saved = { ...this.settings };
       delete saved.uiTheme;
+      delete saved.autoCenter;
       localStorage.setItem(LIQUIDITY_MAP_SETTINGS_KEY, JSON.stringify(saved));
     } catch {
       // Browser storage is optional; the live map remains usable without it.
