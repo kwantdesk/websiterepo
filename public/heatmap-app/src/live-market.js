@@ -1,7 +1,7 @@
 const REQUESTED_DEPTH_TICKS = 1000;
 const STREAM_WATCHDOG_INTERVAL_MS = 2_000;
 const STREAM_SILENCE_RECONNECT_MS = 13_000;
-const MARKET_FRAME_SILENCE_RECONNECT_MS = 13_000;
+const MARKET_FRAME_PROBE_MS = 8_000;
 // Vercel terminates the same-origin SSE proxy after roughly five minutes.
 // Rotate before that hard edge so the replacement connection is deliberate
 // instead of waiting for a half-closed EventSource to notice the failure.
@@ -32,6 +32,15 @@ export function liveDepthStreamUrl(symbol = 'MNQ', contractSymbol = '', afterTim
   if (contractSymbol) query.set('contractSymbol', contractSymbol);
   if (Number(afterTimestamp) > 0) query.set('afterTimestamp', String(Math.floor(Number(afterTimestamp))));
   return `${INSTITUTIONAL_MARKET_DATA_ORIGIN}/v1/heatmap/stream?${query}`;
+}
+
+export function liveDepthSnapshotUrl(symbol = 'MNQ', contractSymbol = '') {
+  const query = new URLSearchParams({
+    depthTicks: String(REQUESTED_DEPTH_TICKS),
+    symbol,
+  });
+  if (contractSymbol) query.set('contractSymbol', contractSymbol);
+  return `${INSTITUTIONAL_MARKET_DATA_ORIGIN}/v1/heatmap/snapshot?${query}`;
 }
 
 export function normalizeBookLevels(rawLevels) {
@@ -192,6 +201,8 @@ export class DepthMarketFeed {
     this.streamLeaseTimer = null;
     this.lastStreamActivityAt = 0;
     this.lastMarketFrameAt = 0;
+    this.lastSnapshotProbeAt = 0;
+    this.snapshotProbeInFlight = false;
     this.presentationSnapshot = null;
     this.latestTradeTick = null;
     this.lastRealFrameAt = 0;
@@ -236,6 +247,8 @@ export class DepthMarketFeed {
     this.lastRealFrameAt = 0;
     this.lastStreamActivityAt = 0;
     this.lastMarketFrameAt = 0;
+    this.lastSnapshotProbeAt = 0;
+    this.snapshotProbeInFlight = false;
     this.observedRealFrameMs = 100;
     this.stream?.close();
     this.stream = null;
@@ -258,6 +271,8 @@ export class DepthMarketFeed {
     this.lastRealFrameAt = 0;
     this.lastStreamActivityAt = Date.now();
     this.lastMarketFrameAt = Date.now();
+    this.lastSnapshotProbeAt = 0;
+    this.snapshotProbeInFlight = false;
     this.observedRealFrameMs = 100;
     this.stream?.close();
     this.stream = null;
@@ -446,8 +461,8 @@ export class DepthMarketFeed {
         && this.status.fullDepth === true
         && this.status.stale !== true
         && ['L3', 'MBO_AGGREGATED', 'LIVE'].includes(liveDepthMode);
-      if (expectsLiveFrames && now - this.lastMarketFrameAt > MARKET_FRAME_SILENCE_RECONNECT_MS) {
-        this.#restartSilentStream('market-frame silence');
+      if (expectsLiveFrames && now - this.lastMarketFrameAt > MARKET_FRAME_PROBE_MS) {
+        void this.#probeLatestSnapshot();
       }
     }, STREAM_WATCHDOG_INTERVAL_MS);
     this.watchdogTimer?.unref?.();
@@ -460,9 +475,12 @@ export class DepthMarketFeed {
     this.streamLeaseTimer = null;
     this.stream?.close();
     this.stream = null;
+    const hadUsableFrame = Boolean(this.presentationSnapshot);
     this.status = {
       ...this.status,
-      connected: false,
+      // Retain the last completed book while the transport swaps underneath
+      // it. Brief proxy rotations must not flash the entire map offline.
+      connected: hadUsableFrame ? this.status.connected : false,
       message: `Depth stream reconnecting: ${reason}`,
     };
     this.onStatus?.(this.status);
@@ -476,13 +494,66 @@ export class DepthMarketFeed {
     this.reconnectTimer?.unref?.();
   }
 
+  async #probeLatestSnapshot() {
+    const now = Date.now();
+    if (
+      !this.running
+      || this.snapshotProbeInFlight
+      || now - this.lastSnapshotProbeAt < MARKET_FRAME_PROBE_MS
+    ) return;
+    this.snapshotProbeInFlight = true;
+    this.lastSnapshotProbeAt = now;
+    const symbol = this.symbol;
+    const contractSymbol = this.contractSymbol;
+    const generation = this.connectionGeneration;
+    try {
+      const response = await fetch(liveDepthSnapshotUrl(symbol, contractSymbol), {
+        cache: 'no-store',
+        headers: { Accept: 'application/json' },
+      });
+      if (!response.ok) return;
+      const payload = await response.json();
+      if (!this.running || generation !== this.connectionGeneration || symbol !== this.symbol) return;
+      const payloadStatus = payload?.status || {};
+      this.status = { ...this.status, ...payloadStatus };
+      this.onStatus?.(this.status);
+      const snapshot = normalizeLiveSnapshot(payload?.snapshot);
+      const token = snapshotBookToken(snapshot);
+      if (!snapshot || token === this.lastSnapshotToken) {
+        // A valid probe proves the market edge is still available even when
+        // the book itself genuinely has not changed.
+        this.lastMarketFrameAt = Date.now();
+        return;
+      }
+      this.latestTradeTick = snapshot.lastTick;
+      this.presentationSnapshot = snapshot;
+      this.lastSnapshotToken = token;
+      this.lastAcceptedTimestamp = Math.max(this.lastAcceptedTimestamp, snapshot.timestamp);
+      this.#rememberSnapshot(snapshot);
+      // The snapshot endpoint carries a retained trade window rather than an
+      // SSE cursor. It is used only to repair book/price continuity; replaying
+      // those trades would duplicate bubbles, tape rows and CVD.
+      snapshot.trades = [];
+      snapshot.delta = 0;
+      snapshot.volume = 0;
+      snapshot.eventsSince = 0;
+      this.#markMarketFrame();
+      this.#emitSnapshot(snapshot, { recovered: true });
+    } catch {
+      // The SSE socket watchdog remains authoritative. A failed health probe
+      // must not blank a valid last frame or create a reconnect storm.
+    } finally {
+      this.snapshotProbeInFlight = false;
+    }
+  }
+
   #bindRecoveryEvents() {
     if (this.recoveryEventsBound || typeof window === 'undefined') return;
     this.recoveryEventsBound = true;
     this.handleVisibilityRecovery = () => {
       if (typeof document !== 'undefined' && document.hidden) return;
-      if (!this.running || Date.now() - this.lastMarketFrameAt <= MARKET_FRAME_SILENCE_RECONNECT_MS) return;
-      this.#restartSilentStream('page resumed');
+      if (!this.running || Date.now() - this.lastMarketFrameAt <= MARKET_FRAME_PROBE_MS) return;
+      void this.#probeLatestSnapshot();
     };
     this.handleOnlineRecovery = () => {
       if (this.running) this.#restartSilentStream('network restored');

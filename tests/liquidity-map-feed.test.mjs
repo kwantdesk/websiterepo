@@ -359,11 +359,13 @@ test("the live stream distinguishes socket heartbeats from genuine market frames
   const gateway = readFileSync(new URL("../services/rithmic_gateway/src/server.mjs", import.meta.url), "utf8");
 
   assert.match(source, /STREAM_SILENCE_RECONNECT_MS = 13_000/);
-  assert.match(source, /MARKET_FRAME_SILENCE_RECONNECT_MS = 13_000/);
+  assert.match(source, /MARKET_FRAME_PROBE_MS = 8_000/);
   assert.match(source, /STREAM_LEASE_MS = 240_000/);
   assert.match(source, /stream\.addEventListener\('heartbeat'/);
   assert.match(source, /#markMarketFrame\(\)/);
   assert.match(source, /\['L3', 'MBO_AGGREGATED', 'LIVE'\]\.includes\(liveDepthMode\)/);
+  assert.match(source, /#probeLatestSnapshot\(\)/);
+  assert.match(source, /snapshot\.trades = \[\]/);
   assert.match(source, /scheduled stream rotation/);
   assert.match(source, /#restartSilentStream\(\)/);
   assert.match(gateway, /event: heartbeat/);
