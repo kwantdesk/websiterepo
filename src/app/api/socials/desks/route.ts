@@ -191,14 +191,16 @@ function messageAttachments(value: unknown): DeskMessageAttachment[] {
     if (!entry || typeof entry !== "object" || Array.isArray(entry)) return [];
     const item = entry as Record<string, unknown>;
     const dataUrl = typeof item.dataUrl === "string" ? item.dataUrl.trim() : "";
-    const prefix = /^data:image\/(png|jpe?g|webp|gif);base64,/i.exec(dataUrl);
+    const prefix = /^data:(image\/(?:png|jpe?g|webp|gif)|audio\/(?:webm|mp4|mpeg|ogg|wav))(?:;codecs=[^;,]+)?;base64,/i.exec(dataUrl);
     if (!prefix || dataUrl.length > 1_350_000) return [];
     const approximateSize = Math.floor(dataUrl.slice(prefix[0].length).length * 0.75);
     if (approximateSize > 950_000) return [];
+    const mediaType = prefix[1].toLowerCase().replace("image/jpg", "image/jpeg");
+    const audio = mediaType.startsWith("audio/");
     return [{
-      id: cleanIdentifier(item.id, 80) || `image:${randomUUID()}`,
-      name: cleanText(item.name, 120) || "Desk image",
-      type: cleanText(item.type, 80) || `image/${prefix[1].toLowerCase().replace("jpg", "jpeg")}`,
+      id: cleanIdentifier(item.id, 80) || `${audio ? "voice" : "image"}:${randomUUID()}`,
+      name: cleanText(item.name, 120) || (audio ? "Voice note" : "Desk image"),
+      type: mediaType,
       size: approximateSize,
       dataUrl,
     }];

@@ -28,6 +28,7 @@ import {
   Settings2,
   ShieldCheck,
   SmilePlus,
+  Square,
   Sparkles,
   Star,
   Trophy,
@@ -48,6 +49,7 @@ import SharedTradeMessageCard from "@/components/socials/SharedTradeMessageCard"
 import LinkedMessageBody from "@/components/socials/LinkedMessageBody";
 import { createClient as createSupabaseBrowserClient } from "@/lib/supabase";
 import { useSpeechDictation } from "@/hooks/useSpeechDictation";
+import { isSingleEmojiMessage } from "@/lib/messageText";
 import {
   prepareSharedImage,
   prepareSquareImage,
@@ -156,6 +158,17 @@ function isOptimisticDeskMessage(message: DeskMessage): message is OptimisticDes
 }
 
 const REACTIONS = ["👍", "🔥", "🎯", "🧠", "✅"];
+const DESK_CHAT_EMOJIS = [
+  "👍", "🔥", "😂", "❤️", "👀", "📈", "📉", "🎯", "✅", "⚡",
+  "🧠", "💎", "🚀", "🤝", "🙏", "😅", "🤔", "😮", "🥳", "🫡",
+  "😀", "😃", "😄", "😁", "🤣", "😉", "😊", "😎", "🤩", "🥰",
+  "😍", "😘", "😜", "🤪", "🧐", "😐", "🙄", "😬", "😔", "😭",
+  "😤", "😡", "🤬", "😱", "🥵", "🥶", "💪", "👏", "🙌", "🤞",
+  "👌", "👊", "✊", "🫶", "💯", "💥", "💫", "✨", "🌟", "💡",
+  "🔔", "💰", "💸", "🏆", "🥇", "👑", "🦅", "🦁", "🐻", "🐂",
+  "🌙", "☀️", "☕", "🍺", "🎉", "🎵", "🎮", "⚠️", "🚨", "❗",
+] as const;
+
 const DESK_ACCENTS = [
   { label: "Onyx Gold", value: "#d8b45c" },
   { label: "Kwant Green", value: "#b7ff3c" },
@@ -911,6 +924,9 @@ export default function DeskWorkspace({
   const [message, setMessage] = useState("");
   const [optimisticMessages, setOptimisticMessages] = useState<OptimisticDeskMessage[]>([]);
   const [attachment, setAttachment] = useState<DeskMessageAttachment | null>(null);
+  const [showDeskEmoji, setShowDeskEmoji] = useState(false);
+  const [voiceRecording, setVoiceRecording] = useState(false);
+  const [voiceElapsed, setVoiceElapsed] = useState(0);
   const [imagePreview, setImagePreview] = useState<DeskMessageAttachment | null>(null);
   const [directoryQuery, setDirectoryQuery] = useState("");
   const [rosterFilter, setRosterFilter] = useState<"all" | "online" | "offline" | "inactive">("all");
@@ -918,13 +934,19 @@ export default function DeskWorkspace({
   const [inviteFriendsLoading, setInviteFriendsLoading] = useState(false);
   const [inviteFriendsError, setInviteFriendsError] = useState("");
   const messageEndRef = useRef<HTMLDivElement>(null);
+  const messageListRef = useRef<HTMLDivElement>(null);
+  const stickToBottomRef = useRef(true);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
   const selectedDeskRef = useRef("");
   const refreshTimerRef = useRef<number | null>(null);
   const suppressRefreshUntilRef = useRef(0);
   const inviteFriendsRequestRef = useRef(false);
   const inviteFriendsLoadedAtRef = useRef(0);
-  const deliveryTimersRef = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  const voiceRecorderRef = useRef<MediaRecorder | null>(null);
+  const voiceStreamRef = useRef<MediaStream | null>(null);
+  const voiceChunksRef = useRef<Blob[]>([]);
+  const voiceTimerRef = useRef<number | null>(null);
+  const voiceElapsedRef = useRef(0);
 
   selectedDeskRef.current = activeDeskId;
 
@@ -1182,12 +1204,21 @@ export default function DeskWorkspace({
   }, [activeChannelId, activeChannels]);
 
   useEffect(() => {
+    if (!stickToBottomRef.current) return;
     messageEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [channelMessages.length, activeChannel?.id]);
 
+  useEffect(() => {
+    const confirmedIds = new Set(network.messages.map((entry) => entry.id));
+    setOptimisticMessages((current) => current.filter((entry) => (
+      entry.deliveryStatus !== "sent" || !confirmedIds.has(entry.id)
+    )));
+  }, [network.messages]);
+
   useEffect(() => () => {
-    for (const timer of deliveryTimersRef.current.values()) clearTimeout(timer);
-    deliveryTimersRef.current.clear();
+    if (voiceTimerRef.current) window.clearInterval(voiceTimerRef.current);
+    voiceRecorderRef.current?.stop();
+    voiceStreamRef.current?.getTracks().forEach((track) => track.stop());
   }, []);
 
   const perform = useCallback(async (
@@ -1576,11 +1607,6 @@ export default function DeskWorkspace({
   };
 
   const deliverDeskMessage = useCallback(async (outgoing: OptimisticDeskMessage) => {
-    const existingTimer = deliveryTimersRef.current.get(outgoing.id);
-    if (existingTimer) {
-      clearTimeout(existingTimer);
-      deliveryTimersRef.current.delete(outgoing.id);
-    }
     setOptimisticMessages((current) => current.map((entry) => entry.id === outgoing.id
       ? { ...entry, deliveryStatus: "sending" }
       : entry));
@@ -1603,11 +1629,6 @@ export default function DeskWorkspace({
         ? { ...entry, deliveryStatus: "sent" }
         : entry));
       void loadNetwork(true, outgoing.deskId);
-      const timer = setTimeout(() => {
-        setOptimisticMessages((current) => current.filter((entry) => entry.id !== outgoing.id));
-        deliveryTimersRef.current.delete(outgoing.id);
-      }, 1_500);
-      deliveryTimersRef.current.set(outgoing.id, timer);
     } catch (reason) {
       setOptimisticMessages((current) => current.map((entry) => entry.id === outgoing.id
         ? { ...entry, deliveryStatus: "failed" }
@@ -1634,6 +1655,7 @@ export default function DeskWorkspace({
       deliveryStatus: "sending",
     };
     speechDictation.stop();
+    stickToBottomRef.current = true;
     setMessage("");
     setAttachment(null);
     setOptimisticMessages((current) => [...current, outgoing]);
@@ -1665,6 +1687,80 @@ export default function DeskWorkspace({
       });
     } catch (error) {
       onNotice(error instanceof Error ? error.message : "That Desk image could not be prepared.");
+    }
+  };
+
+  const stopVoiceNote = () => {
+    const recorder = voiceRecorderRef.current;
+    if (recorder && recorder.state !== "inactive") recorder.stop();
+  };
+
+  const startVoiceNote = async () => {
+    if (voiceRecording) {
+      stopVoiceNote();
+      return;
+    }
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+      onNotice("Voice notes are not supported by this browser.");
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const preferredType = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"]
+        .find((type) => MediaRecorder.isTypeSupported(type));
+      const recorder = new MediaRecorder(stream, preferredType ? { mimeType: preferredType } : undefined);
+      voiceStreamRef.current = stream;
+      voiceRecorderRef.current = recorder;
+      voiceChunksRef.current = [];
+      voiceElapsedRef.current = 0;
+      setVoiceElapsed(0);
+      setVoiceRecording(true);
+      recorder.ondataavailable = (event) => {
+        if (event.data.size) voiceChunksRef.current.push(event.data);
+      };
+      recorder.onstop = () => {
+        if (voiceTimerRef.current) window.clearInterval(voiceTimerRef.current);
+        voiceTimerRef.current = null;
+        stream.getTracks().forEach((track) => track.stop());
+        voiceStreamRef.current = null;
+        voiceRecorderRef.current = null;
+        setVoiceRecording(false);
+        const blob = new Blob(voiceChunksRef.current, { type: recorder.mimeType || "audio/webm" });
+        voiceChunksRef.current = [];
+        if (!blob.size) return;
+        if (blob.size > 900_000) {
+          onNotice("That voice note is too large. Keep it under 45 seconds.");
+          return;
+        }
+        const reader = new FileReader();
+        reader.onload = () => {
+          const dataUrl = typeof reader.result === "string" ? reader.result : "";
+          if (!dataUrl) return;
+          setAttachment({
+            id: `voice:${crypto.randomUUID()}`,
+            name: `Voice note · ${Math.max(1, voiceElapsedRef.current)}s`,
+            type: blob.type || "audio/webm",
+            size: blob.size,
+            dataUrl,
+          });
+        };
+        reader.readAsDataURL(blob);
+      };
+      recorder.start(250);
+      voiceTimerRef.current = window.setInterval(() => {
+        setVoiceElapsed((current) => {
+          const next = current + 1;
+          voiceElapsedRef.current = next;
+          if (next >= 45) window.setTimeout(stopVoiceNote, 0);
+          return next;
+        });
+      }, 1_000);
+    } catch {
+      onNotice("Microphone permission is required to record a voice note.");
+      voiceStreamRef.current?.getTracks().forEach((track) => track.stop());
+      voiceStreamRef.current = null;
+      voiceRecorderRef.current = null;
+      setVoiceRecording(false);
     }
   };
 
@@ -2056,7 +2152,14 @@ export default function DeskWorkspace({
                   </div>
                 ) : null}
 
-                <div className="min-h-0 flex-1 overflow-y-auto px-3 py-4 lg:px-5">
+                <div
+                  ref={messageListRef}
+                  onScroll={(event) => {
+                    const element = event.currentTarget;
+                    stickToBottomRef.current = element.scrollHeight - element.scrollTop - element.clientHeight < 120;
+                  }}
+                  className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-4 [scrollbar-color:var(--primary)_transparent] [scrollbar-width:thin] lg:px-5"
+                >
                   {!channelMessages.length ? (
                     <div className="flex min-h-full items-center justify-center py-12 text-center"><div><span className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl border border-primary/20 bg-primary/[0.07] text-primary"><MessageCircle className="h-5 w-5" /></span><h3 className="mt-4 text-[11px] font-semibold">This is the start of #{activeChannel?.name}.</h3><p className="mx-auto mt-2 max-w-sm text-[7px] leading-4 text-muted">{activeChannel?.showHistory ? "Messages remain with the Desk so the shared context is not lost." : "History starts when each member gains access to this channel."}</p></div></div>
                   ) : (
@@ -2070,6 +2173,10 @@ export default function DeskWorkspace({
                         const sharedOneLiner = !entry.sharedTrade
                           && entry.body.includes("/socials/")
                           && entry.body.includes("?post=");
+                        const standaloneEmoji = !entry.sharedTrade
+                          && !sharedOneLiner
+                          && entry.attachments.length === 0
+                          && isSingleEmojiMessage(entry.body);
                         const reactionGroups = REACTIONS.map((emoji) => ({
                           emoji,
                           users: network.reactions.filter((reaction) => reaction.messageId === entry.id && reaction.emoji === emoji),
@@ -2078,10 +2185,15 @@ export default function DeskWorkspace({
                           <div key={entry.id} className={`group relative flex gap-3 rounded-xl px-2 py-2 hover:bg-surface/25 ${grouped ? "mt-0" : "mt-3"}`}>
                             <div className="w-9 shrink-0">{grouped ? <span className="block pt-1 text-center text-[5px] text-muted opacity-0 group-hover:opacity-100">{formatTime(entry.createdAt)}</span> : <ProfileAvatar profile={profile} />}</div>
                             <div className="min-w-0 flex-1">
-                              {!grouped ? <div className="flex flex-wrap items-center gap-2"><button type="button" onClick={() => onOpenProfile?.(profile.handle)} className="text-[8px] font-semibold hover:text-primary">{profile.displayName}</button>{deskMember ? <MemberRoleBadge member={deskMember} compact /> : null}<span className="text-[6px] text-muted">{formatDateTime(entry.createdAt)}</span></div> : null}
-                              {entry.body ? <LinkedMessageBody body={entry.body} className={`${sharedOneLiner ? "mt-2 rounded-xl border border-primary/25 bg-panel px-3 py-2.5 shadow-[inset_0_0_16px_color-mix(in_srgb,var(--primary)_3%,transparent)]" : "mt-1"} text-[8px] leading-4 text-foreground/90`} /> : null}
+                              {!grouped ? <div className="flex flex-wrap items-center gap-2"><button type="button" onClick={() => onOpenProfile?.(profile.handle)} className="text-[10px] font-semibold hover:text-primary">{profile.displayName}</button>{deskMember ? <MemberRoleBadge member={deskMember} compact /> : null}<span className="text-[7px] text-muted">{formatDateTime(entry.createdAt)}</span></div> : null}
+                              {entry.body ? standaloneEmoji
+                                ? <div className="select-text py-1 text-[44px] leading-none">{entry.body.trim()}</div>
+                                : <LinkedMessageBody body={entry.body} className={`${sharedOneLiner ? "mt-2 rounded-xl border border-primary/25 bg-panel px-3 py-2.5 shadow-[inset_0_0_16px_color-mix(in_srgb,var(--primary)_3%,transparent)]" : "mt-1"} text-[11px] leading-5 text-foreground/90`} />
+                                : null}
                               {entry.sharedTrade ? <SharedTradeMessageCard sharedTrade={entry.sharedTrade} chartHeight={170} /> : null}
-                              {entry.attachments.map((item) => <button key={item.id} type="button" onClick={() => setImagePreview(item)} className="mt-2 block max-w-sm overflow-hidden rounded-xl border border-border bg-background/40"><img src={item.dataUrl} alt={item.name} className="max-h-64 w-full object-contain" /></button>)}
+                              {entry.attachments.map((item) => item.type.startsWith("audio/")
+                                ? <div key={item.id} className="mt-2 max-w-sm rounded-2xl border border-border bg-panel p-3"><div className="mb-2 flex items-center gap-2 text-[8px] font-semibold text-muted"><Mic2 className="h-3.5 w-3.5 text-primary" />{item.name}</div><audio controls preload="metadata" src={item.dataUrl} className="h-9 w-full" /></div>
+                                : <button key={item.id} type="button" onClick={() => setImagePreview(item)} className="mt-2 block max-w-sm overflow-hidden rounded-xl border border-border bg-background/40"><img src={item.dataUrl} alt={item.name} className="max-h-64 w-full object-contain" /></button>)}
                               {optimistic ? (
                                 <div className={`mt-1 flex items-center gap-1 text-[6px] ${optimistic.deliveryStatus === "failed" ? "text-danger" : "text-muted"}`}>
                                   {optimistic.deliveryStatus === "sending" ? <><Clock3 className="h-2.5 w-2.5" />Sendingâ€¦</> : null}
@@ -2101,7 +2213,7 @@ export default function DeskWorkspace({
                 </div>
 
                 <div className="border-t border-border bg-background/35 p-3">
-                  {attachment && !activeFocusLock ? <div className="mb-2 flex items-center gap-2 rounded-xl border border-border bg-panel p-2"><img src={attachment.dataUrl} alt="" className="h-12 w-12 rounded-lg object-cover" /><div className="min-w-0 flex-1"><div className="truncate text-[7px] font-semibold">{attachment.name}</div><div className="mt-0.5 text-[6px] text-muted">{Math.round(attachment.size / 1024)} KB</div></div><button type="button" onClick={() => setAttachment(null)} className="flex h-7 w-7 items-center justify-center rounded-lg text-muted hover:bg-surface"><X className="h-3.5 w-3.5" /></button></div> : null}
+                  {attachment && !activeFocusLock ? <div className="mb-2 flex items-center gap-2 rounded-xl border border-border bg-panel p-2">{attachment.type.startsWith("audio/") ? <span className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10 text-primary"><Mic2 className="h-5 w-5" /></span> : <img src={attachment.dataUrl} alt="" className="h-12 w-12 rounded-lg object-cover" />}<div className="min-w-0 flex-1"><div className="truncate text-[8px] font-semibold">{attachment.name}</div><div className="mt-0.5 text-[7px] text-muted">{Math.round(attachment.size / 1024)} KB</div></div><button type="button" onClick={() => setAttachment(null)} className="flex h-7 w-7 items-center justify-center rounded-lg text-muted hover:bg-surface"><X className="h-3.5 w-3.5" /></button></div> : null}
                   {activeFocusLock ? (
                     <div className="flex h-12 items-center justify-center gap-2 rounded-xl border border-primary/20 bg-primary/[0.045] text-[7px] text-muted"><VolumeX className="h-3.5 w-3.5 text-primary" />Trading focus is active. This Desk is view only.</div>
                   ) : (activeChannel?.readOnly || activeChannel?.reactionOnly) && !leader ? (
@@ -2111,7 +2223,11 @@ export default function DeskWorkspace({
                     {speechDictation.error ? <div className="mb-2 text-[7px] text-danger">{speechDictation.error}</div> : null}
                     <div className="flex items-end gap-2 rounded-2xl border border-border bg-panel p-2 focus-within:border-primary/35">
                       <button type="button" onClick={() => attachmentInputRef.current?.click()} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-primary" title="Attach image"><Plus className="h-4 w-4" /></button>
-                      <textarea value={message} maxLength={4_000} onChange={(event) => setMessage(event.target.value)} onKeyDown={handleMessageKey} rows={1} placeholder={`Message #${activeChannel?.name ?? "desk"}`} className="max-h-28 min-h-8 flex-1 resize-none bg-transparent px-1 py-2 text-[8px] leading-4 outline-none placeholder:text-muted" />
+                      <div className="relative">
+                        <button type="button" onClick={() => setShowDeskEmoji((current) => !current)} className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${showDeskEmoji ? "bg-primary/10 text-primary" : "text-muted hover:bg-surface hover:text-primary"}`} title="Add emoji"><SmilePlus className="h-4 w-4" /></button>
+                        {showDeskEmoji ? <div className="absolute bottom-10 left-0 z-50 w-64 overflow-hidden rounded-2xl border border-border bg-panel shadow-2xl"><div className="border-b border-border px-3 py-2 text-[8px] font-semibold uppercase tracking-[0.14em] text-muted">Emojis</div><div className="grid max-h-60 grid-cols-6 gap-1 overflow-y-auto overscroll-contain p-2 [scrollbar-color:var(--primary)_transparent] [scrollbar-width:thin]">{DESK_CHAT_EMOJIS.map((emoji, index) => <button key={`${emoji}-${index}`} type="button" onClick={() => setMessage((current) => `${current}${emoji}`)} className="flex h-9 items-center justify-center rounded-lg text-[19px] hover:bg-surface">{emoji}</button>)}</div></div> : null}
+                      </div>
+                      <textarea value={message} maxLength={4_000} onChange={(event) => setMessage(event.target.value)} onKeyDown={handleMessageKey} rows={1} placeholder={`Message #${activeChannel?.name ?? "desk"}`} className="max-h-28 min-h-8 flex-1 resize-none bg-transparent px-1 py-2 text-[11px] leading-5 outline-none placeholder:text-muted" />
                       <button
                         type="button"
                         onClick={() => { speechDictation.clearError(); speechDictation.toggle(); }}
@@ -2124,7 +2240,8 @@ export default function DeskWorkspace({
                         {speechDictation.listening ? <span className="absolute inset-2 animate-ping rounded-full bg-primary/25" /> : null}
                         <Mic className="relative h-3.5 w-3.5" />
                       </button>
-                      <button type="button" onClick={sendMessage} disabled={!message.trim() && !attachment} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary text-background disabled:opacity-35"><Send className="h-3.5 w-3.5" /></button>
+                      <button type="button" onClick={() => void startVoiceNote()} disabled={Boolean(attachment && !voiceRecording)} aria-pressed={voiceRecording} title={voiceRecording ? "Stop voice note" : "Record voice note"} className={`relative flex h-8 shrink-0 items-center justify-center gap-1 rounded-lg px-2 disabled:opacity-30 ${voiceRecording ? "bg-danger/15 text-danger" : "text-muted hover:bg-surface hover:text-primary"}`}>{voiceRecording ? <><Square className="h-3 w-3 fill-current" /><span className="font-mono text-[7px]">{voiceElapsed}s</span></> : <Mic2 className="h-3.5 w-3.5" />}</button>
+                      <button type="button" onClick={sendMessage} disabled={voiceRecording || (!message.trim() && !attachment)} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary text-background disabled:opacity-35"><Send className="h-3.5 w-3.5" /></button>
                       <input ref={attachmentInputRef} type="file" accept="image/png,image/jpeg,image/webp,image/gif" className="hidden" onChange={loadAttachment} />
                     </div>
                     </>
