@@ -1336,15 +1336,17 @@ class DepthForgeApp {
       event.preventDefault();
       const layout = this.renderer.layout;
       if (layout) {
-        this.settings.autoCenter = false;
-        $('autoCenter').checked = false;
-        const currentCenter = this.view.centerTick ?? this.history[this.viewEnd].midTick;
-        this.view.centerTick = panPriceCenter({
-          centerTick: currentCenter,
-          deltaY: point.y - this.drag.lastY,
-          plotHeight: layout.plotHeight,
-          visibleTickSpan: layout.visibleTickSpan,
-        });
+        if (this.settings.autoCenter) {
+          this.view.centerTick = null;
+        } else {
+          const currentCenter = this.view.centerTick ?? this.history[this.viewEnd].midTick;
+          this.view.centerTick = panPriceCenter({
+            centerTick: currentCenter,
+            deltaY: point.y - this.drag.lastY,
+            plotHeight: layout.plotHeight,
+            visibleTickSpan: layout.visibleTickSpan,
+          });
+        }
       }
       this.drag.lastY = point.y;
       this.#setChartCursor(point, true);
@@ -1356,9 +1358,11 @@ class DepthForgeApp {
       const dx = point.x - this.drag.last.x;
       const layout = this.renderer.layout;
       if (layout) {
-        this.settings.autoCenter = false;
-        $('autoCenter').checked = false;
-        this.view.centerTick = (this.view.centerTick ?? this.history[this.viewEnd].midTick) + dy / Math.max(1, layout.plotHeight) * layout.visibleTickSpan;
+        if (this.settings.autoCenter) {
+          this.view.centerTick = null;
+        } else {
+          this.view.centerTick = (this.view.centerTick ?? this.history[this.viewEnd].midTick) + dy / Math.max(1, layout.plotHeight) * layout.visibleTickSpan;
+        }
         if (Math.abs(dx) >= 2) {
           const columnShift = Math.round(-dx / Math.max(.6, this.view.columnPixels));
           if (columnShift !== 0) {
@@ -1590,12 +1594,14 @@ class DepthForgeApp {
       const depthRangePoints = config.depthRangePoints ?? config.tickSize * 110;
       const fullBookRows = Math.round(depthRangePoints * 2 / Math.max(Number.EPSILON, config.tickSize));
       this.view.visibleRows = Math.max(24, Math.min(Math.max(320, fullBookRows), this.view.visibleRows * factor));
-      if (anchorTick != null && anchor.y <= layout.plotHeight) {
+      if (this.settings.autoCenter) {
+        // Price zoom may change vertical density, but live price remains
+        // locked to the centre until the user explicitly turns Auto-center off.
+        this.view.centerTick = null;
+      } else if (anchorTick != null && anchor.y <= layout.plotHeight) {
         const newSpan = this.view.visibleRows * this.view.aggregation;
         const fractionFromTop = anchor.y / Math.max(1, layout.plotHeight);
         this.view.centerTick = anchorTick - newSpan * (0.5 - fractionFromTop);
-        this.settings.autoCenter = false;
-        $('autoCenter').checked = false;
       }
     }
 

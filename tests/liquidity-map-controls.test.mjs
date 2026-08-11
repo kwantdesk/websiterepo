@@ -193,6 +193,16 @@ test("every liquidity-map load and instrument switch starts auto-centered", asyn
   assert.match(source, /delete saved\.autoCenter/);
 });
 
+test("dragging and zooming cannot break an enabled auto-center lock", async () => {
+  const source = await readFile(mainPath, "utf8");
+
+  assert.match(source, /this\.drag\?\.mode === 'price-pan'[\s\S]*?if \(this\.settings\.autoCenter\) \{[\s\S]*?this\.view\.centerTick = null;[\s\S]*?\} else \{[\s\S]*?panPriceCenter/);
+  assert.match(source, /this\.drag\?\.mode === 'pan'[\s\S]*?if \(this\.settings\.autoCenter\) \{[\s\S]*?this\.view\.centerTick = null;[\s\S]*?\} else \{/);
+  assert.match(source, /if \(price\)[\s\S]*?if \(this\.settings\.autoCenter\) \{[\s\S]*?this\.view\.centerTick = null;[\s\S]*?\} else if \(anchorTick/);
+  assert.doesNotMatch(source, /this\.settings\.autoCenter = false/);
+  assert.doesNotMatch(source, /\$\('autoCenter'\)\.checked = false/);
+});
+
 test("embedded map omits intrusive feed and latency overlays", async () => {
   const html = await readFile(htmlPath, "utf8");
 
