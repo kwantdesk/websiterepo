@@ -69,6 +69,24 @@ const CHAT_EMOJIS = [
   "\u{1F4C8}", "\u{1F4C9}", "\u{1F3AF}", "\u{2705}", "\u{26A1}",
   "\u{1F9E0}", "\u{1F48E}", "\u{1F680}", "\u{1F91D}", "\u{1F64F}",
   "\u{1F605}", "\u{1F914}", "\u{1F62E}", "\u{1F973}", "\u{1FAE1}",
+  "\u{1F600}", "\u{1F603}", "\u{1F604}", "\u{1F601}", "\u{1F923}",
+  "\u{1F609}", "\u{1F60A}", "\u{1F60E}", "\u{1F929}", "\u{1F970}",
+  "\u{1F60D}", "\u{1F618}", "\u{1F61C}", "\u{1F92A}", "\u{1F914}",
+  "\u{1F928}", "\u{1F9D0}", "\u{1F610}", "\u{1F644}", "\u{1F62C}",
+  "\u{1F614}", "\u{1F622}", "\u{1F62D}", "\u{1F624}", "\u{1F621}",
+  "\u{1F92C}", "\u{1F631}", "\u{1F975}", "\u{1F976}", "\u{1F974}",
+  "\u{1F4AA}", "\u{1F44F}", "\u{1F64C}", "\u{1F91E}", "\u{1F91F}",
+  "\u{1F919}", "\u{1F44C}", "\u{1F44A}", "\u{270A}", "\u{1FAF6}",
+  "\u{1F496}", "\u{1F49A}", "\u{1F499}", "\u{1F49C}", "\u{1F90D}",
+  "\u{1F5A4}", "\u{1F4AF}", "\u{1F4A5}", "\u{1F4AB}", "\u{2728}",
+  "\u{1F31F}", "\u{1F308}", "\u{1F30A}", "\u{1F4A1}", "\u{1F514}",
+  "\u{1F4B0}", "\u{1F4B8}", "\u{1F4B5}", "\u{1F3C6}", "\u{1F947}",
+  "\u{1F3C5}", "\u{1F451}", "\u{1F985}", "\u{1F981}", "\u{1F43B}",
+  "\u{1F43B}\u{200D}\u{2744}\u{FE0F}", "\u{1F98D}", "\u{1F402}", "\u{1F40D}", "\u{1F988}",
+  "\u{1F319}", "\u{2600}\u{FE0F}", "\u{26C5}", "\u{1F327}\u{FE0F}", "\u{2744}\u{FE0F}",
+  "\u{2615}", "\u{1F37A}", "\u{1F355}", "\u{1F389}", "\u{1F381}",
+  "\u{1F3B5}", "\u{1F3AE}", "\u{26BD}", "\u{1F3C0}", "\u{1F3CE}\u{FE0F}",
+  "\u{2708}\u{FE0F}", "\u{1F6A8}", "\u{26A0}\u{FE0F}", "\u{1F6AB}", "\u{2757}",
 ] as const;
 
 const MAX_CHAT_IMAGES = 2;
@@ -805,20 +823,22 @@ export default function FriendsPanel({ onClose, onUnreadCountChange, onMessageUn
             <Smile className="h-3.5 w-3.5" />
           </button>
           {showEmoji ? (
-            <div className="absolute bottom-10 left-0 z-40 grid w-52 grid-cols-5 gap-1 rounded-2xl border border-border bg-panel p-2 shadow-2xl">
-              {CHAT_EMOJIS.map((emoji) => (
-                <button
-                  key={emoji}
-                  type="button"
-                  onClick={() => {
-                    setDraft((current) => `${current}${emoji}`);
-                    setShowEmoji(false);
-                  }}
-                  className="flex h-8 items-center justify-center rounded-lg text-[17px] hover:bg-surface"
-                >
-                  {emoji}
-                </button>
-              ))}
+            <div className="absolute bottom-10 left-0 z-40 w-64 overflow-hidden rounded-2xl border border-border bg-panel shadow-2xl">
+              <div className="border-b border-border px-3 py-2 text-[8px] font-semibold uppercase tracking-[0.14em] text-muted">Emojis</div>
+              <div className="grid max-h-60 grid-cols-6 gap-1 overflow-y-auto overscroll-contain p-2 [scrollbar-color:var(--primary)_transparent] [scrollbar-width:thin]">
+                {CHAT_EMOJIS.map((emoji, index) => (
+                  <button
+                    key={`${emoji}-${index}`}
+                    type="button"
+                    onClick={() => {
+                      setDraft((current) => `${current}${emoji}`);
+                    }}
+                    className="flex h-9 items-center justify-center rounded-lg text-[19px] transition-colors hover:bg-surface"
+                  >
+                    {emoji}
+                  </button>
+                ))}
+              </div>
             </div>
           ) : null}
         </div>
