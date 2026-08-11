@@ -114,6 +114,15 @@ test("signals and display inspector closes when the user clicks away", async () 
   assert.match(source, /document\.addEventListener\('pointerdown', event => \{[\s\S]*?inspector\.classList\.contains\('open'\)[\s\S]*?event\.target\.closest\('#inspector, \[data-panel-shortcut\], #settingsButton, #cvdSettingsButton'\)[\s\S]*?inspector\.classList\.remove\('open'\)/);
 });
 
+test("display settings stay inside the viewport and scroll independently", async () => {
+  const css = await readFile(embedCssPath, "utf8");
+
+  assert.match(css, /\.inspector\s*\{[\s\S]*?max-height:\s*calc\(100vh - 122px\);[\s\S]*?overflow-y:\s*auto;/);
+  assert.match(css, /\.inspector\s*\{[\s\S]*?overscroll-behavior:\s*contain;/);
+  assert.match(css, /\.inspector::-webkit-scrollbar\s*\{[\s\S]*?width:\s*7px;/);
+  assert.match(css, /\.inspector-tabs\s*\{[\s\S]*?position:\s*sticky;[\s\S]*?top:\s*0;/);
+});
+
 test("instrument changes show staged loading progress until the first new frame paints", async () => {
   const html = await readFile(htmlPath, "utf8");
   const source = await readFile(mainPath, "utf8");

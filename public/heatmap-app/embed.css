@@ -328,6 +328,12 @@ html[data-embed="true"] .inspector {
   top: 110px;
   right: 12px;
   max-height: calc(100vh - 122px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: var(--ui-accent) transparent;
   border: 1px solid var(--ui-line);
   border-radius: 16px;
   background: color-mix(in srgb, var(--ui-panel) 96%, transparent);
@@ -336,10 +342,31 @@ html[data-embed="true"] .inspector {
   -webkit-backdrop-filter: blur(18px);
 }
 
+html[data-embed="true"] .inspector::-webkit-scrollbar {
+  width: 7px;
+}
+
+html[data-embed="true"] .inspector::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+html[data-embed="true"] .inspector::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: var(--ui-accent);
+  background-clip: padding-box;
+}
+
 html[data-embed="true"] .inspector-tabs {
+  position: sticky;
+  top: 0;
+  z-index: 3;
   min-height: 42px;
   padding: 0 38px 0 8px;
   border-bottom: 1px solid var(--ui-line);
+  background: color-mix(in srgb, var(--ui-panel) 98%, transparent);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
 }
 
 html[data-embed="true"] .inspector-tabs button {
