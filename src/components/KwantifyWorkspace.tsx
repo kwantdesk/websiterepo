@@ -3491,9 +3491,11 @@ function WorkspaceChartPane({
         immediateMarketTrades,
       );
     }
-    // Paint any cached chart immediately. A stale live seam is repaired below
-    // without hiding usable candles behind the full-screen loader.
-    setLoading(!hasImmediateHistory);
+    // Never reveal an incomplete history/live seam. A cached tail can be
+    // several buckets behind even though it was written recently; showing it
+    // beside the first live tick creates a false price/time gap. The small VPS
+    // seam request below repairs those buckets before the chart is revealed.
+    setLoading(!hasImmediateHistory || immediateTailNeedsReconciliation);
     setError(null);
     setCandles(hasImmediateHistory ? immediateCandles : []);
     setMarketTrades(immediateMarketTrades);
@@ -3561,7 +3563,7 @@ function WorkspaceChartPane({
         historyHydratedRef.current = !cmeChartTailNeedsReconciliation(mergedCandles, pane.timeframe);
         setCandles(mergedCandles);
         setMarketTrades(mergedTape);
-        setLoading(false);
+        setLoading(cmeChartTailNeedsReconciliation(mergedCandles, pane.timeframe));
         setError(null);
         void writeChartHistoryCache(pane.symbol, pane.timeframe, mergedCandles);
       }).catch(() => {
@@ -3638,7 +3640,7 @@ function WorkspaceChartPane({
         latestCandlesRef.current = cachedCandles;
         historyHydratedRef.current = !cmeChartTailNeedsReconciliation(cachedCandles, pane.timeframe);
         setCandles(cachedCandles);
-        setLoading(false);
+        setLoading(cmeChartTailNeedsReconciliation(cachedCandles, pane.timeframe));
         setError(null);
       }
       if (cachedIsHydrated) {
@@ -3686,7 +3688,7 @@ function WorkspaceChartPane({
             latestCandlesRef.current = cachedCandles;
             historyHydratedRef.current = !cmeChartTailNeedsReconciliation(cachedCandles, pane.timeframe);
             setCandles(cachedCandles);
-            setLoading(false);
+            setLoading(cmeChartTailNeedsReconciliation(cachedCandles, pane.timeframe));
             setError(null);
           }
         } catch (baseError) {
@@ -3767,7 +3769,7 @@ function WorkspaceChartPane({
         setCandles(merged);
         setMarketTrades(nextMarketTrades);
         setError(null);
-        setLoading(false);
+        setLoading(cmeChartTailNeedsReconciliation(merged, pane.timeframe));
       } catch (loadError) {
         if (cancelled) return;
         if (loadError instanceof DOMException && loadError.name === "AbortError") return;
@@ -3775,7 +3777,10 @@ function WorkspaceChartPane({
           historyHydratedRef.current = false;
           setError("CME history is temporarily unavailable.");
         }
-        setLoading(!(latestCandlesRef.current.length || cachedCandles.length));
+        setLoading(cmeChartTailNeedsReconciliation(
+          latestCandlesRef.current.length ? latestCandlesRef.current : cachedCandles,
+          pane.timeframe,
+        ));
       }
     };
 

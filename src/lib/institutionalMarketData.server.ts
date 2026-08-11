@@ -87,24 +87,24 @@ export async function fetchInstitutionalMarketData(
   const preferred = lastGoodOrigin && configured.includes(lastGoodOrigin)
     ? [lastGoodOrigin, ...configured.filter((origin) => origin !== lastGoodOrigin)]
     : configured;
-  const health = await Promise.all(preferred.map(async (origin) => ({
-    origin,
-    connected: await originIsConnected(origin, token),
-  })));
-  const candidates = [
-    ...health.filter((candidate) => candidate.connected).map((candidate) => candidate.origin),
-    ...health.filter((candidate) => !candidate.connected).map((candidate) => candidate.origin),
-  ];
   const normalizedPath = `/${String(path || "").replace(/^\/+/, "")}`;
 
   let lastError: unknown = null;
-  for (const origin of candidates) {
+  const unavailable: string[] = [];
+  // Probe in priority order and use the first healthy collector immediately.
+  // Waiting for Promise.all meant every cold request also waited five seconds
+  // for a dead legacy Tailscale origin even though feed.kwantdesk.com had
+  // already answered. That delay exposed the stale browser tail long enough
+  // for a live candle to appear across a false gap.
+  for (const origin of preferred) {
+    const connected = await originIsConnected(origin, token);
+    if (!connected) {
+      unavailable.push(origin);
+      continue;
+    }
     try {
       const response = await fetchFromOrigin(origin, normalizedPath, token, init, timeoutMs);
-      // Remember only a genuinely connected collector. A stale desktop can
-      // return HTTP 200 from its archive while its live Rithmic session is
-      // disconnected, which previously pinned every production request to it.
-      if (gatewayHealth.get(origin)?.healthy) lastGoodOrigin = origin;
+      lastGoodOrigin = origin;
       return response;
     } catch (error) {
       lastError = error;
@@ -112,8 +112,19 @@ export async function fetchInstitutionalMarketData(
     }
   }
 
+  // Preserve historical/degraded failover behavior only after every healthy
+  // collector has failed. A disconnected origin must never delay steady-state
+  // live chart requests.
+  for (const origin of unavailable) {
+    try {
+      return await fetchFromOrigin(origin, normalizedPath, token, init, timeoutMs);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
   throw new Error(
-    `Market-data gateway unreachable on ${candidates.length} configured origin(s): ${
+    `Market-data gateway unreachable on ${preferred.length} configured origin(s): ${
       lastError instanceof Error ? lastError.message : String(lastError)
     }`,
   );

@@ -40,6 +40,11 @@ const EVENT_HISTORY_CACHE_MS = 5 * 60_000;
 const DEFAULT_HISTORY_DAYS = DEFAULT_CHART_HISTORY_CALENDAR_DAYS;
 const MAX_HISTORY_DAYS = 14;
 const DURABLE_EVENT_HISTORY_REVALIDATE_SECONDS = 5 * 60;
+// Time bars form continuously. Reusing a five-minute-old durable order-flow
+// payload leaves several closed candles missing at the live seam. Keep the
+// expensive event-bar cache long-lived, but revalidate ordinary time bars at
+// the same cadence as the process-local intraday cache.
+const DURABLE_TIME_HISTORY_REVALIDATE_SECONDS = 12;
 
 type EventHistoryPayload = Awaited<ReturnType<typeof getDatabentoEventHistory>>;
 type TimeHistoryPayload = Awaited<ReturnType<typeof getDatabentoOrderFlowHistory>>;
@@ -99,8 +104,8 @@ async function getDurableTimeHistory(
       }
       return encodeHistory(history);
     },
-    ["cme-time-flow-v2", symbol, timeframe, `${historyDays}d`],
-    { revalidate: DURABLE_EVENT_HISTORY_REVALIDATE_SECONDS },
+    ["cme-time-flow-v3", symbol, timeframe, `${historyDays}d`],
+    { revalidate: DURABLE_TIME_HISTORY_REVALIDATE_SECONDS },
   )();
   return decodeHistory<TimeHistoryPayload>(encoded);
 }
