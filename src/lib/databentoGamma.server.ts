@@ -18,8 +18,11 @@ import {
   type ChartGammaSourceLevel,
   type ChartGammaSourceLevelKind,
 } from "@/lib/chartGammaLevels";
+import {
+  vendorMarketDataConfigured,
+  vendorMarketDataFetch,
+} from "@/lib/vendorMarketData.server";
 
-const DB_BASE = "https://hist.databento.com/v0/timeseries.get_range";
 const CHAIN_BAND = 0.12; // options considered for the chain: +/-12% of spot
 const NEAR_BAND = 0.045; // GEX walls ranked within +/-4.5%
 const MIN_SETTLE = 3.0; // skip tiny deep-OTM prices (unstable IV)
@@ -57,12 +60,6 @@ export type NativeGammaCurvePoint = {
 // --------------------------------------------------------------------------- //
 // Databento transport
 // --------------------------------------------------------------------------- //
-function dbAuth(): string {
-  const key = (process.env.DATABENTO_API_KEY || "").trim();
-  if (!key) throw new Error("DATABENTO_API_KEY is not configured.");
-  return Buffer.from(`${key}:`).toString("base64");
-}
-
 async function dbPull(
   schema: string,
   start: string,
@@ -71,6 +68,7 @@ async function dbPull(
   stype: "parent" | "continuous" | "instrument_id" = "parent",
   limit = 120000,
 ): Promise<any[]> {
+  if (!vendorMarketDataConfigured("databento")) throw new Error("Databento is not configured.");
   const params: Record<string, string> = {
     dataset: "GLBX.MDP3", symbols, stype_in: stype, schema,
     start, limit: String(limit), encoding: "json",
@@ -81,8 +79,7 @@ async function dbPull(
   const clampedEnd = end && end > nowIso ? nowIso : end;
   if (clampedEnd && clampedEnd > start) params.end = clampedEnd; // omit for open-ended
   const p = new URLSearchParams(params);
-  const res = await fetch(`${DB_BASE}?${p.toString()}`, {
-    headers: { Authorization: `Basic ${dbAuth()}` },
+  const res = await vendorMarketDataFetch("databento", `/v0/timeseries.get_range?${p.toString()}`, {
     cache: "no-store",
   });
   if (!res.ok) throw new Error(`Databento ${schema} ${res.status}`);

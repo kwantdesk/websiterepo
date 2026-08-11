@@ -1,0 +1,106 @@
+import assert from "node:assert/strict";
+import { Readable, Writable } from "node:stream";
+import test from "node:test";
+
+import { VendorDataEdge } from "../src/vendor-data-edge.mjs";
+
+function request(body = "{}") {
+  const stream = Readable.from([Buffer.from(body)]);
+  stream.method = "POST";
+  stream.headers = { "content-type": "application/json" };
+  return stream;
+}
+
+function responseCapture() {
+  const chunks = [];
+  const stream = new Writable({
+    write(chunk, _encoding, callback) {
+      chunks.push(Buffer.from(chunk));
+      callback();
+    },
+  });
+  stream.statusCode = 0;
+  stream.headers = {};
+  stream.headersSent = false;
+  stream.writeHead = (status, headers) => {
+    stream.statusCode = status;
+    stream.headers = headers;
+    stream.headersSent = true;
+    return stream;
+  };
+  return {
+    stream,
+    body: () => Buffer.concat(chunks).toString("utf8"),
+    finished: new Promise((resolve) => stream.on("finish", resolve)),
+  };
+}
+
+const config = {
+  databentoApiKey: "db-test",
+  quantDataApiKey: "qd-test",
+  vendorRequestTimeoutMs: 1_000,
+  quantDataMinSpacingMs: 1,
+  quantDataCacheMs: 2_500,
+};
+
+test("KwantData credentials stay at the edge and identical reads coalesce through cache", async () => {
+  let calls = 0;
+  const edge = new VendorDataEdge(config, async (_url, init) => {
+    calls += 1;
+    assert.equal(init.headers.Authorization, "Bearer qd-test");
+    return new Response('{"data":{"ok":true}}', {
+      status: 200,
+      headers: { "content-type": "application/json", "x-ratelimit-remaining": "99" },
+    });
+  });
+
+  for (let index = 0; index < 2; index += 1) {
+    const capture = responseCapture();
+    await edge.handle(
+      request('{"ticker":"QQQ"}'),
+      capture.stream,
+      new URL("http://gateway/v1/vendors/quantdata/v1/options/gex"),
+    );
+    await capture.finished;
+    assert.equal(capture.stream.statusCode, 200);
+    assert.match(capture.body(), /"ok":true/);
+  }
+  assert.equal(calls, 1);
+  assert.equal(edge.health().quantDataCacheHits, 1);
+});
+
+test("Databento history is streamed and the browser-facing request never supplies its key", async () => {
+  let upstreamAuthorization = "";
+  const edge = new VendorDataEdge(config, async (_url, init) => {
+    upstreamAuthorization = init.headers.Authorization;
+    return new Response('{"close":"100"}\n', {
+      status: 200,
+      headers: { "content-type": "application/jsonl" },
+    });
+  });
+  const req = request("dataset=GLBX.MDP3");
+  req.headers["content-type"] = "application/x-www-form-urlencoded";
+  const capture = responseCapture();
+  await edge.handle(
+    req,
+    capture.stream,
+    new URL("http://gateway/v1/vendors/databento/v0/timeseries.get_range"),
+  );
+  await capture.finished;
+  assert.match(upstreamAuthorization, /^Basic /);
+  assert.match(capture.body(), /"close":"100"/);
+});
+
+test("unknown vendor paths are rejected instead of becoming an open proxy", async () => {
+  const edge = new VendorDataEdge(config, async () => {
+    throw new Error("must not run");
+  });
+  const capture = responseCapture();
+  await edge.handle(
+    request(),
+    capture.stream,
+    new URL("http://gateway/v1/vendors/databento/v0/unknown"),
+  );
+  await capture.finished;
+  assert.equal(capture.stream.statusCode, 404);
+});

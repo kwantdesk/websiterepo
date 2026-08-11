@@ -1,7 +1,11 @@
 import { createHash } from "node:crypto";
 import { createConnection } from "node:net";
 import { NextResponse } from "next/server";
-import { DATABENTO_HISTORICAL_BASE_URL, getDatabentoBars } from "@/lib/databento";
+import { getDatabentoBars } from "@/lib/databento";
+import {
+  vendorMarketDataConfigured,
+  vendorMarketDataFetch,
+} from "@/lib/vendorMarketData.server";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -154,7 +158,7 @@ function checkLiveFeed(apiKey: string): Promise<LiveHealth> {
   });
 }
 
-async function deepHealth(apiKey: string): Promise<DeepHealth> {
+async function deepHealth(apiKey: string | null): Promise<DeepHealth> {
   const cached = globalHealthCache.__kwantdeskDatabentoHealth;
   if (cached && Date.now() - cached.updatedAt < DEEP_HEALTH_CACHE_MS) return cached.value;
 
@@ -172,7 +176,14 @@ async function deepHealth(apiKey: string): Promise<DeepHealth> {
         reason: candles.length > 0 ? null : "no_candles_returned",
       }))
       .catch(() => ({ ok: false, candleCount: 0, reason: "history_request_failed" })),
-    checkLiveFeed(apiKey),
+    apiKey
+      ? checkLiveFeed(apiKey)
+      : Promise.resolve({
+          ok: true,
+          authenticated: true,
+          receivedMarketData: false,
+          reason: "live_futures_are_served_by_the_vps_gateway",
+        }),
   ]);
   const value = { actualHistory: historyResult, live };
   globalHealthCache.__kwantdeskDatabentoHealth = { value, updatedAt: Date.now() };
@@ -180,8 +191,8 @@ async function deepHealth(apiKey: string): Promise<DeepHealth> {
 }
 
 export async function GET() {
-  const key = process.env.DATABENTO_API_KEY?.trim();
-  if (!key) {
+  const directKey = process.env.DATABENTO_API_KEY?.trim() || null;
+  if (!vendorMarketDataConfigured("databento")) {
     return NextResponse.json(
       {
         configured: false,
@@ -192,21 +203,19 @@ export async function GET() {
     );
   }
 
-  const keyFormatValid = /^db-[A-Za-z0-9_-]{20,}$/.test(key);
+  const keyFormatValid = directKey ? /^db-[A-Za-z0-9_-]{20,}$/.test(directKey) : true;
   try {
-    const response = await fetch(
-      `${DATABENTO_HISTORICAL_BASE_URL}/metadata.get_dataset_range?dataset=GLBX.MDP3`,
+    const response = await vendorMarketDataFetch(
+      "databento",
+      "/v0/metadata.get_dataset_range?dataset=GLBX.MDP3",
       {
-        headers: {
-          Authorization: `Basic ${Buffer.from(`${key}:`).toString("base64")}`,
-        },
         cache: "no-store",
         signal: AbortSignal.timeout(8_000),
       },
     );
 
     const deep = response.ok
-      ? await deepHealth(key)
+      ? await deepHealth(directKey)
       : {
           actualHistory: { ok: false, candleCount: 0, reason: "historical_authentication_failed" },
           live: {
@@ -220,6 +229,7 @@ export async function GET() {
     return NextResponse.json(
       {
         configured: true,
+        transport: directKey ? "direct" : "vps-market-data-edge",
         keyFormatValid,
         historical: {
           ok: response.ok,

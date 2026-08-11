@@ -3,8 +3,11 @@ import {
   type NqInstrumentDefinition,
   type TpoSessionInput,
 } from "@/lib/tpoLevels";
+import {
+  vendorMarketDataConfigured,
+  vendorMarketDataFetch,
+} from "@/lib/vendorMarketData.server";
 
-const DATABENTO_HISTORICAL_BASE_URL = "https://hist.databento.com/v0";
 
 type CachedTpoSession = { promise: Promise<TpoSessionInput> };
 const globalTpoSessionCache = globalThis as typeof globalThis & {
@@ -67,12 +70,10 @@ async function databentoStream(
   params: Record<string, string>,
   onRecord: (record: Record<string, unknown>, rawLine: string) => void,
 ) {
-  const key = process.env.DATABENTO_API_KEY?.trim();
-  if (!key) throw new DatabentoTpoAuthError();
-  const response = await fetch(`${DATABENTO_HISTORICAL_BASE_URL}/timeseries.get_range`, {
+  if (!vendorMarketDataConfigured("databento")) throw new DatabentoTpoAuthError();
+  const response = await vendorMarketDataFetch("databento", "/v0/timeseries.get_range", {
     method: "POST",
     headers: {
-      Authorization: `Basic ${Buffer.from(`${key}:`).toString("base64")}`,
       "Content-Type": "application/x-www-form-urlencoded",
     },
     body: new URLSearchParams({

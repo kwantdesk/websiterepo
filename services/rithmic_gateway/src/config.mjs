@@ -60,6 +60,8 @@ export function loadConfig(env = process.env) {
   const user = String(env.RITHMIC_USER || "").trim();
   const password = String(env.RITHMIC_PASSWORD || "").trim();
   const gatewayToken = String(env.KWANTIFY_MARKET_DATA_GATEWAY_TOKEN || "").trim();
+  const databentoApiKey = String(env.DATABENTO_API_KEY || "").trim();
+  const quantDataApiKey = String(env.QUANTDATA_API_KEY || "").trim();
   return {
     serviceRoot: SERVICE_ROOT,
     protoDir: sourceMode === "protocol" ? resolveProtoDirectory(env) : null,
@@ -75,6 +77,11 @@ export function loadConfig(env = process.env) {
     port: positiveInteger(env.RITHMIC_GATEWAY_PORT, 8793),
     host: String(env.RITHMIC_GATEWAY_HOST || "127.0.0.1").trim(),
     gatewayToken,
+    databentoApiKey,
+    quantDataApiKey,
+    vendorRequestTimeoutMs: positiveInteger(env.VENDOR_REQUEST_TIMEOUT_MS, 30_000),
+    quantDataMinSpacingMs: positiveInteger(env.QUANTDATA_MIN_SPACING_MS, 80),
+    quantDataCacheMs: positiveInteger(env.QUANTDATA_EDGE_CACHE_MS, 2_500),
     configured:
       sourceMode === "rtrader-excel"
         ? Boolean(gatewayToken)

@@ -71,6 +71,8 @@ Do not chase it and do not lower the healthcheck thresholds because of it.
    RITHMIC_PASSWORD=...
    RITHMIC_SUBSCRIPTIONS=CME:MNQU6,CME:NQU6,CME:ESU6,CME:MESU6
    KWANTIFY_MARKET_DATA_GATEWAY_TOKEN=...   # long random string
+   DATABENTO_API_KEY=...                    # VPS-only vendor credential
+   QUANTDATA_API_KEY=...                    # VPS-only vendor credential
    ```
 
    `RITHMIC_GATEWAY_HOST` is overridden to `0.0.0.0` by compose; the
@@ -86,7 +88,7 @@ Do not chase it and do not lower the healthcheck thresholds because of it.
    docker compose ps
    ```
 
-5. Confirm the session is genuinely live, not merely serving HTTP:
+5. Confirm the session and vendor edge are genuinely live, not merely serving HTTP:
 
    ```bash
    curl -s https://feed.kwantdesk.com/health | jq
@@ -94,6 +96,9 @@ Do not chase it and do not lower the healthcheck thresholds because of it.
 
    Required: `"connected": true`, `"authenticated": true`, a `lastMessageAt`
    that **advances between calls**, and a populated `instruments` array.
+   Also require `vendorData.databentoConfigured: true` and
+   `vendorData.quantDataConfigured: true` before removing the temporary direct
+   vendor-key fallback from Vercel.
    `connected: true` with a frozen `lastMessageAt` is a dead feed wearing a
    live label — treat it as an outage.
 

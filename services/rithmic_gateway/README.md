@@ -130,6 +130,30 @@ The initial integration is deliberately read-only. Order entry remains outside
 this market-data process until Rithmic Test market data has passed soak,
 sequence, reconnect and entitlement tests.
 
+## Unified vendor data edge
+
+The same always-on process also owns Databento and KwantData credentials. The
+website sends bearer-authenticated requests to the gateway; the gateway adds
+the vendor credential, enforces an endpoint allow-list, streams Databento
+history, and globally spaces/coalesces KwantData requests. This prevents every
+Vercel function instance from independently exhausting the same vendor quota.
+
+Add these only to `operator.env` on the VPS:
+
+```text
+DATABENTO_API_KEY=db-...
+QUANTDATA_API_KEY=qd_...
+VENDOR_REQUEST_TIMEOUT_MS=30000
+QUANTDATA_MIN_SPACING_MS=80
+QUANTDATA_EDGE_CACHE_MS=2500
+```
+
+The Vercel project needs only `KWANTDESK_MARKET_DATA_GATEWAY_URL` and
+`KWANTDESK_MARKET_DATA_GATEWAY_TOKEN`. Direct vendor keys can remain briefly
+during migration as server-side fallback, then should be removed after
+`/health` reports both `vendorData` providers configured and real endpoint
+probes pass.
+
 ## Deployment
 
 Run this service on an always-on container or VM. Vercel serverless functions

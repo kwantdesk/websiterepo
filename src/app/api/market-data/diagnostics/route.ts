@@ -10,6 +10,7 @@ import {
   marketDataGatewayUrlCandidates,
   marketDataProvider,
 } from "@/lib/marketDataGatewayEnv";
+import { vendorMarketDataConfigured } from "@/lib/vendorMarketData.server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -104,9 +105,9 @@ export async function GET(request: Request) {
   // silently declines when Databento is unconfigured, so report that state
   // explicitly rather than leaving it to be inferred from a blank chart.
   let executionProfile: Record<string, unknown> = {
-    databentoConfigured: Boolean(process.env.DATABENTO_API_KEY?.trim()),
+    databentoConfigured: vendorMarketDataConfigured("databento"),
   };
-  if (process.env.DATABENTO_API_KEY?.trim()) {
+  if (vendorMarketDataConfigured("databento")) {
     try {
       const probe = await buildDatabentoExecutionProfile({
         symbol: "NQ",

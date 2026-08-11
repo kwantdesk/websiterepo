@@ -5,6 +5,7 @@ import {
   getQuantDataHttpError,
 } from "@/lib/quantData.server";
 import { createGexDeskZeroGammaFixture } from "@/lib/gexDesk";
+import { vendorMarketDataConfigured } from "@/lib/vendorMarketData.server";
 
 async function isAuthenticated(request: NextRequest) {
   const host = request.nextUrl.hostname;
@@ -37,7 +38,7 @@ export async function GET(request: NextRequest) {
   if (
     process.env.KWANTIFY_DEV_AUTH_BYPASS === "1"
     && ["localhost", "127.0.0.1", "::1"].includes(request.nextUrl.hostname)
-    && !process.env.DATABENTO_API_KEY
+    && !vendorMarketDataConfigured("databento")
   ) {
     return NextResponse.json(createGexDeskZeroGammaFixture(), {
       headers: { "Cache-Control": "private, no-store, max-age=0" },

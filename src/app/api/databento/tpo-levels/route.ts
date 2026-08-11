@@ -5,6 +5,7 @@ import {
   DatabentoTpoAuthError,
   getDatabentoTpoSessions,
 } from "@/lib/databentoTpo.server";
+import { vendorMarketDataConfigured } from "@/lib/vendorMarketData.server";
 import {
   completedNqRthWindows,
   computeTpoLevels,
@@ -121,7 +122,7 @@ function requestConfig(params: URLSearchParams) {
 }
 
 export async function GET(request: Request) {
-  if (!process.env.DATABENTO_API_KEY?.trim()) {
+  if (!vendorMarketDataConfigured("databento")) {
     return NextResponse.json(
       { error: "TPO Levels: data source needs re-authentication" },
       { status: 401 },

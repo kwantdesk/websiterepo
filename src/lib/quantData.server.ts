@@ -87,8 +87,11 @@ import {
 } from "@/lib/gammaCage";
 import type { HedgeExposureSurface } from "@/lib/hedgeLevels";
 import { getGexBotFlowSnapshot } from "@/lib/gexBotFlow.server";
+import {
+  vendorMarketDataConfigured,
+  vendorMarketDataFetch,
+} from "@/lib/vendorMarketData.server";
 
-const API_BASE = "https://api.quantdata.us/v1";
 const CACHE_TTL_MS = 4_000;
 // KwantData exposes these snapshots over REST rather than a push stream. Four
 // source surfaces at this cadence remain below the documented rolling-minute
@@ -134,6 +137,8 @@ class QuantDataError extends Error {
 export function getConfiguredQuantDataApiKey() {
   const conventionalValue = process.env.QUANTDATA_API_KEY?.trim();
   if (conventionalValue) return conventionalValue;
+
+  if (vendorMarketDataConfigured("quantdata")) return "vps-market-data-edge";
 
   return Object.keys(process.env).find((name) => API_KEY_NAME_PATTERN.test(name)) ?? null;
 }
@@ -185,10 +190,9 @@ async function quantDataNetworkPost(path: string, body: JsonRecord) {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
     try {
-      const response = await fetch(`${API_BASE}${path}`, {
+      const response = await vendorMarketDataFetch("quantdata", `/v1${path}`, {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${apiKey}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify(body),

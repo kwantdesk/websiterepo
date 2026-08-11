@@ -11,6 +11,10 @@ import {
   databentoEventTimestampMs,
   databentoTradeAggressor,
 } from "@/lib/tradeAggressor";
+import {
+  vendorMarketDataConfigured,
+  vendorMarketDataFetch,
+} from "@/lib/vendorMarketData.server";
 
 export const DATABENTO_HISTORICAL_BASE_URL = "https://api.databento.com/v0";
 
@@ -145,8 +149,7 @@ function availableEndFromError(detail: string) {
 }
 
 async function historicalRequest(params: Record<string, string>, canRetryAvailableEnd = true) {
-  const key = process.env.DATABENTO_API_KEY?.trim();
-  if (!key) throw new Error("Databento is not configured.");
+  if (!vendorMarketDataConfigured("databento")) throw new Error("Databento is not configured.");
 
   const form = new URLSearchParams({
     dataset: "GLBX.MDP3",
@@ -156,10 +159,9 @@ async function historicalRequest(params: Record<string, string>, canRetryAvailab
     map_symbols: "true",
     ...params,
   });
-  const response = await fetch(`${DATABENTO_HISTORICAL_BASE_URL}/timeseries.get_range`, {
+  const response = await vendorMarketDataFetch("databento", "/v0/timeseries.get_range", {
     method: "POST",
     headers: {
-      Authorization: `Basic ${Buffer.from(`${key}:`).toString("base64")}`,
       "Content-Type": "application/x-www-form-urlencoded",
     },
     body: form,
@@ -207,8 +209,7 @@ async function streamHistoricalRows(
   params: Record<string, string>,
   onRow: (row: Record<string, unknown>) => void,
 ): Promise<void> {
-  const key = process.env.DATABENTO_API_KEY?.trim();
-  if (!key) throw new Error("Databento is not configured.");
+  if (!vendorMarketDataConfigured("databento")) throw new Error("Databento is not configured.");
 
   const form = new URLSearchParams({
     dataset: "GLBX.MDP3",
@@ -218,10 +219,9 @@ async function streamHistoricalRows(
     map_symbols: "true",
     ...params,
   });
-  const response = await fetch(`${DATABENTO_HISTORICAL_BASE_URL}/timeseries.get_range`, {
+  const response = await vendorMarketDataFetch("databento", "/v0/timeseries.get_range", {
     method: "POST",
     headers: {
-      Authorization: `Basic ${Buffer.from(`${key}:`).toString("base64")}`,
       "Content-Type": "application/x-www-form-urlencoded",
     },
     body: form,

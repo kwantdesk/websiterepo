@@ -11,8 +11,11 @@ import {
   databentoEventTimestampMs,
   databentoTradeAggressor,
 } from "@/lib/tradeAggressor";
+import {
+  vendorMarketDataConfigured,
+  vendorMarketDataFetch,
+} from "@/lib/vendorMarketData.server";
 
-const DATABENTO_HISTORICAL_BASE_URL = "https://api.databento.com/v0";
 // Event charts must retain the same five-session history window as time-based
 // charts. The previous 5,000-bar tail was too small for active contracts on
 // 200/500-volume and smaller range intervals, so a fresh selection appeared to
@@ -152,8 +155,7 @@ async function streamEventBars(args: {
   end: number;
   canRetryEnd?: boolean;
 }): Promise<Candle[]> {
-  const key = process.env.DATABENTO_API_KEY?.trim();
-  if (!key) throw new Error("CME market data is not configured.");
+  if (!vendorMarketDataConfigured("databento")) throw new Error("CME market data is not configured.");
   const schema = eventHistorySchema(args.timeframe);
   const form = new URLSearchParams({
     dataset: "GLBX.MDP3",
@@ -167,10 +169,9 @@ async function streamEventBars(args: {
     start: new Date(args.start).toISOString(),
     end: new Date(args.end).toISOString(),
   });
-  const response = await fetch(`${DATABENTO_HISTORICAL_BASE_URL}/timeseries.get_range`, {
+  const response = await vendorMarketDataFetch("databento", "/v0/timeseries.get_range", {
     method: "POST",
     headers: {
-      Authorization: `Basic ${Buffer.from(`${key}:`).toString("base64")}`,
       "Content-Type": "application/x-www-form-urlencoded",
     },
     body: form,
@@ -256,8 +257,7 @@ async function streamEventFlow(args: {
   end: number;
   canRetryEnd?: boolean;
 }): Promise<{ candles: Candle[]; executions: DatabentoEventExecutionTuple[] }> {
-  const key = process.env.DATABENTO_API_KEY?.trim();
-  if (!key) throw new Error("CME market data is not configured.");
+  if (!vendorMarketDataConfigured("databento")) throw new Error("CME market data is not configured.");
   const form = new URLSearchParams({
     dataset: "GLBX.MDP3",
     encoding: "json",
@@ -273,10 +273,9 @@ async function streamEventFlow(args: {
     start: new Date(args.start).toISOString(),
     end: new Date(args.end).toISOString(),
   });
-  const response = await fetch(`${DATABENTO_HISTORICAL_BASE_URL}/timeseries.get_range`, {
+  const response = await vendorMarketDataFetch("databento", "/v0/timeseries.get_range", {
     method: "POST",
     headers: {
-      Authorization: `Basic ${Buffer.from(`${key}:`).toString("base64")}`,
       "Content-Type": "application/x-www-form-urlencoded",
     },
     body: form,

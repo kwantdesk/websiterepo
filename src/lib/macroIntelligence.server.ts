@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { getDatabentoBars, type DatabentoBar } from "@/lib/databento";
+import { vendorMarketDataConfigured } from "@/lib/vendorMarketData.server";
 import type { EconomicCalendarEvent } from "@/lib/economicCalendar";
 import { getEconomicCalendar } from "@/lib/economicCalendar.server";
 import type {
@@ -652,7 +653,7 @@ async function buildMacroPayload(): Promise<MacroIntelligencePayload> {
     .slice(0, 10);
 
   const bars: Record<string, DatabentoBar[]> = {};
-  if (released.length && process.env.DATABENTO_API_KEY) {
+  if (released.length && vendorMarketDataConfigured("databento")) {
     const start = new Date(Math.min(...released.map((event) => new Date(event.date).getTime())) - 30 * 60_000).toISOString();
     const end = new Date().toISOString();
     const symbols = { NQ: "NQ.v.0", ES: "ES.v.0", ZN: "ZN.v.0", CL: "CL.v.0" } as const;

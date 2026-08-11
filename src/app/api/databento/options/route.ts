@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
 import { getDatabentoOptions } from "@/lib/databento";
+import { vendorMarketDataConfigured } from "@/lib/vendorMarketData.server";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
 export async function GET() {
-  if (!process.env.DATABENTO_API_KEY) {
+  if (!vendorMarketDataConfigured("databento")) {
     return NextResponse.json({ error: "CME market data is not configured." }, { status: 503 });
   }
   try {

@@ -6,6 +6,7 @@ import {
   fetchInstitutionalMarketData,
   isInstitutionalMarketDataConfigured,
 } from "@/lib/institutionalMarketData.server";
+import { vendorMarketDataConfigured } from "@/lib/vendorMarketData.server";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -95,7 +96,7 @@ async function isAuthenticated(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
-  if (!process.env.DATABENTO_API_KEY) {
+  if (!vendorMarketDataConfigured("databento")) {
     return NextResponse.json({ error: "CME replay data is not configured." }, { status: 503 });
   }
   if (!(await isAuthenticated(request))) {

@@ -14,6 +14,7 @@ import {
   getDatabentoEventHistory,
   type DatabentoEventExecutionTuple,
 } from "@/lib/databentoEventHistory.server";
+import { vendorMarketDataConfigured } from "@/lib/vendorMarketData.server";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -142,7 +143,7 @@ async function durableTimeHistoryOrDirect(
 }
 
 export async function GET(request: Request) {
-  if (!process.env.DATABENTO_API_KEY) {
+  if (!vendorMarketDataConfigured("databento")) {
     return NextResponse.json({ error: "CME market data is not configured." }, { status: 503 });
   }
 

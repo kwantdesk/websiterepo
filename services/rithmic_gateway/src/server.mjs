@@ -6,6 +6,7 @@ import { loadConfig } from "./config.mjs";
 import { discoverRithmicSystems, RithmicMarketDataClient } from "./rithmic-client.mjs";
 import { RTraderExcelMarketDataClient } from "./rtrader-excel-client.mjs";
 import { MarketDataRecorder } from "./recorder.mjs";
+import { VendorDataEdge } from "./vendor-data-edge.mjs";
 import {
   chicagoTradingDate,
   cmeSessionBounds,
@@ -23,6 +24,7 @@ const recorder = new MarketDataRecorder({
   enabled: config.recordEnabled,
 });
 recorder.attach(client);
+const vendorDataEdge = new VendorDataEdge(config);
 const rawSseClients = new Set();
 const tradeSseClients = new Set();
 const heatmapSseClients = new Set();
@@ -582,6 +584,7 @@ const server = createServer(async (request, response) => {
     return json(response, config.configured ? 200 : 503, {
       ...client.health(),
       recorder: recorder.status(),
+      vendorData: vendorDataEdge.health(),
     });
   }
   if (!authorized(request)) {
@@ -592,6 +595,10 @@ const server = createServer(async (request, response) => {
     });
   }
   try {
+    if (vendorDataEdge.canHandle(url.pathname)) {
+      await vendorDataEdge.handle(request, response, url);
+      return;
+    }
     if (request.method === "GET" && url.pathname === "/v1/rithmic/systems") {
       if (config.sourceMode === "rtrader-excel") {
         return json(response, 200, { provider: "Rithmic", systems: ["RTrader Pro Excel"] });

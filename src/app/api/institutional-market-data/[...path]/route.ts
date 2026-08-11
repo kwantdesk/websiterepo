@@ -8,6 +8,7 @@ import {
 } from "@/lib/institutionalMarketData.server";
 import { cmeSessionStartMs, cmeSessionWindowForDate } from "@/lib/chartHistoryWindow";
 import { STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT } from "@/lib/volumeProfileMath";
+import { vendorMarketDataConfigured } from "@/lib/vendorMarketData.server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -34,7 +35,7 @@ type RouteContext = { params: Promise<{ path: string[] }> };
 async function executionProfileResponse(request: NextRequest) {
   const params = request.nextUrl.searchParams;
   const symbol = (params.get("symbol") || params.get("root") || "").trim().toUpperCase();
-  if (!symbol || !process.env.DATABENTO_API_KEY?.trim()) return null;
+  if (!symbol || !vendorMarketDataConfigured("databento")) return null;
 
   const contractSymbol = (params.get("contractSymbol") || "").trim().toUpperCase();
   const period = params.get("period") === "weekly" ? "weekly" : "daily";
