@@ -98,13 +98,18 @@ test("new users and reset share the canonical account-backed display defaults", 
 });
 
 test("embedded liquidity map uses the restored horizontal toolbar", async () => {
-  const css = await readFile(embedCssPath, "utf8");
+  const [html, css] = await Promise.all([
+    readFile(htmlPath, "utf8"),
+    readFile(embedCssPath, "utf8"),
+  ]);
 
   assert.match(css, /grid-template-rows:\s*46px 52px minmax\(0, 1fr\)/);
   assert.match(css, /\.tool-rail\s*\{[\s\S]*?flex-direction:\s*row/);
   assert.match(css, /\.workspace\s*\{[\s\S]*?grid-row:\s*3/);
   assert.doesNotMatch(css, /\.app-bar,\s*\nhtml\[data-embed="true"\] \.status-bar/);
-  assert.match(css, /\.toolbar-panel-shortcuts\s*\{[\s\S]*?position:\s*sticky;[\s\S]*?right:\s*0;/);
+  assert.match(html, /<div class="app-actions">[\s\S]*?id="modeStatus"[\s\S]*?class="toolbar-panel-shortcuts header-panel-shortcuts"[\s\S]*?id="utcClock"/);
+  assert.doesNotMatch(html, /<section class="top-deck"[\s\S]*?<div class="toolbar-panel-shortcuts"/);
+  assert.match(css, /\.header-panel-shortcuts\s*\{[\s\S]*?height:\s*34px;/);
   assert.match(css, /\.tool-rail\s*\{[\s\S]*?scroll-padding-right:\s*190px;/);
 });
 

@@ -78,6 +78,11 @@ html[data-embed="true"] .app-actions {
   height: 46px;
 }
 
+html[data-embed="true"] .app-actions {
+  min-width: 0;
+  gap: 8px;
+}
+
 html[data-embed="true"] .instrument-tab {
   min-width: 148px;
 }
@@ -214,19 +219,26 @@ html[data-embed="true"] .heat-palette span {
 }
 
 html[data-embed="true"] .toolbar-panel-shortcuts {
-  position: sticky;
-  right: 0;
+  position: static;
   z-index: 3;
   display: flex;
   flex: 0 0 auto;
   align-items: center;
   gap: 3px;
-  margin-left: auto;
+  margin-left: 0;
   padding: 3px;
   border: 1px solid var(--ui-line);
   border-radius: 9px;
   background: var(--ui-surface);
-  box-shadow: -12px 0 18px color-mix(in srgb, var(--ui-panel) 86%, transparent);
+  box-shadow: none;
+}
+
+html[data-embed="true"] .header-panel-shortcuts {
+  flex: 0 0 auto;
+  height: 34px;
+  padding: 2px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--ui-surface) 94%, transparent);
 }
 
 html[data-embed="true"] .toolbar-panel-shortcuts button {
@@ -643,7 +655,7 @@ html[data-embed="true"] .modal {
   html[data-embed="true"] .heat-control,
   html[data-embed="true"] .heat-palette { display: none; }
 
-  html[data-embed="true"] .toolbar-panel-shortcuts { margin-left: 4px; }
+  html[data-embed="true"] .toolbar-panel-shortcuts { margin-left: 0; }
 
   html[data-embed="true"] .toolbar-panel-shortcuts button {
     padding-right: 8px;
@@ -655,5 +667,11 @@ html[data-embed="true"] .modal {
   html[data-embed="true"] .inspector {
     top: 100px;
     max-height: calc(100vh - 112px);
+  }
+}
+
+@media (max-height: 620px) {
+  html[data-embed="true"] .inspector {
+    max-height: calc(100dvh - 122px);
   }
 }
