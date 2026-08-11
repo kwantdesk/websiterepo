@@ -546,6 +546,9 @@ export default function SocialsWorkspace({
   const [ready, setReady] = useState(false);
   const [saveState, setSaveState] = useState<"loading" | "saved" | "local" | "error">("loading");
   const [tab, setTab] = useState<SocialTab>(initialProfileHandle ? "profile" : "today");
+  const [sectionUnread, setSectionUnread] = useState({ feed: 0, desks: 0 });
+  const activityLoadingRef = useRef(false);
+  const activeTabRef = useRef<SocialTab>(initialProfileHandle ? "profile" : "today");
   const [feedFilter, setFeedFilter] = useState<FeedFilter>("all");
   const [socialFeedMode, setSocialFeedMode] = useState<SocialFeedMode>("following");
   const [socialFeedCollection, setSocialFeedCollection] = useState<SocialFeedCollection>("feed");
@@ -651,6 +654,68 @@ export default function SocialsWorkspace({
     router.prefetch("/gameplan?tab=scoring");
     void import("@/components/gameplan/GameplanWorkspace");
   }, [router]);
+
+  useEffect(() => {
+    activeTabRef.current = tab;
+  }, [tab]);
+
+  const markSectionRead = useCallback(async (section: "feed" | "desks") => {
+    setSectionUnread((current) => current[section] === 0 ? current : { ...current, [section]: 0 });
+    try {
+      await fetch("/api/socials/activity", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ section }),
+      });
+    } catch {
+      // The optimistic clear keeps navigation immediate; the next refresh reconciles cloud state.
+    }
+  }, []);
+
+  const refreshSectionUnread = useCallback(async () => {
+    if (activityLoadingRef.current || document.visibilityState !== "visible") return;
+    activityLoadingRef.current = true;
+    try {
+      const response = await fetch("/api/socials/activity", { cache: "no-store" });
+      const result = await response.json() as { configured?: boolean; feed?: number; desks?: number };
+      if (!response.ok || result.configured === false) return;
+      const next = {
+        feed: Math.max(0, Number(result.feed) || 0),
+        desks: Math.max(0, Number(result.desks) || 0),
+      };
+      const active = activeTabRef.current;
+      if (active === "feed" && next.feed > 0) {
+        next.feed = 0;
+        void markSectionRead("feed");
+      }
+      if (active === "desks" && next.desks > 0) {
+        next.desks = 0;
+        void markSectionRead("desks");
+      }
+      setSectionUnread(next);
+    } catch {
+      // Badges are supplemental and must never interrupt Socials navigation.
+    } finally {
+      activityLoadingRef.current = false;
+    }
+  }, [markSectionRead]);
+
+  useEffect(() => {
+    void refreshSectionUnread();
+    const refresh = () => void refreshSectionUnread();
+    const interval = window.setInterval(refresh, 15_000);
+    window.addEventListener("focus", refresh);
+    window.addEventListener("kwantdesk:social-post-created", refresh);
+    window.addEventListener(DESK_NETWORK_CHANGED_EVENT, refresh);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("focus", refresh);
+      window.removeEventListener("kwantdesk:social-post-created", refresh);
+      window.removeEventListener(DESK_NETWORK_CHANGED_EVENT, refresh);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, [refreshSectionUnread]);
 
   const upsertObject = useCallback((object: SocialObject, replaceKey?: string) => {
     setState((current) => ({
@@ -3356,7 +3421,16 @@ export default function SocialsWorkspace({
           </div>
         </div>
         <WorkspaceSubnav
-          items={SOCIAL_TABS.map((item) => item.id === "today" && notificationItems.length ? { ...item, badge: notificationItems.length } : item)}
+          items={SOCIAL_TABS.map((item) => {
+            const count = item.id === "feed"
+              ? sectionUnread.feed
+              : item.id === "desks"
+                ? sectionUnread.desks
+                : item.id === "today"
+                  ? notificationItems.length
+                  : 0;
+            return count ? { ...item, badge: count > 99 ? "99+" : count } : item;
+          })}
           value={tab}
           onChange={(id) => {
             if (initialProfileHandle && id !== "profile") {
@@ -3364,6 +3438,7 @@ export default function SocialsWorkspace({
               return;
             }
             setTab(id);
+            if (id === "feed" || id === "desks") void markSectionRead(id);
             if (id === "profile") setProfileEditing(false);
           }}
           ariaLabel="Socials views"

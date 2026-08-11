@@ -48,6 +48,7 @@ import {
   type PresenceStatus,
 } from "@/lib/friends";
 import { storeSocialProfilePreview } from "@/lib/socialProfilePreview";
+import { isSingleEmojiMessage } from "@/lib/messageText";
 
 const EMPTY: FriendsPayload = {
   cloud: false,
@@ -709,16 +710,22 @@ export default function FriendsPanel({ onClose, onUnreadCountChange, onMessageUn
             && message.body.includes("/socials/")
             && message.body.includes("?post=");
           const sharedCard = Boolean(message.sharedTrade || sharedOneLiner);
+          const standaloneEmoji = !sharedCard
+            && (message.attachments?.length ?? 0) === 0
+            && isSingleEmojiMessage(message.body);
           return (
             <div key={message.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
-              <div className={`max-w-[84%] ${sharedCard ? "bg-transparent p-0 text-foreground" : `rounded-2xl px-3 py-2 ${mine ? "rounded-br-md bg-primary text-background" : "rounded-bl-md border border-border bg-surface text-foreground"}`} ${deliveryStatus === "failed" ? "ring-1 ring-danger" : ""}`}>
+              <div className={`max-w-[84%] ${sharedCard || standaloneEmoji ? "bg-transparent p-0 text-foreground" : `rounded-2xl px-3 py-2 ${mine ? "rounded-br-md bg-primary text-background" : "rounded-bl-md border border-border bg-surface text-foreground"}`} ${deliveryStatus === "failed" ? "ring-1 ring-danger" : ""}`}>
                 {group && !mine ? (
                   <div className="mb-1 text-[8px] font-semibold text-primary">{sender?.displayName ?? "Group member"}</div>
                 ) : null}
                 <MessageImages attachments={message.attachments} onPreview={setImagePreview} />
                 {message.sharedTrade ? <SharedTradeMessageCard sharedTrade={message.sharedTrade} /> : null}
-                {message.body ? <LinkedMessageBody body={message.body} className={`${sharedOneLiner ? "rounded-xl border border-primary/25 bg-panel px-3 py-2.5 shadow-[inset_0_0_16px_color-mix(in_srgb,var(--primary)_3%,transparent)]" : ""} text-[12px] leading-5`} /> : null}
-                <div className={`mt-1 flex items-center justify-end gap-1 text-right text-[8px] ${sharedCard ? "px-1 text-muted" : mine ? "text-background/65" : "text-muted"}`}>
+                {message.body ? standaloneEmoji
+                  ? <div className="select-text px-1 py-1 text-[44px] leading-none" aria-label={message.body.trim()}>{message.body.trim()}</div>
+                  : <LinkedMessageBody body={message.body} className={`${sharedOneLiner ? "rounded-xl border border-primary/25 bg-panel px-3 py-2.5 shadow-[inset_0_0_16px_color-mix(in_srgb,var(--primary)_3%,transparent)]" : ""} text-[12px] leading-5`} />
+                  : null}
+                <div className={`mt-1 flex items-center justify-end gap-1 text-right text-[8px] ${sharedCard || standaloneEmoji ? "px-1 text-muted" : mine ? "text-background/65" : "text-muted"}`}>
                   <span>{messageTime(message.sentAt)}</span>
                   {deliveryStatus === "sending" ? (
                     <span className="inline-flex items-center gap-0.5"><Clock3 className="h-2.5 w-2.5" /> Sending…</span>
