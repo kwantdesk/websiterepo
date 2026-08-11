@@ -186,6 +186,36 @@ function rebuildDepthByOrder(instrument) {
   instrument.bookValid = instrument.bids.size > 0 || instrument.asks.size > 0;
 }
 
+function removeOrderFromDepth(instrument, order) {
+  if (!order || !Number.isFinite(Number(order.price))) return;
+  const levels = order.side === "BUY" ? instrument.bids : instrument.asks;
+  const level = levels.get(Number(order.price));
+  if (!level) return;
+  addLevel(
+    levels,
+    order.price,
+    Number(level.size || 0) - Number(order.size || 0),
+    Math.max(0, Number(level.orders || 0) - 1),
+  );
+}
+
+function addOrderToDepth(instrument, order) {
+  if (
+    !order
+    || !Number.isFinite(Number(order.price))
+    || !Number.isFinite(Number(order.size))
+    || Number(order.size) <= 0
+  ) return;
+  const levels = order.side === "BUY" ? instrument.bids : instrument.asks;
+  const level = levels.get(Number(order.price));
+  addLevel(
+    levels,
+    order.price,
+    Number(level?.size || 0) + Number(order.size),
+    Number(level?.orders || 0) + 1,
+  );
+}
+
 export class RithmicBookStore {
   constructor({ maxTrades = 250_000 } = {}) {
     this.maxTrades = maxTrades;
@@ -487,12 +517,13 @@ export class RithmicBookStore {
     for (let index = 0; index < updates.length; index += 1) {
       const id = String(ids[index] || `${sides[index]}:${prices[index]}:${priorities[index] || index}`);
       const updateType = Number(updates[index]);
+      const existing = instrument.orders.get(id);
       if (updateType === 3) {
+        removeOrderFromDepth(instrument, existing);
         instrument.orders.delete(id);
         continue;
       }
-      const existing = instrument.orders.get(id);
-      instrument.orders.set(id, {
+      const nextOrder = {
         id,
         side: Number(sides[index]) === 1 ? "BUY" : Number(sides[index]) === 2 ? "SELL" : existing?.side,
         price: Number(
@@ -501,12 +532,21 @@ export class RithmicBookStore {
         ),
         size: Number(sizes[index] ?? existing?.size ?? 0),
         priority: String(priorities[index] ?? existing?.priority ?? "0"),
-      });
+      };
+      // Updating one order used to rebuild every price level from every order
+      // in the book. At active CME rates that is O(messages * total orders)
+      // and pinned the gateway above 100% CPU. Maintain the two affected
+      // aggregates instead, making each DBO update O(1).
+      removeOrderFromDepth(instrument, existing);
+      instrument.orders.set(id, nextOrder);
+      addOrderToDepth(instrument, nextOrder);
     }
     instrument.sourceSequence = String(payload.sequenceNumber || instrument.sourceSequence);
     instrument.asOfMs = eventTimestampMs(payload) || instrument.asOfMs;
     instrument.sequence += 1;
-    rebuildDepthByOrder(instrument);
+    instrument.depthMode = "L3";
+    instrument.individualOrders = true;
+    instrument.bookValid = instrument.bids.size > 0 || instrument.asks.size > 0;
     return {
       type: "depth",
       instrument: instrumentKey(instrument.exchange, instrument.symbol),

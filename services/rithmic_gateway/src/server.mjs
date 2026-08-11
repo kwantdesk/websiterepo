@@ -271,10 +271,10 @@ quoteFlush.unref();
 // symbol so the provenance is honest: an MNQ chart reading NQ tape says so.
 const MICRO_PARENT_ROOTS = { MNQ: "NQ", MES: "ES", MYM: "YM", M2K: "RTY", MGC: "GC", MCL: "CL" };
 
-// One truthful book snapshot every 50ms gives the browser a 20 FPS live
-// surface without inventing intermediate liquidity. The browser still
-// coalesces paints on requestAnimationFrame, so exchange bursts cannot queue
-// an unbounded render backlog.
+// Depth frames are materially heavier than trade ticks. Twenty truthful depth
+// frames per second support smooth browser interpolation while trade ticks move
+// the live marker immediately. Most importantly, depth snapshots are only
+// built while a real heatmap client is attached.
 const HEATMAP_FRAME_MS = Math.max(
   20,
   Number(process.env.RITHMIC_HEATMAP_FRAME_MS) || 50,
@@ -637,13 +637,35 @@ function sessionCvdHistory(exchange, symbol, nowMs = Date.now()) {
 }
 
 function captureHeatmapFrame(instrumentKey, now = Date.now()) {
+  let requestedDepth = 0;
+  for (const subscriber of [...heatmapSseClients]) {
+    if (
+      subscriber.response.destroyed
+      || subscriber.response.writableEnded
+      || !subscriber.response.writable
+    ) {
+      subscriber.cleanup?.();
+      continue;
+    }
+    if (subscriber.key === instrumentKey) {
+      requestedDepth = Math.max(requestedDepth, Number(subscriber.depth) || 0);
+    }
+  }
+  // Do not continuously clone the complete DBO book just to maintain an idle
+  // cache. That work previously pinned Node above 100% CPU even when nobody
+  // was viewing the map, starving charts, /health and vendor requests.
+  if (!requestedDepth) return null;
   const state = heatmapHistoryState(instrumentKey);
   if (now - state.lastEmitAt < HEATMAP_FRAME_MS) return null;
   const separator = instrumentKey.indexOf(":");
   if (separator < 1) return null;
   const exchange = instrumentKey.slice(0, separator);
   const symbol = instrumentKey.slice(separator + 1);
-  const snapshot = client.book.snapshot(exchange, symbol, HEATMAP_CACHE_DEPTH);
+  const snapshot = client.book.snapshot(
+    exchange,
+    symbol,
+    Math.min(HEATMAP_CACHE_DEPTH, requestedDepth),
+  );
   if (!snapshot) return null;
   const frame = heatmapPayload(snapshot, state.lastSequence);
   if (!acceptMonotonicHeatmapFrame(state, frame)) return null;
@@ -663,13 +685,27 @@ function captureHeatmapFrame(instrumentKey, now = Date.now()) {
 
 function emitRawSse(eventName, payload) {
   const frame = `event: ${eventName}\ndata: ${JSON.stringify(payload)}\n\n`;
-  for (const response of rawSseClients) response.write(frame);
+  for (const response of [...rawSseClients]) {
+    if (response.destroyed || response.writableEnded || !response.writable) {
+      rawSseClients.delete(response);
+      continue;
+    }
+    response.write(frame);
+  }
 }
 
 client.on("marketData", (event) => {
   emitRawSse(event.type, event);
   queueQuoteBatch(event);
-  for (const subscriber of tradeSseClients) {
+  for (const subscriber of [...tradeSseClients]) {
+    if (
+      subscriber.response.destroyed
+      || subscriber.response.writableEnded
+      || !subscriber.response.writable
+    ) {
+      subscriber.cleanup?.();
+      continue;
+    }
     if (event.type !== "trade" || subscriber.key !== event.instrument) continue;
     subscriber.response.write(
       `event: trades\ndata: ${JSON.stringify({
@@ -681,7 +717,15 @@ client.on("marketData", (event) => {
   const capturedHeatmapFrame = event.instrument
     ? captureHeatmapFrame(event.instrument)
     : null;
-  for (const subscriber of heatmapSseClients) {
+  for (const subscriber of [...heatmapSseClients]) {
+    if (
+      subscriber.response.destroyed
+      || subscriber.response.writableEnded
+      || !subscriber.response.writable
+    ) {
+      subscriber.cleanup?.();
+      continue;
+    }
     if (subscriber.key !== event.instrument) continue;
     // Price can change much faster than a full 23 KB depth snapshot should be
     // serialized and proxied. Send the genuine execution tick separately so
@@ -1018,10 +1062,17 @@ const server = createServer(async (request, response) => {
       const keepalive = setInterval(() => response.write(
         `event: heartbeat\ndata: ${JSON.stringify({ timestamp: Date.now() })}\n\n`,
       ), 5_000);
-      request.on("close", () => {
+      let cleanedUp = false;
+      const cleanup = () => {
+        if (cleanedUp) return;
+        cleanedUp = true;
         clearInterval(keepalive);
         heatmapSseClients.delete(subscriber);
-      });
+      };
+      subscriber.cleanup = cleanup;
+      request.on("close", cleanup);
+      response.on("close", cleanup);
+      response.on("error", cleanup);
       return;
     }
     if (request.method === "GET" && url.pathname === "/v1/instruments") {
