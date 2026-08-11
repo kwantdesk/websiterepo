@@ -121,6 +121,7 @@ class DepthForgeApp {
     this.tapeHtml = '';
     this.lastRenderFailureAt = 0;
     this.#bindControls();
+    this.#enhanceInspectorSelects();
     this.#syncPaletteControls();
     this.#syncHeatmapControls();
     this.#syncVolumeDotControls();
@@ -188,7 +189,6 @@ class DepthForgeApp {
       setTimeout(() => this.requestRender(), 170);
     });
 
-    all('.inspector-tabs button').forEach(button => button.addEventListener('click', () => this.#openPanel(button.dataset.panel)));
     all('[data-panel-shortcut]').forEach(button => button.addEventListener('click', () => this.#openPanel(button.dataset.panelShortcut)));
     $('settingsButton').addEventListener('click', () => this.#openPanel('settings'));
 
@@ -405,6 +405,124 @@ class DepthForgeApp {
     $(id).addEventListener('change', event => {
       this.settings[setting] = event.target.value;
       this.requestRender();
+    });
+  }
+
+  #enhanceInspectorSelects() {
+    all('#inspector select').forEach(select => {
+      if (select.dataset.enhanced === 'true') return;
+      select.dataset.enhanced = 'true';
+      select.classList.add('native-select-proxy');
+      select.setAttribute('aria-hidden', 'true');
+      select.tabIndex = -1;
+
+      const picker = document.createElement('span');
+      picker.className = 'kwant-select';
+      picker.dataset.selectFor = select.id;
+
+      const trigger = document.createElement('button');
+      trigger.type = 'button';
+      trigger.className = 'kwant-select-trigger';
+      trigger.disabled = select.disabled;
+      trigger.setAttribute('aria-haspopup', 'listbox');
+      trigger.setAttribute('aria-expanded', 'false');
+      trigger.innerHTML = '<span></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5"></path></svg>';
+
+      const menu = document.createElement('span');
+      menu.className = 'kwant-select-menu hidden';
+      menu.setAttribute('role', 'listbox');
+      menu.setAttribute('aria-label', select.getAttribute('aria-label') || 'Choices');
+
+      const appendOption = option => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'kwant-select-option';
+        button.dataset.value = option.value;
+        button.setAttribute('role', 'option');
+        const copy = document.createElement('span');
+        copy.textContent = option.textContent;
+        const check = document.createElement('i');
+        check.textContent = '✓';
+        button.append(copy, check);
+        menu.append(button);
+      };
+
+      [...select.children].forEach(child => {
+        if (child.tagName === 'OPTGROUP') {
+          const heading = document.createElement('small');
+          heading.className = 'kwant-select-group';
+          heading.textContent = child.label;
+          menu.append(heading);
+          [...child.children].forEach(appendOption);
+        } else if (child.tagName === 'OPTION') {
+          appendOption(child);
+        }
+      });
+
+      picker.append(trigger, menu);
+      select.insertAdjacentElement('afterend', picker);
+
+      const close = () => {
+        menu.classList.add('hidden');
+        picker.classList.remove('open');
+        trigger.setAttribute('aria-expanded', 'false');
+      };
+      const sync = () => {
+        const selected = select.selectedOptions[0];
+        trigger.querySelector('span').textContent = selected?.textContent || 'Select';
+        [...menu.querySelectorAll('.kwant-select-option')].forEach(option => {
+          const active = option.dataset.value === select.value;
+          option.classList.toggle('active', active);
+          option.setAttribute('aria-selected', String(active));
+        });
+      };
+
+      trigger.addEventListener('click', event => {
+        event.stopPropagation();
+        const opening = menu.classList.contains('hidden');
+        all('.kwant-select.open').forEach(candidate => {
+          if (candidate === picker) return;
+          candidate.classList.remove('open');
+          candidate.querySelector('.kwant-select-menu')?.classList.add('hidden');
+          candidate.querySelector('.kwant-select-trigger')?.setAttribute('aria-expanded', 'false');
+        });
+        menu.classList.toggle('hidden', !opening);
+        picker.classList.toggle('open', opening);
+        trigger.setAttribute('aria-expanded', String(opening));
+      });
+      menu.addEventListener('click', event => {
+        const option = event.target.closest('.kwant-select-option');
+        if (!option) return;
+        select.value = option.dataset.value;
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+        sync();
+        close();
+      });
+      select.addEventListener('change', sync);
+      sync();
+    });
+
+    document.addEventListener('pointerdown', event => {
+      if (event.target.closest('.kwant-select')) return;
+      all('.kwant-select.open').forEach(picker => {
+        picker.classList.remove('open');
+        picker.querySelector('.kwant-select-menu')?.classList.add('hidden');
+        picker.querySelector('.kwant-select-trigger')?.setAttribute('aria-expanded', 'false');
+      });
+    });
+  }
+
+  #syncCustomSelect(id) {
+    const select = $(id);
+    const picker = document.querySelector(`.kwant-select[data-select-for="${id}"]`);
+    if (!select || !picker) return;
+    const selected = select.selectedOptions[0];
+    const label = picker.querySelector('.kwant-select-trigger span');
+    if (label) label.textContent = selected?.textContent || 'Select';
+    [...picker.querySelectorAll('.kwant-select-option')].forEach(option => {
+      const active = option.dataset.value === select.value;
+      option.classList.toggle('active', active);
+      option.setAttribute('aria-selected', String(active));
     });
   }
 
@@ -663,7 +781,6 @@ class DepthForgeApp {
       setTimeout(() => this.requestRender(), 170);
     }
     const mapping = { depth: 'depthPanel', signals: 'signalsPanel', settings: 'settingsPanel' };
-    all('.inspector-tabs button').forEach(button => button.classList.toggle('active', button.dataset.panel === panel));
     all('[data-panel-shortcut]').forEach(button => button.classList.toggle('active', button.dataset.panelShortcut === panel));
     all('.inspector-panel').forEach(candidate => candidate.classList.toggle('active', candidate.id === mapping[panel]));
   }
@@ -741,6 +858,7 @@ class DepthForgeApp {
 
   #syncPaletteControls() {
     $('paletteSelect').value = this.settings.palette;
+    this.#syncCustomSelect('paletteSelect');
     $('heatPalettePreview').style.background = paletteCssGradient(this.settings.palette);
   }
 
@@ -753,6 +871,7 @@ class DepthForgeApp {
     $('dimmingRange').value = String(this.settings.heatmapDimming);
     $('dimmingOutput').value = String(this.settings.heatmapDimming);
     $('heatmapFilterSelect').value = this.settings.heatmapFilter;
+    this.#syncCustomSelect('heatmapFilterSelect');
     $('sigmaRange').value = String(this.settings.gaussianSigma);
     $('sigmaRange').disabled = this.settings.heatmapFilter !== 'gaussian';
     $('sigmaOutput').value = String(this.settings.gaussianSigma);
@@ -770,6 +889,8 @@ class DepthForgeApp {
     for (const [id, setting] of Object.entries(checkboxSettings)) $(id).checked = Boolean(this.settings[setting]);
     $('cvdRangeSelect').value = this.settings.cvdRange;
     $('cvdScaleSelect').value = this.settings.cvdScale;
+    this.#syncCustomSelect('cvdRangeSelect');
+    this.#syncCustomSelect('cvdScaleSelect');
     this.#syncCvdDisplayStyle();
     const numberSettings = {
       cvdMinimumTradeSize: 'cvdMinimumTradeSize',

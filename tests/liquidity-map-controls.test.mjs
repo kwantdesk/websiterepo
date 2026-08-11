@@ -224,7 +224,21 @@ test("display settings stay inside the viewport and scroll independently", async
   assert.match(css, /\.inspector\s*\{[\s\S]*?max-height:\s*calc\(100vh - 122px\);[\s\S]*?overflow-y:\s*auto;/);
   assert.match(css, /\.inspector\s*\{[\s\S]*?overscroll-behavior:\s*contain;/);
   assert.match(css, /\.inspector::-webkit-scrollbar\s*\{[\s\S]*?width:\s*7px;/);
-  assert.match(css, /\.inspector-tabs\s*\{[\s\S]*?position:\s*sticky;[\s\S]*?top:\s*0;/);
+  assert.match(css, /\.inspector-panel\s*\{[\s\S]*?padding-top:\s*42px;[\s\S]*?font-family:\s*"Inter"/);
+});
+
+test("inspector uses one toolbar navigation and themed custom dropdowns", async () => {
+  const [html, source, css] = await Promise.all([
+    readFile(htmlPath, "utf8"),
+    readFile(mainPath, "utf8"),
+    readFile(embedCssPath, "utf8"),
+  ]);
+
+  assert.doesNotMatch(html, /class="inspector-tabs"/);
+  assert.match(source, /#enhanceInspectorSelects\(\)/);
+  assert.match(source, /className = 'kwant-select-trigger'/);
+  assert.match(css, /\.kwant-select-trigger\s*\{[\s\S]*?font:\s*500 11px "Inter"/);
+  assert.match(css, /\.kwant-select-menu\s*\{[\s\S]*?background:\s*color-mix/);
 });
 
 test("instrument changes show staged loading progress until the first new frame paints", async () => {

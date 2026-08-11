@@ -415,30 +415,6 @@ html[data-embed="true"] .inspector::-webkit-scrollbar-thumb {
   background-clip: padding-box;
 }
 
-html[data-embed="true"] .inspector-tabs {
-  position: sticky;
-  top: 0;
-  z-index: 3;
-  min-height: 42px;
-  padding: 0 38px 0 8px;
-  border-bottom: 1px solid var(--ui-line);
-  background: color-mix(in srgb, var(--ui-panel) 98%, transparent);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
-}
-
-html[data-embed="true"] .inspector-tabs button {
-  font-family: "Inter", system-ui, sans-serif;
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: .02em;
-}
-
-html[data-embed="true"] .inspector-tabs button.active {
-  color: var(--ui-text);
-  box-shadow: inset 0 -2px var(--ui-accent);
-}
-
 html[data-embed="true"] .panel-collapse {
   top: 7px;
   right: 7px;
@@ -457,6 +433,132 @@ html[data-embed="true"] .inspector-panel,
 html[data-embed="true"] .indicator-settings {
   color: var(--ui-muted);
 }
+
+html[data-embed="true"] .inspector-panel {
+  padding-top: 42px;
+  font-family: "Inter", system-ui, sans-serif;
+}
+
+html[data-embed="true"] .inspector button,
+html[data-embed="true"] .inspector input,
+html[data-embed="true"] .inspector output,
+html[data-embed="true"] .inspector label,
+html[data-embed="true"] .inspector legend {
+  font-family: "Inter", system-ui, sans-serif;
+}
+
+html[data-embed="true"] .native-select-proxy {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+html[data-embed="true"] .kwant-select {
+  position: relative;
+  grid-column: 1 / -1;
+  display: block;
+  width: 100%;
+  min-width: 0;
+  font-family: "Inter", system-ui, sans-serif;
+}
+
+html[data-embed="true"] .kwant-select-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  min-height: 36px;
+  padding: 0 11px;
+  border: 1px solid var(--ui-line);
+  border-radius: 9px;
+  background: var(--ui-surface);
+  color: var(--ui-text);
+  font: 500 11px "Inter", system-ui, sans-serif;
+  text-align: left;
+}
+
+html[data-embed="true"] .kwant-select-trigger:hover,
+html[data-embed="true"] .kwant-select.open .kwant-select-trigger {
+  border-color: color-mix(in srgb, var(--ui-accent) 62%, var(--ui-line));
+  background: color-mix(in srgb, var(--ui-accent) 7%, var(--ui-surface));
+}
+
+html[data-embed="true"] .kwant-select-trigger:disabled {
+  color: var(--ui-muted);
+  opacity: .78;
+}
+
+html[data-embed="true"] .kwant-select-trigger svg {
+  width: 15px;
+  flex: 0 0 15px;
+  fill: none;
+  stroke: var(--ui-muted);
+  stroke-width: 1.8;
+  transition: transform .16s ease;
+}
+
+html[data-embed="true"] .kwant-select.open .kwant-select-trigger svg { transform: rotate(180deg); }
+
+html[data-embed="true"] .kwant-select-menu {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 5px);
+  right: 0;
+  left: 0;
+  display: grid;
+  max-height: 220px;
+  padding: 5px;
+  overflow-y: auto;
+  border: 1px solid var(--ui-line-strong);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--ui-panel) 97%, black);
+  box-shadow: 0 16px 38px rgba(0,0,0,.5);
+}
+
+html[data-embed="true"] .kwant-select-menu.hidden { display: none; }
+
+html[data-embed="true"] .kwant-select-group {
+  padding: 8px 8px 4px;
+  color: var(--ui-muted);
+  font: 650 8px "Inter", system-ui, sans-serif;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+html[data-embed="true"] .kwant-select-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 32px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ui-muted);
+  font: 500 11px "Inter", system-ui, sans-serif;
+  text-align: left;
+}
+
+html[data-embed="true"] .kwant-select-option:hover {
+  background: var(--ui-panel-alt);
+  color: var(--ui-text);
+}
+
+html[data-embed="true"] .kwant-select-option.active {
+  background: rgba(var(--ui-accent-rgb),.1);
+  color: var(--ui-accent);
+}
+
+html[data-embed="true"] .kwant-select-option i {
+  visibility: hidden;
+  color: var(--ui-accent);
+  font-style: normal;
+}
+
+html[data-embed="true"] .kwant-select-option.active i { visibility: visible; }
 
 html[data-embed="true"] .metric-grid span,
 html[data-embed="true"] #signalsPanel article,
