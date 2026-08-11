@@ -139,7 +139,10 @@ class DepthForgeApp {
     window.addEventListener('storage', event => {
       if (event.key === WEBSITE_THEME_STORAGE_KEY) this.#setUiTheme(DEFAULT_UI_THEME);
     });
-    window.addEventListener('pageshow', () => this.#setUiTheme(DEFAULT_UI_THEME));
+    window.addEventListener('pageshow', () => {
+      this.#setUiTheme(DEFAULT_UI_THEME);
+      if (this.settings.autoCenter) this.goLive();
+    });
     $('instrumentTabList').addEventListener('click', event => {
       const tab = event.target.closest('.instrument-tab');
       if (!tab) return;
@@ -737,6 +740,7 @@ class DepthForgeApp {
   }
 
   #syncHeatmapControls() {
+    $('autoCenter').checked = Boolean(this.settings.autoCenter);
     $('sensitivityRange').value = String(this.settings.sensitivity);
     $('quickHeatRange').value = String(this.settings.sensitivity);
     $('sensitivityOutput').value = this.settings.sensitivity.toFixed(2);
@@ -1360,10 +1364,15 @@ class DepthForgeApp {
       if (layout) {
         if (this.settings.autoCenter) {
           this.view.centerTick = null;
+          this.viewEnd = this.history.length - 1;
+          this.atLive = true;
+          this.playing = true;
+          this.accumulator = 0;
+          this.#updatePlaybackUi();
         } else {
           this.view.centerTick = (this.view.centerTick ?? this.history[this.viewEnd].midTick) + dy / Math.max(1, layout.plotHeight) * layout.visibleTickSpan;
         }
-        if (Math.abs(dx) >= 2) {
+        if (!this.settings.autoCenter && Math.abs(dx) >= 2) {
           const columnShift = Math.round(-dx / Math.max(.6, this.view.columnPixels));
           if (columnShift !== 0) {
             this.viewEnd = Math.max(0, Math.min(this.history.length - 1, this.viewEnd + columnShift));
@@ -1456,6 +1465,7 @@ class DepthForgeApp {
     try { $('heatmapCanvas').releasePointerCapture(event.pointerId); } catch { /* pointer already released */ }
     this.drag = null;
     this.renderer.endInteraction();
+    if (this.settings.autoCenter) this.goLive();
     if (completedDrag.mode === 'dom-resize' && window.parent !== window) {
       window.parent.postMessage({
         type: 'kwantify:heatmap-dom-width',
@@ -1520,6 +1530,10 @@ class DepthForgeApp {
   #panHistory(columnShift) {
     const layout = this.renderer.layout;
     if (!layout || !this.history.length || columnShift === 0) return;
+    if (this.settings.autoCenter) {
+      this.goLive();
+      return;
+    }
     const nextEnd = panHistoryEnd({
       currentEnd: this.viewEnd,
       columnShift,

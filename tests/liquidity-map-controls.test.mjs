@@ -212,6 +212,16 @@ test("dragging and zooming cannot break an enabled auto-center lock", async () =
   assert.doesNotMatch(source, /\$\('autoCenter'\)\.checked = false/);
 });
 
+test("refresh and drag always snap an enabled auto-center back to live price", async () => {
+  const source = await readFile(mainPath, "utf8");
+
+  assert.match(source, /window\.addEventListener\('pageshow',[\s\S]*?if \(this\.settings\.autoCenter\) this\.goLive\(\)/);
+  assert.match(source, /#syncHeatmapControls\(\) \{[\s\S]*?\$\('autoCenter'\)\.checked = Boolean\(this\.settings\.autoCenter\)/);
+  assert.match(source, /this\.drag\?\.mode === 'pan'[\s\S]*?this\.settings\.autoCenter[\s\S]*?this\.viewEnd = this\.history\.length - 1;[\s\S]*?this\.atLive = true;/);
+  assert.match(source, /#pointerUp\(event\)[\s\S]*?if \(this\.settings\.autoCenter\) this\.goLive\(\)/);
+  assert.match(source, /#panHistory\(columnShift\)[\s\S]*?if \(this\.settings\.autoCenter\) \{[\s\S]*?this\.goLive\(\);[\s\S]*?return;/);
+});
+
 test("embedded map omits intrusive feed and latency overlays", async () => {
   const html = await readFile(htmlPath, "utf8");
 
