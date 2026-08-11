@@ -279,18 +279,19 @@ test("auto-center keeps live price as the true viewport target", async () => {
   assert.match(source, /if \(this\.settings\.autoCenter && this\.atLive\) this\.view\.centerTick = null;/);
   assert.doesNotMatch(source, /recenterThreshold|drift \* 0\.42/);
   assert.match(renderer, /const liveTick = Number\(current\.lastTick\);[\s\S]*?const targetCenterTick = view\.centerTick \?\? \(Number\.isFinite\(liveTick\) && liveTick > 0[\s\S]*?liveTick[\s\S]*?: current\.midTick\);/);
-  assert.match(renderer, /const autoCenterLocked = settings\.autoCenter[\s\S]*?const centerTick = autoCenterLocked[\s\S]*?\? targetCenterTick/);
+  assert.match(renderer, /const autoCenterLocked = settings\.autoCenter[\s\S]*?const centerTick = autoCenterLocked[\s\S]*?\? this\.#smoothCameraCenter\(targetCenterTick, true\)/);
   assert.match(renderer, /const bottomTick = centerTick - visibleTickSpan \/ 2;[\s\S]*?const topTick = centerTick \+ visibleTickSpan \/ 2;/);
 });
 
-test("auto-center locks live price to the midpoint without a chase frame", async () => {
+test("auto-center keeps the marker fixed while the price plane follows smoothly", async () => {
   const [source, renderer] = await Promise.all([
     readFile(mainPath, "utf8"),
     readFile(rendererPath, "utf8"),
   ]);
 
-  assert.match(renderer, /if \(autoCenterLocked\) \{[\s\S]*?this\.cameraCenterTick = targetCenterTick;[\s\S]*?this\.cameraInMotion = false;/);
-  assert.doesNotMatch(renderer, /const centerTick = this\.#smoothCameraCenter\(\s*targetCenterTick,\s*settings\.autoCenter/);
+  assert.match(renderer, /\? this\.#smoothCameraCenter\(targetCenterTick, true\)/);
+  assert.match(source, /const lockedCenterY = this\.settings\.autoCenter && this\.atLive[\s\S]*?plotHeight[\s\S]*?\/ 2/);
+  assert.match(source, /timestamp - this\.lastCanvasPaintAt >= 1000 \/ 30/);
   assert.match(source, /switchSymbol\(symbol\)[\s\S]*?this\.renderer\.resetCamera\(\)/);
   assert.match(source, /this\.renderRequested = this\.renderer\.cameraInMotion/);
 });

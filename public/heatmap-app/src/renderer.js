@@ -227,19 +227,13 @@ export class DepthRenderer {
     const autoCenterLocked = settings.autoCenter
       && view.centerTick == null
       && this.interaction == null;
-    // Auto-centre is a lock, not a camera chase. Letting the camera ease toward
-    // a new trade made the live-price line jump away from the midpoint for
-    // several frames and then slide back, which looked like the entire map was
-    // flashing vertically. Resolve the centre to the trade on the same paint;
-    // manual/unlocked views retain their explicit centre.
+    // Follow the live price with a damped camera. Snapping the complete price
+    // plane to every traded tick made the fixed view visibly jump. The marker
+    // remains centred by Main while the heavier depth canvas quietly catches
+    // up, giving the map a dolly movement instead of a staircase.
     const centerTick = autoCenterLocked
-      ? targetCenterTick
+      ? this.#smoothCameraCenter(targetCenterTick, true)
       : this.#smoothCameraCenter(targetCenterTick, false);
-    if (autoCenterLocked) {
-      this.cameraCenterTick = targetCenterTick;
-      this.cameraFrameAt = performance.now();
-      this.cameraInMotion = false;
-    }
     const bottomTick = centerTick - visibleTickSpan / 2;
     const topTick = centerTick + visibleTickSpan / 2;
     // Main owns the data-aware zoom floor. Keep only a tiny renderer safety

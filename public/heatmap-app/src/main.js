@@ -81,6 +81,7 @@ class DepthForgeApp {
     this.speed = 1;
     this.accumulator = 0;
     this.lastFrameTime = performance.now();
+    this.lastCanvasPaintAt = 0;
     this.renderRequested = true;
     this.lastUiUpdate = 0;
     this.tool = 'crosshair';
@@ -1133,13 +1134,15 @@ class DepthForgeApp {
         this.accumulator = Math.min(this.accumulator, this.market.intervalMs);
       }
 
-      if (this.renderRequested) {
+      const cameraPaintDue = !this.renderer.cameraInMotion || timestamp - this.lastCanvasPaintAt >= 1000 / 30;
+      if (this.renderRequested && cameraPaintDue) {
         const current = this.history[this.viewEnd];
         if (current) {
           if (this.settings.autoCenter && this.atLive) this.view.centerTick = null;
           const indicatorAnalysis = this.#getIndicatorAnalysis();
           indicatorAnalysis.sessionCvd = { points: this.cvdHistory };
           this.renderer.render(this.history, this.viewEnd, this.view, this.settings, SYMBOLS[this.symbol], indicatorAnalysis);
+          this.lastCanvasPaintAt = timestamp;
           const rightMarketRailWidth = Math.max(
             0,
             Number(this.renderer.layout?.width || 0) - Number(this.renderer.layout?.plotWidth || 0),
@@ -1394,7 +1397,10 @@ class DepthForgeApp {
     const config = SYMBOLS[this.symbol];
     const tag = $('currentPriceTag');
     tag.textContent = priceLabel(snapshot.lastTick, config);
-    tag.style.top = `${this.renderer.currentPriceY(snapshot.lastTick)}px`;
+    const lockedCenterY = this.settings.autoCenter && this.atLive
+      ? Number(this.renderer.layout?.plotHeight || 0) / 2
+      : this.renderer.currentPriceY(snapshot.lastTick);
+    tag.style.top = `${Math.max(10, lockedCenterY)}px`;
     const chartWidth = $('chartArea').clientWidth;
     const rightOffset = Math.max(0, chartWidth - (this.renderer.layout?.width || chartWidth));
     tag.style.right = `${rightOffset}px`;
