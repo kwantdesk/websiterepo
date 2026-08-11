@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   cmeEventTailCutoffMs,
+  cmeChartTailNeedsReconciliation,
   cmeSessionDateKey,
   cmeSessionStartMs,
   cmeSessionWindowForDate,
@@ -113,4 +114,39 @@ test("a full session is longer than the old six-hour window", () => {
 
 test("an invalid timestamp returns null rather than a guess", () => {
   assert.equal(cmeSessionStartMs(Number.NaN), null);
+});
+
+test("an active chart rejects a fresh cache with missing recent candles", () => {
+  const now = Date.parse("2026-08-11T14:07:30.000Z");
+  const candle = (iso) => ({
+    timestamp: Date.parse(iso),
+    open: 100,
+    high: 101,
+    low: 99,
+    close: 100,
+  });
+  assert.equal(cmeChartTailNeedsReconciliation([
+    candle("2026-08-11T14:00:00.000Z"),
+    candle("2026-08-11T14:01:00.000Z"),
+    candle("2026-08-11T14:07:00.000Z"),
+  ], "1m", now), true, "a current live candle must not hide an internal seam gap");
+  assert.equal(cmeChartTailNeedsReconciliation([
+    candle("2026-08-11T14:05:00.000Z"),
+    candle("2026-08-11T14:06:00.000Z"),
+    candle("2026-08-11T14:07:00.000Z"),
+  ], "1m", now), false);
+});
+
+test("the scheduled weekend closure is not reported as a chart-data hole", () => {
+  const candle = {
+    timestamp: Date.parse("2026-08-07T20:55:00.000Z"),
+    open: 100,
+    high: 101,
+    low: 99,
+    close: 100,
+  };
+  assert.equal(
+    cmeChartTailNeedsReconciliation([candle], "5m", Date.parse("2026-08-08T14:00:00.000Z")),
+    false,
+  );
 });

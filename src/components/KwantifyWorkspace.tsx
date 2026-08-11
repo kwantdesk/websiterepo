@@ -105,6 +105,7 @@ import {
   applyInstitutionalTradesToVolumeProfile,
   enrichCandlesWithInstitutionalCandleFlow,
   enrichCandlesWithInstitutionalTrades,
+  fetchInstitutionalSnapshot,
   fetchInstitutionalOrderFlowLevels,
   fetchInstitutionalVolumeProfile,
   mergeInstitutionalVolumeProfiles,
@@ -211,6 +212,7 @@ import {
 import {
   cmeSessionDateKey,
   cmeSessionStartMs,
+  cmeChartTailNeedsReconciliation,
   DEFAULT_CHART_HISTORY_CALENDAR_DAYS,
   hasMinimumChartHistory,
   trimToRecentChartSessions,
@@ -1774,11 +1776,41 @@ function reanchorLiveMidIntoCandles(candles: Candle[], mid: number, symbol: stri
 }
 
 const workspaceCandleRequests = new Map<string, Promise<Candle[]>>();
+const workspaceLiveSeamRequests = new Map<string, Promise<Candle[]>>();
 const workspaceExecutionTape = new Map<string, InstitutionalTrade[]>();
 const workspaceOrderFlowRequests = new Map<string, Promise<InstitutionalOrderFlowResult | null>>();
 
 function workspaceOrderFlowKey(symbol: string, timeframe: string) {
   return `${symbol}::${timeframe}::flow`;
+}
+
+function fetchWorkspaceLiveSeam(
+  symbol: string,
+  timeframe: string,
+  contractSymbol: string,
+) {
+  if (isEventBasedChartInterval(timeframe)) return Promise.resolve([] as Candle[]);
+  const key = `${symbol}::${contractSymbol}::${timeframe}`;
+  const pending = workspaceLiveSeamRequests.get(key);
+  if (pending) return pending;
+  const request = fetchInstitutionalSnapshot({
+    symbol: displayCmeSymbol(symbol),
+    contractSymbol,
+    timeframe,
+    // This is only the history/live seam. The normal CME request still owns
+    // the five-session backfill, while the live gateway supplies the recent
+    // bars that a delayed historical edge cannot contain yet.
+    lookbackBars: 240,
+    timeoutMs: 12_000,
+  }).then((snapshot) => sanitizeCandles(snapshot?.candles ?? [], symbol))
+    .catch(() => [] as Candle[])
+    .finally(() => {
+      if (workspaceLiveSeamRequests.get(key) === request) {
+        workspaceLiveSeamRequests.delete(key);
+      }
+    });
+  workspaceLiveSeamRequests.set(key, request);
+  return request;
 }
 
 function compactIndicatorExecutionHistory(records: InstitutionalTrade[]) {
@@ -3447,6 +3479,11 @@ function WorkspaceChartPane({
       ? mergeObservedDatabentoTail(immediateHistoryForPeriod, observedTail, pane.timeframe)
       : immediateHistoryForPeriod;
     const hasImmediateHistory = immediateHistoryForPeriod.length > 0;
+    const immediateTailNeedsReconciliation = pane.broker === "Databento"
+      && cmeChartTailNeedsReconciliation(immediateCandles, pane.timeframe);
+    const liveSeamRequest = pane.broker === "Databento" && resolvedContractSymbol
+      ? fetchWorkspaceLiveSeam(pane.symbol, pane.timeframe, resolvedContractSymbol)
+      : Promise.resolve([] as Candle[]);
     const memoryTape = needsOrderFlowHistory
       ? peekExecutionTapeCache(pane.symbol, pane.timeframe)?.records ?? []
       : [];
@@ -3459,14 +3496,14 @@ function WorkspaceChartPane({
         immediateMarketTrades,
       );
     }
-    setLoading(!hasImmediateHistory);
+    setLoading(!hasImmediateHistory || immediateTailNeedsReconciliation);
     setError(null);
     setCandles(hasImmediateHistory ? immediateCandles : []);
     setMarketTrades(immediateMarketTrades);
     latestCandlesRef.current = hasImmediateHistory ? immediateCandles : [];
     latestMarketTradesRef.current = immediateMarketTrades;
     latestOrderFlowCandlesRef.current = [];
-    historyHydratedRef.current = hasImmediateHistory;
+    historyHydratedRef.current = hasImmediateHistory && !immediateTailNeedsReconciliation;
     liveTailStartTimestampRef.current = observedTail[0]?.timestamp ?? null;
     pendingLiveTicksRef.current = [];
     if (liveFrameRef.current !== null) {
@@ -3524,10 +3561,10 @@ function WorkspaceChartPane({
               orderFlowCandles,
             );
         latestCandlesRef.current = mergedCandles;
-        historyHydratedRef.current = true;
+        historyHydratedRef.current = !cmeChartTailNeedsReconciliation(mergedCandles, pane.timeframe);
         setCandles(mergedCandles);
         setMarketTrades(mergedTape);
-        setLoading(false);
+        setLoading(cmeChartTailNeedsReconciliation(mergedCandles, pane.timeframe));
         setError(null);
         void writeChartHistoryCache(pane.symbol, pane.timeframe, mergedCandles);
       }).catch(() => {
@@ -3536,13 +3573,14 @@ function WorkspaceChartPane({
     }
 
     const loadHistory = async () => {
-      const [cached, storedTape] = await Promise.all([
+      const [cached, storedTape, liveSeam] = await Promise.all([
         pane.broker === "Databento"
           ? readCompatibleChartHistoryCache(pane.symbol, pane.timeframe)
           : Promise.resolve(null),
         pane.broker === "Databento" && needsOrderFlowHistory
           ? readExecutionTapeCache(pane.symbol, pane.timeframe)
           : Promise.resolve(null),
+        liveSeamRequest,
       ]);
       if (cancelled) return;
       const cachedMarketTrades = needsOrderFlowHistory
@@ -3560,7 +3598,10 @@ function WorkspaceChartPane({
         setMarketTrades(cachedMarketTrades);
       }
       const cachedHistory = trimCandlesAfterActiveBucket(
-        sanitizeCandles(cached?.candles ?? [], pane.symbol),
+        sanitizeCandles(
+          mergeChartHistory(cached?.candles ?? [], liveSeam),
+          pane.symbol,
+        ),
         pane.timeframe,
       );
       const cachedBase = trimChartHistoryForPeriod(cachedHistory, period, requestedFrom);
@@ -3593,13 +3634,14 @@ function WorkspaceChartPane({
       );
       const cachedIsHydrated = cachedCandles.length > 0
         && cachedTailIsFresh
+        && !cmeChartTailNeedsReconciliation(cachedCandles, pane.timeframe)
         && (!needsFiveDayBackfill || hasFiveDayHistory(cachedHistory, pane.timeframe))
         && (!needsOrderFlowHistory || hasUsableOrderFlowHistory(cachedCandles));
       if (cachedBase.length) {
         latestCandlesRef.current = cachedCandles;
-        historyHydratedRef.current = true;
+        historyHydratedRef.current = !cmeChartTailNeedsReconciliation(cachedCandles, pane.timeframe);
         setCandles(cachedCandles);
-        setLoading(false);
+        setLoading(cmeChartTailNeedsReconciliation(cachedCandles, pane.timeframe));
         setError(null);
       }
       if (cachedIsHydrated) {
@@ -3639,15 +3681,15 @@ function WorkspaceChartPane({
           );
           if (baseCandles.length) {
             cachedCandles = mergeHistoricalWithLiveTail(
-              mergeChartHistory(cachedCandles, baseCandles),
+              mergeChartHistory(mergeChartHistory(cachedCandles, baseCandles), liveSeam),
               latestCandlesRef.current,
               pane.timeframe,
               liveTailStartTimestampRef.current,
             );
             latestCandlesRef.current = cachedCandles;
-            historyHydratedRef.current = true;
+            historyHydratedRef.current = !cmeChartTailNeedsReconciliation(cachedCandles, pane.timeframe);
             setCandles(cachedCandles);
-            setLoading(false);
+            setLoading(cmeChartTailNeedsReconciliation(cachedCandles, pane.timeframe));
             setError(null);
           }
         } catch (baseError) {
@@ -3681,7 +3723,7 @@ function WorkspaceChartPane({
           ? trimChartHistoryForPeriod(downloaded, period, requestedFrom)
           : downloaded;
         const mergedHistory = pane.broker === "Databento"
-          ? mergeChartHistory(cachedCandles, clean)
+          ? mergeChartHistory(mergeChartHistory(cachedCandles, clean), liveSeam)
           : clean;
         if (!mergedHistory.length) throw new Error("CME returned no usable candles.");
         const latestObserved = pane.broker === "Databento"
@@ -3724,11 +3766,11 @@ function WorkspaceChartPane({
             nextMarketTrades,
           );
         }
-        historyHydratedRef.current = true;
+        historyHydratedRef.current = !cmeChartTailNeedsReconciliation(merged, pane.timeframe);
         setCandles(merged);
         setMarketTrades(nextMarketTrades);
         setError(null);
-        setLoading(false);
+        setLoading(cmeChartTailNeedsReconciliation(merged, pane.timeframe));
       } catch (loadError) {
         if (cancelled) return;
         if (loadError instanceof DOMException && loadError.name === "AbortError") return;
@@ -3736,7 +3778,10 @@ function WorkspaceChartPane({
           historyHydratedRef.current = false;
           setError("CME history is temporarily unavailable.");
         }
-        setLoading(false);
+        setLoading(cmeChartTailNeedsReconciliation(
+          latestCandlesRef.current.length ? latestCandlesRef.current : cachedCandles,
+          pane.timeframe,
+        ));
       }
     };
 

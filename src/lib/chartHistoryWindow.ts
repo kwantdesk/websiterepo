@@ -208,6 +208,57 @@ function timeframeDurationMs(timeframe: string) {
   return value * unitMs[match[2]];
 }
 
+/**
+ * A history response can be freshly cached while its final candle is still
+ * several minutes behind the live market. During an active CME session that
+ * is not a hydrated chart: joining it directly to the first browser tick
+ * creates a visible hole at the history/live seam.
+ */
+export function cmeChartTailNeedsReconciliation(
+  candles: Candle[],
+  timeframe: string,
+  now = Date.now(),
+) {
+  if (!candles.length) return true;
+  const durationMs = timeframeDurationMs(timeframe);
+  if (durationMs === null) return false;
+
+  const tradingDate = cmeSessionDateKey(now);
+  const sessionStart = cmeSessionStartMs(now);
+  const tradingClose = tradingDate ? cmeTradingCloseMsForDate(tradingDate) : null;
+  const marketIsOpen = Boolean(
+    sessionStart !== null
+    && tradingClose !== null
+    && now >= sessionStart
+    && now < tradingClose,
+  );
+  if (!marketIsOpen) return false;
+
+  const activeBucket = Math.floor(now / durationMs) * durationMs;
+  const latestBucket = Math.floor((candles.at(-1)?.timestamp ?? 0) / durationMs) * durationMs;
+  if (latestBucket < activeBucket) return true;
+
+  // Validate the recent seam as well as the final timestamp. A single current
+  // tick can create the active candle while two-to-five intervening candles
+  // are still absent. That series looks current by its last timestamp but is
+  // visibly broken. Restrict the check to this CME session so the scheduled
+  // maintenance/reopen gap is never mistaken for missing data.
+  if (durationMs >= 24 * 60 * 60_000) return false;
+  const recentStart = Math.max(
+    sessionStart ?? Number.NEGATIVE_INFINITY,
+    activeBucket - Math.max(30 * 60_000, durationMs * 12),
+  );
+  const recentBuckets = [...new Set(candles
+    .map((candle) => Math.floor(candle.timestamp / durationMs) * durationMs)
+    .filter((timestamp) => timestamp >= recentStart && timestamp <= activeBucket))]
+    .sort((left, right) => left - right);
+  if (!recentBuckets.length) return true;
+  for (let index = 1; index < recentBuckets.length; index += 1) {
+    if (recentBuckets[index] - recentBuckets[index - 1] > durationMs) return true;
+  }
+  return false;
+}
+
 export function hasMinimumChartHistory(
   candles: Candle[],
   timeframe: string,
