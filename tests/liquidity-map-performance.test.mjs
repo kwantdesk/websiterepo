@@ -43,12 +43,15 @@ test("live map rendering avoids full-history analysis and repeated DOM replaceme
   const runtime = read("public/heatmap-app/src/main.js");
   const depthEngine = read("public/heatmap-app/src/depth-engine.js");
 
-  assert.match(runtime, /INDICATOR_ANALYSIS_INTERVAL_MS = 250/);
+  assert.match(runtime, /INDICATOR_ANALYSIS_INTERVAL_MS = 500/);
   assert.match(runtime, /nextHtml !== this\.depthLadderHtml/);
   assert.match(runtime, /nextHtml !== this\.tapeHtml/);
   assert.match(depthEngine, /if \(!force && this\.version > 0\) return false/);
   assert.match(runtime, /this\.renderRequested = false;\s+this\.frames \+= 1;/);
-  assert.match(runtime, /timestamp - this\.lastUiUpdate > 50/);
+  assert.match(runtime, /timestamp - this\.lastUiUpdate > 100/);
+  assert.match(runtime, /activePanel === 'depthPanel'/);
+  assert.match(runtime, /activePanel === 'signalsPanel'/);
+  assert.match(runtime, /if \(metadata\.final\) this\.#updateUi\(false\)/);
   assert.match(runtime, /snapshot\.eventsSince \?\?/);
   assert.match(runtime, /finally \{\s+requestAnimationFrame\(next => this\.#loop\(next\)\);/);
 });
@@ -58,4 +61,7 @@ test("wide and high-DPI screens use bounded canvas work and cached trade cluster
   assert.match(renderer, /Math\.sqrt\(5_000_000 \/ Math\.max\(1, width \* height\)\)/);
   assert.match(renderer, /Math\.min\(1\.5, window\.devicePixelRatio/);
   assert.match(renderer, /this\.tradeClusterCache\.key !== clusterKey/);
+  assert.match(renderer, /const heatmapAnchor = Math\.max\(layout\.rowTicks, layout\.rowTicks \* 4\)/);
+  assert.match(renderer, /bottomTick: heatmapBottomTick,[\s\S]*?topTick: heatmapTopTick/);
+  assert.match(renderer, /0, heatmapYOffset, layout\.dataWidth, layout\.plotHeight/);
 });

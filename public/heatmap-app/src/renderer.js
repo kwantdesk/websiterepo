@@ -328,11 +328,24 @@ export class DepthRenderer {
     const paletteKey = `${paletteRenderKey(settings.palette)}:${settings.heatmapDimming}`;
     const paletteChanged = this.heatPalette !== paletteKey;
     this.heatPalette = paletteKey;
+    // The camera centre is deliberately sub-pixel smooth. Feeding that
+    // fractional position into the heat-raster cache made every animation
+    // frame a new geometry and forced all visible depth columns to be rebuilt.
+    // Anchor the expensive depth raster to a stable four-row price grid; live
+    // price, trades, trails and the presentation camera remain exact.
+    const heatmapAnchor = Math.max(layout.rowTicks, layout.rowTicks * 4);
+    const heatmapCenterTick = Math.round(layout.centerTick / heatmapAnchor) * heatmapAnchor;
+    const heatmapBottomTick = heatmapCenterTick - layout.visibleTickSpan / 2;
+    const heatmapTopTick = heatmapCenterTick + layout.visibleTickSpan / 2;
+    const heatmapYOffset = (
+      (layout.topTick - heatmapTopTick)
+      / Math.max(1, layout.visibleTickSpan)
+    ) * layout.plotHeight;
     const heatmap = this.depthEngine.buildHeatmap({
       start,
       end,
-      bottomTick: layout.bottomTick,
-      topTick: layout.topTick,
+      bottomTick: heatmapBottomTick,
+      topTick: heatmapTopTick,
       rowTicks: layout.rowTicks,
       filterType: settings.heatmapFilter,
       gaussianSigma: settings.gaussianSigma,
@@ -368,13 +381,16 @@ export class DepthRenderer {
       this.#writeHeatmapPixels(heatmap, palette, heatmap.updateStart, columns - heatmap.updateStart, rasterRows);
     }
     ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, 0, layout.plotWidth, layout.plotHeight);
+    ctx.clip();
     ctx.imageSmoothingEnabled = false;
     ctx.globalAlpha = 1;
-    ctx.drawImage(this.heatBuffer, 0, 0, columns, rasterRows, 0, 0, layout.dataWidth, layout.plotHeight);
+    ctx.drawImage(this.heatBuffer, 0, 0, columns, rasterRows, 0, heatmapYOffset, layout.dataWidth, layout.plotHeight);
     ctx.drawImage(
       this.heatBuffer,
       Math.max(0, columns - 1), 0, 1, rasterRows,
-      layout.dataWidth, 0, layout.liveGap, layout.plotHeight,
+      layout.dataWidth, heatmapYOffset, layout.liveGap, layout.plotHeight,
     );
     ctx.restore();
   }

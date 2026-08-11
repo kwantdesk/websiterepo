@@ -33,7 +33,7 @@ const LIQUIDITY_MAP_TABS_KEY = 'kwantdesk:liquidity-map-tabs:v1';
 const LIQUIDITY_MAP_SYMBOLS = new Set(['NQ', 'ES']);
 const DEFAULT_INSTRUMENT_TABS = ['NQ', 'ES'];
 const INSTRUMENT_ORDER = ['NQ', 'ES'];
-const INDICATOR_ANALYSIS_INTERVAL_MS = 250;
+const INDICATOR_ANALYSIS_INTERVAL_MS = 500;
 const LIQUIDITY_MAP_DISPLAY_DEFAULTS = Object.freeze({
   palette: DEFAULT_PALETTE,
   sensitivity: 0.1,
@@ -792,6 +792,7 @@ class DepthForgeApp {
     const mapping = { depth: 'depthPanel', signals: 'signalsPanel', settings: 'settingsPanel' };
     all('[data-panel-shortcut]').forEach(button => button.classList.toggle('active', button.dataset.panelShortcut === panel));
     all('.inspector-panel').forEach(candidate => candidate.classList.toggle('active', candidate.id === mapping[panel]));
+    this.#updateUi(false);
   }
 
   #restoreSettings() {
@@ -1038,7 +1039,9 @@ class DepthForgeApp {
     // snapshot against the current canvas dimensions on every paint.
     if (this.settings.autoCenter && wasAtLive) this.view.centerTick = null;
     if (!metadata.historical || metadata.final) {
-      this.#updateUi(false);
+      // Live presentation is flushed by the animation loop. Updating the DOM
+      // here as well made every genuine depth frame pay the UI cost twice.
+      if (metadata.final) this.#updateUi(false);
       this.pendingReadySymbol = this.symbol;
       this.renderRequested = true;
     }
@@ -1226,7 +1229,7 @@ class DepthForgeApp {
       // The ladder used to refresh every 180 ms, which is only 5.5 Hz and was
       // the most obvious source of the map's low-frame-rate feel. DOM writes
       // are already diffed, so a 50 ms presentation cadence is sustainable.
-      if (timestamp - this.lastUiUpdate > 50) {
+      if (timestamp - this.lastUiUpdate > 100) {
         this.#updateUi(false);
         this.lastUiUpdate = timestamp;
       }
@@ -1298,9 +1301,15 @@ class DepthForgeApp {
     $('rangeStart').textContent = timeLabel(this.history[0].timestamp, true);
     const timelineValue = this.history.length <= 1 ? 1000 : Math.round(this.viewEnd / (this.history.length - 1) * 1000);
     if (document.activeElement !== $('timeline')) $('timeline').value = String(timelineValue);
-    this.#updateDepthLadder(snapshot, config);
-    this.#updateMetrics(snapshot, config);
-    if (force || snapshot.trades.length) this.#renderTape();
+    const inspector = $('inspector');
+    const inspectorOpen = inspector?.classList.contains('open');
+    const activePanel = inspectorOpen ? inspector.querySelector('.inspector-panel.active')?.id : '';
+    if (force || activePanel === 'depthPanel') {
+      this.#updateDepthLadder(snapshot, config);
+      this.#updateMetrics(snapshot, config);
+      if (force || snapshot.trades.length) this.#renderTape();
+    }
+    if (force || activePanel === 'signalsPanel') this.#updateSignals(snapshot);
   }
 
   #updateDepthLadder(snapshot, config) {
@@ -1339,7 +1348,6 @@ class DepthForgeApp {
     $('topDepth').textContent = this.#compactNumber(snapshot.imbalance.bid + snapshot.imbalance.ask);
     $('wallCount').textContent = String(snapshot.wallCount);
     $('tradeRate').textContent = `${snapshot.tradeRate.toFixed(1)}/s`;
-    this.#updateSignals(snapshot);
   }
 
   #updateSignals(snapshot) {
