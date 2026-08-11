@@ -410,10 +410,14 @@ export class RollingDepthEngine {
   }
 
   #rawColumn(frame, geometry) {
-    let cache = this.columnCache.get(frame);
+    // Clock-sampled presentation frames intentionally share the exact same
+    // resting book until Rithmic changes it. Reuse the source frame's raster
+    // column instead of recalculating hundreds of identical price rows.
+    const cacheOwner = frame.presentationSource || frame;
+    let cache = this.columnCache.get(cacheOwner);
     if (!cache) {
       cache = new Map();
-      this.columnCache.set(frame, cache);
+      this.columnCache.set(cacheOwner, cache);
     }
     const key = geometryKey(geometry);
     if (cache.has(key)) return cache.get(key);

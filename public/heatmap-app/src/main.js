@@ -34,6 +34,8 @@ const LIQUIDITY_MAP_SYMBOLS = new Set(['NQ', 'ES']);
 const DEFAULT_INSTRUMENT_TABS = ['NQ', 'ES'];
 const INSTRUMENT_ORDER = ['NQ', 'ES'];
 const INDICATOR_ANALYSIS_INTERVAL_MS = 500;
+const PRESENTATION_SAMPLE_MS = 50;
+const PRESENTATION_BOOK_FRESH_MS = 15_000;
 const LIQUIDITY_MAP_DISPLAY_DEFAULTS = Object.freeze({
   palette: DEFAULT_PALETTE,
   sensitivity: 0.1,
@@ -85,8 +87,11 @@ class DepthForgeApp {
     this.renderRequested = true;
     this.lastUiUpdate = 0;
     this.presentationCameraY = 0;
+    this.presentationCameraX = 0;
     this.presentationCameraAt = performance.now();
     this.presentationFrames = 0;
+    this.lastGenuineDepthFrameAt = 0;
+    this.lastPresentationSampleAt = 0;
     this.tool = 'crosshair';
     this.drag = null;
     this.cvdDrag = null;
@@ -978,6 +983,11 @@ class DepthForgeApp {
   }
 
   #ingestDepthSnapshot(snapshot, metadata = {}) {
+    if (!metadata.historical && !metadata.visualHold) {
+      const arrivedAt = performance.now();
+      this.lastGenuineDepthFrameAt = arrivedAt;
+      this.lastPresentationSampleAt = arrivedAt;
+    }
     // Two separate gates rejected the Rithmic feed here. The source check was
     // pinned to Databento, and the symbol had to match literally - but the
     // collector serves micros from the parent book and answers with the
@@ -1118,6 +1128,36 @@ class DepthForgeApp {
     if (this.tape.length > 35) this.tape.length = 35;
   }
 
+  #sampleRestingBook(timestamp) {
+    if (
+      this.sourceMode !== 'live'
+      || !this.atLive
+      || !this.playing
+      || !this.liveStatus.connected
+      || !this.history.length
+      || timestamp - this.lastPresentationSampleAt < PRESENTATION_SAMPLE_MS
+      || timestamp - this.lastGenuineDepthFrameAt > PRESENTATION_BOOK_FRESH_MS
+    ) return;
+
+    const current = this.history[this.history.length - 1];
+    const source = current.presentationSource || current;
+    const hold = {
+      ...current,
+      id: `hold:${source.id}:${Math.round(timestamp)}`,
+      timestamp: Math.max(Number(current.timestamp) + 1, Date.now()),
+      trades: [],
+      delta: 0,
+      volume: 0,
+      eventsSince: 0,
+      presentationSource: source,
+    };
+    const { shifted } = this.depthEngine.append(hold);
+    this.viewEnd = this.history.length - 1;
+    if (shifted && !this.atLive) this.viewEnd = Math.max(0, this.viewEnd - shifted);
+    this.lastPresentationSampleAt = timestamp;
+    this.renderRequested = true;
+  }
+
   #presentLiveCamera(timestamp) {
     const canvas = this.renderer.canvas;
     const layout = this.renderer.layout;
@@ -1132,6 +1172,7 @@ class DepthForgeApp {
       && this.renderer.interaction == null
     );
     if (!enabled) {
+      this.presentationCameraX = 0;
       this.presentationCameraY = 0;
       this.presentationCameraAt = timestamp;
       if (canvas?.style.transform) canvas.style.transform = '';
@@ -1152,9 +1193,11 @@ class DepthForgeApp {
     const blend = 1 - Math.exp(-elapsed / 34);
     this.presentationCameraY += (targetY - this.presentationCameraY) * blend;
     if (Math.abs(targetY - this.presentationCameraY) < 0.04) this.presentationCameraY = targetY;
-    const transform = Math.abs(this.presentationCameraY) < 0.02
+    this.presentationCameraX += (0 - this.presentationCameraX) * blend;
+    if (Math.abs(this.presentationCameraX) < 0.02) this.presentationCameraX = 0;
+    const transform = Math.abs(this.presentationCameraY) < 0.02 && Math.abs(this.presentationCameraX) < 0.02
       ? ''
-      : `translate3d(0, ${this.presentationCameraY.toFixed(3)}px, 0)`;
+      : `translate3d(${this.presentationCameraX.toFixed(3)}px, ${this.presentationCameraY.toFixed(3)}px, 0)`;
     if (canvas.style.transform !== transform) canvas.style.transform = transform;
   }
 
@@ -1164,6 +1207,7 @@ class DepthForgeApp {
       const elapsed = Math.min(120, timestamp - this.lastFrameTime);
       this.lastFrameTime = timestamp;
       this.accumulator += elapsed;
+      this.#sampleRestingBook(timestamp);
 
       if (this.playing) {
         const interval = this.market.intervalMs / this.speed;
@@ -1188,10 +1232,16 @@ class DepthForgeApp {
           const indicatorAnalysis = this.#getIndicatorAnalysis();
           indicatorAnalysis.sessionCvd = { points: this.cvdHistory };
           const previousCenterTick = Number(this.renderer.layout?.centerTick);
+          const previousEndFrame = this.renderer.layout?.history?.[this.renderer.layout?.end];
           const previousPixelsPerTick = Number(this.renderer.layout?.plotHeight)
             / Math.max(1, Number(this.renderer.layout?.visibleTickSpan));
           this.renderer.render(this.history, this.viewEnd, this.view, this.settings, SYMBOLS[this.symbol], indicatorAnalysis);
           const nextCenterTick = Number(this.renderer.layout?.centerTick);
+          const previousEndIndex = previousEndFrame ? this.history.indexOf(previousEndFrame) : -1;
+          if (previousEndIndex >= 0 && this.viewEnd > previousEndIndex) {
+            const advancedColumns = Math.min(8, this.viewEnd - previousEndIndex);
+            this.presentationCameraX += advancedColumns * Number(this.renderer.layout?.columnPixels || 0);
+          }
           if (
             Number.isFinite(previousCenterTick)
             && Number.isFinite(nextCenterTick)
