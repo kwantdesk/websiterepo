@@ -553,7 +553,8 @@ export default function SocialsWorkspace({
   const [followingState, setFollowingState] = useState<"loading" | "ready" | "unavailable">("loading");
   const [followRecommendations, setFollowRecommendations] = useState<SocialFollowRecommendation[]>([]);
   const [recommendationState, setRecommendationState] = useState<"idle" | "loading" | "ready" | "fallback">("idle");
-  const [followActionUserId, setFollowActionUserId] = useState("");
+  const [followActionUserIds, setFollowActionUserIds] = useState<Set<string>>(() => new Set());
+  const followRefreshTimerRef = useRef<number | null>(null);
   const [rankingScope, setRankingScope] = useState<RankingScope>("desk");
   const [rankingFriends, setRankingFriends] = useState<FriendSummary[]>([]);
   const [deskNetwork, setDeskNetwork] = useState<DeskNetworkPayload>(EMPTY_DESK_NETWORK);
@@ -846,7 +847,15 @@ export default function SocialsWorkspace({
   useEffect(() => {
     if (!ready) return;
     void loadFollowingUsers();
-    const refresh = () => void loadFollowingUsers(true);
+    // A burst of follows should reconcile once after it settles, rather than
+    // downloading the complete following list after every individual click.
+    const refresh = () => {
+      if (followRefreshTimerRef.current !== null) window.clearTimeout(followRefreshTimerRef.current);
+      followRefreshTimerRef.current = window.setTimeout(() => {
+        followRefreshTimerRef.current = null;
+        void loadFollowingUsers(true);
+      }, 350);
+    };
     const handleVisibility = () => {
       if (document.visibilityState === "visible") refresh();
     };
@@ -863,6 +872,7 @@ export default function SocialsWorkspace({
       document.removeEventListener("visibilitychange", handleVisibility);
       channel?.removeEventListener("message", refresh);
       channel?.close();
+      if (followRefreshTimerRef.current !== null) window.clearTimeout(followRefreshTimerRef.current);
     };
   }, [loadFollowingUsers, ready]);
 
@@ -2316,9 +2326,9 @@ export default function SocialsWorkspace({
   };
 
   const updateFeedFollow = async (targetUserId: string, currentlyFollowing: boolean) => {
-    if (followActionUserId) return;
-    const previous = followingUsers;
-    setFollowActionUserId(targetUserId);
+    if (followActionUserIds.has(targetUserId)) return;
+    const previousItem = followingUsers.find((item) => item.userId === targetUserId) ?? null;
+    setFollowActionUserIds((current) => new Set(current).add(targetUserId));
     if (currentlyFollowing) {
       setFollowingUsers((current) => current.filter((item) => item.userId !== targetUserId));
     } else {
@@ -2347,9 +2357,8 @@ export default function SocialsWorkspace({
       });
       const result = await response.json() as SocialFollowResponse;
       if (!response.ok) throw new Error(result.error || "That follow could not be saved.");
-      await loadFollowingUsers(true);
       window.dispatchEvent(new CustomEvent("kwantdesk:social-follow-changed", {
-        detail: { targetUserId },
+        detail: { targetUserId, optimistic: true },
       }));
       if ("BroadcastChannel" in window) {
         const channel = new BroadcastChannel("kwantdesk-social-follows");
@@ -2358,10 +2367,19 @@ export default function SocialsWorkspace({
       }
       setNotice(currentlyFollowing ? "Unfollowed. Their new posts will leave your Following feed." : "Following. Their new posts will now appear in your feed.");
     } catch (reason) {
-      setFollowingUsers(previous);
+      // Roll back only this target so another follow completed during the same
+      // burst is never erased by an unrelated failed request.
+      setFollowingUsers((current) => {
+        const withoutTarget = current.filter((item) => item.userId !== targetUserId);
+        return currentlyFollowing && previousItem ? [...withoutTarget, previousItem] : withoutTarget;
+      });
       setNotice(reason instanceof Error ? reason.message : "That follow could not be saved.");
     } finally {
-      setFollowActionUserId("");
+      setFollowActionUserIds((current) => {
+        const next = new Set(current);
+        next.delete(targetUserId);
+        return next;
+      });
     }
   };
 
@@ -3800,7 +3818,7 @@ export default function SocialsWorkspace({
                     <div key={recommendation.userId} className="flex items-center gap-2.5 p-3">
                       <button type="button" onClick={() => onOpenProfile?.(recommendation.handle)}><Avatar label={recommendation.displayName} avatarUrl={recommendation.avatarUrl} size="sm" statusClassName={profile ? presenceOption(effectivePresenceStatus(profile.presenceStatus, profile.lastSeenAt)).dotClassName : undefined} /></button>
                       <button type="button" onClick={() => onOpenProfile?.(recommendation.handle)} className="min-w-0 flex-1 text-left"><span className="block truncate text-[8px] font-semibold text-foreground">{recommendation.displayName}</span><span className="mt-0.5 block truncate text-[7px] text-muted">@{recommendation.handle}</span><span className="mt-1 block truncate text-[6.5px] font-medium text-primary/80">{recommendation.reason}</span></button>
-                      <button type="button" onClick={() => void updateFeedFollow(recommendation.userId, isFollowing)} disabled={Boolean(followActionUserId)} className={`flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-[7px] font-semibold transition-colors ${isFollowing ? "border-border bg-surface text-muted hover:text-foreground" : "border-primary/25 bg-primary/[0.07] text-primary"}`}>{isFollowing ? <Check className="h-3 w-3" /> : <UserPlus className="h-3 w-3" />}{isFollowing ? "Following" : "Follow"}</button>
+                      <button type="button" onClick={() => void updateFeedFollow(recommendation.userId, isFollowing)} disabled={followActionUserIds.has(recommendation.userId)} aria-busy={followActionUserIds.has(recommendation.userId)} className={`flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-[7px] font-semibold transition-colors disabled:cursor-default ${isFollowing ? "border-border bg-surface text-muted hover:text-foreground" : "border-primary/25 bg-primary/[0.07] text-primary"}`}>{isFollowing ? <Check className="h-3 w-3" /> : <UserPlus className="h-3 w-3" />}{isFollowing ? "Following" : "Follow"}</button>
                     </div>
                     );
                   })}
