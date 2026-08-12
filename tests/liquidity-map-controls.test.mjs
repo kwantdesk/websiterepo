@@ -275,6 +275,15 @@ test("wheel input over the price rail stretches only the vertical price axis", a
   assert.match(html, /Price scale \+ wheel<\/kbd><span>Stretch price axis only/);
 });
 
+test("wheel input over the time rail stretches only the horizontal time axis", async () => {
+  const html = await readFile(htmlPath, "utf8");
+  const source = await readFile(mainPath, "utf8");
+
+  assert.match(source, /#isTimeAxisPoint\(point\)[\s\S]*?point\.y >= layout\.plotHeight[\s\S]*?point\.y <= layout\.plotHeight \+ layout\.timeAxisHeight/);
+  assert.match(source, /if \(this\.#isTimeAxisPoint\(point\)\)[\s\S]*?\{ price: false, time: true \}/);
+  assert.match(html, /Time scale \+ wheel<\/kbd><span>Stretch time axis only/);
+});
+
 test("auto-center keeps live price as the true viewport target", async () => {
   const [source, renderer] = await Promise.all([
     readFile(mainPath, "utf8"),

@@ -1604,6 +1604,15 @@ class DepthForgeApp {
       && point.x <= layout.plotWidth + layout.priceAxisWidth;
   }
 
+  #isTimeAxisPoint(point) {
+    const layout = this.renderer.layout;
+    if (!layout || !point) return false;
+    return point.x >= 0
+      && point.x <= layout.plotWidth
+      && point.y >= layout.plotHeight
+      && point.y <= layout.plotHeight + layout.timeAxisHeight;
+  }
+
   #isDomResizePoint(point) {
     const layout = this.renderer.layout;
     if (!layout || !point || !layout.domVisible) return false;
@@ -1808,6 +1817,17 @@ class DepthForgeApp {
         x: layout.plotWidth,
         y: layout.plotHeight / 2,
       }, { price: true, time: false });
+      return;
+    }
+    if (this.#isTimeAxisPoint(point)) {
+      // Match the dedicated price-scale interaction: the bottom timeline is
+      // a horizontal scale, not the chart body. Wheel input here changes only
+      // the left/right spacing of time columns and cannot change price zoom.
+      const factor = event.deltaY > 0 ? 1.16 : 0.86;
+      this.#zoom(factor, {
+        x: Math.max(0, Math.min(layout.dataWidth, point.x)),
+        y: layout.plotHeight,
+      }, { price: false, time: true });
       return;
     }
     if (event.ctrlKey || event.metaKey) {
