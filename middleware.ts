@@ -10,6 +10,38 @@ function allowed(email?: string | null) {
   return Boolean(email?.trim());
 }
 
+function supabaseAuthCookieName(supabaseUrl: string) {
+  try {
+    const projectRef = new URL(supabaseUrl).hostname.split(".")[0]?.trim();
+    return projectRef ? `sb-${projectRef}-auth-token` : "";
+  } catch {
+    return "";
+  }
+}
+
+function belongsToAuthCookie(name: string, baseName: string) {
+  return name === baseName || name.startsWith(`${baseName}.`);
+}
+
+function expireObsoleteSupabaseCookies(
+  request: NextRequest,
+  response: NextResponse,
+  activeBaseName: string,
+) {
+  for (const cookie of request.cookies.getAll()) {
+    const isSupabaseAuthCookie = cookie.name.startsWith("sb-")
+      && cookie.name.includes("-auth-token");
+    if (!isSupabaseAuthCookie || belongsToAuthCookie(cookie.name, activeBaseName)) continue;
+    response.cookies.set(cookie.name, "", {
+      path: "/",
+      expires: new Date(0),
+      maxAge: 0,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+    });
+  }
+}
+
 export async function middleware(request: NextRequest) {
   const response = NextResponse.next({ request });
   const pathname = request.nextUrl.pathname;
@@ -63,13 +95,22 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL("/login?error=configuration", request.url));
   }
 
+  const activeAuthCookie = supabaseAuthCookieName(url);
   const supabase = createServerClient(url, key, {
     cookies: {
-      getAll() { return request.cookies.getAll(); },
+      // Never hand old Supabase projects or unrelated cookie chunks to the
+      // auth parser. Besides being irrelevant, accumulated JWT chunks can
+      // make Routing Middleware exceed Vercel's request-header limit.
+      getAll() {
+        return request.cookies
+          .getAll()
+          .filter((cookie) => belongsToAuthCookie(cookie.name, activeAuthCookie));
+      },
       setAll(cookies) { cookies.forEach(({ name, value, options }) => response.cookies.set(name, value, options)); },
     },
   });
   const { data } = await supabase.auth.getUser();
+  expireObsoleteSupabaseCookies(request, response, activeAuthCookie);
 
   if (!data.user || !allowed(data.user.email)) {
     if (apiRequest) {
@@ -87,5 +128,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!auth|_next/static|_next/image|favicon.ico|images/|brand/).*)"],
+  matcher: ["/((?!auth|_next/static|_next/image|favicon.ico|cookie-recovery.html|images/|brand/).*)"],
 };

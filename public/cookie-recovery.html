@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <title>Repairing KwantDesk session</title>
+    <style>
+      :root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
+      * { box-sizing: border-box; }
+      body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #030303; color: #fff; }
+      main { width: min(440px, calc(100vw - 32px)); padding: 36px; text-align: center; border: 1px solid #27272a; border-radius: 24px; background: #090909; box-shadow: 0 24px 80px #000; }
+      .mark { width: 48px; height: 48px; margin: 0 auto 20px; border: 2px solid #a3ff12; border-right-color: transparent; border-radius: 999px; animation: spin .8s linear infinite; }
+      h1 { margin: 0 0 10px; font-size: 20px; }
+      p { margin: 0; color: #a1a1aa; font-size: 14px; line-height: 1.6; }
+      @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="mark" aria-hidden="true"></div>
+      <h1>Repairing your KwantDesk session</h1>
+      <p>Removing obsolete authentication cookies, then returning you to sign in.</p>
+    </main>
+    <script>
+      (() => {
+        const names = document.cookie
+          .split(';')
+          .map((part) => part.split('=')[0].trim())
+          .filter(Boolean);
+        const domains = ['', location.hostname, 'kwantdesk.com', '.kwantdesk.com'];
+        for (const name of names) {
+          if (!((name.startsWith('sb-') && name.includes('-auth-token')) || name === 'supabase-auth-token')) continue;
+          for (const domain of domains) {
+            document.cookie = `${name}=; Max-Age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/${domain ? `; domain=${domain}` : ''}; SameSite=Lax`;
+          }
+        }
+        try {
+          for (let index = localStorage.length - 1; index >= 0; index -= 1) {
+            const key = localStorage.key(index) || '';
+            if ((key.startsWith('sb-') && key.includes('-auth-token')) || key === 'supabase.auth.token') {
+              localStorage.removeItem(key);
+            }
+          }
+        } catch {}
+        window.setTimeout(() => location.replace('/login?recovered=1'), 450);
+      })();
+    </script>
+  </body>
+</html>
