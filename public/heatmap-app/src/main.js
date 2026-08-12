@@ -54,6 +54,13 @@ const LIQUIDITY_MAP_DISPLAY_DEFAULTS = Object.freeze({
   grid: true,
   domVisible: true,
   domWidth: null,
+  domResting: true,
+  domTraded: true,
+  domOrders: true,
+  domBookDelta: true,
+  domLargeOrders: true,
+  domLargeTrades: true,
+  domIcebergs: true,
   heatmap: true,
   trades: true,
   profile: true,
@@ -201,6 +208,13 @@ class DepthForgeApp {
 
     all('[data-panel-shortcut]').forEach(button => button.addEventListener('click', () => this.#openPanel(button.dataset.panelShortcut)));
     $('settingsButton').addEventListener('click', () => this.#openPanel('settings'));
+    $('domConfigButton').addEventListener('click', event => {
+      event.stopPropagation();
+      const menu = $('domConfigMenu');
+      menu.classList.toggle('hidden');
+      event.currentTarget.setAttribute('aria-expanded', String(!menu.classList.contains('hidden')));
+    });
+    $('domConfigMenu').addEventListener('click', event => event.stopPropagation());
 
     $('paletteSelect').addEventListener('change', event => {
       this.settings.palette = event.target.value;
@@ -264,6 +278,12 @@ class DepthForgeApp {
     this.#bindCheckbox('showTrails', 'trails');
     this.#bindCheckbox('showGrid', 'grid');
     this.#bindCheckbox('showDom', 'domVisible');
+    for (const [id, setting] of [
+      ['domResting', 'domResting'], ['domTraded', 'domTraded'],
+      ['domOrders', 'domOrders'], ['domBookDelta', 'domBookDelta'],
+      ['domLargeOrders', 'domLargeOrders'], ['domLargeTrades', 'domLargeTrades'],
+      ['domIcebergs', 'domIcebergs'],
+    ]) this.#bindCheckbox(id, setting);
     this.#bindCheckbox('aggregateDepth', 'aggregateDepth');
     this.#bindCheckbox('bubbleDifferential', 'bubbleDifferential');
     this.#bindCheckbox('cvdEnabled', 'cvdEnabled');
@@ -304,7 +324,7 @@ class DepthForgeApp {
       if (event.data?.type === 'kwantify:heatmap-workspace-settings') {
         this.settings.domVisible = event.data.domVisible !== false;
         const domWidth = Number(event.data.domWidth);
-        if (Number.isFinite(domWidth)) this.settings.domWidth = Math.min(260, Math.max(30, domWidth));
+        if (Number.isFinite(domWidth)) this.settings.domWidth = Math.min(440, Math.max(54, domWidth));
         this.#syncDomVisibilityControls();
         this.requestRender();
       }
@@ -362,9 +382,14 @@ class DepthForgeApp {
     document.addEventListener('pointerdown', event => {
       const inspector = $('inspector');
       if (!inspector.classList.contains('open')) return;
-      if (event.target.closest('#inspector, [data-panel-shortcut], #settingsButton, #cvdSettingsButton')) return;
+      if (event.target.closest('#inspector, [data-panel-shortcut], #settingsButton, #cvdSettingsButton, #domConfig')) return;
       inspector.classList.remove('open');
       all('[data-panel-shortcut]').forEach(button => button.classList.remove('active'));
+    });
+    document.addEventListener('pointerdown', event => {
+      if (event.target.closest('#domConfig')) return;
+      $('domConfigMenu').classList.add('hidden');
+      $('domConfigButton').setAttribute('aria-expanded', 'false');
     });
 
     $('helpButton').addEventListener('click', () => $('helpModal').showModal());
@@ -407,6 +432,7 @@ class DepthForgeApp {
     const visible = this.settings.domVisible !== false;
     $('showDom').checked = visible;
     $('toggleDom').classList.toggle('active-toggle', visible);
+    $('domConfig').classList.toggle('hidden', !visible);
     if (notifyParent && window.parent !== window) {
       window.parent.postMessage({
         type: 'kwantify:heatmap-dom-visibility',
@@ -897,6 +923,12 @@ class DepthForgeApp {
     $('sigmaRange').value = String(this.settings.gaussianSigma);
     $('sigmaRange').disabled = this.settings.heatmapFilter !== 'gaussian';
     $('sigmaOutput').value = String(this.settings.gaussianSigma);
+    for (const [id, setting] of [
+      ['domResting', 'domResting'], ['domTraded', 'domTraded'],
+      ['domOrders', 'domOrders'], ['domBookDelta', 'domBookDelta'],
+      ['domLargeOrders', 'domLargeOrders'], ['domLargeTrades', 'domLargeTrades'],
+      ['domIcebergs', 'domIcebergs'],
+    ]) $(id).checked = this.settings[setting] !== false;
   }
 
   #syncIndicatorControls() {
@@ -1638,7 +1670,7 @@ class DepthForgeApp {
     if (this.drag?.mode === 'dom-resize') {
       event.preventDefault();
       const deltaX = point.x - this.drag.startX;
-      this.settings.domWidth = Math.min(260, Math.max(30, this.drag.startWidth - deltaX));
+      this.settings.domWidth = Math.min(440, Math.max(54, this.drag.startWidth - deltaX));
       this.#setChartCursor(point, true);
       this.requestRender();
       return;
