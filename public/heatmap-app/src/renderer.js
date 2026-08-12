@@ -229,15 +229,24 @@ export class DepthRenderer {
     const domWidth = domVisible
       ? Math.min(260, Math.max(30, Number.isFinite(requestedDomWidth) ? requestedDomWidth : defaultDomWidth))
       : 0;
-    const restingBookWidth = domVisible ? Math.round(domWidth * .66) : 0;
-    const depthColumnWidth = domVisible ? domWidth - restingBookWidth : 0;
+    const restingSellVisible = domVisible && settings.domRestingSellVisible !== false;
+    const restingBuyVisible = domVisible && settings.domRestingBuyVisible !== false;
+    const cobVisible = domVisible && settings.domCobVisible !== false;
+    const restingSideCount = Number(restingSellVisible) + Number(restingBuyVisible);
+    const restingBookWidth = domVisible ? Math.round(domWidth * .66 * restingSideCount / 2) : 0;
+    const depthColumnWidth = cobVisible ? Math.round(domWidth * .34) : 0;
     // The toolbar DOM toggle owns the complete market ladder. When disabled,
     // collapse the price/book rail, bid/ask execution profile and SVP together
     // so the heatmap and CVD reclaim the complete right side.
     const priceAxisWidth = domVisible ? priceLabelWidth + restingBookWidth + depthColumnWidth : 0;
     const profilesVisible = domVisible && settings.profile;
-    const volumeRatioWidth = profilesVisible ? (width < 700 ? 72 : width < 900 ? 92 : 112) : 0;
-    const profileWidth = profilesVisible ? (width < 700 ? 72 : width < 900 ? 92 : 112) : 0;
+    const bidPercentVisible = profilesVisible && settings.domBidPercentVisible !== false;
+    const askPercentVisible = profilesVisible && settings.domAskPercentVisible !== false;
+    const svpVisible = profilesVisible && settings.domSvpVisible !== false;
+    const ratioColumnCount = Number(bidPercentVisible) + Number(askPercentVisible);
+    const profileColumnWidth = width < 700 ? 36 : width < 900 ? 46 : 56;
+    const volumeRatioWidth = ratioColumnCount * profileColumnWidth;
+    const profileWidth = svpVisible ? profileColumnWidth * 2 : 0;
     const timeAxisHeight = 28;
     const rightHeaderHeight = 32;
     const plotWidth = Math.max(120, width - priceAxisWidth - volumeRatioWidth - profileWidth);
@@ -295,6 +304,8 @@ export class DepthRenderer {
       width, height, plotWidth, dataWidth, liveGap, plotHeight, profileWidth, volumeRatioWidth, priceAxisWidth,
       priceLabelWidth, restingBookWidth, depthColumnWidth, timeAxisHeight,
       rightHeaderHeight, domVisible,
+      restingSellVisible, restingBuyVisible, cobVisible,
+      bidPercentVisible, askPercentVisible, svpVisible,
       domWidth,
       bottomTick, topTick, centerTick, visibleTickSpan, rowTicks, columnPixels,
       overlayBottomTick, overlayTopTick, overlayCenterTick, overlayYForTick,
@@ -316,8 +327,10 @@ export class DepthRenderer {
     if (settings.trades) this.#drawTrades(ctx, history, settings, accents);
     this.#drawBottomVolume(ctx, history, accents);
     if (!this.interaction) this.#drawIndicatorMarks(ctx, indicatorAnalysis, settings, accents);
-    if (profilesVisible) {
+    if (volumeRatioWidth > 0) {
       this.#drawBidAskVolumeProfile(ctx, history, accents);
+    }
+    if (profileWidth > 0) {
       this.#drawVolumeProfile(ctx, history, accents);
     }
     if (domVisible) this.#drawPriceAxis(ctx, current, accents);
@@ -777,7 +790,12 @@ export class DepthRenderer {
     const layout = this.layout;
     const x0 = layout.plotWidth + layout.priceAxisWidth;
     const width = layout.volumeRatioWidth;
-    const midpoint = x0 + width / 2;
+    const visibleColumns = [
+      ...(layout.bidPercentVisible ? [{ key: 'bid', label: 'BID %', color: accents.ask, anchor: 'right' }] : []),
+      ...(layout.askPercentVisible ? [{ key: 'ask', label: 'ASK %', color: accents.bid, anchor: 'left' }] : []),
+    ];
+    if (!visibleColumns.length || width <= 0) return;
+    const columnWidth = width / visibleColumns.length;
     const headerHeight = layout.rightHeaderHeight;
     const step = this.#priceAxisStep();
     const firstTick = Math.ceil(layout.overlayBottomTick / step) * step;
@@ -798,19 +816,16 @@ export class DepthRenderer {
     ctx.fillRect(x0, 0, width, layout.plotHeight);
     ctx.strokeStyle = `rgba(${this.chrome.grid},.3)`;
     ctx.beginPath();
-    ctx.moveTo(x0 + .5, 0);
-    ctx.lineTo(x0 + .5, layout.plotHeight);
-    ctx.moveTo(midpoint + .5, 0);
-    ctx.lineTo(midpoint + .5, layout.plotHeight);
+    for (let index = 0; index <= visibleColumns.length; index += 1) {
+      const x = x0 + columnWidth * index;
+      ctx.moveTo(Math.round(x) + .5, 0);
+      ctx.lineTo(Math.round(x) + .5, layout.plotHeight);
+    }
     ctx.stroke();
 
     const levelSpacing = layout.plotHeight / Math.max(1, layout.visibleTickSpan / step);
     const barHeight = Math.max(12, Math.min(18, levelSpacing * .68));
-    const halfWidth = Math.max(1, width / 2 - 5);
-    // Executions at the bid are aggressive sells; executions at the ask are
-    // aggressive buys. Keep that market-side definition explicit here.
-    const bidColor = accents.ask;
-    const askColor = accents.bid;
+    const maximumBarWidth = Math.max(1, columnWidth - 8);
     ctx.font = this.#font(9, 600, true);
     ctx.textBaseline = 'middle';
 
@@ -822,19 +837,23 @@ export class DepthRenderer {
       const percentages = bidAskVolumePercentages(value.buy, value.sell);
       if (percentages.total <= 0) continue;
 
-      ctx.fillStyle = `rgba(${this.chrome.grid},.16)`;
-      ctx.fillRect(x0 + 4, y - barHeight / 2, halfWidth, barHeight);
-      ctx.fillRect(midpoint + 1, y - barHeight / 2, halfWidth, barHeight);
-      ctx.fillStyle = colorCss(bidColor, .34);
-      ctx.fillRect(midpoint - percentages.bid / 100 * halfWidth, y - barHeight / 2, percentages.bid / 100 * halfWidth, barHeight);
-      ctx.fillStyle = colorCss(askColor, .34);
-      ctx.fillRect(midpoint + 1, y - barHeight / 2, percentages.ask / 100 * halfWidth, barHeight);
-
-      ctx.textAlign = 'center';
-      ctx.fillStyle = colorCss(bidColor);
-      ctx.fillText(`${percentages.bid}%`, x0 + width * .25, y + .5);
-      ctx.fillStyle = colorCss(askColor);
-      ctx.fillText(`${percentages.ask}%`, x0 + width * .75, y + .5);
+      visibleColumns.forEach((column, index) => {
+        const columnX = x0 + columnWidth * index;
+        const percentage = percentages[column.key];
+        const barWidth = percentage / 100 * maximumBarWidth;
+        ctx.fillStyle = `rgba(${this.chrome.grid},.16)`;
+        ctx.fillRect(columnX + 4, y - barHeight / 2, maximumBarWidth, barHeight);
+        ctx.fillStyle = colorCss(column.color, .34);
+        ctx.fillRect(
+          column.anchor === 'right' ? columnX + columnWidth - 4 - barWidth : columnX + 4,
+          y - barHeight / 2,
+          barWidth,
+          barHeight,
+        );
+        ctx.textAlign = 'center';
+        ctx.fillStyle = colorCss(column.color);
+        ctx.fillText(`${percentage}%`, columnX + columnWidth / 2, y + .5);
+      });
     }
 
     ctx.fillStyle = this.chrome.axisAlt;
@@ -848,8 +867,9 @@ export class DepthRenderer {
     ctx.font = this.#font(9, 500, false);
     ctx.textBaseline = 'middle';
     ctx.textAlign = 'center';
-    ctx.fillText('BID %', x0 + width * .25, headerHeight / 2 + .5);
-    ctx.fillText('ASK %', x0 + width * .75, headerHeight / 2 + .5);
+    visibleColumns.forEach((column, index) => {
+      ctx.fillText(column.label, x0 + columnWidth * (index + .5), headerHeight / 2 + .5);
+    });
     ctx.restore();
   }
 
@@ -924,6 +944,12 @@ export class DepthRenderer {
     const bookRight = bookLeft + layout.restingBookWidth;
     const bookMidpoint = bookLeft + layout.restingBookWidth / 2;
     const depthColumnLeft = bookRight;
+    const restingSideCount = Number(layout.restingSellVisible) + Number(layout.restingBuyVisible);
+    const restingSideWidth = restingSideCount > 0 ? layout.restingBookWidth / restingSideCount : 0;
+    const sellLeft = bookLeft;
+    const sellRight = sellLeft + (layout.restingSellVisible ? restingSideWidth : 0);
+    const buyLeft = bookLeft + (layout.restingSellVisible ? restingSideWidth : 0);
+    const buyRight = buyLeft + (layout.restingBuyVisible ? restingSideWidth : 0);
     ctx.save();
     ctx.fillStyle = this.chrome.axisAlt;
     ctx.fillRect(x0, 0, layout.priceAxisWidth, layout.plotHeight);
@@ -943,7 +969,10 @@ export class DepthRenderer {
     }
     ctx.strokeStyle = `rgba(${this.chrome.grid},.2)`;
     ctx.beginPath();
-    for (const x of [x0, priceColumnRight, bookMidpoint, depthColumnLeft]) {
+    const railSeparators = [x0, priceColumnRight];
+    if (layout.restingSellVisible && layout.restingBuyVisible) railSeparators.push(bookMidpoint);
+    if (layout.restingBookWidth > 0) railSeparators.push(depthColumnLeft);
+    for (const x of railSeparators) {
       ctx.moveTo(Math.round(x) + .5, 0);
       ctx.lineTo(Math.round(x) + .5, layout.plotHeight);
     }
@@ -959,7 +988,7 @@ export class DepthRenderer {
     );
     const levelSpacing = layout.plotHeight / Math.max(1, layout.visibleTickSpan / step);
     const bookBarHeight = Math.max(8, Math.min(16, levelSpacing * .62));
-    const bookHalfWidth = Math.max(1, layout.restingBookWidth / 2 - 4);
+    const bookSideBarWidth = Math.max(1, restingSideWidth - 5);
     const bookScale = Math.max(1, restingBook.maximum);
 
     ctx.save();
@@ -973,26 +1002,26 @@ export class DepthRenderer {
       if (y < headerHeight + 8 || y > layout.plotHeight - 8) continue;
       const value = restingBook.bands.get(tick);
       if (!value) continue;
-      const sellWidth = value.sell / bookScale * bookHalfWidth;
-      const buyWidth = value.buy / bookScale * bookHalfWidth;
-      if (sellWidth > 0) {
+      if (value.sell > 0 && layout.restingSellVisible) {
         ctx.fillStyle = colorCss(accents.ask, .56);
-        ctx.fillRect(bookMidpoint - sellWidth, y - bookBarHeight / 2, sellWidth, bookBarHeight);
+        const width = value.sell / bookScale * bookSideBarWidth;
+        ctx.fillRect(sellRight - width - 1, y - bookBarHeight / 2, width, bookBarHeight);
       }
-      if (buyWidth > 0) {
+      if (value.buy > 0 && layout.restingBuyVisible) {
         ctx.fillStyle = colorCss(accents.bid, .56);
-        ctx.fillRect(bookMidpoint + 1, y - bookBarHeight / 2, buyWidth, bookBarHeight);
+        const width = value.buy / bookScale * bookSideBarWidth;
+        ctx.fillRect(buyLeft + 1, y - bookBarHeight / 2, width, bookBarHeight);
       }
-      if (layout.restingBookWidth >= 84) {
-        if (value.sell > 0) {
+      if (restingSideWidth >= 42) {
+        if (value.sell > 0 && layout.restingSellVisible) {
           ctx.textAlign = 'left';
           ctx.fillStyle = colorCss(accents.ask);
-          ctx.fillText(String(Math.round(value.sell)), bookLeft + 3, y + .5);
+          ctx.fillText(String(Math.round(value.sell)), sellLeft + 3, y + .5);
         }
-        if (value.buy > 0) {
+        if (value.buy > 0 && layout.restingBuyVisible) {
           ctx.textAlign = 'right';
           ctx.fillStyle = colorCss(accents.bid);
-          ctx.fillText(String(Math.round(value.buy)), bookRight - 3, y + .5);
+          ctx.fillText(String(Math.round(value.buy)), buyRight - 3, y + .5);
         }
       }
     }
@@ -1007,7 +1036,7 @@ export class DepthRenderer {
       const bid = current.bids.get(roundedTick) || 0;
       const ask = current.asks.get(roundedTick) || 0;
       const size = bid || ask;
-      if (size && layout.domVisible) {
+      if (size && layout.cobVisible) {
         const barWidth = Math.min(layout.depthColumnWidth, Math.log1p(size) * 7);
         ctx.fillStyle = colorCss(bid ? accents.bid : accents.ask, bid ? .2 : .22);
         ctx.fillRect(axisRight - barWidth, y - 8, barWidth, 16);
@@ -1020,7 +1049,7 @@ export class DepthRenderer {
       ctx.textAlign = 'left';
       ctx.fillStyle = this.chrome.text;
       ctx.fillText(priceLabel(tick, layout.config), x0 + 10, y);
-      if (size && layout.domVisible) {
+      if (size && layout.cobVisible) {
         ctx.textAlign = 'right';
         ctx.fillStyle = colorCss(bid ? accents.bid : accents.ask);
         ctx.fillText(Math.round(size), axisRight - 8, y);
@@ -1042,7 +1071,7 @@ export class DepthRenderer {
       ctx.textAlign = 'left';
       ctx.fillStyle = textFill;
       ctx.fillText(priceLabel(tick, layout.config), x0 + 10, y);
-      if (size && layout.domVisible) {
+      if (size && layout.cobVisible) {
         ctx.textAlign = 'right';
         ctx.fillText(Math.round(size), axisRight - 8, y);
       }
@@ -1054,7 +1083,10 @@ export class DepthRenderer {
     ctx.beginPath();
     ctx.moveTo(x0, headerHeight + .5);
     ctx.lineTo(axisRight, headerHeight + .5);
-    for (const x of [priceColumnRight, bookMidpoint, depthColumnLeft]) {
+    const headerSeparators = [priceColumnRight];
+    if (layout.restingSellVisible && layout.restingBuyVisible) headerSeparators.push(bookMidpoint);
+    if (layout.restingBookWidth > 0) headerSeparators.push(depthColumnLeft);
+    for (const x of headerSeparators) {
       ctx.moveTo(Math.round(x) + .5, 0);
       ctx.lineTo(Math.round(x) + .5, headerHeight);
     }
@@ -1065,15 +1097,19 @@ export class DepthRenderer {
     ctx.fillStyle = this.chrome.muted;
     ctx.fillText('PRICE', x0 + 10, headerHeight / 2 + .5);
     if (layout.domVisible) {
-      if (layout.restingBookWidth >= 56) {
+      if (layout.restingSellVisible && restingSideWidth >= 28) {
         ctx.font = this.#font(9, 600, false);
         ctx.textAlign = 'center';
         ctx.fillStyle = colorCss(accents.ask);
-        ctx.fillText('SELL', bookLeft + layout.restingBookWidth * .25, headerHeight / 2 + .5);
-        ctx.fillStyle = colorCss(accents.bid);
-        ctx.fillText('BUY', bookLeft + layout.restingBookWidth * .75, headerHeight / 2 + .5);
+        ctx.fillText('SELL', sellLeft + restingSideWidth / 2, headerHeight / 2 + .5);
       }
-      if (layout.depthColumnWidth >= 28) {
+      if (layout.restingBuyVisible && restingSideWidth >= 28) {
+        ctx.font = this.#font(9, 600, false);
+        ctx.textAlign = 'center';
+        ctx.fillStyle = colorCss(accents.bid);
+        ctx.fillText('BUY', buyLeft + restingSideWidth / 2, headerHeight / 2 + .5);
+      }
+      if (layout.cobVisible && layout.depthColumnWidth >= 28) {
         ctx.font = this.#font(10, 500, false);
         ctx.textAlign = 'right';
         ctx.fillStyle = this.chrome.muted;

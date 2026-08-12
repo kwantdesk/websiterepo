@@ -24,6 +24,12 @@ test("restores the full Kwant Desk liquidity-map control surface", async () => {
     "dimmingRange",
     "bubbleRange",
     "showDom",
+    "showRestingSell",
+    "showRestingBuy",
+    "showCob",
+    "showBidPercent",
+    "showAskPercent",
+    "showSvp",
     "cvdEnabled",
     "absorptionEnabled",
     "sweepsEnabled",
@@ -56,10 +62,29 @@ test("toolbar DOM control sits between heatmap and trades and removes the full r
   assert.match(source, /#syncDomVisibilityControls\(notifyParent = false\)/);
   assert.match(renderer, /const priceAxisWidth = domVisible \? priceLabelWidth \+ restingBookWidth \+ depthColumnWidth : 0/);
   assert.match(renderer, /const profilesVisible = domVisible && settings\.profile/);
-  assert.match(renderer, /const volumeRatioWidth = profilesVisible \?/);
-  assert.match(renderer, /const profileWidth = profilesVisible \?/);
-  assert.match(renderer, /if \(profilesVisible\) \{[\s\S]*?this\.#drawBidAskVolumeProfile[\s\S]*?this\.#drawVolumeProfile/);
+  assert.match(renderer, /const volumeRatioWidth = ratioColumnCount \* profileColumnWidth/);
+  assert.match(renderer, /const profileWidth = svpVisible \? profileColumnWidth \* 2 : 0/);
+  assert.match(renderer, /if \(volumeRatioWidth > 0\) \{[\s\S]*?this\.#drawBidAskVolumeProfile/);
+  assert.match(renderer, /if \(profileWidth > 0\) \{[\s\S]*?this\.#drawVolumeProfile/);
   assert.match(renderer, /if \(domVisible\) this\.#drawPriceAxis\(ctx, current, accents\)/);
+});
+
+test("individual DOM columns can be hidden and reclaim chart width", async () => {
+  const [html, source, renderer] = await Promise.all([
+    readFile(htmlPath, "utf8"),
+    readFile(mainPath, "utf8"),
+    readFile(rendererPath, "utf8"),
+  ]);
+
+  for (const id of ["showRestingSell", "showRestingBuy", "showCob", "showBidPercent", "showAskPercent", "showSvp"]) {
+    assert.match(html, new RegExp(`id=["']${id}["']`));
+  }
+  for (const setting of ["domRestingSellVisible", "domRestingBuyVisible", "domCobVisible", "domBidPercentVisible", "domAskPercentVisible", "domSvpVisible"]) {
+    assert.match(source, new RegExp(`${setting}: true`));
+  }
+  assert.match(renderer, /const restingSideCount = Number\(restingSellVisible\) \+ Number\(restingBuyVisible\)/);
+  assert.match(renderer, /const ratioColumnCount = Number\(bidPercentVisible\) \+ Number\(askPercentVisible\)/);
+  assert.match(renderer, /if \(size && layout\.cobVisible\)/);
 });
 
 test("LIQ MAP display buttons have documented keyboard shortcuts", async () => {

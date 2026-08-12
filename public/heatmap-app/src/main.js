@@ -56,6 +56,12 @@ const LIQUIDITY_MAP_DISPLAY_DEFAULTS = Object.freeze({
   grid: true,
   domVisible: true,
   domWidth: null,
+  domRestingSellVisible: true,
+  domRestingBuyVisible: true,
+  domCobVisible: true,
+  domBidPercentVisible: true,
+  domAskPercentVisible: true,
+  domSvpVisible: true,
   heatmap: true,
   trades: true,
   profile: true,
@@ -268,6 +274,12 @@ class DepthForgeApp {
     this.#bindCheckbox('showTrails', 'trails');
     this.#bindCheckbox('showGrid', 'grid');
     this.#bindCheckbox('showDom', 'domVisible');
+    this.#bindCheckbox('showRestingSell', 'domRestingSellVisible');
+    this.#bindCheckbox('showRestingBuy', 'domRestingBuyVisible');
+    this.#bindCheckbox('showCob', 'domCobVisible');
+    this.#bindCheckbox('showBidPercent', 'domBidPercentVisible');
+    this.#bindCheckbox('showAskPercent', 'domAskPercentVisible');
+    this.#bindCheckbox('showSvp', 'domSvpVisible');
     this.#bindCheckbox('aggregateDepth', 'aggregateDepth');
     this.#bindCheckbox('bubbleDifferential', 'bubbleDifferential');
     this.#bindCheckbox('cvdEnabled', 'cvdEnabled');
@@ -410,6 +422,18 @@ class DepthForgeApp {
   #syncDomVisibilityControls(notifyParent = false) {
     const visible = this.settings.domVisible !== false;
     $('showDom').checked = visible;
+    const columnControls = {
+      showRestingSell: 'domRestingSellVisible',
+      showRestingBuy: 'domRestingBuyVisible',
+      showCob: 'domCobVisible',
+      showBidPercent: 'domBidPercentVisible',
+      showAskPercent: 'domAskPercentVisible',
+      showSvp: 'domSvpVisible',
+    };
+    for (const [id, setting] of Object.entries(columnControls)) {
+      $(id).checked = this.settings[setting] !== false;
+      $(id).disabled = !visible;
+    }
     $('toggleDom').classList.toggle('active-toggle', visible);
     if (notifyParent && window.parent !== window) {
       window.parent.postMessage({

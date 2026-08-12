@@ -265,6 +265,12 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 1px s
 .indicator-settings input:not([type="checkbox"]), .indicator-settings select { width: 100%; min-width: 0; height: 25px; padding: 2px 5px; border: 1px solid #607980; background: #293e44; color: #edf5f6; font: 9px var(--font-mono); }
 .indicator-settings input[type="checkbox"] { margin: 0; accent-color: #05addf; }
 #settingsPanel { gap: 12px; }#settingsPanel.active { display: grid; }#settingsPanel label { display: grid; grid-template-columns: 1fr auto; gap: 6px; align-items: center; }#settingsPanel label input[type="range"], #settingsPanel label select { grid-column: 1 / -1; width: 100%; }#settingsPanel button, #settingsPanel select { min-height: 29px; border: 1px solid #607980; background: #2d4248; }
+.dom-column-settings { display: grid; gap: 8px; padding: 10px; border: 1px solid var(--ui-line); border-radius: 12px; background: var(--ui-surface); }
+.dom-column-settings > strong { color: var(--ui-text); font: 650 9px var(--font-ui); letter-spacing: .09em; }
+.dom-column-settings > div { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 10px; }
+#settingsPanel .dom-column-settings label { display: flex; grid-template-columns: none; justify-content: flex-start; gap: 7px; min-width: 0; color: var(--ui-muted); font: 600 9px var(--font-ui); letter-spacing: .02em; }
+.dom-column-settings input[type="checkbox"] { margin: 0; accent-color: var(--ui-accent); }
+.dom-column-settings input:disabled + * { opacity: .45; }
 
 .status-bar { display: flex; align-items: center; gap: 22px; min-width: 0; padding: 0 8px; border-top: 1px solid #23363b; background: #30464c; color: #9aafb4; font: 9px var(--font-mono); }
 .status-bar > div { display: flex; align-items: center; gap: 6px; }.status-bar strong { color: #c7d4d6; font-size: 8px; }.status-right { margin-left: auto; }.status-right strong { color: #e5bd64; }
