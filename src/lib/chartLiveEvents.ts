@@ -91,6 +91,8 @@ export function recordDatabentoLiveTick(tick: DatabentoLiveTick) {
   const seconds = liveSecondsBySymbol.get(symbol) ?? new Map<number, Candle>();
   const existing = seconds.get(second);
   if (existing) {
+    const previousDeltaClose = Number(existing.deltaClose ?? existing.delta ?? 0);
+    const nextDeltaClose = previousDeltaClose + executedDelta;
     seconds.set(second, {
       ...existing,
       high: Math.max(existing.high, price),
@@ -99,7 +101,10 @@ export function recordDatabentoLiveTick(tick: DatabentoLiveTick) {
       volume: Math.max(0, Number(existing.volume ?? 0)) + executedSize,
       trades: Math.max(0, Number(existing.trades ?? 0)) + executedTrades,
       delta: Number(existing.delta ?? 0) + executedDelta,
-      deltaClose: Number(existing.deltaClose ?? existing.delta ?? 0) + executedDelta,
+      deltaOpen: Number(existing.deltaOpen ?? 0),
+      deltaHigh: Math.max(Number(existing.deltaHigh ?? previousDeltaClose), nextDeltaClose),
+      deltaLow: Math.min(Number(existing.deltaLow ?? previousDeltaClose), nextDeltaClose),
+      deltaClose: nextDeltaClose,
       askVolume: Math.max(0, Number(existing.askVolume ?? 0)) + (executedDelta > 0 ? executedSize : 0),
       bidVolume: Math.max(0, Number(existing.bidVolume ?? 0)) + (executedDelta < 0 ? executedSize : 0),
     });
@@ -113,6 +118,9 @@ export function recordDatabentoLiveTick(tick: DatabentoLiveTick) {
       volume: executedSize,
       trades: executedTrades,
       delta: executedDelta,
+      deltaOpen: 0,
+      deltaHigh: Math.max(0, executedDelta),
+      deltaLow: Math.min(0, executedDelta),
       deltaClose: executedDelta,
       askVolume: executedDelta > 0 ? executedSize : 0,
       bidVolume: executedDelta < 0 ? executedSize : 0,

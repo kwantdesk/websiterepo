@@ -1703,6 +1703,9 @@ function mergeLiveMidIntoCandles(
       volume: executedSize,
       trades: executedTrades,
       delta: executedDelta,
+      deltaOpen: 0,
+      deltaHigh: Math.max(0, executedDelta),
+      deltaLow: Math.min(0, executedDelta),
       deltaClose: executedDelta,
       askVolume: executedAsk,
       bidVolume: executedBid,
@@ -1729,6 +1732,9 @@ function mergeLiveMidIntoCandles(
         volume: executedSize,
         trades: executedTrades,
         delta: executedDelta,
+        deltaOpen: 0,
+        deltaHigh: Math.max(0, executedDelta),
+        deltaLow: Math.min(0, executedDelta),
         deltaClose: executedDelta,
         askVolume: executedAsk,
         bidVolume: executedBid,
@@ -1786,6 +1792,10 @@ function mergeLiveMidIntoCandles(
     bodyLow - retainedWickLimit,
   );
 
+  const previousDeltaClose = Number(
+    repairedLast.deltaClose ?? repairedLast.delta ?? 0,
+  );
+  const nextDeltaClose = previousDeltaClose + executedDelta;
   updated[lastIndex] = {
     ...repairedLast,
     close: mid,
@@ -1794,7 +1804,16 @@ function mergeLiveMidIntoCandles(
     volume: Math.max(0, Number(repairedLast.volume ?? 0)) + executedSize,
     trades: Math.max(0, Number(repairedLast.trades ?? 0)) + executedTrades,
     delta: Number(repairedLast.delta ?? 0) + executedDelta,
-    deltaClose: Number(repairedLast.deltaClose ?? repairedLast.delta ?? 0) + executedDelta,
+    deltaOpen: Number(repairedLast.deltaOpen ?? 0),
+    deltaHigh: Math.max(
+      Number(repairedLast.deltaHigh ?? previousDeltaClose),
+      nextDeltaClose,
+    ),
+    deltaLow: Math.min(
+      Number(repairedLast.deltaLow ?? previousDeltaClose),
+      nextDeltaClose,
+    ),
+    deltaClose: nextDeltaClose,
     askVolume: Math.max(0, Number(repairedLast.askVolume ?? 0)) + executedAsk,
     bidVolume: Math.max(0, Number(repairedLast.bidVolume ?? 0)) + executedBid,
   };
@@ -3519,6 +3538,51 @@ function WorkspaceChartPane({
               ? profile
               : applyInstitutionalTradesToVolumeProfile(profile, records))
           : current);
+
+        // CVD is rendered from the chart candles, not from the compact trade
+        // marker tape. Fold each authoritative Rithmic execution into those
+        // candles immediately so live delta continues from the restored
+        // historical CVD instead of freezing at the history boundary.
+        const previousCandles = latestCandlesRef.current;
+        const nextCandles = isEventBasedChartInterval(pane.timeframe)
+          ? applyMarketTradesToEventBars(
+              previousCandles,
+              records.map((record) => ({
+                timestamp: record.timestamp,
+                price: record.close,
+                size: Math.max(0, Number(record.volume ?? 0)),
+                trades: Math.max(1, Number(record.trades ?? 1)),
+                delta: Number(record.delta ?? 0),
+              })),
+              pane.timeframe,
+              pane.symbol,
+            )
+          : records.reduce((current, record) => mergeLiveMidIntoCandles(
+              current,
+              record.close,
+              pane.symbol,
+              pane.timeframe,
+              record.timestamp,
+              {
+                isTrade: true,
+                size: Math.max(0, Number(record.volume ?? 0)),
+                trades: Math.max(1, Number(record.trades ?? 1)),
+                delta: Number(record.delta ?? 0),
+              },
+            ), previousCandles);
+        if (nextCandles !== previousCandles && nextCandles.length) {
+          latestCandlesRef.current = nextCandles;
+          const latest = nextCandles.at(-1)!;
+          window.dispatchEvent(new CustomEvent(LIVE_CHART_CANDLE_EVENT, {
+            detail: { key: pane.id, candle: latest },
+          }));
+          const now = Date.now();
+          const newBar = previousCandles.at(-1)?.timestamp !== latest.timestamp;
+          if (newBar || now - lastCandleStateSyncRef.current >= 250) {
+            lastCandleStateSyncRef.current = now;
+            setCandles(nextCandles);
+          }
+        }
       },
     });
   }, [needsOrderFlowHistory, pane.broker, pane.symbol, pane.timeframe, resolvedContractSymbol]);
@@ -4617,6 +4681,10 @@ function WorkspaceChartPane({
         }
         const next = usingDatabentoPaneFeed && isEventBasedChartInterval(pane.timeframe)
           ? (() => {
+              // Rithmic is the authoritative execution source whenever it is
+              // connected. Its subscription already builds event bars above;
+              // replaying the shared CME trades here would double the flow.
+              if (rithmicConnectedRef.current) return previous;
               const trades = ticks
                 .filter((tick) => tick.isTrade)
                 .map((tick) => ({
@@ -4636,7 +4704,9 @@ function WorkspaceChartPane({
               pane.symbol,
               pane.timeframe,
               tick.timestamp,
-              tick,
+              // Keep Databento as the uninterrupted price source, but do not
+              // count its execution fields on top of the Rithmic prints.
+              rithmicConnectedRef.current ? undefined : tick,
             ), previous);
         if (next === previous || !next.length) return;
         latestCandlesRef.current = next;

@@ -23,6 +23,26 @@ const streams = new Map<string, SharedStream>();
 // session calculations such as Volume Profile stay inside the gateway.
 const MAX_TAPE_RECORDS = 25_000;
 
+function recordKey(record: InstitutionalTrade) {
+  return record.eventId
+    || `${record.timestamp}:${record.recordIndex}:${record.close}:${record.volume}`;
+}
+
+function unseenRecords(current: InstitutionalTrade[], incoming: InstitutionalTrade[]) {
+  if (!incoming.length) return [];
+  const seen = new Set(
+    current
+      .slice(-Math.max(512, incoming.length * 4))
+      .map(recordKey),
+  );
+  return incoming.filter((record) => {
+    const key = recordKey(record);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 function validRecord(value: unknown): value is InstitutionalTrade {
   if (!value || typeof value !== "object") return false;
   const row = value as Partial<InstitutionalTrade>;
@@ -54,9 +74,6 @@ function decodeRecords(value: unknown) {
 
 function mergeRecords(current: InstitutionalTrade[], incoming: InstitutionalTrade[]) {
   if (!incoming.length) return current;
-  const recordKey = (record: InstitutionalTrade) => record.eventId
-    || `${record.timestamp}:${record.recordIndex}:${record.close}:${record.volume}`;
-
   // Live batches are already chronological. Avoid rebuilding and sorting a
   // 25,000-row map for every SSE message; only compare against the recent tail
   // where a reconnect can repeat records.
@@ -137,8 +154,13 @@ async function startStream(
         const payload = JSON.parse((event as MessageEvent<string>).data) as { records?: unknown };
         const records = decodeRecords(payload.records);
         if (!records.length) return;
-        stream.records = mergeRecords(stream.records, records);
-        stream.subscribers.forEach((subscriber) => subscriber.onTrades(records));
+        // A reconnect can replay the tail of the execution stream. Publish
+        // only genuinely new prints so CVD and volume profiles cannot count
+        // the same execution twice.
+        const additions = unseenRecords(stream.records, records);
+        if (!additions.length) return;
+        stream.records = mergeRecords(stream.records, additions);
+        stream.subscribers.forEach((subscriber) => subscriber.onTrades(additions));
       } catch {
         // Ignore a malformed batch and reconcile on the next valid batch.
       }
