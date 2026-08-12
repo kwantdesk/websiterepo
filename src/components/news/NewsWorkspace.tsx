@@ -17,8 +17,11 @@ import {
   Filter,
   Globe2,
   Info,
+  Loader2,
   RefreshCw,
   Radio,
+  Search,
+  Send,
   Sparkles,
   X,
 } from "lucide-react";
@@ -39,6 +42,7 @@ import {
   compactTimeZoneLabel,
   normalizeTimeZone,
 } from "@/lib/timeZones";
+import type { FriendSummary, FriendsPayload } from "@/lib/friends";
 
 const ALERTS_STORAGE_KEY = "kwantdesk:economic-calendar-alerts:v1";
 const CURRENCIES_STORAGE_KEY = "kwantdesk:economic-calendar-currencies:v1";
@@ -380,6 +384,13 @@ function EconomicCalendarWorkspace() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [clock, setClock] = useState(new Date());
+  const [shareEvent, setShareEvent] = useState<EconomicCalendarEvent | null>(null);
+  const [shareFriends, setShareFriends] = useState<FriendSummary[]>([]);
+  const [shareFriendIds, setShareFriendIds] = useState<string[]>([]);
+  const [shareQuery, setShareQuery] = useState("");
+  const [shareState, setShareState] = useState<"idle" | "loading" | "sending" | "sent" | "error">("idle");
+  const [shareError, setShareError] = useState("");
+  const shareFriendsLoadedRef = useRef(false);
   const alertTimersRef = useRef<number[]>([]);
   const payloadRef = useRef<EconomicCalendarPayload | null>(null);
 
@@ -518,6 +529,74 @@ function EconomicCalendarWorkspace() {
     });
   };
 
+  const loadShareFriends = useCallback(async (showLoading = false) => {
+    if (shareFriendsLoadedRef.current) return;
+    if (showLoading) setShareState("loading");
+    try {
+      const response = await fetch("/api/friends", { cache: "no-store" });
+      const body = await response.json() as FriendsPayload & { error?: string };
+      if (!response.ok || !body.cloud) throw new Error(body.error || "Friends could not be loaded.");
+      setShareFriends(body.friends ?? []);
+      shareFriendsLoadedRef.current = true;
+      setShareState("idle");
+      setShareError("");
+    } catch (reason) {
+      setShareState("error");
+      setShareError(reason instanceof Error ? reason.message : "Friends could not be loaded.");
+    }
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => void loadShareFriends(false), 250);
+    return () => window.clearTimeout(timer);
+  }, [loadShareFriends]);
+
+  const openShare = (event: EconomicCalendarEvent) => {
+    setShareEvent(event);
+    setShareFriendIds([]);
+    setShareQuery("");
+    setShareError("");
+    setShareState(shareFriendsLoadedRef.current ? "idle" : "loading");
+    void loadShareFriends(true);
+  };
+
+  const sendCalendarEvent = async () => {
+    if (!shareEvent || !shareFriendIds.length) return;
+    setShareState("sending");
+    setShareError("");
+    const eventUrl = `${window.location.origin}/news?event=${encodeURIComponent(shareEvent.id)}`;
+    const message = [
+      `ECONOMIC CALENDAR · ${shareEvent.currency} · ${shareEvent.impact.toUpperCase()}`,
+      shareEvent.name,
+      `${formatShortDate(shareEvent.date, timeZone)} · ${formatTime(shareEvent.date, timeZone)} ${compactTimeZoneLabel(timeZone)}`,
+      [shareEvent.forecast && `Forecast ${shareEvent.forecast}`, shareEvent.previous && `Previous ${shareEvent.previous}`, shareEvent.actual && `Actual ${shareEvent.actual}`].filter(Boolean).join(" · "),
+      eventUrl,
+    ].filter(Boolean).join("\n");
+    const results = await Promise.allSettled(shareFriendIds.map(async (targetUserId) => {
+      const response = await fetch("/api/friends", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "message",
+          targetUserId,
+          body: message,
+          clientMessageId: typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `calendar-${Date.now()}-${targetUserId}`,
+        }),
+      });
+      const body = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(body.error || "The calendar event could not be sent.");
+    }));
+    const sent = results.filter((result) => result.status === "fulfilled").length;
+    if (!sent) {
+      const failed = results.find((result): result is PromiseRejectedResult => result.status === "rejected");
+      setShareState("error");
+      setShareError(failed?.reason instanceof Error ? failed.reason.message : "The calendar event could not be sent.");
+      return;
+    }
+    setShareState("sent");
+    window.setTimeout(() => setShareEvent(null), 650);
+  };
+
   if (loading && !payload) return <LoadingState />;
 
   return (
@@ -637,8 +716,8 @@ function EconomicCalendarWorkspace() {
           ) : null}
 
           <section className="overflow-hidden rounded-2xl border border-border bg-panel">
-            <div className="grid grid-cols-[88px_72px_72px_minmax(220px,1fr)_64px_78px] gap-3 border-b border-border bg-surface/35 px-4 py-2.5 text-[8px] font-semibold uppercase tracking-[0.14em] text-muted max-lg:hidden">
-              <span>Date</span><span>Time</span><span>Currency</span><span>Impact · Event</span><span className="text-center">Alert</span><span className="text-right">Details</span>
+            <div className="grid grid-cols-[88px_72px_72px_minmax(220px,1fr)_86px_78px] gap-3 border-b border-border bg-surface/35 px-4 py-2.5 text-[8px] font-semibold uppercase tracking-[0.14em] text-muted max-lg:hidden">
+              <span>Date</span><span>Time</span><span>Currency</span><span>Impact · Event</span><span className="text-center">Alert · Send</span><span className="text-right">Details</span>
             </div>
             {filteredEvents.length ? (
               filteredEvents.map((event, index) => {
@@ -656,7 +735,7 @@ function EconomicCalendarWorkspace() {
                         <span className="h-px flex-1 bg-primary/35" />
                       </div>
                     ) : null}
-                    <div className={`grid items-center gap-3 border-t border-border/70 px-4 py-3 transition-colors lg:grid-cols-[88px_72px_72px_minmax(220px,1fr)_64px_78px] ${expanded ? "bg-primary/[0.035]" : "hover:bg-surface/30"} ${event.status === "released" ? "opacity-65" : ""}`}>
+                    <div className={`grid items-center gap-3 border-t border-border/70 px-4 py-3 transition-colors lg:grid-cols-[88px_72px_72px_minmax(220px,1fr)_86px_78px] ${expanded ? "bg-primary/[0.035]" : "hover:bg-surface/30"} ${event.status === "released" ? "opacity-65" : ""}`}>
                       <div className="font-mono text-[9px] text-muted">{formatShortDate(event.date, timeZone)}</div>
                       <div>
                         <div className="font-mono text-[11px] font-semibold text-foreground">{formatTime(event.date, timeZone)}</div>
@@ -674,7 +753,7 @@ function EconomicCalendarWorkspace() {
                           {event.actual ? <span className="text-primary">A {event.actual}</span> : null}
                         </div>
                       </div>
-                      <div className="flex justify-start lg:justify-center">
+                      <div className="flex justify-start gap-1.5 lg:justify-center">
                         <button
                           type="button"
                           onClick={() => void toggleAlert(event)}
@@ -684,6 +763,15 @@ function EconomicCalendarWorkspace() {
                           title={upcoming ? "Alert 15 minutes before" : "Event already released"}
                         >
                           {alertActive ? <BellRing className="h-3.5 w-3.5" /> : <Bell className="h-3.5 w-3.5" />}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => openShare(event)}
+                          className="flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-surface text-muted transition-colors hover:border-primary/30 hover:bg-primary/10 hover:text-primary"
+                          aria-label={`Send ${event.name} to friends`}
+                          title="Send to friends"
+                        >
+                          <Send className="h-3.5 w-3.5" />
                         </button>
                       </div>
                       <button type="button" onClick={() => setExpandedEvent(expanded ? null : event.id)} className={`flex h-8 items-center justify-center gap-1 rounded-lg border px-2 text-[9px] font-semibold ${expanded ? "border-primary/30 bg-primary/10 text-primary" : "border-border bg-surface text-muted hover:text-foreground"}`}>
@@ -717,6 +805,41 @@ function EconomicCalendarWorkspace() {
           </div>
         </div>
       </main>
+      {shareEvent ? (() => {
+        const query = shareQuery.trim().toLowerCase();
+        const visibleFriends = shareFriends.filter((friend) => !query || `${friend.displayName} ${friend.handle}`.toLowerCase().includes(query));
+        return (
+          <div className="fixed inset-0 z-[1180] flex items-center justify-center bg-black/80 p-4 backdrop-blur-md" onMouseDown={(event) => { if (event.target === event.currentTarget && shareState !== "sending") setShareEvent(null); }}>
+            <section className="w-full max-w-lg overflow-hidden rounded-3xl border border-border bg-panel shadow-2xl">
+              <header className="flex items-center gap-3 border-b border-border px-5 py-4">
+                <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-primary/25 bg-primary/10 text-primary"><Send className="h-4 w-4" /></span>
+                <div className="min-w-0 flex-1"><h2 className="text-[14px] font-semibold">Send calendar event</h2><p className="mt-1 truncate text-[8px] text-muted">{shareEvent.currency} · {shareEvent.name}</p></div>
+                <button type="button" onClick={() => setShareEvent(null)} disabled={shareState === "sending"} className="flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground disabled:opacity-40" aria-label="Close"><X className="h-4 w-4" /></button>
+              </header>
+              <div className="p-5">
+                <div className="mb-4 rounded-2xl border border-primary/20 bg-primary/[0.045] p-3">
+                  <div className="flex items-center gap-2"><span className={`rounded-md border px-1.5 py-0.5 text-[8px] font-semibold uppercase ${impactClasses(shareEvent.impact)}`}>{shareEvent.impact}</span><strong className="truncate text-[10px]">{shareEvent.name}</strong></div>
+                  <p className="mt-2 font-mono text-[8px] text-muted">{formatShortDate(shareEvent.date, timeZone)} · {formatTime(shareEvent.date, timeZone)} {compactTimeZoneLabel(timeZone)}</p>
+                </div>
+                <label className="flex h-10 items-center gap-2 rounded-xl border border-border bg-background px-3 focus-within:border-primary/40"><Search className="h-3.5 w-3.5 text-muted" /><input value={shareQuery} onChange={(event) => setShareQuery(event.target.value)} placeholder="Search friends" className="min-w-0 flex-1 bg-transparent text-[9px] outline-none placeholder:text-muted/55" /></label>
+                <div className="mt-3 grid max-h-[300px] gap-2 overflow-y-auto pr-1 sm:grid-cols-2">
+                  {shareState === "loading" ? <div className="col-span-full flex min-h-40 items-center justify-center gap-2 text-[9px] text-muted"><Loader2 className="h-4 w-4 animate-spin text-primary" />Loading friends</div> : null}
+                  {shareState !== "loading" && visibleFriends.map((friend) => {
+                    const selected = shareFriendIds.includes(friend.userId);
+                    return <button key={friend.userId} type="button" onClick={() => setShareFriendIds((current) => selected ? current.filter((id) => id !== friend.userId) : [...current, friend.userId])} className={`flex items-center gap-3 rounded-2xl border p-3 text-left ${selected ? "border-primary/45 bg-primary/[0.075]" : "border-border bg-background/35 hover:border-primary/25"}`}><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-border bg-surface text-[9px] font-semibold text-primary">{friend.displayName.slice(0, 2).toUpperCase()}</span><span className="min-w-0 flex-1"><span className="block truncate text-[9px] font-semibold">{friend.displayName}</span><span className="mt-0.5 block truncate text-[7px] text-muted">@{friend.handle}</span></span><span className={`flex h-5 w-5 items-center justify-center rounded-md border ${selected ? "border-primary bg-primary text-background" : "border-border text-transparent"}`}><Check className="h-3 w-3" /></span></button>;
+                  })}
+                  {shareState !== "loading" && !visibleFriends.length ? <div className="col-span-full flex min-h-32 items-center justify-center text-[9px] text-muted">No friends found.</div> : null}
+                </div>
+                {shareError ? <p className="mt-3 text-[9px] text-danger">{shareError}</p> : null}
+              </div>
+              <footer className="flex items-center justify-end gap-2 border-t border-border px-5 py-4">
+                <button type="button" onClick={() => setShareEvent(null)} disabled={shareState === "sending"} className="h-9 rounded-xl border border-border px-4 text-[8px] font-semibold text-muted">Cancel</button>
+                <button type="button" onClick={() => void sendCalendarEvent()} disabled={!shareFriendIds.length || shareState === "loading" || shareState === "sending" || shareState === "sent"} className="flex h-9 min-w-[112px] items-center justify-center gap-2 rounded-xl bg-primary px-4 text-[8px] font-semibold text-background disabled:opacity-40">{shareState === "sending" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : shareState === "sent" ? <Check className="h-3.5 w-3.5" /> : <Send className="h-3.5 w-3.5" />}{shareState === "sending" ? "Sending…" : shareState === "sent" ? "Sent" : `Send${shareFriendIds.length ? ` (${shareFriendIds.length})` : ""}`}</button>
+              </footer>
+            </section>
+          </div>
+        );
+      })() : null}
     </div>
   );
 }
