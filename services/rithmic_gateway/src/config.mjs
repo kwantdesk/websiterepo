@@ -95,6 +95,10 @@ export function loadConfig(env = process.env) {
     allowedInstruments: parseSubscriptions(
       env.RITHMIC_ALLOWED_INSTRUMENTS || env.RITHMIC_SUBSCRIPTIONS,
     ),
+    // Product-root allowlist for on-demand active-contract subscriptions.
+    // This keeps the collector bounded while avoiding a restart every time
+    // the front month rolls or a user opens another entitled CME product.
+    allowedRoots: parseSubscriptions(env.RITHMIC_ALLOWED_ROOTS),
     enableDepthByOrder:
       String(env.RITHMIC_ENABLE_DEPTH_BY_ORDER || "true").toLowerCase() !==
       "false",

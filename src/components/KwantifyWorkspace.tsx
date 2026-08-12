@@ -757,17 +757,27 @@ function displayMarketSource(broker: string) {
 function fallbackFuturesContract(root: string, now = new Date()) {
   const quarterly = new Set([
     "MNQ", "NQ", "MES", "ES", "MYM", "YM", "M2K", "RTY",
-    "ZN", "ZB", "ZF", "ZT", "SR3", "6E", "6J", "6B", "6A", "6C",
+    "ZN", "TN", "ZB", "UB", "ZF", "ZT", "10Y", "SR3",
+    "6E", "M6E", "6J", "6B", "M6B", "6A", "M6A", "6C", "6S", "6N", "6M",
   ]);
-  const evenMonths = new Set(["GC", "MGC", "SI", "SIL", "HG"]);
+  const deliveryMonths: Record<string, number[]> = {
+    GC: [2, 4, 6, 8, 10, 12], MGC: [2, 4, 6, 8, 10, 12],
+    SI: [3, 5, 7, 9, 12], SIL: [3, 5, 7, 9, 12], HG: [3, 5, 7, 9, 12],
+    PL: [1, 4, 7, 10], PA: [3, 6, 9, 12],
+    ZC: [3, 5, 7, 9, 12], ZW: [3, 5, 7, 9, 12],
+    ZS: [1, 3, 5, 7, 8, 9, 11],
+    ZM: [1, 3, 5, 7, 8, 9, 10, 12], ZL: [1, 3, 5, 7, 8, 9, 10, 12],
+    LE: [2, 4, 6, 8, 10, 12], HE: [2, 4, 5, 6, 7, 8, 10, 12],
+    GF: [1, 3, 4, 5, 8, 9, 10, 11],
+  };
   const eligibleMonths = quarterly.has(root)
     ? [3, 6, 9, 12]
-    : evenMonths.has(root)
-      ? [2, 4, 6, 8, 10, 12]
-      : [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+    : deliveryMonths[root] ?? [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
   const currentMonth = now.getUTCMonth() + 1;
   let year = now.getUTCFullYear();
-  let month = eligibleMonths.find((candidate) => candidate >= currentMonth);
+  let month = eligibleMonths.find((candidate) => (
+    quarterly.has(root) ? candidate >= currentMonth : candidate > currentMonth
+  ));
   if (!month) {
     month = eligibleMonths[0];
     year += 1;

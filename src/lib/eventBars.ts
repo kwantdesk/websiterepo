@@ -36,19 +36,30 @@ export function futuresTickSize(symbol: string) {
   if (["ES", "MES", "NQ", "MNQ"].includes(root)) return 0.25;
   if (["YM", "MYM"].includes(root)) return 1;
   if (["RTY", "M2K"].includes(root)) return 0.1;
-  if (["CL", "MCL", "RB", "HO"].includes(root)) return 0.01;
+  if (["CL", "MCL"].includes(root)) return 0.01;
+  if (root === "QM") return 0.025;
+  if (["RB", "HO"].includes(root)) return 0.0001;
   if (root === "NG") return 0.001;
-  if (["GC", "MGC", "PL"].includes(root)) return 0.1;
-  if (root === "SI") return 0.005;
+  if (root === "QG") return 0.005;
+  if (["GC", "MGC", "PL", "PA"].includes(root)) return 0.1;
+  if (["SI", "SIL"].includes(root)) return 0.005;
   if (root === "HG") return 0.0005;
-  if (["ZN", "ZF"].includes(root)) return 1 / 64;
-  if (["ZB", "ZT"].includes(root)) return 1 / 32;
+  if (["ZN", "TN"].includes(root)) return 1 / 64;
+  if (["ZB", "UB"].includes(root)) return 1 / 32;
+  if (root === "ZF") return 1 / 128;
+  if (root === "ZT") return 1 / 256;
   if (root === "10Y") return 0.001;
   if (root === "SR3") return 0.0025;
-  if (["6E", "6A", "6C"].includes(root)) return 0.00005;
-  if (root === "6B") return 0.0001;
+  if (["6E", "6C"].includes(root)) return 0.00005;
+  if (["6A", "6B", "6S", "6N", "M6E", "M6A", "M6B"].includes(root)) return 0.0001;
   if (root === "6J") return 0.0000005;
+  if (root === "6M") return 0.00001;
   if (["ZC", "ZW", "ZS"].includes(root)) return 0.25;
+  if (root === "ZM") return 0.1;
+  if (root === "ZL") return 0.01;
+  if (["LE", "HE", "GF"].includes(root)) return 0.025;
+  if (["BTC", "MBT"].includes(root)) return 5;
+  if (["ETH", "MET"].includes(root)) return 0.5;
   return 0.01;
 }
 

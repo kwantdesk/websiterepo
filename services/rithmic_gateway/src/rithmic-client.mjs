@@ -116,6 +116,11 @@ export class RithmicMarketDataClient extends EventEmitter {
         instrumentKey(row.exchange, row.symbol),
       ),
     );
+    this.allowedRoots = new Set(
+      (config.allowedRoots ?? []).map((row) =>
+        instrumentKey(row.exchange, row.symbol),
+      ),
+    );
     this.status = {
       provider: "Rithmic",
       environment: config.systemName,
@@ -280,10 +285,12 @@ export class RithmicMarketDataClient extends EventEmitter {
     // Not subscribed: this would open a NEW upstream subscription that never
     // expires. Refuse anything outside the configured allowlist rather than
     // silently consuming provider capacity on a stray query string.
-    if (this.allowedInstruments.size && !this.allowedInstruments.has(key)) {
+    const root = row.symbol.replace(/[FGHJKMNQUVXZ]\d{1,2}$/u, "");
+    const rootAllowed = this.allowedRoots.has(instrumentKey(row.exchange, root));
+    if (this.allowedInstruments.size && !this.allowedInstruments.has(key) && !rootAllowed) {
       const error = new Error(
         `${row.exchange}:${row.symbol} is not an allowed instrument on this collector. `
-          + `Add it to RITHMIC_SUBSCRIPTIONS (or RITHMIC_ALLOWED_INSTRUMENTS) and restart.`,
+          + `Add it to RITHMIC_SUBSCRIPTIONS, RITHMIC_ALLOWED_INSTRUMENTS, or RITHMIC_ALLOWED_ROOTS and restart.`,
       );
       error.code = "RITHMIC_INSTRUMENT_NOT_ALLOWED";
       throw error;

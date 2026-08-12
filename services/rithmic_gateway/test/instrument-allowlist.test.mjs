@@ -54,6 +54,18 @@ test("the allowlist can be widened deliberately", () => {
   assert.equal(row.symbol, "NQZ6");
 });
 
+test("an allowed product root permits the active contract without allowing unrelated products", () => {
+  const client = offlineClient({
+    RITHMIC_ALLOWED_ROOTS: "NYMEX:CL,COMEX:GC",
+  });
+  assert.equal(client.subscribe("NYMEX", "CLQ6").symbol, "CLQ6");
+  assert.equal(client.subscribe("COMEX", "GCZ6").symbol, "GCZ6");
+  assert.throws(
+    () => client.subscribe("NYMEX", "NGQ6"),
+    (error) => error.code === "RITHMIC_INSTRUMENT_NOT_ALLOWED",
+  );
+});
+
 test("case and whitespace do not bypass the allowlist", () => {
   const client = offlineClient();
   assert.throws(

@@ -97,9 +97,30 @@ function requestedInstrument(url, body = {}) {
 }
 
 function tickSize(symbol) {
-  if (/^(ES|MES|NQ|MNQ)/.test(symbol)) return 0.25;
-  if (/^(GC|MGC)/.test(symbol)) return 0.1;
-  if (/^(CL|MCL)/.test(symbol)) return 0.01;
+  const root = contractRoot(symbol);
+  if (["ES", "MES", "NQ", "MNQ"].includes(root)) return 0.25;
+  if (["YM", "MYM"].includes(root)) return 1;
+  if (["RTY", "M2K", "GC", "MGC", "PL", "PA", "ZM"].includes(root)) return 0.1;
+  if (["CL", "MCL", "ZL"].includes(root)) return 0.01;
+  if (root === "QM") return 0.025;
+  if (["RB", "HO"].includes(root)) return 0.0001;
+  if (["NG", "10Y"].includes(root)) return 0.001;
+  if (root === "QG") return 0.005;
+  if (["SI", "SIL"].includes(root)) return 0.005;
+  if (root === "HG") return 0.0005;
+  if (["ZN", "TN"].includes(root)) return 1 / 64;
+  if (["ZB", "UB"].includes(root)) return 1 / 32;
+  if (root === "ZF") return 1 / 128;
+  if (root === "ZT") return 1 / 256;
+  if (root === "SR3") return 0.0025;
+  if (["6E", "6C"].includes(root)) return 0.00005;
+  if (["6A", "6B", "6S", "6N", "M6E", "M6A", "M6B"].includes(root)) return 0.0001;
+  if (root === "6J") return 0.0000005;
+  if (root === "6M") return 0.00001;
+  if (["ZC", "ZW", "ZS"].includes(root)) return 0.25;
+  if (["LE", "HE", "GF"].includes(root)) return 0.025;
+  if (["BTC", "MBT"].includes(root)) return 5;
+  if (["ETH", "MET"].includes(root)) return 0.5;
   return 0.01;
 }
 
@@ -121,10 +142,43 @@ const FUTURES_DISPLAY_NAMES = {
   CL: "WTI Crude Oil",
   QM: "E-mini Crude Oil",
   NG: "Henry Hub Natural Gas",
+  QG: "E-mini Natural Gas",
+  RB: "RBOB Gasoline",
+  HO: "ULSD Heating Oil",
+  HG: "Copper",
+  PL: "Platinum",
+  PA: "Palladium",
   ZN: "10-Year Treasury Note",
+  TN: "Ultra 10-Year Treasury Note",
   ZB: "30-Year Treasury Bond",
+  UB: "Ultra Treasury Bond",
   ZF: "5-Year Treasury Note",
   ZT: "2-Year Treasury Note",
+  "10Y": "10-Year Treasury Yield",
+  SR3: "3-Month SOFR",
+  "6E": "Euro FX",
+  M6E: "Micro Euro FX",
+  "6J": "Japanese Yen",
+  "6B": "British Pound",
+  M6B: "Micro British Pound",
+  "6A": "Australian Dollar",
+  M6A: "Micro Australian Dollar",
+  "6C": "Canadian Dollar",
+  "6S": "Swiss Franc",
+  "6N": "New Zealand Dollar",
+  "6M": "Mexican Peso",
+  BTC: "Bitcoin",
+  MBT: "Micro Bitcoin",
+  ETH: "Ether",
+  MET: "Micro Ether",
+  ZC: "Corn",
+  ZS: "Soybeans",
+  ZW: "Wheat",
+  ZM: "Soybean Meal",
+  ZL: "Soybean Oil",
+  LE: "Live Cattle",
+  HE: "Lean Hogs",
+  GF: "Feeder Cattle",
 };
 
 function contractRoot(symbol) {
@@ -272,7 +326,10 @@ quoteFlush.unref();
 // silently degraded every chart to the APPROX fallback. Micros are therefore
 // served from the parent book, and the response carries the PARENT contract
 // symbol so the provenance is honest: an MNQ chart reading NQ tape says so.
-const MICRO_PARENT_ROOTS = { MNQ: "NQ", MES: "ES", MYM: "YM", M2K: "RTY", MGC: "GC", MCL: "CL" };
+const MICRO_PARENT_ROOTS = {
+  MNQ: "NQ", MES: "ES", MYM: "YM", M2K: "RTY", MGC: "GC", MCL: "CL",
+  SIL: "SI", QG: "NG", M6E: "6E", M6B: "6B", M6A: "6A", MBT: "BTC", MET: "ETH",
+};
 
 // Full depth frames are materially heavier than trade ticks. The heatmap
 // snapshot path is now bounded to only trades newer than the last frame, so a
@@ -304,8 +361,8 @@ function parentRoot(root) {
 
 function exchangeForRoot(root) {
   if (["GC", "MGC", "SI", "SIL", "HG"].includes(root)) return "COMEX";
-  if (["CL", "MCL", "QM", "NG", "HO", "RB"].includes(root)) return "NYMEX";
-  if (["YM", "MYM", "ZN", "ZB", "ZF", "ZT"].includes(root)) return "CBOT";
+  if (["CL", "MCL", "QM", "NG", "QG", "HO", "RB", "PL", "PA"].includes(root)) return "NYMEX";
+  if (["YM", "MYM", "ZN", "TN", "ZB", "UB", "ZF", "ZT", "ZC", "ZS", "ZW", "ZM", "ZL"].includes(root)) return "CBOT";
   return "CME";
 }
 
@@ -313,17 +370,30 @@ function activeContractSymbol(root, now = new Date()) {
   if (!root) return "";
   const quarterly = new Set([
     "MNQ", "NQ", "MES", "ES", "MYM", "YM", "M2K", "RTY",
-    "ZN", "ZB", "ZF", "ZT",
+    "ZN", "TN", "ZB", "UB", "ZF", "ZT", "10Y", "SR3",
+    "6E", "M6E", "6J", "6B", "M6B", "6A", "M6A", "6C", "6S", "6N", "6M",
   ]);
-  const evenMonths = new Set(["GC", "MGC", "SI", "SIL", "HG"]);
+  const deliveryMonths = {
+    GC: [2, 4, 6, 8, 10, 12], MGC: [2, 4, 6, 8, 10, 12],
+    SI: [3, 5, 7, 9, 12], SIL: [3, 5, 7, 9, 12], HG: [3, 5, 7, 9, 12],
+    PL: [1, 4, 7, 10], PA: [3, 6, 9, 12],
+    ZC: [3, 5, 7, 9, 12], ZW: [3, 5, 7, 9, 12],
+    ZS: [1, 3, 5, 7, 8, 9, 11],
+    ZM: [1, 3, 5, 7, 8, 9, 10, 12], ZL: [1, 3, 5, 7, 8, 9, 10, 12],
+    LE: [2, 4, 6, 8, 10, 12], HE: [2, 4, 5, 6, 7, 8, 10, 12],
+    GF: [1, 3, 4, 5, 8, 9, 10, 11],
+  };
   const months = quarterly.has(root)
     ? [3, 6, 9, 12]
-    : evenMonths.has(root)
-      ? [2, 4, 6, 8, 10, 12]
-      : [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+    : deliveryMonths[root] || [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
   const currentMonth = now.getUTCMonth() + 1;
   let year = now.getUTCFullYear();
-  let month = months.find((candidate) => candidate >= currentMonth);
+  // Quarterly contracts remain usable through their delivery month. Physical
+  // and monthly products roll before delivery, so never guess the expiring
+  // current-month contract when a user opens a product for the first time.
+  let month = months.find((candidate) => (
+    quarterly.has(root) ? candidate >= currentMonth : candidate > currentMonth
+  ));
   if (!month) {
     month = months[0];
     year += 1;
