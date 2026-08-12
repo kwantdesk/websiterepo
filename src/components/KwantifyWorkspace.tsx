@@ -798,6 +798,39 @@ function currentCmeContract(symbol: string) {
   return fallbackFuturesContract(displayCmeSymbol(symbol)).contractSymbol;
 }
 
+const CME_MICRO_PARENT_ROOTS: Record<string, string> = {
+  MNQ: "NQ",
+  MES: "ES",
+  MYM: "YM",
+  M2K: "RTY",
+  MGC: "GC",
+  MCL: "CL",
+  SIL: "SI",
+  QG: "NG",
+  M6E: "6E",
+  M6B: "6B",
+  M6A: "6A",
+  MBT: "BTC",
+  MET: "ETH",
+};
+
+function parentCmeRoot(symbol: string) {
+  const root = displayCmeSymbol(symbol)
+    .toUpperCase()
+    .replace(/[FGHJKMNQUVXZ]\d{1,2}$/i, "");
+  return CME_MICRO_PARENT_ROOTS[root] ?? root;
+}
+
+function contractMatchesChartInstrument(chartSymbol: string, contractSymbol: string | null) {
+  if (!contractSymbol) return false;
+  return parentCmeRoot(chartSymbol) === parentCmeRoot(contractSymbol);
+}
+
+function valueAreaSourceSymbol(chartSymbol: string) {
+  const parent = parentCmeRoot(chartSymbol);
+  return `${parent}.v.0`;
+}
+
 function createWorkspaceLayoutTree(
   layout: Exclude<WorkspaceLayout, "custom">,
   panes: WorkspacePane[],
@@ -3308,7 +3341,7 @@ function WorkspaceChartPane({
     pane.broker === "Databento" ? currentCmeContract(pane.symbol) : null;
   const gammaDataReady = Boolean(
     expectedGammaContract
-    && resolvedContractSymbol === expectedGammaContract
+    && contractMatchesChartInstrument(pane.symbol, resolvedContractSymbol)
     && candles.length,
   );
   const currentGammaOverlay =
@@ -4295,7 +4328,14 @@ function WorkspaceChartPane({
       setValueAreaLevelsLoading(!retainedOverlay);
       let nextDelay = 15_000;
       try {
-        const payload = await fetchValueAreaPayload(pane.symbol);
+        const sourceSymbol = valueAreaSourceSymbol(pane.symbol);
+        const sourcePayload = await fetchValueAreaPayload(sourceSymbol);
+        // Micro charts deliberately consume their parent book on the VPS. Use
+        // the same parent profile, but retain the selected chart identity so
+        // overlay validation and exports remain attached to MES/MNQ/etc.
+        const payload = sourcePayload.symbol.toUpperCase() === pane.symbol.toUpperCase()
+          ? sourcePayload
+          : { ...sourcePayload, symbol: pane.symbol };
         if (cancelled) return;
         const overlay = buildValueAreaChartOverlay(
           payload,
