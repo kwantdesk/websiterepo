@@ -253,6 +253,8 @@ test("inspector uses one toolbar navigation and themed custom dropdowns", async 
   assert.match(source, /className = 'kwant-select-trigger'/);
   assert.match(css, /\.kwant-select-trigger\s*\{[\s\S]*?font:\s*500 11px "Inter"/);
   assert.match(css, /\.kwant-select-menu\s*\{[\s\S]*?background:\s*color-mix/);
+  assert.doesNotMatch(html, /Linked to Website Settings/);
+  assert.doesNotMatch(html, /id="uiThemeSelect"/);
 });
 
 test("instrument changes show staged loading progress until the first new frame paints", async () => {
