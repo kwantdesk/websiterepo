@@ -2874,28 +2874,29 @@ function readGammaSessionPayload(
 ) {
   if (typeof window === "undefined") return null;
   const cacheKey = gammaPayloadCacheKey(conversion, calibrated);
-  try {
-    const raw = window.sessionStorage.getItem(`${GAMMA_SESSION_CACHE_PREFIX}${cacheKey}`);
-    if (!raw) return null;
-    const record = JSON.parse(raw) as { savedAt?: number; payload?: unknown };
-    const savedAt = Number(record.savedAt);
-    const payload = record.payload;
-    const valid = Number.isFinite(savedAt)
-      && Date.now() - savedAt <= GAMMA_SESSION_CACHE_MAX_AGE_MS
-      && isRenderableGammaPayload(payload)
-      && payload.root === conversion.futuresRoot
-      && payload.requestedSource === conversion.source;
-    if (!valid) {
-      window.sessionStorage.removeItem(`${GAMMA_SESSION_CACHE_PREFIX}${cacheKey}`);
-      return null;
-    }
-    return payload;
-  } catch {
+  const storageKey = `${GAMMA_SESSION_CACHE_PREFIX}${cacheKey}`;
+  for (const storage of [window.sessionStorage, window.localStorage]) {
     try {
-      window.sessionStorage.removeItem(`${GAMMA_SESSION_CACHE_PREFIX}${cacheKey}`);
-    } catch {}
-    return null;
+      const raw = storage.getItem(storageKey);
+      if (!raw) continue;
+      const record = JSON.parse(raw) as { savedAt?: number; payload?: unknown };
+      const savedAt = Number(record.savedAt);
+      const payload = record.payload;
+      const valid = Number.isFinite(savedAt)
+        && Date.now() - savedAt <= GAMMA_SESSION_CACHE_MAX_AGE_MS
+        && isRenderableGammaPayload(payload)
+        && payload.root === conversion.futuresRoot
+        && payload.requestedSource === conversion.source;
+      if (!valid) {
+        storage.removeItem(storageKey);
+        continue;
+      }
+      return payload;
+    } catch {
+      try { storage.removeItem(storageKey); } catch {}
+    }
   }
+  return null;
 }
 
 function writeGammaSessionPayload(
@@ -2905,11 +2906,12 @@ function writeGammaSessionPayload(
 ) {
   if (typeof window === "undefined") return;
   const cacheKey = gammaPayloadCacheKey(conversion, calibrated);
+  const serialized = JSON.stringify({ savedAt: Date.now(), payload });
   try {
-    window.sessionStorage.setItem(
-      `${GAMMA_SESSION_CACHE_PREFIX}${cacheKey}`,
-      JSON.stringify({ savedAt: Date.now(), payload }),
-    );
+    window.sessionStorage.setItem(`${GAMMA_SESSION_CACHE_PREFIX}${cacheKey}`, serialized);
+  } catch {}
+  try {
+    window.localStorage.setItem(`${GAMMA_SESSION_CACHE_PREFIX}${cacheKey}`, serialized);
   } catch {}
 }
 
@@ -2955,13 +2957,14 @@ function fetchGammaPayload(
   const calibrationQuery = options.calibrated && Number.isFinite(calibrationPrice) && calibrationPrice > 0
     ? `&futuresPrice=${encodeURIComponent(calibrationPrice.toFixed(6))}`
     : "";
-  const controller = new AbortController();
-  const timeout = window.setTimeout(() => controller.abort(), 35_000);
-  const promise = fetch(
-    `/api/chart-gamma-levels?root=${encodeURIComponent(conversion.futuresRoot)}&source=${encodeURIComponent(conversion.source)}${options.calibrated ? "&calibrated=1" : ""}${calibrationQuery}`,
-    { cache: "no-store", signal: controller.signal },
-  )
-    .then(async (response) => {
+  const requestUrl = `/api/chart-gamma-levels?root=${encodeURIComponent(conversion.futuresRoot)}&source=${encodeURIComponent(conversion.source)}${options.calibrated ? "&calibrated=1" : ""}${calibrationQuery}`;
+  const requestPayload = async () => {
+    let lastError: unknown = null;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const controller = new AbortController();
+      const timeout = window.setTimeout(() => controller.abort(), 25_000);
+      try {
+        const response = await fetch(requestUrl, { signal: controller.signal });
       const raw = await response.text();
       let candidate: unknown = null;
       try {
@@ -2974,11 +2977,29 @@ function fetchGammaPayload(
         : response.ok
           ? "The Gamma service returned an invalid response."
           : `Gamma levels are unavailable (${response.status}).`;
-      if (!response.ok) throw new Error(errorMessage);
+        if (!response.ok) {
+          const responseError = new Error(errorMessage) as Error & { status?: number };
+          responseError.status = response.status;
+          throw responseError;
+        }
       if (!isRenderableGammaPayload(candidate)) {
         throw new Error("The latest options frame is still synchronising.");
       }
-      const payload = candidate;
+        return candidate;
+      } catch (error) {
+        lastError = error;
+        const status = Number((error as { status?: number } | null)?.status);
+        const retriable = !Number.isFinite(status) || status === 408 || status === 429 || status >= 500;
+        if (!retriable || attempt === 2) throw error;
+        await new Promise<void>((resolve) => window.setTimeout(resolve, 500 * (2 ** attempt)));
+      } finally {
+        window.clearTimeout(timeout);
+      }
+    }
+    throw lastError instanceof Error ? lastError : new Error("Kwant Levels could not refresh.");
+  };
+  const promise = requestPayload()
+    .then((payload) => {
       const current = gammaPayloadCache.get(cacheKey);
       if (current?.promise === promise) {
         current.expiresAt = Date.now() + gammaRefreshDelay(payload.refreshAfterMs);
@@ -2999,8 +3020,7 @@ function fetchGammaPayload(
         }
       }
       throw error;
-    })
-    .finally(() => window.clearTimeout(timeout));
+    });
 
   gammaPayloadCache.set(cacheKey, {
     expiresAt: Date.now() + 5_000,

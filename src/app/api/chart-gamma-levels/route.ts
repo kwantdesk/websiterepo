@@ -97,11 +97,19 @@ export async function GET(request: NextRequest) {
                 Number.isFinite(futuresPrice) && futuresPrice > 0 ? futuresPrice : undefined,
               )
       : await getChartGammaLevels(root, source, sessionDate);
+    const historical = Boolean(asOf || sessionDate);
+    const marketOpen = Boolean(payload.marketOpen);
     return NextResponse.json(payload, {
       headers: {
-        "Cache-Control": asOf || sessionDate
-          ? "private, max-age=86400, stale-while-revalidate=604800"
-          : "private, no-store, max-age=0",
+        // The payload contains market data only, never account data. Browsers
+        // revalidate while Vercel retains a shared last-good frame, preventing
+        // every tab/user from rebuilding the same options snapshot at once.
+        "Cache-Control": "public, max-age=0, must-revalidate",
+        "Vercel-CDN-Cache-Control": historical
+          ? "public, s-maxage=86400, stale-while-revalidate=604800"
+          : marketOpen
+            ? "public, s-maxage=15, stale-while-revalidate=120"
+            : "public, s-maxage=300, stale-while-revalidate=21600",
       },
     });
   } catch (error) {
