@@ -588,15 +588,19 @@ function EquityCurve({ trades }: { trades: JournalTrade[] }) {
     const top = 18;
     const bottom = 40;
     const values = points.map((point) => point.value);
-    const minimum = Math.min(0, ...values);
-    const maximum = Math.max(0, ...values);
+    // Account-equity curves must scale around the recorded balance and actual
+    // trade path. Including $0 beside a $50k account crushes every win/loss
+    // into a visually flat line that no longer represents the trades.
+    const minimum = recordedStartingBalance === null ? Math.min(0, ...values) : Math.min(...values);
+    const maximum = recordedStartingBalance === null ? Math.max(0, ...values) : Math.max(...values);
     const rawSpan = Math.max(1, maximum - minimum);
-    const padding = Math.max(rawSpan * 0.08, recordedStartingBalance ? recordedStartingBalance * 0.002 : 1);
+    const padding = Math.max(rawSpan * 0.08, 1);
     const chartMinimum = minimum - padding;
     const chartMaximum = maximum + padding;
     const span = chartMaximum - chartMinimum;
     const x = (index: number) => left + index / Math.max(1, points.length - 1) * (width - left - right);
     const y = (value: number) => top + (chartMaximum - value) / span * (height - top - bottom);
+    const baselineY = y(startingValue);
     const plottedPoints = points.map((point) => ({ ...point, x: x(point.index), y: y(point.value) }));
     const path = plottedPoints.map((point, index) => `${index ? "L" : "M"}${point.x.toFixed(1)},${point.y.toFixed(1)}`).join(" ");
     const yTicks = Array.from({ length: 5 }, (_, index) => {
@@ -617,8 +621,9 @@ function EquityCurve({ trades }: { trades: JournalTrade[] }) {
       top,
       bottom,
       path,
-      area: `${path} L${width - right},${height - bottom} L${left},${height - bottom} Z`,
+      area: `${path} L${width - right},${baselineY} L${left},${baselineY} Z`,
       zeroY: y(0),
+      baselineY,
       final: points.at(-1)?.value ?? 0,
       finalPnl: points.at(-1)?.cumulativePnl ?? 0,
       points: plottedPoints,
@@ -659,9 +664,9 @@ function EquityCurve({ trades }: { trades: JournalTrade[] }) {
         {geometry.xTicks.map((tick) => <line key={tick.index} x1={tick.x} x2={tick.x} y1={geometry.top} y2={geometry.height - geometry.bottom} stroke="var(--grid-color)" strokeOpacity=".5" strokeWidth="1" vectorEffect="non-scaling-stroke" />)}
         <line x1={geometry.left} x2={geometry.width - geometry.right} y1={geometry.height - geometry.bottom} y2={geometry.height - geometry.bottom} stroke="var(--border)" strokeWidth="1" vectorEffect="non-scaling-stroke" />
         <line x1={geometry.left} x2={geometry.left} y1={geometry.top} y2={geometry.height - geometry.bottom} stroke="var(--border)" strokeWidth="1" vectorEffect="non-scaling-stroke" />
-        {!geometry.hasStartingBalance ? <line x1={geometry.left} x2={geometry.width - geometry.right} y1={geometry.zeroY} y2={geometry.zeroY} stroke="var(--muted)" strokeOpacity=".45" strokeDasharray="4 5" vectorEffect="non-scaling-stroke" /> : null}
+        <line x1={geometry.left} x2={geometry.width - geometry.right} y1={geometry.hasStartingBalance ? geometry.baselineY : geometry.zeroY} y2={geometry.hasStartingBalance ? geometry.baselineY : geometry.zeroY} stroke="var(--muted)" strokeOpacity=".45" strokeDasharray="4 5" vectorEffect="non-scaling-stroke" />
         <path d={geometry.area} fill="url(#journal-equity-fill)" />
-        <path d={geometry.path} fill="none" stroke={geometry.final >= 0 ? "var(--primary)" : "var(--danger)"} strokeWidth="2.25" vectorEffect="non-scaling-stroke" />
+        <path d={geometry.path} fill="none" stroke={geometry.finalPnl >= 0 ? "var(--primary)" : "var(--danger)"} strokeWidth="2.25" vectorEffect="non-scaling-stroke" />
         {hovered ? <>
           <line x1={hovered.x} x2={hovered.x} y1={geometry.top} y2={geometry.height - geometry.bottom} stroke="var(--foreground)" strokeOpacity=".45" strokeDasharray="3 4" vectorEffect="non-scaling-stroke" />
           <line x1={geometry.left} x2={geometry.width - geometry.right} y1={hovered.y} y2={hovered.y} stroke="var(--foreground)" strokeOpacity=".28" strokeDasharray="3 4" vectorEffect="non-scaling-stroke" />

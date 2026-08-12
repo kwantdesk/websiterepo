@@ -15,4 +15,8 @@ test("journal equity curve exposes responsive axes and trade-by-trade hover deta
   assert.match(source, /Account equity/);
   assert.match(source, /Trade #\{hovered\.index\}/);
   assert.match(source, /hovered\.trade\.entryPrice[\s\S]*?hovered\.trade\.exitPrice/);
+  assert.match(source, /recordedStartingBalance === null \? Math\.min\(0, \.\.\.values\) : Math\.min\(\.\.\.values\)/);
+  assert.match(source, /const baselineY = y\(startingValue\)/);
+  assert.match(source, /area: `\$\{path\} L\$\{width - right\},\$\{baselineY\} L\$\{left\},\$\{baselineY\} Z`/);
+  assert.match(source, /stroke=\{geometry\.finalPnl >= 0 \? "var\(--primary\)" : "var\(--danger\)"\}/);
 });
