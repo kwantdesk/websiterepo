@@ -10,6 +10,8 @@ test("middleware accepts only the active Supabase cookie family without bulk Set
   assert.match(source, /belongsToAuthCookie/);
   assert.match(source, /filter\(\(cookie\) => belongsToAuthCookie\(cookie\.name, activeAuthCookie\)\)/);
   assert.doesNotMatch(source, /expireObsoleteSupabaseCookies/);
+  assert.match(source, /setAll\(\) \{\}/);
+  assert.doesNotMatch(source, /response\.cookies\.set\(name, value/);
 });
 
 test("cookie recovery bypasses middleware and clears browser-readable auth chunks", async () => {

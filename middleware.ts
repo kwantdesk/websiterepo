@@ -87,7 +87,12 @@ export async function middleware(request: NextRequest) {
           .getAll()
           .filter((cookie) => belongsToAuthCookie(cookie.name, activeAuthCookie));
       },
-      setAll(cookies) { cookies.forEach(({ name, value, options }) => response.cookies.set(name, value, options)); },
+      // Middleware only validates the request. Supabase can decide that a
+      // chunked JWT needs refreshing and return dozens of cookie writes;
+      // forwarding those through Vercel's x-middleware-set-cookie header can
+      // exceed the 32 KB routing limit and crash the whole request. The
+      // browser client and /auth/callback own durable session writes instead.
+      setAll() {},
     },
   });
   const { data } = await supabase.auth.getUser();
