@@ -1,5 +1,6 @@
 import { createBrowserClient } from "@supabase/ssr";
 import { clearObsoleteSupabaseCookies } from "@/lib/supabaseCookieHygiene";
+import { scheduleClientStorageHygiene } from "@/lib/clientStorageHygiene";
 
 function getPublicKey() {
   return (
@@ -18,5 +19,6 @@ export function createClient() {
   }
 
   clearObsoleteSupabaseCookies(url);
+  scheduleClientStorageHygiene();
   return createBrowserClient(url, key);
 }

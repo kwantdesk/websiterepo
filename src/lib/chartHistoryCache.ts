@@ -29,9 +29,18 @@ const MAX_CANDLES_PER_SERIES = 120_000;
 // only the most recent minutes.
 const MAX_FLOW_BUCKETS_PER_SERIES = 30_000;
 const MAX_EXACT_EXECUTIONS_PER_SERIES = 25_000;
+// Browser persistence is only a warm-start cache. The VPS remains the source
+// of truth, so allowing every visited symbol/timeframe to accumulate forever
+// wastes storage and can make Chrome retain hundreds of megabytes for the
+// site. Keep the newest working sets and evict older series globally.
+const MAX_PERSISTENT_CACHE_BYTES = 48 * 1024 * 1024;
+const MAX_PERSISTENT_CACHE_RECORDS = 36;
+const CACHE_PRUNE_INTERVAL_MS = 60_000;
 const memoryCache = new Map<string, CachedHistory>();
 const executionTapeMemoryCache = new Map<string, CachedExecutionTape>();
 let databasePromise: Promise<IDBDatabase> | null = null;
+let lastCachePruneAt = 0;
+let cachePrunePromise: Promise<void> | null = null;
 
 function cacheKey(symbol: string, timeframe: string) {
   // Event-bar schema v3 rejects discontinuity staircases and requires a full
@@ -251,6 +260,68 @@ function openDatabase() {
   return databasePromise;
 }
 
+function estimatedRecordBytes(record: CachedHistory | CachedExecutionTape) {
+  // Conservative structural estimates avoid serialising very large arrays on
+  // the UI thread merely to decide which old cache entry should be removed.
+  if ("candles" in record) return 512 + record.candles.length * 240;
+  return 512 + record.records.length * 280;
+}
+
+export async function pruneChartHistoryCache(force = false) {
+  const now = Date.now();
+  if (!force && now - lastCachePruneAt < CACHE_PRUNE_INTERVAL_MS) return;
+  if (cachePrunePromise) return cachePrunePromise;
+  lastCachePruneAt = now;
+
+  cachePrunePromise = (async () => {
+    try {
+      const database = await openDatabase();
+      const records = await new Promise<Array<CachedHistory | CachedExecutionTape>>((resolve, reject) => {
+        const transaction = database.transaction(STORE_NAME, "readonly");
+        const request = transaction.objectStore(STORE_NAME).getAll();
+        request.onsuccess = () => resolve(
+          (request.result as Array<CachedHistory | CachedExecutionTape> | undefined) ?? [],
+        );
+        request.onerror = () => reject(request.error ?? new Error("Unable to inspect market cache."));
+      });
+
+      const newestFirst = records.sort((left, right) =>
+        Number(right.updatedAt ?? 0) - Number(left.updatedAt ?? 0));
+      let retainedBytes = 0;
+      const keysToDelete: string[] = [];
+      newestFirst.forEach((record, index) => {
+        const bytes = estimatedRecordBytes(record);
+        if (
+          index >= MAX_PERSISTENT_CACHE_RECORDS
+          || (retainedBytes > 0 && retainedBytes + bytes > MAX_PERSISTENT_CACHE_BYTES)
+        ) {
+          keysToDelete.push(record.key);
+          return;
+        }
+        retainedBytes += bytes;
+      });
+      if (!keysToDelete.length) return;
+
+      await new Promise<void>((resolve, reject) => {
+        const transaction = database.transaction(STORE_NAME, "readwrite");
+        const store = transaction.objectStore(STORE_NAME);
+        keysToDelete.forEach((key) => store.delete(key));
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => reject(transaction.error ?? new Error("Unable to prune market cache."));
+      });
+      keysToDelete.forEach((key) => {
+        memoryCache.delete(key);
+        executionTapeMemoryCache.delete(key);
+      });
+    } catch {
+      // Cache maintenance must never interrupt chart rendering.
+    }
+  })().finally(() => {
+    cachePrunePromise = null;
+  });
+  return cachePrunePromise;
+}
+
 export async function readChartHistoryCache(symbol: string, timeframe: string) {
   const key = cacheKey(symbol, timeframe);
   const memoryRecord = memoryCache.get(key);
@@ -392,6 +463,7 @@ export async function writeChartHistoryCache(symbol: string, timeframe: string, 
       transaction.oncomplete = () => resolve();
       transaction.onerror = () => reject(transaction.error ?? new Error("Unable to save market data."));
     });
+    void pruneChartHistoryCache();
   } catch {
     // The in-memory cache still keeps the chart stable for this browser session.
   }
@@ -451,6 +523,7 @@ export async function writeExecutionTapeCache(
       transaction.oncomplete = () => resolve();
       transaction.onerror = () => reject(transaction.error ?? new Error("Unable to cache executions."));
     });
+    void pruneChartHistoryCache();
   } catch {
     // Memory cache still prevents duplicate downloads during this session.
   }

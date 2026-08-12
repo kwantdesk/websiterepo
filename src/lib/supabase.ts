@@ -1,5 +1,6 @@
 import { createBrowserClient } from "@supabase/ssr";
 import { clearObsoleteSupabaseCookies } from "@/lib/supabaseCookieHygiene";
+import { scheduleClientStorageHygiene } from "@/lib/clientStorageHygiene";
 
 // Local design-preview bypass (clone only): when NEXT_PUBLIC_KWANTIFY_DEV_AUTH_BYPASS=1
 // and running on localhost, auth.getUser()/getSession() report a stub user so the
@@ -36,6 +37,7 @@ export function createClient() {
   }
 
   clearObsoleteSupabaseCookies(url);
+  scheduleClientStorageHygiene();
   const client = createBrowserClient(url, key);
 
   if (DEV_BYPASS && isLocalhost()) {
