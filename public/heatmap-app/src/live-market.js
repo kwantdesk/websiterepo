@@ -17,6 +17,10 @@ const STREAM_LEASE_MS = 240_000;
 const MAX_PRESENTATION_TICK_JUMP = 128;
 export const INSTITUTIONAL_MARKET_DATA_ORIGIN = '/api/institutional-market-data';
 
+export function liveInstrumentCatalogUrl() {
+  return `${INSTITUTIONAL_MARKET_DATA_ORIGIN}/v1/market-data/catalog`;
+}
+
 const finite = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
 
 export function isPlausiblePresentationTick(value, snapshot) {
@@ -101,7 +105,21 @@ export function isFullDepthSource(source) {
 // Micro contracts trade the same underlying as their e-mini parent, so the
 // collector serves MNQ from the NQ book and answers with the parent root.
 // Comparing roots literally would reject every snapshot on a micro tab.
-const MICRO_PARENT_ROOTS = { MNQ: 'NQ', MES: 'ES', MYM: 'YM', M2K: 'RTY', MGC: 'GC', MCL: 'CL' };
+const MICRO_PARENT_ROOTS = {
+  MNQ: 'NQ', MES: 'ES', MYM: 'YM', M2K: 'RTY', MGC: 'GC', MCL: 'CL',
+  SIL: 'SI', QG: 'NG', M6E: '6E', M6B: '6B', M6A: '6A', MBT: 'BTC', MET: 'ETH',
+};
+
+export const LIQUIDITY_MAP_ROOTS = [
+  'NQ', 'ES', 'RTY', 'YM',
+  'CL', 'QM', 'NG', 'RB', 'HO',
+  'GC', 'SI', 'HG', 'PL', 'PA',
+  'ZN', 'TN', 'ZB', 'UB', 'ZF', 'ZT', '10Y', 'SR3',
+  '6E', '6J', '6B', '6A', '6C', '6S', '6N', '6M',
+  'BTC', 'ETH',
+  'ZC', 'ZS', 'ZW', 'ZM', 'ZL', 'LE', 'HE', 'GF',
+];
+export const LIQUIDITY_MAP_SYMBOLS = new Set(LIQUIDITY_MAP_ROOTS);
 
 export function normalizeLiquidityMapSymbol(value) {
   const root = String(value || '')
@@ -110,7 +128,7 @@ export function normalizeLiquidityMapSymbol(value) {
     .replace(/\.[VNC]\.\d+$/i, '')
     .replace(/[FGHJKMNQUVXZ]\d{1,2}$/i, '');
   const parent = MICRO_PARENT_ROOTS[root] || root;
-  return parent === 'NQ' || parent === 'ES' ? parent : '';
+  return LIQUIDITY_MAP_SYMBOLS.has(parent) ? parent : '';
 }
 
 export function symbolMatchesSnapshot(requested, snapshotRoot) {

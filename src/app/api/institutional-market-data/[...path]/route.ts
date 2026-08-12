@@ -15,6 +15,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 const ALLOWED_PATHS = new Set([
+  "v1/market-data/catalog",
   "v1/market-data/instruments",
   "v1/market-data/snapshot",
   "v1/market-data/order-flow-levels",

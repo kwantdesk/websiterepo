@@ -163,7 +163,9 @@ test("liquidity instruments use a searchable persistent tab picker", async () =>
   assert.match(html, /id=["']instrumentTabList["']/);
   assert.match(source, /kwantdesk:liquidity-map-tabs:v1/);
   assert.match(source, /DEFAULT_INSTRUMENT_TABS = \['NQ', 'ES'\]/);
-  assert.match(source, /INSTRUMENT_ORDER = \['NQ', 'ES'\]/);
+  assert.match(source, /INSTRUMENT_ORDER = \[\.\.\.LIQUIDITY_MAP_ROOTS\]/);
+  assert.match(source, /#loadInstrumentCatalog/);
+  assert.match(source, /this\.availableInstrumentSymbols\.has\(symbol\)/);
   assert.match(source, /#addInstrumentTab\(/);
   assert.match(source, /#closeInstrumentTab\(/);
   assert.doesNotMatch(source, /const next = this\.symbol === 'MNQ'/);
@@ -189,8 +191,8 @@ test("ES uses its own tighter price viewport and visual holds do not enter histo
     readFile(new URL("../public/heatmap-app/src/market-simulator.js", import.meta.url), "utf8"),
     readFile(new URL("../public/heatmap-app/src/main.js", import.meta.url), "utf8"),
   ]);
-  assert.match(symbols, /key: 'ES'[\s\S]*?defaultVisibleRows: 56/);
-  assert.match(symbols, /key: 'NQ'[\s\S]*?defaultVisibleRows: 112/);
+  assert.match(symbols, /instrument\('ES',[\s\S]*?defaultVisibleRows: 56/);
+  assert.match(symbols, /instrument\('NQ',[\s\S]*?depthRangePoints: 100/);
   assert.match(source, /if \(metadata\.visualHold\)[\s\S]*?updateLivePresentationEdge/);
   assert.match(source, /this\.view\.visibleRows = SYMBOLS\[symbol\]\.defaultVisibleRows \|\| 112/);
 });

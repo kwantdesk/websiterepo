@@ -5,11 +5,13 @@ import test from "node:test";
 import {
   DepthMarketFeed,
   isPlausiblePresentationTick,
+  LIQUIDITY_MAP_ROOTS,
   normalizeLiquidityMapSymbol,
   normalizeLiveSnapshot,
   symbolMatchesSnapshot,
   updateLivePresentationEdge,
 } from "../public/heatmap-app/src/live-market.js";
+import { SYMBOLS } from "../public/heatmap-app/src/market-simulator.js";
 
 function rawSnapshot(overrides = {}) {
   return {
@@ -62,12 +64,28 @@ test("presentation holds move only the live edge and never create synthetic hist
   assert.equal(history[0].bids, originalBids);
 });
 
-test("normalizes e-mini, micro, continuous, and dated contracts onto the two map books", () => {
+test("normalizes continuous, dated, and micro contracts across the Level 3 catalog", () => {
   assert.equal(normalizeLiquidityMapSymbol("NQ.v.0"), "NQ");
   assert.equal(normalizeLiquidityMapSymbol("MNQU6"), "NQ");
   assert.equal(normalizeLiquidityMapSymbol("ESU6"), "ES");
   assert.equal(normalizeLiquidityMapSymbol("MES.v.0"), "ES");
-  assert.equal(normalizeLiquidityMapSymbol("CLV6"), "");
+  assert.equal(normalizeLiquidityMapSymbol("CLV6"), "CL");
+  assert.equal(normalizeLiquidityMapSymbol("MGCZ6"), "GC");
+  assert.equal(normalizeLiquidityMapSymbol("ZNU6"), "ZN");
+  assert.equal(normalizeLiquidityMapSymbol("6EU6"), "6E");
+  assert.equal(normalizeLiquidityMapSymbol("BTCQ6"), "BTC");
+});
+
+test("every advertised Level 3 market has a renderable contract definition", () => {
+  assert.ok(LIQUIDITY_MAP_ROOTS.length >= 40);
+  for (const root of LIQUIDITY_MAP_ROOTS) {
+    const instrument = SYMBOLS[root];
+    assert.ok(instrument, `${root} is missing its liquidity-map definition`);
+    assert.ok(instrument.venue, `${root} is missing its exchange`);
+    assert.ok(instrument.description, `${root} is missing its display name`);
+    assert.ok(Number.isFinite(instrument.tickSize) && instrument.tickSize > 0, `${root} has an invalid tick size`);
+    assert.ok(Number.isFinite(instrument.defaultVisibleRows) && instrument.defaultVisibleRows > 0);
+  }
 });
 
 test("late events from the previous book cannot overwrite the newly selected book", () => {

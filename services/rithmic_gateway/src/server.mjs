@@ -641,6 +641,46 @@ function heatmapPayload(snapshot, after = 0) {
   };
 }
 
+function gatewayInstrumentCatalog() {
+  const configured = [
+    ...config.allowedRoots,
+    ...config.allowedInstruments,
+    ...config.subscriptions,
+  ];
+  const liveRows = client.book.list();
+  const roots = new Map();
+  for (const row of configured) {
+    const root = parentRoot(contractRoot(row.symbol));
+    if (!root) continue;
+    roots.set(root, {
+      root,
+      exchange: String(row.exchange || exchangeForRoot(root)).toUpperCase(),
+    });
+  }
+  return [...roots.values()]
+    .map(({ root, exchange }) => {
+      const live = liveRows
+        .filter((row) => parentRoot(contractRoot(row.symbol)) === root)
+        .sort((left, right) => (right.status === "LIVE" ? 1 : 0) - (left.status === "LIVE" ? 1 : 0))[0];
+      const contractSymbol = live?.symbol || activeContractSymbol(root);
+      const metadata = contractMetadata(contractSymbol);
+      return {
+        root,
+        symbol: contractSymbol,
+        contractSymbol,
+        displayName: FUTURES_DISPLAY_NAMES[root] || metadata.displayName || root,
+        contractLabel: metadata.contractLabel,
+        exchange: live?.exchange || exchange || exchangeForRoot(root),
+        tickSize: tickSize(root),
+        status: live?.status || "ON_DEMAND",
+        depthMode: live?.depthMode || (config.enableDepthByOrder ? "DEPTH_BY_ORDER" : "MARKET_BY_PRICE"),
+        fullDepth: config.enableDepthByOrder,
+        readOnly: true,
+      };
+    })
+    .sort((left, right) => left.root.localeCompare(right.root));
+}
+
 function isEventBasedInterval(value) {
   // Workspace event intervals use suffixes such as 40r, 500v, 200t, 1R,
   // 500dv, 12/4VB and 10PF. They have no clock duration and therefore cannot
@@ -1186,6 +1226,14 @@ const server = createServer(async (request, response) => {
             isPrimary: true,
           };
         }),
+      });
+    }
+    if (request.method === "GET" && url.pathname === "/v1/market-data/catalog") {
+      return json(response, 200, {
+        schemaVersion: "kwantdesk-liquidity-map-catalog-v1",
+        provider: "Rithmic",
+        environment: config.systemName,
+        instruments: gatewayInstrumentCatalog(),
       });
     }
     if (request.method === "POST" && url.pathname === "/v1/market-data/snapshot") {

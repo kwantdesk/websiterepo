@@ -1,66 +1,65 @@
-export const SYMBOLS = {
-  MNQ: {
-    key: 'MNQ', contract: 'MNQU6', venue: 'CME', description: 'Micro E-mini Nasdaq-100',
-    tickSize: 0.25, decimals: 2, startPrice: 22486.25, baseDepth: 42, volatility: 0.19, seed: 0x4d4e51,
-    depthRangePoints: 100,
-  },
-  ES: {
-    key: 'ES', contract: 'ES', venue: 'CME', description: 'E-mini S&P 500',
-    tickSize: 0.25, decimals: 2, startPrice: 6387.50, baseDepth: 86, volatility: 0.13, seed: 0x455355,
-    depthRangePoints: 100,
-    // ES normally travels far fewer points than NQ over the same clock
-    // window. A shared 28-point viewport made a real ES path look almost
-    // horizontal, especially immediately after restoring a short L3 seed.
-    defaultVisibleRows: 56,
-  },
-  BTC: {
-    key: 'BTC', contract: 'BTC-USD', venue: 'CRYPTO', description: 'Bitcoin / U.S. Dollar',
-    tickSize: 1, decimals: 0, startPrice: 118420, baseDepth: 13, volatility: 0.31, seed: 0x425443,
-  },
-  NQ: {
-    key: 'NQ', contract: 'NQ', venue: 'CME', description: 'E-mini Nasdaq-100',
-    tickSize: 0.25, decimals: 2, startPrice: 22486.25, baseDepth: 70, volatility: 0.19, seed: 0x4e51,
-    depthRangePoints: 100,
-    defaultVisibleRows: 112,
-  },
-  MES: {
-    key: 'MES', contract: 'MES', venue: 'CME', description: 'Micro E-mini S&P 500',
-    tickSize: 0.25, decimals: 2, startPrice: 6387.50, baseDepth: 60, volatility: 0.13, seed: 0x4d4553,
-    depthRangePoints: 100,
-  },
-  MYM: {
-    key: 'MYM', contract: 'MYM', venue: 'CBOT', description: 'Micro E-mini Dow',
-    tickSize: 1, decimals: 0, startPrice: 44500, baseDepth: 45, volatility: 0.12, seed: 0x4d594d,
-  },
-  YM: {
-    key: 'YM', contract: 'YM', venue: 'CBOT', description: 'E-mini Dow',
-    tickSize: 1, decimals: 0, startPrice: 44500, baseDepth: 65, volatility: 0.12, seed: 0x594d,
-  },
-  M2K: {
-    key: 'M2K', contract: 'M2K', venue: 'CME', description: 'Micro E-mini Russell 2000',
-    tickSize: 0.1, decimals: 1, startPrice: 2250, baseDepth: 42, volatility: 0.16, seed: 0x4d324b,
-  },
-  RTY: {
-    key: 'RTY', contract: 'RTY', venue: 'CME', description: 'E-mini Russell 2000',
-    tickSize: 0.1, decimals: 1, startPrice: 2250, baseDepth: 64, volatility: 0.16, seed: 0x525459,
-  },
-  MGC: {
-    key: 'MGC', contract: 'MGC', venue: 'COMEX', description: 'Micro Gold',
-    tickSize: 0.1, decimals: 1, startPrice: 3400, baseDepth: 38, volatility: 0.17, seed: 0x4d4743,
-  },
-  GC: {
-    key: 'GC', contract: 'GC', venue: 'COMEX', description: 'Gold',
-    tickSize: 0.1, decimals: 1, startPrice: 3400, baseDepth: 60, volatility: 0.17, seed: 0x4743,
-  },
-  MCL: {
-    key: 'MCL', contract: 'MCL', venue: 'NYMEX', description: 'Micro WTI Crude Oil',
-    tickSize: 0.01, decimals: 2, startPrice: 70, baseDepth: 38, volatility: 0.2, seed: 0x4d434c,
-  },
-  CL: {
-    key: 'CL', contract: 'CL', venue: 'NYMEX', description: 'WTI Crude Oil',
-    tickSize: 0.01, decimals: 2, startPrice: 70, baseDepth: 62, volatility: 0.2, seed: 0x434c,
-  },
-};
+const instrument = (key, venue, description, tickSize, startPrice, options = {}) => ({
+  key,
+  contract: key,
+  venue,
+  description,
+  tickSize,
+  decimals: Math.min(8, Math.max(0, String(tickSize.toFixed(8)).replace(/0+$/, '').split('.')[1]?.length || 0)),
+  startPrice,
+  baseDepth: options.baseDepth ?? 60,
+  volatility: options.volatility ?? 0.16,
+  seed: [...key].reduce((seed, character) => Math.imul(seed ^ character.charCodeAt(0), 16777619), 2166136261) >>> 0,
+  depthRangePoints: options.depthRangePoints ?? tickSize * 400,
+  defaultVisibleRows: options.defaultVisibleRows ?? 112,
+});
+
+// Every entry is a parent futures book that the VPS is allowed to request
+// from Rithmic on demand. Micro aliases are intentionally resolved to these
+// parent books: displaying a micro tab as separate L3 would imply that its
+// thinner queue is being collected when the gateway is deliberately serving
+// the deeper parent order book.
+export const SYMBOLS = Object.fromEntries([
+  instrument('NQ', 'CME', 'E-mini Nasdaq-100', 0.25, 22486.25, { depthRangePoints: 100 }),
+  instrument('ES', 'CME', 'E-mini S&P 500', 0.25, 6387.5, { depthRangePoints: 100, defaultVisibleRows: 56 }),
+  instrument('RTY', 'CME', 'E-mini Russell 2000', 0.1, 2250),
+  instrument('YM', 'CBOT', 'E-mini Dow', 1, 44500),
+  instrument('CL', 'NYMEX', 'WTI Crude Oil', 0.01, 70),
+  instrument('QM', 'NYMEX', 'E-mini Crude Oil', 0.025, 70),
+  instrument('NG', 'NYMEX', 'Henry Hub Natural Gas', 0.001, 3),
+  instrument('RB', 'NYMEX', 'RBOB Gasoline', 0.0001, 2.1),
+  instrument('HO', 'NYMEX', 'ULSD Heating Oil', 0.0001, 2.2),
+  instrument('GC', 'COMEX', 'Gold', 0.1, 3400),
+  instrument('SI', 'COMEX', 'Silver', 0.005, 38),
+  instrument('HG', 'COMEX', 'Copper', 0.0005, 5.5),
+  instrument('PL', 'NYMEX', 'Platinum', 0.1, 1400),
+  instrument('PA', 'NYMEX', 'Palladium', 0.1, 1200),
+  instrument('ZN', 'CBOT', '10-Year Treasury Note', 1 / 64, 112),
+  instrument('TN', 'CBOT', 'Ultra 10-Year Treasury Note', 1 / 64, 115),
+  instrument('ZB', 'CBOT', '30-Year Treasury Bond', 1 / 32, 116),
+  instrument('UB', 'CBOT', 'Ultra Treasury Bond', 1 / 32, 120),
+  instrument('ZF', 'CBOT', '5-Year Treasury Note', 1 / 128, 108),
+  instrument('ZT', 'CBOT', '2-Year Treasury Note', 1 / 256, 104),
+  instrument('10Y', 'CME', '10-Year Treasury Yield', 0.001, 4.2),
+  instrument('SR3', 'CME', '3-Month SOFR', 0.0025, 96),
+  instrument('6E', 'CME', 'Euro FX', 0.00005, 1.16),
+  instrument('6J', 'CME', 'Japanese Yen', 0.0000005, 0.0068),
+  instrument('6B', 'CME', 'British Pound', 0.0001, 1.34),
+  instrument('6A', 'CME', 'Australian Dollar', 0.0001, 0.65),
+  instrument('6C', 'CME', 'Canadian Dollar', 0.00005, 0.73),
+  instrument('6S', 'CME', 'Swiss Franc', 0.0001, 1.24),
+  instrument('6N', 'CME', 'New Zealand Dollar', 0.0001, 0.59),
+  instrument('6M', 'CME', 'Mexican Peso', 0.00001, 0.053),
+  instrument('BTC', 'CME', 'Bitcoin', 5, 118420),
+  instrument('ETH', 'CME', 'Ether', 0.5, 4200),
+  instrument('ZC', 'CBOT', 'Corn', 0.25, 420),
+  instrument('ZS', 'CBOT', 'Soybeans', 0.25, 1050),
+  instrument('ZW', 'CBOT', 'Wheat', 0.25, 530),
+  instrument('ZM', 'CBOT', 'Soybean Meal', 0.1, 300),
+  instrument('ZL', 'CBOT', 'Soybean Oil', 0.01, 52),
+  instrument('LE', 'CME', 'Live Cattle', 0.025, 230),
+  instrument('HE', 'CME', 'Lean Hogs', 0.025, 90),
+  instrument('GF', 'CME', 'Feeder Cattle', 0.025, 340),
+].map(config => [config.key, config]));
 
 class DeterministicRandom {
   constructor(seed) { this.state = seed >>> 0 || 1; }
@@ -82,13 +81,13 @@ class DeterministicRandom {
 }
 
 export class SyntheticMarket {
-  constructor(symbol = 'MNQ') {
+  constructor(symbol = 'NQ') {
     this.intervalMs = 100;
     this.setSymbol(symbol);
   }
 
   setSymbol(symbol) {
-    this.config = SYMBOLS[symbol] || SYMBOLS.MNQ;
+    this.config = SYMBOLS[symbol] || SYMBOLS.NQ;
     this.depthRadius = Math.max(
       16,
       Math.round((this.config.depthRangePoints ?? this.config.tickSize * 110) / this.config.tickSize),

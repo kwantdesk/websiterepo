@@ -9,6 +9,11 @@ type LiquidityMapWorkspaceProps = {
   onInstrumentChange?: (instrument: string) => void;
 };
 
+function liquidityMapInstrument(root: unknown) {
+  const normalized = typeof root === "string" ? root.trim().toUpperCase() : "";
+  return /^[A-Z0-9]{1,4}$/.test(normalized) ? `${normalized}.v.0` : null;
+}
+
 export default function LiquidityMapWorkspace({ instrument, onInstrumentChange }: LiquidityMapWorkspaceProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [isReady, setIsReady] = useState(false);
@@ -51,8 +56,8 @@ export default function LiquidityMapWorkspace({ instrument, onInstrumentChange }
         const activeSymbol = typeof event.data.symbol === "string"
           ? event.data.symbol.trim().toUpperCase()
           : "";
-        if (activeSymbol === "NQ" || activeSymbol === "ES") {
-          const nextInstrument = `${activeSymbol}.v.0`;
+        const nextInstrument = liquidityMapInstrument(activeSymbol);
+        if (nextInstrument) {
           if (nextInstrument !== instrument) {
             window.localStorage.setItem("kwantdesk:liquidity-map-instrument:v1", nextInstrument);
             onInstrumentChange?.(nextInstrument);
@@ -65,8 +70,8 @@ export default function LiquidityMapWorkspace({ instrument, onInstrumentChange }
         const activeSymbol = typeof event.data.active === "string"
           ? event.data.active.trim().toUpperCase()
           : "";
-        if (activeSymbol === "NQ" || activeSymbol === "ES") {
-          const nextInstrument = `${activeSymbol}.v.0`;
+        const nextInstrument = liquidityMapInstrument(activeSymbol);
+        if (nextInstrument) {
           if (nextInstrument !== instrument) {
             window.localStorage.setItem("kwantdesk:liquidity-map-instrument:v1", nextInstrument);
             onInstrumentChange?.(nextInstrument);

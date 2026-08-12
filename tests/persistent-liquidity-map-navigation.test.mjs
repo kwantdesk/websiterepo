@@ -36,9 +36,9 @@ test("LIQ MAP watchlist selection is saved and sent into the iframe", () => {
   assert.match(workspace, /setSelectedLiquidityMapInstrument/);
   assert.match(liquidityMap, /kwantdesk:liquidity-map-symbol/);
   assert.match(mapRuntime, /kwantdesk:liquidity-map-symbol/);
-  assert.match(mapRuntime, /LIQUIDITY_MAP_SYMBOLS = new Set\(\['NQ', 'ES'\]\)/);
-  assert.match(workspace, /contractRoot === "NQ" \|\| contractRoot === "MNQ"/);
-  assert.match(workspace, /contractRoot === "ES" \|\| contractRoot === "MES"/);
+  assert.match(mapRuntime, /LIQUIDITY_MAP_ROOTS/);
+  assert.match(mapRuntime, /availableInstrumentSymbols/);
+  assert.match(liquidityMap, /liquidityMapInstrument/);
   assert.match(mapRuntime, /normalizeLiquidityMapSymbol/);
 });
 
@@ -52,7 +52,7 @@ test("LIQ MAP renders one standard loader until a real depth frame has painted",
   assert.match(liquidityMap, /kwantdesk:liquidity-map-ready/);
   assert.match(mapRuntime, /kwantdesk:liquidity-map-ready/);
   assert.match(liveMarket, /historical: true/);
-  assert.match(liveMarket, /final: index === snapshots\.length - 1/);
+  assert.match(liveMarket, /final: payload\.final !== false && index === snapshots\.length - 1/);
 });
 
 test("LIQ MAP instrument changes never restore the blocking full-screen loader", () => {

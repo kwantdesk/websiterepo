@@ -4,6 +4,9 @@ import { DepthRenderer, priceLabel, timeLabel } from './renderer.js';
 import {
   DepthMarketFeed,
   isFullDepthSource,
+  LIQUIDITY_MAP_ROOTS,
+  LIQUIDITY_MAP_SYMBOLS,
+  liveInstrumentCatalogUrl,
   normalizeLiquidityMapSymbol,
   symbolMatchesSnapshot,
   updateLivePresentationEdge,
@@ -30,9 +33,8 @@ const ABSOLUTE_MIN_TIME_COLUMN_PIXELS = 0.12;
 const SPEEDS = [0.25, 0.5, 1, 2, 4];
 const LIQUIDITY_MAP_SETTINGS_KEY = 'kwantdesk:liquidity-map-settings:v1';
 const LIQUIDITY_MAP_TABS_KEY = 'kwantdesk:liquidity-map-tabs:v1';
-const LIQUIDITY_MAP_SYMBOLS = new Set(['NQ', 'ES']);
 const DEFAULT_INSTRUMENT_TABS = ['NQ', 'ES'];
-const INSTRUMENT_ORDER = ['NQ', 'ES'];
+const INSTRUMENT_ORDER = [...LIQUIDITY_MAP_ROOTS];
 const INDICATOR_ANALYSIS_INTERVAL_MS = 500;
 const PRESENTATION_SAMPLE_MS = 50;
 const PRESENTATION_BOOK_FRESH_MS = 15_000;
@@ -68,6 +70,7 @@ class DepthForgeApp {
     applyUiTheme(this.uiTheme);
     const restoredInstrumentTabs = this.#restoreInstrumentTabs();
     this.instrumentTabs = restoredInstrumentTabs.tabs;
+    this.availableInstrumentSymbols = new Set(LIQUIDITY_MAP_ROOTS);
     this.symbol = restoredInstrumentTabs.active;
     this.currentContractSymbol = SYMBOLS[this.symbol].contract;
     this.market = { intervalMs: 100 };
@@ -137,6 +140,7 @@ class DepthForgeApp {
     this.#syncIndicatorControls();
     this.#updateSymbolUi();
     this.#updateUi(true);
+    this.#loadInstrumentCatalog();
     this.resizeObserver = new ResizeObserver(() => this.requestRender());
     this.resizeObserver.observe($('chartArea'));
     requestAnimationFrame(timestamp => this.#loop(timestamp));
@@ -627,7 +631,7 @@ class DepthForgeApp {
   #renderInstrumentResults(query = '') {
     const normalizedQuery = String(query || '').trim().toUpperCase();
     const matches = INSTRUMENT_ORDER
-      .filter(symbol => SYMBOLS[symbol])
+      .filter(symbol => SYMBOLS[symbol] && this.availableInstrumentSymbols.has(symbol))
       .filter(symbol => {
         const config = SYMBOLS[symbol];
         return !normalizedQuery || `${symbol} ${config.description} ${config.venue}`.toUpperCase().includes(normalizedQuery);
@@ -658,7 +662,7 @@ class DepthForgeApp {
 
   #addInstrumentTab(symbol, closePicker = true) {
     const normalized = normalizeLiquidityMapSymbol(symbol);
-    if (!SYMBOLS[normalized] || !LIQUIDITY_MAP_SYMBOLS.has(normalized)) return;
+    if (!SYMBOLS[normalized] || !this.availableInstrumentSymbols.has(normalized)) return;
     if (!this.instrumentTabs.includes(normalized)) this.instrumentTabs.push(normalized);
     if (closePicker && $('instrumentPicker').open) $('instrumentPicker').close();
     if (normalized === this.symbol) {
@@ -691,7 +695,7 @@ class DepthForgeApp {
 
   switchSymbol(symbol) {
     const normalized = normalizeLiquidityMapSymbol(symbol);
-    if (!SYMBOLS[normalized] || !LIQUIDITY_MAP_SYMBOLS.has(normalized) || normalized === this.symbol) return;
+    if (!SYMBOLS[normalized] || !this.availableInstrumentSymbols.has(normalized) || normalized === this.symbol) return;
     symbol = normalized;
     this.#beginSymbolLoad(symbol);
     this.symbol = symbol;
@@ -719,6 +723,35 @@ class DepthForgeApp {
     this.#updatePlaybackUi();
     this.#updateUi(true);
     this.requestRender();
+  }
+
+  async #loadInstrumentCatalog() {
+    try {
+      const response = await fetch(liveInstrumentCatalogUrl(), { cache: 'no-store' });
+      if (!response.ok) return;
+      const payload = await response.json();
+      const permitted = new Set();
+      for (const row of payload?.instruments || []) {
+        const root = normalizeLiquidityMapSymbol(row?.root || row?.symbol);
+        if (!root || !SYMBOLS[root] || row?.fullDepth === false) continue;
+        permitted.add(root);
+        const config = SYMBOLS[root];
+        const serverTickSize = Number(row.tickSize);
+        if (Number.isFinite(serverTickSize) && serverTickSize > 0) {
+          config.tickSize = serverTickSize;
+          config.decimals = Math.min(8, Math.max(0, String(serverTickSize).split('.')[1]?.length || 0));
+        }
+        config.contract = String(row.contractSymbol || row.symbol || config.contract);
+        config.venue = String(row.exchange || config.venue);
+        config.description = String(row.displayName || config.description);
+      }
+      if (!permitted.size) return;
+      this.availableInstrumentSymbols = permitted;
+      this.#renderInstrumentTabs();
+      if ($('instrumentPicker').open) this.#renderInstrumentResults($('instrumentSearch').value);
+    } catch {
+      // Keep the static catalog available while the VPS reconnects.
+    }
   }
 
   #beginSymbolLoad(symbol) {
@@ -997,6 +1030,13 @@ class DepthForgeApp {
       || !isFullDepthSource(snapshot.source)
       || snapshot.readOnly !== true
     ) return;
+
+    const liveTickSize = Number(snapshot.tickSize);
+    if (Number.isFinite(liveTickSize) && liveTickSize > 0) {
+      const config = SYMBOLS[this.symbol];
+      config.tickSize = liveTickSize;
+      config.decimals = Math.min(8, Math.max(0, String(liveTickSize).split('.')[1]?.length || 0));
+    }
 
     // Presentation holds exist only to move the last-price marker smoothly
     // between genuine full-book frames. They are not market events and must
