@@ -55,6 +55,10 @@ test("toolbar DOM control sits between heatmap and trades and removes the full r
   assert.match(source, /#bindToggle\('toggleDom', 'domVisible'\)/);
   assert.match(source, /#syncDomVisibilityControls\(notifyParent = false\)/);
   assert.match(renderer, /const priceAxisWidth = domVisible \? priceLabelWidth \+ restingBookWidth \+ depthColumnWidth : 0/);
+  assert.match(renderer, /const profilesVisible = domVisible && settings\.profile/);
+  assert.match(renderer, /const volumeRatioWidth = profilesVisible \?/);
+  assert.match(renderer, /const profileWidth = profilesVisible \?/);
+  assert.match(renderer, /if \(profilesVisible\) \{[\s\S]*?this\.#drawBidAskVolumeProfile[\s\S]*?this\.#drawVolumeProfile/);
   assert.match(renderer, /if \(domVisible\) this\.#drawPriceAxis\(ctx, current, accents\)/);
 });
 

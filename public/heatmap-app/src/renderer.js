@@ -232,10 +232,12 @@ export class DepthRenderer {
     const restingBookWidth = domVisible ? Math.round(domWidth * .66) : 0;
     const depthColumnWidth = domVisible ? domWidth - restingBookWidth : 0;
     // The toolbar DOM toggle owns the complete market ladder. When disabled,
-    // collapse the price/book rail entirely so the heatmap and CVD reclaim it.
+    // collapse the price/book rail, bid/ask execution profile and SVP together
+    // so the heatmap and CVD reclaim the complete right side.
     const priceAxisWidth = domVisible ? priceLabelWidth + restingBookWidth + depthColumnWidth : 0;
-    const volumeRatioWidth = settings.profile ? (width < 700 ? 72 : width < 900 ? 92 : 112) : 0;
-    const profileWidth = settings.profile ? (width < 700 ? 72 : width < 900 ? 92 : 112) : 0;
+    const profilesVisible = domVisible && settings.profile;
+    const volumeRatioWidth = profilesVisible ? (width < 700 ? 72 : width < 900 ? 92 : 112) : 0;
+    const profileWidth = profilesVisible ? (width < 700 ? 72 : width < 900 ? 92 : 112) : 0;
     const timeAxisHeight = 28;
     const rightHeaderHeight = 32;
     const plotWidth = Math.max(120, width - priceAxisWidth - volumeRatioWidth - profileWidth);
@@ -314,7 +316,7 @@ export class DepthRenderer {
     if (settings.trades) this.#drawTrades(ctx, history, settings, accents);
     this.#drawBottomVolume(ctx, history, accents);
     if (!this.interaction) this.#drawIndicatorMarks(ctx, indicatorAnalysis, settings, accents);
-    if (settings.profile) {
+    if (profilesVisible) {
       this.#drawBidAskVolumeProfile(ctx, history, accents);
       this.#drawVolumeProfile(ctx, history, accents);
     }
