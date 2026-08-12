@@ -7,6 +7,7 @@ const embedCssPath = new URL("../public/heatmap-app/embed.css", import.meta.url)
 const mainPath = new URL("../public/heatmap-app/src/main.js", import.meta.url);
 const rendererPath = new URL("../public/heatmap-app/src/renderer.js", import.meta.url);
 const workspacePath = new URL("../src/components/liquidity-map/LiquidityMapWorkspace.tsx", import.meta.url);
+const workspaceShellPath = new URL("../src/components/KwantifyWorkspace.tsx", import.meta.url);
 const preferencesPath = new URL("../src/lib/userPreferences.ts", import.meta.url);
 
 test("restores the full Kwant Desk liquidity-map control surface", async () => {
@@ -381,4 +382,18 @@ test("embedded map omits intrusive feed and latency overlays", async () => {
   assert.doesNotMatch(html, /id=["']sourceBanner["']/);
   assert.doesNotMatch(html, /id=["']latencyLabel["']/);
   assert.doesNotMatch(html, /Live .*depth-by-order.*full resting book.*trading disabled/i);
+});
+
+test("liquidity map stops at the global right-rail boundary", async () => {
+  const [workspace, shell] = await Promise.all([
+    readFile(workspacePath, "utf8"),
+    readFile(workspaceShellPath, "utf8"),
+  ]);
+
+  assert.match(workspace, /isolate[^"]*min-w-0[^"]*max-w-full[^"]*overflow-hidden[^"]*\[contain:layout_paint_size\]/);
+  assert.match(workspace, /<iframe[\s\S]*?className="[^"]*min-w-0[^"]*max-w-full/);
+  assert.match(shell, /ref=\{mainRef\}[\s\S]*?AppSidebar/);
+  assert.match(shell, /className="relative z-0 flex min-w-0 flex-1 flex-col overflow-hidden" ref=\{mainRef\}/);
+  assert.match(shell, /relative isolate min-h-0 min-w-0 flex-1 overflow-hidden bg-panel/);
+  assert.match(shell, /relative z-40 w-\[44px\] shrink-0/);
 });

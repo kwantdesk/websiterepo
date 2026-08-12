@@ -86,10 +86,10 @@ export default function LiquidityMapWorkspace({ instrument, onInstrumentChange }
   }, [instrument, onInstrumentChange]);
 
   return (
-    <div className="relative h-full min-h-0 w-full overflow-hidden bg-chart-background">
+    <div className="relative isolate h-full min-h-0 min-w-0 w-full max-w-full overflow-hidden bg-chart-background [contain:layout_paint_size]">
       <iframe
         ref={iframeRef}
-        className="block h-full w-full border-0 bg-chart-background"
+        className="block h-full min-w-0 w-full max-w-full border-0 bg-chart-background"
         src="/heatmap-app/index.html"
         title="Kwant Desk liquidity heatmap"
         onLoad={() => {

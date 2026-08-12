@@ -10691,7 +10691,7 @@ export default function KwantifyWorkspace({
         </div>
       )}
 
-      <div className="relative flex min-w-0 flex-1 flex-col" ref={mainRef}>
+      <div className="relative z-0 flex min-w-0 flex-1 flex-col overflow-hidden" ref={mainRef}>
         <AppSidebar
           activeItem={bottomWorkspaceSection}
           accountLabel="Account"
@@ -11588,7 +11588,7 @@ export default function KwantifyWorkspace({
         ) : null}
         <ReactActivity mode={bottomWorkspaceSection === "charts" ? "hidden" : "visible"}>
           <section
-            className="min-h-0 flex-1 overflow-hidden bg-panel"
+            className="relative isolate min-h-0 min-w-0 flex-1 overflow-hidden bg-panel"
             aria-label={`${BOTTOM_WORKSPACE_SECTIONS.find((section) => section.id === bottomWorkspaceSection)?.label ?? "Workspace"} workspace`}
           >
             {visitedWorkspaceSections.has("gamma") ? (
@@ -12584,7 +12584,7 @@ export default function KwantifyWorkspace({
           )}
         </div>
       )}
-      <div className={`relative w-[44px] shrink-0 flex-col items-center gap-2 border-l border-border bg-panel py-3 ${bottomWorkspaceSection === "backtesting" ? "hidden" : "flex"}`}>
+      <div className={`relative z-40 w-[44px] shrink-0 flex-col items-center gap-2 border-l border-border bg-panel py-3 ${bottomWorkspaceSection === "backtesting" ? "hidden" : "flex"}`}>
         <span aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-14 z-10 h-px -translate-y-px bg-border" />
         {!rightPanel && (
           <button
