@@ -1160,45 +1160,14 @@ class DepthForgeApp {
 
   #presentLiveCamera(timestamp) {
     const canvas = this.renderer.canvas;
-    const layout = this.renderer.layout;
-    const current = this.history[this.viewEnd];
-    const enabled = Boolean(
-      canvas
-      && layout
-      && current
-      && this.settings.autoCenter
-      && this.atLive
-      && !this.drag
-      && this.renderer.interaction == null
-    );
-    if (!enabled) {
-      this.presentationCameraX = 0;
-      this.presentationCameraY = 0;
-      this.presentationCameraAt = timestamp;
-      if (canvas?.style.transform) canvas.style.transform = '';
-      return;
-    }
-
-    const liveTick = Number(current.lastTick);
-    const renderedCenterTick = Number(layout.centerTick);
-    const pixelsPerTick = Number(layout.plotHeight) / Math.max(1, Number(layout.visibleTickSpan));
-    if (!Number.isFinite(liveTick) || !Number.isFinite(renderedCenterTick) || !Number.isFinite(pixelsPerTick)) return;
-    const targetY = Math.max(-96, Math.min(96, (liveTick - renderedCenterTick) * pixelsPerTick));
-    const elapsed = Math.max(1, Math.min(40, timestamp - this.presentationCameraAt || 7));
+    // Never translate the shared canvas. It contains the fixed DOM, price/time
+    // axes and volume strip as well as the moving market plot. Applying a CSS
+    // transform here makes the whole terminal bounce with price. Market motion
+    // is handled inside DepthRenderer, where only plot coordinates move.
+    this.presentationCameraX = 0;
+    this.presentationCameraY = 0;
     this.presentationCameraAt = timestamp;
-    // The full depth canvas remains a truthful, bounded market-data paint.
-    // Between those heavier frames, move its already-rasterized surface on
-    // the compositor thread. requestAnimationFrame naturally follows 60,
-    // 120 and 144 Hz displays without rebuilding the L3 book at that rate.
-    const blend = 1 - Math.exp(-elapsed / 34);
-    this.presentationCameraY += (targetY - this.presentationCameraY) * blend;
-    if (Math.abs(targetY - this.presentationCameraY) < 0.04) this.presentationCameraY = targetY;
-    this.presentationCameraX += (0 - this.presentationCameraX) * blend;
-    if (Math.abs(this.presentationCameraX) < 0.02) this.presentationCameraX = 0;
-    const transform = Math.abs(this.presentationCameraY) < 0.02 && Math.abs(this.presentationCameraX) < 0.02
-      ? ''
-      : `translate3d(${this.presentationCameraX.toFixed(3)}px, ${this.presentationCameraY.toFixed(3)}px, 0)`;
-    if (canvas.style.transform !== transform) canvas.style.transform = transform;
+    if (canvas?.style.transform) canvas.style.transform = '';
   }
 
   #loop(timestamp) {

@@ -16,7 +16,7 @@ test("the Rithmic map publishes bounded truthful depth at a sustainable cadence"
   assert.match(gateway, /tradeLimit: 1/);
 });
 
-test("the high-refresh presentation uses lightweight ticks and truthful clock-sampled book holds", () => {
+test("the high-refresh presentation keeps the shared canvas fixed and uses truthful clock-sampled book holds", () => {
   const gateway = read("services/rithmic_gateway/src/server.mjs");
   const feed = read("public/heatmap-app/src/live-market.js");
   const runtime = read("public/heatmap-app/src/main.js");
@@ -30,7 +30,8 @@ test("the high-refresh presentation uses lightweight ticks and truthful clock-sa
   assert.match(runtime, /presentationSource: source/);
   assert.match(runtime, /trades: \[\],[\s\S]*?delta: 0,[\s\S]*?volume: 0/);
   assert.match(runtime, /#presentLiveCamera\(timestamp\)/);
-  assert.match(runtime, /translate3d\(\$\{this\.presentationCameraX\.toFixed\(3\)\}px, \$\{this\.presentationCameraY\.toFixed\(3\)\}px, 0\)/);
+  assert.match(runtime, /Never translate the shared canvas/);
+  assert.doesNotMatch(runtime, /translate3d\(\$\{this\.presentationCameraX/);
   assert.match(runtime, /this\.presentationFrames \+= 1/);
 });
 

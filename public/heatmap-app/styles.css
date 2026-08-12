@@ -131,9 +131,6 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 1px s
   height: 100%;
   touch-action: none;
   cursor: crosshair;
-  will-change: transform;
-  backface-visibility: hidden;
-  transform-origin: 50% 50%;
 }
 .cvd-panel { display: none; min-width: 0; min-height: 0; grid-template-rows: 22px minmax(0,1fr); border-top: 1px solid #587078; background: #1a2226; }
 .chart-module.cvd-open .cvd-panel { display: grid; }

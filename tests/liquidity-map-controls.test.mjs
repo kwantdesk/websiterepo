@@ -312,8 +312,9 @@ test("auto-center keeps the marker fixed while the price plane follows smoothly"
 
   assert.match(renderer, /\? this\.#smoothCameraCenter\(targetCenterTick, true\)/);
   assert.match(source, /const lockedCenterY = this\.settings\.autoCenter && this\.atLive[\s\S]*?plotHeight[\s\S]*?\/ 2/);
-  assert.match(source, /#presentLiveCamera\(timestamp\)[\s\S]*?requestAnimationFrame naturally follows 60,[\s\S]*?120 and 144 Hz displays/);
-  assert.match(source, /this\.presentationCameraY \+= \(targetY - this\.presentationCameraY\) \* blend/);
+  assert.match(source, /#presentLiveCamera\(timestamp\)[\s\S]*?Never translate the shared canvas/);
+  assert.match(source, /if \(canvas\?\.style\.transform\) canvas\.style\.transform = ''/);
+  assert.doesNotMatch(source, /canvas\.style\.transform = transform/);
   assert.match(source, /switchSymbol\(symbol\)[\s\S]*?this\.renderer\.resetCamera\(\)/);
   assert.doesNotMatch(source, /timestamp - this\.lastCanvasPaintAt >= 1000 \/ 30/);
 });
