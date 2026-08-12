@@ -36,7 +36,7 @@ import { defaultTheme, readStoredTheme, resetTheme, saveTheme as saveAppTheme, t
 import { defaultChartSettings, extractUserChartSettings, loadStoredChartSettings, mergeChartSettingsIntoTheme, saveStoredChartSettings, type ChartSettings } from "@/lib/chartSettings";
 import { createClient } from "@/lib/supabase";
 import { usagePlans } from "@/lib/usagePlans";
-import { hydrateUserPreferences, preferenceSnapshotFingerprint } from "@/lib/userPreferences";
+import { compactLegacyAuthPreferenceMetadata, hydrateUserPreferences, preferenceSnapshotFingerprint } from "@/lib/userPreferences";
 import { useAccountPreferenceSync } from "@/hooks/useAccountPreferenceSync";
 import {
   PRESENCE_OPTIONS,
@@ -417,6 +417,9 @@ export default function SettingsPage() {
         setThemeSettings((current) => mergeChartSettingsIntoTheme(current, profileChartSettings));
         saveStoredChartSettings(profileChartSettings);
       }
+      void compactLegacyAuthPreferenceMetadata(supabase, user).catch(() => {
+        // Retried on the next authenticated mount.
+      });
     };
 
     void loadProfile();
@@ -646,17 +649,6 @@ export default function SettingsPage() {
     setChartSettings(nextChartSettings);
     saveAppTheme(theme);
     saveStoredChartSettings(nextChartSettings);
-    void persistChartSettings(nextChartSettings);
-  }
-
-  async function persistChartSettings(settings: ChartSettings) {
-    if (!supabase) return;
-    await supabase.auth.updateUser({
-      data: {
-        chartSettings: settings,
-        chart_settings: settings,
-      },
-    });
   }
 
   async function saveThemeSettings() {
@@ -664,7 +656,6 @@ export default function SettingsPage() {
     setThemeSettings(syncedTheme);
     saveAppTheme(syncedTheme);
     saveStoredChartSettings(chartSettings);
-    await persistChartSettings(chartSettings);
   }
 
   function resetThemeSettings() {

@@ -86,7 +86,7 @@ import { createClient } from "@/lib/supabase";
 import type { FriendsPayload } from "@/lib/friends";
 import { cacheProfileIdentity, readProfileIdentityCache } from "@/lib/profileIdentityCache";
 import { useAccountPreferenceSync } from "@/hooks/useAccountPreferenceSync";
-import { hydrateUserPreferences } from "@/lib/userPreferences";
+import { compactLegacyAuthPreferenceMetadata, hydrateUserPreferences } from "@/lib/userPreferences";
 import { normalizeTimeZone } from "@/lib/timeZones";
 import { clearSavedStrategiesRaw, loadSavedStrategiesRaw, saveSavedStrategiesRaw } from "@/lib/automation";
 import { defaultChartSettings, extractUserChartSettings, loadStoredChartSettings, saveStoredChartSettings, type ChartSettings } from "@/lib/chartSettings";
@@ -6812,21 +6812,10 @@ export default function KwantifyWorkspace({
     window.localStorage.setItem("olisa-chart-templates", JSON.stringify(nextTemplates));
   }
 
-  async function persistChartSettings(settings: ChartSettings) {
-    if (!supabase) return;
-    await supabase.auth.updateUser({
-      data: {
-        chartSettings: settings,
-        chart_settings: settings,
-      },
-    });
-  }
-
   async function applyChartSettings() {
     setChartSettings(draftChartSettings);
     setChartSettingsSnapshot(draftChartSettings);
     saveStoredChartSettings(draftChartSettings);
-    void persistChartSettings(draftChartSettings);
     setShowSettings(false);
     setShowTemplateMenu(false);
   }
@@ -6852,7 +6841,6 @@ export default function KwantifyWorkspace({
     setDraftChartSettings(next);
     setChartSettingsSnapshot(next);
     saveStoredChartSettings(next);
-    void persistChartSettings(next);
   }
 
   function openCreateAlert(defaultPrice?: string) {
@@ -8695,6 +8683,10 @@ export default function KwantifyWorkspace({
         setChartSettingsSnapshot(profileChartSettings);
         saveStoredChartSettings(profileChartSettings);
       }
+      void compactLegacyAuthPreferenceMetadata(supabase, user).catch(() => {
+        // Database/local preference sync remains authoritative. A later
+        // authenticated mount retries this one-time metadata compaction.
+      });
       setAuthChecked(true);
     };
 

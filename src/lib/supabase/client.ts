@@ -1,4 +1,5 @@
 import { createBrowserClient } from "@supabase/ssr";
+import { clearObsoleteSupabaseCookies } from "@/lib/supabaseCookieHygiene";
 
 function getPublicKey() {
   return (
@@ -16,5 +17,6 @@ export function createClient() {
     throw new Error("Supabase environment variables are not configured.");
   }
 
+  clearObsoleteSupabaseCookies(url);
   return createBrowserClient(url, key);
 }

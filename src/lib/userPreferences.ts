@@ -57,27 +57,6 @@ const TRACKED_STORAGE_PREFIXES = [
   "kwantify-chart-drawings:",
 ];
 
-const METADATA_FALLBACK_KEYS = new Set([
-  "olisa-theme",
-  "olisa-chart-settings",
-  "olisa-chart-defaults",
-  "olisa-chart-favourite-intervals",
-  "kwantdesk-chart-indicators",
-  "kwantdesk-chart-indicator-favourites",
-  "kwantdesk:chart-gamma-levels-enabled:v1",
-  "kwantdesk:chart-value-area-levels-enabled:v1",
-  "kwantify-chart-tool-favorites",
-  "kwantify-chart-toolbar-dock",
-  "kwantify-chart-toolbar-collapsed",
-  "kwantdesk-settings-toggles",
-  "kwantdesk-settings-font-size",
-  "kwantdesk:economic-calendar-timezone:v1",
-  "kwantdesk:liquidity-map-settings:v1",
-  "kwantdesk:liquidity-map-tabs:v1",
-  "kwantdesk:liquidity-map-instrument:v1",
-  "kwantdesk:zyon:root",
-]);
-
 export type UserPreferenceSnapshot = {
   version: 1;
   complete: boolean;
@@ -205,16 +184,6 @@ async function loadCloudPreferences(
   return metadataSnapshot ? { ...metadataSnapshot, complete: false } : null;
 }
 
-function metadataFallbackSnapshot(snapshot: UserPreferenceSnapshot): UserPreferenceSnapshot {
-  return {
-    ...snapshot,
-    complete: false,
-    values: Object.fromEntries(
-      Object.entries(snapshot.values).filter(([key]) => METADATA_FALLBACK_KEYS.has(key)),
-    ),
-  };
-}
-
 export async function saveUserPreferences(
   supabase: SupabaseClient,
   userId: string,
@@ -252,11 +221,32 @@ export async function saveUserPreferences(
     );
   if (!socialFallbackError) return;
 
-  await supabase.auth.updateUser({
-    data: {
-      [USER_PREFERENCES_METADATA_KEY]: metadataFallbackSnapshot(snapshot),
-    },
+  // Never put workspace preferences into Supabase auth metadata. The SSR
+  // client serialises the complete user object into its session cookie; chart
+  // layouts, indicators and liquidity-map state can then grow the request
+  // header beyond Vercel's hard limit. Local scoped storage remains the
+  // offline fallback and the database is retried by the sync hook.
+  console.warn("Account preferences could not be saved to either database store.");
+}
+
+export async function compactLegacyAuthPreferenceMetadata(
+  supabase: SupabaseClient,
+  user: User,
+) {
+  const metadata = user.user_metadata ?? {};
+  const legacyKeys = [
+    USER_PREFERENCES_METADATA_KEY,
+    "chartSettings",
+    "chart_settings",
+  ] as const;
+  if (!legacyKeys.some((key) => metadata[key] !== undefined && metadata[key] !== null)) {
+    return false;
+  }
+  const { error } = await supabase.auth.updateUser({
+    data: Object.fromEntries(legacyKeys.map((key) => [key, null])),
   });
+  if (error) throw error;
+  return true;
 }
 
 export async function hydrateUserPreferences(
