@@ -77,4 +77,9 @@ test("wide and high-DPI screens use bounded canvas work and cached trade cluster
   assert.match(renderer, /if \(settings\.profile\) \{/);
   assert.doesNotMatch(renderer, /settings\.trades && !this\.interaction/);
   assert.doesNotMatch(renderer, /settings\.profile && !this\.interaction/);
+  assert.match(renderer, /this\.#drawBottomVolume\(ctx, history, accents\)/);
+  assert.doesNotMatch(renderer, /!this\.interaction\) this\.#drawBottomVolume/);
+  assert.match(renderer, /const overlayCenterTick = this\.interaction/);
+  assert.match(renderer, /overlayBottomTick, overlayTopTick, overlayCenterTick, overlayYForTick/);
+  assert.match(renderer, /this\.interaction\?\.startTimestamp/);
 });

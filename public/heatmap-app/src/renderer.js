@@ -190,9 +190,12 @@ export class DepthRenderer {
     if (!['pan', 'price-pan'].includes(mode) || !this.layout) return;
     this.interaction = {
       mode,
+      start: this.layout.start,
       end: this.layout.end,
       centerTick: this.layout.centerTick,
       columnPixels: this.layout.columnPixels,
+      startTimestamp: Number(this.layout.history?.[this.layout.start]?.timestamp || 0),
+      endTimestamp: Number(this.layout.history?.[this.layout.end]?.timestamp || 0),
     };
   }
 
@@ -263,6 +266,17 @@ export class DepthRenderer {
       : this.#smoothCameraCenter(targetCenterTick, false);
     const bottomTick = centerTick - visibleTickSpan / 2;
     const topTick = centerTick + visibleTickSpan / 2;
+    // Screen chrome must not inherit the user's drag transform. The heatmap,
+    // trails and executions can move under the pointer; the DOM and profile
+    // rails retain the camera position captured at pointer-down. Once the
+    // interaction ends they rejoin the already-damped live camera, avoiding a
+    // second, independently snapping price plane.
+    const overlayCenterTick = this.interaction
+      ? this.interaction.centerTick
+      : centerTick;
+    const overlayBottomTick = overlayCenterTick - visibleTickSpan / 2;
+    const overlayTopTick = overlayCenterTick + visibleTickSpan / 2;
+    const overlayYForTick = tick => ((overlayTopTick - tick) / visibleTickSpan) * plotHeight;
     // Main owns the data-aware zoom floor. Keep only a tiny renderer safety
     // floor here so it never silently overrides horizontal zoom.
     const columnPixels = Math.max(0.12, view.columnPixels || 1.25);
@@ -281,6 +295,7 @@ export class DepthRenderer {
       rightHeaderHeight, domVisible,
       domWidth,
       bottomTick, topTick, centerTick, visibleTickSpan, rowTicks, columnPixels,
+      overlayBottomTick, overlayTopTick, overlayCenterTick, overlayYForTick,
       start, end, count, xForIndex, yForTick, tickForY,
       config, history,
     };
@@ -297,7 +312,7 @@ export class DepthRenderer {
     // stay painted. Hiding them on pointer-down made a harmless grab look like
     // the live trade feed and resting book had disappeared.
     if (settings.trades) this.#drawTrades(ctx, history, settings, accents);
-    if (!this.interaction) this.#drawBottomVolume(ctx, history, accents);
+    this.#drawBottomVolume(ctx, history, accents);
     if (!this.interaction) this.#drawIndicatorMarks(ctx, indicatorAnalysis, settings, accents);
     if (settings.profile) {
       this.#drawBidAskVolumeProfile(ctx, history, accents);
@@ -763,12 +778,12 @@ export class DepthRenderer {
     const midpoint = x0 + width / 2;
     const headerHeight = layout.rightHeaderHeight;
     const step = this.#priceAxisStep();
-    const firstTick = Math.ceil(layout.bottomTick / step) * step;
+    const firstTick = Math.ceil(layout.overlayBottomTick / step) * step;
     const profile = new Map();
 
     for (let index = layout.start; index <= layout.end; index += 1) {
       for (const trade of history[index].trades) {
-        if (trade.tick < layout.bottomTick || trade.tick > layout.topTick) continue;
+        if (trade.tick < layout.overlayBottomTick || trade.tick > layout.overlayTopTick) continue;
         const bucket = Math.round(trade.tick / step) * step;
         const value = profile.get(bucket) || { buy: 0, sell: 0 };
         value[trade.side] += trade.size;
@@ -797,8 +812,8 @@ export class DepthRenderer {
     ctx.font = this.#font(9, 600, true);
     ctx.textBaseline = 'middle';
 
-    for (let tick = firstTick; tick <= layout.topTick; tick += step) {
-      const y = layout.yForTick(tick);
+    for (let tick = firstTick; tick <= layout.overlayTopTick; tick += step) {
+      const y = layout.overlayYForTick(tick);
       if (y < headerHeight + 8 || y > layout.plotHeight - 8) continue;
       const value = profile.get(tick);
       if (!value) continue;
@@ -844,7 +859,7 @@ export class DepthRenderer {
     let maximum = 1;
     for (let index = layout.start; index <= layout.end; index += 1) {
       for (const trade of history[index].trades) {
-        if (trade.tick < layout.bottomTick || trade.tick > layout.topTick) continue;
+        if (trade.tick < layout.overlayBottomTick || trade.tick > layout.overlayTopTick) continue;
         const bucket = Math.floor(trade.tick / layout.rowTicks) * layout.rowTicks;
         const value = profile.get(bucket) || { buy: 0, sell: 0 };
         value[trade.side] += trade.size;
@@ -868,7 +883,7 @@ export class DepthRenderer {
     const midpoint = x0 + layout.profileWidth / 2;
     const halfWidth = Math.max(1, layout.profileWidth / 2 - 5);
     for (const [tick, value] of profile) {
-      const y = layout.yForTick(tick + layout.rowTicks / 2) - rowHeight / 2;
+      const y = layout.overlayYForTick(tick + layout.rowTicks / 2) - rowHeight / 2;
       const buyWidth = value.buy / maximum * halfWidth;
       const sellWidth = value.sell / maximum * halfWidth;
       ctx.fillStyle = colorCss(accents.bid, .92);
@@ -932,13 +947,13 @@ export class DepthRenderer {
     }
     ctx.stroke();
     const step = this.#priceAxisStep();
-    const firstTick = Math.ceil(layout.bottomTick / step) * step;
+    const firstTick = Math.ceil(layout.overlayBottomTick / step) * step;
     const restingBook = aggregateRestingBook(
       current.bids,
       current.asks,
       step,
-      layout.bottomTick,
-      layout.topTick,
+      layout.overlayBottomTick,
+      layout.overlayTopTick,
     );
     const levelSpacing = layout.plotHeight / Math.max(1, layout.visibleTickSpan / step);
     const bookBarHeight = Math.max(8, Math.min(16, levelSpacing * .62));
@@ -951,8 +966,8 @@ export class DepthRenderer {
     ctx.clip();
     ctx.font = this.#font(8, 600, true);
     ctx.textBaseline = 'middle';
-    for (let tick = firstTick; tick <= layout.topTick; tick += step) {
-      const y = layout.yForTick(tick);
+    for (let tick = firstTick; tick <= layout.overlayTopTick; tick += step) {
+      const y = layout.overlayYForTick(tick);
       if (y < headerHeight + 8 || y > layout.plotHeight - 8) continue;
       const value = restingBook.bands.get(tick);
       if (!value) continue;
@@ -983,8 +998,8 @@ export class DepthRenderer {
 
     ctx.font = this.#font(11, 400, true);
     ctx.textBaseline = 'middle';
-    for (let tick = firstTick; tick <= layout.topTick; tick += step) {
-      const y = layout.yForTick(tick);
+    for (let tick = firstTick; tick <= layout.overlayTopTick; tick += step) {
+      const y = layout.overlayYForTick(tick);
       if (y < headerHeight + 8 || y > layout.plotHeight - 8) continue;
       const roundedTick = Math.round(tick);
       const bid = current.bids.get(roundedTick) || 0;
@@ -1009,8 +1024,8 @@ export class DepthRenderer {
         ctx.fillText(Math.round(size), axisRight - 8, y);
       }
     }
-    const bestBidY = layout.yForTick(current.bestBid);
-    const bestAskY = layout.yForTick(current.bestAsk);
+    const bestBidY = layout.overlayYForTick(current.bestBid);
+    const bestAskY = layout.overlayYForTick(current.bestAsk);
     ctx.font = this.#font(11, 600, true);
     ctx.textBaseline = 'middle';
     for (const [tick, y, fill, textFill, size] of [
@@ -1084,15 +1099,20 @@ export class DepthRenderer {
     const labels = Math.max(2, Math.floor(layout.dataWidth / 160));
     for (let label = 0; label <= labels; label += 1) {
       const fraction = label / labels;
-      const index = Math.min(layout.end, layout.start + Math.round((layout.count - 1) * fraction));
       const x = Math.min(layout.dataWidth - 28, Math.max(28, fraction * layout.dataWidth));
+      const fixedStart = Number(this.interaction?.startTimestamp || 0);
+      const fixedEnd = Number(this.interaction?.endTimestamp || 0);
+      const index = Math.min(layout.end, layout.start + Math.round((layout.count - 1) * fraction));
+      const timestamp = fixedStart > 0 && fixedEnd >= fixedStart
+        ? fixedStart + (fixedEnd - fixedStart) * fraction
+        : history[index].timestamp;
       ctx.strokeStyle = `rgba(${this.chrome.grid},1)`;
       ctx.beginPath();
       ctx.moveTo(Math.round(x) + .5, y0);
       ctx.lineTo(Math.round(x) + .5, y0 + 4);
       ctx.stroke();
       ctx.fillStyle = this.chrome.text;
-      ctx.fillText(timeLabel(history[index].timestamp), x, y0 + layout.timeAxisHeight / 2 + 2);
+      ctx.fillText(timeLabel(timestamp), x, y0 + layout.timeAxisHeight / 2 + 2);
     }
     ctx.restore();
   }
