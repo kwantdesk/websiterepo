@@ -3238,6 +3238,7 @@ function WorkspaceChartPane({
   const rithmicConnectedRef = useRef(false);
   const historyHydratedRef = useRef(false);
   const requestTailReconciliationRef = useRef<(() => void) | null>(null);
+  const liveInstrumentIdentityRef = useRef(`${pane.broker}:${pane.symbol}`);
   const liveTailStartTimestampRef = useRef<number | null>(null);
   const latestFuturesRef = useRef<{
     price: number | null;
@@ -3993,6 +3994,7 @@ function WorkspaceChartPane({
 
   useEffect(() => {
     const contractSymbol = pane.broker === "Databento" ? currentCmeContract(pane.symbol) : null;
+    liveInstrumentIdentityRef.current = `${pane.broker}:${pane.symbol}`;
     setResolvedContractSymbol(contractSymbol);
     latestFuturesRef.current = {
       price: null,
@@ -4001,6 +4003,11 @@ function WorkspaceChartPane({
       tickSize: futuresTickSize(pane.symbol),
     };
     liveOutlierCandidateRef.current = null;
+    pendingLiveTicksRef.current = [];
+    if (liveFrameRef.current !== null) {
+      window.cancelAnimationFrame(liveFrameRef.current);
+      liveFrameRef.current = null;
+    }
     const cachedGammaPayload = primaryGammaConversion
       ? readGammaSessionPayload(primaryGammaConversion)
       : null;
@@ -4419,6 +4426,23 @@ function WorkspaceChartPane({
         ? price.instrument
         : (nameMap[price.instrument] || price.instrument);
       if (displayName !== pane.symbol) return;
+
+      const instrumentIdentity = `${pane.broker}:${pane.symbol}`;
+      if (liveInstrumentIdentityRef.current !== instrumentIdentity) {
+        // Pane components are reused when the user switches symbols. Never
+        // validate the first ES/MES tick against an NQ/MNQ reference (or vice
+        // versa), otherwise a legitimate new instrument can be quarantined as
+        // an outlier and look frozen until enough distinct timestamps arrive.
+        liveInstrumentIdentityRef.current = instrumentIdentity;
+        latestFuturesRef.current = {
+          price: null,
+          asOfMs: null,
+          contractSymbol: currentCmeContract(pane.symbol),
+          tickSize: futuresTickSize(pane.symbol),
+        };
+        liveOutlierCandidateRef.current = null;
+        pendingLiveTicksRef.current = [];
+      }
 
       const tickTimestamp = marketTimestamp(price.timestamp);
       const latestFuture = latestFuturesRef.current;
@@ -7634,6 +7658,8 @@ export default function KwantifyWorkspace({
     let disposed = false;
     let lastServerSignalAt = Date.now();
     let lastPriceMessageAt = Date.now();
+    const streamOpenedAt = Date.now();
+    const lastPriceMessageAtBySymbol = new Map<string, number>();
     let receivedPriceMessage = false;
     let reconnecting = false;
     let streamMarkedHealthy = false;
@@ -7683,6 +7709,13 @@ export default function KwantifyWorkspace({
       if (
         now - lastServerSignalAt > 18_000
         || (receivedPriceMessage && now - lastPriceMessageAt > 24_000)
+        || (
+          now - streamOpenedAt > 24_000
+          && [...priorityLiveSymbols].some((symbol) => {
+            const lastSymbolTick = lastPriceMessageAtBySymbol.get(symbol);
+            return lastSymbolTick !== undefined && now - lastSymbolTick > 24_000;
+          })
+        )
       ) reconnect();
     }, 3_000);
     const handlePriceMessage = (event: MessageEvent<string>) => {
@@ -7706,6 +7739,7 @@ export default function KwantifyWorkspace({
         lastStreamTickAtByBrokerRef.current[activeChartBrokerLabel] = Date.now();
         if (priorityLiveSymbols.has(displayName)) {
           lastPriceMessageAt = Date.now();
+          lastPriceMessageAtBySymbol.set(displayName, lastPriceMessageAt);
           receivedPriceMessage = true;
         }
         if (usingDatabentoFeed) {
