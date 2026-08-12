@@ -4,12 +4,12 @@ import test from "node:test";
 
 const root = new URL("../", import.meta.url);
 
-test("middleware accepts only the active Supabase cookie family and expires obsolete projects", async () => {
+test("middleware accepts only the active Supabase cookie family without bulk Set-Cookie cleanup", async () => {
   const source = await readFile(new URL("middleware.ts", root), "utf8");
   assert.match(source, /supabaseAuthCookieName/);
   assert.match(source, /belongsToAuthCookie/);
-  assert.match(source, /expireObsoleteSupabaseCookies/);
   assert.match(source, /filter\(\(cookie\) => belongsToAuthCookie\(cookie\.name, activeAuthCookie\)\)/);
+  assert.doesNotMatch(source, /expireObsoleteSupabaseCookies/);
 });
 
 test("cookie recovery bypasses middleware and clears browser-readable auth chunks", async () => {
