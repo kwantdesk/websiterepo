@@ -54,26 +54,12 @@ test("toolbar DOM control sits between heatmap and trades and removes the full r
   assert.match(html, /id="toggleHeatmap"[\s\S]*?id="toggleDom"[\s\S]*?id="toggleTrades"/);
   assert.match(source, /#bindToggle\('toggleDom', 'domVisible'\)/);
   assert.match(source, /#syncDomVisibilityControls\(notifyParent = false\)/);
-  assert.match(renderer, /const priceAxisWidth = domVisible \? priceLabelWidth \+ renderedDomWidth : 0/);
+  assert.match(renderer, /const priceAxisWidth = domVisible \? priceLabelWidth \+ restingBookWidth \+ depthColumnWidth : 0/);
   assert.match(renderer, /const profilesVisible = domVisible && settings\.profile/);
   assert.match(renderer, /const volumeRatioWidth = profilesVisible \?/);
   assert.match(renderer, /const profileWidth = profilesVisible \?/);
   assert.match(renderer, /if \(profilesVisible\) \{[\s\S]*?this\.#drawBidAskVolumeProfile[\s\S]*?this\.#drawVolumeProfile/);
-  assert.match(renderer, /if \(domVisible\) this\.#drawPriceAxis\(ctx, history, current, accents, settings\)/);
-});
-
-test("full DOM exposes configurable native L3 columns", async () => {
-  const [html, source, renderer] = await Promise.all([
-    readFile(htmlPath, "utf8"), readFile(mainPath, "utf8"), readFile(rendererPath, "utf8"),
-  ]);
-  for (const id of ["domConfigButton", "domResting", "domTraded", "domOrders", "domBookDelta", "domLargeOrders", "domLargeTrades", "domIcebergs"]) {
-    assert.match(html, new RegExp(`id=["']${id}["']`));
-  }
-  assert.match(source, /domResting: true[\s\S]*?domIcebergs: true/);
-  assert.match(renderer, /const step = 1;/);
-  assert.match(renderer, /current\.bidOrders\?\.get\(tick\)/);
-  assert.match(renderer, /TRADED S \/ B/);
-  assert.match(renderer, /ICE\?/);
+  assert.match(renderer, /if \(domVisible\) this\.#drawPriceAxis\(ctx, current, accents\)/);
 });
 
 test("LIQ MAP display buttons have documented keyboard shortcuts", async () => {
@@ -247,7 +233,7 @@ test("historical navigation exposes a bottom-right return-to-live control", asyn
 test("signals and display inspector closes when the user clicks away", async () => {
   const source = await readFile(mainPath, "utf8");
 
-  assert.match(source, /document\.addEventListener\('pointerdown', event => \{[\s\S]*?inspector\.classList\.contains\('open'\)[\s\S]*?event\.target\.closest\('#inspector, \[data-panel-shortcut\], #settingsButton, #cvdSettingsButton, #domConfig'\)[\s\S]*?inspector\.classList\.remove\('open'\)/);
+  assert.match(source, /document\.addEventListener\('pointerdown', event => \{[\s\S]*?inspector\.classList\.contains\('open'\)[\s\S]*?event\.target\.closest\('#inspector, \[data-panel-shortcut\], #settingsButton, #cvdSettingsButton'\)[\s\S]*?inspector\.classList\.remove\('open'\)/);
 });
 
 test("display settings stay inside the viewport and scroll independently", async () => {

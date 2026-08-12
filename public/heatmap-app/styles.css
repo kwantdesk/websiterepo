@@ -153,18 +153,6 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 1px s
 .chart-corner-label { position: absolute; top: 10px; right: 226px; display: flex; gap: 8px; align-items: center; color: #9eb6bb; font: 9px var(--font-mono); pointer-events: none; }
 .chart-corner-label strong { color: #dbe7e9; letter-spacing: .06em; }
 .current-price-tag { display: none; }
-.dom-config { position: absolute; z-index: 14; top: 5px; right: 5px; }
-.dom-config-button { display: grid; place-items: center; width: 25px; height: 22px; padding: 0; border: 1px solid var(--ui-line); border-radius: 7px; background: color-mix(in srgb,var(--ui-panel) 90%,transparent); color: var(--ui-muted); backdrop-filter: blur(12px); }
-.dom-config-button:hover,.dom-config-button[aria-expanded="true"] { border-color: var(--ui-accent); color: var(--ui-accent); }
-.dom-config-button svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.7; }
-.dom-config-menu { position: absolute; top: 28px; right: 0; display: grid; gap: 8px; width: 238px; padding: 13px; border: 1px solid var(--ui-line); border-radius: 14px; background: color-mix(in srgb,var(--ui-panel) 96%,transparent); color: var(--ui-text); box-shadow: 0 18px 48px rgba(0,0,0,.55); backdrop-filter: blur(20px); }
-.dom-config-menu.hidden { display: none; }
-.dom-config-menu header { display: flex; align-items: baseline; justify-content: space-between; padding-bottom: 8px; border-bottom: 1px solid var(--ui-line); }
-.dom-config-menu header strong { color: var(--ui-accent); font: 750 10px var(--font-ui); letter-spacing: .1em; }
-.dom-config-menu header small { color: var(--ui-muted); font: 600 8px var(--font-mono); }
-.dom-config-menu label { display: flex; align-items: center; gap: 9px; min-height: 23px; color: var(--ui-text); font: 600 10px var(--font-ui); cursor: pointer; }
-.dom-config-menu input { width: 14px; height: 14px; accent-color: var(--ui-accent); }
-.dom-config-menu p { margin: 3px 0 0; color: var(--ui-muted); font: 500 8px/1.45 var(--font-ui); }
 .chart-tooltip { position: absolute; z-index: 6; width: 190px; padding: 9px; border: 1px solid #61777d; background: rgba(49,69,75,.96); box-shadow: 0 8px 20px rgba(0,0,0,.35); font: 11px var(--font-mono); pointer-events: none; }
 .chart-tooltip > strong { display: block; margin-bottom: 7px; color: #fff; }
 .chart-tooltip dl { display: grid; grid-template-columns: 1fr auto; gap: 4px 8px; margin: 0; }

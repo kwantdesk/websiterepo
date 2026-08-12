@@ -146,7 +146,6 @@ export class DepthRenderer {
     this.cameraFrameAt = 0;
     this.cameraInMotion = false;
     this.tradeClusterCache = { key: '', value: [] };
-    this.domTradeProfileCache = { history: null, end: -1, values: new Map() };
     this.fontFamilies = { mono: 'Consolas, monospace', ui: '"Arial Narrow", sans-serif' };
   }
 
@@ -225,32 +224,17 @@ export class DepthRenderer {
     // separating price, the live resting book, COB, execution flow and SVP.
     const domVisible = settings.domVisible !== false;
     const priceLabelWidth = width < 700 ? 70 : width < 900 ? 78 : 88;
-    const activeDomColumns = [
-      settings.domResting !== false && 'resting',
-      settings.domTraded !== false && 'traded',
-      settings.domOrders !== false && 'orders',
-      settings.domBookDelta !== false && 'delta',
-    ].filter(Boolean);
-    const naturalDomWidth = activeDomColumns.reduce((total, column) => (
-      total + (column === 'resting' || column === 'traded' ? 86 : 54)
-    ), 0);
-    const defaultDomWidth = Math.max(70, naturalDomWidth);
+    const defaultDomWidth = width < 700 ? 118 : width < 900 ? 138 : 158;
     const requestedDomWidth = settings.domWidth == null ? Number.NaN : Number(settings.domWidth);
     const domWidth = domVisible
-      ? Math.min(440, Math.max(54, Number.isFinite(requestedDomWidth) ? requestedDomWidth : defaultDomWidth))
+      ? Math.min(260, Math.max(30, Number.isFinite(requestedDomWidth) ? requestedDomWidth : defaultDomWidth))
       : 0;
-    const naturalScale = naturalDomWidth > 0 ? domWidth / naturalDomWidth : 1;
-    const domColumnWidths = Object.fromEntries(activeDomColumns.map(column => [
-      column,
-      Math.max(column === 'resting' || column === 'traded' ? 58 : 38, Math.round((column === 'resting' || column === 'traded' ? 86 : 54) * naturalScale)),
-    ]));
-    const renderedDomWidth = Object.values(domColumnWidths).reduce((total, value) => total + value, 0);
-    const restingBookWidth = domColumnWidths.resting || 0;
-    const depthColumnWidth = domColumnWidths.orders || 0;
+    const restingBookWidth = domVisible ? Math.round(domWidth * .66) : 0;
+    const depthColumnWidth = domVisible ? domWidth - restingBookWidth : 0;
     // The toolbar DOM toggle owns the complete market ladder. When disabled,
     // collapse the price/book rail, bid/ask execution profile and SVP together
     // so the heatmap and CVD reclaim the complete right side.
-    const priceAxisWidth = domVisible ? priceLabelWidth + renderedDomWidth : 0;
+    const priceAxisWidth = domVisible ? priceLabelWidth + restingBookWidth + depthColumnWidth : 0;
     const profilesVisible = domVisible && settings.profile;
     const volumeRatioWidth = profilesVisible ? (width < 700 ? 72 : width < 900 ? 92 : 112) : 0;
     const profileWidth = profilesVisible ? (width < 700 ? 72 : width < 900 ? 92 : 112) : 0;
@@ -311,8 +295,7 @@ export class DepthRenderer {
       width, height, plotWidth, dataWidth, liveGap, plotHeight, profileWidth, volumeRatioWidth, priceAxisWidth,
       priceLabelWidth, restingBookWidth, depthColumnWidth, timeAxisHeight,
       rightHeaderHeight, domVisible,
-      domWidth: renderedDomWidth,
-      activeDomColumns, domColumnWidths,
+      domWidth,
       bottomTick, topTick, centerTick, visibleTickSpan, rowTicks, columnPixels,
       overlayBottomTick, overlayTopTick, overlayCenterTick, overlayYForTick,
       start, end, count, xForIndex, yForTick, tickForY,
@@ -337,7 +320,7 @@ export class DepthRenderer {
       this.#drawBidAskVolumeProfile(ctx, history, accents);
       this.#drawVolumeProfile(ctx, history, accents);
     }
-    if (domVisible) this.#drawPriceAxis(ctx, history, current, accents, settings);
+    if (domVisible) this.#drawPriceAxis(ctx, current, accents);
     this.#drawTimeAxis(ctx, history);
     this.#drawCrosshair(ctx);
     this.#drawMeasurement(ctx);
@@ -931,48 +914,16 @@ export class DepthRenderer {
     ctx.restore();
   }
 
-  #domTradeProfile(history, end) {
-    const cache = this.domTradeProfileCache;
-    if (cache.history !== history || end < cache.end) {
-      cache.history = history;
-      cache.end = -1;
-      cache.values = new Map();
-      cache.ids = new Set();
-    }
-    for (let index = cache.end + 1; index <= end; index += 1) {
-      for (const trade of history[index]?.trades || []) {
-        const id = trade.id ?? `${trade.timestamp}:${trade.tick}:${trade.size}:${trade.side}`;
-        if (cache.ids.has(id)) continue;
-        cache.ids.add(id);
-        const tick = Math.round(Number(trade.tick));
-        const size = Math.max(0, Number(trade.size) || 0);
-        if (!Number.isFinite(tick) || size <= 0) continue;
-        const value = cache.values.get(tick) || { buy: 0, sell: 0, count: 0, maximum: 0 };
-        if (trade.side === 'buy') value.buy += size;
-        else if (trade.side === 'sell') value.sell += size;
-        value.count += 1;
-        value.maximum = Math.max(value.maximum, size);
-        cache.values.set(tick, value);
-      }
-    }
-    cache.end = Math.max(cache.end, end);
-    return cache.values;
-  }
-
-  #drawPriceAxis(ctx, history, current, accents, settings) {
+  #drawPriceAxis(ctx, current, accents) {
     const layout = this.layout;
     const x0 = layout.plotWidth;
     const axisRight = x0 + layout.priceAxisWidth;
     const headerHeight = layout.rightHeaderHeight;
     const priceColumnRight = x0 + layout.priceLabelWidth;
-    const columns = [];
-    let cursor = priceColumnRight;
-    for (const key of layout.activeDomColumns) {
-      const width = layout.domColumnWidths[key];
-      columns.push({ key, left: cursor, right: cursor + width, width });
-      cursor += width;
-    }
-    const column = key => columns.find(value => value.key === key);
+    const bookLeft = priceColumnRight;
+    const bookRight = bookLeft + layout.restingBookWidth;
+    const bookMidpoint = bookLeft + layout.restingBookWidth / 2;
+    const depthColumnLeft = bookRight;
     ctx.save();
     ctx.fillStyle = this.chrome.axisAlt;
     ctx.fillRect(x0, 0, layout.priceAxisWidth, layout.plotHeight);
@@ -992,106 +943,87 @@ export class DepthRenderer {
     }
     ctx.strokeStyle = `rgba(${this.chrome.grid},.2)`;
     ctx.beginPath();
-    for (const x of [x0, priceColumnRight, ...columns.map(value => value.right)]) {
+    for (const x of [x0, priceColumnRight, bookMidpoint, depthColumnLeft]) {
       ctx.moveTo(Math.round(x) + .5, 0);
       ctx.lineTo(Math.round(x) + .5, layout.plotHeight);
     }
     ctx.stroke();
-    // The DOM always renders the native exchange increment. Heatmap row
-    // aggregation is a visual control and must never merge order-book prices.
-    const step = 1;
-    const firstTick = Math.ceil(layout.overlayBottomTick);
-    const previous = history[Math.max(0, layout.end - 1)] || current;
-    const traded = this.#domTradeProfile(history, layout.end);
-    const visibleSizes = [];
-    const visibleTrades = [];
-    for (let tick = firstTick; tick <= layout.overlayTopTick; tick += 1) {
-      visibleSizes.push(current.bids.get(tick) || current.asks.get(tick) || 0);
-      const flow = traded.get(tick);
-      if (flow) visibleTrades.push(flow.maximum, flow.buy, flow.sell);
-    }
-    const threshold = values => {
-      const sorted = values.filter(value => value > 0).sort((a, b) => a - b);
-      return sorted.length ? sorted[Math.max(0, Math.floor((sorted.length - 1) * .92))] : Number.POSITIVE_INFINITY;
-    };
-    const largeResting = threshold(visibleSizes);
-    const largeTraded = threshold(visibleTrades);
-    const maxResting = Math.max(1, ...visibleSizes);
-    const maxTraded = Math.max(1, ...visibleTrades);
-    const levelSpacing = layout.plotHeight / Math.max(1, layout.visibleTickSpan);
-    const rowHeight = Math.max(1, Math.min(16, levelSpacing));
-    const fontSize = levelSpacing >= 11 ? 9 : levelSpacing >= 8 ? 8 : 7;
-    ctx.font = this.#font(fontSize, 600, true);
-    ctx.textBaseline = 'middle';
-    for (let tick = firstTick; tick <= layout.overlayTopTick; tick += 1) {
-      const y = layout.overlayYForTick(tick);
-      if (y < headerHeight + rowHeight / 2 || y > layout.plotHeight - rowHeight / 2) continue;
-      const bid = current.bids.get(tick) || 0;
-      const ask = current.asks.get(tick) || 0;
-      const bidOrders = current.bidOrders?.get(tick) || 0;
-      const askOrders = current.askOrders?.get(tick) || 0;
-      const priorBid = previous.bids.get(tick) || 0;
-      const priorAsk = previous.asks.get(tick) || 0;
-      const bookDelta = (bid - priorBid) + (ask - priorAsk);
-      const flow = traded.get(tick) || { buy: 0, sell: 0, count: 0, maximum: 0 };
-      const resting = bid || ask;
-      const icebergCandidate = settings.domIcebergs !== false
-        && resting > 0 && flow.buy + flow.sell >= Math.max(10, resting * 2) && flow.count >= 3;
+    const step = this.#priceAxisStep();
+    const firstTick = Math.ceil(layout.overlayBottomTick / step) * step;
+    const restingBook = aggregateRestingBook(
+      current.bids,
+      current.asks,
+      step,
+      layout.overlayBottomTick,
+      layout.overlayTopTick,
+    );
+    const levelSpacing = layout.plotHeight / Math.max(1, layout.visibleTickSpan / step);
+    const bookBarHeight = Math.max(8, Math.min(16, levelSpacing * .62));
+    const bookHalfWidth = Math.max(1, layout.restingBookWidth / 2 - 4);
+    const bookScale = Math.max(1, restingBook.maximum);
 
-      if (Math.round(tick) % Math.max(1, this.#priceAxisStep()) === 0) {
-        ctx.strokeStyle = `rgba(${this.chrome.grid},.18)`;
-        ctx.beginPath();
-        ctx.moveTo(x0, Math.round(y) + .5);
-        ctx.lineTo(axisRight, Math.round(y) + .5);
-        ctx.stroke();
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(bookLeft + 1, headerHeight, Math.max(0, layout.restingBookWidth - 2), Math.max(0, layout.plotHeight - headerHeight));
+    ctx.clip();
+    ctx.font = this.#font(8, 600, true);
+    ctx.textBaseline = 'middle';
+    for (let tick = firstTick; tick <= layout.overlayTopTick; tick += step) {
+      const y = layout.overlayYForTick(tick);
+      if (y < headerHeight + 8 || y > layout.plotHeight - 8) continue;
+      const value = restingBook.bands.get(tick);
+      if (!value) continue;
+      const sellWidth = value.sell / bookScale * bookHalfWidth;
+      const buyWidth = value.buy / bookScale * bookHalfWidth;
+      if (sellWidth > 0) {
+        ctx.fillStyle = colorCss(accents.ask, .56);
+        ctx.fillRect(bookMidpoint - sellWidth, y - bookBarHeight / 2, sellWidth, bookBarHeight);
       }
+      if (buyWidth > 0) {
+        ctx.fillStyle = colorCss(accents.bid, .56);
+        ctx.fillRect(bookMidpoint + 1, y - bookBarHeight / 2, buyWidth, bookBarHeight);
+      }
+      if (layout.restingBookWidth >= 84) {
+        if (value.sell > 0) {
+          ctx.textAlign = 'left';
+          ctx.fillStyle = colorCss(accents.ask);
+          ctx.fillText(String(Math.round(value.sell)), bookLeft + 3, y + .5);
+        }
+        if (value.buy > 0) {
+          ctx.textAlign = 'right';
+          ctx.fillStyle = colorCss(accents.bid);
+          ctx.fillText(String(Math.round(value.buy)), bookRight - 3, y + .5);
+        }
+      }
+    }
+    ctx.restore();
+
+    ctx.font = this.#font(11, 400, true);
+    ctx.textBaseline = 'middle';
+    for (let tick = firstTick; tick <= layout.overlayTopTick; tick += step) {
+      const y = layout.overlayYForTick(tick);
+      if (y < headerHeight + 8 || y > layout.plotHeight - 8) continue;
+      const roundedTick = Math.round(tick);
+      const bid = current.bids.get(roundedTick) || 0;
+      const ask = current.asks.get(roundedTick) || 0;
+      const size = bid || ask;
+      if (size && layout.domVisible) {
+        const barWidth = Math.min(layout.depthColumnWidth, Math.log1p(size) * 7);
+        ctx.fillStyle = colorCss(bid ? accents.bid : accents.ask, bid ? .2 : .22);
+        ctx.fillRect(axisRight - barWidth, y - 8, barWidth, 16);
+      }
+      ctx.strokeStyle = `rgba(${this.chrome.grid},.18)`;
+      ctx.beginPath();
+      ctx.moveTo(x0, Math.round(y) + .5);
+      ctx.lineTo(x0 + 4, Math.round(y) + .5);
+      ctx.stroke();
       ctx.textAlign = 'left';
       ctx.fillStyle = this.chrome.text;
-      ctx.fillText(priceLabel(tick, layout.config), x0 + 7, y);
-
-      const restingColumn = column('resting');
-      if (restingColumn) {
-        const mid = restingColumn.left + restingColumn.width / 2;
-        if (ask > 0) {
-          const width = ask / maxResting * Math.max(1, restingColumn.width / 2 - 2);
-          ctx.fillStyle = colorCss(accents.ask, settings.domLargeOrders !== false && ask >= largeResting ? .68 : .28);
-          ctx.fillRect(mid - width, y - rowHeight / 2, width, rowHeight);
-          ctx.textAlign = 'left'; ctx.fillStyle = colorCss(accents.ask); ctx.fillText(Math.round(ask), restingColumn.left + 2, y);
-        }
-        if (bid > 0) {
-          const width = bid / maxResting * Math.max(1, restingColumn.width / 2 - 2);
-          ctx.fillStyle = colorCss(accents.bid, settings.domLargeOrders !== false && bid >= largeResting ? .68 : .28);
-          ctx.fillRect(mid, y - rowHeight / 2, width, rowHeight);
-          ctx.textAlign = 'right'; ctx.fillStyle = colorCss(accents.bid); ctx.fillText(Math.round(bid), restingColumn.right - 2, y);
-        }
-      }
-
-      const tradedColumn = column('traded');
-      if (tradedColumn && (flow.buy > 0 || flow.sell > 0)) {
-        const mid = tradedColumn.left + tradedColumn.width / 2;
-        const hot = settings.domLargeTrades !== false && flow.maximum >= largeTraded;
-        if (flow.sell > 0) {
-          const width = flow.sell / maxTraded * Math.max(1, tradedColumn.width / 2 - 2);
-          ctx.fillStyle = colorCss(accents.ask, hot ? .68 : .24); ctx.fillRect(mid - width, y - rowHeight / 2, width, rowHeight);
-          ctx.textAlign = 'left'; ctx.fillStyle = colorCss(accents.ask); ctx.fillText(Math.round(flow.sell), tradedColumn.left + 2, y);
-        }
-        if (flow.buy > 0) {
-          const width = flow.buy / maxTraded * Math.max(1, tradedColumn.width / 2 - 2);
-          ctx.fillStyle = colorCss(accents.bid, hot ? .68 : .24); ctx.fillRect(mid, y - rowHeight / 2, width, rowHeight);
-          ctx.textAlign = 'right'; ctx.fillStyle = colorCss(accents.bid); ctx.fillText(Math.round(flow.buy), tradedColumn.right - 2, y);
-        }
-      }
-
-      const ordersColumn = column('orders');
-      if (ordersColumn && (bidOrders || askOrders)) {
-        ctx.textAlign = 'center'; ctx.fillStyle = this.chrome.text;
-        ctx.fillText(`${askOrders || 0}/${bidOrders || 0}`, (ordersColumn.left + ordersColumn.right) / 2, y);
-      }
-      const deltaColumn = column('delta');
-      if (deltaColumn && (bookDelta || icebergCandidate)) {
-        ctx.textAlign = 'center';
-        ctx.fillStyle = bookDelta > 0 ? colorCss(accents.bid) : bookDelta < 0 ? colorCss(accents.ask) : this.chrome.muted;
-        ctx.fillText(icebergCandidate ? 'ICE?' : `${bookDelta > 0 ? '+' : ''}${Math.round(bookDelta)}`, (deltaColumn.left + deltaColumn.right) / 2, y);
+      ctx.fillText(priceLabel(tick, layout.config), x0 + 10, y);
+      if (size && layout.domVisible) {
+        ctx.textAlign = 'right';
+        ctx.fillStyle = colorCss(bid ? accents.bid : accents.ask);
+        ctx.fillText(Math.round(size), axisRight - 8, y);
       }
     }
     const bestBidY = layout.overlayYForTick(current.bestBid);
@@ -1110,6 +1042,10 @@ export class DepthRenderer {
       ctx.textAlign = 'left';
       ctx.fillStyle = textFill;
       ctx.fillText(priceLabel(tick, layout.config), x0 + 10, y);
+      if (size && layout.domVisible) {
+        ctx.textAlign = 'right';
+        ctx.fillText(Math.round(size), axisRight - 8, y);
+      }
     }
 
     ctx.fillStyle = this.chrome.axisAlt;
@@ -1118,7 +1054,7 @@ export class DepthRenderer {
     ctx.beginPath();
     ctx.moveTo(x0, headerHeight + .5);
     ctx.lineTo(axisRight, headerHeight + .5);
-    for (const x of [priceColumnRight, ...columns.map(value => value.right)]) {
+    for (const x of [priceColumnRight, bookMidpoint, depthColumnLeft]) {
       ctx.moveTo(Math.round(x) + .5, 0);
       ctx.lineTo(Math.round(x) + .5, headerHeight);
     }
@@ -1129,12 +1065,19 @@ export class DepthRenderer {
     ctx.fillStyle = this.chrome.muted;
     ctx.fillText('PRICE', x0 + 10, headerHeight / 2 + .5);
     if (layout.domVisible) {
-      ctx.font = this.#font(8, 650, false);
-      ctx.textAlign = 'center';
-      for (const value of columns) {
-        const labels = { resting: 'REST S / B', traded: 'TRADED S / B', orders: 'ORDERS', delta: 'BOOK Δ' };
-        ctx.fillStyle = value.key === 'resting' || value.key === 'traded' ? colorCss(accents.bid) : this.chrome.muted;
-        ctx.fillText(labels[value.key], (value.left + value.right) / 2, headerHeight / 2 + .5);
+      if (layout.restingBookWidth >= 56) {
+        ctx.font = this.#font(9, 600, false);
+        ctx.textAlign = 'center';
+        ctx.fillStyle = colorCss(accents.ask);
+        ctx.fillText('SELL', bookLeft + layout.restingBookWidth * .25, headerHeight / 2 + .5);
+        ctx.fillStyle = colorCss(accents.bid);
+        ctx.fillText('BUY', bookLeft + layout.restingBookWidth * .75, headerHeight / 2 + .5);
+      }
+      if (layout.depthColumnWidth >= 28) {
+        ctx.font = this.#font(10, 500, false);
+        ctx.textAlign = 'right';
+        ctx.fillStyle = this.chrome.muted;
+        ctx.fillText('COB', axisRight - 8, headerHeight / 2 + .5);
       }
     }
     ctx.restore();

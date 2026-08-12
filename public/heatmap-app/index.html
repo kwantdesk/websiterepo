@@ -162,22 +162,6 @@
         <section class="chart-module cvd-open" id="chartModule">
           <div class="chart-area" id="chartArea">
             <canvas id="heatmapCanvas" title="Drag the right price and order-book rail vertically to browse higher or lower prices" aria-label="Historical order book heatmap; drag the right price rail vertically to browse price levels"></canvas>
-            <div class="dom-config" id="domConfig">
-              <button class="dom-config-button" id="domConfigButton" type="button" aria-label="Configure depth of market columns" aria-expanded="false" title="DOM columns">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h7M15 6h5M4 12h3M11 12h9M4 18h9M17 18h3"></path><circle cx="13" cy="6" r="2"></circle><circle cx="9" cy="12" r="2"></circle><circle cx="15" cy="18" r="2"></circle></svg>
-              </button>
-              <section class="dom-config-menu hidden" id="domConfigMenu" aria-label="Depth of market settings">
-                <header><strong>FULL DOM</strong><small>One-tick Rithmic L3</small></header>
-                <label><input id="domResting" type="checkbox" checked><span>Resting contracts</span></label>
-                <label><input id="domTraded" type="checkbox" checked><span>Traded S / B</span></label>
-                <label><input id="domOrders" type="checkbox" checked><span>Order count</span></label>
-                <label><input id="domBookDelta" type="checkbox" checked><span>Book change</span></label>
-                <label><input id="domLargeOrders" type="checkbox" checked><span>Large resting highlights</span></label>
-                <label><input id="domLargeTrades" type="checkbox" checked><span>Large trade highlights</span></label>
-                <label><input id="domIcebergs" type="checkbox" checked><span>Iceberg candidates</span></label>
-                <p>Stops are not visible until triggered. Icebergs are marked as inferred candidates.</p>
-              </section>
-            </div>
             <div class="current-price-tag" id="currentPriceTag">—</div>
             <div class="chart-tooltip hidden" id="chartTooltip">
               <strong id="tooltipTime">—</strong>
