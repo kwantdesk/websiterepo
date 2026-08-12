@@ -99,6 +99,21 @@ function timeLabel(timestamp, withMilliseconds = false) {
   return withMilliseconds ? `${base}.${String(date.getUTCMilliseconds()).padStart(3, '0')}` : base.slice(0, 5);
 }
 
+function timelineLabel(timestamp, intervalMs) {
+  const date = new Date(timestamp);
+  const base = date.toISOString().slice(11, 19);
+  if (intervalMs < 1_000) return `${base}.${String(date.getUTCMilliseconds()).padStart(3, '0').slice(0, 1)}`;
+  if (intervalMs < 60_000) return base;
+  return base.slice(0, 5);
+}
+
+function timelineInterval(durationMs, pixelWidth) {
+  const desiredLabels = Math.max(2, Math.floor(pixelWidth / 105));
+  const target = durationMs / desiredLabels;
+  const intervals = [250, 500, 1_000, 2_000, 5_000, 10_000, 15_000, 30_000, 60_000, 120_000, 300_000, 600_000, 900_000, 1_800_000, 3_600_000];
+  return intervals.find(value => value >= target) || 3_600_000;
+}
+
 function timestampLowerBound(points, target, high = points.length) {
   let low = 0;
   let upper = Math.max(0, Math.min(points.length, high));
@@ -1151,27 +1166,52 @@ export class DepthRenderer {
     ctx.moveTo(0, y0 + .5);
     ctx.lineTo(layout.width, y0 + .5);
     ctx.stroke();
+    const fixedStart = Number(this.interaction?.startTimestamp || 0);
+    const fixedEnd = Number(this.interaction?.endTimestamp || 0);
+    const startTimestamp = fixedStart > 0 ? fixedStart : Number(history[layout.start]?.timestamp || 0);
+    const endTimestamp = fixedEnd >= fixedStart && fixedEnd > 0
+      ? fixedEnd
+      : Number(history[layout.end]?.timestamp || startTimestamp);
+    const duration = Math.max(1, endTimestamp - startTimestamp);
+    const interval = timelineInterval(duration, layout.dataWidth);
+    const firstTimestamp = Math.ceil(startTimestamp / interval) * interval;
     ctx.fillStyle = this.chrome.text;
-    ctx.font = this.#font(11, 400, true);
+    ctx.font = this.#font(interval < 60_000 ? 10 : 11, 450, true);
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    const labels = Math.max(2, Math.floor(layout.dataWidth / 160));
-    for (let label = 0; label <= labels; label += 1) {
-      const fraction = label / labels;
-      const x = Math.min(layout.dataWidth - 28, Math.max(28, fraction * layout.dataWidth));
-      const fixedStart = Number(this.interaction?.startTimestamp || 0);
-      const fixedEnd = Number(this.interaction?.endTimestamp || 0);
-      const index = Math.min(layout.end, layout.start + Math.round((layout.count - 1) * fraction));
-      const timestamp = fixedStart > 0 && fixedEnd >= fixedStart
-        ? fixedStart + (fixedEnd - fixedStart) * fraction
-        : history[index].timestamp;
+    for (let timestamp = firstTimestamp; timestamp <= endTimestamp; timestamp += interval) {
+      // The heatmap uses one column per genuine depth frame. Resolve each
+      // clock tick to the first actual frame at/after that time so the label
+      // remains truthful even across feed gaps or reconnects.
+      const relativeIndex = timestampLowerBound(history, timestamp, layout.end + 1);
+      const index = Math.max(layout.start, Math.min(layout.end, relativeIndex));
+      const actualTimestamp = Number(history[index]?.timestamp || timestamp);
+      if (actualTimestamp < startTimestamp || actualTimestamp > endTimestamp + interval) continue;
+      const x = layout.xForIndex(index);
+      if (x < 24 || x > layout.dataWidth - 24) continue;
       ctx.strokeStyle = `rgba(${this.chrome.grid},1)`;
       ctx.beginPath();
       ctx.moveTo(Math.round(x) + .5, y0);
-      ctx.lineTo(Math.round(x) + .5, y0 + 4);
+      ctx.lineTo(Math.round(x) + .5, y0 + 5);
       ctx.stroke();
       ctx.fillStyle = this.chrome.text;
-      ctx.fillText(timeLabel(timestamp), x, y0 + layout.timeAxisHeight / 2 + 2);
+      ctx.fillText(timelineLabel(timestamp, interval), x, y0 + layout.timeAxisHeight / 2 + 2);
+    }
+
+    // A live-edge clock makes sub-minute movement obvious rather than leaving
+    // the user to infer current time from the last rounded grid label.
+    if (!this.interaction && layout.end === history.length - 1) {
+      const label = timelineLabel(endTimestamp, duration < 30_000 ? 250 : 1_000);
+      ctx.font = this.#font(10, 650, true);
+      const labelWidth = Math.max(62, ctx.measureText(label).width + 14);
+      const left = Math.max(0, layout.dataWidth - labelWidth);
+      ctx.fillStyle = `rgba(${this.chrome.grid},.13)`;
+      ctx.fillRect(left, y0 + 2, labelWidth, layout.timeAxisHeight - 4);
+      ctx.strokeStyle = `rgba(${this.chrome.grid},.72)`;
+      ctx.strokeRect(left + .5, y0 + 2.5, labelWidth - 1, layout.timeAxisHeight - 5);
+      ctx.textAlign = 'center';
+      ctx.fillStyle = this.chrome.text;
+      ctx.fillText(label, left + labelWidth / 2, y0 + layout.timeAxisHeight / 2 + 2);
     }
     ctx.restore();
   }

@@ -198,6 +198,15 @@ test("CVD is labelled and horizontally synchronized with the liquidity map", asy
   assert.match(renderer, /const xForIndex = index => count <= 1 \? dataWidth : \(\(index - start\) \/ \(count - 1\)\) \* dataWidth/);
 });
 
+test("bottom timeline uses genuine frame timestamps with seconds at live zoom", async () => {
+  const renderer = await readFile(rendererPath, "utf8");
+  assert.match(renderer, /function timelineInterval\(durationMs, pixelWidth\)/);
+  assert.match(renderer, /if \(intervalMs < 60_000\) return base;/);
+  assert.match(renderer, /const relativeIndex = timestampLowerBound\(history, timestamp, layout\.end \+ 1\)/);
+  assert.match(renderer, /const actualTimestamp = Number\(history\[index\]\?\.timestamp/);
+  assert.match(renderer, /A live-edge clock makes sub-minute movement obvious/);
+});
+
 test("ES uses its own tighter price viewport and visual holds do not enter history", async () => {
   const [symbols, source] = await Promise.all([
     readFile(new URL("../public/heatmap-app/src/market-simulator.js", import.meta.url), "utf8"),
