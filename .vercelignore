@@ -1,0 +1,13 @@
+.git
+.next
+.vercel
+node_modules
+data-cache
+tmp
+output
+*.tsbuildinfo
+.env*
+services/rithmic_gateway/node_modules
+services/rithmic_gateway/operator.env*
+services/rithmic_gateway/recordings
+services/rithmic_gateway/vendor

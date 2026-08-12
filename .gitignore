@@ -12,3 +12,5 @@ services/rithmic_gateway/operator.env
 services/rithmic_gateway/operator.env.*
 services/rithmic_gateway/vendor/
 services/rithmic_gateway/recordings/
+.vercel
+.env*
