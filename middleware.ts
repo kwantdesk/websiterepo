@@ -23,6 +23,31 @@ function belongsToAuthCookie(name: string, baseName: string) {
   return name === baseName || name.startsWith(`${baseName}.`);
 }
 
+// These endpoints carry read-only market state and are opened together when a
+// chart mounts. They are already protected by the site-access gate above. Do
+// not make their SSE connection and cold-start requests wait for a remote
+// Supabase token refresh as well: one expired browser access token otherwise
+// stalls price, history and every level overlay at the same time.
+const FAST_MARKET_READ_PATHS = [
+  "/api/cme-history",
+  "/api/databento/live",
+  "/api/databento/market",
+  "/api/databento/value-area",
+  "/api/chart-gamma-levels",
+  "/api/chart-gex-profile",
+  "/api/native-gamma",
+  "/api/expected-move",
+  "/api/hedge-levels",
+  "/api/databento/tpo-levels",
+  "/api/institutional-market-data",
+] as const;
+
+function isFastMarketRead(pathname: string) {
+  return FAST_MARKET_READ_PATHS.some((path) => (
+    pathname === path || pathname.startsWith(`${path}/`)
+  ));
+}
+
 export async function middleware(request: NextRequest) {
   const response = NextResponse.next({ request });
   const pathname = request.nextUrl.pathname;
@@ -59,6 +84,10 @@ export async function middleware(request: NextRequest) {
     const holdingPage = new URL("/", request.url);
     holdingPage.searchParams.set("returnTo", pathname);
     return NextResponse.redirect(holdingPage);
+  }
+
+  if (siteAccessConfigured && siteAccessGranted && isFastMarketRead(pathname)) {
+    return response;
   }
 
   if (pathname === "/login") return response;

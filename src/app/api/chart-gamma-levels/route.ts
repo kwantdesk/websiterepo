@@ -1,6 +1,11 @@
 import { createServerClient } from "@supabase/ssr";
 import { unstable_cache } from "next/cache";
 import { NextRequest, NextResponse } from "next/server";
+import {
+  SITE_ACCESS_COOKIE,
+  isSiteAccessConfigured,
+  isValidSiteAccessToken,
+} from "@/lib/siteAccess";
 
 // Native gamma cold-builds a session's options chain (~25s of Databento pulls); the
 // default function timeout can kill it mid-build. Cached calls return in milliseconds.
@@ -28,6 +33,15 @@ async function isAuthenticated(request: NextRequest) {
   if (
     process.env.KWANTIFY_DEV_AUTH_BYPASS === "1"
     && (host === "localhost" || host === "127.0.0.1" || host === "::1")
+  ) return true;
+
+  // Chart gamma is a read-only live-market endpoint. Production middleware
+  // has already validated this same signed gate before taking the fast path,
+  // and this second local check keeps the route safe if it is invoked outside
+  // that middleware. Avoid a second remote Supabase refresh on chart mount.
+  if (
+    isSiteAccessConfigured()
+    && await isValidSiteAccessToken(request.cookies.get(SITE_ACCESS_COOKIE)?.value)
   ) return true;
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
