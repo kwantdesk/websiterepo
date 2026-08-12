@@ -3237,6 +3237,7 @@ function WorkspaceChartPane({
   const classicGexHistoryRef = useRef<ClassicGexHistorySnapshot[]>([]);
   const rithmicConnectedRef = useRef(false);
   const historyHydratedRef = useRef(false);
+  const requestTailReconciliationRef = useRef<(() => void) | null>(null);
   const liveTailStartTimestampRef = useRef<number | null>(null);
   const latestFuturesRef = useRef<{
     price: number | null;
@@ -3842,7 +3843,10 @@ function WorkspaceChartPane({
         setError(null);
         setLoading(false);
         if (tailNeedsReconciliation && !isEventBasedChartInterval(pane.timeframe)) {
-          reconciliationTimer = window.setTimeout(() => void reconcileTail(), 2_000);
+          reconciliationTimer = window.setTimeout(() => {
+            reconciliationTimer = null;
+            void reconcileTail();
+          }, 2_000);
         }
       } catch (loadError) {
         if (cancelled) return;
@@ -3857,7 +3861,10 @@ function WorkspaceChartPane({
         );
         setLoading(!(latestCandlesRef.current.length || cachedCandles.length));
         if (tailNeedsReconciliation && !isEventBasedChartInterval(pane.timeframe)) {
-          reconciliationTimer = window.setTimeout(() => void reconcileTail(), 2_000);
+          reconciliationTimer = window.setTimeout(() => {
+            reconciliationTimer = null;
+            void reconcileTail();
+          }, 2_000);
         }
       }
     };
@@ -3909,9 +3916,22 @@ function WorkspaceChartPane({
         if (cancelled || (error instanceof DOMException && error.name === "AbortError")) return;
       }
       if (!cancelled) {
-        reconciliationTimer = window.setTimeout(() => void reconcileTail(), 2_000);
+        reconciliationTimer = window.setTimeout(() => {
+          reconciliationTimer = null;
+          void reconcileTail();
+        }, 2_000);
       }
     };
+
+    const requestTailReconciliation = () => {
+      if (cancelled || reconciliationTimer !== null || pane.broker !== "Databento") return;
+      historyHydratedRef.current = false;
+      reconciliationTimer = window.setTimeout(() => {
+        reconciliationTimer = null;
+        void reconcileTail();
+      }, 0);
+    };
+    requestTailReconciliationRef.current = requestTailReconciliation;
 
     void loadHistory();
 
@@ -3919,6 +3939,9 @@ function WorkspaceChartPane({
       cancelled = true;
       requestController.abort();
       if (reconciliationTimer !== null) window.clearTimeout(reconciliationTimer);
+      if (requestTailReconciliationRef.current === requestTailReconciliation) {
+        requestTailReconciliationRef.current = null;
+      }
     };
   }, [
     needsOrderFlowHistory,
@@ -4502,12 +4525,11 @@ function WorkspaceChartPane({
           && !isEventBasedChartInterval(pane.timeframe)
           && cmeChartTailNeedsReconciliation(previous, pane.timeframe)
         ) {
-          // Do not append the current live bucket across a missing history
-          // seam. Keep the live quote state current while the background seam
-          // request supplies the intervening candles; the next tick then
-          // attaches normally to a continuous series.
-          historyHydratedRef.current = false;
-          return;
+          // A stale history seam must never stop the live chart. The old path
+          // returned here on every subsequent tick, but did not actually start
+          // reconciliation, leaving price frozen until a page refresh. Repair
+          // the seam in the background while the current candle keeps painting.
+          requestTailReconciliationRef.current?.();
         }
         const next = usingDatabentoPaneFeed && isEventBasedChartInterval(pane.timeframe)
           ? (() => {
