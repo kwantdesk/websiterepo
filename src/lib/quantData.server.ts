@@ -658,6 +658,36 @@ function parseGexMapFrames(payload: unknown, expiration: string): GexMapFrame[] 
     .slice(-480);
 }
 
+function parseFullChainGexMapFrames(payload: unknown): GexMapFrame[] {
+  if (!isRecord(payload) || !isRecord(payload.data)) return [];
+  return Object.entries(payload.data)
+    .map(([timestampKey, rawBucket]) => ({ timestamp: finiteNumber(timestampKey), rawBucket }))
+    .filter((entry): entry is { timestamp: number; rawBucket: unknown } => entry.timestamp !== null)
+    .sort((left, right) => left.timestamp - right.timestamp)
+    .flatMap(({ timestamp, rawBucket }) => {
+      if (!isRecord(rawBucket) || !isOptionsSessionTimestamp(timestamp)) return [];
+      const strikes = new Map<number, ExposureStrike>();
+      for (const rawExpiry of Object.values(rawBucket)) {
+        if (!isRecord(rawExpiry)) continue;
+        for (const [strikeKey, rawCell] of Object.entries(rawExpiry)) {
+          if (!isRecord(rawCell)) continue;
+          const strike = finiteNumber(strikeKey);
+          if (strike === null) continue;
+          const call = finiteNumber(rawCell.CALL) ?? 0;
+          const put = finiteNumber(rawCell.PUT) ?? 0;
+          const prior = strikes.get(strike) ?? { strike, call: 0, put: 0, net: 0 };
+          prior.call += call;
+          prior.put += put;
+          prior.net += call + put;
+          strikes.set(strike, prior);
+        }
+      }
+      const updates = [...strikes.values()].sort((left, right) => left.strike - right.strike);
+      return updates.length ? [{ timestamp, updates }] : [];
+    })
+    .slice(-480);
+}
+
 function deriveGammaChange(parsed: ParsedIntervalMap): GammaChangeWindow[] {
   const snapshots = parsed.strikeSnapshots;
   const latest = snapshots.at(-1);
@@ -2097,6 +2127,82 @@ export async function getGexMapPanel(
   return unstable_cache(
     () => buildGexMapPanel(symbol, greekModeInput, sessionDate),
     ["completed-gex-map-panel-v1", symbol, greekModeInput, sessionDate],
+    { revalidate: 6 * 60 * 60 },
+  )();
+}
+
+export type HistoricalPositioningWallFrames = {
+  symbol: string;
+  sessionDate: string;
+  scope: "FULL_CHAIN" | "FRONT_EXPIRY";
+  gammaFrames: GexMapFrame[];
+  deltaFrames: GexMapFrame[];
+  candles: OptionsCandle[];
+  fallbackReason: string | null;
+};
+
+async function buildHistoricalPositioningWallFrames(
+  symbol: string,
+  sessionDate: string,
+): Promise<HistoricalPositioningWallFrames> {
+  try {
+    const [gammaResult, deltaResult, candleResult] = await Promise.all([
+      quantDataPost("/options/tool/interval-map", {
+        sessionDate,
+        aggregationPeriod: "1m",
+        greekMode: "GAMMA",
+        filter: { ticker: symbol },
+      }, 300_000),
+      quantDataPost("/options/tool/interval-map", {
+        sessionDate,
+        aggregationPeriod: "1m",
+        greekMode: "DELTA",
+        filter: { ticker: symbol },
+      }, 300_000),
+      quantDataPost("/equities/tool/stock-price-over-time", {
+        sessionDate,
+        aggregationPeriod: "1m",
+        filter: { ticker: symbol },
+      }, 300_000),
+    ]);
+    const gammaFrames = parseFullChainGexMapFrames(gammaResult.payload);
+    const deltaFrames = parseFullChainGexMapFrames(deltaResult.payload);
+    const candles = parseCandles(candleResult.payload, true);
+    if (gammaFrames.length && deltaFrames.length && candles.length) {
+      return {
+        symbol,
+        sessionDate,
+        scope: "FULL_CHAIN",
+        gammaFrames,
+        deltaFrames,
+        candles,
+        fallbackReason: null,
+      };
+    }
+    throw new Error("The provider did not return full-chain interval frames for this session.");
+  } catch (error) {
+    const [gammaPanel, deltaPanel] = await Promise.all([
+      getGexMapPanel(symbol, "GAMMA", sessionDate),
+      getGexMapPanel(symbol, "DELTA", sessionDate),
+    ]);
+    return {
+      symbol,
+      sessionDate,
+      scope: "FRONT_EXPIRY",
+      gammaFrames: gammaPanel.frames,
+      deltaFrames: deltaPanel.frames,
+      candles: gammaPanel.candles,
+      fallbackReason: error instanceof Error ? error.message : "Full-chain interval history was unavailable.",
+    };
+  }
+}
+
+/** Historical full-chain Gamma/Delta frames used to audit generic Positioning Walls. */
+export async function getHistoricalPositioningWallFrames(symbolInput: string, sessionDate: string) {
+  const symbol = symbolInput.trim().toUpperCase();
+  return unstable_cache(
+    () => buildHistoricalPositioningWallFrames(symbol, sessionDate),
+    ["historical-positioning-wall-frames-v1", symbol, sessionDate],
     { revalidate: 6 * 60 * 60 },
   )();
 }
