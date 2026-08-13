@@ -90,6 +90,17 @@ export default function LiquidityMapWorkspace({ instrument, onInstrumentChange, 
         syncTheme();
         return;
       }
+      if (event.data?.type === "kwantdesk:liquidity-map-styles-pending") {
+        setIsReady(false);
+        return;
+      }
+      if (event.data?.type === "kwantdesk:liquidity-map-styles-ready") {
+        clearStyleCheck();
+        setIsReady(true);
+        syncTheme();
+        syncInstrument();
+        return;
+      }
       if (event.data?.type === "kwantdesk:liquidity-map-ready") {
         const activeSymbol = typeof event.data.symbol === "string"
           ? event.data.symbol.trim().toUpperCase()
@@ -130,7 +141,7 @@ export default function LiquidityMapWorkspace({ instrument, onInstrumentChange, 
       clearStyleCheck();
       window.removeEventListener("message", handleMapReady);
     };
-  }, [instrument, onActivate, onInstrumentChange, syncTheme]);
+  }, [instrument, onActivate, onInstrumentChange, syncInstrument, syncTheme]);
 
   return (
     <div className="relative isolate h-full min-h-0 min-w-0 w-full max-w-full overflow-hidden bg-chart-background [contain:layout_paint_size]">

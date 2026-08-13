@@ -62,8 +62,90 @@
       }
     })();
   </script>
-  <link rel="stylesheet" href="styles.css?v=20260813-workspace-embed">
-  <link rel="stylesheet" href="embed.css?v=20260813-workspace-embed">
+  <style id="liquidityMapStyleGuard">
+    html:not([data-styles-ready="true"]) body {
+      visibility: hidden !important;
+    }
+  </style>
+  <script>
+    (() => {
+      const required = new Set(['base', 'embed']);
+      const loaded = new Set();
+      const attempts = new Map();
+      const retryTimers = new Map();
+
+      const notifyParent = (ready) => {
+        try {
+          window.parent.postMessage(
+            { type: ready ? 'kwantdesk:liquidity-map-styles-ready' : 'kwantdesk:liquidity-map-styles-pending' },
+            window.location.origin,
+          );
+        } catch {
+          // The inline visibility guard still prevents raw controls appearing.
+        }
+      };
+
+      const updateReadiness = () => {
+        const ready = [...required].every(key => loaded.has(key));
+        if (ready) {
+          document.documentElement.setAttribute('data-styles-ready', 'true');
+          notifyParent(true);
+        } else {
+          document.documentElement.removeAttribute('data-styles-ready');
+          notifyParent(false);
+        }
+      };
+
+      const retry = (key, link) => {
+        loaded.delete(key);
+        updateReadiness();
+        const attempt = (attempts.get(key) || 0) + 1;
+        attempts.set(key, attempt);
+        window.clearTimeout(retryTimers.get(key));
+        retryTimers.set(key, window.setTimeout(() => {
+          const source = link.dataset.source || link.getAttribute('href') || '';
+          const url = new URL(source, window.location.href);
+          url.searchParams.set('styleRetry', `${Date.now()}-${attempt}`);
+          link.href = url.href;
+        }, Math.min(5_000, 250 * attempt)));
+      };
+
+      window.__kwantLiquidityStyleLoaded = (key) => {
+        loaded.add(key);
+        attempts.set(key, 0);
+        updateReadiness();
+      };
+      window.__kwantLiquidityStyleFailed = retry;
+
+      window.setInterval(() => {
+        for (const key of required) {
+          const link = document.querySelector(`link[data-liquidity-style="${key}"]`);
+          if (!link || link.disabled || !link.sheet) {
+            if (link) retry(key, link);
+            continue;
+          }
+          loaded.add(key);
+        }
+        updateReadiness();
+      }, 2_000);
+    })();
+  </script>
+  <link
+    rel="stylesheet"
+    href="/heatmap-app/styles.css?v=20260813-style-guard"
+    data-source="/heatmap-app/styles.css?v=20260813-style-guard"
+    data-liquidity-style="base"
+    onload="window.__kwantLiquidityStyleLoaded('base')"
+    onerror="window.__kwantLiquidityStyleFailed('base', this)"
+  >
+  <link
+    rel="stylesheet"
+    href="/heatmap-app/embed.css?v=20260813-style-guard"
+    data-source="/heatmap-app/embed.css?v=20260813-style-guard"
+    data-liquidity-style="embed"
+    onload="window.__kwantLiquidityStyleLoaded('embed')"
+    onerror="window.__kwantLiquidityStyleFailed('embed', this)"
+  >
 </head>
 <body>
   <div class="terminal-shell" id="terminalShell">
