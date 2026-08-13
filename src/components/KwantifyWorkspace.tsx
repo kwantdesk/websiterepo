@@ -11468,7 +11468,7 @@ export default function KwantifyWorkspace({
       case "gexmap":
         return <WorkspaceFailureBoundary resetKey={`workspace-${pane.id}-gexmap`} label="GEX Map"><GexMapWorkspace /></WorkspaceFailureBoundary>;
       case "liqmap":
-        return <WorkspaceFailureBoundary resetKey={`workspace-${pane.id}-liqmap`} label="Liquidity Map"><LiquidityMapWorkspace instrument={selectedLiquidityMapInstrument} onInstrumentChange={setSelectedLiquidityMapInstrument} /></WorkspaceFailureBoundary>;
+        return <WorkspaceFailureBoundary resetKey={`workspace-${pane.id}-liqmap`} label="Liquidity Map"><LiquidityMapWorkspace instrument={selectedLiquidityMapInstrument} onInstrumentChange={setSelectedLiquidityMapInstrument} onActivate={() => activateWorkspacePane(pane.id)} /></WorkspaceFailureBoundary>;
       case "news":
         return <WorkspaceFailureBoundary resetKey={`workspace-${pane.id}-news`} label="News"><NewsWorkspace /></WorkspaceFailureBoundary>;
       case "socials":

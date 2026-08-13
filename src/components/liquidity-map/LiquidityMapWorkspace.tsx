@@ -7,6 +7,7 @@ import { readStoredTheme, THEME_STORAGE_KEY } from "@/lib/theme";
 type LiquidityMapWorkspaceProps = {
   instrument: string;
   onInstrumentChange?: (instrument: string) => void;
+  onActivate?: () => void;
 };
 
 function liquidityMapInstrument(root: unknown) {
@@ -14,7 +15,7 @@ function liquidityMapInstrument(root: unknown) {
   return /^[A-Z0-9]{1,4}$/.test(normalized) ? `${normalized}.v.0` : null;
 }
 
-export default function LiquidityMapWorkspace({ instrument, onInstrumentChange }: LiquidityMapWorkspaceProps) {
+export default function LiquidityMapWorkspace({ instrument, onInstrumentChange, onActivate }: LiquidityMapWorkspaceProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const styleCheckTimerRef = useRef<number | null>(null);
   const [isReady, setIsReady] = useState(false);
@@ -81,6 +82,10 @@ export default function LiquidityMapWorkspace({ instrument, onInstrumentChange }
     const handleMapReady = (event: MessageEvent) => {
       if (event.origin !== window.location.origin) return;
       if (event.source !== iframeRef.current?.contentWindow) return;
+      if (event.data?.type === "kwantdesk:liquidity-map-focus") {
+        onActivate?.();
+        return;
+      }
       if (event.data?.type === "kwantdesk:liquidity-map-theme-request") {
         syncTheme();
         return;
@@ -125,7 +130,7 @@ export default function LiquidityMapWorkspace({ instrument, onInstrumentChange }
       clearStyleCheck();
       window.removeEventListener("message", handleMapReady);
     };
-  }, [instrument, onInstrumentChange, syncTheme]);
+  }, [instrument, onActivate, onInstrumentChange, syncTheme]);
 
   return (
     <div className="relative isolate h-full min-h-0 min-w-0 w-full max-w-full overflow-hidden bg-chart-background [contain:layout_paint_size]">

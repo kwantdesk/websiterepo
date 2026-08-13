@@ -68,6 +68,17 @@ const LIQUIDITY_MAP_DISPLAY_DEFAULTS = Object.freeze({
 });
 
 const $ = id => document.getElementById(id);
+
+// Pointer events inside an iframe do not bubble to the workspace shell. Tell
+// the parent which terminal panel the trader is actively working in.
+if (window.parent !== window) {
+  window.addEventListener('pointerdown', () => {
+    window.parent.postMessage(
+      { type: 'kwantdesk:liquidity-map-focus' },
+      window.location.origin,
+    );
+  }, { capture: true });
+}
 const all = selector => [...document.querySelectorAll(selector)];
 
 class DepthForgeApp {
