@@ -757,19 +757,19 @@ export default function GexMapWorkspace({ market = null }: GexMapWorkspaceProps 
   return (
     <div className="gex-map-workspace flex h-full min-h-0 min-w-0 overflow-hidden bg-background text-foreground">
       <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
-        <header className="gex-map-header sticky top-0 z-40 flex min-h-[48px] shrink-0 flex-wrap items-center gap-2 border-b border-border bg-panel px-3 py-1">
-          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
-            <ScanLine className="h-4 w-4" />
+        <header className="gex-map-header sticky top-0 z-40 flex h-9 min-h-9 shrink-0 items-center gap-1.5 overflow-x-auto overflow-y-hidden border-b border-border bg-panel px-2">
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[3px] bg-primary/10 text-primary">
+            <ScanLine className="h-3.5 w-3.5" />
           </span>
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <h1 className="text-[13px] font-semibold tracking-tight">GEXMAP</h1>
+              <h1 className="text-[11px] font-semibold tracking-tight">GEXMAP</h1>
               <span className="rounded-md border border-border bg-surface px-1.5 py-0.5 text-[8px] font-semibold uppercase tracking-[0.14em] text-muted">{linkedMarket ? `${linkedMarket} context` : "3 panels"}</span>
             </div>
-            <p className="text-[9px] text-muted">Signed front-expiry exposure by strike</p>
+            <p className="hidden">Signed front-expiry exposure by strike</p>
           </div>
 
-          <div className="gex-map-frame-steps ml-2 flex items-center gap-1 rounded-lg border border-border bg-surface p-1">
+          <div className="gex-map-frame-steps ml-1 flex h-7 shrink-0 items-center gap-0.5 rounded-[3px] border border-border bg-surface p-0.5">
             {FRAME_STEPS.map((value) => (
               <button
                 key={value}
@@ -779,15 +779,15 @@ export default function GexMapWorkspace({ market = null }: GexMapWorkspaceProps 
                   setCursor(0);
                   setPlaying(false);
                 }}
-                className={`h-6 rounded-md px-2 text-[9px] font-semibold ${stepMinutes === value ? "bg-panel text-primary shadow-sm" : "text-muted hover:text-foreground"}`}
+                className={`h-5 rounded-[2px] px-1.5 text-[8px] font-semibold ${stepMinutes === value ? "bg-panel text-primary shadow-sm" : "text-muted hover:text-foreground"}`}
               >
                 {value}m
               </button>
             ))}
           </div>
 
-          <div className="gex-map-header-actions ml-auto flex items-center gap-1.5">
-            <div className={`flex h-8 items-center gap-2 rounded-lg border px-2.5 text-[9px] font-semibold ${replayMode ? "border-accent/25 bg-accent/10 text-accent" : live ? "border-primary/20 bg-primary/10 text-primary" : "border-border bg-surface text-muted"}`}>
+          <div className="gex-map-header-actions ml-auto flex shrink-0 items-center gap-1">
+            <div className={`flex h-7 items-center gap-1.5 rounded-[3px] border px-2 text-[8px] font-semibold ${replayMode ? "border-accent/25 bg-accent/10 text-accent" : live ? "border-primary/20 bg-primary/10 text-primary" : "border-border bg-surface text-muted"}`}>
               <span className={`h-1.5 w-1.5 rounded-full ${replayMode ? "bg-accent" : live ? "animate-pulse bg-primary" : "bg-muted"}`} />
               {replayMode ? "REPLAY" : live ? "LIVE" : "LAST SESSION"}
             </div>
@@ -801,17 +801,17 @@ export default function GexMapWorkspace({ market = null }: GexMapWorkspaceProps 
                 forceRefreshRef.current = true;
                 setRefreshToken((value) => value + 1);
               }}
-              className="flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-surface text-muted transition hover:text-foreground"
+              className="flex h-7 w-7 items-center justify-center rounded-[3px] border border-border bg-surface text-muted transition hover:text-foreground"
               title="Sync now"
             >
-              <RefreshCw className="h-3.5 w-3.5" />
+              <RefreshCw className="h-3 w-3" />
             </button>
             <button
               type="button"
               onClick={replayMode ? exitReplay : enterReplay}
-              className={`flex h-8 items-center gap-2 rounded-lg border px-3 text-[9px] font-semibold transition ${replayMode ? "border-primary/25 bg-primary/10 text-primary" : "border-border bg-surface text-foreground hover:border-primary/30"}`}
+              className={`flex h-7 items-center gap-1.5 rounded-[3px] border px-2 text-[8px] font-semibold transition ${replayMode ? "border-primary/25 bg-primary/10 text-primary" : "border-border bg-surface text-foreground hover:border-primary/30"}`}
             >
-              {replayMode ? <Radio className="h-3.5 w-3.5" /> : <RotateCcw className="h-3.5 w-3.5" />}
+              {replayMode ? <Radio className="h-3 w-3" /> : <RotateCcw className="h-3 w-3" />}
               {replayMode ? "Exit Replay" : "Replay"}
             </button>
           </div>

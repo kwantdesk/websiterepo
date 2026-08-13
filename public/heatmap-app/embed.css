@@ -103,7 +103,7 @@ html[data-embed="true"] * {
 
 html[data-embed="true"] .terminal-shell {
   grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: 46px 52px minmax(0, 1fr);
+  grid-template-rows: 36px 36px minmax(0, 1fr);
   width: 100%;
   height: 100%;
 }
@@ -118,9 +118,9 @@ html[data-embed="true"] .app-bar {
   grid-row: 1;
   display: grid;
   grid-template-columns: minmax(280px, 1fr) auto;
-  height: 46px;
-  min-height: 46px;
-  padding: 0 12px;
+  height: 36px;
+  min-height: 36px;
+  padding: 0 8px;
   border-bottom: 1px solid var(--ui-line);
   background: var(--ui-chrome);
 }
@@ -128,16 +128,28 @@ html[data-embed="true"] .app-bar {
 html[data-embed="true"] .instrument-tabs,
 html[data-embed="true"] .brand,
 html[data-embed="true"] .app-actions {
-  height: 46px;
+  height: 36px;
 }
 
 html[data-embed="true"] .app-actions {
   min-width: 0;
-  gap: 8px;
+  gap: 5px;
 }
 
 html[data-embed="true"] .instrument-tab {
-  min-width: 148px;
+  min-width: 116px;
+  height: 28px;
+  padding: 0 9px;
+}
+
+html[data-embed="true"] .instrument-tab strong {
+  font-size: 10px;
+}
+
+html[data-embed="true"] .new-tab {
+  width: 28px;
+  height: 28px;
+  font-size: 15px;
 }
 
 html[data-embed="true"] .top-deck {
@@ -145,7 +157,7 @@ html[data-embed="true"] .top-deck {
   grid-row: 2;
   display: block;
   width: 100%;
-  height: 52px;
+  height: 36px;
   border-right: 0;
   border-bottom: 1px solid var(--ui-line);
   background: linear-gradient(180deg, var(--ui-panel), color-mix(in srgb, var(--ui-panel) 88%, #000));
@@ -157,9 +169,9 @@ html[data-embed="true"] .tool-rail {
   flex-direction: row;
   align-items: center;
   width: 100%;
-  height: 51px;
-  gap: 4px;
-  padding: 7px 12px;
+  height: 35px;
+  gap: 3px;
+  padding: 3px 8px;
   overflow-x: auto;
   overflow-y: hidden;
   scroll-padding-right: 190px;
@@ -180,11 +192,11 @@ html[data-embed="true"] .theme-current:disabled {
 }
 
 html[data-embed="true"] .rail-button {
-  flex: 0 0 36px;
-  width: 36px;
-  height: 36px;
+  flex: 0 0 28px;
+  width: 28px;
+  height: 28px;
   border: 1px solid transparent;
-  border-radius: 9px;
+  border-radius: 3px;
   color: var(--ui-muted);
   background: transparent;
   box-shadow: none;
@@ -193,23 +205,23 @@ html[data-embed="true"] .rail-button {
 html[data-embed="true"] .rail-button.labelled-control {
   display: inline-flex;
   flex-basis: auto;
-  gap: 7px;
+  gap: 5px;
   width: auto;
-  min-width: 76px;
-  padding: 0 10px;
-  font-size: 11px;
+  min-width: 62px;
+  padding: 0 8px;
+  font-size: 9px;
   font-weight: 600;
 }
 
 html[data-embed="true"] .rail-button.labelled-control svg {
-  flex: 0 0 16px;
-  width: 16px;
-  height: 16px;
+  flex: 0 0 14px;
+  width: 14px;
+  height: 14px;
 }
 
 html[data-embed="true"] .rail-button svg {
-  width: 17px;
-  height: 17px;
+  width: 14px;
+  height: 14px;
   fill: none;
   stroke: currentColor;
   stroke-width: 1.8;
@@ -234,8 +246,8 @@ html[data-embed="true"] .rail-button.active-toggle:not(.active) {
 html[data-embed="true"] .toolbar-separator {
   flex: 0 0 1px;
   width: 1px;
-  height: 26px;
-  margin: 0 4px;
+  height: 20px;
+  margin: 0 3px;
   background: var(--ui-line);
 }
 
@@ -243,22 +255,25 @@ html[data-embed="true"] .heat-control {
   display: flex;
   flex: 0 0 auto;
   align-items: center;
-  gap: 7px;
-  min-width: 116px;
+  gap: 5px;
+  min-width: 96px;
+  height: 28px;
+  padding: 0 6px;
+  font-size: 12px;
   color: var(--ui-accent);
 }
 
 html[data-embed="true"] .heat-control input {
-  width: 92px;
+  width: 72px;
   accent-color: var(--ui-accent);
 }
 
 html[data-embed="true"] .heat-palette {
   display: block;
-  flex: 0 0 116px;
-  width: 116px;
-  height: 24px;
-  padding: 3px;
+  flex: 0 0 94px;
+  width: 94px;
+  height: 22px;
+  padding: 2px;
   border: 1px solid var(--ui-line);
   border-radius: 6px;
   background: var(--ui-surface);
@@ -288,20 +303,20 @@ html[data-embed="true"] .toolbar-panel-shortcuts {
 
 html[data-embed="true"] .header-panel-shortcuts {
   flex: 0 0 auto;
-  height: 34px;
+  height: 28px;
   padding: 2px;
   border-radius: 8px;
   background: color-mix(in srgb, var(--ui-surface) 94%, transparent);
 }
 
 html[data-embed="true"] .toolbar-panel-shortcuts button {
-  height: 28px;
-  padding: 0 10px;
+  height: 22px;
+  padding: 0 8px;
   border: 0;
   border-radius: 6px;
   background: transparent;
   color: var(--ui-muted);
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 600;
 }
 
@@ -745,23 +760,23 @@ html[data-embed="true"] .current-price-tag {
 @media (max-width: 620px) {
   html[data-embed="true"] .terminal-shell {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: 44px 48px minmax(0, 1fr);
+    grid-template-rows: 36px 36px minmax(0, 1fr);
   }
 
   html[data-embed="true"] .app-bar {
     grid-template-columns: minmax(0, 1fr) auto;
-    height: 44px;
-    min-height: 44px;
+    height: 36px;
+    min-height: 36px;
     padding: 0 8px;
   }
 
   html[data-embed="true"] .instrument-tabs,
-  html[data-embed="true"] .app-actions { height: 44px; }
+  html[data-embed="true"] .app-actions { height: 36px; }
 
   html[data-embed="true"] .top-deck,
-  html[data-embed="true"] .tool-rail { height: 48px; }
+  html[data-embed="true"] .tool-rail { height: 36px; }
 
-  html[data-embed="true"] .tool-rail { padding: 6px 8px; }
+  html[data-embed="true"] .tool-rail { padding: 3px 6px; }
 
   html[data-embed="true"] .rail-button.labelled-control {
     min-width: 36px;
