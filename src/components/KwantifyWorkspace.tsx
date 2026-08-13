@@ -12031,7 +12031,7 @@ export default function KwantifyWorkspace({
           </div>
           </div>
           <div className="col-span-2 col-start-1 row-start-1 grid min-w-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-1 overflow-x-auto border-b border-border/70 px-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            <div className="col-start-2 flex shrink-0 items-center gap-1 rounded-xl border border-border bg-surface/70 p-1">
+            <div className="col-start-2 flex h-7 shrink-0 items-center gap-1">
             {[
               {
                 layout: "single" as Exclude<WorkspaceLayout, "custom">,
@@ -12080,7 +12080,7 @@ export default function KwantifyWorkspace({
                 onClick={() => applyWorkspaceLayoutTemplate(layout)}
                 title={title}
                 aria-label={title}
-                className={`flex h-7 w-7 items-center justify-center rounded-lg transition-all ${workspaceLayout === layout ? "bg-primary text-background" : "text-muted hover:text-foreground"}`}
+                className={`flex h-7 w-7 items-center justify-center rounded-[3px] border text-[10px] font-semibold uppercase tracking-[0.075em] transition-colors ${workspaceLayout === layout ? "border-primary/35 bg-primary/[0.08] text-primary" : "border-transparent text-muted hover:bg-surface hover:text-foreground"}`}
               >
                 {icon}
               </button>
@@ -12092,18 +12092,18 @@ export default function KwantifyWorkspace({
               disabled={workspaceLocked}
               title={workspaceLocked ? "Unlock the workspace to add a panel" : "Add a new panel"}
               aria-label="Add panel to workspace"
-              className={`flex h-7 shrink-0 items-center justify-center gap-1.5 rounded-lg border px-2 transition-all ${
+              className={`flex h-7 shrink-0 items-center justify-center gap-1.5 rounded-[3px] border px-2.5 text-[10px] font-semibold uppercase tracking-[0.075em] transition-colors ${
                 workspaceLocked
                   ? "cursor-not-allowed border-border text-muted/40"
                   : "border-primary/30 bg-primary/10 text-primary hover:bg-primary hover:text-background"
               }`}
             >
               <Plus className="h-3.5 w-3.5" />
-              <span className="text-[10px] font-semibold">Panel</span>
+              <span>PANEL</span>
             </button>
             <button
               onClick={() => setWorkspaceLocked((current) => !current)}
-              className={`ml-1 flex h-7 w-7 items-center justify-center rounded-lg transition-colors ${workspaceLocked ? "bg-primary/15 text-primary" : "text-muted hover:text-foreground"}`}
+              className={`ml-1 flex h-7 w-7 items-center justify-center rounded-[3px] border text-[10px] font-semibold uppercase tracking-[0.075em] transition-colors ${workspaceLocked ? "border-primary/35 bg-primary/[0.08] text-primary" : "border-transparent text-muted hover:bg-surface hover:text-foreground"}`}
               title={workspaceLocked ? "Unlock layout" : "Lock layout"}
             >
               <Lock className="h-3.5 w-3.5" />
@@ -12118,14 +12118,13 @@ export default function KwantifyWorkspace({
                   setShowWorkspacePresetMenu((current) => !current);
                   setShowSaveWorkspacePreset(false);
                 }}
-                className={`flex h-7 items-center gap-1.5 rounded-lg px-2 text-[10px] font-medium transition-colors ${
-                  showWorkspacePresetMenu ? "bg-primary/15 text-primary" : "text-muted hover:text-foreground"
+                className={`flex h-7 items-center gap-1.5 rounded-[3px] border px-2.5 text-[10px] font-semibold uppercase tracking-[0.075em] transition-colors ${
+                  showWorkspacePresetMenu ? "border-primary/35 bg-primary/[0.08] text-primary" : "border-transparent text-muted hover:bg-surface hover:text-foreground"
                 }`}
                 title="Saved workspaces"
               >
-                <Save className="h-3.5 w-3.5" />
-                <span>Workspaces</span>
-                <ChevronDown className="h-3 w-3" />
+                <Save className="h-3.5 w-3.5" strokeWidth={1.55} />
+                <span>WORKSPACES</span>
               </button>
               {showWorkspacePresetMenu && typeof document !== "undefined" ? createPortal(
                 <div
