@@ -317,7 +317,7 @@ const SAVED_STRATEGIES_KEY = "saved-strategies";
 
 export const runtimeModeLabels: Record<RuntimeMode, string> = {
   replay: "Replay",
-  demo: "Demo",
+  demo: "Sim",
   paper: "Paper",
   forward_test: "Forward Test",
   live: "Live",

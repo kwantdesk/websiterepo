@@ -1303,6 +1303,10 @@ function formatCTraderAccountLabel(account: CTraderStatusAccount) {
   return `${brokerName} ${environment} ${accountMarker}`;
 }
 
+function formatTradingModeLabel(mode: "Live" | "Demo") {
+  return mode === "Demo" ? "Sim" : mode;
+}
+
 const presetColors = [
   "#00F5A0", "#22C55E", "#3B82F6", "#8B5CF6",
   "#EC4899", "#EF4444", "#F97316", "#EAB308",
@@ -11706,7 +11710,7 @@ export default function KwantifyWorkspace({
 
   const submitPaperOrder = () => {
     if (!selectedPaperTradingAccount) {
-      showPaperOrderMessage("error", "Create or select a demo account first.");
+      showPaperOrderMessage("error", "Create or select a sim account first.");
       return;
     }
     const quote = { bid: currentLivePrice.bid, ask: currentLivePrice.ask, timestamp: Date.now() };
@@ -13885,7 +13889,7 @@ export default function KwantifyWorkspace({
                 </div>
                 <div className="space-y-2">
                   <div className="flex justify-between"><span className="text-muted">Broker</span><span className="font-mono text-right">{paperExecutionRequested ? "Paper Trading" : activeTradingBrokerLabel}</span></div>
-                  <div className="flex justify-between"><span className="text-muted">Mode</span><span className="font-mono text-right">{paperExecutionRequested ? "Demo" : currentBrokerConnection.mode}</span></div>
+                  <div className="flex justify-between"><span className="text-muted">Mode</span><span className="font-mono text-right">{paperExecutionRequested ? "Sim" : formatTradingModeLabel(currentBrokerConnection.mode)}</span></div>
                   {paperTradingAccounts.length > 0 ? (
                     <div className="space-y-1.5">
                       <div className="flex justify-between"><span className="text-muted">Account</span><span className="text-[11px] text-muted">{activeBrokerHealth.detail}</span></div>
@@ -14639,12 +14643,12 @@ export default function KwantifyWorkspace({
                     </span>
                   </div>
                   {selectedBroker.type === "capital" && (
-                    <div className="space-y-3"><input type="password" placeholder="API Key" className="w-full rounded-xl border border-border bg-surface px-4 py-3 text-[13px] outline-none focus:border-primary/40" /><div className="flex rounded-xl border border-border bg-surface p-1">{(["Live", "Demo"] as const).map((mode) => <button key={mode} onClick={() => setBrokerMode(mode)} className={`flex-1 rounded-lg py-2 text-[13px] ${brokerMode === mode ? "bg-panel text-foreground" : "text-muted"}`}>{mode}</button>)}</div></div>
+                    <div className="space-y-3"><input type="password" placeholder="API Key" className="w-full rounded-xl border border-border bg-surface px-4 py-3 text-[13px] outline-none focus:border-primary/40" /><div className="flex rounded-xl border border-border bg-surface p-1">{(["Live", "Demo"] as const).map((mode) => <button key={mode} onClick={() => setBrokerMode(mode)} className={`flex-1 rounded-lg py-2 text-[13px] ${brokerMode === mode ? "bg-panel text-foreground" : "text-muted"}`}>{formatTradingModeLabel(mode)}</button>)}</div></div>
                   )}
                   {selectedBroker.type === "paper" && (
                     <div className="space-y-3">
                       <div className="rounded-2xl border border-border bg-surface/60 p-4 text-[13px] leading-6 text-muted">
-                        Paper Trading uses the in-house Kwantify simulator. Choose which demo account should receive orders from this chart, or create a new one here and it will also appear in the Accounts area.
+                        Paper Trading uses the in-house Kwantify simulator. Choose which sim account should receive orders from this chart, or create a new one here and it will also appear in the Accounts area.
                       </div>
                       {selectedBrokerPaperAccounts.length > 0 ? (
                         <div className="rounded-2xl border border-primary/20 bg-primary/5 p-4">
@@ -14734,10 +14738,10 @@ export default function KwantifyWorkspace({
                     </div>
                   )}
                   {selectedBroker.type === "oanda" && (
-                    <div className="space-y-3"><input type="password" placeholder="API Token" className="w-full rounded-xl border border-border bg-surface px-4 py-3 text-[13px] outline-none focus:border-primary/40" /><input placeholder="Account ID" className="w-full rounded-xl border border-border bg-surface px-4 py-3 text-[13px] outline-none focus:border-primary/40" /><div className="flex rounded-xl border border-border bg-surface p-1">{(["Live", "Demo"] as const).map((mode) => <button key={mode} onClick={() => setBrokerMode(mode)} className={`flex-1 rounded-lg py-2 text-[13px] ${brokerMode === mode ? "bg-panel text-foreground" : "text-muted"}`}>{mode}</button>)}</div></div>
+                    <div className="space-y-3"><input type="password" placeholder="API Token" className="w-full rounded-xl border border-border bg-surface px-4 py-3 text-[13px] outline-none focus:border-primary/40" /><input placeholder="Account ID" className="w-full rounded-xl border border-border bg-surface px-4 py-3 text-[13px] outline-none focus:border-primary/40" /><div className="flex rounded-xl border border-border bg-surface p-1">{(["Live", "Demo"] as const).map((mode) => <button key={mode} onClick={() => setBrokerMode(mode)} className={`flex-1 rounded-lg py-2 text-[13px] ${brokerMode === mode ? "bg-panel text-foreground" : "text-muted"}`}>{formatTradingModeLabel(mode)}</button>)}</div></div>
                   )}
                   {selectedBroker.type === "tradovate" && (
-                    <div className="space-y-3"><input placeholder="Username" className="w-full rounded-xl border border-border bg-surface px-4 py-3 text-[13px] outline-none focus:border-primary/40" /><input type="password" placeholder="Password" className="w-full rounded-xl border border-border bg-surface px-4 py-3 text-[13px] outline-none focus:border-primary/40" /><div className="flex rounded-xl border border-border bg-surface p-1">{(["Live", "Demo"] as const).map((mode) => <button key={mode} onClick={() => setBrokerMode(mode)} className={`flex-1 rounded-lg py-2 text-[13px] ${brokerMode === mode ? "bg-panel text-foreground" : "text-muted"}`}>{mode}</button>)}</div></div>
+                    <div className="space-y-3"><input placeholder="Username" className="w-full rounded-xl border border-border bg-surface px-4 py-3 text-[13px] outline-none focus:border-primary/40" /><input type="password" placeholder="Password" className="w-full rounded-xl border border-border bg-surface px-4 py-3 text-[13px] outline-none focus:border-primary/40" /><div className="flex rounded-xl border border-border bg-surface p-1">{(["Live", "Demo"] as const).map((mode) => <button key={mode} onClick={() => setBrokerMode(mode)} className={`flex-1 rounded-lg py-2 text-[13px] ${brokerMode === mode ? "bg-panel text-foreground" : "text-muted"}`}>{formatTradingModeLabel(mode)}</button>)}</div></div>
                   )}
                   {selectedBroker.type === "binance" && (
                     <div className="space-y-3"><input type="password" placeholder="API Key" className="w-full rounded-xl border border-border bg-surface px-4 py-3 text-[13px] outline-none focus:border-primary/40" /><input type="password" placeholder="API Secret" className="w-full rounded-xl border border-border bg-surface px-4 py-3 text-[13px] outline-none focus:border-primary/40" /></div>
