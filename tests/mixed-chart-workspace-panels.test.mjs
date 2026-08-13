@@ -37,6 +37,12 @@ test("new workspace slots start empty and present the centered panel picker", ()
   assert.match(workspaceSource, /Choose a live KwantDesk workspace for this panel/);
 });
 
+test("an empty added panel can be cancelled back to the previous workspace", () => {
+  assert.match(workspaceSource, /aria-label=\{pane\.content === null \? "Cancel adding workspace panel"/);
+  assert.match(workspaceSource, /cancelWorkspacePanelPicker[\s\S]*?pane\.content === null\) closeWorkspacePane\(pane\.id\)/);
+  assert.match(workspaceSource, /title=\{pane\.content === null \? "Cancel and restore previous workspace"/);
+});
+
 test("a newly selected chart stays behind the picker until its first usable state settles", () => {
   assert.match(workspaceSource, /await preloadWorkspaceModule\(content\)/);
   assert.match(workspaceSource, /content !== "charts"/);

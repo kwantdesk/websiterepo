@@ -10721,6 +10721,12 @@ export default function KwantifyWorkspace({
     }
   };
 
+  const cancelWorkspacePanelPicker = (pane: WorkspacePane) => {
+    if (workspacePanelTransition?.paneId === pane.id) return;
+    setWorkspacePanelPickerPaneId(null);
+    if (pane.content === null) closeWorkspacePane(pane.id);
+  };
+
   function renderWorkspacePanelPicker(pane: WorkspacePane, overlay = false) {
     return (
       <div className={`${overlay ? "absolute inset-0 z-[100]" : "h-full"} flex min-h-0 items-center justify-center overflow-y-auto bg-background/95 p-4 backdrop-blur-xl`}>
@@ -10733,11 +10739,16 @@ export default function KwantifyWorkspace({
               </div>
               <p className="mt-1.5 text-[10px] leading-4 text-muted">Choose a live KwantDesk workspace for this panel.</p>
             </div>
-            {overlay && pane.content ? (
-              <button type="button" onClick={() => setWorkspacePanelPickerPaneId(null)} className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-muted hover:bg-surface hover:text-foreground" aria-label="Close workspace picker">
+            <button
+              type="button"
+              onClick={() => cancelWorkspacePanelPicker(pane)}
+              disabled={workspacePanelTransition?.paneId === pane.id}
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border text-muted hover:bg-surface hover:text-foreground disabled:cursor-wait disabled:opacity-40"
+              aria-label={pane.content === null ? "Cancel adding workspace panel" : "Close workspace picker"}
+              title={pane.content === null ? "Cancel and restore previous workspace" : "Close workspace picker"}
+            >
                 <X className="h-4 w-4" />
-              </button>
-            ) : null}
+            </button>
           </div>
           <div className="grid grid-cols-1 gap-2 min-[440px]:grid-cols-2 min-[760px]:grid-cols-3">
             {WORKSPACE_PANEL_OPTIONS.map((option) => {
