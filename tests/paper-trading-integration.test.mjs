@@ -56,6 +56,18 @@ test("chart receives paper positions, fills, and draggable bracket updates", () 
   assert.match(chart, /left-1 flex h-4/);
 });
 
+test("paper fills render as persistent candle-anchored entry and exit arrows", () => {
+  assert.match(engine, /export function paperFillCandleTimestamp/);
+  assert.match(chart, /paperFillCandleTimestamp\(candles, fill\.timestamp\)/);
+  assert.match(chart, /fill\.role === "entry"/);
+  assert.match(chart, /#22e887/);
+  assert.match(chart, /#ff3b5c/);
+  assert.match(chart, /Remove all fills/);
+  assert.match(workspace, /kwantify-hidden-paper-fill-markers-v1/);
+  assert.match(workspace, /onRemovePaperFills=\{handleRemovePaperFillMarkers\}/);
+  assert.doesNotMatch(chart, /fill\.side === "buy" \? "▲" : "▼"/);
+});
+
 test("execution accounting remains tick accurate and gap-aware", () => {
   assert.match(engine, /export function paperProjectedPnl/);
   assert.match(engine, /paperProjectedPnl\(position\.symbol, position\.side, position\.entryPrice, exitPrice, quantity\)/);

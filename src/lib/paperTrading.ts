@@ -73,6 +73,27 @@ export type PaperTradeFill = {
   label: string;
 };
 
+export function paperFillCandleTimestamp(
+  candles: Array<{ timestamp: number }>,
+  fillTimestamp: number,
+): number | null {
+  if (!candles.length || !Number.isFinite(fillTimestamp)) return null;
+  if (fillTimestamp < candles[0].timestamp) return null;
+  let low = 0;
+  let high = candles.length - 1;
+  let candleIndex = 0;
+  while (low <= high) {
+    const middle = Math.floor((low + high) / 2);
+    if (candles[middle].timestamp <= fillTimestamp) {
+      candleIndex = middle;
+      low = middle + 1;
+    } else {
+      high = middle - 1;
+    }
+  }
+  return Math.floor(candles[candleIndex].timestamp / 1_000);
+}
+
 export type PaperAccountLedger = {
   accountId: string;
   startingBalance: number;

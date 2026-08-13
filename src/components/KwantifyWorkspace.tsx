@@ -3590,6 +3590,7 @@ function WorkspaceChartPane({
   paperFills,
   onUpdatePaperProtection,
   onClosePaperPosition,
+  onRemovePaperFills,
 }: {
   pane: WorkspacePane;
   active: boolean;
@@ -3637,6 +3638,7 @@ function WorkspaceChartPane({
       | { kind: "take_profit"; targetId: string; price: number; quantity?: number },
   ) => void;
   onClosePaperPosition?: (position: PaperPosition) => void;
+  onRemovePaperFills?: (fillIds: string[]) => void;
 }) {
   const gammaInstrument = displayCmeSymbol(pane.symbol);
   const [candles, setCandles] = useState<Candle[]>([]);
@@ -5810,6 +5812,7 @@ function WorkspaceChartPane({
           paperFills={paperFills}
           onUpdatePaperProtection={onUpdatePaperProtection}
           onClosePaperPosition={onClosePaperPosition}
+          onRemovePaperFills={onRemovePaperFills}
         />
       )}
       {loadingMessage ? (
@@ -6477,6 +6480,21 @@ export default function KwantifyWorkspace({
     typeof window === "undefined" ? "" : window.localStorage.getItem("kwantify-selected-paper-account") ?? "");
   const [paperLedger, setPaperLedger] = useState<PaperTradingLedger>(() =>
     typeof window === "undefined" ? emptyPaperTradingLedger() : loadPaperTradingLedger());
+  const [hiddenPaperFillMarkers, setHiddenPaperFillMarkers] = useState<Record<string, string[]>>(() => {
+    if (typeof window === "undefined") return {};
+    try {
+      const stored = JSON.parse(window.localStorage.getItem("kwantify-hidden-paper-fill-markers-v1") ?? "{}");
+      if (!stored || typeof stored !== "object" || Array.isArray(stored)) return {};
+      return Object.fromEntries(
+        Object.entries(stored).map(([accountId, fillIds]) => [
+          accountId,
+          Array.isArray(fillIds) ? fillIds.filter((fillId): fillId is string => typeof fillId === "string") : [],
+        ]),
+      );
+    } catch {
+      return {};
+    }
+  });
   const [selectedBroker, setSelectedBroker] = useState<Broker | null>(null);
   const [brokerMode, setBrokerMode] = useState<"Live" | "Demo">("Demo");
   const [showQuickPaperAccountForm, setShowQuickPaperAccountForm] = useState(false);
@@ -7264,6 +7282,9 @@ export default function KwantifyWorkspace({
   const selectedPaperAccountLedger = selectedPaperTradingAccount
     ? paperLedger.accounts[selectedPaperTradingAccount.id] ?? null
     : null;
+  const selectedHiddenPaperFillIds = new Set(
+    hiddenPaperFillMarkers[selectedPaperTradingAccount?.id ?? ""] ?? [],
+  );
   const selectedPaperOpenPositions = selectedPaperAccountLedger?.positions.filter((position) => position.status === "open") ?? [];
   const selectedPaperWorkingOrders = selectedPaperAccountLedger?.orders.filter((order) => order.status === "working") ?? [];
   const selectedPaperOpenPnl = selectedPaperSummary?.unrealizedPnl ?? 0;
@@ -8063,6 +8084,13 @@ export default function KwantifyWorkspace({
   useEffect(() => {
     savePaperTradingLedger(paperLedger);
   }, [paperLedger]);
+
+  useEffect(() => {
+    window.localStorage.setItem(
+      "kwantify-hidden-paper-fill-markers-v1",
+      JSON.stringify(hiddenPaperFillMarkers),
+    );
+  }, [hiddenPaperFillMarkers]);
 
   useEffect(() => {
     if (selectedPaperTradingAccount?.id) {
@@ -11941,6 +11969,15 @@ export default function KwantifyWorkspace({
     );
   };
 
+  const handleRemovePaperFillMarkers = (fillIds: string[]) => {
+    if (!selectedPaperTradingAccount || fillIds.length === 0) return;
+    setHiddenPaperFillMarkers((current) => {
+      const hidden = new Set(current[selectedPaperTradingAccount.id] ?? []);
+      fillIds.forEach((fillId) => hidden.add(fillId));
+      return { ...current, [selectedPaperTradingAccount.id]: [...hidden] };
+    });
+  };
+
   const handleCancelPaperOrder = (accountId: string, orderId: string) => {
     setPaperLedger(cancelPaperOrder(paperLedger, accountId, orderId));
     showPaperOrderMessage("success", "Working order cancelled.");
@@ -12202,9 +12239,11 @@ export default function KwantifyWorkspace({
         trades={activePaneId === pane.id ? chartTrades : []}
         indicators={paneIndicators[pane.id] ?? []}
         paperPositions={selectedPaperAccountLedger?.positions ?? []}
-        paperFills={selectedPaperAccountLedger?.fills ?? []}
+        paperFills={(selectedPaperAccountLedger?.fills ?? []).filter((fill) =>
+          !selectedHiddenPaperFillIds.has(fill.id))}
         onUpdatePaperProtection={handlePaperProtectionUpdate}
         onClosePaperPosition={handleFlattenPaperPosition}
+        onRemovePaperFills={handleRemovePaperFillMarkers}
         onActivate={() => activateWorkspacePane(pane.id)}
         onOpenSettings={openChartSettings}
         onCreateAlertAtPrice={openCreateAlert}

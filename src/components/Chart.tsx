@@ -156,6 +156,7 @@ import { isOptionsFuturesRatioSane } from "@/lib/optionsFlow";
 import type { GexBotFlowPayload } from "@/lib/gexBotFlow";
 import {
   normalizePaperSymbol,
+  paperFillCandleTimestamp,
   paperProjectedPnl,
   snapPaperPrice,
   type PaperPosition,
@@ -246,6 +247,7 @@ interface ChartProps {
       | { kind: "take_profit"; targetId: string; price: number; quantity?: number },
   ) => void;
   onClosePaperPosition?: (position: PaperPosition) => void;
+  onRemovePaperFills?: (fillIds: string[]) => void;
 }
 
 export interface ChartLevel {
@@ -1717,6 +1719,7 @@ export default function Chart({
   paperFills = [],
   onUpdatePaperProtection,
   onClosePaperPosition,
+  onRemovePaperFills,
 }: ChartProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
@@ -6087,11 +6090,17 @@ export default function Chart({
     y: candleSeriesRef.current?.priceToCoordinate(displayPrice) ?? null,
     };
   }).filter((level): level is typeof level & { y: number } => Number.isFinite(level.y));
-  const visiblePaperFills = paperFills
-    .filter((fill) => normalizePaperSymbol(fill.symbol) === normalizePaperSymbol(instrument))
+  const matchingPaperFills = paperFills
+    .filter((fill) => normalizePaperSymbol(fill.symbol) === normalizePaperSymbol(instrument));
+  const visiblePaperFills = matchingPaperFills
     .map((fill) => ({
       fill,
-      x: chartRef.current?.timeScale().timeToCoordinate(Math.floor(fill.timestamp / 1_000) as Time) ?? null,
+      x: (() => {
+        const candleTimestamp = paperFillCandleTimestamp(candles, fill.timestamp);
+        return candleTimestamp === null
+          ? null
+          : chartRef.current?.timeScale().timeToCoordinate(candleTimestamp as Time) ?? null;
+      })(),
       y: candleSeriesRef.current?.priceToCoordinate(fill.price) ?? null,
     }))
     .filter((marker): marker is typeof marker & { x: number; y: number } => Number.isFinite(marker.x) && Number.isFinite(marker.y));
@@ -6227,11 +6236,27 @@ export default function Chart({
       {visiblePaperFills.map(({ fill, x, y }) => (
         <div
           key={fill.id}
-          className="pointer-events-none absolute z-[32] -translate-x-1/2 -translate-y-1/2 rounded-full border bg-panel/95 px-1.5 py-0.5 font-mono text-[8px] font-bold shadow-lg"
-          style={{ left: x, top: y, borderColor: fill.side === "buy" ? settings.upColor : settings.downColor, color: fill.side === "buy" ? settings.upColor : settings.downColor }}
-          title={`${fill.label} · ${fill.quantity} @ ${fill.price}`}
+          className="pointer-events-none absolute z-[32] -translate-x-1/2 -translate-y-1/2 drop-shadow-[0_1px_3px_rgba(0,0,0,0.85)]"
+          style={{ left: x, top: y }}
+          title={`${fill.role === "entry" ? "Entry" : "Exit"} · ${fill.label} · ${fill.quantity} @ ${fill.price}`}
         >
-          {fill.side === "buy" ? "▲" : "▼"}
+          <svg
+            width="15"
+            height="9"
+            viewBox="0 0 15 9"
+            aria-hidden="true"
+            className="block overflow-visible"
+          >
+            <path
+              d={fill.role === "entry"
+                ? "M0.75 1.25 H8.25 V0.5 L14.25 4.5 L8.25 8.5 V7.75 H0.75 Z"
+                : "M14.25 1.25 H6.75 V0.5 L0.75 4.5 L6.75 8.5 V7.75 H14.25 Z"}
+              fill={fill.role === "entry" ? "#22e887" : "#ff3b5c"}
+              stroke="rgba(0,0,0,0.72)"
+              strokeWidth="0.75"
+              strokeLinejoin="miter"
+            />
+          </svg>
         </div>
       ))}
       {gammaLevelsEnabled && gammaLevelsLoading ? (
@@ -7605,6 +7630,21 @@ export default function Chart({
             >
               <Trash2 className="h-4 w-4 text-muted" />
               <span className="flex-1 text-left">Remove all indicators from chart</span>
+            </button>
+          ) : null}
+          {matchingPaperFills.length > 0 && onRemovePaperFills ? (
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                event.preventDefault();
+                onRemovePaperFills(matchingPaperFills.map((fill) => fill.id));
+                setContextMenu(null);
+              }}
+              className="flex w-full cursor-pointer items-center gap-3 px-4 py-2.5 text-[13px] text-foreground transition-colors hover:bg-surface"
+            >
+              <Trash2 className="h-4 w-4 text-muted" />
+              <span className="flex-1 text-left">Remove all fills</span>
             </button>
           ) : null}
           {(zones.length > 0 || backgroundZones.length > 0) && onRemoveGameplanOverlay ? (
