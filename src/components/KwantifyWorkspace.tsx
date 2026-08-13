@@ -3303,6 +3303,7 @@ function WorkspaceChartPane({
   const [candles, setCandles] = useState<Candle[]>([]);
   const [lowerIndicatorHeight, setLowerIndicatorHeight] = useState(0);
   const [marketTrades, setMarketTrades] = useState<InstitutionalTrade[]>([]);
+  const [orderFlowHistoryReady, setOrderFlowHistoryReady] = useState(false);
   const [volumeProfiles, setVolumeProfiles] = useState<InstitutionalVolumeProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -3684,6 +3685,8 @@ function WorkspaceChartPane({
       ? mergeObservedDatabentoTail(immediateHistoryForPeriod, observedTail, pane.timeframe)
       : immediateHistoryForPeriod;
     const hasImmediateHistory = immediateHistoryForPeriod.length > 0;
+    const immediateOrderFlowHistoryReady = !needsOrderFlowHistory
+      || hasUsableOrderFlowHistory(immediateCandles);
     const immediateTailNeedsReconciliation = pane.broker === "Databento"
       && cmeChartTailNeedsReconciliation(immediateCandles, pane.timeframe);
     const liveSeamRequest = pane.broker === "Databento" && resolvedContractSymbol
@@ -3710,6 +3713,7 @@ function WorkspaceChartPane({
     setError(null);
     setCandles(hasImmediateHistory ? immediateCandles : []);
     setMarketTrades(immediateMarketTrades);
+    setOrderFlowHistoryReady(immediateOrderFlowHistoryReady);
     latestCandlesRef.current = hasImmediateHistory ? immediateCandles : [];
     latestMarketTradesRef.current = immediateMarketTrades;
     latestOrderFlowCandlesRef.current = [];
@@ -3771,6 +3775,7 @@ function WorkspaceChartPane({
               orderFlowCandles,
             );
         latestCandlesRef.current = mergedCandles;
+        setOrderFlowHistoryReady(hasUsableOrderFlowHistory(mergedCandles));
         historyHydratedRef.current = !cmeChartTailNeedsReconciliation(mergedCandles, pane.timeframe);
         setCandles(mergedCandles);
         setMarketTrades(mergedTape);
@@ -3854,11 +3859,13 @@ function WorkspaceChartPane({
         latestCandlesRef.current = cachedCandles;
         historyHydratedRef.current = !cmeChartTailNeedsReconciliation(cachedCandles, pane.timeframe);
         setCandles(cachedCandles);
+        if (hasUsableOrderFlowHistory(cachedCandles)) setOrderFlowHistoryReady(true);
         setLoading(false);
         setError(null);
       }
       if (cachedIsHydrated) {
         historyHydratedRef.current = true;
+        setOrderFlowHistoryReady(true);
         setLoading(false);
         return;
       }
@@ -3982,6 +3989,9 @@ function WorkspaceChartPane({
           );
         }
         historyHydratedRef.current = !tailNeedsReconciliation;
+        setOrderFlowHistoryReady(
+          !needsOrderFlowHistory || hasUsableOrderFlowHistory(merged),
+        );
         setCandles(merged);
         setMarketTrades(nextMarketTrades);
         setError(null);
@@ -5186,6 +5196,7 @@ function WorkspaceChartPane({
           contractSymbol={resolvedContractSymbol}
           timeframe={pane.timeframe}
           marketIsActive={marketIsActive}
+          orderFlowHistoryReady={orderFlowHistoryReady}
           settings={settings}
           onOpenSettings={onOpenSettings}
           onCreateAlertAtPrice={onCreateAlertAtPrice}

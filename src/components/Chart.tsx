@@ -169,6 +169,7 @@ interface ChartProps {
   contractSymbol?: string | null;
   timeframe?: string;
   marketIsActive?: boolean;
+  orderFlowHistoryReady?: boolean;
   onOpenSettings?: () => void;
   onCreateAlertAtPrice?: (price: string) => void;
   onRemoveAllIndicators?: () => void;
@@ -1633,6 +1634,7 @@ export default function Chart({
   contractSymbol = null,
   timeframe,
   marketIsActive,
+  orderFlowHistoryReady = true,
   onOpenSettings,
   onCreateAlertAtPrice,
   onRemoveAllIndicators,
@@ -2144,8 +2146,17 @@ export default function Chart({
     settings.wickUpColor,
   ]);
   const calculatedIndicatorSeries = useMemo(
-    () => indicators.flatMap((instance) =>
-      calculateIndicatorSeries(
+    () => indicators.flatMap((instance) => {
+      if (
+        !orderFlowHistoryReady
+        && [
+          "cumulative-volume-delta",
+          "delta-cumulative-candlestick",
+          "delta-cumulative-histogram",
+          "delta-bar",
+        ].includes(instance.indicatorId)
+      ) return [];
+      return calculateIndicatorSeries(
         instance,
         indicatorCandles,
         {
@@ -2156,12 +2167,14 @@ export default function Chart({
           muted: settings.gridColor,
         },
         { instrument, tickSize: priceFormat.minMove },
-      ).map((series) => ({ ...series, groupKey: instance.instanceId }))),
+      ).map((series) => ({ ...series, groupKey: instance.instanceId }));
+    }),
     [
       indicatorCandles,
       indicatorSignature,
       indicators,
       instrument,
+      orderFlowHistoryReady,
       priceFormat.minMove,
       settings.borderUpColor,
       settings.downColor,
@@ -2220,7 +2233,9 @@ export default function Chart({
           indicatorId: instance.indicatorId,
           settings: instance.settings,
           series: [],
-          unavailableReason: "Waiting for executed CME bid/ask volume.",
+          unavailableReason: orderFlowHistoryReady
+            ? "Waiting for executed CME bid/ask volume."
+            : "Restoring cumulative volume delta history.",
         }];
       }
       return [];
@@ -2232,6 +2247,7 @@ export default function Chart({
     indicators,
     priceFormat.minMove,
     indicatorMarketTrades,
+    orderFlowHistoryReady,
     settings.borderUpColor,
     settings.downColor,
     settings.gridColor,
