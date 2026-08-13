@@ -62,6 +62,10 @@ test("paper fills render as persistent candle-anchored entry and exit arrows", (
   assert.match(chart, /fill\.role === "entry"/);
   assert.match(chart, /#22e887/);
   assert.match(chart, /#ff3b5c/);
+  assert.match(chart, /M0\.75 0\.75 L12\.25 4\.5 L0\.75 8\.25 Z/);
+  assert.match(chart, /M12\.25 0\.75 L0\.75 4\.5 L12\.25 8\.25 Z/);
+  assert.doesNotMatch(chart, /M0\.75 1\.25 H8\.25/);
+  assert.doesNotMatch(chart, /stroke="rgba\(0,0,0,0\.72\)"/);
   assert.match(chart, /Remove all fills/);
   assert.match(workspace, /kwantify-hidden-paper-fill-markers-v1/);
   assert.match(workspace, /onRemovePaperFills=\{handleRemovePaperFillMarkers\}/);

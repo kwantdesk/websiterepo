@@ -6236,25 +6236,22 @@ export default function Chart({
       {visiblePaperFills.map(({ fill, x, y }) => (
         <div
           key={fill.id}
-          className="pointer-events-none absolute z-[32] -translate-x-1/2 -translate-y-1/2 drop-shadow-[0_1px_3px_rgba(0,0,0,0.85)]"
+          className="pointer-events-none absolute z-[32] -translate-x-1/2 -translate-y-1/2 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]"
           style={{ left: x, top: y }}
           title={`${fill.role === "entry" ? "Entry" : "Exit"} · ${fill.label} · ${fill.quantity} @ ${fill.price}`}
         >
           <svg
-            width="15"
+            width="13"
             height="9"
-            viewBox="0 0 15 9"
+            viewBox="0 0 13 9"
             aria-hidden="true"
             className="block overflow-visible"
           >
             <path
               d={fill.role === "entry"
-                ? "M0.75 1.25 H8.25 V0.5 L14.25 4.5 L8.25 8.5 V7.75 H0.75 Z"
-                : "M14.25 1.25 H6.75 V0.5 L0.75 4.5 L6.75 8.5 V7.75 H14.25 Z"}
+                ? "M0.75 0.75 L12.25 4.5 L0.75 8.25 Z"
+                : "M12.25 0.75 L0.75 4.5 L12.25 8.25 Z"}
               fill={fill.role === "entry" ? "#22e887" : "#ff3b5c"}
-              stroke="rgba(0,0,0,0.72)"
-              strokeWidth="0.75"
-              strokeLinejoin="miter"
             />
           </svg>
         </div>
