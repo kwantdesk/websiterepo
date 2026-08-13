@@ -49,10 +49,16 @@ test("chart receives paper positions, fills, and draggable bracket updates", () 
   assert.match(workspace, /onClosePaperPosition=\{handleFlattenPaperPosition\}/);
   assert.match(workspace, /handleFlattenPaperAccount/);
   assert.match(workspace, /Flatten all/);
+  assert.match(chart, /paperProjectedPnl/);
+  assert.match(chart, /SL ·/);
+  assert.match(chart, /TP\$\{position\.takeProfits\.length > 1/);
+  assert.match(chart, /requestAnimationFrame\(flushPreview\)/);
+  assert.match(chart, /left-1 flex h-4/);
 });
 
 test("execution accounting remains tick accurate and gap-aware", () => {
-  assert.match(engine, /\(exitPrice - position\.entryPrice\) \* direction \* paperPointValue\(position\.symbol\) \* quantity/);
+  assert.match(engine, /export function paperProjectedPnl/);
+  assert.match(engine, /paperProjectedPnl\(position\.symbol, position\.side, position\.entryPrice, exitPrice, quantity\)/);
   assert.match(engine, /const stopFillPrice = position\.side === "buy"/);
   assert.match(engine, /Math\.min\(position\.stopLoss!, quote\.bid\)/);
   assert.match(engine, /Math\.max\(position\.stopLoss!, quote\.ask\)/);

@@ -315,6 +315,20 @@ export function paperContractNotional(symbol: string, price: number, quantity: n
   return Math.max(0, finite(price)) * Math.max(0, finite(quantity)) * paperPointValue(symbol);
 }
 
+export function paperProjectedPnl(
+  symbol: string,
+  side: PaperOrderSide,
+  entryPrice: number,
+  exitPrice: number,
+  quantity: number,
+) {
+  const direction = side === "buy" ? 1 : -1;
+  return (finite(exitPrice) - finite(entryPrice))
+    * direction
+    * paperPointValue(symbol)
+    * Math.max(0, finite(quantity));
+}
+
 export function paperOrderQuantity(symbol: string, value: unknown, fallback = 1) {
   const quantity = positive(value, fallback);
   return paperContractSpec(symbol).isFutures ? Math.max(1, Math.floor(quantity)) : quantity;
@@ -438,8 +452,7 @@ export function ensurePaperAccountLedger(
 }
 
 function calculatePnl(position: Pick<PaperPosition, "symbol" | "side" | "entryPrice">, exitPrice: number, quantity: number) {
-  const direction = position.side === "buy" ? 1 : -1;
-  return (exitPrice - position.entryPrice) * direction * paperPointValue(position.symbol) * quantity;
+  return paperProjectedPnl(position.symbol, position.side, position.entryPrice, exitPrice, quantity);
 }
 
 function createEntryPosition(

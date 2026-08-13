@@ -156,6 +156,7 @@ import { isOptionsFuturesRatioSane } from "@/lib/optionsFlow";
 import type { GexBotFlowPayload } from "@/lib/gexBotFlow";
 import {
   normalizePaperSymbol,
+  paperProjectedPnl,
   snapPaperPrice,
   type PaperPosition,
   type PaperTradeFill,
@@ -6016,12 +6017,14 @@ export default function Chart({
     position.status === "open"
     && position.remainingQuantity > 0
     && normalizePaperSymbol(position.symbol) === normalizePaperSymbol(instrument));
+  const formatPaperMoney = (value: number) =>
+    `${value > 0 ? "+" : value < 0 ? "-" : ""}$${Math.abs(value).toFixed(2)}`;
   const paperOverlayLevels = visiblePaperPositions.flatMap((position) => {
     const entry = [{
       id: `${position.id}-entry`,
       kind: "entry" as const,
       price: position.entryPrice,
-      label: `${position.side === "buy" ? "LONG" : "SHORT"} ${position.remainingQuantity} @ ${position.entryPrice.toFixed(priceFormat.precision)} · ${position.unrealizedPnl >= 0 ? "+" : "-"}$${Math.abs(position.unrealizedPnl).toFixed(2)}`,
+      label: `${position.side === "buy" ? "LONG" : "SHORT"} · ${position.remainingQuantity} · ${position.entryPrice.toFixed(priceFormat.precision)} · ${formatPaperMoney(position.unrealizedPnl)}`,
       color: position.side === "buy" ? settings.upColor : settings.downColor,
       position,
       targetId: null as string | null,
@@ -6030,7 +6033,13 @@ export default function Chart({
       id: `${position.id}-sl`,
       kind: "stop_loss" as const,
       price: position.stopLoss,
-      label: `SL ${position.stopLoss.toFixed(priceFormat.precision)}`,
+      label: `SL · ${position.stopLoss.toFixed(priceFormat.precision)} · ${formatPaperMoney(paperProjectedPnl(
+        position.symbol,
+        position.side,
+        position.entryPrice,
+        position.stopLoss,
+        position.remainingQuantity,
+      ))}`,
       color: settings.downColor,
       position,
       targetId: null as string | null,
@@ -6041,7 +6050,13 @@ export default function Chart({
         id: `${position.id}-${target.id}`,
         kind: "take_profit" as const,
         price: target.price,
-        label: `TP${index + 1} ${target.price.toFixed(priceFormat.precision)} · ${target.quantity - target.filledQuantity}`,
+        label: `TP${position.takeProfits.length > 1 ? index + 1 : ""} · ${target.price.toFixed(priceFormat.precision)} · ${formatPaperMoney(paperProjectedPnl(
+          position.symbol,
+          position.side,
+          position.entryPrice,
+          target.price,
+          target.quantity - target.filledQuantity,
+        ))}`,
         color: settings.upColor,
         position,
         targetId: target.id,
@@ -6049,11 +6064,26 @@ export default function Chart({
     return [...entry, ...stop, ...targets];
   }).map((level) => {
     const displayPrice = paperDragPreview?.id === level.id ? paperDragPreview.price : level.price;
+    const protectedQuantity = level.kind === "take_profit" && level.targetId
+      ? (() => {
+          const target = level.position.takeProfits.find((candidate) => candidate.id === level.targetId);
+          return target ? Math.max(0, target.quantity - target.filledQuantity) : level.position.remainingQuantity;
+        })()
+      : level.position.remainingQuantity;
+    const projectedPnl = level.kind === "entry"
+      ? level.position.unrealizedPnl
+      : paperProjectedPnl(
+          level.position.symbol,
+          level.position.side,
+          level.position.entryPrice,
+          displayPrice,
+          protectedQuantity,
+        );
     return {
     ...level,
     price: displayPrice,
     label: paperDragPreview?.id === level.id
-      ? `${level.kind === "stop_loss" ? "SL" : "TP"} ${displayPrice.toFixed(priceFormat.precision)}`
+      ? `${level.kind === "stop_loss" ? "SL" : "TP"} · ${displayPrice.toFixed(priceFormat.precision)} · ${formatPaperMoney(projectedPnl)}`
       : level.label,
     y: candleSeriesRef.current?.priceToCoordinate(displayPrice) ?? null,
     };
@@ -6078,6 +6108,8 @@ export default function Chart({
     const series = candleSeriesRef.current;
     if (!container || !series) return;
     let latestPrice = level.price;
+    let pendingClientY = event.clientY;
+    let animationFrame: number | null = null;
     const updatePreview = (clientY: number) => {
       const bounds = container.getBoundingClientRect();
       const price = series.coordinateToPrice(clientY - bounds.top);
@@ -6085,10 +6117,20 @@ export default function Chart({
       latestPrice = snapPaperPrice(level.position.symbol, price);
       setPaperDragPreview({ id: level.id, price: latestPrice });
     };
-    const handleMove = (moveEvent: PointerEvent) => updatePreview(moveEvent.clientY);
+    const flushPreview = () => {
+      animationFrame = null;
+      updatePreview(pendingClientY);
+    };
+    const handleMove = (moveEvent: PointerEvent) => {
+      pendingClientY = moveEvent.clientY;
+      if (animationFrame === null) animationFrame = window.requestAnimationFrame(flushPreview);
+    };
     const handleUp = () => {
       document.removeEventListener("pointermove", handleMove);
       document.removeEventListener("pointerup", handleUp);
+      document.removeEventListener("pointercancel", handleUp);
+      if (animationFrame !== null) window.cancelAnimationFrame(animationFrame);
+      updatePreview(pendingClientY);
       setPaperDragPreview(null);
       if (level.kind === "stop_loss") {
         onUpdatePaperProtection(level.position.accountId, level.position.id, { kind: "stop_loss", price: latestPrice });
@@ -6102,6 +6144,7 @@ export default function Chart({
     };
     document.addEventListener("pointermove", handleMove);
     document.addEventListener("pointerup", handleUp, { once: true });
+    document.addEventListener("pointercancel", handleUp, { once: true });
   };
 
   return (
@@ -6147,11 +6190,11 @@ export default function Chart({
         >
           {level.kind === "entry" ? (
             <div
-              className="pointer-events-auto absolute right-2 flex -translate-y-1/2 items-center overflow-hidden rounded-md border bg-panel/95 font-mono text-[9px] font-semibold shadow-lg backdrop-blur"
+              className="pointer-events-auto absolute left-1 flex h-4 -translate-y-1/2 items-center overflow-hidden rounded-[1px] border bg-panel/95 font-mono text-[8px] font-semibold leading-none shadow-md backdrop-blur"
               style={{ borderColor: level.color, color: level.color }}
               title={`Unrealized ${level.position.unrealizedPnl.toFixed(2)}`}
             >
-              <span className="px-2 py-1">{level.label}</span>
+              <span className="whitespace-nowrap px-[7px]">{level.label}</span>
               {onClosePaperPosition ? (
                 <button
                   type="button"
@@ -6160,12 +6203,12 @@ export default function Chart({
                     event.stopPropagation();
                     onClosePaperPosition(level.position);
                   }}
-                  className="flex self-stretch items-center border-l px-1.5 transition-colors hover:bg-danger/15 hover:text-danger"
+                  className="flex w-4 self-stretch items-center justify-center border-l transition-colors hover:bg-danger/15 hover:text-danger"
                   style={{ borderColor: level.color }}
                   title="Close this position at the live bid/ask"
                   aria-label={`Close ${level.position.symbol} position`}
                 >
-                  <X className="h-3 w-3" />
+                  <X className="h-2.5 w-2.5" />
                 </button>
               ) : null}
             </div>
@@ -6173,7 +6216,7 @@ export default function Chart({
             <button
               type="button"
               onPointerDown={(event) => startPaperProtectionDrag(event, level)}
-              className="pointer-events-auto absolute right-2 -translate-y-1/2 cursor-ns-resize rounded-md border bg-panel/95 px-2 py-1 font-mono text-[9px] font-semibold shadow-lg backdrop-blur hover:brightness-125"
+              className="pointer-events-auto absolute left-1 h-4 -translate-y-1/2 cursor-ns-resize touch-none whitespace-nowrap rounded-[1px] border bg-panel/95 px-[7px] font-mono text-[8px] font-semibold leading-none shadow-md backdrop-blur transition-[filter] hover:brightness-125 active:cursor-grabbing"
               style={{ borderColor: level.color, color: level.color }}
               title="Drag to adjust protection"
             >
