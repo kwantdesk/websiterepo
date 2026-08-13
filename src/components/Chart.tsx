@@ -376,7 +376,7 @@ class SessionHighLowRenderer implements ISeriesPrimitivePaneRenderer {
         context.stroke();
 
         if (level.label) {
-          const labelX = Math.min(startX + 7, Math.max(4, mediaSize.width - 210));
+          const labelX = 7;
           const labelY = Math.max(10, y - 4);
           context.setLineDash([]);
           context.fillStyle = level.color;
@@ -554,7 +554,7 @@ class HedgeLevelsRenderer implements ISeriesPrimitivePaneRenderer {
           const color = HEDGE_LEVEL_COLORS[item.level.kind];
           const text = item.level.label;
           const width = Math.min(150, Math.max(28, context.measureText(text).width + 12));
-          const x = Math.max(3, mediaSize.width - width - 5);
+          const x = 4;
           const y = labelY.get(item.level.id) ?? item.centreY;
           context.save();
           context.globalAlpha = 0.86 * opacityScale;
@@ -723,7 +723,7 @@ class GameplanUnderlayRenderer implements ISeriesPrimitivePaneRenderer {
         const labelTop = y - 11;
         // Chips anchor to the left edge of the pane; on the right they sat on
         // top of the price axis and the Classic GEX profile panel.
-        const labelLeft = Math.max(4, Math.min(12, mediaSize.width - labelWidth - 4));
+        const labelLeft = 4;
         context.setLineDash([]);
         context.fillStyle = this.primitive.backgroundColor();
         context.strokeStyle = level.color;
@@ -825,7 +825,7 @@ class FixedPriceLevelLabelsRenderer implements ISeriesPrimitivePaneRenderer {
           ? price
           : `${level.label}  ${price}`;
         const width = Math.min(360, Math.max(68, context.measureText(label).width + 18));
-        const left = Math.max(4, mediaSize.width - width - 5);
+        const left = 4;
 
         // Deliberately draw at the exact price coordinate. Native price-axis
         // labels are collision-resolved by moving the level chip whenever the
@@ -4460,9 +4460,7 @@ export default function Chart({
         : undefined);
     const labelY = rightAlignedLabelY ?? naturalLabelY;
     const labelWidth = Math.min(300, Math.max(82, zone.label.length * 6.4 + 18));
-    const rightAligned = zone.labelAlign === "right";
-    const showLabel = !rightAligned || rightAlignedLabelY != null;
-    const labelX = rightAligned ? Math.max(10, plotWidth - labelWidth - 10) : 10;
+    const labelX = 10;
 
     return (
       <g key={`chart-zone-${zone.id}`} aria-label={zone.label}>
@@ -4476,31 +4474,29 @@ export default function Chart({
           strokeWidth={1}
           strokeDasharray="6 4"
         />
-        {showLabel ? (
-          <>
-            <rect
-              x={labelX}
-              y={labelY - 11}
-              width={labelWidth}
-              height={20}
-              rx={7}
-              fill="var(--panel)"
-              stroke={zone.color}
-              strokeWidth={0.8}
-            />
-            <text
-              x={rightAligned ? labelX + labelWidth - 9 : labelX + 9}
-              y={labelY + 3}
-              fill={zone.color}
-              fontSize="9"
-              fontFamily="'JetBrains Mono', monospace"
-              fontWeight="700"
-              textAnchor={rightAligned ? "end" : "start"}
-            >
-              {zone.label}
-            </text>
-          </>
-        ) : null}
+        <>
+          <rect
+            x={labelX}
+            y={labelY - 11}
+            width={labelWidth}
+            height={20}
+            rx={7}
+            fill="var(--panel)"
+            stroke={zone.color}
+            strokeWidth={0.8}
+          />
+          <text
+            x={labelX + 9}
+            y={labelY + 3}
+            fill={zone.color}
+            fontSize="9"
+            fontFamily="'JetBrains Mono', monospace"
+            fontWeight="700"
+            textAnchor="start"
+          >
+            {zone.label}
+          </text>
+        </>
       </g>
     );
   }
