@@ -1285,6 +1285,29 @@ body.kwant-cockpit-ui [data-numeric="true"] {
   letter-spacing: -.025em;
 }
 
+/* Gamma is also renderable as an embedded workspace pane. It therefore owns
+   its cockpit typography instead of depending on the outer shell body class
+   arriving first. Numbers and clocks use one tabular face everywhere. */
+.kwant-gamma-workspace,
+.kwant-gamma-workspace button,
+.kwant-gamma-workspace input,
+.kwant-gamma-workspace select,
+.kwant-gamma-workspace textarea {
+  font-family: "Rajdhani", "Inter", system-ui, sans-serif;
+}
+
+.kwant-gamma-workspace .font-mono,
+.kwant-gamma-workspace code,
+.kwant-gamma-workspace pre,
+.kwant-gamma-workspace kbd,
+.kwant-gamma-workspace [data-gamma-number="true"],
+.kwant-gamma-workspace [data-gamma-time="true"],
+.kwant-gamma-workspace svg text {
+  font-family: "JetBrains Mono", "SF Mono", monospace !important;
+  font-variant-numeric: tabular-nums slashed-zero;
+  letter-spacing: -.025em;
+}
+
 body.kwant-cockpit-ui h1,
 body.kwant-cockpit-ui h2,
 body.kwant-cockpit-ui h3,

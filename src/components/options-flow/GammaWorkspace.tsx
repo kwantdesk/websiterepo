@@ -516,7 +516,7 @@ function StatCard({
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">{label}</div>
-          <div className={`mt-2 font-mono font-semibold tracking-tight text-foreground ${wrapValue ? "text-[16px] leading-5" : "truncate text-[20px]"}`}>{value}</div>
+          <div data-gamma-number="true" className={`mt-2 font-mono font-semibold tracking-tight text-foreground ${wrapValue ? "text-[16px] leading-5" : "truncate text-[20px]"}`}>{value}</div>
         </div>
         <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${tones[tone]}`}>
           <Icon className="h-4 w-4" />
@@ -731,8 +731,8 @@ function DriftChart({ points }: { points: PremiumDriftPoint[] }) {
   return (
     <div className="px-4 pb-4 pt-3">
       <div className="mb-2 flex items-center justify-between gap-4 text-[10px]">
-        <span className="flex items-center gap-1.5 text-primary"><span className="h-1.5 w-1.5 rounded-full bg-primary" /> Calls {formatCompact(geometry.lastCall, true)}</span>
-        <span className="flex items-center gap-1.5 text-danger"><span className="h-1.5 w-1.5 rounded-full bg-danger" /> Puts {formatCompact(geometry.lastPut, true)}</span>
+        <span data-gamma-number="true" className="flex items-center gap-1.5 text-primary"><span className="h-1.5 w-1.5 rounded-full bg-primary" /> Calls {formatCompact(geometry.lastCall, true)}</span>
+        <span data-gamma-number="true" className="flex items-center gap-1.5 text-danger"><span className="h-1.5 w-1.5 rounded-full bg-danger" /> Puts {formatCompact(geometry.lastPut, true)}</span>
       </div>
       <svg viewBox={`0 0 ${geometry.width} ${geometry.height}`} className="h-[210px] w-full" preserveAspectRatio="none" role="img" aria-label="Cumulative call and put premium drift">
         <defs>
@@ -769,7 +769,7 @@ function ExpirationStack({ exposure }: { exposure: ExposureSummary | null }) {
           <div key={expiry.expiration}>
             <div className="mb-1.5 flex items-center justify-between text-[10px]">
               <span className="font-mono text-foreground">{new Date(`${expiry.expiration}T00:00:00`).toLocaleDateString("en-AU", { day: "2-digit", month: "short" })}</span>
-              <span className={expiry.net >= 0 ? "text-primary" : "text-danger"}>{formatCompact(expiry.net)}</span>
+              <span data-gamma-number="true" className={expiry.net >= 0 ? "text-primary" : "text-danger"}>{formatCompact(expiry.net)}</span>
             </div>
             <div className="flex h-2 overflow-hidden rounded-full bg-surface">
               <div className="h-full bg-danger/70" style={{ width: `${putWidth}%` }} />
@@ -795,7 +795,7 @@ function FlowBoard({ rows, selected, onSelect }: { rows: FlowBoardItem[]; select
         >
           <span className={`font-mono text-[12px] font-semibold ${selected === row.ticker ? "text-primary" : "text-foreground"}`}>{row.ticker}</span>
           <span className="min-w-0">
-            <span className="mb-1 flex justify-between text-[9px] text-muted"><span>Bear {formatPercent(1 - row.bullishShare)}</span><span>Bull {formatPercent(row.bullishShare)}</span></span>
+            <span data-gamma-number="true" className="mb-1 flex justify-between text-[9px] text-muted"><span>Bear {formatPercent(1 - row.bullishShare)}</span><span>Bull {formatPercent(row.bullishShare)}</span></span>
             <span className="flex h-1.5 overflow-hidden rounded-full bg-surface"><span className="bg-danger/80" style={{ width: `${(1 - row.bullishShare) * 100}%` }} /><span className="bg-primary/80" style={{ width: `${row.bullishShare * 100}%` }} /></span>
           </span>
           <span className={`text-right font-mono text-[10px] ${row.netPremium >= 0 ? "text-primary" : "text-danger"}`}>{formatCompact(row.netPremium, true)}</span>
@@ -1083,7 +1083,7 @@ export default function GammaWorkspace() {
   };
 
   return (
-    <div className="flex h-full min-h-0 overflow-hidden bg-background text-foreground">
+    <div className="kwant-gamma-workspace flex h-full min-h-0 overflow-hidden bg-background text-foreground">
       <main className="flex min-w-0 flex-1 flex-col">
         <header className="flex h-[52px] shrink-0 items-center gap-3 border-b border-border bg-panel px-4">
           <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
@@ -1160,14 +1160,14 @@ export default function GammaWorkspace() {
               </div>
             ) : null}
           </div>
-          {headerMarketData?.lastPrice !== null && headerMarketData?.lastPrice !== undefined ? <span ref={livePriceRef} className={`rounded-md px-1.5 py-1 font-mono text-[12px] font-semibold transition-colors duration-150 ${priceTick === "UP" ? "bg-primary/10 text-primary" : priceTick === "DOWN" ? "bg-danger/10 text-danger" : "text-foreground"}`}>{headerMarketData.symbol} {formatPrice(headerMarketData.lastPrice)}</span> : null}
+          {headerMarketData?.lastPrice !== null && headerMarketData?.lastPrice !== undefined ? <span ref={livePriceRef} data-gamma-number="true" className={`rounded-md px-1.5 py-1 font-mono text-[12px] font-semibold transition-colors duration-150 ${priceTick === "UP" ? "bg-primary/10 text-primary" : priceTick === "DOWN" ? "bg-danger/10 text-danger" : "text-foreground"}`}>{headerMarketData.symbol} {formatPrice(headerMarketData.lastPrice)}</span> : null}
           <div className="ml-auto flex items-center gap-2">
             {headerMarketData ? (
-              <span className="hidden items-center gap-1.5 text-[10px] text-muted md:flex">
+              <span data-gamma-time="true" className="hidden items-center gap-1.5 text-[10px] text-muted md:flex">
                 <Clock3 className="h-3 w-3" /> Price {formatClock(headerMarketData.asOf)}
               </span>
             ) : null}
-            <span className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[10px] font-semibold ${headerMarketData?.status === "LIVE" ? "border-primary/20 bg-primary/10 text-primary" : headerMarketData?.status === "UNAVAILABLE" ? "border-danger/20 bg-danger/10 text-danger" : "border-border bg-surface text-muted"}`}>
+            <span data-gamma-time="true" className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[10px] font-semibold ${headerMarketData?.status === "LIVE" ? "border-primary/20 bg-primary/10 text-primary" : headerMarketData?.status === "UNAVAILABLE" ? "border-danger/20 bg-danger/10 text-danger" : "border-border bg-surface text-muted"}`}>
               <span className={`h-1.5 w-1.5 rounded-full ${headerMarketData?.status === "LIVE" ? "animate-pulse bg-primary" : "bg-muted"}`} /> {headerMarketData ? `${headerMarketData.provider} · ${headerMarketData.status.replace("_", " ")} · ${formatPulse(pricePulseMs)}` : "CONNECTING"}
             </span>
             <button type="button" onClick={() => void loadData(symbol, priceMode, true)} disabled={refreshing} className="flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-surface text-muted transition-colors hover:text-foreground disabled:opacity-50" title="Refresh now">
@@ -1264,7 +1264,7 @@ export default function GammaWorkspace() {
                   </div>
                   {data.flow.length ? data.flow.map((row) => (
                     <div key={row.id} className="grid grid-cols-[78px_64px_64px_84px_76px_78px_90px_72px_82px_1fr] items-center gap-3 border-b border-border/70 px-4 py-2.5 text-[10px] transition-colors hover:bg-surface/50">
-                      <span className="font-mono text-muted">{formatClock(row.tradeTime)}</span>
+                      <span data-gamma-time="true" className="font-mono text-muted">{formatClock(row.tradeTime)}</span>
                       <span className="font-semibold text-foreground">{row.consolidationType}</span>
                       <span className={row.contractType === "CALL" ? "font-semibold text-primary" : "font-semibold text-danger"}>{row.contractType}</span>
                       <span className="font-mono text-muted">{row.expirationDate ? new Date(`${row.expirationDate}T00:00:00`).toLocaleDateString("en-AU", { day: "2-digit", month: "short" }) : "—"}</span>
