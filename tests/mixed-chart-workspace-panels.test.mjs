@@ -15,6 +15,22 @@ test("chart layouts expose only the governed mixed-workspace choices", () => {
   assert.doesNotMatch(workspaceSource, /type WorkspacePanelKind[^;]*(?:backtesting|levelz)/);
 });
 
+test("mixed-workspace picker and selected headers use uppercase product labels", () => {
+  for (const [id, label] of [
+    ["charts", "CHARTS"],
+    ["zyon", "ZYON"],
+    ["gameplan", "GAMEPLAN"],
+    ["gamma", "GAMMA"],
+    ["gexmap", "GEX MAP"],
+    ["liqmap", "LIQ MAP"],
+    ["news", "NEWS"],
+    ["socials", "SOCIALS"],
+    ["journal", "JOURNAL"],
+  ]) {
+    assert.match(workspaceSource, new RegExp(`id: "${id}", label: "${label}"`));
+  }
+});
+
 test("new workspace slots start empty and present the centered panel picker", () => {
   assert.match(workspaceSource, /id: nextPaneId,[\s\S]*?content: null,/);
   assert.match(workspaceSource, /Add to workspace/);

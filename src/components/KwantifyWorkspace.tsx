@@ -722,15 +722,15 @@ const WORKSPACE_PANEL_OPTIONS: Array<{
   description: string;
   icon: typeof BarChart3;
 }> = [
-  { id: "charts", label: "Charts", description: "Live chart and indicators", icon: BarChart3 },
+  { id: "charts", label: "CHARTS", description: "Live chart and indicators", icon: BarChart3 },
   { id: "zyon", label: "ZYON", description: "AI quant analyst", icon: Sparkles },
-  { id: "gameplan", label: "Gameplan", description: "Live session plan", icon: FileText },
-  { id: "gamma", label: "Gamma", description: "Options positioning", icon: Zap },
-  { id: "gexmap", label: "GEX Map", description: "Strike exposure map", icon: Layers3 },
-  { id: "liqmap", label: "Liquidity Map", description: "Live Level 3 liquidity", icon: List },
-  { id: "news", label: "News", description: "Calendar and macro", icon: Bell },
-  { id: "socials", label: "Socials", description: "Feed, desks and profiles", icon: UsersRound },
-  { id: "journal", label: "Journal", description: "Trades and analysis", icon: FileText },
+  { id: "gameplan", label: "GAMEPLAN", description: "Live session plan", icon: FileText },
+  { id: "gamma", label: "GAMMA", description: "Options positioning", icon: Zap },
+  { id: "gexmap", label: "GEX MAP", description: "Strike exposure map", icon: Layers3 },
+  { id: "liqmap", label: "LIQ MAP", description: "Live Level 3 liquidity", icon: List },
+  { id: "news", label: "NEWS", description: "Calendar and macro", icon: Bell },
+  { id: "socials", label: "SOCIALS", description: "Feed, desks and profiles", icon: UsersRound },
+  { id: "journal", label: "JOURNAL", description: "Trades and analysis", icon: FileText },
 ];
 
 function isWorkspacePanelKind(value: unknown): value is WorkspacePanelKind {
