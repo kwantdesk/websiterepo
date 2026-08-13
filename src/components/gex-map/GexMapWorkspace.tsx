@@ -9,7 +9,6 @@ import {
   ChevronRight,
   CircleStop,
   Gauge,
-  Loader2,
   Pause,
   Play,
   Radio,
@@ -308,7 +307,7 @@ function ExposurePanel({
   onChange: (patch: Partial<Pick<PanelConfig, "symbol" | "greekMode">>) => void;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
-  const [strikeViewportHeight, setStrikeViewportHeight] = useState(0);
+  const rowsRef = useRef<HTMLDivElement>(null);
   const [followingSpot, setFollowingSpot] = useState(true);
   const { current, previous } = useMemo(
     () => payload ? buildSnapshots(payload, selectedTimestamp, stepMinutes) : { current: new Map(), previous: new Map() },
@@ -330,28 +329,57 @@ function ExposurePanel({
   const greek = GEX_MAP_GREEKS.find((item) => item.mode === config.greekMode) ?? GEX_MAP_GREEKS[0];
   const viewIdentity = `${config.symbol}:${config.greekMode}:${payload?.sessionDate ?? "pending"}`;
   const centeringIdentity = `${viewIdentity}:${selectedTimestamp ?? "live"}:${spot ?? "pending"}`;
-  const strikeEdgeSpace = Math.max(0, strikeViewportHeight / 2 - 24);
 
-  const centerLiveStrike = useCallback(() => {
+  const syncStrikeViewport = useCallback((centreOnPrice = true) => {
     const container = scrollRef.current;
-    const target = container?.querySelector<HTMLElement>("[data-near-spot='true']");
-    if (!container || !target) return;
+    const content = rowsRef.current;
+    if (!container || !content) return;
 
-    const containerRect = container.getBoundingClientRect();
-    const targetRect = target.getBoundingClientRect();
-    const targetCentre = targetRect.top + targetRect.height / 2;
-    const viewportCentre = containerRect.top + containerRect.height / 2;
+    // Calculate the centring room from the viewport that is visible *now*.
+    // Keeping this value in React state allowed a previous full-page/workspace
+    // height to survive a resize. The resulting oversized bottom spacer could
+    // leave every real strike row above the viewport while totals still rendered.
+    const edgeSpace = Math.max(0, container.clientHeight / 2 - 18);
+    content.style.paddingTop = `${edgeSpace}px`;
+    content.style.paddingBottom = `${edgeSpace}px`;
+
     const maximumScroll = Math.max(0, container.scrollHeight - container.clientHeight);
-    const nextScroll = Math.max(0, Math.min(maximumScroll, container.scrollTop + targetCentre - viewportCentre));
+    if (!centreOnPrice) {
+      container.scrollTop = Math.max(0, Math.min(maximumScroll, container.scrollTop));
+      return;
+    }
+
+    const target = content.querySelector<HTMLElement>("[data-near-spot='true']");
+    if (!target) {
+      container.scrollTop = 0;
+      return;
+    }
+
+    const nextScroll = Math.max(0, Math.min(
+      maximumScroll,
+      target.offsetTop + target.offsetHeight / 2 - container.clientHeight / 2,
+    ));
 
     if (Math.abs(nextScroll - container.scrollTop) > 0.5) container.scrollTop = nextScroll;
   }, []);
 
+  const centerLiveStrike = useCallback(() => {
+    syncStrikeViewport(true);
+  }, [syncStrikeViewport]);
+
   useLayoutEffect(() => {
-    if (!followingSpot || spotStrike === null) return;
-    const frame = window.requestAnimationFrame(() => centerLiveStrike());
+    const container = scrollRef.current;
+    if (!container || !rows.length) return;
+
+    // Never carry an obsolete bottom-of-list position into a new payload.
+    // This also gives the first painted frame a visible ladder before the RAF.
+    if (followingSpot) container.scrollTop = 0;
+    syncStrikeViewport(followingSpot && spotStrike !== null);
+    const frame = window.requestAnimationFrame(() => {
+      syncStrikeViewport(followingSpot && spotStrike !== null);
+    });
     return () => window.cancelAnimationFrame(frame);
-  }, [centerLiveStrike, centeringIdentity, followingSpot, spotStrike, strikeViewportHeight]);
+  }, [centeringIdentity, followingSpot, rows.length, spotStrike, syncStrikeViewport]);
 
   useEffect(() => {
     setFollowingSpot(true);
@@ -362,20 +390,18 @@ function ExposurePanel({
     if (!container || typeof ResizeObserver === "undefined") return;
 
     let frame = 0;
-    const measureAndCenter = () => {
-      const nextHeight = container.clientHeight;
-      setStrikeViewportHeight((current) => Math.abs(current - nextHeight) > 0.5 ? nextHeight : current);
+    const resizeAndCenter = () => {
       window.cancelAnimationFrame(frame);
-      if (followingSpot) frame = window.requestAnimationFrame(() => centerLiveStrike());
+      frame = window.requestAnimationFrame(() => syncStrikeViewport(followingSpot));
     };
-    const observer = new ResizeObserver(measureAndCenter);
+    const observer = new ResizeObserver(resizeAndCenter);
     observer.observe(container);
-    measureAndCenter();
+    resizeAndCenter();
     return () => {
       observer.disconnect();
       window.cancelAnimationFrame(frame);
     };
-  }, [centerLiveStrike, followingSpot]);
+  }, [followingSpot, syncStrikeViewport]);
 
   useEffect(() => {
     const container = scrollRef.current;
@@ -488,8 +514,7 @@ function ExposurePanel({
             No recorded strike frames for this session.
           </div>
         ) : (
-          <div className="py-1">
-            <div aria-hidden="true" style={{ height: strikeEdgeSpace }} />
+          <div ref={rowsRef} className="py-1" data-gex-strike-ladder="true">
             {rows.map((row) => {
               const prior = previous.get(row.strike);
               const change = prior ? row.net - prior.net : null;
@@ -526,14 +551,8 @@ function ExposurePanel({
                 </div>
               );
             })}
-            <div aria-hidden="true" style={{ height: strikeEdgeSpace }} />
           </div>
         )}
-        {loading && payload ? (
-          <div className="pointer-events-none absolute right-2 top-2 flex items-center gap-1 rounded-md border border-border bg-panel/90 px-2 py-1 text-[8px] text-muted">
-            <Loader2 className="h-3 w-3 animate-spin text-primary" /> Syncing
-          </div>
-        ) : null}
         </div>
         {!followingSpot && spotStrike !== null ? (
           <button
