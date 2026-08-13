@@ -11108,7 +11108,7 @@ export default function KwantifyWorkspace({
             )}
           </div>
           </div>
-          <div className="col-span-2 col-start-1 row-start-1 flex min-w-0 items-center justify-start gap-1 overflow-x-auto border-b border-border/70 px-3 [scrollbar-width:none] sm:justify-center [&::-webkit-scrollbar]:hidden">
+          <div className="col-span-2 col-start-1 row-start-1 flex min-w-0 items-center justify-end gap-1 overflow-x-auto border-b border-border/70 px-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             <div className="flex shrink-0 items-center gap-1 rounded-xl border border-border bg-surface/70 p-1">
             {[
               {
