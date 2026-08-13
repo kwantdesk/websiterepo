@@ -3601,10 +3601,11 @@ function WorkspaceChartPane({
     : null;
   const expectedGammaContract =
     pane.broker === "Databento" ? currentCmeContract(pane.symbol) : null;
+  const chartIsLoading = loading || (!error && candles.length === 0);
 
   useEffect(() => {
-    if (!loading) onInitialSettled?.();
-  }, [loading, onInitialSettled]);
+    if (!chartIsLoading) onInitialSettled?.();
+  }, [chartIsLoading, onInitialSettled]);
   const gammaDataReady = Boolean(
     expectedGammaContract
     && contractMatchesChartInstrument(pane.symbol, resolvedContractSymbol)
@@ -5542,8 +5543,12 @@ function WorkspaceChartPane({
           )}
         </div>
       )}
-      {loading ? (
-        <div className="absolute inset-0 z-10" style={{ backgroundColor: settings.backgroundColor }}>
+      {chartIsLoading ? (
+        <div
+          className="absolute inset-0 z-[90]"
+          data-chart-loading="true"
+          style={{ backgroundColor: settings.backgroundColor }}
+        >
           <KwantLoader
             className="h-full w-full"
             style={{ backgroundColor: settings.backgroundColor }}
@@ -11736,6 +11741,26 @@ export default function KwantifyWorkspace({
   };
 
   function renderWorkspacePanelPicker(pane: WorkspacePane, overlay = false) {
+    const pendingPanel = workspacePanelTransition?.paneId === pane.id
+      ? WORKSPACE_PANEL_OPTIONS.find((option) => option.id === workspacePanelTransition.content)
+      : null;
+    if (pendingPanel) {
+      const PendingIcon = pendingPanel.icon;
+      return (
+        <div
+          className={`${overlay ? "absolute inset-0 z-[100]" : "h-full"} min-h-0 bg-background/95 backdrop-blur-xl`}
+          data-workspace-panel-loading={pendingPanel.id}
+        >
+          <KwantLoader
+            className="h-full w-full"
+            compact
+            icon={PendingIcon}
+            title={`Loading ${pendingPanel.label}`}
+            detail="Preparing this workspace panel."
+          />
+        </div>
+      );
+    }
     return (
       <div className={`${overlay ? "absolute inset-0 z-[100]" : "h-full"} flex min-h-0 items-center justify-center overflow-y-auto bg-background/95 p-4 backdrop-blur-xl`}>
         <div className="my-auto w-full max-w-[620px] rounded-2xl border border-border bg-panel/95 p-4 shadow-2xl shadow-black/40 sm:p-5">
