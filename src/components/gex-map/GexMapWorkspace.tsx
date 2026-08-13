@@ -43,6 +43,10 @@ type PanelConfig = {
 
 type GexMapMarket = "NQ" | "ES";
 
+type GexMapWorkspaceProps = {
+  market?: GexMapMarket | null;
+};
+
 const DEFAULT_PANELS: PanelConfig[] = [
   { id: "left", symbol: "SPX", greekMode: "GAMMA" },
   { id: "centre", symbol: "SPY", greekMode: "DELTA" },
@@ -533,8 +537,8 @@ function ExposurePanel({
   );
 }
 
-export default function GexMapWorkspace() {
-  const linkedMarket = useMemo(() => linkedMarketFromLocation(), []);
+export default function GexMapWorkspace({ market = null }: GexMapWorkspaceProps = {}) {
+  const linkedMarket = useMemo(() => market ?? linkedMarketFromLocation(), [market]);
   const initialPanels = useMemo(() => initialPanelsForMarket(linkedMarket), [linkedMarket]);
   const [panels, setPanels] = useState<PanelConfig[]>(initialPanels);
   const [panelData, setPanelData] = useState<Record<string, GexMapPanelPayload | null>>(() =>
@@ -563,6 +567,7 @@ export default function GexMapWorkspace() {
   const [lastSync, setLastSync] = useState<number | null>(null);
   const [latestSessionDate, setLatestSessionDate] = useState("");
   const [refreshToken, setRefreshToken] = useState(0);
+  const forceRefreshRef = useRef(false);
   const requestedReplayDate = replayMode ? replayDate : "";
 
   useEffect(() => {
@@ -573,14 +578,24 @@ export default function GexMapWorkspace() {
     const load = async () => {
       if (requestInFlight || cancelled) return;
       requestInFlight = true;
+      const forceRefresh = forceRefreshRef.current;
+      forceRefreshRef.current = false;
+      let nextRefreshDelay = 60_000;
       const cachedPanels = Object.fromEntries(panels.map((panel) => {
         const cached = readWorkspaceData<GexMapPanelPayload>(
           gexMapCacheKey(panel.symbol, panel.greekMode, requestedReplayDate),
         );
         return [panel.id, cached];
       }));
-      setPanelData((current) => ({ ...current, ...cachedPanels }));
-      setLoading(Object.fromEntries(panels.map((panel) => [panel.id, !cachedPanels[panel.id]])));
+      setPanelData((current) => {
+        const next = { ...current };
+        for (const panel of panels) {
+          const cached = cachedPanels[panel.id];
+          if (cached) next[panel.id] = cached;
+        }
+        return next;
+      });
+      setLoading(Object.fromEntries(panels.map((panel) => [panel.id, true])));
       try {
         const results = await Promise.allSettled(panels.map(async (panel) => {
           const query = new URLSearchParams({
@@ -591,7 +606,10 @@ export default function GexMapWorkspace() {
           const payload = await fetchWorkspaceData<GexMapPanelPayload>(
             gexMapCacheKey(panel.symbol, panel.greekMode, requestedReplayDate),
             `/api/gex-map?${query}`,
-            { force: true },
+            {
+              force: forceRefresh,
+              maxAgeMs: replayMode ? 6 * 60 * 60_000 : 5_000,
+            },
           );
           return { id: panel.id, payload };
         }));
@@ -605,6 +623,10 @@ export default function GexMapWorkspace() {
             if (result.status === "fulfilled") {
               next[id] = result.value.payload;
               nextErrors[id] = null;
+              const refreshAfterMs = result.value.payload.refreshAfterMs;
+              if (Number.isFinite(refreshAfterMs) && refreshAfterMs > 0) {
+                nextRefreshDelay = Math.min(nextRefreshDelay, refreshAfterMs);
+              }
             } else {
               nextErrors[id] = result.reason instanceof Error ? result.reason.message : "Panel data is unavailable.";
             }
@@ -625,7 +647,7 @@ export default function GexMapWorkspace() {
       } finally {
         requestInFlight = false;
         if (!cancelled && !replayMode) {
-          timer = window.setTimeout(() => void load(), 5_000);
+          timer = window.setTimeout(() => void load(), Math.max(5_000, nextRefreshDelay));
         }
       }
     };
@@ -751,7 +773,10 @@ export default function GexMapWorkspace() {
             </div>
             <button
               type="button"
-              onClick={() => setRefreshToken((value) => value + 1)}
+              onClick={() => {
+                forceRefreshRef.current = true;
+                setRefreshToken((value) => value + 1);
+              }}
               className="flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-surface text-muted transition hover:text-foreground"
               title="Sync now"
             >

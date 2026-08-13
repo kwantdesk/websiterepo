@@ -11828,8 +11828,10 @@ export default function KwantifyWorkspace({
         return <WorkspaceFailureBoundary resetKey={`workspace-${pane.id}-gameplan`} label="Game Plan"><GameplanWorkspace initialInstrument={displayCmeSymbol(pane.symbol)} /></WorkspaceFailureBoundary>;
       case "gamma":
         return <WorkspaceFailureBoundary resetKey={`workspace-${pane.id}-gamma`} label="Gamma"><GammaWorkspace /></WorkspaceFailureBoundary>;
-      case "gexmap":
-        return <WorkspaceFailureBoundary resetKey={`workspace-${pane.id}-gexmap`} label="GEX Map"><GexMapWorkspace /></WorkspaceFailureBoundary>;
+      case "gexmap": {
+        const gexMarket = ["ES", "MES"].includes(normalizePaperSymbol(pane.symbol)) ? "ES" : "NQ";
+        return <WorkspaceFailureBoundary resetKey={`workspace-${pane.id}-gexmap-${gexMarket}`} label="GEX Map"><GexMapWorkspace key={`${pane.id}-${gexMarket}`} market={gexMarket} /></WorkspaceFailureBoundary>;
+      }
       case "liqmap":
         return <WorkspaceFailureBoundary resetKey={`workspace-${pane.id}-liqmap`} label="Liquidity Map"><LiquidityMapWorkspace instrument={selectedLiquidityMapInstrument} onInstrumentChange={setSelectedLiquidityMapInstrument} onActivate={() => activateWorkspacePane(pane.id)} /></WorkspaceFailureBoundary>;
       case "news":
