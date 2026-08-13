@@ -210,6 +210,7 @@ interface ChartProps {
   onRemoveGameplanOverlay?: () => void;
   liveCandleEventKey?: string | null;
   gexBotFlow?: GexBotFlowPayload | null;
+  onIndicatorPaneHeightChange?: (height: number) => void;
 }
 
 export interface ChartLevel {
@@ -1673,6 +1674,7 @@ export default function Chart({
   onRemoveGameplanOverlay,
   liveCandleEventKey,
   gexBotFlow = null,
+  onIndicatorPaneHeightChange,
 }: ChartProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
@@ -2251,6 +2253,13 @@ export default function Chart({
       0,
     ),
     [calculatedIndicatorPanes, collapsedIndicatorPanes, resolvedIndicatorPaneHeights],
+  );
+  useEffect(() => {
+    onIndicatorPaneHeightChange?.(indicatorPaneHeight);
+  }, [indicatorPaneHeight, onIndicatorPaneHeightChange]);
+  useEffect(
+    () => () => onIndicatorPaneHeightChange?.(0),
+    [onIndicatorPaneHeightChange],
   );
   const classicGexIndicator = useMemo(
     () => indicators.find((instance) => instance.enabled && instance.indicatorId === "classic-gex-profile") ?? null,

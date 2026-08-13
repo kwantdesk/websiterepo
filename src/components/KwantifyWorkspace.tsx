@@ -3301,6 +3301,7 @@ function WorkspaceChartPane({
   loadingMessage?: string;
 }) {
   const [candles, setCandles] = useState<Candle[]>([]);
+  const [lowerIndicatorHeight, setLowerIndicatorHeight] = useState(0);
   const [marketTrades, setMarketTrades] = useState<InstitutionalTrade[]>([]);
   const [volumeProfiles, setVolumeProfiles] = useState<InstitutionalVolumeProfile[]>([]);
   const [loading, setLoading] = useState(true);
@@ -5229,9 +5230,13 @@ function WorkspaceChartPane({
           onRemoveGameplanOverlay={gameplanOverlay ? onRemoveGameplanOverlay : undefined}
           liveCandleEventKey={pane.id}
           gexBotFlow={gammaInstrument === "NQ" || gammaInstrument === "MNQ" ? gexBotFlow : null}
+          onIndicatorPaneHeightChange={setLowerIndicatorHeight}
         />
       )}
-      <div className="pointer-events-none absolute bottom-14 left-1/2 z-20 inline-flex -translate-x-1/2 items-center gap-1.5 whitespace-nowrap rounded-full border border-border bg-panel/90 px-2.5 py-1 text-[10px] uppercase tracking-[0.12em] text-muted shadow-lg shadow-black/25 backdrop-blur">
+      <div
+        className="pointer-events-none absolute left-1/2 z-20 inline-flex -translate-x-1/2 items-center gap-1.5 whitespace-nowrap rounded-full border border-border bg-panel/90 px-2.5 py-1 text-[10px] uppercase tracking-[0.12em] text-muted shadow-lg shadow-black/25 backdrop-blur"
+        style={{ bottom: 56 + lowerIndicatorHeight }}
+      >
         <span className="font-semibold text-foreground">{displayCmeSymbol(pane.symbol)}</span>
         {pane.broker === "Databento" && resolvedContractSymbol ? (
           <span className="font-mono text-[9px] text-foreground">{resolvedContractSymbol}</span>
@@ -5242,11 +5247,17 @@ function WorkspaceChartPane({
         <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-semibold ${marketStatusClasses}`}>{marketStatusLabel}</span>
       </div>
       {loadingMessage ? (
-        <div className="pointer-events-none absolute bottom-[86px] left-1/2 z-30 max-w-[calc(100%-32px)] -translate-x-1/2 truncate rounded-lg border border-border bg-panel/92 px-3 py-1.5 text-[10px] text-muted shadow-lg shadow-black/25 backdrop-blur">
+        <div
+          className="pointer-events-none absolute left-1/2 z-30 max-w-[calc(100%-32px)] -translate-x-1/2 truncate rounded-lg border border-border bg-panel/92 px-3 py-1.5 text-[10px] text-muted shadow-lg shadow-black/25 backdrop-blur"
+          style={{ bottom: 86 + lowerIndicatorHeight }}
+        >
           {loadingMessage}
         </div>
       ) : null}
-      <div className="absolute bottom-14 left-3 z-20 flex items-center gap-0.5 rounded-lg border border-border bg-panel/80 px-1 py-0.5 backdrop-blur">
+      <div
+        className="absolute left-3 z-20 flex items-center gap-0.5 rounded-lg border border-border bg-panel/80 px-1 py-0.5 backdrop-blur"
+        style={{ bottom: 56 + lowerIndicatorHeight }}
+      >
         {["1D", "5D", "1W", "1M", "3M", "6M", "1Y", "All"].map((range) => (
           <button
             key={range}
