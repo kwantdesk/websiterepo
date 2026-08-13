@@ -307,7 +307,6 @@ function ExposurePanel({
   onChange: (patch: Partial<Pick<PanelConfig, "symbol" | "greekMode">>) => void;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
-  const rowsRef = useRef<HTMLDivElement>(null);
   const [followingSpot, setFollowingSpot] = useState(true);
   const { current, previous } = useMemo(
     () => payload ? buildSnapshots(payload, selectedTimestamp, stepMinutes) : { current: new Map(), previous: new Map() },
@@ -330,31 +329,12 @@ function ExposurePanel({
   const viewIdentity = `${config.symbol}:${config.greekMode}:${payload?.sessionDate ?? "pending"}`;
   const centeringIdentity = `${viewIdentity}:${selectedTimestamp ?? "live"}:${spot ?? "pending"}`;
 
-  const syncStrikeViewport = useCallback((centreOnPrice = true) => {
+  const centerLiveStrike = useCallback(() => {
     const container = scrollRef.current;
-    const content = rowsRef.current;
-    if (!container || !content) return;
-
-    // Calculate the centring room from the viewport that is visible *now*.
-    // Keeping this value in React state allowed a previous full-page/workspace
-    // height to survive a resize. The resulting oversized bottom spacer could
-    // leave every real strike row above the viewport while totals still rendered.
-    const edgeSpace = Math.max(0, container.clientHeight / 2 - 18);
-    content.style.paddingTop = `${edgeSpace}px`;
-    content.style.paddingBottom = `${edgeSpace}px`;
+    const target = container?.querySelector<HTMLElement>("[data-near-spot='true']");
+    if (!container || !target || container.clientHeight <= 0) return;
 
     const maximumScroll = Math.max(0, container.scrollHeight - container.clientHeight);
-    if (!centreOnPrice) {
-      container.scrollTop = Math.max(0, Math.min(maximumScroll, container.scrollTop));
-      return;
-    }
-
-    const target = content.querySelector<HTMLElement>("[data-near-spot='true']");
-    if (!target) {
-      container.scrollTop = 0;
-      return;
-    }
-
     const nextScroll = Math.max(0, Math.min(
       maximumScroll,
       target.offsetTop + target.offsetHeight / 2 - container.clientHeight / 2,
@@ -363,23 +343,19 @@ function ExposurePanel({
     if (Math.abs(nextScroll - container.scrollTop) > 0.5) container.scrollTop = nextScroll;
   }, []);
 
-  const centerLiveStrike = useCallback(() => {
-    syncStrikeViewport(true);
-  }, [syncStrikeViewport]);
-
   useLayoutEffect(() => {
     const container = scrollRef.current;
     if (!container || !rows.length) return;
 
-    // Never carry an obsolete bottom-of-list position into a new payload.
-    // This also gives the first painted frame a visible ladder before the RAF.
+    // The first paint must always expose actual rows. Auto-centering is a
+    // progressive enhancement performed only after the flex viewport owns a
+    // real height; it can never be allowed to blank the frozen snapshot.
     if (followingSpot) container.scrollTop = 0;
-    syncStrikeViewport(followingSpot && spotStrike !== null);
     const frame = window.requestAnimationFrame(() => {
-      syncStrikeViewport(followingSpot && spotStrike !== null);
+      if (followingSpot && spotStrike !== null) centerLiveStrike();
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [centeringIdentity, followingSpot, rows.length, spotStrike, syncStrikeViewport]);
+  }, [centerLiveStrike, centeringIdentity, followingSpot, rows.length, spotStrike]);
 
   useEffect(() => {
     setFollowingSpot(true);
@@ -392,7 +368,7 @@ function ExposurePanel({
     let frame = 0;
     const resizeAndCenter = () => {
       window.cancelAnimationFrame(frame);
-      frame = window.requestAnimationFrame(() => syncStrikeViewport(followingSpot));
+      if (followingSpot) frame = window.requestAnimationFrame(() => centerLiveStrike());
     };
     const observer = new ResizeObserver(resizeAndCenter);
     observer.observe(container);
@@ -401,7 +377,7 @@ function ExposurePanel({
       observer.disconnect();
       window.cancelAnimationFrame(frame);
     };
-  }, [followingSpot, syncStrikeViewport]);
+  }, [centerLiveStrike, followingSpot]);
 
   useEffect(() => {
     const container = scrollRef.current;
@@ -488,12 +464,12 @@ function ExposurePanel({
         <span className="gex-map-change-column text-right">{stepMinutes}m change</span>
       </div>
 
-      <div className="relative min-h-0 flex-1 bg-chart-background">
+      <div className="relative flex min-h-0 flex-1 bg-chart-background">
         <div
           ref={scrollRef}
           onPointerDown={() => setFollowingSpot(false)}
           onTouchStart={() => setFollowingSpot(false)}
-          className="relative h-full min-h-0 touch-pan-y overscroll-contain overflow-y-auto bg-chart-background"
+          className="gex-map-strike-viewport relative min-h-px min-w-0 flex-1 touch-pan-y overscroll-contain overflow-y-auto bg-chart-background"
         >
         {loading && !payload ? (
           <KwantLoader
@@ -514,7 +490,7 @@ function ExposurePanel({
             No recorded strike frames for this session.
           </div>
         ) : (
-          <div ref={rowsRef} className="py-1" data-gex-strike-ladder="true">
+          <div className="py-1" data-gex-strike-ladder="true">
             {rows.map((row) => {
               const prior = previous.get(row.strike);
               const change = prior ? row.net - prior.net : null;
