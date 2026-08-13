@@ -35,6 +35,7 @@ const TRACKED_STORAGE_KEYS = new Set([
   "kwantdesk-source-code-indicators:v1",
   "kwantdesk:chart-gamma-levels-enabled:v1",
   "kwantdesk:chart-value-area-levels-enabled:v1",
+  "kwantdesk:chart-pane-level-visibility:v1",
   "kwantdesk:gameplan-chart-overlays:v1",
   "kwantdesk-right-panel-state",
   "kwantdesk-bottom-panel-minimized",

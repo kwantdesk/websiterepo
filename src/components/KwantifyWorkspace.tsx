@@ -591,6 +591,12 @@ type WorkspaceFloatingWindow = {
   height: number;
   locked: boolean;
 };
+type PaneLevelVisibility = {
+  gamma: boolean;
+  kwant: boolean;
+  structure: boolean;
+  valueArea: boolean;
+};
 type WorkspaceLayoutNode =
   | { type: "pane"; paneId: string }
   | {
@@ -608,6 +614,7 @@ type WorkspacePreset = {
   panes: WorkspacePane[];
   chartSettings: ChartSettings;
   indicators?: Record<string, ChartIndicatorInstance[]>;
+  levelVisibility?: Record<string, PaneLevelVisibility>;
   floatingWindows?: WorkspaceFloatingWindow[];
   updatedAt: string;
 };
@@ -672,6 +679,7 @@ const MAX_WORKSPACE_BACKUP_BYTES = 2_000_000;
 const GAMMA_LEVELS_ENABLED_STORAGE_KEY = "kwantdesk:chart-gamma-levels-enabled:v1";
 const HISTORICAL_STRUCTURE_ENABLED_STORAGE_KEY = "kwantdesk:chart-historical-structure-enabled:v1";
 const VALUE_AREA_LEVELS_ENABLED_STORAGE_KEY = "kwantdesk:chart-value-area-levels-enabled:v1";
+const PANE_LEVEL_VISIBILITY_STORAGE_KEY = "kwantdesk:chart-pane-level-visibility:v1";
 const KWANTBOT_MESSAGES_STORAGE_KEY = "kwantdesk-kwantbot-messages";
 const LIQUIDITY_MAP_INSTRUMENT_STORAGE_KEY = "kwantdesk:liquidity-map-instrument:v1";
 const BOTTOM_WORKSPACE_SECTIONS = [
@@ -1094,6 +1102,36 @@ function loadWorkspaceFloatingWindows(validPaneIds?: Set<string>) {
   }
 }
 
+const EMPTY_PANE_LEVEL_VISIBILITY: PaneLevelVisibility = {
+  gamma: false,
+  kwant: false,
+  structure: false,
+  valueArea: false,
+};
+
+function normalizePaneLevelVisibility(value: unknown): Record<string, PaneLevelVisibility> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .filter(([paneId, entry]) => Boolean(paneId) && entry && typeof entry === "object" && !Array.isArray(entry))
+      .map(([paneId, entry]) => {
+        const candidate = entry as Partial<PaneLevelVisibility>;
+        return [paneId, {
+          gamma: candidate.gamma === true,
+          kwant: candidate.kwant === true,
+          structure: candidate.structure === true,
+          valueArea: candidate.valueArea === true,
+        } satisfies PaneLevelVisibility];
+      }),
+  );
+}
+
+function clonePaneLevelVisibility(value: Record<string, PaneLevelVisibility>) {
+  return Object.fromEntries(
+    Object.entries(value).map(([paneId, visibility]) => [paneId, { ...visibility }]),
+  );
+}
+
 function isWorkspacePreset(value: unknown): value is WorkspacePreset {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const preset = value as Partial<WorkspacePreset>;
@@ -1123,6 +1161,7 @@ function normalizeWorkspacePresets(value: unknown): WorkspacePreset[] {
         panes,
         layout,
         indicators: normalizePaneIndicatorState(preset.indicators),
+        levelVisibility: normalizePaneLevelVisibility(preset.levelVisibility),
         floatingWindows: normalizeWorkspaceFloatingWindows(
           preset.floatingWindows,
           new Set(panes.map((pane) => pane.id)),
@@ -6205,22 +6244,26 @@ export default function KwantifyWorkspace({
       return {};
     }
   });
-  const [gammaLevelsEnabled, setGammaLevelsEnabled] = useState(() => {
-    if (typeof window === "undefined") return false;
-    return window.localStorage.getItem(GAMMA_LEVELS_ENABLED_STORAGE_KEY) === "true";
+  const [paneLevelVisibility, setPaneLevelVisibility] = useState<Record<string, PaneLevelVisibility>>(() => {
+    if (typeof window === "undefined") return {};
+    try {
+      const stored = window.localStorage.getItem(PANE_LEVEL_VISIBILITY_STORAGE_KEY);
+      if (stored) return normalizePaneLevelVisibility(JSON.parse(stored));
+    } catch {
+      // Migrate the former workspace-wide toggles onto the selected chart below.
+    }
+    const legacyVisibility: PaneLevelVisibility = {
+      gamma: window.localStorage.getItem(GAMMA_LEVELS_ENABLED_STORAGE_KEY) === "true",
+      kwant: false,
+      structure: window.localStorage.getItem(HISTORICAL_STRUCTURE_ENABLED_STORAGE_KEY) === "true",
+      valueArea: window.localStorage.getItem(VALUE_AREA_LEVELS_ENABLED_STORAGE_KEY) === "true",
+    };
+    return Object.values(legacyVisibility).some(Boolean) ? { [activePaneId]: legacyVisibility } : {};
   });
   const [liveGexSnapshot, setLiveGexSnapshot] = useState<ChartGammaLevelsPayload | null>(null);
   const [liveGexLoading, setLiveGexLoading] = useState(false);
   const [liveGexError, setLiveGexError] = useState("");
   const liveGexCalibrationPriceRef = useRef<number | null>(null);
-  const [historicalStructureEnabled, setHistoricalStructureEnabled] = useState(() => {
-    if (typeof window === "undefined") return false;
-    return window.localStorage.getItem(HISTORICAL_STRUCTURE_ENABLED_STORAGE_KEY) === "true";
-  });
-  const [valueAreaLevelsEnabled, setValueAreaLevelsEnabled] = useState(() => {
-    if (typeof window === "undefined") return false;
-    return window.localStorage.getItem(VALUE_AREA_LEVELS_ENABLED_STORAGE_KEY) === "true";
-  });
   const [showLevelsExport, setShowLevelsExport] = useState(false);
   const [levelExportTypes, setLevelExportTypes] = useState<Record<LevelExportType, boolean>>({
     gamma: true,
@@ -6555,6 +6598,11 @@ export default function KwantifyWorkspace({
     () => workspacePanes.find((pane) => pane.id === activePaneId) ?? workspacePanes[0] ?? DEFAULT_WORKSPACE_PANES[0],
     [activePaneId, workspacePanes],
   );
+  const activePaneIsChart = activeWorkspacePane.content === "charts";
+  const activePaneLevelVisibility = paneLevelVisibility[activePaneId] ?? EMPTY_PANE_LEVEL_VISIBILITY;
+  const gammaLevelsEnabled = activePaneLevelVisibility.gamma;
+  const historicalStructureEnabled = activePaneLevelVisibility.structure;
+  const valueAreaLevelsEnabled = activePaneLevelVisibility.valueArea;
   const activeLiveGexConversion = useMemo(
     () => cashFallbackGammaConversion(displayCmeSymbol(activeWorkspacePane.symbol)),
     [activeWorkspacePane.symbol],
@@ -7908,24 +7956,11 @@ export default function KwantifyWorkspace({
 
   useEffect(() => {
     window.localStorage.setItem(
-      GAMMA_LEVELS_ENABLED_STORAGE_KEY,
-      gammaLevelsEnabled ? "true" : "false",
+      PANE_LEVEL_VISIBILITY_STORAGE_KEY,
+      JSON.stringify(clonePaneLevelVisibility(paneLevelVisibility)),
     );
-  }, [gammaLevelsEnabled]);
-
-  useEffect(() => {
-    window.localStorage.setItem(
-      HISTORICAL_STRUCTURE_ENABLED_STORAGE_KEY,
-      historicalStructureEnabled ? "true" : "false",
-    );
-  }, [historicalStructureEnabled]);
-
-  useEffect(() => {
-    window.localStorage.setItem(
-      VALUE_AREA_LEVELS_ENABLED_STORAGE_KEY,
-      valueAreaLevelsEnabled ? "true" : "false",
-    );
-  }, [valueAreaLevelsEnabled]);
+    window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
+  }, [paneLevelVisibility]);
 
   useEffect(() => {
     const syncOverlays = () => setGameplanChartOverlays(loadGameplanChartOverlays());
@@ -9137,9 +9172,24 @@ export default function KwantifyWorkspace({
             // Keep the already-normalized interval defaults.
           }
 
-          setGammaLevelsEnabled(window.localStorage.getItem(GAMMA_LEVELS_ENABLED_STORAGE_KEY) === "true");
-          setHistoricalStructureEnabled(window.localStorage.getItem(HISTORICAL_STRUCTURE_ENABLED_STORAGE_KEY) === "true");
-          setValueAreaLevelsEnabled(window.localStorage.getItem(VALUE_AREA_LEVELS_ENABLED_STORAGE_KEY) === "true");
+          try {
+            const storedVisibility = window.localStorage.getItem(PANE_LEVEL_VISIBILITY_STORAGE_KEY);
+            if (storedVisibility) {
+              setPaneLevelVisibility(normalizePaneLevelVisibility(JSON.parse(storedVisibility)));
+            } else {
+              const legacyVisibility: PaneLevelVisibility = {
+                gamma: window.localStorage.getItem(GAMMA_LEVELS_ENABLED_STORAGE_KEY) === "true",
+                kwant: false,
+                structure: window.localStorage.getItem(HISTORICAL_STRUCTURE_ENABLED_STORAGE_KEY) === "true",
+                valueArea: window.localStorage.getItem(VALUE_AREA_LEVELS_ENABLED_STORAGE_KEY) === "true",
+              };
+              setPaneLevelVisibility(Object.values(legacyVisibility).some(Boolean)
+                ? { [nextActivePane.id]: legacyVisibility }
+                : {});
+            }
+          } catch {
+            setPaneLevelVisibility({});
+          }
           setGameplanChartOverlays(loadGameplanChartOverlays());
         }
       } catch {
@@ -9762,6 +9812,33 @@ export default function KwantifyWorkspace({
     }));
   }, []);
 
+  const togglePaneLevelVisibility = useCallback((
+    paneId: string,
+    key: keyof PaneLevelVisibility,
+  ) => {
+    setPaneLevelVisibility((current) => {
+      const visibility = current[paneId] ?? EMPTY_PANE_LEVEL_VISIBILITY;
+      return {
+        ...current,
+        [paneId]: { ...visibility, [key]: !visibility[key] },
+      };
+    });
+  }, []);
+
+  const setPaneLevelVisible = useCallback((
+    paneId: string,
+    key: keyof PaneLevelVisibility,
+    visible: boolean,
+  ) => {
+    setPaneLevelVisibility((current) => ({
+      ...current,
+      [paneId]: {
+        ...(current[paneId] ?? EMPTY_PANE_LEVEL_VISIBILITY),
+        [key]: visible,
+      },
+    }));
+  }, []);
+
   const updatePaneIndicatorSetting = useCallback((
     paneId: string,
     instanceId: string,
@@ -9778,6 +9855,7 @@ export default function KwantifyWorkspace({
   }, []);
 
   const handleRemoveAllIndicatorsFromChart = useCallback(() => {
+    if (!activePaneIsChart) return;
     setChartIndicatorsSuppressed(true);
     setPaneIndicators((current) => ({ ...current, [activePaneId]: [] }));
     setStrategies((current) => {
@@ -9795,7 +9873,7 @@ export default function KwantifyWorkspace({
       persistStrategies(next);
       return next;
     });
-  }, [activePaneId]);
+  }, [activePaneId, activePaneIsChart]);
 
   useEffect(() => {
     const handleRemoveAllIndicatorsEvent = () => {
@@ -10396,6 +10474,7 @@ export default function KwantifyWorkspace({
     panes: workspacePanes,
     chartSettings,
     indicators: clonePaneIndicatorState(paneIndicators),
+    levelVisibility: clonePaneLevelVisibility(paneLevelVisibility),
     floatingWindows: workspaceFloatingWindows,
     updatedAt: new Date().toISOString(),
   });
@@ -10457,6 +10536,7 @@ export default function KwantifyWorkspace({
     if (preset.indicators) {
       setPaneIndicators(clonePaneIndicatorState(preset.indicators));
     }
+    setPaneLevelVisibility(clonePaneLevelVisibility(preset.levelVisibility ?? {}));
     const firstPaneId = collectWorkspacePaneIds(normalizedTree)[0];
     if (firstPaneId) setActivePaneId(firstPaneId);
     setActiveWorkspacePresetId(preset.id);
@@ -11445,6 +11525,7 @@ export default function KwantifyWorkspace({
       );
     }
     const gameplanRoot = gameplanChartRootForInstrument(pane.symbol);
+    const paneLevelState = paneLevelVisibility[pane.id] ?? EMPTY_PANE_LEVEL_VISIBILITY;
     const chartPane = (
       <WorkspaceChartPane
         pane={pane}
@@ -11466,23 +11547,25 @@ export default function KwantifyWorkspace({
         onSelectPeriod={(period) => handleChartPeriod(pane.id, period)}
         onSelectTimeframe={(timeframe) => selectWorkspacePaneTimeframe(pane.id, timeframe)}
         chartDragEnabled={!workspaceLocked && visibleWorkspacePaneIds.length > 1}
-        gammaLevelsEnabled={gammaLevelsEnabled}
-        onToggleGammaLevels={() => setGammaLevelsEnabled((current) => !current)}
-        kwantLevelsEnabled={Boolean(gameplanRoot && gameplanChartOverlays[gameplanRoot]?.levels.length)}
+        gammaLevelsEnabled={paneLevelState.gamma}
+        onToggleGammaLevels={() => togglePaneLevelVisibility(pane.id, "gamma")}
+        kwantLevelsEnabled={Boolean(paneLevelState.kwant && gameplanRoot && gameplanChartOverlays[gameplanRoot]?.levels.length)}
         kwantLevelsAvailable={Boolean(gameplanRoot)}
         kwantLevelsLoading={Boolean(gameplanRoot && quickGameplanLoading && quickGameplanLoadingRoot === gameplanRoot)}
         onToggleKwantLevels={() => {
           if (!gameplanRoot) return;
-          if (gameplanChartOverlays[gameplanRoot]?.levels.length) {
-            setGameplanChartOverlays(removeGameplanChartOverlay(gameplanRoot));
+          if (paneLevelState.kwant) {
+            setPaneLevelVisible(pane.id, "kwant", false);
             return;
           }
+          setPaneLevelVisible(pane.id, "kwant", true);
+          if (gameplanChartOverlays[gameplanRoot]?.levels.length) return;
           void refreshKwantLevelsForInstrument(pane.symbol);
         }}
-        historicalStructureEnabled={historicalStructureEnabled}
-        onToggleHistoricalStructure={() => setHistoricalStructureEnabled((current) => !current)}
-        valueAreaLevelsEnabled={valueAreaLevelsEnabled}
-        onToggleValueAreaLevels={() => setValueAreaLevelsEnabled((current) => !current)}
+        historicalStructureEnabled={paneLevelState.structure}
+        onToggleHistoricalStructure={() => togglePaneLevelVisibility(pane.id, "structure")}
+        valueAreaLevelsEnabled={paneLevelState.valueArea}
+        onToggleValueAreaLevels={() => togglePaneLevelVisibility(pane.id, "valueArea")}
         levelExportRequested={showLevelsExport}
         onGammaExportSnapshot={handleGammaExportSnapshot}
         gameplanOverlay={gameplanRoot ? gameplanChartOverlays[gameplanRoot] ?? null : null}
@@ -11496,6 +11579,7 @@ export default function KwantifyWorkspace({
           : undefined}
         onRemoveGameplanOverlay={() => {
           if (!gameplanRoot) return;
+          setPaneLevelVisible(pane.id, "kwant", false);
           setGameplanChartOverlays(removeGameplanChartOverlay(gameplanRoot));
         }}
         onChartDragStart={(event) => {
@@ -11679,7 +11763,7 @@ export default function KwantifyWorkspace({
           key={node.paneId}
           data-workspace-pane-id={node.paneId}
           onPointerDownCapture={() => {
-            if (activePaneId !== node.paneId) setActivePaneId(node.paneId);
+            if (activePaneId !== node.paneId) activateWorkspacePane(node.paneId);
           }}
           onDragEnter={(event) => {
             if (!workspaceLocked && draggedWorkspacePaneId && draggedWorkspacePaneId !== node.paneId) {
@@ -11708,7 +11792,9 @@ export default function KwantifyWorkspace({
               ? "opacity-[0.55]"
               : workspaceDropTargetPaneId === node.paneId
                 ? "z-20 rounded-2xl shadow-[inset_0_0_0_2px_var(--primary)]"
-                : ""
+                : activePaneId === node.paneId
+                  ? "z-10 shadow-[inset_0_0_0_1px_var(--primary),0_0_16px_color-mix(in_srgb,var(--primary)_14%,transparent)]"
+                  : "opacity-[0.94]"
           }`}
         >
           {renderWorkspacePane(node.paneId)}
@@ -11787,7 +11873,10 @@ export default function KwantifyWorkspace({
 
         {bottomWorkspaceSection === "charts" && (
         <header className="kwant-chart-command-deck relative grid h-[72px] shrink-0 grid-cols-[minmax(0,1fr)_auto] grid-rows-[32px_40px] border-b border-border bg-panel">
-          <div className={`relative col-start-1 row-start-2 flex min-w-0 items-center gap-2 px-3 ${
+          <div
+            aria-disabled={!activePaneIsChart}
+            title={activePaneIsChart ? "Controls apply to the selected chart" : `${WORKSPACE_PANEL_OPTIONS.find((option) => option.id === activeWorkspacePane.content)?.label ?? "Panel"} selected — choose a chart to use chart controls`}
+            className={`relative col-start-1 row-start-2 flex min-w-0 items-center gap-2 px-3 ${!activePaneIsChart ? "pointer-events-none opacity-30" : ""} ${
             showAllTF
               ? "overflow-visible"
               : "overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
@@ -12215,10 +12304,13 @@ export default function KwantifyWorkspace({
             onChange={changeChartTimeZone}
             menuLabel="Chart timezone"
             compact
-            className="col-start-3 ml-1 max-w-[36px] shrink-0 justify-self-end px-2 sm:max-w-[190px] sm:px-2.5 [&>span]:hidden sm:[&>span]:block [&>svg:last-child]:hidden sm:[&>svg:last-child]:block"
+            className={`col-start-3 ml-1 max-w-[36px] shrink-0 justify-self-end px-2 sm:max-w-[190px] sm:px-2.5 [&>span]:hidden sm:[&>span]:block [&>svg:last-child]:hidden sm:[&>svg:last-child]:block ${!activePaneIsChart ? "pointer-events-none opacity-30" : ""}`}
           />
           </div>
-          <div className="col-start-2 row-start-2 flex min-w-0 items-center justify-end gap-2 px-3">
+          <div
+            aria-disabled={!activePaneIsChart}
+            className={`col-start-2 row-start-2 flex min-w-0 items-center justify-end gap-2 px-3 ${!activePaneIsChart ? "pointer-events-none opacity-30" : ""}`}
+          >
           <ChartIndicatorsControl
             instrument={displayCmeSymbol(activeWorkspacePane.symbol)}
             timeframe={formatChartInterval(activeWorkspacePane.timeframe)}
@@ -12233,22 +12325,24 @@ export default function KwantifyWorkspace({
                 enabled: gammaLevelsEnabled,
                 available: activeWorkspacePane.broker === "Databento"
                   && isGammaChartInstrument(displayCmeSymbol(activeWorkspacePane.symbol)),
-                onToggle: () => setGammaLevelsEnabled((current) => !current),
+                onToggle: () => togglePaneLevelVisibility(activePaneId, "gamma"),
               },
               {
                 id: "kwant",
                 label: "Kwant zones",
                 description: "Proprietary session zones from the Gameplan engine",
                 badge: "K",
-                enabled: Boolean(activeGameplanRoot && gameplanChartOverlays[activeGameplanRoot]?.levels.length),
+                enabled: Boolean(activePaneLevelVisibility.kwant && activeGameplanRoot && gameplanChartOverlays[activeGameplanRoot]?.levels.length),
                 available: Boolean(activeGameplanRoot),
                 loading: Boolean(activeGameplanRoot && quickGameplanLoading && quickGameplanLoadingRoot === activeGameplanRoot),
                 onToggle: () => {
                   if (!activeGameplanRoot) return;
-                  if (gameplanChartOverlays[activeGameplanRoot]?.levels.length) {
-                    setGameplanChartOverlays(removeGameplanChartOverlay(activeGameplanRoot));
+                  if (activePaneLevelVisibility.kwant) {
+                    setPaneLevelVisible(activePaneId, "kwant", false);
                     return;
                   }
+                  setPaneLevelVisible(activePaneId, "kwant", true);
+                  if (gameplanChartOverlays[activeGameplanRoot]?.levels.length) return;
                   void refreshKwantLevelsForInstrument(activeWorkspacePane.symbol);
                 },
               },
@@ -12260,7 +12354,7 @@ export default function KwantifyWorkspace({
                 enabled: historicalStructureEnabled,
                 available: activeWorkspacePane.broker === "Databento"
                   && isContinuousFuture(activeWorkspacePane.symbol),
-                onToggle: () => setHistoricalStructureEnabled((current) => !current),
+                onToggle: () => togglePaneLevelVisibility(activePaneId, "structure"),
               },
               {
                 id: "value-area",
@@ -12270,7 +12364,7 @@ export default function KwantifyWorkspace({
                 enabled: valueAreaLevelsEnabled,
                 available: activeWorkspacePane.broker === "Databento"
                   && isContinuousFuture(activeWorkspacePane.symbol),
-                onToggle: () => setValueAreaLevelsEnabled((current) => !current),
+                onToggle: () => togglePaneLevelVisibility(activePaneId, "valueArea"),
               },
             ]}
             onChange={(next) => setIndicatorsForPane(activePaneId, next)}
