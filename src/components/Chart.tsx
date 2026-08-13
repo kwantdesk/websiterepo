@@ -5588,6 +5588,11 @@ export default function Chart({
     const models = volumeProfiles.flatMap((profile): NativeVolumeProfileModel[] => {
       const instance = profile.period === "weekly" ? weeklyInstance : dailyInstance;
       if (!instance || profile.period === "custom" || profile.levels.length === 0) return [];
+      const exactTapeRequired = ["ask-bid-volume-profile", "delta-profile"].includes(instance.indicatorId);
+      // A delta surface built by distributing OHLCV over the candle range is
+      // not order flow. Keep the chart clean until the execution-backed
+      // profile is available instead of flashing the retired approximation.
+      if (exactTapeRequired && profile.provider === "Chart") return [];
       const profileSettings = instance.settings ?? {};
       const useThemeColors = profileSettings.useThemeColors !== false;
       const requestedSnapMode = (

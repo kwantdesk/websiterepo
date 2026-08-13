@@ -112,6 +112,7 @@ import {
   fetchInstitutionalOrderFlowLevels,
   fetchInstitutionalVolumeProfile,
   mergeInstitutionalVolumeProfiles,
+  readCachedInstitutionalVolumeProfiles,
   type InstitutionalOrderFlowResult,
   type InstitutionalTrade,
   type InstitutionalVolumeProfile,
@@ -3589,6 +3590,10 @@ function WorkspaceChartPane({
   const weeklyProfileInstance = indicators.find((instance) =>
     instance.enabled && instance.indicatorId === "weekly-volume-profile");
   const dailyProfileSettings = dailyProfileInstance?.settings ?? {};
+  const dailyProfileRequiresExactTape = Boolean(
+    dailyProfileInstance
+    && ["ask-bid-volume-profile", "delta-profile"].includes(dailyProfileInstance.indicatorId),
+  );
   const weeklyProfileSettings = weeklyProfileInstance?.settings ?? {};
   const dailyTradingDates = useMemo(() => {
     const dates = new Set<string>();
@@ -5317,9 +5322,31 @@ function WorkspaceChartPane({
           ));
       const exactSessions = new Set(exact.map(profileSessionKey));
       const fallback = provisionalProfiles.filter((profile) =>
-        !exactSessions.has(profileSessionKey(profile)));
+        (!dailyProfileRequiresExactTape || profile.period !== "daily")
+        && !exactSessions.has(profileSessionKey(profile)));
       return [...exact, ...fallback].sort((left, right) => left.startMs - right.startMs);
     });
+
+    // Restore the last execution-backed profile immediately after a refresh.
+    // Delta/Ask-Bid must never flash the deprecated OHLCV reconstruction while
+    // the gateway refresh is in flight.
+    if (dailyProfileInstance && dailyProfileRequiresExactTape) {
+      void readCachedInstitutionalVolumeProfiles(activeRoot, "daily").then((cachedProfiles) => {
+        if (cancelled) return;
+        const cachedExact = cachedProfiles.filter((profile) =>
+          profile.provider !== "Chart"
+          && activeTradingDates.has(chicagoTradingDate(profile.startMs)));
+        if (!cachedExact.length) return;
+        setVolumeProfiles((current) => {
+          const existingSessions = new Set(current.map(profileSessionKey));
+          const restored = cachedExact.filter((profile) =>
+            !existingSessions.has(profileSessionKey(profile)));
+          return restored.length
+            ? [...current, ...restored].sort((left, right) => left.startMs - right.startMs)
+            : current;
+        });
+      });
+    }
 
     const replaceExactProfile = (
       profile: InstitutionalVolumeProfile | null,
@@ -5343,6 +5370,7 @@ function WorkspaceChartPane({
       if (
         profile.period === "daily"
         && expectedTradingDate
+        && !dailyProfileRequiresExactTape
         && Number.isFinite(coverageStartMs)
         && coverageStartMs > profile.startMs + 60_000
       ) {
@@ -5432,6 +5460,8 @@ function WorkspaceChartPane({
     };
   }, [
     dailyProfileInstance?.instanceId,
+    dailyProfileInstance?.indicatorId,
+    dailyProfileRequiresExactTape,
     dailyProfileSettings.groupTicks,
     dailyProfileSettings.groupingMode,
     dailyProfileSettings.maxTradeVolume,
