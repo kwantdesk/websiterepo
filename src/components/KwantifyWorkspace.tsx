@@ -18,7 +18,7 @@ import { useGexBotFlow } from "@/hooks/useGexBotFlow";
 import { ACTIVITY_STREAK_TIME_ZONE } from "@/lib/activityStreak";
 import { STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT } from "@/lib/volumeProfileMath";
 
-import { Activity as ReactActivity, memo, startTransition, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent as ReactDragEvent } from "react";
+import { Activity as ReactActivity, memo, startTransition, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import dynamic from "next/dynamic";
 import Image from "next/image";
@@ -3425,7 +3425,6 @@ function WorkspaceChartPane({
   closeDisabled,
   chartDragEnabled,
   onChartDragStart,
-  onChartDragEnd,
   gammaLevelsEnabled,
   onToggleGammaLevels,
   kwantLevelsEnabled,
@@ -3465,8 +3464,7 @@ function WorkspaceChartPane({
   onClose?: () => void;
   closeDisabled?: boolean;
   chartDragEnabled?: boolean;
-  onChartDragStart?: (event: ReactDragEvent<HTMLButtonElement>) => void;
-  onChartDragEnd?: () => void;
+  onChartDragStart?: (event: React.PointerEvent<HTMLButtonElement>) => void;
   gammaLevelsEnabled: boolean;
   onToggleGammaLevels: () => void;
   kwantLevelsEnabled: boolean;
@@ -5574,7 +5572,6 @@ function WorkspaceChartPane({
           toolbarEnabled
           chartDragEnabled={chartDragEnabled}
           onChartDragStart={onChartDragStart}
-          onChartDragEnd={onChartDragEnd}
           gammaLevelsEnabled={gammaLevelsEnabled}
           gammaLevelsAvailable={gammaLevelsAvailable}
           gammaLevelsLoading={gammaLevelsLoading}
@@ -6120,6 +6117,8 @@ export default function KwantifyWorkspace({
   const workspacePresetMenuRef = useRef<HTMLDivElement>(null);
   const workspaceImportInputRef = useRef<HTMLInputElement>(null);
   const workspaceAreaRef = useRef<HTMLDivElement>(null);
+  const workspaceDragGhostRef = useRef<HTMLDivElement>(null);
+  const workspaceHeaderDragConsumedRef = useRef(false);
   const [activePaneId, setActivePaneId] = useState<string>(() => {
     if (typeof window === "undefined") return DEFAULT_WORKSPACE_PANES[0].id;
     return window.localStorage.getItem("olisa-chart-workspace-active-pane") ?? DEFAULT_WORKSPACE_PANES[0].id;
@@ -10777,46 +10776,12 @@ export default function KwantifyWorkspace({
     }
   };
 
-  const beginWorkspacePaneDrag = (paneId: string, event: ReactDragEvent<HTMLElement>) => {
-    if (workspaceLocked) {
-      event.preventDefault();
-      return;
-    }
-    event.dataTransfer.effectAllowed = "move";
-    event.dataTransfer.setData("text/plain", paneId);
-    setDraggedWorkspacePaneId(paneId);
-    setWorkspaceDropTargetPaneId(null);
-    setWorkspaceDropZone("center");
-    setActivePaneId(paneId);
-  };
-
-  const finishWorkspacePaneDrag = () => {
-    setDraggedWorkspacePaneId(null);
-    setWorkspaceDropTargetPaneId(null);
-    setWorkspaceDropZone("center");
-  };
-
-  const updateWorkspaceDropPreview = (targetPaneId: string, event: ReactDragEvent<HTMLElement>) => {
-    if (workspaceLocked || !draggedWorkspacePaneId || draggedWorkspacePaneId === targetPaneId) return;
-    event.preventDefault();
-    event.dataTransfer.dropEffect = "move";
-    setWorkspaceDropTargetPaneId(targetPaneId);
-    setWorkspaceDropZone(workspaceDropZoneAtPoint(event.currentTarget, event.clientX, event.clientY));
-  };
-
-  const dropWorkspacePane = (targetPaneId: string, event: ReactDragEvent<HTMLElement>) => {
-    event.preventDefault();
-    event.stopPropagation();
-    if (
-      workspaceLocked
-      || !draggedWorkspacePaneId
-      || draggedWorkspacePaneId === targetPaneId
-    ) {
-      finishWorkspacePaneDrag();
-      return;
-    }
-    const zone = workspaceDropZoneAtPoint(event.currentTarget, event.clientX, event.clientY);
-    const movingPaneId = draggedWorkspacePaneId;
+  const commitWorkspacePaneDrop = (
+    movingPaneId: string,
+    targetPaneId: string,
+    zone: WorkspaceDropZone,
+  ) => {
+    if (workspaceLocked || movingPaneId === targetPaneId) return;
     setWorkspaceTree((current) => {
       if (zone === "center") return swapWorkspacePaneIds(current, movingPaneId, targetPaneId);
       const withoutMovingPane = removeWorkspacePane(current, movingPaneId);
@@ -10831,7 +10796,109 @@ export default function KwantifyWorkspace({
     });
     setWorkspaceLayout("custom");
     setActivePaneId(movingPaneId);
-    finishWorkspacePaneDrag();
+  };
+
+  const beginWorkspacePaneDrag = (
+    paneId: string,
+    event: React.PointerEvent<HTMLElement>,
+  ) => {
+    if (workspaceLocked || visibleWorkspacePaneIds.length <= 1 || event.button !== 0) return;
+    const source = event.currentTarget;
+    const pointerId = event.pointerId;
+    const startX = event.clientX;
+    const startY = event.clientY;
+    let dragStarted = false;
+    let targetPaneId: string | null = null;
+    let targetZone: WorkspaceDropZone = "center";
+    let previewFrame: number | null = null;
+    let previewX = startX;
+    let previewY = startY;
+    const previousCursor = document.body.style.cursor;
+    const previousUserSelect = document.body.style.userSelect;
+    workspaceHeaderDragConsumedRef.current = false;
+
+    const paintPreview = () => {
+      previewFrame = null;
+      if (!workspaceDragGhostRef.current) return;
+      workspaceDragGhostRef.current.style.transform = `translate3d(${previewX + 14}px, ${previewY + 14}px, 0)`;
+    };
+
+    const updateDropTarget = (clientX: number, clientY: number) => {
+      const pointedElement = document.elementFromPoint(clientX, clientY);
+      const paneElement = pointedElement?.closest<HTMLElement>("[data-workspace-pane-id]");
+      const nextPaneId = paneElement?.dataset.workspacePaneId ?? null;
+      if (!paneElement || !nextPaneId || nextPaneId === paneId) {
+        if (targetPaneId !== null) {
+          targetPaneId = null;
+          targetZone = "center";
+          setWorkspaceDropTargetPaneId(null);
+          setWorkspaceDropZone("center");
+        }
+        return;
+      }
+      const nextZone = workspaceDropZoneAtPoint(paneElement, clientX, clientY);
+      if (nextPaneId !== targetPaneId) {
+        targetPaneId = nextPaneId;
+        setWorkspaceDropTargetPaneId(nextPaneId);
+      }
+      if (nextZone !== targetZone) {
+        targetZone = nextZone;
+        setWorkspaceDropZone(nextZone);
+      }
+    };
+
+    const handlePointerMove = (moveEvent: PointerEvent) => {
+      if (moveEvent.pointerId !== pointerId) return;
+      if (!dragStarted) {
+        const distance = Math.hypot(moveEvent.clientX - startX, moveEvent.clientY - startY);
+        if (distance < 6) return;
+        dragStarted = true;
+        workspaceHeaderDragConsumedRef.current = true;
+        source.setPointerCapture(pointerId);
+        document.body.style.cursor = "grabbing";
+        document.body.style.userSelect = "none";
+        setDraggedWorkspacePaneId(paneId);
+        setWorkspaceDropTargetPaneId(null);
+        setWorkspaceDropZone("center");
+        setActivePaneId(paneId);
+      }
+      moveEvent.preventDefault();
+      previewX = moveEvent.clientX;
+      previewY = moveEvent.clientY;
+      if (previewFrame === null) previewFrame = window.requestAnimationFrame(paintPreview);
+      updateDropTarget(moveEvent.clientX, moveEvent.clientY);
+    };
+
+    const finishPointerDrag = (commit: boolean) => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerUp);
+      window.removeEventListener("pointercancel", handlePointerCancel);
+      if (previewFrame !== null) window.cancelAnimationFrame(previewFrame);
+      if (source.hasPointerCapture(pointerId)) source.releasePointerCapture(pointerId);
+      document.body.style.cursor = previousCursor;
+      document.body.style.userSelect = previousUserSelect;
+      if (dragStarted && commit && targetPaneId) {
+        commitWorkspacePaneDrop(paneId, targetPaneId, targetZone);
+      }
+      if (dragStarted) {
+        setDraggedWorkspacePaneId(null);
+        setWorkspaceDropTargetPaneId(null);
+        setWorkspaceDropZone("center");
+        window.setTimeout(() => {
+          workspaceHeaderDragConsumedRef.current = false;
+        }, 0);
+      }
+    };
+    const handlePointerUp = (upEvent: PointerEvent) => {
+      if (upEvent.pointerId === pointerId) finishPointerDrag(true);
+    };
+    const handlePointerCancel = (cancelEvent: PointerEvent) => {
+      if (cancelEvent.pointerId === pointerId) finishPointerDrag(false);
+    };
+
+    window.addEventListener("pointermove", handlePointerMove, { passive: false });
+    window.addEventListener("pointerup", handlePointerUp);
+    window.addEventListener("pointercancel", handlePointerCancel);
   };
 
   const positionWorkspacePresetMenu = useCallback(() => {
@@ -11727,11 +11794,15 @@ export default function KwantifyWorkspace({
           <div className="flex h-9 shrink-0 items-center justify-between border-b border-border bg-panel/95 px-2.5">
             <button
               type="button"
-              draggable={!workspaceLocked && visibleWorkspacePaneIds.length > 1}
-              onDragStart={(event) => beginWorkspacePaneDrag(pane.id, event)}
-              onDragEnd={finishWorkspacePaneDrag}
-              onClick={() => setWorkspacePanelPickerPaneId(pane.id)}
-              className={`flex h-7 min-w-0 items-center gap-2 rounded-lg px-2 text-[9px] font-semibold text-foreground hover:bg-surface ${workspaceLocked ? "cursor-default" : "cursor-grab active:cursor-grabbing"}`}
+              onPointerDown={(event) => beginWorkspacePaneDrag(pane.id, event)}
+              onClick={() => {
+                if (workspaceHeaderDragConsumedRef.current) {
+                  workspaceHeaderDragConsumedRef.current = false;
+                  return;
+                }
+                setWorkspacePanelPickerPaneId(pane.id);
+              }}
+              className={`flex h-7 min-w-0 flex-1 items-center justify-start gap-2 rounded-lg px-2 text-[9px] font-semibold text-foreground hover:bg-surface ${workspaceLocked ? "cursor-default" : "cursor-grab active:cursor-grabbing"}`}
               title={workspaceLocked ? "Workspace locked" : "Drag to dock this panel, or click to change it"}
             >
               <Icon className="h-3.5 w-3.5 shrink-0 text-primary" />
@@ -11824,7 +11895,6 @@ export default function KwantifyWorkspace({
           setGameplanChartOverlays(removeGameplanChartOverlay(gameplanRoot));
         }}
         onChartDragStart={(event) => beginWorkspacePaneDrag(pane.id, event)}
-        onChartDragEnd={finishWorkspacePaneDrag}
       />
     );
     if (floating) return chartPane;
@@ -11833,11 +11903,15 @@ export default function KwantifyWorkspace({
         <div className="flex h-9 shrink-0 items-center justify-between border-b border-border bg-panel/95 px-2.5">
           <button
             type="button"
-            draggable={!workspaceLocked && visibleWorkspacePaneIds.length > 1}
-            onDragStart={(event) => beginWorkspacePaneDrag(pane.id, event)}
-            onDragEnd={finishWorkspacePaneDrag}
-            onClick={() => setWorkspacePanelPickerPaneId(pane.id)}
-            className={`flex h-7 min-w-0 items-center gap-2 rounded-lg px-2 text-[9px] font-semibold text-foreground hover:bg-surface ${workspaceLocked ? "cursor-default" : "cursor-grab active:cursor-grabbing"}`}
+            onPointerDown={(event) => beginWorkspacePaneDrag(pane.id, event)}
+            onClick={() => {
+              if (workspaceHeaderDragConsumedRef.current) {
+                workspaceHeaderDragConsumedRef.current = false;
+                return;
+              }
+              setWorkspacePanelPickerPaneId(pane.id);
+            }}
+            className={`flex h-7 min-w-0 flex-1 items-center justify-start gap-2 rounded-lg px-2 text-[9px] font-semibold text-foreground hover:bg-surface ${workspaceLocked ? "cursor-default" : "cursor-grab active:cursor-grabbing"}`}
             title={workspaceLocked ? "Workspace locked" : "Drag to dock this chart, or click to change it"}
           >
             <BarChart3 className="h-3.5 w-3.5 shrink-0 text-primary" />
@@ -12011,23 +12085,6 @@ export default function KwantifyWorkspace({
           onPointerDownCapture={() => {
             if (activePaneId !== node.paneId) activateWorkspacePane(node.paneId);
           }}
-          onDragEnter={(event) => {
-            if (!workspaceLocked && draggedWorkspacePaneId && draggedWorkspacePaneId !== node.paneId) {
-              event.preventDefault();
-              setWorkspaceDropTargetPaneId(node.paneId);
-            }
-          }}
-          onDragOver={(event) => updateWorkspaceDropPreview(node.paneId, event)}
-          onDragLeave={(event) => {
-            const relatedTarget = event.relatedTarget;
-            if (
-              workspaceDropTargetPaneId === node.paneId
-              && (!(relatedTarget instanceof Node) || !event.currentTarget.contains(relatedTarget))
-            ) {
-              setWorkspaceDropTargetPaneId(null);
-            }
-          }}
-          onDrop={(event) => dropWorkspacePane(node.paneId, event)}
           className={`relative h-full min-h-0 min-w-0 overflow-hidden transition-[box-shadow,opacity] duration-150 ${
             draggedWorkspacePaneId === node.paneId
               ? "opacity-[0.55]"
@@ -12044,19 +12101,7 @@ export default function KwantifyWorkspace({
             : null}
           {draggedWorkspacePaneId && draggedWorkspacePaneId !== node.paneId ? (
             <div
-              className={`absolute inset-0 z-[90] grid grid-cols-3 grid-rows-3 gap-2 rounded-2xl p-[7%] backdrop-blur-[2px] transition-colors ${workspaceDropTargetPaneId === node.paneId ? "bg-background/48" : "bg-background/28"}`}
-              onDragEnter={(event) => {
-                event.preventDefault();
-                setWorkspaceDropTargetPaneId(node.paneId);
-              }}
-              onDragOver={(event) => updateWorkspaceDropPreview(node.paneId, event)}
-              onDragLeave={(event) => {
-                const relatedTarget = event.relatedTarget;
-                if (!(relatedTarget instanceof Node) || !event.currentTarget.contains(relatedTarget)) {
-                  setWorkspaceDropTargetPaneId((current) => current === node.paneId ? null : current);
-                }
-              }}
-              onDrop={(event) => dropWorkspacePane(node.paneId, event)}
+              className={`pointer-events-none absolute inset-0 z-[90] grid grid-cols-3 grid-rows-3 gap-2 rounded-2xl p-[7%] backdrop-blur-[2px] transition-colors ${workspaceDropTargetPaneId === node.paneId ? "bg-background/48" : "bg-background/28"}`}
               aria-label="Workspace docking positions"
             >
               {([
@@ -14835,6 +14880,20 @@ export default function KwantifyWorkspace({
           </div>
         </div>
       )}
+      {draggedWorkspacePaneId && typeof document !== "undefined" ? createPortal(
+        <div
+          ref={workspaceDragGhostRef}
+          className="pointer-events-none fixed left-0 top-0 z-[500] flex h-9 max-w-[240px] items-center gap-2 border border-primary/65 bg-panel/95 px-3 text-[9px] font-semibold uppercase tracking-[0.12em] text-foreground shadow-[0_14px_45px_rgba(0,0,0,0.62),0_0_24px_color-mix(in_srgb,var(--primary)_24%,transparent)] backdrop-blur"
+          style={{ transform: "translate3d(-9999px, -9999px, 0)" }}
+        >
+          <Grid3X3 className="h-3.5 w-3.5 shrink-0 text-primary" />
+          <span className="truncate">
+            {WORKSPACE_PANEL_OPTIONS.find((option) => option.id === workspacePanes.find((pane) => pane.id === draggedWorkspacePaneId)?.content)?.label ?? "CHARTS"}
+          </span>
+          <span className="ml-auto text-[7px] text-primary">SNAP</span>
+        </div>,
+        document.body,
+      ) : null}
       {showMiniAI && !miniExpanded && <button onClick={() => setMiniExpanded(true)} className="fixed bottom-20 left-16 z-30 flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-4 py-2 text-sm font-semibold text-primary shadow-2xl shadow-black/30"><Bot className="h-4 w-4" />AI</button>}
       {showMiniAI && miniExpanded && <div className="fixed bottom-20 left-16 z-30 flex h-[500px] w-[380px] flex-col overflow-hidden rounded-2xl border border-border bg-panel shadow-2xl shadow-black/40"><div className="flex h-12 shrink-0 items-center justify-between border-b border-border px-4"><div className="flex items-center gap-2"><Sparkles className="h-4 w-4 text-primary" /><span className="text-sm font-semibold">Strategy Builder</span></div><div className="flex items-center gap-1"><button onClick={() => setMiniExpanded(false)} className="flex h-6 w-6 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground"><Minus className="h-4 w-4" /></button><button onClick={maximizeMiniAI} className="flex h-6 w-6 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground"><Maximize2 className="h-4 w-4" /></button><button onClick={() => { setShowMiniAI(false); setMiniExpanded(false); sessionStorage.removeItem("ai-messages"); sessionStorage.removeItem("ai-minimized"); }} className="flex h-6 w-6 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground"><X className="h-4 w-4" /></button></div></div><div className="flex-1 space-y-4 overflow-y-auto p-4">{miniMessages.length === 0 && <div className="flex h-full flex-col items-center justify-center text-center"><Bot className="mb-3 h-6 w-6 text-primary" /><p className="text-sm font-semibold">Ask Kwantify to build a strategy</p><p className="mt-1 text-xs leading-5 text-muted">Describe an entry, risk model, session, or market condition.</p></div>}{miniMessages.map((msg, i) => <div key={i} className={msg.role === "user" ? "flex justify-end" : "flex gap-3"}>{msg.role === "user" ? <div className="max-w-[80%] rounded-2xl bg-surface px-3 py-2 text-[13px] leading-6">{msg.content}</div> : <div className="text-[13px] leading-6 text-muted"><AssistantContent text={msg.content} copiedKey={copiedKey} onCopy={copyCode} /></div>}</div>)}{miniLoading && <div className="flex gap-1.5"><div className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary" /><div className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary [animation-delay:0.2s]" /><div className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary [animation-delay:0.4s]" /></div>}<div ref={miniMessagesEndRef} /></div><div className="border-t border-border p-3"><div className="rounded-2xl border border-border bg-surface p-2 focus-within:border-primary/35"><textarea value={miniInput} onChange={(e) => setMiniInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendChat("mini"); } }} placeholder="Describe your strategy..." rows={2} className="max-h-24 w-full resize-none bg-transparent px-2 py-1 text-[13px] leading-6 outline-none placeholder:text-muted/60" /><div className="flex justify-end"><button onClick={() => sendChat("mini")} disabled={miniLoading || !miniInput.trim()} className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-background disabled:opacity-40"><ArrowUp className="h-4 w-4" /></button></div></div></div></div>}
       {showBacktestSettings && (

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type CSSProperties, type DragEvent as ReactDragEvent, type PointerEvent as ReactPointerEvent, type RefObject } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type CSSProperties, type PointerEvent as ReactPointerEvent, type RefObject } from "react";
 import {
   createChart,
   LineStyle,
@@ -204,8 +204,7 @@ interface ChartProps {
   settings?: ChartSettings;
   toolbarEnabled?: boolean;
   chartDragEnabled?: boolean;
-  onChartDragStart?: (event: ReactDragEvent<HTMLButtonElement>) => void;
-  onChartDragEnd?: () => void;
+  onChartDragStart?: (event: ReactPointerEvent<HTMLButtonElement>) => void;
   gammaLevelsEnabled?: boolean;
   gammaLevelsAvailable?: boolean;
   gammaLevelsLoading?: boolean;
@@ -1683,7 +1682,6 @@ export default function Chart({
   toolbarEnabled = true,
   chartDragEnabled = false,
   onChartDragStart,
-  onChartDragEnd,
   gammaLevelsEnabled = false,
   gammaLevelsAvailable = false,
   gammaLevelsLoading = false,
@@ -6914,9 +6912,7 @@ export default function Chart({
         </button>
         <button
           type="button"
-          draggable={chartDragEnabled}
-          onDragStart={onChartDragStart}
-          onDragEnd={onChartDragEnd}
+          onPointerDown={chartDragEnabled ? onChartDragStart : undefined}
           onMouseDown={(event) => event.stopPropagation()}
           onClick={(event) => event.stopPropagation()}
           className={`flex items-center justify-center border backdrop-blur transition-all ${
