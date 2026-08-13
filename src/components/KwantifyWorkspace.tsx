@@ -9119,6 +9119,30 @@ export default function KwantifyWorkspace({
   }, [chartSettings]);
 
   useEffect(() => {
+    if (!authChecked || typeof window === "undefined") return;
+    const migrationKey = "kwantdesk:midnight-cockpit-chart:v1";
+    if (window.localStorage.getItem(migrationKey) === "applied") return;
+
+    const migrated: ChartSettings = {
+      ...chartSettings,
+      colorBarsPreviousClose: defaultChartSettings.colorBarsPreviousClose,
+      upColor: defaultChartSettings.upColor,
+      downColor: defaultChartSettings.downColor,
+      borderUpColor: defaultChartSettings.borderUpColor,
+      borderDownColor: defaultChartSettings.borderDownColor,
+      wickUpColor: defaultChartSettings.wickUpColor,
+      wickDownColor: defaultChartSettings.wickDownColor,
+      backgroundColor: defaultChartSettings.backgroundColor,
+      gridColor: defaultChartSettings.gridColor,
+    };
+    window.localStorage.setItem(migrationKey, "applied");
+    setChartSettings(migrated);
+    setDraftChartSettings(migrated);
+    setChartSettingsSnapshot(migrated);
+    saveStoredChartSettings(migrated);
+  }, [authChecked, chartSettings]);
+
+  useEffect(() => {
     if (bottomTab === "strategies") loadSavedStrategies();
   }, [bottomTab]);
 

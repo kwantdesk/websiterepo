@@ -22,16 +22,16 @@ export const CHART_SETTINGS_STORAGE_KEY = "olisa-chart-settings";
 export const CHART_SETTINGS_METADATA_KEY = "chartSettings";
 
 export const defaultChartSettings: ChartSettings = {
-  colorBarsPreviousClose: true,
-  upColor: "#B6FF00",
-  downColor: "#FFFFFF",
-  borderUpColor: "#B6FF00",
-  borderDownColor: "#FFFFFF",
-  wickUpColor: "#B6FF00",
-  wickDownColor: "#FFFFFF",
-  backgroundColor: "#000000",
+  colorBarsPreviousClose: false,
+  upColor: "#16C7CE",
+  downColor: "#FF1F78",
+  borderUpColor: "#16C7CE",
+  borderDownColor: "#FF1F78",
+  wickUpColor: "#16C7CE",
+  wickDownColor: "#FF1F78",
+  backgroundColor: "#020304",
   gridLines: true,
-  gridColor: "#111318",
+  gridColor: "#11151A",
   timezone: "America/New_York",
   precision: "Default",
 };
