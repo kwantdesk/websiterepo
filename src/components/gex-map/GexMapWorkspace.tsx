@@ -562,26 +562,27 @@ function ExposurePanel({
 }
 
 export default function GexMapWorkspace({ market = null }: GexMapWorkspaceProps = {}) {
-  const linkedMarket = useMemo(() => market ?? linkedMarketFromLocation(), [market]);
-  const initialPanels = useMemo(() => initialPanelsForMarket(linkedMarket), [linkedMarket]);
-  const [panels, setPanels] = useState<PanelConfig[]>(initialPanels);
-  const [panelData, setPanelData] = useState<Record<string, GexMapPanelPayload | null>>(() =>
-    Object.fromEntries(initialPanels.map((panel) => [
-      panel.id,
-      readWorkspaceData<GexMapPanelPayload>(gexMapCacheKey(panel.symbol, panel.greekMode)),
-    ])),
-  );
+  // Keep the server and first browser render identical. Reading window.location or
+  // sessionStorage in a state initializer can make React discard the hydrated GEX
+  // tree, which previously left an otherwise healthy map blank on some page loads.
+  const [locationMarket, setLocationMarket] = useState<GexMapMarket | null>(null);
+  const linkedMarket = market ?? locationMarket;
+  const [panels, setPanels] = useState<PanelConfig[]>(() => initialPanelsForMarket(market));
+  const [panelData, setPanelData] = useState<Record<string, GexMapPanelPayload | null>>({
+    left: null,
+    centre: null,
+    right: null,
+  });
   const [panelErrors, setPanelErrors] = useState<Record<string, string | null>>({
     left: null,
     centre: null,
     right: null,
   });
-  const [loading, setLoading] = useState<Record<string, boolean>>(() =>
-    Object.fromEntries(initialPanels.map((panel) => [
-      panel.id,
-      !readWorkspaceData<GexMapPanelPayload>(gexMapCacheKey(panel.symbol, panel.greekMode)),
-    ])),
-  );
+  const [loading, setLoading] = useState<Record<string, boolean>>({
+    left: true,
+    centre: true,
+    right: true,
+  });
   const [replayMode, setReplayMode] = useState(false);
   const [replayDate, setReplayDate] = useState("");
   const [cursor, setCursor] = useState(0);
@@ -593,6 +594,27 @@ export default function GexMapWorkspace({ market = null }: GexMapWorkspaceProps 
   const [refreshToken, setRefreshToken] = useState(0);
   const forceRefreshRef = useRef(false);
   const requestedReplayDate = replayMode ? replayDate : "";
+
+  useEffect(() => {
+    setLocationMarket(market ?? linkedMarketFromLocation());
+  }, [market]);
+
+  useEffect(() => {
+    const nextPanels = initialPanelsForMarket(linkedMarket);
+    const cachedData = Object.fromEntries(nextPanels.map((panel) => [
+      panel.id,
+      readWorkspaceData<GexMapPanelPayload>(gexMapCacheKey(panel.symbol, panel.greekMode)),
+    ]));
+
+    setPanels((current) => current.every((panel, index) => (
+      panel.id === nextPanels[index]?.id
+      && panel.symbol === nextPanels[index]?.symbol
+      && panel.greekMode === nextPanels[index]?.greekMode
+    )) ? current : nextPanels);
+    setPanelData(cachedData);
+    setPanelErrors({ left: null, centre: null, right: null });
+    setLoading(Object.fromEntries(nextPanels.map((panel) => [panel.id, !cachedData[panel.id]])));
+  }, [linkedMarket]);
 
   useEffect(() => {
     let cancelled = false;
@@ -662,9 +684,6 @@ export default function GexMapWorkspace({ market = null }: GexMapWorkspaceProps 
         setLastSync(Date.now());
 
         const firstSuccess = results.find((result) => result.status === "fulfilled");
-        if (!replayDate && firstSuccess?.status === "fulfilled") {
-          setReplayDate(firstSuccess.value.payload.sessionDate);
-        }
         if (!replayMode && firstSuccess?.status === "fulfilled") {
           setLatestSessionDate(firstSuccess.value.payload.sessionDate);
         }
@@ -697,7 +716,7 @@ export default function GexMapWorkspace({ market = null }: GexMapWorkspaceProps 
         timer = null;
       }
     };
-  }, [panels, refreshToken, replayDate, replayMode, requestedReplayDate]);
+  }, [panels, refreshToken, replayMode, requestedReplayDate]);
 
   const timeline = useMemo(() => {
     const timestamps = new Set<number>();
