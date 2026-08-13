@@ -55,6 +55,12 @@ function seriesDomain(series: CalculatedIndicatorSeries[]) {
   return { min, max };
 }
 
+function scaleDomain(domain: { min: number; max: number }, scale: number) {
+  const center = (domain.min + domain.max) / 2;
+  const halfSpan = Math.max(1e-9, (domain.max - domain.min) / 2) * scale;
+  return { min: center - halfSpan, max: center + halfSpan };
+}
+
 type PanePoint = CalculatedIndicatorSeries["data"][number] & { x: number };
 
 function sampledPanePoints(
@@ -135,6 +141,7 @@ function ChartIndicatorPanes({
   // participates in memoized renders so pane plots follow pan and zoom.
   void viewportVersion;
   const [openMenu, setOpenMenu] = useState<string | null>(null);
+  const [verticalScaleByPane, setVerticalScaleByPane] = useState<Record<string, number>>({});
   const paneRootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -218,11 +225,15 @@ function ChartIndicatorPanes({
           }),
         }));
         const sharedSeries = visibleSeries.filter((series) => !series.independentScale);
-        const sharedDomain = seriesDomain(sharedSeries.length ? sharedSeries : visibleSeries);
+        const verticalScale = verticalScaleByPane[group.key] ?? 1;
+        const sharedDomain = scaleDomain(
+          seriesDomain(sharedSeries.length ? sharedSeries : visibleSeries),
+          verticalScale,
+        );
         const independentDomains = new Map(
           visibleSeries
             .filter((series) => series.independentScale)
-            .map((series) => [series.key, seriesDomain([series])] as const),
+            .map((series) => [series.key, scaleDomain(seriesDomain([series]), verticalScale)] as const),
         );
         const yFor = (value: number, definition: CalculatedIndicatorSeries) => {
           const domain = definition.independentScale
@@ -584,6 +595,48 @@ function ChartIndicatorPanes({
           ) : null}
         </div>
       ))}
+      {paneLayouts.map(({ group, top, height: paneHeight, collapsed }) => {
+        if (collapsed || group.indicatorId !== "cumulative-volume-delta") return null;
+        const verticalScale = verticalScaleByPane[group.key] ?? 1;
+        return (
+          <div
+            key={`cvd-price-scale-${group.key}`}
+            role="slider"
+            aria-label="Scale CVD vertically"
+            aria-valuemin={20}
+            aria-valuemax={800}
+            aria-valuenow={Math.round(verticalScale * 100)}
+            title="Scroll to expand or squeeze CVD · Double-click to reset"
+            className="pointer-events-auto absolute right-0 z-10 cursor-ns-resize touch-none"
+            style={{ top: top + 25, width: 61, height: Math.max(20, paneHeight - 34) }}
+            onPointerDown={(event) => event.stopPropagation()}
+            onWheel={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              const normalizedDelta = event.deltaMode === 1
+                ? event.deltaY * 16
+                : event.deltaMode === 2
+                  ? event.deltaY * 120
+                  : event.deltaY;
+              const multiplier = Math.exp(Math.max(-120, Math.min(120, normalizedDelta)) * 0.0025);
+              setVerticalScaleByPane((current) => ({
+                ...current,
+                [group.key]: Math.max(0.2, Math.min(8, (current[group.key] ?? 1) * multiplier)),
+              }));
+            }}
+            onDoubleClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              setVerticalScaleByPane((current) => {
+                if (current[group.key] === undefined) return current;
+                const next = { ...current };
+                delete next[group.key];
+                return next;
+              });
+            }}
+          />
+        );
+      })}
       {groups.map((group, groupIndex) => {
         if (group.indicatorId !== "cumulative-volume-delta" || paneLayouts[groupIndex].collapsed) return null;
         const top = paneLayouts[groupIndex].top + 5;
