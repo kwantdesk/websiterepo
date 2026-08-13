@@ -545,22 +545,22 @@ class HedgeLevelsRenderer implements ISeriesPrimitivePaneRenderer {
       if (options.showLabels) {
         const labelRows = staggerHedgeLabels(
           positioned.map((item) => ({ id: item.level.id, y: item.centreY })),
-          14,
+          12,
         );
-        const labelY = new Map(labelRows.map((row) => [row.id, Math.max(9, Math.min(mediaSize.height - 7, row.labelY))]));
-        context.font = "700 8px 'JetBrains Mono', monospace";
+        const labelY = new Map(labelRows.map((row) => [row.id, Math.max(7, Math.min(mediaSize.height - 6, row.labelY))]));
+        context.font = "700 7px 'JetBrains Mono', monospace";
         context.textBaseline = "middle";
         for (const item of positioned) {
           const color = HEDGE_LEVEL_COLORS[item.level.kind];
           const text = item.level.label;
-          const width = Math.min(150, Math.max(28, context.measureText(text).width + 12));
+          const width = Math.min(140, Math.max(24, context.measureText(text).width + 10));
           const x = 4;
           const y = labelY.get(item.level.id) ?? item.centreY;
           context.save();
           context.globalAlpha = 0.86 * opacityScale;
           context.fillStyle = options.backgroundColor;
           context.beginPath();
-          context.roundRect(x, y - 7, width, 14, 4);
+          context.roundRect(x, y - 6, width, 12, 1);
           context.fill();
           context.globalAlpha = 0.34 * opacityScale;
           context.strokeStyle = color;
@@ -568,7 +568,7 @@ class HedgeLevelsRenderer implements ISeriesPrimitivePaneRenderer {
           context.stroke();
           context.globalAlpha = 0.9 * opacityScale;
           context.fillStyle = color;
-          context.fillText(text, x + 6, y, width - 12);
+          context.fillText(text, x + 5, y, width - 10);
           context.restore();
         }
       }
@@ -715,12 +715,12 @@ class GameplanUnderlayRenderer implements ISeriesPrimitivePaneRenderer {
         // Keep Gameplan labels anchored to their real price coordinate. Levels
         // outside the visible price range should remain off-screen instead of
         // being clamped into a stack above the chart controls.
-        if (y < 11 || y > mediaSize.height - 11) continue;
+        if (y < 9 || y > mediaSize.height - 9) continue;
 
         const label = level.label;
-        context.font = "700 9px 'JetBrains Mono', monospace";
-        const labelWidth = Math.min(240, Math.max(82, context.measureText(label).width + 18));
-        const labelTop = y - 11;
+        context.font = "700 8px 'JetBrains Mono', monospace";
+        const labelWidth = Math.min(220, Math.max(70, context.measureText(label).width + 14));
+        const labelTop = y - 9;
         // Chips anchor to the left edge of the pane; on the right they sat on
         // top of the price axis and the Classic GEX profile panel.
         const labelLeft = 4;
@@ -729,11 +729,11 @@ class GameplanUnderlayRenderer implements ISeriesPrimitivePaneRenderer {
         context.strokeStyle = level.color;
         context.lineWidth = 0.8;
         context.beginPath();
-        context.roundRect(labelLeft, labelTop, labelWidth, 20, 7);
+        context.roundRect(labelLeft, labelTop, labelWidth, 17, 1);
         context.fill();
         context.stroke();
         context.fillStyle = level.color;
-        context.fillText(label, labelLeft + 9, labelTop + 13.5, labelWidth - 18);
+        context.fillText(label, labelLeft + 7, labelTop + 11.5, labelWidth - 14);
       }
 
       context.restore();
@@ -812,19 +812,19 @@ class FixedPriceLevelLabelsRenderer implements ISeriesPrimitivePaneRenderer {
 
     target.useMediaCoordinateSpace(({ context, mediaSize }) => {
       context.save();
-      context.font = "700 9px 'JetBrains Mono', monospace";
+      context.font = "700 8px 'JetBrains Mono', monospace";
       context.textBaseline = "middle";
 
       for (const level of this.primitive.levels()) {
         if (level.axisLabelVisible === false) continue;
         const y = series.priceToCoordinate(level.price);
-        if (y === null || y < 10 || y > mediaSize.height - 10) continue;
+        if (y === null || y < 8 || y > mediaSize.height - 8) continue;
 
         const price = level.price.toFixed(this.primitive.precision());
         const label = level.axisTitleVisible === false
           ? price
           : `${level.label}  ${price}`;
-        const width = Math.min(360, Math.max(68, context.measureText(label).width + 18));
+        const width = Math.min(320, Math.max(58, context.measureText(label).width + 14));
         const left = 4;
 
         // Deliberately draw at the exact price coordinate. Native price-axis
@@ -834,11 +834,11 @@ class FixedPriceLevelLabelsRenderer implements ISeriesPrimitivePaneRenderer {
         context.strokeStyle = level.color;
         context.lineWidth = 0.9;
         context.beginPath();
-        context.roundRect(left, y - 9, width, 18, 5);
+        context.roundRect(left, y - 8, width, 16, 1);
         context.fill();
         context.stroke();
         context.fillStyle = level.color;
-        context.fillText(label, left + 9, y, width - 18);
+        context.fillText(label, left + 7, y, width - 14);
       }
 
       context.restore();
@@ -4459,7 +4459,7 @@ export default function Chart({
         ? rawRightAlignedLabelY
         : undefined);
     const labelY = rightAlignedLabelY ?? naturalLabelY;
-    const labelWidth = Math.min(300, Math.max(82, zone.label.length * 6.4 + 18));
+    const labelWidth = Math.min(260, Math.max(70, zone.label.length * 5.7 + 14));
     const labelX = 10;
 
     return (
@@ -4477,19 +4477,19 @@ export default function Chart({
         <>
           <rect
             x={labelX}
-            y={labelY - 11}
+            y={labelY - 9}
             width={labelWidth}
-            height={20}
-            rx={7}
+            height={17}
+            rx={1}
             fill="var(--panel)"
             stroke={zone.color}
             strokeWidth={0.8}
           />
           <text
-            x={labelX + 9}
+            x={labelX + 7}
             y={labelY + 3}
             fill={zone.color}
-            fontSize="9"
+            fontSize="8"
             fontFamily="'JetBrains Mono', monospace"
             fontWeight="700"
             textAnchor="start"
