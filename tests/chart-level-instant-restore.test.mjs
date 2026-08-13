@@ -9,11 +9,20 @@ const workspace = readFileSync(
 
 test("chart levels restore last-good overlays before background refresh", () => {
   assert.match(workspace, /GAMMA_SESSION_CACHE_PREFIX = "kwantdesk:gamma-levels:last-good:v1:"/);
+  assert.match(workspace, /GAMMA_OVERLAY_CACHE_PREFIX = "kwantdesk:chart-gamma-overlay:last-good:v1:"/);
   assert.match(workspace, /writeGammaSessionPayload\(conversion, options\.calibrated === true, payload\)/);
-  assert.match(workspace, /const cachedGammaPayload = primaryGammaConversion[\s\S]*?setGammaOverlay\(cachedGammaOverlay\)/);
-  assert.match(workspace, /const cachedValueAreaPayload = valueAreaLevelsAvailable[\s\S]*?setValueAreaOverlay\(cachedValueAreaOverlay\)/);
+  assert.match(workspace, /useState<GammaChartOverlay \| null>\(\(\) =>[\s\S]*?readGammaOverlayCache\(gammaInstrument, settings\)\)/);
+  assert.match(workspace, /useState<ValueAreaChartOverlay \| null>\(\(\) =>[\s\S]*?readValueAreaOverlayCache\(pane\.symbol, settings\)\)/);
+  assert.match(workspace, /const cachedGammaOverlayDirect = readGammaOverlayCache\(gammaInstrument, settings\)[\s\S]*?setGammaOverlay\(cachedGammaOverlay\)/);
+  assert.match(workspace, /const cachedValueAreaOverlay = valueAreaLevelsAvailable[\s\S]*?readValueAreaOverlayCache\(pane\.symbol, settings\)[\s\S]*?setValueAreaOverlay\(cachedValueAreaOverlay\)/);
   assert.match(workspace, /setGammaLevelsLoading\(gammaLevelsEnabled && gammaLevelsAvailable && !cachedGammaOverlay\)/);
   assert.match(workspace, /setValueAreaLevelsLoading\(valueAreaLevelsEnabled && valueAreaLevelsAvailable && !cachedValueAreaOverlay\)/);
+});
+
+test("value-area restore uses the parent CME book and survives a page reload", () => {
+  assert.match(workspace, /const sourceKey = valueAreaSourceSymbol\(instrument\)\.toUpperCase\(\)/);
+  assert.match(workspace, /for \(const storage of \[window\.sessionStorage, window\.localStorage\]\)/);
+  assert.match(workspace, /window\.localStorage\.setItem\(`\$\{VALUE_AREA_SESSION_CACHE_PREFIX\}\$\{cacheKey\}`, serialized\)/);
 });
 
 test("browser gamma cache is bounded and revalidated rather than treated as live", () => {

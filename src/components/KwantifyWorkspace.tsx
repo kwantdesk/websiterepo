@@ -2862,26 +2862,26 @@ function valueAreaPayloadIsCurrent(payload: Pick<ValueAreaPayload, "nextRefreshA
 function readValueAreaSessionPayload(cacheKey: string) {
   if (typeof window === "undefined") return null;
   const storageKey = `${VALUE_AREA_SESSION_CACHE_PREFIX}${cacheKey}`;
-  try {
-    const raw = window.sessionStorage.getItem(storageKey);
-    if (!raw) return null;
-    const payload = JSON.parse(raw) as ValueAreaPayload;
-    const valid = payload.symbol.toUpperCase() === cacheKey
-      && payload.method === "TRADE_BY_TRADE"
-      && validValueAreaProfile(payload.daily)
-      && validValueAreaProfile(payload.weekly)
-      && valueAreaPayloadIsCurrent(payload);
-    if (!valid) {
-      window.sessionStorage.removeItem(storageKey);
-      return null;
-    }
-    return payload;
-  } catch {
+  for (const storage of [window.sessionStorage, window.localStorage]) {
     try {
-      window.sessionStorage.removeItem(storageKey);
-    } catch {}
-    return null;
+      const raw = storage.getItem(storageKey);
+      if (!raw) continue;
+      const payload = JSON.parse(raw) as ValueAreaPayload;
+      const valid = payload.symbol.toUpperCase() === cacheKey
+        && payload.method === "TRADE_BY_TRADE"
+        && validValueAreaProfile(payload.daily)
+        && validValueAreaProfile(payload.weekly)
+        && valueAreaPayloadIsCurrent(payload);
+      if (!valid) {
+        storage.removeItem(storageKey);
+        continue;
+      }
+      return payload;
+    } catch {
+      try { storage.removeItem(storageKey); } catch {}
+    }
   }
+  return null;
 }
 
 function fetchValueAreaPayload(symbol: string) {
@@ -2941,11 +2941,12 @@ function fetchValueAreaPayload(symbol: string) {
           : Date.now() + 60 * 60_000;
         current.payload = payload;
       }
+      const serialized = JSON.stringify(payload);
       try {
-        window.sessionStorage.setItem(
-          `${VALUE_AREA_SESSION_CACHE_PREFIX}${cacheKey}`,
-          JSON.stringify(payload),
-        );
+        window.sessionStorage.setItem(`${VALUE_AREA_SESSION_CACHE_PREFIX}${cacheKey}`, serialized);
+      } catch {}
+      try {
+        window.localStorage.setItem(`${VALUE_AREA_SESSION_CACHE_PREFIX}${cacheKey}`, serialized);
       } catch {}
       return payload;
     })
@@ -3422,6 +3423,70 @@ function mergeNativeGammaTransitions(
   };
 }
 
+const GAMMA_OVERLAY_CACHE_PREFIX = "kwantdesk:chart-gamma-overlay:last-good:v1:";
+
+function readGammaOverlayCache(
+  instrument: string,
+  settings: ChartSettings,
+): GammaChartOverlay | null {
+  if (typeof window === "undefined") return null;
+  const storageKey = `${GAMMA_OVERLAY_CACHE_PREFIX}${instrument.toUpperCase()}`;
+  for (const storage of [window.sessionStorage, window.localStorage]) {
+    try {
+      const raw = storage.getItem(storageKey);
+      if (!raw) continue;
+      const record = JSON.parse(raw) as { savedAt?: number; overlay?: GammaChartOverlay };
+      const overlay = record.overlay;
+      const checkedAt = Date.parse(overlay?.checkedAt ?? "");
+      const valid = Number.isFinite(record.savedAt)
+        && Date.now() - Number(record.savedAt) <= GAMMA_SESSION_CACHE_MAX_AGE_MS
+        && overlay?.instrument === instrument
+        && Number.isFinite(checkedAt)
+        && Array.isArray(overlay.levels)
+        && overlay.levels.length > 0
+        && overlay.levels.every((level) => Number.isFinite(level.price) && level.price > 0);
+      if (!valid || !overlay) {
+        storage.removeItem(storageKey);
+        continue;
+      }
+      return {
+        ...overlay,
+        // Repaint cached semantic levels with the current chart skin. The
+        // price/labels are authoritative; an old theme colour is not.
+        levels: overlay.levels.map((level) => ({
+          ...level,
+          color: level.kind ? gammaLevelColor(level.kind, settings) : level.color,
+        })),
+        stale: overlay.stale || Date.now() - checkedAt > 2 * 60_000,
+      };
+    } catch {
+      try { storage.removeItem(storageKey); } catch {}
+    }
+  }
+  return null;
+}
+
+function writeGammaOverlayCache(overlay: GammaChartOverlay) {
+  if (typeof window === "undefined") return;
+  const storageKey = `${GAMMA_OVERLAY_CACHE_PREFIX}${overlay.instrument.toUpperCase()}`;
+  const serialized = JSON.stringify({ savedAt: Date.now(), overlay });
+  try { window.sessionStorage.setItem(storageKey, serialized); } catch {}
+  try { window.localStorage.setItem(storageKey, serialized); } catch {}
+}
+
+function readValueAreaOverlayCache(
+  instrument: string,
+  settings: ChartSettings,
+): ValueAreaChartOverlay | null {
+  const sourceKey = valueAreaSourceSymbol(instrument).toUpperCase();
+  const sourcePayload = readValueAreaSessionPayload(sourceKey);
+  if (!sourcePayload) return null;
+  const chartPayload = sourcePayload.symbol.toUpperCase() === instrument.toUpperCase()
+    ? sourcePayload
+    : { ...sourcePayload, symbol: instrument };
+  return buildValueAreaChartOverlay(chartPayload, instrument, settings);
+}
+
 function WorkspaceChartPane({
   pane,
   active,
@@ -3511,6 +3576,7 @@ function WorkspaceChartPane({
   ) => void;
   onClosePaperPosition?: (position: PaperPosition) => void;
 }) {
+  const gammaInstrument = displayCmeSymbol(pane.symbol);
   const [candles, setCandles] = useState<Candle[]>([]);
   const [lowerIndicatorHeight, setLowerIndicatorHeight] = useState(0);
   const [marketTrades, setMarketTrades] = useState<InstitutionalTrade[]>([]);
@@ -3526,7 +3592,8 @@ function WorkspaceChartPane({
   const [intervalCommandOpen, setIntervalCommandOpen] = useState(false);
   const [intervalCommandDraft, setIntervalCommandDraft] = useState("");
   const [intervalCommandError, setIntervalCommandError] = useState("");
-  const [gammaOverlay, setGammaOverlay] = useState<GammaChartOverlay | null>(null);
+  const [gammaOverlay, setGammaOverlay] = useState<GammaChartOverlay | null>(() =>
+    readGammaOverlayCache(gammaInstrument, settings));
   const [expectedMoveCalibration, setExpectedMoveCalibration] = useState<ChartGammaCalibration | null>(null);
   const [gammaLevelsLoading, setGammaLevelsLoading] = useState(false);
   const [gammaLevelsError, setGammaLevelsError] = useState<string | null>(null);
@@ -3534,7 +3601,8 @@ function WorkspaceChartPane({
   const [classicGexHistory, setClassicGexHistory] = useState<ClassicGexHistorySnapshot[]>([]);
   const [classicGexLoading, setClassicGexLoading] = useState(false);
   const [classicGexError, setClassicGexError] = useState<string | null>(null);
-  const [valueAreaOverlay, setValueAreaOverlay] = useState<ValueAreaChartOverlay | null>(null);
+  const [valueAreaOverlay, setValueAreaOverlay] = useState<ValueAreaChartOverlay | null>(() =>
+    readValueAreaOverlayCache(pane.symbol, settings));
   const [valueAreaLevelsLoading, setValueAreaLevelsLoading] = useState(false);
   const [valueAreaLevelsError, setValueAreaLevelsError] = useState<string | null>(null);
   const intervalCommandInputRef = useRef<HTMLInputElement>(null);
@@ -3566,7 +3634,6 @@ function WorkspaceChartPane({
   const liveFrameRef = useRef<number | null>(null);
   const marketActiveRef = useRef(false);
   const marketInactiveTimerRef = useRef<number | null>(null);
-  const gammaInstrument = displayCmeSymbol(pane.symbol);
   const gexBotFlow = useGexBotFlow(
     gammaInstrument === "NQ" || gammaInstrument === "MNQ",
   ).payload;
@@ -4537,6 +4604,7 @@ function WorkspaceChartPane({
       window.cancelAnimationFrame(liveFrameRef.current);
       liveFrameRef.current = null;
     }
+    const cachedGammaOverlayDirect = readGammaOverlayCache(gammaInstrument, settings);
     const cachedGammaPayload = primaryGammaConversion
       ? readGammaSessionPayload(primaryGammaConversion)
       : null;
@@ -4555,7 +4623,7 @@ function WorkspaceChartPane({
     const cachedGammaCheckedAt = cachedGammaPayload
       ? Date.parse(cachedGammaPayload.checkedAt)
       : Number.NaN;
-    const cachedGammaOverlay = restoredGammaOverlay
+    const cachedGammaOverlayFromPayload = restoredGammaOverlay
       ? {
           ...restoredGammaOverlay,
           // A stored frame is an immediate visual bridge, not permission to
@@ -4564,14 +4632,15 @@ function WorkspaceChartPane({
             || Date.now() - cachedGammaCheckedAt > Math.max(60_000, gammaRefreshDelay(cachedGammaPayload?.refreshAfterMs) * 2),
         }
       : null;
+    const cachedGammaOverlay = cachedGammaOverlayDirect ?? cachedGammaOverlayFromPayload;
     setGammaOverlay(cachedGammaOverlay);
     setGammaLevelsError(null);
     setGammaLevelsLoading(gammaLevelsEnabled && gammaLevelsAvailable && !cachedGammaOverlay);
-    const cachedValueAreaPayload = valueAreaLevelsAvailable
-      ? readValueAreaSessionPayload(pane.symbol.toUpperCase())
-      : null;
-    const cachedValueAreaOverlay = cachedValueAreaPayload
-      ? buildValueAreaChartOverlay(cachedValueAreaPayload, pane.symbol, settings)
+    // Value-area data for micros is intentionally sourced from the parent
+    // NQ/ES book. Read that same canonical key on startup; looking under
+    // MNQ/MES forced an unnecessary 15-120 second cold rebuild after refresh.
+    const cachedValueAreaOverlay = valueAreaLevelsAvailable
+      ? readValueAreaOverlayCache(pane.symbol, settings)
       : null;
     setValueAreaOverlay(cachedValueAreaOverlay);
     setValueAreaLevelsError(null);
@@ -4725,6 +4794,7 @@ function WorkspaceChartPane({
           ? mergeNativeGammaTransitions(retainedOverlay, overlay)
           : overlay;
       retainedOverlay = nextOverlay;
+      writeGammaOverlayCache(nextOverlay);
       setGammaOverlay(nextOverlay);
       setGammaLevelsError(null);
       setGammaLevelsLoading(false);
