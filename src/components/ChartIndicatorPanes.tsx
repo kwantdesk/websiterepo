@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useEffect, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { Check, ChevronDown, GripHorizontal, Minus, Plus, Settings2 } from "lucide-react";
 import type { CalculatedIndicatorSeries } from "@/lib/chartIndicatorEngine";
 import type { KwantStatsTable } from "@/lib/kwantStats";
@@ -14,6 +14,15 @@ type IndicatorPaneGroup = {
   stats?: KwantStatsTable;
   unavailableReason?: string;
 };
+
+type IndicatorPaneDock = "top" | "bottom" | "left" | "right";
+
+type IndicatorPanePlacement = {
+  dock: IndicatorPaneDock;
+  order: number;
+};
+
+type IndicatorPaneLayoutMap = Record<string, IndicatorPanePlacement>;
 
 function compact(value: number) {
   const absolute = Math.abs(value);
@@ -118,12 +127,11 @@ function sampledPanePoints(
   return [...buckets.values()].sort((a, b) => a.x - b.x);
 }
 
-function ChartIndicatorPanes({
+function ChartIndicatorPaneSurface({
   groups,
   width,
   priceScaleWidth,
   height,
-  bottom,
   viewportVersion,
   paneHeights,
   collapsedPanes,
@@ -132,12 +140,13 @@ function ChartIndicatorPanes({
   onTogglePane,
   onUpdateSetting,
   onOpenSettings,
+  placementStyle,
+  onPaneHandlePointerDown,
 }: {
   groups: IndicatorPaneGroup[];
   width: number;
   priceScaleWidth: number;
   height: number;
-  bottom: number;
   viewportVersion: number;
   paneHeights: Record<string, number>;
   collapsedPanes: Record<string, boolean>;
@@ -146,6 +155,8 @@ function ChartIndicatorPanes({
   onTogglePane: (instanceId: string) => void;
   onUpdateSetting?: (instanceId: string, key: string, value: number | string | boolean) => void;
   onOpenSettings?: (instanceId: string) => void;
+  placementStyle: CSSProperties;
+  onPaneHandlePointerDown: (instanceId: string, event: ReactPointerEvent<HTMLButtonElement>) => void;
 }) {
   // The native chart moves independently of React. This value deliberately
   // participates in memoized renders so pane plots follow pan and zoom.
@@ -236,8 +247,8 @@ function ChartIndicatorPanes({
   return (
     <div
       ref={paneRootRef}
-      className={`pointer-events-none absolute left-0 ${openMenu ? "z-[80]" : "z-[9]"}`}
-      style={{ bottom, width, height }}
+      className={`pointer-events-none absolute ${openMenu ? "z-[80]" : "z-[9]"}`}
+      style={{ width, height, ...placementStyle }}
     >
     <svg
       className="absolute inset-0"
@@ -628,13 +639,14 @@ function ChartIndicatorPanes({
           <button
             type="button"
             aria-label={collapsed ? `Expand ${group.title} pane` : `Minimize ${group.title} pane`}
-            title={collapsed ? `Expand ${group.title}` : `Minimize ${group.title}`}
+            title={collapsed ? `Expand ${group.title}` : `Click to minimize · drag to reorder or dock ${group.title}`}
+            onPointerDown={(event) => onPaneHandlePointerDown(group.key, event)}
             onClick={(event) => {
               event.stopPropagation();
               setOpenMenu(null);
               onTogglePane(group.key);
             }}
-            className="pointer-events-auto absolute right-[66px] z-30 flex h-6 w-6 items-center justify-center rounded-md border border-border bg-panel/95 text-muted shadow-sm hover:text-foreground"
+            className="pointer-events-auto absolute right-[66px] z-30 flex h-6 w-6 cursor-grab touch-none select-none items-center justify-center rounded-md border border-border bg-panel/95 text-muted shadow-sm hover:text-foreground active:cursor-grabbing"
             style={{ top: top + 4 }}
           >
             {collapsed ? <Plus className="h-3 w-3" /> : <Minus className="h-3 w-3" />}
@@ -842,6 +854,221 @@ function ChartIndicatorPanes({
   );
 }
 
+function ChartIndicatorPanes({
+  groups,
+  width,
+  priceScaleWidth,
+  height,
+  chartHeight,
+  bottom,
+  viewportVersion,
+  paneHeights,
+  collapsedPanes,
+  paneLayout,
+  timeToX,
+  onResizePane,
+  onTogglePane,
+  onMovePane,
+  onUpdateSetting,
+  onOpenSettings,
+}: {
+  groups: IndicatorPaneGroup[];
+  width: number;
+  priceScaleWidth: number;
+  height: number;
+  chartHeight: number;
+  bottom: number;
+  viewportVersion: number;
+  paneHeights: Record<string, number>;
+  collapsedPanes: Record<string, boolean>;
+  paneLayout: IndicatorPaneLayoutMap;
+  timeToX: (time: number) => number | null;
+  onResizePane: (instanceId: string, height: number) => void;
+  onTogglePane: (instanceId: string) => void;
+  onMovePane: (instanceId: string, dock: IndicatorPaneDock, targetIndex: number) => void;
+  onUpdateSetting?: (instanceId: string, key: string, value: number | string | boolean) => void;
+  onOpenSettings?: (instanceId: string) => void;
+}) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const suppressToggleRef = useRef<string | null>(null);
+  const [drag, setDrag] = useState<{
+    key: string;
+    dock: IndicatorPaneDock;
+    targetIndex: number;
+    x: number;
+    y: number;
+  } | null>(null);
+  const groupsByDock = useMemo(() => {
+    const result: Record<IndicatorPaneDock, IndicatorPaneGroup[]> = {
+      top: [],
+      bottom: [],
+      left: [],
+      right: [],
+    };
+    groups.forEach((group, sourceIndex) => {
+      const placement = paneLayout[group.key] ?? { dock: "bottom" as const, order: sourceIndex };
+      result[placement.dock].push(group);
+    });
+    (Object.keys(result) as IndicatorPaneDock[]).forEach((dock) => {
+      result[dock].sort((left, right) =>
+        (paneLayout[left.key]?.order ?? groups.indexOf(left))
+        - (paneLayout[right.key]?.order ?? groups.indexOf(right)));
+    });
+    return result;
+  }, [groups, paneLayout]);
+
+  const surfaceHeight = (surfaceGroups: IndicatorPaneGroup[]) => surfaceGroups.reduce(
+    (total, group) => total + (collapsedPanes[group.key] ? 30 : paneHeights[group.key] ?? 88),
+    0,
+  );
+  const topHeight = surfaceHeight(groupsByDock.top);
+  const bottomHeight = surfaceHeight(groupsByDock.bottom) || height;
+  const availableSideHeight = Math.max(80, chartHeight - topHeight - bottomHeight - bottom - 4);
+  const leftHeight = Math.min(availableSideHeight, surfaceHeight(groupsByDock.left));
+  const rightHeight = Math.min(availableSideHeight, surfaceHeight(groupsByDock.right));
+  const sideWidth = Math.max(150, Math.min(260, width * 0.24));
+
+  const guardedToggle = (key: string) => {
+    if (suppressToggleRef.current === key) {
+      suppressToggleRef.current = null;
+      return;
+    }
+    onTogglePane(key);
+  };
+
+  const targetIndexFor = (dock: IndicatorPaneDock, clientX: number, clientY: number, movingKey: string) => {
+    const rect = rootRef.current?.getBoundingClientRect();
+    if (!rect) return groupsByDock[dock].length;
+    const dockGroups = groupsByDock[dock].filter((group) => group.key !== movingKey);
+    const count = dockGroups.length;
+    if (!count) return 0;
+    const startY = dock === "bottom"
+      ? rect.height - bottom - bottomHeight
+      : dock === "top"
+        ? 0
+        : topHeight;
+    const dockHeight = dock === "bottom"
+      ? bottomHeight
+      : dock === "top"
+        ? topHeight
+        : dock === "left"
+          ? leftHeight
+          : rightHeight;
+    const localY = Math.max(0, Math.min(dockHeight, clientY - rect.top - startY));
+    return Math.max(0, Math.min(count, Math.floor((localY / Math.max(1, dockHeight)) * (count + 1))));
+  };
+
+  const dockForPoint = (clientX: number, clientY: number, currentDock: IndicatorPaneDock) => {
+    const rect = rootRef.current?.getBoundingClientRect();
+    if (!rect) return currentDock;
+    const x = (clientX - rect.left) / Math.max(1, rect.width);
+    const y = (clientY - rect.top) / Math.max(1, rect.height);
+    if (y <= 0.22) return "top" as const;
+    if (x <= 0.18) return "left" as const;
+    if (x >= 0.82) return "right" as const;
+    if (y >= 0.66) return "bottom" as const;
+    return currentDock;
+  };
+
+  const beginPaneDrag = (key: string, event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (event.button !== 0) return;
+    event.stopPropagation();
+    const originClientX = event.clientX;
+    const originClientY = event.clientY;
+    const currentDock = paneLayout[key]?.dock ?? "bottom";
+    let moved = false;
+    const move = (moveEvent: PointerEvent) => {
+      const distance = Math.hypot(moveEvent.clientX - originClientX, moveEvent.clientY - originClientY);
+      if (!moved && distance < 5) return;
+      moved = true;
+      suppressToggleRef.current = key;
+      const dock = dockForPoint(moveEvent.clientX, moveEvent.clientY, currentDock);
+      setDrag({
+        key,
+        dock,
+        targetIndex: targetIndexFor(dock, moveEvent.clientX, moveEvent.clientY, key),
+        x: moveEvent.clientX,
+        y: moveEvent.clientY,
+      });
+    };
+    const finish = (upEvent: PointerEvent) => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", finish);
+      window.removeEventListener("pointercancel", finish);
+      if (moved) {
+        const dock = dockForPoint(upEvent.clientX, upEvent.clientY, currentDock);
+        onMovePane(key, dock, targetIndexFor(dock, upEvent.clientX, upEvent.clientY, key));
+      }
+      setDrag(null);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", finish);
+    window.addEventListener("pointercancel", finish);
+  };
+
+  const renderSurface = (
+    dock: IndicatorPaneDock,
+    surfaceGroups: IndicatorPaneGroup[],
+    surfaceWidth: number,
+    surfacePaneHeight: number,
+    placementStyle: CSSProperties,
+  ) => {
+    if (!surfaceGroups.length || surfacePaneHeight <= 0) return null;
+    const localValueScaleWidth = Math.min(priceScaleWidth, Math.max(44, surfaceWidth * 0.24));
+    const globalPlotWidth = Math.max(1, width - priceScaleWidth);
+    const localPlotWidth = Math.max(1, surfaceWidth - localValueScaleWidth);
+    const surfaceTimeToX = (time: number) => {
+      const globalX = timeToX(time);
+      return globalX === null ? null : (globalX / globalPlotWidth) * localPlotWidth;
+    };
+    return <ChartIndicatorPaneSurface
+      key={dock}
+      groups={surfaceGroups}
+      width={surfaceWidth}
+      priceScaleWidth={localValueScaleWidth}
+      height={surfacePaneHeight}
+      viewportVersion={viewportVersion}
+      paneHeights={paneHeights}
+      collapsedPanes={collapsedPanes}
+      timeToX={surfaceTimeToX}
+      onResizePane={onResizePane}
+      onTogglePane={guardedToggle}
+      onUpdateSetting={onUpdateSetting}
+      onOpenSettings={onOpenSettings}
+      placementStyle={placementStyle}
+      onPaneHandlePointerDown={beginPaneDrag}
+    />;
+  };
+
+  if (!groups.length || width <= 0 || chartHeight <= 0) return null;
+
+  return (
+    <div ref={rootRef} className="pointer-events-none absolute inset-0 z-[9] overflow-hidden" data-testid="indicator-pane-dock-root">
+      {renderSurface("top", groupsByDock.top, width, topHeight, { left: 0, top: 0 })}
+      {renderSurface("bottom", groupsByDock.bottom, width, bottomHeight, { left: 0, bottom })}
+      {renderSurface("left", groupsByDock.left, sideWidth, leftHeight, { left: 0, top: topHeight })}
+      {renderSurface("right", groupsByDock.right, sideWidth, rightHeight, { right: priceScaleWidth, top: topHeight })}
+      {drag ? (
+        <div className="pointer-events-none absolute inset-0 z-[120] bg-background/10" aria-label="Indicator docking targets">
+          {([
+            ["top", "TOP", "left-[22%] right-[22%] top-2 h-[20%]"],
+            ["bottom", "BOTTOM", "bottom-7 left-[22%] right-[22%] h-[22%]"],
+            ["left", "LEFT", "bottom-[24%] left-2 top-[24%] w-[17%]"],
+            ["right", "RIGHT", "bottom-[24%] right-2 top-[24%] w-[17%]"],
+          ] as const).map(([dock, label, position]) => (
+            <div
+              key={dock}
+              className={`absolute ${position} flex items-center justify-center rounded-md border text-[8px] font-semibold tracking-[0.16em] transition ${drag.dock === dock ? "border-primary bg-primary/15 text-primary" : "border-border bg-panel/65 text-muted"}`}
+            >
+              {label}
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export default memo(ChartIndicatorPanes);
 
-export type { IndicatorPaneGroup };
+export type { IndicatorPaneDock, IndicatorPaneGroup, IndicatorPaneLayoutMap, IndicatorPanePlacement };

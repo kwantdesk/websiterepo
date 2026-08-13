@@ -84,7 +84,11 @@ import {
   calculateIndicatorSeries,
   type CalculatedIndicatorSeries,
 } from "@/lib/chartIndicatorEngine";
-import ChartIndicatorPanes, { type IndicatorPaneGroup } from "@/components/ChartIndicatorPanes";
+import ChartIndicatorPanes, {
+  type IndicatorPaneDock,
+  type IndicatorPaneGroup,
+  type IndicatorPaneLayoutMap,
+} from "@/components/ChartIndicatorPanes";
 import DepthOfMarketPanel from "@/components/DepthOfMarketPanel";
 import GexBotFlowStrip from "@/components/GexBotFlowStrip";
 import KwantLoader from "@/components/KwantLoader";
@@ -1807,6 +1811,15 @@ export default function Chart({
   const [sampledIndicatorMarketTrades, setSampledIndicatorMarketTrades] = useState(marketTrades);
   const [indicatorPaneHeights, setIndicatorPaneHeights] = useState<Record<string, number>>({});
   const [collapsedIndicatorPanes, setCollapsedIndicatorPanes] = useState<Record<string, boolean>>({});
+  const [indicatorPaneLayout, setIndicatorPaneLayout] = useState<IndicatorPaneLayoutMap>(() => {
+    if (typeof window === "undefined" || !liveCandleEventKey) return {};
+    try {
+      const stored = window.localStorage.getItem(`kwantdesk:indicator-pane-layout:${liveCandleEventKey}`);
+      return stored ? JSON.parse(stored) as IndicatorPaneLayoutMap : {};
+    } catch {
+      return {};
+    }
+  });
   const overlayRef = useRef<SVGSVGElement>(null);
   const toolbarRef = useRef<HTMLDivElement>(null);
   const latestPointerRef = useRef<{ x: number; y: number } | null>(null);
@@ -2363,18 +2376,44 @@ export default function Chart({
     ])),
     [calculatedIndicatorPanes, defaultIndicatorPaneHeight, indicatorPaneHeights],
   );
+  const orderedIndicatorPanes = useMemo(() => [...calculatedIndicatorPanes].sort((left, right) => {
+    const leftPlacement = indicatorPaneLayout[left.key] ?? {
+      dock: "bottom" as const,
+      order: calculatedIndicatorPanes.indexOf(left),
+    };
+    const rightPlacement = indicatorPaneLayout[right.key] ?? {
+      dock: "bottom" as const,
+      order: calculatedIndicatorPanes.indexOf(right),
+    };
+    if (leftPlacement.dock !== rightPlacement.dock) {
+      return (["top", "left", "right", "bottom"] as IndicatorPaneDock[]).indexOf(leftPlacement.dock)
+        - (["top", "left", "right", "bottom"] as IndicatorPaneDock[]).indexOf(rightPlacement.dock);
+    }
+    return leftPlacement.order - rightPlacement.order;
+  }), [calculatedIndicatorPanes, indicatorPaneLayout]);
+  const paneStackHeight = useCallback((dock: IndicatorPaneDock) => orderedIndicatorPanes.reduce(
+    (total, group, sourceIndex) => {
+      const placement = indicatorPaneLayout[group.key] ?? { dock: "bottom" as const, order: sourceIndex };
+      if (placement.dock !== dock) return total;
+      return total + (collapsedIndicatorPanes[group.key] ? 30 : resolvedIndicatorPaneHeights[group.key]);
+    },
+    0,
+  ), [collapsedIndicatorPanes, indicatorPaneLayout, orderedIndicatorPanes, resolvedIndicatorPaneHeights]);
   const indicatorPaneHeight = useMemo(
-    () => calculatedIndicatorPanes.reduce(
-      (total, group) => total + (
-        collapsedIndicatorPanes[group.key] ? 30 : resolvedIndicatorPaneHeights[group.key]
-      ),
-      0,
-    ),
-    [calculatedIndicatorPanes, collapsedIndicatorPanes, resolvedIndicatorPaneHeights],
+    () => paneStackHeight("bottom"),
+    [paneStackHeight],
   );
+  const topIndicatorPaneHeight = useMemo(() => paneStackHeight("top"), [paneStackHeight]);
   useEffect(() => {
     onIndicatorPaneHeightChange?.(indicatorPaneHeight);
   }, [indicatorPaneHeight, onIndicatorPaneHeightChange]);
+  useEffect(() => {
+    if (typeof window === "undefined" || !liveCandleEventKey) return;
+    window.localStorage.setItem(
+      `kwantdesk:indicator-pane-layout:${liveCandleEventKey}`,
+      JSON.stringify(indicatorPaneLayout),
+    );
+  }, [indicatorPaneLayout, liveCandleEventKey]);
   useEffect(
     () => () => onIndicatorPaneHeightChange?.(0),
     [onIndicatorPaneHeightChange],
@@ -3177,6 +3216,33 @@ export default function Chart({
   const toggleIndicatorPane = useCallback((key: string) => {
     setCollapsedIndicatorPanes((current) => ({ ...current, [key]: !current[key] }));
   }, []);
+  const moveIndicatorPane = useCallback((
+    key: string,
+    dock: IndicatorPaneDock,
+    targetIndex: number,
+  ) => {
+    setIndicatorPaneLayout((current) => {
+      const placements = new Map(calculatedIndicatorPanes.map((group, sourceIndex) => [
+        group.key,
+        current[group.key] ?? { dock: "bottom" as const, order: sourceIndex },
+      ] as const));
+      const targetKeys = calculatedIndicatorPanes
+        .filter((group) => group.key !== key && placements.get(group.key)?.dock === dock)
+        .sort((left, right) =>
+          (placements.get(left.key)?.order ?? 0) - (placements.get(right.key)?.order ?? 0))
+        .map((group) => group.key);
+      targetKeys.splice(Math.max(0, Math.min(targetKeys.length, targetIndex)), 0, key);
+      const next: IndicatorPaneLayoutMap = { ...current };
+      targetKeys.forEach((paneKey, order) => {
+        next[paneKey] = { dock, order };
+      });
+      (Object.keys(next) as string[]).forEach((paneKey) => {
+        if (paneKey !== key && next[paneKey].dock !== dock) return;
+        if (!targetKeys.includes(paneKey)) delete next[paneKey];
+      });
+      return next;
+    });
+  }, [calculatedIndicatorPanes]);
   const indicatorTimeToX = useCallback(
     (time: number) => chartRef.current?.timeScale().timeToCoordinate(time as Time) ?? null,
     [],
@@ -5728,13 +5794,19 @@ export default function Chart({
     const series = candleSeriesRef.current;
     if (!series) return;
     const paneRatio = overlaySize.height > 0 ? indicatorPaneHeight / overlaySize.height : 0;
+    const topPaneRatio = overlaySize.height > 0 ? topIndicatorPaneHeight / overlaySize.height : 0;
+    const desiredTopMargin = topIndicatorPaneHeight > 0 ? Math.min(0.72, 0.04 + topPaneRatio) : 0.08;
+    const desiredBottomMargin = indicatorPaneHeight > 0 ? Math.min(0.72, 0.04 + paneRatio) : 0.08;
+    const marginScale = desiredTopMargin + desiredBottomMargin > 0.9
+      ? 0.9 / (desiredTopMargin + desiredBottomMargin)
+      : 1;
     series.priceScale().applyOptions({
       scaleMargins: {
-        top: 0.08,
-        bottom: indicatorPaneHeight > 0 ? Math.min(0.72, 0.04 + paneRatio) : 0.08,
+        top: desiredTopMargin * marginScale,
+        bottom: desiredBottomMargin * marginScale,
       },
     });
-  }, [chartReadyRevision, indicatorPaneHeight, overlaySize.height]);
+  }, [chartReadyRevision, indicatorPaneHeight, overlaySize.height, topIndicatorPaneHeight]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -6843,17 +6915,20 @@ export default function Chart({
       ) : null}
 
       <ChartIndicatorPanes
-        groups={calculatedIndicatorPanes}
+        groups={orderedIndicatorPanes}
         width={overlaySize.width}
         priceScaleWidth={nativePriceScaleWidth}
         height={indicatorPaneHeight}
+        chartHeight={overlaySize.height}
         bottom={24}
         viewportVersion={viewportVersion}
         paneHeights={resolvedIndicatorPaneHeights}
         collapsedPanes={collapsedIndicatorPanes}
+        paneLayout={indicatorPaneLayout}
         timeToX={indicatorTimeToX}
         onResizePane={resizeIndicatorPane}
         onTogglePane={toggleIndicatorPane}
+        onMovePane={moveIndicatorPane}
         onUpdateSetting={updateIndicatorPaneSetting}
         onOpenSettings={openIndicatorPaneSettings}
       />
