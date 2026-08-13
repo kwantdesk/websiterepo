@@ -13,6 +13,11 @@ test("the right rail exposes Trade below Watchlist and before Live GEX", () => {
   assert.match(workspace, /title: "Trade"/);
 });
 
+test("the top-right trades control matches primary navigation sizing without all-caps text", () => {
+  assert.match(navigation, /className=\{tradesActive \? horizontalItemActive : horizontalItemInactive\}/);
+  assert.match(navigation, /<span className="normal-case">trades<\/span>/);
+});
+
 test("paper orders use the live futures quote and persist through the ledger", () => {
   assert.match(workspace, /placePaperOrder\(/);
   assert.match(workspace, /processPaperQuote\(/);

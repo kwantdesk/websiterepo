@@ -272,7 +272,7 @@ function AppSidebar({
           aria-expanded={tradesActive}
         >
           <BarChart3 className="h-3.5 w-3.5" strokeWidth={1.55} />
-          <span>Trades</span>
+          <span className="normal-case">trades</span>
           {tradesActive ? <ActiveUnderline /> : null}
         </button>
         <button
