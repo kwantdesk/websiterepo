@@ -171,6 +171,7 @@ import {
 import {
   cancelPaperOrder,
   closePaperPosition,
+  dailyRealizedPaperPnl,
   emptyPaperTradingLedger,
   flattenPaperAccount,
   loadPaperTradingLedger,
@@ -7071,7 +7072,8 @@ export default function KwantifyWorkspace({
     : null;
   const selectedPaperOpenPositions = selectedPaperAccountLedger?.positions.filter((position) => position.status === "open") ?? [];
   const selectedPaperWorkingOrders = selectedPaperAccountLedger?.orders.filter((order) => order.status === "working") ?? [];
-  const selectedPaperRecentFills = selectedPaperAccountLedger?.fills.slice(-12).reverse() ?? [];
+  const selectedPaperOpenPnl = selectedPaperSummary?.unrealizedPnl ?? 0;
+  const selectedPaperDailyPnl = dailyRealizedPaperPnl(selectedPaperAccountLedger);
   const orderPanelLockTone =
     activeBrokerHealth.state === "broken"
       ? {
@@ -13807,7 +13809,26 @@ export default function KwantifyWorkspace({
               {orderTicketMessage && <div className={`mt-2 rounded-xl border px-3 py-2 text-[11px] ${orderTicketMessage.tone === "success" ? "border-primary/25 bg-primary/10 text-primary" : "border-danger/25 bg-danger/10 text-danger"}`}>{orderTicketMessage.text}</div>}
               {selectedPaperOpenPositions.length > 0 && <div className="mt-4 space-y-2"><div className="flex items-center justify-between"><div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">Open positions</div><button onClick={handleFlattenPaperAccount} className="rounded-md border border-danger/25 px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.1em] text-danger hover:bg-danger/10">Flatten all</button></div>{selectedPaperOpenPositions.map((position) => <div key={position.id} className="rounded-xl border border-border bg-background/40 p-3"><div className="flex items-center justify-between"><span className="text-[12px] font-semibold">{position.side === "buy" ? "Long" : "Short"} {position.remainingQuantity} {position.symbol}</span><span className={`font-mono text-[11px] ${position.unrealizedPnl >= 0 ? "text-primary" : "text-danger"}`}>{formatDollar(position.unrealizedPnl)}</span></div><div className="mt-1 flex justify-between font-mono text-[10px] text-muted"><span>Entry {formatPrice(position.entryPrice, position.symbol)}</span><span>Mark {formatPrice(position.markPrice, position.symbol)}</span></div><div className="mt-1 flex justify-between font-mono text-[9px] text-muted"><span>{position.stopLoss == null ? "SL not set" : `SL ${formatPrice(position.stopLoss, position.symbol)}`}</span><span>{position.takeProfits.filter((target) => target.quantity > target.filledQuantity).length} active TP</span></div><div className="mt-2 flex gap-2"><button onClick={() => handleFlattenPaperPosition(position)} className="flex flex-1 items-center justify-center gap-1 rounded-lg border border-danger/25 px-2 py-1.5 text-[10px] font-semibold text-danger hover:bg-danger/10"><X className="h-3 w-3" /> Close position</button></div></div>)}</div>}
               {selectedPaperWorkingOrders.length > 0 && <div className="mt-4 space-y-2"><div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">Working orders</div>{selectedPaperWorkingOrders.map((order) => <div key={order.id} className="flex items-center justify-between rounded-xl border border-border bg-background/40 p-3"><div><div className="text-[11px] font-semibold">{order.side.toUpperCase()} {order.quantity} {order.symbol}</div><div className="font-mono text-[10px] text-muted">{order.type.toUpperCase()} {order.price ? formatPrice(order.price, order.symbol) : "MARKET"}</div></div><button onClick={() => handleCancelPaperOrder(order.accountId, order.id)} className="rounded-lg border border-border px-2 py-1 text-[10px] text-muted hover:text-danger">Cancel</button></div>)}</div>}
-              {selectedPaperRecentFills.length > 0 && <div className="mt-4 space-y-2"><div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">Recent fills</div>{selectedPaperRecentFills.slice(0, 5).map((fill) => <div key={fill.id} className="flex items-center justify-between text-[10px]"><span>{fill.side.toUpperCase()} {fill.quantity} {fill.symbol}</span><span className="font-mono text-muted">{formatPrice(fill.price, fill.symbol)}</span></div>)}</div>}
+              <div className="mt-4 overflow-hidden rounded-[2px] border border-border bg-background/40">
+                <div className="flex items-center justify-between gap-3 border-b border-border px-3 py-3">
+                  <div className="min-w-0">
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-foreground">Open P&amp;L</div>
+                    <div className="mt-0.5 text-[9px] text-muted">Live marked positions</div>
+                  </div>
+                  <span className={`font-mono text-[13px] font-semibold tabular-nums ${selectedPaperOpenPnl > 0 ? "text-primary" : selectedPaperOpenPnl < 0 ? "text-danger" : "text-foreground"}`}>
+                    {selectedPaperOpenPnl > 0 ? "+" : selectedPaperOpenPnl < 0 ? "-" : ""}{formatDollar(selectedPaperOpenPnl)}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-3 px-3 py-3">
+                  <div className="min-w-0">
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-foreground">Daily P&amp;L</div>
+                    <div className="mt-0.5 text-[9px] text-muted">Closed today · New York</div>
+                  </div>
+                  <span className={`font-mono text-[13px] font-semibold tabular-nums ${selectedPaperDailyPnl > 0 ? "text-primary" : selectedPaperDailyPnl < 0 ? "text-danger" : "text-foreground"}`}>
+                    {selectedPaperDailyPnl > 0 ? "+" : selectedPaperDailyPnl < 0 ? "-" : ""}{formatDollar(selectedPaperDailyPnl)}
+                  </span>
+                </div>
+              </div>
               {!tradingUnlocked && (
                 <button onClick={() => setShowBrokerModal(true)} className="mt-2 w-full rounded-xl border border-border bg-surface px-4 py-2.5 text-[13px] text-muted transition-colors hover:text-foreground">
                   Link Your Own Broker

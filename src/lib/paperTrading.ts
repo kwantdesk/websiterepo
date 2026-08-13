@@ -89,6 +89,36 @@ export type PaperTradingLedger = {
   accounts: Record<string, PaperAccountLedger>;
 };
 
+const PAPER_PNL_TIME_ZONE = "America/New_York";
+const paperPnlDayFormatter = new Intl.DateTimeFormat("en-US", {
+  timeZone: PAPER_PNL_TIME_ZONE,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+
+function paperPnlDayKey(timestamp: number): string {
+  if (!Number.isFinite(timestamp)) return "";
+  const parts = paperPnlDayFormatter.formatToParts(new Date(timestamp));
+  const year = parts.find((part) => part.type === "year")?.value;
+  const month = parts.find((part) => part.type === "month")?.value;
+  const day = parts.find((part) => part.type === "day")?.value;
+  return year && month && day ? `${year}-${month}-${day}` : "";
+}
+
+export function dailyRealizedPaperPnl(
+  account: PaperAccountLedger | null | undefined,
+  timestamp = Date.now(),
+): number {
+  if (!account) return 0;
+  const activeDay = paperPnlDayKey(timestamp);
+  if (!activeDay) return 0;
+  return account.fills.reduce((total, fill) => {
+    if (fill.role === "entry" || paperPnlDayKey(fill.timestamp) !== activeDay) return total;
+    return total + (Number.isFinite(fill.realizedPnl) ? fill.realizedPnl : 0);
+  }, 0);
+}
+
 export type PaperOrderDraft = {
   accountId: string;
   symbol: string;

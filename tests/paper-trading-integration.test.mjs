@@ -54,6 +54,17 @@ test("execution accounting remains tick accurate and gap-aware", () => {
   assert.match(workspace, /1-point value/);
 });
 
+test("trade panel reports live open P&L and today's realized P&L instead of recent fills", () => {
+  assert.match(engine, /export function dailyRealizedPaperPnl/);
+  assert.match(engine, /fill\.role === "entry"/);
+  assert.match(engine, /paperPnlDayKey\(fill\.timestamp\)/);
+  assert.match(workspace, /selectedPaperOpenPnl = selectedPaperSummary\?\.unrealizedPnl/);
+  assert.match(workspace, /selectedPaperDailyPnl = dailyRealizedPaperPnl/);
+  assert.match(workspace, /Open P&amp;L/);
+  assert.match(workspace, /Daily P&amp;L/);
+  assert.doesNotMatch(workspace, /Recent fills/);
+});
+
 test("Accounts is a top-level destination after Backtesting and creates CME demo accounts", () => {
   assert.match(navigation, /key: "backtesting"[\s\S]{0,180}key: "accounts"/);
   assert.match(accounts, /orientation="horizontal"/);
