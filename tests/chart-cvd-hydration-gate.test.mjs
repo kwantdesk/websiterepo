@@ -24,3 +24,16 @@ test("verified Rithmic seed and live buckets release CVD if the archive backfill
   assert.match(workspace, /onTrades:[\s\S]*?hasUsableOrderFlowHistory\(nextCandles\)[\s\S]*?setOrderFlowHistoryReady\(true\)/);
   assert.match(workspace, /enrichCandlesWithInstitutionalTrades\([\s\S]*?records/);
 });
+
+test("CVD and Volume repaint immediately with hydrated candle history", () => {
+  assert.match(chart, /const historyShapeChanged = \([\s\S]*?previousCandles\.length !== candles\.length/);
+  assert.match(chart, /const orderFlowHydrated = \([\s\S]*?orderFlowHistoryReady/);
+  assert.match(chart, /if \(historyShapeChanged \|\| orderFlowHydrated\)[\s\S]*?setSampledIndicatorCandles\(candles\)[\s\S]*?setSampledIndicatorMarketTrades\(marketTrades\)/);
+});
+
+test("an early order-flow response is reapplied when base candles arrive and survive tail repair", () => {
+  assert.match(workspace, /latestOrderFlowCandlesRef\.current = orderFlowCandles;[\s\S]*?if \(!latestCandlesRef\.current\.length\) return/);
+  assert.match(workspace, /baseCandles = applyAvailableOrderFlowHistory\([\s\S]*?latestOrderFlowCandlesRef\.current/);
+  assert.match(workspace, /writeChartHistoryCache\(pane\.symbol, pane\.timeframe, cachedCandles\)/);
+  assert.match(workspace, /repaired = needsOrderFlowHistory[\s\S]*?applyAvailableOrderFlowHistory\([\s\S]*?latestOrderFlowCandlesRef\.current/);
+});

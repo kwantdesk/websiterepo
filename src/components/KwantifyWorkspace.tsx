@@ -2015,6 +2015,22 @@ function fetchWorkspaceOrderFlow(
   return request;
 }
 
+function applyAvailableOrderFlowHistory(
+  candles: Candle[],
+  timeframe: string,
+  flowCandles: Candle[],
+  executionTape: InstitutionalTrade[],
+) {
+  if (!candles.length) return candles;
+  return isEventBasedChartInterval(timeframe)
+    ? executionTape.length
+      ? enrichCandlesWithInstitutionalTrades(candles, executionTape, candles.length)
+      : candles
+    : flowCandles.length
+      ? enrichCandlesWithInstitutionalCandleFlow(candles, flowCandles)
+      : candles;
+}
+
 function normalizeExecutionTimestamp(value: unknown) {
   let timestamp = Number(value);
   if (!Number.isFinite(timestamp)) return Number.NaN;
@@ -3804,21 +3820,20 @@ function WorkspaceChartPane({
 
         const orderFlowCandles = sanitizeCandles(result.candles, pane.symbol);
         latestOrderFlowCandlesRef.current = orderFlowCandles;
+        // Keep the completed response even if base OHLC is still opening. The
+        // history loader below reapplies this snapshot when its candles land;
+        // previously this early return permanently lost CVD hydration.
         if (!latestCandlesRef.current.length) return;
         // Preserve the authoritative chart OHLC. Time bars receive the
         // gateway's aggregated bid/ask fields; event bars are enriched from
         // the exact execution tape because a clock bucket cannot replace a
         // range/volume/Renko bar without corrupting its geometry.
-        const mergedCandles = isEventBasedChartInterval(pane.timeframe)
-          ? enrichCandlesWithInstitutionalTrades(
-              latestCandlesRef.current,
-              mergedTape,
-              latestCandlesRef.current.length,
-            )
-          : enrichCandlesWithInstitutionalCandleFlow(
-              latestCandlesRef.current,
-              orderFlowCandles,
-            );
+        const mergedCandles = applyAvailableOrderFlowHistory(
+          latestCandlesRef.current,
+          pane.timeframe,
+          orderFlowCandles,
+          mergedTape,
+        );
         latestCandlesRef.current = mergedCandles;
         setOrderFlowHistoryReady(hasUsableOrderFlowHistory(mergedCandles));
         historyHydratedRef.current = !cmeChartTailNeedsReconciliation(mergedCandles, pane.timeframe);
@@ -3888,6 +3903,14 @@ function WorkspaceChartPane({
             liveTailStartTimestampRef.current,
           )
         : cachedWithObserved;
+      cachedCandles = needsOrderFlowHistory
+        ? applyAvailableOrderFlowHistory(
+            cachedCandles,
+            pane.timeframe,
+            latestOrderFlowCandlesRef.current,
+            cachedMarketTrades,
+          )
+        : cachedCandles;
       const needsFiveDayBackfill = pane.broker === "Databento";
       const cachedTailIsFresh = Boolean(
         cached?.updatedAt
@@ -3936,13 +3959,19 @@ function WorkspaceChartPane({
             requestController.signal,
           );
           if (cancelled) return;
-          const baseCandles = trimChartHistoryForPeriod(
+          let baseCandles = trimChartHistoryForPeriod(
             trimCandlesAfterActiveBucket(
               sanitizeCandles(baseHistory, pane.symbol),
               pane.timeframe,
             ),
             period,
             requestedFrom,
+          );
+          baseCandles = applyAvailableOrderFlowHistory(
+            baseCandles,
+            pane.timeframe,
+            latestOrderFlowCandlesRef.current,
+            latestMarketTradesRef.current,
           );
           if (baseCandles.length) {
             cachedCandles = mergeHistoricalWithLiveTail(
@@ -3954,8 +3983,16 @@ function WorkspaceChartPane({
             latestCandlesRef.current = cachedCandles;
             historyHydratedRef.current = !cmeChartTailNeedsReconciliation(cachedCandles, pane.timeframe);
             setCandles(cachedCandles);
+            if (hasUsableOrderFlowHistory(cachedCandles)) {
+              setOrderFlowHistoryReady(true);
+            }
             setLoading(false);
             setError(null);
+            // If the independent Rithmic history request won the race, this is
+            // already a complete OHLC + flow snapshot. Persist that exact
+            // first paint so the next refresh restores price, Volume and CVD
+            // together without another network round trip.
+            void writeChartHistoryCache(pane.symbol, pane.timeframe, cachedCandles);
           }
         } catch (baseError) {
           if (baseError instanceof DOMException && baseError.name === "AbortError") return;
@@ -4087,7 +4124,7 @@ function WorkspaceChartPane({
             : Promise.resolve([] as Candle[]),
         ]);
         if (cancelled) return;
-        const repaired = trimChartHistoryForPeriod(
+        let repaired = trimChartHistoryForPeriod(
           trimCandlesAfterActiveBucket(
             sanitizeCandles(
               mergeChartHistory(
@@ -4101,11 +4138,22 @@ function WorkspaceChartPane({
           period,
           requestedFrom,
         );
+        repaired = needsOrderFlowHistory
+          ? applyAvailableOrderFlowHistory(
+              repaired,
+              pane.timeframe,
+              latestOrderFlowCandlesRef.current,
+              latestMarketTradesRef.current,
+            )
+          : repaired;
         const stillBroken = cmeChartTailNeedsReconciliation(repaired, pane.timeframe);
         latestCandlesRef.current = repaired;
         historyHydratedRef.current = !stillBroken;
         if (!stillBroken) {
           setCandles(repaired);
+          if (hasUsableOrderFlowHistory(repaired)) {
+            setOrderFlowHistoryReady(true);
+          }
           setLoading(false);
           setError(null);
           void writeChartHistoryCache(pane.symbol, pane.timeframe, repaired);

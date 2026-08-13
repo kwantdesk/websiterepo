@@ -1782,6 +1782,7 @@ export default function Chart({
   const chartVisualReadyTokenRef = useRef(0);
   const pendingIndicatorCandlesRef = useRef(candles);
   const pendingIndicatorMarketTradesRef = useRef(marketTrades);
+  const sampledOrderFlowHistoryReadyRef = useRef(orderFlowHistoryReady);
   const updateIndicatorSettingRef = useRef(onUpdateIndicatorSetting);
   const openIndicatorSettingsRef = useRef(onOpenIndicatorSettings);
 
@@ -1874,8 +1875,31 @@ export default function Chart({
   }, [onOpenIndicatorSettings, onUpdateIndicatorSetting]);
 
   useEffect(() => {
+    const previousCandles = pendingIndicatorCandlesRef.current;
+    const historyShapeChanged = (
+      previousCandles.length !== candles.length
+      || previousCandles[0]?.timestamp !== candles[0]?.timestamp
+    );
+    const orderFlowHydrated = (
+      orderFlowHistoryReady
+      && !sampledOrderFlowHistoryReadyRef.current
+    );
     pendingIndicatorCandlesRef.current = candles;
     pendingIndicatorMarketTradesRef.current = marketTrades;
+    sampledOrderFlowHistoryReadyRef.current = orderFlowHistoryReady;
+    // Historical hydration is not a live-tick update. Paint Volume/CVD from
+    // the same completed candle snapshot immediately, otherwise the price
+    // chart appears first and CVD remains as its old flat/live-only sample for
+    // another timer cycle after refresh.
+    if (historyShapeChanged || orderFlowHydrated) {
+      if (indicatorSampleTimerRef.current !== null) {
+        window.clearTimeout(indicatorSampleTimerRef.current);
+        indicatorSampleTimerRef.current = null;
+      }
+      setSampledIndicatorCandles(candles);
+      setSampledIndicatorMarketTrades(marketTrades);
+      return;
+    }
     if (indicatorSampleTimerRef.current !== null) return;
     indicatorSampleTimerRef.current = window.setTimeout(() => {
       indicatorSampleTimerRef.current = null;
@@ -1885,7 +1909,7 @@ export default function Chart({
     // studies only need a smooth sub-second sample; recalculating every 120 ms
     // across a growing execution tape eventually monopolises navigation.
     }, 400);
-  }, [candles, marketTrades]);
+  }, [candles, marketTrades, orderFlowHistoryReady]);
 
   useEffect(() => () => {
     if (indicatorSampleTimerRef.current !== null) {
