@@ -254,7 +254,7 @@ html[data-theme-updating="true"] *::after {
   --gex-live-fluor: color-mix(in srgb, var(--primary) 84%, white 16%);
   isolation: isolate;
   border: 2px solid var(--gex-live-fluor);
-  border-radius: 12px;
+  border-radius: 0;
   outline: 1px solid color-mix(in srgb, var(--gex-live-fluor) 62%, transparent);
   outline-offset: 2px;
   background-image: linear-gradient(
@@ -273,7 +273,7 @@ html[data-theme-updating="true"] *::after {
   align-items: center;
   justify-content: center;
   border: 1px solid var(--gex-live-fluor);
-  border-radius: 999px;
+  border-radius: 0;
   padding: 2px 7px;
   color: color-mix(in srgb, var(--foreground) 82%, var(--gex-live-fluor) 18%);
   background: color-mix(in srgb, var(--background) 90%, var(--gex-live-fluor) 10%);

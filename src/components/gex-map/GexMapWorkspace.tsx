@@ -449,7 +449,7 @@ function ExposurePanel({
                   title={`${greek.short} ${formatCompact(row.net)} · Call ${formatCompact(row.call)} · Put ${formatCompact(row.put)}`}
                 >
                   <span className={`relative flex items-center font-semibold ${nearSpot ? "text-foreground" : "text-foreground/90"}`}>
-                    {nearSpot ? <span className="gex-current-price-dash absolute -left-2 h-6 w-1.5 rounded-r-md" /> : null}
+                    {nearSpot ? <span className="gex-current-price-dash absolute -left-2 h-6 w-1.5" /> : null}
                     <span className={nearSpot ? "gex-current-price-pill" : undefined}>
                       {row.strike.toLocaleString("en-US", { maximumFractionDigits: 2 })}
                     </span>

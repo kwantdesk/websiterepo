@@ -3338,6 +3338,7 @@ function mergeNativeGammaTransitions(
 function WorkspaceChartPane({
   pane,
   active,
+  embedded = false,
   period,
   settings,
   trades,
@@ -3378,6 +3379,7 @@ function WorkspaceChartPane({
 }: {
   pane: WorkspacePane;
   active: boolean;
+  embedded?: boolean;
   period: string;
   settings: ChartSettings;
   trades?: (Trade & { markerVisible?: boolean })[];
@@ -5348,9 +5350,11 @@ function WorkspaceChartPane({
   return (
     <div
       onMouseDown={onActivate}
-      className={`relative h-full overflow-hidden rounded-2xl border bg-panel ${active ? "border-primary/50 shadow-[0_0_0_1px_rgba(236,72,153,0.28)]" : "border-border"}`}
+      className={`relative h-full overflow-hidden bg-panel ${embedded
+        ? active ? "shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--primary)_35%,transparent)]" : ""
+        : `rounded-2xl border ${active ? "border-primary/50 shadow-[0_0_0_1px_rgba(236,72,153,0.28)]" : "border-border"}`}`}
     >
-      {(onDetach || onClose) && (
+      {!embedded && (onDetach || onClose) && (
         <div className="absolute right-2 top-2 z-[70] flex items-center gap-1">
           {onDetach && (
             <button
@@ -11439,10 +11443,11 @@ export default function KwantifyWorkspace({
       );
     }
     const gameplanRoot = gameplanChartRootForInstrument(pane.symbol);
-    return (
+    const chartPane = (
       <WorkspaceChartPane
         pane={pane}
         active={activePaneId === pane.id}
+        embedded
         period={pane.period}
         settings={chartSettings}
         trades={activePaneId === pane.id ? chartTrades : []}
@@ -11458,10 +11463,6 @@ export default function KwantifyWorkspace({
           updatePaneIndicatorSetting(pane.id, instanceId, key, value)}
         onSelectPeriod={(period) => handleChartPeriod(pane.id, period)}
         onSelectTimeframe={(timeframe) => selectWorkspacePaneTimeframe(pane.id, timeframe)}
-        onDetach={floating ? undefined : () => detachWorkspacePane(pane.id)}
-        detachDisabled={workspaceLocked}
-        onClose={floating ? undefined : () => closeWorkspacePane(pane.id)}
-        closeDisabled={workspaceLocked || workspacePanes.length <= 1}
         chartDragEnabled={!workspaceLocked && visibleWorkspacePaneIds.length > 1}
         gammaLevelsEnabled={gammaLevelsEnabled}
         onToggleGammaLevels={() => setGammaLevelsEnabled((current) => !current)}
@@ -11506,6 +11507,49 @@ export default function KwantifyWorkspace({
           setWorkspaceDropTargetPaneId(null);
         }}
       />
+    );
+    if (floating) return chartPane;
+    return (
+      <div className="relative flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-border bg-panel">
+        <div className="flex h-9 shrink-0 items-center justify-between border-b border-border bg-panel/95 px-2.5">
+          <button
+            type="button"
+            onClick={() => setWorkspacePanelPickerPaneId(pane.id)}
+            className="flex h-7 min-w-0 items-center gap-2 rounded-lg px-2 text-[9px] font-semibold text-foreground hover:bg-surface"
+            title="Change workspace panel"
+          >
+            <BarChart3 className="h-3.5 w-3.5 shrink-0 text-primary" />
+            <span className="truncate">CHARTS</span>
+            <span className="hidden truncate font-mono text-[8px] font-normal text-muted sm:inline">
+              {displayCmeSymbol(pane.symbol)} · {formatChartInterval(pane.timeframe)}
+            </span>
+            <ChevronDown className="h-3 w-3 shrink-0 text-muted" />
+          </button>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => detachWorkspacePane(pane.id)}
+              disabled={workspaceLocked}
+              className="flex h-7 w-7 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-primary disabled:opacity-30"
+              title={workspaceLocked ? "Unlock the workspace to detach this chart" : "Detach into a floating window"}
+              aria-label="Detach chart"
+            >
+              <PictureInPicture2 className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => closeWorkspacePane(pane.id)}
+              disabled={workspaceLocked || workspacePanes.length <= 1}
+              className="flex h-7 w-7 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-danger disabled:opacity-30"
+              title={workspacePanes.length <= 1 ? "A workspace must keep one panel" : "Close chart"}
+              aria-label="Close chart"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </div>
+        <div className="relative min-h-0 flex-1 overflow-hidden">{chartPane}</div>
+      </div>
     );
   }
 

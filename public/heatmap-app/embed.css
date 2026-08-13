@@ -7,6 +7,54 @@
 }
 
 @font-face {
+  font-family: "Rajdhani";
+  src: url("fonts/rajdhani-400.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Rajdhani";
+  src: url("fonts/rajdhani-500.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Rajdhani";
+  src: url("fonts/rajdhani-600.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Rajdhani";
+  src: url("fonts/rajdhani-700.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("fonts/jetbrains-mono-400.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("fonts/jetbrains-mono-600.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+}
+
+@font-face {
   font-family: "Inter";
   src: url("fonts/inter-500.woff2") format("woff2");
   font-style: normal;
@@ -41,7 +89,12 @@ html[data-embed="true"] body,
 html[data-embed="true"] button,
 html[data-embed="true"] input,
 html[data-embed="true"] select {
-  font-family: "Inter", system-ui, -apple-system, sans-serif;
+  font-family: "Rajdhani", "Inter", system-ui, -apple-system, sans-serif;
+}
+
+html[data-embed="true"] {
+  --font-ui: "Rajdhani", "Inter", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
 }
 
 html[data-embed="true"] * {
@@ -623,6 +676,70 @@ html[data-embed="true"] .modal {
   border-radius: 16px;
   background: var(--ui-panel);
   box-shadow: 0 24px 70px rgba(0, 0, 0, .5);
+}
+
+/* Match the authenticated KwantDesk cockpit instead of retaining the legacy
+   standalone heatmap controls. The embed cannot inherit fonts through its
+   iframe, so the same Rajdhani/JetBrains pair is loaded locally above. */
+html[data-embed="true"] .app-bar,
+html[data-embed="true"] .top-deck,
+html[data-embed="true"] .tool-rail,
+html[data-embed="true"] .inspector,
+html[data-embed="true"] .inspector-panel,
+html[data-embed="true"] .indicator-settings,
+html[data-embed="true"] .cvd-panel,
+html[data-embed="true"] .cvd-panel header,
+html[data-embed="true"] .cvd-panel header strong,
+html[data-embed="true"] .cvd-panel header strong small,
+html[data-embed="true"] .cvd-panel header i,
+html[data-embed="true"] .kwant-select,
+html[data-embed="true"] .kwant-select-trigger,
+html[data-embed="true"] .kwant-select-group,
+html[data-embed="true"] .kwant-select-option {
+  font-family: var(--font-ui);
+}
+
+html[data-embed="true"] .rail-button,
+html[data-embed="true"] .toolbar-panel-shortcuts,
+html[data-embed="true"] .toolbar-panel-shortcuts button,
+html[data-embed="true"] .header-panel-shortcuts,
+html[data-embed="true"] .heat-control,
+html[data-embed="true"] .heat-palette,
+html[data-embed="true"] .heat-palette span,
+html[data-embed="true"] .chart-corner-label,
+html[data-embed="true"] .loading-strip,
+html[data-embed="true"] .current-price-tag,
+html[data-embed="true"] .chart-tooltip,
+html[data-embed="true"] .measurement-label,
+html[data-embed="true"] .inspector,
+html[data-embed="true"] .panel-collapse,
+html[data-embed="true"] .kwant-select-trigger,
+html[data-embed="true"] .kwant-select-menu,
+html[data-embed="true"] .kwant-select-option,
+html[data-embed="true"] .metric-grid span,
+html[data-embed="true"] #signalsPanel article,
+html[data-embed="true"] .indicator-settings fieldset,
+html[data-embed="true"] .inspector select,
+html[data-embed="true"] .inspector input[type="number"],
+html[data-embed="true"] #resetSettings,
+html[data-embed="true"] .tape-section button,
+html[data-embed="true"] .modal {
+  border-radius: 2px;
+}
+
+html[data-embed="true"] .toolbar-panel-shortcuts button,
+html[data-embed="true"] .kwant-select-trigger,
+html[data-embed="true"] .kwant-select-option,
+html[data-embed="true"] .inspector button,
+html[data-embed="true"] .inspector label,
+html[data-embed="true"] .inspector legend {
+  font-family: var(--font-ui);
+  font-weight: 600;
+  letter-spacing: .035em;
+}
+
+html[data-embed="true"] .current-price-tag {
+  border-radius: 0;
 }
 
 @media (max-width: 620px) {
