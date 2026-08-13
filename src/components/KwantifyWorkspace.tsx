@@ -11497,6 +11497,13 @@ export default function KwantifyWorkspace({
               ) : null}
             </div>
           </div>
+          <TimeZoneSelect
+            value={chartSettings.timezone}
+            onChange={changeChartTimeZone}
+            menuLabel="Chart timezone"
+            compact
+            className="ml-1 max-w-[36px] shrink-0 px-2 sm:max-w-[190px] sm:px-2.5 [&>span]:hidden sm:[&>span]:block [&>svg:last-child]:hidden sm:[&>svg:last-child]:block"
+          />
           </div>
           <div className="col-start-2 row-start-2 flex min-w-0 items-center justify-end gap-2 px-3">
           <ChartIndicatorsControl
@@ -11560,13 +11567,6 @@ export default function KwantifyWorkspace({
             timeframe={formatChartInterval(activeWorkspacePane.timeframe)}
             indicators={paneIndicators[activePaneId] ?? []}
             onChange={(next) => setIndicatorsForPane(activePaneId, next)}
-          />
-          <TimeZoneSelect
-            value={chartSettings.timezone}
-            onChange={changeChartTimeZone}
-            menuLabel="Chart timezone"
-            compact
-            className="max-w-[36px] px-2 sm:max-w-[190px] sm:px-2.5 [&>span]:hidden sm:[&>span]:block [&>svg:last-child]:hidden sm:[&>svg:last-child]:block"
           />
           <button
             type="button"
