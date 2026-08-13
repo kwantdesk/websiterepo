@@ -11471,8 +11471,8 @@ export default function KwantifyWorkspace({
             )}
           </div>
           </div>
-          <div className="col-span-2 col-start-1 row-start-1 flex min-w-0 items-center justify-end gap-1 overflow-x-auto border-b border-border/70 px-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            <div className="flex shrink-0 items-center gap-1 rounded-xl border border-border bg-surface/70 p-1">
+          <div className="col-span-2 col-start-1 row-start-1 grid min-w-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-1 overflow-x-auto border-b border-border/70 px-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <div className="col-start-2 flex shrink-0 items-center gap-1 rounded-xl border border-border bg-surface/70 p-1">
             {[
               {
                 layout: "single" as Exclude<WorkspaceLayout, "custom">,
@@ -11741,7 +11741,7 @@ export default function KwantifyWorkspace({
             onChange={changeChartTimeZone}
             menuLabel="Chart timezone"
             compact
-            className="ml-1 max-w-[36px] shrink-0 px-2 sm:max-w-[190px] sm:px-2.5 [&>span]:hidden sm:[&>span]:block [&>svg:last-child]:hidden sm:[&>svg:last-child]:block"
+            className="col-start-3 ml-1 max-w-[36px] shrink-0 justify-self-end px-2 sm:max-w-[190px] sm:px-2.5 [&>span]:hidden sm:[&>span]:block [&>svg:last-child]:hidden sm:[&>svg:last-child]:block"
           />
           </div>
           <div className="col-start-2 row-start-2 flex min-w-0 items-center justify-end gap-2 px-3">
