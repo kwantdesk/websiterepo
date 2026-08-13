@@ -548,6 +548,7 @@ type StrategyItem = {
 };
 
 type WorkspaceLayout = "single" | "split-vertical" | "split-horizontal" | "quad" | "custom";
+type WorkspacePanelKind = "charts" | "zyon" | "gameplan" | "gamma" | "gexmap" | "liqmap" | "news" | "socials" | "journal";
 type WorkspacePane = {
   id: string;
   symbol: string;
@@ -555,6 +556,7 @@ type WorkspacePane = {
   timeframe: string;
   period: string;
   watchlistKey: string;
+  content: WorkspacePanelKind | null;
 };
 type WorkspaceLayoutNode =
   | { type: "pane"; paneId: string }
@@ -708,11 +710,32 @@ const OANDA_GRANULARITY_MAP: Record<string, string> = {
   "1h": "H1", "2h": "H2", "4h": "H4", "1D": "D", "1W": "W", "1M": "M",
 };
 const DEFAULT_WORKSPACE_PANES: WorkspacePane[] = [
-  { id: "pane-1", symbol: "ES.v.0", broker: "Databento", timeframe: "5m", period: "5D", watchlistKey: makeWatchlistKey("ES.v.0", "Databento") },
-  { id: "pane-2", symbol: "NQ.v.0", broker: "Databento", timeframe: "5m", period: "5D", watchlistKey: makeWatchlistKey("NQ.v.0", "Databento") },
-  { id: "pane-3", symbol: "CL.v.0", broker: "Databento", timeframe: "5m", period: "5D", watchlistKey: makeWatchlistKey("CL.v.0", "Databento") },
-  { id: "pane-4", symbol: "GC.v.0", broker: "Databento", timeframe: "5m", period: "5D", watchlistKey: makeWatchlistKey("GC.v.0", "Databento") },
+  { id: "pane-1", symbol: "ES.v.0", broker: "Databento", timeframe: "5m", period: "5D", watchlistKey: makeWatchlistKey("ES.v.0", "Databento"), content: "charts" },
+  { id: "pane-2", symbol: "NQ.v.0", broker: "Databento", timeframe: "5m", period: "5D", watchlistKey: makeWatchlistKey("NQ.v.0", "Databento"), content: "charts" },
+  { id: "pane-3", symbol: "CL.v.0", broker: "Databento", timeframe: "5m", period: "5D", watchlistKey: makeWatchlistKey("CL.v.0", "Databento"), content: "charts" },
+  { id: "pane-4", symbol: "GC.v.0", broker: "Databento", timeframe: "5m", period: "5D", watchlistKey: makeWatchlistKey("GC.v.0", "Databento"), content: "charts" },
 ];
+
+const WORKSPACE_PANEL_OPTIONS: Array<{
+  id: WorkspacePanelKind;
+  label: string;
+  description: string;
+  icon: typeof BarChart3;
+}> = [
+  { id: "charts", label: "Charts", description: "Live chart and indicators", icon: BarChart3 },
+  { id: "zyon", label: "ZYON", description: "AI quant analyst", icon: Sparkles },
+  { id: "gameplan", label: "Gameplan", description: "Live session plan", icon: FileText },
+  { id: "gamma", label: "Gamma", description: "Options positioning", icon: Zap },
+  { id: "gexmap", label: "GEX Map", description: "Strike exposure map", icon: Layers3 },
+  { id: "liqmap", label: "Liquidity Map", description: "Live Level 3 liquidity", icon: List },
+  { id: "news", label: "News", description: "Calendar and macro", icon: Bell },
+  { id: "socials", label: "Socials", description: "Feed, desks and profiles", icon: UsersRound },
+  { id: "journal", label: "Journal", description: "Trades and analysis", icon: FileText },
+];
+
+function isWorkspacePanelKind(value: unknown): value is WorkspacePanelKind {
+  return WORKSPACE_PANEL_OPTIONS.some((option) => option.id === value);
+}
 
 function displayCmeSymbol(symbol: string) {
   return symbol.replace(/\.[vnc]\.\d+$/i, "");
@@ -1047,6 +1070,8 @@ function normalizeWorkspacePane(pane: Partial<WorkspacePane>, fallback: Workspac
     timeframe,
     period: pane.period ?? "5D",
     watchlistKey: pane.watchlistKey ?? makeWatchlistKey(pane.symbol ?? fallback.symbol, pane.broker ?? fallback.broker),
+    // Existing saved workspaces predate mixed panels and are chart panes.
+    content: pane.content === null || isWorkspacePanelKind(pane.content) ? pane.content : "charts",
   };
 }
 
@@ -5710,6 +5735,7 @@ export default function KwantifyWorkspace({
     if (typeof window === "undefined") return DEFAULT_WORKSPACE_PANES[0].id;
     return window.localStorage.getItem("olisa-chart-workspace-active-pane") ?? DEFAULT_WORKSPACE_PANES[0].id;
   });
+  const [workspacePanelPickerPaneId, setWorkspacePanelPickerPaneId] = useState<string | null>(null);
   const [draggedWorkspacePaneId, setDraggedWorkspacePaneId] = useState<string | null>(null);
   const [workspaceDropTargetPaneId, setWorkspaceDropTargetPaneId] = useState<string | null>(null);
   const [watchlist, setWatchlist] = useState<WatchlistItem[]>([
@@ -9675,13 +9701,20 @@ export default function KwantifyWorkspace({
         id: `pane-${Date.now()}-${nextPanes.length + 1}`,
       });
     }
+    const currentlyVisible = new Set(collectWorkspacePaneIds(workspaceTree));
     const orderedPanes = [
       activeWorkspacePane,
       ...nextPanes.filter((pane) => pane.id !== activeWorkspacePane.id),
-    ];
-    setWorkspacePanes(nextPanes);
+    ].map((pane, index) => (
+      index === 0 || currentlyVisible.has(pane.id)
+        ? pane
+        : { ...pane, content: null }
+    ));
+    setWorkspacePanes(orderedPanes);
     setWorkspaceLayout(layout);
     setWorkspaceTree(createWorkspaceLayoutTree(layout, orderedPanes));
+    const firstEmptyPane = orderedPanes.slice(0, requiredPaneCount).find((pane) => pane.content === null);
+    setWorkspacePanelPickerPaneId(firstEmptyPane?.id ?? null);
   };
 
   const addChartToWorkspace = () => {
@@ -9703,20 +9736,22 @@ export default function KwantifyWorkspace({
       ...activeWorkspacePane,
       id: nextPaneId,
       period: "1W",
+      content: null,
     };
     setWorkspacePanes((current) => [...current, nextPane]);
     setWorkspaceTree((current) =>
       insertWorkspacePane(current, activePaneId, nextPaneId, splitAxis, `split-${crypto.randomUUID()}`));
     setWorkspaceLayout("custom");
     setActivePaneId(nextPaneId);
+    setWorkspacePanelPickerPaneId(nextPaneId);
     setShowWorkspacePresetMenu(false);
-    showReportToast("success", "Chart added to this workspace", 1600);
+    showReportToast("success", "Panel added — choose what to open", 1600);
   };
 
   const closeWorkspacePane = (paneId: string) => {
     const visibleIds = collectWorkspacePaneIds(workspaceTree);
     if (visibleIds.length <= 1) {
-      showReportToast("error", "A workspace must keep at least one chart", 2000);
+      showReportToast("error", "A workspace must keep at least one panel", 2000);
       return;
     }
     const nextTree = removeWorkspacePane(workspaceTree, paneId);
@@ -10604,9 +10639,124 @@ export default function KwantifyWorkspace({
     }
   };
 
+  const selectWorkspacePanelContent = (paneId: string, content: WorkspacePanelKind) => {
+    updateWorkspacePane(paneId, { content });
+    setWorkspacePanelPickerPaneId(null);
+    setActivePaneId(paneId);
+    void preloadWorkspaceModule(content).catch(() => null);
+  };
+
+  function renderWorkspacePanelPicker(pane: WorkspacePane, overlay = false) {
+    return (
+      <div className={`${overlay ? "absolute inset-0 z-[100]" : "h-full"} flex min-h-0 items-center justify-center overflow-y-auto bg-background/95 p-4 backdrop-blur-xl`}>
+        <div className="my-auto w-full max-w-[620px] rounded-2xl border border-border bg-panel/95 p-4 shadow-2xl shadow-black/40 sm:p-5">
+          <div className="mb-4 flex items-start justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2 text-primary">
+                <Plus className="h-4 w-4" />
+                <h3 className="text-[12px] font-semibold uppercase tracking-[0.13em]">Add to workspace</h3>
+              </div>
+              <p className="mt-1.5 text-[10px] leading-4 text-muted">Choose a live KwantDesk workspace for this panel.</p>
+            </div>
+            {overlay && pane.content ? (
+              <button type="button" onClick={() => setWorkspacePanelPickerPaneId(null)} className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-muted hover:bg-surface hover:text-foreground" aria-label="Close workspace picker">
+                <X className="h-4 w-4" />
+              </button>
+            ) : null}
+          </div>
+          <div className="grid grid-cols-1 gap-2 min-[440px]:grid-cols-2 min-[760px]:grid-cols-3">
+            {WORKSPACE_PANEL_OPTIONS.map((option) => {
+              const Icon = option.icon;
+              return (
+                <button
+                  key={option.id}
+                  type="button"
+                  onPointerEnter={() => void preloadWorkspaceModule(option.id).catch(() => null)}
+                  onClick={() => selectWorkspacePanelContent(pane.id, option.id)}
+                  className={`group flex min-h-[72px] items-center gap-3 rounded-xl border p-3 text-left transition-all hover:-translate-y-0.5 hover:border-primary/45 hover:bg-primary/[0.07] ${pane.content === option.id ? "border-primary/40 bg-primary/[0.08]" : "border-border bg-surface/60"}`}
+                >
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary transition-transform group-hover:scale-105">
+                    <Icon className="h-[17px] w-[17px]" />
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block truncate text-[10px] font-semibold text-foreground">{option.label}</span>
+                    <span className="mt-0.5 block truncate text-[8px] text-muted">{option.description}</span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  function renderEmbeddedWorkspace(pane: WorkspacePane) {
+    switch (pane.content) {
+      case "zyon":
+        return (
+          <WorkspaceFailureBoundary resetKey={`workspace-${pane.id}-zyon`} label="Zyon">
+            <ZyonPanelBoundary variant="workspace" resetKey={`${preferenceUserId || "anonymous"}:${kwantBotInterpreter.selectedRoot}`}>
+              <ZyonWorkspace interpreter={kwantBotInterpreter} viewerName={currentDisplayName || currentUsername} accountKey={preferenceUserId} />
+            </ZyonPanelBoundary>
+          </WorkspaceFailureBoundary>
+        );
+      case "gameplan":
+        return <WorkspaceFailureBoundary resetKey={`workspace-${pane.id}-gameplan`} label="Game Plan"><GameplanWorkspace initialInstrument={displayCmeSymbol(pane.symbol)} /></WorkspaceFailureBoundary>;
+      case "gamma":
+        return <WorkspaceFailureBoundary resetKey={`workspace-${pane.id}-gamma`} label="Gamma"><GammaWorkspace /></WorkspaceFailureBoundary>;
+      case "gexmap":
+        return <WorkspaceFailureBoundary resetKey={`workspace-${pane.id}-gexmap`} label="GEX Map"><GexMapWorkspace /></WorkspaceFailureBoundary>;
+      case "liqmap":
+        return <WorkspaceFailureBoundary resetKey={`workspace-${pane.id}-liqmap`} label="Liquidity Map"><LiquidityMapWorkspace instrument={selectedLiquidityMapInstrument} onInstrumentChange={setSelectedLiquidityMapInstrument} /></WorkspaceFailureBoundary>;
+      case "news":
+        return <WorkspaceFailureBoundary resetKey={`workspace-${pane.id}-news`} label="News"><NewsWorkspace /></WorkspaceFailureBoundary>;
+      case "socials":
+        return (
+          <WorkspaceFailureBoundary resetKey={`workspace-${pane.id}-socials`} label="Socials">
+            <SocialsWorkspace
+              accountKey={preferenceUserId || currentUsername || "local"}
+              accountLabel={currentUsername || "Kwant Trader"}
+              initialProfileHandle={socialProfileHandle}
+              onOpenProfile={(handle) => router.push(`/socials/${encodeURIComponent(handle)}`)}
+              onMessageProfile={(userId) => { setFriendsInitialFriendId(userId); setRightPanel("messages"); }}
+              onOpenGameplanScoring={() => router.push("/gameplan?tab=scoring")}
+            />
+          </WorkspaceFailureBoundary>
+        );
+      case "journal":
+        return <WorkspaceFailureBoundary resetKey={`workspace-${pane.id}-journal`} label="Journal"><JournalWorkspace accountKey={preferenceUserId || currentUsername || "local"} /></WorkspaceFailureBoundary>;
+      default:
+        return null;
+    }
+  }
+
   function renderWorkspacePane(paneId: string) {
     const pane = workspacePanes.find((candidate) => candidate.id === paneId)
       ?? activeWorkspacePane;
+    if (pane.content === null) return renderWorkspacePanelPicker(pane);
+    if (pane.content !== "charts") {
+      const option = WORKSPACE_PANEL_OPTIONS.find((candidate) => candidate.id === pane.content);
+      const Icon = option?.icon ?? Layers3;
+      return (
+        <div className="relative flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-border bg-panel">
+          <div className="flex h-9 shrink-0 items-center justify-between border-b border-border bg-panel/95 px-2.5">
+            <button type="button" onClick={() => setWorkspacePanelPickerPaneId(pane.id)} className="flex h-7 min-w-0 items-center gap-2 rounded-lg px-2 text-[9px] font-semibold text-foreground hover:bg-surface" title="Change workspace panel">
+              <Icon className="h-3.5 w-3.5 shrink-0 text-primary" />
+              <span className="truncate">{option?.label ?? "Workspace"}</span>
+              <ChevronDown className="h-3 w-3 shrink-0 text-muted" />
+            </button>
+            <button type="button" onClick={() => closeWorkspacePane(pane.id)} disabled={workspaceLocked || visibleWorkspacePaneIds.length <= 1} className="flex h-7 w-7 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-danger disabled:opacity-30" aria-label={`Close ${option?.label ?? "workspace"} panel`}>
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+          <div className="relative min-h-0 flex-1 overflow-auto [scrollbar-color:var(--border)_transparent]">
+            <div className="relative h-full min-h-[420px] min-w-0">{renderEmbeddedWorkspace(pane)}</div>
+          </div>
+          {workspacePanelPickerPaneId === pane.id ? renderWorkspacePanelPicker(pane, true) : null}
+        </div>
+      );
+    }
     const gameplanRoot = gameplanChartRootForInstrument(pane.symbol);
     return (
       <WorkspaceChartPane
@@ -10672,6 +10822,9 @@ export default function KwantifyWorkspace({
         <div
           key={node.paneId}
           data-workspace-pane-id={node.paneId}
+          onPointerDownCapture={() => {
+            if (activePaneId !== node.paneId) setActivePaneId(node.paneId);
+          }}
           onDragEnter={(event) => {
             if (!workspaceLocked && draggedWorkspacePaneId && draggedWorkspacePaneId !== node.paneId) {
               event.preventDefault();
@@ -10938,7 +11091,7 @@ export default function KwantifyWorkspace({
             {[
               {
                 layout: "single" as Exclude<WorkspaceLayout, "custom">,
-                title: "Single chart",
+                title: "Single panel",
                 icon: (
                   <span className="grid h-4 w-4 grid-cols-1 gap-0.5">
                     <span className="rounded-[2px] border border-current/70 bg-current/15" />
@@ -10947,7 +11100,7 @@ export default function KwantifyWorkspace({
               },
               {
                 layout: "split-vertical" as Exclude<WorkspaceLayout, "custom">,
-                title: "Two charts side by side",
+                title: "Two panels side by side",
                 icon: (
                   <span className="grid h-4 w-4 grid-cols-2 gap-0.5">
                     <span className="rounded-[2px] border border-current/70 bg-current/15" />
@@ -10957,7 +11110,7 @@ export default function KwantifyWorkspace({
               },
               {
                 layout: "split-horizontal" as Exclude<WorkspaceLayout, "custom">,
-                title: "Two charts stacked",
+                title: "Two panels stacked",
                 icon: (
                   <span className="grid h-4 w-4 grid-rows-2 gap-0.5">
                     <span className="rounded-[2px] border border-current/70 bg-current/15" />
@@ -10967,7 +11120,7 @@ export default function KwantifyWorkspace({
               },
               {
                 layout: "quad" as Exclude<WorkspaceLayout, "custom">,
-                title: "Four-chart grid",
+                title: "Four-panel grid",
                 icon: (
                   <span className="grid h-4 w-4 grid-cols-2 grid-rows-2 gap-0.5">
                     <span className="rounded-[2px] border border-current/70 bg-current/15" />
@@ -10993,8 +11146,8 @@ export default function KwantifyWorkspace({
               type="button"
               onClick={addChartToWorkspace}
               disabled={workspaceLocked}
-              title={workspaceLocked ? "Unlock the workspace to add a chart" : "Add a new chart"}
-              aria-label="Add chart to workspace"
+              title={workspaceLocked ? "Unlock the workspace to add a panel" : "Add a new panel"}
+              aria-label="Add panel to workspace"
               className={`flex h-7 shrink-0 items-center justify-center gap-1.5 rounded-lg border px-2 transition-all ${
                 workspaceLocked
                   ? "cursor-not-allowed border-border text-muted/40"
@@ -11002,7 +11155,7 @@ export default function KwantifyWorkspace({
               }`}
             >
               <Plus className="h-3.5 w-3.5" />
-              <span className="text-[10px] font-semibold">Chart</span>
+              <span className="text-[10px] font-semibold">Panel</span>
             </button>
             <button
               onClick={() => setWorkspaceLocked((current) => !current)}
