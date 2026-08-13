@@ -58,10 +58,12 @@ import {
   MessageCircle,
   Minus,
   MoreHorizontal,
+  MoveDiagonal2,
   Pause,
   Paperclip,
   Pencil,
   Play,
+  PictureInPicture2,
   Plus,
   Repeat,
   Save,
@@ -75,6 +77,7 @@ import {
   Trash2,
   Trophy,
   Upload,
+  Unlock,
   User,
   UsersRound,
   Wallet,
@@ -579,6 +582,15 @@ type WorkspacePane = {
   watchlistKey: string;
   content: WorkspacePanelKind | null;
 };
+type WorkspaceFloatingWindow = {
+  paneId: string;
+  /** Normalized workspace coordinates keep the window responsive across screens. */
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  locked: boolean;
+};
 type WorkspaceLayoutNode =
   | { type: "pane"; paneId: string }
   | {
@@ -596,6 +608,7 @@ type WorkspacePreset = {
   panes: WorkspacePane[];
   chartSettings: ChartSettings;
   indicators?: Record<string, ChartIndicatorInstance[]>;
+  floatingWindows?: WorkspaceFloatingWindow[];
   updatedAt: string;
 };
 type WorkspaceBackupFile = {
@@ -653,6 +666,7 @@ export type PrimaryWorkspaceSection = "charts" | "gamma" | "levelz" | "gexmap" |
 
 const WORKSPACE_PRESETS_STORAGE_KEY = "kwantdesk-chart-workspace-presets";
 const ACTIVE_WORKSPACE_PRESET_STORAGE_KEY = "kwantdesk-chart-workspace-active-preset";
+const WORKSPACE_FLOATING_WINDOWS_STORAGE_KEY = "olisa-chart-workspace-floating-windows";
 const WORKSPACE_BACKUP_FORMAT = "kwantdesk-chart-workspaces";
 const MAX_WORKSPACE_BACKUP_BYTES = 2_000_000;
 const GAMMA_LEVELS_ENABLED_STORAGE_KEY = "kwantdesk:chart-gamma-levels-enabled:v1";
@@ -1031,6 +1045,55 @@ function normalizeWorkspaceLayoutNode(
   return null;
 }
 
+function clampWorkspaceUnit(value: number, fallback: number) {
+  return Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : fallback;
+}
+
+function normalizeWorkspaceFloatingWindows(
+  value: unknown,
+  validPaneIds?: Set<string>,
+): WorkspaceFloatingWindow[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const windows: WorkspaceFloatingWindow[] = [];
+  for (const item of value) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) continue;
+    const candidate = item as Partial<WorkspaceFloatingWindow>;
+    if (
+      typeof candidate.paneId !== "string"
+      || !candidate.paneId
+      || seen.has(candidate.paneId)
+      || (validPaneIds && !validPaneIds.has(candidate.paneId))
+    ) continue;
+    const width = Math.min(0.96, Math.max(0.24, clampWorkspaceUnit(Number(candidate.width), 0.58)));
+    const height = Math.min(0.96, Math.max(0.24, clampWorkspaceUnit(Number(candidate.height), 0.62)));
+    const x = Math.min(1 - width, clampWorkspaceUnit(Number(candidate.x), 0.18));
+    const y = Math.min(1 - height, clampWorkspaceUnit(Number(candidate.y), 0.12));
+    seen.add(candidate.paneId);
+    windows.push({
+      paneId: candidate.paneId,
+      x,
+      y,
+      width,
+      height,
+      locked: candidate.locked === true,
+    });
+  }
+  return windows.slice(0, 12);
+}
+
+function loadWorkspaceFloatingWindows(validPaneIds?: Set<string>) {
+  if (typeof window === "undefined") return [];
+  try {
+    return normalizeWorkspaceFloatingWindows(
+      JSON.parse(window.localStorage.getItem(WORKSPACE_FLOATING_WINDOWS_STORAGE_KEY) ?? "[]"),
+      validPaneIds,
+    );
+  } catch {
+    return [];
+  }
+}
+
 function isWorkspacePreset(value: unknown): value is WorkspacePreset {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const preset = value as Partial<WorkspacePreset>;
@@ -1060,6 +1123,10 @@ function normalizeWorkspacePresets(value: unknown): WorkspacePreset[] {
         panes,
         layout,
         indicators: normalizePaneIndicatorState(preset.indicators),
+        floatingWindows: normalizeWorkspaceFloatingWindows(
+          preset.floatingWindows,
+          new Set(panes.map((pane) => pane.id)),
+        ),
       };
     })
     .slice(0, 100)
@@ -3282,6 +3349,8 @@ function WorkspaceChartPane({
   onUpdateIndicatorSetting,
   onSelectPeriod,
   onSelectTimeframe,
+  onDetach,
+  detachDisabled,
   onClose,
   closeDisabled,
   chartDragEnabled,
@@ -3320,6 +3389,8 @@ function WorkspaceChartPane({
   onUpdateIndicatorSetting: (instanceId: string, key: string, value: number | string | boolean) => void;
   onSelectPeriod: (period: string) => void;
   onSelectTimeframe: (timeframe: string) => boolean;
+  onDetach?: () => void;
+  detachDisabled?: boolean;
   onClose?: () => void;
   closeDisabled?: boolean;
   chartDragEnabled?: boolean;
@@ -5279,8 +5350,25 @@ function WorkspaceChartPane({
       onMouseDown={onActivate}
       className={`relative h-full overflow-hidden rounded-2xl border bg-panel ${active ? "border-primary/50 shadow-[0_0_0_1px_rgba(236,72,153,0.28)]" : "border-border"}`}
     >
-      {onClose && (
+      {(onDetach || onClose) && (
         <div className="absolute right-2 top-2 z-[70] flex items-center gap-1">
+          {onDetach && (
+            <button
+              type="button"
+              disabled={detachDisabled}
+              onMouseDown={(event) => event.stopPropagation()}
+              onClick={(event) => {
+                event.stopPropagation();
+                if (!detachDisabled) onDetach();
+              }}
+              className="flex h-7 w-7 items-center justify-center rounded-lg border border-border bg-panel/90 text-muted shadow-lg backdrop-blur transition-colors hover:border-primary/40 hover:text-primary disabled:cursor-not-allowed disabled:opacity-35"
+              title={detachDisabled ? "Unlock the workspace to detach this chart" : "Detach into a floating window"}
+              aria-label="Detach chart"
+            >
+              <PictureInPicture2 className="h-3.5 w-3.5" />
+            </button>
+          )}
+          {onClose && (
           <button
             type="button"
             disabled={closeDisabled}
@@ -5295,6 +5383,7 @@ function WorkspaceChartPane({
           >
             <X className="h-3.5 w-3.5" />
           </button>
+          )}
         </div>
       )}
       {loading ? (
@@ -5867,6 +5956,8 @@ export default function KwantifyWorkspace({
       return createWorkspaceLayoutTree(fallbackLayout, workspacePanes);
     }
   });
+  const [workspaceFloatingWindows, setWorkspaceFloatingWindows] = useState<WorkspaceFloatingWindow[]>(() =>
+    loadWorkspaceFloatingWindows(new Set(workspacePanes.map((pane) => pane.id))));
   const [workspacePresets, setWorkspacePresets] = useState<WorkspacePreset[]>(loadLocalWorkspacePresets);
   const [activeWorkspacePresetId, setActiveWorkspacePresetId] = useState<string | null>(() => {
     if (typeof window === "undefined") return null;
@@ -7750,6 +7841,18 @@ export default function KwantifyWorkspace({
   }, [workspaceTree]);
 
   useEffect(() => {
+    if (!preferencesReady) return;
+    const timer = window.setTimeout(() => {
+      window.localStorage.setItem(
+        WORKSPACE_FLOATING_WINDOWS_STORAGE_KEY,
+        JSON.stringify(workspaceFloatingWindows),
+      );
+      window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [preferencesReady, workspaceFloatingWindows]);
+
+  useEffect(() => {
     window.localStorage.setItem(WORKSPACE_PRESETS_STORAGE_KEY, JSON.stringify(workspacePresets));
   }, [workspacePresets]);
 
@@ -7770,9 +7873,12 @@ export default function KwantifyWorkspace({
   }, [activePaneId]);
 
   useEffect(() => {
-    if (visibleWorkspacePaneIds.includes(activePaneId)) return;
+    if (
+      visibleWorkspacePaneIds.includes(activePaneId)
+      || workspaceFloatingWindows.some((entry) => entry.paneId === activePaneId)
+    ) return;
     setActivePaneId(visibleWorkspacePaneIds[0] ?? DEFAULT_WORKSPACE_PANES[0].id);
-  }, [activePaneId, visibleWorkspacePaneIds]);
+  }, [activePaneId, visibleWorkspacePaneIds, workspaceFloatingWindows]);
 
   useEffect(() => {
     const nextPane = activeWorkspacePane;
@@ -8997,6 +9103,7 @@ export default function KwantifyWorkspace({
           setWorkspaceLayout(nextLayout);
           setWorkspacePanes(nextPanes);
           setWorkspaceTree(nextTree);
+          setWorkspaceFloatingWindows(loadWorkspaceFloatingWindows(new Set(nextPanes.map((pane) => pane.id))));
           setActivePaneId(nextActivePane.id);
           setSelectedInstrument(nextActivePane.symbol);
           setSelectedTimeframe(nextActivePane.timeframe);
@@ -9987,6 +10094,7 @@ export default function KwantifyWorkspace({
     setWorkspacePanes(orderedPanes);
     setWorkspaceLayout(layout);
     setWorkspaceTree(createWorkspaceLayoutTree(layout, orderedPanes));
+    setWorkspaceFloatingWindows([]);
     const firstEmptyPane = orderedPanes.slice(0, requiredPaneCount).find((pane) => pane.content === null);
     setWorkspacePanelPickerPaneId(firstEmptyPane?.id ?? null);
   };
@@ -9996,8 +10104,8 @@ export default function KwantifyWorkspace({
       showReportToast("error", "Unlock the workspace before adding a chart", 2200);
       return;
     }
-    if (visibleWorkspacePaneIds.length >= 12) {
-      showReportToast("error", "This workspace already has the maximum of 12 charts", 2200);
+    if (workspacePanes.length >= 12) {
+      showReportToast("error", "This workspace already has the maximum of 12 panels", 2200);
       return;
     }
     const paneElement = workspaceAreaRef.current?.querySelector<HTMLElement>(
@@ -10022,10 +10130,175 @@ export default function KwantifyWorkspace({
     showReportToast("success", "Panel added — choose what to open", 1600);
   };
 
+  const detachWorkspacePane = (paneId: string) => {
+    if (workspaceLocked) {
+      showReportToast("error", "Unlock the workspace before detaching a panel", 2200);
+      return;
+    }
+    if (workspaceFloatingWindows.some((entry) => entry.paneId === paneId)) return;
+    const areaRect = workspaceAreaRef.current?.getBoundingClientRect();
+    const paneRect = workspaceAreaRef.current
+      ?.querySelector<HTMLElement>(`[data-workspace-pane-id="${paneId}"]`)
+      ?.getBoundingClientRect();
+    const width = areaRect && paneRect
+      ? Math.min(0.96, Math.max(0.28, paneRect.width / areaRect.width))
+      : 0.58;
+    const height = areaRect && paneRect
+      ? Math.min(0.96, Math.max(0.28, paneRect.height / areaRect.height))
+      : 0.62;
+    const x = areaRect && paneRect
+      ? Math.min(1 - width, Math.max(0, (paneRect.left - areaRect.left) / areaRect.width))
+      : 0.18;
+    const y = areaRect && paneRect
+      ? Math.min(1 - height, Math.max(0, (paneRect.top - areaRect.top) / areaRect.height))
+      : 0.12;
+    setWorkspaceFloatingWindows((current) => [
+      ...current,
+      { paneId, x, y, width, height, locked: false },
+    ]);
+    const visibleIds = collectWorkspacePaneIds(workspaceTree);
+    if (visibleIds.length > 1) {
+      const nextTree = removeWorkspacePane(workspaceTree, paneId);
+      if (nextTree) {
+        setWorkspaceTree(nextTree);
+        setWorkspaceLayout(collectWorkspacePaneIds(nextTree).length === 1 ? "single" : "custom");
+      }
+    }
+    setActivePaneId(paneId);
+    showReportToast("success", "Panel detached â€” move, resize or lock it", 1800);
+  };
+
+  const dockWorkspacePane = (paneId: string) => {
+    if (workspaceLocked) {
+      showReportToast("error", "Unlock the workspace before docking a panel", 2200);
+      return;
+    }
+    setWorkspaceFloatingWindows((current) => current.filter((entry) => entry.paneId !== paneId));
+    const visibleIds = collectWorkspacePaneIds(workspaceTree);
+    if (!visibleIds.includes(paneId)) {
+      const targetPaneId = visibleIds.includes(activePaneId) && activePaneId !== paneId
+        ? activePaneId
+        : visibleIds[0];
+      if (targetPaneId) {
+        const targetRect = workspaceAreaRef.current
+          ?.querySelector<HTMLElement>(`[data-workspace-pane-id="${targetPaneId}"]`)
+          ?.getBoundingClientRect();
+        const splitAxis: "x" | "y" = !targetRect || targetRect.width >= targetRect.height ? "x" : "y";
+        setWorkspaceTree((current) => insertWorkspacePane(
+          current,
+          targetPaneId,
+          paneId,
+          splitAxis,
+          `split-${crypto.randomUUID()}`,
+        ));
+        setWorkspaceLayout("custom");
+      }
+    }
+    setActivePaneId(paneId);
+    showReportToast("success", "Panel returned to the workspace grid", 1500);
+  };
+
+  const toggleFloatingWorkspaceLock = (paneId: string) => {
+    setWorkspaceFloatingWindows((current) => current.map((entry) =>
+      entry.paneId === paneId ? { ...entry, locked: !entry.locked } : entry));
+  };
+
+  const activateFloatingWorkspacePane = (paneId: string) => {
+    activateWorkspacePane(paneId);
+    setWorkspaceFloatingWindows((current) => {
+      if (current.at(-1)?.paneId === paneId) return current;
+      const selected = current.find((entry) => entry.paneId === paneId);
+      return selected ? [...current.filter((entry) => entry.paneId !== paneId), selected] : current;
+    });
+  };
+
+  const startFloatingWorkspaceMove = (
+    paneId: string,
+    event: React.PointerEvent<HTMLDivElement>,
+  ) => {
+    const floating = workspaceFloatingWindows.find((entry) => entry.paneId === paneId);
+    const areaRect = workspaceAreaRef.current?.getBoundingClientRect();
+    if (!floating || floating.locked || !areaRect) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const startX = event.clientX;
+    const startY = event.clientY;
+    const handleMove = (moveEvent: PointerEvent) => {
+      const x = Math.min(1 - floating.width, Math.max(0, floating.x + (moveEvent.clientX - startX) / areaRect.width));
+      const y = Math.min(1 - floating.height, Math.max(0, floating.y + (moveEvent.clientY - startY) / areaRect.height));
+      setWorkspaceFloatingWindows((current) => current.map((entry) =>
+        entry.paneId === paneId ? { ...entry, x, y } : entry));
+    };
+    const finishMove = () => {
+      window.removeEventListener("pointermove", handleMove);
+      window.removeEventListener("pointerup", finishMove);
+      window.removeEventListener("pointercancel", finishMove);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+    document.body.style.cursor = "grabbing";
+    document.body.style.userSelect = "none";
+    window.addEventListener("pointermove", handleMove);
+    window.addEventListener("pointerup", finishMove);
+    window.addEventListener("pointercancel", finishMove);
+  };
+
+  const startFloatingWorkspaceResize = (
+    paneId: string,
+    event: React.PointerEvent<HTMLDivElement>,
+  ) => {
+    const floating = workspaceFloatingWindows.find((entry) => entry.paneId === paneId);
+    const areaRect = workspaceAreaRef.current?.getBoundingClientRect();
+    if (!floating || floating.locked || !areaRect) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const startX = event.clientX;
+    const startY = event.clientY;
+    const minimumWidth = Math.min(0.92, Math.max(0.24, 320 / areaRect.width));
+    const minimumHeight = Math.min(0.92, Math.max(0.24, 240 / areaRect.height));
+    const handleResize = (moveEvent: PointerEvent) => {
+      const width = Math.min(1 - floating.x, Math.max(minimumWidth, floating.width + (moveEvent.clientX - startX) / areaRect.width));
+      const height = Math.min(1 - floating.y, Math.max(minimumHeight, floating.height + (moveEvent.clientY - startY) / areaRect.height));
+      setWorkspaceFloatingWindows((current) => current.map((entry) =>
+        entry.paneId === paneId ? { ...entry, width, height } : entry));
+    };
+    const finishResize = () => {
+      window.removeEventListener("pointermove", handleResize);
+      window.removeEventListener("pointerup", finishResize);
+      window.removeEventListener("pointercancel", finishResize);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+    document.body.style.cursor = "nwse-resize";
+    document.body.style.userSelect = "none";
+    window.addEventListener("pointermove", handleResize);
+    window.addEventListener("pointerup", finishResize);
+    window.addEventListener("pointercancel", finishResize);
+  };
+
   const closeWorkspacePane = (paneId: string) => {
     const visibleIds = collectWorkspacePaneIds(workspaceTree);
-    if (visibleIds.length <= 1) {
+    if (workspacePanes.length <= 1) {
       showReportToast("error", "A workspace must keep at least one panel", 2000);
+      return;
+    }
+    if (!visibleIds.includes(paneId)) {
+      setWorkspaceFloatingWindows((current) => current.filter((entry) => entry.paneId !== paneId));
+      setWorkspacePanes((current) => current.filter((pane) => pane.id !== paneId));
+      const nextActiveId = visibleIds[0] ?? workspacePanes.find((pane) => pane.id !== paneId)?.id;
+      if (nextActiveId) setActivePaneId(nextActiveId);
+      showReportToast("success", "Floating panel removed", 1400);
+      return;
+    }
+    if (visibleIds.length <= 1) {
+      const replacement = workspacePanes.find((pane) => pane.id !== paneId);
+      if (!replacement) return;
+      setWorkspaceTree({ type: "pane", paneId: replacement.id });
+      setWorkspacePanes((current) => current.filter((pane) => pane.id !== paneId));
+      setWorkspaceFloatingWindows((current) => current.filter((entry) => entry.paneId !== paneId));
+      setActivePaneId(replacement.id);
+      setWorkspaceLayout("single");
+      showReportToast("success", "Workspace panel removed", 1400);
       return;
     }
     const nextTree = removeWorkspacePane(workspaceTree, paneId);
@@ -10038,6 +10311,7 @@ export default function KwantifyWorkspace({
     setWorkspaceTree(nextTree);
     setWorkspaceLayout(remainingIds.length === 1 ? "single" : "custom");
     setWorkspacePanes((current) => current.filter((pane) => pane.id !== paneId));
+    setWorkspaceFloatingWindows((current) => current.filter((entry) => entry.paneId !== paneId));
     setDraggedWorkspacePaneId((current) => current === paneId ? null : current);
     setWorkspaceDropTargetPaneId((current) => current === paneId ? null : current);
     if (nextActivePane && activePaneId === paneId) {
@@ -10116,6 +10390,7 @@ export default function KwantifyWorkspace({
     panes: workspacePanes,
     chartSettings,
     indicators: clonePaneIndicatorState(paneIndicators),
+    floatingWindows: workspaceFloatingWindows,
     updatedAt: new Date().toISOString(),
   });
 
@@ -10162,6 +10437,10 @@ export default function KwantifyWorkspace({
     ) ?? createWorkspaceLayoutTree("single", panes);
     setWorkspacePanes(panes);
     setWorkspaceTree(normalizedTree);
+    setWorkspaceFloatingWindows(normalizeWorkspaceFloatingWindows(
+      preset.floatingWindows,
+      new Set(panes.map((pane) => pane.id)),
+    ));
     setWorkspaceLayout("custom");
     if (preset.chartSettings) {
       setChartSettings(preset.chartSettings);
@@ -11126,7 +11405,7 @@ export default function KwantifyWorkspace({
     }
   }
 
-  function renderWorkspacePane(paneId: string) {
+  function renderWorkspacePane(paneId: string, floating = false) {
     const pane = workspacePanes.find((candidate) => candidate.id === paneId)
       ?? activeWorkspacePane;
     if (pane.content === null) return renderWorkspacePanelPicker(pane);
@@ -11141,9 +11420,16 @@ export default function KwantifyWorkspace({
               <span className="truncate">{option?.label ?? "Workspace"}</span>
               <ChevronDown className="h-3 w-3 shrink-0 text-muted" />
             </button>
-            <button type="button" onClick={() => closeWorkspacePane(pane.id)} disabled={workspaceLocked || visibleWorkspacePaneIds.length <= 1} className="flex h-7 w-7 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-danger disabled:opacity-30" aria-label={`Close ${option?.label ?? "workspace"} panel`}>
-              <X className="h-3.5 w-3.5" />
-            </button>
+            {!floating ? (
+              <div className="flex items-center gap-1">
+                <button type="button" onClick={() => detachWorkspacePane(pane.id)} disabled={workspaceLocked} className="flex h-7 w-7 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-primary disabled:opacity-30" title="Detach into a floating window" aria-label={`Detach ${option?.label ?? "workspace"} panel`}>
+                  <PictureInPicture2 className="h-3.5 w-3.5" />
+                </button>
+                <button type="button" onClick={() => closeWorkspacePane(pane.id)} disabled={workspaceLocked || workspacePanes.length <= 1} className="flex h-7 w-7 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-danger disabled:opacity-30" aria-label={`Close ${option?.label ?? "workspace"} panel`}>
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            ) : null}
           </div>
           <div className="relative min-h-0 flex-1 overflow-auto [scrollbar-color:var(--border)_transparent]">
             <div className="relative h-full min-h-[420px] min-w-0">{renderEmbeddedWorkspace(pane)}</div>
@@ -11172,8 +11458,10 @@ export default function KwantifyWorkspace({
           updatePaneIndicatorSetting(pane.id, instanceId, key, value)}
         onSelectPeriod={(period) => handleChartPeriod(pane.id, period)}
         onSelectTimeframe={(timeframe) => selectWorkspacePaneTimeframe(pane.id, timeframe)}
-        onClose={() => closeWorkspacePane(pane.id)}
-        closeDisabled={workspaceLocked || visibleWorkspacePaneIds.length <= 1}
+        onDetach={floating ? undefined : () => detachWorkspacePane(pane.id)}
+        detachDisabled={workspaceLocked}
+        onClose={floating ? undefined : () => closeWorkspacePane(pane.id)}
+        closeDisabled={workspaceLocked || workspacePanes.length <= 1}
         chartDragEnabled={!workspaceLocked && visibleWorkspacePaneIds.length > 1}
         gammaLevelsEnabled={gammaLevelsEnabled}
         onToggleGammaLevels={() => setGammaLevelsEnabled((current) => !current)}
@@ -11221,9 +11509,125 @@ export default function KwantifyWorkspace({
     );
   }
 
+  function renderFloatingWorkspaceWindow(
+    floating: WorkspaceFloatingWindow,
+    stackIndex: number,
+  ) {
+    const pane = workspacePanes.find((candidate) => candidate.id === floating.paneId);
+    if (!pane) return null;
+    const option = pane.content
+      ? WORKSPACE_PANEL_OPTIONS.find((candidate) => candidate.id === pane.content)
+      : null;
+    const Icon = option?.icon ?? BarChart3;
+    return (
+      <div
+        key={floating.paneId}
+        data-floating-workspace-pane-id={floating.paneId}
+        onPointerDown={() => activateFloatingWorkspacePane(floating.paneId)}
+        className={`absolute overflow-hidden border bg-panel shadow-[0_18px_70px_rgba(0,0,0,0.68)] ${
+          activePaneId === floating.paneId ? "border-primary/70" : "border-border"
+        }`}
+        style={{
+          left: `${floating.x * 100}%`,
+          top: `${floating.y * 100}%`,
+          width: `${floating.width * 100}%`,
+          height: `${floating.height * 100}%`,
+          zIndex: 100 + stackIndex,
+        }}
+      >
+        <div
+          onPointerDown={(event) => startFloatingWorkspaceMove(floating.paneId, event)}
+          className={`flex h-8 shrink-0 touch-none items-center border-b border-border bg-background/95 px-2 ${
+            floating.locked ? "cursor-default" : "cursor-grab active:cursor-grabbing"
+          }`}
+        >
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            <Icon className="h-3.5 w-3.5 shrink-0 text-primary" />
+            <span className="truncate text-[9px] font-semibold uppercase tracking-[0.12em] text-foreground">
+              {option?.label ?? displayCmeSymbol(pane.symbol)}
+            </span>
+            <span className="hidden truncate font-mono text-[8px] text-muted sm:inline">
+              {pane.content === "charts" ? `${displayCmeSymbol(pane.symbol)} · ${formatChartInterval(pane.timeframe)}` : "FLOATING WINDOW"}
+            </span>
+          </div>
+          <div className="flex shrink-0 items-center gap-0.5">
+            <button
+              type="button"
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={() => toggleFloatingWorkspaceLock(floating.paneId)}
+              className={`flex h-6 w-6 items-center justify-center border transition-colors ${
+                floating.locked
+                  ? "border-primary/40 bg-primary/15 text-primary"
+                  : "border-transparent text-muted hover:border-border hover:text-foreground"
+              }`}
+              title={floating.locked ? "Unlock floating window" : "Lock floating window here"}
+              aria-label={floating.locked ? "Unlock floating window" : "Lock floating window"}
+            >
+              {floating.locked ? <Lock className="h-3 w-3" /> : <Unlock className="h-3 w-3" />}
+            </button>
+            <button
+              type="button"
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={() => dockWorkspacePane(floating.paneId)}
+              disabled={workspaceLocked}
+              className="flex h-6 w-6 items-center justify-center border border-transparent text-muted transition-colors hover:border-border hover:text-primary disabled:opacity-30"
+              title="Return to workspace grid"
+              aria-label="Dock floating window"
+            >
+              <PictureInPicture2 className="h-3 w-3" />
+            </button>
+            <button
+              type="button"
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={() => closeWorkspacePane(floating.paneId)}
+              disabled={workspacePanes.length <= 1}
+              className="flex h-6 w-6 items-center justify-center border border-transparent text-muted transition-colors hover:border-danger/40 hover:text-danger disabled:opacity-30"
+              title="Close floating panel"
+              aria-label="Close floating panel"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </div>
+        </div>
+        <div className="absolute inset-x-0 bottom-0 top-8 min-h-0 overflow-hidden">
+          {renderWorkspacePane(floating.paneId, true)}
+        </div>
+        {!floating.locked ? (
+          <div
+            onPointerDown={(event) => startFloatingWorkspaceResize(floating.paneId, event)}
+            className="absolute bottom-0 right-0 z-[180] flex h-7 w-7 touch-none cursor-nwse-resize items-end justify-end p-1 text-muted/70 hover:text-primary"
+            title="Resize floating window"
+          >
+            <MoveDiagonal2 className="h-3.5 w-3.5" />
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
   function renderWorkspaceNode(node: WorkspaceLayoutNode): React.ReactNode {
     if (node.type === "pane") {
       const nodePane = workspacePanes.find((pane) => pane.id === node.paneId);
+      const nodeIsFloating = workspaceFloatingWindows.some((entry) => entry.paneId === node.paneId);
+      if (nodeIsFloating) {
+        return (
+          <div
+            key={node.paneId}
+            data-workspace-pane-id={node.paneId}
+            className="flex h-full min-h-0 min-w-0 items-center justify-center border border-dashed border-border bg-background/35"
+          >
+            <button
+              type="button"
+              onClick={() => dockWorkspacePane(node.paneId)}
+              disabled={workspaceLocked}
+              className="flex items-center gap-2 border border-border bg-panel px-3 py-2 text-[9px] font-semibold uppercase tracking-[0.12em] text-muted hover:border-primary/40 hover:text-primary disabled:opacity-30"
+            >
+              <PictureInPicture2 className="h-3.5 w-3.5" />
+              Window detached
+            </button>
+          </div>
+        );
+      }
       return (
         <div
           key={node.paneId}
@@ -12068,6 +12472,8 @@ export default function KwantifyWorkspace({
         ) : <div className="min-h-0 flex-1 overflow-hidden">
           <div ref={workspaceAreaRef} className="relative h-full min-w-0">
             {renderWorkspaceNode(workspaceTree)}
+            {workspaceFloatingWindows.map((floating, index) =>
+              renderFloatingWorkspaceWindow(floating, index))}
           </div>
           {false && rightPanel && (
             <div style={{ width: rightPanelWidth }} className="relative flex min-w-0 shrink-0 flex-col overflow-hidden border-l border-border bg-panel">

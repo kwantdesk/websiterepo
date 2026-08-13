@@ -20,6 +20,7 @@ const TRACKED_STORAGE_KEYS = new Set([
   "olisa-chart-workspace-quad-split",
   "olisa-chart-workspace-panes",
   "olisa-chart-workspace-tree",
+  "olisa-chart-workspace-floating-windows",
   "olisa-chart-workspace-active-pane",
   "olisa-chart-favourite-intervals",
   "olisa-watchlist-favorites",
