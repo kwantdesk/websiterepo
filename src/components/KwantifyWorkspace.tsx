@@ -12960,7 +12960,7 @@ export default function KwantifyWorkspace({
             onChange={changeChartTimeZone}
             menuLabel="Chart timezone"
             compact
-            className={`col-start-3 ml-1 max-w-[36px] shrink-0 justify-self-end px-2 sm:max-w-[190px] sm:px-2.5 [&>span]:hidden sm:[&>span]:block [&>svg:last-child]:hidden sm:[&>svg:last-child]:block ${!activePaneIsChart ? "pointer-events-none opacity-30" : ""}`}
+            className="col-start-3 ml-1 max-w-[36px] shrink-0 justify-self-end px-2 sm:max-w-[190px] sm:px-2.5 [&>span]:hidden sm:[&>span]:block [&>svg:last-child]:hidden sm:[&>svg:last-child]:block"
           />
           </div>
           <div
