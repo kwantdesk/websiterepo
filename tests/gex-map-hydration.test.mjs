@@ -41,7 +41,8 @@ test("GEX map retains a compact completed-session snapshot through provider rest
   assert.match(workspaceCache, /frames: Array\.isArray\(payload\.frames\) \? payload\.frames\.slice\(-5\) : \[\]/);
   assert.match(workspaceCache, /return readLastGoodGexMap<T>\(key\)/);
   assert.match(quantDataServer, /lastGoodGexMapPanelBySurface/);
-  assert.match(quantDataServer, /completed-gex-map-panel-v2/);
+  assert.match(quantDataServer, /completed-gex-map-panel-v3/);
+  assert.match(quantDataServer, /latestGexMapStrikesFromFrames\(frames\)/);
   assert.match(quantDataServer, /status: "LAST_SESSION"/);
 });
 

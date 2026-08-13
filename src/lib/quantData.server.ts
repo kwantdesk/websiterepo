@@ -27,6 +27,7 @@ import {
   type VolatilitySkewPoint,
 } from "@/lib/optionsFlow";
 import {
+  latestGexMapStrikesFromFrames,
   type GexMapFrame,
   type GexMapPanelPayload,
 } from "@/lib/gexMap";
@@ -2078,7 +2079,13 @@ async function buildGexMapPanel(
   const frameAsOf = Math.max(frames.at(-1)?.timestamp ?? 0, latestCandle?.timestamp ?? 0) || Date.now();
   const marketIsLive = !historical && currentSession.marketOpen;
   const stale = marketIsLive && Date.now() - frameAsOf > 3 * 60_000;
-  const latestStrikes = frontExposure?.strikes ?? [];
+  // After the close, the expired front-expiry key can remain present while
+  // its exposure-by-strike rows are cleared. The interval map is still the
+  // authoritative session record, so rebuild the frozen close from every
+  // incremental frame instead of returning a structurally valid black map.
+  const latestStrikes = frontExposure?.strikes.length
+    ? frontExposure.strikes
+    : latestGexMapStrikesFromFrames(frames);
 
   if (!latestStrikes.length && !frames.length) {
     throw new QuantDataError(`No front-expiry ${greekModeInput} strikes are available for ${symbol}.`, 422, exposureResult.remaining);
@@ -2131,7 +2138,7 @@ export async function getGexMapPanel(
     const payload = completedSession
       ? await unstable_cache(
         () => buildGexMapPanel(symbol, greekModeInput, sessionDate),
-        ["completed-gex-map-panel-v2", symbol, greekModeInput, sessionDate],
+        ["completed-gex-map-panel-v3", symbol, greekModeInput, sessionDate],
         { revalidate: 6 * 60 * 60 },
       )()
       : await buildGexMapPanel(symbol, greekModeInput, sessionDate);

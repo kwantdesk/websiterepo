@@ -38,4 +38,18 @@ export type GexMapPanelPayload = {
   rateLimitRemaining: number | null;
 };
 
+/**
+ * Reconstruct the most recent complete strike surface from interval updates.
+ * KwantData can clear the expired front-expiry node in exposure-by-strike
+ * shortly after the cash close while retaining the session's interval map.
+ * Those interval buckets are incremental, so the final frame alone is not a
+ * complete ladder; replay every update in order to recover the frozen close.
+ */
+export function latestGexMapStrikesFromFrames(frames: GexMapFrame[]): ExposureStrike[] {
+  const strikes = new Map<number, ExposureStrike>();
+  for (const frame of frames) {
+    for (const row of frame.updates) strikes.set(row.strike, { ...row });
+  }
+  return [...strikes.values()].sort((left, right) => left.strike - right.strike);
+}
 

@@ -21,6 +21,7 @@ import {
 import KwantLoader from "@/components/KwantLoader";
 import {
   GEX_MAP_GREEKS,
+  latestGexMapStrikesFromFrames,
   type GexMapPanelPayload,
 } from "@/lib/gexMap";
 import {
@@ -114,7 +115,14 @@ function formatSessionDate(value: string) {
 
 function buildSnapshots(payload: GexMapPanelPayload, timestamp: number | null, stepMinutes: number) {
   if (timestamp === null) {
-    const current = new Map(payload.latestStrikes.map((row) => [row.strike, row]));
+    // Older browser snapshots may have been saved during the provider's
+    // post-close window with an empty latestStrikes array. Recover directly
+    // from their retained interval frames so the map repairs itself before
+    // the network refresh completes.
+    const latestStrikes = payload.latestStrikes.length
+      ? payload.latestStrikes
+      : latestGexMapStrikesFromFrames(payload.frames);
+    const current = new Map(latestStrikes.map((row) => [row.strike, row]));
     const previousTarget = Date.parse(payload.asOf) - stepMinutes * 60_000;
     const previous = new Map<number, ExposureStrike>();
     for (const frame of payload.frames) {
