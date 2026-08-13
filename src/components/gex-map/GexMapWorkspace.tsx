@@ -304,6 +304,8 @@ function ExposurePanel({
   onChange: (patch: Partial<Pick<PanelConfig, "symbol" | "greekMode">>) => void;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const centredViewRef = useRef("");
+  const userNavigatedRef = useRef(false);
   const { current, previous } = useMemo(
     () => payload ? buildSnapshots(payload, selectedTimestamp, stepMinutes) : { current: new Map(), previous: new Map() },
     [payload, selectedTimestamp, stepMinutes],
@@ -322,6 +324,7 @@ function ExposurePanel({
   }, [rows]);
   const net = rows.reduce((sum, row) => sum + row.net, 0);
   const greek = GEX_MAP_GREEKS.find((item) => item.mode === config.greekMode) ?? GEX_MAP_GREEKS[0];
+  const viewIdentity = `${config.symbol}:${config.greekMode}:${payload?.sessionDate ?? "pending"}`;
 
   const centerLiveStrike = useCallback(() => {
     const container = scrollRef.current;
@@ -339,9 +342,14 @@ function ExposurePanel({
   }, []);
 
   useLayoutEffect(() => {
-    const frame = window.requestAnimationFrame(centerLiveStrike);
+    if (centredViewRef.current === viewIdentity || spotStrike === null) return;
+    userNavigatedRef.current = false;
+    const frame = window.requestAnimationFrame(() => {
+      centerLiveStrike();
+      centredViewRef.current = viewIdentity;
+    });
     return () => window.cancelAnimationFrame(frame);
-  }, [centerLiveStrike, config.symbol, config.greekMode, payload?.asOf, payload?.sessionDate, selectedTimestamp, spotStrike]);
+  }, [centerLiveStrike, spotStrike, viewIdentity]);
 
   useEffect(() => {
     const container = scrollRef.current;
@@ -349,6 +357,7 @@ function ExposurePanel({
 
     let frame = 0;
     const observer = new ResizeObserver(() => {
+      if (userNavigatedRef.current) return;
       window.cancelAnimationFrame(frame);
       frame = window.requestAnimationFrame(centerLiveStrike);
     });
@@ -411,7 +420,13 @@ function ExposurePanel({
         <span className="gex-map-change-column text-right">{stepMinutes}m change</span>
       </div>
 
-      <div ref={scrollRef} className="relative min-h-0 flex-1 overscroll-contain overflow-y-auto bg-chart-background">
+      <div
+        ref={scrollRef}
+        onWheelCapture={() => { userNavigatedRef.current = true; }}
+        onPointerDownCapture={() => { userNavigatedRef.current = true; }}
+        onTouchStart={() => { userNavigatedRef.current = true; }}
+        className="relative min-h-0 flex-1 touch-pan-y overscroll-contain overflow-y-auto bg-chart-background"
+      >
         {loading && !payload ? (
           <KwantLoader
             className="h-full"
@@ -665,7 +680,7 @@ export default function GexMapWorkspace() {
   return (
     <div className="gex-map-workspace flex h-full min-h-0 min-w-0 overflow-hidden bg-background text-foreground">
       <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
-        <header className="gex-map-header flex min-h-[48px] shrink-0 flex-wrap items-center gap-2 border-b border-border bg-panel px-3 py-1">
+        <header className="gex-map-header sticky top-0 z-40 flex min-h-[48px] shrink-0 flex-wrap items-center gap-2 border-b border-border bg-panel px-3 py-1">
           <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
             <ScanLine className="h-4 w-4" />
           </span>
