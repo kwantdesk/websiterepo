@@ -396,10 +396,9 @@ const BOTTOM_PANEL_DEFAULT_HEIGHT = 300;
 const BOTTOM_PANEL_COLLAPSED_HEIGHT = 40;
 const BOTTOM_PANEL_COLLAPSE_SNAP_HEIGHT = 72;
 const CHART_TOP_BAR_HEIGHT = 52;
-const RIGHT_PANEL_MIN_WIDTH = 240;
-const RIGHT_PANEL_MAX_WIDTH = 500;
+const RIGHT_PANEL_MIN_WIDTH = 64;
+const RIGHT_PANEL_MAX_WIDTH = 1600;
 const RIGHT_PANEL_DEFAULT_WIDTH = 280;
-const RIGHT_PANEL_COLLAPSE_SNAP_WIDTH = 120;
 type RightPanel = "order" | "watchlist" | "gex" | "zyon" | "kwantbot" | "optionstape" | "alerts" | "alertslog" | "friends" | "messages";
 
 type FriendMessageToast = {
@@ -7422,7 +7421,8 @@ export default function KwantifyWorkspace({
     if (savedRightPanelWidth !== null) {
       const width = Number(savedRightPanelWidth);
       if (Number.isFinite(width)) {
-        setRightPanelWidth(Math.min(RIGHT_PANEL_MAX_WIDTH, Math.max(RIGHT_PANEL_MIN_WIDTH, width)));
+        const viewportMaximum = Math.max(RIGHT_PANEL_MIN_WIDTH, window.innerWidth - 96);
+        setRightPanelWidth(Math.min(RIGHT_PANEL_MAX_WIDTH, viewportMaximum, Math.max(RIGHT_PANEL_MIN_WIDTH, width)));
       }
     }
 
@@ -9855,7 +9855,7 @@ export default function KwantifyWorkspace({
           if (draggedWatchlistItem) moveWatchlistSymbol(draggedWatchlistItem.symbol, section.id, row.key);
           setDraggedWatchlistItem(null);
         }}
-        className={`grid w-full grid-cols-[minmax(92px,1fr)_74px_54px_54px] items-center gap-2 border-t-2 px-3 py-2 text-left transition-colors hover:bg-surface/60 ${isDropTarget ? "border-blue-500" : "border-transparent"} ${isSelected ? "bg-surface" : ""}`}
+        className={`grid w-full min-w-[340px] grid-cols-[minmax(92px,1fr)_74px_54px_54px] items-center gap-2 border-t-2 px-3 py-2 text-left transition-colors hover:bg-surface/60 ${isDropTarget ? "border-blue-500" : "border-transparent"} ${isSelected ? "bg-surface" : ""}`}
       >
         <span className="min-w-0">
           <span className="flex items-center gap-1.5">
@@ -10316,11 +10316,8 @@ export default function KwantifyWorkspace({
     event.preventDefault();
     const handleMouseMove = (moveEvent: MouseEvent) => {
       const rawWidth = window.innerWidth - moveEvent.clientX - 44;
-      if (rawWidth <= RIGHT_PANEL_COLLAPSE_SNAP_WIDTH) {
-        setRightPanel(null);
-        return;
-      }
-      const nextWidth = Math.min(RIGHT_PANEL_MAX_WIDTH, Math.max(RIGHT_PANEL_MIN_WIDTH, rawWidth));
+      const viewportMaximum = Math.max(RIGHT_PANEL_MIN_WIDTH, window.innerWidth - 96);
+      const nextWidth = Math.min(RIGHT_PANEL_MAX_WIDTH, viewportMaximum, Math.max(RIGHT_PANEL_MIN_WIDTH, rawWidth));
       setRightPanelWidth(nextWidth);
       window.localStorage.setItem("olisa-right-panel-width", String(nextWidth));
     };
@@ -12049,7 +12046,7 @@ export default function KwantifyWorkspace({
             {renderWorkspaceNode(workspaceTree)}
           </div>
           {false && rightPanel && (
-            <div style={{ width: rightPanelWidth }} className="relative flex shrink-0 flex-col border-l border-border bg-panel">
+            <div style={{ width: rightPanelWidth }} className="relative flex min-w-0 shrink-0 flex-col overflow-hidden border-l border-border bg-panel">
               <div onMouseDown={startRightPanelResize} className="absolute bottom-0 left-0 top-0 z-10 w-1 cursor-col-resize bg-transparent transition-colors hover:w-1.5 hover:bg-primary/30" />
               {rightPanel === "order" && (
                 <div className="flex-1 overflow-y-auto p-4">
@@ -12581,7 +12578,7 @@ export default function KwantifyWorkspace({
       </div>
 
       {bottomWorkspaceSection !== "backtesting" && rightPanel && (
-        <div style={{ width: rightPanelWidth }} className="relative flex shrink-0 flex-col border-l border-border bg-panel">
+        <div style={{ width: rightPanelWidth }} className="relative flex min-w-0 shrink-0 flex-col overflow-hidden border-l border-border bg-panel">
           <div onMouseDown={startRightPanelResize} className="absolute bottom-0 left-0 top-0 z-10 w-1 cursor-col-resize bg-transparent transition-colors hover:w-1.5 hover:bg-primary/30" />
           {(rightPanel === "friends" || rightPanel === "messages") && (
             <FriendsPanel
@@ -12721,7 +12718,7 @@ export default function KwantifyWorkspace({
           )}
           {rightPanel === "watchlist" && (
             <div
-              className="flex flex-1 flex-col overflow-hidden"
+              className="flex min-w-0 flex-1 flex-col overflow-hidden"
               onContextMenu={(event) => {
                 if (event.defaultPrevented) return;
                 event.preventDefault();
@@ -12733,7 +12730,7 @@ export default function KwantifyWorkspace({
                 });
               }}
             >
-              <div className="flex h-14 shrink-0 items-center justify-between border-b border-border px-4">
+              <div className="flex h-14 min-w-[340px] shrink-0 items-center justify-between border-b border-border px-4">
                 <button className="flex items-center gap-1 text-[14px] font-semibold">Watchlist <ChevronDown className="h-3.5 w-3.5 text-muted" /></button>
                 <div className="flex items-center gap-1">
                   <button onClick={() => setShowInstrumentSearch(true)} className="flex h-7 w-7 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground"><Plus className="h-3.5 w-3.5" /></button>
@@ -12755,8 +12752,8 @@ export default function KwantifyWorkspace({
                   </button>
                 </div>
               </div>
-              <div className="grid grid-cols-[minmax(92px,1fr)_74px_54px_54px] gap-2 border-b border-border px-3 py-2 text-[10px] uppercase tracking-wider text-muted"><span>Symbol</span><span className="text-right">Last</span><span className="text-right">Chg</span><span className="text-right">Chg%</span></div>
-              <div className="flex-1 overflow-y-auto">
+              <div className="grid min-w-[340px] grid-cols-[minmax(92px,1fr)_74px_54px_54px] gap-2 border-b border-border px-3 py-2 text-[10px] uppercase tracking-wider text-muted"><span>Symbol</span><span className="text-right">Last</span><span className="text-right">Chg</span><span className="text-right">Chg%</span></div>
+              <div className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto">
                 {watchlistSections.map((section) => {
                   const symbols = sortSectionSymbols(section.symbols).filter((symbol) => (
                     bottomWorkspaceSection !== "liqmap"
