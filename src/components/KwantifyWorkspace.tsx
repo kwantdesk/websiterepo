@@ -10238,14 +10238,9 @@ export default function KwantifyWorkspace({
       ...current,
       { paneId, x, y, width, height, locked: false },
     ]);
-    const visibleIds = collectWorkspacePaneIds(workspaceTree);
-    if (visibleIds.length > 1) {
-      const nextTree = removeWorkspacePane(workspaceTree, paneId);
-      if (nextTree) {
-        setWorkspaceTree(nextTree);
-        setWorkspaceLayout(collectWorkspacePaneIds(nextTree).length === 1 ? "single" : "custom");
-      }
-    }
+    // Preserve this pane's grid slot while it floats. Removing the slot makes
+    // the neighbouring pane expand into it, so moving one detached window
+    // visibly pushes unrelated panels around the workspace.
     setActivePaneId(paneId);
     showReportToast("success", "Panel detached â€” move, resize or lock it", 1800);
   };
@@ -11546,7 +11541,7 @@ export default function KwantifyWorkspace({
           updatePaneIndicatorSetting(pane.id, instanceId, key, value)}
         onSelectPeriod={(period) => handleChartPeriod(pane.id, period)}
         onSelectTimeframe={(timeframe) => selectWorkspacePaneTimeframe(pane.id, timeframe)}
-        chartDragEnabled={!workspaceLocked && visibleWorkspacePaneIds.length > 1}
+        chartDragEnabled={!floating && !workspaceLocked && visibleWorkspacePaneIds.length > 1}
         gammaLevelsEnabled={paneLevelState.gamma}
         onToggleGammaLevels={() => togglePaneLevelVisibility(pane.id, "gamma")}
         kwantLevelsEnabled={Boolean(paneLevelState.kwant && gameplanRoot && gameplanChartOverlays[gameplanRoot]?.levels.length)}
@@ -11663,6 +11658,7 @@ export default function KwantifyWorkspace({
           width: `${floating.width * 100}%`,
           height: `${floating.height * 100}%`,
           zIndex: 100 + stackIndex,
+          contain: "layout paint size",
         }}
       >
         <div
