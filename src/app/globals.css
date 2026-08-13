@@ -12,6 +12,7 @@
 @import "@fontsource/rajdhani/700.css";
 
 :root {
+  --kwant-shell-bar-height: 40px;
   --background: #020304;
   --foreground: #DDE2E7;
   --primary: #FF1F78;
@@ -1232,6 +1233,18 @@ body:has(.kwant-command-rail) {
 body:has(.kwant-command-rail) .kwant-command-rail,
 body:has(.kwant-command-rail) .kwant-chart-command-deck {
   font-family: "Rajdhani", "Inter", sans-serif;
+}
+
+/* One compact vertical rhythm for the primary navigation and the chart
+   command rows beneath it. Keep this token shared so the shell cannot drift
+   back into mixed 32px/40px bars as controls are added. */
+header.kwant-command-rail {
+  height: var(--kwant-shell-bar-height);
+}
+
+.kwant-chart-command-deck {
+  height: calc(var(--kwant-shell-bar-height) * 2);
+  grid-template-rows: repeat(2, var(--kwant-shell-bar-height));
 }
 
 body:has(.kwant-command-rail) .rounded-3xl { border-radius: 6px !important; }

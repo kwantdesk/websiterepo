@@ -11872,7 +11872,7 @@ export default function KwantifyWorkspace({
         />
 
         {bottomWorkspaceSection === "charts" && (
-        <header className="kwant-chart-command-deck relative grid h-[72px] shrink-0 grid-cols-[minmax(0,1fr)_auto] grid-rows-[32px_40px] border-b border-border bg-panel">
+        <header className="kwant-chart-command-deck relative grid shrink-0 grid-cols-[minmax(0,1fr)_auto] border-b border-border bg-panel">
           <div
             aria-disabled={!activePaneIsChart}
             title={activePaneIsChart ? "Controls apply to the selected chart" : `${WORKSPACE_PANEL_OPTIONS.find((option) => option.id === activeWorkspacePane.content)?.label ?? "Panel"} selected — choose a chart to use chart controls`}
