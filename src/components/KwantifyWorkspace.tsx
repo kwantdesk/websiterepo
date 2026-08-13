@@ -395,7 +395,7 @@ const BOTTOM_PANEL_MIN_HEIGHT = 150;
 const BOTTOM_PANEL_DEFAULT_HEIGHT = 300;
 const BOTTOM_PANEL_COLLAPSED_HEIGHT = 40;
 const BOTTOM_PANEL_COLLAPSE_SNAP_HEIGHT = 72;
-const CHART_TOP_BAR_HEIGHT = 52;
+const CHART_TOP_BAR_HEIGHT = 40;
 const RIGHT_PANEL_MIN_WIDTH = 64;
 const RIGHT_PANEL_MAX_WIDTH = 1600;
 const RIGHT_PANEL_DEFAULT_WIDTH = 280;
@@ -11312,7 +11312,7 @@ export default function KwantifyWorkspace({
         />
 
         {bottomWorkspaceSection === "charts" && (
-        <header className="relative grid h-[94px] shrink-0 grid-cols-[minmax(0,1fr)_auto] grid-rows-[42px_52px] border-b border-border bg-panel">
+        <header className="kwant-chart-command-deck relative grid h-[72px] shrink-0 grid-cols-[minmax(0,1fr)_auto] grid-rows-[32px_40px] border-b border-border bg-panel">
           <div className={`relative col-start-1 row-start-2 flex min-w-0 items-center gap-2 px-3 ${
             showAllTF
               ? "overflow-visible"

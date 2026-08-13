@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { memo, type ComponentType, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { memo, useEffect, type ComponentType, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import {
   BarChart3,
   BookOpen,
@@ -19,6 +19,7 @@ import {
   UsersRound,
   Wallet,
 } from "lucide-react";
+import { defaultTheme, saveTheme } from "@/lib/theme";
 type SidebarKey =
   | "ai"
   | "agent"
@@ -61,9 +62,9 @@ type AppSidebarProps = {
 };
 
 const horizontalItemBase =
-  "relative flex h-8 shrink-0 items-center justify-center gap-2 rounded-xl border px-3 text-[12px] font-semibold uppercase transition-all";
-const horizontalItemInactive = `${horizontalItemBase} border-transparent text-muted hover:border-border hover:bg-surface hover:text-foreground`;
-const horizontalItemActive = `${horizontalItemBase} border-primary/30 bg-primary/10 text-primary shadow-[0_0_18px_color-mix(in_srgb,var(--primary)_10%,transparent)]`;
+  "relative flex h-7 shrink-0 items-center justify-center gap-1.5 rounded-[3px] border px-2.5 text-[10px] font-semibold uppercase tracking-[0.075em] transition-colors";
+const horizontalItemInactive = `${horizontalItemBase} border-transparent text-muted hover:bg-surface hover:text-foreground`;
+const horizontalItemActive = `${horizontalItemBase} border-transparent text-primary`;
 const verticalItemBase =
   "mx-auto flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg transition-all duration-300 group-hover:w-[184px] group-hover:justify-start group-hover:gap-3 group-hover:px-[9px]";
 const verticalItemInactive = `${verticalItemBase} text-muted hover:bg-surface hover:text-foreground`;
@@ -76,7 +77,7 @@ const navItems: Array<{
   href: string;
   label: string;
   title: string;
-  icon: ComponentType<{ className?: string }>;
+  icon: ComponentType<{ className?: string; strokeWidth?: number }>;
 }> = [
   { key: "home", href: "/", label: "Home", title: "Home", icon: Home },
   { key: "charts", href: "/charts", label: "Charts", title: "Charts", icon: LineChart },
@@ -114,7 +115,7 @@ function ActiveUnderline() {
   return (
     <span
       aria-hidden="true"
-      className="absolute inset-x-3 -bottom-[7px] h-0.5 rounded-full bg-primary shadow-[0_0_8px_var(--primary)]"
+      className="absolute inset-x-2 -bottom-[7px] h-px bg-primary shadow-[0_0_7px_var(--primary)]"
     />
   );
 }
@@ -129,6 +130,21 @@ function AppSidebar({
   onNavigateStart,
   orientation = "vertical",
 }: AppSidebarProps) {
+  useEffect(() => {
+    const body = document.body;
+    body.classList.add("kwant-cockpit-ui");
+
+    // This is a one-time visual migration. Once applied, the normal theme
+    // controls continue to own the palette and account preference sync.
+    const migrationKey = "kwantdesk:midnight-cockpit-theme:v1";
+    if (window.localStorage.getItem(migrationKey) !== "applied") {
+      saveTheme(defaultTheme);
+      window.localStorage.setItem(migrationKey, "applied");
+    }
+
+    return () => body.classList.remove("kwant-cockpit-ui");
+  }, []);
+
   const beginNavigation = (key: SidebarKey) => {
     onNavigateStart?.(key);
   };
@@ -167,7 +183,7 @@ function AppSidebar({
   if (orientation === "vertical") {
     return (
       <div className="relative z-[70] w-[52px] shrink-0 self-stretch">
-        <aside className="group sticky top-0 z-[70] flex h-screen w-[52px] flex-col items-center gap-1 overflow-visible border-r border-border bg-panel py-5 transition-all duration-300 hover:w-[200px]">
+        <aside className="kwant-command-rail group sticky top-0 z-[70] flex h-screen w-[52px] flex-col items-center gap-1 overflow-visible border-r border-border bg-panel py-3 transition-all duration-300 hover:w-[200px]">
           <button
             type="button"
             onClick={onAccountClick}
@@ -211,7 +227,7 @@ function AppSidebar({
   }
 
   return (
-    <header className="relative z-[70] flex h-14 w-full shrink-0 items-center gap-1 border-b border-border bg-panel px-3">
+    <header className="kwant-command-rail relative z-[70] flex h-10 w-full shrink-0 items-center gap-1 border-b border-border bg-panel px-2">
       <nav className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto overflow-y-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" aria-label="Primary workspace">
         {navItems.map(({ key, href, label, title, icon: Icon }) => {
           const active = activeItem === key;
@@ -228,7 +244,7 @@ function AppSidebar({
               className={active ? horizontalItemActive : horizontalItemInactive}
               title={title}
             >
-              <Icon className={`h-4 w-4 shrink-0 ${active ? "text-primary" : "text-muted"}`} />
+              <Icon className={`h-3.5 w-3.5 shrink-0 ${active ? "text-primary" : "text-muted"}`} strokeWidth={1.55} />
               <span>{label}</span>
               {active ? <ActiveUnderline /> : null}
             </Link>
@@ -242,7 +258,7 @@ function AppSidebar({
         className={horizontalItemInactive}
         title={accountTitle}
       >
-        <User className="h-4 w-4 shrink-0" />
+        <User className="h-3.5 w-3.5 shrink-0" />
         <span>{accountLabel}</span>
       </button>
       <a
@@ -250,7 +266,7 @@ function AppSidebar({
         className={activeItem === "settings" ? horizontalItemActive : horizontalItemInactive}
         title="Settings"
       >
-        <Settings className="h-4 w-4 shrink-0" />
+        <Settings className="h-3.5 w-3.5 shrink-0" />
         <span>Settings</span>
         {activeItem === "settings" ? <ActiveUnderline /> : null}
       </a>

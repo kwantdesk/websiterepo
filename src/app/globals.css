@@ -6,24 +6,28 @@
 @import "@fontsource/jetbrains-mono/400.css";
 @import "@fontsource/jetbrains-mono/500.css";
 @import "@fontsource/jetbrains-mono/600.css";
+@import "@fontsource/rajdhani/400.css";
+@import "@fontsource/rajdhani/500.css";
+@import "@fontsource/rajdhani/600.css";
+@import "@fontsource/rajdhani/700.css";
 
 :root {
-  --background: #000000;
-  --foreground: #FFFFFF;
-  --primary: #B6FF00;
-  --secondary: #4361FF;
-  --accent: #4361FF;
-  --muted: #7F858D;
-  --border: #1A1D22;
-  --card: #07080A;
-  --danger: #4361FF;
-  --panel: #050506;
-  --surface: #0B0C0E;
-  --chart-background: #000000;
-  --grid-color: #111318;
-  --crosshair-color: rgba(182,255,0,.78);
-  --candle-up: #B6FF00;
-  --candle-down: #FFFFFF;
+  --background: #020304;
+  --foreground: #DDE2E7;
+  --primary: #FF1F78;
+  --secondary: #16C7CE;
+  --accent: #16C7CE;
+  --muted: #707780;
+  --border: #24282D;
+  --card: #07090B;
+  --danger: #FF1F78;
+  --panel: #050607;
+  --surface: #0B0D10;
+  --chart-background: #020304;
+  --grid-color: #11151A;
+  --crosshair-color: rgba(255,31,120,.72);
+  --candle-up: #16C7CE;
+  --candle-down: #FF1F78;
 }
 
 @theme inline {
@@ -1187,4 +1191,283 @@ table,
 .gameplan-holding-editable textarea::placeholder {
   color: var(--foreground);
   opacity: 0.58;
+}
+
+/* --------------------------------------------------------------------------
+   KWANT DESK · MIDNIGHT COCKPIT
+
+   The public landing experience intentionally does not opt into this layer.
+   AppSidebar adds `kwant-cockpit-ui` only while an authenticated workspace is
+   mounted, allowing the product to share one dense, engineered visual system
+   without leaking into the marketing surface.
+   -------------------------------------------------------------------------- */
+
+body.kwant-cockpit-ui {
+  --kwant-cyan: var(--secondary);
+  --kwant-magenta: var(--primary);
+  --kwant-profit: #7ee65c;
+  --kwant-seam: color-mix(in srgb, var(--border) 84%, #000);
+  --kwant-recessed: color-mix(in srgb, var(--background) 86%, #111820);
+  font-family: "Rajdhani", "Inter", system-ui, sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: .012em;
+  background: var(--background);
+}
+
+/* :has() covers the server-rendered frame before React effects attach the
+   body class, preventing an Inter/rounded-card flash on first navigation. */
+body:has(.kwant-command-rail) {
+  --kwant-cyan: var(--secondary);
+  --kwant-magenta: var(--primary);
+  --kwant-profit: #7ee65c;
+  --kwant-seam: color-mix(in srgb, var(--border) 84%, #000);
+  --kwant-recessed: color-mix(in srgb, var(--background) 86%, #111820);
+  font-family: "Rajdhani", "Inter", system-ui, sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: .012em;
+}
+
+body:has(.kwant-command-rail) .kwant-command-rail,
+body:has(.kwant-command-rail) .kwant-chart-command-deck {
+  font-family: "Rajdhani", "Inter", sans-serif;
+}
+
+body:has(.kwant-command-rail) .rounded-3xl { border-radius: 6px !important; }
+body:has(.kwant-command-rail) .rounded-2xl { border-radius: 5px !important; }
+body:has(.kwant-command-rail) .rounded-xl { border-radius: 4px !important; }
+body:has(.kwant-command-rail) .rounded-lg { border-radius: 3px !important; }
+
+body.kwant-cockpit-ui *,
+body.kwant-cockpit-ui *::before,
+body.kwant-cockpit-ui *::after {
+  border-color: var(--kwant-seam);
+}
+
+body.kwant-cockpit-ui input,
+body.kwant-cockpit-ui textarea,
+body.kwant-cockpit-ui select,
+body.kwant-cockpit-ui button {
+  font: inherit;
+}
+
+body.kwant-cockpit-ui .font-mono,
+body.kwant-cockpit-ui code,
+body.kwant-cockpit-ui pre,
+body.kwant-cockpit-ui kbd,
+body.kwant-cockpit-ui [data-numeric="true"] {
+  font-family: "JetBrains Mono", "SF Mono", monospace !important;
+  font-variant-numeric: tabular-nums slashed-zero;
+  letter-spacing: -.025em;
+}
+
+body.kwant-cockpit-ui h1,
+body.kwant-cockpit-ui h2,
+body.kwant-cockpit-ui h3,
+body.kwant-cockpit-ui h4 {
+  font-family: "Rajdhani", "Inter", sans-serif;
+  font-weight: 600;
+  letter-spacing: .025em;
+}
+
+body.kwant-cockpit-ui .kwant-command-rail {
+  background: #040506;
+  border-color: #24282d;
+  box-shadow: inset 0 -1px 0 rgba(255,255,255,.015);
+}
+
+body.kwant-cockpit-ui .kwant-command-rail a,
+body.kwant-cockpit-ui .kwant-command-rail button {
+  font-family: "Rajdhani", sans-serif;
+}
+
+body.kwant-cockpit-ui .kwant-chart-command-deck {
+  background: #050607;
+  box-shadow: inset 0 -1px 0 rgba(255,255,255,.012);
+}
+
+body.kwant-cockpit-ui .kwant-chart-command-deck button {
+  min-height: 27px;
+  border-radius: 3px !important;
+  font-family: "Rajdhani", sans-serif;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .045em;
+}
+
+body.kwant-cockpit-ui .kwant-chart-command-deck > div {
+  border-color: #24282d;
+}
+
+/* Panels lock together like a rack. Only avatars, status lamps and explicit
+   pills retain a full radius. */
+body.kwant-cockpit-ui .rounded-3xl { border-radius: 6px !important; }
+body.kwant-cockpit-ui .rounded-2xl { border-radius: 5px !important; }
+body.kwant-cockpit-ui .rounded-xl { border-radius: 4px !important; }
+body.kwant-cockpit-ui .rounded-lg { border-radius: 3px !important; }
+body.kwant-cockpit-ui .rounded-md { border-radius: 2px !important; }
+
+/* Remove the oversized SaaS spacing while retaining each page's information
+   architecture. These utilities are scoped to the product shell only. */
+body.kwant-cockpit-ui .p-6 { padding: 14px !important; }
+body.kwant-cockpit-ui .p-5 { padding: 12px !important; }
+body.kwant-cockpit-ui .p-4 { padding: 10px !important; }
+body.kwant-cockpit-ui .px-6 { padding-left: 14px !important; padding-right: 14px !important; }
+body.kwant-cockpit-ui .px-5 { padding-left: 12px !important; padding-right: 12px !important; }
+body.kwant-cockpit-ui .px-4 { padding-left: 10px !important; padding-right: 10px !important; }
+body.kwant-cockpit-ui .py-6 { padding-top: 14px !important; padding-bottom: 14px !important; }
+body.kwant-cockpit-ui .py-5 { padding-top: 12px !important; padding-bottom: 12px !important; }
+body.kwant-cockpit-ui .py-4 { padding-top: 10px !important; padding-bottom: 10px !important; }
+body.kwant-cockpit-ui .gap-6 { gap: 12px !important; }
+body.kwant-cockpit-ui .gap-5 { gap: 10px !important; }
+body.kwant-cockpit-ui .gap-4 { gap: 8px !important; }
+body.kwant-cockpit-ui .space-y-6 > :not(:last-child) { margin-bottom: 12px !important; }
+body.kwant-cockpit-ui .space-y-5 > :not(:last-child) { margin-bottom: 10px !important; }
+body.kwant-cockpit-ui .space-y-4 > :not(:last-child) { margin-bottom: 8px !important; }
+
+body.kwant-cockpit-ui .text-3xl { font-size: 1.5rem !important; line-height: 1.08 !important; }
+body.kwant-cockpit-ui .text-2xl { font-size: 1.25rem !important; line-height: 1.1 !important; }
+body.kwant-cockpit-ui .text-xl { font-size: 1.08rem !important; line-height: 1.15 !important; }
+body.kwant-cockpit-ui .text-lg { font-size: .98rem !important; line-height: 1.2 !important; }
+
+body.kwant-cockpit-ui .shadow-2xl,
+body.kwant-cockpit-ui .shadow-xl,
+body.kwant-cockpit-ui .shadow-lg {
+  box-shadow: 0 18px 46px rgba(0,0,0,.62), 0 0 0 1px rgba(255,255,255,.012) !important;
+}
+
+body.kwant-cockpit-ui .bg-panel { background-color: var(--panel); }
+body.kwant-cockpit-ui .bg-card { background-color: var(--card); }
+body.kwant-cockpit-ui .bg-surface { background-color: var(--surface); }
+
+body.kwant-cockpit-ui button,
+body.kwant-cockpit-ui [role="button"],
+body.kwant-cockpit-ui a {
+  -webkit-tap-highlight-color: transparent;
+}
+
+body.kwant-cockpit-ui button:not(:disabled),
+body.kwant-cockpit-ui [role="button"]:not([aria-disabled="true"]) {
+  cursor: pointer;
+}
+
+body.kwant-cockpit-ui button:focus-visible,
+body.kwant-cockpit-ui a:focus-visible,
+body.kwant-cockpit-ui input:focus-visible,
+body.kwant-cockpit-ui textarea:focus-visible,
+body.kwant-cockpit-ui select:focus-visible {
+  outline: 1px solid var(--primary);
+  outline-offset: 1px;
+}
+
+body.kwant-cockpit-ui input,
+body.kwant-cockpit-ui textarea,
+body.kwant-cockpit-ui select {
+  color-scheme: dark;
+  border-width: 1px;
+  background-color: var(--kwant-recessed);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.015);
+}
+
+body.kwant-cockpit-ui input::placeholder,
+body.kwant-cockpit-ui textarea::placeholder {
+  color: color-mix(in srgb, var(--muted) 74%, transparent);
+}
+
+body.kwant-cockpit-ui select option {
+  background: #07090b;
+  color: var(--foreground);
+}
+
+body.kwant-cockpit-ui [role="dialog"],
+body.kwant-cockpit-ui [aria-modal="true"] {
+  border-color: #2a2f35;
+  background-color: #060708;
+}
+
+body.kwant-cockpit-ui [role="tab"] {
+  min-height: 27px;
+  border-radius: 2px;
+  text-transform: uppercase;
+  letter-spacing: .075em;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+body.kwant-cockpit-ui [role="tab"][aria-selected="true"] {
+  color: var(--primary);
+  box-shadow: inset 0 -1px 0 var(--primary);
+}
+
+body.kwant-cockpit-ui table {
+  border-collapse: collapse;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+body.kwant-cockpit-ui th {
+  height: 27px;
+  color: var(--muted);
+  font-family: "Rajdhani", sans-serif;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: .095em;
+  text-transform: uppercase;
+}
+
+body.kwant-cockpit-ui td {
+  border-color: color-mix(in srgb, var(--border) 70%, transparent);
+}
+
+body.kwant-cockpit-ui ::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+body.kwant-cockpit-ui ::-webkit-scrollbar-track {
+  background: #030405;
+}
+
+body.kwant-cockpit-ui ::-webkit-scrollbar-thumb {
+  border: 1px solid #030405;
+  border-radius: 0;
+  background: #343a41;
+}
+
+body.kwant-cockpit-ui ::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--primary) 58%, #343a41);
+}
+
+/* Lightweight Charts and custom market canvases remain the hero. Their host
+   seams are quiet and their axes use the numerical terminal face. */
+body.kwant-cockpit-ui .tv-lightweight-charts,
+body.kwant-cockpit-ui [class*="chart-container"],
+body.kwant-cockpit-ui [class*="indicator-pane"] {
+  background: var(--chart-background);
+}
+
+body.kwant-cockpit-ui canvas {
+  image-rendering: auto;
+}
+
+body.kwant-cockpit-ui .gameplan-current-level,
+body.kwant-cockpit-ui .kwant-one-liner-glow {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary) 24%, transparent) !important;
+}
+
+@media (max-width: 1100px) {
+  body.kwant-cockpit-ui { font-size: 12px; }
+  body.kwant-cockpit-ui .kwant-command-rail { padding-inline: 4px; }
+  body.kwant-cockpit-ui .kwant-command-rail nav { gap: 0; }
+  body.kwant-cockpit-ui .kwant-command-rail a,
+  body.kwant-cockpit-ui .kwant-command-rail button { padding-inline: 7px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body.kwant-cockpit-ui *,
+  body.kwant-cockpit-ui *::before,
+  body.kwant-cockpit-ui *::after {
+    scroll-behavior: auto !important;
+  }
 }
