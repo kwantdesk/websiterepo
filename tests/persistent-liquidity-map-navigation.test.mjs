@@ -78,6 +78,9 @@ test("LIQ MAP receives every active website theme, including new custom colours"
   assert.match(liquidityMap, /kwantdesk:theme-change/);
   assert.match(liquidityMap, /readStoredTheme\(\)/);
   assert.match(mapRuntime, /kwantdesk:liquidity-map-theme/);
+  assert.match(mapRuntime, /kwantdesk:liquidity-map-theme-request/);
+  assert.match(liquidityMap, /event\.data\?\.type === "kwantdesk:liquidity-map-theme-request"[\s\S]*?syncTheme\(\)/);
+  assert.match(liquidityMap, /event\.data\?\.type === "kwantdesk:liquidity-map-ready"[\s\S]*?syncTheme\(\)/);
   assert.match(mapRuntime, /setWebsiteThemeColors\(event\.data\.theme\)/);
   assert.match(mapThemes, /websiteThemeOverride/);
 });

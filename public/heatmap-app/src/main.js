@@ -325,6 +325,12 @@ class DepthForgeApp {
         this.requestRender();
       }
     });
+    if (window.parent !== window) {
+      window.parent.postMessage(
+        { type: 'kwantdesk:liquidity-map-theme-request' },
+        window.location.origin,
+      );
+    }
 
     $('playPause').addEventListener('click', () => this.togglePlayback());
     $('goLive').addEventListener('click', () => this.goLive());

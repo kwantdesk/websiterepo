@@ -81,6 +81,10 @@ export default function LiquidityMapWorkspace({ instrument, onInstrumentChange }
     const handleMapReady = (event: MessageEvent) => {
       if (event.origin !== window.location.origin) return;
       if (event.source !== iframeRef.current?.contentWindow) return;
+      if (event.data?.type === "kwantdesk:liquidity-map-theme-request") {
+        syncTheme();
+        return;
+      }
       if (event.data?.type === "kwantdesk:liquidity-map-ready") {
         const activeSymbol = typeof event.data.symbol === "string"
           ? event.data.symbol.trim().toUpperCase()
@@ -92,6 +96,11 @@ export default function LiquidityMapWorkspace({ instrument, onInstrumentChange }
             onInstrumentChange?.(nextInstrument);
           }
         }
+        // The iframe installs its message listener asynchronously. Always
+        // repeat the current account theme as part of the ready handshake so
+        // an early onLoad message cannot leave Automatic Website Colours on
+        // the map's fallback palette.
+        syncTheme();
         clearStyleCheck();
         revealWhenStyled();
         return;
@@ -116,7 +125,7 @@ export default function LiquidityMapWorkspace({ instrument, onInstrumentChange }
       clearStyleCheck();
       window.removeEventListener("message", handleMapReady);
     };
-  }, [instrument, onInstrumentChange]);
+  }, [instrument, onInstrumentChange, syncTheme]);
 
   return (
     <div className="relative isolate h-full min-h-0 min-w-0 w-full max-w-full overflow-hidden bg-chart-background [contain:layout_paint_size]">
