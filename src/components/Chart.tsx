@@ -10,7 +10,7 @@ import {
   type ISeriesPrimitivePaneView,
   type SeriesAttachedParameter,
   type Time,
-} from "lightweight-charts";
+} from "@/lib/lightweightChartsCompat";
 import {
   ArrowBigDown,
   ArrowBigUp,
@@ -1309,11 +1309,11 @@ function drawingsStorageKey(instrument: string) {
 }
 
 function toolbarDockStorageKey() {
-  return "kwantify-chart-toolbar-dock";
+  return "kwantdesk-chart-toolbar-dock-v2";
 }
 
 function toolbarCollapsedStorageKey() {
-  return "kwantify-chart-toolbar-collapsed";
+  return "kwantdesk-chart-toolbar-collapsed-v2";
 }
 
 function normalizeTimeValue(value: Time | null): number | null {
@@ -1547,7 +1547,7 @@ function groupToolsBySection(tools: ToolbarTool[]) {
 function getToolbarButtonTone(active: boolean) {
   return active
     ? "border-primary/50 bg-primary/15 text-primary"
-    : "border-transparent bg-panel/70 text-muted hover:bg-surface hover:text-foreground";
+    : "border-transparent bg-transparent text-muted hover:bg-surface hover:text-foreground";
 }
 
 function getToolbarDockStyle(dock: ToolbarDock): CSSProperties {
@@ -1716,6 +1716,7 @@ export default function Chart({
   const [openToolbarGroup, setOpenToolbarGroup] = useState<ToolbarGroupId | null>(null);
   const [favoriteToolIds, setFavoriteToolIds] = useState<DrawingToolId[]>([]);
   const [drawings, setDrawings] = useState<ChartDrawing[]>([]);
+  const drawingsHydrationRef = useRef<{ instrument: string; ready: boolean }>({ instrument: "", ready: false });
   const [draftDrawing, setDraftDrawing] = useState<ChartDrawing | null>(null);
   const [selectedDrawingId, setSelectedDrawingId] = useState<string | null>(null);
   const [positionSettingsDrawingId, setPositionSettingsDrawingId] = useState<string | null>(null);
@@ -1723,7 +1724,7 @@ export default function Chart({
   const [hideDrawings, setHideDrawings] = useState(false);
   const [drawingsLocked, setDrawingsLocked] = useState(false);
   const [magnetMode, setMagnetMode] = useState<"off" | "weak" | "strong">("weak");
-  const [toolbarDock, setToolbarDock] = useState<ToolbarDock>("top");
+  const [toolbarDock, setToolbarDock] = useState<ToolbarDock>("left");
   const [toolbarDragPosition, setToolbarDragPosition] = useState<{ x: number; y: number } | null>(null);
   const [showObjectsPanel, setShowObjectsPanel] = useState(false);
   const [toolbarCollapsed, setToolbarCollapsed] = useState(false);
@@ -3581,15 +3582,15 @@ export default function Chart({
     const scale = clamp(Math.min(widthScale, heightScale), 0.3, 1);
     const smooth = (value: number, minimum: number) =>
       Math.max(minimum, Number((value * scale).toFixed(2)));
-    const buttonSize = smooth(44, 13.2);
-    const iconSize = smooth(18, 7);
-    const gap = smooth(8, 1.5);
+    const buttonSize = smooth(38, 13.2);
+    const iconSize = smooth(17, 7);
+    const gap = smooth(3, 1.5);
     return {
       scale,
       buttonSize,
       iconSize,
       gap,
-      radius: smooth(12, 4),
+      radius: smooth(7, 3),
       dockOffset: smooth(12, 3),
       dockStart: Math.max(buttonSize + 3, smooth(64, 20)),
       menuWidth: Math.max(180, Number((420 * scale).toFixed(2))),
@@ -3675,38 +3676,64 @@ export default function Chart({
 
   useEffect(() => {
     if (typeof window === "undefined") return;
+    let cancelled = false;
+    drawingsHydrationRef.current = { instrument, ready: false };
+    let cachedDrawings: ChartDrawing[] = [];
     try {
       const raw = window.localStorage.getItem(drawingsStorageKey(instrument));
-      setDrawings(raw ? JSON.parse(raw) : []);
+      cachedDrawings = raw ? JSON.parse(raw) : [];
+      setDrawings(Array.isArray(cachedDrawings) ? cachedDrawings : []);
     } catch {
       setDrawings([]);
     }
+    void fetch(`/api/chart-drawings?instrument=${encodeURIComponent(instrument)}`, {
+      cache: "no-store",
+      credentials: "include",
+    })
+      .then(async (response) => response.ok ? response.json() as Promise<{ configured?: boolean; drawings?: unknown }> : null)
+      .then((payload) => {
+        if (cancelled) return;
+        if (payload?.configured && Array.isArray(payload.drawings)) {
+          setDrawings(payload.drawings as ChartDrawing[]);
+        }
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        if (!cancelled) drawingsHydrationRef.current = { instrument, ready: true };
+      });
+    return () => { cancelled = true; };
   }, [instrument]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
+    if (!drawingsHydrationRef.current.ready || drawingsHydrationRef.current.instrument !== instrument) return;
     try {
       window.localStorage.setItem(drawingsStorageKey(instrument), JSON.stringify(drawings));
     } catch {
       // ignore storage limits
     }
+    const timeout = window.setTimeout(() => {
+      void fetch("/api/chart-drawings", {
+        method: "PUT",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ instrument, drawings }),
+      }).catch(() => undefined);
+    }, 650);
+    return () => window.clearTimeout(timeout);
   }, [drawings, instrument]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
       const raw = window.localStorage.getItem(toolbarDockStorageKey()) as ToolbarDock | null;
-      if (raw === "right" || raw === "top" || raw === "bottom") {
+      if (raw === "left" || raw === "right" || raw === "top" || raw === "bottom") {
         setToolbarDock(raw);
         return;
       }
-      if (raw === "left") {
-        setToolbarDock("top");
-        window.localStorage.setItem(toolbarDockStorageKey(), "top");
-        return;
-      }
+      setToolbarDock("left");
     } catch {
-      setToolbarDock("top");
+      setToolbarDock("left");
     }
   }, []);
 
@@ -6443,7 +6470,7 @@ export default function Chart({
       {toolbarEnabled && (
       <div
         ref={toolbarRef}
-        className={`absolute z-20 flex ${toolbarDock === "top" || toolbarDock === "bottom" ? "flex-row items-center" : "flex-col"}`}
+        className={`absolute z-20 flex rounded-lg border border-border/80 bg-panel/92 p-[3px] shadow-xl backdrop-blur-xl ${toolbarDock === "top" || toolbarDock === "bottom" ? "flex-row items-center" : "flex-col"}`}
         style={{
           ...toolbarDockStyle,
           gap: toolbarMetrics.gap,
@@ -6488,7 +6515,7 @@ export default function Chart({
               y: currentStyle.y,
             });
           }}
-          className="flex items-center justify-center border border-transparent bg-panel/70 text-muted backdrop-blur transition-all hover:bg-surface hover:text-foreground"
+          className="flex items-center justify-center border border-transparent bg-transparent text-muted transition-all hover:bg-surface hover:text-foreground"
           style={toolbarButtonStyle}
           title={toolbarCollapsed ? "Expand toolbar" : "Collapse toolbar. Drag to dock on another chart edge"}
           aria-pressed={toolbarCollapsed}
@@ -6512,8 +6539,8 @@ export default function Chart({
           onClick={(event) => event.stopPropagation()}
           className={`flex items-center justify-center border backdrop-blur transition-all ${
             chartDragEnabled
-              ? "cursor-grab border-border bg-panel/80 text-muted hover:border-primary/40 hover:bg-surface hover:text-primary active:cursor-grabbing"
-              : "cursor-not-allowed border-transparent bg-panel/45 text-muted/30"
+              ? "cursor-grab border-transparent bg-transparent text-muted hover:bg-surface hover:text-primary active:cursor-grabbing"
+              : "cursor-not-allowed border-transparent bg-transparent text-muted/30"
           }`}
           style={toolbarButtonStyle}
           title={chartDragEnabled ? "Drag this chart onto another chart to swap positions" : "Unlock the workspace and add another chart to reorder"}
@@ -6686,7 +6713,7 @@ export default function Chart({
             <button
               type="button"
               onClick={() => setClearConfirm(true)}
-              className="flex items-center justify-center border border-transparent bg-panel/70 text-muted backdrop-blur transition-all hover:bg-danger/10 hover:text-danger"
+              className="flex items-center justify-center border border-transparent bg-transparent text-muted transition-all hover:bg-danger/10 hover:text-danger"
               style={toolbarButtonStyle}
               title="Clear drawings"
             >

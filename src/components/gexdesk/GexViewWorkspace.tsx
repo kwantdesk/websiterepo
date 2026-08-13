@@ -12,7 +12,7 @@ import {
   type IChartApi,
   type ISeriesApi,
   type Time,
-} from "lightweight-charts";
+} from "@/lib/lightweightChartsCompat";
 import { useEffect, useMemo, useRef, useState } from "react";
 import KwantSelect from "@/components/ui/KwantSelect";
 import ClassifiedGexLadder from "@/components/gexdesk/ClassifiedGexLadder";

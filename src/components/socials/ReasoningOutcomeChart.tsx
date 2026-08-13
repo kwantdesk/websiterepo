@@ -1,6 +1,6 @@
 "use client";
 
-import { createChart, type IChartApi, type ISeriesApi, type Time } from "lightweight-charts";
+import { createChart, type IChartApi, type ISeriesApi, type Time } from "@/lib/lightweightChartsCompat";
 import { useEffect, useRef, useState } from "react";
 
 type Candle = {

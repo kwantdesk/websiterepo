@@ -5,7 +5,7 @@ import type {
   ISeriesPrimitivePaneView,
   SeriesAttachedParameter,
   Time,
-} from "lightweight-charts";
+} from "@/lib/lightweightChartsCompat";
 
 export type BigTradePrimitiveMarker = {
   id: string;

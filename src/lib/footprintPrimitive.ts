@@ -5,7 +5,7 @@ import type {
   ISeriesPrimitivePaneView,
   SeriesAttachedParameter,
   Time,
-} from "lightweight-charts";
+} from "@/lib/lightweightChartsCompat";
 import { formatFootprintValue, type FootprintBar } from "./footprint";
 
 export type FootprintRenderBar = FootprintBar & { time: Time };

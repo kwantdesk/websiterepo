@@ -4,7 +4,7 @@ import type {
   Logical,
   SeriesAttachedParameter,
   Time,
-} from "lightweight-charts";
+} from "@/lib/lightweightChartsCompat";
 import type { InstitutionalVolumeProfile } from "@/lib/institutionalMarketData";
 import {
   calculateVolumeProfileValueArea,
