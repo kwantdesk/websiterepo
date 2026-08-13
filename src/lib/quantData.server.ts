@@ -123,6 +123,7 @@ const lastGoodOptionsFlowByInstrument = new Map<string, OptionsFlowPayload>();
 // falls back to the provider's frozen close pair, which is also pinned.
 const lastLiveAutoScaleBySource = new Map<string, number>();
 let gexDeskCache: { expiresAt: number; promise: Promise<GexDeskPayload> } | null = null;
+const lastGoodGexMapPanelBySurface = new Map<string, GexMapPanelPayload>();
 
 class QuantDataError extends Error {
   constructor(
@@ -2123,12 +2124,28 @@ export async function getGexMapPanel(
   const currentSession = getUsOptionsSession();
   const sessionDate = requestedSessionDate || currentSession.sessionDate;
   const completedSession = sessionDate !== currentSession.sessionDate || !currentSession.marketOpen;
-  if (!completedSession) return buildGexMapPanel(symbol, greekModeInput, sessionDate);
-  return unstable_cache(
-    () => buildGexMapPanel(symbol, greekModeInput, sessionDate),
-    ["completed-gex-map-panel-v1", symbol, greekModeInput, sessionDate],
-    { revalidate: 6 * 60 * 60 },
-  )();
+  // Keep fallbacks session-specific so a historical replay can never receive
+  // a different day's surface merely because that panel was requested last.
+  const surfaceKey = `${symbol}:${greekModeInput}:${sessionDate}`;
+  try {
+    const payload = completedSession
+      ? await unstable_cache(
+        () => buildGexMapPanel(symbol, greekModeInput, sessionDate),
+        ["completed-gex-map-panel-v2", symbol, greekModeInput, sessionDate],
+        { revalidate: 6 * 60 * 60 },
+      )()
+      : await buildGexMapPanel(symbol, greekModeInput, sessionDate);
+    lastGoodGexMapPanelBySurface.set(surfaceKey, payload);
+    return payload;
+  } catch (error) {
+    const lastGood = lastGoodGexMapPanelBySurface.get(surfaceKey);
+    if (!lastGood) throw error;
+    return {
+      ...lastGood,
+      status: "LAST_SESSION",
+      refreshAfterMs: 15_000,
+    };
+  }
 }
 
 export type HistoricalPositioningWallFrames = {

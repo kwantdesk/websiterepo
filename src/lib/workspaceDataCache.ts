@@ -8,6 +8,8 @@ const workspaceDataRequests = new Map<string, Promise<unknown>>();
 const SESSION_CACHE_PREFIX = "kwantdesk:workspace-view:v1:";
 const SESSION_CACHE_MAX_AGE_MS = 6 * 60 * 60 * 1_000;
 const SESSION_CACHE_MAX_CHARS = 1_500_000;
+const GEX_MAP_LAST_GOOD_PREFIX = "kwantdesk:gex-map-last-good:v1:";
+const GEX_MAP_LAST_GOOD_MAX_AGE_MS = 72 * 60 * 60 * 1_000;
 const WORKSPACE_REQUEST_TIMEOUT_MS = 20_000;
 const WORKSPACE_RETRY_DELAY_MS = 350;
 
@@ -17,6 +19,47 @@ function sleep(ms: number) {
 
 function retryableWorkspaceStatus(status: number) {
   return status === 429 || status === 502 || status === 503 || status === 504;
+}
+
+function isGexMapKey(key: string) {
+  return key.startsWith("gex-map:");
+}
+
+function readLastGoodGexMap<T>(key: string): T | null {
+  if (typeof window === "undefined" || !isGexMapKey(key)) return null;
+  try {
+    const stored = window.localStorage.getItem(`${GEX_MAP_LAST_GOOD_PREFIX}${key}`);
+    if (!stored) return null;
+    const entry = JSON.parse(stored) as WorkspaceCacheEntry;
+    if (!entry || Date.now() - entry.updatedAt > GEX_MAP_LAST_GOOD_MAX_AGE_MS) {
+      window.localStorage.removeItem(`${GEX_MAP_LAST_GOOD_PREFIX}${key}`);
+      return null;
+    }
+    workspaceDataCache.set(key, entry);
+    return entry.value as T;
+  } catch {
+    return null;
+  }
+}
+
+function writeLastGoodGexMap<T>(key: string, value: T, updatedAt: number) {
+  if (typeof window === "undefined" || !isGexMapKey(key) || !value || typeof value !== "object") return;
+  try {
+    const payload = value as Record<string, unknown>;
+    // The active map can contain hundreds of minute frames per panel. Keep a
+    // compact, verified close snapshot outside the tab-scoped cache so an API
+    // restart never turns the map blank. The live request still restores the
+    // full playback history when the provider is healthy.
+    const compact = {
+      ...payload,
+      frames: Array.isArray(payload.frames) ? payload.frames.slice(-5) : [],
+      candles: Array.isArray(payload.candles) ? payload.candles.slice(-10) : [],
+    };
+    window.localStorage.setItem(
+      `${GEX_MAP_LAST_GOOD_PREFIX}${key}`,
+      JSON.stringify({ value: compact, updatedAt }),
+    );
+  } catch {}
 }
 
 async function fetchWorkspaceResponse(url: string) {
@@ -46,16 +89,16 @@ export function readWorkspaceData<T>(key: string): T | null {
 
   try {
     const stored = window.sessionStorage.getItem(`${SESSION_CACHE_PREFIX}${key}`);
-    if (!stored) return null;
+    if (!stored) return readLastGoodGexMap<T>(key);
     const entry = JSON.parse(stored) as WorkspaceCacheEntry;
     if (!entry || Date.now() - entry.updatedAt > SESSION_CACHE_MAX_AGE_MS) {
       window.sessionStorage.removeItem(`${SESSION_CACHE_PREFIX}${key}`);
-      return null;
+      return readLastGoodGexMap<T>(key);
     }
     workspaceDataCache.set(key, entry);
     return entry.value as T;
   } catch {
-    return null;
+    return readLastGoodGexMap<T>(key);
   }
 }
 
@@ -74,6 +117,7 @@ export function writeWorkspaceData<T>(key: string, value: T) {
     updatedAt: Date.now(),
   };
   workspaceDataCache.set(key, entry);
+  writeLastGoodGexMap(key, value, entry.updatedAt);
   if (typeof window === "undefined") return;
   try {
     const serialized = JSON.stringify(entry);
