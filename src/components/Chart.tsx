@@ -1707,7 +1707,6 @@ export default function Chart({
   valueAreaLevelsEnabled = false,
   valueAreaLevelsAvailable = false,
   valueAreaLevelsLoading = false,
-  valueAreaLevelsError = null,
   valueAreaLevelsDescription = "",
   onToggleValueAreaLevels,
   onRemoveGameplanOverlay,
@@ -6452,11 +6451,13 @@ export default function Chart({
         </div>
       ) : null}
 
-      {(gammaLevelsError || valueAreaLevelsError || historicalStructureError) ? (
+      {(gammaLevelsError || historicalStructureError) ? (
         <div className="pointer-events-none absolute right-[70px] top-[138px] z-[15] flex max-w-[430px] flex-col items-end gap-1">
           {[
             gammaLevelsError ? `Kwant Levels · ${gammaLevelsError}` : null,
-            valueAreaLevelsError ? `Value Area · ${valueAreaLevelsError}` : null,
+            // Value-area refresh failures stay silent here. The workspace keeps
+            // retrying in the background and restores the next completed CME
+            // profile without covering the chart with an expected window notice.
             historicalStructureError ? `Structure · ${historicalStructureError}` : null,
           ].filter((message): message is string => Boolean(message)).map((message) => (
             <span
