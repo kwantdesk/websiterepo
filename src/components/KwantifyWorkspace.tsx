@@ -607,6 +607,7 @@ type WorkspaceLayoutNode =
       first: WorkspaceLayoutNode;
       second: WorkspaceLayoutNode;
     };
+type WorkspaceDropZone = "left" | "right" | "top" | "bottom" | "center";
 type WorkspacePreset = {
   id: string;
   name: string;
@@ -997,6 +998,45 @@ function insertWorkspacePane(
     first: insertWorkspacePane(node.first, targetPaneId, nextPaneId, axis, splitId),
     second: insertWorkspacePane(node.second, targetPaneId, nextPaneId, axis, splitId),
   };
+}
+
+function insertWorkspacePaneAtEdge(
+  node: WorkspaceLayoutNode,
+  targetPaneId: string,
+  movingPaneId: string,
+  zone: Exclude<WorkspaceDropZone, "center">,
+  splitId: string,
+): WorkspaceLayoutNode {
+  if (node.type === "pane") {
+    if (node.paneId !== targetPaneId) return node;
+    const moving: WorkspaceLayoutNode = { type: "pane", paneId: movingPaneId };
+    const axis = zone === "left" || zone === "right" ? "x" : "y";
+    const movingFirst = zone === "left" || zone === "top";
+    return {
+      type: "split",
+      id: splitId,
+      axis,
+      ratio: 50,
+      first: movingFirst ? moving : node,
+      second: movingFirst ? node : moving,
+    };
+  }
+  const first = insertWorkspacePaneAtEdge(node.first, targetPaneId, movingPaneId, zone, splitId);
+  if (first !== node.first) return { ...node, first };
+  const second = insertWorkspacePaneAtEdge(node.second, targetPaneId, movingPaneId, zone, splitId);
+  return second === node.second ? node : { ...node, second };
+}
+
+function workspaceDropZoneAtPoint(element: HTMLElement, clientX: number, clientY: number): WorkspaceDropZone {
+  const rect = element.getBoundingClientRect();
+  const x = (clientX - rect.left) / Math.max(rect.width, 1);
+  const y = (clientY - rect.top) / Math.max(rect.height, 1);
+  const edge = 0.28;
+  if (x <= edge && y > edge && y < 1 - edge) return "left";
+  if (x >= 1 - edge && y > edge && y < 1 - edge) return "right";
+  if (y <= edge) return "top";
+  if (y >= 1 - edge) return "bottom";
+  return "center";
 }
 
 function collapseWorkspaceSplit(
@@ -6026,6 +6066,7 @@ export default function KwantifyWorkspace({
   } | null>(null);
   const [draggedWorkspacePaneId, setDraggedWorkspacePaneId] = useState<string | null>(null);
   const [workspaceDropTargetPaneId, setWorkspaceDropTargetPaneId] = useState<string | null>(null);
+  const [workspaceDropZone, setWorkspaceDropZone] = useState<WorkspaceDropZone>("center");
   const [watchlist, setWatchlist] = useState<WatchlistItem[]>([
     ...DATABENTO_DEFAULT_SYMBOLS.map((symbol) => createWatchlistItem(symbol, "Databento")),
     ...MARKET_INDEX_DEFINITIONS.map((index) => createWatchlistItem(index.symbol, "Market Index")),
@@ -10650,7 +10691,34 @@ export default function KwantifyWorkspace({
     }
   };
 
-  const dropWorkspacePane = (targetPaneId: string, event: ReactDragEvent<HTMLDivElement>) => {
+  const beginWorkspacePaneDrag = (paneId: string, event: ReactDragEvent<HTMLElement>) => {
+    if (workspaceLocked) {
+      event.preventDefault();
+      return;
+    }
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", paneId);
+    setDraggedWorkspacePaneId(paneId);
+    setWorkspaceDropTargetPaneId(null);
+    setWorkspaceDropZone("center");
+    setActivePaneId(paneId);
+  };
+
+  const finishWorkspacePaneDrag = () => {
+    setDraggedWorkspacePaneId(null);
+    setWorkspaceDropTargetPaneId(null);
+    setWorkspaceDropZone("center");
+  };
+
+  const updateWorkspaceDropPreview = (targetPaneId: string, event: ReactDragEvent<HTMLElement>) => {
+    if (workspaceLocked || !draggedWorkspacePaneId || draggedWorkspacePaneId === targetPaneId) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    setWorkspaceDropTargetPaneId(targetPaneId);
+    setWorkspaceDropZone(workspaceDropZoneAtPoint(event.currentTarget, event.clientX, event.clientY));
+  };
+
+  const dropWorkspacePane = (targetPaneId: string, event: ReactDragEvent<HTMLElement>) => {
     event.preventDefault();
     event.stopPropagation();
     if (
@@ -10658,15 +10726,26 @@ export default function KwantifyWorkspace({
       || !draggedWorkspacePaneId
       || draggedWorkspacePaneId === targetPaneId
     ) {
-      setWorkspaceDropTargetPaneId(null);
+      finishWorkspacePaneDrag();
       return;
     }
-    setWorkspaceTree((current) =>
-      swapWorkspacePaneIds(current, draggedWorkspacePaneId, targetPaneId));
+    const zone = workspaceDropZoneAtPoint(event.currentTarget, event.clientX, event.clientY);
+    const movingPaneId = draggedWorkspacePaneId;
+    setWorkspaceTree((current) => {
+      if (zone === "center") return swapWorkspacePaneIds(current, movingPaneId, targetPaneId);
+      const withoutMovingPane = removeWorkspacePane(current, movingPaneId);
+      if (!withoutMovingPane) return current;
+      return insertWorkspacePaneAtEdge(
+        withoutMovingPane,
+        targetPaneId,
+        movingPaneId,
+        zone,
+        `split-${crypto.randomUUID()}`,
+      );
+    });
     setWorkspaceLayout("custom");
-    setActivePaneId(draggedWorkspacePaneId);
-    setDraggedWorkspacePaneId(null);
-    setWorkspaceDropTargetPaneId(null);
+    setActivePaneId(movingPaneId);
+    finishWorkspacePaneDrag();
   };
 
   const positionWorkspacePresetMenu = useCallback(() => {
@@ -11509,13 +11588,30 @@ export default function KwantifyWorkspace({
       return (
         <div className="relative flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-border bg-panel">
           <div className="flex h-9 shrink-0 items-center justify-between border-b border-border bg-panel/95 px-2.5">
-            <button type="button" onClick={() => setWorkspacePanelPickerPaneId(pane.id)} className="flex h-7 min-w-0 items-center gap-2 rounded-lg px-2 text-[9px] font-semibold text-foreground hover:bg-surface" title="Change workspace panel">
+            <button
+              type="button"
+              draggable={!workspaceLocked && visibleWorkspacePaneIds.length > 1}
+              onDragStart={(event) => beginWorkspacePaneDrag(pane.id, event)}
+              onDragEnd={finishWorkspacePaneDrag}
+              onClick={() => setWorkspacePanelPickerPaneId(pane.id)}
+              className={`flex h-7 min-w-0 items-center gap-2 rounded-lg px-2 text-[9px] font-semibold text-foreground hover:bg-surface ${workspaceLocked ? "cursor-default" : "cursor-grab active:cursor-grabbing"}`}
+              title={workspaceLocked ? "Workspace locked" : "Drag to dock this panel, or click to change it"}
+            >
               <Icon className="h-3.5 w-3.5 shrink-0 text-primary" />
               <span className="truncate">{option?.label ?? "Workspace"}</span>
               <ChevronDown className="h-3 w-3 shrink-0 text-muted" />
             </button>
             {!floating ? (
               <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => setWorkspaceLocked((current) => !current)}
+                  className={`flex h-7 w-7 items-center justify-center rounded-lg transition-colors ${workspaceLocked ? "bg-primary/10 text-primary" : "text-muted hover:bg-surface hover:text-primary"}`}
+                  title={workspaceLocked ? "Unlock workspace layout" : "Lock workspace layout"}
+                  aria-label={workspaceLocked ? "Unlock workspace layout" : "Lock workspace layout"}
+                >
+                  {workspaceLocked ? <Lock className="h-3.5 w-3.5" /> : <Unlock className="h-3.5 w-3.5" />}
+                </button>
                 <button type="button" onClick={() => detachWorkspacePane(pane.id)} disabled={workspaceLocked} className="flex h-7 w-7 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-primary disabled:opacity-30" title="Detach into a floating window" aria-label={`Detach ${option?.label ?? "workspace"} panel`}>
                   <PictureInPicture2 className="h-3.5 w-3.5" />
                 </button>
@@ -11590,16 +11686,8 @@ export default function KwantifyWorkspace({
           setPaneLevelVisible(pane.id, "kwant", false);
           setGameplanChartOverlays(removeGameplanChartOverlay(gameplanRoot));
         }}
-        onChartDragStart={(event) => {
-          event.dataTransfer.effectAllowed = "move";
-          event.dataTransfer.setData("text/plain", pane.id);
-          setDraggedWorkspacePaneId(pane.id);
-          setActivePaneId(pane.id);
-        }}
-        onChartDragEnd={() => {
-          setDraggedWorkspacePaneId(null);
-          setWorkspaceDropTargetPaneId(null);
-        }}
+        onChartDragStart={(event) => beginWorkspacePaneDrag(pane.id, event)}
+        onChartDragEnd={finishWorkspacePaneDrag}
       />
     );
     if (floating) return chartPane;
@@ -11608,9 +11696,12 @@ export default function KwantifyWorkspace({
         <div className="flex h-9 shrink-0 items-center justify-between border-b border-border bg-panel/95 px-2.5">
           <button
             type="button"
+            draggable={!workspaceLocked && visibleWorkspacePaneIds.length > 1}
+            onDragStart={(event) => beginWorkspacePaneDrag(pane.id, event)}
+            onDragEnd={finishWorkspacePaneDrag}
             onClick={() => setWorkspacePanelPickerPaneId(pane.id)}
-            className="flex h-7 min-w-0 items-center gap-2 rounded-lg px-2 text-[9px] font-semibold text-foreground hover:bg-surface"
-            title="Change workspace panel"
+            className={`flex h-7 min-w-0 items-center gap-2 rounded-lg px-2 text-[9px] font-semibold text-foreground hover:bg-surface ${workspaceLocked ? "cursor-default" : "cursor-grab active:cursor-grabbing"}`}
+            title={workspaceLocked ? "Workspace locked" : "Drag to dock this chart, or click to change it"}
           >
             <BarChart3 className="h-3.5 w-3.5 shrink-0 text-primary" />
             <span className="truncate">CHARTS</span>
@@ -11620,6 +11711,15 @@ export default function KwantifyWorkspace({
             <ChevronDown className="h-3 w-3 shrink-0 text-muted" />
           </button>
           <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setWorkspaceLocked((current) => !current)}
+              className={`flex h-7 w-7 items-center justify-center rounded-lg transition-colors ${workspaceLocked ? "bg-primary/10 text-primary" : "text-muted hover:bg-surface hover:text-primary"}`}
+              title={workspaceLocked ? "Unlock workspace layout" : "Lock workspace layout"}
+              aria-label={workspaceLocked ? "Unlock workspace layout" : "Lock workspace layout"}
+            >
+              {workspaceLocked ? <Lock className="h-3.5 w-3.5" /> : <Unlock className="h-3.5 w-3.5" />}
+            </button>
             <button
               type="button"
               onClick={() => detachWorkspacePane(pane.id)}
@@ -11780,12 +11880,7 @@ export default function KwantifyWorkspace({
               setWorkspaceDropTargetPaneId(node.paneId);
             }
           }}
-          onDragOver={(event) => {
-            if (!workspaceLocked && draggedWorkspacePaneId && draggedWorkspacePaneId !== node.paneId) {
-              event.preventDefault();
-              event.dataTransfer.dropEffect = "move";
-            }
-          }}
+          onDragOver={(event) => updateWorkspaceDropPreview(node.paneId, event)}
           onDragLeave={(event) => {
             const relatedTarget = event.relatedTarget;
             if (
@@ -11810,13 +11905,42 @@ export default function KwantifyWorkspace({
           {nodePane?.content === "charts" && workspacePanelPickerPaneId === node.paneId
             ? renderWorkspacePanelPicker(nodePane, true)
             : null}
-          {workspaceDropTargetPaneId === node.paneId && (
-            <div className="pointer-events-none absolute inset-0 z-[80] flex items-center justify-center rounded-2xl bg-primary/10 backdrop-blur-[1px]">
-              <div className="rounded-full border border-primary/40 bg-panel/95 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-primary shadow-xl">
-                Drop to swap charts
-              </div>
+          {draggedWorkspacePaneId && draggedWorkspacePaneId !== node.paneId ? (
+            <div
+              className={`absolute inset-0 z-[90] grid grid-cols-3 grid-rows-3 gap-2 rounded-2xl p-[7%] backdrop-blur-[2px] transition-colors ${workspaceDropTargetPaneId === node.paneId ? "bg-background/48" : "bg-background/28"}`}
+              onDragEnter={(event) => {
+                event.preventDefault();
+                setWorkspaceDropTargetPaneId(node.paneId);
+              }}
+              onDragOver={(event) => updateWorkspaceDropPreview(node.paneId, event)}
+              onDragLeave={(event) => {
+                const relatedTarget = event.relatedTarget;
+                if (!(relatedTarget instanceof Node) || !event.currentTarget.contains(relatedTarget)) {
+                  setWorkspaceDropTargetPaneId((current) => current === node.paneId ? null : current);
+                }
+              }}
+              onDrop={(event) => dropWorkspacePane(node.paneId, event)}
+              aria-label="Workspace docking positions"
+            >
+              {([
+                ["top", "TOP", "col-start-2 row-start-1"],
+                ["left", "LEFT", "col-start-1 row-start-2"],
+                ["center", "SWAP", "col-start-2 row-start-2"],
+                ["right", "RIGHT", "col-start-3 row-start-2"],
+                ["bottom", "BOTTOM", "col-start-2 row-start-3"],
+              ] as const).map(([zone, label, position]) => {
+                const selected = workspaceDropTargetPaneId === node.paneId && workspaceDropZone === zone;
+                return (
+                  <div
+                    key={zone}
+                    className={`${position} pointer-events-none flex min-h-10 items-center justify-center rounded-[4px] border text-[8px] font-semibold uppercase tracking-[0.12em] shadow-lg transition-all ${selected ? "scale-[1.04] border-primary bg-primary text-background shadow-[0_0_24px_color-mix(in_srgb,var(--primary)_30%,transparent)]" : "border-border/80 bg-panel/88 text-muted"}`}
+                  >
+                    {label}
+                  </div>
+                );
+              })}
             </div>
-          )}
+          ) : null}
         </div>
       );
     }

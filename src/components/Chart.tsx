@@ -6925,8 +6925,8 @@ export default function Chart({
               : "cursor-not-allowed border-transparent bg-transparent text-muted/30"
           }`}
           style={toolbarButtonStyle}
-          title={chartDragEnabled ? "Drag this chart onto another chart to swap positions" : "Unlock the workspace and add another chart to reorder"}
-          aria-label="Reorder chart"
+          title={chartDragEnabled ? "Drag to dock left, right, above, below, or swap with another panel" : "Unlock the workspace and add another panel to arrange it"}
+          aria-label="Move and dock chart"
         >
           <span className="grid grid-cols-2 gap-[3px]" aria-hidden="true">
             {Array.from({ length: 6 }).map((_, index) => (
