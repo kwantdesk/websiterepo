@@ -21,3 +21,18 @@ test("left and top resizing update the floating window origin as well as its siz
   assert.match(workspaceSource, /startingRight - minimumWidth/);
   assert.match(workspaceSource, /startingBottom - minimumHeight/);
 });
+
+test("panel header locks are pane-scoped instead of toggling the global workspace lock", () => {
+  assert.match(workspaceSource, /onClick=\{\(\) => toggleWorkspacePaneLock\(pane\.id\)\}/);
+  assert.match(workspaceSource, /paneMoveLocked = workspaceLocked \|\| pane\.locked/);
+  assert.match(workspaceSource, /pane\.id === paneId \? \{ \.\.\.pane, locked: !pane\.locked \} : pane/);
+});
+
+test("a floating lock blocks movement but keeps manual edge resizing available", () => {
+  const moveStart = workspaceSource.indexOf("const startFloatingWorkspaceMove");
+  const resizeStart = workspaceSource.indexOf("const startFloatingWorkspaceResize");
+  const closeStart = workspaceSource.indexOf("const closeWorkspacePane");
+  assert.ok(moveStart >= 0 && resizeStart > moveStart && closeStart > resizeStart);
+  assert.match(workspaceSource.slice(moveStart, resizeStart), /floating\.locked/);
+  assert.doesNotMatch(workspaceSource.slice(resizeStart, closeStart), /floating\.locked/);
+});
