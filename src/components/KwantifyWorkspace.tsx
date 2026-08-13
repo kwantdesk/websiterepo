@@ -11815,7 +11815,7 @@ export default function KwantifyWorkspace({
       const Icon = option?.icon ?? Layers3;
       return (
         <div className="relative flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-border bg-panel">
-          <div className="flex h-9 shrink-0 items-center justify-between border-b border-border bg-panel/95 px-2.5">
+          <div className="kwant-workspace-pane-header flex shrink-0 items-center justify-between border-b border-border bg-panel/95 px-2.5">
             <button
               type="button"
               onPointerDown={(event) => beginWorkspacePaneDrag(pane.id, event)}
@@ -11924,7 +11924,7 @@ export default function KwantifyWorkspace({
     if (floating) return chartPane;
     return (
       <div className="relative flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-border bg-panel">
-        <div className="flex h-9 shrink-0 items-center justify-between border-b border-border bg-panel/95 px-2.5">
+        <div className="kwant-workspace-pane-header flex shrink-0 items-center justify-between border-b border-border bg-panel/95 px-2.5">
           <button
             type="button"
             onPointerDown={(event) => beginWorkspacePaneDrag(pane.id, event)}
@@ -12011,7 +12011,7 @@ export default function KwantifyWorkspace({
       >
         <div
           onPointerDown={(event) => startFloatingWorkspaceMove(floating.paneId, event)}
-          className={`flex h-8 shrink-0 touch-none items-center border-b border-border bg-background/95 px-2 ${
+          className={`kwant-workspace-pane-header flex shrink-0 touch-none items-center border-b border-border bg-background/95 px-2 ${
             floating.locked ? "cursor-default" : "cursor-grab active:cursor-grabbing"
           }`}
         >
@@ -12063,7 +12063,10 @@ export default function KwantifyWorkspace({
             </button>
           </div>
         </div>
-        <div className="absolute inset-x-0 bottom-0 top-8 min-h-0 overflow-hidden">
+        <div
+          className="absolute inset-x-0 bottom-0 min-h-0 overflow-hidden"
+          style={{ top: "var(--kwant-shell-bar-height)" }}
+        >
           {renderWorkspacePane(floating.paneId, true)}
         </div>
         {!floating.locked ? (

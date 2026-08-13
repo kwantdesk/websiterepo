@@ -12,7 +12,8 @@
 @import "@fontsource/rajdhani/700.css";
 
 :root {
-  --kwant-shell-bar-height: 40px;
+  /* The CHARTS workspace header is the shell's vertical rhythm reference. */
+  --kwant-shell-bar-height: 36px;
   --background: #020304;
   --foreground: #DDE2E7;
   --primary: #FF1F78;
@@ -1235,16 +1236,25 @@ body:has(.kwant-command-rail) .kwant-chart-command-deck {
   font-family: "Rajdhani", "Inter", sans-serif;
 }
 
-/* One compact vertical rhythm for the primary navigation and the chart
-   command rows beneath it. Keep this token shared so the shell cannot drift
-   back into mixed 32px/40px bars as controls are added. */
+/* One compact vertical rhythm for the primary navigation, both chart command
+   rows and every workspace panel header. CHARTS is the reference row. */
 header.kwant-command-rail {
   height: var(--kwant-shell-bar-height);
+  min-height: var(--kwant-shell-bar-height);
+  max-height: var(--kwant-shell-bar-height);
 }
 
 .kwant-chart-command-deck {
   height: calc(var(--kwant-shell-bar-height) * 2);
   grid-template-rows: repeat(2, var(--kwant-shell-bar-height));
+}
+
+.kwant-chart-command-deck > div,
+.kwant-workspace-pane-header {
+  height: var(--kwant-shell-bar-height);
+  min-height: var(--kwant-shell-bar-height);
+  max-height: var(--kwant-shell-bar-height);
+  box-sizing: border-box;
 }
 
 body:has(.kwant-command-rail) .rounded-3xl { border-radius: 6px !important; }
