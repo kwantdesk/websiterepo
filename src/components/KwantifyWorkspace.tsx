@@ -243,6 +243,7 @@ import {
   cmeSessionStartMs,
   cmeSessionWindowForDate,
   cmeChartTailNeedsReconciliation,
+  compressCmeClosedSessionCandles,
   DEFAULT_CHART_HISTORY_CALENDAR_DAYS,
   hasMinimumChartHistory,
   trimToRecentChartSessions,
@@ -3642,6 +3643,10 @@ function WorkspaceChartPane({
 }) {
   const gammaInstrument = displayCmeSymbol(pane.symbol);
   const [candles, setCandles] = useState<Candle[]>([]);
+  const plottedCandles = useMemo(
+    () => compressCmeClosedSessionCandles(candles, pane.timeframe),
+    [candles, pane.timeframe],
+  );
   const [lowerIndicatorHeight, setLowerIndicatorHeight] = useState(0);
   const [marketTrades, setMarketTrades] = useState<InstitutionalTrade[]>([]);
   const [orderFlowHistoryReady, setOrderFlowHistoryReady] = useState(false);
@@ -5752,7 +5757,7 @@ function WorkspaceChartPane({
         <div className="flex h-full items-center justify-center text-[13px] text-muted">{error}</div>
       ) : (
         <Chart
-          candles={candles}
+          candles={plottedCandles}
           marketTrades={marketTrades}
           trades={trades}
           levels={chartLevels}

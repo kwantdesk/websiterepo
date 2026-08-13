@@ -16,6 +16,54 @@ const CME_SESSION_CLOCK = new Intl.DateTimeFormat("en-CA", {
   hourCycle: "h23",
 });
 
+const CME_TRADING_CLOCK = new Intl.DateTimeFormat("en-US", {
+  timeZone: "America/Chicago",
+  weekday: "short",
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+});
+
+/**
+ * CME futures do not trade during the daily 16:00-17:00 Chicago maintenance
+ * break or from Friday 16:00 until Sunday 17:00. Some upstream snapshots keep
+ * emitting flat placeholder OHLC rows during those windows. If those rows are
+ * given to Lightweight Charts they become tiny dashed candles and consume a
+ * full bar slot, creating a large fake hole between the close and reopen.
+ */
+export function isCmeClosedSessionTimestamp(timestamp: number) {
+  if (!Number.isFinite(timestamp)) return false;
+  const parts = Object.fromEntries(
+    CME_TRADING_CLOCK
+      .formatToParts(new Date(timestamp))
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, part.value]),
+  ) as Record<"weekday" | "hour" | "minute", string>;
+  const hour = Number(parts.hour);
+  const minute = Number(parts.minute);
+  if (!Number.isFinite(hour) || !Number.isFinite(minute)) return false;
+
+  const minutes = hour * 60 + minute;
+  const maintenanceStart = 16 * 60;
+  const reopen = 17 * 60;
+  if (parts.weekday === "Sat") return true;
+  if (parts.weekday === "Fri" && minutes >= maintenanceStart) return true;
+  if (parts.weekday === "Sun" && minutes < reopen) return true;
+  return minutes >= maintenanceStart && minutes < reopen;
+}
+
+/**
+ * Remove provider placeholder bars from intraday chart presentation. Missing
+ * exchange time remains represented by the real timestamps on either side,
+ * while the chart's logical bar index puts the close and reopen beside one
+ * another as traders expect. Daily and multi-hour aggregation is left intact.
+ */
+export function compressCmeClosedSessionCandles(candles: Candle[], timeframe: string) {
+  const durationMs = timeframeDurationMs(timeframe);
+  if (durationMs === null || durationMs > 60 * 60_000) return candles;
+  return candles.filter((candle) => !isCmeClosedSessionTimestamp(candle.timestamp));
+}
+
 function chicagoWallClockMs(
   year: number,
   month: number,
