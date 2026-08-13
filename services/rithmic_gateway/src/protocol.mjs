@@ -21,7 +21,9 @@ const PROTO_FILES = [
   "request_depth_by_order_updates.proto",
   "response_depth_by_order_updates.proto",
   "depth_by_order.proto",
-  "depth_by_order_end_event.proto"
+  "depth_by_order_end_event.proto",
+  "request_front_month_contract.proto",
+  "response_front_month_contract.proto"
 ];
 
 const RESPONSE_TYPES = new Map([
@@ -36,7 +38,8 @@ const RESPONSE_TYPES = new Map([
   [151, "BestBidOffer"],
   [156, "OrderBook"],
   [160, "DepthByOrder"],
-  [161, "DepthByOrderEndEvent"]
+  [161, "DepthByOrderEndEvent"],
+  [154467, "ResponseFrontMonthContract"]
 ]);
 
 function jsonValue(value) {
@@ -109,4 +112,6 @@ export const TEMPLATE_IDS = Object.freeze({
   MARKET_DATA_REQUEST: 100,
   DEPTH_SNAPSHOT_REQUEST: 115,
   DEPTH_UPDATES_REQUEST: 117,
+  FRONT_MONTH_REQUEST: 154467,
+  FRONT_MONTH_RESPONSE: 154467,
 });

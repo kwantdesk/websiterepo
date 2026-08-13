@@ -121,6 +121,9 @@ export class RithmicMarketDataClient extends EventEmitter {
         instrumentKey(row.exchange, row.symbol),
       ),
     );
+    this.frontMonthCache = new Map();
+    this.pendingFrontMonthRequests = new Map();
+    this.frontMonthRequestSequence = 0;
     this.status = {
       provider: "Rithmic",
       environment: config.systemName,
@@ -265,6 +268,67 @@ export class RithmicMarketDataClient extends EventEmitter {
     });
   }
 
+  async resolveFrontMonth(exchange, root, timeoutMs = 8_000) {
+    const normalizedExchange = String(exchange || "").trim().toUpperCase();
+    const normalizedRoot = String(root || "").trim().toUpperCase();
+    if (!normalizedExchange || !normalizedRoot) {
+      throw new Error("Both exchange and product root are required.");
+    }
+    const key = instrumentKey(normalizedExchange, normalizedRoot);
+    const cached = this.frontMonthCache.get(key);
+    if (cached && Date.now() - cached.resolvedAt < 6 * 60 * 60_000) {
+      return cached;
+    }
+    const live = this.book.list()
+      .filter((row) => (
+        String(row.exchange || "").toUpperCase() === normalizedExchange
+        && String(row.symbol || "").toUpperCase().replace(/[FGHJKMNQUVXZ]\d{1,2}$/u, "") === normalizedRoot
+        && ["LIVE", "STALE"].includes(row.status)
+      ))
+      .sort((left, right) => (right.status === "LIVE" ? 1 : 0) - (left.status === "LIVE" ? 1 : 0))[0];
+    if (live?.symbol) {
+      const resolved = {
+        exchange: normalizedExchange,
+        root: normalizedRoot,
+        contractSymbol: String(live.symbol).toUpperCase(),
+        resolvedAt: Date.now(),
+        source: "live-book",
+      };
+      this.frontMonthCache.set(key, resolved);
+      return resolved;
+    }
+    if (this.socket?.readyState !== WebSocket.OPEN) {
+      throw new Error("Rithmic Ticker Plant is not connected.");
+    }
+    const requestId = `front-month:${normalizedExchange}:${normalizedRoot}:${++this.frontMonthRequestSequence}`;
+    return await new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        this.pendingFrontMonthRequests.delete(requestId);
+        reject(new Error(`Timed out resolving ${normalizedExchange}:${normalizedRoot} front month.`));
+      }, timeoutMs);
+      this.pendingFrontMonthRequests.set(requestId, {
+        exchange: normalizedExchange,
+        root: normalizedRoot,
+        resolve,
+        reject,
+        timeout,
+      });
+      try {
+        this.send("RequestFrontMonthContract", {
+          templateId: TEMPLATE_IDS.FRONT_MONTH_REQUEST,
+          userMsg: [requestId],
+          symbol: normalizedRoot,
+          exchange: normalizedExchange,
+          needUpdates: false,
+        });
+      } catch (error) {
+        clearTimeout(timeout);
+        this.pendingFrontMonthRequests.delete(requestId);
+        reject(error);
+      }
+    });
+  }
+
   subscribe(exchange, symbol) {
     const row = {
       exchange: String(exchange).trim().toUpperCase(),
@@ -400,6 +464,32 @@ export class RithmicMarketDataClient extends EventEmitter {
         // Both paths must commit the staged book exactly once.
         event = this.book.applyDepthSnapshot(decoded.payload);
         break;
+      case 154467: {
+        const payload = decoded.payload || {};
+        const requestId = payload.userMsg?.[0];
+        const pending = requestId ? this.pendingFrontMonthRequests.get(requestId) : null;
+        if (!pending) break;
+        clearTimeout(pending.timeout);
+        this.pendingFrontMonthRequests.delete(requestId);
+        const failureCode = payload.rpCode?.find((code) => code !== "0");
+        const contractSymbol = String(payload.tradingSymbol || payload.symbol || "").toUpperCase();
+        if (failureCode || !contractSymbol) {
+          pending.reject(new Error(
+            `Rithmic could not resolve ${pending.exchange}:${pending.root} front month${failureCode ? ` (${failureCode})` : ""}.`,
+          ));
+          break;
+        }
+        const resolved = {
+          exchange: String(payload.tradingExchange || pending.exchange).toUpperCase(),
+          root: pending.root,
+          contractSymbol,
+          resolvedAt: Date.now(),
+          source: "rithmic-front-month",
+        };
+        this.frontMonthCache.set(instrumentKey(pending.exchange, pending.root), resolved);
+        pending.resolve(resolved);
+        break;
+      }
       case 101:
       case 118:
         this.recordSubscriptionResponse(decoded);

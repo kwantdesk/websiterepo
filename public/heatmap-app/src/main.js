@@ -7,6 +7,7 @@ import {
   LIQUIDITY_MAP_ROOTS,
   LIQUIDITY_MAP_SYMBOLS,
   liveInstrumentCatalogUrl,
+  liveInstrumentResolveUrl,
   normalizeLiquidityMapSymbol,
   symbolMatchesSnapshot,
   updateLivePresentationEdge,
@@ -88,6 +89,11 @@ class DepthForgeApp {
     const restoredInstrumentTabs = this.#restoreInstrumentTabs();
     this.instrumentTabs = restoredInstrumentTabs.tabs;
     this.availableInstrumentSymbols = new Set(LIQUIDITY_MAP_ROOTS);
+    this.instrumentSubscriptions = new Map(LIQUIDITY_MAP_ROOTS.map(symbol => [symbol, {
+      symbol,
+      contractSymbol: SYMBOLS[symbol]?.contract || '',
+      exchange: SYMBOLS[symbol]?.venue || '',
+    }]));
     this.symbol = restoredInstrumentTabs.active;
     this.currentContractSymbol = SYMBOLS[this.symbol].contract;
     this.market = { intervalMs: 100 };
@@ -163,6 +169,8 @@ class DepthForgeApp {
     requestAnimationFrame(timestamp => this.#loop(timestamp));
     this.liveFeed = new DepthMarketFeed({
       symbol: this.symbol,
+      contractSymbol: this.currentContractSymbol,
+      exchange: SYMBOLS[this.symbol].venue,
       onSnapshot: (snapshot, metadata) => this.#ingestDepthSnapshot(snapshot, metadata),
       onPresentationTick: (tick, timestamp) => this.#ingestPresentationTick(tick, timestamp),
       onStatus: status => this.#setLiveStatus(status),
@@ -741,7 +749,8 @@ class DepthForgeApp {
     symbol = normalized;
     this.#beginSymbolLoad(symbol);
     this.symbol = symbol;
-    this.currentContractSymbol = SYMBOLS[symbol].contract;
+    this.currentContractSymbol = this.instrumentSubscriptions.get(symbol)?.contractSymbol
+      || SYMBOLS[symbol].contract;
     this.sourceMode = 'connecting';
     this.depthEngine.reset();
     this.history = this.depthEngine.frames;
@@ -758,7 +767,17 @@ class DepthForgeApp {
     this.pendingReadySymbol = '';
     this.atLive = true;
     this.playing = true;
-    this.liveFeed.setSymbol(symbol);
+    const subscription = this.instrumentSubscriptions.get(symbol) || {
+      symbol,
+      contractSymbol: SYMBOLS[symbol].contract,
+      exchange: SYMBOLS[symbol].venue,
+    };
+    this.liveFeed.setSymbol(
+      subscription.symbol,
+      subscription.contractSymbol,
+      subscription.exchange,
+    );
+    void this.#resolveInstrumentSubscription(symbol);
     this.#persistInstrumentTabs();
     this.#updateSymbolUi();
     this.#renderTape();
@@ -786,13 +805,71 @@ class DepthForgeApp {
         config.contract = String(row.contractSymbol || row.symbol || config.contract);
         config.venue = String(row.exchange || config.venue);
         config.description = String(row.displayName || config.description);
+        this.instrumentSubscriptions.set(root, {
+          symbol: root,
+          contractSymbol: config.contract,
+          exchange: config.venue,
+        });
       }
       if (!permitted.size) return;
       this.availableInstrumentSymbols = permitted;
+      const activeSubscription = this.instrumentSubscriptions.get(this.symbol);
+      if (activeSubscription) {
+        this.currentContractSymbol = activeSubscription.contractSymbol;
+        this.liveFeed?.setSymbol(
+          activeSubscription.symbol,
+          activeSubscription.contractSymbol,
+          activeSubscription.exchange,
+        );
+      }
       this.#renderInstrumentTabs();
       if ($('instrumentPicker').open) this.#renderInstrumentResults($('instrumentSearch').value);
     } catch {
       // Keep the static catalog available while the VPS reconnects.
+    }
+  }
+
+  async #resolveInstrumentSubscription(symbol) {
+    const expectedSymbol = normalizeLiquidityMapSymbol(symbol);
+    const current = this.instrumentSubscriptions.get(expectedSymbol) || {
+      symbol: expectedSymbol,
+      contractSymbol: SYMBOLS[expectedSymbol]?.contract || '',
+      exchange: SYMBOLS[expectedSymbol]?.venue || '',
+    };
+    try {
+      if (expectedSymbol === this.symbol) {
+        this.#setSymbolLoadProgress(18, `Resolving active ${current.exchange || 'futures'} contract`);
+      }
+      const response = await fetch(
+        liveInstrumentResolveUrl(expectedSymbol, current.exchange),
+        { cache: 'no-store', headers: { Accept: 'application/json' } },
+      );
+      if (!response.ok) return;
+      const row = await response.json();
+      const resolvedRoot = normalizeLiquidityMapSymbol(row?.root || row?.symbol);
+      if (resolvedRoot !== expectedSymbol) return;
+      const config = SYMBOLS[expectedSymbol];
+      const serverTickSize = Number(row.tickSize);
+      if (Number.isFinite(serverTickSize) && serverTickSize > 0) {
+        config.tickSize = serverTickSize;
+        config.decimals = Math.min(8, Math.max(0, String(serverTickSize).split('.')[1]?.length || 0));
+      }
+      config.contract = String(row.contractSymbol || row.symbol || config.contract);
+      config.venue = String(row.exchange || config.venue).toUpperCase();
+      config.description = String(row.displayName || config.description);
+      const resolved = {
+        symbol: expectedSymbol,
+        contractSymbol: config.contract,
+        exchange: config.venue,
+      };
+      this.instrumentSubscriptions.set(expectedSymbol, resolved);
+      if (expectedSymbol !== this.symbol) return;
+      this.currentContractSymbol = resolved.contractSymbol;
+      this.liveFeed.setSymbol(resolved.symbol, resolved.contractSymbol, resolved.exchange);
+      this.#updateSymbolUi();
+    } catch {
+      // The catalog contract remains a valid bounded fallback while the
+      // resolver or Rithmic reference-data channel reconnects.
     }
   }
 

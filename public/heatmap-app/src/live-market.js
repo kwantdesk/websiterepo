@@ -21,6 +21,12 @@ export function liveInstrumentCatalogUrl() {
   return `${INSTITUTIONAL_MARKET_DATA_ORIGIN}/v1/market-data/catalog`;
 }
 
+export function liveInstrumentResolveUrl(symbol, exchange = '') {
+  const query = new URLSearchParams({ symbol: String(symbol || '').toUpperCase() });
+  if (exchange) query.set('exchange', String(exchange).toUpperCase());
+  return `${INSTITUTIONAL_MARKET_DATA_ORIGIN}/v1/market-data/resolve?${query}`;
+}
+
 const finite = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
 
 export function isPlausiblePresentationTick(value, snapshot) {
@@ -32,22 +38,24 @@ export function isPlausiblePresentationTick(value, snapshot) {
     && Math.abs(tick - reference) <= MAX_PRESENTATION_TICK_JUMP;
 }
 
-export function liveDepthStreamUrl(symbol = 'MNQ', contractSymbol = '', afterTimestamp = 0) {
+export function liveDepthStreamUrl(symbol = 'MNQ', contractSymbol = '', afterTimestamp = 0, exchange = '') {
   const query = new URLSearchParams({
     depthTicks: String(REQUESTED_DEPTH_TICKS),
     symbol,
   });
   if (contractSymbol) query.set('contractSymbol', contractSymbol);
+  if (exchange) query.set('exchange', String(exchange).toUpperCase());
   if (Number(afterTimestamp) > 0) query.set('afterTimestamp', String(Math.floor(Number(afterTimestamp))));
   return `${INSTITUTIONAL_MARKET_DATA_ORIGIN}/v1/heatmap/stream?${query}`;
 }
 
-export function liveDepthSnapshotUrl(symbol = 'MNQ', contractSymbol = '') {
+export function liveDepthSnapshotUrl(symbol = 'MNQ', contractSymbol = '', exchange = '') {
   const query = new URLSearchParams({
     depthTicks: String(REQUESTED_DEPTH_TICKS),
     symbol,
   });
   if (contractSymbol) query.set('contractSymbol', contractSymbol);
+  if (exchange) query.set('exchange', String(exchange).toUpperCase());
   return `${INSTITUTIONAL_MARKET_DATA_ORIGIN}/v1/heatmap/snapshot?${query}`;
 }
 
@@ -209,9 +217,10 @@ export function updateLivePresentationEdge(history, snapshot) {
 }
 
 export class DepthMarketFeed {
-  constructor({ symbol = 'MNQ', contractSymbol = '', onSnapshot, onPresentationTick, onStatus, onCvdHistory, eventSourceFactory } = {}) {
+  constructor({ symbol = 'MNQ', contractSymbol = '', exchange = '', onSnapshot, onPresentationTick, onStatus, onCvdHistory, eventSourceFactory } = {}) {
     this.symbol = symbol;
     this.contractSymbol = contractSymbol;
+    this.exchange = String(exchange || '').toUpperCase();
     this.onSnapshot = onSnapshot;
     this.onPresentationTick = onPresentationTick;
     this.onStatus = onStatus;
@@ -277,10 +286,16 @@ export class DepthMarketFeed {
     this.#unbindRecoveryEvents();
   }
 
-  setSymbol(symbol, contractSymbol = '') {
-    if (symbol === this.symbol && contractSymbol === this.contractSymbol) return;
+  setSymbol(symbol, contractSymbol = '', exchange = '') {
+    const normalizedExchange = String(exchange || '').toUpperCase();
+    if (
+      symbol === this.symbol
+      && contractSymbol === this.contractSymbol
+      && normalizedExchange === this.exchange
+    ) return;
     this.symbol = symbol;
     this.contractSymbol = contractSymbol;
+    this.exchange = normalizedExchange;
     this.connectionGeneration += 1;
     clearTimeout(this.reconnectTimer);
     this.reconnectTimer = null;
@@ -307,6 +322,7 @@ export class DepthMarketFeed {
       depthMode: 'CONNECTING',
       fullDepth: false,
       contractSymbol,
+      exchange: normalizedExchange,
     };
     this.onStatus?.(this.status);
     if (this.running) this.#connect();
@@ -315,8 +331,14 @@ export class DepthMarketFeed {
   #connect() {
     const symbol = this.symbol;
     const contractSymbol = this.contractSymbol;
+    const exchange = this.exchange;
     const generation = ++this.connectionGeneration;
-    const stream = this.eventSourceFactory(liveDepthStreamUrl(symbol, contractSymbol, this.lastAcceptedTimestamp));
+    const stream = this.eventSourceFactory(liveDepthStreamUrl(
+      symbol,
+      contractSymbol,
+      this.lastAcceptedTimestamp,
+      exchange,
+    ));
     const isCurrentConnection = () => (
       this.running
       && this.stream === stream
@@ -532,9 +554,10 @@ export class DepthMarketFeed {
     this.lastSnapshotProbeAt = now;
     const symbol = this.symbol;
     const contractSymbol = this.contractSymbol;
+    const exchange = this.exchange;
     const generation = this.connectionGeneration;
     try {
-      const response = await fetch(liveDepthSnapshotUrl(symbol, contractSymbol), {
+      const response = await fetch(liveDepthSnapshotUrl(symbol, contractSymbol, exchange), {
         cache: 'no-store',
         headers: { Accept: 'application/json' },
       });

@@ -6,6 +6,9 @@ import {
   DepthMarketFeed,
   isPlausiblePresentationTick,
   LIQUIDITY_MAP_ROOTS,
+  liveDepthSnapshotUrl,
+  liveDepthStreamUrl,
+  liveInstrumentResolveUrl,
   normalizeLiquidityMapSymbol,
   normalizeLiveSnapshot,
   symbolMatchesSnapshot,
@@ -74,6 +77,42 @@ test("normalizes continuous, dated, and micro contracts across the Level 3 catal
   assert.equal(normalizeLiquidityMapSymbol("ZNU6"), "ZN");
   assert.equal(normalizeLiquidityMapSymbol("6EU6"), "6E");
   assert.equal(normalizeLiquidityMapSymbol("BTCQ6"), "BTC");
+});
+
+test("carries the exact exchange and active contract through every liquidity request", () => {
+  const stream = new URL(liveDepthStreamUrl("BTC", "BTCU6", 1234, "CME"), "https://kwantdesk.test");
+  assert.equal(stream.searchParams.get("symbol"), "BTC");
+  assert.equal(stream.searchParams.get("contractSymbol"), "BTCU6");
+  assert.equal(stream.searchParams.get("exchange"), "CME");
+  assert.equal(stream.searchParams.get("afterTimestamp"), "1234");
+
+  const snapshot = new URL(liveDepthSnapshotUrl("GC", "GCZ6", "COMEX"), "https://kwantdesk.test");
+  assert.equal(snapshot.searchParams.get("contractSymbol"), "GCZ6");
+  assert.equal(snapshot.searchParams.get("exchange"), "COMEX");
+
+  const resolver = new URL(liveInstrumentResolveUrl("cl", "nymex"), "https://kwantdesk.test");
+  assert.equal(resolver.searchParams.get("symbol"), "CL");
+  assert.equal(resolver.searchParams.get("exchange"), "NYMEX");
+});
+
+test("changing only the exchange or active contract opens a new exact book", () => {
+  const urls = [];
+  const feed = new DepthMarketFeed({
+    symbol: "BTC",
+    contractSymbol: "BTCQ6",
+    exchange: "CME",
+    eventSourceFactory: (url) => {
+      urls.push(url);
+      return { close() {}, addEventListener() {} };
+    },
+  });
+  feed.start();
+  feed.setSymbol("BTC", "BTCU6", "CME");
+  assert.equal(urls.length, 2);
+  assert.match(urls[0], /contractSymbol=BTCQ6/);
+  assert.match(urls[1], /contractSymbol=BTCU6/);
+  assert.match(urls[1], /exchange=CME/);
+  feed.stop();
 });
 
 test("every advertised Level 3 market has a renderable contract definition", () => {

@@ -75,12 +75,18 @@ function requestedInstrument(url, body = {}) {
   ).toUpperCase();
   const candidates = client.book
     .list()
-    .filter((row) => contractRoot(row.symbol) === requestedRoot)
+    .filter((row) => (
+      parentRoot(contractRoot(row.symbol)) === requestedRoot
+      && (!requestedExchange || String(row.exchange || "").toUpperCase() === requestedExchange)
+    ))
     .sort((left, right) => {
       const statusRank = (value) => value === "LIVE" ? 2 : value === "STALE" ? 1 : 0;
       return statusRank(right.status) - statusRank(left.status);
     });
-  const exact = candidates.find((row) => row.symbol === requestedSymbol);
+  const exact = candidates.find((row) => (
+    row.symbol === requestedSymbol
+    && (!requestedExchange || String(row.exchange || "").toUpperCase() === requestedExchange)
+  ));
   const resolved = exact || candidates[0];
   // On an empty book, resolve micro requests through the PARENT root as well
   // — otherwise a cold-started collector asked for MNQU6 would try to
@@ -1234,6 +1240,37 @@ const server = createServer(async (request, response) => {
         provider: "Rithmic",
         environment: config.systemName,
         instruments: gatewayInstrumentCatalog(),
+      });
+    }
+    if (request.method === "GET" && url.pathname === "/v1/market-data/resolve") {
+      const requestedRoot = parentRoot(contractRoot(
+        String(url.searchParams.get("root") || url.searchParams.get("symbol") || "").toUpperCase(),
+      ));
+      const requestedExchange = String(
+        url.searchParams.get("exchange") || exchangeForRoot(requestedRoot),
+      ).toUpperCase();
+      const catalogRow = gatewayInstrumentCatalog().find((row) => (
+        row.root === requestedRoot && row.exchange === requestedExchange
+      ));
+      if (!catalogRow) {
+        return json(response, 400, {
+          error: `${requestedExchange}:${requestedRoot} is not enabled for full-depth liquidity data.`,
+        });
+      }
+      const resolved = await client.resolveFrontMonth(requestedExchange, requestedRoot);
+      client.subscribe(resolved.exchange, resolved.contractSymbol);
+      const metadata = contractMetadata(resolved.contractSymbol);
+      return json(response, 200, {
+        root: requestedRoot,
+        symbol: resolved.contractSymbol,
+        contractSymbol: resolved.contractSymbol,
+        exchange: resolved.exchange,
+        displayName: FUTURES_DISPLAY_NAMES[requestedRoot] || metadata.displayName || requestedRoot,
+        contractLabel: metadata.contractLabel,
+        tickSize: tickSize(requestedRoot),
+        fullDepth: config.enableDepthByOrder,
+        status: "SUBSCRIBING",
+        resolutionSource: resolved.source,
       });
     }
     if (request.method === "POST" && url.pathname === "/v1/market-data/snapshot") {
