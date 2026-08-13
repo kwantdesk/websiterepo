@@ -2033,11 +2033,6 @@ function hasUsableOrderFlowHistory(candles: Candle[]) {
   return last > first;
 }
 
-function hasRenderableOrderFlow(candles: Candle[]) {
-  return candles.some((candle) =>
-    Number(candle.askVolume ?? 0) + Number(candle.bidVolume ?? 0) > 0);
-}
-
 function reanchorLiveMidIntoCandles(candles: Candle[], mid: number, symbol: string) {
   if (!isPositiveFinite(mid) || candles.length === 0) return candles;
 
@@ -2202,7 +2197,9 @@ function applyAvailableOrderFlowHistory(
       : candles
     : flowCandles.length
       ? enrichCandlesWithInstitutionalCandleFlow(candles, flowCandles)
-      : candles;
+      : executionTape.length
+        ? enrichCandlesWithInstitutionalTrades(candles, executionTape, candles.length)
+        : candles;
 }
 
 function normalizeExecutionTimestamp(value: unknown) {
@@ -3789,7 +3786,7 @@ function WorkspaceChartPane({
         if (seededCandles !== latestCandlesRef.current && seededCandles.length) {
           latestCandlesRef.current = seededCandles;
           setCandles(seededCandles);
-          if (hasRenderableOrderFlow(seededCandles)) {
+          if (hasUsableOrderFlowHistory(seededCandles)) {
             setOrderFlowHistoryReady(true);
           }
         }
@@ -3847,11 +3844,11 @@ function WorkspaceChartPane({
             ), previousCandles);
         if (nextCandles !== previousCandles && nextCandles.length) {
           latestCandlesRef.current = nextCandles;
-          // Do not leave a functioning live CVD hidden merely because the
-          // older archive request is unavailable. Two or more verified chart
-          // buckets establish a real cumulative baseline and are safe to
-          // display while the full backfill continues in the background.
-          if (hasRenderableOrderFlow(nextCandles)) {
+          // Do not mistake the first live execution bucket for restored CVD
+          // history. A meaningful multi-bucket baseline must exist before the
+          // pane is released, otherwise refresh paints a false straight line
+          // until the slower archive response replaces it.
+          if (hasUsableOrderFlowHistory(nextCandles)) {
             setOrderFlowHistoryReady(true);
           }
           const latest = nextCandles.at(-1)!;
@@ -3940,13 +3937,6 @@ function WorkspaceChartPane({
       ? mergeObservedDatabentoTail(immediateHistoryForPeriod, observedTail, pane.timeframe)
       : immediateHistoryForPeriod;
     const hasImmediateHistory = immediateHistoryForPeriod.length > 0;
-    const immediateOrderFlowHistoryReady = !needsOrderFlowHistory
-      || hasUsableOrderFlowHistory(immediateCandles);
-    const immediateTailNeedsReconciliation = pane.broker === "Databento"
-      && cmeChartTailNeedsReconciliation(immediateCandles, pane.timeframe);
-    const liveSeamRequest = pane.broker === "Databento" && resolvedContractSymbol
-      ? fetchWorkspaceLiveSeam(pane.symbol, pane.timeframe, resolvedContractSymbol)
-      : Promise.resolve([] as Candle[]);
     const memoryTape = needsOrderFlowHistory
       ? peekExecutionTapeCache(pane.symbol, pane.timeframe)?.records ?? []
       : [];
@@ -3959,6 +3949,26 @@ function WorkspaceChartPane({
         immediateMarketTrades,
       );
     }
+    // The execution tape cache is synchronous, so project it into the cached
+    // candle geometry before the first React paint. Previously we exposed the
+    // OHLC candles first and waited for the HTTP order-flow request to perform
+    // this exact merge; CVD consequently rendered a live-only straight line
+    // for seconds or minutes after every refresh.
+    const immediateHydratedCandles = needsOrderFlowHistory
+      ? applyAvailableOrderFlowHistory(
+          immediateCandles,
+          pane.timeframe,
+          [],
+          immediateMarketTrades,
+        )
+      : immediateCandles;
+    const immediateOrderFlowHistoryReady = !needsOrderFlowHistory
+      || hasUsableOrderFlowHistory(immediateHydratedCandles);
+    const immediateTailNeedsReconciliation = pane.broker === "Databento"
+      && cmeChartTailNeedsReconciliation(immediateHydratedCandles, pane.timeframe);
+    const liveSeamRequest = pane.broker === "Databento" && resolvedContractSymbol
+      ? fetchWorkspaceLiveSeam(pane.symbol, pane.timeframe, resolvedContractSymbol)
+      : Promise.resolve([] as Candle[]);
     // A usable cached chart must paint immediately. Seam reconciliation is a
     // background data-quality task, not permission to cover valid candles with
     // a full-page loader for tens of seconds. Live ticks remain buffered until
@@ -3966,10 +3976,10 @@ function WorkspaceChartPane({
     // fabricated join.
     setLoading(!hasImmediateHistory);
     setError(null);
-    setCandles(hasImmediateHistory ? immediateCandles : []);
+    setCandles(hasImmediateHistory ? immediateHydratedCandles : []);
     setMarketTrades(immediateMarketTrades);
     setOrderFlowHistoryReady(immediateOrderFlowHistoryReady);
-    latestCandlesRef.current = hasImmediateHistory ? immediateCandles : [];
+    latestCandlesRef.current = hasImmediateHistory ? immediateHydratedCandles : [];
     latestMarketTradesRef.current = immediateMarketTrades;
     latestOrderFlowCandlesRef.current = [];
     historyHydratedRef.current = hasImmediateHistory && !immediateTailNeedsReconciliation;
@@ -4432,7 +4442,7 @@ function WorkspaceChartPane({
         latestCandlesRef.current = mergedCandles;
         setCandles(mergedCandles);
       }
-      if (hasRenderableOrderFlow(mergedCandles)) {
+      if (hasUsableOrderFlowHistory(mergedCandles)) {
         setOrderFlowHistoryReady(true);
       }
     };

@@ -7,7 +7,7 @@ const workspace = await fs.readFile(new URL("../src/components/KwantifyWorkspace
 
 test("CVD waits for a verified historical order-flow baseline after refresh", () => {
   assert.match(workspace, /const \[orderFlowHistoryReady, setOrderFlowHistoryReady\] = useState\(false\)/);
-  assert.match(workspace, /immediateOrderFlowHistoryReady = !needsOrderFlowHistory[\s\S]*?hasUsableOrderFlowHistory\(immediateCandles\)/);
+  assert.match(workspace, /immediateOrderFlowHistoryReady = !needsOrderFlowHistory[\s\S]*?hasUsableOrderFlowHistory\(immediateHydratedCandles\)/);
   assert.match(workspace, /orderFlowHistoryReady=\{orderFlowHistoryReady\}/);
   assert.match(chart, /!orderFlowHistoryReady[\s\S]*?"cumulative-volume-delta"[\s\S]*?return \[\]/);
   assert.match(chart, /Restoring cumulative volume delta history\./);
@@ -16,7 +16,8 @@ test("CVD waits for a verified historical order-flow baseline after refresh", ()
 test("verified cached and downloaded flow release CVD without blocking price history", () => {
   assert.match(workspace, /if \(hasUsableOrderFlowHistory\(cachedCandles\)\) setOrderFlowHistoryReady\(true\)/);
   assert.match(workspace, /setOrderFlowHistoryReady\(hasUsableOrderFlowHistory\(mergedCandles\)\)/);
-  assert.match(workspace, /setCandles\(hasImmediateHistory \? immediateCandles : \[\]\)/);
+  assert.match(workspace, /setCandles\(hasImmediateHistory \? immediateHydratedCandles : \[\]\)/);
+  assert.match(workspace, /immediateHydratedCandles = needsOrderFlowHistory[\s\S]*?applyAvailableOrderFlowHistory\([\s\S]*?immediateMarketTrades/);
 });
 
 test("verified Rithmic seed and live buckets release CVD if the archive backfill is delayed", () => {
