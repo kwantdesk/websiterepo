@@ -16,12 +16,20 @@ type SharedStream = {
   records: InstitutionalTrade[];
   status: RithmicIndicatorStreamStatus;
   startPromise: Promise<void> | null;
+  pendingTrades: InstitutionalTrade[];
+  publishTimer: ReturnType<typeof setTimeout> | null;
+  seedPublished: boolean;
 };
 
 const streams = new Map<string, SharedStream>();
 // The seed is deliberately bounded for browser responsiveness; complete
 // session calculations such as Volume Profile stay inside the gateway.
 const MAX_TAPE_RECORDS = 25_000;
+// Execution messages can arrive far faster than React can economically render
+// several chart panes. Preserve every print in the shared tape immediately,
+// but fan visual updates out as one compact batch. Price presentation uses the
+// separate live tick path, so this does not make the chart price less live.
+const TRADE_PUBLISH_INTERVAL_MS = 40;
 
 function recordKey(record: InstitutionalTrade) {
   return record.eventId
@@ -112,6 +120,23 @@ function publishStatus(stream: SharedStream, status: RithmicIndicatorStreamStatu
   stream.subscribers.forEach((subscriber) => subscriber.onStatus?.(status));
 }
 
+function flushPendingTrades(stream: SharedStream) {
+  if (stream.publishTimer !== null) {
+    clearTimeout(stream.publishTimer);
+    stream.publishTimer = null;
+  }
+  if (!stream.pendingTrades.length) return;
+  const records = stream.pendingTrades;
+  stream.pendingTrades = [];
+  stream.subscribers.forEach((subscriber) => subscriber.onTrades(records));
+}
+
+function queueTradePublication(stream: SharedStream, records: InstitutionalTrade[]) {
+  stream.pendingTrades.push(...records);
+  if (stream.publishTimer !== null) return;
+  stream.publishTimer = setTimeout(() => flushPendingTrades(stream), TRADE_PUBLISH_INTERVAL_MS);
+}
+
 async function startStream(
   key: string,
   stream: SharedStream,
@@ -143,8 +168,22 @@ async function startStream(
       try {
         const payload = JSON.parse((event as MessageEvent<string>).data) as { records?: unknown };
         const records = decodeRecords(payload.records);
-        stream.records = mergeRecords(stream.records, records);
-        stream.subscribers.forEach((subscriber) => subscriber.onSeed?.(stream.records));
+        const additions = unseenRecords(stream.records, records);
+        stream.records = mergeRecords(stream.records, additions);
+        if (!stream.seedPublished) {
+          // The hosting proxy rotates long-running streams. Re-emitting a full
+          // 25k seed on every reconnect made every open CVD/profile pane rebuild
+          // its history at once, producing the periodic whole-workspace freeze.
+          // Existing subscribers need the full seed exactly once; later seed
+          // deltas enter the normal compact live fanout.
+          if (stream.publishTimer !== null) clearTimeout(stream.publishTimer);
+          stream.publishTimer = null;
+          stream.pendingTrades = [];
+          stream.seedPublished = true;
+          stream.subscribers.forEach((subscriber) => subscriber.onSeed?.(stream.records));
+        } else if (additions.length) {
+          queueTradePublication(stream, additions);
+        }
       } catch {
         // A malformed seed must not interrupt the live stream.
       }
@@ -160,7 +199,7 @@ async function startStream(
         const additions = unseenRecords(stream.records, records);
         if (!additions.length) return;
         stream.records = mergeRecords(stream.records, additions);
-        stream.subscribers.forEach((subscriber) => subscriber.onTrades(additions));
+        if (stream.seedPublished) queueTradePublication(stream, additions);
       } catch {
         // Ignore a malformed batch and reconcile on the next valid batch.
       }
@@ -190,10 +229,16 @@ export function subscribeRithmicIndicatorTrades(args: {
       records: [],
       status: "checking",
       startPromise: null,
+      pendingTrades: [],
+      publishTimer: null,
+      seedPublished: false,
     };
     streams.set(key, stream);
   }
 
+  // Do not let a newly attached pane receive the same records once in its seed
+  // and again from an already queued live publication.
+  flushPendingTrades(stream);
   const subscriber: Subscriber = {
     onSeed: args.onSeed,
     onTrades: args.onTrades,
@@ -212,6 +257,9 @@ export function subscribeRithmicIndicatorTrades(args: {
     if (!current) return;
     current.subscribers.delete(subscriber);
     if (current.subscribers.size === 0) {
+      if (current.publishTimer !== null) clearTimeout(current.publishTimer);
+      current.publishTimer = null;
+      current.pendingTrades = [];
       current.source?.close();
       streams.delete(key);
     }

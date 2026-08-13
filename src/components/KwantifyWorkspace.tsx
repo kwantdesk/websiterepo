@@ -105,6 +105,7 @@ import {
 } from "@/lib/chartIndicatorConfig";
 import { mergeGammaLevelsAtSamePrice, type ChartGammaLevelsPayload } from "@/lib/chartGammaLevels";
 import {
+  applyInstitutionalTradesToCandles,
   applyInstitutionalTradesToVolumeProfile,
   enrichCandlesWithInstitutionalCandleFlow,
   enrichCandlesWithInstitutionalTrades,
@@ -3721,6 +3722,8 @@ function WorkspaceChartPane({
     ].includes(instance.indicatorId));
   const weeklyProfileInstance = indicators.find((instance) =>
     instance.enabled && instance.indicatorId === "weekly-volume-profile");
+  const needsLiveVolumeProfiles = Boolean(dailyProfileInstance || weeklyProfileInstance);
+  const requiresExecutionStream = needsOrderFlowHistory || isEventBasedChartInterval(pane.timeframe);
   const dailyProfileSettings = dailyProfileInstance?.settings ?? {};
   const weeklyProfileSettings = weeklyProfileInstance?.settings ?? {};
   const dailyTradingDates = useMemo(() => {
@@ -3866,12 +3869,29 @@ function WorkspaceChartPane({
     if (
       pane.broker !== "Databento"
       || !resolvedContractSymbol
+      || !requiresExecutionStream
     ) {
       rithmicConnectedRef.current = false;
       return;
     }
 
-    return subscribeRithmicIndicatorTrades({
+    let pendingProfileRecords: InstitutionalTrade[] = [];
+    let profileSyncTimer: number | null = null;
+    const queueProfileUpdate = (records: InstitutionalTrade[]) => {
+      if (!needsLiveVolumeProfiles || !records.length) return;
+      pendingProfileRecords.push(...records);
+      if (profileSyncTimer !== null) return;
+      profileSyncTimer = window.setTimeout(() => {
+        profileSyncTimer = null;
+        const batch = pendingProfileRecords;
+        pendingProfileRecords = [];
+        setVolumeProfiles((current) => current.length
+          ? current.map((profile) => applyInstitutionalTradesToVolumeProfile(profile, batch))
+          : current);
+      }, 250);
+    };
+
+    const unsubscribe = subscribeRithmicIndicatorTrades({
       symbol: displayCmeSymbol(pane.symbol),
       contractSymbol: resolvedContractSymbol,
       onStatus: (status) => {
@@ -3881,14 +3901,16 @@ function WorkspaceChartPane({
       onSeed: (records) => {
         if (!records.length) return;
         rithmicConnectedRef.current = true;
-        const firstRithmicTimestamp = records[0].timestamp;
-        const historical = latestMarketTradesRef.current.filter(
-          (record) => record.timestamp < firstRithmicTimestamp,
-        );
-        const next = mergeInstitutionalTradeTape(historical, records);
-        latestMarketTradesRef.current = next;
-        workspaceExecutionTape.set(workspaceOrderFlowKey(pane.symbol, pane.timeframe), next);
-        setMarketTrades(next);
+        if (needsOrderFlowHistory) {
+          const firstRithmicTimestamp = records[0].timestamp;
+          const historical = latestMarketTradesRef.current.filter(
+            (record) => record.timestamp < firstRithmicTimestamp,
+          );
+          const next = mergeInstitutionalTradeTape(historical, records);
+          latestMarketTradesRef.current = next;
+          workspaceExecutionTape.set(workspaceOrderFlowKey(pane.symbol, pane.timeframe), next);
+          setMarketTrades(next);
+        }
 
         // A collector reconnect commonly provides a session seed before the
         // separate historical HTTP backfill completes. Previously that seed
@@ -3924,13 +3946,15 @@ function WorkspaceChartPane({
       },
       onTrades: (records) => {
         rithmicConnectedRef.current = true;
-        const next = mergeInstitutionalTradeTape(latestMarketTradesRef.current, records);
-        latestMarketTradesRef.current = next;
-        workspaceExecutionTape.set(workspaceOrderFlowKey(pane.symbol, pane.timeframe), next);
-        const now = Date.now();
-        if (now - lastMarketTradeStateSyncRef.current >= 400) {
-          lastMarketTradeStateSyncRef.current = now;
-          setMarketTrades(next);
+        if (needsOrderFlowHistory) {
+          const next = mergeInstitutionalTradeTape(latestMarketTradesRef.current, records);
+          latestMarketTradesRef.current = next;
+          workspaceExecutionTape.set(workspaceOrderFlowKey(pane.symbol, pane.timeframe), next);
+          const now = Date.now();
+          if (now - lastMarketTradeStateSyncRef.current >= 400) {
+            lastMarketTradeStateSyncRef.current = now;
+            setMarketTrades(next);
+          }
         }
         // Keep the exact profiles live between refetches, as the original
         // Kwantify build did: each print batch is folded straight into the
@@ -3938,9 +3962,7 @@ function WorkspaceChartPane({
         // of stepping every 15 seconds. Provisional chart profiles carry a
         // coverage watermark, so newer Rithmic prints can safely develop the
         // active session without counting candle volume twice.
-        setVolumeProfiles((current) => current.length
-          ? current.map((profile) => applyInstitutionalTradesToVolumeProfile(profile, records))
-          : current);
+        queueProfileUpdate(records);
 
         // CVD is rendered from the chart candles, not from the compact trade
         // marker tape. Fold each authoritative Rithmic execution into those
@@ -3960,19 +3982,13 @@ function WorkspaceChartPane({
               pane.timeframe,
               pane.symbol,
             )
-          : records.reduce((current, record) => mergeLiveMidIntoCandles(
-              current,
-              record.close,
-              pane.symbol,
+          : applyInstitutionalTradesToCandles(
+              previousCandles,
+              records,
               pane.timeframe,
-              record.timestamp,
-              {
-                isTrade: true,
-                size: Math.max(0, Number(record.volume ?? 0)),
-                trades: Math.max(1, Number(record.trades ?? 1)),
-                delta: Number(record.delta ?? 0),
-              },
-            ), previousCandles);
+              pane.symbol,
+              Math.max(600, previousCandles.length),
+            );
         if (nextCandles !== previousCandles && nextCandles.length) {
           latestCandlesRef.current = nextCandles;
           // Do not mistake the first live execution bucket for restored CVD
@@ -3995,7 +4011,20 @@ function WorkspaceChartPane({
         }
       },
     });
-  }, [pane.broker, pane.symbol, pane.timeframe, resolvedContractSymbol]);
+    return () => {
+      unsubscribe();
+      if (profileSyncTimer !== null) window.clearTimeout(profileSyncTimer);
+      pendingProfileRecords = [];
+    };
+  }, [
+    needsLiveVolumeProfiles,
+    needsOrderFlowHistory,
+    pane.broker,
+    pane.symbol,
+    pane.timeframe,
+    requiresExecutionStream,
+    resolvedContractSymbol,
+  ]);
 
   useEffect(() => () => {
     if (marketInactiveTimerRef.current !== null) {

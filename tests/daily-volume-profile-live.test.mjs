@@ -35,8 +35,9 @@ test("the deprecated candle proxy cannot enter profile state or canvas output", 
 test("the active daily profile develops from live executions without crossing sessions", () => {
   assert.match(
     workspace,
-    /current\.map\(\(profile\) => applyInstitutionalTradesToVolumeProfile\(profile, records\)\)/,
+    /current\.map\(\(profile\) => applyInstitutionalTradesToVolumeProfile\(profile, batch\)\)/,
   );
+  assert.match(workspace, /queueProfileUpdate\(records\)/);
   assert.match(
     marketData,
     /cmeSessionDateKey\(record\.timestamp\) === dailyTradingDate/,

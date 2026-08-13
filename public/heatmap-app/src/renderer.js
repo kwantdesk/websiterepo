@@ -147,6 +147,7 @@ export class DepthRenderer {
     this.cameraInMotion = false;
     this.tradeClusterCache = { key: '', value: [] };
     this.fontFamilies = { mono: 'Consolas, monospace', ui: '"Arial Narrow", sans-serif' };
+    this.lastFontStyleSyncAt = 0;
   }
 
   setHover(point) { this.hover = point; }
@@ -215,11 +216,19 @@ export class DepthRenderer {
     const current = history[end];
     const accents = paletteAccents(settings.palette);
     this.chrome = canvasUiTheme(settings.uiTheme);
-    const canvasStyles = getComputedStyle(this.canvas);
-    this.fontFamilies = {
-      mono: canvasStyles.getPropertyValue('--font-mono').trim() || 'Consolas, monospace',
-      ui: canvasStyles.getPropertyValue('--font-ui').trim() || '"Arial Narrow", sans-serif',
-    };
+    // Reading computed styles in every market frame forces a synchronous style
+    // calculation for the entire embedded terminal. Fonts change only when a
+    // website theme changes, so sample them occasionally instead of taxing the
+    // live 20 FPS depth path on every repaint.
+    const now = performance.now();
+    if (now - this.lastFontStyleSyncAt >= 1_000) {
+      const canvasStyles = getComputedStyle(this.canvas);
+      this.fontFamilies = {
+        mono: canvasStyles.getPropertyValue('--font-mono').trim() || 'Consolas, monospace',
+        ui: canvasStyles.getPropertyValue('--font-ui').trim() || '"Arial Narrow", sans-serif',
+      };
+      this.lastFontStyleSyncAt = now;
+    }
     // Keep the right rail aligned with the standard Charts workspace while
     // separating price, the live resting book, COB, execution flow and SVP.
     const domVisible = settings.domVisible !== false;
