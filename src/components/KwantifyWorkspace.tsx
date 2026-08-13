@@ -5505,7 +5505,7 @@ function WorkspaceChartPane({
         />
       )}
       <div
-        className="pointer-events-none absolute left-1/2 z-20 inline-flex -translate-x-1/2 items-center gap-1.5 whitespace-nowrap rounded-full border border-border bg-panel/90 px-2.5 py-1 text-[10px] uppercase tracking-[0.12em] text-muted shadow-lg shadow-black/25 backdrop-blur"
+        className="pointer-events-none absolute left-1/2 z-20 inline-flex h-8 -translate-x-1/2 items-center gap-1.5 whitespace-nowrap rounded-full border border-border bg-panel/90 px-2.5 text-[10px] uppercase tracking-[0.12em] text-muted shadow-lg shadow-black/25 backdrop-blur"
         style={{ bottom: 56 + lowerIndicatorHeight }}
       >
         <span className="font-semibold text-foreground">{displayCmeSymbol(pane.symbol)}</span>
@@ -5526,7 +5526,7 @@ function WorkspaceChartPane({
         </div>
       ) : null}
       <div
-        className="absolute left-3 z-20 flex items-center gap-0.5 rounded-lg border border-border bg-panel/80 px-1 py-0.5 backdrop-blur"
+        className="absolute left-3 z-20 flex h-8 items-center gap-0.5 rounded-lg border border-border bg-panel/80 px-1 backdrop-blur"
         style={{ bottom: 56 + lowerIndicatorHeight }}
       >
         {["1D", "5D", "1W", "1M", "3M", "6M", "1Y", "All"].map((range) => (
