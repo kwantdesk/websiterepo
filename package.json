@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "desktop:build": "powershell -ExecutionPolicy Bypass -File desktop/package-windows.ps1"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.96.0",
