@@ -304,8 +304,7 @@ function ExposurePanel({
   onChange: (patch: Partial<Pick<PanelConfig, "symbol" | "greekMode">>) => void;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
-  const centredViewRef = useRef("");
-  const userNavigatedRef = useRef(false);
+  const [strikeViewportHeight, setStrikeViewportHeight] = useState(0);
   const { current, previous } = useMemo(
     () => payload ? buildSnapshots(payload, selectedTimestamp, stepMinutes) : { current: new Map(), previous: new Map() },
     [payload, selectedTimestamp, stepMinutes],
@@ -325,6 +324,8 @@ function ExposurePanel({
   const net = rows.reduce((sum, row) => sum + row.net, 0);
   const greek = GEX_MAP_GREEKS.find((item) => item.mode === config.greekMode) ?? GEX_MAP_GREEKS[0];
   const viewIdentity = `${config.symbol}:${config.greekMode}:${payload?.sessionDate ?? "pending"}`;
+  const centeringIdentity = `${viewIdentity}:${selectedTimestamp ?? "live"}:${spot ?? "pending"}`;
+  const strikeEdgeSpace = Math.max(0, strikeViewportHeight / 2 - 24);
 
   const centerLiveStrike = useCallback(() => {
     const container = scrollRef.current;
@@ -342,26 +343,25 @@ function ExposurePanel({
   }, []);
 
   useLayoutEffect(() => {
-    if (centredViewRef.current === viewIdentity || spotStrike === null) return;
-    userNavigatedRef.current = false;
-    const frame = window.requestAnimationFrame(() => {
-      centerLiveStrike();
-      centredViewRef.current = viewIdentity;
-    });
+    if (spotStrike === null) return;
+    const frame = window.requestAnimationFrame(centerLiveStrike);
     return () => window.cancelAnimationFrame(frame);
-  }, [centerLiveStrike, spotStrike, viewIdentity]);
+  }, [centerLiveStrike, centeringIdentity, spotStrike, strikeViewportHeight]);
 
   useEffect(() => {
     const container = scrollRef.current;
     if (!container || typeof ResizeObserver === "undefined") return;
 
     let frame = 0;
-    const observer = new ResizeObserver(() => {
-      if (userNavigatedRef.current) return;
+    const measureAndCenter = () => {
+      const nextHeight = container.clientHeight;
+      setStrikeViewportHeight((current) => Math.abs(current - nextHeight) > 0.5 ? nextHeight : current);
       window.cancelAnimationFrame(frame);
       frame = window.requestAnimationFrame(centerLiveStrike);
-    });
+    };
+    const observer = new ResizeObserver(measureAndCenter);
     observer.observe(container);
+    measureAndCenter();
     return () => {
       observer.disconnect();
       window.cancelAnimationFrame(frame);
@@ -373,7 +373,6 @@ function ExposurePanel({
     if (!container) return;
 
     const routeExposureWheel = (event: WheelEvent) => {
-      userNavigatedRef.current = true;
       if (event.ctrlKey || event.metaKey) return;
 
       const maximumScroll = Math.max(0, container.scrollHeight - container.clientHeight);
@@ -455,8 +454,6 @@ function ExposurePanel({
 
       <div
         ref={scrollRef}
-        onPointerDownCapture={() => { userNavigatedRef.current = true; }}
-        onTouchStart={() => { userNavigatedRef.current = true; }}
         className="relative min-h-0 flex-1 touch-pan-y overscroll-contain overflow-y-auto bg-chart-background"
       >
         {loading && !payload ? (
@@ -479,6 +476,7 @@ function ExposurePanel({
           </div>
         ) : (
           <div className="py-1">
+            <div aria-hidden="true" style={{ height: strikeEdgeSpace }} />
             {rows.map((row) => {
               const prior = previous.get(row.strike);
               const change = prior ? row.net - prior.net : null;
@@ -515,6 +513,7 @@ function ExposurePanel({
                 </div>
               );
             })}
+            <div aria-hidden="true" style={{ height: strikeEdgeSpace }} />
           </div>
         )}
         {loading && payload ? (
