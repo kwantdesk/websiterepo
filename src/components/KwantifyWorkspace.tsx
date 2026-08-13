@@ -5624,7 +5624,7 @@ function WorkspaceChartPane({
         />
       )}
       <div
-        className="pointer-events-none absolute left-1/2 z-20 inline-flex h-8 -translate-x-1/2 items-center gap-1.5 whitespace-nowrap rounded-full border border-border bg-panel/90 px-2.5 text-[10px] uppercase tracking-[0.12em] text-muted shadow-lg shadow-black/25 backdrop-blur"
+        className="pointer-events-none absolute left-1/2 z-20 inline-flex h-8 -translate-x-1/2 items-center gap-1.5 whitespace-nowrap rounded-[3px] border border-border bg-panel/90 px-2.5 text-[10px] uppercase tracking-[0.12em] text-muted shadow-lg shadow-black/25 backdrop-blur"
         style={{ bottom: 56 + lowerIndicatorHeight }}
       >
         <span className="font-semibold text-foreground">{displayCmeSymbol(pane.symbol)}</span>
@@ -5634,7 +5634,7 @@ function WorkspaceChartPane({
         <span>{displayMarketSource(pane.broker)}</span>
         {pane.broker === "Massive" && <AlertTriangle className="h-3 w-3 text-orange-300/90" />}
         <span>{formatChartInterval(pane.timeframe)}</span>
-        <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-semibold ${marketStatusClasses}`}>{marketStatusLabel}</span>
+        <span className={`rounded-[2px] px-1.5 py-0.5 text-[9px] font-semibold ${marketStatusClasses}`}>{marketStatusLabel}</span>
       </div>
       {loadingMessage ? (
         <div
