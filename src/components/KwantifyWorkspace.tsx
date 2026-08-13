@@ -105,14 +105,12 @@ import {
 } from "@/lib/chartIndicatorConfig";
 import { mergeGammaLevelsAtSamePrice, type ChartGammaLevelsPayload } from "@/lib/chartGammaLevels";
 import {
-  buildChartVolumeProfile,
   applyInstitutionalTradesToVolumeProfile,
   enrichCandlesWithInstitutionalCandleFlow,
   enrichCandlesWithInstitutionalTrades,
   fetchInstitutionalSnapshot,
   fetchInstitutionalOrderFlowLevels,
   fetchInstitutionalVolumeProfile,
-  mergeInstitutionalVolumeProfiles,
   readCachedInstitutionalVolumeProfiles,
   type InstitutionalOrderFlowResult,
   type InstitutionalTrade,
@@ -241,7 +239,6 @@ import {
 import {
   cmeSessionDateKey,
   cmeSessionStartMs,
-  cmeSessionWindowForDate,
   cmeChartTailNeedsReconciliation,
   compressCmeClosedSessionCandles,
   DEFAULT_CHART_HISTORY_CALENDAR_DAYS,
@@ -3725,10 +3722,6 @@ function WorkspaceChartPane({
   const weeklyProfileInstance = indicators.find((instance) =>
     instance.enabled && instance.indicatorId === "weekly-volume-profile");
   const dailyProfileSettings = dailyProfileInstance?.settings ?? {};
-  const dailyProfileRequiresExactTape = Boolean(
-    dailyProfileInstance
-    && ["ask-bid-volume-profile", "delta-profile"].includes(dailyProfileInstance.indicatorId),
-  );
   const weeklyProfileSettings = weeklyProfileInstance?.settings ?? {};
   const dailyTradingDates = useMemo(() => {
     const dates = new Set<string>();
@@ -5367,124 +5360,66 @@ function WorkspaceChartPane({
     let cancelled = false;
     let refreshTimer: number | null = null;
     const chartStepMs = Math.max(1, getTimeframeMs(pane.timeframe));
-    const tickSize = futuresTickSize(pane.symbol);
-    // Fold the live execution tape onto the bars before building the profile.
-    // An OHLCV bar carries no buy/sell information at all, so a profile built
-    // straight from candles has bidVolume === askVolume and every level's
-    // delta is exactly zero — the delta bars then clamp to a half-pixel
-    // sliver and read as "not rendering". The tape has a real aggressor per
-    // print, so this makes the delta genuine rather than inferred from candle
-    // direction, which is a guess dressed up as order flow.
-    const profileCandles = marketTrades.length
-      ? enrichCandlesWithInstitutionalTrades(candles, marketTrades, candles.length)
-      : candles;
     const tradingDates = dailyTradingDateSignature
       ? dailyTradingDateSignature.split(",")
       : [];
-    const provisionalProfiles: InstitutionalVolumeProfile[] = [];
-
-    if (dailyProfileInstance) {
-      tradingDates.forEach((tradingDate) => {
-        const sessionCandles = profileCandles.filter((candle) =>
-          chicagoTradingDate(candle.timestamp) === tradingDate);
-        if (!sessionCandles.length) return;
-        const sessionWindow = cmeSessionWindowForDate(tradingDate);
-        const profile = buildChartVolumeProfile({
-          candles: sessionCandles,
-          root: displayCmeSymbol(pane.symbol),
-          contractSymbol: resolvedContractSymbol,
-          startMs: sessionWindow?.startMs ?? sessionCandles[0].timestamp,
-          endMs: Math.min(
-            sessionWindow?.endMs ?? Number.POSITIVE_INFINITY,
-            sessionCandles[sessionCandles.length - 1].timestamp + chartStepMs,
-          ),
-          tickSize,
-          groupTicks: dailyProfileSettings.groupingMode === "manual"
-            ? Number(dailyProfileSettings.groupTicks ?? 1)
-            : 1,
-          valueAreaPercent: STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT,
-          minTradeVolume: Number(dailyProfileSettings.minTradeVolume ?? 0),
-          maxTradeVolume: Number(dailyProfileSettings.maxTradeVolume ?? 0),
-        });
-        if (profile) {
-          provisionalProfiles.push({
-            ...profile,
-            period: "daily",
-            tradingDate,
-            coverageStartMs: profile.startMs,
-            // The candle reconstruction already contains volume through the
-            // build instant. Only later executions should be appended live.
-            coverageEndMs: Math.min(Date.now(), profile.endMs - 1),
-          });
-        }
-      });
-    }
-
-    if (weeklyProfileInstance) {
-      const weeklyDates = new Set(tradingDates.slice(-5));
-      const weeklyCandles = profileCandles.filter((candle) =>
-        weeklyDates.has(chicagoTradingDate(candle.timestamp)));
-      if (weeklyCandles.length) {
-        const profile = buildChartVolumeProfile({
-          candles: weeklyCandles,
-          root: displayCmeSymbol(pane.symbol),
-          contractSymbol: resolvedContractSymbol,
-          startMs: weeklyCandles[0].timestamp,
-          endMs: weeklyCandles[weeklyCandles.length - 1].timestamp + chartStepMs,
-          tickSize,
-          groupTicks: weeklyProfileSettings.groupingMode === "manual"
-            ? Number(weeklyProfileSettings.groupTicks ?? 4)
-            : 1,
-          valueAreaPercent: STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT,
-          minTradeVolume: Number(weeklyProfileSettings.minTradeVolume ?? 0),
-          maxTradeVolume: Number(weeklyProfileSettings.maxTradeVolume ?? 0),
-        });
-        if (profile) provisionalProfiles.push({ ...profile, period: "weekly" });
-      }
-    }
-
-    // Keep every visible session populated immediately while its exact
-    // execution request is in flight. Exact profiles always win and remain in
-    // state; the candle/tape reconstruction only fills sessions that have no
-    // authoritative response yet. This preserves the historical daily
-    // profiles without allowing a later effect pass to downgrade real data.
     const activeRoot = displayCmeSymbol(pane.symbol);
     const activeTradingDates = new Set(tradingDates);
     const profileSessionKey = (profile: InstitutionalVolumeProfile) =>
       `${profile.period}:${profile.period === "daily" ? chicagoTradingDate(profile.startMs) : "weekly"}`;
+
+    // A volume profile is an execution-tape surface. OHLCV cannot recover the
+    // traded-at-price distribution or aggressor-side delta, so it is never an
+    // acceptable visual fallback. Retain the last exact snapshot while the
+    // gateway refreshes and otherwise leave the profile clean until it arrives.
     setVolumeProfiles((current) => {
-      const exact = current
+      return current
         .filter((profile) =>
           profile.provider !== "Chart"
           && profile.root === activeRoot
           && (
-            profile.period !== "daily"
-            || activeTradingDates.has(chicagoTradingDate(profile.startMs))
-          ));
-      const exactSessions = new Set(exact.map(profileSessionKey));
-      const fallback = provisionalProfiles.filter((profile) =>
-        (!dailyProfileRequiresExactTape || profile.period !== "daily")
-        && !exactSessions.has(profileSessionKey(profile)));
-      return [...exact, ...fallback].sort((left, right) => left.startMs - right.startMs);
+            (profile.period === "daily"
+              && Boolean(dailyProfileInstance)
+              && activeTradingDates.has(chicagoTradingDate(profile.startMs)))
+            || (profile.period === "weekly" && Boolean(weeklyProfileInstance))
+          ))
+        .sort((left, right) => left.startMs - right.startMs);
     });
 
-    // Restore the last execution-backed profile immediately after a refresh.
-    // Delta/Ask-Bid must never flash the deprecated OHLCV reconstruction while
-    // the gateway refresh is in flight.
-    if (dailyProfileInstance && dailyProfileRequiresExactTape) {
-      void readCachedInstitutionalVolumeProfiles(activeRoot, "daily").then((cachedProfiles) => {
+    // Restore exact daily and weekly profiles for every native profile mode.
+    // Previously only two delta-labelled variants used this cache, while the
+    // ordinary profile installed its OHLCV proxy first and then blocked the
+    // exact cached session from replacing it.
+    const cachedProfileRequests: Promise<InstitutionalVolumeProfile[]>[] = [];
+    if (dailyProfileInstance) {
+      cachedProfileRequests.push(readCachedInstitutionalVolumeProfiles(activeRoot, "daily"));
+    }
+    if (weeklyProfileInstance) {
+      cachedProfileRequests.push(readCachedInstitutionalVolumeProfiles(activeRoot, "weekly"));
+    }
+    if (cachedProfileRequests.length) {
+      void Promise.all(cachedProfileRequests).then((profileGroups) => {
         if (cancelled) return;
-        const cachedExact = cachedProfiles.filter((profile) =>
+        const cachedExact = profileGroups.flat().filter((profile) =>
           profile.provider !== "Chart"
-          && activeTradingDates.has(chicagoTradingDate(profile.startMs)));
+          && profile.root === activeRoot
+          && (
+            profile.period === "weekly"
+            || activeTradingDates.has(chicagoTradingDate(profile.startMs))
+          ));
         if (!cachedExact.length) return;
         setVolumeProfiles((current) => {
-          const existingSessions = new Set(current.map(profileSessionKey));
-          const restored = cachedExact.filter((profile) =>
-            !existingSessions.has(profileSessionKey(profile)));
-          return restored.length
-            ? [...current, ...restored].sort((left, right) => left.startMs - right.startMs)
-            : current;
+          const next = new Map(current
+            .filter((profile) => profile.provider !== "Chart" && profile.root === activeRoot)
+            .map((profile) => [profileSessionKey(profile), profile]));
+          cachedExact.forEach((profile) => {
+            const key = profileSessionKey(profile);
+            const existing = next.get(key);
+            const existingCoverage = Number(existing?.coverageEndMs ?? existing?.endMs ?? 0);
+            const cachedCoverage = Number(profile.coverageEndMs ?? profile.endMs);
+            if (!existing || cachedCoverage > existingCoverage) next.set(key, profile);
+          });
+          return [...next.values()].sort((left, right) => left.startMs - right.startMs);
         });
       });
     }
@@ -5495,6 +5430,7 @@ function WorkspaceChartPane({
     ) => {
       if (
         !profile
+        || profile.provider === "Chart"
         || cancelled
         || !Number.isFinite(profile.startMs)
         || profile.startMs <= 0
@@ -5507,33 +5443,6 @@ function WorkspaceChartPane({
         )
       ) return;
       let replacement = profile;
-      const coverageStartMs = Number(profile.coverageStartMs);
-      if (
-        profile.period === "daily"
-        && expectedTradingDate
-        && !dailyProfileRequiresExactTape
-        && Number.isFinite(coverageStartMs)
-        && coverageStartMs > profile.startMs + 60_000
-      ) {
-        const earlierSessionCandles = candles.filter((candle) =>
-          chicagoTradingDate(candle.timestamp) === expectedTradingDate
-          && candle.timestamp < coverageStartMs);
-        const historicalHead = buildChartVolumeProfile({
-          candles: earlierSessionCandles,
-          root: profile.root,
-          contractSymbol: profile.contractSymbol,
-          startMs: profile.startMs,
-          endMs: coverageStartMs,
-          tickSize: profile.tickSize,
-          groupTicks: profile.groupTicks,
-          valueAreaPercent: STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT,
-          minTradeVolume: profile.minTradeVolume,
-          maxTradeVolume: profile.maxTradeVolume,
-        });
-        if (historicalHead) {
-          replacement = mergeInstitutionalVolumeProfiles(historicalHead, profile);
-        }
-      }
       // Databento's historical edge trails live Rithmic. Reapply the current
       // execution tape before replacing the profile so a 15-second refresh
       // cannot erase prints that have already developed the live session.
@@ -5573,13 +5482,17 @@ function WorkspaceChartPane({
         });
       }
       if (weeklyProfileInstance) {
-        const weeklyProfile = provisionalProfiles.find((profile) => profile.period === "weekly");
+        const weeklyDates = new Set(tradingDates.slice(-5));
+        const weeklyCandles = candles.filter((candle) =>
+          weeklyDates.has(chicagoTradingDate(candle.timestamp)));
         requests.push(fetchInstitutionalVolumeProfile({
           symbol: displayCmeSymbol(pane.symbol),
           contractSymbol: resolvedContractSymbol,
           period: "weekly",
-          startMs: weeklyProfile?.startMs,
-          endMs: weeklyProfile?.endMs,
+          startMs: weeklyCandles[0]?.timestamp,
+          endMs: weeklyCandles.length
+            ? weeklyCandles[weeklyCandles.length - 1].timestamp + chartStepMs
+            : undefined,
           groupTicks: weeklyProfileSettings.groupingMode === "manual"
             ? Number(weeklyProfileSettings.groupTicks ?? 4)
             : 1,
@@ -5602,16 +5515,11 @@ function WorkspaceChartPane({
   }, [
     dailyProfileInstance?.instanceId,
     dailyProfileInstance?.indicatorId,
-    dailyProfileRequiresExactTape,
     dailyProfileSettings.groupTicks,
     dailyProfileSettings.groupingMode,
     dailyProfileSettings.maxTradeVolume,
     dailyProfileSettings.minTradeVolume,
     dailyTradingDateSignature,
-    // Coarse tape signal: rebuild the provisional profile as executions
-    // accumulate so its delta fills in, without re-running this effect (and
-    // its 15s refresh loop) on every print.
-    Math.floor(marketTrades.length / 250),
     pane.symbol,
     pane.timeframe,
     resolvedContractSymbol,
