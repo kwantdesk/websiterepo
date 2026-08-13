@@ -368,8 +368,41 @@ function ExposurePanel({
     };
   }, [centerLiveStrike]);
 
+  useEffect(() => {
+    const container = scrollRef.current;
+    if (!container) return;
+
+    const routeExposureWheel = (event: WheelEvent) => {
+      userNavigatedRef.current = true;
+      if (event.ctrlKey || event.metaKey) return;
+
+      const maximumScroll = Math.max(0, container.scrollHeight - container.clientHeight);
+      if (maximumScroll <= 0) return;
+
+      const rawDelta = Math.abs(event.deltaY) >= Math.abs(event.deltaX) ? event.deltaY : event.deltaX;
+      if (!rawDelta) return;
+      const unit = event.deltaMode === WheelEvent.DOM_DELTA_LINE
+        ? 18
+        : event.deltaMode === WheelEvent.DOM_DELTA_PAGE
+          ? container.clientHeight * 0.82
+          : 1;
+      const nextScroll = Math.max(0, Math.min(maximumScroll, container.scrollTop + rawDelta * unit));
+
+      // At an edge, leave the event available to the outer workspace. While
+      // rows can move, this strike viewport exclusively owns the wheel so a
+      // chart node or label cannot accidentally swallow it.
+      if (Math.abs(nextScroll - container.scrollTop) < 0.5) return;
+      event.preventDefault();
+      event.stopPropagation();
+      container.scrollTop = nextScroll;
+    };
+
+    container.addEventListener("wheel", routeExposureWheel, { capture: true, passive: false });
+    return () => container.removeEventListener("wheel", routeExposureWheel, { capture: true });
+  }, []);
+
   return (
-    <section className="gex-map-exposure-panel flex min-h-[250px] min-w-0 flex-col overflow-clip rounded-xl border border-border bg-panel">
+    <section className="gex-map-exposure-panel flex min-h-[250px] min-w-0 flex-col overflow-hidden rounded-xl border border-border bg-panel">
       <div className="sticky top-0 z-20 shrink-0 border-b border-border bg-panel/95 px-3 py-2.5 shadow-[0_8px_18px_rgba(0,0,0,0.16)] backdrop-blur-xl">
         <div className="flex min-w-0 items-center gap-2">
           <GexMapDropdown
@@ -422,17 +455,6 @@ function ExposurePanel({
 
       <div
         ref={scrollRef}
-        onWheel={(event) => {
-          userNavigatedRef.current = true;
-          const container = event.currentTarget;
-          const maximumScroll = Math.max(0, container.scrollHeight - container.clientHeight);
-          if (maximumScroll <= 0 || event.deltaY === 0) return;
-          const nextScroll = Math.max(0, Math.min(maximumScroll, container.scrollTop + event.deltaY));
-          if (Math.abs(nextScroll - container.scrollTop) < 0.5) return;
-          event.preventDefault();
-          event.stopPropagation();
-          container.scrollTop = nextScroll;
-        }}
         onPointerDownCapture={() => { userNavigatedRef.current = true; }}
         onTouchStart={() => { userNavigatedRef.current = true; }}
         className="relative min-h-0 flex-1 touch-pan-y overscroll-contain overflow-y-auto bg-chart-background"
