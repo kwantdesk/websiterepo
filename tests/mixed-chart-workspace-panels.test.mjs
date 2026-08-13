@@ -37,6 +37,14 @@ test("new workspace slots start empty and present the centered panel picker", ()
   assert.match(workspaceSource, /Choose a live KwantDesk workspace for this panel/);
 });
 
+test("a newly selected chart stays behind the picker until its first usable state settles", () => {
+  assert.match(workspaceSource, /await preloadWorkspaceModule\(content\)/);
+  assert.match(workspaceSource, /content !== "charts"/);
+  assert.match(workspaceSource, /onInitialSettled/);
+  assert.match(workspaceSource, /nodePane\?\.content === "charts" && workspacePanelPickerPaneId === node\.paneId/);
+  assert.match(workspaceSource, /if \(!loading\) onInitialSettled\?\.\(\)/);
+});
+
 test("mixed panel selection is saved in the existing pane and preset models", () => {
   assert.match(workspaceSource, /content: WorkspacePanelKind \| null;/);
   assert.match(workspaceSource, /content: pane\.content === null \|\| isWorkspacePanelKind\(pane\.content\) \? pane\.content : "charts"/);

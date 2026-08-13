@@ -3265,6 +3265,7 @@ function WorkspaceChartPane({
   gameplanOverlay,
   onRemoveGameplanOverlay,
   loadingMessage,
+  onInitialSettled,
 }: {
   pane: WorkspacePane;
   active: boolean;
@@ -3299,6 +3300,7 @@ function WorkspaceChartPane({
   gameplanOverlay: GameplanChartOverlay | null;
   onRemoveGameplanOverlay: () => void;
   loadingMessage?: string;
+  onInitialSettled?: () => void;
 }) {
   const [candles, setCandles] = useState<Candle[]>([]);
   const [lowerIndicatorHeight, setLowerIndicatorHeight] = useState(0);
@@ -3405,6 +3407,10 @@ function WorkspaceChartPane({
     : null;
   const expectedGammaContract =
     pane.broker === "Databento" ? currentCmeContract(pane.symbol) : null;
+
+  useEffect(() => {
+    if (!loading) onInitialSettled?.();
+  }, [loading, onInitialSettled]);
   const gammaDataReady = Boolean(
     expectedGammaContract
     && contractMatchesChartInstrument(pane.symbol, resolvedContractSymbol)
@@ -5758,6 +5764,10 @@ export default function KwantifyWorkspace({
     return window.localStorage.getItem("olisa-chart-workspace-active-pane") ?? DEFAULT_WORKSPACE_PANES[0].id;
   });
   const [workspacePanelPickerPaneId, setWorkspacePanelPickerPaneId] = useState<string | null>(null);
+  const [workspacePanelTransition, setWorkspacePanelTransition] = useState<{
+    paneId: string;
+    content: WorkspacePanelKind;
+  } | null>(null);
   const [draggedWorkspacePaneId, setDraggedWorkspacePaneId] = useState<string | null>(null);
   const [workspaceDropTargetPaneId, setWorkspaceDropTargetPaneId] = useState<string | null>(null);
   const [watchlist, setWatchlist] = useState<WatchlistItem[]>([
@@ -10661,11 +10671,15 @@ export default function KwantifyWorkspace({
     }
   };
 
-  const selectWorkspacePanelContent = (paneId: string, content: WorkspacePanelKind) => {
-    updateWorkspacePane(paneId, { content });
-    setWorkspacePanelPickerPaneId(null);
+  const selectWorkspacePanelContent = async (paneId: string, content: WorkspacePanelKind) => {
+    setWorkspacePanelTransition({ paneId, content });
     setActivePaneId(paneId);
-    void preloadWorkspaceModule(content).catch(() => null);
+    await preloadWorkspaceModule(content).catch(() => null);
+    updateWorkspacePane(paneId, { content });
+    if (content !== "charts") {
+      setWorkspacePanelPickerPaneId(null);
+      setWorkspacePanelTransition(null);
+    }
   };
 
   function renderWorkspacePanelPicker(pane: WorkspacePane, overlay = false) {
@@ -10694,8 +10708,9 @@ export default function KwantifyWorkspace({
                   key={option.id}
                   type="button"
                   onPointerEnter={() => void preloadWorkspaceModule(option.id).catch(() => null)}
-                  onClick={() => selectWorkspacePanelContent(pane.id, option.id)}
-                  className={`group flex min-h-[72px] items-center gap-3 rounded-xl border p-3 text-left transition-all hover:-translate-y-0.5 hover:border-primary/45 hover:bg-primary/[0.07] ${pane.content === option.id ? "border-primary/40 bg-primary/[0.08]" : "border-border bg-surface/60"}`}
+                  onClick={() => void selectWorkspacePanelContent(pane.id, option.id)}
+                  disabled={workspacePanelTransition?.paneId === pane.id}
+                  className={`group flex min-h-[72px] items-center gap-3 rounded-xl border p-3 text-left transition-all hover:-translate-y-0.5 hover:border-primary/45 hover:bg-primary/[0.07] disabled:pointer-events-none ${pane.content === option.id || workspacePanelTransition?.content === option.id ? "border-primary/40 bg-primary/[0.08]" : "border-border bg-surface/60"}`}
                 >
                   <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary transition-transform group-hover:scale-105">
                     <Icon className="h-[17px] w-[17px]" />
@@ -10820,6 +10835,13 @@ export default function KwantifyWorkspace({
         onGammaExportSnapshot={handleGammaExportSnapshot}
         gameplanOverlay={gameplanRoot ? gameplanChartOverlays[gameplanRoot] ?? null : null}
         loadingMessage={activePaneId === pane.id ? chartLoadingMessage : ""}
+        onInitialSettled={workspacePanelTransition?.paneId === pane.id
+          && workspacePanelTransition.content === "charts"
+          ? () => {
+              setWorkspacePanelTransition(null);
+              setWorkspacePanelPickerPaneId((openPaneId) => openPaneId === pane.id ? null : openPaneId);
+            }
+          : undefined}
         onRemoveGameplanOverlay={() => {
           if (!gameplanRoot) return;
           setGameplanChartOverlays(removeGameplanChartOverlay(gameplanRoot));
@@ -10840,6 +10862,7 @@ export default function KwantifyWorkspace({
 
   function renderWorkspaceNode(node: WorkspaceLayoutNode): React.ReactNode {
     if (node.type === "pane") {
+      const nodePane = workspacePanes.find((pane) => pane.id === node.paneId);
       return (
         <div
           key={node.paneId}
@@ -10878,6 +10901,9 @@ export default function KwantifyWorkspace({
           }`}
         >
           {renderWorkspacePane(node.paneId)}
+          {nodePane?.content === "charts" && workspacePanelPickerPaneId === node.paneId
+            ? renderWorkspacePanelPicker(nodePane, true)
+            : null}
           {workspaceDropTargetPaneId === node.paneId && (
             <div className="pointer-events-none absolute inset-0 z-[80] flex items-center justify-center rounded-2xl bg-primary/10 backdrop-blur-[1px]">
               <div className="rounded-full border border-primary/40 bg-panel/95 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-primary shadow-xl">
