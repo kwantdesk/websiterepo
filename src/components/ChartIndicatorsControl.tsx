@@ -137,7 +137,9 @@ export default function ChartIndicatorsControl({
   onChange,
 }: Props) {
   const rootRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
+  const [menuPosition, setMenuPosition] = useState<{ left: number; top: number; width: number } | null>(null);
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [settingsInstanceId, setSettingsInstanceId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -155,6 +157,7 @@ export default function ChartIndicatorsControl({
     const close = (event: PointerEvent) => {
       const target = event.target as Node | null;
       if (target && rootRef.current?.contains(target)) return;
+      if (target && menuRef.current?.contains(target)) return;
       setOpen(false);
     };
     const escape = (event: KeyboardEvent) => {
@@ -165,6 +168,31 @@ export default function ChartIndicatorsControl({
     return () => {
       document.removeEventListener("pointerdown", close, true);
       document.removeEventListener("keydown", escape);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const positionMenu = () => {
+      const trigger = rootRef.current?.getBoundingClientRect();
+      if (!trigger) return;
+      const viewportPadding = 8;
+      const width = Math.min(380, window.innerWidth - viewportPadding * 2);
+      setMenuPosition({
+        left: Math.max(
+          viewportPadding,
+          Math.min(trigger.right - width, window.innerWidth - width - viewportPadding),
+        ),
+        top: trigger.bottom + 6,
+        width,
+      });
+    };
+    positionMenu();
+    window.addEventListener("resize", positionMenu);
+    window.addEventListener("scroll", positionMenu, true);
+    return () => {
+      window.removeEventListener("resize", positionMenu);
+      window.removeEventListener("scroll", positionMenu, true);
     };
   }, [open]);
 
@@ -265,8 +293,14 @@ export default function ChartIndicatorsControl({
           <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? "rotate-180" : ""}`} />
         </button>
 
-        {open ? (
-          <div className="absolute right-0 top-[38px] z-[180] w-[380px] overflow-hidden rounded-2xl border border-border bg-panel shadow-2xl shadow-black/60">
+      </div>
+
+      {open && menuPosition && typeof document !== "undefined" ? createPortal(
+          <div
+            ref={menuRef}
+            className="fixed z-[10000] overflow-hidden rounded-2xl border border-border bg-panel shadow-2xl shadow-black/60"
+            style={{ left: menuPosition.left, top: menuPosition.top, width: menuPosition.width }}
+          >
             <div className="flex items-center justify-between border-b border-border px-4 py-3">
               <div>
                 <div className="text-[12px] font-semibold text-foreground">Chart indicators</div>
@@ -411,9 +445,9 @@ export default function ChartIndicatorsControl({
               </div>
               )}
             </div>
-          </div>
+          </div>,
+          document.body,
         ) : null}
-      </div>
 
       {libraryOpen && typeof document !== "undefined" ? createPortal(
         <div
