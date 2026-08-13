@@ -1730,6 +1730,7 @@ export default function Chart({
   const [textEditor, setTextEditor] = useState<{ x: number; y: number; time: number; price: number; value: string; tool: DrawingToolId } | null>(null);
   const [clearConfirm, setClearConfirm] = useState(false);
   const [overlaySize, setOverlaySize] = useState({ width: 0, height: 0 });
+  const [nativePriceScaleWidth, setNativePriceScaleWidth] = useState(64);
   const [viewportVersion, setViewportVersion] = useState(0);
   const [chartVisualReady, setChartVisualReady] = useState(false);
   const [themeVersion, setThemeVersion] = useState(0);
@@ -4946,6 +4947,11 @@ export default function Chart({
     });
 
     chartRef.current = chart;
+    const syncNativePriceScaleWidth = () => {
+      const nextWidth = Math.max(44, Math.ceil(chart.priceScale("right").width() || 64));
+      setNativePriceScaleWidth((current) => current === nextWidth ? current : nextWidth);
+    };
+    window.requestAnimationFrame(syncNativePriceScaleWidth);
     setChartReadyRevision((current) => current + 1);
 
     const candleSeries = chart.addCandlestickSeries({
@@ -5075,6 +5081,7 @@ export default function Chart({
           height,
         });
         setOverlaySize({ width, height });
+        window.requestAnimationFrame(syncNativePriceScaleWidth);
       }
     };
 
@@ -5082,6 +5089,7 @@ export default function Chart({
       if (viewportFrameRef.current != null) return;
       viewportFrameRef.current = window.requestAnimationFrame(() => {
         viewportFrameRef.current = null;
+        syncNativePriceScaleWidth();
         setViewportVersion((current) => current + 1);
       });
     };
@@ -6369,6 +6377,7 @@ export default function Chart({
       <ChartIndicatorPanes
         groups={calculatedIndicatorPanes}
         width={overlaySize.width}
+        priceScaleWidth={nativePriceScaleWidth}
         height={indicatorPaneHeight}
         bottom={24}
         viewportVersion={viewportVersion}

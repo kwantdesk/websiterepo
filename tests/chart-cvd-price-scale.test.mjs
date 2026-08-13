@@ -6,6 +6,18 @@ const source = await fs.readFile(
   new URL("../src/components/ChartIndicatorPanes.tsx", import.meta.url),
   "utf8",
 );
+const chartSource = await fs.readFile(
+  new URL("../src/components/Chart.tsx", import.meta.url),
+  "utf8",
+);
+
+test("CVD value rail matches the native chart price-scale width", () => {
+  assert.match(source, /priceScaleWidth: number/);
+  assert.match(source, /width: valueScaleWidth/);
+  assert.doesNotMatch(source, /width - 61|width: 61/);
+  assert.match(chartSource, /chart\.priceScale\("right"\)\.width\(\)/);
+  assert.match(chartSource, /priceScaleWidth=\{nativePriceScaleWidth\}/);
+});
 
 test("CVD owns an independent right-axis wheel scale", () => {
   assert.match(source, /verticalScaleByPane/);

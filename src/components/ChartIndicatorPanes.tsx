@@ -121,6 +121,7 @@ function sampledPanePoints(
 function ChartIndicatorPanes({
   groups,
   width,
+  priceScaleWidth,
   height,
   bottom,
   viewportVersion,
@@ -134,6 +135,7 @@ function ChartIndicatorPanes({
 }: {
   groups: IndicatorPaneGroup[];
   width: number;
+  priceScaleWidth: number;
   height: number;
   bottom: number;
   viewportVersion: number;
@@ -184,7 +186,8 @@ function ChartIndicatorPanes({
   }, [openMenu]);
 
   if (!groups.length || width <= 0 || height <= 0) return null;
-  const plotWidth = Math.max(0, width - 61);
+  const valueScaleWidth = Math.max(44, Math.min(width, Math.round(priceScaleWidth)));
+  const plotWidth = Math.max(0, width - valueScaleWidth);
   const fallbackPaneHeight = Math.max(64, height / Math.max(1, groups.length));
   let paneTop = 0;
   const paneLayouts = groups.map((group) => {
@@ -648,7 +651,7 @@ function ChartIndicatorPanes({
             aria-valuenow={Math.round(verticalScale * 100)}
             title="Scroll to expand or squeeze CVD · Double-click to reset"
             className="pointer-events-auto absolute right-0 z-10 cursor-ns-resize touch-none"
-            style={{ top: top + 25, width: 61, height: Math.max(20, paneHeight - 34) }}
+            style={{ top: top + 25, width: valueScaleWidth, height: Math.max(20, paneHeight - 34) }}
             onPointerDown={(event) => event.stopPropagation()}
             onWheel={(event) => {
               event.preventDefault();
