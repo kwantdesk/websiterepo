@@ -1,7 +1,5 @@
 "use client";
 
-import KwantSelect from "@/components/ui/KwantSelect";
-
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import AppSidebar from "@/components/AppSidebar";
@@ -14,6 +12,16 @@ import {
   savePaperTradingAccounts,
   type PaperTradingAccountRecord,
 } from "@/lib/paperAccounts";
+import {
+  emptyPaperTradingLedger,
+  ensurePaperAccountLedger,
+  loadPaperTradingLedger,
+  PAPER_TRADING_LEDGER_EVENT,
+  PAPER_TRADING_LEDGER_STORAGE_KEY,
+  savePaperTradingLedger,
+  summarizePaperAccount,
+  type PaperTradingLedger,
+} from "@/lib/paperTrading";
 import {
   BarChart3,
   Bell,
@@ -46,13 +54,19 @@ type DemoAccount = PaperTradingAccountRecord & {
   winRate: string;
 };
 
-const brokers = [
-  { name: "Capital.com", logo: "C", desc: "CFDs: Forex, Indices, Commodities, Crypto", connected: false, info: "Not connected" },
-  { name: "Tradovate", logo: "T", desc: "Futures: NQ, ES, GC, CL", note: "No API fees through Kwantify" },
-  { name: "Pepperstone", logo: "P", desc: "cTrader: Forex, Indices, Commodities" },
-  { name: "MetaTrader 5", logo: "MT5", desc: "Universal: Any MT5 Broker" },
-  { name: "Interactive Brokers", logo: "IB", desc: "Stocks, Options, Futures, Forex", soon: true },
-  { name: "Binance", logo: "B", desc: "Crypto Spot & Futures", soon: true },
+const brokers: Array<{
+  name: string;
+  logo: string;
+  desc: string;
+  soon?: boolean;
+  info?: string;
+  note?: string;
+  connected?: boolean;
+}> = [
+  { name: "Tradovate", logo: "T", desc: "CME futures accounts and order routing", soon: true, info: "Connector scaffold ready" },
+  { name: "Rithmic Direct", logo: "R", desc: "CME futures through an approved Rithmic API connection", soon: true, info: "Requires broker and API approval" },
+  { name: "Interactive Brokers", logo: "IB", desc: "Futures and multi-asset accounts", soon: true, info: "Connector scaffold ready" },
+  { name: "NinjaTrader", logo: "NT", desc: "Futures accounts and execution", soon: true, info: "Connector scaffold ready" },
 ];
 
 const connectedAccounts: string[][] = [];
@@ -69,7 +83,7 @@ const routes: {
 const executionLog: string[][] = [];
 
 function Sidebar() {
-  return <AppSidebar activeItem="accounts" />;
+  return <AppSidebar activeItem="accounts" orientation="horizontal" />;
 }
 
 function Sparkline({ points, positive = true }: { points: string; positive?: boolean }) {
@@ -101,9 +115,11 @@ export default function AccountsPage() {
   const [connectBroker, setConnectBroker] = useState<string | null>(null);
   const [showRouteModal, setShowRouteModal] = useState(false);
   const [accounts, setAccounts] = useState<DemoAccount[]>([]);
+  const [paperLedger, setPaperLedger] = useState<PaperTradingLedger>(() =>
+    typeof window === "undefined" ? emptyPaperTradingLedger() : loadPaperTradingLedger());
   const [newAccountName, setNewAccountName] = useState("");
   const [newAccountBalance, setNewAccountBalance] = useState("$10,000");
-  const [newAccountInstrument, setNewAccountInstrument] = useState("NAS100");
+  const [newAccountInstrument, setNewAccountInstrument] = useState("All CME Futures");
   const [newAccountLeverage, setNewAccountLeverage] = useState("1:30");
   const [newAccountStrategy, setNewAccountStrategy] = useState("Manual / No Strategy");
   const [showAdjustModal, setShowAdjustModal] = useState(false);
@@ -112,7 +128,8 @@ export default function AccountsPage() {
   const [toast, setToast] = useState("");
   const [strategies, setStrategies] = useState<string[]>([]);
   const adjustAccount = accounts.find((account) => account.id === adjustAccountId);
-  const currentBalance = adjustAccount ? parseMoney(adjustAccount.balance) : 0;
+  const adjustAccountSummary = adjustAccount ? summarizePaperAccount(paperLedger, adjustAccount) : null;
+  const currentBalance = adjustAccountSummary?.balance ?? (adjustAccount ? parseMoney(adjustAccount.balance) : 0);
   const parsedAdjustAmount = Number(adjustAmount) || 0;
   const previewBalance = Math.min(1000000, Math.max(0, currentBalance + parsedAdjustAmount));
 
@@ -120,6 +137,20 @@ export default function AccountsPage() {
     const saved = loadPaperTradingAccounts();
     if (!saved.length) return;
     setAccounts(saved.map((account) => ({ ...account, winRate: "0%" })));
+    setPaperLedger(saved.reduce((ledger, account) => ensurePaperAccountLedger(ledger, account), loadPaperTradingLedger()));
+  }, []);
+
+  useEffect(() => {
+    const syncLedger = () => setPaperLedger(loadPaperTradingLedger());
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key === PAPER_TRADING_LEDGER_STORAGE_KEY) syncLedger();
+    };
+    window.addEventListener("storage", handleStorage);
+    window.addEventListener(PAPER_TRADING_LEDGER_EVENT, syncLedger);
+    return () => {
+      window.removeEventListener("storage", handleStorage);
+      window.removeEventListener(PAPER_TRADING_LEDGER_EVENT, syncLedger);
+    };
   }, []);
 
   useEffect(() => {
@@ -144,6 +175,25 @@ export default function AccountsPage() {
           : account,
       ),
     );
+    setPaperLedger((current) => {
+      const ensured = ensurePaperAccountLedger(current, adjustAccount);
+      const ledgerAccount = ensured.accounts[adjustAccount.id];
+      const actualAdjustment = nextBalance - currentBalance;
+      const next = {
+        ...ensured,
+        accounts: {
+          ...ensured.accounts,
+          [adjustAccount.id]: {
+            ...ledgerAccount,
+            startingBalance: Math.max(0, ledgerAccount.startingBalance + actualAdjustment),
+            cashBalance: Math.max(0, ledgerAccount.cashBalance + actualAdjustment),
+            updatedAt: Date.now(),
+          },
+        },
+      };
+      savePaperTradingLedger(next);
+      return next;
+    });
     setShowAdjustModal(false);
     setToast(`Balance updated to ${formatMoney(nextBalance)}`);
     window.setTimeout(() => setToast(""), 1800);
@@ -160,10 +210,15 @@ export default function AccountsPage() {
       strategy: newAccountStrategy,
     });
     setAccounts((current) => [{ ...account, winRate: "0%" }, ...current]);
+    setPaperLedger((current) => {
+      const next = ensurePaperAccountLedger(current, account);
+      savePaperTradingLedger(next);
+      return next;
+    });
     setShowDemoModal(false);
     setNewAccountName("");
     setNewAccountBalance("$10,000");
-    setNewAccountInstrument("NAS100");
+    setNewAccountInstrument("All CME Futures");
     setNewAccountLeverage("1:30");
     setNewAccountStrategy("Manual / No Strategy");
     setToast(`${account.name} created`);
@@ -183,7 +238,7 @@ export default function AccountsPage() {
   }, []);
 
   return (
-    <div className="flex min-h-screen bg-background text-foreground">
+    <div className="flex min-h-screen flex-col bg-background text-foreground">
       <Sidebar />
       <main className="min-w-0 flex-1">
         <header className="sticky top-0 z-20 flex flex-wrap items-center gap-4 border-b border-border bg-background/95 px-6 py-4 backdrop-blur">
@@ -215,21 +270,26 @@ export default function AccountsPage() {
               ) : (
               <section className="grid gap-4 xl:grid-cols-2">
                 {accounts.map((account) => {
-                  const positive = !account.change.startsWith("-");
+                  const summary = summarizePaperAccount(paperLedger, account);
+                  const totalChange = summary.equity - summary.startingBalance;
+                  const changePercent = summary.startingBalance > 0 ? totalChange / summary.startingBalance * 100 : 0;
+                  const positive = totalChange >= 0;
                   return (
                     <div key={account.name} className="rounded-2xl border border-border bg-panel p-6 transition-colors hover:border-primary/20">
                       <div className="mb-5 flex items-start justify-between gap-4">
                         <div><h2 className="font-semibold">{account.name}</h2><div className="mt-2 flex items-center gap-2 text-[12px] text-muted"><span className={`h-2 w-2 rounded-full ${account.running ? "bg-primary" : "bg-zinc-500"}`} />{account.running ? "Running" : "Idle"} - {account.strategy}</div></div>
                         <span className="rounded-lg bg-surface px-2 py-1 text-[11px] text-primary">{account.instrument}</span>
                       </div>
-                      <div className="grid gap-3 sm:grid-cols-2">
-                        <div className="rounded-xl bg-background/40 p-3"><div className="text-[11px] text-muted">Balance</div><div className="font-mono text-xl">{account.balance}</div></div>
-                        <div className="rounded-xl bg-background/40 p-3"><div className="text-[11px] text-muted">Equity</div><div className="font-mono text-xl">{account.equity} <span className={positive ? "text-primary" : "text-red-400"}>{account.change}</span></div></div>
-                        <div className="rounded-xl bg-background/40 p-3"><div className="text-[11px] text-muted">Open P&L</div><div className={`font-mono ${positive ? "text-primary" : "text-red-400"}`}>{account.pnl}</div><div className="text-[11px] text-muted">{account.positions}</div></div>
-                        <div className="rounded-xl bg-background/40 p-3"><div className="text-[11px] text-muted">Today's P&L</div><div className={`font-mono ${account.today.startsWith("-") ? "text-red-400" : "text-primary"}`}>{account.today}</div></div>
+                      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                        <div className="rounded-xl bg-background/40 p-3"><div className="text-[11px] text-muted">Starting balance</div><div className="font-mono text-lg">{formatMoney(summary.startingBalance)}</div></div>
+                        <div className="rounded-xl bg-background/40 p-3"><div className="text-[11px] text-muted">Current balance</div><div className="font-mono text-lg">{formatMoney(summary.balance)}</div></div>
+                        <div className="rounded-xl bg-background/40 p-3"><div className="text-[11px] text-muted">Equity</div><div className="font-mono text-lg">{formatMoney(summary.equity)} <span className={positive ? "text-primary" : "text-red-400"}>{changePercent >= 0 ? "+" : ""}{changePercent.toFixed(2)}%</span></div></div>
+                        <div className="rounded-xl bg-background/40 p-3"><div className="text-[11px] text-muted">Open P&amp;L</div><div className={`font-mono ${summary.unrealizedPnl >= 0 ? "text-primary" : "text-red-400"}`}>{formatMoney(summary.unrealizedPnl)}</div><div className="text-[11px] text-muted">{summary.openPositions} open / {summary.workingOrders} working</div></div>
+                        <div className="rounded-xl bg-background/40 p-3"><div className="text-[11px] text-muted">Closed P&amp;L</div><div className={`font-mono ${summary.realizedPnl >= 0 ? "text-primary" : "text-red-400"}`}>{formatMoney(summary.realizedPnl)}</div><div className="text-[11px] text-muted">{summary.closedTrades} exits</div></div>
+                        <div className="rounded-xl bg-background/40 p-3"><div className="text-[11px] text-muted">Available funds</div><div className="font-mono">{formatMoney(summary.availableFunds)}</div><div className="text-[11px] text-muted">Margin {formatMoney(summary.marginUsed)}</div></div>
                       </div>
                       <div className="mt-4"><Sparkline points={account.points} positive={positive} /></div>
-                      <div className="mt-4 flex flex-wrap gap-2 text-[12px] text-muted"><span className="rounded-lg bg-surface px-2 py-1">Win rate {account.winRate}</span><span className="rounded-lg bg-surface px-2 py-1">{account.trades} trades</span><span className="rounded-lg bg-surface px-2 py-1">Created {account.created}</span></div>
+                      <div className="mt-4 flex flex-wrap gap-2 text-[12px] text-muted"><span className="rounded-lg bg-surface px-2 py-1">Win rate {summary.winRate.toFixed(1)}%</span><span className="rounded-lg bg-surface px-2 py-1">{summary.closedTrades} closed trades</span><span className="rounded-lg bg-surface px-2 py-1">Leverage {account.leverage}</span><span className="rounded-lg bg-surface px-2 py-1">Created {account.created}</span></div>
                       <div className="mt-5 flex flex-wrap gap-2">
                         {account.running ? ["View Trades", "Pause", "Settings", "Delete"].map((action) => <button key={action} className="rounded-xl border border-border bg-surface px-3 py-2 text-[12px] text-muted hover:text-foreground">{action}</button>) : <button className="rounded-xl bg-primary px-3 py-2 text-[12px] font-semibold text-background">Assign Strategy</button>}
                         <button onClick={() => openAdjustBalance(account.id)} className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5 text-[12px] text-muted hover:text-foreground"><DollarSign className="h-3.5 w-3.5 text-primary" />Adjust Balance</button>
@@ -267,14 +327,14 @@ export default function AccountsPage() {
                   <p className="max-w-md text-[15px] text-muted">No strategy routes yet. Create a route to forward signals to your accounts.</p>
                 </div>
               ) : null}
-              <section className="space-y-4">{routes.map((route) => <div key={route.strategy} className="rounded-2xl border border-border bg-panel p-5"><div className="flex flex-wrap items-center gap-3"><span className="rounded-xl bg-primary/10 px-3 py-2 text-[13px] text-primary">{route.strategy}</span><span className="text-primary">→</span><div className="flex flex-wrap gap-2">{route.accounts.map((account) => <span key={account} className={`rounded-xl bg-surface px-3 py-2 text-[13px] ${account === "Binance" ? "text-muted line-through" : "text-foreground"}`}>{account}</span>)}</div><span className={`ml-auto rounded-lg px-2 py-1 text-[12px] ${route.statusClass}`}>{route.status}</span></div><div className="mt-4 grid gap-2 md:grid-cols-3">{route.sizing.map((item) => <div key={item} className="rounded-xl bg-background/40 p-3 text-[12px] text-muted">{item}</div>)}</div><div className="mt-4 text-[13px] text-muted">Last signal: <span className="text-foreground">{route.signal}</span></div><div className="mt-4 flex gap-2">{["Edit", "Pause", "Delete"].map((action) => <button key={action} className="rounded-xl border border-border bg-surface px-3 py-2 text-[12px] text-muted hover:text-foreground">{action}</button>)}</div></div>)}</section>
+              <section className="space-y-4">{routes.map((route) => <div key={route.strategy} className="rounded-2xl border border-border bg-panel p-5"><div className="flex flex-wrap items-center gap-3"><span className="rounded-xl bg-primary/10 px-3 py-2 text-[13px] text-primary">{route.strategy}</span><span className="text-primary">to</span><div className="flex flex-wrap gap-2">{route.accounts.map((account) => <span key={account} className="rounded-xl bg-surface px-3 py-2 text-[13px] text-foreground">{account}</span>)}</div><span className={`ml-auto rounded-lg px-2 py-1 text-[12px] ${route.statusClass}`}>{route.status}</span></div><div className="mt-4 grid gap-2 md:grid-cols-3">{route.sizing.map((item) => <div key={item} className="rounded-xl bg-background/40 p-3 text-[12px] text-muted">{item}</div>)}</div><div className="mt-4 text-[13px] text-muted">Last signal: <span className="text-foreground">{route.signal}</span></div><div className="mt-4 flex gap-2">{["Edit", "Pause", "Delete"].map((action) => <button key={action} className="rounded-xl border border-border bg-surface px-3 py-2 text-[12px] text-muted hover:text-foreground">{action}</button>)}</div></div>)}</section>
               <section className="rounded-2xl border border-border bg-panel p-5"><h2 className="mb-4 font-semibold">Execution Log</h2><div className="overflow-hidden rounded-xl border border-border"><table className="w-full text-[13px]"><thead className="border-b border-border text-[11px] uppercase tracking-wider text-muted"><tr>{["Time", "Strategy", "Signal", "Direction", "Instrument", "Accounts", "Status"].map((head) => <th key={head} className="px-4 py-3 text-left font-medium">{head}</th>)}</tr></thead><tbody>{executionLog.map((row, index) => <tr key={`${row[0]}-${index}`} className="border-b border-border/60 last:border-0">{row.map((cell, cellIndex) => <td key={`${cell}-${cellIndex}`} className={`px-4 py-3 ${cellIndex === 6 ? cell === "Failed" ? "text-red-400" : cell === "Partial" ? "text-orange-400" : "text-primary" : cellIndex > 3 ? "font-mono" : ""}`}>{cellIndex === 6 && cell === "Executed" ? <span className="inline-flex items-center gap-1"><Check className="h-3.5 w-3.5" />{cell}</span> : cellIndex === 6 && cell === "Failed" ? <span className="inline-flex items-center gap-1"><X className="h-3.5 w-3.5" />{cell}</span> : cell}</td>)}</tr>)}</tbody></table></div></section>
             </>
           )}
         </div>
       </main>
 
-      {showDemoModal && <Modal title="New Demo Account" onClose={() => setShowDemoModal(false)}><div className="space-y-3"><input value={newAccountName} onChange={(event) => setNewAccountName(event.target.value)} className="w-full rounded-xl border border-border bg-surface px-4 py-3 text-[13px] outline-none" placeholder="Account name" /><KwantSelect value={newAccountBalance} onChange={(event) => setNewAccountBalance(event.target.value)} className="w-full rounded-xl border border-border bg-surface px-4 py-3 text-[13px]"><option>$10,000</option><option>$1,000</option><option>$5,000</option><option>$25,000</option><option>$50,000</option><option>$100,000</option></KwantSelect><KwantSelect value={newAccountInstrument} onChange={(event) => setNewAccountInstrument(event.target.value)} className="w-full rounded-xl border border-border bg-surface px-4 py-3 text-[13px]"><option>NAS100</option><option>XAUUSD</option><option>BTCUSD</option><option>Multiple</option></KwantSelect><KwantSelect value={newAccountLeverage} onChange={(event) => setNewAccountLeverage(event.target.value)} className="w-full rounded-xl border border-border bg-surface px-4 py-3 text-[13px]"><option>1:30</option><option>1:1</option><option>1:10</option><option>1:50</option><option>1:100</option><option>1:200</option><option>1:500</option></KwantSelect><KwantSelect value={newAccountStrategy} onChange={(event) => setNewAccountStrategy(event.target.value)} className="w-full rounded-xl border border-border bg-surface px-4 py-3 text-[13px]"><option>Manual / No Strategy</option>{strategies.map((strategy) => <option key={strategy}>{strategy}</option>)}</KwantSelect><button onClick={handleCreateDemoAccount} disabled={!newAccountName.trim()} className="w-full rounded-xl bg-primary py-3 text-[13px] font-semibold text-background disabled:cursor-not-allowed disabled:opacity-40">Create Account</button></div></Modal>}
+      {showDemoModal && <Modal title="New Demo Account" onClose={() => setShowDemoModal(false)}><div className="space-y-3"><input value={newAccountName} onChange={(event) => setNewAccountName(event.target.value)} className="w-full rounded-xl border border-border bg-surface px-4 py-3 text-[13px] outline-none" placeholder="Account name" /><select value={newAccountBalance} onChange={(event) => setNewAccountBalance(event.target.value)} className="w-full rounded-xl border border-border bg-surface px-4 py-3 text-[13px]"><option>$10,000</option><option>$1,000</option><option>$5,000</option><option>$25,000</option><option>$50,000</option><option>$100,000</option><option>$150,000</option><option>$250,000</option></select><select value={newAccountInstrument} onChange={(event) => setNewAccountInstrument(event.target.value)} className="w-full rounded-xl border border-border bg-surface px-4 py-3 text-[13px]"><option>All CME Futures</option><option>NQ / MNQ</option><option>ES / MES</option><option>RTY / M2K</option><option>YM / MYM</option><option>GC / MGC</option><option>CL / MCL</option><option>BTC / MBT</option><option>ETH / MET</option></select><select value={newAccountLeverage} onChange={(event) => setNewAccountLeverage(event.target.value)} className="w-full rounded-xl border border-border bg-surface px-4 py-3 text-[13px]"><option>1:30</option><option>1:1</option><option>1:10</option><option>1:20</option><option>1:50</option><option>1:100</option></select><select value={newAccountStrategy} onChange={(event) => setNewAccountStrategy(event.target.value)} className="w-full rounded-xl border border-border bg-surface px-4 py-3 text-[13px]"><option>Manual / No Strategy</option>{strategies.map((strategy) => <option key={strategy}>{strategy}</option>)}</select><button onClick={handleCreateDemoAccount} disabled={!newAccountName.trim()} className="w-full rounded-xl bg-primary py-3 text-[13px] font-semibold text-background disabled:cursor-not-allowed disabled:opacity-40">Create Account</button></div></Modal>}
 
       {showAdjustModal && adjustAccount && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-6">
@@ -325,7 +385,7 @@ export default function AccountsPage() {
 
       {connectBroker && <Modal title={`Connect ${connectBroker}`} onClose={() => setConnectBroker(null)}><div className="space-y-4"><div className="flex items-center gap-3"><div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 font-mono text-primary">{connectBroker.slice(0, 2)}</div><div><div className="font-semibold">{connectBroker}</div><p className="text-[12px] text-muted">Follow the steps below, test the connection, then connect.</p></div></div><ol className="space-y-2 text-[13px] text-muted"><li>1. Open your broker API or platform settings.</li><li>2. Generate credentials with read, trade, and account permissions.</li><li>3. Paste credentials below and run a test connection.</li></ol>{connectBroker === "Capital.com" && <><input className="w-full rounded-xl border border-border bg-surface px-4 py-3 text-[13px]" placeholder="API Key" /><div className="flex rounded-xl border border-border bg-surface p-1"><button className="flex-1 rounded-lg bg-panel py-2 text-[13px]">Demo</button><button className="flex-1 rounded-lg py-2 text-[13px] text-muted">Live</button></div></>}{connectBroker === "Tradovate" && <><input className="w-full rounded-xl border border-border bg-surface px-4 py-3 text-[13px]" placeholder="Username" /><input className="w-full rounded-xl border border-border bg-surface px-4 py-3 text-[13px]" placeholder="Password" type="password" /><p className="text-[12px] text-primary">Connected through Kwantify - no API fees</p></>}{connectBroker === "MetaTrader 5" && <><input className="w-full rounded-xl border border-border bg-surface px-4 py-3 text-[13px]" placeholder="Server" /><input className="w-full rounded-xl border border-border bg-surface px-4 py-3 text-[13px]" placeholder="Login" /><input className="w-full rounded-xl border border-border bg-surface px-4 py-3 text-[13px]" placeholder="Password" type="password" /></>} {!["Capital.com", "Tradovate", "MetaTrader 5"].includes(connectBroker) && <input className="w-full rounded-xl border border-border bg-surface px-4 py-3 text-[13px]" placeholder="API credentials" />}<div className="rounded-xl border border-primary/20 bg-primary/5 p-3 text-[12px] text-primary">Connection status: Ready to test</div><div className="flex gap-2"><button className="flex-1 rounded-xl border border-border bg-surface py-3 text-[13px] text-muted">Test Connection</button><button className="flex-1 rounded-xl bg-primary py-3 text-[13px] font-semibold text-background">Connect</button></div></div></Modal>}
 
-      {showRouteModal && <Modal title="New Strategy Route" onClose={() => setShowRouteModal(false)}><div className="space-y-4"><KwantSelect className="w-full rounded-xl border border-border bg-surface px-4 py-3 text-[13px]">{strategies.map((strategy) => <option key={strategy}>{strategy}</option>)}</KwantSelect><div className="space-y-2">{["NAS100 Demo ($10K)", "Gold Demo ($5K)", "BTC Demo ($25K)", "Capital.com Live", "Tradovate Demo"].map((account) => <label key={account} className="flex items-center gap-3 rounded-xl bg-surface px-4 py-3 text-[13px]"><input type="checkbox" />{account}<KwantSelect className="ml-auto rounded-lg border border-border bg-panel px-2 py-1 text-[12px]"><option>% of balance</option><option>fixed lots</option><option>fixed $</option></KwantSelect><input className="w-16 rounded-lg border border-border bg-panel px-2 py-1 text-[12px]" placeholder="0.5" /></label>)}</div><div className="flex rounded-xl border border-border bg-surface p-1"><button className="flex-1 rounded-lg bg-panel py-2 text-[13px]">Immediate</button><button className="flex-1 rounded-lg py-2 text-[13px] text-muted">Confirm</button></div><button className="w-full rounded-xl bg-primary py-3 text-[13px] font-semibold text-background">Create Route</button></div></Modal>}
+      {showRouteModal && <Modal title="New Strategy Route" onClose={() => setShowRouteModal(false)}><div className="space-y-4"><select className="w-full rounded-xl border border-border bg-surface px-4 py-3 text-[13px]">{strategies.map((strategy) => <option key={strategy}>{strategy}</option>)}</select><div className="space-y-2">{["NAS100 Demo ($10K)", "Gold Demo ($5K)", "BTC Demo ($25K)", "Capital.com Live", "Tradovate Demo"].map((account) => <label key={account} className="flex items-center gap-3 rounded-xl bg-surface px-4 py-3 text-[13px]"><input type="checkbox" />{account}<select className="ml-auto rounded-lg border border-border bg-panel px-2 py-1 text-[12px]"><option>% of balance</option><option>fixed lots</option><option>fixed $</option></select><input className="w-16 rounded-lg border border-border bg-panel px-2 py-1 text-[12px]" placeholder="0.5" /></label>)}</div><div className="flex rounded-xl border border-border bg-surface p-1"><button className="flex-1 rounded-lg bg-panel py-2 text-[13px]">Immediate</button><button className="flex-1 rounded-lg py-2 text-[13px] text-muted">Confirm</button></div><button className="w-full rounded-xl bg-primary py-3 text-[13px] font-semibold text-background">Create Route</button></div></Modal>}
       {toast && <div className="fixed bottom-6 right-6 z-50 rounded-xl border border-primary/20 bg-panel px-4 py-3 text-[13px] text-primary shadow-2xl shadow-black/40">{toast}</div>}
     </div>
   );

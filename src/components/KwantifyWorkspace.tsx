@@ -166,6 +166,28 @@ import {
   type PaperTradingAccountRecord,
 } from "@/lib/paperAccounts";
 import {
+  cancelPaperOrder,
+  closePaperPosition,
+  emptyPaperTradingLedger,
+  loadPaperTradingLedger,
+  normalizePaperSymbol,
+  paperContractNotional,
+  paperContractSpec,
+  paperOrderQuantity,
+  paperPointValue,
+  paperTickSize,
+  parseLeverage,
+  placePaperOrder,
+  processPaperQuote,
+  savePaperTradingLedger,
+  snapPaperPrice,
+  summarizePaperAccount,
+  updatePaperProtection,
+  type PaperPosition,
+  type PaperTradeFill,
+  type PaperTradingLedger,
+} from "@/lib/paperTrading";
+import {
   getMassiveFuturesSymbolDefinition,
   isMassiveFuturesSymbol,
 } from "@/lib/massiveFutures";
@@ -3282,6 +3304,9 @@ function WorkspaceChartPane({
   onRemoveGameplanOverlay,
   loadingMessage,
   onInitialSettled,
+  paperPositions,
+  paperFills,
+  onUpdatePaperProtection,
 }: {
   pane: WorkspacePane;
   active: boolean;
@@ -3317,6 +3342,15 @@ function WorkspaceChartPane({
   onRemoveGameplanOverlay: () => void;
   loadingMessage?: string;
   onInitialSettled?: () => void;
+  paperPositions?: PaperPosition[];
+  paperFills?: PaperTradeFill[];
+  onUpdatePaperProtection?: (
+    accountId: string,
+    positionId: string,
+    update:
+      | { kind: "stop_loss"; price: number | null }
+      | { kind: "take_profit"; targetId: string; price: number; quantity?: number },
+  ) => void;
 }) {
   const [candles, setCandles] = useState<Candle[]>([]);
   const [lowerIndicatorHeight, setLowerIndicatorHeight] = useState(0);
@@ -5335,6 +5369,9 @@ function WorkspaceChartPane({
           liveCandleEventKey={pane.id}
           gexBotFlow={gammaInstrument === "NQ" || gammaInstrument === "MNQ" ? gexBotFlow : null}
           onIndicatorPaneHeightChange={setLowerIndicatorHeight}
+          paperPositions={paperPositions}
+          paperFills={paperFills}
+          onUpdatePaperProtection={onUpdatePaperProtection}
         />
       )}
       <div
@@ -6004,17 +6041,23 @@ export default function KwantifyWorkspace({
   const [brokerConnections, setBrokerConnections] = useState<Record<string, BrokerConnectionState>>({});
   const [linkedCTraderAccounts, setLinkedCTraderAccounts] = useState<CTraderStatusAccount[]>([]);
   const [paperTradingAccounts, setPaperTradingAccounts] = useState<PaperTradingAccountRecord[]>([]);
+  const [selectedPaperAccountId, setSelectedPaperAccountId] = useState(() =>
+    typeof window === "undefined" ? "" : window.localStorage.getItem("kwantify-selected-paper-account") ?? "");
+  const [paperLedger, setPaperLedger] = useState<PaperTradingLedger>(() =>
+    typeof window === "undefined" ? emptyPaperTradingLedger() : loadPaperTradingLedger());
   const [selectedBroker, setSelectedBroker] = useState<Broker | null>(null);
   const [brokerMode, setBrokerMode] = useState<"Live" | "Demo">("Demo");
   const [showQuickPaperAccountForm, setShowQuickPaperAccountForm] = useState(false);
   const [paperAccountName, setPaperAccountName] = useState("");
   const [paperAccountBalance, setPaperAccountBalance] = useState("$10,000");
-  const [paperAccountInstrument, setPaperAccountInstrument] = useState("NAS100");
+  const [paperAccountInstrument, setPaperAccountInstrument] = useState("All CME Futures");
   const [paperAccountLeverage, setPaperAccountLeverage] = useState("1:30");
   const [paperAccountStrategy, setPaperAccountStrategy] = useState("Manual / No Strategy");
   const [orderUnits, setOrderUnits] = useState("1");
+  const [orderPrice, setOrderPrice] = useState("");
   const [orderTP, setOrderTP] = useState("");
   const [orderSL, setOrderSL] = useState("");
+  const [orderTicketMessage, setOrderTicketMessage] = useState<{ tone: "success" | "error"; text: string } | null>(null);
   const [tpEnabled, setTpEnabled] = useState(false);
   const [slEnabled, setSlEnabled] = useState(false);
   const [showExits, setShowExits] = useState(true);
@@ -6700,6 +6743,7 @@ export default function KwantifyWorkspace({
     };
   }, [activeTradingBroker, activeTradingBrokerLabel, brokerConnections, defaultPaperTradingAccount]);
   const selectedPaperTradingAccount =
+    paperTradingAccounts.find((account) => account.id === selectedPaperAccountId) ??
     paperTradingAccounts.find((account) => account.id === currentBrokerConnection.accountId) ??
     defaultPaperTradingAccount;
   const activeBrokerAccounts = useMemo(
@@ -6710,25 +6754,51 @@ export default function KwantifyWorkspace({
     activeBrokerAccounts.find((account) => account.accountId === currentBrokerConnection.accountId) ??
     activeBrokerAccounts[0] ??
     null;
-  const tradingUnlocked =
-    (currentBrokerConnection.ownership === "paper" && currentBrokerConnection.connectionState === "connected") ||
-    (currentBrokerConnection.ownership === "user" && currentBrokerConnection.connectionState === "connected");
-  const orderPanelMarginUsd = selectedMidPrice > 0 ? selectedMidPrice * Math.max(Number(orderUnits) || 1, 1) * 0.02 : 0;
-  const orderPanelTradeValueUsd = selectedMidPrice > 0 ? selectedMidPrice * Math.max(Number(orderUnits) || 1, 1) : 0;
-  const activeBrokerHealth = activeTradingBroker ? getBrokerHealth(activeTradingBroker) : {
+  const paperExecutionRequested = Boolean(selectedPaperTradingAccount) && (
+    brokerMode === "Demo"
+    || currentBrokerConnection.ownership === "paper"
+    || currentBrokerConnection.mode === "Demo"
+  );
+  const tradingUnlocked = paperExecutionRequested
+    || (currentBrokerConnection.ownership === "user" && currentBrokerConnection.connectionState === "connected");
+  const selectedPaperSummary = selectedPaperTradingAccount
+    ? summarizePaperAccount(paperLedger, selectedPaperTradingAccount)
+    : null;
+  const selectedPaperContract = paperContractSpec(selectedInstrument);
+  const selectedOrderQuantity = paperOrderQuantity(selectedInstrument, orderUnits);
+  const selectedPaperLeverage = selectedPaperTradingAccount
+    ? parseLeverage(selectedPaperTradingAccount.leverage)
+    : 1;
+  const selectedOrderQuantityLabel = selectedPaperContract.isMicro
+    ? `${selectedOrderQuantity} ${selectedInstrument} micro${selectedOrderQuantity === 1 ? "" : "s"}`
+    : selectedPaperContract.isFutures
+      ? `${selectedOrderQuantity} ${selectedInstrument} contract${selectedOrderQuantity === 1 ? "" : "s"}`
+      : `${selectedOrderQuantity} ${selectedInstrument} unit${selectedOrderQuantity === 1 ? "" : "s"}`;
+  const orderPanelMarginUsd = selectedMidPrice > 0
+    ? paperContractNotional(selectedInstrument, selectedMidPrice, selectedOrderQuantity) / selectedPaperLeverage
+    : 0;
+  const orderPanelTradeValueUsd = selectedMidPrice > 0
+    ? paperContractNotional(selectedInstrument, selectedMidPrice, selectedOrderQuantity)
+    : 0;
+  const activeBrokerHealth = paperExecutionRequested ? {
+    state: "connected" as const,
+    label: "Ready",
+    dotClassName: "bg-primary",
+    detail: selectedPaperTradingAccount?.name ?? "Paper simulator ready",
+  } : activeTradingBroker ? getBrokerHealth(activeTradingBroker) : {
     state: "not_ready" as const,
     label: "Not ready",
     dotClassName: "bg-orange-400",
     detail: "No broker selected",
   };
-  const orderPanelAccountSummary = currentBrokerConnection.ownership === "paper"
+  const orderPanelAccountSummary = paperExecutionRequested && selectedPaperSummary
     ? {
-        status: "Connected",
-        balance: selectedPaperTradingAccount?.balance ?? "Locked",
-        equity: selectedPaperTradingAccount?.equity ?? "Locked",
-        unrealized: selectedPaperTradingAccount?.pnl ?? "Locked",
-        realized: selectedPaperTradingAccount?.today ?? "Locked",
-        margin: `${formatDollar(orderPanelMarginUsd)} / ${selectedPaperTradingAccount?.equity ?? "Locked"}`,
+        status: "Ready",
+        balance: formatDollar(selectedPaperSummary.balance),
+        equity: formatDollar(selectedPaperSummary.equity),
+        unrealized: formatDollar(selectedPaperSummary.unrealizedPnl),
+        realized: formatDollar(selectedPaperSummary.realizedPnl),
+        margin: `${formatDollar(selectedPaperSummary.marginUsed)} / ${formatDollar(selectedPaperSummary.availableFunds)} free`,
       }
     : currentBrokerConnection.ownership === "user" && currentBrokerConnection.connectionState === "connected"
       ? {
@@ -6747,6 +6817,12 @@ export default function KwantifyWorkspace({
           realized: "Locked",
           margin: "Locked until your broker is connected",
         };
+  const selectedPaperAccountLedger = selectedPaperTradingAccount
+    ? paperLedger.accounts[selectedPaperTradingAccount.id] ?? null
+    : null;
+  const selectedPaperOpenPositions = selectedPaperAccountLedger?.positions.filter((position) => position.status === "open") ?? [];
+  const selectedPaperWorkingOrders = selectedPaperAccountLedger?.orders.filter((order) => order.status === "working") ?? [];
+  const selectedPaperRecentFills = selectedPaperAccountLedger?.fills.slice(-12).reverse() ?? [];
   const orderPanelLockTone =
     activeBrokerHealth.state === "broken"
       ? {
@@ -7524,10 +7600,51 @@ export default function KwantifyWorkspace({
   }, [paperTradingAccounts]);
 
   useEffect(() => {
+    savePaperTradingLedger(paperLedger);
+  }, [paperLedger]);
+
+  useEffect(() => {
+    if (selectedPaperTradingAccount?.id) {
+      window.localStorage.setItem("kwantify-selected-paper-account", selectedPaperTradingAccount.id);
+    }
+  }, [selectedPaperTradingAccount?.id]);
+
+  useEffect(() => {
+    if (!paperTradingAccounts.length) return;
+    const timestamp = Date.now();
+    setPaperLedger((current) => {
+      let next = current;
+      for (const item of watchlist) {
+        if (!(item.bid > 0 && item.ask > 0)) continue;
+        next = processPaperQuote(next, paperTradingAccounts, item.symbol, {
+          bid: item.bid,
+          ask: item.ask,
+          timestamp,
+        });
+      }
+      if (
+        currentLivePrice.bid > 0
+        && currentLivePrice.ask > 0
+        && !watchlist.some((item) => normalizePaperSymbol(item.symbol) === normalizePaperSymbol(selectedInstrument))
+      ) {
+        next = processPaperQuote(next, paperTradingAccounts, selectedInstrument, {
+          bid: currentLivePrice.bid,
+          ask: currentLivePrice.ask,
+          timestamp,
+        });
+      }
+      return next;
+    });
+  }, [currentLivePrice.ask, currentLivePrice.bid, paperTradingAccounts, selectedInstrument, watchlist]);
+
+  useEffect(() => {
     const handleStorage = (event: StorageEvent) => {
       if (event.key) {
         if (event.key === "kwantify-paper-trading-accounts") {
           setPaperTradingAccounts(loadPaperTradingAccounts());
+        }
+        if (event.key === "kwantify-paper-trading-ledger-v1") {
+          setPaperLedger(loadPaperTradingLedger());
         }
         if (event.key === "olisa-broker-connections") {
           try {
@@ -10339,6 +10456,7 @@ export default function KwantifyWorkspace({
       watchlistKey: makeWatchlistKey(selectedInstrument, brokerName),
     });
     setBrokerConnections((current) => ({ ...current, [brokerName]: nextConnection }));
+    if (paperAccount?.id) setSelectedPaperAccountId(paperAccount.id);
     setConnectedBroker(brokerName);
     window.localStorage.setItem("olisa-connected-broker", brokerName);
     window.sessionStorage.setItem("olisa-broker-session", JSON.stringify(nextConnection));
@@ -10349,6 +10467,7 @@ export default function KwantifyWorkspace({
   const selectPaperTradingAccount = (accountId: string) => {
     const nextAccount = paperTradingAccounts.find((account) => account.id === accountId);
     if (!nextAccount) return;
+    setSelectedPaperAccountId(nextAccount.id);
     setBrokerConnections((current) => ({
       ...current,
       ["Paper Trading"]: {
@@ -10730,6 +10849,7 @@ export default function KwantifyWorkspace({
       strategy: paperAccountStrategy,
     });
     setPaperTradingAccounts((current) => [nextAccount, ...current]);
+    setSelectedPaperAccountId(nextAccount.id);
     setBrokerConnections((current) => ({
       ...current,
       ["Paper Trading"]: {
@@ -10744,10 +10864,115 @@ export default function KwantifyWorkspace({
     }));
     setPaperAccountName("");
     setPaperAccountBalance("$10,000");
-    setPaperAccountInstrument("NAS100");
+    setPaperAccountInstrument("All CME Futures");
     setPaperAccountLeverage("1:30");
     setPaperAccountStrategy("Manual / No Strategy");
     setShowQuickPaperAccountForm(false);
+  };
+
+  const showPaperOrderMessage = (tone: "success" | "error", text: string) => {
+    setOrderTicketMessage({ tone, text });
+    window.setTimeout(() => {
+      setOrderTicketMessage((current) => current?.text === text ? null : current);
+    }, 3_200);
+  };
+
+  const resolvePaperProtectionPrice = (
+    kind: "tp" | "sl",
+    rawValue: string,
+    entryPrice: number,
+    quantity: number,
+  ) => {
+    const value = Number(rawValue);
+    if (!(value > 0)) return null;
+    const direction = orderSide === "buy" ? 1 : -1;
+    const favorableDirection = kind === "tp" ? direction : -direction;
+    const type = kind === "tp" ? tpType : slType;
+    if (type === "price") return snapPaperPrice(selectedInstrument, value);
+    if (type === "ticks") {
+      return snapPaperPrice(selectedInstrument, entryPrice + favorableDirection * value * paperTickSize(selectedInstrument));
+    }
+    if (type === "pctPrice") {
+      return snapPaperPrice(selectedInstrument, entryPrice * (1 + favorableDirection * value / 100));
+    }
+    const accountRiskBase = selectedPaperSummary?.equity ?? 0;
+    const cashAmount = type === "rewardPct" || type === "riskPct"
+      ? accountRiskBase * value / 100
+      : value;
+    const priceDistance = cashAmount / Math.max(paperPointValue(selectedInstrument) * quantity, Number.EPSILON);
+    return snapPaperPrice(selectedInstrument, entryPrice + favorableDirection * priceDistance);
+  };
+
+  const submitPaperOrder = () => {
+    if (!selectedPaperTradingAccount) {
+      showPaperOrderMessage("error", "Create or select a demo account first.");
+      return;
+    }
+    const quote = { bid: currentLivePrice.bid, ask: currentLivePrice.ask, timestamp: Date.now() };
+    const entryPrice = orderType === "market"
+      ? orderSide === "buy" ? quote.ask : quote.bid
+      : Number(orderPrice || selectedMidPrice);
+    if (!(entryPrice > 0)) {
+      showPaperOrderMessage("error", "A live price is required before placing this order.");
+      return;
+    }
+    const takeProfitPrice = tpEnabled
+      ? resolvePaperProtectionPrice("tp", orderTP, entryPrice, selectedOrderQuantity)
+      : null;
+    const stopLossPrice = slEnabled
+      ? resolvePaperProtectionPrice("sl", orderSL, entryPrice, selectedOrderQuantity)
+      : null;
+    const result = placePaperOrder(
+      paperLedger,
+      paperTradingAccounts,
+      {
+        accountId: selectedPaperTradingAccount.id,
+        symbol: selectedInstrument,
+        side: orderSide,
+        type: orderType,
+        quantity: selectedOrderQuantity,
+        price: orderType === "market" ? null : entryPrice,
+        stopLoss: stopLossPrice,
+        takeProfits: takeProfitPrice ? [{ price: takeProfitPrice, quantity: selectedOrderQuantity }] : [],
+      },
+      quote,
+    );
+    setPaperLedger(result.ledger);
+    if (result.error) {
+      showPaperOrderMessage("error", result.error);
+      return;
+    }
+    showPaperOrderMessage(
+      "success",
+      `${orderSide === "buy" ? "Buy" : "Sell"} ${selectedOrderQuantity} ${displayCmeSymbol(selectedInstrument)} ${orderType === "market" ? "filled" : "working"}.`,
+    );
+  };
+
+  const handlePaperProtectionUpdate = (
+    accountId: string,
+    positionId: string,
+    update:
+      | { kind: "stop_loss"; price: number | null }
+      | { kind: "take_profit"; targetId: string; price: number; quantity?: number },
+  ) => {
+    const result = updatePaperProtection(paperLedger, accountId, positionId, update);
+    setPaperLedger(result.ledger);
+    if (result.error) showPaperOrderMessage("error", result.error);
+  };
+
+  const handleFlattenPaperPosition = (position: PaperPosition) => {
+    const result = closePaperPosition(paperLedger, position.accountId, position.id, {
+      bid: currentLivePrice.bid,
+      ask: currentLivePrice.ask,
+      timestamp: Date.now(),
+    });
+    setPaperLedger(result.ledger);
+    showPaperOrderMessage(result.error ? "error" : "success", result.error ?? `${position.symbol} position flattened.`);
+  };
+
+  const handleCancelPaperOrder = (accountId: string, orderId: string) => {
+    setPaperLedger(cancelPaperOrder(paperLedger, accountId, orderId));
+    showPaperOrderMessage("success", "Working order cancelled.");
   };
 
   const handleChartPeriod = (paneId: string, period: string) => {
@@ -10901,6 +11126,9 @@ export default function KwantifyWorkspace({
         settings={chartSettings}
         trades={activePaneId === pane.id ? chartTrades : []}
         indicators={paneIndicators[pane.id] ?? []}
+        paperPositions={selectedPaperAccountLedger?.positions ?? []}
+        paperFills={selectedPaperAccountLedger?.fills ?? []}
+        onUpdatePaperProtection={handlePaperProtectionUpdate}
         onActivate={() => activateWorkspacePane(pane.id)}
         onOpenSettings={openChartSettings}
         onCreateAlertAtPrice={openCreateAlert}
@@ -11941,6 +12169,7 @@ export default function KwantifyWorkspace({
           <div className="hidden w-[44px] shrink-0 flex-col items-center gap-2 border-l border-border bg-panel py-3">
             {[
               { id: "watchlist" as const, title: "Watchlist", icon: List },
+              { id: "order" as const, title: "Trade", icon: BarChart3 },
             ].map((item) => {
               const Icon = item.icon;
               const active = rightPanel === item.id;
@@ -12361,7 +12590,7 @@ export default function KwantifyWorkspace({
                   <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-surface text-primary"><Zap className="h-3.5 w-3.5" /></div>
                   <div>
                     <div className="text-[13px] font-semibold text-foreground">{displayCmeSymbol(selectedInstrument)}</div>
-                    <div className="text-[11px] text-muted">{activeTradingBrokerLabel} order ticket</div>
+                    <div className="text-[11px] text-muted">{paperExecutionRequested ? "Paper Trading" : activeTradingBrokerLabel} order ticket</div>
                   </div>
                 </div>
                 <button onClick={() => setRightPanel(null)} className="flex h-7 w-7 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground"><X className="h-3.5 w-3.5" /></button>
@@ -12391,9 +12620,9 @@ export default function KwantifyWorkspace({
               )}
               <div className={`${tradingUnlocked ? "" : "pointer-events-none opacity-60"}`}>
                 <div className="mb-4 grid grid-cols-3 border-b border-border text-[13px]">{(["market", "limit", "stop"] as const).map((type) => <button key={type} onClick={() => setOrderType(type)} className={`py-2 capitalize transition-colors ${orderType === type ? "border-b-2 border-primary text-foreground" : "text-muted hover:text-foreground"}`}>{type}</button>)}</div>
-                {orderType !== "market" && <div className="mb-4 space-y-1.5"><label className="text-[12px] text-muted">{orderType === "limit" ? "Limit price" : "Stop price"}</label><input defaultValue={selectedMidPrice ? formatPrice(selectedMidPrice, selectedInstrument) : ""} className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-right font-mono text-[13px] outline-none focus:border-primary/40" /></div>}
+                {orderType !== "market" && <div className="mb-4 space-y-1.5"><label className="text-[12px] text-muted">{orderType === "limit" ? "Limit price" : "Stop price"}</label><input value={orderPrice} onChange={(event) => setOrderPrice(event.target.value)} placeholder={selectedMidPrice ? formatPrice(selectedMidPrice, selectedInstrument) : "Price"} className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-right font-mono text-[13px] outline-none focus:border-primary/40" /></div>}
                 <div className="mb-4 space-y-2">
-                  <div className="flex items-center justify-between"><div className="flex items-center gap-2"><span className="text-[13px] text-muted">Units</span><KwantSelect value={unitsType} onChange={(e) => setUnitsType(e.target.value as typeof unitsType)} className="rounded-lg border border-border bg-surface px-2 py-1 text-[11px] text-muted outline-none"><option value="units">Units</option><option value="lots">Lots</option><option value="usd">USD</option><option value="pctBalance">% Balance</option></KwantSelect></div><div className="flex items-center gap-1 text-[12px] text-muted"><span className="font-mono text-foreground">{formatDollar(orderPanelMarginUsd)}</span><ChevronDown className="h-3 w-3" /></div></div>
+                  <div className="flex items-center justify-between"><div className="flex items-center gap-2"><span className="text-[13px] text-muted">{selectedPaperContract.isMicro ? "Micros" : selectedPaperContract.isFutures ? "Contracts" : "Units"}</span>{!selectedPaperContract.isFutures && <KwantSelect value={unitsType} onChange={(e) => setUnitsType(e.target.value as typeof unitsType)} className="rounded-lg border border-border bg-surface px-2 py-1 text-[11px] text-muted outline-none"><option value="units">Units</option><option value="lots">Lots</option><option value="usd">USD</option><option value="pctBalance">% Balance</option></KwantSelect>}</div><div className="flex items-center gap-1 text-[12px] text-muted"><span className="font-mono text-foreground">{formatDollar(orderPanelMarginUsd)}</span><ChevronDown className="h-3 w-3" /></div></div>
                   <div className="flex items-center gap-2"><input value={orderUnits} onChange={(e) => setOrderUnits(e.target.value)} className="min-w-0 flex-1 rounded-lg border border-border bg-surface px-3 py-2 text-right font-mono text-[13px] outline-none focus:border-primary/40" /><button className="flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-surface text-muted hover:text-foreground"><ArrowLeftRight className="h-4 w-4" /></button></div>
                 </div>
               </div>
@@ -12418,13 +12647,13 @@ export default function KwantifyWorkspace({
                   </span>
                 </div>
                 <div className="space-y-2">
-                  <div className="flex justify-between"><span className="text-muted">Broker</span><span className="font-mono text-right">{activeTradingBrokerLabel}</span></div>
-                  <div className="flex justify-between"><span className="text-muted">Mode</span><span className="font-mono text-right">{currentBrokerConnection.mode}</span></div>
-                  {activeTradingBroker?.type === "paper" && paperTradingAccounts.length > 0 ? (
+                  <div className="flex justify-between"><span className="text-muted">Broker</span><span className="font-mono text-right">{paperExecutionRequested ? "Paper Trading" : activeTradingBrokerLabel}</span></div>
+                  <div className="flex justify-between"><span className="text-muted">Mode</span><span className="font-mono text-right">{paperExecutionRequested ? "Demo" : currentBrokerConnection.mode}</span></div>
+                  {paperTradingAccounts.length > 0 ? (
                     <div className="space-y-1.5">
                       <div className="flex justify-between"><span className="text-muted">Account</span><span className="text-[11px] text-muted">{activeBrokerHealth.detail}</span></div>
                       <KwantSelect
-                        value={String(currentBrokerConnection.accountId ?? paperTradingAccounts[0]?.id ?? "")}
+                        value={String(selectedPaperTradingAccount?.id ?? paperTradingAccounts[0]?.id ?? "")}
                         onChange={(event) => selectPaperTradingAccount(event.target.value)}
                         className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-[12px] outline-none focus:border-primary/40"
                       >
@@ -12459,12 +12688,16 @@ export default function KwantifyWorkspace({
                   <div className="flex justify-between"><span className="text-muted">Realized</span><span className="font-mono">{orderPanelAccountSummary.realized}</span></div>
                   <div className="flex justify-between"><span className="text-muted">Margin</span><span className="font-mono text-right">{orderPanelAccountSummary.margin}</span></div>
                   <div className="h-1.5 overflow-hidden rounded-full bg-surface"><div className={`h-full rounded-full ${tradingUnlocked ? "w-[18%] bg-primary" : "w-[8%] bg-muted/40"}`} /></div>
-                  <div className="flex justify-between"><span className="text-muted">Leverage</span><span className="font-mono">{tradingUnlocked ? activeTradingBroker?.type === "paper" ? selectedPaperTradingAccount?.leverage ?? "--" : "50:1" : "--"}</span></div>
-                  <div className="flex justify-between"><span className="text-muted">Tick value</span><span className="font-mono">0.1 USD</span></div>
+                  <div className="flex justify-between"><span className="text-muted">Leverage</span><span className="font-mono">{tradingUnlocked ? paperExecutionRequested ? selectedPaperTradingAccount?.leverage ?? "--" : "50:1" : "--"}</span></div>
+                  <div className="flex justify-between"><span className="text-muted">Tick value</span><span className="font-mono">{formatDollar(selectedPaperContract.tickValue * selectedOrderQuantity)}</span></div>
                   <div className="flex justify-between"><span className="text-muted">Trade value</span><span className="font-mono">{formatDollar(orderPanelTradeValueUsd)}</span></div>
                 </div>
               </div>
-              <button disabled={!tradingUnlocked} className={`w-full rounded-xl py-3 font-semibold text-background ${tradingUnlocked ? orderSide === "buy" ? "bg-primary" : "bg-danger" : "cursor-not-allowed bg-muted/30 text-muted"}`}>{tradingUnlocked ? `${orderSide === "buy" ? "Buy" : "Sell"} ${orderUnits || "1"} ${displayCmeSymbol(selectedInstrument)} ${orderType.toUpperCase()}` : "Connect Your Broker To Trade"}</button>
+              <button onClick={paperExecutionRequested ? submitPaperOrder : undefined} disabled={!tradingUnlocked} className={`w-full rounded-xl py-3 font-semibold text-background ${tradingUnlocked ? orderSide === "buy" ? "bg-primary" : "bg-danger" : "cursor-not-allowed bg-muted/30 text-muted"}`}>{tradingUnlocked ? `${orderSide === "buy" ? "Buy" : "Sell"} ${selectedOrderQuantityLabel} ${orderType.toUpperCase()}` : "Connect Your Broker To Trade"}</button>
+              {orderTicketMessage && <div className={`mt-2 rounded-xl border px-3 py-2 text-[11px] ${orderTicketMessage.tone === "success" ? "border-primary/25 bg-primary/10 text-primary" : "border-danger/25 bg-danger/10 text-danger"}`}>{orderTicketMessage.text}</div>}
+              {selectedPaperOpenPositions.length > 0 && <div className="mt-4 space-y-2"><div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">Open positions</div>{selectedPaperOpenPositions.map((position) => <div key={position.id} className="rounded-xl border border-border bg-background/40 p-3"><div className="flex items-center justify-between"><span className="text-[12px] font-semibold">{position.side === "buy" ? "Long" : "Short"} {position.remainingQuantity} {position.symbol}</span><span className={`font-mono text-[11px] ${position.unrealizedPnl >= 0 ? "text-primary" : "text-danger"}`}>{formatDollar(position.unrealizedPnl)}</span></div><div className="mt-1 flex justify-between font-mono text-[10px] text-muted"><span>Entry {formatPrice(position.entryPrice, position.symbol)}</span><span>Mark {formatPrice(position.markPrice, position.symbol)}</span></div><div className="mt-2 flex gap-2"><button onClick={() => handleFlattenPaperPosition(position)} className="flex-1 rounded-lg border border-danger/25 px-2 py-1.5 text-[10px] font-semibold text-danger hover:bg-danger/10">Flatten</button></div></div>)}</div>}
+              {selectedPaperWorkingOrders.length > 0 && <div className="mt-4 space-y-2"><div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">Working orders</div>{selectedPaperWorkingOrders.map((order) => <div key={order.id} className="flex items-center justify-between rounded-xl border border-border bg-background/40 p-3"><div><div className="text-[11px] font-semibold">{order.side.toUpperCase()} {order.quantity} {order.symbol}</div><div className="font-mono text-[10px] text-muted">{order.type.toUpperCase()} {order.price ? formatPrice(order.price, order.symbol) : "MARKET"}</div></div><button onClick={() => handleCancelPaperOrder(order.accountId, order.id)} className="rounded-lg border border-border px-2 py-1 text-[10px] text-muted hover:text-danger">Cancel</button></div>)}</div>}
+              {selectedPaperRecentFills.length > 0 && <div className="mt-4 space-y-2"><div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">Recent fills</div>{selectedPaperRecentFills.slice(0, 5).map((fill) => <div key={fill.id} className="flex items-center justify-between text-[10px]"><span>{fill.side.toUpperCase()} {fill.quantity} {fill.symbol}</span><span className="font-mono text-muted">{formatPrice(fill.price, fill.symbol)}</span></div>)}</div>}
               {!tradingUnlocked && (
                 <button onClick={() => setShowBrokerModal(true)} className="mt-2 w-full rounded-xl border border-border bg-surface px-4 py-2.5 text-[13px] text-muted transition-colors hover:text-foreground">
                   Link Your Own Broker
@@ -12982,6 +13215,7 @@ export default function KwantifyWorkspace({
         )}
         {[
           { id: "watchlist" as const, title: "Watchlist", icon: List },
+          { id: "order" as const, title: "Trade", icon: BarChart3 },
           { id: "gex" as const, title: "Live GEX", icon: Layers3 },
           { id: "zyon" as const, title: "ZYON", icon: Sparkles },
           { id: "kwantbot" as const, title: "Kwant Bot", icon: Bot },
@@ -13194,7 +13428,7 @@ export default function KwantifyWorkspace({
                               <option>1:1</option><option>1:10</option><option>1:30</option><option>1:50</option><option>1:100</option><option>1:200</option><option>1:500</option>
                             </KwantSelect>
                             <KwantSelect value={paperAccountInstrument} onChange={(event) => setPaperAccountInstrument(event.target.value)} className="rounded-xl border border-border bg-surface px-4 py-3 text-[13px]">
-                              <option>NAS100</option><option>XAUUSD</option><option>BTCUSD</option><option>Multiple</option>
+                              <option>All CME Futures</option><option>NQ / MNQ</option><option>ES / MES</option><option>RTY / M2K</option><option>YM / MYM</option><option>GC / MGC</option><option>CL / MCL</option><option>BTC / MBT</option><option>ETH / MET</option>
                             </KwantSelect>
                             <KwantSelect value={paperAccountStrategy} onChange={(event) => setPaperAccountStrategy(event.target.value)} className="rounded-xl border border-border bg-surface px-4 py-3 text-[13px]">
                               <option>Manual / No Strategy</option>

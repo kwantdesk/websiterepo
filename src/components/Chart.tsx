@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type CSSProperties, type DragEvent as ReactDragEvent, type RefObject } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type CSSProperties, type DragEvent as ReactDragEvent, type PointerEvent as ReactPointerEvent, type RefObject } from "react";
 import {
   createChart,
   LineStyle,
@@ -137,6 +137,12 @@ import type { ChartGammaCalibration } from "@/lib/chartGammaConversion";
 import { isOptionsFuturesRatioSane } from "@/lib/optionsFlow";
 import type { GexBotFlowPayload } from "@/lib/gexBotFlow";
 import {
+  normalizePaperSymbol,
+  snapPaperPrice,
+  type PaperPosition,
+  type PaperTradeFill,
+} from "@/lib/paperTrading";
+import {
   EXPECTED_MOVE_SEMANTICS,
   buildExpectedMoveBand,
   expectedMoveLabel,
@@ -212,6 +218,15 @@ interface ChartProps {
   liveCandleEventKey?: string | null;
   gexBotFlow?: GexBotFlowPayload | null;
   onIndicatorPaneHeightChange?: (height: number) => void;
+  paperPositions?: PaperPosition[];
+  paperFills?: PaperTradeFill[];
+  onUpdatePaperProtection?: (
+    accountId: string,
+    positionId: string,
+    update:
+      | { kind: "stop_loss"; price: number | null }
+      | { kind: "take_profit"; targetId: string; price: number; quantity?: number },
+  ) => void;
 }
 
 export interface ChartLevel {
@@ -1677,6 +1692,9 @@ export default function Chart({
   liveCandleEventKey,
   gexBotFlow = null,
   onIndicatorPaneHeightChange,
+  paperPositions = [],
+  paperFills = [],
+  onUpdatePaperProtection,
 }: ChartProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
@@ -1708,6 +1726,7 @@ export default function Chart({
   const footprintPrimitiveRef = useRef<FootprintPrimitive | null>(null);
   const footprintActiveRef = useRef(false);
   const footprintBarWidthRef = useRef<number | null>(null);
+  const [paperDragPreview, setPaperDragPreview] = useState<{ id: string; price: number } | null>(null);
   const horzLineRef = useRef<HTMLDivElement>(null);
   const priceLabelRef = useRef<HTMLDivElement>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; price: string } | null>(null);
@@ -5678,6 +5697,99 @@ export default function Chart({
     ? candleSeriesRef.current?.priceToCoordinate(candles.at(-1)?.close ?? gexBotFlow.sample?.spot ?? 0) ?? null
     : null;
 
+  void viewportVersion;
+  const visiblePaperPositions = paperPositions.filter((position) =>
+    position.status === "open"
+    && position.remainingQuantity > 0
+    && normalizePaperSymbol(position.symbol) === normalizePaperSymbol(instrument));
+  const paperOverlayLevels = visiblePaperPositions.flatMap((position) => {
+    const entry = [{
+      id: `${position.id}-entry`,
+      kind: "entry" as const,
+      price: position.entryPrice,
+      label: `${position.side === "buy" ? "LONG" : "SHORT"} ${position.remainingQuantity} @ ${position.entryPrice.toFixed(priceFormat.precision)}`,
+      color: position.side === "buy" ? settings.upColor : settings.downColor,
+      position,
+      targetId: null as string | null,
+    }];
+    const stop = position.stopLoss === null ? [] : [{
+      id: `${position.id}-sl`,
+      kind: "stop_loss" as const,
+      price: position.stopLoss,
+      label: `SL ${position.stopLoss.toFixed(priceFormat.precision)}`,
+      color: settings.downColor,
+      position,
+      targetId: null as string | null,
+    }];
+    const targets = position.takeProfits
+      .filter((target) => target.quantity > target.filledQuantity)
+      .map((target, index) => ({
+        id: `${position.id}-${target.id}`,
+        kind: "take_profit" as const,
+        price: target.price,
+        label: `TP${index + 1} ${target.price.toFixed(priceFormat.precision)} · ${target.quantity - target.filledQuantity}`,
+        color: settings.upColor,
+        position,
+        targetId: target.id,
+      }));
+    return [...entry, ...stop, ...targets];
+  }).map((level) => {
+    const displayPrice = paperDragPreview?.id === level.id ? paperDragPreview.price : level.price;
+    return {
+    ...level,
+    price: displayPrice,
+    label: paperDragPreview?.id === level.id
+      ? `${level.kind === "stop_loss" ? "SL" : "TP"} ${displayPrice.toFixed(priceFormat.precision)}`
+      : level.label,
+    y: candleSeriesRef.current?.priceToCoordinate(displayPrice) ?? null,
+    };
+  }).filter((level): level is typeof level & { y: number } => Number.isFinite(level.y));
+  const visiblePaperFills = paperFills
+    .filter((fill) => normalizePaperSymbol(fill.symbol) === normalizePaperSymbol(instrument))
+    .map((fill) => ({
+      fill,
+      x: chartRef.current?.timeScale().timeToCoordinate(Math.floor(fill.timestamp / 1_000) as Time) ?? null,
+      y: candleSeriesRef.current?.priceToCoordinate(fill.price) ?? null,
+    }))
+    .filter((marker): marker is typeof marker & { x: number; y: number } => Number.isFinite(marker.x) && Number.isFinite(marker.y));
+
+  const startPaperProtectionDrag = (
+    event: ReactPointerEvent<HTMLButtonElement>,
+    level: (typeof paperOverlayLevels)[number],
+  ) => {
+    if (level.kind === "entry" || !onUpdatePaperProtection) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const container = chartContainerRef.current;
+    const series = candleSeriesRef.current;
+    if (!container || !series) return;
+    let latestPrice = level.price;
+    const updatePreview = (clientY: number) => {
+      const bounds = container.getBoundingClientRect();
+      const price = series.coordinateToPrice(clientY - bounds.top);
+      if (price === null || !Number.isFinite(price)) return;
+      latestPrice = snapPaperPrice(level.position.symbol, price);
+      setPaperDragPreview({ id: level.id, price: latestPrice });
+    };
+    const handleMove = (moveEvent: PointerEvent) => updatePreview(moveEvent.clientY);
+    const handleUp = () => {
+      document.removeEventListener("pointermove", handleMove);
+      document.removeEventListener("pointerup", handleUp);
+      setPaperDragPreview(null);
+      if (level.kind === "stop_loss") {
+        onUpdatePaperProtection(level.position.accountId, level.position.id, { kind: "stop_loss", price: latestPrice });
+      } else if (level.targetId) {
+        onUpdatePaperProtection(level.position.accountId, level.position.id, {
+          kind: "take_profit",
+          targetId: level.targetId,
+          price: latestPrice,
+        });
+      }
+    };
+    document.addEventListener("pointermove", handleMove);
+    document.addEventListener("pointerup", handleUp, { once: true });
+  };
+
   return (
     <div className="flex h-full w-full min-w-0 overflow-hidden">
       <div
@@ -5707,6 +5819,39 @@ export default function Chart({
           {gexBotFlow.sponsorship.active.label}
         </div>
       ) : null}
+      {paperOverlayLevels.map((level) => (
+        <div
+          key={level.id}
+          className="pointer-events-none absolute left-0 z-[31] border-t"
+          style={{
+            right: nativePriceScaleWidth,
+            top: level.y,
+            borderColor: level.color,
+            borderTopStyle: level.kind === "entry" ? "solid" : "dashed",
+            opacity: 0.92,
+          }}
+        >
+          <button
+            type="button"
+            onPointerDown={(event) => startPaperProtectionDrag(event, level)}
+            className={`pointer-events-auto absolute right-2 -translate-y-1/2 rounded-md border px-2 py-1 font-mono text-[9px] font-semibold shadow-lg backdrop-blur ${level.kind === "entry" ? "cursor-default bg-panel/95" : "cursor-ns-resize bg-panel/95 hover:brightness-125"}`}
+            style={{ borderColor: level.color, color: level.color }}
+            title={level.kind === "entry" ? `Unrealized ${level.position.unrealizedPnl.toFixed(2)}` : "Drag to adjust protection"}
+          >
+            {level.label}
+          </button>
+        </div>
+      ))}
+      {visiblePaperFills.map(({ fill, x, y }) => (
+        <div
+          key={fill.id}
+          className="pointer-events-none absolute z-[32] -translate-x-1/2 -translate-y-1/2 rounded-full border bg-panel/95 px-1.5 py-0.5 font-mono text-[8px] font-bold shadow-lg"
+          style={{ left: x, top: y, borderColor: fill.side === "buy" ? settings.upColor : settings.downColor, color: fill.side === "buy" ? settings.upColor : settings.downColor }}
+          title={`${fill.label} · ${fill.quantity} @ ${fill.price}`}
+        >
+          {fill.side === "buy" ? "▲" : "▼"}
+        </div>
+      ))}
       {gammaLevelsEnabled && gammaLevelsLoading ? (
         <div
           className="pointer-events-none absolute right-[76px] top-3 z-[19] flex items-center gap-2 rounded-full border border-border/70 bg-background/88 px-3 py-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground shadow-lg backdrop-blur"
