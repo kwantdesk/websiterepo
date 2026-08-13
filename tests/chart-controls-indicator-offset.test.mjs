@@ -11,9 +11,9 @@ test("Chart reports the combined stacked indicator height to its owner", () => {
   assert.match(chart, /\(\) => \(\) => onIndicatorPaneHeightChange\?\.\(0\)/);
 });
 
-test("range, instrument status and loading controls follow the indicator stack", () => {
+test("range and loading controls follow the indicator stack", () => {
   assert.match(workspace, /onIndicatorPaneHeightChange=\{setLowerIndicatorHeight\}/);
   const sharedBaseline = workspace.match(/style=\{\{ bottom: 56 \+ lowerIndicatorHeight \}\}/g) ?? [];
-  assert.equal(sharedBaseline.length, 2, "range and instrument status should share the candle-timer baseline");
+  assert.equal(sharedBaseline.length, 1, "the chart range control should follow the candle-timer baseline");
   assert.match(workspace, /style=\{\{ bottom: 86 \+ lowerIndicatorHeight \}\}/);
 });

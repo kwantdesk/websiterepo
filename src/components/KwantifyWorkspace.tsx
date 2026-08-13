@@ -5498,23 +5498,6 @@ function WorkspaceChartPane({
     setIntervalCommandError("");
   };
 
-  const marketStatusLabel = loading
-    ? "Loading"
-    : marketIsActive
-      ? "Live"
-      : liveFeedError && candles.length
-        ? "History · reconnecting"
-        : liveFeedError
-          ? "Connecting"
-          : candles.length
-            ? "CME history"
-            : "Market closed";
-  const marketStatusClasses = loading
-    ? "bg-surface text-muted"
-    : marketIsActive
-      ? "bg-primary/15 text-primary"
-      : "bg-surface text-muted";
-
   return (
     <div
       onMouseDown={onActivate}
@@ -5634,19 +5617,6 @@ function WorkspaceChartPane({
           onClosePaperPosition={onClosePaperPosition}
         />
       )}
-      <div
-        className="pointer-events-none absolute left-1/2 z-20 inline-flex h-8 -translate-x-1/2 items-center gap-1.5 whitespace-nowrap rounded-[3px] border border-border bg-panel/90 px-2.5 text-[10px] uppercase tracking-[0.12em] text-muted shadow-lg shadow-black/25 backdrop-blur"
-        style={{ bottom: 56 + lowerIndicatorHeight }}
-      >
-        <span className="font-semibold text-foreground">{displayCmeSymbol(pane.symbol)}</span>
-        {pane.broker === "Databento" && resolvedContractSymbol ? (
-          <span className="font-mono text-[9px] text-foreground">{resolvedContractSymbol}</span>
-        ) : null}
-        <span>{displayMarketSource(pane.broker)}</span>
-        {pane.broker === "Massive" && <AlertTriangle className="h-3 w-3 text-orange-300/90" />}
-        <span>{formatChartInterval(pane.timeframe)}</span>
-        <span className={`rounded-[2px] px-1.5 py-0.5 text-[9px] font-semibold ${marketStatusClasses}`}>{marketStatusLabel}</span>
-      </div>
       {loadingMessage ? (
         <div
           className="pointer-events-none absolute left-1/2 z-30 max-w-[calc(100%-32px)] -translate-x-1/2 truncate rounded-lg border border-border bg-panel/92 px-3 py-1.5 text-[10px] text-muted shadow-lg shadow-black/25 backdrop-blur"
