@@ -1,5 +1,5 @@
 import type { Candle } from "@/lib/backtester";
-import { cmeEventTailCutoffMs } from "@/lib/chartHistoryWindow";
+import { cmeEventTailCutoffMs, cmeSessionDateKey } from "@/lib/chartHistoryWindow";
 import {
   calculateVolumeProfileValueArea,
   STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT,
@@ -921,9 +921,16 @@ export function applyInstitutionalTradesToVolumeProfile(
   const coverageEndMs = Number.isFinite(profile.coverageEndMs)
     ? Number(profile.coverageEndMs)
     : profile.startMs - 1;
+  const dailyTradingDate = profile.period === "daily"
+    ? profile.tradingDate ?? cmeSessionDateKey(profile.startMs)
+    : null;
   const eligibleRecords = records.filter((record) =>
     record.timestamp >= profile.startMs
-    && record.timestamp < profile.endMs
+    && (
+      profile.period === "daily"
+        ? dailyTradingDate !== null && cmeSessionDateKey(record.timestamp) === dailyTradingDate
+        : record.timestamp < profile.endMs
+    )
     && record.timestamp > coverageEndMs
     && record.volume >= profile.minTradeVolume
     && (profile.maxTradeVolume <= 0 || record.volume <= profile.maxTradeVolume));
@@ -987,6 +994,11 @@ export function applyInstitutionalTradesToVolumeProfile(
     ...profile,
     valueAreaPercent: STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT,
     asOf: new Date(latestTimestamp).toISOString(),
+    // An active daily profile grows with the session. Its original endMs is
+    // merely the historical fetch edge, not the trading-session boundary.
+    endMs: profile.period === "daily"
+      ? Math.max(profile.endMs, latestTimestamp + 1)
+      : profile.endMs,
     coverageEndMs: Math.max(coverageEndMs, latestTimestamp),
     totalVolume,
     bidVolume,

@@ -237,6 +237,7 @@ import {
 import {
   cmeSessionDateKey,
   cmeSessionStartMs,
+  cmeSessionWindowForDate,
   cmeChartTailNeedsReconciliation,
   DEFAULT_CHART_HISTORY_CALENDAR_DAYS,
   hasMinimumChartHistory,
@@ -3783,13 +3784,11 @@ function WorkspaceChartPane({
         // Keep the exact profiles live between refetches, as the original
         // Kwantify build did: each print batch is folded straight into the
         // gateway-built profiles, so the POC/VA develop in real time instead
-        // of stepping every 15 seconds. Client-approximated profiles are
-        // left alone � their bars already contain this volume, and the
-        // authoritative refetch replaces them anyway.
+        // of stepping every 15 seconds. Provisional chart profiles carry a
+        // coverage watermark, so newer Rithmic prints can safely develop the
+        // active session without counting candle volume twice.
         setVolumeProfiles((current) => current.length
-          ? current.map((profile) => profile.provider === "Chart"
-              ? profile
-              : applyInstitutionalTradesToVolumeProfile(profile, records))
+          ? current.map((profile) => applyInstitutionalTradesToVolumeProfile(profile, records))
           : current);
 
         // CVD is rendered from the chart candles, not from the compact trade
@@ -5225,12 +5224,16 @@ function WorkspaceChartPane({
         const sessionCandles = profileCandles.filter((candle) =>
           chicagoTradingDate(candle.timestamp) === tradingDate);
         if (!sessionCandles.length) return;
+        const sessionWindow = cmeSessionWindowForDate(tradingDate);
         const profile = buildChartVolumeProfile({
           candles: sessionCandles,
           root: displayCmeSymbol(pane.symbol),
           contractSymbol: resolvedContractSymbol,
-          startMs: sessionCandles[0].timestamp,
-          endMs: sessionCandles[sessionCandles.length - 1].timestamp + chartStepMs,
+          startMs: sessionWindow?.startMs ?? sessionCandles[0].timestamp,
+          endMs: Math.min(
+            sessionWindow?.endMs ?? Number.POSITIVE_INFINITY,
+            sessionCandles[sessionCandles.length - 1].timestamp + chartStepMs,
+          ),
           tickSize,
           groupTicks: dailyProfileSettings.groupingMode === "manual"
             ? Number(dailyProfileSettings.groupTicks ?? 1)
@@ -5239,7 +5242,17 @@ function WorkspaceChartPane({
           minTradeVolume: Number(dailyProfileSettings.minTradeVolume ?? 0),
           maxTradeVolume: Number(dailyProfileSettings.maxTradeVolume ?? 0),
         });
-        if (profile) provisionalProfiles.push({ ...profile, period: "daily" });
+        if (profile) {
+          provisionalProfiles.push({
+            ...profile,
+            period: "daily",
+            tradingDate,
+            coverageStartMs: profile.startMs,
+            // The candle reconstruction already contains volume through the
+            // build instant. Only later executions should be appended live.
+            coverageEndMs: Math.min(Date.now(), profile.endMs - 1),
+          });
+        }
       });
     }
 
@@ -5266,24 +5279,28 @@ function WorkspaceChartPane({
       }
     }
 
-    // An approximation must never overwrite an execution-accurate profile.
-    // This effect re-runs whenever its inputs change (settings, trading-date
-    // window, accumulated tape), and a blind replace made the chart visibly
-    // flip back to the APPROX-OHLCV render every time, losing a good profile
-    // that had already arrived. Do not render a provisional candle profile at
-    // all: blank/loading is preferable to presenting invented order flow.
+    // Keep every visible session populated immediately while its exact
+    // execution request is in flight. Exact profiles always win and remain in
+    // state; the candle/tape reconstruction only fills sessions that have no
+    // authoritative response yet. This preserves the historical daily
+    // profiles without allowing a later effect pass to downgrade real data.
     const activeRoot = displayCmeSymbol(pane.symbol);
     const activeTradingDates = new Set(tradingDates);
+    const profileSessionKey = (profile: InstitutionalVolumeProfile) =>
+      `${profile.period}:${profile.period === "daily" ? chicagoTradingDate(profile.startMs) : "weekly"}`;
     setVolumeProfiles((current) => {
-      return current
+      const exact = current
         .filter((profile) =>
           profile.provider !== "Chart"
           && profile.root === activeRoot
           && (
             profile.period !== "daily"
             || activeTradingDates.has(chicagoTradingDate(profile.startMs))
-          ))
-        .sort((left, right) => left.startMs - right.startMs);
+          ));
+      const exactSessions = new Set(exact.map(profileSessionKey));
+      const fallback = provisionalProfiles.filter((profile) =>
+        !exactSessions.has(profileSessionKey(profile)));
+      return [...exact, ...fallback].sort((left, right) => left.startMs - right.startMs);
     });
 
     const replaceExactProfile = (
@@ -5330,6 +5347,13 @@ function WorkspaceChartPane({
           replacement = mergeInstitutionalVolumeProfiles(historicalHead, profile);
         }
       }
+      // Databento's historical edge trails live Rithmic. Reapply the current
+      // execution tape before replacing the profile so a 15-second refresh
+      // cannot erase prints that have already developed the live session.
+      replacement = applyInstitutionalTradesToVolumeProfile(
+        replacement,
+        latestMarketTradesRef.current,
+      );
       setVolumeProfiles((current) => {
         const next = current.filter((candidate) => {
           if (candidate.period !== replacement.period) return true;
