@@ -2030,6 +2030,11 @@ function hasUsableOrderFlowHistory(candles: Candle[]) {
   return last > first;
 }
 
+function hasRenderableOrderFlow(candles: Candle[]) {
+  return candles.some((candle) =>
+    Number(candle.askVolume ?? 0) + Number(candle.bidVolume ?? 0) > 0);
+}
+
 function reanchorLiveMidIntoCandles(candles: Candle[], mid: number, symbol: string) {
   if (!isPositiveFinite(mid) || candles.length === 0) return candles;
 
@@ -3724,7 +3729,6 @@ function WorkspaceChartPane({
   useEffect(() => {
     if (
       pane.broker !== "Databento"
-      || !needsOrderFlowHistory
       || !resolvedContractSymbol
     ) {
       rithmicConnectedRef.current = false;
@@ -3777,7 +3781,7 @@ function WorkspaceChartPane({
         if (seededCandles !== latestCandlesRef.current && seededCandles.length) {
           latestCandlesRef.current = seededCandles;
           setCandles(seededCandles);
-          if (hasUsableOrderFlowHistory(seededCandles)) {
+          if (hasRenderableOrderFlow(seededCandles)) {
             setOrderFlowHistoryReady(true);
           }
         }
@@ -3841,7 +3845,7 @@ function WorkspaceChartPane({
           // older archive request is unavailable. Two or more verified chart
           // buckets establish a real cumulative baseline and are safe to
           // display while the full backfill continues in the background.
-          if (hasUsableOrderFlowHistory(nextCandles)) {
+          if (hasRenderableOrderFlow(nextCandles)) {
             setOrderFlowHistoryReady(true);
           }
           const latest = nextCandles.at(-1)!;
@@ -3857,7 +3861,7 @@ function WorkspaceChartPane({
         }
       },
     });
-  }, [needsOrderFlowHistory, pane.broker, pane.symbol, pane.timeframe, resolvedContractSymbol]);
+  }, [pane.broker, pane.symbol, pane.timeframe, resolvedContractSymbol]);
 
   useEffect(() => () => {
     if (marketInactiveTimerRef.current !== null) {
@@ -4375,13 +4379,88 @@ function WorkspaceChartPane({
       }
     };
   }, [
-    needsOrderFlowHistory,
     pane.broker,
     pane.symbol,
     pane.timeframe,
     period,
     resolvedContractSymbol,
   ]);
+
+  // Adding an order-flow study must never restart the base candle loader.
+  // Hydrate the already-visible chart from memory first, then merge the full
+  // execution archive silently. The request is shared/deduplicated across
+  // panes by fetchWorkspaceOrderFlow.
+  useEffect(() => {
+    if (
+      pane.broker !== "Databento"
+      || !needsOrderFlowHistory
+      || !resolvedContractSymbol
+    ) return;
+
+    let cancelled = false;
+    const applyFlow = (
+      flowCandles: Candle[],
+      records: InstitutionalTrade[],
+    ) => {
+      if (cancelled) return;
+      const mergedTape = mergeInstitutionalTradeTape(
+        latestMarketTradesRef.current,
+        compactIndicatorExecutionHistory(records),
+      );
+      const mergedCandles = applyAvailableOrderFlowHistory(
+        latestCandlesRef.current,
+        pane.timeframe,
+        flowCandles,
+        mergedTape,
+      );
+      latestMarketTradesRef.current = mergedTape;
+      latestOrderFlowCandlesRef.current = flowCandles;
+      if (mergedTape.length) {
+        workspaceExecutionTape.set(
+          workspaceOrderFlowKey(pane.symbol, pane.timeframe),
+          mergedTape,
+        );
+        setMarketTrades(mergedTape);
+      }
+      if (mergedCandles.length) {
+        latestCandlesRef.current = mergedCandles;
+        setCandles(mergedCandles);
+      }
+      if (hasRenderableOrderFlow(mergedCandles)) {
+        setOrderFlowHistoryReady(true);
+      }
+    };
+
+    const memoryTape = workspaceExecutionTape.get(
+      workspaceOrderFlowKey(pane.symbol, pane.timeframe),
+    ) ?? peekExecutionTapeCache(pane.symbol, pane.timeframe)?.records ?? [];
+    if (memoryTape.length) {
+      applyFlow(latestOrderFlowCandlesRef.current, memoryTape);
+    }
+
+    void fetchWorkspaceOrderFlow(
+      pane.symbol,
+      pane.timeframe,
+      resolvedContractSymbol,
+    ).then((result) => {
+      if (!result) return;
+      applyFlow(
+        sanitizeCandles(result.candles, pane.symbol),
+        result.records.length ? result.records : result.trades,
+      );
+      const tape = latestMarketTradesRef.current;
+      if (tape.length) void writeExecutionTapeCache(pane.symbol, pane.timeframe, tape);
+      const enriched = latestCandlesRef.current;
+      if (enriched.length) void writeChartHistoryCache(pane.symbol, pane.timeframe, enriched);
+    }).catch(() => {
+      // The live Rithmic subscription continues populating Delta while an
+      // optional historical archive is temporarily unavailable.
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [needsOrderFlowHistory, pane.broker, pane.symbol, pane.timeframe, resolvedContractSymbol]);
 
   useEffect(() => {
     if (pane.broker !== "Databento") return;
