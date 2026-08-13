@@ -334,10 +334,27 @@ function ExposurePanel({
     const target = container?.querySelector<HTMLElement>("[data-near-spot='true']");
     if (!container || !target || container.clientHeight <= 0) return;
 
+    // Give the first and last strikes enough physical travel to reach the
+    // centre of any viewport. Without these edge gutters, native scrolling
+    // clamps near the ends and the live strike can only sit near the top or
+    // bottom on shorter workspace panes and unusual monitor aspect ratios.
+    const ladder = container.querySelector<HTMLElement>("[data-gex-strike-ladder='true']");
+    if (ladder) {
+      const edgeTravel = Math.max(4, container.clientHeight / 2 - target.offsetHeight / 2);
+      ladder.style.paddingTop = `${edgeTravel}px`;
+      ladder.style.paddingBottom = `${edgeTravel}px`;
+    }
+
     const maximumScroll = Math.max(0, container.scrollHeight - container.clientHeight);
+    const containerRect = container.getBoundingClientRect();
+    const targetRect = target.getBoundingClientRect();
+    const targetCenterInContent = targetRect.top
+      - containerRect.top
+      + container.scrollTop
+      + targetRect.height / 2;
     const nextScroll = Math.max(0, Math.min(
       maximumScroll,
-      target.offsetTop + target.offsetHeight / 2 - container.clientHeight / 2,
+      targetCenterInContent - container.clientHeight / 2,
     ));
 
     if (Math.abs(nextScroll - container.scrollTop) > 0.5) container.scrollTop = nextScroll;
@@ -347,10 +364,8 @@ function ExposurePanel({
     const container = scrollRef.current;
     if (!container || !rows.length) return;
 
-    // The first paint must always expose actual rows. Auto-centering is a
-    // progressive enhancement performed only after the flex viewport owns a
-    // real height; it can never be allowed to blank the frozen snapshot.
-    if (followingSpot) container.scrollTop = 0;
+    // Centre after layout owns its final height. Do not jump to scrollTop=0
+    // first: that produced a visible top-of-ladder flash before recentering.
     const frame = window.requestAnimationFrame(() => {
       if (followingSpot && spotStrike !== null) centerLiveStrike();
     });
@@ -503,6 +518,7 @@ function ExposurePanel({
                 <div
                   key={row.strike}
                   data-near-spot={nearSpot ? "true" : undefined}
+                  data-gex-strike-node="true"
                   className={`gex-map-strike-row relative grid grid-cols-[64px_minmax(0,1fr)_86px] items-center border-b border-black/10 px-2 font-mono text-[9px] transition-[height,margin,background-color] ${nearSpot ? "gex-current-price-marker z-[2] mx-1 my-1 h-[35px]" : "h-[25px]"}`}
                   style={{ backgroundColor: heatColor(row.net, strength) }}
                   title={`${greek.short} ${formatCompact(row.net)} · Call ${formatCompact(row.call)} · Put ${formatCompact(row.put)}`}

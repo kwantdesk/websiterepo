@@ -19,13 +19,20 @@ test("the user can explicitly re-centre the live strike", () => {
 
 test("GEX strike centering cannot collapse or hide the ladder viewport", () => {
   assert.doesNotMatch(workspace, /strikeViewportHeight/);
-  assert.doesNotMatch(workspace, /strikeEdgeSpace/);
   assert.doesNotMatch(workspace, /className="relative h-full min-h-0 touch-pan-y/);
   assert.match(workspace, /className="relative flex min-h-0 flex-1 bg-chart-background"/);
   assert.match(workspace, /gex-map-strike-viewport[^\n]*min-h-px[^\n]*flex-1/);
   assert.match(workspace, /container\.clientHeight <= 0/);
-  assert.match(workspace, /if \(followingSpot\) container\.scrollTop = 0/);
+  assert.match(workspace, /container\.clientHeight \/ 2 - target\.offsetHeight \/ 2/);
+  assert.match(workspace, /targetRect\.top[\s\S]*containerRect\.top[\s\S]*container\.scrollTop/);
+  assert.doesNotMatch(workspace, /if \(followingSpot\) container\.scrollTop = 0/);
   assert.match(workspace, /data-gex-strike-ladder="true"/);
+});
+
+test("wheel input over a strike node owns the vertical slot-machine movement", () => {
+  assert.match(workspace, /data-gex-strike-node="true"/);
+  assert.match(workspace, /addEventListener\("wheel", routeExposureWheel, \{ capture: true, passive: false \}\)/);
+  assert.match(workspace, /event\.preventDefault\(\);[\s\S]*event\.stopPropagation\(\);[\s\S]*setFollowingSpot\(false\)/);
 });
 
 test("cached strikes remain visible during a silent background refresh", () => {
