@@ -61,6 +61,14 @@ function scaleDomain(domain: { min: number; max: number }, scale: number) {
   return { min: center - halfSpan, max: center + halfSpan };
 }
 
+function isCvdIndicator(indicatorId: string) {
+  return [
+    "cumulative-volume-delta",
+    "delta-cumulative-candlestick",
+    "delta-cumulative-histogram",
+  ].includes(indicatorId);
+}
+
 type PanePoint = CalculatedIndicatorSeries["data"][number] & { x: number };
 
 function sampledPanePoints(
@@ -143,6 +151,19 @@ function ChartIndicatorPanes({
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [verticalScaleByPane, setVerticalScaleByPane] = useState<Record<string, number>>({});
   const paneRootRef = useRef<HTMLDivElement>(null);
+
+  function scaleCvdFromWheel(groupKey: string, deltaY: number, deltaMode: number) {
+    const normalizedDelta = deltaMode === 1
+      ? deltaY * 16
+      : deltaMode === 2
+        ? deltaY * 120
+        : deltaY;
+    const multiplier = Math.exp(Math.max(-120, Math.min(120, normalizedDelta)) * 0.0025);
+    setVerticalScaleByPane((current) => ({
+      ...current,
+      [groupKey]: Math.max(0.2, Math.min(8, (current[groupKey] ?? 1) * multiplier)),
+    }));
+  }
 
   useEffect(() => {
     if (!openMenu) return;
@@ -596,7 +617,26 @@ function ChartIndicatorPanes({
         </div>
       ))}
       {paneLayouts.map(({ group, top, height: paneHeight, collapsed }) => {
-        if (collapsed || group.indicatorId !== "cumulative-volume-delta") return null;
+        if (collapsed || !isCvdIndicator(group.indicatorId)) return null;
+        return (
+          <div
+            key={`cvd-pane-wheel-zone-${group.key}`}
+            data-testid={`cvd-pane-wheel-zone-${group.key}`}
+            aria-label="Scale CVD pane vertically"
+            title="Scroll to expand or squeeze CVD"
+            className="pointer-events-auto absolute left-0 z-[8] cursor-ns-resize touch-none"
+            style={{ top: top + 25, width: plotWidth, height: Math.max(20, paneHeight - 34) }}
+            onPointerDown={(event) => event.stopPropagation()}
+            onWheel={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              scaleCvdFromWheel(group.key, event.deltaY, event.deltaMode);
+            }}
+          />
+        );
+      })}
+      {paneLayouts.map(({ group, top, height: paneHeight, collapsed }) => {
+        if (collapsed || !isCvdIndicator(group.indicatorId)) return null;
         const verticalScale = verticalScaleByPane[group.key] ?? 1;
         return (
           <div
@@ -613,16 +653,7 @@ function ChartIndicatorPanes({
             onWheel={(event) => {
               event.preventDefault();
               event.stopPropagation();
-              const normalizedDelta = event.deltaMode === 1
-                ? event.deltaY * 16
-                : event.deltaMode === 2
-                  ? event.deltaY * 120
-                  : event.deltaY;
-              const multiplier = Math.exp(Math.max(-120, Math.min(120, normalizedDelta)) * 0.0025);
-              setVerticalScaleByPane((current) => ({
-                ...current,
-                [group.key]: Math.max(0.2, Math.min(8, (current[group.key] ?? 1) * multiplier)),
-              }));
+              scaleCvdFromWheel(group.key, event.deltaY, event.deltaMode);
             }}
             onDoubleClick={(event) => {
               event.preventDefault();
@@ -638,7 +669,7 @@ function ChartIndicatorPanes({
         );
       })}
       {groups.map((group, groupIndex) => {
-        if (group.indicatorId !== "cumulative-volume-delta" || paneLayouts[groupIndex].collapsed) return null;
+        if (!isCvdIndicator(group.indicatorId) || paneLayouts[groupIndex].collapsed) return null;
         const top = paneLayouts[groupIndex].top + 5;
         const displayStyle = String(group.settings?.displayStyle ?? "candles");
         const styleMenuKey = `${group.key}:style`;
