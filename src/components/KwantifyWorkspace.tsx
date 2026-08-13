@@ -172,6 +172,7 @@ import {
   cancelPaperOrder,
   closePaperPosition,
   emptyPaperTradingLedger,
+  flattenPaperAccount,
   loadPaperTradingLedger,
   normalizePaperSymbol,
   paperContractNotional,
@@ -3445,6 +3446,7 @@ function WorkspaceChartPane({
   paperPositions,
   paperFills,
   onUpdatePaperProtection,
+  onClosePaperPosition,
 }: {
   pane: WorkspacePane;
   active: boolean;
@@ -3491,6 +3493,7 @@ function WorkspaceChartPane({
       | { kind: "stop_loss"; price: number | null }
       | { kind: "take_profit"; targetId: string; price: number; quantity?: number },
   ) => void;
+  onClosePaperPosition?: (position: PaperPosition) => void;
 }) {
   const [candles, setCandles] = useState<Candle[]>([]);
   const [lowerIndicatorHeight, setLowerIndicatorHeight] = useState(0);
@@ -5628,6 +5631,7 @@ function WorkspaceChartPane({
           paperPositions={paperPositions}
           paperFills={paperFills}
           onUpdatePaperProtection={onUpdatePaperProtection}
+          onClosePaperPosition={onClosePaperPosition}
         />
       )}
       <div
@@ -7032,8 +7036,10 @@ export default function KwantifyWorkspace({
     || currentBrokerConnection.ownership === "paper"
     || currentBrokerConnection.mode === "Demo"
   );
-  const tradingUnlocked = paperExecutionRequested
-    || (currentBrokerConnection.ownership === "user" && currentBrokerConnection.connectionState === "connected");
+  // Only expose an actionable submit button when the selected account has a
+  // verified execution adapter. Paper execution is complete; broker routing is
+  // deliberately gated until its submit/cancel/liquidate adapter is wired.
+  const tradingUnlocked = paperExecutionRequested;
   const selectedPaperSummary = selectedPaperTradingAccount
     ? summarizePaperAccount(paperLedger, selectedPaperTradingAccount)
     : null;
@@ -7115,7 +7121,9 @@ export default function KwantifyWorkspace({
               ? "Create or select a paper trading account before sending orders from the simulator."
               : currentBrokerConnection.ownership === "shared"
               ? "Live prices are available on the shared feed, but order entry stays locked until you connect your own broker account."
-              : "Connect a broker account and choose the account you want to route orders through.",
+              : currentBrokerConnection.connectionState === "connected"
+                ? "This account is connected for data, but verified order routing is not available yet. Choose Paper Trading to execute safely."
+                : "Connect a broker account and choose the account you want to route orders through.",
         };
   const instrumentPickerItems = useMemo<InstrumentPickerItem[]>(
     () =>
@@ -11611,6 +11619,12 @@ export default function KwantifyWorkspace({
   const orderPreviewRiskReward = orderPreviewRiskUsd > 0 && orderPreviewRewardUsd > 0
     ? orderPreviewRewardUsd / orderPreviewRiskUsd
     : 0;
+  const orderPreviewTakeProfitTicks = orderPreviewTakeProfitPrice && orderPreviewEntryPrice > 0
+    ? Math.round(Math.abs(orderPreviewTakeProfitPrice - orderPreviewEntryPrice) / selectedPaperContract.tickSize)
+    : 0;
+  const orderPreviewStopLossTicks = orderPreviewStopLossPrice && orderPreviewEntryPrice > 0
+    ? Math.round(Math.abs(orderPreviewStopLossPrice - orderPreviewEntryPrice) / selectedPaperContract.tickSize)
+    : 0;
   const orderTakeProfitPreviewLabel = orderPreviewTakeProfitPrice
     ? `${formatPrice(orderPreviewTakeProfitPrice, selectedInstrument)} · +${formatDollar(orderPreviewRewardUsd)}`
     : "--";
@@ -11675,14 +11689,48 @@ export default function KwantifyWorkspace({
     if (result.error) showPaperOrderMessage("error", result.error);
   };
 
+  const resolvePaperExecutionQuote = (symbol: string) => {
+    const normalized = normalizePaperSymbol(symbol);
+    if (normalized === normalizePaperSymbol(selectedInstrument) && currentLivePrice.bid > 0 && currentLivePrice.ask > 0) {
+      return { bid: currentLivePrice.bid, ask: currentLivePrice.ask, timestamp: Date.now() };
+    }
+    const watchQuote = watchlist.find((item) =>
+      normalizePaperSymbol(item.symbol) === normalized && item.bid > 0 && item.ask > 0);
+    return watchQuote
+      ? { bid: watchQuote.bid, ask: watchQuote.ask, timestamp: Date.now() }
+      : null;
+  };
+
   const handleFlattenPaperPosition = (position: PaperPosition) => {
-    const result = closePaperPosition(paperLedger, position.accountId, position.id, {
-      bid: currentLivePrice.bid,
-      ask: currentLivePrice.ask,
-      timestamp: Date.now(),
-    });
+    const quote = resolvePaperExecutionQuote(position.symbol);
+    if (!quote) {
+      showPaperOrderMessage("error", `${position.symbol} live bid/ask is unavailable.`);
+      return;
+    }
+    const result = closePaperPosition(paperLedger, position.accountId, position.id, quote);
     setPaperLedger(result.ledger);
     showPaperOrderMessage(result.error ? "error" : "success", result.error ?? `${position.symbol} position flattened.`);
+  };
+
+  const handleFlattenPaperAccount = () => {
+    if (!selectedPaperTradingAccount) return;
+    const result = flattenPaperAccount(
+      paperLedger,
+      selectedPaperTradingAccount.id,
+      resolvePaperExecutionQuote,
+    );
+    setPaperLedger(result.ledger);
+    if (result.errors.length > 0) {
+      showPaperOrderMessage(
+        "error",
+        `${result.closed} position${result.closed === 1 ? "" : "s"} closed; ${result.errors.join(" · ")}`,
+      );
+      return;
+    }
+    showPaperOrderMessage(
+      "success",
+      `Account flattened · ${result.closed} position${result.closed === 1 ? "" : "s"} closed · ${result.cancelled} order${result.cancelled === 1 ? "" : "s"} cancelled.`,
+    );
   };
 
   const handleCancelPaperOrder = (accountId: string, orderId: string) => {
@@ -11874,6 +11922,7 @@ export default function KwantifyWorkspace({
         paperPositions={selectedPaperAccountLedger?.positions ?? []}
         paperFills={selectedPaperAccountLedger?.fills ?? []}
         onUpdatePaperProtection={handlePaperProtectionUpdate}
+        onClosePaperPosition={handleFlattenPaperPosition}
         onActivate={() => activateWorkspacePane(pane.id)}
         onOpenSettings={openChartSettings}
         onCreateAlertAtPrice={openCreateAlert}
@@ -13143,7 +13192,7 @@ export default function KwantifyWorkspace({
                   </div>
                   <div className="mb-4 rounded-xl border border-border bg-background/30">
                     <button onClick={() => setShowExits((value) => !value)} className="flex w-full items-center justify-between px-3 py-2 text-[13px] font-medium">Exits{showExits ? <ChevronUp className="h-4 w-4 text-muted" /> : <ChevronDown className="h-4 w-4 text-muted" />}</button>
-                    {showExits && <div className="space-y-4 border-t border-border p-3"><div className="space-y-2"><div className="flex items-center justify-between"><div className="flex items-center gap-2"><span className="text-[13px] text-muted">Take profit</span><KwantSelect value={tpType} onChange={(e) => setTpType(e.target.value as typeof tpType)} className="rounded-lg border border-border bg-surface px-2 py-1 text-[11px] text-muted outline-none"><option value="price">price</option><option value="ticks">ticks</option><option value="pctPrice">% of price</option><option value="rewardUsd">reward USD</option><option value="rewardPct">reward % balance</option></KwantSelect></div><button onClick={() => setTpEnabled((value) => !value)} className={`h-5 w-10 rounded-full transition-all ${tpEnabled ? "bg-primary" : "border border-border bg-surface"}`}><span className={`block h-4 w-4 rounded-full bg-background transition-transform ${tpEnabled ? "translate-x-5" : "translate-x-0.5"}`} /></button></div><div className="flex items-center gap-2"><input disabled={!tpEnabled} value={orderTP} onChange={(e) => setOrderTP(e.target.value)} className="min-w-0 flex-1 rounded-lg border border-border bg-surface px-3 py-2 text-right font-mono text-[13px] outline-none disabled:opacity-50" /><button className="flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-surface text-muted hover:text-foreground"><ArrowLeftRight className="h-4 w-4" /></button><span className="w-14 text-right font-mono text-[11px] text-muted">75 ticks</span></div></div><div className="space-y-2"><div className="flex items-center justify-between"><div className="flex items-center gap-2"><span className="text-[13px] text-muted">Stop loss</span><KwantSelect value={slType} onChange={(e) => setSlType(e.target.value as typeof slType)} className="rounded-lg border border-border bg-surface px-2 py-1 text-[11px] text-muted outline-none"><option value="price">price</option><option value="ticks">ticks</option><option value="pctPrice">% of price</option><option value="riskUsd">risk USD</option><option value="riskPct">risk % balance</option></KwantSelect></div><button onClick={() => setSlEnabled((value) => !value)} className={`h-5 w-10 rounded-full transition-all ${slEnabled ? "bg-primary" : "border border-border bg-surface"}`}><span className={`block h-4 w-4 rounded-full bg-background transition-transform ${slEnabled ? "translate-x-5" : "translate-x-0.5"}`} /></button></div><div className="flex items-center gap-2"><input disabled={!slEnabled} value={orderSL} onChange={(e) => setOrderSL(e.target.value)} className="min-w-0 flex-1 rounded-lg border border-border bg-surface px-3 py-2 text-right font-mono text-[13px] outline-none disabled:opacity-50" /><button className="flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-surface text-muted hover:text-foreground"><ArrowLeftRight className="h-4 w-4" /></button><span className="w-14 text-right font-mono text-[11px] text-muted">75 ticks</span></div></div></div>}
+                    {showExits && <div className="space-y-4 border-t border-border p-3"><div className="space-y-2"><div className="flex items-center justify-between"><div className="flex items-center gap-2"><span className="text-[13px] text-muted">Take profit</span><KwantSelect value={tpType} onChange={(e) => setTpType(e.target.value as typeof tpType)} className="rounded-lg border border-border bg-surface px-2 py-1 text-[11px] text-muted outline-none"><option value="price">price</option><option value="ticks">ticks</option><option value="pctPrice">% of price</option><option value="rewardUsd">reward USD</option><option value="rewardPct">reward % balance</option></KwantSelect></div><button onClick={() => setTpEnabled((value) => !value)} className={`h-5 w-10 rounded-full transition-all ${tpEnabled ? "bg-primary" : "border border-border bg-surface"}`}><span className={`block h-4 w-4 rounded-full bg-background transition-transform ${tpEnabled ? "translate-x-5" : "translate-x-0.5"}`} /></button></div><div className="flex items-center gap-2"><input disabled={!tpEnabled} value={orderTP} onChange={(e) => setOrderTP(e.target.value)} className="min-w-0 flex-1 rounded-lg border border-border bg-surface px-3 py-2 text-right font-mono text-[13px] outline-none disabled:opacity-50" /><button className="flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-surface text-muted hover:text-foreground"><ArrowLeftRight className="h-4 w-4" /></button><span className="w-14 text-right font-mono text-[11px] text-muted">{orderPreviewTakeProfitTicks ? `${orderPreviewTakeProfitTicks} ticks` : "--"}</span></div></div><div className="space-y-2"><div className="flex items-center justify-between"><div className="flex items-center gap-2"><span className="text-[13px] text-muted">Stop loss</span><KwantSelect value={slType} onChange={(e) => setSlType(e.target.value as typeof slType)} className="rounded-lg border border-border bg-surface px-2 py-1 text-[11px] text-muted outline-none"><option value="price">price</option><option value="ticks">ticks</option><option value="pctPrice">% of price</option><option value="riskUsd">risk USD</option><option value="riskPct">risk % balance</option></KwantSelect></div><button onClick={() => setSlEnabled((value) => !value)} className={`h-5 w-10 rounded-full transition-all ${slEnabled ? "bg-primary" : "border border-border bg-surface"}`}><span className={`block h-4 w-4 rounded-full bg-background transition-transform ${slEnabled ? "translate-x-5" : "translate-x-0.5"}`} /></button></div><div className="flex items-center gap-2"><input disabled={!slEnabled} value={orderSL} onChange={(e) => setOrderSL(e.target.value)} className="min-w-0 flex-1 rounded-lg border border-border bg-surface px-3 py-2 text-right font-mono text-[13px] outline-none disabled:opacity-50" /><button className="flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-surface text-muted hover:text-foreground"><ArrowLeftRight className="h-4 w-4" /></button><span className="w-14 text-right font-mono text-[11px] text-muted">{orderPreviewStopLossTicks ? `${orderPreviewStopLossTicks} ticks` : "--"}</span></div></div></div>}
                   </div>
                   <div className="mb-4 space-y-2 text-[13px]"><h3 className="font-semibold text-primary">Order info</h3><div className="flex justify-between"><span className="text-muted">Margin</span><span className="font-mono">581.92 / 81,682.73</span></div><div className="h-1.5 overflow-hidden rounded-full bg-surface"><div className="h-full w-[18%] rounded-full bg-primary" /></div><div className="flex justify-between"><span className="text-muted">Leverage</span><span className="font-mono">50:1</span></div><div className="flex justify-between"><span className="text-muted">Tick value</span><span className="font-mono">0.1 USD</span></div><div className="flex justify-between"><span className="text-muted">Trade value</span><span className="font-mono">29,096.20 USD</span></div></div>
                   <button className={`w-full rounded-xl py-3 font-semibold text-background ${orderSide === "buy" ? "bg-primary" : "bg-danger"}`}>{orderSide === "buy" ? "Buy" : "Sell"} {orderUnits || "1"} {displayCmeSymbol(selectedInstrument)} {orderType.toUpperCase()}</button>
@@ -13715,7 +13764,7 @@ export default function KwantifyWorkspace({
               </div>
               <div className="mb-4 rounded-xl border border-border bg-background/30">
                 <button onClick={() => setShowExits((value) => !value)} className="flex w-full items-center justify-between px-3 py-2 text-[13px] font-medium">Exits{showExits ? <ChevronUp className="h-4 w-4 text-muted" /> : <ChevronDown className="h-4 w-4 text-muted" />}</button>
-                {showExits && <div className={`space-y-4 border-t border-border p-3 ${tradingUnlocked ? "" : "pointer-events-none opacity-60"}`}><div className="space-y-2"><div className="flex items-center justify-between"><div className="flex items-center gap-2"><span className="text-[13px] text-muted">Take profit</span><KwantSelect value={tpType} onChange={(e) => setTpType(e.target.value as typeof tpType)} className="rounded-lg border border-border bg-surface px-2 py-1 text-[11px] text-muted outline-none"><option value="price">price</option><option value="ticks">ticks</option><option value="pctPrice">% of price</option><option value="rewardUsd">reward USD</option><option value="rewardPct">reward % balance</option></KwantSelect></div><button onClick={() => setTpEnabled((value) => !value)} className={`h-5 w-10 rounded-full transition-all ${tpEnabled ? "bg-primary" : "border border-border bg-surface"}`}><span className={`block h-4 w-4 rounded-full bg-background transition-transform ${tpEnabled ? "translate-x-5" : "translate-x-0.5"}`} /></button></div><div className="flex items-center gap-2"><input disabled={!tpEnabled} value={orderTP} onChange={(e) => setOrderTP(e.target.value)} className="min-w-0 flex-1 rounded-lg border border-border bg-surface px-3 py-2 text-right font-mono text-[13px] outline-none disabled:opacity-50" /><button className="flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-surface text-muted hover:text-foreground"><ArrowLeftRight className="h-4 w-4" /></button><span className="w-14 text-right font-mono text-[11px] text-muted">75 ticks</span></div></div><div className="space-y-2"><div className="flex items-center justify-between"><div className="flex items-center gap-2"><span className="text-[13px] text-muted">Stop loss</span><KwantSelect value={slType} onChange={(e) => setSlType(e.target.value as typeof slType)} className="rounded-lg border border-border bg-surface px-2 py-1 text-[11px] text-muted outline-none"><option value="price">price</option><option value="ticks">ticks</option><option value="pctPrice">% of price</option><option value="riskUsd">risk USD</option><option value="riskPct">risk % balance</option></KwantSelect></div><button onClick={() => setSlEnabled((value) => !value)} className={`h-5 w-10 rounded-full transition-all ${slEnabled ? "bg-primary" : "border border-border bg-surface"}`}><span className={`block h-4 w-4 rounded-full bg-background transition-transform ${slEnabled ? "translate-x-5" : "translate-x-0.5"}`} /></button></div><div className="flex items-center gap-2"><input disabled={!slEnabled} value={orderSL} onChange={(e) => setOrderSL(e.target.value)} className="min-w-0 flex-1 rounded-lg border border-border bg-surface px-3 py-2 text-right font-mono text-[13px] outline-none disabled:opacity-50" /><button className="flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-surface text-muted hover:text-foreground"><ArrowLeftRight className="h-4 w-4" /></button><span className="w-14 text-right font-mono text-[11px] text-muted">75 ticks</span></div></div></div>}
+                {showExits && <div className={`space-y-4 border-t border-border p-3 ${tradingUnlocked ? "" : "pointer-events-none opacity-60"}`}><div className="space-y-2"><div className="flex items-center justify-between"><div className="flex items-center gap-2"><span className="text-[13px] text-muted">Take profit</span><KwantSelect value={tpType} onChange={(e) => setTpType(e.target.value as typeof tpType)} className="rounded-lg border border-border bg-surface px-2 py-1 text-[11px] text-muted outline-none"><option value="price">price</option><option value="ticks">ticks</option><option value="pctPrice">% of price</option><option value="rewardUsd">reward USD</option><option value="rewardPct">reward % balance</option></KwantSelect></div><button onClick={() => setTpEnabled((value) => !value)} className={`h-5 w-10 rounded-full transition-all ${tpEnabled ? "bg-primary" : "border border-border bg-surface"}`}><span className={`block h-4 w-4 rounded-full bg-background transition-transform ${tpEnabled ? "translate-x-5" : "translate-x-0.5"}`} /></button></div><div className="flex items-center gap-2"><input disabled={!tpEnabled} value={orderTP} onChange={(e) => setOrderTP(e.target.value)} className="min-w-0 flex-1 rounded-lg border border-border bg-surface px-3 py-2 text-right font-mono text-[13px] outline-none disabled:opacity-50" /><button className="flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-surface text-muted hover:text-foreground"><ArrowLeftRight className="h-4 w-4" /></button><span className="w-14 text-right font-mono text-[11px] text-muted">{orderPreviewTakeProfitTicks ? `${orderPreviewTakeProfitTicks} ticks` : "--"}</span></div></div><div className="space-y-2"><div className="flex items-center justify-between"><div className="flex items-center gap-2"><span className="text-[13px] text-muted">Stop loss</span><KwantSelect value={slType} onChange={(e) => setSlType(e.target.value as typeof slType)} className="rounded-lg border border-border bg-surface px-2 py-1 text-[11px] text-muted outline-none"><option value="price">price</option><option value="ticks">ticks</option><option value="pctPrice">% of price</option><option value="riskUsd">risk USD</option><option value="riskPct">risk % balance</option></KwantSelect></div><button onClick={() => setSlEnabled((value) => !value)} className={`h-5 w-10 rounded-full transition-all ${slEnabled ? "bg-primary" : "border border-border bg-surface"}`}><span className={`block h-4 w-4 rounded-full bg-background transition-transform ${slEnabled ? "translate-x-5" : "translate-x-0.5"}`} /></button></div><div className="flex items-center gap-2"><input disabled={!slEnabled} value={orderSL} onChange={(e) => setOrderSL(e.target.value)} className="min-w-0 flex-1 rounded-lg border border-border bg-surface px-3 py-2 text-right font-mono text-[13px] outline-none disabled:opacity-50" /><button className="flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-surface text-muted hover:text-foreground"><ArrowLeftRight className="h-4 w-4" /></button><span className="w-14 text-right font-mono text-[11px] text-muted">{orderPreviewStopLossTicks ? `${orderPreviewStopLossTicks} ticks` : "--"}</span></div></div></div>}
               </div>
               <div className="mb-4 rounded-xl border border-border bg-background/30 p-3 text-[13px]">
                 <div className="mb-3 flex items-center justify-between">
@@ -13776,13 +13825,15 @@ export default function KwantifyWorkspace({
                   <div className="flex justify-between"><span className="text-muted">Margin</span><span className="font-mono text-right">{orderPanelAccountSummary.margin}</span></div>
                   <div className="h-1.5 overflow-hidden rounded-full bg-surface"><div className={`h-full rounded-full ${tradingUnlocked ? "w-[18%] bg-primary" : "w-[8%] bg-muted/40"}`} /></div>
                   <div className="flex justify-between"><span className="text-muted">Leverage</span><span className="font-mono">{tradingUnlocked ? paperExecutionRequested ? selectedPaperTradingAccount?.leverage ?? "--" : "50:1" : "--"}</span></div>
+                  <div className="flex justify-between"><span className="text-muted">Tick size</span><span className="font-mono">{selectedPaperContract.tickSize}</span></div>
                   <div className="flex justify-between"><span className="text-muted">Tick value</span><span className="font-mono">{formatDollar(selectedPaperContract.tickValue * selectedOrderQuantity)}</span></div>
+                  <div className="flex justify-between"><span className="text-muted">1-point value</span><span className="font-mono">{formatDollar(selectedPaperContract.pointValue * selectedOrderQuantity)}</span></div>
                   <div className="flex justify-between"><span className="text-muted">Trade value</span><span className="font-mono">{formatDollar(orderPanelTradeValueUsd)}</span></div>
                 </div>
               </div>
-              <button onClick={paperExecutionRequested ? submitPaperOrder : undefined} disabled={!tradingUnlocked} className={`w-full rounded-xl py-3 font-semibold text-background ${tradingUnlocked ? orderSide === "buy" ? "bg-primary" : "bg-danger" : "cursor-not-allowed bg-muted/30 text-muted"}`}>{tradingUnlocked ? `${orderSide === "buy" ? "Buy" : "Sell"} ${selectedOrderQuantityLabel} ${orderType.toUpperCase()}` : "Connect Your Broker To Trade"}</button>
+              <button onClick={tradingUnlocked ? submitPaperOrder : undefined} disabled={!tradingUnlocked} className={`w-full rounded-xl py-3 font-semibold text-background ${tradingUnlocked ? orderSide === "buy" ? "bg-primary" : "bg-danger" : "cursor-not-allowed bg-muted/30 text-muted"}`}>{tradingUnlocked ? `${orderSide === "buy" ? "Buy" : "Sell"} ${selectedOrderQuantityLabel} ${orderType.toUpperCase()}` : currentBrokerConnection.connectionState === "connected" ? "Order routing unavailable" : "Connect Your Broker To Trade"}</button>
               {orderTicketMessage && <div className={`mt-2 rounded-xl border px-3 py-2 text-[11px] ${orderTicketMessage.tone === "success" ? "border-primary/25 bg-primary/10 text-primary" : "border-danger/25 bg-danger/10 text-danger"}`}>{orderTicketMessage.text}</div>}
-              {selectedPaperOpenPositions.length > 0 && <div className="mt-4 space-y-2"><div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">Open positions</div>{selectedPaperOpenPositions.map((position) => <div key={position.id} className="rounded-xl border border-border bg-background/40 p-3"><div className="flex items-center justify-between"><span className="text-[12px] font-semibold">{position.side === "buy" ? "Long" : "Short"} {position.remainingQuantity} {position.symbol}</span><span className={`font-mono text-[11px] ${position.unrealizedPnl >= 0 ? "text-primary" : "text-danger"}`}>{formatDollar(position.unrealizedPnl)}</span></div><div className="mt-1 flex justify-between font-mono text-[10px] text-muted"><span>Entry {formatPrice(position.entryPrice, position.symbol)}</span><span>Mark {formatPrice(position.markPrice, position.symbol)}</span></div><div className="mt-2 flex gap-2"><button onClick={() => handleFlattenPaperPosition(position)} className="flex-1 rounded-lg border border-danger/25 px-2 py-1.5 text-[10px] font-semibold text-danger hover:bg-danger/10">Flatten</button></div></div>)}</div>}
+              {selectedPaperOpenPositions.length > 0 && <div className="mt-4 space-y-2"><div className="flex items-center justify-between"><div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">Open positions</div><button onClick={handleFlattenPaperAccount} className="rounded-md border border-danger/25 px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.1em] text-danger hover:bg-danger/10">Flatten all</button></div>{selectedPaperOpenPositions.map((position) => <div key={position.id} className="rounded-xl border border-border bg-background/40 p-3"><div className="flex items-center justify-between"><span className="text-[12px] font-semibold">{position.side === "buy" ? "Long" : "Short"} {position.remainingQuantity} {position.symbol}</span><span className={`font-mono text-[11px] ${position.unrealizedPnl >= 0 ? "text-primary" : "text-danger"}`}>{formatDollar(position.unrealizedPnl)}</span></div><div className="mt-1 flex justify-between font-mono text-[10px] text-muted"><span>Entry {formatPrice(position.entryPrice, position.symbol)}</span><span>Mark {formatPrice(position.markPrice, position.symbol)}</span></div><div className="mt-1 flex justify-between font-mono text-[9px] text-muted"><span>{position.stopLoss == null ? "SL not set" : `SL ${formatPrice(position.stopLoss, position.symbol)}`}</span><span>{position.takeProfits.filter((target) => target.quantity > target.filledQuantity).length} active TP</span></div><div className="mt-2 flex gap-2"><button onClick={() => handleFlattenPaperPosition(position)} className="flex flex-1 items-center justify-center gap-1 rounded-lg border border-danger/25 px-2 py-1.5 text-[10px] font-semibold text-danger hover:bg-danger/10"><X className="h-3 w-3" /> Close position</button></div></div>)}</div>}
               {selectedPaperWorkingOrders.length > 0 && <div className="mt-4 space-y-2"><div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">Working orders</div>{selectedPaperWorkingOrders.map((order) => <div key={order.id} className="flex items-center justify-between rounded-xl border border-border bg-background/40 p-3"><div><div className="text-[11px] font-semibold">{order.side.toUpperCase()} {order.quantity} {order.symbol}</div><div className="font-mono text-[10px] text-muted">{order.type.toUpperCase()} {order.price ? formatPrice(order.price, order.symbol) : "MARKET"}</div></div><button onClick={() => handleCancelPaperOrder(order.accountId, order.id)} className="rounded-lg border border-border px-2 py-1 text-[10px] text-muted hover:text-danger">Cancel</button></div>)}</div>}
               {selectedPaperRecentFills.length > 0 && <div className="mt-4 space-y-2"><div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">Recent fills</div>{selectedPaperRecentFills.slice(0, 5).map((fill) => <div key={fill.id} className="flex items-center justify-between text-[10px]"><span>{fill.side.toUpperCase()} {fill.quantity} {fill.symbol}</span><span className="font-mono text-muted">{formatPrice(fill.price, fill.symbol)}</span></div>)}</div>}
               {!tradingUnlocked && (

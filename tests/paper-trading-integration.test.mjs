@@ -17,7 +17,10 @@ test("paper orders use the live futures quote and persist through the ledger", (
   assert.match(workspace, /placePaperOrder\(/);
   assert.match(workspace, /processPaperQuote\(/);
   assert.match(workspace, /savePaperTradingLedger\(paperLedger\)/);
-  assert.match(workspace, /onClick=\{paperExecutionRequested \? submitPaperOrder/);
+  assert.match(workspace, /onClick=\{tradingUnlocked \? submitPaperOrder/);
+  assert.match(engine, /workingOrderFillPrice/);
+  assert.match(engine, /Math\.min\(order\.price, executablePrice\)/);
+  assert.match(engine, /Math\.max\(order\.price, executablePrice\)/);
 });
 
 test("futures contract sizing covers the principal CME products", () => {
@@ -36,6 +39,19 @@ test("chart receives paper positions, fills, and draggable bracket updates", () 
   assert.match(chart, /kind: "stop_loss"/);
   assert.match(chart, /kind: "take_profit"/);
   assert.match(workspace, /onUpdatePaperProtection=\{handlePaperProtectionUpdate\}/);
+  assert.match(chart, /onClosePaperPosition\?: \(position: PaperPosition\)/);
+  assert.match(workspace, /onClosePaperPosition=\{handleFlattenPaperPosition\}/);
+  assert.match(workspace, /handleFlattenPaperAccount/);
+  assert.match(workspace, /Flatten all/);
+});
+
+test("execution accounting remains tick accurate and gap-aware", () => {
+  assert.match(engine, /\(exitPrice - position\.entryPrice\) \* direction \* paperPointValue\(position\.symbol\) \* quantity/);
+  assert.match(engine, /const stopFillPrice = position\.side === "buy"/);
+  assert.match(engine, /Math\.min\(position\.stopLoss!, quote\.bid\)/);
+  assert.match(engine, /Math\.max\(position\.stopLoss!, quote\.ask\)/);
+  assert.match(workspace, /Tick size/);
+  assert.match(workspace, /1-point value/);
 });
 
 test("Accounts is a top-level destination after Backtesting and creates CME demo accounts", () => {

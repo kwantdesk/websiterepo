@@ -239,6 +239,7 @@ interface ChartProps {
       | { kind: "stop_loss"; price: number | null }
       | { kind: "take_profit"; targetId: string; price: number; quantity?: number },
   ) => void;
+  onClosePaperPosition?: (position: PaperPosition) => void;
 }
 
 export interface ChartLevel {
@@ -1710,6 +1711,7 @@ export default function Chart({
   paperPositions = [],
   paperFills = [],
   onUpdatePaperProtection,
+  onClosePaperPosition,
 }: ChartProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
@@ -5914,7 +5916,7 @@ export default function Chart({
       id: `${position.id}-entry`,
       kind: "entry" as const,
       price: position.entryPrice,
-      label: `${position.side === "buy" ? "LONG" : "SHORT"} ${position.remainingQuantity} @ ${position.entryPrice.toFixed(priceFormat.precision)}`,
+      label: `${position.side === "buy" ? "LONG" : "SHORT"} ${position.remainingQuantity} @ ${position.entryPrice.toFixed(priceFormat.precision)} · ${position.unrealizedPnl >= 0 ? "+" : "-"}$${Math.abs(position.unrealizedPnl).toFixed(2)}`,
       color: position.side === "buy" ? settings.upColor : settings.downColor,
       position,
       targetId: null as string | null,
@@ -6038,15 +6040,41 @@ export default function Chart({
             opacity: 0.92,
           }}
         >
-          <button
-            type="button"
-            onPointerDown={(event) => startPaperProtectionDrag(event, level)}
-            className={`pointer-events-auto absolute right-2 -translate-y-1/2 rounded-md border px-2 py-1 font-mono text-[9px] font-semibold shadow-lg backdrop-blur ${level.kind === "entry" ? "cursor-default bg-panel/95" : "cursor-ns-resize bg-panel/95 hover:brightness-125"}`}
-            style={{ borderColor: level.color, color: level.color }}
-            title={level.kind === "entry" ? `Unrealized ${level.position.unrealizedPnl.toFixed(2)}` : "Drag to adjust protection"}
-          >
-            {level.label}
-          </button>
+          {level.kind === "entry" ? (
+            <div
+              className="pointer-events-auto absolute right-2 flex -translate-y-1/2 items-center overflow-hidden rounded-md border bg-panel/95 font-mono text-[9px] font-semibold shadow-lg backdrop-blur"
+              style={{ borderColor: level.color, color: level.color }}
+              title={`Unrealized ${level.position.unrealizedPnl.toFixed(2)}`}
+            >
+              <span className="px-2 py-1">{level.label}</span>
+              {onClosePaperPosition ? (
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    onClosePaperPosition(level.position);
+                  }}
+                  className="flex self-stretch items-center border-l px-1.5 transition-colors hover:bg-danger/15 hover:text-danger"
+                  style={{ borderColor: level.color }}
+                  title="Close this position at the live bid/ask"
+                  aria-label={`Close ${level.position.symbol} position`}
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              ) : null}
+            </div>
+          ) : (
+            <button
+              type="button"
+              onPointerDown={(event) => startPaperProtectionDrag(event, level)}
+              className="pointer-events-auto absolute right-2 -translate-y-1/2 cursor-ns-resize rounded-md border bg-panel/95 px-2 py-1 font-mono text-[9px] font-semibold shadow-lg backdrop-blur hover:brightness-125"
+              style={{ borderColor: level.color, color: level.color }}
+              title="Drag to adjust protection"
+            >
+              {level.label}
+            </button>
+          )}
         </div>
       ))}
       {visiblePaperFills.map(({ fill, x, y }) => (

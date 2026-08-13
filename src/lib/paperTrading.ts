@@ -421,14 +421,20 @@ function createEntryPosition(
 ): PaperAccountLedger {
   const positionId = uid("paper-position");
   const quantity = positive(order.quantity);
+  let unallocatedQuantity = quantity;
   const takeProfits = order.takeProfits
     .filter((target) => positive(target.price) > 0)
-    .map((target, index) => ({
-      id: uid(`paper-tp-${index + 1}`),
-      price: snapPaperPrice(order.symbol, target.price),
-      quantity: Math.min(quantity, positive(target.quantity, quantity)),
-      filledQuantity: 0,
-    }));
+    .flatMap((target, index) => {
+      if (unallocatedQuantity <= 0) return [];
+      const targetQuantity = Math.min(unallocatedQuantity, positive(target.quantity, quantity));
+      unallocatedQuantity = Math.max(0, unallocatedQuantity - targetQuantity);
+      return [{
+        id: uid(`paper-tp-${index + 1}`),
+        price: snapPaperPrice(order.symbol, target.price),
+        quantity: targetQuantity,
+        filledQuantity: 0,
+      }];
+    });
   const position: PaperPosition = {
     id: positionId,
     accountId: order.accountId,
@@ -478,6 +484,15 @@ function createEntryPosition(
 
 function quoteFillPrice(side: PaperOrderSide, quote: PaperQuote) {
   return side === "buy" ? quote.ask : quote.bid;
+}
+
+function workingOrderFillPrice(order: PaperOrder, quote: PaperQuote) {
+  const executablePrice = quoteFillPrice(order.side, quote);
+  if (order.type !== "limit" || order.price == null) return executablePrice;
+  // A limit order can receive price improvement, but it can never fill beyond its limit.
+  return order.side === "buy"
+    ? Math.min(order.price, executablePrice)
+    : Math.max(order.price, executablePrice);
 }
 
 function orderTriggered(order: PaperOrder, quote: PaperQuote) {
@@ -627,7 +642,7 @@ export function processPaperQuote(
       account = createEntryPosition(
         account,
         order,
-        snapPaperPrice(order.symbol, quoteFillPrice(order.side, quote)),
+        snapPaperPrice(order.symbol, workingOrderFillPrice(order, quote)),
         quote.timestamp,
         parseLeverage(accountRecord.leverage),
       );
@@ -654,11 +669,16 @@ export function processPaperQuote(
         position.side === "buy" ? quote.bid <= position.stopLoss : quote.ask >= position.stopLoss
       );
       if (stopHit) {
+        // Stops become market orders when triggered. If price gaps through the stop,
+        // fill at the executable bid/ask instead of inventing a fill at the old level.
+        const stopFillPrice = position.side === "buy"
+          ? Math.min(position.stopLoss!, quote.bid)
+          : Math.max(position.stopLoss!, quote.ask);
         account = closePositionQuantity(
           account,
           position,
           position.remainingQuantity,
-          position.stopLoss!,
+          snapPaperPrice(position.symbol, stopFillPrice),
           quote.timestamp,
           "stop_loss",
           `sl-${position.id}`,
@@ -847,6 +867,7 @@ export function closePaperPosition(
   const account = ledger.accounts[accountId];
   const position = account?.positions.find((candidate) => candidate.id === positionId);
   if (!account || !position || position.status !== "open") return { ledger, error: "Open position not found" };
+  if (!(quote.bid > 0 && quote.ask > 0)) return { ledger, error: "Live quote unavailable" };
   const exitPrice = snapPaperPrice(position.symbol, position.side === "buy" ? quote.bid : quote.ask);
   const nextAccount = closePositionQuantity(
     account,
@@ -867,6 +888,46 @@ export function closePaperPosition(
       },
     },
   };
+}
+
+export function flattenPaperAccount(
+  ledger: PaperTradingLedger,
+  accountId: string,
+  resolveQuote: (symbol: string) => PaperQuote | null,
+) {
+  const account = ledger.accounts[accountId];
+  if (!account) return { ledger, closed: 0, errors: ["Demo account not found"] };
+  let nextLedger = ledger;
+  let closed = 0;
+  const errors: string[] = [];
+  for (const position of account.positions.filter((candidate) => candidate.status === "open" && candidate.remainingQuantity > 0)) {
+    const quote = resolveQuote(position.symbol);
+    if (!quote || !(quote.bid > 0 && quote.ask > 0)) {
+      errors.push(`${position.symbol}: live quote unavailable`);
+      continue;
+    }
+    const result = closePaperPosition(nextLedger, accountId, position.id, quote);
+    nextLedger = result.ledger;
+    if (result.error) errors.push(`${position.symbol}: ${result.error}`);
+    else closed += 1;
+  }
+  const finalAccount = nextLedger.accounts[accountId];
+  const cancelled = finalAccount.orders.filter((order) => order.status === "working").length;
+  if (cancelled > 0) {
+    nextLedger = {
+      ...nextLedger,
+      accounts: {
+        ...nextLedger.accounts,
+        [accountId]: {
+          ...finalAccount,
+          orders: finalAccount.orders.map((order): PaperOrder =>
+            order.status === "working" ? { ...order, status: "cancelled" } : order),
+          updatedAt: Date.now(),
+        },
+      },
+    };
+  }
+  return { ledger: nextLedger, closed, cancelled, errors };
 }
 
 export function cancelPaperOrder(ledger: PaperTradingLedger, accountId: string, orderId: string): PaperTradingLedger {
@@ -940,4 +1001,3 @@ export function summarizePaperAccount(
     winRate: closedTrades ? wins / closedTrades * 100 : 0,
   };
 }
-
