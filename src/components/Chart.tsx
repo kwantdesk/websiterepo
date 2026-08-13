@@ -72,6 +72,7 @@ import {
 import { Candle, Trade } from "@/lib/backtester";
 import {
   LIVE_CHART_CANDLE_EVENT,
+  mergeLiveIndicatorCandle,
   type LiveChartCandleDetail,
 } from "@/lib/chartLiveEvents";
 import {
@@ -1822,6 +1823,8 @@ export default function Chart({
   const eventSourceTimeByChartTimeRef = useRef(new Map<number, number>());
   const eventChartTimeBySourceTimeRef = useRef(new Map<number, number>());
   const indicatorSampleTimerRef = useRef<number | null>(null);
+  const liveVolumeSampleTimerRef = useRef<number | null>(null);
+  const pendingLiveVolumeCandleRef = useRef<Candle | null>(null);
   const viewportResetFrameRef = useRef<number | null>(null);
   const chartVisualReadyTokenRef = useRef(0);
   const pendingIndicatorCandlesRef = useRef(candles);
@@ -1829,6 +1832,10 @@ export default function Chart({
   const sampledOrderFlowHistoryReadyRef = useRef(orderFlowHistoryReady);
   const updateIndicatorSettingRef = useRef(onUpdateIndicatorSetting);
   const openIndicatorSettingsRef = useRef(onOpenIndicatorSettings);
+  const volumeIndicatorEnabled = useMemo(
+    () => indicators.some((instance) => instance.enabled && instance.indicatorId === "volume"),
+    [indicators],
+  );
 
   function resetViewportBeforeReveal(
     chart: IChartApi,
@@ -1904,14 +1911,35 @@ export default function Chart({
       if (!detail || detail.key !== liveCandleEventKey) return;
       pendingCandle = detail.candle;
       latestCandleRef.current = detail.candle;
+      if (volumeIndicatorEnabled) {
+        pendingLiveVolumeCandleRef.current = detail.candle;
+        if (liveVolumeSampleTimerRef.current === null) {
+          // Volume should visibly develop with the live candle, while the
+          // heavier CVD/order-flow studies keep their independent sampling.
+          liveVolumeSampleTimerRef.current = window.setTimeout(() => {
+            liveVolumeSampleTimerRef.current = null;
+            const liveVolumeCandle = pendingLiveVolumeCandleRef.current;
+            pendingLiveVolumeCandleRef.current = null;
+            if (liveVolumeCandle) {
+              setSampledIndicatorCandles((current) =>
+                mergeLiveIndicatorCandle(current, liveVolumeCandle));
+            }
+          }, 80);
+        }
+      }
       if (frame === null) frame = window.requestAnimationFrame(flush);
     };
     window.addEventListener(LIVE_CHART_CANDLE_EVENT, receive);
     return () => {
       window.removeEventListener(LIVE_CHART_CANDLE_EVENT, receive);
       if (frame !== null) window.cancelAnimationFrame(frame);
+      if (liveVolumeSampleTimerRef.current !== null) {
+        window.clearTimeout(liveVolumeSampleTimerRef.current);
+        liveVolumeSampleTimerRef.current = null;
+      }
+      pendingLiveVolumeCandleRef.current = null;
     };
-  }, [liveCandleEventKey, timeframe]);
+  }, [liveCandleEventKey, timeframe, volumeIndicatorEnabled]);
 
   useEffect(() => {
     updateIndicatorSettingRef.current = onUpdateIndicatorSetting;
@@ -1947,13 +1975,17 @@ export default function Chart({
     if (indicatorSampleTimerRef.current !== null) return;
     indicatorSampleTimerRef.current = window.setTimeout(() => {
       indicatorSampleTimerRef.current = null;
-      setSampledIndicatorCandles(pendingIndicatorCandlesRef.current);
+      const pendingCandles = pendingIndicatorCandlesRef.current;
+      const liveVolumeCandle = volumeIndicatorEnabled ? latestCandleRef.current : null;
+      setSampledIndicatorCandles(liveVolumeCandle
+        ? mergeLiveIndicatorCandle(pendingCandles, liveVolumeCandle)
+        : pendingCandles);
       setSampledIndicatorMarketTrades(pendingIndicatorMarketTradesRef.current);
     // The candle itself continues to render tick-by-tick. Expensive order-flow
     // studies only need a smooth sub-second sample; recalculating every 120 ms
     // across a growing execution tape eventually monopolises navigation.
     }, 400);
-  }, [candles, marketTrades, orderFlowHistoryReady]);
+  }, [candles, marketTrades, orderFlowHistoryReady, volumeIndicatorEnabled]);
 
   useEffect(() => () => {
     if (indicatorSampleTimerRef.current !== null) {

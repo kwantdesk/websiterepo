@@ -22,6 +22,38 @@ export type DatabentoLiveTick = {
   cached?: boolean;
 };
 
+/**
+ * Applies the newest forming candle to an indicator snapshot without allowing
+ * an older React sample to make the active Volume bar shrink. Completed bars
+ * remain immutable; a later bucket is appended and starts from its own volume.
+ */
+export function mergeLiveIndicatorCandle(
+  snapshot: Candle[],
+  liveCandle: Candle,
+) {
+  if (!Number.isFinite(liveCandle.timestamp)) return snapshot;
+  if (!snapshot.length) return [liveCandle];
+
+  const last = snapshot.at(-1)!;
+  if (liveCandle.timestamp < last.timestamp) return snapshot;
+  if (liveCandle.timestamp > last.timestamp) return [...snapshot, liveCandle];
+
+  const liveVolume = Math.max(0, Number(liveCandle.volume ?? 0));
+  const previousVolume = Math.max(0, Number(last.volume ?? 0));
+  const merged = {
+    ...last,
+    ...liveCandle,
+    volume: Math.max(previousVolume, liveVolume),
+  };
+  if (
+    merged.close === last.close
+    && merged.high === last.high
+    && merged.low === last.low
+    && merged.volume === previousVolume
+  ) return snapshot;
+  return [...snapshot.slice(0, -1), merged];
+}
+
 type DatabentoLiveStatusSnapshot = {
   status: DatabentoLiveStatus;
   updatedAt: number;
