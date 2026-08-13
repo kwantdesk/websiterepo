@@ -3726,11 +3726,17 @@ function WorkspaceChartPane({
   const requiresExecutionStream = needsOrderFlowHistory || isEventBasedChartInterval(pane.timeframe);
   const dailyProfileSettings = dailyProfileInstance?.settings ?? {};
   const weeklyProfileSettings = weeklyProfileInstance?.settings ?? {};
+  // The developing profile belongs to the venue's current trading date, not
+  // to whichever dates happened to arrive in the candle backfill. At Globex
+  // open the execution stream can be live before the first/restored candle is
+  // committed, so relying on candles alone omitted today's profile entirely.
+  const currentDailyTradingDate = chicagoTradingDate(Date.now());
   const dailyTradingDates = useMemo(() => {
     const dates = new Set<string>();
     candles.forEach((candle) => dates.add(chicagoTradingDate(candle.timestamp)));
-    return [...dates].slice(-6);
-  }, [candles]);
+    dates.add(currentDailyTradingDate);
+    return [...dates].sort().slice(-6);
+  }, [candles, currentDailyTradingDate]);
   const dailyTradingDateSignature = dailyTradingDates.join(",");
   const gammaLevelsAvailable =
     pane.broker === "Databento" && isGammaChartInstrument(gammaInstrument);
@@ -3901,6 +3907,10 @@ function WorkspaceChartPane({
       onSeed: (records) => {
         if (!records.length) return;
         rithmicConnectedRef.current = true;
+        // A reconnect seed is authoritative execution history for the active
+        // session. Develop the just-opened daily profile immediately instead
+        // of waiting for the next incremental trade batch.
+        queueProfileUpdate(records);
         if (needsOrderFlowHistory) {
           const firstRithmicTimestamp = records[0].timestamp;
           const historical = latestMarketTradesRef.current.filter(
@@ -5384,7 +5394,13 @@ function WorkspaceChartPane({
       setVolumeProfiles([]);
       return;
     }
-    if (!resolvedContractSymbol || candles.length === 0) return;
+    // Daily profiles are execution-tape driven and must be allowed to load at
+    // Globex open even while candle restoration is still in flight. Weekly
+    // profiles still require candles to define their visible five-day window.
+    if (
+      !resolvedContractSymbol
+      || (!dailyProfileInstance && Boolean(weeklyProfileInstance) && candles.length === 0)
+    ) return;
 
     let cancelled = false;
     let refreshTimer: number | null = null;
@@ -5494,6 +5510,7 @@ function WorkspaceChartPane({
 
     const refreshExactProfiles = async () => {
       const requests: Promise<unknown>[] = [];
+      let currentDailyProfileLoaded = !dailyProfileInstance;
       if (dailyProfileInstance) {
         tradingDates.forEach((tradingDate) => {
           requests.push(fetchInstitutionalVolumeProfile({
@@ -5507,7 +5524,12 @@ function WorkspaceChartPane({
             valueAreaPercent: STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT,
             minTradeVolume: Number(dailyProfileSettings.minTradeVolume ?? 0),
             maxTradeVolume: Number(dailyProfileSettings.maxTradeVolume ?? 0),
-          }).then((profile) => replaceExactProfile(profile, tradingDate)));
+          }).then((profile) => {
+            if (tradingDate === currentDailyTradingDate && profile) {
+              currentDailyProfileLoaded = true;
+            }
+            replaceExactProfile(profile, tradingDate);
+          }));
         });
       }
       if (weeklyProfileInstance) {
@@ -5532,7 +5554,14 @@ function WorkspaceChartPane({
       }
       await Promise.allSettled(requests);
       if (!cancelled) {
-        refreshTimer = window.setTimeout(() => void refreshExactProfiles(), 15_000);
+        // The first request can legitimately beat the first Globex execution.
+        // Retry that empty active session promptly; once it exists, retain the
+        // normal low-frequency snapshot reconciliation while Rithmic develops
+        // the profile trade by trade in memory.
+        refreshTimer = window.setTimeout(
+          () => void refreshExactProfiles(),
+          currentDailyProfileLoaded ? 15_000 : 2_000,
+        );
       }
     };
     void refreshExactProfiles();
@@ -5549,6 +5578,7 @@ function WorkspaceChartPane({
     dailyProfileSettings.maxTradeVolume,
     dailyProfileSettings.minTradeVolume,
     dailyTradingDateSignature,
+    currentDailyTradingDate,
     pane.symbol,
     pane.timeframe,
     resolvedContractSymbol,
