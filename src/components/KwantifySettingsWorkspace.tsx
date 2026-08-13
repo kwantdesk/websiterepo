@@ -36,7 +36,7 @@ import { defaultTheme, readStoredTheme, resetTheme, saveTheme as saveAppTheme, t
 import { defaultChartSettings, extractUserChartSettings, loadStoredChartSettings, mergeChartSettingsIntoTheme, saveStoredChartSettings, type ChartSettings } from "@/lib/chartSettings";
 import { createClient } from "@/lib/supabase";
 import { usagePlans } from "@/lib/usagePlans";
-import { compactLegacyAuthPreferenceMetadata, hydrateUserPreferences, preferenceSnapshotFingerprint } from "@/lib/userPreferences";
+import { compactLegacyAuthPreferenceMetadata, hydrateUserPreferences } from "@/lib/userPreferences";
 import { useAccountPreferenceSync } from "@/hooks/useAccountPreferenceSync";
 import {
   PRESENCE_OPTIONS,
@@ -258,7 +258,13 @@ function ColorPicker({ label, value, onChange }: { label: string; value: string;
 
 export default function SettingsPage() {
   const supabase = useMemo(() => createClient(), []);
-  const [activeTab, setActiveTab] = useState<SettingsTab>("Identity");
+  const [activeTab, setActiveTab] = useState<SettingsTab>(() => {
+    if (typeof window === "undefined") return "Identity";
+    const saved = window.sessionStorage.getItem("kwantdesk-settings-active-tab");
+    return navSections.some((section) => section.items.includes(saved as SettingsTab))
+      ? saved as SettingsTab
+      : "Identity";
+  });
   const [profileName, setProfileName] = useState("");
   const [profileEmail, setProfileEmail] = useState("");
   const [profileUsername, setProfileUsername] = useState("");
@@ -391,16 +397,30 @@ export default function SettingsPage() {
       try {
         hydrated = await hydrateUserPreferences(supabase, user);
         if (hydrated.changed) {
-          const reloadKey = `kwantdesk:preference-hydration-reload:${user.id}`;
-          const hydratedFingerprint = preferenceSnapshotFingerprint(hydrated.snapshot);
-          if (window.sessionStorage.getItem(reloadKey) !== hydratedFingerprint) {
-            window.sessionStorage.setItem(reloadKey, hydratedFingerprint);
-            window.location.reload();
-            return;
+          setThemeSettings(readStoredTheme());
+          setChartSettings(loadStoredChartSettings());
+          try {
+            const savedToggles = JSON.parse(window.localStorage.getItem("kwantdesk-settings-toggles") ?? "{}");
+            setToggles({
+              ...defaultSettingsToggles,
+              ...(savedToggles && typeof savedToggles === "object" ? savedToggles : {}),
+            });
+          } catch {
+            setToggles(defaultSettingsToggles);
           }
-        } else {
-          window.sessionStorage.removeItem(`kwantdesk:preference-hydration-reload:${user.id}`);
+          const savedFontSize = window.localStorage.getItem("kwantdesk-settings-font-size");
+          setFontSize(savedFontSize === "Small" || savedFontSize === "Large" ? savedFontSize : "Default");
+          const savedDefaults = window.localStorage.getItem("olisa-chart-defaults");
+          if (savedDefaults) {
+            try {
+              setChartDefaults(JSON.parse(savedDefaults));
+            } catch {
+              // Keep the current chart defaults if an old browser value is malformed.
+            }
+          }
+          window.dispatchEvent(new CustomEvent("kwantdesk:preferences-hydrated"));
         }
+        window.sessionStorage.removeItem(`kwantdesk:preference-hydration-reload:${user.id}`);
       } catch {
         // Authentication and local preferences remain usable during a transient sync failure.
       }
@@ -499,6 +519,11 @@ export default function SettingsPage() {
 
   function toggle(key: string) {
     setToggles((current) => ({ ...current, [key]: !current[key] }));
+  }
+
+  function selectSettingsTab(tab: SettingsTab) {
+    setActiveTab(tab);
+    window.sessionStorage.setItem("kwantdesk-settings-active-tab", tab);
   }
 
   async function saveIdentity(nextStatus = presenceStatus) {
@@ -684,7 +709,17 @@ export default function SettingsPage() {
             <div className="mb-2 text-[11px] uppercase tracking-wider text-muted">{section.title}</div>
             <div className="space-y-1">
               {section.items.map((item) => (
-                <button key={item} onClick={() => setActiveTab(item)} className={`w-full cursor-pointer rounded-lg px-3 py-2 text-left text-[13px] ${activeTab === item ? "border-l-2 border-primary bg-surface font-medium text-foreground" : "text-muted hover:text-foreground"}`}>{item}</button>
+                <button
+                  key={item}
+                  type="button"
+                  onPointerDown={(event) => {
+                    if (event.button === 0) selectSettingsTab(item);
+                  }}
+                  onClick={() => selectSettingsTab(item)}
+                  className={`w-full touch-manipulation cursor-pointer rounded-lg px-3 py-2 text-left text-[13px] ${activeTab === item ? "border-l-2 border-primary bg-surface font-medium text-foreground" : "text-muted hover:text-foreground"}`}
+                >
+                  {item}
+                </button>
               ))}
             </div>
           </div>
@@ -835,7 +870,7 @@ export default function SettingsPage() {
                   ))}
                 </div>
                 <button
-                  onClick={() => setActiveTab("Privacy preferences")}
+                  onClick={() => selectSettingsTab("Privacy preferences")}
                   className="mt-4 w-full rounded-xl border border-border bg-surface px-4 py-2.5 text-[11px] text-muted hover:text-foreground"
                 >
                   Open privacy controls
