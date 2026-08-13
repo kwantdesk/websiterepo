@@ -40,3 +40,12 @@ test("CVD scaling is bounded and can be reset without changing the main chart", 
   assert.match(source, /onDoubleClick=[\s\S]*?delete next\[group\.key\]/);
   assert.doesNotMatch(source, /cvd-price-scale-[\s\S]{0,1800}chartRef/);
 });
+
+test("lower indicator panes can be grabbed and panned vertically only", () => {
+  assert.match(source, /verticalPanByPane/);
+  assert.match(source, /const startY = event\.clientY/);
+  assert.match(source, /moveEvent\.clientY - startY/);
+  assert.doesNotMatch(source, /const startX = event\.clientX/);
+  assert.match(source, /cursor-grabbing/);
+  assert.match(source, /scaleDomain\(seriesDomain\(\[series\]\), verticalScale, verticalPan\)/);
+});

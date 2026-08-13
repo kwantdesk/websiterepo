@@ -55,9 +55,9 @@ function seriesDomain(series: CalculatedIndicatorSeries[]) {
   return { min, max };
 }
 
-function scaleDomain(domain: { min: number; max: number }, scale: number) {
-  const center = (domain.min + domain.max) / 2;
+function scaleDomain(domain: { min: number; max: number }, scale: number, verticalPan = 0) {
   const halfSpan = Math.max(1e-9, (domain.max - domain.min) / 2) * scale;
+  const center = (domain.min + domain.max) / 2 + verticalPan * halfSpan * 2;
   return { min: center - halfSpan, max: center + halfSpan };
 }
 
@@ -152,6 +152,8 @@ function ChartIndicatorPanes({
   void viewportVersion;
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [verticalScaleByPane, setVerticalScaleByPane] = useState<Record<string, number>>({});
+  const [verticalPanByPane, setVerticalPanByPane] = useState<Record<string, number>>({});
+  const [draggingPane, setDraggingPane] = useState<string | null>(null);
   const paneRootRef = useRef<HTMLDivElement>(null);
 
   function scalePaneFromWheel(groupKey: string, deltaY: number, deltaMode: number) {
@@ -280,14 +282,16 @@ function ChartIndicatorPanes({
         }));
         const sharedSeries = visibleSeries.filter((series) => !series.independentScale);
         const verticalScale = verticalScaleByPane[group.key] ?? 1;
+        const verticalPan = verticalPanByPane[group.key] ?? 0;
         const sharedDomain = scaleDomain(
           seriesDomain(sharedSeries.length ? sharedSeries : visibleSeries),
           verticalScale,
+          verticalPan,
         );
         const independentDomains = new Map(
           visibleSeries
             .filter((series) => series.independentScale)
-            .map((series) => [series.key, scaleDomain(seriesDomain([series]), verticalScale)] as const),
+            .map((series) => [series.key, scaleDomain(seriesDomain([series]), verticalScale, verticalPan)] as const),
         );
         const yFor = (value: number, definition: CalculatedIndicatorSeries) => {
           const domain = definition.independentScale
@@ -657,14 +661,55 @@ function ChartIndicatorPanes({
             data-testid={`indicator-pane-wheel-zone-${group.key}`}
             data-indicator-pane-wheel-zone={group.key}
             aria-label={`Scale ${group.title} pane vertically`}
-            title={`Scroll to expand or squeeze ${group.title}`}
-            className="pointer-events-auto absolute left-0 z-[8] cursor-ns-resize touch-none"
+            title={`Scroll to scale ${group.title} · Drag up or down to move it`}
+            className={`pointer-events-auto absolute left-0 z-[8] touch-none ${draggingPane === group.key ? "cursor-grabbing" : "cursor-grab"}`}
             style={{ top: top + 25, width, height: Math.max(20, paneHeight - 34) }}
-            onPointerDown={(event) => event.stopPropagation()}
+            onPointerDown={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              if (event.button !== 0) return;
+              const target = event.currentTarget;
+              const pointerId = event.pointerId;
+              const startY = event.clientY;
+              const startPan = verticalPanByPane[group.key] ?? 0;
+              const plotHeight = Math.max(20, paneHeight - 34);
+              target.setPointerCapture(pointerId);
+              setDraggingPane(group.key);
+              const move = (moveEvent: PointerEvent) => {
+                if (moveEvent.pointerId !== pointerId) return;
+                moveEvent.preventDefault();
+                const nextPan = startPan + (moveEvent.clientY - startY) / plotHeight;
+                setVerticalPanByPane((current) => ({
+                  ...current,
+                  [group.key]: Math.max(-4, Math.min(4, nextPan)),
+                }));
+              };
+              const finish = (upEvent: PointerEvent) => {
+                if (upEvent.pointerId !== pointerId) return;
+                window.removeEventListener("pointermove", move);
+                window.removeEventListener("pointerup", finish);
+                window.removeEventListener("pointercancel", finish);
+                if (target.hasPointerCapture(pointerId)) target.releasePointerCapture(pointerId);
+                setDraggingPane((current) => current === group.key ? null : current);
+              };
+              window.addEventListener("pointermove", move, { passive: false });
+              window.addEventListener("pointerup", finish);
+              window.addEventListener("pointercancel", finish);
+            }}
             onWheel={(event) => {
               event.preventDefault();
               event.stopPropagation();
               scalePaneFromWheel(group.key, event.deltaY, event.deltaMode);
+            }}
+            onDoubleClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              setVerticalPanByPane((current) => {
+                if (current[group.key] === undefined) return current;
+                const next = { ...current };
+                delete next[group.key];
+                return next;
+              });
             }}
           />
         );
@@ -694,6 +739,12 @@ function ChartIndicatorPanes({
               event.preventDefault();
               event.stopPropagation();
               setVerticalScaleByPane((current) => {
+                if (current[group.key] === undefined) return current;
+                const next = { ...current };
+                delete next[group.key];
+                return next;
+              });
+              setVerticalPanByPane((current) => {
                 if (current[group.key] === undefined) return current;
                 const next = { ...current };
                 delete next[group.key];
