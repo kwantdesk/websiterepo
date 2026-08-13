@@ -13,6 +13,10 @@ import {
 } from "@/lib/databento";
 import { vendorMarketDataConfigured } from "@/lib/vendorMarketData.server";
 import { futuresTickSize } from "@/lib/eventBars";
+import {
+  marketDataGatewayToken,
+  marketDataGatewayUrlCandidates,
+} from "@/lib/marketDataGatewayEnv";
 import type { ValueAreaProfile } from "@/lib/valueArea";
 
 export const dynamic = "force-dynamic";
@@ -61,6 +65,69 @@ const valueAreaCache = globalValueAreaCache.__kwantdeskValueArea
   ?? (globalValueAreaCache.__kwantdeskValueArea = new Map<string, CachedProfile>());
 const valueAreaWindowCache = globalValueAreaCache.__kwantdeskValueAreaWindows
   ?? (globalValueAreaCache.__kwantdeskValueAreaWindows = new Map<string, CachedWindowProfile>());
+
+type ArchivedValueAreaProfile = ValueAreaProfile & {
+  provider: "Rithmic";
+  source: string;
+  integrityGaps: number;
+  droppedMessages: number;
+};
+
+function validArchivedProfile(value: unknown): value is ArchivedValueAreaProfile {
+  if (!value || typeof value !== "object") return false;
+  const profile = value as Partial<ArchivedValueAreaProfile>;
+  return [
+    profile.vah,
+    profile.val,
+    profile.poc,
+    profile.vwap,
+    profile.totalVolume,
+    profile.tradeRecords,
+    profile.firstTradeAt,
+    profile.lastTradeAt,
+  ].every((entry) => Number.isFinite(entry))
+    && Number(profile.totalVolume) > 0
+    && Number(profile.tradeRecords) > 0
+    && Number(profile.integrityGaps ?? 0) === 0
+    && Number(profile.droppedMessages ?? 0) === 0;
+}
+
+async function recordedWindowProfile(
+  symbol: string,
+  window: CmeProfileWindow,
+): Promise<ValueAreaProfile | null> {
+  const token = marketDataGatewayToken();
+  if (!token) return null;
+  const root = symbol.split(".")[0]?.toUpperCase();
+  if (!root) return null;
+  const query = new URLSearchParams({
+    symbol: root,
+    startMs: String(window.start),
+    endMs: String(window.end),
+  });
+  for (const origin of marketDataGatewayUrlCandidates()) {
+    try {
+      const response = await fetch(
+        `${origin}/v1/market-data/archive-value-area?${query}`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+          cache: "no-store",
+          signal: AbortSignal.timeout(240_000),
+        },
+      );
+      if (response.status === 404) return null;
+      if (!response.ok) {
+        await response.body?.cancel().catch(() => undefined);
+        continue;
+      }
+      const payload = await response.json() as unknown;
+      return validArchivedProfile(payload) ? payload : null;
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
 
 function durableWindowProfile(
   symbol: string,
@@ -176,6 +243,12 @@ async function firstCompleteProfile(
       if (valueAreaWindowCache.get(cacheKey)?.promise === promise) {
         valueAreaWindowCache.delete(cacheKey);
       }
+      const availableEndMs = Number((error as Error & { availableEndMs?: number })?.availableEndMs);
+      // Databento's historical edge trails the live close. A newer window can
+      // therefore be complete on CME while it is not complete in the vendor
+      // archive yet. Keep walking backwards instead of failing the entire
+      // value-area surface and painting no levels at all.
+      if (Number.isFinite(availableEndMs) && availableEndMs < window.end) continue;
       throw error;
     }
     if (profile && profile.tradeRecords >= minimumTrades) {
@@ -200,10 +273,19 @@ export async function buildValueAreaPayload(symbol: string, now: number): Promis
   const dailyInsideWeekly = latestDaily.start >= latestWeekly.start
     && latestDaily.end <= latestWeekly.end;
 
+  // The always-on Rithmic collector records the just-finished session before
+  // Databento's historical archive exposes its final hours. Prefer that exact
+  // completed tape for PD VAH/VAL/POC/VWAP so Asia and Globex never lose the
+  // newest levels while waiting for the historical vendor to catch up.
+  const recordedDaily = await recordedWindowProfile(symbol, latestDaily);
+  if (recordedDaily && recordedDaily.tradeRecords >= MINIMUM_DAILY_TRADES) {
+    daily = { profile: recordedDaily, window: latestDaily };
+  }
+
   // On the Sunday/Monday reopen, Friday's completed daily session is already
   // contained by the completed weekly profile. Build both accumulators during
   // one exact tick pass instead of downloading Friday twice.
-  if (dailyInsideWeekly) {
+  if (!daily && dailyInsideWeekly) {
     const [dailyProfile, weeklyProfile] = await nestedWindowProfiles(
       symbol,
       latestDaily,
@@ -230,7 +312,13 @@ export async function buildValueAreaPayload(symbol: string, now: number): Promis
     throw new Error("CME did not return a complete prior-session and prior-week trade profile.");
   }
 
-  const nextRefreshAt = nextCmeDailyCompletion(now) + 5_000;
+  const fellBackFromLatestDaily = daily.window.end < latestDaily.end;
+  // A delayed Databento edge must not pin yesterday's fallback until the next
+  // session close. Recheck regularly and promote the newest completed session
+  // as soon as the final historical trades become available.
+  const nextRefreshAt = fellBackFromLatestDaily
+    ? Math.min(nextCmeDailyCompletion(now) + 5_000, now + 5 * 60_000)
+    : nextCmeDailyCompletion(now) + 5_000;
   return {
     symbol,
     source: "CME",
@@ -295,10 +383,13 @@ export async function GET(request: Request) {
   }
 
   const promise = buildValueAreaPayload(symbol, now);
-  valueAreaCache.set(cacheKey, {
-    expiresAt: nextCmeDailyCompletion(now) + 60_000,
+  const cacheEntry: CachedProfile = {
+    // The resolved payload tightens or extends this. Five minutes is the
+    // correct provisional ceiling when the latest historical close is late.
+    expiresAt: now + 5 * 60_000,
     promise,
-  });
+  };
+  valueAreaCache.set(cacheKey, cacheEntry);
   // Detach the build from this request's lifetime. A cold build streams the
   // full prior-session and prior-week tick tape (measured: NQ ~15s, ES ~118s)
   // while chart clients abort at their own timeout - and an aborted invocation
@@ -310,6 +401,12 @@ export async function GET(request: Request) {
   after(promise.catch(() => {}));
   try {
     const payload = await promise;
+    const payloadRefreshAt = Date.parse(payload.nextRefreshAt);
+    if (valueAreaCache.get(cacheKey)?.promise === promise) {
+      cacheEntry.expiresAt = Number.isFinite(payloadRefreshAt)
+        ? Math.max(now + 30_000, payloadRefreshAt)
+        : now + 5 * 60_000;
+    }
     return NextResponse.json(payload, {
       headers: { "Cache-Control": asOfInput ? "private, max-age=86400, stale-while-revalidate=604800" : "public, s-maxage=60, stale-while-revalidate=300" },
     });

@@ -1,6 +1,7 @@
 import { createServer } from "node:http";
 import { URL } from "node:url";
 
+import { buildArchivedValueAreaProfile } from "./archive-value-area.mjs";
 import { replayArchiveIntoBook } from "./archive-replay.mjs";
 import { loadConfig } from "./config.mjs";
 import { discoverRithmicSystems, RithmicMarketDataClient } from "./rithmic-client.mjs";
@@ -1472,6 +1473,26 @@ const server = createServer(async (request, response) => {
         historicalAvailable: false,
         asOf: new Date().toISOString(),
       });
+    }
+    if (request.method === "GET" && url.pathname === "/v1/market-data/archive-value-area") {
+      const instrument = requestedInstrument(url);
+      const startMs = Number(url.searchParams.get("startMs") || 0);
+      const endMs = Number(url.searchParams.get("endMs") || 0);
+      const profile = await buildArchivedValueAreaProfile({
+        dir: config.recordDir,
+        exchange: instrument.exchange,
+        symbol: instrument.symbol,
+        startMs,
+        endMs,
+        tickSize: tickSize(instrument.symbol),
+        valueAreaPercent: 0.7,
+      });
+      if (!profile) {
+        return json(response, 404, {
+          error: "No complete recorded trade profile is available for that session.",
+        });
+      }
+      return json(response, 200, profile);
     }
     if (request.method === "GET" && url.pathname === "/v1/heatmap/snapshot") {
       const instrument = requestedInstrument(url);
