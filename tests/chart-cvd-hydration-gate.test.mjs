@@ -18,3 +18,9 @@ test("verified cached and downloaded flow release CVD without blocking price his
   assert.match(workspace, /setOrderFlowHistoryReady\(hasUsableOrderFlowHistory\(mergedCandles\)\)/);
   assert.match(workspace, /setCandles\(hasImmediateHistory \? immediateCandles : \[\]\)/);
 });
+
+test("verified Rithmic seed and live buckets release CVD if the archive backfill is delayed", () => {
+  assert.match(workspace, /onSeed:[\s\S]*?seededCandles[\s\S]*?hasUsableOrderFlowHistory\(seededCandles\)[\s\S]*?setOrderFlowHistoryReady\(true\)/);
+  assert.match(workspace, /onTrades:[\s\S]*?hasUsableOrderFlowHistory\(nextCandles\)[\s\S]*?setOrderFlowHistoryReady\(true\)/);
+  assert.match(workspace, /enrichCandlesWithInstitutionalTrades\([\s\S]*?records/);
+});

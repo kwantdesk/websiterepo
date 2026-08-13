@@ -3549,6 +3549,38 @@ function WorkspaceChartPane({
         latestMarketTradesRef.current = next;
         workspaceExecutionTape.set(workspaceOrderFlowKey(pane.symbol, pane.timeframe), next);
         setMarketTrades(next);
+
+        // A collector reconnect commonly provides a session seed before the
+        // separate historical HTTP backfill completes. Previously that seed
+        // was stored only for Big Trades, leaving the chart candles without
+        // aggressor fields and keeping CVD locked indefinitely. Fold the seed
+        // into the exact chart boundaries immediately; the later historical
+        // response still merges and supersedes it without double counting.
+        const seededCandles = isEventBasedChartInterval(pane.timeframe)
+          ? applyMarketTradesToEventBars(
+              latestCandlesRef.current,
+              records.map((record) => ({
+                timestamp: record.timestamp,
+                price: record.close,
+                size: Math.max(0, Number(record.volume ?? 0)),
+                trades: Math.max(1, Number(record.trades ?? 1)),
+                delta: Number(record.delta ?? 0),
+              })),
+              pane.timeframe,
+              pane.symbol,
+            )
+          : enrichCandlesWithInstitutionalTrades(
+              latestCandlesRef.current,
+              records,
+              latestCandlesRef.current.length,
+            );
+        if (seededCandles !== latestCandlesRef.current && seededCandles.length) {
+          latestCandlesRef.current = seededCandles;
+          setCandles(seededCandles);
+          if (hasUsableOrderFlowHistory(seededCandles)) {
+            setOrderFlowHistoryReady(true);
+          }
+        }
       },
       onTrades: (records) => {
         rithmicConnectedRef.current = true;
@@ -3605,6 +3637,13 @@ function WorkspaceChartPane({
             ), previousCandles);
         if (nextCandles !== previousCandles && nextCandles.length) {
           latestCandlesRef.current = nextCandles;
+          // Do not leave a functioning live CVD hidden merely because the
+          // older archive request is unavailable. Two or more verified chart
+          // buckets establish a real cumulative baseline and are safe to
+          // display while the full backfill continues in the background.
+          if (hasUsableOrderFlowHistory(nextCandles)) {
+            setOrderFlowHistoryReady(true);
+          }
           const latest = nextCandles.at(-1)!;
           window.dispatchEvent(new CustomEvent(LIVE_CHART_CANDLE_EVENT, {
             detail: { key: pane.id, candle: latest },
