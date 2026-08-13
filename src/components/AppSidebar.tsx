@@ -56,9 +56,11 @@ type AppSidebarProps = {
   accountTitle?: string;
   navigationMode?: "native" | "persistent";
   onAccountClick?: () => void;
+  onTradesClick?: () => void;
   onNavigateIntent?: (item: SidebarKey) => void;
   onNavigateStart?: (item: SidebarKey) => void;
   orientation?: "vertical" | "horizontal";
+  tradesActive?: boolean;
 };
 
 const horizontalItemBase =
@@ -130,9 +132,11 @@ function AppSidebar({
   accountTitle = "Account",
   navigationMode = "native",
   onAccountClick,
+  onTradesClick,
   onNavigateIntent,
   onNavigateStart,
   orientation = "vertical",
+  tradesActive = false,
 }: AppSidebarProps) {
   useEffect(() => {
     const body = document.body;
@@ -232,7 +236,7 @@ function AppSidebar({
 
   return (
     <header className="kwant-command-rail relative z-[70] flex w-full shrink-0 items-center border-b border-border bg-panel px-2">
-      <nav className="absolute left-1/2 top-1/2 flex w-[calc(100%-176px)] -translate-x-1/2 -translate-y-1/2 overflow-x-auto overflow-y-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" aria-label="Primary workspace">
+      <nav className="absolute left-1/2 top-1/2 flex w-[calc(100%-268px)] -translate-x-1/2 -translate-y-1/2 overflow-x-auto overflow-y-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" aria-label="Primary workspace">
         <div className="mx-auto flex min-w-max items-center gap-1">
           {navItems.map(({ key, href, label, title, icon: Icon }) => {
             const active = activeItem === key;
@@ -259,6 +263,18 @@ function AppSidebar({
       </nav>
 
       <div className="ml-auto flex shrink-0 items-center gap-1.5">
+        <button
+          type="button"
+          onClick={onTradesClick}
+          className={tradesActive ? horizontalItemActive : horizontalItemInactive}
+          title="Trades"
+          aria-label="Open trades menu"
+          aria-expanded={tradesActive}
+        >
+          <BarChart3 className="h-3.5 w-3.5" strokeWidth={1.55} />
+          <span>Trades</span>
+          {tradesActive ? <ActiveUnderline /> : null}
+        </button>
         <button
           type="button"
           onClick={onAccountClick}

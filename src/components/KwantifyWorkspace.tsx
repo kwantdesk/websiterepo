@@ -6286,6 +6286,8 @@ export default function KwantifyWorkspace({
   const [friendMessageUnreadCount, setFriendMessageUnreadCount] = useState(0);
   const [friendsOnlineCount, setFriendsOnlineCount] = useState(0);
   const [friendMessageToast, setFriendMessageToast] = useState<FriendMessageToast | null>(null);
+  const [showTradesMenu, setShowTradesMenu] = useState(false);
+  const [tradesMenuView, setTradesMenuView] = useState<"root" | "paper">("root");
   const [showBrokerModal, setShowBrokerModal] = useState(false);
   const [brokerSearch, setBrokerSearch] = useState("");
   const [brokerFavourites, setBrokerFavourites] = useState<string[]>([]);
@@ -11436,6 +11438,32 @@ export default function KwantifyWorkspace({
     setShowQuickPaperAccountForm(false);
   };
 
+  const openPaperAccountLinker = () => {
+    const paperBroker = brokerByName["Paper Trading"];
+    if (!paperBroker) return;
+    setShowTradesMenu(false);
+    setTradesMenuView("root");
+    setSelectedBroker(paperBroker);
+    setBrokerMode("Demo");
+    setShowQuickPaperAccountForm(paperTradingAccounts.length === 0);
+    setShowBrokerModal(true);
+  };
+
+  const openPaperOrderTicket = () => {
+    const account = selectedPaperTradingAccount ?? paperTradingAccounts[0] ?? null;
+    if (!account) {
+      openPaperAccountLinker();
+      return;
+    }
+    selectPaperTradingAccount(account.id);
+    setConnectedBroker("Paper Trading");
+    window.localStorage.setItem("olisa-connected-broker", "Paper Trading");
+    setBrokerMode("Demo");
+    setShowTradesMenu(false);
+    setTradesMenuView("root");
+    setRightPanel("order");
+  };
+
   const showPaperOrderMessage = (tone: "success" | "error", text: string) => {
     setOrderTicketMessage({ tone, text });
     window.setTimeout(() => {
@@ -11468,6 +11496,31 @@ export default function KwantifyWorkspace({
     const priceDistance = cashAmount / Math.max(paperPointValue(selectedInstrument) * quantity, Number.EPSILON);
     return snapPaperPrice(selectedInstrument, entryPrice + favorableDirection * priceDistance);
   };
+
+  const orderPreviewEntryPrice = orderType === "market"
+    ? orderSide === "buy" ? currentLivePrice.ask : currentLivePrice.bid
+    : Number(orderPrice || selectedMidPrice);
+  const orderPreviewTakeProfitPrice = tpEnabled && orderPreviewEntryPrice > 0
+    ? resolvePaperProtectionPrice("tp", orderTP, orderPreviewEntryPrice, selectedOrderQuantity)
+    : null;
+  const orderPreviewStopLossPrice = slEnabled && orderPreviewEntryPrice > 0
+    ? resolvePaperProtectionPrice("sl", orderSL, orderPreviewEntryPrice, selectedOrderQuantity)
+    : null;
+  const orderPreviewRewardUsd = orderPreviewTakeProfitPrice && orderPreviewEntryPrice > 0
+    ? Math.abs(orderPreviewTakeProfitPrice - orderPreviewEntryPrice) * paperPointValue(selectedInstrument) * selectedOrderQuantity
+    : 0;
+  const orderPreviewRiskUsd = orderPreviewStopLossPrice && orderPreviewEntryPrice > 0
+    ? Math.abs(orderPreviewStopLossPrice - orderPreviewEntryPrice) * paperPointValue(selectedInstrument) * selectedOrderQuantity
+    : 0;
+  const orderPreviewRiskReward = orderPreviewRiskUsd > 0 && orderPreviewRewardUsd > 0
+    ? orderPreviewRewardUsd / orderPreviewRiskUsd
+    : 0;
+  const orderTakeProfitPreviewLabel = orderPreviewTakeProfitPrice
+    ? `${formatPrice(orderPreviewTakeProfitPrice, selectedInstrument)} · +${formatDollar(orderPreviewRewardUsd)}`
+    : "--";
+  const orderStopLossPreviewLabel = orderPreviewStopLossPrice
+    ? `${formatPrice(orderPreviewStopLossPrice, selectedInstrument)} · -${formatDollar(orderPreviewRiskUsd)}`
+    : "--";
 
   const submitPaperOrder = () => {
     if (!selectedPaperTradingAccount) {
@@ -12084,10 +12137,171 @@ export default function KwantifyWorkspace({
           accountTitle={currentUsername ? `Sign out @${currentUsername}` : "Account"}
           navigationMode="persistent"
           onAccountClick={signOut}
+          onTradesClick={() => {
+            setShowTradesMenu((current) => {
+              if (current) setTradesMenuView("root");
+              return !current;
+            });
+          }}
           onNavigateIntent={warmWorkspaceSection}
           onNavigateStart={handleWorkspaceNavigationStart}
           orientation="horizontal"
+          tradesActive={showTradesMenu || rightPanel === "order"}
         />
+
+        {showTradesMenu && (
+          <>
+            <button
+              type="button"
+              aria-label="Close trades menu"
+              onClick={() => {
+                setShowTradesMenu(false);
+                setTradesMenuView("root");
+              }}
+              className="fixed inset-0 z-[78] cursor-default bg-transparent"
+            />
+            <section className="fixed right-2 top-[35px] z-[79] w-[330px] overflow-hidden rounded-[5px] border border-border bg-panel shadow-[0_18px_55px_rgba(0,0,0,0.62)]">
+              <header className="flex h-9 items-center justify-between border-b border-border px-3">
+                <div className="flex items-center gap-2">
+                  {tradesMenuView === "paper" && (
+                    <button
+                      type="button"
+                      onClick={() => setTradesMenuView("root")}
+                      className="flex h-6 w-6 items-center justify-center rounded-[3px] text-muted transition-colors hover:bg-surface hover:text-foreground"
+                      aria-label="Back to trades menu"
+                    >
+                      <ChevronLeft className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                  <BarChart3 className="h-3.5 w-3.5 text-primary" strokeWidth={1.55} />
+                  <span className="text-[10px] font-semibold uppercase tracking-[0.13em] text-foreground">
+                    {tradesMenuView === "paper" ? "Paper trading" : "Trades"}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowTradesMenu(false);
+                    setTradesMenuView("root");
+                  }}
+                  className="flex h-6 w-6 items-center justify-center rounded-[3px] text-muted transition-colors hover:bg-surface hover:text-foreground"
+                  aria-label="Close trades menu"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </header>
+
+              {tradesMenuView === "root" ? (
+                <div className="p-2.5">
+                  <button
+                    type="button"
+                    onClick={() => setTradesMenuView("paper")}
+                    className="group flex w-full items-center gap-3 rounded-[4px] border border-border bg-background/35 p-3 text-left transition-colors hover:border-primary/35 hover:bg-primary/[0.045]"
+                  >
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[4px] border border-primary/25 bg-primary/[0.08] text-primary">
+                      <Wallet className="h-4 w-4" strokeWidth={1.55} />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-center justify-between gap-2">
+                        <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-foreground">Paper trading</span>
+                        <span className={`h-1.5 w-1.5 rounded-full ${selectedPaperTradingAccount ? "bg-primary shadow-[0_0_7px_var(--primary)]" : "bg-muted/50"}`} />
+                      </span>
+                      <span className="mt-1 block truncate text-[10px] text-muted">
+                        {selectedPaperTradingAccount
+                          ? `${selectedPaperTradingAccount.name} linked · ${formatDollar(selectedPaperSummary?.equity ?? 0)} equity`
+                          : "Create or link a simulated futures account"}
+                      </span>
+                    </span>
+                    <ChevronRight className="h-3.5 w-3.5 text-muted transition-transform group-hover:translate-x-0.5 group-hover:text-primary" />
+                  </button>
+                  <p className="px-1 pb-0.5 pt-2.5 text-[9px] leading-4 text-muted">
+                    Paper orders use live chart prices, CME contract specifications, margin, and attached stop-loss and take-profit logic.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2.5 p-2.5">
+                  {paperTradingAccounts.length > 0 ? (
+                    <>
+                      <div className="rounded-[4px] border border-border bg-background/35 p-3">
+                        <div className="mb-2 flex items-center justify-between gap-3">
+                          <label className="text-[9px] font-semibold uppercase tracking-[0.13em] text-muted">Trading account</label>
+                          <span className="flex items-center gap-1.5 text-[9px] font-semibold uppercase tracking-[0.1em] text-primary">
+                            <span className="h-1.5 w-1.5 rounded-full bg-primary shadow-[0_0_6px_var(--primary)]" />
+                            Linked
+                          </span>
+                        </div>
+                        <KwantSelect
+                          value={String(selectedPaperTradingAccount?.id ?? paperTradingAccounts[0]?.id ?? "")}
+                          onChange={(event) => selectPaperTradingAccount(event.target.value)}
+                          className="h-8 w-full rounded-[3px] border border-border bg-surface px-2.5 text-[10px] text-foreground outline-none focus:border-primary/40"
+                        >
+                          {paperTradingAccounts.map((account) => (
+                            <option key={account.id} value={account.id}>
+                              {`${account.name} · ${account.balance} · ${account.leverage}`}
+                            </option>
+                          ))}
+                        </KwantSelect>
+                        <div className="mt-3 grid grid-cols-3 gap-px overflow-hidden rounded-[3px] border border-border bg-border">
+                          {[
+                            ["Balance", formatDollar(selectedPaperSummary?.balance ?? 0)],
+                            ["Equity", formatDollar(selectedPaperSummary?.equity ?? 0)],
+                            ["Available", formatDollar(selectedPaperSummary?.availableFunds ?? 0)],
+                          ].map(([label, value]) => (
+                            <div key={label} className="bg-panel px-2 py-2">
+                              <div className="text-[8px] font-medium uppercase tracking-[0.1em] text-muted">{label}</div>
+                              <div className="mt-1 truncate font-mono text-[10px] text-foreground">{value}</div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={openPaperOrderTicket}
+                        className="flex h-9 w-full items-center justify-center gap-2 rounded-[4px] border border-primary/40 bg-primary text-[10px] font-bold uppercase tracking-[0.11em] text-background transition-[filter] hover:brightness-110"
+                      >
+                        <Zap className="h-3.5 w-3.5" />
+                        Open order ticket
+                      </button>
+                    </>
+                  ) : (
+                    <div className="rounded-[4px] border border-border bg-background/35 p-4 text-center">
+                      <Wallet className="mx-auto h-5 w-5 text-primary" strokeWidth={1.55} />
+                      <div className="mt-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-foreground">No paper account linked</div>
+                      <p className="mt-1 text-[10px] leading-4 text-muted">Create a simulated futures account, then it will be available in every order ticket.</p>
+                      <button
+                        type="button"
+                        onClick={openPaperAccountLinker}
+                        className="mt-3 h-8 rounded-[3px] border border-primary/35 bg-primary px-4 text-[10px] font-bold uppercase tracking-[0.1em] text-background"
+                      >
+                        Create paper account
+                      </button>
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between border-t border-border pt-2.5">
+                    <button
+                      type="button"
+                      onClick={openPaperAccountLinker}
+                      className="text-[9px] font-semibold uppercase tracking-[0.1em] text-muted transition-colors hover:text-foreground"
+                    >
+                      {paperTradingAccounts.length > 0 ? "Link another account" : "Account setup"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowTradesMenu(false);
+                        setTradesMenuView("root");
+                        router.push("/accounts");
+                      }}
+                      className="flex items-center gap-1 text-[9px] font-semibold uppercase tracking-[0.1em] text-muted transition-colors hover:text-primary"
+                    >
+                      Manage accounts <ChevronRight className="h-3 w-3" />
+                    </button>
+                  </div>
+                </div>
+              )}
+            </section>
+          </>
+        )}
 
         {bottomWorkspaceSection === "charts" && (
         <header className="kwant-chart-command-deck relative grid shrink-0 grid-cols-[minmax(0,1fr)_auto] border-b border-border bg-panel">
