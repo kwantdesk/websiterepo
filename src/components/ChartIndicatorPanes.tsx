@@ -183,11 +183,14 @@ function ChartIndicatorPanes({
       if (!wheelZone || !paneRoot.contains(wheelZone)) return;
       const groupKey = wheelZone.dataset.indicatorPaneWheelZone;
       if (!groupKey || event.deltaY === 0) return;
+      const fixedScale = wheelZone.dataset.indicatorPaneFixedScale === "true";
 
       event.preventDefault();
       event.stopPropagation();
       event.stopImmediatePropagation();
-      scalePaneFromWheel(groupKey, event.deltaY, event.deltaMode);
+      if (!fixedScale) {
+        scalePaneFromWheel(groupKey, event.deltaY, event.deltaMode);
+      }
     };
 
     chartContainer.addEventListener("wheel", captureIndicatorWheel, {
@@ -655,19 +658,21 @@ function ChartIndicatorPanes({
       ))}
       {paneLayouts.map(({ group, top, height: paneHeight, collapsed }) => {
         if (collapsed) return null;
+        const fixedVolumePane = group.indicatorId === "volume";
         return (
           <div
             key={`indicator-pane-wheel-zone-${group.key}`}
             data-testid={`indicator-pane-wheel-zone-${group.key}`}
             data-indicator-pane-wheel-zone={group.key}
-            aria-label={`Scale ${group.title} pane vertically`}
-            title={`Scroll to scale ${group.title} · Drag up or down to move it`}
-            className={`pointer-events-auto absolute left-0 z-[8] touch-none ${draggingPane === group.key ? "cursor-grabbing" : "cursor-grab"}`}
+            data-indicator-pane-fixed-scale={fixedVolumePane ? "true" : undefined}
+            aria-label={fixedVolumePane ? "Volume pane" : `Scale ${group.title} pane vertically`}
+            title={fixedVolumePane ? "Volume scale is fixed" : `Scroll to scale ${group.title} · Drag up or down to move it`}
+            className={`pointer-events-auto absolute left-0 z-[8] touch-none ${fixedVolumePane ? "cursor-default" : draggingPane === group.key ? "cursor-grabbing" : "cursor-grab"}`}
             style={{ top: top + 25, width, height: Math.max(20, paneHeight - 34) }}
             onPointerDown={(event) => {
               event.preventDefault();
               event.stopPropagation();
-              if (event.button !== 0) return;
+              if (event.button !== 0 || fixedVolumePane) return;
               const target = event.currentTarget;
               const pointerId = event.pointerId;
               const startY = event.clientY;
@@ -699,11 +704,14 @@ function ChartIndicatorPanes({
             onWheel={(event) => {
               event.preventDefault();
               event.stopPropagation();
-              scalePaneFromWheel(group.key, event.deltaY, event.deltaMode);
+              if (!fixedVolumePane) {
+                scalePaneFromWheel(group.key, event.deltaY, event.deltaMode);
+              }
             }}
             onDoubleClick={(event) => {
               event.preventDefault();
               event.stopPropagation();
+              if (fixedVolumePane) return;
               setVerticalPanByPane((current) => {
                 if (current[group.key] === undefined) return current;
                 const next = { ...current };
