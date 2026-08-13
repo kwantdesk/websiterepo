@@ -100,6 +100,7 @@ import {
 } from "@/lib/chartIndicatorCatalog";
 import {
   clonePaneIndicatorState,
+  defaultIndicatorSettings,
   normalizePaneIndicatorState,
 } from "@/lib/chartIndicatorConfig";
 import { mergeGammaLevelsAtSamePrice, type ChartGammaLevelsPayload } from "@/lib/chartGammaLevels";
@@ -576,7 +577,29 @@ type StrategyItem = {
 };
 
 type WorkspaceLayout = "single" | "split-vertical" | "split-horizontal" | "quad" | "custom";
-type WorkspacePanelKind = "charts" | "zyon" | "gameplan" | "gamma" | "gexmap" | "liqmap" | "news" | "socials" | "journal";
+type WorkspacePagePanelKind = "charts" | "zyon" | "gameplan" | "gamma" | "gexmap" | "liqmap" | "news" | "socials" | "journal";
+type WorkspaceToolKind =
+  | "tool-footprint"
+  | "tool-volume-profile"
+  | "tool-depth-of-market"
+  | "tool-big-trades"
+  | "tool-imbalance-detector"
+  | "tool-absorption-indicator"
+  | "tool-queue-position-tracking"
+  | "tool-size-modification-tracking"
+  | "tool-order-size-distribution"
+  | "tool-iceberg-detection"
+  | "tool-front-running"
+  | "tool-passive-market-making"
+  | "tool-high-frequency-cancellation"
+  | "tool-order-id"
+  | "tool-age"
+  | "tool-skew"
+  | "tool-samaging-detector"
+  | "tool-order-lifetime-decay-divergence"
+  | "tool-multi-book-sweep-synchronization"
+  | "tool-ghost-liquidity";
+type WorkspacePanelKind = WorkspacePagePanelKind | WorkspaceToolKind;
 type WorkspacePane = {
   id: string;
   symbol: string;
@@ -776,12 +799,15 @@ const DEFAULT_WORKSPACE_PANES: WorkspacePane[] = [
   { id: "pane-4", symbol: "GC.v.0", broker: "Databento", timeframe: "5m", period: "5D", watchlistKey: makeWatchlistKey("GC.v.0", "Databento"), content: "charts", locked: false },
 ];
 
-const WORKSPACE_PANEL_OPTIONS: Array<{
-  id: WorkspacePanelKind;
+type WorkspacePanelOption<T extends WorkspacePanelKind = WorkspacePanelKind> = {
+  id: T;
   label: string;
   description: string;
   icon: typeof BarChart3;
-}> = [
+  indicatorId?: string;
+};
+
+const WORKSPACE_PANEL_OPTIONS: Array<WorkspacePanelOption<WorkspacePagePanelKind>> = [
   { id: "charts", label: "CHARTS", description: "Live chart and indicators", icon: BarChart3 },
   { id: "zyon", label: "ZYON", description: "AI quant analyst", icon: Sparkles },
   { id: "gameplan", label: "GAMEPLAN", description: "Live session plan", icon: FileText },
@@ -793,8 +819,44 @@ const WORKSPACE_PANEL_OPTIONS: Array<{
   { id: "journal", label: "JOURNAL", description: "Trades and analysis", icon: FileText },
 ];
 
+const WORKSPACE_TOOL_OPTIONS: Array<WorkspacePanelOption<WorkspaceToolKind>> = [
+  { id: "tool-footprint", label: "FOOTPRINT", description: "Bid × ask volume at every traded price", icon: Grid3X3, indicatorId: "deep-print-footprint" },
+  { id: "tool-volume-profile", label: "VOLUME PROFILE", description: "Volume, delta, POC and value area by price", icon: BarChart3, indicatorId: "kwant-profile" },
+  { id: "tool-depth-of-market", label: "DEPTH OF MARKET", description: "Full-depth resting and traded liquidity ladder", icon: List, indicatorId: "depth-of-market" },
+  { id: "tool-big-trades", label: "BIG TRADES", description: "Large aggressive executions anchored to price", icon: Zap, indicatorId: "big-trades" },
+  { id: "tool-imbalance-detector", label: "IMBALANCE DETECTOR", description: "Stacked and diagonal bid/ask imbalance", icon: Layers3, indicatorId: "imbalance-tracker" },
+  { id: "tool-absorption-indicator", label: "ABSORPTION INDICATOR", description: "Aggression absorbed by resting liquidity", icon: Eye },
+  { id: "tool-queue-position-tracking", label: "QUEUE POSITION TRACKING", description: "Order priority and queue movement by price", icon: List },
+  { id: "tool-size-modification-tracking", label: "SIZE MODIFICATION TRACKING", description: "Resting size added, reduced and replaced", icon: Repeat },
+  { id: "tool-order-size-distribution", label: "ORDER SIZE DISTRIBUTION", description: "Distribution of displayed and executed order size", icon: BarChart3 },
+  { id: "tool-iceberg-detection", label: "ICEBERG DETECTION", description: "Repeated replenishment and hidden-size inference", icon: EyeOff },
+  { id: "tool-front-running", label: "FRONT RUNNING", description: "Liquidity stepping ahead of identified orders", icon: ArrowUp },
+  { id: "tool-passive-market-making", label: "PASSIVE MARKET MAKING", description: "Passive quote behaviour and inventory pressure", icon: Layers3 },
+  { id: "tool-high-frequency-cancellation", label: "HIGH FREQUENCY CANCELLATION", description: "Rapid cancellation intensity and bursts", icon: Zap },
+  { id: "tool-order-id", label: "ORDER ID", description: "MBO order identity and lifecycle explorer", icon: Search },
+  { id: "tool-age", label: "AGE", description: "Resting order age across the live book", icon: Info },
+  { id: "tool-skew", label: "SKEW", description: "Bid/ask book and execution skew", icon: ArrowLeftRight },
+  { id: "tool-samaging-detector", label: "SAMAGING DETECTOR", description: "Suspicious staged order-behaviour detector", icon: AlertTriangle },
+  { id: "tool-order-lifetime-decay-divergence", label: "ORDER LIFETIME DECAY DIVERGENCE", description: "Price divergence against order survival", icon: Repeat },
+  { id: "tool-multi-book-sweep-synchronization", label: "MULTI-BOOK SWEEP SYNCHRONIZATION", description: "Synchronized sweeps across related futures books", icon: ArrowLeftRight },
+  { id: "tool-ghost-liquidity", label: "GHOST LIQUIDITY", description: "Liquidity that appears, retreats and reappears", icon: EyeOff },
+];
+
+const ALL_WORKSPACE_PANEL_OPTIONS: WorkspacePanelOption[] = [
+  ...WORKSPACE_PANEL_OPTIONS,
+  ...WORKSPACE_TOOL_OPTIONS,
+];
+
+function isWorkspaceToolKind(value: unknown): value is WorkspaceToolKind {
+  return WORKSPACE_TOOL_OPTIONS.some((option) => option.id === value);
+}
+
+function isWorkspaceChartKind(value: WorkspacePanelKind | null): value is "charts" | WorkspaceToolKind {
+  return value === "charts" || isWorkspaceToolKind(value);
+}
+
 function isWorkspacePanelKind(value: unknown): value is WorkspacePanelKind {
-  return WORKSPACE_PANEL_OPTIONS.some((option) => option.id === value);
+  return ALL_WORKSPACE_PANEL_OPTIONS.some((option) => option.id === value);
 }
 
 function displayCmeSymbol(symbol: string) {
@@ -6835,7 +6897,7 @@ export default function KwantifyWorkspace({
     () => workspacePanes.find((pane) => pane.id === activePaneId) ?? workspacePanes[0] ?? DEFAULT_WORKSPACE_PANES[0],
     [activePaneId, workspacePanes],
   );
-  const activePaneIsChart = activeWorkspacePane.content === "charts";
+  const activePaneIsChart = isWorkspaceChartKind(activeWorkspacePane.content);
   const activePaneLevelVisibility = paneLevelVisibility[activePaneId] ?? EMPTY_PANE_LEVEL_VISIBILITY;
   const gammaLevelsEnabled = activePaneLevelVisibility.gamma;
   const historicalStructureEnabled = activePaneLevelVisibility.structure;
@@ -11895,9 +11957,29 @@ export default function KwantifyWorkspace({
   const selectWorkspacePanelContent = async (paneId: string, content: WorkspacePanelKind) => {
     setWorkspacePanelTransition({ paneId, content });
     setActivePaneId(paneId);
+    const tool = WORKSPACE_TOOL_OPTIONS.find((option) => option.id === content);
+    const indicatorId = tool?.indicatorId;
+    if (indicatorId && CHART_INDICATOR_BY_ID.has(indicatorId)) {
+      setChartIndicatorsSuppressed(false);
+      setPaneIndicators((current) => {
+        const existing = current[paneId] ?? [];
+        const installed = existing.find((instance) => instance.indicatorId === indicatorId);
+        const next = installed
+          ? existing.map((instance) => instance.instanceId === installed.instanceId
+            ? { ...instance, enabled: true }
+            : instance)
+          : [...existing, {
+              instanceId: `${indicatorId}-${crypto.randomUUID()}`,
+              indicatorId,
+              enabled: true,
+              settings: defaultIndicatorSettings(indicatorId, chartSettings),
+            }];
+        return { ...current, [paneId]: next };
+      });
+    }
     await preloadWorkspaceModule(content).catch(() => null);
     updateWorkspacePane(paneId, { content });
-    if (content !== "charts") {
+    if (!isWorkspaceChartKind(content)) {
       setWorkspacePanelPickerPaneId(null);
       setWorkspacePanelTransition(null);
     }
@@ -11911,7 +11993,7 @@ export default function KwantifyWorkspace({
 
   function renderWorkspacePanelPicker(pane: WorkspacePane, overlay = false) {
     const pendingPanel = workspacePanelTransition?.paneId === pane.id
-      ? WORKSPACE_PANEL_OPTIONS.find((option) => option.id === workspacePanelTransition.content)
+      ? ALL_WORKSPACE_PANEL_OPTIONS.find((option) => option.id === workspacePanelTransition.content)
       : null;
     if (pendingPanel) {
       const PendingIcon = pendingPanel.icon;
@@ -11932,7 +12014,7 @@ export default function KwantifyWorkspace({
     }
     return (
       <div className={`${overlay ? "absolute inset-0 z-[100]" : "h-full"} flex min-h-0 items-center justify-center overflow-y-auto bg-background/95 p-4 backdrop-blur-xl`}>
-        <div className="my-auto w-full max-w-[620px] rounded-2xl border border-border bg-panel/95 p-4 shadow-2xl shadow-black/40 sm:p-5">
+        <div className="my-auto w-full max-w-[840px] rounded-2xl border border-border bg-panel/95 p-4 shadow-2xl shadow-black/40 sm:p-5">
           <div className="mb-4 flex items-start justify-between gap-3">
             <div>
               <div className="flex items-center gap-2 text-primary">
@@ -11952,6 +12034,10 @@ export default function KwantifyWorkspace({
                 <X className="h-4 w-4" />
             </button>
           </div>
+          <div className="mb-2 flex items-center gap-2 text-[9px] font-semibold uppercase tracking-[0.14em] text-muted">
+            <Layers3 className="h-3.5 w-3.5 text-primary" />
+            <span>Workspaces</span>
+          </div>
           <div className="grid grid-cols-1 gap-2 min-[440px]:grid-cols-2 min-[760px]:grid-cols-3">
             {WORKSPACE_PANEL_OPTIONS.map((option) => {
               const Icon = option.icon;
@@ -11970,6 +12056,33 @@ export default function KwantifyWorkspace({
                   <span className="min-w-0">
                     <span className="block truncate text-[10px] font-semibold text-foreground">{option.label}</span>
                     <span className="mt-0.5 block truncate text-[8px] text-muted">{option.description}</span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          <div className="my-4 border-t border-border" />
+          <div className="mb-2 flex items-center gap-2 text-[9px] font-semibold uppercase tracking-[0.14em] text-muted">
+            <BarChart3 className="h-3.5 w-3.5 text-primary" />
+            <span>Tools &amp; Indicators</span>
+          </div>
+          <div className="grid grid-cols-1 gap-2 min-[440px]:grid-cols-2 min-[760px]:grid-cols-3">
+            {WORKSPACE_TOOL_OPTIONS.map((option) => {
+              const Icon = option.icon;
+              return (
+                <button
+                  key={option.id}
+                  type="button"
+                  onClick={() => void selectWorkspacePanelContent(pane.id, option.id)}
+                  disabled={workspacePanelTransition?.paneId === pane.id}
+                  className={`group flex min-h-[66px] items-center gap-3 rounded-xl border p-3 text-left transition-all hover:-translate-y-0.5 hover:border-primary/45 hover:bg-primary/[0.07] disabled:pointer-events-none ${pane.content === option.id || workspacePanelTransition?.content === option.id ? "border-primary/40 bg-primary/[0.08]" : "border-border bg-surface/60"}`}
+                >
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary transition-transform group-hover:scale-105">
+                    <Icon className="h-[17px] w-[17px]" />
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block text-[9px] font-semibold leading-3 text-foreground">{option.label}</span>
+                    <span className="mt-1 block text-[8px] leading-3 text-muted">{option.description}</span>
                   </span>
                 </button>
               );
@@ -12027,8 +12140,8 @@ export default function KwantifyWorkspace({
       ?? activeWorkspacePane;
     const paneMoveLocked = workspaceLocked || pane.locked;
     if (pane.content === null) return renderWorkspacePanelPicker(pane);
-    if (pane.content !== "charts") {
-      const option = WORKSPACE_PANEL_OPTIONS.find((candidate) => candidate.id === pane.content);
+    if (!isWorkspaceChartKind(pane.content)) {
+      const option = ALL_WORKSPACE_PANEL_OPTIONS.find((candidate) => candidate.id === pane.content);
       const Icon = option?.icon ?? Layers3;
       return (
         <div className="relative flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-border bg-panel">
@@ -12125,7 +12238,7 @@ export default function KwantifyWorkspace({
         gameplanOverlay={gameplanRoot ? gameplanChartOverlays[gameplanRoot] ?? null : null}
         loadingMessage={activePaneId === pane.id ? chartLoadingMessage : ""}
         onInitialSettled={workspacePanelTransition?.paneId === pane.id
-          && workspacePanelTransition.content === "charts"
+          && isWorkspaceChartKind(workspacePanelTransition.content)
           ? () => {
               setWorkspacePanelTransition(null);
               setWorkspacePanelPickerPaneId((openPaneId) => openPaneId === pane.id ? null : openPaneId);
@@ -12140,6 +12253,8 @@ export default function KwantifyWorkspace({
       />
     );
     if (floating) return chartPane;
+    const chartOption = ALL_WORKSPACE_PANEL_OPTIONS.find((candidate) => candidate.id === pane.content);
+    const ChartPanelIcon = chartOption?.icon ?? BarChart3;
     return (
       <div className="relative flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-border bg-panel">
         <div className="kwant-workspace-pane-header flex shrink-0 items-center justify-between border-b border-border bg-panel/95 px-2.5">
@@ -12156,8 +12271,8 @@ export default function KwantifyWorkspace({
             className={`flex h-7 min-w-0 flex-1 items-center justify-start gap-2 rounded-lg px-2 text-[9px] font-semibold text-foreground hover:bg-surface ${paneMoveLocked ? "cursor-default" : "cursor-grab active:cursor-grabbing"}`}
             title={paneMoveLocked ? "This chart is locked in place" : "Drag to dock this chart, or click to change it"}
           >
-            <BarChart3 className="h-3.5 w-3.5 shrink-0 text-primary" />
-            <span className="truncate">CHARTS</span>
+            <ChartPanelIcon className="h-3.5 w-3.5 shrink-0 text-primary" />
+            <span className="truncate">{chartOption?.label ?? "CHARTS"}</span>
             <span className="hidden truncate font-mono text-[8px] font-normal text-muted sm:inline">
               {displayCmeSymbol(pane.symbol)} · {formatChartInterval(pane.timeframe)}
             </span>
@@ -12207,7 +12322,7 @@ export default function KwantifyWorkspace({
     const pane = workspacePanes.find((candidate) => candidate.id === floating.paneId);
     if (!pane) return null;
     const option = pane.content
-      ? WORKSPACE_PANEL_OPTIONS.find((candidate) => candidate.id === pane.content)
+      ? ALL_WORKSPACE_PANEL_OPTIONS.find((candidate) => candidate.id === pane.content)
       : null;
     const Icon = option?.icon ?? BarChart3;
     return (
@@ -12239,7 +12354,7 @@ export default function KwantifyWorkspace({
               {option?.label ?? displayCmeSymbol(pane.symbol)}
             </span>
             <span className="hidden truncate font-mono text-[8px] text-muted sm:inline">
-              {pane.content === "charts" ? `${displayCmeSymbol(pane.symbol)} · ${formatChartInterval(pane.timeframe)}` : "FLOATING WINDOW"}
+              {isWorkspaceChartKind(pane.content) ? `${displayCmeSymbol(pane.symbol)} · ${formatChartInterval(pane.timeframe)}` : "FLOATING WINDOW"}
             </span>
           </div>
           <div className="flex shrink-0 items-center gap-0.5">
@@ -12348,7 +12463,7 @@ export default function KwantifyWorkspace({
           }`}
         >
           {renderWorkspacePane(node.paneId)}
-          {nodePane?.content === "charts" && workspacePanelPickerPaneId === node.paneId
+          {nodePane && isWorkspaceChartKind(nodePane.content) && workspacePanelPickerPaneId === node.paneId
             ? renderWorkspacePanelPicker(nodePane, true)
             : null}
           {draggedWorkspacePaneId && draggedWorkspacePaneId !== node.paneId ? (
@@ -12616,7 +12731,7 @@ export default function KwantifyWorkspace({
           )}
           <div
             aria-disabled={!activePaneIsChart}
-            title={activePaneIsChart ? "Controls apply to the selected chart" : `${WORKSPACE_PANEL_OPTIONS.find((option) => option.id === activeWorkspacePane.content)?.label ?? "Panel"} selected — choose a chart to use chart controls`}
+            title={activePaneIsChart ? "Controls apply to the selected chart" : `${ALL_WORKSPACE_PANEL_OPTIONS.find((option) => option.id === activeWorkspacePane.content)?.label ?? "Panel"} selected — choose a chart to use chart controls`}
             className={`relative col-start-2 row-start-2 flex min-w-0 items-center justify-self-center px-1 ${!activePaneIsChart ? "pointer-events-none opacity-30" : ""} ${
             showAllTF
               ? "overflow-visible"
@@ -15160,7 +15275,7 @@ export default function KwantifyWorkspace({
         >
           <Grid3X3 className="h-3.5 w-3.5 shrink-0 text-primary" />
           <span className="truncate">
-            {WORKSPACE_PANEL_OPTIONS.find((option) => option.id === workspacePanes.find((pane) => pane.id === draggedWorkspacePaneId)?.content)?.label ?? "CHARTS"}
+            {ALL_WORKSPACE_PANEL_OPTIONS.find((option) => option.id === workspacePanes.find((pane) => pane.id === draggedWorkspacePaneId)?.content)?.label ?? "CHARTS"}
           </span>
           <span className="ml-auto text-[7px] text-primary">SNAP</span>
         </div>,

@@ -14,9 +14,54 @@ const gexMapSource = await fs.readFile(
 test("chart layouts expose only the governed mixed-workspace choices", () => {
   assert.match(
     workspaceSource,
-    /type WorkspacePanelKind = "charts" \| "zyon" \| "gameplan" \| "gamma" \| "gexmap" \| "liqmap" \| "news" \| "socials" \| "journal";/,
+    /type WorkspacePagePanelKind = "charts" \| "zyon" \| "gameplan" \| "gamma" \| "gexmap" \| "liqmap" \| "news" \| "socials" \| "journal";/,
   );
-  assert.doesNotMatch(workspaceSource, /type WorkspacePanelKind[^;]*(?:backtesting|levelz)/);
+  assert.match(workspaceSource, /type WorkspacePanelKind = WorkspacePagePanelKind \| WorkspaceToolKind/);
+  assert.doesNotMatch(workspaceSource, /type WorkspacePagePanelKind[^;]*(?:backtesting|levelz)/);
+});
+
+test("workspace picker separates pages from dedicated order-flow tools", () => {
+  assert.match(workspaceSource, />Workspaces</);
+  assert.match(workspaceSource, />Tools &amp; Indicators</);
+  for (const label of [
+    "FOOTPRINT",
+    "VOLUME PROFILE",
+    "DEPTH OF MARKET",
+    "BIG TRADES",
+    "IMBALANCE DETECTOR",
+    "ABSORPTION INDICATOR",
+    "QUEUE POSITION TRACKING",
+    "SIZE MODIFICATION TRACKING",
+    "ORDER SIZE DISTRIBUTION",
+    "ICEBERG DETECTION",
+    "FRONT RUNNING",
+    "PASSIVE MARKET MAKING",
+    "HIGH FREQUENCY CANCELLATION",
+    "ORDER ID",
+    "AGE",
+    "SKEW",
+    "SAMAGING DETECTOR",
+    "ORDER LIFETIME DECAY DIVERGENCE",
+    "MULTI-BOOK SWEEP SYNCHRONIZATION",
+    "GHOST LIQUIDITY",
+  ]) {
+    assert.match(workspaceSource, new RegExp(`label: "${label}"`));
+  }
+});
+
+test("mature tool panels attach their real chart engine and remain normal saved chart panes", () => {
+  for (const indicatorId of [
+    "deep-print-footprint",
+    "kwant-profile",
+    "depth-of-market",
+    "big-trades",
+    "imbalance-tracker",
+  ]) {
+    assert.match(workspaceSource, new RegExp(`indicatorId: "${indicatorId}"`));
+  }
+  assert.match(workspaceSource, /defaultIndicatorSettings\(indicatorId, chartSettings\)/);
+  assert.match(workspaceSource, /isWorkspaceChartKind\(activeWorkspacePane\.content\)/);
+  assert.match(workspaceSource, /!isWorkspaceChartKind\(pane\.content\)/);
 });
 
 test("mixed-workspace picker and selected headers use uppercase product labels", () => {
@@ -49,10 +94,10 @@ test("an empty added panel can be cancelled back to the previous workspace", () 
 
 test("a newly selected chart stays behind the picker until its first usable state settles", () => {
   assert.match(workspaceSource, /await preloadWorkspaceModule\(content\)/);
-  assert.match(workspaceSource, /content !== "charts"/);
+  assert.match(workspaceSource, /!isWorkspaceChartKind\(content\)/);
   assert.match(workspaceSource, /onInitialSettled/);
-  assert.match(workspaceSource, /nodePane\?\.content === "charts" && workspacePanelPickerPaneId === node\.paneId/);
-  assert.match(workspaceSource, /if \(!loading\) onInitialSettled\?\.\(\)/);
+  assert.match(workspaceSource, /isWorkspaceChartKind\(nodePane\.content\) && workspacePanelPickerPaneId === node\.paneId/);
+  assert.match(workspaceSource, /if \(!chartIsLoading\) onInitialSettled\?\.\(\)/);
 });
 
 test("mixed panel selection is saved in the existing pane and preset models", () => {
