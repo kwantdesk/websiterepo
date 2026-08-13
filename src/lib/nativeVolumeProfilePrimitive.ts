@@ -221,14 +221,17 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
               Math.max(64, viewportWidthLimit),
               Math.max(0, sessionWidth * style.widthPercent / 100),
             );
-        // A daily profile has two independent halves: volume/ask to the right
-        // of its spine and signed delta/bid to the left. When the session open
-        // scrolls away, reserve one profile width before the spine instead of
-        // putting the spine at x=2 and clipping (or stacking) the rear half.
+        // A daily profile has two independent halves: volume to the right of
+        // its spine and signed delta to the left. Once its session anchor has
+        // moved beyond the viewport, dock the volume-only half to the left
+        // edge. Delta returns automatically when the anchor is visible again.
         const splitPinnedDaily = pinnedLeft && !pinnedRight && profile.period === "daily";
-        const anchorX = splitPinnedDaily
-          ? Math.min(mediaSize.width - 2, profileWidth + 2)
-          : rawAnchorX;
+        const volumeOnlyPinnedDaily = splitPinnedDaily && style.mode === "delta-volume";
+        const anchorX = volumeOnlyPinnedDaily
+          ? rawAnchorX
+          : splitPinnedDaily
+            ? Math.min(mediaSize.width - 2, profileWidth + 2)
+            : rawAnchorX;
         if (!pinned && (
           Math.max(anchorX, endX) + profileWidth < 0
           || Math.min(anchorX, endX) - profileWidth > mediaSize.width
@@ -368,7 +371,7 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
                 pinnedRight ? [radius, 0, 0, radius] : [0, radius, radius, 0],
               );
             }
-            if (style.showDelta) {
+            if (style.showDelta && !volumeOnlyPinnedDaily) {
               addBar(
                 delta >= 0 ? positiveDeltaPath : negativeDeltaPath,
                 pinned && !splitPinnedDaily
@@ -424,7 +427,7 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
               ? bidWidth
               : style.mode === "delta"
                 ? delta < 0 ? deltaWidth : 0
-                : style.showDelta ? deltaWidth : 0;
+                : style.showDelta && !volumeOnlyPinnedDaily ? deltaWidth : 0;
             const rightExtent = style.mode === "bid-ask"
               ? askWidth
               : style.mode === "delta"
