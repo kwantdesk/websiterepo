@@ -309,6 +309,7 @@ function ExposurePanel({
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [strikeViewportHeight, setStrikeViewportHeight] = useState(0);
+  const [followingSpot, setFollowingSpot] = useState(true);
   const { current, previous } = useMemo(
     () => payload ? buildSnapshots(payload, selectedTimestamp, stepMinutes) : { current: new Map(), previous: new Map() },
     [payload, selectedTimestamp, stepMinutes],
@@ -347,10 +348,14 @@ function ExposurePanel({
   }, []);
 
   useLayoutEffect(() => {
-    if (spotStrike === null) return;
-    const frame = window.requestAnimationFrame(centerLiveStrike);
+    if (!followingSpot || spotStrike === null) return;
+    const frame = window.requestAnimationFrame(() => centerLiveStrike());
     return () => window.cancelAnimationFrame(frame);
-  }, [centerLiveStrike, centeringIdentity, spotStrike, strikeViewportHeight]);
+  }, [centerLiveStrike, centeringIdentity, followingSpot, spotStrike, strikeViewportHeight]);
+
+  useEffect(() => {
+    setFollowingSpot(true);
+  }, [viewIdentity]);
 
   useEffect(() => {
     const container = scrollRef.current;
@@ -361,7 +366,7 @@ function ExposurePanel({
       const nextHeight = container.clientHeight;
       setStrikeViewportHeight((current) => Math.abs(current - nextHeight) > 0.5 ? nextHeight : current);
       window.cancelAnimationFrame(frame);
-      frame = window.requestAnimationFrame(centerLiveStrike);
+      if (followingSpot) frame = window.requestAnimationFrame(() => centerLiveStrike());
     };
     const observer = new ResizeObserver(measureAndCenter);
     observer.observe(container);
@@ -370,7 +375,7 @@ function ExposurePanel({
       observer.disconnect();
       window.cancelAnimationFrame(frame);
     };
-  }, [centerLiveStrike]);
+  }, [centerLiveStrike, followingSpot]);
 
   useEffect(() => {
     const container = scrollRef.current;
@@ -397,6 +402,7 @@ function ExposurePanel({
       if (Math.abs(nextScroll - container.scrollTop) < 0.5) return;
       event.preventDefault();
       event.stopPropagation();
+      setFollowingSpot(false);
       container.scrollTop = nextScroll;
     };
 
@@ -456,10 +462,13 @@ function ExposurePanel({
         <span className="gex-map-change-column text-right">{stepMinutes}m change</span>
       </div>
 
-      <div
-        ref={scrollRef}
-        className="relative min-h-0 flex-1 touch-pan-y overscroll-contain overflow-y-auto bg-chart-background"
-      >
+      <div className="relative min-h-0 flex-1 bg-chart-background">
+        <div
+          ref={scrollRef}
+          onPointerDown={() => setFollowingSpot(false)}
+          onTouchStart={() => setFollowingSpot(false)}
+          className="relative h-full min-h-0 touch-pan-y overscroll-contain overflow-y-auto bg-chart-background"
+        >
         {loading && !payload ? (
           <KwantLoader
             className="h-full"
@@ -524,6 +533,21 @@ function ExposurePanel({
           <div className="pointer-events-none absolute right-2 top-2 flex items-center gap-1 rounded-md border border-border bg-panel/90 px-2 py-1 text-[8px] text-muted">
             <Loader2 className="h-3 w-3 animate-spin text-primary" /> Syncing
           </div>
+        ) : null}
+        </div>
+        {!followingSpot && spotStrike !== null ? (
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              setFollowingSpot(true);
+              window.requestAnimationFrame(() => centerLiveStrike());
+            }}
+            className="absolute bottom-2 right-2 z-10 flex h-7 items-center gap-1.5 rounded-[3px] border border-primary/30 bg-panel/95 px-2 text-[8px] font-semibold text-primary shadow-lg backdrop-blur hover:bg-primary/10"
+            title="Centre the live strike and resume following price"
+          >
+            <ScanLine className="h-3 w-3" /> Centre price
+          </button>
         ) : null}
       </div>
 
