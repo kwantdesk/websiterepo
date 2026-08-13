@@ -1546,7 +1546,7 @@ function CandleCountdownBadge({
 
   return (
     <div
-      className="pointer-events-none absolute z-10 flex h-7 w-[54px] items-center justify-center rounded-lg bg-primary px-1.5 font-mono text-[10px] font-semibold leading-none text-background shadow-lg shadow-black/25"
+      className="pointer-events-none absolute z-10 flex h-3.5 w-[27px] items-center justify-center rounded-[3px] bg-primary px-0.5 font-mono text-[6px] font-semibold leading-none text-background shadow-sm shadow-black/25"
       style={{ bottom, right: rightInset }}
       title="Time until next candle opens"
     >

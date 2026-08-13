@@ -5685,7 +5685,7 @@ function WorkspaceChartPane({
         </div>
       ) : null}
       <div
-        className="absolute left-3 z-20 flex h-8 items-center gap-0.5 rounded-lg border border-border bg-panel/80 px-1 backdrop-blur"
+        className="absolute left-3 z-20 flex h-4 items-center gap-px rounded-[3px] border border-border bg-panel/80 px-0.5 backdrop-blur"
         style={{ bottom: 56 + lowerIndicatorHeight }}
       >
         {["1D", "5D", "1W", "1M", "3M", "6M", "1Y", "All"].map((range) => (
@@ -5695,7 +5695,7 @@ function WorkspaceChartPane({
               event.stopPropagation();
               onSelectPeriod(range);
             }}
-            className={"rounded px-2 py-1 text-[11px] transition-all " + (period === range ? "bg-surface text-foreground font-medium" : "text-muted hover:text-foreground")}
+            className={"rounded-[2px] px-1 py-0 text-[6px] leading-none transition-all " + (period === range ? "bg-surface text-foreground font-medium" : "text-muted hover:text-foreground")}
           >
             {range}
           </button>
