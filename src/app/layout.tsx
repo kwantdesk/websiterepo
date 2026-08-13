@@ -6,6 +6,20 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Kwant Desk",
   description: "Private quantitative research workspace.",
+  applicationName: "Kwant Desk",
+  manifest: "/manifest.webmanifest",
+  icons: {
+    icon: [
+      { url: "/icons/kwantdesk-app-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icons/kwantdesk-app-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: [{ url: "/icons/kwantdesk-app-192.png", sizes: "192x192", type: "image/png" }],
+  },
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "Kwant Desk",
+  },
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
