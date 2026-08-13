@@ -1039,20 +1039,6 @@ function workspaceDropZoneAtPoint(element: HTMLElement, clientX: number, clientY
   return "center";
 }
 
-function collapseWorkspaceSplit(
-  node: WorkspaceLayoutNode,
-  splitId: string,
-  remove: "first" | "second",
-): WorkspaceLayoutNode {
-  if (node.type === "pane") return node;
-  if (node.id === splitId) return remove === "first" ? node.second : node.first;
-  return {
-    ...node,
-    first: collapseWorkspaceSplit(node.first, splitId, remove),
-    second: collapseWorkspaceSplit(node.second, splitId, remove),
-  };
-}
-
 function removeWorkspacePane(node: WorkspaceLayoutNode, paneId: string): WorkspaceLayoutNode | null {
   if (node.type === "pane") return node.paneId === paneId ? null : node;
   const first = removeWorkspacePane(node.first, paneId);
@@ -10536,13 +10522,20 @@ export default function KwantifyWorkspace({
     event.stopPropagation();
     const divider = event.currentTarget;
     const pointerId = event.pointerId;
-    divider.setPointerCapture(pointerId);
     const splitContainer = divider.parentElement;
     if (!splitContainer) return;
+    const firstPanel = splitContainer.children.item(0) as HTMLElement | null;
+    const secondPanel = splitContainer.children.item(2) as HTMLElement | null;
+    if (!firstPanel || !secondPanel) return;
+    divider.setPointerCapture(pointerId);
     const rect = splitContainer.getBoundingClientRect();
-    let rawRatio = initialRatio;
     let visualRatio = initialRatio;
+    let targetRatio = initialRatio;
+    let dragActive = true;
     let animationFrame: number | null = null;
+    const axisSize = Math.max(axis === "x" ? rect.width : rect.height, 1);
+    const minimumRatio = Math.min(18, Math.max(4, 80 / axisSize * 100));
+    const maximumRatio = 100 - minimumRatio;
     const previousCursor = document.body.style.cursor;
     const previousUserSelect = document.body.style.userSelect;
     document.body.style.cursor = axis === "x" ? "col-resize" : "row-resize";
@@ -10550,18 +10543,34 @@ export default function KwantifyWorkspace({
 
     const paintTargetedSplit = () => {
       animationFrame = null;
-      splitContainer.style.setProperty("--workspace-split-ratio", `${visualRatio}%`);
+      const difference = targetRatio - visualRatio;
+      visualRatio = Math.abs(difference) < 0.04
+        ? targetRatio
+        : visualRatio + difference * 0.68;
+      if (axis === "x") {
+        firstPanel.style.width = `calc(${visualRatio}% - 3px)`;
+        divider.style.left = `${visualRatio}%`;
+        secondPanel.style.width = `calc(${100 - visualRatio}% - 3px)`;
+      } else {
+        firstPanel.style.height = `calc(${visualRatio}% - 3px)`;
+        divider.style.top = `${visualRatio}%`;
+        secondPanel.style.height = `calc(${100 - visualRatio}% - 3px)`;
+      }
+      if (dragActive && Math.abs(targetRatio - visualRatio) >= 0.04) {
+        animationFrame = window.requestAnimationFrame(paintTargetedSplit);
+      }
     };
 
     const handlePointerMove = (moveEvent: PointerEvent) => {
-      rawRatio = axis === "x"
+      const nextRatio = axis === "x"
         ? ((moveEvent.clientX - rect.left) / Math.max(rect.width, 1)) * 100
         : ((moveEvent.clientY - rect.top) / Math.max(rect.height, 1)) * 100;
-      visualRatio = Math.min(96, Math.max(4, rawRatio));
+      targetRatio = Math.min(maximumRatio, Math.max(minimumRatio, nextRatio));
       if (animationFrame === null) animationFrame = window.requestAnimationFrame(paintTargetedSplit);
     };
 
     const finishResize = () => {
+      dragActive = false;
       window.removeEventListener("pointermove", handlePointerMove);
       window.removeEventListener("pointerup", finishResize);
       window.removeEventListener("pointercancel", finishResize);
@@ -10570,15 +10579,11 @@ export default function KwantifyWorkspace({
       document.body.style.userSelect = previousUserSelect;
       if (animationFrame !== null) {
         window.cancelAnimationFrame(animationFrame);
-        paintTargetedSplit();
+        animationFrame = null;
       }
-      if (rawRatio <= 3) {
-        setWorkspaceTree((current) => collapseWorkspaceSplit(current, splitId, "first"));
-      } else if (rawRatio >= 97) {
-        setWorkspaceTree((current) => collapseWorkspaceSplit(current, splitId, "second"));
-      } else {
-        setWorkspaceTree((current) => updateWorkspaceSplitRatio(current, splitId, visualRatio));
-      }
+      visualRatio = targetRatio;
+      paintTargetedSplit();
+      setWorkspaceTree((current) => updateWorkspaceSplitRatio(current, splitId, visualRatio));
       setWorkspaceLayout("custom");
     };
 
@@ -12077,20 +12082,18 @@ export default function KwantifyWorkspace({
       );
     }
 
-    const splitStyle = { "--workspace-split-ratio": `${node.ratio}%` } as CSSProperties;
     const firstStyle: CSSProperties = node.axis === "x"
-      ? { width: "calc(var(--workspace-split-ratio) - 3px)", left: 0, top: 0, bottom: 0 }
-      : { height: "calc(var(--workspace-split-ratio) - 3px)", left: 0, right: 0, top: 0 };
+      ? { width: `calc(${node.ratio}% - 3px)`, left: 0, top: 0, bottom: 0 }
+      : { height: `calc(${node.ratio}% - 3px)`, left: 0, right: 0, top: 0 };
     const secondStyle: CSSProperties = node.axis === "x"
-      ? { width: "calc(100% - var(--workspace-split-ratio) - 3px)", right: 0, top: 0, bottom: 0 }
-      : { height: "calc(100% - var(--workspace-split-ratio) - 3px)", left: 0, right: 0, bottom: 0 };
+      ? { width: `calc(${100 - node.ratio}% - 3px)`, right: 0, top: 0, bottom: 0 }
+      : { height: `calc(${100 - node.ratio}% - 3px)`, left: 0, right: 0, bottom: 0 };
 
     return (
       <div
         key={node.id}
         data-workspace-split-id={node.id}
         className="relative h-full min-h-0 w-full min-w-0 overflow-hidden [contain:layout_paint]"
-        style={splitStyle}
       >
         <div className="absolute min-h-0 min-w-0 overflow-hidden" style={firstStyle}>
           {renderWorkspaceNode(node.first)}
@@ -12102,7 +12105,7 @@ export default function KwantifyWorkspace({
               ? `inset-y-0 w-2 -translate-x-1/2 ${workspaceLocked ? "cursor-default" : "cursor-col-resize"}`
               : `inset-x-0 h-2 -translate-y-1/2 ${workspaceLocked ? "cursor-default" : "cursor-row-resize"}`
           }`}
-          style={node.axis === "x" ? { left: "var(--workspace-split-ratio)" } : { top: "var(--workspace-split-ratio)" }}
+          style={node.axis === "x" ? { left: `${node.ratio}%` } : { top: `${node.ratio}%` }}
           aria-label={node.axis === "x" ? "Resize chart columns" : "Resize chart rows"}
         >
           <div className={`${node.axis === "x" ? "h-12 w-1" : "h-1 w-12"} rounded-full bg-border/80 shadow-sm transition-all group-hover:bg-primary/70`} />
