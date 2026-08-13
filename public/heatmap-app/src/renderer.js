@@ -235,10 +235,10 @@ export class DepthRenderer {
     const restingSideCount = Number(restingSellVisible) + Number(restingBuyVisible);
     const restingBookWidth = domVisible ? Math.round(domWidth * .66 * restingSideCount / 2) : 0;
     const depthColumnWidth = cobVisible ? Math.round(domWidth * .34) : 0;
-    // The toolbar DOM toggle owns the complete market ladder. When disabled,
-    // collapse the price/book rail, bid/ask execution profile and SVP together
-    // so the heatmap and CVD reclaim the complete right side.
-    const priceAxisWidth = domVisible ? priceLabelWidth + restingBookWidth + depthColumnWidth : 0;
+    // PRICE belongs to the chart, not to the optional DOM. Turning the DOM
+    // off removes only resting-book/COB/profile columns while retaining a
+    // fixed right-side price scale for the heatmap and CVD.
+    const priceAxisWidth = priceLabelWidth + restingBookWidth + depthColumnWidth;
     const profilesVisible = domVisible && settings.profile;
     const bidPercentVisible = profilesVisible && settings.domBidPercentVisible !== false;
     const askPercentVisible = profilesVisible && settings.domAskPercentVisible !== false;
@@ -333,7 +333,7 @@ export class DepthRenderer {
     if (profileWidth > 0) {
       this.#drawVolumeProfile(ctx, history, accents);
     }
-    if (domVisible) this.#drawPriceAxis(ctx, current, accents);
+    this.#drawPriceAxis(ctx, current, accents);
     this.#drawTimeAxis(ctx, history);
     this.#drawCrosshair(ctx);
     this.#drawMeasurement(ctx);
