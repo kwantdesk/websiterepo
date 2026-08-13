@@ -438,7 +438,7 @@ html[data-embed="true"] .cvd-settings-button {
 html[data-embed="true"] .cvd-panel header strong,
 html[data-embed="true"] .cvd-panel header strong small,
 html[data-embed="true"] .cvd-panel header i {
-  font-family: "Inter", system-ui, sans-serif;
+  font-family: var(--font-ui);
 }
 
 html[data-embed="true"] .cvd-panel header button {
@@ -501,7 +501,7 @@ html[data-embed="true"] .indicator-settings {
 
 html[data-embed="true"] .inspector-panel {
   padding-top: 42px;
-  font-family: "Inter", system-ui, sans-serif;
+  font-family: var(--font-ui);
 }
 
 html[data-embed="true"] .inspector button,
@@ -509,7 +509,7 @@ html[data-embed="true"] .inspector input,
 html[data-embed="true"] .inspector output,
 html[data-embed="true"] .inspector label,
 html[data-embed="true"] .inspector legend {
-  font-family: "Inter", system-ui, sans-serif;
+  font-family: var(--font-ui);
 }
 
 html[data-embed="true"] .native-select-proxy {
@@ -526,7 +526,7 @@ html[data-embed="true"] .kwant-select {
   display: block;
   width: 100%;
   min-width: 0;
-  font-family: "Inter", system-ui, sans-serif;
+  font-family: var(--font-ui);
 }
 
 html[data-embed="true"] .kwant-select-trigger {
@@ -541,7 +541,7 @@ html[data-embed="true"] .kwant-select-trigger {
   border-radius: 9px;
   background: var(--ui-surface);
   color: var(--ui-text);
-  font: 500 11px "Inter", system-ui, sans-serif;
+  font: 500 11px var(--font-ui);
   text-align: left;
 }
 
@@ -588,7 +588,7 @@ html[data-embed="true"] .kwant-select-menu.hidden { display: none; }
 html[data-embed="true"] .kwant-select-group {
   padding: 8px 8px 4px;
   color: var(--ui-muted);
-  font: 650 8px "Inter", system-ui, sans-serif;
+  font: 650 8px var(--font-ui);
   letter-spacing: .08em;
   text-transform: uppercase;
 }
@@ -603,7 +603,7 @@ html[data-embed="true"] .kwant-select-option {
   border-radius: 7px;
   background: transparent;
   color: var(--ui-muted);
-  font: 500 11px "Inter", system-ui, sans-serif;
+  font: 500 11px var(--font-ui);
   text-align: left;
 }
 

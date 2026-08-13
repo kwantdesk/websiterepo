@@ -100,7 +100,7 @@ function websiteUiTheme() {
       '--ui-warn': '#eab308',
       '--ui-accent-rgb': primaryRgb.join(', '),
       '--ui-danger-rgb': dangerRgb.join(', '),
-      '--font-ui': '"Inter", system-ui, -apple-system, sans-serif',
+      '--font-ui': '"Rajdhani", "Inter", system-ui, -apple-system, sans-serif',
       '--font-mono': '"JetBrains Mono", monospace',
     },
     canvas: {
