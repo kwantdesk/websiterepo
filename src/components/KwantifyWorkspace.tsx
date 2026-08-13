@@ -594,6 +594,15 @@ type WorkspaceFloatingWindow = {
   height: number;
   locked: boolean;
 };
+type WorkspaceFloatingResizeDirection =
+  | "n"
+  | "ne"
+  | "e"
+  | "se"
+  | "s"
+  | "sw"
+  | "w"
+  | "nw";
 type PaneLevelVisibility = {
   gamma: boolean;
   kwant: boolean;
@@ -10437,6 +10446,7 @@ export default function KwantifyWorkspace({
 
   const startFloatingWorkspaceResize = (
     paneId: string,
+    direction: WorkspaceFloatingResizeDirection,
     event: React.PointerEvent<HTMLDivElement>,
   ) => {
     const floating = workspaceFloatingWindows.find((entry) => entry.paneId === paneId);
@@ -10450,11 +10460,33 @@ export default function KwantifyWorkspace({
     // small pixel floor, then let their contents reflow inside the pane.
     const minimumWidth = Math.min(0.92, Math.max(0.1, 180 / areaRect.width));
     const minimumHeight = Math.min(0.92, Math.max(0.16, 160 / areaRect.height));
+    const startingLeft = floating.x;
+    const startingTop = floating.y;
+    const startingRight = floating.x + floating.width;
+    const startingBottom = floating.y + floating.height;
+    const resizeWest = direction.includes("w");
+    const resizeEast = direction.includes("e");
+    const resizeNorth = direction.includes("n");
+    const resizeSouth = direction.includes("s");
     const handleResize = (moveEvent: PointerEvent) => {
-      const width = Math.min(1 - floating.x, Math.max(minimumWidth, floating.width + (moveEvent.clientX - startX) / areaRect.width));
-      const height = Math.min(1 - floating.y, Math.max(minimumHeight, floating.height + (moveEvent.clientY - startY) / areaRect.height));
+      const deltaX = (moveEvent.clientX - startX) / areaRect.width;
+      const deltaY = (moveEvent.clientY - startY) / areaRect.height;
+      const left = resizeWest
+        ? Math.min(startingRight - minimumWidth, Math.max(0, startingLeft + deltaX))
+        : startingLeft;
+      const right = resizeEast
+        ? Math.max(startingLeft + minimumWidth, Math.min(1, startingRight + deltaX))
+        : startingRight;
+      const top = resizeNorth
+        ? Math.min(startingBottom - minimumHeight, Math.max(0, startingTop + deltaY))
+        : startingTop;
+      const bottom = resizeSouth
+        ? Math.max(startingTop + minimumHeight, Math.min(1, startingBottom + deltaY))
+        : startingBottom;
       setWorkspaceFloatingWindows((current) => current.map((entry) =>
-        entry.paneId === paneId ? { ...entry, width, height } : entry));
+        entry.paneId === paneId
+          ? { ...entry, x: left, y: top, width: right - left, height: bottom - top }
+          : entry));
     };
     const finishResize = () => {
       window.removeEventListener("pointermove", handleResize);
@@ -10463,7 +10495,14 @@ export default function KwantifyWorkspace({
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
     };
-    document.body.style.cursor = "nwse-resize";
+    const resizeCursor = direction === "n" || direction === "s"
+      ? "ns-resize"
+      : direction === "e" || direction === "w"
+        ? "ew-resize"
+        : direction === "ne" || direction === "sw"
+          ? "nesw-resize"
+          : "nwse-resize";
+    document.body.style.cursor = resizeCursor;
     document.body.style.userSelect = "none";
     window.addEventListener("pointermove", handleResize);
     window.addEventListener("pointerup", finishResize);
@@ -12118,13 +12157,22 @@ export default function KwantifyWorkspace({
           {renderWorkspacePane(floating.paneId, true)}
         </div>
         {!floating.locked ? (
-          <div
-            onPointerDown={(event) => startFloatingWorkspaceResize(floating.paneId, event)}
-            className="absolute bottom-0 right-0 z-[180] flex h-7 w-7 touch-none cursor-nwse-resize items-end justify-end p-1 text-muted/70 hover:text-primary"
-            title="Resize floating window"
-          >
-            <MoveDiagonal2 className="h-3.5 w-3.5" />
-          </div>
+          <>
+            <div onPointerDown={(event) => startFloatingWorkspaceResize(floating.paneId, "n", event)} className="absolute inset-x-3 top-0 z-[180] h-1.5 touch-none cursor-ns-resize" title="Resize from top" />
+            <div onPointerDown={(event) => startFloatingWorkspaceResize(floating.paneId, "e", event)} className="absolute inset-y-3 right-0 z-[180] w-1.5 touch-none cursor-ew-resize" title="Resize from right" />
+            <div onPointerDown={(event) => startFloatingWorkspaceResize(floating.paneId, "s", event)} className="absolute inset-x-3 bottom-0 z-[180] h-1.5 touch-none cursor-ns-resize" title="Resize from bottom" />
+            <div onPointerDown={(event) => startFloatingWorkspaceResize(floating.paneId, "w", event)} className="absolute inset-y-3 left-0 z-[180] w-1.5 touch-none cursor-ew-resize" title="Resize from left" />
+            <div onPointerDown={(event) => startFloatingWorkspaceResize(floating.paneId, "nw", event)} className="absolute left-0 top-0 z-[181] h-3.5 w-3.5 touch-none cursor-nwse-resize" title="Resize from top-left" />
+            <div onPointerDown={(event) => startFloatingWorkspaceResize(floating.paneId, "ne", event)} className="absolute right-0 top-0 z-[181] h-3.5 w-3.5 touch-none cursor-nesw-resize" title="Resize from top-right" />
+            <div onPointerDown={(event) => startFloatingWorkspaceResize(floating.paneId, "sw", event)} className="absolute bottom-0 left-0 z-[181] h-3.5 w-3.5 touch-none cursor-nesw-resize" title="Resize from bottom-left" />
+            <div
+              onPointerDown={(event) => startFloatingWorkspaceResize(floating.paneId, "se", event)}
+              className="absolute bottom-0 right-0 z-[181] flex h-7 w-7 touch-none cursor-nwse-resize items-end justify-end p-1 text-muted/70 hover:text-primary"
+              title="Resize from bottom-right"
+            >
+              <MoveDiagonal2 className="h-3.5 w-3.5" />
+            </div>
+          </>
         ) : null}
       </div>
     );
