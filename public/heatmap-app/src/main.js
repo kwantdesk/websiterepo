@@ -675,7 +675,8 @@ class DepthForgeApp {
       button.className = `instrument-result${isOpen ? ' is-open' : ''}`;
       button.dataset.instrumentResult = symbol;
       button.setAttribute('role', 'option');
-      button.innerHTML = `<span class="instrument-result-symbol">${symbol}</span><span class="instrument-result-copy"><strong>${config.description}</strong><small>${config.venue} · FULL DEPTH</small></span><span class="instrument-result-action">${isOpen ? 'OPEN' : 'ADD'}</span>`;
+      button.setAttribute('aria-label', isOpen ? `${symbol} is already open` : `Add ${symbol}`);
+      button.innerHTML = `<span class="instrument-result-symbol">${symbol}</span><span class="instrument-result-copy"><strong>${config.description}</strong><small>${config.venue} · FULL DEPTH</small></span><span class="instrument-result-action" aria-hidden="true">${isOpen ? '' : '+'}</span>`;
       return button;
     }));
     $('instrumentEmpty').classList.toggle('hidden', matches.length > 0);

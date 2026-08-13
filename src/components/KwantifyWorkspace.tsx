@@ -6081,6 +6081,7 @@ export default function KwantifyWorkspace({
     }
   });
   const [showAllTF, setShowAllTF] = useState(false);
+  const timeframeMenuRef = useRef<HTMLDivElement>(null);
   const [intervalDrafts, setIntervalDrafts] = useState<Record<ChartIntervalKind, { primary: number; secondary: number }>>({
     second: { primary: 1, secondary: 1 },
     minute: { primary: 1, secondary: 1 },
@@ -7453,6 +7454,19 @@ export default function KwantifyWorkspace({
     window.localStorage.setItem("olisa-chart-favourite-intervals", JSON.stringify(favTFs));
     window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
   }, [favTFs]);
+
+  useEffect(() => {
+    if (!showAllTF) return;
+
+    const closeTimeframeMenuOutside = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node) || timeframeMenuRef.current?.contains(target)) return;
+      setShowAllTF(false);
+    };
+
+    document.addEventListener("pointerdown", closeTimeframeMenuOutside);
+    return () => document.removeEventListener("pointerdown", closeTimeframeMenuOutside);
+  }, [showAllTF]);
 
   useEffect(() => {
     window.localStorage.setItem(
@@ -11317,7 +11331,7 @@ export default function KwantifyWorkspace({
               </div>
             </>
           )}
-          <div className="relative flex items-center gap-0.5">
+          <div ref={timeframeMenuRef} className="relative flex items-center gap-0.5">
             {visibleFavouriteIntervals.map((tf) => (
               <button
                 key={tf}
@@ -13980,7 +13994,6 @@ export default function KwantifyWorkspace({
           </div>
         </div>
       )}
-      {showAllTF && <div className="fixed inset-0 z-40" onClick={() => setShowAllTF(false)} />}
     </div>
   );
 }

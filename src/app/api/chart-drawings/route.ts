@@ -21,10 +21,14 @@ function cleanDrawings(value: unknown) {
   const drawings = value.slice(0, 500).filter((drawing) => {
     if (!drawing || typeof drawing !== "object" || Array.isArray(drawing)) return false;
     const item = drawing as Record<string, unknown>;
-    return typeof item.id === "string"
-      && typeof item.tool === "string"
+    if (typeof item.id !== "string" || item.id.length < 1 || item.id.length > 160) return false;
+    const nativeDrawing = typeof item.type === "string"
+      && Array.isArray(item.anchors)
+      && item.anchors.length <= 64;
+    const legacyDrawing = typeof item.tool === "string"
       && Array.isArray(item.points)
       && item.points.length <= 64;
+    return nativeDrawing || legacyDrawing;
   });
   return JSON.stringify(drawings).length <= 1_000_000 ? drawings : null;
 }
@@ -81,7 +85,7 @@ export async function PUT(request: NextRequest) {
     user_id: actor.userId,
     instrument,
     drawings,
-    schema_version: 1,
+    schema_version: 2,
     updated_at: new Date().toISOString(),
   }, { onConflict: "user_id,instrument" });
 

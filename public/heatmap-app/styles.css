@@ -1899,13 +1899,27 @@ button { transition: color .16s ease, background-color .16s ease, border-color .
 .instrument-result-copy strong { font: 600 12px var(--font-ui); }
 .instrument-result-copy small { color: var(--ui-muted); font: 550 8px var(--font-mono); letter-spacing: .07em; }
 .instrument-result-action {
-  min-width: 45px;
+  display: inline-flex;
+  width: 30px;
+  height: 30px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: 8px;
   color: var(--ui-muted);
-  font: 650 9px var(--font-mono);
-  text-align: right;
-  letter-spacing: .08em;
+  font: 500 20px/1 var(--font-ui);
 }
-.instrument-result:not(.is-open) .instrument-result-action { color: var(--ui-accent); }
+.instrument-result.is-open .instrument-result-action { visibility: hidden; }
+.instrument-result:not(.is-open) .instrument-result-action {
+  border-color: rgba(var(--ui-accent-rgb),.38);
+  color: var(--ui-accent);
+  background: rgba(var(--ui-accent-rgb),.09);
+}
+.instrument-result:not(.is-open):hover .instrument-result-action,
+.instrument-result:not(.is-open):focus-visible .instrument-result-action {
+  border-color: rgba(var(--ui-accent-rgb),.7);
+  background: rgba(var(--ui-accent-rgb),.16);
+}
 .instrument-empty { padding: 35px; color: var(--ui-muted); text-align: center; font: 500 12px var(--font-ui); }
 
 html[data-ui-theme="terminal"] .app-bar,
