@@ -1065,8 +1065,8 @@ function normalizeWorkspaceFloatingWindows(
       || seen.has(candidate.paneId)
       || (validPaneIds && !validPaneIds.has(candidate.paneId))
     ) continue;
-    const width = Math.min(0.96, Math.max(0.24, clampWorkspaceUnit(Number(candidate.width), 0.58)));
-    const height = Math.min(0.96, Math.max(0.24, clampWorkspaceUnit(Number(candidate.height), 0.62)));
+    const width = Math.min(0.96, Math.max(0.12, clampWorkspaceUnit(Number(candidate.width), 0.58)));
+    const height = Math.min(0.96, Math.max(0.18, clampWorkspaceUnit(Number(candidate.height), 0.62)));
     const x = Math.min(1 - width, clampWorkspaceUnit(Number(candidate.x), 0.18));
     const y = Math.min(1 - height, clampWorkspaceUnit(Number(candidate.y), 0.12));
     seen.add(candidate.paneId);
@@ -10145,10 +10145,10 @@ export default function KwantifyWorkspace({
       ?.querySelector<HTMLElement>(`[data-workspace-pane-id="${paneId}"]`)
       ?.getBoundingClientRect();
     const width = areaRect && paneRect
-      ? Math.min(0.96, Math.max(0.28, paneRect.width / areaRect.width))
+      ? Math.min(0.96, Math.max(0.16, paneRect.width / areaRect.width))
       : 0.58;
     const height = areaRect && paneRect
-      ? Math.min(0.96, Math.max(0.28, paneRect.height / areaRect.height))
+      ? Math.min(0.96, Math.max(0.2, paneRect.height / areaRect.height))
       : 0.62;
     const x = areaRect && paneRect
       ? Math.min(1 - width, Math.max(0, (paneRect.left - areaRect.left) / areaRect.width))
@@ -10258,8 +10258,10 @@ export default function KwantifyWorkspace({
     event.stopPropagation();
     const startX = event.clientX;
     const startY = event.clientY;
-    const minimumWidth = Math.min(0.92, Math.max(0.24, 320 / areaRect.width));
-    const minimumHeight = Math.min(0.92, Math.max(0.24, 240 / areaRect.height));
+    // Floating panels are terminal tiles rather than desktop pages. Keep a
+    // small pixel floor, then let their contents reflow inside the pane.
+    const minimumWidth = Math.min(0.92, Math.max(0.1, 180 / areaRect.width));
+    const minimumHeight = Math.min(0.92, Math.max(0.16, 160 / areaRect.height));
     const handleResize = (moveEvent: PointerEvent) => {
       const width = Math.min(1 - floating.x, Math.max(minimumWidth, floating.width + (moveEvent.clientX - startX) / areaRect.width));
       const height = Math.min(1 - floating.y, Math.max(minimumHeight, floating.height + (moveEvent.clientY - startY) / areaRect.height));
@@ -11435,8 +11437,8 @@ export default function KwantifyWorkspace({
               </div>
             ) : null}
           </div>
-          <div className="relative min-h-0 flex-1 overflow-auto [scrollbar-color:var(--border)_transparent]">
-            <div className="relative h-full min-h-[420px] min-w-0">{renderEmbeddedWorkspace(pane)}</div>
+          <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
+            <div className="relative h-full min-h-0 min-w-0 overflow-hidden">{renderEmbeddedWorkspace(pane)}</div>
           </div>
           {workspacePanelPickerPaneId === pane.id ? renderWorkspacePanelPicker(pane, true) : null}
         </div>

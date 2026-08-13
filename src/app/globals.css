@@ -1451,6 +1451,69 @@ body.kwant-cockpit-ui canvas {
   image-rendering: auto;
 }
 
+/* Workspace GEX MAP is embedded inside resizable terminal panes. Container
+   sizing makes it respond to its pane rather than the browser viewport. */
+.gex-map-workspace {
+  container-type: inline-size;
+}
+
+.gex-map-panel-grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+  grid-auto-rows: minmax(250px, 1fr);
+}
+
+@container (max-width: 720px) {
+  .gex-map-header {
+    align-content: center;
+  }
+
+  .gex-map-header > span,
+  .gex-map-header > div:nth-child(2) p,
+  .gex-map-live-footer > span:last-child {
+    display: none;
+  }
+
+  .gex-map-frame-steps {
+    margin-left: 0;
+  }
+}
+
+@container (max-width: 430px) {
+  .gex-map-header {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+  }
+
+  .gex-map-header > div:nth-child(2),
+  .gex-map-header-actions > div:first-child,
+  .gex-map-header-actions > button:last-child {
+    display: none;
+  }
+
+  .gex-map-frame-steps button {
+    padding-inline: 6px;
+  }
+
+  .gex-map-panel-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@container (max-width: 235px) {
+  .gex-map-panel-spot,
+  .gex-map-change-column {
+    display: none;
+  }
+
+  .gex-map-strike-row {
+    grid-template-columns: 58px minmax(0, 1fr);
+  }
+
+  .gex-map-dropdown {
+    padding-inline: 6px;
+  }
+}
+
 body.kwant-cockpit-ui .gameplan-current-level,
 body.kwant-cockpit-ui .kwant-one-liner-glow {
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary) 24%, transparent) !important;

@@ -220,7 +220,7 @@ function GexMapDropdown<T extends string>({
         aria-haspopup="listbox"
         aria-expanded={open}
         onClick={toggleMenu}
-        className={`group flex h-8 min-w-[94px] items-center justify-between gap-2 rounded-xl border px-2.5 text-left transition-all duration-200 ${
+        className={`gex-map-dropdown group flex h-8 min-w-0 flex-1 items-center justify-between gap-1.5 rounded-xl border px-2 text-left transition-all duration-200 ${
           open
             ? "border-primary/40 bg-primary/[0.08] text-primary shadow-[0_0_0_1px_color-mix(in_srgb,var(--color-primary)_12%,transparent)]"
             : "border-border bg-surface text-foreground hover:border-primary/25 hover:bg-card"
@@ -360,9 +360,9 @@ function ExposurePanel({
   }, [centerLiveStrike]);
 
   return (
-    <section className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-border bg-panel">
+    <section className="gex-map-exposure-panel flex min-h-[250px] min-w-0 flex-col overflow-hidden rounded-xl border border-border bg-panel">
       <div className="border-b border-border bg-panel px-3 py-2.5">
-        <div className="flex items-center gap-2">
+        <div className="flex min-w-0 items-center gap-2">
           <GexMapDropdown
             ariaLabel={`${config.id} panel instrument`}
             value={config.symbol}
@@ -387,7 +387,7 @@ function ExposurePanel({
             menuWidth={210}
             onChange={(greekMode) => onChange({ greekMode })}
           />
-          <div className="ml-auto text-right">
+          <div className="gex-map-panel-spot ml-auto shrink-0 text-right">
             <div className="font-mono text-[11px] font-semibold text-foreground">{formatPrice(spot)}</div>
             <div className={`font-mono text-[9px] ${payload && (payload.sessionChangePercent ?? 0) >= 0 ? "text-primary" : "text-danger"}`}>
               {payload?.sessionChangePercent === null || payload?.sessionChangePercent === undefined
@@ -405,10 +405,10 @@ function ExposurePanel({
         </div>
       </div>
 
-      <div className="grid h-7 grid-cols-[64px_1fr_86px] items-center border-b border-border bg-surface/60 px-2 text-[8px] font-semibold uppercase tracking-[0.14em] text-muted">
+      <div className="gex-map-strike-row grid h-7 grid-cols-[64px_minmax(0,1fr)_86px] items-center border-b border-border bg-surface/60 px-2 text-[8px] font-semibold uppercase tracking-[0.14em] text-muted">
         <span>Strike</span>
         <span>Signed exposure</span>
-        <span className="text-right">{stepMinutes}m change</span>
+        <span className="gex-map-change-column text-right">{stepMinutes}m change</span>
       </div>
 
       <div ref={scrollRef} className="relative min-h-0 flex-1 overflow-y-auto bg-chart-background">
@@ -444,7 +444,7 @@ function ExposurePanel({
                 <div
                   key={row.strike}
                   data-near-spot={nearSpot ? "true" : undefined}
-                  className={`relative grid grid-cols-[64px_1fr_86px] items-center border-b border-black/10 px-2 font-mono text-[9px] transition-[height,margin,background-color] ${nearSpot ? "gex-current-price-marker z-[2] mx-1 my-1 h-[35px]" : "h-[25px]"}`}
+                  className={`gex-map-strike-row relative grid grid-cols-[64px_minmax(0,1fr)_86px] items-center border-b border-black/10 px-2 font-mono text-[9px] transition-[height,margin,background-color] ${nearSpot ? "gex-current-price-marker z-[2] mx-1 my-1 h-[35px]" : "h-[25px]"}`}
                   style={{ backgroundColor: heatColor(row.net, strength) }}
                   title={`${greek.short} ${formatCompact(row.net)} · Call ${formatCompact(row.call)} · Put ${formatCompact(row.put)}`}
                 >
@@ -455,7 +455,7 @@ function ExposurePanel({
                     </span>
                   </span>
                   <span className="truncate text-right font-semibold text-foreground drop-shadow-sm">{formatCompact(row.net)}</span>
-                  <span className="flex items-center justify-end gap-1">
+                  <span className="gex-map-change-column flex items-center justify-end gap-1">
                     {changeRatio !== null ? (
                       <span className={`rounded px-1 py-0.5 text-[8px] font-semibold ${changeRatio >= 0 ? "bg-primary/15 text-primary" : "bg-danger/15 text-danger"}`}>
                         {changeRatio >= 0 ? "+" : ""}{Math.round(changeRatio * 100)}%
@@ -663,9 +663,9 @@ export default function GexMapWorkspace() {
   }
 
   return (
-    <div className="flex h-full min-h-0 overflow-hidden bg-background text-foreground">
+    <div className="gex-map-workspace flex h-full min-h-0 min-w-0 overflow-hidden bg-background text-foreground">
       <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
-        <header className="flex h-[54px] shrink-0 items-center gap-3 border-b border-border bg-panel px-4">
+        <header className="gex-map-header flex min-h-[48px] shrink-0 flex-wrap items-center gap-2 border-b border-border bg-panel px-3 py-1">
           <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
             <ScanLine className="h-4 w-4" />
           </span>
@@ -677,7 +677,7 @@ export default function GexMapWorkspace() {
             <p className="text-[9px] text-muted">Signed front-expiry exposure by strike</p>
           </div>
 
-          <div className="ml-4 flex items-center gap-1 rounded-lg border border-border bg-surface p-1">
+          <div className="gex-map-frame-steps ml-2 flex items-center gap-1 rounded-lg border border-border bg-surface p-1">
             {FRAME_STEPS.map((value) => (
               <button
                 key={value}
@@ -694,7 +694,7 @@ export default function GexMapWorkspace() {
             ))}
           </div>
 
-          <div className="ml-auto flex items-center gap-2">
+          <div className="gex-map-header-actions ml-auto flex items-center gap-1.5">
             <div className={`flex h-8 items-center gap-2 rounded-lg border px-2.5 text-[9px] font-semibold ${replayMode ? "border-accent/25 bg-accent/10 text-accent" : live ? "border-primary/20 bg-primary/10 text-primary" : "border-border bg-surface text-muted"}`}>
               <span className={`h-1.5 w-1.5 rounded-full ${replayMode ? "bg-accent" : live ? "animate-pulse bg-primary" : "bg-muted"}`} />
               {replayMode ? "REPLAY" : live ? "LIVE" : "LAST SESSION"}
@@ -722,8 +722,8 @@ export default function GexMapWorkspace() {
           </div>
         </header>
 
-        <div className="flex min-h-0 flex-1 overflow-x-auto p-3 pb-2">
-          <div className="grid min-h-0 min-w-[1030px] flex-1 grid-cols-3 gap-3">
+        <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden p-2 pb-1.5">
+          <div className="gex-map-panel-grid grid min-h-full min-w-0 gap-2">
             {panels.map((panel) => {
               const payload = panelData[panel.id];
               const validPayload = payload
@@ -749,8 +749,8 @@ export default function GexMapWorkspace() {
         </div>
 
         {replayMode ? (
-          <footer className="shrink-0 border-t border-border bg-panel px-4 py-2.5">
-            <div className="flex items-center gap-3">
+          <footer className="shrink-0 overflow-x-auto border-t border-border bg-panel px-3 py-2">
+            <div className="flex min-w-max items-center gap-2">
               <label className="flex h-9 items-center gap-2 rounded-lg border border-border bg-surface px-3 text-[9px] text-muted">
                 <CalendarDays className="h-3.5 w-3.5 text-primary" />
                 <input
@@ -817,7 +817,7 @@ export default function GexMapWorkspace() {
             </div>
           </footer>
         ) : (
-          <footer className="flex h-7 shrink-0 items-center gap-2 border-t border-border bg-panel px-4 text-[8px] text-muted">
+          <footer className="gex-map-live-footer flex h-7 min-w-0 shrink-0 items-center gap-2 overflow-hidden border-t border-border bg-panel px-3 text-[8px] text-muted">
             <Radio className={`h-3 w-3 ${live ? "text-primary" : "text-muted"}`} />
             <span>KwantData Interval Map · front expiry · per 1% underlying move</span>
             <span className="ml-auto">Positive and negative colours follow the active Kwantify theme. Intensity is normalized to each panel’s 95th-percentile absolute exposure.</span>
