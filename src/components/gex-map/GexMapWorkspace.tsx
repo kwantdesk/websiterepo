@@ -360,8 +360,8 @@ function ExposurePanel({
   }, [centerLiveStrike]);
 
   return (
-    <section className="gex-map-exposure-panel flex min-h-[250px] min-w-0 flex-col overflow-hidden rounded-xl border border-border bg-panel">
-      <div className="border-b border-border bg-panel px-3 py-2.5">
+    <section className="gex-map-exposure-panel flex min-h-[250px] min-w-0 flex-col overflow-clip rounded-xl border border-border bg-panel">
+      <div className="sticky top-0 z-20 shrink-0 border-b border-border bg-panel/95 px-3 py-2.5 shadow-[0_8px_18px_rgba(0,0,0,0.16)] backdrop-blur-xl">
         <div className="flex min-w-0 items-center gap-2">
           <GexMapDropdown
             ariaLabel={`${config.id} panel instrument`}
@@ -411,7 +411,7 @@ function ExposurePanel({
         <span className="gex-map-change-column text-right">{stepMinutes}m change</span>
       </div>
 
-      <div ref={scrollRef} className="relative min-h-0 flex-1 overflow-y-auto bg-chart-background">
+      <div ref={scrollRef} className="relative min-h-0 flex-1 overscroll-contain overflow-y-auto bg-chart-background">
         {loading && !payload ? (
           <KwantLoader
             className="h-full"
