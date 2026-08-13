@@ -16,6 +16,7 @@ function liquidityMapInstrument(root: unknown) {
 
 export default function LiquidityMapWorkspace({ instrument, onInstrumentChange }: LiquidityMapWorkspaceProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const styleCheckTimerRef = useRef<number | null>(null);
   const [isReady, setIsReady] = useState(false);
   const syncInstrument = useCallback(() => {
     iframeRef.current?.contentWindow?.postMessage(
@@ -49,6 +50,34 @@ export default function LiquidityMapWorkspace({ instrument, onInstrumentChange }
   }, [syncTheme]);
 
   useEffect(() => {
+    const clearStyleCheck = () => {
+      if (styleCheckTimerRef.current !== null) {
+        window.clearTimeout(styleCheckTimerRef.current);
+        styleCheckTimerRef.current = null;
+      }
+    };
+    const revealWhenStyled = (attempt = 0) => {
+      const iframeDocument = iframeRef.current?.contentDocument;
+      const loadedStyleSheets = Array.from(iframeDocument?.styleSheets ?? [])
+        .filter((sheet) => {
+          try {
+            return sheet.cssRules.length > 0;
+          } catch {
+            return false;
+          }
+        })
+        .map((sheet) => sheet.href ?? "");
+      const styled = loadedStyleSheets.some((href) => href.includes("/heatmap-app/styles.css"))
+        && loadedStyleSheets.some((href) => href.includes("/heatmap-app/embed.css"));
+      if (styled) {
+        clearStyleCheck();
+        setIsReady(true);
+        return;
+      }
+      if (attempt < 80) {
+        styleCheckTimerRef.current = window.setTimeout(() => revealWhenStyled(attempt + 1), 50);
+      }
+    };
     const handleMapReady = (event: MessageEvent) => {
       if (event.origin !== window.location.origin) return;
       if (event.source !== iframeRef.current?.contentWindow) return;
@@ -63,7 +92,8 @@ export default function LiquidityMapWorkspace({ instrument, onInstrumentChange }
             onInstrumentChange?.(nextInstrument);
           }
         }
-        setIsReady(true);
+        clearStyleCheck();
+        revealWhenStyled();
         return;
       }
       if (event.data?.type === "kwantdesk:liquidity-map-preferences-changed") {
@@ -82,7 +112,10 @@ export default function LiquidityMapWorkspace({ instrument, onInstrumentChange }
     };
 
     window.addEventListener("message", handleMapReady);
-    return () => window.removeEventListener("message", handleMapReady);
+    return () => {
+      clearStyleCheck();
+      window.removeEventListener("message", handleMapReady);
+    };
   }, [instrument, onInstrumentChange]);
 
   return (

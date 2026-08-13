@@ -142,5 +142,11 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!auth|_next/static|_next/image|favicon.ico|cookie-recovery.html|images/|brand/).*)"],
+  // The liquidity map is a static, sandboxed front-end bundle. Sending each of
+  // its CSS/JS/font requests through Supabase session validation can redirect
+  // an individual asset while the parent page is already authenticated. The
+  // browser then renders the map's raw HTML controls without its stylesheet.
+  // Live data still comes from protected /api routes, so bypass only the
+  // immutable presentation bundle here.
+  matcher: ["/((?!auth|_next/static|_next/image|favicon.ico|cookie-recovery.html|heatmap-app/|images/|brand/).*)"],
 };
