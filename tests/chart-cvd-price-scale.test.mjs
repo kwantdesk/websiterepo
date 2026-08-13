@@ -23,15 +23,16 @@ test("CVD owns an independent right-axis wheel scale", () => {
   assert.match(source, /verticalScaleByPane/);
   assert.match(source, /cvd-price-scale-/);
   assert.match(source, /aria-label="Scale CVD vertically"/);
-  assert.match(source, /event\.preventDefault\(\);[\s\S]*?event\.stopPropagation\(\);[\s\S]*?setVerticalScaleByPane/);
+  assert.match(source, /event\.preventDefault\(\);[\s\S]*?event\.stopPropagation\(\);[\s\S]*?event\.stopImmediatePropagation\(\);[\s\S]*?scalePaneFromWheel/);
 });
 
-test("scrolling anywhere across the CVD plot scales CVD instead of the main chart", () => {
-  assert.match(source, /cvd-pane-wheel-zone-/);
-  assert.match(source, /aria-label="Scale CVD pane vertically"/);
-  assert.match(source, /width: plotWidth/);
-  assert.match(source, /scaleCvdFromWheel\(group\.key, event\.deltaY, event\.deltaMode\)/);
-  assert.match(source, /cvd-pane-wheel-zone-[\s\S]*?event\.preventDefault\(\);[\s\S]*?event\.stopPropagation\(\)/);
+test("scrolling any lower indicator pane scales that pane instead of the main chart", () => {
+  assert.match(source, /indicator-pane-wheel-zone-/);
+  assert.match(source, /data-indicator-pane-wheel-zone=\{group\.key\}/);
+  assert.match(source, /style=\{\{ top: top \+ 25, width, height:/);
+  assert.match(source, /scalePaneFromWheel\(group\.key, event\.deltaY, event\.deltaMode\)/);
+  assert.match(source, /chartContainer\.addEventListener\("wheel", captureIndicatorWheel,[\s\S]*?capture: true[\s\S]*?passive: false/);
+  assert.match(chartSource, /closest\("\[data-indicator-pane-wheel-zone\]"\)[\s\S]*?return/);
 });
 
 test("CVD scaling is bounded and can be reset without changing the main chart", () => {

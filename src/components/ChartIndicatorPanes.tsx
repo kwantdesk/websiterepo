@@ -154,7 +154,7 @@ function ChartIndicatorPanes({
   const [verticalScaleByPane, setVerticalScaleByPane] = useState<Record<string, number>>({});
   const paneRootRef = useRef<HTMLDivElement>(null);
 
-  function scaleCvdFromWheel(groupKey: string, deltaY: number, deltaMode: number) {
+  function scalePaneFromWheel(groupKey: string, deltaY: number, deltaMode: number) {
     const normalizedDelta = deltaMode === 1
       ? deltaY * 16
       : deltaMode === 2
@@ -166,6 +166,36 @@ function ChartIndicatorPanes({
       [groupKey]: Math.max(0.2, Math.min(8, (current[groupKey] ?? 1) * multiplier)),
     }));
   }
+
+  useEffect(() => {
+    const paneRoot = paneRootRef.current;
+    const chartContainer = paneRoot?.parentElement;
+    if (!paneRoot || !chartContainer) return;
+
+    // Lightweight Charts owns a native wheel listener on the parent chart
+    // container. React's onWheel fires too late to stop it, so lower-pane
+    // wheels must be consumed during native capture.
+    const captureIndicatorWheel = (event: WheelEvent) => {
+      const target = event.target instanceof Element ? event.target : null;
+      const wheelZone = target?.closest<HTMLElement>("[data-indicator-pane-wheel-zone]");
+      if (!wheelZone || !paneRoot.contains(wheelZone)) return;
+      const groupKey = wheelZone.dataset.indicatorPaneWheelZone;
+      if (!groupKey || event.deltaY === 0) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+      scalePaneFromWheel(groupKey, event.deltaY, event.deltaMode);
+    };
+
+    chartContainer.addEventListener("wheel", captureIndicatorWheel, {
+      capture: true,
+      passive: false,
+    });
+    return () => {
+      chartContainer.removeEventListener("wheel", captureIndicatorWheel, { capture: true });
+    };
+  }, [groups.length, height, width]);
 
   useEffect(() => {
     if (!openMenu) return;
@@ -620,20 +650,21 @@ function ChartIndicatorPanes({
         </div>
       ))}
       {paneLayouts.map(({ group, top, height: paneHeight, collapsed }) => {
-        if (collapsed || !isCvdIndicator(group.indicatorId)) return null;
+        if (collapsed) return null;
         return (
           <div
-            key={`cvd-pane-wheel-zone-${group.key}`}
-            data-testid={`cvd-pane-wheel-zone-${group.key}`}
-            aria-label="Scale CVD pane vertically"
-            title="Scroll to expand or squeeze CVD"
+            key={`indicator-pane-wheel-zone-${group.key}`}
+            data-testid={`indicator-pane-wheel-zone-${group.key}`}
+            data-indicator-pane-wheel-zone={group.key}
+            aria-label={`Scale ${group.title} pane vertically`}
+            title={`Scroll to expand or squeeze ${group.title}`}
             className="pointer-events-auto absolute left-0 z-[8] cursor-ns-resize touch-none"
-            style={{ top: top + 25, width: plotWidth, height: Math.max(20, paneHeight - 34) }}
+            style={{ top: top + 25, width, height: Math.max(20, paneHeight - 34) }}
             onPointerDown={(event) => event.stopPropagation()}
             onWheel={(event) => {
               event.preventDefault();
               event.stopPropagation();
-              scaleCvdFromWheel(group.key, event.deltaY, event.deltaMode);
+              scalePaneFromWheel(group.key, event.deltaY, event.deltaMode);
             }}
           />
         );
@@ -649,6 +680,7 @@ function ChartIndicatorPanes({
             aria-valuemin={20}
             aria-valuemax={800}
             aria-valuenow={Math.round(verticalScale * 100)}
+            data-indicator-pane-wheel-zone={group.key}
             title="Scroll to expand or squeeze CVD · Double-click to reset"
             className="pointer-events-auto absolute right-0 z-10 cursor-ns-resize touch-none"
             style={{ top: top + 25, width: valueScaleWidth, height: Math.max(20, paneHeight - 34) }}
@@ -656,7 +688,7 @@ function ChartIndicatorPanes({
             onWheel={(event) => {
               event.preventDefault();
               event.stopPropagation();
-              scaleCvdFromWheel(group.key, event.deltaY, event.deltaMode);
+              scalePaneFromWheel(group.key, event.deltaY, event.deltaMode);
             }}
             onDoubleClick={(event) => {
               event.preventDefault();

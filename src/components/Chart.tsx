@@ -5146,6 +5146,10 @@ export default function Chart({
     };
 
     const handlePriceScaleWheel = (event: WheelEvent) => {
+      const wheelTarget = event.target instanceof Element ? event.target : null;
+      // Lower indicator panes own independent vertical scales. Their right
+      // rail must never be treated as the main candle price rail.
+      if (wheelTarget?.closest("[data-indicator-pane-wheel-zone]")) return;
       const containerRect = container.getBoundingClientRect();
       const priceScaleWidth = chart.priceScale("right").width();
       const localX = event.clientX - containerRect.left;
