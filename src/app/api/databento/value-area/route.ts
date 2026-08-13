@@ -375,7 +375,7 @@ export async function GET(request: Request) {
   if (cached && cached.expiresAt > now) {
     try {
       return NextResponse.json(await cached.promise, {
-        headers: { "Cache-Control": asOfInput ? "private, max-age=86400, stale-while-revalidate=604800" : "public, s-maxage=60, stale-while-revalidate=300" },
+        headers: { "Cache-Control": asOfInput ? "private, max-age=86400, stale-while-revalidate=604800" : "public, s-maxage=60, stale-while-revalidate=86400" },
       });
     } catch {
       valueAreaCache.delete(cacheKey);
@@ -408,7 +408,7 @@ export async function GET(request: Request) {
         : now + 5 * 60_000;
     }
     return NextResponse.json(payload, {
-      headers: { "Cache-Control": asOfInput ? "private, max-age=86400, stale-while-revalidate=604800" : "public, s-maxage=60, stale-while-revalidate=300" },
+      headers: { "Cache-Control": asOfInput ? "private, max-age=86400, stale-while-revalidate=604800" : "public, s-maxage=60, stale-while-revalidate=86400" },
     });
   } catch (error) {
     if (valueAreaCache.get(cacheKey)?.promise === promise) valueAreaCache.delete(cacheKey);

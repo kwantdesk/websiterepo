@@ -2916,6 +2916,7 @@ function buildGameplanChartDecorations(
 
 const valueAreaPayloadCache = new Map<string, ValueAreaPayloadCacheEntry>();
 const VALUE_AREA_SESSION_CACHE_PREFIX = "kwantdesk:value-area:last-good:v2:";
+const VALUE_AREA_LAST_GOOD_MAX_AGE_MS = 8 * 24 * 60 * 60_000;
 
 function valueAreaPayloadIsCurrent(payload: Pick<ValueAreaPayload, "nextRefreshAt">, now = Date.now()) {
   const refreshAt = Date.parse(payload.nextRefreshAt);
@@ -2930,11 +2931,13 @@ function readValueAreaSessionPayload(cacheKey: string) {
       const raw = storage.getItem(storageKey);
       if (!raw) continue;
       const payload = JSON.parse(raw) as ValueAreaPayload;
+      const generatedAt = Date.parse(payload.generatedAt);
       const valid = payload.symbol.toUpperCase() === cacheKey
         && payload.method === "TRADE_BY_TRADE"
         && validValueAreaProfile(payload.daily)
         && validValueAreaProfile(payload.weekly)
-        && valueAreaPayloadIsCurrent(payload);
+        && Number.isFinite(generatedAt)
+        && Date.now() - generatedAt <= VALUE_AREA_LAST_GOOD_MAX_AGE_MS;
       if (!valid) {
         storage.removeItem(storageKey);
         continue;
@@ -2958,21 +2961,13 @@ function fetchValueAreaPayload(symbol: string) {
     valueAreaPayloadCache.set(cacheKey, {
       expiresAt: Number.isFinite(refreshAt) && refreshAt > now
         ? refreshAt
-        : now + 5_000,
+        : now - 1,
       promise: Promise.resolve(restored),
       payload: restored,
     });
   }
 
   let cached = valueAreaPayloadCache.get(cacheKey);
-  // Do not keep an expired prior-session payload around while a new profile is
-  // being built. This was most visible on the Sunday/Monday reopen: a Thursday
-  // profile restored from Friday morning could stay painted while Friday's
-  // authoritative profile streamed in.
-  if (cached?.payload && !valueAreaPayloadIsCurrent(cached.payload, now)) {
-    valueAreaPayloadCache.delete(cacheKey);
-    cached = undefined;
-  }
   if (cached && cached.expiresAt > now) return cached.promise;
 
   const previous = cached;
@@ -2985,7 +2980,7 @@ function fetchValueAreaPayload(symbol: string) {
   const timeout = window.setTimeout(() => controller.abort(), 150_000);
   const promise = fetch(
     `/api/databento/value-area?symbol=${encodeURIComponent(symbol)}`,
-    { cache: "no-store", signal: controller.signal },
+    { signal: controller.signal },
   )
     .then(async (response) => {
       const raw = await response.text();
@@ -3547,7 +3542,10 @@ function readValueAreaOverlayCache(
   const chartPayload = sourcePayload.symbol.toUpperCase() === instrument.toUpperCase()
     ? sourcePayload
     : { ...sourcePayload, symbol: instrument };
-  return buildValueAreaChartOverlay(chartPayload, instrument, settings);
+  const overlay = buildValueAreaChartOverlay(chartPayload, instrument, settings);
+  return overlay
+    ? { ...overlay, stale: !valueAreaPayloadIsCurrent(sourcePayload) }
+    : null;
 }
 
 function WorkspaceChartPane({
@@ -4936,15 +4934,10 @@ function WorkspaceChartPane({
     let developingRunning = false;
     let failureStreak = 0;
     let retainedDeveloping: InstitutionalVolumeProfile | null = null;
-    let retainedOverlay = valueAreaOverlay && valueAreaPayloadIsCurrent(valueAreaOverlay)
-      ? valueAreaOverlay
-      : null;
-    if (valueAreaOverlay && !retainedOverlay) {
-      // A completed-session level set stops being authoritative at the next
-      // CME profile close. Clear it before requesting the replacement so an
-      // old Thursday profile can never remain visible as Monday's "PD" set.
-      setValueAreaOverlay(null);
-    }
+    // Paint the last verified profile immediately. If its next profile window
+    // has completed it remains explicitly stale until the silent refresh
+    // replaces it; never blank the chart while a cold weekly tape rebuilds.
+    let retainedOverlay = valueAreaOverlay;
 
     const schedule = (delay: number) => {
       if (cancelled) return;
@@ -4954,11 +4947,6 @@ function WorkspaceChartPane({
 
     const loadValueArea = async () => {
       if (cancelled || running) return;
-      if (retainedOverlay && !valueAreaPayloadIsCurrent(retainedOverlay)) {
-        retainedOverlay = null;
-        retainedDeveloping = null;
-        setValueAreaOverlay(null);
-      }
       running = true;
       setValueAreaLevelsLoading(!retainedOverlay);
       let nextDelay = 15_000;

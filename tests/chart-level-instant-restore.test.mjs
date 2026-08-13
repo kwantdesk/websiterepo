@@ -23,6 +23,11 @@ test("value-area restore uses the parent CME book and survives a page reload", (
   assert.match(workspace, /const sourceKey = valueAreaSourceSymbol\(instrument\)\.toUpperCase\(\)/);
   assert.match(workspace, /for \(const storage of \[window\.sessionStorage, window\.localStorage\]\)/);
   assert.match(workspace, /window\.localStorage\.setItem\(`\$\{VALUE_AREA_SESSION_CACHE_PREFIX\}\$\{cacheKey\}`, serialized\)/);
+  assert.match(workspace, /VALUE_AREA_LAST_GOOD_MAX_AGE_MS = 8 \* 24 \* 60 \* 60_000/);
+  assert.doesNotMatch(workspace, /validValueAreaProfile\(payload\.weekly\)[\s\S]{0,120}valueAreaPayloadIsCurrent\(payload\)/);
+  assert.match(workspace, /stale: !valueAreaPayloadIsCurrent\(sourcePayload\)/);
+  assert.match(workspace, /let retainedOverlay = valueAreaOverlay/);
+  assert.doesNotMatch(workspace, /if \(retainedOverlay && !valueAreaPayloadIsCurrent\(retainedOverlay\)\)/);
 });
 
 test("browser gamma cache is bounded and revalidated rather than treated as live", () => {
