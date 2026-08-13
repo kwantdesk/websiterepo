@@ -65,6 +65,10 @@ const horizontalItemBase =
   "relative flex h-7 shrink-0 items-center justify-center gap-1.5 rounded-[3px] border px-2.5 text-[10px] font-semibold uppercase tracking-[0.075em] transition-colors";
 const horizontalItemInactive = `${horizontalItemBase} border-transparent text-muted hover:bg-surface hover:text-foreground`;
 const horizontalItemActive = `${horizontalItemBase} border-transparent text-primary`;
+const horizontalUtilityBase =
+  "relative flex h-7 w-7 shrink-0 items-center justify-center rounded-[3px] border text-muted transition-colors";
+const horizontalUtilityInactive = `${horizontalUtilityBase} border-border/70 bg-background/35 hover:border-primary/30 hover:bg-surface hover:text-foreground`;
+const horizontalUtilityActive = `${horizontalUtilityBase} border-primary/35 bg-primary/[0.08] text-primary`;
 const verticalItemBase =
   "mx-auto flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg transition-all duration-300 group-hover:w-[184px] group-hover:justify-start group-hover:gap-3 group-hover:px-[9px]";
 const verticalItemInactive = `${verticalItemBase} text-muted hover:bg-surface hover:text-foreground`;
@@ -227,49 +231,53 @@ function AppSidebar({
   }
 
   return (
-    <header className="kwant-command-rail relative z-[70] flex h-10 w-full shrink-0 items-center gap-1 border-b border-border bg-panel px-2">
-      <nav className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto overflow-y-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" aria-label="Primary workspace">
-        {navItems.map(({ key, href, label, title, icon: Icon }) => {
-          const active = activeItem === key;
-          return (
-            <Link
-              key={key}
-              href={href}
-              prefetch={false}
-              onPointerEnter={() => onNavigateIntent?.(key)}
-              onPointerDown={(event) => beginPointerNavigation(event, key)}
-              onFocus={() => onNavigateIntent?.(key)}
-              onClick={(event) => navigate(event, key, href)}
-              aria-current={active ? "page" : undefined}
-              className={active ? horizontalItemActive : horizontalItemInactive}
-              title={title}
-            >
-              <Icon className={`h-3.5 w-3.5 shrink-0 ${active ? "text-primary" : "text-muted"}`} strokeWidth={1.55} />
-              <span>{label}</span>
-              {active ? <ActiveUnderline /> : null}
-            </Link>
-          );
-        })}
+    <header className="kwant-command-rail relative z-[70] flex h-10 w-full shrink-0 items-center border-b border-border bg-panel px-2">
+      <nav className="absolute left-1/2 top-1/2 flex w-[calc(100%-176px)] -translate-x-1/2 -translate-y-1/2 overflow-x-auto overflow-y-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" aria-label="Primary workspace">
+        <div className="mx-auto flex min-w-max items-center gap-1">
+          {navItems.map(({ key, href, label, title, icon: Icon }) => {
+            const active = activeItem === key;
+            return (
+              <Link
+                key={key}
+                href={href}
+                prefetch={false}
+                onPointerEnter={() => onNavigateIntent?.(key)}
+                onPointerDown={(event) => beginPointerNavigation(event, key)}
+                onFocus={() => onNavigateIntent?.(key)}
+                onClick={(event) => navigate(event, key, href)}
+                aria-current={active ? "page" : undefined}
+                className={active ? horizontalItemActive : horizontalItemInactive}
+                title={title}
+              >
+                <Icon className={`h-3.5 w-3.5 shrink-0 ${active ? "text-primary" : "text-muted"}`} strokeWidth={1.55} />
+                <span>{label}</span>
+                {active ? <ActiveUnderline /> : null}
+              </Link>
+            );
+          })}
+        </div>
       </nav>
 
-      <button
-        type="button"
-        onClick={onAccountClick}
-        className={horizontalItemInactive}
-        title={accountTitle}
-      >
-        <User className="h-3.5 w-3.5 shrink-0" />
-        <span>{accountLabel}</span>
-      </button>
-      <a
-        href="/settings"
-        className={activeItem === "settings" ? horizontalItemActive : horizontalItemInactive}
-        title="Settings"
-      >
-        <Settings className="h-3.5 w-3.5 shrink-0" />
-        <span>Settings</span>
-        {activeItem === "settings" ? <ActiveUnderline /> : null}
-      </a>
+      <div className="ml-auto flex shrink-0 items-center gap-1.5">
+        <button
+          type="button"
+          onClick={onAccountClick}
+          className={horizontalUtilityInactive}
+          title={accountTitle}
+          aria-label={accountTitle}
+        >
+          <User className="h-3.5 w-3.5" strokeWidth={1.55} />
+        </button>
+        <a
+          href="/settings"
+          className={activeItem === "settings" ? horizontalUtilityActive : horizontalUtilityInactive}
+          title="Settings"
+          aria-label="Settings"
+        >
+          <Settings className="h-3.5 w-3.5" strokeWidth={1.55} />
+          {activeItem === "settings" ? <ActiveUnderline /> : null}
+        </a>
+      </div>
     </header>
   );
 }
