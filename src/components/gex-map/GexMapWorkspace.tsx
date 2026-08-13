@@ -422,7 +422,17 @@ function ExposurePanel({
 
       <div
         ref={scrollRef}
-        onWheelCapture={() => { userNavigatedRef.current = true; }}
+        onWheel={(event) => {
+          userNavigatedRef.current = true;
+          const container = event.currentTarget;
+          const maximumScroll = Math.max(0, container.scrollHeight - container.clientHeight);
+          if (maximumScroll <= 0 || event.deltaY === 0) return;
+          const nextScroll = Math.max(0, Math.min(maximumScroll, container.scrollTop + event.deltaY));
+          if (Math.abs(nextScroll - container.scrollTop) < 0.5) return;
+          event.preventDefault();
+          event.stopPropagation();
+          container.scrollTop = nextScroll;
+        }}
         onPointerDownCapture={() => { userNavigatedRef.current = true; }}
         onTouchStart={() => { userNavigatedRef.current = true; }}
         className="relative min-h-0 flex-1 touch-pan-y overscroll-contain overflow-y-auto bg-chart-background"
@@ -737,7 +747,7 @@ export default function GexMapWorkspace() {
           </div>
         </header>
 
-        <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden p-2 pb-1.5">
+        <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-2 pb-1.5 pt-0">
           <div className="gex-map-panel-grid grid min-h-full min-w-0 gap-2">
             {panels.map((panel) => {
               const payload = panelData[panel.id];
