@@ -19,20 +19,26 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }
 
+// Chart-width profiles are expressed against a stable logical viewport rather
+// than the full Globex session. Treating a 24% KWANT Profile as 24% of all
+// 1,380 one-minute bars made it consume the whole pane after a refresh.
+const CHART_PROFILE_REFERENCE_BARS = 80;
+const MAX_PROFILE_PANE_FRACTION = 0.36;
+
 export function zoomScaledVolumeProfileWidth({
   paneWidth,
   visibleLogicalFrom,
   visibleLogicalTo,
-  profileDurationSeconds,
-  intervalSeconds,
+  referenceLogicalBars,
   widthPercent,
+  maxPaneFraction = MAX_PROFILE_PANE_FRACTION,
 }: {
   paneWidth: number;
   visibleLogicalFrom: number;
   visibleLogicalTo: number;
-  profileDurationSeconds: number;
-  intervalSeconds: number;
+  referenceLogicalBars: number;
   widthPercent: number;
+  maxPaneFraction?: number;
 }) {
   const visibleLogicalSpan = Math.abs(visibleLogicalTo - visibleLogicalFrom);
   if (
@@ -40,10 +46,8 @@ export function zoomScaledVolumeProfileWidth({
     || paneWidth <= 0
     || !Number.isFinite(visibleLogicalSpan)
     || visibleLogicalSpan <= 0
-    || !Number.isFinite(profileDurationSeconds)
-    || profileDurationSeconds <= 0
-    || !Number.isFinite(intervalSeconds)
-    || intervalSeconds <= 0
+    || !Number.isFinite(referenceLogicalBars)
+    || referenceLogicalBars <= 0
     || !Number.isFinite(widthPercent)
   ) return null;
   if (widthPercent <= 0) return 0;
@@ -53,13 +57,17 @@ export function zoomScaledVolumeProfileWidth({
   // or right can only translate the profile. Zooming changes that span and
   // therefore scales the profile in exactly the same direction as candles.
   const pixelsPerLogicalBar = paneWidth / visibleLogicalSpan;
-  const profileLogicalBars = profileDurationSeconds / intervalSeconds
-    * widthPercent / 100;
-  return Math.max(0.5, profileLogicalBars * pixelsPerLogicalBar);
+  const profileLogicalBars = referenceLogicalBars * widthPercent / 100;
+  return clamp(
+    profileLogicalBars * pixelsPerLogicalBar,
+    0.5,
+    paneWidth * clamp(maxPaneFraction, 0.05, 0.5),
+  );
 }
 
 export type NativeVolumeProfileStyle = {
   mode: "delta-volume" | "bid-ask" | "delta";
+  widthBasis: "chart" | "session";
   widthPercent: number;
   opacity: number;
   positiveDeltaColor: string;
@@ -269,23 +277,33 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
 
         const sessionWidth = Math.max(0.5, Math.abs(sessionEndX - sessionAnchorX));
         const visibleLogicalRange = params.chart.timeScale().getVisibleLogicalRange();
+        const profileDurationSeconds = Math.abs(
+          (model.drawingBounds?.endTime ?? profile.endMs / 1_000)
+          - (model.drawingBounds?.startTime ?? profile.startMs / 1_000),
+        );
+        const durationLogicalBars = model.intervalSeconds == null || model.intervalSeconds <= 0
+          ? null
+          : profileDurationSeconds / model.intervalSeconds;
+        const referenceLogicalBars = customProfile || style.widthBasis === "session"
+          ? durationLogicalBars
+          : CHART_PROFILE_REFERENCE_BARS;
         const zoomScaledWidth = visibleLogicalRange == null || model.intervalSeconds == null
+          || referenceLogicalBars == null
           ? null
           : zoomScaledVolumeProfileWidth({
               paneWidth: mediaSize.width,
               visibleLogicalFrom: Number(visibleLogicalRange.from),
               visibleLogicalTo: Number(visibleLogicalRange.to),
-              profileDurationSeconds: Math.abs(
-                (model.drawingBounds?.endTime ?? profile.endMs / 1_000)
-                - (model.drawingBounds?.startTime ?? profile.startMs / 1_000),
-              ),
-              intervalSeconds: model.intervalSeconds,
+              referenceLogicalBars,
               widthPercent: style.widthPercent,
             });
         const profileWidth = zoomScaledWidth
           ?? (style.widthPercent <= 0
             ? 0
-            : Math.max(0.5, sessionWidth * style.widthPercent / 100));
+            : Math.min(
+                mediaSize.width * MAX_PROFILE_PANE_FRACTION,
+                Math.max(0.5, sessionWidth * style.widthPercent / 100),
+              ));
         // A daily profile has two independent halves: volume to the right of
         // its spine and signed delta to the left. Once its session anchor has
         // moved beyond the viewport, dock the volume-only half to the left

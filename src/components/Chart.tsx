@@ -6622,6 +6622,7 @@ export default function Chart({
         highPrice: profile.levels[profile.levels.length - 1]?.price ?? Number.NEGATIVE_INFINITY,
         style: {
           mode: profileMode,
+          widthBasis: instance.indicatorId === "daily-volume-profile" ? "session" : "chart",
           widthPercent: clamp(Number(profileSettings.profileWidth ?? (profile.period === "weekly" ? 18 : 9)), 0, 100),
           opacity: clamp(Number(profileSettings.opacity ?? (profile.period === "weekly" ? 42 : 68)) / 100, 0.1, 1),
           positiveDeltaColor: useThemeColors ? settings.upColor : String(profileSettings.askColor ?? settings.upColor),

@@ -42,6 +42,16 @@ test("profile width follows horizontal zoom without changing during horizontal p
   assert.match(primitive, /function zoomScaledVolumeProfileWidth/);
   assert.match(primitive, /getVisibleLogicalRange\(\)/);
   assert.match(primitive, /paneWidth \/ visibleLogicalSpan/);
-  assert.match(primitive, /profileDurationSeconds \/ intervalSeconds/);
+  assert.match(primitive, /referenceLogicalBars \* widthPercent \/ 100/);
+  assert.match(primitive, /MAX_PROFILE_PANE_FRACTION/);
   assert.doesNotMatch(primitive, /viewportWidthLimit/);
+});
+
+test("KWANT Profile uses chart width while only daily profiles use session width", () => {
+  assert.match(
+    chart,
+    /widthBasis: instance\.indicatorId === "daily-volume-profile" \? "session" : "chart"/,
+  );
+  assert.match(primitive, /style\.widthBasis === "session"/);
+  assert.match(primitive, /CHART_PROFILE_REFERENCE_BARS/);
 });
