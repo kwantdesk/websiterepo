@@ -12441,7 +12441,7 @@ export default function KwantifyWorkspace({
 
     // Releasing a stop handle only arms the snapped stop. It must not replay
     // the quote used during the pointer release and turn placement into a fill.
-    if (update.kind === "stop_loss") {
+    if (update.kind === "stop_loss" || update.price == null) {
       commitPaperLedger(result.ledger);
       return;
     }

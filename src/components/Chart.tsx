@@ -1114,7 +1114,7 @@ class PaperPositionOverlayRenderer implements ISeriesPrimitivePaneRenderer {
           context.stroke();
           textLeft += 20;
         }
-        const closeWidth = level.kind === "entry" && level.showClose ? 16 : 0;
+        const closeWidth = level.showClose ? 16 : 0;
         if (closeWidth) {
           context.strokeStyle = level.color;
           context.beginPath();
@@ -6473,7 +6473,9 @@ export default function Chart({
       showTakeProfitHandle: level.kind === "entry"
         && Boolean(onUpdatePaperProtection)
         && !level.position.takeProfits.some((target) => target.quantity > target.filledQuantity),
-      showClose: level.kind === "entry" && Boolean(onClosePaperPosition),
+      showClose: level.kind === "entry"
+        ? Boolean(onClosePaperPosition)
+        : Boolean(onUpdatePaperProtection),
       stopColor: settings.downColor,
       takeProfitColor: settings.upColor,
       livePosition: level.kind === "entry" ? {
@@ -6641,6 +6643,24 @@ export default function Chart({
     document.addEventListener("pointercancel", handleCancel);
   };
 
+  const removePaperProtection = (level: (typeof paperOverlayLevels)[number]) => {
+    if (!onUpdatePaperProtection || level.kind === "entry") return;
+    if (level.kind === "stop_loss") {
+      onUpdatePaperProtection(level.position.accountId, level.position.id, {
+        kind: "stop_loss",
+        price: null,
+      });
+      return;
+    }
+    if (level.targetId) {
+      onUpdatePaperProtection(level.position.accountId, level.position.id, {
+        kind: "take_profit",
+        targetId: level.targetId,
+        price: null,
+      });
+    }
+  };
+
   return (
     <div className="flex h-full w-full min-w-0 overflow-hidden">
       <div
@@ -6728,15 +6748,33 @@ export default function Chart({
               ) : null}
             </div>
           ) : (
-            <button
-              type="button"
-              onPointerDown={(event) => startPaperProtectionDrag(event, level)}
-              className="paper-protection-overlay-label pointer-events-auto absolute right-1 h-4 w-[164px] -translate-y-1/2 cursor-ns-resize touch-none opacity-0 active:cursor-grabbing"
+            <div
+              className="paper-protection-overlay-label pointer-events-auto absolute right-1 flex h-4 w-[164px] -translate-y-1/2 items-stretch overflow-hidden opacity-0"
               style={{ borderColor: level.color, color: level.color }}
-              title="Drag to adjust protection"
             >
-              {level.label}
-            </button>
+              <button
+                type="button"
+                onPointerDown={(event) => startPaperProtectionDrag(event, level)}
+                className="min-w-0 flex-1 cursor-ns-resize touch-none truncate px-[7px] text-left active:cursor-grabbing"
+                title="Drag to adjust protection"
+              >
+                {level.label}
+              </button>
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  removePaperProtection(level);
+                }}
+                className="flex w-4 shrink-0 items-center justify-center border-l transition-colors hover:bg-danger/15 hover:text-danger"
+                style={{ borderColor: level.color }}
+                title={`Remove ${level.kind === "stop_loss" ? "stop loss" : "take profit"}`}
+                aria-label={`Remove ${level.kind === "stop_loss" ? "stop loss" : "take profit"} from ${level.position.symbol} position`}
+              >
+                <X className="h-2.5 w-2.5" />
+              </button>
+            </div>
           )}
         </div>
       ))}

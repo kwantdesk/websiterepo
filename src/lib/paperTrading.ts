@@ -49,7 +49,7 @@ export type PaperPosition = {
 
 export type PaperProtectionUpdate =
   | { kind: "stop_loss"; price: number | null }
-  | { kind: "take_profit"; targetId?: string; price: number; quantity?: number };
+  | { kind: "take_profit"; targetId?: string; price: number | null; quantity?: number };
 
 export type PaperOrder = {
   id: string;
@@ -910,6 +910,7 @@ export function updatePaperProtection(
   }
 
   if (!update.targetId) {
+    if (update.price == null) return { ledger, error: "Take-profit level not found" };
     return addPaperTakeProfit(
       ledger,
       accountId,
@@ -917,6 +918,28 @@ export function updatePaperProtection(
       update.price,
       update.quantity ?? position.remainingQuantity,
     );
+  }
+
+  if (update.price == null) {
+    const targetExists = position.takeProfits.some((target) => target.id === update.targetId);
+    if (!targetExists) return { ledger, error: "Take-profit level not found" };
+    const nextPosition = {
+      ...position,
+      takeProfits: position.takeProfits.filter((target) => target.id !== update.targetId),
+    };
+    return {
+      ledger: {
+        ...ledger,
+        accounts: {
+          ...ledger.accounts,
+          [accountId]: {
+            ...account,
+            positions: account.positions.map((candidate) => candidate.id === positionId ? nextPosition : candidate),
+            updatedAt: Date.now(),
+          },
+        },
+      },
+    };
   }
 
   const price = snapPaperPrice(position.symbol, update.price);

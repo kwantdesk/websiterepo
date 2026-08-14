@@ -77,7 +77,7 @@ test("chart receives paper positions, fills, and draggable bracket updates", () 
   assert.match(chart, /TP\$\{position\.takeProfits\.length > 1/);
   assert.match(chart, /requestAnimationFrame\(flushPreview\)/);
   assert.match(chart, /paper-position-overlay-label[^\n]*absolute right-1 flex h-4 w-\[164px\]/);
-  assert.match(chart, /paper-protection-overlay-label[^\n]*absolute right-1 h-4 w-\[164px\]/);
+  assert.match(chart, /paper-protection-overlay-label[^\n]*absolute right-1[^\n]*h-4 w-\[164px\]/);
   assert.match(chart, /class PaperPositionOverlayPrimitive/);
   assert.match(chart, /candleSeries\.attachPrimitive\(paperPositionOverlayPrimitive\)/);
   assert.match(chart, /context\.fillRect\(labelX, labelTop, labelWidth, labelHeight\)/);
@@ -87,7 +87,7 @@ test("chart receives paper positions, fills, and draggable bracket updates", () 
   assert.match(chart, /updatePreview\(upEvent\.clientY\)/);
   assert.match(workspace, /suspendedPaperProtectionIdsRef/);
   assert.match(workspace, /constrainDraggedPaperStop\(position, update\.price, quote\)/);
-  assert.match(workspace, /if \(update\.kind === "stop_loss"\) \{\s*commitPaperLedger\(result\.ledger\);\s*return;/);
+  assert.match(workspace, /if \(update\.kind === "stop_loss" \|\| update\.price == null\) \{\s*commitPaperLedger\(result\.ledger\);\s*return;/);
   assert.match(workspace, /marketableProtectionPositionIds: new Set\(\[positionId\]\)/);
   assert.doesNotMatch(chart, /paper-(?:position|protection)(?:-draft)?-overlay-label[^\n]*absolute left-/);
 });
@@ -103,6 +103,15 @@ test("an unprotected fill exposes chart-native SL and TP drag handles that creat
   assert.match(chart, /paperProjectedPnl\(/);
   assert.match(engine, /targetId\?: string/);
   assert.match(engine, /return addPaperTakeProfit\(/);
+});
+
+test("active stop-loss and take-profit labels can be removed and recreated from the entry handles", () => {
+  assert.match(chart, /const removePaperProtection/);
+  assert.match(chart, /kind: "stop_loss",[\s\S]*?price: null/);
+  assert.match(chart, /kind: "take_profit",[\s\S]*?targetId: level\.targetId,[\s\S]*?price: null/);
+  assert.match(chart, /Remove \$\{level\.kind === "stop_loss" \? "stop loss" : "take profit"\}/);
+  assert.match(engine, /takeProfits: position\.takeProfits\.filter\(\(target\) => target\.id !== update\.targetId\)/);
+  assert.match(workspace, /update\.kind === "stop_loss" \|\| update\.price == null/);
 });
 
 test("paper fills render as persistent candle-anchored entry and exit arrows", () => {
