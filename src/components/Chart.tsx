@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type CSSProperties, type PointerEvent as ReactPointerEvent, type RefObject } from "react";
+import { startTransition, useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type CSSProperties, type PointerEvent as ReactPointerEvent, type RefObject } from "react";
 import {
   createChart,
   LineStyle,
@@ -1742,6 +1742,12 @@ function withAlpha(color: string, alpha: number) {
 
 const DEFAULT_VISIBLE_CANDLE_COUNT = 140;
 const DEFAULT_RIGHT_CANDLE_PADDING = 8;
+// Lightweight Charts already moves its canvases at the browser refresh rate.
+// React only needs a bounded refresh cadence for the SVG/HTML studies that
+// read coordinates from that native viewport. Re-rendering this very large
+// component for every raw pan/zoom event makes pointer input monopolise the
+// main thread, especially with several workspace charts mounted.
+const VIEWPORT_REACT_REFRESH_INTERVAL_MS = 64;
 
 function resetChartViewport(
   chart: IChartApi,
@@ -2283,6 +2289,8 @@ export default function Chart({
   const toolbarRef = useRef<HTMLDivElement>(null);
   const latestPointerRef = useRef<{ x: number; y: number } | null>(null);
   const viewportFrameRef = useRef<number | null>(null);
+  const viewportRefreshTimerRef = useRef<number | null>(null);
+  const viewportRefreshLastAtRef = useRef(0);
   const toolbarDragStateRef = useRef<{ offsetX: number; offsetY: number; startClientX: number; startClientY: number; hasMoved: boolean } | null>(null);
   const toolbarToggleSuppressedRef = useRef(false);
   const latestCandleRef = useRef<Candle | null>(candles.at(-1) ?? null);
@@ -6352,13 +6360,17 @@ export default function Chart({
     prevDataRef.current = lastCandle ? `${lastCandle.timestamp}-${lastCandle.close}` : "";
 
     const container = chartContainerRef.current;
-    const handleMouseMove = (event: MouseEvent) => {
-      const rect = container.getBoundingClientRect();
-      const y = event.clientY - rect.top;
+    let mouseMoveFrame: number | null = null;
+    let pendingMouseMove: { clientY: number; buttons: number } | null = null;
+    let cachedContainerRect = container.getBoundingClientRect();
+    const flushMouseMove = () => {
+      mouseMoveFrame = null;
+      const pending = pendingMouseMove;
+      pendingMouseMove = null;
+      if (!pending) return;
+      const y = pending.clientY - cachedContainerRect.top;
 
-      if (event.buttons !== 0) {
-        scheduleViewportRefresh();
-      }
+      if (pending.buttons !== 0) scheduleViewportRefresh();
 
       if (horzLineRef.current) {
         horzLineRef.current.style.top = `${y}px`;
@@ -6373,6 +6385,10 @@ export default function Chart({
           priceLabelRef.current.textContent = price.toFixed(priceFormat.precision);
         }
       }
+    };
+    const handleMouseMove = (event: MouseEvent) => {
+      pendingMouseMove = { clientY: event.clientY, buttons: event.buttons };
+      if (mouseMoveFrame === null) mouseMoveFrame = window.requestAnimationFrame(flushMouseMove);
     };
 
     const handleMouseLeave = () => {
@@ -6399,6 +6415,7 @@ export default function Chart({
 
     const handleResize = () => {
       if (chartContainerRef.current && chartRef.current) {
+        cachedContainerRect = container.getBoundingClientRect();
         const width = chartContainerRef.current.clientWidth;
         const height = chartContainerRef.current.clientHeight;
         chartRef.current.applyOptions({
@@ -6410,12 +6427,39 @@ export default function Chart({
       }
     };
 
+    const commitViewportRefresh = () => {
+      viewportRefreshTimerRef.current = null;
+      viewportRefreshLastAtRef.current = performance.now();
+      // Coordinate overlays are non-urgent visual work. A transition lets the
+      // native canvas keep accepting pan/zoom input before React reconciles
+      // footprint, CVD and optional exposure overlays.
+      startTransition(() => {
+        setViewportVersion((current) => current + 1);
+      });
+    };
+
     const scheduleViewportRefresh = () => {
       if (viewportFrameRef.current != null) return;
       viewportFrameRef.current = window.requestAnimationFrame(() => {
         viewportFrameRef.current = null;
         syncNativePriceScaleWidth();
-        setViewportVersion((current) => current + 1);
+        const elapsed = performance.now() - viewportRefreshLastAtRef.current;
+        if (elapsed >= VIEWPORT_REACT_REFRESH_INTERVAL_MS) {
+          if (viewportRefreshTimerRef.current !== null) {
+            window.clearTimeout(viewportRefreshTimerRef.current);
+            viewportRefreshTimerRef.current = null;
+          }
+          commitViewportRefresh();
+          return;
+        }
+        // Keep one trailing refresh so all coordinate overlays finish exactly
+        // on the viewport where the trader releases the mouse.
+        if (viewportRefreshTimerRef.current === null) {
+          viewportRefreshTimerRef.current = window.setTimeout(
+            commitViewportRefresh,
+            Math.max(0, VIEWPORT_REACT_REFRESH_INTERVAL_MS - elapsed),
+          );
+        }
       });
     };
 
@@ -6534,6 +6578,15 @@ export default function Chart({
         window.cancelAnimationFrame(viewportFrameRef.current);
         viewportFrameRef.current = null;
       }
+      if (viewportRefreshTimerRef.current !== null) {
+        window.clearTimeout(viewportRefreshTimerRef.current);
+        viewportRefreshTimerRef.current = null;
+      }
+      if (mouseMoveFrame !== null) {
+        window.cancelAnimationFrame(mouseMoveFrame);
+        mouseMoveFrame = null;
+      }
+      pendingMouseMove = null;
       if (viewportResetFrameRef.current !== null) {
         window.cancelAnimationFrame(viewportResetFrameRef.current);
         viewportResetFrameRef.current = null;
