@@ -140,6 +140,7 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
     { key: "stackedImbalanceLevels", label: "Stacked imbalance rows", defaultValue: 3, min: 2, max: 10, step: 1 },
     { key: "unfinishedAuctionMinimumVolume", label: "Unfinished auction minimum", defaultValue: 1, min: 0, max: 100000, step: 1 },
     { key: "valueAreaPercent", label: "Value area (decimal)", defaultValue: 0.7, min: 0.5, max: 1, step: 0.01 },
+    { key: "backgroundOpacity", label: "Fixed background opacity (%)", defaultValue: 72, min: 0, max: 100, step: 1 },
     { key: "minimumOpacity", label: "Minimum heat opacity (%)", defaultValue: 8, min: 0, max: 100, step: 1 },
     { key: "maximumOpacity", label: "Maximum heat opacity (%)", defaultValue: 72, min: 0, max: 100, step: 1 },
     { key: "gradientExponent", label: "Heat gradient exponent", defaultValue: 0.72, min: 0.1, max: 3, step: 0.01 },
@@ -155,6 +156,8 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
     { key: "minimumRatio", label: "Minimum displayed ask/bid ratio", defaultValue: 1.5, min: 0, max: 100, step: 0.1 },
     { key: "maximumRatio", label: "Maximum displayed ask/bid ratio", defaultValue: 100, min: 1, max: 1000, step: 1 },
     { key: "clusterMinimumVolume", label: "Volume-cluster minimum", defaultValue: 100, min: 1, max: 100000, step: 1 },
+    { key: "maximumRetainedBars", label: "Maximum retained footprint bars", defaultValue: 5000, min: 100, max: 5000, step: 100 },
+    { key: "maximumDetailedVisibleBars", label: "Maximum bars with cell text", defaultValue: 180, min: 20, max: 350, step: 10 },
   ],
   "deep-m-effort-nq": [
     { key: "zoneOpacity", label: "Zone opacity (%)", defaultValue: 20, min: 1, max: 100 },

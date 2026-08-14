@@ -109,6 +109,7 @@ import {
   type FootprintPrimitiveOptions,
   type FootprintRenderBar,
 } from "@/lib/footprintPrimitive";
+import { retainLiveFootprintRows } from "@/lib/footprintLive";
 import { calculateDeepEffort } from "@/lib/deepEffort";
 import { calculateImbalanceRejectorSignals } from "@/lib/imbalanceRejector";
 import { calculateImbalanceZones } from "@/lib/imbalanceTracker";
@@ -2176,6 +2177,7 @@ export default function Chart({
   const volumeProfilePrimitiveRef = useRef<NativeVolumeProfilePrimitive | null>(null);
   const bigTradesPrimitiveRef = useRef<BigTradesPrimitive | null>(null);
   const footprintPrimitiveRef = useRef<FootprintPrimitive | null>(null);
+  const retainedFootprintBarsRef = useRef<{ key: string; bars: FootprintRenderBar[] } | null>(null);
   const paperFillMarkersPrimitiveRef = useRef<PaperFillMarkersPrimitive | null>(null);
   const paperPositionOverlayPrimitiveRef = useRef<PaperPositionOverlayPrimitive | null>(null);
   const footprintActiveRef = useRef(false);
@@ -2557,16 +2559,49 @@ export default function Chart({
       instance.enabled && instance.indicatorId === "deep-print-footprint") ?? null,
     [indicatorSignature, indicators],
   );
-  const footprintSettings = footprintIndicator?.settings ?? {};
+  const footprintSettings = useMemo(
+    () => footprintIndicator?.settings ?? {},
+    [footprintIndicator],
+  );
+  const footprintCandles = useMemo(
+    () => footprintIndicator ? candles.slice(-indicatorHistoryLimit) : [],
+    [candles, footprintIndicator, indicatorHistoryLimit],
+  );
   const footprintVisibleCandles = useMemo(() => {
-    if (!footprintIndicator || !indicatorCandles.length) return [];
+    if (!footprintIndicator || !footprintCandles.length) return [];
     const logical = chartRef.current?.timeScale().getVisibleLogicalRange();
-    if (!logical) return indicatorCandles.slice(-160);
-    const sourceOffset = candles.length - indicatorCandles.length;
+    if (!logical) return footprintCandles.slice(-160);
+    const sourceOffset = candles.length - footprintCandles.length;
     const first = Math.max(0, Math.floor(Number(logical.from)) - sourceOffset - 8);
-    const last = Math.min(indicatorCandles.length, Math.ceil(Number(logical.to)) - sourceOffset + 9);
-    return first < last ? indicatorCandles.slice(first, last) : indicatorCandles.slice(-160);
-  }, [candles.length, footprintIndicator, indicatorCandles, viewportVersion]);
+    const last = Math.min(footprintCandles.length, Math.ceil(Number(logical.to)) - sourceOffset + 9);
+    return first < last ? footprintCandles.slice(first, last) : footprintCandles.slice(-160);
+  }, [candles.length, footprintCandles, footprintIndicator, viewportVersion]);
+  const footprintSourceCandles = useMemo(() => {
+    if (!footprintIndicator) return [];
+    if (footprintSettings.scaleMode !== "all-loaded") return footprintVisibleCandles;
+    const maximumRetainedBars = Math.max(100, Math.min(5_000,
+      Math.round(Number(footprintSettings.maximumRetainedBars ?? 5_000))));
+    return footprintCandles.slice(-maximumRetainedBars);
+  }, [footprintCandles, footprintIndicator, footprintSettings.maximumRetainedBars, footprintSettings.scaleMode, footprintVisibleCandles]);
+  const footprintMarketTrades = useMemo(() => {
+    if (!footprintSourceCandles.length || !marketTrades.length) return [];
+    const start = footprintSourceCandles[0].timestamp;
+    const finalCandle = footprintSourceCandles.at(-1)!;
+    const approximateInterval = timeframeToMs(timeframe)
+      ?? Math.max(1, finalCandle.timestamp - (footprintSourceCandles.at(-2)?.timestamp ?? finalCandle.timestamp - 60_000));
+    const end = finalCandle.timestamp + approximateInterval;
+    const lowerBound = (timestamp: number) => {
+      let low = 0;
+      let high = marketTrades.length;
+      while (low < high) {
+        const middle = (low + high) >>> 1;
+        if (marketTrades[middle].timestamp < timestamp) low = middle + 1;
+        else high = middle;
+      }
+      return low;
+    };
+    return marketTrades.slice(lowerBound(start), lowerBound(end));
+  }, [footprintSourceCandles, marketTrades, timeframe]);
   const resolvedFootprintGroupTicks = useMemo(() => {
     const manual = Math.max(1, Math.round(Number(footprintSettings.manualTicks ?? 1)));
     if (footprintSettings.groupingMode === "manual") return manual;
@@ -2600,15 +2635,8 @@ export default function Chart({
     viewportVersion,
   ]);
   const footprintBars = useMemo(() => {
-    if (!footprintIndicator || !footprintVisibleCandles.length) return [];
-    const start = footprintVisibleCandles[0].timestamp;
-    const finalCandle = footprintVisibleCandles.at(-1)!;
-    const approximateInterval = timeframeToMs(timeframe)
-      ?? Math.max(1, finalCandle.timestamp - (footprintVisibleCandles.at(-2)?.timestamp ?? finalCandle.timestamp - 60_000));
-    const end = finalCandle.timestamp + approximateInterval;
-    const visibleTrades = indicatorMarketTrades.filter((record) =>
-      record.timestamp >= start && record.timestamp < end);
-    return buildFootprintBars(footprintVisibleCandles, visibleTrades, {
+    if (!footprintIndicator || !footprintSourceCandles.length) return [];
+    return buildFootprintBars(footprintSourceCandles, footprintMarketTrades, {
       tickSize: priceFormat.minMove,
       groupTicks: resolvedFootprintGroupTicks,
       instrument,
@@ -2641,8 +2669,8 @@ export default function Chart({
     footprintSettings.unfinishedAuctionEnabled,
     footprintSettings.unfinishedAuctionMinimumVolume,
     footprintSettings.valueAreaPercent,
-    footprintVisibleCandles,
-    indicatorMarketTrades,
+    footprintSourceCandles,
+    footprintMarketTrades,
     instrument,
     priceFormat.minMove,
     resolvedFootprintGroupTicks,
@@ -2654,6 +2682,25 @@ export default function Chart({
       time: (eventChartTimeBySourceTimeRef.current.get(bar.timestamp)
         ?? Math.floor(bar.timestamp / 1_000)) as Time,
     })), [footprintBars]);
+  const footprintDataKey = `${instrument}:${timeframe}`;
+  const liveFootprintRenderBars = useMemo(
+    () => retainLiveFootprintRows(
+      footprintRenderBars,
+      retainedFootprintBarsRef.current?.key === footprintDataKey
+        ? retainedFootprintBarsRef.current.bars
+        : [],
+    ),
+    [footprintDataKey, footprintRenderBars],
+  );
+  useEffect(() => {
+    if (!footprintIndicator) {
+      retainedFootprintBarsRef.current = null;
+      return;
+    }
+    if (liveFootprintRenderBars.some((bar) => bar.hasPriceLevelFlow)) {
+      retainedFootprintBarsRef.current = { key: footprintDataKey, bars: liveFootprintRenderBars };
+    }
+  }, [footprintDataKey, footprintIndicator, liveFootprintRenderBars]);
   const footprintPrimitiveOptions = useMemo((): FootprintPrimitiveOptions => {
     const useThemeColors = footprintSettings.useThemeColors !== false;
     const option = <T extends string>(value: unknown, allowed: readonly T[], fallback: T) =>
@@ -2706,6 +2753,7 @@ export default function Chart({
       dynamicTextIncrease: clamp(Number(footprintSettings.dynamicTextIncrease ?? 1), 0, 2),
       showZeros: footprintSettings.showZeros === true,
       colorOnlyDominantSide: footprintSettings.colorOnlyDominantSide === true,
+      showImbalances: footprintSettings.showImbalances !== false,
       showVolumePoc: footprintSettings.showVolumePoc !== false,
       showDeltaPoc: footprintSettings.showDeltaPoc === true,
       showValueArea: footprintSettings.showValueArea !== false,
@@ -2736,6 +2784,10 @@ export default function Chart({
       outsideBarStyle: option(footprintSettings.outsideBarStyle, ["bar", "body"], "bar"),
       markerAlignment: option(footprintSettings.markerAlignment, ["center", "right"], "center"),
       outerEdgeMode: footprintSettings.outerEdgeMode !== false,
+      maximumDetailedVisibleBars: clamp(Number(footprintSettings.maximumDetailedVisibleBars ?? 180), 20, 350),
+      fpsLimit: ([30, 60, 120].includes(Number(footprintSettings.fpsLimit))
+        ? Number(footprintSettings.fpsLimit)
+        : 60) as 30 | 60 | 120,
       askColor: useThemeColors ? settings.upColor : String(footprintSettings.askColor ?? settings.upColor),
       bidColor: useThemeColors ? settings.downColor : String(footprintSettings.bidColor ?? settings.downColor),
       betweenColor: String(footprintSettings.betweenColor ?? "#A1A1AA"),
@@ -2753,8 +2805,8 @@ export default function Chart({
       backgroundColor: settings.backgroundColor,
     };
   }, [footprintSettings, settings]);
-  const footprintHasPriceLevelFlow = footprintRenderBars.some((bar) => bar.hasPriceLevelFlow);
-  const footprintHasClassifiedFlow = footprintRenderBars.some((bar) =>
+  const footprintHasPriceLevelFlow = liveFootprintRenderBars.some((bar) => bar.hasPriceLevelFlow);
+  const footprintHasClassifiedFlow = liveFootprintRenderBars.some((bar) =>
     bar.classifiedVolume > 0);
 
   useEffect(() => {
@@ -2763,7 +2815,7 @@ export default function Chart({
     const chart = chartRef.current;
     if (!primitive || !series || !chart) return;
     primitive.update(
-      footprintIndicator && footprintHasPriceLevelFlow ? footprintRenderBars : [],
+      footprintIndicator && footprintHasPriceLevelFlow ? liveFootprintRenderBars : [],
       footprintPrimitiveOptions,
     );
 
@@ -2806,7 +2858,7 @@ export default function Chart({
     footprintHasPriceLevelFlow,
     footprintIndicator,
     footprintPrimitiveOptions,
-    footprintRenderBars,
+    liveFootprintRenderBars,
     settings.borderDownColor,
     settings.borderUpColor,
     settings.downColor,

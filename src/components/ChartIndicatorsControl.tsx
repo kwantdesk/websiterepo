@@ -34,6 +34,7 @@ import type { ChartSettings } from "@/lib/chartSettings";
 import {
   applyFootprintPreset,
   deleteFootprintTemplate,
+  loadSavedFootprintSettings,
   loadFootprintTemplates,
   saveFootprintSettings,
   saveFootprintTemplate,
@@ -163,6 +164,7 @@ export default function ChartIndicatorsControl({
   const [footprintTemplateName, setFootprintTemplateName] = useState("");
   const [selectedFootprintTemplateId, setSelectedFootprintTemplateId] = useState("");
   const [footprintSaveStatus, setFootprintSaveStatus] = useState("");
+  const restoredFootprintIdsRef = useRef(new Set<string>());
 
   useEffect(() => {
     window.localStorage.setItem(FAVOURITES_STORAGE_KEY, JSON.stringify(favourites));
@@ -234,10 +236,22 @@ export default function ChartIndicatorsControl({
 
   useEffect(() => {
     if (!settingsInstanceId?.startsWith("deep-print-footprint-")) return;
+    if (!restoredFootprintIdsRef.current.has(settingsInstanceId)) {
+      restoredFootprintIdsRef.current.add(settingsInstanceId);
+      const savedSettings = loadSavedFootprintSettings(settingsInstanceId);
+      if (savedSettings) {
+        onChange(indicators.map((instance) => instance.instanceId === settingsInstanceId
+          ? { ...instance, settings: { ...(instance.settings ?? {}), ...savedSettings } }
+          : instance));
+      }
+    }
     setFootprintTemplates(loadFootprintTemplates());
     setFootprintTemplateName("");
     setSelectedFootprintTemplateId("");
     setFootprintSaveStatus("");
+  // A locally saved footprint is restored once when this instance's settings
+  // panel opens. Normal live edits continue through workspace persistence.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settingsInstanceId]);
 
   const filtered = useMemo(() => {
@@ -827,6 +841,11 @@ export default function ChartIndicatorsControl({
                     ["Grouping mode", "groupMode", [["fixed", "Fixed"], ["open-close", "Based on open / close"]]],
                     ["Imbalance", "imbalanceMode", [["diagonal", "Diagonal"], ["horizontal", "Horizontal"], ["delta-percent", "Delta percentage"]]],
                     ["Professional number format", "numberFormat", [["automatic", "Automatic"], ["full", "Full values"], ["compact", "Compact K / M"]]],
+                    ["Colour mode", "colorMode", [["fading", "Fading intensity"], ["fixed", "Fixed opacity"], ["none", "No cell fill"]]],
+                    ["Colour calculation", "colorCalculation", [["volume", "Volume"], ["delta", "Absolute delta"], ["imbalance", "Bid / Ask imbalance"], ["dominant", "Dominant side"], ["dominant-delta", "Dominant delta"]]],
+                    ["Active candle outline", "outsideBarStyle", [["bar", "Full bar"], ["body", "Candle body"]]],
+                    ["Live marker alignment", "markerAlignment", [["center", "Centre"], ["right", "Right edge"]]],
+                    ["Maximum refresh rate", "fpsLimit", [["30", "30 FPS"], ["60", "60 FPS"], ["120", "120 FPS"]]],
                   ].map(([label, key, options]) => (
                     <label key={String(key)} className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
                       <span>{String(label)}</span>
@@ -834,7 +853,10 @@ export default function ChartIndicatorsControl({
                         value={String(settingsInstance.settings?.[String(key)] ?? "")}
                         onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
                           ...current,
-                          settings: { ...(current.settings ?? {}), [String(key)]: event.target.value },
+                          settings: {
+                            ...(current.settings ?? {}),
+                            [String(key)]: String(key) === "fpsLimit" ? Number(event.target.value) : event.target.value,
+                          },
                         }))}
                         className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground"
                         menuLabel={String(label)}

@@ -247,11 +247,29 @@ test("settings validation migrates invalid values safely", () => {
     barWidth: 1000,
     valueAreaPercent: 0.2,
     stackedImbalanceLevels: 99,
+    groupingMode: "broken",
+    colorMode: "invisible-ish",
+    inputType: "quotes",
+    maximumDetailedVisibleBars: 2,
+    fpsLimit: 17,
+    showImbalances: "yes",
+    minimumOpacity: 80,
+    maximumOpacity: 20,
+    minimumRatio: 50,
+    maximumRatio: 2,
   });
   assert.equal(settings.contentMode, "bid-ask");
   assert.equal(settings.barWidth, 180);
   assert.equal(settings.valueAreaPercent, 0.5);
   assert.equal(settings.stackedImbalanceLevels, 10);
+  assert.equal(settings.groupingMode, "automatic");
+  assert.equal(settings.colorMode, "fading");
+  assert.equal(settings.inputType, "volume");
+  assert.equal(settings.maximumDetailedVisibleBars, 20);
+  assert.equal(settings.fpsLimit, 60);
+  assert.equal(settings.showImbalances, true);
+  assert.equal(settings.maximumOpacity, 80);
+  assert.equal(settings.maximumRatio, 50);
 });
 
 test("presets reuse one versioned settings model", () => {
@@ -266,6 +284,8 @@ test("visible preset aliases change the live footprint mode", () => {
   const delta = applyFootprintPreset(DEFAULT_FOOTPRINT_SETTINGS, "delta");
   const minimal = applyFootprintPreset(DEFAULT_FOOTPRINT_SETTINGS, "minimal");
   assert.equal(orderFlow.contentMode, "bid-ask-histogram");
+  assert.equal(orderFlow.visualizationMode, "histogram");
+  assert.equal(orderFlow.colorCalculation, "volume");
   assert.equal(orderFlow.showBetweenVolume, true);
   assert.equal(delta.contentMode, "delta-histogram");
   assert.equal(delta.showMaxNegativeDelta, true);

@@ -5,7 +5,7 @@ import type {
   FootprintVisualizationMode,
 } from "./footprintTypes";
 
-export const FOOTPRINT_SETTINGS_SCHEMA_VERSION = 3;
+export const FOOTPRINT_SETTINGS_SCHEMA_VERSION = 4;
 
 export type FootprintSettings = {
   footprintSettingsVersion: number;
@@ -13,6 +13,9 @@ export type FootprintSettings = {
   visualizationMode: FootprintVisualizationMode;
   scaleMode: FootprintScaleMode;
   numberFormat: FootprintNumberFormat;
+  inputType: "volume" | "num-trades";
+  colorMode: "none" | "fixed" | "fading";
+  colorCalculation: "volume" | "delta" | "imbalance" | "dominant" | "dominant-delta";
   groupingMode: "automatic" | "manual";
   groupMode: "fixed" | "open-close";
   manualTicks: number;
@@ -21,6 +24,7 @@ export type FootprintSettings = {
   candleSpacing: number;
   fontSize: number;
   fontWeight: number;
+  borderWidth: number;
   minimumWidthToShowText: number;
   minimumRowHeightToShowText: number;
   backgroundOpacity: number;
@@ -32,7 +36,7 @@ export type FootprintSettings = {
   minimumTradeVolume: number;
   maximumTradeVolume: number;
   valueAreaPercent: number;
-  imbalanceMode: "diagonal" | "same-row" | "delta-percent";
+  imbalanceMode: "diagonal" | "horizontal" | "same-row" | "delta-percent";
   minimumImbalancePercent: number;
   minimumDominantVolume: number;
   minimumDelta: number;
@@ -41,6 +45,7 @@ export type FootprintSettings = {
   showStackedImbalances: boolean;
   unfinishedAuctionEnabled: boolean;
   unfinishedAuctionMinimumVolume: number;
+  showImbalances: boolean;
   showWick: boolean;
   showBodyOutline: boolean;
   showBodyFill: boolean;
@@ -48,9 +53,23 @@ export type FootprintSettings = {
   showSummary: boolean;
   showCentreDivider: boolean;
   showVolumePoc: boolean;
+  showDeltaPoc: boolean;
   showValueArea: boolean;
   showVah: boolean;
   showVal: boolean;
+  showSinglePrints: boolean;
+  singlePrintMaximum: number;
+  singlePrintExtremesOnly: boolean;
+  showRatio: boolean;
+  minimumRatio: number;
+  maximumRatio: number;
+  showVolumeClusters: boolean;
+  clusterMinimumVolume: number;
+  showBarDelta: boolean;
+  showZeros: boolean;
+  colorOnlyDominantSide: boolean;
+  dynamicTextSize: boolean;
+  dynamicTextIncrease: number;
   showMaxBid: boolean;
   showMaxAsk: boolean;
   showMaxPositiveDelta: boolean;
@@ -58,6 +77,9 @@ export type FootprintSettings = {
   showMaxTrades: boolean;
   showBetweenVolume: boolean;
   showVwap: boolean;
+  outsideBarStyle: "bar" | "body";
+  markerAlignment: "center" | "right";
+  outerEdgeMode: boolean;
   useThemeColors: boolean;
   askColor: string;
   bidColor: string;
@@ -66,6 +88,9 @@ export type FootprintSettings = {
   textColor: string;
   pocColor: string;
   valueAreaColor: string;
+  deltaPocColor: string;
+  clusterColor: string;
+  singlePrintColor: string;
   stackedAskColor: string;
   stackedBidColor: string;
   unfinishedAuctionColor: string;
@@ -81,6 +106,9 @@ export const DEFAULT_FOOTPRINT_SETTINGS: FootprintSettings = {
   visualizationMode: "heatmap-histogram",
   scaleMode: "visible-region",
   numberFormat: "automatic",
+  inputType: "volume",
+  colorMode: "fading",
+  colorCalculation: "imbalance",
   groupingMode: "automatic",
   groupMode: "fixed",
   manualTicks: 1,
@@ -89,6 +117,7 @@ export const DEFAULT_FOOTPRINT_SETTINGS: FootprintSettings = {
   candleSpacing: 6,
   fontSize: 11,
   fontWeight: 500,
+  borderWidth: 1,
   minimumWidthToShowText: 58,
   minimumRowHeightToShowText: 13,
   backgroundOpacity: 72,
@@ -109,6 +138,7 @@ export const DEFAULT_FOOTPRINT_SETTINGS: FootprintSettings = {
   showStackedImbalances: true,
   unfinishedAuctionEnabled: false,
   unfinishedAuctionMinimumVolume: 1,
+  showImbalances: true,
   showWick: true,
   showBodyOutline: true,
   showBodyFill: false,
@@ -116,9 +146,23 @@ export const DEFAULT_FOOTPRINT_SETTINGS: FootprintSettings = {
   showSummary: true,
   showCentreDivider: true,
   showVolumePoc: true,
+  showDeltaPoc: false,
   showValueArea: true,
   showVah: false,
   showVal: false,
+  showSinglePrints: false,
+  singlePrintMaximum: 1,
+  singlePrintExtremesOnly: true,
+  showRatio: false,
+  minimumRatio: 1.5,
+  maximumRatio: 100,
+  showVolumeClusters: false,
+  clusterMinimumVolume: 100,
+  showBarDelta: true,
+  showZeros: false,
+  colorOnlyDominantSide: false,
+  dynamicTextSize: true,
+  dynamicTextIncrease: 1,
   showMaxBid: false,
   showMaxAsk: false,
   showMaxPositiveDelta: false,
@@ -126,6 +170,9 @@ export const DEFAULT_FOOTPRINT_SETTINGS: FootprintSettings = {
   showMaxTrades: false,
   showBetweenVolume: false,
   showVwap: false,
+  outsideBarStyle: "bar",
+  markerAlignment: "center",
+  outerEdgeMode: true,
   useThemeColors: true,
   askColor: "#B7FF38",
   bidColor: "#F06A70",
@@ -134,6 +181,9 @@ export const DEFAULT_FOOTPRINT_SETTINGS: FootprintSettings = {
   textColor: "#E9EDF2",
   pocColor: "#E4BF5A",
   valueAreaColor: "#647BA8",
+  deltaPocColor: "#60A5FA",
+  clusterColor: "#F59E0B",
+  singlePrintColor: "#F4F4F5",
   stackedAskColor: "#B7FF38",
   stackedBidColor: "#F06A70",
   unfinishedAuctionColor: "#E4BF5A",
@@ -157,8 +207,9 @@ export const FOOTPRINT_PRESETS: Record<FootprintPresetName, Partial<FootprintSet
   kwantdesk: {},
   "order-flow": {
     contentMode: "bid-ask-histogram",
-    visualizationMode: "heatmap-histogram",
+    visualizationMode: "histogram",
     scaleMode: "visible-region",
+    colorCalculation: "volume",
     showBetweenVolume: true,
     showValueArea: false,
     showStackedImbalances: true,
@@ -167,6 +218,8 @@ export const FOOTPRINT_PRESETS: Record<FootprintPresetName, Partial<FootprintSet
   imbalance: {
     contentMode: "bid-ask",
     visualizationMode: "heatmap-histogram",
+    colorCalculation: "imbalance",
+    colorOnlyDominantSide: true,
     minimumOpacity: 12,
     maximumOpacity: 86,
     showStackedImbalances: true,
@@ -225,9 +278,19 @@ const clamp = (value: unknown, minimum: number, maximum: number, fallback: numbe
 const option = <T extends string>(value: unknown, values: readonly T[], fallback: T) =>
   values.includes(String(value) as T) ? String(value) as T : fallback;
 
+const bool = (value: unknown, fallback: boolean) =>
+  typeof value === "boolean" ? value : fallback;
+
+const colour = (value: unknown, fallback: string) =>
+  typeof value === "string" && value.trim() ? value : fallback;
+
 export function validateFootprintSettings(input: unknown): FootprintSettings {
   const source = input && typeof input === "object" ? input as Record<string, unknown> : {};
   const merged = { ...DEFAULT_FOOTPRINT_SETTINGS, ...source } as FootprintSettings;
+  const minimumOpacity = clamp(source.minimumOpacity, 0, 100, 8);
+  const maximumOpacity = Math.max(minimumOpacity, clamp(source.maximumOpacity, 0, 100, 72));
+  const minimumRatio = clamp(source.minimumRatio, 0, 1_000, 1.5);
+  const maximumRatio = Math.max(minimumRatio, clamp(source.maximumRatio, 1, 10_000, 100));
   return {
     ...merged,
     footprintSettingsVersion: FOOTPRINT_SETTINGS_SCHEMA_VERSION,
@@ -235,14 +298,88 @@ export function validateFootprintSettings(input: unknown): FootprintSettings {
     visualizationMode: option(source.visualizationMode, ["solid", "heatmap", "histogram", "heatmap-histogram", "text-only"], "heatmap-histogram"),
     scaleMode: option(source.scaleMode, ["per-bar", "all-loaded", "visible-region", "fixed-maximum"], "visible-region"),
     numberFormat: option(source.numberFormat ?? source.textFormat, ["full", "compact", "automatic"], "automatic"),
+    inputType: option(source.inputType, ["volume", "num-trades"], "volume"),
+    colorMode: option(source.colorMode, ["none", "fixed", "fading"], "fading"),
+    colorCalculation: option(source.colorCalculation, ["volume", "delta", "imbalance", "dominant", "dominant-delta"], "imbalance"),
+    groupingMode: option(source.groupingMode, ["automatic", "manual"], "automatic"),
+    groupMode: option(source.groupMode, ["fixed", "open-close"], "fixed"),
+    imbalanceMode: option(source.imbalanceMode, ["diagonal", "same-row", "horizontal", "delta-percent"], "diagonal"),
+    outsideBarStyle: option(source.outsideBarStyle, ["bar", "body"], "bar"),
+    markerAlignment: option(source.markerAlignment, ["center", "right"], "center"),
+    manualTicks: Math.round(clamp(source.manualTicks, 1, 100, 1)),
+    autoGroupFactor: clamp(source.autoGroupFactor, 0.5, 4, 1),
     barWidth: clamp(source.barWidth, 28, 180, 92),
     candleSpacing: clamp(source.candleSpacing, 1, 24, 6),
     fontSize: clamp(source.fontSize, 9, 15, 11),
     fontWeight: clamp(source.fontWeight, 400, 800, 500),
+    borderWidth: clamp(source.borderWidth, 0.5, 4, 1),
+    minimumWidthToShowText: clamp(source.minimumWidthToShowText, 28, 180, 58),
+    minimumRowHeightToShowText: clamp(source.minimumRowHeightToShowText, 8, 34, 13),
+    backgroundOpacity: clamp(source.backgroundOpacity, 0, 100, 72),
+    minimumOpacity,
+    maximumOpacity,
+    gradientExponent: clamp(source.gradientExponent, 0.1, 3, 0.72),
+    visibleRegionPercentile: clamp(source.visibleRegionPercentile, 0.5, 1, 0.95),
+    fixedMaximum: clamp(source.fixedMaximum, 0, 10_000_000, 0),
+    minimumTradeVolume: clamp(source.minimumTradeVolume, 0, 100_000, 0),
+    maximumTradeVolume: clamp(source.maximumTradeVolume, 0, 1_000_000, 0),
     valueAreaPercent: clamp(source.valueAreaPercent, 0.5, 1, 0.7),
     minimumImbalancePercent: clamp(source.minimumImbalancePercent, 100, 10_000, 300),
     minimumDominantVolume: clamp(source.minimumDominantVolume, 0, 1_000_000, 10),
+    minimumDelta: clamp(source.minimumDelta, 0, 1_000_000, 0),
     stackedImbalanceLevels: Math.round(clamp(source.stackedImbalanceLevels, 2, 10, 3)),
+    unfinishedAuctionMinimumVolume: clamp(source.unfinishedAuctionMinimumVolume, 0, 1_000_000, 1),
+    dynamicTextIncrease: clamp(source.dynamicTextIncrease, 0, 2, 1),
+    singlePrintMaximum: clamp(source.singlePrintMaximum, 1, 1_000_000, 1),
+    minimumRatio,
+    maximumRatio,
+    clusterMinimumVolume: clamp(source.clusterMinimumVolume, 1, 1_000_000, 100),
+    includeZero: bool(source.includeZero, false),
+    showImbalances: bool(source.showImbalances, true),
+    showStackedImbalances: bool(source.showStackedImbalances, true),
+    unfinishedAuctionEnabled: bool(source.unfinishedAuctionEnabled, false),
+    showWick: bool(source.showWick, true),
+    showBodyOutline: bool(source.showBodyOutline, true),
+    showBodyFill: bool(source.showBodyFill, false),
+    showEmptyPriceRows: bool(source.showEmptyPriceRows, false),
+    showSummary: bool(source.showSummary, true),
+    showCentreDivider: bool(source.showCentreDivider, true),
+    showVolumePoc: bool(source.showVolumePoc, true),
+    showDeltaPoc: bool(source.showDeltaPoc, false),
+    showValueArea: bool(source.showValueArea, true),
+    showVah: bool(source.showVah, false),
+    showVal: bool(source.showVal, false),
+    showSinglePrints: bool(source.showSinglePrints, false),
+    singlePrintExtremesOnly: bool(source.singlePrintExtremesOnly, true),
+    showRatio: bool(source.showRatio, false),
+    showVolumeClusters: bool(source.showVolumeClusters, false),
+    showBarDelta: bool(source.showBarDelta, true),
+    showZeros: bool(source.showZeros, false),
+    colorOnlyDominantSide: bool(source.colorOnlyDominantSide, false),
+    dynamicTextSize: bool(source.dynamicTextSize, true),
+    showMaxBid: bool(source.showMaxBid, false),
+    showMaxAsk: bool(source.showMaxAsk, false),
+    showMaxPositiveDelta: bool(source.showMaxPositiveDelta, false),
+    showMaxNegativeDelta: bool(source.showMaxNegativeDelta, false),
+    showMaxTrades: bool(source.showMaxTrades, false),
+    showBetweenVolume: bool(source.showBetweenVolume, false),
+    showVwap: bool(source.showVwap, false),
+    outerEdgeMode: bool(source.outerEdgeMode, true),
+    useThemeColors: bool(source.useThemeColors, true),
+    askColor: colour(source.askColor, DEFAULT_FOOTPRINT_SETTINGS.askColor),
+    bidColor: colour(source.bidColor, DEFAULT_FOOTPRINT_SETTINGS.bidColor),
+    betweenColor: colour(source.betweenColor, DEFAULT_FOOTPRINT_SETTINGS.betweenColor),
+    neutralColor: colour(source.neutralColor, DEFAULT_FOOTPRINT_SETTINGS.neutralColor),
+    textColor: colour(source.textColor, DEFAULT_FOOTPRINT_SETTINGS.textColor),
+    pocColor: colour(source.pocColor, DEFAULT_FOOTPRINT_SETTINGS.pocColor),
+    valueAreaColor: colour(source.valueAreaColor, DEFAULT_FOOTPRINT_SETTINGS.valueAreaColor),
+    deltaPocColor: colour(source.deltaPocColor, DEFAULT_FOOTPRINT_SETTINGS.deltaPocColor),
+    clusterColor: colour(source.clusterColor, DEFAULT_FOOTPRINT_SETTINGS.clusterColor),
+    singlePrintColor: colour(source.singlePrintColor, DEFAULT_FOOTPRINT_SETTINGS.singlePrintColor),
+    stackedAskColor: colour(source.stackedAskColor, DEFAULT_FOOTPRINT_SETTINGS.stackedAskColor),
+    stackedBidColor: colour(source.stackedBidColor, DEFAULT_FOOTPRINT_SETTINGS.stackedBidColor),
+    unfinishedAuctionColor: colour(source.unfinishedAuctionColor, DEFAULT_FOOTPRINT_SETTINGS.unfinishedAuctionColor),
+    vwapColor: colour(source.vwapColor, DEFAULT_FOOTPRINT_SETTINGS.vwapColor),
     maximumRetainedBars: Math.round(clamp(source.maximumRetainedBars, 100, 5000, 5000)),
     maximumDetailedVisibleBars: Math.round(clamp(source.maximumDetailedVisibleBars, 20, 350, 180)),
     fpsLimit: [30, 60, 120].includes(Number(source.fpsLimit)) ? Number(source.fpsLimit) as 30 | 60 | 120 : 60,
@@ -264,12 +401,16 @@ export function footprintStorageKey(instanceId: string) {
 }
 
 export function loadFootprintSettings(instanceId: string): FootprintSettings {
-  if (typeof window === "undefined") return DEFAULT_FOOTPRINT_SETTINGS;
+  return loadSavedFootprintSettings(instanceId) ?? DEFAULT_FOOTPRINT_SETTINGS;
+}
+
+export function loadSavedFootprintSettings(instanceId: string): FootprintSettings | null {
+  if (typeof window === "undefined") return null;
   try {
     const stored = window.localStorage.getItem(footprintStorageKey(instanceId));
-    return stored ? validateFootprintSettings(JSON.parse(stored)) : DEFAULT_FOOTPRINT_SETTINGS;
+    return stored ? validateFootprintSettings(JSON.parse(stored)) : null;
   } catch {
-    return DEFAULT_FOOTPRINT_SETTINGS;
+    return null;
   }
 }
 

@@ -45,6 +45,7 @@ export type FootprintPrimitiveOptions = {
   dynamicTextIncrease: number;
   showZeros: boolean;
   colorOnlyDominantSide: boolean;
+  showImbalances: boolean;
   showVolumePoc: boolean;
   showDeltaPoc: boolean;
   showValueArea: boolean;
@@ -75,6 +76,8 @@ export type FootprintPrimitiveOptions = {
   outsideBarStyle: "bar" | "body";
   markerAlignment: "center" | "right";
   outerEdgeMode: boolean;
+  maximumDetailedVisibleBars: number;
+  fpsLimit: 30 | 60 | 120;
   bidColor: string;
   askColor: string;
   betweenColor: string;
@@ -120,6 +123,7 @@ const DEFAULT_OPTIONS: FootprintPrimitiveOptions = {
   dynamicTextIncrease: 1,
   showZeros: false,
   colorOnlyDominantSide: false,
+  showImbalances: true,
   showVolumePoc: true,
   showDeltaPoc: false,
   showValueArea: true,
@@ -150,6 +154,8 @@ const DEFAULT_OPTIONS: FootprintPrimitiveOptions = {
   outsideBarStyle: "bar",
   markerAlignment: "center",
   outerEdgeMode: true,
+  maximumDetailedVisibleBars: 180,
+  fpsLimit: 60,
   bidColor: "#F06A70",
   askColor: "#B7FF38",
   betweenColor: "#7C8796",
@@ -184,6 +190,20 @@ function percentile(values: number[], fraction: number) {
   return Math.max(1, ordered[Math.min(ordered.length - 1, Math.floor((ordered.length - 1) * clamp(fraction, 0.5, 1)))]);
 }
 
+export function footprintScaleCeiling(
+  allBars: FootprintRenderBar[],
+  visibleBars: FootprintRenderBar[],
+  options: Pick<FootprintPrimitiveOptions, "scaleMode" | "fixedMaximum" | "visibleRegionPercentile" | "inputType">,
+) {
+  if (options.scaleMode === "fixed-maximum" && options.fixedMaximum > 0) return options.fixedMaximum;
+  const source = options.scaleMode === "all-loaded" ? allBars : visibleBars;
+  const metrics = source.flatMap((bar) => bar.rows.flatMap((row) => {
+    const values = displayValues(row, options as FootprintPrimitiveOptions);
+    return [values.bid, values.ask, values.total, Math.abs(values.delta)];
+  }));
+  return percentile(metrics, options.scaleMode === "all-loaded" ? 1 : options.visibleRegionPercentile);
+}
+
 function displayValues(row: FootprintBar["rows"][number], options: FootprintPrimitiveOptions) {
   if (options.inputType === "num-trades") {
     return {
@@ -211,6 +231,13 @@ function intensity(value: number, ceiling: number, options: FootprintPrimitiveOp
   const raw = clamp(Math.abs(value) / Math.max(1, ceiling), 0, 1);
   const curved = Math.pow(raw, clamp(options.gradientExponent, 0.1, 3));
   return options.minimumOpacity + curved * (options.maximumOpacity - options.minimumOpacity);
+}
+
+function cellOpacity(value: number, ceiling: number, options: FootprintPrimitiveOptions) {
+  if (options.colorMode === "none") return 0;
+  if (options.visualizationMode === "solid" || options.colorMode === "fixed") return options.opacity;
+  if (options.visualizationMode === "histogram") return Math.min(0.24, options.opacity);
+  return intensity(value, ceiling, options);
 }
 
 function colourMetric(
@@ -260,13 +287,8 @@ class FootprintRenderer implements ISeriesPrimitivePaneRenderer {
         toIndex = Math.min(bars.length, toIndex + 1);
       }
       const visibleBars = bars.slice(fromIndex, toIndex);
-      const visibleMetrics = visibleBars.flatMap((bar) => bar.rows.flatMap((row) => {
-        const values = displayValues(row, options);
-        return [values.bid, values.ask, values.total, Math.abs(values.delta)];
-      }));
-      const visibleCeiling = options.scaleMode === "fixed-maximum" && options.fixedMaximum > 0
-        ? options.fixedMaximum
-        : percentile(visibleMetrics, options.visibleRegionPercentile);
+      const visibleCeiling = footprintScaleCeiling(bars, visibleBars, options);
+      const detailedBarCountAllowed = visibleBars.length <= options.maximumDetailedVisibleBars;
 
       context.save();
       context.beginPath();
@@ -336,7 +358,9 @@ class FootprintRenderer implements ISeriesPrimitivePaneRenderer {
           const top = y - rowHeight / 2;
           if (top > mediaSize.height || top + rowHeight < 0) continue;
           const values = displayValues(row, options);
-          const detailed = barWidth >= options.minimumWidthToShowText && rowHeight >= options.minimumRowHeightToShowText;
+          const detailed = detailedBarCountAllowed
+            && barWidth >= options.minimumWidthToShowText
+            && rowHeight >= options.minimumRowHeightToShowText;
           const micro = barWidth < 25;
 
           if (options.showValueArea && row.isValueArea) {
@@ -350,14 +374,14 @@ class FootprintRenderer implements ISeriesPrimitivePaneRenderer {
             }
             const heatValue = colourMetric(values, side, options);
             const normalized = clamp(value / Math.max(1, ceiling), 0, 1);
-            const alpha = intensity(heatValue, ceiling, options);
+            const alpha = cellOpacity(heatValue, ceiling, options);
             const histogram = options.visualizationMode === "histogram"
               || options.visualizationMode === "heatmap-histogram"
               || contentMode === "bid-ask-histogram";
             const noFill = options.visualizationMode === "text-only";
             const width = histogram ? Math.max(value > 0 ? 1 : 0, halfWidth * normalized) : halfWidth;
             if (noFill || width <= 0) return;
-            withAlpha(context, colour, options.visualizationMode === "histogram" ? Math.min(0.24, options.opacity) : alpha, () => {
+            withAlpha(context, colour, alpha, () => {
               if (side === "bid") context.fillRect(x - width, top, width, rowHeight);
               else context.fillRect(x, top, width, rowHeight);
             });
@@ -365,7 +389,7 @@ class FootprintRenderer implements ISeriesPrimitivePaneRenderer {
 
           if (micro) {
             const dominantAsk = values.ask >= values.bid;
-            withAlpha(context, dominantAsk ? options.askColor : options.bidColor, intensity(values.total, ceiling, options), () =>
+            withAlpha(context, dominantAsk ? options.askColor : options.bidColor, cellOpacity(values.total, ceiling, options), () =>
               context.fillRect(left, top, barWidth, Math.max(1, rowHeight)));
           } else if (["bid-ask", "bid-ask-histogram", "ladder"].includes(contentMode)) {
             if (contentMode !== "ladder" || options.visualizationMode !== "text-only") {
@@ -382,7 +406,7 @@ class FootprintRenderer implements ISeriesPrimitivePaneRenderer {
               || options.visualizationMode.includes("histogram");
             if (options.visualizationMode !== "text-only") {
               const width = histogram ? Math.max(metric !== 0 ? 1 : 0, barWidth * normalized) : barWidth;
-              withAlpha(context, colour, intensity(heatValue, ceiling, options), () => {
+              withAlpha(context, colour, cellOpacity(heatValue, ceiling, options), () => {
                 if (signed) {
                   const signedWidth = width / 2;
                   context.fillRect(metric >= 0 ? x : x - signedWidth, top, signedWidth, rowHeight);
@@ -409,10 +433,10 @@ class FootprintRenderer implements ISeriesPrimitivePaneRenderer {
           }
           context.restore();
 
-          if (row.isBidImbalance) {
+          if (options.showImbalances && row.isBidImbalance) {
             withAlpha(context, options.bidColor, 0.28, () => context.fillRect(left, top, halfWidth, rowHeight));
           }
-          if (row.isAskImbalance) {
+          if (options.showImbalances && row.isAskImbalance) {
             withAlpha(context, options.askColor, 0.28, () => context.fillRect(x, top, halfWidth, rowHeight));
           }
           if (options.showStackedImbalances && row.isStackedBidImbalance) {
@@ -582,7 +606,8 @@ class FootprintRenderer implements ISeriesPrimitivePaneRenderer {
             : (lowY ?? highY);
           context.strokeRect(left - 1, outlineTop - 1, barWidth + 2, Math.max(2, outlineBottom - outlineTop + 2));
           context.fillStyle = options.askColor;
-          context.fillRect(left + barWidth - 4, highY + 2, 3, 3);
+          const markerX = options.markerAlignment === "right" ? left + barWidth - 4 : x - 1.5;
+          context.fillRect(markerX, highY + 2, 3, 3);
           context.restore();
         }
       }
@@ -605,12 +630,18 @@ export class FootprintPrimitive implements ISeriesPrimitive<Time> {
   private renderBars: FootprintRenderBar[] = [];
   private renderOptions: FootprintPrimitiveOptions = DEFAULT_OPTIONS;
   private readonly paneView = new FootprintView(this);
+  private lastUpdateRequest = 0;
+  private pendingUpdate: ReturnType<typeof setTimeout> | null = null;
 
   attached(param: SeriesAttachedParameter<Time>) {
     this.attachedParams = param;
     param.requestUpdate();
   }
-  detached() { this.attachedParams = null; }
+  detached() {
+    this.attachedParams = null;
+    if (this.pendingUpdate !== null) clearTimeout(this.pendingUpdate);
+    this.pendingUpdate = null;
+  }
   paneViews() { return [this.paneView]; }
   params() { return this.attachedParams; }
   bars() { return this.renderBars; }
@@ -618,6 +649,19 @@ export class FootprintPrimitive implements ISeriesPrimitive<Time> {
   update(bars: FootprintRenderBar[], options: FootprintPrimitiveOptions) {
     this.renderBars = bars;
     this.renderOptions = { ...DEFAULT_OPTIONS, ...options };
-    this.attachedParams?.requestUpdate();
+    const minimumInterval = 1_000 / this.renderOptions.fpsLimit;
+    const now = typeof performance !== "undefined" ? performance.now() : Date.now();
+    const remaining = minimumInterval - (now - this.lastUpdateRequest);
+    if (remaining <= 0) {
+      this.lastUpdateRequest = now;
+      this.attachedParams?.requestUpdate();
+      return;
+    }
+    if (this.pendingUpdate !== null) return;
+    this.pendingUpdate = setTimeout(() => {
+      this.pendingUpdate = null;
+      this.lastUpdateRequest = typeof performance !== "undefined" ? performance.now() : Date.now();
+      this.attachedParams?.requestUpdate();
+    }, remaining);
   }
 }
