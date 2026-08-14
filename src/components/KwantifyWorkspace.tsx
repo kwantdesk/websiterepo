@@ -184,6 +184,7 @@ import {
   parseLeverage,
   placePaperOrder,
   processPaperQuote,
+  resetPaperAccountLedger,
   savePaperTradingLedger,
   snapPaperPrice,
   summarizePaperAccount,
@@ -3743,6 +3744,7 @@ function WorkspaceChartPane({
   onUpdatePaperProtection,
   onClosePaperPosition,
   onRemovePaperFills,
+  onResetPaperTrading,
   onLiveExecutionQuote,
 }: {
   pane: WorkspacePane;
@@ -3790,6 +3792,7 @@ function WorkspaceChartPane({
   ) => void;
   onClosePaperPosition?: (position: PaperPosition) => void;
   onRemovePaperFills?: (fillIds: string[]) => void;
+  onResetPaperTrading?: () => void;
   onLiveExecutionQuote?: (quote: ChartExecutionQuote) => void;
 }) {
   const gammaInstrument = displayCmeSymbol(pane.symbol);
@@ -5957,6 +5960,7 @@ function WorkspaceChartPane({
           onUpdatePaperProtection={onUpdatePaperProtection}
           onClosePaperPosition={onClosePaperPosition}
           onRemovePaperFills={onRemovePaperFills}
+          onResetPaperTrading={onResetPaperTrading}
         />
       )}
       {loadingMessage ? (
@@ -12177,6 +12181,19 @@ export default function KwantifyWorkspace({
     });
   };
 
+  const handleResetPaperTrading = () => {
+    if (!selectedPaperTradingAccount) return;
+    const accountId = selectedPaperTradingAccount.id;
+    setPaperLedger((current) => resetPaperAccountLedger(current, accountId));
+    setHiddenPaperFillMarkers((current) => {
+      if (!(accountId in current)) return current;
+      const next = { ...current };
+      delete next[accountId];
+      return next;
+    });
+    showPaperOrderMessage("success", `${selectedPaperTradingAccount.name} trades and fills reset.`);
+  };
+
   const handleCancelPaperOrder = (accountId: string, orderId: string) => {
     setPaperLedger(cancelPaperOrder(paperLedger, accountId, orderId));
     showPaperOrderMessage("success", "Working order cancelled.");
@@ -12443,6 +12460,7 @@ export default function KwantifyWorkspace({
         onUpdatePaperProtection={handlePaperProtectionUpdate}
         onClosePaperPosition={handleFlattenPaperPosition}
         onRemovePaperFills={handleRemovePaperFillMarkers}
+        onResetPaperTrading={selectedPaperTradingAccount ? handleResetPaperTrading : undefined}
         onLiveExecutionQuote={activePaneId === pane.id ? handleActiveChartExecutionQuote : undefined}
         onActivate={() => activateWorkspacePane(pane.id)}
         onOpenSettings={openChartSettings}

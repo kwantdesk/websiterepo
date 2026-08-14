@@ -90,10 +90,24 @@ test("paper fills render as persistent candle-anchored entry and exit arrows", (
   assert.match(chart, /M12\.25 0\.75 L0\.75 4\.5 L12\.25 8\.25 Z/);
   assert.doesNotMatch(chart, /M0\.75 1\.25 H8\.25/);
   assert.doesNotMatch(chart, /stroke="rgba\(0,0,0,0\.72\)"/);
-  assert.match(chart, /Remove all fills/);
+  assert.match(chart, /Hide fill markers/);
   assert.match(workspace, /kwantify-hidden-paper-fill-markers-v1/);
   assert.match(workspace, /onRemovePaperFills=\{handleRemovePaperFillMarkers\}/);
   assert.doesNotMatch(chart, /fill\.side === "buy" \? "▲" : "▼"/);
+});
+
+test("the chart can reset the selected sim account's trades, fills, orders, and P&L", () => {
+  assert.match(chart, /Reset all trades and fills/);
+  assert.match(chart, /Open and daily P&amp;L will return to zero/);
+  assert.match(chart, /onResetPaperTrading\?\.\(\)/);
+  assert.match(workspace, /onResetPaperTrading=\{selectedPaperTradingAccount \? handleResetPaperTrading : undefined\}/);
+  assert.match(workspace, /resetPaperAccountLedger\(current, accountId\)/);
+  assert.match(engine, /export function resetPaperAccountLedger/);
+  assert.match(engine, /cashBalance: account\.startingBalance/);
+  assert.match(engine, /realizedPnl: 0/);
+  assert.match(engine, /positions: \[\]/);
+  assert.match(engine, /orders: \[\]/);
+  assert.match(engine, /fills: \[\]/);
 });
 
 test("execution accounting remains tick accurate and gap-aware", () => {

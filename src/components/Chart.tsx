@@ -248,6 +248,7 @@ interface ChartProps {
   ) => void;
   onClosePaperPosition?: (position: PaperPosition) => void;
   onRemovePaperFills?: (fillIds: string[]) => void;
+  onResetPaperTrading?: () => void;
 }
 
 export interface ChartLevel {
@@ -1720,6 +1721,7 @@ export default function Chart({
   onUpdatePaperProtection,
   onClosePaperPosition,
   onRemovePaperFills,
+  onResetPaperTrading,
 }: ChartProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
@@ -1788,6 +1790,7 @@ export default function Chart({
   const [toolbarCollapsed, setToolbarCollapsed] = useState(false);
   const [textEditor, setTextEditor] = useState<{ x: number; y: number; time: number; price: number; value: string; tool: DrawingToolId } | null>(null);
   const [clearConfirm, setClearConfirm] = useState(false);
+  const [resetPaperTradingConfirm, setResetPaperTradingConfirm] = useState(false);
   const [overlaySize, setOverlaySize] = useState({ width: 0, height: 0 });
   const [nativePriceScaleWidth, setNativePriceScaleWidth] = useState(64);
   const [viewportVersion, setViewportVersion] = useState(0);
@@ -7794,7 +7797,22 @@ export default function Chart({
               className="flex w-full cursor-pointer items-center gap-3 px-4 py-2.5 text-[13px] text-foreground transition-colors hover:bg-surface"
             >
               <Trash2 className="h-4 w-4 text-muted" />
-              <span className="flex-1 text-left">Remove all fills</span>
+              <span className="flex-1 text-left">Hide fill markers</span>
+            </button>
+          ) : null}
+          {onResetPaperTrading ? (
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                event.preventDefault();
+                setResetPaperTradingConfirm(true);
+                setContextMenu(null);
+              }}
+              className="flex w-full cursor-pointer items-center gap-3 px-4 py-2.5 text-[13px] text-danger transition-colors hover:bg-danger/10"
+            >
+              <Trash2 className="h-4 w-4 text-danger" />
+              <span className="flex-1 text-left">Reset all trades and fills</span>
             </button>
           ) : null}
           {(zones.length > 0 || backgroundZones.length > 0) && onRemoveGameplanOverlay ? (
@@ -7869,6 +7887,31 @@ export default function Chart({
                 className="rounded-xl bg-danger px-4 py-2 text-[13px] font-semibold text-white"
               >
                 Clear
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {resetPaperTradingConfirm && (
+        <div className="absolute inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="w-[360px] rounded-2xl border border-danger/30 bg-panel p-5 shadow-2xl">
+            <div className="mb-2 text-[16px] font-semibold text-foreground">Reset all trades and fills?</div>
+            <div className="text-[13px] leading-6 text-muted">
+              This permanently clears every open position, working order and fill in the selected sim account. Open and daily P&amp;L will return to zero.
+            </div>
+            <div className="mt-4 flex justify-end gap-2">
+              <button type="button" onClick={() => setResetPaperTradingConfirm(false)} className="rounded-xl border border-border bg-surface px-4 py-2 text-[13px] text-muted hover:text-foreground">
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  onResetPaperTrading?.();
+                  setResetPaperTradingConfirm(false);
+                }}
+                className="rounded-xl bg-danger px-4 py-2 text-[13px] font-semibold text-white"
+              >
+                Reset everything
               </button>
             </div>
           </div>

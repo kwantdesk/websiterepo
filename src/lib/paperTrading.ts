@@ -476,6 +476,31 @@ export function ensurePaperAccountLedger(
   };
 }
 
+export function resetPaperAccountLedger(
+  ledger: PaperTradingLedger,
+  accountId: string,
+  timestamp = Date.now(),
+): PaperTradingLedger {
+  const account = ledger.accounts[accountId];
+  if (!account) return ledger;
+  return {
+    ...ledger,
+    accounts: {
+      ...ledger.accounts,
+      [accountId]: {
+        accountId,
+        startingBalance: account.startingBalance,
+        cashBalance: account.startingBalance,
+        realizedPnl: 0,
+        positions: [],
+        orders: [],
+        fills: [],
+        updatedAt: timestamp,
+      },
+    },
+  };
+}
+
 function calculatePnl(position: Pick<PaperPosition, "symbol" | "side" | "entryPrice">, exitPrice: number, quantity: number) {
   return paperProjectedPnl(position.symbol, position.side, position.entryPrice, exitPrice, quantity);
 }
