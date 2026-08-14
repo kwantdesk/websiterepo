@@ -111,6 +111,8 @@ class DepthForgeApp {
     this.lastCanvasPaintAt = 0;
     this.renderRequested = true;
     this.lastUiUpdate = 0;
+    this.workspaceEmbedded = false;
+    this.workspacePresentationActive = true;
     this.presentationCameraY = 0;
     this.presentationCameraX = 0;
     this.presentationCameraAt = performance.now();
@@ -331,6 +333,12 @@ class DepthForgeApp {
       if (event.data?.type === 'kwantdesk:liquidity-map-theme') {
         setWebsiteThemeColors(event.data.theme);
         this.#setUiTheme(DEFAULT_UI_THEME);
+        return;
+      }
+      if (event.data?.type === 'kwantdesk:liquidity-map-performance') {
+        this.workspaceEmbedded = event.data.embedded === true;
+        this.workspacePresentationActive = event.data.active !== false;
+        this.requestRender();
         return;
       }
       if (event.data?.type === 'kwantify:heatmap-workspace-settings') {
@@ -1309,7 +1317,9 @@ class DepthForgeApp {
         this.accumulator = Math.min(this.accumulator, this.market.intervalMs);
       }
 
-      if (this.renderRequested) {
+      const canvasPaintInterval = this.workspaceEmbedded && !this.workspacePresentationActive ? 100 : 0;
+      const canvasPaintDue = timestamp - this.lastCanvasPaintAt >= canvasPaintInterval;
+      if (this.renderRequested && canvasPaintDue) {
         const current = this.history[this.viewEnd];
         if (current) {
           if (this.settings.autoCenter && this.atLive) this.view.centerTick = null;
@@ -1367,7 +1377,8 @@ class DepthForgeApp {
       // The ladder used to refresh every 180 ms, which is only 5.5 Hz and was
       // the most obvious source of the map's low-frame-rate feel. DOM writes
       // are already diffed, so a 50 ms presentation cadence is sustainable.
-      if (timestamp - this.lastUiUpdate > 100) {
+      const uiUpdateInterval = this.workspaceEmbedded && !this.workspacePresentationActive ? 250 : 100;
+      if (timestamp - this.lastUiUpdate > uiUpdateInterval) {
         this.#updateUi(false);
         this.lastUiUpdate = timestamp;
       }

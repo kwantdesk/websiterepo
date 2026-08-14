@@ -8,6 +8,8 @@ type LiquidityMapWorkspaceProps = {
   instrument: string;
   onInstrumentChange?: (instrument: string) => void;
   onActivate?: () => void;
+  embedded?: boolean;
+  active?: boolean;
 };
 
 function liquidityMapInstrument(root: unknown) {
@@ -15,7 +17,13 @@ function liquidityMapInstrument(root: unknown) {
   return /^[A-Z0-9]{1,4}$/.test(normalized) ? `${normalized}.v.0` : null;
 }
 
-export default function LiquidityMapWorkspace({ instrument, onInstrumentChange, onActivate }: LiquidityMapWorkspaceProps) {
+export default function LiquidityMapWorkspace({
+  instrument,
+  onInstrumentChange,
+  onActivate,
+  embedded = false,
+  active = true,
+}: LiquidityMapWorkspaceProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const styleCheckTimerRef = useRef<number | null>(null);
   const stylesReadyRef = useRef(false);
@@ -36,10 +44,24 @@ export default function LiquidityMapWorkspace({ instrument, onInstrumentChange, 
       window.location.origin,
     );
   }, []);
+  const syncPerformancePriority = useCallback(() => {
+    iframeRef.current?.contentWindow?.postMessage(
+      {
+        type: "kwantdesk:liquidity-map-performance",
+        embedded,
+        active,
+      },
+      window.location.origin,
+    );
+  }, [active, embedded]);
 
   useEffect(() => {
     if (isReady) syncInstrument();
   }, [isReady, syncInstrument]);
+
+  useEffect(() => {
+    syncPerformancePriority();
+  }, [syncPerformancePriority]);
 
   useEffect(() => {
     const handleThemeChange = () => syncTheme();
@@ -107,6 +129,7 @@ export default function LiquidityMapWorkspace({ instrument, onInstrumentChange, 
         syncReadyState();
         syncTheme();
         syncInstrument();
+        syncPerformancePriority();
         return;
       }
       if (event.data?.type === "kwantdesk:liquidity-map-data-ready") {
@@ -130,6 +153,7 @@ export default function LiquidityMapWorkspace({ instrument, onInstrumentChange, 
         // an early onLoad message cannot leave Automatic Website Colours on
         // the map's fallback palette.
         syncTheme();
+        syncPerformancePriority();
         clearStyleCheck();
         revealWhenStyled();
         return;
@@ -154,7 +178,7 @@ export default function LiquidityMapWorkspace({ instrument, onInstrumentChange, 
       clearStyleCheck();
       window.removeEventListener("message", handleMapReady);
     };
-  }, [instrument, onActivate, onInstrumentChange, syncInstrument, syncReadyState, syncTheme]);
+  }, [instrument, onActivate, onInstrumentChange, syncInstrument, syncPerformancePriority, syncReadyState, syncTheme]);
 
   return (
     <div className="relative isolate h-full min-h-0 min-w-0 w-full max-w-full overflow-hidden bg-chart-background [contain:layout_paint_size]">
@@ -172,6 +196,7 @@ export default function LiquidityMapWorkspace({ instrument, onInstrumentChange, 
           marketFrameReadyRef.current = false;
           syncReadyState();
           syncTheme();
+          syncPerformancePriority();
         }}
       />
       {!isReady ? (

@@ -3972,6 +3972,7 @@ function WorkspaceChartPane({
   const pendingLiveTicksRef = useRef<QueuedLiveTick[]>([]);
   const liveOutlierCandidateRef = useRef<LiveOutlierCandidate | null>(null);
   const liveFrameRef = useRef<number | null>(null);
+  const activeRef = useRef(active);
   const marketActiveRef = useRef(false);
   const marketInactiveTimerRef = useRef<number | null>(null);
   const gexBotFlow = useGexBotFlow(
@@ -4034,6 +4035,15 @@ function WorkspaceChartPane({
   const expectedGammaContract =
     pane.broker === "Databento" ? currentCmeContract(pane.symbol) : null;
   const chartIsLoading = loading || (!error && candles.length === 0);
+
+  // Every visible chart continues to ingest and imperatively paint the latest
+  // candle. Only the selected pane needs high-frequency React reconciliation
+  // for its heavier indicators. Without this split, two charts plus the
+  // liquidity canvases repeatedly clone and recalculate the same candle/tape
+  // state on the main thread, which presents as periodic price freezes.
+  useEffect(() => {
+    activeRef.current = active;
+  }, [active]);
 
   useEffect(() => {
     if (!chartIsLoading) onInitialSettled?.();
@@ -4165,9 +4175,10 @@ function WorkspaceChartPane({
     let profileSyncTimer: number | null = null;
     let marketTradeStateSyncTimer: number | null = null;
     const scheduleMarketTradeStateSync = () => {
-      const cadence = footprintLiveActive
+      const baseCadence = footprintLiveActive
         ? FOOTPRINT_DATA_REFRESH_INTERVAL_MS
         : ORDER_FLOW_DATA_REFRESH_INTERVAL_MS;
+      const cadence = activeRef.current ? baseCadence : Math.max(750, baseCadence);
       const elapsed = Date.now() - lastMarketTradeStateSyncRef.current;
       const delay = Math.max(0, cadence - elapsed);
       if (delay === 0) {
@@ -4196,7 +4207,7 @@ function WorkspaceChartPane({
         setVolumeProfiles((current) => current.length
           ? current.map((profile) => applyInstitutionalTradesToVolumeProfile(profile, batch))
           : current);
-      }, 250);
+      }, activeRef.current ? 250 : 750);
     };
 
     const unsubscribe = subscribeRithmicIndicatorTrades({
@@ -4312,9 +4323,10 @@ function WorkspaceChartPane({
           }));
           const now = Date.now();
           const newBar = previousCandles.at(-1)?.timestamp !== latest.timestamp;
-          if (newBar || now - lastCandleStateSyncRef.current >= 250) {
+          const reconciliationCadence = activeRef.current ? 250 : 750;
+          if (newBar || now - lastCandleStateSyncRef.current >= reconciliationCadence) {
             lastCandleStateSyncRef.current = now;
-            setCandles(nextCandles);
+            startTransition(() => setCandles(nextCandles));
           }
         }
       },
@@ -5549,7 +5561,8 @@ function WorkspaceChartPane({
             latestMarketTradesRef.current = nextTape;
             workspaceExecutionTape.set(workspaceOrderFlowKey(pane.symbol, pane.timeframe), nextTape);
             const now = Date.now();
-            if (now - lastMarketTradeStateSyncRef.current >= 250) {
+            const tapeCadence = activeRef.current ? 250 : 750;
+            if (now - lastMarketTradeStateSyncRef.current >= tapeCadence) {
               lastMarketTradeStateSyncRef.current = now;
               setMarketTrades(nextTape);
             }
@@ -5615,7 +5628,8 @@ function WorkspaceChartPane({
         }));
         const newBar = previous.at(-1)?.timestamp !== latest.timestamp;
         const now = Date.now();
-        if (newBar || now - lastCandleStateSyncRef.current >= 500) {
+        const reconciliationCadence = activeRef.current ? 500 : 1_000;
+        if (newBar || now - lastCandleStateSyncRef.current >= reconciliationCadence) {
           lastCandleStateSyncRef.current = now;
           startTransition(() => setCandles([...next]));
         }
@@ -12771,7 +12785,7 @@ export default function KwantifyWorkspace({
         return <WorkspaceFailureBoundary resetKey={`workspace-${pane.id}-gexmap-${gexMarket}`} label="GEX Map"><GexMapWorkspace key={`${pane.id}-${gexMarket}`} market={gexMarket} /></WorkspaceFailureBoundary>;
       }
       case "liqmap":
-        return <WorkspaceFailureBoundary resetKey={`workspace-${pane.id}-liqmap`} label="Liquidity Map"><LiquidityMapWorkspace instrument={selectedLiquidityMapInstrument} onInstrumentChange={setSelectedLiquidityMapInstrument} onActivate={() => activateWorkspacePane(pane.id)} /></WorkspaceFailureBoundary>;
+        return <WorkspaceFailureBoundary resetKey={`workspace-${pane.id}-liqmap`} label="Liquidity Map"><LiquidityMapWorkspace instrument={selectedLiquidityMapInstrument} onInstrumentChange={setSelectedLiquidityMapInstrument} onActivate={() => activateWorkspacePane(pane.id)} embedded active={activePaneId === pane.id} /></WorkspaceFailureBoundary>;
       case "news":
         return <WorkspaceFailureBoundary resetKey={`workspace-${pane.id}-news`} label="News"><NewsWorkspace /></WorkspaceFailureBoundary>;
       case "socials":

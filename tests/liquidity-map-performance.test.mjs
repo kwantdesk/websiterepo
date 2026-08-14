@@ -59,7 +59,8 @@ test("live map rendering avoids full-history analysis and repeated DOM replaceme
   assert.match(feed, /class PackedBook/);
   assert.match(feed, /Float64Array\.from\(ticks\)/);
   assert.match(runtime, /this\.renderRequested = false;\s+this\.frames \+= 1;/);
-  assert.match(runtime, /timestamp - this\.lastUiUpdate > 100/);
+  assert.match(runtime, /const uiUpdateInterval = this\.workspaceEmbedded && !this\.workspacePresentationActive \? 250 : 100/);
+  assert.match(runtime, /timestamp - this\.lastUiUpdate > uiUpdateInterval/);
   assert.match(runtime, /activePanel === 'depthPanel'/);
   assert.match(runtime, /activePanel === 'signalsPanel'/);
   assert.match(runtime, /if \(metadata\.final\) this\.#updateUi\(false\)/);
