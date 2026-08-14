@@ -64,7 +64,7 @@ type AppSidebarProps = {
 };
 
 const horizontalItemBase =
-  "relative flex h-7 shrink-0 items-center justify-center gap-1.5 rounded-[3px] border px-2.5 text-[10px] font-semibold uppercase tracking-[0.075em] transition-colors";
+  "kwant-primary-nav-control relative flex h-7 shrink-0 appearance-none items-center justify-center gap-1.5 rounded-[3px] border px-2.5 text-[10px] font-semibold uppercase leading-none tracking-[0.075em] transition-colors";
 const horizontalItemInactive = `${horizontalItemBase} border-transparent text-muted hover:bg-surface hover:text-foreground`;
 const horizontalItemActive = `${horizontalItemBase} border-transparent text-primary`;
 const horizontalUtilityBase =

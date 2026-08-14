@@ -32,6 +32,7 @@ test("trade Buy and Sell controls inherit the active chart candle colours", () =
 });
 
 test("the top-right Trade control uses the exact primary navigation control without a separate underline", () => {
+  assert.match(navigation, /const horizontalItemBase =\s*\n\s*"kwant-primary-nav-control /);
   assert.match(navigation, /className=\{tradesActive \? horizontalItemActive : horizontalItemInactive\}/);
   assert.match(navigation, /title="Trade"/);
   assert.match(navigation, /aria-label="Open trade menu"/);

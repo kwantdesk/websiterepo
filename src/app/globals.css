@@ -1244,6 +1244,25 @@ header.kwant-command-rail {
   max-height: var(--kwant-shell-bar-height);
 }
 
+/* Links and the top-right Trade trigger intentionally share one rendered
+   control contract. The explicit dimensions prevent browser button defaults
+   or broader cockpit button rules from making Trade look larger than the
+   HOME / CHARTS / GAMMA / GEX MAP controls beside it. */
+header.kwant-command-rail .kwant-primary-nav-control {
+  box-sizing: border-box;
+  height: 28px;
+  min-height: 28px;
+  max-height: 28px;
+  margin: 0;
+  padding-block: 0;
+  padding-inline: 10px;
+  font-family: "Rajdhani", "Inter", sans-serif;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: .075em;
+}
+
 /* Centre the primary terminal navigation when there is room. On a portrait
    monitor or a narrow window its useful origin is the left edge: centring a
    track wider than the viewport otherwise opens midway through the menu and
