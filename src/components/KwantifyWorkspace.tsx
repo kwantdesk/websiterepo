@@ -1038,17 +1038,163 @@ function swapWorkspacePaneIds(
   };
 }
 
-function updateWorkspaceSplitRatio(
+const MIN_WORKSPACE_PANE_SIZE_PX = 80;
+
+function workspaceEdgePaneSize(
+  node: WorkspaceLayoutNode,
+  axis: "x" | "y",
+  totalSize: number,
+  edge: "start" | "end",
+): number {
+  if (node.type === "pane") return totalSize;
+  if (node.axis !== axis) {
+    return Math.min(
+      workspaceEdgePaneSize(node.first, axis, totalSize, edge),
+      workspaceEdgePaneSize(node.second, axis, totalSize, edge),
+    );
+  }
+  const firstSize = totalSize * node.ratio / 100;
+  const secondSize = totalSize - firstSize;
+  return edge === "start"
+    ? workspaceEdgePaneSize(node.first, axis, firstSize, edge)
+    : workspaceEdgePaneSize(node.second, axis, secondSize, edge);
+}
+
+function preserveWorkspaceSubtreeWalls(
+  node: WorkspaceLayoutNode,
+  axis: "x" | "y",
+  oldSize: number,
+  newSize: number,
+  fixedEdge: "start" | "end",
+): WorkspaceLayoutNode {
+  if (node.type === "pane" || Math.abs(oldSize - newSize) < 0.01) return node;
+  if (node.axis !== axis) {
+    return {
+      ...node,
+      first: preserveWorkspaceSubtreeWalls(node.first, axis, oldSize, newSize, fixedEdge),
+      second: preserveWorkspaceSubtreeWalls(node.second, axis, oldSize, newSize, fixedEdge),
+    };
+  }
+
+  const oldFirstSize = oldSize * node.ratio / 100;
+  const oldSecondSize = oldSize - oldFirstSize;
+  if (fixedEdge === "start") {
+    const newFirstSize = oldFirstSize;
+    const newSecondSize = Math.max(0, newSize - newFirstSize);
+    return {
+      ...node,
+      ratio: newSize > 0 ? newFirstSize / newSize * 100 : node.ratio,
+      second: preserveWorkspaceSubtreeWalls(
+        node.second,
+        axis,
+        oldSecondSize,
+        newSecondSize,
+        fixedEdge,
+      ),
+    };
+  }
+
+  const newSecondSize = oldSecondSize;
+  const newFirstSize = Math.max(0, newSize - newSecondSize);
+  return {
+    ...node,
+    ratio: newSize > 0 ? newFirstSize / newSize * 100 : node.ratio,
+    first: preserveWorkspaceSubtreeWalls(
+      node.first,
+      axis,
+      oldFirstSize,
+      newFirstSize,
+      fixedEdge,
+    ),
+  };
+}
+
+function resizeOnlyAdjacentWorkspacePanes(
   node: WorkspaceLayoutNode,
   splitId: string,
-  ratio: number,
+  requestedRatio: number,
+  axisSize: number,
 ): WorkspaceLayoutNode {
   if (node.type === "pane") return node;
-  if (node.id === splitId) return { ...node, ratio };
-  const first = updateWorkspaceSplitRatio(node.first, splitId, ratio);
-  if (first !== node.first) return { ...node, first };
-  const second = updateWorkspaceSplitRatio(node.second, splitId, ratio);
-  return second === node.second ? node : { ...node, second };
+  if (node.id !== splitId) {
+    const first = resizeOnlyAdjacentWorkspacePanes(node.first, splitId, requestedRatio, axisSize);
+    if (first !== node.first) return { ...node, first };
+    const second = resizeOnlyAdjacentWorkspacePanes(node.second, splitId, requestedRatio, axisSize);
+    return second === node.second ? node : { ...node, second };
+  }
+
+  const oldFirstSize = axisSize * node.ratio / 100;
+  const oldSecondSize = axisSize - oldFirstSize;
+  const firstAdjacentSize = workspaceEdgePaneSize(node.first, node.axis, oldFirstSize, "end");
+  const secondAdjacentSize = workspaceEdgePaneSize(node.second, node.axis, oldSecondSize, "start");
+  const minimumFirstSize = oldFirstSize - firstAdjacentSize + MIN_WORKSPACE_PANE_SIZE_PX;
+  const minimumSecondSize = oldSecondSize - secondAdjacentSize + MIN_WORKSPACE_PANE_SIZE_PX;
+  const requestedFirstSize = axisSize * requestedRatio / 100;
+  const nextFirstSize = Math.min(
+    axisSize - minimumSecondSize,
+    Math.max(minimumFirstSize, requestedFirstSize),
+  );
+  const nextSecondSize = axisSize - nextFirstSize;
+
+  return {
+    ...node,
+    ratio: nextFirstSize / axisSize * 100,
+    // The pane touching the divider absorbs the resize. Every wall farther
+    // left/top or right/bottom keeps the same absolute screen coordinate.
+    first: preserveWorkspaceSubtreeWalls(
+      node.first,
+      node.axis,
+      oldFirstSize,
+      nextFirstSize,
+      "start",
+    ),
+    second: preserveWorkspaceSubtreeWalls(
+      node.second,
+      node.axis,
+      oldSecondSize,
+      nextSecondSize,
+      "end",
+    ),
+  };
+}
+
+type WorkspaceSplitElements = {
+  first: HTMLElement;
+  divider: HTMLElement;
+  second: HTMLElement;
+};
+
+function collectWorkspaceSplitElements(root: HTMLElement): Map<string, WorkspaceSplitElements> {
+  const result = new Map<string, WorkspaceSplitElements>();
+  root.querySelectorAll<HTMLElement>("[data-workspace-split-id]").forEach((container) => {
+    const splitId = container.dataset.workspaceSplitId;
+    const first = container.children.item(0) as HTMLElement | null;
+    const divider = container.children.item(1) as HTMLElement | null;
+    const second = container.children.item(2) as HTMLElement | null;
+    if (splitId && first && divider && second) result.set(splitId, { first, divider, second });
+  });
+  return result;
+}
+
+function paintWorkspaceSplitGeometry(
+  node: WorkspaceLayoutNode,
+  elements: Map<string, WorkspaceSplitElements>,
+) {
+  if (node.type === "pane") return;
+  const split = elements.get(node.id);
+  if (split) {
+    if (node.axis === "x") {
+      split.first.style.width = `calc(${node.ratio}% - 3px)`;
+      split.divider.style.left = `${node.ratio}%`;
+      split.second.style.width = `calc(${100 - node.ratio}% - 3px)`;
+    } else {
+      split.first.style.height = `calc(${node.ratio}% - 3px)`;
+      split.divider.style.top = `${node.ratio}%`;
+      split.second.style.height = `calc(${100 - node.ratio}% - 3px)`;
+    }
+  }
+  paintWorkspaceSplitGeometry(node.first, elements);
+  paintWorkspaceSplitGeometry(node.second, elements);
 }
 
 function insertWorkspacePane(
@@ -10756,11 +10902,14 @@ export default function KwantifyWorkspace({
     const pointerId = event.pointerId;
     const splitContainer = divider.parentElement;
     if (!splitContainer) return;
-    const firstPanel = splitContainer.children.item(0) as HTMLElement | null;
-    const secondPanel = splitContainer.children.item(2) as HTMLElement | null;
-    if (!firstPanel || !secondPanel) return;
+    const workspaceRoot = workspaceAreaRef.current;
+    if (!workspaceRoot) return;
+    const splitElements = collectWorkspaceSplitElements(workspaceRoot);
+    if (!splitElements.has(splitId)) return;
     divider.setPointerCapture(pointerId);
     const rect = splitContainer.getBoundingClientRect();
+    const initialTree = workspaceTree;
+    let paintedTree = initialTree;
     let visualRatio = initialRatio;
     let targetRatio = initialRatio;
     let dragActive = true;
@@ -10779,15 +10928,13 @@ export default function KwantifyWorkspace({
       visualRatio = Math.abs(difference) < 0.04
         ? targetRatio
         : visualRatio + difference * 0.68;
-      if (axis === "x") {
-        firstPanel.style.width = `calc(${visualRatio}% - 3px)`;
-        divider.style.left = `${visualRatio}%`;
-        secondPanel.style.width = `calc(${100 - visualRatio}% - 3px)`;
-      } else {
-        firstPanel.style.height = `calc(${visualRatio}% - 3px)`;
-        divider.style.top = `${visualRatio}%`;
-        secondPanel.style.height = `calc(${100 - visualRatio}% - 3px)`;
-      }
+      paintedTree = resizeOnlyAdjacentWorkspacePanes(
+        initialTree,
+        splitId,
+        visualRatio,
+        axisSize,
+      );
+      paintWorkspaceSplitGeometry(paintedTree, splitElements);
       if (dragActive && Math.abs(targetRatio - visualRatio) >= 0.04) {
         animationFrame = window.requestAnimationFrame(paintTargetedSplit);
       }
@@ -10815,7 +10962,7 @@ export default function KwantifyWorkspace({
       }
       visualRatio = targetRatio;
       paintTargetedSplit();
-      setWorkspaceTree((current) => updateWorkspaceSplitRatio(current, splitId, visualRatio));
+      setWorkspaceTree(paintedTree);
       setWorkspaceLayout("custom");
     };
 
