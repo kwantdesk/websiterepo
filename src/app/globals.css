@@ -1252,7 +1252,16 @@ header.kwant-command-rail {
 .kwant-primary-workspace-nav {
   left: 50%;
   width: calc(100% - 268px);
-  transform: translate(-50%, -50%);
+  height: var(--kwant-shell-bar-height);
+  transform: translateX(-50%);
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.kwant-primary-workspace-nav::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 .kwant-primary-workspace-nav-track {
@@ -1263,7 +1272,7 @@ header.kwant-command-rail {
   .kwant-primary-workspace-nav {
     left: 8px;
     width: calc(100% - 148px);
-    transform: translateY(-50%);
+    transform: none;
   }
 
   .kwant-primary-workspace-nav-track {
