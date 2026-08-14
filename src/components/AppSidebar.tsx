@@ -266,14 +266,13 @@ function AppSidebar({
         <button
           type="button"
           onClick={onTradesClick}
-          className={`${tradesActive ? horizontalItemActive : horizontalItemInactive} normal-case`}
-          style={{ textTransform: "none" }}
-          title="Trades"
-          aria-label="Open trades menu"
+          className={tradesActive ? horizontalItemActive : horizontalItemInactive}
+          title="Trade"
+          aria-label="Open trade menu"
           aria-expanded={tradesActive}
         >
           <BarChart3 className={`h-3.5 w-3.5 shrink-0 ${tradesActive ? "text-primary" : "text-muted"}`} strokeWidth={1.55} />
-          <span>trades</span>
+          <span>TRADE</span>
           {tradesActive ? <ActiveUnderline /> : null}
         </button>
         <button
