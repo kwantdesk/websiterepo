@@ -51,3 +51,19 @@ test("the active daily profile develops from live executions without crossing se
     /Math\.max\(profile\.endMs, latestTimestamp \+ 1\)/,
   );
 });
+
+test("the active weekly profile develops immediately instead of waiting for snapshot refresh", () => {
+  assert.match(
+    workspace,
+    /cachedExact = profileGroups\.flat\(\)[\s\S]*?\.map\(\(profile\) => applyInstitutionalTradesToVolumeProfile\([\s\S]*?latestMarketTradesRef\.current/,
+  );
+  assert.match(marketData, /const weeklyTradingWeek = profile\.period === "weekly"/);
+  assert.match(
+    marketData,
+    /profile\.period === "weekly"[\s\S]*?cmeTradingWeekKey\(record\.timestamp\) === weeklyTradingWeek/,
+  );
+  assert.match(
+    marketData,
+    /profile\.period === "daily" \|\| profile\.period === "weekly"[\s\S]*?Math\.max\(profile\.endMs, latestTimestamp \+ 1\)/,
+  );
+});

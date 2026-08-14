@@ -909,6 +909,15 @@ export async function fetchInstitutionalVolumeProfile(args: {
   return request;
 }
 
+function cmeTradingWeekKey(timestamp: number) {
+  const tradingDate = cmeSessionDateKey(timestamp);
+  if (!tradingDate) return null;
+  const monday = new Date(`${tradingDate}T00:00:00.000Z`);
+  const weekday = monday.getUTCDay();
+  monday.setUTCDate(monday.getUTCDate() - (weekday === 0 ? 6 : weekday - 1));
+  return monday.toISOString().slice(0, 10);
+}
+
 export function applyInstitutionalTradesToVolumeProfile(
   profile: InstitutionalVolumeProfile,
   records: InstitutionalTrade[],
@@ -924,12 +933,21 @@ export function applyInstitutionalTradesToVolumeProfile(
   const dailyTradingDate = profile.period === "daily"
     ? profile.tradingDate ?? cmeSessionDateKey(profile.startMs)
     : null;
+  const weeklyTradingWeek = profile.period === "weekly"
+    ? cmeTradingWeekKey(
+      Number.isFinite(profile.coverageEndMs)
+        ? Number(profile.coverageEndMs)
+        : profile.endMs - 1,
+    )
+    : null;
   const eligibleRecords = records.filter((record) =>
     record.timestamp >= profile.startMs
     && (
       profile.period === "daily"
         ? dailyTradingDate !== null && cmeSessionDateKey(record.timestamp) === dailyTradingDate
-        : record.timestamp < profile.endMs
+        : profile.period === "weekly"
+          ? weeklyTradingWeek !== null && cmeTradingWeekKey(record.timestamp) === weeklyTradingWeek
+          : record.timestamp < profile.endMs
     )
     && record.timestamp > coverageEndMs
     && record.volume >= profile.minTradeVolume
@@ -994,9 +1012,10 @@ export function applyInstitutionalTradesToVolumeProfile(
     ...profile,
     valueAreaPercent: STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT,
     asOf: new Date(latestTimestamp).toISOString(),
-    // An active daily profile grows with the session. Its original endMs is
-    // merely the historical fetch edge, not the trading-session boundary.
-    endMs: profile.period === "daily"
+    // Active daily and weekly profiles grow from the Rithmic execution tape.
+    // Their original endMs is the snapshot edge, not a boundary that should
+    // make the profile wait for the next server refresh.
+    endMs: profile.period === "daily" || profile.period === "weekly"
       ? Math.max(profile.endMs, latestTimestamp + 1)
       : profile.endMs,
     coverageEndMs: Math.max(coverageEndMs, latestTimestamp),

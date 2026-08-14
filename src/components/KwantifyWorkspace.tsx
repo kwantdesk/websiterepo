@@ -5598,6 +5598,10 @@ function WorkspaceChartPane({
           && (
             profile.period === "weekly"
             || activeTradingDates.has(chicagoTradingDate(profile.startMs))
+          ))
+          .map((profile) => applyInstitutionalTradesToVolumeProfile(
+            profile,
+            latestMarketTradesRef.current,
           ));
         if (!cachedExact.length) return;
         setVolumeProfiles((current) => {
