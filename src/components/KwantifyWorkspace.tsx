@@ -119,6 +119,7 @@ import {
   type InstitutionalTrade,
   type InstitutionalVolumeProfile,
 } from "@/lib/institutionalMarketData";
+import { mergeInstitutionalTradeTape } from "@/lib/liveExecutionTape";
 import { subscribeRithmicIndicatorTrades } from "@/lib/rithmicIndicatorStream";
 import {
   currentGameplanSession,
@@ -2644,64 +2645,6 @@ function decodeExecutionTape(value: unknown): InstitutionalTrade[] {
   }).sort((left, right) => left.timestamp - right.timestamp || left.recordIndex - right.recordIndex);
 }
 
-function mergeInstitutionalTradeTape(
-  current: InstitutionalTrade[],
-  incoming: InstitutionalTrade[],
-) {
-  if (!incoming.length) return current;
-  // Exact Rithmic executions supersede a Databento one-second flow bucket
-  // covering the same instant. Keeping both would double-count live CVD at
-  // the historical/live seam.
-  const exactSecondBuckets = new Set(
-    incoming
-      .filter((record) => !record.flowOnly)
-      .map((record) => Math.floor(record.timestamp / 1_000)),
-  );
-  const baseCurrent = exactSecondBuckets.size
-    ? current.filter((record) => !(
-        record.flowOnly
-        && exactSecondBuckets.has(Math.floor(record.timestamp / 1_000))
-      ))
-    : current;
-  const recordKey = (record: InstitutionalTrade) => record.eventId
-    || `${record.timestamp}:${record.recordIndex}:${record.close}:${record.volume}`;
-  const boundTape = (records: InstitutionalTrade[]) => {
-    // Historical one-second flow and exact execution prints serve different
-    // studies. A single tail slice let an old 50k print cache evict every CVD
-    // bucket that had just arrived. Reserve capacity for both instead.
-    const flow = records.filter((record) => record.flowOnly).slice(-30_000);
-    const exact = records.filter((record) => !record.flowOnly).slice(-25_000);
-    return [...flow, ...exact].sort((left, right) =>
-      left.timestamp - right.timestamp || left.recordIndex - right.recordIndex);
-  };
-  const recentKeys = new Set(
-    baseCurrent
-      .slice(-Math.max(512, incoming.length * 4))
-      .map(recordKey),
-  );
-  const additions = incoming.filter((record) => !recentKeys.has(recordKey(record)));
-  if (!additions.length) return baseCurrent;
-  const currentTail = baseCurrent.at(-1);
-  const additionsAreOrdered = additions.every((record, index) => (
-    index === 0
-      ? !currentTail
-        || record.timestamp > currentTail.timestamp
-        || (record.timestamp === currentTail.timestamp && record.recordIndex >= currentTail.recordIndex)
-      : record.timestamp > additions[index - 1].timestamp
-        || (record.timestamp === additions[index - 1].timestamp
-          && record.recordIndex >= additions[index - 1].recordIndex)
-  ));
-  if (additionsAreOrdered) {
-    return boundTape(baseCurrent.concat(additions));
-  }
-
-  const records = new Map<string, InstitutionalTrade>();
-  for (const record of [...baseCurrent, ...additions]) {
-    records.set(recordKey(record), record);
-  }
-  return boundTape([...records.values()]);
-}
-
 async function fetchWorkspaceCandles(
   symbol: string,
   timeframe: string,
@@ -4036,6 +3979,8 @@ function WorkspaceChartPane({
     : "";
   const needsOrderFlowHistory = indicators.some((instance) =>
     instance.enabled && CHART_INDICATOR_BY_ID.get(instance.indicatorId)?.requiresOrderFlow);
+  const footprintLiveActive = indicators.some((instance) =>
+    instance.enabled && instance.indicatorId === "deep-print-footprint");
   const dailyProfileInstance = indicators.find((instance) =>
     instance.enabled
     && [
@@ -4288,7 +4233,7 @@ function WorkspaceChartPane({
           latestMarketTradesRef.current = next;
           workspaceExecutionTape.set(workspaceOrderFlowKey(pane.symbol, pane.timeframe), next);
           const now = Date.now();
-          if (now - lastMarketTradeStateSyncRef.current >= 400) {
+          if (now - lastMarketTradeStateSyncRef.current >= (footprintLiveActive ? 100 : 400)) {
             lastMarketTradeStateSyncRef.current = now;
             setMarketTrades(next);
           }
@@ -4356,6 +4301,7 @@ function WorkspaceChartPane({
   }, [
     needsLiveVolumeProfiles,
     needsOrderFlowHistory,
+    footprintLiveActive,
     pane.broker,
     pane.symbol,
     pane.timeframe,

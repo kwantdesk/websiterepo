@@ -1117,7 +1117,10 @@ export function applyInstitutionalTradesToCandles(
   const bucketMs = timeframeMilliseconds(timeframe);
   const threshold = eventThreshold(timeframe, symbol);
   if ((!bucketMs && !threshold) || !records.length) return current;
-  const next = [...repairInstitutionalCandleSeries(current, timeframe, symbol)];
+  // Historical/event series are repaired when they enter the cache. Rewalking
+  // every retained candle for each live Rithmic batch caused periodic browser
+  // stalls on range charts and is unnecessary for an already-normalized tail.
+  const next = [...current];
 
   for (const record of records) {
     if (!Number.isFinite(record.timestamp) || !Number.isFinite(record.close) || record.close <= 0) continue;

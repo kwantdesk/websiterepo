@@ -2310,6 +2310,20 @@ export default function Chart({
     () => indicators.some((instance) => instance.enabled && instance.indicatorId === "volume"),
     [indicators],
   );
+  const indicatorSamplingEnabled = useMemo(
+    () => indicators.some((instance) => instance.enabled),
+    [indicators],
+  );
+  const orderFlowIndicatorEnabled = useMemo(
+    () => indicators.some((instance) =>
+      instance.enabled && CHART_INDICATOR_BY_ID.get(instance.indicatorId)?.requiresOrderFlow),
+    [indicators],
+  );
+  const footprintSamplingEnabled = useMemo(
+    () => indicators.some((instance) =>
+      instance.enabled && instance.indicatorId === "deep-print-footprint"),
+    [indicators],
+  );
 
   function resetViewportBeforeReveal(
     chart: IChartApi,
@@ -2440,6 +2454,7 @@ export default function Chart({
     pendingIndicatorCandlesRef.current = candles;
     pendingIndicatorMarketTradesRef.current = marketTrades;
     sampledOrderFlowHistoryReadyRef.current = orderFlowHistoryReady;
+    if (!indicatorSamplingEnabled) return;
     // Historical hydration is not a live-tick update. Paint Volume/CVD from
     // the same completed candle snapshot immediately, otherwise the price
     // chart appears first and CVD remains as its old flat/live-only sample for
@@ -2450,7 +2465,7 @@ export default function Chart({
         indicatorSampleTimerRef.current = null;
       }
       setSampledIndicatorCandles(candles);
-      setSampledIndicatorMarketTrades(marketTrades);
+      if (orderFlowIndicatorEnabled) setSampledIndicatorMarketTrades(marketTrades);
       return;
     }
     if (indicatorSampleTimerRef.current !== null) return;
@@ -2461,12 +2476,22 @@ export default function Chart({
       setSampledIndicatorCandles(liveVolumeCandle
         ? mergeLiveIndicatorCandle(pendingCandles, liveVolumeCandle)
         : pendingCandles);
-      setSampledIndicatorMarketTrades(pendingIndicatorMarketTradesRef.current);
+      if (orderFlowIndicatorEnabled) {
+        setSampledIndicatorMarketTrades(pendingIndicatorMarketTradesRef.current);
+      }
     // The candle itself continues to render tick-by-tick. Expensive order-flow
     // studies only need a smooth sub-second sample; recalculating every 120 ms
     // across a growing execution tape eventually monopolises navigation.
-    }, 400);
-  }, [candles, marketTrades, orderFlowHistoryReady, volumeIndicatorEnabled]);
+    }, footprintSamplingEnabled ? 100 : 400);
+  }, [
+    candles,
+    footprintSamplingEnabled,
+    indicatorSamplingEnabled,
+    marketTrades,
+    orderFlowHistoryReady,
+    orderFlowIndicatorEnabled,
+    volumeIndicatorEnabled,
+  ]);
 
   useEffect(() => () => {
     if (indicatorSampleTimerRef.current !== null) {
@@ -2564,8 +2589,8 @@ export default function Chart({
     [footprintIndicator],
   );
   const footprintCandles = useMemo(
-    () => footprintIndicator ? candles.slice(-indicatorHistoryLimit) : [],
-    [candles, footprintIndicator, indicatorHistoryLimit],
+    () => footprintIndicator ? sampledIndicatorCandles.slice(-indicatorHistoryLimit) : [],
+    [footprintIndicator, indicatorHistoryLimit, sampledIndicatorCandles],
   );
   const footprintVisibleCandles = useMemo(() => {
     if (!footprintIndicator || !footprintCandles.length) return [];
@@ -2578,13 +2603,10 @@ export default function Chart({
   }, [candles.length, footprintCandles, footprintIndicator, viewportVersion]);
   const footprintSourceCandles = useMemo(() => {
     if (!footprintIndicator) return [];
-    if (footprintSettings.scaleMode !== "all-loaded") return footprintVisibleCandles;
-    const maximumRetainedBars = Math.max(100, Math.min(5_000,
-      Math.round(Number(footprintSettings.maximumRetainedBars ?? 5_000))));
-    return footprintCandles.slice(-maximumRetainedBars);
-  }, [footprintCandles, footprintIndicator, footprintSettings.maximumRetainedBars, footprintSettings.scaleMode, footprintVisibleCandles]);
+    return footprintVisibleCandles;
+  }, [footprintIndicator, footprintVisibleCandles]);
   const footprintMarketTrades = useMemo(() => {
-    if (!footprintSourceCandles.length || !marketTrades.length) return [];
+    if (!footprintSourceCandles.length || !sampledIndicatorMarketTrades.length) return [];
     const start = footprintSourceCandles[0].timestamp;
     const finalCandle = footprintSourceCandles.at(-1)!;
     const approximateInterval = timeframeToMs(timeframe)
@@ -2592,16 +2614,16 @@ export default function Chart({
     const end = finalCandle.timestamp + approximateInterval;
     const lowerBound = (timestamp: number) => {
       let low = 0;
-      let high = marketTrades.length;
+      let high = sampledIndicatorMarketTrades.length;
       while (low < high) {
         const middle = (low + high) >>> 1;
-        if (marketTrades[middle].timestamp < timestamp) low = middle + 1;
+        if (sampledIndicatorMarketTrades[middle].timestamp < timestamp) low = middle + 1;
         else high = middle;
       }
       return low;
     };
-    return marketTrades.slice(lowerBound(start), lowerBound(end));
-  }, [footprintSourceCandles, marketTrades, timeframe]);
+    return sampledIndicatorMarketTrades.slice(lowerBound(start), lowerBound(end));
+  }, [footprintSourceCandles, sampledIndicatorMarketTrades, timeframe]);
   const resolvedFootprintGroupTicks = useMemo(() => {
     const manual = Math.max(1, Math.round(Number(footprintSettings.manualTicks ?? 1)));
     if (footprintSettings.groupingMode === "manual") return manual;
@@ -2784,7 +2806,9 @@ export default function Chart({
       outsideBarStyle: option(footprintSettings.outsideBarStyle, ["bar", "body"], "bar"),
       markerAlignment: option(footprintSettings.markerAlignment, ["center", "right"], "center"),
       outerEdgeMode: footprintSettings.outerEdgeMode !== false,
+      maximumRetainedBars: clamp(Number(footprintSettings.maximumRetainedBars ?? 5_000), 100, 5_000),
       maximumDetailedVisibleBars: clamp(Number(footprintSettings.maximumDetailedVisibleBars ?? 180), 20, 350),
+      allLoadedScaleMaximum: 0,
       fpsLimit: ([30, 60, 120].includes(Number(footprintSettings.fpsLimit))
         ? Number(footprintSettings.fpsLimit)
         : 60) as 30 | 60 | 120,

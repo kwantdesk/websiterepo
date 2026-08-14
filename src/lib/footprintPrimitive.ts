@@ -76,7 +76,9 @@ export type FootprintPrimitiveOptions = {
   outsideBarStyle: "bar" | "body";
   markerAlignment: "center" | "right";
   outerEdgeMode: boolean;
+  maximumRetainedBars: number;
   maximumDetailedVisibleBars: number;
+  allLoadedScaleMaximum: number;
   fpsLimit: 30 | 60 | 120;
   bidColor: string;
   askColor: string;
@@ -154,7 +156,9 @@ const DEFAULT_OPTIONS: FootprintPrimitiveOptions = {
   outsideBarStyle: "bar",
   markerAlignment: "center",
   outerEdgeMode: true,
+  maximumRetainedBars: 5_000,
   maximumDetailedVisibleBars: 180,
+  allLoadedScaleMaximum: 0,
   fpsLimit: 60,
   bidColor: "#F06A70",
   askColor: "#B7FF38",
@@ -193,9 +197,12 @@ function percentile(values: number[], fraction: number) {
 export function footprintScaleCeiling(
   allBars: FootprintRenderBar[],
   visibleBars: FootprintRenderBar[],
-  options: Pick<FootprintPrimitiveOptions, "scaleMode" | "fixedMaximum" | "visibleRegionPercentile" | "inputType">,
+  options: Pick<FootprintPrimitiveOptions, "scaleMode" | "fixedMaximum" | "visibleRegionPercentile" | "inputType" | "allLoadedScaleMaximum">,
 ) {
   if (options.scaleMode === "fixed-maximum" && options.fixedMaximum > 0) return options.fixedMaximum;
+  if (options.scaleMode === "all-loaded" && options.allLoadedScaleMaximum > 0) {
+    return options.allLoadedScaleMaximum;
+  }
   const source = options.scaleMode === "all-loaded" ? allBars : visibleBars;
   const metrics = source.flatMap((bar) => bar.rows.flatMap((row) => {
     const values = displayValues(row, options as FootprintPrimitiveOptions);
@@ -632,6 +639,8 @@ export class FootprintPrimitive implements ISeriesPrimitive<Time> {
   private readonly paneView = new FootprintView(this);
   private lastUpdateRequest = 0;
   private pendingUpdate: ReturnType<typeof setTimeout> | null = null;
+  private loadedScaleByTime = new Map<string, number>();
+  private loadedScaleInput: FootprintPrimitiveOptions["inputType"] = DEFAULT_OPTIONS.inputType;
 
   attached(param: SeriesAttachedParameter<Time>) {
     this.attachedParams = param;
@@ -648,7 +657,26 @@ export class FootprintPrimitive implements ISeriesPrimitive<Time> {
   options() { return this.renderOptions; }
   update(bars: FootprintRenderBar[], options: FootprintPrimitiveOptions) {
     this.renderBars = bars;
-    this.renderOptions = { ...DEFAULT_OPTIONS, ...options };
+    const nextOptions = { ...DEFAULT_OPTIONS, ...options };
+    if (this.loadedScaleInput !== nextOptions.inputType) {
+      this.loadedScaleByTime.clear();
+      this.loadedScaleInput = nextOptions.inputType;
+    }
+    bars.forEach((bar) => {
+      const maximum = bar.rows.reduce((barMaximum, row) => {
+        const values = displayValues(row, nextOptions);
+        return Math.max(barMaximum, values.bid, values.ask, values.total, Math.abs(values.delta));
+      }, 0);
+      this.loadedScaleByTime.set(String(bar.time), maximum);
+    });
+    const retainedLimit = Math.max(100, Math.round(nextOptions.maximumRetainedBars));
+    while (this.loadedScaleByTime.size > retainedLimit) {
+      const oldest = this.loadedScaleByTime.keys().next().value;
+      if (oldest === undefined) break;
+      this.loadedScaleByTime.delete(oldest);
+    }
+    nextOptions.allLoadedScaleMaximum = Math.max(0, ...this.loadedScaleByTime.values());
+    this.renderOptions = nextOptions;
     const minimumInterval = 1_000 / this.renderOptions.fpsLimit;
     const now = typeof performance !== "undefined" ? performance.now() : Date.now();
     const remaining = minimumInterval - (now - this.lastUpdateRequest);

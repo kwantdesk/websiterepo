@@ -46,12 +46,13 @@ test("all footprint numeric controls feed aggregation, rendering, or performance
 });
 
 test("previously disconnected footprint controls now change renderer behavior", () => {
-  assert.match(primitive, /options\.scaleMode === "all-loaded" \? allBars : visibleBars/);
+  assert.match(primitive, /options\.scaleMode === "all-loaded" && options\.allLoadedScaleMaximum > 0/);
+  assert.match(primitive, /loadedScaleByTime/);
   assert.match(primitive, /visibleBars\.length <= options\.maximumDetailedVisibleBars/);
   assert.match(primitive, /options\.showImbalances && row\.isBidImbalance/);
   assert.match(primitive, /options\.markerAlignment === "right"/);
   assert.match(primitive, /options\.visualizationMode === "solid" \|\| options\.colorMode === "fixed"/);
   assert.match(primitive, /if \(options\.colorMode === "none"\) return 0/);
   assert.match(primitive, /1_000 \/ this\.renderOptions\.fpsLimit/);
-  assert.match(chart, /footprintSettings\.scaleMode !== "all-loaded"/);
+  assert.match(chart, /return footprintVisibleCandles/);
 });
