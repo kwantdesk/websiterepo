@@ -6,11 +6,11 @@ const source = await fs.readFile(new URL("../src/components/KwantifyWorkspace.ts
 const navigation = await fs.readFile(new URL("../src/components/AppSidebar.tsx", import.meta.url), "utf8");
 const styles = await fs.readFile(new URL("../src/app/globals.css", import.meta.url), "utf8");
 
-test("workspace controls remain left-aligned in their command row", () => {
+test("workspace controls remain centred in their command row", () => {
   const toolbar = source.match(/<div className="([^"]*col-span-3 col-start-1 row-start-1[^"]*)">/);
   assert.ok(toolbar, "workspace toolbar row should exist");
   assert.match(toolbar[1], /grid-cols-\[minmax\(0,1fr\)_auto_minmax\(0,1fr\)\]/);
-  assert.match(source, /<div className="col-start-1 flex h-7 shrink-0 items-center justify-self-start gap-1">/);
+  assert.match(source, /<div className="col-start-2 flex h-7 shrink-0 items-center justify-self-center gap-1">/);
 });
 
 test("all chart shell rows share the CHARTS workspace-header height", () => {

@@ -13362,7 +13362,7 @@ export default function KwantifyWorkspace({
         {bottomWorkspaceSection === "charts" && (
         <header className="kwant-chart-command-deck relative grid shrink-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] border-b border-border bg-panel">
           {chartTrades.length > 0 && (
-            <div className="col-start-2 row-start-2 flex min-w-0 items-center justify-self-center gap-2 overflow-hidden px-3">
+            <div className="col-start-1 row-start-2 flex min-w-0 items-center justify-self-start gap-2 overflow-hidden px-3">
               <div className="flex shrink-0 items-center gap-2 rounded-lg bg-primary/10 px-2 py-1">
                 <div className="h-2 w-2 rounded-full bg-primary" />
                 <span className="text-[11px] text-primary">Backtest Active</span>
@@ -13373,7 +13373,7 @@ export default function KwantifyWorkspace({
           <div
             aria-disabled={!activePaneIsChart}
             title={activePaneIsChart ? "Controls apply to the selected chart" : `${ALL_WORKSPACE_PANEL_OPTIONS.find((option) => option.id === activeWorkspacePane.content)?.label ?? "Panel"} selected — choose a chart to use chart controls`}
-            className={`relative col-start-1 row-start-2 flex min-w-0 items-center justify-self-start px-3 ${!activePaneIsChart ? "pointer-events-none opacity-30" : ""} ${
+            className={`relative col-start-2 row-start-2 flex min-w-0 items-center justify-self-center px-1 ${!activePaneIsChart ? "pointer-events-none opacity-30" : ""} ${
             showAllTF
               ? "overflow-visible"
               : "overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
@@ -13522,7 +13522,7 @@ export default function KwantifyWorkspace({
           </div>
           </div>
           <div className="col-span-3 col-start-1 row-start-1 grid min-w-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-1 overflow-x-auto border-b border-border/70 px-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            <div className="col-start-1 flex h-7 shrink-0 items-center justify-self-start gap-1">
+            <div className="col-start-2 flex h-7 shrink-0 items-center justify-self-center gap-1">
             {[
               {
                 layout: "single" as Exclude<WorkspaceLayout, "custom">,
