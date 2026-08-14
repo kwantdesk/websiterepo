@@ -19,6 +19,45 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }
 
+export function zoomScaledVolumeProfileWidth({
+  paneWidth,
+  visibleLogicalFrom,
+  visibleLogicalTo,
+  profileDurationSeconds,
+  intervalSeconds,
+  widthPercent,
+}: {
+  paneWidth: number;
+  visibleLogicalFrom: number;
+  visibleLogicalTo: number;
+  profileDurationSeconds: number;
+  intervalSeconds: number;
+  widthPercent: number;
+}) {
+  const visibleLogicalSpan = Math.abs(visibleLogicalTo - visibleLogicalFrom);
+  if (
+    !Number.isFinite(paneWidth)
+    || paneWidth <= 0
+    || !Number.isFinite(visibleLogicalSpan)
+    || visibleLogicalSpan <= 0
+    || !Number.isFinite(profileDurationSeconds)
+    || profileDurationSeconds <= 0
+    || !Number.isFinite(intervalSeconds)
+    || intervalSeconds <= 0
+    || !Number.isFinite(widthPercent)
+  ) return null;
+  if (widthPercent <= 0) return 0;
+
+  // A profile's width lives in logical bars, not screen coordinates. The
+  // visible-range span is unchanged by horizontal panning, so dragging left
+  // or right can only translate the profile. Zooming changes that span and
+  // therefore scales the profile in exactly the same direction as candles.
+  const pixelsPerLogicalBar = paneWidth / visibleLogicalSpan;
+  const profileLogicalBars = profileDurationSeconds / intervalSeconds
+    * widthPercent / 100;
+  return Math.max(0.5, profileLogicalBars * pixelsPerLogicalBar);
+}
+
 export type NativeVolumeProfileStyle = {
   mode: "delta-volume" | "bid-ask" | "delta";
   widthPercent: number;
@@ -228,14 +267,25 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
           ? pinnedRight ? 0 : mediaSize.width
           : sessionEndX;
 
-        const sessionWidth = Math.max(18, Math.abs(sessionEndX - sessionAnchorX));
-        const viewportWidthLimit = mediaSize.width * (profile.period === "daily" ? 0.36 : 0.44);
-        const profileWidth = customProfile
-          ? Math.max(1, (customRight - customLeft) / 2)
-          : Math.min(
-              Math.max(64, viewportWidthLimit),
-              Math.max(0, sessionWidth * style.widthPercent / 100),
-            );
+        const sessionWidth = Math.max(0.5, Math.abs(sessionEndX - sessionAnchorX));
+        const visibleLogicalRange = params.chart.timeScale().getVisibleLogicalRange();
+        const zoomScaledWidth = visibleLogicalRange == null || model.intervalSeconds == null
+          ? null
+          : zoomScaledVolumeProfileWidth({
+              paneWidth: mediaSize.width,
+              visibleLogicalFrom: Number(visibleLogicalRange.from),
+              visibleLogicalTo: Number(visibleLogicalRange.to),
+              profileDurationSeconds: Math.abs(
+                (model.drawingBounds?.endTime ?? profile.endMs / 1_000)
+                - (model.drawingBounds?.startTime ?? profile.startMs / 1_000),
+              ),
+              intervalSeconds: model.intervalSeconds,
+              widthPercent: style.widthPercent,
+            });
+        const profileWidth = zoomScaledWidth
+          ?? (style.widthPercent <= 0
+            ? 0
+            : Math.max(0.5, sessionWidth * style.widthPercent / 100));
         // A daily profile has two independent halves: volume to the right of
         // its spine and signed delta to the left. Once its session anchor has
         // moved beyond the viewport, dock the volume-only half to the left

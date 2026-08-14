@@ -37,3 +37,11 @@ test("daily profiles honour off and right instead of forcing the left edge", () 
   assert.doesNotMatch(chart, /profile\.period === "daily" && requestedSnapMode === "right"/);
   assert.match(chart, /snapMode: requestedSnapMode/);
 });
+
+test("profile width follows horizontal zoom without changing during horizontal panning", () => {
+  assert.match(primitive, /function zoomScaledVolumeProfileWidth/);
+  assert.match(primitive, /getVisibleLogicalRange\(\)/);
+  assert.match(primitive, /paneWidth \/ visibleLogicalSpan/);
+  assert.match(primitive, /profileDurationSeconds \/ intervalSeconds/);
+  assert.doesNotMatch(primitive, /viewportWidthLimit/);
+});
