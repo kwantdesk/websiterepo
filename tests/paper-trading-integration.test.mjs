@@ -77,6 +77,8 @@ test("chart receives paper positions, fills, and draggable bracket updates", () 
   assert.match(chart, /onPaperProtectionDragStateChange\?\.\(level\.position\.id, true\)/);
   assert.match(chart, /updatePreview\(upEvent\.clientY\)/);
   assert.match(workspace, /suspendedPaperProtectionIdsRef/);
+  assert.match(workspace, /constrainDraggedPaperStop\(position, update\.price, quote\)/);
+  assert.match(workspace, /if \(update\.kind === "stop_loss"\) \{\s*commitPaperLedger\(result\.ledger\);\s*return;/);
   assert.match(workspace, /marketableProtectionPositionIds: new Set\(\[positionId\]\)/);
   assert.doesNotMatch(chart, /paper-(?:position|protection)(?:-draft)?-overlay-label[^\n]*absolute left-/);
 });
@@ -139,6 +141,9 @@ test("execution accounting remains tick accurate and protection is deterministic
   assert.match(engine, /marketableProtectionPositionIds/);
   assert.match(engine, /: position\.stopLoss!/);
   assert.match(engine, /const targetFillPrice = options\.marketableProtectionPositionIds/);
+  assert.match(engine, /export function constrainDraggedPaperStop/);
+  assert.match(engine, /Math\.min\(requested, snapPaperPrice\(position\.symbol, quote\.bid - tick\)\)/);
+  assert.match(engine, /Math\.max\(requested, snapPaperPrice\(position\.symbol, quote\.ask \+ tick\)\)/);
   assert.doesNotMatch(engine, /must remain below the live market/);
   assert.doesNotMatch(engine, /must remain above the live market/);
   assert.match(workspace, /Tick size/);

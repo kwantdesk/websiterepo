@@ -374,6 +374,24 @@ export function snapPaperPrice(symbol: string, price: number) {
   return Number(snapped.toFixed(Math.min(8, precision)));
 }
 
+/**
+ * Arms a dragged stop on the protective side of the current executable market.
+ * A pointer release is a placement action, not an instruction to cross the
+ * market and close the position immediately.
+ */
+export function constrainDraggedPaperStop(
+  position: Pick<PaperPosition, "symbol" | "side">,
+  requestedPrice: number,
+  quote: Pick<PaperQuote, "bid" | "ask">,
+) {
+  const requested = snapPaperPrice(position.symbol, requestedPrice);
+  const tick = paperTickSize(position.symbol);
+  if (position.side === "buy") {
+    return Math.min(requested, snapPaperPrice(position.symbol, quote.bid - tick));
+  }
+  return Math.max(requested, snapPaperPrice(position.symbol, quote.ask + tick));
+}
+
 export function parseLeverage(value: string | undefined) {
   const match = String(value ?? "1:1").match(/(\d+(?:\.\d+)?)\s*:\s*(\d+(?:\.\d+)?)/);
   if (!match) return 1;

@@ -174,6 +174,7 @@ import {
   cancelPaperOrder,
   clearPaperAccountFills,
   closePaperPosition,
+  constrainDraggedPaperStop,
   dailyRealizedPaperPnl,
   emptyPaperTradingLedger,
   flattenPaperAccount,
@@ -12428,12 +12429,23 @@ export default function KwantifyWorkspace({
   ) => {
     const current = paperLedgerRef.current;
     const position = current.accounts[accountId]?.positions.find((candidate) => candidate.id === positionId);
-    const result = updatePaperProtection(current, accountId, positionId, update);
+    const quote = position ? resolvePaperExecutionQuote(position.symbol) : null;
+    const committedUpdate = update.kind === "stop_loss" && update.price != null && position && quote
+      ? { ...update, price: constrainDraggedPaperStop(position, update.price, quote) }
+      : update;
+    const result = updatePaperProtection(current, accountId, positionId, committedUpdate);
     if (result.error) {
       showPaperOrderMessage("error", result.error);
       return;
     }
-    const quote = position ? resolvePaperExecutionQuote(position.symbol) : null;
+
+    // Releasing a stop handle only arms the snapped stop. It must not replay
+    // the quote used during the pointer release and turn placement into a fill.
+    if (update.kind === "stop_loss") {
+      commitPaperLedger(result.ledger);
+      return;
+    }
+
     const next = position && quote
       ? processPaperQuote(
           result.ledger,
