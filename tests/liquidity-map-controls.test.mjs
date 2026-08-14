@@ -212,12 +212,12 @@ test("CVD is labelled and horizontally synchronized with the liquidity map", asy
   assert.match(renderer, /const xForIndex = index => count <= 1 \? dataWidth : \(\(index - start\) \/ \(count - 1\)\) \* dataWidth/);
 });
 
-test("ES uses its own tighter price viewport and visual holds do not enter history", async () => {
+test("ES uses its own one-tick price viewport and visual holds do not enter history", async () => {
   const [symbols, source] = await Promise.all([
     readFile(new URL("../public/heatmap-app/src/market-simulator.js", import.meta.url), "utf8"),
     readFile(new URL("../public/heatmap-app/src/main.js", import.meta.url), "utf8"),
   ]);
-  assert.match(symbols, /instrument\('ES',[\s\S]*?defaultVisibleRows: 56/);
+  assert.match(symbols, /instrument\('ES',[\s\S]*?defaultVisibleRows: 45/);
   assert.match(symbols, /instrument\('NQ',[\s\S]*?depthRangePoints: 100/);
   assert.match(source, /if \(metadata\.visualHold\)[\s\S]*?updateLivePresentationEdge/);
   assert.match(source, /this\.view\.visibleRows = SYMBOLS\[symbol\]\.defaultVisibleRows \|\| 112/);

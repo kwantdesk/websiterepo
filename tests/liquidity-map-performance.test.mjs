@@ -16,7 +16,7 @@ test("the Rithmic map publishes bounded truthful depth at a sustainable cadence"
   assert.match(gateway, /tradeLimit: 1/);
 });
 
-test("the high-refresh presentation keeps the shared canvas fixed and uses truthful clock-sampled book holds", () => {
+test("the high-refresh presentation keeps the shared canvas fixed without synthetic history", () => {
   const gateway = read("services/rithmic_gateway/src/server.mjs");
   const feed = read("public/heatmap-app/src/live-market.js");
   const runtime = read("public/heatmap-app/src/main.js");
@@ -24,11 +24,9 @@ test("the high-refresh presentation keeps the shared canvas fixed and uses truth
   assert.match(feed, /onPresentationTick/);
   assert.match(runtime, /#ingestPresentationTick/);
   assert.match(runtime, /this\.#positionCurrentPrice\(current\)/);
-  assert.match(runtime, /PRESENTATION_SAMPLE_MS = 50/);
-  assert.match(runtime, /PRESENTATION_BOOK_FRESH_MS = 15_000/);
-  assert.match(runtime, /#sampleRestingBook\(timestamp\)/);
-  assert.match(runtime, /presentationSource: source/);
-  assert.match(runtime, /trades: \[\],[\s\S]*?delta: 0,[\s\S]*?volume: 0/);
+  assert.doesNotMatch(runtime, /#sampleRestingBook\(timestamp\)/);
+  assert.doesNotMatch(runtime, /id: `hold:/);
+  assert.match(runtime, /if \(metadata\.visualHold\)[\s\S]*?updateLivePresentationEdge/);
   assert.match(runtime, /#presentLiveCamera\(timestamp\)/);
   assert.match(runtime, /Never translate the shared canvas/);
   assert.doesNotMatch(runtime, /translate3d\(\$\{this\.presentationCameraX/);

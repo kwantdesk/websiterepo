@@ -20,7 +20,11 @@ const instrument = (key, venue, description, tickSize, startPrice, options = {})
 // the deeper parent order book.
 export const SYMBOLS = Object.fromEntries([
   instrument('NQ', 'CME', 'E-mini Nasdaq-100', 0.25, 22486.25, { depthRangePoints: 100 }),
-  instrument('ES', 'CME', 'E-mini S&P 500', 0.25, 6387.5, { depthRangePoints: 100, defaultVisibleRows: 56 }),
+  // ES and NQ share a 0.25-point exchange tick, but ES normally covers far
+  // fewer index points over the same clock interval. Use the renderer's
+  // truthful one-tick minimum viewport so ES is not visually flattened by
+  // the wider NQ price window.
+  instrument('ES', 'CME', 'E-mini S&P 500', 0.25, 6387.5, { depthRangePoints: 100, defaultVisibleRows: 45 }),
   instrument('RTY', 'CME', 'E-mini Russell 2000', 0.1, 2250),
   instrument('YM', 'CBOT', 'E-mini Dow', 1, 44500),
   instrument('CL', 'NYMEX', 'WTI Crude Oil', 0.01, 70),

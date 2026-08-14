@@ -38,8 +38,6 @@ const LIQUIDITY_MAP_TABS_KEY = 'kwantdesk:liquidity-map-tabs:v1';
 const DEFAULT_INSTRUMENT_TABS = ['NQ', 'ES'];
 const INSTRUMENT_ORDER = [...LIQUIDITY_MAP_ROOTS];
 const INDICATOR_ANALYSIS_INTERVAL_MS = 500;
-const PRESENTATION_SAMPLE_MS = 50;
-const PRESENTATION_BOOK_FRESH_MS = 15_000;
 const LIQUIDITY_MAP_DISPLAY_DEFAULTS = Object.freeze({
   palette: DEFAULT_PALETTE,
   sensitivity: 0.1,
@@ -117,8 +115,6 @@ class DepthForgeApp {
     this.presentationCameraX = 0;
     this.presentationCameraAt = performance.now();
     this.presentationFrames = 0;
-    this.lastGenuineDepthFrameAt = 0;
-    this.lastPresentationSampleAt = 0;
     this.tool = 'crosshair';
     this.drag = null;
     this.cvdDrag = null;
@@ -1136,11 +1132,6 @@ class DepthForgeApp {
   }
 
   #ingestDepthSnapshot(snapshot, metadata = {}) {
-    if (!metadata.historical && !metadata.visualHold) {
-      const arrivedAt = performance.now();
-      this.lastGenuineDepthFrameAt = arrivedAt;
-      this.lastPresentationSampleAt = arrivedAt;
-    }
     // Two separate gates rejected the Rithmic feed here. The source check was
     // pinned to Databento, and the symbol had to match literally - but the
     // collector serves micros from the parent book and answers with the
@@ -1284,36 +1275,6 @@ class DepthForgeApp {
     if (this.tape.length > 35) this.tape.length = 35;
   }
 
-  #sampleRestingBook(timestamp) {
-    if (
-      this.sourceMode !== 'live'
-      || !this.atLive
-      || !this.playing
-      || !this.liveStatus.connected
-      || !this.history.length
-      || timestamp - this.lastPresentationSampleAt < PRESENTATION_SAMPLE_MS
-      || timestamp - this.lastGenuineDepthFrameAt > PRESENTATION_BOOK_FRESH_MS
-    ) return;
-
-    const current = this.history[this.history.length - 1];
-    const source = current.presentationSource || current;
-    const hold = {
-      ...current,
-      id: `hold:${source.id}:${Math.round(timestamp)}`,
-      timestamp: Math.max(Number(current.timestamp) + 1, Date.now()),
-      trades: [],
-      delta: 0,
-      volume: 0,
-      eventsSince: 0,
-      presentationSource: source,
-    };
-    const { shifted } = this.depthEngine.append(hold);
-    this.viewEnd = this.history.length - 1;
-    if (shifted && !this.atLive) this.viewEnd = Math.max(0, this.viewEnd - shifted);
-    this.lastPresentationSampleAt = timestamp;
-    this.renderRequested = true;
-  }
-
   #presentLiveCamera(timestamp) {
     const canvas = this.renderer.canvas;
     // Never translate the shared canvas. It contains the fixed DOM, price/time
@@ -1332,8 +1293,6 @@ class DepthForgeApp {
       const elapsed = Math.min(120, timestamp - this.lastFrameTime);
       this.lastFrameTime = timestamp;
       this.accumulator += elapsed;
-      this.#sampleRestingBook(timestamp);
-
       if (this.playing) {
         const interval = this.market.intervalMs / this.speed;
         let guard = 0;
