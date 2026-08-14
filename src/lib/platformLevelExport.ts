@@ -1,3 +1,5 @@
+import { normalizeLevelExportColor } from "@/lib/levelExportColors";
+
 export type PlatformLevelInput = {
   levelType: "Gamma Levels" | "Kwant Levels" | "Value Area Levels" | "Historical Supply/Demand + S/R";
   instrument: string;
@@ -135,14 +137,7 @@ function pineString(value: string) {
 }
 
 function rgb(value: string) {
-  const normalized = value.trim().replace(/^#/, "");
-  const six = /^[0-9a-f]{8}$/i.test(normalized)
-    ? normalized.slice(-6)
-    : /^[0-9a-f]{6}$/i.test(normalized)
-      ? normalized
-      : /^[0-9a-f]{3}$/i.test(normalized)
-        ? normalized.split("").map((character) => character.repeat(2)).join("")
-        : "FFFFFF";
+  const six = normalizeLevelExportColor(value).slice(1);
   return {
     hex: six.toUpperCase(),
     red: Number.parseInt(six.slice(0, 2), 16),

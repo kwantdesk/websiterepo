@@ -1,3 +1,5 @@
+import { normalizeLevelExportColor } from "@/lib/levelExportColors";
+
 export type DeepChartsLevelInput = {
   levelType: "Gamma Levels" | "Kwant Levels" | "Value Area Levels" | "Historical Supply/Demand + S/R";
   instrument: string;
@@ -133,17 +135,7 @@ function timeZoneOffsetMinutes(timeZone: string, date: Date) {
 }
 
 function deepChartsColor(value: string) {
-  const normalized = value.trim().replace(/^#/, "");
-  if (/^[0-9a-f]{8}$/i.test(normalized)) return `#${normalized.toUpperCase()}`;
-  if (/^[0-9a-f]{6}$/i.test(normalized)) return `#FF${normalized.toUpperCase()}`;
-  if (/^[0-9a-f]{3}$/i.test(normalized)) {
-    const expanded = normalized
-      .split("")
-      .map((character) => `${character}${character}`)
-      .join("");
-    return `#FF${expanded.toUpperCase()}`;
-  }
-  return "#FFFFFFFF";
+  return `#FF${normalizeLevelExportColor(value).slice(1)}`;
 }
 
 function deepChartsLineStyle(value: string) {

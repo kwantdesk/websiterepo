@@ -143,6 +143,7 @@ import {
   type GameplanChartOverlayStore,
 } from "@/lib/gameplanChartOverlay";
 import { serializeDeepChartsXml } from "@/lib/deepChartsExport";
+import { resolveLevelExportColor } from "@/lib/levelExportColors";
 import {
   PLATFORM_LEVEL_EXPORT_OPTIONS,
   serializePlatformLevels,
@@ -11876,6 +11877,13 @@ export default function KwantifyWorkspace({
       return;
     }
 
+    // Freeze the colours exactly as they are visible on this user's chart.
+    // This resolves theme variables/color-mix/alpha before handing the rows to
+    // platform-specific serializers, JSON or CSV.
+    const exportRows = rows.map((row) => ({
+      ...row,
+      color: resolveLevelExportColor(row.color, chartSettings.backgroundColor),
+    }));
     const exportedAt = new Date().toISOString();
     const filenameInstruments = selectedOptions
       .map((option) => option.instrument)
@@ -11898,7 +11906,7 @@ export default function KwantifyWorkspace({
           levelTypes: (Object.entries(levelExportTypes) as Array<[LevelExportType, boolean]>)
             .filter(([, enabled]) => enabled)
             .map(([type]) => type),
-          levels: rows,
+          levels: exportRows,
         }, null, 2),
         `${baseFilename}.json`,
         "application/json;charset=utf-8",
@@ -11924,17 +11932,17 @@ export default function KwantifyWorkspace({
       ];
       const csv = [
         columns.map((column) => csvCell(column)).join(","),
-        ...rows.map((row) => columns.map((column) => csvCell(row[column])).join(",")),
+        ...exportRows.map((row) => columns.map((column) => csvCell(row[column])).join(",")),
       ].join("\r\n");
       downloadLevelFile(csv, `${baseFilename}.csv`, "text/csv;charset=utf-8");
     } else if (levelExportFormat === "deepcharts") {
       downloadLevelFile(
-        serializeDeepChartsXml(rows, new Date(exportedAt)),
+        serializeDeepChartsXml(exportRows, new Date(exportedAt)),
         `${baseFilename}.xml`,
         "application/json;charset=utf-8",
       );
     } else {
-      const source = serializePlatformLevels(levelExportFormat, rows);
+      const source = serializePlatformLevels(levelExportFormat, exportRows);
       downloadLevelFile(
         source,
         `${baseFilename}-${levelExportFormat}.${exportOption.extension}`,
