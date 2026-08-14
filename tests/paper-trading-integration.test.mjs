@@ -142,10 +142,11 @@ test("rates, FX, grain and livestock risk uses displayed-price contract conventi
   }
 });
 
-test("trade labels distinguish minis, micros, and full-size contracts", () => {
+test("order tickets distinguish contract classes while chart labels use signed quantities", () => {
   assert.match(engine, /const MINI_FUTURES = new Set\(\["NQ", "ES", "RTY", "YM", "QM", "QG"\]\)/);
   assert.match(engine, /quantityLabel: isMicro \? "Micros" : isMini \? "Minis"/);
-  assert.match(chart, /contract\.isMini[\s\S]{0,100}"mini"[\s\S]{0,40}"minis"/);
+  assert.match(chart, /return `\$\{side === "buy" \? "\+" : "-"\}\$\{absoluteQuantity\.toLocaleString\("en-US"\)\}`/);
+  assert.doesNotMatch(chart, /absoluteQuantity === 1 \? "contract"/);
   assert.match(workspace, /selectedPaperContract\.isMini[\s\S]{0,120}mini/);
 });
 
@@ -164,8 +165,8 @@ test("chart receives paper positions, fills, and draggable bracket updates", () 
   assert.match(chart, /paperPositionSizeLabel/);
   assert.match(chart, /paperProtectionSizeLabel/);
   assert.match(chart, /positionSide === "buy" \? "sell" : "buy"/);
-  assert.match(chart, /SL · \$\{paperProtectionSizeLabel\(position\.symbol, position\.side, position\.remainingQuantity\)\}/);
-  assert.match(chart, /TP\$\{position\.takeProfits\.length > 1[\s\S]*?paperProtectionSizeLabel\(position\.symbol, position\.side, target\.quantity - target\.filledQuantity\)/);
+  assert.match(chart, /SL · \$\{paperProtectionSizeLabel\(position\.side, position\.remainingQuantity\)\}/);
+  assert.match(chart, /TP\$\{position\.takeProfits\.length > 1[\s\S]*?paperProtectionSizeLabel\(position\.side, target\.quantity - target\.filledQuantity\)/);
   assert.match(chart, /side === "buy" \? "\+" : "-"/);
   assert.match(chart, /absolute right-0 z-\[32\][^\n]*tabular-nums/);
   assert.match(chart, /aria-label=\{`Entry price \$\{level\.position\.entryPrice\.toFixed\(priceFormat\.precision\)\}`\}/);
