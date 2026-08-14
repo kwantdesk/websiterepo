@@ -338,7 +338,7 @@ function ExposurePanel({
   const net = rows.reduce((sum, row) => sum + row.net, 0);
   const greek = GEX_MAP_GREEKS.find((item) => item.mode === config.greekMode) ?? GEX_MAP_GREEKS[0];
   const viewIdentity = `${config.symbol}:${config.greekMode}:${payload?.sessionDate ?? "pending"}`;
-  const centeringIdentity = `${viewIdentity}:${selectedTimestamp ?? "live"}:${spot ?? "pending"}`;
+  const centeringIdentity = `${viewIdentity}:${selectedTimestamp ?? "live"}:${spotStrike ?? "pending"}`;
 
   const centerLiveStrike = useCallback(() => {
     const container = scrollRef.current;
@@ -346,10 +346,12 @@ function ExposurePanel({
     const target = ladder?.querySelector<HTMLElement>("[data-near-spot='true']");
     if (!container || !ladder || container.clientHeight <= 0) return false;
 
-    // Never leave an old surface parked beyond the new ladder. This also
-    // provides a visible fallback if the spot row has not been marked yet.
-    container.scrollTop = 0;
-    if (!target) return false;
+    // Only reset when the next surface has no marked price row. Resetting to
+    // zero before every live re-centre caused a visible black/empty flash.
+    if (!target) {
+      container.scrollTop = 0;
+      return false;
+    }
 
     // offsetTop is measured in the scroll content itself. Do not add dynamic
     // top/bottom gutters here: this viewport lives in an auto-sized grid row,
@@ -376,7 +378,6 @@ function ExposurePanel({
 
   useLayoutEffect(() => {
     const container = scrollRef.current;
-    setSurfacePainted(false);
     if (!container || !rows.length) return;
 
     // Centre synchronously for the first paint, then repeat once after the
@@ -395,7 +396,7 @@ function ExposurePanel({
       window.cancelAnimationFrame(frame);
       window.cancelAnimationFrame(settleFrame);
     };
-  }, [centerLiveStrike, centeringIdentity, followingSpot, rows.length, spotStrike]);
+  }, [centerLiveStrike, centeringIdentity, followingSpot, rows.length, spotStrike, viewIdentity]);
 
   useEffect(() => {
     setFollowingSpot(true);
@@ -689,7 +690,7 @@ export default function GexMapWorkspace({ market = null }: GexMapWorkspaceProps 
         const next = { ...current };
         for (const panel of panels) {
           const cached = cachedPanels[panel.id];
-          if (cached) next[panel.id] = cached;
+          if (cached && !hasRenderableGexMapSurface(next[panel.id])) next[panel.id] = cached;
         }
         return next;
       });

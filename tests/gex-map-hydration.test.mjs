@@ -43,6 +43,12 @@ test("GEX map presents a full loading surface until its initial panels resolve",
   assert.match(workspace, /className="pointer-events-none absolute inset-0 z-50"/);
 });
 
+test("GEX map swaps live frames without blanking an already-painted surface", () => {
+  assert.match(workspace, /const centeringIdentity = `\$\{viewIdentity\}:\$\{selectedTimestamp \?\? "live"\}:\$\{spotStrike \?\? "pending"\}`/);
+  assert.match(workspace, /if \(cached && !hasRenderableGexMapSurface\(next\[panel\.id\]\)\) next\[panel\.id\] = cached;/);
+  assert.doesNotMatch(workspace, /setSurfacePainted\(false\)/);
+});
+
 test("GEX map retains a compact completed-session snapshot through provider restarts", () => {
   assert.match(workspaceCache, /GEX_MAP_LAST_GOOD_MAX_AGE_MS = 72 \* 60 \* 60 \* 1_000/);
   assert.match(workspaceCache, /window\.localStorage\.setItem\(/);
