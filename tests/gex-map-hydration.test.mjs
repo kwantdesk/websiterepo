@@ -67,4 +67,16 @@ test("the VPS vendor edge includes an operating-system certificate store", () =>
 
 test("GEX map reads do not wait for the workspace middleware auth round trip", () => {
   assert.match(middleware, /"\/api\/gex-map"/);
+  assert.match(
+    readFileSync(new URL("../src/app/api/gex-map/route.ts", import.meta.url), "utf8"),
+    /isSiteAccessConfigured\(\)[\s\S]*isValidSiteAccessToken/,
+  );
+});
+
+test("cold GEX panels are not aborted before the provider retry window completes", () => {
+  assert.match(workspace, /timeoutMs: 45_000/);
+  assert.match(
+    readFileSync(new URL("../src/app/api/gex-map/route.ts", import.meta.url), "utf8"),
+    /export const maxDuration = 60/,
+  );
 });

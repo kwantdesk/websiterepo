@@ -708,6 +708,11 @@ export default function GexMapWorkspace({ market = null }: GexMapWorkspaceProps 
             {
               force: forceRefresh,
               maxAgeMs: replayMode ? 6 * 60 * 60_000 : 5_000,
+              // The VPS serialises KwantData request starts to respect its
+              // entitlement. A cold three-panel load can outlive the generic
+              // workspace timeout even though every provider response is
+              // healthy, so do not abort the final QQQ panel prematurely.
+              timeoutMs: 45_000,
               validate: (value) => hasRenderableGexMapSurface(value as GexMapPanelPayload),
               invalidMessage: "The GEX surface did not contain a strike ladder.",
             },

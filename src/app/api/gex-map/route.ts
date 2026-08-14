@@ -3,6 +3,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { getConfiguredQuantDataApiKey, getGexMapPanel, getQuantDataHttpError } from "@/lib/quantData.server";
 import { GEX_MAP_GREEKS } from "@/lib/gexMap";
 import { OPTIONS_FLOW_TICKERS, type GreekMode } from "@/lib/optionsFlow";
+import {
+  SITE_ACCESS_COOKIE,
+  isSiteAccessConfigured,
+  isValidSiteAccessToken,
+} from "@/lib/siteAccess";
+
+// A cold completed-session surface can require several serialised provider
+// reads. Do not let the serverless default terminate one panel while the
+// other two finish successfully.
+export const maxDuration = 60;
 
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -14,6 +24,15 @@ async function isAuthenticated(request: NextRequest) {
   ) {
     return true;
   }
+
+  // Middleware has already validated this signed site-access cookie before
+  // allowing the read-only market-data fast path. Rechecking Supabase here
+  // made three simultaneous GEX panels perform three extra remote auth calls;
+  // one intermittent auth delay was enough to leave only QQQ failed.
+  if (
+    isSiteAccessConfigured()
+    && await isValidSiteAccessToken(request.cookies.get(SITE_ACCESS_COOKIE)?.value)
+  ) return true;
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey =
