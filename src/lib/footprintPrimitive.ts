@@ -14,6 +14,7 @@ import {
   type FootprintScaleMode,
   type FootprintVisualizationMode,
 } from "./footprint";
+import { applyLiveFootprintCandleGeometry } from "./footprintLive";
 
 export type FootprintRenderBar = FootprintBar & { time: Time };
 
@@ -666,6 +667,24 @@ export class FootprintPrimitive implements ISeriesPrimitive<Time> {
   params() { return this.attachedParams; }
   bars() { return this.renderBars; }
   options() { return this.renderOptions; }
+  updateLiveCandle(candle: {
+    time: Time;
+    timestamp: number;
+    open: number;
+    high: number;
+    low: number;
+    close: number;
+    tickSize: number;
+  }) {
+    const nextBars = applyLiveFootprintCandleGeometry(
+      this.renderBars,
+      candle,
+      candle.tickSize,
+    );
+    if (nextBars === this.renderBars) return;
+    this.renderBars = nextBars;
+    this.requestPaint();
+  }
   update(bars: FootprintRenderBar[], options: FootprintPrimitiveOptions) {
     this.renderBars = bars;
     const nextOptions = { ...DEFAULT_OPTIONS, ...options };
@@ -688,6 +707,9 @@ export class FootprintPrimitive implements ISeriesPrimitive<Time> {
     }
     nextOptions.allLoadedScaleMaximum = Math.max(0, ...this.loadedScaleByTime.values());
     this.renderOptions = nextOptions;
+    this.requestPaint();
+  }
+  private requestPaint() {
     const minimumInterval = 1_000 / this.renderOptions.fpsLimit;
     const now = typeof performance !== "undefined" ? performance.now() : Date.now();
     const remaining = minimumInterval - (now - this.lastUpdateRequest);

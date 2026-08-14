@@ -2404,6 +2404,15 @@ export default function Chart({
           close: candle.close,
         });
         paperPositionOverlayPrimitiveRef.current?.updateMarkPrice(candle.close);
+        footprintPrimitiveRef.current?.updateLiveCandle({
+          time: candleTime as Time,
+          timestamp: candle.timestamp,
+          open: candle.open,
+          high: candle.high,
+          low: candle.low,
+          close: candle.close,
+          tickSize: getPriceFormat(instrument).minMove,
+        });
         lastRenderedCandleTimeRef.current = candleTime;
         lastRenderedSourceTimestampRef.current = candle.timestamp;
         if (eventBased) {
@@ -2419,11 +2428,11 @@ export default function Chart({
       if (!detail || detail.key !== liveCandleEventKey) return;
       pendingCandle = detail.candle;
       latestCandleRef.current = detail.candle;
-      if (volumeIndicatorEnabled) {
+      if (volumeIndicatorEnabled || footprintSamplingEnabled) {
         pendingLiveVolumeCandleRef.current = detail.candle;
         if (liveVolumeSampleTimerRef.current === null) {
-          // Volume should visibly develop with the live candle, while the
-          // heavier CVD/order-flow studies keep their independent sampling.
+          // Volume and footprint geometry should visibly develop with the
+          // live candle, while heavier tape aggregation stays independently sampled.
           liveVolumeSampleTimerRef.current = window.setTimeout(() => {
             liveVolumeSampleTimerRef.current = null;
             const liveVolumeCandle = pendingLiveVolumeCandleRef.current;
@@ -2447,7 +2456,7 @@ export default function Chart({
       }
       pendingLiveVolumeCandleRef.current = null;
     };
-  }, [liveCandleEventKey, timeframe, volumeIndicatorEnabled]);
+  }, [footprintSamplingEnabled, instrument, liveCandleEventKey, timeframe, volumeIndicatorEnabled]);
 
   useEffect(() => {
     updateIndicatorSettingRef.current = onUpdateIndicatorSetting;
@@ -2485,9 +2494,11 @@ export default function Chart({
     indicatorSampleTimerRef.current = window.setTimeout(() => {
       indicatorSampleTimerRef.current = null;
       const pendingCandles = pendingIndicatorCandlesRef.current;
-      const liveVolumeCandle = volumeIndicatorEnabled ? latestCandleRef.current : null;
-      setSampledIndicatorCandles(liveVolumeCandle
-        ? mergeLiveIndicatorCandle(pendingCandles, liveVolumeCandle)
+      const liveIndicatorCandle = volumeIndicatorEnabled || footprintSamplingEnabled
+        ? latestCandleRef.current
+        : null;
+      setSampledIndicatorCandles(liveIndicatorCandle
+        ? mergeLiveIndicatorCandle(pendingCandles, liveIndicatorCandle)
         : pendingCandles);
       if (orderFlowIndicatorEnabled) {
         setSampledIndicatorMarketTrades(pendingIndicatorMarketTradesRef.current);
