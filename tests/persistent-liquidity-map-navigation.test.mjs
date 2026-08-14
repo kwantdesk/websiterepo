@@ -51,6 +51,8 @@ test("LIQ MAP renders one standard loader until a real depth frame has painted",
   assert.match(liquidityMap, /Loading LIQ MAP/);
   assert.match(liquidityMap, /kwantdesk:liquidity-map-ready/);
   assert.match(liquidityMap, /kwantdesk:liquidity-map-data-ready/);
+  assert.match(liquidityMap, /className="pointer-events-none absolute inset-0 z-10"[\s\S]*?Loading LIQ MAP[\s\S]*?className="h-full w-full bg-chart-background"/);
+  assert.doesNotMatch(liquidityMap, /KwantLoader[\s\S]{0,160}className="absolute inset-0/);
   assert.match(mapRuntime, /kwantdesk:liquidity-map-ready/);
   assert.match(mapRuntime, /kwantdesk:liquidity-map-data-ready/);
   assert.match(liveMarket, /historical: true/);

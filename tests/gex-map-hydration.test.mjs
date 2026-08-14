@@ -36,6 +36,13 @@ test("GEX map restores cache after mount and does not restart on replay date dis
   assert.doesNotMatch(workspace, /setReplayDate\(firstSuccess\.value\.payload\.sessionDate\)/);
 });
 
+test("GEX map presents a full loading surface until its initial panels resolve", () => {
+  assert.match(workspace, /const initialSurfacePending = panels\.some/);
+  assert.match(workspace, /loading\[panel\.id\] && !hasRenderableGexMapSurface\(panelData\[panel\.id\]\)/);
+  assert.match(workspace, /initialSurfacePending[\s\S]*?Loading GEX MAP[\s\S]*?Restoring the latest exposure surfaces/);
+  assert.match(workspace, /className="pointer-events-none absolute inset-0 z-50"/);
+});
+
 test("GEX map retains a compact completed-session snapshot through provider restarts", () => {
   assert.match(workspaceCache, /GEX_MAP_LAST_GOOD_MAX_AGE_MS = 72 \* 60 \* 60 \* 1_000/);
   assert.match(workspaceCache, /window\.localStorage\.setItem\(/);

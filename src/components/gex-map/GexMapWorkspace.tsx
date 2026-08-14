@@ -809,6 +809,9 @@ export default function GexMapWorkspace({ market = null }: GexMapWorkspaceProps 
   const currentSessionDate = latestSessionDate
     || panels.map((panel) => panelData[panel.id]?.sessionDate).find(Boolean)
     || "";
+  const initialSurfacePending = panels.some((panel) => (
+    loading[panel.id] && !hasRenderableGexMapSurface(panelData[panel.id])
+  ));
 
   function updatePanel(id: PanelConfig["id"], patch: Partial<Pick<PanelConfig, "symbol" | "greekMode">>) {
     setPanels((current) => current.map((panel) => panel.id === id ? { ...panel, ...patch } : panel));
@@ -828,7 +831,7 @@ export default function GexMapWorkspace({ market = null }: GexMapWorkspaceProps 
   }
 
   return (
-    <div className="gex-map-workspace flex h-full min-h-0 min-w-0 overflow-hidden bg-background text-foreground">
+    <div className="gex-map-workspace relative flex h-full min-h-0 min-w-0 overflow-hidden bg-background text-foreground">
       <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <header className="gex-map-header sticky top-0 z-40 flex h-9 min-h-9 shrink-0 items-center gap-1.5 overflow-x-auto overflow-y-hidden border-b border-border bg-panel px-2">
           <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[3px] bg-primary/10 text-primary">
@@ -992,6 +995,15 @@ export default function GexMapWorkspace({ market = null }: GexMapWorkspaceProps 
           </footer>
         )}
       </main>
+      {initialSurfacePending ? (
+        <div className="pointer-events-none absolute inset-0 z-50">
+          <KwantLoader
+            title="Loading GEX MAP"
+            detail="Restoring the latest exposure surfaces."
+            className="h-full w-full bg-chart-background"
+          />
+        </div>
+      ) : null}
     </div>
   );
 }
