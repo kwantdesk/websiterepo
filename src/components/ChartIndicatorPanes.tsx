@@ -127,6 +127,36 @@ function sampledPanePoints(
   return [...buckets.values()].sort((a, b) => a.x - b.x);
 }
 
+function sampledVerticalPanePoints(
+  definition: CalculatedIndicatorSeries,
+  yForTime: (time: number) => number | null,
+  plotHeight: number,
+) {
+  const visible = definition.data
+    .map((point) => ({ ...point, y: yForTime(point.time) }))
+    .filter((point): point is CalculatedIndicatorSeries["data"][number] & { y: number } =>
+      point.y !== null && point.y >= -10 && point.y <= plotHeight + 10);
+  if (visible.length <= Math.max(240, plotHeight * 2)) return visible;
+  const buckets = new Map<number, (typeof visible)[number]>();
+  visible.forEach((point) => {
+    const bucket = Math.max(0, Math.min(Math.ceil(plotHeight), Math.round(point.y)));
+    const current = buckets.get(bucket);
+    if (!current || definition.kind !== "candlestick") {
+      buckets.set(bucket, point);
+      return;
+    }
+    buckets.set(bucket, {
+      ...point,
+      open: current.open ?? current.value,
+      high: Math.max(current.high ?? current.value, point.high ?? point.value),
+      low: Math.min(current.low ?? current.value, point.low ?? point.value),
+      close: point.close ?? point.value,
+      breakBefore: current.breakBefore || point.breakBefore,
+    });
+  });
+  return [...buckets.values()].sort((left, right) => left.y - right.y);
+}
+
 function ChartIndicatorPaneSurface({
   groups,
   width,
@@ -854,6 +884,266 @@ function ChartIndicatorPaneSurface({
   );
 }
 
+function ChartVerticalIndicatorPaneSurface({
+  groups,
+  width,
+  height,
+  globalPlotWidth,
+  viewportVersion,
+  collapsedPanes,
+  timeToX,
+  onTogglePane,
+  onOpenSettings,
+  placementStyle,
+  onPaneHandlePointerDown,
+}: {
+  groups: IndicatorPaneGroup[];
+  width: number;
+  height: number;
+  globalPlotWidth: number;
+  viewportVersion: number;
+  collapsedPanes: Record<string, boolean>;
+  timeToX: (time: number) => number | null;
+  onTogglePane: (instanceId: string) => void;
+  onOpenSettings?: (instanceId: string) => void;
+  placementStyle: CSSProperties;
+  onPaneHandlePointerDown: (instanceId: string, event: ReactPointerEvent<HTMLButtonElement>) => void;
+}) {
+  void viewportVersion;
+  const [scaleByPane, setScaleByPane] = useState<Record<string, number>>({});
+  const paneRootRef = useRef<HTMLDivElement>(null);
+  const scaleSidePane = (groupKey: string, deltaY: number, deltaMode = 0) => {
+    const normalizedDelta = deltaMode === 1 ? deltaY * 16 : deltaMode === 2 ? deltaY * 120 : deltaY;
+    const multiplier = Math.exp(Math.max(-120, Math.min(120, normalizedDelta)) * 0.0025);
+    setScaleByPane((current) => ({
+      ...current,
+      [groupKey]: Math.max(0.2, Math.min(8, (current[groupKey] ?? 1) * multiplier)),
+    }));
+  };
+
+  useEffect(() => {
+    const paneRoot = paneRootRef.current;
+    const chartContainer = paneRoot?.parentElement;
+    if (!paneRoot || !chartContainer) return;
+    const captureSidePaneWheel = (event: WheelEvent) => {
+      const target = event.target instanceof Element ? event.target : null;
+      const wheelZone = target?.closest<HTMLElement>("[data-indicator-pane-wheel-zone]");
+      if (!wheelZone || !paneRoot.contains(wheelZone)) return;
+      const groupKey = wheelZone.dataset.indicatorPaneWheelZone;
+      if (!groupKey || event.deltaY === 0) return;
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+      if (wheelZone.dataset.indicatorPaneFixedScale !== "true") {
+        scaleSidePane(groupKey, event.deltaY, event.deltaMode);
+      }
+    };
+    chartContainer.addEventListener("wheel", captureSidePaneWheel, { capture: true, passive: false });
+    return () => chartContainer.removeEventListener("wheel", captureSidePaneWheel, { capture: true });
+  }, [groups.length, height, width]);
+
+  if (!groups.length || width <= 0 || height <= 0) return null;
+
+  const columnWidth = width / groups.length;
+  const headerHeight = 25;
+  const plotTop = headerHeight;
+  const plotBottom = Math.max(plotTop + 20, height - 8);
+  const plotHeight = Math.max(20, plotBottom - plotTop);
+
+  return (
+    <div
+      ref={paneRootRef}
+      className="pointer-events-none absolute z-[9] overflow-hidden border border-border bg-[var(--chart-background)]"
+      style={{ width, height, ...placementStyle }}
+      data-indicator-side-rail="true"
+    >
+      <svg
+        className="absolute inset-0"
+        width={width}
+        height={height}
+        viewBox={`0 0 ${width} ${height}`}
+        preserveAspectRatio="none"
+        aria-label="Vertical chart indicator panes"
+      >
+        {groups.map((group, groupIndex) => {
+          const collapsed = Boolean(collapsedPanes[group.key]);
+          const columnLeft = groupIndex * columnWidth;
+          const innerLeft = columnLeft + 6;
+          const innerRight = columnLeft + columnWidth - 7;
+          const innerWidth = Math.max(12, innerRight - innerLeft);
+          const visibleSeries = group.series.map((definition) => ({
+            ...definition,
+            data: definition.data.filter((point) => {
+              const x = timeToX(point.time);
+              return x !== null && x >= -10 && x <= globalPlotWidth + 10;
+            }),
+          }));
+          const sharedSeries = visibleSeries.filter((series) => !series.independentScale);
+          const domain = scaleDomain(
+            seriesDomain(sharedSeries.length ? sharedSeries : visibleSeries),
+            scaleByPane[group.key] ?? 1,
+          );
+          const xForValue = (value: number) =>
+            innerLeft + ((value - domain.min) / Math.max(1e-9, domain.max - domain.min)) * innerWidth;
+          const yForTime = (time: number) => {
+            const x = timeToX(time);
+            if (x === null) return null;
+            return (x / Math.max(1, globalPlotWidth)) * plotHeight;
+          };
+          const zeroX = Math.max(innerLeft, Math.min(innerRight, xForValue(0)));
+          return (
+            <g key={group.key}>
+              <rect
+                x={columnLeft}
+                y="0"
+                width={columnWidth}
+                height={height}
+                fill="var(--chart-background)"
+                fillOpacity="0.98"
+              />
+              {groupIndex > 0 ? (
+                <line x1={columnLeft + 0.5} x2={columnLeft + 0.5} y1="0" y2={height} stroke="var(--grid-color)" />
+              ) : null}
+              <line x1={columnLeft} x2={columnLeft + columnWidth} y1={headerHeight - 0.5} y2={headerHeight - 0.5} stroke="var(--grid-color)" />
+              <text x={columnLeft + 7} y="16" fill="var(--foreground)" fontSize="9" fontWeight="600" fontFamily="monospace">
+                {group.title}
+              </text>
+              {!collapsed && group.unavailableReason ? (
+                <text x={columnLeft + 7} y={plotTop + 16} fill="var(--muted)" fontSize="8" fontFamily="monospace">
+                  Waiting for data
+                </text>
+              ) : null}
+              {!collapsed ? (
+                <>
+                  <line x1={zeroX} x2={zeroX} y1={plotTop} y2={plotBottom} stroke="var(--grid-color)" strokeDasharray="3 4" opacity="0.72" />
+                  {group.series.map((definition) => {
+                    const visible = sampledVerticalPanePoints(definition, yForTime, plotHeight)
+                      .map((point) => ({ ...point, y: point.y + plotTop }));
+                    if (!visible.length) return null;
+                    if (definition.kind === "histogram") {
+                      const barHeight = visible.length > 1
+                        ? Math.max(1, Math.min(9, Math.abs(visible[1].y - visible[0].y) * 0.72))
+                        : 3;
+                      const pathsByColor = new Map<string, string[]>();
+                      visible.forEach((point) => {
+                        const valueX = xForValue(point.value);
+                        const color = point.color ?? definition.color;
+                        const commands = pathsByColor.get(color) ?? [];
+                        commands.push(
+                          `M${Math.min(zeroX, valueX).toFixed(2)},${(point.y - barHeight / 2).toFixed(2)}`
+                          + `h${Math.max(1, Math.abs(valueX - zeroX)).toFixed(2)}v${barHeight.toFixed(2)}`
+                          + `h-${Math.max(1, Math.abs(valueX - zeroX)).toFixed(2)}Z`,
+                        );
+                        pathsByColor.set(color, commands);
+                      });
+                      return (
+                        <g key={definition.key}>
+                          {[...pathsByColor.entries()].map(([color, commands]) => (
+                            <path key={`${definition.key}-${color}`} d={commands.join("")} fill={color} opacity="0.9" />
+                          ))}
+                        </g>
+                      );
+                    }
+                    if (definition.kind === "candlestick") {
+                      const barHeight = visible.length > 1
+                        ? Math.max(2, Math.min(8, Math.abs(visible[1].y - visible[0].y) * 0.62))
+                        : 4;
+                      return (
+                        <g key={definition.key}>
+                          {visible.map((point) => {
+                            const open = point.open ?? point.value;
+                            const close = point.close ?? point.value;
+                            const high = point.high ?? Math.max(open, close);
+                            const low = point.low ?? Math.min(open, close);
+                            const color = point.color ?? definition.color;
+                            const openX = xForValue(open);
+                            const closeX = xForValue(close);
+                            return (
+                              <g key={`${definition.key}-${point.time}`}>
+                                <line x1={xForValue(low)} x2={xForValue(high)} y1={point.y} y2={point.y} stroke={color} strokeWidth="1" />
+                                <rect
+                                  x={Math.min(openX, closeX)}
+                                  y={point.y - barHeight / 2}
+                                  width={Math.max(2, Math.abs(openX - closeX))}
+                                  height={barHeight}
+                                  fill={color}
+                                />
+                              </g>
+                            );
+                          })}
+                        </g>
+                      );
+                    }
+                    const path = visible.map((point, index) =>
+                      `${index === 0 || point.breakBefore ? "M" : "L"} ${xForValue(point.value)} ${point.y}`,
+                    ).join(" ");
+                    return (
+                      <path
+                        key={definition.key}
+                        d={path}
+                        fill="none"
+                        stroke={definition.color}
+                        strokeWidth={definition.lineWidth ?? 2}
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        vectorEffect="non-scaling-stroke"
+                      />
+                    );
+                  })}
+                  <text x={innerLeft} y={height - 1} fill="var(--muted)" fontSize="7" fontFamily="monospace">{compact(domain.min)}</text>
+                  <text x={innerRight} y={height - 1} fill="var(--muted)" fontSize="7" fontFamily="monospace" textAnchor="end">{compact(domain.max)}</text>
+                </>
+              ) : null}
+            </g>
+          );
+        })}
+      </svg>
+      {groups.map((group, groupIndex) => {
+        const columnLeft = groupIndex * columnWidth;
+        return (
+          <div key={`vertical-controls-${group.key}`}>
+            <div
+              data-indicator-pane-wheel-zone={group.key}
+              data-indicator-pane-fixed-scale={group.indicatorId === "volume" ? "true" : undefined}
+              className="pointer-events-auto absolute cursor-ew-resize"
+              style={{ left: columnLeft, top: headerHeight, width: columnWidth, height: plotHeight }}
+              title={`Scroll to expand or squeeze ${group.title}`}
+              onWheel={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                if (group.indicatorId !== "volume") {
+                  scaleSidePane(group.key, event.deltaY, event.deltaMode);
+                }
+              }}
+            />
+            {onOpenSettings ? (
+              <button
+                type="button"
+                onClick={(event) => { event.stopPropagation(); onOpenSettings(group.key); }}
+                className="pointer-events-auto absolute top-1 flex h-5 w-5 items-center justify-center rounded-[2px] border border-border bg-panel/95 text-muted hover:text-foreground"
+                style={{ left: columnLeft + columnWidth - 46 }}
+                title={`${group.title} settings`}
+              >
+                <Settings2 className="h-2.5 w-2.5" />
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onPointerDown={(event) => onPaneHandlePointerDown(group.key, event)}
+              onClick={(event) => { event.stopPropagation(); onTogglePane(group.key); }}
+              className="pointer-events-auto absolute top-1 flex h-5 w-5 cursor-grab items-center justify-center rounded-[2px] border border-border bg-panel/95 text-muted hover:text-foreground active:cursor-grabbing"
+              style={{ left: columnLeft + columnWidth - 23 }}
+              title={`Click to minimize · drag to move ${group.title}`}
+            >
+              {collapsedPanes[group.key] ? <Plus className="h-2.5 w-2.5" /> : <Minus className="h-2.5 w-2.5" />}
+            </button>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function ChartIndicatorPanes({
   groups,
   width,
@@ -924,9 +1214,12 @@ function ChartIndicatorPanes({
   const topHeight = surfaceHeight(groupsByDock.top);
   const bottomHeight = surfaceHeight(groupsByDock.bottom) || height;
   const availableSideHeight = Math.max(80, chartHeight - topHeight - bottomHeight - bottom - 4);
-  const leftHeight = Math.min(availableSideHeight, surfaceHeight(groupsByDock.left));
-  const rightHeight = Math.min(availableSideHeight, surfaceHeight(groupsByDock.right));
-  const sideWidth = Math.max(150, Math.min(260, width * 0.24));
+  const leftHeight = groupsByDock.left.length ? availableSideHeight : 0;
+  const rightHeight = groupsByDock.right.length ? availableSideHeight : 0;
+  const sideWidthFor = (count: number) => Math.min(
+    Math.max(150, width - priceScaleWidth - 80),
+    Math.max(150, Math.min(width * 0.42, count * 180)),
+  );
 
   const guardedToggle = (key: string) => {
     if (suppressToggleRef.current === key) {
@@ -1040,14 +1333,39 @@ function ChartIndicatorPanes({
     />;
   };
 
+  const renderSideSurface = (
+    dock: "left" | "right",
+    surfaceGroups: IndicatorPaneGroup[],
+    surfaceHeight: number,
+    placementStyle: CSSProperties,
+  ) => {
+    if (!surfaceGroups.length || surfaceHeight <= 0) return null;
+    return (
+      <ChartVerticalIndicatorPaneSurface
+        key={dock}
+        groups={surfaceGroups}
+        width={sideWidthFor(surfaceGroups.length)}
+        height={surfaceHeight}
+        globalPlotWidth={Math.max(1, width - priceScaleWidth)}
+        viewportVersion={viewportVersion}
+        collapsedPanes={collapsedPanes}
+        timeToX={timeToX}
+        onTogglePane={guardedToggle}
+        onOpenSettings={onOpenSettings}
+        placementStyle={placementStyle}
+        onPaneHandlePointerDown={beginPaneDrag}
+      />
+    );
+  };
+
   if (!groups.length || width <= 0 || chartHeight <= 0) return null;
 
   return (
     <div ref={rootRef} className="pointer-events-none absolute inset-0 z-[9] overflow-hidden" data-testid="indicator-pane-dock-root">
       {renderSurface("top", groupsByDock.top, width, topHeight, { left: 0, top: 0 })}
       {renderSurface("bottom", groupsByDock.bottom, width, bottomHeight, { left: 0, bottom })}
-      {renderSurface("left", groupsByDock.left, sideWidth, leftHeight, { left: 0, top: topHeight })}
-      {renderSurface("right", groupsByDock.right, sideWidth, rightHeight, { right: priceScaleWidth, top: topHeight })}
+      {renderSideSurface("left", groupsByDock.left, leftHeight, { left: 0, top: topHeight })}
+      {renderSideSurface("right", groupsByDock.right, rightHeight, { right: priceScaleWidth, top: topHeight })}
       {drag ? (
         <div className="pointer-events-none absolute inset-0 z-[120] bg-background/10" aria-label="Indicator docking targets">
           {([

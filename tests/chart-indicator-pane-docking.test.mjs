@@ -21,6 +21,14 @@ test("minus handle drags panes to all four dock targets", () => {
 });
 
 test("right dock terminates before the native chart price scale", () => {
-  assert.match(panes, /renderSurface\("right"[\s\S]*?\{ right: priceScaleWidth, top: topHeight \}/);
-  assert.match(panes, /renderSurface\("left"[\s\S]*?\{ left: 0, top: topHeight \}/);
+  assert.match(panes, /renderSideSurface\("right"[\s\S]*?\{ right: priceScaleWidth, top: topHeight \}/);
+  assert.match(panes, /renderSideSurface\("left"[\s\S]*?\{ left: 0, top: topHeight \}/);
+});
+
+test("side-docked indicators reconfigure into a full-height vertical rail", () => {
+  assert.match(panes, /function ChartVerticalIndicatorPaneSurface/);
+  assert.match(panes, /data-indicator-side-rail="true"/);
+  assert.match(panes, /return \(x \/ Math\.max\(1, globalPlotWidth\)\) \* plotHeight/);
+  assert.match(panes, /leftHeight = groupsByDock\.left\.length \? availableSideHeight : 0/);
+  assert.match(panes, /rightHeight = groupsByDock\.right\.length \? availableSideHeight : 0/);
 });
