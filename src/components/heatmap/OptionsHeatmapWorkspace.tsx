@@ -77,6 +77,8 @@ const DEFAULT_LAYERS: Record<LayerKey, boolean> = {
   FUTURES: true,
 };
 const MAX_LIVE_TICKS = 3_600;
+const HEATMAP_MODEL_REFRESH_MS = 500;
+const HEATMAP_MAX_PIXEL_COUNT = 3_000_000;
 const NEW_YORK_TIME = new Intl.DateTimeFormat("en-US", {
   timeZone: "America/New_York",
   hour: "2-digit",
@@ -198,21 +200,25 @@ function MetricCard({
 function OptionsHeatmapCanvas({
   model,
   layers,
-  liveTicks,
+  liveTicksRef,
+  latestPriceRef,
   selectedZone,
   onSelectZone,
 }: {
   model: OptionsHeatmapModel;
   layers: Record<LayerKey, boolean>;
-  liveTicks: LiveTick[];
+  liveTicksRef: { current: LiveTick[] };
+  latestPriceRef: { current: number | null };
   selectedZone: HeatmapZone | null;
   onSelectZone: (zone: HeatmapZone | null) => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const dragRef = useRef<{ x: number; y: number; viewport: Viewport } | null>(null);
+  const dragRef = useRef<{ x: number; y: number; width: number; height: number; viewport: Viewport } | null>(null);
   const hoverRef = useRef<HoverPoint>(null);
   const renderRef = useRef(0);
+  const dragFrameRef = useRef(0);
+  const pendingViewportRef = useRef<Viewport | null>(null);
   const [viewport, setViewport] = useState<Viewport>({
     priceCenter: null,
     priceSpan: null,
@@ -220,7 +226,6 @@ function OptionsHeatmapCanvas({
     timeOffset: 0,
     autoFollow: true,
   });
-  const [hover, setHover] = useState<HoverPoint>(null);
 
   const requestRender = useCallback(() => {
     if (renderRef.current) return;
@@ -230,9 +235,11 @@ function OptionsHeatmapCanvas({
       const container = containerRef.current;
       if (!canvas || !container) return;
       const rect = container.getBoundingClientRect();
-      const ratio = Math.min(2, window.devicePixelRatio || 1);
       const width = Math.max(1, Math.round(rect.width));
       const height = Math.max(1, Math.round(rect.height));
+      const requestedRatio = Math.min(1.5, window.devicePixelRatio || 1);
+      const areaRatio = Math.sqrt(HEATMAP_MAX_PIXEL_COUNT / Math.max(1, width * height));
+      const ratio = Math.max(0.75, Math.min(requestedRatio, areaRatio));
       const pixelWidth = Math.max(1, Math.round(width * ratio));
       const pixelHeight = Math.max(1, Math.round(height * ratio));
       if (canvas.width !== pixelWidth || canvas.height !== pixelHeight) {
@@ -253,6 +260,8 @@ function OptionsHeatmapCanvas({
       const plotBottom = Math.max(120, height - 30);
       const plotWidth = plotRight;
       const plotHeight = plotBottom;
+      const liveTicks = liveTicksRef.current;
+      const displayPrice = latestPriceRef.current ?? model.currentPrice;
       const dataEnd = Math.max(
         model.timestamps.at(-1) ?? 0,
         model.pricePath.at(-1)?.timestamp ?? 0,
@@ -269,7 +278,9 @@ function OptionsHeatmapCanvas({
       const startTime = endTime - timeSpan;
       const defaultPriceSpan = Math.max(200, model.priceHigh - model.priceLow);
       const priceSpan = clamp(viewport.priceSpan ?? defaultPriceSpan, 80, 8_000);
-      const priceCenter = viewport.priceCenter ?? model.currentPrice ?? (model.priceLow + model.priceHigh) / 2;
+      const priceCenter = viewport.autoFollow
+        ? displayPrice ?? viewport.priceCenter ?? (model.priceLow + model.priceHigh) / 2
+        : viewport.priceCenter ?? displayPrice ?? (model.priceLow + model.priceHigh) / 2;
       const priceLow = priceCenter - priceSpan / 2;
       const priceHigh = priceCenter + priceSpan / 2;
       const xForTime = (timestamp: number) => (timestamp - startTime) / Math.max(1, endTime - startTime) * plotWidth;
@@ -441,8 +452,8 @@ function OptionsHeatmapCanvas({
         context.fillText(`ZERO GAMMA ${formatPrice(model.zeroGamma, 0)}`, 10, Math.max(12, y - 6));
       }
 
-      if (model.currentPrice !== null && model.currentPrice >= priceLow && model.currentPrice <= priceHigh) {
-        const y = yForPrice(model.currentPrice);
+      if (displayPrice !== null && displayPrice >= priceLow && displayPrice <= priceHigh) {
+        const y = yForPrice(displayPrice);
         context.beginPath();
         context.moveTo(0, y);
         context.lineTo(plotRight, y);
@@ -509,8 +520,8 @@ function OptionsHeatmapCanvas({
         context.fillText(timeLabel(startTime + index / 6 * timeSpan).slice(0, 5), x, height - 8);
       }
       context.textAlign = "left";
-      if (model.currentPrice !== null && model.currentPrice >= priceLow && model.currentPrice <= priceHigh) {
-        const y = yForPrice(model.currentPrice);
+      if (displayPrice !== null && displayPrice >= priceLow && displayPrice <= priceHigh) {
+        const y = yForPrice(displayPrice);
         context.fillStyle = primary;
         context.beginPath();
         context.roundRect(plotRight + 3, y - 11, width - plotRight - 6, 22, 5);
@@ -519,10 +530,10 @@ function OptionsHeatmapCanvas({
         context.font = "700 10px 'JetBrains Mono', monospace";
         context.textAlign = "center";
         context.textBaseline = "middle";
-        context.fillText(formatPrice(model.currentPrice), plotRight + (width - plotRight) / 2, y);
+        context.fillText(formatPrice(displayPrice), plotRight + (width - plotRight) / 2, y);
       }
     });
-  }, [layers, liveTicks, model, selectedZone, viewport]);
+  }, [layers, latestPriceRef, liveTicksRef, model, selectedZone, viewport]);
 
   useEffect(() => {
     requestRender();
@@ -531,10 +542,31 @@ function OptionsHeatmapCanvas({
     if (container) observer.observe(container);
     const mutation = new MutationObserver(requestRender);
     mutation.observe(document.documentElement, { attributes: true, attributeFilter: ["style", "class", "data-theme"] });
+    let livePaintTimer: number | null = null;
+    let lastLivePaintAt = 0;
+    const requestLivePaint = () => {
+      const now = performance.now();
+      const remaining = 50 - (now - lastLivePaintAt);
+      if (remaining <= 0) {
+        lastLivePaintAt = now;
+        requestRender();
+        return;
+      }
+      if (livePaintTimer !== null) return;
+      livePaintTimer = window.setTimeout(() => {
+        livePaintTimer = null;
+        lastLivePaintAt = performance.now();
+        requestRender();
+      }, remaining);
+    };
+    window.addEventListener(DATABENTO_LIVE_TICK_EVENT, requestLivePaint);
     return () => {
       observer.disconnect();
       mutation.disconnect();
+      window.removeEventListener(DATABENTO_LIVE_TICK_EVENT, requestLivePaint);
+      if (livePaintTimer !== null) window.clearTimeout(livePaintTimer);
       if (renderRef.current) window.cancelAnimationFrame(renderRef.current);
+      if (dragFrameRef.current) window.cancelAnimationFrame(dragFrameRef.current);
     };
   }, [requestRender]);
 
@@ -557,19 +589,24 @@ function OptionsHeatmapCanvas({
   const handlePointerMove = (event: ReactPointerEvent<HTMLCanvasElement>) => {
     const point = canvasPoint(event);
     hoverRef.current = point;
-    setHover(point);
     const drag = dragRef.current;
     if (drag) {
-      const width = Math.max(1, event.currentTarget.getBoundingClientRect().width - 82);
-      const height = Math.max(1, event.currentTarget.getBoundingClientRect().height - 30);
       const priceSpan = drag.viewport.priceSpan ?? Math.max(200, model.priceHigh - model.priceLow);
       const timeSpan = drag.viewport.timeSpan ?? 3 * 60 * 60_000;
-      setViewport({
+      pendingViewportRef.current = {
         ...drag.viewport,
         autoFollow: false,
-        priceCenter: (drag.viewport.priceCenter ?? model.currentPrice ?? (model.priceLow + model.priceHigh) / 2) + (point.y - drag.y) / height * priceSpan,
-        timeOffset: drag.viewport.timeOffset - (point.x - drag.x) / width * timeSpan,
-      });
+        priceCenter: (drag.viewport.priceCenter ?? latestPriceRef.current ?? model.currentPrice ?? (model.priceLow + model.priceHigh) / 2) + (point.y - drag.y) / drag.height * priceSpan,
+        timeOffset: drag.viewport.timeOffset - (point.x - drag.x) / drag.width * timeSpan,
+      };
+      if (!dragFrameRef.current) {
+        dragFrameRef.current = window.requestAnimationFrame(() => {
+          dragFrameRef.current = 0;
+          const nextViewport = pendingViewportRef.current;
+          pendingViewportRef.current = null;
+          if (nextViewport) setViewport(nextViewport);
+        });
+      }
     } else {
       requestRender();
     }
@@ -578,7 +615,13 @@ function OptionsHeatmapCanvas({
   const handlePointerDown = (event: ReactPointerEvent<HTMLCanvasElement>) => {
     if (event.button !== 0) return;
     const point = canvasPoint(event);
-    dragRef.current = { ...point, viewport };
+    const rect = event.currentTarget.getBoundingClientRect();
+    dragRef.current = {
+      ...point,
+      width: Math.max(1, rect.width - 82),
+      height: Math.max(1, rect.height - 30),
+      viewport,
+    };
     event.currentTarget.setPointerCapture(event.pointerId);
   };
 
@@ -622,7 +665,6 @@ function OptionsHeatmapCanvas({
         onPointerMove={handlePointerMove}
         onPointerLeave={() => {
           hoverRef.current = null;
-          setHover(null);
           requestRender();
         }}
         onPointerDown={handlePointerDown}
@@ -644,7 +686,6 @@ function OptionsHeatmapCanvas({
           <LocateFixed className="h-3 w-3" />Return live
         </button>
       ) : null}
-      {hover ? <span className="sr-only">Heatmap crosshair active at {hover.x.toFixed(0)}, {hover.y.toFixed(0)}</span> : null}
     </div>
   );
 }
@@ -665,7 +706,6 @@ export default function OptionsHeatmapWorkspace() {
   const [selectedZoneId, setSelectedZoneId] = useState("");
   const [feedStatus, setFeedStatus] = useState<DatabentoLiveStatus>(() => readDatabentoLiveStatus() ?? "connecting");
   const [livePrice, setLivePrice] = useState<number | null>(initialPayloadRef.current?.nqPrice ?? null);
-  const [liveVersion, setLiveVersion] = useState(0);
   const liveTicksRef = useRef<LiveTick[]>([]);
   const latestPriceRef = useRef<number | null>(initialPayloadRef.current?.nqPrice ?? null);
   const uiTimerRef = useRef<number | null>(null);
@@ -757,9 +797,8 @@ export default function OptionsHeatmapWorkspace() {
       uiTimerRef.current = window.setTimeout(() => {
         uiTimerRef.current = null;
         setLivePrice(latestPriceRef.current);
-        setLiveVersion((version) => version + 1);
         setFeedStatus("live");
-      }, 80);
+      }, HEATMAP_MODEL_REFRESH_MS);
     };
     const receiveStatus = (event: Event) => setFeedStatus((event as CustomEvent<DatabentoLiveStatus>).detail);
     window.addEventListener(DATABENTO_LIVE_TICK_EVENT, receiveTick);
@@ -779,8 +818,8 @@ export default function OptionsHeatmapWorkspace() {
     normalization,
     clusterDistance,
     currentPrice: livePrice,
-    livePricePath: liveTicksRef.current,
-  }) : null, [clusterDistance, expiry, history, livePrice, liveVersion, normalization, payload, source]);
+    livePricePath: [],
+  }) : null, [clusterDistance, expiry, history, livePrice, normalization, payload, source]);
   const zeroGamma = zeroGammaPayload?.trueGammaFlip ?? model?.zeroGamma ?? null;
   const resolvedModel = model ? { ...model, zeroGamma } : null;
   const selectedZone = resolvedModel?.zones.find((zone) => zone.id === selectedZoneId)
@@ -880,7 +919,8 @@ export default function OptionsHeatmapWorkspace() {
               <OptionsHeatmapCanvas
                 model={resolvedModel}
                 layers={layers}
-                liveTicks={liveTicksRef.current}
+                liveTicksRef={liveTicksRef}
+                latestPriceRef={latestPriceRef}
                 selectedZone={selectedZone}
                 onSelectZone={(zone) => setSelectedZoneId(zone?.id ?? "")}
               />
