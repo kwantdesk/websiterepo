@@ -574,13 +574,15 @@ function ExposurePanel({
         )}
         </div>
         {rows.length > 0 && !surfacePainted ? (
-          <KwantLoader
-            className="pointer-events-none absolute inset-0 z-10 h-full"
-            compact
-            icon={ScanLine}
-            title={`Loading ${greek.short}`}
-            detail="Painting the latest strike ladder"
-          />
+          <div className="pointer-events-none absolute inset-0 z-10">
+            <KwantLoader
+              className="h-full w-full"
+              compact
+              icon={ScanLine}
+              title={`Loading ${greek.short}`}
+              detail="Painting the latest strike ladder"
+            />
+          </div>
         ) : null}
         {!followingSpot && spotStrike !== null ? (
           <button

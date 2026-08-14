@@ -37,6 +37,8 @@ test("GEX strike centering cannot collapse or hide the ladder viewport", () => {
   assert.match(workspace, /if \(followingSpot && spotStrike !== null\) centerLiveStrike\(\);/);
   assert.match(workspace, /data-gex-strike-ladder="true"/);
   assert.match(workspace, /const \[surfacePainted, setSurfacePainted\] = useState\(false\)/);
+  assert.match(workspace, /className="pointer-events-none absolute inset-0 z-10"[\s\S]*?className="h-full w-full"/);
+  assert.doesNotMatch(workspace, /KwantLoader[\s\S]{0,120}className="pointer-events-none absolute inset-0/);
   assert.match(workspace, /Painting the latest strike ladder/);
 });
 
