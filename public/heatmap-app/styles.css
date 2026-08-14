@@ -934,7 +934,7 @@ body {
   margin-left: 2px;
   padding: 0 9px;
   border-radius: 17px;
-  background: rgba(255,255,255,.07);
+  background: transparent;
   color: rgba(255,255,255,.62);
 }
 .heat-control input { width: 70px; accent-color: var(--ui-accent); }
