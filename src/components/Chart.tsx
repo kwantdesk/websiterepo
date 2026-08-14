@@ -1031,6 +1031,8 @@ function paperPositionSizeLabel(symbol: string, side: "buy" | "sell", quantity: 
   const contract = paperContractSpec(symbol);
   const unit = contract.isMicro
     ? absoluteQuantity === 1 ? "micro" : "micros"
+    : contract.isMini
+      ? absoluteQuantity === 1 ? "mini" : "minis"
     : contract.isFutures
       ? absoluteQuantity === 1 ? "contract" : "contracts"
       : absoluteQuantity === 1 ? "unit" : "units";

@@ -196,6 +196,7 @@ const POINT_VALUES: Record<string, number> = {
   SI: 5_000,
   MCL: 100,
   CL: 1_000,
+  QM: 500,
   MBT: 0.1,
   BTC: 5,
   MET: 0.1,
@@ -212,6 +213,9 @@ const POINT_VALUES: Record<string, number> = {
   ZN: 1_000,
   ZF: 1_000,
   ZT: 2_000,
+  TN: 1_000,
+  UB: 1_000,
+  "10Y": 1_000,
   SR3: 2_500,
   "6E": 125_000,
   M6E: 12_500,
@@ -223,18 +227,22 @@ const POINT_VALUES: Record<string, number> = {
   M6A: 10_000,
   "6C": 100_000,
   M6C: 10_000,
+  MCD: 10_000,
   "6S": 125_000,
   MSF: 12_500,
   "6M": 500_000,
   M6M: 50_000,
-  ZC: 5_000,
-  ZS: 5_000,
-  ZW: 5_000,
-  ZL: 60_000,
+  "6N": 100_000,
+  // Databento/CME grain prices are displayed in cents, so these values are
+  // dollars per displayed chart point (not the raw physical unit multiplier).
+  ZC: 50,
+  ZS: 50,
+  ZW: 50,
+  ZL: 600,
   ZM: 100,
-  LE: 40_000,
-  HE: 40_000,
-  GF: 50_000,
+  LE: 400,
+  HE: 400,
+  GF: 500,
 };
 
 const TICK_SIZES: Record<string, number> = {
@@ -252,6 +260,7 @@ const TICK_SIZES: Record<string, number> = {
   SI: 0.005,
   MCL: 0.01,
   CL: 0.01,
+  QM: 0.025,
   MBT: 5,
   BTC: 5,
   MET: 0.5,
@@ -268,6 +277,9 @@ const TICK_SIZES: Record<string, number> = {
   ZN: 1 / 64,
   ZF: 1 / 128,
   ZT: 1 / 256,
+  TN: 1 / 64,
+  UB: 1 / 32,
+  "10Y": 0.001,
   SR3: 0.0025,
   "6E": 0.00005,
   M6E: 0.0001,
@@ -275,25 +287,28 @@ const TICK_SIZES: Record<string, number> = {
   M6B: 0.0001,
   "6J": 0.0000005,
   MJY: 0.000001,
-  "6A": 0.0001,
+  "6A": 0.00005,
   M6A: 0.0001,
-  "6C": 0.0001,
+  "6C": 0.00005,
   M6C: 0.0001,
-  "6S": 0.0001,
+  MCD: 0.0001,
+  "6S": 0.00005,
   MSF: 0.0001,
   "6M": 0.00001,
   M6M: 0.00001,
-  ZC: 0.0025,
-  ZS: 0.0025,
-  ZW: 0.0025,
-  ZL: 0.0001,
+  "6N": 0.00005,
+  ZC: 0.25,
+  ZS: 0.25,
+  ZW: 0.25,
+  ZL: 0.01,
   ZM: 0.1,
-  LE: 0.00025,
-  HE: 0.00025,
-  GF: 0.00025,
+  LE: 0.025,
+  HE: 0.025,
+  GF: 0.025,
 };
 
-const MICRO_FUTURES = new Set(["MNQ", "MES", "M2K", "MYM", "MGC", "SIL", "MCL", "MBT", "MET", "MHG", "M6E", "M6B", "MJY", "M6A", "M6C", "MSF", "M6M"]);
+const MICRO_FUTURES = new Set(["MNQ", "MES", "M2K", "MYM", "MGC", "SIL", "MCL", "MBT", "MET", "MHG", "10Y", "M6E", "M6B", "MJY", "M6A", "M6C", "MCD", "MSF", "M6M"]);
+const MINI_FUTURES = new Set(["NQ", "ES", "RTY", "YM", "QM", "QG"]);
 
 function finite(value: unknown, fallback = 0) {
   const number = Number(value);
@@ -314,7 +329,7 @@ function uid(prefix: string) {
 
 export function normalizePaperSymbol(symbol: string) {
   const normalized = symbol.toUpperCase().replace(/[^A-Z0-9]/g, "");
-  const futureMatch = normalized.match(/^(MNQ|NQ|MES|ES|M2K|RTY|MYM|YM|MGC|GC|SIL|SI|MCL|CL|MBT|BTC|MET|ETH|MHG|HG|PL|PA|QG|NG|RB|HO|SR3|ZB|ZN|ZF|ZT|M6E|6E|M6B|6B|MJY|6J|M6A|6A|M6C|6C|MSF|6S|M6M|6M|ZC|ZS|ZW|ZL|ZM|LE|HE|GF)/);
+  const futureMatch = normalized.match(/^(MNQ|NQ|MES|ES|M2K|RTY|MYM|YM|MGC|GC|SIL|SI|MCL|CL|QM|MBT|BTC|MET|ETH|MHG|HG|PL|PA|QG|NG|RB|HO|SR3|10Y|TN|UB|ZB|ZN|ZF|ZT|M6E|6E|M6B|6B|MJY|6J|M6A|6A|M6C|MCD|6C|MSF|6S|M6M|6M|6N|ZC|ZS|ZW|ZL|ZM|LE|HE|GF)/);
   return futureMatch?.[1] ?? normalized;
 }
 
@@ -332,14 +347,16 @@ export function paperContractSpec(symbol: string) {
   const tickSize = TICK_SIZES[root] ?? 0.01;
   const isFutures = root in POINT_VALUES;
   const isMicro = isFutures && MICRO_FUTURES.has(root);
+  const isMini = isFutures && MINI_FUTURES.has(root);
   return {
     root,
     isFutures,
     isMicro,
+    isMini,
     pointValue,
     tickSize,
     tickValue: pointValue * tickSize,
-    quantityLabel: isMicro ? "Micro contracts" : isFutures ? "Contracts" : "Units",
+    quantityLabel: isMicro ? "Micros" : isMini ? "Minis" : isFutures ? "Contracts" : "Units",
   };
 }
 

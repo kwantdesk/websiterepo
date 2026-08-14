@@ -50,8 +50,8 @@ export function futuresTickSize(symbol: string) {
   if (root === "ZT") return 1 / 256;
   if (root === "10Y") return 0.001;
   if (root === "SR3") return 0.0025;
-  if (["6E", "6C"].includes(root)) return 0.00005;
-  if (["6A", "6B", "6S", "6N", "M6E", "M6A", "M6B"].includes(root)) return 0.0001;
+  if (["6E", "6A", "6C", "6S", "6N"].includes(root)) return 0.00005;
+  if (["6B", "M6E", "M6A", "M6B", "M6C", "MCD", "MSF"].includes(root)) return 0.0001;
   if (root === "6J") return 0.0000005;
   if (root === "6M") return 0.00001;
   if (["ZC", "ZW", "ZS"].includes(root)) return 0.25;

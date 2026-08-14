@@ -1,12 +1,20 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import { runInNewContext } from "node:vm";
 
 const workspace = readFileSync(new URL("../src/components/KwantifyWorkspace.tsx", import.meta.url), "utf8");
 const chart = readFileSync(new URL("../src/components/Chart.tsx", import.meta.url), "utf8");
 const accounts = readFileSync(new URL("../src/app/accounts/page.tsx", import.meta.url), "utf8");
 const navigation = readFileSync(new URL("../src/components/AppSidebar.tsx", import.meta.url), "utf8");
 const engine = readFileSync(new URL("../src/lib/paperTrading.ts", import.meta.url), "utf8");
+const databento = readFileSync(new URL("../src/lib/databento.ts", import.meta.url), "utf8");
+
+function numericRecord(name) {
+  const match = engine.match(new RegExp(`const ${name}: Record<string, number> = (\\{[\\s\\S]*?\\n\\});`));
+  assert.ok(match, `${name} must remain a directly auditable numeric contract table`);
+  return runInNewContext(`(${match[1]})`);
+}
 
 test("the right rail exposes Trade below Watchlist and before Live GEX", () => {
   assert.match(workspace, /id: "watchlist" as const[\s\S]{0,140}id: "order" as const[\s\S]{0,140}id: "gex" as const/);
@@ -50,6 +58,75 @@ test("futures contract sizing covers the principal CME products", () => {
   assert.match(engine, /const POINT_VALUES/);
   assert.match(engine, /const TICK_SIZES/);
   assert.match(engine, /marginUsed/);
+});
+
+test("every futures instrument exposed by the platform has an explicit point and tick value", () => {
+  const pointValues = numericRecord("POINT_VALUES");
+  const tickSizes = numericRecord("TICK_SIZES");
+  const futuresBlock = databento.match(/export const DATABENTO_FUTURES[\s\S]*?\n\];/)?.[0] ?? "";
+  const roots = [...futuresBlock.matchAll(/symbol: "([A-Z0-9]+)\.v\.0"/g)].map((match) => match[1]);
+  assert.ok(roots.length > 40, "the public CME futures universe should be covered by the audit");
+  for (const root of roots) {
+    assert.ok(Number.isFinite(pointValues[root]), `${root} is missing its point value`);
+    assert.ok(Number.isFinite(tickSizes[root]), `${root} is missing its tick size`);
+    assert.ok(pointValues[root] > 0, `${root} point value must be positive`);
+    assert.ok(tickSizes[root] > 0, `${root} tick size must be positive`);
+  }
+});
+
+test("index mini and micro P&L matches CME point and tick values", () => {
+  const pointValues = numericRecord("POINT_VALUES");
+  const tickSizes = numericRecord("TICK_SIZES");
+  const expected = {
+    NQ: { point: 20, tick: 0.25, tickUsd: 5 },
+    MNQ: { point: 2, tick: 0.25, tickUsd: 0.5 },
+    ES: { point: 50, tick: 0.25, tickUsd: 12.5 },
+    MES: { point: 5, tick: 0.25, tickUsd: 1.25 },
+    RTY: { point: 50, tick: 0.1, tickUsd: 5 },
+    M2K: { point: 5, tick: 0.1, tickUsd: 0.5 },
+    YM: { point: 5, tick: 1, tickUsd: 5 },
+    MYM: { point: 0.5, tick: 1, tickUsd: 0.5 },
+  };
+  for (const [root, spec] of Object.entries(expected)) {
+    assert.equal(pointValues[root], spec.point, `${root} dollars per point`);
+    assert.equal(tickSizes[root], spec.tick, `${root} tick size`);
+    assert.equal(pointValues[root] * tickSizes[root], spec.tickUsd, `${root} dollars per tick`);
+    assert.equal((100 - 101) * pointValues[root], -spec.point, `${root} one-contract one-point long loss`);
+    assert.equal((101 - 100) * -1 * pointValues[root], -spec.point, `${root} one-contract one-point short loss`);
+  }
+});
+
+test("rates, FX, grain and livestock risk uses displayed-price contract conventions", () => {
+  const pointValues = numericRecord("POINT_VALUES");
+  const tickSizes = numericRecord("TICK_SIZES");
+  const expectedTicks = {
+    QM: 12.5,
+    TN: 15.625,
+    UB: 31.25,
+    "10Y": 1,
+    "6A": 5,
+    "6C": 5,
+    "6S": 6.25,
+    "6N": 5,
+    ZC: 12.5,
+    ZS: 12.5,
+    ZW: 12.5,
+    ZL: 6,
+    ZM: 10,
+    LE: 10,
+    HE: 10,
+    GF: 12.5,
+  };
+  for (const [root, tickUsd] of Object.entries(expectedTicks)) {
+    assert.equal(pointValues[root] * tickSizes[root], tickUsd, `${root} dollars per tick`);
+  }
+});
+
+test("trade labels distinguish minis, micros, and full-size contracts", () => {
+  assert.match(engine, /const MINI_FUTURES = new Set\(\["NQ", "ES", "RTY", "YM", "QM", "QG"\]\)/);
+  assert.match(engine, /quantityLabel: isMicro \? "Micros" : isMini \? "Minis"/);
+  assert.match(chart, /contract\.isMini[\s\S]{0,100}"mini"[\s\S]{0,40}"minis"/);
+  assert.match(workspace, /selectedPaperContract\.isMini[\s\S]{0,120}mini/);
 });
 
 test("chart receives paper positions, fills, and draggable bracket updates", () => {
