@@ -137,7 +137,12 @@ export default function AccountsPage() {
     const saved = loadPaperTradingAccounts();
     if (!saved.length) return;
     setAccounts(saved.map((account) => ({ ...account, winRate: "0%" })));
-    setPaperLedger(saved.reduce((ledger, account) => ensurePaperAccountLedger(ledger, account), loadPaperTradingLedger()));
+    const reconciledLedger = saved.reduce(
+      (ledger, account) => ensurePaperAccountLedger(ledger, account),
+      loadPaperTradingLedger(),
+    );
+    savePaperTradingLedger(reconciledLedger);
+    setPaperLedger(reconciledLedger);
   }, []);
 
   useEffect(() => {

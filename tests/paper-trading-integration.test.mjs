@@ -44,6 +44,16 @@ test("paper orders use the live futures quote and persist through the ledger", (
   assert.match(engine, /Math\.max\(order\.price, executablePrice\)/);
 });
 
+test("new 50K and 100K sim accounts cannot be shadowed by a zero-balance ledger placeholder", () => {
+  assert.match(engine, /const isZeroBalancePlaceholder = existing\.startingBalance <= 0/);
+  assert.match(engine, /account!\.orders\.some\(\(order\) => order\.status !== "rejected"\)/);
+  assert.match(engine, /startingBalance,[\s\S]{0,80}cashBalance: startingBalance/);
+  assert.match(engine, /const recordBalance = Math\.max\(0, parseMoney\(accountRecord\.balance\)\)/);
+  assert.match(workspace, /const nextLedger = ensurePaperAccountLedger\(paperLedgerRef\.current, nextAccount\)/);
+  assert.match(workspace, /savePaperTradingLedger\(nextLedger\)/);
+  assert.match(accounts, /savePaperTradingLedger\(reconciledLedger\)/);
+});
+
 test("the chart execution bridge rejects incoherent books instead of filling away from visible price", () => {
   assert.match(workspace, /const bookIsCoherent = Number\.isFinite\(rawBid\)/);
   assert.match(workspace, /rawAsk - rawBid <= tickSize \* 8/);

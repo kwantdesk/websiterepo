@@ -167,6 +167,7 @@ import {
 import {
   createPaperTradingAccount,
   loadPaperTradingAccounts,
+  PAPER_TRADING_ACCOUNTS_EVENT,
   savePaperTradingAccounts,
   parseMoney as parsePaperMoney,
   type PaperTradingAccountRecord,
@@ -178,6 +179,7 @@ import {
   constrainDraggedPaperStop,
   dailyRealizedPaperPnl,
   emptyPaperTradingLedger,
+  ensurePaperAccountLedger,
   flattenPaperAccount,
   loadPaperTradingLedger,
   normalizePaperSymbol,
@@ -8585,8 +8587,17 @@ export default function KwantifyWorkspace({
         }
       }
     };
+    const handlePaperAccountsChange = () => {
+      const nextAccounts = loadPaperTradingAccounts();
+      setPaperTradingAccounts((current) =>
+        JSON.stringify(current) === JSON.stringify(nextAccounts) ? current : nextAccounts);
+    };
     window.addEventListener("storage", handleStorage);
-    return () => window.removeEventListener("storage", handleStorage);
+    window.addEventListener(PAPER_TRADING_ACCOUNTS_EVENT, handlePaperAccountsChange);
+    return () => {
+      window.removeEventListener("storage", handleStorage);
+      window.removeEventListener(PAPER_TRADING_ACCOUNTS_EVENT, handlePaperAccountsChange);
+    };
   }, [commitPaperLedger]);
 
   useEffect(() => {
@@ -11893,6 +11904,11 @@ export default function KwantifyWorkspace({
   const selectPaperTradingAccount = (accountId: string) => {
     const nextAccount = paperTradingAccounts.find((account) => account.id === accountId);
     if (!nextAccount) return;
+    const nextLedger = ensurePaperAccountLedger(paperLedgerRef.current, nextAccount);
+    if (nextLedger !== paperLedgerRef.current) {
+      commitPaperLedger(nextLedger);
+      savePaperTradingLedger(nextLedger);
+    }
     setSelectedPaperAccountId(nextAccount.id);
     setBrokerConnections((current) => ({
       ...current,
@@ -12282,6 +12298,9 @@ export default function KwantifyWorkspace({
       strategy: paperAccountStrategy,
     });
     setPaperTradingAccounts((current) => [nextAccount, ...current]);
+    const nextLedger = ensurePaperAccountLedger(paperLedgerRef.current, nextAccount);
+    commitPaperLedger(nextLedger);
+    savePaperTradingLedger(nextLedger);
     setSelectedPaperAccountId(nextAccount.id);
     setBrokerConnections((current) => ({
       ...current,

@@ -1,7 +1,7 @@
 import {
   parseMoney,
   type PaperTradingAccountRecord,
-} from "@/lib/paperAccounts";
+} from "./paperAccounts.ts";
 
 export type PaperOrderSide = "buy" | "sell";
 export type PaperOrderType = "market" | "limit" | "stop";
@@ -494,12 +494,39 @@ export function savePaperTradingLedger(ledger: PaperTradingLedger) {
   window.dispatchEvent(new CustomEvent(PAPER_TRADING_LEDGER_EVENT, { detail: ledger }));
 }
 
+function paperAccountHasExecutedActivity(account: PaperAccountLedger | null | undefined) {
+  return Boolean(account) && (
+    account!.positions.length > 0
+    || account!.fills.length > 0
+    || account!.orders.some((order) => order.status !== "rejected")
+    || account!.realizedPnl !== 0
+  );
+}
+
 export function ensurePaperAccountLedger(
   ledger: PaperTradingLedger,
   account: PaperTradingAccountRecord,
 ): PaperTradingLedger {
-  if (ledger.accounts[account.id]) return ledger;
   const startingBalance = Math.max(0, parseMoney(account.balance));
+  const existing = ledger.accounts[account.id];
+  if (existing) {
+    const isZeroBalancePlaceholder = existing.startingBalance <= 0
+      && existing.cashBalance <= 0
+      && !paperAccountHasExecutedActivity(existing);
+    if (!isZeroBalancePlaceholder || startingBalance <= 0) return ledger;
+    return {
+      ...ledger,
+      accounts: {
+        ...ledger.accounts,
+        [account.id]: {
+          ...existing,
+          startingBalance,
+          cashBalance: startingBalance,
+          updatedAt: Date.now(),
+        },
+      },
+    };
+  }
   return {
     ...ledger,
     accounts: {
@@ -1156,8 +1183,16 @@ export function summarizePaperAccount(
   ledger: PaperTradingLedger,
   accountRecord: PaperTradingAccountRecord,
 ): PaperAccountSummary {
-  const account = ledger.accounts[accountRecord.id];
-  const startingBalance = account?.startingBalance ?? Math.max(0, parseMoney(accountRecord.balance));
+  const storedAccount = ledger.accounts[accountRecord.id];
+  const recordBalance = Math.max(0, parseMoney(accountRecord.balance));
+  const account = storedAccount
+    && !(recordBalance > 0
+      && storedAccount.startingBalance <= 0
+      && storedAccount.cashBalance <= 0
+      && !paperAccountHasExecutedActivity(storedAccount))
+      ? storedAccount
+      : undefined;
+  const startingBalance = account?.startingBalance ?? recordBalance;
   const balance = account?.cashBalance ?? startingBalance;
   const openPositions = account?.positions.filter((position) => position.status === "open") ?? [];
   const unrealizedPnl = openPositions.reduce((sum, position) => sum + position.unrealizedPnl, 0);
