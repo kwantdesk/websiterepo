@@ -12260,18 +12260,28 @@ export default function KwantifyWorkspace({
   const selectWorkspacePanelContent = async (paneId: string, content: WorkspacePanelKind) => {
     setWorkspacePanelTransition({ paneId, content });
     setActivePaneId(paneId);
+    const previousContent = workspacePanes.find((pane) => pane.id === paneId)?.content ?? null;
+    const previousToolIndicatorId = WORKSPACE_TOOL_OPTIONS.find(
+      (option) => option.id === previousContent,
+    )?.indicatorId;
     const tool = WORKSPACE_TOOL_OPTIONS.find((option) => option.id === content);
     const indicatorId = tool?.indicatorId;
-    if (indicatorId && CHART_INDICATOR_BY_ID.has(indicatorId)) {
+    if (previousToolIndicatorId || (indicatorId && CHART_INDICATOR_BY_ID.has(indicatorId))) {
       setChartIndicatorsSuppressed(false);
       setPaneIndicators((current) => {
         const existing = current[paneId] ?? [];
-        const installed = existing.find((instance) => instance.indicatorId === indicatorId);
+        const withoutPreviousTool = previousToolIndicatorId && previousToolIndicatorId !== indicatorId
+          ? existing.filter((instance) => instance.indicatorId !== previousToolIndicatorId)
+          : existing;
+        if (!indicatorId || !CHART_INDICATOR_BY_ID.has(indicatorId)) {
+          return { ...current, [paneId]: withoutPreviousTool };
+        }
+        const installed = withoutPreviousTool.find((instance) => instance.indicatorId === indicatorId);
         const next = installed
-          ? existing.map((instance) => instance.instanceId === installed.instanceId
+          ? withoutPreviousTool.map((instance) => instance.instanceId === installed.instanceId
             ? { ...instance, enabled: true }
             : instance)
-          : [...existing, {
+          : [...withoutPreviousTool, {
               instanceId: `${indicatorId}-${crypto.randomUUID()}`,
               indicatorId,
               enabled: true,

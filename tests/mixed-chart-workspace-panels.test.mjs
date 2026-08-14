@@ -64,6 +64,21 @@ test("mature tool panels attach their real chart engine and remain normal saved 
   assert.match(workspaceSource, /!isWorkspaceChartKind\(pane\.content\)/);
 });
 
+test("changing a workspace tool replaces its previous tool indicator", () => {
+  assert.match(
+    workspaceSource,
+    /const previousToolIndicatorId = WORKSPACE_TOOL_OPTIONS\.find\([\s\S]*?option\.id === previousContent,[\s\S]*?\)\?\.indicatorId;/,
+  );
+  assert.match(
+    workspaceSource,
+    /previousToolIndicatorId !== indicatorId[\s\S]*?existing\.filter\(\(instance\) => instance\.indicatorId !== previousToolIndicatorId\)/,
+  );
+  assert.match(
+    workspaceSource,
+    /const installed = withoutPreviousTool\.find\(\(instance\) => instance\.indicatorId === indicatorId\)/,
+  );
+});
+
 test("mixed-workspace picker and selected headers use uppercase product labels", () => {
   for (const [id, label] of [
     ["charts", "CHARTS"],
