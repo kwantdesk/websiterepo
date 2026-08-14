@@ -159,7 +159,6 @@ import {
   normalizePaperSymbol,
   paperFillCandleTimestamp,
   paperProjectedPnl,
-  paperTickSize,
   snapPaperPrice,
   type PaperProtectionUpdate,
   type PaperPosition,
@@ -247,6 +246,7 @@ interface ChartProps {
     positionId: string,
     update: PaperProtectionUpdate,
   ) => void;
+  onPaperProtectionDragStateChange?: (positionId: string, dragging: boolean) => void;
   onClosePaperPosition?: (position: PaperPosition) => void;
   onRemovePaperFills?: (fillIds: string[]) => void;
   onResetPaperTrading?: () => void;
@@ -916,6 +916,93 @@ class FixedPriceLevelLabelsPrimitive implements ISeriesPrimitive<Time> {
   paneViews() {
     return [this.levelView];
   }
+}
+
+type PaperFillMarkerRenderData = {
+  id: string;
+  time: Time;
+  price: number;
+  role: PaperTradeFill["role"];
+};
+
+class PaperFillMarkersRenderer implements ISeriesPrimitivePaneRenderer {
+  constructor(private readonly primitive: PaperFillMarkersPrimitive) {}
+
+  draw(target: Parameters<ISeriesPrimitivePaneRenderer["draw"]>[0]) {
+    const chart = this.primitive.chart();
+    const series = this.primitive.series();
+    if (!chart || !series) return;
+
+    target.useMediaCoordinateSpace(({ context }) => {
+      context.save();
+      for (const marker of this.primitive.markers()) {
+        const x = chart.timeScale().timeToCoordinate(marker.time);
+        const y = series.priceToCoordinate(marker.price);
+        if (x === null || y === null) continue;
+        const entry = marker.role === "entry";
+        context.beginPath();
+        if (entry) {
+          context.moveTo(x - 6, y - 4);
+          context.lineTo(x + 6, y);
+          context.lineTo(x - 6, y + 4);
+        } else {
+          context.moveTo(x + 6, y - 4);
+          context.lineTo(x - 6, y);
+          context.lineTo(x + 6, y + 4);
+        }
+        context.closePath();
+        context.fillStyle = entry ? "#22e887" : "#ff3b5c";
+        context.fill();
+      }
+      context.restore();
+    });
+  }
+}
+
+class PaperFillMarkersView implements ISeriesPrimitivePaneView {
+  private readonly markerRenderer: PaperFillMarkersRenderer;
+
+  constructor(primitive: PaperFillMarkersPrimitive) {
+    this.markerRenderer = new PaperFillMarkersRenderer(primitive);
+  }
+
+  zOrder() {
+    return "top" as const;
+  }
+
+  renderer() {
+    return this.markerRenderer;
+  }
+}
+
+class PaperFillMarkersPrimitive implements ISeriesPrimitive<Time> {
+  private chartApi: IChartApi | null = null;
+  private candleSeries: CandleSeriesApi | null = null;
+  private requestRedraw: (() => void) | null = null;
+  private renderMarkers: PaperFillMarkerRenderData[] = [];
+  private readonly markerView = new PaperFillMarkersView(this);
+
+  attached(param: SeriesAttachedParameter<Time, "Candlestick">) {
+    this.chartApi = param.chart as IChartApi;
+    this.candleSeries = param.series as CandleSeriesApi;
+    this.requestRedraw = param.requestUpdate;
+  }
+
+  detached() {
+    this.chartApi = null;
+    this.candleSeries = null;
+    this.requestRedraw = null;
+  }
+
+  update(markers: PaperFillMarkerRenderData[]) {
+    this.renderMarkers = markers;
+    this.requestRedraw?.();
+  }
+
+  chart() { return this.chartApi; }
+  series() { return this.candleSeries; }
+  markers() { return this.renderMarkers; }
+  paneViews() { return [this.markerView]; }
 }
 
 type DrawingToolId =
@@ -1720,6 +1807,7 @@ export default function Chart({
   paperPositions = [],
   paperFills = [],
   onUpdatePaperProtection,
+  onPaperProtectionDragStateChange,
   onClosePaperPosition,
   onRemovePaperFills,
   onResetPaperTrading,
@@ -1752,6 +1840,7 @@ export default function Chart({
   const volumeProfilePrimitiveRef = useRef<NativeVolumeProfilePrimitive | null>(null);
   const bigTradesPrimitiveRef = useRef<BigTradesPrimitive | null>(null);
   const footprintPrimitiveRef = useRef<FootprintPrimitive | null>(null);
+  const paperFillMarkersPrimitiveRef = useRef<PaperFillMarkersPrimitive | null>(null);
   const footprintActiveRef = useRef(false);
   const footprintBarWidthRef = useRef<number | null>(null);
   const [paperDragPreview, setPaperDragPreview] = useState<{ id: string; price: number } | null>(null);
@@ -5245,6 +5334,9 @@ export default function Chart({
     const footprintPrimitive = new FootprintPrimitive();
     candleSeries.attachPrimitive(footprintPrimitive);
     footprintPrimitiveRef.current = footprintPrimitive;
+    const paperFillMarkersPrimitive = new PaperFillMarkersPrimitive();
+    candleSeries.attachPrimitive(paperFillMarkersPrimitive);
+    paperFillMarkersPrimitiveRef.current = paperFillMarkersPrimitive;
 
     const chartData = buildSafeChartData(
       candles,
@@ -5638,6 +5730,13 @@ export default function Chart({
             // Chart teardown can detach primitives before React cleanup runs.
           }
         }
+        if (candleSeriesRef.current && paperFillMarkersPrimitiveRef.current) {
+          try {
+            candleSeriesRef.current.detachPrimitive(paperFillMarkersPrimitiveRef.current);
+          } catch {
+            // Chart teardown can detach primitives before React cleanup runs.
+          }
+        }
         chartRef.current.remove();
         chartRef.current = null;
       }
@@ -5649,6 +5748,7 @@ export default function Chart({
       volumeProfilePrimitiveRef.current = null;
       bigTradesPrimitiveRef.current = null;
       footprintPrimitiveRef.current = null;
+      paperFillMarkersPrimitiveRef.current = null;
       footprintActiveRef.current = false;
       footprintBarWidthRef.current = null;
       indicatorSeriesRefs.current = [];
@@ -5659,6 +5759,22 @@ export default function Chart({
       lastRenderedCandleTimeRef.current = null;
     };
   }, [instrument, priceFormat, settings, themeVersion]);
+
+  useEffect(() => {
+    const primitive = paperFillMarkersPrimitiveRef.current;
+    if (!primitive) return;
+    primitive.update(
+      paperFills
+        .filter((fill) => normalizePaperSymbol(fill.symbol) === normalizePaperSymbol(instrument))
+        .map((fill) => {
+          const timestamp = paperFillCandleTimestamp(candles, fill.timestamp);
+          return timestamp === null
+            ? null
+            : { id: fill.id, time: timestamp as Time, price: fill.price, role: fill.role };
+        })
+        .filter((marker): marker is PaperFillMarkerRenderData => marker !== null),
+    );
+  }, [candles, instrument, paperFills]);
 
   useEffect(() => {
     const primitive = volumeProfilePrimitiveRef.current;
@@ -6130,35 +6246,13 @@ export default function Chart({
     : null;
   const matchingPaperFills = paperFills
     .filter((fill) => normalizePaperSymbol(fill.symbol) === normalizePaperSymbol(instrument));
-  const visiblePaperFills = matchingPaperFills
-    .map((fill) => ({
-      fill,
-      x: (() => {
-        const candleTimestamp = paperFillCandleTimestamp(candles, fill.timestamp);
-        return candleTimestamp === null
-          ? null
-          : chartRef.current?.timeScale().timeToCoordinate(candleTimestamp as Time) ?? null;
-      })(),
-      y: candleSeriesRef.current?.priceToCoordinate(fill.price) ?? null,
-    }))
-    .filter((marker): marker is typeof marker & { x: number; y: number } => Number.isFinite(marker.x) && Number.isFinite(marker.y));
-
   const constrainedPaperProtectionPrice = (
     position: PaperPosition,
-    kind: "stop_loss" | "take_profit",
+    _kind: "stop_loss" | "take_profit",
     rawPrice: number,
   ) => {
-    const tick = paperTickSize(position.symbol);
     const snapped = snapPaperPrice(position.symbol, rawPrice);
-    if (kind === "take_profit") {
-      return position.side === "buy"
-        ? Math.max(snapped, snapPaperPrice(position.symbol, position.entryPrice + tick))
-        : Math.min(snapped, snapPaperPrice(position.symbol, position.entryPrice - tick));
-    }
-    const marketPrice = position.markPrice > 0 ? position.markPrice : position.entryPrice;
-    return position.side === "buy"
-      ? Math.min(snapped, snapPaperPrice(position.symbol, marketPrice - tick))
-      : Math.max(snapped, snapPaperPrice(position.symbol, marketPrice + tick));
+    return snapped > 0 ? snapped : snapPaperPrice(position.symbol, position.entryPrice);
   };
 
   const startPaperProtectionDrag = (
@@ -6172,6 +6266,8 @@ export default function Chart({
     const container = chartContainerRef.current;
     const series = candleSeriesRef.current;
     if (!container || !series) return;
+    const pointerId = event.pointerId;
+    onPaperProtectionDragStateChange?.(level.position.id, true);
     let latestPrice = level.price;
     let pendingClientY = event.clientY;
     let animationFrame: number | null = null;
@@ -6187,16 +6283,22 @@ export default function Chart({
       updatePreview(pendingClientY);
     };
     const handleMove = (moveEvent: PointerEvent) => {
+      if (moveEvent.pointerId !== pointerId) return;
       pendingClientY = moveEvent.clientY;
       if (animationFrame === null) animationFrame = window.requestAnimationFrame(flushPreview);
     };
-    const handleUp = () => {
+    const cleanup = () => {
       document.removeEventListener("pointermove", handleMove);
       document.removeEventListener("pointerup", handleUp);
-      document.removeEventListener("pointercancel", handleUp);
+      document.removeEventListener("pointercancel", handleCancel);
       if (animationFrame !== null) window.cancelAnimationFrame(animationFrame);
-      updatePreview(pendingClientY);
       setPaperDragPreview(null);
+    };
+    const handleUp = (upEvent: PointerEvent) => {
+      if (upEvent.pointerId !== pointerId) return;
+      pendingClientY = upEvent.clientY;
+      updatePreview(upEvent.clientY);
+      cleanup();
       if (level.kind === "stop_loss") {
         onUpdatePaperProtection(level.position.accountId, level.position.id, { kind: "stop_loss", price: latestPrice });
       } else if (level.targetId) {
@@ -6206,10 +6308,16 @@ export default function Chart({
           price: latestPrice,
         });
       }
+      onPaperProtectionDragStateChange?.(level.position.id, false);
+    };
+    const handleCancel = (cancelEvent: PointerEvent) => {
+      if (cancelEvent.pointerId !== pointerId) return;
+      cleanup();
+      onPaperProtectionDragStateChange?.(level.position.id, false);
     };
     document.addEventListener("pointermove", handleMove);
-    document.addEventListener("pointerup", handleUp, { once: true });
-    document.addEventListener("pointercancel", handleUp, { once: true });
+    document.addEventListener("pointerup", handleUp);
+    document.addEventListener("pointercancel", handleCancel);
   };
 
   const startNewPaperProtectionDrag = (
@@ -6224,11 +6332,12 @@ export default function Chart({
     const series = candleSeriesRef.current;
     if (!container || !series) return;
 
+    const pointerId = event.pointerId;
+    onPaperProtectionDragStateChange?.(position.id, true);
     const draftId = `${position.id}-new-${kind}`;
     let latestPrice = constrainedPaperProtectionPrice(position, kind, position.entryPrice);
     let pendingClientY = event.clientY;
     let animationFrame: number | null = null;
-    let dragged = false;
     const updatePreview = (clientY: number) => {
       const bounds = container.getBoundingClientRect();
       const price = series.coordinateToPrice(clientY - bounds.top);
@@ -6241,7 +6350,7 @@ export default function Chart({
       updatePreview(pendingClientY);
     };
     const handleMove = (moveEvent: PointerEvent) => {
-      dragged = true;
+      if (moveEvent.pointerId !== pointerId) return;
       pendingClientY = moveEvent.clientY;
       if (animationFrame === null) animationFrame = window.requestAnimationFrame(flushPreview);
     };
@@ -6252,10 +6361,11 @@ export default function Chart({
       if (animationFrame !== null) window.cancelAnimationFrame(animationFrame);
       setPaperDraftProtection(null);
     };
-    const handleUp = () => {
-      if (dragged) updatePreview(pendingClientY);
+    const handleUp = (upEvent: PointerEvent) => {
+      if (upEvent.pointerId !== pointerId) return;
+      pendingClientY = upEvent.clientY;
+      updatePreview(upEvent.clientY);
       cleanup();
-      if (!dragged) return;
       if (kind === "stop_loss") {
         onUpdatePaperProtection(position.accountId, position.id, { kind: "stop_loss", price: latestPrice });
       } else {
@@ -6265,13 +6375,18 @@ export default function Chart({
           quantity: position.remainingQuantity,
         });
       }
+      onPaperProtectionDragStateChange?.(position.id, false);
     };
-    const handleCancel = () => cleanup();
+    const handleCancel = (cancelEvent: PointerEvent) => {
+      if (cancelEvent.pointerId !== pointerId) return;
+      cleanup();
+      onPaperProtectionDragStateChange?.(position.id, false);
+    };
 
     updatePreview(event.clientY);
     document.addEventListener("pointermove", handleMove);
-    document.addEventListener("pointerup", handleUp, { once: true });
-    document.addEventListener("pointercancel", handleCancel, { once: true });
+    document.addEventListener("pointerup", handleUp);
+    document.addEventListener("pointercancel", handleCancel);
   };
 
   return (
@@ -6317,7 +6432,7 @@ export default function Chart({
         >
           {level.kind === "entry" ? (
             <div
-              className="paper-position-overlay-label pointer-events-auto absolute right-1 flex h-4 -translate-y-1/2 items-center overflow-hidden rounded-[1px] border bg-panel/95 font-mono text-[8px] font-semibold leading-none shadow-md backdrop-blur"
+              className="paper-position-overlay-label pointer-events-auto absolute right-1 flex h-4 w-[164px] -translate-y-1/2 items-center overflow-hidden rounded-[1px] border bg-panel/95 font-mono text-[8px] font-semibold leading-none shadow-md backdrop-blur"
               style={{ borderColor: level.color, color: level.color }}
               title={`Unrealized ${level.position.unrealizedPnl.toFixed(2)}`}
             >
@@ -6345,7 +6460,7 @@ export default function Chart({
                   TP
                 </button>
               ) : null}
-              <span className="whitespace-nowrap px-[7px]">{level.label}</span>
+              <span className="min-w-0 flex-1 truncate px-[7px]">{level.label}</span>
               {onClosePaperPosition ? (
                 <button
                   type="button"
@@ -6367,7 +6482,7 @@ export default function Chart({
             <button
               type="button"
               onPointerDown={(event) => startPaperProtectionDrag(event, level)}
-              className="paper-protection-overlay-label pointer-events-auto absolute right-1 h-4 -translate-y-1/2 cursor-ns-resize touch-none whitespace-nowrap rounded-[1px] border bg-panel/95 px-[7px] font-mono text-[8px] font-semibold leading-none shadow-md backdrop-blur transition-[filter] hover:brightness-125 active:cursor-grabbing"
+              className="paper-protection-overlay-label pointer-events-auto absolute right-1 h-4 w-[164px] -translate-y-1/2 cursor-ns-resize touch-none truncate rounded-[1px] border bg-panel/95 px-[7px] text-left font-mono text-[8px] font-semibold leading-none shadow-md backdrop-blur transition-[filter] hover:brightness-125 active:cursor-grabbing"
               style={{ borderColor: level.color, color: level.color }}
               title="Drag to adjust protection"
             >
@@ -6386,36 +6501,13 @@ export default function Chart({
           }}
         >
           <div
-            className="paper-protection-draft-label absolute right-1 h-4 -translate-y-1/2 whitespace-nowrap rounded-[1px] border bg-panel/95 px-[7px] font-mono text-[8px] font-semibold leading-[14px] shadow-md backdrop-blur"
+            className="paper-protection-draft-label absolute right-1 h-4 w-[164px] -translate-y-1/2 truncate rounded-[1px] border bg-panel/95 px-[7px] text-left font-mono text-[8px] font-semibold leading-[14px] shadow-md backdrop-blur"
             style={{ borderColor: paperDraftOverlayLevel.color, color: paperDraftOverlayLevel.color }}
           >
             {paperDraftOverlayLevel.label}
           </div>
         </div>
       ) : null}
-      {visiblePaperFills.map(({ fill, x, y }) => (
-        <div
-          key={fill.id}
-          className="pointer-events-none absolute z-[32] -translate-x-1/2 -translate-y-1/2 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]"
-          style={{ left: x, top: y }}
-          title={`${fill.role === "entry" ? "Entry" : "Exit"} · ${fill.label} · ${fill.quantity} @ ${fill.price}`}
-        >
-          <svg
-            width="13"
-            height="9"
-            viewBox="0 0 13 9"
-            aria-hidden="true"
-            className="block overflow-visible"
-          >
-            <path
-              d={fill.role === "entry"
-                ? "M0.75 0.75 L12.25 4.5 L0.75 8.25 Z"
-                : "M12.25 0.75 L0.75 4.5 L12.25 8.25 Z"}
-              fill={fill.role === "entry" ? "#22e887" : "#ff3b5c"}
-            />
-          </svg>
-        </div>
-      ))}
       {gammaLevelsEnabled && gammaLevelsLoading ? (
         <div
           className="pointer-events-none absolute right-[76px] top-3 z-[19] flex items-center gap-2 rounded-full border border-border/70 bg-background/88 px-3 py-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground shadow-lg backdrop-blur"

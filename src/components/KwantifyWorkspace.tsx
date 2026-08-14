@@ -3775,6 +3775,7 @@ function WorkspaceChartPane({
   paperPositions,
   paperFills,
   onUpdatePaperProtection,
+  onPaperProtectionDragStateChange,
   onClosePaperPosition,
   onRemovePaperFills,
   onResetPaperTrading,
@@ -3823,6 +3824,7 @@ function WorkspaceChartPane({
     positionId: string,
     update: PaperProtectionUpdate,
   ) => void;
+  onPaperProtectionDragStateChange?: (positionId: string, dragging: boolean) => void;
   onClosePaperPosition?: (position: PaperPosition) => void;
   onRemovePaperFills?: (fillIds: string[]) => void;
   onResetPaperTrading?: () => void;
@@ -6008,6 +6010,7 @@ function WorkspaceChartPane({
           paperPositions={paperPositions}
           paperFills={paperFills}
           onUpdatePaperProtection={onUpdatePaperProtection}
+          onPaperProtectionDragStateChange={onPaperProtectionDragStateChange}
           onClosePaperPosition={onClosePaperPosition}
           onRemovePaperFills={onRemovePaperFills}
           onResetPaperTrading={onResetPaperTrading}
@@ -6678,12 +6681,25 @@ export default function KwantifyWorkspace({
     typeof window === "undefined" ? "" : window.localStorage.getItem("kwantify-selected-paper-account") ?? "");
   const [paperLedger, setPaperLedger] = useState<PaperTradingLedger>(() =>
     typeof window === "undefined" ? emptyPaperTradingLedger() : loadPaperTradingLedger());
+  const paperLedgerRef = useRef(paperLedger);
+  const suspendedPaperProtectionIdsRef = useRef<Set<string>>(new Set());
   const [activeChartExecutionQuote, setActiveChartExecutionQuote] = useState<ChartExecutionQuote | null>(null);
   const activeChartExecutionQuoteRef = useRef<ChartExecutionQuote | null>(null);
   const activeChartExecutionQuoteUiRef = useRef<ChartExecutionQuote | null>(null);
   const activeChartExecutionQuoteUiAtRef = useRef(0);
   const handleActiveChartExecutionQuote = useCallback((quote: ChartExecutionQuote) => {
     activeChartExecutionQuoteRef.current = quote;
+    setPaperLedger((current) => {
+      const next = processPaperQuote(
+        current,
+        paperTradingAccounts,
+        quote.symbol,
+        { bid: quote.bid, ask: quote.ask, timestamp: quote.timestamp },
+        { suspendedProtectionPositionIds: suspendedPaperProtectionIdsRef.current },
+      );
+      paperLedgerRef.current = next;
+      return next;
+    });
     const now = Date.now();
     const previous = activeChartExecutionQuoteUiRef.current;
     if (
@@ -6695,7 +6711,7 @@ export default function KwantifyWorkspace({
       activeChartExecutionQuoteUiRef.current = quote;
       setActiveChartExecutionQuote(quote);
     }
-  }, []);
+  }, [paperTradingAccounts]);
   const [hiddenPaperFillMarkers, setHiddenPaperFillMarkers] = useState<Record<string, string[]>>(() => {
     if (typeof window === "undefined") return {};
     try {
@@ -8304,6 +8320,7 @@ export default function KwantifyWorkspace({
   }, [paperTradingAccounts]);
 
   useEffect(() => {
+    paperLedgerRef.current = paperLedger;
     savePaperTradingLedger(paperLedger);
   }, [paperLedger]);
 
@@ -8327,23 +8344,28 @@ export default function KwantifyWorkspace({
       let next = current;
       for (const item of watchlist) {
         if (!(item.bid > 0 && item.ask > 0)) continue;
-        next = processPaperQuote(next, paperTradingAccounts, item.symbol, {
-          bid: item.bid,
-          ask: item.ask,
-          timestamp,
-        });
+        next = processPaperQuote(
+          next,
+          paperTradingAccounts,
+          item.symbol,
+          { bid: item.bid, ask: item.ask, timestamp },
+          { suspendedProtectionPositionIds: suspendedPaperProtectionIdsRef.current },
+        );
       }
       if (
         currentLivePrice.bid > 0
         && currentLivePrice.ask > 0
         && !watchlist.some((item) => normalizePaperSymbol(item.symbol) === normalizePaperSymbol(selectedInstrument))
       ) {
-        next = processPaperQuote(next, paperTradingAccounts, selectedInstrument, {
-          bid: currentLivePrice.bid,
-          ask: currentLivePrice.ask,
-          timestamp,
-        });
+        next = processPaperQuote(
+          next,
+          paperTradingAccounts,
+          selectedInstrument,
+          { bid: currentLivePrice.bid, ask: currentLivePrice.ask, timestamp },
+          { suspendedProtectionPositionIds: suspendedPaperProtectionIdsRef.current },
+        );
       }
+      paperLedgerRef.current = next;
       return next;
     });
   }, [currentLivePrice.ask, currentLivePrice.bid, paperTradingAccounts, selectedInstrument, watchlist]);
@@ -12227,10 +12249,34 @@ export default function KwantifyWorkspace({
     positionId: string,
     update: PaperProtectionUpdate,
   ) => {
-    const result = updatePaperProtection(paperLedger, accountId, positionId, update);
-    setPaperLedger(result.ledger);
-    if (result.error) showPaperOrderMessage("error", result.error);
+    const current = paperLedgerRef.current;
+    const position = current.accounts[accountId]?.positions.find((candidate) => candidate.id === positionId);
+    const result = updatePaperProtection(current, accountId, positionId, update);
+    if (result.error) {
+      showPaperOrderMessage("error", result.error);
+      return;
+    }
+    const quote = position ? resolvePaperExecutionQuote(position.symbol) : null;
+    const next = position && quote
+      ? processPaperQuote(
+          result.ledger,
+          paperTradingAccounts,
+          position.symbol,
+          quote,
+          {
+            suspendedProtectionPositionIds: suspendedPaperProtectionIdsRef.current,
+            marketableProtectionPositionIds: new Set([positionId]),
+          },
+        )
+      : result.ledger;
+    paperLedgerRef.current = next;
+    setPaperLedger(next);
   };
+
+  const handlePaperProtectionDragStateChange = useCallback((positionId: string, dragging: boolean) => {
+    if (dragging) suspendedPaperProtectionIdsRef.current.add(positionId);
+    else suspendedPaperProtectionIdsRef.current.delete(positionId);
+  }, []);
 
   const resolvePaperExecutionQuote = (symbol: string) => {
     const normalized = normalizePaperSymbol(symbol);
@@ -12597,6 +12643,7 @@ export default function KwantifyWorkspace({
         paperFills={(selectedPaperAccountLedger?.fills ?? []).filter((fill) =>
           !selectedHiddenPaperFillIds.has(fill.id))}
         onUpdatePaperProtection={handlePaperProtectionUpdate}
+        onPaperProtectionDragStateChange={handlePaperProtectionDragStateChange}
         onClosePaperPosition={handleFlattenPaperPosition}
         onRemovePaperFills={handleRemovePaperFillMarkers}
         onResetPaperTrading={selectedPaperTradingAccount ? handleResetPaperTrading : undefined}

@@ -14,6 +14,13 @@ export type PaperQuote = {
   timestamp: number;
 };
 
+export type PaperQuoteProcessingOptions = {
+  /** Protection is deliberately inactive while the trader is holding a drag handle. */
+  suspendedProtectionPositionIds?: ReadonlySet<string>;
+  /** A newly dropped marketable level exits at the current executable price. */
+  marketableProtectionPositionIds?: ReadonlySet<string>;
+};
+
 export type PaperTakeProfit = {
   id: string;
   price: number;
@@ -742,6 +749,7 @@ export function processPaperQuote(
   accounts: PaperTradingAccountRecord[],
   symbol: string,
   quote: PaperQuote,
+  options: PaperQuoteProcessingOptions = {},
 ): PaperTradingLedger {
   if (!(quote.bid > 0 && quote.ask > 0)) return ledger;
   let changed = false;
@@ -781,15 +789,20 @@ export function processPaperQuote(
         changed = true;
       }
 
+      const protectionIsSuspended = options.suspendedProtectionPositionIds?.has(position.id) === true
+        && options.marketableProtectionPositionIds?.has(position.id) !== true;
+      if (protectionIsSuspended) continue;
+
       const stopHit = position.stopLoss != null && (
         position.side === "buy" ? quote.bid <= position.stopLoss : quote.ask >= position.stopLoss
       );
       if (stopHit) {
-        // Stops become market orders when triggered. If price gaps through the stop,
-        // fill at the executable bid/ask instead of inventing a fill at the old level.
-        const stopFillPrice = position.side === "buy"
-          ? Math.min(position.stopLoss!, quote.bid)
-          : Math.max(position.stopLoss!, quote.ask);
+        // A working simulated stop fills at its configured tick. When a trader
+        // releases a dragged stop beyond the current market it is already
+        // marketable, so that one release fills at the executable bid/ask.
+        const stopFillPrice = options.marketableProtectionPositionIds?.has(position.id)
+          ? markPrice
+          : position.stopLoss!;
         account = closePositionQuantity(
           account,
           position,
@@ -815,11 +828,14 @@ export function processPaperQuote(
         );
         if (!targetHit) continue;
         const closeQuantity = Math.min(position.remainingQuantity, remainingTargetQuantity);
+        const targetFillPrice = options.marketableProtectionPositionIds?.has(position.id)
+          ? markPrice
+          : target.price;
         account = closePositionQuantity(
           account,
           position,
           closeQuantity,
-          target.price,
+          snapPaperPrice(position.symbol, targetFillPrice),
           quote.timestamp,
           "take_profit",
           `tp-${target.id}`,
@@ -858,15 +874,7 @@ export function updatePaperProtection(
   if (!account || !position || position.status !== "open") return { ledger, error: "Open position not found" };
   if (update.kind === "stop_loss") {
     const price = update.price == null ? null : snapPaperPrice(position.symbol, update.price);
-    const marketPrice = position.markPrice > 0 ? position.markPrice : position.entryPrice;
-    if (price != null && (position.side === "buy" ? price >= marketPrice : price <= marketPrice)) {
-      return {
-        ledger,
-        error: position.side === "buy"
-          ? "A long stop can trail above breakeven, but it must remain below the live market"
-          : "A short stop can trail below breakeven, but it must remain above the live market",
-      };
-    }
+    if (price != null && !(price > 0)) return { ledger, error: "Enter a valid stop-loss price" };
     const nextPosition = { ...position, stopLoss: price };
     return {
       ledger: {
@@ -894,9 +902,7 @@ export function updatePaperProtection(
   }
 
   const price = snapPaperPrice(position.symbol, update.price);
-  if (position.side === "buy" ? price <= position.entryPrice : price >= position.entryPrice) {
-    return { ledger, error: position.side === "buy" ? "A long target must remain above entry" : "A short target must remain below entry" };
-  }
+  if (!(price > 0)) return { ledger, error: "Enter a valid take-profit price" };
   const currentTarget = position.takeProfits.find((target) => target.id === update.targetId);
   if (!currentTarget) return { ledger, error: "Take-profit level not found" };
   const allocatedElsewhere = position.takeProfits.reduce(
@@ -947,9 +953,7 @@ export function addPaperTakeProfit(
   const position = account?.positions.find((candidate) => candidate.id === positionId);
   if (!account || !position || position.status !== "open") return { ledger, error: "Open position not found" };
   const snappedPrice = snapPaperPrice(position.symbol, price);
-  if (position.side === "buy" ? snappedPrice <= position.entryPrice : snappedPrice >= position.entryPrice) {
-    return { ledger, error: position.side === "buy" ? "A long target must remain above entry" : "A short target must remain below entry" };
-  }
+  if (!(snappedPrice > 0)) return { ledger, error: "Enter a valid take-profit price" };
   const allocatedQuantity = position.takeProfits.reduce(
     (total, target) => total + Math.max(0, target.quantity - target.filledQuantity),
     0,
