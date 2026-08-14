@@ -13,11 +13,12 @@ test("the right rail exposes Trade below Watchlist and before Live GEX", () => {
   assert.match(workspace, /title: "Trade"/);
 });
 
-test("the top-right TRADE control uses the exact primary navigation typography", () => {
+test("the top-right Trade control uses the exact primary navigation control without a separate underline", () => {
   assert.match(navigation, /className=\{tradesActive \? horizontalItemActive : horizontalItemInactive\}/);
   assert.match(navigation, /title="Trade"/);
   assert.match(navigation, /aria-label="Open trade menu"/);
-  assert.match(navigation, /<span>TRADE<\/span>/);
+  assert.match(navigation, /<span>Trade<\/span>/);
+  assert.doesNotMatch(navigation, /<span>Trade<\/span>\s*\{tradesActive \? <ActiveUnderline/);
   assert.doesNotMatch(navigation, /horizontalItemInactive\} normal-case/);
 });
 
