@@ -20,13 +20,20 @@ test("the user can explicitly re-centre the live strike", () => {
 test("GEX strike centering cannot collapse or hide the ladder viewport", () => {
   assert.doesNotMatch(workspace, /strikeViewportHeight/);
   assert.doesNotMatch(workspace, /className="relative h-full min-h-0 touch-pan-y/);
+  assert.match(workspace, /gex-map-panel-grid grid h-full min-w-0/);
+  assert.doesNotMatch(workspace, /gex-map-panel-grid grid min-h-full/);
   assert.match(workspace, /className="relative flex min-h-0 flex-1 bg-chart-background"/);
   assert.match(workspace, /gex-map-strike-viewport[^\n]*min-h-px[^\n]*flex-1/);
   assert.match(workspace, /container\.clientHeight <= 0/);
   assert.match(workspace, /const ladderRef = useRef<HTMLDivElement>\(null\)/);
   assert.match(workspace, /container\.scrollTop = 0/);
-  assert.match(workspace, /container\.clientHeight \/ 2 - target\.offsetHeight \/ 2/);
-  assert.match(workspace, /targetRect\.top - containerRect\.top \+ targetRect\.height \/ 2/);
+  assert.match(workspace, /target\.offsetTop \+ target\.offsetHeight \/ 2/);
+  assert.match(workspace, /container\.scrollTo\(\{ top: nextScroll, behavior: "auto" \}\)/);
+  assert.match(workspace, /key=\{viewIdentity\}/);
+  assert.match(workspace, /overflowAnchor: "none"/);
+  assert.match(workspace, /settleFrame = window\.requestAnimationFrame/);
+  assert.doesNotMatch(workspace, /ladder\.style\.paddingTop/);
+  assert.doesNotMatch(workspace, /ladder\.style\.paddingBottom/);
   assert.match(workspace, /if \(followingSpot && spotStrike !== null\) centerLiveStrike\(\);/);
   assert.match(workspace, /data-gex-strike-ladder="true"/);
 });

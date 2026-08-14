@@ -343,27 +343,25 @@ function ExposurePanel({
     const container = scrollRef.current;
     const ladder = ladderRef.current;
     const target = ladder?.querySelector<HTMLElement>("[data-near-spot='true']");
-    if (!container || !ladder || !target || container.clientHeight <= 0) return;
+    if (!container || !ladder || container.clientHeight <= 0) return;
 
-    // A resized pane or a replacement surface can retain an obsolete scroll
-    // position. Reset before measuring so every row can paint, then centre the
-    // current strike in the same layout pass.
+    // Never leave an old surface parked beyond the new ladder. This also
+    // provides a visible fallback if the spot row has not been marked yet.
     container.scrollTop = 0;
-    const edgeTravel = Math.max(4, container.clientHeight / 2 - target.offsetHeight / 2);
-    ladder.style.paddingTop = `${edgeTravel}px`;
-    ladder.style.paddingBottom = `${edgeTravel}px`;
+    if (!target) return;
 
-    // Reading geometry after the padding write forces the final pane layout.
-    const containerRect = container.getBoundingClientRect();
-    const targetRect = target.getBoundingClientRect();
+    // offsetTop is measured in the scroll content itself. Do not add dynamic
+    // top/bottom gutters here: this viewport lives in an auto-sized grid row,
+    // so padding based on clientHeight feeds back through ResizeObserver and
+    // can grow the row indefinitely, parking every strike below the screen.
     const maximumScroll = Math.max(0, container.scrollHeight - container.clientHeight);
-    const targetCenterInContent = targetRect.top - containerRect.top + targetRect.height / 2;
+    const targetCenterInContent = target.offsetTop + target.offsetHeight / 2;
     const nextScroll = Math.max(0, Math.min(
       maximumScroll,
       targetCenterInContent - container.clientHeight / 2,
     ));
 
-    if (Math.abs(nextScroll - container.scrollTop) > 0.5) container.scrollTop = nextScroll;
+    container.scrollTo({ top: nextScroll, behavior: "auto" });
   }, []);
 
   useLayoutEffect(() => {
@@ -373,10 +371,16 @@ function ExposurePanel({
     // Centre synchronously for the first paint, then repeat once after the
     // browser commits any surrounding workspace resize.
     if (followingSpot && spotStrike !== null) centerLiveStrike();
+    let settleFrame = 0;
     const frame = window.requestAnimationFrame(() => {
-      if (followingSpot && spotStrike !== null) centerLiveStrike();
+      settleFrame = window.requestAnimationFrame(() => {
+        if (followingSpot && spotStrike !== null) centerLiveStrike();
+      });
     });
-    return () => window.cancelAnimationFrame(frame);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.cancelAnimationFrame(settleFrame);
+    };
   }, [centerLiveStrike, centeringIdentity, followingSpot, rows.length, spotStrike]);
 
   useEffect(() => {
@@ -488,10 +492,12 @@ function ExposurePanel({
 
       <div className="relative flex min-h-0 flex-1 bg-chart-background">
         <div
+          key={viewIdentity}
           ref={scrollRef}
           onPointerDown={() => setFollowingSpot(false)}
           onTouchStart={() => setFollowingSpot(false)}
           className="gex-map-strike-viewport relative min-h-px min-w-0 flex-1 touch-pan-y overscroll-contain overflow-y-auto bg-chart-background"
+          style={{ overflowAnchor: "none" }}
         >
         {loading && !payload ? (
           <KwantLoader
@@ -860,7 +866,7 @@ export default function GexMapWorkspace({ market = null }: GexMapWorkspaceProps 
         </header>
 
         <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-2 pb-1.5 pt-0">
-          <div className="gex-map-panel-grid grid min-h-full min-w-0 gap-2">
+          <div className="gex-map-panel-grid grid h-full min-w-0 gap-2">
             {panels.map((panel) => {
               const payload = panelData[panel.id];
               const validPayload = payload
