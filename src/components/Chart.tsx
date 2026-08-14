@@ -157,6 +157,7 @@ import { isOptionsFuturesRatioSane } from "@/lib/optionsFlow";
 import type { GexBotFlowPayload } from "@/lib/gexBotFlow";
 import {
   normalizePaperSymbol,
+  paperContractSpec,
   paperFillCandleTimestamp,
   paperProjectedPnl,
   snapPaperPrice,
@@ -1021,9 +1022,19 @@ type PaperPositionOverlayRenderLevel = {
     side: "buy" | "sell";
     quantity: number;
     entryPrice: number;
-    precision: number;
   };
 };
+
+function paperPositionSizeLabel(symbol: string, side: "buy" | "sell", quantity: number) {
+  const absoluteQuantity = Math.max(0, Math.abs(quantity));
+  const contract = paperContractSpec(symbol);
+  const unit = contract.isMicro
+    ? absoluteQuantity === 1 ? "micro" : "micros"
+    : contract.isFutures
+      ? absoluteQuantity === 1 ? "contract" : "contracts"
+      : absoluteQuantity === 1 ? "unit" : "units";
+  return `${side === "buy" ? "+" : "-"}${absoluteQuantity.toLocaleString("en-US")} ${unit}`;
+}
 
 class PaperPositionOverlayRenderer implements ISeriesPrimitivePaneRenderer {
   constructor(private readonly primitive: PaperPositionOverlayPrimitive) {}
@@ -1055,7 +1066,7 @@ class PaperPositionOverlayRenderer implements ISeriesPrimitivePaneRenderer {
           : null;
         const renderedLabel = livePnl === null || !level.livePosition
           ? level.label
-          : `${level.livePosition.side === "buy" ? "LONG" : "SHORT"} · ${level.livePosition.quantity} · ${level.livePosition.entryPrice.toFixed(level.livePosition.precision)} · ${livePnl > 0 ? "+" : livePnl < 0 ? "-" : ""}$${Math.abs(livePnl).toFixed(2)}`;
+          : `${paperPositionSizeLabel(level.livePosition.symbol, level.livePosition.side, level.livePosition.quantity)} · ${livePnl > 0 ? "+" : livePnl < 0 ? "-" : ""}$${Math.abs(livePnl).toFixed(2)}`;
 
         context.save();
         context.globalAlpha = 0.92;
@@ -6347,7 +6358,7 @@ export default function Chart({
       id: `${position.id}-entry`,
       kind: "entry" as const,
       price: position.entryPrice,
-      label: `${position.side === "buy" ? "LONG" : "SHORT"} · ${position.remainingQuantity} · ${position.entryPrice.toFixed(priceFormat.precision)} · ${formatPaperMoney(livePositionPnl)}`,
+      label: `${paperPositionSizeLabel(position.symbol, position.side, position.remainingQuantity)} · ${formatPaperMoney(livePositionPnl)}`,
       color: position.side === "buy" ? settings.upColor : settings.downColor,
       position,
       targetId: null as string | null,
@@ -6459,7 +6470,6 @@ export default function Chart({
         side: level.position.side,
         quantity: level.position.remainingQuantity,
         entryPrice: level.position.entryPrice,
-        precision: priceFormat.precision,
       } : undefined,
     }));
     if (paperDraftOverlayLevel) {
@@ -6717,6 +6727,21 @@ export default function Chart({
               {level.label}
             </button>
           )}
+        </div>
+      ))}
+      {paperOverlayLevels.filter((level) => level.kind === "entry").map((level) => (
+        <div
+          key={`${level.id}-price-scale`}
+          className="pointer-events-none absolute right-0 z-[32] flex h-5 -translate-y-1/2 items-center justify-center font-mono text-[9px] font-bold tabular-nums"
+          style={{
+            top: level.y,
+            width: nativePriceScaleWidth,
+            backgroundColor: level.color,
+            color: settings.backgroundColor,
+          }}
+          aria-label={`Entry price ${level.position.entryPrice.toFixed(priceFormat.precision)}`}
+        >
+          {level.position.entryPrice.toFixed(priceFormat.precision)}
         </div>
       ))}
       {gammaLevelsEnabled && gammaLevelsLoading ? (

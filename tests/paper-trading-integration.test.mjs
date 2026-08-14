@@ -64,6 +64,11 @@ test("chart receives paper positions, fills, and draggable bracket updates", () 
   assert.match(workspace, /handleFlattenPaperAccount/);
   assert.match(workspace, /Flatten all/);
   assert.match(chart, /paperProjectedPnl/);
+  assert.match(chart, /paperPositionSizeLabel/);
+  assert.match(chart, /side === "buy" \? "\+" : "-"/);
+  assert.match(chart, /absolute right-0 z-\[32\][^\n]*tabular-nums/);
+  assert.match(chart, /aria-label=\{`Entry price \$\{level\.position\.entryPrice\.toFixed\(priceFormat\.precision\)\}`\}/);
+  assert.doesNotMatch(chart, /\? "LONG" : "SHORT"\} · \$\{level\.livePosition\.quantity\}/);
   assert.match(chart, /SL ·/);
   assert.match(chart, /TP\$\{position\.takeProfits\.length > 1/);
   assert.match(chart, /requestAnimationFrame\(flushPreview\)/);
