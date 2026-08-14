@@ -123,6 +123,10 @@ import {
   NativeVolumeProfilePrimitive,
   type NativeVolumeProfileModel,
 } from "@/lib/nativeVolumeProfilePrimitive";
+import {
+  ClassicGexProfilePrimitive,
+  type ClassicGexPrimitiveData,
+} from "@/lib/classicGexProfilePrimitive";
 import { STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT } from "@/lib/volumeProfileMath";
 import {
   buildMarketSessionWindows,
@@ -2182,6 +2186,7 @@ export default function Chart({
   const hedgeLevelsPrimitiveRef = useRef<HedgeLevelsPrimitive | null>(null);
   const sessionHighLowRenderDataRef = useRef<SessionHighLowRenderLevel[]>([]);
   const volumeProfilePrimitiveRef = useRef<NativeVolumeProfilePrimitive | null>(null);
+  const classicGexProfilePrimitiveRef = useRef<ClassicGexProfilePrimitive | null>(null);
   const bigTradesPrimitiveRef = useRef<BigTradesPrimitive | null>(null);
   const footprintPrimitiveRef = useRef<FootprintPrimitive | null>(null);
   const retainedFootprintBarsRef = useRef<{ key: string; bars: FootprintRenderBar[] } | null>(null);
@@ -3136,16 +3141,35 @@ export default function Chart({
           : "QD map";
       return { ...mapped, label: `${label} · ${mappingChip}`, color, dash };
     };
-    const lines = [
+    const primitiveLines = [
       majorLine(profileSettings.showMajorPositiveVolume !== false, liveMajors?.volPositive, classicGexProfile.majors.positiveVolume, "Major + Vol", "#22C55E", "7 5"),
       majorLine(profileSettings.showMajorNegativeVolume !== false, liveMajors?.volNegative, classicGexProfile.majors.negativeVolume, "Major - Vol", "#EF4444", "7 5"),
       majorLine(profileSettings.showMajorPositiveOpenInterest !== false, liveMajors?.oiPositive, classicGexProfile.majors.positiveOpenInterest, "Major + OI", "#4ADE80", "2 4"),
       majorLine(profileSettings.showMajorNegativeOpenInterest !== false, liveMajors?.oiNegative, classicGexProfile.majors.negativeOpenInterest, "Major - OI", "#FB7185", "2 4"),
       majorLine(profileSettings.showZeroGamma !== false, liveMajors?.zeroGamma, classicGexProfile.zeroGamma, "Zero Gamma", String(profileSettings.zeroGammaColor ?? "#F4F4F5"), "9 5"),
-    ].filter((line): line is NonNullable<typeof line> => Boolean(line)).flatMap((line) => {
+    ].filter((line): line is NonNullable<typeof line> => Boolean(line));
+    const lines = primitiveLines.flatMap((line) => {
       const y = candleSeriesRef.current?.priceToCoordinate(line.mappedPrice) ?? null;
       return y === null || y < 2 || y > plotHeight ? [] : [{ ...line, y }];
     });
+    const primitiveData: ClassicGexPrimitiveData = {
+      rows: classicGexProfile.rows,
+      lines: primitiveLines,
+      historyTargets,
+      widthPercent: Math.max(8, Math.min(45, Number(profileSettings.profileWidth ?? 24))),
+      logarithmic,
+      minBarWidth,
+      maxMagnitude,
+      contrast,
+      right,
+      showLookbackDots: profileSettings.showLookbackDots !== false,
+      showLabels: profileSettings.showLabels !== false,
+      positiveColor: String(profileSettings.positiveColor ?? "#22C55E"),
+      negativeColor: String(profileSettings.negativeColor ?? "#EF4444"),
+      backgroundColor: settings.backgroundColor,
+      foregroundColor: "#F4F4F5",
+      precision: priceFormat.precision,
+    };
     return {
       plotWidth,
       plotHeight,
@@ -3162,6 +3186,7 @@ export default function Chart({
       showLabels: profileSettings.showLabels !== false,
       positiveColor: String(profileSettings.positiveColor ?? "#22C55E"),
       negativeColor: String(profileSettings.negativeColor ?? "#EF4444"),
+      primitiveData,
     };
   }, [
     chartReadyRevision,
@@ -3172,8 +3197,14 @@ export default function Chart({
     indicatorPaneHeight,
     overlaySize.height,
     overlaySize.width,
+    priceFormat.precision,
+    settings.backgroundColor,
     viewportVersion,
   ]);
+
+  useEffect(() => {
+    classicGexProfilePrimitiveRef.current?.update(classicGexOverlay?.primitiveData ?? null);
+  }, [classicGexOverlay]);
   // D9: a MANUAL mapping is a user-frozen ratio with no staleness of its own,
   // so it is compared against the live-implied ratio on every payload and
   // badged with the drift in NQ points. It never renders as a verified map.
@@ -6084,6 +6115,9 @@ export default function Chart({
     const hedgeLevelsPrimitive = new HedgeLevelsPrimitive();
     candleSeries.attachPrimitive(hedgeLevelsPrimitive);
     hedgeLevelsPrimitiveRef.current = hedgeLevelsPrimitive;
+    const classicGexProfilePrimitive = new ClassicGexProfilePrimitive();
+    candleSeries.attachPrimitive(classicGexProfilePrimitive);
+    classicGexProfilePrimitiveRef.current = classicGexProfilePrimitive;
     const volumeProfilePrimitive = new NativeVolumeProfilePrimitive();
     candleSeries.attachPrimitive(volumeProfilePrimitive);
     volumeProfilePrimitiveRef.current = volumeProfilePrimitive;
@@ -6624,6 +6658,13 @@ export default function Chart({
             // Chart teardown can detach primitives before React cleanup runs.
           }
         }
+        if (candleSeriesRef.current && classicGexProfilePrimitiveRef.current) {
+          try {
+            candleSeriesRef.current.detachPrimitive(classicGexProfilePrimitiveRef.current);
+          } catch {
+            // Chart teardown can detach primitives before React cleanup runs.
+          }
+        }
         if (candleSeriesRef.current && bigTradesPrimitiveRef.current) {
           try {
             candleSeriesRef.current.detachPrimitive(bigTradesPrimitiveRef.current);
@@ -6660,6 +6701,7 @@ export default function Chart({
       fixedPriceLevelLabelsRef.current = null;
       sessionHighLowPrimitiveRef.current = null;
       hedgeLevelsPrimitiveRef.current = null;
+      classicGexProfilePrimitiveRef.current = null;
       volumeProfilePrimitiveRef.current = null;
       bigTradesPrimitiveRef.current = null;
       footprintPrimitiveRef.current = null;
@@ -8003,7 +8045,10 @@ export default function Chart({
           viewBox={`0 0 ${Math.max(overlaySize.width, 1)} ${Math.max(overlaySize.height, 1)}`}
           preserveAspectRatio="none"
           aria-label="Classic GEX profile"
-          style={{ opacity: classicGexProfile?.stale ? 0.42 : 1 }}
+          // Visible GEX geometry is rendered by ClassicGexProfilePrimitive so
+          // it shares the chart's exact price transform. This transparent SVG
+          // remains only as the existing tooltip hit layer.
+          style={{ opacity: 0 }}
         >
           <line
             x1={classicGexOverlay.spineX}
