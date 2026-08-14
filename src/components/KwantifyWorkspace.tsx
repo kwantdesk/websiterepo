@@ -3981,6 +3981,11 @@ function WorkspaceChartPane({
     instance.enabled && CHART_INDICATOR_BY_ID.get(instance.indicatorId)?.requiresOrderFlow);
   const footprintLiveActive = indicators.some((instance) =>
     instance.enabled && instance.indicatorId === "deep-print-footprint");
+  const footprintRefreshFps = (() => {
+    const configured = Number(indicators.find((instance) =>
+      instance.enabled && instance.indicatorId === "deep-print-footprint")?.settings?.fpsLimit ?? 60);
+    return [30, 60, 120].includes(configured) ? configured : 60;
+  })();
   const dailyProfileInstance = indicators.find((instance) =>
     instance.enabled
     && [
@@ -4233,7 +4238,8 @@ function WorkspaceChartPane({
           latestMarketTradesRef.current = next;
           workspaceExecutionTape.set(workspaceOrderFlowKey(pane.symbol, pane.timeframe), next);
           const now = Date.now();
-          if (now - lastMarketTradeStateSyncRef.current >= (footprintLiveActive ? 100 : 400)) {
+          const footprintCadence = Math.max(8, Math.round(1_000 / footprintRefreshFps));
+          if (now - lastMarketTradeStateSyncRef.current >= (footprintLiveActive ? footprintCadence : 400)) {
             lastMarketTradeStateSyncRef.current = now;
             setMarketTrades(next);
           }
@@ -4302,6 +4308,7 @@ function WorkspaceChartPane({
     needsLiveVolumeProfiles,
     needsOrderFlowHistory,
     footprintLiveActive,
+    footprintRefreshFps,
     pane.broker,
     pane.symbol,
     pane.timeframe,

@@ -291,6 +291,11 @@ export function validateFootprintSettings(input: unknown): FootprintSettings {
   const maximumOpacity = Math.max(minimumOpacity, clamp(source.maximumOpacity, 0, 100, 72));
   const minimumRatio = clamp(source.minimumRatio, 0, 1_000, 1.5);
   const maximumRatio = Math.max(minimumRatio, clamp(source.maximumRatio, 1, 10_000, 100));
+  const minimumTradeVolume = clamp(source.minimumTradeVolume, 0, 100_000, 0);
+  const requestedMaximumTradeVolume = clamp(source.maximumTradeVolume, 0, 1_000_000, 0);
+  const maximumTradeVolume = requestedMaximumTradeVolume > 0
+    ? Math.max(minimumTradeVolume, requestedMaximumTradeVolume)
+    : 0;
   return {
     ...merged,
     footprintSettingsVersion: FOOTPRINT_SETTINGS_SCHEMA_VERSION,
@@ -321,8 +326,8 @@ export function validateFootprintSettings(input: unknown): FootprintSettings {
     gradientExponent: clamp(source.gradientExponent, 0.1, 3, 0.72),
     visibleRegionPercentile: clamp(source.visibleRegionPercentile, 0.5, 1, 0.95),
     fixedMaximum: clamp(source.fixedMaximum, 0, 10_000_000, 0),
-    minimumTradeVolume: clamp(source.minimumTradeVolume, 0, 100_000, 0),
-    maximumTradeVolume: clamp(source.maximumTradeVolume, 0, 1_000_000, 0),
+    minimumTradeVolume,
+    maximumTradeVolume,
     valueAreaPercent: clamp(source.valueAreaPercent, 0.5, 1, 0.7),
     minimumImbalancePercent: clamp(source.minimumImbalancePercent, 100, 10_000, 300),
     minimumDominantVolume: clamp(source.minimumDominantVolume, 0, 1_000_000, 10),

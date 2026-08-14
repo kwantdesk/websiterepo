@@ -2324,6 +2324,11 @@ export default function Chart({
       instance.enabled && instance.indicatorId === "deep-print-footprint"),
     [indicators],
   );
+  const footprintRefreshFps = useMemo(() => {
+    const configured = Number(indicators.find((instance) =>
+      instance.enabled && instance.indicatorId === "deep-print-footprint")?.settings?.fpsLimit ?? 60);
+    return ([30, 60, 120].includes(configured) ? configured : 60) as 30 | 60 | 120;
+  }, [indicators]);
 
   function resetViewportBeforeReveal(
     chart: IChartApi,
@@ -2482,10 +2487,11 @@ export default function Chart({
     // The candle itself continues to render tick-by-tick. Expensive order-flow
     // studies only need a smooth sub-second sample; recalculating every 120 ms
     // across a growing execution tape eventually monopolises navigation.
-    }, footprintSamplingEnabled ? 100 : 400);
+    }, footprintSamplingEnabled ? Math.max(8, Math.round(1_000 / footprintRefreshFps)) : 400);
   }, [
     candles,
     footprintSamplingEnabled,
+    footprintRefreshFps,
     indicatorSamplingEnabled,
     marketTrades,
     orderFlowHistoryReady,
@@ -2668,7 +2674,7 @@ export default function Chart({
         ? String(footprintSettings.imbalanceMode)
         : "diagonal") as FootprintImbalanceMode,
       minimumImbalancePercent: Number(footprintSettings.minimumImbalancePercent ?? 300),
-      minimumDelta: Number(footprintSettings.minimumDelta ?? 10),
+      minimumDelta: Number(footprintSettings.minimumDelta ?? 0),
       includeZero: footprintSettings.includeZero === true,
       showEmptyPriceRows: footprintSettings.showEmptyPriceRows === true,
       valueAreaPercent: Number(footprintSettings.valueAreaPercent ?? 0.7),
@@ -2758,7 +2764,7 @@ export default function Chart({
         ["volume", "delta", "imbalance", "dominant", "dominant-delta"],
         "imbalance",
       ),
-      barWidth: clamp(Number(footprintSettings.barWidth ?? 88), 44, 180),
+      barWidth: clamp(Number(footprintSettings.barWidth ?? 92), 28, 180),
       candleSpacing: clamp(Number(footprintSettings.candleSpacing ?? 6), 1, 24),
       borderWidth: clamp(Number(footprintSettings.borderWidth ?? 1), 0.5, 4),
       opacity: clamp(Number(footprintSettings.backgroundOpacity ?? 74) / 100, 0, 1),
@@ -2795,8 +2801,8 @@ export default function Chart({
       showWick: footprintSettings.showWick !== false,
       showBodyOutline: footprintSettings.showBodyOutline !== false,
       showBodyFill: footprintSettings.showBodyFill === true,
-      showBetweenVolume: footprintSettings.showBetweenVolume !== false,
-      showVwap: footprintSettings.showVwap !== false,
+      showBetweenVolume: footprintSettings.showBetweenVolume === true,
+      showVwap: footprintSettings.showVwap === true,
       showStackedImbalances: footprintSettings.showStackedImbalances !== false,
       showMaxBid: footprintSettings.showMaxBid === true,
       showMaxAsk: footprintSettings.showMaxAsk === true,

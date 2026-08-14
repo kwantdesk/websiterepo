@@ -257,6 +257,8 @@ test("settings validation migrates invalid values safely", () => {
     maximumOpacity: 20,
     minimumRatio: 50,
     maximumRatio: 2,
+    minimumTradeVolume: 500,
+    maximumTradeVolume: 100,
   });
   assert.equal(settings.contentMode, "bid-ask");
   assert.equal(settings.barWidth, 180);
@@ -270,6 +272,7 @@ test("settings validation migrates invalid values safely", () => {
   assert.equal(settings.showImbalances, true);
   assert.equal(settings.maximumOpacity, 80);
   assert.equal(settings.maximumRatio, 50);
+  assert.equal(settings.maximumTradeVolume, 500);
 });
 
 test("presets reuse one versioned settings model", () => {

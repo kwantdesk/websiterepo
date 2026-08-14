@@ -6,6 +6,20 @@ const chart = fs.readFileSync(new URL("../src/components/Chart.tsx", import.meta
 const control = fs.readFileSync(new URL("../src/components/ChartIndicatorsControl.tsx", import.meta.url), "utf8");
 const primitive = fs.readFileSync(new URL("../src/lib/footprintPrimitive.ts", import.meta.url), "utf8");
 const settings = fs.readFileSync(new URL("../src/lib/footprintSettings.ts", import.meta.url), "utf8");
+const build = fs.readFileSync(new URL("../src/lib/footprint.ts", import.meta.url), "utf8");
+
+const settingsTypeBody = settings.match(/export type FootprintSettings = \{([\s\S]*?)\n\};/)?.[1] ?? "";
+const settingsKeys = [...settingsTypeBody.matchAll(/^\s{2}([A-Za-z][A-Za-z0-9]*):/gm)]
+  .map((match) => match[1]);
+
+test("every footprint setting has a default and a live runtime consumer", () => {
+  const runtime = `${chart}\n${primitive}\n${build}`;
+  for (const key of settingsKeys) {
+    assert.match(settings, new RegExp(`\\b${key}:`), `${key} has a validated default`);
+    if (key === "footprintSettingsVersion") continue;
+    assert.match(runtime, new RegExp(`\\b${key}\\b`), `${key} reaches aggregation or rendering`);
+  }
+});
 
 test("every exposed footprint mode is connected to the live chart options", () => {
   for (const key of [
@@ -55,4 +69,8 @@ test("previously disconnected footprint controls now change renderer behavior", 
   assert.match(primitive, /if \(options\.colorMode === "none"\) return 0/);
   assert.match(primitive, /1_000 \/ this\.renderOptions\.fpsLimit/);
   assert.match(chart, /return footprintVisibleCandles/);
+  assert.match(chart, /Math\.round\(1_000 \/ footprintRefreshFps\)/);
+  assert.match(chart, /barWidth: clamp\([^\n]+, 28, 180\)/);
+  assert.match(primitive, /options\.showBodyOutline \|\| options\.showBodyFill/);
+  assert.match(primitive, /options\.colorCalculation === "dominant-delta"/);
 });

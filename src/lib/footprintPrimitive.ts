@@ -252,7 +252,7 @@ function colourMetric(
   side: "bid" | "ask" | "total",
   options: FootprintPrimitiveOptions,
 ) {
-  if (options.colorCalculation === "delta" || options.colorCalculation === "dominant-delta") {
+  if (options.colorCalculation === "delta") {
     return Math.abs(values.delta);
   }
   if (options.colorCalculation === "imbalance") {
@@ -260,7 +260,16 @@ function colourMetric(
     const dominant = side === "bid" ? values.bid : side === "ask" ? values.ask : Math.max(values.bid, values.ask);
     return Math.max(0, dominant - opposing);
   }
-  if (options.colorCalculation === "dominant") return Math.max(values.bid, values.ask);
+  if (options.colorCalculation === "dominant") {
+    if (side === "bid") return values.bid >= values.ask ? values.bid : 0;
+    if (side === "ask") return values.ask >= values.bid ? values.ask : 0;
+    return Math.max(values.bid, values.ask);
+  }
+  if (options.colorCalculation === "dominant-delta") {
+    if (side === "bid") return values.delta < 0 ? Math.abs(values.delta) : 0;
+    if (side === "ask") return values.delta > 0 ? Math.abs(values.delta) : 0;
+    return Math.abs(values.delta);
+  }
   return side === "bid" ? values.bid : side === "ask" ? values.ask : values.total;
 }
 
@@ -337,7 +346,7 @@ class FootprintRenderer implements ISeriesPrimitivePaneRenderer {
           context.stroke();
           context.restore();
         }
-        if (options.showBodyOutline && openY !== null && closeY !== null) {
+        if ((options.showBodyOutline || options.showBodyFill) && openY !== null && closeY !== null) {
           context.save();
           context.globalAlpha = bar.isClosed ? 0.34 : 0.72;
           context.strokeStyle = bar.close >= bar.open ? options.askColor : options.bidColor;
@@ -348,8 +357,10 @@ class FootprintRenderer implements ISeriesPrimitivePaneRenderer {
             context.globalAlpha *= 0.09;
             context.fillRect(left, bodyTop, barWidth, bodyHeight);
           }
-          context.globalAlpha = bar.isClosed ? 0.34 : 0.72;
-          context.strokeRect(left + 0.5, bodyTop + 0.5, Math.max(1, barWidth - 1), Math.max(1, bodyHeight - 1));
+          if (options.showBodyOutline) {
+            context.globalAlpha = bar.isClosed ? 0.34 : 0.72;
+            context.strokeRect(left + 0.5, bodyTop + 0.5, Math.max(1, barWidth - 1), Math.max(1, bodyHeight - 1));
+          }
           context.restore();
         }
 
