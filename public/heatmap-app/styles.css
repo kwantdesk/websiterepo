@@ -1319,7 +1319,7 @@ button { transition: color .16s ease, background-color .16s ease, border-color .
 .instrument-tab, .new-tab {
   height: 32px;
   border: 1px solid transparent;
-  border-radius: 8px;
+  border-radius: 2px;
   background: transparent;
 }
 .instrument-tab {
@@ -1346,7 +1346,7 @@ button { transition: color .16s ease, background-color .16s ease, border-color .
   width: 20px;
   height: 20px;
   margin-left: 8px;
-  border-radius: 6px;
+  border-radius: 2px;
   font-size: 14px;
 }
 .instrument-tab span[data-close-instrument]:hover { background: rgba(255,255,255,.08); color: var(--ui-text); }

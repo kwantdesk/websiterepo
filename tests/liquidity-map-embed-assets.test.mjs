@@ -28,9 +28,20 @@ test("embedded liquidity map is not revealed until both stylesheets are attached
 
 test("liquidity-map styles use a cache-busted deployment revision", () => {
   assert.match(workspace, /src="\/heatmap-app\/index\.html"/);
-  assert.match(html, /styles\.css\?v=20260813-cockpit-font/);
+  assert.match(html, /styles\.css\?v=20260814-square-instruments/);
   assert.match(html, /embed\.css\?v=20260813-cockpit-font/);
   assert.match(html, /src\/main\.js\?v=20260814-data-ready/);
+});
+
+test("liquidity-map instrument tabs match the squared control language", () => {
+  assert.match(
+    styles,
+    /\.instrument-tab, \.new-tab \{[\s\S]*?border-radius:\s*2px;/,
+  );
+  assert.match(
+    styles,
+    /\.instrument-tab span\[data-close-instrument\] \{[\s\S]*?border-radius:\s*2px;/,
+  );
 });
 
 test("liquidity-map UI controls use the current cockpit typography", () => {
