@@ -14,12 +14,27 @@ const chart = readFileSync(
   new URL("../src/components/Chart.tsx", import.meta.url),
   "utf8",
 );
+const marketDataSource = readFileSync(
+  new URL("../src/lib/institutionalMarketData.ts", import.meta.url),
+  "utf8",
+);
 
 test("all native profiles restore only execution-backed snapshots", () => {
   assert.match(workspace, /readCachedInstitutionalVolumeProfiles\(activeRoot, "daily"\)/);
   assert.match(workspace, /readCachedInstitutionalVolumeProfiles\(activeRoot, "weekly"\)/);
-  assert.match(workspace, /\|\| profile\.provider === "Chart"/);
-  assert.match(chart, /if \(profile\.provider === "Chart"\) return \[\];/);
+  assert.match(workspace, /!isExecutionBackedVolumeProfile\(profile\)/);
+  assert.match(chart, /if \(!isExecutionBackedVolumeProfile\(profile\)\) return \[\];/);
+  assert.match(marketDataSource, /profile\.provider !== "Databento" && profile\.provider !== "Rithmic"/);
+  assert.match(marketDataSource, /OHLCV\|APPROX/);
+});
+
+test("cached profiles must match the active contract and exact profile configuration", () => {
+  assert.match(workspace, /normalizedContractSymbol/);
+  assert.match(workspace, /profile\.contractSymbol\.toUpperCase\(\)\.replace/);
+  assert.match(workspace, /profile\.groupTicks !== expectedGroupTicks/);
+  assert.match(workspace, /profile\.minTradeVolume !== expectedMinVolume/);
+  assert.match(workspace, /profile\.maxTradeVolume !== expectedMaxVolume/);
+  assert.match(workspace, /profileGroups\.flat\(\)\.filter\(matchesRequestedProfile\)/);
 });
 
 test("the deprecated candle proxy cannot enter profile state or canvas output", () => {

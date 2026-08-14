@@ -111,6 +111,7 @@ import { calculateDeepEffort } from "@/lib/deepEffort";
 import { calculateImbalanceRejectorSignals } from "@/lib/imbalanceRejector";
 import { calculateImbalanceZones } from "@/lib/imbalanceTracker";
 import {
+  isExecutionBackedVolumeProfile,
   type InstitutionalTrade,
   type InstitutionalVolumeProfile,
 } from "@/lib/institutionalMarketData";
@@ -5681,7 +5682,7 @@ export default function Chart({
       if (!instance || profile.period === "custom" || profile.levels.length === 0) return [];
       // No native volume-profile mode may render a candle-distributed proxy.
       // It has neither true traded-at-price volume nor aggressor-side delta.
-      if (profile.provider === "Chart") return [];
+      if (!isExecutionBackedVolumeProfile(profile)) return [];
       const profileSettings = instance.settings ?? {};
       const useThemeColors = profileSettings.useThemeColors !== false;
       const requestedSnapMode = (

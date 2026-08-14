@@ -112,6 +112,7 @@ import {
   fetchInstitutionalSnapshot,
   fetchInstitutionalOrderFlowLevels,
   fetchInstitutionalVolumeProfile,
+  isExecutionBackedVolumeProfile,
   readCachedInstitutionalVolumeProfiles,
   type InstitutionalOrderFlowResult,
   type InstitutionalTrade,
@@ -5623,6 +5624,41 @@ function WorkspaceChartPane({
       : [];
     const activeRoot = displayCmeSymbol(pane.symbol);
     const activeTradingDates = new Set(tradingDates);
+    const normalizedContractSymbol = resolvedContractSymbol.toUpperCase().replace(/[^A-Z0-9]/g, "");
+    const requestedDailyGroupTicks = dailyProfileSettings.groupingMode === "manual"
+      ? Math.max(1, Math.round(Number(dailyProfileSettings.groupTicks ?? 1) || 1))
+      : 1;
+    const requestedWeeklyGroupTicks = weeklyProfileSettings.groupingMode === "manual"
+      ? Math.max(1, Math.round(Number(weeklyProfileSettings.groupTicks ?? 4) || 4))
+      : 1;
+    const requestedDailyMinVolume = Math.max(0, Number(dailyProfileSettings.minTradeVolume ?? 0) || 0);
+    const requestedDailyMaxVolume = Math.max(0, Number(dailyProfileSettings.maxTradeVolume ?? 0) || 0);
+    const requestedWeeklyMinVolume = Math.max(0, Number(weeklyProfileSettings.minTradeVolume ?? 0) || 0);
+    const requestedWeeklyMaxVolume = Math.max(0, Number(weeklyProfileSettings.maxTradeVolume ?? 0) || 0);
+    const matchesRequestedProfile = (profile: InstitutionalVolumeProfile) => {
+      if (!isExecutionBackedVolumeProfile(profile) || profile.root !== activeRoot) return false;
+      if (profile.contractSymbol.toUpperCase().replace(/[^A-Z0-9]/g, "") !== normalizedContractSymbol) return false;
+      const expectedGroupTicks = profile.period === "weekly"
+        ? requestedWeeklyGroupTicks
+        : requestedDailyGroupTicks;
+      const expectedMinVolume = profile.period === "weekly"
+        ? requestedWeeklyMinVolume
+        : requestedDailyMinVolume;
+      const expectedMaxVolume = profile.period === "weekly"
+        ? requestedWeeklyMaxVolume
+        : requestedDailyMaxVolume;
+      if (
+        profile.groupTicks !== expectedGroupTicks
+        || profile.minTradeVolume !== expectedMinVolume
+        || profile.maxTradeVolume !== expectedMaxVolume
+      ) return false;
+      return (
+        (profile.period === "daily"
+          && Boolean(dailyProfileInstance)
+          && activeTradingDates.has(chicagoTradingDate(profile.startMs)))
+        || (profile.period === "weekly" && Boolean(weeklyProfileInstance))
+      );
+    };
     const profileSessionKey = (profile: InstitutionalVolumeProfile) =>
       `${profile.period}:${profile.period === "daily" ? chicagoTradingDate(profile.startMs) : "weekly"}`;
 
@@ -5632,15 +5668,7 @@ function WorkspaceChartPane({
     // gateway refreshes and otherwise leave the profile clean until it arrives.
     setVolumeProfiles((current) => {
       return current
-        .filter((profile) =>
-          profile.provider !== "Chart"
-          && profile.root === activeRoot
-          && (
-            (profile.period === "daily"
-              && Boolean(dailyProfileInstance)
-              && activeTradingDates.has(chicagoTradingDate(profile.startMs)))
-            || (profile.period === "weekly" && Boolean(weeklyProfileInstance))
-          ))
+        .filter(matchesRequestedProfile)
         .sort((left, right) => left.startMs - right.startMs);
     });
 
@@ -5658,13 +5686,7 @@ function WorkspaceChartPane({
     if (cachedProfileRequests.length) {
       void Promise.all(cachedProfileRequests).then((profileGroups) => {
         if (cancelled) return;
-        const cachedExact = profileGroups.flat().filter((profile) =>
-          profile.provider !== "Chart"
-          && profile.root === activeRoot
-          && (
-            profile.period === "weekly"
-            || activeTradingDates.has(chicagoTradingDate(profile.startMs))
-          ))
+        const cachedExact = profileGroups.flat().filter(matchesRequestedProfile)
           .map((profile) => applyInstitutionalTradesToVolumeProfile(
             profile,
             latestMarketTradesRef.current,
@@ -5672,7 +5694,7 @@ function WorkspaceChartPane({
         if (!cachedExact.length) return;
         setVolumeProfiles((current) => {
           const next = new Map(current
-            .filter((profile) => profile.provider !== "Chart" && profile.root === activeRoot)
+            .filter(matchesRequestedProfile)
             .map((profile) => [profileSessionKey(profile), profile]));
           cachedExact.forEach((profile) => {
             const key = profileSessionKey(profile);
@@ -5692,7 +5714,7 @@ function WorkspaceChartPane({
     ) => {
       if (
         !profile
-        || profile.provider === "Chart"
+        || !matchesRequestedProfile(profile)
         || cancelled
         || !Number.isFinite(profile.startMs)
         || profile.startMs <= 0
@@ -5735,12 +5757,10 @@ function WorkspaceChartPane({
             contractSymbol: resolvedContractSymbol,
             period: "daily",
             tradingDate,
-            groupTicks: dailyProfileSettings.groupingMode === "manual"
-              ? Number(dailyProfileSettings.groupTicks ?? 1)
-              : 1,
+            groupTicks: requestedDailyGroupTicks,
             valueAreaPercent: STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT,
-            minTradeVolume: Number(dailyProfileSettings.minTradeVolume ?? 0),
-            maxTradeVolume: Number(dailyProfileSettings.maxTradeVolume ?? 0),
+            minTradeVolume: requestedDailyMinVolume,
+            maxTradeVolume: requestedDailyMaxVolume,
           }).then((profile) => {
             if (tradingDate === currentDailyTradingDate && profile) {
               currentDailyProfileLoaded = true;
@@ -5761,12 +5781,10 @@ function WorkspaceChartPane({
           endMs: weeklyCandles.length
             ? weeklyCandles[weeklyCandles.length - 1].timestamp + chartStepMs
             : undefined,
-          groupTicks: weeklyProfileSettings.groupingMode === "manual"
-            ? Number(weeklyProfileSettings.groupTicks ?? 4)
-            : 1,
+          groupTicks: requestedWeeklyGroupTicks,
           valueAreaPercent: STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT,
-          minTradeVolume: Number(weeklyProfileSettings.minTradeVolume ?? 0),
-          maxTradeVolume: Number(weeklyProfileSettings.maxTradeVolume ?? 0),
+          minTradeVolume: requestedWeeklyMinVolume,
+          maxTradeVolume: requestedWeeklyMaxVolume,
         }).then(replaceExactProfile));
       }
       await Promise.allSettled(requests);

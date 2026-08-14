@@ -103,6 +103,18 @@ export type InstitutionalVolumeProfile = {
   asOf: string;
 };
 
+export function isExecutionBackedVolumeProfile(
+  profile: InstitutionalVolumeProfile | null | undefined,
+): profile is InstitutionalVolumeProfile {
+  if (!profile || profile.schemaVersion !== "kwantify-volume-profile-v1") return false;
+  if (profile.provider !== "Databento" && profile.provider !== "Rithmic") return false;
+  // Defensive provenance guard for old browser caches and older gateway
+  // builds that may have labelled an OHLCV reconstruction as a native
+  // profile. Those rows must never flash before the execution tape arrives.
+  if (/\b(?:OHLCV|APPROX(?:IMATION|IMATE)?)\b/i.test(profile.source ?? "")) return false;
+  return Array.isArray(profile.levels) && profile.levels.length > 0;
+}
+
 const volumeProfileResponseCache = new Map<string, {
   profile: InstitutionalVolumeProfile;
   storedAt: number;
