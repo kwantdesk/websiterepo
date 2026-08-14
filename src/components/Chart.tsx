@@ -49,6 +49,7 @@ import {
   Plus,
   Radar,
   RectangleHorizontal,
+  Redo2,
   RotateCcw,
   Ruler,
   ScanLine,
@@ -57,6 +58,7 @@ import {
   ShoppingCart,
   Slash,
   SmilePlus,
+  Square,
   Sparkles,
   Star,
   StickyNote,
@@ -128,6 +130,7 @@ import { calculateKwantStats } from "@/lib/kwantStats";
 import { defaultChartSettings, type ChartSettings } from "@/lib/chartSettings";
 import {
   DrawingManager,
+  configureProfessionalDrawingMarketData,
   createProfessionalDrawing,
   drawingFromSerialized,
   isProfessionalDrawingTool,
@@ -138,6 +141,7 @@ import {
   type Anchor as ProfessionalDrawingAnchor,
   type IDrawing as ProfessionalDrawing,
   type SerializedDrawing as ProfessionalDrawingRecord,
+  type KwantMarketDataSource,
 } from "@/lib/professionalDrawingEngine";
 import { isEventBasedChartInterval } from "@/lib/chartIntervals";
 import { compactTimeZoneLabel, normalizeTimeZone } from "@/lib/timeZones";
@@ -195,6 +199,7 @@ interface ChartProps {
   backgroundLevels?: ChartLevel[];
   backgroundZones?: ChartZone[];
   instrument?: string;
+  chartInstanceId?: string;
   contractSymbol?: string | null;
   timeframe?: string;
   marketIsActive?: boolean;
@@ -1203,6 +1208,9 @@ type DrawingToolId =
   | "verticalLine"
   | "crossLine"
   | "parallelChannel"
+  | "priceChannel"
+  | "highlightX"
+  | "highlightY"
   | "regressionTrend"
   | "flatTopBottom"
   | "disjointChannel"
@@ -1211,6 +1219,10 @@ type DrawingToolId =
   | "modifiedSchiffPitchfork"
   | "insidePitchfork"
   | "anchoredVwap"
+  | "dynamicPoc"
+  | "cvdCorrelation"
+  | "marketProfile"
+  | "zigzagTpoProfile"
   | "fibRetracement"
   | "trendBasedFibExtension"
   | "fibChannel"
@@ -1222,6 +1234,7 @@ type DrawingToolId =
   | "fibSpeedResistanceArcs"
   | "fibWedge"
   | "pitchfan"
+  | "fibFan"
   | "gannBox"
   | "gannSquareFixed"
   | "gannSquare"
@@ -1257,6 +1270,9 @@ type DrawingToolId =
   | "arrowMarkUp"
   | "arrowMarkDown"
   | "text"
+  | "label"
+  | "rightPriceLabel"
+  | "leftPriceLabel"
   | "anchoredText"
   | "note"
   | "priceNote"
@@ -1267,6 +1283,10 @@ type DrawingToolId =
   | "priceLabel"
   | "signpost"
   | "flagMark"
+  | "diamond"
+  | "square"
+  | "upArrow"
+  | "downArrow"
   | "image"
   | "post"
   | "idea"
@@ -1281,6 +1301,7 @@ type DrawingToolId =
   | "fixedRangeVolumeProfile"
   | "anchoredVolumeProfile"
   | "measure"
+  | "ruler"
   | "priceRange"
   | "dateRange"
   | "datePriceRange"
@@ -1356,6 +1377,16 @@ type ToolbarGroup = {
   label: string;
   icon: ComponentType<{ className?: string }>;
   tools: ToolbarTool[];
+};
+
+type DrawingTemplate = {
+  id: string;
+  name: string;
+  toolType: string;
+  style: ProfessionalDrawingRecord["style"];
+  options: ProfessionalDrawingRecord["options"];
+  createdAt: number;
+  isDefault?: boolean;
 };
 
 const FIB_LEVELS = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1];
@@ -1529,9 +1560,140 @@ const DRAWING_TOOLBAR_GROUPS: ToolbarGroup[] = [
   },
 ];
 
-const ALL_DRAWING_TOOLS = DRAWING_TOOLBAR_GROUPS.flatMap((group) => group.tools);
-const DRAWING_TOOL_FAVORITES_STORAGE_KEY = "kwantify-chart-tool-favorites";
+const LEGACY_DRAWING_TOOL_BY_ID = new Map(
+  DRAWING_TOOLBAR_GROUPS.flatMap((group) => group.tools).map((tool) => [tool.id, tool] as const),
+);
+
+function activeDrawingTool(
+  id: DrawingToolId,
+  label: string,
+  icon: ComponentType<{ className?: string }>,
+  section: string,
+  shortcut?: string,
+): ToolbarTool {
+  return {
+    ...LEGACY_DRAWING_TOOL_BY_ID.get(id),
+    id,
+    label,
+    icon,
+    section,
+    shortcut,
+    implemented: true,
+  };
+}
+
+/** The bounded, production drawing surface specified for KwantDesk. */
+const ACTIVE_DRAWING_TOOLBAR_GROUPS: ToolbarGroup[] = [
+  {
+    id: "cursorTools",
+    label: "Lines",
+    icon: Slash,
+    tools: [
+      activeDrawingTool("trendLine", "Trend Line", Slash, "Lines", "Alt + T"),
+      activeDrawingTool("trendAngle", "Angle", MoveVertical, "Lines"),
+      activeDrawingTool("verticalLine", "Vertical Line", MoveVertical, "Lines", "Alt + V"),
+      activeDrawingTool("horizontalLine", "Horizontal Line", MoveHorizontal, "Lines", "Alt + H"),
+      activeDrawingTool("horizontalRay", "Horizontal Ray", ArrowRightIconShim, "Lines"),
+      activeDrawingTool("crossLine", "Cross Line", Crosshair, "Lines", "Alt + C"),
+      activeDrawingTool("brush", "Brush", Brush, "Lines"),
+    ],
+  },
+  {
+    id: "shapes",
+    label: "Shapes",
+    icon: Shapes,
+    tools: [
+      activeDrawingTool("triangle", "Triangle", TriangleIconShim, "Shapes"),
+      activeDrawingTool("rectangle", "Rectangle", RectangleHorizontal, "Shapes"),
+      activeDrawingTool("ellipse", "Ellipse", Circle, "Shapes"),
+      activeDrawingTool("priceChannel", "Price Channel", KanbanSquare, "Shapes"),
+      activeDrawingTool("highlightY", "Highlight Y", Highlighter, "Highlights"),
+      activeDrawingTool("highlightX", "Highlight X", Highlighter, "Highlights"),
+    ],
+  },
+  {
+    id: "forecast",
+    label: "Volume Analysis",
+    icon: ChartColumnIncreasing,
+    tools: [
+      activeDrawingTool("marketProfile", "Market Profile", KanbanSquare, "Profiles"),
+      activeDrawingTool("fixedRangeVolumeProfile", "Fixed Market Profile", KanbanSquare, "Profiles"),
+      activeDrawingTool("anchoredVolumeProfile", "Anchored Market Profile", KanbanSquare, "Profiles"),
+      activeDrawingTool("zigzagTpoProfile", "ZigZag TPO & Profile", Waves, "Profiles"),
+      activeDrawingTool("anchoredVwap", "Anchored VWAP", ChartColumnIncreasing, "Analytics"),
+      activeDrawingTool("dynamicPoc", "Dynamic POC", MoveHorizontal, "Analytics"),
+      activeDrawingTool("cvdCorrelation", "CVD Correlation", Waves, "Analytics"),
+    ],
+  },
+  {
+    id: "fib",
+    label: "Fibonacci",
+    icon: Waypoints,
+    tools: [
+      activeDrawingTool("fibRetracement", "Fibonacci Retracements", Waypoints, "Fibonacci"),
+      activeDrawingTool("trendBasedFibExtension", "Fibonacci Extensions", ChartColumnIncreasing, "Fibonacci"),
+      activeDrawingTool("fibFan", "Fibo Fan", Radar, "Fibonacci"),
+    ],
+  },
+  {
+    id: "patterns",
+    label: "Elliott",
+    icon: Waves,
+    tools: [
+      activeDrawingTool("elliottImpulseWave", "Impulse (12345)", Waves, "Elliott"),
+      activeDrawingTool("elliottCorrectionWave", "Correction (ABC)", Waves, "Elliott"),
+      activeDrawingTool("elliottTriangleWave", "Triangle (ABCDE)", Waves, "Elliott"),
+      activeDrawingTool("elliottDoubleComboWave", "Double Combo (WXY)", Waves, "Elliott"),
+      activeDrawingTool("elliottTripleComboWave", "Triple Combo (WXYXZ)", Waves, "Elliott"),
+    ],
+  },
+  {
+    id: "measure",
+    label: "Measurement",
+    icon: Ruler,
+    tools: [
+      activeDrawingTool("ruler", "Ruler", Ruler, "Measurement"),
+      activeDrawingTool("measure", "Measure", Calculator, "Measurement"),
+    ],
+  },
+  {
+    id: "zoom",
+    label: "Position",
+    icon: ChartColumnIncreasing,
+    tools: [
+      activeDrawingTool("longPosition", "Long Position", ArrowBigUp, "Position"),
+      activeDrawingTool("shortPosition", "Short Position", ArrowBigDown, "Position"),
+    ],
+  },
+  {
+    id: "annotation",
+    label: "Text",
+    icon: Type,
+    tools: [
+      activeDrawingTool("text", "Text", Type, "Text"),
+      activeDrawingTool("label", "Label", Tag, "Text"),
+      activeDrawingTool("rightPriceLabel", "Right Price Label", Tag, "Price Labels"),
+      activeDrawingTool("leftPriceLabel", "Left Price Label", Tag, "Price Labels"),
+    ],
+  },
+  {
+    id: "icons",
+    label: "Markers",
+    icon: Dot,
+    tools: [
+      activeDrawingTool("dot", "Dot", Dot, "Markers"),
+      activeDrawingTool("diamond", "Diamond", Shapes, "Markers"),
+      activeDrawingTool("square", "Square", Square, "Markers"),
+      activeDrawingTool("upArrow", "Up Arrow", ArrowBigUp, "Markers"),
+      activeDrawingTool("downArrow", "Down Arrow", ArrowBigDown, "Markers"),
+    ],
+  },
+];
+
+const ALL_DRAWING_TOOLS = ACTIVE_DRAWING_TOOLBAR_GROUPS.flatMap((group) => group.tools);
+const DRAWING_TOOL_FAVORITES_STORAGE_KEY = "kwantdesk:drawing-favourites:v1";
 const DRAWING_TOOL_FAVORITES_EVENT = "kwantify-chart-tool-favorites-change";
+const DRAWING_TEMPLATES_STORAGE_KEY = "kwantdesk:drawing-templates:v1";
 
 const TOOLBAR_ICON_MAP: Record<ToolbarGroupId, ComponentType<{ className?: string }>> = {
   favorites: Star,
@@ -1614,8 +1776,8 @@ function createId(prefix: string) {
   return `${prefix}_${Math.random().toString(36).slice(2, 10)}`;
 }
 
-function drawingsStorageKey(instrument: string) {
-  return `kwantify-chart-drawings:${instrument}`;
+function drawingsStorageKey(instrument: string, chartInstanceId: string) {
+  return `kwantdesk:chart-drawings:v1:${chartInstanceId}:${instrument}`;
 }
 
 function toolbarDockStorageKey() {
@@ -1941,6 +2103,7 @@ export default function Chart({
   backgroundLevels = EMPTY_CHART_LEVELS,
   backgroundZones = [],
   instrument = "Instrument",
+  chartInstanceId = "primary",
   contractSymbol = null,
   timeframe,
   marketIsActive,
@@ -2035,6 +2198,7 @@ export default function Chart({
   const horzLineRef = useRef<HTMLDivElement>(null);
   const priceLabelRef = useRef<HTMLDivElement>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; price: string } | null>(null);
+  const drawingPersistenceInstrument = `${instrument}::${chartInstanceId.slice(-16)}`;
   const [copiedPrice, setCopiedPrice] = useState(false);
   const [selectedTool, setSelectedTool] = useState<DrawingToolId>("cursor");
   const [openToolbarGroup, setOpenToolbarGroup] = useState<ToolbarGroupId | null>(null);
@@ -2046,8 +2210,15 @@ export default function Chart({
   const professionalDrawingsHydrationRef = useRef<{ instrument: string; ready: boolean }>({ instrument: "", ready: false });
   const professionalDrawingManagerRef = useRef<DrawingManager | null>(null);
   const professionalDrawingPreviewRef = useRef<ProfessionalDrawing | null>(null);
+  const professionalBrushDrawingRef = useRef<ProfessionalDrawing | null>(null);
+  const professionalSuppressNextClickRef = useRef(false);
   const professionalPendingAnchorsRef = useRef<ProfessionalDrawingAnchor[]>([]);
   const professionalSyncSuppressedRef = useRef(false);
+  const professionalUndoStackRef = useRef<ProfessionalDrawingRecord[][]>([]);
+  const professionalRedoStackRef = useRef<ProfessionalDrawingRecord[][]>([]);
+  const professionalClipboardRef = useRef<ProfessionalDrawingRecord | null>(null);
+  const professionalUpdateHistoryOpenRef = useRef(false);
+  const professionalUpdateHistoryTimerRef = useRef<number | null>(null);
   const selectedToolRef = useRef<DrawingToolId>("cursor");
   const [draftDrawing, setDraftDrawing] = useState<ChartDrawing | null>(null);
   const [selectedDrawingId, setSelectedDrawingId] = useState<string | null>(null);
@@ -2055,7 +2226,17 @@ export default function Chart({
   const [drawingInteraction, setDrawingInteraction] = useState<DrawingInteraction | null>(null);
   const [hideDrawings, setHideDrawings] = useState(false);
   const [drawingsLocked, setDrawingsLocked] = useState(false);
-  const [magnetMode, setMagnetMode] = useState<"off" | "weak" | "strong">("weak");
+  const [magnetMode, setMagnetMode] = useState<"off" | "weak" | "medium" | "strong">("medium");
+  const magnetModeRef = useRef<"off" | "weak" | "medium" | "strong">("medium");
+  const [keepDrawingMode, setKeepDrawingMode] = useState(false);
+  const keepDrawingModeRef = useRef(false);
+  const [selectedProfessionalDrawingId, setSelectedProfessionalDrawingId] = useState<string | null>(null);
+  const [showDrawingSettings, setShowDrawingSettings] = useState(false);
+  const [drawingTemplates, setDrawingTemplates] = useState<DrawingTemplate[]>([]);
+  const drawingTemplatesRef = useRef<DrawingTemplate[]>([]);
+  const [renamingDrawingTemplateId, setRenamingDrawingTemplateId] = useState<string | null>(null);
+  const [drawingTemplateNameDraft, setDrawingTemplateNameDraft] = useState("");
+  const [drawingHistoryRevision, setDrawingHistoryRevision] = useState(0);
   const [toolbarDock, setToolbarDock] = useState<ToolbarDock>("left");
   const [toolbarDragPosition, setToolbarDragPosition] = useState<{ x: number; y: number } | null>(null);
   const [showObjectsPanel, setShowObjectsPanel] = useState(false);
@@ -2111,6 +2292,8 @@ export default function Chart({
   const toolbarDragStateRef = useRef<{ offsetX: number; offsetY: number; startClientX: number; startClientY: number; hasMoved: boolean } | null>(null);
   const toolbarToggleSuppressedRef = useRef(false);
   const latestCandleRef = useRef<Candle | null>(candles.at(-1) ?? null);
+  const drawingCandlesRef = useRef(candles);
+  const drawingMarketTradesRef = useRef(marketTrades);
   const lastRenderedCandleTimeRef = useRef<number | null>(
     candles.length ? Math.floor(candles[candles.length - 1].timestamp / 1_000) : null,
   );
@@ -2157,6 +2340,12 @@ export default function Chart({
       },
     );
   }
+
+  useEffect(() => {
+    drawingCandlesRef.current = candles;
+    drawingMarketTradesRef.current = marketTrades;
+    professionalDrawingManagerRef.current?.getAllDrawings().forEach((drawing) => drawing.requestUpdate());
+  }, [candles, marketTrades]);
 
   useEffect(() => {
     const handleThemeChange = () => setThemeVersion((version) => version + 1);
@@ -2290,6 +2479,10 @@ export default function Chart({
       window.clearTimeout(indicatorSampleTimerRef.current);
       indicatorSampleTimerRef.current = null;
     }
+    if (professionalUpdateHistoryTimerRef.current !== null) {
+      window.clearTimeout(professionalUpdateHistoryTimerRef.current);
+      professionalUpdateHistoryTimerRef.current = null;
+    }
   }, []);
 
   useEffect(() => {
@@ -2311,6 +2504,24 @@ export default function Chart({
   }, [openToolbarGroup]);
 
   const priceFormat = useMemo(() => getPriceFormat(instrument), [instrument]);
+  const drawingMarketDataSource = useMemo<KwantMarketDataSource>(() => ({
+    bars: () => drawingCandlesRef.current.map((bar) => ({
+      ...bar,
+      timestamp: (eventChartTimeBySourceTimeRef.current.get(bar.timestamp)
+        ?? eventChartTimeBySourceTimeRef.current.get(Math.floor(bar.timestamp / 1_000))
+        ?? Math.floor(bar.timestamp / 1_000)) * 1_000,
+    })),
+    trades: () => drawingMarketTradesRef.current.map((trade) => ({
+      timestamp: (eventChartTimeBySourceTimeRef.current.get(trade.timestamp)
+        ?? eventChartTimeBySourceTimeRef.current.get(Math.floor(trade.timestamp / 1_000))
+        ?? Math.floor(trade.timestamp / 1_000)) * 1_000,
+      price: trade.close,
+      volume: trade.volume,
+      bidVolume: trade.bidVolume,
+      askVolume: trade.askVolume,
+    })),
+    tickSize: priceFormat.minMove,
+  }), [priceFormat.minMove]);
   const resolvedLevelLayers = useMemo(
     () => resolveChartLevelOverlaps(levels ?? [], backgroundLevels, priceFormat.minMove),
     [backgroundLevels, levels, priceFormat.minMove],
@@ -4205,16 +4416,154 @@ export default function Chart({
   }
 
   function replaceProfessionalManagerDrawings(records: ProfessionalDrawingRecord[]) {
-    professionalDrawingsRef.current = records;
+    const orderedRecords = [...records].sort((a, b) => (a.options.zIndex ?? 0) - (b.options.zIndex ?? 0));
+    professionalDrawingsRef.current = orderedRecords;
     const manager = professionalDrawingManagerRef.current;
     if (!manager) return;
     professionalSyncSuppressedRef.current = true;
     manager.clearAll();
-    records.forEach((record) => {
+    orderedRecords.forEach((record) => {
       const drawing = drawingFromSerialized(record);
+      if (drawing) configureProfessionalDrawingMarketData(drawing, drawingMarketDataSource);
       if (drawing) manager.addDrawing(drawing);
     });
     professionalSyncSuppressedRef.current = false;
+  }
+
+  function restoreProfessionalDrawingSnapshot(records: ProfessionalDrawingRecord[]) {
+    replaceProfessionalManagerDrawings(records);
+    professionalDrawingsRef.current = records;
+    setProfessionalDrawings(records);
+    setSelectedProfessionalDrawingId(null);
+    setDrawingHistoryRevision((revision) => revision + 1);
+  }
+
+  function undoProfessionalDrawing() {
+    const snapshot = professionalUndoStackRef.current.pop();
+    if (!snapshot) return;
+    professionalRedoStackRef.current.push(professionalDrawingsRef.current);
+    restoreProfessionalDrawingSnapshot(snapshot);
+  }
+
+  function redoProfessionalDrawing() {
+    const snapshot = professionalRedoStackRef.current.pop();
+    if (!snapshot) return;
+    professionalUndoStackRef.current.push(professionalDrawingsRef.current);
+    restoreProfessionalDrawingSnapshot(snapshot);
+  }
+
+  function copySelectedProfessionalDrawing() {
+    const selected = professionalDrawingManagerRef.current?.getSelectedDrawing();
+    if (selected) professionalClipboardRef.current = selected.toJSON();
+  }
+
+  function pasteProfessionalDrawing() {
+    const source = professionalClipboardRef.current;
+    const manager = professionalDrawingManagerRef.current;
+    if (!source || !manager) return;
+    const intervalSeconds = Math.max(1, Math.round((candleIntervalMs ?? 60_000) / 1_000));
+    const record: ProfessionalDrawingRecord = {
+      ...source,
+      id: createId("drawing"),
+      anchors: source.anchors.map((anchor) => ({
+        ...anchor,
+        time: typeof anchor.time === "number" ? (anchor.time + intervalSeconds) as Time : anchor.time,
+        price: anchor.price + priceFormat.minMove * 4,
+      })),
+      style: { ...source.style },
+      options: { ...source.options },
+    };
+    const drawing = drawingFromSerialized(record);
+    if (!drawing) return;
+    configureProfessionalDrawingMarketData(drawing, drawingMarketDataSource);
+    manager.addDrawing(drawing);
+    manager.selectDrawing(drawing.id);
+    setSelectedProfessionalDrawingId(drawing.id);
+  }
+
+  function duplicateSelectedProfessionalDrawing() {
+    copySelectedProfessionalDrawing();
+    pasteProfessionalDrawing();
+  }
+
+  function syncProfessionalManagerNow() {
+    const manager = professionalDrawingManagerRef.current;
+    if (!manager) return;
+    const records = manager.exportDrawings().filter((record) => record.id !== "__kwantdesk_drawing_preview__");
+    professionalDrawingsRef.current = records;
+    setProfessionalDrawings(records);
+    setDrawingHistoryRevision((revision) => revision + 1);
+  }
+
+  function updateSelectedProfessionalDrawing(
+    stylePatch: Partial<ProfessionalDrawingRecord["style"]> = {},
+    optionsPatch: Partial<ProfessionalDrawingRecord["options"]> = {},
+  ) {
+    const selected = professionalDrawingManagerRef.current?.getSelectedDrawing();
+    if (!selected) return;
+    if (!professionalUpdateHistoryOpenRef.current) {
+      professionalUndoStackRef.current.push(professionalDrawingsRef.current);
+      if (professionalUndoStackRef.current.length > 100) professionalUndoStackRef.current.shift();
+      professionalRedoStackRef.current = [];
+      professionalUpdateHistoryOpenRef.current = true;
+    }
+    if (professionalUpdateHistoryTimerRef.current !== null) window.clearTimeout(professionalUpdateHistoryTimerRef.current);
+    professionalUpdateHistoryTimerRef.current = window.setTimeout(() => {
+      professionalUpdateHistoryOpenRef.current = false;
+      professionalUpdateHistoryTimerRef.current = null;
+    }, 250);
+    selected.updateStyle(stylePatch);
+    selected.updateOptions(optionsPatch);
+    syncProfessionalManagerNow();
+    if (optionsPatch.zIndex !== undefined) {
+      const selectedId = selected.id;
+      replaceProfessionalManagerDrawings(professionalDrawingsRef.current);
+      professionalDrawingManagerRef.current?.selectDrawing(selectedId);
+    }
+  }
+
+  function saveSelectedDrawingTemplate() {
+    const selected = professionalDrawingManagerRef.current?.getSelectedDrawing();
+    if (!selected) return;
+    const label = ALL_DRAWING_TOOLS.find((tool) => professionalDrawingType(tool.id) === selected.type)?.label ?? selected.type;
+    setDrawingTemplates((current) => [
+      ...current,
+      {
+        id: createId("drawing-template"),
+        name: `${label} ${current.filter((template) => template.toolType === selected.type).length + 1}`,
+        toolType: selected.type,
+        style: { ...selected.style },
+        options: { ...selected.options },
+        createdAt: Date.now(),
+      },
+    ]);
+  }
+
+  function applyDrawingTemplate(template: DrawingTemplate) {
+    const selected = professionalDrawingManagerRef.current?.getSelectedDrawing();
+    if (!selected || selected.type !== template.toolType) return;
+    updateSelectedProfessionalDrawing(template.style, template.options);
+  }
+
+  function beginRenameDrawingTemplate(template: DrawingTemplate) {
+    setRenamingDrawingTemplateId(template.id);
+    setDrawingTemplateNameDraft(template.name);
+  }
+
+  function commitDrawingTemplateRename(template: DrawingTemplate) {
+    const name = drawingTemplateNameDraft.trim();
+    setRenamingDrawingTemplateId(null);
+    setDrawingTemplateNameDraft("");
+    if (!name || name === template.name) return;
+    setDrawingTemplates((current) => current.map((candidate) =>
+      candidate.id === template.id ? { ...candidate, name } : candidate));
+  }
+
+  function makeDefaultDrawingTemplate(template: DrawingTemplate) {
+    setDrawingTemplates((current) => current.map((candidate) => ({
+      ...candidate,
+      isDefault: candidate.toolType === template.toolType ? candidate.id === template.id : candidate.isDefault,
+    })));
   }
 
   useEffect(() => {
@@ -4222,9 +4571,17 @@ export default function Chart({
     let cancelled = false;
     professionalDrawingsHydrationRef.current = { instrument, ready: false };
     let cached: ProfessionalDrawingRecord[] = [];
+    const migrationClaimKey = `kwantdesk:chart-drawings:migrated:v1:${instrument}`;
+    let ownsLegacyMigration = false;
     try {
-      const raw = window.localStorage.getItem(drawingsStorageKey(instrument));
+      const raw = window.localStorage.getItem(drawingsStorageKey(instrument, chartInstanceId));
       cached = normalizeProfessionalDrawings(raw ? JSON.parse(raw) : []);
+      if (!cached.length && !window.localStorage.getItem(migrationClaimKey)) {
+        ownsLegacyMigration = true;
+        window.localStorage.setItem(migrationClaimKey, chartInstanceId);
+        const legacyRaw = window.localStorage.getItem(`kwantify-chart-drawings:${instrument}`);
+        cached = normalizeProfessionalDrawings(legacyRaw ? JSON.parse(legacyRaw) : []);
+      }
     } catch {
       cached = [];
     }
@@ -4232,14 +4589,33 @@ export default function Chart({
     setProfessionalDrawings(cached);
     replaceProfessionalManagerDrawings(cached);
 
-    void fetch(`/api/chart-drawings?instrument=${encodeURIComponent(instrument)}`, {
-      cache: "no-store",
-      credentials: "include",
-    })
-      .then(async (response) => response.ok ? response.json() as Promise<{ configured?: boolean; drawings?: unknown }> : null)
-      .then((payload) => {
-        if (cancelled || !payload?.configured || !Array.isArray(payload.drawings)) return;
-        const records = normalizeProfessionalDrawings(payload.drawings);
+    const loadPersistedDrawings = async () => {
+      const response = await fetch(`/api/chart-drawings?instrument=${encodeURIComponent(drawingPersistenceInstrument)}`, {
+        cache: "no-store",
+        credentials: "include",
+      });
+      const payload = response.ok ? await response.json() as { configured?: boolean; drawings?: unknown } : null;
+      let records = payload?.configured && Array.isArray(payload.drawings)
+        ? normalizeProfessionalDrawings(payload.drawings)
+        : [];
+      if (!records.length && ownsLegacyMigration) {
+        const legacyResponse = await fetch(`/api/chart-drawings?instrument=${encodeURIComponent(instrument)}`, {
+          cache: "no-store",
+          credentials: "include",
+        });
+        const legacyPayload = legacyResponse.ok
+          ? await legacyResponse.json() as { configured?: boolean; drawings?: unknown }
+          : null;
+        if (legacyPayload?.configured && Array.isArray(legacyPayload.drawings)) {
+          records = normalizeProfessionalDrawings(legacyPayload.drawings);
+        }
+      }
+      return records;
+    };
+
+    void loadPersistedDrawings()
+      .then((records) => {
+        if (cancelled || !records.length) return;
         setProfessionalDrawings(records);
         replaceProfessionalManagerDrawings(records);
       })
@@ -4250,14 +4626,14 @@ export default function Chart({
     return () => { cancelled = true; };
   // Manager replacement reads refs intentionally; the instrument owns hydration.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [instrument]);
+  }, [chartInstanceId, drawingPersistenceInstrument, instrument]);
 
   useEffect(() => {
     professionalDrawingsRef.current = professionalDrawings;
     if (typeof window === "undefined") return;
     if (!professionalDrawingsHydrationRef.current.ready || professionalDrawingsHydrationRef.current.instrument !== instrument) return;
     try {
-      window.localStorage.setItem(drawingsStorageKey(instrument), JSON.stringify(professionalDrawings));
+      window.localStorage.setItem(drawingsStorageKey(instrument, chartInstanceId), JSON.stringify(professionalDrawings));
     } catch {
       // Keep drawing responsive when browser storage is unavailable.
     }
@@ -4266,11 +4642,11 @@ export default function Chart({
         method: "PUT",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ instrument, drawings: professionalDrawings }),
+        body: JSON.stringify({ instrument: drawingPersistenceInstrument, drawings: professionalDrawings }),
       }).catch(() => undefined);
     }, 500);
     return () => window.clearTimeout(timeout);
-  }, [instrument, professionalDrawings]);
+  }, [chartInstanceId, drawingPersistenceInstrument, instrument, professionalDrawings]);
 
   useEffect(() => {
     selectedToolRef.current = selectedTool;
@@ -4285,6 +4661,27 @@ export default function Chart({
       professionalDrawingPreviewRef.current = null;
     }
   }, [selectedTool]);
+
+  useEffect(() => {
+    keepDrawingModeRef.current = keepDrawingMode;
+  }, [keepDrawingMode]);
+
+  useEffect(() => {
+    magnetModeRef.current = magnetMode;
+  }, [magnetMode]);
+
+  useEffect(() => {
+    const manager = professionalDrawingManagerRef.current;
+    if (!manager) return;
+    manager.getAllDrawings().forEach((drawing) => {
+      const allowed = drawing.options.timeframes;
+      const baseVisible = drawing.options.baseVisible ?? drawing.options.visible !== false;
+      drawing.updateOptions({
+        baseVisible,
+        visible: baseVisible && (!allowed?.length || allowed.includes(timeframe ?? "")),
+      });
+    });
+  }, [professionalDrawings, timeframe]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -4355,6 +4752,41 @@ export default function Chart({
       window.removeEventListener(DRAWING_TOOL_FAVORITES_EVENT, syncFavorites);
     };
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const parsed = JSON.parse(window.localStorage.getItem(DRAWING_TEMPLATES_STORAGE_KEY) ?? "[]") as unknown;
+      if (!Array.isArray(parsed)) return;
+      setDrawingTemplates(parsed.flatMap((value) => {
+        if (!value || typeof value !== "object") return [];
+        const candidate = value as Partial<DrawingTemplate>;
+        if (typeof candidate.id !== "string" || typeof candidate.name !== "string" || typeof candidate.toolType !== "string") return [];
+        if (!candidate.style || typeof candidate.style.lineColor !== "string" || typeof candidate.style.lineWidth !== "number") return [];
+        return [{
+          id: candidate.id,
+          name: candidate.name,
+          toolType: candidate.toolType,
+          style: candidate.style,
+          options: candidate.options ?? {},
+          createdAt: Number(candidate.createdAt) || Date.now(),
+          isDefault: candidate.isDefault === true,
+        } satisfies DrawingTemplate];
+      }));
+    } catch {
+      setDrawingTemplates([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    drawingTemplatesRef.current = drawingTemplates;
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem(DRAWING_TEMPLATES_STORAGE_KEY, JSON.stringify(drawingTemplates));
+    } catch {
+      // Templates remain available in memory when storage is unavailable.
+    }
+  }, [drawingTemplates]);
 
   function toggleFavoriteTool(toolId: DrawingToolId) {
     const next = favoriteToolIds.includes(toolId)
@@ -4524,7 +4956,7 @@ export default function Chart({
     setSelectedDrawingId(next.id);
     setDraftDrawing(null);
     if (selectedTool !== "cursor" && selectedTool !== "text") {
-      setSelectedTool("cursor");
+      if (!keepDrawingModeRef.current) setSelectedTool("cursor");
     }
   }
 
@@ -5617,14 +6049,30 @@ export default function Chart({
     const syncProfessionalDrawingState = () => {
       if (professionalSyncSuppressedRef.current) return;
       const records = drawingManager.exportDrawings().filter((record) => record.id !== "__kwantdesk_drawing_preview__");
+      const previous = professionalDrawingsRef.current;
+      if (JSON.stringify(previous) === JSON.stringify(records)) return;
+      if (!professionalUpdateHistoryOpenRef.current) {
+        professionalUndoStackRef.current.push(previous);
+        if (professionalUndoStackRef.current.length > 100) professionalUndoStackRef.current.shift();
+        professionalRedoStackRef.current = [];
+        professionalUpdateHistoryOpenRef.current = true;
+      }
+      if (professionalUpdateHistoryTimerRef.current !== null) window.clearTimeout(professionalUpdateHistoryTimerRef.current);
+      professionalUpdateHistoryTimerRef.current = window.setTimeout(() => {
+        professionalUpdateHistoryOpenRef.current = false;
+        professionalUpdateHistoryTimerRef.current = null;
+      }, 250);
       professionalDrawingsRef.current = records;
       setProfessionalDrawings(records);
+      setDrawingHistoryRevision((revision) => revision + 1);
     };
     const drawingUnsubscribers = [
       drawingManager.on("drawing:added", syncProfessionalDrawingState),
       drawingManager.on("drawing:removed", syncProfessionalDrawingState),
       drawingManager.on("drawing:updated", syncProfessionalDrawingState),
       drawingManager.on("drawing:cleared", syncProfessionalDrawingState),
+      drawingManager.on("drawing:selected", (event) => setSelectedProfessionalDrawingId(event.drawingId ?? null)),
+      drawingManager.on("drawing:deselected", () => setSelectedProfessionalDrawingId(null)),
     ];
     replaceProfessionalManagerDrawings(professionalDrawingsRef.current);
 
@@ -5635,7 +6083,27 @@ export default function Chart({
       const y = event.clientY - rect.top;
       const time = chart.timeScale().coordinateToTime(x);
       const price = candleSeries.coordinateToPrice(y);
-      return time === null || price === null ? null : { time, price };
+      if (time === null || price === null) return null;
+      const activeMagnet = magnetModeRef.current;
+      if (event.altKey || activeMagnet === "off") return { time, price };
+
+      const radius = activeMagnet === "weak" ? 6 : activeMagnet === "medium" ? 12 : 20;
+      let best: { anchor: ProfessionalDrawingAnchor; distance: number } | null = null;
+      for (const candle of candles) {
+        const sourceTime = Math.floor(candle.timestamp / 1_000);
+        const chartTime = eventChartTimeBySourceTimeRef.current.get(sourceTime) ?? sourceTime;
+        const candidateX = chart.timeScale().timeToCoordinate(chartTime as Time);
+        if (candidateX === null || Math.abs(candidateX - x) > radius) continue;
+        for (const candidatePrice of [candle.open, candle.high, candle.low, candle.close]) {
+          const candidateY = candleSeries.priceToCoordinate(candidatePrice);
+          if (candidateY === null) continue;
+          const distance = Math.hypot(candidateX - x, candidateY - y);
+          if (distance <= radius && (!best || distance < best.distance)) {
+            best = { anchor: { time: chartTime as Time, price: candidatePrice }, distance };
+          }
+        }
+      }
+      return best?.anchor ?? { time, price };
     };
 
     const isDrawingUiTarget = (event: MouseEvent) => {
@@ -5652,6 +6120,10 @@ export default function Chart({
     const handleProfessionalDrawingClick = (event: MouseEvent) => {
       if (isDrawingUiTarget(event)) return;
       const tool = selectedToolRef.current;
+      if (tool === "brush") {
+        if (professionalSuppressNextClickRef.current) professionalSuppressNextClickRef.current = false;
+        return;
+      }
       const point = drawingPointFromMouse(event);
       if (!point) return;
       const rect = chartContainerRef.current?.getBoundingClientRect();
@@ -5669,6 +6141,17 @@ export default function Chart({
       if (!isProfessionalDrawingTool(tool)) return;
       event.preventDefault();
       event.stopPropagation();
+      if (["text", "label", "rightPriceLabel", "leftPriceLabel"].includes(tool)) {
+        setTextEditor({
+          x: clamp(pixelPoint.x, 80, Math.max(80, rect.width - 260)),
+          y: clamp(pixelPoint.y, 40, Math.max(40, rect.height - 150)),
+          time: Number(point.time),
+          price: point.price,
+          value: "",
+          tool,
+        });
+        return;
+      }
       const pending = professionalPendingAnchorsRef.current;
       pending.push(point);
       const required = requiredProfessionalAnchors(tool);
@@ -5676,13 +6159,17 @@ export default function Chart({
         removeProfessionalPreview();
         const previewAnchors = [...pending];
         while (previewAnchors.length < required) previewAnchors.push({ ...point });
+        const defaultTemplate = drawingTemplatesRef.current.find((template) =>
+          template.isDefault && template.toolType === professionalDrawingType(tool));
         const preview = createProfessionalDrawing({
           tool,
           id: "__kwantdesk_drawing_preview__",
           anchors: previewAnchors,
-          style: drawingStyle,
+          style: defaultTemplate?.style ?? drawingStyle,
+          options: defaultTemplate ? { ...defaultTemplate.options, templateId: defaultTemplate.id } : undefined,
         });
         if (preview) {
+          configureProfessionalDrawingMarketData(preview, drawingMarketDataSource);
           professionalDrawingPreviewRef.current = preview;
           drawingManager.addDrawing(preview);
         }
@@ -5690,22 +6177,35 @@ export default function Chart({
       }
 
       removeProfessionalPreview();
+      const defaultTemplate = drawingTemplatesRef.current.find((template) =>
+        template.isDefault && template.toolType === professionalDrawingType(tool));
       const drawing = createProfessionalDrawing({
         tool,
         id: createId("drawing"),
         anchors: pending.slice(0, required),
-        style: drawingStyle,
+        style: defaultTemplate?.style ?? drawingStyle,
+        options: defaultTemplate ? { ...defaultTemplate.options, templateId: defaultTemplate.id } : undefined,
       });
       professionalPendingAnchorsRef.current = [];
       if (drawing) {
+        configureProfessionalDrawingMarketData(drawing, drawingMarketDataSource);
         drawingManager.addDrawing(drawing);
         drawingManager.selectDrawing(drawing.id);
       }
-      setSelectedTool("cursor");
+      if (!keepDrawingModeRef.current) setSelectedTool("cursor");
     };
 
     const handleProfessionalDrawingMove = (event: MouseEvent) => {
       const tool = selectedToolRef.current;
+      const brush = professionalBrushDrawingRef.current;
+      if (tool === "brush" && brush) {
+        const point = drawingPointFromMouse(event);
+        if (!point) return;
+        const last = brush.anchors.at(-1);
+        if (last && last.time === point.time && Math.abs(last.price - point.price) < priceFormat.minMove) return;
+        brush.anchors = [...brush.anchors, point];
+        return;
+      }
       const preview = professionalDrawingPreviewRef.current;
       const pending = professionalPendingAnchorsRef.current;
       if (!preview || !pending.length || !isProfessionalDrawingTool(tool)) return;
@@ -5719,6 +6219,36 @@ export default function Chart({
     const handleProfessionalDrawingPointerDown = (event: MouseEvent) => {
       const tool = selectedToolRef.current;
       if (isDrawingUiTarget(event) || (tool !== "eraser" && !isProfessionalDrawingTool(tool))) return;
+      if (tool === "brush") {
+        const point = drawingPointFromMouse(event);
+        if (!point) return;
+        const defaultTemplate = drawingTemplatesRef.current.find((template) =>
+          template.isDefault && template.toolType === professionalDrawingType(tool));
+        const brush = createProfessionalDrawing({
+          tool,
+          id: createId("drawing"),
+          anchors: [point, { ...point }],
+          style: defaultTemplate?.style ?? drawingStyle,
+          options: defaultTemplate ? { ...defaultTemplate.options, templateId: defaultTemplate.id } : undefined,
+        });
+        if (brush) {
+          drawingManager.addDrawing(brush);
+          professionalBrushDrawingRef.current = brush;
+          professionalSuppressNextClickRef.current = true;
+        }
+      }
+      event.preventDefault();
+      event.stopPropagation();
+    };
+
+    const handleProfessionalDrawingPointerUp = (event: MouseEvent) => {
+      const brush = professionalBrushDrawingRef.current;
+      if (!brush) return;
+      const point = drawingPointFromMouse(event);
+      if (point) brush.anchors = [...brush.anchors, point];
+      professionalBrushDrawingRef.current = null;
+      drawingManager.selectDrawing(brush.id);
+      if (!keepDrawingModeRef.current) setSelectedTool("cursor");
       event.preventDefault();
       event.stopPropagation();
     };
@@ -5726,6 +6256,7 @@ export default function Chart({
     chartContainerRef.current.addEventListener("click", handleProfessionalDrawingClick, true);
     chartContainerRef.current.addEventListener("mousemove", handleProfessionalDrawingMove, true);
     chartContainerRef.current.addEventListener("mousedown", handleProfessionalDrawingPointerDown, true);
+    window.addEventListener("mouseup", handleProfessionalDrawingPointerUp, true);
     lastRenderedCandleTimeRef.current = chartData.length
       ? Number(chartData[chartData.length - 1].time)
       : null;
@@ -5912,6 +6443,8 @@ export default function Chart({
       chartContainerRef.current?.removeEventListener("click", handleProfessionalDrawingClick, true);
       chartContainerRef.current?.removeEventListener("mousemove", handleProfessionalDrawingMove, true);
       chartContainerRef.current?.removeEventListener("mousedown", handleProfessionalDrawingPointerDown, true);
+      window.removeEventListener("mouseup", handleProfessionalDrawingPointerUp, true);
+      professionalBrushDrawingRef.current = null;
       removeProfessionalPreview();
       drawingUnsubscribers.forEach((unsubscribe) => unsubscribe());
       drawingManager.detach();
@@ -6221,6 +6754,33 @@ export default function Chart({
         tagName === "textarea" ||
         target?.isContentEditable;
 
+      const commandKey = event.ctrlKey || event.metaKey;
+      if (!isTypingContext && commandKey && event.key.toLowerCase() === "z") {
+        event.preventDefault();
+        if (event.shiftKey) redoProfessionalDrawing();
+        else undoProfessionalDrawing();
+        return;
+      }
+      if (!isTypingContext && commandKey && event.key.toLowerCase() === "y") {
+        event.preventDefault();
+        redoProfessionalDrawing();
+        return;
+      }
+      if (!isTypingContext && commandKey && event.key.toLowerCase() === "c") {
+        copySelectedProfessionalDrawing();
+        return;
+      }
+      if (!isTypingContext && commandKey && event.key.toLowerCase() === "v") {
+        event.preventDefault();
+        pasteProfessionalDrawing();
+        return;
+      }
+      if (!isTypingContext && commandKey && event.key.toLowerCase() === "d") {
+        event.preventDefault();
+        duplicateSelectedProfessionalDrawing();
+        return;
+      }
+
       if (event.key === "Escape") {
         const manager = professionalDrawingManagerRef.current;
         if (professionalDrawingPreviewRef.current && manager) {
@@ -6237,6 +6797,16 @@ export default function Chart({
         setDrawingInteraction(null);
         setSelectedDrawingId(null);
         setPositionSettingsDrawingId(null);
+      }
+      if (!isTypingContext && event.key === "Backspace" && professionalPendingAnchorsRef.current.length > 0) {
+        event.preventDefault();
+        professionalPendingAnchorsRef.current.pop();
+        const manager = professionalDrawingManagerRef.current;
+        if (professionalDrawingPreviewRef.current && manager) {
+          manager.removeDrawing(professionalDrawingPreviewRef.current.id);
+          professionalDrawingPreviewRef.current = null;
+        }
+        return;
       }
       if (!isTypingContext && (event.key === "Delete" || event.key === "Backspace")) {
         const selected = professionalDrawingManagerRef.current?.getSelectedDrawing();
@@ -6260,7 +6830,7 @@ export default function Chart({
     return () => {
       document.removeEventListener("keydown", onKeyDown);
     };
-  }, [drawings.length, selectedDrawingId, showObjectsPanel]);
+  }, [drawingHistoryRevision, drawings.length, selectedDrawingId, showObjectsPanel]);
 
   useEffect(() => {
     if (!contextMenu) return;
@@ -6302,6 +6872,7 @@ export default function Chart({
         .filter((tool): tool is ToolbarTool => Boolean(tool)),
     [favoriteToolIds],
   );
+  const selectedProfessionalDrawing = professionalDrawings.find((drawing) => drawing.id === selectedProfessionalDrawingId) ?? null;
   const toolbarGroups = useMemo(
     () => [
       {
@@ -6311,7 +6882,7 @@ export default function Chart({
         tools: favoriteTools,
         isActive: favoriteToolIds.includes(selectedTool),
       },
-      ...DRAWING_TOOLBAR_GROUPS.map((group) => ({
+      ...ACTIVE_DRAWING_TOOLBAR_GROUPS.map((group) => ({
         ...group,
         isActive: activeToolbarTool?.groupId === group.id,
       })),
@@ -7880,12 +8451,54 @@ export default function Chart({
           <>
             <button
               type="button"
-              onClick={() => setMagnetMode((current) => (current === "off" ? "weak" : current === "weak" ? "strong" : "off"))}
+              onClick={() => setMagnetMode((current) => (
+                current === "off" ? "weak" : current === "weak" ? "medium" : current === "medium" ? "strong" : "off"
+              ))}
               className={`flex items-center justify-center border backdrop-blur ${getToolbarButtonTone(magnetMode !== "off")}`}
               style={toolbarButtonStyle}
               title={`Magnet: ${magnetMode}`}
             >
               <Magnet className={toolbarIconClassName} />
+            </button>
+            <button
+              type="button"
+              onClick={() => setKeepDrawingMode((current) => !current)}
+              className={`flex items-center justify-center border backdrop-blur ${getToolbarButtonTone(keepDrawingMode)}`}
+              style={toolbarButtonStyle}
+              title={keepDrawingMode ? "Keep Drawing Mode on" : "Keep Drawing Mode off"}
+              aria-pressed={keepDrawingMode}
+            >
+              <Pin className={toolbarIconClassName} />
+            </button>
+            <button
+              type="button"
+              onClick={undoProfessionalDrawing}
+              disabled={professionalUndoStackRef.current.length === 0}
+              className="flex items-center justify-center border border-transparent bg-transparent text-muted transition-all hover:bg-surface hover:text-foreground disabled:opacity-30"
+              style={toolbarButtonStyle}
+              title="Undo drawing (Ctrl/Cmd+Z)"
+            >
+              <Undo2 className={toolbarIconClassName} />
+            </button>
+            <button
+              type="button"
+              onClick={redoProfessionalDrawing}
+              disabled={professionalRedoStackRef.current.length === 0}
+              className="flex items-center justify-center border border-transparent bg-transparent text-muted transition-all hover:bg-surface hover:text-foreground disabled:opacity-30"
+              style={toolbarButtonStyle}
+              title="Redo drawing (Ctrl/Cmd+Shift+Z)"
+            >
+              <Redo2 className={toolbarIconClassName} />
+            </button>
+            <button
+              type="button"
+              onClick={duplicateSelectedProfessionalDrawing}
+              disabled={!selectedProfessionalDrawingId}
+              className="flex items-center justify-center border border-transparent bg-transparent text-muted transition-all hover:bg-surface hover:text-foreground disabled:opacity-30"
+              style={toolbarButtonStyle}
+              title="Duplicate selected drawing (Ctrl/Cmd+D)"
+            >
+              <Copy className={toolbarIconClassName} />
             </button>
             <button
               type="button"
@@ -7925,6 +8538,16 @@ export default function Chart({
               title="Object list"
             >
               <Link2 className={toolbarIconClassName} />
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowDrawingSettings((current) => !current)}
+              disabled={!selectedProfessionalDrawingId}
+              className={`flex items-center justify-center border backdrop-blur disabled:opacity-30 ${getToolbarButtonTone(showDrawingSettings)}`}
+              style={toolbarButtonStyle}
+              title="Drawing settings and templates"
+            >
+              <Settings2 className={toolbarIconClassName} />
             </button>
             <button
               type="button"
@@ -7971,11 +8594,38 @@ export default function Chart({
                   <div className="flex items-center gap-1">
                     <button
                       type="button"
-                      onClick={() => professionalDrawingManagerRef.current?.selectDrawing(drawing.id)}
+                      onClick={() => {
+                        professionalDrawingManagerRef.current?.selectDrawing(drawing.id);
+                        setSelectedProfessionalDrawingId(drawing.id);
+                      }}
                       className="rounded-lg p-1.5 text-muted hover:bg-primary/10 hover:text-primary"
                       aria-label={`Select ${label}`}
                     >
                       <MousePointer2 className="h-4 w-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const target = professionalDrawingManagerRef.current?.getDrawing(drawing.id);
+                        target?.updateOptions({ visible: drawing.options.visible === false });
+                        syncProfessionalManagerNow();
+                      }}
+                      className="rounded-lg p-1.5 text-muted hover:bg-primary/10 hover:text-primary"
+                      aria-label={`${drawing.options.visible === false ? "Show" : "Hide"} ${label}`}
+                    >
+                      <Eye className="h-4 w-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const target = professionalDrawingManagerRef.current?.getDrawing(drawing.id);
+                        target?.updateOptions({ locked: drawing.options.locked !== true });
+                        syncProfessionalManagerNow();
+                      }}
+                      className="rounded-lg p-1.5 text-muted hover:bg-primary/10 hover:text-primary"
+                      aria-label={`${drawing.options.locked ? "Unlock" : "Lock"} ${label}`}
+                    >
+                      <Lock className="h-4 w-4" />
                     </button>
                     <button type="button" onClick={() => professionalDrawingManagerRef.current?.removeDrawing(drawing.id)} className="rounded-lg p-1.5 text-muted hover:bg-danger/10 hover:text-danger">
                       <Trash2 className="h-4 w-4" />
@@ -7987,6 +8637,168 @@ export default function Chart({
             )}
           </div>
         </div>
+      )}
+
+      {toolbarEnabled && showDrawingSettings && selectedProfessionalDrawing && (
+        <aside
+          data-chart-drawing-ui
+          className="absolute bottom-0 right-0 top-0 z-40 w-[360px] overflow-y-auto border-l border-border bg-panel/98 shadow-2xl"
+          aria-label="Drawing settings"
+        >
+          <div className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-panel px-4 py-3">
+            <div>
+              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted">Drawing settings</div>
+              <div className="mt-1 text-[13px] font-medium text-foreground">
+                {ALL_DRAWING_TOOLS.find((tool) => professionalDrawingType(tool.id) === selectedProfessionalDrawing.type)?.label ?? selectedProfessionalDrawing.type}
+              </div>
+            </div>
+            <button type="button" onClick={() => setShowDrawingSettings(false)} className="p-1.5 text-muted hover:text-foreground" aria-label="Close drawing settings">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+
+          <div className="space-y-5 p-4">
+            <section className="space-y-3">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted">Style</div>
+              <label className="flex items-center justify-between gap-4 text-[12px] text-muted">
+                Line colour
+                <input
+                  type="color"
+                  value={selectedProfessionalDrawing.style.lineColor}
+                  onChange={(event) => updateSelectedProfessionalDrawing({ lineColor: event.target.value, labelColor: event.target.value })}
+                  className="h-8 w-12 border border-border bg-surface"
+                />
+              </label>
+              <label className="block text-[12px] text-muted">
+                <span className="mb-2 flex justify-between"><span>Line width</span><span>{selectedProfessionalDrawing.style.lineWidth.toFixed(1)} px</span></span>
+                <input
+                  type="range"
+                  min={0.5}
+                  max={8}
+                  step={0.5}
+                  value={selectedProfessionalDrawing.style.lineWidth}
+                  onChange={(event) => updateSelectedProfessionalDrawing({ lineWidth: Number(event.target.value) })}
+                  className="w-full accent-primary"
+                />
+              </label>
+              <label className="block text-[12px] text-muted">
+                <span className="mb-2 flex justify-between"><span>Fill opacity</span><span>{Math.round((selectedProfessionalDrawing.style.fillOpacity ?? 0.12) * 100)}%</span></span>
+                <input
+                  type="range"
+                  min={0}
+                  max={0.8}
+                  step={0.01}
+                  value={selectedProfessionalDrawing.style.fillOpacity ?? 0.12}
+                  onChange={(event) => updateSelectedProfessionalDrawing({ fillOpacity: Number(event.target.value) })}
+                  className="w-full accent-primary"
+                />
+              </label>
+              <label className="block text-[12px] text-muted">
+                <span className="mb-2 block">Line style</span>
+                <select
+                  value={(selectedProfessionalDrawing.style.lineDash ?? []).join(",")}
+                  onChange={(event) => updateSelectedProfessionalDrawing({ lineDash: event.target.value ? event.target.value.split(",").map(Number) : [] })}
+                  className="h-9 w-full border border-border bg-surface px-3 text-[12px] text-foreground outline-none focus:border-primary"
+                >
+                  <option value="">Solid</option>
+                  <option value="6,4">Dashed</option>
+                  <option value="2,3">Dotted</option>
+                  <option value="10,4,2,4">Dash-dot</option>
+                </select>
+              </label>
+            </section>
+
+            <section className="space-y-2 border-t border-border pt-4">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted">Visibility and lock</div>
+              <label className="flex items-center justify-between text-[12px] text-muted">
+                Visible
+                <input type="checkbox" checked={(selectedProfessionalDrawing.options.baseVisible ?? selectedProfessionalDrawing.options.visible) !== false} onChange={(event) => updateSelectedProfessionalDrawing({}, { baseVisible: event.target.checked, visible: event.target.checked })} className="accent-primary" />
+              </label>
+              <label className="flex items-center justify-between text-[12px] text-muted">
+                Locked
+                <input type="checkbox" checked={selectedProfessionalDrawing.options.locked === true} onChange={(event) => updateSelectedProfessionalDrawing({}, { locked: event.target.checked })} className="accent-primary" />
+              </label>
+              <label className="flex items-center justify-between text-[12px] text-muted">
+                Extend left
+                <input type="checkbox" checked={selectedProfessionalDrawing.options.extendLeft === true} onChange={(event) => updateSelectedProfessionalDrawing({}, { extendLeft: event.target.checked })} className="accent-primary" />
+              </label>
+              <label className="flex items-center justify-between text-[12px] text-muted">
+                Extend right
+                <input type="checkbox" checked={selectedProfessionalDrawing.options.extendRight === true} onChange={(event) => updateSelectedProfessionalDrawing({}, { extendRight: event.target.checked })} className="accent-primary" />
+              </label>
+              <label className="block text-[12px] text-muted">
+                <span className="mb-2 block">Timeframe visibility</span>
+                <select
+                  value={!selectedProfessionalDrawing.options.timeframes?.length
+                    ? "all"
+                    : selectedProfessionalDrawing.options.timeframes.length === 1 && selectedProfessionalDrawing.options.timeframes[0] === timeframe
+                      ? "current"
+                      : selectedProfessionalDrawing.options.timeframes.join(",")}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    updateSelectedProfessionalDrawing({}, {
+                      timeframes: value === "all"
+                        ? []
+                        : value === "current"
+                          ? [timeframe ?? "1m"]
+                          : value.split(","),
+                    });
+                  }}
+                  className="h-9 w-full border border-border bg-surface px-3 text-[12px] text-foreground outline-none focus:border-primary"
+                >
+                  <option value="all">All timeframes</option>
+                  <option value="current">Current timeframe only</option>
+                  <option value="1m,2m,3m,5m,10m,15m,30m,45m,1h">Intraday</option>
+                  <option value="4h,1D,1W">Higher timeframes</option>
+                </select>
+              </label>
+              <label className="block text-[12px] text-muted">
+                <span className="mb-2 flex justify-between"><span>Layer order</span><span>{selectedProfessionalDrawing.options.zIndex ?? 0}</span></span>
+                <input type="range" min={-10} max={10} step={1} value={selectedProfessionalDrawing.options.zIndex ?? 0} onChange={(event) => updateSelectedProfessionalDrawing({}, { zIndex: Number(event.target.value) })} className="w-full accent-primary" />
+              </label>
+            </section>
+
+            <section className="space-y-3 border-t border-border pt-4">
+              <div className="flex items-center justify-between">
+                <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted">Templates</div>
+                <button type="button" onClick={saveSelectedDrawingTemplate} className="border border-border bg-surface px-2.5 py-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-foreground hover:border-primary/50">
+                  Save template
+                </button>
+              </div>
+              {drawingTemplates.filter((template) => template.toolType === selectedProfessionalDrawing.type).length === 0 ? (
+                <div className="border border-dashed border-border px-3 py-5 text-center text-[11px] text-muted">No saved templates for this tool.</div>
+              ) : drawingTemplates.filter((template) => template.toolType === selectedProfessionalDrawing.type).map((template) => (
+                <div key={template.id} className="flex items-center justify-between border border-border bg-surface/70 px-3 py-2">
+                  <button type="button" onClick={() => makeDefaultDrawingTemplate(template)} className={template.isDefault ? "mr-2 text-primary" : "mr-2 text-muted hover:text-foreground"} aria-label={`Make ${template.name} the default`} title="Use as the default for new drawings">
+                    <Star className="h-3.5 w-3.5" fill={template.isDefault ? "currentColor" : "none"} />
+                  </button>
+                  {renamingDrawingTemplateId === template.id ? (
+                    <input
+                      autoFocus
+                      value={drawingTemplateNameDraft}
+                      onChange={(event) => setDrawingTemplateNameDraft(event.target.value)}
+                      onBlur={() => commitDrawingTemplateRename(template)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") event.currentTarget.blur();
+                        if (event.key === "Escape") {
+                          setRenamingDrawingTemplateId(null);
+                          setDrawingTemplateNameDraft("");
+                        }
+                      }}
+                      aria-label="Template name"
+                      className="min-w-0 flex-1 border border-primary/50 bg-background px-2 py-1 text-[12px] text-foreground outline-none"
+                    />
+                  ) : (
+                    <button type="button" onClick={() => applyDrawingTemplate(template)} onDoubleClick={() => beginRenameDrawingTemplate(template)} className="min-w-0 flex-1 truncate text-left text-[12px] text-foreground" title="Apply. Double-click to rename.">{template.name}</button>
+                  )}
+                  <button type="button" onClick={() => setDrawingTemplates((current) => current.filter((candidate) => candidate.id !== template.id))} className="p-1 text-muted hover:text-danger" aria-label={`Delete ${template.name}`}>
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ))}
+            </section>
+          </div>
+        </aside>
       )}
 
       {textEditor && (
@@ -8025,13 +8837,28 @@ export default function Chart({
                   setTextEditor(null);
                   return;
                 }
-                finishDraft({
+                const drawing = createProfessionalDrawing({
                   id: createId("drawing"),
                   tool: textEditor.tool,
-                  points: [{ time: textEditor.time, price: textEditor.price }],
-                  text: textEditor.value.trim(),
-                  color: chrome.stroke,
+                  anchors: [{ time: textEditor.time as Time, price: textEditor.price }],
+                  style: {
+                    lineColor: chrome.stroke,
+                    lineWidth: 2,
+                    lineDash: [],
+                    fillColor: withAlpha(chrome.stroke, 0.12),
+                    fillOpacity: 0.12,
+                    showLabels: true,
+                    labelFont: "12px 'JetBrains Mono', monospace",
+                    labelColor: chrome.stroke,
+                  },
+                  options: { text: textEditor.value.trim() },
                 });
+                if (drawing) {
+                  configureProfessionalDrawingMarketData(drawing, drawingMarketDataSource);
+                  professionalDrawingManagerRef.current?.addDrawing(drawing);
+                  professionalDrawingManagerRef.current?.selectDrawing(drawing.id);
+                  if (!keepDrawingModeRef.current) setSelectedTool("cursor");
+                }
                 setTextEditor(null);
               }}
               className="rounded-xl bg-primary px-3 py-2 text-[12px] font-semibold text-background"

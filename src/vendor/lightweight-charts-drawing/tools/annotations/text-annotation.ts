@@ -41,19 +41,18 @@ export class TextAnnotation extends Drawing {
     style: Partial<DrawingStyle> = {},
     options: Partial<TextAnnotationOptions> = {}
   ) {
-    const { text, fontSize, fontFamily, fontWeight, textAlign, backgroundColor, borderColor, padding, ...baseOptions } = options;
-    super(id, anchors, style, baseOptions);
+    super(id, anchors, style, options);
 
     this._textOptions = {
       ...this._options,
-      text: text ?? 'Text',
-      fontSize: fontSize ?? 14,
-      fontFamily: fontFamily ?? 'sans-serif',
-      fontWeight: fontWeight ?? 'normal',
-      textAlign: textAlign ?? 'left',
-      backgroundColor: backgroundColor ?? 'rgba(255, 255, 255, 0.9)',
-      borderColor: borderColor ?? this._style.lineColor,
-      padding: padding ?? 8,
+      text: options.text ?? 'Text',
+      fontSize: options.fontSize ?? 14,
+      fontFamily: options.fontFamily ?? 'sans-serif',
+      fontWeight: options.fontWeight ?? 'normal',
+      textAlign: options.textAlign ?? 'left',
+      backgroundColor: options.backgroundColor ?? 'rgba(255, 255, 255, 0.9)',
+      borderColor: options.borderColor ?? this._style.lineColor,
+      padding: options.padding ?? 8,
     };
   }
 
@@ -63,12 +62,24 @@ export class TextAnnotation extends Drawing {
 
   setTextOptions(options: Partial<TextAnnotationOptions>): void {
     this._textOptions = { ...this._textOptions, ...options };
+    this._options = { ...this._options, ...options };
     this.requestUpdate();
   }
 
   setText(text: string): void {
     this._textOptions.text = text;
+    this._options.text = text;
     this.requestUpdate();
+  }
+
+  override updateOptions(options: Partial<TextAnnotationOptions>): void {
+    super.updateOptions(options);
+    this._textOptions = { ...this._textOptions, ...options };
+  }
+
+  override fromJSON(data: Parameters<Drawing['fromJSON']>[0]): void {
+    super.fromJSON(data);
+    this._textOptions = { ...this._textOptions, ...data.options };
   }
 
   getText(): string {

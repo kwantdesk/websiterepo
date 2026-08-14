@@ -57,10 +57,22 @@ export const DEFAULT_DRAWING_STYLE: DrawingStyle = {
  */
 export interface DrawingOptions {
   visible?: boolean;
+  baseVisible?: boolean;
   locked?: boolean;
   zIndex?: number;
   extendLeft?: boolean;
   extendRight?: boolean;
+  timeframes?: string[];
+  templateId?: string;
+  /** Persisted annotation content and typography for text-based tools. */
+  text?: string;
+  fontSize?: number;
+  fontFamily?: string;
+  fontWeight?: string;
+  textAlign?: CanvasTextAlign;
+  backgroundColor?: string;
+  borderColor?: string;
+  padding?: number;
 }
 
 /**

@@ -9,6 +9,10 @@ import {
   type IDrawing,
   type SerializedDrawing,
 } from "@/vendor/lightweight-charts-drawing";
+import {
+  KwantToolDrawing,
+  type KwantMarketDataSource,
+} from "@/vendor/lightweight-charts-drawing/tools/kwant/kwant-tool-drawing";
 
 /**
  * Maps the existing KwantDesk toolbar vocabulary to the canvas-native drawing
@@ -26,6 +30,9 @@ export const PROFESSIONAL_DRAWING_TYPE_BY_TOOL: Readonly<Record<string, string>>
   verticalLine: "vertical-line",
   crossLine: "cross-line",
   parallelChannel: "parallel-channel",
+  priceChannel: "price-channel",
+  highlightX: "highlight-x",
+  highlightY: "highlight-y",
   regressionTrend: "regression-trend",
   flatTopBottom: "flat-top-bottom",
   disjointChannel: "disjoint-channel",
@@ -44,6 +51,7 @@ export const PROFESSIONAL_DRAWING_TYPE_BY_TOOL: Readonly<Record<string, string>>
   fibSpeedResistanceArcs: "fib-arcs",
   fibWedge: "fib-wedge",
   pitchfan: "pitchfan",
+  fibFan: "fib-fan",
   gannBox: "gann-box",
   gannSquareFixed: "gann-square-fixed",
   gannSquare: "gann-square",
@@ -65,6 +73,9 @@ export const PROFESSIONAL_DRAWING_TYPE_BY_TOOL: Readonly<Record<string, string>>
   arrowMarkUp: "arrow-mark-up",
   arrowMarkDown: "arrow-mark-down",
   text: "text-annotation",
+  label: "label",
+  rightPriceLabel: "right-price-label",
+  leftPriceLabel: "left-price-label",
   anchoredText: "anchored-text",
   note: "note",
   priceNote: "price-note",
@@ -75,6 +86,11 @@ export const PROFESSIONAL_DRAWING_TYPE_BY_TOOL: Readonly<Record<string, string>>
   priceLabel: "price-label",
   signpost: "signpost",
   flagMark: "flag-mark",
+  elliottImpulseWave: "elliott-impulse",
+  elliottCorrectionWave: "elliott-correction",
+  elliottTriangleWave: "elliott-triangle",
+  elliottDoubleComboWave: "elliott-double-combo",
+  elliottTripleComboWave: "elliott-triple-combo",
   longPosition: "long-position",
   shortPosition: "short-position",
   positionForecast: "forecast",
@@ -83,6 +99,20 @@ export const PROFESSIONAL_DRAWING_TYPE_BY_TOOL: Readonly<Record<string, string>>
   priceRange: "price-range",
   dateRange: "date-range",
   datePriceRange: "date-price-range",
+  ruler: "ruler",
+  measure: "measure",
+  dot: "dot",
+  diamond: "diamond",
+  square: "square",
+  upArrow: "up-arrow",
+  downArrow: "down-arrow",
+  anchoredVwap: "anchored-vwap",
+  dynamicPoc: "dynamic-poc",
+  cvdCorrelation: "cvd-correlation",
+  marketProfile: "market-profile",
+  fixedRangeVolumeProfile: "fixed-market-profile",
+  anchoredVolumeProfile: "anchored-market-profile",
+  zigzagTpoProfile: "zigzag-tpo-profile",
 } as const;
 
 const PROFESSIONAL_TOOL_BY_TYPE = Object.fromEntries(
@@ -134,6 +164,16 @@ export function drawingFromSerialized(record: SerializedDrawing): IDrawing | nul
   return drawing;
 }
 
+export function configureProfessionalDrawingMarketData(
+  drawing: IDrawing,
+  source: KwantMarketDataSource,
+): IDrawing {
+  if (drawing instanceof KwantToolDrawing) drawing.setMarketDataSource(source);
+  return drawing;
+}
+
+export type { KwantMarketDataSource };
+
 function finiteNumber(value: unknown): number | null {
   const number = typeof value === "number" ? value : Number(value);
   return Number.isFinite(number) ? number : null;
@@ -170,10 +210,23 @@ function normalizeNativeRecord(value: unknown): SerializedDrawing | null {
     },
     options: {
       visible: candidate.options?.visible !== false,
+      baseVisible: candidate.options?.baseVisible ?? candidate.options?.visible !== false,
       locked: candidate.options?.locked === true,
       zIndex: candidate.options?.zIndex ?? 0,
       extendLeft: candidate.options?.extendLeft === true,
       extendRight: candidate.options?.extendRight === true,
+      timeframes: Array.isArray(candidate.options?.timeframes)
+        ? candidate.options.timeframes.filter((value): value is string => typeof value === "string")
+        : undefined,
+      templateId: typeof candidate.options?.templateId === "string" ? candidate.options.templateId : undefined,
+      text: typeof candidate.options?.text === "string" ? candidate.options.text : undefined,
+      fontSize: finiteNumber(candidate.options?.fontSize) ?? undefined,
+      fontFamily: typeof candidate.options?.fontFamily === "string" ? candidate.options.fontFamily : undefined,
+      fontWeight: typeof candidate.options?.fontWeight === "string" ? candidate.options.fontWeight : undefined,
+      textAlign: candidate.options?.textAlign,
+      backgroundColor: typeof candidate.options?.backgroundColor === "string" ? candidate.options.backgroundColor : undefined,
+      borderColor: typeof candidate.options?.borderColor === "string" ? candidate.options.borderColor : undefined,
+      padding: finiteNumber(candidate.options?.padding) ?? undefined,
     },
   };
 }
@@ -221,7 +274,7 @@ function migrateLegacyRecord(value: unknown): SerializedDrawing | null {
       labelFont: "12px 'JetBrains Mono', monospace",
       labelColor: color,
     },
-    options: { visible: true, locked: false, zIndex: 0 },
+    options: { visible: true, baseVisible: true, locked: false, zIndex: 0 },
   };
 }
 

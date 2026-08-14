@@ -77,6 +77,20 @@ import { Path } from '../tools/shapes/path';
 import { Polyline } from '../tools/shapes/polyline';
 import { Curve } from '../tools/shapes/curve';
 import { DoubleCurve } from '../tools/shapes/double-curve';
+import { KwantToolDrawing, type KwantToolKind } from '../tools/kwant/kwant-tool-drawing';
+
+const kwantTool = (
+  type: KwantToolKind,
+  name: string,
+  category: DrawingCategory,
+  requiredAnchors: number,
+): ToolRegistryEntry => ({
+  type,
+  name,
+  category,
+  requiredAnchors,
+  factory: (id, anchors, style, options) => new KwantToolDrawing(type, requiredAnchors, id, anchors, style, options),
+});
 
 /**
  * Tool definition with factory function
@@ -89,6 +103,36 @@ interface ToolRegistryEntry extends DrawingToolDefinition {
  * All registered drawing tools
  */
 const TOOL_DEFINITIONS: ToolRegistryEntry[] = [
+  // KwantDesk's bounded professional tool set. These entries cover the tools
+  // that are not native to the vendored package while keeping one registry and
+  // one canvas interaction manager authoritative.
+  kwantTool('price-channel', 'Price Channel', 'channel', 3),
+  kwantTool('highlight-x', 'Highlight X', 'shape', 2),
+  kwantTool('highlight-y', 'Highlight Y', 'shape', 2),
+  kwantTool('ruler', 'Ruler', 'measurement', 3),
+  kwantTool('measure', 'Measure', 'measurement', 2),
+  kwantTool('fib-fan', 'Fibo Fan', 'fibonacci', 2),
+  kwantTool('elliott-impulse', 'Impulse (12345)', 'annotation', 6),
+  kwantTool('elliott-correction', 'Correction (ABC)', 'annotation', 4),
+  kwantTool('elliott-triangle', 'Triangle (ABCDE)', 'annotation', 6),
+  kwantTool('elliott-double-combo', 'Double Combo (WXY)', 'annotation', 4),
+  kwantTool('elliott-triple-combo', 'Triple Combo (WXYXZ)', 'annotation', 6),
+  kwantTool('label', 'Label', 'annotation', 1),
+  kwantTool('right-price-label', 'Right Price Label', 'annotation', 1),
+  kwantTool('left-price-label', 'Left Price Label', 'annotation', 1),
+  kwantTool('dot', 'Dot', 'annotation', 1),
+  kwantTool('diamond', 'Diamond', 'annotation', 1),
+  kwantTool('square', 'Square', 'annotation', 1),
+  kwantTool('up-arrow', 'Up Arrow', 'annotation', 1),
+  kwantTool('down-arrow', 'Down Arrow', 'annotation', 1),
+  kwantTool('anchored-vwap', 'Anchored VWAP', 'measurement', 1),
+  kwantTool('dynamic-poc', 'Dynamic POC', 'measurement', 2),
+  kwantTool('cvd-correlation', 'CVD Correlation', 'measurement', 2),
+  kwantTool('market-profile', 'Market Profile', 'measurement', 2),
+  kwantTool('fixed-market-profile', 'Fixed Market Profile', 'measurement', 2),
+  kwantTool('anchored-market-profile', 'Anchored Market Profile', 'measurement', 1),
+  kwantTool('zigzag-tpo-profile', 'ZigZag TPO & Profile', 'measurement', 2),
+
   // Line Tools
   {
     type: 'trend-line',
