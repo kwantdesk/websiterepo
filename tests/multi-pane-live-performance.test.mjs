@@ -43,3 +43,17 @@ test("live profiles and heatmap style work are throttled independently", () => {
   assert.match(renderer, /lastFontStyleSyncAt/);
   assert.match(renderer, /now - this\.lastFontStyleSyncAt >= 1_000/);
 });
+
+test("visible quotes fan out once per display frame instead of at a fixed 10fps", () => {
+  assert.match(workspace, /function scheduleLiveWatchlistPaint\(key: string\)/);
+  assert.match(workspace, /liveWatchlistNotifyFrame = window\.requestAnimationFrame/);
+  assert.doesNotMatch(workspace, /liveWatchlistNotifyTimers/);
+});
+
+test("a live candle frame clones history once while every tick still reaches execution", () => {
+  assert.match(workspace, /mutateWorkingCopy = false/);
+  assert.match(workspace, /const updated = mutateWorkingCopy \? candles : \[\.\.\.candles\]/);
+  assert.match(workspace, /\), \[\.\.\.previous\]\);/);
+  assert.match(workspace, /const currentLedger = paperLedgerRef\.current/);
+  assert.match(workspace, /syncPaperLedgerUi\(executionChanged\)/);
+});

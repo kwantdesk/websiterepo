@@ -473,10 +473,62 @@ type ChartExecutionQuote = {
   timestamp: number;
 };
 
+function paperLedgerExecutionShapeChanged(
+  previous: PaperTradingLedger,
+  next: PaperTradingLedger,
+) {
+  const accountIds = new Set([
+    ...Object.keys(previous.accounts),
+    ...Object.keys(next.accounts),
+  ]);
+  for (const accountId of accountIds) {
+    const before = previous.accounts[accountId];
+    const after = next.accounts[accountId];
+    if (!before || !after) return true;
+    if (
+      before.cashBalance !== after.cashBalance
+      || before.realizedPnl !== after.realizedPnl
+      || before.fills.length !== after.fills.length
+      || before.orders.length !== after.orders.length
+      || before.positions.length !== after.positions.length
+    ) return true;
+    for (let index = 0; index < before.orders.length; index += 1) {
+      const left = before.orders[index];
+      const right = after.orders[index];
+      if (!right || left.id !== right.id || left.status !== right.status) return true;
+    }
+    for (let index = 0; index < before.positions.length; index += 1) {
+      const left = before.positions[index];
+      const right = after.positions[index];
+      if (
+        !right
+        || left.id !== right.id
+        || left.status !== right.status
+        || left.remainingQuantity !== right.remainingQuantity
+      ) return true;
+    }
+  }
+  return false;
+}
+
 const liveWatchlistSnapshots = new Map<string, LiveWatchlistSnapshot>();
 const liveWatchlistSubscribers = new Map<string, Set<() => void>>();
-const liveWatchlistNotifyTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const dirtyLiveWatchlistKeys = new Set<string>();
+let liveWatchlistNotifyFrame: number | null = null;
 const liveWatchlistFlashTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+function scheduleLiveWatchlistPaint(key: string) {
+  dirtyLiveWatchlistKeys.add(key);
+  if (liveWatchlistNotifyFrame !== null) return;
+  liveWatchlistNotifyFrame = window.requestAnimationFrame(() => {
+    liveWatchlistNotifyFrame = null;
+    const keys = [...dirtyLiveWatchlistKeys];
+    dirtyLiveWatchlistKeys.clear();
+    for (const dirtyKey of keys) {
+      liveWatchlistSubscribers.get(dirtyKey)?.forEach((notify) => notify());
+    }
+  });
+}
 
 function publishLiveWatchlistQuote(
   key: string,
@@ -507,17 +559,14 @@ function publishLiveWatchlistQuote(
     const current = liveWatchlistSnapshots.get(key);
     if (!current?.flash) return;
     liveWatchlistSnapshots.set(key, { ...current, flash: null });
-    liveWatchlistSubscribers.get(key)?.forEach((notify) => notify());
+    scheduleLiveWatchlistPaint(key);
   }, 600));
 
-  // Paint the small watchlist cells independently of the enormous workspace
-  // shell. Quotes are coalesced to 10fps so a burst of CME packets cannot make
-  // React rebuild every chart pane or starve primary navigation.
-  if (liveWatchlistNotifyTimers.has(key)) return;
-  liveWatchlistNotifyTimers.set(key, setTimeout(() => {
-    liveWatchlistNotifyTimers.delete(key);
-    liveWatchlistSubscribers.get(key)?.forEach((notify) => notify());
-  }, 100));
+  // Paint the small watchlist cells independently of the workspace shell at
+  // the display's native refresh cadence. One shared frame fans out every
+  // dirty symbol, so 60/120/144 Hz screens remain smooth without creating one
+  // React render or animation callback per CME packet.
+  scheduleLiveWatchlistPaint(key);
 }
 
 function subscribeLiveWatchlistQuote(key: string, notify: () => void) {
@@ -2134,6 +2183,7 @@ function mergeLiveMidIntoCandles(
     trades?: number;
     delta?: number;
   },
+  mutateWorkingCopy = false,
 ) {
   const executedSize = flow?.isTrade ? Math.max(0, Number(flow.size ?? 0)) : 0;
   const executedTrades = flow?.isTrade ? Math.max(1, Number(flow.trades ?? 1)) : 0;
@@ -2160,7 +2210,11 @@ function mergeLiveMidIntoCandles(
     }];
   }
 
-  const updated = [...candles];
+  // A live frame can contain first/low/high/last ticks. Clone the historical
+  // array once for the frame, then update that private working copy in place;
+  // cloning thousands of candle references for every tick was the dominant
+  // multi-pane chart allocation during a fast market.
+  const updated = mutateWorkingCopy ? candles : [...candles];
   const lastIndex = updated.length - 1;
   const referencePrice = lastIndex > 0 ? updated[lastIndex - 1].close : undefined;
   const repairedLast = sanitizeCandle(updated[lastIndex], symbol, referencePrice);
@@ -2218,6 +2272,7 @@ function mergeLiveMidIntoCandles(
       timeframe,
       tickTimestamp,
       flow,
+      true,
     );
   }
 
@@ -5496,7 +5551,8 @@ function WorkspaceChartPane({
               // Keep Databento as the uninterrupted price source, but do not
               // count its execution fields on top of the Rithmic prints.
               rithmicConnectedRef.current ? undefined : tick,
-            ), previous);
+              true,
+            ), [...previous]);
         if (next === previous || !next.length) return;
         latestCandlesRef.current = next;
         const latest = next.at(-1)!;
@@ -5507,7 +5563,7 @@ function WorkspaceChartPane({
         const now = Date.now();
         if (newBar || now - lastCandleStateSyncRef.current >= 500) {
           lastCandleStateSyncRef.current = now;
-          setCandles(next);
+          startTransition(() => setCandles([...next]));
         }
       });
     };
@@ -6682,24 +6738,55 @@ export default function KwantifyWorkspace({
   const [paperLedger, setPaperLedger] = useState<PaperTradingLedger>(() =>
     typeof window === "undefined" ? emptyPaperTradingLedger() : loadPaperTradingLedger());
   const paperLedgerRef = useRef(paperLedger);
+  const paperLedgerUiTimerRef = useRef<number | null>(null);
+  const paperLedgerUiLastSyncRef = useRef(0);
   const suspendedPaperProtectionIdsRef = useRef<Set<string>>(new Set());
   const [activeChartExecutionQuote, setActiveChartExecutionQuote] = useState<ChartExecutionQuote | null>(null);
   const activeChartExecutionQuoteRef = useRef<ChartExecutionQuote | null>(null);
   const activeChartExecutionQuoteUiRef = useRef<ChartExecutionQuote | null>(null);
   const activeChartExecutionQuoteUiAtRef = useRef(0);
+  const syncPaperLedgerUi = useCallback((immediate = false) => {
+    const flush = () => {
+      paperLedgerUiTimerRef.current = null;
+      paperLedgerUiLastSyncRef.current = performance.now();
+      const latest = paperLedgerRef.current;
+      setPaperLedger((current) => current === latest ? current : latest);
+    };
+    if (immediate) {
+      if (paperLedgerUiTimerRef.current !== null) {
+        window.clearTimeout(paperLedgerUiTimerRef.current);
+        paperLedgerUiTimerRef.current = null;
+      }
+      flush();
+      return;
+    }
+    if (paperLedgerUiTimerRef.current !== null) return;
+    const elapsed = performance.now() - paperLedgerUiLastSyncRef.current;
+    paperLedgerUiTimerRef.current = window.setTimeout(flush, Math.max(0, 100 - elapsed));
+  }, []);
+  const commitPaperLedger = useCallback((next: PaperTradingLedger) => {
+    paperLedgerRef.current = next;
+    syncPaperLedgerUi(true);
+  }, [syncPaperLedgerUi]);
   const handleActiveChartExecutionQuote = useCallback((quote: ChartExecutionQuote) => {
     activeChartExecutionQuoteRef.current = quote;
-    setPaperLedger((current) => {
-      const next = processPaperQuote(
-        current,
-        paperTradingAccounts,
-        quote.symbol,
-        { bid: quote.bid, ask: quote.ask, timestamp: quote.timestamp },
-        { suspendedProtectionPositionIds: suspendedPaperProtectionIdsRef.current },
-      );
-      paperLedgerRef.current = next;
-      return next;
-    });
+    const currentLedger = paperLedgerRef.current;
+    const nextLedger = processPaperQuote(
+      currentLedger,
+      paperTradingAccounts,
+      quote.symbol,
+      { bid: quote.bid, ask: quote.ask, timestamp: quote.timestamp },
+      { suspendedProtectionPositionIds: suspendedPaperProtectionIdsRef.current },
+    );
+    if (nextLedger !== currentLedger) {
+      const executionChanged = paperLedgerExecutionShapeChanged(currentLedger, nextLedger);
+      paperLedgerRef.current = nextLedger;
+      // Order fills and SL/TP exits remain synchronous. Mark-to-market P&L is
+      // sampled into React at 10 Hz so an open trade cannot rerender the full
+      // workspace on every exchange packet; the execution engine still sees
+      // and evaluates every quote in the ref-backed ledger above.
+      syncPaperLedgerUi(executionChanged);
+    }
     const now = Date.now();
     const previous = activeChartExecutionQuoteUiRef.current;
     if (
@@ -6711,7 +6798,7 @@ export default function KwantifyWorkspace({
       activeChartExecutionQuoteUiRef.current = quote;
       setActiveChartExecutionQuote(quote);
     }
-  }, [paperTradingAccounts]);
+  }, [paperTradingAccounts, syncPaperLedgerUi]);
   const [hiddenPaperFillMarkers, setHiddenPaperFillMarkers] = useState<Record<string, string[]>>(() => {
     if (typeof window === "undefined") return {};
     try {
@@ -8320,9 +8407,15 @@ export default function KwantifyWorkspace({
   }, [paperTradingAccounts]);
 
   useEffect(() => {
-    paperLedgerRef.current = paperLedger;
     savePaperTradingLedger(paperLedger);
   }, [paperLedger]);
+
+  useEffect(() => () => {
+    if (paperLedgerUiTimerRef.current !== null) {
+      window.clearTimeout(paperLedgerUiTimerRef.current);
+      paperLedgerUiTimerRef.current = null;
+    }
+  }, []);
 
   useEffect(() => {
     window.localStorage.setItem(
@@ -8340,35 +8433,29 @@ export default function KwantifyWorkspace({
   useEffect(() => {
     if (!paperTradingAccounts.length) return;
     const timestamp = Date.now();
-    setPaperLedger((current) => {
-      let next = current;
-      for (const item of watchlist) {
-        if (!(item.bid > 0 && item.ask > 0)) continue;
-        next = processPaperQuote(
-          next,
-          paperTradingAccounts,
-          item.symbol,
-          { bid: item.bid, ask: item.ask, timestamp },
-          { suspendedProtectionPositionIds: suspendedPaperProtectionIdsRef.current },
-        );
-      }
-      if (
-        currentLivePrice.bid > 0
-        && currentLivePrice.ask > 0
-        && !watchlist.some((item) => normalizePaperSymbol(item.symbol) === normalizePaperSymbol(selectedInstrument))
-      ) {
-        next = processPaperQuote(
-          next,
-          paperTradingAccounts,
-          selectedInstrument,
-          { bid: currentLivePrice.bid, ask: currentLivePrice.ask, timestamp },
-          { suspendedProtectionPositionIds: suspendedPaperProtectionIdsRef.current },
-        );
-      }
+    const current = paperLedgerRef.current;
+    let next = current;
+    const activeQuote = activeChartExecutionQuoteRef.current;
+    for (const item of watchlist) {
+      if (!(item.bid > 0 && item.ask > 0)) continue;
+      const activeStreamOwnsSymbol = activeQuote
+        && Date.now() - activeQuote.timestamp <= 5_000
+        && normalizePaperSymbol(activeQuote.symbol) === normalizePaperSymbol(item.symbol);
+      if (activeStreamOwnsSymbol) continue;
+      next = processPaperQuote(
+        next,
+        paperTradingAccounts,
+        item.symbol,
+        { bid: item.bid, ask: item.ask, timestamp },
+        { suspendedProtectionPositionIds: suspendedPaperProtectionIdsRef.current },
+      );
+    }
+    if (next !== current) {
+      const executionChanged = paperLedgerExecutionShapeChanged(current, next);
       paperLedgerRef.current = next;
-      return next;
-    });
-  }, [currentLivePrice.ask, currentLivePrice.bid, paperTradingAccounts, selectedInstrument, watchlist]);
+      syncPaperLedgerUi(executionChanged);
+    }
+  }, [paperTradingAccounts, syncPaperLedgerUi, watchlist]);
 
   useEffect(() => {
     const handleStorage = (event: StorageEvent) => {
@@ -8377,7 +8464,7 @@ export default function KwantifyWorkspace({
           setPaperTradingAccounts(loadPaperTradingAccounts());
         }
         if (event.key === "kwantify-paper-trading-ledger-v1") {
-          setPaperLedger(loadPaperTradingLedger());
+          commitPaperLedger(loadPaperTradingLedger());
         }
         if (event.key === "olisa-broker-connections") {
           try {
@@ -8390,7 +8477,7 @@ export default function KwantifyWorkspace({
     };
     window.addEventListener("storage", handleStorage);
     return () => window.removeEventListener("storage", handleStorage);
-  }, []);
+  }, [commitPaperLedger]);
 
   useEffect(() => {
     let cancelled = false;
@@ -12219,7 +12306,7 @@ export default function KwantifyWorkspace({
       ? resolvePaperProtectionPrice("sl", orderSL, entryPrice, selectedOrderQuantity)
       : null;
     const result = placePaperOrder(
-      paperLedger,
+      paperLedgerRef.current,
       paperTradingAccounts,
       {
         accountId: selectedPaperTradingAccount.id,
@@ -12233,7 +12320,7 @@ export default function KwantifyWorkspace({
       },
       quote,
     );
-    setPaperLedger(result.ledger);
+    commitPaperLedger(result.ledger);
     if (result.error) {
       showPaperOrderMessage("error", result.error);
       return;
@@ -12269,8 +12356,7 @@ export default function KwantifyWorkspace({
           },
         )
       : result.ledger;
-    paperLedgerRef.current = next;
-    setPaperLedger(next);
+    commitPaperLedger(next);
   };
 
   const handlePaperProtectionDragStateChange = useCallback((positionId: string, dragging: boolean) => {
@@ -12307,19 +12393,19 @@ export default function KwantifyWorkspace({
       showPaperOrderMessage("error", `${position.symbol} live bid/ask is unavailable.`);
       return;
     }
-    const result = closePaperPosition(paperLedger, position.accountId, position.id, quote);
-    setPaperLedger(result.ledger);
+    const result = closePaperPosition(paperLedgerRef.current, position.accountId, position.id, quote);
+    commitPaperLedger(result.ledger);
     showPaperOrderMessage(result.error ? "error" : "success", result.error ?? `${position.symbol} position flattened.`);
   };
 
   const handleFlattenPaperAccount = () => {
     if (!selectedPaperTradingAccount) return;
     const result = flattenPaperAccount(
-      paperLedger,
+      paperLedgerRef.current,
       selectedPaperTradingAccount.id,
       resolvePaperExecutionQuote,
     );
-    setPaperLedger(result.ledger);
+    commitPaperLedger(result.ledger);
     if (result.errors.length > 0) {
       showPaperOrderMessage(
         "error",
@@ -12336,7 +12422,7 @@ export default function KwantifyWorkspace({
   const handleRemovePaperFillMarkers = (fillIds: string[]) => {
     if (!selectedPaperTradingAccount || fillIds.length === 0) return;
     const accountId = selectedPaperTradingAccount.id;
-    setPaperLedger((current) => clearPaperAccountFills(current, accountId));
+    commitPaperLedger(clearPaperAccountFills(paperLedgerRef.current, accountId));
     setHiddenPaperFillMarkers((current) => {
       if (!(accountId in current)) return current;
       const next = { ...current };
@@ -12349,7 +12435,7 @@ export default function KwantifyWorkspace({
   const handleResetPaperTrading = () => {
     if (!selectedPaperTradingAccount) return;
     const accountId = selectedPaperTradingAccount.id;
-    setPaperLedger((current) => resetPaperAccountLedger(current, accountId));
+    commitPaperLedger(resetPaperAccountLedger(paperLedgerRef.current, accountId));
     setHiddenPaperFillMarkers((current) => {
       if (!(accountId in current)) return current;
       const next = { ...current };
@@ -12360,7 +12446,7 @@ export default function KwantifyWorkspace({
   };
 
   const handleCancelPaperOrder = (accountId: string, orderId: string) => {
-    setPaperLedger(cancelPaperOrder(paperLedger, accountId, orderId));
+    commitPaperLedger(cancelPaperOrder(paperLedgerRef.current, accountId, orderId));
     showPaperOrderMessage("success", "Working order cancelled.");
   };
 

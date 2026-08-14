@@ -112,7 +112,7 @@ test("paper fills render as persistent candle-anchored entry and exit arrows", (
 test("removing all fills also resets the selected account's daily P&L", () => {
   assert.match(engine, /export function clearPaperAccountFills/);
   assert.match(engine, /fills: \[\]/);
-  assert.match(workspace, /clearPaperAccountFills\(current, accountId\)/);
+  assert.match(workspace, /clearPaperAccountFills\(paperLedgerRef\.current, accountId\)/);
   assert.match(workspace, /fills removed .* Daily P&L reset/);
   assert.match(workspace, /selectedPaperDailyPnl = dailyRealizedPaperPnl\(selectedPaperAccountLedger\)/);
 });
@@ -122,7 +122,7 @@ test("the chart can reset the selected sim account's trades, fills, orders, and 
   assert.match(chart, /Open and daily P&amp;L will return to zero/);
   assert.match(chart, /onResetPaperTrading\?\.\(\)/);
   assert.match(workspace, /onResetPaperTrading=\{selectedPaperTradingAccount \? handleResetPaperTrading : undefined\}/);
-  assert.match(workspace, /resetPaperAccountLedger\(current, accountId\)/);
+  assert.match(workspace, /resetPaperAccountLedger\(paperLedgerRef\.current, accountId\)/);
   assert.match(engine, /export function resetPaperAccountLedger/);
   assert.match(engine, /cashBalance: account\.startingBalance/);
   assert.match(engine, /realizedPnl: 0/);
