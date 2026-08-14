@@ -1351,6 +1351,10 @@ class DepthForgeApp {
                 { type: 'kwantdesk:liquidity-map-ready', symbol: this.symbol },
                 window.location.origin,
               );
+              window.parent.postMessage(
+                { type: 'kwantdesk:liquidity-map-data-ready', symbol: this.symbol },
+                window.location.origin,
+              );
             }
           }
         }

@@ -27,8 +27,8 @@ test("GEX strike centering cannot collapse or hide the ladder viewport", () => {
   assert.match(workspace, /container\.clientHeight <= 0/);
   assert.match(workspace, /const ladderRef = useRef<HTMLDivElement>\(null\)/);
   assert.match(workspace, /container\.scrollTop = 0/);
-  assert.match(workspace, /target\.offsetTop \+ target\.offsetHeight \/ 2/);
-  assert.match(workspace, /container\.scrollTo\(\{ top: nextScroll, behavior: "auto" \}\)/);
+  assert.match(workspace, /targetRect\.top - containerRect\.top[\s\S]*targetRect\.height \/ 2/);
+  assert.match(workspace, /container\.scrollTop = nextScroll/);
   assert.match(workspace, /key=\{viewIdentity\}/);
   assert.match(workspace, /overflowAnchor: "none"/);
   assert.match(workspace, /settleFrame = window\.requestAnimationFrame/);
@@ -36,6 +36,8 @@ test("GEX strike centering cannot collapse or hide the ladder viewport", () => {
   assert.doesNotMatch(workspace, /ladder\.style\.paddingBottom/);
   assert.match(workspace, /if \(followingSpot && spotStrike !== null\) centerLiveStrike\(\);/);
   assert.match(workspace, /data-gex-strike-ladder="true"/);
+  assert.match(workspace, /const \[surfacePainted, setSurfacePainted\] = useState\(false\)/);
+  assert.match(workspace, /Painting the latest strike ladder/);
 });
 
 test("wheel input over a strike node owns the vertical slot-machine movement", () => {

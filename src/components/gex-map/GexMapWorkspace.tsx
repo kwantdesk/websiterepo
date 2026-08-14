@@ -318,6 +318,7 @@ function ExposurePanel({
   const scrollRef = useRef<HTMLDivElement>(null);
   const ladderRef = useRef<HTMLDivElement>(null);
   const [followingSpot, setFollowingSpot] = useState(true);
+  const [surfacePainted, setSurfacePainted] = useState(false);
   const { current, previous } = useMemo(
     () => payload ? buildSnapshots(payload, selectedTimestamp, stepMinutes) : { current: new Map(), previous: new Map() },
     [payload, selectedTimestamp, stepMinutes],
@@ -343,29 +344,39 @@ function ExposurePanel({
     const container = scrollRef.current;
     const ladder = ladderRef.current;
     const target = ladder?.querySelector<HTMLElement>("[data-near-spot='true']");
-    if (!container || !ladder || container.clientHeight <= 0) return;
+    if (!container || !ladder || container.clientHeight <= 0) return false;
 
     // Never leave an old surface parked beyond the new ladder. This also
     // provides a visible fallback if the spot row has not been marked yet.
     container.scrollTop = 0;
-    if (!target) return;
+    if (!target) return false;
 
     // offsetTop is measured in the scroll content itself. Do not add dynamic
     // top/bottom gutters here: this viewport lives in an auto-sized grid row,
     // so padding based on clientHeight feeds back through ResizeObserver and
     // can grow the row indefinitely, parking every strike below the screen.
     const maximumScroll = Math.max(0, container.scrollHeight - container.clientHeight);
-    const targetCenterInContent = target.offsetTop + target.offsetHeight / 2;
+    const containerRect = container.getBoundingClientRect();
+    const targetRect = target.getBoundingClientRect();
+    const targetCenterInContent = targetRect.top - containerRect.top
+      + container.scrollTop
+      + targetRect.height / 2;
     const nextScroll = Math.max(0, Math.min(
       maximumScroll,
       targetCenterInContent - container.clientHeight / 2,
     ));
 
-    container.scrollTo({ top: nextScroll, behavior: "auto" });
+    container.scrollTop = nextScroll;
+
+    const paintedTargetRect = target.getBoundingClientRect();
+    const paintedContainerRect = container.getBoundingClientRect();
+    return paintedTargetRect.bottom > paintedContainerRect.top
+      && paintedTargetRect.top < paintedContainerRect.bottom;
   }, []);
 
   useLayoutEffect(() => {
     const container = scrollRef.current;
+    setSurfacePainted(false);
     if (!container || !rows.length) return;
 
     // Centre synchronously for the first paint, then repeat once after the
@@ -374,7 +385,10 @@ function ExposurePanel({
     let settleFrame = 0;
     const frame = window.requestAnimationFrame(() => {
       settleFrame = window.requestAnimationFrame(() => {
-        if (followingSpot && spotStrike !== null) centerLiveStrike();
+        const visible = followingSpot && spotStrike !== null
+          ? centerLiveStrike()
+          : Boolean(container.querySelector("[data-gex-strike-node='true']"));
+        setSurfacePainted(visible);
       });
     });
     return () => {
@@ -559,6 +573,15 @@ function ExposurePanel({
           </div>
         )}
         </div>
+        {rows.length > 0 && !surfacePainted ? (
+          <KwantLoader
+            className="pointer-events-none absolute inset-0 z-10 h-full"
+            compact
+            icon={ScanLine}
+            title={`Loading ${greek.short}`}
+            detail="Painting the latest strike ladder"
+          />
+        ) : null}
         {!followingSpot && spotStrike !== null ? (
           <button
             type="button"

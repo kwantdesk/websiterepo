@@ -18,7 +18,12 @@ function liquidityMapInstrument(root: unknown) {
 export default function LiquidityMapWorkspace({ instrument, onInstrumentChange, onActivate }: LiquidityMapWorkspaceProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const styleCheckTimerRef = useRef<number | null>(null);
+  const stylesReadyRef = useRef(false);
+  const marketFrameReadyRef = useRef(false);
   const [isReady, setIsReady] = useState(false);
+  const syncReadyState = useCallback(() => {
+    setIsReady(stylesReadyRef.current && marketFrameReadyRef.current);
+  }, []);
   const syncInstrument = useCallback(() => {
     iframeRef.current?.contentWindow?.postMessage(
       { type: "kwantdesk:liquidity-map-symbol", symbol: instrument },
@@ -72,7 +77,8 @@ export default function LiquidityMapWorkspace({ instrument, onInstrumentChange, 
         && loadedStyleSheets.some((href) => href.includes("/heatmap-app/embed.css"));
       if (styled) {
         clearStyleCheck();
-        setIsReady(true);
+        stylesReadyRef.current = true;
+        syncReadyState();
         return;
       }
       if (attempt < 80) {
@@ -91,14 +97,21 @@ export default function LiquidityMapWorkspace({ instrument, onInstrumentChange, 
         return;
       }
       if (event.data?.type === "kwantdesk:liquidity-map-styles-pending") {
-        setIsReady(false);
+        stylesReadyRef.current = false;
+        syncReadyState();
         return;
       }
       if (event.data?.type === "kwantdesk:liquidity-map-styles-ready") {
         clearStyleCheck();
-        setIsReady(true);
+        stylesReadyRef.current = true;
+        syncReadyState();
         syncTheme();
         syncInstrument();
+        return;
+      }
+      if (event.data?.type === "kwantdesk:liquidity-map-data-ready") {
+        marketFrameReadyRef.current = true;
+        syncReadyState();
         return;
       }
       if (event.data?.type === "kwantdesk:liquidity-map-ready") {
@@ -141,7 +154,7 @@ export default function LiquidityMapWorkspace({ instrument, onInstrumentChange, 
       clearStyleCheck();
       window.removeEventListener("message", handleMapReady);
     };
-  }, [instrument, onActivate, onInstrumentChange, syncInstrument, syncTheme]);
+  }, [instrument, onActivate, onInstrumentChange, syncInstrument, syncReadyState, syncTheme]);
 
   return (
     <div className="relative isolate h-full min-h-0 min-w-0 w-full max-w-full overflow-hidden bg-chart-background [contain:layout_paint_size]">
@@ -151,7 +164,9 @@ export default function LiquidityMapWorkspace({ instrument, onInstrumentChange, 
         src="/heatmap-app/index.html"
         title="Kwant Desk liquidity heatmap"
         onLoad={() => {
-          setIsReady(false);
+          stylesReadyRef.current = false;
+          marketFrameReadyRef.current = false;
+          syncReadyState();
           syncTheme();
         }}
       />

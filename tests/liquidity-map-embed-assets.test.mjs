@@ -21,6 +21,8 @@ test("embedded liquidity map is not revealed until both stylesheets are attached
   assert.match(workspace, /\/heatmap-app\/styles\.css/);
   assert.match(workspace, /\/heatmap-app\/embed\.css/);
   assert.match(workspace, /revealWhenStyled/);
+  assert.match(workspace, /stylesReadyRef\.current && marketFrameReadyRef\.current/);
+  assert.match(workspace, /kwantdesk:liquidity-map-data-ready/);
   assert.doesNotMatch(workspace, /event\.data\?\.type === "kwantdesk:liquidity-map-ready"[\s\S]{0,700}setIsReady\(true\)/);
 });
 
@@ -28,6 +30,7 @@ test("liquidity-map styles use a cache-busted deployment revision", () => {
   assert.match(workspace, /src="\/heatmap-app\/index\.html"/);
   assert.match(html, /styles\.css\?v=20260813-cockpit-font/);
   assert.match(html, /embed\.css\?v=20260813-cockpit-font/);
+  assert.match(html, /src\/main\.js\?v=20260814-data-ready/);
 });
 
 test("liquidity-map UI controls use the current cockpit typography", () => {
