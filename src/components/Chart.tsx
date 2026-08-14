@@ -3253,7 +3253,17 @@ export default function Chart({
     });
   }, [calculatedIndicatorPanes]);
   const indicatorTimeToX = useCallback(
-    (time: number) => chartRef.current?.timeScale().timeToCoordinate(time as Time) ?? null,
+    (time: number) => {
+      // Time-based candles can use their epoch second directly. Event-based
+      // candles (volume, range, Renko, ticks) cannot: several bars may finish
+      // inside the same second, so the price series gives each one a synthetic
+      // sequential chart time. Resolve the original millisecond timestamp back
+      // to that synthetic time so pane indicators stay one-to-one with price.
+      const sourceTimestamp = Math.round(time * 1_000);
+      const eventChartTime = eventChartTimeBySourceTimeRef.current.get(sourceTimestamp);
+      const chartTime = eventChartTime ?? time;
+      return chartRef.current?.timeScale().timeToCoordinate(chartTime as Time) ?? null;
+    },
     [],
   );
   const indicatorTimestampToX = useCallback(
