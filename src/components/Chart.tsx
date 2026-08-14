@@ -1036,6 +1036,10 @@ function paperPositionSizeLabel(symbol: string, side: "buy" | "sell", quantity: 
   return `${side === "buy" ? "+" : "-"}${absoluteQuantity.toLocaleString("en-US")} ${unit}`;
 }
 
+function paperProtectionSizeLabel(symbol: string, positionSide: "buy" | "sell", quantity: number) {
+  return paperPositionSizeLabel(symbol, positionSide === "buy" ? "sell" : "buy", quantity);
+}
+
 class PaperPositionOverlayRenderer implements ISeriesPrimitivePaneRenderer {
   constructor(private readonly primitive: PaperPositionOverlayPrimitive) {}
 
@@ -6367,7 +6371,7 @@ export default function Chart({
       id: `${position.id}-sl`,
       kind: "stop_loss" as const,
       price: position.stopLoss,
-      label: `SL · ${position.stopLoss.toFixed(priceFormat.precision)} · ${formatPaperMoney(paperProjectedPnl(
+      label: `SL · ${paperProtectionSizeLabel(position.symbol, position.side, position.remainingQuantity)} · ${position.stopLoss.toFixed(priceFormat.precision)} · ${formatPaperMoney(paperProjectedPnl(
         position.symbol,
         position.side,
         position.entryPrice,
