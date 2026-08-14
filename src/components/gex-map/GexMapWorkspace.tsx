@@ -696,7 +696,7 @@ export default function GexMapWorkspace({ market = null }: GexMapWorkspaceProps 
       });
       setLoading(Object.fromEntries(panels.map((panel) => [panel.id, true])));
       try {
-        const results = await Promise.allSettled(panels.map(async (panel) => {
+        const loadPanel = async (panel: PanelConfig) => {
           const query = new URLSearchParams({
             symbol: panel.symbol,
             greekMode: panel.greekMode,
@@ -718,7 +718,20 @@ export default function GexMapWorkspace({ market = null }: GexMapWorkspaceProps 
             },
           );
           return { id: panel.id, payload };
-        }));
+        };
+        const results = await Promise.allSettled(panels.map(loadPanel));
+        // Once the initial concurrent load has settled, retry only failed
+        // surfaces in isolation. This prevents a brief VPS/serverless reset
+        // from permanently leaving the final QQQ panel blank while NDX is
+        // already healthy, without re-requesting successful panels.
+        const failedIndexes = results.flatMap((result, index) =>
+          result.status === "rejected" ? [index] : []);
+        for (const index of failedIndexes) {
+          if (cancelled) return;
+          await new Promise<void>((resolve) => window.setTimeout(resolve, 700));
+          const retried = await Promise.allSettled([loadPanel(panels[index])]);
+          results[index] = retried[0];
+        }
         if (cancelled) return;
 
         const nextErrors: Record<string, string | null> = {};

@@ -171,6 +171,7 @@ function textValue(value: unknown): string {
 // and retry 429s with backoff so every panel resolves instead of erroring.
 const QD_MIN_SPACING_MS = 80;
 const QD_MAX_RETRIES = 4;
+const QD_TRANSIENT_RETRIES = 1;
 const qdSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 let qdNextStartMs = 0;
@@ -205,8 +206,12 @@ async function quantDataNetworkPost(path: string, body: JsonRecord) {
       const payload = (await response.json().catch(() => ({}))) as unknown;
 
       if (!response.ok) {
-        // Rate limited: honour Retry-After (or back off) and try again.
-        if (response.status === 429 && attempt < QD_MAX_RETRIES) {
+        // Rate limits and short VPS/upstream interruptions are recoverable.
+        // Retrying only 429 left whichever GEX panel started last (usually
+        // QQQ) as the sole failed surface after a transient 502/503/504.
+        const transientUpstream = [502, 503, 504].includes(response.status);
+        const retryLimit = response.status === 429 ? QD_MAX_RETRIES : QD_TRANSIENT_RETRIES;
+        if ((response.status === 429 || transientUpstream) && attempt < retryLimit) {
           const retryAfter = Number(response.headers.get("retry-after"));
           const waitMs = Number.isFinite(retryAfter) && retryAfter > 0
             ? retryAfter * 1000
@@ -223,7 +228,15 @@ async function quantDataNetworkPost(path: string, body: JsonRecord) {
     } catch (error) {
       if (error instanceof QuantDataError) throw error;
       if (error instanceof Error && error.name === "AbortError") {
+        if (attempt < QD_TRANSIENT_RETRIES) {
+          await qdSleep(500 * (attempt + 1));
+          continue;
+        }
         throw new QuantDataError("KwantData timed out while loading this workspace.", 504, null);
+      }
+      if (attempt < QD_TRANSIENT_RETRIES) {
+        await qdSleep(500 * (attempt + 1));
+        continue;
       }
       throw new QuantDataError("KwantData is temporarily unavailable.", 502, null);
     } finally {

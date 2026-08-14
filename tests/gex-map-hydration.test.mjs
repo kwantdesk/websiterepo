@@ -75,6 +75,8 @@ test("GEX map reads do not wait for the workspace middleware auth round trip", (
 
 test("cold GEX panels are not aborted before the provider retry window completes", () => {
   assert.match(workspace, /timeoutMs: 45_000/);
+  assert.match(workspace, /const failedIndexes = results\.flatMap/);
+  assert.match(workspace, /Promise\.allSettled\(\[loadPanel\(panels\[index\]\)\]\)/);
   assert.match(
     readFileSync(new URL("../src/app/api/gex-map/route.ts", import.meta.url), "utf8"),
     /export const maxDuration = 60/,
