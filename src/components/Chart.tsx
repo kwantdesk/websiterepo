@@ -6303,12 +6303,22 @@ export default function Chart({
     && normalizePaperSymbol(position.symbol) === normalizePaperSymbol(instrument));
   const formatPaperMoney = (value: number) =>
     `${value > 0 ? "+" : value < 0 ? "-" : ""}$${Math.abs(value).toFixed(2)}`;
+  const paperMarkPrice = candles.at(-1)?.close ?? null;
   const paperOverlayLevels = visiblePaperPositions.flatMap((position) => {
+    const livePositionPnl = paperMarkPrice === null
+      ? position.unrealizedPnl
+      : paperProjectedPnl(
+          position.symbol,
+          position.side,
+          position.entryPrice,
+          paperMarkPrice,
+          position.remainingQuantity,
+        );
     const entry = [{
       id: `${position.id}-entry`,
       kind: "entry" as const,
       price: position.entryPrice,
-      label: `${position.side === "buy" ? "LONG" : "SHORT"} · ${position.remainingQuantity} · ${position.entryPrice.toFixed(priceFormat.precision)} · ${formatPaperMoney(position.unrealizedPnl)}`,
+      label: `${position.side === "buy" ? "LONG" : "SHORT"} · ${position.remainingQuantity} · ${position.entryPrice.toFixed(priceFormat.precision)} · ${formatPaperMoney(livePositionPnl)}`,
       color: position.side === "buy" ? settings.upColor : settings.downColor,
       position,
       targetId: null as string | null,
@@ -6355,7 +6365,15 @@ export default function Chart({
         })()
       : level.position.remainingQuantity;
     const projectedPnl = level.kind === "entry"
-      ? level.position.unrealizedPnl
+      ? (paperMarkPrice === null
+          ? level.position.unrealizedPnl
+          : paperProjectedPnl(
+              level.position.symbol,
+              level.position.side,
+              level.position.entryPrice,
+              paperMarkPrice,
+              level.position.remainingQuantity,
+            ))
       : paperProjectedPnl(
           level.position.symbol,
           level.position.side,

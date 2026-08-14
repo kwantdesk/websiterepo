@@ -6745,7 +6745,8 @@ export default function KwantifyWorkspace({
   const activeChartExecutionQuoteRef = useRef<ChartExecutionQuote | null>(null);
   const activeChartExecutionQuoteUiRef = useRef<ChartExecutionQuote | null>(null);
   const activeChartExecutionQuoteUiAtRef = useRef(0);
-  const syncPaperLedgerUi = useCallback((immediate = false) => {
+  const liveGexCalibrationPriceRef = useRef<number | null>(null);
+  const syncPaperLedgerUi = useCallback((immediate = false, minimumIntervalMs = 1_000) => {
     const flush = () => {
       paperLedgerUiTimerRef.current = null;
       paperLedgerUiLastSyncRef.current = performance.now();
@@ -6762,7 +6763,7 @@ export default function KwantifyWorkspace({
     }
     if (paperLedgerUiTimerRef.current !== null) return;
     const elapsed = performance.now() - paperLedgerUiLastSyncRef.current;
-    paperLedgerUiTimerRef.current = window.setTimeout(flush, Math.max(0, 100 - elapsed));
+    paperLedgerUiTimerRef.current = window.setTimeout(flush, Math.max(0, minimumIntervalMs - elapsed));
   }, []);
   const commitPaperLedger = useCallback((next: PaperTradingLedger) => {
     paperLedgerRef.current = next;
@@ -6770,6 +6771,7 @@ export default function KwantifyWorkspace({
   }, [syncPaperLedgerUi]);
   const handleActiveChartExecutionQuote = useCallback((quote: ChartExecutionQuote) => {
     activeChartExecutionQuoteRef.current = quote;
+    if (quote.mid > 0) liveGexCalibrationPriceRef.current = quote.mid;
     const currentLedger = paperLedgerRef.current;
     const nextLedger = processPaperQuote(
       currentLedger,
@@ -6782,11 +6784,19 @@ export default function KwantifyWorkspace({
       const executionChanged = paperLedgerExecutionShapeChanged(currentLedger, nextLedger);
       paperLedgerRef.current = nextLedger;
       // Order fills and SL/TP exits remain synchronous. Mark-to-market P&L is
-      // sampled into React at 10 Hz so an open trade cannot rerender the full
-      // workspace on every exchange packet; the execution engine still sees
-      // and evaluates every quote in the ref-backed ledger above.
-      syncPaperLedgerUi(executionChanged);
+      // sampled into React only as quickly as the visible trade UI needs it;
+      // the execution engine still evaluates every quote in the ref above.
+      if (executionChanged) {
+        syncPaperLedgerUi(true);
+      } else if (showTradesMenu || rightPanel === "order") {
+        syncPaperLedgerUi(false, 250);
+      }
     }
+    // The chart and GEX calibration consume the ref-backed quote directly.
+    // React state is only required while an order surface is visible. Updating
+    // this giant workspace shell for every price frame was the main source of
+    // multi-panel input stalls.
+    if (!showTradesMenu && rightPanel !== "order") return;
     const now = Date.now();
     const previous = activeChartExecutionQuoteUiRef.current;
     if (
@@ -6798,7 +6808,7 @@ export default function KwantifyWorkspace({
       activeChartExecutionQuoteUiRef.current = quote;
       setActiveChartExecutionQuote(quote);
     }
-  }, [paperTradingAccounts, syncPaperLedgerUi]);
+  }, [paperTradingAccounts, rightPanel, showTradesMenu, syncPaperLedgerUi]);
   const [hiddenPaperFillMarkers, setHiddenPaperFillMarkers] = useState<Record<string, string[]>>(() => {
     if (typeof window === "undefined") return {};
     try {
@@ -6899,7 +6909,6 @@ export default function KwantifyWorkspace({
   const [liveGexSnapshot, setLiveGexSnapshot] = useState<ChartGammaLevelsPayload | null>(null);
   const [liveGexLoading, setLiveGexLoading] = useState(false);
   const [liveGexError, setLiveGexError] = useState("");
-  const liveGexCalibrationPriceRef = useRef<number | null>(null);
   const [showLevelsExport, setShowLevelsExport] = useState(false);
   const [levelExportTypes, setLevelExportTypes] = useState<Record<LevelExportType, boolean>>({
     gamma: true,
@@ -6977,6 +6986,7 @@ export default function KwantifyWorkspace({
   const pendingWatchlistPricesRef = useRef<Map<string, LiveFeedPrice>>(new Map());
   const pendingLiveQuoteCacheRef = useRef<Map<string, LiveFeedPrice & { openPrice?: number }>>(new Map());
   const watchlistLiveFrameRef = useRef<number | null>(null);
+  const watchlistReactSyncAtRef = useRef(0);
   const liveQuoteCacheTimerRef = useRef<number | null>(null);
   const watchlistRef = useRef(watchlist);
 
@@ -7221,7 +7231,9 @@ export default function KwantifyWorkspace({
     ask: selectedChartExecutionQuote?.ask ?? selectedWatchlistItem?.ask ?? selectedMidPrice,
     mid: selectedMidPrice,
   };
-  liveGexCalibrationPriceRef.current = currentLivePrice.mid > 0 ? currentLivePrice.mid : null;
+  if (liveGexCalibrationPriceRef.current === null && currentLivePrice.mid > 0) {
+    liveGexCalibrationPriceRef.current = currentLivePrice.mid;
+  }
   const hasSelectedLiveQuote = currentLivePrice.bid > 0 && currentLivePrice.ask > 0;
   const currentSpread = Math.max(0, currentLivePrice.ask - currentLivePrice.bid);
   const orderPanelBidLabel = hasSelectedLiveQuote ? formatPrice(currentLivePrice.bid, selectedInstrument) : "--";
@@ -8974,55 +8986,60 @@ export default function KwantifyWorkspace({
           pendingWatchlistPricesRef.current.clear();
           watchlistLiveFrameRef.current = null;
 
-          startTransition(() => {
-            setWatchlist((current) => {
-              let changed = false;
-              const next = current.map((item) => {
-                if (item.broker !== activeChartBrokerLabel) return item;
-                const nextPrice = updates.get(item.symbol);
-                if (!nextPrice) return item;
-                const prevMid = item.lastPrice || nextPrice.mid;
-                const moveRatio = prevMid > 0 ? Math.abs(nextPrice.mid - prevMid) / prevMid : 0;
-                if (moveRatio > 0.2) return item;
-                const openPrice = item.openPrice || nextPrice.mid;
-                const nextBroker = nextPrice.broker || activeChartBrokerLabel;
-                const nextContractSymbol = nextPrice.contractSymbol || item.contractSymbol;
-                const nextChange = nextPrice.mid - openPrice;
-                const nextChangePercent = openPrice ? (nextChange / openPrice) * 100 : 0;
-                if (
-                  item.broker === nextBroker
-                  && item.contractSymbol === nextContractSymbol
-                  && item.lastPrice === nextPrice.mid
-                  && item.openPrice === openPrice
-                  && item.bid === nextPrice.bid
-                  && item.ask === nextPrice.ask
-                  && item.mid === nextPrice.mid
-                  && item.change === nextChange
-                  && item.changePercent === nextChangePercent
-                  && item.flash === null
-                ) {
-                  return item;
-                }
-                changed = true;
-                return {
-                  ...item,
-                  broker: nextBroker,
-                  contractSymbol: nextContractSymbol,
-                  lastPrice: nextPrice.mid,
-                  openPrice,
-                  bid: nextPrice.bid,
-                  ask: nextPrice.ask,
-                  mid: nextPrice.mid,
-                  change: nextChange,
-                  changePercent: nextChangePercent,
-                  // Fast up/down painting is isolated in LiveWatchlistNumbers;
-                  // keeping it out of parent state avoids a second shell render.
-                  flash: null,
-                };
-              });
-              return changed ? next : current;
-            });
+          let changed = false;
+          const next = watchlistRef.current.map((item) => {
+            if (item.broker !== activeChartBrokerLabel) return item;
+            const nextPrice = updates.get(item.symbol);
+            if (!nextPrice) return item;
+            const prevMid = item.lastPrice || nextPrice.mid;
+            const moveRatio = prevMid > 0 ? Math.abs(nextPrice.mid - prevMid) / prevMid : 0;
+            if (moveRatio > 0.2) return item;
+            const openPrice = item.openPrice || nextPrice.mid;
+            const nextBroker = nextPrice.broker || activeChartBrokerLabel;
+            const nextContractSymbol = nextPrice.contractSymbol || item.contractSymbol;
+            const nextChange = nextPrice.mid - openPrice;
+            const nextChangePercent = openPrice ? (nextChange / openPrice) * 100 : 0;
+            if (
+              item.broker === nextBroker
+              && item.contractSymbol === nextContractSymbol
+              && item.lastPrice === nextPrice.mid
+              && item.openPrice === openPrice
+              && item.bid === nextPrice.bid
+              && item.ask === nextPrice.ask
+              && item.mid === nextPrice.mid
+              && item.change === nextChange
+              && item.changePercent === nextChangePercent
+              && item.flash === null
+            ) {
+              return item;
+            }
+            changed = true;
+            return {
+              ...item,
+              broker: nextBroker,
+              contractSymbol: nextContractSymbol,
+              lastPrice: nextPrice.mid,
+              openPrice,
+              bid: nextPrice.bid,
+              ask: nextPrice.ask,
+              mid: nextPrice.mid,
+              change: nextChange,
+              changePercent: nextChangePercent,
+              // Fast up/down painting is isolated in LiveWatchlistNumbers;
+              // keeping it out of parent state avoids a second shell render.
+              flash: null,
+            };
           });
+          if (!changed) return;
+
+          // Keep fallback/execution reads current without reconciling the
+          // entire workspace shell on every quote batch. Visible watchlist
+          // numbers already subscribe to the isolated live quote store.
+          watchlistRef.current = next;
+          const now = performance.now();
+          if (now - watchlistReactSyncAtRef.current < 15_000) return;
+          watchlistReactSyncAtRef.current = now;
+          startTransition(() => setWatchlist(next));
 
         }, 1_000);
       } catch {}

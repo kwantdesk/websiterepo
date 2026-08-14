@@ -55,5 +55,18 @@ test("a live candle frame clones history once while every tick still reaches exe
   assert.match(workspace, /const updated = mutateWorkingCopy \? candles : \[\.\.\.candles\]/);
   assert.match(workspace, /\), \[\.\.\.previous\]\);/);
   assert.match(workspace, /const currentLedger = paperLedgerRef\.current/);
-  assert.match(workspace, /syncPaperLedgerUi\(executionChanged\)/);
+  assert.match(workspace, /if \(executionChanged\) \{\s*syncPaperLedgerUi\(true\)/);
+  assert.match(workspace, /showTradesMenu \|\| rightPanel === "order"[\s\S]{0,80}syncPaperLedgerUi\(false, 250\)/);
+  assert.match(
+    readFileSync(new URL("../src/components/Chart.tsx", import.meta.url), "utf8"),
+    /const paperMarkPrice = candles\.at\(-1\)\?\.close \?\? null/,
+  );
+});
+
+test("exchange quotes do not continuously reconcile the full workspace shell", () => {
+  assert.match(workspace, /if \(!showTradesMenu && rightPanel !== "order"\) return/);
+  assert.match(workspace, /if \(quote\.mid > 0\) liveGexCalibrationPriceRef\.current = quote\.mid/);
+  assert.match(workspace, /watchlistRef\.current = next/);
+  assert.match(workspace, /now - watchlistReactSyncAtRef\.current < 15_000/);
+  assert.doesNotMatch(workspace, /setWatchlist\(\(current\) => \{[\s\S]{0,120}updates\.get/);
 });
