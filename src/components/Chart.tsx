@@ -6388,7 +6388,7 @@ export default function Chart({
         id: `${position.id}-${target.id}`,
         kind: "take_profit" as const,
         price: target.price,
-        label: `TP${position.takeProfits.length > 1 ? index + 1 : ""} · ${target.price.toFixed(priceFormat.precision)} · ${formatPaperMoney(paperProjectedPnl(
+        label: `TP${position.takeProfits.length > 1 ? index + 1 : ""} · ${paperProtectionSizeLabel(position.symbol, position.side, target.quantity - target.filledQuantity)} · ${target.price.toFixed(priceFormat.precision)} · ${formatPaperMoney(paperProjectedPnl(
           position.symbol,
           position.side,
           position.entryPrice,
@@ -6429,7 +6429,7 @@ export default function Chart({
     ...level,
     price: displayPrice,
     label: paperDragPreview?.id === level.id
-      ? `${level.kind === "stop_loss" ? "SL" : "TP"} · ${displayPrice.toFixed(priceFormat.precision)} · ${formatPaperMoney(projectedPnl)}`
+      ? `${level.kind === "stop_loss" ? "SL" : "TP"} · ${paperProtectionSizeLabel(level.position.symbol, level.position.side, protectedQuantity)} · ${displayPrice.toFixed(priceFormat.precision)} · ${formatPaperMoney(projectedPnl)}`
       : level.label,
     y: candleSeriesRef.current?.priceToCoordinate(displayPrice) ?? null,
     };
@@ -6449,7 +6449,7 @@ export default function Chart({
           ...paperDraftProtection,
           y,
           color: paperDraftProtection.kind === "stop_loss" ? settings.downColor : settings.upColor,
-          label: `${paperDraftProtection.kind === "stop_loss" ? "SL" : "TP"} · ${paperDraftProtection.price.toFixed(priceFormat.precision)} · ${formatPaperMoney(projectedPnl)}`,
+          label: `${paperDraftProtection.kind === "stop_loss" ? "SL" : "TP"} · ${paperProtectionSizeLabel(paperDraftProtection.position.symbol, paperDraftProtection.position.side, paperDraftProtection.position.remainingQuantity)} · ${paperDraftProtection.price.toFixed(priceFormat.precision)} · ${formatPaperMoney(projectedPnl)}`,
         };
       })()
     : null;
