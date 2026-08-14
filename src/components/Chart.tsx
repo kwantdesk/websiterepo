@@ -923,6 +923,7 @@ type PaperFillMarkerRenderData = {
   id: string;
   time: Time;
   price: number;
+  side: PaperTradeFill["side"];
   role: PaperTradeFill["role"];
 };
 
@@ -952,7 +953,7 @@ class PaperFillMarkersRenderer implements ISeriesPrimitivePaneRenderer {
           context.lineTo(x + 6, y + 4);
         }
         context.closePath();
-        context.fillStyle = entry ? "#22e887" : "#ff3b5c";
+        context.fillStyle = marker.side === "buy" ? "#22e887" : "#ff3b5c";
         context.fill();
       }
       context.restore();
@@ -5961,7 +5962,13 @@ export default function Chart({
           const timestamp = paperFillCandleTimestamp(candles, fill.timestamp);
           return timestamp === null
             ? null
-            : { id: fill.id, time: timestamp as Time, price: fill.price, role: fill.role };
+            : {
+                id: fill.id,
+                time: timestamp as Time,
+                price: fill.price,
+                side: fill.side,
+                role: fill.role,
+              };
         })
         .filter((marker): marker is PaperFillMarkerRenderData => marker !== null),
     );
