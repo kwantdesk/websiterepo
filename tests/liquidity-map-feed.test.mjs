@@ -11,6 +11,7 @@ import {
   liveInstrumentResolveUrl,
   normalizeLiquidityMapSymbol,
   normalizeLiveSnapshot,
+  PackedBook,
   symbolMatchesSnapshot,
   updateLivePresentationEdge,
 } from "../public/heatmap-app/src/live-market.js";
@@ -44,6 +45,21 @@ test("accepts the Rithmic DBO contract without changing the Kwantify frame shape
   assert.equal(snapshot.bids.get(119_200), 12);
   assert.equal(snapshot.bidOrders.get(119_200), 3);
   assert.equal(symbolMatchesSnapshot("MNQ", snapshot.symbol), true);
+});
+
+test("retained order books use compact numeric storage with the required Map-like API", () => {
+  const snapshot = normalizeLiveSnapshot(rawSnapshot({
+    bids: [[119_200, 12, 3], [119_199, 9, 2]],
+    asks: [[119_201, 8, 2], [119_202, 6, 1]],
+  }));
+
+  assert.ok(snapshot.bids instanceof PackedBook);
+  assert.equal(snapshot.bids instanceof Map, false);
+  assert.equal(snapshot.bids.size, 2);
+  assert.equal(snapshot.bids.get(119_200), 12);
+  assert.equal(snapshot.bids.has(119_199), true);
+  assert.deepEqual([...snapshot.bids], [[119_200, 12], [119_199, 9]]);
+  assert.equal(snapshot.bidOrders.get(119_200), 3);
 });
 
 test("presentation holds move only the live edge and never create synthetic history", () => {

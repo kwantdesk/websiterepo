@@ -51,6 +51,13 @@ test("live map rendering avoids full-history analysis and repeated DOM replaceme
   assert.match(runtime, /nextHtml !== this\.tapeHtml/);
   assert.match(depthEngine, /if \(!force && this\.version > 0\) return false/);
   assert.match(depthEngine, /const cacheOwner = frame\.presentationSource \|\| frame/);
+  assert.match(depthEngine, /RAW_COLUMN_GEOMETRY_CACHE_LIMIT = 2/);
+  assert.match(depthEngine, /if \(cache\.size >= RAW_COLUMN_GEOMETRY_CACHE_LIMIT\) cache\.clear\(\)/);
+  assert.match(depthEngine, /typeof book\?\.forEachLevel === 'function'/);
+  assert.match(runtime, /MAX_HISTORY = 6500/);
+  const feed = read("public/heatmap-app/src/live-market.js");
+  assert.match(feed, /class PackedBook/);
+  assert.match(feed, /Float64Array\.from\(ticks\)/);
   assert.match(runtime, /this\.renderRequested = false;\s+this\.frames \+= 1;/);
   assert.match(runtime, /timestamp - this\.lastUiUpdate > 100/);
   assert.match(runtime, /activePanel === 'depthPanel'/);

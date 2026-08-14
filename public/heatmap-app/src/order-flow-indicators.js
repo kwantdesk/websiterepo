@@ -307,7 +307,13 @@ export function detectSweeps(trades, {
 }
 
 function orderedBook(book, descending) {
-  const entries = book instanceof Map ? [...book.entries()] : Array.isArray(book) ? book : [];
+  const entries = book instanceof Map
+    ? [...book.entries()]
+    : Array.isArray(book)
+      ? book
+      : book && typeof book[Symbol.iterator] === 'function'
+        ? [...book]
+        : [];
   return entries
     .filter(([, size]) => finite(size) > 0)
     .sort((left, right) => descending ? right[0] - left[0] : left[0] - right[0]);

@@ -60,8 +60,9 @@ export function liveDepthSnapshotUrl(symbol = 'MNQ', contractSymbol = '', exchan
 }
 
 export function normalizeBookLevels(rawLevels) {
-  const levels = new Map();
-  const orders = new Map();
+  const ticks = [];
+  const sizes = [];
+  const orderCounts = [];
   for (const rawLevel of rawLevels || []) {
     if (!Array.isArray(rawLevel) || rawLevel.length < 2) continue;
     const tick = finite(rawLevel[0], Number.NaN);
@@ -69,11 +70,58 @@ export function normalizeBookLevels(rawLevels) {
     const orderCount = Math.max(0, Math.round(finite(rawLevel[2])));
     if (!Number.isFinite(tick)) continue;
     if (size > 0) {
-      levels.set(tick, size);
-      orders.set(tick, orderCount);
+      ticks.push(tick);
+      sizes.push(size);
+      orderCounts.push(orderCount);
     }
   }
-  return { levels, orders };
+  const packedTicks = Float64Array.from(ticks);
+  return {
+    levels: new PackedBook(packedTicks, Float64Array.from(sizes)),
+    orders: new PackedBook(packedTicks, Uint32Array.from(orderCounts)),
+  };
+}
+
+// A native Map allocates a hash node plus several JS objects for every price
+// level. Retaining thousands of 320-level depth frames therefore grew one LIQ
+// MAP into hundreds of megabytes and forced stop-the-world garbage collection
+// every few seconds. The book is read-mostly, so packed numeric arrays provide
+// the same Map-like API at a fraction of the heap cost.
+export class PackedBook {
+  constructor(ticks = new Float64Array(), values = new Float64Array()) {
+    this.ticks = ticks;
+    this.values = values;
+  }
+
+  get size() { return this.ticks.length; }
+
+  get(tick) {
+    const wanted = Number(tick);
+    for (let index = 0; index < this.ticks.length; index += 1) {
+      if (this.ticks[index] === wanted) return this.values[index];
+    }
+    return undefined;
+  }
+
+  has(tick) { return this.get(tick) !== undefined; }
+
+  forEachLevel(callback) {
+    for (let index = 0; index < this.ticks.length; index += 1) {
+      callback(this.ticks[index], this.values[index]);
+    }
+  }
+
+  *keys() {
+    for (let index = 0; index < this.ticks.length; index += 1) yield this.ticks[index];
+  }
+
+  *[Symbol.iterator]() {
+    for (let index = 0; index < this.ticks.length; index += 1) {
+      yield [this.ticks[index], this.values[index]];
+    }
+  }
+
+  entries() { return this[Symbol.iterator](); }
 }
 
 export function snapshotBookToken(snapshot) {

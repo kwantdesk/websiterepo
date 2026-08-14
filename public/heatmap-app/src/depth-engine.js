@@ -1,4 +1,5 @@
 const clamp = (value, minimum, maximum) => Math.max(minimum, Math.min(maximum, value));
+const RAW_COLUMN_GEOMETRY_CACHE_LIMIT = 2;
 
 export const BOOKMAP_VISUAL_DEFAULTS = Object.freeze({
   circleSize: 40,
@@ -426,10 +427,17 @@ export class RollingDepthEngine {
     let bidRows = new Float64Array(rows);
     let askRows = new Float64Array(rows);
     const addBook = (book, target) => {
-      for (const [tick, size] of book) {
-        if (tick < geometry.bottomTick || tick > geometry.topTick || size <= 0) continue;
+      const addLevel = (tick, size) => {
+        if (tick < geometry.bottomTick || tick > geometry.topTick || size <= 0) return;
         const row = Math.floor((geometry.topTick - tick) / geometry.rowTicks);
         if (row >= 0 && row < rows) target[row] += size;
+      };
+      if (typeof book?.forEachLevel === 'function') {
+        book.forEachLevel(addLevel);
+        return;
+      }
+      for (const [tick, size] of book) {
+        addLevel(tick, size);
       }
     };
     addBook(frame.bids, bidRows);
@@ -455,6 +463,11 @@ export class RollingDepthEngine {
 
     const combined = new Float64Array(rows);
     for (let row = 0; row < rows; row += 1) combined[row] = bidRows[row] + askRows[row];
+    // Price movement and zooming create new raster geometries. An unbounded
+    // per-frame cache retained every old typed column for the full lifetime of
+    // the session and caused rhythmic browser GC pauses. Only the current and
+    // immediately previous geometry can be reused by an interactive chart.
+    if (cache.size >= RAW_COLUMN_GEOMETRY_CACHE_LIMIT) cache.clear();
     cache.set(key, combined);
     return combined;
   }
