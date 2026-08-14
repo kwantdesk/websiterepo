@@ -1187,6 +1187,36 @@ function collectWorkspaceSplitElements(root: HTMLElement): Map<string, Workspace
   return result;
 }
 
+function installWorkspaceResizeShield(root: HTMLElement, axis: "x" | "y") {
+  const frames = Array.from(root.querySelectorAll<HTMLIFrameElement>("iframe"));
+  const previousFramePointerEvents = frames.map((frame) => frame.style.pointerEvents);
+  frames.forEach((frame) => {
+    // Embedded workspaces (notably LIQ MAP) own a separate pointer-event
+    // document. Keep them from interpreting a divider drag as a chart pan.
+    frame.style.pointerEvents = "none";
+  });
+
+  const shield = root.ownerDocument.createElement("div");
+  shield.dataset.workspaceResizeShield = "true";
+  shield.setAttribute("aria-hidden", "true");
+  Object.assign(shield.style, {
+    position: "absolute",
+    inset: "0",
+    zIndex: "29",
+    cursor: axis === "x" ? "col-resize" : "row-resize",
+    touchAction: "none",
+    userSelect: "none",
+  });
+  root.appendChild(shield);
+
+  return () => {
+    frames.forEach((frame, index) => {
+      frame.style.pointerEvents = previousFramePointerEvents[index] ?? "";
+    });
+    shield.remove();
+  };
+}
+
 function paintWorkspaceSplitGeometry(
   node: WorkspaceLayoutNode,
   elements: Map<string, WorkspaceSplitElements>,
@@ -11021,6 +11051,7 @@ export default function KwantifyWorkspace({
     const splitElements = collectWorkspaceSplitElements(workspaceRoot);
     if (!splitElements.has(splitId)) return;
     divider.setPointerCapture(pointerId);
+    const removeResizeShield = installWorkspaceResizeShield(workspaceRoot, axis);
     const rect = splitContainer.getBoundingClientRect();
     const initialTree = workspaceTree;
     let paintedTree = initialTree;
@@ -11070,6 +11101,7 @@ export default function KwantifyWorkspace({
       if (divider.hasPointerCapture(pointerId)) divider.releasePointerCapture(pointerId);
       document.body.style.cursor = previousCursor;
       document.body.style.userSelect = previousUserSelect;
+      removeResizeShield();
       if (animationFrame !== null) {
         window.cancelAnimationFrame(animationFrame);
         animationFrame = null;
