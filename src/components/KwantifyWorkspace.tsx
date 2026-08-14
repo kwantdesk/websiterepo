@@ -188,6 +188,7 @@ import {
   snapPaperPrice,
   summarizePaperAccount,
   updatePaperProtection,
+  type PaperProtectionUpdate,
   type PaperPosition,
   type PaperTradeFill,
   type PaperTradingLedger,
@@ -3775,9 +3776,7 @@ function WorkspaceChartPane({
   onUpdatePaperProtection?: (
     accountId: string,
     positionId: string,
-    update:
-      | { kind: "stop_loss"; price: number | null }
-      | { kind: "take_profit"; targetId: string; price: number; quantity?: number },
+    update: PaperProtectionUpdate,
   ) => void;
   onClosePaperPosition?: (position: PaperPosition) => void;
   onRemovePaperFills?: (fillIds: string[]) => void;
@@ -12029,9 +12028,7 @@ export default function KwantifyWorkspace({
   const handlePaperProtectionUpdate = (
     accountId: string,
     positionId: string,
-    update:
-      | { kind: "stop_loss"; price: number | null }
-      | { kind: "take_profit"; targetId: string; price: number; quantity?: number },
+    update: PaperProtectionUpdate,
   ) => {
     const result = updatePaperProtection(paperLedger, accountId, positionId, update);
     setPaperLedger(result.ledger);

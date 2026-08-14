@@ -158,7 +158,9 @@ import {
   normalizePaperSymbol,
   paperFillCandleTimestamp,
   paperProjectedPnl,
+  paperTickSize,
   snapPaperPrice,
+  type PaperProtectionUpdate,
   type PaperPosition,
   type PaperTradeFill,
 } from "@/lib/paperTrading";
@@ -242,9 +244,7 @@ interface ChartProps {
   onUpdatePaperProtection?: (
     accountId: string,
     positionId: string,
-    update:
-      | { kind: "stop_loss"; price: number | null }
-      | { kind: "take_profit"; targetId: string; price: number; quantity?: number },
+    update: PaperProtectionUpdate,
   ) => void;
   onClosePaperPosition?: (position: PaperPosition) => void;
   onRemovePaperFills?: (fillIds: string[]) => void;
@@ -1752,6 +1752,12 @@ export default function Chart({
   const footprintActiveRef = useRef(false);
   const footprintBarWidthRef = useRef<number | null>(null);
   const [paperDragPreview, setPaperDragPreview] = useState<{ id: string; price: number } | null>(null);
+  const [paperDraftProtection, setPaperDraftProtection] = useState<{
+    id: string;
+    kind: "stop_loss" | "take_profit";
+    price: number;
+    position: PaperPosition;
+  } | null>(null);
   const horzLineRef = useRef<HTMLDivElement>(null);
   const priceLabelRef = useRef<HTMLDivElement>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; price: string } | null>(null);
@@ -6086,6 +6092,25 @@ export default function Chart({
     y: candleSeriesRef.current?.priceToCoordinate(displayPrice) ?? null,
     };
   }).filter((level): level is typeof level & { y: number } => Number.isFinite(level.y));
+  const paperDraftOverlayLevel = paperDraftProtection
+    ? (() => {
+        const y = candleSeriesRef.current?.priceToCoordinate(paperDraftProtection.price) ?? null;
+        if (y === null || !Number.isFinite(y)) return null;
+        const projectedPnl = paperProjectedPnl(
+          paperDraftProtection.position.symbol,
+          paperDraftProtection.position.side,
+          paperDraftProtection.position.entryPrice,
+          paperDraftProtection.price,
+          paperDraftProtection.position.remainingQuantity,
+        );
+        return {
+          ...paperDraftProtection,
+          y,
+          color: paperDraftProtection.kind === "stop_loss" ? settings.downColor : settings.upColor,
+          label: `${paperDraftProtection.kind === "stop_loss" ? "SL" : "TP"} · ${paperDraftProtection.price.toFixed(priceFormat.precision)} · ${formatPaperMoney(projectedPnl)}`,
+        };
+      })()
+    : null;
   const matchingPaperFills = paperFills
     .filter((fill) => normalizePaperSymbol(fill.symbol) === normalizePaperSymbol(instrument));
   const visiblePaperFills = matchingPaperFills
@@ -6101,11 +6126,30 @@ export default function Chart({
     }))
     .filter((marker): marker is typeof marker & { x: number; y: number } => Number.isFinite(marker.x) && Number.isFinite(marker.y));
 
+  const constrainedPaperProtectionPrice = (
+    position: PaperPosition,
+    kind: "stop_loss" | "take_profit",
+    rawPrice: number,
+  ) => {
+    const tick = paperTickSize(position.symbol);
+    const snapped = snapPaperPrice(position.symbol, rawPrice);
+    if (kind === "take_profit") {
+      return position.side === "buy"
+        ? Math.max(snapped, snapPaperPrice(position.symbol, position.entryPrice + tick))
+        : Math.min(snapped, snapPaperPrice(position.symbol, position.entryPrice - tick));
+    }
+    const marketPrice = position.markPrice > 0 ? position.markPrice : position.entryPrice;
+    return position.side === "buy"
+      ? Math.min(snapped, snapPaperPrice(position.symbol, marketPrice - tick))
+      : Math.max(snapped, snapPaperPrice(position.symbol, marketPrice + tick));
+  };
+
   const startPaperProtectionDrag = (
     event: ReactPointerEvent<HTMLButtonElement>,
     level: (typeof paperOverlayLevels)[number],
   ) => {
     if (level.kind === "entry" || !onUpdatePaperProtection) return;
+    const protectionKind = level.kind;
     event.preventDefault();
     event.stopPropagation();
     const container = chartContainerRef.current;
@@ -6118,7 +6162,7 @@ export default function Chart({
       const bounds = container.getBoundingClientRect();
       const price = series.coordinateToPrice(clientY - bounds.top);
       if (price === null || !Number.isFinite(price)) return;
-      latestPrice = snapPaperPrice(level.position.symbol, price);
+      latestPrice = constrainedPaperProtectionPrice(level.position, protectionKind, price);
       setPaperDragPreview({ id: level.id, price: latestPrice });
     };
     const flushPreview = () => {
@@ -6149,6 +6193,68 @@ export default function Chart({
     document.addEventListener("pointermove", handleMove);
     document.addEventListener("pointerup", handleUp, { once: true });
     document.addEventListener("pointercancel", handleUp, { once: true });
+  };
+
+  const startNewPaperProtectionDrag = (
+    event: ReactPointerEvent<HTMLButtonElement>,
+    position: PaperPosition,
+    kind: "stop_loss" | "take_profit",
+  ) => {
+    if (!onUpdatePaperProtection) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const container = chartContainerRef.current;
+    const series = candleSeriesRef.current;
+    if (!container || !series) return;
+
+    const draftId = `${position.id}-new-${kind}`;
+    let latestPrice = constrainedPaperProtectionPrice(position, kind, position.entryPrice);
+    let pendingClientY = event.clientY;
+    let animationFrame: number | null = null;
+    let dragged = false;
+    const updatePreview = (clientY: number) => {
+      const bounds = container.getBoundingClientRect();
+      const price = series.coordinateToPrice(clientY - bounds.top);
+      if (price === null || !Number.isFinite(price)) return;
+      latestPrice = constrainedPaperProtectionPrice(position, kind, price);
+      setPaperDraftProtection({ id: draftId, kind, price: latestPrice, position });
+    };
+    const flushPreview = () => {
+      animationFrame = null;
+      updatePreview(pendingClientY);
+    };
+    const handleMove = (moveEvent: PointerEvent) => {
+      dragged = true;
+      pendingClientY = moveEvent.clientY;
+      if (animationFrame === null) animationFrame = window.requestAnimationFrame(flushPreview);
+    };
+    const cleanup = () => {
+      document.removeEventListener("pointermove", handleMove);
+      document.removeEventListener("pointerup", handleUp);
+      document.removeEventListener("pointercancel", handleCancel);
+      if (animationFrame !== null) window.cancelAnimationFrame(animationFrame);
+      setPaperDraftProtection(null);
+    };
+    const handleUp = () => {
+      if (dragged) updatePreview(pendingClientY);
+      cleanup();
+      if (!dragged) return;
+      if (kind === "stop_loss") {
+        onUpdatePaperProtection(position.accountId, position.id, { kind: "stop_loss", price: latestPrice });
+      } else {
+        onUpdatePaperProtection(position.accountId, position.id, {
+          kind: "take_profit",
+          price: latestPrice,
+          quantity: position.remainingQuantity,
+        });
+      }
+    };
+    const handleCancel = () => cleanup();
+
+    updatePreview(event.clientY);
+    document.addEventListener("pointermove", handleMove);
+    document.addEventListener("pointerup", handleUp, { once: true });
+    document.addEventListener("pointercancel", handleCancel, { once: true });
   };
 
   return (
@@ -6198,6 +6304,30 @@ export default function Chart({
               style={{ borderColor: level.color, color: level.color }}
               title={`Unrealized ${level.position.unrealizedPnl.toFixed(2)}`}
             >
+              {onUpdatePaperProtection && level.position.stopLoss === null ? (
+                <button
+                  type="button"
+                  onPointerDown={(event) => startNewPaperProtectionDrag(event, level.position, "stop_loss")}
+                  className="flex w-5 touch-none cursor-ns-resize self-stretch items-center justify-center border-r font-mono text-[8px] font-bold transition-colors hover:bg-danger/15 active:cursor-grabbing"
+                  style={{ borderColor: level.color, color: settings.downColor }}
+                  title="Hold and drag to place a working stop loss"
+                  aria-label={`Add stop loss to ${level.position.symbol} position`}
+                >
+                  SL
+                </button>
+              ) : null}
+              {onUpdatePaperProtection && !level.position.takeProfits.some((target) => target.quantity > target.filledQuantity) ? (
+                <button
+                  type="button"
+                  onPointerDown={(event) => startNewPaperProtectionDrag(event, level.position, "take_profit")}
+                  className="flex w-5 touch-none cursor-ns-resize self-stretch items-center justify-center border-r font-mono text-[8px] font-bold transition-colors hover:bg-success/15 active:cursor-grabbing"
+                  style={{ borderColor: level.color, color: settings.upColor }}
+                  title="Hold and drag to place a working take profit"
+                  aria-label={`Add take profit to ${level.position.symbol} position`}
+                >
+                  TP
+                </button>
+              ) : null}
               <span className="whitespace-nowrap px-[7px]">{level.label}</span>
               {onClosePaperPosition ? (
                 <button
@@ -6229,6 +6359,23 @@ export default function Chart({
           )}
         </div>
       ))}
+      {paperDraftOverlayLevel ? (
+        <div
+          className="pointer-events-none absolute left-0 z-[33] border-t border-dashed"
+          style={{
+            right: nativePriceScaleWidth,
+            top: paperDraftOverlayLevel.y,
+            borderColor: paperDraftOverlayLevel.color,
+          }}
+        >
+          <div
+            className="absolute left-1 h-4 -translate-y-1/2 whitespace-nowrap rounded-[1px] border bg-panel/95 px-[7px] font-mono text-[8px] font-semibold leading-[14px] shadow-md backdrop-blur"
+            style={{ borderColor: paperDraftOverlayLevel.color, color: paperDraftOverlayLevel.color }}
+          >
+            {paperDraftOverlayLevel.label}
+          </div>
+        </div>
+      ) : null}
       {visiblePaperFills.map(({ fill, x, y }) => (
         <div
           key={fill.id}

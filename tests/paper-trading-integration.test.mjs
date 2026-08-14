@@ -56,6 +56,19 @@ test("chart receives paper positions, fills, and draggable bracket updates", () 
   assert.match(chart, /left-1 flex h-4/);
 });
 
+test("an unprotected fill exposes chart-native SL and TP drag handles that create working protection", () => {
+  assert.match(chart, /startNewPaperProtectionDrag/);
+  assert.match(chart, /Add stop loss to \$\{level\.position\.symbol\} position/);
+  assert.match(chart, /Add take profit to \$\{level\.position\.symbol\} position/);
+  assert.match(chart, /level\.position\.stopLoss === null/);
+  assert.match(chart, /!level\.position\.takeProfits\.some/);
+  assert.match(chart, /quantity: position\.remainingQuantity/);
+  assert.match(chart, /paperTickSize\(position\.symbol\)/);
+  assert.match(chart, /paperProjectedPnl\(/);
+  assert.match(engine, /targetId\?: string/);
+  assert.match(engine, /return addPaperTakeProfit\(/);
+});
+
 test("paper fills render as persistent candle-anchored entry and exit arrows", () => {
   assert.match(engine, /export function paperFillCandleTimestamp/);
   assert.match(chart, /paperFillCandleTimestamp\(candles, fill\.timestamp\)/);

@@ -40,6 +40,10 @@ export type PaperPosition = {
   closedAt?: number;
 };
 
+export type PaperProtectionUpdate =
+  | { kind: "stop_loss"; price: number | null }
+  | { kind: "take_profit"; targetId?: string; price: number; quantity?: number };
+
 export type PaperOrder = {
   id: string;
   accountId: string;
@@ -799,9 +803,7 @@ export function updatePaperProtection(
   ledger: PaperTradingLedger,
   accountId: string,
   positionId: string,
-  update:
-    | { kind: "stop_loss"; price: number | null }
-    | { kind: "take_profit"; targetId: string; price: number; quantity?: number },
+  update: PaperProtectionUpdate,
 ): { ledger: PaperTradingLedger; error?: string } {
   const account = ledger.accounts[accountId];
   const position = account?.positions.find((candidate) => candidate.id === positionId);
@@ -831,6 +833,16 @@ export function updatePaperProtection(
         },
       },
     };
+  }
+
+  if (!update.targetId) {
+    return addPaperTakeProfit(
+      ledger,
+      accountId,
+      positionId,
+      update.price,
+      update.quantity ?? position.remainingQuantity,
+    );
   }
 
   const price = snapPaperPrice(position.symbol, update.price);
