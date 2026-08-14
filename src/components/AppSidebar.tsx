@@ -236,8 +236,8 @@ function AppSidebar({
 
   return (
     <header className="kwant-command-rail relative z-[70] flex w-full shrink-0 items-center border-b border-border bg-panel px-2">
-      <nav className="absolute left-1/2 top-1/2 flex w-[calc(100%-268px)] -translate-x-1/2 -translate-y-1/2 overflow-x-auto overflow-y-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" aria-label="Primary workspace">
-        <div className="mx-auto flex min-w-max items-center gap-1">
+      <nav className="kwant-primary-workspace-nav absolute top-1/2 flex -translate-y-1/2 overflow-x-auto overflow-y-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" aria-label="Primary workspace">
+        <div className="kwant-primary-workspace-nav-track flex min-w-max items-center gap-1">
           {navItems.map(({ key, href, label, title, icon: Icon }) => {
             const active = activeItem === key;
             return (

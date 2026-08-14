@@ -1244,6 +1244,33 @@ header.kwant-command-rail {
   max-height: var(--kwant-shell-bar-height);
 }
 
+/* Centre the primary terminal navigation when there is room. On a portrait
+   monitor or a narrow window its useful origin is the left edge: centring a
+   track wider than the viewport otherwise opens midway through the menu and
+   makes HOME/CHARTS appear missing. The utility controls keep their reserved
+   rail on the right and the navigation remains horizontally scrollable. */
+.kwant-primary-workspace-nav {
+  left: 50%;
+  width: calc(100% - 268px);
+  transform: translate(-50%, -50%);
+}
+
+.kwant-primary-workspace-nav-track {
+  margin-inline: auto;
+}
+
+@media (max-width: 1279px), (orientation: portrait) {
+  .kwant-primary-workspace-nav {
+    left: 8px;
+    width: calc(100% - 148px);
+    transform: translateY(-50%);
+  }
+
+  .kwant-primary-workspace-nav-track {
+    margin-inline: 0;
+  }
+}
+
 .kwant-chart-command-deck {
   height: calc(var(--kwant-shell-bar-height) * 2);
   grid-template-rows: repeat(2, var(--kwant-shell-bar-height));
