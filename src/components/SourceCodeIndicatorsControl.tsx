@@ -227,7 +227,7 @@ export default function SourceCodeIndicatorsControl({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="flex h-8 items-center gap-2 rounded-lg border border-border bg-surface/50 px-3 text-[11px] font-medium text-muted transition-colors hover:border-primary/25 hover:text-foreground"
+        className="kwant-chart-row-control flex h-7 items-center gap-1.5 rounded-[3px] border border-border bg-surface/50 px-2.5 text-[10px] font-semibold uppercase tracking-[0.075em] text-muted transition-colors hover:border-primary/25 hover:text-foreground"
         title="Create or import Pine, thinkScript and EasyLanguage indicators"
       >
         <Code2 className="h-3.5 w-3.5" />

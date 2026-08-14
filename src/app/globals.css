@@ -1378,6 +1378,18 @@ body.kwant-cockpit-ui .kwant-chart-command-deck button {
   letter-spacing: .045em;
 }
 
+/* Every actionable box in the chart command row shares one visual contract.
+   Component-specific menus may differ, but their triggers must align. */
+body.kwant-cockpit-ui .kwant-chart-command-deck .kwant-chart-row-control {
+  height: 28px;
+  min-height: 28px;
+  border-radius: 3px !important;
+  font-family: "Rajdhani", sans-serif;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .075em;
+}
+
 body.kwant-cockpit-ui .kwant-chart-command-deck > div {
   border-color: #24282d;
 }

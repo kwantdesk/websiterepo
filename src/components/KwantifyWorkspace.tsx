@@ -13518,7 +13518,7 @@ export default function KwantifyWorkspace({
             onChange={changeChartTimeZone}
             menuLabel="Chart timezone"
             compact
-            className="col-start-3 ml-1 max-w-[36px] shrink-0 justify-self-end px-2 sm:max-w-[190px] sm:px-2.5 [&>span]:hidden sm:[&>span]:block [&>svg:last-child]:hidden sm:[&>svg:last-child]:block"
+            className="col-start-3 ml-1 max-w-[30px] shrink-0 justify-self-end px-1.5 sm:max-w-[150px] sm:px-2.5 [&>span]:hidden sm:[&>span]:block [&>svg:last-child]:hidden sm:[&>svg:last-child]:block"
           />
           </div>
           <div
@@ -13594,11 +13594,11 @@ export default function KwantifyWorkspace({
             onClick={openLevelsExport}
             title="Export chart levels"
             aria-label="Export chart levels"
-            className="flex h-8 w-8 items-center justify-center rounded-full border border-border bg-surface text-muted transition-colors hover:border-primary/30 hover:bg-card hover:text-primary"
+            className="kwant-chart-row-control flex h-7 w-7 items-center justify-center rounded-[3px] border border-border bg-surface/50 text-muted transition-colors hover:border-primary/30 hover:bg-card hover:text-primary"
           >
-            <Download className="h-4 w-4" />
+            <Download className="h-3.5 w-3.5" />
           </button>
-          <button onClick={signOut} title={currentUsername ? `@${currentUsername}` : "Account"} className="flex h-8 w-8 items-center justify-center rounded-full border border-border bg-surface transition-colors hover:bg-card"><UserAvatar label={currentUsername || "Kwant Trader"} avatarUrl={currentAvatarUrl} size="sm" /></button>
+          <button onClick={signOut} title={currentUsername ? `@${currentUsername}` : "Account"} className="kwant-chart-row-control flex h-7 w-7 items-center justify-center overflow-hidden rounded-[3px] border border-border bg-surface/50 transition-colors hover:border-primary/30 hover:bg-card"><UserAvatar label={currentUsername || "Kwant Trader"} avatarUrl={currentAvatarUrl} size="xs" /></button>
           </div>
         </header>
         )}

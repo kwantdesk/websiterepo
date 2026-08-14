@@ -278,7 +278,7 @@ export default function ChartIndicatorsControl({
           aria-label="Chart indicators"
           aria-expanded={open}
           onClick={() => setOpen((current) => !current)}
-          className={`flex h-8 items-center gap-2 rounded-lg border px-3 text-[11px] font-medium transition-colors ${
+          className={`kwant-chart-row-control flex h-7 items-center gap-1.5 rounded-[3px] border px-2.5 text-[10px] font-semibold uppercase tracking-[0.075em] transition-colors ${
             open
               ? "border-primary/35 bg-primary/10 text-primary"
               : "border-border bg-surface/50 text-muted hover:border-primary/25 hover:text-foreground"
