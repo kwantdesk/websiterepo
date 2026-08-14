@@ -34,6 +34,7 @@ import {
 } from "lucide-react";
 import { defaultTheme, readStoredTheme, resetTheme, saveTheme as saveAppTheme, type ThemeColors } from "@/lib/theme";
 import { defaultChartSettings, extractUserChartSettings, loadStoredChartSettings, mergeChartSettingsIntoTheme, saveStoredChartSettings, type ChartSettings } from "@/lib/chartSettings";
+import { linkStoredPaneIndicatorsToTheme } from "@/lib/chartIndicatorConfig";
 import { createClient } from "@/lib/supabase";
 import { usagePlans } from "@/lib/usagePlans";
 import { compactLegacyAuthPreferenceMetadata, hydrateUserPreferences } from "@/lib/userPreferences";
@@ -648,10 +649,34 @@ export default function SettingsPage() {
     && (normalizeProfileHandle(profileUsername) === savedHandle || handleCheck.state === "available");
 
   function updateThemeColor(key: keyof ThemeColors, color: string) {
-    setThemeSettings((current) => ({ ...current, [key]: color }));
+    linkStoredPaneIndicatorsToTheme();
+    setThemeSettings((current) => ({
+      ...current,
+      [key]: color,
+      ...(key === "background" ? { chartBackground: color } : {}),
+      ...(key === "primary" ? { candleUp: color, crosshairColor: color } : {}),
+      ...(key === "danger" ? { candleDown: color } : {}),
+    }));
+    if (key === "background" || key === "primary" || key === "danger") {
+      setChartSettings((current) => ({
+        ...current,
+        ...(key === "background" ? { backgroundColor: color } : {}),
+        ...(key === "primary" ? {
+          upColor: color,
+          borderUpColor: color,
+          wickUpColor: color,
+        } : {}),
+        ...(key === "danger" ? {
+          downColor: color,
+          borderDownColor: color,
+          wickDownColor: color,
+        } : {}),
+      }));
+    }
   }
 
   function updateChartColor(key: keyof ChartSettings, color: string) {
+    linkStoredPaneIndicatorsToTheme();
     setChartSettings((current) => {
       const next = { ...current, [key]: color };
       setThemeSettings((theme) => mergeChartSettingsIntoTheme(theme, next));
@@ -673,6 +698,7 @@ export default function SettingsPage() {
     };
     setThemeSettings(theme);
     setChartSettings(nextChartSettings);
+    linkStoredPaneIndicatorsToTheme();
     saveAppTheme(theme);
     saveStoredChartSettings(nextChartSettings);
   }
@@ -680,12 +706,14 @@ export default function SettingsPage() {
   async function saveThemeSettings() {
     const syncedTheme = mergeChartSettingsIntoTheme(themeSettings, chartSettings);
     setThemeSettings(syncedTheme);
+    linkStoredPaneIndicatorsToTheme();
     saveAppTheme(syncedTheme);
     saveStoredChartSettings(chartSettings);
   }
 
   function resetThemeSettings() {
     resetTheme();
+    linkStoredPaneIndicatorsToTheme();
     const syncedTheme = mergeChartSettingsIntoTheme(defaultTheme, defaultChartSettings);
     setThemeSettings(syncedTheme);
     setChartSettings(defaultChartSettings);

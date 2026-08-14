@@ -641,7 +641,7 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
     showMajorNegativeOpenInterest: true,
     showZeroGamma: true,
     showLabels: true,
-    useThemeColors: false,
+    useThemeColors: true,
     positiveColor: "#22C55E",
     negativeColor: "#EF4444",
     zeroGammaColor: "#F4F4F5",
@@ -653,7 +653,7 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
     showTwoSigma: false,
     showBandFill: false,
     showLabels: true,
-    useThemeColors: false,
+    useThemeColors: true,
     neutralColor: "#D6A84B",
     expectedMoveSettingsVersion: 1,
   } : {}),
@@ -855,6 +855,40 @@ export const clonePaneIndicatorState = (state: Record<string, ChartIndicatorInst
       })),
     ]),
   );
+
+/**
+ * Selecting an account theme is a global visual action. Existing indicator
+ * instances may contain a historic `useThemeColors: false` snapshot, so link
+ * them back to the active palette at the moment the theme changes. Users can
+ * still customise an indicator again afterwards.
+ */
+export const linkPaneIndicatorStateToTheme = (state: Record<string, ChartIndicatorInstance[]>) =>
+  Object.fromEntries(
+    Object.entries(state).map(([paneId, instances]) => [
+      paneId,
+      instances.map((instance) => ({
+        ...instance,
+        settings: {
+          ...(instance.settings ?? {}),
+          useThemeColors: true,
+        },
+      })),
+    ]),
+  );
+
+export function linkStoredPaneIndicatorsToTheme() {
+  if (typeof window === "undefined") return;
+  for (const key of ["kwantdesk-chart-indicators", "olisa-chart-pane-indicators"]) {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) continue;
+    try {
+      const linked = linkPaneIndicatorStateToTheme(normalizePaneIndicatorState(JSON.parse(raw)));
+      window.localStorage.setItem(key, JSON.stringify(linked));
+    } catch {
+      // A malformed legacy indicator snapshot is ignored by the normal loader too.
+    }
+  }
+}
 
 export const normalizePaneIndicatorState = (value: unknown): Record<string, ChartIndicatorInstance[]> => {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};

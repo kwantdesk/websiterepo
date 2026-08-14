@@ -74,7 +74,9 @@ export function applyTheme(theme?: Partial<ThemeColors>) {
   document.querySelector('meta[name="theme-color"]')?.setAttribute("content", saved.background);
   root.dataset.themeReady = "true";
   finishThemeUpdate(root);
-  window.dispatchEvent(new CustomEvent("kwantdesk:theme-change"));
+  window.dispatchEvent(new CustomEvent<ThemeColors>("kwantdesk:theme-change", {
+    detail: saved,
+  }));
 }
 
 export function saveTheme(theme: ThemeColors) {

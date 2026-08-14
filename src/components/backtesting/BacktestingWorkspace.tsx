@@ -28,7 +28,7 @@ import type { ChartLevel, ChartZone } from "@/components/Chart";
 import type { ChartGammaLevelsPayload, ChartGammaSourceLevelKind } from "@/lib/chartGammaLevels";
 import { mergeGammaLevelsAtSamePrice } from "@/lib/chartGammaLevels";
 import type { GameplanPayload, GameplanRole } from "@/lib/gameplan";
-import { defaultChartSettings, loadStoredChartSettings, type ChartSettings } from "@/lib/chartSettings";
+import { CHART_SETTINGS_CHANGE_EVENT, CHART_SETTINGS_STORAGE_KEY, chartSettingsEqual, defaultChartSettings, loadStoredChartSettings, type ChartSettings } from "@/lib/chartSettings";
 import KwantLoader from "@/components/KwantLoader";
 import HistoricalGexPanel from "@/components/backtesting/HistoricalGexPanel";
 import HistoricalZyonPanel from "@/components/backtesting/HistoricalZyonPanel";
@@ -651,6 +651,22 @@ export default function BacktestingWorkspace() {
       window.localStorage.getItem(REPLAY_TIME_ZONE_STORAGE_KEY)
       ?? browserTimeZone(),
     ));
+  }, []);
+
+  useEffect(() => {
+    const syncSettings = () => {
+      const next = loadStoredChartSettings();
+      setSettings((current) => chartSettingsEqual(current, next) ? current : next);
+    };
+    const syncSettingsAcrossTabs = (event: StorageEvent) => {
+      if (event.key === CHART_SETTINGS_STORAGE_KEY) syncSettings();
+    };
+    window.addEventListener(CHART_SETTINGS_CHANGE_EVENT, syncSettings);
+    window.addEventListener("storage", syncSettingsAcrossTabs);
+    return () => {
+      window.removeEventListener(CHART_SETTINGS_CHANGE_EVENT, syncSettings);
+      window.removeEventListener("storage", syncSettingsAcrossTabs);
+    };
   }, []);
 
   useEffect(() => {

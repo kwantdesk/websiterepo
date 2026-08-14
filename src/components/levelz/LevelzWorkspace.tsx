@@ -26,7 +26,7 @@ import {
   readDatabentoLiveStatus,
   type DatabentoLiveStatus,
 } from "@/lib/chartLiveEvents";
-import { defaultChartSettings, loadStoredChartSettings, type ChartSettings } from "@/lib/chartSettings";
+import { CHART_SETTINGS_CHANGE_EVENT, CHART_SETTINGS_STORAGE_KEY, chartSettingsEqual, defaultChartSettings, loadStoredChartSettings, type ChartSettings } from "@/lib/chartSettings";
 import type { GameplanPayload } from "@/lib/gameplan";
 import {
   nativeGammaStatusLabel,
@@ -1513,9 +1513,19 @@ export default function LevelzWorkspace() {
       setIntelligenceCollapsed(window.localStorage.getItem(LEVELZ_INTELLIGENCE_COLLAPSED_STORAGE_KEY) === "true");
     } catch {}
     setLayoutReady(true);
-    const syncSettings = () => setSettings(loadStoredChartSettings());
-    window.addEventListener("kwantdesk:preferences-changed", syncSettings);
-    return () => window.removeEventListener("kwantdesk:preferences-changed", syncSettings);
+    const syncSettings = () => {
+      const next = loadStoredChartSettings();
+      setSettings((current) => chartSettingsEqual(current, next) ? current : next);
+    };
+    const syncSettingsAcrossTabs = (event: StorageEvent) => {
+      if (event.key === CHART_SETTINGS_STORAGE_KEY) syncSettings();
+    };
+    window.addEventListener(CHART_SETTINGS_CHANGE_EVENT, syncSettings);
+    window.addEventListener("storage", syncSettingsAcrossTabs);
+    return () => {
+      window.removeEventListener(CHART_SETTINGS_CHANGE_EVENT, syncSettings);
+      window.removeEventListener("storage", syncSettingsAcrossTabs);
+    };
   }, []);
 
   useEffect(() => {

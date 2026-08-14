@@ -20,6 +20,7 @@ export interface ChartSettings {
 
 export const CHART_SETTINGS_STORAGE_KEY = "olisa-chart-settings";
 export const CHART_SETTINGS_METADATA_KEY = "chartSettings";
+export const CHART_SETTINGS_CHANGE_EVENT = "kwantdesk:chart-settings-change";
 
 export const defaultChartSettings: ChartSettings = {
   colorBarsPreviousClose: false,
@@ -110,8 +111,31 @@ export function loadStoredChartSettings() {
 
 export function saveStoredChartSettings(settings: ChartSettings) {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(CHART_SETTINGS_STORAGE_KEY, JSON.stringify(normalizeChartSettings(settings)));
+  const normalized = normalizeChartSettings(settings);
+  window.localStorage.setItem(CHART_SETTINGS_STORAGE_KEY, JSON.stringify(normalized));
+  // CSS variables repaint the application chrome immediately, but canvas
+  // charts keep their palette in React state. Give every mounted chart surface
+  // the same normalized payload so a theme change cannot leave stale panes
+  // behind until the next reload.
+  window.dispatchEvent(new CustomEvent<ChartSettings>(CHART_SETTINGS_CHANGE_EVENT, {
+    detail: normalized,
+  }));
   window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
+}
+
+export function chartSettingsEqual(left: ChartSettings, right: ChartSettings) {
+  return left.colorBarsPreviousClose === right.colorBarsPreviousClose
+    && left.upColor === right.upColor
+    && left.downColor === right.downColor
+    && left.borderUpColor === right.borderUpColor
+    && left.borderDownColor === right.borderDownColor
+    && left.wickUpColor === right.wickUpColor
+    && left.wickDownColor === right.wickDownColor
+    && left.backgroundColor === right.backgroundColor
+    && left.gridLines === right.gridLines
+    && left.gridColor === right.gridColor
+    && left.timezone === right.timezone
+    && left.precision === right.precision;
 }
 
 export function extractUserChartSettings(user: { user_metadata?: Record<string, unknown> | null } | null | undefined) {

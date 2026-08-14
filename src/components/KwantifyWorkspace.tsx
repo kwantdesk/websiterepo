@@ -92,7 +92,7 @@ import { useAccountPreferenceSync } from "@/hooks/useAccountPreferenceSync";
 import { compactLegacyAuthPreferenceMetadata, hydrateUserPreferences } from "@/lib/userPreferences";
 import { normalizeTimeZone } from "@/lib/timeZones";
 import { clearSavedStrategiesRaw, loadSavedStrategiesRaw, saveSavedStrategiesRaw } from "@/lib/automation";
-import { defaultChartSettings, extractUserChartSettings, loadStoredChartSettings, mergeWorkspaceChartSettingsWithActiveTheme, saveStoredChartSettings, type ChartSettings } from "@/lib/chartSettings";
+import { CHART_SETTINGS_CHANGE_EVENT, CHART_SETTINGS_STORAGE_KEY, chartSettingsEqual, defaultChartSettings, extractUserChartSettings, loadStoredChartSettings, mergeWorkspaceChartSettingsWithActiveTheme, saveStoredChartSettings, type ChartSettings } from "@/lib/chartSettings";
 import type { ChartLevel, ChartZone } from "@/components/Chart";
 import {
   CHART_INDICATOR_BY_ID,
@@ -101,6 +101,7 @@ import {
 import {
   clonePaneIndicatorState,
   defaultIndicatorSettings,
+  linkPaneIndicatorStateToTheme,
   normalizePaneIndicatorState,
 } from "@/lib/chartIndicatorConfig";
 import { mergeGammaLevelsAtSamePrice, type ChartGammaLevelsPayload } from "@/lib/chartGammaLevels";
@@ -8357,6 +8358,14 @@ export default function KwantifyWorkspace({
     window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
   }, [paneIndicators]);
 
+  useEffect(() => {
+    const relinkIndicators = () => {
+      setPaneIndicators((current) => linkPaneIndicatorStateToTheme(current));
+    };
+    window.addEventListener("kwantdesk:theme-change", relinkIndicators);
+    return () => window.removeEventListener("kwantdesk:theme-change", relinkIndicators);
+  }, []);
+
   const getBottomPanelMaxHeight = useCallback(() => {
     const mainRect = mainRef.current?.getBoundingClientRect();
     if (!mainRect) {
@@ -10032,6 +10041,24 @@ export default function KwantifyWorkspace({
   }, [authChecked, preferenceUserId]);
 
   useEffect(() => {
+    const syncChartPalette = () => {
+      const next = loadStoredChartSettings();
+      setChartSettings((current) => chartSettingsEqual(current, next) ? current : next);
+      setDraftChartSettings((current) => chartSettingsEqual(current, next) ? current : next);
+      setChartSettingsSnapshot((current) => chartSettingsEqual(current, next) ? current : next);
+    };
+    const syncChartPaletteAcrossTabs = (event: StorageEvent) => {
+      if (event.key === CHART_SETTINGS_STORAGE_KEY) syncChartPalette();
+    };
+    window.addEventListener(CHART_SETTINGS_CHANGE_EVENT, syncChartPalette);
+    window.addEventListener("storage", syncChartPaletteAcrossTabs);
+    return () => {
+      window.removeEventListener(CHART_SETTINGS_CHANGE_EVENT, syncChartPalette);
+      window.removeEventListener("storage", syncChartPaletteAcrossTabs);
+    };
+  }, []);
+
+  useEffect(() => {
     saveStoredChartSettings(chartSettings);
   }, [chartSettings]);
 
@@ -10040,24 +10067,13 @@ export default function KwantifyWorkspace({
     const migrationKey = "kwantdesk:midnight-cockpit-chart:v1";
     if (window.localStorage.getItem(migrationKey) === "applied") return;
 
-    const migrated: ChartSettings = {
-      ...chartSettings,
-      colorBarsPreviousClose: defaultChartSettings.colorBarsPreviousClose,
-      upColor: defaultChartSettings.upColor,
-      downColor: defaultChartSettings.downColor,
-      borderUpColor: defaultChartSettings.borderUpColor,
-      borderDownColor: defaultChartSettings.borderDownColor,
-      wickUpColor: defaultChartSettings.wickUpColor,
-      wickDownColor: defaultChartSettings.wickDownColor,
-      backgroundColor: defaultChartSettings.backgroundColor,
-      gridColor: defaultChartSettings.gridColor,
-    };
+    // This marker used to force the original cockpit colours after account
+    // hydration. On a new browser that silently replaced the user's selected
+    // theme after the page had already painted. Theme colours are account
+    // identity now, so the migration may mark completion but must not mutate
+    // the active palette.
     window.localStorage.setItem(migrationKey, "applied");
-    setChartSettings(migrated);
-    setDraftChartSettings(migrated);
-    setChartSettingsSnapshot(migrated);
-    saveStoredChartSettings(migrated);
-  }, [authChecked, chartSettings]);
+  }, [authChecked]);
 
   useEffect(() => {
     if (bottomTab === "strategies") loadSavedStrategies();
@@ -11422,7 +11438,7 @@ export default function KwantifyWorkspace({
       saveStoredChartSettings(nextChartSettings);
     }
     if (preset.indicators) {
-      setPaneIndicators(clonePaneIndicatorState(preset.indicators));
+      setPaneIndicators(linkPaneIndicatorStateToTheme(clonePaneIndicatorState(preset.indicators)));
     }
     setPaneLevelVisibility(clonePaneLevelVisibility(preset.levelVisibility ?? {}));
     const firstPaneId = collectWorkspacePaneIds(normalizedTree)[0];
