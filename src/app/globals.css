@@ -1289,13 +1289,34 @@ header.kwant-command-rail .kwant-primary-nav-control {
 
 @media (max-width: 1279px), (orientation: portrait) {
   .kwant-primary-workspace-nav {
-    left: 8px;
-    width: calc(100% - 148px);
+    position: relative;
+    inset: auto;
+    left: auto;
+    flex: 1 1 auto;
+    width: auto;
+    min-width: 0;
+    margin-right: 8px;
     transform: none;
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in srgb, var(--primary) 48%, transparent) transparent;
   }
 
   .kwant-primary-workspace-nav-track {
     margin-inline: 0;
+  }
+
+  .kwant-primary-workspace-nav::-webkit-scrollbar {
+    display: block;
+    height: 3px;
+  }
+
+  .kwant-primary-workspace-nav::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .kwant-primary-workspace-nav::-webkit-scrollbar-thumb {
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--primary) 48%, transparent);
   }
 }
 

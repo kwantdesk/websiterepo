@@ -262,7 +262,7 @@ function AppSidebar({
         </div>
       </nav>
 
-      <div className="ml-auto flex shrink-0 items-center gap-1.5">
+      <div className="kwant-primary-workspace-utilities relative z-10 ml-auto flex shrink-0 items-center gap-1.5 bg-panel">
         <button
           type="button"
           onClick={onTradesClick}
