@@ -106,6 +106,16 @@ test("mixed panel selection is saved in the existing pane and preset models", ()
   assert.match(workspaceSource, /panes: workspacePanes,/);
 });
 
+test("workspace windows duplicate their exact state into an independent adjacent pane", () => {
+  assert.match(workspaceSource, /const duplicateWorkspacePane = \(paneId: string\) =>/);
+  assert.match(workspaceSource, /const nextPane: WorkspacePane = \{[\s\S]*?\.\.\.sourcePane,[\s\S]*?id: nextPaneId,[\s\S]*?locked: false,/);
+  assert.match(workspaceSource, /\[nextPaneId\]: \(current\[paneId\] \?\? \[\]\)\.map\(\(instance\) => \(\{[\s\S]*?instanceId: `\$\{instance\.indicatorId\}-\$\{crypto\.randomUUID\(\)\}`/);
+  assert.match(workspaceSource, /\[nextPaneId\]: \{ \.\.\.\(current\[paneId\] \?\? EMPTY_PANE_LEVEL_VISIBILITY\) \}/);
+  assert.match(workspaceSource, /insertWorkspacePane\(current, paneId, nextPaneId, splitAxis/);
+  assert.match(workspaceSource, /aria-label="Duplicate chart"/);
+  assert.match(workspaceSource, /aria-label=\{`Duplicate \$\{option\?\.label \?\? "workspace"\} panel`\}/);
+});
+
 test("embedded pages use the real workspace components inside an isolated panel", () => {
   for (const component of [
     "ZyonWorkspace",

@@ -10721,6 +10721,56 @@ export default function KwantifyWorkspace({
     showReportToast("success", "Panel added — choose what to open", 1600);
   };
 
+  const duplicateWorkspacePane = (paneId: string) => {
+    if (workspaceLocked) {
+      showReportToast("error", "Unlock the workspace before duplicating a panel", 2200);
+      return;
+    }
+    if (workspacePanes.length >= 12) {
+      showReportToast("error", "This workspace already has the maximum of 12 panels", 2200);
+      return;
+    }
+    const sourcePane = workspacePanes.find((pane) => pane.id === paneId);
+    if (!sourcePane) return;
+    const paneElement = workspaceAreaRef.current?.querySelector<HTMLElement>(
+      `[data-workspace-pane-id="${paneId}"]`,
+    );
+    const paneRect = paneElement?.getBoundingClientRect();
+    const splitAxis: "x" | "y" = !paneRect || paneRect.width >= paneRect.height ? "x" : "y";
+    const nextPaneId = `pane-${crypto.randomUUID()}`;
+    const nextPane: WorkspacePane = {
+      ...sourcePane,
+      id: nextPaneId,
+      locked: false,
+    };
+
+    setWorkspacePanes((current) => [...current, nextPane]);
+    setPaneIndicators((current) => ({
+      ...current,
+      [nextPaneId]: (current[paneId] ?? []).map((instance) => ({
+        ...instance,
+        instanceId: `${instance.indicatorId}-${crypto.randomUUID()}`,
+        settings: instance.settings ? { ...instance.settings } : undefined,
+      })),
+    }));
+    setPaneLevelVisibility((current) => ({
+      ...current,
+      [nextPaneId]: { ...(current[paneId] ?? EMPTY_PANE_LEVEL_VISIBILITY) },
+    }));
+    setWorkspaceTree((current) =>
+      insertWorkspacePane(current, paneId, nextPaneId, splitAxis, `split-${crypto.randomUUID()}`));
+    setWorkspaceLayout("custom");
+    setWorkspacePanelPickerPaneId(null);
+    setWorkspacePanelTransition(null);
+    setActivePaneId(nextPaneId);
+    setSelectedInstrument(nextPane.symbol);
+    setSelectedTimeframe(nextPane.timeframe);
+    setSelectedPeriod(nextPane.period);
+    setConnectedBroker(nextPane.broker);
+    setSelectedWatchlistKey(nextPane.watchlistKey);
+    showReportToast("success", "Panel duplicated — the copy is independent and ready to arrange", 1800);
+  };
+
   const detachWorkspacePane = (paneId: string) => {
     if (workspaceLocked) {
       showReportToast("error", "Unlock the workspace before detaching a panel", 2200);
@@ -12427,6 +12477,16 @@ export default function KwantifyWorkspace({
                 >
                   {pane.locked ? <Lock className="h-3.5 w-3.5" /> : <Unlock className="h-3.5 w-3.5" />}
                 </button>
+                <button
+                  type="button"
+                  onClick={() => duplicateWorkspacePane(pane.id)}
+                  disabled={workspaceLocked || workspacePanes.length >= 12}
+                  className="flex h-7 w-7 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-primary disabled:opacity-30"
+                  title={workspacePanes.length >= 12 ? "This workspace already has 12 panels" : "Duplicate this panel"}
+                  aria-label={`Duplicate ${option?.label ?? "workspace"} panel`}
+                >
+                  <Copy className="h-3.5 w-3.5" />
+                </button>
                 <button type="button" onClick={() => detachWorkspacePane(pane.id)} disabled={workspaceLocked} className="flex h-7 w-7 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-primary disabled:opacity-30" title="Detach into a floating window" aria-label={`Detach ${option?.label ?? "workspace"} panel`}>
                   <PictureInPicture2 className="h-3.5 w-3.5" />
                 </button>
@@ -12544,6 +12604,16 @@ export default function KwantifyWorkspace({
               aria-label={pane.locked ? "Unlock this chart" : "Lock this chart"}
             >
               {pane.locked ? <Lock className="h-3.5 w-3.5" /> : <Unlock className="h-3.5 w-3.5" />}
+            </button>
+            <button
+              type="button"
+              onClick={() => duplicateWorkspacePane(pane.id)}
+              disabled={workspaceLocked || workspacePanes.length >= 12}
+              className="flex h-7 w-7 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-primary disabled:opacity-30"
+              title={workspacePanes.length >= 12 ? "This workspace already has 12 panels" : "Duplicate this chart"}
+              aria-label="Duplicate chart"
+            >
+              <Copy className="h-3.5 w-3.5" />
             </button>
             <button
               type="button"
