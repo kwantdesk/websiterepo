@@ -14716,9 +14716,25 @@ export default function KwantifyWorkspace({
                 <button onClick={() => setRightPanel(null)} className="flex h-7 w-7 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground"><X className="h-3.5 w-3.5" /></button>
               </div>
               <div className="relative mb-4 grid grid-cols-2 gap-2">
-                <button onClick={() => setOrderSide("sell")} className={`rounded-xl border border-danger/20 px-3 py-2 text-left transition-all ${orderSide === "sell" ? "bg-danger/20 text-danger" : "bg-danger/10 text-danger/80"}`}><div className="text-[12px] font-semibold">Sell</div><div className="font-mono text-[13px]" style={{ color: "#EF4444" }}>{orderPanelBidLabel}</div></button>
+                <button
+                  onClick={() => setOrderSide("sell")}
+                  className="rounded-xl border px-3 py-2 text-left transition-all"
+                  style={{
+                    borderColor: colorWithAlpha(chartSettings.downColor, orderSide === "sell" ? 0.62 : 0.28),
+                    backgroundColor: colorWithAlpha(chartSettings.downColor, orderSide === "sell" ? 0.22 : 0.1),
+                    color: chartSettings.downColor,
+                  }}
+                ><div className="text-[12px] font-semibold">Sell</div><div className="font-mono text-[13px]">{orderPanelBidLabel}</div></button>
                 <div className="pointer-events-none absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2 rounded-full bg-surface px-2 py-0.5 font-mono text-[10px] text-muted">{orderPanelSpreadLabel}</div>
-                <button onClick={() => setOrderSide("buy")} className={`rounded-xl border border-primary/20 px-3 py-2 text-right transition-all ${orderSide === "buy" ? "bg-primary/20 text-primary" : "bg-primary/10 text-primary/80"}`}><div className="text-[12px] font-semibold">Buy</div><div className="font-mono text-[13px]" style={{ color: "#22C55E" }}>{orderPanelAskLabel}</div></button>
+                <button
+                  onClick={() => setOrderSide("buy")}
+                  className="rounded-xl border px-3 py-2 text-right transition-all"
+                  style={{
+                    borderColor: colorWithAlpha(chartSettings.upColor, orderSide === "buy" ? 0.62 : 0.28),
+                    backgroundColor: colorWithAlpha(chartSettings.upColor, orderSide === "buy" ? 0.22 : 0.1),
+                    color: chartSettings.upColor,
+                  }}
+                ><div className="text-[12px] font-semibold">Buy</div><div className="font-mono text-[13px]">{orderPanelAskLabel}</div></button>
               </div>
               {!tradingUnlocked && (
                 <div className={`mb-4 rounded-xl border p-3 ${orderPanelLockTone.border} ${orderPanelLockTone.background}`}>
@@ -14815,7 +14831,12 @@ export default function KwantifyWorkspace({
                   <div className="flex justify-between"><span className="text-muted">Trade value</span><span className="font-mono">{formatDollar(orderPanelTradeValueUsd)}</span></div>
                 </div>
               </div>
-              <button onClick={tradingUnlocked ? submitPaperOrder : undefined} disabled={!tradingUnlocked} className={`w-full rounded-xl py-3 font-semibold text-background ${tradingUnlocked ? orderSide === "buy" ? "bg-primary" : "bg-danger" : "cursor-not-allowed bg-muted/30 text-muted"}`}>{tradingUnlocked ? `${orderSide === "buy" ? "Buy" : "Sell"} ${selectedOrderQuantityLabel} ${orderType.toUpperCase()}` : currentBrokerConnection.connectionState === "connected" ? "Order routing unavailable" : "Connect Your Broker To Trade"}</button>
+              <button
+                onClick={tradingUnlocked ? submitPaperOrder : undefined}
+                disabled={!tradingUnlocked}
+                className={`w-full rounded-xl py-3 font-semibold ${tradingUnlocked ? "text-background" : "cursor-not-allowed bg-muted/30 text-muted"}`}
+                style={tradingUnlocked ? { backgroundColor: orderSide === "buy" ? chartSettings.upColor : chartSettings.downColor } : undefined}
+              >{tradingUnlocked ? `${orderSide === "buy" ? "Buy" : "Sell"} ${selectedOrderQuantityLabel} ${orderType.toUpperCase()}` : currentBrokerConnection.connectionState === "connected" ? "Order routing unavailable" : "Connect Your Broker To Trade"}</button>
               {orderTicketMessage && <div className={`mt-2 rounded-xl border px-3 py-2 text-[11px] ${orderTicketMessage.tone === "success" ? "border-primary/25 bg-primary/10 text-primary" : "border-danger/25 bg-danger/10 text-danger"}`}>{orderTicketMessage.text}</div>}
               {selectedPaperOpenPositions.length > 0 && <div className="mt-4 space-y-2"><div className="flex items-center justify-between"><div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">Open positions</div><button onClick={handleFlattenPaperAccount} className="rounded-md border border-danger/25 px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.1em] text-danger hover:bg-danger/10">Flatten all</button></div>{selectedPaperOpenPositions.map((position) => <div key={position.id} className="rounded-xl border border-border bg-background/40 p-3"><div className="flex items-center justify-between"><span className="text-[12px] font-semibold">{position.side === "buy" ? "Long" : "Short"} {position.remainingQuantity} {position.symbol}</span><LivePaperPositionPnl position={position} /></div><div className="mt-1 flex justify-between font-mono text-[10px] text-muted"><span>Entry {formatPrice(position.entryPrice, position.symbol)}</span><LivePaperPositionMark position={position} /></div><div className="mt-1 flex justify-between font-mono text-[9px] text-muted"><span>{position.stopLoss == null ? "SL not set" : `SL ${formatPrice(position.stopLoss, position.symbol)}`}</span><span>{position.takeProfits.filter((target) => target.quantity > target.filledQuantity).length} active TP</span></div><div className="mt-2 flex gap-2"><button onClick={() => handleFlattenPaperPosition(position)} className="flex flex-1 items-center justify-center gap-1 rounded-lg border border-danger/25 px-2 py-1.5 text-[10px] font-semibold text-danger hover:bg-danger/10"><X className="h-3 w-3" /> Close position</button></div></div>)}</div>}
               {selectedPaperWorkingOrders.length > 0 && <div className="mt-4 space-y-2"><div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">Working orders</div>{selectedPaperWorkingOrders.map((order) => <div key={order.id} className="flex items-center justify-between rounded-xl border border-border bg-background/40 p-3"><div><div className="text-[11px] font-semibold">{order.side.toUpperCase()} {order.quantity} {order.symbol}</div><div className="font-mono text-[10px] text-muted">{order.type.toUpperCase()} {order.price ? formatPrice(order.price, order.symbol) : "MARKET"}</div></div><button onClick={() => handleCancelPaperOrder(order.accountId, order.id)} className="rounded-lg border border-border px-2 py-1 text-[10px] text-muted hover:text-danger">Cancel</button></div>)}</div>}

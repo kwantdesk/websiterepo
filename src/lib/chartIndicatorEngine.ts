@@ -378,7 +378,7 @@ export function calculateIndicatorSeries(
     if (!orderFlowAvailable(candles)) return [];
     return [{
       key,
-      label: "Delta",
+      label: "Cumulative Volume Delta",
       kind: "histogram",
       placement: "pane",
       color: theme.primary,

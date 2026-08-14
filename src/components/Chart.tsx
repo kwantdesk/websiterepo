@@ -2906,7 +2906,7 @@ export default function Chart({
       ].includes(instance.indicatorId)) {
         return [{
           key: instance.instanceId,
-          title: instance.indicatorId === "delta-bar" ? "Delta" : "Cumulative Delta",
+          title: "Cumulative Volume Delta",
           indicatorId: instance.indicatorId,
           settings: instance.settings,
           series: [],

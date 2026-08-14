@@ -24,4 +24,6 @@ test("delta is calculated once for every verified chart candle", () => {
 
 test("the standard CVD pane uses its full user-facing name", () => {
   assert.match(engine, /: "Cumulative Volume Delta",/);
+  assert.match(chart, /title: "Cumulative Volume Delta"/);
+  assert.doesNotMatch(chart, /title: instance\.indicatorId === "delta-bar" \? "Delta"/);
 });

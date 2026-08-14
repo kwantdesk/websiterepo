@@ -21,6 +21,16 @@ test("the right rail exposes Trade below Watchlist and before Live GEX", () => {
   assert.match(workspace, /title: "Trade"/);
 });
 
+test("trade Buy and Sell controls inherit the active chart candle colours", () => {
+  assert.match(workspace, /color: chartSettings\.downColor/);
+  assert.match(workspace, /color: chartSettings\.upColor/);
+  assert.match(workspace, /colorWithAlpha\(chartSettings\.downColor, orderSide === "sell"/);
+  assert.match(workspace, /colorWithAlpha\(chartSettings\.upColor, orderSide === "buy"/);
+  assert.match(workspace, /backgroundColor: orderSide === "buy" \? chartSettings\.upColor : chartSettings\.downColor/);
+  assert.doesNotMatch(workspace, /style=\{\{ color: "#EF4444" \}\}>\{orderPanelBidLabel\}/);
+  assert.doesNotMatch(workspace, /style=\{\{ color: "#22C55E" \}\}>\{orderPanelAskLabel\}/);
+});
+
 test("the top-right Trade control uses the exact primary navigation control without a separate underline", () => {
   assert.match(navigation, /className=\{tradesActive \? horizontalItemActive : horizontalItemInactive\}/);
   assert.match(navigation, /title="Trade"/);
