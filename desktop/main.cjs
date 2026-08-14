@@ -5,6 +5,30 @@ const path = require("node:path");
 const APP_URL = "https://www.kwantdesk.com/charts";
 const APP_ORIGIN = "https://www.kwantdesk.com";
 const ICON_PATH = path.join(__dirname, "..", "public", "icons", "kwantdesk-app.ico");
+const TITLE_BAR_HEIGHT = 30;
+const TITLE_BAR_COLOR = "#303238";
+const TITLE_BAR_SYMBOL_COLOR = "#d5d7da";
+
+const desktopWindowChrome = {
+  titleBarStyle: "hidden",
+  titleBarOverlay: {
+    color: TITLE_BAR_COLOR,
+    symbolColor: TITLE_BAR_SYMBOL_COLOR,
+    height: TITLE_BAR_HEIGHT,
+  },
+};
+
+function reserveDesktopTitleBar(webContents) {
+  webContents.on("dom-ready", () => {
+    void webContents.insertCSS(`
+      html { --kwantdesk-desktop-titlebar-height: ${TITLE_BAR_HEIGHT}px; }
+      body {
+        box-sizing: border-box !important;
+        padding-top: var(--kwantdesk-desktop-titlebar-height) !important;
+      }
+    `);
+  });
+}
 
 app.setName("KwantDesk");
 app.setAppUserModelId("com.kwantdesk.desktop");
@@ -54,6 +78,7 @@ async function createMainWindow() {
   const saved = readWindowState();
   const window = new BrowserWindow({
     ...saved,
+    ...desktopWindowChrome,
     minWidth: 980,
     minHeight: 640,
     title: "KwantDesk",
@@ -71,6 +96,7 @@ async function createMainWindow() {
   });
 
   mainWindow = window;
+  reserveDesktopTitleBar(window.webContents);
   Menu.setApplicationMenu(null);
 
   if (saved.maximized) window.maximize();
@@ -85,6 +111,7 @@ async function createMainWindow() {
       return {
         action: "allow",
         overrideBrowserWindowOptions: {
+          ...desktopWindowChrome,
           icon: ICON_PATH,
           autoHideMenuBar: true,
           webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
@@ -93,6 +120,9 @@ async function createMainWindow() {
     }
     void shell.openExternal(url);
     return { action: "deny" };
+  });
+  window.webContents.on("did-create-window", (childWindow) => {
+    reserveDesktopTitleBar(childWindow.webContents);
   });
 
   // Remove cached application assets, but retain cookies and site storage so

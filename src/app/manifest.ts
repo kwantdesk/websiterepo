@@ -11,7 +11,7 @@ export default function manifest(): MetadataRoute.Manifest {
     display: "standalone",
     orientation: "any",
     background_color: "#000000",
-    theme_color: "#000000",
+    theme_color: "#303238",
     icons: [
       {
         src: "/icons/kwantdesk-app-192.png",
