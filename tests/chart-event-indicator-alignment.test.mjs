@@ -21,3 +21,7 @@ test("delta is calculated once for every verified chart candle", () => {
   assert.match(engine, /const value = finite\(candle\.delta, finite\(candle\.askVolume\) - finite\(candle\.bidVolume\)\)/);
   assert.match(engine, /time: candle\.timestamp \/ 1000/);
 });
+
+test("the standard CVD pane uses its full user-facing name", () => {
+  assert.match(engine, /: "Cumulative Volume Delta",/);
+});

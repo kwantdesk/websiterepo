@@ -505,7 +505,7 @@ export function calculateIndicatorSeries(
             "customName",
             dedicatedCandlestick ? "Cumulative Delta Candlestick" : "Cumulative Delta Histogram",
           )
-        : "CVD",
+        : "Cumulative Volume Delta",
       kind: displayStyle === "candles" ? "candlestick" : displayStyle === "bars" ? "histogram" : "line",
       placement: "pane",
       color: displayStyle === "line" ? lineColor : theme.primary,
