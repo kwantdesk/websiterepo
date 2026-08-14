@@ -62,11 +62,11 @@ function writeLastGoodGexMap<T>(key: string, value: T, updatedAt: number) {
   } catch {}
 }
 
-async function fetchWorkspaceResponse(url: string) {
+async function fetchWorkspaceResponse(url: string, timeoutMs = WORKSPACE_REQUEST_TIMEOUT_MS) {
   let lastError: unknown = null;
   for (let attempt = 0; attempt < 2; attempt += 1) {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), WORKSPACE_REQUEST_TIMEOUT_MS);
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
     try {
       const response = await fetch(url, { cache: "no-store", signal: controller.signal });
       if (!retryableWorkspaceStatus(response.status) || attempt === 1) return response;
@@ -133,6 +133,7 @@ export async function fetchWorkspaceData<T>(
   options: {
     force?: boolean;
     maxAgeMs?: number;
+    timeoutMs?: number;
     validate?: (value: unknown) => boolean;
     invalidMessage?: string;
   } = {},
@@ -147,7 +148,7 @@ export async function fetchWorkspaceData<T>(
   const existing = workspaceDataRequests.get(key);
   if (existing) return existing as Promise<T>;
 
-  const request = fetchWorkspaceResponse(url)
+  const request = fetchWorkspaceResponse(url, options.timeoutMs)
     .then(async (response) => {
       const payload = await response.json() as unknown;
       if (!response.ok) {

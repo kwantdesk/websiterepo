@@ -7394,10 +7394,23 @@ export default function KwantifyWorkspace({
   }, [activeLiveGexConversion, rightPanel]);
 
   const activeGameplanRoot = gameplanChartRootForInstrument(activeWorkspacePane.symbol);
-  const enabledKwantRootKey = [
-    gameplanChartOverlays.NQ ? "NQ" : "",
-    gameplanChartOverlays.ES ? "ES" : "",
-  ].filter(Boolean).join("|");
+  const visibleWorkspacePaneIds = useMemo(
+    () => collectWorkspacePaneIds(workspaceTree),
+    [workspaceTree],
+  );
+  // Visibility is the request intent. Basing this key on successful overlays
+  // meant an initial network miss never started the repair poller, leaving the
+  // toggle stranded until it was clicked again.
+  const enabledKwantRootKey = useMemo(() => {
+    const roots = new Set<"NQ" | "ES">();
+    for (const paneId of visibleWorkspacePaneIds) {
+      if (!(paneLevelVisibility[paneId] ?? EMPTY_PANE_LEVEL_VISIBILITY).kwant) continue;
+      const pane = workspacePanes.find((candidate) => candidate.id === paneId);
+      const root = pane ? gameplanChartRootForInstrument(pane.symbol) : null;
+      if (root) roots.add(root);
+    }
+    return [...roots].sort().join("|");
+  }, [paneLevelVisibility, visibleWorkspacePaneIds, workspacePanes]);
 
   useEffect(() => {
     if (!activeGameplanRoot) return;
@@ -7409,10 +7422,6 @@ export default function KwantifyWorkspace({
       attempts: 1,
     }).catch(() => undefined);
   }, [activeGameplanRoot]);
-  const visibleWorkspacePaneIds = useMemo(
-    () => collectWorkspacePaneIds(workspaceTree),
-    [workspaceTree],
-  );
   const handleGammaExportSnapshot = useCallback((
     paneId: string,
     snapshot: GammaLevelExportSnapshot | null,
@@ -7791,6 +7800,10 @@ export default function KwantifyWorkspace({
           `/api/gameplan?root=${root}&session=${session}`,
           {
             force: options.force || attempt > 0,
+            // This route assembles the complete options structure. A healthy
+            // cold production invocation can exceed the generic 20-second
+            // workspace timeout, so do not abort it just before it completes.
+            timeoutMs: 45_000,
             validate: isGameplanPayload,
             invalidMessage: "The latest KWANT level edition was incomplete.",
           },
@@ -7859,9 +7872,9 @@ export default function KwantifyWorkspace({
     } catch (reason) {
       if (!cachedPlanMatches && !silent) {
         showReportToast(
-          "error",
-          reason instanceof Error ? reason.message : "The latest KWANT levels could not be loaded.",
-          4_000,
+          "loading",
+          `${displaySymbol} KWANT levels are still synchronising. Retrying automaticallyâ€¦`,
+          3_500,
         );
       }
     } finally {
@@ -8812,9 +8825,11 @@ export default function KwantifyWorkspace({
       void refresh();
     };
 
-    // The explicit add action has just fetched this exact edition. Do not
-    // immediately duplicate that expensive options request one second later.
-    schedule(20_000);
+    // If the explicit request missed, begin the silent repair immediately.
+    // Once a verified overlay exists, retain the lower-frequency cadence.
+    const storedOverlays = loadGameplanChartOverlays();
+    const missingRequestedOverlay = roots.some((root) => !storedOverlays[root]?.levels.length);
+    schedule(missingRequestedOverlay ? 1_000 : 20_000);
     document.addEventListener("visibilitychange", refreshWhenVisible);
     window.addEventListener("online", refreshWhenVisible);
     return () => {
@@ -12865,7 +12880,7 @@ export default function KwantifyWorkspace({
         chartDragEnabled={!floating && !paneMoveLocked && visibleWorkspacePaneIds.length > 1}
         gammaLevelsEnabled={paneLevelState.gamma}
         onToggleGammaLevels={() => togglePaneLevelVisibility(pane.id, "gamma")}
-        kwantLevelsEnabled={Boolean(paneLevelState.kwant && gameplanRoot && gameplanChartOverlays[gameplanRoot]?.levels.length)}
+        kwantLevelsEnabled={Boolean(paneLevelState.kwant && gameplanRoot)}
         kwantLevelsAvailable={Boolean(gameplanRoot)}
         kwantLevelsLoading={Boolean(gameplanRoot && quickGameplanLoading && quickGameplanLoadingRoot === gameplanRoot)}
         onToggleKwantLevels={() => {
@@ -13836,7 +13851,7 @@ export default function KwantifyWorkspace({
                 label: "Kwant zones",
                 description: "Proprietary session zones from the Gameplan engine",
                 badge: "K",
-                enabled: Boolean(activePaneLevelVisibility.kwant && activeGameplanRoot && gameplanChartOverlays[activeGameplanRoot]?.levels.length),
+                enabled: Boolean(activePaneLevelVisibility.kwant && activeGameplanRoot),
                 available: Boolean(activeGameplanRoot),
                 loading: Boolean(activeGameplanRoot && quickGameplanLoading && quickGameplanLoadingRoot === activeGameplanRoot),
                 onToggle: () => {
