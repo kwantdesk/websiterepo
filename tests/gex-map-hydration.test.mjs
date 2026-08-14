@@ -18,6 +18,7 @@ const gatewayDockerfile = readFileSync(
   new URL("../services/rithmic_gateway/Dockerfile", import.meta.url),
   "utf8",
 );
+const middleware = readFileSync(new URL("../middleware.ts", import.meta.url), "utf8");
 
 test("GEX map hydration starts from deterministic panel state", () => {
   assert.match(workspace, /const \[locationMarket, setLocationMarket\] = useState<GexMapMarket \| null>\(null\)/);
@@ -49,4 +50,8 @@ test("GEX map retains a compact completed-session snapshot through provider rest
 test("the VPS vendor edge includes an operating-system certificate store", () => {
   assert.match(gatewayDockerfile, /apt-get install -y --no-install-recommends ca-certificates/);
   assert.match(gatewayDockerfile, /update-ca-certificates/);
+});
+
+test("GEX map reads do not wait for the workspace middleware auth round trip", () => {
+  assert.match(middleware, /"\/api\/gex-map"/);
 });

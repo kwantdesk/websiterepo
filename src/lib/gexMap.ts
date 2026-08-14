@@ -53,3 +53,10 @@ export function latestGexMapStrikesFromFrames(frames: GexMapFrame[]): ExposureSt
   return [...strikes.values()].sort((left, right) => left.strike - right.strike);
 }
 
+/** A panel is safe to paint only when it contains a recoverable strike ladder. */
+export function hasRenderableGexMapSurface(
+  payload: Pick<GexMapPanelPayload, "latestStrikes" | "frames"> | null | undefined,
+) {
+  if (!payload) return false;
+  return payload.latestStrikes.length > 0 || latestGexMapStrikesFromFrames(payload.frames).length > 0;
+}

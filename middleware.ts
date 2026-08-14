@@ -35,6 +35,7 @@ const FAST_MARKET_READ_PATHS = [
   "/api/databento/value-area",
   "/api/chart-gamma-levels",
   "/api/chart-gex-profile",
+  "/api/gex-map",
   "/api/native-gamma",
   "/api/expected-move",
   "/api/hedge-levels",

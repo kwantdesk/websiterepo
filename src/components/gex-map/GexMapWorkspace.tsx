@@ -21,6 +21,7 @@ import {
 import KwantLoader from "@/components/KwantLoader";
 import {
   GEX_MAP_GREEKS,
+  hasRenderableGexMapSurface,
   latestGexMapStrikesFromFrames,
   type GexMapPanelPayload,
 } from "@/lib/gexMap";
@@ -315,6 +316,7 @@ function ExposurePanel({
   onChange: (patch: Partial<Pick<PanelConfig, "symbol" | "greekMode">>) => void;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const ladderRef = useRef<HTMLDivElement>(null);
   const [followingSpot, setFollowingSpot] = useState(true);
   const { current, previous } = useMemo(
     () => payload ? buildSnapshots(payload, selectedTimestamp, stepMinutes) : { current: new Map(), previous: new Map() },
@@ -339,27 +341,23 @@ function ExposurePanel({
 
   const centerLiveStrike = useCallback(() => {
     const container = scrollRef.current;
-    const target = container?.querySelector<HTMLElement>("[data-near-spot='true']");
-    if (!container || !target || container.clientHeight <= 0) return;
+    const ladder = ladderRef.current;
+    const target = ladder?.querySelector<HTMLElement>("[data-near-spot='true']");
+    if (!container || !ladder || !target || container.clientHeight <= 0) return;
 
-    // Give the first and last strikes enough physical travel to reach the
-    // centre of any viewport. Without these edge gutters, native scrolling
-    // clamps near the ends and the live strike can only sit near the top or
-    // bottom on shorter workspace panes and unusual monitor aspect ratios.
-    const ladder = container.querySelector<HTMLElement>("[data-gex-strike-ladder='true']");
-    if (ladder) {
-      const edgeTravel = Math.max(4, container.clientHeight / 2 - target.offsetHeight / 2);
-      ladder.style.paddingTop = `${edgeTravel}px`;
-      ladder.style.paddingBottom = `${edgeTravel}px`;
-    }
+    // A resized pane or a replacement surface can retain an obsolete scroll
+    // position. Reset before measuring so every row can paint, then centre the
+    // current strike in the same layout pass.
+    container.scrollTop = 0;
+    const edgeTravel = Math.max(4, container.clientHeight / 2 - target.offsetHeight / 2);
+    ladder.style.paddingTop = `${edgeTravel}px`;
+    ladder.style.paddingBottom = `${edgeTravel}px`;
 
-    const maximumScroll = Math.max(0, container.scrollHeight - container.clientHeight);
+    // Reading geometry after the padding write forces the final pane layout.
     const containerRect = container.getBoundingClientRect();
     const targetRect = target.getBoundingClientRect();
-    const targetCenterInContent = targetRect.top
-      - containerRect.top
-      + container.scrollTop
-      + targetRect.height / 2;
+    const maximumScroll = Math.max(0, container.scrollHeight - container.clientHeight);
+    const targetCenterInContent = targetRect.top - containerRect.top + targetRect.height / 2;
     const nextScroll = Math.max(0, Math.min(
       maximumScroll,
       targetCenterInContent - container.clientHeight / 2,
@@ -372,8 +370,9 @@ function ExposurePanel({
     const container = scrollRef.current;
     if (!container || !rows.length) return;
 
-    // Centre after layout owns its final height. Do not jump to scrollTop=0
-    // first: that produced a visible top-of-ladder flash before recentering.
+    // Centre synchronously for the first paint, then repeat once after the
+    // browser commits any surrounding workspace resize.
+    if (followingSpot && spotStrike !== null) centerLiveStrike();
     const frame = window.requestAnimationFrame(() => {
       if (followingSpot && spotStrike !== null) centerLiveStrike();
     });
@@ -513,7 +512,7 @@ function ExposurePanel({
             No recorded strike frames for this session.
           </div>
         ) : (
-          <div className="py-1" data-gex-strike-ladder="true">
+          <div ref={ladderRef} className="py-1" data-gex-strike-ladder="true">
             {rows.map((row) => {
               const prior = previous.get(row.strike);
               const change = prior ? row.net - prior.net : null;
@@ -622,7 +621,10 @@ export default function GexMapWorkspace({ market = null }: GexMapWorkspaceProps 
     const nextPanels = initialPanelsForMarket(linkedMarket);
     const cachedData = Object.fromEntries(nextPanels.map((panel) => [
       panel.id,
-      readWorkspaceData<GexMapPanelPayload>(gexMapCacheKey(panel.symbol, panel.greekMode)),
+      (() => {
+        const cached = readWorkspaceData<GexMapPanelPayload>(gexMapCacheKey(panel.symbol, panel.greekMode));
+        return hasRenderableGexMapSurface(cached) ? cached : null;
+      })(),
     ]));
 
     setPanels((current) => current.every((panel, index) => (
@@ -650,7 +652,7 @@ export default function GexMapWorkspace({ market = null }: GexMapWorkspaceProps 
         const cached = readWorkspaceData<GexMapPanelPayload>(
           gexMapCacheKey(panel.symbol, panel.greekMode, requestedReplayDate),
         );
-        return [panel.id, cached];
+        return [panel.id, hasRenderableGexMapSurface(cached) ? cached : null];
       }));
       setPanelData((current) => {
         const next = { ...current };
@@ -674,6 +676,8 @@ export default function GexMapWorkspace({ market = null }: GexMapWorkspaceProps 
             {
               force: forceRefresh,
               maxAgeMs: replayMode ? 6 * 60 * 60_000 : 5_000,
+              validate: (value) => hasRenderableGexMapSurface(value as GexMapPanelPayload),
+              invalidMessage: "The GEX surface did not contain a strike ladder.",
             },
           );
           return { id: panel.id, payload };

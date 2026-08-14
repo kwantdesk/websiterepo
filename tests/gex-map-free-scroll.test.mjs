@@ -23,9 +23,11 @@ test("GEX strike centering cannot collapse or hide the ladder viewport", () => {
   assert.match(workspace, /className="relative flex min-h-0 flex-1 bg-chart-background"/);
   assert.match(workspace, /gex-map-strike-viewport[^\n]*min-h-px[^\n]*flex-1/);
   assert.match(workspace, /container\.clientHeight <= 0/);
+  assert.match(workspace, /const ladderRef = useRef<HTMLDivElement>\(null\)/);
+  assert.match(workspace, /container\.scrollTop = 0/);
   assert.match(workspace, /container\.clientHeight \/ 2 - target\.offsetHeight \/ 2/);
-  assert.match(workspace, /targetRect\.top[\s\S]*containerRect\.top[\s\S]*container\.scrollTop/);
-  assert.doesNotMatch(workspace, /if \(followingSpot\) container\.scrollTop = 0/);
+  assert.match(workspace, /targetRect\.top - containerRect\.top \+ targetRect\.height \/ 2/);
+  assert.match(workspace, /if \(followingSpot && spotStrike !== null\) centerLiveStrike\(\);/);
   assert.match(workspace, /data-gex-strike-ladder="true"/);
 });
 
@@ -38,4 +40,6 @@ test("wheel input over a strike node owns the vertical slot-machine movement", (
 test("cached strikes remain visible during a silent background refresh", () => {
   assert.doesNotMatch(workspace, /> Syncing</);
   assert.match(workspace, /loading && !payload/);
+  assert.match(workspace, /hasRenderableGexMapSurface\(cached\) \? cached : null/);
+  assert.match(workspace, /validate: \(value\) => hasRenderableGexMapSurface/);
 });

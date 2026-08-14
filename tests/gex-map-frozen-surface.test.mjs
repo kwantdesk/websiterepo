@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { latestGexMapStrikesFromFrames } from "../src/lib/gexMap.ts";
+import {
+  hasRenderableGexMapSurface,
+  latestGexMapStrikesFromFrames,
+} from "../src/lib/gexMap.ts";
 
 test("a frozen GEX surface is rebuilt from incremental session frames", () => {
   const rows = latestGexMapStrikesFromFrames([
@@ -26,4 +29,15 @@ test("a frozen GEX surface is rebuilt from incremental session frames", () => {
     { strike: 105, call: 4, put: -7, net: -3 },
     { strike: 110, call: 6, put: -1, net: 5 },
   ]);
+});
+
+test("empty cached surfaces cannot replace a visible GEX ladder", () => {
+  assert.equal(hasRenderableGexMapSurface({ latestStrikes: [], frames: [] }), false);
+  assert.equal(hasRenderableGexMapSurface({
+    latestStrikes: [],
+    frames: [{
+      timestamp: 1,
+      updates: [{ strike: 100, call: 10, put: -2, net: 8 }],
+    }],
+  }), true);
 });
