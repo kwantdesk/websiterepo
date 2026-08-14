@@ -4,12 +4,14 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   BarChart3,
+  BookmarkPlus,
   Check,
   ChevronDown,
   Eye,
   EyeOff,
   Plus,
   Search,
+  Save,
   Settings2,
   Star,
   Trash2,
@@ -31,8 +33,13 @@ import {
 import type { ChartSettings } from "@/lib/chartSettings";
 import {
   applyFootprintPreset,
+  deleteFootprintTemplate,
+  loadFootprintTemplates,
+  saveFootprintSettings,
+  saveFootprintTemplate,
   validateFootprintSettings,
   type FootprintPresetName,
+  type FootprintTemplate,
 } from "@/lib/footprintSettings";
 import KwantSelect from "@/components/ui/KwantSelect";
 
@@ -152,6 +159,10 @@ export default function ChartIndicatorsControl({
   const [category, setCategory] = useState<"All" | ChartIndicatorCategory>("All");
   const [favourites, setFavourites] = useState<string[]>(readFavourites);
   const [rithmicStatus, setRithmicStatus] = useState<"checking" | "connected" | "fallback">("checking");
+  const [footprintTemplates, setFootprintTemplates] = useState<FootprintTemplate[]>([]);
+  const [footprintTemplateName, setFootprintTemplateName] = useState("");
+  const [selectedFootprintTemplateId, setSelectedFootprintTemplateId] = useState("");
+  const [footprintSaveStatus, setFootprintSaveStatus] = useState("");
 
   useEffect(() => {
     window.localStorage.setItem(FAVOURITES_STORAGE_KEY, JSON.stringify(favourites));
@@ -220,6 +231,14 @@ export default function ChartIndicatorsControl({
     void check();
     return () => { cancelled = true; };
   }, [libraryOpen, open]);
+
+  useEffect(() => {
+    if (!settingsInstanceId?.startsWith("deep-print-footprint-")) return;
+    setFootprintTemplates(loadFootprintTemplates());
+    setFootprintTemplateName("");
+    setSelectedFootprintTemplateId("");
+    setFootprintSaveStatus("");
+  }, [settingsInstanceId]);
 
   const filtered = useMemo(() => {
     const needle = search.trim().toLowerCase();
@@ -757,9 +776,49 @@ export default function ChartIndicatorsControl({
                       <option value="minimal">Minimal ladder</option>
                     </KwantSelect>
                   </label>
+                  <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted sm:col-span-2">
+                    <span>Local template</span>
+                    <div className="flex gap-2">
+                      <KwantSelect
+                        value={selectedFootprintTemplateId}
+                        onChange={(event) => {
+                          setSelectedFootprintTemplateId(event.target.value);
+                          const template = footprintTemplates.find((candidate) => candidate.id === event.target.value);
+                          if (!template) return;
+                          replace(settingsInstance.instanceId, (current) => ({
+                            ...current,
+                            settings: { ...(current.settings ?? {}), ...template.settings },
+                          }));
+                          setFootprintSaveStatus(`Loaded ${template.name}`);
+                        }}
+                        className="h-9 min-w-0 flex-1 rounded-lg border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground"
+                        menuLabel="Saved footprint templates"
+                      >
+                        <option value="">{footprintTemplates.length ? "Choose a saved template" : "No saved templates"}</option>
+                        {footprintTemplates.map((template) => (
+                          <option key={template.id} value={template.id}>{template.name}</option>
+                        ))}
+                      </KwantSelect>
+                      {footprintTemplates.length ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const selected = footprintTemplates.find((template) => template.id === selectedFootprintTemplateId);
+                            if (!selected) return;
+                            setFootprintTemplates(deleteFootprintTemplate(selected.id));
+                            setSelectedFootprintTemplateId("");
+                            setFootprintSaveStatus(`Deleted ${selected.name}`);
+                          }}
+                          disabled={!selectedFootprintTemplateId}
+                          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border bg-background text-muted hover:border-danger/35 hover:text-danger"
+                          title="Delete selected template"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      ) : null}
+                    </div>
+                  </label>
                   {[
-                    ["Cell data", "type", [["ask-bid", "Bid Ã— Ask"], ["volume", "Total volume"], ["delta", "Delta"], ["delta-total", "Delta + total volume"]]],
-                    ["Render mode", "mode", [["profile", "Profile"], ["box", "Box"]]],
                     ["Content", "contentMode", [["bid-ask", "Bid Ã— Ask"], ["delta", "Delta"], ["volume", "Volume"], ["volume-delta", "Volume Ã— Delta"], ["trades", "Trades"], ["bid-ask-histogram", "Bid / Ask histogram"], ["volume-histogram", "Volume histogram"], ["delta-histogram", "Delta histogram"], ["ladder", "Minimal ladder"]]],
                     ["Visualization", "visualizationMode", [["solid", "Solid"], ["heatmap", "Heatmap"], ["histogram", "Histogram"], ["heatmap-histogram", "Heatmap histogram"], ["text-only", "Text only"]]],
                     ["Scale", "scaleMode", [["visible-region", "Visible region"], ["per-bar", "Per bar"], ["all-loaded", "All loaded"], ["fixed-maximum", "Fixed maximum"]]],
@@ -767,12 +826,7 @@ export default function ChartIndicatorsControl({
                     ["Tick grouping", "groupingMode", [["automatic", "Automatic"], ["manual", "Manual"]]],
                     ["Grouping mode", "groupMode", [["fixed", "Fixed"], ["open-close", "Based on open / close"]]],
                     ["Imbalance", "imbalanceMode", [["diagonal", "Diagonal"], ["horizontal", "Horizontal"], ["delta-percent", "Delta percentage"]]],
-                    ["Background", "colorMode", [["none", "None"], ["fixed", "Fixed"], ["fading", "Fading intensity"]]],
-                    ["Colour calculation", "colorCalculation", [["volume", "Volume"], ["delta", "Delta"], ["imbalance", "Imbalance"], ["dominant", "Dominant volume"], ["dominant-delta", "Dominant volume delta"]]],
-                    ["Number format", "textFormat", [["automatic", "Automatic"], ["normal", "Full values"], ["thousands", "Thousands (K)"]]],
                     ["Professional number format", "numberFormat", [["automatic", "Automatic"], ["full", "Full values"], ["compact", "Compact K / M"]]],
-                    ["Outer bar", "outsideBarStyle", [["bar", "Full high / low"], ["body", "Open / close body"]]],
-                    ["Marker alignment", "markerAlignment", [["center", "Centre"], ["right", "Right edge"]]],
                   ].map(([label, key, options]) => (
                     <label key={String(key)} className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
                       <span>{String(label)}</span>
@@ -897,6 +951,56 @@ export default function ChartIndicatorsControl({
                 Theme colours remain linked by default. Turn off <span className="text-foreground">Use Theme Colors</span> before setting custom study colours.
               </div>
             </div>
+            {settingsDefinition.id === "deep-print-footprint" ? (
+              <div className="border-t border-border bg-panel px-5 py-3">
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <input
+                    type="text"
+                    maxLength={48}
+                    value={footprintTemplateName}
+                    onChange={(event) => setFootprintTemplateName(event.target.value)}
+                    placeholder="Template name"
+                    className="h-9 min-w-0 flex-1 rounded-lg border border-border bg-background px-3 text-[10px] text-foreground outline-none placeholder:text-muted focus:border-primary/40"
+                  />
+                  <button
+                    type="button"
+                    disabled={!footprintTemplateName.trim()}
+                    onClick={() => {
+                      const next = saveFootprintTemplate(footprintTemplateName, settingsInstance.settings);
+                      const saved = next.find((template) => template.name.toLowerCase() === footprintTemplateName.trim().toLowerCase());
+                      setFootprintTemplates(next);
+                      setSelectedFootprintTemplateId(saved?.id ?? "");
+                      setFootprintSaveStatus(saved ? `Saved template ${saved.name}` : "Template name required");
+                      if (saved) setFootprintTemplateName("");
+                    }}
+                    className="flex h-9 items-center justify-center gap-1.5 rounded-lg border border-border bg-background px-3 text-[9px] font-semibold uppercase tracking-[0.08em] text-foreground hover:border-primary/35 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    <BookmarkPlus className="h-3.5 w-3.5" />
+                    Save template
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const validated = validateFootprintSettings(settingsInstance.settings);
+                      replace(settingsInstance.instanceId, (current) => ({
+                        ...current,
+                        settings: { ...(current.settings ?? {}), ...validated },
+                      }));
+                      saveFootprintSettings(settingsInstance.instanceId, validated);
+                      window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
+                      setFootprintSaveStatus("Footprint settings saved locally");
+                    }}
+                    className="flex h-9 items-center justify-center gap-1.5 rounded-lg bg-primary px-4 text-[9px] font-semibold uppercase tracking-[0.08em] text-background"
+                  >
+                    <Save className="h-3.5 w-3.5" />
+                    Save settings
+                  </button>
+                </div>
+                {footprintSaveStatus ? (
+                  <div className="mt-2 text-[8px] text-primary" role="status">{footprintSaveStatus}</div>
+                ) : null}
+              </div>
+            ) : null}
           </div>
         </div>,
         document.body,

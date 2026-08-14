@@ -206,9 +206,28 @@ function displayValues(row: FootprintBar["rows"][number], options: FootprintPrim
 }
 
 function intensity(value: number, ceiling: number, options: FootprintPrimitiveOptions) {
+  if (options.colorMode === "none") return 0;
+  if (options.colorMode === "fixed") return options.opacity;
   const raw = clamp(Math.abs(value) / Math.max(1, ceiling), 0, 1);
   const curved = Math.pow(raw, clamp(options.gradientExponent, 0.1, 3));
   return options.minimumOpacity + curved * (options.maximumOpacity - options.minimumOpacity);
+}
+
+function colourMetric(
+  values: ReturnType<typeof displayValues>,
+  side: "bid" | "ask" | "total",
+  options: FootprintPrimitiveOptions,
+) {
+  if (options.colorCalculation === "delta" || options.colorCalculation === "dominant-delta") {
+    return Math.abs(values.delta);
+  }
+  if (options.colorCalculation === "imbalance") {
+    const opposing = side === "bid" ? values.ask : side === "ask" ? values.bid : Math.min(values.bid, values.ask);
+    const dominant = side === "bid" ? values.bid : side === "ask" ? values.ask : Math.max(values.bid, values.ask);
+    return Math.max(0, dominant - opposing);
+  }
+  if (options.colorCalculation === "dominant") return Math.max(values.bid, values.ask);
+  return side === "bid" ? values.bid : side === "ask" ? values.ask : values.total;
 }
 
 function renderMode(options: FootprintPrimitiveOptions): FootprintContentMode {
@@ -325,15 +344,20 @@ class FootprintRenderer implements ISeriesPrimitivePaneRenderer {
           }
 
           const drawHalf = (side: "bid" | "ask", value: number, colour: string) => {
+            if (options.colorOnlyDominantSide) {
+              const dominantSide = values.ask >= values.bid ? "ask" : "bid";
+              if (side !== dominantSide) return;
+            }
+            const heatValue = colourMetric(values, side, options);
             const normalized = clamp(value / Math.max(1, ceiling), 0, 1);
-            const alpha = intensity(value, ceiling, options);
+            const alpha = intensity(heatValue, ceiling, options);
             const histogram = options.visualizationMode === "histogram"
               || options.visualizationMode === "heatmap-histogram"
               || contentMode === "bid-ask-histogram";
             const noFill = options.visualizationMode === "text-only";
             const width = histogram ? Math.max(value > 0 ? 1 : 0, halfWidth * normalized) : halfWidth;
             if (noFill || width <= 0) return;
-            withAlpha(context, colour, options.visualizationMode === "histogram" ? 0.24 : alpha, () => {
+            withAlpha(context, colour, options.visualizationMode === "histogram" ? Math.min(0.24, options.opacity) : alpha, () => {
               if (side === "bid") context.fillRect(x - width, top, width, rowHeight);
               else context.fillRect(x, top, width, rowHeight);
             });
@@ -352,12 +376,13 @@ class FootprintRenderer implements ISeriesPrimitivePaneRenderer {
             const signed = contentMode === "delta" || contentMode === "delta-histogram" || contentMode === "volume-delta";
             const metric = signed ? values.delta : contentMode === "trades" ? values.trades : values.total;
             const colour = signed ? metric >= 0 ? options.askColor : options.bidColor : options.askColor;
+            const heatValue = colourMetric(values, "total", options);
             const normalized = clamp(Math.abs(metric) / Math.max(1, ceiling), 0, 1);
             const histogram = contentMode.endsWith("histogram")
               || options.visualizationMode.includes("histogram");
             if (options.visualizationMode !== "text-only") {
               const width = histogram ? Math.max(metric !== 0 ? 1 : 0, barWidth * normalized) : barWidth;
-              withAlpha(context, colour, intensity(metric, ceiling, options), () => {
+              withAlpha(context, colour, intensity(heatValue, ceiling, options), () => {
                 if (signed) {
                   const signedWidth = width / 2;
                   context.fillRect(metric >= 0 ? x : x - signedWidth, top, signedWidth, rowHeight);
@@ -404,6 +429,47 @@ class FootprintRenderer implements ISeriesPrimitivePaneRenderer {
             context.strokeRect(left + 0.5, top + 0.5, Math.max(1, barWidth - 1), Math.max(1, rowHeight - 1));
             context.restore();
           }
+          if (options.showDeltaPoc && bar.deltaPocPrice === row.price) {
+            context.save();
+            context.globalAlpha = 0.92;
+            context.strokeStyle = options.deltaPocColor;
+            context.lineWidth = Math.max(1, options.borderWidth);
+            context.setLineDash([3, 2]);
+            context.strokeRect(left + 1.5, top + 1.5, Math.max(1, barWidth - 3), Math.max(1, rowHeight - 3));
+            context.restore();
+          }
+          const isSinglePrint = values.total > 0
+            && values.total <= options.singlePrintMaximum
+            && (!options.singlePrintExtremesOnly || row.price === bar.high || row.price === bar.low);
+          if (options.showSinglePrints && isSinglePrint) {
+            context.save();
+            context.globalAlpha = 0.9;
+            context.strokeStyle = options.singlePrintColor;
+            context.lineWidth = 1;
+            context.strokeRect(left + 2.5, top + 2.5, Math.max(1, barWidth - 5), Math.max(1, rowHeight - 5));
+            context.restore();
+          }
+          if (options.showVolumeClusters && values.total >= options.clusterMinimumVolume) {
+            context.save();
+            context.globalAlpha = 0.78;
+            context.strokeStyle = options.clusterColor;
+            context.lineWidth = Math.max(1, options.borderWidth);
+            context.strokeRect(left + 1.5, top + 1.5, Math.max(1, barWidth - 3), Math.max(1, rowHeight - 3));
+            context.restore();
+          }
+          if (options.showRatio && values.bid > 0 && values.ask > 0) {
+            const ratio = Math.max(values.bid, values.ask) / Math.max(1, Math.min(values.bid, values.ask));
+            if (ratio >= options.minimumRatio && ratio <= options.maximumRatio) {
+              context.save();
+              context.globalAlpha = 0.76;
+              context.fillStyle = values.ask >= values.bid ? options.askColor : options.bidColor;
+              context.font = `600 ${Math.max(7, Math.min(9, rowHeight * 0.55))}px 'JetBrains Mono', ui-monospace, monospace`;
+              context.textAlign = "right";
+              context.textBaseline = "middle";
+              context.fillText(`${ratio.toFixed(1)}×`, left + barWidth - 2, top + rowHeight / 2);
+              context.restore();
+            }
+          }
           const maximumEnabled = (options.showMaxBid && row.isMaxBid)
             || (options.showMaxAsk && row.isMaxAsk)
             || (options.showMaxPositiveDelta && row.isMaxPositiveDelta)
@@ -426,7 +492,9 @@ class FootprintRenderer implements ISeriesPrimitivePaneRenderer {
           }
 
           if (!detailed || micro) continue;
-          const fontSize = clamp(Math.min(rowHeight * 0.7, options.fontSize), 9, 15);
+          const fontSize = options.dynamicTextSize
+            ? clamp(Math.min(rowHeight * (0.62 + options.dynamicTextIncrease * 0.08), options.fontSize), 9, 15)
+            : clamp(options.fontSize, 9, 15);
           context.save();
           context.globalAlpha = 0.97;
           context.font = `${row.isPoc ? 700 : options.fontWeight} ${fontSize}px 'JetBrains Mono', ui-monospace, monospace`;
@@ -489,7 +557,9 @@ class FootprintRenderer implements ISeriesPrimitivePaneRenderer {
           }
         }
         if (options.showSummary && barWidth >= 58 && lowY !== null && lowY < mediaSize.height - 14) {
-          const label = `V ${formatFootprintValue(bar.totalVolume, options.numberFormat)}  Δ ${bar.delta >= 0 ? "+" : ""}${formatFootprintValue(bar.delta, options.numberFormat)}`;
+          const label = options.showBarDelta
+            ? `V ${formatFootprintValue(bar.totalVolume, options.numberFormat)}  Δ ${bar.delta >= 0 ? "+" : ""}${formatFootprintValue(bar.delta, options.numberFormat)}`
+            : `V ${formatFootprintValue(bar.totalVolume, options.numberFormat)}`;
           context.save();
           context.font = `500 9px 'JetBrains Mono', ui-monospace, monospace`;
           context.textAlign = "center";
@@ -499,12 +569,18 @@ class FootprintRenderer implements ISeriesPrimitivePaneRenderer {
           context.fillText(label, x, lowY + 3, barWidth + 18);
           context.restore();
         }
-        if (!bar.isClosed && highY !== null) {
+        if (options.outerEdgeMode && !bar.isClosed && highY !== null) {
           context.save();
           context.strokeStyle = options.askColor;
           context.globalAlpha = 0.82;
           context.lineWidth = 1.5;
-          context.strokeRect(left - 1, highY - 1, barWidth + 2, Math.max(2, (lowY ?? highY) - highY + 2));
+          const outlineTop = options.outsideBarStyle === "body" && openY !== null && closeY !== null
+            ? Math.min(openY, closeY)
+            : highY;
+          const outlineBottom = options.outsideBarStyle === "body" && openY !== null && closeY !== null
+            ? Math.max(openY, closeY)
+            : (lowY ?? highY);
+          context.strokeRect(left - 1, outlineTop - 1, barWidth + 2, Math.max(2, outlineBottom - outlineTop + 2));
           context.fillStyle = options.askColor;
           context.fillRect(left + barWidth - 4, highY + 2, 3, 3);
           context.restore();

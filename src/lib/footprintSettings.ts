@@ -145,13 +145,25 @@ export const DEFAULT_FOOTPRINT_SETTINGS: FootprintSettings = {
 
 export type FootprintPresetName =
   | "kwantdesk"
+  | "order-flow"
   | "imbalance"
+  | "delta"
   | "delta-focus"
   | "volume-heatmap"
+  | "minimal"
   | "minimal-ladder";
 
 export const FOOTPRINT_PRESETS: Record<FootprintPresetName, Partial<FootprintSettings>> = {
   kwantdesk: {},
+  "order-flow": {
+    contentMode: "bid-ask-histogram",
+    visualizationMode: "heatmap-histogram",
+    scaleMode: "visible-region",
+    showBetweenVolume: true,
+    showValueArea: false,
+    showStackedImbalances: true,
+    showSummary: true,
+  },
   imbalance: {
     contentMode: "bid-ask",
     visualizationMode: "heatmap-histogram",
@@ -161,6 +173,13 @@ export const FOOTPRINT_PRESETS: Record<FootprintPresetName, Partial<FootprintSet
     showSummary: true,
   },
   "delta-focus": {
+    contentMode: "delta-histogram",
+    visualizationMode: "heatmap-histogram",
+    showMaxPositiveDelta: true,
+    showMaxNegativeDelta: true,
+    showBetweenVolume: false,
+  },
+  delta: {
     contentMode: "delta-histogram",
     visualizationMode: "heatmap-histogram",
     showMaxPositiveDelta: true,
@@ -180,7 +199,23 @@ export const FOOTPRINT_PRESETS: Record<FootprintPresetName, Partial<FootprintSet
     showValueArea: false,
     showStackedImbalances: false,
   },
+  minimal: {
+    contentMode: "ladder",
+    visualizationMode: "text-only",
+    showSummary: false,
+    showValueArea: false,
+    showStackedImbalances: false,
+  },
 };
+
+export type FootprintTemplate = {
+  id: string;
+  name: string;
+  settings: FootprintSettings;
+  updatedAt: number;
+};
+
+export const FOOTPRINT_TEMPLATES_STORAGE_KEY = "kwantdesk:footprint:templates:v1";
 
 const clamp = (value: unknown, minimum: number, maximum: number, fallback: number) => {
   const parsed = Number(value);
@@ -245,4 +280,53 @@ export function saveFootprintSettings(instanceId: string, settings: FootprintSet
   } catch {
     // Workspace persistence remains authoritative when browser storage is unavailable.
   }
+}
+
+export function validateFootprintTemplates(input: unknown): FootprintTemplate[] {
+  if (!Array.isArray(input)) return [];
+  return input.flatMap((candidate) => {
+    if (!candidate || typeof candidate !== "object") return [];
+    const source = candidate as Record<string, unknown>;
+    const name = String(source.name ?? "").trim().slice(0, 48);
+    if (!name) return [];
+    return [{
+      id: String(source.id ?? name.toLowerCase().replace(/[^a-z0-9]+/g, "-")).slice(0, 80),
+      name,
+      settings: validateFootprintSettings(source.settings),
+      updatedAt: Number.isFinite(Number(source.updatedAt)) ? Number(source.updatedAt) : 0,
+    }];
+  }).slice(0, 24);
+}
+
+export function loadFootprintTemplates(): FootprintTemplate[] {
+  if (typeof window === "undefined") return [];
+  try {
+    return validateFootprintTemplates(JSON.parse(window.localStorage.getItem(FOOTPRINT_TEMPLATES_STORAGE_KEY) ?? "[]"));
+  } catch {
+    return [];
+  }
+}
+
+export function saveFootprintTemplate(name: string, settings: unknown): FootprintTemplate[] {
+  if (typeof window === "undefined") return [];
+  const normalizedName = name.trim().slice(0, 48);
+  if (!normalizedName) return loadFootprintTemplates();
+  const current = loadFootprintTemplates();
+  const existing = current.find((template) => template.name.toLowerCase() === normalizedName.toLowerCase());
+  const nextTemplate: FootprintTemplate = {
+    id: existing?.id ?? `footprint-${Date.now().toString(36)}`,
+    name: normalizedName,
+    settings: validateFootprintSettings(settings),
+    updatedAt: Date.now(),
+  };
+  const next = [nextTemplate, ...current.filter((template) => template.id !== nextTemplate.id)].slice(0, 24);
+  window.localStorage.setItem(FOOTPRINT_TEMPLATES_STORAGE_KEY, JSON.stringify(next));
+  return next;
+}
+
+export function deleteFootprintTemplate(templateId: string): FootprintTemplate[] {
+  if (typeof window === "undefined") return [];
+  const next = loadFootprintTemplates().filter((template) => template.id !== templateId);
+  window.localStorage.setItem(FOOTPRINT_TEMPLATES_STORAGE_KEY, JSON.stringify(next));
+  return next;
 }

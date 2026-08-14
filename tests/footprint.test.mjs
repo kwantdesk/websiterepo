@@ -9,6 +9,7 @@ import {
 import {
   applyFootprintPreset,
   DEFAULT_FOOTPRINT_SETTINGS,
+  validateFootprintTemplates,
   validateFootprintSettings,
 } from "../src/lib/footprintSettings.ts";
 
@@ -258,4 +259,39 @@ test("presets reuse one versioned settings model", () => {
   assert.equal(delta.contentMode, "delta-histogram");
   assert.equal(delta.showMaxPositiveDelta, true);
   assert.equal(delta.footprintSettingsVersion, DEFAULT_FOOTPRINT_SETTINGS.footprintSettingsVersion);
+});
+
+test("visible preset aliases change the live footprint mode", () => {
+  const orderFlow = applyFootprintPreset(DEFAULT_FOOTPRINT_SETTINGS, "order-flow");
+  const delta = applyFootprintPreset(DEFAULT_FOOTPRINT_SETTINGS, "delta");
+  const minimal = applyFootprintPreset(DEFAULT_FOOTPRINT_SETTINGS, "minimal");
+  assert.equal(orderFlow.contentMode, "bid-ask-histogram");
+  assert.equal(orderFlow.showBetweenVolume, true);
+  assert.equal(delta.contentMode, "delta-histogram");
+  assert.equal(delta.showMaxNegativeDelta, true);
+  assert.equal(minimal.contentMode, "ladder");
+  assert.equal(minimal.visualizationMode, "text-only");
+});
+
+test("local footprint templates validate names, settings and invalid records", () => {
+  const templates = validateFootprintTemplates([
+    { id: "flow", name: "  NY Order Flow  ", settings: { contentMode: "delta", barWidth: 999 }, updatedAt: 12 },
+    { id: "invalid", name: "", settings: {} },
+    null,
+  ]);
+  assert.equal(templates.length, 1);
+  assert.equal(templates[0].name, "NY Order Flow");
+  assert.equal(templates[0].settings.contentMode, "delta");
+  assert.equal(templates[0].settings.barWidth, 180);
+});
+
+test("show empty price rows fills only valid exchange tick rows", () => {
+  const bars = buildFootprintBars([
+    { timestamp: 1_000, open: 100, high: 100.5, low: 100, close: 100.5, volume: 2 },
+  ], [
+    trade({ recordIndex: 0, close: 100, volume: 1, askVolume: 1 }),
+    trade({ recordIndex: 1, timestamp: 3_000, close: 100.5, volume: 1, askVolume: 1 }),
+  ], { ...defaults, showEmptyPriceRows: true });
+  assert.deepEqual(bars[0].rows.map((row) => row.price), [100, 100.25, 100.5]);
+  assert.equal(bars[0].rows[1].totalVolume, 0);
 });

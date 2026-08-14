@@ -21,6 +21,7 @@ export type FootprintBuildSettings = {
   minimumImbalancePercent: number;
   minimumDelta: number;
   includeZero: boolean;
+  showEmptyPriceRows?: boolean;
   instrument?: string;
   valueAreaPercent?: number;
   minimumDominantVolume?: number;
@@ -179,6 +180,13 @@ export function buildFootprintBars(
   }
 
   return mutableBars.map((mutable, index) => {
+    if (settings.showEmptyPriceRows) {
+      const firstTick = Math.floor(priceToTickIndex(mutable.candle.low, tickSize) / groupTicks) * groupTicks;
+      const lastTick = Math.floor(priceToTickIndex(mutable.candle.high, tickSize) / groupTicks) * groupTicks;
+      for (let tick = firstTick; tick <= lastTick; tick += groupTicks) {
+        if (!mutable.levels.has(tick)) mutable.levels.set(tick, createEmptyFootprintLevel(tick, tickSize));
+      }
+    }
     const levels = [...mutable.levels.values()].sort((left, right) => left.tickIndex - right.tickIndex);
     const analytics = calculateFootprintAnalytics(
       levels,
