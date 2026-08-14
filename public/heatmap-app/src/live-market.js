@@ -234,6 +234,7 @@ export class DepthMarketFeed {
     this.lastMarketFrameAt = 0;
     this.lastSnapshotProbeAt = 0;
     this.snapshotProbeInFlight = false;
+    this.snapshotProbeQueued = false;
     this.presentationSnapshot = null;
     this.latestTradeTick = null;
     this.lastRealFrameAt = 0;
@@ -280,6 +281,7 @@ export class DepthMarketFeed {
     this.lastMarketFrameAt = 0;
     this.lastSnapshotProbeAt = 0;
     this.snapshotProbeInFlight = false;
+    this.snapshotProbeQueued = false;
     this.observedRealFrameMs = 100;
     this.stream?.close();
     this.stream = null;
@@ -309,7 +311,6 @@ export class DepthMarketFeed {
     this.lastStreamActivityAt = Date.now();
     this.lastMarketFrameAt = Date.now();
     this.lastSnapshotProbeAt = 0;
-    this.snapshotProbeInFlight = false;
     this.observedRealFrameMs = 100;
     this.stream?.close();
     this.stream = null;
@@ -545,9 +546,15 @@ export class DepthMarketFeed {
 
   async #probeLatestSnapshot(force = false) {
     const now = Date.now();
+    if (this.snapshotProbeInFlight) {
+      // Contract resolution can replace the stream while the bootstrap book
+      // for the previous contract is still crossing the proxy. Never let that
+      // stale request suppress the only immediate probe for the new book.
+      if (force) this.snapshotProbeQueued = true;
+      return;
+    }
     if (
       !this.running
-      || this.snapshotProbeInFlight
       || (!force && now - this.lastSnapshotProbeAt < MARKET_FRAME_PROBE_MS)
     ) return;
     this.snapshotProbeInFlight = true;
@@ -594,6 +601,14 @@ export class DepthMarketFeed {
       // must not blank a valid last frame or create a reconnect storm.
     } finally {
       this.snapshotProbeInFlight = false;
+      const retryLatestBook = this.snapshotProbeQueued
+        || (this.running && generation !== this.connectionGeneration);
+      this.snapshotProbeQueued = false;
+      if (retryLatestBook && this.running) {
+        queueMicrotask(() => {
+          if (this.running) void this.#probeLatestSnapshot(true);
+        });
+      }
     }
   }
 

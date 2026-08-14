@@ -115,6 +115,72 @@ test("changing only the exchange or active contract opens a new exact book", () 
   feed.stop();
 });
 
+test("contract resolution cannot strand the map behind a discarded bootstrap probe", async () => {
+  const originalFetch = globalThis.fetch;
+  const requests = [];
+  const pending = [];
+  const snapshots = [];
+  globalThis.fetch = (url) => {
+    requests.push(String(url));
+    return new Promise((resolve) => pending.push(resolve));
+  };
+
+  const feed = new DepthMarketFeed({
+    symbol: "NQ",
+    contractSymbol: "NQU6",
+    exchange: "CME",
+    eventSourceFactory: () => ({ close() {}, addEventListener() {} }),
+    onSnapshot: (snapshot) => snapshots.push(snapshot),
+  });
+
+  try {
+    feed.start();
+    assert.equal(requests.length, 1);
+
+    // This is the real startup sequence: the generic NQ stream begins, then
+    // the catalog resolves the exact active contract while its first HTTP
+    // snapshot is still in flight.
+    feed.setSymbol("ES", "ESU6", "CME");
+    assert.equal(requests.length, 1, "the replacement probe waits for the active request to settle");
+
+    pending.shift()({
+      ok: true,
+      json: async () => ({
+        status: { connected: true, fullDepth: true },
+        snapshot: rawSnapshot(),
+      }),
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    assert.equal(requests.length, 2, "the exact replacement contract is probed immediately");
+    assert.match(requests[1], /symbol=ES/);
+    assert.match(requests[1], /contractSymbol=ESU6/);
+
+    pending.shift()({
+      ok: true,
+      json: async () => ({
+        status: { connected: true, fullDepth: true },
+        snapshot: rawSnapshot({
+          root: "ES",
+          contractSymbol: "ESU6",
+          bids: [[31_150, 20, 5]],
+          asks: [[31_151, 18, 4]],
+          bestBid: 31_150,
+          bestAsk: 31_151,
+          midTick: 31_150.5,
+          lastTick: 31_151,
+        }),
+      }),
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    assert.deepEqual(snapshots.map((snapshot) => snapshot.symbol), ["ES"]);
+  } finally {
+    feed.stop();
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("every advertised Level 3 market has a renderable contract definition", () => {
   assert.ok(LIQUIDITY_MAP_ROOTS.length >= 40);
   for (const root of LIQUIDITY_MAP_ROOTS) {
