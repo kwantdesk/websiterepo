@@ -41,6 +41,17 @@ test("CVD scaling is bounded and can be reset without changing the main chart", 
   assert.doesNotMatch(source, /cvd-price-scale-[\s\S]{0,1800}chartRef/);
 });
 
+test("CVD keeps its manually selected vertical domain while chart time navigation changes", () => {
+  assert.match(source, /lockedVerticalDomainByPane/);
+  assert.match(source, /renderedVerticalDomainByPaneRef/);
+  assert.match(source, /const sharedDomain = lockedVerticalDomainByPane\[group\.key\] \?\? automaticSharedDomain/);
+  assert.match(source, /renderedVerticalDomainByPaneRef\.current\[group\.key\] = sharedDomain/);
+  assert.match(source, /setLockedVerticalDomainByPane[\s\S]*?min: center - halfSpan[\s\S]*?max: center \+ halfSpan/);
+  assert.match(source, /const valueDelta = verticalDelta \* domainSpan[\s\S]*?min: startDomain\.min \+ valueDelta[\s\S]*?max: startDomain\.max \+ valueDelta/);
+  assert.match(source, /const visibleSeries = group\.series\.map/);
+  assert.match(source, /const xForTime =/);
+});
+
 test("lower indicator panes can be grabbed and panned vertically only", () => {
   assert.match(source, /verticalPanByPane/);
   assert.match(source, /const startY = event\.clientY/);

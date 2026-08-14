@@ -24,6 +24,8 @@ type IndicatorPanePlacement = {
 
 type IndicatorPaneLayoutMap = Record<string, IndicatorPanePlacement>;
 
+type IndicatorPaneDomain = { min: number; max: number };
+
 function compact(value: number) {
   const absolute = Math.abs(value);
   if (absolute >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
@@ -194,6 +196,12 @@ function ChartIndicatorPaneSurface({
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [verticalScaleByPane, setVerticalScaleByPane] = useState<Record<string, number>>({});
   const [verticalPanByPane, setVerticalPanByPane] = useState<Record<string, number>>({});
+  // Once a trader manually scales or pans a lower pane, keep its absolute
+  // value domain. The main chart still owns the shared horizontal time range,
+  // but chart navigation must not rebuild the pane's vertical framing from a
+  // different subset of visible values.
+  const [lockedVerticalDomainByPane, setLockedVerticalDomainByPane] = useState<Record<string, IndicatorPaneDomain>>({});
+  const renderedVerticalDomainByPaneRef = useRef<Record<string, IndicatorPaneDomain>>({});
   const [draggingPane, setDraggingPane] = useState<string | null>(null);
   const paneRootRef = useRef<HTMLDivElement>(null);
 
@@ -204,6 +212,15 @@ function ChartIndicatorPaneSurface({
         ? deltaY * 120
         : deltaY;
     const multiplier = Math.exp(Math.max(-120, Math.min(120, normalizedDelta)) * 0.0025);
+    const renderedDomain = renderedVerticalDomainByPaneRef.current[groupKey];
+    if (renderedDomain) {
+      const center = (renderedDomain.min + renderedDomain.max) / 2;
+      const halfSpan = Math.max(1e-9, (renderedDomain.max - renderedDomain.min) / 2) * multiplier;
+      setLockedVerticalDomainByPane((current) => ({
+        ...current,
+        [groupKey]: { min: center - halfSpan, max: center + halfSpan },
+      }));
+    }
     setVerticalScaleByPane((current) => ({
       ...current,
       [groupKey]: Math.max(0.2, Math.min(8, (current[groupKey] ?? 1) * multiplier)),
@@ -327,11 +344,13 @@ function ChartIndicatorPaneSurface({
         const sharedSeries = visibleSeries.filter((series) => !series.independentScale);
         const verticalScale = verticalScaleByPane[group.key] ?? 1;
         const verticalPan = verticalPanByPane[group.key] ?? 0;
-        const sharedDomain = scaleDomain(
+        const automaticSharedDomain = scaleDomain(
           seriesDomain(sharedSeries.length ? sharedSeries : visibleSeries),
           verticalScale,
           verticalPan,
         );
+        const sharedDomain = lockedVerticalDomainByPane[group.key] ?? automaticSharedDomain;
+        renderedVerticalDomainByPaneRef.current[group.key] = sharedDomain;
         const independentDomains = new Map(
           visibleSeries
             .filter((series) => series.independentScale)
@@ -719,13 +738,26 @@ function ChartIndicatorPaneSurface({
               const pointerId = event.pointerId;
               const startY = event.clientY;
               const startPan = verticalPanByPane[group.key] ?? 0;
+              const startDomain = renderedVerticalDomainByPaneRef.current[group.key];
               const plotHeight = Math.max(20, paneHeight - 34);
               target.setPointerCapture(pointerId);
               setDraggingPane(group.key);
               const move = (moveEvent: PointerEvent) => {
                 if (moveEvent.pointerId !== pointerId) return;
                 moveEvent.preventDefault();
-                const nextPan = startPan + (moveEvent.clientY - startY) / plotHeight;
+                const verticalDelta = (moveEvent.clientY - startY) / plotHeight;
+                const nextPan = startPan + verticalDelta;
+                if (startDomain) {
+                  const domainSpan = Math.max(1e-9, startDomain.max - startDomain.min);
+                  const valueDelta = verticalDelta * domainSpan;
+                  setLockedVerticalDomainByPane((current) => ({
+                    ...current,
+                    [group.key]: {
+                      min: startDomain.min + valueDelta,
+                      max: startDomain.max + valueDelta,
+                    },
+                  }));
+                }
                 setVerticalPanByPane((current) => ({
                   ...current,
                   [group.key]: Math.max(-4, Math.min(4, nextPan)),
@@ -755,6 +787,12 @@ function ChartIndicatorPaneSurface({
               event.stopPropagation();
               if (fixedVolumePane) return;
               setVerticalPanByPane((current) => {
+                if (current[group.key] === undefined) return current;
+                const next = { ...current };
+                delete next[group.key];
+                return next;
+              });
+              setLockedVerticalDomainByPane((current) => {
                 if (current[group.key] === undefined) return current;
                 const next = { ...current };
                 delete next[group.key];
@@ -795,6 +833,12 @@ function ChartIndicatorPaneSurface({
                 return next;
               });
               setVerticalPanByPane((current) => {
+                if (current[group.key] === undefined) return current;
+                const next = { ...current };
+                delete next[group.key];
+                return next;
+              });
+              setLockedVerticalDomainByPane((current) => {
                 if (current[group.key] === undefined) return current;
                 const next = { ...current };
                 delete next[group.key];
