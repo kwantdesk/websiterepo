@@ -171,6 +171,7 @@ import {
 } from "@/lib/paperAccounts";
 import {
   cancelPaperOrder,
+  clearPaperAccountFills,
   closePaperPosition,
   dailyRealizedPaperPnl,
   emptyPaperTradingLedger,
@@ -12274,11 +12275,15 @@ export default function KwantifyWorkspace({
 
   const handleRemovePaperFillMarkers = (fillIds: string[]) => {
     if (!selectedPaperTradingAccount || fillIds.length === 0) return;
+    const accountId = selectedPaperTradingAccount.id;
+    setPaperLedger((current) => clearPaperAccountFills(current, accountId));
     setHiddenPaperFillMarkers((current) => {
-      const hidden = new Set(current[selectedPaperTradingAccount.id] ?? []);
-      fillIds.forEach((fillId) => hidden.add(fillId));
-      return { ...current, [selectedPaperTradingAccount.id]: [...hidden] };
+      if (!(accountId in current)) return current;
+      const next = { ...current };
+      delete next[accountId];
+      return next;
     });
+    showPaperOrderMessage("success", `${selectedPaperTradingAccount.name} fills removed · Daily P&L reset.`);
   };
 
   const handleResetPaperTrading = () => {

@@ -501,6 +501,29 @@ export function resetPaperAccountLedger(
   };
 }
 
+export function clearPaperAccountFills(
+  ledger: PaperTradingLedger,
+  accountId: string,
+  timestamp = Date.now(),
+): PaperTradingLedger {
+  const account = ledger.accounts[accountId];
+  if (!account || account.fills.length === 0) return ledger;
+  return {
+    ...ledger,
+    accounts: {
+      ...ledger.accounts,
+      [accountId]: {
+        ...account,
+        // Daily P&L is calculated from today's exit fills, so deleting the
+        // account's fill history must clear that readout at the same time.
+        // Open positions and working orders remain untouched.
+        fills: [],
+        updatedAt: timestamp,
+      },
+    },
+  };
+}
+
 function calculatePnl(position: Pick<PaperPosition, "symbol" | "side" | "entryPrice">, exitPrice: number, quantity: number) {
   return paperProjectedPnl(position.symbol, position.side, position.entryPrice, exitPrice, quantity);
 }

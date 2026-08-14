@@ -95,10 +95,18 @@ test("paper fills render as persistent candle-anchored entry and exit arrows", (
   assert.match(chart, /M12\.25 0\.75 L0\.75 4\.5 L12\.25 8\.25 Z/);
   assert.doesNotMatch(chart, /M0\.75 1\.25 H8\.25/);
   assert.doesNotMatch(chart, /stroke="rgba\(0,0,0,0\.72\)"/);
-  assert.match(chart, /Hide fill markers/);
+  assert.match(chart, /Remove all fills/);
   assert.match(workspace, /kwantify-hidden-paper-fill-markers-v1/);
   assert.match(workspace, /onRemovePaperFills=\{handleRemovePaperFillMarkers\}/);
   assert.doesNotMatch(chart, /fill\.side === "buy" \? "▲" : "▼"/);
+});
+
+test("removing all fills also resets the selected account's daily P&L", () => {
+  assert.match(engine, /export function clearPaperAccountFills/);
+  assert.match(engine, /fills: \[\]/);
+  assert.match(workspace, /clearPaperAccountFills\(current, accountId\)/);
+  assert.match(workspace, /fills removed .* Daily P&L reset/);
+  assert.match(workspace, /selectedPaperDailyPnl = dailyRealizedPaperPnl\(selectedPaperAccountLedger\)/);
 });
 
 test("the chart can reset the selected sim account's trades, fills, orders, and P&L", () => {
