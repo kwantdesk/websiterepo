@@ -164,6 +164,10 @@ export default function LiquidityMapWorkspace({ instrument, onInstrumentChange, 
         src="/heatmap-app/index.html"
         title="Kwant Desk liquidity heatmap"
         onLoad={() => {
+          iframeRef.current?.contentDocument?.documentElement.setAttribute(
+            "data-workspace-map",
+            "true",
+          );
           stylesReadyRef.current = false;
           marketFrameReadyRef.current = false;
           syncReadyState();

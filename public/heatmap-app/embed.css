@@ -807,3 +807,13 @@ html[data-embed="true"] .current-price-tag {
     max-height: calc(100dvh - 122px);
   }
 }
+/* The provider badge is internal plumbing rather than a trader control. */
+#modeStatus {
+  display: none !important;
+}
+
+/* Workspace panels already provide their own window chrome. Keep fullscreen
+   available on the standalone map while removing it from embedded panels. */
+html[data-workspace-map="true"] #fullscreenButton {
+  display: none !important;
+}

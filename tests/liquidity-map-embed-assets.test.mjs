@@ -29,8 +29,25 @@ test("embedded liquidity map is not revealed until both stylesheets are attached
 test("liquidity-map styles use a cache-busted deployment revision", () => {
   assert.match(workspace, /src="\/heatmap-app\/index\.html"/);
   assert.match(html, /styles\.css\?v=20260814-square-instruments/);
-  assert.match(html, /embed\.css\?v=20260813-cockpit-font/);
+  assert.match(html, /embed\.css\?v=20260814-workspace-controls/);
   assert.match(html, /src\/main\.js\?v=20260814-data-ready/);
+});
+
+test("liquidity map hides its provider badge and workspace embeds hide fullscreen", () => {
+  assert.match(
+    workspace,
+    /contentDocument\?\.documentElement\.setAttribute\([\s\S]*?"data-workspace-map"[\s\S]*?"true"/,
+  );
+  assert.match(
+    embed,
+    /#modeStatus\s*\{[\s\S]*?display:\s*none !important/,
+  );
+  assert.match(
+    embed,
+    /html\[data-workspace-map="true"\] #fullscreenButton\s*\{[\s\S]*?display:\s*none !important/,
+  );
+  assert.match(html, /id="modeStatus"/);
+  assert.match(html, /id="fullscreenButton"/);
 });
 
 test("liquidity-map instrument tabs match the squared control language", () => {
