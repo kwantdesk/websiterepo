@@ -1504,8 +1504,21 @@ body.kwant-cockpit-ui canvas {
 }
 
 .gex-map-panel-grid {
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+  /* Keep the exposure surfaces horizontal inside workspace panes. Narrowing a
+     pane progressively clips the rightmost surface instead of wrapping it
+     underneath the others and turning the workspace into a tall stack. */
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   grid-auto-rows: minmax(250px, 1fr);
+}
+
+@container (max-width: 859px) {
+  .gex-map-panel-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .gex-map-panel-grid > :nth-child(n + 3) {
+    display: none;
+  }
 }
 
 @container (max-width: 720px) {
@@ -1524,7 +1537,7 @@ body.kwant-cockpit-ui canvas {
   }
 }
 
-@container (max-width: 430px) {
+@container (max-width: 569px) {
   .gex-map-header {
     flex-wrap: nowrap;
     overflow-x: auto;
@@ -1542,6 +1555,10 @@ body.kwant-cockpit-ui canvas {
 
   .gex-map-panel-grid {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .gex-map-panel-grid > :nth-child(n + 2) {
+    display: none;
   }
 }
 
