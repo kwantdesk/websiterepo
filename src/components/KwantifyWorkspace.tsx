@@ -92,7 +92,7 @@ import { useAccountPreferenceSync } from "@/hooks/useAccountPreferenceSync";
 import { compactLegacyAuthPreferenceMetadata, hydrateUserPreferences } from "@/lib/userPreferences";
 import { normalizeTimeZone } from "@/lib/timeZones";
 import { clearSavedStrategiesRaw, loadSavedStrategiesRaw, saveSavedStrategiesRaw } from "@/lib/automation";
-import { defaultChartSettings, extractUserChartSettings, loadStoredChartSettings, saveStoredChartSettings, type ChartSettings } from "@/lib/chartSettings";
+import { defaultChartSettings, extractUserChartSettings, loadStoredChartSettings, mergeWorkspaceChartSettingsWithActiveTheme, saveStoredChartSettings, type ChartSettings } from "@/lib/chartSettings";
 import type { ChartLevel, ChartZone } from "@/components/Chart";
 import {
   CHART_INDICATOR_BY_ID,
@@ -11208,10 +11208,16 @@ export default function KwantifyWorkspace({
     ));
     setWorkspaceLayout("custom");
     if (preset.chartSettings) {
-      setChartSettings(preset.chartSettings);
-      setDraftChartSettings(preset.chartSettings);
-      setChartSettingsSnapshot(preset.chartSettings);
-      saveStoredChartSettings(preset.chartSettings);
+      // The active account theme is authoritative. A workspace may restore
+      // timezone/grid behaviour, but never the old colours it was saved with.
+      const nextChartSettings = mergeWorkspaceChartSettingsWithActiveTheme(
+        preset.chartSettings,
+        loadStoredChartSettings(),
+      );
+      setChartSettings(nextChartSettings);
+      setDraftChartSettings(nextChartSettings);
+      setChartSettingsSnapshot(nextChartSettings);
+      saveStoredChartSettings(nextChartSettings);
     }
     if (preset.indicators) {
       setPaneIndicators(clonePaneIndicatorState(preset.indicators));

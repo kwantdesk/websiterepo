@@ -71,6 +71,33 @@ export function normalizeChartSettings(value: unknown): ChartSettings {
   };
 }
 
+const CHART_THEME_COLOR_FIELDS = [
+  "upColor",
+  "downColor",
+  "borderUpColor",
+  "borderDownColor",
+  "wickUpColor",
+  "wickDownColor",
+  "backgroundColor",
+  "gridColor",
+] as const satisfies ReadonlyArray<keyof ChartSettings>;
+
+/**
+ * Workspace presets own layout behaviour, not the user's visual identity.
+ * Older presets contain a full ChartSettings snapshot, so loading one used to
+ * overwrite the current account theme with whichever colours were active when
+ * that workspace was saved. Always retain the active theme colour fields.
+ */
+export function mergeWorkspaceChartSettingsWithActiveTheme(
+  workspaceSettings: unknown,
+  activeSettings: unknown,
+): ChartSettings {
+  const merged = normalizeChartSettings(workspaceSettings);
+  const active = normalizeChartSettings(activeSettings);
+  for (const field of CHART_THEME_COLOR_FIELDS) merged[field] = active[field];
+  return merged;
+}
+
 export function loadStoredChartSettings() {
   if (typeof window === "undefined") return defaultChartSettings;
 
