@@ -18,6 +18,7 @@ import {
   analyzeOrderFlow,
   computeOrderbookImbalance,
   computeVolumeImbalance,
+  mergeLiveCvdHistory,
 } from './order-flow-indicators.js';
 import { panHistoryEnd, panPriceCenter, wheelColumnShift } from './history-navigation.js';
 import {
@@ -174,7 +175,7 @@ class DepthForgeApp {
       onSnapshot: (snapshot, metadata) => this.#ingestDepthSnapshot(snapshot, metadata),
       onPresentationTick: (tick, timestamp) => this.#ingestPresentationTick(tick, timestamp),
       onStatus: status => this.#setLiveStatus(status),
-      onCvdHistory: (points, tradingDate) => this.#replaceCvdHistory(points, tradingDate),
+      onCvdHistory: (points, tradingDate, asOfMs) => this.#replaceCvdHistory(points, tradingDate, asOfMs),
     });
     this.liveFeed.start();
   }
@@ -1229,18 +1230,13 @@ class DepthForgeApp {
     if (this.renderer.layout && current) this.#positionCurrentPrice(current);
   }
 
-  #replaceCvdHistory(points, tradingDate) {
-    this.cvdHistory = (points || []).map(point => ({
-      timestamp: Number(point.timestamp),
-      open: Number(point.open || 0),
-      high: Number(point.high || 0),
-      low: Number(point.low || 0),
-      close: Number(point.close ?? point.value ?? 0),
-      value: Number(point.value ?? point.close ?? 0),
-      buy: Number(point.buy || 0),
-      sell: Number(point.sell || 0),
-    })).sort((left, right) => left.timestamp - right.timestamp);
-    this.cvdTradingDate = String(tradingDate || '');
+  #replaceCvdHistory(points, tradingDate, asOfMs = 0) {
+    const nextTradingDate = String(tradingDate || '');
+    this.cvdHistory = mergeLiveCvdHistory(this.cvdHistory, points, {
+      sameSession: Boolean(this.cvdTradingDate && this.cvdTradingDate === nextTradingDate),
+      asOfMs,
+    });
+    this.cvdTradingDate = nextTradingDate;
     this.indicatorAnalysisKey = '';
     this.requestRender();
   }
@@ -1248,8 +1244,9 @@ class DepthForgeApp {
   #appendLiveCvd(timestamp, delta) {
     const time = Number(timestamp);
     const change = Number(delta);
-    if (!Number.isFinite(time) || !Number.isFinite(change)) return;
+    if (!Number.isFinite(time) || !Number.isFinite(change) || change === 0) return;
     const previous = this.cvdHistory.at(-1);
+    if (previous && time < previous.timestamp) return;
     // Bookmap-style CVD is a continuously moving execution tape. Historical
     // seed points can remain one-minute OHLC buckets, but the live edge must
     // advance at market cadence rather than sitting on one x-coordinate for

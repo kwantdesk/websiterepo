@@ -62,6 +62,63 @@ export function tradeAllowed(trade, minimum = 1, maximum = 0) {
   return size >= min && (max === 0 || size <= max);
 }
 
+export function normalizeCvdHistory(points) {
+  const normalized = new Map();
+  for (const point of points || []) {
+    const timestamp = Number(point?.timestamp);
+    if (!Number.isFinite(timestamp) || timestamp <= 0) continue;
+    const rawValue = Number(point?.value ?? point?.close ?? 0);
+    const value = Number.isFinite(rawValue) ? rawValue : 0;
+    const rawOpen = Number(point?.open ?? value);
+    const rawClose = Number(point?.close ?? value);
+    const open = Number.isFinite(rawOpen) ? rawOpen : value;
+    const close = Number.isFinite(rawClose) ? rawClose : value;
+    normalized.set(timestamp, {
+      timestamp,
+      open,
+      high: Number.isFinite(Number(point?.high)) ? Number(point.high) : Math.max(open, close),
+      low: Number.isFinite(Number(point?.low)) ? Number(point.low) : Math.min(open, close),
+      close,
+      value,
+      buy: Number(point?.buy || 0),
+      sell: Number(point?.sell || 0),
+    });
+  }
+  return [...normalized.values()].sort((left, right) => left.timestamp - right.timestamp);
+}
+
+export function mergeLiveCvdHistory(current, incoming, {
+  sameSession = false,
+  asOfMs = 0,
+} = {}) {
+  const existing = normalizeCvdHistory(current);
+  const seed = normalizeCvdHistory(incoming);
+  if (!sameSession || !existing.length) return seed;
+  if (!seed.length) return existing;
+
+  const previous = existing.at(-1);
+  const laterSeed = seed.filter(point => point.timestamp > previous.timestamp);
+  if (laterSeed.length) return [...existing, ...laterSeed];
+
+  // A planned SSE rotation can reconnect inside the same one-minute gateway
+  // bucket. Preserve the already-rendered sub-second path. Only add one new
+  // point when the authoritative session total proves executions were missed
+  // while the stream was changing over.
+  const authoritative = seed.at(-1);
+  if (authoritative.value === previous.value) return existing;
+  const timestamp = Math.max(previous.timestamp + 1, Number(asOfMs) || 0);
+  return [...existing, {
+    timestamp,
+    open: previous.value,
+    high: Math.max(previous.value, authoritative.value),
+    low: Math.min(previous.value, authoritative.value),
+    close: authoritative.value,
+    value: authoritative.value,
+    buy: authoritative.buy,
+    sell: authoritative.sell,
+  }];
+}
+
 export function computeCvdSeries(history, {
   minimumTradeSize = 1,
   maximumTradeSize = 0,

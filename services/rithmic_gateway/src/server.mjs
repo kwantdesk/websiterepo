@@ -1137,6 +1137,7 @@ const server = createServer(async (request, response) => {
         response.write(
           `event: cvd-history\ndata: ${JSON.stringify({
             tradingDate: chicagoTradingDate(snapshot.asOfMs || Date.now()),
+            asOfMs: snapshot.asOfMs || Date.now(),
             points: sessionCvdHistory(
               instrument.exchange,
               instrument.symbol,
@@ -1167,8 +1168,18 @@ const server = createServer(async (request, response) => {
         } else {
           const initialCursor = { lastMarketTimestampMs: 0 };
           if (acceptMonotonicHeatmapFrame(initialCursor, initialFrame)) {
+            const seededInitialFrame = {
+              ...initialFrame,
+              snapshot: {
+                ...initialFrame.snapshot,
+                // cvd-history already includes every retained execution up to
+                // this snapshot. Keep its trades for bubbles/tape, but do not
+                // add their net delta to CVD a second time.
+                delta: 0,
+              },
+            };
             response.write(
-              `event: depth\ndata: ${JSON.stringify(initialFrame)}\n\n`,
+              `event: depth\ndata: ${JSON.stringify(seededInitialFrame)}\n\n`,
             );
             initialMarketTimestampMs = initialCursor.lastMarketTimestampMs;
           }

@@ -414,7 +414,7 @@ export class DepthMarketFeed {
       const points = Array.isArray(payload.points)
         ? payload.points.filter(point => Number.isFinite(Number(point?.timestamp)))
         : [];
-      this.onCvdHistory?.(points, payload.tradingDate || '');
+      this.onCvdHistory?.(points, payload.tradingDate || '', Number(payload.asOfMs) || 0);
     });
     stream.addEventListener('depth', event => {
       if (!isCurrentConnection()) return;
