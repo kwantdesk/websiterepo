@@ -3770,21 +3770,24 @@ export default function Chart({
     const scale = clamp(Math.min(widthScale, heightScale), 0.3, 1);
     const smooth = (value: number, minimum: number) =>
       Math.max(minimum, Number((value * scale).toFixed(2)));
-    const buttonSize = smooth(38, 13.2);
-    const iconSize = smooth(17, 7);
-    const gap = smooth(3, 1.5);
+    // Keep the drawing rail compact enough to live on every chart pane without
+    // covering useful price action. These dimensions are 25% smaller than the
+    // original 38px / 17px toolbar while preserving the responsive scale-down.
+    const buttonSize = smooth(28.5, 9.9);
+    const iconSize = smooth(12.75, 5.25);
+    const gap = smooth(2.25, 1.1);
     return {
       scale,
       buttonSize,
       iconSize,
       gap,
-      radius: smooth(7, 3),
-      dockOffset: smooth(12, 3),
-      dockStart: Math.max(buttonSize + 3, smooth(64, 20)),
+      radius: smooth(5.25, 2.25),
+      dockOffset: smooth(9, 2.25),
+      dockStart: Math.max(buttonSize + 2, smooth(48, 15)),
       menuWidth: Math.max(180, Number((420 * scale).toFixed(2))),
       menuMaxHeight: `${Number((46 + 28 * scale).toFixed(2))}vh`,
       objectsPanelWidth: Math.max(170, Number((288 * scale).toFixed(2))),
-      dragDotSize: smooth(6, 2.5),
+      dragDotSize: smooth(4.5, 1.9),
     };
   }, [overlaySize.height, overlaySize.width]);
   const toolbarButtonStyle = {
@@ -7208,7 +7211,7 @@ export default function Chart({
       {toolbarEnabled && (
       <div
         ref={toolbarRef}
-        className={`absolute z-20 flex rounded-lg border border-border/80 bg-panel/92 p-[3px] shadow-xl backdrop-blur-xl ${toolbarDock === "top" || toolbarDock === "bottom" ? "flex-row items-center" : "flex-col"}`}
+        className={`absolute z-20 flex rounded-md border border-border/80 bg-panel/92 p-[2px] shadow-xl backdrop-blur-xl ${toolbarDock === "top" || toolbarDock === "bottom" ? "flex-row items-center" : "flex-col"}`}
         style={{
           ...toolbarDockStyle,
           gap: toolbarMetrics.gap,
@@ -7282,9 +7285,9 @@ export default function Chart({
           title={chartDragEnabled ? "Drag to dock left, right, above, below, or swap with another panel" : "Unlock the workspace and add another panel to arrange it"}
           aria-label="Move and dock chart"
         >
-          <span className="grid grid-cols-2 gap-[3px]" aria-hidden="true">
+          <span className="grid grid-cols-2 gap-[2px]" aria-hidden="true">
             {Array.from({ length: 6 }).map((_, index) => (
-              <span key={index} className="h-[3px] w-[3px] rounded-full bg-current" />
+              <span key={index} className="h-[2px] w-[2px] rounded-full bg-current" />
             ))}
           </span>
         </button>
