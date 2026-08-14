@@ -4386,7 +4386,12 @@ function WorkspaceChartPane({
     const immediateCandles = pane.broker === "Databento"
       ? mergeObservedDatabentoTail(immediateHistoryForPeriod, observedTail, pane.timeframe)
       : immediateHistoryForPeriod;
-    const hasImmediateHistory = immediateHistoryForPeriod.length > 0;
+    // A lone event candle is the forming bar created by the live execution
+    // stream, not historical hydration. Do not present it as a loaded 40R or
+    // 200V chart while the five-session archive is still opening.
+    const hasImmediateHistory = immediateHistoryForPeriod.length > (
+      isEventBasedChartInterval(pane.timeframe) ? 1 : 0
+    );
     const memoryTape = needsOrderFlowHistory
       ? peekExecutionTapeCache(pane.symbol, pane.timeframe)?.records ?? []
       : [];

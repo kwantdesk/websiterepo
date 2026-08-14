@@ -48,15 +48,50 @@ const DURABLE_TIME_HISTORY_REVALIDATE_SECONDS = 12;
 
 type EventHistoryPayload = Awaited<ReturnType<typeof getDatabentoEventHistory>>;
 type TimeHistoryPayload = Awaited<ReturnType<typeof getDatabentoOrderFlowHistory>>;
+type EventBarsPayload = {
+  candles: Awaited<ReturnType<typeof getDatabentoEventBars>>;
+  executions: DatabentoExecutionTuple[];
+};
 
-function encodeHistory(history: EventHistoryPayload | TimeHistoryPayload) {
+function encodeHistory(history: EventHistoryPayload | TimeHistoryPayload | EventBarsPayload) {
   return gzipSync(Buffer.from(JSON.stringify(history))).toString("base64");
 }
 
-function decodeHistory<T extends EventHistoryPayload | TimeHistoryPayload>(encoded: string) {
+function decodeHistory<T extends EventHistoryPayload | TimeHistoryPayload | EventBarsPayload>(encoded: string) {
   return JSON.parse(
     gunzipSync(Buffer.from(encoded, "base64")).toString("utf8"),
   ) as T;
+}
+
+/**
+ * Range and volume geometry is expensive to rebuild from ten days of
+ * one-second CME history. Persist the base bars across serverless instances,
+ * not only in the process-local map, so a cold Vercel worker does not make a
+ * newly selected 40R/200V chart wait while the same tape is replayed again.
+ * Live Rithmic executions continue the forming bar in the browser.
+ */
+async function getDurableEventBars(
+  symbol: string,
+  timeframe: string,
+  historyDays: number,
+  start: string,
+  end: string,
+): Promise<EventBarsPayload> {
+  const encoded = await unstable_cache(
+    async () => {
+      const candles = await getDatabentoEventBars(symbol, timeframe, start, end);
+      if (candles.length < 2) {
+        throw new Error("CME event history returned no historical bars.");
+      }
+      return encodeHistory({
+        candles,
+        executions: [] as DatabentoExecutionTuple[],
+      });
+    },
+    ["cme-event-bars-v1", symbol, timeframe, `${historyDays}d`],
+    { revalidate: DURABLE_EVENT_HISTORY_REVALIDATE_SECONDS },
+  )();
+  return decodeHistory<EventBarsPayload>(encoded);
 }
 
 /**
@@ -125,6 +160,26 @@ async function durableEventHistoryOrDirect(
     // the cross-instance durable cache above.
     if (error instanceof Error && error.message.includes("incrementalCache")) {
       return getDatabentoEventHistory(symbol, timeframe, start, end);
+    }
+    throw error;
+  }
+}
+
+async function durableEventBarsOrDirect(
+  symbol: string,
+  timeframe: string,
+  historyDays: number,
+  start: string,
+  end: string,
+) {
+  try {
+    return await getDurableEventBars(symbol, timeframe, historyDays, start, end);
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("incrementalCache")) {
+      return {
+        candles: await getDatabentoEventBars(symbol, timeframe, start, end),
+        executions: [] as DatabentoExecutionTuple[],
+      };
     }
     throw error;
   }
@@ -200,10 +255,13 @@ export async function GET(request: Request) {
             start,
             end,
           )
-        : {
-            candles: await getDatabentoEventBars(symbol, timeframe, start, end),
-            executions: [] as DatabentoExecutionTuple[],
-          }
+        : await durableEventBarsOrDirect(
+            symbol,
+            timeframe,
+            historyDays,
+            start,
+            end,
+          )
       : includeOrderFlow && !forceFresh
         ? await durableTimeHistoryOrDirect(
             symbol,

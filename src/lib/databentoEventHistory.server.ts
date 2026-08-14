@@ -173,6 +173,10 @@ async function streamEventBars(args: {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
+      // The VPS may retain this large rolling archive for several minutes.
+      // Event geometry is continued by live executions, unlike ordinary
+      // clock candles where a stale archive could create missing buckets.
+      "X-KwantDesk-Event-History": "1",
     },
     body: form,
     cache: "no-store",

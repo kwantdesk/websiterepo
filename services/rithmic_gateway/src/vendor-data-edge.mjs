@@ -5,6 +5,7 @@ const DATABENTO_ORIGIN = "https://api.databento.com";
 const QUANTDATA_ORIGIN = "https://api.quantdata.us";
 const MAX_BODY_BYTES = 8 * 1024 * 1024;
 const ROLLING_DATABENTO_CACHE_MS = 12_000;
+const EVENT_HISTORY_DATABENTO_CACHE_MS = 5 * 60_000;
 const SAFE_DATABENTO_PATH = /^\/v0\/(timeseries\.get_range|metadata\.[A-Za-z0-9_.-]+)$/;
 const SAFE_QUANTDATA_PATH = /^\/v1\/[A-Za-z0-9_./-]+$/;
 
@@ -140,8 +141,11 @@ export class VendorDataEdge {
     const body = request.method === "POST" ? await requestBody(request) : undefined;
     const cacheKey = request.method === "POST" ? rollingDatabentoCacheKey(path, body) : null;
     if (cacheKey) {
+      const cacheLifetime = request.headers["x-kwantdesk-event-history"] === "1"
+        ? EVENT_HISTORY_DATABENTO_CACHE_MS
+        : ROLLING_DATABENTO_CACHE_MS;
       const cached = this.databentoCache.get(cacheKey);
-      if (cached && Date.now() - cached.updatedAt <= ROLLING_DATABENTO_CACHE_MS) {
+      if (cached && Date.now() - cached.updatedAt <= cacheLifetime) {
         this.metrics.databentoCacheHits += 1;
         response.writeHead(cached.status, cached.headers);
         response.end(cached.body);
