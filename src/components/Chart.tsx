@@ -1005,6 +1005,141 @@ class PaperFillMarkersPrimitive implements ISeriesPrimitive<Time> {
   paneViews() { return [this.markerView]; }
 }
 
+type PaperPositionOverlayRenderLevel = {
+  id: string;
+  price: number;
+  label: string;
+  color: string;
+  kind: "entry" | "stop_loss" | "take_profit";
+  showStopHandle?: boolean;
+  showTakeProfitHandle?: boolean;
+  showClose?: boolean;
+  stopColor?: string;
+  takeProfitColor?: string;
+};
+
+class PaperPositionOverlayRenderer implements ISeriesPrimitivePaneRenderer {
+  constructor(private readonly primitive: PaperPositionOverlayPrimitive) {}
+
+  draw(target: Parameters<ISeriesPrimitivePaneRenderer["draw"]>[0]) {
+    const series = this.primitive.series();
+    if (!series) return;
+
+    target.useMediaCoordinateSpace(({ context, mediaSize }) => {
+      context.save();
+      context.font = "700 8px 'JetBrains Mono', monospace";
+      context.textBaseline = "middle";
+      const labelWidth = 164;
+      const labelHeight = 16;
+      const labelX = Math.max(0, mediaSize.width - labelWidth - 4);
+
+      for (const level of this.primitive.levels()) {
+        const y = series.priceToCoordinate(level.price);
+        if (y === null || y < -labelHeight || y > mediaSize.height + labelHeight) continue;
+
+        context.save();
+        context.globalAlpha = 0.92;
+        context.strokeStyle = level.color;
+        context.lineWidth = 1;
+        context.setLineDash(level.kind === "entry" ? [] : [5, 4]);
+        context.beginPath();
+        context.moveTo(0, y + 0.5);
+        context.lineTo(mediaSize.width, y + 0.5);
+        context.stroke();
+        context.restore();
+
+        const labelTop = y - labelHeight / 2;
+        context.save();
+        context.globalAlpha = 0.96;
+        context.fillStyle = this.primitive.backgroundColor();
+        context.fillRect(labelX, labelTop, labelWidth, labelHeight);
+        context.globalAlpha = 1;
+        context.strokeStyle = level.color;
+        context.lineWidth = 1;
+        context.strokeRect(labelX + 0.5, labelTop + 0.5, labelWidth - 1, labelHeight - 1);
+        let textLeft = labelX + 7;
+        if (level.kind === "entry" && level.showStopHandle) {
+          context.fillStyle = level.stopColor ?? level.color;
+          context.fillText("SL", labelX + 5, y, 15);
+          context.strokeStyle = level.color;
+          context.beginPath();
+          context.moveTo(labelX + 20.5, labelTop + 1);
+          context.lineTo(labelX + 20.5, labelTop + labelHeight - 1);
+          context.stroke();
+          textLeft += 20;
+        }
+        if (level.kind === "entry" && level.showTakeProfitHandle) {
+          context.fillStyle = level.takeProfitColor ?? level.color;
+          context.fillText("TP", textLeft - 2, y, 15);
+          context.strokeStyle = level.color;
+          context.beginPath();
+          context.moveTo(textLeft + 13.5, labelTop + 1);
+          context.lineTo(textLeft + 13.5, labelTop + labelHeight - 1);
+          context.stroke();
+          textLeft += 20;
+        }
+        const closeWidth = level.kind === "entry" && level.showClose ? 16 : 0;
+        if (closeWidth) {
+          context.strokeStyle = level.color;
+          context.beginPath();
+          context.moveTo(labelX + labelWidth - closeWidth - 0.5, labelTop + 1);
+          context.lineTo(labelX + labelWidth - closeWidth - 0.5, labelTop + labelHeight - 1);
+          context.stroke();
+          context.fillStyle = level.color;
+          context.fillText("×", labelX + labelWidth - 12, y, 10);
+        }
+        context.beginPath();
+        context.rect(textLeft, labelTop + 1, labelX + labelWidth - closeWidth - textLeft - 2, labelHeight - 2);
+        context.clip();
+        context.fillStyle = level.color;
+        context.fillText(level.label, textLeft, y, labelX + labelWidth - closeWidth - textLeft - 4);
+        context.restore();
+      }
+      context.restore();
+    });
+  }
+}
+
+class PaperPositionOverlayView implements ISeriesPrimitivePaneView {
+  private readonly overlayRenderer: PaperPositionOverlayRenderer;
+
+  constructor(primitive: PaperPositionOverlayPrimitive) {
+    this.overlayRenderer = new PaperPositionOverlayRenderer(primitive);
+  }
+
+  zOrder() { return "top" as const; }
+  renderer() { return this.overlayRenderer; }
+}
+
+class PaperPositionOverlayPrimitive implements ISeriesPrimitive<Time> {
+  private candleSeries: CandleSeriesApi | null = null;
+  private requestRedraw: (() => void) | null = null;
+  private renderLevels: PaperPositionOverlayRenderLevel[] = [];
+  private chartBackground = "#050608";
+  private readonly overlayView = new PaperPositionOverlayView(this);
+
+  attached(param: SeriesAttachedParameter<Time, "Candlestick">) {
+    this.candleSeries = param.series as CandleSeriesApi;
+    this.requestRedraw = param.requestUpdate;
+  }
+
+  detached() {
+    this.candleSeries = null;
+    this.requestRedraw = null;
+  }
+
+  update(levels: PaperPositionOverlayRenderLevel[], backgroundColor: string) {
+    this.renderLevels = levels;
+    this.chartBackground = backgroundColor;
+    this.requestRedraw?.();
+  }
+
+  series() { return this.candleSeries; }
+  levels() { return this.renderLevels; }
+  backgroundColor() { return this.chartBackground; }
+  paneViews() { return [this.overlayView]; }
+}
+
 type DrawingToolId =
   | "cursor"
   | "dot"
@@ -1841,6 +1976,7 @@ export default function Chart({
   const bigTradesPrimitiveRef = useRef<BigTradesPrimitive | null>(null);
   const footprintPrimitiveRef = useRef<FootprintPrimitive | null>(null);
   const paperFillMarkersPrimitiveRef = useRef<PaperFillMarkersPrimitive | null>(null);
+  const paperPositionOverlayPrimitiveRef = useRef<PaperPositionOverlayPrimitive | null>(null);
   const footprintActiveRef = useRef(false);
   const footprintBarWidthRef = useRef<number | null>(null);
   const [paperDragPreview, setPaperDragPreview] = useState<{ id: string; price: number } | null>(null);
@@ -5337,6 +5473,9 @@ export default function Chart({
     const paperFillMarkersPrimitive = new PaperFillMarkersPrimitive();
     candleSeries.attachPrimitive(paperFillMarkersPrimitive);
     paperFillMarkersPrimitiveRef.current = paperFillMarkersPrimitive;
+    const paperPositionOverlayPrimitive = new PaperPositionOverlayPrimitive();
+    candleSeries.attachPrimitive(paperPositionOverlayPrimitive);
+    paperPositionOverlayPrimitiveRef.current = paperPositionOverlayPrimitive;
 
     const chartData = buildSafeChartData(
       candles,
@@ -5737,6 +5876,13 @@ export default function Chart({
             // Chart teardown can detach primitives before React cleanup runs.
           }
         }
+        if (candleSeriesRef.current && paperPositionOverlayPrimitiveRef.current) {
+          try {
+            candleSeriesRef.current.detachPrimitive(paperPositionOverlayPrimitiveRef.current);
+          } catch {
+            // Chart teardown can detach primitives before React cleanup runs.
+          }
+        }
         chartRef.current.remove();
         chartRef.current = null;
       }
@@ -5749,6 +5895,7 @@ export default function Chart({
       bigTradesPrimitiveRef.current = null;
       footprintPrimitiveRef.current = null;
       paperFillMarkersPrimitiveRef.current = null;
+      paperPositionOverlayPrimitiveRef.current = null;
       footprintActiveRef.current = false;
       footprintBarWidthRef.current = null;
       indicatorSeriesRefs.current = [];
@@ -6244,6 +6391,34 @@ export default function Chart({
         };
       })()
     : null;
+  useEffect(() => {
+    const primitive = paperPositionOverlayPrimitiveRef.current;
+    if (!primitive) return;
+    const levels: PaperPositionOverlayRenderLevel[] = paperOverlayLevels.map((level) => ({
+      id: level.id,
+      price: level.price,
+      label: level.label,
+      color: level.color,
+      kind: level.kind,
+      showStopHandle: level.kind === "entry" && Boolean(onUpdatePaperProtection) && level.position.stopLoss === null,
+      showTakeProfitHandle: level.kind === "entry"
+        && Boolean(onUpdatePaperProtection)
+        && !level.position.takeProfits.some((target) => target.quantity > target.filledQuantity),
+      showClose: level.kind === "entry" && Boolean(onClosePaperPosition),
+      stopColor: settings.downColor,
+      takeProfitColor: settings.upColor,
+    }));
+    if (paperDraftOverlayLevel) {
+      levels.push({
+        id: paperDraftOverlayLevel.id,
+        price: paperDraftOverlayLevel.price,
+        label: paperDraftOverlayLevel.label,
+        color: paperDraftOverlayLevel.color,
+        kind: paperDraftOverlayLevel.kind,
+      });
+    }
+    primitive.update(levels, settings.backgroundColor);
+  }, [onClosePaperPosition, onUpdatePaperProtection, paperDraftOverlayLevel, paperOverlayLevels, settings.backgroundColor, settings.downColor, settings.upColor]);
   const matchingPaperFills = paperFills
     .filter((fill) => normalizePaperSymbol(fill.symbol) === normalizePaperSymbol(instrument));
   const constrainedPaperProtectionPrice = (
@@ -6421,18 +6596,15 @@ export default function Chart({
       {paperOverlayLevels.map((level) => (
         <div
           key={level.id}
-          className="pointer-events-none absolute left-0 z-[31] border-t"
+          className="pointer-events-none absolute left-0 z-[31]"
           style={{
             right: nativePriceScaleWidth,
             top: level.y,
-            borderColor: level.color,
-            borderTopStyle: level.kind === "entry" ? "solid" : "dashed",
-            opacity: 0.92,
           }}
         >
           {level.kind === "entry" ? (
             <div
-              className="paper-position-overlay-label pointer-events-auto absolute right-1 flex h-4 w-[164px] -translate-y-1/2 items-center overflow-hidden rounded-[1px] border bg-panel/95 font-mono text-[8px] font-semibold leading-none shadow-md backdrop-blur"
+              className="paper-position-overlay-label pointer-events-auto absolute right-1 flex h-4 w-[164px] -translate-y-1/2 items-center overflow-hidden opacity-0"
               style={{ borderColor: level.color, color: level.color }}
               title={`Unrealized ${level.position.unrealizedPnl.toFixed(2)}`}
             >
@@ -6482,7 +6654,7 @@ export default function Chart({
             <button
               type="button"
               onPointerDown={(event) => startPaperProtectionDrag(event, level)}
-              className="paper-protection-overlay-label pointer-events-auto absolute right-1 h-4 w-[164px] -translate-y-1/2 cursor-ns-resize touch-none truncate rounded-[1px] border bg-panel/95 px-[7px] text-left font-mono text-[8px] font-semibold leading-none shadow-md backdrop-blur transition-[filter] hover:brightness-125 active:cursor-grabbing"
+              className="paper-protection-overlay-label pointer-events-auto absolute right-1 h-4 w-[164px] -translate-y-1/2 cursor-ns-resize touch-none opacity-0 active:cursor-grabbing"
               style={{ borderColor: level.color, color: level.color }}
               title="Drag to adjust protection"
             >
@@ -6491,23 +6663,6 @@ export default function Chart({
           )}
         </div>
       ))}
-      {paperDraftOverlayLevel ? (
-        <div
-          className="pointer-events-none absolute left-0 z-[33] border-t border-dashed"
-          style={{
-            right: nativePriceScaleWidth,
-            top: paperDraftOverlayLevel.y,
-            borderColor: paperDraftOverlayLevel.color,
-          }}
-        >
-          <div
-            className="paper-protection-draft-label absolute right-1 h-4 w-[164px] -translate-y-1/2 truncate rounded-[1px] border bg-panel/95 px-[7px] text-left font-mono text-[8px] font-semibold leading-[14px] shadow-md backdrop-blur"
-            style={{ borderColor: paperDraftOverlayLevel.color, color: paperDraftOverlayLevel.color }}
-          >
-            {paperDraftOverlayLevel.label}
-          </div>
-        </div>
-      ) : null}
       {gammaLevelsEnabled && gammaLevelsLoading ? (
         <div
           className="pointer-events-none absolute right-[76px] top-3 z-[19] flex items-center gap-2 rounded-full border border-border/70 bg-background/88 px-3 py-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground shadow-lg backdrop-blur"

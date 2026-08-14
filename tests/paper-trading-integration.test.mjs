@@ -68,7 +68,11 @@ test("chart receives paper positions, fills, and draggable bracket updates", () 
   assert.match(chart, /requestAnimationFrame\(flushPreview\)/);
   assert.match(chart, /paper-position-overlay-label[^\n]*absolute right-1 flex h-4 w-\[164px\]/);
   assert.match(chart, /paper-protection-overlay-label[^\n]*absolute right-1 h-4 w-\[164px\]/);
-  assert.match(chart, /paper-protection-draft-label[^\n]*absolute right-1 h-4 w-\[164px\]/);
+  assert.match(chart, /class PaperPositionOverlayPrimitive/);
+  assert.match(chart, /candleSeries\.attachPrimitive\(paperPositionOverlayPrimitive\)/);
+  assert.match(chart, /context\.fillRect\(labelX, labelTop, labelWidth, labelHeight\)/);
+  assert.match(chart, /const labelWidth = 164/);
+  assert.doesNotMatch(chart, /paper-protection-draft-label/);
   assert.match(chart, /onPaperProtectionDragStateChange\?\.\(level\.position\.id, true\)/);
   assert.match(chart, /updatePreview\(upEvent\.clientY\)/);
   assert.match(workspace, /suspendedPaperProtectionIdsRef/);
