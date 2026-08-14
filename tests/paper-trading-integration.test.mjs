@@ -64,7 +64,10 @@ test("chart receives paper positions, fills, and draggable bracket updates", () 
   assert.match(chart, /SL ·/);
   assert.match(chart, /TP\$\{position\.takeProfits\.length > 1/);
   assert.match(chart, /requestAnimationFrame\(flushPreview\)/);
-  assert.match(chart, /left-1 flex h-4/);
+  assert.match(chart, /paper-position-overlay-label[^\n]*absolute right-1 flex h-4/);
+  assert.match(chart, /paper-protection-overlay-label[^\n]*absolute right-1 h-4/);
+  assert.match(chart, /paper-protection-draft-label[^\n]*absolute right-1 h-4/);
+  assert.doesNotMatch(chart, /paper-(?:position|protection)(?:-draft)?-overlay-label[^\n]*absolute left-/);
 });
 
 test("an unprotected fill exposes chart-native SL and TP drag handles that create working protection", () => {

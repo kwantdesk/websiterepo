@@ -6313,7 +6313,7 @@ export default function Chart({
         >
           {level.kind === "entry" ? (
             <div
-              className="pointer-events-auto absolute left-1 flex h-4 -translate-y-1/2 items-center overflow-hidden rounded-[1px] border bg-panel/95 font-mono text-[8px] font-semibold leading-none shadow-md backdrop-blur"
+              className="paper-position-overlay-label pointer-events-auto absolute right-1 flex h-4 -translate-y-1/2 items-center overflow-hidden rounded-[1px] border bg-panel/95 font-mono text-[8px] font-semibold leading-none shadow-md backdrop-blur"
               style={{ borderColor: level.color, color: level.color }}
               title={`Unrealized ${level.position.unrealizedPnl.toFixed(2)}`}
             >
@@ -6363,7 +6363,7 @@ export default function Chart({
             <button
               type="button"
               onPointerDown={(event) => startPaperProtectionDrag(event, level)}
-              className="pointer-events-auto absolute left-1 h-4 -translate-y-1/2 cursor-ns-resize touch-none whitespace-nowrap rounded-[1px] border bg-panel/95 px-[7px] font-mono text-[8px] font-semibold leading-none shadow-md backdrop-blur transition-[filter] hover:brightness-125 active:cursor-grabbing"
+              className="paper-protection-overlay-label pointer-events-auto absolute right-1 h-4 -translate-y-1/2 cursor-ns-resize touch-none whitespace-nowrap rounded-[1px] border bg-panel/95 px-[7px] font-mono text-[8px] font-semibold leading-none shadow-md backdrop-blur transition-[filter] hover:brightness-125 active:cursor-grabbing"
               style={{ borderColor: level.color, color: level.color }}
               title="Drag to adjust protection"
             >
@@ -6382,7 +6382,7 @@ export default function Chart({
           }}
         >
           <div
-            className="absolute left-1 h-4 -translate-y-1/2 whitespace-nowrap rounded-[1px] border bg-panel/95 px-[7px] font-mono text-[8px] font-semibold leading-[14px] shadow-md backdrop-blur"
+            className="paper-protection-draft-label absolute right-1 h-4 -translate-y-1/2 whitespace-nowrap rounded-[1px] border bg-panel/95 px-[7px] font-mono text-[8px] font-semibold leading-[14px] shadow-md backdrop-blur"
             style={{ borderColor: paperDraftOverlayLevel.color, color: paperDraftOverlayLevel.color }}
           >
             {paperDraftOverlayLevel.label}
