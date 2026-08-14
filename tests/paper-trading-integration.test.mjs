@@ -153,6 +153,13 @@ test("trade panel reports live open P&L and today's realized P&L instead of rece
   assert.match(workspace, /selectedPaperDailyPnl = dailyRealizedPaperPnl/);
   assert.match(workspace, /Open P&amp;L/);
   assert.match(workspace, /Daily P&amp;L/);
+  assert.match(workspace, /publishLiveExecutionQuote\(quote\)/);
+  assert.match(workspace, /function LivePaperPositionPnl/);
+  assert.match(workspace, /function LivePaperOpenPnl/);
+  assert.match(workspace, /<LivePaperOpenPnl positions=\{selectedPaperOpenPositions\} \/>/);
+  assert.match(chart, /paperPositionOverlayPrimitiveRef\.current\?\.updateMarkPrice\(candle\.close\)/);
+  assert.match(chart, /updateMarkPrice\(price: number\)/);
+  assert.match(chart, /const renderedLabel = livePnl === null/);
   assert.doesNotMatch(workspace, /Recent fills/);
 });
 

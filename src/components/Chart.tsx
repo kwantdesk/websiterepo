@@ -1016,6 +1016,13 @@ type PaperPositionOverlayRenderLevel = {
   showClose?: boolean;
   stopColor?: string;
   takeProfitColor?: string;
+  livePosition?: {
+    symbol: string;
+    side: "buy" | "sell";
+    quantity: number;
+    entryPrice: number;
+    precision: number;
+  };
 };
 
 class PaperPositionOverlayRenderer implements ISeriesPrimitivePaneRenderer {
@@ -1036,6 +1043,19 @@ class PaperPositionOverlayRenderer implements ISeriesPrimitivePaneRenderer {
       for (const level of this.primitive.levels()) {
         const y = series.priceToCoordinate(level.price);
         if (y === null || y < -labelHeight || y > mediaSize.height + labelHeight) continue;
+        const markPrice = this.primitive.markPrice();
+        const livePnl = level.kind === "entry" && level.livePosition && markPrice !== null
+          ? paperProjectedPnl(
+              level.livePosition.symbol,
+              level.livePosition.side,
+              level.livePosition.entryPrice,
+              markPrice,
+              level.livePosition.quantity,
+            )
+          : null;
+        const renderedLabel = livePnl === null || !level.livePosition
+          ? level.label
+          : `${level.livePosition.side === "buy" ? "LONG" : "SHORT"} · ${level.livePosition.quantity} · ${level.livePosition.entryPrice.toFixed(level.livePosition.precision)} · ${livePnl > 0 ? "+" : livePnl < 0 ? "-" : ""}$${Math.abs(livePnl).toFixed(2)}`;
 
         context.save();
         context.globalAlpha = 0.92;
@@ -1092,7 +1112,7 @@ class PaperPositionOverlayRenderer implements ISeriesPrimitivePaneRenderer {
         context.rect(textLeft, labelTop + 1, labelX + labelWidth - closeWidth - textLeft - 2, labelHeight - 2);
         context.clip();
         context.fillStyle = level.color;
-        context.fillText(level.label, textLeft, y, labelX + labelWidth - closeWidth - textLeft - 4);
+        context.fillText(renderedLabel, textLeft, y, labelX + labelWidth - closeWidth - textLeft - 4);
         context.restore();
       }
       context.restore();
@@ -1116,6 +1136,7 @@ class PaperPositionOverlayPrimitive implements ISeriesPrimitive<Time> {
   private requestRedraw: (() => void) | null = null;
   private renderLevels: PaperPositionOverlayRenderLevel[] = [];
   private chartBackground = "#050608";
+  private liveMarkPrice: number | null = null;
   private readonly overlayView = new PaperPositionOverlayView(this);
 
   attached(param: SeriesAttachedParameter<Time, "Candlestick">) {
@@ -1134,8 +1155,15 @@ class PaperPositionOverlayPrimitive implements ISeriesPrimitive<Time> {
     this.requestRedraw?.();
   }
 
+  updateMarkPrice(price: number) {
+    if (!Number.isFinite(price) || price <= 0 || this.liveMarkPrice === price) return;
+    this.liveMarkPrice = price;
+    this.requestRedraw?.();
+  }
+
   series() { return this.candleSeries; }
   levels() { return this.renderLevels; }
+  markPrice() { return this.liveMarkPrice; }
   backgroundColor() { return this.chartBackground; }
   paneViews() { return [this.overlayView]; }
 }
@@ -2147,6 +2175,7 @@ export default function Chart({
           low: candle.low,
           close: candle.close,
         });
+        paperPositionOverlayPrimitiveRef.current?.updateMarkPrice(candle.close);
         lastRenderedCandleTimeRef.current = candleTime;
         lastRenderedSourceTimestampRef.current = candle.timestamp;
         if (eventBased) {
@@ -6425,6 +6454,13 @@ export default function Chart({
       showClose: level.kind === "entry" && Boolean(onClosePaperPosition),
       stopColor: settings.downColor,
       takeProfitColor: settings.upColor,
+      livePosition: level.kind === "entry" ? {
+        symbol: level.position.symbol,
+        side: level.position.side,
+        quantity: level.position.remainingQuantity,
+        entryPrice: level.position.entryPrice,
+        precision: priceFormat.precision,
+      } : undefined,
     }));
     if (paperDraftOverlayLevel) {
       levels.push({
@@ -6436,7 +6472,9 @@ export default function Chart({
       });
     }
     primitive.update(levels, settings.backgroundColor);
-  }, [onClosePaperPosition, onUpdatePaperProtection, paperDraftOverlayLevel, paperOverlayLevels, settings.backgroundColor, settings.downColor, settings.upColor]);
+    const latestMark = latestCandleRef.current?.close ?? candles.at(-1)?.close;
+    if (latestMark) primitive.updateMarkPrice(latestMark);
+  }, [candles, onClosePaperPosition, onUpdatePaperProtection, paperDraftOverlayLevel, paperOverlayLevels, settings.backgroundColor, settings.downColor, settings.upColor]);
   const matchingPaperFills = paperFills
     .filter((fill) => normalizePaperSymbol(fill.symbol) === normalizePaperSymbol(instrument));
   const constrainedPaperProtectionPrice = (

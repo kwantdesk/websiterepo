@@ -183,6 +183,7 @@ import {
   paperContractSpec,
   paperOrderQuantity,
   paperPointValue,
+  paperProjectedPnl,
   paperTickSize,
   parseLeverage,
   placePaperOrder,
@@ -472,6 +473,77 @@ type ChartExecutionQuote = {
   mid: number;
   timestamp: number;
 };
+
+let liveExecutionQuoteSnapshot: ChartExecutionQuote | null = null;
+const liveExecutionQuoteSubscribers = new Set<() => void>();
+let liveExecutionQuoteNotifyFrame: number | null = null;
+
+function publishLiveExecutionQuote(quote: ChartExecutionQuote) {
+  liveExecutionQuoteSnapshot = quote;
+  if (liveExecutionQuoteNotifyFrame !== null) return;
+  liveExecutionQuoteNotifyFrame = window.requestAnimationFrame(() => {
+    liveExecutionQuoteNotifyFrame = null;
+    liveExecutionQuoteSubscribers.forEach((notify) => notify());
+  });
+}
+
+function subscribeLiveExecutionQuote(notify: () => void) {
+  liveExecutionQuoteSubscribers.add(notify);
+  notify();
+  return () => {
+    liveExecutionQuoteSubscribers.delete(notify);
+  };
+}
+
+function useLiveExecutionQuote() {
+  const [quote, setQuote] = useState(liveExecutionQuoteSnapshot);
+  useEffect(() => subscribeLiveExecutionQuote(() => setQuote(liveExecutionQuoteSnapshot)), []);
+  return quote;
+}
+
+function livePaperPositionMark(position: PaperPosition, quote: ChartExecutionQuote | null) {
+  if (
+    quote
+    && Date.now() - quote.timestamp <= 5_000
+    && normalizePaperSymbol(quote.symbol) === normalizePaperSymbol(position.symbol)
+  ) return quote.mid;
+  return position.markPrice;
+}
+
+function livePaperPositionPnl(position: PaperPosition, quote: ChartExecutionQuote | null) {
+  return paperProjectedPnl(
+    position.symbol,
+    position.side,
+    position.entryPrice,
+    livePaperPositionMark(position, quote),
+    position.remainingQuantity,
+  );
+}
+
+function LivePaperPositionPnl({ position }: { position: PaperPosition }) {
+  const quote = useLiveExecutionQuote();
+  const pnl = livePaperPositionPnl(position, quote);
+  return (
+    <span className={`font-mono text-[11px] tabular-nums ${pnl >= 0 ? "text-primary" : "text-danger"}`}>
+      {pnl > 0 ? "+" : pnl < 0 ? "-" : ""}{formatDollar(pnl)}
+    </span>
+  );
+}
+
+function LivePaperPositionMark({ position }: { position: PaperPosition }) {
+  const quote = useLiveExecutionQuote();
+  return <span>Mark {formatPrice(livePaperPositionMark(position, quote), position.symbol)}</span>;
+}
+
+function LivePaperOpenPnl({ positions }: { positions: PaperPosition[] }) {
+  const quote = useLiveExecutionQuote();
+  const pnl = positions.reduce((sum, position) => sum + livePaperPositionPnl(position, quote), 0);
+  return (
+    <span className={`font-mono text-[13px] font-semibold tabular-nums ${pnl > 0 ? "text-primary" : pnl < 0 ? "text-danger" : "text-foreground"}`}>
+      {pnl > 0 ? "+" : pnl < 0 ? "-" : ""}{formatDollar(pnl)}
+    </span>
+  );
+}
 
 function paperLedgerExecutionShapeChanged(
   previous: PaperTradingLedger,
@@ -6771,6 +6843,7 @@ export default function KwantifyWorkspace({
   }, [syncPaperLedgerUi]);
   const handleActiveChartExecutionQuote = useCallback((quote: ChartExecutionQuote) => {
     activeChartExecutionQuoteRef.current = quote;
+    publishLiveExecutionQuote(quote);
     if (quote.mid > 0) liveGexCalibrationPriceRef.current = quote.mid;
     const currentLedger = paperLedgerRef.current;
     const nextLedger = processPaperQuote(
@@ -14666,7 +14739,7 @@ export default function KwantifyWorkspace({
                   )}
                   <div className="flex justify-between"><span className="text-muted">Balance</span><span className="font-mono">{orderPanelAccountSummary.balance}</span></div>
                   <div className="flex justify-between"><span className="text-muted">Equity</span><span className="font-mono">{orderPanelAccountSummary.equity}</span></div>
-                  <div className="flex justify-between"><span className="text-muted">Unrealized</span><span className="font-mono">{orderPanelAccountSummary.unrealized}</span></div>
+                  <div className="flex items-center justify-between"><span className="text-muted">Unrealized</span><LivePaperOpenPnl positions={selectedPaperOpenPositions} /></div>
                   <div className="flex justify-between"><span className="text-muted">Realized</span><span className="font-mono">{orderPanelAccountSummary.realized}</span></div>
                   <div className="flex justify-between"><span className="text-muted">Margin</span><span className="font-mono text-right">{orderPanelAccountSummary.margin}</span></div>
                   <div className="h-1.5 overflow-hidden rounded-full bg-surface"><div className={`h-full rounded-full ${tradingUnlocked ? "w-[18%] bg-primary" : "w-[8%] bg-muted/40"}`} /></div>
@@ -14679,7 +14752,7 @@ export default function KwantifyWorkspace({
               </div>
               <button onClick={tradingUnlocked ? submitPaperOrder : undefined} disabled={!tradingUnlocked} className={`w-full rounded-xl py-3 font-semibold text-background ${tradingUnlocked ? orderSide === "buy" ? "bg-primary" : "bg-danger" : "cursor-not-allowed bg-muted/30 text-muted"}`}>{tradingUnlocked ? `${orderSide === "buy" ? "Buy" : "Sell"} ${selectedOrderQuantityLabel} ${orderType.toUpperCase()}` : currentBrokerConnection.connectionState === "connected" ? "Order routing unavailable" : "Connect Your Broker To Trade"}</button>
               {orderTicketMessage && <div className={`mt-2 rounded-xl border px-3 py-2 text-[11px] ${orderTicketMessage.tone === "success" ? "border-primary/25 bg-primary/10 text-primary" : "border-danger/25 bg-danger/10 text-danger"}`}>{orderTicketMessage.text}</div>}
-              {selectedPaperOpenPositions.length > 0 && <div className="mt-4 space-y-2"><div className="flex items-center justify-between"><div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">Open positions</div><button onClick={handleFlattenPaperAccount} className="rounded-md border border-danger/25 px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.1em] text-danger hover:bg-danger/10">Flatten all</button></div>{selectedPaperOpenPositions.map((position) => <div key={position.id} className="rounded-xl border border-border bg-background/40 p-3"><div className="flex items-center justify-between"><span className="text-[12px] font-semibold">{position.side === "buy" ? "Long" : "Short"} {position.remainingQuantity} {position.symbol}</span><span className={`font-mono text-[11px] ${position.unrealizedPnl >= 0 ? "text-primary" : "text-danger"}`}>{formatDollar(position.unrealizedPnl)}</span></div><div className="mt-1 flex justify-between font-mono text-[10px] text-muted"><span>Entry {formatPrice(position.entryPrice, position.symbol)}</span><span>Mark {formatPrice(position.markPrice, position.symbol)}</span></div><div className="mt-1 flex justify-between font-mono text-[9px] text-muted"><span>{position.stopLoss == null ? "SL not set" : `SL ${formatPrice(position.stopLoss, position.symbol)}`}</span><span>{position.takeProfits.filter((target) => target.quantity > target.filledQuantity).length} active TP</span></div><div className="mt-2 flex gap-2"><button onClick={() => handleFlattenPaperPosition(position)} className="flex flex-1 items-center justify-center gap-1 rounded-lg border border-danger/25 px-2 py-1.5 text-[10px] font-semibold text-danger hover:bg-danger/10"><X className="h-3 w-3" /> Close position</button></div></div>)}</div>}
+              {selectedPaperOpenPositions.length > 0 && <div className="mt-4 space-y-2"><div className="flex items-center justify-between"><div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">Open positions</div><button onClick={handleFlattenPaperAccount} className="rounded-md border border-danger/25 px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.1em] text-danger hover:bg-danger/10">Flatten all</button></div>{selectedPaperOpenPositions.map((position) => <div key={position.id} className="rounded-xl border border-border bg-background/40 p-3"><div className="flex items-center justify-between"><span className="text-[12px] font-semibold">{position.side === "buy" ? "Long" : "Short"} {position.remainingQuantity} {position.symbol}</span><LivePaperPositionPnl position={position} /></div><div className="mt-1 flex justify-between font-mono text-[10px] text-muted"><span>Entry {formatPrice(position.entryPrice, position.symbol)}</span><LivePaperPositionMark position={position} /></div><div className="mt-1 flex justify-between font-mono text-[9px] text-muted"><span>{position.stopLoss == null ? "SL not set" : `SL ${formatPrice(position.stopLoss, position.symbol)}`}</span><span>{position.takeProfits.filter((target) => target.quantity > target.filledQuantity).length} active TP</span></div><div className="mt-2 flex gap-2"><button onClick={() => handleFlattenPaperPosition(position)} className="flex flex-1 items-center justify-center gap-1 rounded-lg border border-danger/25 px-2 py-1.5 text-[10px] font-semibold text-danger hover:bg-danger/10"><X className="h-3 w-3" /> Close position</button></div></div>)}</div>}
               {selectedPaperWorkingOrders.length > 0 && <div className="mt-4 space-y-2"><div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">Working orders</div>{selectedPaperWorkingOrders.map((order) => <div key={order.id} className="flex items-center justify-between rounded-xl border border-border bg-background/40 p-3"><div><div className="text-[11px] font-semibold">{order.side.toUpperCase()} {order.quantity} {order.symbol}</div><div className="font-mono text-[10px] text-muted">{order.type.toUpperCase()} {order.price ? formatPrice(order.price, order.symbol) : "MARKET"}</div></div><button onClick={() => handleCancelPaperOrder(order.accountId, order.id)} className="rounded-lg border border-border px-2 py-1 text-[10px] text-muted hover:text-danger">Cancel</button></div>)}</div>}
               <div className="mt-4 overflow-hidden rounded-[2px] border border-border bg-background/40">
                 <div className="flex items-center justify-between gap-3 border-b border-border px-3 py-3">
@@ -14687,9 +14760,7 @@ export default function KwantifyWorkspace({
                     <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-foreground">Open P&amp;L</div>
                     <div className="mt-0.5 text-[9px] text-muted">Live marked positions</div>
                   </div>
-                  <span className={`font-mono text-[13px] font-semibold tabular-nums ${selectedPaperOpenPnl > 0 ? "text-primary" : selectedPaperOpenPnl < 0 ? "text-danger" : "text-foreground"}`}>
-                    {selectedPaperOpenPnl > 0 ? "+" : selectedPaperOpenPnl < 0 ? "-" : ""}{formatDollar(selectedPaperOpenPnl)}
-                  </span>
+                  <LivePaperOpenPnl positions={selectedPaperOpenPositions} />
                 </div>
                 <div className="flex items-center justify-between gap-3 px-3 py-3">
                   <div className="min-w-0">
