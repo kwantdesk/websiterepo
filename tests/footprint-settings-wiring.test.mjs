@@ -7,6 +7,8 @@ const control = fs.readFileSync(new URL("../src/components/ChartIndicatorsContro
 const primitive = fs.readFileSync(new URL("../src/lib/footprintPrimitive.ts", import.meta.url), "utf8");
 const settings = fs.readFileSync(new URL("../src/lib/footprintSettings.ts", import.meta.url), "utf8");
 const build = fs.readFileSync(new URL("../src/lib/footprint.ts", import.meta.url), "utf8");
+const workspace = fs.readFileSync(new URL("../src/components/KwantifyWorkspace.tsx", import.meta.url), "utf8");
+const runtime = fs.readFileSync(new URL("../src/lib/footprintRuntime.ts", import.meta.url), "utf8");
 
 const settingsTypeBody = settings.match(/export type FootprintSettings = \{([\s\S]*?)\n\};/)?.[1] ?? "";
 const settingsKeys = [...settingsTypeBody.matchAll(/^\s{2}([A-Za-z][A-Za-z0-9]*):/gm)]
@@ -69,7 +71,12 @@ test("previously disconnected footprint controls now change renderer behavior", 
   assert.match(primitive, /if \(options\.colorMode === "none"\) return 0/);
   assert.match(primitive, /1_000 \/ this\.renderOptions\.fpsLimit/);
   assert.match(chart, /return footprintVisibleCandles/);
-  assert.match(chart, /Math\.round\(1_000 \/ footprintRefreshFps\)/);
+  assert.match(runtime, /FOOTPRINT_DATA_REFRESH_INTERVAL_MS = 100/);
+  assert.match(chart, /\? FOOTPRINT_DATA_REFRESH_INTERVAL_MS/);
+  assert.match(workspace, /scheduleMarketTradeStateSync\(\)/);
+  assert.match(workspace, /setMarketTrades\(latestMarketTradesRef\.current\)/);
+  assert.doesNotMatch(chart, /Math\.round\(1_000 \/ footprintRefreshFps\)/);
+  assert.doesNotMatch(workspace, /Math\.round\(1_000 \/ footprintRefreshFps\)/);
   assert.match(chart, /barWidth: clamp\([^\n]+, 28, 180\)/);
   assert.match(primitive, /options\.showBodyOutline \|\| options\.showBodyFill/);
   assert.match(primitive, /options\.colorCalculation === "dominant-delta"/);

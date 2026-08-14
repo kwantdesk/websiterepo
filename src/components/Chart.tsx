@@ -110,6 +110,7 @@ import {
   type FootprintRenderBar,
 } from "@/lib/footprintPrimitive";
 import { retainLiveFootprintRows } from "@/lib/footprintLive";
+import { FOOTPRINT_DATA_REFRESH_INTERVAL_MS, ORDER_FLOW_DATA_REFRESH_INTERVAL_MS } from "@/lib/footprintRuntime";
 import { calculateDeepEffort } from "@/lib/deepEffort";
 import { calculateImbalanceRejectorSignals } from "@/lib/imbalanceRejector";
 import { calculateImbalanceZones } from "@/lib/imbalanceTracker";
@@ -2332,12 +2333,6 @@ export default function Chart({
       instance.enabled && instance.indicatorId === "deep-print-footprint"),
     [indicators],
   );
-  const footprintRefreshFps = useMemo(() => {
-    const configured = Number(indicators.find((instance) =>
-      instance.enabled && instance.indicatorId === "deep-print-footprint")?.settings?.fpsLimit ?? 60);
-    return ([30, 60, 120].includes(configured) ? configured : 60) as 30 | 60 | 120;
-  }, [indicators]);
-
   function resetViewportBeforeReveal(
     chart: IChartApi,
     candleSeries: CandleSeriesApi,
@@ -2492,14 +2487,15 @@ export default function Chart({
       if (orderFlowIndicatorEnabled) {
         setSampledIndicatorMarketTrades(pendingIndicatorMarketTradesRef.current);
       }
-    // The candle itself continues to render tick-by-tick. Expensive order-flow
-    // studies only need a smooth sub-second sample; recalculating every 120 ms
-    // across a growing execution tape eventually monopolises navigation.
-    }, footprintSamplingEnabled ? Math.max(8, Math.round(1_000 / footprintRefreshFps)) : 400);
+    // The candle itself continues to render tick-by-tick. Footprint FPS is a
+    // canvas paint preference, not permission to copy and aggregate a 55k
+    // execution tape 30/60/120 times per second.
+    }, footprintSamplingEnabled
+      ? FOOTPRINT_DATA_REFRESH_INTERVAL_MS
+      : ORDER_FLOW_DATA_REFRESH_INTERVAL_MS);
   }, [
     candles,
     footprintSamplingEnabled,
-    footprintRefreshFps,
     indicatorSamplingEnabled,
     marketTrades,
     orderFlowHistoryReady,

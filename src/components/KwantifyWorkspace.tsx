@@ -120,6 +120,7 @@ import {
   type InstitutionalVolumeProfile,
 } from "@/lib/institutionalMarketData";
 import { mergeInstitutionalTradeTape } from "@/lib/liveExecutionTape";
+import { FOOTPRINT_DATA_REFRESH_INTERVAL_MS, ORDER_FLOW_DATA_REFRESH_INTERVAL_MS } from "@/lib/footprintRuntime";
 import { subscribeRithmicIndicatorTrades } from "@/lib/rithmicIndicatorStream";
 import {
   currentGameplanSession,
@@ -3981,11 +3982,6 @@ function WorkspaceChartPane({
     instance.enabled && CHART_INDICATOR_BY_ID.get(instance.indicatorId)?.requiresOrderFlow);
   const footprintLiveActive = indicators.some((instance) =>
     instance.enabled && instance.indicatorId === "deep-print-footprint");
-  const footprintRefreshFps = (() => {
-    const configured = Number(indicators.find((instance) =>
-      instance.enabled && instance.indicatorId === "deep-print-footprint")?.settings?.fpsLimit ?? 60);
-    return [30, 60, 120].includes(configured) ? configured : 60;
-  })();
   const dailyProfileInstance = indicators.find((instance) =>
     instance.enabled
     && [
@@ -4160,6 +4156,28 @@ function WorkspaceChartPane({
 
     let pendingProfileRecords: InstitutionalTrade[] = [];
     let profileSyncTimer: number | null = null;
+    let marketTradeStateSyncTimer: number | null = null;
+    const scheduleMarketTradeStateSync = () => {
+      const cadence = footprintLiveActive
+        ? FOOTPRINT_DATA_REFRESH_INTERVAL_MS
+        : ORDER_FLOW_DATA_REFRESH_INTERVAL_MS;
+      const elapsed = Date.now() - lastMarketTradeStateSyncRef.current;
+      const delay = Math.max(0, cadence - elapsed);
+      if (delay === 0) {
+        lastMarketTradeStateSyncRef.current = Date.now();
+        setMarketTrades(latestMarketTradesRef.current);
+        return;
+      }
+      if (marketTradeStateSyncTimer !== null) return;
+      // Always flush the trailing execution packet. A pure leading-edge
+      // throttle can leave the newest footprint print invisible until some
+      // unrelated future trade arrives during quieter periods.
+      marketTradeStateSyncTimer = window.setTimeout(() => {
+        marketTradeStateSyncTimer = null;
+        lastMarketTradeStateSyncRef.current = Date.now();
+        setMarketTrades(latestMarketTradesRef.current);
+      }, delay);
+    };
     const queueProfileUpdate = (records: InstitutionalTrade[]) => {
       if (!needsLiveVolumeProfiles || !records.length) return;
       pendingProfileRecords.push(...records);
@@ -4237,12 +4255,7 @@ function WorkspaceChartPane({
           const next = mergeInstitutionalTradeTape(latestMarketTradesRef.current, records);
           latestMarketTradesRef.current = next;
           workspaceExecutionTape.set(workspaceOrderFlowKey(pane.symbol, pane.timeframe), next);
-          const now = Date.now();
-          const footprintCadence = Math.max(8, Math.round(1_000 / footprintRefreshFps));
-          if (now - lastMarketTradeStateSyncRef.current >= (footprintLiveActive ? footprintCadence : 400)) {
-            lastMarketTradeStateSyncRef.current = now;
-            setMarketTrades(next);
-          }
+          scheduleMarketTradeStateSync();
         }
         // Keep the exact profiles live between refetches, as the original
         // Kwantify build did: each print batch is folded straight into the
@@ -4302,13 +4315,13 @@ function WorkspaceChartPane({
     return () => {
       unsubscribe();
       if (profileSyncTimer !== null) window.clearTimeout(profileSyncTimer);
+      if (marketTradeStateSyncTimer !== null) window.clearTimeout(marketTradeStateSyncTimer);
       pendingProfileRecords = [];
     };
   }, [
     needsLiveVolumeProfiles,
     needsOrderFlowHistory,
     footprintLiveActive,
-    footprintRefreshFps,
     pane.broker,
     pane.symbol,
     pane.timeframe,
