@@ -6,11 +6,22 @@ import type {
   SeriesAttachedParameter,
   Time,
 } from "@/lib/lightweightChartsCompat";
-import { formatFootprintValue, type FootprintBar } from "./footprint";
+import {
+  formatFootprintValue,
+  type FootprintBar,
+  type FootprintContentMode,
+  type FootprintNumberFormat,
+  type FootprintScaleMode,
+  type FootprintVisualizationMode,
+} from "./footprint";
 
 export type FootprintRenderBar = FootprintBar & { time: Time };
 
 export type FootprintPrimitiveOptions = {
+  contentMode: FootprintContentMode;
+  visualizationMode: FootprintVisualizationMode;
+  scaleMode: FootprintScaleMode;
+  numberFormat: FootprintNumberFormat;
   type: "ask-bid" | "volume" | "delta" | "delta-total";
   mode: "profile" | "box";
   inputType: "volume" | "num-trades";
@@ -18,9 +29,18 @@ export type FootprintPrimitiveOptions = {
   colorMode: "none" | "fixed" | "fading";
   colorCalculation: "volume" | "delta" | "imbalance" | "dominant" | "dominant-delta";
   barWidth: number;
+  candleSpacing: number;
   borderWidth: number;
   opacity: number;
+  minimumOpacity: number;
+  maximumOpacity: number;
+  gradientExponent: number;
+  visibleRegionPercentile: number;
+  fixedMaximum: number;
   fontSize: number;
+  fontWeight: number;
+  minimumWidthToShowText: number;
+  minimumRowHeightToShowText: number;
   dynamicTextSize: boolean;
   dynamicTextIncrease: number;
   showZeros: boolean;
@@ -28,6 +48,8 @@ export type FootprintPrimitiveOptions = {
   showVolumePoc: boolean;
   showDeltaPoc: boolean;
   showValueArea: boolean;
+  showVah: boolean;
+  showVal: boolean;
   showSinglePrints: boolean;
   singlePrintMaximum: number;
   singlePrintExtremesOnly: boolean;
@@ -37,31 +59,63 @@ export type FootprintPrimitiveOptions = {
   showVolumeClusters: boolean;
   clusterMinimumVolume: number;
   showBarDelta: boolean;
+  showSummary: boolean;
+  showCentreDivider: boolean;
+  showWick: boolean;
+  showBodyOutline: boolean;
+  showBodyFill: boolean;
+  showBetweenVolume: boolean;
+  showVwap: boolean;
+  showStackedImbalances: boolean;
+  showMaxBid: boolean;
+  showMaxAsk: boolean;
+  showMaxPositiveDelta: boolean;
+  showMaxNegativeDelta: boolean;
+  showMaxTrades: boolean;
   outsideBarStyle: "bar" | "body";
   markerAlignment: "center" | "right";
   outerEdgeMode: boolean;
   bidColor: string;
   askColor: string;
+  betweenColor: string;
   neutralColor: string;
   textColor: string;
   pocColor: string;
+  valueAreaColor: string;
   deltaPocColor: string;
   clusterColor: string;
   singlePrintColor: string;
+  stackedAskColor: string;
+  stackedBidColor: string;
+  unfinishedAuctionColor: string;
+  vwapColor: string;
   backgroundColor: string;
 };
 
 const DEFAULT_OPTIONS: FootprintPrimitiveOptions = {
+  contentMode: "bid-ask",
+  visualizationMode: "heatmap-histogram",
+  scaleMode: "visible-region",
+  numberFormat: "automatic",
   type: "ask-bid",
   mode: "profile",
   inputType: "volume",
   textFormat: "automatic",
   colorMode: "fading",
-  colorCalculation: "imbalance",
-  barWidth: 88,
+  colorCalculation: "volume",
+  barWidth: 92,
+  candleSpacing: 6,
   borderWidth: 1,
-  opacity: 0.74,
-  fontSize: 10,
+  opacity: 0.72,
+  minimumOpacity: 0.08,
+  maximumOpacity: 0.72,
+  gradientExponent: 0.72,
+  visibleRegionPercentile: 0.95,
+  fixedMaximum: 0,
+  fontSize: 11,
+  fontWeight: 500,
+  minimumWidthToShowText: 58,
+  minimumRowHeightToShowText: 13,
   dynamicTextSize: true,
   dynamicTextIncrease: 1,
   showZeros: false,
@@ -69,6 +123,8 @@ const DEFAULT_OPTIONS: FootprintPrimitiveOptions = {
   showVolumePoc: true,
   showDeltaPoc: false,
   showValueArea: true,
+  showVah: false,
+  showVal: false,
   showSinglePrints: false,
   singlePrintMaximum: 1,
   singlePrintExtremesOnly: true,
@@ -78,64 +134,88 @@ const DEFAULT_OPTIONS: FootprintPrimitiveOptions = {
   showVolumeClusters: false,
   clusterMinimumVolume: 100,
   showBarDelta: true,
+  showSummary: true,
+  showCentreDivider: true,
+  showWick: true,
+  showBodyOutline: true,
+  showBodyFill: false,
+  showBetweenVolume: false,
+  showVwap: false,
+  showStackedImbalances: true,
+  showMaxBid: false,
+  showMaxAsk: false,
+  showMaxPositiveDelta: false,
+  showMaxNegativeDelta: false,
+  showMaxTrades: false,
   outsideBarStyle: "bar",
   markerAlignment: "center",
   outerEdgeMode: true,
-  bidColor: "#EF4444",
-  askColor: "#22C55E",
-  neutralColor: "#3F3F46",
-  textColor: "#F5F5F5",
-  pocColor: "#FDE047",
+  bidColor: "#F06A70",
+  askColor: "#B7FF38",
+  betweenColor: "#7C8796",
+  neutralColor: "#7C8796",
+  textColor: "#E9EDF2",
+  pocColor: "#E4BF5A",
+  valueAreaColor: "#647BA8",
   deltaPocColor: "#60A5FA",
   clusterColor: "#F59E0B",
   singlePrintColor: "#F4F4F5",
+  stackedAskColor: "#B7FF38",
+  stackedBidColor: "#F06A70",
+  unfinishedAuctionColor: "#E4BF5A",
+  vwapColor: "#22D3EE",
   backgroundColor: "#000000",
 };
 
 const clamp = (value: number, minimum: number, maximum: number) =>
   Math.min(maximum, Math.max(minimum, value));
 
-function sideValues(row: FootprintBar["rows"][number], inputType: FootprintPrimitiveOptions["inputType"]) {
-  return inputType === "num-trades"
-    ? { bid: row.bidTrades, ask: row.askTrades }
-    : { bid: row.bidVolume, ask: row.askVolume };
+function withAlpha(context: CanvasRenderingContext2D, colour: string, alpha: number, draw: () => void) {
+  const previous = context.globalAlpha;
+  context.globalAlpha = clamp(alpha, 0, 1);
+  context.fillStyle = colour;
+  draw();
+  context.globalAlpha = previous;
 }
 
-function rowTotal(row: FootprintBar["rows"][number], inputType: FootprintPrimitiveOptions["inputType"]) {
-  const values = sideValues(row, inputType);
-  return values.bid + values.ask;
+function percentile(values: number[], fraction: number) {
+  if (!values.length) return 1;
+  const ordered = [...values].sort((left, right) => left - right);
+  return Math.max(1, ordered[Math.min(ordered.length - 1, Math.floor((ordered.length - 1) * clamp(fraction, 0.5, 1)))]);
 }
 
-function rowDelta(row: FootprintBar["rows"][number], inputType: FootprintPrimitiveOptions["inputType"]) {
-  const values = sideValues(row, inputType);
-  return values.ask - values.bid;
-}
-
-function rowAlpha(
-  row: FootprintBar["rows"][number],
-  side: "bid" | "ask",
-  options: FootprintPrimitiveOptions,
-  maximumSide: number,
-  maximumDelta: number,
-) {
-  if (options.colorMode === "none") return 0;
-  if (options.colorMode === "fixed") return options.opacity;
-  const values = sideValues(row, options.inputType);
-  const sideValue = side === "ask" ? values.ask : values.bid;
-  const dominant = side === "ask" ? values.ask >= values.bid : values.bid >= values.ask;
-  const inputDelta = rowDelta(row, options.inputType);
-  const inputTotal = Math.max(1, rowTotal(row, options.inputType));
-  let intensity = sideValue / Math.max(1, maximumSide);
-  if (options.colorCalculation === "delta") intensity = Math.abs(inputDelta) / Math.max(1, maximumDelta);
-  if (options.colorCalculation === "imbalance") intensity = side === "ask"
-    ? row.askImbalance ? 1 : 0.08
-    : row.bidImbalance ? 1 : 0.08;
-  if (options.colorCalculation === "dominant") intensity = dominant ? sideValue / inputTotal : 0.05;
-  if (options.colorCalculation === "dominant-delta") {
-    intensity = dominant ? Math.abs(inputDelta) / Math.max(1, maximumDelta) : 0.05;
+function displayValues(row: FootprintBar["rows"][number], options: FootprintPrimitiveOptions) {
+  if (options.inputType === "num-trades") {
+    return {
+      bid: row.bidTrades,
+      ask: row.askTrades,
+      unknown: row.unknownTrades,
+      total: row.bidTrades + row.askTrades + row.unknownTrades,
+      delta: row.askTrades - row.bidTrades,
+      trades: row.bidTrades + row.askTrades + row.unknownTrades,
+    };
   }
-  if (options.colorOnlyDominantSide && !dominant) intensity = 0.02;
-  return clamp((0.08 + intensity * 0.92) * options.opacity, 0.02, 1);
+  return {
+    bid: row.bidVolume,
+    ask: row.askVolume,
+    unknown: row.unknownVolume,
+    total: row.totalVolume,
+    delta: row.delta,
+    trades: row.bidTrades + row.askTrades + row.unknownTrades,
+  };
+}
+
+function intensity(value: number, ceiling: number, options: FootprintPrimitiveOptions) {
+  const raw = clamp(Math.abs(value) / Math.max(1, ceiling), 0, 1);
+  const curved = Math.pow(raw, clamp(options.gradientExponent, 0.1, 3));
+  return options.minimumOpacity + curved * (options.maximumOpacity - options.minimumOpacity);
+}
+
+function renderMode(options: FootprintPrimitiveOptions): FootprintContentMode {
+  if (options.contentMode) return options.contentMode;
+  if (options.type === "ask-bid") return "bid-ask";
+  if (options.type === "delta-total") return "volume-delta";
+  return options.type;
 }
 
 class FootprintRenderer implements ISeriesPrimitivePaneRenderer {
@@ -151,11 +231,6 @@ class FootprintRenderer implements ISeriesPrimitivePaneRenderer {
     target.useMediaCoordinateSpace(({ context, mediaSize }) => {
       const timeScale = params.chart.timeScale();
       const visible = timeScale.getVisibleRange();
-      context.save();
-      context.beginPath();
-      context.rect(0, 0, mediaSize.width, mediaSize.height);
-      context.clip();
-
       let fromIndex = 0;
       let toIndex = bars.length;
       if (visible && typeof visible.from === "number" && typeof visible.to === "number") {
@@ -165,6 +240,19 @@ class FootprintRenderer implements ISeriesPrimitivePaneRenderer {
         fromIndex = Math.max(0, fromIndex - 1);
         toIndex = Math.min(bars.length, toIndex + 1);
       }
+      const visibleBars = bars.slice(fromIndex, toIndex);
+      const visibleMetrics = visibleBars.flatMap((bar) => bar.rows.flatMap((row) => {
+        const values = displayValues(row, options);
+        return [values.bid, values.ask, values.total, Math.abs(values.delta)];
+      }));
+      const visibleCeiling = options.scaleMode === "fixed-maximum" && options.fixedMaximum > 0
+        ? options.fixedMaximum
+        : percentile(visibleMetrics, options.visibleRegionPercentile);
+
+      context.save();
+      context.beginPath();
+      context.rect(0, 0, mediaSize.width, mediaSize.height);
+      context.clip();
 
       for (let index = fromIndex; index < toIndex; index += 1) {
         const bar = bars[index];
@@ -172,208 +260,256 @@ class FootprintRenderer implements ISeriesPrimitivePaneRenderer {
         if (x === null) continue;
         const previousX = index > 0 ? timeScale.timeToCoordinate(bars[index - 1].time) : null;
         const nextX = index + 1 < bars.length ? timeScale.timeToCoordinate(bars[index + 1].time) : null;
-        const spacing = Math.max(18, Math.min(
+        const nearest = Math.min(
           previousX === null ? Number.POSITIVE_INFINITY : Math.abs(x - previousX),
           nextX === null ? Number.POSITIVE_INFINITY : Math.abs(nextX - x),
-          options.barWidth,
-        ));
-        const barWidth = Math.max(16, Math.min(options.barWidth, spacing * 0.9));
+          options.barWidth + options.candleSpacing,
+        );
+        const barWidth = Math.max(8, Math.min(options.barWidth, nearest - options.candleSpacing));
         const left = x - barWidth / 2;
         const halfWidth = barWidth / 2;
-        const maximumSide = Math.max(1, ...bar.rows.flatMap((row) => {
-          const values = sideValues(row, options.inputType);
-          return [values.bid, values.ask];
-        }));
-        const maximumDisplayedTotal = Math.max(1, ...bar.rows.map((row) => rowTotal(row, options.inputType)));
-        const maximumDelta = Math.max(1, ...bar.rows.map((row) => Math.abs(rowDelta(row, options.inputType))));
-
-        const outlineHigh = options.outsideBarStyle === "body" ? Math.max(bar.open, bar.close) : bar.high;
-        const outlineLow = options.outsideBarStyle === "body" ? Math.min(bar.open, bar.close) : bar.low;
-        const outlineTop = params.series.priceToCoordinate(outlineHigh);
-        const outlineBottom = params.series.priceToCoordinate(outlineLow);
-        if (options.outerEdgeMode && outlineTop !== null && outlineBottom !== null) {
-          context.save();
-          context.globalAlpha = 0.52;
-          context.strokeStyle = bar.close >= bar.open ? options.askColor : options.bidColor;
-          context.lineWidth = options.borderWidth;
-          context.strokeRect(
-            left,
-            Math.min(outlineTop, outlineBottom),
-            barWidth,
-            Math.max(1, Math.abs(outlineBottom - outlineTop)),
-          );
-          context.restore();
-        }
-
-        for (let rowIndex = 0; rowIndex < bar.rows.length; rowIndex += 1) {
-          const row = bar.rows[rowIndex];
-          const below = bar.rows[rowIndex - 1]?.price;
-          const above = bar.rows[rowIndex + 1]?.price;
-          const inferredStep = Math.min(
-            above === undefined ? Number.POSITIVE_INFINITY : above - row.price,
-            below === undefined ? Number.POSITIVE_INFINITY : row.price - below,
-          );
-          const rowStep = Number.isFinite(inferredStep) && inferredStep > 0
-            ? inferredStep
-            : Math.max(0.000001, (bar.high - bar.low) / Math.max(1, bar.rows.length));
-          const topCoordinate = params.series.priceToCoordinate(row.price + rowStep / 2);
-          const bottomCoordinate = params.series.priceToCoordinate(row.price - rowStep / 2);
-          if (topCoordinate === null || bottomCoordinate === null) continue;
-          const top = Math.min(topCoordinate, bottomCoordinate);
-          const cellHeight = Math.max(1, Math.abs(bottomCoordinate - topCoordinate));
-          if (top > mediaSize.height || top + cellHeight < 0) continue;
-          const values = sideValues(row, options.inputType);
-          const bidWidth = options.mode === "profile"
-            ? halfWidth * values.bid / maximumSide
-            : halfWidth;
-          const askWidth = options.mode === "profile"
-            ? halfWidth * values.ask / maximumSide
-            : halfWidth;
-          const inValueArea = !options.showValueArea
-            || bar.val === null
-            || bar.vah === null
-            || (row.price >= bar.val && row.price <= bar.vah);
-          const valueAreaAlpha = inValueArea ? 1 : 0.38;
-          const bidAlpha = rowAlpha(row, "bid", options, maximumSide, maximumDelta) * valueAreaAlpha;
-          const askAlpha = rowAlpha(row, "ask", options, maximumSide, maximumDelta) * valueAreaAlpha;
-
-          if (bidWidth > 0) {
-            context.globalAlpha = bidAlpha;
-            context.fillStyle = options.bidColor;
-            context.fillRect(x - bidWidth, top, bidWidth, cellHeight);
-          }
-          if (askWidth > 0) {
-            context.globalAlpha = askAlpha;
-            context.fillStyle = options.askColor;
-            context.fillRect(x, top, askWidth, cellHeight);
-          }
-          context.globalAlpha = 0.38;
-          context.strokeStyle = options.neutralColor;
-          context.lineWidth = Math.max(0.5, options.borderWidth * 0.55);
-          context.strokeRect(left, top, barWidth, cellHeight);
-
-          if (options.showVolumePoc && bar.pocPrice === row.price) {
-            context.globalAlpha = 0.95;
-            context.strokeStyle = options.pocColor;
-            context.lineWidth = Math.max(1, options.borderWidth * 1.6);
-            context.strokeRect(left, top, barWidth, cellHeight);
-          }
-          if (options.showDeltaPoc && bar.deltaPocPrice === row.price) {
-            context.globalAlpha = 0.95;
-            context.strokeStyle = options.deltaPocColor;
-            context.lineWidth = Math.max(1, options.borderWidth * 1.35);
-            context.strokeRect(left + 1, top + 1, Math.max(1, barWidth - 2), Math.max(1, cellHeight - 2));
-          }
-          if (options.showSinglePrints && row.volume <= options.singlePrintMaximum) {
-            const atExtreme = row.price === bar.rows[0]?.price || row.price === bar.rows.at(-1)?.price;
-            if (!options.singlePrintExtremesOnly || atExtreme) {
-              context.globalAlpha = 0.95;
-              context.strokeStyle = options.singlePrintColor;
-              context.lineWidth = Math.max(1, options.borderWidth * 1.5);
-              context.strokeRect(left, top, barWidth, cellHeight);
-            }
-          }
-          if (options.showVolumeClusters && row.volume >= options.clusterMinimumVolume) {
-            context.globalAlpha = 0.75;
-            context.strokeStyle = options.clusterColor;
-            context.lineWidth = Math.max(1, options.borderWidth * 1.35);
-            context.strokeRect(left + 0.5, top + 0.5, Math.max(1, barWidth - 1), Math.max(1, cellHeight - 1));
-          }
-
-          const canShowText = cellHeight >= Math.max(7, options.fontSize * 0.72) && barWidth >= 26;
-          if (!canShowText) continue;
-          const displayedTotal = rowTotal(row, options.inputType);
-          const displayedDelta = rowDelta(row, options.inputType);
-          const dynamic = options.dynamicTextSize
-            ? 1 + displayedTotal / maximumDisplayedTotal * clamp(options.dynamicTextIncrease, 0, 2) * 0.22
-            : 1;
-          const fontSize = clamp(Math.min(cellHeight * 0.72, options.fontSize * dynamic), 6, 14);
-          context.globalAlpha = 0.96;
-          context.font = `700 ${fontSize}px 'JetBrains Mono', monospace`;
-          context.textBaseline = "middle";
-          context.fillStyle = options.textColor;
-          context.strokeStyle = options.backgroundColor;
-          context.lineWidth = 2.4;
-          const rowY = top + cellHeight / 2;
-          if (options.type === "ask-bid") {
-            const bidText = formatFootprintValue(values.bid, options.textFormat);
-            const askText = formatFootprintValue(values.ask, options.textFormat);
-            if (options.showZeros || values.bid > 0) {
-              context.textAlign = "right";
-              context.strokeText(bidText, x - 3, rowY);
-              context.fillText(bidText, x - 3, rowY);
-            }
-            if (options.showZeros || values.ask > 0) {
-              context.textAlign = "left";
-              context.strokeText(askText, x + 3, rowY);
-              context.fillText(askText, x + 3, rowY);
-            }
-          } else {
-            const displayed = options.type === "volume" ? displayedTotal : displayedDelta;
-            const text = options.type === "delta-total"
-              ? `${formatFootprintValue(displayedDelta, options.textFormat)} · ${formatFootprintValue(displayedTotal, options.textFormat)}`
-              : formatFootprintValue(displayed, options.textFormat);
-            if (options.showZeros || displayed !== 0) {
-              context.textAlign = "center";
-              context.strokeText(text, x, rowY);
-              context.fillText(text, x, rowY);
-            }
-          }
-        }
+        const barMetrics = bar.rows.flatMap((row) => {
+          const values = displayValues(row, options);
+          return [values.bid, values.ask, values.total, Math.abs(values.delta)];
+        });
+        const ceiling = options.scaleMode === "per-bar" ? percentile(barMetrics, 1) : visibleCeiling;
 
         const highY = params.series.priceToCoordinate(bar.high);
         const lowY = params.series.priceToCoordinate(bar.low);
         const openY = params.series.priceToCoordinate(bar.open);
         const closeY = params.series.priceToCoordinate(bar.close);
-        if (highY !== null && lowY !== null && openY !== null && closeY !== null) {
-          const markerX = options.markerAlignment === "right" ? left + barWidth : x;
+        if (options.showWick && highY !== null && lowY !== null) {
           context.save();
-          context.globalAlpha = 0.9;
+          context.globalAlpha = 0.48;
           context.strokeStyle = bar.close >= bar.open ? options.askColor : options.bidColor;
-          context.lineWidth = Math.max(1, options.borderWidth);
+          context.lineWidth = 1;
           context.beginPath();
-          context.moveTo(markerX - 5, openY);
-          context.lineTo(markerX, openY);
-          context.moveTo(markerX, closeY);
-          context.lineTo(markerX + 5, closeY);
+          context.moveTo(Math.round(x) + 0.5, highY);
+          context.lineTo(Math.round(x) + 0.5, lowY);
           context.stroke();
           context.restore();
         }
-
-        if (options.showBarDelta && bar.rows.length) {
-          const lowY = params.series.priceToCoordinate(bar.low);
-          if (lowY !== null && lowY < mediaSize.height - 3) {
-            const displayedBarDelta = bar.rows.reduce((sum, row) => sum + rowDelta(row, options.inputType), 0);
-            const label = `Δ ${displayedBarDelta >= 0 ? "+" : ""}${formatFootprintValue(displayedBarDelta, options.textFormat)}`;
-            const fontSize = clamp(options.fontSize - 1, 7, 11);
-            context.font = `800 ${fontSize}px 'JetBrains Mono', monospace`;
-            const labelWidth = Math.min(barWidth, context.measureText(label).width + 8);
-            context.globalAlpha = 0.92;
-            context.fillStyle = displayedBarDelta >= 0 ? options.askColor : options.bidColor;
-            context.fillRect(x - labelWidth / 2, lowY + 3, labelWidth, fontSize + 6);
-            context.fillStyle = options.backgroundColor;
-            context.textAlign = "center";
-            context.textBaseline = "middle";
-            context.fillText(label, x, lowY + 3 + (fontSize + 6) / 2);
+        if (options.showBodyOutline && openY !== null && closeY !== null) {
+          context.save();
+          context.globalAlpha = bar.isClosed ? 0.34 : 0.72;
+          context.strokeStyle = bar.close >= bar.open ? options.askColor : options.bidColor;
+          context.fillStyle = bar.close >= bar.open ? options.askColor : options.bidColor;
+          const bodyTop = Math.min(openY, closeY);
+          const bodyHeight = Math.max(1, Math.abs(closeY - openY));
+          if (options.showBodyFill) {
+            context.globalAlpha *= 0.09;
+            context.fillRect(left, bodyTop, barWidth, bodyHeight);
           }
+          context.globalAlpha = bar.isClosed ? 0.34 : 0.72;
+          context.strokeRect(left + 0.5, bodyTop + 0.5, Math.max(1, barWidth - 1), Math.max(1, bodyHeight - 1));
+          context.restore();
         }
 
-        if (options.showRatio && bar.bidVolume > 0 && bar.askVolume > 0) {
-          const ratio = bar.askVolume / bar.bidVolume;
-          if (ratio >= options.minimumRatio && ratio <= options.maximumRatio) {
-            const highY = params.series.priceToCoordinate(bar.high);
-            if (highY !== null) {
-              context.globalAlpha = 0.9;
-              context.fillStyle = ratio >= 1 ? options.askColor : options.bidColor;
-              context.font = `700 ${clamp(options.fontSize - 1, 7, 11)}px 'JetBrains Mono', monospace`;
-              context.textAlign = "center";
-              context.textBaseline = "bottom";
-              context.fillText(`${ratio.toFixed(2)}x`, x, highY - 3);
+        const contentMode = renderMode(options);
+        for (const row of bar.rows) {
+          const y = params.series.priceToCoordinate(row.price);
+          if (y === null) continue;
+          const neighbouringTick = bar.rows[1]
+            ? Math.abs(bar.rows[1].price - bar.rows[0].price)
+            : Math.max(0.000001, (bar.high - bar.low) / Math.max(1, bar.rows.length));
+          const nextY = params.series.priceToCoordinate(row.price + neighbouringTick);
+          const rowHeight = nextY === null ? 1 : Math.max(1, Math.abs(nextY - y));
+          const top = y - rowHeight / 2;
+          if (top > mediaSize.height || top + rowHeight < 0) continue;
+          const values = displayValues(row, options);
+          const detailed = barWidth >= options.minimumWidthToShowText && rowHeight >= options.minimumRowHeightToShowText;
+          const micro = barWidth < 25;
+
+          if (options.showValueArea && row.isValueArea) {
+            withAlpha(context, options.valueAreaColor, 0.1, () => context.fillRect(left, top, barWidth, rowHeight));
+          }
+
+          const drawHalf = (side: "bid" | "ask", value: number, colour: string) => {
+            const normalized = clamp(value / Math.max(1, ceiling), 0, 1);
+            const alpha = intensity(value, ceiling, options);
+            const histogram = options.visualizationMode === "histogram"
+              || options.visualizationMode === "heatmap-histogram"
+              || contentMode === "bid-ask-histogram";
+            const noFill = options.visualizationMode === "text-only";
+            const width = histogram ? Math.max(value > 0 ? 1 : 0, halfWidth * normalized) : halfWidth;
+            if (noFill || width <= 0) return;
+            withAlpha(context, colour, options.visualizationMode === "histogram" ? 0.24 : alpha, () => {
+              if (side === "bid") context.fillRect(x - width, top, width, rowHeight);
+              else context.fillRect(x, top, width, rowHeight);
+            });
+          };
+
+          if (micro) {
+            const dominantAsk = values.ask >= values.bid;
+            withAlpha(context, dominantAsk ? options.askColor : options.bidColor, intensity(values.total, ceiling, options), () =>
+              context.fillRect(left, top, barWidth, Math.max(1, rowHeight)));
+          } else if (["bid-ask", "bid-ask-histogram", "ladder"].includes(contentMode)) {
+            if (contentMode !== "ladder" || options.visualizationMode !== "text-only") {
+              drawHalf("bid", values.bid, options.bidColor);
+              drawHalf("ask", values.ask, options.askColor);
+            }
+          } else {
+            const signed = contentMode === "delta" || contentMode === "delta-histogram" || contentMode === "volume-delta";
+            const metric = signed ? values.delta : contentMode === "trades" ? values.trades : values.total;
+            const colour = signed ? metric >= 0 ? options.askColor : options.bidColor : options.askColor;
+            const normalized = clamp(Math.abs(metric) / Math.max(1, ceiling), 0, 1);
+            const histogram = contentMode.endsWith("histogram")
+              || options.visualizationMode.includes("histogram");
+            if (options.visualizationMode !== "text-only") {
+              const width = histogram ? Math.max(metric !== 0 ? 1 : 0, barWidth * normalized) : barWidth;
+              withAlpha(context, colour, intensity(metric, ceiling, options), () => {
+                if (signed) {
+                  const signedWidth = width / 2;
+                  context.fillRect(metric >= 0 ? x : x - signedWidth, top, signedWidth, rowHeight);
+                } else context.fillRect(left, top, width, rowHeight);
+              });
             }
           }
+
+          if (options.showBetweenVolume && values.unknown > 0) {
+            const width = Math.max(1, barWidth * clamp(values.unknown / Math.max(1, ceiling), 0, 1));
+            withAlpha(context, options.betweenColor, 0.36, () => context.fillRect(x - width / 2, top, width, rowHeight));
+          }
+          context.save();
+          context.globalAlpha = detailed ? 0.24 : 0.1;
+          context.strokeStyle = options.neutralColor;
+          context.lineWidth = Math.max(0.5, options.borderWidth * 0.5);
+          context.strokeRect(left + 0.5, top + 0.5, Math.max(1, barWidth - 1), Math.max(1, rowHeight - 1));
+          if (options.showCentreDivider && ["bid-ask", "bid-ask-histogram", "ladder"].includes(contentMode)) {
+            context.globalAlpha = 0.34;
+            context.beginPath();
+            context.moveTo(Math.round(x) + 0.5, top);
+            context.lineTo(Math.round(x) + 0.5, top + rowHeight);
+            context.stroke();
+          }
+          context.restore();
+
+          if (row.isBidImbalance) {
+            withAlpha(context, options.bidColor, 0.28, () => context.fillRect(left, top, halfWidth, rowHeight));
+          }
+          if (row.isAskImbalance) {
+            withAlpha(context, options.askColor, 0.28, () => context.fillRect(x, top, halfWidth, rowHeight));
+          }
+          if (options.showStackedImbalances && row.isStackedBidImbalance) {
+            withAlpha(context, options.stackedBidColor, 0.95, () => context.fillRect(left - 3, top, 3, rowHeight));
+          }
+          if (options.showStackedImbalances && row.isStackedAskImbalance) {
+            withAlpha(context, options.stackedAskColor, 0.95, () => context.fillRect(left + barWidth, top, 3, rowHeight));
+          }
+          if (options.showVolumePoc && row.isPoc) {
+            context.save();
+            context.globalAlpha = 0.95;
+            context.strokeStyle = options.pocColor;
+            context.lineWidth = Math.max(1, options.borderWidth * 1.5);
+            context.strokeRect(left + 0.5, top + 0.5, Math.max(1, barWidth - 1), Math.max(1, rowHeight - 1));
+            context.restore();
+          }
+          const maximumEnabled = (options.showMaxBid && row.isMaxBid)
+            || (options.showMaxAsk && row.isMaxAsk)
+            || (options.showMaxPositiveDelta && row.isMaxPositiveDelta)
+            || (options.showMaxNegativeDelta && row.isMaxNegativeDelta)
+            || (options.showMaxTrades && row.isMaxTrades);
+          if (maximumEnabled) {
+            context.save();
+            context.globalAlpha = 0.72;
+            context.strokeStyle = options.clusterColor;
+            context.lineWidth = 1;
+            context.strokeRect(left + 1.5, top + 1.5, Math.max(1, barWidth - 3), Math.max(1, rowHeight - 3));
+            context.restore();
+          }
+          if (row.isUnfinishedAuctionHigh || row.isUnfinishedAuctionLow) {
+            withAlpha(context, options.unfinishedAuctionColor, 0.95, () => {
+              context.beginPath();
+              context.arc(x, row.isUnfinishedAuctionHigh ? top : top + rowHeight, 3, 0, Math.PI * 2);
+              context.fill();
+            });
+          }
+
+          if (!detailed || micro) continue;
+          const fontSize = clamp(Math.min(rowHeight * 0.7, options.fontSize), 9, 15);
+          context.save();
+          context.globalAlpha = 0.97;
+          context.font = `${row.isPoc ? 700 : options.fontWeight} ${fontSize}px 'JetBrains Mono', ui-monospace, monospace`;
+          context.textBaseline = "middle";
+          context.fillStyle = options.textColor;
+          const rowY = top + rowHeight / 2;
+          const format = options.numberFormat;
+          if (["bid-ask", "bid-ask-histogram", "ladder"].includes(contentMode)) {
+            if (options.showZeros || values.bid > 0) {
+              context.textAlign = "right";
+              context.fillText(formatFootprintValue(values.bid, format), x - 5, rowY);
+            }
+            if (options.showZeros || values.ask > 0) {
+              context.textAlign = "left";
+              context.fillText(formatFootprintValue(values.ask, format), x + 5, rowY);
+            }
+          } else {
+            const metric = contentMode === "volume" || contentMode === "volume-histogram"
+              ? values.total
+              : contentMode === "trades"
+                ? values.trades
+                : values.delta;
+            const text = contentMode === "volume-delta"
+              ? `${formatFootprintValue(values.total, format)} │ ${values.delta >= 0 ? "+" : ""}${formatFootprintValue(values.delta, format)}`
+              : `${metric > 0 && (contentMode === "delta" || contentMode === "delta-histogram") ? "+" : ""}${formatFootprintValue(metric, format)}`;
+            context.textAlign = "center";
+            context.fillText(text, x, rowY);
+          }
+          context.restore();
+        }
+
+        if (options.showVwap && bar.vwap !== null) {
+          const vwapY = params.series.priceToCoordinate(bar.vwap);
+          if (vwapY !== null) {
+            context.save();
+            context.globalAlpha = 0.72;
+            context.strokeStyle = options.vwapColor;
+            context.setLineDash([3, 2]);
+            context.beginPath();
+            context.moveTo(left, vwapY);
+            context.lineTo(left + barWidth, vwapY);
+            context.stroke();
+            context.restore();
+          }
+        }
+        if ((options.showVah || options.showVal) && bar.vah !== null && bar.val !== null) {
+          for (const [enabled, price] of [[options.showVah, bar.vah], [options.showVal, bar.val]] as const) {
+            if (!enabled) continue;
+            const coordinate = params.series.priceToCoordinate(price);
+            if (coordinate === null) continue;
+            context.save();
+            context.globalAlpha = 0.48;
+            context.strokeStyle = options.valueAreaColor;
+            context.setLineDash([2, 2]);
+            context.beginPath();
+            context.moveTo(left, coordinate);
+            context.lineTo(left + barWidth, coordinate);
+            context.stroke();
+            context.restore();
+          }
+        }
+        if (options.showSummary && barWidth >= 58 && lowY !== null && lowY < mediaSize.height - 14) {
+          const label = `V ${formatFootprintValue(bar.totalVolume, options.numberFormat)}  Δ ${bar.delta >= 0 ? "+" : ""}${formatFootprintValue(bar.delta, options.numberFormat)}`;
+          context.save();
+          context.font = `500 9px 'JetBrains Mono', ui-monospace, monospace`;
+          context.textAlign = "center";
+          context.textBaseline = "top";
+          context.fillStyle = options.textColor;
+          context.globalAlpha = 0.78;
+          context.fillText(label, x, lowY + 3, barWidth + 18);
+          context.restore();
+        }
+        if (!bar.isClosed && highY !== null) {
+          context.save();
+          context.strokeStyle = options.askColor;
+          context.globalAlpha = 0.82;
+          context.lineWidth = 1.5;
+          context.strokeRect(left - 1, highY - 1, barWidth + 2, Math.max(2, (lowY ?? highY) - highY + 2));
+          context.fillStyle = options.askColor;
+          context.fillRect(left + barWidth - 4, highY + 2, 3, 3);
+          context.restore();
         }
       }
-
       context.restore();
     });
   }
@@ -405,7 +541,7 @@ export class FootprintPrimitive implements ISeriesPrimitive<Time> {
   options() { return this.renderOptions; }
   update(bars: FootprintRenderBar[], options: FootprintPrimitiveOptions) {
     this.renderBars = bars;
-    this.renderOptions = options;
+    this.renderOptions = { ...DEFAULT_OPTIONS, ...options };
     this.attachedParams?.requestUpdate();
   }
 }

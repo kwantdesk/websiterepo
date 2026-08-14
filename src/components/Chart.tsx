@@ -2408,6 +2408,7 @@ export default function Chart({
     return buildFootprintBars(footprintVisibleCandles, visibleTrades, {
       tickSize: priceFormat.minMove,
       groupTicks: resolvedFootprintGroupTicks,
+      instrument,
       minimumTradeVolume: Number(footprintSettings.minimumTradeVolume ?? 0),
       maximumTradeVolume: Number(footprintSettings.maximumTradeVolume ?? 0),
       imbalanceMode: (["diagonal", "horizontal", "delta-percent"].includes(String(footprintSettings.imbalanceMode))
@@ -2416,6 +2417,11 @@ export default function Chart({
       minimumImbalancePercent: Number(footprintSettings.minimumImbalancePercent ?? 300),
       minimumDelta: Number(footprintSettings.minimumDelta ?? 10),
       includeZero: footprintSettings.includeZero === true,
+      valueAreaPercent: Number(footprintSettings.valueAreaPercent ?? 0.7),
+      minimumDominantVolume: Number(footprintSettings.minimumDominantVolume ?? 10),
+      stackedImbalanceLevels: Number(footprintSettings.stackedImbalanceLevels ?? 3),
+      unfinishedAuctionEnabled: footprintSettings.unfinishedAuctionEnabled === true,
+      unfinishedAuctionMinimumVolume: Number(footprintSettings.unfinishedAuctionMinimumVolume ?? 1),
     });
   }, [
     footprintIndicator,
@@ -2423,10 +2429,16 @@ export default function Chart({
     footprintSettings.includeZero,
     footprintSettings.maximumTradeVolume,
     footprintSettings.minimumDelta,
+    footprintSettings.minimumDominantVolume,
     footprintSettings.minimumImbalancePercent,
     footprintSettings.minimumTradeVolume,
+    footprintSettings.stackedImbalanceLevels,
+    footprintSettings.unfinishedAuctionEnabled,
+    footprintSettings.unfinishedAuctionMinimumVolume,
+    footprintSettings.valueAreaPercent,
     footprintVisibleCandles,
     indicatorMarketTrades,
+    instrument,
     priceFormat.minMove,
     resolvedFootprintGroupTicks,
     timeframe,
@@ -2442,6 +2454,26 @@ export default function Chart({
     const option = <T extends string>(value: unknown, allowed: readonly T[], fallback: T) =>
       allowed.includes(String(value) as T) ? String(value) as T : fallback;
     return {
+      contentMode: option(
+        footprintSettings.contentMode ?? footprintSettings.type,
+        ["bid-ask", "delta", "volume", "volume-delta", "trades", "bid-ask-histogram", "volume-histogram", "delta-histogram", "ladder"],
+        "bid-ask",
+      ),
+      visualizationMode: option(
+        footprintSettings.visualizationMode,
+        ["solid", "heatmap", "histogram", "heatmap-histogram", "text-only"],
+        "heatmap-histogram",
+      ),
+      scaleMode: option(
+        footprintSettings.scaleMode,
+        ["per-bar", "all-loaded", "visible-region", "fixed-maximum"],
+        "visible-region",
+      ),
+      numberFormat: option(
+        footprintSettings.numberFormat ?? footprintSettings.textFormat,
+        ["full", "compact", "automatic"],
+        "automatic",
+      ),
       type: option(footprintSettings.type, ["ask-bid", "volume", "delta", "delta-total"], "ask-bid"),
       mode: option(footprintSettings.mode, ["profile", "box"], "profile"),
       inputType: option(footprintSettings.inputType, ["volume", "num-trades"], "volume"),
@@ -2453,9 +2485,18 @@ export default function Chart({
         "imbalance",
       ),
       barWidth: clamp(Number(footprintSettings.barWidth ?? 88), 44, 180),
+      candleSpacing: clamp(Number(footprintSettings.candleSpacing ?? 6), 1, 24),
       borderWidth: clamp(Number(footprintSettings.borderWidth ?? 1), 0.5, 4),
       opacity: clamp(Number(footprintSettings.backgroundOpacity ?? 74) / 100, 0, 1),
+      minimumOpacity: clamp(Number(footprintSettings.minimumOpacity ?? 8) / 100, 0, 1),
+      maximumOpacity: clamp(Number(footprintSettings.maximumOpacity ?? 72) / 100, 0, 1),
+      gradientExponent: clamp(Number(footprintSettings.gradientExponent ?? 0.72), 0.1, 3),
+      visibleRegionPercentile: clamp(Number(footprintSettings.visibleRegionPercentile ?? 0.95), 0.5, 1),
+      fixedMaximum: Math.max(0, Number(footprintSettings.fixedMaximum ?? 0)),
       fontSize: clamp(Number(footprintSettings.fontSize ?? 10), 6, 16),
+      fontWeight: clamp(Number(footprintSettings.fontWeight ?? 500), 400, 800),
+      minimumWidthToShowText: clamp(Number(footprintSettings.minimumWidthToShowText ?? 58), 28, 180),
+      minimumRowHeightToShowText: clamp(Number(footprintSettings.minimumRowHeightToShowText ?? 13), 8, 34),
       dynamicTextSize: footprintSettings.dynamicTextSize !== false,
       dynamicTextIncrease: clamp(Number(footprintSettings.dynamicTextIncrease ?? 1), 0, 2),
       showZeros: footprintSettings.showZeros === true,
@@ -2463,6 +2504,8 @@ export default function Chart({
       showVolumePoc: footprintSettings.showVolumePoc !== false,
       showDeltaPoc: footprintSettings.showDeltaPoc === true,
       showValueArea: footprintSettings.showValueArea !== false,
+      showVah: footprintSettings.showVah === true,
+      showVal: footprintSettings.showVal === true,
       showSinglePrints: footprintSettings.showSinglePrints === true,
       singlePrintMaximum: Math.max(1, Number(footprintSettings.singlePrintMaximum ?? 1)),
       singlePrintExtremesOnly: footprintSettings.singlePrintExtremesOnly !== false,
@@ -2472,21 +2515,42 @@ export default function Chart({
       showVolumeClusters: footprintSettings.showVolumeClusters === true,
       clusterMinimumVolume: Math.max(1, Number(footprintSettings.clusterMinimumVolume ?? 100)),
       showBarDelta: footprintSettings.showBarDelta !== false,
+      showSummary: footprintSettings.showSummary !== false,
+      showCentreDivider: footprintSettings.showCentreDivider !== false,
+      showWick: footprintSettings.showWick !== false,
+      showBodyOutline: footprintSettings.showBodyOutline !== false,
+      showBodyFill: footprintSettings.showBodyFill === true,
+      showBetweenVolume: footprintSettings.showBetweenVolume !== false,
+      showVwap: footprintSettings.showVwap !== false,
+      showStackedImbalances: footprintSettings.showStackedImbalances !== false,
+      showMaxBid: footprintSettings.showMaxBid === true,
+      showMaxAsk: footprintSettings.showMaxAsk === true,
+      showMaxPositiveDelta: footprintSettings.showMaxPositiveDelta === true,
+      showMaxNegativeDelta: footprintSettings.showMaxNegativeDelta === true,
+      showMaxTrades: footprintSettings.showMaxTrades === true,
       outsideBarStyle: option(footprintSettings.outsideBarStyle, ["bar", "body"], "bar"),
       markerAlignment: option(footprintSettings.markerAlignment, ["center", "right"], "center"),
       outerEdgeMode: footprintSettings.outerEdgeMode !== false,
       askColor: useThemeColors ? settings.upColor : String(footprintSettings.askColor ?? settings.upColor),
       bidColor: useThemeColors ? settings.downColor : String(footprintSettings.bidColor ?? settings.downColor),
+      betweenColor: String(footprintSettings.betweenColor ?? "#A1A1AA"),
       neutralColor: useThemeColors ? settings.gridColor : String(footprintSettings.neutralColor ?? settings.gridColor),
       textColor: String(footprintSettings.textColor ?? "#F5F5F5"),
       pocColor: useThemeColors ? settings.borderUpColor : String(footprintSettings.pocColor ?? settings.borderUpColor),
+      valueAreaColor: String(footprintSettings.valueAreaColor ?? "#647BA8"),
       deltaPocColor: useThemeColors ? settings.borderDownColor : String(footprintSettings.deltaPocColor ?? settings.borderDownColor),
       clusterColor: String(footprintSettings.clusterColor ?? "#F59E0B"),
       singlePrintColor: String(footprintSettings.singlePrintColor ?? "#F4F4F5"),
+      stackedAskColor: useThemeColors ? settings.upColor : String(footprintSettings.stackedAskColor ?? settings.upColor),
+      stackedBidColor: useThemeColors ? settings.downColor : String(footprintSettings.stackedBidColor ?? settings.downColor),
+      unfinishedAuctionColor: String(footprintSettings.unfinishedAuctionColor ?? "#E4BF5A"),
+      vwapColor: String(footprintSettings.vwapColor ?? "#22D3EE"),
       backgroundColor: settings.backgroundColor,
     };
   }, [footprintSettings, settings]);
   const footprintHasPriceLevelFlow = footprintRenderBars.some((bar) => bar.hasPriceLevelFlow);
+  const footprintHasClassifiedFlow = footprintRenderBars.some((bar) =>
+    bar.classifiedVolume > 0);
 
   useEffect(() => {
     const primitive = footprintPrimitiveRef.current;
@@ -6802,6 +6866,25 @@ export default function Chart({
         >
           <ScanLine className="h-3.5 w-3.5 animate-pulse text-primary" />
           <span>Syncing {instrument} Gamma</span>
+        </div>
+      ) : null}
+      {footprintIndicator && !footprintHasPriceLevelFlow ? (
+        <div
+          className="pointer-events-none absolute right-[76px] top-3 z-[19] max-w-[360px] border border-border/70 bg-background/92 px-3 py-2 font-mono text-[9px] leading-4 text-muted-foreground shadow-lg backdrop-blur"
+          role="status"
+        >
+          <div className="font-semibold uppercase tracking-[0.08em] text-foreground">
+            {orderFlowHistoryReady ? "No executed trade data" : "Loading executed trade history"}
+          </div>
+          {orderFlowHistoryReady ? "No executed trade data is available for this visible period." : "The Footprint will paint as classified executions arrive."}
+        </div>
+      ) : footprintIndicator && footprintHasPriceLevelFlow && !footprintHasClassifiedFlow ? (
+        <div
+          className="pointer-events-none absolute right-[76px] top-3 z-[19] max-w-[390px] border border-border/70 bg-background/92 px-3 py-2 font-mono text-[9px] leading-4 text-muted-foreground shadow-lg backdrop-blur"
+          role="status"
+        >
+          <div className="font-semibold uppercase tracking-[0.08em] text-foreground">Limited execution classification</div>
+          Bid × Ask requires aggressor-side classification. Unclassified volume is retained in total volume and POC, but is not assigned to Bid, Ask, Delta or imbalances.
         </div>
       ) : null}
       <div

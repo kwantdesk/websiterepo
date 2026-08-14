@@ -1,7 +1,16 @@
 import type { Candle } from "./backtester.ts";
 import type { InstitutionalTrade } from "./institutionalMarketData.ts";
+import { assertFootprintInvariants, calculateFootprintAnalytics } from "./footprintAnalytics.ts";
+import { institutionalTradeToFootprintTrade, orderFootprintTrades } from "./footprintTradeAdapter.ts";
+import {
+  createEmptyFootprintLevel,
+  type FootprintBarModel,
+  type FootprintComparisonMode,
+  type FootprintNumberFormat,
+  type FootprintPriceLevel,
+} from "./footprintTypes.ts";
 
-export type FootprintImbalanceMode = "diagonal" | "horizontal" | "delta-percent";
+export type FootprintImbalanceMode = "diagonal" | "horizontal" | "same-row" | "delta-percent";
 
 export type FootprintBuildSettings = {
   tickSize: number;
@@ -12,45 +21,55 @@ export type FootprintBuildSettings = {
   minimumImbalancePercent: number;
   minimumDelta: number;
   includeZero: boolean;
+  instrument?: string;
+  valueAreaPercent?: number;
+  minimumDominantVolume?: number;
+  stackedImbalanceLevels?: number;
+  unfinishedAuctionEnabled?: boolean;
+  unfinishedAuctionMinimumVolume?: number;
 };
 
-export type FootprintRow = {
-  price: number;
-  bidVolume: number;
-  askVolume: number;
-  bidTrades: number;
-  askTrades: number;
+export type FootprintRow = FootprintPriceLevel & {
+  // Compatibility aliases retained for the existing chart primitive.
+  betweenVolume: number;
+  betweenTrades: number;
   volume: number;
-  delta: number;
   bidImbalance: boolean;
   askImbalance: boolean;
 };
 
-export type FootprintBar = {
-  timestamp: number;
-  open: number;
-  high: number;
-  low: number;
-  close: number;
+export type FootprintBar = Omit<FootprintBarModel, "rows"> & {
   rows: FootprintRow[];
-  bidVolume: number;
-  askVolume: number;
+  betweenVolume: number;
   volume: number;
-  delta: number;
   trades: number;
   pocPrice: number | null;
   deltaPocPrice: number | null;
   vah: number | null;
   val: number | null;
-  hasPriceLevelFlow: boolean;
 };
 
-type MutableFootprintRow = Omit<FootprintRow, "bidImbalance" | "askImbalance">;
+type MutableBar = {
+  candle: Candle;
+  levels: Map<number, FootprintPriceLevel>;
+  weightedPriceVolume: number;
+  delta: number;
+  deltaHigh: number;
+  deltaLow: number;
+};
 
 const finite = (value: unknown, fallback = 0) => {
   const number = Number(value);
   return Number.isFinite(number) ? number : fallback;
 };
+
+export function priceToTickIndex(price: number, tickSize: number): number {
+  return Math.round(price / Math.max(0.000000001, tickSize));
+}
+
+export function tickIndexToPrice(tickIndex: number, tickSize: number): number {
+  return tickIndex * tickSize;
+}
 
 function lowerBoundCandle(candles: Candle[], timestamp: number) {
   let low = 0;
@@ -63,176 +82,218 @@ function lowerBoundCandle(candles: Candle[], timestamp: number) {
   return low - 1;
 }
 
-function sideTrades(record: InstitutionalTrade, bid: number, ask: number) {
-  const trades = Math.max(1, finite(record.trades, 1));
-  const total = bid + ask;
-  if (total <= 0) return { bidTrades: 0, askTrades: 0 };
-  if (bid <= 0) return { bidTrades: 0, askTrades: trades };
-  if (ask <= 0) return { bidTrades: trades, askTrades: 0 };
-  const askTrades = trades * ask / total;
-  return { bidTrades: trades - askTrades, askTrades };
+function allocateTradeCounts(
+  count: number,
+  bid: number,
+  ask: number,
+  unknown: number,
+) {
+  const total = bid + ask + unknown;
+  if (!(total > 0)) return { bidTrades: 0, askTrades: 0, unknownTrades: 0 };
+  if (ask > 0 && bid === 0 && unknown === 0) return { bidTrades: 0, askTrades: count, unknownTrades: 0 };
+  if (bid > 0 && ask === 0 && unknown === 0) return { bidTrades: count, askTrades: 0, unknownTrades: 0 };
+  if (unknown > 0 && bid === 0 && ask === 0) return { bidTrades: 0, askTrades: 0, unknownTrades: count };
+  const bidTrades = count * bid / total;
+  const askTrades = count * ask / total;
+  return { bidTrades, askTrades, unknownTrades: count - bidTrades - askTrades };
 }
 
-function imbalancePass(numerator: number, denominator: number, percent: number, minimumDelta: number, includeZero: boolean) {
-  if (numerator - denominator < minimumDelta) return false;
-  if (denominator <= 0) return includeZero && numerator > 0;
-  return numerator / denominator * 100 >= percent;
+function comparisonMode(mode: FootprintImbalanceMode): FootprintComparisonMode {
+  if (mode === "horizontal" || mode === "same-row") return "same-row";
+  return mode;
 }
 
-function footprintValueArea(rows: MutableFootprintRow[]) {
-  if (!rows.length) return { pocPrice: null, vah: null, val: null };
-  const total = rows.reduce((sum, row) => sum + row.volume, 0);
-  if (total <= 0) return { pocPrice: null, vah: null, val: null };
-  let pocIndex = 0;
-  rows.forEach((row, index) => {
-    if (row.volume > rows[pocIndex].volume) pocIndex = index;
-  });
-  const target = total * 0.7;
-  let included = rows[pocIndex].volume;
-  let low = pocIndex;
-  let high = pocIndex;
-  while (included < target && (low > 0 || high < rows.length - 1)) {
-    const below = low > 0 ? rows[low - 1].volume : -1;
-    const above = high < rows.length - 1 ? rows[high + 1].volume : -1;
-    if (above >= below && high < rows.length - 1) {
-      high += 1;
-      included += rows[high].volume;
-    } else if (low > 0) {
-      low -= 1;
-      included += rows[low].volume;
-    }
-  }
+function approximateBarEnd(candles: Candle[], index: number) {
+  const next = candles[index + 1]?.timestamp;
+  if (next !== undefined) return next;
+  const previous = candles[index - 1]?.timestamp;
+  return candles[index].timestamp + Math.max(1, candles[index].timestamp - (previous ?? candles[index].timestamp - 60_000));
+}
+
+function levelWithAliases(level: FootprintPriceLevel): FootprintRow {
   return {
-    pocPrice: rows[pocIndex].price,
-    vah: rows[high].price,
-    val: rows[low].price,
+    ...level,
+    betweenVolume: level.unknownVolume,
+    betweenTrades: level.unknownTrades,
+    volume: level.totalVolume,
+    bidImbalance: level.isBidImbalance,
+    askImbalance: level.isAskImbalance,
   };
 }
 
 export function buildFootprintBars(
-  candles: Candle[],
+  candlesInput: Candle[],
   records: InstitutionalTrade[],
   settings: FootprintBuildSettings,
 ): FootprintBar[] {
-  if (!candles.length) return [];
-  const tickSize = Math.max(0.000001, finite(settings.tickSize, 0.25));
+  if (!candlesInput.length) return [];
+  const candles = [...candlesInput].sort((left, right) => left.timestamp - right.timestamp);
+  const tickSize = Math.max(0.000000001, finite(settings.tickSize, 0.25));
   const groupTicks = Math.max(1, Math.round(finite(settings.groupTicks, 1)));
-  const rowSize = tickSize * groupTicks;
-  const minimum = Math.max(0, finite(settings.minimumTradeVolume));
-  const maximum = Math.max(0, finite(settings.maximumTradeVolume));
-  const rowsByBar = candles.map(() => new Map<number, MutableFootprintRow>());
+  const minimumTradeVolume = Math.max(0, finite(settings.minimumTradeVolume));
+  const maximumTradeVolume = Math.max(0, finite(settings.maximumTradeVolume));
+  const instrument = settings.instrument ?? "UNKNOWN";
+  const mutableBars: MutableBar[] = candles.map((candle) => ({
+    candle,
+    levels: new Map(),
+    weightedPriceVolume: 0,
+    delta: 0,
+    deltaHigh: 0,
+    deltaLow: 0,
+  }));
 
-  const ordered = [...records].sort((left, right) =>
-    left.timestamp - right.timestamp || left.recordIndex - right.recordIndex);
-  for (const record of ordered) {
-    const volume = Math.max(0, finite(record.volume, finite(record.askVolume) + finite(record.bidVolume)));
-    if (volume <= 0 || volume < minimum || (maximum > 0 && volume > maximum)) continue;
-    const candleIndex = lowerBoundCandle(candles, record.timestamp);
-    if (candleIndex < 0) continue;
-    const nextTimestamp = candles[candleIndex + 1]?.timestamp;
-    if (nextTimestamp !== undefined && record.timestamp >= nextTimestamp) continue;
-    const rawPrice = finite(record.close, finite(record.open));
-    if (rawPrice <= 0) continue;
-    const rowTick = Math.round(rawPrice / rowSize);
-    const price = rowTick * rowSize;
-    let askVolume = Math.max(0, finite(record.askVolume));
-    let bidVolume = Math.max(0, finite(record.bidVolume));
-    if (askVolume + bidVolume <= 0) {
-      if (record.aggressor === "BUY") askVolume = volume;
-      else if (record.aggressor === "SELL") bidVolume = volume;
-      else continue;
-    }
-    const { bidTrades, askTrades } = sideTrades(record, bidVolume, askVolume);
-    const current = rowsByBar[candleIndex].get(rowTick) ?? {
-      price,
-      bidVolume: 0,
-      askVolume: 0,
-      bidTrades: 0,
-      askTrades: 0,
-      volume: 0,
-      delta: 0,
-    };
-    current.bidVolume += bidVolume;
-    current.askVolume += askVolume;
-    current.bidTrades += bidTrades;
-    current.askTrades += askTrades;
-    current.volume = current.bidVolume + current.askVolume;
-    current.delta = current.askVolume - current.bidVolume;
-    rowsByBar[candleIndex].set(rowTick, current);
+  const adapted = records
+    .map((record, index) => institutionalTradeToFootprintTrade(record, instrument, tickSize, index))
+    .filter((trade): trade is NonNullable<typeof trade> => trade !== null);
+  const ordered = orderFootprintTrades(adapted);
+
+  for (const trade of ordered) {
+    if (trade.size < minimumTradeVolume || (maximumTradeVolume > 0 && trade.size > maximumTradeVolume)) continue;
+    const candleIndex = lowerBoundCandle(candles, trade.timestamp);
+    if (candleIndex < 0 || trade.timestamp >= approximateBarEnd(candles, candleIndex)) continue;
+    const bar = mutableBars[candleIndex];
+    const rawTick = priceToTickIndex(trade.price, tickSize);
+    const groupedTick = Math.floor(rawTick / groupTicks) * groupTicks;
+    const level = bar.levels.get(groupedTick) ?? createEmptyFootprintLevel(groupedTick, tickSize);
+    const counts = allocateTradeCounts(
+      trade.tradeCount,
+      trade.bidVolume,
+      trade.askVolume,
+      trade.unknownVolume,
+    );
+    level.bidVolume += trade.bidVolume;
+    level.askVolume += trade.askVolume;
+    level.unknownVolume += trade.unknownVolume;
+    level.bidTrades += counts.bidTrades;
+    level.askTrades += counts.askTrades;
+    level.unknownTrades += counts.unknownTrades;
+    level.classifiedVolume = level.bidVolume + level.askVolume;
+    level.totalVolume = level.classifiedVolume + level.unknownVolume;
+    level.delta = level.askVolume - level.bidVolume;
+    level.deltaPercent = level.classifiedVolume > 0 ? level.delta / level.classifiedVolume : 0;
+    bar.levels.set(groupedTick, level);
+    bar.weightedPriceVolume += trade.price * trade.size;
+    bar.delta += trade.askVolume - trade.bidVolume;
+    bar.deltaHigh = Math.max(bar.deltaHigh, bar.delta);
+    bar.deltaLow = Math.min(bar.deltaLow, bar.delta);
   }
 
-  return candles.map((candle, candleIndex) => {
-    const rows = [...rowsByBar[candleIndex].values()].sort((left, right) => left.price - right.price);
-    const byPriceTick = new Map(rows.map((row) => [Math.round(row.price / rowSize), row]));
-    const threshold = Math.max(100, finite(settings.minimumImbalancePercent, 300));
-    const minimumDelta = Math.max(0, finite(settings.minimumDelta, 10));
-    const finalRows = rows.map((row): FootprintRow => {
-      const tick = Math.round(row.price / rowSize);
-      if (settings.imbalanceMode === "delta-percent") {
-        const deltaPercent = row.volume > 0 ? row.delta / row.volume * 100 : 0;
-        return {
-          ...row,
-          askImbalance: deltaPercent >= threshold / 10 && row.delta >= minimumDelta,
-          bidImbalance: deltaPercent <= -threshold / 10 && -row.delta >= minimumDelta,
-        };
-      }
-      const askComparison = settings.imbalanceMode === "diagonal"
-        ? byPriceTick.get(tick - 1)?.bidVolume ?? 0
-        : row.bidVolume;
-      const bidComparison = settings.imbalanceMode === "diagonal"
-        ? byPriceTick.get(tick + 1)?.askVolume ?? 0
-        : row.askVolume;
-      return {
-        ...row,
-        askImbalance: imbalancePass(
-          row.askVolume,
-          askComparison,
-          threshold,
-          minimumDelta,
-          settings.includeZero,
-        ),
-        bidImbalance: imbalancePass(
-          row.bidVolume,
-          bidComparison,
-          threshold,
-          minimumDelta,
-          settings.includeZero,
-        ),
-      };
-    });
-    const bidVolume = finalRows.reduce((sum, row) => sum + row.bidVolume, 0);
-    const askVolume = finalRows.reduce((sum, row) => sum + row.askVolume, 0);
-    const trades = finalRows.reduce((sum, row) => sum + row.bidTrades + row.askTrades, 0);
-    const { pocPrice, vah, val } = footprintValueArea(rows);
-    const deltaPoc = finalRows.reduce<FootprintRow | null>((best, row) =>
-      !best || Math.abs(row.delta) > Math.abs(best.delta) ? row : best, null);
+  return mutableBars.map((mutable, index) => {
+    const levels = [...mutable.levels.values()].sort((left, right) => left.tickIndex - right.tickIndex);
+    const analytics = calculateFootprintAnalytics(
+      levels,
+      mutable.candle.close,
+      groupTicks,
+      {
+        valueAreaPercent: Math.min(1, Math.max(0.5, finite(settings.valueAreaPercent, 0.7))),
+        comparisonMode: comparisonMode(settings.imbalanceMode),
+        imbalanceRatio: Math.max(1, finite(settings.minimumImbalancePercent, 300) / 100),
+        minimumDominantVolume: Math.max(0, finite(settings.minimumDominantVolume, 10)),
+        minimumDifference: Math.max(0, finite(settings.minimumDelta, 0)),
+        ignoreZeroValues: !settings.includeZero,
+        stackedImbalanceLevels: Math.min(10, Math.max(2, Math.round(finite(settings.stackedImbalanceLevels, 3)))),
+        unfinishedAuctionEnabled: settings.unfinishedAuctionEnabled === true,
+        unfinishedAuctionMinimumVolume: Math.max(0, finite(settings.unfinishedAuctionMinimumVolume, 1)),
+      },
+    );
+    const bidVolume = levels.reduce((sum, level) => sum + level.bidVolume, 0);
+    const askVolume = levels.reduce((sum, level) => sum + level.askVolume, 0);
+    const unknownVolume = levels.reduce((sum, level) => sum + level.unknownVolume, 0);
+    const classifiedVolume = bidVolume + askVolume;
+    const totalVolume = classifiedVolume + unknownVolume;
+    const bidTrades = levels.reduce((sum, level) => sum + level.bidTrades, 0);
+    const askTrades = levels.reduce((sum, level) => sum + level.askTrades, 0);
+    const unknownTrades = levels.reduce((sum, level) => sum + level.unknownTrades, 0);
+    const delta = askVolume - bidVolume;
+    if (process.env.NODE_ENV !== "production") {
+      assertFootprintInvariants(levels, {
+        bidVolume,
+        askVolume,
+        unknownVolume,
+        classifiedVolume,
+        totalVolume,
+        delta,
+      });
+    }
+    const rows = levels.map(levelWithAliases);
+    const pocPrice = analytics.pocTick === null ? null : tickIndexToPrice(analytics.pocTick, tickSize);
+    const vah = analytics.valueAreaHighTick === null ? null : tickIndexToPrice(analytics.valueAreaHighTick, tickSize);
+    const val = analytics.valueAreaLowTick === null ? null : tickIndexToPrice(analytics.valueAreaLowTick, tickSize);
+    const deltaPoc = levels.reduce<FootprintPriceLevel | null>((best, level) =>
+      !best || Math.abs(level.delta) > Math.abs(best.delta) ? level : best, null);
+    const candle = mutable.candle;
     return {
+      id: `${instrument}:${candle.timestamp}`,
+      instrument,
+      startTime: candle.timestamp,
+      endTime: approximateBarEnd(candles, index),
       timestamp: candle.timestamp,
       open: candle.open,
       high: candle.high,
       low: candle.low,
       close: candle.close,
-      rows: finalRows,
+      openTick: priceToTickIndex(candle.open, tickSize),
+      highTick: priceToTickIndex(candle.high, tickSize),
+      lowTick: priceToTickIndex(candle.low, tickSize),
+      closeTick: priceToTickIndex(candle.close, tickSize),
       bidVolume,
       askVolume,
-      volume: bidVolume + askVolume,
-      delta: askVolume - bidVolume,
-      trades,
+      unknownVolume,
+      betweenVolume: unknownVolume,
+      classifiedVolume,
+      totalVolume,
+      volume: totalVolume,
+      delta,
+      deltaPercent: classifiedVolume > 0 ? delta / classifiedVolume : 0,
+      deltaOpen: 0,
+      deltaHigh: mutable.deltaHigh,
+      deltaLow: mutable.deltaLow,
+      deltaClose: mutable.delta,
+      bidTrades,
+      askTrades,
+      unknownTrades,
+      totalTrades: bidTrades + askTrades + unknownTrades,
+      trades: bidTrades + askTrades + unknownTrades,
+      levels: new Map(levels.map((level) => [level.tickIndex, level])),
+      rows,
+      ...analytics,
+      vwap: totalVolume > 0 ? mutable.weightedPriceVolume / totalVolume : analytics.vwap,
+      isClosed: index < mutableBars.length - 1,
+      hasPriceLevelFlow: rows.length > 0,
       pocPrice,
       deltaPocPrice: deltaPoc?.price ?? null,
       vah,
       val,
-      hasPriceLevelFlow: finalRows.length > 0,
     };
   });
 }
 
-export function formatFootprintValue(value: number, format: "automatic" | "normal" | "thousands") {
+export function formatFootprintValue(
+  value: number,
+  format: FootprintNumberFormat | "normal" | "thousands" = "automatic",
+) {
   if (!Number.isFinite(value)) return "0";
-  const rounded = Math.round(value);
-  if (format === "normal") return rounded.toLocaleString("en-US");
-  if (format === "thousands" || (format === "automatic" && Math.abs(value) >= 10_000)) {
-    return `${(value / 1_000).toFixed(Math.abs(value) >= 100_000 ? 0 : 1)}K`;
-  }
-  return rounded.toLocaleString("en-US");
+  const normalized = format === "normal" ? "full" : format === "thousands" ? "compact" : format;
+  if (normalized === "full") return Math.round(value).toLocaleString("en-US");
+  const absolute = Math.abs(value);
+  const sign = value < 0 ? "-" : "";
+  const compact = (divisor: number, suffix: string) => {
+    const scaled = absolute / divisor;
+    const digits = scaled >= 100 ? 0 : scaled >= 10 ? 1 : 2;
+    return `${sign}${scaled.toFixed(digits).replace(/\.0+$|(?<=\.[0-9])0$/, "")}${suffix}`;
+  };
+  const shouldCompact = normalized === "compact" || absolute >= 10_000;
+  if (shouldCompact && absolute >= 1_000_000) return compact(1_000_000, "M");
+  if (shouldCompact && absolute >= 1_000) return compact(1_000, "K");
+  return Math.round(value).toLocaleString("en-US");
 }
+
+export type {
+  FootprintAggressorSide,
+  FootprintContentMode,
+  FootprintNumberFormat,
+  FootprintPriceLevel,
+  FootprintScaleMode,
+  FootprintTrade,
+  FootprintVisualizationMode,
+} from "./footprintTypes.ts";

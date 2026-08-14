@@ -1,6 +1,7 @@
 import type { ChartSettings } from "@/lib/chartSettings";
 import type { ChartIndicatorInstance } from "@/lib/chartIndicatorCatalog";
 import { STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT } from "@/lib/volumeProfileMath";
+import { DEFAULT_FOOTPRINT_SETTINGS, FOOTPRINT_SETTINGS_SCHEMA_VERSION } from "@/lib/footprintSettings";
 
 export const LIVE_CHART_INDICATOR_IDS = new Set([
   "volume",
@@ -127,16 +128,29 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
     { key: "fontSize", label: "Ladder font size", defaultValue: 9, min: 7, max: 13, step: 1 },
   ],
   "deep-print-footprint": [
-    { key: "barWidth", label: "Footprint bar width (pixels)", defaultValue: 88, min: 44, max: 180, step: 2 },
+    { key: "barWidth", label: "Footprint bar width (pixels)", defaultValue: 92, min: 28, max: 180, step: 2 },
+    { key: "candleSpacing", label: "Candle spacing (pixels)", defaultValue: 6, min: 1, max: 24, step: 1 },
     { key: "autoGroupFactor", label: "Automatic tick grouping factor", defaultValue: 1, min: 0.5, max: 4, step: 0.25 },
     { key: "manualTicks", label: "Manual ticks per row", defaultValue: 1, min: 1, max: 100, step: 1 },
     { key: "minimumTradeVolume", label: "Minimum execution size", defaultValue: 0, min: 0, max: 100000, step: 1 },
     { key: "maximumTradeVolume", label: "Maximum execution size · 0 = unlimited", defaultValue: 0, min: 0, max: 1000000, step: 1 },
     { key: "minimumImbalancePercent", label: "Minimum imbalance (%)", defaultValue: 300, min: 100, max: 10000, step: 25 },
-    { key: "minimumDelta", label: "Minimum volume difference", defaultValue: 10, min: 0, max: 100000, step: 1 },
-    { key: "backgroundOpacity", label: "Cell background opacity (%)", defaultValue: 74, min: 0, max: 100, step: 1 },
+    { key: "minimumDominantVolume", label: "Minimum dominant volume", defaultValue: 10, min: 0, max: 100000, step: 1 },
+    { key: "minimumDelta", label: "Minimum volume difference", defaultValue: 0, min: 0, max: 100000, step: 1 },
+    { key: "stackedImbalanceLevels", label: "Stacked imbalance rows", defaultValue: 3, min: 2, max: 10, step: 1 },
+    { key: "unfinishedAuctionMinimumVolume", label: "Unfinished auction minimum", defaultValue: 1, min: 0, max: 100000, step: 1 },
+    { key: "valueAreaPercent", label: "Value area (decimal)", defaultValue: 0.7, min: 0.5, max: 1, step: 0.01 },
+    { key: "backgroundOpacity", label: "Cell background opacity (%)", defaultValue: 72, min: 0, max: 100, step: 1 },
+    { key: "minimumOpacity", label: "Minimum heat opacity (%)", defaultValue: 8, min: 0, max: 100, step: 1 },
+    { key: "maximumOpacity", label: "Maximum heat opacity (%)", defaultValue: 72, min: 0, max: 100, step: 1 },
+    { key: "gradientExponent", label: "Heat gradient exponent", defaultValue: 0.72, min: 0.1, max: 3, step: 0.01 },
+    { key: "visibleRegionPercentile", label: "Visible scale percentile", defaultValue: 0.95, min: 0.5, max: 1, step: 0.01 },
+    { key: "fixedMaximum", label: "Fixed scale maximum · 0 = automatic", defaultValue: 0, min: 0, max: 10000000, step: 1 },
     { key: "borderWidth", label: "Cell and outline width", defaultValue: 1, min: 0.5, max: 4, step: 0.5 },
-    { key: "fontSize", label: "Footprint text size", defaultValue: 10, min: 6, max: 16, step: 1 },
+    { key: "fontSize", label: "Footprint text size", defaultValue: 11, min: 9, max: 15, step: 1 },
+    { key: "fontWeight", label: "Footprint font weight", defaultValue: 500, min: 400, max: 800, step: 100 },
+    { key: "minimumWidthToShowText", label: "Minimum width for text", defaultValue: 58, min: 28, max: 180, step: 1 },
+    { key: "minimumRowHeightToShowText", label: "Minimum row height for text", defaultValue: 13, min: 8, max: 34, step: 1 },
     { key: "dynamicTextIncrease", label: "Dynamic text emphasis", defaultValue: 1, min: 0, max: 2, step: 0.1 },
     { key: "singlePrintMaximum", label: "Single-print maximum volume", defaultValue: 1, min: 1, max: 1000, step: 1 },
     { key: "minimumRatio", label: "Minimum displayed ask/bid ratio", defaultValue: 1.5, min: 0, max: 100, step: 0.1 },
@@ -579,6 +593,7 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
     domSettingsVersion: 3,
   } : {}),
   ...(indicatorId === "deep-print-footprint" ? {
+    ...DEFAULT_FOOTPRINT_SETTINGS,
     type: "ask-bid",
     mode: "profile",
     inputType: "volume",
@@ -604,15 +619,19 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
     showRatio: false,
     showVolumeClusters: false,
     showBarDelta: true,
+    showBetweenVolume: false,
+    showVwap: false,
     askColor: theme?.upColor ?? "#22C55E",
     bidColor: theme?.downColor ?? "#EF4444",
+    betweenColor: "#A1A1AA",
     neutralColor: theme?.gridColor ?? "#3F3F46",
     textColor: "#F5F5F5",
     pocColor: theme?.borderUpColor ?? theme?.upColor ?? "#FDE047",
     deltaPocColor: theme?.borderDownColor ?? theme?.downColor ?? "#60A5FA",
     clusterColor: "#F59E0B",
     singlePrintColor: "#F4F4F5",
-    footprintSettingsVersion: 1,
+    vwapColor: "#22D3EE",
+    footprintSettingsVersion: FOOTPRINT_SETTINGS_SCHEMA_VERSION,
   } : {}),
   ...(indicatorId === "gamma-levels" ? {
     conversion: "AUTO",
@@ -723,6 +742,19 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
         ...(normalizedInstance.settings ?? {}),
         width: Math.max(440, Number(normalizedInstance.settings?.width ?? 440)),
         domSettingsVersion: 3,
+      },
+    };
+  }
+  if (
+    normalizedInstance.indicatorId === "deep-print-footprint"
+    && Number(normalizedInstance.settings?.footprintSettingsVersion) < FOOTPRINT_SETTINGS_SCHEMA_VERSION
+  ) {
+    normalizedInstance = {
+      ...normalizedInstance,
+      settings: {
+        ...defaultIndicatorSettings("deep-print-footprint"),
+        ...(normalizedInstance.settings ?? {}),
+        footprintSettingsVersion: FOOTPRINT_SETTINGS_SCHEMA_VERSION,
       },
     };
   }

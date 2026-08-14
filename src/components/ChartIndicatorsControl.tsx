@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -29,6 +29,11 @@ import {
   defaultIndicatorSettings,
 } from "@/lib/chartIndicatorConfig";
 import type { ChartSettings } from "@/lib/chartSettings";
+import {
+  applyFootprintPreset,
+  validateFootprintSettings,
+  type FootprintPresetName,
+} from "@/lib/footprintSettings";
 import KwantSelect from "@/components/ui/KwantSelect";
 
 const FAVOURITES_STORAGE_KEY = "kwantdesk-chart-indicator-favourites";
@@ -306,7 +311,7 @@ export default function ChartIndicatorsControl({
               <div>
                 <div className="text-[12px] font-semibold text-foreground">Chart indicators</div>
                 <div className="mt-0.5 flex items-center gap-2 text-[9px] uppercase tracking-[0.12em] text-muted">
-                  <span>{instrument} · {timeframe} · this chart</span>
+                  <span>{instrument} Â· {timeframe} Â· this chart</span>
                   {rithmicStatus === "connected" ? (
                     <span className="rounded-full border border-primary/25 bg-primary/10 px-1.5 py-0.5 text-[7px] font-semibold text-primary">
                       Rithmic L3
@@ -362,7 +367,7 @@ export default function ChartIndicatorsControl({
                         </span>
                         <span className="min-w-0 flex-1">
                           <span className="block truncate text-[10px] font-semibold">{control.label}</span>
-                          <span className="mt-1 block line-clamp-2 text-[8px] leading-3 text-muted">{control.loading ? "Loading latest levels…" : control.description}</span>
+                          <span className="mt-1 block line-clamp-2 text-[8px] leading-3 text-muted">{control.loading ? "Loading latest levelsâ€¦" : control.description}</span>
                         </span>
                       </button>
                     ))}
@@ -396,7 +401,7 @@ export default function ChartIndicatorsControl({
                           {displayName}
                         </div>
                         <div className="mt-0.5 truncate text-[8px] uppercase tracking-[0.12em] text-muted/70">
-                          {definition.category} · live
+                          {definition.category} Â· live
                         </div>
                       </div>
                       <button
@@ -465,7 +470,7 @@ export default function ChartIndicatorsControl({
               </span>
               <div>
                 <div className="text-[15px] font-semibold text-foreground">Indicator library</div>
-                <div className="mt-0.5 text-[9px] uppercase tracking-[0.12em] text-muted">{instrument} · {timeframe}</div>
+                <div className="mt-0.5 text-[9px] uppercase tracking-[0.12em] text-muted">{instrument} Â· {timeframe}</div>
               </div>
               <div className="ml-auto flex w-[360px] items-center gap-2 rounded-xl border border-border bg-surface px-3 focus-within:border-primary/40">
                 <Search className="h-3.5 w-3.5 text-muted" />
@@ -506,7 +511,7 @@ export default function ChartIndicatorsControl({
               </aside>
               <section className="min-w-0 flex-1 overflow-y-auto p-3">
                 <div className="mb-2 px-2 text-[9px] font-medium uppercase tracking-[0.14em] text-muted">
-                  {category} · {filtered.length}
+                  {category} Â· {filtered.length}
                 </div>
                 <div className="space-y-1">
                   {filtered.map((definition) => {
@@ -579,7 +584,7 @@ export default function ChartIndicatorsControl({
             <div className="flex items-center justify-between border-b border-border px-5 py-4">
               <div>
                 <div className="text-[15px] font-semibold text-foreground">{settingsInstance.indicatorId === "source-code-indicator" ? String(settingsInstance.settings?.scriptName ?? settingsDefinition.name) : settingsDefinition.name}</div>
-                <div className="mt-0.5 text-[9px] uppercase tracking-[0.12em] text-muted">{settingsDefinition.category} · live calculation</div>
+                <div className="mt-0.5 text-[9px] uppercase tracking-[0.12em] text-muted">{settingsDefinition.category} Â· live calculation</div>
               </div>
               <button type="button" onClick={() => setSettingsInstanceId(null)} className="flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground">
                 <X className="h-4 w-4" />
@@ -701,8 +706,8 @@ export default function ChartIndicatorsControl({
               {settingsDefinition.id === "expected-move" ? (
                 <div className="grid gap-3 rounded-xl border border-primary/15 bg-primary/[0.035] p-3 sm:grid-cols-2">
                   {[
-                    ["Mode", "mode", [["SESSION", "Session · fixed rails"], ["LIVE", "Live · time-decaying"]]],
-                    ["Options source", "mappingSource", [["QQQ", "QQQ → NQ / MNQ"], ["NDX", "NDX → NQ / MNQ"]]],
+                    ["Mode", "mode", [["SESSION", "Session Â· fixed rails"], ["LIVE", "Live Â· time-decaying"]]],
+                    ["Options source", "mappingSource", [["QQQ", "QQQ â†’ NQ / MNQ"], ["NDX", "NDX â†’ NQ / MNQ"]]],
                   ].map(([label, key, options]) => (
                     <label key={String(key)} className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
                       <span>{String(label)}</span>
@@ -726,9 +731,38 @@ export default function ChartIndicatorsControl({
 
               {settingsDefinition.id === "deep-print-footprint" ? (
                 <div className="grid gap-3 rounded-xl border border-primary/15 bg-primary/[0.035] p-3 sm:grid-cols-2">
+                  <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted sm:col-span-2">
+                    <span>Preset</span>
+                    <KwantSelect
+                      value=""
+                      onChange={(event) => {
+                        const preset = event.target.value as FootprintPresetName;
+                        if (!preset) return;
+                        replace(settingsInstance.instanceId, (current) => ({
+                          ...current,
+                          settings: {
+                            ...(current.settings ?? {}),
+                            ...applyFootprintPreset(validateFootprintSettings(current.settings), preset),
+                          },
+                        }));
+                      }}
+                      className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground"
+                      menuLabel="Footprint preset"
+                    >
+                      <option value="">Choose a preset</option>
+                      <option value="kwantdesk">KwantDesk default</option>
+                      <option value="order-flow">Order flow</option>
+                      <option value="imbalance">Imbalance</option>
+                      <option value="delta">Delta</option>
+                      <option value="minimal">Minimal ladder</option>
+                    </KwantSelect>
+                  </label>
                   {[
-                    ["Cell data", "type", [["ask-bid", "Bid × Ask"], ["volume", "Total volume"], ["delta", "Delta"], ["delta-total", "Delta + total volume"]]],
+                    ["Cell data", "type", [["ask-bid", "Bid Ã— Ask"], ["volume", "Total volume"], ["delta", "Delta"], ["delta-total", "Delta + total volume"]]],
                     ["Render mode", "mode", [["profile", "Profile"], ["box", "Box"]]],
+                    ["Content", "contentMode", [["bid-ask", "Bid Ã— Ask"], ["delta", "Delta"], ["volume", "Volume"], ["volume-delta", "Volume Ã— Delta"], ["trades", "Trades"], ["bid-ask-histogram", "Bid / Ask histogram"], ["volume-histogram", "Volume histogram"], ["delta-histogram", "Delta histogram"], ["ladder", "Minimal ladder"]]],
+                    ["Visualization", "visualizationMode", [["solid", "Solid"], ["heatmap", "Heatmap"], ["histogram", "Histogram"], ["heatmap-histogram", "Heatmap histogram"], ["text-only", "Text only"]]],
+                    ["Scale", "scaleMode", [["visible-region", "Visible region"], ["per-bar", "Per bar"], ["all-loaded", "All loaded"], ["fixed-maximum", "Fixed maximum"]]],
                     ["Input", "inputType", [["volume", "Executed volume"], ["num-trades", "Number of trades"]]],
                     ["Tick grouping", "groupingMode", [["automatic", "Automatic"], ["manual", "Manual"]]],
                     ["Grouping mode", "groupMode", [["fixed", "Fixed"], ["open-close", "Based on open / close"]]],
@@ -736,6 +770,7 @@ export default function ChartIndicatorsControl({
                     ["Background", "colorMode", [["none", "None"], ["fixed", "Fixed"], ["fading", "Fading intensity"]]],
                     ["Colour calculation", "colorCalculation", [["volume", "Volume"], ["delta", "Delta"], ["imbalance", "Imbalance"], ["dominant", "Dominant volume"], ["dominant-delta", "Dominant volume delta"]]],
                     ["Number format", "textFormat", [["automatic", "Automatic"], ["normal", "Full values"], ["thousands", "Thousands (K)"]]],
+                    ["Professional number format", "numberFormat", [["automatic", "Automatic"], ["full", "Full values"], ["compact", "Compact K / M"]]],
                     ["Outer bar", "outsideBarStyle", [["bar", "Full high / low"], ["body", "Open / close body"]]],
                     ["Marker alignment", "markerAlignment", [["center", "Centre"], ["right", "Right edge"]]],
                   ].map(([label, key, options]) => (
@@ -757,7 +792,7 @@ export default function ChartIndicatorsControl({
                     </label>
                   ))}
                   <div className="rounded-lg border border-border bg-background/55 px-3 py-2 text-[9px] leading-4 text-muted sm:col-span-2">
-                    Bid × Ask uses classified executions from the Rithmic / CME tape. Per-bar value area is fixed to the market-standard 70%; it is intentionally not adjustable.
+                    Bid Ã— Ask uses classified executions from the Rithmic / CME tape. Unclassified executions remain in total volume and POC, but never enter Bid, Ask, Delta or imbalance calculations.
                   </div>
                 </div>
               ) : null}
