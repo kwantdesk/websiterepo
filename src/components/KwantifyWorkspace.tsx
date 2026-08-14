@@ -137,7 +137,6 @@ import {
   createGameplanChartOverlay,
   gameplanChartRootForInstrument,
   loadGameplanChartOverlays,
-  removeGameplanChartOverlay,
   saveGameplanChartOverlay,
   type GameplanChartOverlay,
   type GameplanChartOverlayStore,
@@ -3803,9 +3802,12 @@ function WorkspaceChartPane({
       },
     };
   }, [classicGexProfile, currentGammaOverlay]);
+  // Kwant-zone payloads are cached by instrument, but visibility belongs to
+  // the individual workspace pane. Never let a cached payload draw through a
+  // pane whose own toggle is off.
   const gameplanDecorations = useMemo(
-    () => buildGameplanChartDecorations(gameplanOverlay, settings),
-    [gameplanOverlay, settings],
+    () => buildGameplanChartDecorations(kwantLevelsEnabled ? gameplanOverlay : null, settings),
+    [gameplanOverlay, kwantLevelsEnabled, settings],
   );
   const structure = useStructureLevels({
     enabled: pane.broker === "Databento" && (historicalStructureEnabled || levelExportRequested),
@@ -5764,7 +5766,7 @@ function WorkspaceChartPane({
               : ""
           }
           onToggleValueAreaLevels={onToggleValueAreaLevels}
-          onRemoveGameplanOverlay={gameplanOverlay ? onRemoveGameplanOverlay : undefined}
+          onRemoveGameplanOverlay={kwantLevelsEnabled && gameplanOverlay ? onRemoveGameplanOverlay : undefined}
           liveCandleEventKey={pane.id}
           gexBotFlow={gammaInstrument === "NQ" || gammaInstrument === "MNQ" ? gexBotFlow : null}
           onIndicatorPaneHeightChange={setLowerIndicatorHeight}
@@ -10146,10 +10148,9 @@ export default function KwantifyWorkspace({
     }));
   }, []);
 
-  const handleRemoveAllIndicatorsFromChart = useCallback(() => {
-    if (!activePaneIsChart) return;
+  const removeAllIndicatorsFromPane = useCallback((paneId: string) => {
     setChartIndicatorsSuppressed(true);
-    setPaneIndicators((current) => ({ ...current, [activePaneId]: [] }));
+    setPaneIndicators((current) => ({ ...current, [paneId]: [] }));
     setStrategies((current) => {
       const next = current.map((strategy) =>
         strategy.addedToChart
@@ -10165,7 +10166,12 @@ export default function KwantifyWorkspace({
       persistStrategies(next);
       return next;
     });
-  }, [activePaneId, activePaneIsChart]);
+  }, []);
+
+  const handleRemoveAllIndicatorsFromChart = useCallback(() => {
+    if (!activePaneIsChart) return;
+    removeAllIndicatorsFromPane(activePaneId);
+  }, [activePaneId, activePaneIsChart, removeAllIndicatorsFromPane]);
 
   useEffect(() => {
     const handleRemoveAllIndicatorsEvent = () => {
@@ -12207,7 +12213,7 @@ export default function KwantifyWorkspace({
         onActivate={() => activateWorkspacePane(pane.id)}
         onOpenSettings={openChartSettings}
         onCreateAlertAtPrice={openCreateAlert}
-        onRemoveAllIndicators={handleRemoveAllIndicatorsFromChart}
+        onRemoveAllIndicators={() => removeAllIndicatorsFromPane(pane.id)}
         onUpdateIndicatorSetting={(instanceId, key, value) =>
           updatePaneIndicatorSetting(pane.id, instanceId, key, value)}
         onSelectPeriod={(period) => handleChartPeriod(pane.id, period)}
@@ -12234,7 +12240,9 @@ export default function KwantifyWorkspace({
         onToggleValueAreaLevels={() => togglePaneLevelVisibility(pane.id, "valueArea")}
         levelExportRequested={showLevelsExport}
         onGammaExportSnapshot={handleGammaExportSnapshot}
-        gameplanOverlay={gameplanRoot ? gameplanChartOverlays[gameplanRoot] ?? null : null}
+        gameplanOverlay={paneLevelState.kwant && gameplanRoot
+          ? gameplanChartOverlays[gameplanRoot] ?? null
+          : null}
         loadingMessage={activePaneId === pane.id ? chartLoadingMessage : ""}
         onInitialSettled={workspacePanelTransition?.paneId === pane.id
           && isWorkspaceChartKind(workspacePanelTransition.content)
@@ -12244,9 +12252,7 @@ export default function KwantifyWorkspace({
             }
           : undefined}
         onRemoveGameplanOverlay={() => {
-          if (!gameplanRoot) return;
           setPaneLevelVisible(pane.id, "kwant", false);
-          setGameplanChartOverlays(removeGameplanChartOverlay(gameplanRoot));
         }}
         onChartDragStart={(event) => beginWorkspacePaneDrag(pane.id, event)}
       />
