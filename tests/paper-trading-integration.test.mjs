@@ -46,7 +46,7 @@ test("paper orders use the live futures quote and persist through the ledger", (
   assert.match(workspace, /processPaperQuote\(/);
   assert.match(workspace, /savePaperTradingLedger\(paperLedger\)/);
   assert.match(workspace, /onClick=\{tradingUnlocked \? submitPaperOrder/);
-  assert.match(workspace, /onLiveExecutionQuote=\{activePaneId === pane\.id \? handleActiveChartExecutionQuote : undefined\}/);
+  assert.match(workspace, /activePaneId === pane\.id \|\| paperExecutionTrackedSymbols\.has\(normalizePaperSymbol\(pane\.symbol\)\)/);
   assert.match(workspace, /activeChartExecutionQuoteRef\.current/);
   assert.match(workspace, /Waiting for the active chart's live executable price\. No market order was sent\./);
   assert.match(workspace, /bid: activeQuote\.bid, ask: activeQuote\.ask, timestamp: Date\.now\(\)/);
@@ -273,11 +273,14 @@ test("trade panel reports live open P&L and today's realized P&L instead of rece
   assert.match(engine, /export function dailyRealizedPaperPnl/);
   assert.match(engine, /fill\.role === "entry"/);
   assert.match(engine, /paperPnlDayKey\(fill\.timestamp\)/);
-  assert.match(workspace, /selectedPaperOpenPnl = selectedPaperSummary\?\.unrealizedPnl/);
+  assert.doesNotMatch(workspace, /selectedPaperOpenPnl = selectedPaperSummary\?\.unrealizedPnl/);
   assert.match(workspace, /selectedPaperDailyPnl = dailyRealizedPaperPnl/);
   assert.match(workspace, /Open P&amp;L/);
   assert.match(workspace, /Daily P&amp;L/);
   assert.match(workspace, /publishLiveExecutionQuote\(quote\)/);
+  assert.match(workspace, /liveExecutionQuotesBySymbol\.set\(normalizePaperSymbol\(quote\.symbol\), quote\)/);
+  assert.match(workspace, /position\.side === "buy" \? quote\.bid : quote\.ask/);
+  assert.match(workspace, /paperExecutionTrackedSymbols\.has\(normalizePaperSymbol\(pane\.symbol\)\)/);
   assert.match(workspace, /function LivePaperPositionPnl/);
   assert.match(workspace, /function LivePaperOpenPnl/);
   assert.match(workspace, /<LivePaperOpenPnl positions=\{selectedPaperOpenPositions\} \/>/);

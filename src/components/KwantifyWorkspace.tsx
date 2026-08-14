@@ -480,12 +480,12 @@ type ChartExecutionQuote = {
   timestamp: number;
 };
 
-let liveExecutionQuoteSnapshot: ChartExecutionQuote | null = null;
+const liveExecutionQuotesBySymbol = new Map<string, ChartExecutionQuote>();
 const liveExecutionQuoteSubscribers = new Set<() => void>();
 let liveExecutionQuoteNotifyFrame: number | null = null;
 
 function publishLiveExecutionQuote(quote: ChartExecutionQuote) {
-  liveExecutionQuoteSnapshot = quote;
+  liveExecutionQuotesBySymbol.set(normalizePaperSymbol(quote.symbol), quote);
   if (liveExecutionQuoteNotifyFrame !== null) return;
   liveExecutionQuoteNotifyFrame = window.requestAnimationFrame(() => {
     liveExecutionQuoteNotifyFrame = null;
@@ -501,34 +501,41 @@ function subscribeLiveExecutionQuote(notify: () => void) {
   };
 }
 
-function useLiveExecutionQuote() {
-  const [quote, setQuote] = useState(liveExecutionQuoteSnapshot);
-  useEffect(() => subscribeLiveExecutionQuote(() => setQuote(liveExecutionQuoteSnapshot)), []);
-  return quote;
+function useLiveExecutionQuoteFeed() {
+  const [, setVersion] = useState(0);
+  useEffect(() => subscribeLiveExecutionQuote(() => setVersion((version) => version + 1)), []);
+  return liveExecutionQuotesBySymbol;
 }
 
-function livePaperPositionMark(position: PaperPosition, quote: ChartExecutionQuote | null) {
+function livePaperPositionMark(
+  position: PaperPosition,
+  quotesBySymbol: ReadonlyMap<string, ChartExecutionQuote>,
+) {
+  const quote = quotesBySymbol.get(normalizePaperSymbol(position.symbol)) ?? null;
   if (
     quote
     && Date.now() - quote.timestamp <= 5_000
     && normalizePaperSymbol(quote.symbol) === normalizePaperSymbol(position.symbol)
-  ) return quote.mid;
+  ) return position.side === "buy" ? quote.bid : quote.ask;
   return position.markPrice;
 }
 
-function livePaperPositionPnl(position: PaperPosition, quote: ChartExecutionQuote | null) {
+function livePaperPositionPnl(
+  position: PaperPosition,
+  quotesBySymbol: ReadonlyMap<string, ChartExecutionQuote>,
+) {
   return paperProjectedPnl(
     position.symbol,
     position.side,
     position.entryPrice,
-    livePaperPositionMark(position, quote),
+    livePaperPositionMark(position, quotesBySymbol),
     position.remainingQuantity,
   );
 }
 
 function LivePaperPositionPnl({ position }: { position: PaperPosition }) {
-  const quote = useLiveExecutionQuote();
-  const pnl = livePaperPositionPnl(position, quote);
+  const quotesBySymbol = useLiveExecutionQuoteFeed();
+  const pnl = livePaperPositionPnl(position, quotesBySymbol);
   return (
     <span className={`font-mono text-[11px] tabular-nums ${pnl >= 0 ? "text-primary" : "text-danger"}`}>
       {pnl > 0 ? "+" : pnl < 0 ? "-" : ""}{formatDollar(pnl)}
@@ -537,13 +544,13 @@ function LivePaperPositionPnl({ position }: { position: PaperPosition }) {
 }
 
 function LivePaperPositionMark({ position }: { position: PaperPosition }) {
-  const quote = useLiveExecutionQuote();
-  return <span>Mark {formatPrice(livePaperPositionMark(position, quote), position.symbol)}</span>;
+  const quotesBySymbol = useLiveExecutionQuoteFeed();
+  return <span>Mark {formatPrice(livePaperPositionMark(position, quotesBySymbol), position.symbol)}</span>;
 }
 
 function LivePaperOpenPnl({ positions }: { positions: PaperPosition[] }) {
-  const quote = useLiveExecutionQuote();
-  const pnl = positions.reduce((sum, position) => sum + livePaperPositionPnl(position, quote), 0);
+  const quotesBySymbol = useLiveExecutionQuoteFeed();
+  const pnl = positions.reduce((sum, position) => sum + livePaperPositionPnl(position, quotesBySymbol), 0);
   return (
     <span className={`font-mono text-[13px] font-semibold tabular-nums ${pnl > 0 ? "text-primary" : pnl < 0 ? "text-danger" : "text-foreground"}`}>
       {pnl > 0 ? "+" : pnl < 0 ? "-" : ""}{formatDollar(pnl)}
@@ -6818,9 +6825,10 @@ export default function KwantifyWorkspace({
     syncPaperLedgerUi(true);
   }, [syncPaperLedgerUi]);
   const handleActiveChartExecutionQuote = useCallback((quote: ChartExecutionQuote) => {
-    activeChartExecutionQuoteRef.current = quote;
+    const quoteBelongsToActivePane = quote.paneId === activePaneId;
+    if (quoteBelongsToActivePane) activeChartExecutionQuoteRef.current = quote;
     publishLiveExecutionQuote(quote);
-    if (quote.mid > 0) liveGexCalibrationPriceRef.current = quote.mid;
+    if (quoteBelongsToActivePane && quote.mid > 0) liveGexCalibrationPriceRef.current = quote.mid;
     const currentLedger = paperLedgerRef.current;
     const nextLedger = processPaperQuote(
       currentLedger,
@@ -6845,7 +6853,7 @@ export default function KwantifyWorkspace({
     // React state is only required while an order surface is visible. Updating
     // this giant workspace shell for every price frame was the main source of
     // multi-panel input stalls.
-    if (!showTradesMenu && rightPanel !== "order") return;
+    if (!quoteBelongsToActivePane || (!showTradesMenu && rightPanel !== "order")) return;
     const now = Date.now();
     const previous = activeChartExecutionQuoteUiRef.current;
     if (
@@ -6857,7 +6865,7 @@ export default function KwantifyWorkspace({
       activeChartExecutionQuoteUiRef.current = quote;
       setActiveChartExecutionQuote(quote);
     }
-  }, [paperTradingAccounts, rightPanel, showTradesMenu, syncPaperLedgerUi]);
+  }, [activePaneId, paperTradingAccounts, rightPanel, showTradesMenu, syncPaperLedgerUi]);
   const [hiddenPaperFillMarkers, setHiddenPaperFillMarkers] = useState<Record<string, string[]>>(() => {
     if (typeof window === "undefined") return {};
     try {
@@ -7684,7 +7692,18 @@ export default function KwantifyWorkspace({
   );
   const selectedPaperOpenPositions = selectedPaperAccountLedger?.positions.filter((position) => position.status === "open") ?? [];
   const selectedPaperWorkingOrders = selectedPaperAccountLedger?.orders.filter((order) => order.status === "working") ?? [];
-  const selectedPaperOpenPnl = selectedPaperSummary?.unrealizedPnl ?? 0;
+  const paperExecutionTrackedSymbols = useMemo(() => {
+    const symbols = new Set<string>();
+    Object.values(paperLedger.accounts).forEach((account) => {
+      account.positions.forEach((position) => {
+        if (position.status === "open") symbols.add(normalizePaperSymbol(position.symbol));
+      });
+      account.orders.forEach((order) => {
+        if (order.status === "working") symbols.add(normalizePaperSymbol(order.symbol));
+      });
+    });
+    return symbols;
+  }, [paperLedger]);
   const selectedPaperDailyPnl = dailyRealizedPaperPnl(selectedPaperAccountLedger);
   const orderPanelLockTone =
     activeBrokerHealth.state === "broken"
@@ -12859,7 +12878,11 @@ export default function KwantifyWorkspace({
         onClosePaperPosition={handleFlattenPaperPosition}
         onRemovePaperFills={handleRemovePaperFillMarkers}
         onResetPaperTrading={selectedPaperTradingAccount ? handleResetPaperTrading : undefined}
-        onLiveExecutionQuote={activePaneId === pane.id ? handleActiveChartExecutionQuote : undefined}
+        onLiveExecutionQuote={
+          activePaneId === pane.id || paperExecutionTrackedSymbols.has(normalizePaperSymbol(pane.symbol))
+            ? handleActiveChartExecutionQuote
+            : undefined
+        }
         onActivate={() => activateWorkspacePane(pane.id)}
         onOpenSettings={openChartSettings}
         onCreateAlertAtPrice={openCreateAlert}

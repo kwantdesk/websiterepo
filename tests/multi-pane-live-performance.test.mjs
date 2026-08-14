@@ -64,8 +64,8 @@ test("a live candle frame clones history once while every tick still reaches exe
 });
 
 test("exchange quotes do not continuously reconcile the full workspace shell", () => {
-  assert.match(workspace, /if \(!showTradesMenu && rightPanel !== "order"\) return/);
-  assert.match(workspace, /if \(quote\.mid > 0\) liveGexCalibrationPriceRef\.current = quote\.mid/);
+  assert.match(workspace, /if \(!quoteBelongsToActivePane \|\| \(!showTradesMenu && rightPanel !== "order"\)\) return/);
+  assert.match(workspace, /if \(quoteBelongsToActivePane && quote\.mid > 0\) liveGexCalibrationPriceRef\.current = quote\.mid/);
   assert.match(workspace, /watchlistRef\.current = next/);
   assert.match(workspace, /now - watchlistReactSyncAtRef\.current < 15_000/);
   assert.doesNotMatch(workspace, /setWatchlist\(\(current\) => \{[\s\S]{0,120}updates\.get/);
