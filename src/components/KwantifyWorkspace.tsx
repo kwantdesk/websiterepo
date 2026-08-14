@@ -460,6 +460,15 @@ type LiveFeedPrice = {
   cached?: boolean;
 };
 
+type ChartExecutionQuote = {
+  paneId: string;
+  symbol: string;
+  bid: number;
+  ask: number;
+  mid: number;
+  timestamp: number;
+};
+
 const liveWatchlistSnapshots = new Map<string, LiveWatchlistSnapshot>();
 const liveWatchlistSubscribers = new Map<string, Set<() => void>>();
 const liveWatchlistNotifyTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -3734,6 +3743,7 @@ function WorkspaceChartPane({
   onUpdatePaperProtection,
   onClosePaperPosition,
   onRemovePaperFills,
+  onLiveExecutionQuote,
 }: {
   pane: WorkspacePane;
   active: boolean;
@@ -3780,6 +3790,7 @@ function WorkspaceChartPane({
   ) => void;
   onClosePaperPosition?: (position: PaperPosition) => void;
   onRemovePaperFills?: (fillIds: string[]) => void;
+  onLiveExecutionQuote?: (quote: ChartExecutionQuote) => void;
 }) {
   const gammaInstrument = displayCmeSymbol(pane.symbol);
   const [candles, setCandles] = useState<Candle[]>([]);
@@ -5314,6 +5325,28 @@ function WorkspaceChartPane({
         contractSymbol: price.contractSymbol ?? latestFuturesRef.current.contractSymbol,
         tickSize: futuresTickSize(pane.symbol),
       };
+      if (onLiveExecutionQuote) {
+        const tickSize = futuresTickSize(pane.symbol);
+        const mid = snapPaperPrice(pane.symbol, Number(price.mid));
+        const rawBid = Number(price.bid);
+        const rawAsk = Number(price.ask);
+        const bookIsCoherent = Number.isFinite(rawBid)
+          && Number.isFinite(rawAsk)
+          && rawBid > 0
+          && rawAsk > 0
+          && rawBid <= rawAsk
+          && rawBid <= mid + tickSize
+          && rawAsk >= mid - tickSize
+          && rawAsk - rawBid <= tickSize * 8;
+        onLiveExecutionQuote({
+          paneId: pane.id,
+          symbol: pane.symbol,
+          bid: bookIsCoherent ? snapPaperPrice(pane.symbol, rawBid) : mid,
+          ask: bookIsCoherent ? snapPaperPrice(pane.symbol, rawAsk) : mid,
+          mid,
+          timestamp: tickTimestamp,
+        });
+      }
       pendingLiveTicksRef.current.push({
         mid: price.mid,
         timestamp: tickTimestamp,
@@ -5477,7 +5510,7 @@ function WorkspaceChartPane({
       stream.close();
       clearPendingFrame();
     };
-  }, [markMarketActive, needsOrderFlowHistory, pane.broker, pane.symbol, pane.timeframe, streamReconnectNonce]);
+  }, [markMarketActive, needsOrderFlowHistory, onLiveExecutionQuote, pane.broker, pane.id, pane.symbol, pane.timeframe, streamReconnectNonce]);
 
   useEffect(() => {
     const usingMassivePaneFeed = pane.broker === "Massive" || isMassiveFuturesSymbol(pane.symbol);
@@ -6591,6 +6624,24 @@ export default function KwantifyWorkspace({
     typeof window === "undefined" ? "" : window.localStorage.getItem("kwantify-selected-paper-account") ?? "");
   const [paperLedger, setPaperLedger] = useState<PaperTradingLedger>(() =>
     typeof window === "undefined" ? emptyPaperTradingLedger() : loadPaperTradingLedger());
+  const [activeChartExecutionQuote, setActiveChartExecutionQuote] = useState<ChartExecutionQuote | null>(null);
+  const activeChartExecutionQuoteRef = useRef<ChartExecutionQuote | null>(null);
+  const activeChartExecutionQuoteUiRef = useRef<ChartExecutionQuote | null>(null);
+  const activeChartExecutionQuoteUiAtRef = useRef(0);
+  const handleActiveChartExecutionQuote = useCallback((quote: ChartExecutionQuote) => {
+    activeChartExecutionQuoteRef.current = quote;
+    const now = Date.now();
+    const previous = activeChartExecutionQuoteUiRef.current;
+    if (
+      previous?.paneId !== quote.paneId
+      || previous?.symbol !== quote.symbol
+      || now - activeChartExecutionQuoteUiAtRef.current >= 250
+    ) {
+      activeChartExecutionQuoteUiAtRef.current = now;
+      activeChartExecutionQuoteUiRef.current = quote;
+      setActiveChartExecutionQuote(quote);
+    }
+  }, []);
   const [hiddenPaperFillMarkers, setHiddenPaperFillMarkers] = useState<Record<string, string[]>>(() => {
     if (typeof window === "undefined") return {};
     try {
@@ -7001,10 +7052,16 @@ export default function KwantifyWorkspace({
   const selectedWatchlistItem = watchlist.find((item) => item.symbol === selectedInstrument && item.broker === activeChartBrokerLabel);
   const fallbackDetail = getStaticWatchlistDetail(selectedInstrument, activeChartBrokerLabel, watchlistDetails);
   const fallbackMidPrice = fallbackDetail ? Number(fallbackDetail.price.replace(/,/g, "")) || 0 : 0;
-  const selectedMidPrice = selectedWatchlistItem?.mid ?? fallbackMidPrice;
+  const selectedChartExecutionQuote = activeChartExecutionQuote
+    && activeChartExecutionQuote.paneId === activePaneId
+    && normalizePaperSymbol(activeChartExecutionQuote.symbol) === normalizePaperSymbol(selectedInstrument)
+    && Date.now() - activeChartExecutionQuote.timestamp <= 5_000
+      ? activeChartExecutionQuote
+      : null;
+  const selectedMidPrice = selectedChartExecutionQuote?.mid ?? selectedWatchlistItem?.mid ?? fallbackMidPrice;
   const currentLivePrice = {
-    bid: selectedWatchlistItem?.bid ?? selectedMidPrice,
-    ask: selectedWatchlistItem?.ask ?? selectedMidPrice,
+    bid: selectedChartExecutionQuote?.bid ?? selectedWatchlistItem?.bid ?? selectedMidPrice,
+    ask: selectedChartExecutionQuote?.ask ?? selectedWatchlistItem?.ask ?? selectedMidPrice,
     mid: selectedMidPrice,
   };
   liveGexCalibrationPriceRef.current = currentLivePrice.mid > 0 ? currentLivePrice.mid : null;
@@ -11989,7 +12046,24 @@ export default function KwantifyWorkspace({
       showPaperOrderMessage("error", "Create or select a sim account first.");
       return;
     }
-    const quote = { bid: currentLivePrice.bid, ask: currentLivePrice.ask, timestamp: Date.now() };
+    const activeQuote = activeChartExecutionQuoteRef.current;
+    const activeChartQuoteIsExecutable = activeQuote
+      && activeQuote.paneId === activePaneId
+      && normalizePaperSymbol(activeQuote.symbol) === normalizePaperSymbol(selectedInstrument)
+      && Date.now() - activeQuote.timestamp <= 5_000
+      && activeQuote.bid > 0
+      && activeQuote.ask > 0;
+    if (orderType === "market" && !activeChartQuoteIsExecutable) {
+      showPaperOrderMessage("error", "Waiting for the active chart's live executable price. No market order was sent.");
+      return;
+    }
+    const quote = activeChartQuoteIsExecutable
+      ? { bid: activeQuote.bid, ask: activeQuote.ask, timestamp: Date.now() }
+      : resolvePaperExecutionQuote(selectedInstrument);
+    if (!quote) {
+      showPaperOrderMessage("error", "A live executable price is required before placing this order.");
+      return;
+    }
     const entryPrice = orderType === "market"
       ? orderSide === "buy" ? quote.ask : quote.bid
       : Number(orderPrice || selectedMidPrice);
@@ -12041,6 +12115,17 @@ export default function KwantifyWorkspace({
 
   const resolvePaperExecutionQuote = (symbol: string) => {
     const normalized = normalizePaperSymbol(symbol);
+    const activeQuote = activeChartExecutionQuoteRef.current;
+    if (
+      activeQuote
+      && activeQuote.paneId === activePaneId
+      && normalizePaperSymbol(activeQuote.symbol) === normalized
+      && Date.now() - activeQuote.timestamp <= 5_000
+      && activeQuote.bid > 0
+      && activeQuote.ask > 0
+    ) {
+      return { bid: activeQuote.bid, ask: activeQuote.ask, timestamp: Date.now() };
+    }
     if (normalized === normalizePaperSymbol(selectedInstrument) && currentLivePrice.bid > 0 && currentLivePrice.ask > 0) {
       return { bid: currentLivePrice.bid, ask: currentLivePrice.ask, timestamp: Date.now() };
     }
@@ -12358,6 +12443,7 @@ export default function KwantifyWorkspace({
         onUpdatePaperProtection={handlePaperProtectionUpdate}
         onClosePaperPosition={handleFlattenPaperPosition}
         onRemovePaperFills={handleRemovePaperFillMarkers}
+        onLiveExecutionQuote={activePaneId === pane.id ? handleActiveChartExecutionQuote : undefined}
         onActivate={() => activateWorkspacePane(pane.id)}
         onOpenSettings={openChartSettings}
         onCreateAlertAtPrice={openCreateAlert}

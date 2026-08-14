@@ -24,9 +24,20 @@ test("paper orders use the live futures quote and persist through the ledger", (
   assert.match(workspace, /processPaperQuote\(/);
   assert.match(workspace, /savePaperTradingLedger\(paperLedger\)/);
   assert.match(workspace, /onClick=\{tradingUnlocked \? submitPaperOrder/);
+  assert.match(workspace, /onLiveExecutionQuote=\{activePaneId === pane\.id \? handleActiveChartExecutionQuote : undefined\}/);
+  assert.match(workspace, /activeChartExecutionQuoteRef\.current/);
+  assert.match(workspace, /Waiting for the active chart's live executable price\. No market order was sent\./);
+  assert.match(workspace, /bid: activeQuote\.bid, ask: activeQuote\.ask, timestamp: Date\.now\(\)/);
   assert.match(engine, /workingOrderFillPrice/);
   assert.match(engine, /Math\.min\(order\.price, executablePrice\)/);
   assert.match(engine, /Math\.max\(order\.price, executablePrice\)/);
+});
+
+test("the chart execution bridge rejects incoherent books instead of filling away from visible price", () => {
+  assert.match(workspace, /const bookIsCoherent = Number\.isFinite\(rawBid\)/);
+  assert.match(workspace, /rawAsk - rawBid <= tickSize \* 8/);
+  assert.match(workspace, /bid: bookIsCoherent \? snapPaperPrice\(pane\.symbol, rawBid\) : mid/);
+  assert.match(workspace, /ask: bookIsCoherent \? snapPaperPrice\(pane\.symbol, rawAsk\) : mid/);
 });
 
 test("futures contract sizing covers the principal CME products", () => {
