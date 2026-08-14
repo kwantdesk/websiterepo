@@ -25,6 +25,7 @@ import {
 import {
   INDICATOR_NUMERIC_SETTINGS,
   LIVE_CHART_INDICATOR_IDS,
+  VOLUME_PROFILE_INDICATOR_IDS,
   defaultIndicatorSettings,
 } from "@/lib/chartIndicatorConfig";
 import type { ChartSettings } from "@/lib/chartSettings";
@@ -598,6 +599,72 @@ export default function ChartIndicatorsControl({
                   <span className={`absolute top-1 h-4 w-4 rounded-full bg-white transition-all ${settingsInstance.enabled ? "left-6" : "left-1"}`} />
                 </button>
               </label>
+
+              {VOLUME_PROFILE_INDICATOR_IDS.has(settingsDefinition.id)
+                && settingsDefinition.id !== "custom-draw-on-volume-profile" ? (
+                <div className="space-y-3 rounded-xl border border-primary/15 bg-primary/[0.035] p-3">
+                  <div className="flex items-center justify-between gap-4">
+                    <span>
+                      <span className="block text-[11px] font-medium text-foreground">Fix profile to chart edge</span>
+                      <span className="mt-0.5 block text-[9px] leading-4 text-muted">
+                        Keep the active profile visible after its session anchor leaves the viewport.
+                      </span>
+                    </span>
+                    <button
+                      type="button"
+                      aria-label="Fix volume profile to chart edge"
+                      aria-pressed={String(settingsInstance.settings?.snapMode ?? "left") !== "off"}
+                      onClick={() => replace(settingsInstance.instanceId, (current) => {
+                        const snapMode = String(current.settings?.snapMode ?? "left");
+                        return {
+                          ...current,
+                          settings: {
+                            ...(current.settings ?? {}),
+                            snapMode: snapMode === "off" ? "left" : "off",
+                          },
+                        };
+                      })}
+                      className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
+                        String(settingsInstance.settings?.snapMode ?? "left") !== "off"
+                          ? "bg-primary"
+                          : "bg-surface"
+                      }`}
+                    >
+                      <span className={`absolute top-1 h-4 w-4 rounded-full bg-white transition-all ${
+                        String(settingsInstance.settings?.snapMode ?? "left") !== "off" ? "left-6" : "left-1"
+                      }`} />
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2" role="group" aria-label="Volume profile edge">
+                    {(["left", "right"] as const).map((side) => {
+                      const snapMode = String(settingsInstance.settings?.snapMode ?? "left");
+                      const enabled = snapMode !== "off";
+                      const selected = snapMode === side;
+                      return (
+                        <button
+                          key={side}
+                          type="button"
+                          disabled={!enabled}
+                          onClick={() => replace(settingsInstance.instanceId, (current) => ({
+                            ...current,
+                            settings: { ...(current.settings ?? {}), snapMode: side },
+                          }))}
+                          className={`h-9 rounded-lg border text-[10px] font-medium transition-colors ${
+                            selected
+                              ? "border-primary/45 bg-primary/12 text-primary"
+                              : "border-border bg-background text-muted hover:border-primary/25 hover:text-foreground"
+                          } ${enabled ? "" : "cursor-not-allowed opacity-35"}`}
+                        >
+                          {side === "left" ? "Left edge" : "Right edge"}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p className="text-[8px] leading-4 text-muted">
+                    Off leaves every profile at its true historical session position. Left keeps the latest profile on the left once you scroll beyond it; Right docks the latest profile to the right.
+                  </p>
+                </div>
+              ) : null}
 
               {settingsDefinition.id === "classic-gex-profile" ? (
                 <div className="grid gap-3 rounded-xl border border-primary/15 bg-primary/[0.035] p-3 sm:grid-cols-2">

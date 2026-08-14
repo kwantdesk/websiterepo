@@ -5702,9 +5702,7 @@ export default function Chart({
           automaticGrouping: profileSettings.groupingMode !== "manual",
           autoGroupFactor: clamp(Number(profileSettings.autoGroupFactor ?? 1), 0.5, 4),
           valueAreaPercent: STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT,
-          snapMode: profile.period === "daily" && requestedSnapMode === "right"
-            ? "off"
-            : requestedSnapMode,
+          snapMode: requestedSnapMode,
         },
       }];
     });

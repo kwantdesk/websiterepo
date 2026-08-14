@@ -678,7 +678,7 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
         ? "delta"
         : "delta-volume",
     groupingMode: "automatic",
-    snapMode: indicatorId === "weekly-volume-profile" ? "left" : "off",
+    snapMode: indicatorId === "custom-draw-on-volume-profile" ? "off" : "left",
     useThemeColors: true,
     showText: false,
     showValueArea: true,
@@ -692,7 +692,7 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
     showVwapLine: false,
     showVwapBands: false,
     showSummary: false,
-    profileSettingsVersion: 5,
+    profileSettingsVersion: 6,
     align: ["daily-volume-profile", "kwant-profile"].includes(indicatorId)
       ? "session"
       : indicatorId === "weekly-volume-profile" ? "left" : "right",
@@ -740,7 +740,7 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
   }
   if (
     ["daily-volume-profile", "kwant-profile"].includes(normalizedInstance.indicatorId)
-    && Number(normalizedInstance.settings?.profileSettingsVersion) < 5
+    && Number(normalizedInstance.settings?.profileSettingsVersion) < 6
   ) {
     return {
       ...normalizedInstance,
@@ -756,9 +756,26 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
         showSummary: false,
         showDelta: true,
         showProfileSpine: true,
+        snapMode: normalizedInstance.settings?.snapMode === "right" ? "right" : "left",
         profileWidth: normalizedInstance.indicatorId === "kwant-profile" ? 24 : 9,
         opacity: normalizedInstance.indicatorId === "kwant-profile" ? 72 : 68,
-        profileSettingsVersion: 5,
+        profileSettingsVersion: 6,
+      },
+    };
+  }
+  if (
+    ["weekly-volume-profile", "custom-draw-on-volume-profile", "ask-bid-volume-profile", "delta-profile"]
+      .includes(normalizedInstance.indicatorId)
+    && Number(normalizedInstance.settings?.profileSettingsVersion) < 6
+  ) {
+    return {
+      ...normalizedInstance,
+      settings: {
+        ...(normalizedInstance.settings ?? {}),
+        snapMode: normalizedInstance.indicatorId === "custom-draw-on-volume-profile"
+          ? "off"
+          : normalizedInstance.settings?.snapMode === "right" ? "right" : "left",
+        profileSettingsVersion: 6,
       },
     };
   }

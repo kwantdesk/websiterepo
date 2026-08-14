@@ -153,8 +153,15 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
       context.rect(0, 0, mediaSize.width, mediaSize.height);
       context.clip();
 
-      const weeklyProfileOccupiesLeftEdge = this.models.some(({ profile, style }) =>
-        profile.period === "weekly" && style.snapMode === "left");
+      const weeklyProfileOccupiesLeftEdge = this.models.some((model) => {
+        const { profile, style } = model;
+        if (profile.period !== "weekly" || style.snapMode !== "left") return false;
+        const anchorX = this.timeToCoordinate(
+          model,
+          model.drawingBounds?.startTime ?? profile.startMs / 1_000,
+        );
+        return anchorX != null && anchorX < 2;
+      });
       const latestDailyEndMs = this.models.reduce((latestEndMs, model) => {
         const { profile } = model;
         if (profile.period !== "daily") return latestEndMs;
@@ -195,12 +202,17 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
         const autoPinnedDailyLeft = profile.period === "daily"
           && sessionAnchorX < 2
           && profile.endMs === latestDailyEndMs;
-        const pinnedDailyLeft = profile.period === "daily" && autoPinnedDailyLeft;
+        const latestDailyProfile = profile.period === "daily"
+          && profile.endMs === latestDailyEndMs;
+        const pinnedDailyLeft = profile.period === "daily"
+          && latestDailyProfile
+          && style.snapMode === "left"
+          && autoPinnedDailyLeft;
         if (pinnedDailyLeft && weeklyProfileOccupiesLeftEdge) continue;
-        const pinnedRight = profile.period !== "daily" && style.snapMode === "right";
+        const pinnedRight = style.snapMode === "right"
+          && (profile.period !== "daily" || latestDailyProfile);
         const pinnedLeft = style.snapMode === "left"
-          ? profile.period !== "daily" || autoPinnedDailyLeft
-          : pinnedDailyLeft;
+          && (profile.period === "daily" ? autoPinnedDailyLeft : sessionAnchorX < 2);
         const pinned = pinnedLeft || pinnedRight;
         const rawAnchorX = customProfile
           ? (customLeft + customRight) / 2
