@@ -388,7 +388,9 @@ export class TpoProfilePrimitive implements ISeriesPrimitive<Time> {
             feature.kind === "peak" ? "PEAK" : "VALLEY",
           );
         });
-        if ((settings.showDevelopingPoc || settings.pocLineMode === "developing" || settings.pocLineMode === "extend-shifted") && profile.developingPoc.length > 1) {
+        if (settings.showPoc
+          && (settings.showDevelopingPoc || settings.pocLineMode === "developing" || settings.pocLineMode === "extend-shifted")
+          && profile.developingPoc.length > 1) {
           context.globalAlpha = settings.pocLineMode === "extend-shifted" ? settings.pocGroupingOpacity / 100 : 0.8;
           context.strokeStyle = settings.inheritThemeColours ? theme.poc : settings.pocColor;
           context.lineWidth = 1;

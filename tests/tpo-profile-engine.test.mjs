@@ -72,6 +72,14 @@ test("TPO and Weekly TPO are registered beside Daily Profile without replacing T
   assert.match(catalog, /indicator\("TPO Levels",\s*"Volume & Profiles"/);
 });
 
+test("weekly custom dates activate custom-range calculation and POC visibility owns every POC line", async () => {
+  const controls = await readFile(path.join(root, "src/components/ChartIndicatorsControl.tsx"), "utf8");
+  const primitive = await readFile(path.join(root, "src/lib/tpo/primitive.ts"), "utf8");
+  assert.match(controls, /scheduleKind:\s*"custom-range",\s*periodMode:\s*"custom-range",\s*customStartMs:/);
+  assert.match(controls, /scheduleKind:\s*"custom-range",\s*periodMode:\s*"custom-range",\s*customEndFollowsLatest:\s*false,\s*customEndMs:/);
+  assert.match(primitive, /if \(settings\.showPoc\s*&&\s*\(settings\.showDevelopingPoc/);
+});
+
 test("visual TPO settings repaint without invalidating the calculated profile", () => {
   const base = settings.defaultTpoSettings("daily-tpo");
   const visualEdit = {

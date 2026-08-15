@@ -1362,7 +1362,12 @@ export default function ChartIndicatorsControl({
                         value={settingsInstance.settings?.customStartMs ? new Date(Number(settingsInstance.settings.customStartMs)).toISOString().slice(0, 16) : ""}
                         onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
                           ...current,
-                          settings: { ...(current.settings ?? {}), customStartMs: event.target.value ? Date.parse(`${event.target.value}:00Z`) : 0 },
+                          settings: {
+                            ...(current.settings ?? {}),
+                            scheduleKind: "custom-range",
+                            periodMode: "custom-range",
+                            customStartMs: event.target.value ? Date.parse(`${event.target.value}:00Z`) : 0,
+                          },
                         }))}
                         className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground outline-none focus:border-primary/40"
                       />
@@ -1374,7 +1379,13 @@ export default function ChartIndicatorsControl({
                         value={settingsInstance.settings?.customEndMs ? new Date(Number(settingsInstance.settings.customEndMs)).toISOString().slice(0, 16) : ""}
                         onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
                           ...current,
-                          settings: { ...(current.settings ?? {}), customEndMs: event.target.value ? Date.parse(`${event.target.value}:00Z`) : 0 },
+                          settings: {
+                            ...(current.settings ?? {}),
+                            scheduleKind: "custom-range",
+                            periodMode: "custom-range",
+                            customEndFollowsLatest: false,
+                            customEndMs: event.target.value ? Date.parse(`${event.target.value}:00Z`) : 0,
+                          },
                         }))}
                         className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground outline-none focus:border-primary/40"
                       />
