@@ -2784,6 +2784,20 @@ export default function Chart({
         ["volume", "delta", "imbalance", "dominant", "dominant-delta"],
         "imbalance",
       ),
+      showPerBarVolumeProfile: footprintSettings.showPerBarVolumeProfile === true,
+      showPerBarDeltaProfile: footprintSettings.showPerBarDeltaProfile === true,
+      perBarProfileScaleMode: option(
+        footprintSettings.perBarProfileScaleMode,
+        ["independent", "shared"],
+        "independent",
+      ),
+      perBarProfileWidthPercent: clamp(Number(footprintSettings.perBarProfileWidthPercent ?? 92), 10, 100),
+      perBarProfileGap: clamp(Number(footprintSettings.perBarProfileGap ?? 2), 0, 12),
+      perBarProfileExtraSpacing: clamp(Number(footprintSettings.perBarProfileExtraSpacing ?? 18), 0, 48),
+      perBarProfileOpacity: clamp(Number(footprintSettings.perBarProfileOpacity ?? 58) / 100, 0.05, 1),
+      showPerBarProfilePoc: footprintSettings.showPerBarProfilePoc !== false,
+      perBarProfilePocSize: clamp(Number(footprintSettings.perBarProfilePocSize ?? 5), 2, 12),
+      perBarProfileOutline: footprintSettings.perBarProfileOutline === true,
       barWidth: clamp(Number(footprintSettings.barWidth ?? 92), 28, 180),
       candleSpacing: clamp(Number(footprintSettings.candleSpacing ?? 6), 1, 24),
       borderWidth: clamp(Number(footprintSettings.borderWidth ?? 1), 0.5, 4),
@@ -2852,6 +2866,18 @@ export default function Chart({
       stackedBidColor: useThemeColors ? settings.downColor : String(footprintSettings.stackedBidColor ?? settings.downColor),
       unfinishedAuctionColor: String(footprintSettings.unfinishedAuctionColor ?? "#E4BF5A"),
       vwapColor: String(footprintSettings.vwapColor ?? "#22D3EE"),
+      perBarVolumeColor: useThemeColors
+        ? settings.upColor
+        : String(footprintSettings.perBarVolumeColor ?? settings.upColor),
+      perBarPositiveDeltaColor: useThemeColors
+        ? settings.upColor
+        : String(footprintSettings.perBarPositiveDeltaColor ?? settings.upColor),
+      perBarNegativeDeltaColor: useThemeColors
+        ? settings.downColor
+        : String(footprintSettings.perBarNegativeDeltaColor ?? settings.downColor),
+      perBarProfilePocColor: useThemeColors
+        ? settings.borderUpColor
+        : String(footprintSettings.perBarProfilePocColor ?? settings.borderUpColor),
       backgroundColor: settings.backgroundColor,
     };
   }, [footprintSettings, settings]);
@@ -2887,16 +2913,21 @@ export default function Chart({
     });
 
     if (footprintIndicator) {
+      const renderedBarSpacing = footprintPrimitiveOptions.barWidth + (
+        footprintPrimitiveOptions.showPerBarVolumeProfile || footprintPrimitiveOptions.showPerBarDeltaProfile
+          ? footprintPrimitiveOptions.perBarProfileExtraSpacing
+          : 0
+      );
       if (
         !footprintActiveRef.current
-        || footprintBarWidthRef.current !== footprintPrimitiveOptions.barWidth
+        || footprintBarWidthRef.current !== renderedBarSpacing
       ) {
         chart.timeScale().applyOptions({
-          barSpacing: footprintPrimitiveOptions.barWidth,
+          barSpacing: renderedBarSpacing,
           minBarSpacing: 12,
         });
         footprintActiveRef.current = true;
-        footprintBarWidthRef.current = footprintPrimitiveOptions.barWidth;
+        footprintBarWidthRef.current = renderedBarSpacing;
       }
     } else if (footprintActiveRef.current) {
       chart.timeScale().applyOptions({ barSpacing: 6, minBarSpacing: 0.5 });

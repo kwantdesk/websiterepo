@@ -29,6 +29,16 @@ export type FootprintPrimitiveOptions = {
   textFormat: "automatic" | "normal" | "thousands";
   colorMode: "none" | "fixed" | "fading";
   colorCalculation: "volume" | "delta" | "imbalance" | "dominant" | "dominant-delta";
+  showPerBarVolumeProfile: boolean;
+  showPerBarDeltaProfile: boolean;
+  perBarProfileScaleMode: "independent" | "shared";
+  perBarProfileWidthPercent: number;
+  perBarProfileGap: number;
+  perBarProfileExtraSpacing: number;
+  perBarProfileOpacity: number;
+  showPerBarProfilePoc: boolean;
+  perBarProfilePocSize: number;
+  perBarProfileOutline: boolean;
   barWidth: number;
   candleSpacing: number;
   borderWidth: number;
@@ -95,6 +105,10 @@ export type FootprintPrimitiveOptions = {
   stackedBidColor: string;
   unfinishedAuctionColor: string;
   vwapColor: string;
+  perBarVolumeColor: string;
+  perBarPositiveDeltaColor: string;
+  perBarNegativeDeltaColor: string;
+  perBarProfilePocColor: string;
   backgroundColor: string;
 };
 
@@ -109,6 +123,16 @@ const DEFAULT_OPTIONS: FootprintPrimitiveOptions = {
   textFormat: "automatic",
   colorMode: "fading",
   colorCalculation: "volume",
+  showPerBarVolumeProfile: false,
+  showPerBarDeltaProfile: false,
+  perBarProfileScaleMode: "independent",
+  perBarProfileWidthPercent: 92,
+  perBarProfileGap: 2,
+  perBarProfileExtraSpacing: 18,
+  perBarProfileOpacity: 0.58,
+  showPerBarProfilePoc: true,
+  perBarProfilePocSize: 5,
+  perBarProfileOutline: false,
   barWidth: 92,
   candleSpacing: 6,
   borderWidth: 1,
@@ -175,6 +199,10 @@ const DEFAULT_OPTIONS: FootprintPrimitiveOptions = {
   stackedBidColor: "#F06A70",
   unfinishedAuctionColor: "#E4BF5A",
   vwapColor: "#22D3EE",
+  perBarVolumeColor: "#B7FF38",
+  perBarPositiveDeltaColor: "#B7FF38",
+  perBarNegativeDeltaColor: "#F06A70",
+  perBarProfilePocColor: "#E4BF5A",
   backgroundColor: "#000000",
 };
 
@@ -316,14 +344,16 @@ class FootprintRenderer implements ISeriesPrimitivePaneRenderer {
         const bar = bars[index];
         const x = timeScale.timeToCoordinate(bar.time);
         if (x === null) continue;
+        const profileLayerEnabled = options.showPerBarVolumeProfile || options.showPerBarDeltaProfile;
+        const profileSpacing = profileLayerEnabled ? options.perBarProfileExtraSpacing : 0;
         const previousX = index > 0 ? timeScale.timeToCoordinate(bars[index - 1].time) : null;
         const nextX = index + 1 < bars.length ? timeScale.timeToCoordinate(bars[index + 1].time) : null;
         const nearest = Math.min(
           previousX === null ? Number.POSITIVE_INFINITY : Math.abs(x - previousX),
           nextX === null ? Number.POSITIVE_INFINITY : Math.abs(nextX - x),
-          options.barWidth + options.candleSpacing,
+          options.barWidth + options.candleSpacing + profileSpacing,
         );
-        const barWidth = Math.max(8, Math.min(options.barWidth, nearest - options.candleSpacing));
+        const barWidth = Math.max(8, Math.min(options.barWidth, nearest - options.candleSpacing - profileSpacing));
         const left = x - barWidth / 2;
         const halfWidth = barWidth / 2;
         const barMetrics = bar.rows.flatMap((row) => {
@@ -331,6 +361,10 @@ class FootprintRenderer implements ISeriesPrimitivePaneRenderer {
           return [values.bid, values.ask, values.total, Math.abs(values.delta)];
         });
         const ceiling = options.scaleMode === "per-bar" ? percentile(barMetrics, 1) : visibleCeiling;
+        const profileValues = bar.rows.map((row) => displayValues(row, options));
+        const profileVolumeMaximum = Math.max(1, ...profileValues.map((values) => values.total));
+        const profileDeltaMaximum = Math.max(1, ...profileValues.map((values) => Math.abs(values.delta)));
+        const profileSharedMaximum = Math.max(profileVolumeMaximum, profileDeltaMaximum);
 
         const highY = params.series.priceToCoordinate(bar.high);
         const lowY = params.series.priceToCoordinate(bar.low);
@@ -386,6 +420,69 @@ class FootprintRenderer implements ISeriesPrimitivePaneRenderer {
             withAlpha(context, options.valueAreaColor, 0.1, () => context.fillRect(left, top, barWidth, rowHeight));
           }
 
+          const drawPerBarProfiles = () => {
+            if (!profileLayerEnabled) return;
+            const maximumProfileWidth = Math.max(
+              1,
+              (halfWidth - options.perBarProfileGap) * clamp(options.perBarProfileWidthPercent / 100, 0.1, 1),
+            );
+            const volumeDenominator = options.perBarProfileScaleMode === "shared"
+              ? profileSharedMaximum
+              : profileVolumeMaximum;
+            const deltaDenominator = options.perBarProfileScaleMode === "shared"
+              ? profileSharedMaximum
+              : profileDeltaMaximum;
+            const volumeWidth = options.showPerBarVolumeProfile
+              ? maximumProfileWidth * clamp(values.total / volumeDenominator, 0, 1)
+              : 0;
+            const deltaWidth = options.showPerBarDeltaProfile
+              ? maximumProfileWidth * clamp(Math.abs(values.delta) / deltaDenominator, 0, 1)
+              : 0;
+            const profileTop = top + Math.min(0.5, rowHeight * 0.08);
+            const profileHeight = Math.max(1, rowHeight - Math.min(1, rowHeight * 0.16));
+
+            if (deltaWidth > 0) {
+              const deltaColor = values.delta >= 0
+                ? options.perBarPositiveDeltaColor
+                : options.perBarNegativeDeltaColor;
+              const deltaLeft = x - options.perBarProfileGap - deltaWidth;
+              withAlpha(context, deltaColor, options.perBarProfileOpacity, () =>
+                context.fillRect(deltaLeft, profileTop, deltaWidth, profileHeight));
+              if (options.perBarProfileOutline) {
+                context.save();
+                context.globalAlpha = Math.min(1, options.perBarProfileOpacity + 0.18);
+                context.strokeStyle = deltaColor;
+                context.lineWidth = 0.5;
+                context.strokeRect(deltaLeft + 0.25, profileTop + 0.25, Math.max(0.5, deltaWidth - 0.5), Math.max(0.5, profileHeight - 0.5));
+                context.restore();
+              }
+            }
+
+            if (volumeWidth > 0) {
+              const volumeLeft = x + options.perBarProfileGap;
+              withAlpha(context, options.perBarVolumeColor, options.perBarProfileOpacity, () =>
+                context.fillRect(volumeLeft, profileTop, volumeWidth, profileHeight));
+              if (options.perBarProfileOutline) {
+                context.save();
+                context.globalAlpha = Math.min(1, options.perBarProfileOpacity + 0.18);
+                context.strokeStyle = options.perBarVolumeColor;
+                context.lineWidth = 0.5;
+                context.strokeRect(volumeLeft + 0.25, profileTop + 0.25, Math.max(0.5, volumeWidth - 0.5), Math.max(0.5, profileHeight - 0.5));
+                context.restore();
+              }
+            }
+
+            if (options.showPerBarProfilePoc && row.isPoc) {
+              const markerSize = Math.max(2, Math.min(options.perBarProfilePocSize, rowHeight - 1));
+              const markerX = volumeWidth > 0
+                ? x + options.perBarProfileGap + Math.max(0, volumeWidth - markerSize)
+                : x - options.perBarProfileGap - Math.max(markerSize, deltaWidth);
+              const markerY = top + (rowHeight - markerSize) / 2;
+              withAlpha(context, options.perBarProfilePocColor, 1, () =>
+                context.fillRect(markerX, markerY, markerSize, markerSize));
+            }
+          };
+
           const drawHalf = (side: "bid" | "ask", value: number, colour: string) => {
             if (options.colorOnlyDominantSide) {
               const dominantSide = values.ask >= values.bid ? "ask" : "bid";
@@ -438,6 +535,7 @@ class FootprintRenderer implements ISeriesPrimitivePaneRenderer {
             const width = Math.max(1, barWidth * clamp(values.unknown / Math.max(1, ceiling), 0, 1));
             withAlpha(context, options.betweenColor, 0.36, () => context.fillRect(x - width / 2, top, width, rowHeight));
           }
+          drawPerBarProfiles();
           context.save();
           context.globalAlpha = detailed ? 0.24 : 0.1;
           context.strokeStyle = options.neutralColor;

@@ -5,7 +5,7 @@ import type {
   FootprintVisualizationMode,
 } from "./footprintTypes";
 
-export const FOOTPRINT_SETTINGS_SCHEMA_VERSION = 4;
+export const FOOTPRINT_SETTINGS_SCHEMA_VERSION = 5;
 
 export type FootprintSettings = {
   footprintSettingsVersion: number;
@@ -20,6 +20,20 @@ export type FootprintSettings = {
   groupMode: "fixed" | "open-close";
   manualTicks: number;
   autoGroupFactor: number;
+  showPerBarVolumeProfile: boolean;
+  showPerBarDeltaProfile: boolean;
+  perBarProfileScaleMode: "independent" | "shared";
+  perBarProfileWidthPercent: number;
+  perBarProfileGap: number;
+  perBarProfileExtraSpacing: number;
+  perBarProfileOpacity: number;
+  showPerBarProfilePoc: boolean;
+  perBarProfilePocSize: number;
+  perBarProfileOutline: boolean;
+  perBarVolumeColor: string;
+  perBarPositiveDeltaColor: string;
+  perBarNegativeDeltaColor: string;
+  perBarProfilePocColor: string;
   barWidth: number;
   candleSpacing: number;
   fontSize: number;
@@ -113,6 +127,20 @@ export const DEFAULT_FOOTPRINT_SETTINGS: FootprintSettings = {
   groupMode: "fixed",
   manualTicks: 1,
   autoGroupFactor: 1,
+  showPerBarVolumeProfile: false,
+  showPerBarDeltaProfile: false,
+  perBarProfileScaleMode: "independent",
+  perBarProfileWidthPercent: 92,
+  perBarProfileGap: 2,
+  perBarProfileExtraSpacing: 18,
+  perBarProfileOpacity: 58,
+  showPerBarProfilePoc: true,
+  perBarProfilePocSize: 5,
+  perBarProfileOutline: false,
+  perBarVolumeColor: "#B7FF38",
+  perBarPositiveDeltaColor: "#B7FF38",
+  perBarNegativeDeltaColor: "#F06A70",
+  perBarProfilePocColor: "#E4BF5A",
   barWidth: 92,
   candleSpacing: 6,
   fontSize: 11,
@@ -214,6 +242,10 @@ export const FOOTPRINT_PRESETS: Record<FootprintPresetName, Partial<FootprintSet
     showValueArea: false,
     showStackedImbalances: true,
     showSummary: true,
+    showPerBarVolumeProfile: true,
+    showPerBarDeltaProfile: true,
+    perBarProfileScaleMode: "independent",
+    perBarProfileExtraSpacing: 18,
   },
   imbalance: {
     contentMode: "bid-ask",
@@ -308,11 +340,17 @@ export function validateFootprintSettings(input: unknown): FootprintSettings {
     colorCalculation: option(source.colorCalculation, ["volume", "delta", "imbalance", "dominant", "dominant-delta"], "imbalance"),
     groupingMode: option(source.groupingMode, ["automatic", "manual"], "automatic"),
     groupMode: option(source.groupMode, ["fixed", "open-close"], "fixed"),
+    perBarProfileScaleMode: option(source.perBarProfileScaleMode, ["independent", "shared"], "independent"),
     imbalanceMode: option(source.imbalanceMode, ["diagonal", "same-row", "horizontal", "delta-percent"], "diagonal"),
     outsideBarStyle: option(source.outsideBarStyle, ["bar", "body"], "bar"),
     markerAlignment: option(source.markerAlignment, ["center", "right"], "center"),
     manualTicks: Math.round(clamp(source.manualTicks, 1, 100, 1)),
     autoGroupFactor: clamp(source.autoGroupFactor, 0.5, 4, 1),
+    perBarProfileWidthPercent: clamp(source.perBarProfileWidthPercent, 10, 100, 92),
+    perBarProfileGap: clamp(source.perBarProfileGap, 0, 12, 2),
+    perBarProfileExtraSpacing: clamp(source.perBarProfileExtraSpacing, 0, 48, 18),
+    perBarProfileOpacity: clamp(source.perBarProfileOpacity, 5, 100, 58),
+    perBarProfilePocSize: clamp(source.perBarProfilePocSize, 2, 12, 5),
     barWidth: clamp(source.barWidth, 28, 180, 92),
     candleSpacing: clamp(source.candleSpacing, 1, 24, 6),
     fontSize: clamp(source.fontSize, 9, 15, 11),
@@ -340,6 +378,10 @@ export function validateFootprintSettings(input: unknown): FootprintSettings {
     maximumRatio,
     clusterMinimumVolume: clamp(source.clusterMinimumVolume, 1, 1_000_000, 100),
     includeZero: bool(source.includeZero, false),
+    showPerBarVolumeProfile: bool(source.showPerBarVolumeProfile, false),
+    showPerBarDeltaProfile: bool(source.showPerBarDeltaProfile, false),
+    showPerBarProfilePoc: bool(source.showPerBarProfilePoc, true),
+    perBarProfileOutline: bool(source.perBarProfileOutline, false),
     showImbalances: bool(source.showImbalances, true),
     showStackedImbalances: bool(source.showStackedImbalances, true),
     unfinishedAuctionEnabled: bool(source.unfinishedAuctionEnabled, false),
@@ -371,6 +413,10 @@ export function validateFootprintSettings(input: unknown): FootprintSettings {
     showVwap: bool(source.showVwap, false),
     outerEdgeMode: bool(source.outerEdgeMode, true),
     useThemeColors: bool(source.useThemeColors, true),
+    perBarVolumeColor: colour(source.perBarVolumeColor, DEFAULT_FOOTPRINT_SETTINGS.perBarVolumeColor),
+    perBarPositiveDeltaColor: colour(source.perBarPositiveDeltaColor, DEFAULT_FOOTPRINT_SETTINGS.perBarPositiveDeltaColor),
+    perBarNegativeDeltaColor: colour(source.perBarNegativeDeltaColor, DEFAULT_FOOTPRINT_SETTINGS.perBarNegativeDeltaColor),
+    perBarProfilePocColor: colour(source.perBarProfilePocColor, DEFAULT_FOOTPRINT_SETTINGS.perBarProfilePocColor),
     askColor: colour(source.askColor, DEFAULT_FOOTPRINT_SETTINGS.askColor),
     bidColor: colour(source.bidColor, DEFAULT_FOOTPRINT_SETTINGS.bidColor),
     betweenColor: colour(source.betweenColor, DEFAULT_FOOTPRINT_SETTINGS.betweenColor),

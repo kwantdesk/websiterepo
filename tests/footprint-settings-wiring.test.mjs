@@ -81,3 +81,26 @@ test("previously disconnected footprint controls now change renderer behavior", 
   assert.match(primitive, /options\.showBodyOutline \|\| options\.showBodyFill/);
   assert.match(primitive, /options\.colorCalculation === "dominant-delta"/);
 });
+
+test("per-bar volume and delta profiles share the footprint execution rows", () => {
+  for (const key of [
+    "showPerBarVolumeProfile",
+    "showPerBarDeltaProfile",
+    "perBarProfileScaleMode",
+    "perBarProfileWidthPercent",
+    "perBarProfileGap",
+    "perBarProfileExtraSpacing",
+    "perBarProfileOpacity",
+    "showPerBarProfilePoc",
+    "perBarProfilePocSize",
+    "perBarProfileOutline",
+  ]) {
+    assert.match(control, new RegExp(`\\b${key}\\b`), `${key} is exposed in footprint settings`);
+    assert.match(chart, new RegExp(`footprintSettings\\.${key}`), `${key} reaches the chart runtime`);
+  }
+  assert.match(primitive, /profileValues = bar\.rows\.map\(\(row\) => displayValues\(row, options\)\)/);
+  assert.match(primitive, /values\.total \/ volumeDenominator/);
+  assert.match(primitive, /Math\.abs\(values\.delta\) \/ deltaDenominator/);
+  assert.match(primitive, /options\.showPerBarProfilePoc && row\.isPoc/);
+  assert.match(settings, /"order-flow": \{[\s\S]*showPerBarVolumeProfile: true,[\s\S]*showPerBarDeltaProfile: true/);
+});
