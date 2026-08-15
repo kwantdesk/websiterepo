@@ -197,7 +197,7 @@ import {
 } from "@/lib/hedgeLevels";
 import PrecisionToolsLayer from "@/chart/precision-tools/PrecisionToolsLayer";
 import PrecisionToolsBoundary from "@/chart/precision-tools/PrecisionToolsBoundary";
-import type { PrecisionChartAdapter, PrecisionTheme } from "@/chart/precision-tools/types";
+import type { PrecisionChartAdapter, PrecisionTheme, PrecisionToolId } from "@/chart/precision-tools/types";
 import { claimChartInteraction, subscribeChartInteractionOwner } from "@/lib/chartInteractionArbiter";
 
 interface ChartProps {
@@ -1196,6 +1196,7 @@ class PaperPositionOverlayPrimitive implements ISeriesPrimitive<Time> {
 
 type DrawingToolId =
   | "cursor"
+  | "selection"
   | "dot"
   | "arrowCursor"
   | "demonstration"
@@ -1303,6 +1304,7 @@ type DrawingToolId =
   | "sector"
   | "fixedRangeVolumeProfile"
   | "anchoredVolumeProfile"
+  | "volumeProfile"
   | "measure"
   | "ruler"
   | "priceRange"
@@ -1598,7 +1600,7 @@ const ACTIVE_DRAWING_TOOLBAR_GROUPS: ToolbarGroup[] = [
       activeDrawingTool("horizontalLine", "Horizontal Line", MoveHorizontal, "Lines", "Alt + H"),
       activeDrawingTool("horizontalRay", "Horizontal Ray", ArrowRightIconShim, "Lines"),
       activeDrawingTool("crossLine", "Cross Line", Crosshair, "Lines", "Alt + C"),
-      activeDrawingTool("brush", "Brush", Brush, "Lines"),
+      activeDrawingTool("brush", "Pencil", PencilLine, "Lines"),
     ],
   },
   {
@@ -1664,8 +1666,9 @@ const ACTIVE_DRAWING_TOOLBAR_GROUPS: ToolbarGroup[] = [
     label: "Position",
     icon: ChartColumnIncreasing,
     tools: [
-      activeDrawingTool("longPosition", "Long Position", ArrowBigUp, "Position"),
-      activeDrawingTool("shortPosition", "Short Position", ArrowBigDown, "Position"),
+      activeDrawingTool("longPosition", "Buy Calculator", ArrowBigUp, "Position"),
+      activeDrawingTool("shortPosition", "Sell Calculator", ArrowBigDown, "Position"),
+      activeDrawingTool("volumeProfile", "Volume Profile", KanbanSquare, "Position"),
     ],
   },
   {
@@ -1694,6 +1697,16 @@ const ACTIVE_DRAWING_TOOLBAR_GROUPS: ToolbarGroup[] = [
 ];
 
 const ALL_DRAWING_TOOLS = ACTIVE_DRAWING_TOOLBAR_GROUPS.flatMap((group) => group.tools);
+const PRECISION_TOOL_BY_DRAWING_TOOL: Partial<Record<DrawingToolId, PrecisionToolId>> = {
+  brush: "precision-pencil",
+  longPosition: "precision-buy-calculator",
+  shortPosition: "precision-sell-calculator",
+  volumeProfile: "precision-volume-profile",
+};
+
+function precisionToolForDrawingTool(tool: DrawingToolId): PrecisionToolId | null {
+  return PRECISION_TOOL_BY_DRAWING_TOOL[tool] ?? null;
+}
 const DRAWING_TOOL_FAVORITES_STORAGE_KEY = "kwantdesk:drawing-favourites:v1";
 const DRAWING_TOOL_FAVORITES_EVENT = "kwantify-chart-tool-favorites-change";
 const DRAWING_TEMPLATES_STORAGE_KEY = "kwantdesk:drawing-templates:v1";
@@ -2250,6 +2263,7 @@ export default function Chart({
   const [renamingDrawingTemplateId, setRenamingDrawingTemplateId] = useState<string | null>(null);
   const [drawingTemplateNameDraft, setDrawingTemplateNameDraft] = useState("");
   const [drawingHistoryRevision, setDrawingHistoryRevision] = useState(0);
+  const [precisionClearRevision, setPrecisionClearRevision] = useState(0);
   const [toolbarDock, setToolbarDock] = useState<ToolbarDock>("left");
   const [toolbarDragPosition, setToolbarDragPosition] = useState<{ x: number; y: number } | null>(null);
   const [showObjectsPanel, setShowObjectsPanel] = useState(false);
@@ -2382,7 +2396,9 @@ export default function Chart({
   }, []);
 
   useEffect(() => {
-    if (selectedTool !== "cursor") claimChartInteraction("legacy-tools");
+    if (selectedTool !== "cursor" && selectedTool !== "selection" && !precisionToolForDrawingTool(selectedTool)) {
+      claimChartInteraction("legacy-tools");
+    }
   }, [selectedTool]);
 
   useEffect(() => subscribeChartInteractionOwner((owner) => {
@@ -4569,7 +4585,7 @@ export default function Chart({
   } as CSSProperties;
 
   const activeToolbarTool = useMemo(() => {
-    for (const group of DRAWING_TOOLBAR_GROUPS) {
+    for (const group of ACTIVE_DRAWING_TOOLBAR_GROUPS) {
       const tool = group.tools.find((item) => item.id === selectedTool);
       if (tool) {
         return { groupId: group.id, label: tool.label };
@@ -4796,6 +4812,7 @@ export default function Chart({
     setPositionSettingsDrawingId(null);
     setShowDrawingSettings(false);
     setDrawingHistoryRevision((revision) => revision + 1);
+    setPrecisionClearRevision((revision) => revision + 1);
 
     try {
       window.localStorage.setItem(drawingsStorageKey(instrument, chartInstanceId), "[]");
@@ -4898,7 +4915,9 @@ export default function Chart({
   useEffect(() => {
     selectedToolRef.current = selectedTool;
     const manager = professionalDrawingManagerRef.current;
-    const activeType = professionalDrawingType(selectedTool);
+    const activeType = selectedTool === "selection" || precisionToolForDrawingTool(selectedTool)
+      ? null
+      : professionalDrawingType(selectedTool);
     manager?.setActiveTool(activeType);
     if (!activeType) {
       professionalPendingAnchorsRef.current = [];
@@ -6294,7 +6313,11 @@ export default function Chart({
     const drawingManager = new DrawingManager();
     drawingManager.attach(chart, candleSeries, chartContainerRef.current);
     professionalDrawingManagerRef.current = drawingManager;
-    drawingManager.setActiveTool(professionalDrawingType(selectedToolRef.current));
+    drawingManager.setActiveTool(
+      selectedToolRef.current === "selection" || precisionToolForDrawingTool(selectedToolRef.current)
+        ? null
+        : professionalDrawingType(selectedToolRef.current),
+    );
 
     const syncProfessionalDrawingState = () => {
       if (professionalSyncSuppressedRef.current) return;
@@ -7351,6 +7374,39 @@ export default function Chart({
       requestChartRender: () => setViewportVersion((current) => current + 1),
     };
   }, [candles, candleIntervalMs, contractSymbol, indicatorPaneHeight, instrument, marketTrades, nativePriceScaleWidth, overlaySize.height, overlaySize.width, priceFormat.minMove, priceFormat.precision, timeframe, viewportVersion]);
+
+  const selectProfessionalDrawingInScreenBox = useCallback((bounds: { left: number; right: number; top: number; bottom: number }) => {
+    const chart = chartRef.current;
+    const series = candleSeriesRef.current;
+    const manager = professionalDrawingManagerRef.current;
+    if (!chart || !series || !manager) return false;
+
+    const selected = [...professionalDrawings]
+      .sort((a, b) => (b.options.zIndex ?? 0) - (a.options.zIndex ?? 0))
+      .find((drawing) => {
+        if (drawing.options.visible === false || drawing.options.locked === true) return false;
+        const points = drawing.anchors.flatMap((anchor) => {
+          if (typeof anchor.time !== "number") return [];
+          const x = chart.timeScale().timeToCoordinate(anchor.time as Time);
+          const y = series.priceToCoordinate(anchor.price);
+          return x == null || y == null ? [] : [{ x, y }];
+        });
+        if (!points.length) return false;
+        if (points.some((point) => point.x >= bounds.left && point.x <= bounds.right && point.y >= bounds.top && point.y <= bounds.bottom)) return true;
+        const xs = points.map((point) => point.x);
+        const ys = points.map((point) => point.y);
+        return Math.max(...xs) >= bounds.left
+          && Math.min(...xs) <= bounds.right
+          && Math.max(...ys) >= bounds.top
+          && Math.min(...ys) <= bounds.bottom;
+      });
+
+    if (!selected) return false;
+    manager.selectDrawing(selected.id);
+    setSelectedProfessionalDrawingId(selected.id);
+    setSelectedTool("cursor");
+    return true;
+  }, [professionalDrawings]);
 
   const visiblePaperPositions = paperPositions.filter((position) =>
     position.status === "open"
@@ -8619,6 +8675,13 @@ export default function Chart({
             chartId={`${chartInstanceId}:${normalizePaperSymbol(contractSymbol ?? instrument)}`}
             adapter={precisionAdapter}
             theme={precisionTheme}
+            showChrome={false}
+            externalActiveTool={precisionToolForDrawingTool(selectedTool)}
+            externalSelectionMode={selectedTool === "selection"}
+            externalKeepDrawing={keepDrawingMode}
+            clearRevision={precisionClearRevision}
+            onExternalToolComplete={() => setSelectedTool("cursor")}
+            onExternalSelectionBox={selectProfessionalDrawingInScreenBox}
           />
         </PrecisionToolsBoundary>
       ) : null}
@@ -8706,6 +8769,23 @@ export default function Chart({
             ))}
           </span>
         </button>
+        {!toolbarCollapsed && (
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              setOpenToolbarGroup(null);
+              setShowObjectsPanel(false);
+              setSelectedTool((current) => current === "selection" ? "cursor" : "selection");
+            }}
+            className={`flex items-center justify-center border backdrop-blur ${getToolbarButtonTone(selectedTool === "selection")}`}
+            style={toolbarButtonStyle}
+            title="Select drawings with a drag box"
+            aria-pressed={selectedTool === "selection"}
+          >
+            <MousePointer2 className={toolbarIconClassName} />
+          </button>
+        )}
         {!toolbarCollapsed &&
           toolbarGroups.map((group) => {
           const GroupIcon = group.icon;
@@ -8760,7 +8840,10 @@ export default function Chart({
                         {section.tools.map((tool) => {
                           const ToolIcon = tool.icon;
                           const active = selectedTool === tool.id;
-                          const implemented = tool.id === "cursor" || tool.id === "eraser" || isProfessionalDrawingTool(tool.id);
+                          const implemented = tool.id === "cursor"
+                            || tool.id === "eraser"
+                            || Boolean(precisionToolForDrawingTool(tool.id))
+                            || isProfessionalDrawingTool(tool.id);
                           return (
                             <div
                               key={tool.id}

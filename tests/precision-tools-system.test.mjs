@@ -157,3 +157,19 @@ test("interaction arbiter exposes three neutral owners", () => {
   assert.match(read("src/components/Chart.tsx"), /claimChartInteraction\("legacy-tools"\)/);
   assert.match(read("src/chart/precision-tools/PrecisionToolsLayer.tsx"), /claimChartInteraction\("precision-tools"\)/);
 });
+
+test("the old movable rail owns the selected Precision tools and hides the second rail", () => {
+  const chart = read("src/components/Chart.tsx");
+  const layer = read("src/chart/precision-tools/PrecisionToolsLayer.tsx");
+  assert.match(chart, /brush: "precision-pencil"/);
+  assert.match(chart, /longPosition: "precision-buy-calculator"/);
+  assert.match(chart, /shortPosition: "precision-sell-calculator"/);
+  assert.match(chart, /volumeProfile: "precision-volume-profile"/);
+  assert.match(chart, /activeDrawingTool\("volumeProfile", "Volume Profile"/);
+  assert.match(chart, /showChrome=\{false\}/);
+  assert.match(chart, /externalSelectionMode=\{selectedTool === "selection"\}/);
+  assert.match(chart, /Select drawings with a drag box/);
+  assert.match(layer, /onExternalSelectionBox/);
+  assert.match(layer, /Math\.max\(\.\.\.xs\) >= left/);
+  assert.match(layer, /showChrome \? <PrecisionRail/);
+});

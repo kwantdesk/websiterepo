@@ -21,6 +21,13 @@ interface Props {
   adapter: PrecisionChartAdapter;
   theme: PrecisionTheme;
   enabled?: boolean;
+  showChrome?: boolean;
+  externalActiveTool?: PrecisionToolId | null;
+  externalSelectionMode?: boolean;
+  externalKeepDrawing?: boolean;
+  clearRevision?: number;
+  onExternalToolComplete?: () => void;
+  onExternalSelectionBox?: (bounds: { left: number; right: number; top: number; bottom: number }) => boolean;
 }
 
 type DragState = {
@@ -55,7 +62,20 @@ function normalizeAnchor(anchor: PrecisionAnchor, adapter: PrecisionChartAdapter
   };
 }
 
-export default function PrecisionToolsLayer({ workspaceId, chartId, adapter, theme, enabled = true }: Props) {
+export default function PrecisionToolsLayer({
+  workspaceId,
+  chartId,
+  adapter,
+  theme,
+  enabled = true,
+  showChrome = true,
+  externalActiveTool = null,
+  externalSelectionMode = false,
+  externalKeepDrawing = false,
+  clearRevision = 0,
+  onExternalToolComplete,
+  onExternalSelectionBox,
+}: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const interactionCanvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -80,6 +100,7 @@ export default function PrecisionToolsLayer({ workspaceId, chartId, adapter, the
   const zoomStartRef = useRef<PrecisionAnchor | null>(null);
   const lassoRef = useRef<SelectionBox | null>(null);
   const [selectionBox, setSelectionBox] = useState<SelectionBox | null>(null);
+  const appliedClearRevisionRef = useRef(0);
 
   const identity = `${workspaceId}:${chartId}`;
   if (!storeRef.current || storeIdentityRef.current !== identity) {
@@ -218,10 +239,37 @@ export default function PrecisionToolsLayer({ workspaceId, chartId, adapter, the
     store.setToolbar((toolbar) => ({ ...toolbar, mode, activeTool: null, activeGroup: null }));
   };
 
-  const selectTool = (toolId: PrecisionToolId) => {
+  const selectTool = useCallback((toolId: PrecisionToolId) => {
     claim(); store.cancelDraft(); placedCountRef.current = 0;
     store.setToolbar((toolbar) => ({ ...toolbar, mode: "place", activeTool: toolId, activeGroup: null, activeConfigSlot: toolbar.activeConfigSlots[toolId] ?? toolbar.activeConfigSlot }));
-  };
+  }, [claim, store]);
+
+  useEffect(() => {
+    if (externalActiveTool) {
+      selectTool(externalActiveTool);
+      store.setToolbar((toolbar) => ({ ...toolbar, hidden: false }));
+      return;
+    }
+    if (externalSelectionMode) {
+      claim();
+      store.cancelDraft();
+      placedCountRef.current = 0;
+      store.setToolbar((toolbar) => ({ ...toolbar, hidden: false, mode: "select", activeTool: null, activeGroup: null }));
+      return;
+    }
+    if (!showChrome) release();
+  }, [claim, cloudHydrated, externalActiveTool, externalSelectionMode, release, selectTool, showChrome, store]);
+
+  useEffect(() => {
+    if (appliedClearRevisionRef.current === clearRevision) return;
+    appliedClearRevisionRef.current = clearRevision;
+    store.clear();
+  }, [clearRevision, store]);
+
+  const completeExternalPlacement = useCallback(() => {
+    if (!externalActiveTool || externalKeepDrawing) return;
+    onExternalToolComplete?.();
+  }, [externalActiveTool, externalKeepDrawing, onExternalToolComplete]);
 
   const setActiveConfigSlot = useCallback((slot: number) => {
     const toolId = store.getSnapshot().toolbar.activeTool ?? selectedObject?.toolId ?? null;
@@ -292,14 +340,14 @@ export default function PrecisionToolsLayer({ workspaceId, chartId, adapter, the
           const text = window.prompt("Text", "Text")?.trim();
           if (text) store.updateDraft((draft) => ({ ...draft, text }));
         }
-        store.commitDraft(); placedCountRef.current = 0;
+        store.commitDraft(); placedCountRef.current = 0; completeExternalPlacement();
       }
       return;
     }
     const count = placedCountRef.current + 1;
     store.updateDraft((draft) => ({ ...draft, anchors: [...draft.anchors.slice(0, placedCountRef.current), anchor] }));
     placedCountRef.current = count;
-    if (count >= requiredPrecisionAnchors(toolId)) { store.commitDraft(); placedCountRef.current = 0; }
+    if (count >= requiredPrecisionAnchors(toolId)) { store.commitDraft(); placedCountRef.current = 0; completeExternalPlacement(); }
   };
 
   const onPointerMove = (event: React.PointerEvent<HTMLCanvasElement>) => {
@@ -361,9 +409,19 @@ export default function PrecisionToolsLayer({ workspaceId, chartId, adapter, the
             ...objectScreenAnchors(object, adapter),
             ...(object.path ?? []).map((candidate) => ({ x: adapter.timeToX(candidate.time, candidate.logicalIndex) ?? NaN, y: adapter.priceToY(candidate.price) ?? NaN })).filter((candidate) => Number.isFinite(candidate.x) && Number.isFinite(candidate.y)),
           ];
-          return points.some((candidate) => candidate.x >= left && candidate.x <= right && candidate.y >= top && candidate.y <= bottom);
+          if (points.some((candidate) => candidate.x >= left && candidate.x <= right && candidate.y >= top && candidate.y <= bottom)) return true;
+          if (!points.length) return false;
+          const xs = points.map((candidate) => candidate.x);
+          const ys = points.map((candidate) => candidate.y);
+          return Math.max(...xs) >= left && Math.min(...xs) <= right && Math.max(...ys) >= top && Math.min(...ys) <= bottom;
         }).map((object) => object.id);
-        store.select(selected);
+        if (selected.length) {
+          store.select(selected);
+        } else if (onExternalSelectionBox?.({ left, right, top, bottom })) {
+          store.select([]);
+          releaseChartInteraction("precision-tools");
+          setEngaged(false);
+        }
       }
       lassoRef.current = null;
       setSelectionBox(null);
@@ -380,7 +438,7 @@ export default function PrecisionToolsLayer({ workspaceId, chartId, adapter, the
       const simplifiedScreen = simplifyRdp(screen, Number(snapshot.draft.options.simplifyTolerance ?? 1.5));
       const retained = new Set(simplifiedScreen.map((item) => `${Math.round(item.x)}:${Math.round(item.y)}`));
       store.updateDraft((draft) => ({ ...draft, path: path.filter((_, index) => retained.has(`${Math.round(screen[index]?.x ?? 0)}:${Math.round(screen[index]?.y ?? 0)}`)) }));
-      store.commitDraft(); pencilScreenPathRef.current = []; placedCountRef.current = 0;
+      store.commitDraft(); pencilScreenPathRef.current = []; placedCountRef.current = 0; completeExternalPlacement();
     }
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
   };
@@ -425,13 +483,13 @@ export default function PrecisionToolsLayer({ workspaceId, chartId, adapter, the
   return <div className="pointer-events-none absolute inset-0 z-[66] overflow-hidden" data-precision-tools-root data-revision={revision}>
     <canvas ref={canvasRef} className="pointer-events-none absolute inset-0" aria-label="Precision Tools rendering layer" />
     <canvas ref={interactionCanvasRef} className="absolute inset-0 touch-none" style={{ pointerEvents: engaged ? "auto" : "none", cursor: snapshot.toolbar.mode === "select" ? "default" : snapshot.toolbar.mode === "hand" ? "grab" : "crosshair" }} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp} onPointerLeave={() => { pointerRef.current = null; const interaction = resizeCanvas(interactionCanvasRef.current); if (interaction) renderPrecisionInteractionCanvas(interaction, adapter, null, false, theme); }} aria-label="Precision Tools interaction layer" />
-    <PrecisionRail snapshot={snapshot} engaged={engaged} onMode={setMode} onTool={selectTool} onGroup={(activeGroup) => store.setToolbar((toolbar) => ({ ...toolbar, activeGroup }))} onCollapse={() => store.setToolbar((toolbar) => ({ ...toolbar, collapsed: !toolbar.collapsed }))} onToggleHidden={() => { const hidden = !snapshot.toolbar.hidden; store.setToolbar((toolbar) => ({ ...toolbar, hidden })); store.setAllVisible(!hidden); }} onToggleLocked={() => { const locked = !snapshot.toolbar.locked; store.setToolbar((toolbar) => ({ ...toolbar, locked })); store.setAllLocked(locked); }} onObjects={() => setObjectsOpen((value) => !value)} onSettings={() => setSettingsOpen(true)} onImport={() => fileInputRef.current?.click()} onExport={exportObjects} onClear={() => setClearOpen(true)} onDismiss={release} />
-    <input ref={fileInputRef} type="file" accept="application/json,.json" className="hidden" onChange={(event) => { void importObjects(event.target.files?.[0]); event.currentTarget.value = ""; }} />
+    {showChrome ? <PrecisionRail snapshot={snapshot} engaged={engaged} onMode={setMode} onTool={selectTool} onGroup={(activeGroup) => store.setToolbar((toolbar) => ({ ...toolbar, activeGroup }))} onCollapse={() => store.setToolbar((toolbar) => ({ ...toolbar, collapsed: !toolbar.collapsed }))} onToggleHidden={() => { const hidden = !snapshot.toolbar.hidden; store.setToolbar((toolbar) => ({ ...toolbar, hidden })); store.setAllVisible(!hidden); }} onToggleLocked={() => { const locked = !snapshot.toolbar.locked; store.setToolbar((toolbar) => ({ ...toolbar, locked })); store.setAllLocked(locked); }} onObjects={() => setObjectsOpen((value) => !value)} onSettings={() => setSettingsOpen(true)} onImport={() => fileInputRef.current?.click()} onExport={exportObjects} onClear={() => setClearOpen(true)} onDismiss={release} /> : null}
+    {showChrome ? <input ref={fileInputRef} type="file" accept="application/json,.json" className="hidden" onChange={(event) => { void importObjects(event.target.files?.[0]); event.currentTarget.value = ""; }} /> : null}
     {selectionBox ? <div className="pointer-events-none absolute z-[72] border border-dashed border-[#78b1ff] bg-[#4f91e9]/10" style={{ left: Math.min(selectionBox.start.x, selectionBox.end.x), top: Math.min(selectionBox.start.y, selectionBox.end.y), width: Math.abs(selectionBox.end.x - selectionBox.start.x), height: Math.abs(selectionBox.end.y - selectionBox.start.y) }} /> : null}
-    {objectsOpen ? <PrecisionObjectList snapshot={snapshot} onClose={() => setObjectsOpen(false)} onSelect={(id) => { claim(); store.select([id]); }} onVisibility={(id) => store.toggleObjectVisibility(id)} onLock={(id) => store.toggleObjectLock(id)} onDuplicate={(id) => store.duplicate([id])} onDelete={(id) => store.remove([id])} onLayer={(id, direction) => store.moveObjectLayer(id, direction)} onRename={(id, name) => store.updateObject(id, (object) => ({ ...object, name }))} onSettings={(id) => { store.select([id]); setSettingsOpen(true); }} onAllVisible={(visible) => store.setAllVisible(visible)} onAllLocked={(locked) => store.setAllLocked(locked)} onClear={() => setClearOpen(true)} /> : null}
-    {settingsOpen ? <PrecisionSettingsDrawer object={selectedObject} configs={configs} activeSlot={snapshot.toolbar.activeConfigSlot} onSlot={setActiveConfigSlot} onClose={() => setSettingsOpen(false)} onUpdate={updateSelected} onSaveConfig={saveConfig} onResetConfig={resetConfig} /> : null}
-    {engaged && selectedObject && !settingsOpen ? <div className="pointer-events-auto absolute left-1/2 top-[72px] z-[73] flex -translate-x-1/2 items-center border border-[#34475e] bg-[#09111b]/95 p-1 shadow-xl"><button type="button" onClick={() => store.toggleObjectLock(selectedObject.id)} className="grid h-7 w-7 place-items-center text-[#8192a8] hover:text-[#9ec9ff]">{selectedObject.visibility.locked ? <Unlock className="h-3.5 w-3.5" /> : <Lock className="h-3.5 w-3.5" />}</button><button type="button" onClick={() => store.duplicate([selectedObject.id])} className="grid h-7 w-7 place-items-center text-[#8192a8] hover:text-[#9ec9ff]"><Copy className="h-3.5 w-3.5" /></button><button type="button" onClick={() => store.toggleObjectVisibility(selectedObject.id)} className="grid h-7 w-7 place-items-center text-[#8192a8] hover:text-[#9ec9ff]"><Eye className="h-3.5 w-3.5" /></button><button type="button" onClick={() => setSettingsOpen(true)} className="grid h-7 w-7 place-items-center text-[#8192a8] hover:text-[#9ec9ff]"><Settings2 className="h-3.5 w-3.5" /></button><button type="button" onClick={() => store.remove([selectedObject.id])} className="grid h-7 w-7 place-items-center text-[#8192a8] hover:text-[#ff6a85]"><Trash2 className="h-3.5 w-3.5" /></button><div className="ml-1 flex border-l border-[#2d3d52] pl-1">{Array.from({ length: 9 }, (_, index) => index + 1).map((slot) => <button key={slot} type="button" onClick={() => setActiveConfigSlot(slot)} className={`h-7 w-7 font-mono text-[7px] font-bold ${snapshot.toolbar.activeConfigSlot === slot ? "bg-[#18283d] text-[#9dc9ff]" : "text-[#5f7188] hover:text-white"}`}>TC{slot}</button>)}</div></div> : null}
-    {clearOpen ? <div className="pointer-events-auto absolute inset-0 z-[80] grid place-items-center bg-black/55"><div className="w-[340px] border border-[#4a3540] bg-[#0b111a] p-5 shadow-2xl"><div className="font-mono text-[11px] font-bold uppercase text-[#e7edf5]">Clear Precision objects?</div><p className="mt-2 font-mono text-[9px] leading-5 text-[#8796a9]">This affects only the independent Precision Tools document. Legacy drawings remain untouched. Undo remains available.</p><div className="mt-4 grid grid-cols-2 gap-2"><button type="button" onClick={() => setClearOpen(false)} className="h-9 border border-[#36475c] font-mono text-[9px] text-[#9aa9ba]">Cancel</button><button type="button" onClick={() => { store.clear(); setClearOpen(false); }} className="h-9 border border-[#784052] bg-[#32141e] font-mono text-[9px] font-bold text-[#ff718b]">Clear all</button></div></div></div> : null}
-    {error ? <button type="button" onClick={() => setError(null)} className="pointer-events-auto absolute bottom-8 left-1/2 z-[82] -translate-x-1/2 border border-[#7b3e50] bg-[#2d111a] px-3 py-2 font-mono text-[9px] text-[#ff859a]">{error}</button> : null}
+    {showChrome && objectsOpen ? <PrecisionObjectList snapshot={snapshot} onClose={() => setObjectsOpen(false)} onSelect={(id) => { claim(); store.select([id]); }} onVisibility={(id) => store.toggleObjectVisibility(id)} onLock={(id) => store.toggleObjectLock(id)} onDuplicate={(id) => store.duplicate([id])} onDelete={(id) => store.remove([id])} onLayer={(id, direction) => store.moveObjectLayer(id, direction)} onRename={(id, name) => store.updateObject(id, (object) => ({ ...object, name }))} onSettings={(id) => { store.select([id]); setSettingsOpen(true); }} onAllVisible={(visible) => store.setAllVisible(visible)} onAllLocked={(locked) => store.setAllLocked(locked)} onClear={() => setClearOpen(true)} /> : null}
+    {showChrome && settingsOpen ? <PrecisionSettingsDrawer object={selectedObject} configs={configs} activeSlot={snapshot.toolbar.activeConfigSlot} onSlot={setActiveConfigSlot} onClose={() => setSettingsOpen(false)} onUpdate={updateSelected} onSaveConfig={saveConfig} onResetConfig={resetConfig} /> : null}
+    {showChrome && engaged && selectedObject && !settingsOpen ? <div className="pointer-events-auto absolute left-1/2 top-[72px] z-[73] flex -translate-x-1/2 items-center border border-[#34475e] bg-[#09111b]/95 p-1 shadow-xl"><button type="button" onClick={() => store.toggleObjectLock(selectedObject.id)} className="grid h-7 w-7 place-items-center text-[#8192a8] hover:text-[#9ec9ff]">{selectedObject.visibility.locked ? <Unlock className="h-3.5 w-3.5" /> : <Lock className="h-3.5 w-3.5" />}</button><button type="button" onClick={() => store.duplicate([selectedObject.id])} className="grid h-7 w-7 place-items-center text-[#8192a8] hover:text-[#9ec9ff]"><Copy className="h-3.5 w-3.5" /></button><button type="button" onClick={() => store.toggleObjectVisibility(selectedObject.id)} className="grid h-7 w-7 place-items-center text-[#8192a8] hover:text-[#9ec9ff]"><Eye className="h-3.5 w-3.5" /></button><button type="button" onClick={() => setSettingsOpen(true)} className="grid h-7 w-7 place-items-center text-[#8192a8] hover:text-[#9ec9ff]"><Settings2 className="h-3.5 w-3.5" /></button><button type="button" onClick={() => store.remove([selectedObject.id])} className="grid h-7 w-7 place-items-center text-[#8192a8] hover:text-[#ff6a85]"><Trash2 className="h-3.5 w-3.5" /></button><div className="ml-1 flex border-l border-[#2d3d52] pl-1">{Array.from({ length: 9 }, (_, index) => index + 1).map((slot) => <button key={slot} type="button" onClick={() => setActiveConfigSlot(slot)} className={`h-7 w-7 font-mono text-[7px] font-bold ${snapshot.toolbar.activeConfigSlot === slot ? "bg-[#18283d] text-[#9dc9ff]" : "text-[#5f7188] hover:text-white"}`}>TC{slot}</button>)}</div></div> : null}
+    {showChrome && clearOpen ? <div className="pointer-events-auto absolute inset-0 z-[80] grid place-items-center bg-black/55"><div className="w-[340px] border border-[#4a3540] bg-[#0b111a] p-5 shadow-2xl"><div className="font-mono text-[11px] font-bold uppercase text-[#e7edf5]">Clear Precision objects?</div><p className="mt-2 font-mono text-[9px] leading-5 text-[#8796a9]">This affects only the independent Precision Tools document. Legacy drawings remain untouched. Undo remains available.</p><div className="mt-4 grid grid-cols-2 gap-2"><button type="button" onClick={() => setClearOpen(false)} className="h-9 border border-[#36475c] font-mono text-[9px] text-[#9aa9ba]">Cancel</button><button type="button" onClick={() => { store.clear(); setClearOpen(false); }} className="h-9 border border-[#784052] bg-[#32141e] font-mono text-[9px] font-bold text-[#ff718b]">Clear all</button></div></div></div> : null}
+    {showChrome && error ? <button type="button" onClick={() => setError(null)} className="pointer-events-auto absolute bottom-8 left-1/2 z-[82] -translate-x-1/2 border border-[#7b3e50] bg-[#2d111a] px-3 py-2 font-mono text-[9px] text-[#ff859a]">{error}</button> : null}
   </div>;
 }

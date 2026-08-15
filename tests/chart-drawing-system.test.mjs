@@ -9,23 +9,23 @@ const kwantTools = readFileSync(new URL("../src/vendor/lightweight-charts-drawin
 const workspace = readFileSync(new URL("../src/components/KwantifyWorkspace.tsx", import.meta.url), "utf8");
 
 const expectedTools = [
-  "Trend Line", "Angle", "Vertical Line", "Horizontal Line", "Horizontal Ray", "Cross Line", "Brush",
+  "Trend Line", "Angle", "Vertical Line", "Horizontal Line", "Horizontal Ray", "Cross Line", "Pencil",
   "Triangle", "Rectangle", "Ellipse", "Price Channel", "Highlight Y", "Highlight X",
   "Market Profile", "Fixed Market Profile", "Anchored Market Profile", "ZigZag TPO & Profile", "Anchored VWAP", "Dynamic POC", "CVD Correlation",
   "Fibonacci Retracements", "Fibonacci Extensions", "Fibo Fan",
   "Impulse (12345)", "Correction (ABC)", "Triangle (ABCDE)", "Double Combo (WXY)", "Triple Combo (WXYXZ)",
-  "Ruler", "Measure", "Long Position", "Short Position", "Text", "Label", "Right Price Label", "Left Price Label",
+  "Ruler", "Measure", "Buy Calculator", "Sell Calculator", "Volume Profile", "Text", "Label", "Right Price Label", "Left Price Label",
   "Dot", "Diamond", "Square", "Up Arrow", "Down Arrow",
 ];
 
-test("the live chart rail exposes the exact 41 requested drawing actions", () => {
+test("the live chart rail exposes the requested drawing actions", () => {
   const activeSection = chart.slice(
     chart.indexOf("const ACTIVE_DRAWING_TOOLBAR_GROUPS"),
     chart.indexOf("const ALL_DRAWING_TOOLS"),
   );
-  assert.equal(expectedTools.length, 41);
+  assert.equal(expectedTools.length, 42);
   for (const label of expectedTools) assert.match(activeSection, new RegExp(`"${label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"`));
-  assert.equal((activeSection.match(/activeDrawingTool\(/g) ?? []).length, 41);
+  assert.equal((activeSection.match(/activeDrawingTool\(/g) ?? []).length, 42);
   assert.doesNotMatch(activeSection, /Soon/);
 });
 
@@ -69,6 +69,7 @@ test("clear all drawings removes every chart-scoped drawing layer and persisted 
   assert.match(clearAction, /professionalUndoStackRef\.current = \[\]/);
   assert.match(clearAction, /professionalRedoStackRef\.current = \[\]/);
   assert.match(clearAction, /setSelectedProfessionalDrawingId\(null\)/);
+  assert.match(clearAction, /setPrecisionClearRevision\(\(revision\) => revision \+ 1\)/);
   assert.match(clearAction, /drawingsStorageKey\(instrument, chartInstanceId\)/);
   assert.match(clearAction, /drawingPersistenceInstrument, drawings: \[\]/);
   assert.match(chart, /Clear all drawings/);
