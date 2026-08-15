@@ -180,6 +180,7 @@ function persistTpoUserPresets(presets: TpoUserPreset[]) {
 // favourite is lost while feed-specific studies are connected and validated.
 export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "gamma-heatmap",
+  "net-gamma-exposure-by-strike",
   "dark-pool-map",
   "volume",
   "delta-bar",
@@ -930,6 +931,76 @@ export default function ChartIndicatorsControl({
                   ))}
                   <div className="rounded-lg border border-border bg-background/55 px-3 py-2 text-[9px] leading-4 text-muted sm:col-span-2">
                     Historical mapping coefficients are frozen into each snapshot. “Local GEX Sign Transition” is intentionally not labelled as a true gamma flip.
+                  </div>
+                </div>
+              ) : null}
+
+              {settingsDefinition.id === "net-gamma-exposure-by-strike" ? (
+                <div className="grid gap-3 border border-primary/15 bg-primary/[0.035] p-3 sm:grid-cols-2">
+                  <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted sm:col-span-2">
+                    <span>Preset</span>
+                    <KwantSelect
+                      value={String(settingsInstance.settings?.preset ?? "balanced-net-gex")}
+                      onChange={(event) => {
+                        const preset = event.target.value;
+                        const presetSettings: Record<string, string | number | boolean> = preset === "zero-dte-scalper"
+                          ? { expirationMode: "zero-dte", maximumDisplayedRows: 30, barOpacity: 68, showCallWall: true, showPutWall: true, contentMode: "net" }
+                          : preset === "full-chain"
+                            ? { expirationMode: "all-expirations", maximumDisplayedRows: 80, barOpacity: 42, contentMode: "net" }
+                            : preset === "call-put-breakdown"
+                              ? { contentMode: "call-put-split", showCallWall: true, showPutWall: true }
+                              : preset === "absolute-gamma"
+                                ? { contentMode: "absolute-concentration", showDominantAbsolute: true, showMaxPositive: false, showMaxNegative: false }
+                                : preset === "minimal-levels"
+                                  ? { visualMode: "compact-line", showValues: false, showMaxPositive: true, showMaxNegative: true, showCallWall: true, showPutWall: true }
+                                  : { expirationMode: "zero-to-one-dte", contentMode: "net", visualMode: "gradient", laneWidthPercent: 24, scaleTransform: "square-root", showMaxPositive: true, showMaxNegative: true };
+                        replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), preset, ...presetSettings } }));
+                      }}
+                      className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground"
+                      menuLabel="Net Gamma preset"
+                    >
+                      <option value="balanced-net-gex">Balanced Net GEX</option>
+                      <option value="zero-dte-scalper">0DTE Scalper</option>
+                      <option value="full-chain">Full Chain Structure</option>
+                      <option value="call-put-breakdown">Call / Put Breakdown</option>
+                      <option value="absolute-gamma">Absolute Gamma</option>
+                      <option value="minimal-levels">Minimal Levels</option>
+                    </KwantSelect>
+                  </label>
+                  {[
+                    ["Source ticker", "sourceTicker", [["AUTO", "Automatic"], ["QQQ", "QQQ"], ["NDX", "NDX"], ["NQ", "NQ options"], ["SPY", "SPY"], ["SPX", "SPX"]]],
+                    ["Expiration", "expirationMode", [["zero-dte", "0DTE"], ["zero-to-one-dte", "0–1 DTE"], ["zero-to-seven-dte", "0–7 DTE"], ["front-expiration", "Front expiration"], ["all-expirations", "All expirations"], ["custom-dte-range", "Custom DTE range"], ["specific-expirations", "Specific expirations"]]],
+                    ["Content", "contentMode", [["net", "Net"], ["net-with-call-put-detail", "Net + Call / Put detail"], ["call-put-split", "Call / Put split"], ["absolute-concentration", "Absolute concentration"], ["net-change", "Net change"]]],
+                    ["Placement", "placement", [["right", "Right"], ["left", "Left"], ["floating", "Floating"]]],
+                    ["Mapped bins", "aggregationMode", [["auto-bin", "Automatic"], ["exact-display-tick", "Exact display tick"], ["custom-bin", "Custom bin"]]],
+                    ["Scaling", "scaleMode", [["visible-percentile", "Visible percentile"], ["visible-maximum", "Visible maximum"], ["all-loaded-maximum", "All loaded maximum"], ["fixed-maximum", "Fixed maximum"]]],
+                    ["Scale transform", "scaleTransform", [["linear", "Linear"], ["square-root", "Square root"], ["logarithmic", "Logarithmic"]]],
+                    ["Visual", "visualMode", [["gradient", "Gradient"], ["solid", "Solid"], ["outline", "Outline"], ["heat", "Heat"], ["compact-line", "Compact line"]]],
+                    ["Bar height", "barHeightMode", [["automatic", "Automatic"], ["fixed-pixels", "Fixed pixels"], ["mapped-price-bin", "Mapped price bin"]]],
+                  ].map(([label, key, options]) => (
+                    <label key={String(key)} className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                      <span>{String(label)}</span>
+                      <KwantSelect
+                        value={String(settingsInstance.settings?.[String(key)] ?? "")}
+                        onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [String(key)]: event.target.value } }))}
+                        className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground"
+                        menuLabel={String(label)}
+                      >
+                        {(options as string[][]).map(([value, optionLabel]) => <option key={value} value={value}>{optionLabel}</option>)}
+                      </KwantSelect>
+                    </label>
+                  ))}
+                  <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted sm:col-span-2">
+                    <span>Specific expirations · comma separated YYYY-MM-DD</span>
+                    <input
+                      value={String(settingsInstance.settings?.expirationDates ?? "")}
+                      onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), expirationDates: event.target.value } }))}
+                      className="h-9 w-full border border-border bg-background px-3 font-mono text-[10px] normal-case tracking-normal text-foreground outline-none focus:border-primary/40"
+                      placeholder="2026-08-15, 2026-08-21"
+                    />
+                  </label>
+                  <div className="border border-border bg-background/55 px-3 py-2 text-[9px] leading-4 text-muted sm:col-span-2">
+                    Uses the shared signed KwantData Gamma surface and shared strike mapper. Puts are not signed twice. Databento custom and hybrid validation stay disabled until their option-definition, IV and open-interest inputs are complete.
                   </div>
                 </div>
               ) : null}

@@ -55,6 +55,7 @@ export const CHART_INDICATOR_CATEGORIES: ChartIndicatorCategory[] = [
 
 export const CHART_INDICATOR_CATALOG: ChartIndicatorDefinition[] = [
   indicator("Gamma Heatmap", "Options Flow", "Historical and live gamma, delta, vanna and charm exposure ribbons mapped onto the futures price chart.", false, "Kwantify"),
+  indicator("Net Gamma Exposure By Strike", "Options Flow", "Current signed Net GEX by source strike, mapped precisely onto the futures price scale around a zero spine.", false, "Kwantify"),
   indicator("Dark Pool Map", "Options Flow", "Real off-exchange equity prints aggregated into timestamped circles, mapped futures levels and institutional-style zones.", false, "Kwantify"),
   indicator("Cumulative Volume Delta", "Order Flow", "Running aggressive buy volume minus aggressive sell volume.", true),
   indicator("Delta Bar", "Order Flow", "Per-bar bid/ask aggression and delta.", true),

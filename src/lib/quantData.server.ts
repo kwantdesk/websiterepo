@@ -87,6 +87,7 @@ import {
   type GammaCageExpiryScope,
 } from "@/lib/gammaCage";
 import type { HedgeExposureSurface } from "@/lib/hedgeLevels";
+import type { NetGammaProviderSurface } from "@/lib/netGammaExposureByStrike";
 import { getGexBotFlowSnapshot } from "@/lib/gexBotFlow.server";
 import {
   vendorMarketDataConfigured,
@@ -3535,6 +3536,52 @@ export async function getHedgeLevelsExposureInput(
       strikes: exposure.strikes,
       expiryStrikes: exposure.expiryStrikes,
     },
+  };
+}
+
+/**
+ * Returns the unranked, expiration-aware Gamma surface used by the current
+ * Net-GEX profile. The call deliberately goes through quantDataPost so the
+ * Gamma page, Gamma Heatmap and this indicator share the same server cache and
+ * never establish parallel vendor sessions.
+ */
+export async function getNetGammaExposureSurface(input: {
+  sourceTicker: string;
+  displayInstrument: string;
+  displayPrice: number;
+}): Promise<NetGammaProviderSurface> {
+  const session = getUsOptionsSession();
+  const sourceTicker = input.sourceTicker.trim().toUpperCase();
+  if (!new Set<string>([...OPTIONS_FLOW_TICKERS, "NQ"]).has(sourceTicker)) {
+    throw new QuantDataError("This source is not supported by the shared Gamma exposure adapter.", 400, null);
+  }
+  const response = await quantDataPost("/options/tool/exposure-by-strike", {
+    sessionDate: session.sessionDate,
+    greekMode: "GAMMA",
+    representationMode: "PER_ONE_PERCENT_MOVE",
+    filter: { ticker: sourceTicker },
+  }, session.marketOpen ? 5_000 : 6 * 60 * 60_000);
+  const exposure = parseExposure(response.payload, sourceTicker, "GAMMA");
+  const sourceSpotPrice = readStockPrice(response.payload, sourceTicker);
+  if (!exposure?.strikes.length || !sourceSpotPrice || sourceSpotPrice <= 0) {
+    throw new QuantDataError(`No signed Gamma exposure is available for ${sourceTicker}.`, 422, response.remaining);
+  }
+  const displayPrice = Number(input.displayPrice);
+  if (!(displayPrice > 0)) {
+    throw new QuantDataError("A current futures price is required for strike mapping.", 422, response.remaining);
+  }
+  return {
+    sourceTicker,
+    sourceSpotPrice,
+    displayPrice,
+    displayInstrument: input.displayInstrument,
+    sessionDate: session.sessionDate,
+    marketOpen: session.marketOpen,
+    checkedAt: session.marketOpen ? new Date().toISOString() : newYorkCashCloseIso(session.sessionDate),
+    status: session.marketOpen ? "LIVE" : "LAST_SESSION",
+    refreshAfterMs: session.marketOpen ? 5_000 : 60_000,
+    strikes: exposure.strikes,
+    expiryStrikes: exposure.expiryStrikes ?? [],
   };
 }
 

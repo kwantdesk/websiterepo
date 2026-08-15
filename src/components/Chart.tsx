@@ -155,6 +155,23 @@ import {
   type GammaHeatmapViewMode,
 } from "@/lib/gammaHeatmap";
 import {
+  NetGammaExposurePrimitive,
+  type NetGammaExposureHit,
+  type NetGammaExposurePrimitiveData,
+} from "@/lib/netGammaExposurePrimitive";
+import {
+  defaultNetGammaSource,
+  formatGammaValue,
+  isNetGammaProfileSnapshot,
+  type GammaBarVisualMode,
+  type GammaProfileContentMode,
+  type GammaProfilePlacement,
+  type GammaScaleMode,
+  type GammaScaleTransform,
+  type MappedStrikeAggregationMode,
+  type NetGammaProfileSnapshot,
+} from "@/lib/netGammaExposureByStrike";
+import {
   defaultDarkPoolSource,
   isDarkPoolMapPayload,
   normalizeDarkPoolInstrument,
@@ -2476,6 +2493,8 @@ export default function Chart({
   const tpoProfilePrimitiveRef = useRef<TpoProfilePrimitive | null>(null);
   const classicGexProfilePrimitiveRef = useRef<ClassicGexProfilePrimitive | null>(null);
   const gammaHeatmapPrimitiveRef = useRef<GammaHeatmapPrimitive | null>(null);
+  const netGammaExposurePrimitiveRef = useRef<NetGammaExposurePrimitive | null>(null);
+  const previousNetGammaSnapshotRef = useRef<NetGammaProfileSnapshot | null>(null);
   const darkPoolMapPrimitiveRef = useRef<DarkPoolMapPrimitive | null>(null);
   const darkPoolAlertStateRef = useRef<{
     key: string;
@@ -2588,6 +2607,10 @@ export default function Chart({
   const [gammaHeatmapLoading, setGammaHeatmapLoading] = useState(false);
   const [gammaHeatmapError, setGammaHeatmapError] = useState<string | null>(null);
   const [gammaHeatmapTooltip, setGammaHeatmapTooltip] = useState<GammaHeatmapHit | null>(null);
+  const [netGammaProfile, setNetGammaProfile] = useState<NetGammaProfileSnapshot | null>(null);
+  const [netGammaLoading, setNetGammaLoading] = useState(false);
+  const [netGammaError, setNetGammaError] = useState<string | null>(null);
+  const [netGammaTooltip, setNetGammaTooltip] = useState<NetGammaExposureHit | null>(null);
   const [darkPoolMapPayload, setDarkPoolMapPayload] = useState<DarkPoolMapPayload | null>(null);
   const [darkPoolMapLoading, setDarkPoolMapLoading] = useState(false);
   const [darkPoolMapError, setDarkPoolMapError] = useState<string | null>(null);
@@ -3890,6 +3913,191 @@ export default function Chart({
       container.removeEventListener("pointerleave", leave);
     };
   }, [gammaHeatmapIndicator]);
+
+  const netGammaIndicator = useMemo(
+    () => indicators.find((instance) => instance.enabled && instance.indicatorId === "net-gamma-exposure-by-strike") ?? null,
+    [indicators],
+  );
+  useEffect(() => {
+    if (!netGammaIndicator) {
+      setNetGammaProfile(null);
+      setNetGammaLoading(false);
+      setNetGammaError(null);
+      previousNetGammaSnapshotRef.current = null;
+      return;
+    }
+    const display = normalizeGammaHeatmapInstrument(instrument);
+    if (!/^(NQ|MNQ|ES|MES)$/.test(display)) {
+      setNetGammaProfile(null);
+      setNetGammaLoading(false);
+      setNetGammaError("Net Gamma Exposure supports NQ, MNQ, ES and MES charts.");
+      return;
+    }
+    const indicatorSettings = netGammaIndicator.settings ?? {};
+    const requestedSource = String(indicatorSettings.sourceTicker ?? "AUTO").toUpperCase();
+    const source = requestedSource === "AUTO" ? defaultNetGammaSource(display) : requestedSource;
+    const refreshMs = Math.max(2_000, Math.min(60_000, Number(indicatorSettings.refreshSeconds ?? 5) * 1_000));
+    let cancelled = false;
+    let timer: number | null = null;
+    const load = async (force = false) => {
+      const displayPrice = drawingCandlesRef.current.at(-1)?.close;
+      if (!(displayPrice && displayPrice > 0)) {
+        setNetGammaLoading(true);
+        timer = window.setTimeout(() => void load(force), 300);
+        return;
+      }
+      if (!force) setNetGammaLoading(true);
+      const query = new URLSearchParams({
+        display,
+        source,
+        provider: String(indicatorSettings.provider ?? "quantdata"),
+        displayPrice: String(displayPrice),
+        expirationMode: String(indicatorSettings.expirationMode ?? "zero-to-one-dte"),
+        expirationDates: String(indicatorSettings.expirationDates ?? ""),
+        includeWeeklies: String(indicatorSettings.includeWeeklies !== false),
+        includeMonthlies: String(indicatorSettings.includeMonthlies !== false),
+        includeQuarterlies: String(indicatorSettings.includeQuarterlies !== false),
+        aggregationMode: String(indicatorSettings.aggregationMode ?? "auto-bin"),
+        customBinSizePoints: String(indicatorSettings.customBinSizePoints ?? 1),
+        minimumAbsoluteExposure: String(indicatorSettings.minimumAbsoluteExposure ?? 0),
+        minimumDte: String(indicatorSettings.minimumDte ?? 0),
+        maximumDte: String(indicatorSettings.maximumDte ?? 7),
+      });
+      const maximumDistance = Number(indicatorSettings.maximumDistanceFromSourceSpot ?? 0);
+      if (maximumDistance > 0) query.set("maximumDistanceFromSourceSpot", String(maximumDistance));
+      const settingsKey = [source, indicatorSettings.provider, indicatorSettings.expirationMode, indicatorSettings.expirationDates, indicatorSettings.includeWeeklies, indicatorSettings.includeMonthlies, indicatorSettings.includeQuarterlies, indicatorSettings.aggregationMode, indicatorSettings.customBinSizePoints, indicatorSettings.minimumAbsoluteExposure, maximumDistance].join(":");
+      try {
+        const payload = await fetchWorkspaceData<NetGammaProfileSnapshot>(
+          `net-gamma-exposure-by-strike:${display}:${settingsKey}`,
+          `/api/net-gamma-exposure-by-strike?${query}`,
+          {
+            force,
+            maxAgeMs: refreshMs,
+            timeoutMs: 35_000,
+            validate: isNetGammaProfileSnapshot,
+            invalidMessage: "Net Gamma Exposure returned an incomplete strike profile.",
+          },
+        );
+        if (cancelled) return;
+        const previous = previousNetGammaSnapshotRef.current;
+        previousNetGammaSnapshotRef.current = payload;
+        if (String(indicatorSettings.contentMode ?? "net") === "net-change" && previous
+          && previous.sourceTicker === payload.sourceTicker
+          && previous.displayInstrument === payload.displayInstrument
+          && previous.representation === payload.representation
+          && previous.expirationLabel === payload.expirationLabel) {
+          const prior = new Map(previous.rows.map((row) => [row.id, row.netExposure]));
+          setNetGammaProfile({
+            ...payload,
+            rows: payload.rows.map((row) => ({ ...row, netExposure: row.netExposure - (prior.get(row.id) ?? 0) })),
+          });
+        } else {
+          setNetGammaProfile(payload);
+        }
+        setNetGammaError(null);
+      } catch (error) {
+        if (!cancelled) setNetGammaError(error instanceof Error ? error.message : "Net Gamma Exposure could not refresh.");
+      } finally {
+        if (!cancelled) {
+          setNetGammaLoading(false);
+          timer = window.setTimeout(() => void load(true), refreshMs);
+        }
+      }
+    };
+    void load(false);
+    return () => {
+      cancelled = true;
+      if (timer !== null) window.clearTimeout(timer);
+    };
+  }, [instrument, netGammaIndicator]);
+
+  const netGammaPrimitiveData = useMemo<NetGammaExposurePrimitiveData | null>(() => {
+    if (!netGammaIndicator || !netGammaProfile) return null;
+    const indicatorSettings = netGammaIndicator.settings ?? {};
+    const useThemeColors = indicatorSettings.useThemeColors !== false;
+    return {
+      snapshot: netGammaProfile,
+      placement: String(indicatorSettings.placement ?? "right") as GammaProfilePlacement,
+      laneWidthPercent: Number(indicatorSettings.laneWidthPercent ?? 24),
+      minimumLaneWidthPx: Number(indicatorSettings.minimumLaneWidthPx ?? 220),
+      maximumLaneWidthPx: Number(indicatorSettings.maximumLaneWidthPx ?? 420),
+      floatingXPercent: Number(indicatorSettings.floatingXPercent ?? 72),
+      zeroSpinePercent: Number(indicatorSettings.zeroSpinePercent ?? 50),
+      reverseDirections: indicatorSettings.reverseDirections === true,
+      minimumBarHeightPx: Number(indicatorSettings.minimumBarHeightPx ?? 3),
+      maximumBarHeightPx: Number(indicatorSettings.maximumBarHeightPx ?? 24),
+      fixedBarHeightPx: Number(indicatorSettings.fixedBarHeightPx ?? 9),
+      barHeightMode: String(indicatorSettings.barHeightMode ?? "automatic") as NetGammaExposurePrimitiveData["barHeightMode"],
+      barGapPx: Number(indicatorSettings.barGapPx ?? 1),
+      horizontalPaddingPx: Number(indicatorSettings.horizontalPaddingPx ?? 8),
+      scaleMode: String(indicatorSettings.scaleMode ?? "visible-percentile") as GammaScaleMode,
+      scaleTransform: String(indicatorSettings.scaleTransform ?? "square-root") as GammaScaleTransform,
+      scalePercentile: Number(indicatorSettings.scalePercentile ?? 98) / 100,
+      fixedMaximum: Number(indicatorSettings.fixedMaximum ?? 0) || null,
+      logarithmicStrength: Number(indicatorSettings.logarithmicStrength ?? 9),
+      sharePositiveNegativeScale: indicatorSettings.sharePositiveNegativeScale !== false,
+      contentMode: String(indicatorSettings.contentMode ?? "net") as GammaProfileContentMode,
+      visualMode: String(indicatorSettings.visualMode ?? "gradient") as GammaBarVisualMode,
+      opacity: Number(indicatorSettings.barOpacity ?? 52) / 100,
+      borderOpacity: Number(indicatorSettings.borderOpacity ?? 75) / 100,
+      borderWidth: Number(indicatorSettings.borderWidth ?? 1),
+      gradientStrength: Number(indicatorSettings.gradientStrength ?? 25) / 100,
+      showZeroSpine: indicatorSettings.showZeroSpine !== false,
+      showValues: indicatorSettings.showValues === true,
+      showMappedPrice: indicatorSettings.showMappedPrice === true,
+      showMaxPositive: indicatorSettings.showMaxPositive !== false,
+      showMaxNegative: indicatorSettings.showMaxNegative !== false,
+      showDominantAbsolute: indicatorSettings.showDominantAbsolute === true,
+      showCallWall: indicatorSettings.showCallWall === true,
+      showPutWall: indicatorSettings.showPutWall === true,
+      showCurrentPrice: indicatorSettings.showCurrentPrice !== false,
+      maximumDisplayedRows: Math.max(5, Number(indicatorSettings.maximumDisplayedRows ?? 80)),
+      minimumPercentageOfTotal: Math.max(0, Number(indicatorSettings.minimumPercentageOfTotal ?? 0.1) / 100),
+      minimumMappingConfidence: Number(indicatorSettings.minimumMappingConfidence ?? 70),
+      fadeWhenBelowMinimum: indicatorSettings.fadeWhenBelowMinimum !== false,
+      hideWhenBelowMinimum: indicatorSettings.hideWhenBelowMinimum === true,
+      positiveColor: useThemeColors ? settings.upColor : String(indicatorSettings.positiveColor ?? settings.upColor),
+      negativeColor: useThemeColors ? settings.downColor : String(indicatorSettings.negativeColor ?? settings.downColor),
+      callColor: useThemeColors ? settings.upColor : String(indicatorSettings.callColor ?? settings.upColor),
+      putColor: useThemeColors ? settings.downColor : String(indicatorSettings.putColor ?? settings.downColor),
+      absoluteColor: useThemeColors ? settings.borderUpColor : String(indicatorSettings.absoluteColor ?? settings.borderUpColor),
+      zeroSpineColor: useThemeColors ? settings.gridColor : String(indicatorSettings.zeroSpineColor ?? settings.gridColor),
+      backgroundColor: settings.backgroundColor,
+      borderColor: settings.gridColor,
+      textColor: "#F5F5F5",
+      mutedTextColor: settings.gridColor,
+      warningColor: String(indicatorSettings.warningColor ?? "#F59E0B"),
+      currentPriceColor: settings.borderUpColor,
+      precision: priceFormat.precision,
+    };
+  }, [netGammaIndicator, netGammaProfile, priceFormat.precision, settings.backgroundColor, settings.borderUpColor, settings.downColor, settings.gridColor, settings.upColor]);
+  useEffect(() => {
+    netGammaExposurePrimitiveRef.current?.update(netGammaPrimitiveData);
+  }, [netGammaPrimitiveData, viewportVersion]);
+  useEffect(() => {
+    const container = chartContainerRef.current;
+    if (!container || !netGammaIndicator || netGammaIndicator.settings?.tooltipsEnabled === false) {
+      setNetGammaTooltip(null);
+      return;
+    }
+    let frame: number | null = null;
+    const move = (event: PointerEvent) => {
+      if (frame !== null) window.cancelAnimationFrame(frame);
+      const rect = container.getBoundingClientRect();
+      frame = window.requestAnimationFrame(() => {
+        frame = null;
+        setNetGammaTooltip(netGammaExposurePrimitiveRef.current?.queryHit(event.clientX - rect.left, event.clientY - rect.top) ?? null);
+      });
+    };
+    const leave = () => setNetGammaTooltip(null);
+    container.addEventListener("pointermove", move, { passive: true });
+    container.addEventListener("pointerleave", leave, { passive: true });
+    return () => {
+      if (frame !== null) window.cancelAnimationFrame(frame);
+      container.removeEventListener("pointermove", move);
+      container.removeEventListener("pointerleave", leave);
+    };
+  }, [netGammaIndicator]);
 
   const darkPoolMapIndicator = useMemo(
     () => indicators.find((instance) => instance.enabled && instance.indicatorId === "dark-pool-map") ?? null,
@@ -7252,6 +7460,9 @@ export default function Chart({
     const gammaHeatmapPrimitive = new GammaHeatmapPrimitive();
     candleSeries.attachPrimitive(gammaHeatmapPrimitive);
     gammaHeatmapPrimitiveRef.current = gammaHeatmapPrimitive;
+    const netGammaExposurePrimitive = new NetGammaExposurePrimitive();
+    candleSeries.attachPrimitive(netGammaExposurePrimitive);
+    netGammaExposurePrimitiveRef.current = netGammaExposurePrimitive;
     const darkPoolMapPrimitive = new DarkPoolMapPrimitive();
     candleSeries.attachPrimitive(darkPoolMapPrimitive);
     darkPoolMapPrimitiveRef.current = darkPoolMapPrimitive;
@@ -7953,6 +8164,13 @@ export default function Chart({
             // Chart teardown can detach primitives before React cleanup runs.
           }
         }
+        if (candleSeriesRef.current && netGammaExposurePrimitiveRef.current) {
+          try {
+            candleSeriesRef.current.detachPrimitive(netGammaExposurePrimitiveRef.current);
+          } catch {
+            // Chart teardown can detach primitives before React cleanup runs.
+          }
+        }
         if (candleSeriesRef.current && darkPoolMapPrimitiveRef.current) {
           try {
             candleSeriesRef.current.detachPrimitive(darkPoolMapPrimitiveRef.current);
@@ -8013,6 +8231,7 @@ export default function Chart({
       hedgeLevelsPrimitiveRef.current = null;
       classicGexProfilePrimitiveRef.current = null;
       gammaHeatmapPrimitiveRef.current = null;
+      netGammaExposurePrimitiveRef.current = null;
       darkPoolMapPrimitiveRef.current = null;
       volumeProfilePrimitiveRef.current = null;
       bigTradesPrimitiveRef.current = null;
@@ -9157,10 +9376,75 @@ export default function Chart({
           </div>
         </div>
       ) : null}
-      {darkPoolMapIndicator ? (
+      {netGammaIndicator && netGammaIndicator.settings?.showHeader !== false ? (
         <div
           className="pointer-events-none absolute left-2 z-[25] flex max-w-[min(720px,calc(100%-80px))] items-center gap-2 border border-border bg-panel/92 px-2 py-1 font-mono text-[8px] uppercase tracking-[0.08em] text-muted shadow-lg backdrop-blur"
           style={{ top: gammaHeatmapIndicator ? 38 : 8 }}
+          title={netGammaProfile?.limitations.join(" ") ?? netGammaError ?? "Loading Net Gamma Exposure by strike"}
+        >
+          <span className={`h-1.5 w-1.5 rounded-full ${netGammaError && !netGammaProfile ? "bg-danger" : netGammaLoading ? "animate-pulse bg-warning" : "bg-primary"}`} />
+          <span className="text-foreground">Net GEX</span>
+          {netGammaProfile ? (
+            <>
+              <span>{netGammaProfile.sourceTicker}→{netGammaProfile.displayInstrument}</span>
+              <span>{netGammaProfile.expirationLabel}</span>
+              <span>{netGammaProfile.representation === "per-one-percent-move" ? "$/1%" : netGammaProfile.representation === "per-one-dollar-move" ? "$/ $1" : "RAW"}</span>
+              <span className={netGammaProfile.status === "live" ? "text-primary" : "text-warning"}>{netGammaProfile.status.replaceAll("-", " ")}</span>
+              <span>MAP {Math.round(netGammaProfile.mapping.mappingConfidence)}%</span>
+              <span className={netGammaProfile.totalNetExposure >= 0 ? "text-primary" : "text-danger"}>{formatGammaValue(netGammaProfile.totalNetExposure, netGammaProfile.representation)}</span>
+            </>
+          ) : netGammaLoading ? <span>Loading strike profile…</span> : <span className="text-danger">{netGammaError ?? "Exposure unavailable"}</span>}
+          {netGammaError && netGammaProfile ? <span className="text-warning">Refresh delayed · last valid profile</span> : null}
+        </div>
+      ) : null}
+      {netGammaTooltip ? (
+        <div
+          className="pointer-events-none absolute z-[63] min-w-[290px] max-w-[380px] border border-border bg-panel/96 p-2 font-mono text-[8px] shadow-2xl backdrop-blur"
+          style={{
+            left: Math.min(Math.max(8, netGammaTooltip.x + 14), Math.max(8, overlaySize.width - 400)),
+            top: Math.min(Math.max(34, netGammaTooltip.y + 14), Math.max(34, overlaySize.height - 330)),
+          }}
+        >
+          <div className="flex items-center justify-between gap-4 border-b border-border pb-1 text-foreground">
+            <span>{netGammaTooltip.snapshot.sourceTicker} {netGammaTooltip.row.sourceStrikes.length > 1 ? `${netGammaTooltip.row.sourceStrikes[0]}–${netGammaTooltip.row.sourceStrikes.at(-1)}` : netGammaTooltip.row.sourceStrike.toFixed(2)}</span>
+            <span>{netGammaTooltip.snapshot.displayInstrument} {netGammaTooltip.row.mappedDisplayPrice.toFixed(priceFormat.precision)}</span>
+          </div>
+          <div className="mt-1 grid grid-cols-2 gap-x-4 gap-y-1 text-muted">
+            <span>Call GEX</span><span className="text-foreground">{formatGammaValue(netGammaTooltip.row.callExposure, netGammaTooltip.snapshot.representation, false)}</span>
+            <span>Put GEX</span><span className="text-foreground">{formatGammaValue(netGammaTooltip.row.putExposure, netGammaTooltip.snapshot.representation, false)}</span>
+            <span>Net GEX</span><span className={netGammaTooltip.row.netExposure >= 0 ? "text-primary" : "text-danger"}>{formatGammaValue(netGammaTooltip.row.netExposure, netGammaTooltip.snapshot.representation, false)}</span>
+            <span>Absolute</span><span className="text-foreground">{formatGammaValue(netGammaTooltip.row.absoluteTotalExposure, netGammaTooltip.snapshot.representation, false)}</span>
+            <span>Total share</span><span className="text-foreground">{(netGammaTooltip.row.percentageOfTotalAbsoluteExposure * 100).toFixed(2)}%</span>
+            <span>Visible share</span><span className="text-foreground">{(netGammaTooltip.row.percentageOfVisibleAbsoluteExposure * 100).toFixed(2)}%</span>
+            <span>Expirations</span><span className="text-foreground">{[...new Set(netGammaTooltip.row.expirationContributions.map((item) => item.expirationDate))].join(", ") || "—"}</span>
+            <span>Source / display</span><span className="text-foreground">{netGammaTooltip.snapshot.sourceSpotPrice.toFixed(2)} / {netGammaTooltip.snapshot.displayPrice.toFixed(priceFormat.precision)}</span>
+            <span>Mapping</span><span className="text-foreground">{netGammaTooltip.row.mapping.method.replaceAll("-", " ")}</span>
+            <span>Alpha / beta</span><span className="text-foreground">{netGammaTooltip.row.mapping.alpha.toFixed(4)} / {netGammaTooltip.row.mapping.beta.toFixed(6)}</span>
+            <span>R² / samples</span><span className="text-foreground">{netGammaTooltip.row.mapping.rSquared?.toFixed(3) ?? "—"} / {netGammaTooltip.row.mapping.sampleCount ?? "—"}</span>
+            <span>Confidence</span><span className="text-foreground">{Math.round(netGammaTooltip.row.mapping.mappingConfidence)}%</span>
+            <span>Provider / mode</span><span className="text-foreground">{netGammaTooltip.snapshot.provider} / {netGammaTooltip.snapshot.representation}</span>
+            <span>Snapshot</span><span className="text-foreground">{new Date(netGammaTooltip.snapshot.snapshotTimeMs).toLocaleString()}</span>
+            <span>Snapshot age</span><span className="text-foreground">{Math.max(0, Math.round((netGammaTooltip.snapshot.receivedTimeMs - netGammaTooltip.snapshot.snapshotTimeMs) / 1_000))}s at receipt</span>
+            <span>Status</span><span className="text-foreground">{netGammaTooltip.snapshot.status.replaceAll("-", " ")}</span>
+          </div>
+          {netGammaTooltip.row.expirationContributions.length ? (
+            <div className="mt-2 border-t border-border pt-1 text-muted">
+              <div className="mb-1 uppercase tracking-[0.08em]">Expiration contributions</div>
+              {netGammaTooltip.row.expirationContributions.slice(0, 5).map((item) => (
+                <div key={`${item.expirationDate}:${item.sourceStrike}`} className="flex justify-between gap-3 text-foreground">
+                  <span>{item.expirationDate} · {item.daysToExpiration}D · {item.sourceStrike}</span>
+                  <span className={item.netExposure >= 0 ? "text-primary" : "text-danger"}>{formatGammaValue(item.netExposure, netGammaTooltip.snapshot.representation, false)}</span>
+                </div>
+              ))}
+              {netGammaTooltip.row.expirationContributions.length > 5 ? <div>+{netGammaTooltip.row.expirationContributions.length - 5} more contributors</div> : null}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+      {darkPoolMapIndicator ? (
+        <div
+          className="pointer-events-none absolute left-2 z-[25] flex max-w-[min(720px,calc(100%-80px))] items-center gap-2 border border-border bg-panel/92 px-2 py-1 font-mono text-[8px] uppercase tracking-[0.08em] text-muted shadow-lg backdrop-blur"
+          style={{ top: 8 + (gammaHeatmapIndicator ? 30 : 0) + (netGammaIndicator ? 30 : 0) }}
           title={darkPoolMapPayload?.limitations.join(" ") ?? darkPoolMapError ?? "Loading real off-exchange prints"}
         >
           <span className={`h-1.5 w-1.5 rounded-full ${darkPoolMapError && !darkPoolMapPayload ? "bg-danger" : darkPoolMapLoading ? "animate-pulse bg-warning" : "bg-primary"}`} />
