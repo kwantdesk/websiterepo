@@ -224,6 +224,15 @@ import {
   SmtDivergencePrimitive,
   type SmtDivergencePrimitiveOptions,
 } from "@/lib/smtDivergencePrimitive";
+import {
+  CHART_CROSSHAIR_SYNC_MOVE_EVENT,
+  CHART_CROSSHAIR_SYNC_TOGGLE_EVENT,
+  chartCrosshairInstrumentKey,
+  readChartCrosshairSyncEnabled,
+  resolveSyncedChartTime,
+  saveChartCrosshairSyncEnabled,
+  type ChartCrosshairSyncMove,
+} from "@/lib/chartCrosshairSync";
 
 interface ChartProps {
   candles: Candle[];
@@ -2481,6 +2490,7 @@ export default function Chart({
   const drawingPersistenceInstrument = `${instrument}::${chartInstanceId.slice(-16)}`;
   const [copiedPrice, setCopiedPrice] = useState(false);
   const [selectedTool, setSelectedTool] = useState<DrawingToolId>("cursor");
+  const [crosshairSyncEnabled, setCrosshairSyncEnabled] = useState(false);
   const [openToolbarGroup, setOpenToolbarGroup] = useState<ToolbarGroupId | null>(null);
   const [favoriteToolIds, setFavoriteToolIds] = useState<DrawingToolId[]>([]);
   const [drawings, setDrawings] = useState<ChartDrawing[]>([]);
@@ -2501,6 +2511,7 @@ export default function Chart({
   const professionalUpdateHistoryOpenRef = useRef(false);
   const professionalUpdateHistoryTimerRef = useRef<number | null>(null);
   const selectedToolRef = useRef<DrawingToolId>("cursor");
+  const crosshairSyncEnabledRef = useRef(crosshairSyncEnabled);
   const [draftDrawing, setDraftDrawing] = useState<ChartDrawing | null>(null);
   const [selectedDrawingId, setSelectedDrawingId] = useState<string | null>(null);
   const [positionSettingsDrawingId, setPositionSettingsDrawingId] = useState<string | null>(null);
@@ -2597,6 +2608,7 @@ export default function Chart({
   const sampledOrderFlowHistoryReadyRef = useRef(orderFlowHistoryReady);
   const updateIndicatorSettingRef = useRef(onUpdateIndicatorSetting);
   const openIndicatorSettingsRef = useRef(onOpenIndicatorSettings);
+  const crosshairSyncInstrumentKey = chartCrosshairInstrumentKey(contractSymbol ?? instrument);
   const volumeIndicatorEnabled = useMemo(
     () => indicators.some((instance) => instance.enabled && instance.indicatorId === "volume"),
     [indicators],
@@ -2650,6 +2662,24 @@ export default function Chart({
     window.addEventListener("kwantdesk:theme-change", handleThemeChange);
     return () => window.removeEventListener("kwantdesk:theme-change", handleThemeChange);
   }, []);
+
+  useEffect(() => {
+    const handleToggle = (event: Event) => {
+      setCrosshairSyncEnabled(Boolean((event as CustomEvent<boolean>).detail));
+    };
+    setCrosshairSyncEnabled(readChartCrosshairSyncEnabled());
+    window.addEventListener(CHART_CROSSHAIR_SYNC_TOGGLE_EVENT, handleToggle);
+    return () => window.removeEventListener(CHART_CROSSHAIR_SYNC_TOGGLE_EVENT, handleToggle);
+  }, []);
+
+  useEffect(() => {
+    crosshairSyncEnabledRef.current = crosshairSyncEnabled;
+    if (!crosshairSyncEnabled) {
+      chartRef.current?.clearCrosshairPosition();
+      if (horzLineRef.current) horzLineRef.current.style.display = "none";
+      if (priceLabelRef.current) priceLabelRef.current.style.display = "none";
+    }
+  }, [crosshairSyncEnabled]);
 
   useEffect(() => {
     if (selectedTool !== "cursor" && selectedTool !== "selection" && !precisionToolForDrawingTool(selectedTool)) {
@@ -6886,6 +6916,108 @@ export default function Chart({
     );
 
     candleSeries.setData(chartData);
+    let applyingSynchronizedCrosshair = false;
+    let synchronizedCrosshairReleaseFrame: number | null = null;
+    let crosshairDispatchFrame: number | null = null;
+    let pendingCrosshairMove: ChartCrosshairSyncMove | null = null;
+    const dispatchPendingCrosshairMove = () => {
+      crosshairDispatchFrame = null;
+      const detail = pendingCrosshairMove;
+      pendingCrosshairMove = null;
+      if (!detail || !crosshairSyncEnabledRef.current) return;
+      window.dispatchEvent(new CustomEvent<ChartCrosshairSyncMove>(CHART_CROSSHAIR_SYNC_MOVE_EVENT, {
+        detail,
+      }));
+    };
+    const queueCrosshairMove = (detail: ChartCrosshairSyncMove) => {
+      pendingCrosshairMove = detail;
+      if (crosshairDispatchFrame === null) {
+        crosshairDispatchFrame = window.requestAnimationFrame(dispatchPendingCrosshairMove);
+      }
+    };
+    const handleNativeCrosshairMove: Parameters<IChartApi["subscribeCrosshairMove"]>[0] = (param) => {
+      if (!crosshairSyncEnabledRef.current || applyingSynchronizedCrosshair) return;
+      if (!param.point || param.time === undefined) {
+        queueCrosshairMove({
+          sourceChartId: chartInstanceId,
+          instrumentKey: crosshairSyncInstrumentKey,
+          sourceTimestampMs: null,
+          price: null,
+          visible: false,
+        });
+        return;
+      }
+      const chartTime = Number(param.time);
+      const price = candleSeries.coordinateToPrice(param.point.y);
+      if (!Number.isFinite(chartTime) || price === null || !Number.isFinite(price)) return;
+      queueCrosshairMove({
+        sourceChartId: chartInstanceId,
+        instrumentKey: crosshairSyncInstrumentKey,
+        sourceTimestampMs: eventSourceTimeByChartTimeRef.current.get(chartTime) ?? chartTime * 1_000,
+        price,
+        visible: true,
+      });
+    };
+    const hideSynchronizedPriceGuide = () => {
+      if (horzLineRef.current) horzLineRef.current.style.display = "none";
+      if (priceLabelRef.current) priceLabelRef.current.style.display = "none";
+    };
+    const handleSynchronizedCrosshair = (event: Event) => {
+      if (!crosshairSyncEnabledRef.current) return;
+      const detail = (event as CustomEvent<ChartCrosshairSyncMove>).detail;
+      if (
+        !detail
+        || detail.sourceChartId === chartInstanceId
+        || detail.instrumentKey !== crosshairSyncInstrumentKey
+      ) return;
+
+      applyingSynchronizedCrosshair = true;
+      if (synchronizedCrosshairReleaseFrame !== null) {
+        window.cancelAnimationFrame(synchronizedCrosshairReleaseFrame);
+        synchronizedCrosshairReleaseFrame = null;
+      }
+      try {
+        if (
+          !detail.visible
+          || detail.sourceTimestampMs === null
+          || detail.price === null
+        ) {
+          chart.clearCrosshairPosition();
+          hideSynchronizedPriceGuide();
+          return;
+        }
+        const targetTime = resolveSyncedChartTime(
+          detail.sourceTimestampMs,
+          drawingCandlesRef.current,
+          eventChartTimeBySourceTimeRef.current,
+        );
+        if (targetTime === null) {
+          chart.clearCrosshairPosition();
+          hideSynchronizedPriceGuide();
+          return;
+        }
+        chart.setCrosshairPosition(detail.price, targetTime as Time, candleSeries);
+        const y = candleSeries.priceToCoordinate(detail.price);
+        if (y !== null) {
+          if (horzLineRef.current) {
+            horzLineRef.current.style.top = `${y}px`;
+            horzLineRef.current.style.display = "block";
+          }
+          if (priceLabelRef.current) {
+            priceLabelRef.current.style.top = `${y - 10}px`;
+            priceLabelRef.current.style.display = "block";
+            priceLabelRef.current.textContent = detail.price.toFixed(priceFormat.precision);
+          }
+        }
+      } finally {
+        synchronizedCrosshairReleaseFrame = window.requestAnimationFrame(() => {
+          applyingSynchronizedCrosshair = false;
+          synchronizedCrosshairReleaseFrame = null;
+        });
+      }
+    };
+    chart.subscribeCrosshairMove(handleNativeCrosshairMove);
+    window.addEventListener(CHART_CROSSHAIR_SYNC_MOVE_EVENT, handleSynchronizedCrosshair);
     const drawingColor = themeStyles.getPropertyValue("--primary").trim() || settings.upColor;
     const drawingStyle = {
       lineColor: drawingColor,
@@ -7361,6 +7493,17 @@ export default function Chart({
       container.removeEventListener("contextmenu", handleContextMenu);
       container.removeEventListener("wheel", handlePriceScaleWheel, { capture: true });
       window.removeEventListener("resize", handleResize);
+      chart.unsubscribeCrosshairMove(handleNativeCrosshairMove);
+      window.removeEventListener(CHART_CROSSHAIR_SYNC_MOVE_EVENT, handleSynchronizedCrosshair);
+      if (crosshairDispatchFrame !== null) {
+        window.cancelAnimationFrame(crosshairDispatchFrame);
+        crosshairDispatchFrame = null;
+      }
+      if (synchronizedCrosshairReleaseFrame !== null) {
+        window.cancelAnimationFrame(synchronizedCrosshairReleaseFrame);
+        synchronizedCrosshairReleaseFrame = null;
+      }
+      pendingCrosshairMove = null;
       chart.timeScale().unsubscribeVisibleLogicalRangeChange(scheduleViewportRefresh);
       resizeObserver.disconnect();
       if (viewportFrameRef.current != null) {
@@ -7499,7 +7642,7 @@ export default function Chart({
       prevDataRef.current = "";
       lastRenderedCandleTimeRef.current = null;
     };
-  }, [instrument, priceFormat, settings, themeVersion]);
+  }, [chartInstanceId, crosshairSyncInstrumentKey, instrument, priceFormat, settings, themeVersion]);
 
   useEffect(() => {
     smtDivergencePrimitiveRef.current?.update(
@@ -9514,6 +9657,26 @@ export default function Chart({
             aria-pressed={selectedTool === "selection"}
           >
             <MousePointer2 className={toolbarIconClassName} />
+          </button>
+        )}
+        {!toolbarCollapsed && (
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              setOpenToolbarGroup(null);
+              setShowObjectsPanel(false);
+              saveChartCrosshairSyncEnabled(!crosshairSyncEnabled);
+            }}
+            className={`flex items-center justify-center border backdrop-blur ${getToolbarButtonTone(crosshairSyncEnabled)}`}
+            style={toolbarButtonStyle}
+            title={crosshairSyncEnabled
+              ? "Linked crosshair on: matching instruments move together"
+              : "Link the crosshair across charts using the same instrument"}
+            aria-label="Link crosshair across matching charts"
+            aria-pressed={crosshairSyncEnabled}
+          >
+            <Crosshair className={toolbarIconClassName} />
           </button>
         )}
         {!toolbarCollapsed &&
