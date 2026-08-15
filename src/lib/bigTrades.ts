@@ -111,7 +111,7 @@ export function calculateBigTradePrints(
   const intensity = String(settings.automaticIntensity ?? "medium");
   const automaticPercentile = intensity === "low" ? 0.8 : intensity === "strong" ? 0.975 : 0.9;
   const threshold = filterMode === "manual"
-    ? Math.max(0, Number(settings.manualFilter ?? 30))
+    ? clamp(Number(settings.manualFilter ?? 30), 1, 100)
     : quantile(volumes, automaticPercentile);
   const maximumFilter = Math.max(0, Number(settings.maximumFilter ?? 0));
   const qualified = candidates.filter((candidate) =>

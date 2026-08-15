@@ -42,6 +42,32 @@ test("Big Trades defaults to a rolling 24-hour execution history", () => {
   assert.deepEqual(prints.map((print) => print.volume), [100]);
 });
 
+test("manual minimum trade size immediately filters executions contract by contract", () => {
+  const now = Date.UTC(2026, 7, 15, 12);
+  const tape = [
+    trade(now - 4_000, 12),
+    trade(now - 3_000, 49),
+    trade(now - 2_000, 50),
+    trade(now - 1_000, 120),
+  ];
+
+  const atFifty = calculateBigTradePrints(
+    [],
+    tape,
+    { filterMode: "manual", manualFilter: 50, enableClustering: false },
+    now,
+  );
+  const atHundred = calculateBigTradePrints(
+    [],
+    tape,
+    { filterMode: "manual", manualFilter: 100, enableClustering: false },
+    now,
+  );
+
+  assert.deepEqual(atFifty.map((print) => print.volume), [50, 120]);
+  assert.deepEqual(atHundred.map((print) => print.volume), [120]);
+});
+
 test("the same tape anchors to irregular 200-volume bar boundaries", () => {
   const candles = [
     { timestamp: 1_000, open: 1, high: 1, low: 1, close: 1 },

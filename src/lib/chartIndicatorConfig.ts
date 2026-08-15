@@ -178,7 +178,7 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
   ],
   "big-trades": [
     { key: "daysToLoad", label: "Days to load", defaultValue: 1, min: 1, max: 90 },
-    { key: "manualFilter", label: "Manual minimum trade size", defaultValue: 30, min: 1, max: 100000 },
+    { key: "manualFilter", label: "Manual minimum trade size", defaultValue: 30, min: 1, max: 100, step: 1 },
     { key: "maximumFilter", label: "Maximum trade size · 0 = unlimited", defaultValue: 0, min: 0, max: 1000000 },
     { key: "clusterWindowMs", label: "Cluster window (milliseconds)", defaultValue: 100, min: 0, max: 10000 },
     { key: "clusterPriceTicks", label: "Cluster price distance (ticks)", defaultValue: 0, min: 0, max: 100 },
@@ -638,7 +638,7 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
   } : {}),
   ...(indicatorId === "big-trades" ? {
     daysToLoad: 1,
-    filterMode: "automatic",
+    filterMode: "manual",
     automaticIntensity: "medium",
     enableClustering: true,
     clusterWindowMs: 100,
@@ -655,7 +655,7 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
     enableAlertSound: false,
     askColor: theme?.upColor ?? "#22C55E",
     bidColor: theme?.downColor ?? "#EF4444",
-    bigTradesSettingsVersion: 3,
+    bigTradesSettingsVersion: 4,
   } : {}),
   ...(indicatorId === "deep-m-effort-nq" ? {
     useThemeColors: true,
@@ -942,17 +942,20 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
   }
   if (
     normalizedInstance.indicatorId === "big-trades"
-    && Number(normalizedInstance.settings?.bigTradesSettingsVersion) < 3
+    && Number(normalizedInstance.settings?.bigTradesSettingsVersion) < 4
   ) {
+    const storedManualFilter = Number(normalizedInstance.settings?.manualFilter ?? 30);
     return {
       ...normalizedInstance,
       settings: {
         ...defaultIndicatorSettings("big-trades"),
         ...(normalizedInstance.settings ?? {}),
+        filterMode: "manual",
+        manualFilter: Math.min(100, Math.max(1, Number.isFinite(storedManualFilter) ? storedManualFilter : 30)),
         combineByCandle: false,
         adaptiveTimeframeFilter: false,
         maxMarkersPerBar: 50,
-        bigTradesSettingsVersion: 3,
+        bigTradesSettingsVersion: 4,
       },
     };
   }

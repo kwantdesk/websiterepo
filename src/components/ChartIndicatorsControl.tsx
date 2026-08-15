@@ -1592,10 +1592,20 @@ export default function ChartIndicatorsControl({
                         max={setting.max}
                         step={setting.step ?? 1}
                         value={value}
-                        onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
-                          ...current,
-                          settings: { ...(current.settings ?? {}), [setting.key]: Number(event.target.value) },
-                        }))}
+                        onChange={(event) => {
+                          const requested = Number(event.target.value);
+                          const nextValue = Math.min(setting.max, Math.max(setting.min, Number.isFinite(requested) ? requested : setting.defaultValue));
+                          replace(settingsInstance.instanceId, (current) => ({
+                            ...current,
+                            settings: {
+                              ...(current.settings ?? {}),
+                              [setting.key]: nextValue,
+                              ...(settingsDefinition.id === "big-trades" && setting.key === "manualFilter"
+                                ? { filterMode: "manual" }
+                                : {}),
+                            },
+                          }));
+                        }}
                         className="h-7 w-24 rounded-lg border border-border bg-background px-2 text-right font-mono text-[10px] text-foreground outline-none focus:border-primary/40"
                       />
                     </span>
@@ -1605,10 +1615,20 @@ export default function ChartIndicatorsControl({
                       max={setting.max}
                       step={setting.step ?? 1}
                       value={value}
-                      onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
-                        ...current,
-                        settings: { ...(current.settings ?? {}), [setting.key]: Number(event.target.value) },
-                      }))}
+                      onChange={(event) => {
+                        const requested = Number(event.target.value);
+                        const nextValue = Math.min(setting.max, Math.max(setting.min, Number.isFinite(requested) ? requested : setting.defaultValue));
+                        replace(settingsInstance.instanceId, (current) => ({
+                          ...current,
+                          settings: {
+                            ...(current.settings ?? {}),
+                            [setting.key]: nextValue,
+                            ...(settingsDefinition.id === "big-trades" && setting.key === "manualFilter"
+                              ? { filterMode: "manual" }
+                              : {}),
+                          },
+                        }));
+                      }}
                       className="w-full accent-primary"
                     />
                   </label>
