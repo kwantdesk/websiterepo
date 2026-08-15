@@ -66,19 +66,11 @@ test("chart-backed tools remain saved chart panes while DOM Pro uses its standal
   assert.match(workspaceSource, /<DepthOfMarketPanel[\s\S]*?standalone/);
 });
 
-test("changing a workspace tool replaces its previous tool indicator", () => {
-  assert.match(
-    workspaceSource,
-    /const previousToolIndicatorId = WORKSPACE_TOOL_OPTIONS\.find\([\s\S]*?option\.id === previousContent,[\s\S]*?\)\?\.indicatorId;/,
-  );
-  assert.match(
-    workspaceSource,
-    /previousToolIndicatorId !== indicatorId[\s\S]*?existing\.filter\(\(instance\) => instance\.indicatorId !== previousToolIndicatorId\)/,
-  );
-  assert.match(
-    workspaceSource,
-    /const installed = withoutPreviousTool\.find\(\(instance\) => instance\.indicatorId === indicatorId\)/,
-  );
+test("changing a workspace panel resets copied indicators and installs only the selected tool", () => {
+  assert.match(workspaceSource, /const nextIndicators: ChartIndicatorInstance\[\] = indicatorId && CHART_INDICATOR_BY_ID\.has\(indicatorId\)/);
+  assert.match(workspaceSource, /setPaneIndicators\(\(current\) => \(\{ \.\.\.current, \[paneId\]: nextIndicators \}\)\)/);
+  assert.match(workspaceSource, /\[paneId\]: \{ \.\.\.EMPTY_PANE_LEVEL_VISIBILITY \}/);
+  assert.doesNotMatch(workspaceSource, /withoutPreviousTool/);
 });
 
 test("mixed-workspace picker and selected headers use uppercase product labels", () => {

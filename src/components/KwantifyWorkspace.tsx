@@ -12750,36 +12750,27 @@ export default function KwantifyWorkspace({
   const selectWorkspacePanelContent = async (paneId: string, content: WorkspacePanelKind) => {
     setWorkspacePanelTransition({ paneId, content });
     setActivePaneId(paneId);
-    const previousContent = workspacePanes.find((pane) => pane.id === paneId)?.content ?? null;
-    const previousToolIndicatorId = WORKSPACE_TOOL_OPTIONS.find(
-      (option) => option.id === previousContent,
-    )?.indicatorId;
     const tool = WORKSPACE_TOOL_OPTIONS.find((option) => option.id === content);
     const indicatorId = tool?.indicatorId;
-    if (previousToolIndicatorId || (indicatorId && CHART_INDICATOR_BY_ID.has(indicatorId))) {
+    const nextIndicators: ChartIndicatorInstance[] = indicatorId && CHART_INDICATOR_BY_ID.has(indicatorId)
+      ? [{
+          instanceId: `${indicatorId}-${crypto.randomUUID()}`,
+          indicatorId,
+          enabled: true,
+          settings: defaultIndicatorSettings(indicatorId, chartSettings),
+        }]
+      : [];
+    if (nextIndicators.length > 0) {
       setChartIndicatorsSuppressed(false);
-      setPaneIndicators((current) => {
-        const existing = current[paneId] ?? [];
-        const withoutPreviousTool = previousToolIndicatorId && previousToolIndicatorId !== indicatorId
-          ? existing.filter((instance) => instance.indicatorId !== previousToolIndicatorId)
-          : existing;
-        if (!indicatorId || !CHART_INDICATOR_BY_ID.has(indicatorId)) {
-          return { ...current, [paneId]: withoutPreviousTool };
-        }
-        const installed = withoutPreviousTool.find((instance) => instance.indicatorId === indicatorId);
-        const next = installed
-          ? withoutPreviousTool.map((instance) => instance.instanceId === installed.instanceId
-            ? { ...instance, enabled: true }
-            : instance)
-          : [...withoutPreviousTool, {
-              instanceId: `${indicatorId}-${crypto.randomUUID()}`,
-              indicatorId,
-              enabled: true,
-              settings: defaultIndicatorSettings(indicatorId, chartSettings),
-            }];
-        return { ...current, [paneId]: next };
-      });
     }
+    // Changing the panel type is a replacement, not an indicator-library add.
+    // This is especially important for duplicated panes, whose copied indicators
+    // must not leak into the newly selected workspace tool.
+    setPaneIndicators((current) => ({ ...current, [paneId]: nextIndicators }));
+    setPaneLevelVisibility((current) => ({
+      ...current,
+      [paneId]: { ...EMPTY_PANE_LEVEL_VISIBILITY },
+    }));
     await preloadWorkspaceModule(content).catch(() => null);
     updateWorkspacePane(paneId, { content });
     if (!isWorkspaceChartKind(content)) {
