@@ -780,6 +780,12 @@ export default function ChartIndicatorsControl({
 
               {settingsDefinition.id === "deep-print-footprint" ? (
                 <div className="grid gap-3 rounded-xl border border-primary/15 bg-primary/[0.035] p-3 sm:grid-cols-2">
+                  <div className="sm:col-span-2">
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-foreground">Footprint Settings</div>
+                    <p className="mt-1 text-[9px] leading-4 text-muted">
+                      Presets, templates, footprint content, grouping, scaling and execution presentation.
+                    </p>
+                  </div>
                   <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted sm:col-span-2">
                     <span>Preset</span>
                     <KwantSelect
@@ -848,104 +854,6 @@ export default function ChartIndicatorsControl({
                       ) : null}
                     </div>
                   </label>
-                  <section className="space-y-3 rounded-lg border border-border bg-background/55 p-3 sm:col-span-2">
-                    <div>
-                      <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-foreground">Volume Profile</div>
-                      <p className="mt-1 text-[9px] leading-4 text-muted">
-                        Builds from the same live executions as each footprint bar. Total volume faces right, signed delta faces left, and the POC square uses the footprint bar&apos;s exact POC row.
-                      </p>
-                    </div>
-                    <div className="grid gap-2 sm:grid-cols-2">
-                      {[
-                        ["Volume profile · right", "showPerBarVolumeProfile", false],
-                        ["Delta profile · left", "showPerBarDeltaProfile", false],
-                        ["POC square", "showPerBarProfilePoc", true],
-                        ["Profile outline", "perBarProfileOutline", false],
-                      ].map(([label, key, fallback]) => (
-                        <label key={String(key)} className="flex min-h-9 items-center gap-2 rounded-lg border border-border bg-surface/30 px-3 text-[9px] text-muted">
-                          <input
-                            type="checkbox"
-                            checked={Boolean(settingsInstance.settings?.[String(key)] ?? fallback)}
-                            onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
-                              ...current,
-                              settings: { ...(current.settings ?? {}), [String(key)]: event.target.checked },
-                            }))}
-                            className="accent-primary"
-                          />
-                          <span>{String(label)}</span>
-                        </label>
-                      ))}
-                    </div>
-                    <label className="block space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
-                      <span>Profile normalization</span>
-                      <KwantSelect
-                        value={String(settingsInstance.settings?.perBarProfileScaleMode ?? "independent")}
-                        onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
-                          ...current,
-                          settings: { ...(current.settings ?? {}), perBarProfileScaleMode: event.target.value },
-                        }))}
-                        className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground"
-                        menuLabel="Per-bar profile normalization"
-                      >
-                        <option value="independent">Independent volume and delta scales</option>
-                        <option value="shared">Shared volume and delta scale</option>
-                      </KwantSelect>
-                    </label>
-                    <div className="grid gap-2 sm:grid-cols-2">
-                      {[
-                        ["Profile width", "perBarProfileWidthPercent", 92, 10, 100, 1, "%"],
-                        ["Centre gap", "perBarProfileGap", 2, 0, 12, 1, "px"],
-                        ["Extra candle spacing", "perBarProfileExtraSpacing", 18, 0, 48, 1, "px"],
-                        ["Profile opacity", "perBarProfileOpacity", 58, 5, 100, 1, "%"],
-                        ["POC square size", "perBarProfilePocSize", 5, 2, 12, 1, "px"],
-                      ].map(([label, key, fallback, minimum, maximum, step, suffix]) => {
-                        const value = Number(settingsInstance.settings?.[String(key)] ?? fallback);
-                        return (
-                          <label key={String(key)} className="block rounded-lg border border-border bg-surface/30 p-2.5">
-                            <span className="mb-2 flex items-center justify-between text-[9px] text-muted">
-                              <span>{String(label)}</span>
-                              <span className="font-mono text-foreground">{value}{String(suffix)}</span>
-                            </span>
-                            <input
-                              type="range"
-                              min={Number(minimum)}
-                              max={Number(maximum)}
-                              step={Number(step)}
-                              value={value}
-                              onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
-                                ...current,
-                                settings: { ...(current.settings ?? {}), [String(key)]: Number(event.target.value) },
-                              }))}
-                              className="w-full accent-primary"
-                            />
-                          </label>
-                        );
-                      })}
-                    </div>
-                    <div className="grid gap-2 sm:grid-cols-2">
-                      {[
-                        ["Volume", "perBarVolumeColor", "#B7FF38"],
-                        ["Positive delta", "perBarPositiveDeltaColor", "#B7FF38"],
-                        ["Negative delta", "perBarNegativeDeltaColor", "#F06A70"],
-                        ["POC", "perBarProfilePocColor", "#E4BF5A"],
-                      ].map(([label, key, fallback]) => (
-                        <label key={String(key)} className="flex min-h-9 items-center justify-between rounded-lg border border-border bg-surface/30 px-3 text-[9px] text-muted">
-                          <span>{String(label)}</span>
-                          <input
-                            type="color"
-                            value={String(settingsInstance.settings?.[String(key)] ?? fallback)}
-                            onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
-                              ...current,
-                              settings: { ...(current.settings ?? {}), [String(key)]: event.target.value },
-                            }))}
-                            disabled={settingsInstance.settings?.useThemeColors !== false}
-                            className="h-6 w-8 cursor-pointer border-0 bg-transparent disabled:cursor-not-allowed disabled:opacity-35"
-                            title={settingsInstance.settings?.useThemeColors !== false ? "Turn off Use Theme Colors to set a custom colour" : undefined}
-                          />
-                        </label>
-                      ))}
-                    </div>
-                  </section>
                   {[
                     ["Content", "contentMode", [["bid-ask", "Bid Ã— Ask"], ["delta", "Delta"], ["volume", "Volume"], ["volume-delta", "Volume Ã— Delta"], ["trades", "Trades"], ["bid-ask-histogram", "Bid / Ask histogram"], ["volume-histogram", "Volume histogram"], ["delta-histogram", "Delta histogram"], ["ladder", "Minimal ladder"]]],
                     ["Visualization", "visualizationMode", [["solid", "Solid"], ["heatmap", "Heatmap"], ["histogram", "Histogram"], ["heatmap-histogram", "Heatmap histogram"], ["text-only", "Text only"]]],
@@ -985,6 +893,107 @@ export default function ChartIndicatorsControl({
                     Bid Ã— Ask uses classified executions from the Rithmic / CME tape. Unclassified executions remain in total volume and POC, but never enter Bid, Ask, Delta or imbalance calculations.
                   </div>
                 </div>
+              ) : null}
+
+              {settingsDefinition.id === "deep-print-footprint" ? (
+                <section className="space-y-3 rounded-xl border border-primary/15 bg-primary/[0.035] p-3">
+                  <div>
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-foreground">Volume Profile</div>
+                    <p className="mt-1 text-[9px] leading-4 text-muted">
+                      Builds from the same live executions as each footprint bar. Total volume faces right, signed delta faces left, and the POC square uses the footprint bar&apos;s exact POC row.
+                    </p>
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {[
+                      ["Volume profile · right", "showPerBarVolumeProfile", false],
+                      ["Delta profile · left", "showPerBarDeltaProfile", false],
+                      ["POC square", "showPerBarProfilePoc", true],
+                      ["Profile outline", "perBarProfileOutline", false],
+                    ].map(([label, key, fallback]) => (
+                      <label key={String(key)} className="flex min-h-9 items-center gap-2 rounded-lg border border-border bg-surface/30 px-3 text-[9px] text-muted">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(settingsInstance.settings?.[String(key)] ?? fallback)}
+                          onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                            ...current,
+                            settings: { ...(current.settings ?? {}), [String(key)]: event.target.checked },
+                          }))}
+                          className="accent-primary"
+                        />
+                        <span>{String(label)}</span>
+                      </label>
+                    ))}
+                  </div>
+                  <label className="block space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                    <span>Profile normalization</span>
+                    <KwantSelect
+                      value={String(settingsInstance.settings?.perBarProfileScaleMode ?? "independent")}
+                      onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                        ...current,
+                        settings: { ...(current.settings ?? {}), perBarProfileScaleMode: event.target.value },
+                      }))}
+                      className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground"
+                      menuLabel="Per-bar profile normalization"
+                    >
+                      <option value="independent">Independent volume and delta scales</option>
+                      <option value="shared">Shared volume and delta scale</option>
+                    </KwantSelect>
+                  </label>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {[
+                      ["Profile width", "perBarProfileWidthPercent", 92, 10, 100, 1, "%"],
+                      ["Centre gap", "perBarProfileGap", 2, 0, 12, 1, "px"],
+                      ["Extra candle spacing", "perBarProfileExtraSpacing", 18, 0, 48, 1, "px"],
+                      ["Profile opacity", "perBarProfileOpacity", 58, 5, 100, 1, "%"],
+                      ["POC square size", "perBarProfilePocSize", 5, 2, 12, 1, "px"],
+                    ].map(([label, key, fallback, minimum, maximum, step, suffix]) => {
+                      const value = Number(settingsInstance.settings?.[String(key)] ?? fallback);
+                      return (
+                        <label key={String(key)} className="block rounded-lg border border-border bg-surface/30 p-2.5">
+                          <span className="mb-2 flex items-center justify-between text-[9px] text-muted">
+                            <span>{String(label)}</span>
+                            <span className="font-mono text-foreground">{value}{String(suffix)}</span>
+                          </span>
+                          <input
+                            type="range"
+                            min={Number(minimum)}
+                            max={Number(maximum)}
+                            step={Number(step)}
+                            value={value}
+                            onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                              ...current,
+                              settings: { ...(current.settings ?? {}), [String(key)]: Number(event.target.value) },
+                            }))}
+                            className="w-full accent-primary"
+                          />
+                        </label>
+                      );
+                    })}
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {[
+                      ["Volume", "perBarVolumeColor", "#B7FF38"],
+                      ["Positive delta", "perBarPositiveDeltaColor", "#B7FF38"],
+                      ["Negative delta", "perBarNegativeDeltaColor", "#F06A70"],
+                      ["POC", "perBarProfilePocColor", "#E4BF5A"],
+                    ].map(([label, key, fallback]) => (
+                      <label key={String(key)} className="flex min-h-9 items-center justify-between rounded-lg border border-border bg-surface/30 px-3 text-[9px] text-muted">
+                        <span>{String(label)}</span>
+                        <input
+                          type="color"
+                          value={String(settingsInstance.settings?.[String(key)] ?? fallback)}
+                          onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                            ...current,
+                            settings: { ...(current.settings ?? {}), [String(key)]: event.target.value },
+                          }))}
+                          disabled={settingsInstance.settings?.useThemeColors !== false}
+                          className="h-6 w-8 cursor-pointer border-0 bg-transparent disabled:cursor-not-allowed disabled:opacity-35"
+                          title={settingsInstance.settings?.useThemeColors !== false ? "Turn off Use Theme Colors to set a custom colour" : undefined}
+                        />
+                      </label>
+                    ))}
+                  </div>
+                </section>
               ) : null}
 
               {settingsDefinition.id === "depth-of-market" ? (
