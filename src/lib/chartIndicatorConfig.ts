@@ -2,6 +2,7 @@ import type { ChartSettings } from "@/lib/chartSettings";
 import type { ChartIndicatorInstance } from "@/lib/chartIndicatorCatalog";
 import { STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT } from "@/lib/volumeProfileMath";
 import { DEFAULT_FOOTPRINT_SETTINGS, FOOTPRINT_SETTINGS_SCHEMA_VERSION } from "@/lib/footprintSettings";
+import { defaultTpoSettings, tpoSettingsToRecord, validateTpoSettings } from "@/lib/tpo/settings";
 
 export const LIVE_CHART_INDICATOR_IDS = new Set([
   "volume",
@@ -33,6 +34,8 @@ export const LIVE_CHART_INDICATOR_IDS = new Set([
   "donchian-channel",
   "keltner-channel",
   "kwant-profile",
+  "tpo-chart",
+  "weekly-tpo",
   "weekly-volume-profile",
   "custom-draw-on-volume-profile",
   "ask-bid-volume-profile",
@@ -193,6 +196,88 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
     { key: "opacity", label: "Profile opacity (%)", defaultValue: 72, min: 10, max: 100 },
     { key: "minTradeVolume", label: "Minimum execution size", defaultValue: 0, min: 0, max: 100000 },
     { key: "maxTradeVolume", label: "Maximum execution size (0 = no maximum)", defaultValue: 0, min: 0, max: 1000000 },
+  ],
+  "tpo-chart": [
+    { key: "lengthValue", label: "Generic period length", defaultValue: 1, min: 1, max: 1800000, step: 1 },
+    { key: "subperiodMinutes", label: "TPO subperiod (minutes)", defaultValue: 30, min: 1, max: 1440, step: 1 },
+    { key: "profileCount", label: "Profiles · 0 = all", defaultValue: 10, min: 0, max: 500, step: 1 },
+    { key: "ticksPerRow", label: "Manual ticks per row", defaultValue: 1, min: 1, max: 600, step: 1 },
+    { key: "autoTargetRows", label: "Automatic target rows", defaultValue: 90, min: 20, max: 400, step: 1 },
+    { key: "autoGroupFactor", label: "Automatic grouping factor", defaultValue: 1, min: 0.25, max: 8, step: 0.25 },
+    { key: "valueAreaPercent", label: "Value Area (%)", defaultValue: 70, min: 1, max: 100, step: 1 },
+    { key: "initialBalanceSubperiods", label: "Initial Balance subperiods", defaultValue: 2, min: 1, max: 48, step: 1 },
+    { key: "initialBalanceStartSubperiod", label: "Initial Balance start subperiod", defaultValue: 0, min: 0, max: 48, step: 1 },
+    { key: "initialBalanceLineWidth", label: "Initial Balance line width", defaultValue: 1, min: 0.5, max: 6, step: 0.5 },
+    { key: "minimumSinglePrintTicks", label: "Minimum Single Print ticks", defaultValue: 1, min: 1, max: 100, step: 1 },
+    { key: "blockSize", label: "Block size", defaultValue: 8, min: 2, max: 24, step: 0.5 },
+    { key: "blockGap", label: "Block gap", defaultValue: 1, min: 0, max: 6, step: 0.25 },
+    { key: "opacityPercent", label: "Profile opacity (%)", defaultValue: 72, min: 0, max: 100, step: 1 },
+    { key: "borderWidth", label: "Block border width", defaultValue: 0.75, min: 0, max: 6, step: 0.25 },
+    { key: "barMarkerWidth", label: "Subperiod OHLC marker width", defaultValue: 1, min: 0.5, max: 6, step: 0.5 },
+    { key: "range1Minimum", label: "Colour range 1 minimum", defaultValue: 0, min: -1000000, max: 1000000, step: 1 },
+    { key: "range2Minimum", label: "Colour range 2 minimum", defaultValue: 25, min: -1000000, max: 1000000, step: 1 },
+    { key: "range3Minimum", label: "Colour range 3 minimum", defaultValue: 50, min: -1000000, max: 1000000, step: 1 },
+    { key: "range4Minimum", label: "Colour range 4 minimum", defaultValue: 75, min: -1000000, max: 1000000, step: 1 },
+    { key: "pocLineWidth", label: "POC line width", defaultValue: 1.5, min: 0.5, max: 6, step: 0.5 },
+    { key: "developingPocStartOffset", label: "Developing POC start offset", defaultValue: 0, min: 0, max: 500, step: 1 },
+    { key: "shiftedPocTicks", label: "Shifted POC threshold (ticks)", defaultValue: 1, min: 1, max: 100, step: 1 },
+    { key: "pocGroupingOpacity", label: "POC grouping opacity (%)", defaultValue: 18, min: 0, max: 100, step: 1 },
+    { key: "valueAreaBackgroundOpacity", label: "Value Area background opacity (%)", defaultValue: 10, min: 0, max: 100, step: 1 },
+    { key: "valueAreaLineWidth", label: "Value Area line width", defaultValue: 1, min: 0.5, max: 6, step: 0.5 },
+    { key: "singlePrintLineWidth", label: "Single Print line width", defaultValue: 1, min: 0.5, max: 6, step: 0.5 },
+    { key: "singlePrintFillOpacity", label: "Single Print fill opacity (%)", defaultValue: 9, min: 0, max: 100, step: 1 },
+    { key: "summaryBackgroundOpacity", label: "Summary background opacity (%)", defaultValue: 86, min: 0, max: 100, step: 1 },
+    { key: "summaryFontSize", label: "Summary font size", defaultValue: 8, min: 6, max: 16, step: 1 },
+    { key: "currentWidth", label: "Current profile width", defaultValue: 100, min: 0, max: 500, step: 1 },
+    { key: "currentOffset", label: "Current profile offset", defaultValue: 0, min: 0, max: 500, step: 1 },
+    { key: "previousWidth", label: "Previous profile width", defaultValue: 80, min: 0, max: 500, step: 1 },
+    { key: "previousOffset", label: "Previous profile offset", defaultValue: 0, min: 0, max: 500, step: 1 },
+    { key: "peakValleyRadius", label: "Peak / Valley radius", defaultValue: 2, min: 1, max: 20, step: 1 },
+    { key: "peakMinimumProminence", label: "Peak / Valley prominence", defaultValue: 2, min: 0, max: 10000, step: 1 },
+    { key: "maximumMergeMembers", label: "Maximum profiles per composite", defaultValue: 30, min: 2, max: 100, step: 1 },
+    { key: "maximumRenderedBlocks", label: "Maximum rendered blocks", defaultValue: 50000, min: 1000, max: 250000, step: 1000 },
+    { key: "fpsCap", label: "Render FPS cap", defaultValue: 60, min: 15, max: 144, step: 1 },
+  ],
+  "weekly-tpo": [
+    { key: "lengthValue", label: "Generic period length", defaultValue: 1, min: 1, max: 1800000, step: 1 },
+    { key: "subperiodMinutes", label: "TPO subperiod (minutes)", defaultValue: 30, min: 1, max: 1440, step: 1 },
+    { key: "profileCount", label: "Weekly profiles · 0 = all", defaultValue: 8, min: 0, max: 100, step: 1 },
+    { key: "ticksPerRow", label: "Manual ticks per row", defaultValue: 1, min: 1, max: 600, step: 1 },
+    { key: "autoTargetRows", label: "Automatic target rows", defaultValue: 90, min: 20, max: 400, step: 1 },
+    { key: "autoGroupFactor", label: "Automatic grouping factor", defaultValue: 1, min: 0.25, max: 8, step: 0.25 },
+    { key: "valueAreaPercent", label: "Value Area (%)", defaultValue: 70, min: 1, max: 100, step: 1 },
+    { key: "initialBalanceSubperiods", label: "Initial Balance subperiods", defaultValue: 2, min: 1, max: 48, step: 1 },
+    { key: "initialBalanceStartSubperiod", label: "Initial Balance start subperiod", defaultValue: 0, min: 0, max: 48, step: 1 },
+    { key: "initialBalanceLineWidth", label: "Initial Balance line width", defaultValue: 1, min: 0.5, max: 6, step: 0.5 },
+    { key: "minimumSinglePrintTicks", label: "Minimum Single Print ticks", defaultValue: 1, min: 1, max: 100, step: 1 },
+    { key: "blockSize", label: "Block size", defaultValue: 8, min: 2, max: 24, step: 0.5 },
+    { key: "blockGap", label: "Block gap", defaultValue: 1, min: 0, max: 6, step: 0.25 },
+    { key: "opacityPercent", label: "Profile opacity (%)", defaultValue: 72, min: 0, max: 100, step: 1 },
+    { key: "borderWidth", label: "Block border width", defaultValue: 0.75, min: 0, max: 6, step: 0.25 },
+    { key: "barMarkerWidth", label: "Subperiod OHLC marker width", defaultValue: 1, min: 0.5, max: 6, step: 0.5 },
+    { key: "range1Minimum", label: "Colour range 1 minimum", defaultValue: 0, min: -1000000, max: 1000000, step: 1 },
+    { key: "range2Minimum", label: "Colour range 2 minimum", defaultValue: 25, min: -1000000, max: 1000000, step: 1 },
+    { key: "range3Minimum", label: "Colour range 3 minimum", defaultValue: 50, min: -1000000, max: 1000000, step: 1 },
+    { key: "range4Minimum", label: "Colour range 4 minimum", defaultValue: 75, min: -1000000, max: 1000000, step: 1 },
+    { key: "pocLineWidth", label: "POC line width", defaultValue: 1.5, min: 0.5, max: 6, step: 0.5 },
+    { key: "developingPocStartOffset", label: "Developing POC start offset", defaultValue: 0, min: 0, max: 500, step: 1 },
+    { key: "shiftedPocTicks", label: "Shifted POC threshold (ticks)", defaultValue: 1, min: 1, max: 100, step: 1 },
+    { key: "pocGroupingOpacity", label: "POC grouping opacity (%)", defaultValue: 18, min: 0, max: 100, step: 1 },
+    { key: "valueAreaBackgroundOpacity", label: "Value Area background opacity (%)", defaultValue: 10, min: 0, max: 100, step: 1 },
+    { key: "valueAreaLineWidth", label: "Value Area line width", defaultValue: 1, min: 0.5, max: 6, step: 0.5 },
+    { key: "singlePrintLineWidth", label: "Single Print line width", defaultValue: 1, min: 0.5, max: 6, step: 0.5 },
+    { key: "singlePrintFillOpacity", label: "Single Print fill opacity (%)", defaultValue: 9, min: 0, max: 100, step: 1 },
+    { key: "summaryBackgroundOpacity", label: "Summary background opacity (%)", defaultValue: 86, min: 0, max: 100, step: 1 },
+    { key: "summaryFontSize", label: "Summary font size", defaultValue: 8, min: 6, max: 16, step: 1 },
+    { key: "currentWidth", label: "Current profile width", defaultValue: 100, min: 0, max: 500, step: 1 },
+    { key: "currentOffset", label: "Current profile offset", defaultValue: 0, min: 0, max: 500, step: 1 },
+    { key: "previousWidth", label: "Previous profile width", defaultValue: 80, min: 0, max: 500, step: 1 },
+    { key: "previousOffset", label: "Previous profile offset", defaultValue: 0, min: 0, max: 500, step: 1 },
+    { key: "peakValleyRadius", label: "Peak / Valley radius", defaultValue: 2, min: 1, max: 20, step: 1 },
+    { key: "peakMinimumProminence", label: "Peak / Valley prominence", defaultValue: 2, min: 0, max: 10000, step: 1 },
+    { key: "maximumMergeMembers", label: "Maximum profiles per composite", defaultValue: 30, min: 2, max: 100, step: 1 },
+    { key: "maximumRenderedBlocks", label: "Maximum rendered blocks", defaultValue: 50000, min: 1000, max: 250000, step: 1000 },
+    { key: "fpsCap", label: "Render FPS cap", defaultValue: 60, min: 15, max: 144, step: 1 },
   ],
   "weekly-volume-profile": [
     { key: "groupTicks", label: "Price grouping (ticks)", defaultValue: 4, min: 1, max: 500 },
@@ -681,6 +766,8 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
     neutralColor: theme?.borderUpColor ?? "#94A3B8",
     tpoLevelsSettingsVersion: 1,
   } : {}),
+  ...(indicatorId === "tpo-chart" ? tpoSettingsToRecord(defaultTpoSettings("daily-tpo", theme)) : {}),
+  ...(indicatorId === "weekly-tpo" ? tpoSettingsToRecord(defaultTpoSettings("weekly-tpo", theme)) : {}),
   ...(["kwant-profile", "weekly-volume-profile", "custom-draw-on-volume-profile", "ask-bid-volume-profile", "delta-profile"].includes(indicatorId) ? {
     valueAreaPercent: STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT,
     profileMode: indicatorId === "ask-bid-volume-profile"
@@ -723,6 +810,16 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
       : instance.indicatorId === "deep-m-effort"
         ? { ...instance, indicatorId: "deep-m-effort-nq" }
       : instance;
+  if (normalizedInstance.indicatorId === "market-profile-tpo") {
+    normalizedInstance = { ...normalizedInstance, indicatorId: "tpo-chart" };
+  }
+  if (normalizedInstance.indicatorId === "tpo-chart" || normalizedInstance.indicatorId === "weekly-tpo") {
+    const variant = normalizedInstance.indicatorId === "weekly-tpo" ? "weekly-tpo" : "daily-tpo";
+    normalizedInstance = {
+      ...normalizedInstance,
+      settings: tpoSettingsToRecord(validateTpoSettings(normalizedInstance.settings, variant)),
+    };
+  }
   if (
     normalizedInstance.indicatorId === "depth-of-market"
     && Number(normalizedInstance.settings?.domSettingsVersion) < 3

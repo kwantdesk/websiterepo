@@ -64,6 +64,49 @@ const FOOTPRINT_PROFILE_MANAGED_SETTINGS = new Set([
   "perBarProfilePocColor",
 ]);
 
+const TPO_PRESETS = [
+  {
+    label: "Classic 30m",
+    settings: { subperiodMinutes: 30, displayType: "blocks", splitMode: "none", groupingMode: "automatic", valueAreaPercent: 70 },
+  },
+  {
+    label: "Letter profile",
+    settings: { subperiodMinutes: 30, displayType: "letters", splitMode: "none", groupingMode: "automatic", valueAreaPercent: 70 },
+  },
+  {
+    label: "Bid / Ask split",
+    settings: { displayType: "blocks", splitMode: "all", colourCalculation: "delta", colourReference: "fading" },
+  },
+  {
+    label: "Developing auction",
+    settings: { showDevelopingPoc: true, showDevelopingValueArea: true, pocLineMode: "developing", showInitialBalance: true },
+  },
+] as const;
+const TPO_USER_PRESETS_STORAGE_KEY = "kwantdesk:tpo-user-presets:v1";
+type TpoUserPreset = {
+  id: string;
+  name: string;
+  indicatorId: "tpo-chart" | "weekly-tpo";
+  settings: Record<string, number | string | boolean>;
+};
+
+function readTpoUserPresets() {
+  if (typeof window === "undefined") return [] as TpoUserPreset[];
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(TPO_USER_PRESETS_STORAGE_KEY) ?? "[]");
+    return Array.isArray(parsed) ? parsed.filter((item): item is TpoUserPreset => (
+      item && typeof item.id === "string" && typeof item.name === "string" && item.settings && typeof item.settings === "object"
+    )) : [];
+  } catch {
+    return [];
+  }
+}
+
+function persistTpoUserPresets(presets: TpoUserPreset[]) {
+  window.localStorage.setItem(TPO_USER_PRESETS_STORAGE_KEY, JSON.stringify(presets));
+  window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
+}
+
 // These studies are rendered by the shared Kwantify calculation engine in
 // Kwant Desk today. The complete catalogue stays visible so no study or
 // favourite is lost while feed-specific studies are connected and validated.
@@ -104,6 +147,8 @@ export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "kwant-stats",
   "deep-m-effort-nq",
   "kwant-profile",
+  "tpo-chart",
+  "weekly-tpo",
   "weekly-volume-profile",
   "ask-bid-volume-profile",
   "delta-profile",
@@ -182,6 +227,9 @@ export default function ChartIndicatorsControl({
   const [selectedFootprintPreset, setSelectedFootprintPreset] = useState<FootprintPresetName | "">("");
   const [selectedFootprintTemplateId, setSelectedFootprintTemplateId] = useState("");
   const [footprintSaveStatus, setFootprintSaveStatus] = useState("");
+  const [tpoUserPresets, setTpoUserPresets] = useState<TpoUserPreset[]>([]);
+  const [selectedTpoPresetId, setSelectedTpoPresetId] = useState("");
+  const [tpoPresetName, setTpoPresetName] = useState("");
   const restoredFootprintIdsRef = useRef(new Set<string>());
 
   useEffect(() => {
@@ -277,6 +325,13 @@ export default function ChartIndicatorsControl({
   // A locally saved footprint is restored once when this instance's settings
   // panel opens. Normal live edits continue through workspace persistence.
   // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settingsInstanceId]);
+
+  useEffect(() => {
+    if (!settingsInstanceId?.startsWith("tpo-chart-") && !settingsInstanceId?.startsWith("weekly-tpo-")) return;
+    setTpoUserPresets(readTpoUserPresets());
+    setSelectedTpoPresetId("");
+    setTpoPresetName("");
   }, [settingsInstanceId]);
 
   const filtered = useMemo(() => {
@@ -1069,6 +1124,308 @@ export default function ChartIndicatorsControl({
                   <p className="mt-1 text-[9px] leading-4 text-muted">
                     Bar width, spacing, grouping, filters, typography and footprint-detail controls.
                   </p>
+                </div>
+              ) : null}
+
+              {(settingsDefinition.id === "tpo-chart" || settingsDefinition.id === "weekly-tpo") ? (
+                <div className="space-y-3 rounded-xl border border-primary/15 bg-primary/[0.035] p-3">
+                  <div>
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-foreground">Profile &amp; Auction Market Theory</div>
+                    <p className="mt-1 text-[9px] leading-4 text-muted">
+                      One square is one distinct subperiod visit at one grouped price row. Exact executions are preferred; range-derived occupancy is labelled on-chart.
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                    {TPO_PRESETS.map((preset) => (
+                      <button
+                        key={preset.label}
+                        type="button"
+                        onClick={() => replace(settingsInstance.instanceId, (current) => ({
+                          ...current,
+                          settings: { ...(current.settings ?? {}), ...preset.settings },
+                        }))}
+                        className="border border-border bg-background px-2 py-2 text-[9px] font-semibold uppercase tracking-[0.08em] text-muted transition-colors hover:border-primary/45 hover:text-foreground"
+                      >
+                        {preset.label}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="space-y-2 border border-border bg-background/65 p-2.5">
+                    <div className="text-[9px] font-semibold uppercase tracking-[0.12em] text-foreground">Custom presets</div>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <KwantSelect
+                        value={selectedTpoPresetId}
+                        onChange={(event) => {
+                          const presetId = event.target.value;
+                          setSelectedTpoPresetId(presetId);
+                          const preset = tpoUserPresets.find((candidate) => candidate.id === presetId);
+                          if (!preset) return;
+                          setTpoPresetName(preset.name);
+                          replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), ...preset.settings } }));
+                        }}
+                        className="h-9 w-full border border-border bg-background px-3 text-[10px] text-foreground"
+                        menuLabel="Custom TPO preset"
+                      >
+                        <option value="">{tpoUserPresets.length ? "Choose saved preset" : "No saved presets"}</option>
+                        {tpoUserPresets.filter((preset) => preset.indicatorId === settingsDefinition.id).map((preset) => (
+                          <option key={preset.id} value={preset.id}>{preset.name}</option>
+                        ))}
+                      </KwantSelect>
+                      <input
+                        value={tpoPresetName}
+                        onChange={(event) => setTpoPresetName(event.target.value)}
+                        placeholder="Preset name"
+                        className="h-9 w-full border border-border bg-background px-3 text-[10px] text-foreground outline-none focus:border-primary/40"
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const name = tpoPresetName.trim();
+                          if (!name) return;
+                          const preset: TpoUserPreset = {
+                            id: crypto.randomUUID(),
+                            name,
+                            indicatorId: settingsDefinition.id as TpoUserPreset["indicatorId"],
+                            settings: { ...(settingsInstance.settings ?? {}) },
+                          };
+                          const next = [...tpoUserPresets, preset];
+                          setTpoUserPresets(next);
+                          setSelectedTpoPresetId(preset.id);
+                          persistTpoUserPresets(next);
+                        }}
+                        className="h-8 border border-primary/35 bg-primary/10 text-[8px] font-semibold uppercase tracking-[0.08em] text-primary"
+                      >Save new</button>
+                      <button
+                        type="button"
+                        disabled={!selectedTpoPresetId}
+                        onClick={() => {
+                          const next = tpoUserPresets.map((preset) => preset.id === selectedTpoPresetId
+                            ? { ...preset, name: tpoPresetName.trim() || preset.name, settings: { ...(settingsInstance.settings ?? {}) } }
+                            : preset);
+                          setTpoUserPresets(next);
+                          persistTpoUserPresets(next);
+                        }}
+                        className="h-8 border border-border text-[8px] font-semibold uppercase tracking-[0.08em] text-muted disabled:opacity-35"
+                      >Update</button>
+                      <button
+                        type="button"
+                        disabled={!selectedTpoPresetId}
+                        onClick={() => {
+                          const source = tpoUserPresets.find((preset) => preset.id === selectedTpoPresetId);
+                          if (!source) return;
+                          const copy = { ...source, id: crypto.randomUUID(), name: `${source.name} copy` };
+                          const next = [...tpoUserPresets, copy];
+                          setTpoUserPresets(next);
+                          setSelectedTpoPresetId(copy.id);
+                          setTpoPresetName(copy.name);
+                          persistTpoUserPresets(next);
+                        }}
+                        className="h-8 border border-border text-[8px] font-semibold uppercase tracking-[0.08em] text-muted disabled:opacity-35"
+                      >Duplicate</button>
+                      <button
+                        type="button"
+                        disabled={!selectedTpoPresetId}
+                        onClick={() => {
+                          const next = tpoUserPresets.filter((preset) => preset.id !== selectedTpoPresetId);
+                          setTpoUserPresets(next);
+                          setSelectedTpoPresetId("");
+                          setTpoPresetName("");
+                          persistTpoUserPresets(next);
+                        }}
+                        className="h-8 border border-danger/35 text-[8px] font-semibold uppercase tracking-[0.08em] text-danger disabled:opacity-35"
+                      >Delete</button>
+                    </div>
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {([
+                      ["Schedule", "scheduleKind", [["daily", "Daily"], ["weekly", "Weekly"], ["generic-period", "Generic period"], ["custom-range", "Custom range"]]],
+                      ["Period mode", "periodMode", [["multiple-profiles", "Multiple profiles"], ["all-loaded-bars", "All loaded bars"], ["custom-range", "Custom range"]]],
+                      ["Display", "displayType", [["blocks", "Blocks"], ["letters", "Letters"], ["automatic", "Automatic"]]],
+                      ["Split TPO", "splitMode", [["none", "None"], ["last", "Last"], ["all", "All"]]],
+                      ["Data fidelity", "visitSource", [["automatic", "Automatic"], ["exact-trades", "Exact trades"], ["bar-range", "Bar range"]]],
+                      ["Tick grouping", "groupingMode", [["automatic", "Automatic"], ["manual", "Manual"]]],
+                      ["Width mode", "widthMode", [["automatic", "Automatic"], ["period-percent", "Period percent"], ["window-percent", "Window percent"], ["fixed-bars", "Fixed bars"]]],
+                      ["Session action", "filterMode", [["none", "No filter"], ["filter", "Filter"], ["split-two", "Split two"], ["split-three", "Split three"]]],
+                      ["Session filter", "sessionPreset", [["eth", "ETH"], ["rth", "RTH"], ["custom", "Custom"]]],
+                      ["Length unit", "lengthUnit", [["minute", "Minutes"], ["day", "Days"], ["week", "Weeks"], ["month", "Months"]]],
+                      ["Daily end", "dailyEndMode", [["next-daily-start", "Next daily start"], ["explicit-time", "Explicit time"]]],
+                      ["Weekly end", "weekEndMode", [["next-week-start", "Next week start"], ["explicit-day-time", "Explicit day/time"]]],
+                      ["Colour calculation", "colourCalculation", [["time", "Time"], ["volume", "Volume"], ["delta", "Delta"]]],
+                      ["Colour reference", "colourReference", [["fixed", "Fixed"], ["fading", "Fading"], ["multiple-ranges", "Multiple ranges"]]],
+                      ["OHLC markers", "barMarkerStyle", [["body", "Body"], ["candle", "Candlestick"]]],
+                      ["POC mode", "pocLineMode", [["none", "None"], ["final", "Final"], ["developing", "Developing"], ["extend-shifted", "Extend shifted"]]],
+                      ["POC extension", "pocExtensionMode", [["none", "None"], ["to-window-end", "To window end"], ["until-first-interaction", "Until first interaction"]]],
+                      ["Value Area extension", "valueAreaExtensionMode", [["none", "None"], ["to-window-end", "To window end"], ["until-first-interaction", "Until first interaction"]]],
+                      ["Single Print extension", "singlePrintExtensionMode", [["none", "None"], ["to-window-end", "To window end"], ["until-first-interaction", "Until first interaction"]]],
+                      ["Summary layout", "summaryLayout", [["compact", "Compact"], ["full", "Full"]]],
+                      ["Summary location", "summaryLocation", [["top-left", "Top left"], ["top-right", "Top right"], ["bottom-left", "Bottom left"], ["bottom-right", "Bottom right"]]],
+                    ] as const).map(([label, key, options]) => (
+                      <label key={key} className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                        <span>{label}</span>
+                        <KwantSelect
+                          value={String(settingsInstance.settings?.[key] ?? options[0][0])}
+                          onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                            ...current,
+                            settings: { ...(current.settings ?? {}), [key]: event.target.value },
+                          }))}
+                          className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground"
+                          menuLabel={label}
+                        >
+                          {options.map(([value, optionLabel]) => <option key={value} value={value}>{optionLabel}</option>)}
+                        </KwantSelect>
+                      </label>
+                    ))}
+                    <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                      <span>Exchange timezone</span>
+                      <input
+                        value={String(settingsInstance.settings?.timezone ?? "America/Chicago")}
+                        onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), timezone: event.target.value } }))}
+                        className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground outline-none focus:border-primary/40"
+                      />
+                    </label>
+                    <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                      <span>Explicit daily end</span>
+                      <input
+                        type="time"
+                        step="1"
+                        value={String(settingsInstance.settings?.dailyEndTime ?? "16:00:00")}
+                        onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), dailyEndTime: event.target.value } }))}
+                        className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground outline-none focus:border-primary/40"
+                      />
+                    </label>
+                    <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                      <span>Week start day</span>
+                      <KwantSelect
+                        value={String(settingsInstance.settings?.weekStartDay ?? 0)}
+                        onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), weekStartDay: Number(event.target.value) } }))}
+                        className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground"
+                        menuLabel="Week start day"
+                      >
+                        {["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"].map((day, index) => <option key={day} value={index}>{day}</option>)}
+                      </KwantSelect>
+                    </label>
+                    <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                      <span>Explicit week end day</span>
+                      <KwantSelect
+                        value={String(settingsInstance.settings?.weekEndDay ?? 5)}
+                        onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), weekEndDay: Number(event.target.value) } }))}
+                        className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground"
+                        menuLabel="Explicit week end day"
+                      >
+                        {["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"].map((day, index) => <option key={day} value={index}>{day}</option>)}
+                      </KwantSelect>
+                    </label>
+                    <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                      <span>Explicit week end time</span>
+                      <input
+                        type="time"
+                        step="1"
+                        value={String(settingsInstance.settings?.weekEndTime ?? "16:00:00")}
+                        onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), weekEndTime: event.target.value } }))}
+                        className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground outline-none focus:border-primary/40"
+                      />
+                    </label>
+                    <div className="space-y-1.5 sm:col-span-2">
+                      <span className="text-[9px] uppercase tracking-[0.12em] text-muted">Enabled weekdays</span>
+                      <div className="grid grid-cols-7 gap-1">
+                        {["S", "M", "T", "W", "T", "F", "S"].map((day, index) => {
+                          const raw = settingsInstance.settings?.enabledWeekdays;
+                          const enabled = (Array.isArray(raw) ? raw.map(Number) : String(raw ?? "0,1,2,3,4").split(",").map(Number)).includes(index);
+                          return (
+                            <button
+                              key={`${day}-${index}`}
+                              type="button"
+                              onClick={() => replace(settingsInstance.instanceId, (current) => {
+                                const currentRaw = current.settings?.enabledWeekdays;
+                                const currentDays = Array.isArray(currentRaw)
+                                  ? currentRaw.map(Number)
+                                  : String(currentRaw ?? "0,1,2,3,4").split(",").map(Number);
+                                const next = currentDays.includes(index)
+                                  ? currentDays.filter((value) => value !== index)
+                                  : [...currentDays, index].sort((left, right) => left - right);
+                                return { ...current, settings: { ...(current.settings ?? {}), enabledWeekdays: next.join(",") } };
+                              })}
+                              className={`h-8 border text-[9px] font-semibold ${enabled ? "border-primary/60 bg-primary/12 text-primary" : "border-border bg-background text-muted"}`}
+                            >
+                              {day}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                      <span>Custom range start (UTC)</span>
+                      <input
+                        type="datetime-local"
+                        value={settingsInstance.settings?.customStartMs ? new Date(Number(settingsInstance.settings.customStartMs)).toISOString().slice(0, 16) : ""}
+                        onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                          ...current,
+                          settings: { ...(current.settings ?? {}), customStartMs: event.target.value ? Date.parse(`${event.target.value}:00Z`) : 0 },
+                        }))}
+                        className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground outline-none focus:border-primary/40"
+                      />
+                    </label>
+                    <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                      <span>Custom range end (UTC)</span>
+                      <input
+                        type="datetime-local"
+                        value={settingsInstance.settings?.customEndMs ? new Date(Number(settingsInstance.settings.customEndMs)).toISOString().slice(0, 16) : ""}
+                        onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                          ...current,
+                          settings: { ...(current.settings ?? {}), customEndMs: event.target.value ? Date.parse(`${event.target.value}:00Z`) : 0 },
+                        }))}
+                        className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground outline-none focus:border-primary/40"
+                      />
+                    </label>
+                    <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                      <span>Custom session start</span>
+                      <input
+                        type="time"
+                        step="1"
+                        value={String(settingsInstance.settings?.customSessionStart ?? "17:00:00")}
+                        onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), customSessionStart: event.target.value } }))}
+                        className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground outline-none focus:border-primary/40"
+                      />
+                    </label>
+                    <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                      <span>Custom session end</span>
+                      <input
+                        type="time"
+                        step="1"
+                        value={String(settingsInstance.settings?.customSessionEnd ?? "16:00:00")}
+                        onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), customSessionEnd: event.target.value } }))}
+                        className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground outline-none focus:border-primary/40"
+                      />
+                    </label>
+                    <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                      <span>{settingsDefinition.id === "weekly-tpo" ? "Week start time" : "Daily start time"}</span>
+                      <input
+                        type="time"
+                        step="1"
+                        value={String(settingsInstance.settings?.[settingsDefinition.id === "weekly-tpo" ? "weekStartTime" : "dailyStartTime"] ?? "17:00:00")}
+                        onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                          ...current,
+                          settings: { ...(current.settings ?? {}), [settingsDefinition.id === "weekly-tpo" ? "weekStartTime" : "dailyStartTime"]: event.target.value },
+                        }))}
+                        className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground outline-none focus:border-primary/40"
+                      />
+                    </label>
+                  </div>
+                  <div className="text-[8px] leading-4 text-muted">
+                    This tool flags auction structure from observed price visits. It does not fabricate missing trade data.
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => replace(settingsInstance.instanceId, (current) => ({
+                      ...current,
+                      settings: defaultIndicatorSettings(settingsDefinition.id, chartSettings),
+                    }))}
+                    className="h-9 w-full border border-border bg-background text-[9px] font-semibold uppercase tracking-[0.12em] text-muted transition-colors hover:border-primary/45 hover:text-foreground"
+                  >
+                    Reset TPO defaults
+                  </button>
                 </div>
               ) : null}
 

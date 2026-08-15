@@ -131,6 +131,10 @@ import {
   NativeVolumeProfilePrimitive,
   type NativeVolumeProfileModel,
 } from "@/lib/nativeVolumeProfilePrimitive";
+import { buildTpoProfiles } from "@/lib/tpo/engine";
+import { validateTpoSettings } from "@/lib/tpo/settings";
+import { TpoProfilePrimitive, type TpoPrimitiveModel } from "@/lib/tpo/primitive";
+import type { TpoMergeRecord } from "@/lib/tpo/types";
 import {
   ClassicGexProfilePrimitive,
   type ClassicGexPrimitiveData,
@@ -2381,6 +2385,7 @@ export default function Chart({
   const sessionHighLowRenderDataRef = useRef<SessionHighLowRenderLevel[]>([]);
   const sessionWindowRenderDataRef = useRef<SessionWindowRenderData[]>([]);
   const volumeProfilePrimitiveRef = useRef<NativeVolumeProfilePrimitive | null>(null);
+  const tpoProfilePrimitiveRef = useRef<TpoProfilePrimitive | null>(null);
   const classicGexProfilePrimitiveRef = useRef<ClassicGexProfilePrimitive | null>(null);
   const bigTradesPrimitiveRef = useRef<BigTradesPrimitive | null>(null);
   const bigBlocksPrimitiveRef = useRef<BigBlocksPrimitive | null>(null);
@@ -2399,7 +2404,22 @@ export default function Chart({
   } | null>(null);
   const horzLineRef = useRef<HTMLDivElement>(null);
   const priceLabelRef = useRef<HTMLDivElement>(null);
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; price: string } | null>(null);
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+    price: string;
+    tpoHit?: { instanceId: string; profileId: string };
+  } | null>(null);
+  const tpoBaseModelsRef = useRef<TpoPrimitiveModel[]>([]);
+  const [tpoMergeRecords, setTpoMergeRecords] = useState<TpoMergeRecord[]>([]);
+  const [tpoMergeHydratedKey, setTpoMergeHydratedKey] = useState<string | null>(null);
+  const [tpoMergeSelection, setTpoMergeSelection] = useState<{
+    instanceId: string;
+    anchorProfileId: string;
+  } | null>(null);
+  const [tpoDataStatus, setTpoDataStatus] = useState<string | null>(null);
+  const tpoMergeSelectionRef = useRef(tpoMergeSelection);
+  const tpoMergeStorageKey = `kwantdesk:tpo-merges:v1:${chartInstanceId}:${instrument}`;
   const drawingPersistenceInstrument = `${instrument}::${chartInstanceId.slice(-16)}`;
   const [copiedPrice, setCopiedPrice] = useState(false);
   const [selectedTool, setSelectedTool] = useState<DrawingToolId>("cursor");
@@ -2679,6 +2699,40 @@ export default function Chart({
     updateIndicatorSettingRef.current = onUpdateIndicatorSetting;
     openIndicatorSettingsRef.current = onOpenIndicatorSettings;
   }, [onOpenIndicatorSettings, onUpdateIndicatorSetting]);
+
+  useEffect(() => {
+    tpoMergeSelectionRef.current = tpoMergeSelection;
+  }, [tpoMergeSelection]);
+
+  useEffect(() => {
+    setTpoMergeHydratedKey(null);
+    try {
+      const raw = window.localStorage.getItem(tpoMergeStorageKey);
+      if (!raw) {
+        setTpoMergeRecords([]);
+        setTpoMergeHydratedKey(tpoMergeStorageKey);
+        return;
+      }
+      const parsed = JSON.parse(raw) as TpoMergeRecord[];
+      setTpoMergeRecords(Array.isArray(parsed) ? parsed : []);
+    } catch {
+      setTpoMergeRecords([]);
+    }
+    setTpoMergeHydratedKey(tpoMergeStorageKey);
+  }, [tpoMergeStorageKey]);
+
+  useEffect(() => {
+    if (tpoMergeHydratedKey !== tpoMergeStorageKey) return;
+    try {
+      if (tpoMergeRecords.length) {
+        window.localStorage.setItem(tpoMergeStorageKey, JSON.stringify(tpoMergeRecords));
+      } else {
+        window.localStorage.removeItem(tpoMergeStorageKey);
+      }
+    } catch {
+      // Workspace storage is best-effort; the live profile must remain usable.
+    }
+  }, [tpoMergeHydratedKey, tpoMergeRecords, tpoMergeStorageKey]);
 
   useEffect(() => {
     const previousCandles = pendingIndicatorCandlesRef.current;
@@ -6502,6 +6556,9 @@ export default function Chart({
     const volumeProfilePrimitive = new NativeVolumeProfilePrimitive();
     candleSeries.attachPrimitive(volumeProfilePrimitive);
     volumeProfilePrimitiveRef.current = volumeProfilePrimitive;
+    const tpoProfilePrimitive = new TpoProfilePrimitive();
+    candleSeries.attachPrimitive(tpoProfilePrimitive);
+    tpoProfilePrimitiveRef.current = tpoProfilePrimitive;
     const bigTradesPrimitive = new BigTradesPrimitive();
     candleSeries.attachPrimitive(bigTradesPrimitive);
     bigTradesPrimitiveRef.current = bigTradesPrimitive;
@@ -6828,7 +6885,13 @@ export default function Chart({
         price = "";
       }
 
-      setContextMenu({ x, y, price });
+      const tpoHit = tpoProfilePrimitiveRef.current?.profileHitTest(x, y);
+      setContextMenu({
+        x,
+        y,
+        price,
+        tpoHit: tpoHit ? { instanceId: tpoHit.instanceId, profileId: tpoHit.profileId } : undefined,
+      });
     };
 
     const handleResize = () => {
@@ -7226,6 +7289,209 @@ export default function Chart({
     settings.upColor,
     volumeProfiles,
   ]);
+
+  useEffect(() => {
+    const primitive = tpoProfilePrimitiveRef.current;
+    if (!primitive) return;
+    const instances = indicators.filter((instance) =>
+      instance.enabled && (instance.indicatorId === "tpo-chart" || instance.indicatorId === "weekly-tpo"));
+    if (!instances.length) {
+      primitive.setModels([]);
+      setTpoDataStatus(null);
+      return;
+    }
+    const tickSize = priceFormat.minMove;
+    const sourceTrades = sampledIndicatorMarketTrades
+      .filter((trade) => !trade.flowOnly && Number.isFinite(trade.close) && trade.volume > 0)
+      .map((trade) => ({
+        instrumentId: instrument,
+        timestampMs: trade.timestamp,
+        sequence: trade.eventId ?? trade.recordIndex,
+        price: trade.close,
+        size: trade.volume,
+        aggressorSide: trade.aggressor === "BUY" ? "buy" as const : trade.aggressor === "SELL" ? "sell" as const : "unknown" as const,
+        tickSize,
+      }));
+    const sourceBars = sampledIndicatorCandles.map((candle, index) => ({
+      instrumentId: instrument,
+      startTimeMs: candle.timestamp,
+      endTimeMs: sampledIndicatorCandles[index + 1]?.timestamp
+        ?? candle.timestamp + (candleIntervalMs ?? 60_000),
+      open: candle.open,
+      high: candle.high,
+      low: candle.low,
+      close: candle.close,
+      volume: candle.volume,
+      bidVolume: candle.bidVolume,
+      askVolume: candle.askVolume,
+      tradeCount: candle.trades,
+      tickSize,
+    }));
+    const requestsExactTrades = instances.some((instance) => instance.settings?.visitSource === "exact-trades");
+    if (!sourceTrades.length && requestsExactTrades) {
+      primitive.setModels([]);
+      setTpoDataStatus("TPO · WAITING FOR EXACT EXECUTIONS");
+      return;
+    }
+    if (!sourceTrades.length && !sourceBars.length) {
+      primitive.setModels([]);
+      setTpoDataStatus("TPO · WAITING FOR MARKET DATA");
+      return;
+    }
+    const themeStyles = getComputedStyle(document.documentElement);
+    const theme = {
+      background: settings.backgroundColor,
+      foreground: themeStyles.getPropertyValue("--foreground").trim() || "#F5F7FA",
+      muted: themeStyles.getPropertyValue("--muted").trim() || "#7F8DA1",
+      profile: themeStyles.getPropertyValue("--primary").trim() || settings.upColor,
+      bullish: settings.upColor,
+      bearish: settings.downColor,
+      poc: themeStyles.getPropertyValue("--warning").trim() || "#F5B83B",
+      valueArea: settings.borderUpColor,
+      singlePrint: settings.downColor,
+      peak: settings.upColor,
+      valley: themeStyles.getPropertyValue("--secondary").trim() || "#8B5CF6",
+      selection: themeStyles.getPropertyValue("--primary").trim() || settings.upColor,
+    };
+    const lastCandleTime = sampledIndicatorCandles.length
+      ? Math.floor(sampledIndicatorCandles.at(-1)!.timestamp / 1_000)
+      : null;
+    const intervalSeconds = candleIntervalMs ? candleIntervalMs / 1_000 : null;
+    const baseModels = instances.flatMap((instance): TpoPrimitiveModel[] => {
+      const variant = instance.indicatorId === "weekly-tpo" ? "weekly-tpo" : "daily-tpo";
+      const tpoSettings = validateTpoSettings(instance.settings, variant, settings);
+      return buildTpoProfiles({ trades: sourceTrades, bars: sourceBars, settings: tpoSettings }).map((profile) => ({
+        instanceId: instance.instanceId,
+        profile,
+        settings: tpoSettings,
+        theme,
+        lastCandleTime,
+        intervalSeconds,
+      }));
+    });
+    tpoBaseModelsRef.current = baseModels;
+    const hiddenProfileIds = new Set<string>();
+    const compositeModels: TpoPrimitiveModel[] = [];
+    tpoMergeRecords.forEach((record) => {
+      const members = record.memberProfileIds
+        .map((profileId) => baseModels.find((model) =>
+          model.instanceId === record.indicatorInstanceId && model.profile.id === profileId))
+        .filter((model): model is TpoPrimitiveModel => Boolean(model))
+        .sort((left, right) => left.profile.startTimeMs - right.profile.startTimeMs);
+      if (members.length < 2) return;
+      const anchor = members.find((model) => model.profile.id === record.anchorProfileId) ?? members.at(-1)!;
+      const first = members[0].profile;
+      const last = members.at(-1)!.profile;
+      const compositeSettings = {
+        ...anchor.settings,
+        scheduleKind: "custom-range" as const,
+        periodMode: "custom-range" as const,
+        customStartMs: first.startTimeMs,
+        customEndMs: last.endTimeMs,
+        customEndFollowsLatest: last.developing,
+        profileCount: 1,
+      };
+      const rebuilt = buildTpoProfiles({
+        trades: sourceTrades,
+        bars: sourceBars,
+        settings: compositeSettings,
+      })[0];
+      if (!rebuilt) return;
+      record.memberProfileIds.forEach((profileId) => hiddenProfileIds.add(`${record.indicatorInstanceId}:${profileId}`));
+      compositeModels.push({
+        ...anchor,
+        settings: compositeSettings,
+        profile: {
+          ...rebuilt,
+          id: `composite:${record.id}`,
+          memberProfileIds: record.memberProfileIds,
+          anchorProfileId: record.anchorProfileId,
+        },
+      });
+    });
+    const models = [...baseModels.filter((model) =>
+      !hiddenProfileIds.has(`${model.instanceId}:${model.profile.id}`)), ...compositeModels]
+      .map((model) => ({
+        ...model,
+        selected: tpoMergeSelection?.instanceId === model.instanceId
+          && tpoMergeSelection.anchorProfileId === model.profile.id,
+        mergeEligible: Boolean(tpoMergeSelection)
+          && tpoMergeSelection?.instanceId === model.instanceId
+          && !model.profile.id.startsWith("composite:"),
+      }));
+    primitive.setModels(models);
+    setTpoDataStatus(models.length ? null : "TPO · NO PROFILE IN THE SELECTED RANGE");
+  }, [
+    candleIntervalMs,
+    chartReadyRevision,
+    indicatorSignature,
+    indicators,
+    instrument,
+    priceFormat.minMove,
+    sampledIndicatorCandles,
+    sampledIndicatorMarketTrades,
+    settings,
+    themeVersion,
+    tpoMergeRecords,
+    tpoMergeSelection,
+  ]);
+
+  useEffect(() => {
+    if (!tpoMergeSelection) return;
+    const container = chartContainerRef.current;
+    if (!container) return;
+    const completeMerge = (event: MouseEvent) => {
+      const rect = container.getBoundingClientRect();
+      const hit = tpoProfilePrimitiveRef.current?.profileHitTest(
+        event.clientX - rect.left,
+        event.clientY - rect.top,
+      );
+      if (!hit || hit.instanceId !== tpoMergeSelection.instanceId) return;
+      const candidates = tpoBaseModelsRef.current
+        .filter((model) => model.instanceId === hit.instanceId && !model.profile.id.startsWith("composite:"))
+        .sort((left, right) => left.profile.startTimeMs - right.profile.startTimeMs);
+      const anchorIndex = candidates.findIndex((model) => model.profile.id === tpoMergeSelection.anchorProfileId);
+      const targetIndex = candidates.findIndex((model) => model.profile.id === hit.profileId);
+      if (anchorIndex < 0 || targetIndex < 0 || anchorIndex === targetIndex) return;
+      const from = Math.min(anchorIndex, targetIndex);
+      const to = Math.max(anchorIndex, targetIndex);
+      const anchor = candidates[anchorIndex];
+      const members = candidates.slice(from, to + 1);
+      if (members.length > anchor.settings.maximumMergeMembers) return;
+      const now = Date.now();
+      setTpoMergeRecords((current) => [...current, {
+        id: `${hit.instanceId}:${now}`,
+        indicatorInstanceId: hit.instanceId,
+        instrumentId: instrument,
+        anchorProfileId: anchor.profile.id,
+        memberProfileIds: members.map((model) => model.profile.id),
+        createdAtMs: now,
+        visualAnchor: {
+          anchorTimeMs: anchor.profile.startTimeMs,
+          side: anchor.settings.showOnRight ? "right" : "left",
+          widthMode: anchor.settings.widthMode,
+          widthValue: anchor.settings.currentWidth,
+          offsetValue: anchor.settings.currentOffset,
+        },
+        markerSequenceMode: "continuous",
+        groupingMode: "recalculate-from-source",
+      }]);
+      setTpoMergeSelection(null);
+      event.preventDefault();
+      event.stopPropagation();
+    };
+    container.addEventListener("click", completeMerge, true);
+    return () => container.removeEventListener("click", completeMerge, true);
+  }, [instrument, tpoMergeSelection]);
+
+  useEffect(() => {
+    if (!tpoMergeSelection) return;
+    const cancel = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setTpoMergeSelection(null);
+    };
+    window.addEventListener("keydown", cancel);
+    return () => window.removeEventListener("keydown", cancel);
+  }, [tpoMergeSelection]);
 
   useEffect(() => {
     const chart = chartRef.current;
@@ -9625,12 +9891,107 @@ export default function Chart({
         </div>
       )}
 
+      {tpoMergeSelection ? (
+        <div className="pointer-events-none absolute left-1/2 top-4 z-30 -translate-x-1/2 border border-primary/45 bg-panel/95 px-3 py-2 text-[11px] font-medium text-foreground shadow-xl backdrop-blur">
+          Select the other end of the TPO range <span className="ml-2 text-muted">Esc to cancel</span>
+        </div>
+      ) : null}
+
+      {tpoDataStatus ? (
+        <div className="pointer-events-none absolute bottom-8 left-3 z-20 border border-border bg-panel/92 px-2 py-1 font-mono text-[9px] font-semibold tracking-[0.08em] text-muted shadow-lg backdrop-blur">
+          {tpoDataStatus}
+        </div>
+      ) : null}
+
       {contextMenu && (
         <div
           ref={contextMenuRef}
           className="absolute z-50 w-[280px] rounded-xl border border-border bg-panel py-2 shadow-2xl"
           style={{ left: contextMenu.x, top: contextMenu.y }}
         >
+          {contextMenu.tpoHit ? (
+            <>
+              <div className="px-4 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">
+                TPO profile
+              </div>
+              <button
+                type="button"
+                onMouseDown={(event) => {
+                  event.stopPropagation();
+                  openIndicatorSettingsRef.current?.(contextMenu.tpoHit!.instanceId);
+                  setContextMenu(null);
+                }}
+                className="flex w-full cursor-pointer items-center gap-3 px-4 py-2.5 text-[13px] text-foreground transition-colors hover:bg-surface"
+              >
+                <Settings2 className="h-4 w-4 text-muted" />
+                <span className="flex-1 text-left">TPO settings...</span>
+              </button>
+              {!contextMenu.tpoHit.profileId.startsWith("composite:") ? (
+                <button
+                  type="button"
+                  onMouseDown={(event) => {
+                    event.stopPropagation();
+                    setTpoMergeSelection({
+                      instanceId: contextMenu.tpoHit!.instanceId,
+                      anchorProfileId: contextMenu.tpoHit!.profileId,
+                    });
+                    setContextMenu(null);
+                  }}
+                  className="flex w-full cursor-pointer items-center gap-3 px-4 py-2.5 text-[13px] text-foreground transition-colors hover:bg-surface"
+                >
+                  <Layers3 className="h-4 w-4 text-primary" />
+                  <span className="flex-1 text-left">Merge profile range...</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onMouseDown={(event) => {
+                    event.stopPropagation();
+                    const mergeId = contextMenu.tpoHit!.profileId.slice("composite:".length);
+                    setTpoMergeRecords((current) => current.filter((record) => record.id !== mergeId));
+                    setContextMenu(null);
+                  }}
+                  className="flex w-full cursor-pointer items-center gap-3 px-4 py-2.5 text-[13px] text-foreground transition-colors hover:bg-surface"
+                >
+                  <Undo2 className="h-4 w-4 text-primary" />
+                  <span className="flex-1 text-left">Unmerge composite</span>
+                </button>
+              )}
+              {tpoMergeRecords.some((record) => record.indicatorInstanceId === contextMenu.tpoHit!.instanceId) ? (
+                <>
+                  <button
+                    type="button"
+                    onMouseDown={(event) => {
+                      event.stopPropagation();
+                      setTpoMergeRecords((current) => {
+                        const candidates = current.filter((record) => record.indicatorInstanceId === contextMenu.tpoHit!.instanceId);
+                        const last = candidates.sort((left, right) => right.createdAtMs - left.createdAtMs)[0];
+                        return last ? current.filter((record) => record.id !== last.id) : current;
+                      });
+                      setContextMenu(null);
+                    }}
+                    className="flex w-full cursor-pointer items-center gap-3 px-4 py-2.5 text-[13px] text-foreground transition-colors hover:bg-surface"
+                  >
+                    <Undo2 className="h-4 w-4 text-muted" />
+                    <span className="flex-1 text-left">Undo last TPO merge</span>
+                  </button>
+                  <button
+                    type="button"
+                    onMouseDown={(event) => {
+                      event.stopPropagation();
+                      setTpoMergeRecords((current) => current.filter((record) => record.indicatorInstanceId !== contextMenu.tpoHit!.instanceId));
+                      setContextMenu(null);
+                    }}
+                    className="flex w-full cursor-pointer items-center gap-3 px-4 py-2.5 text-[13px] text-foreground transition-colors hover:bg-surface"
+                  >
+                    <RotateCcw className="h-4 w-4 text-muted" />
+                    <span className="flex-1 text-left">Unmerge all TPO profiles</span>
+                  </button>
+                </>
+              ) : null}
+              <div className="my-1 border-t border-border" />
+            </>
+          ) : null}
           <button
             onMouseDown={(e) => {
               e.stopPropagation();

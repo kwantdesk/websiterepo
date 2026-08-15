@@ -733,6 +733,8 @@ type WorkspacePagePanelKind = "charts" | "zyon" | "gameplan" | "gamma" | "gexmap
 type WorkspaceToolKind =
   | "tool-footprint"
   | "tool-volume-profile"
+  | "tool-tpo-chart"
+  | "tool-weekly-tpo"
   | "tool-depth-of-market"
   | "tool-big-trades"
   | "tool-imbalance-detector"
@@ -975,6 +977,8 @@ const WORKSPACE_PANEL_OPTIONS: Array<WorkspacePanelOption<WorkspacePagePanelKind
 const WORKSPACE_TOOL_OPTIONS: Array<WorkspacePanelOption<WorkspaceToolKind>> = [
   { id: "tool-footprint", label: "FOOTPRINT", description: "Bid × ask volume at every traded price", icon: Grid3X3, indicatorId: "deep-print-footprint" },
   { id: "tool-volume-profile", label: "VOLUME PROFILE", description: "Volume, delta, POC and value area by price", icon: BarChart3, indicatorId: "kwant-profile" },
+  { id: "tool-tpo-chart", label: "TPO CHART", description: "Daily square-block market profile and auction analytics", icon: Grid3X3, indicatorId: "tpo-chart" },
+  { id: "tool-weekly-tpo", label: "WEEKLY TPO", description: "Weekly square-block market profile and auction analytics", icon: BarChart3, indicatorId: "weekly-tpo" },
   { id: "tool-depth-of-market", label: "DEPTH OF MARKET", description: "Full-depth resting and traded liquidity ladder", icon: List, indicatorId: "depth-of-market" },
   { id: "tool-big-trades", label: "BIG TRADES", description: "Large aggressive executions anchored to price", icon: Zap, indicatorId: "big-trades" },
   { id: "tool-imbalance-detector", label: "IMBALANCE DETECTOR", description: "Stacked and diagonal bid/ask imbalance", icon: Layers3, indicatorId: "imbalance-tracker" },
