@@ -88,6 +88,7 @@ import {
 } from "@/lib/gammaCage";
 import type { HedgeExposureSurface } from "@/lib/hedgeLevels";
 import type { NetGammaProviderSurface } from "@/lib/netGammaExposureByStrike";
+import { normalizeGexIntervalProviderPayload, type GexIntervalProviderSurface } from "@/lib/gexIntervalMap";
 import { getGexBotFlowSnapshot } from "@/lib/gexBotFlow.server";
 import {
   vendorMarketDataConfigured,
@@ -3583,6 +3584,57 @@ export async function getNetGammaExposureSurface(input: {
     strikes: exposure.strikes,
     expiryStrikes: exposure.expiryStrikes ?? [],
   };
+}
+
+/**
+ * Fetches the time-bucketed signed Gamma surface and its synchronized source
+ * price series through the one shared, server-only QuantData adapter. No
+ * credential or provider response is exposed directly to the browser.
+ */
+export async function getGexIntervalMapSurface(input: {
+  sourceTicker: string;
+  sessionDate?: string;
+  aggregationPeriod?: string;
+  startTime?: string;
+  endTime?: string;
+}): Promise<GexIntervalProviderSurface> {
+  const session = getUsOptionsSession();
+  const sourceTicker = input.sourceTicker.trim().toUpperCase();
+  if (!new Set<string>([...OPTIONS_FLOW_TICKERS, "NQ"]).has(sourceTicker)) {
+    throw new QuantDataError("This source is not supported by the shared Gamma interval adapter.", 400, null);
+  }
+  const sessionDate = input.sessionDate?.trim() || session.sessionDate;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(sessionDate)) throw new QuantDataError("A valid session date is required.", 400, null);
+  const aggregationPeriod = input.aggregationPeriod?.trim() || "1m";
+  const scope = input.startTime && input.endTime
+    ? { timeRange: { startTime: input.startTime, endTime: input.endTime } }
+    : { sessionDate };
+  const ttl = sessionDate === session.sessionDate && session.marketOpen ? 5_000 : 6 * 60 * 60_000;
+  const [interval, pricesResult] = await Promise.all([
+    quantDataPost("/options/tool/interval-map", {
+      ...scope,
+      aggregationPeriod,
+      greekMode: "GAMMA",
+      representationMode: "PER_ONE_PERCENT_MOVE",
+      filter: { ticker: sourceTicker },
+    }, ttl),
+    quantDataPost("/equities/tool/stock-price-over-time", {
+      ...scope,
+      aggregationPeriod,
+      filter: { ticker: sourceTicker },
+    }, ttl).then((result) => result.payload).catch(() => null),
+  ]);
+  const historical = sessionDate !== session.sessionDate || Boolean(input.startTime && input.endTime);
+  const normalized = normalizeGexIntervalProviderPayload({
+    payload: interval.payload,
+    pricePayload: pricesResult,
+    sourceTicker,
+    sessionDate,
+    marketOpen: !historical && session.marketOpen,
+    checkedAt: historical || !session.marketOpen ? newYorkCashCloseIso(sessionDate) : new Date().toISOString(),
+    aggregationPeriod,
+  });
+  return historical ? { ...normalized, status: "HISTORICAL", refreshAfterMs: 6 * 60 * 60_000 } : normalized;
 }
 
 export async function getGexDeskZeroGammaPayload(): Promise<GexDeskZeroGammaPayload> {

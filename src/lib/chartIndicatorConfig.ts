@@ -7,6 +7,7 @@ import { defaultTpoSettings, tpoSettingsToRecord, validateTpoSettings } from "@/
 export const LIVE_CHART_INDICATOR_IDS = new Set([
   "gamma-heatmap",
   "net-gamma-exposure-by-strike",
+  "gex-interval-map",
   "dark-pool-map",
   "volume",
   "delta-bar",
@@ -153,6 +154,33 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
     { key: "borderWidth", label: "Border width", defaultValue: 1, min: 0, max: 4, step: 0.5 },
     { key: "gradientStrength", label: "Gradient strength (%)", defaultValue: 25, min: 0, max: 100, step: 1 },
     { key: "minimumMappingConfidence", label: "Minimum mapping confidence", defaultValue: 70, min: 0, max: 100, step: 1 },
+  ],
+  "gex-interval-map": [
+    { key: "refreshSeconds", label: "Refresh interval (seconds)", defaultValue: 5, min: 2, max: 60, step: 1 },
+    { key: "rollingBuckets", label: "Difference rolling buckets", defaultValue: 5, min: 2, max: 60, step: 1 },
+    { key: "minimumDte", label: "Minimum DTE", defaultValue: 0, min: 0, max: 365, step: 1 },
+    { key: "maximumDte", label: "Maximum DTE", defaultValue: 7, min: 0, max: 365, step: 1 },
+    { key: "customBinSizePoints", label: "Custom mapped bin (points)", defaultValue: 1, min: 0.25, max: 100, step: 0.25 },
+    { key: "minimumAbsoluteExposure", label: "Minimum absolute exposure", defaultValue: 0, min: 0, max: 100000000000, step: 1000000 },
+    { key: "maximumDistancePoints", label: "Maximum distance from price · 0 = all", defaultValue: 0, min: 0, max: 10000, step: 1 },
+    { key: "maximumPoints", label: "Maximum retained map points", defaultValue: 12000, min: 500, max: 50000, step: 500 },
+    { key: "opacity", label: "Map opacity (%)", defaultValue: 68, min: 5, max: 100, step: 1 },
+    { key: "intensity", label: "Intensity", defaultValue: 1, min: 0.25, max: 4, step: 0.05 },
+    { key: "minimumRadius", label: "Minimum point radius", defaultValue: 2, min: 1, max: 12, step: 0.5 },
+    { key: "maximumRadius", label: "Maximum point radius", defaultValue: 12, min: 3, max: 40, step: 0.5 },
+    { key: "cellWidth", label: "Heat cell width", defaultValue: 10, min: 2, max: 40, step: 1 },
+    { key: "fixedDotRadius", label: "Fixed-dot radius", defaultValue: 3, min: 1, max: 20, step: 0.5 },
+    { key: "minimumOpacity", label: "Minimum opacity (%)", defaultValue: 10, min: 0, max: 100, step: 1 },
+    { key: "maximumOpacity", label: "Maximum opacity (%)", defaultValue: 72, min: 1, max: 100, step: 1 },
+    { key: "scalePercentile", label: "Scale percentile (%)", defaultValue: 98, min: 50, max: 100, step: 0.5 },
+    { key: "fixedMaximum", label: "Fixed scale maximum", defaultValue: 1000000000, min: 1, max: 1000000000000, step: 1000000 },
+    { key: "logStrength", label: "Logarithmic strength", defaultValue: 9, min: 1, max: 100, step: 1 },
+    { key: "currentBucketScaleMultiplier", label: "Current bucket size (%)", defaultValue: 115, min: 50, max: 200, step: 1 },
+    { key: "currentBucketOpacityMultiplier", label: "Current bucket opacity (%)", defaultValue: 115, min: 50, max: 200, step: 1 },
+    { key: "mergeTolerancePoints", label: "Coincident level tolerance", defaultValue: 1, min: 0, max: 100, step: 0.25 },
+    { key: "alertExposureThreshold", label: "Alert exposure threshold", defaultValue: 50000000, min: 0, max: 100000000000, step: 1000000 },
+    { key: "alertDistancePoints", label: "Level approach distance", defaultValue: 5, min: 0.25, max: 500, step: 0.25 },
+    { key: "alertCooldownSeconds", label: "Alert cooldown (seconds)", defaultValue: 60, min: 5, max: 3600, step: 5 },
   ],
   "divergence-detector": [
     { key: "pivotStrength", label: "Pivot confirmation bars", defaultValue: 3, min: 1, max: 12, step: 1 },
@@ -590,6 +618,55 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
     zeroSpineColor: theme?.gridColor ?? "#71717A",
     warningColor: "#F59E0B",
     netGammaSettingsVersion: 2,
+  } : {}),
+  ...(indicatorId === "gex-interval-map" ? {
+    preset: "balanced-intraday",
+    provider: "quantdata",
+    sourceTicker: "AUTO",
+    aggregationPeriod: "1m",
+    historyMode: "current-session",
+    sessionDate: "",
+    startTime: "",
+    endTime: "",
+    mode: "raw",
+    baseline: "previous-bucket",
+    expirationMode: "zero-to-one-dte",
+    expirationDates: "",
+    includeWeeklies: true,
+    includeMonthlies: true,
+    includeQuarterlies: true,
+    aggregationMode: "auto-bin",
+    contentMode: "net",
+    visualMode: "bubbles",
+    scaleMode: "visible-percentile",
+    scalePercentile: 98,
+    scaleTransform: "square-root",
+    highlightCurrentBucket: true,
+    showCurrentBucketOutline: true,
+    showMaxPositive: true,
+    showMaxNegative: true,
+    showDominantAbsolute: false,
+    showCallWall: false,
+    showPutWall: false,
+    mergeCoincidentLabels: true,
+    hideZeroValues: true,
+    showLevels: true,
+    showValues: false,
+    showHeader: true,
+    showMappingConfidence: true,
+    tooltipsEnabled: true,
+    enableAlerts: false,
+    alertNewLargePoint: true,
+    alertLevelApproach: false,
+    alertLevelTouch: false,
+    browserNotifications: false,
+    useThemeColors: true,
+    positiveColor: theme?.upColor ?? "#22C55E",
+    negativeColor: theme?.downColor ?? "#EF4444",
+    callColor: theme?.upColor ?? "#22C55E",
+    putColor: theme?.downColor ?? "#EF4444",
+    neutralColor: theme?.gridColor ?? "#A1A1AA",
+    gexIntervalMapSettingsVersion: 1,
   } : {}),
   ...(indicatorId === "dark-pool-map" ? {
     preset: "balanced",
@@ -1058,6 +1135,30 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
       ...normalizedInstance,
       settings: { ...settings, netGammaSettingsVersion: 2 },
     };
+  }
+  if (normalizedInstance.indicatorId === "gex-interval-map") {
+    const defaults: Record<string, number | string | boolean> = defaultIndicatorSettings("gex-interval-map");
+    const settings: Record<string, number | string | boolean> = { ...defaults, ...(normalizedInstance.settings ?? {}) };
+    for (const definition of INDICATOR_NUMERIC_SETTINGS["gex-interval-map"] ?? []) {
+      const parsed = Number(settings[definition.key]);
+      settings[definition.key] = Math.min(definition.max, Math.max(definition.min, Number.isFinite(parsed) ? parsed : definition.defaultValue));
+    }
+    const enumValues: Record<string, string[]> = {
+      sourceTicker: ["AUTO", "QQQ", "NDX", "NQ", "SPY", "SPX"],
+      aggregationPeriod: ["1m", "2m", "5m", "10m", "15m", "30m", "1h"],
+      historyMode: ["current-session", "session-date", "custom-range"],
+      mode: ["raw", "difference"],
+      baseline: ["previous-bucket", "session-open", "rolling-average"],
+      expirationMode: ["zero-dte", "zero-to-one-dte", "zero-to-seven-dte", "front-expiration", "all-expirations", "custom-dte-range", "specific-expirations"],
+      aggregationMode: ["exact-display-tick", "auto-bin", "custom-bin"],
+      contentMode: ["net", "call", "put", "gross", "call-put-split"],
+      visualMode: ["bubbles", "fixed-dots", "heat-cells", "horizontal-ribbons", "hybrid"],
+      scaleMode: ["visible-maximum", "visible-percentile", "session-maximum", "fixed-maximum"],
+      scaleTransform: ["linear", "square-root", "logarithmic"],
+    };
+    for (const [key, allowed] of Object.entries(enumValues)) if (!allowed.includes(String(settings[key]))) settings[key] = defaults[key];
+    for (const unsafeKey of ["apiKey", "credential", "credentials", "providerCredential", "liveSnapshot", "snapshotData", "buckets", "points"]) delete settings[unsafeKey];
+    return { ...normalizedInstance, settings: { ...settings, gexIntervalMapSettingsVersion: 1 } };
   }
   if (
     normalizedInstance.indicatorId === "depth-of-market"

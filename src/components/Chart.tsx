@@ -165,6 +165,7 @@ import {
   formatGammaValue,
   isNetGammaProfileSnapshot,
   type GammaBarVisualMode,
+  type GammaExpirationMode,
   type GammaProfileContentMode,
   type GammaProfilePlacement,
   type GammaScaleMode,
@@ -172,6 +173,23 @@ import {
   type MappedStrikeAggregationMode,
   type NetGammaProfileSnapshot,
 } from "@/lib/netGammaExposureByStrike";
+import {
+  GexIntervalMapPrimitive,
+  type GexIntervalMapHit,
+  type GexIntervalMapPrimitiveData,
+} from "@/lib/gexIntervalMapPrimitive";
+import {
+  buildGexIntervalMapSnapshot,
+  defaultGexIntervalMapSource,
+  type GexIntervalMapBaseline,
+  type GexIntervalMapAggregation,
+  type GexIntervalMapContent,
+  type GexIntervalMapMode,
+  type GexIntervalMapSnapshot,
+  type GexIntervalMapVisual,
+  type GexIntervalProviderSurface,
+} from "@/lib/gexIntervalMap";
+import { subscribeGexIntervalMap } from "@/lib/gexIntervalMapCache";
 import {
   defaultDarkPoolSource,
   isDarkPoolMapPayload,
@@ -2495,6 +2513,13 @@ export default function Chart({
   const classicGexProfilePrimitiveRef = useRef<ClassicGexProfilePrimitive | null>(null);
   const gammaHeatmapPrimitiveRef = useRef<GammaHeatmapPrimitive | null>(null);
   const netGammaExposurePrimitiveRef = useRef<NetGammaExposurePrimitive | null>(null);
+  const gexIntervalMapPrimitiveRef = useRef<GexIntervalMapPrimitive | null>(null);
+  const gexIntervalAlertStateRef = useRef<{
+    key: string;
+    pointIds: Set<string>;
+    levelStates: Map<string, string>;
+    lastFired: Map<string, number>;
+  }>({ key: "", pointIds: new Set(), levelStates: new Map(), lastFired: new Map() });
   const previousNetGammaSnapshotRef = useRef<NetGammaProfileSnapshot | null>(null);
   const netGammaReservedRightOffsetRef = useRef<number | null>(null);
   const darkPoolMapPrimitiveRef = useRef<DarkPoolMapPrimitive | null>(null);
@@ -2613,6 +2638,10 @@ export default function Chart({
   const [netGammaLoading, setNetGammaLoading] = useState(false);
   const [netGammaError, setNetGammaError] = useState<string | null>(null);
   const [netGammaTooltip, setNetGammaTooltip] = useState<NetGammaExposureHit | null>(null);
+  const [gexIntervalSurface, setGexIntervalSurface] = useState<GexIntervalProviderSurface | null>(null);
+  const [gexIntervalLoading, setGexIntervalLoading] = useState(false);
+  const [gexIntervalError, setGexIntervalError] = useState<string | null>(null);
+  const [gexIntervalTooltip, setGexIntervalTooltip] = useState<GexIntervalMapHit | null>(null);
   const [darkPoolMapPayload, setDarkPoolMapPayload] = useState<DarkPoolMapPayload | null>(null);
   const [darkPoolMapLoading, setDarkPoolMapLoading] = useState(false);
   const [darkPoolMapError, setDarkPoolMapError] = useState<string | null>(null);
@@ -3915,6 +3944,199 @@ export default function Chart({
       container.removeEventListener("pointerleave", leave);
     };
   }, [gammaHeatmapIndicator]);
+
+  const gexIntervalMapIndicator = useMemo(
+    () => indicators.find((instance) => instance.enabled && instance.indicatorId === "gex-interval-map") ?? null,
+    [indicators],
+  );
+  const gexIntervalDataSettings = useMemo(() => gexIntervalMapIndicator ? {
+    sourceTicker: String(gexIntervalMapIndicator.settings?.sourceTicker ?? "AUTO").toUpperCase(),
+    aggregationPeriod: String(gexIntervalMapIndicator.settings?.aggregationPeriod ?? "1m"),
+    refreshSeconds: Math.max(2, Number(gexIntervalMapIndicator.settings?.refreshSeconds ?? 5)),
+    historyMode: String(gexIntervalMapIndicator.settings?.historyMode ?? "current-session"),
+    sessionDate: String(gexIntervalMapIndicator.settings?.sessionDate ?? ""),
+    startTime: String(gexIntervalMapIndicator.settings?.startTime ?? ""),
+    endTime: String(gexIntervalMapIndicator.settings?.endTime ?? ""),
+  } : null, [gexIntervalMapIndicator]);
+  useEffect(() => {
+    if (!gexIntervalDataSettings) {
+      setGexIntervalSurface(null);
+      setGexIntervalLoading(false);
+      setGexIntervalError(null);
+      return;
+    }
+    const display = normalizeGammaHeatmapInstrument(instrument);
+    if (!/^(NQ|MNQ|ES|MES|QQQ|SPY|NDX|SPX)$/.test(display)) {
+      setGexIntervalSurface(null);
+      setGexIntervalLoading(false);
+      setGexIntervalError("GEX Interval Map supports NQ, MNQ, ES, MES, QQQ, SPY, NDX and SPX charts.");
+      return;
+    }
+    const source = gexIntervalDataSettings.sourceTicker === "AUTO"
+      ? defaultGexIntervalMapSource(display)
+      : gexIntervalDataSettings.sourceTicker;
+    const query = new URLSearchParams({ display, source, aggregationPeriod: gexIntervalDataSettings.aggregationPeriod });
+    if (gexIntervalDataSettings.historyMode === "session-date" && gexIntervalDataSettings.sessionDate) query.set("sessionDate", gexIntervalDataSettings.sessionDate);
+    if (gexIntervalDataSettings.historyMode === "custom-range" && gexIntervalDataSettings.startTime && gexIntervalDataSettings.endTime) {
+      query.set("startTime", new Date(gexIntervalDataSettings.startTime).toISOString());
+      query.set("endTime", new Date(gexIntervalDataSettings.endTime).toISOString());
+    }
+    return subscribeGexIntervalMap({
+      key: `gex-interval-map:${source}:${display}:${gexIntervalDataSettings.aggregationPeriod}:${gexIntervalDataSettings.historyMode}:${gexIntervalDataSettings.sessionDate}:${gexIntervalDataSettings.startTime}:${gexIntervalDataSettings.endTime}`,
+      url: `/api/gex-interval-map?${query}`,
+      refreshMs: gexIntervalDataSettings.refreshSeconds * 1_000,
+      listener: ({ data, loading, error }) => {
+        setGexIntervalSurface(data);
+        setGexIntervalLoading(loading);
+        setGexIntervalError(error);
+      },
+    });
+  }, [gexIntervalDataSettings, instrument]);
+
+  const gexIntervalSnapshot = useMemo<GexIntervalMapSnapshot | null>(() => {
+    if (!gexIntervalMapIndicator || !gexIntervalSurface) return null;
+    const indicatorSettings = gexIntervalMapIndicator.settings ?? {};
+    const displayPrices = candles.map((candle) => ({ timestamp: candle.timestamp, price: candle.close }));
+    const expirationDates = String(indicatorSettings.expirationDates ?? "").split(",").map((value) => value.trim()).filter(Boolean);
+    return buildGexIntervalMapSnapshot(
+      gexIntervalSurface,
+      instrument,
+      displayPrices,
+      {
+        mode: String(indicatorSettings.mode ?? "raw") as GexIntervalMapMode,
+        baseline: String(indicatorSettings.baseline ?? "previous-bucket") as GexIntervalMapBaseline,
+        rollingBuckets: Math.max(2, Number(indicatorSettings.rollingBuckets ?? 5)),
+        content: String(indicatorSettings.contentMode ?? "net") as GexIntervalMapContent,
+        expiration: {
+          mode: String(indicatorSettings.expirationMode ?? "zero-to-one-dte") as GammaExpirationMode,
+          minimumDte: Number(indicatorSettings.minimumDte ?? 0),
+          maximumDte: Number(indicatorSettings.maximumDte ?? 7),
+          expirationDates,
+          includeWeeklies: indicatorSettings.includeWeeklies !== false,
+          includeMonthlies: indicatorSettings.includeMonthlies !== false,
+          includeQuarterlies: indicatorSettings.includeQuarterlies !== false,
+        },
+        aggregationMode: String(indicatorSettings.aggregationMode ?? "auto-bin") as GexIntervalMapAggregation,
+        customBinSizePoints: Math.max(0.01, Number(indicatorSettings.customBinSizePoints ?? 1)),
+        minimumAbsoluteExposure: Math.max(0, Number(indicatorSettings.minimumAbsoluteExposure ?? 0)),
+        maximumDistancePoints: Math.max(0, Number(indicatorSettings.maximumDistancePoints ?? 0)),
+        maximumPoints: Math.max(500, Number(indicatorSettings.maximumPoints ?? 12000)),
+        hideZeroValues: indicatorSettings.hideZeroValues !== false,
+      },
+    );
+  }, [candles, gexIntervalMapIndicator, gexIntervalSurface, instrument]);
+  const gexIntervalPrimitiveData = useMemo<GexIntervalMapPrimitiveData | null>(() => {
+    if (!gexIntervalMapIndicator || !gexIntervalSnapshot) return null;
+    const indicatorSettings = gexIntervalMapIndicator.settings ?? {};
+    const useThemeColors = indicatorSettings.useThemeColors !== false;
+    return {
+      snapshot: gexIntervalSnapshot,
+      visualMode: String(indicatorSettings.visualMode ?? "hybrid") as GexIntervalMapVisual,
+      opacity: Math.max(0.05, Math.min(1, Number(indicatorSettings.opacity ?? 68) / 100)),
+      intensity: Math.max(0.25, Math.min(4, Number(indicatorSettings.intensity ?? 1))),
+      minimumRadius: Math.max(1, Number(indicatorSettings.minimumRadius ?? 2)),
+      maximumRadius: Math.max(3, Number(indicatorSettings.maximumRadius ?? 12)),
+      cellWidth: Math.max(2, Number(indicatorSettings.cellWidth ?? 10)),
+      fixedDotRadius: Math.max(1, Number(indicatorSettings.fixedDotRadius ?? 3)),
+      minimumOpacity: Math.max(0, Math.min(1, Number(indicatorSettings.minimumOpacity ?? 10) / 100)),
+      maximumOpacity: Math.max(0.01, Math.min(1, Number(indicatorSettings.maximumOpacity ?? 72) / 100)),
+      scaleMode: String(indicatorSettings.scaleMode ?? "visible-percentile") as GexIntervalMapPrimitiveData["scaleMode"],
+      scalePercentile: Math.max(0.5, Math.min(1, Number(indicatorSettings.scalePercentile ?? 98) / 100)),
+      scaleTransform: String(indicatorSettings.scaleTransform ?? "square-root") as GexIntervalMapPrimitiveData["scaleTransform"],
+      fixedMaximum: Math.max(1, Number(indicatorSettings.fixedMaximum ?? 1_000_000_000)),
+      logStrength: Math.max(1, Number(indicatorSettings.logStrength ?? 9)),
+      highlightCurrentBucket: indicatorSettings.highlightCurrentBucket !== false,
+      currentBucketScaleMultiplier: Math.max(0.5, Number(indicatorSettings.currentBucketScaleMultiplier ?? 115) / 100),
+      currentBucketOpacityMultiplier: Math.max(0.5, Number(indicatorSettings.currentBucketOpacityMultiplier ?? 115) / 100),
+      showCurrentBucketOutline: indicatorSettings.showCurrentBucketOutline !== false,
+      showLevels: indicatorSettings.showLevels !== false,
+      showMaxPositive: indicatorSettings.showMaxPositive !== false,
+      showMaxNegative: indicatorSettings.showMaxNegative !== false,
+      showDominantAbsolute: indicatorSettings.showDominantAbsolute === true,
+      showCallWall: indicatorSettings.showCallWall === true,
+      showPutWall: indicatorSettings.showPutWall === true,
+      mergeCoincidentLabels: indicatorSettings.mergeCoincidentLabels !== false,
+      mergeTolerancePoints: Math.max(0, Number(indicatorSettings.mergeTolerancePoints ?? 1)),
+      showValues: indicatorSettings.showValues === true,
+      positiveColor: useThemeColors ? settings.upColor : String(indicatorSettings.positiveColor ?? settings.upColor),
+      negativeColor: useThemeColors ? settings.downColor : String(indicatorSettings.negativeColor ?? settings.downColor),
+      callColor: useThemeColors ? settings.upColor : String(indicatorSettings.callColor ?? settings.upColor),
+      putColor: useThemeColors ? settings.downColor : String(indicatorSettings.putColor ?? settings.downColor),
+      neutralColor: useThemeColors ? settings.gridColor : String(indicatorSettings.neutralColor ?? settings.gridColor),
+      backgroundColor: settings.backgroundColor,
+      precision: priceFormat.precision,
+    };
+  }, [gexIntervalMapIndicator, gexIntervalSnapshot, priceFormat.precision, settings.backgroundColor, settings.downColor, settings.gridColor, settings.upColor]);
+  useEffect(() => {
+    gexIntervalMapPrimitiveRef.current?.update(gexIntervalPrimitiveData);
+  }, [gexIntervalPrimitiveData, viewportVersion]);
+  useEffect(() => {
+    const container = chartContainerRef.current;
+    if (!container || !gexIntervalMapIndicator || gexIntervalMapIndicator.settings?.tooltipsEnabled === false) {
+      setGexIntervalTooltip(null);
+      return;
+    }
+    let frame: number | null = null;
+    const move = (event: PointerEvent) => {
+      if (frame !== null) window.cancelAnimationFrame(frame);
+      const rect = container.getBoundingClientRect();
+      frame = window.requestAnimationFrame(() => {
+        frame = null;
+        setGexIntervalTooltip(gexIntervalMapPrimitiveRef.current?.queryHit(event.clientX - rect.left, event.clientY - rect.top) ?? null);
+      });
+    };
+    const leave = () => setGexIntervalTooltip(null);
+    container.addEventListener("pointermove", move, { passive: true });
+    container.addEventListener("pointerleave", leave, { passive: true });
+    return () => {
+      if (frame !== null) window.cancelAnimationFrame(frame);
+      container.removeEventListener("pointermove", move);
+      container.removeEventListener("pointerleave", leave);
+    };
+  }, [gexIntervalMapIndicator]);
+
+  useEffect(() => {
+    if (!gexIntervalMapIndicator || !gexIntervalSnapshot || gexIntervalMapIndicator.settings?.enableAlerts !== true) return;
+    if (gexIntervalSnapshot.status === "HISTORICAL") return;
+    const indicatorSettings = gexIntervalMapIndicator.settings ?? {};
+    const state = gexIntervalAlertStateRef.current;
+    const key = `${gexIntervalMapIndicator.instanceId}:${gexIntervalSnapshot.sourceTicker}:${gexIntervalSnapshot.displayInstrument}:${gexIntervalSnapshot.sessionDate}`;
+    const latestTimestamp = Math.max(0, ...gexIntervalSnapshot.points.map((point) => point.timestamp));
+    const latestPoints = gexIntervalSnapshot.points.filter((point) => point.timestamp === latestTimestamp);
+    if (state.key !== key) {
+      gexIntervalAlertStateRef.current = { key, pointIds: new Set(latestPoints.map((point) => point.id)), levelStates: new Map(), lastFired: new Map() };
+      return;
+    }
+    const cooldownMs = Math.max(5_000, Number(indicatorSettings.alertCooldownSeconds ?? 60) * 1_000);
+    const emit = (eventKey: string, title: string, message: string, price: number | null) => {
+      const now = Date.now();
+      if (now - (state.lastFired.get(eventKey) ?? 0) < cooldownMs) return;
+      state.lastFired.set(eventKey, now);
+      window.dispatchEvent(new CustomEvent("kwantdesk:precision-alert", { detail: { objectId: eventKey, message, price, condition: title } }));
+      if (indicatorSettings.browserNotifications === true && typeof Notification !== "undefined" && Notification.permission === "granted") new Notification(title, { body: message });
+    };
+    if (indicatorSettings.alertNewLargePoint !== false) {
+      const threshold = Math.max(0, Number(indicatorSettings.alertExposureThreshold ?? 50_000_000));
+      for (const point of latestPoints) {
+        if (!state.pointIds.has(point.id) && Math.abs(point.value) >= threshold) emit(`gex-point:${point.id}`, "New Large GEX Point", `${gexIntervalSnapshot.displayInstrument} ${point.mappedPrice.toFixed(priceFormat.precision)} printed ${formatGammaValue(point.value, "per-one-percent-move")}.`, point.mappedPrice);
+        state.pointIds.add(point.id);
+      }
+    }
+    const currentPrice = drawingCandlesRef.current.at(-1)?.close;
+    if (currentPrice && (indicatorSettings.alertLevelApproach === true || indicatorSettings.alertLevelTouch === true)) {
+      const approachDistance = Math.max(0.01, Number(indicatorSettings.alertDistancePoints ?? 5));
+      for (const level of gexIntervalSnapshot.levels) {
+        const distance = Math.abs(currentPrice - level.price);
+        const nextState = distance <= priceFormat.minMove / 2 ? "touch" : distance <= approachDistance ? "approach" : "outside";
+        const levelKey = `${level.kind}:${level.price}`;
+        const previousState = state.levelStates.get(levelKey) ?? "outside";
+        state.levelStates.set(levelKey, nextState);
+        if (nextState === previousState) continue;
+        if (nextState === "touch" && indicatorSettings.alertLevelTouch === true) emit(`gex-touch:${levelKey}`, `Price Touched ${level.label}`, `${gexIntervalSnapshot.displayInstrument} touched ${level.price.toFixed(priceFormat.precision)}.`, level.price);
+        else if (nextState === "approach" && indicatorSettings.alertLevelApproach === true) emit(`gex-approach:${levelKey}`, `Price Approaching ${level.label}`, `${gexIntervalSnapshot.displayInstrument} is ${distance.toFixed(priceFormat.precision)} points from ${level.price.toFixed(priceFormat.precision)}.`, level.price);
+      }
+    }
+  }, [gexIntervalMapIndicator, gexIntervalSnapshot, priceFormat.minMove, priceFormat.precision]);
 
   const netGammaIndicator = useMemo(
     () => indicators.find((instance) => instance.enabled && instance.indicatorId === "net-gamma-exposure-by-strike") ?? null,
@@ -7523,6 +7745,9 @@ export default function Chart({
     const netGammaExposurePrimitive = new NetGammaExposurePrimitive();
     candleSeries.attachPrimitive(netGammaExposurePrimitive);
     netGammaExposurePrimitiveRef.current = netGammaExposurePrimitive;
+    const gexIntervalMapPrimitive = new GexIntervalMapPrimitive();
+    candleSeries.attachPrimitive(gexIntervalMapPrimitive);
+    gexIntervalMapPrimitiveRef.current = gexIntervalMapPrimitive;
     const darkPoolMapPrimitive = new DarkPoolMapPrimitive();
     candleSeries.attachPrimitive(darkPoolMapPrimitive);
     darkPoolMapPrimitiveRef.current = darkPoolMapPrimitive;
@@ -8231,6 +8456,13 @@ export default function Chart({
             // Chart teardown can detach primitives before React cleanup runs.
           }
         }
+        if (candleSeriesRef.current && gexIntervalMapPrimitiveRef.current) {
+          try {
+            candleSeriesRef.current.detachPrimitive(gexIntervalMapPrimitiveRef.current);
+          } catch {
+            // Chart teardown can detach primitives before React cleanup runs.
+          }
+        }
         if (candleSeriesRef.current && darkPoolMapPrimitiveRef.current) {
           try {
             candleSeriesRef.current.detachPrimitive(darkPoolMapPrimitiveRef.current);
@@ -8292,6 +8524,7 @@ export default function Chart({
       classicGexProfilePrimitiveRef.current = null;
       gammaHeatmapPrimitiveRef.current = null;
       netGammaExposurePrimitiveRef.current = null;
+      gexIntervalMapPrimitiveRef.current = null;
       netGammaReservedRightOffsetRef.current = null;
       darkPoolMapPrimitiveRef.current = null;
       volumeProfilePrimitiveRef.current = null;
@@ -9437,10 +9670,58 @@ export default function Chart({
           </div>
         </div>
       ) : null}
+      {gexIntervalMapIndicator && gexIntervalMapIndicator.settings?.showHeader !== false ? (
+        <div
+          className="pointer-events-none absolute left-2 z-[25] flex max-w-[min(760px,calc(100%-80px))] items-center gap-2 border border-border bg-panel/92 px-2 py-1 font-mono text-[8px] uppercase tracking-[0.08em] text-muted shadow-lg backdrop-blur"
+          style={{ top: gammaHeatmapIndicator ? 38 : 8 }}
+          title={gexIntervalSnapshot?.limitations.join(" ") ?? gexIntervalError ?? "Loading signed Gamma interval history"}
+        >
+          <span className={`h-1.5 w-1.5 rounded-full ${gexIntervalError && !gexIntervalSnapshot ? "bg-danger" : gexIntervalLoading ? "animate-pulse bg-warning" : "bg-primary"}`} />
+          <span className="text-foreground">GEX Interval Map</span>
+          {gexIntervalSnapshot ? (
+            <>
+              <span>{gexIntervalSnapshot.sourceTicker}→{gexIntervalSnapshot.displayInstrument}</span>
+              <span>{gexIntervalSnapshot.mode}</span>
+              {gexIntervalSnapshot.mode === "difference" ? <span>{gexIntervalSnapshot.baseline.replace("-", " ")}</span> : null}
+              <span className={gexIntervalSnapshot.status === "LIVE" ? "text-primary" : "text-warning"}>{gexIntervalSnapshot.status.replace("_", " ")}</span>
+              <span>{gexIntervalSnapshot.points.length.toLocaleString()} points</span>
+              {gexIntervalSnapshot.skippedMappingBuckets ? <span className="text-warning">Mapping unavailable · {gexIntervalSnapshot.skippedMappingBuckets}</span> : null}
+            </>
+          ) : gexIntervalLoading ? <span>Loading interval surface…</span> : <span className="text-danger">{gexIntervalError ?? "Interval surface unavailable"}</span>}
+          {gexIntervalError && gexIntervalSnapshot ? <span className="text-warning">Refresh delayed · last good surface</span> : null}
+        </div>
+      ) : null}
+      {gexIntervalTooltip ? (
+        <div
+          className="pointer-events-none absolute z-[62] min-w-[238px] border border-border bg-panel/96 p-2 font-mono text-[8px] shadow-2xl backdrop-blur"
+          style={{
+            left: Math.min(Math.max(8, gexIntervalTooltip.x + 14), Math.max(8, overlaySize.width - 258)),
+            top: Math.min(Math.max(34, gexIntervalTooltip.y + 14), Math.max(34, overlaySize.height - 184)),
+          }}
+        >
+          <div className="flex items-center justify-between gap-4 border-b border-border pb-1 text-foreground">
+            <span>{gexIntervalTooltip.point.mappedPrice.toFixed(priceFormat.precision)}</span>
+            <span>{new Date(gexIntervalTooltip.point.timestamp).toLocaleTimeString()}</span>
+          </div>
+          <div className="mt-1 grid grid-cols-2 gap-x-4 gap-y-1 text-muted">
+            <span>Source strike</span><span className="text-foreground">{gexIntervalTooltip.point.sourceStrike.toLocaleString()}</span>
+            <span>Net GEX</span><span className={gexIntervalTooltip.point.net >= 0 ? "text-primary" : "text-danger"}>{formatGammaValue(gexIntervalTooltip.point.net, "per-one-percent-move")}</span>
+            <span>Call</span><span className="text-foreground">{formatGammaValue(gexIntervalTooltip.point.call, "per-one-percent-move")}</span>
+            <span>Put</span><span className="text-foreground">{formatGammaValue(gexIntervalTooltip.point.put, "per-one-percent-move")}</span>
+            <span>Gross</span><span className="text-foreground">{formatGammaValue(gexIntervalTooltip.point.gross, "per-one-percent-move")}</span>
+            <span>Previous net</span><span className="text-foreground">{gexIntervalTooltip.point.previousNet === null ? "—" : formatGammaValue(gexIntervalTooltip.point.previousNet, "per-one-percent-move")}</span>
+            <span>Net change</span><span className="text-foreground">{gexIntervalTooltip.point.netChange === null ? "—" : formatGammaValue(gexIntervalTooltip.point.netChange, "per-one-percent-move")}</span>
+            <span>Bucket share</span><span className="text-foreground">{(gexIntervalTooltip.point.percentageOfBucketMagnitude * 100).toFixed(1)}%</span>
+            <span>Visible share</span><span className="text-foreground">{(gexIntervalTooltip.point.percentageOfVisibleMagnitude * 100).toFixed(1)}%</span>
+            <span>Mapping</span><span className="text-foreground">{gexIntervalTooltip.point.mapping.method.replaceAll("-", " ")} · {gexIntervalTooltip.point.mapping.mappingConfidence}%</span>
+            <span>Expiries</span><span className="text-foreground">{gexIntervalTooltip.point.expirationDates.join(", ") || "Aggregated"}</span>
+          </div>
+        </div>
+      ) : null}
       {netGammaIndicator && netGammaIndicator.settings?.showHeader !== false ? (
         <div
           className="pointer-events-none absolute left-2 z-[25] flex max-w-[min(720px,calc(100%-80px))] items-center gap-2 border border-border bg-panel/92 px-2 py-1 font-mono text-[8px] uppercase tracking-[0.08em] text-muted shadow-lg backdrop-blur"
-          style={{ top: gammaHeatmapIndicator ? 38 : 8 }}
+          style={{ top: 8 + (gammaHeatmapIndicator ? 30 : 0) + (gexIntervalMapIndicator ? 30 : 0) }}
           title={netGammaProfile?.limitations.join(" ") ?? netGammaError ?? "Loading Net Gamma Exposure by strike"}
         >
           <span className={`h-1.5 w-1.5 rounded-full ${netGammaError && !netGammaProfile ? "bg-danger" : netGammaLoading ? "animate-pulse bg-warning" : "bg-primary"}`} />
@@ -9513,7 +9794,7 @@ export default function Chart({
       {darkPoolMapIndicator ? (
         <div
           className="pointer-events-none absolute left-2 z-[25] flex max-w-[min(720px,calc(100%-80px))] items-center gap-2 border border-border bg-panel/92 px-2 py-1 font-mono text-[8px] uppercase tracking-[0.08em] text-muted shadow-lg backdrop-blur"
-          style={{ top: 8 + (gammaHeatmapIndicator ? 30 : 0) + (netGammaIndicator ? 30 : 0) }}
+          style={{ top: 8 + (gammaHeatmapIndicator ? 30 : 0) + (gexIntervalMapIndicator ? 30 : 0) + (netGammaIndicator ? 30 : 0) }}
           title={darkPoolMapPayload?.limitations.join(" ") ?? darkPoolMapError ?? "Loading real off-exchange prints"}
         >
           <span className={`h-1.5 w-1.5 rounded-full ${darkPoolMapError && !darkPoolMapPayload ? "bg-danger" : darkPoolMapLoading ? "animate-pulse bg-warning" : "bg-primary"}`} />

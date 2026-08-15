@@ -175,12 +175,37 @@ function persistTpoUserPresets(presets: TpoUserPreset[]) {
   window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
 }
 
+const GEX_INTERVAL_PRESETS_STORAGE_KEY = "kwantdesk:gex-interval-map-presets:v1";
+type GexIntervalUserPreset = {
+  id: string;
+  name: string;
+  settings: Record<string, number | string | boolean>;
+};
+
+function readGexIntervalUserPresets() {
+  if (typeof window === "undefined") return [] as GexIntervalUserPreset[];
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(GEX_INTERVAL_PRESETS_STORAGE_KEY) ?? "[]");
+    return Array.isArray(parsed) ? parsed.filter((item): item is GexIntervalUserPreset => (
+      item && typeof item.id === "string" && typeof item.name === "string" && item.settings && typeof item.settings === "object"
+    )) : [];
+  } catch {
+    return [];
+  }
+}
+
+function persistGexIntervalUserPresets(presets: GexIntervalUserPreset[]) {
+  window.localStorage.setItem(GEX_INTERVAL_PRESETS_STORAGE_KEY, JSON.stringify(presets));
+  window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
+}
+
 // These studies are rendered by the shared Kwantify calculation engine in
 // Kwant Desk today. The complete catalogue stays visible so no study or
 // favourite is lost while feed-specific studies are connected and validated.
 export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "gamma-heatmap",
   "net-gamma-exposure-by-strike",
+  "gex-interval-map",
   "dark-pool-map",
   "volume",
   "delta-bar",
@@ -309,6 +334,9 @@ export default function ChartIndicatorsControl({
   const [tpoUserPresets, setTpoUserPresets] = useState<TpoUserPreset[]>([]);
   const [selectedTpoPresetId, setSelectedTpoPresetId] = useState("");
   const [tpoPresetName, setTpoPresetName] = useState("");
+  const [gexIntervalUserPresets, setGexIntervalUserPresets] = useState<GexIntervalUserPreset[]>([]);
+  const [selectedGexIntervalPresetId, setSelectedGexIntervalPresetId] = useState("");
+  const [gexIntervalPresetName, setGexIntervalPresetName] = useState("");
   const restoredFootprintIdsRef = useRef(new Set<string>());
 
   useEffect(() => {
@@ -411,6 +439,13 @@ export default function ChartIndicatorsControl({
     setTpoUserPresets(readTpoUserPresets());
     setSelectedTpoPresetId("");
     setTpoPresetName("");
+  }, [settingsInstanceId]);
+
+  useEffect(() => {
+    if (!settingsInstanceId?.startsWith("gex-interval-map-")) return;
+    setGexIntervalUserPresets(readGexIntervalUserPresets());
+    setSelectedGexIntervalPresetId("");
+    setGexIntervalPresetName("");
   }, [settingsInstanceId]);
 
   const filtered = useMemo(() => {
@@ -931,6 +966,212 @@ export default function ChartIndicatorsControl({
                   ))}
                   <div className="rounded-lg border border-border bg-background/55 px-3 py-2 text-[9px] leading-4 text-muted sm:col-span-2">
                     Historical mapping coefficients are frozen into each snapshot. “Local GEX Sign Transition” is intentionally not labelled as a true gamma flip.
+                  </div>
+                </div>
+              ) : null}
+
+              {settingsDefinition.id === "gex-interval-map" ? (
+                <div className="grid gap-3 border border-primary/15 bg-primary/[0.035] p-3 sm:grid-cols-2">
+                  <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted sm:col-span-2">
+                    <span>Preset</span>
+                    <KwantSelect
+                      value={String(settingsInstance.settings?.preset ?? "balanced-intraday")}
+                      onChange={(event) => {
+                        const preset = event.target.value;
+                        const presetSettings: Record<string, string | number | boolean> = preset === "zero-dte-scalper"
+                          ? { mode: "raw", baseline: "previous-bucket", expirationMode: "zero-dte", contentMode: "net", visualMode: "bubbles", aggregationPeriod: "1m", maximumPoints: 60, currentBucketScaleMultiplier: 135, currentBucketOpacityMultiplier: 135, showLevels: true, showMaxPositive: true, showMaxNegative: true, showCallWall: true, showPutWall: true }
+                          : preset === "build-unwind"
+                            ? { mode: "difference", baseline: "previous-bucket", expirationMode: "zero-to-one-dte", contentMode: "net", visualMode: "fixed-dots", aggregationPeriod: "1m", showLevels: false, showMaxPositive: false, showMaxNegative: false, showCallWall: false, showPutWall: false }
+                            : preset === "heat-ribbon"
+                              ? { mode: "raw", historyMode: "current-session", expirationMode: "zero-to-one-dte", contentMode: "net", visualMode: "heat-cells", aggregationPeriod: "1m", opacity: 42, showLevels: false }
+                              : preset === "full-chain-structure"
+                                ? { mode: "raw", expirationMode: "all-expirations", contentMode: "net", visualMode: "bubbles", aggregationPeriod: "5m", minimumOpacity: 5, maximumDistancePoints: 0, maximumPoints: 15000, showLevels: true }
+                                : preset === "minimal-nodes"
+                                  ? { mode: "raw", expirationMode: "zero-to-one-dte", contentMode: "net", visualMode: "bubbles", aggregationPeriod: "1m", maximumPoints: 20, opacity: 58, showLevels: true, showValues: false, showMaxPositive: true, showMaxNegative: true, showDominantAbsolute: false, showCallWall: false, showPutWall: false }
+                                  : preset === "historical-replay"
+                                    ? { mode: "raw", baseline: "previous-bucket", historyMode: "session-date", expirationMode: "zero-to-one-dte", contentMode: "net", visualMode: "bubbles", aggregationPeriod: "5m", highlightCurrentBucket: false, showCurrentBucketOutline: false, showLevels: true }
+                                    : { mode: "raw", baseline: "previous-bucket", historyMode: "current-session", expirationMode: "zero-to-one-dte", contentMode: "net", visualMode: "bubbles", aggregationPeriod: "1m", scaleMode: "visible-percentile", scalePercentile: 98, scaleTransform: "square-root", showLevels: true, showMaxPositive: true, showMaxNegative: true, showCallWall: false, showPutWall: false };
+                        replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), preset, ...presetSettings } }));
+                      }}
+                      className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground"
+                      menuLabel="GEX Interval Map preset"
+                    >
+                      <option value="balanced-intraday">Balanced Intraday</option>
+                      <option value="zero-dte-scalper">0DTE Scalper</option>
+                      <option value="build-unwind">Build / Unwind</option>
+                      <option value="heat-ribbon">Heat Ribbon</option>
+                      <option value="full-chain-structure">Full Chain Structure</option>
+                      <option value="minimal-nodes">Minimal Nodes</option>
+                      <option value="historical-replay">Historical Replay</option>
+                    </KwantSelect>
+                  </label>
+                  {[
+                    ["Options source", "sourceTicker", [["AUTO", "Automatic"], ["QQQ", "QQQ"], ["NDX", "NDX"], ["NQ", "NQ options"], ["SPY", "SPY"], ["SPX", "SPX"]]],
+                    ["Provider interval", "aggregationPeriod", [["1m", "1 minute"], ["2m", "2 minutes"], ["5m", "5 minutes"], ["10m", "10 minutes"], ["15m", "15 minutes"], ["30m", "30 minutes"], ["1h", "1 hour"]]],
+                    ["History", "historyMode", [["current-session", "Current / last session"], ["session-date", "Historical session date"], ["custom-range", "Custom ISO range"]]],
+                    ["Mode", "mode", [["raw", "Raw exposure"], ["difference", "Exposure difference"]]],
+                    ["Difference baseline", "baseline", [["previous-bucket", "Previous bucket"], ["session-open", "Session open"], ["rolling-average", "Rolling average"]]],
+                    ["Expiration", "expirationMode", [["zero-dte", "0DTE"], ["zero-to-one-dte", "0–1 DTE"], ["zero-to-seven-dte", "0–7 DTE"], ["front-expiration", "Front expiration"], ["all-expirations", "All expirations"], ["custom-dte-range", "Custom DTE range"], ["specific-expirations", "Specific expirations"]]],
+                    ["Content", "contentMode", [["net", "Net"], ["call", "Calls"], ["put", "Puts"], ["gross", "Gross absolute"], ["call-put-split", "Call / put split"]]],
+                    ["Mapped bins", "aggregationMode", [["exact-display-tick", "Exact display tick"], ["auto-bin", "Automatic"], ["custom-bin", "Custom bin"]]],
+                    ["Visual", "visualMode", [["bubbles", "Magnitude bubbles"], ["fixed-dots", "Fixed dots"], ["heat-cells", "Heat cells"], ["horizontal-ribbons", "Horizontal ribbons"], ["hybrid", "Hybrid"]]],
+                    ["Scale", "scaleMode", [["visible-maximum", "Visible maximum"], ["visible-percentile", "Visible percentile"], ["session-maximum", "Session maximum"], ["fixed-maximum", "Fixed maximum"]]],
+                    ["Scale transform", "scaleTransform", [["linear", "Linear"], ["square-root", "Square root"], ["logarithmic", "Logarithmic"]]],
+                  ].map(([label, key, options]) => (
+                    <label key={String(key)} className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                      <span>{String(label)}</span>
+                      <KwantSelect
+                        value={String(settingsInstance.settings?.[String(key)] ?? "")}
+                        onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [String(key)]: event.target.value } }))}
+                        className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground"
+                        menuLabel={String(label)}
+                      >
+                        {(options as string[][]).map(([value, optionLabel]) => <option key={value} value={value}>{optionLabel}</option>)}
+                      </KwantSelect>
+                    </label>
+                  ))}
+                  {String(settingsInstance.settings?.historyMode ?? "current-session") === "session-date" ? (
+                    <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted sm:col-span-2">
+                      <span>Historical session date</span>
+                      <input
+                        type="date"
+                        value={String(settingsInstance.settings?.sessionDate ?? "")}
+                        onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), sessionDate: event.target.value } }))}
+                        className="h-9 w-full border border-border bg-background px-3 font-mono text-[10px] normal-case tracking-normal text-foreground outline-none focus:border-primary/40"
+                      />
+                    </label>
+                  ) : null}
+                  {String(settingsInstance.settings?.historyMode ?? "current-session") === "custom-range" ? (
+                    <>
+                      <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                        <span>Start time</span>
+                        <input
+                          type="datetime-local"
+                          value={String(settingsInstance.settings?.startTime ?? "")}
+                          onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), startTime: event.target.value } }))}
+                          className="h-9 w-full border border-border bg-background px-3 font-mono text-[10px] normal-case tracking-normal text-foreground outline-none focus:border-primary/40"
+                        />
+                      </label>
+                      <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                        <span>End time</span>
+                        <input
+                          type="datetime-local"
+                          value={String(settingsInstance.settings?.endTime ?? "")}
+                          onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), endTime: event.target.value } }))}
+                          className="h-9 w-full border border-border bg-background px-3 font-mono text-[10px] normal-case tracking-normal text-foreground outline-none focus:border-primary/40"
+                        />
+                      </label>
+                    </>
+                  ) : null}
+                  <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted sm:col-span-2">
+                    <span>Specific expirations · comma separated YYYY-MM-DD</span>
+                    <input
+                      value={String(settingsInstance.settings?.expirationDates ?? "")}
+                      onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), expirationDates: event.target.value } }))}
+                      className="h-9 w-full border border-border bg-background px-3 font-mono text-[10px] normal-case tracking-normal text-foreground outline-none focus:border-primary/40"
+                      placeholder="2026-08-15, 2026-08-21"
+                    />
+                  </label>
+                  <div className="grid gap-2 sm:col-span-2 sm:grid-cols-2">
+                    {[
+                      ["enableAlerts", "Enable live alerts"],
+                      ["alertNewLargePoint", "New large GEX point"],
+                      ["alertLevelApproach", "Price approaching level"],
+                      ["alertLevelTouch", "Price touching level"],
+                      ["browserNotifications", "Browser notifications"],
+                    ].map(([key, label]) => (
+                      <label key={key} className="flex h-9 items-center justify-between border border-border bg-background px-3 text-[9px] uppercase tracking-[0.08em] text-muted">
+                        <span>{label}</span>
+                        <input
+                          type="checkbox"
+                          checked={settingsInstance.settings?.[key] === true}
+                          onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [key]: event.target.checked } }))}
+                          className="accent-primary"
+                        />
+                      </label>
+                    ))}
+                  </div>
+                  <div className="space-y-2 border border-border bg-background/65 p-2.5 sm:col-span-2">
+                    <div className="text-[9px] font-semibold uppercase tracking-[0.12em] text-foreground">Custom presets</div>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <KwantSelect
+                        value={selectedGexIntervalPresetId}
+                        onChange={(event) => {
+                          const presetId = event.target.value;
+                          setSelectedGexIntervalPresetId(presetId);
+                          const preset = gexIntervalUserPresets.find((candidate) => candidate.id === presetId);
+                          if (!preset) return;
+                          setGexIntervalPresetName(preset.name);
+                          replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), ...preset.settings } }));
+                        }}
+                        className="h-9 w-full border border-border bg-background px-3 text-[10px] text-foreground"
+                        menuLabel="Custom GEX Interval Map preset"
+                      >
+                        <option value="">{gexIntervalUserPresets.length ? "Choose saved preset" : "No saved presets"}</option>
+                        {gexIntervalUserPresets.map((preset) => <option key={preset.id} value={preset.id}>{preset.name}</option>)}
+                      </KwantSelect>
+                      <input
+                        value={gexIntervalPresetName}
+                        onChange={(event) => setGexIntervalPresetName(event.target.value)}
+                        placeholder="Preset name"
+                        className="h-9 w-full border border-border bg-background px-3 text-[10px] text-foreground outline-none focus:border-primary/40"
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                      <button type="button" onClick={() => {
+                        const name = gexIntervalPresetName.trim();
+                        if (!name) return;
+                        const preset = { id: crypto.randomUUID(), name, settings: { ...(settingsInstance.settings ?? {}) } };
+                        const next = [...gexIntervalUserPresets, preset];
+                        setGexIntervalUserPresets(next);
+                        setSelectedGexIntervalPresetId(preset.id);
+                        persistGexIntervalUserPresets(next);
+                      }} className="h-8 border border-primary/35 bg-primary/10 text-[8px] font-semibold uppercase tracking-[0.08em] text-primary">Save new</button>
+                      <button type="button" disabled={!selectedGexIntervalPresetId} onClick={() => {
+                        const next = gexIntervalUserPresets.map((preset) => preset.id === selectedGexIntervalPresetId
+                          ? { ...preset, name: gexIntervalPresetName.trim() || preset.name, settings: { ...(settingsInstance.settings ?? {}) } }
+                          : preset);
+                        setGexIntervalUserPresets(next);
+                        persistGexIntervalUserPresets(next);
+                      }} className="h-8 border border-border text-[8px] font-semibold uppercase tracking-[0.08em] text-muted disabled:opacity-35">Rename / save</button>
+                      <button type="button" disabled={!selectedGexIntervalPresetId} onClick={() => {
+                        const source = gexIntervalUserPresets.find((preset) => preset.id === selectedGexIntervalPresetId);
+                        if (!source) return;
+                        const copy = { ...source, id: crypto.randomUUID(), name: `${source.name} copy` };
+                        const next = [...gexIntervalUserPresets, copy];
+                        setGexIntervalUserPresets(next);
+                        setSelectedGexIntervalPresetId(copy.id);
+                        setGexIntervalPresetName(copy.name);
+                        persistGexIntervalUserPresets(next);
+                      }} className="h-8 border border-border text-[8px] font-semibold uppercase tracking-[0.08em] text-muted disabled:opacity-35">Duplicate</button>
+                      <button type="button" disabled={!selectedGexIntervalPresetId} onClick={() => {
+                        const next = gexIntervalUserPresets.filter((preset) => preset.id !== selectedGexIntervalPresetId);
+                        setGexIntervalUserPresets(next);
+                        setSelectedGexIntervalPresetId("");
+                        setGexIntervalPresetName("");
+                        persistGexIntervalUserPresets(next);
+                      }} className="h-8 border border-danger/35 text-[8px] font-semibold uppercase tracking-[0.08em] text-danger disabled:opacity-35">Delete</button>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 sm:col-span-2">
+                    <button type="button" onClick={() => replace(settingsInstance.instanceId, (current) => {
+                      const defaults: Record<string, number | string | boolean> = defaultIndicatorSettings(settingsDefinition.id, chartSettings);
+                      const dataKeys = ["provider", "sourceTicker", "aggregationPeriod", "historyMode", "sessionDate", "startTime", "endTime", "mode", "baseline", "expirationMode", "expirationDates", "includeWeeklies", "includeMonthlies", "includeQuarterlies", "aggregationMode", "customBinSizePoints", "minimumDte", "maximumDte", "refreshSeconds", "rollingBuckets"];
+                      const next = { ...(current.settings ?? {}) };
+                      for (const key of dataKeys) next[key] = defaults[key];
+                      return { ...current, settings: next };
+                    })} className="h-9 border border-border bg-background text-[8px] uppercase tracking-[0.08em] text-muted hover:border-primary/40 hover:text-foreground">Reset data</button>
+                    <button type="button" onClick={() => replace(settingsInstance.instanceId, (current) => {
+                      const defaults: Record<string, number | string | boolean> = defaultIndicatorSettings(settingsDefinition.id, chartSettings);
+                      const dataKeys = new Set(["provider", "sourceTicker", "aggregationPeriod", "historyMode", "sessionDate", "startTime", "endTime", "mode", "baseline", "expirationMode", "expirationDates", "includeWeeklies", "includeMonthlies", "includeQuarterlies", "aggregationMode", "customBinSizePoints", "minimumDte", "maximumDte", "refreshSeconds", "rollingBuckets"]);
+                      const next = { ...(current.settings ?? {}) };
+                      for (const [key, value] of Object.entries(defaults)) if (!dataKeys.has(key)) next[key] = value;
+                      return { ...current, settings: next };
+                    })} className="h-9 border border-border bg-background text-[8px] uppercase tracking-[0.08em] text-muted hover:border-primary/40 hover:text-foreground">Reset visuals</button>
+                    <button type="button" onClick={() => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: defaultIndicatorSettings(settingsDefinition.id, chartSettings) }))} className="h-9 border border-primary/35 bg-primary/10 text-[8px] uppercase tracking-[0.08em] text-primary hover:bg-primary/15">Restore defaults</button>
+                  </div>
+                  <div className="border border-border bg-background/55 px-3 py-2 text-[9px] leading-4 text-muted sm:col-span-2">
+                    Every historical point keeps its contemporaneous options-to-chart mapping. Missing mapping inputs are skipped and disclosed; no fake values or Gamma Flip label is produced.
                   </div>
                 </div>
               ) : null}
