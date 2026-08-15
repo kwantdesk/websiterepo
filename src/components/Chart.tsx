@@ -522,8 +522,12 @@ class SessionWindowRenderer implements ISeriesPrimitivePaneRenderer {
         const lowY = series.priceToCoordinate(session.low);
         if (startX === null || endX === null || highY === null || lowY === null) continue;
 
+        // Session windows store an exclusive end timestamp. The active session's
+        // next candle does not exist yet, so render from its latest real candle
+        // and extend by one native bar width instead of dropping the whole box.
+        const barSpacing = Math.max(1, Number(chart.timeScale().options().barSpacing ?? 1));
         const left = Math.min(startX, endX);
-        const right = Math.max(startX, endX);
+        const right = Math.max(startX, endX) + barSpacing;
         const top = Math.min(highY, lowY);
         const bottom = Math.max(highY, lowY);
         const width = Math.max(2, right - left);
@@ -4671,6 +4675,7 @@ export default function Chart({
   sessionHighLowRenderDataRef.current = sessionHighLowRenderData;
   const sessionWindowRenderData = useMemo<SessionWindowRenderData[]>(() => {
     const sessionSettings = sessionsIndicator?.settings ?? {};
+    const sessionIntervalMs = candleIntervalMs ?? 60_000;
     const fillOpacity = clamp(Number(sessionSettings.fillOpacity ?? 10) / 100, 0, 1);
     const lineOpacity = clamp(Number(sessionSettings.lineOpacity ?? 65) / 100, 0, 1);
     const labelSize = String(sessionSettings.labelSize ?? "small");
@@ -4694,7 +4699,12 @@ export default function Chart({
       return {
         id: `${session.key}-${session.startTimestamp}`,
         startTime: chartTimeForTimestamp(session.startTimestamp),
-        endTime: chartTimeForTimestamp(session.endTimestamp),
+        // endTimestamp is exclusive and can point at a future candle while a
+        // session is developing. Anchor to the latest candle that really exists.
+        endTime: chartTimeForTimestamp(Math.max(
+          session.startTimestamp,
+          session.endTimestamp - sessionIntervalMs,
+        )),
         high: session.high,
         low: session.low,
         open: session.open,
@@ -4713,6 +4723,7 @@ export default function Chart({
       };
     });
   }, [
+    candleIntervalMs,
     chartReadyRevision,
     marketSessionWindows,
     priceFormat.precision,

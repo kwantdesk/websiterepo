@@ -11,6 +11,8 @@ test("session boxes are native chart primitives anchored at draw time", () => {
   assert.match(chart, /class SessionWindowPrimitive implements ISeriesPrimitive<Time>/);
   assert.match(chart, /chart\.timeScale\(\)\.timeToCoordinate\(session\.startTime\)/);
   assert.match(chart, /chart\.timeScale\(\)\.timeToCoordinate\(session\.endTime\)/);
+  assert.match(chart, /session\.endTimestamp - sessionIntervalMs/);
+  assert.match(chart, /Math\.max\(startX, endX\) \+ barSpacing/);
   assert.match(chart, /series\.priceToCoordinate\(session\.high\)/);
   assert.match(chart, /series\.priceToCoordinate\(session\.low\)/);
   assert.match(chart, /candleSeries\.attachPrimitive\(sessionWindowPrimitive\)/);
