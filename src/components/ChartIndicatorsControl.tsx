@@ -326,6 +326,20 @@ export default function ChartIndicatorsControl({
     ]);
   };
 
+  const toggleLibraryIndicator = (indicatorId: string) => {
+    const matchingInstances = indicators.filter((instance) => instance.indicatorId === indicatorId);
+    if (matchingInstances.length === 0) {
+      add(indicatorId);
+      return;
+    }
+
+    const matchingInstanceIds = new Set(matchingInstances.map((instance) => instance.instanceId));
+    if (settingsInstanceId && matchingInstanceIds.has(settingsInstanceId)) {
+      setSettingsInstanceId(null);
+    }
+    onChange(indicators.filter((instance) => !matchingInstanceIds.has(instance.instanceId)));
+  };
+
   const toggleFavourite = (indicatorId: string) => {
     setFavourites((current) =>
       current.includes(indicatorId)
@@ -602,11 +616,13 @@ export default function ChartIndicatorsControl({
                         <div className="w-[110px] shrink-0 text-right text-[8px] uppercase tracking-[0.12em] text-muted/70">{definition.category}</div>
                         <button
                           type="button"
-                          disabled={!live || added}
-                          onClick={() => add(definition.id)}
+                          disabled={!live}
+                          aria-pressed={added}
+                          aria-label={`${added ? "Remove" : "Add"} ${definition.name}`}
+                          onClick={() => toggleLibraryIndicator(definition.id)}
                           className={`flex h-8 min-w-[76px] items-center justify-center gap-1.5 rounded-lg px-3 text-[10px] font-medium ${
                             added
-                              ? "bg-primary/10 text-primary"
+                              ? "bg-primary/10 text-primary hover:bg-primary/15"
                               : live
                                 ? "border border-border bg-background text-foreground hover:border-primary/30"
                                 : "cursor-not-allowed border border-border bg-background text-muted opacity-45"
