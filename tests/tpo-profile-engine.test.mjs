@@ -176,6 +176,8 @@ test("TPO visual density is shared and lower-granularity text is not painted", a
   const primitive = await readFile(path.join(root, "src/lib/tpo/primitive.ts"), "utf8");
   assert.match(primitive, /const minimumCellWidthByInstance = new Map<string, number>\(\)/);
   assert.match(primitive, /const sharedCellWidth = minimumCellWidthByInstance\.get\(model\.instanceId\) \?\? cellWidth/);
+  assert.doesNotMatch(primitive, /const micro =/);
+  assert.doesNotMatch(primitive, /width \* row\.tpoCount \/ maxTpos/);
   assert.doesNotMatch(primitive, /LOWER DATA GRANULARITY/);
 });
 

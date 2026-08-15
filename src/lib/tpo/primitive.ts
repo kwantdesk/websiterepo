@@ -191,7 +191,6 @@ export class TpoProfilePrimitive implements ISeriesPrimitive<Time> {
         const detailed = sharedCellWidth >= 6;
         const showLetters = settings.displayType === "letters"
           || (settings.displayType === "automatic" && detailed);
-        const micro = sharedCellWidth < 1.8;
         let renderedBlocks = 0;
         const allCells = profile.rows.flatMap((row) => row.cells);
         const maxCellVolume = Math.max(1, ...allCells.map((cell) => cell.volume ?? 0));
@@ -234,85 +233,75 @@ export class TpoProfilePrimitive implements ISeriesPrimitive<Time> {
             index > 0 && cell.sessionSegment !== cells[index - 1].sessionSegment ? count + 1 : count
           ), 0);
           const splitGap = cellWidth * 0.35;
-          const rowWidth = micro
-            ? width * row.tpoCount / maxTpos
-            : Math.min(width, row.tpoCount * cellWidth + (splitGapCount + sessionGapCount) * splitGap);
+          const rowWidth = Math.min(width, row.tpoCount * cellWidth + (splitGapCount + sessionGapCount) * splitGap);
           const rowLeft = direction < 0 ? anchorX - rowWidth : anchorX;
-          if (micro) {
-            context.globalAlpha = opacity * (inValueArea ? 0.82 : 0.46);
-            context.fillStyle = pocRow && settings.pocHighlight
-              ? settings.pocHighlightColor
-              : inValueArea && settings.showValueArea && settings.valueAreaHighlight ? valueAreaColor : rowColor;
-            context.fillRect(rowLeft, rowTop, rowWidth, rowHeight);
-          } else {
-            for (let cell = 0; cell < row.tpoCount && renderedBlocks < settings.maximumRenderedBlocks; cell += 1) {
-              renderedBlocks += 1;
-              const separatedBefore = settings.splitMode === "all"
-                ? cell
-                : settings.splitMode === "last" && cell === row.tpoCount - 1 ? 1 : 0;
-              const sessionSeparatorsBefore = row.cells.slice(1, cell + 1).reduce((count, current, index) => (
-                current.sessionSegment !== row.cells[index].sessionSegment ? count + 1 : count
-              ), 0);
-              const cellStart = cell * cellWidth + (separatedBefore + sessionSeparatorsBefore) * splitGap;
-              const x = direction < 0
-                ? anchorX - cellStart - cellWidth
-                : anchorX + cellStart;
-              const size = Math.max(0.6, Math.min(cellWidth - gap, rowHeight - Math.min(gap, rowHeight * 0.25)));
-              const cellData = row.cells[cell];
-              const metric = settings.colourCalculation === "delta"
-                ? cellData?.delta ?? 0
-                : settings.colourCalculation === "volume" ? cellData?.volume ?? 0 : cellData?.subperiodIndex ?? cell;
-              const normalized = settings.colourCalculation === "delta"
-                ? Math.abs(metric) / maxCellDelta
-                : settings.colourCalculation === "volume" ? metric / maxCellVolume : (cell + 1) / Math.max(1, row.tpoCount);
-              let cellColor = rowColor;
-              if (settings.colourCalculation === "volume") cellColor = settings.fixedVolumeColor;
-              if (settings.colourCalculation === "delta" && cellData?.delta !== null) {
-                cellColor = (cellData?.delta ?? 0) >= 0 ? settings.fixedAskColor : settings.fixedBidColor;
+          for (let cell = 0; cell < row.tpoCount && renderedBlocks < settings.maximumRenderedBlocks; cell += 1) {
+            renderedBlocks += 1;
+            const separatedBefore = settings.splitMode === "all"
+              ? cell
+              : settings.splitMode === "last" && cell === row.tpoCount - 1 ? 1 : 0;
+            const sessionSeparatorsBefore = row.cells.slice(1, cell + 1).reduce((count, current, index) => (
+              current.sessionSegment !== row.cells[index].sessionSegment ? count + 1 : count
+            ), 0);
+            const cellStart = cell * cellWidth + (separatedBefore + sessionSeparatorsBefore) * splitGap;
+            const x = direction < 0
+              ? anchorX - cellStart - cellWidth
+              : anchorX + cellStart;
+            const size = Math.max(0.6, Math.min(cellWidth - gap, rowHeight - Math.min(gap, rowHeight * 0.25)));
+            const cellData = row.cells[cell];
+            const metric = settings.colourCalculation === "delta"
+              ? cellData?.delta ?? 0
+              : settings.colourCalculation === "volume" ? cellData?.volume ?? 0 : cellData?.subperiodIndex ?? cell;
+            const normalized = settings.colourCalculation === "delta"
+              ? Math.abs(metric) / maxCellDelta
+              : settings.colourCalculation === "volume" ? metric / maxCellVolume : (cell + 1) / Math.max(1, row.tpoCount);
+            let cellColor = rowColor;
+            if (settings.colourCalculation === "volume") cellColor = settings.fixedVolumeColor;
+            if (settings.colourCalculation === "delta" && cellData?.delta !== null) {
+              cellColor = (cellData?.delta ?? 0) >= 0 ? settings.fixedAskColor : settings.fixedBidColor;
+            }
+            if (settings.colourReference === "multiple-ranges") {
+              const passing = rangeStyles.filter((range) => Math.abs(metric) >= range.minimum).at(-1);
+              if (passing) {
+                cellColor = settings.colourCalculation === "delta"
+                  ? metric >= 0 ? passing.ask : passing.bid
+                  : passing.volume;
               }
-              if (settings.colourReference === "multiple-ranges") {
-                const passing = rangeStyles.filter((range) => Math.abs(metric) >= range.minimum).at(-1);
-                if (passing) {
-                  cellColor = settings.colourCalculation === "delta"
-                    ? metric >= 0 ? passing.ask : passing.bid
-                    : passing.volume;
-                }
-              }
-              const initialColours = [
-                [settings.initialAColorEnabled, settings.initialAColor],
-                [settings.initialBColorEnabled, settings.initialBColor],
-                [settings.initialCColorEnabled, settings.initialCColor],
-                [settings.initialDColorEnabled, settings.initialDColor],
-              ] as const;
-              const initial = initialColours[cellData?.subperiodIndex ?? -1];
-              if (initial?.[0]) cellColor = initial[1];
-              if (settings.colorOpenEnabled && cellData?.subperiodIndex === 0) cellColor = settings.openColor;
-              if (settings.colorCloseEnabled && cellData?.subperiodIndex === latestSubperiodIndex) cellColor = settings.closeColor;
-              if (settings.showValueArea && settings.valueAreaHighlight) {
-                const highlighted = settings.valueAreaHighlightInside ? inValueArea : !inValueArea;
-                if (highlighted) cellColor = settings.valueAreaHighlightInside ? valueAreaColor : settings.valueAreaOutsideColor;
-              }
-              if (pocRow && settings.pocHighlight) cellColor = settings.pocHighlightColor;
-              context.globalAlpha = opacity
-                * (settings.colourReference === "fading" ? 0.28 + clamp(normalized, 0, 1) * 0.72 : 1)
-                * (inValueArea ? 0.92 : 0.68);
-              context.fillStyle = cellColor;
-              context.fillRect(x + gap / 2, rowTop + (rowHeight - size) / 2, size, size);
-              if (settings.borderWidth > 0 && size >= 2.5) {
-                context.globalAlpha = opacity * 0.62;
-                context.strokeStyle = theme.background;
-                context.lineWidth = settings.borderWidth;
-                context.strokeRect(x + gap / 2, rowTop + (rowHeight - size) / 2, size, size);
-              }
-              if (showLetters && size >= settings.minimumTextSize + 1) {
-                const fontSize = clamp(size * 0.72, settings.minimumTextSize, settings.maximumTextSize);
-                context.globalAlpha = 0.96;
-                context.fillStyle = theme.foreground;
-                context.font = `600 ${fontSize}px 'JetBrains Mono', monospace`;
-                context.textAlign = "center";
-                context.textBaseline = "middle";
-                context.fillText(row.markers[cell] ?? "", x + cellWidth / 2, rowTop + rowHeight / 2);
-              }
+            }
+            const initialColours = [
+              [settings.initialAColorEnabled, settings.initialAColor],
+              [settings.initialBColorEnabled, settings.initialBColor],
+              [settings.initialCColorEnabled, settings.initialCColor],
+              [settings.initialDColorEnabled, settings.initialDColor],
+            ] as const;
+            const initial = initialColours[cellData?.subperiodIndex ?? -1];
+            if (initial?.[0]) cellColor = initial[1];
+            if (settings.colorOpenEnabled && cellData?.subperiodIndex === 0) cellColor = settings.openColor;
+            if (settings.colorCloseEnabled && cellData?.subperiodIndex === latestSubperiodIndex) cellColor = settings.closeColor;
+            if (settings.showValueArea && settings.valueAreaHighlight) {
+              const highlighted = settings.valueAreaHighlightInside ? inValueArea : !inValueArea;
+              if (highlighted) cellColor = settings.valueAreaHighlightInside ? valueAreaColor : settings.valueAreaOutsideColor;
+            }
+            if (pocRow && settings.pocHighlight) cellColor = settings.pocHighlightColor;
+            context.globalAlpha = opacity
+              * (settings.colourReference === "fading" ? 0.28 + clamp(normalized, 0, 1) * 0.72 : 1)
+              * (inValueArea ? 0.92 : 0.68);
+            context.fillStyle = cellColor;
+            context.fillRect(x + gap / 2, rowTop + (rowHeight - size) / 2, size, size);
+            if (settings.borderWidth > 0 && size >= 2.5) {
+              context.globalAlpha = opacity * 0.62;
+              context.strokeStyle = theme.background;
+              context.lineWidth = settings.borderWidth;
+              context.strokeRect(x + gap / 2, rowTop + (rowHeight - size) / 2, size, size);
+            }
+            if (showLetters && size >= settings.minimumTextSize + 1) {
+              const fontSize = clamp(size * 0.72, settings.minimumTextSize, settings.maximumTextSize);
+              context.globalAlpha = 0.96;
+              context.fillStyle = theme.foreground;
+              context.font = `600 ${fontSize}px 'JetBrains Mono', monospace`;
+              context.textAlign = "center";
+              context.textBaseline = "middle";
+              context.fillText(row.markers[cell] ?? "", x + cellWidth / 2, rowTop + rowHeight / 2);
             }
           }
           boundsLeft = Math.min(boundsLeft, rowLeft);
