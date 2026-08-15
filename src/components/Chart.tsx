@@ -132,9 +132,9 @@ import {
   type NativeVolumeProfileModel,
 } from "@/lib/nativeVolumeProfilePrimitive";
 import { buildTpoProfiles } from "@/lib/tpo/engine";
-import { validateTpoSettings } from "@/lib/tpo/settings";
+import { tpoCalculationSettingsKey, validateTpoSettings } from "@/lib/tpo/settings";
 import { TpoProfilePrimitive, type TpoPrimitiveModel } from "@/lib/tpo/primitive";
-import type { TpoMergeRecord } from "@/lib/tpo/types";
+import type { TpoBar, TpoMergeRecord, TpoProfileModel, TpoTrade } from "@/lib/tpo/types";
 import {
   ClassicGexProfilePrimitive,
   type ClassicGexPrimitiveData,
@@ -2418,6 +2418,12 @@ export default function Chart({
     anchorProfileId: string;
   } | null>(null);
   const [tpoDataStatus, setTpoDataStatus] = useState<string | null>(null);
+  const tpoProfileCacheRef = useRef(new Map<string, {
+    trades: TpoTrade[];
+    bars: TpoBar[];
+    calculationKey: string;
+    profiles: TpoProfileModel[];
+  }>());
   const tpoMergeSelectionRef = useRef(tpoMergeSelection);
   const tpoMergeStorageKey = `kwantdesk:tpo-merges:v1:${chartInstanceId}:${instrument}`;
   const drawingPersistenceInstrument = `${instrument}::${chartInstanceId.slice(-16)}`;
@@ -2843,6 +2849,23 @@ export default function Chart({
     [backgroundLevels, levels, priceFormat.minMove],
   );
   const indicatorSignature = useMemo(() => JSON.stringify(indicators), [indicators]);
+  const tpoCalculationSignature = useMemo(() => JSON.stringify(indicators
+    .filter((instance) => instance.indicatorId === "tpo-chart" || instance.indicatorId === "weekly-tpo")
+    .map((instance) => {
+      const variant = instance.indicatorId === "weekly-tpo" ? "weekly-tpo" : "daily-tpo";
+      return {
+        instanceId: instance.instanceId,
+        enabled: instance.enabled,
+        settings: tpoCalculationSettingsKey(validateTpoSettings(instance.settings, variant)),
+      };
+    })), [indicators]);
+  const [settledTpoIndicators, setSettledTpoIndicators] = useState(indicators);
+  const latestIndicatorsRef = useRef(indicators);
+  latestIndicatorsRef.current = indicators;
+  useEffect(() => {
+    const timer = window.setTimeout(() => setSettledTpoIndicators(latestIndicatorsRef.current), 90);
+    return () => window.clearTimeout(timer);
+  }, [tpoCalculationSignature]);
   const indicatorHistoryLimit = useMemo(
     () => indicators.some((instance) =>
       instance.enabled && CHART_INDICATOR_BY_ID.get(instance.indicatorId)?.requiresOrderFlow)
@@ -2876,6 +2899,20 @@ export default function Chart({
   // must never be folded back into CVD or it will replace exact history with a
   // biased subset of large prints.
   const indicatorCandles = indicatorWindowCandles;
+  const tpoSourceTrades = useMemo<TpoTrade[]>(() => {
+    const tickSize = priceFormat.minMove;
+    return sampledIndicatorMarketTrades
+      .filter((trade) => !trade.flowOnly && Number.isFinite(trade.close) && trade.volume > 0)
+      .map((trade) => ({
+        instrumentId: instrument,
+        timestampMs: trade.timestamp,
+        sequence: trade.eventId ?? trade.recordIndex,
+        price: trade.close,
+        size: trade.volume,
+        aggressorSide: trade.aggressor === "BUY" ? "buy" as const : trade.aggressor === "SELL" ? "sell" as const : "unknown" as const,
+        tickSize,
+      }));
+  }, [instrument, priceFormat.minMove, sampledIndicatorMarketTrades]);
   const footprintIndicator = useMemo(
     () => indicators.find((instance) =>
       instance.enabled && instance.indicatorId === "deep-print-footprint") ?? null,
@@ -4346,6 +4383,24 @@ export default function Chart({
       : timeframeToMs(timeframe) ?? inferCandleIntervalMs(candles),
     [candles, timeframe],
   );
+  const tpoSourceBars = useMemo<TpoBar[]>(() => {
+    const tickSize = priceFormat.minMove;
+    return sampledIndicatorCandles.map((candle, index) => ({
+      instrumentId: instrument,
+      startTimeMs: candle.timestamp,
+      endTimeMs: sampledIndicatorCandles[index + 1]?.timestamp
+        ?? candle.timestamp + (candleIntervalMs ?? 60_000),
+      open: candle.open,
+      high: candle.high,
+      low: candle.low,
+      close: candle.close,
+      volume: candle.volume,
+      bidVolume: candle.bidVolume,
+      askVolume: candle.askVolume,
+      tradeCount: candle.trades,
+      tickSize,
+    }));
+  }, [candleIntervalMs, instrument, priceFormat.minMove, sampledIndicatorCandles]);
   const deepEffortIndicator = useMemo(
     () => indicators.find((instance) =>
       instance.enabled && instance.indicatorId === "deep-m-effort-nq") ?? null,
@@ -7300,33 +7355,8 @@ export default function Chart({
       setTpoDataStatus(null);
       return;
     }
-    const tickSize = priceFormat.minMove;
-    const sourceTrades = sampledIndicatorMarketTrades
-      .filter((trade) => !trade.flowOnly && Number.isFinite(trade.close) && trade.volume > 0)
-      .map((trade) => ({
-        instrumentId: instrument,
-        timestampMs: trade.timestamp,
-        sequence: trade.eventId ?? trade.recordIndex,
-        price: trade.close,
-        size: trade.volume,
-        aggressorSide: trade.aggressor === "BUY" ? "buy" as const : trade.aggressor === "SELL" ? "sell" as const : "unknown" as const,
-        tickSize,
-      }));
-    const sourceBars = sampledIndicatorCandles.map((candle, index) => ({
-      instrumentId: instrument,
-      startTimeMs: candle.timestamp,
-      endTimeMs: sampledIndicatorCandles[index + 1]?.timestamp
-        ?? candle.timestamp + (candleIntervalMs ?? 60_000),
-      open: candle.open,
-      high: candle.high,
-      low: candle.low,
-      close: candle.close,
-      volume: candle.volume,
-      bidVolume: candle.bidVolume,
-      askVolume: candle.askVolume,
-      tradeCount: candle.trades,
-      tickSize,
-    }));
+    const sourceTrades = tpoSourceTrades;
+    const sourceBars = tpoSourceBars;
     const requestsExactTrades = instances.some((instance) => instance.settings?.visitSource === "exact-trades");
     if (!sourceTrades.length && requestsExactTrades) {
       primitive.setModels([]);
@@ -7353,17 +7383,40 @@ export default function Chart({
       valley: themeStyles.getPropertyValue("--secondary").trim() || "#8B5CF6",
       selection: themeStyles.getPropertyValue("--primary").trim() || settings.upColor,
     };
-    const lastCandleTime = sampledIndicatorCandles.length
-      ? Math.floor(sampledIndicatorCandles.at(-1)!.timestamp / 1_000)
+    const lastCandleTime = sourceBars.length
+      ? Math.floor(sourceBars.at(-1)!.startTimeMs / 1_000)
       : null;
     const intervalSeconds = candleIntervalMs ? candleIntervalMs / 1_000 : null;
+    const settledInstances = new Map(settledTpoIndicators.map((instance) => [instance.instanceId, instance]));
+    const activeInstanceIds = new Set(instances.map((instance) => instance.instanceId));
+    for (const cachedInstanceId of tpoProfileCacheRef.current.keys()) {
+      if (!activeInstanceIds.has(cachedInstanceId)) tpoProfileCacheRef.current.delete(cachedInstanceId);
+    }
     const baseModels = instances.flatMap((instance): TpoPrimitiveModel[] => {
       const variant = instance.indicatorId === "weekly-tpo" ? "weekly-tpo" : "daily-tpo";
-      const tpoSettings = validateTpoSettings(instance.settings, variant, settings);
-      return buildTpoProfiles({ trades: sourceTrades, bars: sourceBars, settings: tpoSettings }).map((profile) => ({
+      const renderSettings = validateTpoSettings(instance.settings, variant, settings);
+      const calculationSource = settledInstances.get(instance.instanceId) ?? instance;
+      const calculationSettings = validateTpoSettings(calculationSource.settings, variant);
+      const calculationKey = tpoCalculationSettingsKey(calculationSettings);
+      const cached = tpoProfileCacheRef.current.get(instance.instanceId);
+      const profiles = cached
+        && cached.trades === sourceTrades
+        && cached.bars === sourceBars
+        && cached.calculationKey === calculationKey
+        ? cached.profiles
+        : buildTpoProfiles({ trades: sourceTrades, bars: sourceBars, settings: calculationSettings });
+      if (profiles !== cached?.profiles) {
+        tpoProfileCacheRef.current.set(instance.instanceId, {
+          trades: sourceTrades,
+          bars: sourceBars,
+          calculationKey,
+          profiles,
+        });
+      }
+      return profiles.map((profile) => ({
         instanceId: instance.instanceId,
         profile,
-        settings: tpoSettings,
+        settings: renderSettings,
         theme,
         lastCandleTime,
         intervalSeconds,
@@ -7424,14 +7477,13 @@ export default function Chart({
   }, [
     candleIntervalMs,
     chartReadyRevision,
-    indicatorSignature,
     indicators,
     instrument,
-    priceFormat.minMove,
-    sampledIndicatorCandles,
-    sampledIndicatorMarketTrades,
+    settledTpoIndicators,
     settings,
     themeVersion,
+    tpoSourceBars,
+    tpoSourceTrades,
     tpoMergeRecords,
     tpoMergeSelection,
   ]);

@@ -8402,11 +8402,17 @@ export default function KwantifyWorkspace({
   }, [showAllTF]);
 
   useEffect(() => {
-    window.localStorage.setItem(
-      CHART_INDICATORS_STORAGE_KEY,
-      JSON.stringify(clonePaneIndicatorState(paneIndicators)),
-    );
-    window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
+    // Slider-driven indicator settings can emit dozens of updates per second.
+    // Persist after the interaction settles so synchronous localStorage writes
+    // never block the chart or settings drawer while the pointer is moving.
+    const timer = window.setTimeout(() => {
+      window.localStorage.setItem(
+        CHART_INDICATORS_STORAGE_KEY,
+        JSON.stringify(clonePaneIndicatorState(paneIndicators)),
+      );
+      window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
+    }, 120);
+    return () => window.clearTimeout(timer);
   }, [paneIndicators]);
 
   useEffect(() => {

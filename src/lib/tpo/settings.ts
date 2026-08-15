@@ -296,3 +296,53 @@ export function tpoSettingsToRecord(settings: TpoIndicatorSettings): Record<stri
     customEndMs: settings.customEndMs ?? 0,
   };
 }
+
+/**
+ * Stable identity for the settings that change the calculated auction model.
+ *
+ * Drawing-only controls (colours, opacity, widths, labels and placement) are
+ * intentionally excluded.  The chart can therefore repaint those controls
+ * without replaying the complete execution/bar history through the TPO engine.
+ */
+export function tpoCalculationSettingsKey(settings: TpoIndicatorSettings): string {
+  return JSON.stringify({
+    schemaVersion: settings.schemaVersion,
+    indicatorVariant: settings.indicatorVariant,
+    scheduleKind: settings.scheduleKind,
+    periodMode: settings.periodMode,
+    lengthValue: settings.lengthValue,
+    lengthUnit: settings.lengthUnit,
+    timezone: settings.timezone,
+    dailyStartTime: settings.dailyStartTime,
+    dailyEndMode: settings.dailyEndMode,
+    dailyEndTime: settings.dailyEndTime,
+    enabledWeekdays: settings.enabledWeekdays,
+    weekStartDay: settings.weekStartDay,
+    weekStartTime: settings.weekStartTime,
+    weekEndMode: settings.weekEndMode,
+    weekEndDay: settings.weekEndDay,
+    weekEndTime: settings.weekEndTime,
+    weekLength: settings.weekLength,
+    customStartMs: settings.customStartMs,
+    customEndMs: settings.customEndMs,
+    customEndFollowsLatest: settings.customEndFollowsLatest,
+    subperiodMinutes: settings.subperiodMinutes,
+    profileCount: settings.profileCount,
+    visitSource: settings.visitSource,
+    groupingMode: settings.groupingMode,
+    ticksPerRow: settings.ticksPerRow,
+    autoTargetRows: settings.autoTargetRows,
+    autoGroupFactor: settings.autoGroupFactor,
+    valueAreaPercent: settings.valueAreaPercent,
+    initialBalanceSubperiods: settings.initialBalanceSubperiods,
+    initialBalanceStartSubperiod: settings.initialBalanceStartSubperiod,
+    minimumSinglePrintTicks: settings.minimumSinglePrintTicks,
+    includeExtremesInSinglePrints: settings.includeExtremesInSinglePrints,
+    peakValleyRadius: settings.peakValleyRadius,
+    peakMinimumProminence: settings.peakMinimumProminence,
+    filterMode: settings.filterMode,
+    sessionPreset: settings.sessionPreset,
+    customSessionStart: settings.customSessionStart,
+    customSessionEnd: settings.customSessionEnd,
+  });
+}

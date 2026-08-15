@@ -72,6 +72,34 @@ test("TPO and Weekly TPO are registered beside Daily Profile without replacing T
   assert.match(catalog, /indicator\("TPO Levels",\s*"Volume & Profiles"/);
 });
 
+test("visual TPO settings repaint without invalidating the calculated profile", () => {
+  const base = settings.defaultTpoSettings("daily-tpo");
+  const visualEdit = {
+    ...base,
+    opacityPercent: 31,
+    blockSize: 14,
+    profileColor: "#FF00AA",
+    showOnRight: true,
+    summaryFontSize: 12,
+  };
+  assert.equal(
+    settings.tpoCalculationSettingsKey(visualEdit),
+    settings.tpoCalculationSettingsKey(base),
+  );
+});
+
+test("auction-model TPO settings invalidate the calculated profile", () => {
+  const base = settings.defaultTpoSettings("daily-tpo");
+  assert.notEqual(
+    settings.tpoCalculationSettingsKey({ ...base, subperiodMinutes: 15 }),
+    settings.tpoCalculationSettingsKey(base),
+  );
+  assert.notEqual(
+    settings.tpoCalculationSettingsKey({ ...base, valueAreaPercent: 68 }),
+    settings.tpoCalculationSettingsKey(base),
+  );
+});
+
 test("exact executions allocate one TPO visit per price row and subperiod", () => {
   const config = {
     ...settings.defaultTpoSettings("daily-tpo"),
