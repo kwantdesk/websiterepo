@@ -195,6 +195,10 @@ import {
   type HedgeChartLevel,
   type HedgeLevelsPayload,
 } from "@/lib/hedgeLevels";
+import PrecisionToolsLayer from "@/chart/precision-tools/PrecisionToolsLayer";
+import PrecisionToolsBoundary from "@/chart/precision-tools/PrecisionToolsBoundary";
+import type { PrecisionChartAdapter, PrecisionTheme } from "@/chart/precision-tools/types";
+import { claimChartInteraction, subscribeChartInteractionOwner } from "@/lib/chartInteractionArbiter";
 
 interface ChartProps {
   candles: Candle[];
@@ -206,6 +210,7 @@ interface ChartProps {
   backgroundZones?: ChartZone[];
   instrument?: string;
   chartInstanceId?: string;
+  workspaceId?: string;
   contractSymbol?: string | null;
   timeframe?: string;
   marketIsActive?: boolean;
@@ -2108,6 +2113,7 @@ export default function Chart({
   backgroundZones = [],
   instrument = "Instrument",
   chartInstanceId = "primary",
+  workspaceId = "default-workspace",
   contractSymbol = null,
   timeframe,
   marketIsActive,
@@ -2373,6 +2379,23 @@ export default function Chart({
     window.addEventListener("kwantdesk:theme-change", handleThemeChange);
     return () => window.removeEventListener("kwantdesk:theme-change", handleThemeChange);
   }, []);
+
+  useEffect(() => {
+    if (selectedTool !== "cursor") claimChartInteraction("legacy-tools");
+  }, [selectedTool]);
+
+  useEffect(() => subscribeChartInteractionOwner((owner) => {
+    if (owner !== "precision-tools") return;
+    setDraftDrawing(null);
+    setDrawingInteraction(null);
+    setTextEditor(null);
+    setOpenToolbarGroup(null);
+    professionalPendingAnchorsRef.current = [];
+    professionalBrushDrawingRef.current = null;
+    professionalDrawingPreviewRef.current = null;
+    professionalDrawingManagerRef.current?.removeDrawing("__kwantdesk_drawing_preview__");
+    setSelectedTool("cursor");
+  }), []);
 
   useEffect(() => {
     if (!liveCandleEventKey) return;
@@ -7200,7 +7223,68 @@ export default function Chart({
     ? candleSeriesRef.current?.priceToCoordinate(candles.at(-1)?.close ?? gexBotFlow.sample?.spot ?? 0) ?? null
     : null;
 
-  void viewportVersion;
+  const precisionTheme = useMemo<PrecisionTheme>(() => ({
+    background: settings.backgroundColor,
+    panel: "#090f17",
+    surface: "#111b29",
+    border: "#304158",
+    foreground: "#e7edf5",
+    muted: "#7f8da1",
+    primary: settings.upColor,
+    bullish: settings.upColor,
+    bearish: settings.downColor,
+  }), [settings.backgroundColor, settings.downColor, settings.upColor]);
+
+  // xToTime is a local chart-coordinate adapter whose closure is intentionally
+  // refreshed by the concrete market/viewport dependencies below.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const precisionAdapter = useMemo<PrecisionChartAdapter>(() => {
+    const contract = paperContractSpec(contractSymbol ?? instrument);
+    return {
+      width: overlaySize.width,
+      height: overlaySize.height,
+      priceScaleWidth: nativePriceScaleWidth,
+      timeScaleHeight: 24 + indicatorPaneHeight,
+      minMove: priceFormat.minMove,
+      precision: priceFormat.precision,
+      pointValue: contract.pointValue,
+      instrument,
+      timeframe: timeframe ?? "1m",
+      pixelsPerBar: (() => {
+        const logicalRange = chartRef.current?.timeScale().getVisibleLogicalRange();
+        if (!logicalRange || logicalRange.to <= logicalRange.from) return 0;
+        return Math.max(0, (overlaySize.width - nativePriceScaleWidth) / (logicalRange.to - logicalRange.from));
+      })(),
+      candles,
+      trades: marketTrades,
+      timeToX: (timeMs, logicalIndex) => {
+        const timeScale = chartRef.current?.timeScale();
+        if (!timeScale) return null;
+        const direct = timeScale.timeToCoordinate(Math.floor(timeMs / 1_000) as Time);
+        if (direct != null) return direct;
+        if (logicalIndex == null || !Number.isFinite(logicalIndex)) return null;
+        return timeScale.logicalToCoordinate(logicalIndex as never);
+      },
+      xToAnchor: (x, y) => {
+        const timeScale = chartRef.current?.timeScale();
+        const series = candleSeriesRef.current;
+        if (!timeScale || !series) return null;
+        const seconds = xToTime(x);
+        const logical = timeScale.coordinateToLogical(x);
+        const price = series.coordinateToPrice(y);
+        if (seconds == null || logical == null || price == null) return null;
+        return { time: seconds * 1_000, logicalIndex: Number(logical), price };
+      },
+      priceToY: (price) => candleSeriesRef.current?.priceToCoordinate(price) ?? null,
+      yToPrice: (y) => candleSeriesRef.current?.coordinateToPrice(y) ?? null,
+      setVisibleTimeRange: (startMs, endMs) => chartRef.current?.timeScale().setVisibleRange({
+        from: Math.floor(Math.min(startMs, endMs) / 1_000) as Time,
+        to: Math.floor(Math.max(startMs, endMs) / 1_000) as Time,
+      }),
+      requestChartRender: () => setViewportVersion((current) => current + 1),
+    };
+  }, [candles, candleIntervalMs, contractSymbol, indicatorPaneHeight, instrument, marketTrades, nativePriceScaleWidth, overlaySize.height, overlaySize.width, priceFormat.minMove, priceFormat.precision, timeframe, viewportVersion]);
+
   const visiblePaperPositions = paperPositions.filter((position) =>
     position.status === "open"
     && position.remainingQuantity > 0
@@ -8459,6 +8543,17 @@ export default function Chart({
             </g>
           ))}
         </svg>
+      ) : null}
+
+      {toolbarEnabled && chartVisualReady ? (
+        <PrecisionToolsBoundary>
+          <PrecisionToolsLayer
+            workspaceId={workspaceId}
+            chartId={`${chartInstanceId}:${normalizePaperSymbol(contractSymbol ?? instrument)}`}
+            adapter={precisionAdapter}
+            theme={precisionTheme}
+          />
+        </PrecisionToolsBoundary>
       ) : null}
 
       {toolbarEnabled && (
