@@ -2465,7 +2465,12 @@ const workspaceExecutionTape = new Map<string, InstitutionalTrade[]>();
 const workspaceOrderFlowRequests = new Map<string, Promise<InstitutionalOrderFlowResult | null>>();
 
 function workspaceOrderFlowKey(symbol: string, timeframe: string) {
-  return `${symbol}::${timeframe}::flow`;
+  // Executions belong to the contract, not to a chart aggregation. Sharing
+  // one tape lets a freshly opened 200V/40R pane restore the same history a
+  // 1m pane already has, then each chart projects those prints into its own
+  // bar boundaries. Keep the unused argument for call-site compatibility.
+  void timeframe;
+  return `${symbol}::${currentCmeContract(symbol) ?? "ROOT"}::flow`;
 }
 
 function fetchWorkspaceLiveSeam(
@@ -2567,10 +2572,15 @@ function fetchWorkspaceOrderFlow(
   const fromMs = sessionStartMs !== null
     ? Math.min(sessionStartMs, now - 6 * 60 * 60_000) - 24 * 60 * 60_000
     : now - 30 * 60 * 60_000;
+  // The gateway archive is an execution tape. Event-chart labels such as
+  // 200V and 40R describe how the browser groups those executions, not how
+  // the archive should be queried. Request a canonical clock interval and
+  // remap the exact records onto the selected event bars in Chart.
+  const archiveInterval = isEventBasedChartInterval(timeframe) ? "1m" : timeframe;
   const request = fetchInstitutionalOrderFlowLevels({
     symbol: displayCmeSymbol(symbol),
     contractSymbol,
-    timeframe,
+    timeframe: archiveInterval,
     fromMs,
     toMs: now,
     includeTrades: true,
@@ -4435,7 +4445,10 @@ function WorkspaceChartPane({
       ? peekExecutionTapeCache(pane.symbol, pane.timeframe)?.records ?? []
       : [];
     const immediateMarketTrades = needsOrderFlowHistory
-      ? workspaceExecutionTape.get(workspaceOrderFlowKey(pane.symbol, pane.timeframe)) ?? memoryTape
+      ? mergeInstitutionalTradeTape(
+          memoryTape,
+          workspaceExecutionTape.get(workspaceOrderFlowKey(pane.symbol, pane.timeframe)) ?? [],
+        )
       : [];
     if (immediateMarketTrades.length) {
       workspaceExecutionTape.set(

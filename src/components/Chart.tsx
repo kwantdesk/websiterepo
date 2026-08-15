@@ -94,7 +94,11 @@ import ChartIndicatorPanes, {
 import DepthOfMarketPanel from "@/components/DepthOfMarketPanel";
 import GexBotFlowStrip from "@/components/GexBotFlowStrip";
 import KwantLoader from "@/components/KwantLoader";
-import { calculateBigTradePrints, type BigTradePrint } from "@/lib/bigTrades";
+import {
+  anchorBigTradePrintsToCandles,
+  calculateBigTradePrints,
+  type AnchoredBigTradePrint,
+} from "@/lib/bigTrades";
 import {
   BigTradesPrimitive,
   type BigTradePrimitiveMarker,
@@ -4320,23 +4324,7 @@ export default function Chart({
   );
   const anchoredBigTradePrints = useMemo(() => {
     if (!indicatorCandles.length || !bigTradePrints.length) return [];
-    type AnchoredBigTradePrint = BigTradePrint & { chartTimestamp: number };
-    const anchored = bigTradePrints.flatMap((print): AnchoredBigTradePrint[] => {
-      if (print.timestamp < indicatorCandles[0].timestamp) return [];
-      let low = 0;
-      let high = indicatorCandles.length - 1;
-      let anchorIndex = 0;
-      while (low <= high) {
-        const middle = Math.floor((low + high) / 2);
-        if (indicatorCandles[middle].timestamp <= print.timestamp) {
-          anchorIndex = middle;
-          low = middle + 1;
-        } else {
-          high = middle - 1;
-        }
-      }
-      return [{ ...print, chartTimestamp: indicatorCandles[anchorIndex].timestamp }];
-    });
+    const anchored = anchorBigTradePrintsToCandles(bigTradePrints, indicatorCandles);
     const indicatorSettings = bigTradesIndicator?.settings ?? {};
     const combineByCandle = indicatorSettings.combineByCandle !== false;
     const isTimeAggregation = combineByCandle && candleIntervalMs != null && candleIntervalMs >= 60_000;

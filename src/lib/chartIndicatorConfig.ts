@@ -162,7 +162,7 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
     { key: "maLineWidth", label: "Moving average width", defaultValue: 2, min: 1, max: 4 },
   ],
   "big-trades": [
-    { key: "daysToLoad", label: "Days to load", defaultValue: 10, min: 1, max: 90 },
+    { key: "daysToLoad", label: "Days to load", defaultValue: 1, min: 1, max: 90 },
     { key: "manualFilter", label: "Manual minimum trade size", defaultValue: 30, min: 1, max: 100000 },
     { key: "maximumFilter", label: "Maximum trade size · 0 = unlimited", defaultValue: 0, min: 0, max: 1000000 },
     { key: "clusterWindowMs", label: "Cluster window (milliseconds)", defaultValue: 100, min: 0, max: 10000 },
@@ -527,6 +527,7 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
     sessionHighLowSettingsVersion: 1,
   } : {}),
   ...(indicatorId === "big-trades" ? {
+    daysToLoad: 1,
     filterMode: "automatic",
     automaticIntensity: "medium",
     enableClustering: true,

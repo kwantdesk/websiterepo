@@ -12,6 +12,8 @@ export type BigTradePrint = {
   opacity: number;
 };
 
+export type AnchoredBigTradePrint = BigTradePrint & { chartTimestamp: number };
+
 type BigTradeSettings = Record<string, number | string | boolean>;
 
 type TradeCandidate = {
@@ -100,7 +102,7 @@ export function calculateBigTradePrints(
   settings: BigTradeSettings,
   now = Date.now(),
 ): BigTradePrint[] {
-  const daysToLoad = clamp(Number(settings.daysToLoad ?? 10), 1, 90);
+  const daysToLoad = clamp(Number(settings.daysToLoad ?? 1), 1, 90);
   const cutoff = now - daysToLoad * 86_400_000;
   const candidates = tradeCandidates(orderFlowCandles, marketTrades, cutoff, settings);
   if (!candidates.length) return [];
@@ -145,5 +147,36 @@ export function calculateBigTradePrints(
       radius: minSize + (maxSize - minSize) * visualWeight,
       opacity: minOpacity + (maxOpacity - minOpacity) * visualWeight,
     };
+  });
+}
+
+/**
+ * Project exact execution timestamps onto the selected chart's bars.
+ *
+ * This deliberately uses bar boundaries rather than a clock interval, so the
+ * same 24-hour tape can be recalculated correctly for time, volume, range,
+ * tick, delta-volume and Renko charts.
+ */
+export function anchorBigTradePrintsToCandles(
+  prints: BigTradePrint[],
+  candles: Candle[],
+): AnchoredBigTradePrint[] {
+  if (!candles.length || !prints.length) return [];
+  const firstTimestamp = candles[0].timestamp;
+  return prints.flatMap((print): AnchoredBigTradePrint[] => {
+    if (print.timestamp < firstTimestamp) return [];
+    let low = 0;
+    let high = candles.length - 1;
+    let anchorIndex = 0;
+    while (low <= high) {
+      const middle = Math.floor((low + high) / 2);
+      if (candles[middle].timestamp <= print.timestamp) {
+        anchorIndex = middle;
+        low = middle + 1;
+      } else {
+        high = middle - 1;
+      }
+    }
+    return [{ ...print, chartTimestamp: candles[anchorIndex].timestamp }];
   });
 }
