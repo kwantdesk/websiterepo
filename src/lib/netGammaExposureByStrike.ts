@@ -4,6 +4,15 @@ import {
   normalizeGammaHeatmapInstrument,
 } from "@/lib/gammaHeatmap";
 import type { ExposureStrike } from "@/lib/optionsFlow";
+import {
+  calculateGammaExposure,
+  expirationDte,
+  expirationMatchesFilter,
+  resolveMappedBinTicks,
+  roundMappedPriceToTick,
+  summarizeGammaRows,
+} from "@/lib/netGammaExposureMath";
+export { expirationDte, expirationMatchesFilter } from "@/lib/netGammaExposureMath";
 
 export const NET_GAMMA_EXPOSURE_BY_STRIKE_ID = "net-gamma-exposure-by-strike";
 export const NET_GAMMA_EXPOSURE_SCHEMA_VERSION = 1;
@@ -98,6 +107,7 @@ export type NetGammaProfileSnapshot = {
   totalPutExposure: number;
   totalNetExposure: number;
   totalAbsoluteExposure: number;
+  totalRegime: "positive" | "negative" | "neutral";
   maxPositiveRow: NetGammaStrikeRow | null;
   maxNegativeRow: NetGammaStrikeRow | null;
   dominantAbsoluteRow: NetGammaStrikeRow | null;
@@ -131,10 +141,6 @@ export type BuildNetGammaProfileOptions = {
   expiration?: Partial<GammaExpirationFilter> & { mode?: GammaExpirationMode };
   aggregationMode?: MappedStrikeAggregationMode;
   customBinSizePoints?: number;
-  minimumAbsoluteExposure?: number;
-  sourceStrikeMinimum?: number | null;
-  sourceStrikeMaximum?: number | null;
-  maximumDistanceFromSourceSpot?: number | null;
 };
 
 const DEFAULT_EXPIRATION: GammaExpirationFilter = {
@@ -151,42 +157,6 @@ export function defaultNetGammaSource(displayInstrument: string) {
 export function netGammaDisplayTickSize(displayInstrument: string) {
   const root = normalizeGammaHeatmapInstrument(displayInstrument);
   return /^(NQ|MNQ|ES|MES)$/.test(root) ? 0.25 : 0.01;
-}
-
-function utcDateMs(value: string) {
-  return Date.parse(`${value}T00:00:00.000Z`);
-}
-
-export function expirationDte(expiration: string, sessionDate: string) {
-  const value = Math.round((utcDateMs(expiration) - utcDateMs(sessionDate)) / 86_400_000);
-  return Number.isFinite(value) ? value : Number.POSITIVE_INFINITY;
-}
-
-function thirdFriday(expiration: string) {
-  const date = new Date(`${expiration}T12:00:00.000Z`);
-  if (date.getUTCDay() !== 5) return false;
-  const day = date.getUTCDate();
-  return day >= 15 && day <= 21;
-}
-
-function quarterlyExpiration(expiration: string) {
-  const date = new Date(`${expiration}T12:00:00.000Z`);
-  return [2, 5, 8, 11].includes(date.getUTCMonth()) && thirdFriday(expiration);
-}
-
-export function expirationMatchesFilter(expiration: string, sessionDate: string, filter: GammaExpirationFilter, frontExpiration: string | null) {
-  const dte = expirationDte(expiration, sessionDate);
-  const quarterly = quarterlyExpiration(expiration);
-  const monthly = thirdFriday(expiration) && !quarterly;
-  const weekly = !monthly && !quarterly;
-  if ((weekly && !filter.includeWeeklies) || (monthly && !filter.includeMonthlies) || (quarterly && !filter.includeQuarterlies)) return false;
-  if (filter.mode === "zero-dte") return dte === 0;
-  if (filter.mode === "zero-to-one-dte") return dte >= 0 && dte <= 1;
-  if (filter.mode === "zero-to-seven-dte") return dte >= 0 && dte <= 7;
-  if (filter.mode === "front-expiration") return expiration === frontExpiration;
-  if (filter.mode === "custom-dte-range") return dte >= (filter.minimumDte ?? 0) && dte <= (filter.maximumDte ?? 7);
-  if (filter.mode === "specific-expirations") return filter.expirationDates?.includes(expiration) ?? false;
-  return true;
 }
 
 export function normalizeNetGammaMapping(surface: NetGammaProviderSurface): StrikeMappingSnapshot {
@@ -221,13 +191,6 @@ export function normalizeNetGammaMapping(surface: NetGammaProviderSurface): Stri
   };
 }
 
-function median(values: number[]) {
-  if (!values.length) return 0;
-  const sorted = [...values].sort((a, b) => a - b);
-  const middle = Math.floor(sorted.length / 2);
-  return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
-}
-
 function expirationLabel(filter: GammaExpirationFilter) {
   if (filter.mode === "zero-dte") return "0DTE";
   if (filter.mode === "zero-to-one-dte") return "0–1 DTE";
@@ -236,6 +199,57 @@ function expirationLabel(filter: GammaExpirationFilter) {
   if (filter.mode === "all-expirations") return "ALL EXPIRIES";
   if (filter.mode === "specific-expirations") return "SELECTED EXPIRIES";
   return `${filter.minimumDte ?? 0}–${filter.maximumDte ?? 7} DTE`;
+}
+
+function summarizeRows(rows: NetGammaStrikeRow[]) {
+  return summarizeGammaRows(rows);
+}
+
+export function buildNetGammaChangeSnapshot(current: NetGammaProfileSnapshot, previous: NetGammaProfileSnapshot | null) {
+  if (!previous
+    || previous.sourceTicker !== current.sourceTicker
+    || previous.displayInstrument !== current.displayInstrument
+    || previous.representation !== current.representation
+    || previous.expirationLabel !== current.expirationLabel) return current;
+  const priorRows = new Map(previous.rows.map((row) => [row.id, row]));
+  const changed = current.rows.map((row) => {
+    const prior = priorRows.get(row.id);
+    const callExposure = row.callExposure - (prior?.callExposure ?? 0);
+    const putExposure = row.putExposure - (prior?.putExposure ?? 0);
+    return {
+      ...row,
+      callExposure,
+      putExposure,
+      netExposure: callExposure + putExposure,
+      absoluteCallExposure: Math.abs(callExposure),
+      absolutePutExposure: Math.abs(putExposure),
+      absoluteTotalExposure: Math.abs(callExposure) + Math.abs(putExposure),
+    };
+  });
+  const currentIds = new Set(current.rows.map((row) => row.id));
+  for (const row of previous.rows) {
+    if (currentIds.has(row.id)) continue;
+    const callExposure = -row.callExposure;
+    const putExposure = -row.putExposure;
+    changed.push({
+      ...row,
+      sourceSnapshotTimeMs: current.snapshotTimeMs,
+      receivedTimeMs: current.receivedTimeMs,
+      callExposure,
+      putExposure,
+      netExposure: callExposure + putExposure,
+      absoluteCallExposure: Math.abs(callExposure),
+      absolutePutExposure: Math.abs(putExposure),
+      absoluteTotalExposure: Math.abs(callExposure) + Math.abs(putExposure),
+    });
+  }
+  const summary = summarizeRows(changed);
+  const rows = changed.map((row) => ({
+    ...row,
+    percentageOfTotalAbsoluteExposure: summary.totalAbsoluteExposure > 0 ? row.absoluteTotalExposure / summary.totalAbsoluteExposure : 0,
+    percentageOfVisibleAbsoluteExposure: summary.totalAbsoluteExposure > 0 ? row.absoluteTotalExposure / summary.totalAbsoluteExposure : 0,
+  }));
+  return { ...current, ...summary, rows, id: `${current.id}:change:${previous.snapshotTimeMs}` };
 }
 
 export function buildNetGammaProfile(surface: NetGammaProviderSurface, options: BuildNetGammaProfileOptions = {}): NetGammaProfileSnapshot {
@@ -249,9 +263,6 @@ export function buildNetGammaProfile(surface: NetGammaProviderSurface, options: 
   const fallbackRows = selected.length || surface.expiryStrikes.length ? selected : surface.strikes.map((row) => ({ ...row, expiration: frontExpiration ?? surface.sessionDate }));
   const byStrike = new Map<number, { call: number; put: number; contributions: GammaStrikeContribution[] }>();
   for (const row of fallbackRows) {
-    if (options.sourceStrikeMinimum != null && row.strike < options.sourceStrikeMinimum) continue;
-    if (options.sourceStrikeMaximum != null && row.strike > options.sourceStrikeMaximum) continue;
-    if (options.maximumDistanceFromSourceSpot != null && Math.abs(row.strike - surface.sourceSpotPrice) > options.maximumDistanceFromSourceSpot) continue;
     const current = byStrike.get(row.strike) ?? { call: 0, put: 0, contributions: [] };
     current.call += Number(row.call) || 0;
     current.put += Number(row.put) || 0;
@@ -270,17 +281,11 @@ export function buildNetGammaProfile(surface: NetGammaProviderSurface, options: 
   const tickSize = netGammaDisplayTickSize(surface.displayInstrument);
   const mapped = [...byStrike.entries()].map(([sourceStrike, row]) => {
     const raw = mapping.alpha + mapping.beta * sourceStrike;
-    const mappedDisplayTick = Math.round(raw / tickSize);
-    return { sourceStrike, mappedDisplayTick, mappedDisplayPrice: mappedDisplayTick * tickSize, ...row };
+    return { sourceStrike, ...roundMappedPriceToTick(raw, tickSize), ...row };
   });
   const spacings = mapped.slice(1).map((row, index) => Math.abs(row.mappedDisplayPrice - mapped[index].mappedDisplayPrice)).filter((value) => value > 0);
   const aggregationMode = options.aggregationMode ?? "auto-bin";
-  const rawBinSize = aggregationMode === "exact-display-tick"
-    ? tickSize
-    : aggregationMode === "custom-bin"
-      ? Math.max(tickSize, options.customBinSizePoints ?? tickSize)
-      : Math.max(tickSize, median(spacings) * 0.25);
-  const binTicks = Math.max(1, Math.round(rawBinSize / tickSize));
+  const binTicks = resolveMappedBinTicks({ mode: aggregationMode, tickSize, mappedSpacings: spacings, customBinSizePoints: options.customBinSizePoints });
   const bins = new Map<number, typeof mapped[number] & { sourceStrikes: number[] }>();
   for (const row of mapped) {
     const binTick = Math.round(row.mappedDisplayTick / binTicks) * binTicks;
@@ -297,7 +302,7 @@ export function buildNetGammaProfile(surface: NetGammaProviderSurface, options: 
   const snapshotTimeMs = Date.parse(surface.checkedAt) || Date.now();
   const receivedTimeMs = Date.now();
   const preliminary = [...bins.values()].map((row) => {
-    const netExposure = row.call + row.put;
+    const exposure = calculateGammaExposure(row.call, row.put);
     return {
       id: `${surface.sourceTicker}:${surface.displayInstrument}:${row.mappedDisplayTick}`,
       sourceTicker: surface.sourceTicker,
@@ -306,12 +311,7 @@ export function buildNetGammaProfile(surface: NetGammaProviderSurface, options: 
       sourceStrikes: [...row.sourceStrikes].sort((a, b) => a - b),
       mappedDisplayPrice: row.mappedDisplayPrice,
       mappedDisplayTick: row.mappedDisplayTick,
-      callExposure: row.call,
-      putExposure: row.put,
-      netExposure,
-      absoluteCallExposure: Math.abs(row.call),
-      absolutePutExposure: Math.abs(row.put),
-      absoluteTotalExposure: Math.abs(row.call) + Math.abs(row.put),
+      ...exposure,
       percentageOfTotalAbsoluteExposure: 0,
       percentageOfVisibleAbsoluteExposure: 0,
       expirationContributions: row.contributions,
@@ -319,19 +319,18 @@ export function buildNetGammaProfile(surface: NetGammaProviderSurface, options: 
       sourceSnapshotTimeMs: snapshotTimeMs,
       receivedTimeMs,
     } satisfies NetGammaStrikeRow;
-  }).filter((row) => row.absoluteTotalExposure >= Math.max(0, options.minimumAbsoluteExposure ?? 0));
+  });
   const totalAbsoluteExposure = preliminary.reduce((sum, row) => sum + row.absoluteTotalExposure, 0);
   const rows = preliminary.map((row) => ({
     ...row,
     percentageOfTotalAbsoluteExposure: totalAbsoluteExposure > 0 ? row.absoluteTotalExposure / totalAbsoluteExposure : 0,
     percentageOfVisibleAbsoluteExposure: totalAbsoluteExposure > 0 ? row.absoluteTotalExposure / totalAbsoluteExposure : 0,
   })).sort((a, b) => a.mappedDisplayPrice - b.mappedDisplayPrice);
-  const positive = rows.filter((row) => row.netExposure > 0);
-  const negative = rows.filter((row) => row.netExposure < 0);
-  const maxBy = (values: NetGammaStrikeRow[], select: (row: NetGammaStrikeRow) => number) => values.length
-    ? [...values].sort((a, b) => select(b) - select(a))[0]
-    : null;
-  const status = surface.status === "LIVE" ? "live" : surface.status === "DELAYED" ? "delayed" : "prior-session";
+  const summary = summarizeRows(rows);
+  const snapshotAgeMs = Math.max(0, receivedTimeMs - snapshotTimeMs);
+  const status = surface.status === "LIVE"
+    ? snapshotAgeMs > Math.max(30_000, surface.refreshAfterMs * 3) ? "stale" : "live"
+    : surface.status === "DELAYED" ? "delayed" : "prior-session";
   const expirationDates = [...new Set(fallbackRows.map((row) => row.expiration))].sort();
   return {
     schemaVersion: NET_GAMMA_EXPOSURE_SCHEMA_VERSION,
@@ -345,15 +344,7 @@ export function buildNetGammaProfile(surface: NetGammaProviderSurface, options: 
     expirationLabel: expirationLabel(expiration),
     expirationDates,
     rows,
-    totalCallExposure: rows.reduce((sum, row) => sum + row.callExposure, 0),
-    totalPutExposure: rows.reduce((sum, row) => sum + row.putExposure, 0),
-    totalNetExposure: rows.reduce((sum, row) => sum + row.netExposure, 0),
-    totalAbsoluteExposure,
-    maxPositiveRow: maxBy(positive, (row) => row.netExposure),
-    maxNegativeRow: maxBy(negative, (row) => Math.abs(row.netExposure)),
-    dominantAbsoluteRow: maxBy(rows, (row) => Math.abs(row.netExposure)),
-    callWallRow: maxBy(rows, (row) => row.callExposure),
-    putWallRow: maxBy(rows, (row) => Math.abs(Math.min(0, row.putExposure)) || Math.abs(row.putExposure)),
+    ...summary,
     mapping,
     snapshotTimeMs,
     receivedTimeMs,
@@ -362,7 +353,11 @@ export function buildNetGammaProfile(surface: NetGammaProviderSurface, options: 
     limitations: [
       "KwantData exposure is provider-signed; put exposure is not signed a second time.",
       "This is a current by-strike distribution, not the historical Gamma Heatmap and not a repriced Gamma Flip.",
-      ...(mapping.method === "live-ratio" ? ["Mapping uses the shared live-ratio fallback; it is not regression."] : []),
+      ...(mapping.method === "live-ratio" ? ["Mapping uses the shared live-ratio fallback; it is not affine regression."] : []),
+      ...(mapping.method === "spot-futures-basis" ? ["Mapping uses the shared current spot/futures basis; the provider does not expose a smoothed NDX basis series here."] : []),
+      ...(/^(NQ|MNQ|ES|MES)$/.test(normalizeGammaHeatmapInstrument(surface.displayInstrument))
+        ? ["The shared exposure surface is root-level; contract-specific futures calendar-spread mapping is unavailable."]
+        : []),
     ],
   };
 }

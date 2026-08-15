@@ -972,6 +972,7 @@ export default function ChartIndicatorsControl({
                     ["Expiration", "expirationMode", [["zero-dte", "0DTE"], ["zero-to-one-dte", "0–1 DTE"], ["zero-to-seven-dte", "0–7 DTE"], ["front-expiration", "Front expiration"], ["all-expirations", "All expirations"], ["custom-dte-range", "Custom DTE range"], ["specific-expirations", "Specific expirations"]]],
                     ["Content", "contentMode", [["net", "Net"], ["net-with-call-put-detail", "Net + Call / Put detail"], ["call-put-split", "Call / Put split"], ["absolute-concentration", "Absolute concentration"], ["net-change", "Net change"]]],
                     ["Placement", "placement", [["right", "Right"], ["left", "Left"], ["floating", "Floating"]]],
+                    ["Chart space", "spaceMode", [["overlay", "Overlay"], ["reserved", "Reserved chart space"]]],
                     ["Mapped bins", "aggregationMode", [["auto-bin", "Automatic"], ["exact-display-tick", "Exact display tick"], ["custom-bin", "Custom bin"]]],
                     ["Scaling", "scaleMode", [["visible-percentile", "Visible percentile"], ["visible-maximum", "Visible maximum"], ["all-loaded-maximum", "All loaded maximum"], ["fixed-maximum", "Fixed maximum"]]],
                     ["Scale transform", "scaleTransform", [["linear", "Linear"], ["square-root", "Square root"], ["logarithmic", "Logarithmic"]]],
@@ -1001,6 +1002,40 @@ export default function ChartIndicatorsControl({
                   </label>
                   <div className="border border-border bg-background/55 px-3 py-2 text-[9px] leading-4 text-muted sm:col-span-2">
                     Uses the shared signed KwantData Gamma surface and shared strike mapper. Puts are not signed twice. Databento custom and hybrid validation stay disabled until their option-definition, IV and open-interest inputs are complete.
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 sm:col-span-2">
+                    <button
+                      type="button"
+                      onClick={() => replace(settingsInstance.instanceId, (current) => {
+                        const defaults: Record<string, number | string | boolean> = defaultIndicatorSettings(settingsDefinition.id, chartSettings);
+                        const next: Record<string, number | string | boolean> = { ...(current.settings ?? {}) };
+                        for (const key of ["provider", "sourceTicker", "representation", "expirationMode", "expirationDates", "includeWeeklies", "includeMonthlies", "includeQuarterlies", "aggregationMode", "customBinSizePoints", "minimumDte", "maximumDte", "refreshSeconds"]) next[key] = defaults[key];
+                        return { ...current, settings: next };
+                      })}
+                      className="h-9 border border-border bg-background text-[8px] uppercase tracking-[0.08em] text-muted hover:border-primary/40 hover:text-foreground"
+                    >
+                      Reset data
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => replace(settingsInstance.instanceId, (current) => {
+                        const defaults: Record<string, number | string | boolean> = defaultIndicatorSettings(settingsDefinition.id, chartSettings);
+                        const dataKeys = new Set(["provider", "sourceTicker", "representation", "expirationMode", "expirationDates", "includeWeeklies", "includeMonthlies", "includeQuarterlies", "aggregationMode", "customBinSizePoints", "minimumDte", "maximumDte", "refreshSeconds"]);
+                        const next = { ...(current.settings ?? {}) };
+                        for (const [key, value] of Object.entries(defaults)) if (!dataKeys.has(key)) next[key] = value;
+                        return { ...current, settings: next };
+                      })}
+                      className="h-9 border border-border bg-background text-[8px] uppercase tracking-[0.08em] text-muted hover:border-primary/40 hover:text-foreground"
+                    >
+                      Reset visuals
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: defaultIndicatorSettings(settingsDefinition.id, chartSettings) }))}
+                      className="h-9 border border-primary/35 bg-primary/10 text-[8px] uppercase tracking-[0.08em] text-primary hover:bg-primary/15"
+                    >
+                      Restore defaults
+                    </button>
                   </div>
                 </div>
               ) : null}

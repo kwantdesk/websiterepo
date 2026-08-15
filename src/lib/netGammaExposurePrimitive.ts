@@ -57,6 +57,8 @@ export type NetGammaExposurePrimitiveData = {
   showCurrentPrice: boolean;
   maximumDisplayedRows: number;
   minimumPercentageOfTotal: number;
+  minimumAbsoluteExposure: number;
+  maximumDistanceFromSourceSpot: number;
   minimumMappingConfidence: number;
   fadeWhenBelowMinimum: boolean;
   hideWhenBelowMinimum: boolean;
@@ -118,10 +120,6 @@ function transformMagnitude(value: number, mode: GammaScaleTransform, logStrengt
   return normalized;
 }
 
-function compactLevelLabel(label: string, row: NetGammaStrikeRow, data: NetGammaExposurePrimitiveData) {
-  return `${label} ${row.mappedDisplayPrice.toFixed(data.precision)} · ${formatGammaValue(row.netExposure, data.snapshot.representation)}`;
-}
-
 class NetGammaExposureRenderer implements ISeriesPrimitivePaneRenderer {
   constructor(private readonly primitive: NetGammaExposurePrimitive) {}
 
@@ -155,24 +153,45 @@ class NetGammaExposureRenderer implements ISeriesPrimitivePaneRenderer {
           return { row, y: coordinate === null ? null : Number(coordinate) };
         })
         .filter((entry): entry is { row: NetGammaStrikeRow; y: number } => entry.y !== null && entry.y >= -24 && entry.y <= mediaSize.height + 24)
+        .filter((entry) => entry.row.absoluteTotalExposure >= data.minimumAbsoluteExposure)
+        .filter((entry) => data.maximumDistanceFromSourceSpot <= 0
+          || Math.abs(entry.row.sourceStrike - data.snapshot.sourceSpotPrice) <= data.maximumDistanceFromSourceSpot)
         .filter((entry) => entry.row.percentageOfTotalAbsoluteExposure >= data.minimumPercentageOfTotal);
       if (rows.length > data.maximumDisplayedRows) {
         const ids = new Set([...rows].sort((a, b) => Math.abs(rowValue(b.row, data.contentMode)) - Math.abs(rowValue(a.row, data.contentMode))).slice(0, data.maximumDisplayedRows).map((entry) => entry.row.id));
         rows = rows.filter((entry) => ids.has(entry.row.id));
       }
       rows.sort((a, b) => a.y - b.y);
-      const magnitudes = rows.map(({ row }) => Math.abs(rowValue(row, data.contentMode)));
+      const componentMode = data.contentMode === "call-put-split" || data.contentMode === "net-with-call-put-detail";
+      const magnitudes = rows.map(({ row }) => componentMode
+        ? Math.max(Math.abs(row.netExposure), row.absoluteCallExposure, row.absolutePutExposure)
+        : Math.abs(rowValue(row, data.contentMode)));
       const visibleAbsoluteExposure = rows.reduce((sum, entry) => sum + entry.row.absoluteTotalExposure, 0);
-      const positiveMagnitudes = rows.filter(({ row }) => rowValue(row, data.contentMode) >= 0).map(({ row }) => Math.abs(rowValue(row, data.contentMode)));
-      const negativeMagnitudes = rows.filter(({ row }) => rowValue(row, data.contentMode) < 0).map(({ row }) => Math.abs(rowValue(row, data.contentMode)));
-      const ceilingFor = (values: number[]) => data.scaleMode === "fixed-maximum" && data.fixedMaximum
+      const positiveMagnitudes = componentMode
+        ? rows.map(({ row }) => row.absoluteCallExposure)
+        : rows.filter(({ row }) => rowValue(row, data.contentMode) >= 0).map(({ row }) => Math.abs(rowValue(row, data.contentMode)));
+      const negativeMagnitudes = componentMode
+        ? rows.map(({ row }) => row.absolutePutExposure)
+        : rows.filter(({ row }) => rowValue(row, data.contentMode) < 0).map(({ row }) => Math.abs(rowValue(row, data.contentMode)));
+      const loadedMagnitudes = data.snapshot.rows.map((row) => componentMode
+        ? Math.max(Math.abs(row.netExposure), row.absoluteCallExposure, row.absolutePutExposure)
+        : Math.abs(rowValue(row, data.contentMode)));
+      const loadedPositiveMagnitudes = componentMode
+        ? data.snapshot.rows.map((row) => row.absoluteCallExposure)
+        : data.snapshot.rows.filter((row) => rowValue(row, data.contentMode) >= 0).map((row) => Math.abs(rowValue(row, data.contentMode)));
+      const loadedNegativeMagnitudes = componentMode
+        ? data.snapshot.rows.map((row) => row.absolutePutExposure)
+        : data.snapshot.rows.filter((row) => rowValue(row, data.contentMode) < 0).map((row) => Math.abs(rowValue(row, data.contentMode)));
+      const ceilingFor = (values: number[], loadedValues: number[]) => data.scaleMode === "fixed-maximum" && data.fixedMaximum
         ? data.fixedMaximum
         : data.scaleMode === "visible-percentile"
           ? percentile(values, data.scalePercentile)
-          : Math.max(1, ...values);
-      const sharedCeiling = ceilingFor(magnitudes);
-      const positiveCeiling = data.sharePositiveNegativeScale ? sharedCeiling : ceilingFor(positiveMagnitudes);
-      const negativeCeiling = data.sharePositiveNegativeScale ? sharedCeiling : ceilingFor(negativeMagnitudes);
+          : data.scaleMode === "all-loaded-maximum"
+            ? Math.max(1, ...loadedValues)
+            : Math.max(1, ...values);
+      const sharedCeiling = ceilingFor(magnitudes, loadedMagnitudes);
+      const positiveCeiling = data.sharePositiveNegativeScale ? sharedCeiling : ceilingFor(positiveMagnitudes, loadedPositiveMagnitudes);
+      const negativeCeiling = data.sharePositiveNegativeScale ? sharedCeiling : ceilingFor(negativeMagnitudes, loadedNegativeMagnitudes);
       const hits: RenderedHit[] = [];
 
       context.save();
@@ -204,7 +223,45 @@ class NetGammaExposureRenderer implements ISeriesPrimitivePaneRenderer {
         const width = Math.max(data.visualMode === "compact-line" ? 3 : 1, normalized * capacity);
         const adjacentDistances = [rows[index - 1], rows[index + 1]].filter(Boolean).map((entry) => Math.abs(entry.y - y)).filter((distance) => distance > 0);
         const automaticHeight = adjacentDistances.length ? Math.min(...adjacentDistances) * 0.72 - data.barGapPx : data.fixedBarHeightPx;
-        const height = data.visualMode === "compact-line" ? 2 : clamp(data.barHeightMode === "fixed-pixels" ? data.fixedBarHeightPx : automaticHeight, data.minimumBarHeightPx, data.maximumBarHeightPx);
+        const mappedBinHeight = adjacentDistances.length ? Math.min(...adjacentDistances) * 0.92 - data.barGapPx : data.fixedBarHeightPx;
+        const requestedHeight = data.barHeightMode === "fixed-pixels"
+          ? data.fixedBarHeightPx
+          : data.barHeightMode === "mapped-price-bin"
+            ? mappedBinHeight
+            : automaticHeight;
+        const height = data.visualMode === "compact-line" ? 2 : clamp(requestedHeight, data.minimumBarHeightPx, data.maximumBarHeightPx);
+        const detailCallWidth = transformMagnitude(positiveCeiling > 0 ? row.absoluteCallExposure / positiveCeiling : 0, data.scaleTransform, data.logarithmicStrength) * rightCapacity;
+        const detailPutWidth = transformMagnitude(negativeCeiling > 0 ? row.absolutePutExposure / negativeCeiling : 0, data.scaleTransform, data.logarithmicStrength) * leftCapacity;
+        const callGrowsRight = !data.reverseDirections;
+        const putGrowsRight = data.reverseDirections;
+        const callX = callGrowsRight ? zeroX : zeroX - detailCallWidth;
+        const putX = putGrowsRight ? zeroX : zeroX - detailPutWidth;
+        if (data.contentMode === "call-put-split") {
+          const halfHeight = Math.max(1, height / 2);
+          context.fillStyle = alpha(data.callColor, data.opacity * confidenceOpacity);
+          context.fillRect(callX, y - halfHeight, detailCallWidth, halfHeight);
+          context.fillStyle = alpha(data.putColor, data.opacity * confidenceOpacity);
+          context.fillRect(putX, y, detailPutWidth, halfHeight);
+          if (data.borderWidth > 0) {
+            context.lineWidth = data.borderWidth;
+            context.strokeStyle = alpha(data.callColor, data.borderOpacity * confidenceOpacity);
+            context.strokeRect(callX + 0.5, y - halfHeight + 0.5, Math.max(1, detailCallWidth - 1), Math.max(1, halfHeight - 1));
+            context.strokeStyle = alpha(data.putColor, data.borderOpacity * confidenceOpacity);
+            context.strokeRect(putX + 0.5, y + 0.5, Math.max(1, detailPutWidth - 1), Math.max(1, halfHeight - 1));
+          }
+          const hitLeft = Math.min(callX, putX);
+          const hitRight = Math.max(callX + detailCallWidth, putX + detailPutWidth);
+          hits.push({
+            x: (hitLeft + hitRight) / 2,
+            y,
+            row: { ...row, percentageOfVisibleAbsoluteExposure: visibleAbsoluteExposure > 0 ? row.absoluteTotalExposure / visibleAbsoluteExposure : 0 },
+            snapshot: data.snapshot,
+            left: hitLeft,
+            right: hitRight,
+            height,
+          });
+          return;
+        }
         const growsRight = data.reverseDirections ? !positive : positive;
         const x = growsRight ? zeroX : zeroX - width;
         const color = data.contentMode === "absolute-concentration" ? data.absoluteColor : positive ? data.positiveColor : data.negativeColor;
@@ -223,24 +280,23 @@ class NetGammaExposureRenderer implements ISeriesPrimitivePaneRenderer {
           context.fillStyle = alpha(color, data.opacity * confidenceOpacity);
           context.fillRect(x, top, width, height);
         }
-        if (data.contentMode === "call-put-split" && row.absoluteTotalExposure > 0) {
-          const callFraction = row.absoluteCallExposure / row.absoluteTotalExposure;
-          context.fillStyle = alpha(data.callColor, Math.min(1, data.opacity + 0.12) * confidenceOpacity);
-          context.fillRect(x, top, width * callFraction, height / 2);
-          context.fillStyle = alpha(data.putColor, Math.min(1, data.opacity + 0.12) * confidenceOpacity);
-          context.fillRect(x, y, width * (1 - callFraction), height / 2);
-        }
         if (data.borderWidth > 0 && data.visualMode !== "outline" && data.visualMode !== "compact-line") {
           context.strokeStyle = alpha(color, data.borderOpacity * confidenceOpacity);
           context.lineWidth = data.borderWidth;
           context.strokeRect(x + 0.5, top + 0.5, Math.max(1, width - 1), Math.max(1, height - 1));
+        }
+        if (data.contentMode === "net-with-call-put-detail") {
+          context.fillStyle = alpha(data.callColor, Math.min(1, data.opacity + 0.18) * confidenceOpacity);
+          context.fillRect(callX, y - height / 2, detailCallWidth, Math.min(2, height / 2));
+          context.fillStyle = alpha(data.putColor, Math.min(1, data.opacity + 0.18) * confidenceOpacity);
+          context.fillRect(putX, y + height / 2 - Math.min(2, height / 2), detailPutWidth, Math.min(2, height / 2));
         }
         if (data.showValues && width > 70) {
           context.font = "500 9px 'JetBrains Mono', monospace";
           context.textBaseline = "middle";
           context.textAlign = growsRight ? "right" : "left";
           context.fillStyle = data.textColor;
-          context.fillText(formatGammaValue(value, data.snapshot.representation), growsRight ? x + width - 4 : x + 4, y);
+          context.fillText(this.primitive.formatValue(value, data.snapshot.representation), growsRight ? x + width - 4 : x + 4, y);
         }
         if (data.showMappedPrice && width > 105) {
           context.font = "500 8px 'JetBrains Mono', monospace";
@@ -272,31 +328,37 @@ class NetGammaExposureRenderer implements ISeriesPrimitivePaneRenderer {
         data.showCallWall && data.snapshot.callWallRow ? { label: "CALL WALL", row: data.snapshot.callWallRow, color: data.callColor } : null,
         data.showPutWall && data.snapshot.putWallRow ? { label: "PUT WALL", row: data.snapshot.putWallRow, color: data.putColor } : null,
       ].filter((level): level is { label: string; row: NetGammaStrikeRow; color: string } => Boolean(level));
-      const occupied: number[] = [];
-      levels.forEach((level) => {
+      const mergedLevels = new Map<number, typeof levels>();
+      for (const level of levels) {
+        const key = level.row.mappedDisplayTick;
+        const group = mergedLevels.get(key) ?? [];
+        group.push(level);
+        mergedLevels.set(key, group);
+      }
+      [...mergedLevels.values()].forEach((group) => {
+        const level = group[0];
         const rawY = series.priceToCoordinate(level.row.mappedDisplayPrice);
         if (rawY === null || rawY < 2 || rawY > mediaSize.height - 2) return;
-        context.strokeStyle = alpha(level.color, 0.82);
+        context.strokeStyle = alpha(group.length > 1 ? data.warningColor : level.color, 0.82);
         context.setLineDash([4, 3]);
         context.lineWidth = 1;
         context.beginPath();
         context.moveTo(laneLeft, rawY + 0.5);
         context.lineTo(laneLeft + laneWidth, rawY + 0.5);
         context.stroke();
-        let labelY = Number(rawY);
-        while (occupied.some((used) => Math.abs(used - labelY) < 14)) labelY += 14;
-        occupied.push(labelY);
-        const label = compactLevelLabel(level.label, level.row, data);
+        const labelY = Number(rawY);
+        const labels = group.map((item) => item.label).join(" + ");
+        const label = `${labels} ${level.row.mappedDisplayPrice.toFixed(data.precision)} · ${this.primitive.formatValue(level.row.netExposure, data.snapshot.representation)}`;
         context.font = "600 8px 'JetBrains Mono', monospace";
         context.textAlign = "right";
         context.textBaseline = "middle";
         const labelWidth = Math.min(laneWidth - 8, context.measureText(label).width + 8);
         context.fillStyle = alpha(data.backgroundColor, 0.93);
         context.fillRect(laneLeft + laneWidth - labelWidth - 3, labelY - 7, labelWidth, 14);
-        context.strokeStyle = alpha(level.color, 0.8);
+        context.strokeStyle = alpha(group.length > 1 ? data.warningColor : level.color, 0.8);
         context.setLineDash([]);
         context.strokeRect(laneLeft + laneWidth - labelWidth - 3.5, labelY - 7.5, labelWidth + 1, 15);
-        context.fillStyle = level.color;
+        context.fillStyle = group.length > 1 ? data.warningColor : level.color;
         context.fillText(label, laneLeft + laneWidth - 7, labelY);
       });
       if (data.showCurrentPrice) {
@@ -330,6 +392,8 @@ export class NetGammaExposurePrimitive implements ISeriesPrimitive<Time> {
   private requestRedraw: (() => void) | null = null;
   private renderData: NetGammaExposurePrimitiveData | null = null;
   private hits: RenderedHit[] = [];
+  private textCache = new Map<string, string>();
+  private textCacheSnapshotId = "";
   private readonly paneView = new NetGammaExposureView(this);
 
   attached(param: SeriesAttachedParameter<Time, "Candlestick">) {
@@ -338,7 +402,22 @@ export class NetGammaExposurePrimitive implements ISeriesPrimitive<Time> {
     this.requestRedraw = param.requestUpdate;
   }
   detached() { this.candleSeries = null; this.chartApi = null; this.requestRedraw = null; this.hits = []; }
-  update(data: NetGammaExposurePrimitiveData | null) { this.renderData = data; this.requestRedraw?.(); }
+  update(data: NetGammaExposurePrimitiveData | null) {
+    if (data?.snapshot.id !== this.textCacheSnapshotId) {
+      this.textCache.clear();
+      this.textCacheSnapshotId = data?.snapshot.id ?? "";
+    }
+    this.renderData = data;
+    this.requestRedraw?.();
+  }
+  formatValue(value: number, representation: NetGammaProfileSnapshot["representation"]) {
+    const key = `${representation}:${value}`;
+    const cached = this.textCache.get(key);
+    if (cached) return cached;
+    const formatted = formatGammaValue(value, representation);
+    this.textCache.set(key, formatted);
+    return formatted;
+  }
   series() { return this.candleSeries; }
   chart() { return this.chartApi; }
   data() { return this.renderData; }

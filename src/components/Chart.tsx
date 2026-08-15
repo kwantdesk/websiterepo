@@ -160,6 +160,7 @@ import {
   type NetGammaExposurePrimitiveData,
 } from "@/lib/netGammaExposurePrimitive";
 import {
+  buildNetGammaChangeSnapshot,
   defaultNetGammaSource,
   formatGammaValue,
   isNetGammaProfileSnapshot,
@@ -2495,6 +2496,7 @@ export default function Chart({
   const gammaHeatmapPrimitiveRef = useRef<GammaHeatmapPrimitive | null>(null);
   const netGammaExposurePrimitiveRef = useRef<NetGammaExposurePrimitive | null>(null);
   const previousNetGammaSnapshotRef = useRef<NetGammaProfileSnapshot | null>(null);
+  const netGammaReservedRightOffsetRef = useRef<number | null>(null);
   const darkPoolMapPrimitiveRef = useRef<DarkPoolMapPrimitive | null>(null);
   const darkPoolAlertStateRef = useRef<{
     key: string;
@@ -3918,8 +3920,40 @@ export default function Chart({
     () => indicators.find((instance) => instance.enabled && instance.indicatorId === "net-gamma-exposure-by-strike") ?? null,
     [indicators],
   );
+  const netGammaDataSettingsSignature = netGammaIndicator ? JSON.stringify({
+      instanceId: netGammaIndicator.instanceId,
+      provider: String(netGammaIndicator.settings?.provider ?? "quantdata"),
+      sourceTicker: String(netGammaIndicator.settings?.sourceTicker ?? "AUTO"),
+      refreshSeconds: Number(netGammaIndicator.settings?.refreshSeconds ?? 5),
+      expirationMode: String(netGammaIndicator.settings?.expirationMode ?? "zero-to-one-dte"),
+      expirationDates: String(netGammaIndicator.settings?.expirationDates ?? ""),
+      includeWeeklies: netGammaIndicator.settings?.includeWeeklies !== false,
+      includeMonthlies: netGammaIndicator.settings?.includeMonthlies !== false,
+      includeQuarterlies: netGammaIndicator.settings?.includeQuarterlies !== false,
+      aggregationMode: String(netGammaIndicator.settings?.aggregationMode ?? "auto-bin"),
+      customBinSizePoints: Number(netGammaIndicator.settings?.customBinSizePoints ?? 1),
+      minimumDte: Number(netGammaIndicator.settings?.minimumDte ?? 0),
+      maximumDte: Number(netGammaIndicator.settings?.maximumDte ?? 7),
+    }) : "";
+  const netGammaDataSettings = useMemo(() => netGammaDataSettingsSignature
+    ? JSON.parse(netGammaDataSettingsSignature) as {
+        instanceId: string;
+        provider: string;
+        sourceTicker: string;
+        refreshSeconds: number;
+        expirationMode: string;
+        expirationDates: string;
+        includeWeeklies: boolean;
+        includeMonthlies: boolean;
+        includeQuarterlies: boolean;
+        aggregationMode: string;
+        customBinSizePoints: number;
+        minimumDte: number;
+        maximumDte: number;
+      }
+    : null, [netGammaDataSettingsSignature]);
   useEffect(() => {
-    if (!netGammaIndicator) {
+    if (!netGammaDataSettings) {
       setNetGammaProfile(null);
       setNetGammaLoading(false);
       setNetGammaError(null);
@@ -3933,8 +3967,8 @@ export default function Chart({
       setNetGammaError("Net Gamma Exposure supports NQ, MNQ, ES and MES charts.");
       return;
     }
-    const indicatorSettings = netGammaIndicator.settings ?? {};
-    const requestedSource = String(indicatorSettings.sourceTicker ?? "AUTO").toUpperCase();
+    const indicatorSettings = netGammaDataSettings;
+    const requestedSource = indicatorSettings.sourceTicker.toUpperCase();
     const source = requestedSource === "AUTO" ? defaultNetGammaSource(display) : requestedSource;
     const refreshMs = Math.max(2_000, Math.min(60_000, Number(indicatorSettings.refreshSeconds ?? 5) * 1_000));
     let cancelled = false;
@@ -3950,22 +3984,19 @@ export default function Chart({
       const query = new URLSearchParams({
         display,
         source,
-        provider: String(indicatorSettings.provider ?? "quantdata"),
+        provider: indicatorSettings.provider,
         displayPrice: String(displayPrice),
-        expirationMode: String(indicatorSettings.expirationMode ?? "zero-to-one-dte"),
-        expirationDates: String(indicatorSettings.expirationDates ?? ""),
-        includeWeeklies: String(indicatorSettings.includeWeeklies !== false),
-        includeMonthlies: String(indicatorSettings.includeMonthlies !== false),
-        includeQuarterlies: String(indicatorSettings.includeQuarterlies !== false),
-        aggregationMode: String(indicatorSettings.aggregationMode ?? "auto-bin"),
-        customBinSizePoints: String(indicatorSettings.customBinSizePoints ?? 1),
-        minimumAbsoluteExposure: String(indicatorSettings.minimumAbsoluteExposure ?? 0),
-        minimumDte: String(indicatorSettings.minimumDte ?? 0),
-        maximumDte: String(indicatorSettings.maximumDte ?? 7),
+        expirationMode: indicatorSettings.expirationMode,
+        expirationDates: indicatorSettings.expirationDates,
+        includeWeeklies: String(indicatorSettings.includeWeeklies),
+        includeMonthlies: String(indicatorSettings.includeMonthlies),
+        includeQuarterlies: String(indicatorSettings.includeQuarterlies),
+        aggregationMode: indicatorSettings.aggregationMode,
+        customBinSizePoints: String(indicatorSettings.customBinSizePoints),
+        minimumDte: String(indicatorSettings.minimumDte),
+        maximumDte: String(indicatorSettings.maximumDte),
       });
-      const maximumDistance = Number(indicatorSettings.maximumDistanceFromSourceSpot ?? 0);
-      if (maximumDistance > 0) query.set("maximumDistanceFromSourceSpot", String(maximumDistance));
-      const settingsKey = [source, indicatorSettings.provider, indicatorSettings.expirationMode, indicatorSettings.expirationDates, indicatorSettings.includeWeeklies, indicatorSettings.includeMonthlies, indicatorSettings.includeQuarterlies, indicatorSettings.aggregationMode, indicatorSettings.customBinSizePoints, indicatorSettings.minimumAbsoluteExposure, maximumDistance].join(":");
+      const settingsKey = [source, indicatorSettings.provider, indicatorSettings.expirationMode, indicatorSettings.expirationDates, indicatorSettings.includeWeeklies, indicatorSettings.includeMonthlies, indicatorSettings.includeQuarterlies, indicatorSettings.aggregationMode, indicatorSettings.customBinSizePoints].join(":");
       try {
         const payload = await fetchWorkspaceData<NetGammaProfileSnapshot>(
           `net-gamma-exposure-by-strike:${display}:${settingsKey}`,
@@ -3979,21 +4010,10 @@ export default function Chart({
           },
         );
         if (cancelled) return;
-        const previous = previousNetGammaSnapshotRef.current;
-        previousNetGammaSnapshotRef.current = payload;
-        if (String(indicatorSettings.contentMode ?? "net") === "net-change" && previous
-          && previous.sourceTicker === payload.sourceTicker
-          && previous.displayInstrument === payload.displayInstrument
-          && previous.representation === payload.representation
-          && previous.expirationLabel === payload.expirationLabel) {
-          const prior = new Map(previous.rows.map((row) => [row.id, row.netExposure]));
-          setNetGammaProfile({
-            ...payload,
-            rows: payload.rows.map((row) => ({ ...row, netExposure: row.netExposure - (prior.get(row.id) ?? 0) })),
-          });
-        } else {
-          setNetGammaProfile(payload);
-        }
+        setNetGammaProfile((current) => {
+          if (current && current.id !== payload.id) previousNetGammaSnapshotRef.current = current;
+          return payload;
+        });
         setNetGammaError(null);
       } catch (error) {
         if (!cancelled) setNetGammaError(error instanceof Error ? error.message : "Net Gamma Exposure could not refresh.");
@@ -4009,14 +4029,18 @@ export default function Chart({
       cancelled = true;
       if (timer !== null) window.clearTimeout(timer);
     };
-  }, [instrument, netGammaIndicator]);
+  }, [instrument, netGammaDataSettings]);
 
   const netGammaPrimitiveData = useMemo<NetGammaExposurePrimitiveData | null>(() => {
     if (!netGammaIndicator || !netGammaProfile) return null;
     const indicatorSettings = netGammaIndicator.settings ?? {};
     const useThemeColors = indicatorSettings.useThemeColors !== false;
+    const contentMode = String(indicatorSettings.contentMode ?? "net") as GammaProfileContentMode;
+    const renderedSnapshot = contentMode === "net-change"
+      ? buildNetGammaChangeSnapshot(netGammaProfile, previousNetGammaSnapshotRef.current)
+      : netGammaProfile;
     return {
-      snapshot: netGammaProfile,
+      snapshot: renderedSnapshot,
       placement: String(indicatorSettings.placement ?? "right") as GammaProfilePlacement,
       laneWidthPercent: Number(indicatorSettings.laneWidthPercent ?? 24),
       minimumLaneWidthPx: Number(indicatorSettings.minimumLaneWidthPx ?? 220),
@@ -4036,7 +4060,7 @@ export default function Chart({
       fixedMaximum: Number(indicatorSettings.fixedMaximum ?? 0) || null,
       logarithmicStrength: Number(indicatorSettings.logarithmicStrength ?? 9),
       sharePositiveNegativeScale: indicatorSettings.sharePositiveNegativeScale !== false,
-      contentMode: String(indicatorSettings.contentMode ?? "net") as GammaProfileContentMode,
+      contentMode,
       visualMode: String(indicatorSettings.visualMode ?? "gradient") as GammaBarVisualMode,
       opacity: Number(indicatorSettings.barOpacity ?? 52) / 100,
       borderOpacity: Number(indicatorSettings.borderOpacity ?? 75) / 100,
@@ -4053,6 +4077,8 @@ export default function Chart({
       showCurrentPrice: indicatorSettings.showCurrentPrice !== false,
       maximumDisplayedRows: Math.max(5, Number(indicatorSettings.maximumDisplayedRows ?? 80)),
       minimumPercentageOfTotal: Math.max(0, Number(indicatorSettings.minimumPercentageOfTotal ?? 0.1) / 100),
+      minimumAbsoluteExposure: Math.max(0, Number(indicatorSettings.minimumAbsoluteExposure ?? 0)),
+      maximumDistanceFromSourceSpot: Math.max(0, Number(indicatorSettings.maximumDistanceFromSourceSpot ?? 0)),
       minimumMappingConfidence: Number(indicatorSettings.minimumMappingConfidence ?? 70),
       fadeWhenBelowMinimum: indicatorSettings.fadeWhenBelowMinimum !== false,
       hideWhenBelowMinimum: indicatorSettings.hideWhenBelowMinimum === true,
@@ -4074,6 +4100,40 @@ export default function Chart({
   useEffect(() => {
     netGammaExposurePrimitiveRef.current?.update(netGammaPrimitiveData);
   }, [netGammaPrimitiveData, viewportVersion]);
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart) return;
+    const timeScale = chart.timeScale();
+    const settingsRecord = netGammaIndicator?.settings ?? {};
+    const reserveRight = Boolean(
+      netGammaIndicator
+      && settingsRecord.spaceMode === "reserved"
+      && String(settingsRecord.placement ?? "right") === "right",
+    );
+    if (!reserveRight) {
+      if (netGammaReservedRightOffsetRef.current !== null) {
+        timeScale.applyOptions({ rightOffset: netGammaReservedRightOffsetRef.current });
+        netGammaReservedRightOffsetRef.current = null;
+      }
+      return;
+    }
+    const options = timeScale.options();
+    if (netGammaReservedRightOffsetRef.current === null) {
+      netGammaReservedRightOffsetRef.current = Number(options.rightOffset ?? 0);
+    }
+    const laneWidth = Math.max(
+      Number(settingsRecord.minimumLaneWidthPx ?? 220),
+      Math.min(
+        Number(settingsRecord.maximumLaneWidthPx ?? 420),
+        overlaySize.width * Number(settingsRecord.laneWidthPercent ?? 24) / 100,
+      ),
+    );
+    const barsToReserve = laneWidth / Math.max(1, Number(options.barSpacing ?? 6));
+    timeScale.applyOptions({ rightOffset: Math.max(netGammaReservedRightOffsetRef.current, barsToReserve) });
+  }, [
+    netGammaIndicator,
+    overlaySize.width,
+  ]);
   useEffect(() => {
     const container = chartContainerRef.current;
     if (!container || !netGammaIndicator || netGammaIndicator.settings?.tooltipsEnabled === false) {
@@ -8232,6 +8292,7 @@ export default function Chart({
       classicGexProfilePrimitiveRef.current = null;
       gammaHeatmapPrimitiveRef.current = null;
       netGammaExposurePrimitiveRef.current = null;
+      netGammaReservedRightOffsetRef.current = null;
       darkPoolMapPrimitiveRef.current = null;
       volumeProfilePrimitiveRef.current = null;
       bigTradesPrimitiveRef.current = null;
@@ -9388,10 +9449,18 @@ export default function Chart({
             <>
               <span>{netGammaProfile.sourceTicker}→{netGammaProfile.displayInstrument}</span>
               <span>{netGammaProfile.expirationLabel}</span>
-              <span>{netGammaProfile.representation === "per-one-percent-move" ? "$/1%" : netGammaProfile.representation === "per-one-dollar-move" ? "$/ $1" : "RAW"}</span>
+              <span>{netGammaProfile.representation === "per-one-percent-move" ? "$/1% MOVE" : netGammaProfile.representation === "per-one-dollar-move" ? "$/1$ MOVE" : "RAW"}</span>
               <span className={netGammaProfile.status === "live" ? "text-primary" : "text-warning"}>{netGammaProfile.status.replaceAll("-", " ")}</span>
-              <span>MAP {Math.round(netGammaProfile.mapping.mappingConfidence)}%</span>
-              <span className={netGammaProfile.totalNetExposure >= 0 ? "text-primary" : "text-danger"}>{formatGammaValue(netGammaProfile.totalNetExposure, netGammaProfile.representation)}</span>
+              <span>
+                {netGammaProfile.mapping.method === "live-ratio" ? "LIVE RATIO FALLBACK" : netGammaProfile.mapping.method.replaceAll("-", " ")}
+                {netGammaIndicator.settings?.showMappingConfidence !== false ? ` · ${Math.round(netGammaProfile.mapping.mappingConfidence)}%` : ""}
+              </span>
+              {netGammaProfile.rows.length ? (
+                <>
+                  <span className={netGammaProfile.totalRegime === "positive" ? "text-primary" : netGammaProfile.totalRegime === "negative" ? "text-danger" : "text-warning"}>{netGammaProfile.totalRegime} regime</span>
+                  <span className={netGammaProfile.totalNetExposure >= 0 ? "text-primary" : "text-danger"}>{formatGammaValue(netGammaProfile.totalNetExposure, netGammaProfile.representation)}</span>
+                </>
+              ) : <span className="text-warning">No qualifying rows</span>}
             </>
           ) : netGammaLoading ? <span>Loading strike profile…</span> : <span className="text-danger">{netGammaError ?? "Exposure unavailable"}</span>}
           {netGammaError && netGammaProfile ? <span className="text-warning">Refresh delayed · last valid profile</span> : null}

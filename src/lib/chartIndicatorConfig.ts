@@ -559,6 +559,7 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
     includeQuarterlies: true,
     aggregationMode: "auto-bin",
     placement: "right",
+    spaceMode: "overlay",
     reverseDirections: false,
     barHeightMode: "automatic",
     scaleMode: "visible-percentile",
@@ -588,7 +589,7 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
     absoluteColor: theme?.borderUpColor ?? theme?.upColor ?? "#8B5CF6",
     zeroSpineColor: theme?.gridColor ?? "#71717A",
     warningColor: "#F59E0B",
-    netGammaSettingsVersion: 1,
+    netGammaSettingsVersion: 2,
   } : {}),
   ...(indicatorId === "dark-pool-map" ? {
     preset: "balanced",
@@ -1023,6 +1024,39 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
     normalizedInstance = {
       ...normalizedInstance,
       settings: tpoSettingsToRecord(validateTpoSettings(normalizedInstance.settings, variant)),
+    };
+  }
+  if (normalizedInstance.indicatorId === "net-gamma-exposure-by-strike") {
+    const defaults: Record<string, number | string | boolean> = defaultIndicatorSettings("net-gamma-exposure-by-strike");
+    const settings: Record<string, number | string | boolean> = { ...defaults, ...(normalizedInstance.settings ?? {}) };
+    for (const definition of INDICATOR_NUMERIC_SETTINGS["net-gamma-exposure-by-strike"] ?? []) {
+      const parsed = Number(settings[definition.key]);
+      settings[definition.key] = Math.min(
+        definition.max,
+        Math.max(definition.min, Number.isFinite(parsed) ? parsed : definition.defaultValue),
+      );
+    }
+    const enumValues: Record<string, string[]> = {
+      provider: ["quantdata", "databento-custom", "hybrid-validation"],
+      expirationMode: ["zero-dte", "zero-to-one-dte", "zero-to-seven-dte", "front-expiration", "all-expirations", "custom-dte-range", "specific-expirations"],
+      aggregationMode: ["exact-display-tick", "auto-bin", "custom-bin"],
+      placement: ["right", "left", "floating"],
+      spaceMode: ["overlay", "reserved"],
+      barHeightMode: ["automatic", "fixed-pixels", "mapped-price-bin"],
+      scaleMode: ["visible-maximum", "visible-percentile", "all-loaded-maximum", "fixed-maximum"],
+      scaleTransform: ["linear", "square-root", "logarithmic"],
+      contentMode: ["net", "net-with-call-put-detail", "call-put-split", "absolute-concentration", "net-change"],
+      visualMode: ["solid", "gradient", "outline", "heat", "compact-line"],
+    };
+    for (const [key, allowed] of Object.entries(enumValues)) {
+      if (!allowed.includes(String(settings[key]))) settings[key] = defaults[key];
+    }
+    for (const unsafeKey of ["apiKey", "credential", "credentials", "providerCredential", "liveSnapshot", "snapshotData", "rows"]) {
+      delete settings[unsafeKey];
+    }
+    return {
+      ...normalizedInstance,
+      settings: { ...settings, netGammaSettingsVersion: 2 },
     };
   }
   if (

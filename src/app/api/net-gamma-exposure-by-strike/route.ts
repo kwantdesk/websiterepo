@@ -76,10 +76,6 @@ export async function GET(request: NextRequest) {
       },
       aggregationMode,
       customBinSizePoints: finiteQuery(request, "customBinSizePoints") ?? undefined,
-      minimumAbsoluteExposure: finiteQuery(request, "minimumAbsoluteExposure") ?? undefined,
-      sourceStrikeMinimum: finiteQuery(request, "sourceStrikeMinimum"),
-      sourceStrikeMaximum: finiteQuery(request, "sourceStrikeMaximum"),
-      maximumDistanceFromSourceSpot: finiteQuery(request, "maximumDistanceFromSourceSpot"),
     });
     if (payloadCache.size > 64) for (const [cacheKey, entry] of payloadCache) if (entry.expiresAt <= Date.now()) payloadCache.delete(cacheKey);
     payloadCache.set(key, { expiresAt: Date.now() + Math.max(2_000, Math.min(15_000, payload.refreshAfterMs)), payload });
