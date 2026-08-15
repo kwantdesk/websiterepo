@@ -2220,6 +2220,7 @@ export default function Chart({
   const [professionalDrawings, setProfessionalDrawings] = useState<ProfessionalDrawingRecord[]>([]);
   const professionalDrawingsRef = useRef<ProfessionalDrawingRecord[]>([]);
   const professionalDrawingsHydrationRef = useRef<{ instrument: string; ready: boolean }>({ instrument: "", ready: false });
+  const professionalDrawingsLoadGenerationRef = useRef(0);
   const professionalDrawingManagerRef = useRef<DrawingManager | null>(null);
   const professionalDrawingPreviewRef = useRef<ProfessionalDrawing | null>(null);
   const professionalBrushDrawingRef = useRef<ProfessionalDrawing | null>(null);
@@ -4761,9 +4762,58 @@ export default function Chart({
     })));
   }
 
+  function clearAllChartDrawings() {
+    // Invalidate any in-flight hydration before clearing so an older server response
+    // cannot restore drawings after the user has removed them.
+    professionalDrawingsLoadGenerationRef.current += 1;
+    professionalDrawingsHydrationRef.current = { instrument, ready: true };
+
+    if (professionalUpdateHistoryTimerRef.current !== null) {
+      window.clearTimeout(professionalUpdateHistoryTimerRef.current);
+      professionalUpdateHistoryTimerRef.current = null;
+    }
+    professionalUpdateHistoryOpenRef.current = false;
+    professionalUndoStackRef.current = [];
+    professionalRedoStackRef.current = [];
+    professionalClipboardRef.current = null;
+    professionalPendingAnchorsRef.current = [];
+    professionalDrawingPreviewRef.current = null;
+    professionalBrushDrawingRef.current = null;
+    professionalSuppressNextClickRef.current = false;
+
+    professionalSyncSuppressedRef.current = true;
+    professionalDrawingManagerRef.current?.clearAll();
+    professionalSyncSuppressedRef.current = false;
+    professionalDrawingsRef.current = [];
+
+    setProfessionalDrawings([]);
+    setDrawings([]);
+    setDraftDrawing(null);
+    setDrawingInteraction(null);
+    setTextEditor(null);
+    setSelectedDrawingId(null);
+    setSelectedProfessionalDrawingId(null);
+    setPositionSettingsDrawingId(null);
+    setShowDrawingSettings(false);
+    setDrawingHistoryRevision((revision) => revision + 1);
+
+    try {
+      window.localStorage.setItem(drawingsStorageKey(instrument, chartInstanceId), "[]");
+    } catch {
+      // The account-backed save below remains authoritative when local storage is unavailable.
+    }
+    void fetch("/api/chart-drawings", {
+      method: "PUT",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ instrument: drawingPersistenceInstrument, drawings: [] }),
+    }).catch(() => undefined);
+  }
+
   useEffect(() => {
     if (typeof window === "undefined") return;
     let cancelled = false;
+    const loadGeneration = ++professionalDrawingsLoadGenerationRef.current;
     professionalDrawingsHydrationRef.current = { instrument, ready: false };
     let cached: ProfessionalDrawingRecord[] = [];
     const migrationClaimKey = `kwantdesk:chart-drawings:migrated:v1:${instrument}`;
@@ -4810,13 +4860,15 @@ export default function Chart({
 
     void loadPersistedDrawings()
       .then((records) => {
-        if (cancelled || !records.length) return;
+        if (cancelled || professionalDrawingsLoadGenerationRef.current !== loadGeneration || !records.length) return;
         setProfessionalDrawings(records);
         replaceProfessionalManagerDrawings(records);
       })
       .catch(() => undefined)
       .finally(() => {
-        if (!cancelled) professionalDrawingsHydrationRef.current = { instrument, ready: true };
+        if (!cancelled && professionalDrawingsLoadGenerationRef.current === loadGeneration) {
+          professionalDrawingsHydrationRef.current = { instrument, ready: true };
+        }
       });
     return () => { cancelled = true; };
   // Manager replacement reads refs intentionally; the instrument owns hydration.
@@ -8881,7 +8933,7 @@ export default function Chart({
               onClick={() => setClearConfirm(true)}
               className="flex items-center justify-center border border-transparent bg-transparent text-muted transition-all hover:bg-danger/10 hover:text-danger"
               style={toolbarButtonStyle}
-              title="Clear drawings"
+              title="Clear all drawings"
             >
               <Trash2 className={toolbarIconClassName} />
             </button>
@@ -9463,7 +9515,7 @@ export default function Chart({
             className="flex w-full cursor-pointer items-center gap-3 px-4 py-2.5 text-[13px] text-foreground transition-colors hover:bg-surface"
           >
             <Trash2 className="h-4 w-4 text-muted" />
-            <span className="flex-1 text-left">Clear drawings</span>
+            <span className="flex-1 text-left">Clear all drawings</span>
           </button>
           <button onMouseDown={(e) => e.stopPropagation()} className="flex w-full cursor-pointer items-center gap-3 px-4 py-2.5 text-[13px] text-foreground transition-colors hover:bg-surface">
             <ShoppingCart className="h-4 w-4 text-primary" />
@@ -9491,7 +9543,7 @@ export default function Chart({
       {clearConfirm && (
         <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/50 backdrop-blur-sm">
           <div className="w-[320px] rounded-2xl border border-border bg-panel p-5 shadow-2xl">
-            <div className="mb-2 text-[16px] font-semibold text-foreground">Clear drawings?</div>
+            <div className="mb-2 text-[16px] font-semibold text-foreground">Clear all drawings?</div>
             <div className="text-[13px] leading-6 text-muted">
               This will remove all chart drawings for <span className="font-medium text-foreground">{instrument}</span>.
             </div>
@@ -9501,9 +9553,8 @@ export default function Chart({
               </button>
               <button
                 type="button"
-              onClick={() => {
-                  professionalDrawingManagerRef.current?.clearAll();
-                  setDraftDrawing(null);
+                onClick={() => {
+                  clearAllChartDrawings();
                   setClearConfirm(false);
                 }}
                 className="rounded-xl bg-danger px-4 py-2 text-[13px] font-semibold text-white"

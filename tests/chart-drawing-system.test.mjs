@@ -57,6 +57,24 @@ test("drawing controls include history, clipboard, templates, magnet and keep mo
   assert.match(chart, /professionalPendingAnchorsRef\.current\.pop\(\)/);
 });
 
+test("clear all drawings removes every chart-scoped drawing layer and persisted state", () => {
+  const clearAction = chart.slice(
+    chart.indexOf("function clearAllChartDrawings()"),
+    chart.indexOf("useEffect(() => {", chart.indexOf("function clearAllChartDrawings()")),
+  );
+  assert.match(clearAction, /professionalDrawingsLoadGenerationRef\.current \+= 1/);
+  assert.match(clearAction, /professionalDrawingManagerRef\.current\?\.clearAll\(\)/);
+  assert.match(clearAction, /setProfessionalDrawings\(\[\]\)/);
+  assert.match(clearAction, /setDrawings\(\[\]\)/);
+  assert.match(clearAction, /professionalUndoStackRef\.current = \[\]/);
+  assert.match(clearAction, /professionalRedoStackRef\.current = \[\]/);
+  assert.match(clearAction, /setSelectedProfessionalDrawingId\(null\)/);
+  assert.match(clearAction, /drawingsStorageKey\(instrument, chartInstanceId\)/);
+  assert.match(clearAction, /drawingPersistenceInstrument, drawings: \[\]/);
+  assert.match(chart, /Clear all drawings/);
+  assert.match(chart, /clearAllChartDrawings\(\)/);
+});
+
 test("analytical drawings consume real volume and classified bid-ask data", () => {
   assert.match(chart, /configureProfessionalDrawingMarketData/);
   assert.match(kwantTools, /typical \* volume/);
