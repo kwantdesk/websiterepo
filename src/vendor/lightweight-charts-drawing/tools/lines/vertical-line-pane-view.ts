@@ -3,7 +3,7 @@ import type { CanvasRenderingTarget2D, BitmapCoordinatesRenderingScope } from 'f
 
 import type { VerticalLine } from './vertical-line';
 import type { Point } from '../../core/types';
-import { applyStyle, drawLine, drawControlPoints, drawLabel } from '../../rendering/canvas-utils';
+import { applyStyle, drawLine, drawControlPoints } from '../../rendering/canvas-utils';
 
 export class VerticalLinePaneView implements IPrimitivePaneView {
   private _renderer: VerticalLinePaneRenderer;
@@ -53,25 +53,6 @@ class VerticalLinePaneRenderer implements IPrimitivePaneRenderer {
     const start: Point = { x, y: 0 };
     const end: Point = { x, y: viewport.height };
     drawLine(ctx, start, end, pixelRatio);
-
-    // Draw time label
-    const options = this._drawing.verticalLineOptions;
-    if (options.showTime) {
-      const timeText = options.labelText || String(anchor.time);
-      drawLabel(
-        ctx,
-        timeText,
-        { x, y: viewport.height - 10 },
-        {
-          font: this._drawing.style.labelFont || '12px sans-serif',
-          textColor: '#ffffff',
-          backgroundColor: this._drawing.style.lineColor + 'CC',
-          padding: 4,
-          borderRadius: 3,
-        },
-        pixelRatio
-      );
-    }
 
     // Draw control points if selected
     const state = this._drawing.state;

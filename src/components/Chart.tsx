@@ -1875,6 +1875,15 @@ const ACTIVE_DRAWING_TOOLBAR_GROUPS: ToolbarGroup[] = [
 ];
 
 const ALL_DRAWING_TOOLS = ACTIVE_DRAWING_TOOLBAR_GROUPS.flatMap((group) => group.tools);
+const DOUBLE_CLICK_STYLE_DRAWING_TYPES = new Set([
+  "trend-line",
+  "trend-angle",
+  "vertical-line",
+  "horizontal-line",
+  "horizontal-ray",
+  "cross-line",
+  "brush",
+]);
 const PRECISION_TOOL_BY_DRAWING_TOOL: Partial<Record<DrawingToolId, PrecisionToolId>> = {
   brush: "precision-pencil",
   longPosition: "precision-buy-calculator",
@@ -6686,6 +6695,11 @@ export default function Chart({
       drawingManager.on("drawing:updated", syncProfessionalDrawingState),
       drawingManager.on("drawing:cleared", syncProfessionalDrawingState),
       drawingManager.on("drawing:selected", (event) => setSelectedProfessionalDrawingId(event.drawingId ?? null)),
+      drawingManager.on("drawing:double-clicked", (event) => {
+        if (!event.drawing || !DOUBLE_CLICK_STYLE_DRAWING_TYPES.has(event.drawing.type)) return;
+        setSelectedProfessionalDrawingId(event.drawing.id);
+        setShowDrawingSettings(true);
+      }),
       drawingManager.on("drawing:deselected", () => setSelectedProfessionalDrawingId(null)),
     ];
     replaceProfessionalManagerDrawings(professionalDrawingsRef.current);

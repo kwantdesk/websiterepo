@@ -1,8 +1,8 @@
-import type { IPrimitivePaneView } from 'lightweight-charts';
+import type { IPrimitivePaneView, ISeriesPrimitiveAxisView } from 'lightweight-charts';
 
 import { Drawing } from '../../core/drawing';
 import type { Anchor, Point, Viewport, DrawingStyle, DrawingOptions, IDrawing } from '../../core/types';
-import type { Geometry, LineGeometry, TextGeometry } from '../../core/geometry';
+import type { Geometry, LineGeometry } from '../../core/geometry';
 import { formatPrice } from '../../rendering/canvas-utils';
 import { HorizontalLinePaneView } from './horizontal-line-pane-view';
 
@@ -31,6 +31,7 @@ export class HorizontalLine extends Drawing {
   protected static readonly HIT_THRESHOLD = 5;
 
   private _horizontalLineOptions: HorizontalLineOptions;
+  private readonly _priceAxisView: ISeriesPrimitiveAxisView;
 
   constructor(
     id: string,
@@ -46,6 +47,15 @@ export class HorizontalLine extends Drawing {
       showPrice: showPrice ?? true,
       showLabel: showLabel ?? false,
       labelText: labelText ?? '',
+    };
+    this._priceAxisView = {
+      coordinate: () => -1_000_000,
+      fixedCoordinate: () => this.priceAxisCoordinate() ?? undefined,
+      text: () => this._horizontalLineOptions.labelText || formatPrice(this._anchors[0]?.price ?? 0),
+      textColor: () => contrastingTextColor(this._style.lineColor),
+      backColor: () => this._style.lineColor,
+      visible: () => this._options.visible !== false && this.isValid() && this.priceAxisCoordinate() !== null,
+      tickVisible: () => true,
     };
   }
 
@@ -66,6 +76,15 @@ export class HorizontalLine extends Drawing {
     return [new HorizontalLinePaneView(this)];
   }
 
+  priceAxisViews(): readonly ISeriesPrimitiveAxisView[] {
+    return this._horizontalLineOptions.showPrice ? [this._priceAxisView] : [];
+  }
+
+  private priceAxisCoordinate(): number | null {
+    if (!this._series || !this.isValid()) return null;
+    return this._series.priceToCoordinate(this._anchors[0].price);
+  }
+
   computeGeometry(viewport: Viewport): Geometry[] {
     if (!this.isValid()) return [];
 
@@ -82,20 +101,6 @@ export class HorizontalLine extends Drawing {
       end: { x: viewport.width, y },
     };
     geometries.push(lineGeometry);
-
-    // Price label
-    if (this._horizontalLineOptions.showPrice) {
-      const priceText = formatPrice(anchor.price);
-      geometries.push({
-        type: 'text',
-        position: { x: viewport.width - 5, y: y - 10 },
-        text: priceText,
-        align: 'right',
-        baseline: 'bottom',
-        color: this._style.labelColor,
-        font: this._style.labelFont,
-      } as TextGeometry);
-    }
 
     return geometries;
   }
@@ -128,4 +133,13 @@ export class HorizontalLine extends Drawing {
   ): HorizontalLine {
     return new HorizontalLine(id, [{ time: time as any, price }], style, options);
   }
+}
+
+function contrastingTextColor(color: string): string {
+  const match = /^#([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i.exec(color);
+  if (!match) return '#ffffff';
+  const luminance = (0.2126 * Number.parseInt(match[1], 16))
+    + (0.7152 * Number.parseInt(match[2], 16))
+    + (0.0722 * Number.parseInt(match[3], 16));
+  return luminance > 155 ? '#050505' : '#ffffff';
 }

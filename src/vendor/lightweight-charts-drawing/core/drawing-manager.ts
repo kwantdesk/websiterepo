@@ -48,6 +48,7 @@ export class DrawingManager {
     this.handleMouseMove = this.handleMouseMove.bind(this);
     this.handleMouseUp = this.handleMouseUp.bind(this);
     this.handleClick = this.handleClick.bind(this);
+    this.handleDoubleClick = this.handleDoubleClick.bind(this);
   }
 
   // ============ Lifecycle ============
@@ -83,6 +84,7 @@ export class DrawingManager {
     container.addEventListener('mousedown', this.handleMouseDown, true);
     container.addEventListener('mousemove', this.handleMouseMove);
     container.addEventListener('mouseup', this.handleMouseUp);
+    container.addEventListener('dblclick', this.handleDoubleClick, true);
   }
 
   /**
@@ -106,6 +108,7 @@ export class DrawingManager {
       this._container.removeEventListener('mousedown', this.handleMouseDown, true);
       this._container.removeEventListener('mousemove', this.handleMouseMove);
       this._container.removeEventListener('mouseup', this.handleMouseUp);
+      this._container.removeEventListener('dblclick', this.handleDoubleClick, true);
     }
 
     this._chart = null;
@@ -351,6 +354,20 @@ export class DrawingManager {
     this._dragStartAnchor = { time, price };
     this._dragOriginalAnchors = numericAnchors;
     hitDrawing.setState('editing');
+    event.preventDefault();
+    event.stopPropagation();
+  }
+
+  private handleDoubleClick(event: MouseEvent): void {
+    if (this._activeTool) return;
+    const point = this.getPointFromEvent(event);
+    if (!point) return;
+
+    const drawing = this.hitTest(point);
+    if (!drawing) return;
+
+    this.selectDrawing(drawing.id);
+    this.emit('drawing:double-clicked', { drawingId: drawing.id, drawing, point });
     event.preventDefault();
     event.stopPropagation();
   }

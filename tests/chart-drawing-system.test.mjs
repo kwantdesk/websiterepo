@@ -9,6 +9,11 @@ const kwantTools = readFileSync(new URL("../src/vendor/lightweight-charts-drawin
 const workspace = readFileSync(new URL("../src/components/KwantifyWorkspace.tsx", import.meta.url), "utf8");
 const drawingGeometry = readFileSync(new URL("../src/vendor/lightweight-charts-drawing/core/geometry.ts", import.meta.url), "utf8");
 const drawingPaneView = readFileSync(new URL("../src/vendor/lightweight-charts-drawing/rendering/drawing-pane-view.ts", import.meta.url), "utf8");
+const drawingManager = readFileSync(new URL("../src/vendor/lightweight-charts-drawing/core/drawing-manager.ts", import.meta.url), "utf8");
+const horizontalLine = readFileSync(new URL("../src/vendor/lightweight-charts-drawing/tools/lines/horizontal-line.ts", import.meta.url), "utf8");
+const horizontalLinePane = readFileSync(new URL("../src/vendor/lightweight-charts-drawing/tools/lines/horizontal-line-pane-view.ts", import.meta.url), "utf8");
+const verticalLine = readFileSync(new URL("../src/vendor/lightweight-charts-drawing/tools/lines/vertical-line.ts", import.meta.url), "utf8");
+const verticalLinePane = readFileSync(new URL("../src/vendor/lightweight-charts-drawing/tools/lines/vertical-line-pane-view.ts", import.meta.url), "utf8");
 
 const expectedTools = [
   "Trend Line", "Angle", "Vertical Line", "Horizontal Line", "Horizontal Ray", "Cross Line", "Pencil",
@@ -57,6 +62,26 @@ test("drawing controls include history, clipboard, templates, magnet and keep mo
   assert.match(chart, /"off" \| "weak" \| "medium" \| "strong"/);
   assert.match(chart, /keepDrawingModeRef/);
   assert.match(chart, /professionalPendingAnchorsRef\.current\.pop\(\)/);
+});
+
+test("completed line tools open their style and template editor on double-click", () => {
+  assert.match(drawingManager, /addEventListener\('dblclick', this\.handleDoubleClick, true\)/);
+  assert.match(drawingManager, /this\.emit\('drawing:double-clicked'/);
+  assert.match(chart, /DOUBLE_CLICK_STYLE_DRAWING_TYPES/);
+  assert.match(chart, /drawingManager\.on\("drawing:double-clicked"/);
+  assert.match(chart, /setShowDrawingSettings\(true\)/);
+  assert.match(chart, /Line colour/);
+  assert.match(chart, /Templates/);
+  assert.match(chart, /saveSelectedDrawingTemplate/);
+});
+
+test("horizontal and vertical lines use exact native axis labels", () => {
+  assert.match(horizontalLine, /priceAxisViews\(\): readonly ISeriesPrimitiveAxisView\[\]/);
+  assert.match(horizontalLine, /fixedCoordinate: \(\) => this\.priceAxisCoordinate\(\)/);
+  assert.match(verticalLine, /timeAxisViews\(\): readonly ISeriesPrimitiveAxisView\[\]/);
+  assert.match(verticalLine, /fixedCoordinate: \(\) => this\.timeAxisCoordinate\(\)/);
+  assert.doesNotMatch(horizontalLinePane, /drawLabel/);
+  assert.doesNotMatch(verticalLinePane, /drawLabel/);
 });
 
 test("clear all drawings removes every chart-scoped drawing layer and persisted state", () => {

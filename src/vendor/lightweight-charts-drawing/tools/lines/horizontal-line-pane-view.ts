@@ -3,7 +3,7 @@ import type { CanvasRenderingTarget2D, BitmapCoordinatesRenderingScope } from 'f
 
 import type { HorizontalLine } from './horizontal-line';
 import type { Point } from '../../core/types';
-import { applyStyle, drawLine, drawControlPoints, drawLabel, formatPrice } from '../../rendering/canvas-utils';
+import { applyStyle, drawLine, drawControlPoints } from '../../rendering/canvas-utils';
 
 export class HorizontalLinePaneView implements IPrimitivePaneView {
   private _renderer: HorizontalLinePaneRenderer;
@@ -53,25 +53,6 @@ class HorizontalLinePaneRenderer implements IPrimitivePaneRenderer {
     const start: Point = { x: 0, y };
     const end: Point = { x: viewport.width, y };
     drawLine(ctx, start, end, pixelRatio);
-
-    // Draw price label
-    const options = this._drawing.horizontalLineOptions;
-    if (options.showPrice) {
-      const priceText = options.labelText || formatPrice(anchor.price);
-      drawLabel(
-        ctx,
-        priceText,
-        { x: viewport.width - 10, y },
-        {
-          font: this._drawing.style.labelFont || '12px sans-serif',
-          textColor: '#ffffff',
-          backgroundColor: this._drawing.style.lineColor + 'CC',
-          padding: 4,
-          borderRadius: 3,
-        },
-        pixelRatio
-      );
-    }
 
     // Draw control points if selected
     const state = this._drawing.state;

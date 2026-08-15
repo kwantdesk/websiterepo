@@ -173,6 +173,7 @@ export type DrawingEventType =
   | 'drawing:added'
   | 'drawing:removed'
   | 'drawing:selected'
+  | 'drawing:double-clicked'
   | 'drawing:deselected'
   | 'drawing:updated'
   | 'drawing:cleared'
@@ -185,6 +186,7 @@ export interface DrawingEvent {
   type: DrawingEventType;
   drawingId?: string;
   drawing?: IDrawing;
+  point?: Point;
   toolType?: string;
 }
 
