@@ -50,11 +50,10 @@ test("workspace picker separates pages from dedicated order-flow tools", () => {
   }
 });
 
-test("mature tool panels attach their real chart engine and remain normal saved chart panes", () => {
+test("chart-backed tools remain saved chart panes while DOM Pro uses its standalone ladder", () => {
   for (const indicatorId of [
     "deep-print-footprint",
     "kwant-profile",
-    "depth-of-market",
     "big-trades",
     "imbalance-tracker",
   ]) {
@@ -63,6 +62,8 @@ test("mature tool panels attach their real chart engine and remain normal saved 
   assert.match(workspaceSource, /defaultIndicatorSettings\(indicatorId, chartSettings\)/);
   assert.match(workspaceSource, /isWorkspaceChartKind\(activeWorkspacePane\.content\)/);
   assert.match(workspaceSource, /!isWorkspaceChartKind\(pane\.content\)/);
+  assert.match(workspaceSource, /value !== "tool-depth-of-market"/);
+  assert.match(workspaceSource, /<DepthOfMarketPanel[\s\S]*?standalone/);
 });
 
 test("changing a workspace tool replaces its previous tool indicator", () => {

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import fs from "node:fs/promises";
 
 import {
   applyDomProOrderEvent,
@@ -10,6 +11,23 @@ import {
   domProSettingsFromRecord,
   visibleDomProRows,
 } from "../src/lib/domPro.ts";
+
+const workspaceSource = await fs.readFile(
+  new URL("../src/components/KwantifyWorkspace.tsx", import.meta.url),
+  "utf8",
+);
+const panelSource = await fs.readFile(
+  new URL("../src/components/DepthOfMarketPanel.tsx", import.meta.url),
+  "utf8",
+);
+
+test("DOM Pro workspace renders the live ladder without attaching a chart", () => {
+  assert.match(workspaceSource, /value !== "tool-depth-of-market"/);
+  assert.match(workspaceSource, /case "tool-depth-of-market"/);
+  assert.match(workspaceSource, /<DepthOfMarketPanel[\s\S]*?standalone/);
+  assert.match(panelSource, /standalone\?: boolean/);
+  assert.match(panelSource, /collapsed && !standalone/);
+});
 
 test("DOM Pro ships the exact six-column professional default", () => {
   assert.deepEqual(
@@ -84,4 +102,3 @@ test("settings migration validates columns and presets deterministically", () =>
     ["bid", "price", "ask"],
   );
 });
-

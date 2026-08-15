@@ -22,6 +22,7 @@ type Props = {
   indicator: ChartIndicatorInstance;
   chartSettings: ChartSettings;
   onUpdateSetting?: (key: string, value: number | string | boolean) => void;
+  standalone?: boolean;
 };
 
 type CanvasPalette = {
@@ -174,7 +175,7 @@ function drawDom(args: {
 }
 
 export default function DepthOfMarketPanel({
-  instrument, contractSymbol, latestPrice, indicator, chartSettings, onUpdateSetting,
+  instrument, contractSymbol, latestPrice, indicator, chartSettings, onUpdateSetting, standalone = false,
 }: Props) {
   const settings = useMemo(() => domProSettingsFromRecord(indicator.settings), [indicator.settings]);
   const configuredWidth = Math.max(240, Math.min(1_100, finite(indicator.settings?.width, 640)));
@@ -279,7 +280,7 @@ export default function DepthOfMarketPanel({
   const imbalance = depthTotal > 0 ? (bidTotal / depthTotal - 0.5) * 200 : 0;
   const spread = bookState.bestBidTick !== null && bookState.bestAskTick !== null ? Math.max(0, bookState.bestAskTick - bookState.bestBidTick) : null;
 
-  if (collapsed) return (
+  if (collapsed && !standalone) return (
     <aside className="relative flex h-full w-10 shrink-0 flex-col items-center border-l border-border bg-background py-2">
       <button type="button" onClick={() => setCollapsed(false)} className="flex h-7 w-7 items-center justify-center border border-border text-primary" title="Expand DOM Pro"><ChevronsLeft className="h-3.5 w-3.5" /></button>
       <DatabaseZap className="mt-3 h-3.5 w-3.5 text-primary" />
@@ -288,8 +289,14 @@ export default function DepthOfMarketPanel({
   );
 
   return (
-    <aside className="relative flex h-full min-w-[240px] shrink-0 flex-col overflow-hidden border-l border-border bg-background shadow-[-18px_0_45px_rgba(0,0,0,.24)]" style={{ width: runtimeWidth }} aria-label="DOM Pro Rithmic depth of market">
-      <button type="button" className="absolute inset-y-0 left-0 z-30 w-1 cursor-col-resize bg-transparent hover:bg-primary/50" aria-label="Resize DOM Pro" onPointerDown={(event) => {
+    <aside
+      className={standalone
+        ? "relative flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden bg-background"
+        : "relative flex h-full min-w-[240px] shrink-0 flex-col overflow-hidden border-l border-border bg-background shadow-[-18px_0_45px_rgba(0,0,0,.24)]"}
+      style={standalone ? undefined : { width: runtimeWidth }}
+      aria-label="DOM Pro Rithmic depth of market"
+    >
+      {!standalone ? <button type="button" className="absolute inset-y-0 left-0 z-30 w-1 cursor-col-resize bg-transparent hover:bg-primary/50" aria-label="Resize DOM Pro" onPointerDown={(event) => {
         event.preventDefault(); widthDragRef.current = { startX: event.clientX, startWidth: runtimeWidth, latest: runtimeWidth };
         const move = (next: PointerEvent) => {
           if (!widthDragRef.current) return;
@@ -301,16 +308,18 @@ export default function DepthOfMarketPanel({
           const width = widthDragRef.current?.latest ?? runtimeWidth; widthDragRef.current = null; persist("width", Math.round(width));
         };
         document.addEventListener("pointermove", move); document.addEventListener("pointerup", up);
-      }} />
+      }} /> : null}
       <header className="flex h-10 shrink-0 items-center gap-2 border-b border-border px-2.5">
         <DatabaseZap className="h-3.5 w-3.5 text-primary" />
         <div className="min-w-0"><div className="truncate font-mono text-[10px] font-bold tracking-[0.12em] text-foreground">DOM PRO</div><div className="truncate font-mono text-[7px] uppercase tracking-[0.08em] text-muted">{bookState.capabilities.mbo ? "MBO · exact order count" : bookState.capabilities.fullDepth ? "Full depth · L2 fallback" : "Waiting for exchange book"}</div></div>
         <div className="ml-auto flex items-center gap-1">
           <button type="button" onClick={recenter} className={`flex h-6 items-center gap-1 border px-2 font-mono text-[7px] ${followingLive ? "border-primary/45 bg-primary/10 text-primary" : "border-border text-muted"}`} title="Return to live price"><LocateFixed className="h-3 w-3" />LIVE</button>
           <button type="button" onClick={() => setSettingsOpen(true)} className="flex h-6 w-6 items-center justify-center border border-border text-muted" title="DOM Pro settings"><Settings2 className="h-3 w-3" /></button>
-          <button type="button" onClick={() => setRuntimeWidth((value) => Math.max(240, value - 50))} className="flex h-6 w-6 items-center justify-center border border-border text-muted" title="Narrower"><Minus className="h-3 w-3" /></button>
-          <button type="button" onClick={() => setRuntimeWidth((value) => Math.min(1_100, value + 50))} className="flex h-6 w-6 items-center justify-center border border-border text-muted" title="Wider"><Plus className="h-3 w-3" /></button>
-          <button type="button" onClick={() => setCollapsed(true)} className="flex h-6 w-6 items-center justify-center border border-border text-muted" title="Collapse"><ChevronsRight className="h-3 w-3" /></button>
+          {!standalone ? <>
+            <button type="button" onClick={() => setRuntimeWidth((value) => Math.max(240, value - 50))} className="flex h-6 w-6 items-center justify-center border border-border text-muted" title="Narrower"><Minus className="h-3 w-3" /></button>
+            <button type="button" onClick={() => setRuntimeWidth((value) => Math.min(1_100, value + 50))} className="flex h-6 w-6 items-center justify-center border border-border text-muted" title="Wider"><Plus className="h-3 w-3" /></button>
+            <button type="button" onClick={() => setCollapsed(true)} className="flex h-6 w-6 items-center justify-center border border-border text-muted" title="Collapse"><ChevronsRight className="h-3 w-3" /></button>
+          </> : null}
         </div>
       </header>
       {settings.showHeaderStats ? <div className="grid h-8 shrink-0 grid-cols-4 border-b border-border bg-surface/25 font-mono">

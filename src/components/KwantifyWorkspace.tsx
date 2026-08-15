@@ -295,6 +295,7 @@ const loadChartWorkspace = () => import("@/components/Chart");
 const loadGammaWorkspace = () => import("@/components/options-flow/GammaWorkspace");
 const loadGexMapWorkspace = () => import("@/components/gex-map/GexMapWorkspace");
 const loadLiquidityMapWorkspace = () => import("@/components/liquidity-map/LiquidityMapWorkspace");
+const loadDepthOfMarketWorkspace = () => import("@/components/DepthOfMarketPanel");
 const loadSpoofingDetectorWorkspace = () => import("@/components/order-flow/SpoofingDetectorWorkspace");
 const loadSingleProfileWorkspace = () => import("@/components/profile-workspaces/SingleProfileWorkspace");
 const loadOptionsHeatmapWorkspace = () => import("@/components/heatmap/OptionsHeatmapWorkspace");
@@ -314,6 +315,7 @@ const workspaceModulePreloaders: Record<string, () => Promise<unknown>> = {
   gamma: loadGammaWorkspace,
   gexmap: loadGexMapWorkspace,
   liqmap: loadLiquidityMapWorkspace,
+  "tool-depth-of-market": loadDepthOfMarketWorkspace,
   "tool-spoofing-detector": loadSpoofingDetectorWorkspace,
   "tool-single-tpo-chart": loadSingleProfileWorkspace,
   "tool-single-volume-profile": loadSingleProfileWorkspace,
@@ -349,6 +351,10 @@ const GexMapWorkspace = dynamic(loadGexMapWorkspace, {
 const LiquidityMapWorkspace = dynamic(loadLiquidityMapWorkspace, {
   ssr: false,
   loading: () => workspaceLoader("Opening LIQ MAP", "Connecting the liquidity map."),
+});
+const DepthOfMarketPanel = dynamic(loadDepthOfMarketWorkspace, {
+  ssr: false,
+  loading: () => workspaceLoader("Opening DOM Pro", "Restoring the authenticated Rithmic order book."),
 });
 const SpoofingDetectorWorkspace = dynamic(loadSpoofingDetectorWorkspace, {
   ssr: false,
@@ -1025,6 +1031,7 @@ function isWorkspaceToolKind(value: unknown): value is WorkspaceToolKind {
 
 function isWorkspaceChartKind(value: WorkspacePanelKind | null): value is "charts" | WorkspaceToolKind {
   return value === "charts" || (isWorkspaceToolKind(value)
+    && value !== "tool-depth-of-market"
     && value !== "tool-spoofing-detector"
     && value !== "tool-single-tpo-chart"
     && value !== "tool-single-volume-profile");
@@ -12859,6 +12866,43 @@ export default function KwantifyWorkspace({
       }
       case "liqmap":
         return <WorkspaceFailureBoundary resetKey={`workspace-${pane.id}-liqmap`} label="Liquidity Map"><LiquidityMapWorkspace instrument={selectedLiquidityMapInstrument} onInstrumentChange={setSelectedLiquidityMapInstrument} onActivate={() => activateWorkspacePane(pane.id)} embedded active={activePaneId === pane.id} /></WorkspaceFailureBoundary>;
+      case "tool-depth-of-market": {
+        const installedDom = (paneIndicators[pane.id] ?? []).find(
+          (instance) => instance.indicatorId === "depth-of-market",
+        );
+        const domIndicator: ChartIndicatorInstance = installedDom ?? {
+          instanceId: `depth-of-market-${pane.id}`,
+          indicatorId: "depth-of-market",
+          enabled: true,
+          settings: defaultIndicatorSettings("depth-of-market", chartSettings),
+        };
+        const updateDomSetting = (key: string, value: number | string | boolean) => {
+          if (installedDom) {
+            updatePaneIndicatorSetting(pane.id, installedDom.instanceId, key, value);
+            return;
+          }
+          setPaneIndicators((current) => ({
+            ...current,
+            [pane.id]: [
+              ...(current[pane.id] ?? []).filter((instance) => instance.indicatorId !== "depth-of-market"),
+              { ...domIndicator, settings: { ...(domIndicator.settings ?? {}), [key]: value } },
+            ],
+          }));
+        };
+        return (
+          <WorkspaceFailureBoundary resetKey={`workspace-${pane.id}-dom-pro-${pane.symbol}`} label="DOM Pro">
+            <DepthOfMarketPanel
+              standalone
+              instrument={pane.symbol}
+              contractSymbol={currentCmeContract(pane.symbol)}
+              latestPrice={null}
+              indicator={domIndicator}
+              chartSettings={chartSettings}
+              onUpdateSetting={updateDomSetting}
+            />
+          </WorkspaceFailureBoundary>
+        );
+      }
       case "tool-spoofing-detector":
         return (
           <WorkspaceFailureBoundary resetKey={`workspace-${pane.id}-spoofing-${pane.symbol}`} label="Spoofing Detector">
