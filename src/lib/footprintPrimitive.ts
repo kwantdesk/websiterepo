@@ -144,8 +144,8 @@ const DEFAULT_OPTIONS: FootprintPrimitiveOptions = {
   fixedMaximum: 0,
   fontSize: 11,
   fontWeight: 500,
-  minimumWidthToShowText: 58,
-  minimumRowHeightToShowText: 13,
+  minimumWidthToShowText: 32,
+  minimumRowHeightToShowText: 9,
   dynamicTextSize: true,
   dynamicTextIncrease: 1,
   showZeros: false,
@@ -384,17 +384,37 @@ class FootprintRenderer implements ISeriesPrimitivePaneRenderer {
         const profileLayerEnabled = options.showPerBarVolumeProfile || options.showPerBarDeltaProfile;
         const requestedProfileWidth = options.barWidth
           * clamp(options.perBarProfileWidthPercent / 100, 0.1, 1);
-        const profileSpacing = profileLayerEnabled
-          ? requestedProfileWidth * 2 + options.perBarProfileGap * 2 + options.perBarProfileExtraSpacing
-          : 0;
+        const profileSideCount = Number(options.showPerBarVolumeProfile)
+          + Number(options.showPerBarDeltaProfile);
         const previousX = index > 0 ? timeScale.timeToCoordinate(bars[index - 1].time) : null;
         const nextX = index + 1 < bars.length ? timeScale.timeToCoordinate(bars[index + 1].time) : null;
         const nearest = Math.min(
           previousX === null ? Number.POSITIVE_INFINITY : Math.abs(x - previousX),
           nextX === null ? Number.POSITIVE_INFINITY : Math.abs(nextX - x),
-          options.barWidth + options.candleSpacing + profileSpacing,
+          options.barWidth
+            + options.candleSpacing
+            + requestedProfileWidth * profileSideCount
+            + options.perBarProfileGap * profileSideCount
+            + options.perBarProfileExtraSpacing,
         );
-        const barWidth = Math.max(8, Math.min(options.barWidth, nearest - options.candleSpacing - profileSpacing));
+        const availableSlotWidth = Math.max(8, nearest - options.candleSpacing);
+        const minimumReadableFootprintWidth = Math.min(
+          options.barWidth,
+          Math.max(18, Math.min(36, availableSlotWidth * 0.56)),
+        );
+        const profileBudget = profileLayerEnabled
+          ? Math.max(0, availableSlotWidth - minimumReadableFootprintWidth)
+          : 0;
+        const adaptiveProfileWidth = profileSideCount > 0
+          ? Math.min(requestedProfileWidth, profileBudget / profileSideCount)
+          : 0;
+        const adaptiveProfileGap = adaptiveProfileWidth >= 1 ? options.perBarProfileGap : 0;
+        const profileSpacing = profileSideCount
+          * (adaptiveProfileWidth + adaptiveProfileGap);
+        const barWidth = Math.max(
+          8,
+          Math.min(options.barWidth, availableSlotWidth - profileSpacing),
+        );
         const left = x - barWidth / 2;
         const halfWidth = barWidth / 2;
         const barMetrics = bar.rows.flatMap((row) => {
@@ -455,21 +475,18 @@ class FootprintRenderer implements ISeriesPrimitivePaneRenderer {
           const detailed = detailedBarCountAllowed
             && barWidth >= options.minimumWidthToShowText
             && rowHeight >= options.minimumRowHeightToShowText;
-          const micro = barWidth < 25;
+          const micro = barWidth < 18;
 
           if (options.showValueArea && row.isValueArea) {
             withAlpha(context, options.valueAreaColor, 0.1, () => context.fillRect(left, top, barWidth, rowHeight));
           }
 
           const drawPerBarProfiles = () => {
-            if (!profileLayerEnabled) return;
+            if (!profileLayerEnabled || adaptiveProfileWidth < 1) return;
             // A profile needs the horizontal range of the complete footprint
             // bar to reveal its distribution. The previous half-bar cap made
             // real tick rows collapse into a short, blocky column.
-            const maximumProfileWidth = Math.max(
-              1,
-              barWidth * clamp(options.perBarProfileWidthPercent / 100, 0.1, 1),
-            );
+            const maximumProfileWidth = adaptiveProfileWidth;
             const volumeDenominator = options.perBarProfileScaleMode === "shared"
               ? profileSharedMaximum
               : profileVolumeMaximum;
@@ -676,10 +693,10 @@ class FootprintRenderer implements ISeriesPrimitivePaneRenderer {
             });
           }
 
-          if (!detailed || micro) continue;
+          if (micro) continue;
           const fontSize = options.dynamicTextSize
-            ? clamp(Math.min(rowHeight * (0.62 + options.dynamicTextIncrease * 0.08), options.fontSize), 9, 15)
-            : clamp(options.fontSize, 9, 15);
+            ? clamp(Math.min(rowHeight * (0.62 + options.dynamicTextIncrease * 0.08), options.fontSize), 7, 15)
+            : clamp(options.fontSize, 7, 15);
           context.save();
           context.globalAlpha = 0.97;
           context.font = `${row.isPoc ? 700 : options.fontWeight} ${fontSize}px 'JetBrains Mono', ui-monospace, monospace`;
@@ -687,14 +704,38 @@ class FootprintRenderer implements ISeriesPrimitivePaneRenderer {
           context.fillStyle = options.textColor;
           const rowY = top + rowHeight / 2;
           const format = options.numberFormat;
+          const bidText = formatFootprintValue(values.bid, format);
+          const askText = formatFootprintValue(values.ask, format);
+          const fullBidAskFits = detailed
+            && context.measureText(bidText).width
+              + context.measureText(askText).width
+              + 14 <= barWidth;
+          const compactMetric = ["delta", "delta-histogram"].includes(contentMode)
+            ? values.delta
+            : values.total;
+          const compactText = `${compactMetric > 0 && ["delta", "delta-histogram"].includes(contentMode) ? "+" : ""}${formatFootprintValue(compactMetric, format)}`;
+          const compactFontSize = clamp(Math.min(fontSize, rowHeight * 0.58, 9), 7, 9);
+          context.font = `${row.isPoc ? 700 : options.fontWeight} ${compactFontSize}px 'JetBrains Mono', ui-monospace, monospace`;
+          const compactFits = rowHeight >= 7
+            && context.measureText(compactText).width + 4 <= barWidth;
+          if (!fullBidAskFits && !compactFits && !detailed) {
+            context.restore();
+            continue;
+          }
+          context.font = `${row.isPoc ? 700 : options.fontWeight} ${fullBidAskFits || detailed ? fontSize : compactFontSize}px 'JetBrains Mono', ui-monospace, monospace`;
           if (["bid-ask", "bid-ask-histogram", "ladder"].includes(contentMode)) {
-            if (options.showZeros || values.bid > 0) {
+            if (fullBidAskFits && (options.showZeros || values.bid > 0)) {
               context.textAlign = "right";
-              context.fillText(formatFootprintValue(values.bid, format), x - 5, rowY);
+              context.fillText(bidText, x - 5, rowY);
             }
-            if (options.showZeros || values.ask > 0) {
+            if (fullBidAskFits && (options.showZeros || values.ask > 0)) {
               context.textAlign = "left";
-              context.fillText(formatFootprintValue(values.ask, format), x + 5, rowY);
+              context.fillText(askText, x + 5, rowY);
+            }
+            if (!fullBidAskFits && compactFits) {
+              context.textAlign = "center";
+              context.font = `${row.isPoc ? 700 : options.fontWeight} ${compactFontSize}px 'JetBrains Mono', ui-monospace, monospace`;
+              context.fillText(compactText, x, rowY);
             }
           } else {
             const metric = contentMode === "volume" || contentMode === "volume-histogram"
@@ -705,8 +746,14 @@ class FootprintRenderer implements ISeriesPrimitivePaneRenderer {
             const text = contentMode === "volume-delta"
               ? `${formatFootprintValue(values.total, format)} │ ${values.delta >= 0 ? "+" : ""}${formatFootprintValue(values.delta, format)}`
               : `${metric > 0 && (contentMode === "delta" || contentMode === "delta-histogram") ? "+" : ""}${formatFootprintValue(metric, format)}`;
-            context.textAlign = "center";
-            context.fillText(text, x, rowY);
+            const completeTextFits = detailed && context.measureText(text).width + 4 <= barWidth;
+            if (completeTextFits || compactFits) {
+              context.textAlign = "center";
+              if (!completeTextFits) {
+                context.font = `${row.isPoc ? 700 : options.fontWeight} ${compactFontSize}px 'JetBrains Mono', ui-monospace, monospace`;
+              }
+              context.fillText(completeTextFits ? text : compactText, x, rowY);
+            }
           }
           context.restore();
         }

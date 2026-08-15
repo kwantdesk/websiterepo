@@ -65,6 +65,9 @@ test("previously disconnected footprint controls now change renderer behavior", 
   assert.match(primitive, /options\.scaleMode === "all-loaded" && options\.allLoadedScaleMaximum > 0/);
   assert.match(primitive, /loadedScaleByTime/);
   assert.match(primitive, /visibleBars\.length <= options\.maximumDetailedVisibleBars/);
+  assert.match(primitive, /const compactFits = rowHeight >= 7/);
+  assert.match(primitive, /const fullBidAskFits = detailed/);
+  assert.match(primitive, /const adaptiveProfileWidth = profileSideCount > 0/);
   assert.match(primitive, /options\.showImbalances && row\.isBidImbalance/);
   assert.match(primitive, /options\.markerAlignment === "right"/);
   assert.match(primitive, /options\.visualizationMode === "solid" \|\| options\.colorMode === "fixed"/);
@@ -107,7 +110,8 @@ test("per-bar volume and delta profiles share the footprint execution rows", () 
   assert.match(primitive, /drawRightFacingVolumeProfileRow/);
   assert.match(primitive, /path\.roundRect\(x, y, width, rowHeight, \[0, radius, radius, 0\]\)/);
   assert.doesNotMatch(primitive, /context\.fillRect\(volumeLeft, profileTop, volumeWidth, profileHeight\)/);
-  assert.match(chart, /profileSideWidth \* 2[\s\S]*footprintPrimitiveOptions\.perBarProfileGap \* 2/);
+  assert.match(chart, /const adaptiveProfileSpan = profileLayerEnabled/);
+  assert.match(chart, /Math\.min\([\s\S]*42,[\s\S]*profileSideWidth \* profileSideCount/);
   assert.match(settings, /"order-flow": \{[\s\S]*showPerBarVolumeProfile: true,[\s\S]*showPerBarDeltaProfile: true/);
 });
 

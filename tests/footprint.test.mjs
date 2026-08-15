@@ -275,6 +275,25 @@ test("settings validation migrates invalid values safely", () => {
   assert.equal(settings.maximumTradeVolume, 500);
 });
 
+test("legacy footprint detail gates migrate to adaptive readable defaults", () => {
+  const settings = validateFootprintSettings({
+    footprintSettingsVersion: 5,
+    minimumWidthToShowText: 58,
+    minimumRowHeightToShowText: 13,
+  });
+  assert.equal(settings.footprintSettingsVersion, 6);
+  assert.equal(settings.minimumWidthToShowText, 32);
+  assert.equal(settings.minimumRowHeightToShowText, 9);
+
+  const custom = validateFootprintSettings({
+    footprintSettingsVersion: 5,
+    minimumWidthToShowText: 72,
+    minimumRowHeightToShowText: 16,
+  });
+  assert.equal(custom.minimumWidthToShowText, 72);
+  assert.equal(custom.minimumRowHeightToShowText, 16);
+});
+
 test("presets reuse one versioned settings model", () => {
   const delta = applyFootprintPreset(DEFAULT_FOOTPRINT_SETTINGS, "delta-focus");
   assert.equal(delta.contentMode, "delta-histogram");

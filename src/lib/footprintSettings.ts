@@ -5,7 +5,7 @@ import type {
   FootprintVisualizationMode,
 } from "./footprintTypes";
 
-export const FOOTPRINT_SETTINGS_SCHEMA_VERSION = 5;
+export const FOOTPRINT_SETTINGS_SCHEMA_VERSION = 6;
 
 export type FootprintSettings = {
   footprintSettingsVersion: number;
@@ -146,8 +146,8 @@ export const DEFAULT_FOOTPRINT_SETTINGS: FootprintSettings = {
   fontSize: 11,
   fontWeight: 500,
   borderWidth: 1,
-  minimumWidthToShowText: 58,
-  minimumRowHeightToShowText: 13,
+  minimumWidthToShowText: 32,
+  minimumRowHeightToShowText: 9,
   backgroundOpacity: 72,
   minimumOpacity: 8,
   maximumOpacity: 72,
@@ -363,6 +363,7 @@ const colour = (value: unknown, fallback: string) =>
 export function validateFootprintSettings(input: unknown): FootprintSettings {
   const source = input && typeof input === "object" ? input as Record<string, unknown> : {};
   const merged = { ...DEFAULT_FOOTPRINT_SETTINGS, ...source } as FootprintSettings;
+  const legacyDetailThresholds = Number(source.footprintSettingsVersion ?? 0) < 6;
   const minimumOpacity = clamp(source.minimumOpacity, 0, 100, 8);
   const maximumOpacity = Math.max(minimumOpacity, clamp(source.maximumOpacity, 0, 100, 72));
   const minimumRatio = clamp(source.minimumRatio, 0, 1_000, 1.5);
@@ -400,8 +401,22 @@ export function validateFootprintSettings(input: unknown): FootprintSettings {
     fontSize: clamp(source.fontSize, 9, 15, 11),
     fontWeight: clamp(source.fontWeight, 400, 800, 500),
     borderWidth: clamp(source.borderWidth, 0.5, 4, 1),
-    minimumWidthToShowText: clamp(source.minimumWidthToShowText, 28, 180, 58),
-    minimumRowHeightToShowText: clamp(source.minimumRowHeightToShowText, 8, 34, 13),
+    minimumWidthToShowText: clamp(
+      legacyDetailThresholds && Number(source.minimumWidthToShowText) === 58
+        ? 32
+        : source.minimumWidthToShowText,
+      18,
+      180,
+      32,
+    ),
+    minimumRowHeightToShowText: clamp(
+      legacyDetailThresholds && Number(source.minimumRowHeightToShowText) === 13
+        ? 9
+        : source.minimumRowHeightToShowText,
+      7,
+      34,
+      9,
+    ),
     backgroundOpacity: clamp(source.backgroundOpacity, 0, 100, 72),
     minimumOpacity,
     maximumOpacity,

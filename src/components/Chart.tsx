@@ -2832,8 +2832,8 @@ export default function Chart({
       fixedMaximum: Math.max(0, Number(footprintSettings.fixedMaximum ?? 0)),
       fontSize: clamp(Number(footprintSettings.fontSize ?? 10), 6, 16),
       fontWeight: clamp(Number(footprintSettings.fontWeight ?? 500), 400, 800),
-      minimumWidthToShowText: clamp(Number(footprintSettings.minimumWidthToShowText ?? 58), 28, 180),
-      minimumRowHeightToShowText: clamp(Number(footprintSettings.minimumRowHeightToShowText ?? 13), 8, 34),
+      minimumWidthToShowText: clamp(Number(footprintSettings.minimumWidthToShowText ?? 32), 18, 180),
+      minimumRowHeightToShowText: clamp(Number(footprintSettings.minimumRowHeightToShowText ?? 9), 7, 34),
       dynamicTextSize: footprintSettings.dynamicTextSize !== false,
       dynamicTextIncrease: clamp(Number(footprintSettings.dynamicTextIncrease ?? 1), 0, 2),
       showZeros: footprintSettings.showZeros === true,
@@ -2938,22 +2938,37 @@ export default function Chart({
     if (footprintIndicator) {
       const profileLayerEnabled = footprintPrimitiveOptions.showPerBarVolumeProfile
         || footprintPrimitiveOptions.showPerBarDeltaProfile;
+      const profileSideCount = Number(footprintPrimitiveOptions.showPerBarVolumeProfile)
+        + Number(footprintPrimitiveOptions.showPerBarDeltaProfile);
       const profileSideWidth = footprintPrimitiveOptions.barWidth
         * (footprintPrimitiveOptions.perBarProfileWidthPercent / 100);
-      const renderedBarSpacing = footprintPrimitiveOptions.barWidth
-        + footprintPrimitiveOptions.candleSpacing
-        + (profileLayerEnabled
-          ? profileSideWidth * 2
-            + footprintPrimitiveOptions.perBarProfileGap * 2
-            + footprintPrimitiveOptions.perBarProfileExtraSpacing
-          : 0);
+      // Start at a useful information density. The renderer expands the two
+      // profile wings as space becomes available instead of forcing every
+      // candle to reserve three full footprint widths up front.
+      const adaptiveProfileSpan = profileLayerEnabled
+        ? Math.min(
+          42,
+          profileSideWidth * profileSideCount
+            + footprintPrimitiveOptions.perBarProfileGap * profileSideCount
+            + Math.min(10, footprintPrimitiveOptions.perBarProfileExtraSpacing),
+        )
+        : 0;
+      const renderedBarSpacing = Math.min(
+        128,
+        Math.max(
+          40,
+          Math.min(86, footprintPrimitiveOptions.barWidth)
+            + footprintPrimitiveOptions.candleSpacing
+            + adaptiveProfileSpan,
+        ),
+      );
       if (
         !footprintActiveRef.current
         || footprintBarWidthRef.current !== renderedBarSpacing
       ) {
         chart.timeScale().applyOptions({
           barSpacing: renderedBarSpacing,
-          minBarSpacing: 12,
+          minBarSpacing: 8,
         });
         footprintActiveRef.current = true;
         footprintBarWidthRef.current = renderedBarSpacing;
