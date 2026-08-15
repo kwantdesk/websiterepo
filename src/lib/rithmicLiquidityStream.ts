@@ -1,12 +1,17 @@
 "use client";
 
-import type { RithmicLiquiditySnapshot, TrackedLiquidityLevel } from "@/lib/structureLevels";
+import type {
+  RithmicLiquiditySnapshot,
+  RithmicOrderLifecycleEvent,
+  TrackedLiquidityLevel,
+} from "@/lib/structureLevels";
 
 export type RithmicLiquidityStatus = "checking" | "connected" | "unavailable";
 
 type Subscriber = {
   onSnapshot: (snapshot: RithmicLiquiditySnapshot) => void;
   onStatus?: (status: RithmicLiquidityStatus) => void;
+  replayHistory?: boolean;
 };
 
 type RawPayload = {
@@ -15,6 +20,7 @@ type RawPayload = {
     fullDepth?: boolean;
     bookValid?: boolean;
     contractSymbol?: string;
+    individualOrders?: boolean;
   };
   snapshot?: {
     id?: number;
@@ -32,6 +38,8 @@ type RawPayload = {
     fullDepth?: boolean;
     bookValid?: boolean;
     contractSymbol?: string;
+    individualOrders?: boolean;
+    orderEvents?: unknown;
   };
   error?: string;
 };
@@ -73,7 +81,11 @@ function decodeRows(value: unknown, side: "BID" | "ASK", tickSize: number) {
   });
 }
 
-function updateTrackers(stream: SharedPoll, payload: RawPayload) {
+function updateTrackers(
+  stream: SharedPoll,
+  payload: RawPayload,
+  recipients: Iterable<Subscriber> = stream.subscribers,
+) {
   const now = Date.now();
   const tickSize = Number(payload.snapshot?.tickSize ?? 0.25) || 0.25;
   const rows = [
@@ -147,6 +159,35 @@ function updateTrackers(stream: SharedPoll, payload: RawPayload) {
         return decoded ? [decoded] : [];
       })
     : [];
+  const orderEvents = Array.isArray(payload.snapshot?.orderEvents)
+    ? payload.snapshot.orderEvents.flatMap((value): RithmicOrderLifecycleEvent[] => {
+        if (!value || typeof value !== "object") return [];
+        const event = value as Record<string, unknown>;
+        const action = String(event.action || "").toUpperCase();
+        const side = String(event.side || "").toUpperCase();
+        const price = Number(event.price);
+        const previousPrice = event.previousPrice == null ? null : Number(event.previousPrice);
+        const size = Number(event.size);
+        const previousSize = Number(event.previousSize);
+        const eventTimestamp = Number(event.timestamp ?? payload.snapshot?.timestamp ?? timestamp);
+        if (
+          ![price, size, previousSize, eventTimestamp].every(Number.isFinite)
+          || !["ADD", "MODIFY", "REMOVE"].includes(action)
+          || !["BID", "ASK"].includes(side)
+        ) return [];
+        return [{
+          sequence: Number(event.sequence) || 0,
+          timestamp: eventTimestamp,
+          orderId: String(event.orderId || ""),
+          action: action as RithmicOrderLifecycleEvent["action"],
+          side: side as RithmicOrderLifecycleEvent["side"],
+          price,
+          previousPrice: previousPrice !== null && Number.isFinite(previousPrice) ? previousPrice : null,
+          size,
+          previousSize,
+        }];
+      })
+    : [];
   const bestBidTick = Number(payload.snapshot?.bestBid);
   const bestAskTick = Number(payload.snapshot?.bestAsk);
   const lastTick = Number(payload.snapshot?.lastTick);
@@ -157,6 +198,7 @@ function updateTrackers(stream: SharedPoll, payload: RawPayload) {
     tickSize,
     fullDepth: Boolean(payload.status?.fullDepth ?? payload.snapshot?.fullDepth),
     bookValid: Boolean(payload.status?.bookValid ?? payload.snapshot?.bookValid),
+    individualOrders: Boolean(payload.status?.individualOrders ?? payload.snapshot?.individualOrders),
     ageMs: payload.snapshot?.latencyMs == null ? null : Number(payload.snapshot.latencyMs),
     bestBid: Number.isFinite(bestBidTick) && bestBidTick > 0 ? bestBidTick * tickSize : null,
     bestAsk: Number.isFinite(bestAskTick) && bestAskTick > 0 ? bestAskTick * tickSize : null,
@@ -165,11 +207,12 @@ function updateTrackers(stream: SharedPoll, payload: RawPayload) {
     bidDepth: Number(payload.snapshot?.imbalance?.bid ?? 0) || 0,
     askDepth: Number(payload.snapshot?.imbalance?.ask ?? 0) || 0,
     trades,
+    orderEvents,
     levels: [...stream.trackers.values()]
       .filter((tracker) => tracker.size > 0)
       .map(({ firstSeenAt: _firstSeenAt, lastSeenAt: _lastSeenAt, lastSize: _lastSize, ...tracker }) => tracker),
   };
-  stream.subscribers.forEach((subscriber) => subscriber.onSnapshot(snapshot));
+  for (const subscriber of recipients) subscriber.onSnapshot(snapshot);
 }
 
 function connectStream(stream: SharedPoll) {
@@ -178,6 +221,7 @@ function connectStream(stream: SharedPoll) {
     exchange: stream.exchange,
     symbol: stream.root,
     depthTicks: "800",
+    includeOrderEvents: "1",
   });
   if (stream.contractSymbol) query.set("contractSymbol", stream.contractSymbol);
   const source = new EventSource(`/api/institutional-market-data/v1/heatmap/stream?${query}`);
@@ -187,6 +231,21 @@ function connectStream(stream: SharedPoll) {
       const payload = JSON.parse((event as MessageEvent<string>).data) as RawPayload;
       updateTrackers(stream, payload);
       publishStatus(stream, payload.status?.connected ? "connected" : "checking");
+    } catch {
+      publishStatus(stream, "unavailable");
+    }
+  });
+  source.addEventListener("history", (event) => {
+    try {
+      const payload = JSON.parse((event as MessageEvent<string>).data) as {
+        status?: RawPayload["status"];
+        snapshots?: RawPayload["snapshot"][];
+      };
+      const recipients = [...stream.subscribers].filter((subscriber) => subscriber.replayHistory);
+      if (!recipients.length) return;
+      for (const snapshot of payload.snapshots ?? []) {
+        updateTrackers(stream, { status: payload.status, snapshot }, recipients);
+      }
     } catch {
       publishStatus(stream, "unavailable");
     }
@@ -211,6 +270,7 @@ export function subscribeRithmicLiquidity(args: {
   exchange?: string;
   onSnapshot: Subscriber["onSnapshot"];
   onStatus?: Subscriber["onStatus"];
+  replayHistory?: boolean;
 }) {
   const root = args.root.trim().toUpperCase();
   const contractSymbol = String(args.contractSymbol || "").trim().toUpperCase();
@@ -230,7 +290,11 @@ export function subscribeRithmicLiquidity(args: {
     };
     streams.set(key, stream);
   }
-  const subscriber: Subscriber = { onSnapshot: args.onSnapshot, onStatus: args.onStatus };
+  const subscriber: Subscriber = {
+    onSnapshot: args.onSnapshot,
+    onStatus: args.onStatus,
+    replayHistory: args.replayHistory,
+  };
   stream.subscribers.add(subscriber);
   subscriber.onStatus?.(stream.status);
   connectStream(stream);

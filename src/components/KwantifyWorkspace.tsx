@@ -294,6 +294,7 @@ const loadChartWorkspace = () => import("@/components/Chart");
 const loadGammaWorkspace = () => import("@/components/options-flow/GammaWorkspace");
 const loadGexMapWorkspace = () => import("@/components/gex-map/GexMapWorkspace");
 const loadLiquidityMapWorkspace = () => import("@/components/liquidity-map/LiquidityMapWorkspace");
+const loadSpoofingDetectorWorkspace = () => import("@/components/order-flow/SpoofingDetectorWorkspace");
 const loadOptionsHeatmapWorkspace = () => import("@/components/heatmap/OptionsHeatmapWorkspace");
 const loadGexBotWorkspace = () => import("@/components/gexbot/GexBotWorkspace");
 const loadGexDeskWorkspace = () => import("@/components/gexdesk/GexDeskWorkspace");
@@ -311,6 +312,7 @@ const workspaceModulePreloaders: Record<string, () => Promise<unknown>> = {
   gamma: loadGammaWorkspace,
   gexmap: loadGexMapWorkspace,
   liqmap: loadLiquidityMapWorkspace,
+  "tool-spoofing-detector": loadSpoofingDetectorWorkspace,
   heatmap: loadOptionsHeatmapWorkspace,
   gexbot: loadGexBotWorkspace,
   gexdesk: loadGexDeskWorkspace,
@@ -343,6 +345,10 @@ const GexMapWorkspace = dynamic(loadGexMapWorkspace, {
 const LiquidityMapWorkspace = dynamic(loadLiquidityMapWorkspace, {
   ssr: false,
   loading: () => workspaceLoader("Opening LIQ MAP", "Connecting the liquidity map."),
+});
+const SpoofingDetectorWorkspace = dynamic(loadSpoofingDetectorWorkspace, {
+  ssr: false,
+  loading: () => workspaceLoader("Opening PHANTOM ORDERS", "Restoring the shared Level 3 order book."),
 });
 const OptionsHeatmapWorkspace = dynamic(loadOptionsHeatmapWorkspace, {
   ssr: false,
@@ -1000,7 +1006,7 @@ function isWorkspaceToolKind(value: unknown): value is WorkspaceToolKind {
 }
 
 function isWorkspaceChartKind(value: WorkspacePanelKind | null): value is "charts" | WorkspaceToolKind {
-  return value === "charts" || isWorkspaceToolKind(value);
+  return value === "charts" || (isWorkspaceToolKind(value) && value !== "tool-spoofing-detector");
 }
 
 function isWorkspacePanelKind(value: unknown): value is WorkspacePanelKind {
@@ -12788,6 +12794,16 @@ export default function KwantifyWorkspace({
       }
       case "liqmap":
         return <WorkspaceFailureBoundary resetKey={`workspace-${pane.id}-liqmap`} label="Liquidity Map"><LiquidityMapWorkspace instrument={selectedLiquidityMapInstrument} onInstrumentChange={setSelectedLiquidityMapInstrument} onActivate={() => activateWorkspacePane(pane.id)} embedded active={activePaneId === pane.id} /></WorkspaceFailureBoundary>;
+      case "tool-spoofing-detector":
+        return (
+          <WorkspaceFailureBoundary resetKey={`workspace-${pane.id}-spoofing-${pane.symbol}`} label="Spoofing Detector">
+            <SpoofingDetectorWorkspace
+              workspaceId={pane.id}
+              instrument={pane.symbol}
+              active={activePaneId === pane.id}
+            />
+          </WorkspaceFailureBoundary>
+        );
       case "news":
         return <WorkspaceFailureBoundary resetKey={`workspace-${pane.id}-news`} label="News"><NewsWorkspace /></WorkspaceFailureBoundary>;
       case "socials":

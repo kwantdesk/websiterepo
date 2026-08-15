@@ -18,12 +18,25 @@ export type TrackedLiquidityLevel = {
   removedSize: number;
 };
 
+export type RithmicOrderLifecycleEvent = {
+  sequence: number;
+  timestamp: number;
+  orderId: string;
+  action: "ADD" | "MODIFY" | "REMOVE";
+  side: "BID" | "ASK";
+  price: number;
+  previousPrice: number | null;
+  size: number;
+  previousSize: number;
+};
+
 export type RithmicLiquiditySnapshot = {
   asOf: string;
   contractSymbol: string;
   tickSize: number;
   fullDepth: boolean;
   bookValid: boolean;
+  individualOrders?: boolean;
   ageMs: number | null;
   levels: TrackedLiquidityLevel[];
   bestBid?: number | null;
@@ -39,6 +52,7 @@ export type RithmicLiquiditySnapshot = {
     size: number;
     side: "BUY" | "SELL";
   }>;
+  orderEvents?: RithmicOrderLifecycleEvent[];
 };
 
 export type HistoricalStructureCandidate = {

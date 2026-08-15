@@ -719,6 +719,7 @@ function heatmapHistoryState(key) {
       lastEmitAt: 0,
       lastMarketTimestampMs: 0,
       lastSequence: 0,
+      pendingOrderEvents: [],
     };
     heatmapHistoryByInstrument.set(key, state);
   }
@@ -757,7 +758,7 @@ function sessionCvdHistory(exchange, symbol, nowMs = Date.now()) {
   });
 }
 
-function captureHeatmapFrame(instrumentKey, now = Date.now()) {
+function captureHeatmapFrame(instrumentKey, now = Date.now(), marketEvent = null) {
   let requestedDepth = 0;
   for (const subscriber of [...heatmapSseClients]) {
     if (
@@ -777,6 +778,12 @@ function captureHeatmapFrame(instrumentKey, now = Date.now()) {
   // was viewing the map, starving charts, /health and vendor requests.
   if (!requestedDepth) return null;
   const state = heatmapHistoryState(instrumentKey);
+  if (Array.isArray(marketEvent?.orderEvents) && marketEvent.orderEvents.length) {
+    state.pendingOrderEvents.push(...marketEvent.orderEvents);
+    if (state.pendingOrderEvents.length > 2_000) {
+      state.pendingOrderEvents.splice(0, state.pendingOrderEvents.length - 2_000);
+    }
+  }
   if (now - state.lastEmitAt < HEATMAP_FRAME_MS) return null;
   const separator = instrumentKey.indexOf(":");
   if (separator < 1) return null;
@@ -790,7 +797,9 @@ function captureHeatmapFrame(instrumentKey, now = Date.now()) {
   );
   if (!snapshot) return null;
   const frame = heatmapPayload(snapshot, state.lastSequence);
+  frame.snapshot.orderEvents = state.pendingOrderEvents.slice();
   if (!acceptMonotonicHeatmapFrame(state, frame)) return null;
+  state.pendingOrderEvents.splice(0);
   state.lastEmitAt = now;
   state.lastSequence = Number(snapshot.sequence) || state.lastSequence;
   // Only retain genuine moving-market frames. A completed Friday close stays
@@ -837,7 +846,7 @@ client.on("marketData", (event) => {
     );
   }
   const capturedHeatmapFrame = event.instrument
-    ? captureHeatmapFrame(event.instrument)
+    ? captureHeatmapFrame(event.instrument, Date.now(), event)
     : null;
   for (const subscriber of [...heatmapSseClients]) {
     if (
@@ -867,8 +876,14 @@ client.on("marketData", (event) => {
     subscriber.lastMarketTimestampMs = capturedHeatmapFrame.snapshot.timestamp;
     subscriber.lastSequence = Number(capturedHeatmapFrame.snapshot.id)
       || subscriber.lastSequence;
+    const outgoingFrame = subscriber.includeOrderEvents
+      ? capturedHeatmapFrame
+      : {
+          ...capturedHeatmapFrame,
+          snapshot: { ...capturedHeatmapFrame.snapshot, orderEvents: undefined },
+        };
     subscriber.response.write(
-      `event: depth\ndata: ${JSON.stringify(capturedHeatmapFrame)}\n\n`,
+      `event: depth\ndata: ${JSON.stringify(outgoingFrame)}\n\n`,
     );
   }
 });
@@ -1110,6 +1125,7 @@ const server = createServer(async (request, response) => {
       client.subscribe(instrument.exchange, instrument.symbol);
       const depth = Math.min(5_000, Math.max(20, Number(url.searchParams.get("depthTicks") || 400)));
       const afterTimestamp = Math.max(0, Number(url.searchParams.get("afterTimestamp") || 0));
+      const includeOrderEvents = url.searchParams.get("includeOrderEvents") === "1";
       const snapshot = client.book.snapshot(instrument.exchange, instrument.symbol, depth);
       response.writeHead(200, {
         "Content-Type": "text/event-stream",
@@ -1157,7 +1173,9 @@ const server = createServer(async (request, response) => {
             response.write(
               `event: history\ndata: ${JSON.stringify({
                 status: initialFrame.status,
-                snapshots: chunk.map((frame) => frame.snapshot),
+                snapshots: chunk.map((frame) => includeOrderEvents
+                  ? frame.snapshot
+                  : { ...frame.snapshot, orderEvents: undefined }),
                 totalFrames: replayFrames.length,
                 final: offset + chunk.length >= replayFrames.length,
               })}\n\n`,
@@ -1194,6 +1212,7 @@ const server = createServer(async (request, response) => {
         lastEmitAt: 0,
         lastMarketTimestampMs: initialMarketTimestampMs,
         lastSequence,
+        includeOrderEvents,
         response,
       };
       heatmapSseClients.add(subscriber);

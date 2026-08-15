@@ -178,6 +178,63 @@ test("observes an exchange-wide sequence regression without invalidating the L3 
   assert.equal(store.snapshot("CME", "NQU6", 10).bookValid, true);
 });
 
+test("emits exact DBO lifecycle deltas without confusing cancelled and remaining quantity", () => {
+  const store = new RithmicBookStore();
+  const added = store.applyDepthUpdate({
+    exchange: "CME",
+    symbol: "NQU6",
+    sequenceNumber: "700",
+    updateType: [1],
+    transactionType: [2],
+    depthPrice: [30_000],
+    depthSize: [625],
+    exchangeOrderId: ["ASK-625"],
+    ssboe: 1_700_000_000,
+  });
+  assert.deepEqual(added.orderEvents[0], {
+    sequence: 1,
+    timestamp: 1_700_000_000_000,
+    orderId: "ASK-625",
+    action: "ADD",
+    side: "ASK",
+    price: 30_000,
+    previousPrice: null,
+    size: 625,
+    previousSize: 0,
+  });
+
+  const reduced = store.applyDepthUpdate({
+    exchange: "CME",
+    symbol: "NQU6",
+    sequenceNumber: "701",
+    updateType: [2],
+    transactionType: [2],
+    depthPrice: [30_000],
+    depthSize: [275],
+    exchangeOrderId: ["ASK-625"],
+    ssboe: 1_700_000_001,
+  });
+  assert.equal(reduced.orderEvents[0].action, "MODIFY");
+  assert.equal(reduced.orderEvents[0].previousSize, 625);
+  assert.equal(reduced.orderEvents[0].size, 275);
+  assert.equal(store.snapshot("CME", "NQU6", 10).asks[0].size, 275);
+
+  const removed = store.applyDepthUpdate({
+    exchange: "CME",
+    symbol: "NQU6",
+    sequenceNumber: "702",
+    updateType: [3],
+    transactionType: [2],
+    depthPrice: [30_000],
+    depthSize: [0],
+    exchangeOrderId: ["ASK-625"],
+    ssboe: 1_700_000_002,
+  });
+  assert.equal(removed.orderEvents[0].action, "REMOVE");
+  assert.equal(removed.orderEvents[0].previousSize, 275);
+  assert.equal(removed.orderEvents[0].size, 0);
+});
+
 test("publishes a DBO snapshot atomically only after its completion packet", () => {
   const store = new RithmicBookStore();
   assert.equal(store.applyDepthSnapshot({

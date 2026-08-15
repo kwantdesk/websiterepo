@@ -518,11 +518,26 @@ export class RithmicBookStore {
     const sizes = payload.depthSize || [];
     const priorities = payload.depthOrderPriority || [];
     const ids = payload.exchangeOrderId || [];
+    const orderEvents = [];
+    const timestamp = eventTimestampMs(payload) || Date.now();
     for (let index = 0; index < updates.length; index += 1) {
       const id = String(ids[index] || `${sides[index]}:${prices[index]}:${priorities[index] || index}`);
       const updateType = Number(updates[index]);
       const existing = instrument.orders.get(id);
       if (updateType === 3) {
+        if (existing) {
+          orderEvents.push({
+            sequence: instrument.sequence + orderEvents.length + 1,
+            timestamp,
+            orderId: id,
+            action: "REMOVE",
+            side: existing.side === "BUY" ? "BID" : "ASK",
+            price: Number(existing.price),
+            previousPrice: Number(existing.price),
+            size: 0,
+            previousSize: Number(existing.size || 0),
+          });
+        }
         removeOrderFromDepth(instrument, existing);
         instrument.orders.delete(id);
         continue;
@@ -537,6 +552,17 @@ export class RithmicBookStore {
         size: Number(sizes[index] ?? existing?.size ?? 0),
         priority: String(priorities[index] ?? existing?.priority ?? "0"),
       };
+      orderEvents.push({
+        sequence: instrument.sequence + orderEvents.length + 1,
+        timestamp,
+        orderId: id,
+        action: existing ? "MODIFY" : "ADD",
+        side: nextOrder.side === "BUY" ? "BID" : "ASK",
+        price: Number(nextOrder.price),
+        previousPrice: existing ? Number(existing.price) : null,
+        size: Number(nextOrder.size || 0),
+        previousSize: Number(existing?.size || 0),
+      });
       // Updating one order used to rebuild every price level from every order
       // in the book. At active CME rates that is O(messages * total orders)
       // and pinned the gateway above 100% CPU. Maintain the two affected
@@ -557,6 +583,7 @@ export class RithmicBookStore {
       sequenceRegression,
       previousSequence: sequenceRegression ? String(previousSequence) : null,
       receivedSequence: sequenceRegression ? String(incomingSequence) : null,
+      orderEvents,
     };
   }
 
