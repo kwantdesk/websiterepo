@@ -56,7 +56,13 @@ test("storage namespaces and account-backed API are independent", () => {
   assert.match(persistence, /kwantdesk:precision-toolbar:v1/);
   const route = read("src/app/api/precision-tools/route.ts");
   assert.match(route, /precision_tool_documents/);
+  assert.match(route, /user_preferences/);
+  assert.match(route, /account-preferences/);
   assert.match(route, /getRouteActor/);
+  const preferences = read("src/lib/userPreferences.ts");
+  assert.match(preferences, /kwantdesk:precision-tools:v1:/);
+  assert.match(preferences, /kwantdesk:precision-tool-configs:v1:/);
+  assert.match(preferences, /kwantdesk:precision-toolbar:v1:/);
   const migration = read("supabase/migrations/202608150001_create_precision_tool_documents.sql");
   assert.match(migration, /enable row level security/i);
   assert.match(migration, /auth\.uid\(\) = user_id/);
