@@ -480,6 +480,168 @@ class SessionHighLowPrimitive implements ISeriesPrimitive<Time> {
   }
 }
 
+type SessionWindowRenderData = {
+  id: string;
+  startTime: Time;
+  endTime: Time;
+  high: number;
+  low: number;
+  open: number;
+  close: number;
+  label: string;
+  color: string;
+  fillOpacity: number;
+  lineOpacity: number;
+  borderWidth: number;
+  lineStyle: "solid" | "dashed" | "dotted";
+  fontSize: number;
+  showBackground: boolean;
+  showBorders: boolean;
+  showOpenClose: boolean;
+  showLabel: boolean;
+};
+
+class SessionWindowRenderer implements ISeriesPrimitivePaneRenderer {
+  constructor(private readonly primitive: SessionWindowPrimitive) {}
+
+  draw(target: Parameters<ISeriesPrimitivePaneRenderer["draw"]>[0]) {
+    const chart = this.primitive.chart();
+    const series = this.primitive.series();
+    if (!chart || !series) return;
+
+    target.useMediaCoordinateSpace(({ context, mediaSize }) => {
+      context.save();
+      context.beginPath();
+      context.rect(0, 0, mediaSize.width, mediaSize.height);
+      context.clip();
+
+      for (const session of this.primitive.sessions()) {
+        const startX = chart.timeScale().timeToCoordinate(session.startTime);
+        const endX = chart.timeScale().timeToCoordinate(session.endTime);
+        const highY = series.priceToCoordinate(session.high);
+        const lowY = series.priceToCoordinate(session.low);
+        if (startX === null || endX === null || highY === null || lowY === null) continue;
+
+        const left = Math.min(startX, endX);
+        const right = Math.max(startX, endX);
+        const top = Math.min(highY, lowY);
+        const bottom = Math.max(highY, lowY);
+        const width = Math.max(2, right - left);
+        const height = Math.max(2, bottom - top);
+        if (right < 0 || left > mediaSize.width || bottom < 0 || top > mediaSize.height) continue;
+
+        context.save();
+        if (session.showBackground && session.fillOpacity > 0) {
+          context.globalAlpha = session.fillOpacity;
+          context.fillStyle = session.color;
+          context.fillRect(left, top, width, height);
+        }
+        if (session.showBorders && session.borderWidth > 0) {
+          context.globalAlpha = session.lineOpacity;
+          context.strokeStyle = session.color;
+          context.lineWidth = session.borderWidth;
+          context.setLineDash(
+            session.lineStyle === "dotted"
+              ? [1, 4]
+              : session.lineStyle === "dashed"
+                ? [6, 5]
+                : [],
+          );
+          context.strokeRect(left + 0.5, top + 0.5, Math.max(1, width - 1), Math.max(1, height - 1));
+        }
+        if (session.showOpenClose) {
+          context.globalAlpha = session.lineOpacity * 0.72;
+          context.strokeStyle = session.color;
+          context.lineWidth = 1;
+          context.setLineDash([3, 4]);
+          for (const price of [session.open, session.close]) {
+            const y = series.priceToCoordinate(price);
+            if (y === null) continue;
+            context.beginPath();
+            context.moveTo(left, y + 0.5);
+            context.lineTo(right, y + 0.5);
+            context.stroke();
+          }
+        }
+        if (session.showLabel && session.label) {
+          context.globalAlpha = Math.max(session.lineOpacity, 0.72);
+          context.setLineDash([]);
+          context.fillStyle = session.color;
+          context.font = `700 ${session.fontSize}px 'JetBrains Mono', monospace`;
+          context.textBaseline = "alphabetic";
+          context.fillText(
+            session.label,
+            left + 5,
+            Math.max(11, top + 12),
+            Math.max(24, width - 10),
+          );
+        }
+        context.restore();
+      }
+
+      context.restore();
+    });
+  }
+}
+
+class SessionWindowView implements ISeriesPrimitivePaneView {
+  private readonly sessionRenderer: SessionWindowRenderer;
+
+  constructor(primitive: SessionWindowPrimitive) {
+    this.sessionRenderer = new SessionWindowRenderer(primitive);
+  }
+
+  zOrder() {
+    return "top" as const;
+  }
+
+  renderer() {
+    return this.sessionRenderer;
+  }
+}
+
+class SessionWindowPrimitive implements ISeriesPrimitive<Time> {
+  private chartApi: IChartApi | null = null;
+  private candleSeries: CandleSeriesApi | null = null;
+  private requestRedraw: (() => void) | null = null;
+  private renderSessions: SessionWindowRenderData[] = [];
+  private readonly sessionView = new SessionWindowView(this);
+
+  attached(param: SeriesAttachedParameter<Time, "Candlestick">) {
+    this.chartApi = param.chart as IChartApi;
+    this.candleSeries = param.series as CandleSeriesApi;
+    this.requestRedraw = param.requestUpdate;
+    this.requestRedraw();
+  }
+
+  detached() {
+    this.chartApi = null;
+    this.candleSeries = null;
+    this.requestRedraw = null;
+  }
+
+  update(sessions: SessionWindowRenderData[]) {
+    this.renderSessions = sessions;
+    this.requestRedraw?.();
+  }
+
+  chart() {
+    return this.chartApi;
+  }
+
+  series() {
+    return this.candleSeries;
+  }
+
+  sessions() {
+    return this.renderSessions;
+  }
+
+  paneViews() {
+    return [this.sessionView];
+  }
+}
+
 type HedgeLevelsPrimitiveOptions = {
   showBelowFlip: boolean;
   showLabels: boolean;
@@ -2202,8 +2364,10 @@ export default function Chart({
   const gameplanUnderlayRef = useRef<GameplanUnderlayPrimitive | null>(null);
   const fixedPriceLevelLabelsRef = useRef<FixedPriceLevelLabelsPrimitive | null>(null);
   const sessionHighLowPrimitiveRef = useRef<SessionHighLowPrimitive | null>(null);
+  const sessionWindowPrimitiveRef = useRef<SessionWindowPrimitive | null>(null);
   const hedgeLevelsPrimitiveRef = useRef<HedgeLevelsPrimitive | null>(null);
   const sessionHighLowRenderDataRef = useRef<SessionHighLowRenderLevel[]>([]);
+  const sessionWindowRenderDataRef = useRef<SessionWindowRenderData[]>([]);
   const volumeProfilePrimitiveRef = useRef<NativeVolumeProfilePrimitive | null>(null);
   const classicGexProfilePrimitiveRef = useRef<ClassicGexProfilePrimitive | null>(null);
   const bigTradesPrimitiveRef = useRef<BigTradesPrimitive | null>(null);
@@ -4505,25 +4669,56 @@ export default function Chart({
     settings.upColor,
   ]);
   sessionHighLowRenderDataRef.current = sessionHighLowRenderData;
-  const positionedSessionWindows = useMemo(() => marketSessionWindows.flatMap((session) => {
-    const startX = indicatorTimeToX(Math.floor(session.startTimestamp / 1_000));
-    const endX = indicatorTimeToX(Math.floor(session.endTimestamp / 1_000));
-    const topY = candleSeriesRef.current?.priceToCoordinate(session.high) ?? null;
-    const bottomY = candleSeriesRef.current?.priceToCoordinate(session.low) ?? null;
-    if (startX === null || endX === null || topY === null || bottomY === null) return [];
-    return [{
-      ...session,
-      x: startX,
-      width: Math.max(2, endX - startX),
-      y: Math.min(topY, bottomY),
-      height: Math.max(2, Math.abs(bottomY - topY)),
-    }];
-  }), [
+  const sessionWindowRenderData = useMemo<SessionWindowRenderData[]>(() => {
+    const sessionSettings = sessionsIndicator?.settings ?? {};
+    const fillOpacity = clamp(Number(sessionSettings.fillOpacity ?? 10) / 100, 0, 1);
+    const lineOpacity = clamp(Number(sessionSettings.lineOpacity ?? 65) / 100, 0, 1);
+    const labelSize = String(sessionSettings.labelSize ?? "small");
+    const fontSize = labelSize === "tiny" ? 8 : labelSize === "normal" ? 11 : 9;
+    const requestedLineStyle = String(sessionSettings.lineStyle ?? "dashed");
+    const lineStyle = requestedLineStyle === "dotted" || requestedLineStyle === "solid"
+      ? requestedLineStyle
+      : "dashed";
+    const chartTimeForTimestamp = (timestamp: number) => (
+      eventChartTimeBySourceTimeRef.current.get(timestamp)
+      ?? Math.floor(timestamp / 1_000)
+    ) as Time;
+
+    return marketSessionWindows.map((session) => {
+      const change = session.close - session.open;
+      const suffix = sessionSettings.showPercentChange === true && session.open
+        ? ` ${(change / session.open * 100).toFixed(2)}%`
+        : sessionSettings.showPointChange === true
+          ? ` ${change >= 0 ? "+" : ""}${change.toFixed(priceFormat.precision)}`
+          : "";
+      return {
+        id: `${session.key}-${session.startTimestamp}`,
+        startTime: chartTimeForTimestamp(session.startTimestamp),
+        endTime: chartTimeForTimestamp(session.endTimestamp),
+        high: session.high,
+        low: session.low,
+        open: session.open,
+        close: session.close,
+        label: `${session.label}${suffix}`,
+        color: session.color,
+        fillOpacity,
+        lineOpacity,
+        borderWidth: clamp(Number(sessionSettings.borderWidth ?? 1), 0, 4),
+        lineStyle,
+        fontSize,
+        showBackground: sessionSettings.showBackground !== false,
+        showBorders: sessionSettings.showBorders !== false,
+        showOpenClose: sessionSettings.showOpenClose !== false,
+        showLabel: sessionSettings.showLabels !== false,
+      };
+    });
+  }, [
     chartReadyRevision,
-    indicatorTimeToX,
     marketSessionWindows,
-    viewportVersion,
+    priceFormat.precision,
+    sessionsIndicator,
   ]);
+  sessionWindowRenderDataRef.current = sessionWindowRenderData;
   const toolbarMetrics = useMemo(() => {
     const availableWidth = overlaySize.width > 0 ? Math.max(180, overlaySize.width - 16) : 920;
     const availableHeight = overlaySize.height > 0 ? Math.max(150, overlaySize.height - 16) : 700;
@@ -6151,6 +6346,10 @@ export default function Chart({
   }, [sessionHighLowRenderData]);
 
   useEffect(() => {
+    sessionWindowPrimitiveRef.current?.update(sessionWindowRenderData);
+  }, [sessionWindowRenderData]);
+
+  useEffect(() => {
     if (!chartContainerRef.current || candles.length === 0) return;
 
     if (chartRef.current) {
@@ -6269,6 +6468,10 @@ export default function Chart({
     sessionHighLowPrimitive.update(sessionHighLowRenderDataRef.current);
     candleSeries.attachPrimitive(sessionHighLowPrimitive);
     sessionHighLowPrimitiveRef.current = sessionHighLowPrimitive;
+    const sessionWindowPrimitive = new SessionWindowPrimitive();
+    sessionWindowPrimitive.update(sessionWindowRenderDataRef.current);
+    candleSeries.attachPrimitive(sessionWindowPrimitive);
+    sessionWindowPrimitiveRef.current = sessionWindowPrimitive;
     const hedgeLevelsPrimitive = new HedgeLevelsPrimitive();
     candleSeries.attachPrimitive(hedgeLevelsPrimitive);
     hedgeLevelsPrimitiveRef.current = hedgeLevelsPrimitive;
@@ -6812,6 +7015,13 @@ export default function Chart({
             // Chart teardown can detach primitives before React cleanup runs.
           }
         }
+        if (candleSeriesRef.current && sessionWindowPrimitiveRef.current) {
+          try {
+            candleSeriesRef.current.detachPrimitive(sessionWindowPrimitiveRef.current);
+          } catch {
+            // Chart teardown can detach primitives before React cleanup runs.
+          }
+        }
         if (candleSeriesRef.current && hedgeLevelsPrimitiveRef.current) {
           try {
             candleSeriesRef.current.detachPrimitive(hedgeLevelsPrimitiveRef.current);
@@ -6861,6 +7071,7 @@ export default function Chart({
       gameplanUnderlayRef.current = null;
       fixedPriceLevelLabelsRef.current = null;
       sessionHighLowPrimitiveRef.current = null;
+      sessionWindowPrimitiveRef.current = null;
       hedgeLevelsPrimitiveRef.current = null;
       classicGexProfilePrimitiveRef.current = null;
       volumeProfilePrimitiveRef.current = null;
@@ -8437,8 +8648,7 @@ export default function Chart({
       ) : null}
 
       {(
-        positionedSessionWindows.length > 0
-        || positionedEffortZones.length > 0
+        positionedEffortZones.length > 0
         || positionedImbalanceZones.length > 0
         || positionedImbalanceSignals.length > 0
       ) ? (
@@ -8448,79 +8658,6 @@ export default function Chart({
           viewBox={`0 0 ${Math.max(overlaySize.width, 1)} ${Math.max(overlaySize.height, 1)}`}
           preserveAspectRatio="none"
         >
-          {positionedSessionWindows.map((session) => {
-            const sessionSettings = sessionsIndicator?.settings ?? {};
-            const fillOpacity = clamp(Number(sessionSettings.fillOpacity ?? 10) / 100, 0, 1);
-            const lineOpacity = clamp(Number(sessionSettings.lineOpacity ?? 65) / 100, 0, 1);
-            const labelSize = String(sessionSettings.labelSize ?? "small");
-            const fontSize = labelSize === "tiny" ? 8 : labelSize === "normal" ? 11 : 9;
-            const change = session.close - session.open;
-            const suffix = sessionSettings.showPercentChange === true && session.open
-              ? ` ${(change / session.open * 100).toFixed(2)}%`
-              : sessionSettings.showPointChange === true
-                ? ` ${change >= 0 ? "+" : ""}${change.toFixed(priceFormat.precision)}`
-                : "";
-            return (
-              <g key={`${session.key}-${session.startTimestamp}`}>
-                {sessionSettings.showBackground !== false ? (
-                  <rect
-                    x={session.x}
-                    y={session.y}
-                    width={session.width}
-                    height={session.height}
-                    fill={session.color}
-                    fillOpacity={fillOpacity}
-                  />
-                ) : null}
-                {sessionSettings.showBorders !== false ? (
-                  <rect
-                    x={session.x}
-                    y={session.y}
-                    width={session.width}
-                    height={session.height}
-                    fill="none"
-                    stroke={session.color}
-                    strokeOpacity={lineOpacity}
-                    strokeWidth={clamp(Number(sessionSettings.borderWidth ?? 1), 0, 4)}
-                    strokeDasharray={String(sessionSettings.lineStyle ?? "dashed") === "dotted"
-                      ? "1 4"
-                      : String(sessionSettings.lineStyle ?? "dashed") === "solid" ? undefined : "6 5"}
-                  />
-                ) : null}
-                {sessionSettings.showOpenClose !== false ? (
-                  <>
-                    {([session.open, session.close] as const).map((price, index) => {
-                      const y = candleSeriesRef.current?.priceToCoordinate(price) ?? null;
-                      return y === null ? null : (
-                        <line
-                          key={index}
-                          x1={session.x}
-                          x2={session.x + session.width}
-                          y1={y}
-                          y2={y}
-                          stroke={session.color}
-                          strokeOpacity={lineOpacity * 0.72}
-                          strokeDasharray="3 4"
-                        />
-                      );
-                    })}
-                  </>
-                ) : null}
-                {sessionSettings.showLabels !== false ? (
-                  <text
-                    x={session.x + 5}
-                    y={Math.max(11, session.y + 12)}
-                    fill={session.color}
-                    fontFamily="'JetBrains Mono', monospace"
-                    fontSize={fontSize}
-                    fontWeight={700}
-                  >
-                    {session.label}{suffix}
-                  </text>
-                ) : null}
-              </g>
-            );
-          })}
           {positionedEffortZones.map((zone) => {
             const effortSettings = deepEffortIndicator?.settings ?? {};
             const useThemeColors = effortSettings.useThemeColors !== false;
