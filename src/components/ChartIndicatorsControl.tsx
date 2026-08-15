@@ -1212,8 +1212,6 @@ export default function ChartIndicatorsControl({
                     ["Source ticker", "sourceTicker", [["AUTO", "Automatic"], ["QQQ", "QQQ"], ["NDX", "NDX"], ["NQ", "NQ options"], ["SPY", "SPY"], ["SPX", "SPX"]]],
                     ["Expiration", "expirationMode", [["zero-dte", "0DTE"], ["zero-to-one-dte", "0–1 DTE"], ["zero-to-seven-dte", "0–7 DTE"], ["front-expiration", "Front expiration"], ["all-expirations", "All expirations"], ["custom-dte-range", "Custom DTE range"], ["specific-expirations", "Specific expirations"]]],
                     ["Content", "contentMode", [["net", "Net"], ["net-with-call-put-detail", "Net + Call / Put detail"], ["call-put-split", "Call / Put split"], ["absolute-concentration", "Absolute concentration"], ["net-change", "Net change"]]],
-                    ["Placement", "placement", [["right", "Right"], ["left", "Left"], ["floating", "Floating"]]],
-                    ["Chart space", "spaceMode", [["overlay", "Overlay"], ["reserved", "Reserved chart space"]]],
                     ["Mapped bins", "aggregationMode", [["auto-bin", "Automatic"], ["exact-display-tick", "Exact display tick"], ["custom-bin", "Custom bin"]]],
                     ["Scaling", "scaleMode", [["visible-percentile", "Visible percentile"], ["visible-maximum", "Visible maximum"], ["all-loaded-maximum", "All loaded maximum"], ["fixed-maximum", "Fixed maximum"]]],
                     ["Scale transform", "scaleTransform", [["linear", "Linear"], ["square-root", "Square root"], ["logarithmic", "Logarithmic"]]],

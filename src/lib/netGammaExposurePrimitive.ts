@@ -382,6 +382,8 @@ class NetGammaExposureRenderer implements ISeriesPrimitivePaneRenderer {
 class NetGammaExposureView implements ISeriesPrimitivePaneView {
   private readonly paneRenderer: NetGammaExposureRenderer;
   constructor(primitive: NetGammaExposurePrimitive) { this.paneRenderer = new NetGammaExposureRenderer(primitive); }
+  // Keep the complete profile below the candlestick renderer so bars and
+  // wicks remain the dominant foreground layer at every zoom level.
   zOrder() { return "bottom" as const; }
   renderer() { return this.paneRenderer; }
 }

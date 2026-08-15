@@ -4263,11 +4263,14 @@ export default function Chart({
       : netGammaProfile;
     return {
       snapshot: renderedSnapshot,
-      placement: String(indicatorSettings.placement ?? "right") as GammaProfilePlacement,
+      // Net GEX is intentionally centered in the active chart. Keeping this
+      // invariant here prevents stale workspace settings from pushing it back
+      // into the old right-edge lane.
+      placement: "floating" as GammaProfilePlacement,
       laneWidthPercent: Number(indicatorSettings.laneWidthPercent ?? 24),
       minimumLaneWidthPx: Number(indicatorSettings.minimumLaneWidthPx ?? 220),
       maximumLaneWidthPx: Number(indicatorSettings.maximumLaneWidthPx ?? 420),
-      floatingXPercent: Number(indicatorSettings.floatingXPercent ?? 72),
+      floatingXPercent: 50,
       zeroSpinePercent: Number(indicatorSettings.zeroSpinePercent ?? 50),
       reverseDirections: indicatorSettings.reverseDirections === true,
       minimumBarHeightPx: Number(indicatorSettings.minimumBarHeightPx ?? 3),

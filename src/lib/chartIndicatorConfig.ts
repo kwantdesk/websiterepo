@@ -586,7 +586,7 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
     includeMonthlies: true,
     includeQuarterlies: true,
     aggregationMode: "auto-bin",
-    placement: "right",
+    placement: "floating",
     spaceMode: "overlay",
     reverseDirections: false,
     barHeightMode: "automatic",
@@ -617,7 +617,8 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
     absoluteColor: theme?.borderUpColor ?? theme?.upColor ?? "#8B5CF6",
     zeroSpineColor: theme?.gridColor ?? "#71717A",
     warningColor: "#F59E0B",
-    netGammaSettingsVersion: 2,
+    floatingXPercent: 50,
+    netGammaSettingsVersion: 3,
   } : {}),
   ...(indicatorId === "gex-interval-map" ? {
     preset: "balanced-intraday",
@@ -1128,12 +1129,20 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
     for (const [key, allowed] of Object.entries(enumValues)) {
       if (!allowed.includes(String(settings[key]))) settings[key] = defaults[key];
     }
+    // Version 3 intentionally moves the profile from the chart edge into a
+    // centered overlay. This also migrates already-saved workspaces that used
+    // the former right-lane default.
+    if (Number(settings.netGammaSettingsVersion ?? 0) < 3) {
+      settings.placement = "floating";
+      settings.floatingXPercent = 50;
+      settings.spaceMode = "overlay";
+    }
     for (const unsafeKey of ["apiKey", "credential", "credentials", "providerCredential", "liveSnapshot", "snapshotData", "rows"]) {
       delete settings[unsafeKey];
     }
     return {
       ...normalizedInstance,
-      settings: { ...settings, netGammaSettingsVersion: 2 },
+      settings: { ...settings, netGammaSettingsVersion: 3 },
     };
   }
   if (normalizedInstance.indicatorId === "gex-interval-map") {
