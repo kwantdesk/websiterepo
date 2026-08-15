@@ -5,6 +5,7 @@ import { DEFAULT_FOOTPRINT_SETTINGS, FOOTPRINT_SETTINGS_SCHEMA_VERSION } from "@
 import { defaultTpoSettings, tpoSettingsToRecord, validateTpoSettings } from "@/lib/tpo/settings";
 
 export const LIVE_CHART_INDICATOR_IDS = new Set([
+  "gamma-heatmap",
   "volume",
   "delta-bar",
   "delta-highlight",
@@ -78,6 +79,13 @@ export type IndicatorNumericSetting = {
 };
 
 export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[]> = {
+  "gamma-heatmap": [
+    { key: "historyHours", label: "History window (hours)", defaultValue: 24, min: 1, max: 120, step: 1 },
+    { key: "binSize", label: "Display price bin", defaultValue: 5, min: 0.25, max: 100, step: 0.25 },
+    { key: "opacity", label: "Heat opacity (%)", defaultValue: 68, min: 5, max: 100, step: 1 },
+    { key: "intensity", label: "Heat intensity", defaultValue: 1, min: 0.25, max: 4, step: 0.05 },
+    { key: "refreshSeconds", label: "Refresh interval (seconds)", defaultValue: 5, min: 2, max: 60, step: 1 },
+  ],
   "divergence-detector": [
     { key: "pivotStrength", label: "Pivot confirmation bars", defaultValue: 3, min: 1, max: 12, step: 1 },
     { key: "synchronizationBars", label: "ES / NQ synchronization window (bars)", defaultValue: 3, min: 1, max: 12, step: 1 },
@@ -455,6 +463,22 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
   ...Object.fromEntries(
     (INDICATOR_NUMERIC_SETTINGS[indicatorId] ?? []).map((setting) => [setting.key, setting.defaultValue]),
   ),
+  ...(indicatorId === "gamma-heatmap" ? {
+    preset: "intraday",
+    metric: "GAMMA",
+    viewMode: "net",
+    sourceMode: "hybrid",
+    optionsSource: "AUTO",
+    showHistorical: true,
+    showLevels: true,
+    carryForwardFade: true,
+    showStatus: true,
+    useThemeColors: true,
+    positiveColor: theme?.upColor ?? "#22C55E",
+    negativeColor: theme?.downColor ?? "#EF4444",
+    neutralColor: theme?.gridColor ?? "#A1A1AA",
+    gammaHeatmapSettingsVersion: 1,
+  } : {}),
   ...(indicatorId === "divergence-detector" ? {
     comparisonMode: "automatic-es-nq",
     includeNonConfirmation: true,

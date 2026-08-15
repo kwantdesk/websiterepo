@@ -142,6 +142,19 @@ import {
   ClassicGexProfilePrimitive,
   type ClassicGexPrimitiveData,
 } from "@/lib/classicGexProfilePrimitive";
+import {
+  GammaHeatmapPrimitive,
+  type GammaHeatmapHit,
+  type GammaHeatmapPrimitiveData,
+} from "@/lib/gammaHeatmapPrimitive";
+import {
+  defaultGammaHeatmapSource,
+  isGammaHeatmapPayload,
+  normalizeGammaHeatmapInstrument,
+  type GammaHeatmapPayload,
+  type GammaHeatmapViewMode,
+} from "@/lib/gammaHeatmap";
+import { fetchWorkspaceData } from "@/lib/workspaceDataCache";
 import { STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT } from "@/lib/volumeProfileMath";
 import {
   buildMarketSessionWindows,
@@ -2450,6 +2463,7 @@ export default function Chart({
   const volumeProfilePrimitiveRef = useRef<NativeVolumeProfilePrimitive | null>(null);
   const tpoProfilePrimitiveRef = useRef<TpoProfilePrimitive | null>(null);
   const classicGexProfilePrimitiveRef = useRef<ClassicGexProfilePrimitive | null>(null);
+  const gammaHeatmapPrimitiveRef = useRef<GammaHeatmapPrimitive | null>(null);
   const bigTradesPrimitiveRef = useRef<BigTradesPrimitive | null>(null);
   const bigBlocksPrimitiveRef = useRef<BigBlocksPrimitive | null>(null);
   const smtDivergencePrimitiveRef = useRef<SmtDivergencePrimitive | null>(null);
@@ -2550,6 +2564,10 @@ export default function Chart({
     y: number;
     row: ClassicGexProfileRow;
   } | null>(null);
+  const [gammaHeatmapPayload, setGammaHeatmapPayload] = useState<GammaHeatmapPayload | null>(null);
+  const [gammaHeatmapLoading, setGammaHeatmapLoading] = useState(false);
+  const [gammaHeatmapError, setGammaHeatmapError] = useState<string | null>(null);
+  const [gammaHeatmapTooltip, setGammaHeatmapTooltip] = useState<GammaHeatmapHit | null>(null);
   const [tpoPayload, setTpoPayload] = useState<TpoLevelsPayload | null>(null);
   const [tpoLoading, setTpoLoading] = useState(false);
   const [tpoError, setTpoError] = useState<string | null>(null);
@@ -3730,6 +3748,125 @@ export default function Chart({
     () => () => onIndicatorPaneHeightChange?.(0),
     [onIndicatorPaneHeightChange],
   );
+  const gammaHeatmapIndicator = useMemo(
+    () => indicators.find((instance) => instance.enabled && instance.indicatorId === "gamma-heatmap") ?? null,
+    [indicators],
+  );
+  useEffect(() => {
+    if (!gammaHeatmapIndicator) {
+      setGammaHeatmapPayload(null);
+      setGammaHeatmapLoading(false);
+      setGammaHeatmapError(null);
+      return;
+    }
+    const display = normalizeGammaHeatmapInstrument(instrument);
+    if (!/^(NQ|MNQ|ES|MES)$/.test(display)) {
+      setGammaHeatmapPayload(null);
+      setGammaHeatmapLoading(false);
+      setGammaHeatmapError("Gamma Heatmap supports NQ, MNQ, ES and MES charts.");
+      return;
+    }
+    const indicatorSettings = gammaHeatmapIndicator.settings ?? {};
+    const sourceSetting = String(indicatorSettings.optionsSource ?? "AUTO").toUpperCase();
+    const source = sourceSetting === "AUTO" ? defaultGammaHeatmapSource(display) : sourceSetting;
+    const metric = String(indicatorSettings.metric ?? "GAMMA").toUpperCase();
+    const sourceMode = String(indicatorSettings.sourceMode ?? "hybrid");
+    const historyHours = Math.max(1, Number(indicatorSettings.historyHours ?? 24));
+    const binSize = Math.max(0.25, Number(indicatorSettings.binSize ?? (display === "ES" || display === "MES" ? 1 : 5)));
+    const refreshMs = Math.max(2_000, Number(indicatorSettings.refreshSeconds ?? 5) * 1_000);
+    let cancelled = false;
+    let timer: number | null = null;
+    const load = async (force = false) => {
+      const displayPrice = drawingCandlesRef.current.at(-1)?.close;
+      if (!(displayPrice && displayPrice > 0)) return;
+      if (!force) setGammaHeatmapLoading(true);
+      const query = new URLSearchParams({
+        display,
+        source,
+        metric,
+        sourceMode,
+        historyHours: String(historyHours),
+        binSize: String(binSize),
+        displayPrice: String(displayPrice),
+      });
+      const cacheKey = `gamma-heatmap:${display}:${source}:${metric}:${sourceMode}:${historyHours}:${binSize}`;
+      try {
+        const payload = await fetchWorkspaceData<GammaHeatmapPayload>(cacheKey, `/api/gamma-heatmap?${query}`, {
+          force,
+          maxAgeMs: refreshMs,
+          timeoutMs: 35_000,
+          validate: isGammaHeatmapPayload,
+          invalidMessage: "Gamma Heatmap returned an incomplete exposure surface.",
+        });
+        if (cancelled) return;
+        setGammaHeatmapPayload(payload);
+        setGammaHeatmapError(null);
+      } catch (error) {
+        if (!cancelled) setGammaHeatmapError(error instanceof Error ? error.message : "Gamma Heatmap could not refresh.");
+      } finally {
+        if (!cancelled) {
+          setGammaHeatmapLoading(false);
+          timer = window.setTimeout(() => void load(true), refreshMs);
+        }
+      }
+    };
+    void load(false);
+    return () => {
+      cancelled = true;
+      if (timer !== null) window.clearTimeout(timer);
+    };
+  }, [gammaHeatmapIndicator, instrument]);
+
+  const gammaHeatmapPrimitiveData = useMemo<GammaHeatmapPrimitiveData | null>(() => {
+    if (!gammaHeatmapIndicator || !gammaHeatmapPayload) return null;
+    const indicatorSettings = gammaHeatmapIndicator.settings ?? {};
+    const useThemeColors = indicatorSettings.useThemeColors !== false;
+    return {
+      snapshots: gammaHeatmapPayload.snapshots,
+      levels: gammaHeatmapPayload.levels,
+      viewMode: String(indicatorSettings.viewMode ?? "net") as GammaHeatmapViewMode,
+      opacity: Math.max(0.05, Math.min(1, Number(indicatorSettings.opacity ?? 68) / 100)),
+      intensity: Math.max(0.25, Math.min(4, Number(indicatorSettings.intensity ?? 1))),
+      showHistorical: indicatorSettings.showHistorical !== false,
+      showLevels: indicatorSettings.showLevels !== false,
+      carryForwardFade: indicatorSettings.carryForwardFade !== false,
+      positiveColor: useThemeColors ? settings.upColor : String(indicatorSettings.positiveColor ?? settings.upColor),
+      negativeColor: useThemeColors ? settings.downColor : String(indicatorSettings.negativeColor ?? settings.downColor),
+      neutralColor: useThemeColors ? settings.gridColor : String(indicatorSettings.neutralColor ?? settings.gridColor),
+      backgroundColor: settings.backgroundColor,
+      precision: priceFormat.precision,
+    };
+  }, [gammaHeatmapIndicator, gammaHeatmapPayload, priceFormat.precision, settings.backgroundColor, settings.downColor, settings.gridColor, settings.upColor]);
+  useEffect(() => {
+    gammaHeatmapPrimitiveRef.current?.update(gammaHeatmapPrimitiveData);
+  }, [gammaHeatmapPrimitiveData, viewportVersion]);
+  useEffect(() => {
+    const container = chartContainerRef.current;
+    if (!container || !gammaHeatmapIndicator) {
+      setGammaHeatmapTooltip(null);
+      return;
+    }
+    let frame: number | null = null;
+    const move = (event: PointerEvent) => {
+      if (frame !== null) window.cancelAnimationFrame(frame);
+      const rect = container.getBoundingClientRect();
+      const x = event.clientX - rect.left;
+      const y = event.clientY - rect.top;
+      frame = window.requestAnimationFrame(() => {
+        frame = null;
+        setGammaHeatmapTooltip(gammaHeatmapPrimitiveRef.current?.queryHit(x, y) ?? null);
+      });
+    };
+    const leave = () => setGammaHeatmapTooltip(null);
+    container.addEventListener("pointermove", move, { passive: true });
+    container.addEventListener("pointerleave", leave, { passive: true });
+    return () => {
+      if (frame !== null) window.cancelAnimationFrame(frame);
+      container.removeEventListener("pointermove", move);
+      container.removeEventListener("pointerleave", leave);
+    };
+  }, [gammaHeatmapIndicator]);
+
   const classicGexIndicator = useMemo(
     () => indicators.find((instance) => instance.enabled && instance.indicatorId === "classic-gex-profile") ?? null,
     [indicatorSignature, indicators],
@@ -6904,6 +7041,9 @@ export default function Chart({
     const classicGexProfilePrimitive = new ClassicGexProfilePrimitive();
     candleSeries.attachPrimitive(classicGexProfilePrimitive);
     classicGexProfilePrimitiveRef.current = classicGexProfilePrimitive;
+    const gammaHeatmapPrimitive = new GammaHeatmapPrimitive();
+    candleSeries.attachPrimitive(gammaHeatmapPrimitive);
+    gammaHeatmapPrimitiveRef.current = gammaHeatmapPrimitive;
     const volumeProfilePrimitive = new NativeVolumeProfilePrimitive();
     candleSeries.attachPrimitive(volumeProfilePrimitive);
     volumeProfilePrimitiveRef.current = volumeProfilePrimitive;
@@ -7595,6 +7735,13 @@ export default function Chart({
             // Chart teardown can detach primitives before React cleanup runs.
           }
         }
+        if (candleSeriesRef.current && gammaHeatmapPrimitiveRef.current) {
+          try {
+            candleSeriesRef.current.detachPrimitive(gammaHeatmapPrimitiveRef.current);
+          } catch {
+            // Chart teardown can detach primitives before React cleanup runs.
+          }
+        }
         if (candleSeriesRef.current && bigTradesPrimitiveRef.current) {
           try {
             candleSeriesRef.current.detachPrimitive(bigTradesPrimitiveRef.current);
@@ -7647,6 +7794,7 @@ export default function Chart({
       sessionWindowPrimitiveRef.current = null;
       hedgeLevelsPrimitiveRef.current = null;
       classicGexProfilePrimitiveRef.current = null;
+      gammaHeatmapPrimitiveRef.current = null;
       volumeProfilePrimitiveRef.current = null;
       bigTradesPrimitiveRef.current = null;
       bigBlocksPrimitiveRef.current = null;
@@ -8747,6 +8895,47 @@ export default function Chart({
             title="Loading chart"
             detail={`${instrument} · fitting history and price scale`}
           />
+        </div>
+      ) : null}
+      {gammaHeatmapIndicator ? (
+        <div
+          className="pointer-events-none absolute left-2 top-2 z-[24] flex max-w-[min(520px,calc(100%-80px))] items-center gap-2 border border-border bg-panel/92 px-2 py-1 font-mono text-[8px] uppercase tracking-[0.08em] text-muted shadow-lg backdrop-blur"
+          title={gammaHeatmapPayload?.limitations.join(" ") ?? gammaHeatmapError ?? "Loading options exposure history"}
+        >
+          <span className={`h-1.5 w-1.5 rounded-full ${gammaHeatmapError && !gammaHeatmapPayload ? "bg-danger" : gammaHeatmapLoading ? "animate-pulse bg-warning" : "bg-primary"}`} />
+          <span className="text-foreground">Gamma Heatmap</span>
+          {gammaHeatmapPayload ? (
+            <>
+              <span>{gammaHeatmapPayload.sourceInstrument}→{gammaHeatmapPayload.displayInstrument}</span>
+              <span>{gammaHeatmapPayload.greekMode}</span>
+              <span className={gammaHeatmapPayload.status === "LIVE" ? "text-primary" : "text-warning"}>{gammaHeatmapPayload.status.replace("_", " ")}</span>
+              <span>{gammaHeatmapPayload.current?.mapping.method.replace("-", " ")}</span>
+              <span>{Math.round((gammaHeatmapPayload.current?.mapping.confidence ?? 0) * 100)}%</span>
+            </>
+          ) : gammaHeatmapLoading ? <span>Loading exposure history…</span> : <span className="text-danger">{gammaHeatmapError ?? "Exposure unavailable"}</span>}
+          {gammaHeatmapError && gammaHeatmapPayload ? <span className="text-warning">Refresh delayed · last good surface</span> : null}
+        </div>
+      ) : null}
+      {gammaHeatmapTooltip ? (
+        <div
+          className="pointer-events-none absolute z-[62] min-w-[210px] border border-border bg-panel/96 p-2 font-mono text-[8px] shadow-2xl backdrop-blur"
+          style={{
+            left: Math.min(Math.max(8, gammaHeatmapTooltip.x + 14), Math.max(8, overlaySize.width - 230)),
+            top: Math.min(Math.max(34, gammaHeatmapTooltip.y + 14), Math.max(34, overlaySize.height - 154)),
+          }}
+        >
+          <div className="flex items-center justify-between gap-4 border-b border-border pb-1 text-foreground">
+            <span>{gammaHeatmapTooltip.bin.price.toFixed(priceFormat.precision)}</span>
+            <span>{new Date(gammaHeatmapTooltip.snapshot.timestamp).toLocaleTimeString()}</span>
+          </div>
+          <div className="mt-1 grid grid-cols-2 gap-x-4 gap-y-1 text-muted">
+            <span>Net</span><span className={gammaHeatmapTooltip.bin.net >= 0 ? "text-primary" : "text-danger"}>{gammaHeatmapTooltip.bin.net.toLocaleString("en-US", { maximumFractionDigits: 0 })}</span>
+            <span>Call</span><span className="text-foreground">{gammaHeatmapTooltip.bin.call.toLocaleString("en-US", { maximumFractionDigits: 0 })}</span>
+            <span>Put</span><span className="text-foreground">{gammaHeatmapTooltip.bin.put.toLocaleString("en-US", { maximumFractionDigits: 0 })}</span>
+            <span>Change</span><span className="text-foreground">{gammaHeatmapTooltip.bin.change.toLocaleString("en-US", { maximumFractionDigits: 0 })}</span>
+            <span>Mapping</span><span className="text-foreground">{gammaHeatmapTooltip.snapshot.mapping.method.replace("-", " ")} · {Math.round(gammaHeatmapTooltip.snapshot.mapping.confidence * 100)}%</span>
+            <span>Status</span><span className="text-foreground">{gammaHeatmapTooltip.snapshot.status.replace("_", " ")}</span>
+          </div>
         </div>
       ) : null}
       {gexBotFlow ? <GexBotFlowStrip payload={gexBotFlow} /> : null}

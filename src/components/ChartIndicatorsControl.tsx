@@ -179,6 +179,7 @@ function persistTpoUserPresets(presets: TpoUserPreset[]) {
 // Kwant Desk today. The complete catalogue stays visible so no study or
 // favourite is lost while feed-specific studies are connected and validated.
 export const RENDERED_CHART_INDICATOR_IDS = new Set([
+  "gamma-heatmap",
   "volume",
   "delta-bar",
   "delta-highlight",
@@ -873,6 +874,62 @@ export default function ChartIndicatorsControl({
                   <p className="text-[8px] leading-4 text-muted">
                     Off leaves every profile at its true historical session position. Left keeps the latest profile on the left once you scroll beyond it; Right docks the latest profile to the right.
                   </p>
+                </div>
+              ) : null}
+
+              {settingsDefinition.id === "gamma-heatmap" ? (
+                <div className="grid gap-3 rounded-xl border border-primary/15 bg-primary/[0.035] p-3 sm:grid-cols-2">
+                  <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted sm:col-span-2">
+                    <span>Preset</span>
+                    <KwantSelect
+                      value={String(settingsInstance.settings?.preset ?? "intraday")}
+                      onChange={(event) => {
+                        const preset = event.target.value;
+                        const presetSettings = preset === "positioning"
+                          ? { viewMode: "absolute", historyHours: 24, opacity: 62, intensity: 1.15, showHistorical: true, showLevels: true }
+                          : preset === "flow-change"
+                            ? { viewMode: "change", historyHours: 8, opacity: 76, intensity: 1.3, showHistorical: true, showLevels: true }
+                            : preset === "levels"
+                              ? { viewMode: "levels-only", historyHours: 24, opacity: 50, intensity: 1, showHistorical: false, showLevels: true }
+                              : { viewMode: "net", historyHours: 12, opacity: 68, intensity: 1, showHistorical: true, showLevels: true };
+                        replace(settingsInstance.instanceId, (current) => ({
+                          ...current,
+                          settings: { ...(current.settings ?? {}), preset, ...presetSettings },
+                        }));
+                      }}
+                      className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground"
+                      menuLabel="Gamma Heatmap preset"
+                    >
+                      <option value="intraday">Intraday structure</option>
+                      <option value="positioning">Absolute positioning</option>
+                      <option value="flow-change">Exposure change</option>
+                      <option value="levels">Clean levels</option>
+                    </KwantSelect>
+                  </label>
+                  {[
+                    ["Exposure", "metric", [["GAMMA", "Gamma · GEX"], ["DELTA", "Delta · DEX"], ["VANNA", "Vanna · VEX"], ["CHARM", "Charm · CHEX"]]],
+                    ["View", "viewMode", [["net", "Net exposure"], ["call-put", "Call / put split"], ["absolute", "Absolute concentration"], ["change", "Exposure change"], ["hedge-pressure", "Modeled hedge pressure"], ["levels-only", "Levels only"]]],
+                    ["Options source", "optionsSource", [["AUTO", "Automatic"], ["QQQ", "QQQ"], ["NDX", "NDX"], ["SPY", "SPY"], ["SPX", "SPX"]]],
+                    ["Data source", "sourceMode", [["hybrid", "Hybrid"], ["quantdata", "QuantData"], ["databento-raw", "Databento raw"]]],
+                  ].map(([label, key, options]) => (
+                    <label key={String(key)} className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                      <span>{String(label)}</span>
+                      <KwantSelect
+                        value={String(settingsInstance.settings?.[String(key)] ?? "")}
+                        onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                          ...current,
+                          settings: { ...(current.settings ?? {}), [String(key)]: event.target.value },
+                        }))}
+                        className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground"
+                        menuLabel={String(label)}
+                      >
+                        {(options as string[][]).map(([value, optionLabel]) => <option key={value} value={value}>{optionLabel}</option>)}
+                      </KwantSelect>
+                    </label>
+                  ))}
+                  <div className="rounded-lg border border-border bg-background/55 px-3 py-2 text-[9px] leading-4 text-muted sm:col-span-2">
+                    Historical mapping coefficients are frozen into each snapshot. “Local GEX Sign Transition” is intentionally not labelled as a true gamma flip.
+                  </div>
                 </div>
               ) : null}
 

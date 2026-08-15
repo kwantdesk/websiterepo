@@ -739,6 +739,7 @@ type StrategyItem = {
 type WorkspaceLayout = "single" | "split-vertical" | "split-horizontal" | "quad" | "custom";
 type WorkspacePagePanelKind = "charts" | "zyon" | "gameplan" | "gamma" | "gexmap" | "liqmap" | "news" | "socials" | "journal";
 type WorkspaceToolKind =
+  | "tool-gamma-heatmap"
   | "tool-footprint"
   | "tool-volume-profile"
   | "tool-single-volume-profile"
@@ -985,6 +986,7 @@ const WORKSPACE_PANEL_OPTIONS: Array<WorkspacePanelOption<WorkspacePagePanelKind
 ];
 
 const WORKSPACE_TOOL_OPTIONS: Array<WorkspacePanelOption<WorkspaceToolKind>> = [
+  { id: "tool-gamma-heatmap", label: "GAMMA HEATMAP", description: "Historical and live options exposure mapped onto futures price", icon: Layers3, indicatorId: "gamma-heatmap" },
   { id: "tool-footprint", label: "FOOTPRINT", description: "Bid × ask volume at every traded price", icon: Grid3X3, indicatorId: "deep-print-footprint" },
   { id: "tool-volume-profile", label: "VOLUME PROFILE", description: "Volume, delta, POC and value area by price", icon: BarChart3, indicatorId: "kwant-profile" },
   { id: "tool-single-volume-profile", label: "SINGLE VOLUME PROFILE", description: "One standalone or merged execution profile with live price", icon: BarChart3 },
@@ -12791,8 +12793,27 @@ export default function KwantifyWorkspace({
             <BarChart3 className="h-3.5 w-3.5 text-primary" />
             <span>Tools &amp; Indicators</span>
           </div>
+          <div className="mb-2 text-[8px] font-semibold uppercase tracking-[0.16em] text-primary/80">Options Flow</div>
+          <div className="mb-3 grid grid-cols-1 gap-2 min-[440px]:grid-cols-2 min-[760px]:grid-cols-3">
+            {WORKSPACE_TOOL_OPTIONS.filter((option) => option.id === "tool-gamma-heatmap").map((option) => {
+              const Icon = option.icon;
+              return (
+                <button
+                  key={option.id}
+                  type="button"
+                  onClick={() => void selectWorkspacePanelContent(pane.id, option.id)}
+                  disabled={workspacePanelTransition?.paneId === pane.id}
+                  className={`group flex min-h-[66px] items-center gap-3 rounded-xl border p-3 text-left transition-all hover:-translate-y-0.5 hover:border-primary/45 hover:bg-primary/[0.07] disabled:pointer-events-none ${pane.content === option.id || workspacePanelTransition?.content === option.id ? "border-primary/40 bg-primary/[0.08]" : "border-border bg-surface/60"}`}
+                >
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary"><Icon className="h-[17px] w-[17px]" /></span>
+                  <span className="min-w-0"><span className="block text-[9px] font-semibold leading-3 text-foreground">{option.label}</span><span className="mt-1 block text-[8px] leading-3 text-muted">{option.description}</span></span>
+                </button>
+              );
+            })}
+          </div>
+          <div className="mb-2 text-[8px] font-semibold uppercase tracking-[0.16em] text-muted">Market &amp; Order Flow</div>
           <div className="grid grid-cols-1 gap-2 min-[440px]:grid-cols-2 min-[760px]:grid-cols-3">
-            {WORKSPACE_TOOL_OPTIONS.map((option) => {
+            {WORKSPACE_TOOL_OPTIONS.filter((option) => option.id !== "tool-gamma-heatmap").map((option) => {
               const Icon = option.icon;
               return (
                 <button
