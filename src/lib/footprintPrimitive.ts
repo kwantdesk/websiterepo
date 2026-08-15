@@ -217,6 +217,43 @@ function withAlpha(context: CanvasRenderingContext2D, colour: string, alpha: num
   context.globalAlpha = previous;
 }
 
+/**
+ * Matches the row geometry used by the native daily/weekly volume-profile
+ * renderer: tightly packed price rows with only the exposed edge rounded.
+ * Keeping the candle-side edge square gives the rows a shared spine, while
+ * the rounded outer edge reads as one continuous volume distribution instead
+ * of a stack of detached blocks.
+ */
+function drawRightFacingVolumeProfileRow(
+  context: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  colour: string,
+  opacity: number,
+  outlined: boolean,
+) {
+  if (width <= 0 || height <= 0) return;
+  const rowHeight = Math.max(0.72, height - 0.12);
+  const radius = Math.min(2.25, rowHeight / 2, width / 2);
+  const path = new Path2D();
+  if (radius < 0.55) path.rect(x, y, width, rowHeight);
+  else path.roundRect(x, y, width, rowHeight, [0, radius, radius, 0]);
+
+  context.save();
+  context.globalAlpha = clamp(opacity, 0, 1);
+  context.fillStyle = colour;
+  context.fill(path);
+  if (outlined && rowHeight >= 2.2) {
+    context.globalAlpha = Math.min(1, opacity + 0.18);
+    context.strokeStyle = colour;
+    context.lineWidth = 0.5;
+    context.stroke(path);
+  }
+  context.restore();
+}
+
 function percentile(values: number[], fraction: number) {
   if (!values.length) return 1;
   const ordered = [...values].sort((left, right) => left - right);
@@ -345,7 +382,7 @@ class FootprintRenderer implements ISeriesPrimitivePaneRenderer {
         const x = timeScale.timeToCoordinate(bar.time);
         if (x === null) continue;
         const profileLayerEnabled = options.showPerBarVolumeProfile || options.showPerBarDeltaProfile;
-        const requestedProfileWidth = options.barWidth * 0.5
+        const requestedProfileWidth = options.barWidth
           * clamp(options.perBarProfileWidthPercent / 100, 0.1, 1);
         const profileSpacing = profileLayerEnabled
           ? requestedProfileWidth * 2 + options.perBarProfileGap * 2 + options.perBarProfileExtraSpacing
@@ -426,9 +463,12 @@ class FootprintRenderer implements ISeriesPrimitivePaneRenderer {
 
           const drawPerBarProfiles = () => {
             if (!profileLayerEnabled) return;
+            // A profile needs the horizontal range of the complete footprint
+            // bar to reveal its distribution. The previous half-bar cap made
+            // real tick rows collapse into a short, blocky column.
             const maximumProfileWidth = Math.max(
               1,
-              halfWidth * clamp(options.perBarProfileWidthPercent / 100, 0.1, 1),
+              barWidth * clamp(options.perBarProfileWidthPercent / 100, 0.1, 1),
             );
             const volumeDenominator = options.perBarProfileScaleMode === "shared"
               ? profileSharedMaximum
@@ -464,16 +504,16 @@ class FootprintRenderer implements ISeriesPrimitivePaneRenderer {
 
             if (volumeWidth > 0) {
               const volumeLeft = left + barWidth + options.perBarProfileGap;
-              withAlpha(context, options.perBarVolumeColor, options.perBarProfileOpacity, () =>
-                context.fillRect(volumeLeft, profileTop, volumeWidth, profileHeight));
-              if (options.perBarProfileOutline) {
-                context.save();
-                context.globalAlpha = Math.min(1, options.perBarProfileOpacity + 0.18);
-                context.strokeStyle = options.perBarVolumeColor;
-                context.lineWidth = 0.5;
-                context.strokeRect(volumeLeft + 0.25, profileTop + 0.25, Math.max(0.5, volumeWidth - 0.5), Math.max(0.5, profileHeight - 0.5));
-                context.restore();
-              }
+              drawRightFacingVolumeProfileRow(
+                context,
+                volumeLeft,
+                profileTop,
+                volumeWidth,
+                profileHeight,
+                options.perBarVolumeColor,
+                options.perBarProfileOpacity,
+                options.perBarProfileOutline,
+              );
             }
 
             if (options.showPerBarProfilePoc && row.isPoc) {

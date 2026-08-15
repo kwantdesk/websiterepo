@@ -104,6 +104,9 @@ test("per-bar volume and delta profiles share the footprint execution rows", () 
   assert.match(primitive, /options\.showPerBarProfilePoc && row\.isPoc/);
   assert.match(primitive, /deltaLeft = left - options\.perBarProfileGap - deltaWidth/);
   assert.match(primitive, /volumeLeft = left \+ barWidth \+ options\.perBarProfileGap/);
+  assert.match(primitive, /drawRightFacingVolumeProfileRow/);
+  assert.match(primitive, /path\.roundRect\(x, y, width, rowHeight, \[0, radius, radius, 0\]\)/);
+  assert.doesNotMatch(primitive, /context\.fillRect\(volumeLeft, profileTop, volumeWidth, profileHeight\)/);
   assert.match(chart, /profileSideWidth \* 2[\s\S]*footprintPrimitiveOptions\.perBarProfileGap \* 2/);
   assert.match(settings, /"order-flow": \{[\s\S]*showPerBarVolumeProfile: true,[\s\S]*showPerBarDeltaProfile: true/);
 });

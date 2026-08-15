@@ -2915,7 +2915,7 @@ export default function Chart({
     if (footprintIndicator) {
       const profileLayerEnabled = footprintPrimitiveOptions.showPerBarVolumeProfile
         || footprintPrimitiveOptions.showPerBarDeltaProfile;
-      const profileSideWidth = footprintPrimitiveOptions.barWidth * 0.5
+      const profileSideWidth = footprintPrimitiveOptions.barWidth
         * (footprintPrimitiveOptions.perBarProfileWidthPercent / 100);
       const renderedBarSpacing = footprintPrimitiveOptions.barWidth
         + footprintPrimitiveOptions.candleSpacing
