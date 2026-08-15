@@ -61,6 +61,18 @@ export type GexIntervalMapPoint = {
 export type GexIntervalMapLevelKind = "MAX_POSITIVE" | "MAX_NEGATIVE" | "DOMINANT_ABSOLUTE" | "CALL_WALL" | "PUT_WALL";
 export type GexIntervalMapLevel = { kind: GexIntervalMapLevelKind; label: string; price: number; value: number };
 
+export type GexIntervalMapTrackPoint = {
+  timestamp: number;
+  price: number;
+  value: number;
+};
+
+export type GexIntervalMapTracks = {
+  maxPositive: GexIntervalMapTrackPoint[];
+  maxNegative: GexIntervalMapTrackPoint[];
+  underlyingPrice: GexIntervalMapTrackPoint[];
+};
+
 export type GexIntervalMapSnapshot = {
   id: string;
   sourceTicker: string;
@@ -74,6 +86,7 @@ export type GexIntervalMapSnapshot = {
   content: GexIntervalMapContent;
   points: GexIntervalMapPoint[];
   levels: GexIntervalMapLevel[];
+  tracks: GexIntervalMapTracks;
   netExposure: number;
   grossExposure: number;
   skippedMappingBuckets: number;
@@ -91,6 +104,7 @@ export type GexIntervalMapBuildSettings = {
   minimumAbsoluteExposure: number;
   maximumDistancePoints: number;
   maximumPoints: number;
+  maximumStrikesPerBucket?: number;
   hideZeroValues?: boolean;
 };
 
@@ -101,6 +115,8 @@ const finite = (value: unknown) => {
   const number = typeof value === "number" ? value : Number(value);
   return Number.isFinite(number) ? number : null;
 };
+
+const normalizeEpochMs = (value: number) => value < 100_000_000_000 ? value * 1_000 : value;
 
 export function defaultGexIntervalMapSource(displayInstrument: string) {
   const display = normalizeGammaHeatmapInstrument(displayInstrument);
@@ -130,7 +146,8 @@ export function normalizeGexIntervalProviderPayload(input: {
   if (record(input.pricePayload) && record(input.pricePayload.data)) {
     for (const [timestampKey, raw] of Object.entries(input.pricePayload.data)) {
       if (!record(raw)) continue;
-      const timestamp = finite(timestampKey);
+      const timestampValue = finite(timestampKey);
+      const timestamp = timestampValue === null ? null : normalizeEpochMs(timestampValue);
       const price = finite(raw.closePrice);
       if (timestamp !== null && price !== null && price > 0) priceByTimestamp.set(timestamp, price);
     }
@@ -138,7 +155,8 @@ export function normalizeGexIntervalProviderPayload(input: {
   const buckets: GexIntervalProviderBucket[] = [];
   if (record(input.payload) && record(input.payload.data)) {
     for (const [timestampKey, rawBucket] of Object.entries(input.payload.data)) {
-      const timestamp = finite(timestampKey);
+      const timestampValue = finite(timestampKey);
+      const timestamp = timestampValue === null ? null : normalizeEpochMs(timestampValue);
       if (timestamp === null || !record(rawBucket)) continue;
       const rows: GexIntervalProviderRow[] = [];
       for (const [expirationDate, rawExpiry] of Object.entries(rawBucket)) {
@@ -260,6 +278,46 @@ function deriveLevels(points: GexIntervalMapPoint[]): GexIntervalMapLevel[] {
   ].filter((level): level is GexIntervalMapLevel => level !== null);
 }
 
+function deriveTracks(points: GexIntervalMapPoint[]): GexIntervalMapTracks {
+  const byTimestamp = new Map<number, GexIntervalMapPoint[]>();
+  for (const point of points) {
+    const bucket = byTimestamp.get(point.timestamp) ?? [];
+    bucket.push(point);
+    byTimestamp.set(point.timestamp, bucket);
+  }
+  const tracks: GexIntervalMapTracks = { maxPositive: [], maxNegative: [], underlyingPrice: [] };
+  for (const [timestamp, bucket] of [...byTimestamp.entries()].sort((left, right) => left[0] - right[0])) {
+    const positive = bucket.filter((point) => point.net > 0).sort((left, right) => right.net - left.net)[0];
+    const negative = bucket.filter((point) => point.net < 0).sort((left, right) => left.net - right.net)[0];
+    const mapping = bucket[0]?.mapping;
+    if (positive) tracks.maxPositive.push({ timestamp, price: positive.mappedPrice, value: positive.net });
+    if (negative) tracks.maxNegative.push({ timestamp, price: negative.mappedPrice, value: negative.net });
+    if (mapping?.displayMidPrice && mapping.displayMidPrice > 0) {
+      tracks.underlyingPrice.push({ timestamp, price: mapping.displayMidPrice, value: 0 });
+    }
+  }
+  return tracks;
+}
+
+function retainCompleteLatestBuckets(points: GexIntervalMapPoint[], maximumPoints: number) {
+  if (points.length <= maximumPoints) return points;
+  const byTimestamp = new Map<number, GexIntervalMapPoint[]>();
+  for (const point of points) {
+    const bucket = byTimestamp.get(point.timestamp) ?? [];
+    bucket.push(point);
+    byTimestamp.set(point.timestamp, bucket);
+  }
+  const retained: GexIntervalMapPoint[][] = [];
+  let retainedCount = 0;
+  const buckets = [...byTimestamp.entries()].sort((left, right) => right[0] - left[0]);
+  for (const [, bucket] of buckets) {
+    if (retainedCount > 0 && retainedCount + bucket.length > maximumPoints) break;
+    retained.push(bucket);
+    retainedCount += bucket.length;
+  }
+  return retained.reverse().flat();
+}
+
 export function buildGexIntervalMapSnapshot(
   surface: GexIntervalProviderSurface,
   displayInstrumentInput: string,
@@ -318,7 +376,14 @@ export function buildGexIntervalMapSnapshot(
         }
       }
     }
-    const strikes = new Set([...aggregatedSource.keys(), ...comparison.keys()]);
+    let strikes = [...new Set([...aggregatedSource.keys(), ...comparison.keys()])];
+    const maximumStrikes = Math.max(0, Math.floor(settings.maximumStrikesPerBucket ?? 0));
+    if (maximumStrikes > 0 && strikes.length > maximumStrikes) {
+      strikes = strikes
+        .sort((left, right) => Math.abs(left - sourcePrice) - Math.abs(right - sourcePrice))
+        .slice(0, maximumStrikes)
+        .sort((left, right) => left - right);
+    }
     const mapped = new Map<number, GexIntervalMapPoint>();
     let bucketRawNetExposure = 0;
     let bucketRawGrossExposure = 0;
@@ -366,14 +431,15 @@ export function buildGexIntervalMapSnapshot(
         });
       }
     }
-    const bucketMagnitude = [...mapped.values()].reduce((sum, point) => sum + Math.abs(point.value), 0);
-    if (bucketMagnitude > 0) for (const point of mapped.values()) point.percentageOfBucketMagnitude = Math.abs(point.value) / bucketMagnitude;
+    const visibleMapped = [...mapped.values()].filter((point) => settings.hideZeroValues === false || Math.abs(point.value) > 1e-9);
+    const bucketMagnitude = visibleMapped.reduce((sum, point) => sum + Math.abs(point.value), 0);
+    if (bucketMagnitude > 0) for (const point of visibleMapped) point.percentageOfBucketMagnitude = Math.abs(point.value) / bucketMagnitude;
     latestRawNetExposure = bucketRawNetExposure;
     latestRawGrossExposure = bucketRawGrossExposure;
-    points.push(...mapped.values());
+    points.push(...visibleMapped);
     if (bucketIndex === 0) for (const [strike, row] of aggregatedSource) baselineRows.set(strike, { call: row.call, put: row.put });
   }
-  const bounded = points.slice(-Math.max(100, settings.maximumPoints));
+  const bounded = retainCompleteLatestBuckets(points, Math.max(100, settings.maximumPoints));
   const visibleMagnitude = bounded.reduce((sum, point) => sum + Math.abs(point.value), 0);
   if (visibleMagnitude > 0) for (const point of bounded) point.percentageOfVisibleMagnitude = Math.abs(point.value) / visibleMagnitude;
   return {
@@ -389,6 +455,7 @@ export function buildGexIntervalMapSnapshot(
     content: settings.content,
     points: bounded,
     levels: deriveLevels(bounded),
+    tracks: deriveTracks(bounded),
     netExposure: latestRawNetExposure,
     grossExposure: latestRawGrossExposure,
     skippedMappingBuckets,

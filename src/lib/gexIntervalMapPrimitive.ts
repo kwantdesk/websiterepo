@@ -30,6 +30,12 @@ export type GexIntervalMapPrimitiveData = {
   currentBucketScaleMultiplier: number;
   currentBucketOpacityMultiplier: number;
   showCurrentBucketOutline: boolean;
+  hollowBubbles: boolean;
+  bubbleStrokeWidth: number;
+  bubbleFillStrength: number;
+  showLevelTracks: boolean;
+  showUnderlyingPriceLine: boolean;
+  trackWidth: number;
   showLevels: boolean;
   showMaxPositive: boolean;
   showMaxNegative: boolean;
@@ -94,13 +100,20 @@ class Renderer implements ISeriesPrimitivePaneRenderer {
             : Math.max(1, ...visibleMagnitudes);
       const latestTimestamp = Math.max(...visible.map(({ point }) => point.timestamp));
       const normalize = (value: number) => {
-        const normalized = Math.max(0, Math.min(1, Math.abs(value) / ceiling));
+        const normalized = Math.max(0, Math.min(1, (Math.abs(value) * data.intensity) / ceiling));
         if (data.scaleTransform === "linear") return normalized;
         if (data.scaleTransform === "logarithmic") return Math.log1p(data.logStrength * normalized) / Math.log1p(data.logStrength);
         return Math.sqrt(normalized);
       };
       context.save();
       context.beginPath(); context.rect(0, 0, mediaSize.width, mediaSize.height); context.clip();
+      if (data.showLevelTracks) {
+        this.drawTrack(context, data.snapshot.tracks?.maxPositive ?? [], chart, series, data.positiveColor, data.trackWidth, [5, 4]);
+        this.drawTrack(context, data.snapshot.tracks?.maxNegative ?? [], chart, series, data.negativeColor, data.trackWidth, [5, 4]);
+      }
+      if (data.showUnderlyingPriceLine) {
+        this.drawTrack(context, data.snapshot.tracks?.underlyingPrice ?? [], chart, series, data.neutralColor, Math.max(1, data.trackWidth * 0.8), []);
+      }
       if (data.visualMode === "horizontal-ribbons" || data.visualMode === "hybrid") {
         const byPrice = new Map<number, typeof visible>();
         for (const item of visible) {
@@ -135,11 +148,16 @@ class Renderer implements ISeriesPrimitivePaneRenderer {
           context.beginPath(); context.arc(x, y, radius, 0, Math.PI * 2);
           if (data.snapshot.content === "call-put-split") {
             context.save(); context.beginPath(); context.rect(x - radius, y - radius, radius, radius * 2); context.clip();
-            context.fillStyle = rgba(data.callColor, alpha); context.fill(); context.restore();
+            context.fillStyle = rgba(data.callColor, alpha * data.bubbleFillStrength); context.fill(); context.restore();
             context.save(); context.beginPath(); context.rect(x, y - radius, radius, radius * 2); context.clip();
-            context.fillStyle = rgba(data.putColor, alpha); context.fill(); context.restore();
-          } else { context.fillStyle = rgba(color, alpha); context.fill(); }
-          context.strokeStyle = rgba(color, Math.min(1, alpha + 0.25)); context.lineWidth = 1; context.stroke();
+            context.fillStyle = rgba(data.putColor, alpha * data.bubbleFillStrength); context.fill(); context.restore();
+          } else {
+            context.fillStyle = rgba(color, alpha * (data.hollowBubbles ? data.bubbleFillStrength : 1));
+            context.fill();
+          }
+          context.strokeStyle = rgba(color, Math.min(1, Math.max(0.34, alpha + 0.3)));
+          context.lineWidth = data.bubbleStrokeWidth;
+          context.stroke();
           if (isCurrent && data.showCurrentBucketOutline) {
             context.beginPath(); context.arc(x, y, radius + 1.5, 0, Math.PI * 2);
             context.strokeStyle = rgba(data.neutralColor, 0.9); context.lineWidth = 1; context.stroke();
@@ -163,6 +181,34 @@ class Renderer implements ISeriesPrimitivePaneRenderer {
       }
       context.restore();
     });
+  }
+
+  private drawTrack(
+    context: CanvasRenderingContext2D,
+    points: Array<{ timestamp: number; price: number }>,
+    chart: IChartApi,
+    series: CandleSeriesApi,
+    color: string,
+    width: number,
+    dash: number[],
+  ) {
+    const coordinates = points.map((point) => ({
+      x: chart.timeScale().timeToCoordinate(Math.floor(point.timestamp / 1_000) as Time),
+      y: series.priceToCoordinate(point.price),
+    })).filter((point): point is { x: NonNullable<typeof point.x>; y: NonNullable<typeof point.y> } => point.x !== null && point.y !== null);
+    if (coordinates.length < 2) return;
+    context.save();
+    context.beginPath();
+    coordinates.forEach((point, index) => index === 0
+      ? context.moveTo(Number(point.x), Number(point.y))
+      : context.lineTo(Number(point.x), Number(point.y)));
+    context.strokeStyle = rgba(color, 0.82);
+    context.lineWidth = width;
+    context.setLineDash(dash);
+    context.lineJoin = "round";
+    context.lineCap = "round";
+    context.stroke();
+    context.restore();
   }
 
   private drawLevels(

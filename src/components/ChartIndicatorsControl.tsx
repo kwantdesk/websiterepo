@@ -979,7 +979,7 @@ export default function ChartIndicatorsControl({
                       onChange={(event) => {
                         const preset = event.target.value;
                         const presetSettings: Record<string, string | number | boolean> = preset === "zero-dte-scalper"
-                          ? { mode: "raw", baseline: "previous-bucket", expirationMode: "zero-dte", contentMode: "net", visualMode: "bubbles", aggregationPeriod: "1m", maximumPoints: 60, currentBucketScaleMultiplier: 135, currentBucketOpacityMultiplier: 135, showLevels: true, showMaxPositive: true, showMaxNegative: true, showCallWall: true, showPutWall: true }
+                          ? { mode: "raw", baseline: "previous-bucket", expirationMode: "zero-dte", contentMode: "net", visualMode: "bubbles", aggregationPeriod: "1m", maximumPoints: 20000, maximumStrikesPerBucket: 60, currentBucketScaleMultiplier: 135, currentBucketOpacityMultiplier: 135, showLevels: true, showLevelTracks: true, showMaxPositive: true, showMaxNegative: true, showCallWall: true, showPutWall: true }
                           : preset === "build-unwind"
                             ? { mode: "difference", baseline: "previous-bucket", expirationMode: "zero-to-one-dte", contentMode: "net", visualMode: "fixed-dots", aggregationPeriod: "1m", showLevels: false, showMaxPositive: false, showMaxNegative: false, showCallWall: false, showPutWall: false }
                             : preset === "heat-ribbon"
@@ -987,7 +987,7 @@ export default function ChartIndicatorsControl({
                               : preset === "full-chain-structure"
                                 ? { mode: "raw", expirationMode: "all-expirations", contentMode: "net", visualMode: "bubbles", aggregationPeriod: "5m", minimumOpacity: 5, maximumDistancePoints: 0, maximumPoints: 15000, showLevels: true }
                                 : preset === "minimal-nodes"
-                                  ? { mode: "raw", expirationMode: "zero-to-one-dte", contentMode: "net", visualMode: "bubbles", aggregationPeriod: "1m", maximumPoints: 20, opacity: 58, showLevels: true, showValues: false, showMaxPositive: true, showMaxNegative: true, showDominantAbsolute: false, showCallWall: false, showPutWall: false }
+                                  ? { mode: "raw", expirationMode: "zero-to-one-dte", contentMode: "net", visualMode: "bubbles", aggregationPeriod: "1m", maximumPoints: 20000, maximumStrikesPerBucket: 20, opacity: 58, showLevels: true, showLevelTracks: true, showValues: false, showMaxPositive: true, showMaxNegative: true, showDominantAbsolute: false, showCallWall: false, showPutWall: false }
                                   : preset === "historical-replay"
                                     ? { mode: "raw", baseline: "previous-bucket", historyMode: "session-date", expirationMode: "zero-to-one-dte", contentMode: "net", visualMode: "bubbles", aggregationPeriod: "5m", highlightCurrentBucket: false, showCurrentBucketOutline: false, showLevels: true }
                                     : { mode: "raw", baseline: "previous-bucket", historyMode: "current-session", expirationMode: "zero-to-one-dte", contentMode: "net", visualMode: "bubbles", aggregationPeriod: "1m", scaleMode: "visible-percentile", scalePercentile: 98, scaleTransform: "square-root", showLevels: true, showMaxPositive: true, showMaxNegative: true, showCallWall: false, showPutWall: false };
@@ -1007,7 +1007,7 @@ export default function ChartIndicatorsControl({
                   </label>
                   {[
                     ["Options source", "sourceTicker", [["AUTO", "Automatic"], ["QQQ", "QQQ"], ["NDX", "NDX"], ["NQ", "NQ options"], ["SPY", "SPY"], ["SPX", "SPX"]]],
-                    ["Provider interval", "aggregationPeriod", [["1m", "1 minute"], ["2m", "2 minutes"], ["5m", "5 minutes"], ["10m", "10 minutes"], ["15m", "15 minutes"], ["30m", "30 minutes"], ["1h", "1 hour"]]],
+                    ["Provider interval", "aggregationPeriod", [["1m", "1 minute"], ["2m", "2 minutes"], ["3m", "3 minutes"], ["4m", "4 minutes"], ["5m", "5 minutes"], ["10m", "10 minutes"], ["15m", "15 minutes"], ["30m", "30 minutes"], ["1h", "1 hour"]]],
                     ["History", "historyMode", [["current-session", "Current / last session"], ["session-date", "Historical session date"], ["custom-range", "Custom ISO range"]]],
                     ["Mode", "mode", [["raw", "Raw exposure"], ["difference", "Exposure difference"]]],
                     ["Difference baseline", "baseline", [["previous-bucket", "Previous bucket"], ["session-open", "Session open"], ["rolling-average", "Rolling average"]]],

@@ -163,11 +163,15 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
     { key: "customBinSizePoints", label: "Custom mapped bin (points)", defaultValue: 1, min: 0.25, max: 100, step: 0.25 },
     { key: "minimumAbsoluteExposure", label: "Minimum absolute exposure", defaultValue: 0, min: 0, max: 100000000000, step: 1000000 },
     { key: "maximumDistancePoints", label: "Maximum distance from price · 0 = all", defaultValue: 0, min: 0, max: 10000, step: 1 },
-    { key: "maximumPoints", label: "Maximum retained map points", defaultValue: 12000, min: 500, max: 50000, step: 500 },
+    { key: "maximumPoints", label: "Maximum retained map points", defaultValue: 20000, min: 500, max: 75000, step: 500 },
+    { key: "maximumStrikesPerBucket", label: "Visible strikes per interval · 0 = all", defaultValue: 80, min: 0, max: 500, step: 5 },
     { key: "opacity", label: "Map opacity (%)", defaultValue: 68, min: 5, max: 100, step: 1 },
     { key: "intensity", label: "Intensity", defaultValue: 1, min: 0.25, max: 4, step: 0.05 },
-    { key: "minimumRadius", label: "Minimum point radius", defaultValue: 2, min: 1, max: 12, step: 0.5 },
-    { key: "maximumRadius", label: "Maximum point radius", defaultValue: 12, min: 3, max: 40, step: 0.5 },
+    { key: "minimumRadius", label: "Minimum bubble radius", defaultValue: 3, min: 1, max: 12, step: 0.5 },
+    { key: "maximumRadius", label: "Maximum bubble radius", defaultValue: 18, min: 3, max: 40, step: 0.5 },
+    { key: "bubbleStrokeWidth", label: "Bubble outline width", defaultValue: 1.25, min: 0.5, max: 4, step: 0.25 },
+    { key: "bubbleFillStrength", label: "Bubble fill strength (%)", defaultValue: 12, min: 0, max: 100, step: 1 },
+    { key: "trackWidth", label: "Max GEX track width", defaultValue: 1.5, min: 0.5, max: 5, step: 0.25 },
     { key: "cellWidth", label: "Heat cell width", defaultValue: 10, min: 2, max: 40, step: 1 },
     { key: "fixedDotRadius", label: "Fixed-dot radius", defaultValue: 3, min: 1, max: 20, step: 0.5 },
     { key: "minimumOpacity", label: "Minimum opacity (%)", defaultValue: 10, min: 0, max: 100, step: 1 },
@@ -644,6 +648,9 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
     scaleTransform: "square-root",
     highlightCurrentBucket: true,
     showCurrentBucketOutline: true,
+    hollowBubbles: true,
+    showLevelTracks: true,
+    showUnderlyingPriceLine: false,
     showMaxPositive: true,
     showMaxNegative: true,
     showDominantAbsolute: false,
@@ -667,7 +674,7 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
     callColor: theme?.upColor ?? "#22C55E",
     putColor: theme?.downColor ?? "#EF4444",
     neutralColor: theme?.gridColor ?? "#A1A1AA",
-    gexIntervalMapSettingsVersion: 1,
+    gexIntervalMapSettingsVersion: 2,
   } : {}),
   ...(indicatorId === "dark-pool-map" ? {
     preset: "balanced",
@@ -1154,7 +1161,7 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
     }
     const enumValues: Record<string, string[]> = {
       sourceTicker: ["AUTO", "QQQ", "NDX", "NQ", "SPY", "SPX"],
-      aggregationPeriod: ["1m", "2m", "5m", "10m", "15m", "30m", "1h"],
+      aggregationPeriod: ["1m", "2m", "3m", "4m", "5m", "10m", "15m", "30m", "1h"],
       historyMode: ["current-session", "session-date", "custom-range"],
       mode: ["raw", "difference"],
       baseline: ["previous-bucket", "session-open", "rolling-average"],
@@ -1166,8 +1173,17 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
       scaleTransform: ["linear", "square-root", "logarithmic"],
     };
     for (const [key, allowed] of Object.entries(enumValues)) if (!allowed.includes(String(settings[key]))) settings[key] = defaults[key];
+    if (Number(settings.gexIntervalMapSettingsVersion ?? 0) < 2) {
+      settings.visualMode = "bubbles";
+      settings.maximumPoints = Math.max(20_000, Number(settings.maximumPoints ?? 0));
+      settings.minimumRadius = Math.max(3, Number(settings.minimumRadius ?? 0));
+      settings.maximumRadius = Math.max(18, Number(settings.maximumRadius ?? 0));
+      settings.hollowBubbles = true;
+      settings.showLevelTracks = true;
+      settings.showUnderlyingPriceLine = false;
+    }
     for (const unsafeKey of ["apiKey", "credential", "credentials", "providerCredential", "liveSnapshot", "snapshotData", "buckets", "points"]) delete settings[unsafeKey];
-    return { ...normalizedInstance, settings: { ...settings, gexIntervalMapSettingsVersion: 1 } };
+    return { ...normalizedInstance, settings: { ...settings, gexIntervalMapSettingsVersion: 2 } };
   }
   if (
     normalizedInstance.indicatorId === "depth-of-market"

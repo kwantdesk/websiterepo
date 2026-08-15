@@ -34,13 +34,22 @@ export async function GET(request: NextRequest) {
   const aggregationPeriod = request.nextUrl.searchParams.get("aggregationPeriod") || "1m";
   if (!ALLOWED_DISPLAYS.has(display)) return NextResponse.json({ error: "This display instrument is not supported by GEX Interval Map." }, { status: 400 });
   if (!ALLOWED_SOURCES.has(source)) return NextResponse.json({ error: "This options source is not supported by GEX Interval Map." }, { status: 400 });
-  if (!/^(1m|2m|5m|10m|15m|30m|1h)$/.test(aggregationPeriod)) return NextResponse.json({ error: "Unsupported interval aggregation." }, { status: 400 });
+  if (!/^(1m|2m|3m|4m|5m|10m|15m|30m|1h)$/.test(aggregationPeriod)) return NextResponse.json({ error: "Unsupported interval aggregation." }, { status: 400 });
   if (sessionDate && !/^\d{4}-\d{2}-\d{2}$/.test(sessionDate)) return NextResponse.json({ error: "Historical session date must use YYYY-MM-DD." }, { status: 400 });
+  if (sessionDate) {
+    const requested = Date.parse(`${sessionDate}T00:00:00.000Z`);
+    const oldest = new Date();
+    oldest.setUTCMonth(oldest.getUTCMonth() - 9);
+    if (!Number.isFinite(requested) || requested < oldest.getTime() || requested > Date.now()) {
+      return NextResponse.json({ error: "Historical Interval Map sessions are available for the previous nine months." }, { status: 400 });
+    }
+  }
   if ((startTime && !endTime) || (!startTime && endTime)) return NextResponse.json({ error: "Both startTime and endTime are required for a custom history range." }, { status: 400 });
   if (startTime && endTime) {
     const startMs = Date.parse(startTime);
     const endMs = Date.parse(endTime);
     if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) return NextResponse.json({ error: "Custom history range is invalid." }, { status: 400 });
+    if (endMs - startMs > 9 * 31 * 24 * 60 * 60_000 || endMs > Date.now()) return NextResponse.json({ error: "Custom Interval Map history is limited to the previous nine months." }, { status: 400 });
   }
   const cacheKey = [source, display, sessionDate ?? "current", startTime ?? "", endTime ?? "", aggregationPeriod].join(":");
   const cached = payloadCache.get(cacheKey);

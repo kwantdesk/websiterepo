@@ -76,6 +76,21 @@ assert.equal(raw.netExposure, 90, "raw totals use the complete latest surface");
 assert.ok(raw.levels.find((level) => level.kind === "DOMINANT_ABSOLUTE"), "latest bucket derives a dominant absolute Net GEX level");
 assert.equal(raw.levels.some((level) => level.kind === "MAX_NEGATIVE"), false, "a Max Negative level is not fabricated when no negative Net GEX exists");
 assert.ok(raw.points.every((point) => Number.isFinite(point.percentageOfBucketMagnitude)), "points retain bucket contribution percentages");
+assert.equal(raw.tracks.maxPositive.length, 2, "the strongest positive strike is tracked through time");
+assert.equal(raw.tracks.underlyingPrice.length, 2, "the synchronized underlying price path is retained");
+
+const zeroNetSurface = normalizeGexIntervalProviderPayload({
+  sourceTicker: "QQQ",
+  sessionDate: "2026-08-14",
+  marketOpen: true,
+  checkedAt: "2026-08-14T14:32:00.000Z",
+  aggregationPeriod: "1m",
+  pricePayload: { data: { 1776177000: { closePrice: 730 } } },
+  payload: { data: { 1776177000: { "2026-08-14": { 730: { CALL: 100, PUT: -100 } } } } },
+});
+assert.equal(zeroNetSurface.buckets[0].timestamp, 1776177000000, "provider timestamps normalize whether supplied in seconds or milliseconds");
+const zeroNet = buildGexIntervalMapSnapshot(zeroNetSurface, "NQ", [displayPrices[0]], baseSettings);
+assert.equal(zeroNet.points.length, 0, "zero net-exposure cells do not create a misleading grid of minimum-size dots");
 
 const difference = buildGexIntervalMapSnapshot(surface, "NQ", displayPrices, { ...baseSettings, mode: "difference" });
 const latest = difference.points.filter((point) => point.timestamp === 1776177060000);
