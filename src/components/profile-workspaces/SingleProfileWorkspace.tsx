@@ -13,6 +13,7 @@ import { readLiveQuoteCache } from "@/lib/liveQuoteCache";
 import { buildTpoProfiles, periodBoundaryForTime, zonedParts } from "@/lib/tpo/engine";
 import { defaultTpoSettings } from "@/lib/tpo/settings";
 import { tickToPrice, type TpoBar, type TpoProfileModel } from "@/lib/tpo/types";
+import type { Candle } from "@/lib/backtester";
 import {
   calculateVolumeProfileValueArea,
   STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT,
@@ -164,6 +165,65 @@ function latestCompletedRthDate(dates: string[]) {
   const afterClose = now.hour > 16 || (now.hour === 16 && now.minute >= 0);
   const todayIsTradingDay = weekday >= 1 && weekday <= 5;
   return dates[todayIsTradingDay && !afterClose ? 1 : 0] ?? dates[0];
+}
+
+function normalizeTpoCandles(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  const candles = new Map<number, Candle>();
+  value.forEach((candidate) => {
+    if (!candidate || typeof candidate !== "object") return;
+    const row = candidate as Record<string, unknown>;
+    const rawTimestamp = Number(row.timestamp ?? row.time);
+    const timestamp = Number.isFinite(rawTimestamp)
+      ? rawTimestamp < 10_000_000_000 ? rawTimestamp * 1000 : rawTimestamp
+      : typeof row.timestamp === "string" || typeof row.time === "string"
+        ? Date.parse(String(row.timestamp ?? row.time))
+        : Number.NaN;
+    const open = Number(row.open);
+    const high = Number(row.high);
+    const low = Number(row.low);
+    const close = Number(row.close);
+    if (
+      !Number.isFinite(timestamp)
+      || !Number.isFinite(open)
+      || !Number.isFinite(high)
+      || !Number.isFinite(low)
+      || !Number.isFinite(close)
+      || open <= 0
+      || close <= 0
+      || low <= 0
+      || high < Math.max(open, close)
+      || low > Math.min(open, close)
+    ) return;
+    candles.set(timestamp, {
+      timestamp,
+      open,
+      high,
+      low,
+      close,
+      volume: Math.max(0, Number(row.volume) || 0),
+      trades: Math.max(0, Number(row.trades) || 0),
+      bidVolume: Math.max(0, Number(row.bidVolume) || 0),
+      askVolume: Math.max(0, Number(row.askVolume) || 0),
+    });
+  });
+  return [...candles.values()].sort((left, right) => left.timestamp - right.timestamp);
+}
+
+async function fetchTpoHistory(symbol: string) {
+  const response = await fetch(
+    `/api/cme-history?symbol=${encodeURIComponent(rootSymbol(symbol))}&timeframe=1m&days=14`,
+    { cache: "no-store", signal: AbortSignal.timeout(45_000) },
+  );
+  const payload: unknown = await response.json().catch(() => null);
+  if (!response.ok || !payload || typeof payload !== "object") return [];
+  return normalizeTpoCandles((payload as { candles?: unknown }).candles);
+}
+
+function mergeTpoCandles(...sources: Candle[][]) {
+  const merged = new Map<number, Candle>();
+  sources.forEach((source) => source.forEach((candle) => merged.set(candle.timestamp, candle)));
+  return [...merged.values()].sort((left, right) => left.timestamp - right.timestamp);
 }
 
 function recurringBoundary(settings: WorkspaceSettings, timestamp = Date.now()) {
@@ -504,11 +564,20 @@ export default function SingleProfileWorkspace({
   }, [instrument]);
 
   const loadTpo = useCallback(async () => {
-    const snapshot = await fetchInstitutionalSnapshot({ symbol: instrument, timeframe: "1m", lookbackBars: 60_000, timeoutMs: 45_000 });
-    if (!snapshot?.candles.length) return null;
-    setLivePrice(snapshot.lastPrice);
-    const tickSize = snapshot.tickSize && snapshot.tickSize > 0 ? snapshot.tickSize : rootSymbol(instrument).includes("ES") || rootSymbol(instrument).includes("NQ") ? 0.25 : 0.01;
-    const bars: TpoBar[] = snapshot.candles.map((candle) => ({
+    // A live Rithmic collector only owns prints observed since its latest
+    // restart. That is not enough to guarantee a completed Friday RTH profile
+    // on a weekend (or after a gateway restart), so the durable CME candle
+    // history is the base and the live snapshot only refreshes its tail.
+    const [snapshot, historicalCandles] = await Promise.all([
+      fetchInstitutionalSnapshot({ symbol: instrument, timeframe: "1m", lookbackBars: 20_000, timeoutMs: 45_000 }),
+      fetchTpoHistory(instrument).catch(() => []),
+    ]);
+    const candles = mergeTpoCandles(historicalCandles, snapshot?.candles ?? []);
+    if (!candles.length) return null;
+    const lastCandle = candles.at(-1)!;
+    setLivePrice(snapshot?.lastPrice ?? lastCandle.close);
+    const tickSize = snapshot?.tickSize && snapshot.tickSize > 0 ? snapshot.tickSize : rootSymbol(instrument).includes("ES") || rootSymbol(instrument).includes("NQ") ? 0.25 : 0.01;
+    const bars: TpoBar[] = candles.map((candle) => ({
       instrumentId: instrument,
       startTimeMs: candle.timestamp,
       endTimeMs: candle.timestamp + 60_000,
@@ -555,9 +624,15 @@ export default function SingleProfileWorkspace({
       engineSettings.dailyEndTime = globex ? "17:00" : settings.endTime;
       engineSettings.enabledWeekdays = globex ? [0, 1, 2, 3, 4] : [1, 2, 3, 4, 5];
     }
-    const profiles = buildTpoProfiles({ trades: [], bars, settings: engineSettings, nowMs: snapshot.asOfMs });
     const previous = settings.preset.startsWith("previous");
-    const completed = profiles.filter((candidate) => candidate.endTimeMs <= snapshot.asOfMs);
+    const dataAsOfMs = Math.max(snapshot?.asOfMs ?? 0, lastCandle.timestamp + 60_000);
+    // Completion is a wall-clock fact, not a last-trade fact. A Friday RTH
+    // profile still completed at 16:00 ET when its final print arrived before
+    // 16:00. Comparing its scheduled end only with the last print incorrectly
+    // rejects it for the entire weekend.
+    const evaluationNowMs = previous ? Math.max(Date.now(), dataAsOfMs) : dataAsOfMs;
+    const profiles = buildTpoProfiles({ trades: [], bars, settings: engineSettings, nowMs: evaluationNowMs });
+    const completed = profiles.filter((candidate) => candidate.endTimeMs <= evaluationNowMs);
     const selected = previous ? completed.at(-1) : profiles.at(-1);
     if (!selected) return null;
     return applyVisibility(tpoView(selected), settings);
