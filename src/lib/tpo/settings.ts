@@ -333,6 +333,7 @@ export function tpoCalculationSettingsKey(settings: TpoIndicatorSettings): strin
     ticksPerRow: settings.ticksPerRow,
     autoTargetRows: settings.autoTargetRows,
     autoGroupFactor: settings.autoGroupFactor,
+    freezeActiveGrouping: settings.freezeActiveGrouping,
     valueAreaPercent: settings.valueAreaPercent,
     initialBalanceSubperiods: settings.initialBalanceSubperiods,
     initialBalanceStartSubperiod: settings.initialBalanceStartSubperiod,

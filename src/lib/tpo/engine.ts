@@ -427,6 +427,7 @@ function buildOneProfile(
   settings: TpoIndicatorSettings,
   source: "exact-trades" | "bar-range",
   nowMs: number,
+  ticksPerRowOverride?: number,
 ): TpoProfileModel | null {
   const periodTrades = trades.filter((trade) => trade.timestampMs >= period.startMs && trade.timestampMs < period.endMs && isInsideSession(trade.timestampMs, settings));
   const periodBars = bars.filter((bar) => bar.endTimeMs > period.startMs && bar.startTimeMs < period.endMs && isInsideSession(bar.startTimeMs, settings));
@@ -440,7 +441,9 @@ function buildOneProfile(
     ? period.endMs
     : Math.max(nowMs + 1, latestSourceMs);
   const tickSize = periodTrades[0]?.tickSize ?? periodBars[0]?.tickSize ?? 0.25;
-  const ticksPerRow = chooseTicksPerRow(periodTrades, periodBars, settings);
+  const ticksPerRow = ticksPerRowOverride == null
+    ? chooseTicksPerRow(periodTrades, periodBars, settings)
+    : Math.max(1, Math.round(ticksPerRowOverride));
   const rows = new Map<number, MutableRow>();
   const subperiodMap = new Map<number, TpoSubperiod>();
   const subperiodMs = settings.subperiodMinutes * 60_000;
@@ -656,18 +659,27 @@ export function buildTpoProfiles({
     const period = periodBoundaryForTime(timestamp, settings);
     if (period) periods.set(period.id, period);
   });
-  return [...periods.values()]
+  const orderedPeriods = [...periods.values()]
     .sort((left, right) => left.startMs - right.startMs)
-    .slice(-settings.profileCount)
-    .map((period) => {
-      const periodHasExactTrades = trades.some((trade) =>
-        trade.timestampMs >= period.startMs && trade.timestampMs < period.endMs);
-      const source = settings.visitSource === "automatic"
-        ? periodHasExactTrades ? "exact-trades" as const : "bar-range" as const
-        : preferredSource;
-      return buildOneProfile(period, trades, bars, settings, source, nowMs);
-    })
-    .filter((profile): profile is TpoProfileModel => profile !== null);
+    .slice(-settings.profileCount);
+  const profiles: TpoProfileModel[] = [];
+  orderedPeriods.forEach((period) => {
+    const periodHasExactTrades = trades.some((trade) =>
+      trade.timestampMs >= period.startMs && trade.timestampMs < period.endMs);
+    const source = settings.visitSource === "automatic"
+      ? periodHasExactTrades ? "exact-trades" as const : "bar-range" as const
+      : preferredSource;
+    const developing = nowMs >= period.startMs && (nowMs < period.endMs || !Number.isFinite(period.endMs));
+    // A developing profile must not abruptly change visual density as its
+    // range expands. Keep its automatic row resolution aligned with the most
+    // recent completed profile so adjacent sessions remain directly comparable.
+    const frozenTicksPerRow = settings.freezeActiveGrouping && developing
+      ? profiles.at(-1)?.ticksPerRow
+      : undefined;
+    const profile = buildOneProfile(period, trades, bars, settings, source, nowMs, frozenTicksPerRow);
+    if (profile) profiles.push(profile);
+  });
+  return profiles;
 }
 
 export function mergeTpoProfileModels(

@@ -98,6 +98,44 @@ test("auction-model TPO settings invalidate the calculated profile", () => {
     settings.tpoCalculationSettingsKey({ ...base, valueAreaPercent: 68 }),
     settings.tpoCalculationSettingsKey(base),
   );
+  assert.notEqual(
+    settings.tpoCalculationSettingsKey({ ...base, freezeActiveGrouping: false }),
+    settings.tpoCalculationSettingsKey(base),
+  );
+});
+
+test("developing automatic TPO keeps the completed session row resolution", () => {
+  const dayOne = Date.UTC(2026, 7, 10, 1, 0, 0);
+  const dayTwo = Date.UTC(2026, 7, 11, 1, 0, 0);
+  const baseSettings = {
+    ...settings.defaultTpoSettings("daily-tpo"),
+    timezone: "UTC",
+    dailyStartTime: "00:00:00",
+    periodMode: "multiple-profiles",
+    profileCount: 2,
+    visitSource: "bar-range",
+    groupingMode: "automatic",
+    autoTargetRows: 20,
+  };
+  const bars = [
+    { instrumentId: "NQ", startTimeMs: dayOne, endTimeMs: dayOne + 60_000, open: 100, high: 102, low: 100, close: 101, tickSize: 1 },
+    { instrumentId: "NQ", startTimeMs: dayTwo, endTimeMs: dayTwo + 60_000, open: 100, high: 220, low: 100, close: 180, tickSize: 1 },
+  ];
+  const frozen = engine.buildTpoProfiles({
+    trades: [],
+    bars,
+    settings: { ...baseSettings, freezeActiveGrouping: true },
+    nowMs: dayTwo + 3_600_000,
+  });
+  const dynamic = engine.buildTpoProfiles({
+    trades: [],
+    bars,
+    settings: { ...baseSettings, freezeActiveGrouping: false },
+    nowMs: dayTwo + 3_600_000,
+  });
+  assert.equal(frozen.length, 2);
+  assert.equal(frozen[1].ticksPerRow, frozen[0].ticksPerRow);
+  assert.ok(dynamic[1].ticksPerRow > dynamic[0].ticksPerRow);
 });
 
 test("exact executions allocate one TPO visit per price row and subperiod", () => {
