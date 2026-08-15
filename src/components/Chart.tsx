@@ -244,6 +244,7 @@ interface ChartProps {
   backgroundZones?: ChartZone[];
   instrument?: string;
   chartInstanceId?: string;
+  keyboardActive?: boolean;
   workspaceId?: string;
   contractSymbol?: string | null;
   timeframe?: string;
@@ -2009,6 +2010,7 @@ const DEFAULT_RIGHT_CANDLE_PADDING = 8;
 // component for every raw pan/zoom event makes pointer input monopolise the
 // main thread, especially with several workspace charts mounted.
 const VIEWPORT_REACT_REFRESH_INTERVAL_MS = 64;
+let activeChartKeyboardTargetId: string | null = null;
 
 function resetChartViewport(
   chart: IChartApi,
@@ -2364,6 +2366,7 @@ export default function Chart({
   backgroundZones = [],
   instrument = "Instrument",
   chartInstanceId = "primary",
+  keyboardActive = true,
   workspaceId = "default-workspace",
   contractSymbol = null,
   timeframe,
@@ -2650,6 +2653,24 @@ export default function Chart({
       },
     );
   }
+
+  const returnToLiveViewport = useCallback(() => {
+    const chart = chartRef.current;
+    const candleSeries = candleSeriesRef.current;
+    if (!chart || !candleSeries) return;
+    if (viewportResetFrameRef.current !== null) {
+      window.cancelAnimationFrame(viewportResetFrameRef.current);
+    }
+    viewportResetFrameRef.current = resetChartViewport(
+      chart,
+      candleSeries,
+      drawingCandlesRef.current.length,
+      () => {
+        viewportResetFrameRef.current = null;
+        setViewportVersion((current) => current + 1);
+      },
+    );
+  }, []);
 
   useEffect(() => {
     drawingCandlesRef.current = candles;
@@ -8050,7 +8071,19 @@ export default function Chart({
       const isTypingContext =
         tagName === "input" ||
         tagName === "textarea" ||
+        tagName === "select" ||
         target?.isContentEditable;
+
+      if (
+        keyboardActive
+        && !isTypingContext
+        && event.key === "End"
+        && activeChartKeyboardTargetId === chartInstanceId
+      ) {
+        event.preventDefault();
+        returnToLiveViewport();
+        return;
+      }
 
       const commandKey = event.ctrlKey || event.metaKey;
       if (!isTypingContext && commandKey && event.key.toLowerCase() === "z") {
@@ -8129,7 +8162,7 @@ export default function Chart({
     return () => {
       document.removeEventListener("keydown", onKeyDown);
     };
-  }, [drawingHistoryRevision, drawings.length, selectedDrawingId, showObjectsPanel]);
+  }, [chartInstanceId, drawingHistoryRevision, drawings.length, keyboardActive, returnToLiveViewport, selectedDrawingId, showObjectsPanel]);
 
   useEffect(() => {
     if (!contextMenu) return;
@@ -8698,8 +8731,12 @@ export default function Chart({
       <div
         ref={chartContainerRef}
         className="relative h-full min-w-0 flex-1 overflow-hidden"
+        data-chart-instance-id={chartInstanceId}
         data-volume-profile-count={volumeProfiles.length}
         data-volume-profile-provider={volumeProfiles.at(-1)?.provider ?? "none"}
+        onPointerDownCapture={() => {
+          activeChartKeyboardTargetId = chartInstanceId;
+        }}
       >
       {!chartVisualReady ? (
         <div className="pointer-events-auto absolute inset-0 z-[90]" style={{ backgroundColor: settings.backgroundColor }}>

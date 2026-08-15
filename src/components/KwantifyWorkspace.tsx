@@ -6129,6 +6129,7 @@ function WorkspaceChartPane({
           backgroundZones={gameplanDecorations.zones}
           instrument={displayCmeSymbol(pane.symbol)}
           chartInstanceId={pane.id}
+          keyboardActive={active}
           contractSymbol={resolvedContractSymbol}
           timeframe={pane.timeframe}
           marketIsActive={marketIsActive}
