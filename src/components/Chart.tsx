@@ -7712,10 +7712,11 @@ export default function Chart({
         return;
       }
       if (!isTypingContext && (event.key === "Delete" || event.key === "Backspace")) {
-        const selected = professionalDrawingManagerRef.current?.getSelectedDrawing();
-        if (selected) {
+        const manager = professionalDrawingManagerRef.current;
+        const selected = manager?.getSelectedDrawings() ?? [];
+        if (selected.length > 0) {
           event.preventDefault();
-          professionalDrawingManagerRef.current?.removeDrawing(selected.id);
+          selected.forEach((drawing) => manager?.removeDrawing(drawing.id));
           return;
         }
       }

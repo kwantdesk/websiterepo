@@ -29,6 +29,7 @@ import type {
 export class DrawingManager {
   private _drawings: Map<string, IDrawing> = new Map();
   private _selectedId: string | null = null;
+  private _selectedIds: Set<string> = new Set();
   private _chart: IChartApi | null = null;
   private _series: ISeriesApi<SeriesType> | null = null;
   private _container: HTMLElement | null = null;
@@ -41,7 +42,12 @@ export class DrawingManager {
   private _dragAnchorIndex: number | null = null;
   private _dragWholeDrawing: boolean = false;
   private _dragStartAnchor: { time: number; price: number } | null = null;
-  private _dragOriginalAnchors: Array<{ time: number; price: number }> = [];
+  private _dragOriginalAnchorsByDrawing: Map<string, Array<{ time: number; price: number }>> = new Map();
+  private _isMarqueeSelecting: boolean = false;
+  private _marqueeStart: Point | null = null;
+  private _marqueeCurrent: Point | null = null;
+  private _marqueeElement: HTMLDivElement | null = null;
+  private _suppressNextClick: boolean = false;
 
   constructor() {
     this.handleMouseDown = this.handleMouseDown.bind(this);
@@ -85,6 +91,7 @@ export class DrawingManager {
     container.addEventListener('mousemove', this.handleMouseMove);
     container.addEventListener('mouseup', this.handleMouseUp);
     container.addEventListener('dblclick', this.handleDoubleClick, true);
+    window.addEventListener('mouseup', this.handleMouseUp);
   }
 
   /**
@@ -110,6 +117,8 @@ export class DrawingManager {
       this._container.removeEventListener('mouseup', this.handleMouseUp);
       this._container.removeEventListener('dblclick', this.handleDoubleClick, true);
     }
+    window.removeEventListener('mouseup', this.handleMouseUp);
+    this.removeMarqueeElement();
 
     this._chart = null;
     this._series = null;
@@ -152,16 +161,15 @@ export class DrawingManager {
     const drawing = this._drawings.get(id);
     if (!drawing) return;
 
-    // Deselect if selected
-    if (this._selectedId === id) {
-      this.deselectAll();
-    }
+    const wasSelected = this._selectedIds.delete(id);
+    if (this._selectedId === id) this._selectedId = this._selectedIds.values().next().value ?? null;
 
     // Detach from chart
     drawing.detach();
 
     this._drawings.delete(id);
     this.emit('drawing:removed', { drawingId: id });
+    if (wasSelected && this._selectedIds.size === 0) this.emit('drawing:deselected', { drawingId: id });
   }
 
   /**
@@ -187,6 +195,7 @@ export class DrawingManager {
     }
     this._drawings.clear();
     this._selectedId = null;
+    this._selectedIds.clear();
     this.emit('drawing:cleared', {});
   }
 
@@ -199,32 +208,40 @@ export class DrawingManager {
     const drawing = this._drawings.get(id);
     if (!drawing) return;
 
-    // Deselect current
-    if (this._selectedId && this._selectedId !== id) {
-      const current = this._drawings.get(this._selectedId);
-      if (current) {
-        current.setState('normal');
-      }
+    for (const selectedId of this._selectedIds) {
+      if (selectedId !== id) this._drawings.get(selectedId)?.setState('normal');
     }
 
     drawing.setState('selected');
     this._selectedId = id;
+    this._selectedIds = new Set([id]);
     this.emit('drawing:selected', { drawingId: id, drawing });
+  }
+
+  /** Select several drawings as one movable and deleteable group. */
+  selectDrawings(ids: string[]): void {
+    const nextIds = new Set(ids.filter((id) => this._drawings.has(id)));
+    for (const [id, drawing] of this._drawings) drawing.setState(nextIds.has(id) ? 'selected' : 'normal');
+    this._selectedIds = nextIds;
+    this._selectedId = ids.find((id) => nextIds.has(id)) ?? null;
+    if (this._selectedId) {
+      const drawing = this._drawings.get(this._selectedId);
+      this.emit('drawing:selected', { drawingId: this._selectedId, drawing });
+    } else {
+      this.emit('drawing:deselected', {});
+    }
   }
 
   /**
    * Deselect all drawings
    */
   deselectAll(): void {
-    if (this._selectedId) {
-      const drawing = this._drawings.get(this._selectedId);
-      if (drawing) {
-        drawing.setState('normal');
-      }
-      const id = this._selectedId;
-      this._selectedId = null;
-      this.emit('drawing:deselected', { drawingId: id });
-    }
+    if (this._selectedIds.size === 0 && !this._selectedId) return;
+    const id = this._selectedId ?? undefined;
+    for (const selectedId of this._selectedIds) this._drawings.get(selectedId)?.setState('normal');
+    this._selectedIds.clear();
+    this._selectedId = null;
+    this.emit('drawing:deselected', { drawingId: id });
   }
 
   /**
@@ -292,6 +309,10 @@ export class DrawingManager {
   // ============ Event Handling ============
 
   private handleClick(params: MouseEventParams): void {
+    if (this._suppressNextClick) {
+      this._suppressNextClick = false;
+      return;
+    }
     if (!params.point) return;
 
     const point: Point = { x: params.point.x, y: params.point.y };
@@ -300,7 +321,7 @@ export class DrawingManager {
     if (!this._activeTool) {
       const hitDrawing = this.hitTest(point);
       if (hitDrawing) {
-        this.selectDrawing(hitDrawing.id);
+        if (!this._selectedIds.has(hitDrawing.id)) this.selectDrawing(hitDrawing.id);
       } else {
         this.deselectAll();
       }
@@ -308,12 +329,24 @@ export class DrawingManager {
   }
 
   private handleMouseDown(event: MouseEvent): void {
-    if (this._activeTool) return;
     const point = this.getPointFromEvent(event);
     if (!point) return;
 
+    if (event.ctrlKey && event.button === 0) {
+      this._isMarqueeSelecting = true;
+      this._marqueeStart = point;
+      this._marqueeCurrent = point;
+      this.deselectAll();
+      this.updateMarqueeElement(point, point);
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+
+    if (this._activeTool) return;
+
     // Check for anchor hit on selected drawing
-    if (this._selectedId) {
+    if (this._selectedId && this._selectedIds.size === 1) {
       const anchorIndex = this.hitTestAnchor(point);
       if (anchorIndex !== null) {
         const drawing = this._drawings.get(this._selectedId);
@@ -333,7 +366,7 @@ export class DrawingManager {
     // the body as a draggable object, matching professional charting tools.
     const hitDrawing = this.hitTest(point);
     if (!hitDrawing) return;
-    this.selectDrawing(hitDrawing.id);
+    if (!this._selectedIds.has(hitDrawing.id)) this.selectDrawing(hitDrawing.id);
     if (hitDrawing.options.locked) return;
 
     const viewport = this.getViewport();
@@ -341,21 +374,32 @@ export class DrawingManager {
     const price = viewport?.priceScale.coordinateToPrice(point.y);
     if (typeof time !== 'number' || price == null || !Number.isFinite(price)) return;
 
-    const numericAnchors = hitDrawing.anchors.flatMap((anchor) =>
-      typeof anchor.time === 'number'
-        ? [{ time: anchor.time, price: anchor.price }]
-        : []
-    );
-    if (numericAnchors.length !== hitDrawing.anchors.length) return;
+    const dragOriginalAnchors = new Map<string, Array<{ time: number; price: number }>>();
+    for (const selected of this.getSelectedDrawings()) {
+      if (selected.options.locked) continue;
+      const numericAnchors = selected.anchors.flatMap((anchor) =>
+        typeof anchor.time === 'number' ? [{ time: anchor.time, price: anchor.price }] : []
+      );
+      if (numericAnchors.length === selected.anchors.length) dragOriginalAnchors.set(selected.id, numericAnchors);
+    }
+    if (dragOriginalAnchors.size === 0) return;
 
     this._isDragging = true;
     this._dragAnchorIndex = null;
     this._dragWholeDrawing = true;
     this._dragStartAnchor = { time, price };
-    this._dragOriginalAnchors = numericAnchors;
-    hitDrawing.setState('editing');
+    this._dragOriginalAnchorsByDrawing = dragOriginalAnchors;
+    for (const drawingId of dragOriginalAnchors.keys()) this._drawings.get(drawingId)?.setState('editing');
+    if (this._selectedIds.size > 1) this._suppressNextClick = true;
     event.preventDefault();
     event.stopPropagation();
+  }
+
+  getSelectedDrawings(): IDrawing[] {
+    return Array.from(this._selectedIds).flatMap((id) => {
+      const drawing = this._drawings.get(id);
+      return drawing ? [drawing] : [];
+    });
   }
 
   private handleDoubleClick(event: MouseEvent): void {
@@ -373,6 +417,15 @@ export class DrawingManager {
   }
 
   private handleMouseMove(event: MouseEvent): void {
+    if (this._isMarqueeSelecting && this._marqueeStart) {
+      const point = this.getPointFromEvent(event);
+      if (!point) return;
+      this._marqueeCurrent = point;
+      this.updateMarqueeElement(this._marqueeStart, point);
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
     if (!this._isDragging) return;
     if (!this._selectedId) return;
 
@@ -392,12 +445,16 @@ export class DrawingManager {
     if (this._dragWholeDrawing && this._dragStartAnchor && typeof time === 'number' && price !== null) {
       const timeDelta = time - this._dragStartAnchor.time;
       const priceDelta = price - this._dragStartAnchor.price;
-      this._dragOriginalAnchors.forEach((anchor, index) => {
-        drawing.updateAnchor(index, {
-          time: (anchor.time + timeDelta) as typeof time,
-          price: anchor.price + priceDelta,
+      for (const [drawingId, anchors] of this._dragOriginalAnchorsByDrawing) {
+        const selectedDrawing = this._drawings.get(drawingId);
+        if (!selectedDrawing) continue;
+        anchors.forEach((anchor, index) => {
+          selectedDrawing.updateAnchor(index, {
+            time: (anchor.time + timeDelta) as typeof time,
+            price: anchor.price + priceDelta,
+          });
         });
-      });
+      }
       this.emit('drawing:updated', { drawingId: drawing.id, drawing });
       event.preventDefault();
       event.stopPropagation();
@@ -412,19 +469,104 @@ export class DrawingManager {
     }
   }
 
-  private handleMouseUp(_event: MouseEvent): void {
-    if (this._isDragging && this._selectedId) {
-      const drawing = this._drawings.get(this._selectedId);
-      if (drawing) {
-        drawing.setState('selected');
-      }
+  private handleMouseUp(event: MouseEvent): void {
+    if (this._isMarqueeSelecting && this._marqueeStart) {
+      const end = this.getPointFromEvent(event) ?? this._marqueeCurrent ?? this._marqueeStart;
+      this.selectDrawingsInRectangle(this._marqueeStart, end);
+      this._isMarqueeSelecting = false;
+      this._marqueeStart = null;
+      this._marqueeCurrent = null;
+      this.hideMarqueeElement();
+      this._suppressNextClick = true;
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+
+    if (this._isDragging) {
+      for (const drawing of this.getSelectedDrawings()) drawing.setState('selected');
     }
 
     this._isDragging = false;
     this._dragAnchorIndex = null;
     this._dragWholeDrawing = false;
     this._dragStartAnchor = null;
-    this._dragOriginalAnchors = [];
+    this._dragOriginalAnchorsByDrawing.clear();
+  }
+
+  private selectDrawingsInRectangle(start: Point, end: Point): void {
+    const viewport = this.getViewport();
+    if (!viewport) return;
+    const left = Math.min(start.x, end.x);
+    const right = Math.max(start.x, end.x);
+    const top = Math.min(start.y, end.y);
+    const bottom = Math.max(start.y, end.y);
+    const width = right - left;
+    const height = bottom - top;
+    if (width < 3 && height < 3) {
+      this.deselectAll();
+      return;
+    }
+
+    const selected: string[] = [];
+    for (const drawing of this._drawings.values()) {
+      if (drawing.options.visible === false || drawing.options.locked || drawing.id === '__kwantdesk_drawing_preview__') continue;
+      const controlPoints = drawing.getControlPoints(viewport);
+      const anchorInside = controlPoints.some((point) =>
+        point.x >= left && point.x <= right && point.y >= top && point.y <= bottom
+      );
+      const boundsIntersect = controlPoints.length > 1
+        && Math.max(...controlPoints.map((point) => point.x)) >= left
+        && Math.min(...controlPoints.map((point) => point.x)) <= right
+        && Math.max(...controlPoints.map((point) => point.y)) >= top
+        && Math.min(...controlPoints.map((point) => point.y)) <= bottom;
+      let lineIntersects = false;
+      if (!anchorInside && !boundsIntersect) {
+        for (let xStep = 0; xStep <= 4 && !lineIntersects; xStep += 1) {
+          for (let yStep = 0; yStep <= 4; yStep += 1) {
+            if (drawing.testHit({
+              x: left + (width * xStep) / 4,
+              y: top + (height * yStep) / 4,
+            }, viewport)) {
+              lineIntersects = true;
+              break;
+            }
+          }
+        }
+      }
+      if (anchorInside || boundsIntersect || lineIntersects) selected.push(drawing.id);
+    }
+    this.selectDrawings(selected);
+  }
+
+  private updateMarqueeElement(start: Point, end: Point): void {
+    if (!this._container) return;
+    if (!this._marqueeElement) {
+      const element = document.createElement('div');
+      element.dataset.chartDrawingMarquee = 'true';
+      element.style.position = 'absolute';
+      element.style.zIndex = '25';
+      element.style.pointerEvents = 'none';
+      element.style.border = '1px solid var(--primary, #a855f7)';
+      element.style.background = 'color-mix(in srgb, var(--primary, #a855f7) 14%, transparent)';
+      element.style.boxShadow = 'inset 0 0 0 1px color-mix(in srgb, var(--primary, #a855f7) 18%, transparent)';
+      this._container.appendChild(element);
+      this._marqueeElement = element;
+    }
+    this._marqueeElement.style.display = 'block';
+    this._marqueeElement.style.left = `${Math.min(start.x, end.x)}px`;
+    this._marqueeElement.style.top = `${Math.min(start.y, end.y)}px`;
+    this._marqueeElement.style.width = `${Math.abs(end.x - start.x)}px`;
+    this._marqueeElement.style.height = `${Math.abs(end.y - start.y)}px`;
+  }
+
+  private hideMarqueeElement(): void {
+    if (this._marqueeElement) this._marqueeElement.style.display = 'none';
+  }
+
+  private removeMarqueeElement(): void {
+    this._marqueeElement?.remove();
+    this._marqueeElement = null;
   }
 
   private getPointFromEvent(event: MouseEvent): Point | null {

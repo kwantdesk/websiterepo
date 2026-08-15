@@ -75,6 +75,18 @@ test("completed line tools open their style and template editor on double-click"
   assert.match(chart, /saveSelectedDrawingTemplate/);
 });
 
+test("control-drag marquee selects, moves and deletes drawing groups without chart panning", () => {
+  assert.match(drawingManager, /event\.ctrlKey && event\.button === 0/);
+  assert.match(drawingManager, /updateMarqueeElement\(point, point\)/);
+  assert.match(drawingManager, /selectDrawingsInRectangle/);
+  assert.match(drawingManager, /getSelectedDrawings\(\): IDrawing\[\]/);
+  assert.match(drawingManager, /_dragOriginalAnchorsByDrawing/);
+  assert.match(drawingManager, /event\.preventDefault\(\)/);
+  assert.match(drawingManager, /event\.stopPropagation\(\)/);
+  assert.match(chart, /const selected = manager\?\.getSelectedDrawings\(\) \?\? \[\]/);
+  assert.match(chart, /selected\.forEach\(\(drawing\) => manager\?\.removeDrawing\(drawing\.id\)\)/);
+});
+
 test("horizontal and vertical lines use exact native axis labels", () => {
   assert.match(horizontalLine, /priceAxisViews\(\): readonly ISeriesPrimitiveAxisView\[\]/);
   assert.match(horizontalLine, /fixedCoordinate: \(\) => this\.priceAxisCoordinate\(\)/);
