@@ -180,6 +180,7 @@ function persistTpoUserPresets(presets: TpoUserPreset[]) {
 // favourite is lost while feed-specific studies are connected and validated.
 export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "gamma-heatmap",
+  "dark-pool-map",
   "volume",
   "delta-bar",
   "delta-highlight",
@@ -929,6 +930,62 @@ export default function ChartIndicatorsControl({
                   ))}
                   <div className="rounded-lg border border-border bg-background/55 px-3 py-2 text-[9px] leading-4 text-muted sm:col-span-2">
                     Historical mapping coefficients are frozen into each snapshot. “Local GEX Sign Transition” is intentionally not labelled as a true gamma flip.
+                  </div>
+                </div>
+              ) : null}
+
+              {settingsDefinition.id === "dark-pool-map" ? (
+                <div className="grid gap-3 border border-primary/15 bg-primary/[0.035] p-3 sm:grid-cols-2">
+                  <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted sm:col-span-2">
+                    <span>Preset</span>
+                    <KwantSelect
+                      value={String(settingsInstance.settings?.preset ?? "balanced")}
+                      onChange={(event) => {
+                        const preset = event.target.value;
+                        const presetSettings = (preset === "institutional"
+                          ? { minimumPrintNotional: 1_000_000, minimumLevelNotional: 25_000_000, topLevels: 20, maximumRadius: 24, visualMode: "circles-and-zones" }
+                          : preset === "live"
+                            ? { historyDays: 1, minimumPrintNotional: 250_000, minimumLevelNotional: 0, pollSeconds: 2, visualMode: "heat-circles" }
+                            : preset === "persistent"
+                              ? { historyDays: 20, topLevels: 15, minimumStrengthScore: 45, visualMode: "lines" }
+                              : preset === "nq-qqq"
+                                ? { sourceTicker: "QQQ", mappingMode: "rolling-affine", historyDays: 2, visualMode: "circles-and-zones" }
+                                : preset === "minimal"
+                                  ? { visualMode: "lines", topLevels: 5, showLevelTable: false, opacity: 45 }
+                                  : { historyDays: 2, minimumPrintNotional: 100_000, minimumLevelNotional: 5_000_000, topLevels: 50, visualMode: "circles-and-zones" }) as Record<string, string | number | boolean>;
+                        replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), preset, ...presetSettings } }));
+                      }}
+                      className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground"
+                      menuLabel="Dark Pool Map preset"
+                    >
+                      <option value="balanced">Balanced</option>
+                      <option value="institutional">Institutional Blocks</option>
+                      <option value="live">Live Prints</option>
+                      <option value="persistent">Persistent Levels</option>
+                      <option value="nq-qqq">NQ QQQ Map</option>
+                      <option value="minimal">Minimal</option>
+                    </KwantSelect>
+                  </label>
+                  {[
+                    ["Source ticker", "sourceTicker", [["AUTO", "Automatic"], ["QQQ", "QQQ"], ["SPY", "SPY"], ["IWM", "IWM"], ["DIA", "DIA"]]],
+                    ["Mapping", "mappingMode", [["rolling-affine", "Rolling affine"], ["live-ratio", "Live ratio"], ["direct", "Direct"], ["manual", "Manual alpha / beta"]]],
+                    ["Visual mode", "visualMode", [["circles-and-zones", "Circles + zones"], ["heat-circles", "Heat circles"], ["zones", "Zones"], ["lines", "Lines"], ["historical-ribbons", "Historical ribbons"]]],
+                    ["Price bins", "priceBinMode", [["mapped-points", "Mapped points"], ["display-ticks", "Display ticks"], ["source-cents", "Source cents"], ["exact-source-price", "Exact source price"]]],
+                  ].map(([label, key, options]) => (
+                    <label key={String(key)} className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                      <span>{String(label)}</span>
+                      <KwantSelect
+                        value={String(settingsInstance.settings?.[String(key)] ?? "")}
+                        onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [String(key)]: event.target.value } }))}
+                        className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground"
+                        menuLabel={String(label)}
+                      >
+                        {(options as string[][]).map(([value, optionLabel]) => <option key={value} value={value}>{optionLabel}</option>)}
+                      </KwantSelect>
+                    </label>
+                  ))}
+                  <div className="border border-border bg-background/55 px-3 py-2 text-[9px] leading-4 text-muted sm:col-span-2">
+                    Dark Pool Map visualizes reported off-exchange equity executions. It does not reveal participant identity, open positions, or guaranteed support and resistance. QQQ→NQ and SPY→ES are explicitly mapped equity data—not direct futures dark pools.
                   </div>
                 </div>
               ) : null}

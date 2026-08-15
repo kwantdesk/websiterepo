@@ -258,6 +258,166 @@ function quantDataPost(path: string, body: JsonRecord, ttlMs = 0) {
   return promise;
 }
 
+/**
+ * Server-only Dark Pool Map adapters. Keeping these beside the existing
+ * QuantData scheduler means all chart/workspace instances share the same
+ * provider cache and rate-limit/backoff policy; no vendor credential or
+ * vendor request is emitted by the browser.
+ */
+export async function getDarkPoolLevelsPayload(sourceTicker: string, startDate: string, endDate: string) {
+  return (await quantDataPost("/equities/tool/dark-pool-levels", {
+    sessionDateRange: { startDate, endDate },
+    filter: { ticker: sourceTicker.toUpperCase() },
+  }, 15_000)).payload;
+}
+
+type DarkPoolPrintWalk = {
+  rows: unknown[];
+  truncated: boolean;
+};
+
+const darkPoolPrintHistoryCache = new Map<string, {
+  expiresAt: number;
+  promise: Promise<DarkPoolPrintWalk>;
+}>();
+
+const DARK_POOL_PRINT_FIELDS = [
+  "ID",
+  "TICKER",
+  "PRICE",
+  "SIZE",
+  "NOTIONAL_VALUE",
+  "PRINT_TYPE",
+  "TRADE_SIDE",
+  "ASK_PRICE",
+  "ASK_SIZE",
+  "BID_PRICE",
+  "BID_SIZE",
+  "IS_DELAYED_PRINT",
+  "TRADE_TIME",
+] as const;
+
+function utcDayAfter(date: string) {
+  const parsed = new Date(`${date}T00:00:00.000Z`);
+  parsed.setUTCDate(parsed.getUTCDate() + 1);
+  return parsed.toISOString();
+}
+
+function quantDataRows(payload: unknown): unknown[] {
+  if (!isRecord(payload)) return [];
+  if (Array.isArray(payload.data)) return payload.data;
+  if (Array.isArray(payload.prints)) return payload.prints;
+  return [];
+}
+
+function quantDataCursor(payload: unknown): string[] | null {
+  if (!isRecord(payload) || !Array.isArray(payload.nextSearchAfter)) return null;
+  const cursor = payload.nextSearchAfter.filter((part): part is string => typeof part === "string");
+  return cursor.length ? cursor : null;
+}
+
+function darkPoolPrintRequest(
+  sourceTicker: string,
+  startDate: string,
+  endDate: string,
+  minimumNotional: number,
+  searchAfter?: string[],
+) {
+  const request: JsonRecord = {
+    timeRange: {
+      startTime: `${startDate}T00:00:00.000Z`,
+      endTime: utcDayAfter(endDate),
+    },
+    filter: {
+      ticker: sourceTicker.toUpperCase(),
+      equityPrintTypes: ["DARK_POOL"],
+    },
+    includes: [...DARK_POOL_PRINT_FIELDS],
+    size: 100,
+    sort: { field: "tradeTime", direction: "DESCENDING" },
+  };
+  if (minimumNotional > 0) {
+    request.filterExpression = {
+      field: "NOTIONAL_VALUE",
+      operation: ">=",
+      value: String(minimumNotional),
+    };
+  }
+  if (searchAfter?.length) request.searchAfter = searchAfter;
+  return request;
+}
+
+async function walkDarkPoolPrintHistory(
+  sourceTicker: string,
+  startDate: string,
+  endDate: string,
+  maximumRows: number,
+  minimumNotional: number,
+): Promise<DarkPoolPrintWalk> {
+  const rows: unknown[] = [];
+  let searchAfter: string[] | undefined;
+  // Cursor walks are sequential. Fifty pages keeps the first load comfortably
+  // inside the serverless duration and provider quota; the renderer retains a
+  // much larger rolling set by merging later two-second head-page refreshes.
+  const maximumPages = Math.min(50, Math.ceil(maximumRows / 100));
+  let truncated = false;
+  for (let page = 0; page < maximumPages && rows.length < maximumRows; page += 1) {
+    const result = await quantDataPost(
+      "/equities/tool/equity-prints",
+      darkPoolPrintRequest(sourceTicker, startDate, endDate, minimumNotional, searchAfter),
+      60_000,
+    );
+    rows.push(...quantDataRows(result.payload));
+    const next = quantDataCursor(result.payload);
+    if (!next) return { rows: rows.slice(0, maximumRows), truncated: false };
+    searchAfter = next;
+  }
+  truncated = Boolean(searchAfter);
+  return { rows: rows.slice(0, maximumRows), truncated };
+}
+
+export async function getDarkPoolPrintsPayload(
+  sourceTicker: string,
+  startDate: string,
+  endDate: string,
+  maximumRows = 100_000,
+  minimumNotional = 0,
+) {
+  const boundedRows = Math.max(100, Math.min(100_000, Math.round(maximumRows)));
+  const boundedNotional = Math.max(0, minimumNotional);
+  const historyKey = `${sourceTicker.toUpperCase()}:${startDate}:${endDate}:${boundedRows}:${boundedNotional}`;
+  const now = Date.now();
+  let history = darkPoolPrintHistoryCache.get(historyKey);
+  if (!history || history.expiresAt <= now) {
+    const promise = walkDarkPoolPrintHistory(
+      sourceTicker,
+      startDate,
+      endDate,
+      boundedRows,
+      boundedNotional,
+    ).catch((error) => {
+      darkPoolPrintHistoryCache.delete(historyKey);
+      throw error;
+    });
+    history = { expiresAt: now + 60_000, promise };
+    darkPoolPrintHistoryCache.set(historyKey, history);
+  }
+
+  const [head, historical] = await Promise.all([
+    quantDataPost(
+      "/equities/tool/equity-prints",
+      darkPoolPrintRequest(sourceTicker, startDate, endDate, boundedNotional),
+      2_000,
+    ),
+    history.promise,
+  ]);
+  return {
+    data: [...quantDataRows(head.payload), ...historical.rows].slice(0, boundedRows),
+    nextSearchAfter: null,
+    truncated: historical.truncated,
+  };
+}
+
 function parseExposure(
   payload: unknown,
   symbol: string,

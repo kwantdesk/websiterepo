@@ -154,6 +154,18 @@ import {
   type GammaHeatmapPayload,
   type GammaHeatmapViewMode,
 } from "@/lib/gammaHeatmap";
+import {
+  defaultDarkPoolSource,
+  isDarkPoolMapPayload,
+  normalizeDarkPoolInstrument,
+  type DarkPoolMapPayload,
+  type DarkPoolVisualMode,
+} from "@/lib/darkPoolMap";
+import {
+  DarkPoolMapPrimitive,
+  type DarkPoolMapHit,
+  type DarkPoolMapPrimitiveData,
+} from "@/lib/darkPoolMapPrimitive";
 import { fetchWorkspaceData } from "@/lib/workspaceDataCache";
 import { STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT } from "@/lib/volumeProfileMath";
 import {
@@ -2464,6 +2476,14 @@ export default function Chart({
   const tpoProfilePrimitiveRef = useRef<TpoProfilePrimitive | null>(null);
   const classicGexProfilePrimitiveRef = useRef<ClassicGexProfilePrimitive | null>(null);
   const gammaHeatmapPrimitiveRef = useRef<GammaHeatmapPrimitive | null>(null);
+  const darkPoolMapPrimitiveRef = useRef<DarkPoolMapPrimitive | null>(null);
+  const darkPoolAlertStateRef = useRef<{
+    key: string;
+    printIds: Set<string>;
+    levelIds: Set<string>;
+    zoneStates: Map<string, string>;
+    lastFired: Map<string, number>;
+  }>({ key: "", printIds: new Set(), levelIds: new Set(), zoneStates: new Map(), lastFired: new Map() });
   const bigTradesPrimitiveRef = useRef<BigTradesPrimitive | null>(null);
   const bigBlocksPrimitiveRef = useRef<BigBlocksPrimitive | null>(null);
   const smtDivergencePrimitiveRef = useRef<SmtDivergencePrimitive | null>(null);
@@ -2568,6 +2588,10 @@ export default function Chart({
   const [gammaHeatmapLoading, setGammaHeatmapLoading] = useState(false);
   const [gammaHeatmapError, setGammaHeatmapError] = useState<string | null>(null);
   const [gammaHeatmapTooltip, setGammaHeatmapTooltip] = useState<GammaHeatmapHit | null>(null);
+  const [darkPoolMapPayload, setDarkPoolMapPayload] = useState<DarkPoolMapPayload | null>(null);
+  const [darkPoolMapLoading, setDarkPoolMapLoading] = useState(false);
+  const [darkPoolMapError, setDarkPoolMapError] = useState<string | null>(null);
+  const [darkPoolMapTooltip, setDarkPoolMapTooltip] = useState<DarkPoolMapHit | null>(null);
   const [tpoPayload, setTpoPayload] = useState<TpoLevelsPayload | null>(null);
   const [tpoLoading, setTpoLoading] = useState(false);
   const [tpoError, setTpoError] = useState<string | null>(null);
@@ -3866,6 +3890,190 @@ export default function Chart({
       container.removeEventListener("pointerleave", leave);
     };
   }, [gammaHeatmapIndicator]);
+
+  const darkPoolMapIndicator = useMemo(
+    () => indicators.find((instance) => instance.enabled && instance.indicatorId === "dark-pool-map") ?? null,
+    [indicators],
+  );
+  useEffect(() => {
+    if (!darkPoolMapIndicator) {
+      setDarkPoolMapPayload(null);
+      setDarkPoolMapLoading(false);
+      setDarkPoolMapError(null);
+      return;
+    }
+    const display = normalizeDarkPoolInstrument(instrument);
+    const indicatorSettings = darkPoolMapIndicator.settings ?? {};
+    const requestedSource = String(indicatorSettings.sourceTicker ?? "AUTO").toUpperCase();
+    const source = requestedSource === "AUTO" ? defaultDarkPoolSource(display) : requestedSource;
+    const refreshMs = Math.max(1_000, Math.min(30_000, Number(indicatorSettings.pollSeconds ?? 2) * 1_000));
+    const querySettings = [
+      "historyDays", "pollSeconds", "minimumPrintNotional", "maximumPrintNotional", "minimumPrintShares", "maximumPrintShares",
+      "minimumLevelNotional", "minimumLevelShares", "minimumTradeCount", "topLevels", "minimumStrengthScore", "mappedBinPoints",
+      "sourceBinCents", "displayTickMultiple", "mergeTolerancePoints", "maximumZoneWidthPoints", "recencyHalfLifeHours",
+      "sessionsForFullPersistenceScore", "maximumHistoricalPrints", "manualAlpha", "manualBeta", "staleAllowanceSeconds",
+      "mappingWindowMinutes", "minimumMappingSamples", "minimumMappingR2",
+    ];
+    const booleanSettings = ["mergeNearbyLevels", "showDelayedPrints", "includeDelayedInLevels", "includeAskSide", "includeBidSide", "includeMid", "includeUnknown"];
+    let cancelled = false;
+    let timer: number | null = null;
+    const load = async (force = false) => {
+      const displayPrice = drawingCandlesRef.current.at(-1)?.close;
+      if (!(displayPrice && displayPrice > 0)) {
+        setDarkPoolMapLoading(true);
+        timer = window.setTimeout(() => void load(force), 500);
+        return;
+      }
+      if (!force) setDarkPoolMapLoading(true);
+      const query = new URLSearchParams({
+        display,
+        source,
+        displayPrice: String(displayPrice),
+        mappingMode: String(indicatorSettings.mappingMode ?? "rolling-affine"),
+        priceBinMode: String(indicatorSettings.priceBinMode ?? "mapped-points"),
+      });
+      querySettings.forEach((key) => {
+        const value = indicatorSettings[key];
+        if (typeof value === "number" && Number.isFinite(value)) query.set(key, String(value));
+      });
+      booleanSettings.forEach((key) => {
+        if (typeof indicatorSettings[key] === "boolean") query.set(key, String(indicatorSettings[key]));
+      });
+      const cacheKey = `dark-pool-map:${display}:${source}:${String(indicatorSettings.mappingMode ?? "rolling-affine")}:${String(indicatorSettings.priceBinMode ?? "mapped-points")}:${querySettings.map((key) => String(indicatorSettings[key] ?? "")).join(":")}:${booleanSettings.map((key) => String(indicatorSettings[key] ?? "")).join(":")}`;
+      try {
+        const payload = await fetchWorkspaceData<DarkPoolMapPayload>(cacheKey, `/api/dark-pool-map?${query}`, {
+          force,
+          maxAgeMs: refreshMs,
+          timeoutMs: 40_000,
+          validate: isDarkPoolMapPayload,
+          invalidMessage: "Dark Pool Map returned an incomplete provider snapshot.",
+        });
+        if (cancelled) return;
+        setDarkPoolMapPayload(payload);
+        setDarkPoolMapError(null);
+      } catch (error) {
+        if (!cancelled) setDarkPoolMapError(error instanceof Error ? error.message : "Dark Pool Map could not refresh.");
+      } finally {
+        if (!cancelled) {
+          setDarkPoolMapLoading(false);
+          timer = window.setTimeout(() => void load(true), refreshMs);
+        }
+      }
+    };
+    void load(false);
+    return () => {
+      cancelled = true;
+      if (timer !== null) window.clearTimeout(timer);
+    };
+  }, [darkPoolMapIndicator, instrument]);
+
+  const darkPoolMapPrimitiveData = useMemo<DarkPoolMapPrimitiveData | null>(() => {
+    if (!darkPoolMapIndicator || !darkPoolMapPayload) return null;
+    const indicatorSettings = darkPoolMapIndicator.settings ?? {};
+    const useThemeColors = indicatorSettings.useThemeColors !== false;
+    return {
+      prints: darkPoolMapPayload.prints,
+      levels: darkPoolMapPayload.levels,
+      zones: darkPoolMapPayload.zones,
+      visualMode: String(indicatorSettings.visualMode ?? "circles-and-zones") as DarkPoolVisualMode,
+      maximumVisibleCircles: Math.max(50, Number(indicatorSettings.maximumVisibleCircles ?? 2_000)),
+      maximumVisibleZones: Math.max(1, Number(indicatorSettings.maximumVisibleZones ?? 100)),
+      minimumRadius: Math.max(1, Number(indicatorSettings.minimumRadius ?? 3)),
+      maximumRadius: Math.max(4, Number(indicatorSettings.maximumRadius ?? 18)),
+      opacity: Math.max(0.05, Math.min(1, Number(indicatorSettings.opacity ?? 58) / 100)),
+      zoneOpacity: Math.max(0, Math.min(0.8, Number(indicatorSettings.zoneOpacity ?? 16) / 100)),
+      showLevelLabels: indicatorSettings.showLevelLabels !== false,
+      neutralColor: useThemeColors ? settings.gridColor : String(indicatorSettings.neutralColor ?? settings.gridColor),
+      askSideColor: useThemeColors ? settings.upColor : String(indicatorSettings.askSideColor ?? settings.upColor),
+      bidSideColor: useThemeColors ? settings.downColor : String(indicatorSettings.bidSideColor ?? settings.downColor),
+      midColor: useThemeColors ? settings.gridColor : String(indicatorSettings.midColor ?? settings.gridColor),
+      delayedColor: String(indicatorSettings.delayedColor ?? "#F59E0B"),
+      backgroundColor: settings.backgroundColor,
+      precision: priceFormat.precision,
+    };
+  }, [darkPoolMapIndicator, darkPoolMapPayload, priceFormat.precision, settings.backgroundColor, settings.downColor, settings.gridColor, settings.upColor]);
+  useEffect(() => {
+    darkPoolMapPrimitiveRef.current?.update(darkPoolMapPrimitiveData);
+  }, [darkPoolMapPrimitiveData, viewportVersion]);
+  useEffect(() => {
+    if (!darkPoolMapIndicator || !darkPoolMapPayload || darkPoolMapIndicator.settings?.enableAlerts !== true) return;
+    if (darkPoolMapPayload.status === "MAPPING_STALE" || darkPoolMapPayload.status === "UNAVAILABLE" || darkPoolMapPayload.status === "RATE_LIMITED") return;
+    const indicatorSettings = darkPoolMapIndicator.settings ?? {};
+    const state = darkPoolAlertStateRef.current;
+    const key = `${darkPoolMapIndicator.instanceId}:${darkPoolMapPayload.sourceTicker}:${darkPoolMapPayload.displayInstrument}`;
+    if (state.key !== key) {
+      darkPoolAlertStateRef.current = {
+        key,
+        printIds: new Set(darkPoolMapPayload.prints.map((print) => print.id)),
+        levelIds: new Set(darkPoolMapPayload.levels.map((level) => level.id)),
+        zoneStates: new Map(),
+        lastFired: new Map(),
+      };
+      return;
+    }
+    const cooldownMs = Math.max(5_000, Number(indicatorSettings.alertCooldownSeconds ?? 60) * 1_000);
+    const emit = (eventKey: string, title: string, message: string) => {
+      const now = Date.now();
+      if (now - (state.lastFired.get(eventKey) ?? 0) < cooldownMs) return;
+      state.lastFired.set(eventKey, now);
+      const detail = { indicatorId: "dark-pool-map", instanceId: darkPoolMapIndicator.instanceId, instrument: darkPoolMapPayload.displayInstrument, sourceTicker: darkPoolMapPayload.sourceTicker, title, message, checkedAtMs: darkPoolMapPayload.checkedAtMs };
+      window.dispatchEvent(new CustomEvent("kwantdesk:dark-pool-alert", { detail }));
+      window.dispatchEvent(new CustomEvent("kwantdesk:precision-alert", { detail: { objectId: eventKey, message, price: drawingCandlesRef.current.at(-1)?.close ?? null, condition: title } }));
+      if (indicatorSettings.browserNotifications === true && typeof Notification !== "undefined" && Notification.permission === "granted") new Notification(title, { body: message });
+    };
+    for (const print of darkPoolMapPayload.prints) {
+      if (state.printIds.has(print.id)) continue;
+      state.printIds.add(print.id);
+      if (state.printIds.size > 100_000) state.printIds.delete(state.printIds.values().next().value as string);
+      if (print.isDelayedPrint) continue;
+      if (indicatorSettings.alertNewLargePrint !== false && print.notionalValue >= Number(indicatorSettings.alertPrintNotional ?? 5_000_000)) {
+        emit(`print:${print.id}`, `${print.ticker} Dark Pool Print`, `${print.notionalValue.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 })} reported at ${print.price.toFixed(2)}, mapped to ${print.displayInstrument} ${print.mappedPrice.toFixed(priceFormat.precision)}.`);
+      }
+    }
+    for (const level of darkPoolMapPayload.levels) {
+      const newLevel = !state.levelIds.has(level.id);
+      state.levelIds.add(level.id);
+      if (newLevel && indicatorSettings.alertNewLargeLevel !== false && level.totalNotional >= Number(indicatorSettings.alertLevelNotional ?? 25_000_000)) emit(`level:${level.id}`, "New Dark Pool Level", `${level.totalNotional.toLocaleString("en-US", { notation: "compact", style: "currency", currency: "USD" })} concentrated near ${level.displayInstrument} ${level.mappedPrice.toFixed(priceFormat.precision)}.`);
+      if (indicatorSettings.alertScoreThreshold !== false && level.strengthScore >= Number(indicatorSettings.alertScore ?? 80)) emit(`score:${level.id}`, "Dark Pool Score Threshold", `${level.displayInstrument} ${level.mappedPrice.toFixed(priceFormat.precision)} reached score ${Math.round(level.strengthScore)}.`);
+    }
+    const currentPrice = drawingCandlesRef.current.at(-1)?.close;
+    if (currentPrice && (indicatorSettings.alertPriceApproach === true || indicatorSettings.alertPriceTouch === true)) {
+      const approachDistance = Math.max(0.01, Number(indicatorSettings.alertDistancePoints ?? 5));
+      for (const zone of darkPoolMapPayload.zones) {
+        const distance = currentPrice < zone.lowerPrice ? zone.lowerPrice - currentPrice : currentPrice > zone.upperPrice ? currentPrice - zone.upperPrice : 0;
+        const nextState = distance === 0 ? "inside" : distance <= approachDistance ? "approach" : "outside";
+        const previousState = state.zoneStates.get(zone.id) ?? "outside";
+        state.zoneStates.set(zone.id, nextState);
+        if (nextState === previousState) continue;
+        if (nextState === "inside" && indicatorSettings.alertPriceTouch === true) emit(`touch:${zone.id}`, "Price Touched Dark Pool Zone", `${darkPoolMapPayload.displayInstrument} entered ${zone.lowerPrice.toFixed(priceFormat.precision)}–${zone.upperPrice.toFixed(priceFormat.precision)}.`);
+        else if (nextState === "approach" && indicatorSettings.alertPriceApproach === true) emit(`approach:${zone.id}`, "Price Approaching Dark Pool Zone", `${darkPoolMapPayload.displayInstrument} is ${distance.toFixed(priceFormat.precision)} points from ${zone.weightedPrice.toFixed(priceFormat.precision)}.`);
+      }
+    }
+  }, [darkPoolMapIndicator, darkPoolMapPayload, priceFormat.precision]);
+  useEffect(() => {
+    const container = chartContainerRef.current;
+    if (!container || !darkPoolMapIndicator) {
+      setDarkPoolMapTooltip(null);
+      return;
+    }
+    let frame: number | null = null;
+    const move = (event: PointerEvent) => {
+      if (frame !== null) window.cancelAnimationFrame(frame);
+      const rect = container.getBoundingClientRect();
+      frame = window.requestAnimationFrame(() => {
+        frame = null;
+        setDarkPoolMapTooltip(darkPoolMapPrimitiveRef.current?.queryHit(event.clientX - rect.left, event.clientY - rect.top) ?? null);
+      });
+    };
+    const leave = () => setDarkPoolMapTooltip(null);
+    container.addEventListener("pointermove", move, { passive: true });
+    container.addEventListener("pointerleave", leave, { passive: true });
+    return () => {
+      if (frame !== null) window.cancelAnimationFrame(frame);
+      container.removeEventListener("pointermove", move);
+      container.removeEventListener("pointerleave", leave);
+    };
+  }, [darkPoolMapIndicator]);
 
   const classicGexIndicator = useMemo(
     () => indicators.find((instance) => instance.enabled && instance.indicatorId === "classic-gex-profile") ?? null,
@@ -7044,6 +7252,9 @@ export default function Chart({
     const gammaHeatmapPrimitive = new GammaHeatmapPrimitive();
     candleSeries.attachPrimitive(gammaHeatmapPrimitive);
     gammaHeatmapPrimitiveRef.current = gammaHeatmapPrimitive;
+    const darkPoolMapPrimitive = new DarkPoolMapPrimitive();
+    candleSeries.attachPrimitive(darkPoolMapPrimitive);
+    darkPoolMapPrimitiveRef.current = darkPoolMapPrimitive;
     const volumeProfilePrimitive = new NativeVolumeProfilePrimitive();
     candleSeries.attachPrimitive(volumeProfilePrimitive);
     volumeProfilePrimitiveRef.current = volumeProfilePrimitive;
@@ -7742,6 +7953,13 @@ export default function Chart({
             // Chart teardown can detach primitives before React cleanup runs.
           }
         }
+        if (candleSeriesRef.current && darkPoolMapPrimitiveRef.current) {
+          try {
+            candleSeriesRef.current.detachPrimitive(darkPoolMapPrimitiveRef.current);
+          } catch {
+            // Chart teardown can detach primitives before React cleanup runs.
+          }
+        }
         if (candleSeriesRef.current && bigTradesPrimitiveRef.current) {
           try {
             candleSeriesRef.current.detachPrimitive(bigTradesPrimitiveRef.current);
@@ -7795,6 +8013,7 @@ export default function Chart({
       hedgeLevelsPrimitiveRef.current = null;
       classicGexProfilePrimitiveRef.current = null;
       gammaHeatmapPrimitiveRef.current = null;
+      darkPoolMapPrimitiveRef.current = null;
       volumeProfilePrimitiveRef.current = null;
       bigTradesPrimitiveRef.current = null;
       bigBlocksPrimitiveRef.current = null;
@@ -8936,6 +9155,76 @@ export default function Chart({
             <span>Mapping</span><span className="text-foreground">{gammaHeatmapTooltip.snapshot.mapping.method.replace("-", " ")} · {Math.round(gammaHeatmapTooltip.snapshot.mapping.confidence * 100)}%</span>
             <span>Status</span><span className="text-foreground">{gammaHeatmapTooltip.snapshot.status.replace("_", " ")}</span>
           </div>
+        </div>
+      ) : null}
+      {darkPoolMapIndicator ? (
+        <div
+          className="pointer-events-none absolute left-2 z-[25] flex max-w-[min(720px,calc(100%-80px))] items-center gap-2 border border-border bg-panel/92 px-2 py-1 font-mono text-[8px] uppercase tracking-[0.08em] text-muted shadow-lg backdrop-blur"
+          style={{ top: gammaHeatmapIndicator ? 38 : 8 }}
+          title={darkPoolMapPayload?.limitations.join(" ") ?? darkPoolMapError ?? "Loading real off-exchange prints"}
+        >
+          <span className={`h-1.5 w-1.5 rounded-full ${darkPoolMapError && !darkPoolMapPayload ? "bg-danger" : darkPoolMapLoading ? "animate-pulse bg-warning" : "bg-primary"}`} />
+          <span className="text-foreground">Dark Pool Map</span>
+          {darkPoolMapPayload ? (
+            <>
+              <span>{darkPoolMapPayload.sourceTicker} dark pool→{darkPoolMapPayload.displayInstrument}</span>
+              <span className={darkPoolMapPayload.status === "LIVE" ? "text-primary" : "text-warning"}>{darkPoolMapPayload.status.replaceAll("_", " ")}</span>
+              <span>{Math.round(darkPoolMapPayload.pollIntervalMs / 1_000)}s poll</span>
+              {darkPoolMapPayload.mapping ? <span>{darkPoolMapPayload.mapping.method.replaceAll("-", " ")}</span> : null}
+              {darkPoolMapIndicator.settings?.showMappingConfidence !== false && darkPoolMapPayload.mapping ? <span>{Math.round(darkPoolMapPayload.mapping.confidence * 100)}%</span> : null}
+              <span>{darkPoolMapPayload.prints.length.toLocaleString()} prints</span>
+              <span>{darkPoolMapPayload.zones.length} zones</span>
+            </>
+          ) : darkPoolMapLoading ? <span>Loading dark-pool prints…</span> : <span className="text-danger">{darkPoolMapError ?? "Dark-pool data unavailable"}</span>}
+          {darkPoolMapError && darkPoolMapPayload ? <span className="text-warning">Refresh delayed · last valid map</span> : null}
+        </div>
+      ) : null}
+      {darkPoolMapTooltip ? (
+        <div
+          className="pointer-events-none absolute z-[64] min-w-[250px] border border-border bg-panel/96 p-2 font-mono text-[8px] shadow-2xl backdrop-blur"
+          style={{
+            left: Math.min(Math.max(8, darkPoolMapTooltip.x + 14), Math.max(8, overlaySize.width - 272)),
+            top: Math.min(Math.max(34, darkPoolMapTooltip.y + 14), Math.max(34, overlaySize.height - 236)),
+          }}
+        >
+          {darkPoolMapTooltip.print ? (
+            <>
+              <div className="flex items-center justify-between gap-4 border-b border-border pb-1 text-foreground">
+                <span>{darkPoolMapTooltip.print.ticker} Dark Pool Print</span>
+                <span>{darkPoolMapTooltip.print.isDelayedPrint ? "DELAYED" : "REPORTED"}</span>
+              </div>
+              <div className="mt-1 grid grid-cols-2 gap-x-4 gap-y-1 text-muted">
+                <span>Trade time</span><span className="text-foreground">{new Date(darkPoolMapTooltip.print.tradeTimeMs).toLocaleString()}</span>
+                <span>Source price</span><span className="text-foreground">{darkPoolMapTooltip.print.price.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 4 })}</span>
+                <span>Mapped {darkPoolMapTooltip.print.displayInstrument}</span><span className="text-foreground">{darkPoolMapTooltip.print.mappedPrice.toFixed(priceFormat.precision)}</span>
+                <span>Shares</span><span className="text-foreground">{darkPoolMapTooltip.print.size.toLocaleString()}</span>
+                <span>Notional</span><span className="text-foreground">{darkPoolMapTooltip.print.notionalValue.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 })}</span>
+                <span>Location</span><span className="text-foreground">{darkPoolMapTooltip.print.tradeSide === "ASK" || darkPoolMapTooltip.print.tradeSide === "ABOVE_ASK" ? "Executed at/above ask" : darkPoolMapTooltip.print.tradeSide === "BID" || darkPoolMapTooltip.print.tradeSide === "BELOW_BID" ? "Executed at/below bid" : darkPoolMapTooltip.print.tradeSide === "MID_MARKET" ? "Executed near midpoint" : "Unknown quote location"}</span>
+                <span>Bid / ask</span><span className="text-foreground">{darkPoolMapTooltip.print.bidPrice ?? "—"} / {darkPoolMapTooltip.print.askPrice ?? "—"}</span>
+                <span>Mapping</span><span className="text-foreground">{darkPoolMapTooltip.print.mapping.method.replaceAll("-", " ")} · {Math.round(darkPoolMapTooltip.print.mapping.confidence * 100)}%</span>
+              </div>
+            </>
+          ) : darkPoolMapTooltip.zone ? (
+            <>
+              <div className="flex items-center justify-between gap-4 border-b border-border pb-1 text-foreground"><span>Dark Pool Zone</span><span>Score {Math.round(darkPoolMapTooltip.zone.strengthScore)}</span></div>
+              <div className="mt-1 grid grid-cols-2 gap-x-4 gap-y-1 text-muted">
+                <span>Mapped range</span><span className="text-foreground">{darkPoolMapTooltip.zone.lowerPrice.toFixed(priceFormat.precision)}–{darkPoolMapTooltip.zone.upperPrice.toFixed(priceFormat.precision)}</span>
+                <span>Weighted price</span><span className="text-foreground">{darkPoolMapTooltip.zone.weightedPrice.toFixed(priceFormat.precision)}</span>
+                <span>Total notional</span><span className="text-foreground">{darkPoolMapTooltip.zone.totalNotional.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 })}</span>
+                <span>Total shares</span><span className="text-foreground">{darkPoolMapTooltip.zone.totalShares.toLocaleString()}</span>
+                <span>Prints / sessions</span><span className="text-foreground">{darkPoolMapTooltip.zone.tradeCount} / {darkPoolMapTooltip.zone.sessionCount}</span>
+                <span>First / last</span><span className="text-foreground">{darkPoolMapTooltip.zone.firstPrintTimeMs ? new Date(darkPoolMapTooltip.zone.firstPrintTimeMs).toLocaleDateString() : "—"} / {darkPoolMapTooltip.zone.lastPrintTimeMs ? new Date(darkPoolMapTooltip.zone.lastPrintTimeMs).toLocaleTimeString() : "—"}</span>
+              </div>
+            </>
+          ) : null}
+        </div>
+      ) : null}
+      {darkPoolMapIndicator?.settings?.showLevelTable === true && darkPoolMapPayload?.levels.length ? (
+        <div className="absolute bottom-10 right-[68px] z-[26] max-h-[38%] w-[min(420px,42%)] overflow-auto border border-border bg-panel/94 font-mono text-[8px] shadow-2xl backdrop-blur">
+          <div className="sticky top-0 grid grid-cols-[26px_1fr_1fr_56px_44px] gap-2 border-b border-border bg-panel px-2 py-1 uppercase tracking-[0.08em] text-muted"><span>#</span><span>Mapped</span><span>Notional</span><span>Prints</span><span>Score</span></div>
+          {darkPoolMapPayload.levels.map((level, index) => (
+            <div key={level.id} className="grid grid-cols-[26px_1fr_1fr_56px_44px] gap-2 border-b border-border/45 px-2 py-1 text-foreground"><span>{index + 1}</span><span>{level.mappedPrice.toFixed(priceFormat.precision)}</span><span>{level.totalNotional.toLocaleString("en-US", { notation: "compact", style: "currency", currency: "USD" })}</span><span>{level.tradeCount}</span><span>{Math.round(level.strengthScore)}</span></div>
+          ))}
         </div>
       ) : null}
       {gexBotFlow ? <GexBotFlowStrip payload={gexBotFlow} /> : null}
