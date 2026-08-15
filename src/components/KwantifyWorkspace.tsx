@@ -735,6 +735,7 @@ type WorkspaceToolKind =
   | "tool-size-modification-tracking"
   | "tool-order-size-distribution"
   | "tool-iceberg-detection"
+  | "tool-spoofing-detector"
   | "tool-front-running"
   | "tool-passive-market-making"
   | "tool-high-frequency-cancellation"
@@ -976,6 +977,7 @@ const WORKSPACE_TOOL_OPTIONS: Array<WorkspacePanelOption<WorkspaceToolKind>> = [
   { id: "tool-size-modification-tracking", label: "SIZE MODIFICATION TRACKING", description: "Resting size added, reduced and replaced", icon: Repeat },
   { id: "tool-order-size-distribution", label: "ORDER SIZE DISTRIBUTION", description: "Distribution of displayed and executed order size", icon: BarChart3 },
   { id: "tool-iceberg-detection", label: "ICEBERG DETECTION", description: "Repeated replenishment and hidden-size inference", icon: EyeOff },
+  { id: "tool-spoofing-detector", label: "SPOOFING DETECTOR", description: "Order-book add, cancel and execution-behaviour analysis", icon: AlertTriangle },
   { id: "tool-front-running", label: "FRONT RUNNING", description: "Liquidity stepping ahead of identified orders", icon: ArrowUp },
   { id: "tool-passive-market-making", label: "PASSIVE MARKET MAKING", description: "Passive quote behaviour and inventory pressure", icon: Layers3 },
   { id: "tool-high-frequency-cancellation", label: "HIGH FREQUENCY CANCELLATION", description: "Rapid cancellation intensity and bursts", icon: Zap },

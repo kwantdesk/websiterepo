@@ -34,6 +34,7 @@ test("workspace picker separates pages from dedicated order-flow tools", () => {
     "SIZE MODIFICATION TRACKING",
     "ORDER SIZE DISTRIBUTION",
     "ICEBERG DETECTION",
+    "SPOOFING DETECTOR",
     "FRONT RUNNING",
     "PASSIVE MARKET MAKING",
     "HIGH FREQUENCY CANCELLATION",
