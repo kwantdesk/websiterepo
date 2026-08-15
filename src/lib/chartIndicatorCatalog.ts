@@ -167,7 +167,7 @@ export const CHART_INDICATOR_CATALOG: ChartIndicatorDefinition[] = [
   indicator("Hedge Levels", "KWANT Systems", "The five dealer-hedging levels - cage ceiling and floor, magnet, accelerator and the flip - as simple full-width bands with plain-language labels.", false, "Kwantify"),
   indicator("KWANT-M IVB", "KWANT Systems", "Opening-range and initial-value breakout structure.", true, "Reference", "Deep-M IVB"),
   indicator("KWANT Pattern Builder", "KWANT Systems", "Composable market-pattern rules.", true, "Reference", "Deep Pattern Builder"),
-  indicator("Big Blocks", "KWANT Systems", "Instrument-adaptive futures effort blocks anchored behind price.", true, "Reference", "Big Blocks"),
+  indicator("Big Blocks", "KWANT Systems", "Instrument-adaptive futures effort blocks anchored behind price.", true, "Reference", "Deep M Effort NQ"),
 ];
 
 export const CHART_INDICATOR_BY_ID = new Map(

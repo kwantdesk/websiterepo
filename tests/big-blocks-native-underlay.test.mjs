@@ -18,9 +18,22 @@ const configSource = readFileSync(
   new URL("../src/lib/chartIndicatorConfig.ts", import.meta.url),
   "utf8",
 );
+const indicatorsControlSource = readFileSync(
+  new URL("../src/components/ChartIndicatorsControl.tsx", import.meta.url),
+  "utf8",
+);
 
 test("KWANT effort is presented as Big Blocks and migrates saved labels", () => {
-  assert.match(catalogSource, /indicator\("Big Blocks", "KWANT Systems"/);
+  assert.match(
+    catalogSource,
+    /indicator\("Big Blocks", "KWANT Systems",[\s\S]*?"Deep M Effort NQ"\)/,
+    "Big Blocks must retain the implemented deep-m-effort-nq engine id",
+  );
+  assert.match(
+    indicatorsControlSource,
+    /RENDERED_CHART_INDICATOR_IDS = new Set\(\[[\s\S]*?"deep-m-effort-nq"/,
+    "Big Blocks must remain enabled in the rendered indicator registry",
+  );
   assert.match(configSource, /shortName: "Big Blocks"/);
   assert.match(configSource, /effortSettingsVersion: 3/);
   assert.match(
