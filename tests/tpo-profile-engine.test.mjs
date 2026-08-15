@@ -91,6 +91,14 @@ test("Daily TPO exposes one-click, timezone-aware market-open sessions", async (
   assert.match(controls, /scheduleKind:\s*"daily",\s*periodMode:\s*"multiple-profiles",\s*filterMode:\s*"none"/);
 });
 
+test("TPO always renders above candles", async () => {
+  const primitive = await readFile(path.join(root, "src/lib/tpo/primitive.ts"), "utf8");
+  const settingsSource = await readFile(path.join(root, "src/lib/tpo/settings.ts"), "utf8");
+  assert.match(primitive, /zOrder:\s*\(\)\s*=>\s*"top"\s+as const/);
+  assert.doesNotMatch(primitive, /zOrder:[^\n]*showAboveBars/);
+  assert.match(settingsSource, /showAboveBars:\s*true/);
+});
+
 test("visual TPO settings repaint without invalidating the calculated profile", () => {
   const base = settings.defaultTpoSettings("daily-tpo");
   const visualEdit = {

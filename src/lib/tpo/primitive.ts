@@ -40,7 +40,10 @@ export class TpoProfilePrimitive implements ISeriesPrimitive<Time> {
   private models: TpoPrimitiveModel[] = [];
   private hits: HitBounds[] = [];
   private readonly paneView = {
-    zOrder: () => this.models.some((model) => model.settings.showAboveBars) ? "top" as const : "bottom" as const,
+    // TPO is the primary auction visual. Keep it above the candle series for
+    // every profile and every saved setting so candles can never obscure its
+    // blocks, letters or levels after hydration or a live model update.
+    zOrder: () => "top" as const,
     renderer: () => ({ draw: (target: CanvasRenderingTarget2D) => this.draw(target) }),
   };
 

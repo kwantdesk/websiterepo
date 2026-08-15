@@ -82,7 +82,7 @@ export function defaultTpoSettings(
     showOnRight: false,
     mirror: false,
     lockPosition: false,
-    showAboveBars: false,
+    showAboveBars: true,
     opacityPercent: 72,
     borderWidth: 0.75,
     blockSize: 8,
