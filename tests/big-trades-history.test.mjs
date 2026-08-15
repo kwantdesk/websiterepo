@@ -42,6 +42,22 @@ test("Big Trades defaults to a rolling 24-hour execution history", () => {
   assert.deepEqual(prints.map((print) => print.volume), [100]);
 });
 
+test("Big Trades retains the latest completed session while CME is closed", () => {
+  const fridayClose = Date.UTC(2026, 7, 14, 20);
+  const sundayMorning = Date.UTC(2026, 7, 16, 5);
+  const prints = calculateBigTradePrints(
+    [],
+    [
+      trade(fridayClose - 27 * 60 * 60_000, 500),
+      trade(fridayClose - 2 * 60 * 60_000, 100),
+    ],
+    { filterMode: "manual", manualFilter: 30, enableClustering: false },
+    sundayMorning,
+  );
+
+  assert.deepEqual(prints.map((print) => print.volume), [100]);
+});
+
 test("manual minimum trade size immediately filters executions contract by contract", () => {
   const now = Date.UTC(2026, 7, 15, 12);
   const tape = [
@@ -94,5 +110,17 @@ test("event charts request the canonical execution archive and share tape by con
   assert.match(
     workspaceSource,
     /return `\$\{symbol\}::\$\{currentCmeContract\(symbol\) \?\? "ROOT"\}::flow`;/,
+  );
+  assert.match(
+    workspaceSource,
+    /function fetchWorkspaceHistoricalExecutions\(symbol: string\)/,
+  );
+  assert.match(
+    workspaceSource,
+    /timeframe=1m&days=\$\{DEFAULT_CHART_HISTORY_CALENDAR_DAYS\}&orderFlow=1/,
+  );
+  assert.match(
+    workspaceSource,
+    /fetchWorkspaceHistoricalExecutions\(pane\.symbol\)/,
   );
 });

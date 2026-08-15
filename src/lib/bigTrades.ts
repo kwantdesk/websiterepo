@@ -103,7 +103,23 @@ export function calculateBigTradePrints(
   now = Date.now(),
 ): BigTradePrint[] {
   const daysToLoad = clamp(Number(settings.daysToLoad ?? 1), 1, 90);
-  const cutoff = now - daysToLoad * 86_400_000;
+  // Anchor the lookback to the newest execution we actually possess. CME is
+  // closed over the weekend and on exchange holidays, so a wall-clock cutoff
+  // can erase Friday's entire tape on Sunday even though it is still the most
+  // recent market session. During live trading the newest execution tracks
+  // `now`, while closed markets retain the final completed session.
+  const latestExecutionTimestamp = marketTrades.reduce(
+    (latest, trade) => Number.isFinite(trade.timestamp)
+      ? Math.max(latest, trade.timestamp)
+      : latest,
+    0,
+  );
+  const marketTapeIsClosed = latestExecutionTimestamp > 0
+    && now - latestExecutionTimestamp > 6 * 60 * 60_000;
+  const historyAnchor = marketTapeIsClosed
+    ? latestExecutionTimestamp
+    : now;
+  const cutoff = historyAnchor - daysToLoad * 86_400_000;
   const candidates = tradeCandidates(orderFlowCandles, marketTrades, cutoff, settings);
   if (!candidates.length) return [];
   const volumes = candidates.map((candidate) => candidate.volume).sort((left, right) => left - right);

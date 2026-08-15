@@ -2501,6 +2501,10 @@ const workspaceCandleRequests = new Map<string, Promise<Candle[]>>();
 const workspaceLiveSeamRequests = new Map<string, Promise<Candle[]>>();
 const workspaceExecutionTape = new Map<string, InstitutionalTrade[]>();
 const workspaceOrderFlowRequests = new Map<string, Promise<InstitutionalOrderFlowResult | null>>();
+const workspaceHistoricalExecutionRequests = new Map<string, Promise<{
+  candles: Candle[];
+  records: InstitutionalTrade[];
+}>>();
 
 function workspaceOrderFlowKey(symbol: string, timeframe: string) {
   // Executions belong to the contract, not to a chart aggregation. Sharing
@@ -2631,6 +2635,44 @@ function fetchWorkspaceOrderFlow(
     }
   });
   workspaceOrderFlowRequests.set(key, request);
+  return request;
+}
+
+/**
+ * Restore the time-distributed, execution-level CME tape used by Big
+ * Contracts. The Rithmic collector can seed only what its current process has
+ * retained, which is often just the latest print after a restart or weekend.
+ * The provider-backed 1m history keeps the strongest exact executions from
+ * every minute and is deliberately canonical for every chart aggregation.
+ */
+function fetchWorkspaceHistoricalExecutions(symbol: string) {
+  const key = `${symbol}::${currentCmeContract(symbol) ?? "ROOT"}::historical-executions`;
+  const pending = workspaceHistoricalExecutionRequests.get(key);
+  if (pending) return pending;
+
+  const request = (async () => {
+    const response = await fetch(
+      `/api/cme-history?symbol=${encodeURIComponent(symbol)}&timeframe=1m&days=${DEFAULT_CHART_HISTORY_CALENDAR_DAYS}&orderFlow=1`,
+      {
+        cache: "no-store",
+        signal: AbortSignal.timeout(120_000),
+      },
+    );
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.error ?? `CME execution history is unavailable for ${displayCmeSymbol(symbol)}.`);
+    }
+    return {
+      candles: sanitizeCandles((payload.candles ?? []) as Candle[], symbol),
+      records: compactIndicatorExecutionHistory(decodeExecutionTape(payload.executions)),
+    };
+  })().finally(() => {
+    if (workspaceHistoricalExecutionRequests.get(key) === request) {
+      workspaceHistoricalExecutionRequests.delete(key);
+    }
+  });
+
+  workspaceHistoricalExecutionRequests.set(key, request);
   return request;
 }
 
@@ -5005,6 +5047,18 @@ function WorkspaceChartPane({
       applyFlow(latestOrderFlowCandlesRef.current, memoryTape);
     }
 
+    const persistAppliedFlow = () => {
+      const tape = latestMarketTradesRef.current;
+      if (tape.length) void writeExecutionTapeCache(pane.symbol, pane.timeframe, tape);
+      const enriched = latestCandlesRef.current;
+      if (enriched.length) void writeChartHistoryCache(pane.symbol, pane.timeframe, enriched);
+    };
+
+    // Restore both sources independently. The collector wins the live edge;
+    // canonical CME history supplies the earlier session immediately after a
+    // browser refresh or a late-restored saved indicator. Previously this
+    // effect queried only the collector, so an attached Big Contracts study
+    // could remain empty until a new qualifying live print arrived.
     void fetchWorkspaceOrderFlow(
       pane.symbol,
       pane.timeframe,
@@ -5015,12 +5069,17 @@ function WorkspaceChartPane({
         sanitizeCandles(result.candles, pane.symbol),
         result.records.length ? result.records : result.trades,
       );
-      const tape = latestMarketTradesRef.current;
-      if (tape.length) void writeExecutionTapeCache(pane.symbol, pane.timeframe, tape);
-      const enriched = latestCandlesRef.current;
-      if (enriched.length) void writeChartHistoryCache(pane.symbol, pane.timeframe, enriched);
+      persistAppliedFlow();
     }).catch(() => {
-      // The live Rithmic subscription continues populating Delta while an
+      // The canonical archive below remains available if the live collector is
+      // restarting or outside the active CME session.
+    });
+
+    void fetchWorkspaceHistoricalExecutions(pane.symbol).then((result) => {
+      applyFlow(result.candles, result.records);
+      persistAppliedFlow();
+    }).catch(() => {
+      // The live Rithmic subscription continues populating the study if the
       // optional historical archive is temporarily unavailable.
     });
 
