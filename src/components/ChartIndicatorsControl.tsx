@@ -209,6 +209,7 @@ export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "keltner-channel",
   "sessions",
   "session-highs-lows",
+  "divergence-detector",
   "big-trades",
   "depth-of-market",
   "deep-print-footprint",
@@ -270,6 +271,13 @@ function titleFromKey(key: string) {
 
 function isColourSetting(key: string, value: unknown) {
   return /color$/i.test(key) && typeof value === "string";
+}
+
+function divergenceMarketPair(instrument: string) {
+  const normalized = instrument.trim().toUpperCase();
+  if (/^M?NQ/.test(normalized)) return { primary: "NQ", comparison: "ES" };
+  if (/^M?ES/.test(normalized)) return { primary: "ES", comparison: "NQ" };
+  return null;
 }
 
 export default function ChartIndicatorsControl({
@@ -896,6 +904,30 @@ export default function ChartIndicatorsControl({
                   ))}
                   <div className="rounded-lg border border-border bg-background/55 px-3 py-2 text-[9px] leading-4 text-muted sm:col-span-2">
                     Classic GEX stays independent from Estimated Flow Convexity. Calls extend inward in green; puts extend inward in red from the chart edge.
+                  </div>
+                </div>
+              ) : null}
+
+              {settingsDefinition.id === "divergence-detector" ? (
+                <div className="grid gap-3 rounded-xl border border-primary/15 bg-primary/[0.035] p-3 sm:grid-cols-2">
+                  <div className="sm:col-span-2">
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-foreground">ES / NQ SMT comparison</div>
+                    <p className="mt-1 text-[9px] leading-4 text-muted">
+                      {divergenceMarketPair(instrument)
+                        ? `${divergenceMarketPair(instrument)!.primary} is automatically compared with ${divergenceMarketPair(instrument)!.comparison} on ${timeframe}. Changing chart timeframe recalculates both markets together.`
+                        : "This detector is available on ES, MES, NQ and MNQ charts. Select one of those instruments to calculate SMT divergence."}
+                    </p>
+                  </div>
+                  <div className="border border-border bg-background/55 px-3 py-2">
+                    <div className="text-[8px] uppercase tracking-[0.12em] text-muted">Chart market</div>
+                    <div className="mt-1 font-mono text-[11px] text-foreground">{divergenceMarketPair(instrument)?.primary ?? "Unsupported"}</div>
+                  </div>
+                  <div className="border border-border bg-background/55 px-3 py-2">
+                    <div className="text-[8px] uppercase tracking-[0.12em] text-muted">Cross-check market</div>
+                    <div className="mt-1 font-mono text-[11px] text-primary">{divergenceMarketPair(instrument)?.comparison ?? "ES / NQ only"}</div>
+                  </div>
+                  <div className="text-[8px] leading-4 text-muted sm:col-span-2">
+                    Signals use confirmed swing pivots only. Bullish SMT compares failed lower lows; bearish SMT compares failed higher highs. No future candle is used before a line is confirmed.
                   </div>
                 </div>
               ) : null}

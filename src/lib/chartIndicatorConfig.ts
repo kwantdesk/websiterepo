@@ -52,6 +52,7 @@ export const LIVE_CHART_INDICATOR_IDS = new Set([
   "tpo-levels",
   "expected-move",
   "hedge-levels",
+  "divergence-detector",
   "source-code-indicator",
 ]);
 export const VOLUME_PROFILE_INDICATOR_IDS = new Set([
@@ -77,6 +78,17 @@ export type IndicatorNumericSetting = {
 };
 
 export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[]> = {
+  "divergence-detector": [
+    { key: "pivotStrength", label: "Pivot confirmation bars", defaultValue: 3, min: 1, max: 12, step: 1 },
+    { key: "synchronizationBars", label: "ES / NQ synchronization window (bars)", defaultValue: 3, min: 1, max: 12, step: 1 },
+    { key: "minimumSwingBars", label: "Minimum bars between pivots", defaultValue: 3, min: 1, max: 100, step: 1 },
+    { key: "maximumLookbackBars", label: "Historical lookback bars", defaultValue: 1200, min: 100, max: 5000, step: 100 },
+    { key: "minimumMoveTicks", label: "Minimum structural break (ticks)", defaultValue: 1, min: 0, max: 100, step: 1 },
+    { key: "maximumSignals", label: "Maximum visible divergences", defaultValue: 24, min: 1, max: 100, step: 1 },
+    { key: "lineWidth", label: "Divergence line width", defaultValue: 2, min: 1, max: 5, step: 0.5 },
+    { key: "opacity", label: "Line opacity (%)", defaultValue: 92, min: 10, max: 100, step: 1 },
+    { key: "labelFontSize", label: "Label font size", defaultValue: 10, min: 8, max: 16, step: 1 },
+  ],
   "delta-highlight": [
     { key: "minValue", label: "Minimum absolute delta (%)", defaultValue: 50, min: 0, max: 100, step: 1 },
     { key: "maxValue", label: "Maximum absolute delta (%) · 0 = unlimited", defaultValue: 0, min: 0, max: 100, step: 1 },
@@ -443,6 +455,19 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
   ...Object.fromEntries(
     (INDICATOR_NUMERIC_SETTINGS[indicatorId] ?? []).map((setting) => [setting.key, setting.defaultValue]),
   ),
+  ...(indicatorId === "divergence-detector" ? {
+    comparisonMode: "automatic-es-nq",
+    includeNonConfirmation: true,
+    showBullish: true,
+    showBearish: true,
+    showLabels: true,
+    showPivotDots: true,
+    dashedLines: false,
+    useThemeColors: true,
+    bullishColor: theme?.upColor ?? "#22C55E",
+    bearishColor: theme?.downColor ?? "#EF4444",
+    divergenceDetectorSettingsVersion: 1,
+  } : {}),
   ...(indicatorId === "delta-highlight" ? {
     useThemeColors: true,
     showAsk: true,
