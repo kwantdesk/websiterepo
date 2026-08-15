@@ -5,6 +5,7 @@ import TimeZoneSelect from "@/components/ui/TimeZoneSelect";
 import ChartIndicatorsControl from "@/components/ChartIndicatorsControl";
 import SourceCodeIndicatorsControl from "@/components/SourceCodeIndicatorsControl";
 import KwantLoader from "@/components/KwantLoader";
+import ImpliedVolatilityRankIcon from "@/components/icons/ImpliedVolatilityRankIcon";
 import LiveGexPanelBoundary from "@/components/backtesting/LiveGexPanelBoundary";
 import LiveGexPanel from "@/components/backtesting/HistoricalGexPanel";
 import ZyonPanelBoundary from "@/components/zyon/ZyonPanelBoundary";
@@ -998,7 +999,7 @@ const WORKSPACE_PANEL_OPTIONS: Array<WorkspacePanelOption<WorkspacePagePanelKind
 
 const WORKSPACE_TOOL_OPTIONS: Array<WorkspacePanelOption<WorkspaceToolKind>> = [
   { id: "tool-gamma-heatmap", label: "GAMMA HEATMAP", description: "Historical and live options exposure mapped onto futures price", icon: Layers3, indicatorId: "gamma-heatmap" },
-  { id: "tool-implied-volatility-rank", label: "IMPLIED VOLATILITY RANK", description: "Display IV Rank across a configurable lookback and maturity, with optional IV Percentile, current IV, regime bands and source-price overlay.", icon: CircleDot, indicatorId: "implied-volatility-rank" },
+  { id: "tool-implied-volatility-rank", label: "IMPLIED VOLATILITY RANK", description: "Current IV inside its historical lookback range at a chosen maturity, with optional true IV Percentile and underlying-price context.", icon: ImpliedVolatilityRankIcon as typeof BarChart3, indicatorId: "implied-volatility-rank" },
   { id: "tool-net-gamma-exposure-by-strike", label: "NET GAMMA EXPOSURE BY STRIKE", description: "Current signed Net GEX profile mapped precisely onto futures price", icon: BarChart3, indicatorId: "net-gamma-exposure-by-strike" },
   { id: "tool-gex-interval-map", label: "GEX INTERVAL MAP", description: "Signed Gamma exposure by strike and time, mapped onto the active chart", icon: Grid3X3, indicatorId: "gex-interval-map" },
   { id: "tool-dark-pool-map", label: "DARK POOL MAP", description: "Timestamped off-exchange prints, mapped levels and notional zones", icon: CircleDot, indicatorId: "dark-pool-map" },

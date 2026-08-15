@@ -924,18 +924,18 @@ export default function ChartIndicatorsControl({
                       onChange={(event) => {
                         const preset = event.target.value;
                         const presetSettings: Record<string, string | number | boolean> = preset === "zero-dte-context"
-                          ? { targetMaturityDays: 1, lookBackPeriodDays: 60, showIvPercentile: false, contractMode: "average-call-put" }
+                          ? { targetMaturityDays: 1, lookBackPeriodDays: 60, showIvPercentile: false, showRawIv: true, showPriceOverlay: true, contractMode: "average-call-put", refreshSeconds: 5 }
                           : preset === "front-expiration"
-                            ? { targetMaturityDays: 7, lookBackPeriodDays: 126, showIvPercentile: true, contractMode: "average-call-put" }
+                            ? { targetMaturityDays: 1, lookBackPeriodDays: 126, showIvPercentile: true, showRawIv: false, showPriceOverlay: true, contractMode: "average-call-put" }
                             : preset === "iv-rank-percentile"
                               ? { targetMaturityDays: 30, lookBackPeriodDays: 252, showIvRank: true, showIvPercentile: true }
                               : preset === "calls-vs-puts"
                                 ? { targetMaturityDays: 30, lookBackPeriodDays: 252, contractMode: "call-put-split", showIvPercentile: false }
                                 : preset === "minimal"
-                                  ? { showIvRank: true, showIvPercentile: false, showRawIv: false, showPriceOverlay: false }
+                                  ? { targetMaturityDays: 30, lookBackPeriodDays: 252, contractMode: "average-call-put", showIvRank: true, showIvPercentile: false, showRawIv: false, showPriceOverlay: false, showRegimeBands: false, showLegend: false }
                                   : preset === "event-watch"
-                                    ? { targetMaturityDays: 7, lookBackPeriodDays: 90, showIvRank: true, showIvPercentile: true, showRawIv: true, refreshSeconds: 5 }
-                                    : { targetMaturityDays: 30, lookBackPeriodDays: 252, contractMode: "average-call-put", showIvRank: true, showIvPercentile: false, showRawIv: false, showPriceOverlay: true };
+                                    ? { targetMaturityDays: 7, lookBackPeriodDays: 90, showIvRank: true, showIvPercentile: true, showRawIv: true, showPriceOverlay: true, showRegimeBands: true, showLegend: true, refreshSeconds: 5 }
+                                    : { targetMaturityDays: 30, lookBackPeriodDays: 252, contractMode: "average-call-put", showIvRank: true, showIvPercentile: false, showRawIv: false, showPriceOverlay: true, showRegimeBands: true, showLegend: true };
                         replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), preset, ...presetSettings } }));
                       }}
                       className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground"
@@ -974,6 +974,12 @@ export default function ChartIndicatorsControl({
                       ["Raw IV", "showRawIv", false],
                       ["Source price overlay", "showPriceOverlay", true],
                       ["Live intraday IV", "useLiveIntradayIv", true],
+                      ["Carry last valid value", "carryLastValid", true],
+                      ["Break at missing data", "breakAtMissingData", true],
+                      ["Regime bands", "showRegimeBands", true],
+                      ["Compact header", "showHeader", true],
+                      ["Legend", "showLegend", true],
+                      ["Current badge", "showCurrentBadge", true],
                       ["Theme colours", "useThemeColors", true],
                     ].map(([label, key, fallback]) => (
                       <label key={String(key)} className="flex min-h-9 items-center gap-2 rounded-lg border border-border bg-background/55 px-3 text-[9px] text-muted">

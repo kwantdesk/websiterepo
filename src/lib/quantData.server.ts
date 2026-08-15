@@ -3602,6 +3602,7 @@ export async function getImpliedVolatilityRankSnapshot(input: {
   targetMaturityDays: number;
   contractMode: IvRankContractMode;
   useLiveIntradayIv?: boolean;
+  maximumForwardFillMinutes?: number;
 }): Promise<IvRankSnapshot> {
   const session = getUsOptionsSession();
   const sourceTicker = input.sourceTicker.trim().toUpperCase();
@@ -3635,6 +3636,7 @@ export async function getImpliedVolatilityRankSnapshot(input: {
     targetMaturityDays,
     useLiveIntradayIv: input.useLiveIntradayIv,
     marketOpen: session.marketOpen,
+    maximumForwardFillMinutes: input.maximumForwardFillMinutes,
   });
 }
 

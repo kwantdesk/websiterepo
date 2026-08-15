@@ -82,6 +82,12 @@ export interface IvRankSnapshot {
   limitations: string[];
 }
 
+export type IvRankDisplayStatus = {
+  label: string;
+  shortLabel: string;
+  isFresh: boolean;
+};
+
 export interface IvRankBuildOptions {
   sourceTicker: string;
   displayInstrument: string;
@@ -149,6 +155,36 @@ export function calculateIvPercentile(
       ? below + equal / 2
       : below;
   return 100 * count / valid.length;
+}
+
+export function deriveIvRankDisplayStatus(input: {
+  status: IvRankStatus | null | undefined;
+  ageMs?: number | null;
+  delayedMinutes?: number | null;
+  hasPriorSessionRange?: boolean;
+}): IvRankDisplayStatus {
+  const status = input.status ?? "unavailable";
+  if (status === "live") {
+    return {
+      label: input.hasPriorSessionRange === false ? "LIVE" : "LIVE IV · PRIOR SESSION RANGE",
+      shortLabel: "LIVE",
+      isFresh: true,
+    };
+  }
+  if (status === "prior-session" || status === "historical") {
+    return { label: "PRIOR SESSION", shortLabel: "PRIOR", isFresh: false };
+  }
+  if (status === "delayed") {
+    const delay = Math.max(0, Math.round(input.delayedMinutes ?? (input.ageMs ?? 0) / 60_000));
+    return { label: `DELAYED · ${delay}m`, shortLabel: "DELAYED", isFresh: false };
+  }
+  if (status === "stale") {
+    const age = Math.max(0, Math.round((input.ageMs ?? 0) / 60_000));
+    return { label: `STALE · LAST UPDATE ${age}m`, shortLabel: "STALE", isFresh: false };
+  }
+  if (status === "loading") return { label: "LOADING", shortLabel: "LOADING", isFresh: false };
+  if (status === "error") return { label: "ERROR", shortLabel: "ERROR", isFresh: false };
+  return { label: "UNAVAILABLE", shortLabel: "UNAVAILABLE", isFresh: false };
 }
 
 export function combineCallPutLegs(
@@ -360,6 +396,8 @@ export function impliedVolatilityRankCacheKey(input: {
   targetMaturityDays: number;
   contractMode: IvRankContractMode;
   useLiveIntradayIv: boolean;
+  maximumForwardFillMinutes?: number;
+  carryLastValid?: boolean;
 }) {
   return [
     input.provider ?? "quantdata",
@@ -369,6 +407,8 @@ export function impliedVolatilityRankCacheKey(input: {
     input.targetMaturityDays,
     input.contractMode,
     input.useLiveIntradayIv ? "live" : "session",
+    Math.max(0, Math.round(input.maximumForwardFillMinutes ?? 5)),
+    input.carryLastValid === false ? "discard" : "carry",
   ].join(":");
 }
 

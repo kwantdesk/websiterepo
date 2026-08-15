@@ -16,7 +16,17 @@ type IndicatorPaneGroup = {
   fixedDomain?: IndicatorPaneDomain;
   statusLabel?: string;
   currentBadge?: string;
+  currentBadgeValue?: number;
   bands?: Array<{ from: number; to: number; color: string; opacity?: number }>;
+  percentageAxis?: boolean;
+  secondaryAxisSeriesKey?: string;
+  secondaryAxisLabel?: string;
+  showHeader?: boolean;
+  showLegend?: boolean;
+  defaultHeight?: number;
+  minimumHeight?: number;
+  maximumHeight?: number;
+  tooltipPoints?: Array<{ time: number; rows: Array<{ label: string; value: string }> }>;
 };
 
 type IndicatorPaneDock = "top" | "bottom" | "left" | "right";
@@ -207,6 +217,7 @@ function ChartIndicatorPaneSurface({
   const [lockedVerticalDomainByPane, setLockedVerticalDomainByPane] = useState<Record<string, IndicatorPaneDomain>>({});
   const renderedVerticalDomainByPaneRef = useRef<Record<string, IndicatorPaneDomain>>({});
   const [draggingPane, setDraggingPane] = useState<string | null>(null);
+  const [hoverTooltip, setHoverTooltip] = useState<{ groupKey: string; x: number; y: number; rows: Array<{ label: string; value: string }> } | null>(null);
   const paneRootRef = useRef<HTMLDivElement>(null);
 
   function scalePaneFromWheel(groupKey: string, deltaY: number, deltaMode: number) {
@@ -289,7 +300,7 @@ function ChartIndicatorPaneSurface({
   let paneTop = 0;
   const paneLayouts = groups.map((group) => {
     const collapsed = Boolean(collapsedPanes[group.key]);
-    const paneHeight = collapsed ? 30 : paneHeights[group.key] ?? fallbackPaneHeight;
+    const paneHeight = collapsed ? 30 : paneHeights[group.key] ?? group.defaultHeight ?? fallbackPaneHeight;
     const layout = { group, top: paneTop, height: paneHeight, collapsed };
     paneTop += paneHeight;
     return layout;
@@ -312,7 +323,7 @@ function ChartIndicatorPaneSurface({
       <defs>
         {paneLayouts.map(({ group, top, height: paneHeight }, index) => (
           <clipPath id={`indicator-pane-${group.key.replace(/[^a-z0-9-]/gi, "")}-${index}`} key={group.key}>
-            <rect x="0" y={top} width={plotWidth} height={paneHeight} />
+            <rect x={group.percentageAxis ? 52 : 0} y={top + (group.percentageAxis ? 26 : 0)} width={Math.max(0, plotWidth - (group.percentageAxis ? 52 : 0))} height={Math.max(0, paneHeight - (group.percentageAxis ? 48 : 0))} />
           </clipPath>
         ))}
       </defs>
@@ -321,8 +332,10 @@ function ChartIndicatorPaneSurface({
         const top = layout.top;
         const paneHeight = layout.height;
         const collapsed = layout.collapsed;
-        const innerTop = top + 24;
-        const innerBottom = top + paneHeight - 9;
+        const leftAxisWidth = group.percentageAxis ? 52 : 0;
+        const innerTop = top + (group.percentageAxis ? 34 : 24);
+        const innerBottom = top + paneHeight - (group.percentageAxis ? 22 : 9);
+        const innerPlotWidth = Math.max(1, plotWidth - leftAxisWidth);
         // CVD is calculated from the chart's exact candle boundaries, so it
         // must share the chart time scale. Stretching its own tape across the
         // pane detached range-chart CVD candles from their parent 40r bars.
@@ -333,9 +346,13 @@ function ChartIndicatorPaneSurface({
         const tapeStart = tapeTimes.length ? Math.min(...tapeTimes) : 0;
         const tapeEnd = tapeTimes.length ? Math.max(...tapeTimes) : 0;
         const tapeSpan = Math.max(1, tapeEnd - tapeStart);
-        const xForTime = (time: number) => independentCvdTape
-          ? ((time - tapeStart) / tapeSpan) * Math.max(1, plotWidth - 2) + 1
-          : timeToX(time);
+        const xForTime = (time: number) => {
+          const raw = independentCvdTape
+            ? ((time - tapeStart) / tapeSpan) * Math.max(1, plotWidth - 2) + 1
+            : timeToX(time);
+          if (raw === null || !group.percentageAxis) return raw;
+          return leftAxisWidth + (raw / Math.max(1, plotWidth)) * innerPlotWidth;
+        };
         // Scale against the currently visible chart range. Using the whole
         // loaded history makes a live CVD tape look flat after one large move.
         const visibleSeries = group.series.map((definition) => ({
@@ -360,6 +377,10 @@ function ChartIndicatorPaneSurface({
             .filter((series) => series.independentScale)
             .map((series) => [series.key, scaleDomain(seriesDomain([series]), verticalScale, verticalPan)] as const),
         );
+        const secondarySeries = group.secondaryAxisSeriesKey
+          ? visibleSeries.find((series) => series.key === group.secondaryAxisSeriesKey)
+          : undefined;
+        const secondaryDomain = secondarySeries ? independentDomains.get(secondarySeries.key) : undefined;
         const yFor = (value: number, definition: CalculatedIndicatorSeries) => {
           const domain = definition.independentScale
             ? independentDomains.get(definition.key) ?? sharedDomain
@@ -409,17 +430,12 @@ function ChartIndicatorPaneSurface({
             <rect x="0" y={top} width={width} height={paneHeight} fill="var(--chart-background)" fillOpacity="0.97" />
             <line x1="0" y1={top + 0.5} x2={width} y2={top + 0.5} stroke="var(--grid-color)" strokeWidth="1" />
             <line x1={plotWidth + 0.5} y1={top} x2={plotWidth + 0.5} y2={top + paneHeight} stroke="var(--grid-color)" strokeWidth="1" />
-            <text x="10" y={top + 15} fill="var(--foreground)" fontSize="10" fontWeight="600" fontFamily="monospace">
-              {group.title}
-            </text>
-            {group.statusLabel ? (
+            {group.showHeader !== false ? <text x={group.percentageAxis ? leftAxisWidth + 8 : 10} y={top + 16} fill="var(--foreground)" fontSize="11" fontWeight="600" fontFamily="var(--font-mono), monospace">
+              {group.title.length > (width < 620 ? 45 : 100) ? `${group.title.slice(0, width < 620 ? 42 : 97)}…` : group.title}
+            </text> : null}
+            {group.statusLabel && group.showHeader !== false ? (
               <text x={Math.max(170, plotWidth - 118)} y={top + 15} fill="var(--muted)" fontSize="8" fontFamily="monospace" textAnchor="end">
                 {group.statusLabel}
-              </text>
-            ) : null}
-            {group.currentBadge ? (
-              <text x={plotWidth - 8} y={top + 15} fill="var(--primary)" fontSize="9" fontWeight="700" fontFamily="monospace" textAnchor="end">
-                {group.currentBadge}
               </text>
             ) : null}
             {!collapsed && group.unavailableReason ? (
@@ -542,13 +558,29 @@ function ChartIndicatorPaneSurface({
                 opacity="0.72"
               />
             ) : null}
+            {!collapsed && !stats && group.percentageAxis ? (
+              <g aria-label="IV Rank percentage scale">
+                {[0, 20, 40, 60, 80, 100].map((tick) => {
+                  const reference = group.series.find((series) => !series.independentScale) ?? group.series[0];
+                  if (!reference) return null;
+                  const y = yFor(tick, reference);
+                  return (
+                    <g key={`${group.key}-percentage-tick-${tick}`}>
+                      <line x1={leftAxisWidth} y1={Math.round(y) + 0.5} x2={plotWidth} y2={Math.round(y) + 0.5} stroke="var(--grid-color)" strokeOpacity="0.18" vectorEffect="non-scaling-stroke" />
+                      <text x={leftAxisWidth - 7} y={y + 3} fill="var(--muted)" fontSize="8" fontFamily="var(--font-mono), monospace" textAnchor="end">{tick}%</text>
+                    </g>
+                  );
+                })}
+                <text x={leftAxisWidth - 7} y={innerTop + 4} fill="var(--muted)" fontSize="7" fontFamily="var(--font-mono), monospace" textAnchor="end">IVR %</text>
+              </g>
+            ) : null}
             {!collapsed && !stats ? <g clipPath={`url(#${clipId})`}>
               {(group.bands ?? []).map((band, bandIndex) => {
                 const reference = group.series.find((series) => !series.independentScale) ?? group.series[0];
                 if (!reference) return null;
                 const y1 = yFor(band.to, reference);
                 const y2 = yFor(band.from, reference);
-                return <rect key={`${group.key}-band-${bandIndex}`} x="0" y={Math.min(y1, y2)} width={plotWidth} height={Math.abs(y2 - y1)} fill={band.color} fillOpacity={band.opacity ?? 0.055} />;
+                return <rect key={`${group.key}-band-${bandIndex}`} x={leftAxisWidth} y={Math.min(y1, y2)} width={innerPlotWidth} height={Math.abs(y2 - y1)} fill={band.color} fillOpacity={band.opacity ?? 0.055} />;
               })}
               {group.series.map((definition) => {
                 const visible = sampledPanePoints(definition, xForTime, plotWidth);
@@ -633,6 +665,7 @@ function ChartIndicatorPaneSurface({
                     fill="none"
                     stroke={definition.color}
                     strokeWidth={definition.lineWidth ?? 2}
+                    strokeDasharray={definition.lineStyle === "dashed" ? "6 4" : definition.lineStyle === "dotted" ? "2 3" : undefined}
                     strokeLinecap="round"
                     strokeLinejoin="round"
                     vectorEffect="non-scaling-stroke"
@@ -640,12 +673,15 @@ function ChartIndicatorPaneSurface({
                 );
               })}
             </g> : null}
-            {!collapsed && !stats ? <text x={plotWidth + 6} y={innerTop + 2} fill="var(--muted)" fontSize="8" fontFamily="monospace">
-              {compact(sharedDomain.max)}
-            </text> : null}
-            {!collapsed && !stats ? <text x={plotWidth + 6} y={innerBottom} fill="var(--muted)" fontSize="8" fontFamily="monospace">
-              {compact(sharedDomain.min)}
-            </text> : null}
+            {!collapsed && !stats && !group.percentageAxis ? <text x={plotWidth + 6} y={innerTop + 2} fill="var(--muted)" fontSize="8" fontFamily="monospace">{compact(sharedDomain.max)}</text> : null}
+            {!collapsed && !stats && !group.percentageAxis ? <text x={plotWidth + 6} y={innerBottom} fill="var(--muted)" fontSize="8" fontFamily="monospace">{compact(sharedDomain.min)}</text> : null}
+            {!collapsed && group.percentageAxis && secondaryDomain && group.secondaryAxisLabel ? (
+              <g aria-label={`${group.secondaryAxisLabel} price scale`}>
+                <text x={plotWidth + 6} y={innerTop + 2} fill="var(--muted)" fontSize="8" fontFamily="var(--font-mono), monospace">{secondaryDomain.max.toLocaleString(undefined, { maximumFractionDigits: 2 })}</text>
+                <text x={plotWidth + 6} y={innerBottom} fill="var(--muted)" fontSize="8" fontFamily="var(--font-mono), monospace">{secondaryDomain.min.toLocaleString(undefined, { maximumFractionDigits: 2 })}</text>
+                <text x={plotWidth + 6} y={top + 16} fill="var(--muted)" fontSize="7" fontFamily="var(--font-mono), monospace">{group.secondaryAxisLabel}</text>
+              </g>
+            ) : null}
             {!collapsed && independentCvdTape && tapeTimes.length ? (
               <>
                 <text x="8" y={innerBottom} fill="var(--muted)" fontSize="8" fontFamily="monospace">
@@ -656,7 +692,7 @@ function ChartIndicatorPaneSurface({
                 </text>
               </>
             ) : null}
-            {!collapsed && !stats ? <g transform={`translate(${Math.min(plotWidth - 8, group.indicatorId === "cumulative-volume-delta" ? 210 : 190)}, ${top + 8})`}>
+            {!collapsed && !stats && group.showLegend !== false && width >= 620 ? <g transform={`translate(${Math.min(plotWidth - 8, group.indicatorId === "cumulative-volume-delta" ? 210 : group.percentageAxis ? 330 : 190)}, ${top + 9})`}>
               {group.series.slice(group.indicatorId === "cumulative-volume-delta" ? 1 : 0).map((definition, index) => (
                 <g key={definition.key} transform={`translate(${index * 88}, 0)`}>
                   <line x1="0" y1="3" x2="12" y2="3" stroke={definition.color} strokeWidth={definition.lineWidth ?? 2} />
@@ -666,6 +702,17 @@ function ChartIndicatorPaneSurface({
                 </g>
               ))}
             </g> : null}
+            {!collapsed && group.currentBadge && typeof group.currentBadgeValue === "number" && group.series.length ? (() => {
+              const reference = group.series.find((series) => !series.independentScale) ?? group.series[0];
+              const badgeY = Math.max(innerTop + 9, Math.min(innerBottom - 9, yFor(group.currentBadgeValue, reference)));
+              const badgeWidth = Math.min(132, Math.max(92, group.currentBadge.length * 5.4 + 14));
+              return (
+                <g aria-label={group.currentBadge}>
+                  <rect x={plotWidth - badgeWidth - 4} y={badgeY - 9} width={badgeWidth} height="18" rx="2" fill="var(--panel)" stroke="var(--primary)" strokeOpacity="0.7" />
+                  <text x={plotWidth - 10} y={badgeY + 3} fill="var(--primary)" fontSize="8" fontWeight="700" fontFamily="var(--font-mono), monospace" textAnchor="end">{group.currentBadge}</text>
+                </g>
+              );
+            })() : null}
           </g>
         );
       })}
@@ -796,6 +843,28 @@ function ChartIndicatorPaneSurface({
               window.addEventListener("pointerup", finish);
               window.addEventListener("pointercancel", finish);
             }}
+            onPointerMove={(event) => {
+              if (!group.tooltipPoints?.length || draggingPane === group.key) return;
+              const bounds = event.currentTarget.getBoundingClientRect();
+              const localX = event.clientX - bounds.left;
+              const nearest = group.tooltipPoints.reduce<{ point: (typeof group.tooltipPoints)[number]; distance: number } | null>((best, point) => {
+                const pointX = timeToX(point.time);
+                if (pointX === null) return best;
+                const distance = Math.abs(pointX - localX);
+                return !best || distance < best.distance ? { point, distance } : best;
+              }, null);
+              if (!nearest || nearest.distance > 42) {
+                setHoverTooltip((current) => current?.groupKey === group.key ? null : current);
+                return;
+              }
+              setHoverTooltip({
+                groupKey: group.key,
+                x: Math.max(8, Math.min(width - 320, localX + 14)),
+                y: Math.max(top + 30, Math.min(top + paneHeight - 190, event.clientY - bounds.top + top + 12)),
+                rows: nearest.point.rows,
+              });
+            }}
+            onPointerLeave={() => setHoverTooltip((current) => current?.groupKey === group.key ? null : current)}
             onWheel={(event) => {
               event.preventDefault();
               event.stopPropagation();
@@ -823,6 +892,20 @@ function ChartIndicatorPaneSurface({
           />
         );
       })}
+      {hoverTooltip ? (
+        <div
+          className="pointer-events-none absolute z-[95] w-[300px] max-w-[calc(100%-16px)] border border-border bg-panel/95 px-3 py-2 shadow-2xl backdrop-blur-md"
+          style={{ left: hoverTooltip.x, top: hoverTooltip.y }}
+          role="tooltip"
+        >
+          {hoverTooltip.rows.map((row) => (
+            <div key={row.label} className="flex items-start justify-between gap-4 py-0.5 text-[9px] leading-4">
+              <span className="text-muted">{row.label}</span>
+              <span className="max-w-[190px] text-right font-mono tabular-nums text-foreground">{row.value}</span>
+            </div>
+          ))}
+        </div>
+      ) : null}
       {paneLayouts.map(({ group, top, height: paneHeight, collapsed }) => {
         if (collapsed || !isCvdIndicator(group.indicatorId)) return null;
         const verticalScale = verticalScaleByPane[group.key] ?? 1;

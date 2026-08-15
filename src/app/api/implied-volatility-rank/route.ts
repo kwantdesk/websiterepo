@@ -51,6 +51,7 @@ export async function GET(request: NextRequest) {
       targetMaturityDays: boundedInteger(request.nextUrl.searchParams.get("maturity"), 30, 0, 365),
       contractMode,
       useLiveIntradayIv: request.nextUrl.searchParams.get("live") !== "0",
+      maximumForwardFillMinutes: boundedInteger(request.nextUrl.searchParams.get("maximumForwardFillMinutes"), 5, 1, 60),
     });
     return NextResponse.json(payload, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {

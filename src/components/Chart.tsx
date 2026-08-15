@@ -90,6 +90,8 @@ import {
 } from "@/lib/chartIndicatorEngine";
 import {
   automaticIvSourceTicker,
+  deriveIvRankDisplayStatus,
+  displayIvPercent,
   type IvRankContractMode,
   type IvRankObservation,
 } from "@/lib/impliedVolatilityRank";
@@ -3691,6 +3693,8 @@ export default function Chart({
       useLiveIntradayIv: instance.settings?.useLiveIntradayIv !== false,
       refreshSeconds: Math.max(5, Number(instance.settings?.refreshSeconds ?? 15)),
       staleAfterSeconds: Math.max(15, Number(instance.settings?.staleAfterSeconds ?? 90)),
+      maximumForwardFillMinutes: Math.max(1, Math.min(60, Number(instance.settings?.maximumForwardFillMinutes ?? 5))),
+      carryLastValid: instance.settings?.carryLastValid !== false,
     };
     return [{ instanceId: instance.instanceId, query }];
   }), [indicatorSignature, indicators, instrument]);
@@ -3760,6 +3764,10 @@ export default function Chart({
         { key: `${instance.instanceId}-call-rank-overlay`, label: "Call IV Rank", kind: "line", placement: "overlay", independentScale: true, priceScaleId: `iv-rank-${instance.instanceId}`, color: useThemeColors ? settings.upColor : String(instance.settings?.callColor ?? settings.upColor), lineWidth, data: dataFor((item) => item.call?.ivRank) },
         { key: `${instance.instanceId}-put-rank-overlay`, label: "Put IV Rank", kind: "line", placement: "overlay", independentScale: true, priceScaleId: `iv-rank-${instance.instanceId}`, color: useThemeColors ? settings.downColor : String(instance.settings?.putColor ?? settings.downColor), lineWidth, data: dataFor((item) => item.put?.ivRank) },
       ];
+      const rankData = dataFor((item) => mode === "call" ? item.call?.ivRank : mode === "put" ? item.put?.ivRank : item.combined?.ivRank);
+      if (snapshot.current?.status === "live" && typeof snapshot.current.ivRank === "number") {
+        rankData.push({ time: Math.floor(snapshot.current.timestampMs / 1_000), value: snapshot.current.ivRank });
+      }
       return [{
         key: `${instance.instanceId}-rank-overlay`,
         label: "IV Rank",
@@ -3769,7 +3777,7 @@ export default function Chart({
         priceScaleId: `iv-rank-${instance.instanceId}`,
         color: useThemeColors ? settings.upColor : String(instance.settings?.rankColor ?? settings.upColor),
         lineWidth,
-        data: dataFor((item) => mode === "call" ? item.call?.ivRank : mode === "put" ? item.put?.ivRank : item.combined?.ivRank),
+        data: rankData,
       }];
     }),
   ], [baseCalculatedIndicatorSeries, indicatorSignature, indicators, ivRankByInstance, settings.downColor, settings.upColor]);
@@ -3787,10 +3795,18 @@ export default function Chart({
         const percentileColor = useThemeColors ? settings.borderUpColor : String(instance.settings?.percentileColor ?? settings.borderUpColor);
         const priceColor = useThemeColors ? "var(--foreground)" : String(instance.settings?.priceColor ?? "#E5E7EB");
         const lineWidth = Math.max(1, Math.min(4, Math.round(Number(instance.settings?.lineWidth ?? 2)))) as 1 | 2 | 3 | 4;
-        const makeData = (read: (observation: NonNullable<typeof snapshot>["observations"][number]) => number | null | undefined) => (snapshot?.observations ?? []).flatMap((observation) => {
+        const priceLineWidth = Math.max(1, Math.min(4, Math.round(Number(instance.settings?.priceLineWidth ?? 1.5)))) as 1 | 2 | 3 | 4;
+        const breakAtMissingData = instance.settings?.breakAtMissingData !== false;
+        const makeData = (read: (observation: NonNullable<typeof snapshot>["observations"][number]) => number | null | undefined) => {
+          let previousTimestamp = 0;
+          return (snapshot?.observations ?? []).flatMap((observation) => {
           const value = read(observation);
-          return typeof value === "number" && Number.isFinite(value) ? [{ time: Math.floor(observation.timestampMs / 1_000), value }] : [];
-        });
+            if (typeof value !== "number" || !Number.isFinite(value)) return [];
+            const breakBefore = breakAtMissingData && previousTimestamp > 0 && observation.timestampMs - previousTimestamp > 4 * 86_400_000;
+            previousTimestamp = observation.timestampMs;
+            return [{ time: Math.floor(observation.timestampMs / 1_000), value, breakBefore }];
+          });
+        };
         const series: CalculatedIndicatorSeries[] = [];
         const mode = String(instance.settings?.contractMode ?? "average-call-put");
         if (instance.settings?.showIvRank !== false) {
@@ -3799,7 +3815,11 @@ export default function Chart({
             series.push({ key: `${instance.instanceId}-put-rank`, label: "Put IV Rank", kind: "line", placement: "pane", color: putColor, lineWidth, data: makeData((item) => item.put?.ivRank) });
           } else {
             const readRank = (item: NonNullable<typeof snapshot>["observations"][number]) => mode === "call" ? item.call?.ivRank : mode === "put" ? item.put?.ivRank : item.combined?.ivRank;
-            series.push({ key: `${instance.instanceId}-rank`, label: "IV Rank", kind: "line", placement: "pane", color: rankColor, lineWidth, data: makeData(readRank) });
+            const rankData = makeData(readRank);
+            if (snapshot?.current?.status === "live" && typeof snapshot.current.ivRank === "number") {
+              rankData.push({ time: Math.floor(snapshot.current.timestampMs / 1_000), value: snapshot.current.ivRank, breakBefore: false });
+            }
+            series.push({ key: `${instance.instanceId}-rank`, label: "IV Rank", kind: "line", placement: "pane", color: rankColor, lineWidth, data: rankData });
           }
         }
         if (instance.settings?.showIvPercentile !== false && snapshot?.percentileAvailable) {
@@ -3810,29 +3830,77 @@ export default function Chart({
           series.push({ key: `${instance.instanceId}-raw-iv`, label: "Raw IV", kind: "line", placement: "pane", color: settings.gridColor, lineWidth: 1, independentScale: true, data: makeData(readIv) });
         }
         if (instance.settings?.showPriceOverlay !== false) {
-          series.push({ key: `${instance.instanceId}-price`, label: `${snapshot?.sourceTicker ?? "Source"} price`, kind: "line", placement: "pane", color: priceColor, lineWidth: 1, independentScale: true, data: makeData((item) => item.stockPrice) });
+          series.push({
+            key: `${instance.instanceId}-price`,
+            label: `${instrument} price`,
+            kind: "line",
+            placement: "pane",
+            color: priceColor,
+            lineWidth: priceLineWidth,
+            independentScale: true,
+            data: indicatorCandles.map((candle) => ({ time: Math.floor(candle.timestamp / 1_000), value: candle.close })),
+          });
         }
         const currentRank = snapshot?.current?.ivRank;
-        const status = resource?.error
-          ? snapshot ? "LAST GOOD · REFRESH DELAYED" : "UNAVAILABLE"
-          : resource?.loading ? "LOADING"
-            : resource?.refreshing ? "REFRESHING"
-              : snapshot?.overallStatus === "live" ? "LIVE"
-                : snapshot?.overallStatus === "prior-session" ? "PRIOR SESSION"
-                  : snapshot?.overallStatus === "historical" ? "HISTORICAL"
-                    : "UNAVAILABLE";
+        const statusDetails = deriveIvRankDisplayStatus({
+          status: resource?.loading && !snapshot ? "loading" : resource?.error && !snapshot ? "unavailable" : snapshot?.overallStatus,
+          ageMs: snapshot?.current?.ageMs,
+          hasPriorSessionRange: Boolean(snapshot?.latestHistorical),
+        });
+        const status = resource?.error && snapshot ? "STALE · REFRESH DELAYED" : resource?.refreshing ? `${statusDetails.label} · REFRESHING` : statusDetails.label;
+        const precision = Math.max(0, Math.min(4, Math.round(Number(instance.settings?.decimalPrecision ?? 2))));
+        const lowThreshold = Number(instance.settings?.lowThreshold ?? 20);
+        const middleThreshold = Number(instance.settings?.middleThreshold ?? 50);
+        const highThreshold = Number(instance.settings?.highThreshold ?? 80);
+        const mappedSource = snapshot?.sourceTicker ?? automaticIvSourceTicker(instrument);
+        const sourceDisplay = mappedSource === instrument.toUpperCase() ? mappedSource : `${mappedSource}→${instrument.toUpperCase()}`;
+        const tooltipPoints = (snapshot?.observations ?? []).map((observation) => {
+          const selected = mode === "call" ? observation.call : mode === "put" ? observation.put : observation.combined;
+          const warnings = observation.dataQuality.warnings.join(" · ") || "None";
+          return {
+            time: Math.floor(observation.timestampMs / 1_000),
+            rows: [
+              { label: "Session", value: observation.sessionDate },
+              { label: "Source → display", value: sourceDisplay },
+              { label: "IV Rank", value: typeof selected?.ivRank === "number" ? `${selected.ivRank.toFixed(precision)}%` : "Unavailable" },
+              { label: "IV Percentile", value: typeof observation.ivPercentile === "number" ? `${observation.ivPercentile.toFixed(precision)}%` : "Unavailable" },
+              { label: "Current IV", value: displayIvPercent(selected?.lastIv, precision) },
+              { label: "Window minimum", value: displayIvPercent(selected?.windowMinimumIv, precision) },
+              { label: "Window maximum", value: displayIvPercent(selected?.windowMaximumIv, precision) },
+              { label: "Call IV Rank", value: typeof observation.call?.ivRank === "number" ? `${observation.call.ivRank.toFixed(precision)}%` : "Unavailable" },
+              { label: "Put IV Rank", value: typeof observation.put?.ivRank === "number" ? `${observation.put.ivRank.toFixed(precision)}%` : "Unavailable" },
+              { label: "Contract mode", value: mode },
+              { label: "Lookback · maturity", value: `${observation.lookBackPeriodDays}D · ${observation.targetMaturityDays}D` },
+              { label: "Expiration", value: observation.expirationDate },
+              { label: "Provider · status", value: `QuantData · ${observation.status}` },
+              { label: "Quality", value: `${observation.dataQuality.score}%` },
+              { label: "Warnings", value: warnings },
+            ],
+          };
+        });
         return [{
           key: instance.instanceId,
-          title: `IMPLIED VOLATILITY RANK · ${snapshot?.sourceTicker ?? automaticIvSourceTicker(instrument)} → ${instrument}`,
+          title: `IV RANK · ${sourceDisplay} · ${Math.round(Number(instance.settings?.lookBackPeriodDays ?? 252))}D · ${Math.round(Number(instance.settings?.targetMaturityDays ?? 30))}D · ${status}`,
           indicatorId: instance.indicatorId,
           settings: instance.settings,
           series,
           fixedDomain: { min: 0, max: 100 },
-          statusLabel: status,
-          currentBadge: typeof currentRank === "number" ? `${currentRank.toFixed(1)}` : undefined,
-          bands: [
-            { from: 0, to: Number(instance.settings?.lowThreshold ?? 20), color: settings.downColor, opacity: 0.05 },
-            { from: Number(instance.settings?.highThreshold ?? 80), to: 100, color: settings.upColor, opacity: 0.05 },
+          showHeader: instance.settings?.showHeader !== false,
+          showLegend: instance.settings?.showLegend !== false,
+          percentageAxis: true,
+          secondaryAxisSeriesKey: `${instance.instanceId}-price`,
+          secondaryAxisLabel: instance.settings?.showPriceOverlay === false ? undefined : instrument.toUpperCase(),
+          defaultHeight: Math.max(120, Math.min(520, Number(instance.settings?.paneHeight ?? 220))),
+          minimumHeight: 120,
+          maximumHeight: 520,
+          tooltipPoints,
+          currentBadgeValue: typeof currentRank === "number" ? currentRank : undefined,
+          currentBadge: instance.settings?.showCurrentBadge !== false && typeof currentRank === "number" ? `IVR ${currentRank.toFixed(precision)}% · ${statusDetails.shortLabel}` : undefined,
+          bands: instance.settings?.showRegimeBands === false ? [] : [
+            { from: 0, to: lowThreshold, color: String(instance.settings?.lowBandColor ?? settings.downColor), opacity: 0.05 },
+            { from: lowThreshold, to: middleThreshold, color: String(instance.settings?.middleBandColor ?? settings.gridColor), opacity: 0.025 },
+            { from: middleThreshold, to: highThreshold, color: String(instance.settings?.middleBandColor ?? settings.gridColor), opacity: 0.05 },
+            { from: highThreshold, to: 100, color: String(instance.settings?.highBandColor ?? settings.upColor), opacity: 0.07 },
           ],
           unavailableReason: series.some((definition) => definition.data.length)
             ? undefined
@@ -3913,7 +3981,7 @@ export default function Chart({
   const resolvedIndicatorPaneHeights = useMemo(
     () => Object.fromEntries(calculatedIndicatorPanes.map((group) => [
       group.key,
-      indicatorPaneHeights[group.key] ?? defaultIndicatorPaneHeight,
+      indicatorPaneHeights[group.key] ?? group.defaultHeight ?? defaultIndicatorPaneHeight,
     ])),
     [calculatedIndicatorPanes, defaultIndicatorPaneHeight, indicatorPaneHeights],
   );
@@ -5528,11 +5596,14 @@ export default function Chart({
     viewportVersion,
   ]);
   const resizeIndicatorPane = useCallback((key: string, nextHeight: number) => {
+    const group = calculatedIndicatorPanes.find((pane) => pane.key === key);
+    const height = Math.max(group?.minimumHeight ?? 64, Math.min(group?.maximumHeight ?? 420, Math.round(nextHeight)));
     setIndicatorPaneHeights((current) => ({
       ...current,
-      [key]: Math.max(64, Math.min(420, Math.round(nextHeight))),
+      [key]: height,
     }));
-  }, []);
+    if (group?.indicatorId === "implied-volatility-rank") updateIndicatorSettingRef.current?.(key, "paneHeight", height);
+  }, [calculatedIndicatorPanes]);
   const toggleIndicatorPane = useCallback((key: string) => {
     setCollapsedIndicatorPanes((current) => ({ ...current, [key]: !current[key] }));
   }, []);
@@ -9045,6 +9116,9 @@ export default function Chart({
             lastValueVisible: definition.lastValueVisible !== false,
             priceLineVisible: false,
             crosshairMarkerVisible: false,
+            ...(definition.priceScaleId?.startsWith("iv-rank-") ? {
+              autoscaleInfoProvider: () => ({ priceRange: { minValue: 0, maxValue: 100 } }),
+            } : {}),
           };
       if (existing && existing.kind === kind) {
         existing.series.applyOptions(options);

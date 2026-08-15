@@ -88,9 +88,14 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
     { key: "targetMaturityDays", label: "Target maturity (days)", defaultValue: 30, min: 1, max: 365, step: 1 },
     { key: "refreshSeconds", label: "Refresh interval (seconds)", defaultValue: 15, min: 5, max: 300, step: 5 },
     { key: "staleAfterSeconds", label: "Stale after (seconds)", defaultValue: 90, min: 15, max: 900, step: 15 },
+    { key: "maximumForwardFillMinutes", label: "Maximum live IV age (minutes)", defaultValue: 5, min: 1, max: 60, step: 1 },
+    { key: "paneHeight", label: "Pane height", defaultValue: 220, min: 120, max: 520, step: 1 },
     { key: "lineWidth", label: "IV Rank line width", defaultValue: 2, min: 1, max: 5, step: 0.25 },
-    { key: "lowThreshold", label: "Low IV threshold", defaultValue: 20, min: 0, max: 100, step: 1 },
-    { key: "highThreshold", label: "High IV threshold", defaultValue: 80, min: 0, max: 100, step: 1 },
+    { key: "priceLineWidth", label: "Price line width", defaultValue: 1.5, min: 0.5, max: 4, step: 0.25 },
+    { key: "decimalPrecision", label: "Decimal precision", defaultValue: 2, min: 0, max: 4, step: 1 },
+    { key: "lowThreshold", label: "Low / normal boundary", defaultValue: 20, min: 0, max: 98, step: 1 },
+    { key: "middleThreshold", label: "Normal / elevated boundary", defaultValue: 50, min: 1, max: 99, step: 1 },
+    { key: "highThreshold", label: "Elevated / extreme boundary", defaultValue: 80, min: 2, max: 100, step: 1 },
   ],
   "dark-pool-map": [
     { key: "historyDays", label: "History (equity sessions)", defaultValue: 2, min: 1, max: 20, step: 1 },
@@ -599,6 +604,12 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
     showIvPercentile: false,
     showRawIv: false,
     showPriceOverlay: true,
+    showRegimeBands: true,
+    showHeader: true,
+    showLegend: true,
+    showCurrentBadge: true,
+    breakAtMissingData: true,
+    carryLastValid: true,
     useLiveIntradayIv: true,
     useThemeColors: true,
     rankColor: theme?.upColor ?? "#22C55E",
@@ -609,6 +620,11 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
     lowBandColor: theme?.downColor ?? "#EF4444",
     middleBandColor: theme?.gridColor ?? "#71717A",
     highBandColor: theme?.upColor ?? "#22C55E",
+    paneHeight: 220,
+    maximumForwardFillMinutes: 5,
+    priceLineWidth: 1.5,
+    decimalPrecision: 2,
+    middleThreshold: 50,
     ivRankSettingsVersion: 1,
   } : {}),
   ...(indicatorId === "net-gamma-exposure-by-strike" ? {
@@ -1154,6 +1170,14 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
     if (!["AUTO", "QQQ", "SPY", "NDX", "SPX", "IWM", "DIA"].includes(String(settings.sourceTicker))) settings.sourceTicker = "AUTO";
     if (!["combined", "average-call-put", "call", "put", "call-put-split"].includes(String(settings.contractMode))) settings.contractMode = "average-call-put";
     if (!["separate-pane", "main-chart-overlay"].includes(String(settings.placement))) settings.placement = "separate-pane";
+    const lowThreshold = Number(settings.lowThreshold);
+    const middleThreshold = Number(settings.middleThreshold);
+    const highThreshold = Number(settings.highThreshold);
+    if (!(lowThreshold < middleThreshold && middleThreshold < highThreshold)) {
+      settings.lowThreshold = 20;
+      settings.middleThreshold = 50;
+      settings.highThreshold = 80;
+    }
     for (const unsafeKey of ["apiKey", "credential", "credentials", "providerCredential", "snapshot", "history", "observations"]) delete settings[unsafeKey];
     return { ...normalizedInstance, settings };
   }

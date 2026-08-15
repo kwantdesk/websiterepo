@@ -14,6 +14,8 @@ export interface IvRankQuery {
   useLiveIntradayIv: boolean;
   refreshSeconds: number;
   staleAfterSeconds: number;
+  maximumForwardFillMinutes: number;
+  carryLastValid: boolean;
 }
 
 export interface IvRankResourceState {
@@ -83,6 +85,7 @@ async function fetchEntry(entry: CacheEntry, force = false) {
           maturity: String(entry.query.targetMaturityDays),
           contractMode: entry.query.contractMode,
           live: entry.query.useLiveIntradayIv ? "1" : "0",
+          maximumForwardFillMinutes: String(entry.query.maximumForwardFillMinutes),
         });
         const response = await fetch(`/api/implied-volatility-rank?${params}`, {
           signal: controller.signal,
@@ -102,6 +105,7 @@ async function fetchEntry(entry: CacheEntry, force = false) {
       }
     }
     entry.error = lastError instanceof Error ? lastError.message : "IV Rank is unavailable.";
+    if (!entry.query.carryLastValid) entry.snapshot = null;
   })().finally(() => {
     if (entry.controller === controller) entry.controller = null;
     entry.request = null;
