@@ -105,6 +105,33 @@ assert.equal(filtered.netExposure, raw.netExposure, "visual thresholds do not al
 const firstMapping = raw.points.find((point) => point.timestamp === 1776177000000).mapping;
 const secondMapping = raw.points.find((point) => point.timestamp === 1776177060000).mapping;
 assert.notEqual(firstMapping.calculatedAtMs, secondMapping.calculatedAtMs, "each bucket stores its own historical mapping timestamp");
+assert.equal(firstMapping.method, "live-ratio", "QQQ to NQ uses one stable live-ratio mapping method from the first bucket");
+assert.equal(secondMapping.method, "live-ratio", "QQQ to NQ does not switch mapping method as the session grows");
+
+const interpolatedBuckets = Array.from({ length: 6 }, (_, index) => ({
+  timestamp: 1776177000000 + index * 60_000,
+  sourcePrice: 730 + index * 0.1,
+  rows: [{ expirationDate: "2026-08-14", sourceStrike: 730, callExposure: 100 + index, putExposure: -25 }],
+}));
+const interpolatedSnapshot = buildGexIntervalMapSnapshot(
+  { ...surface, buckets: interpolatedBuckets },
+  "NQ",
+  [
+    { timestamp: 1776177000000, price: 29_930 },
+    { timestamp: 1776177300000, price: 29_960 },
+  ],
+  baseSettings,
+);
+assert.equal(new Set(interpolatedSnapshot.points.map((point) => point.timestamp)).size, 6, "one-minute GEX frames survive on a five-minute candle timeline");
+
+const stableMappingBuckets = Array.from({ length: 20 }, (_, index) => ({
+  timestamp: 1776177000000 + index * 60_000,
+  sourcePrice: 730 + index * 0.05,
+  rows: [{ expirationDate: "2026-08-14", sourceStrike: 730, callExposure: 100, putExposure: -20 }],
+}));
+const stableMappingPrices = stableMappingBuckets.map((bucket, index) => ({ timestamp: bucket.timestamp, price: 29_930 + index * 2 }));
+const stableMappingSnapshot = buildGexIntervalMapSnapshot({ ...surface, buckets: stableMappingBuckets }, "NQ", stableMappingPrices, baseSettings);
+assert.ok(stableMappingSnapshot.points.every((point) => point.mapping.method === "live-ratio"), "ETF-to-futures mapping never switches to a different model mid-session");
 
 const catalogSource = fs.readFileSync(path.join(root, "src/lib/chartIndicatorCatalog.ts"), "utf8");
 const workspaceSource = fs.readFileSync(path.join(root, "src/components/KwantifyWorkspace.tsx"), "utf8");

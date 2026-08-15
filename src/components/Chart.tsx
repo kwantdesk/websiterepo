@@ -4020,7 +4020,7 @@ export default function Chart({
         customBinSizePoints: Math.max(0.01, Number(indicatorSettings.customBinSizePoints ?? 1)),
         minimumAbsoluteExposure: Math.max(0, Number(indicatorSettings.minimumAbsoluteExposure ?? 0)),
         maximumDistancePoints: Math.max(0, Number(indicatorSettings.maximumDistancePoints ?? 0)),
-        maximumPoints: Math.max(500, Number(indicatorSettings.maximumPoints ?? 20000)),
+        maximumPoints: Math.max(500, Number(indicatorSettings.maximumPoints ?? 40000)),
         maximumStrikesPerBucket: Math.max(0, Number(indicatorSettings.maximumStrikesPerBucket ?? 80)),
         hideZeroValues: indicatorSettings.hideZeroValues !== false,
       },
@@ -4030,8 +4030,10 @@ export default function Chart({
     if (!gexIntervalMapIndicator || !gexIntervalSnapshot) return null;
     const indicatorSettings = gexIntervalMapIndicator.settings ?? {};
     const useThemeColors = indicatorSettings.useThemeColors !== false;
+    const negativeExposurePalette = String(indicatorSettings.negativeExposurePalette ?? "neutral");
     return {
       snapshot: gexIntervalSnapshot,
+      timeAnchors: candles.map((candle) => candle.timestamp),
       visualMode: String(indicatorSettings.visualMode ?? "bubbles") as GexIntervalMapVisual,
       opacity: Math.max(0.05, Math.min(1, Number(indicatorSettings.opacity ?? 68) / 100)),
       intensity: Math.max(0.25, Math.min(4, Number(indicatorSettings.intensity ?? 1))),
@@ -4066,14 +4068,16 @@ export default function Chart({
       mergeTolerancePoints: Math.max(0, Number(indicatorSettings.mergeTolerancePoints ?? 1)),
       showValues: indicatorSettings.showValues === true,
       positiveColor: useThemeColors ? settings.upColor : String(indicatorSettings.positiveColor ?? settings.upColor),
-      negativeColor: useThemeColors ? settings.downColor : String(indicatorSettings.negativeColor ?? settings.downColor),
+      negativeColor: negativeExposurePalette === "neutral"
+        ? String(indicatorSettings.neutralColor ?? "#A1A1AA")
+        : useThemeColors ? settings.downColor : String(indicatorSettings.negativeColor ?? settings.downColor),
       callColor: useThemeColors ? settings.upColor : String(indicatorSettings.callColor ?? settings.upColor),
       putColor: useThemeColors ? settings.downColor : String(indicatorSettings.putColor ?? settings.downColor),
-      neutralColor: useThemeColors ? settings.gridColor : String(indicatorSettings.neutralColor ?? settings.gridColor),
+      neutralColor: String(indicatorSettings.neutralColor ?? "#A1A1AA"),
       backgroundColor: settings.backgroundColor,
       precision: priceFormat.precision,
     };
-  }, [gexIntervalMapIndicator, gexIntervalSnapshot, priceFormat.precision, settings.backgroundColor, settings.downColor, settings.gridColor, settings.upColor]);
+  }, [candles, gexIntervalMapIndicator, gexIntervalSnapshot, priceFormat.precision, settings.backgroundColor, settings.downColor, settings.upColor]);
   useEffect(() => {
     gexIntervalMapPrimitiveRef.current?.update(gexIntervalPrimitiveData);
   }, [gexIntervalPrimitiveData, viewportVersion]);

@@ -190,14 +190,27 @@ export function normalizeGexIntervalProviderPayload(input: {
   };
 }
 
-function nearestPrice(points: DisplayPricePoint[], timestamp: number, toleranceMs = 90_000) {
-  let best: DisplayPricePoint | null = null;
-  let distance = Number.POSITIVE_INFINITY;
-  for (const point of points) {
-    const nextDistance = Math.abs(point.timestamp - timestamp);
-    if (nextDistance < distance) { best = point; distance = nextDistance; }
+function interpolatedPrice(points: DisplayPricePoint[], timestamp: number, edgeToleranceMs = 15 * 60_000) {
+  if (!points.length) return null;
+  let low = 0;
+  let high = points.length - 1;
+  while (low <= high) {
+    const middle = (low + high) >>> 1;
+    const candidate = points[middle];
+    if (candidate.timestamp === timestamp) return candidate.price;
+    if (candidate.timestamp < timestamp) low = middle + 1;
+    else high = middle - 1;
   }
-  return best && distance <= toleranceMs ? best.price : null;
+  const before = high >= 0 ? points[high] : null;
+  const after = low < points.length ? points[low] : null;
+  if (before && after) {
+    const span = after.timestamp - before.timestamp;
+    if (span <= 0) return before.price;
+    const fraction = Math.max(0, Math.min(1, (timestamp - before.timestamp) / span));
+    return before.price + (after.price - before.price) * fraction;
+  }
+  const edge = before ?? after;
+  return edge && Math.abs(edge.timestamp - timestamp) <= edgeToleranceMs ? edge.price : null;
 }
 
 function regressionMapping(input: {
@@ -223,6 +236,15 @@ function regressionMapping(input: {
       method: "spot-futures-basis", sourceTicker: source, displayInstrument: display, alpha, beta: 1,
       sourceSpotPrice: input.sourcePrice, displayMidPrice: input.displayPrice, mappedSourceSpotPrice: input.sourcePrice + alpha,
       mappingConfidence: 92, calculatedAtMs: input.timestamp, dataAgeMs: 0,
+    };
+  }
+  const etfToFuture = (source === "QQQ" && /^(NQ|MNQ)$/.test(display)) || (source === "SPY" && /^(ES|MES)$/.test(display));
+  if (etfToFuture) {
+    const beta = input.displayPrice / input.sourcePrice;
+    return {
+      method: "live-ratio", sourceTicker: source, displayInstrument: display, alpha: 0, beta,
+      sourceSpotPrice: input.sourcePrice, displayMidPrice: input.displayPrice, mappedSourceSpotPrice: input.sourcePrice * beta,
+      sampleCount: input.samples.length, mappingConfidence: 88, calculatedAtMs: input.timestamp, dataAgeMs: 0,
     };
   }
   const samples = input.samples.filter((sample) => sample.source > 0 && sample.display > 0).slice(-120);
@@ -340,7 +362,7 @@ export function buildGexIntervalMapSnapshot(
   const displayTick = /^(NQ|MNQ|ES|MES)$/.test(displayInstrument) ? 0.25 : 0.01;
   for (let bucketIndex = 0; bucketIndex < filteredBuckets.length; bucketIndex += 1) {
     const bucket = filteredBuckets[bucketIndex];
-    const displayPrice = nearestPrice(displayPrices, bucket.timestamp);
+    const displayPrice = interpolatedPrice(displayPrices, bucket.timestamp);
     const directRoot = (surface.sourceTicker === "NQ" && /^(NQ|MNQ)$/.test(displayInstrument))
       || (surface.sourceTicker === "ES" && /^(ES|MES)$/.test(displayInstrument));
     const sourcePrice = bucket.sourcePrice ?? (directRoot ? displayPrice : null);

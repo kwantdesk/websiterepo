@@ -163,7 +163,7 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
     { key: "customBinSizePoints", label: "Custom mapped bin (points)", defaultValue: 1, min: 0.25, max: 100, step: 0.25 },
     { key: "minimumAbsoluteExposure", label: "Minimum absolute exposure", defaultValue: 0, min: 0, max: 100000000000, step: 1000000 },
     { key: "maximumDistancePoints", label: "Maximum distance from price · 0 = all", defaultValue: 0, min: 0, max: 10000, step: 1 },
-    { key: "maximumPoints", label: "Maximum retained map points", defaultValue: 20000, min: 500, max: 75000, step: 500 },
+    { key: "maximumPoints", label: "Maximum retained map points", defaultValue: 40000, min: 500, max: 75000, step: 500 },
     { key: "maximumStrikesPerBucket", label: "Visible strikes per interval · 0 = all", defaultValue: 80, min: 0, max: 500, step: 5 },
     { key: "opacity", label: "Map opacity (%)", defaultValue: 68, min: 5, max: 100, step: 1 },
     { key: "intensity", label: "Intensity", defaultValue: 1, min: 0.25, max: 4, step: 0.05 },
@@ -673,8 +673,9 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
     negativeColor: theme?.downColor ?? "#EF4444",
     callColor: theme?.upColor ?? "#22C55E",
     putColor: theme?.downColor ?? "#EF4444",
-    neutralColor: theme?.gridColor ?? "#A1A1AA",
-    gexIntervalMapSettingsVersion: 2,
+    neutralColor: "#A1A1AA",
+    negativeExposurePalette: "neutral",
+    gexIntervalMapSettingsVersion: 3,
   } : {}),
   ...(indicatorId === "dark-pool-map" ? {
     preset: "balanced",
@@ -1171,6 +1172,7 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
       visualMode: ["bubbles", "fixed-dots", "heat-cells", "horizontal-ribbons", "hybrid"],
       scaleMode: ["visible-maximum", "visible-percentile", "session-maximum", "fixed-maximum"],
       scaleTransform: ["linear", "square-root", "logarithmic"],
+      negativeExposurePalette: ["neutral", "bearish"],
     };
     for (const [key, allowed] of Object.entries(enumValues)) if (!allowed.includes(String(settings[key]))) settings[key] = defaults[key];
     if (Number(settings.gexIntervalMapSettingsVersion ?? 0) < 2) {
@@ -1182,8 +1184,13 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
       settings.showLevelTracks = true;
       settings.showUnderlyingPriceLine = false;
     }
+    if (Number(settings.gexIntervalMapSettingsVersion ?? 0) < 3) {
+      settings.negativeExposurePalette = "neutral";
+      settings.neutralColor = "#A1A1AA";
+      settings.maximumPoints = Math.max(40_000, Number(settings.maximumPoints ?? 0));
+    }
     for (const unsafeKey of ["apiKey", "credential", "credentials", "providerCredential", "liveSnapshot", "snapshotData", "buckets", "points"]) delete settings[unsafeKey];
-    return { ...normalizedInstance, settings: { ...settings, gexIntervalMapSettingsVersion: 2 } };
+    return { ...normalizedInstance, settings: { ...settings, gexIntervalMapSettingsVersion: 3 } };
   }
   if (
     normalizedInstance.indicatorId === "depth-of-market"

@@ -979,7 +979,7 @@ export default function ChartIndicatorsControl({
                       onChange={(event) => {
                         const preset = event.target.value;
                         const presetSettings: Record<string, string | number | boolean> = preset === "zero-dte-scalper"
-                          ? { mode: "raw", baseline: "previous-bucket", expirationMode: "zero-dte", contentMode: "net", visualMode: "bubbles", aggregationPeriod: "1m", maximumPoints: 20000, maximumStrikesPerBucket: 60, currentBucketScaleMultiplier: 135, currentBucketOpacityMultiplier: 135, showLevels: true, showLevelTracks: true, showMaxPositive: true, showMaxNegative: true, showCallWall: true, showPutWall: true }
+                          ? { mode: "raw", baseline: "previous-bucket", expirationMode: "zero-dte", contentMode: "net", visualMode: "bubbles", aggregationPeriod: "1m", maximumPoints: 40000, maximumStrikesPerBucket: 60, currentBucketScaleMultiplier: 135, currentBucketOpacityMultiplier: 135, showLevels: true, showLevelTracks: true, showMaxPositive: true, showMaxNegative: true, showCallWall: true, showPutWall: true }
                           : preset === "build-unwind"
                             ? { mode: "difference", baseline: "previous-bucket", expirationMode: "zero-to-one-dte", contentMode: "net", visualMode: "fixed-dots", aggregationPeriod: "1m", showLevels: false, showMaxPositive: false, showMaxNegative: false, showCallWall: false, showPutWall: false }
                             : preset === "heat-ribbon"
@@ -990,7 +990,7 @@ export default function ChartIndicatorsControl({
                                   ? { mode: "raw", expirationMode: "zero-to-one-dte", contentMode: "net", visualMode: "bubbles", aggregationPeriod: "1m", maximumPoints: 20000, maximumStrikesPerBucket: 20, opacity: 58, showLevels: true, showLevelTracks: true, showValues: false, showMaxPositive: true, showMaxNegative: true, showDominantAbsolute: false, showCallWall: false, showPutWall: false }
                                   : preset === "historical-replay"
                                     ? { mode: "raw", baseline: "previous-bucket", historyMode: "session-date", expirationMode: "zero-to-one-dte", contentMode: "net", visualMode: "bubbles", aggregationPeriod: "5m", highlightCurrentBucket: false, showCurrentBucketOutline: false, showLevels: true }
-                                    : { mode: "raw", baseline: "previous-bucket", historyMode: "current-session", expirationMode: "zero-to-one-dte", contentMode: "net", visualMode: "bubbles", aggregationPeriod: "1m", scaleMode: "visible-percentile", scalePercentile: 98, scaleTransform: "square-root", showLevels: true, showMaxPositive: true, showMaxNegative: true, showCallWall: false, showPutWall: false };
+                                    : { mode: "raw", baseline: "previous-bucket", historyMode: "current-session", expirationMode: "zero-to-one-dte", contentMode: "net", visualMode: "bubbles", aggregationPeriod: "1m", maximumPoints: 40000, scaleMode: "visible-percentile", scalePercentile: 98, scaleTransform: "square-root", showLevels: true, showMaxPositive: true, showMaxNegative: true, showCallWall: false, showPutWall: false };
                         replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), preset, ...presetSettings } }));
                       }}
                       className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground"
@@ -1017,6 +1017,7 @@ export default function ChartIndicatorsControl({
                     ["Visual", "visualMode", [["bubbles", "Magnitude bubbles"], ["fixed-dots", "Fixed dots"], ["heat-cells", "Heat cells"], ["horizontal-ribbons", "Horizontal ribbons"], ["hybrid", "Hybrid"]]],
                     ["Scale", "scaleMode", [["visible-maximum", "Visible maximum"], ["visible-percentile", "Visible percentile"], ["session-maximum", "Session maximum"], ["fixed-maximum", "Fixed maximum"]]],
                     ["Scale transform", "scaleTransform", [["linear", "Linear"], ["square-root", "Square root"], ["logarithmic", "Logarithmic"]]],
+                    ["Negative exposure", "negativeExposurePalette", [["neutral", "Neutral / silver"], ["bearish", "Bearish chart colour"]]],
                   ].map(([label, key, options]) => (
                     <label key={String(key)} className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
                       <span>{String(label)}</span>

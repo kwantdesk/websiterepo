@@ -12,6 +12,7 @@ type CandleSeriesApi = SeriesAttachedParameter<Time, "Candlestick">["series"];
 
 export type GexIntervalMapPrimitiveData = {
   snapshot: GexIntervalMapSnapshot;
+  timeAnchors: number[];
   visualMode: GexIntervalMapVisual;
   opacity: number;
   intensity: number;
@@ -72,6 +73,54 @@ const percentile = (values: number[], fraction: number) => {
   return sorted[Math.min(sorted.length - 1, Math.max(0, Math.ceil(fraction * sorted.length) - 1))] || 1;
 };
 
+const coordinateForTimestamp = (
+  chart: IChartApi,
+  timestamp: number,
+  anchors: number[],
+  coordinateCache: Map<number, number | null>,
+) => {
+  const direct = chart.timeScale().timeToCoordinate(Math.floor(timestamp / 1_000) as Time);
+  if (direct !== null) return Number(direct);
+  if (!anchors.length) return null;
+
+  let low = 0;
+  let high = anchors.length - 1;
+  while (low <= high) {
+    const middle = (low + high) >>> 1;
+    if (anchors[middle] === timestamp) {
+      low = middle;
+      high = middle;
+      break;
+    }
+    if (anchors[middle] < timestamp) low = middle + 1;
+    else high = middle - 1;
+  }
+
+  const coordinateAt = (anchor: number) => {
+    if (coordinateCache.has(anchor)) return coordinateCache.get(anchor) ?? null;
+    const coordinate = chart.timeScale().timeToCoordinate(Math.floor(anchor / 1_000) as Time);
+    const normalized = coordinate === null ? null : Number(coordinate);
+    coordinateCache.set(anchor, normalized);
+    return normalized;
+  };
+  const interpolate = (beforeIndex: number, afterIndex: number) => {
+    const beforeTime = anchors[beforeIndex];
+    const afterTime = anchors[afterIndex];
+    const beforeX = coordinateAt(beforeTime);
+    const afterX = coordinateAt(afterTime);
+    if (beforeX === null || afterX === null || afterTime <= beforeTime) return null;
+    return beforeX + ((timestamp - beforeTime) / (afterTime - beforeTime)) * (afterX - beforeX);
+  };
+
+  if (high >= 0 && low < anchors.length) return interpolate(high, low);
+  const edgeToleranceMs = 15 * 60_000;
+  if (low >= anchors.length && anchors.length >= 2 && timestamp - anchors[anchors.length - 1] <= edgeToleranceMs) {
+    return interpolate(anchors.length - 2, anchors.length - 1);
+  }
+  if (high < 0 && anchors.length >= 2 && anchors[0] - timestamp <= edgeToleranceMs) return interpolate(0, 1);
+  return null;
+};
+
 class Renderer implements ISeriesPrimitivePaneRenderer {
   constructor(private readonly primitive: GexIntervalMapPrimitive) {}
   draw(target: Parameters<ISeriesPrimitivePaneRenderer["draw"]>[0]) {
@@ -81,10 +130,10 @@ class Renderer implements ISeriesPrimitivePaneRenderer {
     if (!series || !chart || !data || !data.snapshot.points.length) return;
     target.useMediaCoordinateSpace(({ context, mediaSize }) => {
       if (mediaSize.width < 80 || mediaSize.height < 80) return;
-      const scale = chart.timeScale();
+      const coordinateCache = new Map<number, number | null>();
       const visible: Array<{ point: GexIntervalMapPoint; x: number; y: number }> = [];
       for (const point of data.snapshot.points) {
-        const x = scale.timeToCoordinate(Math.floor(point.timestamp / 1_000) as Time);
+        const x = coordinateForTimestamp(chart, point.timestamp, data.timeAnchors, coordinateCache);
         const y = series.priceToCoordinate(point.mappedPrice);
         if (x === null || y === null || x < -40 || x > mediaSize.width + 40 || y < -30 || y > mediaSize.height + 30) continue;
         visible.push({ point, x: Number(x), y: Number(y) });
@@ -108,11 +157,11 @@ class Renderer implements ISeriesPrimitivePaneRenderer {
       context.save();
       context.beginPath(); context.rect(0, 0, mediaSize.width, mediaSize.height); context.clip();
       if (data.showLevelTracks) {
-        this.drawTrack(context, data.snapshot.tracks?.maxPositive ?? [], chart, series, data.positiveColor, data.trackWidth, [5, 4]);
-        this.drawTrack(context, data.snapshot.tracks?.maxNegative ?? [], chart, series, data.negativeColor, data.trackWidth, [5, 4]);
+        this.drawTrack(context, data.snapshot.tracks?.maxPositive ?? [], chart, series, data.timeAnchors, coordinateCache, data.positiveColor, data.trackWidth, [5, 4]);
+        this.drawTrack(context, data.snapshot.tracks?.maxNegative ?? [], chart, series, data.timeAnchors, coordinateCache, data.negativeColor, data.trackWidth, [5, 4]);
       }
       if (data.showUnderlyingPriceLine) {
-        this.drawTrack(context, data.snapshot.tracks?.underlyingPrice ?? [], chart, series, data.neutralColor, Math.max(1, data.trackWidth * 0.8), []);
+        this.drawTrack(context, data.snapshot.tracks?.underlyingPrice ?? [], chart, series, data.timeAnchors, coordinateCache, data.neutralColor, Math.max(1, data.trackWidth * 0.8), []);
       }
       if (data.visualMode === "horizontal-ribbons" || data.visualMode === "hybrid") {
         const byPrice = new Map<number, typeof visible>();
@@ -188,12 +237,14 @@ class Renderer implements ISeriesPrimitivePaneRenderer {
     points: Array<{ timestamp: number; price: number }>,
     chart: IChartApi,
     series: CandleSeriesApi,
+    timeAnchors: number[],
+    coordinateCache: Map<number, number | null>,
     color: string,
     width: number,
     dash: number[],
   ) {
     const coordinates = points.map((point) => ({
-      x: chart.timeScale().timeToCoordinate(Math.floor(point.timestamp / 1_000) as Time),
+      x: coordinateForTimestamp(chart, point.timestamp, timeAnchors, coordinateCache),
       y: series.priceToCoordinate(point.price),
     })).filter((point): point is { x: NonNullable<typeof point.x>; y: NonNullable<typeof point.y> } => point.x !== null && point.y !== null);
     if (coordinates.length < 2) return;
@@ -269,8 +320,9 @@ export class GexIntervalMapPrimitive implements ISeriesPrimitive<Time> {
     if (!this.chartApi || !this.candleSeries || !this.renderData) return null;
     let hit: GexIntervalMapHit | null = null;
     let best = 18;
+    const coordinateCache = new Map<number, number | null>();
     for (const point of this.renderData.snapshot.points) {
-      const pointX = this.chartApi.timeScale().timeToCoordinate(Math.floor(point.timestamp / 1_000) as Time);
+      const pointX = coordinateForTimestamp(this.chartApi, point.timestamp, this.renderData.timeAnchors, coordinateCache);
       const pointY = this.candleSeries.priceToCoordinate(point.mappedPrice);
       if (pointX === null || pointY === null) continue;
       const distance = Math.hypot(Number(pointX) - x, Number(pointY) - y);
