@@ -8003,6 +8003,11 @@ export default function Chart({
 
     candleSeries.setData(chartData);
     let applyingSynchronizedCrosshair = false;
+    // Only the chart physically under the pointer is allowed to originate a
+    // linked-crosshair move. Programmatic moves on passive charts can also
+    // trigger Lightweight Charts' crosshair callback, so pointer ownership is
+    // the hard boundary that prevents those moves echoing back to the source.
+    let nativeCrosshairPointerActive = false;
     let synchronizedCrosshairReleaseFrame: number | null = null;
     let crosshairDispatchFrame: number | null = null;
     let pendingCrosshairMove: ChartCrosshairSyncMove | null = null;
@@ -8022,7 +8027,11 @@ export default function Chart({
       }
     };
     const handleNativeCrosshairMove: Parameters<IChartApi["subscribeCrosshairMove"]>[0] = (param) => {
-      if (!crosshairSyncEnabledRef.current || applyingSynchronizedCrosshair) return;
+      if (
+        !crosshairSyncEnabledRef.current
+        || !nativeCrosshairPointerActive
+        || applyingSynchronizedCrosshair
+      ) return;
       if (!param.point || param.time === undefined) {
         queueCrosshairMove({
           sourceChartId: chartInstanceId,
@@ -8053,6 +8062,7 @@ export default function Chart({
       const detail = (event as CustomEvent<ChartCrosshairSyncMove>).detail;
       if (
         !detail
+        || nativeCrosshairPointerActive
         || detail.sourceChartId === chartInstanceId
         || detail.instrumentKey !== crosshairSyncInstrumentKey
       ) return;
@@ -8361,6 +8371,22 @@ export default function Chart({
     prevDataRef.current = lastCandle ? `${lastCandle.timestamp}-${lastCandle.close}` : "";
 
     const container = chartContainerRef.current;
+    const claimNativeCrosshairPointer = () => {
+      if (nativeCrosshairPointerActive) return;
+      nativeCrosshairPointerActive = true;
+      // If this chart was passive immediately before the pointer entered it,
+      // remove its synchronized guide so its native cursor becomes the sole
+      // source of truth without a one-frame jump.
+      applyingSynchronizedCrosshair = false;
+      if (synchronizedCrosshairReleaseFrame !== null) {
+        window.cancelAnimationFrame(synchronizedCrosshairReleaseFrame);
+        synchronizedCrosshairReleaseFrame = null;
+      }
+      hideSynchronizedPriceGuide();
+    };
+    const releaseNativeCrosshairPointer = () => {
+      nativeCrosshairPointerActive = false;
+    };
     let mouseMoveFrame: number | null = null;
     let pendingMouseMove: { clientY: number; buttons: number } | null = null;
     let cachedContainerRect = container.getBoundingClientRect();
@@ -8555,6 +8581,10 @@ export default function Chart({
       scheduleViewportRefresh();
     };
 
+    // Capture pointer movement before the chart library handles it. This means
+    // the very first native crosshair callback already knows it owns the mouse.
+    container.addEventListener("pointermove", claimNativeCrosshairPointer, { capture: true, passive: true });
+    container.addEventListener("pointerleave", releaseNativeCrosshairPointer);
     container.addEventListener("mousemove", handleMouseMove);
     container.addEventListener("mouseleave", handleMouseLeave);
     container.addEventListener("contextmenu", handleContextMenu);
@@ -8574,6 +8604,8 @@ export default function Chart({
       drawingUnsubscribers.forEach((unsubscribe) => unsubscribe());
       drawingManager.detach();
       if (professionalDrawingManagerRef.current === drawingManager) professionalDrawingManagerRef.current = null;
+      container.removeEventListener("pointermove", claimNativeCrosshairPointer, true);
+      container.removeEventListener("pointerleave", releaseNativeCrosshairPointer);
       container.removeEventListener("mousemove", handleMouseMove);
       container.removeEventListener("mouseleave", handleMouseLeave);
       container.removeEventListener("contextmenu", handleContextMenu);
