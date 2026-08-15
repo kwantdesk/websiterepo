@@ -45,6 +45,37 @@ function label(ctx: CanvasRenderingContext2D, object: PrecisionObject, x: number
   ctx.restore();
 }
 
+function positionLabel(
+  ctx: CanvasRenderingContext2D,
+  object: PrecisionObject,
+  theme: PrecisionTheme,
+  centerX: number,
+  centerY: number,
+  text: string,
+  accent: string,
+  maxWidth: number,
+): void {
+  if (!object.labels.visible || !text) return;
+  ctx.save();
+  const fontSize = Math.max(8, Math.min(11, object.style.fontSize));
+  ctx.font = `${Math.max(600, object.style.fontWeight)} ${fontSize}px ${object.style.fontFamily}`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  const width = Math.ceil(ctx.measureText(text).width) + 16;
+  const height = fontSize + 10;
+  const x = clamp(centerX - width / 2, 4, Math.max(4, maxWidth - width - 4));
+  const y = centerY - height / 2;
+  ctx.globalAlpha = 0.96;
+  ctx.fillStyle = theme.panel;
+  ctx.strokeStyle = accent;
+  ctx.lineWidth = 1;
+  ctx.fillRect(x, y, width, height);
+  ctx.strokeRect(x + 0.5, y + 0.5, width - 1, height - 1);
+  ctx.fillStyle = theme.foreground;
+  ctx.fillText(text, x + width / 2, y + height / 2 + 0.5);
+  ctx.restore();
+}
+
 function formatPrice(value: number, adapter: PrecisionChartAdapter): string {
   return value.toFixed(adapter.precision);
 }
@@ -219,11 +250,42 @@ function renderObject(ctx: CanvasRenderingContext2D, object: PrecisionObject, ad
       const result = calculateTradeRisk(object, adapter.minMove, adapter.pointValue);
       const left = Math.min(...a.map((point) => point.x)), right = Math.max(...a.map((point) => point.x), left + 80);
       const entryY = a[0].y, stopY = a[1].y, targetY = a[2].y;
-      ctx.globalAlpha = 0.12; ctx.fillStyle = object.style.positiveColor; ctx.fillRect(left, Math.min(entryY, targetY), right - left, Math.abs(targetY - entryY)); ctx.fillStyle = object.style.negativeColor; ctx.fillRect(left, Math.min(entryY, stopY), right - left, Math.abs(stopY - entryY));
-      ctx.globalAlpha = 1; ctx.strokeStyle = object.style.neutralColor; line(ctx, { x: left, y: entryY }, { x: right, y: entryY }); ctx.strokeStyle = object.style.negativeColor; line(ctx, { x: left, y: stopY }, { x: right, y: stopY }); ctx.strokeStyle = object.style.positiveColor; line(ctx, { x: left, y: targetY }, { x: right, y: targetY });
-      const money = result.monetaryAvailable ? `$${result.totalRisk.toFixed(0)} / $${result.totalReward.toFixed(0)} · ` : "";
-      const text = result.valid ? `${result.direction} ${result.quantity} · ${money}${result.rMultiple.toFixed(2)}R` : result.warning ?? "Invalid setup";
-      label(ctx, object, right, entryY - 5, text, "right");
+      const boxWidth = Math.max(1, right - left);
+      const fillOpacity = object.options.backgroundEnabled === false ? 0 : clamp(Math.max(0.12, object.style.fillOpacity), 0, 0.42);
+      ctx.globalAlpha = fillOpacity;
+      ctx.fillStyle = object.style.positiveColor;
+      ctx.fillRect(left, Math.min(entryY, targetY), boxWidth, Math.abs(targetY - entryY));
+      ctx.fillStyle = object.style.negativeColor;
+      ctx.fillRect(left, Math.min(entryY, stopY), boxWidth, Math.abs(stopY - entryY));
+      ctx.globalAlpha = 0.82;
+      ctx.strokeStyle = object.style.positiveColor;
+      ctx.strokeRect(left + 0.5, Math.min(entryY, targetY) + 0.5, Math.max(0, boxWidth - 1), Math.max(0, Math.abs(targetY - entryY) - 1));
+      ctx.strokeStyle = object.style.negativeColor;
+      ctx.strokeRect(left + 0.5, Math.min(entryY, stopY) + 0.5, Math.max(0, boxWidth - 1), Math.max(0, Math.abs(stopY - entryY) - 1));
+      ctx.globalAlpha = 1;
+      ctx.strokeStyle = object.style.positiveColor;
+      line(ctx, { x: left, y: targetY }, { x: right, y: targetY });
+      ctx.strokeStyle = object.style.neutralColor;
+      ctx.setLineDash(object.style.lineStyle === "solid" ? [4, 3] : dash(object.style.lineStyle));
+      line(ctx, { x: left, y: entryY }, { x: right, y: entryY });
+      ctx.setLineDash(dash(object.style.lineStyle));
+      ctx.strokeStyle = object.style.negativeColor;
+      line(ctx, { x: left, y: stopY }, { x: right, y: stopY });
+
+      if (result.valid) {
+        const precision = adapter.precision;
+        const rewardMoney = result.monetaryAvailable && object.options.showPnl !== false ? ` · +$${result.totalReward.toFixed(0)}` : "";
+        const riskMoney = result.monetaryAvailable && object.options.showPnl !== false ? ` · -$${result.totalRisk.toFixed(0)}` : "";
+        const targetText = `TP · +${result.rewardPoints.toFixed(precision)} PTS · ${Math.round(result.rewardTicks)} TICKS${rewardMoney}`;
+        const stopText = `SL · -${result.riskPoints.toFixed(precision)} PTS · ${Math.round(result.riskTicks)} TICKS${riskMoney}`;
+        const entryText = `${result.direction} · ${result.quantity} · ${result.rMultiple.toFixed(2).replace(/\.00$/, "")}R`;
+        const centerX = left + boxWidth / 2;
+        positionLabel(ctx, object, theme, centerX, targetY, targetText, object.style.positiveColor, plotWidth);
+        positionLabel(ctx, object, theme, centerX, stopY, stopText, object.style.negativeColor, plotWidth);
+        if (object.options.showRiskReward !== false) positionLabel(ctx, object, theme, centerX, entryY, entryText, object.style.neutralColor, plotWidth);
+      } else {
+        positionLabel(ctx, object, theme, left + boxWidth / 2, entryY, result.warning ?? "INVALID SETUP", object.style.negativeColor, plotWidth);
+      }
       break;
     }
   }

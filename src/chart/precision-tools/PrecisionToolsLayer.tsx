@@ -333,6 +333,42 @@ export default function PrecisionToolsLayer({
     }
     if (!snapshot.draft) {
       const config = activeConfig(configs, toolId, snapshot.toolbar.activeConfigSlot);
+      if (toolId === "precision-buy-calculator" || toolId === "precision-sell-calculator") {
+        const plotWidth = Math.max(0, adapter.width - adapter.priceScaleWidth);
+        const preferredEndX = point.x + Math.max(120, adapter.pixelsPerBar * 12);
+        const endX = preferredEndX <= plotWidth - 12
+          ? preferredEndX
+          : Math.max(12, point.x - Math.max(120, adapter.pixelsPerBar * 12));
+        const endAnchor = adapter.xToAnchor(endX, point.y) ?? {
+          ...anchor,
+          time: anchor.time + 12 * 60_000,
+          logicalIndex: anchor.logicalIndex + 12,
+        };
+        const entryPrice = snapPrice(anchor.price, adapter.minMove, adapter.precision);
+        const isBuy = toolId === "precision-buy-calculator";
+        const stopPrice = snapPrice(entryPrice + (isBuy ? -50 : 50), adapter.minMove, adapter.precision);
+        const targetPrice = snapPrice(entryPrice + (isBuy ? 50 : -50), adapter.minMove, adapter.precision);
+        store.createDraft(toolId, config, { ...anchor, price: entryPrice });
+        store.updateDraft((draft) => ({
+          ...draft,
+          anchors: [
+            { ...anchor, price: entryPrice },
+            { ...endAnchor, price: stopPrice },
+            { ...endAnchor, price: targetPrice },
+          ],
+          options: {
+            ...draft.options,
+            stopMode: "points",
+            stopValue: 50,
+            targetMode: "points",
+            targetValue: 50,
+          },
+        }));
+        store.commitDraft();
+        placedCountRef.current = 0;
+        completeExternalPlacement();
+        return;
+      }
       store.createDraft(toolId, config, anchor);
       placedCountRef.current = 1;
       if (requiredPrecisionAnchors(toolId) === 1) {
@@ -372,7 +408,20 @@ export default function PrecisionToolsLayer({
     if (dragRef.current) {
       const drag = dragRef.current;
       if (drag.kind === "anchor") {
-        store.updateObjectLive(drag.objectId, (object) => ({ ...object, anchors: object.anchors.map((candidate, index) => index === drag.handleIndex ? anchor : candidate) }));
+        store.updateObjectLive(drag.objectId, (object) => {
+          const isTradeCalculator = object.toolId === "precision-buy-calculator" || object.toolId === "precision-sell-calculator";
+          const draggedIndex = drag.handleIndex ?? -1;
+          return {
+            ...object,
+            anchors: object.anchors.map((candidate, index) => {
+              if (index === draggedIndex) return anchor;
+              if (isTradeCalculator && draggedIndex > 0 && index > 0) {
+                return { ...candidate, time: anchor.time, logicalIndex: anchor.logicalIndex };
+              }
+              return candidate;
+            }),
+          };
+        });
       } else if (drag.kind === "resize" && drag.original.anchors.length >= 2) {
         const [a, b] = drag.original.anchors; let left = a.time < b.time ? a : b; let right = a.time < b.time ? b : a;
         let minTime = left.time, maxTime = right.time, maxPrice = Math.max(a.price, b.price), minPrice = Math.min(a.price, b.price);

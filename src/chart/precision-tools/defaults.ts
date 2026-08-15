@@ -63,8 +63,8 @@ export function defaultToolOptions(toolId: PrecisionToolId): PrecisionObject["op
       return {
         quantityMode: "fixed", quantity: 1, riskBudget: 0, targetAmount: 0,
         commissionPerContract: 0, slippageTicks: 0, backgroundEnabled: true,
-        stopEnabled: true, stopMode: "ticks", stopValue: 0,
-        targetEnabled: true, targetMode: "ticks", targetValue: 0,
+        stopEnabled: true, stopMode: "points", stopValue: 50,
+        targetEnabled: true, targetMode: "points", targetValue: 50,
         showEntry: true, showPnl: true, showRiskReward: true,
         showAbsolutePrice: true, showPriceOffset: true,
       };

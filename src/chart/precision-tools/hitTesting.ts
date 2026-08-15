@@ -31,6 +31,15 @@ export function hitTestObjects(objects: PrecisionObject[], point: PrecisionScree
       }
       if (point.x >= left - tolerance && point.x <= right + tolerance && point.y >= top - tolerance && point.y <= bottom + tolerance) return { objectId: object.id, kind: "body", distance: 0 };
     }
+    if ((object.toolId === "precision-buy-calculator" || object.toolId === "precision-sell-calculator") && anchors.length >= 3) {
+      const left = Math.min(...anchors.map((anchor) => anchor.x));
+      const right = Math.max(...anchors.map((anchor) => anchor.x));
+      const top = Math.min(...anchors.map((anchor) => anchor.y));
+      const bottom = Math.max(...anchors.map((anchor) => anchor.y));
+      if (point.x >= left - tolerance && point.x <= right + tolerance && point.y >= top - tolerance && point.y <= bottom + tolerance) {
+        return { objectId: object.id, kind: "body", distance: 0 };
+      }
+    }
     if (object.path?.length) {
       const path = object.path.map((anchor) => ({ x: adapter.timeToX(anchor.time, anchor.logicalIndex) ?? NaN, y: adapter.priceToY(anchor.price) ?? NaN })).filter((candidate) => Number.isFinite(candidate.x) && Number.isFinite(candidate.y));
       for (let index = 1; index < path.length; index += 1) {
