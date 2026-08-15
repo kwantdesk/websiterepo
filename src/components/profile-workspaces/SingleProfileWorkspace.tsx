@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Check, ChevronDown, Loader2, RefreshCw, Settings2, X } from "lucide-react";
 import { DATABENTO_LIVE_TICK_EVENT, type DatabentoLiveTick } from "@/lib/chartLiveEvents";
 import {
+  fetchInstitutionalOrderFlowLevels,
   fetchInstitutionalSnapshot,
   fetchInstitutionalVolumeProfile,
   mergeInstitutionalVolumeProfiles,
@@ -568,11 +569,25 @@ export default function SingleProfileWorkspace({
     // restart. That is not enough to guarantee a completed Friday RTH profile
     // on a weekend (or after a gateway restart), so the durable CME candle
     // history is the base and the live snapshot only refreshes its tail.
-    const [snapshot, historicalCandles] = await Promise.all([
-      fetchInstitutionalSnapshot({ symbol: instrument, timeframe: "1m", lookbackBars: 20_000, timeoutMs: 45_000 }),
+    const marketRoot = rootSymbol(instrument);
+    const historyStartMs = Date.now() - 14 * 24 * 60 * 60_000;
+    const [snapshot, archivedFlow, historicalCandles] = await Promise.all([
+      fetchInstitutionalSnapshot({ symbol: marketRoot, timeframe: "1m", lookbackBars: 20_000, timeoutMs: 45_000 }),
+      fetchInstitutionalOrderFlowLevels({
+        symbol: marketRoot,
+        timeframe: "1m",
+        fromMs: historyStartMs,
+        toMs: Date.now(),
+        includeTrades: false,
+        timeoutMs: 45_000,
+      }),
       fetchTpoHistory(instrument).catch(() => []),
     ]);
-    const candles = mergeTpoCandles(historicalCandles, snapshot?.candles ?? []);
+    const candles = mergeTpoCandles(
+      historicalCandles,
+      archivedFlow?.candles ?? [],
+      snapshot?.candles ?? [],
+    );
     if (!candles.length) return null;
     const lastCandle = candles.at(-1)!;
     setLivePrice(snapshot?.lastPrice ?? lastCandle.close);
