@@ -82,6 +82,74 @@ const TPO_PRESETS = [
     settings: { showDevelopingPoc: true, showDevelopingValueArea: true, pocLineMode: "developing", showInitialBalance: true },
   },
 ] as const;
+const DAILY_TPO_SESSION_PRESETS = [
+  {
+    label: "RTH only",
+    description: "09:30-16:00 New York",
+    settings: {
+      timezone: "America/New_York",
+      dailyStartTime: "09:30:00",
+      dailyEndMode: "explicit-time",
+      dailyEndTime: "16:00:00",
+      enabledWeekdays: "1,2,3,4,5",
+    },
+  },
+  {
+    label: "Globex open",
+    description: "18:00-17:00 New York",
+    settings: {
+      timezone: "America/New_York",
+      dailyStartTime: "18:00:00",
+      dailyEndMode: "explicit-time",
+      dailyEndTime: "17:00:00",
+      enabledWeekdays: "0,1,2,3,4",
+    },
+  },
+  {
+    label: "New York open",
+    description: "09:30 to next NY open",
+    settings: {
+      timezone: "America/New_York",
+      dailyStartTime: "09:30:00",
+      dailyEndMode: "next-daily-start",
+      dailyEndTime: "09:30:00",
+      enabledWeekdays: "1,2,3,4,5",
+    },
+  },
+  {
+    label: "London open",
+    description: "08:00 to next London open",
+    settings: {
+      timezone: "Europe/London",
+      dailyStartTime: "08:00:00",
+      dailyEndMode: "next-daily-start",
+      dailyEndTime: "08:00:00",
+      enabledWeekdays: "1,2,3,4,5",
+    },
+  },
+  {
+    label: "Tokyo open",
+    description: "09:00 to next Tokyo open",
+    settings: {
+      timezone: "Asia/Tokyo",
+      dailyStartTime: "09:00:00",
+      dailyEndMode: "next-daily-start",
+      dailyEndTime: "09:00:00",
+      enabledWeekdays: "1,2,3,4,5",
+    },
+  },
+  {
+    label: "Sydney open",
+    description: "10:00 to next Sydney open",
+    settings: {
+      timezone: "Australia/Sydney",
+      dailyStartTime: "10:00:00",
+      dailyEndMode: "next-daily-start",
+      dailyEndTime: "10:00:00",
+      enabledWeekdays: "1,2,3,4,5",
+    },
+  },
+] as const;
 const TPO_USER_PRESETS_STORAGE_KEY = "kwantdesk:tpo-user-presets:v1";
 type TpoUserPreset = {
   id: string;
@@ -1135,6 +1203,46 @@ export default function ChartIndicatorsControl({
                       One square is one distinct subperiod visit at one grouped price row. Exact executions are preferred; range-derived occupancy is labelled on-chart.
                     </p>
                   </div>
+                  {settingsDefinition.id === "tpo-chart" ? (
+                    <div className="space-y-2 border border-border bg-background/65 p-2.5">
+                      <div>
+                        <div className="text-[9px] font-semibold uppercase tracking-[0.12em] text-foreground">Quick session</div>
+                        <div className="mt-0.5 text-[8px] leading-3 text-muted">Select the market open that owns each Daily TPO calculation.</div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
+                        {DAILY_TPO_SESSION_PRESETS.map((preset) => {
+                          const active = Object.entries(preset.settings).every(([key, value]) =>
+                            String(settingsInstance.settings?.[key] ?? "") === String(value));
+                          return (
+                            <button
+                              key={preset.label}
+                              type="button"
+                              aria-pressed={active}
+                              onClick={() => replace(settingsInstance.instanceId, (current) => ({
+                                ...current,
+                                settings: {
+                                  ...(current.settings ?? {}),
+                                  scheduleKind: "daily",
+                                  periodMode: "multiple-profiles",
+                                  filterMode: "none",
+                                  customStartMs: 0,
+                                  customEndMs: 0,
+                                  customEndFollowsLatest: false,
+                                  ...preset.settings,
+                                },
+                              }))}
+                              className={`min-h-12 border px-2 py-1.5 text-left transition-colors ${active
+                                ? "border-primary/60 bg-primary/12 text-primary"
+                                : "border-border bg-background text-muted hover:border-primary/40 hover:text-foreground"}`}
+                            >
+                              <span className="block text-[8px] font-semibold uppercase tracking-[0.08em]">{preset.label}</span>
+                              <span className="mt-0.5 block text-[7px] leading-3 opacity-75">{preset.description}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ) : null}
                   <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                     {TPO_PRESETS.map((preset) => (
                       <button

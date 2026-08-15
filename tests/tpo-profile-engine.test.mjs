@@ -80,6 +80,17 @@ test("weekly custom dates activate custom-range calculation and POC visibility o
   assert.match(primitive, /if \(settings\.showPoc\s*&&\s*\(settings\.showDevelopingPoc/);
 });
 
+test("Daily TPO exposes one-click, timezone-aware market-open sessions", async () => {
+  const controls = await readFile(path.join(root, "src/components/ChartIndicatorsControl.tsx"), "utf8");
+  assert.match(controls, /label:\s*"RTH only"[\s\S]*timezone:\s*"America\/New_York"[\s\S]*dailyStartTime:\s*"09:30:00"[\s\S]*dailyEndTime:\s*"16:00:00"/);
+  assert.match(controls, /label:\s*"Globex open"[\s\S]*dailyStartTime:\s*"18:00:00"[\s\S]*dailyEndTime:\s*"17:00:00"/);
+  assert.match(controls, /label:\s*"New York open"/);
+  assert.match(controls, /label:\s*"London open"[\s\S]*timezone:\s*"Europe\/London"/);
+  assert.match(controls, /label:\s*"Tokyo open"[\s\S]*timezone:\s*"Asia\/Tokyo"/);
+  assert.match(controls, /label:\s*"Sydney open"[\s\S]*timezone:\s*"Australia\/Sydney"/);
+  assert.match(controls, /scheduleKind:\s*"daily",\s*periodMode:\s*"multiple-profiles",\s*filterMode:\s*"none"/);
+});
+
 test("visual TPO settings repaint without invalidating the calculated profile", () => {
   const base = settings.defaultTpoSettings("daily-tpo");
   const visualEdit = {
