@@ -104,7 +104,7 @@ function normalizeCandles(candles: Candle[]) {
       volume: Number.isFinite(Number(candle.volume)) ? Number(candle.volume) : undefined,
     };
     // Order-flow fields are part of chart history, not disposable rendering
-    // metadata. Keeping them makes KWANT Effort/CVD available on the first
+    // metadata. Keeping them makes Big Blocks/CVD available on the first
     // paint instead of forcing a fresh execution download after every reload.
     const flowKeys = [
       "trades",

@@ -557,16 +557,16 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
     maBelowColor: theme?.downColor ?? "#7C3AED",
     maAutoColor: "price",
     maLineStyle: "solid",
-    shortName: "KWANT Effort",
+    shortName: "Big Blocks",
     showNameLabel: false,
     showValueLabel: true,
     nameBackground: false,
     valueBackground: true,
     enableAlertSound: false,
     enableMessage: false,
-    alertMessage: "KWANT Effort directional bias changed",
+    alertMessage: "Big Blocks directional bias changed",
     zoneBars: 22,
-    effortSettingsVersion: 2,
+    effortSettingsVersion: 3,
   } : {}),
   ...(indicatorId === "depth-of-market" ? {
     showCumulative: false,
@@ -800,6 +800,21 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
           ? "off"
           : normalizedInstance.settings?.snapMode === "right" ? "right" : "left",
         profileSettingsVersion: 6,
+      },
+    };
+  }
+  if (
+    normalizedInstance.indicatorId === "deep-m-effort-nq"
+    && Number(normalizedInstance.settings?.effortSettingsVersion) < 3
+  ) {
+    return {
+      ...normalizedInstance,
+      settings: {
+        ...defaultIndicatorSettings("deep-m-effort-nq"),
+        ...(normalizedInstance.settings ?? {}),
+        shortName: "Big Blocks",
+        alertMessage: "Big Blocks directional bias changed",
+        effortSettingsVersion: 3,
       },
     };
   }

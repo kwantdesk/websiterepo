@@ -252,7 +252,7 @@ async function streamEventBars(args: {
  * OHLCV. That is sufficient for bar geometry, but it cannot power execution
  * studies: it has no aggressor side and no individual prints. Keep a bounded
  * native trade tape so Big Trades stays attached to the bar where each print
- * happened and KWANT Effort receives real ask/bid participation immediately.
+ * happened and Big Blocks receives real ask/bid participation immediately.
  */
 async function streamEventFlow(args: {
   symbol: string;

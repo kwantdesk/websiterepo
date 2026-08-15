@@ -1287,7 +1287,7 @@ type InstitutionalCandleFlow = {
  *
  * Chart history and live price construction deliberately come from the CME
  * candle feed, while Rithmic supplies aggressor-side executions. Previously
- * only Big Trades consumed that tape; CVD, KWANT Effort and the other
+ * only Big Trades consumed that tape; CVD, Big Blocks and the other
  * candle-based studies kept reading the candle feed's fallback side totals.
  * This projection gives every order-flow study the same execution source.
  */

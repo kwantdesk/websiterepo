@@ -342,7 +342,7 @@ export function calculateIndicatorSeries(
     if (!settingBoolean(instance, "showMovingAverage", true)) return [];
     return [{
       key: `${key}-average`,
-      label: settingString(instance, "shortName", "KWANT Effort"),
+      label: settingString(instance, "shortName", "Big Blocks"),
       kind: "line",
       placement: "overlay",
       color: primaryColor,

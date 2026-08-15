@@ -105,6 +105,10 @@ import {
   type BigTradesPrimitiveOptions,
 } from "@/lib/bigTradesPrimitive";
 import {
+  BigBlocksPrimitive,
+  type BigBlockRenderZone,
+} from "@/lib/bigBlocksPrimitive";
+import {
   buildFootprintBars,
   type FootprintImbalanceMode,
 } from "@/lib/footprint";
@@ -2379,6 +2383,7 @@ export default function Chart({
   const volumeProfilePrimitiveRef = useRef<NativeVolumeProfilePrimitive | null>(null);
   const classicGexProfilePrimitiveRef = useRef<ClassicGexProfilePrimitive | null>(null);
   const bigTradesPrimitiveRef = useRef<BigTradesPrimitive | null>(null);
+  const bigBlocksPrimitiveRef = useRef<BigBlocksPrimitive | null>(null);
   const footprintPrimitiveRef = useRef<FootprintPrimitive | null>(null);
   const retainedFootprintBarsRef = useRef<{ key: string; bars: FootprintRenderBar[] } | null>(null);
   const paperFillMarkersPrimitiveRef = useRef<PaperFillMarkersPrimitive | null>(null);
@@ -4465,31 +4470,26 @@ export default function Chart({
     settings.upColor,
     themeVersion,
   ]);
-  const positionedEffortZones = useMemo(() => {
+  const bigBlockRenderZones = useMemo<BigBlockRenderZone[]>(() => {
     if (!deepEffort || deepEffortIndicator?.settings?.showZones === false) return [];
     return deepEffort.zones.flatMap((zone) => {
       const startCandle = indicatorCandles[zone.startIndex];
       if (!startCandle) return [];
       const endCandle = indicatorCandles[Math.min(zone.endIndex, indicatorCandles.length - 1)];
-      const startX = indicatorTimestampToX(startCandle.timestamp);
-      const endX = endCandle
-        ? indicatorTimestampToX(endCandle.timestamp)
-        : null;
-      const topY = candleSeriesRef.current?.priceToCoordinate(zone.top) ?? null;
-      const bottomY = candleSeriesRef.current?.priceToCoordinate(zone.bottom) ?? null;
-      if (startX === null || topY === null || bottomY === null) return [];
-      const left = Math.max(-2, startX);
-      const right = Math.min(
-        Math.max(overlaySize.width - 58, 0),
-        endX ?? Math.max(overlaySize.width - 58, 0),
-      );
-      if (right <= left) return [];
+      if (!endCandle) return [];
       return [{
-        ...zone,
-        x: left,
-        width: right - left,
-        y: Math.min(topY, bottomY),
-        height: Math.max(2, Math.abs(bottomY - topY)),
+        id: zone.id,
+        startTime: (
+          eventChartTimeBySourceTimeRef.current.get(startCandle.timestamp)
+          ?? Math.floor(startCandle.timestamp / 1_000)
+        ) as Time,
+        endTime: (
+          eventChartTimeBySourceTimeRef.current.get(endCandle.timestamp)
+          ?? Math.floor(endCandle.timestamp / 1_000)
+        ) as Time,
+        top: zone.top,
+        bottom: zone.bottom,
+        side: zone.side,
       }];
     });
   }, [
@@ -4497,9 +4497,31 @@ export default function Chart({
     deepEffort,
     deepEffortIndicator?.settings?.showZones,
     indicatorCandles,
-    indicatorTimestampToX,
-    overlaySize.width,
-    viewportVersion,
+  ]);
+
+  useEffect(() => {
+    const effortSettings = deepEffortIndicator?.settings ?? {};
+    const useThemeColors = effortSettings.useThemeColors !== false;
+    bigBlocksPrimitiveRef.current?.update(
+      deepEffortIndicator ? bigBlockRenderZones : [],
+      {
+        askColor: useThemeColors
+          ? settings.upColor
+          : String(effortSettings.askColor ?? settings.upColor),
+        bidColor: useThemeColors
+          ? settings.downColor
+          : String(effortSettings.bidColor ?? settings.downColor),
+        opacity: clamp(Number(effortSettings.zoneOpacity ?? 20) / 100, 0.01, 1),
+        lineWidth: clamp(Number(effortSettings.zoneLineWidth ?? 1), 0, 4),
+      },
+    );
+  }, [
+    bigBlockRenderZones,
+    chartReadyRevision,
+    deepEffortIndicator,
+    settings.downColor,
+    settings.upColor,
+    themeVersion,
   ]);
   const imbalanceTracker = useMemo(() => {
     const instance = indicators.find((candidate) =>
@@ -6483,6 +6505,9 @@ export default function Chart({
     const bigTradesPrimitive = new BigTradesPrimitive();
     candleSeries.attachPrimitive(bigTradesPrimitive);
     bigTradesPrimitiveRef.current = bigTradesPrimitive;
+    const bigBlocksPrimitive = new BigBlocksPrimitive();
+    candleSeries.attachPrimitive(bigBlocksPrimitive);
+    bigBlocksPrimitiveRef.current = bigBlocksPrimitive;
     const footprintPrimitive = new FootprintPrimitive();
     candleSeries.attachPrimitive(footprintPrimitive);
     footprintPrimitiveRef.current = footprintPrimitive;
@@ -7042,6 +7067,13 @@ export default function Chart({
             // Chart teardown can detach primitives before React cleanup runs.
           }
         }
+        if (candleSeriesRef.current && bigBlocksPrimitiveRef.current) {
+          try {
+            candleSeriesRef.current.detachPrimitive(bigBlocksPrimitiveRef.current);
+          } catch {
+            // Chart teardown can detach primitives before React cleanup runs.
+          }
+        }
         if (candleSeriesRef.current && footprintPrimitiveRef.current) {
           try {
             candleSeriesRef.current.detachPrimitive(footprintPrimitiveRef.current);
@@ -7075,6 +7107,7 @@ export default function Chart({
       classicGexProfilePrimitiveRef.current = null;
       volumeProfilePrimitiveRef.current = null;
       bigTradesPrimitiveRef.current = null;
+      bigBlocksPrimitiveRef.current = null;
       footprintPrimitiveRef.current = null;
       paperFillMarkersPrimitiveRef.current = null;
       paperPositionOverlayPrimitiveRef.current = null;
@@ -8647,8 +8680,7 @@ export default function Chart({
       ) : null}
 
       {(
-        positionedEffortZones.length > 0
-        || positionedImbalanceZones.length > 0
+        positionedImbalanceZones.length > 0
         || positionedImbalanceSignals.length > 0
       ) ? (
         <svg
@@ -8657,30 +8689,6 @@ export default function Chart({
           viewBox={`0 0 ${Math.max(overlaySize.width, 1)} ${Math.max(overlaySize.height, 1)}`}
           preserveAspectRatio="none"
         >
-          {positionedEffortZones.map((zone) => {
-            const effortSettings = deepEffortIndicator?.settings ?? {};
-            const useThemeColors = effortSettings.useThemeColors !== false;
-            const color = zone.side === "ASK"
-              ? useThemeColors ? settings.upColor : String(effortSettings.askColor ?? settings.upColor)
-              : useThemeColors ? settings.downColor : String(effortSettings.bidColor ?? settings.downColor);
-            const opacity = clamp(Number(effortSettings.zoneOpacity ?? 20) / 100, 0.01, 1);
-            return (
-              <g key={zone.id}>
-                <rect
-                  x={zone.x}
-                  y={zone.y}
-                  width={zone.width}
-                  height={zone.height}
-                  rx={1.5}
-                  fill={color}
-                  fillOpacity={opacity}
-                  stroke={color}
-                  strokeOpacity={Math.min(1, opacity + 0.35)}
-                  strokeWidth={clamp(Number(effortSettings.zoneLineWidth ?? 1), 0, 4)}
-                />
-              </g>
-            );
-          })}
           {positionedImbalanceZones.map((zone) => {
             const trackerSettings = imbalanceTracker?.instance.settings ?? {};
             const useThemeColors = trackerSettings.useThemeColors !== false;
