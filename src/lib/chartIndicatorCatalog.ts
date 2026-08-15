@@ -83,8 +83,7 @@ export const CHART_INDICATOR_CATALOG: ChartIndicatorDefinition[] = [
 
   indicator("Volume", "Volume & Profiles", "Total volume with filtering and delta-aware colouring."),
   indicator("Volume Swing", "Volume & Profiles", "Volume measured across detected price swings.", true),
-  indicator("KWANT Profile", "Volume & Profiles", "Configurable volume, bid/ask and delta profile.", true, "Reference"),
-  indicator("Daily Volume Profile", "Volume & Profiles", "Separate volume profile for each trading day.", true, "Kwantify"),
+  indicator("Daily Profile", "Volume & Profiles", "Configurable daily volume, bid/ask and delta profile.", true, "Reference", "KWANT Profile"),
   indicator("Weekly Volume Profile", "Volume & Profiles", "Separate volume profile for each trading week.", true, "Kwantify"),
   indicator("Monthly Volume Profile", "Volume & Profiles", "Separate volume profile for each calendar month.", true, "Kwantify"),
   indicator("Session Volume Profile", "Volume & Profiles", "Profile for a configurable RTH, ETH or custom session.", true, "Kwantify"),

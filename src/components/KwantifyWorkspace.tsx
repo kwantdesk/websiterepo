@@ -4002,7 +4002,6 @@ function WorkspaceChartPane({
     instance.enabled
     && [
       "kwant-profile",
-      "daily-volume-profile",
       "ask-bid-volume-profile",
       "delta-profile",
     ].includes(instance.indicatorId));

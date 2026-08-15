@@ -104,7 +104,6 @@ export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "kwant-stats",
   "deep-m-effort-nq",
   "kwant-profile",
-  "daily-volume-profile",
   "weekly-volume-profile",
   "ask-bid-volume-profile",
   "delta-profile",

@@ -33,7 +33,6 @@ export const LIVE_CHART_INDICATOR_IDS = new Set([
   "donchian-channel",
   "keltner-channel",
   "kwant-profile",
-  "daily-volume-profile",
   "weekly-volume-profile",
   "custom-draw-on-volume-profile",
   "ask-bid-volume-profile",
@@ -54,7 +53,6 @@ export const LIVE_CHART_INDICATOR_IDS = new Set([
 ]);
 export const VOLUME_PROFILE_INDICATOR_IDS = new Set([
   "kwant-profile",
-  "daily-volume-profile",
   "weekly-volume-profile",
   "custom-draw-on-volume-profile",
   "ask-bid-volume-profile",
@@ -62,7 +60,6 @@ export const VOLUME_PROFILE_INDICATOR_IDS = new Set([
 ]);
 export const DAILY_VOLUME_PROFILE_INDICATOR_IDS = new Set([
   "kwant-profile",
-  "daily-volume-profile",
   "ask-bid-volume-profile",
   "delta-profile",
 ]);
@@ -194,14 +191,6 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
     { key: "autoGroupFactor", label: "Automatic grouping factor", defaultValue: 1, min: 0.5, max: 4, step: 0.25 },
     { key: "profileWidth", label: "Profile width (% of chart)", defaultValue: 24, min: 0, max: 60, step: 0.5 },
     { key: "opacity", label: "Profile opacity (%)", defaultValue: 72, min: 10, max: 100 },
-    { key: "minTradeVolume", label: "Minimum execution size", defaultValue: 0, min: 0, max: 100000 },
-    { key: "maxTradeVolume", label: "Maximum execution size (0 = no maximum)", defaultValue: 0, min: 0, max: 1000000 },
-  ],
-  "daily-volume-profile": [
-    { key: "groupTicks", label: "Price grouping (ticks)", defaultValue: 1, min: 1, max: 500 },
-    { key: "autoGroupFactor", label: "Automatic grouping factor", defaultValue: 1, min: 0.5, max: 4, step: 0.25 },
-    { key: "profileWidth", label: "Profile width (% of session)", defaultValue: 9, min: 0, max: 24, step: 0.5 },
-    { key: "opacity", label: "Profile opacity (%)", defaultValue: 68, min: 10, max: 100 },
     { key: "minTradeVolume", label: "Minimum execution size", defaultValue: 0, min: 0, max: 100000 },
     { key: "maxTradeVolume", label: "Maximum execution size (0 = no maximum)", defaultValue: 0, min: 0, max: 1000000 },
   ],
@@ -691,7 +680,7 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
     neutralColor: theme?.borderUpColor ?? "#94A3B8",
     tpoLevelsSettingsVersion: 1,
   } : {}),
-  ...(["kwant-profile", "daily-volume-profile", "weekly-volume-profile", "custom-draw-on-volume-profile", "ask-bid-volume-profile", "delta-profile"].includes(indicatorId) ? {
+  ...(["kwant-profile", "weekly-volume-profile", "custom-draw-on-volume-profile", "ask-bid-volume-profile", "delta-profile"].includes(indicatorId) ? {
     valueAreaPercent: STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT,
     profileMode: indicatorId === "ask-bid-volume-profile"
       ? "bid-ask"
@@ -714,7 +703,7 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
     showVwapBands: false,
     showSummary: false,
     profileSettingsVersion: 6,
-    align: ["daily-volume-profile", "kwant-profile"].includes(indicatorId)
+    align: indicatorId === "kwant-profile"
       ? "session"
       : indicatorId === "weekly-volume-profile" ? "left" : "right",
     volumeColor: theme?.borderUpColor ?? theme?.upColor ?? "#22C55E",
@@ -761,7 +750,7 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
     };
   }
   if (
-    ["kwant-profile", "daily-volume-profile", "weekly-volume-profile", "custom-draw-on-volume-profile", "ask-bid-volume-profile", "delta-profile"]
+    ["kwant-profile", "weekly-volume-profile", "custom-draw-on-volume-profile", "ask-bid-volume-profile", "delta-profile"]
       .includes(normalizedInstance.indicatorId)
   ) {
     normalizedInstance = {
@@ -773,7 +762,7 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
     };
   }
   if (
-    ["daily-volume-profile", "kwant-profile"].includes(normalizedInstance.indicatorId)
+    normalizedInstance.indicatorId === "kwant-profile"
     && Number(normalizedInstance.settings?.profileSettingsVersion) < 6
   ) {
     return {
@@ -791,8 +780,8 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
         showDelta: true,
         showProfileSpine: true,
         snapMode: normalizedInstance.settings?.snapMode === "right" ? "right" : "left",
-        profileWidth: normalizedInstance.indicatorId === "kwant-profile" ? 24 : 9,
-        opacity: normalizedInstance.indicatorId === "kwant-profile" ? 72 : 68,
+        profileWidth: 24,
+        opacity: 72,
         profileSettingsVersion: 6,
       },
     };
