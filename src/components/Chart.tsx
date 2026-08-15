@@ -124,6 +124,7 @@ import {
 } from "@/lib/bigBlocksPrimitive";
 import {
   buildFootprintBars,
+  type FootprintBuildSettings,
   type FootprintImbalanceMode,
 } from "@/lib/footprint";
 import {
@@ -133,6 +134,7 @@ import {
 } from "@/lib/footprintPrimitive";
 import { retainLiveFootprintRows } from "@/lib/footprintLive";
 import { FOOTPRINT_DATA_REFRESH_INTERVAL_MS, ORDER_FLOW_DATA_REFRESH_INTERVAL_MS } from "@/lib/footprintRuntime";
+import { footprintProfileGranularityTicks } from "@/lib/footprintSettings";
 import { calculateDeepEffort } from "@/lib/deepEffort";
 import { calculateImbalanceRejectorSignals } from "@/lib/imbalanceRejector";
 import { calculateImbalanceZones } from "@/lib/imbalanceTracker";
@@ -3395,9 +3397,7 @@ export default function Chart({
     priceFormat.minMove,
     viewportVersion,
   ]);
-  const footprintBars = useMemo(() => {
-    if (!footprintIndicator || !footprintSourceCandles.length) return [];
-    return buildFootprintBars(footprintSourceCandles, footprintMarketTrades, {
+  const footprintBuildSettings = useMemo((): FootprintBuildSettings => ({
       tickSize: priceFormat.minMove,
       groupTicks: resolvedFootprintGroupTicks,
       instrument,
@@ -3415,9 +3415,7 @@ export default function Chart({
       stackedImbalanceLevels: Number(footprintSettings.stackedImbalanceLevels ?? 3),
       unfinishedAuctionEnabled: footprintSettings.unfinishedAuctionEnabled === true,
       unfinishedAuctionMinimumVolume: Number(footprintSettings.unfinishedAuctionMinimumVolume ?? 1),
-    });
-  }, [
-    footprintIndicator,
+    }), [
     footprintSettings.imbalanceMode,
     footprintSettings.includeZero,
     footprintSettings.showEmptyPriceRows,
@@ -3435,14 +3433,50 @@ export default function Chart({
     instrument,
     priceFormat.minMove,
     resolvedFootprintGroupTicks,
-    timeframe,
   ]);
+  const footprintBars = useMemo(() => {
+    if (!footprintIndicator || !footprintSourceCandles.length) return [];
+    return buildFootprintBars(footprintSourceCandles, footprintMarketTrades, footprintBuildSettings);
+  }, [
+    footprintBuildSettings,
+    footprintIndicator,
+    footprintMarketTrades,
+    footprintSourceCandles,
+  ]);
+  const footprintProfileGroupTicks = footprintProfileGranularityTicks(
+    footprintSettings.perBarProfileGranularity,
+  );
+  const footprintProfileBars = useMemo(() => {
+    const profileEnabled = footprintSettings.showPerBarVolumeProfile === true
+      || footprintSettings.showPerBarDeltaProfile === true;
+    if (!profileEnabled || !footprintIndicator || !footprintSourceCandles.length) return footprintBars;
+    if (footprintProfileGroupTicks === resolvedFootprintGroupTicks) return footprintBars;
+    return buildFootprintBars(footprintSourceCandles, footprintMarketTrades, {
+      ...footprintBuildSettings,
+      groupTicks: footprintProfileGroupTicks,
+    });
+  }, [
+    footprintBars,
+    footprintBuildSettings,
+    footprintIndicator,
+    footprintMarketTrades,
+    footprintProfileGroupTicks,
+    footprintSettings.showPerBarDeltaProfile,
+    footprintSettings.showPerBarVolumeProfile,
+    footprintSourceCandles,
+    resolvedFootprintGroupTicks,
+  ]);
+  const footprintProfileRowsByTimestamp = useMemo(
+    () => new Map(footprintProfileBars.map((bar) => [bar.timestamp, bar.rows])),
+    [footprintProfileBars],
+  );
   const footprintRenderBars = useMemo((): FootprintRenderBar[] =>
     footprintBars.map((bar) => ({
       ...bar,
+      profileRows: footprintProfileRowsByTimestamp.get(bar.timestamp) ?? bar.rows,
       time: (eventChartTimeBySourceTimeRef.current.get(bar.timestamp)
         ?? Math.floor(bar.timestamp / 1_000)) as Time,
-    })), [footprintBars]);
+    })), [footprintBars, footprintProfileRowsByTimestamp]);
   const footprintDataKey = `${instrument}:${timeframe}`;
   const liveFootprintRenderBars = useMemo(
     () => retainLiveFootprintRows(

@@ -5,7 +5,7 @@ import type {
   FootprintVisualizationMode,
 } from "./footprintTypes";
 
-export const FOOTPRINT_SETTINGS_SCHEMA_VERSION = 6;
+export const FOOTPRINT_SETTINGS_SCHEMA_VERSION = 7;
 
 export type FootprintSettings = {
   footprintSettingsVersion: number;
@@ -23,6 +23,7 @@ export type FootprintSettings = {
   showPerBarVolumeProfile: boolean;
   showPerBarDeltaProfile: boolean;
   perBarProfileScaleMode: "independent" | "shared";
+  perBarProfileGranularity: number;
   perBarProfileWidthPercent: number;
   perBarProfileGap: number;
   perBarProfileExtraSpacing: number;
@@ -130,6 +131,7 @@ export const DEFAULT_FOOTPRINT_SETTINGS: FootprintSettings = {
   showPerBarVolumeProfile: false,
   showPerBarDeltaProfile: false,
   perBarProfileScaleMode: "independent",
+  perBarProfileGranularity: 10,
   perBarProfileWidthPercent: 92,
   perBarProfileGap: 2,
   perBarProfileExtraSpacing: 18,
@@ -360,6 +362,16 @@ const bool = (value: unknown, fallback: boolean) =>
 const colour = (value: unknown, fallback: string) =>
   typeof value === "string" && value.trim() ? value : fallback;
 
+/**
+ * Convert the user-facing 1-10 detail control into real price ticks per row.
+ * Higher detail means smaller price bins: 10 is native one-tick resolution,
+ * while 1 intentionally combines ten ticks into each profile row.
+ */
+export function footprintProfileGranularityTicks(value: unknown) {
+  const detail = Math.round(clamp(value, 1, 10, 10));
+  return 11 - detail;
+}
+
 export function validateFootprintSettings(input: unknown): FootprintSettings {
   const source = input && typeof input === "object" ? input as Record<string, unknown> : {};
   const merged = { ...DEFAULT_FOOTPRINT_SETTINGS, ...source } as FootprintSettings;
@@ -391,6 +403,7 @@ export function validateFootprintSettings(input: unknown): FootprintSettings {
     markerAlignment: option(source.markerAlignment, ["center", "right"], "center"),
     manualTicks: Math.round(clamp(source.manualTicks, 1, 100, 1)),
     autoGroupFactor: clamp(source.autoGroupFactor, 0.5, 4, 1),
+    perBarProfileGranularity: Math.round(clamp(source.perBarProfileGranularity, 1, 10, 10)),
     perBarProfileWidthPercent: clamp(source.perBarProfileWidthPercent, 10, 100, 92),
     perBarProfileGap: clamp(source.perBarProfileGap, 0, 12, 2),
     perBarProfileExtraSpacing: clamp(source.perBarProfileExtraSpacing, 0, 48, 18),

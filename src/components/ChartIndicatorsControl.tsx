@@ -40,6 +40,7 @@ import {
   saveFootprintSelection,
   saveFootprintSettings,
   saveFootprintTemplate,
+  footprintProfileGranularityTicks,
   validateFootprintSettings,
   type FootprintPresetName,
   type FootprintTemplate,
@@ -51,6 +52,7 @@ const FOOTPRINT_PROFILE_MANAGED_SETTINGS = new Set([
   "showPerBarVolumeProfile",
   "showPerBarDeltaProfile",
   "perBarProfileScaleMode",
+  "perBarProfileGranularity",
   "perBarProfileWidthPercent",
   "perBarProfileGap",
   "perBarProfileExtraSpacing",
@@ -1798,6 +1800,39 @@ export default function ChartIndicatorsControl({
                       <option value="shared">Shared volume and delta scale</option>
                     </KwantSelect>
                   </label>
+                  {(() => {
+                    const detail = Number(settingsInstance.settings?.perBarProfileGranularity ?? 10);
+                    const ticksPerRow = footprintProfileGranularityTicks(detail);
+                    return (
+                      <label className="block rounded-lg border border-border bg-surface/30 p-2.5">
+                        <span className="mb-2 flex items-center justify-between text-[9px] text-muted">
+                          <span>Profile granularity</span>
+                          <span className="font-mono text-foreground">
+                            {detail}/10 · {ticksPerRow} {ticksPerRow === 1 ? "tick" : "ticks"} per row
+                          </span>
+                        </span>
+                        <input
+                          type="range"
+                          min={1}
+                          max={10}
+                          step={1}
+                          value={detail}
+                          onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                            ...current,
+                            settings: {
+                              ...(current.settings ?? {}),
+                              perBarProfileGranularity: Number(event.target.value),
+                            },
+                          }))}
+                          className="w-full accent-primary"
+                        />
+                        <span className="mt-1.5 flex justify-between text-[8px] text-muted">
+                          <span>Combined</span>
+                          <span>Fine · one tick</span>
+                        </span>
+                      </label>
+                    );
+                  })()}
                   <div className="grid gap-2 sm:grid-cols-2">
                     {[
                       ["Profile width", "perBarProfileWidthPercent", 92, 10, 100, 1, "%"],
