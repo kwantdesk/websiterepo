@@ -99,6 +99,13 @@ test("TPO always renders above candles", async () => {
   assert.match(settingsSource, /showAboveBars:\s*true/);
 });
 
+test("only the most recent hidden TPO profile pins to the left chart wall", async () => {
+  const primitive = await readFile(path.join(root, "src/lib/tpo/primitive.ts"), "utf8");
+  assert.match(primitive, /const leftWallProfileByInstance = new Map<string, number>\(\)/);
+  assert.match(primitive, /model\.profile\.startTimeMs > this\.models\[currentIndex\]\.profile\.startTimeMs/);
+  assert.match(primitive, /behindLeftWall && leftWallProfileByInstance\.get\(model\.instanceId\) !== modelIndex\) return/);
+});
+
 test("visual TPO settings repaint without invalidating the calculated profile", () => {
   const base = settings.defaultTpoSettings("daily-tpo");
   const visualEdit = {

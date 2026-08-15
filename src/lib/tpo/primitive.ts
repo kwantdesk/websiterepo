@@ -103,13 +103,35 @@ export class TpoProfilePrimitive implements ISeriesPrimitive<Time> {
       const visibleSpan = visibleLogical ? Math.max(1, Number(visibleLogical.to) - Number(visibleLogical.from)) : 80;
       const pixelsPerBar = mediaSize.width / visibleSpan;
       const latestProfileByInstance = new Map<string, number>();
-      this.models.forEach((model, index) => latestProfileByInstance.set(model.instanceId, index));
+      this.models.forEach((model, index) => {
+        const currentIndex = latestProfileByInstance.get(model.instanceId);
+        if (currentIndex == null || model.profile.startTimeMs > this.models[currentIndex].profile.startTimeMs) {
+          latestProfileByInstance.set(model.instanceId, index);
+        }
+      });
+      const coordinates = this.models.map((model) => ({
+        start: this.timeToCoordinate(model, model.profile.startTimeMs / 1_000),
+        end: this.timeToCoordinate(model, model.profile.endTimeMs / 1_000),
+      }));
+      const leftWallProfileByInstance = new Map<string, number>();
+      this.models.forEach((model, index) => {
+        if (!model.profile.rows.length || model.settings.showOnRight) return;
+        const start = coordinates[index].start;
+        if (start == null) return;
+        const latest = latestProfileByInstance.get(model.instanceId) === index;
+        const offset = (latest ? model.settings.currentOffset : model.settings.previousOffset) * pixelsPerBar;
+        if (start + offset >= 2) return;
+        const currentIndex = leftWallProfileByInstance.get(model.instanceId);
+        if (currentIndex == null || model.profile.startTimeMs > this.models[currentIndex].profile.startTimeMs) {
+          leftWallProfileByInstance.set(model.instanceId, index);
+        }
+      });
 
       this.models.forEach((model, modelIndex) => {
         const { profile, settings, theme } = model;
         if (!profile.rows.length) return;
-        const periodStartX = this.timeToCoordinate(model, profile.startTimeMs / 1_000);
-        const periodEndX = this.timeToCoordinate(model, profile.endTimeMs / 1_000);
+        const periodStartX = coordinates[modelIndex].start;
+        const periodEndX = coordinates[modelIndex].end;
         if (periodStartX == null || periodEndX == null) return;
         const latest = latestProfileByInstance.get(model.instanceId) === modelIndex;
         const baseCell = clamp(settings.blockSize, 2, 24);
@@ -124,6 +146,8 @@ export class TpoProfilePrimitive implements ISeriesPrimitive<Time> {
         const width = clamp(requestedWidth * (latest ? 1 : settings.previousWidth / Math.max(1, settings.currentWidth)), 22, mediaSize.width * 0.42);
         const offset = (latest ? settings.currentOffset : settings.previousOffset) * pixelsPerBar;
         const pinnedRight = settings.showOnRight;
+        const behindLeftWall = !pinnedRight && periodStartX + offset < 2;
+        if (behindLeftWall && leftWallProfileByInstance.get(model.instanceId) !== modelIndex) return;
         const anchorX = pinnedRight
           ? mediaSize.width - 4 - offset
           : clamp(periodStartX + offset, 2, mediaSize.width - 2);
