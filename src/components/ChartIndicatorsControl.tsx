@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { createPortal } from "react-dom";
 import {
   BarChart3,
@@ -319,6 +319,17 @@ export default function ChartIndicatorsControl({
 }: Props) {
   const rootRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const settingsDialogRef = useRef<HTMLDivElement>(null);
+  const settingsDialogOffsetRef = useRef({ x: 0, y: 0 });
+  const settingsDialogDragRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    originX: number;
+    originY: number;
+    bodyCursor: string;
+    bodyUserSelect: string;
+  } | null>(null);
   const [open, setOpen] = useState(false);
   const [menuPosition, setMenuPosition] = useState<{ left: number; top: number; width: number } | null>(null);
   const [libraryOpen, setLibraryOpen] = useState(false);
@@ -449,6 +460,95 @@ export default function ChartIndicatorsControl({
     setGexIntervalPresetName("");
   }, [settingsInstanceId]);
 
+  useEffect(() => {
+    settingsDialogOffsetRef.current = { x: 0, y: 0 };
+    if (settingsDialogRef.current) {
+      settingsDialogRef.current.style.transform = "translate3d(0px, 0px, 0)";
+    }
+
+    if (!settingsInstanceId && settingsDialogDragRef.current) {
+      document.body.style.cursor = settingsDialogDragRef.current.bodyCursor;
+      document.body.style.userSelect = settingsDialogDragRef.current.bodyUserSelect;
+      settingsDialogDragRef.current = null;
+    }
+  }, [settingsInstanceId]);
+
+  useEffect(() => () => {
+    const drag = settingsDialogDragRef.current;
+    if (!drag) return;
+    document.body.style.cursor = drag.bodyCursor;
+    document.body.style.userSelect = drag.bodyUserSelect;
+    settingsDialogDragRef.current = null;
+  }, []);
+
+  const clampSettingsDialogOffset = (nextX: number, nextY: number) => {
+    const dialog = settingsDialogRef.current;
+    if (!dialog) return { x: nextX, y: nextY };
+
+    const current = settingsDialogOffsetRef.current;
+    const rect = dialog.getBoundingClientRect();
+    const baseLeft = rect.left - current.x;
+    const baseTop = rect.top - current.y;
+    const viewportPadding = 8;
+
+    return {
+      x: Math.max(
+        viewportPadding - baseLeft,
+        Math.min(nextX, window.innerWidth - viewportPadding - (baseLeft + rect.width)),
+      ),
+      y: Math.max(
+        viewportPadding - baseTop,
+        Math.min(nextY, window.innerHeight - viewportPadding - (baseTop + rect.height)),
+      ),
+    };
+  };
+
+  const beginSettingsDialogDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return;
+    const target = event.target as HTMLElement;
+    if (target.closest("button, a, input, select, textarea, [role='button']")) return;
+
+    const origin = settingsDialogOffsetRef.current;
+    settingsDialogDragRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      originX: origin.x,
+      originY: origin.y,
+      bodyCursor: document.body.style.cursor,
+      bodyUserSelect: document.body.style.userSelect,
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+    document.body.style.cursor = "grabbing";
+    document.body.style.userSelect = "none";
+    event.preventDefault();
+  };
+
+  const moveSettingsDialog = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const drag = settingsDialogDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+
+    const next = clampSettingsDialogOffset(
+      drag.originX + event.clientX - drag.startX,
+      drag.originY + event.clientY - drag.startY,
+    );
+    settingsDialogOffsetRef.current = next;
+    if (settingsDialogRef.current) {
+      settingsDialogRef.current.style.transform = `translate3d(${next.x}px, ${next.y}px, 0)`;
+    }
+  };
+
+  const endSettingsDialogDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const drag = settingsDialogDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    document.body.style.cursor = drag.bodyCursor;
+    document.body.style.userSelect = drag.bodyUserSelect;
+    settingsDialogDragRef.current = null;
+  };
+
   const filtered = useMemo(() => {
     const needle = search.trim().toLowerCase();
     return CHART_INDICATOR_CATALOG
@@ -476,6 +576,19 @@ export default function ChartIndicatorsControl({
 
   const replace = (instanceId: string, update: (current: ChartIndicatorInstance) => ChartIndicatorInstance) => {
     onChange(indicators.map((instance) => instance.instanceId === instanceId ? update(instance) : instance));
+  };
+
+  const closeSettingsDialog = () => {
+    if (settingsInstance?.indicatorId === "deep-print-footprint") {
+      const validated = validateFootprintSettings(settingsInstance.settings);
+      replace(settingsInstance.instanceId, (current) => ({
+        ...current,
+        settings: { ...(current.settings ?? {}), ...validated },
+      }));
+      saveFootprintSettings(settingsInstance.instanceId, validated);
+      window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
+    }
+    setSettingsInstanceId(null);
   };
 
   const add = (indicatorId: string) => {
@@ -818,19 +931,29 @@ export default function ChartIndicatorsControl({
 
       {settingsInstance && settingsDefinition && typeof document !== "undefined" ? createPortal(
         <div
-          className="fixed inset-0 z-[270] flex items-center justify-center bg-black/70 p-4 backdrop-blur-[3px]"
-          onClick={() => setSettingsInstanceId(null)}
+          data-indicator-settings-overlay
+          className="fixed inset-0 z-[270] flex items-center justify-center bg-transparent p-4"
+          onClick={closeSettingsDialog}
         >
           <div
+            ref={settingsDialogRef}
+            data-indicator-settings-dialog
             className="flex max-h-[88vh] w-full max-w-[540px] flex-col overflow-hidden rounded-2xl border border-border bg-panel shadow-2xl shadow-black/60"
             onClick={(event) => event.stopPropagation()}
           >
-            <div className="flex items-center justify-between border-b border-border px-5 py-4">
+            <div
+              className="flex touch-none select-none items-center justify-between border-b border-border px-5 py-4 cursor-move active:cursor-grabbing"
+              title="Drag settings window"
+              onPointerDown={beginSettingsDialogDrag}
+              onPointerMove={moveSettingsDialog}
+              onPointerUp={endSettingsDialogDrag}
+              onPointerCancel={endSettingsDialogDrag}
+            >
               <div>
                 <div className="text-[15px] font-semibold text-foreground">{settingsInstance.indicatorId === "source-code-indicator" ? String(settingsInstance.settings?.scriptName ?? settingsDefinition.name) : settingsDefinition.name}</div>
                 <div className="mt-0.5 text-[9px] uppercase tracking-[0.12em] text-muted">{settingsDefinition.category} Â· live calculation</div>
               </div>
-              <button type="button" onClick={() => setSettingsInstanceId(null)} className="flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground">
+              <button type="button" onClick={closeSettingsDialog} className="flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground">
                 <X className="h-4 w-4" />
               </button>
             </div>
