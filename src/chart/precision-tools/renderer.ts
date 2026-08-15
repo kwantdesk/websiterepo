@@ -278,7 +278,8 @@ function renderObject(ctx: CanvasRenderingContext2D, object: PrecisionObject, ad
         const riskMoney = result.monetaryAvailable && object.options.showPnl !== false ? ` · -$${result.totalRisk.toFixed(0)}` : "";
         const targetText = `TP · +${result.rewardPoints.toFixed(precision)} PTS · ${Math.round(result.rewardTicks)} TICKS${rewardMoney}`;
         const stopText = `SL · -${result.riskPoints.toFixed(precision)} PTS · ${Math.round(result.riskTicks)} TICKS${riskMoney}`;
-        const entryText = `${result.direction} · ${result.quantity} · ${result.rMultiple.toFixed(2).replace(/\.00$/, "")}R`;
+        const ratio = result.rMultiple.toFixed(2).replace(/\.00$/, "").replace(/(\.\d)0$/, "$1");
+        const entryText = `${result.direction} · ${result.quantity} · R:R 1:${ratio}`;
         const centerX = left + boxWidth / 2;
         positionLabel(ctx, object, theme, centerX, targetY, targetText, object.style.positiveColor, plotWidth);
         positionLabel(ctx, object, theme, centerX, stopY, stopText, object.style.negativeColor, plotWidth);
