@@ -104,6 +104,7 @@ test("only the most recent hidden TPO profile pins to the left chart wall", asyn
   assert.match(primitive, /const leftWallProfileByInstance = new Map<string, number>\(\)/);
   assert.match(primitive, /model\.profile\.startTimeMs > this\.models\[currentIndex\]\.profile\.startTimeMs/);
   assert.match(primitive, /behindLeftWall && leftWallProfileByInstance\.get\(model\.instanceId\) !== modelIndex\) return/);
+  assert.match(primitive, /behindLeftWall \? 1 : settings\.mirror \? -1 : 1/);
 });
 
 test("visual TPO settings repaint without invalidating the calculated profile", () => {
@@ -263,6 +264,39 @@ test("bar-range fallback is explicit and marks coarse bars as lower granularity"
   assert.equal(profile.source, "bar-range");
   assert.equal(profile.lowerGranularity, true);
   assert.ok(profile.rows.length > 1);
+});
+
+test("automatic TPO rejects a partial live execution tape instead of cutting off the current profile", () => {
+  const start = Date.UTC(2026, 7, 10, 0);
+  const config = {
+    ...settings.defaultTpoSettings("daily-tpo"),
+    timezone: "UTC",
+    dailyStartTime: "00:00:00",
+    periodMode: "multiple-profiles",
+    profileCount: 1,
+    visitSource: "automatic",
+    groupingMode: "manual",
+    ticksPerRow: 1,
+  };
+  const profile = engine.buildTpoProfiles({
+    settings: config,
+    nowMs: start + 13 * 3_600_000,
+    trades: [{
+      instrumentId: "NQ",
+      timestampMs: start + 12 * 3_600_000,
+      price: 120,
+      size: 2,
+      aggressorSide: "buy",
+      tickSize: 0.25,
+    }],
+    bars: [
+      { instrumentId: "NQ", startTimeMs: start, endTimeMs: start + 60_000, open: 100, high: 101, low: 99, close: 100, tickSize: 0.25 },
+      { instrumentId: "NQ", startTimeMs: start + 12 * 3_600_000, endTimeMs: start + 12 * 3_600_000 + 60_000, open: 119, high: 121, low: 118, close: 120, tickSize: 0.25 },
+    ],
+  })[0];
+  assert.equal(profile.source, "bar-range");
+  assert.ok(profile.profileLowTick <= 99 / 0.25);
+  assert.ok(profile.profileHighTick >= 121 / 0.25);
 });
 
 test("profile merges recalculate POC, value area and member identity", () => {

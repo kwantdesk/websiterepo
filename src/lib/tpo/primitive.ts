@@ -171,8 +171,11 @@ export class TpoProfilePrimitive implements ISeriesPrimitive<Time> {
         if (behindLeftWall && leftWallProfileByInstance.get(model.instanceId) !== modelIndex) return;
         const anchorX = pinnedRight
           ? mediaSize.width - 4 - offset
-          : clamp(periodStartX + offset, 2, mediaSize.width - 2);
-        const direction = (pinnedRight || settings.mirror) ? -1 : 1;
+          : behindLeftWall ? 4 : clamp(periodStartX + offset, 2, mediaSize.width - 2);
+        // A profile held at the left wall must open into the viewport. Keeping
+        // a saved mirrored direction here would draw part of the newest TPO
+        // outside the clipped canvas and make the profile look incomplete.
+        const direction = pinnedRight ? -1 : behindLeftWall ? 1 : settings.mirror ? -1 : 1;
         const maxTpos = Math.max(1, ...profile.rows.map((row) => row.tpoCount));
         const cellWidth = Math.min(baseCell, Math.max(1.25, width / maxTpos));
         const gap = Math.min(settings.blockGap, cellWidth * 0.35);

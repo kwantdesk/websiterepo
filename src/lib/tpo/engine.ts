@@ -241,6 +241,28 @@ function isInsideSession(timestampMs: number, settings: TpoIndicatorSettings) {
   return start <= end ? seconds >= start && seconds < end : seconds >= start || seconds < end;
 }
 
+function hasCompleteExactCoverage(
+  period: PeriodBoundary,
+  trades: TpoTrade[],
+  bars: TpoBar[],
+  settings: TpoIndicatorSettings,
+  nowMs: number,
+) {
+  const periodTrades = trades.filter((trade) => trade.timestampMs >= period.startMs && trade.timestampMs < period.endMs);
+  if (!periodTrades.length) return false;
+  const periodBars = bars.filter((bar) => bar.endTimeMs > period.startMs && bar.startTimeMs < period.endMs);
+  if (!periodBars.length) return true;
+  const expectedStartMs = Math.max(period.startMs, Math.min(...periodBars.map((bar) => bar.startTimeMs)));
+  const expectedEndMs = Math.min(
+    Number.isFinite(period.endMs) ? period.endMs : nowMs + 1,
+    Math.max(...periodBars.map((bar) => bar.endTimeMs)),
+  );
+  const firstTradeMs = Math.min(...periodTrades.map((trade) => trade.timestampMs));
+  const lastTradeMs = Math.max(...periodTrades.map((trade) => trade.timestampMs));
+  const toleranceMs = Math.max(60_000, settings.subperiodMinutes * 60_000);
+  return firstTradeMs <= expectedStartMs + toleranceMs && lastTradeMs >= expectedEndMs - toleranceMs;
+}
+
 function sessionSegment(timestampMs: number, settings: TpoIndicatorSettings) {
   if (settings.filterMode !== "split-two" && settings.filterMode !== "split-three") return 0;
   const parts = zonedParts(timestampMs, settings.timezone);
@@ -664,8 +686,7 @@ export function buildTpoProfiles({
     .slice(-settings.profileCount);
   const profiles: TpoProfileModel[] = [];
   orderedPeriods.forEach((period) => {
-    const periodHasExactTrades = trades.some((trade) =>
-      trade.timestampMs >= period.startMs && trade.timestampMs < period.endMs);
+    const periodHasExactTrades = hasCompleteExactCoverage(period, trades, bars, settings, nowMs);
     const source = settings.visitSource === "automatic"
       ? periodHasExactTrades ? "exact-trades" as const : "bar-range" as const
       : preferredSource;
