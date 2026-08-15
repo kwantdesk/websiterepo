@@ -13,6 +13,11 @@ import { readLiveQuoteCache } from "@/lib/liveQuoteCache";
 import { buildTpoProfiles, periodBoundaryForTime, zonedParts } from "@/lib/tpo/engine";
 import { defaultTpoSettings } from "@/lib/tpo/settings";
 import { tickToPrice, type TpoBar, type TpoProfileModel } from "@/lib/tpo/types";
+import {
+  calculateVolumeProfileValueArea,
+  STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT,
+  volumeProfileBinTick,
+} from "@/lib/volumeProfileMath";
 
 type ProfileKind = "tpo" | "volume";
 type ProfilePreset =
@@ -39,6 +44,18 @@ type WorkspaceSettings = {
   showPoc: boolean;
   showValueArea: boolean;
   selectedDates: string[];
+  volumeGranularity: "auto" | "ticks" | "price";
+  pricePerRow: number;
+  targetRows: number;
+  minTradeVolume: number;
+  maxTradeVolume: number;
+  profileWidthPercent: number;
+  profileSide: "left" | "right";
+  volumeDisplay: "total" | "bid-ask" | "delta-volume";
+  volumeScale: "linear" | "sqrt" | "log";
+  opacityPercent: number;
+  showVwap: boolean;
+  showRowValues: boolean;
 };
 
 type RenderRow = {
@@ -47,6 +64,10 @@ type RenderRow = {
   label: string;
   inValueArea: boolean;
   isPoc: boolean;
+  bidVolume: number;
+  askVolume: number;
+  delta: number;
+  trades: number;
 };
 
 type ProfileView = {
@@ -58,6 +79,9 @@ type ProfileView = {
   endMs: number;
   source: string;
   total: number;
+  vwap: number | null;
+  tickSize: number;
+  groupTicks: number;
 };
 
 const NY_TIME_ZONE = "America/New_York";
@@ -74,6 +98,18 @@ const DEFAULT_SETTINGS: WorkspaceSettings = {
   showPoc: true,
   showValueArea: true,
   selectedDates: [],
+  volumeGranularity: "auto",
+  pricePerRow: 1,
+  targetRows: 120,
+  minTradeVolume: 0,
+  maxTradeVolume: 0,
+  profileWidthPercent: 72,
+  profileSide: "left",
+  volumeDisplay: "total",
+  volumeScale: "linear",
+  opacityPercent: 86,
+  showVwap: true,
+  showRowValues: false,
 };
 
 const PRESETS: Array<{ id: ProfilePreset; label: string; detail: string }> = [
@@ -185,6 +221,10 @@ function tpoView(profile: TpoProfileModel): ProfileView {
         label: row.markers.join(""),
         inValueArea: vah !== null && val !== null && price >= val && price <= vah,
         isPoc: poc !== null && Math.abs(price - poc) < profile.tickSize / 2,
+        bidVolume: 0,
+        askVolume: 0,
+        delta: 0,
+        trades: 0,
       };
     }),
     poc,
@@ -194,6 +234,9 @@ function tpoView(profile: TpoProfileModel): ProfileView {
     endMs: profile.endTimeMs,
     source: profile.source === "exact-trades" ? "EXACT EXECUTIONS" : "CME 1M RANGE",
     total: profile.totalTpos,
+    vwap: null,
+    tickSize: profile.tickSize,
+    groupTicks: profile.ticksPerRow,
   };
 }
 
@@ -205,6 +248,10 @@ function volumeView(profile: InstitutionalVolumeProfile): ProfileView {
       label: row.volume.toLocaleString(),
       inValueArea: profile.vah !== null && profile.val !== null && row.price >= profile.val && row.price <= profile.vah,
       isPoc: profile.poc !== null && Math.abs(row.price - profile.poc) < profile.tickSize * profile.groupTicks / 2,
+      bidVolume: row.bidVolume,
+      askVolume: row.askVolume,
+      delta: row.delta,
+      trades: row.trades,
     })),
     poc: profile.poc,
     vah: profile.vah,
@@ -213,6 +260,58 @@ function volumeView(profile: InstitutionalVolumeProfile): ProfileView {
     endMs: profile.endMs,
     source: profile.provider === "Rithmic" ? "RITHMIC EXECUTIONS" : `${profile.provider.toUpperCase()} EXECUTIONS`,
     total: profile.totalVolume,
+    vwap: profile.vwap,
+    tickSize: profile.tickSize,
+    groupTicks: profile.groupTicks,
+  };
+}
+
+function resolvedVolumeGroupTicks(profile: InstitutionalVolumeProfile, settings: WorkspaceSettings) {
+  if (settings.volumeGranularity === "ticks") return Math.max(1, Math.round(settings.ticksPerRow));
+  if (settings.volumeGranularity === "price") {
+    return Math.max(1, Math.round(Math.max(profile.tickSize, settings.pricePerRow) / profile.tickSize));
+  }
+  const first = profile.levels[0]?.price;
+  const last = profile.levels.at(-1)?.price;
+  if (!Number.isFinite(first) || !Number.isFinite(last)) return 1;
+  const spanTicks = Math.max(1, Math.round((Number(last) - Number(first)) / profile.tickSize) + 1);
+  return Math.max(1, Math.ceil(spanTicks / Math.max(20, Math.round(settings.targetRows))));
+}
+
+function rebinVolumeProfile(profile: InstitutionalVolumeProfile, settings: WorkspaceSettings): InstitutionalVolumeProfile {
+  const groupTicks = resolvedVolumeGroupTicks(profile, settings);
+  if (groupTicks === profile.groupTicks) return profile;
+  const levels = new Map<number, InstitutionalVolumeProfile["levels"][number]>();
+  for (const level of profile.levels) {
+    const groupedTick = volumeProfileBinTick(Math.round(level.price / profile.tickSize), groupTicks);
+    const current = levels.get(groupedTick) ?? {
+      price: Number((groupedTick * profile.tickSize).toFixed(10)),
+      volume: 0,
+      bidVolume: 0,
+      askVolume: 0,
+      delta: 0,
+      trades: 0,
+    };
+    current.volume += level.volume;
+    current.bidVolume += level.bidVolume;
+    current.askVolume += level.askVolume;
+    current.delta += level.delta;
+    current.trades += level.trades;
+    levels.set(groupedTick, current);
+  }
+  const rebinned = [...levels.values()].sort((left, right) => left.price - right.price);
+  const valueArea = calculateVolumeProfileValueArea(
+    rebinned,
+    profile.tickSize * groupTicks,
+    STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT,
+  );
+  return {
+    ...profile,
+    groupTicks,
+    levels: rebinned,
+    poc: valueArea.poc,
+    vah: valueArea.vah,
+    val: valueArea.val,
   };
 }
 
@@ -234,10 +333,10 @@ function formatPeriod(startMs: number, endMs: number) {
   return `${format.format(startMs)} — ${format.format(endMs)} ET`;
 }
 
-function ProfileCanvas({ kind, profile, livePrice, display }: { kind: ProfileKind; profile: ProfileView; livePrice: number | null; display: WorkspaceSettings["display"] }) {
+function ProfileCanvas({ kind, profile, livePrice, settings }: { kind: ProfileKind; profile: ProfileView; livePrice: number | null; settings: WorkspaceSettings }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [size, setSize] = useState({ width: 900, height: 640 });
-  const [accent, setAccent] = useState("#a3ff12");
+  const [colors, setColors] = useState({ accent: "#a3ff12", up: "#16c7ce", down: "#ff1f78" });
 
   useEffect(() => {
     const element = containerRef.current;
@@ -245,7 +344,12 @@ function ProfileCanvas({ kind, profile, livePrice, display }: { kind: ProfileKin
     const read = () => {
       const bounds = element.getBoundingClientRect();
       setSize({ width: Math.max(320, bounds.width), height: Math.max(260, bounds.height) });
-      setAccent(getComputedStyle(document.documentElement).getPropertyValue("--primary").trim() || "#a3ff12");
+      const style = getComputedStyle(document.documentElement);
+      setColors({
+        accent: style.getPropertyValue("--primary").trim() || "#a3ff12",
+        up: style.getPropertyValue("--candle-up").trim() || "#16c7ce",
+        down: style.getPropertyValue("--candle-down").trim() || "#ff1f78",
+      });
     };
     read();
     const observer = new ResizeObserver(read);
@@ -266,19 +370,28 @@ function ProfileCanvas({ kind, profile, livePrice, display }: { kind: ProfileKin
   const axisWidth = 92;
   const plotWidth = Math.max(120, size.width - axisWidth - 40);
   const plotHeight = Math.max(120, size.height - padTop - padBottom);
-  const maxWeight = Math.max(1, ...sorted.map((row) => row.weight));
+  const scaledWeight = (value: number) => settings.volumeScale === "sqrt"
+    ? Math.sqrt(Math.max(0, value))
+    : settings.volumeScale === "log"
+      ? Math.log1p(Math.max(0, value))
+      : Math.max(0, value);
+  const maxWeight = Math.max(1, ...sorted.map((row) => scaledWeight(row.weight)));
+  const maxAbsDelta = Math.max(1, ...sorted.map((row) => scaledWeight(Math.abs(row.delta))));
+  const maxSideVolume = Math.max(1, ...sorted.map((row) => scaledWeight(Math.max(row.bidVolume, row.askVolume))));
   const rowHeight = Math.max(2, Math.min(18, plotHeight / Math.max(1, sorted.length)));
   const y = (price: number) => padTop + ((maxPrice - price) / range) * plotHeight;
-  const profileStartX = 28;
-  const profileMaxWidth = plotWidth * 0.72;
+  const profileMaxWidth = plotWidth * Math.max(0.1, Math.min(1, settings.profileWidthPercent / 100));
+  const profileStartX = settings.profileSide === "right" ? size.width - axisWidth - 10 : 28;
+  const barX = (width: number) => settings.profileSide === "right" ? profileStartX - width : profileStartX;
+  const opacity = Math.max(0.1, Math.min(1, settings.opacityPercent / 100));
 
   return (
     <div ref={containerRef} className="h-full min-h-0 w-full overflow-hidden bg-background">
       <svg width="100%" height="100%" viewBox={`0 0 ${size.width} ${size.height}`} preserveAspectRatio="none" role="img" aria-label={`${kind === "tpo" ? "TPO" : "Volume"} profile`}>
         <defs>
           <linearGradient id={`profile-fill-${kind}`} x1="0" x2="1">
-            <stop offset="0%" stopColor={accent} stopOpacity="0.3" />
-            <stop offset="100%" stopColor={accent} stopOpacity="0.92" />
+            <stop offset="0%" stopColor={colors.accent} stopOpacity="0.3" />
+            <stop offset="100%" stopColor={colors.accent} stopOpacity="0.92" />
           </linearGradient>
           <filter id={`profile-glow-${kind}`} x="-30%" y="-30%" width="160%" height="160%">
             <feGaussianBlur stdDeviation="3" result="blur" />
@@ -291,28 +404,41 @@ function ProfileCanvas({ kind, profile, livePrice, display }: { kind: ProfileKin
         })}
         {sorted.map((row) => {
           const rowY = y(row.price) - rowHeight / 2;
-          const width = Math.max(2, (row.weight / maxWeight) * profileMaxWidth);
+          const width = Math.max(2, (scaledWeight(row.weight) / maxWeight) * profileMaxWidth);
           const fill = row.isPoc ? "#f5b83b" : row.inValueArea ? `url(#profile-fill-${kind})` : "var(--muted)";
           const tpoBlockWidth = Math.max(1.5, Math.min(10, rowHeight - 0.75, profileMaxWidth / maxWeight));
+          const bidWidth = Math.max(0, scaledWeight(row.bidVolume) / maxSideVolume * profileMaxWidth);
+          const askWidth = Math.max(0, scaledWeight(row.askVolume) / maxSideVolume * profileMaxWidth);
+          const deltaWidth = Math.max(0, scaledWeight(Math.abs(row.delta)) / maxAbsDelta * profileMaxWidth);
           return (
             <g key={row.price}>
-              {kind === "volume" ? <rect x={profileStartX} y={rowY} width={width} height={Math.max(1, rowHeight - 1)} fill={fill} opacity={row.inValueArea || row.isPoc ? 0.95 : 0.45} /> : null}
+              {kind === "volume" && settings.volumeDisplay === "total" ? <rect x={barX(width)} y={rowY} width={width} height={Math.max(1, rowHeight - 1)} fill={fill} opacity={(row.inValueArea || row.isPoc ? 1 : 0.52) * opacity} /> : null}
+              {kind === "volume" && settings.volumeDisplay === "bid-ask" ? <>
+                <rect x={barX(bidWidth)} y={rowY} width={bidWidth} height={Math.max(1, rowHeight / 2 - 0.5)} fill={colors.down} opacity={opacity} />
+                <rect x={barX(askWidth)} y={rowY + rowHeight / 2} width={askWidth} height={Math.max(1, rowHeight / 2 - 0.5)} fill={colors.up} opacity={opacity} />
+              </> : null}
+              {kind === "volume" && settings.volumeDisplay === "delta-volume" ? <>
+                <rect x={barX(width)} y={rowY} width={width} height={Math.max(1, rowHeight - 1)} fill={fill} opacity={0.34 * opacity} />
+                <rect x={barX(deltaWidth)} y={rowY + rowHeight * 0.2} width={deltaWidth} height={Math.max(1, rowHeight * 0.6)} fill={row.delta >= 0 ? colors.up : colors.down} opacity={opacity} />
+              </> : null}
               {kind === "tpo" ? Array.from({ length: Math.min(300, Math.max(1, Math.round(row.weight))) }, (_, index) => (
                 <g key={index}>
                   <rect x={profileStartX + index * tpoBlockWidth} y={rowY} width={Math.max(1, tpoBlockWidth - 0.6)} height={Math.max(1, rowHeight - 1)} fill={fill} opacity={row.inValueArea || row.isPoc ? 0.96 : 0.55} />
-                  {display === "letters" && tpoBlockWidth >= 7 && rowHeight >= 8 ? <text x={profileStartX + index * tpoBlockWidth + tpoBlockWidth / 2} y={rowY + rowHeight * 0.72} textAnchor="middle" fill="var(--background)" fontSize={Math.min(8, rowHeight - 2)} fontFamily="var(--font-mono)">{row.label[index] ?? "·"}</text> : null}
+                  {settings.display === "letters" && tpoBlockWidth >= 7 && rowHeight >= 8 ? <text x={profileStartX + index * tpoBlockWidth + tpoBlockWidth / 2} y={rowY + rowHeight * 0.72} textAnchor="middle" fill="var(--background)" fontSize={Math.min(8, rowHeight - 2)} fontFamily="var(--font-mono)">{row.label[index] ?? "·"}</text> : null}
                 </g>
               )) : null}
+              {kind === "volume" && settings.showRowValues && rowHeight >= 8 ? <text x={settings.profileSide === "right" ? barX(width) - 4 : profileStartX + width + 4} y={rowY + rowHeight * 0.7} textAnchor={settings.profileSide === "right" ? "end" : "start"} fill="var(--foreground)" opacity="0.8" fontSize="7" fontFamily="var(--font-mono)">{row.weight.toLocaleString()}</text> : null}
             </g>
           );
         })}
-        {profile.vah !== null ? <line x1="0" x2={size.width - axisWidth} y1={y(profile.vah)} y2={y(profile.vah)} stroke={accent} strokeWidth="1" strokeDasharray="4 4" opacity="0.75" /> : null}
-        {profile.val !== null ? <line x1="0" x2={size.width - axisWidth} y1={y(profile.val)} y2={y(profile.val)} stroke={accent} strokeWidth="1" strokeDasharray="4 4" opacity="0.75" /> : null}
+        {profile.vah !== null ? <line x1="0" x2={size.width - axisWidth} y1={y(profile.vah)} y2={y(profile.vah)} stroke={colors.accent} strokeWidth="1" strokeDasharray="4 4" opacity="0.75" /> : null}
+        {profile.val !== null ? <line x1="0" x2={size.width - axisWidth} y1={y(profile.val)} y2={y(profile.val)} stroke={colors.accent} strokeWidth="1" strokeDasharray="4 4" opacity="0.75" /> : null}
         {profile.poc !== null ? <line x1="0" x2={size.width - axisWidth} y1={y(profile.poc)} y2={y(profile.poc)} stroke="#f5b83b" strokeWidth="1.5" /> : null}
+        {kind === "volume" && settings.showVwap && profile.vwap !== null ? <line x1="0" x2={size.width - axisWidth} y1={y(profile.vwap)} y2={y(profile.vwap)} stroke={colors.up} strokeWidth="1" strokeDasharray="2 3" opacity="0.8" /> : null}
         {livePrice !== null ? (
           <g filter={`url(#profile-glow-${kind})`}>
-            <line x1="0" x2={size.width - axisWidth} y1={y(livePrice)} y2={y(livePrice)} stroke={accent} strokeWidth="1.5" />
-            <rect x={size.width - axisWidth} y={y(livePrice) - 11} width={axisWidth} height="22" fill={accent} />
+            <line x1="0" x2={size.width - axisWidth} y1={y(livePrice)} y2={y(livePrice)} stroke={colors.accent} strokeWidth="1.5" />
+            <rect x={size.width - axisWidth} y={y(livePrice) - 11} width={axisWidth} height="22" fill={colors.accent} />
             <text x={size.width - axisWidth + 7} y={y(livePrice) + 4} fill="var(--background)" fontSize="10" fontWeight="700" fontFamily="var(--font-mono)">{formatPrice(livePrice)}</text>
           </g>
         ) : null}
@@ -322,9 +448,10 @@ function ProfileCanvas({ kind, profile, livePrice, display }: { kind: ProfileKin
           const axisY = padTop + (plotHeight * index) / 6;
           return <text key={index} x={size.width - axisWidth + 7} y={axisY + 3} fill="var(--muted)" fontSize="9" fontFamily="var(--font-mono)">{formatPrice(price)}</text>;
         })}
-        {profile.vah !== null ? <text x={size.width - axisWidth - 5} y={y(profile.vah) - 4} textAnchor="end" fill={accent} fontSize="8" fontFamily="var(--font-mono)">VAH</text> : null}
-        {profile.val !== null ? <text x={size.width - axisWidth - 5} y={y(profile.val) - 4} textAnchor="end" fill={accent} fontSize="8" fontFamily="var(--font-mono)">VAL</text> : null}
+        {profile.vah !== null ? <text x={size.width - axisWidth - 5} y={y(profile.vah) - 4} textAnchor="end" fill={colors.accent} fontSize="8" fontFamily="var(--font-mono)">VAH</text> : null}
+        {profile.val !== null ? <text x={size.width - axisWidth - 5} y={y(profile.val) - 4} textAnchor="end" fill={colors.accent} fontSize="8" fontFamily="var(--font-mono)">VAL</text> : null}
         {profile.poc !== null ? <text x={size.width - axisWidth - 5} y={y(profile.poc) - 4} textAnchor="end" fill="#f5b83b" fontSize="8" fontFamily="var(--font-mono)">POC</text> : null}
+        {kind === "volume" && settings.showVwap && profile.vwap !== null ? <text x={size.width - axisWidth - 5} y={y(profile.vwap) - 4} textAnchor="end" fill={colors.up} fontSize="8" fontFamily="var(--font-mono)">VWAP</text> : null}
       </svg>
     </div>
   );
@@ -439,33 +566,39 @@ export default function SingleProfileWorkspace({
   const loadVolume = useCallback(async () => {
     const snapshot = await fetchInstitutionalSnapshot({ symbol: instrument, timeframe: "1m", lookbackBars: 2, timeoutMs: 20_000 });
     if (snapshot?.lastPrice) setLivePrice(snapshot.lastPrice);
+    const executionFilters = {
+      groupTicks: 1,
+      minTradeVolume: Math.max(0, settings.minTradeVolume),
+      maxTradeVolume: Math.max(0, settings.maxTradeVolume),
+    };
     if (settings.preset === "merge-days") {
       if (!settings.selectedDates.length) return null;
       const parts = (await Promise.all(settings.selectedDates.map((tradingDate) => fetchInstitutionalVolumeProfile({
         symbol: instrument,
         period: "daily",
         tradingDate,
-        groupTicks: settings.ticksPerRow,
+        ...executionFilters,
       })))).filter((value): value is InstitutionalVolumeProfile => Boolean(value));
       if (!parts.length) return null;
-      return volumeView(parts.slice(1).reduce((merged, next) => mergeInstitutionalVolumeProfiles(merged, next), parts[0]));
+      const merged = parts.slice(1).reduce((current, next) => mergeInstitutionalVolumeProfiles(current, next), parts[0]);
+      return applyVisibility(volumeView(rebinVolumeProfile(merged, settings)), settings);
     }
     let profile: InstitutionalVolumeProfile | null = null;
     if (settings.preset === "current-week") {
-      profile = await fetchInstitutionalVolumeProfile({ symbol: instrument, period: "weekly", groupTicks: settings.ticksPerRow });
+      profile = await fetchInstitutionalVolumeProfile({ symbol: instrument, period: "weekly", ...executionFilters });
     } else if (settings.preset === "previous-week") {
       const boundary = previousWeeklyBoundary(settings);
-      profile = boundary ? await fetchInstitutionalVolumeProfile({ symbol: instrument, period: "custom", startMs: boundary.startMs, endMs: boundary.endMs, groupTicks: settings.ticksPerRow }) : null;
+      profile = boundary ? await fetchInstitutionalVolumeProfile({ symbol: instrument, period: "custom", startMs: boundary.startMs, endMs: boundary.endMs, ...executionFilters }) : null;
     } else if (settings.preset === "recurring-custom") {
       const boundary = recurringBoundary(settings);
-      profile = boundary ? await fetchInstitutionalVolumeProfile({ symbol: instrument, period: "custom", startMs: boundary.startMs, endMs: Math.min(boundary.endMs, Date.now()), groupTicks: settings.ticksPerRow }) : null;
+      profile = boundary ? await fetchInstitutionalVolumeProfile({ symbol: instrument, period: "custom", startMs: boundary.startMs, endMs: Math.min(boundary.endMs, Date.now()), ...executionFilters }) : null;
     } else if (settings.preset === "custom") {
       profile = await fetchInstitutionalVolumeProfile({
         symbol: instrument,
         period: "custom",
         startMs: Date.parse(settings.customStart),
         endMs: Date.parse(settings.customEnd),
-        groupTicks: settings.ticksPerRow,
+        ...executionFilters,
       });
     } else {
       const previous = settings.preset.startsWith("previous");
@@ -473,11 +606,11 @@ export default function SingleProfileWorkspace({
         symbol: instrument,
         period: "daily",
         tradingDate: previous ? latestCompletedRthDate(tradingDates) : tradingDates[0],
-        groupTicks: settings.ticksPerRow,
+        ...executionFilters,
       });
     }
     if (!profile) return null;
-    return applyVisibility(volumeView(profile), settings);
+    return applyVisibility(volumeView(rebinVolumeProfile(profile, settings)), settings);
   }, [instrument, settings, tradingDates]);
 
   useEffect(() => {
@@ -504,7 +637,17 @@ export default function SingleProfileWorkspace({
   }, [active, kind, loadTpo, loadVolume, refreshNonce, settings.preset]);
 
   const save = () => {
-    const next = { ...draft, ticksPerRow: Math.max(1, Math.round(draft.ticksPerRow)), subperiodMinutes: Math.max(5, Math.round(draft.subperiodMinutes)) };
+    const next = {
+      ...draft,
+      ticksPerRow: Math.max(1, Math.round(draft.ticksPerRow)),
+      pricePerRow: Math.max(0.000001, Number(draft.pricePerRow)),
+      targetRows: Math.max(20, Math.min(400, Math.round(draft.targetRows))),
+      minTradeVolume: Math.max(0, Math.round(draft.minTradeVolume)),
+      maxTradeVolume: Math.max(0, Math.round(draft.maxTradeVolume)),
+      profileWidthPercent: Math.max(10, Math.min(100, Number(draft.profileWidthPercent))),
+      opacityPercent: Math.max(10, Math.min(100, Number(draft.opacityPercent))),
+      subperiodMinutes: Math.max(5, Math.round(draft.subperiodMinutes)),
+    };
     setSettings(next);
     localStorage.setItem(storageKey, JSON.stringify(next));
     setSettingsOpen(false);
@@ -532,11 +675,11 @@ export default function SingleProfileWorkspace({
         </div>
       ) : null}
       <div className="relative min-h-0 flex-1">
-        {profile ? <ProfileCanvas kind={kind} profile={profile} livePrice={livePrice} display={settings.display} /> : null}
+        {profile ? <ProfileCanvas kind={kind} profile={profile} livePrice={livePrice} settings={settings} /> : null}
         {loading && !profile ? <div className="absolute inset-0 flex items-center justify-center bg-background"><div className="flex items-center gap-2 font-mono text-[9px] uppercase tracking-[0.15em] text-muted"><Loader2 className="h-4 w-4 animate-spin text-primary" />Building {kind === "tpo" ? "time" : "volume"} profile</div></div> : null}
         {error && !profile && !loading ? <div className="absolute inset-0 flex items-center justify-center p-6"><div className="max-w-sm border border-border bg-panel p-4 text-center"><p className="font-mono text-[10px] font-semibold uppercase tracking-[0.12em]">Profile unavailable</p><p className="mt-2 text-[10px] leading-5 text-muted">{error}</p><button type="button" onClick={() => setRefreshNonce((value) => value + 1)} className="mt-3 border border-primary/40 px-3 py-1.5 font-mono text-[8px] uppercase tracking-[0.12em] text-primary">Try again</button></div></div> : null}
       </div>
-      {profile ? <div className="flex h-7 shrink-0 items-center justify-between border-t border-border bg-panel px-2.5 font-mono text-[7px] uppercase tracking-[0.12em] text-muted"><span>{profile.source}</span><span>{kind === "tpo" ? `${profile.total.toLocaleString()} TPOS` : `${profile.total.toLocaleString()} CONTRACTS`} · FIXED 70% VALUE AREA</span></div> : null}
+      {profile ? <div className="flex h-7 shrink-0 items-center justify-between border-t border-border bg-panel px-2.5 font-mono text-[7px] uppercase tracking-[0.12em] text-muted"><span>{profile.source}</span><span>{kind === "tpo" ? `${profile.total.toLocaleString()} TPOS` : `${profile.total.toLocaleString()} CONTRACTS · ${profile.groupTicks} TICKS/ROW`} · FIXED 70% VALUE AREA</span></div> : null}
 
       {settingsOpen ? (
         <div className="absolute inset-0 z-50 flex justify-end bg-background/55 backdrop-blur-[2px]" onMouseDown={(event) => { if (event.target === event.currentTarget) setSettingsOpen(false); }}>
@@ -547,9 +690,26 @@ export default function SingleProfileWorkspace({
               {draft.preset === "custom" ? <div className="grid grid-cols-1 gap-3"><label><span className="mb-1 block font-mono text-[8px] uppercase tracking-[0.14em] text-muted">From</span><input type="datetime-local" value={draft.customStart} onChange={(event) => setDraft((current) => ({ ...current, customStart: event.target.value }))} className="h-9 w-full border border-border bg-background px-2 font-mono text-[9px] text-foreground outline-none focus:border-primary/60" /></label><label><span className="mb-1 block font-mono text-[8px] uppercase tracking-[0.14em] text-muted">Until</span><input type="datetime-local" value={draft.customEnd} onChange={(event) => setDraft((current) => ({ ...current, customEnd: event.target.value }))} className="h-9 w-full border border-border bg-background px-2 font-mono text-[9px] text-foreground outline-none focus:border-primary/60" /></label></div> : null}
               {draft.preset === "recurring-custom" ? <div className="grid grid-cols-2 gap-3"><label><span className="mb-1 block font-mono text-[8px] uppercase tracking-[0.14em] text-muted">Daily start</span><input type="time" value={draft.startTime} onChange={(event) => setDraft((current) => ({ ...current, startTime: event.target.value }))} className="h-9 w-full border border-border bg-background px-2 font-mono text-[9px] text-foreground outline-none focus:border-primary/60" /></label><label><span className="mb-1 block font-mono text-[8px] uppercase tracking-[0.14em] text-muted">Daily end</span><input type="time" value={draft.endTime} onChange={(event) => setDraft((current) => ({ ...current, endTime: event.target.value }))} className="h-9 w-full border border-border bg-background px-2 font-mono text-[9px] text-foreground outline-none focus:border-primary/60" /></label></div> : null}
               {draft.preset === "merge-days" && kind === "volume" ? <div><span className="mb-2 block font-mono text-[8px] uppercase tracking-[0.14em] text-muted">Sessions to merge</span><div className="grid grid-cols-2 gap-1.5">{tradingDates.map((date) => { const selected = draft.selectedDates.includes(date); return <button key={date} type="button" onClick={() => setDraft((current) => ({ ...current, selectedDates: selected ? current.selectedDates.filter((value) => value !== date) : [...current.selectedDates, date] }))} className={`flex h-8 items-center justify-between border px-2 font-mono text-[8px] ${selected ? "border-primary/50 bg-primary/10 text-primary" : "border-border bg-background text-muted"}`}><span>{date}</span>{selected ? <Check className="h-3 w-3" /> : null}</button>; })}</div></div> : null}
-              <div className="grid grid-cols-2 gap-3"><label><span className="mb-1 block font-mono text-[8px] uppercase tracking-[0.14em] text-muted">Rows · ticks</span><input type="number" min="1" max="64" value={draft.ticksPerRow} onChange={(event) => setDraft((current) => ({ ...current, ticksPerRow: Number(event.target.value) }))} className="h-9 w-full border border-border bg-background px-2 font-mono text-[9px] outline-none focus:border-primary/60" /></label>{kind === "tpo" ? <label><span className="mb-1 block font-mono text-[8px] uppercase tracking-[0.14em] text-muted">TPO period · min</span><input type="number" min="5" max="120" step="5" value={draft.subperiodMinutes} onChange={(event) => setDraft((current) => ({ ...current, subperiodMinutes: Number(event.target.value) }))} className="h-9 w-full border border-border bg-background px-2 font-mono text-[9px] outline-none focus:border-primary/60" /></label> : null}</div>
+              {kind === "tpo" ? <div className="grid grid-cols-2 gap-3"><label><span className="mb-1 block font-mono text-[8px] uppercase tracking-[0.14em] text-muted">Rows · ticks</span><input type="number" min="1" max="64" value={draft.ticksPerRow} onChange={(event) => setDraft((current) => ({ ...current, ticksPerRow: Number(event.target.value) }))} className="h-9 w-full border border-border bg-background px-2 font-mono text-[9px] outline-none focus:border-primary/60" /></label><label><span className="mb-1 block font-mono text-[8px] uppercase tracking-[0.14em] text-muted">TPO period · min</span><input type="number" min="5" max="120" step="5" value={draft.subperiodMinutes} onChange={(event) => setDraft((current) => ({ ...current, subperiodMinutes: Number(event.target.value) }))} className="h-9 w-full border border-border bg-background px-2 font-mono text-[9px] outline-none focus:border-primary/60" /></label></div> : null}
+              {kind === "volume" ? <div className="space-y-3 border border-border bg-background p-2.5">
+                <div><p className="font-mono text-[8px] font-semibold uppercase tracking-[0.14em] text-foreground">Price granularity</p><p className="mt-1 text-[8px] leading-4 text-muted">Changes the real price bins and recalculates POC, VAH and VAL.</p></div>
+                <label className="block"><span className="mb-1 block font-mono text-[8px] uppercase tracking-[0.12em] text-muted">Grouping mode</span><select value={draft.volumeGranularity} onChange={(event) => setDraft((current) => ({ ...current, volumeGranularity: event.target.value as WorkspaceSettings["volumeGranularity"] }))} className="h-9 w-full border border-border bg-panel px-2 font-mono text-[9px] text-foreground outline-none focus:border-primary/60"><option value="auto">Automatic target rows</option><option value="ticks">Ticks per row</option><option value="price">Price per row</option></select></label>
+                {draft.volumeGranularity === "auto" ? <label className="block"><span className="mb-1 block font-mono text-[8px] uppercase tracking-[0.12em] text-muted">Target rows · {draft.targetRows}</span><input type="range" min="20" max="400" step="5" value={draft.targetRows} onChange={(event) => setDraft((current) => ({ ...current, targetRows: Number(event.target.value) }))} className="w-full accent-[var(--primary)]" /></label> : null}
+                {draft.volumeGranularity === "ticks" ? <label className="block"><span className="mb-1 block font-mono text-[8px] uppercase tracking-[0.12em] text-muted">Ticks per row</span><input type="number" min="1" max="500" value={draft.ticksPerRow} onChange={(event) => setDraft((current) => ({ ...current, ticksPerRow: Number(event.target.value) }))} className="h-9 w-full border border-border bg-panel px-2 font-mono text-[9px] text-foreground outline-none focus:border-primary/60" /></label> : null}
+                {draft.volumeGranularity === "price" ? <label className="block"><span className="mb-1 block font-mono text-[8px] uppercase tracking-[0.12em] text-muted">Price per row</span><input type="number" min="0.000001" step="0.25" value={draft.pricePerRow} onChange={(event) => setDraft((current) => ({ ...current, pricePerRow: Number(event.target.value) }))} className="h-9 w-full border border-border bg-panel px-2 font-mono text-[9px] text-foreground outline-none focus:border-primary/60" /></label> : null}
+              </div> : null}
+              {kind === "volume" ? <div className="space-y-3 border border-border bg-background p-2.5">
+                <p className="font-mono text-[8px] font-semibold uppercase tracking-[0.14em] text-foreground">Profile display</p>
+                <div className="grid grid-cols-2 gap-2"><label><span className="mb-1 block font-mono text-[8px] uppercase tracking-[0.12em] text-muted">Profile mode</span><select value={draft.volumeDisplay} onChange={(event) => setDraft((current) => ({ ...current, volumeDisplay: event.target.value as WorkspaceSettings["volumeDisplay"] }))} className="h-9 w-full border border-border bg-panel px-2 font-mono text-[9px] text-foreground"><option value="total">Total volume</option><option value="bid-ask">Bid / Ask</option><option value="delta-volume">Delta + Volume</option></select></label><label><span className="mb-1 block font-mono text-[8px] uppercase tracking-[0.12em] text-muted">Scale</span><select value={draft.volumeScale} onChange={(event) => setDraft((current) => ({ ...current, volumeScale: event.target.value as WorkspaceSettings["volumeScale"] }))} className="h-9 w-full border border-border bg-panel px-2 font-mono text-[9px] text-foreground"><option value="linear">Linear</option><option value="sqrt">Square root</option><option value="log">Logarithmic</option></select></label></div>
+                <div className="grid grid-cols-2 gap-2"><label><span className="mb-1 block font-mono text-[8px] uppercase tracking-[0.12em] text-muted">Anchor side</span><select value={draft.profileSide} onChange={(event) => setDraft((current) => ({ ...current, profileSide: event.target.value as WorkspaceSettings["profileSide"] }))} className="h-9 w-full border border-border bg-panel px-2 font-mono text-[9px] text-foreground"><option value="left">Left</option><option value="right">Right</option></select></label><label><span className="mb-1 block font-mono text-[8px] uppercase tracking-[0.12em] text-muted">Width · {draft.profileWidthPercent}%</span><input type="range" min="10" max="100" step="1" value={draft.profileWidthPercent} onChange={(event) => setDraft((current) => ({ ...current, profileWidthPercent: Number(event.target.value) }))} className="mt-2 w-full accent-[var(--primary)]" /></label></div>
+                <label className="block"><span className="mb-1 block font-mono text-[8px] uppercase tracking-[0.12em] text-muted">Opacity · {draft.opacityPercent}%</span><input type="range" min="10" max="100" step="1" value={draft.opacityPercent} onChange={(event) => setDraft((current) => ({ ...current, opacityPercent: Number(event.target.value) }))} className="w-full accent-[var(--primary)]" /></label>
+              </div> : null}
+              {kind === "volume" ? <div className="space-y-3 border border-border bg-background p-2.5">
+                <div><p className="font-mono text-[8px] font-semibold uppercase tracking-[0.14em] text-foreground">Execution filter</p><p className="mt-1 text-[8px] leading-4 text-muted">Filters individual executed trades before the profile is calculated.</p></div>
+                <div className="grid grid-cols-2 gap-2"><label><span className="mb-1 block font-mono text-[8px] uppercase tracking-[0.12em] text-muted">Minimum size</span><input type="number" min="0" step="1" value={draft.minTradeVolume} onChange={(event) => setDraft((current) => ({ ...current, minTradeVolume: Number(event.target.value) }))} className="h-9 w-full border border-border bg-panel px-2 font-mono text-[9px] text-foreground" /></label><label><span className="mb-1 block font-mono text-[8px] uppercase tracking-[0.12em] text-muted">Maximum · 0 = none</span><input type="number" min="0" step="1" value={draft.maxTradeVolume} onChange={(event) => setDraft((current) => ({ ...current, maxTradeVolume: Number(event.target.value) }))} className="h-9 w-full border border-border bg-panel px-2 font-mono text-[9px] text-foreground" /></label></div>
+              </div> : null}
               {kind === "tpo" ? <label className="block"><span className="mb-1 block font-mono text-[8px] uppercase tracking-[0.14em] text-muted">Display</span><select value={draft.display} onChange={(event) => setDraft((current) => ({ ...current, display: event.target.value as "blocks" | "letters" }))} className="h-9 w-full border border-border bg-background px-2 font-mono text-[9px]"><option value="blocks">Square blocks</option><option value="letters">TPO letters</option></select></label> : null}
-              <div className="space-y-2">{[["showPoc", "Show point of control"], ["showValueArea", "Show VAH and VAL"]].map(([key, label]) => <label key={key} className="flex items-center justify-between border border-border bg-background px-2.5 py-2 font-mono text-[8px] uppercase tracking-[0.1em] text-muted"><span>{label}</span><input type="checkbox" checked={Boolean(draft[key as keyof WorkspaceSettings])} onChange={(event) => setDraft((current) => ({ ...current, [key]: event.target.checked }))} className="accent-[var(--primary)]" /></label>)}</div>
+              <div className="space-y-2">{[["showPoc", "Show point of control"], ["showValueArea", "Show VAH and VAL"], ...(kind === "volume" ? [["showVwap", "Show VWAP"], ["showRowValues", "Show row volume labels"]] : [])].map(([key, label]) => <label key={key} className="flex items-center justify-between border border-border bg-background px-2.5 py-2 font-mono text-[8px] uppercase tracking-[0.1em] text-muted"><span>{label}</span><input type="checkbox" checked={Boolean(draft[key as keyof WorkspaceSettings])} onChange={(event) => setDraft((current) => ({ ...current, [key]: event.target.checked }))} className="accent-[var(--primary)]" /></label>)}</div>
               <div className="border border-border bg-background p-2.5 text-[8px] leading-4 text-muted">Value area is fixed at the market-standard 70%. Profiles use the shared CME/Rithmic data path and never render future data.</div>
             </div>
             <div className="grid grid-cols-2 gap-2 border-t border-border p-3"><button type="button" onClick={() => setDraft({ ...DEFAULT_SETTINGS, customStart: dateInputValue(Date.now() - 86_400_000), customEnd: dateInputValue(Date.now()) })} className="h-9 border border-border font-mono text-[8px] uppercase tracking-[0.12em] text-muted hover:text-foreground">Reset</button><button type="button" onClick={save} disabled={(draft.preset === "merge-days" && draft.selectedDates.length < 2) || (draft.preset === "custom" && (!Number.isFinite(Date.parse(draft.customStart)) || !Number.isFinite(Date.parse(draft.customEnd)) || Date.parse(draft.customEnd) <= Date.parse(draft.customStart)))} className="h-9 bg-primary font-mono text-[8px] font-semibold uppercase tracking-[0.12em] text-background disabled:opacity-40">Apply profile</button></div>

@@ -31,3 +31,19 @@ test("single volume profile supports selecting and merging multiple completed se
   assert.match(profileSource, /Sessions to merge/);
 });
 
+test("single volume profile exposes real granularity, execution and display controls", () => {
+  assert.match(profileSource, /volumeGranularity: "auto" \| "ticks" \| "price"/);
+  assert.match(profileSource, /Automatic target rows/);
+  assert.match(profileSource, /Ticks per row/);
+  assert.match(profileSource, /Price per row/);
+  assert.match(profileSource, /resolvedVolumeGroupTicks/);
+  assert.match(profileSource, /rebinVolumeProfile/);
+  assert.match(profileSource, /calculateVolumeProfileValueArea/);
+  assert.match(profileSource, /minTradeVolume: Math\.max/);
+  assert.match(profileSource, /Total volume/);
+  assert.match(profileSource, /Bid \/ Ask/);
+  assert.match(profileSource, /Delta \+ Volume/);
+  assert.match(profileSource, /Square root/);
+  assert.match(profileSource, /Logarithmic/);
+  assert.match(profileSource, /Show VWAP/);
+});
