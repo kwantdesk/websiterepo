@@ -296,6 +296,7 @@ const loadGammaWorkspace = () => import("@/components/options-flow/GammaWorkspac
 const loadGexMapWorkspace = () => import("@/components/gex-map/GexMapWorkspace");
 const loadLiquidityMapWorkspace = () => import("@/components/liquidity-map/LiquidityMapWorkspace");
 const loadSpoofingDetectorWorkspace = () => import("@/components/order-flow/SpoofingDetectorWorkspace");
+const loadSingleProfileWorkspace = () => import("@/components/profile-workspaces/SingleProfileWorkspace");
 const loadOptionsHeatmapWorkspace = () => import("@/components/heatmap/OptionsHeatmapWorkspace");
 const loadGexBotWorkspace = () => import("@/components/gexbot/GexBotWorkspace");
 const loadGexDeskWorkspace = () => import("@/components/gexdesk/GexDeskWorkspace");
@@ -314,6 +315,8 @@ const workspaceModulePreloaders: Record<string, () => Promise<unknown>> = {
   gexmap: loadGexMapWorkspace,
   liqmap: loadLiquidityMapWorkspace,
   "tool-spoofing-detector": loadSpoofingDetectorWorkspace,
+  "tool-single-tpo-chart": loadSingleProfileWorkspace,
+  "tool-single-volume-profile": loadSingleProfileWorkspace,
   heatmap: loadOptionsHeatmapWorkspace,
   gexbot: loadGexBotWorkspace,
   gexdesk: loadGexDeskWorkspace,
@@ -350,6 +353,10 @@ const LiquidityMapWorkspace = dynamic(loadLiquidityMapWorkspace, {
 const SpoofingDetectorWorkspace = dynamic(loadSpoofingDetectorWorkspace, {
   ssr: false,
   loading: () => workspaceLoader("Opening PHANTOM ORDERS", "Restoring the shared Level 3 order book."),
+});
+const SingleProfileWorkspace = dynamic(loadSingleProfileWorkspace, {
+  ssr: false,
+  loading: () => workspaceLoader("Opening profile", "Building the selected auction window."),
 });
 const OptionsHeatmapWorkspace = dynamic(loadOptionsHeatmapWorkspace, {
   ssr: false,
@@ -734,7 +741,9 @@ type WorkspacePagePanelKind = "charts" | "zyon" | "gameplan" | "gamma" | "gexmap
 type WorkspaceToolKind =
   | "tool-footprint"
   | "tool-volume-profile"
+  | "tool-single-volume-profile"
   | "tool-tpo-chart"
+  | "tool-single-tpo-chart"
   | "tool-weekly-tpo"
   | "tool-depth-of-market"
   | "tool-big-trades"
@@ -978,7 +987,9 @@ const WORKSPACE_PANEL_OPTIONS: Array<WorkspacePanelOption<WorkspacePagePanelKind
 const WORKSPACE_TOOL_OPTIONS: Array<WorkspacePanelOption<WorkspaceToolKind>> = [
   { id: "tool-footprint", label: "FOOTPRINT", description: "Bid × ask volume at every traded price", icon: Grid3X3, indicatorId: "deep-print-footprint" },
   { id: "tool-volume-profile", label: "VOLUME PROFILE", description: "Volume, delta, POC and value area by price", icon: BarChart3, indicatorId: "kwant-profile" },
+  { id: "tool-single-volume-profile", label: "SINGLE VOLUME PROFILE", description: "One standalone or merged execution profile with live price", icon: BarChart3 },
   { id: "tool-tpo-chart", label: "TPO CHART", description: "Daily square-block market profile and auction analytics", icon: Grid3X3, indicatorId: "tpo-chart" },
+  { id: "tool-single-tpo-chart", label: "SINGLE TPO CHART", description: "One standalone time profile with live price, POC and value area", icon: Grid3X3 },
   { id: "tool-weekly-tpo", label: "WEEKLY TPO", description: "Weekly square-block market profile and auction analytics", icon: BarChart3, indicatorId: "weekly-tpo" },
   { id: "tool-depth-of-market", label: "DEPTH OF MARKET", description: "Full-depth resting and traded liquidity ladder", icon: List, indicatorId: "depth-of-market" },
   { id: "tool-big-trades", label: "BIG TRADES", description: "Large aggressive executions anchored to price", icon: Zap, indicatorId: "big-trades" },
@@ -1011,7 +1022,10 @@ function isWorkspaceToolKind(value: unknown): value is WorkspaceToolKind {
 }
 
 function isWorkspaceChartKind(value: WorkspacePanelKind | null): value is "charts" | WorkspaceToolKind {
-  return value === "charts" || (isWorkspaceToolKind(value) && value !== "tool-spoofing-detector");
+  return value === "charts" || (isWorkspaceToolKind(value)
+    && value !== "tool-spoofing-detector"
+    && value !== "tool-single-tpo-chart"
+    && value !== "tool-single-volume-profile");
 }
 
 function isWorkspacePanelKind(value: unknown): value is WorkspacePanelKind {
@@ -12831,6 +12845,18 @@ export default function KwantifyWorkspace({
               instrument={pane.symbol}
               active={activePaneId === pane.id}
             />
+          </WorkspaceFailureBoundary>
+        );
+      case "tool-single-tpo-chart":
+        return (
+          <WorkspaceFailureBoundary resetKey={`workspace-${pane.id}-single-tpo-${pane.symbol}`} label="Single TPO Chart">
+            <SingleProfileWorkspace workspaceId={pane.id} instrument={pane.symbol} kind="tpo" active={activePaneId === pane.id} />
+          </WorkspaceFailureBoundary>
+        );
+      case "tool-single-volume-profile":
+        return (
+          <WorkspaceFailureBoundary resetKey={`workspace-${pane.id}-single-volume-${pane.symbol}`} label="Single Volume Profile">
+            <SingleProfileWorkspace workspaceId={pane.id} instrument={pane.symbol} kind="volume" active={activePaneId === pane.id} />
           </WorkspaceFailureBoundary>
         );
       case "news":
