@@ -74,7 +74,7 @@ export const CHART_INDICATOR_CATALOG: ChartIndicatorDefinition[] = [
   indicator("Stop Run", "Order Flow", "Detects bursts consistent with stop liquidation.", true),
   indicator("Cumulative Iceberg/Stop", "Order Flow", "Accumulates inferred iceberg and stop activity.", true),
   indicator("Book Speed", "Order Flow", "Measures order-book update velocity.", true),
-  indicator("Depth of Market", "Order Flow", "Resizable Rithmic full-depth ladder with resting liquidity, recent executions, cumulative depth, pulling/stacking and imbalance.", true, "Kwantify"),
+  indicator("DOM Pro", "Order Flow", "High-DPI Rithmic MBO ladder with resting depth, aggressor trades, order counts, queue-aware capability states and configurable professional columns.", true, "Kwantify", "Depth of Market"),
   indicator("Footprint", "Order Flow", "Native bid × ask, volume and delta footprint bars at every traded price.", true, "Kwantify", "Deep Print (Footprint)"),
   indicator("KWANT Delta", "Order Flow", "Enhanced delta-bar and aggression analysis.", true, "Reference", "Deep Delta"),
   indicator("KWANT Wall", "Order Flow", "Tracks significant resting-liquidity walls.", true, "Reference", "Deep Wall"),

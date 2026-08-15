@@ -1195,16 +1195,16 @@ export default function ChartIndicatorsControl({
               {settingsDefinition.id === "depth-of-market" ? (
                 <div className="space-y-3 rounded-xl border border-primary/15 bg-primary/[0.035] p-3">
                   <div>
-                    <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-foreground">Professional Rithmic DOM</div>
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-foreground">DOM Pro · Rithmic MBO</div>
                     <p className="mt-1 text-[9px] leading-4 text-muted">
-                      A read-only full-book ladder docked to the chart. Drag its left edge to resize it, use the mouse wheel to inspect nearby prices, and click PRICE to recenter.
+                      One shared high-DPI ladder for chart and workspace use. Drag its left edge to resize, inspect nearby prices with wheel or drag, and use LIVE or End to recenter.
                     </p>
                   </div>
                   <div className="grid gap-2 sm:grid-cols-3">
                     {[
-                      ["Depth", "Resting bid and ask liquidity at each exchange price."],
-                      ["Hit / Lift", "Recent sell-at-bid and buy-at-ask executions."],
-                      ["Pull / Stack", "Net liquidity added or removed from each price."],
+                      ["MBO / L2", "Exact order capability when supplied; honest full-depth fallback otherwise."],
+                      ["BUY / SELL", "Recent buyer- and seller-initiated executions at each price."],
+                      ["BID / ASK", "Current resting contracts at one-tick price resolution."],
                     ].map(([title, description]) => (
                       <div key={title} className="rounded-lg border border-border bg-background/55 px-3 py-2">
                         <div className="text-[9px] font-semibold text-foreground">{title}</div>
@@ -1213,7 +1213,7 @@ export default function ChartIndicatorsControl({
                     ))}
                   </div>
                   <div className="rounded-lg border border-border bg-background/55 px-3 py-2 text-[8px] leading-3 text-muted">
-                    The ladder is display-only: it never places, modifies or cancels an order.
+                    Trading remains read-only unless the authenticated KwantDesk order service explicitly grants capability. No browser Rithmic login or duplicate market-data session is created.
                   </div>
                 </div>
               ) : null}

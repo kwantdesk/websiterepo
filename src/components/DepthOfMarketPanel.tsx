@@ -2,20 +2,15 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Activity,
-  ChevronsLeft,
-  ChevronsRight,
-  DatabaseZap,
-  LocateFixed,
-  Minus,
-  Plus,
+  Activity, ChevronsLeft, ChevronsRight, CircleHelp, DatabaseZap,
+  LocateFixed, Minus, Plus, Settings2, X,
 } from "lucide-react";
 
-import { buildDepthLadder } from "@/lib/depthOfMarket";
 import {
-  subscribeRithmicLiquidity,
-  type RithmicLiquidityStatus,
-} from "@/lib/rithmicLiquidityStream";
+  applyDomProSnapshot, createDomProState, domProPreset, domProSettingsFromRecord,
+  visibleDomProRows, type DomProColumn, type DomProSettings, type DomProState,
+} from "@/lib/domPro";
+import { subscribeRithmicLiquidity, type RithmicLiquidityStatus } from "@/lib/rithmicLiquidityStream";
 import type { ChartIndicatorInstance } from "@/lib/chartIndicatorCatalog";
 import type { ChartSettings } from "@/lib/chartSettings";
 import type { RithmicLiquiditySnapshot } from "@/lib/structureLevels";
@@ -29,12 +24,9 @@ type Props = {
   onUpdateSetting?: (key: string, value: number | string | boolean) => void;
 };
 
-type RecentAtPrice = {
-  bid: number;
-  ask: number;
-  lastAt: number;
-  lastSize: number;
-  lastSide: "BUY" | "SELL";
+type CanvasPalette = {
+  background: string; surface: string; border: string; foreground: string;
+  muted: string; primary: string; bid: string; ask: string;
 };
 
 const integerFormatter = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
@@ -44,20 +36,6 @@ function finite(value: unknown, fallback: number) {
   return Number.isFinite(numeric) ? numeric : fallback;
 }
 
-function decimalPlaces(tickSize: number) {
-  if (tickSize >= 1) return 0;
-  if (tickSize >= 0.1) return 1;
-  if (tickSize >= 0.01) return 2;
-  return 3;
-}
-
-function statusLabel(status: RithmicLiquidityStatus, snapshot: RithmicLiquiditySnapshot | null) {
-  if (status === "connected" && snapshot?.bookValid && snapshot.fullDepth) return "LIVE";
-  if (snapshot?.bookValid) return "FROZEN";
-  if (status === "checking") return "SYNCING";
-  return "OFFLINE";
-}
-
 function compact(value: number, enabled: boolean) {
   if (!value) return "";
   if (!enabled || Math.abs(value) < 1_000) return integerFormatter.format(Math.round(value));
@@ -65,94 +43,172 @@ function compact(value: number, enabled: boolean) {
   return `${(value / 1_000_000).toFixed(value >= 10_000_000 ? 0 : 1)}M`;
 }
 
-function signed(value: number, compactNumbers: boolean) {
-  if (!value) return "";
-  return `${value > 0 ? "+" : "−"}${compact(Math.abs(value), compactNumbers)}`;
+function decimalPlaces(tickSize: number) {
+  if (tickSize >= 1) return 0;
+  if (tickSize >= 0.1) return 1;
+  if (tickSize >= 0.01) return 2;
+  return 3;
+}
+
+function cssColor(styles: CSSStyleDeclaration, name: string, fallback: string) {
+  return styles.getPropertyValue(name).trim() || fallback;
+}
+
+function alpha(color: string, opacity: number) {
+  if (color.startsWith("#")) {
+    const source = color.slice(1);
+    const hex = source.length === 3 ? source.split("").map((part) => part + part).join("") : source;
+    if (hex.length === 6) {
+      const value = Number.parseInt(hex, 16);
+      return `rgba(${(value >> 16) & 255}, ${(value >> 8) & 255}, ${value & 255}, ${opacity})`;
+    }
+  }
+  return color;
+}
+
+function statusLabel(status: RithmicLiquidityStatus, state: DomProState) {
+  if (state.staleReason) return "STALE";
+  if (status === "connected" && state.snapshotComplete) return state.capabilities.mbo ? "LIVE MBO" : "LIVE L2";
+  if (status === "checking") return "SYNCING";
+  return "OFFLINE";
+}
+
+function serializeColumns(columns: DomProColumn[]) {
+  return JSON.stringify(columns.map(({ id, width, enabled }) => ({ id, width, enabled })));
+}
+
+function drawDom(args: {
+  canvas: HTMLCanvasElement; state: DomProState; settings: DomProSettings;
+  palette: CanvasPalette; offsetTicks: number; width: number; height: number; dpr: number;
+}) {
+  const { canvas, state, settings, palette, offsetTicks, width, height, dpr } = args;
+  const ctx = canvas.getContext("2d", { alpha: false });
+  if (!ctx || width <= 0 || height <= 0) return;
+  canvas.width = Math.max(1, Math.round(width * dpr));
+  canvas.height = Math.max(1, Math.round(height * dpr));
+  canvas.style.width = `${width}px`;
+  canvas.style.height = `${height}px`;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.fillStyle = palette.background;
+  ctx.fillRect(0, 0, width, height);
+
+  const columns = settings.columns.filter((column) => column.enabled);
+  const preferredWidth = columns.reduce((sum, column) => sum + column.width, 0);
+  const scale = Math.min(1, width / Math.max(1, preferredWidth));
+  const widths = columns.map((column) => Math.max(34, column.width * scale));
+  const totalWidth = widths.reduce((sum, value) => sum + value, 0);
+  const xStart = Math.max(0, width - totalWidth);
+  const headerHeight = 25;
+  const availableRows = Math.max(1, Math.floor((height - headerHeight) / settings.rowHeight));
+  const rows = visibleDomProRows({
+    state, rowCount: Math.min(settings.rows, availableRows), offsetTicks,
+    recentWindowMs: settings.recentWindowMs,
+  });
+  const maxDepth = Math.max(1, settings.depthScaleCap, ...rows.flatMap((row) => [row.bidSize, row.askSize]));
+  const maxTrade = Math.max(1, ...rows.flatMap((row) => [row.buyVolume, row.sellVolume]));
+  const precision = decimalPlaces(state.tickSize);
+
+  ctx.fillStyle = palette.surface;
+  ctx.fillRect(xStart, 0, totalWidth, headerHeight);
+  ctx.textBaseline = "middle";
+  ctx.font = `600 ${Math.max(8, settings.fontSize - 1)}px monospace`;
+  let x = xStart;
+  columns.forEach((column, index) => {
+    const columnWidth = widths[index];
+    ctx.strokeStyle = palette.border;
+    ctx.beginPath(); ctx.moveTo(Math.round(x) + 0.5, 0); ctx.lineTo(Math.round(x) + 0.5, height); ctx.stroke();
+    ctx.fillStyle = column.id === "bid" || column.id === "buy" ? palette.bid
+      : column.id === "ask" || column.id === "sell" ? palette.ask : palette.muted;
+    ctx.textAlign = "center";
+    ctx.fillText(column.label, x + columnWidth / 2, headerHeight / 2);
+    x += columnWidth;
+  });
+  ctx.strokeStyle = palette.border;
+  ctx.beginPath(); ctx.moveTo(xStart, headerHeight + 0.5); ctx.lineTo(width, headerHeight + 0.5); ctx.stroke();
+
+  rows.forEach((row, rowIndex) => {
+    const y = headerHeight + rowIndex * settings.rowHeight;
+    if (row.atLast) {
+      ctx.fillStyle = alpha(palette.primary, 0.13); ctx.fillRect(xStart, y, totalWidth, settings.rowHeight);
+      ctx.strokeStyle = alpha(palette.primary, 0.72); ctx.strokeRect(xStart + 0.5, y + 0.5, totalWidth - 1, settings.rowHeight - 1);
+    } else if (row.atBid || row.atAsk) {
+      ctx.fillStyle = alpha(row.atBid ? palette.bid : palette.ask, 0.055);
+      ctx.fillRect(xStart, y, totalWidth, settings.rowHeight);
+    }
+    ctx.strokeStyle = alpha(palette.border, 0.55);
+    ctx.beginPath(); ctx.moveTo(xStart, y + settings.rowHeight + 0.5); ctx.lineTo(width, y + settings.rowHeight + 0.5); ctx.stroke();
+    x = xStart;
+    columns.forEach((column, index) => {
+      const columnWidth = widths[index];
+      let value = "";
+      let numeric = 0;
+      let color = palette.foreground;
+      if (column.id === "buy") { numeric = row.buyVolume; value = compact(numeric, settings.compactNumbers); color = palette.bid; }
+      else if (column.id === "sell") { numeric = row.sellVolume; value = compact(numeric, settings.compactNumbers); color = palette.ask; }
+      else if (column.id === "bid") { numeric = row.bidSize; value = compact(numeric, settings.compactNumbers); color = palette.bid; }
+      else if (column.id === "ask") { numeric = row.askSize; value = compact(numeric, settings.compactNumbers); color = palette.ask; }
+      else if (column.id === "price") { value = row.price.toFixed(precision); color = row.atLast ? palette.primary : palette.foreground; }
+      else if (column.id === "trades") { numeric = row.buyVolume + row.sellVolume; value = compact(numeric, settings.compactNumbers); color = row.buyVolume >= row.sellVolume ? palette.bid : palette.ask; }
+      else if (column.id === "orders") value = row.bidOrders || row.askOrders ? `${row.bidOrders} / ${row.askOrders}` : "";
+      else if (column.id === "cob") { numeric = row.bidSize + row.askSize; value = compact(numeric, settings.compactNumbers); }
+      else if (column.id === "pullStack") {
+        numeric = (row.bidAdded - row.bidRemoved) - (row.askAdded - row.askRemoved);
+        value = numeric ? `${numeric > 0 ? "+" : ""}${compact(numeric, settings.compactNumbers)}` : "";
+        color = numeric >= 0 ? palette.bid : palette.ask;
+      }
+      if (settings.showHistogram && numeric > 0 && ["buy", "sell", "bid", "ask", "trades"].includes(column.id)) {
+        const denominator = column.id === "bid" || column.id === "ask" ? maxDepth : maxTrade;
+        const barWidth = Math.max(1, (columnWidth - 4) * Math.min(1, numeric / denominator));
+        ctx.fillStyle = alpha(color, 0.22);
+        const rightAligned = column.id === "buy" || column.id === "bid";
+        ctx.fillRect(rightAligned ? x + columnWidth - barWidth - 2 : x + 2, y + 2, barWidth, settings.rowHeight - 4);
+      }
+      if (value) {
+        ctx.font = `${column.id === "price" ? 650 : 560} ${settings.fontSize}px monospace`;
+        ctx.fillStyle = color; ctx.textAlign = "center";
+        ctx.fillText(value, x + columnWidth / 2, y + settings.rowHeight / 2 + 0.5, columnWidth - 6);
+      }
+      x += columnWidth;
+    });
+  });
 }
 
 export default function DepthOfMarketPanel({
-  instrument,
-  contractSymbol,
-  latestPrice,
-  indicator,
-  chartSettings,
-  onUpdateSetting,
+  instrument, contractSymbol, latestPrice, indicator, chartSettings, onUpdateSetting,
 }: Props) {
-  const settings = indicator.settings ?? {};
-  const configuredWidth = Math.max(196, Math.min(640, finite(settings.width, 440)));
+  const settings = useMemo(() => domProSettingsFromRecord(indicator.settings), [indicator.settings]);
+  const configuredWidth = Math.max(240, Math.min(1_100, finite(indicator.settings?.width, 640)));
   const [runtimeWidth, setRuntimeWidth] = useState(configuredWidth);
   const [collapsed, setCollapsed] = useState(false);
-  const [centreOffsetTicks, setCentreOffsetTicks] = useState(0);
-  const [snapshot, setSnapshot] = useState<RithmicLiquiditySnapshot | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [offsetTicks, setOffsetTicks] = useState(0);
+  const [followingLive, setFollowingLive] = useState(true);
   const [status, setStatus] = useState<RithmicLiquidityStatus>("checking");
-  const recentAtPriceRef = useRef(new Map<number, RecentAtPrice>());
+  const [bookState, setBookState] = useState<DomProState>(() => createDomProState());
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const canvasHostRef = useRef<HTMLDivElement | null>(null);
+  const widthDragRef = useRef<{ startX: number; startWidth: number; latest: number } | null>(null);
+  const panRef = useRef<{ startY: number; startOffset: number } | null>(null);
+  const lastFrameAtRef = useRef(0);
   const pendingSnapshotRef = useRef<RithmicLiquiditySnapshot | null>(null);
   const publishTimerRef = useRef<number | null>(null);
-  const lastPublishedAtRef = useRef(0);
-  const dragRef = useRef<{ startX: number; startWidth: number; currentWidth: number } | null>(null);
-
-  const requestedRows = Math.max(11, Math.min(101, Math.round(finite(settings.rows, 41))));
-  const rowCount = requestedRows % 2 === 0 ? requestedRows + 1 : requestedRows;
-  const groupTicks = Math.max(1, Math.min(100, Math.round(finite(settings.groupTicks, 1))));
-  const refreshRateMs = Math.max(16, Math.min(1_000, Math.round(finite(settings.refreshRateMs, 50))));
-  const recentWindowMs = Math.max(250, Math.min(60_000, Math.round(finite(settings.recentWindowMs, 8_000))));
-  const depthScaleCap = Math.max(0, finite(settings.depthScaleCap, 0));
-  const highlightThreshold = Math.max(0, finite(settings.highlightThreshold, 0));
-  const fontSize = Math.max(7, Math.min(13, finite(settings.fontSize, 9)));
-  const showCumulative = settings.showCumulative === true;
-  const showOrderCount = settings.showOrderCount === true;
-  const showPullStack = settings.showPullStack !== false;
-  const showRecentTrades = settings.showRecentTrades !== false;
-  const showDepthHistogram = settings.showDepthHistogram !== false;
-  const showHeaderStats = settings.showHeaderStats !== false;
-  const showImbalance = settings.showImbalance !== false;
-  const autoCenter = settings.autoCenter !== false;
-  const compactNumbers = settings.compactNumbers !== false;
-  const useThemeColors = settings.useThemeColors !== false;
-  const bidColor = useThemeColors ? chartSettings.upColor : String(settings.bidColor ?? chartSettings.upColor);
-  const askColor = useThemeColors ? chartSettings.downColor : String(settings.askColor ?? chartSettings.downColor);
-  const lastTradeColor = useThemeColors ? "var(--primary)" : String(settings.lastTradeColor ?? "#FDE047");
+  const previousLastTickRef = useRef<number | null>(null);
 
   useEffect(() => setRuntimeWidth(configuredWidth), [configuredWidth]);
-
-  const commitSnapshot = useCallback((next: RithmicLiquiditySnapshot) => {
-    const now = Date.now();
-    for (const trade of next.trades ?? []) {
-      const key = Math.round(trade.price / Math.max(next.tickSize, 0.000_001));
-      const current = recentAtPriceRef.current.get(key) ?? {
-        bid: 0,
-        ask: 0,
-        lastAt: trade.timestamp,
-        lastSize: trade.size,
-        lastSide: trade.side,
-      };
-      if (trade.side === "BUY") current.ask += trade.size;
-      else current.bid += trade.size;
-      current.lastAt = trade.timestamp;
-      current.lastSize = trade.size;
-      current.lastSide = trade.side;
-      recentAtPriceRef.current.set(key, current);
-    }
-    for (const [key, recent] of recentAtPriceRef.current) {
-      if (now - recent.lastAt > recentWindowMs) recentAtPriceRef.current.delete(key);
-    }
-    setSnapshot(next);
-    lastPublishedAtRef.current = now;
-  }, [recentWindowMs]);
+  const commitSnapshot = useCallback((snapshot: RithmicLiquiditySnapshot) => {
+    setBookState((current) => applyDomProSnapshot(current, snapshot));
+    lastFrameAtRef.current = Date.now();
+  }, []);
 
   useEffect(() => {
     const unsubscribe = subscribeRithmicLiquidity({
-      root: instrument,
-      contractSymbol,
-      exchange: "CME",
-      onSnapshot: (next) => {
-        pendingSnapshotRef.current = next;
-        const remaining = refreshRateMs - (Date.now() - lastPublishedAtRef.current);
+      root: instrument, contractSymbol, exchange: "CME",
+      onSnapshot: (snapshot) => {
+        pendingSnapshotRef.current = snapshot;
+        const remaining = settings.refreshRateMs - (Date.now() - lastFrameAtRef.current);
         if (remaining <= 0) {
           if (publishTimerRef.current !== null) window.clearTimeout(publishTimerRef.current);
-          publishTimerRef.current = null;
-          commitSnapshot(next);
-          return;
+          publishTimerRef.current = null; commitSnapshot(snapshot); return;
         }
         if (publishTimerRef.current !== null) return;
         publishTimerRef.current = window.setTimeout(() => {
@@ -163,230 +219,138 @@ export default function DepthOfMarketPanel({
       onStatus: setStatus,
     });
     return () => {
-      unsubscribe();
-      pendingSnapshotRef.current = null;
+      unsubscribe(); pendingSnapshotRef.current = null;
       if (publishTimerRef.current !== null) window.clearTimeout(publishTimerRef.current);
       publishTimerRef.current = null;
     };
-  }, [commitSnapshot, contractSymbol, instrument, refreshRateMs]);
+  }, [commitSnapshot, contractSymbol, instrument, settings.refreshRateMs]);
 
   useEffect(() => {
-    if (!autoCenter) return;
-    setCentreOffsetTicks(0);
-  }, [autoCenter, contractSymbol, instrument]);
+    const fallbackTick = latestPrice == null ? null : Math.round(latestPrice / bookState.tickSize);
+    const nextTick = bookState.lastTick ?? fallbackTick;
+    if (followingLive && nextTick !== previousLastTickRef.current) setOffsetTicks(0);
+    previousLastTickRef.current = nextTick;
+  }, [bookState.lastTick, bookState.tickSize, followingLive, latestPrice]);
 
-  const model = useMemo(() => buildDepthLadder({
-    levels: snapshot?.levels ?? [],
-    tickSize: snapshot?.tickSize ?? 0.25,
-    groupTicks,
-    rowCount,
-    centrePrice: snapshot?.lastPrice ?? latestPrice,
-    centreOffsetTicks,
-  }), [centreOffsetTicks, groupTicks, latestPrice, rowCount, snapshot]);
+  const draw = useCallback(() => {
+    const canvas = canvasRef.current;
+    const host = canvasHostRef.current;
+    if (!canvas || !host) return;
+    const bounds = host.getBoundingClientRect();
+    const styles = getComputedStyle(host);
+    drawDom({
+      canvas, state: bookState, settings, offsetTicks,
+      width: Math.floor(bounds.width), height: Math.floor(bounds.height), dpr: Math.min(2.5, window.devicePixelRatio || 1),
+      palette: {
+        background: cssColor(styles, "--background", "#050607"), surface: cssColor(styles, "--surface", "#0b0d0f"),
+        border: cssColor(styles, "--border", "#20242a"), foreground: cssColor(styles, "--foreground", "#f5f7fa"),
+        muted: cssColor(styles, "--muted", "#7b8490"), primary: cssColor(styles, "--primary", chartSettings.upColor),
+        bid: settings.useThemeColors ? chartSettings.upColor : String(indicator.settings?.bidColor ?? chartSettings.upColor),
+        ask: settings.useThemeColors ? chartSettings.downColor : String(indicator.settings?.askColor ?? chartSettings.downColor),
+      },
+    });
+  }, [bookState, chartSettings.downColor, chartSettings.upColor, indicator.settings, offsetTicks, settings]);
 
-  const tickSize = snapshot?.tickSize && snapshot.tickSize > 0 ? snapshot.tickSize : 0.25;
-  const precision = decimalPlaces(tickSize);
-  const displayDepthMax = depthScaleCap > 0 ? depthScaleCap : model.maxDepth;
-  const displayCumulativeMax = depthScaleCap > 0 ? depthScaleCap : model.maxCumulative;
-  const threshold = highlightThreshold > 0 ? highlightThreshold : model.maxDepth * 0.72;
-  const lastPrice = snapshot?.lastPrice ?? latestPrice ?? null;
-  const spreadTicks = model.bestBid !== null && model.bestAsk !== null
-    ? Math.max(0, Math.round((model.bestAsk - model.bestBid) / tickSize))
-    : null;
-  const connected = status === "connected" && Boolean(snapshot?.bookValid && snapshot.fullDepth);
-  const imbalancePercent = model.imbalance * 100;
-
-  const recentForRow = (price: number) => {
-    let bid = 0;
-    let ask = 0;
-    let lastSize = 0;
-    let lastSide: "BUY" | "SELL" = "BUY";
-    let latestAt = 0;
-    for (let offset = 0; offset < groupTicks; offset += 1) {
-      const key = Math.round(price / tickSize) - Math.floor(groupTicks / 2) + offset;
-      const recent = recentAtPriceRef.current.get(key);
-      if (!recent) continue;
-      bid += recent.bid;
-      ask += recent.ask;
-      if (recent.lastAt >= latestAt) {
-        latestAt = recent.lastAt;
-        lastSize = recent.lastSize;
-        lastSide = recent.lastSide;
-      }
-    }
-    return { bid, ask, lastSize, lastSide };
-  };
-
-  const persistWidth = useCallback((nextWidth: number) => {
-    const width = Math.max(196, Math.min(640, Math.round(nextWidth)));
-    setRuntimeWidth(width);
-    onUpdateSetting?.("width", width);
-  }, [onUpdateSetting]);
-
-  const beginResize = (event: React.PointerEvent<HTMLButtonElement>) => {
-    event.preventDefault();
-    event.stopPropagation();
-    dragRef.current = { startX: event.clientX, startWidth: runtimeWidth, currentWidth: runtimeWidth };
-    const onMove = (moveEvent: PointerEvent) => {
-      if (!dragRef.current) return;
-      const nextWidth = dragRef.current.startWidth + (dragRef.current.startX - moveEvent.clientX);
-      const width = Math.max(196, Math.min(640, Math.round(nextWidth)));
-      dragRef.current.currentWidth = width;
-      setRuntimeWidth(width);
+  useEffect(() => {
+    draw(); const host = canvasHostRef.current; if (!host) return;
+    const observer = new ResizeObserver(draw); observer.observe(host); return () => observer.disconnect();
+  }, [draw]);
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "End") return; setFollowingLive(true); setOffsetTicks(0);
     };
-    const onUp = () => {
-      document.removeEventListener("pointermove", onMove);
-      document.removeEventListener("pointerup", onUp);
-      const width = dragRef.current?.currentWidth ?? runtimeWidth;
-      dragRef.current = null;
-      onUpdateSetting?.("width", width);
-    };
-    document.addEventListener("pointermove", onMove);
-    document.addEventListener("pointerup", onUp);
-  };
+    window.addEventListener("keydown", onKey); return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
-  if (collapsed) {
-    return (
-      <aside className="relative flex h-full w-11 shrink-0 flex-col items-center border-l border-border bg-background/96 py-2 shadow-[-12px_0_30px_rgba(0,0,0,.2)]">
-        <button
-          type="button"
-          onClick={() => setCollapsed(false)}
-          className="flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-surface/60 text-primary hover:border-primary/40"
-          title="Expand Depth of Market"
-        >
-          <ChevronsLeft className="h-3.5 w-3.5" />
-        </button>
-        <DatabaseZap className="mt-3 h-3.5 w-3.5 text-primary" />
-        <span className="mt-3 [writing-mode:vertical-rl] font-mono text-[8px] font-bold tracking-[0.18em] text-muted">DEPTH OF MARKET</span>
-        <span className={`mt-auto h-2 w-2 rounded-full ${connected ? "animate-pulse bg-primary" : "bg-muted"}`} />
-      </aside>
-    );
-  }
+  const persist = useCallback((key: string, value: number | string | boolean) => onUpdateSetting?.(key, value), [onUpdateSetting]);
+  const saveSettings = useCallback((next: DomProSettings) => {
+    persist("domSettingsVersion", next.version); persist("domPreset", next.preset);
+    persist("rows", next.rows); persist("rowHeight", next.rowHeight); persist("fontSize", next.fontSize);
+    persist("refreshRateMs", next.refreshRateMs); persist("recentWindowMs", next.recentWindowMs);
+    persist("autoCenter", next.autoCenter); persist("compactNumbers", next.compactNumbers);
+    persist("useThemeColors", next.useThemeColors); persist("showDepthHistogram", next.showHistogram);
+    persist("showHeaderStats", next.showHeaderStats); persist("showImbalance", next.showImbalance);
+    persist("domColumns", serializeColumns(next.columns));
+  }, [persist]);
+  const recenter = () => { setFollowingLive(true); setOffsetTicks(0); };
+  const allLevels = [...bookState.levels.values()];
+  const depthTotal = allLevels.reduce((sum, level) => sum + level.bidSize + level.askSize, 0);
+  const bidTotal = allLevels.reduce((sum, level) => sum + level.bidSize, 0);
+  const imbalance = depthTotal > 0 ? (bidTotal / depthTotal - 0.5) * 200 : 0;
+  const spread = bookState.bestBidTick !== null && bookState.bestAskTick !== null ? Math.max(0, bookState.bestAskTick - bookState.bestBidTick) : null;
 
-  // Preserve a usable three-column ladder when the user narrows the dock.
-  // Optional professional columns progressively appear as horizontal room grows.
-  const renderPullStack = showPullStack && runtimeWidth >= 420;
-  const renderRecentTrades = showRecentTrades && runtimeWidth >= 320;
-  const renderOrderCount = showOrderCount && runtimeWidth >= 360;
-  const gridTemplateColumns = `${renderPullStack ? "42px " : ""}${renderRecentTrades ? "40px " : ""}minmax(48px,1fr) 82px minmax(48px,1fr)${renderRecentTrades ? " 40px" : ""}${renderPullStack ? " 42px" : ""}`;
+  if (collapsed) return (
+    <aside className="relative flex h-full w-10 shrink-0 flex-col items-center border-l border-border bg-background py-2">
+      <button type="button" onClick={() => setCollapsed(false)} className="flex h-7 w-7 items-center justify-center border border-border text-primary" title="Expand DOM Pro"><ChevronsLeft className="h-3.5 w-3.5" /></button>
+      <DatabaseZap className="mt-3 h-3.5 w-3.5 text-primary" />
+      <span className="mt-3 [writing-mode:vertical-rl] font-mono text-[8px] font-bold tracking-[0.18em] text-muted">DOM PRO</span>
+    </aside>
+  );
 
   return (
-    <aside
-      className="relative flex h-full shrink-0 flex-col overflow-hidden border-l border-border bg-background/97 shadow-[-18px_0_45px_rgba(0,0,0,.28)] backdrop-blur-xl"
-      style={{ width: runtimeWidth }}
-      aria-label="Rithmic depth of market"
-      onWheel={(event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        const step = Math.max(1, Math.min(12, Math.round(Math.abs(event.deltaY) / 80) || 1));
-        setCentreOffsetTicks((current) => current + (event.deltaY > 0 ? -step : step));
-      }}
-    >
-      <button
-        type="button"
-        onPointerDown={beginResize}
-        className="absolute inset-y-0 left-0 z-30 w-1 cursor-col-resize bg-transparent transition-colors hover:bg-primary/45"
-        aria-label="Resize Depth of Market"
-        title="Drag to resize"
-      />
-
-      <header className="flex h-11 shrink-0 items-center gap-2 border-b border-border px-2.5">
-        <DatabaseZap className="h-3.5 w-3.5 shrink-0 text-primary" />
-        <div className="min-w-0">
-          <div className="truncate font-mono text-[10px] font-bold tracking-[0.11em] text-foreground">DEPTH OF MARKET</div>
-          <div className="truncate font-mono text-[8px] text-muted">{snapshot?.contractSymbol || contractSymbol || instrument} · RITHMIC FULL BOOK</div>
-        </div>
+    <aside className="relative flex h-full min-w-[240px] shrink-0 flex-col overflow-hidden border-l border-border bg-background shadow-[-18px_0_45px_rgba(0,0,0,.24)]" style={{ width: runtimeWidth }} aria-label="DOM Pro Rithmic depth of market">
+      <button type="button" className="absolute inset-y-0 left-0 z-30 w-1 cursor-col-resize bg-transparent hover:bg-primary/50" aria-label="Resize DOM Pro" onPointerDown={(event) => {
+        event.preventDefault(); widthDragRef.current = { startX: event.clientX, startWidth: runtimeWidth, latest: runtimeWidth };
+        const move = (next: PointerEvent) => {
+          if (!widthDragRef.current) return;
+          const width = Math.max(240, Math.min(1_100, widthDragRef.current.startWidth + widthDragRef.current.startX - next.clientX));
+          widthDragRef.current.latest = width; setRuntimeWidth(width);
+        };
+        const up = () => {
+          document.removeEventListener("pointermove", move); document.removeEventListener("pointerup", up);
+          const width = widthDragRef.current?.latest ?? runtimeWidth; widthDragRef.current = null; persist("width", Math.round(width));
+        };
+        document.addEventListener("pointermove", move); document.addEventListener("pointerup", up);
+      }} />
+      <header className="flex h-10 shrink-0 items-center gap-2 border-b border-border px-2.5">
+        <DatabaseZap className="h-3.5 w-3.5 text-primary" />
+        <div className="min-w-0"><div className="truncate font-mono text-[10px] font-bold tracking-[0.12em] text-foreground">DOM PRO</div><div className="truncate font-mono text-[7px] uppercase tracking-[0.08em] text-muted">{bookState.capabilities.mbo ? "MBO · exact order count" : bookState.capabilities.fullDepth ? "Full depth · L2 fallback" : "Waiting for exchange book"}</div></div>
         <div className="ml-auto flex items-center gap-1">
-          <button type="button" onClick={() => persistWidth(runtimeWidth - 36)} className="flex h-6 w-6 items-center justify-center rounded-md border border-border text-muted hover:text-foreground" title="Narrower"><Minus className="h-3 w-3" /></button>
-          <button type="button" onClick={() => persistWidth(runtimeWidth + 36)} className="flex h-6 w-6 items-center justify-center rounded-md border border-border text-muted hover:text-foreground" title="Wider"><Plus className="h-3 w-3" /></button>
-          <button type="button" onClick={() => setCollapsed(true)} className="flex h-6 w-6 items-center justify-center rounded-md border border-border text-muted hover:text-foreground" title="Collapse DOM"><ChevronsRight className="h-3 w-3" /></button>
+          <button type="button" onClick={recenter} className={`flex h-6 items-center gap-1 border px-2 font-mono text-[7px] ${followingLive ? "border-primary/45 bg-primary/10 text-primary" : "border-border text-muted"}`} title="Return to live price"><LocateFixed className="h-3 w-3" />LIVE</button>
+          <button type="button" onClick={() => setSettingsOpen(true)} className="flex h-6 w-6 items-center justify-center border border-border text-muted" title="DOM Pro settings"><Settings2 className="h-3 w-3" /></button>
+          <button type="button" onClick={() => setRuntimeWidth((value) => Math.max(240, value - 50))} className="flex h-6 w-6 items-center justify-center border border-border text-muted" title="Narrower"><Minus className="h-3 w-3" /></button>
+          <button type="button" onClick={() => setRuntimeWidth((value) => Math.min(1_100, value + 50))} className="flex h-6 w-6 items-center justify-center border border-border text-muted" title="Wider"><Plus className="h-3 w-3" /></button>
+          <button type="button" onClick={() => setCollapsed(true)} className="flex h-6 w-6 items-center justify-center border border-border text-muted" title="Collapse"><ChevronsRight className="h-3 w-3" /></button>
         </div>
       </header>
-
-      {showHeaderStats ? (
-        <div className="grid h-9 shrink-0 grid-cols-4 border-b border-border/70 bg-surface/25 font-mono">
-          <div className="flex flex-col justify-center border-r border-border/50 px-2"><span className="text-[6px] tracking-[0.12em] text-muted">SPREAD</span><strong className="text-[9px] text-foreground">{spreadTicks ?? "—"} T</strong></div>
-          <div className="flex flex-col justify-center border-r border-border/50 px-2"><span className="text-[6px] tracking-[0.12em] text-muted">BID DEPTH</span><strong className="text-[9px]" style={{ color: bidColor }}>{compact(model.bidTotal, true) || "0"}</strong></div>
-          <div className="flex flex-col justify-center border-r border-border/50 px-2"><span className="text-[6px] tracking-[0.12em] text-muted">ASK DEPTH</span><strong className="text-[9px]" style={{ color: askColor }}>{compact(model.askTotal, true) || "0"}</strong></div>
-          <div className="flex flex-col justify-center px-2"><span className="text-[6px] tracking-[0.12em] text-muted">IMBALANCE</span><strong className="text-[9px]" style={{ color: imbalancePercent >= 0 ? bidColor : askColor }}>{imbalancePercent >= 0 ? "+" : ""}{imbalancePercent.toFixed(1)}%</strong></div>
-        </div>
-      ) : null}
-
-      <div
-        className="grid h-7 shrink-0 items-center border-b border-border bg-surface/40 px-1 font-mono text-[6px] font-bold tracking-[0.09em] text-muted"
-        style={{ gridTemplateColumns }}
-      >
-        {renderPullStack ? <span className="text-center">P/S</span> : null}
-        {renderRecentTrades ? <span className="text-right">HIT</span> : null}
-        <span className="pr-1 text-right">BID {showCumulative ? "CUM" : "DEPTH"}</span>
-        <button type="button" onClick={() => setCentreOffsetTicks(0)} className="flex items-center justify-center gap-1 text-center text-foreground hover:text-primary" title="Recenter ladder"><LocateFixed className="h-2.5 w-2.5" /> PRICE</button>
-        <span className="pl-1">ASK {showCumulative ? "CUM" : "DEPTH"}</span>
-        {renderRecentTrades ? <span>LIFT</span> : null}
-        {renderPullStack ? <span className="text-center">P/S</span> : null}
+      {settings.showHeaderStats ? <div className="grid h-8 shrink-0 grid-cols-4 border-b border-border bg-surface/25 font-mono">
+        <div className="flex items-center justify-between border-r border-border px-2 text-[7px]"><span className="text-muted">SPREAD</span><b>{spread ?? "—"}T</b></div>
+        <div className="flex items-center justify-between border-r border-border px-2 text-[7px]"><span className="text-muted">ROWS</span><b>{settings.rows}</b></div>
+        <div className="flex items-center justify-between border-r border-border px-2 text-[7px]"><span className="text-muted">BOOK</span><b>{compact(depthTotal, true) || "0"}</b></div>
+        <div className="flex items-center justify-between px-2 text-[7px]"><span className="text-muted">IMB</span><b style={{ color: imbalance >= 0 ? chartSettings.upColor : chartSettings.downColor }}>{imbalance >= 0 ? "+" : ""}{imbalance.toFixed(0)}%</b></div>
+      </div> : null}
+      <div ref={canvasHostRef} className="relative min-h-0 flex-1 cursor-ns-resize touch-none select-none overflow-hidden" onWheel={(event) => {
+        event.preventDefault(); event.stopPropagation(); setFollowingLive(false);
+        const step = Math.max(1, Math.round(Math.abs(event.deltaY) / 75)); setOffsetTicks((current) => current + (event.deltaY > 0 ? -step : step));
+      }} onPointerDown={(event) => { panRef.current = { startY: event.clientY, startOffset: offsetTicks }; event.currentTarget.setPointerCapture(event.pointerId); }} onPointerMove={(event) => {
+        if (!panRef.current) return; setFollowingLive(false); setOffsetTicks(panRef.current.startOffset + Math.round((event.clientY - panRef.current.startY) / settings.rowHeight));
+      }} onPointerUp={(event) => { panRef.current = null; event.currentTarget.releasePointerCapture(event.pointerId); }} onDoubleClick={recenter}>
+        <canvas ref={canvasRef} className="block h-full w-full" />
+        {!bookState.snapshotComplete ? <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-background/70 backdrop-blur-[2px]"><div className="flex flex-col items-center gap-2 font-mono"><DatabaseZap className="h-5 w-5 animate-pulse text-primary" /><span className="text-[9px] font-semibold tracking-[0.12em] text-foreground">LOADING DOM PRO</span><span className="text-[7px] text-muted">Restoring the authenticated Rithmic book</span></div></div> : null}
+        {!followingLive ? <button type="button" onClick={recenter} className="absolute bottom-3 right-3 flex h-7 items-center gap-1.5 border border-primary/50 bg-background px-2 font-mono text-[8px] font-semibold text-primary shadow-lg"><LocateFixed className="h-3 w-3" />GO LIVE</button> : null}
       </div>
-
-      <div className="min-h-0 flex-1 overflow-hidden">
-        {model.rows.map((row) => {
-          const bidValue = showCumulative ? row.bidCumulative : row.bidSize;
-          const askValue = showCumulative ? row.askCumulative : row.askSize;
-          const recent = recentForRow(row.price);
-          const atBid = model.bestBid !== null && Math.abs(row.price - model.bestBid) < model.increment / 2;
-          const atAsk = model.bestAsk !== null && Math.abs(row.price - model.bestAsk) < model.increment / 2;
-          const atLast = lastPrice !== null && Math.abs(row.price - lastPrice) < model.increment / 2;
-          const bidScale = showCumulative ? displayCumulativeMax : displayDepthMax;
-          const askScale = showCumulative ? displayCumulativeMax : displayDepthMax;
-          const bidPercent = Math.min(100, bidValue / Math.max(1, bidScale) * 100);
-          const askPercent = Math.min(100, askValue / Math.max(1, askScale) * 100);
-          const bidHighlighted = row.bidSize >= threshold && row.bidSize > 0;
-          const askHighlighted = row.askSize >= threshold && row.askSize > 0;
-          return (
-            <div
-              key={row.price}
-              className={`relative grid items-center border-b border-border/[0.18] px-1 font-mono ${atLast ? "z-10" : ""}`}
-              style={{
-                gridTemplateColumns,
-                height: `${100 / rowCount}%`,
-                minHeight: Math.max(11, fontSize + 4),
-                fontSize,
-                background: atLast ? "color-mix(in srgb, var(--primary) 10%, transparent)" : undefined,
-                boxShadow: atLast ? "inset 0 1px color-mix(in srgb, var(--primary) 45%, transparent), inset 0 -1px color-mix(in srgb, var(--primary) 45%, transparent)" : undefined,
-              }}
-            >
-              {renderPullStack ? <span className="truncate text-center text-[0.8em]" style={{ color: row.bidPullStack >= 0 ? bidColor : askColor }}>{signed(row.bidPullStack, compactNumbers)}</span> : null}
-              {renderRecentTrades ? <span className="truncate pr-1 text-right font-semibold" style={{ color: askColor }}>{compact(recent.bid, compactNumbers)}</span> : null}
-              <div className={`relative flex h-full items-center justify-end overflow-hidden pr-1.5 ${bidHighlighted ? "ring-1 ring-inset" : ""}`} style={{ boxShadow: bidHighlighted ? `inset 0 0 14px color-mix(in srgb, ${bidColor} 24%, transparent)` : undefined }}>
-                {showDepthHistogram && bidValue > 0 ? <span className="absolute inset-y-[1px] right-0 rounded-l-sm" style={{ width: `${bidPercent}%`, background: `linear-gradient(90deg, transparent, color-mix(in srgb, ${bidColor} 44%, transparent))` }} /> : null}
-                <span className="relative font-semibold" style={{ color: bidValue ? bidColor : "var(--muted)" }}>
-                  {bidValue ? compact(bidValue, compactNumbers) : ""}{renderOrderCount && row.bidOrders ? <small className="ml-1 text-[0.72em] opacity-65">{row.bidOrders}</small> : null}
-                </span>
-              </div>
-              <div className={`relative flex h-full items-center justify-center border-x font-semibold ${atLast ? "text-primary" : "text-foreground"}`} style={{ borderColor: atLast ? lastTradeColor : "var(--border)" }}>
-                {row.price.toFixed(precision)}
-                {atBid ? <span className="absolute left-1 h-1.5 w-1.5 rounded-full" style={{ backgroundColor: bidColor, boxShadow: `0 0 8px ${bidColor}` }} /> : null}
-                {atAsk ? <span className="absolute right-1 h-1.5 w-1.5 rounded-full" style={{ backgroundColor: askColor, boxShadow: `0 0 8px ${askColor}` }} /> : null}
-                {atLast && recent.lastSize ? <span className="absolute right-0.5 top-0 text-[0.62em]" style={{ color: recent.lastSide === "BUY" ? bidColor : askColor }}>{compact(recent.lastSize, true)}</span> : null}
-              </div>
-              <div className={`relative flex h-full items-center overflow-hidden pl-1.5 ${askHighlighted ? "ring-1 ring-inset" : ""}`} style={{ boxShadow: askHighlighted ? `inset 0 0 14px color-mix(in srgb, ${askColor} 24%, transparent)` : undefined }}>
-                {showDepthHistogram && askValue > 0 ? <span className="absolute inset-y-[1px] left-0 rounded-r-sm" style={{ width: `${askPercent}%`, background: `linear-gradient(90deg, color-mix(in srgb, ${askColor} 44%, transparent), transparent)` }} /> : null}
-                <span className="relative font-semibold" style={{ color: askValue ? askColor : "var(--muted)" }}>
-                  {renderOrderCount && row.askOrders ? <small className="mr-1 text-[0.72em] opacity-65">{row.askOrders}</small> : null}{askValue ? compact(askValue, compactNumbers) : ""}
-                </span>
-              </div>
-              {renderRecentTrades ? <span className="truncate pl-1 font-semibold" style={{ color: bidColor }}>{compact(recent.ask, compactNumbers)}</span> : null}
-              {renderPullStack ? <span className="truncate text-center text-[0.8em]" style={{ color: row.askPullStack >= 0 ? askColor : bidColor }}>{signed(row.askPullStack, compactNumbers)}</span> : null}
-            </div>
-          );
-        })}
-      </div>
-
-      <footer className="flex h-8 shrink-0 items-center gap-1.5 border-t border-border bg-surface/35 px-2 font-mono text-[7px] text-muted">
-        <Activity className={`h-3 w-3 ${connected ? "text-primary" : "text-muted"}`} />
-        <span>{snapshot?.fullDepth ? "FULL DEPTH" : "WAITING FOR RITHMIC FULL DEPTH"}</span>
-        {showImbalance ? <span className="ml-auto" style={{ color: imbalancePercent >= 0 ? bidColor : askColor }}>{imbalancePercent >= 0 ? "BID" : "ASK"} {Math.abs(imbalancePercent).toFixed(0)}%</span> : null}
-        <span className={`rounded-full border px-1.5 py-0.5 font-bold ${connected ? "border-primary/35 bg-primary/10 text-primary" : "border-border bg-background text-muted"}`}>
-          {statusLabel(status, snapshot)}
-        </span>
+      <footer className="flex h-7 shrink-0 items-center gap-2 border-t border-border bg-surface/25 px-2 font-mono text-[7px] text-muted">
+        <Activity className={`h-3 w-3 ${status === "connected" ? "text-primary" : "text-muted"}`} /><span>{contractSymbol || instrument}</span>
+        <span className="ml-auto">{bookState.capabilities.mbo ? "MBO" : bookState.capabilities.fullDepth ? "L2 FALLBACK" : "NO BOOK"}</span>
+        <span className={`border px-1.5 py-0.5 font-bold ${bookState.staleReason ? "border-danger/40 text-danger" : status === "connected" ? "border-primary/35 text-primary" : "border-border"}`}>{statusLabel(status, bookState)}</span>
       </footer>
+      {settingsOpen ? <div className="absolute inset-0 z-50 flex justify-end bg-black/45" onPointerDown={(event) => event.target === event.currentTarget && setSettingsOpen(false)}><div className="flex h-full w-full max-w-[390px] flex-col border-l border-border bg-panel shadow-2xl">
+        <div className="flex h-10 items-center border-b border-border px-3"><div className="font-mono text-[10px] font-bold tracking-[0.12em] text-foreground">DOM PRO SETTINGS</div><button type="button" onClick={() => setSettingsOpen(false)} className="ml-auto flex h-6 w-6 items-center justify-center border border-border text-muted"><X className="h-3 w-3" /></button></div>
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-3">
+          <section><div className="mb-2 font-mono text-[8px] uppercase tracking-[0.13em] text-muted">Preset</div><div className="grid grid-cols-3 gap-1.5">{(["scalper", "order-flow", "minimal"] as const).map((preset) => <button key={preset} type="button" onClick={() => saveSettings(domProPreset(preset, settings))} className={`h-8 border font-mono text-[8px] uppercase ${settings.preset === preset ? "border-primary bg-primary/10 text-primary" : "border-border text-muted"}`}>{preset}</button>)}</div></section>
+          <section className="space-y-2"><div className="font-mono text-[8px] uppercase tracking-[0.13em] text-muted">Ladder</div>{[
+            ["Visible rows", "rows", settings.rows, 10, 120, 1], ["Row height", "rowHeight", settings.rowHeight, 16, 42, 1],
+            ["Text size", "fontSize", settings.fontSize, 8, 15, 1], ["Refresh ms", "refreshRateMs", settings.refreshRateMs, 16, 1000, 1],
+          ].map(([label, key, value, min, max, step]) => <label key={String(key)} className="grid grid-cols-[90px_1fr_42px] items-center gap-2 text-[8px] text-muted"><span>{String(label)}</span><input type="range" min={Number(min)} max={Number(max)} step={Number(step)} value={Number(value)} onChange={(event) => persist(String(key), Number(event.target.value))} className="accent-primary" /><span className="text-right font-mono text-foreground">{String(value)}</span></label>)}</section>
+          <section className="space-y-1.5"><div className="font-mono text-[8px] uppercase tracking-[0.13em] text-muted">Columns</div>{settings.columns.map((column) => <div key={column.id} className="grid grid-cols-[1fr_42px_120px] items-center gap-2 border border-border bg-background px-2 py-1.5"><label className="flex items-center gap-2 font-mono text-[8px] text-foreground"><input type="checkbox" checked={column.enabled} onChange={(event) => saveSettings({ ...settings, preset: "custom", columns: settings.columns.map((item) => item.id === column.id ? { ...item, enabled: event.target.checked } : item) })} className="accent-primary" />{column.label}</label><span className="text-right font-mono text-[7px] text-muted">{column.width}px</span><input type="range" min="54" max="260" value={column.width} onChange={(event) => saveSettings({ ...settings, preset: "custom", columns: settings.columns.map((item) => item.id === column.id ? { ...item, width: Number(event.target.value) } : item) })} className="accent-primary" /></div>)}</section>
+          <section className="space-y-1.5">{[
+            { key: "showDepthHistogram", label: "Depth histograms", value: settings.showHistogram }, { key: "showHeaderStats", label: "Header statistics", value: settings.showHeaderStats },
+            { key: "showImbalance", label: "Book imbalance", value: settings.showImbalance }, { key: "compactNumbers", label: "Compact large numbers", value: settings.compactNumbers },
+            { key: "useThemeColors", label: "Use KwantDesk theme colours", value: settings.useThemeColors },
+          ].map((item) => <label key={item.key} className="flex items-center justify-between border border-border bg-background px-2.5 py-2 text-[8px] text-muted"><span>{item.label}</span><input type="checkbox" checked={item.value} onChange={(event) => persist(item.key, event.target.checked)} className="accent-primary" /></label>)}</section>
+          <div className="flex gap-2 border border-border bg-background p-2 text-[7px] leading-4 text-muted"><CircleHelp className="mt-0.5 h-3 w-3 shrink-0 text-primary" /><span>Order entry is read-only until KwantDesk&apos;s authenticated order service explicitly grants trading capability. The browser never opens a second Rithmic session.</span></div>
+        </div>
+      </div></div> : null}
     </aside>
   );
 }

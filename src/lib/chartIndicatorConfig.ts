@@ -130,10 +130,10 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
     { key: "zeroLineWidth", label: "Zero-line width", defaultValue: 1, min: 1, max: 4 },
   ],
   "depth-of-market": [
-    { key: "width", label: "Dock width (pixels)", defaultValue: 440, min: 196, max: 640 },
-    { key: "rows", label: "Maximum visible price rows", defaultValue: 41, min: 11, max: 101, step: 2 },
-    { key: "groupTicks", label: "Price grouping (ticks)", defaultValue: 1, min: 1, max: 100 },
-    { key: "refreshRateMs", label: "Display refresh rate (milliseconds)", defaultValue: 50, min: 16, max: 1000, step: 1 },
+    { key: "width", label: "Dock width (pixels)", defaultValue: 640, min: 240, max: 1100 },
+    { key: "rows", label: "Maximum visible price rows", defaultValue: 20, min: 10, max: 120, step: 1 },
+    { key: "rowHeight", label: "Price row height", defaultValue: 24, min: 16, max: 42, step: 1 },
+    { key: "refreshRateMs", label: "Display refresh rate (milliseconds)", defaultValue: 32, min: 16, max: 1000, step: 1 },
     { key: "recentWindowMs", label: "Recent traded volume retention (milliseconds)", defaultValue: 8000, min: 250, max: 60000, step: 250 },
     { key: "depthScaleCap", label: "Depth histogram cap · 0 = automatic", defaultValue: 0, min: 0, max: 100000, step: 10 },
     { key: "highlightThreshold", label: "High-liquidity threshold · 0 = automatic", defaultValue: 0, min: 0, max: 100000, step: 10 },
@@ -692,7 +692,20 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
     bidColor: theme?.upColor ?? "#22C55E",
     askColor: theme?.downColor ?? "#EF4444",
     lastTradeColor: theme?.borderUpColor ?? theme?.upColor ?? "#FDE047",
-    domSettingsVersion: 3,
+    domPreset: "order-flow",
+    domColumns: JSON.stringify([
+      { id: "buy", width: 100, enabled: true },
+      { id: "sell", width: 100, enabled: true },
+      { id: "bid", width: 100, enabled: true },
+      { id: "price", width: 100, enabled: true },
+      { id: "ask", width: 100, enabled: true },
+      { id: "trades", width: 100, enabled: true },
+      { id: "orders", width: 82, enabled: false },
+      { id: "cob", width: 82, enabled: false },
+      { id: "pullStack", width: 82, enabled: false },
+    ]),
+    rowHeight: 24,
+    domSettingsVersion: 4,
   } : {}),
   ...(indicatorId === "deep-print-footprint" ? {
     ...DEFAULT_FOOTPRINT_SETTINGS,
@@ -847,15 +860,19 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
   }
   if (
     normalizedInstance.indicatorId === "depth-of-market"
-    && Number(normalizedInstance.settings?.domSettingsVersion) < 3
+    && Number(normalizedInstance.settings?.domSettingsVersion) < 4
   ) {
     normalizedInstance = {
       ...normalizedInstance,
       settings: {
         ...defaultIndicatorSettings("depth-of-market"),
         ...(normalizedInstance.settings ?? {}),
-        width: Math.max(440, Number(normalizedInstance.settings?.width ?? 440)),
-        domSettingsVersion: 3,
+        width: Math.max(640, Number(normalizedInstance.settings?.width ?? 640)),
+        rows: 20,
+        rowHeight: 24,
+        domPreset: "order-flow",
+        domColumns: String(defaultIndicatorSettings("depth-of-market").domColumns ?? "[]"),
+        domSettingsVersion: 4,
       },
     };
   }

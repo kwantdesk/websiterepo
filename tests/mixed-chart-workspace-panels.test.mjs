@@ -26,7 +26,7 @@ test("workspace picker separates pages from dedicated order-flow tools", () => {
   for (const label of [
     "FOOTPRINT",
     "VOLUME PROFILE",
-    "DEPTH OF MARKET",
+    "DOM PRO",
     "BIG CONTRACTS",
     "IMBALANCE DETECTOR",
     "ABSORPTION INDICATOR",
