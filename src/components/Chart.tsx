@@ -2843,7 +2843,9 @@ export default function Chart({
       askVolume: trade.askVolume,
     })),
     tickSize: priceFormat.minMove,
-  }), [priceFormat.minMove]);
+    upColor: settings.upColor,
+    downColor: settings.downColor,
+  }), [priceFormat.minMove, settings.downColor, settings.upColor]);
   const resolvedLevelLayers = useMemo(
     () => resolveChartLevelOverlaps(levels ?? [], backgroundLevels, priceFormat.minMove),
     [backgroundLevels, levels, priceFormat.minMove],

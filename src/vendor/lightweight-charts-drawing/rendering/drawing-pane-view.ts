@@ -109,6 +109,11 @@ class DrawingPaneRenderer implements IPrimitivePaneRenderer {
     viewport: Viewport,
     pixelRatio: number
   ): void {
+    ctx.save();
+    if (line.strokeColor) ctx.strokeStyle = line.strokeColor;
+    if (line.opacity !== undefined) ctx.globalAlpha = line.opacity;
+    if (line.lineWidth !== undefined) ctx.lineWidth = line.lineWidth * pixelRatio;
+    if (line.lineDash) ctx.setLineDash(line.lineDash.map((dash) => dash * pixelRatio));
     let start = line.start;
     let end = line.end;
 
@@ -127,6 +132,7 @@ class DrawingPaneRenderer implements IPrimitivePaneRenderer {
     }
 
     drawLine(ctx, start, end, pixelRatio);
+    ctx.restore();
   }
 
   private renderArc(
@@ -148,23 +154,49 @@ class DrawingPaneRenderer implements IPrimitivePaneRenderer {
 
   private renderRectangle(
     ctx: CanvasRenderingContext2D,
-    rect: { topLeft: Point; width: number; height: number; rotation?: number },
+    rect: {
+      topLeft: Point;
+      width: number;
+      height: number;
+      rotation?: number;
+      borderRadius?: number;
+      fillColor?: string;
+      strokeColor?: string;
+      opacity?: number;
+      lineWidth?: number;
+    },
     pixelRatio: number
   ): void {
+    ctx.save();
+    if (rect.fillColor) ctx.fillStyle = rect.fillColor;
+    if (rect.strokeColor) ctx.strokeStyle = rect.strokeColor;
+    if (rect.opacity !== undefined) ctx.globalAlpha = rect.opacity;
+    if (rect.lineWidth !== undefined) ctx.lineWidth = rect.lineWidth * pixelRatio;
     const x = rect.topLeft.x * pixelRatio;
     const y = rect.topLeft.y * pixelRatio;
     const w = rect.width * pixelRatio;
     const h = rect.height * pixelRatio;
+    const radius = Math.max(0, Number(rect.borderRadius ?? 0)) * pixelRatio;
+    const renderBox = (boxX: number, boxY: number) => {
+      if (radius > 0) {
+        ctx.beginPath();
+        ctx.roundRect(boxX, boxY, w, h, Math.min(radius, Math.abs(w) / 2, Math.abs(h) / 2));
+        if (rect.fillColor) ctx.fill();
+        if (rect.strokeColor || !rect.fillColor) ctx.stroke();
+        return;
+      }
+      if (rect.fillColor) ctx.fillRect(boxX, boxY, w, h);
+      if (rect.strokeColor || !rect.fillColor) ctx.strokeRect(boxX, boxY, w, h);
+    };
 
     if (rect.rotation) {
-      ctx.save();
       ctx.translate(x + w / 2, y + h / 2);
       ctx.rotate(rect.rotation);
-      ctx.strokeRect(-w / 2, -h / 2, w, h);
-      ctx.restore();
+      renderBox(-w / 2, -h / 2);
     } else {
-      ctx.strokeRect(x, y, w, h);
+      renderBox(x, y);
     }
+    ctx.restore();
   }
 
   private renderPolygon(

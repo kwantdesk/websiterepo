@@ -7,6 +7,8 @@ const engine = readFileSync(new URL("../src/lib/professionalDrawingEngine.ts", i
 const registry = readFileSync(new URL("../src/vendor/lightweight-charts-drawing/registry/tool-registry.ts", import.meta.url), "utf8");
 const kwantTools = readFileSync(new URL("../src/vendor/lightweight-charts-drawing/tools/kwant/kwant-tool-drawing.ts", import.meta.url), "utf8");
 const workspace = readFileSync(new URL("../src/components/KwantifyWorkspace.tsx", import.meta.url), "utf8");
+const drawingGeometry = readFileSync(new URL("../src/vendor/lightweight-charts-drawing/core/geometry.ts", import.meta.url), "utf8");
+const drawingPaneView = readFileSync(new URL("../src/vendor/lightweight-charts-drawing/rendering/drawing-pane-view.ts", import.meta.url), "utf8");
 
 const expectedTools = [
   "Trend Line", "Angle", "Vertical Line", "Horizontal Line", "Horizontal Ray", "Cross Line", "Pencil",
@@ -83,4 +85,23 @@ test("analytical drawings consume real volume and classified bid-ask data", () =
   assert.match(kwantTools, /rows\.get\(tick\)/);
   assert.match(kwantTools, /Price-level executions unavailable/);
   assert.doesNotMatch(kwantTools, /Math\.random/);
+});
+
+test("fixed market profile uses native value-area math and faces forward", () => {
+  const fixedProfile = kwantTools.match(
+    /if \(this\.type === "fixed-market-profile"\) \{[\s\S]*?\n      return geometry;\n    \}/,
+  )?.[0] ?? "";
+  assert.match(kwantTools, /calculateVolumeProfileValueArea/);
+  assert.match(kwantTools, /STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT/);
+  assert.match(kwantTools, /const rangeStartMs = anchored \? startMs : Math\.min\(startMs, lastAnchorMs\)/);
+  assert.match(fixedProfile, /topLeft: \{ x: profileLeft/);
+  assert.match(fixedProfile, /width,/);
+  assert.doesNotMatch(fixedProfile, /profileRight - width/);
+  assert.match(fixedProfile, /this\.id === "__kwantdesk_drawing_preview__"/);
+  assert.match(fixedProfile, /this\._state === "selected"/);
+  assert.match(fixedProfile, /this\._state === "editing"/);
+  assert.match(fixedProfile, /x: 0, y: p\[1\]\.y/);
+  assert.match(fixedProfile, /x: viewport\.width, y: p\[1\]\.y/);
+  assert.match(drawingGeometry, /fillColor\?: string/);
+  assert.match(drawingPaneView, /if \(rect\.fillColor\) ctx\.fillRect/);
 });

@@ -12,6 +12,10 @@ import type {
 import type { Geometry, LineGeometry, PolygonGeometry, TextGeometry } from "../../core/geometry";
 import { distanceToLineSegment } from "../../core/geometry";
 import { DrawingPaneView } from "../../rendering/drawing-pane-view";
+import {
+  calculateVolumeProfileValueArea,
+  STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT,
+} from "../../../../lib/volumeProfileMath";
 
 export type KwantToolKind =
   | "price-channel"
@@ -70,6 +74,8 @@ export interface KwantMarketDataSource {
   bars(): readonly KwantAnalyticalBar[];
   trades(): readonly KwantAnalyticalTrade[];
   tickSize: number;
+  upColor?: string;
+  downColor?: string;
 }
 
 const ELLIOTT_LABELS: Partial<Record<KwantToolKind, string[]>> = {
@@ -164,11 +170,11 @@ export class KwantToolDrawing extends Drawing {
 
     const startMs = this.anchorSeconds(0) * 1_000;
     const lastAnchorMs = this.anchorSeconds(Math.min(1, this._anchors.length - 1)) * 1_000;
-    const endMs = this.type === "anchored-vwap" || this.type === "anchored-market-profile"
-      ? Number.POSITIVE_INFINITY
-      : Math.max(startMs, lastAnchorMs);
-    const bars = source.bars().filter((bar) => bar.timestamp >= Math.min(startMs, endMs) && bar.timestamp <= endMs);
-    const trades = source.trades().filter((trade) => trade.timestamp >= Math.min(startMs, endMs) && trade.timestamp <= endMs);
+    const anchored = this.type === "anchored-vwap" || this.type === "anchored-market-profile";
+    const rangeStartMs = anchored ? startMs : Math.min(startMs, lastAnchorMs);
+    const rangeEndMs = anchored ? Number.POSITIVE_INFINITY : Math.max(startMs, lastAnchorMs);
+    const bars = source.bars().filter((bar) => bar.timestamp >= rangeStartMs && bar.timestamp <= rangeEndMs);
+    const trades = source.trades().filter((trade) => trade.timestamp >= rangeStartMs && trade.timestamp <= rangeEndMs);
 
     if (this.type === "anchored-vwap") {
       let cumulativePriceVolume = 0;
@@ -237,6 +243,95 @@ export class KwantToolDrawing extends Drawing {
     if (this.type === "dynamic-poc") {
       const y = viewport.priceScale.priceToCoordinate(pocPrice);
       return y === null ? [] : [line({ x: Math.min(p[0].x, p[1].x), y }, { x: Math.max(p[0].x, p[1].x), y }), text({ x: Math.max(p[0].x, p[1].x) - 4, y: y - 7 }, `POC ${pocPrice.toFixed(2)}`, color, "right")];
+    }
+
+    if (this.type === "fixed-market-profile") {
+      const profileLeft = Math.min(p[0].x, p[1].x);
+      const profileRight = Math.max(p[0].x, p[1].x);
+      const profileWidth = Math.max(1, profileRight - profileLeft);
+      const maxVolume = Math.max(...ordered.map((entry) => entry[1].volume));
+      const valueArea = calculateVolumeProfileValueArea(
+        ordered.map(([tick, row]) => ({ price: tick * tickSize, volume: row.volume })),
+        tickSize,
+        STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT,
+      );
+      const upColor = source.upColor ?? this._style.lineColor;
+      const downColor = source.downColor ?? this._style.lineColor;
+      const geometry: Geometry[] = [];
+
+      for (const [tick, row] of ordered) {
+        const price = tick * tickSize;
+        const top = viewport.priceScale.priceToCoordinate(price + tickSize / 2);
+        const bottom = viewport.priceScale.priceToCoordinate(price - tickSize / 2);
+        if (top === null || bottom === null) continue;
+        const width = Math.max(0.75, row.volume / maxVolume * profileWidth);
+        const height = Math.max(0.72, Math.abs(bottom - top) - 0.12);
+        const inValueArea = valueArea.vah !== null && valueArea.val !== null
+          && price <= valueArea.vah && price >= valueArea.val;
+        const isPoc = valueArea.poc !== null && Math.abs(price - valueArea.poc) < tickSize / 2;
+        geometry.push({
+          type: "rectangle",
+          topLeft: { x: profileLeft, y: Math.min(top, bottom) },
+          width,
+          height,
+          borderRadius: Math.min(2.25, height / 2, width / 2),
+          fillColor: isPoc ? upColor : inValueArea ? upColor : downColor,
+          opacity: isPoc ? 0.92 : inValueArea ? 0.68 : 0.32,
+        });
+      }
+
+      const lowestPrice = ordered[0][0] * tickSize;
+      const highestPrice = ordered[ordered.length - 1][0] * tickSize;
+      const profileTop = viewport.priceScale.priceToCoordinate(highestPrice + tickSize / 2);
+      const profileBottom = viewport.priceScale.priceToCoordinate(lowestPrice - tickSize / 2);
+      if (profileTop !== null && profileBottom !== null) {
+        geometry.push({
+          ...line(
+            { x: profileLeft, y: Math.min(profileTop, profileBottom) },
+            { x: profileLeft, y: Math.max(profileTop, profileBottom) },
+          ),
+          strokeColor: upColor,
+          opacity: 0.72,
+          lineWidth: 0.8,
+        });
+      }
+
+      const addProfileLevel = (price: number | null, levelColor: string, dash: number[], label: string) => {
+        if (price === null) return;
+        const y = viewport.priceScale.priceToCoordinate(price);
+        if (y === null) return;
+        geometry.push({
+          ...line({ x: profileLeft, y }, { x: profileRight, y }),
+          strokeColor: levelColor,
+          opacity: 0.82,
+          lineWidth: 1,
+          lineDash: dash,
+        });
+        if (this.kwantOptions.showLabels) {
+          geometry.push(text({ x: profileRight - 4, y: y - 7 }, `${label} ${price.toFixed(2)}`, levelColor, "right"));
+        }
+      };
+      addProfileLevel(valueArea.vah, upColor, [3, 3], "VAH");
+      addProfileLevel(valueArea.val, upColor, [3, 3], "VAL");
+      addProfileLevel(valueArea.poc, upColor, [], "POC");
+
+      // The endpoint guide is an editing aid, not persisted chart content.
+      // It follows the active endpoint while drawing/dragging and disappears
+      // immediately when the profile is deselected.
+      if (
+        this.id === "__kwantdesk_drawing_preview__"
+        || this._state === "selected"
+        || this._state === "editing"
+      ) {
+        geometry.push({
+          ...line({ x: 0, y: p[1].y }, { x: viewport.width, y: p[1].y }),
+          strokeColor: upColor,
+          opacity: 0.62,
+          lineWidth: 1,
+          lineDash: [4, 4],
+        });
+      }
+      return geometry;
     }
 
     const maxVolume = Math.max(...ordered.map((entry) => entry[1].volume));
@@ -361,6 +456,13 @@ export class KwantToolDrawing extends Drawing {
         const xs = geometry.points.map((entry) => entry.x);
         const ys = geometry.points.map((entry) => entry.y);
         if (point.x >= Math.min(...xs) - 8 && point.x <= Math.max(...xs) + 8 && point.y >= Math.min(...ys) - 8 && point.y <= Math.max(...ys) + 8) return true;
+      }
+      if (geometry.type === "rectangle") {
+        const left = Math.min(geometry.topLeft.x, geometry.topLeft.x + geometry.width);
+        const right = Math.max(geometry.topLeft.x, geometry.topLeft.x + geometry.width);
+        const top = Math.min(geometry.topLeft.y, geometry.topLeft.y + geometry.height);
+        const bottom = Math.max(geometry.topLeft.y, geometry.topLeft.y + geometry.height);
+        if (point.x >= left - 8 && point.x <= right + 8 && point.y >= top - 8 && point.y <= bottom + 8) return true;
       }
       if (geometry.type === "text" && Math.abs(point.x - geometry.position.x) <= 80 && Math.abs(point.y - geometry.position.y) <= 14) return true;
     }

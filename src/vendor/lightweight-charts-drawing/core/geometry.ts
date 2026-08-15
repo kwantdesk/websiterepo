@@ -9,6 +9,10 @@ export interface LineGeometry {
   end: Point;
   extendLeft?: boolean;
   extendRight?: boolean;
+  strokeColor?: string;
+  opacity?: number;
+  lineWidth?: number;
+  lineDash?: number[];
 }
 
 /**
@@ -32,6 +36,11 @@ export interface RectangleGeometry {
   width: number;
   height: number;
   rotation?: number;
+  borderRadius?: number;
+  fillColor?: string;
+  strokeColor?: string;
+  opacity?: number;
+  lineWidth?: number;
 }
 
 /**
