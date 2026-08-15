@@ -992,7 +992,7 @@ const WORKSPACE_TOOL_OPTIONS: Array<WorkspacePanelOption<WorkspaceToolKind>> = [
   { id: "tool-single-tpo-chart", label: "SINGLE TPO CHART", description: "One standalone time profile with live price, POC and value area", icon: Grid3X3 },
   { id: "tool-weekly-tpo", label: "WEEKLY TPO", description: "Weekly square-block market profile and auction analytics", icon: BarChart3, indicatorId: "weekly-tpo" },
   { id: "tool-depth-of-market", label: "DEPTH OF MARKET", description: "Full-depth resting and traded liquidity ladder", icon: List, indicatorId: "depth-of-market" },
-  { id: "tool-big-trades", label: "BIG TRADES", description: "Large aggressive executions anchored to price", icon: Zap, indicatorId: "big-trades" },
+  { id: "tool-big-trades", label: "BIG CONTRACTS", description: "Large aggressive executions anchored to price", icon: Zap, indicatorId: "big-trades" },
   { id: "tool-imbalance-detector", label: "IMBALANCE DETECTOR", description: "Stacked and diagonal bid/ask imbalance", icon: Layers3, indicatorId: "imbalance-tracker" },
   { id: "tool-absorption-indicator", label: "ABSORPTION INDICATOR", description: "Aggression absorbed by resting liquidity", icon: Eye },
   { id: "tool-queue-position-tracking", label: "QUEUE POSITION TRACKING", description: "Order priority and queue movement by price", icon: List },

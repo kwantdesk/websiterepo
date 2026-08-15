@@ -65,7 +65,7 @@ export const CHART_INDICATOR_CATALOG: ChartIndicatorDefinition[] = [
   indicator("Speed of Tape", "Order Flow", "Measures changes in transaction pace.", true),
   indicator("Speed of Tape (Instant)", "Order Flow", "Low-latency transaction-speed signal.", true),
   indicator("Volume/Delta Sprint", "Order Flow", "Detects rapid bursts in volume and delta.", true),
-  indicator("Big / Deep Trades", "Order Flow", "Anchors filtered and clustered aggressive executions to traded price.", true, "Reference", "Big Trades"),
+  indicator("Big Contracts", "Order Flow", "Anchors filtered and clustered aggressive executions to traded price.", true, "Reference", "Big Trades"),
   indicator("Ratio Highlight", "Order Flow", "Highlights bid/ask ratios at price.", true),
   indicator("Stop Spotter", "Order Flow", "Locates potential stop-driven execution clusters.", true),
   indicator("Auction Gap Tracker", "Order Flow", "Tracks auction gaps and subsequent interaction.", true),
@@ -79,7 +79,7 @@ export const CHART_INDICATOR_CATALOG: ChartIndicatorDefinition[] = [
   indicator("KWANT Delta", "Order Flow", "Enhanced delta-bar and aggression analysis.", true, "Reference", "Deep Delta"),
   indicator("KWANT Wall", "Order Flow", "Tracks significant resting-liquidity walls.", true, "Reference", "Deep Wall"),
   indicator("KWANT V-Tracker", "Order Flow", "Tracks volume behaviour and participation shifts.", true, "Reference", "Deep V-Tracker"),
-  indicator("KWANT Trades", "Order Flow", "Execution-level trade visualisation and filtering.", true, "Reference", "Deep Trades"),
+  indicator("Big Contracts", "Order Flow", "Execution-level trade visualisation and filtering.", true, "Reference", "Deep Trades"),
 
   indicator("Volume", "Volume & Profiles", "Total volume with filtering and delta-aware colouring."),
   indicator("Volume Swing", "Volume & Profiles", "Volume measured across detected price swings.", true),

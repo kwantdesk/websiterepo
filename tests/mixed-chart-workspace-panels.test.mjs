@@ -27,7 +27,7 @@ test("workspace picker separates pages from dedicated order-flow tools", () => {
     "FOOTPRINT",
     "VOLUME PROFILE",
     "DEPTH OF MARKET",
-    "BIG TRADES",
+    "BIG CONTRACTS",
     "IMBALANCE DETECTOR",
     "ABSORPTION INDICATOR",
     "QUEUE POSITION TRACKING",
