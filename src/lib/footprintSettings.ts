@@ -301,6 +301,50 @@ export type FootprintTemplate = {
 };
 
 export const FOOTPRINT_TEMPLATES_STORAGE_KEY = "kwantdesk:footprint:templates:v1";
+const FOOTPRINT_SELECTION_STORAGE_PREFIX = "kwantdesk:footprint:selection:v1";
+
+export type FootprintSelectionState = {
+  preset: FootprintPresetName | "";
+  templateId: string;
+};
+
+export function footprintSelectionStorageKey(instanceId: string) {
+  return `${FOOTPRINT_SELECTION_STORAGE_PREFIX}:${instanceId}`;
+}
+
+export function loadFootprintSelection(instanceId: string): FootprintSelectionState {
+  const empty: FootprintSelectionState = { preset: "", templateId: "" };
+  if (typeof window === "undefined") return empty;
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(footprintSelectionStorageKey(instanceId)) ?? "null");
+    if (!parsed || typeof parsed !== "object") return empty;
+    const source = parsed as Record<string, unknown>;
+    const preset = String(source.preset ?? "");
+    return {
+      preset: Object.prototype.hasOwnProperty.call(FOOTPRINT_PRESETS, preset)
+        ? preset as FootprintPresetName
+        : "",
+      templateId: typeof source.templateId === "string" ? source.templateId : "",
+    };
+  } catch {
+    return empty;
+  }
+}
+
+export function saveFootprintSelection(
+  instanceId: string,
+  selection: FootprintSelectionState,
+) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(
+      footprintSelectionStorageKey(instanceId),
+      JSON.stringify(selection),
+    );
+  } catch {
+    // The live component state still reflects the selection for this session.
+  }
+}
 
 const clamp = (value: unknown, minimum: number, maximum: number, fallback: number) => {
   const parsed = Number(value);
@@ -512,7 +556,11 @@ export function saveFootprintTemplate(name: string, settings: unknown): Footprin
     updatedAt: Date.now(),
   };
   const next = [nextTemplate, ...current.filter((template) => template.id !== nextTemplate.id)].slice(0, 24);
-  window.localStorage.setItem(FOOTPRINT_TEMPLATES_STORAGE_KEY, JSON.stringify(next));
+  try {
+    window.localStorage.setItem(FOOTPRINT_TEMPLATES_STORAGE_KEY, JSON.stringify(next));
+  } catch {
+    // Return the new in-memory list so the settings panel updates immediately.
+  }
   return next;
 }
 

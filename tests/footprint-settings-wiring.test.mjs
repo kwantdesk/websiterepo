@@ -110,3 +110,13 @@ test("per-bar volume and delta profiles share the footprint execution rows", () 
   assert.match(chart, /profileSideWidth \* 2[\s\S]*footprintPrimitiveOptions\.perBarProfileGap \* 2/);
   assert.match(settings, /"order-flow": \{[\s\S]*showPerBarVolumeProfile: true,[\s\S]*showPerBarDeltaProfile: true/);
 });
+
+test("footprint preset and local-template selections remain controlled and persistent", () => {
+  assert.match(control, /value=\{selectedFootprintPreset\}/);
+  assert.match(control, /setSelectedFootprintPreset\(preset\)/);
+  assert.match(control, /setSelectedFootprintTemplateId\(saved\?\.id \?\? ""\)/);
+  assert.match(control, /saveFootprintSelection\(settingsInstance\.instanceId/);
+  assert.match(settings, /FOOTPRINT_SELECTION_STORAGE_PREFIX/);
+  assert.match(settings, /loadFootprintSelection/);
+  assert.match(settings, /saveFootprintSelection/);
+});

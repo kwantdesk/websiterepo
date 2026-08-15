@@ -35,7 +35,9 @@ import {
   applyFootprintPreset,
   deleteFootprintTemplate,
   loadSavedFootprintSettings,
+  loadFootprintSelection,
   loadFootprintTemplates,
+  saveFootprintSelection,
   saveFootprintSettings,
   saveFootprintTemplate,
   validateFootprintSettings,
@@ -178,6 +180,7 @@ export default function ChartIndicatorsControl({
   const [rithmicStatus, setRithmicStatus] = useState<"checking" | "connected" | "fallback">("checking");
   const [footprintTemplates, setFootprintTemplates] = useState<FootprintTemplate[]>([]);
   const [footprintTemplateName, setFootprintTemplateName] = useState("");
+  const [selectedFootprintPreset, setSelectedFootprintPreset] = useState<FootprintPresetName | "">("");
   const [selectedFootprintTemplateId, setSelectedFootprintTemplateId] = useState("");
   const [footprintSaveStatus, setFootprintSaveStatus] = useState("");
   const restoredFootprintIdsRef = useRef(new Set<string>());
@@ -261,9 +264,16 @@ export default function ChartIndicatorsControl({
           : instance));
       }
     }
-    setFootprintTemplates(loadFootprintTemplates());
+    const templates = loadFootprintTemplates();
+    const selection = loadFootprintSelection(settingsInstanceId);
+    setFootprintTemplates(templates);
     setFootprintTemplateName("");
-    setSelectedFootprintTemplateId("");
+    setSelectedFootprintPreset(selection.preset);
+    setSelectedFootprintTemplateId(
+      templates.some((template) => template.id === selection.templateId)
+        ? selection.templateId
+        : "",
+    );
     setFootprintSaveStatus("");
   // A locally saved footprint is restored once when this instance's settings
   // panel opens. Normal live edits continue through workspace persistence.
@@ -789,10 +799,16 @@ export default function ChartIndicatorsControl({
                   <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted sm:col-span-2">
                     <span>Preset</span>
                     <KwantSelect
-                      value=""
+                      value={selectedFootprintPreset}
                       onChange={(event) => {
                         const preset = event.target.value as FootprintPresetName;
                         if (!preset) return;
+                        setSelectedFootprintPreset(preset);
+                        setSelectedFootprintTemplateId("");
+                        saveFootprintSelection(settingsInstance.instanceId, {
+                          preset,
+                          templateId: "",
+                        });
                         replace(settingsInstance.instanceId, (current) => ({
                           ...current,
                           settings: {
@@ -818,8 +834,14 @@ export default function ChartIndicatorsControl({
                       <KwantSelect
                         value={selectedFootprintTemplateId}
                         onChange={(event) => {
-                          setSelectedFootprintTemplateId(event.target.value);
-                          const template = footprintTemplates.find((candidate) => candidate.id === event.target.value);
+                          const templateId = event.target.value;
+                          setSelectedFootprintTemplateId(templateId);
+                          setSelectedFootprintPreset("");
+                          saveFootprintSelection(settingsInstance.instanceId, {
+                            preset: "",
+                            templateId,
+                          });
+                          const template = footprintTemplates.find((candidate) => candidate.id === templateId);
                           if (!template) return;
                           replace(settingsInstance.instanceId, (current) => ({
                             ...current,
@@ -843,6 +865,10 @@ export default function ChartIndicatorsControl({
                             if (!selected) return;
                             setFootprintTemplates(deleteFootprintTemplate(selected.id));
                             setSelectedFootprintTemplateId("");
+                            saveFootprintSelection(settingsInstance.instanceId, {
+                              preset: selectedFootprintPreset,
+                              templateId: "",
+                            });
                             setFootprintSaveStatus(`Deleted ${selected.name}`);
                           }}
                           disabled={!selectedFootprintTemplateId}
@@ -1125,6 +1151,12 @@ export default function ChartIndicatorsControl({
                       const saved = next.find((template) => template.name.toLowerCase() === footprintTemplateName.trim().toLowerCase());
                       setFootprintTemplates(next);
                       setSelectedFootprintTemplateId(saved?.id ?? "");
+                      if (saved) {
+                        saveFootprintSelection(settingsInstance.instanceId, {
+                          preset: selectedFootprintPreset,
+                          templateId: saved.id,
+                        });
+                      }
                       setFootprintSaveStatus(saved ? `Saved template ${saved.name}` : "Template name required");
                       if (saved) setFootprintTemplateName("");
                     }}
