@@ -345,7 +345,11 @@ class FootprintRenderer implements ISeriesPrimitivePaneRenderer {
         const x = timeScale.timeToCoordinate(bar.time);
         if (x === null) continue;
         const profileLayerEnabled = options.showPerBarVolumeProfile || options.showPerBarDeltaProfile;
-        const profileSpacing = profileLayerEnabled ? options.perBarProfileExtraSpacing : 0;
+        const requestedProfileWidth = options.barWidth * 0.5
+          * clamp(options.perBarProfileWidthPercent / 100, 0.1, 1);
+        const profileSpacing = profileLayerEnabled
+          ? requestedProfileWidth * 2 + options.perBarProfileGap * 2 + options.perBarProfileExtraSpacing
+          : 0;
         const previousX = index > 0 ? timeScale.timeToCoordinate(bars[index - 1].time) : null;
         const nextX = index + 1 < bars.length ? timeScale.timeToCoordinate(bars[index + 1].time) : null;
         const nearest = Math.min(
@@ -424,7 +428,7 @@ class FootprintRenderer implements ISeriesPrimitivePaneRenderer {
             if (!profileLayerEnabled) return;
             const maximumProfileWidth = Math.max(
               1,
-              (halfWidth - options.perBarProfileGap) * clamp(options.perBarProfileWidthPercent / 100, 0.1, 1),
+              halfWidth * clamp(options.perBarProfileWidthPercent / 100, 0.1, 1),
             );
             const volumeDenominator = options.perBarProfileScaleMode === "shared"
               ? profileSharedMaximum
@@ -445,7 +449,7 @@ class FootprintRenderer implements ISeriesPrimitivePaneRenderer {
               const deltaColor = values.delta >= 0
                 ? options.perBarPositiveDeltaColor
                 : options.perBarNegativeDeltaColor;
-              const deltaLeft = x - options.perBarProfileGap - deltaWidth;
+              const deltaLeft = left - options.perBarProfileGap - deltaWidth;
               withAlpha(context, deltaColor, options.perBarProfileOpacity, () =>
                 context.fillRect(deltaLeft, profileTop, deltaWidth, profileHeight));
               if (options.perBarProfileOutline) {
@@ -459,7 +463,7 @@ class FootprintRenderer implements ISeriesPrimitivePaneRenderer {
             }
 
             if (volumeWidth > 0) {
-              const volumeLeft = x + options.perBarProfileGap;
+              const volumeLeft = left + barWidth + options.perBarProfileGap;
               withAlpha(context, options.perBarVolumeColor, options.perBarProfileOpacity, () =>
                 context.fillRect(volumeLeft, profileTop, volumeWidth, profileHeight));
               if (options.perBarProfileOutline) {
@@ -475,8 +479,8 @@ class FootprintRenderer implements ISeriesPrimitivePaneRenderer {
             if (options.showPerBarProfilePoc && row.isPoc) {
               const markerSize = Math.max(2, Math.min(options.perBarProfilePocSize, rowHeight - 1));
               const markerX = volumeWidth > 0
-                ? x + options.perBarProfileGap + Math.max(0, volumeWidth - markerSize)
-                : x - options.perBarProfileGap - Math.max(markerSize, deltaWidth);
+                ? left + barWidth + options.perBarProfileGap + Math.max(0, volumeWidth - markerSize)
+                : left - options.perBarProfileGap - Math.max(markerSize, deltaWidth);
               const markerY = top + (rowHeight - markerSize) / 2;
               withAlpha(context, options.perBarProfilePocColor, 1, () =>
                 context.fillRect(markerX, markerY, markerSize, markerSize));

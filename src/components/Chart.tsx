@@ -2913,11 +2913,17 @@ export default function Chart({
     });
 
     if (footprintIndicator) {
-      const renderedBarSpacing = footprintPrimitiveOptions.barWidth + (
-        footprintPrimitiveOptions.showPerBarVolumeProfile || footprintPrimitiveOptions.showPerBarDeltaProfile
-          ? footprintPrimitiveOptions.perBarProfileExtraSpacing
-          : 0
-      );
+      const profileLayerEnabled = footprintPrimitiveOptions.showPerBarVolumeProfile
+        || footprintPrimitiveOptions.showPerBarDeltaProfile;
+      const profileSideWidth = footprintPrimitiveOptions.barWidth * 0.5
+        * (footprintPrimitiveOptions.perBarProfileWidthPercent / 100);
+      const renderedBarSpacing = footprintPrimitiveOptions.barWidth
+        + footprintPrimitiveOptions.candleSpacing
+        + (profileLayerEnabled
+          ? profileSideWidth * 2
+            + footprintPrimitiveOptions.perBarProfileGap * 2
+            + footprintPrimitiveOptions.perBarProfileExtraSpacing
+          : 0);
       if (
         !footprintActiveRef.current
         || footprintBarWidthRef.current !== renderedBarSpacing
