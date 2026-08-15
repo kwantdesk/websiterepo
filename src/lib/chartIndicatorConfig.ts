@@ -3,6 +3,7 @@ import type { ChartIndicatorInstance } from "@/lib/chartIndicatorCatalog";
 import { STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT } from "@/lib/volumeProfileMath";
 import { DEFAULT_FOOTPRINT_SETTINGS, FOOTPRINT_SETTINGS_SCHEMA_VERSION } from "@/lib/footprintSettings";
 import { defaultTpoSettings, tpoSettingsToRecord, validateTpoSettings } from "@/lib/tpo/settings";
+import { DEFAULT_DOM_PRO_VISIBLE_ROWS, DOM_PRO_SETTINGS_VERSION } from "@/lib/domPro";
 
 export const LIVE_CHART_INDICATOR_IDS = new Set([
   "gamma-heatmap",
@@ -254,7 +255,7 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
   ],
   "depth-of-market": [
     { key: "width", label: "Dock width (pixels)", defaultValue: 640, min: 240, max: 1100 },
-    { key: "rows", label: "Maximum visible price rows", defaultValue: 20, min: 10, max: 120, step: 1 },
+    { key: "rows", label: "Maximum visible price rows", defaultValue: DEFAULT_DOM_PRO_VISIBLE_ROWS, min: 10, max: 120, step: 1 },
     { key: "rowHeight", label: "Price row height", defaultValue: 24, min: 16, max: 42, step: 1 },
     { key: "refreshRateMs", label: "Display refresh rate (milliseconds)", defaultValue: 32, min: 16, max: 1000, step: 1 },
     { key: "recentWindowMs", label: "Recent traded volume retention (milliseconds)", defaultValue: 8000, min: 250, max: 60000, step: 250 },
@@ -1007,7 +1008,7 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
       { id: "pullStack", width: 82, enabled: false },
     ]),
     rowHeight: 24,
-    domSettingsVersion: 4,
+    domSettingsVersion: DOM_PRO_SETTINGS_VERSION,
   } : {}),
   ...(indicatorId === "deep-print-footprint" ? {
     ...DEFAULT_FOOTPRINT_SETTINGS,
@@ -1263,7 +1264,7 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
   }
   if (
     normalizedInstance.indicatorId === "depth-of-market"
-    && Number(normalizedInstance.settings?.domSettingsVersion) < 4
+    && Number(normalizedInstance.settings?.domSettingsVersion) < DOM_PRO_SETTINGS_VERSION
   ) {
     normalizedInstance = {
       ...normalizedInstance,
@@ -1271,11 +1272,11 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
         ...defaultIndicatorSettings("depth-of-market"),
         ...(normalizedInstance.settings ?? {}),
         width: Math.max(640, Number(normalizedInstance.settings?.width ?? 640)),
-        rows: 20,
+        rows: DEFAULT_DOM_PRO_VISIBLE_ROWS,
         rowHeight: 24,
         domPreset: "order-flow",
         domColumns: String(defaultIndicatorSettings("depth-of-market").domColumns ?? "[]"),
-        domSettingsVersion: 4,
+        domSettingsVersion: DOM_PRO_SETTINGS_VERSION,
       },
     };
   }

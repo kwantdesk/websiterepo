@@ -6,6 +6,7 @@ import {
   applyDomProOrderEvent,
   applyDomProSnapshot,
   createDomProState,
+  DEFAULT_DOM_PRO_VISIBLE_ROWS,
   DEFAULT_DOM_PRO_SETTINGS,
   domProPreset,
   domProSettingsFromRecord,
@@ -34,7 +35,8 @@ test("DOM Pro ships the exact six-column professional default", () => {
     DEFAULT_DOM_PRO_SETTINGS.columns.filter((column) => column.enabled).map((column) => column.label),
     ["BUY", "SELL", "BID", "PR", "ASK", "T"],
   );
-  assert.equal(DEFAULT_DOM_PRO_SETTINGS.rows, 20);
+  assert.equal(DEFAULT_DOM_PRO_SETTINGS.rows, DEFAULT_DOM_PRO_VISIBLE_ROWS);
+  assert.equal(DEFAULT_DOM_PRO_VISIBLE_ROWS, 120);
   assert.ok(DEFAULT_DOM_PRO_SETTINGS.columns.slice(0, 6).every((column) => column.width === 100));
 });
 

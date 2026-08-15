@@ -3,7 +3,8 @@ import type {
   RithmicOrderLifecycleEvent,
 } from "@/lib/structureLevels";
 
-export const DOM_PRO_SETTINGS_VERSION = 4;
+export const DOM_PRO_SETTINGS_VERSION = 5;
+export const DEFAULT_DOM_PRO_VISIBLE_ROWS = 120;
 
 export type DomProColumnId =
   | "buy"
@@ -109,7 +110,7 @@ const DEFAULT_COLUMNS: DomProColumn[] = [
 export const DEFAULT_DOM_PRO_SETTINGS: DomProSettings = {
   version: DOM_PRO_SETTINGS_VERSION,
   preset: "order-flow",
-  rows: 20,
+  rows: DEFAULT_DOM_PRO_VISIBLE_ROWS,
   rowHeight: 24,
   fontSize: 10,
   refreshRateMs: 32,
@@ -159,7 +160,7 @@ export function domProSettingsFromRecord(record: Record<string, unknown> | undef
     preset: (["scalper", "order-flow", "minimal", "custom"].includes(String(source.domPreset))
       ? String(source.domPreset)
       : "order-flow") as DomProSettings["preset"],
-    rows: Math.max(10, Math.min(120, Math.round(finite(source.rows, 20)))),
+    rows: Math.max(10, Math.min(120, Math.round(finite(source.rows, DEFAULT_DOM_PRO_VISIBLE_ROWS)))),
     rowHeight: Math.max(16, Math.min(42, Math.round(finite(source.rowHeight, 24)))),
     fontSize: Math.max(8, Math.min(15, finite(source.fontSize, 10))),
     refreshRateMs: Math.max(16, Math.min(1_000, Math.round(finite(source.refreshRateMs, 32)))),
@@ -188,7 +189,7 @@ export function domProPreset(
   return {
     ...current,
     preset,
-    rows: preset === "scalper" ? 28 : preset === "minimal" ? 20 : 20,
+    rows: DEFAULT_DOM_PRO_VISIBLE_ROWS,
     columns: current.columns.map((column) => ({ ...column, enabled: enabled.has(column.id) })),
   };
 }
