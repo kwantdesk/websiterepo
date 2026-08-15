@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "test:gex-interval-map": "node scripts/test-gex-interval-map.cjs",
+    "test:iv-rank": "node scripts/test-implied-volatility-rank.cjs",
     "desktop:build": "powershell -ExecutionPolicy Bypass -File desktop/package-windows.ps1"
   },
   "dependencies": {

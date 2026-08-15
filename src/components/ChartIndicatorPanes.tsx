@@ -13,6 +13,10 @@ type IndicatorPaneGroup = {
   series: CalculatedIndicatorSeries[];
   stats?: KwantStatsTable;
   unavailableReason?: string;
+  fixedDomain?: IndicatorPaneDomain;
+  statusLabel?: string;
+  currentBadge?: string;
+  bands?: Array<{ from: number; to: number; color: string; opacity?: number }>;
 };
 
 type IndicatorPaneDock = "top" | "bottom" | "left" | "right";
@@ -345,7 +349,7 @@ function ChartIndicatorPaneSurface({
         const verticalScale = verticalScaleByPane[group.key] ?? 1;
         const verticalPan = verticalPanByPane[group.key] ?? 0;
         const automaticSharedDomain = scaleDomain(
-          seriesDomain(sharedSeries.length ? sharedSeries : visibleSeries),
+          group.fixedDomain ?? seriesDomain(sharedSeries.length ? sharedSeries : visibleSeries),
           verticalScale,
           verticalPan,
         );
@@ -408,6 +412,16 @@ function ChartIndicatorPaneSurface({
             <text x="10" y={top + 15} fill="var(--foreground)" fontSize="10" fontWeight="600" fontFamily="monospace">
               {group.title}
             </text>
+            {group.statusLabel ? (
+              <text x={Math.max(170, plotWidth - 118)} y={top + 15} fill="var(--muted)" fontSize="8" fontFamily="monospace" textAnchor="end">
+                {group.statusLabel}
+              </text>
+            ) : null}
+            {group.currentBadge ? (
+              <text x={plotWidth - 8} y={top + 15} fill="var(--primary)" fontSize="9" fontWeight="700" fontFamily="monospace" textAnchor="end">
+                {group.currentBadge}
+              </text>
+            ) : null}
             {!collapsed && group.unavailableReason ? (
               <text x="10" y={top + 34} fill="var(--muted)" fontSize="9" fontFamily="monospace">
                 {group.unavailableReason}
@@ -529,6 +543,13 @@ function ChartIndicatorPaneSurface({
               />
             ) : null}
             {!collapsed && !stats ? <g clipPath={`url(#${clipId})`}>
+              {(group.bands ?? []).map((band, bandIndex) => {
+                const reference = group.series.find((series) => !series.independentScale) ?? group.series[0];
+                if (!reference) return null;
+                const y1 = yFor(band.to, reference);
+                const y2 = yFor(band.from, reference);
+                return <rect key={`${group.key}-band-${bandIndex}`} x="0" y={Math.min(y1, y2)} width={plotWidth} height={Math.abs(y2 - y1)} fill={band.color} fillOpacity={band.opacity ?? 0.055} />;
+              })}
               {group.series.map((definition) => {
                 const visible = sampledPanePoints(definition, xForTime, plotWidth);
                 if (!visible.length) return null;

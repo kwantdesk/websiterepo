@@ -88,6 +88,11 @@ import {
 } from "@/lib/gammaCage";
 import type { HedgeExposureSurface } from "@/lib/hedgeLevels";
 import type { NetGammaProviderSurface } from "@/lib/netGammaExposureByStrike";
+import {
+  buildIvRankSnapshot,
+  type IvRankContractMode,
+  type IvRankSnapshot,
+} from "@/lib/impliedVolatilityRank";
 import { normalizeGexIntervalProviderPayload, type GexIntervalProviderSurface } from "@/lib/gexIntervalMap";
 import { getGexBotFlowSnapshot } from "@/lib/gexBotFlow.server";
 import {
@@ -3584,6 +3589,53 @@ export async function getNetGammaExposureSurface(input: {
     strikes: exposure.strikes,
     expiryStrikes: exposure.expiryStrikes ?? [],
   };
+}
+
+/**
+ * Server-only IV Rank adapter. All browser instances share quantDataPost's
+ * request cache, retry policy and one configured QuantData credential.
+ */
+export async function getImpliedVolatilityRankSnapshot(input: {
+  sourceTicker: string;
+  displayInstrument: string;
+  lookBackPeriodDays: number;
+  targetMaturityDays: number;
+  contractMode: IvRankContractMode;
+  useLiveIntradayIv?: boolean;
+}): Promise<IvRankSnapshot> {
+  const session = getUsOptionsSession();
+  const sourceTicker = input.sourceTicker.trim().toUpperCase();
+  const allowed = new Set<string>([...OPTIONS_FLOW_TICKERS, "QQQ", "SPY", "NDX", "SPX", "IWM", "DIA"]);
+  if (!allowed.has(sourceTicker)) {
+    throw new QuantDataError("This options source is not supported by IV Rank.", 400, null);
+  }
+  const lookBackPeriodDays = Math.max(2, Math.min(365, Math.round(input.lookBackPeriodDays)));
+  const targetMaturityDays = Math.max(0, Math.min(365, Math.round(input.targetMaturityDays)));
+  const ttlMs = session.marketOpen ? 15_000 : 5 * 60_000;
+  const ivRankResult = await quantDataPost("/options/tool/iv-rank", {
+    filter: { ticker: sourceTicker },
+    lookBackPeriod: lookBackPeriodDays,
+    maturity: targetMaturityDays,
+  }, ttlMs);
+
+  let volatilityDriftPayload: unknown = null;
+  if (input.useLiveIntradayIv !== false && session.marketOpen) {
+    volatilityDriftPayload = await quantDataPost("/options/tool/volatility-drift", {
+      sessionDate: session.sessionDate,
+      aggregationPeriod: "1m",
+      filter: { ticker: sourceTicker },
+    }, 10_000).then((result) => result.payload).catch(() => null);
+  }
+
+  return buildIvRankSnapshot(ivRankResult.payload, volatilityDriftPayload, {
+    sourceTicker,
+    displayInstrument: input.displayInstrument.trim().toUpperCase(),
+    contractMode: input.contractMode,
+    lookBackPeriodDays,
+    targetMaturityDays,
+    useLiveIntradayIv: input.useLiveIntradayIv,
+    marketOpen: session.marketOpen,
+  });
 }
 
 /**

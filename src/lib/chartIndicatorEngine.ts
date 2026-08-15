@@ -5,6 +5,7 @@ import { runSourceIndicator, type SourceIndicatorLanguage } from "@/lib/indicato
 
 export type CalculatedIndicatorSeries = {
   key: string;
+  groupKey?: string;
   label: string;
   kind: "line" | "histogram" | "candlestick";
   placement: "overlay" | "pane";
@@ -13,6 +14,7 @@ export type CalculatedIndicatorSeries = {
   lineStyle?: "solid" | "dashed" | "dotted";
   lastValueVisible?: boolean;
   independentScale?: boolean;
+  priceScaleId?: string;
   showZeroLine?: boolean;
   zeroLineColor?: string;
   zeroLineWidth?: 1 | 2 | 3 | 4;

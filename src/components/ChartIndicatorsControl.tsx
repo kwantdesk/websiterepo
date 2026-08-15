@@ -207,6 +207,7 @@ export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "net-gamma-exposure-by-strike",
   "gex-interval-map",
   "dark-pool-map",
+  "implied-volatility-rank",
   "volume",
   "delta-bar",
   "delta-highlight",
@@ -911,6 +912,79 @@ export default function ChartIndicatorsControl({
                   <p className="text-[8px] leading-4 text-muted">
                     Off leaves every profile at its true historical session position. Left keeps the latest profile on the left once you scroll beyond it; Right docks the latest profile to the right.
                   </p>
+                </div>
+              ) : null}
+
+              {settingsDefinition.id === "implied-volatility-rank" ? (
+                <div className="grid gap-3 rounded-xl border border-primary/15 bg-primary/[0.035] p-3 sm:grid-cols-2">
+                  <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted sm:col-span-2">
+                    <span>Preset</span>
+                    <KwantSelect
+                      value={String(settingsInstance.settings?.preset ?? "balanced-30d")}
+                      onChange={(event) => {
+                        const preset = event.target.value;
+                        const presetSettings: Record<string, string | number | boolean> = preset === "zero-dte-context"
+                          ? { targetMaturityDays: 1, lookBackPeriodDays: 60, showIvPercentile: false, contractMode: "average-call-put" }
+                          : preset === "front-expiration"
+                            ? { targetMaturityDays: 7, lookBackPeriodDays: 126, showIvPercentile: true, contractMode: "average-call-put" }
+                            : preset === "iv-rank-percentile"
+                              ? { targetMaturityDays: 30, lookBackPeriodDays: 252, showIvRank: true, showIvPercentile: true }
+                              : preset === "calls-vs-puts"
+                                ? { targetMaturityDays: 30, lookBackPeriodDays: 252, contractMode: "call-put-split", showIvPercentile: false }
+                                : preset === "minimal"
+                                  ? { showIvRank: true, showIvPercentile: false, showRawIv: false, showPriceOverlay: false }
+                                  : preset === "event-watch"
+                                    ? { targetMaturityDays: 7, lookBackPeriodDays: 90, showIvRank: true, showIvPercentile: true, showRawIv: true, refreshSeconds: 5 }
+                                    : { targetMaturityDays: 30, lookBackPeriodDays: 252, contractMode: "average-call-put", showIvRank: true, showIvPercentile: false, showRawIv: false, showPriceOverlay: true };
+                        replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), preset, ...presetSettings } }));
+                      }}
+                      className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground"
+                      menuLabel="IV Rank preset"
+                    >
+                      <option value="balanced-30d">Balanced 30D</option>
+                      <option value="zero-dte-context">0DTE Context</option>
+                      <option value="front-expiration">Front Expiration</option>
+                      <option value="iv-rank-percentile">IV Rank + Percentile</option>
+                      <option value="calls-vs-puts">Calls vs Puts</option>
+                      <option value="minimal">Minimal</option>
+                      <option value="event-watch">Event Watch</option>
+                    </KwantSelect>
+                  </label>
+                  {[
+                    ["Options source", "sourceTicker", [["AUTO", "Automatic (NQ → QQQ · ES → SPY)"], ["QQQ", "QQQ"], ["SPY", "SPY"], ["NDX", "NDX"], ["SPX", "SPX"], ["IWM", "IWM"], ["DIA", "DIA"]]],
+                    ["Contract mode", "contractMode", [["average-call-put", "Average Call + Put"], ["combined", "Combined"], ["call", "Calls"], ["put", "Puts"], ["call-put-split", "Calls vs Puts"]]],
+                    ["Placement", "placement", [["separate-pane", "Separate pane"], ["main-chart-overlay", "Main-chart overlay"]]],
+                  ].map(([label, key, options]) => (
+                    <label key={String(key)} className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                      <span>{String(label)}</span>
+                      <KwantSelect
+                        value={String(settingsInstance.settings?.[String(key)] ?? "")}
+                        onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [String(key)]: event.target.value } }))}
+                        className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground"
+                        menuLabel={String(label)}
+                      >
+                        {(options as string[][]).map(([value, optionLabel]) => <option key={value} value={value}>{optionLabel}</option>)}
+                      </KwantSelect>
+                    </label>
+                  ))}
+                  <div className="grid gap-2 sm:col-span-2 sm:grid-cols-2">
+                    {[
+                      ["IV Rank", "showIvRank", true],
+                      ["True IV Percentile", "showIvPercentile", true],
+                      ["Raw IV", "showRawIv", false],
+                      ["Source price overlay", "showPriceOverlay", true],
+                      ["Live intraday IV", "useLiveIntradayIv", true],
+                      ["Theme colours", "useThemeColors", true],
+                    ].map(([label, key, fallback]) => (
+                      <label key={String(key)} className="flex min-h-9 items-center gap-2 rounded-lg border border-border bg-background/55 px-3 text-[9px] text-muted">
+                        <input type="checkbox" className="accent-primary" checked={Boolean(settingsInstance.settings?.[String(key)] ?? fallback)} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [String(key)]: event.target.checked } }))} />
+                        <span>{String(label)}</span>
+                      </label>
+                    ))}
+                  </div>
+                  <div className="rounded-lg border border-border bg-background/55 px-3 py-2 text-[9px] leading-4 text-muted sm:col-span-2">
+                    IV Rank uses the exact current/min/max formula. IV Percentile is calculated independently from historical observations and is never approximated from rank. QuantData credentials remain server-side.
+                  </div>
                 </div>
               ) : null}
 

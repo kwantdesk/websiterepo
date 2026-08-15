@@ -9,6 +9,7 @@ export const LIVE_CHART_INDICATOR_IDS = new Set([
   "net-gamma-exposure-by-strike",
   "gex-interval-map",
   "dark-pool-map",
+  "implied-volatility-rank",
   "volume",
   "delta-bar",
   "delta-highlight",
@@ -82,6 +83,15 @@ export type IndicatorNumericSetting = {
 };
 
 export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[]> = {
+  "implied-volatility-rank": [
+    { key: "lookBackPeriodDays", label: "Lookback sessions", defaultValue: 252, min: 2, max: 365, step: 1 },
+    { key: "targetMaturityDays", label: "Target maturity (days)", defaultValue: 30, min: 1, max: 365, step: 1 },
+    { key: "refreshSeconds", label: "Refresh interval (seconds)", defaultValue: 15, min: 5, max: 300, step: 5 },
+    { key: "staleAfterSeconds", label: "Stale after (seconds)", defaultValue: 90, min: 15, max: 900, step: 15 },
+    { key: "lineWidth", label: "IV Rank line width", defaultValue: 2, min: 1, max: 5, step: 0.25 },
+    { key: "lowThreshold", label: "Low IV threshold", defaultValue: 20, min: 0, max: 100, step: 1 },
+    { key: "highThreshold", label: "High IV threshold", defaultValue: 80, min: 0, max: 100, step: 1 },
+  ],
   "dark-pool-map": [
     { key: "historyDays", label: "History (equity sessions)", defaultValue: 2, min: 1, max: 20, step: 1 },
     { key: "pollSeconds", label: "Live poll (seconds)", defaultValue: 2, min: 1, max: 30, step: 1 },
@@ -578,6 +588,28 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
     negativeColor: theme?.downColor ?? "#EF4444",
     neutralColor: theme?.gridColor ?? "#A1A1AA",
     gammaHeatmapSettingsVersion: 1,
+  } : {}),
+  ...(indicatorId === "implied-volatility-rank" ? {
+    preset: "balanced-30d",
+    provider: "quantdata",
+    sourceTicker: "AUTO",
+    contractMode: "average-call-put",
+    placement: "separate-pane",
+    showIvRank: true,
+    showIvPercentile: false,
+    showRawIv: false,
+    showPriceOverlay: true,
+    useLiveIntradayIv: true,
+    useThemeColors: true,
+    rankColor: theme?.upColor ?? "#22C55E",
+    percentileColor: theme?.borderUpColor ?? theme?.upColor ?? "#8B5CF6",
+    callColor: theme?.upColor ?? "#22C55E",
+    putColor: theme?.downColor ?? "#EF4444",
+    priceColor: "#E5E7EB",
+    lowBandColor: theme?.downColor ?? "#EF4444",
+    middleBandColor: theme?.gridColor ?? "#71717A",
+    highBandColor: theme?.upColor ?? "#22C55E",
+    ivRankSettingsVersion: 1,
   } : {}),
   ...(indicatorId === "net-gamma-exposure-by-strike" ? {
     preset: "balanced-net-gex",
@@ -1111,6 +1143,19 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
       ...normalizedInstance,
       settings: tpoSettingsToRecord(validateTpoSettings(normalizedInstance.settings, variant)),
     };
+  }
+  if (normalizedInstance.indicatorId === "implied-volatility-rank") {
+    const defaults: Record<string, number | string | boolean> = defaultIndicatorSettings("implied-volatility-rank");
+    const settings: Record<string, number | string | boolean> = { ...defaults, ...(normalizedInstance.settings ?? {}) };
+    for (const definition of INDICATOR_NUMERIC_SETTINGS["implied-volatility-rank"] ?? []) {
+      const parsed = Number(settings[definition.key]);
+      settings[definition.key] = Math.min(definition.max, Math.max(definition.min, Number.isFinite(parsed) ? parsed : definition.defaultValue));
+    }
+    if (!["AUTO", "QQQ", "SPY", "NDX", "SPX", "IWM", "DIA"].includes(String(settings.sourceTicker))) settings.sourceTicker = "AUTO";
+    if (!["combined", "average-call-put", "call", "put", "call-put-split"].includes(String(settings.contractMode))) settings.contractMode = "average-call-put";
+    if (!["separate-pane", "main-chart-overlay"].includes(String(settings.placement))) settings.placement = "separate-pane";
+    for (const unsafeKey of ["apiKey", "credential", "credentials", "providerCredential", "snapshot", "history", "observations"]) delete settings[unsafeKey];
+    return { ...normalizedInstance, settings };
   }
   if (normalizedInstance.indicatorId === "net-gamma-exposure-by-strike") {
     const defaults: Record<string, number | string | boolean> = defaultIndicatorSettings("net-gamma-exposure-by-strike");

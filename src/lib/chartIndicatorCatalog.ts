@@ -58,6 +58,7 @@ export const CHART_INDICATOR_CATALOG: ChartIndicatorDefinition[] = [
   indicator("Net Gamma Exposure By Strike", "Options Flow", "Current signed Net GEX by source strike, mapped precisely onto the futures price scale around a zero spine.", false, "Kwantify"),
   indicator("GEX Interval Map", "Options Flow", "Live and historical signed Gamma exposure by strike and time, mapped onto the active chart without lookahead.", false, "Kwantify"),
   indicator("Dark Pool Map", "Options Flow", "Real off-exchange equity prints aggregated into timestamped circles, mapped futures levels and institutional-style zones.", false, "Kwantify"),
+  indicator("Implied Volatility Rank", "Options Flow", "QuantData IV Rank and true IV Percentile across configurable lookback, maturity and call/put modes.", false, "Kwantify"),
   indicator("Cumulative Volume Delta", "Order Flow", "Running aggressive buy volume minus aggressive sell volume.", true),
   indicator("Delta Bar", "Order Flow", "Per-bar bid/ask aggression and delta.", true),
   indicator("Delta % Highlight", "Order Flow", "Highlights bars whose delta percentage exceeds configured thresholds.", true),
