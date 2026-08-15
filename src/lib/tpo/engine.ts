@@ -669,12 +669,11 @@ export function buildTpoProfiles({
     const source = settings.visitSource === "automatic"
       ? periodHasExactTrades ? "exact-trades" as const : "bar-range" as const
       : preferredSource;
-    const developing = nowMs >= period.startMs && (nowMs < period.endMs || !Number.isFinite(period.endMs));
-    // A developing profile must not abruptly change visual density as its
-    // range expands. Keep its automatic row resolution aligned with the most
-    // recent completed profile so adjacent sessions remain directly comparable.
-    const frozenTicksPerRow = settings.freezeActiveGrouping && developing
-      ? profiles.at(-1)?.ticksPerRow
+    // When grouping is frozen, every displayed profile uses one price-row
+    // resolution. This prevents a single low-range or developing session from
+    // switching to visually larger rows than all adjacent TPO profiles.
+    const frozenTicksPerRow = settings.freezeActiveGrouping
+      ? profiles.at(0)?.ticksPerRow
       : undefined;
     const profile = buildOneProfile(period, trades, bars, settings, source, nowMs, frozenTicksPerRow);
     if (profile) profiles.push(profile);

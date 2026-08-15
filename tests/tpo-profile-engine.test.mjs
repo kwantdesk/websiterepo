@@ -138,7 +138,7 @@ test("auction-model TPO settings invalidate the calculated profile", () => {
   );
 });
 
-test("developing automatic TPO keeps the completed session row resolution", () => {
+test("automatic TPO keeps one row resolution across every displayed session", () => {
   const dayOne = Date.UTC(2026, 7, 10, 1, 0, 0);
   const dayTwo = Date.UTC(2026, 7, 11, 1, 0, 0);
   const baseSettings = {
@@ -170,6 +170,13 @@ test("developing automatic TPO keeps the completed session row resolution", () =
   assert.equal(frozen.length, 2);
   assert.equal(frozen[1].ticksPerRow, frozen[0].ticksPerRow);
   assert.ok(dynamic[1].ticksPerRow > dynamic[0].ticksPerRow);
+});
+
+test("TPO visual density is shared and lower-granularity text is not painted", async () => {
+  const primitive = await readFile(path.join(root, "src/lib/tpo/primitive.ts"), "utf8");
+  assert.match(primitive, /const minimumCellWidthByInstance = new Map<string, number>\(\)/);
+  assert.match(primitive, /const sharedCellWidth = minimumCellWidthByInstance\.get\(model\.instanceId\) \?\? cellWidth/);
+  assert.doesNotMatch(primitive, /LOWER DATA GRANULARITY/);
 });
 
 test("exact executions allocate one TPO visit per price row and subperiod", () => {

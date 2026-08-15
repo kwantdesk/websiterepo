@@ -126,6 +126,27 @@ export class TpoProfilePrimitive implements ISeriesPrimitive<Time> {
           leftWallProfileByInstance.set(model.instanceId, index);
         }
       });
+      const minimumCellWidthByInstance = new Map<string, number>();
+      this.models.forEach((model, index) => {
+        const { profile, settings } = model;
+        const periodStartX = coordinates[index].start;
+        const periodEndX = coordinates[index].end;
+        if (!profile.rows.length || periodStartX == null || periodEndX == null) return;
+        const latest = latestProfileByInstance.get(model.instanceId) === index;
+        const periodWidth = Math.max(1, Math.abs(periodEndX - periodStartX));
+        const requestedWidth = settings.widthMode === "window-percent"
+          ? mediaSize.width * settings.currentWidth / 100
+          : settings.widthMode === "period-percent"
+            ? periodWidth * settings.currentWidth / 100
+            : settings.widthMode === "fixed-bars"
+              ? pixelsPerBar * settings.currentWidth
+              : Math.min(periodWidth * 0.42, Math.max(72, pixelsPerBar * 28));
+        const width = clamp(requestedWidth * (latest ? 1 : settings.previousWidth / Math.max(1, settings.currentWidth)), 22, mediaSize.width * 0.42);
+        const maxTpos = Math.max(1, ...profile.rows.map((row) => row.tpoCount));
+        const cellWidth = Math.min(clamp(settings.blockSize, 2, 24), Math.max(1.25, width / maxTpos));
+        const currentMinimum = minimumCellWidthByInstance.get(model.instanceId);
+        minimumCellWidthByInstance.set(model.instanceId, currentMinimum == null ? cellWidth : Math.min(currentMinimum, cellWidth));
+      });
 
       this.models.forEach((model, modelIndex) => {
         const { profile, settings, theme } = model;
@@ -163,10 +184,14 @@ export class TpoProfilePrimitive implements ISeriesPrimitive<Time> {
         let boundsRight = anchorX;
         let boundsTop = Math.min(lowY, highY);
         let boundsBottom = Math.max(lowY, highY);
-        const detailed = cellWidth >= 6;
+        // Profiles from the same indicator switch visual density together. A
+        // quiet session must not become a large block grid while its adjacent
+        // sessions are rendered as compact profiles at the same chart zoom.
+        const sharedCellWidth = minimumCellWidthByInstance.get(model.instanceId) ?? cellWidth;
+        const detailed = sharedCellWidth >= 6;
         const showLetters = settings.displayType === "letters"
           || (settings.displayType === "automatic" && detailed);
-        const micro = cellWidth < 1.8;
+        const micro = sharedCellWidth < 1.8;
         let renderedBlocks = 0;
         const allCells = profile.rows.flatMap((row) => row.cells);
         const maxCellVolume = Math.max(1, ...allCells.map((cell) => cell.volume ?? 0));
@@ -497,13 +522,6 @@ export class TpoProfilePrimitive implements ISeriesPrimitive<Time> {
           context.textAlign = "left";
           context.textBaseline = "top";
           lines.forEach((line, index) => context.fillText(line, boxX + 6, boxY + 4 + index * (fontSize + 4)));
-        }
-        if (profile.lowerGranularity) {
-          context.globalAlpha = 0.85;
-          context.fillStyle = theme.muted;
-          context.font = "600 7px 'JetBrains Mono', monospace";
-          context.textAlign = "left";
-          context.fillText("LOWER DATA GRANULARITY", clamp(boundsLeft, 4, mediaSize.width - 126), clamp(boundsBottom + 11, 11, mediaSize.height - 4));
         }
         this.hits.push({
           instanceId: model.instanceId,
