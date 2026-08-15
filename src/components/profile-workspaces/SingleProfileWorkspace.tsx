@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Check, ChevronDown, Loader2, RefreshCw, Settings2, X } from "lucide-react";
+import { Check, ChevronDown, Loader2, RefreshCw, Settings2 } from "lucide-react";
+import FloatingSettingsWindow from "@/components/ui/FloatingSettingsWindow";
 import { DATABENTO_LIVE_TICK_EVENT, type DatabentoLiveTick } from "@/lib/chartLiveEvents";
 import {
   fetchInstitutionalOrderFlowLevels,
@@ -775,11 +776,20 @@ export default function SingleProfileWorkspace({
       </div>
       {profile ? <div className="flex h-7 shrink-0 items-center justify-between border-t border-border bg-panel px-2.5 font-mono text-[7px] uppercase tracking-[0.12em] text-muted"><span>{profile.source}</span><span>{kind === "tpo" ? `${profile.total.toLocaleString()} TPOS` : `${profile.total.toLocaleString()} CONTRACTS · ${profile.groupTicks} TICKS/ROW`} · FIXED 70% VALUE AREA</span></div> : null}
 
-      {settingsOpen ? (
-        <div className="absolute inset-0 z-50 flex justify-end bg-background/55 backdrop-blur-[2px]" onMouseDown={(event) => { if (event.target === event.currentTarget) setSettingsOpen(false); }}>
-          <div className="flex h-full w-[min(390px,92%)] flex-col border-l border-border bg-panel shadow-2xl">
-            <div className="flex h-11 items-center justify-between border-b border-border px-3"><div><p className="font-mono text-[10px] font-semibold uppercase tracking-[0.16em]">{kind === "tpo" ? "Single TPO" : "Single Volume Profile"}</p><p className="mt-0.5 text-[8px] text-muted">Workspace settings</p></div><button type="button" onClick={() => setSettingsOpen(false)} className="flex h-7 w-7 items-center justify-center text-muted hover:text-foreground"><X className="h-4 w-4" /></button></div>
-            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-3">
+      <FloatingSettingsWindow
+        open={settingsOpen}
+        title={kind === "tpo" ? "Single TPO Settings" : "Single Volume Profile Settings"}
+        subtitle="Workspace preview remains visible and interactive"
+        onClose={() => setSettingsOpen(false)}
+        widthClassName="w-[min(480px,calc(100vw-24px))]"
+        contentClassName="space-y-4 p-3"
+        footer={(
+          <div className="grid grid-cols-2 gap-2">
+            <button type="button" onClick={() => setDraft({ ...DEFAULT_SETTINGS, customStart: dateInputValue(Date.now() - 86_400_000), customEnd: dateInputValue(Date.now()) })} className="h-9 border border-border font-mono text-[8px] uppercase tracking-[0.12em] text-muted hover:text-foreground">Reset</button>
+            <button type="button" onClick={save} disabled={(draft.preset === "merge-days" && draft.selectedDates.length < 2) || (draft.preset === "custom" && (!Number.isFinite(Date.parse(draft.customStart)) || !Number.isFinite(Date.parse(draft.customEnd)) || Date.parse(draft.customEnd) <= Date.parse(draft.customStart)))} className="h-9 bg-primary font-mono text-[8px] font-semibold uppercase tracking-[0.12em] text-background disabled:opacity-40">Apply profile</button>
+          </div>
+        )}
+      >
               <label className="block"><span className="mb-1.5 block font-mono text-[8px] uppercase tracking-[0.14em] text-muted">Profile preset</span><div className="relative"><select value={draft.preset} onChange={(event) => setDraft((current) => ({ ...current, preset: event.target.value as ProfilePreset }))} className="h-9 w-full appearance-none border border-border bg-background px-2.5 pr-8 font-mono text-[9px] text-foreground outline-none focus:border-primary/60">{PRESETS.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}{kind === "volume" ? <option value="merge-days">Merge selected days</option> : null}</select><ChevronDown className="pointer-events-none absolute right-2.5 top-2.5 h-3.5 w-3.5 text-muted" /></div><span className="mt-1 block text-[8px] leading-4 text-muted">{draft.preset === "merge-days" ? "Select two or more completed RTH sessions and combine them into one exact profile." : PRESETS.find((option) => option.id === draft.preset)?.detail}</span></label>
               {draft.preset === "custom" ? <div className="grid grid-cols-1 gap-3"><label><span className="mb-1 block font-mono text-[8px] uppercase tracking-[0.14em] text-muted">From</span><input type="datetime-local" value={draft.customStart} onChange={(event) => setDraft((current) => ({ ...current, customStart: event.target.value }))} className="h-9 w-full border border-border bg-background px-2 font-mono text-[9px] text-foreground outline-none focus:border-primary/60" /></label><label><span className="mb-1 block font-mono text-[8px] uppercase tracking-[0.14em] text-muted">Until</span><input type="datetime-local" value={draft.customEnd} onChange={(event) => setDraft((current) => ({ ...current, customEnd: event.target.value }))} className="h-9 w-full border border-border bg-background px-2 font-mono text-[9px] text-foreground outline-none focus:border-primary/60" /></label></div> : null}
               {draft.preset === "recurring-custom" ? <div className="grid grid-cols-2 gap-3"><label><span className="mb-1 block font-mono text-[8px] uppercase tracking-[0.14em] text-muted">Daily start</span><input type="time" value={draft.startTime} onChange={(event) => setDraft((current) => ({ ...current, startTime: event.target.value }))} className="h-9 w-full border border-border bg-background px-2 font-mono text-[9px] text-foreground outline-none focus:border-primary/60" /></label><label><span className="mb-1 block font-mono text-[8px] uppercase tracking-[0.14em] text-muted">Daily end</span><input type="time" value={draft.endTime} onChange={(event) => setDraft((current) => ({ ...current, endTime: event.target.value }))} className="h-9 w-full border border-border bg-background px-2 font-mono text-[9px] text-foreground outline-none focus:border-primary/60" /></label></div> : null}
@@ -805,11 +815,7 @@ export default function SingleProfileWorkspace({
               {kind === "tpo" ? <label className="block"><span className="mb-1 block font-mono text-[8px] uppercase tracking-[0.14em] text-muted">Display</span><select value={draft.display} onChange={(event) => setDraft((current) => ({ ...current, display: event.target.value as "blocks" | "letters" }))} className="h-9 w-full border border-border bg-background px-2 font-mono text-[9px]"><option value="blocks">Square blocks</option><option value="letters">TPO letters</option></select></label> : null}
               <div className="space-y-2">{[["showPoc", "Show point of control"], ["showValueArea", "Show VAH and VAL"], ...(kind === "volume" ? [["showVwap", "Show VWAP"], ["showRowValues", "Show row volume labels"]] : [])].map(([key, label]) => <label key={key} className="flex items-center justify-between border border-border bg-background px-2.5 py-2 font-mono text-[8px] uppercase tracking-[0.1em] text-muted"><span>{label}</span><input type="checkbox" checked={Boolean(draft[key as keyof WorkspaceSettings])} onChange={(event) => setDraft((current) => ({ ...current, [key]: event.target.checked }))} className="accent-[var(--primary)]" /></label>)}</div>
               <div className="border border-border bg-background p-2.5 text-[8px] leading-4 text-muted">Value area is fixed at the market-standard 70%. Profiles use the shared CME/Rithmic data path and never render future data.</div>
-            </div>
-            <div className="grid grid-cols-2 gap-2 border-t border-border p-3"><button type="button" onClick={() => setDraft({ ...DEFAULT_SETTINGS, customStart: dateInputValue(Date.now() - 86_400_000), customEnd: dateInputValue(Date.now()) })} className="h-9 border border-border font-mono text-[8px] uppercase tracking-[0.12em] text-muted hover:text-foreground">Reset</button><button type="button" onClick={save} disabled={(draft.preset === "merge-days" && draft.selectedDates.length < 2) || (draft.preset === "custom" && (!Number.isFinite(Date.parse(draft.customStart)) || !Number.isFinite(Date.parse(draft.customEnd)) || Date.parse(draft.customEnd) <= Date.parse(draft.customStart)))} className="h-9 bg-primary font-mono text-[8px] font-semibold uppercase tracking-[0.12em] text-background disabled:opacity-40">Apply profile</button></div>
-          </div>
-        </div>
-      ) : null}
+      </FloatingSettingsWindow>
     </div>
   );
 }

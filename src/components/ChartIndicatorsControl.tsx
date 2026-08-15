@@ -934,14 +934,12 @@ export default function ChartIndicatorsControl({
       {settingsInstance && settingsDefinition && typeof document !== "undefined" ? createPortal(
         <div
           data-indicator-settings-overlay
-          className="fixed inset-0 z-[270] flex items-center justify-center bg-transparent p-4"
-          onClick={closeSettingsDialog}
+          className="pointer-events-none fixed inset-0 z-[2800] flex items-center justify-center bg-transparent p-4"
         >
           <div
             ref={settingsDialogRef}
             data-indicator-settings-dialog
-            className="flex max-h-[88vh] w-full max-w-[540px] flex-col overflow-hidden rounded-2xl border border-border bg-panel shadow-2xl shadow-black/60"
-            onClick={(event) => event.stopPropagation()}
+            className="pointer-events-auto flex max-h-[88vh] w-full max-w-[540px] flex-col overflow-hidden rounded-2xl border border-border bg-panel shadow-2xl shadow-black/60"
           >
             <div
               className="flex touch-none select-none items-center justify-between border-b border-border px-5 py-4 cursor-move active:cursor-grabbing"

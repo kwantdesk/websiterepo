@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
-import { HelpCircle, RotateCcw, Save, Settings2, X } from "lucide-react";
+import { HelpCircle, RotateCcw, Save, Settings2 } from "lucide-react";
+import FloatingSettingsWindow from "@/components/ui/FloatingSettingsWindow";
 import KwantLoader from "@/components/KwantLoader";
 import {
   subscribeRithmicLiquidity,
@@ -552,13 +553,20 @@ export default function SpoofingDetectorWorkspace({
         ) : null}
       </div>
 
-      {settingsOpen ? (
-        <div className="absolute inset-y-0 right-0 z-30 flex w-[min(340px,92%)] flex-col border-l border-border bg-panel/98 shadow-[-20px_0_60px_rgba(0,0,0,0.55)] backdrop-blur-xl">
-          <div className="flex h-9 shrink-0 items-center justify-between border-b border-border px-3">
-            <div className="flex items-center gap-2 text-[9px] font-semibold uppercase tracking-[0.12em] text-foreground"><Settings2 className="h-3.5 w-3.5 text-primary" /> Detector Settings</div>
-            <button type="button" onClick={() => setSettingsOpen(false)} className="text-muted hover:text-foreground" aria-label="Close spoofing detector settings"><X className="h-3.5 w-3.5" /></button>
+      <FloatingSettingsWindow
+        open={settingsOpen}
+        title="Spoofing Detector Settings"
+        subtitle="Live chart remains interactive behind this window"
+        onClose={() => setSettingsOpen(false)}
+        widthClassName="w-[min(440px,calc(100vw-24px))]"
+        contentClassName="space-y-4 p-3"
+        footer={(
+          <div className="flex gap-2">
+            <button type="button" onClick={resetSettings} className="flex h-8 items-center gap-1.5 border border-border px-3 text-[9px] font-semibold uppercase tracking-[0.1em] text-muted hover:text-foreground"><RotateCcw className="h-3 w-3" /> Reset</button>
+            <button type="button" onClick={saveSettings} className="flex h-8 flex-1 items-center justify-center gap-1.5 bg-primary px-3 text-[9px] font-semibold uppercase tracking-[0.1em] text-background"><Save className="h-3 w-3" /> Save to workspace</button>
           </div>
-          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-3">
+        )}
+      >
             <label className="block space-y-1.5 text-[9px] uppercase tracking-[0.1em] text-muted">
               <span>Detection mode</span>
               <select
@@ -608,13 +616,7 @@ export default function SpoofingDetectorWorkspace({
               <HelpCircle className="mt-0.5 h-3 w-3 shrink-0 text-primary" />
               <span>This tool flags suspicious order-book behaviour. It does not determine trader identity or legally establish intent.</span>
             </div>
-          </div>
-          <div className="flex shrink-0 gap-2 border-t border-border p-3">
-            <button type="button" onClick={resetSettings} className="flex h-8 items-center gap-1.5 border border-border px-3 text-[9px] font-semibold uppercase tracking-[0.1em] text-muted hover:text-foreground"><RotateCcw className="h-3 w-3" /> Reset</button>
-            <button type="button" onClick={saveSettings} className="flex h-8 flex-1 items-center justify-center gap-1.5 bg-primary px-3 text-[9px] font-semibold uppercase tracking-[0.1em] text-background"><Save className="h-3 w-3" /> Save to workspace</button>
-          </div>
-        </div>
-      ) : null}
+      </FloatingSettingsWindow>
     </div>
   );
 }

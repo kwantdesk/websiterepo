@@ -3,9 +3,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity, ChevronsLeft, ChevronsRight, CircleHelp, DatabaseZap,
-  LocateFixed, Minus, Plus, Settings2, X,
+  LocateFixed, Minus, Plus, Settings2,
 } from "lucide-react";
 
+import FloatingSettingsWindow from "@/components/ui/FloatingSettingsWindow";
 import {
   applyDomProSnapshot, createDomProState, domProPreset, domProSettingsFromRecord,
   visibleDomProRows, type DomProColumn, type DomProSettings, type DomProState,
@@ -343,9 +344,14 @@ export default function DepthOfMarketPanel({
         <span className="ml-auto">{bookState.capabilities.mbo ? "MBO" : bookState.capabilities.fullDepth ? "L2 FALLBACK" : "NO BOOK"}</span>
         <span className={`border px-1.5 py-0.5 font-bold ${bookState.staleReason ? "border-danger/40 text-danger" : status === "connected" ? "border-primary/35 text-primary" : "border-border"}`}>{statusLabel(status, bookState)}</span>
       </footer>
-      {settingsOpen ? <div className="absolute inset-0 z-50 flex justify-end bg-black/45" onPointerDown={(event) => event.target === event.currentTarget && setSettingsOpen(false)}><div className="flex h-full w-full max-w-[390px] flex-col border-l border-border bg-panel shadow-2xl">
-        <div className="flex h-10 items-center border-b border-border px-3"><div className="font-mono text-[10px] font-bold tracking-[0.12em] text-foreground">DOM PRO SETTINGS</div><button type="button" onClick={() => setSettingsOpen(false)} className="ml-auto flex h-6 w-6 items-center justify-center border border-border text-muted"><X className="h-3 w-3" /></button></div>
-        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-3">
+      <FloatingSettingsWindow
+        open={settingsOpen}
+        title="DOM Pro Settings"
+        subtitle="Live ladder preview · drag this window anywhere"
+        onClose={() => setSettingsOpen(false)}
+        widthClassName="w-[min(460px,calc(100vw-24px))]"
+        contentClassName="space-y-4 p-3"
+      >
           <section><div className="mb-2 font-mono text-[8px] uppercase tracking-[0.13em] text-muted">Preset</div><div className="grid grid-cols-3 gap-1.5">{(["scalper", "order-flow", "minimal"] as const).map((preset) => <button key={preset} type="button" onClick={() => saveSettings(domProPreset(preset, settings))} className={`h-8 border font-mono text-[8px] uppercase ${settings.preset === preset ? "border-primary bg-primary/10 text-primary" : "border-border text-muted"}`}>{preset}</button>)}</div></section>
           <section className="space-y-2"><div className="font-mono text-[8px] uppercase tracking-[0.13em] text-muted">Ladder</div>{[
             ["Visible rows", "rows", settings.rows, 10, 120, 1], ["Row height", "rowHeight", settings.rowHeight, 16, 42, 1],
@@ -358,8 +364,7 @@ export default function DepthOfMarketPanel({
             { key: "useThemeColors", label: "Use KwantDesk theme colours", value: settings.useThemeColors },
           ].map((item) => <label key={item.key} className="flex items-center justify-between border border-border bg-background px-2.5 py-2 text-[8px] text-muted"><span>{item.label}</span><input type="checkbox" checked={item.value} onChange={(event) => persist(item.key, event.target.checked)} className="accent-primary" /></label>)}</section>
           <div className="flex gap-2 border border-border bg-background p-2 text-[7px] leading-4 text-muted"><CircleHelp className="mt-0.5 h-3 w-3 shrink-0 text-primary" /><span>Order entry is read-only until KwantDesk&apos;s authenticated order service explicitly grants trading capability. The browser never opens a second Rithmic session.</span></div>
-        </div>
-      </div></div> : null}
+      </FloatingSettingsWindow>
     </aside>
   );
 }
