@@ -240,6 +240,7 @@ import {
 } from "@/lib/chartLiveEvents";
 import {
   mergeChartHistory,
+  mergeAuthoritativeChartHistory,
   peekExecutionTapeCache,
   peekCompatibleChartHistoryCache,
   readCompatibleChartHistoryCache,
@@ -4690,7 +4691,10 @@ function WorkspaceChartPane({
           );
           if (baseCandles.length) {
             cachedCandles = mergeHistoricalWithLiveTail(
-              mergeChartHistory(mergeChartHistory(cachedCandles, baseCandles), liveSeam),
+              mergeChartHistory(
+                mergeAuthoritativeChartHistory(cachedCandles, baseCandles, pane.timeframe),
+                liveSeam,
+              ),
               latestCandlesRef.current,
               pane.timeframe,
               liveTailStartTimestampRef.current,
@@ -4740,7 +4744,10 @@ function WorkspaceChartPane({
           ? trimChartHistoryForPeriod(downloaded, period, requestedFrom)
           : downloaded;
         const mergedHistory = pane.broker === "Databento"
-          ? mergeChartHistory(mergeChartHistory(cachedCandles, clean), liveSeam)
+          ? mergeChartHistory(
+              mergeAuthoritativeChartHistory(cachedCandles, clean, pane.timeframe),
+              liveSeam,
+            )
           : clean;
         if (!mergedHistory.length) throw new Error("CME returned no usable candles.");
         const latestObserved = pane.broker === "Databento"

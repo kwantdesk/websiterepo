@@ -21,7 +21,7 @@ const edge = await fs.readFile(
 
 test("range and volume charts reuse durable base event history", () => {
   assert.match(route, /getDurableEventBars/);
-  assert.match(route, /\["cme-event-bars-v1", symbol, timeframe/);
+  assert.match(route, /\["cme-event-bars-v2", symbol, timeframe/);
   assert.match(route, /await durableEventBarsOrDirect\(/);
 });
 

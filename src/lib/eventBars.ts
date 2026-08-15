@@ -1,5 +1,5 @@
 import type { Candle } from "@/lib/backtester";
-import { getChartInterval, isEventBasedChartInterval } from "@/lib/chartIntervals";
+import { getChartInterval, isEventBasedChartInterval } from "./chartIntervals.ts";
 
 export type MarketTrade = {
   timestamp: number;
@@ -106,6 +106,25 @@ function makeCandle(
   };
 }
 
+function makeContinuationCandle(
+  record: MarketTrade,
+  previous: EventCandle,
+): EventCandle {
+  const candle = makeCandle(
+    { ...record, price: previous.close },
+    safeTimestamp(record.timestamp, previous),
+    0,
+    0,
+    0,
+  );
+  // Event bars are one continuous execution sequence. The next bar starts at
+  // the completed bar's close, then the first assigned print develops its
+  // high/low/close. Starting it directly at the next print left visible gaps
+  // and made adjacent bullish/bearish bodies appear doubled.
+  candle.open = previous.close;
+  return candle;
+}
+
 function updateCandle(
   candle: EventCandle,
   price: number,
@@ -151,7 +170,7 @@ function addThresholdTrade(
         : Math.abs(Number(last.delta ?? 0));
     const capacity = Math.max(0, threshold.value - current);
     if (capacity <= 1e-9) {
-      bars.push(makeCandle(record, safeTimestamp(record.timestamp, last), 0, 0, 0));
+      bars.push(makeContinuationCandle(record, last));
       continue;
     }
 
@@ -166,7 +185,7 @@ function addThresholdTrade(
     remainingDelta -= deltaPart;
 
     if (fraction >= 1 - 1e-9) break;
-    bars.push(makeCandle(record, safeTimestamp(record.timestamp, last), 0, 0, 0));
+    bars.push(makeContinuationCandle(record, last));
   }
 }
 

@@ -43,11 +43,11 @@ let lastCachePruneAt = 0;
 let cachePrunePromise: Promise<void> | null = null;
 
 function cacheKey(symbol: string, timeframe: string) {
-  // Event-bar schema v3 rejects discontinuity staircases and requires a full
-  // five-session backfill. Keep earlier partial event caches isolated so they
-  // cannot make a newly selected range/volume chart start at the current tick.
+  // Event-bar schema v6 stores one authoritative reconstruction instead of
+  // merging successive rebuilds whose sequence timestamps can differ. Keep
+  // the earlier overlapping event caches isolated from corrected charts.
   return isEventBasedChartInterval(timeframe)
-    ? `event-v5::${symbol}::${timeframe}`
+    ? `event-v6::${symbol}::${timeframe}`
     // Time-flow v2 replaces the old six-hour-only aggressor enrichment. Keep
     // the partial cache isolated so returning browsers cannot restore a CVD
     // line that begins in the middle of the visible chart.
@@ -443,7 +443,11 @@ export async function readCompatibleChartHistoryCache(symbol: string, timeframe:
 export async function writeChartHistoryCache(symbol: string, timeframe: string, candles: Candle[]) {
   const key = cacheKey(symbol, timeframe);
   const previous = await readChartHistoryCache(symbol, timeframe);
-  const normalizedCandles = normalizeCandles([...(previous?.candles ?? []), ...candles]);
+  const normalizedCandles = mergeAuthoritativeChartHistory(
+    previous?.candles ?? [],
+    candles,
+    timeframe,
+  );
   if (!normalizedCandles.length) return null;
 
   const record: CachedHistory = {
@@ -532,4 +536,20 @@ export async function writeExecutionTapeCache(
 
 export function mergeChartHistory(cached: Candle[], incoming: Candle[]) {
   return normalizeCandles([...cached, ...incoming]);
+}
+
+/**
+ * Clock candles have stable bucket timestamps and may be safely merged.
+ * Event candles do not: rebuilding the same execution window from a different
+ * start boundary can shift every sequence timestamp. Treat a complete event
+ * response as authoritative or old and new bars are rendered side-by-side.
+ */
+export function mergeAuthoritativeChartHistory(
+  cached: Candle[],
+  incoming: Candle[],
+  timeframe: string,
+) {
+  return isEventBasedChartInterval(timeframe)
+    ? normalizeCandles(incoming)
+    : normalizeCandles([...cached, ...incoming]);
 }
