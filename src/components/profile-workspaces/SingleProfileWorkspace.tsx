@@ -212,8 +212,12 @@ function normalizeTpoCandles(value: unknown) {
 }
 
 async function fetchTpoHistory(symbol: string) {
+  // The durable CME history route uses Databento's continuous symbology.
+  // The institutional/Rithmic gateway intentionally uses the bare parent
+  // root instead, so these two requests must not share the same symbol form.
+  const continuousSymbol = `${rootSymbol(symbol)}.v.0`;
   const response = await fetch(
-    `/api/cme-history?symbol=${encodeURIComponent(rootSymbol(symbol))}&timeframe=1m&days=14`,
+    `/api/cme-history?symbol=${encodeURIComponent(continuousSymbol)}&timeframe=1m&days=14`,
     { cache: "no-store", signal: AbortSignal.timeout(45_000) },
   );
   const payload: unknown = await response.json().catch(() => null);
