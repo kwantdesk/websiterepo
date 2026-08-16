@@ -302,8 +302,6 @@
           <article id="cvdSignal"><span>CUMULATIVE VOLUME DELTA</span><strong>0 contracts</strong><small>Loaded history</small><b>FLAT</b></article>
           <article id="volumeImbalanceSignal"><span>VOLUME IMBALANCE</span><strong>0.0%</strong><small>Visible executions</small><b>FLAT</b></article>
           <article id="orderbookImbalanceSignal"><span>ORDERBOOK IMBALANCE</span><strong>0.0%</strong><small>Top 10 weighted levels</small><b>FLAT</b></article>
-          <article id="absorptionSignal"><span>ABSORPTION</span><strong>Monitoring exact price levels</strong><small id="absorptionDetail">1.0s window · auto threshold</small><b>NEUTRAL</b></article>
-          <article id="sweepSignal"><span>LIQUIDITY SWEEP</span><strong>No active sweep</strong><small id="sweepDetail">0.5s window · 3 levels</small><b>QUIET</b></article>
         </div>
         <section class="indicator-settings" aria-label="Order-flow indicator settings">
           <header><strong>INDICATOR SETTINGS</strong><small>Trade-driven, read-only analysis</small></header>
@@ -314,18 +312,6 @@
             <label>Scale<select id="cvdScaleSelect"><option value="compact">Compact</option><option value="include-zero">Include zero</option><option value="symmetric">Symmetric</option></select></label>
             <label class="toggle-row"><input id="cvdSplit" type="checkbox"> Split buyers / sellers</label>
             <div class="number-pair"><label>Min trade<input id="cvdMinimumTradeSize" type="number" min="0" step="1" value="1"></label><label>Max (0 = all)<input id="cvdMaximumTradeSize" type="number" min="0" step="1" value="0"></label></div>
-          </fieldset>
-          <fieldset>
-            <legend>Absorption</legend>
-            <div class="toggle-pair"><label><input id="absorptionEnabled" type="checkbox" checked> Enabled</label><label><input id="absorptionAutomatic" type="checkbox" checked> Auto σ</label></div>
-            <div class="number-pair"><label>Window ms<input id="absorptionWindowMs" type="number" min="50" step="50" value="1000"></label><label>Min volume<input id="absorptionMinimumVolume" type="number" min="1" step="1" value="24"></label></div>
-            <label>SD multiplier<input id="absorptionSdMultiplier" type="number" min="0" max="10" step="0.1" value="2.5"></label>
-          </fieldset>
-          <fieldset>
-            <legend>Sweeps</legend>
-            <div class="toggle-pair"><label><input id="sweepsEnabled" type="checkbox" checked> Enabled</label><label><input id="sweepsAutomatic" type="checkbox" checked> Auto σ</label></div>
-            <div class="number-pair"><label>Window ms<input id="sweepWindowMs" type="number" min="50" step="50" value="500"></label><label>Min volume<input id="sweepMinimumVolume" type="number" min="1" step="1" value="36"></label></div>
-            <div class="number-pair"><label>Min levels<input id="sweepMinimumLevels" type="number" min="2" max="20" step="1" value="3"></label><label>SD multiplier<input id="sweepSdMultiplier" type="number" min="0" max="10" step="0.1" value="2.8"></label></div>
           </fieldset>
           <fieldset>
             <legend>Imbalance</legend>

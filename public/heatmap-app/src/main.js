@@ -308,21 +308,10 @@ class DepthForgeApp {
     this.#bindCheckbox('bubbleDifferential', 'bubbleDifferential');
     this.#bindCheckbox('cvdEnabled', 'cvdEnabled');
     this.#bindCheckbox('cvdSplit', 'cvdSplit');
-    this.#bindCheckbox('absorptionEnabled', 'absorptionEnabled');
-    this.#bindCheckbox('absorptionAutomatic', 'absorptionAutomatic');
-    this.#bindCheckbox('sweepsEnabled', 'sweepsEnabled');
-    this.#bindCheckbox('sweepsAutomatic', 'sweepsAutomatic');
     this.#bindSelect('cvdRangeSelect', 'cvdRange');
     this.#bindSelect('cvdScaleSelect', 'cvdScale');
     this.#bindNumber('cvdMinimumTradeSize', 'cvdMinimumTradeSize');
     this.#bindNumber('cvdMaximumTradeSize', 'cvdMaximumTradeSize');
-    this.#bindNumber('absorptionWindowMs', 'absorptionWindowMs');
-    this.#bindNumber('absorptionMinimumVolume', 'absorptionMinimumVolume');
-    this.#bindNumber('absorptionSdMultiplier', 'absorptionSdMultiplier');
-    this.#bindNumber('sweepWindowMs', 'sweepWindowMs');
-    this.#bindNumber('sweepMinimumVolume', 'sweepMinimumVolume');
-    this.#bindNumber('sweepMinimumLevels', 'sweepMinimumLevels');
-    this.#bindNumber('sweepSdMultiplier', 'sweepSdMultiplier');
     this.#bindNumber('imbalanceDepthLevels', 'imbalanceDepthLevels');
     $('resetSettings').addEventListener('click', () => this.#resetSettings());
     window.addEventListener('message', event => {
@@ -984,6 +973,10 @@ class DepthForgeApp {
         this.settings.cvdDisplayStyle = 'line';
         this.settings.cvdPresentationVersion = 2;
       }
+      // These overlays were removed from LIQ MAP. Override legacy account
+      // preferences so an old saved `true` value cannot restore the markers.
+      this.settings.absorptionEnabled = false;
+      this.settings.sweepsEnabled = false;
     } catch {
       localStorage.removeItem(LIQUIDITY_MAP_SETTINGS_KEY);
     }
@@ -1069,10 +1062,6 @@ class DepthForgeApp {
     const checkboxSettings = {
       cvdEnabled: 'cvdEnabled',
       cvdSplit: 'cvdSplit',
-      absorptionEnabled: 'absorptionEnabled',
-      absorptionAutomatic: 'absorptionAutomatic',
-      sweepsEnabled: 'sweepsEnabled',
-      sweepsAutomatic: 'sweepsAutomatic',
     };
     for (const [id, setting] of Object.entries(checkboxSettings)) $(id).checked = Boolean(this.settings[setting]);
     $('cvdRangeSelect').value = this.settings.cvdRange;
@@ -1083,13 +1072,6 @@ class DepthForgeApp {
     const numberSettings = {
       cvdMinimumTradeSize: 'cvdMinimumTradeSize',
       cvdMaximumTradeSize: 'cvdMaximumTradeSize',
-      absorptionWindowMs: 'absorptionWindowMs',
-      absorptionMinimumVolume: 'absorptionMinimumVolume',
-      absorptionSdMultiplier: 'absorptionSdMultiplier',
-      sweepWindowMs: 'sweepWindowMs',
-      sweepMinimumVolume: 'sweepMinimumVolume',
-      sweepMinimumLevels: 'sweepMinimumLevels',
-      sweepSdMultiplier: 'sweepSdMultiplier',
       imbalanceDepthLevels: 'imbalanceDepthLevels',
     };
     for (const [id, setting] of Object.entries(numberSettings)) $(id).value = String(this.settings[setting]);
@@ -1587,50 +1569,6 @@ class DepthForgeApp {
     setSignal('volumeImbalanceSignal', signed(volumeImbalance.value * 100), volumeState.badge, volumeState.className, `${Math.round(volumeImbalance.buy + volumeImbalance.sell).toLocaleString()} visible contracts`);
     const orderbookState = bookState(orderbookImbalance.value);
     setSignal('orderbookImbalanceSignal', signed(orderbookImbalance.value * 100), orderbookState.badge, orderbookState.className, `Top ${this.settings.imbalanceDepthLevels} exponentially weighted levels`);
-
-    const latestAtView = events => {
-      for (let index = events.length - 1; index >= 0; index -= 1) {
-        if (events[index].frameIndex <= this.viewEnd) return events[index];
-      }
-      return null;
-    };
-    const absorptionEvent = latestAtView(analysis.absorptionEvents);
-    const absorptionAge = absorptionEvent ? snapshot.timestamp - absorptionEvent.timestamp : Infinity;
-    const absorptionActive = absorptionAge >= 0 && absorptionAge <= Math.max(2_500, this.settings.absorptionWindowMs * 2);
-    const absorptionThreshold = Math.round(analysis.thresholds.absorption).toLocaleString();
-    if (!this.settings.absorptionEnabled) {
-      setSignal('absorptionSignal', 'Indicator disabled', 'OFF', 'quiet', 'Enable below to scan exact prices');
-    } else if (absorptionEvent) {
-      const side = absorptionEvent.bookSide === 'bid' ? 'Bid' : 'Ask';
-      setSignal(
-        'absorptionSignal',
-        `${side} ${priceLabel(absorptionEvent.tick, SYMBOLS[this.symbol])} · ${Math.round(absorptionEvent.volume).toLocaleString()}`,
-        absorptionActive ? 'ACTIVE' : 'LAST',
-        absorptionActive ? (absorptionEvent.bookSide === 'bid' ? 'bullish' : 'bearish') : 'quiet',
-        `${(this.settings.absorptionWindowMs / 1_000).toFixed(2)}s window · threshold ${absorptionThreshold}`,
-      );
-    } else {
-      setSignal('absorptionSignal', 'Monitoring exact price levels', 'NEUTRAL', 'neutral', `${(this.settings.absorptionWindowMs / 1_000).toFixed(2)}s window · threshold ${absorptionThreshold}`);
-    }
-
-    const sweepEvent = latestAtView(analysis.sweepEvents);
-    const sweepAge = sweepEvent ? snapshot.timestamp - sweepEvent.timestamp : Infinity;
-    const sweepActive = sweepAge >= 0 && sweepAge <= Math.max(2_000, this.settings.sweepWindowMs * 3);
-    const sweepThreshold = Math.round(analysis.thresholds.sweep).toLocaleString();
-    if (!this.settings.sweepsEnabled) {
-      setSignal('sweepSignal', 'Indicator disabled', 'OFF', 'quiet', 'Enable below to scan multi-level trades');
-    } else if (sweepEvent) {
-      const side = sweepEvent.aggressiveSide === 'buy' ? 'Buy' : 'Sell';
-      setSignal(
-        'sweepSignal',
-        `${side} ${priceLabel(sweepEvent.tick, SYMBOLS[this.symbol])} · ${sweepEvent.levelCount} levels`,
-        sweepActive ? 'ACTIVE' : 'LAST',
-        sweepActive ? (sweepEvent.aggressiveSide === 'buy' ? 'bullish' : 'bearish') : 'quiet',
-        `${(this.settings.sweepWindowMs / 1_000).toFixed(2)}s window · ${Math.round(sweepEvent.volume).toLocaleString()} / ${sweepThreshold}`,
-      );
-    } else {
-      setSignal('sweepSignal', 'No qualifying multi-level sweep', 'QUIET', 'quiet', `${(this.settings.sweepWindowMs / 1_000).toFixed(2)}s · ${this.settings.sweepMinimumLevels} levels · threshold ${sweepThreshold}`);
-    }
 
     $('cvdValue').textContent = wholeSigned(cvd.value);
     $('cvdLegend').textContent = this.settings.cvdSplit

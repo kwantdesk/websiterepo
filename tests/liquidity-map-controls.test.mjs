@@ -32,8 +32,6 @@ test("restores the full Kwant Desk liquidity-map control surface", async () => {
     "showAskPercent",
     "showSvp",
     "cvdEnabled",
-    "absorptionEnabled",
-    "sweepsEnabled",
   ]) {
     assert.match(html, new RegExp(`id=["']${id}["']`), `${id} remains available`);
   }
@@ -41,6 +39,23 @@ test("restores the full Kwant Desk liquidity-map control surface", async () => {
   assert.match(html, /data-panel-shortcut="depth"/);
   assert.match(html, /data-panel-shortcut="signals"/);
   assert.match(html, /data-panel-shortcut="settings"/);
+  assert.doesNotMatch(html, /id=["']absorption(?:Signal|Enabled|Automatic|WindowMs|MinimumVolume|SdMultiplier)["']/);
+  assert.doesNotMatch(html, /id=["'](?:sweepSignal|sweepsEnabled|sweepsAutomatic|sweepWindowMs|sweepMinimumVolume|sweepMinimumLevels|sweepSdMultiplier)["']/);
+});
+
+test("LIQ MAP never renders absorption or sweep event badges", async () => {
+  const [source, renderer, indicators] = await Promise.all([
+    readFile(mainPath, "utf8"),
+    readFile(rendererPath, "utf8"),
+    readFile(new URL("../public/heatmap-app/src/order-flow-indicators.js", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(source, /this\.settings\.absorptionEnabled = false/);
+  assert.match(source, /this\.settings\.sweepsEnabled = false/);
+  assert.doesNotMatch(renderer, /#drawIndicatorMarks/);
+  assert.doesNotMatch(renderer, /fillText\(['"]S['"]/);
+  assert.match(indicators, /absorptionEnabled: false/);
+  assert.match(indicators, /sweepsEnabled: false/);
 });
 
 test("the second chart tool is an icon-only grab hand matching the crosshair", async () => {

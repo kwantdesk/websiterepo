@@ -339,7 +339,6 @@ export class DepthRenderer {
     // the live trade feed and resting book had disappeared.
     if (settings.trades) this.#drawTrades(ctx, history, settings, accents);
     this.#drawBottomVolume(ctx, history, accents);
-    if (!this.interaction) this.#drawIndicatorMarks(ctx, indicatorAnalysis, settings, accents);
     if (volumeRatioWidth > 0) {
       this.#drawBidAskVolumeProfile(ctx, history, accents);
     }
@@ -603,81 +602,6 @@ export class DepthRenderer {
       const y = layout.yForTick(cluster.tick);
       if (y < -22 || y > layout.plotHeight + 22) continue;
       this.#drawSphereDot(ctx, x, y, cluster, accents);
-    }
-    ctx.restore();
-  }
-
-  #drawIndicatorMarks(ctx, analysis, settings, accents) {
-    if (!analysis) return;
-    const layout = this.layout;
-    const candidates = [
-      ...(settings.absorptionEnabled ? analysis.absorptionEvents || [] : []),
-      ...(settings.sweepsEnabled ? analysis.sweepEvents || [] : []),
-    ].filter(event => (
-      event.frameIndex >= layout.start
-      && event.frameIndex <= layout.end
-      && event.tick >= layout.bottomTick
-      && event.tick <= layout.topTick
-    ));
-    const aggregated = new Map();
-    for (const event of candidates) {
-      const x = layout.xForIndex(event.frameIndex);
-      const y = layout.yForTick(event.tick);
-      const key = `${event.type}:${Math.round(x / 20)}:${Math.round(y / 15)}`;
-      const previous = aggregated.get(key);
-      if (!previous || event.volume > previous.volume) aggregated.set(key, event);
-    }
-
-    ctx.save();
-    ctx.font = this.#font(8, 700, false);
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    for (const event of aggregated.values()) {
-      const x = layout.xForIndex(event.frameIndex);
-      const y = layout.yForTick(event.tick);
-      const color = event.type === 'absorption'
-        ? (event.bookSide === 'bid' ? accents.bid : accents.ask)
-        : (event.aggressiveSide === 'buy' ? accents.bid : accents.ask);
-      const stroke = colorCss(color, .96);
-      const fill = colorCss(color, .82);
-      if (event.type === 'absorption') {
-        const direction = event.bookSide === 'bid' ? 1 : -1;
-        const markerY = Math.max(11, Math.min(layout.plotHeight - 11, y + direction * 17));
-        const volume = Math.round(event.volume).toLocaleString();
-        const width = Math.max(24, 13 + volume.length * 5);
-        ctx.beginPath();
-        ctx.moveTo(x, y);
-        ctx.lineTo(x, markerY - direction * 7);
-        ctx.strokeStyle = colorCss(color, .72);
-        ctx.lineWidth = 1;
-        ctx.setLineDash([2, 2]);
-        ctx.stroke();
-        ctx.setLineDash([]);
-        ctx.fillStyle = `${this.chrome.axis}ee`;
-        ctx.strokeStyle = stroke;
-        ctx.lineWidth = 1.2;
-        ctx.beginPath();
-        ctx.roundRect(x - width / 2, markerY - 7, width, 14, 3);
-        ctx.fill();
-        ctx.stroke();
-        ctx.fillStyle = fill;
-        ctx.fillText(`A ${volume}`, x, markerY + .5);
-      } else {
-        const radius = 7;
-        ctx.fillStyle = `${this.chrome.axis}e6`;
-        ctx.strokeStyle = stroke;
-        ctx.lineWidth = 1.3;
-        ctx.beginPath();
-        ctx.moveTo(x, y - radius);
-        ctx.lineTo(x + radius, y);
-        ctx.lineTo(x, y + radius);
-        ctx.lineTo(x - radius, y);
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-        ctx.fillStyle = fill;
-        ctx.fillText('S', x, y + .5);
-      }
     }
     ctx.restore();
   }

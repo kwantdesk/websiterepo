@@ -10,13 +10,16 @@ export const DEFAULT_INDICATOR_SETTINGS = Object.freeze({
   cvdRange: 'loaded',
   cvdScale: 'compact',
   cvdSplit: false,
-  absorptionEnabled: true,
+  // Absorption and sweep event badges do not belong on the liquidity map.
+  // Keep the detector helpers available for dedicated tools, but make this
+  // renderer's analysis path permanently opt-in and disabled by default.
+  absorptionEnabled: false,
   absorptionAutomatic: true,
   absorptionWindowMs: 1_000,
   absorptionMinimumVolume: 24,
   absorptionLookbackMs: 120_000,
   absorptionSdMultiplier: 2.5,
-  sweepsEnabled: true,
+  sweepsEnabled: false,
   sweepsAutomatic: true,
   sweepWindowMs: 500,
   sweepMinimumVolume: 36,
