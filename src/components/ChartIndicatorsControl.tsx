@@ -50,6 +50,7 @@ import { PULLING_STACKING_PRESETS } from "@/lib/pullingStacking";
 import { ABSORPTION_PRESETS } from "@/lib/absorptionDetector";
 import { STACKED_IMBALANCE_PRESETS } from "@/lib/stackedImbalanceSuite";
 import { ICEBERG_REFRESH_PRESETS } from "@/lib/icebergRefreshDetector";
+import { LIQUIDITY_STOP_SWEEP_PRESETS } from "@/lib/liquidityStopSweepDetector";
 
 const FAVOURITES_STORAGE_KEY = "kwantdesk-chart-indicator-favourites";
 const FOOTPRINT_PROFILE_MANAGED_SETTINGS = new Set([
@@ -222,6 +223,7 @@ export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "absorption-detector",
   "stacked-imbalance-suite",
   "iceberg-refresh-detector",
+  "liquidity-stop-sweep-detector",
   "delta-cumulative-candlestick",
   "delta-cumulative-histogram",
   "imbalance-tracker",
@@ -2449,6 +2451,42 @@ export default function ChartIndicatorsControl({
                     <label className="space-y-1.5 text-[8px] uppercase tracking-[0.1em] text-muted"><span>Move into level</span><KwantSelect value={String(settingsInstance.settings?.moveIntoLevelTreatment ?? "exclude")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), moveIntoLevelTreatment: event.target.value, preset: "custom" } }))} className="h-9 w-full"><option value="exclude">Exclude</option><option value="include-low-confidence">Low confidence</option><option value="include-normal">Include normally</option></KwantSelect></label>
                   </div>
                   <p className="text-[8px] leading-4 text-muted">This tool detects repeated passive-liquidity replenishment. “Suspected Iceberg” is an inference unless the feed explicitly supplies a native iceberg flag. The current normalized feed provides price-level evidence, not trader identity, reserve quantity, or legal intent.</p>
+                </div>
+              ) : null}
+
+              {settingsDefinition.id === "liquidity-stop-sweep-detector" ? (
+                <div className="space-y-3 border border-primary/20 bg-primary/[0.035] p-3">
+                  <div>
+                    <div className="mb-2 text-[9px] font-semibold uppercase tracking-[0.13em] text-muted">Sweep preset</div>
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                      {Object.entries(LIQUIDITY_STOP_SWEEP_PRESETS).map(([preset, presetSettings]) => (
+                        <button key={preset} type="button" onClick={() => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), ...presetSettings, preset } }))} className={`min-h-8 border px-2 text-[7px] font-semibold uppercase tracking-[0.08em] ${settingsInstance.settings?.preset === preset ? "border-primary bg-primary/10 text-primary" : "border-border bg-background text-muted hover:text-foreground"}`}>
+                          {preset}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-3">
+                    <label className="space-y-1.5 text-[8px] uppercase tracking-[0.1em] text-muted">
+                      <span>Visualisation</span>
+                      <KwantSelect value={String(settingsInstance.settings?.visualizationMode ?? "hybrid")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), visualizationMode: event.target.value, preset: "custom" } }))} className="h-9 w-full">
+                        <option value="hybrid">Hybrid</option><option value="range-brackets">Range brackets</option><option value="price-time-bands">Price-time bands</option><option value="event-markers">Event markers</option><option value="stop-sweep-zones">Stop-sweep zones</option><option value="active-event-lane">Active event lane</option><option value="lower-pane">Lower pane</option>
+                      </KwantSelect>
+                    </label>
+                    <label className="space-y-1.5 text-[8px] uppercase tracking-[0.1em] text-muted">
+                      <span>Stop-sweep inference</span>
+                      <KwantSelect value={settingsInstance.settings?.stopSweepInferenceEnabled === false ? "off" : "on"} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), stopSweepInferenceEnabled: event.target.value === "on", preset: "custom" } }))} className="h-9 w-full">
+                        <option value="on">On — frozen references</option><option value="off">Off — direct sweeps only</option>
+                      </KwantSelect>
+                    </label>
+                    <label className="space-y-1.5 text-[8px] uppercase tracking-[0.1em] text-muted">
+                      <span>Dynamic baseline</span>
+                      <KwantSelect value={settingsInstance.settings?.dynamicBaselineEnabled === false ? "off" : "on"} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), dynamicBaselineEnabled: event.target.value === "on", preset: "custom" } }))} className="h-9 w-full">
+                        <option value="on">On</option><option value="off">Off</option>
+                      </KwantSelect>
+                    </label>
+                  </div>
+                  <p className="text-[8px] leading-4 text-muted">Direct sweeps are observed aggressive executions across price levels. Stop-sweep labels are inferred only when that execution crosses a frozen reference. The tool does not identify a trader or legally establish intent.</p>
                 </div>
               ) : null}
 

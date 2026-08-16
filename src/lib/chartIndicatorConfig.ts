@@ -8,6 +8,7 @@ import { DEFAULT_PULLING_STACKING_SETTINGS, normalizePullingStackingSettings, PU
 import { ABSORPTION_DETECTOR_SETTINGS_VERSION, DEFAULT_ABSORPTION_SETTINGS, normalizeAbsorptionSettings } from "@/lib/absorptionDetector";
 import { DEFAULT_STACKED_IMBALANCE_SETTINGS, STACKED_IMBALANCE_SETTINGS_VERSION, normalizeStackedImbalanceSettings } from "@/lib/stackedImbalanceSuite";
 import { DEFAULT_ICEBERG_REFRESH_SETTINGS, ICEBERG_REFRESH_SETTINGS_VERSION, normalizeIcebergRefreshSettings } from "@/lib/icebergRefreshDetector";
+import { DEFAULT_LIQUIDITY_STOP_SWEEP_SETTINGS, LIQUIDITY_STOP_SWEEP_SETTINGS_VERSION, normalizeLiquidityStopSweepSettings } from "@/lib/liquidityStopSweepDetector";
 
 export const LIVE_CHART_INDICATOR_IDS = new Set([
   "gamma-heatmap",
@@ -27,6 +28,7 @@ export const LIVE_CHART_INDICATOR_IDS = new Set([
   "absorption-detector",
   "stacked-imbalance-suite",
   "iceberg-refresh-detector",
+  "liquidity-stop-sweep-detector",
   "moving-average",
   "vwap",
   "vwap-envelopes",
@@ -92,6 +94,30 @@ export type IndicatorNumericSetting = {
 };
 
 export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[]> = {
+  "liquidity-stop-sweep-detector": [
+    { key: "maximumInterTradeGapMs", label: "Maximum inter-trade gap (ms)", defaultValue: 75, min: 1, max: 10000, step: 1 },
+    { key: "maximumSweepDurationMs", label: "Maximum sweep duration (ms)", defaultValue: 1000, min: 1, max: 60000, step: 10 },
+    { key: "maximumBacktrackTicks", label: "Maximum backtrack (ticks)", defaultValue: 1, min: 0, max: 100, step: 1 },
+    { key: "maximumInterTradeJumpTicks", label: "Maximum price jump (ticks)", defaultValue: 4, min: 1, max: 1000, step: 1 },
+    { key: "minimumSweepContracts", label: "Minimum sweep contracts", defaultValue: 100, min: 1, max: 1000000, step: 1 },
+    { key: "minimumSweepTradeCount", label: "Minimum sweep trades", defaultValue: 3, min: 1, max: 10000, step: 1 },
+    { key: "minimumSweptLevels", label: "Minimum swept levels", defaultValue: 3, min: 2, max: 1000, step: 1 },
+    { key: "minimumSweepRangeTicks", label: "Minimum sweep range (ticks)", defaultValue: 2, min: 1, max: 1000, step: 1 },
+    { key: "minimumContractsPerSecond", label: "Minimum contracts / second", defaultValue: 100, min: 0, max: 10000000, step: 10 },
+    { key: "minimumContiguousCoverageRatio", label: "Minimum contiguous coverage", defaultValue: 0.75, min: 0, max: 1, step: 0.01 },
+    { key: "minimumDirectionalProgressRatio", label: "Minimum directional progress", defaultValue: 0.6, min: 0, max: 1, step: 0.01 },
+    { key: "minimumReferenceBreachTicks", label: "Minimum reference breach (ticks)", defaultValue: 1, min: 0, max: 1000, step: 1 },
+    { key: "maximumReferenceDistanceTicks", label: "Maximum reference distance", defaultValue: 20, min: 0, max: 10000, step: 1 },
+    { key: "minimumContinuationTicks", label: "Continuation confirmation (ticks)", defaultValue: 3, min: 1, max: 1000, step: 1 },
+    { key: "minimumRejectionTicks", label: "Rejection confirmation (ticks)", defaultValue: 3, min: 1, max: 1000, step: 1 },
+    { key: "historySeconds", label: "Visible history (seconds)", defaultValue: 3600, min: 30, max: 86400, step: 30 },
+    { key: "activeLaneWidth", label: "Active event lane width", defaultValue: 142, min: 90, max: 300, step: 1 },
+    { key: "minimumLaneScore", label: "Lane minimum score", defaultValue: 60, min: 0, max: 100, step: 1 },
+    { key: "markerSize", label: "Marker size", defaultValue: 8, min: 5, max: 17, step: 1 },
+    { key: "opacity", label: "Overlay opacity (%)", defaultValue: 78, min: 0, max: 100, step: 1 },
+    { key: "alertMinimumScore", label: "Alert minimum score", defaultValue: 75, min: 0, max: 100, step: 1 },
+    { key: "alertMinimumQuality", label: "Alert minimum quality", defaultValue: 60, min: 0, max: 100, step: 1 },
+  ],
   "iceberg-refresh-detector": [
     { key: "attributionWindowMs", label: "Refresh attribution window (ms)", defaultValue: 250, min: 10, max: 10000, step: 10 },
     { key: "minimumCycleExecution", label: "Minimum cycle execution", defaultValue: 10, min: 1, max: 1000000, step: 1 },
@@ -716,6 +742,13 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
     neutralColor: theme?.gridColor ?? DEFAULT_ICEBERG_REFRESH_SETTINGS.neutralColor,
     schemaVersion: ICEBERG_REFRESH_SETTINGS_VERSION,
   } : {}),
+  ...(indicatorId === "liquidity-stop-sweep-detector" ? {
+    ...DEFAULT_LIQUIDITY_STOP_SWEEP_SETTINGS,
+    buyColor: theme?.upColor ?? DEFAULT_LIQUIDITY_STOP_SWEEP_SETTINGS.buyColor,
+    sellColor: theme?.downColor ?? DEFAULT_LIQUIDITY_STOP_SWEEP_SETTINGS.sellColor,
+    neutralColor: theme?.gridColor ?? DEFAULT_LIQUIDITY_STOP_SWEEP_SETTINGS.neutralColor,
+    schemaVersion: LIQUIDITY_STOP_SWEEP_SETTINGS_VERSION,
+  } : {}),
   ...(indicatorId === "gamma-heatmap" ? {
     preset: "intraday",
     metric: "GAMMA",
@@ -1337,6 +1370,18 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
       settings: {
         ...normalizeIcebergRefreshSettings({
           ...defaultIndicatorSettings("iceberg-refresh-detector"),
+          ...(normalizedInstance.settings ?? {}),
+        }),
+      },
+    };
+  }
+  if (normalizedInstance.indicatorId === "liquidity-stop-sweep-detector" || normalizedInstance.indicatorId === "stop-run") {
+    return {
+      ...normalizedInstance,
+      indicatorId: "liquidity-stop-sweep-detector",
+      settings: {
+        ...normalizeLiquidityStopSweepSettings({
+          ...defaultIndicatorSettings("liquidity-stop-sweep-detector"),
           ...(normalizedInstance.settings ?? {}),
         }),
       },

@@ -202,6 +202,18 @@ import {
   type IcebergRefreshHit,
   type IcebergRefreshPrimitiveData,
 } from "@/lib/icebergRefreshPrimitive";
+import {
+  LiquidityStopSweepDetectorEngine,
+  buildSweepReferencesFromCandles,
+  normalizeLiquidityStopSweepSettings,
+  type LiquidityStopSweepFrame,
+  type SweepReferenceLevel,
+} from "@/lib/liquidityStopSweepDetector";
+import {
+  LiquidityStopSweepPrimitive,
+  type LiquidityStopSweepHit,
+  type LiquidityStopSweepPrimitiveData,
+} from "@/lib/liquidityStopSweepPrimitive";
 import { subscribeRithmicLiquidity, type RithmicLiquidityStatus } from "@/lib/rithmicLiquidityStream";
 import {
   defaultGammaHeatmapSource,
@@ -2584,6 +2596,11 @@ export default function Chart({
   const icebergRefreshEngineRef = useRef(new IcebergRefreshDetectorEngine());
   const icebergRefreshFrameRef = useRef<IcebergRefreshFrame | null>(null);
   const icebergRefreshAlertIdsRef = useRef(new Set<string>());
+  const liquidityStopSweepPrimitiveRef = useRef<LiquidityStopSweepPrimitive | null>(null);
+  const liquidityStopSweepEngineRef = useRef(new LiquidityStopSweepDetectorEngine());
+  const liquidityStopSweepFrameRef = useRef<LiquidityStopSweepFrame | null>(null);
+  const liquidityStopSweepAlertIdsRef = useRef(new Set<string>());
+  const liquidityStopSweepReferencesRef = useRef<SweepReferenceLevel[]>([]);
   const netGammaExposurePrimitiveRef = useRef<NetGammaExposurePrimitive | null>(null);
   const gexIntervalMapPrimitiveRef = useRef<GexIntervalMapPrimitive | null>(null);
   const gexIntervalAlertStateRef = useRef<{
@@ -2717,6 +2734,9 @@ export default function Chart({
   const [icebergRefreshStatus, setIcebergRefreshStatus] = useState<RithmicLiquidityStatus>("checking");
   const [icebergRefreshFrame, setIcebergRefreshFrame] = useState<IcebergRefreshFrame | null>(null);
   const [icebergRefreshTooltip, setIcebergRefreshTooltip] = useState<IcebergRefreshHit | null>(null);
+  const [liquidityStopSweepStatus, setLiquidityStopSweepStatus] = useState<RithmicLiquidityStatus>("checking");
+  const [liquidityStopSweepFrame, setLiquidityStopSweepFrame] = useState<LiquidityStopSweepFrame | null>(null);
+  const [liquidityStopSweepTooltip, setLiquidityStopSweepTooltip] = useState<LiquidityStopSweepHit | null>(null);
   const [netGammaProfile, setNetGammaProfile] = useState<NetGammaProfileSnapshot | null>(null);
   const [netGammaLoading, setNetGammaLoading] = useState(false);
   const [netGammaError, setNetGammaError] = useState<string | null>(null);
@@ -3453,6 +3473,136 @@ export default function Chart({
     container.addEventListener("pointermove", move); container.addEventListener("pointerleave", leave);
     return () => { container.removeEventListener("pointermove", move); container.removeEventListener("pointerleave", leave); if (frameId !== null) window.cancelAnimationFrame(frameId); };
   }, [icebergRefreshIndicator, icebergRefreshSettings.showTooltips]);
+
+  const liquidityStopSweepIndicator = useMemo(
+    () => indicators.find((instance) => instance.enabled && instance.indicatorId === "liquidity-stop-sweep-detector") ?? null,
+    [indicators],
+  );
+  const liquidityStopSweepSettings = useMemo(() => {
+    const normalized = normalizeLiquidityStopSweepSettings(liquidityStopSweepIndicator?.settings);
+    if (!normalized.useThemeColors) return normalized;
+    return {
+      ...normalized,
+      buyColor: settings.upColor,
+      sellColor: settings.downColor,
+      warningColor: settings.borderUpColor || settings.upColor,
+      rejectionColor: settings.borderDownColor || settings.downColor,
+      neutralColor: settings.gridColor,
+    };
+  }, [liquidityStopSweepIndicator, settings.borderDownColor, settings.borderUpColor, settings.downColor, settings.gridColor, settings.upColor]);
+
+  useEffect(() => {
+    const candleReferences = buildSweepReferencesFromCandles(candles, priceFormat.minMove);
+    const currentPrice = candles.at(-1)?.close ?? 0;
+    const validFromMs = candles[0]?.timestamp ?? Date.now();
+    const chartReferences: SweepReferenceLevel[] = [...resolvedLevelLayers.foreground, ...resolvedLevelLayers.background].map((level) => ({
+      id: `chart-level:${level.id}`,
+      type: "user-horizontal-level",
+      label: level.label,
+      priceTick: Math.round(level.price / priceFormat.minMove),
+      validFromMs,
+      side: level.price >= currentPrice ? "high" : "low",
+      priority: 80,
+      isUserLevel: true,
+    }));
+    liquidityStopSweepReferencesRef.current = [...candleReferences, ...chartReferences];
+  }, [candles, priceFormat.minMove, resolvedLevelLayers.background, resolvedLevelLayers.foreground]);
+
+  useEffect(() => {
+    if (!liquidityStopSweepIndicator) {
+      liquidityStopSweepEngineRef.current.reset();
+      liquidityStopSweepFrameRef.current = null;
+      liquidityStopSweepPrimitiveRef.current?.update(null);
+      setLiquidityStopSweepFrame(null);
+      setLiquidityStopSweepTooltip(null);
+      return;
+    }
+    const normalized = String(contractSymbol || instrument || "NQ").trim().toUpperCase().replace(/\.[VNC]\.\d+$/i, "");
+    const explicitContract = /[FGHJKMNQUVXZ]\d{1,2}$/i.test(normalized) ? normalized : null;
+    const chartRoot = normalized.replace(/[FGHJKMNQUVXZ]\d{1,2}$/i, "") || "NQ";
+    const microParents: Record<string, string> = { MNQ: "NQ", MES: "ES", MYM: "YM", M2K: "RTY", MGC: "GC", MCL: "CL", MBT: "BTC", MET: "ETH" };
+    const root = microParents[chartRoot] ?? chartRoot;
+    liquidityStopSweepEngineRef.current.reset();
+    liquidityStopSweepAlertIdsRef.current.clear();
+    liquidityStopSweepFrameRef.current = null;
+    setLiquidityStopSweepFrame(null);
+    setLiquidityStopSweepStatus("checking");
+    let summaryTimer: number | null = null;
+    let lastPublishedAt = 0;
+    const publish = (frame: LiquidityStopSweepFrame) => {
+      lastPublishedAt = performance.now();
+      setLiquidityStopSweepFrame(frame);
+    };
+    const unsubscribe = subscribeRithmicLiquidity({
+      root,
+      contractSymbol: explicitContract,
+      exchange: "CME",
+      replayHistory: true,
+      onStatus: setLiquidityStopSweepStatus,
+      onSnapshot: (snapshot) => {
+        const frame = liquidityStopSweepEngineRef.current.apply(snapshot, liquidityStopSweepSettings, liquidityStopSweepReferencesRef.current);
+        liquidityStopSweepFrameRef.current = frame;
+        const primitiveData: LiquidityStopSweepPrimitiveData = { frame, settings: liquidityStopSweepSettings, backgroundColor: settings.backgroundColor };
+        liquidityStopSweepPrimitiveRef.current?.update(primitiveData);
+        if (liquidityStopSweepSettings.alertsEnabled) {
+          for (const alert of frame.alerts) {
+            const event = alert.event;
+            if (!event || event.score < liquidityStopSweepSettings.alertMinimumScore || event.dataQualityScore < liquidityStopSweepSettings.alertMinimumQuality || liquidityStopSweepAlertIdsRef.current.has(alert.id)) continue;
+            liquidityStopSweepAlertIdsRef.current.add(alert.id);
+            window.dispatchEvent(new CustomEvent("kwantdesk:chart-indicator-alert", { detail: {
+              indicatorId: "liquidity-stop-sweep-detector",
+              instanceId: liquidityStopSweepIndicator.instanceId,
+              instrument,
+              title: `${event.direction.toUpperCase()} ${event.state.replaceAll("-", " ")}`,
+              event,
+            } }));
+          }
+        }
+        const elapsed = performance.now() - lastPublishedAt;
+        if (elapsed >= 200) publish(frame);
+        else if (summaryTimer === null) summaryTimer = window.setTimeout(() => {
+          summaryTimer = null;
+          if (liquidityStopSweepFrameRef.current) publish(liquidityStopSweepFrameRef.current);
+        }, Math.max(16, 200 - elapsed));
+      },
+    });
+    return () => {
+      unsubscribe();
+      if (summaryTimer !== null) window.clearTimeout(summaryTimer);
+    };
+  }, [contractSymbol, instrument, liquidityStopSweepIndicator, liquidityStopSweepSettings, settings.backgroundColor]);
+
+  useEffect(() => {
+    const frame = liquidityStopSweepFrameRef.current;
+    liquidityStopSweepPrimitiveRef.current?.update(frame ? { frame, settings: liquidityStopSweepSettings, backgroundColor: settings.backgroundColor } : null);
+  }, [chartReadyRevision, liquidityStopSweepSettings, settings.backgroundColor, viewportVersion]);
+
+  useEffect(() => {
+    const container = chartContainerRef.current;
+    if (!container || !liquidityStopSweepIndicator || !liquidityStopSweepSettings.showTooltips) return;
+    let frameId: number | null = null;
+    let pending: PointerEvent | null = null;
+    const flush = () => {
+      frameId = null;
+      const event = pending;
+      pending = null;
+      if (!event) return;
+      const rect = container.getBoundingClientRect();
+      setLiquidityStopSweepTooltip(liquidityStopSweepPrimitiveRef.current?.queryHit(event.clientX - rect.left, event.clientY - rect.top) ?? null);
+    };
+    const move = (event: PointerEvent) => {
+      pending = event;
+      if (frameId === null) frameId = window.requestAnimationFrame(flush);
+    };
+    const leave = () => setLiquidityStopSweepTooltip(null);
+    container.addEventListener("pointermove", move);
+    container.addEventListener("pointerleave", leave);
+    return () => {
+      container.removeEventListener("pointermove", move);
+      container.removeEventListener("pointerleave", leave);
+      if (frameId !== null) window.cancelAnimationFrame(frameId);
+    };
+  }, [liquidityStopSweepIndicator, liquidityStopSweepSettings.showTooltips]);
 
   const smtDivergenceIndicator = useMemo(
     () => indicators.find((instance) => instance.enabled && instance.indicatorId === "divergence-detector") ?? null,
@@ -8456,6 +8606,9 @@ export default function Chart({
     const icebergRefreshPrimitive = new IcebergRefreshPrimitive();
     candleSeries.attachPrimitive(icebergRefreshPrimitive);
     icebergRefreshPrimitiveRef.current = icebergRefreshPrimitive;
+    const liquidityStopSweepPrimitive = new LiquidityStopSweepPrimitive();
+    candleSeries.attachPrimitive(liquidityStopSweepPrimitive);
+    liquidityStopSweepPrimitiveRef.current = liquidityStopSweepPrimitive;
     const netGammaExposurePrimitive = new NetGammaExposurePrimitive();
     candleSeries.attachPrimitive(netGammaExposurePrimitive);
     netGammaExposurePrimitiveRef.current = netGammaExposurePrimitive;
@@ -9281,6 +9434,9 @@ export default function Chart({
       if (candleSeriesRef.current && icebergRefreshPrimitiveRef.current) {
         try { candleSeriesRef.current.detachPrimitive(icebergRefreshPrimitiveRef.current); } catch { /* chart may already be disposed */ }
       }
+      if (candleSeriesRef.current && liquidityStopSweepPrimitiveRef.current) {
+        try { candleSeriesRef.current.detachPrimitive(liquidityStopSweepPrimitiveRef.current); } catch { /* chart may already be disposed */ }
+      }
       candleSeriesRef.current = null;
       gameplanUnderlayRef.current = null;
       fixedPriceLevelLabelsRef.current = null;
@@ -9293,6 +9449,7 @@ export default function Chart({
       absorptionPrimitiveRef.current = null;
       stackedImbalancePrimitiveRef.current = null;
       icebergRefreshPrimitiveRef.current = null;
+      liquidityStopSweepPrimitiveRef.current = null;
       netGammaExposurePrimitiveRef.current = null;
       gexIntervalMapPrimitiveRef.current = null;
       netGammaReservedRightOffsetRef.current = null;
@@ -10570,6 +10727,41 @@ export default function Chart({
           <div className="mt-2 border-t border-border pt-1 text-warning">Suspected Iceberg is an inference; the feed exposes no native reserve flag or maker-order trade ID.</div>
         </div>
       ) : null}
+      {liquidityStopSweepIndicator && liquidityStopSweepSettings.showHeader ? (
+        <div
+          className="pointer-events-none absolute left-2 z-[29] flex max-w-[min(900px,calc(100%-80px))] items-center gap-2 border border-border bg-panel/92 px-2 py-1 font-mono text-[8px] uppercase tracking-[0.08em] text-muted shadow-lg backdrop-blur"
+          style={{ top: 8 + (pullingStackingIndicator && pullingStackingSettings.showHeader ? 30 : 0) + (absorptionIndicator && absorptionSettings.showHeader ? 30 : 0) + (stackedImbalanceIndicator ? 30 : 0) + (icebergRefreshIndicator && icebergRefreshSettings.showHeader ? 30 : 0) }}
+          title={liquidityStopSweepFrame?.limitations.join(" ") ?? "Synchronising shared aggressive executions and Level 3 book context"}
+        >
+          <span className={`h-1.5 w-1.5 rounded-full ${liquidityStopSweepStatus === "unavailable" || liquidityStopSweepFrame?.status === "UNAVAILABLE" ? "bg-danger" : liquidityStopSweepStatus === "checking" || !liquidityStopSweepFrame ? "animate-pulse bg-warning" : liquidityStopSweepFrame.status.includes("STALE") ? "bg-warning" : "bg-primary"}`} />
+          <span className="text-foreground">Sweep Detector</span>
+          <span>{liquidityStopSweepFrame?.status.replaceAll("_", " ") ?? "SYNCHRONISING"}</span>
+          <span>BUY {liquidityStopSweepFrame?.events.filter((event) => event.direction === "buy").length ?? 0}</span>
+          <span>SELL {liquidityStopSweepFrame?.events.filter((event) => event.direction === "sell").length ?? 0}</span>
+          <span>STOP? {liquidityStopSweepFrame?.events.filter((event) => event.state === "possible-stop-sweep").length ?? 0}</span>
+          <span>{liquidityStopSweepFrame?.fullDepth ? "L3 BOOK" : "TRADE + BOOK CONTEXT"}</span>
+        </div>
+      ) : null}
+      {liquidityStopSweepTooltip ? (
+        <div
+          className="pointer-events-none absolute z-[72] min-w-[280px] border border-border bg-panel/96 p-2 font-mono text-[8px] shadow-2xl backdrop-blur"
+          style={{ left: Math.min(Math.max(8, liquidityStopSweepTooltip.x + 14), Math.max(8, overlaySize.width - 300)), top: Math.min(Math.max(34, liquidityStopSweepTooltip.y + 14), Math.max(34, overlaySize.height - 285)) }}
+        >
+          <div className="flex items-center justify-between gap-4 border-b border-border pb-1 text-foreground"><span>Liquidity Sweep / Stop Sweep</span><span>{liquidityStopSweepTooltip.event.direction.toUpperCase()}</span></div>
+          <div className="mt-1 grid grid-cols-2 gap-x-4 gap-y-1 text-muted">
+            <span>State / evidence</span><span className="text-foreground">{liquidityStopSweepTooltip.event.state.replaceAll("-", " ")} / {liquidityStopSweepTooltip.event.evidenceLevel.replaceAll("-", " ")}</span>
+            <span>Range</span><span className="text-foreground">{(liquidityStopSweepTooltip.event.lowTick * (liquidityStopSweepFrame?.tickSize ?? priceFormat.minMove)).toFixed(priceFormat.precision)}–{(liquidityStopSweepTooltip.event.highTick * (liquidityStopSweepFrame?.tickSize ?? priceFormat.minMove)).toFixed(priceFormat.precision)}</span>
+            <span>Contracts / trades</span><span className="text-foreground">{Math.round(liquidityStopSweepTooltip.event.totalQuantity).toLocaleString()} / {liquidityStopSweepTooltip.event.tradeCount}</span>
+            <span>Levels / duration</span><span className="text-foreground">{liquidityStopSweepTooltip.event.uniqueLevelCount} / {Math.round(liquidityStopSweepTooltip.event.durationMs)}ms</span>
+            <span>Velocity</span><span className="text-foreground">{Math.round(liquidityStopSweepTooltip.event.contractsPerSecond).toLocaleString()} contracts/s</span>
+            <span>Progress / backtrack</span><span className="text-foreground">{liquidityStopSweepTooltip.event.netProgressTicks}t / {liquidityStopSweepTooltip.event.backtrackTicks}t</span>
+            <span>Reference</span><span className="text-foreground">{liquidityStopSweepTooltip.event.primaryReference?.label ?? "None crossed"}</span>
+            <span>Continuation / rejection</span><span className="text-foreground">{liquidityStopSweepTooltip.event.continuationTicks}t / {liquidityStopSweepTooltip.event.rejectionTicks}t</span>
+            <span>Score / data quality</span><span className="text-foreground">{liquidityStopSweepTooltip.event.score} / {liquidityStopSweepTooltip.event.dataQualityScore}</span>
+          </div>
+          <div className="mt-2 border-t border-border pt-1 text-warning">Stop-sweep is reference-crossing inference. Trader identity and legal intent are not established.</div>
+        </div>
+      ) : null}
       {gammaHeatmapIndicator ? (
         <div
           className="pointer-events-none absolute left-2 z-[24] flex max-w-[min(520px,calc(100%-80px))] items-center gap-2 border border-border bg-panel/92 px-2 py-1 font-mono text-[8px] uppercase tracking-[0.08em] text-muted shadow-lg backdrop-blur"
@@ -10578,7 +10770,8 @@ export default function Chart({
               + (pullingStackingIndicator && pullingStackingSettings.showHeader ? 30 : 0)
               + (absorptionIndicator && absorptionSettings.showHeader ? 30 : 0)
               + (stackedImbalanceIndicator ? 30 : 0)
-              + (icebergRefreshIndicator && icebergRefreshSettings.showHeader ? 30 : 0),
+              + (icebergRefreshIndicator && icebergRefreshSettings.showHeader ? 30 : 0)
+              + (liquidityStopSweepIndicator && liquidityStopSweepSettings.showHeader ? 30 : 0),
           }}
           title={gammaHeatmapPayload?.limitations.join(" ") ?? gammaHeatmapError ?? "Loading options exposure history"}
         >

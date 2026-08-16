@@ -14,6 +14,7 @@
     "test:absorption-detector": "node --experimental-strip-types scripts/test-absorption-detector.mjs",
     "test:stacked-imbalance-suite": "node --experimental-strip-types scripts/test-stacked-imbalance-suite.mjs",
     "test:iceberg-refresh-detector": "node --experimental-strip-types scripts/test-iceberg-refresh-detector.mjs",
+    "test:liquidity-stop-sweep-detector": "node --experimental-strip-types scripts/test-liquidity-stop-sweep-detector.mjs",
     "test:economic-calendar-forward": "node --experimental-strip-types scripts/test-economic-calendar-forward.mjs",
     "desktop:build": "powershell -ExecutionPolicy Bypass -File desktop/package-windows.ps1"
   },
