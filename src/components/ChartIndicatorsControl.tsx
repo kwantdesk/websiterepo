@@ -49,6 +49,7 @@ import KwantSelect from "@/components/ui/KwantSelect";
 import { PULLING_STACKING_PRESETS } from "@/lib/pullingStacking";
 import { ABSORPTION_PRESETS } from "@/lib/absorptionDetector";
 import { STACKED_IMBALANCE_PRESETS } from "@/lib/stackedImbalanceSuite";
+import { ICEBERG_REFRESH_PRESETS } from "@/lib/icebergRefreshDetector";
 
 const FAVOURITES_STORAGE_KEY = "kwantdesk-chart-indicator-favourites";
 const FOOTPRINT_PROFILE_MANAGED_SETTINGS = new Set([
@@ -220,6 +221,7 @@ export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "pulling-stacking",
   "absorption-detector",
   "stacked-imbalance-suite",
+  "iceberg-refresh-detector",
   "delta-cumulative-candlestick",
   "delta-cumulative-histogram",
   "imbalance-tracker",
@@ -2426,6 +2428,27 @@ export default function ChartIndicatorsControl({
                     <label className="space-y-1.5 text-[8px] uppercase tracking-[0.1em] text-muted"><span>Zone extension</span><KwantSelect value={String(settingsInstance.settings?.zoneExtensionMode ?? "until-broken")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), zoneExtensionMode: event.target.value, preset: "custom" } }))} className="h-9 w-full"><option value="until-broken">Until broken</option><option value="fixed-bars">Fixed bars</option><option value="session-end">Session end</option></KwantSelect></label>
                   </div>
                   <p className="text-[8px] leading-4 text-muted">Uses the exact price cells from the shared Footprint execution stream. Unknown-side volume is excluded; zero-side cells are explicitly labelled instead of represented as infinite ratios.</p>
+                </div>
+              ) : null}
+
+              {settingsDefinition.id === "iceberg-refresh-detector" ? (
+                <div className="space-y-3 border border-primary/20 bg-primary/[0.035] p-3">
+                  <div>
+                    <div className="mb-2 text-[9px] font-semibold uppercase tracking-[0.13em] text-muted">Detection preset</div>
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                      {Object.entries(ICEBERG_REFRESH_PRESETS).map(([preset, presetSettings]) => (
+                        <button key={preset} type="button" onClick={() => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), ...presetSettings, preset } }))} className={`min-h-8 border px-2 text-[7px] font-semibold uppercase tracking-[0.08em] ${settingsInstance.settings?.preset === preset ? "border-primary bg-primary/10 text-primary" : "border-border bg-background text-muted hover:text-foreground"}`}>
+                          {preset}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-3">
+                    <label className="space-y-1.5 text-[8px] uppercase tracking-[0.1em] text-muted"><span>Visualisation</span><KwantSelect value={String(settingsInstance.settings?.visualizationMode ?? "hybrid")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), visualizationMode: event.target.value, preset: "custom" } }))} className="h-9 w-full"><option value="hybrid">Hybrid</option><option value="price-time-cells">Price-time cells</option><option value="refresh-markers">Refresh markers</option><option value="zones">Zones</option><option value="active-profile">Active profile</option><option value="footprint-cells">Footprint cells</option><option value="dom-highlights">DOM highlights</option><option value="lower-pane">Lower pane</option></KwantSelect></label>
+                    <label className="space-y-1.5 text-[8px] uppercase tracking-[0.1em] text-muted"><span>Excess replenishment</span><KwantSelect value={String(settingsInstance.settings?.excessReplenishmentTreatment ?? "ordinary-stack")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), excessReplenishmentTreatment: event.target.value, preset: "custom" } }))} className="h-9 w-full"><option value="ordinary-stack">Ordinary stack</option><option value="candidate-replenishment">Candidate refresh</option><option value="ignore">Ignore</option></KwantSelect></label>
+                    <label className="space-y-1.5 text-[8px] uppercase tracking-[0.1em] text-muted"><span>Move into level</span><KwantSelect value={String(settingsInstance.settings?.moveIntoLevelTreatment ?? "exclude")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), moveIntoLevelTreatment: event.target.value, preset: "custom" } }))} className="h-9 w-full"><option value="exclude">Exclude</option><option value="include-low-confidence">Low confidence</option><option value="include-normal">Include normally</option></KwantSelect></label>
+                  </div>
+                  <p className="text-[8px] leading-4 text-muted">This tool detects repeated passive-liquidity replenishment. “Suspected Iceberg” is an inference unless the feed explicitly supplies a native iceberg flag. The current normalized feed provides price-level evidence, not trader identity, reserve quantity, or legal intent.</p>
                 </div>
               ) : null}
 

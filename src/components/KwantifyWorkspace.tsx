@@ -763,10 +763,10 @@ type WorkspaceToolKind =
   | "tool-imbalance-detector"
   | "tool-absorption-indicator"
   | "tool-stacked-imbalance-suite"
+  | "tool-iceberg-refresh-detector"
   | "tool-queue-position-tracking"
   | "tool-size-modification-tracking"
   | "tool-order-size-distribution"
-  | "tool-iceberg-detection"
   | "tool-spoofing-detector"
   | "tool-front-running"
   | "tool-passive-market-making"
@@ -1016,10 +1016,10 @@ const WORKSPACE_TOOL_OPTIONS: Array<WorkspacePanelOption<WorkspaceToolKind>> = [
   { id: "tool-imbalance-detector", label: "IMBALANCE DETECTOR", description: "Stacked and diagonal bid/ask imbalance", icon: Layers3, indicatorId: "imbalance-tracker" },
   { id: "tool-absorption-indicator", label: "ABSORPTION DETECTOR", description: "Price-time absorption, replenishment, confirmed zones, retests and breaks", icon: Eye, indicatorId: "absorption-detector" },
   { id: "tool-stacked-imbalance-suite", label: "STACKED IMBALANCE SUITE", description: "Diagonal and horizontal execution imbalance, stacks, scored zones, retests and breaks", icon: Layers3, indicatorId: "stacked-imbalance-suite" },
+  { id: "tool-iceberg-refresh-detector", label: "ICEBERG / REFRESH DETECTOR", description: "Repeated passive-liquidity replenishment, suspected iceberg zones, pulls and breaks", icon: Repeat, indicatorId: "iceberg-refresh-detector" },
   { id: "tool-queue-position-tracking", label: "QUEUE POSITION TRACKING", description: "Order priority and queue movement by price", icon: List },
   { id: "tool-size-modification-tracking", label: "SIZE MODIFICATION TRACKING", description: "Resting size added, reduced and replaced", icon: Repeat },
   { id: "tool-order-size-distribution", label: "ORDER SIZE DISTRIBUTION", description: "Distribution of displayed and executed order size", icon: BarChart3 },
-  { id: "tool-iceberg-detection", label: "ICEBERG DETECTION", description: "Repeated replenishment and hidden-size inference", icon: EyeOff },
   { id: "tool-spoofing-detector", label: "SPOOFING DETECTOR", description: "Order-book add, cancel and execution-behaviour analysis", icon: AlertTriangle },
   { id: "tool-front-running", label: "FRONT RUNNING", description: "Liquidity stepping ahead of identified orders", icon: ArrowUp },
   { id: "tool-passive-market-making", label: "PASSIVE MARKET MAKING", description: "Passive quote behaviour and inventory pressure", icon: Layers3 },

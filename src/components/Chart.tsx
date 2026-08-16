@@ -192,6 +192,16 @@ import {
   StackedImbalancePrimitive,
   type StackedImbalanceHit,
 } from "@/lib/stackedImbalancePrimitive";
+import {
+  IcebergRefreshDetectorEngine,
+  normalizeIcebergRefreshSettings,
+  type IcebergRefreshFrame,
+} from "@/lib/icebergRefreshDetector";
+import {
+  IcebergRefreshPrimitive,
+  type IcebergRefreshHit,
+  type IcebergRefreshPrimitiveData,
+} from "@/lib/icebergRefreshPrimitive";
 import { subscribeRithmicLiquidity, type RithmicLiquidityStatus } from "@/lib/rithmicLiquidityStream";
 import {
   defaultGammaHeatmapSource,
@@ -2570,6 +2580,10 @@ export default function Chart({
   const stackedImbalancePrimitiveRef = useRef<StackedImbalancePrimitive | null>(null);
   const stackedImbalanceEngineRef = useRef(new StackedImbalanceEngine());
   const stackedImbalanceAlertIdsRef = useRef(new Set<string>());
+  const icebergRefreshPrimitiveRef = useRef<IcebergRefreshPrimitive | null>(null);
+  const icebergRefreshEngineRef = useRef(new IcebergRefreshDetectorEngine());
+  const icebergRefreshFrameRef = useRef<IcebergRefreshFrame | null>(null);
+  const icebergRefreshAlertIdsRef = useRef(new Set<string>());
   const netGammaExposurePrimitiveRef = useRef<NetGammaExposurePrimitive | null>(null);
   const gexIntervalMapPrimitiveRef = useRef<GexIntervalMapPrimitive | null>(null);
   const gexIntervalAlertStateRef = useRef<{
@@ -2700,6 +2714,9 @@ export default function Chart({
   const [absorptionTooltip, setAbsorptionTooltip] = useState<AbsorptionHit | null>(null);
   const [stackedImbalanceFrame, setStackedImbalanceFrame] = useState<StackedImbalanceFrame | null>(null);
   const [stackedImbalanceTooltip, setStackedImbalanceTooltip] = useState<StackedImbalanceHit | null>(null);
+  const [icebergRefreshStatus, setIcebergRefreshStatus] = useState<RithmicLiquidityStatus>("checking");
+  const [icebergRefreshFrame, setIcebergRefreshFrame] = useState<IcebergRefreshFrame | null>(null);
+  const [icebergRefreshTooltip, setIcebergRefreshTooltip] = useState<IcebergRefreshHit | null>(null);
   const [netGammaProfile, setNetGammaProfile] = useState<NetGammaProfileSnapshot | null>(null);
   const [netGammaLoading, setNetGammaLoading] = useState(false);
   const [netGammaError, setNetGammaError] = useState<string | null>(null);
@@ -3349,6 +3366,94 @@ export default function Chart({
       if (frameId !== null) window.cancelAnimationFrame(frameId);
     };
   }, [absorptionIndicator, absorptionSettings.showTooltips]);
+
+  const icebergRefreshIndicator = useMemo(
+    () => indicators.find((instance) => instance.enabled && instance.indicatorId === "iceberg-refresh-detector") ?? null,
+    [indicators],
+  );
+  const icebergRefreshSettings = useMemo(() => {
+    const normalized = normalizeIcebergRefreshSettings(icebergRefreshIndicator?.settings);
+    if (!normalized.useThemeColors) return normalized;
+    return {
+      ...normalized,
+      bidColor: settings.upColor,
+      askColor: settings.downColor,
+      neutralColor: settings.gridColor,
+      brokenColor: settings.gridColor,
+    };
+  }, [icebergRefreshIndicator, settings.downColor, settings.gridColor, settings.upColor]);
+
+  useEffect(() => {
+    if (!icebergRefreshIndicator) {
+      icebergRefreshEngineRef.current.reset();
+      icebergRefreshFrameRef.current = null;
+      icebergRefreshPrimitiveRef.current?.update(null);
+      setIcebergRefreshFrame(null);
+      setIcebergRefreshTooltip(null);
+      return;
+    }
+    const normalized = String(contractSymbol || instrument || "NQ").trim().toUpperCase().replace(/\.[VNC]\.\d+$/i, "");
+    const explicitContract = /[FGHJKMNQUVXZ]\d{1,2}$/i.test(normalized) ? normalized : null;
+    const chartRoot = normalized.replace(/[FGHJKMNQUVXZ]\d{1,2}$/i, "") || "NQ";
+    const microParents: Record<string, string> = { MNQ: "NQ", MES: "ES", MYM: "YM", M2K: "RTY", MGC: "GC", MCL: "CL", MBT: "BTC", MET: "ETH" };
+    const root = microParents[chartRoot] ?? chartRoot;
+    icebergRefreshEngineRef.current.reset();
+    icebergRefreshAlertIdsRef.current.clear();
+    icebergRefreshFrameRef.current = null;
+    setIcebergRefreshFrame(null);
+    setIcebergRefreshStatus("checking");
+    let summaryTimer: number | null = null;
+    let lastPublishedAt = 0;
+    const publish = (frame: IcebergRefreshFrame) => { lastPublishedAt = performance.now(); setIcebergRefreshFrame(frame); };
+    const unsubscribe = subscribeRithmicLiquidity({
+      root,
+      contractSymbol: explicitContract,
+      exchange: "CME",
+      replayHistory: true,
+      onStatus: setIcebergRefreshStatus,
+      onSnapshot: (snapshot) => {
+        const frame = icebergRefreshEngineRef.current.apply(snapshot, icebergRefreshSettings);
+        icebergRefreshFrameRef.current = frame;
+        const primitiveData: IcebergRefreshPrimitiveData = { frame, settings: icebergRefreshSettings, backgroundColor: settings.backgroundColor };
+        icebergRefreshPrimitiveRef.current?.update(icebergRefreshSettings.preset === "native-only" ? null : primitiveData);
+        if (icebergRefreshSettings.alertsEnabled) {
+          for (const alert of frame.alerts) {
+            const candidate = alert.candidate;
+            const allowed = (alert.type === "REFRESH" && icebergRefreshSettings.alertOnRefresh)
+              || (alert.type === "SUSPECTED" && icebergRefreshSettings.alertOnSuspected)
+              || (alert.type === "EXHAUSTED" && icebergRefreshSettings.alertOnExhausted)
+              || (alert.type === "PULLED" && icebergRefreshSettings.alertOnPulled)
+              || (alert.type === "BROKEN" && icebergRefreshSettings.alertOnBroken);
+            if (!allowed || !candidate || candidate.score < icebergRefreshSettings.alertMinimumScore || candidate.quality < icebergRefreshSettings.alertMinimumQuality || icebergRefreshAlertIdsRef.current.has(alert.id)) continue;
+            icebergRefreshAlertIdsRef.current.add(alert.id);
+            window.dispatchEvent(new CustomEvent("kwantdesk:chart-indicator-alert", { detail: { indicatorId: "iceberg-refresh-detector", instanceId: icebergRefreshIndicator.instanceId, instrument, title: `${candidate.passiveSide} ${alert.type.toLowerCase()} · suspected iceberg`, event: alert } }));
+          }
+        }
+        const elapsed = performance.now() - lastPublishedAt;
+        if (elapsed >= 200) publish(frame);
+        else if (summaryTimer === null) summaryTimer = window.setTimeout(() => { summaryTimer = null; if (icebergRefreshFrameRef.current) publish(icebergRefreshFrameRef.current); }, Math.max(16, 200 - elapsed));
+      },
+    });
+    return () => { unsubscribe(); if (summaryTimer !== null) window.clearTimeout(summaryTimer); };
+  }, [contractSymbol, icebergRefreshIndicator, icebergRefreshSettings, instrument, settings.backgroundColor]);
+
+  useEffect(() => {
+    const frame = icebergRefreshFrameRef.current;
+    icebergRefreshPrimitiveRef.current?.update(frame && icebergRefreshSettings.preset !== "native-only" ? { frame, settings: icebergRefreshSettings, backgroundColor: settings.backgroundColor } : null);
+  }, [chartReadyRevision, icebergRefreshSettings, settings.backgroundColor, viewportVersion]);
+
+  useEffect(() => {
+    const container = chartContainerRef.current;
+    if (!container || !icebergRefreshIndicator || !icebergRefreshSettings.showTooltips) return;
+    let frameId: number | null = null;
+    let pending: PointerEvent | null = null;
+    const flush = () => { frameId = null; const event = pending; pending = null; if (!event) return; const rect = container.getBoundingClientRect(); setIcebergRefreshTooltip(icebergRefreshPrimitiveRef.current?.queryHit(event.clientX - rect.left, event.clientY - rect.top) ?? null); };
+    const move = (event: PointerEvent) => { pending = event; if (frameId === null) frameId = window.requestAnimationFrame(flush); };
+    const leave = () => setIcebergRefreshTooltip(null);
+    container.addEventListener("pointermove", move); container.addEventListener("pointerleave", leave);
+    return () => { container.removeEventListener("pointermove", move); container.removeEventListener("pointerleave", leave); if (frameId !== null) window.cancelAnimationFrame(frameId); };
+  }, [icebergRefreshIndicator, icebergRefreshSettings.showTooltips]);
+
   const smtDivergenceIndicator = useMemo(
     () => indicators.find((instance) => instance.enabled && instance.indicatorId === "divergence-detector") ?? null,
     [indicators],
@@ -8348,6 +8453,9 @@ export default function Chart({
     const stackedImbalancePrimitive = new StackedImbalancePrimitive();
     candleSeries.attachPrimitive(stackedImbalancePrimitive);
     stackedImbalancePrimitiveRef.current = stackedImbalancePrimitive;
+    const icebergRefreshPrimitive = new IcebergRefreshPrimitive();
+    candleSeries.attachPrimitive(icebergRefreshPrimitive);
+    icebergRefreshPrimitiveRef.current = icebergRefreshPrimitive;
     const netGammaExposurePrimitive = new NetGammaExposurePrimitive();
     candleSeries.attachPrimitive(netGammaExposurePrimitive);
     netGammaExposurePrimitiveRef.current = netGammaExposurePrimitive;
@@ -9170,6 +9278,9 @@ export default function Chart({
       if (candleSeriesRef.current && stackedImbalancePrimitiveRef.current) {
         try { candleSeriesRef.current.detachPrimitive(stackedImbalancePrimitiveRef.current); } catch { /* chart may already be disposed */ }
       }
+      if (candleSeriesRef.current && icebergRefreshPrimitiveRef.current) {
+        try { candleSeriesRef.current.detachPrimitive(icebergRefreshPrimitiveRef.current); } catch { /* chart may already be disposed */ }
+      }
       candleSeriesRef.current = null;
       gameplanUnderlayRef.current = null;
       fixedPriceLevelLabelsRef.current = null;
@@ -9181,6 +9292,7 @@ export default function Chart({
       pullingStackingPrimitiveRef.current = null;
       absorptionPrimitiveRef.current = null;
       stackedImbalancePrimitiveRef.current = null;
+      icebergRefreshPrimitiveRef.current = null;
       netGammaExposurePrimitiveRef.current = null;
       gexIntervalMapPrimitiveRef.current = null;
       netGammaReservedRightOffsetRef.current = null;
@@ -10423,6 +10535,41 @@ export default function Chart({
           )}
         </div>
       ) : null}
+      {icebergRefreshIndicator && icebergRefreshSettings.showHeader ? (
+        <div
+          className="pointer-events-none absolute left-2 z-[28] flex max-w-[min(860px,calc(100%-80px))] items-center gap-2 border border-border bg-panel/92 px-2 py-1 font-mono text-[8px] uppercase tracking-[0.08em] text-muted shadow-lg backdrop-blur"
+          style={{ top: 8 + (pullingStackingIndicator && pullingStackingSettings.showHeader ? 30 : 0) + (absorptionIndicator && absorptionSettings.showHeader ? 30 : 0) + (stackedImbalanceIndicator ? 30 : 0) }}
+          title={icebergRefreshFrame?.limitations.join(" ") ?? "Synchronising shared executions and Level 3 order-book lifecycle"}
+        >
+          <span className={`h-1.5 w-1.5 rounded-full ${icebergRefreshStatus === "unavailable" ? "bg-danger" : icebergRefreshStatus === "checking" || icebergRefreshFrame?.status === "CALIBRATING" ? "animate-pulse bg-warning" : icebergRefreshFrame?.status === "STALE" ? "bg-warning" : "bg-primary"}`} />
+          <span className="text-foreground">Iceberg / Refresh Detector</span>
+          <span>{icebergRefreshSettings.preset === "native-only" ? "NATIVE FIELDS UNAVAILABLE" : (icebergRefreshFrame?.status ?? "SYNCHRONISING")}</span>
+          <span>PRICE-LEVEL EVIDENCE</span>
+          <span>BID {icebergRefreshFrame?.candidates.filter((candidate) => candidate.passiveSide === "BID" && !["BROKEN", "EXPIRED"].includes(candidate.state)).length ?? 0}</span>
+          <span>ASK {icebergRefreshFrame?.candidates.filter((candidate) => candidate.passiveSide === "ASK" && !["BROKEN", "EXPIRED"].includes(candidate.state)).length ?? 0}</span>
+          <span>SUSPECT {icebergRefreshFrame?.candidates.filter((candidate) => candidate.state === "SUSPECTED").length ?? 0}</span>
+        </div>
+      ) : null}
+      {icebergRefreshTooltip ? (
+        <div
+          className="pointer-events-none absolute z-[71] min-w-[270px] border border-border bg-panel/96 p-2 font-mono text-[8px] shadow-2xl backdrop-blur"
+          style={{ left: Math.min(Math.max(8, icebergRefreshTooltip.x + 14), Math.max(8, overlaySize.width - 290)), top: Math.min(Math.max(34, icebergRefreshTooltip.y + 14), Math.max(34, overlaySize.height - 270)) }}
+        >
+          <div className="flex items-center justify-between gap-4 border-b border-border pb-1 text-foreground"><span>Iceberg / Refresh Detector</span><span>{icebergRefreshTooltip.kind.toUpperCase()}</span></div>
+          {"cumulativeAggressiveExecuted" in icebergRefreshTooltip.item ? (
+            <div className="mt-1 grid grid-cols-2 gap-x-4 gap-y-1 text-muted">
+              <span>Side / state</span><span className="text-foreground">{icebergRefreshTooltip.item.passiveSide} / {icebergRefreshTooltip.item.state}</span>
+              <span>Price</span><span className="text-foreground">{(icebergRefreshTooltip.item.priceTick * (icebergRefreshFrame?.tickSize ?? priceFormat.minMove)).toFixed(priceFormat.precision)}</span>
+              <span>Executed / replenished</span><span className="text-foreground">{Math.round(icebergRefreshTooltip.item.cumulativeAggressiveExecuted).toLocaleString()} / {Math.round(icebergRefreshTooltip.item.cumulativeAttributedReplenishment).toLocaleString()}</span>
+              <span>Cycles / ratio</span><span className="text-foreground">{icebergRefreshTooltip.item.completedRefreshCycleCount} / {(icebergRefreshTooltip.item.replenishmentRatio * 100).toFixed(0)}%</span>
+              <span>Peak display / turnover</span><span className="text-foreground">{Math.round(icebergRefreshTooltip.item.peakDisplayedQuantity).toLocaleString()} / {icebergRefreshTooltip.item.executionToPeakDisplayRatio.toFixed(2)}×</span>
+              <span>Score / quality</span><span className="text-foreground">{icebergRefreshTooltip.item.score} / {icebergRefreshTooltip.item.quality}</span>
+              <span>Evidence</span><span className="text-foreground">{icebergRefreshTooltip.item.evidenceLevel.replaceAll("-", " ")}</span>
+            </div>
+          ) : <div className="mt-2 text-muted">Repeated aggressive execution and same-price displayed replenishment. Identity and intent are not established.</div>}
+          <div className="mt-2 border-t border-border pt-1 text-warning">Suspected Iceberg is an inference; the feed exposes no native reserve flag or maker-order trade ID.</div>
+        </div>
+      ) : null}
       {gammaHeatmapIndicator ? (
         <div
           className="pointer-events-none absolute left-2 z-[24] flex max-w-[min(520px,calc(100%-80px))] items-center gap-2 border border-border bg-panel/92 px-2 py-1 font-mono text-[8px] uppercase tracking-[0.08em] text-muted shadow-lg backdrop-blur"
@@ -10430,7 +10577,8 @@ export default function Chart({
             top: 8
               + (pullingStackingIndicator && pullingStackingSettings.showHeader ? 30 : 0)
               + (absorptionIndicator && absorptionSettings.showHeader ? 30 : 0)
-              + (stackedImbalanceIndicator ? 30 : 0),
+              + (stackedImbalanceIndicator ? 30 : 0)
+              + (icebergRefreshIndicator && icebergRefreshSettings.showHeader ? 30 : 0),
           }}
           title={gammaHeatmapPayload?.limitations.join(" ") ?? gammaHeatmapError ?? "Loading options exposure history"}
         >
