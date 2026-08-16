@@ -6773,6 +6773,7 @@ export default function KwantifyWorkspace({
     paneId: string;
     content: WorkspacePanelKind;
   } | null>(null);
+  const [domProSettingsRequests, setDomProSettingsRequests] = useState<Record<string, number>>({});
   const [draggedWorkspacePaneId, setDraggedWorkspacePaneId] = useState<string | null>(null);
   const [workspaceDropTargetPaneId, setWorkspaceDropTargetPaneId] = useState<string | null>(null);
   const [workspaceDropZone, setWorkspaceDropZone] = useState<WorkspaceDropZone>("center");
@@ -12958,6 +12959,7 @@ export default function KwantifyWorkspace({
               indicator={domIndicator}
               chartSettings={chartSettings}
               onUpdateSetting={updateDomSetting}
+              settingsOpenRequest={domProSettingsRequests[pane.id] ?? 0}
             />
           </WorkspaceFailureBoundary>
         );
@@ -13178,6 +13180,20 @@ export default function KwantifyWorkspace({
             >
               {pane.locked ? <Lock className="h-3.5 w-3.5" /> : <Unlock className="h-3.5 w-3.5" />}
             </button>
+            {pane.content === "tool-depth-of-market" ? (
+              <button
+                type="button"
+                onClick={() => setDomProSettingsRequests((current) => ({
+                  ...current,
+                  [pane.id]: (current[pane.id] ?? 0) + 1,
+                }))}
+                className="flex h-7 w-7 items-center justify-center rounded-lg text-muted transition-colors hover:bg-surface hover:text-primary"
+                title="DOM Pro settings"
+                aria-label="Open DOM Pro settings"
+              >
+                <Settings2 className="h-3.5 w-3.5" />
+              </button>
+            ) : null}
             <button
               type="button"
               onClick={() => duplicateWorkspacePane(pane.id)}
@@ -13272,6 +13288,21 @@ export default function KwantifyWorkspace({
             >
               {floating.locked ? <Lock className="h-3 w-3" /> : <Unlock className="h-3 w-3" />}
             </button>
+            {pane.content === "tool-depth-of-market" ? (
+              <button
+                type="button"
+                onPointerDown={(event) => event.stopPropagation()}
+                onClick={() => setDomProSettingsRequests((current) => ({
+                  ...current,
+                  [pane.id]: (current[pane.id] ?? 0) + 1,
+                }))}
+                className="flex h-6 w-6 items-center justify-center border border-transparent text-muted transition-colors hover:border-border hover:text-primary"
+                title="DOM Pro settings"
+                aria-label="Open DOM Pro settings"
+              >
+                <Settings2 className="h-3 w-3" />
+              </button>
+            ) : null}
             <button
               type="button"
               onPointerDown={(event) => event.stopPropagation()}

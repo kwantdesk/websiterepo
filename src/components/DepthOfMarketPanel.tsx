@@ -24,6 +24,7 @@ type Props = {
   chartSettings: ChartSettings;
   onUpdateSetting?: (key: string, value: number | string | boolean) => void;
   standalone?: boolean;
+  settingsOpenRequest?: number;
 };
 
 type CanvasPalette = {
@@ -177,6 +178,7 @@ function drawDom(args: {
 
 export default function DepthOfMarketPanel({
   instrument, contractSymbol, latestPrice, indicator, chartSettings, onUpdateSetting, standalone = false,
+  settingsOpenRequest = 0,
 }: Props) {
   const settings = useMemo(() => domProSettingsFromRecord(indicator.settings), [indicator.settings]);
   const configuredWidth = Math.max(240, Math.min(1_100, finite(indicator.settings?.width, 640)));
@@ -195,8 +197,14 @@ export default function DepthOfMarketPanel({
   const pendingSnapshotRef = useRef<RithmicLiquiditySnapshot | null>(null);
   const publishTimerRef = useRef<number | null>(null);
   const previousLastTickRef = useRef<number | null>(null);
+  const previousSettingsOpenRequestRef = useRef(settingsOpenRequest);
 
   useEffect(() => setRuntimeWidth(configuredWidth), [configuredWidth]);
+  useEffect(() => {
+    if (settingsOpenRequest === previousSettingsOpenRequestRef.current) return;
+    previousSettingsOpenRequestRef.current = settingsOpenRequest;
+    setSettingsOpen(true);
+  }, [settingsOpenRequest]);
   const commitSnapshot = useCallback((snapshot: RithmicLiquiditySnapshot) => {
     setBookState((current) => applyDomProSnapshot(current, snapshot));
     lastFrameAtRef.current = Date.now();
@@ -310,7 +318,7 @@ export default function DepthOfMarketPanel({
         };
         document.addEventListener("pointermove", move); document.addEventListener("pointerup", up);
       }} /> : null}
-      <header className="flex h-10 shrink-0 items-center gap-2 border-b border-border px-2.5">
+      {!standalone ? <header className="flex h-10 shrink-0 items-center gap-2 border-b border-border px-2.5">
         <DatabaseZap className="h-3.5 w-3.5 text-primary" />
         <div className="min-w-0"><div className="truncate font-mono text-[10px] font-bold tracking-[0.12em] text-foreground">DOM PRO</div><div className="truncate font-mono text-[7px] uppercase tracking-[0.08em] text-muted">{bookState.capabilities.mbo ? "MBO · exact order count" : bookState.capabilities.fullDepth ? "Full depth · L2 fallback" : "Waiting for exchange book"}</div></div>
         <div className="ml-auto flex items-center gap-1">
@@ -322,7 +330,7 @@ export default function DepthOfMarketPanel({
             <button type="button" onClick={() => setCollapsed(true)} className="flex h-6 w-6 items-center justify-center border border-border text-muted" title="Collapse"><ChevronsRight className="h-3 w-3" /></button>
           </> : null}
         </div>
-      </header>
+      </header> : null}
       {settings.showHeaderStats ? <div className="grid h-8 shrink-0 grid-cols-4 border-b border-border bg-surface/25 font-mono">
         <div className="flex items-center justify-between border-r border-border px-2 text-[7px]"><span className="text-muted">SPREAD</span><b>{spread ?? "—"}T</b></div>
         <div className="flex items-center justify-between border-r border-border px-2 text-[7px]"><span className="text-muted">ROWS</span><b>{settings.rows}</b></div>
